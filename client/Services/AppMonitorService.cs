@@ -1,10 +1,11 @@
 ﻿using client.DTOs;
 using client.Utils;
+using Microsoft.Extensions.Hosting;
 using Serilog;
 
 namespace client.Services
 {
-    public class AppMonitorService : IDisposable
+    public class AppMonitorService : IHostedService, IDisposable
     {
         private readonly object _lock = new();
         private string? _currentApp;
@@ -12,16 +13,13 @@ namespace client.Services
         private readonly List<AppUsageItem> _usages = [];
         private Thread? _hookThread;
 
-        public AppMonitorService()
+        /// <summary>
+        /// 启动前台窗口监听（由主机调用）
+        /// </summary>
+        public Task StartAsync(CancellationToken cancellationToken)
         {
             Log.Information("应用监测服务启动");
-        }
 
-        /// <summary>
-        /// 启动前台窗口监听
-        /// </summary>
-        public void Start()
-        {
             ActiveWindowHelper.ForegroundWindowChanged += OnForegroundChanged;
 
             // 记录启动时的前台窗口
@@ -53,6 +51,19 @@ namespace client.Services
                 Name = "WinEventHookThread"
             };
             _hookThread.Start();
+
+            return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// 停止监听（由主机调用）
+        /// </summary>
+        public Task StopAsync(CancellationToken cancellationToken)
+        {
+            Log.Information("应用监测服务停止");
+            ActiveWindowHelper.ForegroundWindowChanged -= OnForegroundChanged;
+            ActiveWindowHelper.StopHook();
+            return Task.CompletedTask;
         }
 
         private void OnForegroundChanged(string? newApp)
@@ -146,8 +157,6 @@ namespace client.Services
 
         public void Dispose()
         {
-            ActiveWindowHelper.ForegroundWindowChanged -= OnForegroundChanged;
-            ActiveWindowHelper.StopHook();
             GC.SuppressFinalize(this);
         }
     }

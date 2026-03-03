@@ -1,6 +1,10 @@
-﻿using client.Services;
+﻿using client.Models;
+using client.Services;
 using client.Storage;
-using client.Utils;
+using client.Workers;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Serilog;
 
 // 配置 Serilog 日志
@@ -14,56 +18,34 @@ Log.Logger = new LoggerConfiguration()
 
 try
 {
-    var env = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
-    Log.Information("Heartbeat 客户端启动，环境: {Env}", env);
+    var builder = Host.CreateApplicationBuilder(args);
+    builder.Services.AddSerilog();
 
-    // 加载配置
-    var config = ConfigService.Load();
-    Log.Information("配置加载完成 - 设备: {Device}, 上传间隔: {Upload}min",
-        config.DeviceName, config.UploadIntervalMinutes);
+    // 绑定配置
+    var config = builder.Configuration.Get<Config>()!;
+    builder.Services.AddSingleton(config);
 
-    // 共享 HttpClient & 基础服务
-    using var httpClient = new HttpClient();
-    var cache = new LocalCache("cache.json");
+    Log.Information("Heartbeat 客户端启动，环境: {Env}", builder.Environment.EnvironmentName);
+    Log.Information("配置加载完成 - 设备: {Device}, 上传间隔: {Upload}min, 状态间隔: {Status}s",
+        config.DeviceName, config.UploadIntervalMinutes, config.StatusUploadIntervalSeconds);
+
+    // 基础设施服务
+    builder.Services.AddSingleton<LocalCache>(_ => new LocalCache("cache.json"));
+    builder.Services.AddSingleton<HttpClient>();
 
     // 业务服务
-    using var monitorService = new AppMonitorService();
-    var usageService = new UsageUploadService(config, httpClient, cache);
-    var iconService = new IconUploadService(config, httpClient);
-    var statusService = new StatusUploadService(config, httpClient);
+    builder.Services.AddSingleton<AppMonitorService>();
+    builder.Services.AddSingleton<UsageUploadService>();
+    builder.Services.AddSingleton<IconUploadService>();
+    builder.Services.AddSingleton<StatusUploadService>();
 
-    // 启动前台窗口监听
-    monitorService.Start();
+    // 托管后台服务（AppMonitorService 既是单例也是 HostedService）
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<AppMonitorService>());
+    builder.Services.AddHostedService<UsageUploadWorker>();
+    builder.Services.AddHostedService<StatusUploadWorker>();
 
-    // 定时上传使用记录
-    TimerHelper.RunEveryAsync(TimeSpan.FromMinutes(config.UploadIntervalMinutes), async () =>
-    {
-        var usages = monitorService.GetAndClearUsages();
-        if (usages.Count > 0)
-        {
-            await usageService.UploadAsync(usages);
-
-            // 异步上传新应用的图标（不阻塞主上传流程）
-            var appNames = usages.Select(u => u.AppName).Distinct(StringComparer.OrdinalIgnoreCase);
-            foreach (var appName in appNames)
-            {
-                _ = iconService.EnsureIconUploadedAsync(appName);
-            }
-        }
-    });
-
-    // 定时上传设备状态
-    TimerHelper.RunEveryAsync(TimeSpan.FromSeconds(config.StatusUploadIntervalSeconds), async () =>
-    {
-        var currentApp = monitorService.GetCurrentApp();
-        await statusService.UploadAsync(currentApp);
-    });
-
-    // 启动时尝试上传缓存
-    await usageService.UploadCachedAsync();
-
-    Log.Information("运行中... Ctrl+C 退出");
-    await Task.Delay(-1);
+    var host = builder.Build();
+    await host.RunAsync();
 }
 catch (Exception ex)
 {
