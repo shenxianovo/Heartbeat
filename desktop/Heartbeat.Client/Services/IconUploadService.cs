@@ -1,5 +1,7 @@
-﻿using Heartbeat.Client.Models;
+﻿using System.Net.Http.Json;
+using Heartbeat.Client.Models;
 using Heartbeat.Client.Utils;
+using Heartbeat.Core.DTOs;
 using Serilog;
 
 namespace Heartbeat.Client.Services
@@ -44,11 +46,13 @@ namespace Heartbeat.Client.Services
 
                 // 上传
                 Log.Debug("正在上传图标: {App}，大小 {Size} bytes", appName, iconData.Length);
-                using var content = new MultipartFormDataContent();
-                content.Add(new ByteArrayContent(iconData), "icon", $"{appName}.png");
-                content.Add(new StringContent(config.ApiKey), "apiKey");
+                var request = new IconUploadRequest
+                {
+                    ApiKey = config.ApiKey,
+                    IconData = iconData
+                };
 
-                var res = await httpClient.PostAsync($"{_iconsUrl}/{Uri.EscapeDataString(appName)}", content);
+                var res = await httpClient.PostAsJsonAsync($"{_iconsUrl}/{Uri.EscapeDataString(appName)}", request);
                 if (res.IsSuccessStatusCode)
                 {
                     _uploadedApps.Add(appName);

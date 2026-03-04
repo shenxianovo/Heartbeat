@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Heartbeat.Server.Data;
 using Heartbeat.Server.Entities;
+using Heartbeat.Core.DTOs;
 
 namespace Heartbeat.Server.Controllers
 {
@@ -31,17 +32,15 @@ namespace Heartbeat.Server.Controllers
         /// 上传应用图标（幂等，已有则覆盖）
         /// </summary>
         [HttpPost("{appName}")]
-        public async Task<IActionResult> Upload(string appName, IFormFile icon, [FromForm] string? apiKey)
+        public async Task<IActionResult> Upload(string appName, [FromBody] IconUploadRequest request)
         {
-            if (icon == null || icon.Length == 0)
-                return BadRequest("Icon file is required.");
+            if (request.IconData == null || request.IconData.Length == 0)
+                return BadRequest("Icon data is required.");
 
-            if (icon.Length > 1024 * 1024) // 1MB 限制
-                return BadRequest("Icon file too large (max 1MB).");
+            if (request.IconData.Length > 1024 * 1024) // 1MB 限制
+                return BadRequest("Icon data too large (max 1MB).");
 
-            using var ms = new MemoryStream();
-            await icon.CopyToAsync(ms);
-            var data = ms.ToArray();
+            var data = request.IconData;
 
             var existing = await _db.AppIcons
                 .FirstOrDefaultAsync(x => x.AppName == appName);

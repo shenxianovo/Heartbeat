@@ -26,6 +26,7 @@ try
     builder.Services.AddSingleton(config);
 
     Log.Information("Heartbeat 客户端启动，环境: {Env}", builder.Environment.EnvironmentName);
+    Log.Information("Base URL: {URL}", config.ApiBaseUrl);
     Log.Information("配置加载完成 - 设备: {Device}, 上传间隔: {Upload}min, 状态间隔: {Status}s",
         config.DeviceName, config.UploadIntervalMinutes, config.StatusUploadIntervalSeconds);
 
