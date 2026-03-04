@@ -1,7 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using Heartbeat.Server.Data;
-using Heartbeat.Server.DTOs;
+using Heartbeat.Core.DTOs;
 
 namespace Heartbeat.Server.Controllers
 {

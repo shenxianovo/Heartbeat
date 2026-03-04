@@ -1,7 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Heartbeat.Server.Data;
-using Heartbeat.Server.DTOs;
 using Heartbeat.Server.Entities;
+using Heartbeat.Core.DTOs;
 
 namespace Heartbeat.Server.Services
 {

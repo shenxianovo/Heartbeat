@@ -1,6 +1,6 @@
-﻿using Heartbeat.Client.DTOs;
-using Heartbeat.Client.Models;
+﻿using Heartbeat.Client.Models;
 using Heartbeat.Client.Storage;
+using Heartbeat.Core.DTOs;
 using Serilog;
 using System.Net.Http.Json;
 

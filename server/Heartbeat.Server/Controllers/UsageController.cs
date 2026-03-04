@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using Heartbeat.Server.DTOs;
 using Heartbeat.Server.Services;
+using Heartbeat.Core.DTOs;
 
 namespace Heartbeat.Server.Controllers
 {

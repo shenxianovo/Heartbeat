@@ -1,4 +1,4 @@
-﻿namespace Heartbeat.Server.DTOs
+﻿namespace Heartbeat.Core.DTOs
 {
     public class DeviceStatusRequest
     {

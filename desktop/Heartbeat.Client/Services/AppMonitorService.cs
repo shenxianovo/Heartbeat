@@ -1,5 +1,5 @@
-﻿using Heartbeat.Client.DTOs;
-using Heartbeat.Client.Utils;
+﻿using Heartbeat.Client.Utils;
+using Heartbeat.Core.DTOs;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 

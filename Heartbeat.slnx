@@ -5,4 +5,7 @@
   <Folder Name="/server/">
     <Project Path="server/Heartbeat.Server/Heartbeat.Server.csproj" />
   </Folder>
+  <Folder Name="/shared/">
+    <Project Path="shared/Heartbeat.Core/Heartbeat.Core.csproj" />
+  </Folder>
 </Solution>
