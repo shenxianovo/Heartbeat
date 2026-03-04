@@ -1,7 +1,18 @@
 <script setup lang="ts">
+import { ref, computed } from 'vue'
 import { useHeartbeat, formatDuration } from './composables/useHeartbeat'
 import { getIconUrl } from './api'
 import { getAppLabel } from './appLabels'
+
+/** 排行榜默认可见数量（超出部分滚动查看） */
+const VISIBLE_RANK_COUNT = 6
+/** 环形图最多显示的应用数（超出归入"其他"） */
+const DONUT_MAX_ITEMS = 10
+const CIRCUMFERENCE = 2 * Math.PI * 70
+const CHART_COLORS = [
+  '#58a6ff', '#2ea043', '#d29922', '#f85149', '#bc8cff',
+  '#79c0ff', '#56d364', '#e3b341', '#ff7b72', '#d2a8ff',
+]
 
 const {
   devices,
@@ -16,7 +27,41 @@ const {
   totalSeconds,
   maxSeconds,
   activeHours,
+  weeklyAppSummaries,
+  weeklyTotalSeconds,
 } = useHeartbeat()
+
+const hoveredSegment = ref<number | null>(null)
+
+const donutSegments = computed(() => {
+  const total = weeklyTotalSeconds.value
+  if (total === 0) return []
+
+  const items = weeklyAppSummaries.value.slice(0, DONUT_MAX_ITEMS)
+  const otherSeconds = weeklyAppSummaries.value
+    .slice(DONUT_MAX_ITEMS)
+    .reduce((s: number, a: { totalSeconds: number }) => s + a.totalSeconds, 0)
+
+  const all: { appName: string; totalSeconds: number }[] = otherSeconds > 0
+    ? [...items, { appName: '其他', totalSeconds: otherSeconds }]
+    : items
+
+  let offset = 0
+  return all.map((app, i) => {
+    const fraction = app.totalSeconds / total
+    const length = fraction * CIRCUMFERENCE
+    const seg = {
+      appName: app.appName,
+      totalSeconds: app.totalSeconds,
+      percentage: (fraction * 100).toFixed(1),
+      color: CHART_COLORS[i % CHART_COLORS.length],
+      length,
+      offset,
+    }
+    offset += length
+    return seg
+  })
+})
 </script>
 
 <template>
@@ -122,7 +167,7 @@ const {
       <section class="panel">
         <h2>应用时长排行</h2>
         <div v-if="appSummaries.length" class="ranking">
-          <div v-for="(app, i) in appSummaries" :key="app.appName" class="rank-row">
+          <div v-for="(app, i) in appSummaries.slice(0, VISIBLE_RANK_COUNT)" :key="app.appName" class="rank-row">
             <div class="rank-meta">
               <span class="rank-i">{{ i + 1 }}</span>
               <img
@@ -138,6 +183,89 @@ const {
                 class="bar"
                 :style="{ width: `${(app.totalSeconds / maxSeconds) * 100}%` }"
               ></div>
+            </div>
+          </div>
+          <div v-if="appSummaries.length > VISIBLE_RANK_COUNT" class="ranking-overflow">
+            <div v-for="(app, i) in appSummaries.slice(VISIBLE_RANK_COUNT)" :key="app.appName" class="rank-row">
+              <div class="rank-meta">
+                <span class="rank-i">{{ i + VISIBLE_RANK_COUNT + 1 }}</span>
+                <img
+                  :src="getIconUrl(app.appName)"
+                  class="rank-icon"
+                  @error="($event.target as HTMLImageElement).style.display = 'none'"
+                />
+                <span class="rank-name">{{ app.appName }}</span>
+                <span class="rank-dur">{{ formatDuration(app.totalSeconds) }}</span>
+              </div>
+              <div class="bar-bg">
+                <div
+                  class="bar"
+                  :style="{ width: `${(app.totalSeconds / maxSeconds) * 100}%` }"
+                ></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-else class="empty">暂无数据</div>
+      </section>
+
+      <!-- 本周应用使用 -->
+      <section class="panel">
+        <h2>本周应用使用</h2>
+        <div v-if="donutSegments.length" class="weekly-chart">
+          <div class="donut-wrapper">
+            <svg viewBox="0 0 200 200" class="donut-svg">
+              <circle cx="100" cy="100" r="70" fill="none" stroke="#1f1f1f" stroke-width="30" />
+              <circle
+                v-for="(seg, i) in donutSegments"
+                :key="i"
+                cx="100" cy="100" r="70"
+                fill="none"
+                :stroke="seg.color"
+                :stroke-width="hoveredSegment === i ? 35 : 30"
+                :stroke-dasharray="`${seg.length} ${CIRCUMFERENCE - seg.length}`"
+                :stroke-dashoffset="`${-seg.offset}`"
+                transform="rotate(-90 100 100)"
+                class="donut-segment"
+                @mouseenter="hoveredSegment = i"
+                @mouseleave="hoveredSegment = null"
+              />
+            </svg>
+            <div class="donut-center">
+              <template v-if="hoveredSegment !== null">
+                <img
+                  :src="getIconUrl(donutSegments[hoveredSegment].appName)"
+                  class="donut-center-icon"
+                  @error="($event.target as HTMLImageElement).style.display = 'none'"
+                />
+                <span class="donut-app">{{ donutSegments[hoveredSegment].appName }}</span>
+                <span class="donut-dur">{{ formatDuration(donutSegments[hoveredSegment].totalSeconds) }}</span>
+                <span class="donut-pct">{{ donutSegments[hoveredSegment].percentage }}%</span>
+              </template>
+              <template v-else>
+                <span class="donut-app">本周总计</span>
+                <span class="donut-dur">{{ formatDuration(weeklyTotalSeconds) }}</span>
+              </template>
+            </div>
+          </div>
+          <div class="donut-legend">
+            <div
+              v-for="(seg, i) in donutSegments"
+              :key="seg.appName"
+              class="legend-item"
+              :class="{ dimmed: hoveredSegment !== null && hoveredSegment !== i }"
+              @mouseenter="hoveredSegment = i"
+              @mouseleave="hoveredSegment = null"
+            >
+              <span class="legend-dot" :style="{ background: seg.color }"></span>
+              <img
+                :src="getIconUrl(seg.appName)"
+                class="legend-icon"
+                @error="($event.target as HTMLImageElement).style.display = 'none'"
+              />
+              <span class="legend-name">{{ seg.appName }}</span>
+              <span class="legend-dur">{{ formatDuration(seg.totalSeconds) }}</span>
+              <span class="legend-pct">{{ seg.percentage }}%</span>
             </div>
           </div>
         </div>
@@ -472,5 +600,166 @@ const {
   .dashboard {
     padding: 1.5rem 1rem;
   }
+
+  .weekly-chart {
+    flex-direction: column;
+  }
+}
+
+/* Ranking overflow */
+.ranking-overflow {
+  max-height: 210px;
+  overflow-y: auto;
+  margin-top: 0.25rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ranking-overflow::-webkit-scrollbar,
+.donut-legend::-webkit-scrollbar {
+  width: 4px;
+}
+
+.ranking-overflow::-webkit-scrollbar-track,
+.donut-legend::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ranking-overflow::-webkit-scrollbar-thumb,
+.donut-legend::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+
+/* Weekly donut chart */
+.weekly-chart {
+  display: flex;
+  gap: 2rem;
+  align-items: center;
+}
+
+.donut-wrapper {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  flex-shrink: 0;
+}
+
+.donut-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.donut-segment {
+  cursor: pointer;
+  transition: stroke-width 0.2s ease;
+}
+
+.donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  gap: 0.15rem;
+}
+
+.donut-center-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  object-fit: contain;
+  margin-bottom: 0.15rem;
+}
+
+.donut-app {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: center;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.donut-dur {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+}
+
+.donut-pct {
+  font-size: 0.7rem;
+  color: var(--accent);
+  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+}
+
+.donut-legend {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  transition: opacity 0.2s, background 0.2s;
+}
+
+.legend-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.legend-item.dimmed {
+  opacity: 0.35;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legend-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.legend-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.legend-dur {
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+}
+
+.legend-pct {
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  min-width: 3rem;
+  text-align: right;
 }
 </style>

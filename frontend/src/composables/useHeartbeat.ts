@@ -15,6 +15,24 @@ export function formatDuration(sec: number): string {
   return '< 1m'
 }
 
+function getWeekRange(dateStr: string): string[] {
+  const d = new Date(dateStr + 'T00:00:00')
+  const day = d.getDay()
+  const mondayOffset = day === 0 ? -6 : 1 - day
+  const monday = new Date(d)
+  monday.setDate(d.getDate() + mondayOffset)
+
+  const dates: string[] = []
+  const today = todayStr()
+  for (let i = 0; i < 7; i++) {
+    const curr = new Date(monday)
+    curr.setDate(monday.getDate() + i)
+    const ds = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`
+    if (ds <= today) dates.push(ds)
+  }
+  return dates
+}
+
 export function useHeartbeat() {
   // --- 状态 ---
   const devices = ref<string[]>([])
@@ -67,6 +85,23 @@ export function useHeartbeat() {
     return hours
   })
 
+  // --- 每周数据 ---
+  const weeklyUsageData = ref<AppUsage[]>([])
+
+  const weeklyAppSummaries = computed<AppSummary[]>(() => {
+    const map = new Map<string, number>()
+    for (const u of weeklyUsageData.value) {
+      map.set(u.appName, (map.get(u.appName) ?? 0) + u.durationSeconds)
+    }
+    return [...map.entries()]
+      .map(([appName, totalSeconds]) => ({ appName, totalSeconds }))
+      .sort((a, b) => b.totalSeconds - a.totalSeconds)
+  })
+
+  const weeklyTotalSeconds = computed(() =>
+    weeklyAppSummaries.value.reduce((s, a) => s + a.totalSeconds, 0)
+  )
+
   // --- 数据加载 ---
   async function loadUsage() {
     if (!selectedDevice.value) return
@@ -83,8 +118,17 @@ export function useHeartbeat() {
     deviceStatus.value = await fetchDeviceStatus(selectedDevice.value)
   }
 
+  async function loadWeeklyUsage() {
+    if (!selectedDevice.value) return
+    const dates = getWeekRange(selectedDate.value)
+    const results = await Promise.all(
+      dates.map(d => fetchUsage(selectedDevice.value, d))
+    )
+    weeklyUsageData.value = results.flat()
+  }
+
   async function refresh() {
-    await Promise.all([loadUsage(), loadStatus()])
+    await Promise.all([loadUsage(), loadStatus(), loadWeeklyUsage()])
   }
 
   // --- 生命周期 ---
@@ -110,7 +154,10 @@ export function useHeartbeat() {
 
     // 使用数据轮询：每 30 秒（仅今天）
     usageTimer = setInterval(() => {
-      if (isToday.value) loadUsage()
+      if (isToday.value) {
+        loadUsage()
+        loadWeeklyUsage()
+      }
     }, 30_000)
   })
 
@@ -134,5 +181,7 @@ export function useHeartbeat() {
     totalSeconds,
     maxSeconds,
     activeHours,
+    weeklyAppSummaries,
+    weeklyTotalSeconds,
   }
 }
