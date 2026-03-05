@@ -17,7 +17,6 @@ const CHART_COLORS = [
 const {
   devices,
   selectedDevice,
-  selectedDeviceName,
   selectedDate,
   loading,
   isToday,
