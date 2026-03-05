@@ -1,28 +1,28 @@
-import type { AppUsage, DeviceStatus } from './types'
+import type { AppUsage, DeviceInfo, DeviceStatus } from './types'
 
 const BASE = import.meta.env.DEV
   ? '/api/v1'
   : '/heartbeat/api/v1'
 
-export async function fetchDevices(): Promise<string[]> {
+export async function fetchDevices(): Promise<DeviceInfo[]> {
   const res = await fetch(`${BASE}/devices`)
   if (!res.ok) return []
   return res.json()
 }
 
-export async function fetchDeviceStatus(deviceName: string): Promise<DeviceStatus | null> {
-  const res = await fetch(`${BASE}/devices/${encodeURIComponent(deviceName)}/status`)
+export async function fetchDeviceStatus(deviceId: number): Promise<DeviceStatus | null> {
+  const res = await fetch(`${BASE}/devices/${deviceId}/status`)
   if (!res.ok) return null
   return res.json()
 }
 
-export async function fetchUsage(deviceName: string, date: string): Promise<AppUsage[]> {
-  const params = new URLSearchParams({ deviceName, date })
-  const res = await fetch(`${BASE}/usage?${params}`)
+export async function fetchUsage(deviceId: number, date: string): Promise<AppUsage[]> {
+  const params = new URLSearchParams({ date })
+  const res = await fetch(`${BASE}/devices/${deviceId}/usage?${params}`)
   if (!res.ok) return []
   return res.json()
 }
 
-export function getIconUrl(appName: string): string {
-  return `${BASE}/icons/${encodeURIComponent(appName)}`
+export function getIconUrl(appId: number): string {
+  return `${BASE}/apps/${appId}/icon`
 }

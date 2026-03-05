@@ -8,7 +8,7 @@ namespace Heartbeat.Client.Services
 {
     public class IconUploadService(Config config, HttpClient httpClient)
     {
-        private readonly string _iconsUrl = $"{config.ApiBaseUrl}/icons";
+        private readonly string _appsUrl = $"{config.ApiBaseUrl}/apps";
 
         // 已上传过的应用名集合（内存缓存，避免重复上传）
         private readonly HashSet<string> _uploadedApps = new(StringComparer.OrdinalIgnoreCase);
@@ -25,17 +25,6 @@ namespace Heartbeat.Client.Services
 
             try
             {
-                // 先检查服务端是否已有该图标
-                var checkRes = await httpClient.GetAsync($"{_iconsUrl}/{Uri.EscapeDataString(appName)}");
-                if (checkRes.IsSuccessStatusCode)
-                {
-                    Log.Debug("服务端已有图标，跳过: {App}", appName);
-                    _uploadedApps.Add(appName);
-                    return;
-                }
-
-                Log.Debug("服务端无图标，开始提取: {App}", appName);
-
                 // 提取图标
                 var iconData = IconHelper.GetIconPngByProcessName(appName);
                 if (iconData == null || iconData.Length == 0)
@@ -48,10 +37,11 @@ namespace Heartbeat.Client.Services
                 Log.Debug("正在上传图标: {App}，大小 {Size} bytes", appName, iconData.Length);
                 var request = new IconUploadRequest
                 {
+                    AppName = appName,
                     IconData = iconData
                 };
 
-                var res = await httpClient.PostAsJsonAsync($"{_iconsUrl}/{Uri.EscapeDataString(appName)}", request);
+                var res = await httpClient.PostAsJsonAsync($"{_appsUrl}/icon", request);
                 if (res.IsSuccessStatusCode)
                 {
                     _uploadedApps.Add(appName);

@@ -1,5 +1,5 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import type { AppUsage, AppSummary, DeviceStatus } from '../types'
+import type { AppUsage, AppSummary, DeviceInfo, DeviceStatus } from '../types'
 import { fetchDevices, fetchUsage, fetchDeviceStatus } from '../api'
 
 function todayStr(): string {
@@ -35,19 +35,38 @@ function getWeekRange(dateStr: string): string[] {
 
 export function useHeartbeat() {
   // --- 状态 ---
-  const devices = ref<string[]>([])
-  const selectedDevice = ref('')
+  const devices = ref<DeviceInfo[]>([])
+  const selectedDevice = ref(0) // deviceId, 0 = 未选择
   const selectedDate = ref(todayStr())
   const usageData = ref<AppUsage[]>([])
   const deviceStatus = ref<DeviceStatus | null>(null)
   const loading = ref(false)
 
   // --- 计算属性 ---
+  const selectedDeviceName = computed(() => {
+    const d = devices.value.find(d => d.id === selectedDevice.value)
+    return d?.name ?? ''
+  })
+
   const isToday = computed(() => selectedDate.value === todayStr())
 
   const isAlive = computed(() => isToday.value && (deviceStatus.value?.isOnline ?? false))
 
   const currentApp = computed(() => deviceStatus.value?.currentApp ?? null)
+
+  // name → appId 映射（从使用数据+每周数据中构建）
+  const appNameToId = computed(() => {
+    const map = new Map<string, number>()
+    for (const u of usageData.value) map.set(u.appName, u.appId)
+    for (const u of weeklyUsageData.value) map.set(u.appName, u.appId)
+    return map
+  })
+
+  const currentAppId = computed(() => {
+    const name = currentApp.value
+    if (!name) return null
+    return appNameToId.value.get(name) ?? null
+  })
 
   const lastSeenStr = computed(() => {
     const raw = deviceStatus.value?.lastSeen
@@ -56,12 +75,18 @@ export function useHeartbeat() {
   })
 
   const appSummaries = computed<AppSummary[]>(() => {
-    const map = new Map<string, number>()
+    const map = new Map<string, { appId: number; total: number }>()
     for (const u of usageData.value) {
-      map.set(u.appName, (map.get(u.appName) ?? 0) + u.durationSeconds)
+      const key = u.appName
+      const existing = map.get(key)
+      if (existing) {
+        existing.total += u.durationSeconds
+      } else {
+        map.set(key, { appId: u.appId, total: u.durationSeconds })
+      }
     }
     return [...map.entries()]
-      .map(([appName, totalSeconds]) => ({ appName, totalSeconds }))
+      .map(([appName, { appId, total }]) => ({ appId, appName, totalSeconds: total }))
       .sort((a, b) => b.totalSeconds - a.totalSeconds)
   })
 
@@ -89,12 +114,18 @@ export function useHeartbeat() {
   const weeklyUsageData = ref<AppUsage[]>([])
 
   const weeklyAppSummaries = computed<AppSummary[]>(() => {
-    const map = new Map<string, number>()
+    const map = new Map<string, { appId: number; total: number }>()
     for (const u of weeklyUsageData.value) {
-      map.set(u.appName, (map.get(u.appName) ?? 0) + u.durationSeconds)
+      const key = u.appName
+      const existing = map.get(key)
+      if (existing) {
+        existing.total += u.durationSeconds
+      } else {
+        map.set(key, { appId: u.appId, total: u.durationSeconds })
+      }
     }
     return [...map.entries()]
-      .map(([appName, totalSeconds]) => ({ appName, totalSeconds }))
+      .map(([appName, { appId, total }]) => ({ appId, appName, totalSeconds: total }))
       .sort((a, b) => b.totalSeconds - a.totalSeconds)
   })
 
@@ -139,10 +170,10 @@ export function useHeartbeat() {
     devices.value = await fetchDevices()
     if (devices.value.length > 0) {
       // 优先选择在线设备
-      let picked = devices.value[0]
+      let picked = devices.value[0].id
       for (const d of devices.value) {
-        const s = await fetchDeviceStatus(d)
-        if (s?.isOnline) { picked = d; break }
+        const s = await fetchDeviceStatus(d.id)
+        if (s?.isOnline) { picked = d.id; break }
       }
       selectedDevice.value = picked
     }
@@ -171,11 +202,13 @@ export function useHeartbeat() {
   return {
     devices,
     selectedDevice,
+    selectedDeviceName,
     selectedDate,
     loading,
     isToday,
     isAlive,
     currentApp,
+    currentAppId,
     lastSeenStr,
     appSummaries,
     totalSeconds,

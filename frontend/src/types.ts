@@ -1,6 +1,11 @@
+export interface DeviceInfo {
+  id: number
+  name: string
+}
+
 export interface AppUsage {
   id: number
-  deviceName: string
+  appId: number
   appName: string
   startTime: string
   endTime: string
@@ -8,6 +13,7 @@ export interface AppUsage {
 }
 
 export interface AppSummary {
+  appId: number
   appName: string
   totalSeconds: number
 }

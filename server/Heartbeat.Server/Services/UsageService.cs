@@ -24,12 +24,8 @@ namespace Heartbeat.Server.Services
         /// </summary>
         private static readonly TimeSpan MaxDuration = TimeSpan.FromHours(24);
 
-        public async Task SaveUsageAsync(string deviceName, UsageUploadRequest request)
+        public async Task SaveUsageAsync(long deviceId, UsageUploadRequest request)
         {
-            var device = await _db.Devices.FirstOrDefaultAsync(x => x.DeviceName == deviceName);
-
-            if (device == null) return;
-
             var now = DateTimeOffset.UtcNow;
 
             var validUsages = request.Usages
@@ -37,27 +33,43 @@ namespace Heartbeat.Server.Services
                          && u.StartTime != default
                          && u.EndTime > u.StartTime
                          && u.StartTime.Year >= 2020
-                         && u.EndTime <= now + TimeSkewTolerance       // 不能超过服务端当前时间太多
-                         && u.StartTime >= now - TimeSkewTolerance - MaxDuration // 不能太久远
-                         && (u.EndTime - u.StartTime) <= MaxDuration)  // 单条时长不超过 24 小时
+                         && u.EndTime <= now + TimeSkewTolerance
+                         && u.StartTime >= now - TimeSkewTolerance - MaxDuration
+                         && (u.EndTime - u.StartTime) <= MaxDuration)
                 .OrderBy(u => u.StartTime)
                 .ToList();
+
+            // 获取或创建 App 记录
+            var appNames = validUsages.Select(u => u.AppName).Distinct().ToList();
+            var existingApps = await _db.Apps
+                .Where(a => appNames.Contains(a.Name))
+                .ToDictionaryAsync(a => a.Name);
+
+            foreach (var name in appNames)
+            {
+                if (!existingApps.ContainsKey(name))
+                {
+                    var app = new App { Name = name };
+                    _db.Apps.Add(app);
+                    existingApps[name] = app;
+                }
+            }
+            await _db.SaveChangesAsync(); // 保存以获取新 App 的 Id
 
             // 按 AppName 分组，对每组尝试与数据库中最新记录合并
             foreach (var group in validUsages.GroupBy(u => u.AppName))
             {
-                var appName = group.Key;
+                var appId = existingApps[group.Key].Id;
 
                 // 查找该设备+应用的最新记录
                 var existing = await _db.AppUsages
-                    .Where(x => x.DeviceName == device.DeviceName && x.AppName == appName)
+                    .Where(x => x.DeviceId == deviceId && x.AppId == appId)
                     .OrderByDescending(x => x.EndTime)
                     .FirstOrDefaultAsync();
 
                 foreach (var u in group)
                 {
                     if (existing != null
-                        && u.AppName == existing.AppName
                         && u.StartTime >= existing.EndTime
                         && u.StartTime <= existing.EndTime + MergeTolerance)
                     {
@@ -70,8 +82,8 @@ namespace Heartbeat.Server.Services
                         // 插入新记录
                         existing = new AppUsage
                         {
-                            DeviceName = device.DeviceName,
-                            AppName = appName,
+                            DeviceId = deviceId,
+                            AppId = appId,
                             StartTime = u.StartTime,
                             EndTime = u.EndTime,
                             DurationSeconds = (int)(u.EndTime - u.StartTime).TotalSeconds
@@ -84,13 +96,11 @@ namespace Heartbeat.Server.Services
             await _db.SaveChangesAsync();
         }
 
-
-        public async Task<List<AppUsage>> GetUsageAsync(string? deviceName, DateTimeOffset? date)
+        public async Task<List<AppUsageResponse>> GetUsageAsync(long deviceId, DateTimeOffset? date)
         {
-            var query = _db.AppUsages.AsQueryable();
-
-            if (!string.IsNullOrEmpty(deviceName))
-                query = query.Where(x => x.DeviceName == deviceName);
+            var query = _db.AppUsages
+                .Include(x => x.App)
+                .Where(x => x.DeviceId == deviceId);
 
             if (date.HasValue)
             {
@@ -104,6 +114,15 @@ namespace Heartbeat.Server.Services
 
             return await query
                 .OrderByDescending(x => x.StartTime)
+                .Select(x => new AppUsageResponse
+                {
+                    Id = x.Id,
+                    AppId = x.AppId,
+                    AppName = x.App.Name,
+                    StartTime = x.StartTime,
+                    EndTime = x.EndTime,
+                    DurationSeconds = x.DurationSeconds
+                })
                 .ToListAsync();
         }
     }

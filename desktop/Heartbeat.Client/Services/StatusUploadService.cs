@@ -7,7 +7,7 @@ namespace Heartbeat.Client.Services
 {
     public class StatusUploadService(Config config, HttpClient httpClient)
     {
-        private readonly string _statusUrl = $"{config.ApiBaseUrl}/devices/status";
+        private readonly string _statusUrl = $"{config.ApiBaseUrl}/status";
 
         public async Task UploadAsync(string? currentApp)
         {

@@ -5,7 +5,7 @@ import { getIconUrl } from './api'
 import { getAppLabel } from './appLabels'
 
 /** 排行榜默认可见数量（超出部分滚动查看） */
-const VISIBLE_RANK_COUNT = 3
+const VISIBLE_RANK_COUNT = 0
 /** 环形图最多显示的应用数（超出归入"其他"） */
 const DONUT_MAX_ITEMS = 10
 const CIRCUMFERENCE = 2 * Math.PI * 70
@@ -17,11 +17,13 @@ const CHART_COLORS = [
 const {
   devices,
   selectedDevice,
+  selectedDeviceName,
   selectedDate,
   loading,
   isToday,
   isAlive,
   currentApp,
+  currentAppId,
   lastSeenStr,
   appSummaries,
   totalSeconds,
@@ -42,8 +44,8 @@ const donutSegments = computed(() => {
     .slice(DONUT_MAX_ITEMS)
     .reduce((s: number, a: { totalSeconds: number }) => s + a.totalSeconds, 0)
 
-  const all: { appName: string; totalSeconds: number }[] = otherSeconds > 0
-    ? [...items, { appName: '其他', totalSeconds: otherSeconds }]
+  const all: { appId: number; appName: string; totalSeconds: number }[] = otherSeconds > 0
+    ? [...items, { appId: 0, appName: '其他', totalSeconds: otherSeconds }]
     : items
 
   let offset = 0
@@ -51,6 +53,7 @@ const donutSegments = computed(() => {
     const fraction = app.totalSeconds / total
     const length = fraction * CIRCUMFERENCE
     const seg = {
+      appId: app.appId,
       appName: app.appName,
       totalSeconds: app.totalSeconds,
       percentage: (fraction * 100).toFixed(1),
@@ -74,7 +77,7 @@ const donutSegments = computed(() => {
       <span class="card-label">你在视奸我，对吧！</span>
       <div class="controls">
         <select v-model="selectedDevice" class="ctl">
-          <option v-for="d in devices" :key="d" :value="d">{{ d }}</option>
+          <option v-for="d in devices" :key="d.id" :value="d.id">{{ d.name }}</option>
         </select>
         <input type="date" v-model="selectedDate" class="ctl" />
       </div>
@@ -104,7 +107,7 @@ const donutSegments = computed(() => {
           <span class="card-label">今日最爱</span>
           <span class="card-value accent top-app" v-if="appSummaries[0]" style="color: var(--text);">
             <img
-              :src="getIconUrl(appSummaries[0].appName)"
+              :src="getIconUrl(appSummaries[0].appId)"
               class="top-app-icon"
               @error="($event.target as HTMLImageElement).style.display = 'none'"
             />
@@ -123,7 +126,8 @@ const donutSegments = computed(() => {
         <div class="current-app" v-if="isAlive && currentApp">
           <span class="current-dot alive"></span>
           <img
-            :src="getIconUrl(currentApp)"
+            v-if="currentAppId"
+            :src="getIconUrl(currentAppId)"
             class="current-icon"
             @error="($event.target as HTMLImageElement).style.display = 'none'"
           />
@@ -163,15 +167,15 @@ const donutSegments = computed(() => {
         </div>
       </section>
 
-      <!-- 应用时长排行 -->
+      <!-- 今日应用时长排行 -->
       <section class="panel">
-        <h2>应用时长排行</h2>
+        <h2>今日应用时长排行</h2>
         <div v-if="appSummaries.length" class="ranking">
           <div v-for="(app, i) in appSummaries.slice(0, VISIBLE_RANK_COUNT)" :key="app.appName" class="rank-row">
             <div class="rank-meta">
               <span class="rank-i">{{ i + 1 }}</span>
               <img
-                :src="getIconUrl(app.appName)"
+                :src="getIconUrl(app.appId)"
                 class="rank-icon"
                 @error="($event.target as HTMLImageElement).style.display = 'none'"
               />
@@ -190,7 +194,7 @@ const donutSegments = computed(() => {
               <div class="rank-meta">
                 <span class="rank-i">{{ i + VISIBLE_RANK_COUNT + 1 }}</span>
                 <img
-                  :src="getIconUrl(app.appName)"
+                  :src="getIconUrl(app.appId)"
                   class="rank-icon"
                   @error="($event.target as HTMLImageElement).style.display = 'none'"
                 />
@@ -234,7 +238,7 @@ const donutSegments = computed(() => {
             <div class="donut-center">
               <template v-if="hoveredSegment !== null">
                 <img
-                  :src="getIconUrl(donutSegments[hoveredSegment].appName)"
+                  :src="getIconUrl(donutSegments[hoveredSegment].appId)"
                   class="donut-center-icon"
                   @error="($event.target as HTMLImageElement).style.display = 'none'"
                 />
@@ -259,7 +263,7 @@ const donutSegments = computed(() => {
             >
               <span class="legend-dot" :style="{ background: seg.color }"></span>
               <img
-                :src="getIconUrl(seg.appName)"
+                :src="getIconUrl(seg.appId)"
                 class="legend-icon"
                 @error="($event.target as HTMLImageElement).style.display = 'none'"
               />

@@ -3,8 +3,10 @@
     public class AppIcon
     {
         public long Id { get; set; }
-        public string AppName { get; set; } = string.Empty;
+        public long AppId { get; set; }
         public byte[] IconData { get; set; } = [];
         public DateTimeOffset UpdatedAt { get; set; }
+
+        public App App { get; set; } = null!;
     }
 }

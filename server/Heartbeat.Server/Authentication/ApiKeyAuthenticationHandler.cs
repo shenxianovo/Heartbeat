@@ -48,7 +48,7 @@ namespace Heartbeat.Server.Authentication
             // 构建 ClaimsPrincipal
             var claims = new[]
             {
-                new Claim(ClaimTypes.Name, device.DeviceName)
+                new Claim(ClaimTypes.NameIdentifier, device.Id.ToString())
             };
             var identity = new ClaimsIdentity(claims, Scheme.Name);
             var principal = new ClaimsPrincipal(identity);

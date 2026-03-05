@@ -1,27 +1,35 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authorization;
 using Heartbeat.Server.Data;
+using Heartbeat.Server.Services;
 using Heartbeat.Core.DTOs;
 
 namespace Heartbeat.Server.Controllers
 {
+    [ApiController]
     [Route("api/v1/devices")]
-    public class DeviceController(AppDbContext db) : ControllerBase
+    public class DeviceController(AppDbContext db, UsageService usageService) : ControllerBase
     {
         private readonly AppDbContext _db = db;
+        private readonly UsageService _usageService = usageService;
 
         [HttpGet]
-        public async Task<List<string>> GetDevices()
+        public async Task<List<DeviceInfoResponse>> GetDevices()
         {
-            return await _db.Devices.Select(x => x.DeviceName).ToListAsync();
+            return await _db.Devices
+                .Select(x => new DeviceInfoResponse
+                {
+                    Id = x.Id,
+                    Name = x.DeviceName
+                })
+                .ToListAsync();
         }
 
-        [HttpGet("{deviceName}/status")]
-        public async Task<IActionResult> GetStatus([FromRoute] string deviceName)
+        [HttpGet("{deviceId:long}/status")]
+        public async Task<IActionResult> GetStatus([FromRoute] long deviceId)
         {
             var device = await _db.Devices
-                .Where(d => d.DeviceName == deviceName)
+                .Where(d => d.Id == deviceId)
                 .Select(d => new DeviceStatusResponse
                 {
                     CurrentApp = d.CurrentApp,
@@ -34,20 +42,11 @@ namespace Heartbeat.Server.Controllers
             return Ok(device);
         }
 
-        [Authorize]
-        [HttpPost("status")]
-        public async Task<IActionResult> UpdateStatus(
-            [FromBody] DeviceStatusRequest status)
+        [HttpGet("{deviceId:long}/usage")]
+        public async Task<IActionResult> GetUsage([FromRoute] long deviceId, [FromQuery] DateTimeOffset? date)
         {
-            var deviceName = User.Identity!.Name!;
-            var device = await _db.Devices.FirstOrDefaultAsync(x => x.DeviceName == deviceName);
-
-            if (device == null) return NotFound();
-            device.CurrentApp = status.CurrentApp;
-            device.LastSeen = DateTimeOffset.UtcNow;
-
-            await _db.SaveChangesAsync();
-            return NoContent();
+            var result = await _usageService.GetUsageAsync(deviceId, date);
+            return Ok(result);
         }
     }
 }
