@@ -1,8 +1,8 @@
-﻿using System.Net.Http.Json;
-using Heartbeat.Client.Models;
+﻿using Heartbeat.Client.Models;
 using Heartbeat.Client.Utils;
-using Heartbeat.Core.DTOs;
+using Heartbeat.Core.DTOs.Apps;
 using Serilog;
+using System.Net.Http.Json;
 
 namespace Heartbeat.Client.Services
 {

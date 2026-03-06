@@ -1,4 +1,4 @@
-namespace Heartbeat.Core.DTOs
+namespace Heartbeat.Core.DTOs.Devices
 {
     public class DeviceInfoResponse
     {

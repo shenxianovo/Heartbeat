@@ -1,8 +1,8 @@
-﻿using Microsoft.AspNetCore.Authentication;
-using Microsoft.EntityFrameworkCore;
-using Heartbeat.Server.Authentication;
+﻿using Heartbeat.Server.Authentication;
 using Heartbeat.Server.Data;
 using Heartbeat.Server.Services;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 

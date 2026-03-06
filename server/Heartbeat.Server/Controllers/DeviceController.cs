@@ -1,4 +1,4 @@
-﻿using Heartbeat.Core.DTOs;
+﻿using Heartbeat.Core.DTOs.Devices;
 using Heartbeat.Server.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;

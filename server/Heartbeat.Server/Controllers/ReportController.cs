@@ -1,5 +1,5 @@
-using Microsoft.AspNetCore.Mvc;
 using Heartbeat.Server.Services;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Heartbeat.Server.Controllers
 {

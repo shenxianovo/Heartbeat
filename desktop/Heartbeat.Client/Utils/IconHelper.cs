@@ -1,8 +1,8 @@
-﻿using System.Diagnostics;
+﻿using Microsoft.Win32;
+using Serilog;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
-using Microsoft.Win32;
-using Serilog;
 
 namespace Heartbeat.Client.Utils
 {

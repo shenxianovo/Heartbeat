@@ -1,9 +1,9 @@
-using System.Security.Claims;
-using System.Text.Encodings.Web;
+using Heartbeat.Server.Data;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Heartbeat.Server.Data;
+using System.Security.Claims;
+using System.Text.Encodings.Web;
 
 namespace Heartbeat.Server.Authentication
 {

@@ -1,5 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
-using Heartbeat.Server.Entities;
+﻿using Heartbeat.Server.Entities;
+using Microsoft.EntityFrameworkCore;
 
 namespace Heartbeat.Server.Data
 {

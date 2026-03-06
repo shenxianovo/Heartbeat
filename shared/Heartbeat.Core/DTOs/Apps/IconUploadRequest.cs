@@ -1,4 +1,4 @@
-namespace Heartbeat.Core.DTOs
+namespace Heartbeat.Core.DTOs.Apps
 {
     public class IconUploadRequest
     {

@@ -1,5 +1,5 @@
 ﻿using Heartbeat.Client.Models;
-using Heartbeat.Core.DTOs;
+using Heartbeat.Core.DTOs.Devices;
 using Serilog;
 using System.Net.Http.Json;
 
