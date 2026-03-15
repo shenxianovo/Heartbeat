@@ -19,35 +19,39 @@ cd "$APP_DIR"
 # ==== 拉取最新代码 ====
 echo "Pulling latest code..."
 git fetch origin main
-LOCAL=$(git rev-parse HEAD)
-REMOTE=$(git rev-parse origin/main)
+OLD_HEAD=$(git rev-parse HEAD)
 git reset --hard origin/main
 
-# 检查 server 目录是否有变更
-CHANGED=$(git diff --name-only $LOCAL $REMOTE | grep '^server/')
-if [ -z "$CHANGED" ]; then
-    echo "No server changes detected. Skipping service restart."
-    exit 0
+# ==== 检查变更 ====
+SERVER_CHANGED=$(git diff --name-only $OLD_HEAD HEAD | grep '^server/' || true)
+FRONTEND_CHANGED=$(git diff --name-only $OLD_HEAD HEAD | grep '^frontend/' || true)
+
+# ==== 构建前端（如果有变动） ====
+if [ -n "$FRONTEND_CHANGED" ]; then
+    echo "Frontend changes detected. Building frontend..."
+    npm ci --prefix "$VUE_PROJECT"
+    npm run build --prefix "$VUE_PROJECT"
+else
+    echo "No frontend changes detected. Skipping frontend build."
 fi
 
-# ==== 停止服务 ====
-if [ -f "$PID_FILE" ]; then
+# ==== 停止服务（如果 server 有变动） ====
+if [ -n "$SERVER_CHANGED" ] && [ -f "$PID_FILE" ]; then
     PID=$(cat "$PID_FILE")
     if ps -p $PID > /dev/null; then
-        echo "Stopping existing service (PID $PID)..."
+        echo "Stopping existing backend service (PID $PID)..."
         kill $PID
         sleep 2
     fi
     rm -f "$PID_FILE"
 fi
 
-# ==== 启动服务 ====
-echo "Starting service..."
-npm ci --prefix "$VUE_PROJECT"
-npm run build --prefix "$VUE_PROJECT"
-
-nohup dotnet run --project "$DOTNET_PROJECT" --environment $DOTNET_ENV > "$LOG_FILE" 2>&1 &
-
-# 记录 PID
-echo $! > "$PID_FILE"
-echo "Service started (PID $(cat $PID_FILE)), logs: $LOG_FILE"
+# ==== 启动服务（如果 server 有变动） ====
+if [ -n "$SERVER_CHANGED" ]; then
+    echo "Starting backend service..."
+    nohup dotnet run --project "$DOTNET_PROJECT" --environment $DOTNET_ENV > "$LOG_FILE" 2>&1 &
+    echo $! > "$PID_FILE"
+    echo "Backend service started (PID $(cat $PID_FILE)), logs: $LOG_FILE"
+else
+    echo "No backend changes detected. Skipping backend restart."
+fi
