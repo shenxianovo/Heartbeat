@@ -173,6 +173,8 @@ export function useHeartbeat() {
     selectedDevice,
     selectedDeviceName,
     selectedDate,
+    usageData,
+    appNameMap,
     loading,
     isToday,
     isAlive,

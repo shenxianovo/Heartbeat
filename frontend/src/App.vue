@@ -1,23 +1,17 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useHeartbeat, formatDuration } from './composables/useHeartbeat'
-import { getIconUrl } from './api/index'
-import { getAppLabel } from './appLabels'
-
-/** 排行榜默认可见数量（超出部分滚动查看） */
-const VISIBLE_RANK_COUNT = 0
-/** 环形图最多显示的应用数（超出归入"其他"） */
-const DONUT_MAX_ITEMS = 10
-const CIRCUMFERENCE = 2 * Math.PI * 70
-const CHART_COLORS = [
-  '#58a6ff', '#2ea043', '#d29922', '#f85149', '#bc8cff',
-  '#79c0ff', '#56d364', '#e3b341', '#ff7b72', '#d2a8ff',
-]
+import { useHeartbeat } from './composables/useHeartbeat'
+import ActivityTimeline from './components/ActivityTimeline.vue'
+import StatusCards from './components/StatusCards.vue'
+import CurrentAppPanel from './components/CurrentAppPanel.vue'
+import TodayRanking from './components/TodayRanking.vue'
+import WeeklyChart from './components/WeeklyChart.vue'
 
 const {
   devices,
   selectedDevice,
   selectedDate,
+  usageData,
+  appNameMap,
   loading,
   isToday,
   isAlive,
@@ -33,38 +27,6 @@ const {
   timezoneLabel,
 } = useHeartbeat()
 
-const hoveredSegment = ref<number | null>(null)
-
-const donutSegments = computed(() => {
-  const total = weeklyTotalSeconds.value
-  if (total === 0) return []
-
-  const items = weeklyAppSummaries.value.slice(0, DONUT_MAX_ITEMS)
-  const otherSeconds = weeklyAppSummaries.value
-    .slice(DONUT_MAX_ITEMS)
-    .reduce((s: number, a: { totalSeconds: number }) => s + a.totalSeconds, 0)
-
-  const all: { appId: number; appName: string; totalSeconds: number }[] = otherSeconds > 0
-    ? [...items, { appId: 0, appName: '其他', totalSeconds: otherSeconds }]
-    : items
-
-  let offset = 0
-  return all.map((app, i) => {
-    const fraction = app.totalSeconds / total
-    const length = fraction * CIRCUMFERENCE
-    const seg = {
-      appId: app.appId,
-      appName: app.appName,
-      totalSeconds: app.totalSeconds,
-      percentage: (fraction * 100).toFixed(1),
-      color: CHART_COLORS[i % CHART_COLORS.length],
-      length,
-      offset,
-    }
-    offset += length
-    return seg
-  })
-})
 </script>
 
 <template>
@@ -86,196 +48,42 @@ const donutSegments = computed(() => {
 
     <main>
       <!-- 状态卡片 -->
-      <section class="cards">
-        <div class="card">
-          <span class="card-label">死了吗</span>
-          <span
-            class="card-value status"
-            :class="isToday ? (isAlive ? 'alive' : 'dead') : 'off'"
-          >
-            {{ isToday ? (isAlive ? '还活着' : '似了喵') : '--' }}
-          </span>
-          <span class="card-sub" v-if="lastSeenStr && isToday">
-            最后活跃 {{ lastSeenStr }}
-          </span>
-        </div>
-        <div class="card">
-          <span class="card-label">本次存活</span>
-          <span class="card-value accent" style="color: var(--text);">{{ formatDuration(totalSeconds) }}</span>
-          <span class="card-sub">{{ appSummaries.length }} 个应用</span>
-        </div>
-        <div class="card">
-          <span class="card-label">今日最爱</span>
-          <span class="card-value accent top-app" v-if="appSummaries[0]" style="color: var(--text);">
-            <img
-              :src="getIconUrl(appSummaries[0].appId)"
-              class="top-app-icon"
-              @error="($event.target as HTMLImageElement).style.display = 'none'"
-            />
-            {{ appSummaries[0].appName }}
-          </span>
-          <span class="card-value accent top-app" v-else>--</span>
-          <span class="card-sub" v-if="appSummaries[0]">
-            沉迷时长 {{ formatDuration(appSummaries[0].totalSeconds) }}
-          </span>
-        </div>
-      </section>
+      <StatusCards 
+        :isToday="isToday" 
+        :isAlive="isAlive" 
+        :lastSeenStr="lastSeenStr" 
+        :appSummaries="appSummaries" 
+        :totalSeconds="totalSeconds" 
+      />
 
       <!-- 当前使用 -->
-      <section class="panel current-app-panel" v-if="isToday">
-        <h2>当前使用</h2>
-        <div class="current-app" v-if="isAlive && currentApp">
-          <span class="current-dot alive"></span>
-          <img
-            v-if="currentAppId"
-            :src="getIconUrl(currentAppId)"
-            class="current-icon"
-            @error="($event.target as HTMLImageElement).style.display = 'none'"
-          />
-          <div class="current-info">
-            <span class="current-name">{{ currentApp }}</span>
-            <span class="current-desc" v-if="getAppLabel(currentApp)">{{ getAppLabel(currentApp) }}</span>
-          </div>
-        </div>
-        <div class="current-app offline" v-else-if="!isAlive">
-          <span class="current-dot"></span>
-          <span class="current-name dim">设备离线</span>
-        </div>
-        <div class="current-app" v-else>
-          <span class="current-dot alive"></span>
-          <span class="current-name dim">无前台应用</span>
-        </div>
-      </section>
+      <CurrentAppPanel 
+        :isToday="isToday" 
+        :isAlive="isAlive" 
+        :currentApp="currentApp" 
+        :currentAppId="currentAppId" 
+      />
 
       <!-- 活动时间线 -->
-      <section class="panel">
-        <h2>活动时间线</h2>
-        <div class="timeline">
-          <div
-            v-for="h in 24"
-            :key="h - 1"
-            class="tl-block"
-            :class="{ active: activeHours.has(h - 1) }"
-            :title="`${String(h - 1).padStart(2, '0')}:00`"
-          ></div>
-        </div>
-        <div class="tl-labels">
-          <span>00</span>
-          <span>06</span>
-          <span>12</span>
-          <span>18</span>
-          <span>24</span>
-        </div>
-      </section>
+      <ActivityTimeline
+        :activeHours="activeHours"
+        :usageData="usageData"
+        :appNameMap="appNameMap"
+        :selectedDate="selectedDate"
+        :isToday="isToday"
+      />
 
       <!-- 今日应用时长排行 -->
-      <section class="panel">
-        <h2>今日应用时长排行</h2>
-        <div v-if="appSummaries.length" class="ranking">
-          <div v-for="(app, i) in appSummaries.slice(0, VISIBLE_RANK_COUNT)" :key="app.appName" class="rank-row">
-            <div class="rank-meta">
-              <span class="rank-i">{{ i + 1 }}</span>
-              <img
-                :src="getIconUrl(app.appId)"
-                class="rank-icon"
-                @error="($event.target as HTMLImageElement).style.display = 'none'"
-              />
-              <span class="rank-name">{{ app.appName }}</span>
-              <span class="rank-dur">{{ formatDuration(app.totalSeconds) }}</span>
-            </div>
-            <div class="bar-bg">
-              <div
-                class="bar"
-                :style="{ width: `${(app.totalSeconds / maxSeconds) * 100}%` }"
-              ></div>
-            </div>
-          </div>
-          <div v-if="appSummaries.length > VISIBLE_RANK_COUNT" class="ranking-overflow">
-            <div v-for="(app, i) in appSummaries.slice(VISIBLE_RANK_COUNT)" :key="app.appName" class="rank-row">
-              <div class="rank-meta">
-                <span class="rank-i">{{ i + VISIBLE_RANK_COUNT + 1 }}</span>
-                <img
-                  :src="getIconUrl(app.appId)"
-                  class="rank-icon"
-                  @error="($event.target as HTMLImageElement).style.display = 'none'"
-                />
-                <span class="rank-name">{{ app.appName }}</span>
-                <span class="rank-dur">{{ formatDuration(app.totalSeconds) }}</span>
-              </div>
-              <div class="bar-bg">
-                <div
-                  class="bar"
-                  :style="{ width: `${(app.totalSeconds / maxSeconds) * 100}%` }"
-                ></div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div v-else class="empty">暂无数据</div>
-      </section>
+      <TodayRanking 
+        :appSummaries="appSummaries" 
+        :maxSeconds="maxSeconds" 
+      />
 
       <!-- 本周应用使用 -->
-      <section class="panel">
-        <h2>本周应用使用</h2>
-        <div v-if="donutSegments.length" class="weekly-chart">
-          <div class="donut-wrapper">
-            <svg viewBox="0 0 200 200" class="donut-svg">
-              <circle cx="100" cy="100" r="70" fill="none" stroke="#1f1f1f" stroke-width="30" />
-              <circle
-                v-for="(seg, i) in donutSegments"
-                :key="i"
-                cx="100" cy="100" r="70"
-                fill="none"
-                :stroke="seg.color"
-                :stroke-width="hoveredSegment === i ? 35 : 30"
-                :stroke-dasharray="`${seg.length} ${CIRCUMFERENCE - seg.length}`"
-                :stroke-dashoffset="`${-seg.offset}`"
-                transform="rotate(-90 100 100)"
-                class="donut-segment"
-                @mouseenter="hoveredSegment = i"
-                @mouseleave="hoveredSegment = null"
-              />
-            </svg>
-            <div class="donut-center">
-              <template v-if="hoveredSegment !== null">
-                <img
-                  :src="getIconUrl(donutSegments[hoveredSegment].appId)"
-                  class="donut-center-icon"
-                  @error="($event.target as HTMLImageElement).style.display = 'none'"
-                />
-                <span class="donut-app">{{ donutSegments[hoveredSegment].appName }}</span>
-                <span class="donut-dur">{{ formatDuration(donutSegments[hoveredSegment].totalSeconds) }}</span>
-                <span class="donut-pct">{{ donutSegments[hoveredSegment].percentage }}%</span>
-              </template>
-              <template v-else>
-                <span class="donut-app">本周总计</span>
-                <span class="donut-dur">{{ formatDuration(weeklyTotalSeconds) }}</span>
-              </template>
-            </div>
-          </div>
-          <div class="donut-legend">
-            <div
-              v-for="(seg, i) in donutSegments"
-              :key="seg.appName"
-              class="legend-item"
-              :class="{ dimmed: hoveredSegment !== null && hoveredSegment !== i }"
-              @mouseenter="hoveredSegment = i"
-              @mouseleave="hoveredSegment = null"
-            >
-              <span class="legend-dot" :style="{ background: seg.color }"></span>
-              <img
-                :src="getIconUrl(seg.appId)"
-                class="legend-icon"
-                @error="($event.target as HTMLImageElement).style.display = 'none'"
-              />
-              <span class="legend-name">{{ seg.appName }}</span>
-              <span class="legend-dur">{{ formatDuration(seg.totalSeconds) }}</span>
-              <span class="legend-pct">{{ seg.percentage }}%</span>
-            </div>
-          </div>
-        </div>
-        <div v-else class="empty">暂无数据</div>
-      </section>
+      <WeeklyChart 
+        :weeklyAppSummaries="weeklyAppSummaries" 
+        :weeklyTotalSeconds="weeklyTotalSeconds" 
+      />
     </main>
 
     <div v-if="loading" class="loading-bar"></div>
