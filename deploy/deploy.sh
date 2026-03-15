@@ -14,6 +14,22 @@ VUE_PROJECT="frontend"
 LOG_FILE="$APP_DIR/$APP_NAME.log"
 PID_FILE="$APP_DIR/$APP_NAME.pid"
 
+cd "$APP_DIR"
+
+# ==== 拉取最新代码 ====
+echo "Pulling latest code..."
+git fetch origin main
+LOCAL=$(git rev-parse HEAD)
+REMOTE=$(git rev-parse origin/main)
+git reset --hard origin/main
+
+# 检查 server 目录是否有变更
+CHANGED=$(git diff --name-only $LOCAL $REMOTE | grep '^server/')
+if [ -z "$CHANGED" ]; then
+    echo "No server changes detected. Skipping service restart."
+    exit 0
+fi
+
 # ==== 停止服务 ====
 if [ -f "$PID_FILE" ]; then
     PID=$(cat "$PID_FILE")
@@ -25,12 +41,6 @@ if [ -f "$PID_FILE" ]; then
     rm -f "$PID_FILE"
 fi
 
-# ==== 更新代码 ====
-cd "$APP_DIR"
-echo "Pulling latest code..."
-git reset --hard origin/main
-git pull origin main
-
 # ==== 启动服务 ====
 echo "Starting service..."
 npm ci --prefix "$VUE_PROJECT"
@@ -40,5 +50,4 @@ nohup dotnet run --project "$DOTNET_PROJECT" --environment $DOTNET_ENV > "$LOG_F
 
 # 记录 PID
 echo $! > "$PID_FILE"
-
 echo "Service started (PID $(cat $PID_FILE)), logs: $LOG_FILE"
