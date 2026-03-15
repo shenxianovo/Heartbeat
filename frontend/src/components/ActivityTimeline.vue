@@ -51,9 +51,13 @@ const initViewBounds = () => {
   }
 }
 
-watch([() => props.selectedDate, () => props.isToday], () => {
-  initViewBounds()
-})
+watch(
+  [() => props.selectedDate, () => props.isToday, () => props.usageData],
+  () => {
+    initViewBounds()
+  },
+  { immediate: true }
+)
 
 onMounted(() => {
   initViewBounds()
