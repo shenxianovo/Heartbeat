@@ -496,6 +496,7 @@ const minimapActivities = computed(() => {
   justify-content: space-between;
   font-size: 0.75rem;
   color: var(--text-dim);
+  font-family: 'Cascadia Code', 'SF Mono', Consolas, monospace;
 }
 
 /* Detailed Timeline Styles */
@@ -595,6 +596,7 @@ const minimapActivities = computed(() => {
   font-size: 0.65rem;
   color: var(--text-dim);
   margin-top: 2px;
+  font-family: 'Cascadia Code', 'SF Mono', Consolas, monospace;
 }
 
 .tick-line {

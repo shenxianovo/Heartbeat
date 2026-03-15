@@ -6,15 +6,13 @@ defineProps<{
   appSummaries: { appId: number; appName: string; totalSeconds: number }[]
   maxSeconds: number
 }>()
-
-const VISIBLE_RANK_COUNT = 0 // Keeping your original constant
 </script>
 
 <template>
   <section class="panel">
     <h2>今日应用时长排行</h2>
     <div v-if="appSummaries.length" class="ranking">
-      <div v-for="(app, i) in appSummaries.slice(0, VISIBLE_RANK_COUNT)" :key="app.appName" class="rank-row">
+      <div v-for="(app, i) in appSummaries" :key="app.appName" class="rank-row">
         <div class="rank-meta">
           <span class="rank-i">{{ i + 1 }}</span>
           <img
@@ -30,26 +28,6 @@ const VISIBLE_RANK_COUNT = 0 // Keeping your original constant
             class="bar"
             :style="{ width: `${(app.totalSeconds / maxSeconds) * 100}%` }"
           ></div>
-        </div>
-      </div>
-      <div v-if="appSummaries.length > VISIBLE_RANK_COUNT" class="ranking-overflow">
-        <div v-for="(app, i) in appSummaries.slice(VISIBLE_RANK_COUNT)" :key="app.appName" class="rank-row">
-          <div class="rank-meta">
-            <span class="rank-i">{{ i + VISIBLE_RANK_COUNT + 1 }}</span>
-            <img
-              :src="getIconUrl(app.appId)"
-              class="rank-icon"
-              @error="($event.target as HTMLImageElement).style.display = 'none'"
-            />
-            <span class="rank-name">{{ app.appName }}</span>
-            <span class="rank-dur">{{ formatDuration(app.totalSeconds) }}</span>
-          </div>
-          <div class="bar-bg">
-            <div
-              class="bar"
-              :style="{ width: `${(app.totalSeconds / maxSeconds) * 100}%` }"
-            ></div>
-          </div>
         </div>
       </div>
     </div>
@@ -74,9 +52,26 @@ const VISIBLE_RANK_COUNT = 0 // Keeping your original constant
   text-transform: uppercase;
   letter-spacing: 0.06em;
   margin-bottom: 1rem;
+  margin-top: 0;
 }
-.ranking { display: flex; flex-direction: column; gap: 0.75rem; }
-.ranking-overflow { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.75rem; }
+.ranking { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 0.75rem; 
+  max-height: 280px; /* ~7 items */
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.ranking::-webkit-scrollbar {
+  width: 4px;
+}
+.ranking::-webkit-scrollbar-track {
+  background: transparent;
+}
+.ranking::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 2px;
+}
 .rank-row { display: flex; flex-direction: column; gap: 0.25rem; }
 .rank-meta { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
 .rank-i { width: 1.5rem; color: var(--text-dim); font-size: 0.75rem; font-weight: 600; text-align: center; }

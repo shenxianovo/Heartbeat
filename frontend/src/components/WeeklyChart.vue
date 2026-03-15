@@ -201,6 +201,20 @@ const donutSegments = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.donut-legend::-webkit-scrollbar {
+  width: 4px;
+}
+.donut-legend::-webkit-scrollbar-track {
+  background: transparent;
+}
+.donut-legend::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 2px;
 }
 
 .legend-item {
