@@ -432,12 +432,6 @@ const minimapActivities = computed(() => {
 }
 
 .panel-header h2 {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-top: 0;
   margin-bottom: 0;
 }
 
@@ -496,7 +490,7 @@ const minimapActivities = computed(() => {
   justify-content: space-between;
   font-size: 0.75rem;
   color: var(--text-dim);
-  font-family: 'Cascadia Code', 'SF Mono', Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 /* Detailed Timeline Styles */
@@ -596,7 +590,7 @@ const minimapActivities = computed(() => {
   font-size: 0.65rem;
   color: var(--text-dim);
   margin-top: 2px;
-  font-family: 'Cascadia Code', 'SF Mono', Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 .tick-line {
@@ -616,17 +610,6 @@ const minimapActivities = computed(() => {
 }
 
 /* Custom Scrollbar for rows */
-.timeline-rows::-webkit-scrollbar {
-  width: 6px;
-}
-.timeline-rows::-webkit-scrollbar-track {
-  background: transparent;
-}
-.timeline-rows::-webkit-scrollbar-thumb {
-  background-color: #444;
-  border-radius: 3px;
-}
-
 .timeline-row {
   display: flex;
   height: 40px;

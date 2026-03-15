@@ -76,7 +76,11 @@ defineProps<{
 .card-value {
   font-size: 1.75rem;
   font-weight: 700;
-  font-family: 'Cascadia Code', 'Microsoft YaHei', 'SF Mono', 'Consolas', monospace;
+  font-family: var(--font-mono);
+}
+
+.card-value.status {
+  font-family: var(--font);
 }
 
 .card-value.accent {
@@ -113,5 +117,10 @@ defineProps<{
 .card-sub {
   font-size: 0.8rem;
   color: var(--text-dim);
+}
+@media (max-width: 640px) {
+  .cards {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

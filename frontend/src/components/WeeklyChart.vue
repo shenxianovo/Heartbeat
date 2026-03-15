@@ -114,22 +114,6 @@ const donutSegments = computed(() => {
 </template>
 
 <style scoped>
-.panel {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.25rem;
-  margin-bottom: 1.5rem;
-}
-.panel h2 {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 1rem;
-}
-
 .weekly-chart {
   display: flex;
   gap: 2rem;
@@ -186,7 +170,7 @@ const donutSegments = computed(() => {
 
 .donut-dur {
   font-size: 1rem;
-  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  font-family: var(--font-mono);
   color: var(--text);
   font-weight: 700;
 }
@@ -204,17 +188,6 @@ const donutSegments = computed(() => {
   max-height: 200px;
   overflow-y: auto;
   padding-right: 4px;
-}
-
-.donut-legend::-webkit-scrollbar {
-  width: 4px;
-}
-.donut-legend::-webkit-scrollbar-track {
-  background: transparent;
-}
-.donut-legend::-webkit-scrollbar-thumb {
-  background-color: var(--border);
-  border-radius: 2px;
 }
 
 .legend-item {
@@ -259,7 +232,7 @@ const donutSegments = computed(() => {
 }
 
 .legend-dur {
-  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  font-family: var(--font-mono);
   color: var(--text-dim);
 }
 
@@ -270,4 +243,9 @@ const donutSegments = computed(() => {
 }
 
 .empty { text-align: center; padding: 2rem; color: var(--text-dim); font-size: 0.9rem; }
+@media (max-width: 640px) {
+  .weekly-chart {
+    flex-direction: column;
+  }
+}
 </style>
