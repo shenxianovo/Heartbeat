@@ -8,12 +8,14 @@ https://shenxianovo.com/heartbeat
 ```
 Heartbeat
 ├─desktop
-│  └─Heartbeat.Agent.Runner       // 客户端，.NET Console
-├─frontend                  // 前端，Vue
+│  └─Heartbeat.Agent          // 监测&上传组件   .NET Class Library
+│  └─Heartbeat.Agent.Runner   // 客户端         .NET Console
+│  └─Heartbeat.Agent.Runner   // 客户端          WPF
+├─frontend                    // 前端            Vue
 ├─server
-│  └─Heartbeat.Server       // 服务端，ASP.Net Core
+│  └─Heartbeat.Server         // 服务端          ASP.NET Core
 └─shared
-    └─Heartbeat.Core        // 客户端&服务端共享资源，.NET Class Library
+    └─Heartbeat.Core          // DTO           .NET Class Library
 ```
 
 ## API
