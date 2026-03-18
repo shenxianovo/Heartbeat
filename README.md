@@ -10,7 +10,7 @@ Heartbeat
 ├─desktop
 │  └─Heartbeat.Agent          // 监测&上传组件   .NET Class Library
 │  └─Heartbeat.Agent.Runner   // 客户端         .NET Console
-│  └─Heartbeat.Agent.Runner   // 客户端          WPF
+│  └─Heartbeat.WPF            // 客户端          WPF
 ├─frontend                    // 前端            Vue
 ├─server
 │  └─Heartbeat.Server         // 服务端          ASP.NET Core
