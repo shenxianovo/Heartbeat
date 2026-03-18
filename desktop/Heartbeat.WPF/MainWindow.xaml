@@ -3,10 +3,109 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:Heartbeat.WPF"
+        xmlns:vm="clr-namespace:Heartbeat.WPF.ViewModels"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid>
+        Title="Heartbeat" Height="560" Width="480"
+        Icon="heartbeat.ico"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanMinimize">
 
+    <Window.DataContext>
+        <vm:MainViewModel/>
+    </Window.DataContext>
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </Window.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- 当前状态区域 -->
+        <GroupBox Grid.Row="0" Header="当前状态" Margin="0,0,0,12">
+            <StackPanel Margin="8">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="当前前台应用：" FontWeight="SemiBold"/>
+                    <TextBlock Text="{Binding CurrentApp}" Foreground="#0078D4"/>
+                </StackPanel>
+            </StackPanel>
+        </GroupBox>
+
+        <!-- 配置区域 -->
+        <GroupBox Grid.Row="1" Header="服务器配置" Margin="0,0,0,12">
+            <Grid Margin="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="API Base URL" VerticalAlignment="Center" Margin="0,0,12,8"/>
+                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding ApiBaseUrl, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"/>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="API Key" VerticalAlignment="Center" Margin="0,0,12,8"/>
+                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ApiKey, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"/>
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="上传间隔 (分钟)" VerticalAlignment="Center" Margin="0,0,12,8"/>
+                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding UploadIntervalMinutes, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"/>
+
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="状态间隔 (秒)" VerticalAlignment="Center" Margin="0,0,12,8"/>
+                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding StatusUploadIntervalSeconds, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"/>
+
+                <StackPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,4,0,8">
+                    <CheckBox Content="开机自启动" VerticalAlignment="Center"
+                              IsChecked="{Binding AutoStartEnabled}"/>
+                </StackPanel>
+
+                <Button Grid.Row="5" Grid.Column="1" Content="保存配置" 
+                        HorizontalAlignment="Right" Padding="16,6"
+                        Command="{Binding SaveConfigCommand}"/>
+            </Grid>
+        </GroupBox>
+
+        <!-- 配置保存提示 -->
+        <TextBlock Grid.Row="2" Text="{Binding SaveStatusMessage}" Margin="0,0,0,8"
+                   Visibility="{Binding SaveStatusVisible, Converter={StaticResource BoolToVis}}"
+                   FontSize="12">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                    <Setter Property="Foreground" Value="Green"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding SaveStatusIsError}" Value="True">
+                            <Setter Property="Foreground" Value="Red"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
+
+        <!-- 日志区域 -->
+        <GroupBox Grid.Row="3" Header="运行日志">
+            <TextBox x:Name="LogTextBox"
+                     Text="{Binding LogText, Mode=OneWay}"
+                     IsReadOnly="True" 
+                     VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Auto"
+                     TextWrapping="NoWrap"
+                     FontFamily="Consolas"
+                     FontSize="11"
+                     Background="#1E1E1E"
+                     Foreground="#DCDCDC"
+                     BorderThickness="0"
+                     Padding="4"
+                     TextChanged="LogTextBox_TextChanged"/>
+        </GroupBox>
     </Grid>
 </Window>
