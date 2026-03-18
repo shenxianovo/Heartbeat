@@ -43,6 +43,8 @@ namespace Heartbeat.WPF.ViewModels
         [ObservableProperty]
         private string _logText = string.Empty;
 
+        private int _logLineCount;
+        private readonly int _maxLogLines = App.LogSink.Capacity;
         private bool _suppressAutoStartEvent;
 
         public MainViewModel()
@@ -62,11 +64,12 @@ namespace Heartbeat.WPF.ViewModels
             _monitor.CurrentAppChanged += HandleCurrentAppChanged;
             App.LogSink.LogChanged += HandleLogChanged;
 
-            // 加载已有日志
+            // 加载已有日志（GetAll 同时会同步 lastNotifiedAt，后续事件只推增量）
             var existingLogs = App.LogSink.GetAll();
             if (existingLogs.Count > 0)
             {
                 LogText = string.Join(Environment.NewLine, existingLogs);
+                _logLineCount = existingLogs.Count;
             }
         }
 
@@ -154,11 +157,26 @@ namespace Heartbeat.WPF.ViewModels
             });
         }
 
-        private void HandleLogChanged(IReadOnlyList<string> logs)
+        private void HandleLogChanged(IReadOnlyList<string> newLogs)
         {
             Application.Current?.Dispatcher.BeginInvoke(() =>
             {
-                LogText = string.Join(Environment.NewLine, logs);
+                if (newLogs.Count == 0) return;
+
+                var newText = string.Join(Environment.NewLine, newLogs);
+                LogText = string.IsNullOrEmpty(LogText)
+                    ? newText
+                    : LogText + Environment.NewLine + newText;
+                _logLineCount += newLogs.Count;
+
+                // 超过 2 倍容量时裁剪，摊销裁剪成本
+                if (_logLineCount > _maxLogLines * 2)
+                {
+                    var lines = LogText.Split(Environment.NewLine);
+                    var keep = lines[^_maxLogLines..];
+                    LogText = string.Join(Environment.NewLine, keep);
+                    _logLineCount = keep.Length;
+                }
             });
         }
 
