@@ -5,8 +5,8 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>Heartbeat.Client</RootNamespace>
-    <AssemblyName>Heartbeat.Client</AssemblyName>
+    <RootNamespace>Heartbeat.Agent.Runner</RootNamespace>
+    <AssemblyName>Heartbeat.Agent.Runner</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>

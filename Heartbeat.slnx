@@ -1,7 +1,7 @@
 <Solution>
   <Folder Name="/desktop/">
     <Project Path="desktop/Heartbeat.Agent/Heartbeat.Agent.csproj" />
-    <Project Path="desktop/Heartbeat.Client/Heartbeat.Client.csproj" />
+    <Project Path="desktop/Heartbeat.Agent.Runner/Heartbeat.Agent.Runner.csproj" />
     <Project Path="desktop/Heartbeat.WPF/Heartbeat.WPF.csproj" />
   </Folder>
   <Folder Name="/server/">

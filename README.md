@@ -8,7 +8,7 @@ https://shenxianovo.com/heartbeat
 ```
 Heartbeat
 ├─desktop
-│  └─Heartbeat.Client       // 客户端，.NET Console
+│  └─Heartbeat.Agent.Runner       // 客户端，.NET Console
 ├─frontend                  // 前端，Vue
 ├─server
 │  └─Heartbeat.Server       // 服务端，ASP.Net Core
