@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/desktop/">
     <Project Path="desktop/Heartbeat.Client/Heartbeat.Client.csproj" />
+    <Project Path="desktop/Heartbeat.WPF/Heartbeat.WPF.csproj" Id="536e90be-7f4d-41fa-b8e3-df4ae55ed8e7" />
   </Folder>
   <Folder Name="/server/">
     <Project Path="server/Heartbeat.Server/Heartbeat.Server.csproj" />
