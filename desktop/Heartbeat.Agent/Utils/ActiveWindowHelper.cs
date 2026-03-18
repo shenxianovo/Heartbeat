@@ -1,7 +1,7 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace Heartbeat.Client.Utils
+namespace Heartbeat.Agent.Utils
 {
     public static class ActiveWindowHelper
     {
@@ -62,7 +62,6 @@ namespace Heartbeat.Client.Utils
         private const uint EVENT_SYSTEM_MINIMIZESTART = 0x0016;
         private const uint EVENT_SYSTEM_MINIMIZEEND = 0x0017;
         private const uint WINEVENT_OUTOFCONTEXT = 0x0000;
-        private const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
         private const uint WM_QUIT = 0x0012;
 
         private static WinEventDelegate? _winEventDelegate;
@@ -100,19 +99,19 @@ namespace Heartbeat.Client.Utils
                 EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND,
                 IntPtr.Zero, _winEventDelegate,
                 0, 0,
-                WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+                WINEVENT_OUTOFCONTEXT);
 
             _minimizeStartHook = SetWinEventHook(
                 EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MINIMIZESTART,
                 IntPtr.Zero, _winEventDelegate,
                 0, 0,
-                WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+                WINEVENT_OUTOFCONTEXT);
 
             _minimizeEndHook = SetWinEventHook(
                 EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZEEND,
                 IntPtr.Zero, _winEventDelegate,
                 0, 0,
-                WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+                WINEVENT_OUTOFCONTEXT);
 
             // 运行消息循环（阻塞当前线程）
             while (GetMessage(out MSG msg, IntPtr.Zero, 0, 0) > 0)

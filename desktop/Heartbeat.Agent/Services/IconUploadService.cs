@@ -1,16 +1,13 @@
-﻿using Heartbeat.Client.Models;
-using Heartbeat.Client.Utils;
+using Heartbeat.Agent.Configuration;
+using Heartbeat.Agent.Utils;
 using Heartbeat.Core.DTOs.Apps;
 using Serilog;
 using System.Net.Http.Json;
 
-namespace Heartbeat.Client.Services
+namespace Heartbeat.Agent.Services
 {
-    public class IconUploadService(Config config, HttpClient httpClient)
+    public class IconUploadService(ConfigManager configManager, IHttpClientFactory httpClientFactory)
     {
-        private readonly string _appsUrl = $"{config.ApiBaseUrl}/apps";
-
-        // 已上传过的应用名集合（内存缓存，避免重复上传）
         private readonly HashSet<string> _uploadedApps = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
@@ -25,7 +22,6 @@ namespace Heartbeat.Client.Services
 
             try
             {
-                // 提取图标
                 var iconData = IconHelper.GetIconPngByProcessName(appName);
                 if (iconData == null || iconData.Length == 0)
                 {
@@ -33,7 +29,9 @@ namespace Heartbeat.Client.Services
                     return;
                 }
 
-                // 上传
+                var config = configManager.Current;
+                var appsUrl = $"{config.ApiBaseUrl}/apps";
+
                 Log.Debug("正在上传图标: {App}，大小 {Size} bytes", appName, iconData.Length);
                 var request = new IconUploadRequest
                 {
@@ -41,7 +39,8 @@ namespace Heartbeat.Client.Services
                     IconData = iconData
                 };
 
-                var res = await httpClient.PostAsJsonAsync($"{_appsUrl}/icon", request);
+                var client = httpClientFactory.CreateClient("HeartbeatApi");
+                var res = await client.PostAsJsonAsync($"{appsUrl}/icon", request);
                 if (res.IsSuccessStatusCode)
                 {
                     _uploadedApps.Add(appName);

@@ -1,6 +1,6 @@
-﻿namespace Heartbeat.Client.Models
+namespace Heartbeat.Agent.Models
 {
-    public class Config
+    public class AgentConfig
     {
         public string ApiBaseUrl { get; set; } = string.Empty;
         public string ApiKey { get; set; } = string.Empty;

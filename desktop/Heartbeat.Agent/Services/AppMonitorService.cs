@@ -1,9 +1,9 @@
-﻿using Heartbeat.Client.Utils;
+using Heartbeat.Agent.Utils;
 using Heartbeat.Core.DTOs;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 
-namespace Heartbeat.Client.Services
+namespace Heartbeat.Agent.Services
 {
     public class AppMonitorService : IHostedService, IDisposable
     {
@@ -14,6 +14,11 @@ namespace Heartbeat.Client.Services
         private Thread? _hookThread;
 
         /// <summary>
+        /// 当前前台应用变更事件（UI 可订阅用于展示）
+        /// </summary>
+        public event Action<string?>? CurrentAppChanged;
+
+        /// <summary>
         /// 启动前台窗口监听（由主机调用）
         /// </summary>
         public Task StartAsync(CancellationToken cancellationToken)
@@ -22,7 +27,6 @@ namespace Heartbeat.Client.Services
 
             ActiveWindowHelper.ForegroundWindowChanged += OnForegroundChanged;
 
-            // 记录启动时的前台窗口
             var initialApp = ActiveWindowHelper.GetForegroundProcessName();
             if (initialApp != null)
             {
@@ -34,7 +38,6 @@ namespace Heartbeat.Client.Services
                 }
             }
 
-            // 在专用线程上运行消息循环
             _hookThread = new Thread(() =>
             {
                 try
@@ -72,15 +75,12 @@ namespace Heartbeat.Client.Services
 
             lock (_lock)
             {
-                // 如果切换到的是同一个应用，忽略
                 if (string.Equals(_currentApp, newApp, StringComparison.OrdinalIgnoreCase))
                     return;
 
-                // 结束上一个应用的会话
                 if (_currentApp != null && _currentStart != default)
                 {
                     var duration = now - _currentStart;
-                    // 只记录超过 1 秒的会话，过滤掉瞬间切换
                     if (duration.TotalSeconds >= 1)
                     {
                         _usages.Add(new AppUsageItem
@@ -93,7 +93,6 @@ namespace Heartbeat.Client.Services
                     }
                 }
 
-                // 开始新应用的会话
                 _currentApp = newApp;
                 _currentStart = now;
 
@@ -102,6 +101,9 @@ namespace Heartbeat.Client.Services
                     Log.Information("应用切换: {App}", newApp);
                 }
             }
+
+            // 在锁外触发事件
+            CurrentAppChanged?.Invoke(newApp);
         }
 
         /// <summary>
@@ -124,7 +126,6 @@ namespace Heartbeat.Client.Services
 
             lock (_lock)
             {
-                // 截断当前活跃会话
                 if (_currentApp != null && _currentStart != default)
                 {
                     var duration = now - _currentStart;
@@ -137,7 +138,7 @@ namespace Heartbeat.Client.Services
                             EndTime = now
                         });
                     }
-                    _currentStart = now; // 重新开始新会话
+                    _currentStart = now;
                 }
 
                 var copy = new List<AppUsageItem>(_usages);

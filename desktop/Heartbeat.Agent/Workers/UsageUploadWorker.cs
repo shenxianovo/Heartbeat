@@ -1,42 +1,42 @@
-﻿using Heartbeat.Client.Models;
-using Heartbeat.Client.Services;
+using Heartbeat.Agent.Configuration;
+using Heartbeat.Agent.Services;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 
-namespace Heartbeat.Client.Workers
+namespace Heartbeat.Agent.Workers
 {
     public class UsageUploadWorker(
         AppMonitorService monitor,
         UsageUploadService usageService,
         IconUploadService iconService,
-        Config config) : BackgroundService
+        ConfigManager configManager) : BackgroundService
     {
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            Log.Information("使用记录上传服务启动，间隔 {Interval} 分钟", config.UploadIntervalMinutes);
+            Log.Information("使用记录上传服务启动");
 
             // 启动时尝试上传缓存
             await usageService.UploadCachedAsync();
 
-            try
+            while (!stoppingToken.IsCancellationRequested)
             {
-                using var timer = new PeriodicTimer(TimeSpan.FromMinutes(config.UploadIntervalMinutes));
-
-                while (await timer.WaitForNextTickAsync(stoppingToken))
+                try
                 {
-                    try
-                    {
-                        await UploadUsagesAsync();
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Error(ex, "使用记录上传异常");
-                    }
+                    // 每次循环读取最新配置
+                    var interval = TimeSpan.FromMinutes(configManager.Current.UploadIntervalMinutes);
+                    Log.Debug("使用记录上传间隔: {Interval}", interval);
+
+                    await Task.Delay(interval, stoppingToken);
+                    await UploadUsagesAsync();
                 }
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                // 正常关闭
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "使用记录上传异常");
+                }
             }
         }
 
@@ -63,7 +63,6 @@ namespace Heartbeat.Client.Workers
 
             await usageService.UploadAsync(usages);
 
-            // 异步上传新应用的图标（不阻塞主上传流程）
             var appNames = usages.Select(u => u.AppName).Distinct(StringComparer.OrdinalIgnoreCase);
             foreach (var appName in appNames)
             {

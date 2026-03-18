@@ -1,15 +1,13 @@
-﻿using Heartbeat.Client.Models;
-using Heartbeat.Client.Storage;
+using Heartbeat.Agent.Configuration;
+using Heartbeat.Agent.Storage;
 using Heartbeat.Core.DTOs;
 using Serilog;
 using System.Net.Http.Json;
 
-namespace Heartbeat.Client.Services
+namespace Heartbeat.Agent.Services
 {
-    public class UsageUploadService(Config config, HttpClient httpClient, LocalCache cache)
+    public class UsageUploadService(ConfigManager configManager, IHttpClientFactory httpClientFactory, LocalCache cache)
     {
-        private readonly string _uploadUrl = $"{config.ApiBaseUrl}/usage";
-
         private static UsageUploadRequest MapToDto(List<AppUsageItem> items)
         {
             return new UsageUploadRequest
@@ -25,11 +23,15 @@ namespace Heartbeat.Client.Services
 
         public async Task UploadAsync(List<AppUsageItem> usages)
         {
+            var config = configManager.Current;
+            var uploadUrl = $"{config.ApiBaseUrl}/usage";
             var dto = MapToDto(usages);
+
             Log.Information("正在上传 {Count} 条使用记录...", usages.Count);
             try
             {
-                var res = await httpClient.PostAsJsonAsync(_uploadUrl, dto);
+                var client = httpClientFactory.CreateClient("HeartbeatApi");
+                var res = await client.PostAsJsonAsync(uploadUrl, dto);
                 if (!res.IsSuccessStatusCode)
                 {
                     var body = await res.Content.ReadAsStringAsync();
@@ -52,11 +54,15 @@ namespace Heartbeat.Client.Services
             var cached = cache.Load();
             if (cached.Count == 0) return;
 
+            var config = configManager.Current;
+            var uploadUrl = $"{config.ApiBaseUrl}/usage";
+
             Log.Information("发现 {Count} 条缓存记录，尝试上传...", cached.Count);
             var dto = MapToDto(cached);
             try
             {
-                var res = await httpClient.PostAsJsonAsync(_uploadUrl, dto);
+                var client = httpClientFactory.CreateClient("HeartbeatApi");
+                var res = await client.PostAsJsonAsync(uploadUrl, dto);
                 if (!res.IsSuccessStatusCode)
                 {
                     var body = await res.Content.ReadAsStringAsync();

@@ -1,10 +1,10 @@
-﻿using Microsoft.Win32;
+using Microsoft.Win32;
 using Serilog;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 
-namespace Heartbeat.Client.Utils
+namespace Heartbeat.Agent.Utils
 {
     [SupportedOSPlatform("windows")]
     public static class IconHelper
@@ -156,9 +156,6 @@ namespace Heartbeat.Client.Utils
 
         #region 获取 exe 路径
 
-        /// <summary>
-        /// 通过进程名获取 exe 路径，依次尝试 QueryFullProcessImageName 和 MainModule
-        /// </summary>
         private static string? GetExePathByProcessName(string processName)
         {
             try
@@ -168,12 +165,10 @@ namespace Heartbeat.Client.Utils
                 {
                     try
                     {
-                        // 优先使用 QueryFullProcessImageName（只需 PROCESS_QUERY_LIMITED_INFORMATION 权限）
                         var path = GetProcessImagePath(proc.Id);
                         if (!string.IsNullOrEmpty(path))
                             return path;
 
-                        // 回退到 MainModule
                         path = proc.MainModule?.FileName;
                         if (!string.IsNullOrEmpty(path))
                             return path;
@@ -188,16 +183,10 @@ namespace Heartbeat.Client.Utils
                     }
                 }
             }
-            catch
-            {
-                // ignored
-            }
+            catch { }
             return null;
         }
 
-        /// <summary>
-        /// 使用 QueryFullProcessImageName 获取进程路径（比 MainModule 更可靠，对 UAC/跨架构进程也有效）
-        /// </summary>
         private static string? GetProcessImagePath(int processId)
         {
             var hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
@@ -222,9 +211,6 @@ namespace Heartbeat.Client.Utils
 
         #region 图标提取策略
 
-        /// <summary>
-        /// 策略 A: 使用 SHGetFileInfo 从 exe 提取图标
-        /// </summary>
         private static byte[]? ExtractIconBySHGetFileInfo(string filePath)
         {
             try
@@ -253,9 +239,6 @@ namespace Heartbeat.Client.Utils
             }
         }
 
-        /// <summary>
-        /// 策略 B: 使用 .NET Icon.ExtractAssociatedIcon 提取图标
-        /// </summary>
         private static byte[]? ExtractIconByAssociatedIcon(string filePath)
         {
             try
@@ -279,9 +262,6 @@ namespace Heartbeat.Client.Utils
             }
         }
 
-        /// <summary>
-        /// 策略 C: 通过窗口句柄提取图标（WM_GETICON / GetClassLongPtr）
-        /// </summary>
         private static byte[]? ExtractIconFromWindow(string processName)
         {
             try
@@ -290,7 +270,6 @@ namespace Heartbeat.Client.Utils
                 if (hwnd == IntPtr.Zero)
                     return null;
 
-                // 依次尝试: WM_GETICON(ICON_BIG) → WM_GETICON(ICON_SMALL2) → GetClassLongPtr(GCL_HICON)
                 IntPtr hIcon = SendMessage(hwnd, WM_GETICON, ICON_BIG, IntPtr.Zero);
 
                 if (hIcon == IntPtr.Zero)
@@ -305,7 +284,6 @@ namespace Heartbeat.Client.Utils
                 if (hIcon == IntPtr.Zero)
                     return null;
 
-                // 通过窗口获取的图标句柄由系统管理，不需要手动 DestroyIcon
                 return IconHandleToPng(hIcon);
             }
             catch (Exception ex)
@@ -319,16 +297,12 @@ namespace Heartbeat.Client.Utils
 
         #region 注册表查找
 
-        /// <summary>
-        /// 从注册表搜索 exe 路径（App Paths + Uninstall 卸载信息）
-        /// </summary>
         private static string? FindExePathFromRegistry(string processName)
         {
             var exeName = processName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
                 ? processName
                 : processName + ".exe";
 
-            // 1. App Paths
             try
             {
                 using var key = Registry.LocalMachine.OpenSubKey(
@@ -342,7 +316,6 @@ namespace Heartbeat.Client.Utils
                 Log.Debug("注册表 App Paths 查找失败: {Error}", ex.Message);
             }
 
-            // 2. Uninstall 注册表项中搜索 DisplayIcon / InstallLocation
             string[] uninstallPaths =
             [
                 @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
@@ -367,17 +340,14 @@ namespace Heartbeat.Client.Utils
                             if (!displayName.Contains(processName, StringComparison.OrdinalIgnoreCase))
                                 continue;
 
-                            // 尝试 DisplayIcon
                             var iconPath = subKey.GetValue("DisplayIcon")?.ToString();
                             if (!string.IsNullOrEmpty(iconPath))
                             {
-                                // DisplayIcon 可能带逗号(图标索引)，如 "C:\app.exe,0"
                                 var cleanPath = iconPath.Split(',')[0].Trim('"').Trim();
                                 if (File.Exists(cleanPath))
                                     return cleanPath;
                             }
 
-                            // 尝试 InstallLocation + exe 名
                             var installDir = subKey.GetValue("InstallLocation")?.ToString();
                             if (!string.IsNullOrEmpty(installDir))
                             {
@@ -405,9 +375,6 @@ namespace Heartbeat.Client.Utils
 
         #region 辅助方法
 
-        /// <summary>
-        /// 查找指定进程名的主窗口句柄
-        /// </summary>
         private static IntPtr FindMainWindowByProcessName(string processName)
         {
             IntPtr foundHwnd = IntPtr.Zero;
@@ -418,7 +385,6 @@ namespace Heartbeat.Client.Utils
                 {
                     try
                     {
-                        // 优先用进程自带的 MainWindowHandle
                         if (proc.MainWindowHandle != IntPtr.Zero)
                             return proc.MainWindowHandle;
                     }
@@ -429,7 +395,6 @@ namespace Heartbeat.Client.Utils
                     }
                 }
 
-                // 若 MainWindowHandle 为空，枚举所有窗口查找匹配进程的可见窗口
                 var targetProcesses = Process.GetProcessesByName(processName);
                 var pids = new HashSet<uint>();
                 foreach (var p in targetProcesses)
@@ -451,7 +416,7 @@ namespace Heartbeat.Client.Utils
                     if (pids.Contains(pid))
                     {
                         foundHwnd = hWnd;
-                        return false; // 找到即停止
+                        return false;
                     }
                     return true;
                 }, IntPtr.Zero);
@@ -461,9 +426,6 @@ namespace Heartbeat.Client.Utils
             return foundHwnd;
         }
 
-        /// <summary>
-        /// 跨 32/64 位兼容的 GetClassLongPtr
-        /// </summary>
         private static IntPtr GetClassLongPtrCross(IntPtr hWnd, int nIndex)
         {
             if (IntPtr.Size == 8)
@@ -472,9 +434,6 @@ namespace Heartbeat.Client.Utils
                 return new IntPtr(GetClassLong32(hWnd, nIndex));
         }
 
-        /// <summary>
-        /// 将图标句柄转为 PNG 字节数组
-        /// </summary>
         private static byte[]? IconHandleToPng(IntPtr hIcon)
         {
             try
