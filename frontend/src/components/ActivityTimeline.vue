@@ -26,6 +26,15 @@ const dragStartX = ref(0)
 const dragStartViewStart = ref(0)
 const dragStartViewEnd = ref(0)
 
+// --- Main Timeline Drag State ---
+const isDraggingTimeline = ref(false)
+const timelineDragStartX = ref(0)
+const timelineDragViewStart = ref(0)
+const timelineDragViewEnd = ref(0)
+
+// rAF throttle ID
+let rafId = 0
+
 const ONE_HOUR = 60 * 60 * 1000
 
 // Initialize view bounds
@@ -38,7 +47,6 @@ const initViewBounds = () => {
     viewStart.value = now - ONE_HOUR
     viewEnd.value = now + ONE_HOUR
   } else {
-    // If historically, find the first event or default to 12PM
     const firstEvent = props.usageData.find(u => u.startTime)
     if (firstEvent && firstEvent.startTime) {
       const startT = new Date(firstEvent.startTime).getTime()
@@ -69,92 +77,139 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
+  window.removeEventListener('mousemove', timelineMousemove)
+  window.removeEventListener('mouseup', timelineMouseup)
+  window.removeEventListener('mousemove', minimapMousemove)
+  window.removeEventListener('mouseup', minimapMouseup)
+  if (rafId) cancelAnimationFrame(rafId)
 })
 
 const handleResize = () => {
   if (timelineEl.value) containerWidth.value = timelineEl.value.clientWidth
 }
 
-// Compute active apps in the current view range
-const activeAppsInView = computed(() => {
-  const appDurations = new Map<number, number>() // appId -> total duration in view
+// ========== Pre-parsed data (only recomputes when usageData changes, NOT on view pan) ==========
+
+interface ParsedSegment {
+  start: number
+  end: number
+}
+
+// Parse timestamps once and group by appId
+const parsedUsageByApp = computed(() => {
+  const map = new Map<number, ParsedSegment[]>()
   
-  for (const usage of props.usageData) {
-    if (!usage.appId || !usage.startTime || !usage.endTime) continue
-    const s = new Date(usage.startTime).getTime()
-    const e = new Date(usage.endTime).getTime()
-    
-    // Check intersection with view
-    if (e < viewStart.value || s > viewEnd.value) continue
-    
-    const intersectS = Math.max(s, viewStart.value)
-    const intersectE = Math.min(e, viewEnd.value)
-    const dur = intersectE - intersectS
-    
-    if (dur > 0) {
-      appDurations.set(usage.appId, (appDurations.get(usage.appId) || 0) + dur)
+  for (const u of props.usageData) {
+    if (!u.appId || !u.startTime || !u.endTime) continue
+    let arr = map.get(u.appId)
+    if (!arr) {
+      arr = []
+      map.set(u.appId, arr)
+    }
+    arr.push({
+      start: new Date(u.startTime).getTime(),
+      end: new Date(u.endTime).getTime()
+    })
+  }
+  
+  return map
+})
+
+// ========== View-dependent computeds (lightweight, only reads pre-parsed numbers) ==========
+
+const activeAppsInView = computed(() => {
+  const appDurations: [number, number][] = []
+  const vs = viewStart.value
+  const ve = viewEnd.value
+  
+  for (const [appId, segments] of parsedUsageByApp.value) {
+    let totalDur = 0
+    for (const seg of segments) {
+      if (seg.end < vs || seg.start > ve) continue
+      totalDur += Math.min(seg.end, ve) - Math.max(seg.start, vs)
+    }
+    if (totalDur > 0) {
+      appDurations.push([appId, totalDur])
     }
   }
   
-  // Sort by highest duration in view first
-  const sorted = Array.from(appDurations.entries()).sort((a, b) => b[1] - a[1])
-  return sorted.map(s => s[0])
+  appDurations.sort((a, b) => b[1] - a[1])
+  return appDurations.map(d => d[0])
 })
 
 const detailedRows = computed(() => {
+  const vs = viewStart.value
+  const ve = viewEnd.value
+  const totalRange = ve - vs
+  if (totalRange <= 0) return []
+  
   return activeAppsInView.value.map(appId => {
-    const usagesList = props.usageData.filter(u => u.appId === appId && u.startTime && u.endTime)
+    const allSegments = parsedUsageByApp.value.get(appId) || []
+    // Only include segments visible in the view, with pre-calculated positions
+    const visibleUsages: { start: number, end: number, left: number, width: number, title: string }[] = []
+    
+    for (const seg of allSegments) {
+      if (seg.end < vs || seg.start > ve) continue
+      const l = Math.max(0, Math.min(100, ((seg.start - vs) / totalRange) * 100))
+      const r = Math.max(0, Math.min(100, ((seg.end - vs) / totalRange) * 100))
+      visibleUsages.push({
+        start: seg.start,
+        end: seg.end,
+        left: l,
+        width: Math.max(0.5, r - l),
+        title: `${fmtTime(seg.start)} - ${fmtTime(seg.end)}`
+      })
+    }
+    
     return {
       appId,
       name: props.appNameMap.get(appId) || `App ${appId}`,
-      usages: usagesList.map(u => ({
-        start: new Date(u.startTime!).getTime(),
-        end: new Date(u.endTime!).getTime()
-      }))
+      usages: visibleUsages
     }
   })
 })
 
-const calculateLeft = (time: number) => {
-  const totalRange = viewEnd.value - viewStart.value
-  if (totalRange <= 0) return 0
-  return Math.max(0, Math.min(100, ((time - viewStart.value) / totalRange) * 100))
-}
-
-const calculateWidth = (start: number, end: number) => {
-  const l = calculateLeft(start)
-  const r = calculateLeft(end)
-  return Math.max(0.5, r - l) // at least 0.5% width to be visible
-}
-
-const formatTime = (time: number) => {
+// Lightweight time formatter (avoids creating full Date objects for display)
+const fmtTime = (time: number) => {
   const d = new Date(time)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-const getTicks = () => {
-  const ticks: {percent: number, label: string}[] = []
+const ticks = computed(() => {
+  const result: { percent: number, label: string }[] = []
   const range = viewEnd.value - viewStart.value
-  if (range <= 0) return ticks
+  if (range <= 0) return result
   
   const segments = 6
   for (let i = 0; i <= segments; i++) {
     const t = viewStart.value + (range / segments) * i
-    ticks.push({
+    result.push({
       percent: (i / segments) * 100,
-      label: formatTime(t)
+      label: fmtTime(t)
     })
   }
-  return ticks
+  return result
+})
+
+// ========== Interaction handlers ==========
+
+const applyViewUpdate = (newS: number, newE: number) => {
+  const dayStart = new Date(props.selectedDate).setHours(0,0,0,0)
+  const dayEnd = dayStart + 24 * 60 * 60 * 1000
+  const range = newE - newS
+  
+  if (newS < dayStart) { newS = dayStart; newE = newS + range }
+  if (newE > dayEnd) { newE = dayEnd; newS = newE - range }
+  
+  viewStart.value = newS
+  viewEnd.value = newE
 }
 
-// Interactivity for zooming and panning
 const handleWheel = (e: WheelEvent) => {
   const range = viewEnd.value - viewStart.value
   
   if (e.ctrlKey || e.metaKey) {
     e.preventDefault()
-    // Zoom
     const zoomFactor = e.deltaY > 0 ? 1.2 : 0.8
     const mouseX = e.offsetX
     const cw = timelineEl.value?.clientWidth || 800
@@ -164,9 +219,8 @@ const handleWheel = (e: WheelEvent) => {
     let newStart = pivotTime - (pivotTime - viewStart.value) * zoomFactor
     let newEnd = pivotTime + (viewEnd.value - pivotTime) * zoomFactor
     
-    // Bounds check
-    const minRange = 5 * 60 * 1000 // 5 mins
-    const maxRange = 24 * 60 * 60 * 1000 // 24 hours
+    const minRange = 5 * 60 * 1000
+    const maxRange = 24 * 60 * 60 * 1000
     const dayStart = new Date(props.selectedDate).setHours(0,0,0,0)
     const dayEnd = dayStart + 24 * 60 * 60 * 1000
     
@@ -184,29 +238,43 @@ const handleWheel = (e: WheelEvent) => {
     
   } else if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
     e.preventDefault()
-    // Pan horizontally
-    const shift = e.deltaX * (range / 1000) // pan sensitively
-    const dayStart = new Date(props.selectedDate).setHours(0,0,0,0)
-    const dayEnd = dayStart + 24 * 60 * 60 * 1000
-    
-    let newStart = viewStart.value + shift
-    let newEnd = viewEnd.value + shift
-    
-    if (newStart < dayStart) {
-      newStart = dayStart
-      newEnd = newStart + range
-    }
-    if (newEnd > dayEnd) {
-      newEnd = dayEnd
-      newStart = newEnd - range
-    }
-    
-    viewStart.value = newStart
-    viewEnd.value = newEnd
+    const shift = e.deltaX * (range / 1000)
+    applyViewUpdate(viewStart.value + shift, viewEnd.value + shift)
   }
 }
 
-// Minimap dragging
+// Main timeline drag-to-pan (rAF throttled)
+const timelineMousedown = (e: MouseEvent) => {
+  if ((e.target as HTMLElement).closest('.row-header')) return
+
+  isDraggingTimeline.value = true
+  timelineDragStartX.value = e.clientX
+  timelineDragViewStart.value = viewStart.value
+  timelineDragViewEnd.value = viewEnd.value
+  window.addEventListener('mousemove', timelineMousemove)
+  window.addEventListener('mouseup', timelineMouseup)
+}
+
+const timelineMousemove = (e: MouseEvent) => {
+  if (!isDraggingTimeline.value) return
+  const clientX = e.clientX
+  if (rafId) cancelAnimationFrame(rafId)
+  rafId = requestAnimationFrame(() => {
+    const deltaX = clientX - timelineDragStartX.value
+    const trackWidth = (timelineEl.value?.clientWidth || 800) - 120
+    const range = timelineDragViewEnd.value - timelineDragViewStart.value
+    const timeDelta = -(deltaX / trackWidth) * range
+    applyViewUpdate(timelineDragViewStart.value + timeDelta, timelineDragViewEnd.value + timeDelta)
+  })
+}
+
+const timelineMouseup = () => {
+  isDraggingTimeline.value = false
+  window.removeEventListener('mousemove', timelineMousemove)
+  window.removeEventListener('mouseup', timelineMouseup)
+}
+
+// Minimap dragging (rAF throttled)
 const minimapMousedown = (e: MouseEvent, type: 'left' | 'right' | 'center') => {
   isDraggingMinimap.value = true
   dragType.value = type
@@ -219,40 +287,32 @@ const minimapMousedown = (e: MouseEvent, type: 'left' | 'right' | 'center') => {
 
 const minimapMousemove = (e: MouseEvent) => {
   if (!isDraggingMinimap.value) return
-  
-  const deltaX = e.clientX - dragStartX.value
-  const minimapWidth = timelineEl.value?.clientWidth || 800
-  const dayRange = 24 * 60 * 60 * 1000
-  const timeDelta = (deltaX / minimapWidth) * dayRange
-  
-  const dayStart = new Date(props.selectedDate).setHours(0,0,0,0)
-  const dayEnd = dayStart + dayRange
-  const minRange = 5 * 60 * 1000
-  
-  if (dragType.value === 'center') {
-    let newS = dragStartViewStart.value + timeDelta
-    let newE = dragStartViewEnd.value + timeDelta
-    if (newS < dayStart) {
-      newS = dayStart
-      newE = newS + (dragStartViewEnd.value - dragStartViewStart.value)
+  const clientX = e.clientX
+  if (rafId) cancelAnimationFrame(rafId)
+  rafId = requestAnimationFrame(() => {
+    const deltaX = clientX - dragStartX.value
+    const minimapWidth = timelineEl.value?.clientWidth || 800
+    const dayRange = 24 * 60 * 60 * 1000
+    const timeDelta = (deltaX / minimapWidth) * dayRange
+    
+    const dayStart = new Date(props.selectedDate).setHours(0,0,0,0)
+    const dayEnd = dayStart + dayRange
+    const minRange = 5 * 60 * 1000
+    
+    if (dragType.value === 'center') {
+      applyViewUpdate(dragStartViewStart.value + timeDelta, dragStartViewEnd.value + timeDelta)
+    } else if (dragType.value === 'left') {
+      let newS = dragStartViewStart.value + timeDelta
+      if (newS < dayStart) newS = dayStart
+      if (newS > viewEnd.value - minRange) newS = viewEnd.value - minRange
+      viewStart.value = newS
+    } else if (dragType.value === 'right') {
+      let newE = dragStartViewEnd.value + timeDelta
+      if (newE > dayEnd) newE = dayEnd
+      if (newE < viewStart.value + minRange) newE = viewStart.value + minRange
+      viewEnd.value = newE
     }
-    if (newE > dayEnd) {
-      newE = dayEnd
-      newS = newE - (dragStartViewEnd.value - dragStartViewStart.value)
-    }
-    viewStart.value = newS
-    viewEnd.value = newE
-  } else if (dragType.value === 'left') {
-    let newS = dragStartViewStart.value + timeDelta
-    if (newS < dayStart) newS = dayStart
-    if (newS > viewEnd.value - minRange) newS = viewEnd.value - minRange
-    viewStart.value = newS
-  } else if (dragType.value === 'right') {
-    let newE = dragStartViewEnd.value + timeDelta
-    if (newE > dayEnd) newE = dayEnd
-    if (newE < viewStart.value + minRange) newE = viewStart.value + minRange
-    viewEnd.value = newE
-  }
+  })
 }
 
 const minimapMouseup = () => {
@@ -277,30 +337,27 @@ const minimapRangeStyle = computed(() => {
   }
 })
 
-// Minimap activities (just visual bars to show where there is some activity)
 const minimapActivities = computed(() => {
   const day = 24 * 60 * 60 * 1000
   const dayS = dayStartMs.value
   
-  // Merge intervals to avoid too many DOM elements
   const intervals: {start: number, end: number}[] = []
   
-  // First collect all valid intervals
-  const rawIntervals = props.usageData
-    .filter(u => u.startTime && u.endTime)
-    .map(u => ({
-      start: new Date(u.startTime!).getTime(),
-      end: new Date(u.endTime!).getTime()
-    }))
-    .sort((a, b) => a.start - b.start)
+  // Use pre-parsed data instead of creating new Date objects
+  const rawIntervals: {start: number, end: number}[] = []
+  for (const segments of parsedUsageByApp.value.values()) {
+    for (const seg of segments) {
+      rawIntervals.push(seg)
+    }
+  }
+  rawIntervals.sort((a, b) => a.start - b.start)
     
   if (rawIntervals.length === 0) return []
   
-  // Merge overlapping or close intervals
   let current = { ...rawIntervals[0] }
   for (let i = 1; i < rawIntervals.length; i++) {
     const next = rawIntervals[i]
-    if (next.start <= current.end + 60000) { // close within 1min
+    if (next.start <= current.end + 60000) {
       current.end = Math.max(current.end, next.end)
     } else {
       intervals.push(current)
@@ -382,11 +439,11 @@ const minimapActivities = computed(() => {
       </div>
 
       <!-- Main Timeline -->
-      <div class="timeline-body">
+      <div class="timeline-body" :class="{ dragging: isDraggingTimeline }" @mousedown="timelineMousedown">
         <div class="timeline-ticks">
           <div class="tick-ph"></div> <!-- Spacer for icon column -->
           <div class="tick-track">
-            <div class="tick" v-for="t in getTicks()" :key="t.label" :style="{ left: t.percent + '%' }">
+            <div class="tick" v-for="t in ticks" :key="t.label" :style="{ left: t.percent + '%' }">
               <span class="tick-label">{{ t.label }}</span>
               <div class="tick-line"></div>
             </div>
@@ -407,17 +464,16 @@ const minimapActivities = computed(() => {
               <span class="row-name" :title="row.name">{{ row.name }}</span>
             </div>
             <div class="row-track">
-              <!-- Event blocks -->
+              <!-- Event blocks (only visible segments are in DOM) -->
               <div 
                 v-for="(seg, idx) in row.usages" 
                 :key="idx"
                 class="row-segment"
-                :class="{ hidden: seg.end < viewStart || seg.start > viewEnd }"
                 :style="{
-                  left: calculateLeft(seg.start) + '%',
-                  width: calculateWidth(seg.start, seg.end) + '%'
+                  left: seg.left + '%',
+                  width: seg.width + '%'
                 }"
-                :title="`${formatTime(seg.start)} - ${formatTime(seg.end)}`"
+                :title="seg.title"
               ></div>
             </div>
           </div>
@@ -559,6 +615,11 @@ const minimapActivities = computed(() => {
   border-radius: 6px;
   background: #1a1a1a;
   overflow: hidden;
+  cursor: grab;
+}
+
+.timeline-body.dragging {
+  cursor: grabbing;
 }
 
 .timeline-ticks {
@@ -665,17 +726,12 @@ const minimapActivities = computed(() => {
   background: var(--accent);
   border-radius: 3px;
   opacity: 0.8;
-  transition: opacity 0.2s;
   cursor: pointer;
 }
 
 .row-segment:hover {
   opacity: 1;
   z-index: 3;
-}
-
-.row-segment.hidden {
-  display: none;
 }
 
 .empty-state {
