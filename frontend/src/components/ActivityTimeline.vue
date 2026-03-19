@@ -77,10 +77,14 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
-  window.removeEventListener('mousemove', timelineMousemove)
-  window.removeEventListener('mouseup', timelineMouseup)
-  window.removeEventListener('mousemove', minimapMousemove)
-  window.removeEventListener('mouseup', minimapMouseup)
+  window.removeEventListener('mousemove', timelinePointerMove)
+  window.removeEventListener('mouseup', timelinePointerUp)
+  window.removeEventListener('touchmove', timelinePointerMove)
+  window.removeEventListener('touchend', timelinePointerUp)
+  window.removeEventListener('mousemove', minimapPointerMove)
+  window.removeEventListener('mouseup', minimapPointerUp)
+  window.removeEventListener('touchmove', minimapPointerMove)
+  window.removeEventListener('touchend', minimapPointerUp)
   if (rafId) cancelAnimationFrame(rafId)
 })
 
@@ -243,21 +247,62 @@ const handleWheel = (e: WheelEvent) => {
   }
 }
 
-// Main timeline drag-to-pan (rAF throttled)
-const timelineMousedown = (e: MouseEvent) => {
-  if ((e.target as HTMLElement).closest('.row-header')) return
-
-  isDraggingTimeline.value = true
-  timelineDragStartX.value = e.clientX
-  timelineDragViewStart.value = viewStart.value
-  timelineDragViewEnd.value = viewEnd.value
-  window.addEventListener('mousemove', timelineMousemove)
-  window.addEventListener('mouseup', timelineMouseup)
+// Helper: extract clientX/clientY from mouse or touch event
+const getClientX = (e: MouseEvent | TouchEvent): number => {
+  return 'touches' in e ? e.touches[0].clientX : e.clientX
+}
+const getClientY = (e: MouseEvent | TouchEvent): number => {
+  return 'touches' in e ? e.touches[0].clientY : e.clientY
 }
 
-const timelineMousemove = (e: MouseEvent) => {
+// Track start Y for direction detection on touch
+const pointerStartY = ref(0)
+const touchDirectionLocked = ref<'h' | 'v' | null>(null)
+const lastDragDeltaY = ref(0)
+
+// Main timeline drag-to-pan (rAF throttled, mouse + touch)
+const timelinePointerDown = (e: MouseEvent | TouchEvent) => {
+  const target = ('touches' in e ? document.elementFromPoint(getClientX(e), getClientY(e)) : e.target) as HTMLElement | null
+  if (target?.closest('.row-header')) return
+
+  isDraggingTimeline.value = true
+  timelineDragStartX.value = getClientX(e)
+  timelineDragViewStart.value = viewStart.value
+  timelineDragViewEnd.value = viewEnd.value
+  pointerStartY.value = getClientY(e)
+  touchDirectionLocked.value = null
+  window.addEventListener('mousemove', timelinePointerMove)
+  window.addEventListener('mouseup', timelinePointerUp)
+  window.addEventListener('touchmove', timelinePointerMove, { passive: false })
+  window.addEventListener('touchend', timelinePointerUp)
+}
+
+const timelinePointerMove = (e: MouseEvent | TouchEvent) => {
   if (!isDraggingTimeline.value) return
-  const clientX = e.clientX
+
+  // Detect direction on first significant move (works for both mouse and touch)
+  if (!touchDirectionLocked.value) {
+    const dx = Math.abs(getClientX(e) - timelineDragStartX.value)
+    const dy = Math.abs(getClientY(e) - pointerStartY.value)
+    if (dx + dy < 5) return // too small to determine
+    touchDirectionLocked.value = dx >= dy ? 'h' : 'v'
+  }
+
+  // Vertical gesture: scroll the rows container
+  if (touchDirectionLocked.value === 'v') {
+    const rowsEl = timelineEl.value?.querySelector('.timeline-rows') as HTMLElement | null
+    if (rowsEl) {
+      const deltaY = getClientY(e) - pointerStartY.value
+      rowsEl.scrollTop = rowsEl.scrollTop - (deltaY - (lastDragDeltaY.value || 0))
+      lastDragDeltaY.value = deltaY
+    }
+    if ('touches' in e) e.preventDefault()
+    return
+  }
+
+  if ('touches' in e) e.preventDefault()
+
+  const clientX = getClientX(e)
   if (rafId) cancelAnimationFrame(rafId)
   rafId = requestAnimationFrame(() => {
     const deltaX = clientX - timelineDragStartX.value
@@ -268,26 +313,33 @@ const timelineMousemove = (e: MouseEvent) => {
   })
 }
 
-const timelineMouseup = () => {
+const timelinePointerUp = () => {
   isDraggingTimeline.value = false
-  window.removeEventListener('mousemove', timelineMousemove)
-  window.removeEventListener('mouseup', timelineMouseup)
+  touchDirectionLocked.value = null
+  lastDragDeltaY.value = 0
+  window.removeEventListener('mousemove', timelinePointerMove)
+  window.removeEventListener('mouseup', timelinePointerUp)
+  window.removeEventListener('touchmove', timelinePointerMove)
+  window.removeEventListener('touchend', timelinePointerUp)
 }
 
-// Minimap dragging (rAF throttled)
-const minimapMousedown = (e: MouseEvent, type: 'left' | 'right' | 'center') => {
+// Minimap dragging (rAF throttled, mouse + touch)
+const minimapPointerDown = (e: MouseEvent | TouchEvent, type: 'left' | 'right' | 'center') => {
   isDraggingMinimap.value = true
   dragType.value = type
-  dragStartX.value = e.clientX
+  dragStartX.value = getClientX(e)
   dragStartViewStart.value = viewStart.value
   dragStartViewEnd.value = viewEnd.value
-  window.addEventListener('mousemove', minimapMousemove)
-  window.addEventListener('mouseup', minimapMouseup)
+  window.addEventListener('mousemove', minimapPointerMove)
+  window.addEventListener('mouseup', minimapPointerUp)
+  window.addEventListener('touchmove', minimapPointerMove, { passive: false })
+  window.addEventListener('touchend', minimapPointerUp)
 }
 
-const minimapMousemove = (e: MouseEvent) => {
+const minimapPointerMove = (e: MouseEvent | TouchEvent) => {
   if (!isDraggingMinimap.value) return
-  const clientX = e.clientX
+  if ('touches' in e) e.preventDefault()
+  const clientX = getClientX(e)
   if (rafId) cancelAnimationFrame(rafId)
   rafId = requestAnimationFrame(() => {
     const deltaX = clientX - dragStartX.value
@@ -315,11 +367,13 @@ const minimapMousemove = (e: MouseEvent) => {
   })
 }
 
-const minimapMouseup = () => {
+const minimapPointerUp = () => {
   isDraggingMinimap.value = false
   dragType.value = null
-  window.removeEventListener('mousemove', minimapMousemove)
-  window.removeEventListener('mouseup', minimapMouseup)
+  window.removeEventListener('mousemove', minimapPointerMove)
+  window.removeEventListener('mouseup', minimapPointerUp)
+  window.removeEventListener('touchmove', minimapPointerMove)
+  window.removeEventListener('touchend', minimapPointerUp)
 }
 
 // Minimap calculations
@@ -432,14 +486,14 @@ const minimapActivities = computed(() => {
             :style="{ left: burst.left, width: burst.width }"
           ></div>
         </div>
-        <div class="minimap-window" :style="minimapRangeStyle" @mousedown="minimapMousedown($event, 'center')">
-          <div class="minimap-handle left" @mousedown.stop="minimapMousedown($event, 'left')"></div>
-          <div class="minimap-handle right" @mousedown.stop="minimapMousedown($event, 'right')"></div>
+        <div class="minimap-window" :style="minimapRangeStyle" @mousedown="minimapPointerDown($event, 'center')" @touchstart.prevent="minimapPointerDown($event, 'center')">
+          <div class="minimap-handle left" @mousedown.stop="minimapPointerDown($event, 'left')" @touchstart.stop.prevent="minimapPointerDown($event, 'left')"></div>
+          <div class="minimap-handle right" @mousedown.stop="minimapPointerDown($event, 'right')" @touchstart.stop.prevent="minimapPointerDown($event, 'right')"></div>
         </div>
       </div>
 
       <!-- Main Timeline -->
-      <div class="timeline-body" :class="{ dragging: isDraggingTimeline }" @mousedown="timelineMousedown">
+      <div class="timeline-body" :class="{ dragging: isDraggingTimeline }" @mousedown="timelinePointerDown($event)" @touchstart="timelinePointerDown($event)">
         <div class="timeline-ticks">
           <div class="tick-ph"></div> <!-- Spacer for icon column -->
           <div class="tick-track">
@@ -450,8 +504,8 @@ const minimapActivities = computed(() => {
           </div>
         </div>
 
-        <div class="timeline-rows">
-          <div v-if="detailedRows.length === 0" class="empty-state">
+        <TransitionGroup name="row-list" tag="div" class="timeline-rows">
+          <div v-if="detailedRows.length === 0" key="empty" class="empty-state">
              当前时间范围内无活动记录，请拖拽或缩放上方缩略图更改范围
           </div>
           <div 
@@ -477,7 +531,7 @@ const minimapActivities = computed(() => {
               ></div>
             </div>
           </div>
-        </div>
+        </TransitionGroup>
       </div>
     </div>
   </section>
@@ -592,6 +646,7 @@ const minimapActivities = computed(() => {
   border: 1px solid rgba(88, 166, 255, 0.5);
   cursor: grab;
   box-sizing: border-box;
+  touch-action: pan-y;
 }
 
 .minimap-window:active {
@@ -616,6 +671,7 @@ const minimapActivities = computed(() => {
   background: #1a1a1a;
   overflow: hidden;
   cursor: grab;
+  touch-action: pan-y;
 }
 
 .timeline-body.dragging {
@@ -716,7 +772,7 @@ const minimapActivities = computed(() => {
 .row-track {
   flex: 1;
   position: relative;
-  background: #1a1a1a;
+  /* background: #1a1a1a; */
 }
 
 .row-segment {
@@ -739,5 +795,25 @@ const minimapActivities = computed(() => {
   text-align: center;
   color: var(--text-dim);
   font-size: 0.8rem;
+}
+
+/* Row reorder animation */
+.row-list-move {
+  transition: transform 0.3s ease;
+}
+
+.row-list-enter-active {
+  transition: opacity 0.2s ease;
+}
+
+.row-list-leave-active {
+  transition: opacity 0.15s ease;
+  position: absolute;
+  width: 100%;
+}
+
+.row-list-enter-from,
+.row-list-leave-to {
+  opacity: 0;
 }
 </style>
