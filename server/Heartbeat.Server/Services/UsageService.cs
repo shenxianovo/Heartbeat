@@ -75,8 +75,11 @@ namespace Heartbeat.Server.Services
                         && u.StartTime <= existing.EndTime + MergeTolerance)
                     {
                         // 首尾相连，合并（扩展结束时间）
-                        existing.EndTime = u.EndTime;
-                        existing.DurationSeconds = (int)(existing.EndTime - existing.StartTime).TotalSeconds;
+                        if (u.EndTime > existing.EndTime)
+                        {
+                            existing.EndTime = u.EndTime;
+                            existing.DurationSeconds = (int)(existing.EndTime - existing.StartTime).TotalSeconds;
+                        }
                     }
                     else
                     {
