@@ -40,7 +40,7 @@ defineProps<{
   display: flex; 
   flex-direction: column; 
   gap: 0.75rem; 
-  max-height: 280px; /* ~7 items */
+  max-height: 200px; /* ~7 items */
   overflow-y: auto;
   padding-right: 4px;
 }
