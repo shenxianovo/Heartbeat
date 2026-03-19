@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { getIconUrl } from '../api/index'
 import type { AppUsageResponse } from '../api/index'
+import { useTimelineDrag } from '../composables/useTimelineDrag'
 
 const props = defineProps<{
   activeHours: Set<number>,
@@ -16,32 +17,24 @@ const mode = ref<'simple' | 'detailed'>('detailed')
 // --- Detailed Mode State ---
 const containerWidth = ref(0)
 const timelineEl = ref<HTMLElement | null>(null)
-
-// Time range in milliseconds
 const viewStart = ref<number>(0)
 const viewEnd = ref<number>(0)
-const isDraggingMinimap = ref(false)
-const dragType = ref<'left' | 'right' | 'center' | null>(null)
-const dragStartX = ref(0)
-const dragStartViewStart = ref(0)
-const dragStartViewEnd = ref(0)
-
-// --- Main Timeline Drag State ---
-const isDraggingTimeline = ref(false)
-const timelineDragStartX = ref(0)
-const timelineDragViewStart = ref(0)
-const timelineDragViewEnd = ref(0)
-
-// rAF throttle ID
-let rafId = 0
 
 const ONE_HOUR = 60 * 60 * 1000
+
+// --- Drag interaction (composable) ---
+const {
+  isDraggingTimeline,
+  handleWheel,
+  timelinePointerDown,
+  minimapPointerDown,
+} = useTimelineDrag(viewStart, viewEnd, timelineEl, computed(() => props.selectedDate))
 
 // Initialize view bounds
 const initViewBounds = () => {
   const d = new Date(props.selectedDate)
   const baseTime = d.getTime()
-  
+
   if (props.isToday) {
     const now = Date.now()
     viewStart.value = now - ONE_HOUR
@@ -61,9 +54,7 @@ const initViewBounds = () => {
 
 watch(
   [() => props.selectedDate, () => props.isToday, () => props.usageData],
-  () => {
-    initViewBounds()
-  },
+  () => { initViewBounds() },
   { immediate: true }
 )
 
@@ -77,94 +68,67 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
-  window.removeEventListener('mousemove', timelinePointerMove)
-  window.removeEventListener('mouseup', timelinePointerUp)
-  window.removeEventListener('touchmove', timelinePointerMove)
-  window.removeEventListener('touchend', timelinePointerUp)
-  window.removeEventListener('mousemove', minimapPointerMove)
-  window.removeEventListener('mouseup', minimapPointerUp)
-  window.removeEventListener('touchmove', minimapPointerMove)
-  window.removeEventListener('touchend', minimapPointerUp)
-  if (rafId) cancelAnimationFrame(rafId)
 })
 
 const handleResize = () => {
   if (timelineEl.value) containerWidth.value = timelineEl.value.clientWidth
 }
 
-// ========== Pre-parsed data (only recomputes when usageData changes, NOT on view pan) ==========
+// ========== Pre-parsed data (only recomputes when usageData changes) ==========
 
-interface ParsedSegment {
-  start: number
-  end: number
-}
+interface ParsedSegment { start: number; end: number }
 
-// Parse timestamps once and group by appId
 const parsedUsageByApp = computed(() => {
   const map = new Map<number, ParsedSegment[]>()
-  
   for (const u of props.usageData) {
     if (!u.appId || !u.startTime || !u.endTime) continue
     let arr = map.get(u.appId)
-    if (!arr) {
-      arr = []
-      map.set(u.appId, arr)
-    }
-    arr.push({
-      start: new Date(u.startTime).getTime(),
-      end: new Date(u.endTime).getTime()
-    })
+    if (!arr) { arr = []; map.set(u.appId, arr) }
+    arr.push({ start: new Date(u.startTime).getTime(), end: new Date(u.endTime).getTime() })
   }
-  
   return map
 })
 
-// ========== View-dependent computeds (lightweight, only reads pre-parsed numbers) ==========
+// ========== View-dependent computeds ==========
 
 const activeAppsInView = computed(() => {
   const appDurations: [number, number][] = []
-  const vs = viewStart.value
-  const ve = viewEnd.value
-  
+  const vs = viewStart.value, ve = viewEnd.value
   for (const [appId, segments] of parsedUsageByApp.value) {
     let totalDur = 0
     for (const seg of segments) {
       if (seg.end < vs || seg.start > ve) continue
       totalDur += Math.min(seg.end, ve) - Math.max(seg.start, vs)
     }
-    if (totalDur > 0) {
-      appDurations.push([appId, totalDur])
-    }
+    if (totalDur > 0) appDurations.push([appId, totalDur])
   }
-  
   appDurations.sort((a, b) => b[1] - a[1])
   return appDurations.map(d => d[0])
 })
 
+const fmtTime = (time: number) => {
+  const d = new Date(time)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 const detailedRows = computed(() => {
-  const vs = viewStart.value
-  const ve = viewEnd.value
+  const vs = viewStart.value, ve = viewEnd.value
   const totalRange = ve - vs
   if (totalRange <= 0) return []
-  
+
   return activeAppsInView.value.map(appId => {
     const allSegments = parsedUsageByApp.value.get(appId) || []
-    // Only include segments visible in the view, with pre-calculated positions
-    const visibleUsages: { start: number, end: number, left: number, width: number, title: string }[] = []
-    
+    const visibleUsages: { start: number; end: number; left: number; width: number; title: string }[] = []
     for (const seg of allSegments) {
       if (seg.end < vs || seg.start > ve) continue
       const l = Math.max(0, Math.min(100, ((seg.start - vs) / totalRange) * 100))
       const r = Math.max(0, Math.min(100, ((seg.end - vs) / totalRange) * 100))
       visibleUsages.push({
-        start: seg.start,
-        end: seg.end,
-        left: l,
-        width: Math.max(0.5, r - l),
+        start: seg.start, end: seg.end,
+        left: l, width: Math.max(0.5, r - l),
         title: `${fmtTime(seg.start)} - ${fmtTime(seg.end)}`
       })
     }
-    
     return {
       appId,
       name: props.appNameMap.get(appId) || `App ${appId}`,
@@ -173,263 +137,76 @@ const detailedRows = computed(() => {
   })
 })
 
-// Lightweight time formatter (avoids creating full Date objects for display)
-const fmtTime = (time: number) => {
-  const d = new Date(time)
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
+// Adaptive tick intervals based on available width
 const ticks = computed(() => {
-  const result: { percent: number, label: string }[] = []
+  const result: { percent: number; label: string }[] = []
   const range = viewEnd.value - viewStart.value
   if (range <= 0) return result
-  
-  const segments = 6
-  for (let i = 0; i <= segments; i++) {
-    const t = viewStart.value + (range / segments) * i
+
+  const trackWidth = (containerWidth.value || 800) - 120
+  const minTickSpacingPx = 70
+  const maxTicks = Math.max(2, Math.floor(trackWidth / minTickSpacingPx))
+
+  // Nice intervals in ms: 1m, 2m, 5m, 10m, 15m, 30m, 1h, 2h, 3h, 6h
+  const niceIntervals = [
+    60_000, 120_000, 300_000, 600_000, 900_000, 1_800_000,
+    3_600_000, 7_200_000, 10_800_000, 21_600_000
+  ]
+  let interval = niceIntervals[niceIntervals.length - 1]
+  for (const ni of niceIntervals) {
+    if (range / ni <= maxTicks) { interval = ni; break }
+  }
+
+  const firstTick = Math.ceil(viewStart.value / interval) * interval
+  for (let t = firstTick; t <= viewEnd.value; t += interval) {
     result.push({
-      percent: (i / segments) * 100,
+      percent: ((t - viewStart.value) / range) * 100,
       label: fmtTime(t)
     })
   }
   return result
 })
 
-// ========== Interaction handlers ==========
+// ========== Minimap ==========
 
-const applyViewUpdate = (newS: number, newE: number) => {
-  const dayStart = new Date(props.selectedDate).setHours(0,0,0,0)
-  const dayEnd = dayStart + 24 * 60 * 60 * 1000
-  const range = newE - newS
-  
-  if (newS < dayStart) { newS = dayStart; newE = newS + range }
-  if (newE > dayEnd) { newE = dayEnd; newS = newE - range }
-  
-  viewStart.value = newS
-  viewEnd.value = newE
-}
-
-const handleWheel = (e: WheelEvent) => {
-  const range = viewEnd.value - viewStart.value
-  
-  if (e.ctrlKey || e.metaKey) {
-    e.preventDefault()
-    const zoomFactor = e.deltaY > 0 ? 1.2 : 0.8
-    const mouseX = e.offsetX
-    const cw = timelineEl.value?.clientWidth || 800
-    const pivotPercent = mouseX / cw
-    const pivotTime = viewStart.value + range * pivotPercent
-    
-    let newStart = pivotTime - (pivotTime - viewStart.value) * zoomFactor
-    let newEnd = pivotTime + (viewEnd.value - pivotTime) * zoomFactor
-    
-    const minRange = 5 * 60 * 1000
-    const maxRange = 24 * 60 * 60 * 1000
-    const dayStart = new Date(props.selectedDate).setHours(0,0,0,0)
-    const dayEnd = dayStart + 24 * 60 * 60 * 1000
-    
-    if (newEnd - newStart < minRange) {
-      newStart = pivotTime - minRange * pivotPercent
-      newEnd = pivotTime + minRange * (1 - pivotPercent)
-    }
-    if (newEnd - newStart > maxRange) {
-      newStart = dayStart
-      newEnd = dayEnd
-    }
-    
-    viewStart.value = Math.max(dayStart, newStart)
-    viewEnd.value = Math.min(dayEnd, newEnd)
-    
-  } else if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-    e.preventDefault()
-    const shift = e.deltaX * (range / 1000)
-    applyViewUpdate(viewStart.value + shift, viewEnd.value + shift)
-  }
-}
-
-// Helper: extract clientX/clientY from mouse or touch event
-const getClientX = (e: MouseEvent | TouchEvent): number => {
-  return 'touches' in e ? e.touches[0].clientX : e.clientX
-}
-const getClientY = (e: MouseEvent | TouchEvent): number => {
-  return 'touches' in e ? e.touches[0].clientY : e.clientY
-}
-
-// Track start Y for direction detection on touch
-const pointerStartY = ref(0)
-const touchDirectionLocked = ref<'h' | 'v' | null>(null)
-const lastDragDeltaY = ref(0)
-
-// Main timeline drag-to-pan (rAF throttled, mouse + touch)
-const timelinePointerDown = (e: MouseEvent | TouchEvent) => {
-  const target = ('touches' in e ? document.elementFromPoint(getClientX(e), getClientY(e)) : e.target) as HTMLElement | null
-  if (target?.closest('.row-header')) return
-
-  isDraggingTimeline.value = true
-  timelineDragStartX.value = getClientX(e)
-  timelineDragViewStart.value = viewStart.value
-  timelineDragViewEnd.value = viewEnd.value
-  pointerStartY.value = getClientY(e)
-  touchDirectionLocked.value = null
-  window.addEventListener('mousemove', timelinePointerMove)
-  window.addEventListener('mouseup', timelinePointerUp)
-  window.addEventListener('touchmove', timelinePointerMove, { passive: false })
-  window.addEventListener('touchend', timelinePointerUp)
-}
-
-const timelinePointerMove = (e: MouseEvent | TouchEvent) => {
-  if (!isDraggingTimeline.value) return
-
-  // Detect direction on first significant move (works for both mouse and touch)
-  if (!touchDirectionLocked.value) {
-    const dx = Math.abs(getClientX(e) - timelineDragStartX.value)
-    const dy = Math.abs(getClientY(e) - pointerStartY.value)
-    if (dx + dy < 5) return // too small to determine
-    touchDirectionLocked.value = dx >= dy ? 'h' : 'v'
-  }
-
-  // Vertical gesture: scroll the rows container
-  if (touchDirectionLocked.value === 'v') {
-    const rowsEl = timelineEl.value?.querySelector('.timeline-rows') as HTMLElement | null
-    if (rowsEl) {
-      const deltaY = getClientY(e) - pointerStartY.value
-      rowsEl.scrollTop = rowsEl.scrollTop - (deltaY - (lastDragDeltaY.value || 0))
-      lastDragDeltaY.value = deltaY
-    }
-    if ('touches' in e) e.preventDefault()
-    return
-  }
-
-  if ('touches' in e) e.preventDefault()
-
-  const clientX = getClientX(e)
-  if (rafId) cancelAnimationFrame(rafId)
-  rafId = requestAnimationFrame(() => {
-    const deltaX = clientX - timelineDragStartX.value
-    const trackWidth = (timelineEl.value?.clientWidth || 800) - 120
-    const range = timelineDragViewEnd.value - timelineDragViewStart.value
-    const timeDelta = -(deltaX / trackWidth) * range
-    applyViewUpdate(timelineDragViewStart.value + timeDelta, timelineDragViewEnd.value + timeDelta)
-  })
-}
-
-const timelinePointerUp = () => {
-  isDraggingTimeline.value = false
-  touchDirectionLocked.value = null
-  lastDragDeltaY.value = 0
-  window.removeEventListener('mousemove', timelinePointerMove)
-  window.removeEventListener('mouseup', timelinePointerUp)
-  window.removeEventListener('touchmove', timelinePointerMove)
-  window.removeEventListener('touchend', timelinePointerUp)
-}
-
-// Minimap dragging (rAF throttled, mouse + touch)
-const minimapPointerDown = (e: MouseEvent | TouchEvent, type: 'left' | 'right' | 'center') => {
-  isDraggingMinimap.value = true
-  dragType.value = type
-  dragStartX.value = getClientX(e)
-  dragStartViewStart.value = viewStart.value
-  dragStartViewEnd.value = viewEnd.value
-  window.addEventListener('mousemove', minimapPointerMove)
-  window.addEventListener('mouseup', minimapPointerUp)
-  window.addEventListener('touchmove', minimapPointerMove, { passive: false })
-  window.addEventListener('touchend', minimapPointerUp)
-}
-
-const minimapPointerMove = (e: MouseEvent | TouchEvent) => {
-  if (!isDraggingMinimap.value) return
-  if ('touches' in e) e.preventDefault()
-  const clientX = getClientX(e)
-  if (rafId) cancelAnimationFrame(rafId)
-  rafId = requestAnimationFrame(() => {
-    const deltaX = clientX - dragStartX.value
-    const minimapWidth = timelineEl.value?.clientWidth || 800
-    const dayRange = 24 * 60 * 60 * 1000
-    const timeDelta = (deltaX / minimapWidth) * dayRange
-    
-    const dayStart = new Date(props.selectedDate).setHours(0,0,0,0)
-    const dayEnd = dayStart + dayRange
-    const minRange = 5 * 60 * 1000
-    
-    if (dragType.value === 'center') {
-      applyViewUpdate(dragStartViewStart.value + timeDelta, dragStartViewEnd.value + timeDelta)
-    } else if (dragType.value === 'left') {
-      let newS = dragStartViewStart.value + timeDelta
-      if (newS < dayStart) newS = dayStart
-      if (newS > viewEnd.value - minRange) newS = viewEnd.value - minRange
-      viewStart.value = newS
-    } else if (dragType.value === 'right') {
-      let newE = dragStartViewEnd.value + timeDelta
-      if (newE > dayEnd) newE = dayEnd
-      if (newE < viewStart.value + minRange) newE = viewStart.value + minRange
-      viewEnd.value = newE
-    }
-  })
-}
-
-const minimapPointerUp = () => {
-  isDraggingMinimap.value = false
-  dragType.value = null
-  window.removeEventListener('mousemove', minimapPointerMove)
-  window.removeEventListener('mouseup', minimapPointerUp)
-  window.removeEventListener('touchmove', minimapPointerMove)
-  window.removeEventListener('touchend', minimapPointerUp)
-}
-
-// Minimap calculations
-const dayStartMs = computed(() => {
-  return new Date(props.selectedDate).setHours(0,0,0,0)
-})
+const dayStartMs = computed(() => new Date(props.selectedDate).setHours(0, 0, 0, 0))
 
 const minimapRangeStyle = computed(() => {
   const day = 24 * 60 * 60 * 1000
   const l = ((viewStart.value - dayStartMs.value) / day) * 100
   const w = ((viewEnd.value - viewStart.value) / day) * 100
-  return {
-    left: `${Math.max(0, l)}%`,
-    width: `${Math.min(100 - l, w)}%`
-  }
+  return { left: `${Math.max(0, l)}%`, width: `${Math.min(100 - l, w)}%` }
 })
 
 const minimapActivities = computed(() => {
   const day = 24 * 60 * 60 * 1000
   const dayS = dayStartMs.value
-  
-  const intervals: {start: number, end: number}[] = []
-  
-  // Use pre-parsed data instead of creating new Date objects
-  const rawIntervals: {start: number, end: number}[] = []
+  const rawIntervals: { start: number; end: number }[] = []
   for (const segments of parsedUsageByApp.value.values()) {
-    for (const seg of segments) {
-      rawIntervals.push(seg)
-    }
+    for (const seg of segments) rawIntervals.push(seg)
   }
   rawIntervals.sort((a, b) => a.start - b.start)
-    
   if (rawIntervals.length === 0) return []
-  
+
+  const merged: { start: number; end: number }[] = []
   let current = { ...rawIntervals[0] }
   for (let i = 1; i < rawIntervals.length; i++) {
     const next = rawIntervals[i]
     if (next.start <= current.end + 60000) {
       current.end = Math.max(current.end, next.end)
     } else {
-      intervals.push(current)
+      merged.push(current)
       current = { ...next }
     }
   }
-  intervals.push(current)
-  
-  return intervals.map(iv => {
+  merged.push(current)
+
+  return merged.map(iv => {
     const startP = Math.max(0, ((iv.start - dayS) / day) * 100)
     const endP = Math.min(100, ((iv.end - dayS) / day) * 100)
-    return {
-      left: `${startP}%`,
-      width: `${Math.max(0.2, endP - startP)}%`
-    }
+    return { left: `${startP}%`, width: `${Math.max(0.2, endP - startP)}%` }
   })
 })
-
 </script>
 
 <template>
