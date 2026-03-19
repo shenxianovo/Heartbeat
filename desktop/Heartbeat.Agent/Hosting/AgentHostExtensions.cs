@@ -2,6 +2,7 @@ using Heartbeat.Agent.Configuration;
 using Heartbeat.Agent.Http;
 using Heartbeat.Agent.Services;
 using Heartbeat.Agent.Storage;
+using Heartbeat.Agent.Utils;
 using Heartbeat.Agent.Workers;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -14,8 +15,15 @@ namespace Heartbeat.Agent.Hosting
         /// </summary>
         public static IServiceCollection AddHeartbeatAgent(
             this IServiceCollection services,
-            ConfigManager? configManager = null)
+            ConfigManager? configManager = null,
+            SingleInstanceGuard? guard = null)
         {
+            // 单实例守卫（由调用方创建并传入，Agent 负责管理生命周期）
+            if (guard != null)
+            {
+                services.AddSingleton(guard);
+            }
+
             // ConfigManager（外部可注入已有实例，如 WPF 已创建）
             if (configManager != null)
             {

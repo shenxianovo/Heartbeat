@@ -1,5 +1,6 @@
 ﻿using Heartbeat.Agent.Configuration;
 using Heartbeat.Agent.Hosting;
+using Heartbeat.Agent.Utils;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 
@@ -16,6 +17,14 @@ Log.Logger = new LoggerConfiguration()
         outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
     .CreateLogger();
 
+using var guard = new SingleInstanceGuard();
+if (!guard.IsFirstInstance)
+{
+    Log.Warning("Heartbeat 已在运行中，当前实例退出");
+    await Log.CloseAndFlushAsync();
+    return;
+}
+
 try
 {
     var configManager = new ConfigManager();
@@ -28,7 +37,7 @@ try
 
     var builder = Host.CreateApplicationBuilder(args);
     builder.Services.AddSerilog();
-    builder.Services.AddHeartbeatAgent(configManager);
+    builder.Services.AddHeartbeatAgent(configManager, guard);
 
     var host = builder.Build();
     await host.RunAsync();
