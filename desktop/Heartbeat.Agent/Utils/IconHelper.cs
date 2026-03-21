@@ -3,6 +3,7 @@ using Serilog;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Xml.Linq;
 
 namespace Heartbeat.Agent.Utils
 {
@@ -30,6 +31,12 @@ namespace Heartbeat.Agent.Utils
 
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         private static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, System.Text.StringBuilder lpExeName, ref uint lpdwSize);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+        private static extern int GetPackageFullName(IntPtr hProcess, ref uint packageFullNameLength, System.Text.StringBuilder? packageFullName);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+        private static extern int GetPackagePathByFullName(string packageFullName, ref uint pathLength, System.Text.StringBuilder? path);
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
@@ -76,6 +83,8 @@ namespace Heartbeat.Agent.Utils
         private const IntPtr ICON_SMALL2 = 2;
         private const int GCL_HICON = -14;
         private const int GCL_HICONSM = -34;
+        private const int APPMODEL_ERROR_NO_PACKAGE = 15700;
+        private const int ERROR_INSUFFICIENT_BUFFER = 122;
 
         #endregion
 
@@ -87,6 +96,14 @@ namespace Heartbeat.Agent.Utils
             try
             {
                 byte[]? data;
+
+                // ── 策略 0: MSIX/UWP/WinUI3 打包应用 ──
+                data = ExtractIconFromAppPackage(processName);
+                if (data != null)
+                {
+                    Log.Debug("图标提取成功 [应用包]: {ProcessName}", processName);
+                    return data;
+                }
 
                 // ── 策略 1: 通过进程获取 exe 路径 ──
                 var exePath = GetExePathByProcessName(processName);
@@ -210,6 +227,205 @@ namespace Heartbeat.Agent.Utils
         #endregion
 
         #region 图标提取策略
+
+        /// <summary>
+        /// 尝试从 MSIX/UWP/WinUI3 应用包中提取图标
+        /// </summary>
+        private static byte[]? ExtractIconFromAppPackage(string processName)
+        {
+            try
+            {
+                var packageFullName = GetPackageFullNameByProcessName(processName);
+                if (packageFullName == null)
+                    return null;
+
+                Log.Debug("检测到打包应用: {ProcessName} -> {PackageName}", processName, packageFullName);
+
+                var packagePath = GetPackageInstallPath(packageFullName);
+                if (packagePath == null)
+                {
+                    Log.Debug("无法获取包安装路径: {PackageName}", packageFullName);
+                    return null;
+                }
+
+                var manifestPath = Path.Combine(packagePath, "AppxManifest.xml");
+                if (!File.Exists(manifestPath))
+                {
+                    Log.Debug("AppxManifest.xml 不存在: {ManifestPath}", manifestPath);
+                    return null;
+                }
+
+                var logoRelativePath = GetLogoPathFromManifest(manifestPath);
+                if (logoRelativePath == null)
+                {
+                    Log.Debug("无法从清单中提取图标路径");
+                    return null;
+                }
+
+                var logoFullPath = FindBestLogoFile(packagePath, logoRelativePath);
+                if (logoFullPath == null)
+                {
+                    Log.Debug("未找到匹配的图标文件: {LogoPath}", logoRelativePath);
+                    return null;
+                }
+
+                Log.Debug("读取包图标文件: {LogoPath}", logoFullPath);
+                return File.ReadAllBytes(logoFullPath);
+            }
+            catch (Exception ex)
+            {
+                Log.Debug("从应用包提取图标失败: {Error}", ex.Message);
+                return null;
+            }
+        }
+
+        private static string? GetPackageFullNameByProcessName(string processName)
+        {
+            try
+            {
+                var processes = Process.GetProcessesByName(processName);
+                foreach (var proc in processes)
+                {
+                    try
+                    {
+                        var hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, proc.Id);
+                        if (hProcess == IntPtr.Zero)
+                            continue;
+
+                        try
+                        {
+                            uint length = 0;
+                            int result = GetPackageFullName(hProcess, ref length, null);
+                            if (result == APPMODEL_ERROR_NO_PACKAGE)
+                                continue;
+
+                            if (result == ERROR_INSUFFICIENT_BUFFER && length > 0)
+                            {
+                                var sb = new System.Text.StringBuilder((int)length);
+                                result = GetPackageFullName(hProcess, ref length, sb);
+                                if (result == 0)
+                                    return sb.ToString();
+                            }
+                        }
+                        finally
+                        {
+                            CloseHandle(hProcess);
+                        }
+                    }
+                    catch { }
+                    finally
+                    {
+                        proc.Dispose();
+                    }
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        private static string? GetPackageInstallPath(string packageFullName)
+        {
+            try
+            {
+                uint length = 0;
+                int result = GetPackagePathByFullName(packageFullName, ref length, null);
+                if (result == ERROR_INSUFFICIENT_BUFFER && length > 0)
+                {
+                    var sb = new System.Text.StringBuilder((int)length);
+                    result = GetPackagePathByFullName(packageFullName, ref length, sb);
+                    if (result == 0)
+                        return sb.ToString();
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        private static string? GetLogoPathFromManifest(string manifestPath)
+        {
+            try
+            {
+                var doc = XDocument.Load(manifestPath);
+                var root = doc.Root;
+                if (root == null) return null;
+
+                XNamespace ns = root.GetDefaultNamespace();
+                XNamespace uapNs = "http://schemas.microsoft.com/appx/manifest/uap/windows10";
+
+                // 从 uap:VisualElements 获取 Square44x44Logo（应用图标）
+                var visualElements = root.Descendants(uapNs + "VisualElements").FirstOrDefault();
+
+                // 如果 uap 命名空间未匹配，尝试按本地名查找
+                visualElements ??= root.Descendants()
+                    .FirstOrDefault(e => e.Name.LocalName == "VisualElements");
+
+                if (visualElements != null)
+                {
+                    var logo = visualElements.Attribute("Square44x44Logo")?.Value
+                               ?? visualElements.Attribute("Square150x150Logo")?.Value;
+                    if (!string.IsNullOrEmpty(logo))
+                        return logo;
+                }
+
+                // 回退: Package/Properties/Logo
+                var logoElement = root.Element(ns + "Properties")?.Element(ns + "Logo");
+                return logoElement?.Value;
+            }
+            catch (Exception ex)
+            {
+                Log.Debug("解析 AppxManifest.xml 失败: {Error}", ex.Message);
+                return null;
+            }
+        }
+
+        private static string? FindBestLogoFile(string packagePath, string logoRelativePath)
+        {
+            var fullBasePath = Path.Combine(packagePath, logoRelativePath);
+            var dir = Path.GetDirectoryName(fullBasePath);
+            if (dir == null || !Directory.Exists(dir))
+                return File.Exists(fullBasePath) ? fullBasePath : null;
+
+            var baseName = Path.GetFileNameWithoutExtension(logoRelativePath);
+            var ext = Path.GetExtension(logoRelativePath);
+
+            // 优先查找 targetsize 变体（任务栏/ALT+TAB 使用的图标）
+            var targetSizeFiles = Directory.GetFiles(dir, $"{baseName}.targetsize-*{ext}")
+                .Where(f => !Path.GetFileName(f).Contains("_contrast-", StringComparison.OrdinalIgnoreCase))
+                .Select(f => new { Path = f, Size = ExtractNumericSuffix(Path.GetFileNameWithoutExtension(f), ".targetsize-") })
+                .Where(x => x.Size > 0)
+                .OrderByDescending(x => x.Size)
+                .ToList();
+
+            if (targetSizeFiles.Count > 0)
+                return targetSizeFiles[0].Path;
+
+            // 其次查找 scale 变体
+            var scaleFiles = Directory.GetFiles(dir, $"{baseName}.scale-*{ext}")
+                .Where(f => !Path.GetFileName(f).Contains("_contrast-", StringComparison.OrdinalIgnoreCase))
+                .Select(f => new { Path = f, Scale = ExtractNumericSuffix(Path.GetFileNameWithoutExtension(f), ".scale-") })
+                .Where(x => x.Scale > 0)
+                .OrderByDescending(x => x.Scale)
+                .ToList();
+
+            if (scaleFiles.Count > 0)
+                return scaleFiles[0].Path;
+
+            // 精确匹配
+            return File.Exists(fullBasePath) ? fullBasePath : null;
+        }
+
+        private static int ExtractNumericSuffix(string fileName, string prefix)
+        {
+            var idx = fileName.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) return 0;
+
+            var start = idx + prefix.Length;
+            var end = start;
+            while (end < fileName.Length && char.IsDigit(fileName[end]))
+                end++;
+
+            return int.TryParse(fileName.AsSpan(start, end - start), out var val) ? val : 0;
+        }
 
         private static byte[]? ExtractIconBySHGetFileInfo(string filePath)
         {
