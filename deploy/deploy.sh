@@ -38,6 +38,7 @@ start_backend() {
     echo "Starting backend..."
     nohup dotnet "$PUBLISH_DIR/Heartbeat.Server.dll" \
         --environment $DOTNET_ENV \
+        --urls http://0.0.0.0:5023 \
         > "$LOG_FILE" 2>&1 &
     echo $! > "$PID_FILE"
     echo "Started (PID $!)"
