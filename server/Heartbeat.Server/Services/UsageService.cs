@@ -1,4 +1,5 @@
-﻿using Heartbeat.Core.DTOs;
+﻿using Heartbeat.Core;
+using Heartbeat.Core.DTOs;
 using Heartbeat.Core.DTOs.Apps;
 using Heartbeat.Server.Data;
 using Heartbeat.Server.Entities;
@@ -9,11 +10,6 @@ namespace Heartbeat.Server.Services
     public class UsageService(AppDbContext db)
     {
         private readonly AppDbContext _db = db;
-
-        /// <summary>
-        /// 合并容差：同设备同应用首尾相连在此范围内的记录合并（处理客户端上传截断）
-        /// </summary>
-        private static readonly TimeSpan MergeTolerance = TimeSpan.FromSeconds(1);
 
         /// <summary>
         /// 时间校验容差：客户端时间与服务端时间偏差不得超过此值
@@ -71,7 +67,7 @@ namespace Heartbeat.Server.Services
 
             if (lastRecord != null
                 && first.StartTime >= lastRecord.EndTime
-                && first.StartTime <= lastRecord.EndTime + MergeTolerance)
+                && first.StartTime <= lastRecord.EndTime + UsageMerger.MergeTolerance)
             {
                 // 批次首条与数据库最新记录同应用且首尾相连 → 上传截断，合并
                 if (first.EndTime > lastRecord.EndTime)

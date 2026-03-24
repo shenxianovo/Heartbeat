@@ -15,9 +15,6 @@ namespace Heartbeat.Agent.Workers
         {
             Log.Information("使用记录上传服务启动");
 
-            // 启动时尝试上传缓存
-            await usageService.UploadCachedAsync();
-
             while (!stoppingToken.IsCancellationRequested)
             {
                 try
@@ -27,6 +24,10 @@ namespace Heartbeat.Agent.Workers
                     Log.Debug("使用记录上传间隔: {Interval}", interval);
 
                     await Task.Delay(interval, stoppingToken);
+
+                    // 先尝试上传缓存的离线记录
+                    await usageService.UploadCachedAsync();
+
                     await UploadUsagesAsync();
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

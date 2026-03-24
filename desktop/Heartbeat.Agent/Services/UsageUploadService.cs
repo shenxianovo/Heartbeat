@@ -1,5 +1,6 @@
 using Heartbeat.Agent.Configuration;
 using Heartbeat.Agent.Storage;
+using Heartbeat.Core;
 using Heartbeat.Core.DTOs;
 using Serilog;
 using System.Net.Http.Json;
@@ -25,6 +26,7 @@ namespace Heartbeat.Agent.Services
         {
             var config = configManager.Current;
             var uploadUrl = $"{config.ApiBaseUrl}/usage";
+            usages = UsageMerger.Merge(usages);
             var dto = MapToDto(usages);
 
             Log.Information("正在上传 {Count} 条使用记录...", usages.Count);
@@ -57,7 +59,8 @@ namespace Heartbeat.Agent.Services
             var config = configManager.Current;
             var uploadUrl = $"{config.ApiBaseUrl}/usage";
 
-            Log.Information("发现 {Count} 条缓存记录，尝试上传...", cached.Count);
+            cached = UsageMerger.Merge(cached);
+            Log.Information("发现 {Count} 条缓存记录（合并后），尝试上传...", cached.Count);
             var dto = MapToDto(cached);
             try
             {
