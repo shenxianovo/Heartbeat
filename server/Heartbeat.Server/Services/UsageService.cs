@@ -66,15 +66,15 @@ namespace Heartbeat.Server.Services
                 .FirstOrDefaultAsync();
 
             if (lastRecord != null
-                && first.StartTime >= lastRecord.EndTime
-                && first.StartTime <= lastRecord.EndTime + UsageMerger.MergeTolerance)
+                && first.StartTime <= lastRecord.EndTime + UsageMerger.MergeTolerance
+                && first.EndTime >= lastRecord.StartTime)
             {
-                // 批次首条与数据库最新记录同应用且首尾相连 → 上传截断，合并
+                // 批次首条与数据库最新记录同应用且重叠或首尾相连 → 合并
+                if (first.StartTime < lastRecord.StartTime)
+                    lastRecord.StartTime = first.StartTime;
                 if (first.EndTime > lastRecord.EndTime)
-                {
                     lastRecord.EndTime = first.EndTime;
-                    lastRecord.DurationSeconds = (int)(lastRecord.EndTime - lastRecord.StartTime).TotalSeconds;
-                }
+                lastRecord.DurationSeconds = (int)(lastRecord.EndTime - lastRecord.StartTime).TotalSeconds;
                 firstMerged = true;
             }
 
