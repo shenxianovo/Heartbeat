@@ -1,24 +1,46 @@
 using Heartbeat.Agent.Configuration;
+using Serilog;
+using System.Net.Http.Headers;
 
 namespace Heartbeat.Agent.Http
 {
     /// <summary>
-    /// 自动为每个请求注入 ApiKey 认证头。
-    /// 每次请求动态读取 ConfigManager，支持热重载。
+    /// 自动为每个请求注入 Bearer JWT 和 X-Device-Name 头。
+    /// 通过 TokenManager 获取/缓存 access token。
     /// </summary>
-    public class ApiKeyDelegatingHandler(ConfigManager configManager) : DelegatingHandler
+    public class BearerTokenHandler(ConfigManager configManager, TokenManager tokenManager) : DelegatingHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(
+        protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            var apiKey = configManager.Current.ApiKey;
-            if (!string.IsNullOrEmpty(apiKey))
+            // Inject Bearer token
+            var token = await tokenManager.GetAccessTokenAsync(cancellationToken);
+            if (!string.IsNullOrEmpty(token))
             {
-                request.Headers.Authorization =
-                    new System.Net.Http.Headers.AuthenticationHeaderValue("ApiKey", apiKey);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            }
+            else
+            {
+                Log.Warning("No access token available; request will be sent without authorization.");
             }
 
-            return base.SendAsync(request, cancellationToken);
+            // Inject X-Device-Name header (URL-encoded to support non-ASCII chars)
+            var deviceName = configManager.Current.DeviceName;
+            if (!string.IsNullOrEmpty(deviceName))
+            {
+                request.Headers.TryAddWithoutValidation("X-Device-Name", Uri.EscapeDataString(deviceName));
+            }
+
+            var response = await base.SendAsync(request, cancellationToken);
+
+            // On 401, invalidate cached token so next request will re-exchange
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                Log.Warning("Received 401 Unauthorized; invalidating cached token.");
+                tokenManager.InvalidateToken();
+            }
+
+            return response;
         }
     }
 }

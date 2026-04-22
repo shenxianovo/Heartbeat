@@ -34,10 +34,16 @@ namespace Heartbeat.Agent.Hosting
                 services.AddSingleton<ConfigManager>();
             }
 
-            // HttpClient（命名客户端 + ApiKey 处理器）
-            services.AddTransient<ApiKeyDelegatingHandler>();
+            // TokenManager（缓存 AuthService JWT）
+            services.AddSingleton<TokenManager>();
+
+            // HttpClient for AuthService token exchange (plain, no auth handler)
+            services.AddHttpClient("AuthService");
+
+            // HttpClient for Heartbeat API（命名客户端 + Bearer 处理器）
+            services.AddTransient<BearerTokenHandler>();
             services.AddHttpClient("HeartbeatApi")
-                .AddHttpMessageHandler<ApiKeyDelegatingHandler>();
+                .AddHttpMessageHandler<BearerTokenHandler>();
 
             // 本地缓存
             services.AddSingleton(sp =>

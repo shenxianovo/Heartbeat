@@ -23,6 +23,12 @@ namespace Heartbeat.WPF.ViewModels
         private string _apiKey = string.Empty;
 
         [ObservableProperty]
+        private string _authServiceBaseUrl = string.Empty;
+
+        [ObservableProperty]
+        private string _deviceName = string.Empty;
+
+        [ObservableProperty]
         private string _uploadIntervalMinutes = "1";
 
         [ObservableProperty]
@@ -78,6 +84,8 @@ namespace Heartbeat.WPF.ViewModels
             var config = _configManager.Current;
             ApiBaseUrl = config.ApiBaseUrl;
             ApiKey = config.ApiKey;
+            AuthServiceBaseUrl = config.AuthServiceBaseUrl;
+            DeviceName = config.DeviceName;
             UploadIntervalMinutes = config.UploadIntervalMinutes.ToString();
             StatusUploadIntervalSeconds = config.StatusUploadIntervalSeconds.ToString();
         }
@@ -126,6 +134,8 @@ namespace Heartbeat.WPF.ViewModels
             {
                 c.ApiBaseUrl = ApiBaseUrl.Trim();
                 c.ApiKey = ApiKey.Trim();
+                c.AuthServiceBaseUrl = AuthServiceBaseUrl.Trim();
+                c.DeviceName = DeviceName.Trim();
                 c.UploadIntervalMinutes = uploadInterval;
                 c.StatusUploadIntervalSeconds = statusInterval;
             });

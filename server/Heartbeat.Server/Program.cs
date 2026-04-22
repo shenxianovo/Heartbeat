@@ -1,8 +1,8 @@
-﻿using Heartbeat.Server.Authentication;
-using Heartbeat.Server.Data;
+﻿using Heartbeat.Server.Data;
 using Heartbeat.Server.Services;
-using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,10 +15,39 @@ builder.Services.AddDbContext<AppDbContext>(o =>
 builder.Services.AddScoped<UsageService>();
 builder.Services.AddScoped<ReportService>();
 
-builder.Services.AddAuthentication(ApiKeyDefaults.Scheme)
-    .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(ApiKeyDefaults.Scheme, null);
+// JWT Bearer authentication — validate tokens issued by AuthService
+var authSection = builder.Configuration.GetSection("AuthService");
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
+
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = authSection["Issuer"],
+            ValidAudience = authSection["Audience"],
+        };
+    });
 
 var app = builder.Build();
+
+// Load JWKS signing keys from AuthService at startup
+var jwksUrl = authSection["JwksUrl"];
+if (!string.IsNullOrEmpty(jwksUrl))
+{
+    using var http = new HttpClient();
+    var jwksJson = await http.GetStringAsync(jwksUrl);
+    var jwks = new JsonWebKeySet(jwksJson);
+
+    var jwtOptions = app.Services
+        .GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<JwtBearerOptions>>()
+        .Get(JwtBearerDefaults.AuthenticationScheme);
+    jwtOptions.TokenValidationParameters.IssuerSigningKeys = jwks.GetSigningKeys();
+}
 
 if (app.Environment.IsDevelopment())
 {

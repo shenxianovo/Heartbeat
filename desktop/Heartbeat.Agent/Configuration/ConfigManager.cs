@@ -154,6 +154,8 @@ namespace Heartbeat.Agent.Configuration
             {
                 ApiBaseUrl = source.ApiBaseUrl,
                 ApiKey = source.ApiKey,
+                AuthServiceBaseUrl = source.AuthServiceBaseUrl,
+                DeviceName = source.DeviceName,
                 UploadIntervalMinutes = source.UploadIntervalMinutes,
                 StatusUploadIntervalSeconds = source.StatusUploadIntervalSeconds,
             };

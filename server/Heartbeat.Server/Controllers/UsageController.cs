@@ -1,15 +1,16 @@
 ﻿using Heartbeat.Core.DTOs;
 using Heartbeat.Core.DTOs.Apps;
+using Heartbeat.Server.Data;
+using Heartbeat.Server.Extensions;
 using Heartbeat.Server.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
 
 namespace Heartbeat.Server.Controllers
 {
     [ApiController]
     [Route("api/v1/usage")]
-    public class UsageController(UsageService service) : ControllerBase
+    public class UsageController(UsageService service, AppDbContext db) : ControllerBase
     {
         private readonly UsageService _service = service;
 
@@ -20,8 +21,11 @@ namespace Heartbeat.Server.Controllers
             if (request.Usages == null || request.Usages.Count == 0)
                 return BadRequest("Usages cannot be empty.");
 
-            var deviceId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-            await _service.SaveUsageAsync(deviceId, request);
+            var device = await this.ResolveDeviceAsync(db);
+            if (device == null)
+                return BadRequest($"Missing {DeviceResolverExtensions.DeviceNameHeader} header.");
+
+            await _service.SaveUsageAsync(device.Id, request);
             return Ok();
         }
 

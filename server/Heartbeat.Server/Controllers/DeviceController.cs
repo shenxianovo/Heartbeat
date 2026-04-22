@@ -1,9 +1,9 @@
 ﻿using Heartbeat.Core.DTOs.Devices;
 using Heartbeat.Server.Data;
+using Heartbeat.Server.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
 
 namespace Heartbeat.Server.Controllers
 {
@@ -47,10 +47,9 @@ namespace Heartbeat.Server.Controllers
         [HttpPost("heartbeat")]
         public async Task<IActionResult> Upload([FromBody] DeviceStatusRequest status)
         {
-            var deviceId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-            var device = await _db.Devices.FindAsync(deviceId);
-
-            if (device == null) return NotFound();
+            var device = await this.ResolveDeviceAsync(_db);
+            if (device == null)
+                return BadRequest($"Missing {DeviceResolverExtensions.DeviceNameHeader} header.");
 
             device.CurrentApp = status.CurrentApp;
             device.LastSeen = DateTimeOffset.UtcNow;

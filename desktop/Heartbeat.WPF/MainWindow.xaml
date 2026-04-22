@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:Heartbeat.WPF.ViewModels"
         mc:Ignorable="d"
-        Title="Heartbeat" Height="560" Width="480"
+        Title="Heartbeat" Height="640" Width="480"
         Icon="heartbeat.ico"
         WindowStartupLocation="CenterScreen"
         ResizeMode="CanMinimize">
@@ -50,26 +50,34 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="API Base URL" VerticalAlignment="Center" Margin="0,0,12,8"/>
                 <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding ApiBaseUrl, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"/>
 
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="API Key" VerticalAlignment="Center" Margin="0,0,12,8"/>
-                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ApiKey, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"/>
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="AuthService URL" VerticalAlignment="Center" Margin="0,0,12,8"/>
+                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding AuthServiceBaseUrl, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"/>
 
-                <TextBlock Grid.Row="2" Grid.Column="0" Text="上传间隔 (分钟)" VerticalAlignment="Center" Margin="0,0,12,8"/>
-                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding UploadIntervalMinutes, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"/>
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="API Key" VerticalAlignment="Center" Margin="0,0,12,8"/>
+                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding ApiKey, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"/>
 
-                <TextBlock Grid.Row="3" Grid.Column="0" Text="状态间隔 (秒)" VerticalAlignment="Center" Margin="0,0,12,8"/>
-                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding StatusUploadIntervalSeconds, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"/>
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="设备名称" VerticalAlignment="Center" Margin="0,0,12,8"/>
+                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding DeviceName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"/>
 
-                <StackPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,4,0,8">
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="上传间隔 (分钟)" VerticalAlignment="Center" Margin="0,0,12,8"/>
+                <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding UploadIntervalMinutes, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"/>
+
+                <TextBlock Grid.Row="5" Grid.Column="0" Text="状态间隔 (秒)" VerticalAlignment="Center" Margin="0,0,12,8"/>
+                <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding StatusUploadIntervalSeconds, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"/>
+
+                <StackPanel Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,4,0,8">
                     <CheckBox Content="开机自启动" VerticalAlignment="Center"
                               IsChecked="{Binding AutoStartEnabled}"/>
                 </StackPanel>
 
-                <Button Grid.Row="5" Grid.Column="1" Content="保存配置" 
+                <Button Grid.Row="7" Grid.Column="1" Content="保存配置" 
                         HorizontalAlignment="Right" Padding="16,6"
                         Command="{Binding SaveConfigCommand}"/>
             </Grid>
