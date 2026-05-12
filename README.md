@@ -1,7 +1,7 @@
 # Heartbeat
 
 Personal Windows PC app usage monitor.
-https://shenxianovo.com/heartbeat
+https://shenxianovo.com/heartbeat/
 
 ## Architecture
 
