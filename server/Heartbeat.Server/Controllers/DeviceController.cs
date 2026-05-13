@@ -1,44 +1,27 @@
 ﻿using Heartbeat.Core.DTOs.Devices;
-using Heartbeat.Server.Data;
-using Heartbeat.Server.Extensions;
+using Heartbeat.Server.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace Heartbeat.Server.Controllers
 {
     [ApiController]
     [Route("api/v1/devices")]
-    public class DeviceController(AppDbContext db) : ControllerBase
+    public class DeviceController(DeviceService deviceService) : ControllerBase
     {
-        private readonly AppDbContext _db = db;
+        private readonly DeviceService _deviceService = deviceService;
 
         [HttpGet]
         public async Task<List<DeviceInfoResponse>> GetDevices()
         {
-            return await _db.Devices
-                .Select(x => new DeviceInfoResponse
-                {
-                    Id = x.Id,
-                    Name = x.DeviceName
-                })
-                .ToListAsync();
+            return await _deviceService.GetAllAsync();
         }
 
         [HttpGet("{deviceId:long}")]
         [ProducesResponseType(typeof(DeviceStatusResponse), 200)]
         public async Task<IActionResult> GetDevice([FromRoute] long deviceId)
         {
-            var device = await _db.Devices
-                .Where(d => d.Id == deviceId)
-                .Select(d => new DeviceStatusResponse
-                {
-                    Id = d.Id,
-                    CurrentApp = d.CurrentApp,
-                    LastSeen = d.LastSeen
-                })
-                .FirstOrDefaultAsync();
-
+            var device = await _deviceService.GetStatusAsync(deviceId);
             if (device == null) return NotFound();
             return Ok(device);
         }
@@ -47,14 +30,12 @@ namespace Heartbeat.Server.Controllers
         [HttpPost("heartbeat")]
         public async Task<IActionResult> Upload([FromBody] DeviceStatusRequest status)
         {
-            var device = await this.ResolveDeviceAsync(_db);
+            var rawHeader = Request.Headers[DeviceService.DeviceNameHeader].FirstOrDefault();
+            var device = await _deviceService.ResolveByNameAsync(rawHeader);
             if (device == null)
-                return BadRequest($"Missing {DeviceResolverExtensions.DeviceNameHeader} header.");
+                return BadRequest($"Missing {DeviceService.DeviceNameHeader} header.");
 
-            device.CurrentApp = status.CurrentApp;
-            device.LastSeen = DateTimeOffset.UtcNow;
-
-            await _db.SaveChangesAsync();
+            await _deviceService.UpdateStatusAsync(device, status.CurrentApp);
             return NoContent();
         }
     }

@@ -1,7 +1,5 @@
 ﻿using Heartbeat.Core.DTOs;
 using Heartbeat.Core.DTOs.Apps;
-using Heartbeat.Server.Data;
-using Heartbeat.Server.Extensions;
 using Heartbeat.Server.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,9 +8,10 @@ namespace Heartbeat.Server.Controllers
 {
     [ApiController]
     [Route("api/v1/usage")]
-    public class UsageController(UsageService service, AppDbContext db) : ControllerBase
+    public class UsageController(UsageService usageService, DeviceService deviceService) : ControllerBase
     {
-        private readonly UsageService _service = service;
+        private readonly UsageService _usageService = usageService;
+        private readonly DeviceService _deviceService = deviceService;
 
         [Authorize]
         [HttpPost]
@@ -21,11 +20,12 @@ namespace Heartbeat.Server.Controllers
             if (request.Usages == null || request.Usages.Count == 0)
                 return BadRequest("Usages cannot be empty.");
 
-            var device = await this.ResolveDeviceAsync(db);
+            var rawHeader = Request.Headers[DeviceService.DeviceNameHeader].FirstOrDefault();
+            var device = await _deviceService.ResolveByNameAsync(rawHeader);
             if (device == null)
-                return BadRequest($"Missing {DeviceResolverExtensions.DeviceNameHeader} header.");
+                return BadRequest($"Missing {DeviceService.DeviceNameHeader} header.");
 
-            await _service.SaveUsageAsync(device.Id, request);
+            await _usageService.SaveUsageAsync(device.Id, request);
             return Ok();
         }
 
@@ -36,7 +36,7 @@ namespace Heartbeat.Server.Controllers
             [FromQuery] DateTimeOffset? start,
             [FromQuery] DateTimeOffset? end)
         {
-            var result = await _service.GetUsageAsync(deviceId, start, end);
+            var result = await _usageService.GetUsageAsync(deviceId, start, end);
             return Ok(result);
         }
     }

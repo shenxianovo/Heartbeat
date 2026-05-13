@@ -14,6 +14,7 @@ builder.Services.AddDbContext<AppDbContext>(o =>
 
 builder.Services.AddScoped<UsageService>();
 builder.Services.AddScoped<ReportService>();
+builder.Services.AddScoped<DeviceService>();
 
 // JWT Bearer authentication - validate tokens issued by AuthService
 // Keys are auto-discovered via {Authority}/.well-known/openid-configuration
