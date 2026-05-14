@@ -4,13 +4,13 @@
 
 - **时间存储**：所有时间字段在数据库中以 UTC+0 存储。"今天"/"本周"的边界由前端根据用户浏览器时区确定，通过 DateTimeOffset 参数传给服务端。
 - **认证架构**：依赖外部自建 Auth 平台（支持邮箱/Google/GitHub 登录）。Collection（Agent）使用 Auth 平台签发的 ApiKey 上传数据；Dashboard（前端）计划通过 Auth 平台登录获取 JWT 访问报表 API（尚未实现）。
-- **数据隔离**：多用户模式下，User 拥有多个 Device，AppUsage 通过 Device 间接关联到 User，用户只能看到自己 Device 的数据。
+- **数据隔离**：多用户模式下，User 拥有多个 Device，AppUsage 通过 Device 间接关联到 User，用户只能看到自己 Device 的数据。所有业务端点需 JWT 认证，Service 层显式按 OwnerId 过滤。Agent 通过 `X-Hardware-Id` header 标识设备，服务端用 (OwnerId, HardwareId) 定位设备，首次见到新组合时自动创建。
 
 ## Glossary
 
 | Term | Definition |
 |------|-----------|
-| Device | 一台唯一的物理机器。运行 Agent 采集数据。属于某个 User（通过 Auth 平台的 subject ID 关联）。 |
+| Device | 一台唯一的物理机器。由 (OwnerId, HardwareId) 联合唯一标识。HardwareId 取自 Windows MachineGuid（HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid）。DeviceName 为纯显示字段（默认取 hostname，用户可改）。属于某个 User（OwnerId = JWT sub claim，string 类型）。 |
 | App | 一个应用程序，由进程可执行文件名（不含路径）唯一标识。同一 exe 无论开几个窗口都算同一个 App。 |
 | AppUsage | 一段某个 App 处于前台的时间记录（StartTime → EndTime）。系统忠实记录所有前台窗口，包括 explorer.exe（桌面）和 LockApp.exe（锁屏），不做活跃/非活跃过滤。 |
 | AppIcon | App 对应的图标二进制数据，由 Agent 上传，供 Dashboard 展示。 |
