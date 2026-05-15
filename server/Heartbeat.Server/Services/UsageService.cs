@@ -113,6 +113,7 @@ namespace Heartbeat.Server.Services
 
             return await query
                 .OrderByDescending(x => x.StartTime)
+                .Take(10000)
                 .Select(x => new AppUsageResponse
                 {
                     Id = x.Id,
