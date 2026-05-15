@@ -37,6 +37,8 @@ namespace Heartbeat.Server.Services
                 .OrderBy(u => u.StartTime)
                 .ToList();
 
+            if (validUsages.Count == 0) return;
+
             // 获取或创建 App 记录
             var appNames = validUsages.Select(u => u.AppName).Distinct().ToList();
             var existingApps = await _db.Apps
@@ -53,8 +55,6 @@ namespace Heartbeat.Server.Services
                 }
             }
             await _db.SaveChangesAsync(); // 保存以获取新 App 的 Id
-
-            if (validUsages.Count == 0) return;
 
             var first = validUsages[0];
             var firstAppId = existingApps[first.AppName].Id;
