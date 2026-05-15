@@ -1,4 +1,4 @@
-using Heartbeat.Core.DTOs;
+using Heartbeat.Core.DTOs.Usage;
 using System.Text.Json;
 
 namespace Heartbeat.Agent.Storage

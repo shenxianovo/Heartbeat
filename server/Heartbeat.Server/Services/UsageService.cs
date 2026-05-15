@@ -1,6 +1,7 @@
 ﻿using Heartbeat.Core;
 using Heartbeat.Core.DTOs;
 using Heartbeat.Core.DTOs.Apps;
+using Heartbeat.Core.DTOs.Usage;
 using Heartbeat.Server.Data;
 using Heartbeat.Server.Entities;
 using Microsoft.EntityFrameworkCore;

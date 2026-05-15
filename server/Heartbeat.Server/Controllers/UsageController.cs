@@ -1,5 +1,5 @@
-﻿using Heartbeat.Core.DTOs;
-using Heartbeat.Core.DTOs.Apps;
+﻿using Heartbeat.Core.DTOs.Apps;
+using Heartbeat.Core.DTOs.Usage;
 using Heartbeat.Server.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;

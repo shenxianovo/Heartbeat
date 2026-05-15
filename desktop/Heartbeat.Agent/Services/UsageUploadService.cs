@@ -1,7 +1,7 @@
 using Heartbeat.Agent.Configuration;
 using Heartbeat.Agent.Storage;
 using Heartbeat.Core;
-using Heartbeat.Core.DTOs;
+using Heartbeat.Core.DTOs.Usage;
 using Serilog;
 using System.Net.Http.Json;
 
