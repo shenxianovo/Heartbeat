@@ -57,25 +57,6 @@ namespace Heartbeat.Server.Services
             return device;
         }
 
-        [Obsolete("Use ResolveByHardwareIdAsync instead")]
-        public async Task<Device?> ResolveByNameAsync(string? rawHeader, bool autoCreate = true)
-        {
-            if (string.IsNullOrWhiteSpace(rawHeader))
-                return null;
-
-            var deviceName = Uri.UnescapeDataString(rawHeader);
-
-            var device = await _db.Devices.FirstOrDefaultAsync(d => d.DeviceName == deviceName);
-
-            if (device == null && autoCreate)
-            {
-                device = new Device { DeviceName = deviceName };
-                _db.Devices.Add(device);
-                await _db.SaveChangesAsync();
-            }
-
-            return device;
-        }
 
         public async Task UpdateStatusAsync(Device device, string currentApp)
         {
