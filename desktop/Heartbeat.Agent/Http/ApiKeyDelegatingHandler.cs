@@ -1,11 +1,12 @@
 using Heartbeat.Agent.Configuration;
+using Heartbeat.Agent.Utils;
 using Serilog;
 using System.Net.Http.Headers;
 
 namespace Heartbeat.Agent.Http
 {
     /// <summary>
-    /// 自动为每个请求注入 Bearer JWT 和 X-Device-Name 头。
+    /// 自动为每个请求注入 Bearer JWT、X-Hardware-Id 和 X-Device-Name 头。
     /// 通过 TokenManager 获取/缓存 access token。
     /// </summary>
     public class BearerTokenHandler(ConfigManager configManager, TokenManager tokenManager) : DelegatingHandler
@@ -23,6 +24,9 @@ namespace Heartbeat.Agent.Http
             {
                 Log.Warning("No access token available; request will be sent without authorization.");
             }
+
+            // Inject X-Hardware-Id header
+            request.Headers.TryAddWithoutValidation("X-Hardware-Id", MachineIdentity.MachineGuid);
 
             // Inject X-Device-Name header (URL-encoded to support non-ASCII chars)
             var deviceName = configManager.Current.DeviceName;
