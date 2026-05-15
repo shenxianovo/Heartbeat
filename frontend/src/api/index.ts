@@ -1,11 +1,33 @@
 import { Client, DailyReportResponse, WeeklyReportResponse } from './client'
 import type { AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse } from './client'
+import { authStore } from '../stores/auth'
 
 // ===== Base URL =====
 const BASE_URL = import.meta.env.DEV ? '' : '/heartbeat'
 const API_BASE = `${BASE_URL}/api/v1`
 
-const client = new Client(BASE_URL)
+// ===== Auth-aware fetch wrapper =====
+const authHttp = {
+  async fetch(url: RequestInfo, init?: RequestInit): Promise<Response> {
+    const token = authStore.token.value
+    if (token) {
+      const headers = new Headers(init?.headers)
+      headers.set('Authorization', `Bearer ${token}`)
+      init = { ...init, headers }
+    }
+
+    const response = await fetch(url, init)
+
+    if (response.status === 401) {
+      authStore.clearAuth()
+      authStore.redirectToLogin()
+    }
+
+    return response
+  },
+}
+
+const client = new Client(BASE_URL, authHttp)
 
 // Re-export generated types
 export type { AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, DailyReportResponse, WeeklyReportResponse }
@@ -87,7 +109,7 @@ export async function fetchDailyReport(params: {
     const searchParams = new URLSearchParams()
     if (params.deviceId !== undefined) searchParams.set('deviceId', String(params.deviceId))
     if (params.date) searchParams.set('date', toLocalDateTimeOffsetString(params.date))
-    const res = await fetch(`${API_BASE}/reports/daily?${searchParams}`)
+    const res = await authHttp.fetch(`${API_BASE}/reports/daily?${searchParams}`)
     if (!res.ok) return null
     return DailyReportResponse.fromJS(await res.json())
   } catch {
@@ -103,7 +125,7 @@ export async function fetchWeeklyReport(params: {
     const searchParams = new URLSearchParams()
     if (params.deviceId !== undefined) searchParams.set('deviceId', String(params.deviceId))
     if (params.date) searchParams.set('date', toLocalDateTimeOffsetString(params.date))
-    const res = await fetch(`${API_BASE}/reports/weekly?${searchParams}`)
+    const res = await authHttp.fetch(`${API_BASE}/reports/weekly?${searchParams}`)
     if (!res.ok) return null
     return WeeklyReportResponse.fromJS(await res.json())
   } catch {

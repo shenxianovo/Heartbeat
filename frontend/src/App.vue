@@ -1,10 +1,25 @@
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { authStore } from './stores/auth'
 import { useHeartbeat } from './composables/useHeartbeat'
 import ActivityTimeline from './components/ActivityTimeline.vue'
 import StatusCards from './components/StatusCards.vue'
 import CurrentAppPanel from './components/CurrentAppPanel.vue'
 import TodayRanking from './components/TodayRanking.vue'
 import WeeklyChart from './components/WeeklyChart.vue'
+
+const ready = ref(false)
+
+onMounted(() => {
+  authStore.handleCallback()
+
+  if (!authStore.isAuthenticated) {
+    authStore.redirectToLogin()
+    return
+  }
+
+  ready.value = true
+})
 
 const {
   devices,
@@ -30,7 +45,7 @@ const {
 </script>
 
 <template>
-  <div class="dashboard">
+  <div v-if="ready" class="dashboard">
     <header class="header">
       <div class="header-left">
         <div class="logo">
