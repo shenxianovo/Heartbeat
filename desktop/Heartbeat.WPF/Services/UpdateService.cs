@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Serilog;
 using Velopack;
 using Velopack.Sources;
@@ -23,7 +24,12 @@ public sealed class UpdateService : IDisposable
 
     public UpdateService()
     {
-        _updateManager = new UpdateManager(new GithubSource(RepoUrl, null, false));
+        var channel = RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+            ? "win-arm64"
+            : "win-x64";
+        _updateManager = new UpdateManager(
+            new GithubSource(RepoUrl, null, false),
+            new UpdateOptions { ExplicitChannel = channel });
     }
 
     public void Start()

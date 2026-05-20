@@ -53,10 +53,27 @@ jobs:
             --packDir publish `
             --mainExe Heartbeat.WPF.exe `
             --runtime ${{ matrix.rid }} `
+            --channel ${{ matrix.rid }} `
             --outputDir releases
 
-      - name: Upload release assets
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: releases-${{ matrix.arch }}
+          path: releases/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-releases
+          merge-multiple: true
+
+      - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: releases/*
+          files: all-releases/*
           tag_name: ${{ github.ref_name }}
