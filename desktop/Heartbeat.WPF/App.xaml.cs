@@ -35,6 +35,22 @@ namespace Heartbeat.WPF
         {
             base.OnStartup(e);
 
+            DispatcherUnhandledException += (_, args) =>
+            {
+                Log.Error(args.Exception, "未处理的 UI 异常");
+                args.Handled = true;
+            };
+            AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+            {
+                if (args.ExceptionObject is Exception ex)
+                    Log.Fatal(ex, "未处理的域异常");
+            };
+            TaskScheduler.UnobservedTaskException += (_, args) =>
+            {
+                Log.Error(args.Exception, "未观察的 Task 异常");
+                args.SetObserved();
+            };
+
             // 初始化配置管理器
             ConfigManager = new ConfigManager();
 
