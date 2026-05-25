@@ -13,7 +13,7 @@ namespace Heartbeat.Agent.Http
     public class TokenManager : IAccessTokenProvider
     {
         private readonly ConfigManager _configManager;
-        private readonly HttpClient _httpClient;
+        private readonly AuthServiceClient _authClient;
         private readonly SemaphoreSlim _semaphore = new(1, 1);
 
         private string? _cachedToken;
@@ -22,10 +22,10 @@ namespace Heartbeat.Agent.Http
         // Refresh 60 seconds before actual expiry to avoid edge-case failures
         private static readonly TimeSpan RefreshMargin = TimeSpan.FromSeconds(60);
 
-        public TokenManager(ConfigManager configManager, IHttpClientFactory httpClientFactory)
+        public TokenManager(ConfigManager configManager, AuthServiceClient authClient)
         {
             _configManager = configManager;
-            _httpClient = httpClientFactory.CreateClient("AuthService");
+            _authClient = authClient;
 
             // Invalidate cached token when config changes (e.g. user changes API key)
             _configManager.ConfigChanged += _ =>
@@ -81,10 +81,8 @@ namespace Heartbeat.Agent.Http
 
             try
             {
-                var url = config.AuthServiceBaseUrl.TrimEnd('/') + "/api/v1/apikeys/exchange";
                 var payload = new { apiKey = config.ApiKey };
-
-                var response = await _httpClient.PostAsJsonAsync(url, payload, ct);
+                var response = await _authClient.ExchangeApiKeyAsync(payload, ct);
 
                 if (!response.IsSuccessStatusCode)
                 {

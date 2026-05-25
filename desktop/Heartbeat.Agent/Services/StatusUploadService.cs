@@ -1,17 +1,13 @@
-using Heartbeat.Agent.Configuration;
+using Heartbeat.Agent.Http;
 using Heartbeat.Core.DTOs.Devices;
 using Serilog;
-using System.Net.Http.Json;
 
 namespace Heartbeat.Agent.Services
 {
-    public class StatusUploadService(ConfigManager configManager, IHttpClientFactory httpClientFactory)
+    public class StatusUploadService(HeartbeatApiClient apiClient)
     {
         public async Task UploadAsync(string? currentApp)
         {
-            var config = configManager.Current;
-            var statusUrl = $"{config.ApiBaseUrl}/devices/heartbeat";
-
             var dto = new DeviceStatusRequest
             {
                 CurrentApp = currentApp ?? string.Empty
@@ -19,8 +15,7 @@ namespace Heartbeat.Agent.Services
 
             try
             {
-                var client = httpClientFactory.CreateClient("HeartbeatApi");
-                var res = await client.PostAsJsonAsync(statusUrl, dto);
+                var res = await apiClient.SendHeartbeatAsync(dto);
                 if (!res.IsSuccessStatusCode)
                 {
                     var body = await res.Content.ReadAsStringAsync();

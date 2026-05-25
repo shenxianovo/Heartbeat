@@ -1,13 +1,12 @@
-using Heartbeat.Agent.Configuration;
+using Heartbeat.Agent.Http;
 using Heartbeat.Agent.Storage;
 using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Usage;
 using Serilog;
-using System.Net.Http.Json;
 
 namespace Heartbeat.Agent.Services
 {
-    public class UsageUploadService(ConfigManager configManager, IHttpClientFactory httpClientFactory, LocalCache cache)
+    public class UsageUploadService(HeartbeatApiClient apiClient, LocalCache cache)
     {
         private static UsageUploadRequest MapToDto(List<AppUsageItem> items)
         {
@@ -24,16 +23,13 @@ namespace Heartbeat.Agent.Services
 
         public async Task UploadAsync(List<AppUsageItem> usages)
         {
-            var config = configManager.Current;
-            var uploadUrl = $"{config.ApiBaseUrl}/usage";
             usages = UsageMerger.Merge(usages);
             var dto = MapToDto(usages);
 
             Log.Information("正在上传 {Count} 条使用记录...", usages.Count);
             try
             {
-                var client = httpClientFactory.CreateClient("HeartbeatApi");
-                var res = await client.PostAsJsonAsync(uploadUrl, dto);
+                var res = await apiClient.UploadUsageAsync(dto);
                 if (!res.IsSuccessStatusCode)
                 {
                     var body = await res.Content.ReadAsStringAsync();
@@ -56,16 +52,12 @@ namespace Heartbeat.Agent.Services
             var cached = cache.Load();
             if (cached.Count == 0) return;
 
-            var config = configManager.Current;
-            var uploadUrl = $"{config.ApiBaseUrl}/usage";
-
             cached = UsageMerger.Merge(cached);
             Log.Information("发现 {Count} 条缓存记录（合并后），尝试上传...", cached.Count);
             var dto = MapToDto(cached);
             try
             {
-                var client = httpClientFactory.CreateClient("HeartbeatApi");
-                var res = await client.PostAsJsonAsync(uploadUrl, dto);
+                var res = await apiClient.UploadUsageAsync(dto);
                 if (!res.IsSuccessStatusCode)
                 {
                     var body = await res.Content.ReadAsStringAsync();

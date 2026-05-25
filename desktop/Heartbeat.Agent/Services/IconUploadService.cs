@@ -1,12 +1,11 @@
-using Heartbeat.Agent.Configuration;
+using Heartbeat.Agent.Http;
 using Heartbeat.Agent.Utils;
 using Heartbeat.Core.DTOs.Apps;
 using Serilog;
-using System.Net.Http.Json;
 
 namespace Heartbeat.Agent.Services
 {
-    public class IconUploadService(ConfigManager configManager, IHttpClientFactory httpClientFactory)
+    public class IconUploadService(HeartbeatApiClient apiClient)
     {
         private readonly HashSet<string> _uploadedApps = new(StringComparer.OrdinalIgnoreCase);
 
@@ -29,9 +28,6 @@ namespace Heartbeat.Agent.Services
                     return;
                 }
 
-                var config = configManager.Current;
-                var appsUrl = $"{config.ApiBaseUrl}/apps";
-
                 Log.Debug("正在上传图标: {App}，大小 {Size} bytes", appName, iconData.Length);
                 var request = new IconUploadRequest
                 {
@@ -39,8 +35,7 @@ namespace Heartbeat.Agent.Services
                     IconData = iconData
                 };
 
-                var client = httpClientFactory.CreateClient("HeartbeatApi");
-                var res = await client.PostAsJsonAsync($"{appsUrl}/icon", request);
+                var res = await apiClient.UploadAppIconAsync(request);
                 if (res.IsSuccessStatusCode)
                 {
                     _uploadedApps.Add(appName);

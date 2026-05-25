@@ -38,12 +38,12 @@ namespace Heartbeat.Agent.Hosting
             services.AddSingleton<TokenManager>();
             services.AddSingleton<IAccessTokenProvider>(sp => sp.GetRequiredService<TokenManager>());
 
-            // HttpClient for AuthService token exchange (plain, no auth handler)
-            services.AddHttpClient("AuthService");
+            // Typed HttpClient for AuthService token exchange (plain, no auth handler)
+            services.AddHttpClient<AuthServiceClient>();
 
-            // HttpClient for Heartbeat API（命名客户端 + Bearer 处理器）
+            // Typed HttpClient for Heartbeat API（注入 Bearer 处理器）
             services.AddTransient<BearerTokenHandler>();
-            services.AddHttpClient("HeartbeatApi")
+            services.AddHttpClient<HeartbeatApiClient>()
                 .AddHttpMessageHandler<BearerTokenHandler>();
 
             // 本地缓存

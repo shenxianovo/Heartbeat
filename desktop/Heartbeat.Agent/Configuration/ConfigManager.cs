@@ -57,6 +57,7 @@ namespace Heartbeat.Agent.Configuration
             lock (_lock)
             {
                 modifier(_current);
+                Normalize(_current);
                 SaveAtomic(_current);
                 snapshot = Clone(_current);
             }
@@ -76,6 +77,7 @@ namespace Heartbeat.Agent.Configuration
             lock (_lock)
             {
                 _current = Clone(newConfig);
+                Normalize(_current);
                 SaveAtomic(_current);
                 snapshot = Clone(_current);
             }
@@ -111,6 +113,7 @@ namespace Heartbeat.Agent.Configuration
                     var config = JsonSerializer.Deserialize<AgentConfig>(json, JsonOptions);
                     if (config != null)
                     {
+                        Normalize(config);
                         Log.Information("已加载配置: {Path}", _configPath);
                         return config;
                     }
@@ -125,6 +128,15 @@ namespace Heartbeat.Agent.Configuration
             SaveAtomic(defaultConfig);
             Log.Information("已创建默认配置: {Path}", _configPath);
             return defaultConfig;
+        }
+
+        /// <summary>
+        /// 归一化配置：去掉 BaseUrl 末尾的 '/'，避免与拼接逻辑产生 '//'。
+        /// </summary>
+        private static void Normalize(AgentConfig config)
+        {
+            config.ApiBaseUrl = config.ApiBaseUrl.TrimEnd('/');
+            config.AuthServiceBaseUrl = config.AuthServiceBaseUrl.TrimEnd('/');
         }
 
         /// <summary>
