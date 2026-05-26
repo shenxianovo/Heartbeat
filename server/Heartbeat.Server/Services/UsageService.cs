@@ -1,5 +1,4 @@
 ﻿using Heartbeat.Core;
-using Heartbeat.Core.DTOs;
 using Heartbeat.Core.DTOs.Apps;
 using Heartbeat.Core.DTOs.Usage;
 using Heartbeat.Server.Data;
@@ -12,30 +11,9 @@ namespace Heartbeat.Server.Services
     {
         private readonly AppDbContext _db = db;
 
-        /// <summary>
-        /// 时间校验容差：客户端时间与服务端时间偏差不得超过此值
-        /// </summary>
-        private static readonly TimeSpan TimeSkewTolerance = TimeSpan.FromMinutes(10);
-
-        /// <summary>
-        /// 单条记录最大时长限制
-        /// </summary>
-        private static readonly TimeSpan MaxDuration = TimeSpan.FromHours(24);
-
         public async Task SaveUsageAsync(long deviceId, UsageUploadRequest request)
         {
-            var now = DateTimeOffset.UtcNow;
-
-            var validUsages = request.Usages
-                .Where(u => !string.IsNullOrEmpty(u.AppName)
-                         && u.StartTime != default
-                         && u.EndTime > u.StartTime
-                         && u.StartTime.Year >= 2020
-                         && u.EndTime <= now + TimeSkewTolerance
-                         && u.StartTime >= now - TimeSkewTolerance - MaxDuration
-                         && (u.EndTime - u.StartTime) <= MaxDuration)
-                .OrderBy(u => u.StartTime)
-                .ToList();
+            var validUsages = UsageValidationPolicy.Filter(request.Usages, DateTimeOffset.UtcNow);
 
             if (validUsages.Count == 0) return;
 
