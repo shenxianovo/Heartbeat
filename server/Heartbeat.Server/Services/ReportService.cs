@@ -1,3 +1,4 @@
+using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Reports;
 using Heartbeat.Server.Data;
 using Microsoft.EntityFrameworkCore;
@@ -10,25 +11,8 @@ namespace Heartbeat.Server.Services
 
         public async Task<DailyReportResponse> GetDailyReportAsync(string ownerId, long? deviceId, DateTimeOffset date)
         {
-            var dayStart = new DateTimeOffset(date.Date, date.Offset).UtcDateTime;
-            var dayEnd = dayStart.AddDays(1);
-
-            var query = _db.AppUsages
-                .Where(x => x.Device.OwnerId == ownerId)
-                .Where(x => x.StartTime >= dayStart && x.StartTime < dayEnd);
-
-            if (deviceId.HasValue)
-                query = query.Where(x => x.DeviceId == deviceId.Value);
-
-            var apps = await query
-                .GroupBy(x => x.AppId)
-                .Select(g => new AppDurationItem
-                {
-                    AppId = g.Key,
-                    DurationSeconds = g.Sum(x => x.DurationSeconds)
-                })
-                .OrderByDescending(x => x.DurationSeconds)
-                .ToListAsync();
+            var range = DateRange.Day(date);
+            var apps = await AggregateAsync(ownerId, deviceId, range);
 
             return new DailyReportResponse
             {
@@ -40,31 +24,13 @@ namespace Heartbeat.Server.Services
 
         public async Task<WeeklyReportResponse> GetWeeklyReportAsync(string ownerId, long? deviceId, DateTimeOffset date)
         {
+            var range = DateRange.Week(date);
+            var apps = await AggregateAsync(ownerId, deviceId, range);
+
             var d = date.Date;
             var dayOfWeek = d.DayOfWeek;
             var mondayOffset = dayOfWeek == DayOfWeek.Sunday ? -6 : -(int)dayOfWeek + 1;
             var monday = d.AddDays(mondayOffset);
-            var sundayEnd = monday.AddDays(7);
-
-            var weekStart = new DateTimeOffset(monday, date.Offset).UtcDateTime;
-            var weekEnd = new DateTimeOffset(sundayEnd, date.Offset).UtcDateTime;
-
-            var query = _db.AppUsages
-                .Where(x => x.Device.OwnerId == ownerId)
-                .Where(x => x.StartTime >= weekStart && x.StartTime < weekEnd);
-
-            if (deviceId.HasValue)
-                query = query.Where(x => x.DeviceId == deviceId.Value);
-
-            var apps = await query
-                .GroupBy(x => x.AppId)
-                .Select(g => new AppDurationItem
-                {
-                    AppId = g.Key,
-                    DurationSeconds = g.Sum(x => x.DurationSeconds)
-                })
-                .OrderByDescending(x => x.DurationSeconds)
-                .ToListAsync();
 
             return new WeeklyReportResponse
             {
@@ -73,6 +39,26 @@ namespace Heartbeat.Server.Services
                 TotalSeconds = apps.Sum(a => a.DurationSeconds),
                 Apps = apps
             };
+        }
+
+        private async Task<List<AppDurationItem>> AggregateAsync(string ownerId, long? deviceId, DateRange range)
+        {
+            var query = _db.AppUsages
+                .Where(x => x.Device.OwnerId == ownerId)
+                .Where(x => x.StartTime >= range.UtcStart && x.StartTime < range.UtcEnd);
+
+            if (deviceId.HasValue)
+                query = query.Where(x => x.DeviceId == deviceId.Value);
+
+            return await query
+                .GroupBy(x => x.AppId)
+                .Select(g => new AppDurationItem
+                {
+                    AppId = g.Key,
+                    DurationSeconds = g.Sum(x => x.DurationSeconds)
+                })
+                .OrderByDescending(x => x.DurationSeconds)
+                .ToListAsync();
         }
     }
 }
