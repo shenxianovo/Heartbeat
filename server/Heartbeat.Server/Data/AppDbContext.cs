@@ -5,6 +5,7 @@ namespace Heartbeat.Server.Data
 {
     public class AppDbContext : DbContext
     {
+        public DbSet<User> Users => Set<User>();
         public DbSet<Device> Devices => Set<Device>();
         public DbSet<App> Apps => Set<App>();
         public DbSet<AppUsage> AppUsages => Set<AppUsage>();
@@ -15,6 +16,14 @@ namespace Heartbeat.Server.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<User>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+
+                entity.HasIndex(e => e.Username)
+                    .IsUnique();
+            });
 
             modelBuilder.Entity<Device>(entity =>
             {

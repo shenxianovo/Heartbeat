@@ -1,6 +1,6 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import type { AppInfoResponse, AppUsageResponse, AppSummary, DeviceInfoResponse, DeviceStatusResponse, DailyReportResponse, WeeklyReportResponse } from '../api/index'
-import { fetchDevices, fetchApps, fetchUsage, fetchDeviceStatus, fetchDailyReport, fetchWeeklyReport, getTimezoneLabel } from '../api/index'
+import { fetchPublicDevices, fetchPublicApps, fetchPublicDeviceStatus, fetchPublicUsage, fetchPublicDailyReport, fetchPublicWeeklyReport, getTimezoneLabel } from '../api/index'
 
 function todayStr(): string {
   const d = new Date()
@@ -15,7 +15,7 @@ export function formatDuration(sec: number): string {
   return '< 1m'
 }
 
-export function useHeartbeat() {
+export function useHeartbeat(username: string) {
   const devices = ref<DeviceInfoResponse[]>([])
   const apps = ref<AppInfoResponse[]>([])
   const selectedDevice = ref(0)
@@ -104,22 +104,22 @@ export function useHeartbeat() {
     const dateObj = new Date(selectedDate.value + 'T00:00:00')
     const start = dateObj.toISOString()
     const end = new Date(dateObj.getTime() + 86400000).toISOString()
-    usageData.value = await fetchUsage({ deviceId: selectedDevice.value, start, end })
+    usageData.value = await fetchPublicUsage(username, { deviceId: selectedDevice.value, start, end })
   }
 
   async function loadStatus() {
     if (!selectedDevice.value) return
-    deviceStatus.value = await fetchDeviceStatus(selectedDevice.value)
+    deviceStatus.value = await fetchPublicDeviceStatus(username, selectedDevice.value)
   }
 
   async function loadDailyReport() {
     if (!selectedDevice.value) return
-    dailyReport.value = await fetchDailyReport({ deviceId: selectedDevice.value, date: selectedDate.value })
+    dailyReport.value = await fetchPublicDailyReport(username, { deviceId: selectedDevice.value, date: selectedDate.value })
   }
 
   async function loadWeeklyReport() {
     if (!selectedDevice.value) return
-    weeklyReport.value = await fetchWeeklyReport({ deviceId: selectedDevice.value, date: selectedDate.value })
+    weeklyReport.value = await fetchPublicWeeklyReport(username, { deviceId: selectedDevice.value, date: selectedDate.value })
   }
 
   async function refresh() {
@@ -135,14 +135,14 @@ export function useHeartbeat() {
   let usageTimer: ReturnType<typeof setInterval>
 
   onMounted(async () => {
-    const [deviceList, appList] = await Promise.all([fetchDevices(), fetchApps()])
+    const [deviceList, appList] = await Promise.all([fetchPublicDevices(username), fetchPublicApps(username)])
     devices.value = deviceList
     apps.value = appList
 
     if (devices.value.length > 0) {
       let picked = devices.value[0].id!
       for (const d of devices.value) {
-        const s = await fetchDeviceStatus(d.id!)
+        const s = await fetchPublicDeviceStatus(username, d.id!)
         if (s?.isOnline) { picked = d.id!; break }
       }
       selectedDevice.value = picked

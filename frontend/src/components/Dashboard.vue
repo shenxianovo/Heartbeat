@@ -33,7 +33,7 @@ const {
   weeklyAppSummaries,
   weeklyTotalSeconds,
   timezoneLabel,
-} = useHeartbeat()
+} = useHeartbeat(props.username)
 </script>
 
 <template>

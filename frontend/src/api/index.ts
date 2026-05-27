@@ -1,5 +1,4 @@
-import { Client, DailyReportResponse, WeeklyReportResponse } from './client'
-import type { AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse } from './client'
+import { Client, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse } from './client'
 import { authStore } from '../stores/auth'
 
 // ===== Base URL =====
@@ -26,7 +25,6 @@ const authHttp = {
         response = await fetch(url, { ...init, headers })
       } else {
         authStore.clearAuth()
-        authStore.redirectToLogin()
       }
     }
 
@@ -66,7 +64,7 @@ export function getTimezoneLabel(): string {
   return `UTC${sign}${h}${m > 0 ? ':' + String(m).padStart(2, '0') : ''}`
 }
 
-// ===== API Functions =====
+// ===== API Functions (authenticated, own data) =====
 
 export async function fetchDevices(): Promise<DeviceInfoResponse[]> {
   try {
@@ -142,4 +140,86 @@ export async function fetchWeeklyReport(params: {
 
 export function getIconUrl(appId: number): string {
   return `${API_BASE}/apps/${appId}/icon`
+}
+
+// ===== Public API Functions (no auth required, by username) =====
+
+export async function fetchPublicDevices(username: string): Promise<DeviceInfoResponse[]> {
+  try {
+    const res = await fetch(`${API_BASE}/users/${username}/devices`)
+    if (!res.ok) return []
+    return (await res.json()).map((d: any) => DeviceInfoResponse.fromJS(d))
+  } catch {
+    return []
+  }
+}
+
+export async function fetchPublicApps(username: string): Promise<AppInfoResponse[]> {
+  try {
+    const res = await fetch(`${API_BASE}/users/${username}/apps`)
+    if (!res.ok) return []
+    return (await res.json()).map((a: any) => AppInfoResponse.fromJS(a))
+  } catch {
+    return []
+  }
+}
+
+export async function fetchPublicDailyReport(username: string, params: {
+  deviceId?: number
+  date?: string
+}): Promise<DailyReportResponse | null> {
+  try {
+    const searchParams = new URLSearchParams()
+    if (params.deviceId !== undefined) searchParams.set('deviceId', String(params.deviceId))
+    if (params.date) searchParams.set('date', toLocalDateTimeOffsetString(params.date))
+    const res = await fetch(`${API_BASE}/users/${username}/reports/daily?${searchParams}`)
+    if (!res.ok) return null
+    return DailyReportResponse.fromJS(await res.json())
+  } catch {
+    return null
+  }
+}
+
+export async function fetchPublicWeeklyReport(username: string, params: {
+  deviceId?: number
+  date?: string
+}): Promise<WeeklyReportResponse | null> {
+  try {
+    const searchParams = new URLSearchParams()
+    if (params.deviceId !== undefined) searchParams.set('deviceId', String(params.deviceId))
+    if (params.date) searchParams.set('date', toLocalDateTimeOffsetString(params.date))
+    const res = await fetch(`${API_BASE}/users/${username}/reports/weekly?${searchParams}`)
+    if (!res.ok) return null
+    return WeeklyReportResponse.fromJS(await res.json())
+  } catch {
+    return null
+  }
+}
+
+export async function fetchPublicDeviceStatus(username: string, deviceId: number): Promise<DeviceStatusResponse | null> {
+  try {
+    const res = await fetch(`${API_BASE}/users/${username}/devices/${deviceId}/status`)
+    if (!res.ok) return null
+    return DeviceStatusResponse.fromJS(await res.json())
+  } catch {
+    return null
+  }
+}
+
+export async function fetchPublicUsage(username: string, params: {
+  deviceId?: number
+  start?: string
+  end?: string
+}): Promise<AppUsageResponse[]> {
+  try {
+    const searchParams = new URLSearchParams()
+    if (params.deviceId !== undefined) searchParams.set('deviceId', String(params.deviceId))
+    if (params.start) searchParams.set('start', params.start)
+    if (params.end) searchParams.set('end', params.end)
+    const res = await fetch(`${API_BASE}/users/${username}/usage?${searchParams}`)
+    if (!res.ok) return []
+    return (await res.json()).map((u: any) => AppUsageResponse.fromJS(u))
+  } catch {
+    return []
+  }
 }

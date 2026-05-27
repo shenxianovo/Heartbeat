@@ -21,6 +21,20 @@ namespace Heartbeat.Server.Services
                 .ToListAsync();
         }
 
+        public async Task<List<AppInfoResponse>> GetAppsForUserAsync(string ownerId)
+        {
+            return await _db.AppUsages
+                .Where(u => u.Device.OwnerId == ownerId)
+                .Select(u => u.App)
+                .Distinct()
+                .Select(a => new AppInfoResponse
+                {
+                    Id = a.Id,
+                    Name = a.Name
+                })
+                .ToListAsync();
+        }
+
         public async Task<byte[]?> GetIconAsync(long appId)
         {
             var icon = await _db.AppIcons

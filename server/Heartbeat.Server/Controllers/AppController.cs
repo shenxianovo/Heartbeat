@@ -8,14 +8,16 @@ namespace Heartbeat.Server.Controllers
     [ApiController]
     [Route("api/v1/apps")]
     [Authorize]
-    public class AppController(AppService appService) : ControllerBase
+    public class AppController(AppService appService, ICurrentUserService currentUser) : ControllerBase
     {
         private readonly AppService _appService = appService;
+        private readonly ICurrentUserService _currentUser = currentUser;
 
         [HttpGet]
         public async Task<List<AppInfoResponse>> List()
         {
-            return await _appService.GetAllAsync();
+            var userId = _currentUser.GetUserId();
+            return await _appService.GetAppsForUserAsync(userId);
         }
 
         [AllowAnonymous]
