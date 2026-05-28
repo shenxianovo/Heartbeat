@@ -15,7 +15,7 @@ namespace Heartbeat.Server.Controllers
         [HttpGet("devices")]
         public async Task<IActionResult> GetDevices(string username)
         {
-            var user = await userService.GetByUsernameAsync(username);
+            var user = await userService.ResolveByUsernameAsync(username);
             if (user == null) return NotFound();
 
             var devices = await deviceService.GetAllAsync(user.Id);
@@ -28,7 +28,7 @@ namespace Heartbeat.Server.Controllers
             [FromQuery] long? deviceId,
             [FromQuery] DateTimeOffset? date)
         {
-            var user = await userService.GetByUsernameAsync(username);
+            var user = await userService.ResolveByUsernameAsync(username);
             if (user == null) return NotFound();
 
             var targetDate = date ?? DateTimeOffset.UtcNow;
@@ -42,7 +42,7 @@ namespace Heartbeat.Server.Controllers
             [FromQuery] long? deviceId,
             [FromQuery] DateTimeOffset? date)
         {
-            var user = await userService.GetByUsernameAsync(username);
+            var user = await userService.ResolveByUsernameAsync(username);
             if (user == null) return NotFound();
 
             var targetDate = date ?? DateTimeOffset.UtcNow;
@@ -57,7 +57,7 @@ namespace Heartbeat.Server.Controllers
             [FromQuery] DateTimeOffset? start,
             [FromQuery] DateTimeOffset? end)
         {
-            var user = await userService.GetByUsernameAsync(username);
+            var user = await userService.ResolveByUsernameAsync(username);
             if (user == null) return NotFound();
 
             var result = await usageService.GetUsageAsync(user.Id, deviceId, start, end);
@@ -67,7 +67,7 @@ namespace Heartbeat.Server.Controllers
         [HttpGet("apps")]
         public async Task<IActionResult> GetApps(string username)
         {
-            var user = await userService.GetByUsernameAsync(username);
+            var user = await userService.ResolveByUsernameAsync(username);
             if (user == null) return NotFound();
 
             var apps = await appService.GetAppsForUserAsync(user.Id);
@@ -77,7 +77,7 @@ namespace Heartbeat.Server.Controllers
         [HttpGet("devices/{deviceId:long}/status")]
         public async Task<IActionResult> GetDeviceStatus(string username, long deviceId)
         {
-            var user = await userService.GetByUsernameAsync(username);
+            var user = await userService.ResolveByUsernameAsync(username);
             if (user == null) return NotFound();
 
             var status = await deviceService.GetStatusAsync(deviceId, user.Id);

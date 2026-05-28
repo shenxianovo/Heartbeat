@@ -17,6 +17,10 @@ builder.Services.AddScoped<ReportService>();
 builder.Services.AddScoped<DeviceService>();
 builder.Services.AddScoped<AppService>();
 builder.Services.AddScoped<UserService>();
+builder.Services.AddHttpClient("AuthService", client =>
+{
+    client.BaseAddress = new Uri(builder.Configuration["AuthService:Authority"]!);
+});
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 
@@ -61,7 +65,6 @@ if (app.Environment.IsDevelopment())
 
 app.UseAuthentication();
 app.UseAuthorization();
-app.UseMiddleware<Heartbeat.Server.Middleware.UserSyncMiddleware>();
 
 app.MapControllers();
 
