@@ -1,0 +1,1 @@
+{"nodes": [{"id": "api_module", "label": "API module (getIconUrl, AppUsageResponse)", "file_type": "code", "source_file": "frontend/src/api/index.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null}], "edges": [], "hyperedges": []}

@@ -1,0 +1,732 @@
+{
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Heartbeat.Agent.csproj": {
+    "mtime": 1777378334.7304518,
+    "ast_hash": "bba6b345b3c1ce01a790ad99210f15f1",
+    "semantic_hash": "bba6b345b3c1ce01a790ad99210f15f1"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Configuration\\ConfigManager.cs": {
+    "mtime": 1779710293.938321,
+    "ast_hash": "4df3db2c2d9674061f56fba41bc786e0",
+    "semantic_hash": "4df3db2c2d9674061f56fba41bc786e0"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Hosting\\AgentHostExtensions.cs": {
+    "mtime": 1779709508.2153597,
+    "ast_hash": "59966c583a80647efa5d2f3738fdc8a4",
+    "semantic_hash": "59966c583a80647efa5d2f3738fdc8a4"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Http\\AuthServiceClient.cs": {
+    "mtime": 1779709481.6844325,
+    "ast_hash": "2d8b1dde2443d4f5ced15ab14ada635b",
+    "semantic_hash": "2d8b1dde2443d4f5ced15ab14ada635b"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Http\\BearerTokenHandler.cs": {
+    "mtime": 1778814605.525622,
+    "ast_hash": "71420016514d9999ea905333ac00fada",
+    "semantic_hash": "71420016514d9999ea905333ac00fada"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Http\\HeartbeatApiClient.cs": {
+    "mtime": 1779709450.4062579,
+    "ast_hash": "bbb611ac1407c4a4a7a1337a04e54ff2",
+    "semantic_hash": "bbb611ac1407c4a4a7a1337a04e54ff2"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Http\\IAccessTokenProvider.cs": {
+    "mtime": 1778814282.5421617,
+    "ast_hash": "b966587636e8e4d706ed432985c69bf6",
+    "semantic_hash": "b966587636e8e4d706ed432985c69bf6"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Http\\TokenManager.cs": {
+    "mtime": 1779709603.3650036,
+    "ast_hash": "77d92c32f2608cc03135c03be8e24051",
+    "semantic_hash": "77d92c32f2608cc03135c03be8e24051"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Models\\AgentConfig.cs": {
+    "mtime": 1777378334.734371,
+    "ast_hash": "c2e37ee426b293b7bd4d8d82360b8c8f",
+    "semantic_hash": "c2e37ee426b293b7bd4d8d82360b8c8f"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Services\\AppMonitorService.cs": {
+    "mtime": 1778834894.741387,
+    "ast_hash": "51a2b7b5d03b5624e61985ac61caf5d2",
+    "semantic_hash": "51a2b7b5d03b5624e61985ac61caf5d2"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Services\\IAutoStartService.cs": {
+    "mtime": 1777378334.7407732,
+    "ast_hash": "d2218e6ffef5ed0b5928f6fa726083be",
+    "semantic_hash": "d2218e6ffef5ed0b5928f6fa726083be"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Services\\IconUploadService.cs": {
+    "mtime": 1779709382.474581,
+    "ast_hash": "e57a764344553eac95bf8b3356114888",
+    "semantic_hash": "e57a764344553eac95bf8b3356114888"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Services\\RegistryAutoStartService.cs": {
+    "mtime": 1777378334.7431536,
+    "ast_hash": "a184f45781f556323669ef6667f6c8f1",
+    "semantic_hash": "a184f45781f556323669ef6667f6c8f1"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Services\\StatusUploadService.cs": {
+    "mtime": 1779709153.92269,
+    "ast_hash": "413d69f3447e682baffb8ede35a89600",
+    "semantic_hash": "413d69f3447e682baffb8ede35a89600"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Services\\UsageUploadService.cs": {
+    "mtime": 1779709143.5421374,
+    "ast_hash": "a913848ac29565afed5a782b0b380556",
+    "semantic_hash": "a913848ac29565afed5a782b0b380556"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Storage\\LocalCache.cs": {
+    "mtime": 1778834795.478958,
+    "ast_hash": "8f187ccdaf2c9e1d4f3c571ee2d0717d",
+    "semantic_hash": "8f187ccdaf2c9e1d4f3c571ee2d0717d"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Utils\\ActiveWindowHelper.cs": {
+    "mtime": 1777378334.75152,
+    "ast_hash": "a3f5a85ae5ab3ab764742b22b67c0257",
+    "semantic_hash": "a3f5a85ae5ab3ab764742b22b67c0257"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Utils\\IconHelper.cs": {
+    "mtime": 1777378334.7542188,
+    "ast_hash": "f68aa9d29371bc446c7bb5c3792d0167",
+    "semantic_hash": "f68aa9d29371bc446c7bb5c3792d0167"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Utils\\MachineIdentity.cs": {
+    "mtime": 1778811557.8707397,
+    "ast_hash": "0978fc824f226b8f04f18a53fd76e562",
+    "semantic_hash": "0978fc824f226b8f04f18a53fd76e562"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Utils\\SingleInstanceGuard.cs": {
+    "mtime": 1777378334.7561924,
+    "ast_hash": "52ba42bcb84e87909cca8745129c666f",
+    "semantic_hash": "52ba42bcb84e87909cca8745129c666f"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Workers\\StatusUploadWorker.cs": {
+    "mtime": 1777378334.7577064,
+    "ast_hash": "35976e89ddc59e6c6ca471c8992f4850",
+    "semantic_hash": "35976e89ddc59e6c6ca471c8992f4850"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent\\Workers\\UsageUploadWorker.cs": {
+    "mtime": 1777378334.759132,
+    "ast_hash": "ded859e5ec00f3ac577ffcebf0534fbb",
+    "semantic_hash": "ded859e5ec00f3ac577ffcebf0534fbb"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent.Runner\\Heartbeat.Agent.Runner.csproj": {
+    "mtime": 1777378334.7244475,
+    "ast_hash": "0616cfbd26cbf9ae038f6516dd610919",
+    "semantic_hash": "0616cfbd26cbf9ae038f6516dd610919"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent.Runner\\Program.cs": {
+    "mtime": 1777378334.7257257,
+    "ast_hash": "fbff8ee479dcdef2537d109b8b70d26e",
+    "semantic_hash": "fbff8ee479dcdef2537d109b8b70d26e"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent.Runner\\Properties\\launchSettings.json": {
+    "mtime": 1777378334.7271707,
+    "ast_hash": "074de2f39ea6cb13d67f6602f0eb100c",
+    "semantic_hash": "074de2f39ea6cb13d67f6602f0eb100c"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent.Tests\\Heartbeat.Agent.Tests.csproj": {
+    "mtime": 1778814081.0621,
+    "ast_hash": "c653a704320264fb785670fe151c495a",
+    "semantic_hash": "c653a704320264fb785670fe151c495a"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.Agent.Tests\\Http\\BearerTokenHandlerTests.cs": {
+    "mtime": 1778814383.2704835,
+    "ast_hash": "8dd13ee94576e2693c63daeaf6e691b9",
+    "semantic_hash": "8dd13ee94576e2693c63daeaf6e691b9"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.WPF\\App.xaml.cs": {
+    "mtime": 1779632214.494031,
+    "ast_hash": "274f9ba50b6f4b69400d2e86fe244c17",
+    "semantic_hash": "274f9ba50b6f4b69400d2e86fe244c17"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.WPF\\AssemblyInfo.cs": {
+    "mtime": 1777378334.7614005,
+    "ast_hash": "ab620c0dcb1ef4bc35ed75d4e2bfef89",
+    "semantic_hash": "ab620c0dcb1ef4bc35ed75d4e2bfef89"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.WPF\\Heartbeat.WPF.csproj": {
+    "mtime": 1779183857.00036,
+    "ast_hash": "a4b0999944e3d56e22f45a9073b881d3",
+    "semantic_hash": "a4b0999944e3d56e22f45a9073b881d3"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.WPF\\MainWindow.xaml.cs": {
+    "mtime": 1777378334.7658055,
+    "ast_hash": "82fecb690c66ea244ed293a1abf3313e",
+    "semantic_hash": "82fecb690c66ea244ed293a1abf3313e"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.WPF\\Program.cs": {
+    "mtime": 1779183886.7265923,
+    "ast_hash": "b932da29f4eff44e1cdbb6e07cea6a0b",
+    "semantic_hash": "b932da29f4eff44e1cdbb6e07cea6a0b"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.WPF\\Logging\\RingBufferSink.cs": {
+    "mtime": 1777378334.763414,
+    "ast_hash": "19ceba4e05847a2bf00f46377db5b53a",
+    "semantic_hash": "19ceba4e05847a2bf00f46377db5b53a"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.WPF\\Services\\UpdateService.cs": {
+    "mtime": 1779703013.1092176,
+    "ast_hash": "c0dc2ed446dbca5db74eec3352325827",
+    "semantic_hash": "c0dc2ed446dbca5db74eec3352325827"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\Heartbeat.WPF\\ViewModels\\MainViewModel.cs": {
+    "mtime": 1777378334.7697957,
+    "ast_hash": "c67173a83c58aeb5d73689bd83c28add",
+    "semantic_hash": "c67173a83c58aeb5d73689bd83c28add"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\package.json": {
+    "mtime": 1779850654.9605029,
+    "ast_hash": "d17b55bb47ade2ce49c88e2a7fec3eba",
+    "semantic_hash": "d17b55bb47ade2ce49c88e2a7fec3eba"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\tsconfig.app.json": {
+    "mtime": 1777378334.930038,
+    "ast_hash": "1ac70eef1b5092f3dfde5a9be1a41d53",
+    "semantic_hash": "1ac70eef1b5092f3dfde5a9be1a41d53"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\tsconfig.json": {
+    "mtime": 1777378334.9312649,
+    "ast_hash": "852c3a5df14a4b43ac28e9554ebedf4a",
+    "semantic_hash": "852c3a5df14a4b43ac28e9554ebedf4a"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\tsconfig.node.json": {
+    "mtime": 1777378334.9342613,
+    "ast_hash": "52e20aa8fe769f36a50a483bb6e89d17",
+    "semantic_hash": "52e20aa8fe769f36a50a483bb6e89d17"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\vite.config.ts": {
+    "mtime": 1779850912.909171,
+    "ast_hash": "28fca0b77344f04b94a348e77e5490ec",
+    "semantic_hash": "28fca0b77344f04b94a348e77e5490ec"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\src\\App.vue": {
+    "mtime": 1779850696.3462782,
+    "ast_hash": "1adb2da22e7b7c553f14aa1ab732f2ff",
+    "semantic_hash": "1adb2da22e7b7c553f14aa1ab732f2ff"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\src\\appLabels.ts": {
+    "mtime": 1777378334.7957342,
+    "ast_hash": "27989a5d1bba25ebd393a92703e5ecd8",
+    "semantic_hash": "27989a5d1bba25ebd393a92703e5ecd8"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\src\\main.ts": {
+    "mtime": 1779850695.9934156,
+    "ast_hash": "ebd0d67088bff26bec2a8cd2eedf5ca4",
+    "semantic_hash": "ebd0d67088bff26bec2a8cd2eedf5ca4"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\src\\vite-env.d.ts": {
+    "mtime": 1777378334.9216459,
+    "ast_hash": "fe8f1f2d39338674f6531fd3d562e08b",
+    "semantic_hash": "fe8f1f2d39338674f6531fd3d562e08b"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\src\\api\\client.ts": {
+    "mtime": 1777378334.79414,
+    "ast_hash": "9035310fb0efa3c6681192facad3a682",
+    "semantic_hash": "9035310fb0efa3c6681192facad3a682"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\src\\api\\index.ts": {
+    "mtime": 1779868584.6443558,
+    "ast_hash": "3ffb68880e8717ccacd418f37a35e365",
+    "semantic_hash": "3ffb68880e8717ccacd418f37a35e365"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\src\\components\\ActivityTimeline.vue": {
+    "mtime": 1777378334.7969315,
+    "ast_hash": "b1f958bb7d3a1b77e1c8e9fb7d4feb20",
+    "semantic_hash": "b1f958bb7d3a1b77e1c8e9fb7d4feb20"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\src\\components\\CurrentAppPanel.vue": {
+    "mtime": 1777378334.7979975,
+    "ast_hash": "b3f942d409b17133628bd0634f9b9c79",
+    "semantic_hash": "b3f942d409b17133628bd0634f9b9c79"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\src\\components\\Dashboard.vue": {
+    "mtime": 1779868487.8816113,
+    "ast_hash": "e8291ca83280ecd602fb19e473b0bda6",
+    "semantic_hash": "e8291ca83280ecd602fb19e473b0bda6"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\src\\components\\StatusCards.vue": {
+    "mtime": 1777378334.8560998,
+    "ast_hash": "065f124ce7444f7ee786a262dd743961",
+    "semantic_hash": "065f124ce7444f7ee786a262dd743961"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\src\\components\\TodayRanking.vue": {
+    "mtime": 1777378334.8780093,
+    "ast_hash": "e9b4d896ac670a7c2f5cba5c351129b5",
+    "semantic_hash": "e9b4d896ac670a7c2f5cba5c351129b5"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\src\\components\\WeeklyChart.vue": {
+    "mtime": 1777378334.8878796,
+    "ast_hash": "4ff9d90056666d1a7035890cbc78ad6d",
+    "semantic_hash": "4ff9d90056666d1a7035890cbc78ad6d"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\src\\composables\\useHeartbeat.ts": {
+    "mtime": 1779868396.7747166,
+    "ast_hash": "a0910ff99f44f187c65da526857abac4",
+    "semantic_hash": "a0910ff99f44f187c65da526857abac4"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\src\\composables\\useTimelineDrag.ts": {
+    "mtime": 1777378334.914078,
+    "ast_hash": "cc6fd1f27a9496d3e9368270d537de76",
+    "semantic_hash": "cc6fd1f27a9496d3e9368270d537de76"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\src\\router\\index.ts": {
+    "mtime": 1779865797.7866428,
+    "ast_hash": "e8a1c6d8161c9894c15c98229f5502b2",
+    "semantic_hash": "e8a1c6d8161c9894c15c98229f5502b2"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\src\\stores\\auth.ts": {
+    "mtime": 1779865972.9081454,
+    "ast_hash": "c31e2f032fa16eb74d9b3b0d17cd232e",
+    "semantic_hash": "c31e2f032fa16eb74d9b3b0d17cd232e"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\src\\views\\LoginCallback.vue": {
+    "mtime": 1779950720.0907817,
+    "ast_hash": "c6edcf05d74ca40a968f2f7760c60a9b",
+    "semantic_hash": "c6edcf05d74ca40a968f2f7760c60a9b"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\src\\views\\ProfileView.vue": {
+    "mtime": 1779865843.4631526,
+    "ast_hash": "a38c2a42645d6ecf641bd21c14e263c6",
+    "semantic_hash": "a38c2a42645d6ecf641bd21c14e263c6"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\src\\views\\SettingsView.vue": {
+    "mtime": 1779865843.5423257,
+    "ast_hash": "a451d48e50ac6c612f400adb345a5278",
+    "semantic_hash": "a451d48e50ac6c612f400adb345a5278"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\appsettings.json": {
+    "mtime": 1777378334.9816124,
+    "ast_hash": "f7e65dde4e5533740a0d57ac9355c0e8",
+    "semantic_hash": "f7e65dde4e5533740a0d57ac9355c0e8"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Heartbeat.Server.csproj": {
+    "mtime": 1777378334.9603863,
+    "ast_hash": "ead37c543abcee2bc65f47fb7ca622fc",
+    "semantic_hash": "ead37c543abcee2bc65f47fb7ca622fc"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Program.cs": {
+    "mtime": 1779952038.7300155,
+    "ast_hash": "6661a199a6b7a99bae35cd92c29fc22d",
+    "semantic_hash": "6661a199a6b7a99bae35cd92c29fc22d"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Controllers\\AppController.cs": {
+    "mtime": 1779867386.6281023,
+    "ast_hash": "532dc7bf414f75e5395c7ec5fe665a61",
+    "semantic_hash": "532dc7bf414f75e5395c7ec5fe665a61"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Controllers\\DeviceController.cs": {
+    "mtime": 1778832739.578202,
+    "ast_hash": "1d2ac6ebfc066169341718e9fe07afee",
+    "semantic_hash": "1d2ac6ebfc066169341718e9fe07afee"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Controllers\\PublicUserController.cs": {
+    "mtime": 1779952252.5690517,
+    "ast_hash": "8cb7862fbef1faf6d9491e2ef0d4ac9a",
+    "semantic_hash": "8cb7862fbef1faf6d9491e2ef0d4ac9a"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Controllers\\ReportController.cs": {
+    "mtime": 1778809708.4804342,
+    "ast_hash": "a29798aeeee138f3e6d0d411d0c4c643",
+    "semantic_hash": "a29798aeeee138f3e6d0d411d0c4c643"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Controllers\\UsageController.cs": {
+    "mtime": 1778835076.3026047,
+    "ast_hash": "00c3e5e87bf19b7c88047db1b48722a5",
+    "semantic_hash": "00c3e5e87bf19b7c88047db1b48722a5"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Data\\AppDbContext.cs": {
+    "mtime": 1779866894.4289489,
+    "ast_hash": "a29f6152f5c80af9ecaf7d8c704cb1da",
+    "semantic_hash": "a29f6152f5c80af9ecaf7d8c704cb1da"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Entities\\App.cs": {
+    "mtime": 1777378334.946681,
+    "ast_hash": "e113dd5c51f5632befd597a456b12208",
+    "semantic_hash": "e113dd5c51f5632befd597a456b12208"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Entities\\AppIcon.cs": {
+    "mtime": 1777378334.9479723,
+    "ast_hash": "826b55cb6e017f225fdc0d3eb982e5c0",
+    "semantic_hash": "826b55cb6e017f225fdc0d3eb982e5c0"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Entities\\AppUsage.cs": {
+    "mtime": 1777378334.9490087,
+    "ast_hash": "dceef9a06c7d806397a51307c4e6f9a2",
+    "semantic_hash": "dceef9a06c7d806397a51307c4e6f9a2"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Entities\\Device.cs": {
+    "mtime": 1778761511.9767478,
+    "ast_hash": "c14e1c5c109e65905d6849ee5c4254d7",
+    "semantic_hash": "c14e1c5c109e65905d6849ee5c4254d7"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Entities\\User.cs": {
+    "mtime": 1779866792.9266846,
+    "ast_hash": "f6f105f9d6464747af0b274bba0d86f6",
+    "semantic_hash": "f6f105f9d6464747af0b274bba0d86f6"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Migrations\\20260225081401_InitialCreate.cs": {
+    "mtime": 1777378334.9646883,
+    "ast_hash": "71b124451af701049ff6c609c09a2c40",
+    "semantic_hash": "71b124451af701049ff6c609c09a2c40"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Migrations\\20260225081401_InitialCreate.Designer.cs": {
+    "mtime": 1777378334.9625125,
+    "ast_hash": "a7a4420d1ef806f39ad942a5743ab7be",
+    "semantic_hash": "a7a4420d1ef806f39ad942a5743ab7be"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Migrations\\20260226072806_AddCompositeIndex.cs": {
+    "mtime": 1777378334.969765,
+    "ast_hash": "2b41a21e7a4b806a571f50a70bc4b981",
+    "semantic_hash": "2b41a21e7a4b806a571f50a70bc4b981"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Migrations\\20260226072806_AddCompositeIndex.Designer.cs": {
+    "mtime": 1777378334.9677293,
+    "ast_hash": "353d225b7d59c25dc12aecbcd17681fd",
+    "semantic_hash": "353d225b7d59c25dc12aecbcd17681fd"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Migrations\\20260227071412_AddAppIcons.cs": {
+    "mtime": 1777378334.9711351,
+    "ast_hash": "bc7d22e3db5e1ca7ce694d38a8edffdb",
+    "semantic_hash": "bc7d22e3db5e1ca7ce694d38a8edffdb"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Migrations\\20260227071412_AddAppIcons.Designer.cs": {
+    "mtime": 1777378334.9711351,
+    "ast_hash": "c230b44376b4fb3b3b37c3d3e5f7cdcd",
+    "semantic_hash": "c230b44376b4fb3b3b37c3d3e5f7cdcd"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Migrations\\20260301073953_AddStatusFields.cs": {
+    "mtime": 1777378334.9738264,
+    "ast_hash": "ab431eaccaa884a7995472271a32d19b",
+    "semantic_hash": "ab431eaccaa884a7995472271a32d19b"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Migrations\\20260301073953_AddStatusFields.Designer.cs": {
+    "mtime": 1777378334.9725618,
+    "ast_hash": "4dc604f6e6b32eb784c1c572356d3b28",
+    "semantic_hash": "4dc604f6e6b32eb784c1c572356d3b28"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Migrations\\20260305031626_RefactorAppAndDeviceIds.cs": {
+    "mtime": 1777378334.9748223,
+    "ast_hash": "fd55dfec65e4a61cc4daaceb9db7c38c",
+    "semantic_hash": "fd55dfec65e4a61cc4daaceb9db7c38c"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Migrations\\20260305031626_RefactorAppAndDeviceIds.Designer.cs": {
+    "mtime": 1777378334.9748223,
+    "ast_hash": "8d52ebbfa32bb19570de7bb5a91114c0",
+    "semantic_hash": "8d52ebbfa32bb19570de7bb5a91114c0"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Migrations\\20260513084042_RemoveDeviceApiKey.cs": {
+    "mtime": 1778661642.8345976,
+    "ast_hash": "0738961d53b8ca7df58d392519ce406b",
+    "semantic_hash": "0738961d53b8ca7df58d392519ce406b"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Migrations\\20260513084042_RemoveDeviceApiKey.Designer.cs": {
+    "mtime": 1778661642.8378532,
+    "ast_hash": "8fddb060889d82fbc615ee3cc95ed3f2",
+    "semantic_hash": "8fddb060889d82fbc615ee3cc95ed3f2"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Migrations\\20260515015850_AddDeviceOwnerAndHardwareId.cs": {
+    "mtime": 1778811322.562973,
+    "ast_hash": "cce4812c795c972ed86f93eaa3cc3e0d",
+    "semantic_hash": "cce4812c795c972ed86f93eaa3cc3e0d"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Migrations\\20260515015850_AddDeviceOwnerAndHardwareId.Designer.cs": {
+    "mtime": 1778810330.230317,
+    "ast_hash": "ffe33f1e5573fe5bf1fc4438da818f2d",
+    "semantic_hash": "ffe33f1e5573fe5bf1fc4438da818f2d"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Migrations\\20260527073900_AddUserTable.cs": {
+    "mtime": 1779867541.008662,
+    "ast_hash": "a2d8a8fccde229e7d1901f5f846d09f5",
+    "semantic_hash": "a2d8a8fccde229e7d1901f5f846d09f5"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Migrations\\20260527073900_AddUserTable.Designer.cs": {
+    "mtime": 1779867541.0097368,
+    "ast_hash": "6319c094647f6ad49815b4bae4dcf9b2",
+    "semantic_hash": "6319c094647f6ad49815b4bae4dcf9b2"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Migrations\\AppDbContextModelSnapshot.cs": {
+    "mtime": 1779867541.0107915,
+    "ast_hash": "6585bc1125c570fa5ca4b4150b7cb48b",
+    "semantic_hash": "6585bc1125c570fa5ca4b4150b7cb48b"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Properties\\launchSettings.json": {
+    "mtime": 1777378334.978614,
+    "ast_hash": "2d958654678af08ee201a1f66c4e2b42",
+    "semantic_hash": "2d958654678af08ee201a1f66c4e2b42"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Services\\AppService.cs": {
+    "mtime": 1779867346.7813761,
+    "ast_hash": "8e9367087b6caa266a9d2566d89b31a7",
+    "semantic_hash": "8e9367087b6caa266a9d2566d89b31a7"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Services\\CurrentUserService.cs": {
+    "mtime": 1779936912.7604597,
+    "ast_hash": "e2592711fc812815f5128ef58494ae9e",
+    "semantic_hash": "e2592711fc812815f5128ef58494ae9e"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Services\\DeviceService.cs": {
+    "mtime": 1778832732.8123322,
+    "ast_hash": "da18773f455fda6ae5b525d19a664e6a",
+    "semantic_hash": "da18773f455fda6ae5b525d19a664e6a"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Services\\ReportService.cs": {
+    "mtime": 1779767300.5538654,
+    "ast_hash": "33b1d56b14181e9bbcbbf8ebb609d673",
+    "semantic_hash": "33b1d56b14181e9bbcbbf8ebb609d673"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Services\\UsageService.cs": {
+    "mtime": 1779766583.183673,
+    "ast_hash": "3d0ae03b5e9ec7223e7e20413d486930",
+    "semantic_hash": "3d0ae03b5e9ec7223e7e20413d486930"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\Services\\UserService.cs": {
+    "mtime": 1779952128.1593702,
+    "ast_hash": "323522fc1265f019be04a3e4563ed5a1",
+    "semantic_hash": "323522fc1265f019be04a3e4563ed5a1"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server.Tests\\Heartbeat.Server.Tests.csproj": {
+    "mtime": 1779764814.746877,
+    "ast_hash": "dc3b6f661cb7c3bb8d737360c53f5b48",
+    "semantic_hash": "dc3b6f661cb7c3bb8d737360c53f5b48"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server.Tests\\Fixtures\\SqliteFixture.cs": {
+    "mtime": 1779765321.2629244,
+    "ast_hash": "9feb535927be40c27522389224f0674b",
+    "semantic_hash": "9feb535927be40c27522389224f0674b"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server.Tests\\Services\\DeviceServiceTests.cs": {
+    "mtime": 1779764840.8393946,
+    "ast_hash": "dd40bdc347d92ed760d40613b76c747f",
+    "semantic_hash": "dd40bdc347d92ed760d40613b76c747f"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server.Tests\\Services\\UsageServiceTests.cs": {
+    "mtime": 1779765075.2713914,
+    "ast_hash": "e3c681c6b21004daf5e73e3a76be746f",
+    "semantic_hash": "e3c681c6b21004daf5e73e3a76be746f"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\shared\\Heartbeat.Core\\DateRange.cs": {
+    "mtime": 1779767250.538663,
+    "ast_hash": "85c483ae597dcfc88852279f64eaf8cd",
+    "semantic_hash": "85c483ae597dcfc88852279f64eaf8cd"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\shared\\Heartbeat.Core\\Heartbeat.Core.csproj": {
+    "mtime": 1777378334.9936285,
+    "ast_hash": "46b0780bd56312ea2d1bab391f179e89",
+    "semantic_hash": "46b0780bd56312ea2d1bab391f179e89"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\shared\\Heartbeat.Core\\UsageMerger.cs": {
+    "mtime": 1778834740.243514,
+    "ast_hash": "a1e93fce56b568a4b2254354a8554212",
+    "semantic_hash": "a1e93fce56b568a4b2254354a8554212"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\shared\\Heartbeat.Core\\UsageValidationPolicy.cs": {
+    "mtime": 1779766437.5427306,
+    "ast_hash": "474c0f5c16c6a9c1776c483d2b4bd522",
+    "semantic_hash": "474c0f5c16c6a9c1776c483d2b4bd522"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\shared\\Heartbeat.Core\\DTOs\\Apps\\AppInfoResponse.cs": {
+    "mtime": 1777378334.9828172,
+    "ast_hash": "91eb46a01d3c37c8b948264e733937d2",
+    "semantic_hash": "91eb46a01d3c37c8b948264e733937d2"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\shared\\Heartbeat.Core\\DTOs\\Apps\\AppUsageResponse.cs": {
+    "mtime": 1777378334.9841785,
+    "ast_hash": "9af33500bc75e7c15e4f1ce3e4d88bb0",
+    "semantic_hash": "9af33500bc75e7c15e4f1ce3e4d88bb0"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\shared\\Heartbeat.Core\\DTOs\\Apps\\IconUploadRequest.cs": {
+    "mtime": 1777378334.9863575,
+    "ast_hash": "c7a2d4527a88ead4b121decc01a41a4f",
+    "semantic_hash": "c7a2d4527a88ead4b121decc01a41a4f"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\shared\\Heartbeat.Core\\DTOs\\Devices\\DeviceInfoResponse.cs": {
+    "mtime": 1777378334.987363,
+    "ast_hash": "a8ad32101ed5d9c4c1979b34ff34b447",
+    "semantic_hash": "a8ad32101ed5d9c4c1979b34ff34b447"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\shared\\Heartbeat.Core\\DTOs\\Devices\\DeviceStatusRequest.cs": {
+    "mtime": 1777378334.9893615,
+    "ast_hash": "4dff049941686873d592fe2e7e007701",
+    "semantic_hash": "4dff049941686873d592fe2e7e007701"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\shared\\Heartbeat.Core\\DTOs\\Devices\\DeviceStatusResponse.cs": {
+    "mtime": 1777378334.9893615,
+    "ast_hash": "6e9953f69b1765e08afd244c0bf017b8",
+    "semantic_hash": "6e9953f69b1765e08afd244c0bf017b8"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\shared\\Heartbeat.Core\\DTOs\\Reports\\DailyReportResponse.cs": {
+    "mtime": 1777378334.991021,
+    "ast_hash": "2a1f613c5f1d4009477949aef1eca1ad",
+    "semantic_hash": "2a1f613c5f1d4009477949aef1eca1ad"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\shared\\Heartbeat.Core\\DTOs\\Reports\\WeeklyReportResponse.cs": {
+    "mtime": 1777378334.9920523,
+    "ast_hash": "969d92cb17b15040e5e83d8f7bf5333d",
+    "semantic_hash": "969d92cb17b15040e5e83d8f7bf5333d"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\shared\\Heartbeat.Core\\DTOs\\Usage\\UsageUploadRequest.cs": {
+    "mtime": 1778834599.0838046,
+    "ast_hash": "1cc6d29efe7af4073731bbb6ce549878",
+    "semantic_hash": "1cc6d29efe7af4073731bbb6ce549878"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\shared\\Heartbeat.Core.Tests\\DateRangeTests.cs": {
+    "mtime": 1779767376.043823,
+    "ast_hash": "e3b58d6f8d7b917dcc94f2d1d33aa393",
+    "semantic_hash": "e3b58d6f8d7b917dcc94f2d1d33aa393"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\shared\\Heartbeat.Core.Tests\\Heartbeat.Core.Tests.csproj": {
+    "mtime": 1779764418.3189168,
+    "ast_hash": "6d04946ee81e7c7172849a30aeab0b96",
+    "semantic_hash": "6d04946ee81e7c7172849a30aeab0b96"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\shared\\Heartbeat.Core.Tests\\UsageMergerTests.cs": {
+    "mtime": 1779764612.5378184,
+    "ast_hash": "e2caea1c61b2c77d1ca781e461529448",
+    "semantic_hash": "e2caea1c61b2c77d1ca781e461529448"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\shared\\Heartbeat.Core.Tests\\UsageValidationPolicyTests.cs": {
+    "mtime": 1779766694.285174,
+    "ast_hash": "c99b2dba8ba165e9d1e2baee5d0136ab",
+    "semantic_hash": "c99b2dba8ba165e9d1e2baee5d0136ab"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\CLAUDE.md": {
+    "mtime": 1778588342.3731005,
+    "ast_hash": "531bd5b3619068d4f31792cfbcc26cba",
+    "semantic_hash": "531bd5b3619068d4f31792cfbcc26cba"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\CONTEXT-MAP.md": {
+    "mtime": 1778638695.7916026,
+    "ast_hash": "9865de8ed4a22c36af101e9989f5fce8",
+    "semantic_hash": "9865de8ed4a22c36af101e9989f5fce8"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\README.md": {
+    "mtime": 1778589132.0292828,
+    "ast_hash": "7bfc98b8a7b76194c9539aff022cb181",
+    "semantic_hash": "7bfc98b8a7b76194c9539aff022cb181"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\.github\\workflows\\deploy-backend.yml": {
+    "mtime": 1778744013.0595863,
+    "ast_hash": "6dc337a5cef04b0cf42d0d48a9a1a877",
+    "semantic_hash": "6dc337a5cef04b0cf42d0d48a9a1a877"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\.github\\workflows\\deploy-frontend.yml": {
+    "mtime": 1777378334.7114806,
+    "ast_hash": "5770335386939cf61b9b3972d6f0c7c2",
+    "semantic_hash": "5770335386939cf61b9b3972d6f0c7c2"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\.github\\workflows\\release-desktop.yml": {
+    "mtime": 1779711168.3271663,
+    "ast_hash": "b3346b0b90e3311729fe34c54c03c2ed",
+    "semantic_hash": "b3346b0b90e3311729fe34c54c03c2ed"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\desktop\\CONTEXT.md": {
+    "mtime": 1779182665.490417,
+    "ast_hash": "a8676ca306389b823b90c3ef9ab44fe6",
+    "semantic_hash": "a8676ca306389b823b90c3ef9ab44fe6"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\docs\\api.md": {
+    "mtime": 1777378334.783478,
+    "ast_hash": "ae4c85b4a913649a660b430d4924185a",
+    "semantic_hash": "ae4c85b4a913649a660b430d4924185a"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\docs\\db.md": {
+    "mtime": 1777378334.7862086,
+    "ast_hash": "059eea1b0c42dcb677ad2151c174d800",
+    "semantic_hash": "059eea1b0c42dcb677ad2151c174d800"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\docs\\multi-user-plan.md": {
+    "mtime": 1779850594.034793,
+    "ast_hash": "d7be63d7092fd0df94cd8aaa38cdcbf7",
+    "semantic_hash": "d7be63d7092fd0df94cd8aaa38cdcbf7"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\docs\\adr\\001-server-side-usage-merging.md": {
+    "mtime": 1777378334.7737844,
+    "ast_hash": "d301ba2287c66e67074cf740f6b2d16d",
+    "semantic_hash": "d301ba2287c66e67074cf740f6b2d16d"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\docs\\adr\\002-event-driven-window-tracking.md": {
+    "mtime": 1777378334.7751162,
+    "ast_hash": "642aaf40253703bb6aa93c80381c1154",
+    "semantic_hash": "642aaf40253703bb6aa93c80381c1154"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\docs\\adr\\003-generic-host-lifecycle.md": {
+    "mtime": 1777378334.7751162,
+    "ast_hash": "95ff09557d67ed7ce45de18412333107",
+    "semantic_hash": "95ff09557d67ed7ce45de18412333107"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\docs\\adr\\004-apikey-header-authentication.md": {
+    "mtime": 1777378334.7765813,
+    "ast_hash": "28fe84db83f9699f4c76ef499cb58d8a",
+    "semantic_hash": "28fe84db83f9699f4c76ef499cb58d8a"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\docs\\adr\\005-extract-agent-library.md": {
+    "mtime": 1777378334.7780952,
+    "ast_hash": "718bd8656c3bd7531904df2ab059f135",
+    "semantic_hash": "718bd8656c3bd7531904df2ab059f135"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\docs\\adr\\006-dedicated-report-endpoints.md": {
+    "mtime": 1777378334.7780952,
+    "ast_hash": "6edfe9632a307c1af70e232a97e83358",
+    "semantic_hash": "6edfe9632a307c1af70e232a97e83358"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\docs\\adr\\007-disable-prod-auto-migration.md": {
+    "mtime": 1777378334.7793312,
+    "ast_hash": "14438df50a40209da35e9f4e862e230e",
+    "semantic_hash": "14438df50a40209da35e9f4e862e230e"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\docs\\adr\\008-local-cache-offline-retry.md": {
+    "mtime": 1777378334.7804613,
+    "ast_hash": "1987e0ba5d0c4fe21e6eed6e7e9c99fc",
+    "semantic_hash": "1987e0ba5d0c4fe21e6eed6e7e9c99fc"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\docs\\adr\\009-velopack-auto-update.md": {
+    "mtime": 1779182685.7918668,
+    "ast_hash": "e4be203d07753b1ca27a61c54d634fbb",
+    "semantic_hash": "e4be203d07753b1ca27a61c54d634fbb"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\docs\\adr\\010-per-user-localappdata-install.md": {
+    "mtime": 1779182715.550123,
+    "ast_hash": "116d305c685644da6ea0d490fcbebecf",
+    "semantic_hash": "116d305c685644da6ea0d490fcbebecf"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\docs\\adr\\011-github-releases-update-source.md": {
+    "mtime": 1779182728.5026753,
+    "ast_hash": "6b048eb9d9e91f1a4e3eb7f8b377e2e3",
+    "semantic_hash": "6b048eb9d9e91f1a4e3eb7f8b377e2e3"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\docs\\adr\\adr-template.md": {
+    "mtime": 1777378334.781482,
+    "ast_hash": "a9fda98b1dc1c19343af6ddcb45c69f3",
+    "semantic_hash": "a9fda98b1dc1c19343af6ddcb45c69f3"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\docs\\agents\\domain.md": {
+    "mtime": 1778588345.544443,
+    "ast_hash": "dcf2330dff01907a45f5093719885ff3",
+    "semantic_hash": "dcf2330dff01907a45f5093719885ff3"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\docs\\agents\\issue-tracker.md": {
+    "mtime": 1778588343.4336689,
+    "ast_hash": "0f479992c0a4fd62a0d1be807f31e132",
+    "semantic_hash": "0f479992c0a4fd62a0d1be807f31e132"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\docs\\agents\\triage-labels.md": {
+    "mtime": 1778588344.483183,
+    "ast_hash": "1e1454fdaf15dc0312b001c1a50183c9",
+    "semantic_hash": "1e1454fdaf15dc0312b001c1a50183c9"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\frontend\\index.html": {
+    "mtime": 1777378334.7892113,
+    "ast_hash": "995cd798dda6d99b5304f612e02453c9",
+    "semantic_hash": "995cd798dda6d99b5304f612e02453c9"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\server\\Heartbeat.Server\\README.md": {
+    "mtime": 1777378334.978614,
+    "ast_hash": "01665f0f6e65a446df38c2b7ba242007",
+    "semantic_hash": "01665f0f6e65a446df38c2b7ba242007"
+  },
+  "D:\\Code\\Personal\\Heartbeat\\shared\\CONTEXT.md": {
+    "mtime": 1778760970.9975665,
+    "ast_hash": "b6affc73aa546d6392d085e41f4313dc",
+    "semantic_hash": "b6affc73aa546d6392d085e41f4313dc"
+  }
+}
