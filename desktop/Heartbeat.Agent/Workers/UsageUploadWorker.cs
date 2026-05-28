@@ -67,7 +67,14 @@ namespace Heartbeat.Agent.Workers
             var appNames = usages.Select(u => u.AppName).Distinct(StringComparer.OrdinalIgnoreCase);
             foreach (var appName in appNames)
             {
-                _ = iconService.EnsureIconUploadedAsync(appName);
+                try
+                {
+                    await iconService.EnsureIconUploadedAsync(appName);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "图标上传失败: {App}", appName);
+                }
             }
         }
     }

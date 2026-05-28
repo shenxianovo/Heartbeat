@@ -114,8 +114,10 @@ namespace Heartbeat.Agent.Utils
                 WINEVENT_OUTOFCONTEXT);
 
             // 运行消息循环（阻塞当前线程）
-            while (GetMessage(out MSG msg, IntPtr.Zero, 0, 0) > 0)
+            int ret;
+            while ((ret = GetMessage(out MSG msg, IntPtr.Zero, 0, 0)) != 0)
             {
+                if (ret == -1) break;
                 TranslateMessage(ref msg);
                 DispatchMessage(ref msg);
             }
@@ -124,6 +126,9 @@ namespace Heartbeat.Agent.Utils
             if (_foregroundHook != IntPtr.Zero) UnhookWinEvent(_foregroundHook);
             if (_minimizeStartHook != IntPtr.Zero) UnhookWinEvent(_minimizeStartHook);
             if (_minimizeEndHook != IntPtr.Zero) UnhookWinEvent(_minimizeEndHook);
+            _foregroundHook = IntPtr.Zero;
+            _minimizeStartHook = IntPtr.Zero;
+            _minimizeEndHook = IntPtr.Zero;
         }
 
         /// <summary>
@@ -151,7 +156,7 @@ namespace Heartbeat.Agent.Utils
             GetWindowThreadProcessId(hWnd, out uint pid);
             try
             {
-                var process = Process.GetProcessById((int)pid);
+                using var process = Process.GetProcessById((int)pid);
                 return process.ProcessName;
             }
             catch

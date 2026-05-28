@@ -16,7 +16,7 @@ namespace Heartbeat.Agent.Http
         private readonly AuthServiceClient _authClient;
         private readonly SemaphoreSlim _semaphore = new(1, 1);
 
-        private string? _cachedToken;
+        private volatile string? _cachedToken;
         private DateTimeOffset _expiresAt = DateTimeOffset.MinValue;
 
         // Refresh 60 seconds before actual expiry to avoid edge-case failures

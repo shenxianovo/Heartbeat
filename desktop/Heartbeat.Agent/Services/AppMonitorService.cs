@@ -158,6 +158,9 @@ namespace Heartbeat.Agent.Services
 
         public void Dispose()
         {
+            ActiveWindowHelper.ForegroundWindowChanged -= OnForegroundChanged;
+            ActiveWindowHelper.StopHook();
+            _hookThread?.Join(TimeSpan.FromSeconds(3));
             GC.SuppressFinalize(this);
         }
     }
