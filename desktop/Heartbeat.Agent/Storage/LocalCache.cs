@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace Heartbeat.Agent.Storage
 {
-    public class LocalCache
+    public class LocalCache : IDisposable
     {
         private readonly string _filePath;
         private readonly ReaderWriterLockSlim _lock = new();
@@ -27,15 +27,23 @@ namespace Heartbeat.Agent.Storage
             _lock.EnterWriteLock();
             try
             {
+                var snapshot = new List<AppUsageItem>(_cache);
                 _cache.AddRange(items);
 
-                // 超出容量时丢弃最旧的记录
                 if (_cache.Count > MaxCacheSize)
                 {
                     _cache = _cache.GetRange(_cache.Count - MaxCacheSize, MaxCacheSize);
                 }
 
-                SaveInternal();
+                try
+                {
+                    SaveInternal();
+                }
+                catch
+                {
+                    _cache = snapshot;
+                    throw;
+                }
             }
             finally
             {
@@ -61,8 +69,18 @@ namespace Heartbeat.Agent.Storage
             _lock.EnterWriteLock();
             try
             {
+                var snapshot = new List<AppUsageItem>(_cache);
                 _cache.Clear();
-                SaveInternal();
+
+                try
+                {
+                    SaveInternal();
+                }
+                catch
+                {
+                    _cache = snapshot;
+                    throw;
+                }
             }
             finally
             {
@@ -72,20 +90,15 @@ namespace Heartbeat.Agent.Storage
 
         private void SaveInternal()
         {
-            try
-            {
-                var dir = Path.GetDirectoryName(_filePath);
-                if (!string.IsNullOrEmpty(dir))
-                    Directory.CreateDirectory(dir);
+            var dir = Path.GetDirectoryName(_filePath);
+            if (!string.IsNullOrEmpty(dir))
+                Directory.CreateDirectory(dir);
 
-                var json = JsonSerializer.Serialize(_cache, new JsonSerializerOptions { WriteIndented = true });
+            var json = JsonSerializer.Serialize(_cache, new JsonSerializerOptions { WriteIndented = true });
 
-                // 原子写入
-                var tempPath = _filePath + ".tmp";
-                File.WriteAllText(tempPath, json);
-                File.Move(tempPath, _filePath, overwrite: true);
-            }
-            catch { }
+            var tempPath = _filePath + ".tmp";
+            File.WriteAllText(tempPath, json);
+            File.Move(tempPath, _filePath, overwrite: true);
         }
 
         private List<AppUsageItem> LoadInternal()
@@ -100,6 +113,11 @@ namespace Heartbeat.Agent.Storage
             {
                 return [];
             }
+        }
+
+        public void Dispose()
+        {
+            _lock.Dispose();
         }
     }
 }
