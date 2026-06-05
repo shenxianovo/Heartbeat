@@ -4,7 +4,7 @@ import { authStore } from '../stores/auth'
 const RESERVED_ROUTES = ['settings', 'callback']
 
 const router = createRouter({
-  history: createWebHistory('/heartbeat/'),
+  history: createWebHistory('/'),
   routes: [
     {
       path: '/',

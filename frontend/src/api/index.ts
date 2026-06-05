@@ -2,8 +2,8 @@ import { Client, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, Dev
 import { authStore } from '../stores/auth'
 
 // ===== Base URL =====
-const BASE_URL = import.meta.env.DEV ? '' : '/heartbeat'
-const API_BASE = `${BASE_URL}/api/v1`
+const BASE_URL = ''
+const API_BASE = '/api/v1'
 
 // ===== Auth-aware fetch wrapper =====
 const authHttp = {
