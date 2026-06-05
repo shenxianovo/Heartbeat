@@ -23,6 +23,7 @@ builder.Services.AddHttpClient("AuthService", client =>
 });
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+builder.Services.AddHealthChecks();
 
 // JWT Bearer authentication - validate tokens issued by AuthService
 // Keys are auto-discovered via {Authority}/.well-known/openid-configuration
@@ -67,5 +68,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHealthChecks("/health");
 
 app.Run();

@@ -50,8 +50,6 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:sha-${{ github.sha }}
-          build-args: |
-            VITE_BASE_PATH=/heartbeat/
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
