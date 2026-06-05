@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: heartbeat
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: heartbeat
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U heartbeat"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend
+
+  backend:
+    image: ghcr.io/shenxianovo/heartbeat-backend:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=heartbeat;Username=heartbeat;Password=${DB_PASSWORD}"
+      AuthService__Authority: ${AUTH_AUTHORITY}
+      AuthService__Issuer: ${AUTH_ISSUER:-AuthService}
+      AuthService__Audience: ${AUTH_AUDIENCE:-AuthService}
+    ports:
+      - "127.0.0.1:5023:8080"
+    networks:
+      - backend
+
+  frontend:
+    image: ghcr.io/shenxianovo/heartbeat-frontend:latest
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "127.0.0.1:8081:8080"
+    networks:
+      - backend
+
+volumes:
+  db-data:
+
+networks:
+  backend:
+    driver: bridge

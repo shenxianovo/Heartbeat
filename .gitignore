@@ -633,3 +633,5 @@ FodyWeavers.xsd
 *.msp
 
 .idea/
+
+*.lscache

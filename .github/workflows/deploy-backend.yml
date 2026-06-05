@@ -8,63 +8,60 @@ on:
       - 'shared/**'
   workflow_dispatch:
 
+env:
+  IMAGE: ghcr.io/shenxianovo/heartbeat-backend
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Install EF Core tools
-        run: dotnet tool install --global dotnet-ef
-      - name: Publish
-        run: dotnet publish server/Heartbeat.Server/Heartbeat.Server.csproj -c Release -o publish
-      - name: Build migration bundle
-        run: dotnet ef migrations bundle --project server/Heartbeat.Server/Heartbeat.Server.csproj -o publish/efbundle --self-contained --force
-      - uses: actions/upload-artifact@v4
+
+      - name: Test
+        run: dotnet test --configuration Release
+        working-directory: server
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          name: backend-publish
-          path: publish/
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    concurrency: deploy-production
+    concurrency: deploy-backend-production
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: backend-publish
-          path: deploy/backend/
-
-      - name: Upload release
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          source: deploy/backend/*
-          target: /srv/heartbeat/releases/${{ github.run_id }}
-          strip_components: 2
-
-      - name: Apply database migrations
+      - name: Pull and restart backend container
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            cd /srv/heartbeat/releases/${{ github.run_id }}
-            chmod +x efbundle
-            ./efbundle --connection "${{ secrets.DB_CONNECTION_STRING }}"
-
-      - name: Switch & restart
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          script: |
-            ln -sfn /srv/heartbeat/releases/${{ github.run_id }} /srv/heartbeat/current
-            sudo systemctl restart heartbeat
-            cd /srv/heartbeat/releases && ls -dt */ | tail -n +6 | xargs rm -rf
+            cd /srv/heartbeat
+            docker compose pull backend
+            docker compose up -d backend
+            docker compose ps backend

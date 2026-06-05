@@ -2,12 +2,12 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
-  base: '/heartbeat/',
+  base: process.env.VITE_BASE_PATH || '/',
   plugins: [vue()],
   server: {
     port: 3000,
     proxy: {
-      '/api': 'http://localhost:5023'
+      '/api': 'https://shenxianovo.com/heartbeat'
     }
   }
 })
