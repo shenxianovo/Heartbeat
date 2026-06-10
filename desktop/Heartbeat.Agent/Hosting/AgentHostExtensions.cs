@@ -47,7 +47,7 @@ namespace Heartbeat.Agent.Hosting
                 .AddHttpMessageHandler<BearerTokenHandler>();
 
             // 本地缓存
-            services.AddSingleton(sp =>
+            services.AddSingleton<IUsageCache>(sp =>
             {
                 var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
                 var cachePath = Path.Combine(localAppData, "Heartbeat", "cache.json");

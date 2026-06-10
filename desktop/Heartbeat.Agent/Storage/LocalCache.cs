@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace Heartbeat.Agent.Storage
 {
-    public class LocalCache : IDisposable
+    public class LocalCache : IUsageCache, IDisposable
     {
         private readonly string _filePath;
         private readonly ReaderWriterLockSlim _lock = new();

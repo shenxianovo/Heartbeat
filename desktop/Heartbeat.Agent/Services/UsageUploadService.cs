@@ -6,7 +6,7 @@ using Serilog;
 
 namespace Heartbeat.Agent.Services
 {
-    public class UsageUploadService(HeartbeatApiClient apiClient, LocalCache cache)
+    public class UsageUploadService(HeartbeatApiClient apiClient, IUsageCache cache)
     {
         private static UsageUploadRequest MapToDto(List<AppUsageItem> items)
         {
