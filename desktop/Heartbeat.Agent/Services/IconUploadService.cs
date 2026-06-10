@@ -9,9 +9,6 @@ namespace Heartbeat.Agent.Services
     {
         private readonly HashSet<string> _uploadedApps = new(StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>
-        /// 检查并上传应用图标（幂等，已上传过的不会重复上传）
-        /// </summary>
         public async Task EnsureIconUploadedAsync(string appName)
         {
             if (_uploadedApps.Contains(appName))
@@ -19,37 +16,25 @@ namespace Heartbeat.Agent.Services
 
             Log.Debug("检查图标: {App}", appName);
 
-            try
+            var iconData = IconHelper.GetIconPngByProcessName(appName);
+            if (iconData == null || iconData.Length == 0)
             {
-                var iconData = IconHelper.GetIconPngByProcessName(appName);
-                if (iconData == null || iconData.Length == 0)
-                {
-                    Log.Warning("无法提取图标，跳过上传: {App}", appName);
-                    return;
-                }
-
-                Log.Debug("正在上传图标: {App}，大小 {Size} bytes", appName, iconData.Length);
-                var request = new IconUploadRequest
-                {
-                    AppName = appName,
-                    IconData = iconData
-                };
-
-                var res = await apiClient.UploadAppIconAsync(request);
-                if (res.IsSuccessStatusCode)
-                {
-                    _uploadedApps.Add(appName);
-                    Log.Information("图标上传成功: {App}", appName);
-                }
-                else
-                {
-                    var body = await res.Content.ReadAsStringAsync();
-                    Log.Warning("图标上传失败 [{StatusCode}]: {App}，响应: {Body}", (int)res.StatusCode, appName, body);
-                }
+                Log.Warning("无法提取图标，跳过上传: {App}", appName);
+                return;
             }
-            catch (Exception ex)
+
+            Log.Debug("正在上传图标: {App}，大小 {Size} bytes", appName, iconData.Length);
+            var request = new IconUploadRequest
             {
-                Log.Warning(ex, "图标上传异常: {App}", appName);
+                AppName = appName,
+                IconData = iconData
+            };
+
+            var result = await apiClient.UploadAppIconAsync(request);
+            if (result.Success)
+            {
+                _uploadedApps.Add(appName);
+                Log.Information("图标上传成功: {App}", appName);
             }
         }
     }

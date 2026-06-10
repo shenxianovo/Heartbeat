@@ -13,21 +13,9 @@ namespace Heartbeat.Agent.Services
                 CurrentApp = currentApp ?? string.Empty
             };
 
-            try
-            {
-                var res = await apiClient.SendHeartbeatAsync(dto);
-                if (!res.IsSuccessStatusCode)
-                {
-                    var body = await res.Content.ReadAsStringAsync();
-                    Log.Warning("状态上传失败 [{StatusCode}]: {Body}", (int)res.StatusCode, body);
-                    return;
-                }
+            var result = await apiClient.SendHeartbeatAsync(dto);
+            if (result.Success)
                 Log.Debug("状态上传成功: {App}", currentApp ?? "(无)");
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "状态上传失败（网络异常）");
-            }
         }
     }
 }
