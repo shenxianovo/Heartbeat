@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { getIconUrl } from '../api/index'
 import { formatDuration } from '../composables/useHeartbeat'
+import { Card } from '@/components/ui/card'
 
 const props = defineProps<{
   weeklyAppSummaries: { appId: number; appName: string; totalSeconds: number }[]
@@ -50,235 +51,85 @@ const donutSegments = computed(() => {
 </script>
 
 <template>
-  <section class="panel">
-    <h2>本周应用使用</h2>
-    <div v-if="donutSegments.length" class="weekly-chart">
-      <div class="donut-wrapper">
-        <svg viewBox="0 0 200 200" class="donut-svg">
-          <circle cx="100" cy="100" r="70" fill="none" stroke="var(--secondary)" stroke-width="30" />
-          <circle
+  <Card class="mb-6 gap-3 border-border/60 bg-card/80 py-5 backdrop-blur-sm">
+    <div class="flex flex-col gap-3 px-5">
+      <h2 class="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">本周应用使用</h2>
+
+      <div
+        v-if="donutSegments.length"
+        class="flex items-center gap-8 max-[640px]:flex-col min-[900px]:flex-col min-[900px]:items-center"
+      >
+        <!-- Donut -->
+        <div class="relative h-[200px] w-[200px] shrink-0 min-[900px]:h-[170px] min-[900px]:w-[170px] min-[1200px]:h-[190px] min-[1200px]:w-[190px]">
+          <svg viewBox="0 0 200 200" class="h-full w-full overflow-visible">
+            <circle cx="100" cy="100" r="70" fill="none" stroke="var(--secondary)" stroke-width="30" />
+            <circle
+              v-for="(seg, i) in donutSegments"
+              :key="i"
+              cx="100" cy="100" r="70"
+              fill="none"
+              :stroke="seg.color"
+              :stroke-width="hoveredSegment === i ? 35 : 30"
+              :stroke-dasharray="`${seg.length} ${CIRCUMFERENCE - seg.length}`"
+              :stroke-dashoffset="`${-seg.offset}`"
+              transform="rotate(-90 100 100)"
+              class="donut-segment"
+              @mouseenter="hoveredSegment = i"
+              @mouseleave="hoveredSegment = null"
+            />
+          </svg>
+          <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+            <template v-if="hoveredSegment !== null">
+              <img
+                :src="getIconUrl(donutSegments[hoveredSegment].appId)"
+                class="mb-1 h-6 w-6 rounded object-contain"
+                @error="($event.target as HTMLImageElement).style.display = 'none'"
+              />
+              <span class="max-w-[100px] truncate text-center text-[0.8rem] font-semibold text-foreground">
+                {{ donutSegments[hoveredSegment].appName }}
+              </span>
+              <span class="font-mono text-base font-bold text-foreground">{{ formatDuration(donutSegments[hoveredSegment].totalSeconds) }}</span>
+              <span class="text-xs text-muted-foreground">{{ donutSegments[hoveredSegment].percentage }}%</span>
+            </template>
+            <template v-else>
+              <span class="text-[0.8rem] font-semibold text-foreground">本周总计</span>
+              <span class="font-mono text-base font-bold text-foreground">{{ formatDuration(weeklyTotalSeconds) }}</span>
+            </template>
+          </div>
+        </div>
+
+        <!-- Legend -->
+        <div class="flex max-h-[200px] flex-1 flex-col gap-2 overflow-y-auto pr-1 min-[900px]:max-h-[170px] min-[900px]:w-full min-[1200px]:max-h-[200px]">
+          <div
             v-for="(seg, i) in donutSegments"
-            :key="i"
-            cx="100" cy="100" r="70"
-            fill="none"
-            :stroke="seg.color"
-            :stroke-width="hoveredSegment === i ? 35 : 30"
-            :stroke-dasharray="`${seg.length} ${CIRCUMFERENCE - seg.length}`"
-            :stroke-dashoffset="`${-seg.offset}`"
-            transform="rotate(-90 100 100)"
-            class="donut-segment"
+            :key="seg.appName"
+            class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-[0.8rem] transition-[background,opacity] duration-200 hover:bg-accent"
+            :class="{ 'opacity-30': hoveredSegment !== null && hoveredSegment !== i }"
             @mouseenter="hoveredSegment = i"
             @mouseleave="hoveredSegment = null"
-          />
-        </svg>
-        <div class="donut-center">
-          <template v-if="hoveredSegment !== null">
+          >
+            <span class="h-2 w-2 shrink-0 rounded-full" :style="{ background: seg.color }"></span>
             <img
-              :src="getIconUrl(donutSegments[hoveredSegment].appId)"
-              class="donut-center-icon"
+              :src="getIconUrl(seg.appId)"
+              class="h-4 w-4 shrink-0 rounded-sm object-contain"
               @error="($event.target as HTMLImageElement).style.display = 'none'"
             />
-            <span class="donut-app">{{ donutSegments[hoveredSegment].appName }}</span>
-            <span class="donut-dur">{{ formatDuration(donutSegments[hoveredSegment].totalSeconds) }}</span>
-            <span class="donut-pct">{{ donutSegments[hoveredSegment].percentage }}%</span>
-          </template>
-          <template v-else>
-            <span class="donut-app">本周总计</span>
-            <span class="donut-dur">{{ formatDuration(weeklyTotalSeconds) }}</span>
-          </template>
+            <span class="flex-1 truncate">{{ seg.appName }}</span>
+            <span class="font-mono text-muted-foreground">{{ formatDuration(seg.totalSeconds) }}</span>
+            <span class="w-12 text-right text-muted-foreground">{{ seg.percentage }}%</span>
+          </div>
         </div>
       </div>
-      <div class="donut-legend">
-        <div
-          v-for="(seg, i) in donutSegments"
-          :key="seg.appName"
-          class="legend-item"
-          :class="{ dimmed: hoveredSegment !== null && hoveredSegment !== i }"
-          @mouseenter="hoveredSegment = i"
-          @mouseleave="hoveredSegment = null"
-        >
-          <span class="legend-dot" :style="{ background: seg.color }"></span>
-          <img
-            :src="getIconUrl(seg.appId)"
-            class="legend-icon"
-            @error="($event.target as HTMLImageElement).style.display = 'none'"
-          />
-          <span class="legend-name">{{ seg.appName }}</span>
-          <span class="legend-dur">{{ formatDuration(seg.totalSeconds) }}</span>
-          <span class="legend-pct">{{ seg.percentage }}%</span>
-        </div>
-      </div>
+
+      <div v-else class="py-8 text-center text-[0.9rem] text-muted-foreground">暂无数据</div>
     </div>
-    <div v-else class="empty">暂无数据</div>
-  </section>
+  </Card>
 </template>
 
 <style scoped>
-.weekly-chart {
-  display: flex;
-  gap: 2rem;
-  align-items: center;
-}
-
-.donut-wrapper {
-  position: relative;
-  width: 200px;
-  height: 200px;
-  flex-shrink: 0;
-}
-
-.donut-svg {
-  width: 100%;
-  height: 100%;
-  transform: rotate(0deg);
-  overflow: visible;
-}
-
+/* SVG 描边的尺寸过渡用 utility 不直观，保留少量 scoped 规则 */
 .donut-segment {
   transition: stroke-width 0.2s ease, opacity 0.2s;
   cursor: pointer;
-}
-
-.donut-center {
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-}
-
-.donut-center-icon {
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  object-fit: contain;
-  margin-bottom: 4px;
-}
-
-.donut-app {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text);
-  max-width: 100px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-align: center;
-}
-
-.donut-dur {
-  font-size: 1rem;
-  font-family: var(--font-mono);
-  color: var(--text);
-  font-weight: 700;
-}
-
-.donut-pct {
-  font-size: 0.75rem;
-  color: var(--text-dim);
-}
-
-.donut-legend {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  max-height: 200px;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.8rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.2s, opacity 0.2s;
-}
-
-.legend-item:hover {
-  background: var(--accent);
-}
-
-.legend-item.dimmed {
-  opacity: 0.3;
-}
-
-.legend-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.legend-icon {
-  width: 16px;
-  height: 16px;
-  border-radius: 3px;
-  object-fit: contain;
-  flex-shrink: 0;
-}
-
-.legend-name {
-  flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.legend-dur {
-  font-family: var(--font-mono);
-  color: var(--text-dim);
-}
-
-.legend-pct {
-  width: 3rem;
-  text-align: right;
-  color: var(--text-dim);
-}
-
-.empty { text-align: center; padding: 2rem; color: var(--text-dim); font-size: 0.9rem; }
-
-/* When in sidebar (≥900px), stack vertically since container is narrow */
-@media (min-width: 900px) {
-  .weekly-chart {
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .donut-wrapper {
-    width: 170px;
-    height: 170px;
-  }
-
-  .donut-legend {
-    width: 100%;
-    max-height: 170px;
-  }
-}
-
-/* When window is super wide, sidebar has more room — bigger donut */
-@media (min-width: 1200px) {
-  .donut-wrapper {
-    width: 190px;
-    height: 190px;
-  }
-
-  .donut-legend {
-    max-height: 200px;
-  }
-}
-
-/* Mobile: stack */
-@media (max-width: 640px) {
-  .weekly-chart {
-    flex-direction: column;
-    align-items: center;
-  }
 }
 </style>
