@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { getIconUrl } from '../api/index'
 import { formatDuration } from '../composables/useHeartbeat'
+import { Card } from '@/components/ui/card'
 
 defineProps<{
   isToday: boolean
@@ -12,115 +13,49 @@ defineProps<{
 </script>
 
 <template>
-  <section class="cards">
-    <div class="card">
-      <span class="card-label">死了吗</span>
-      <span
-        class="card-value status"
-        :class="isToday ? (isAlive ? 'alive' : 'dead') : 'off'"
-      >
-        {{ isToday ? (isAlive ? '还活着' : '似了喵') : '--' }}
-      </span>
-      <span class="card-sub" v-if="lastSeenStr && isToday">
-        最后活跃 {{ lastSeenStr }}
-      </span>
-    </div>
-    <div class="card">
-      <span class="card-label">本次存活</span>
-      <span class="card-value accent" style="color: var(--text);">{{ formatDuration(totalSeconds) }}</span>
-      <span class="card-sub">{{ appSummaries.length }} 个应用</span>
-    </div>
-    <div class="card">
-      <span class="card-label">今日最爱</span>
-      <span class="card-value accent top-app" v-if="appSummaries[0]" style="color: var(--text);">
-        <img
-          :src="getIconUrl(appSummaries[0].appId)"
-          class="top-app-icon"
-          @error="($event.target as HTMLImageElement).style.display = 'none'"
-        />
-        {{ appSummaries[0].appName }}
-      </span>
-      <span class="card-value accent top-app" v-else>--</span>
-      <span class="card-sub" v-if="appSummaries[0]">
-        沉迷时长 {{ formatDuration(appSummaries[0].totalSeconds) }}
-      </span>
-    </div>
+  <section class="mb-6 grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4 max-[640px]:grid-cols-1">
+    <!-- 死了吗 -->
+    <Card class="gap-1.5 border-border/60 bg-card/80 py-5 backdrop-blur-sm">
+      <div class="flex flex-col gap-1.5 px-5">
+        <span class="text-xs uppercase tracking-[0.06em] text-muted-foreground">死了吗</span>
+        <span
+          class="text-[1.75rem] font-bold"
+          :class="isToday ? (isAlive ? 'text-alive' : 'text-dead') : 'text-muted-foreground'"
+        >
+          {{ isToday ? (isAlive ? '还活着' : '似了喵') : '--' }}
+        </span>
+        <span class="text-[0.8rem] text-muted-foreground" v-if="lastSeenStr && isToday">
+          最后活跃 {{ lastSeenStr }}
+        </span>
+      </div>
+    </Card>
+
+    <!-- 本次存活 -->
+    <Card class="gap-1.5 border-border/60 bg-card/80 py-5 backdrop-blur-sm">
+      <div class="flex flex-col gap-1.5 px-5">
+        <span class="text-xs uppercase tracking-[0.06em] text-muted-foreground">本次存活</span>
+        <span class="font-mono text-[1.75rem] font-bold text-foreground">{{ formatDuration(totalSeconds) }}</span>
+        <span class="text-[0.8rem] text-muted-foreground">{{ appSummaries.length }} 个应用</span>
+      </div>
+    </Card>
+
+    <!-- 今日最爱 -->
+    <Card class="gap-1.5 border-border/60 bg-card/80 py-5 backdrop-blur-sm">
+      <div class="flex flex-col gap-1.5 px-5">
+        <span class="text-xs uppercase tracking-[0.06em] text-muted-foreground">今日最爱</span>
+        <span v-if="appSummaries[0]" class="flex items-center gap-2 text-[1.25rem] font-bold text-foreground">
+          <img
+            :src="getIconUrl(appSummaries[0].appId)"
+            class="h-6 w-6 rounded object-contain"
+            @error="($event.target as HTMLImageElement).style.display = 'none'"
+          />
+          <span class="truncate">{{ appSummaries[0].appName }}</span>
+        </span>
+        <span v-else class="text-[1.25rem] font-bold text-muted-foreground">--</span>
+        <span class="text-[0.8rem] text-muted-foreground" v-if="appSummaries[0]">
+          沉迷时长 {{ formatDuration(appSummaries[0].totalSeconds) }}
+        </span>
+      </div>
+    </Card>
   </section>
 </template>
-
-<style scoped>
-.cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.card-label {
-  font-size: 0.75rem;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.card-value {
-  font-size: 1.75rem;
-  font-weight: 700;
-  font-family: var(--font-mono);
-}
-
-.card-value.status {
-  font-family: var(--font);
-}
-
-.card-value.accent {
-  color: var(--accent);
-}
-
-.card-value.top-app {
-  font-size: 1.25rem;
-  font-family: inherit;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.top-app-icon {
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  object-fit: contain;
-}
-
-.card-value.status.alive {
-  color: var(--alive);
-}
-
-.card-value.status.dead {
-  color: var(--dead);
-}
-
-.card-value.status.off {
-  color: var(--text-dim);
-}
-
-.card-sub {
-  font-size: 0.8rem;
-  color: var(--text-dim);
-}
-@media (max-width: 640px) {
-  .cards {
-    grid-template-columns: 1fr;
-  }
-}
-</style>
