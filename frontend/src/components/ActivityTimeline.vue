@@ -3,6 +3,8 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { getIconUrl } from '../api/index'
 import type { AppUsageResponse } from '../api/index'
 import { useTimelineDrag } from '../composables/useTimelineDrag'
+import { Card } from '@/components/ui/card'
+import { LayoutGrid, AlignJustify } from 'lucide-vue-next'
 
 const props = defineProps<{
   activeHours: Set<number>,
@@ -210,398 +212,154 @@ const minimapActivities = computed(() => {
 </script>
 
 <template>
-  <section class="panel timeline-panel">
-    <div class="panel-header">
-      <h2>活动时间线</h2>
-      <div class="mode-toggle">
-        <button 
-          :class="['tg-btn', { active: mode === 'simple' }]" 
-          @click="mode = 'simple'"
-          title="24小时热力图"
-        >
-          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
-        </button>
-        <button 
-          :class="['tg-btn', { active: mode === 'detailed' }]" 
-          @click="mode = 'detailed'"
-          title="详细时间线"
-        >
-          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-        </button>
+  <Card class="mb-6 gap-4 border-border/60 bg-card/80 py-5 backdrop-blur-sm">
+    <div class="flex flex-col gap-4 px-5">
+      <div class="flex items-center justify-between">
+        <h2 class="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">活动时间线</h2>
+        <div class="flex gap-0.5 rounded-md bg-secondary p-0.5">
+          <button
+            class="flex cursor-pointer items-center justify-center rounded p-1 transition-colors"
+            :class="mode === 'simple' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-accent hover:text-foreground'"
+            @click="mode = 'simple'"
+            title="24小时热力图"
+          >
+            <LayoutGrid :size="16" />
+          </button>
+          <button
+            class="flex cursor-pointer items-center justify-center rounded p-1 transition-colors"
+            :class="mode === 'detailed' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-accent hover:text-foreground'"
+            @click="mode = 'detailed'"
+            title="详细时间线"
+          >
+            <AlignJustify :size="16" />
+          </button>
+        </div>
       </div>
-    </div>
 
-    <!-- Simple Mode -->
-    <div v-if="mode === 'simple'">
-      <div class="timeline">
-        <div
-          v-for="h in 24"
-          :key="h - 1"
-          class="tl-block"
-          :class="{ active: activeHours.has(h - 1) }"
-          :title="`${String(h - 1).padStart(2, '0')}:00`"
-        ></div>
-      </div>
-      <div class="tl-labels">
-        <span>00</span>
-        <span>06</span>
-        <span>12</span>
-        <span>18</span>
-        <span>24</span>
-      </div>
-    </div>
-
-    <!-- Detailed Mode -->
-    <div v-else class="detailed-container" ref="timelineEl" @wheel="handleWheel">
-      <!-- Minimap -->
-      <div class="minimap">
-        <div class="minimap-bg">
-          <div 
-            v-for="(burst, i) in minimapActivities"
-            :key="i"
-            class="minimap-burst"
-            :style="{ left: burst.left, width: burst.width }"
+      <!-- Simple Mode -->
+      <div v-if="mode === 'simple'">
+        <div class="mb-2 flex h-[30px] gap-1">
+          <div
+            v-for="h in 24"
+            :key="h - 1"
+            class="flex-1 rounded border transition-colors duration-300"
+            :class="activeHours.has(h - 1) ? 'border-primary bg-primary' : 'border-border bg-card'"
+            :title="`${String(h - 1).padStart(2, '0')}:00`"
           ></div>
         </div>
-        <div class="minimap-window" :style="minimapRangeStyle" @mousedown="minimapPointerDown($event, 'center')" @touchstart.prevent="minimapPointerDown($event, 'center')">
-          <div class="minimap-handle left" @mousedown.stop="minimapPointerDown($event, 'left')" @touchstart.stop.prevent="minimapPointerDown($event, 'left')"></div>
-          <div class="minimap-handle right" @mousedown.stop="minimapPointerDown($event, 'right')" @touchstart.stop.prevent="minimapPointerDown($event, 'right')"></div>
+        <div class="flex justify-between font-mono text-xs text-muted-foreground">
+          <span>00</span>
+          <span>06</span>
+          <span>12</span>
+          <span>18</span>
+          <span>24</span>
         </div>
       </div>
 
-      <!-- Main Timeline -->
-      <div class="timeline-body" :class="{ dragging: isDraggingTimeline }" @mousedown="timelinePointerDown($event)" @touchstart="timelinePointerDown($event)">
-        <div class="timeline-ticks">
-          <div class="tick-ph"></div> <!-- Spacer for icon column -->
-          <div class="tick-track">
-            <div class="tick" v-for="t in ticks" :key="t.label" :style="{ left: t.percent + '%' }">
-              <span class="tick-label">{{ t.label }}</span>
-              <div class="tick-line"></div>
-            </div>
+      <!-- Detailed Mode -->
+      <div v-else class="flex select-none flex-col gap-3" ref="timelineEl" @wheel="handleWheel">
+        <!-- Minimap -->
+        <div class="relative h-6 overflow-hidden rounded border border-border bg-secondary">
+          <div class="absolute inset-0">
+            <div
+              v-for="(burst, i) in minimapActivities"
+              :key="i"
+              class="absolute bottom-1.5 top-1.5 rounded-sm bg-accent-3 opacity-60"
+              :style="{ left: burst.left, width: burst.width }"
+            ></div>
+          </div>
+          <div
+            class="absolute bottom-0 top-0 box-border cursor-grab touch-pan-y border border-primary bg-primary-soft active:cursor-grabbing"
+            :style="minimapRangeStyle"
+            @mousedown="minimapPointerDown($event, 'center')"
+            @touchstart.prevent="minimapPointerDown($event, 'center')"
+          >
+            <div
+              class="absolute bottom-0 top-0 left-0 w-2 cursor-ew-resize bg-primary"
+              @mousedown.stop="minimapPointerDown($event, 'left')"
+              @touchstart.stop.prevent="minimapPointerDown($event, 'left')"
+            ></div>
+            <div
+              class="absolute bottom-0 top-0 right-0 w-2 cursor-ew-resize bg-primary"
+              @mousedown.stop="minimapPointerDown($event, 'right')"
+              @touchstart.stop.prevent="minimapPointerDown($event, 'right')"
+            ></div>
           </div>
         </div>
 
-        <TransitionGroup name="row-list" tag="div" class="timeline-rows">
-          <div v-if="detailedRows.length === 0" key="empty" class="empty-state">
-             当前时间范围内无活动记录，请拖拽或缩放上方缩略图更改范围
+        <!-- Main Timeline -->
+        <div
+          class="overflow-hidden rounded-md border border-border bg-secondary touch-pan-y"
+          :class="isDraggingTimeline ? 'cursor-grabbing' : 'cursor-grab'"
+          @mousedown="timelinePointerDown($event)"
+          @touchstart="timelinePointerDown($event)"
+        >
+          <div class="flex h-6 border-b border-border bg-muted">
+            <div class="w-[120px] shrink-0 border-r border-border"></div>
+            <div class="relative flex-1">
+              <div
+                class="pointer-events-none absolute bottom-0 top-0 flex -translate-x-1/2 flex-col items-center"
+                v-for="t in ticks"
+                :key="t.label"
+                :style="{ left: t.percent + '%' }"
+              >
+                <span class="mt-0.5 font-mono text-[0.65rem] text-muted-foreground">{{ t.label }}</span>
+                <div class="absolute top-6 -bottom-[500px] z-0 w-px bg-border"></div>
+              </div>
+            </div>
           </div>
-          <div 
-            v-for="row in detailedRows" 
-            :key="row.appId" 
-            class="timeline-row"
+
+          <TransitionGroup
+            name="row-list"
+            tag="div"
+            class="relative z-[1] max-h-[220px] overflow-y-auto min-[900px]:max-h-[320px] min-[1200px]:max-h-[400px]"
           >
-            <div class="row-header">
-              <img :src="getIconUrl(row.appId)" class="row-icon" @error="($event.target as HTMLImageElement).style.display = 'none'"/>
-              <span class="row-name" :title="row.name">{{ row.name }}</span>
+            <div
+              v-if="detailedRows.length === 0"
+              key="empty"
+              class="p-8 text-center text-[0.8rem] text-muted-foreground"
+            >
+              当前时间范围内无活动记录，请拖拽或缩放上方缩略图更改范围
             </div>
-            <div class="row-track">
-              <!-- Event blocks (only visible segments are in DOM) -->
-              <div 
-                v-for="(seg, idx) in row.usages" 
-                :key="idx"
-                class="row-segment"
-                :style="{
-                  left: seg.left + '%',
-                  width: seg.width + '%'
-                }"
-                :title="seg.title"
-              ></div>
+            <div
+              v-for="row in detailedRows"
+              :key="row.appId"
+              class="flex h-10 border-b border-border last:border-b-0"
+            >
+              <div class="z-[2] flex w-[120px] shrink-0 items-center gap-2 border-r border-border bg-muted px-2">
+                <img :src="getIconUrl(row.appId)" class="h-5 w-5 rounded object-contain" @error="($event.target as HTMLImageElement).style.display = 'none'"/>
+                <span class="flex-1 truncate text-[0.75rem] text-foreground" :title="row.name">{{ row.name }}</span>
+              </div>
+              <div class="relative flex-1">
+                <div
+                  v-for="(seg, idx) in row.usages"
+                  :key="idx"
+                  class="absolute top-2.5 h-5 cursor-pointer rounded-sm bg-primary opacity-80 hover:z-[3] hover:opacity-100"
+                  :style="{ left: seg.left + '%', width: seg.width + '%' }"
+                  :title="seg.title"
+                ></div>
+              </div>
             </div>
-          </div>
-        </TransitionGroup>
+          </TransitionGroup>
+        </div>
       </div>
     </div>
-  </section>
+  </Card>
 </template>
 
 <style scoped>
-.panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-
-.panel-header h2 {
-  margin-bottom: 0;
-}
-
-.mode-toggle {
-  display: flex;
-  background: var(--secondary);
-  border-radius: 6px;
-  padding: 2px;
-  gap: 2px;
-}
-
-.tg-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  padding: 4px;
-  border-radius: 4px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-
-.tg-btn:hover {
-  color: var(--text);
-  background: var(--accent);
-}
-
-.tg-btn.active {
-  color: var(--primary-foreground);
-  background: var(--primary);
-  box-shadow: var(--shadow-sm);
-}
-
-/* Simple Timeline Styles (Restored from App.vue) */
-.timeline {
-  display: flex;
-  gap: 4px;
-  height: 30px;
-  margin-bottom: 0.5rem;
-}
-.tl-block {
-  flex: 1;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  transition: background 0.3s;
-}
-.tl-block.active {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-.tl-labels {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.75rem;
-  color: var(--text-dim);
-  font-family: var(--font-mono);
-}
-
-/* Detailed Timeline Styles */
-.detailed-container {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  user-select: none;
-}
-
-.minimap {
-  height: 24px;
-  background: var(--secondary);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  position: relative;
-  overflow: hidden;
-}
-
-.minimap-bg {
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-}
-
-.minimap-burst {
-  position: absolute;
-  top: 6px;
-  bottom: 6px;
-  background: var(--accent-3);
-  opacity: 0.6;
-  border-radius: 2px;
-}
-
-.minimap-window {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  background: var(--primary-soft);
-  border: 1px solid var(--primary);
-  cursor: grab;
-  box-sizing: border-box;
-  touch-action: pan-y;
-}
-
-.minimap-window:active {
-  cursor: grabbing;
-}
-
-.minimap-handle {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 8px;
-  background: var(--primary);
-  cursor: ew-resize;
-}
-
-.minimap-handle.left { left: 0; }
-.minimap-handle.right { right: 0; }
-
-.timeline-body {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--secondary);
-  overflow: hidden;
-  cursor: grab;
-  touch-action: pan-y;
-}
-
-.timeline-body.dragging {
-  cursor: grabbing;
-}
-
-.timeline-ticks {
-  display: flex;
-  height: 24px;
-  background: var(--muted);
-  border-bottom: 1px solid var(--border);
-}
-
-.tick-ph {
-  width: 120px; /* Width of the icon column */
-  flex-shrink: 0;
-  border-right: 1px solid var(--border);
-}
-
-.tick-track {
-  flex: 1;
-  position: relative;
-}
-
-.tick {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  pointer-events: none;
-}
-
-.tick-label {
-  font-size: 0.65rem;
-  color: var(--text-dim);
-  margin-top: 2px;
-  font-family: var(--font-mono);
-}
-
-.tick-line {
-  position: absolute;
-  top: 24px;
-  bottom: -500px; /* Arbitrary long line downwards */
-  width: 1px;
-  background: var(--border);
-  z-index: 0;
-}
-
-.timeline-rows {
-  max-height: 220px; /* Approx 5 rows (40px per row) */
-  overflow-y: auto;
-  position: relative;
-  z-index: 1;
-}
-
-/* Two-column mode: more vertical space for timeline */
-@media (min-width: 900px) {
-  .timeline-rows {
-    max-height: 320px; /* ~8 rows */
-  }
-}
-
-@media (min-width: 1200px) {
-  .timeline-rows {
-    max-height: 400px; /* ~10 rows */
-  }
-}
-
-/* Custom Scrollbar for rows */
-.timeline-row {
-  display: flex;
-  height: 40px;
-  border-bottom: 1px solid var(--border);
-}
-
-.timeline-row:last-child {
-  border-bottom: none;
-}
-
-.row-header {
-  width: 120px;
-  flex-shrink: 0;
-  border-right: 1px solid var(--border);
-  background: var(--muted);
-  display: flex;
-  align-items: center;
-  padding: 0 8px;
-  gap: 8px;
-  z-index: 2; /* keeps it above tick lines visually */
-}
-
-.row-icon {
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
-  object-fit: contain;
-}
-
-.row-name {
-  font-size: 0.75rem;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
-}
-
-.row-track {
-  flex: 1;
-  position: relative;
-  /* background: #1a1a1a; */
-}
-
-.row-segment {
-  position: absolute;
-  top: 10px;
-  height: 20px;
-  background: var(--accent);
-  border-radius: 3px;
-  opacity: 0.8;
-  cursor: pointer;
-}
-
-.row-segment:hover {
-  opacity: 1;
-  z-index: 3;
-}
-
-.empty-state {
-  padding: 2rem;
-  text-align: center;
-  color: var(--text-dim);
-  font-size: 0.8rem;
-}
-
-/* Row reorder animation */
+/* TransitionGroup 行重排动画依赖具名 class，保留为 scoped CSS */
 .row-list-move {
   transition: transform 0.3s ease;
 }
-
 .row-list-enter-active {
   transition: opacity 0.2s ease;
 }
-
 .row-list-leave-active {
   transition: opacity 0.15s ease;
   position: absolute;
   width: 100%;
 }
-
 .row-list-enter-from,
 .row-list-leave-to {
   opacity: 0;
