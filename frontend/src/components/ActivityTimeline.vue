@@ -216,9 +216,9 @@ const minimapActivities = computed(() => {
     <div class="flex flex-col gap-4 px-5">
       <div class="flex items-center justify-between">
         <h2 class="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">活动时间线</h2>
-        <div class="flex gap-0.5 rounded-md bg-secondary p-0.5">
+        <div class="flex gap-0.5 rounded-full border border-glass-border bg-glass p-0.5 shadow-sm backdrop-blur-md">
           <button
-            class="flex cursor-pointer items-center justify-center rounded p-1 transition-colors"
+            class="flex cursor-pointer items-center justify-center rounded-full p-1.5 transition-colors"
             :class="mode === 'simple' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-accent hover:text-foreground'"
             @click="mode = 'simple'"
             title="24小时热力图"
@@ -226,7 +226,7 @@ const minimapActivities = computed(() => {
             <LayoutGrid :size="16" />
           </button>
           <button
-            class="flex cursor-pointer items-center justify-center rounded p-1 transition-colors"
+            class="flex cursor-pointer items-center justify-center rounded-full p-1.5 transition-colors"
             :class="mode === 'detailed' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-accent hover:text-foreground'"
             @click="mode = 'detailed'"
             title="详细时间线"

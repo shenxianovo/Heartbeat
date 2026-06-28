@@ -58,14 +58,14 @@ const selectedDeviceStr = computed({
         <span>{{ username }}</span>
       </div>
 
-      <div class="flex flex-wrap gap-2 max-[640px]:w-full">
+      <div class="flex flex-wrap items-center gap-2 max-[640px]:w-full">
         <span
-          class="inline-flex cursor-help select-none items-center whitespace-nowrap rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-[0.7rem] text-muted-foreground"
+          class="glass-control cursor-help whitespace-nowrap px-3 py-1.5 font-mono text-[0.7rem] text-muted-foreground"
           title="数据按浏览器所在时区的日期展示，不代表设备所在时区"
         >{{ timezoneLabel }}</span>
 
         <Select v-model="selectedDeviceStr">
-          <SelectTrigger class="h-auto min-w-[8rem] bg-card py-1.5 text-sm max-[640px]:flex-1">
+          <SelectTrigger class="glass-control h-auto min-w-[8rem] border-glass-border px-3 py-1.5 text-sm shadow-sm max-[640px]:flex-1">
             <SelectValue placeholder="选择设备" />
           </SelectTrigger>
           <SelectContent>
@@ -80,16 +80,16 @@ const selectedDeviceStr = computed({
         <a
           v-if="isOwnProfile"
           href="/heartbeat/settings"
-          class="inline-flex items-center text-[0.8rem] text-muted-foreground no-underline transition-colors hover:text-foreground"
+          class="glass-control px-3 py-1.5 text-[0.8rem] text-muted-foreground no-underline hover:text-foreground"
         >设置</a>
         <button
           v-if="authStore.isAuthenticated"
-          class="cursor-pointer bg-transparent text-[0.8rem] text-muted-foreground transition-colors hover:text-foreground"
+          class="glass-control px-3 py-1.5 text-[0.8rem] text-muted-foreground hover:text-foreground"
           @click="authStore.logout()"
         >登出</button>
         <button
           v-else
-          class="cursor-pointer rounded-md bg-primary px-2.5 py-1.5 text-[0.8rem] text-primary-foreground transition-colors hover:bg-primary-dark"
+          class="glass-control px-3 py-1.5 text-[0.8rem] font-medium text-primary"
           @click="authStore.redirectToLogin()"
         >登录</button>
       </div>

@@ -27,7 +27,7 @@ const dateValue = computed<DateValue | undefined>({
 <template>
   <Popover>
     <PopoverTrigger
-      :class="cn('inline-flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-sm text-foreground outline-none transition-colors hover:border-ring focus:border-ring', props.class)"
+      :class="cn('glass-control px-3 py-1.5 text-sm text-foreground', props.class)"
     >
       <CalendarIcon :size="15" class="text-muted-foreground" />
       <span class="font-mono">{{ modelValue }}</span>

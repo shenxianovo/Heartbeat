@@ -136,3 +136,31 @@
   box-shadow: 0 0 8px var(--alive);
   animation: pulse 2s ease-in-out infinite;
 }
+
+/* ============================================================
+   Glass control — shared pill + glass treatment for top-bar
+   controls (theme toggle, device select, date picker, buttons).
+   ============================================================ */
+.glass-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  color: var(--foreground);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  outline: none;
+  transition: box-shadow 0.2s, transform 0.2s, border-color 0.2s;
+}
+
+.glass-control:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.glass-control:focus-visible {
+  border-color: var(--ring);
+}
