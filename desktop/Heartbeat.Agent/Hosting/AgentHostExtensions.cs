@@ -57,18 +57,21 @@ namespace Heartbeat.Agent.Hosting
             // 基础设施
             services.AddSingleton<IClock, SystemClock>();
             services.AddSingleton<IWindowEventMonitor, WindowsWindowEventMonitor>();
+            services.AddSingleton<ILowLevelInputHook, WindowsLowLevelInputHook>();
 
             // 业务服务
             services.AddSingleton<AppMonitorService>();
             services.AddSingleton<UsageUploadService>();
             services.AddSingleton<IconUploadService>();
             services.AddSingleton<StatusUploadService>();
+            services.AddSingleton<InputEventCollector>();
 
             // 自启动服务
             services.AddSingleton<IAutoStartService, RegistryAutoStartService>();
 
             // 托管后台服务
             services.AddHostedService(sp => sp.GetRequiredService<AppMonitorService>());
+            services.AddHostedService(sp => sp.GetRequiredService<InputEventCollector>());
             services.AddHostedService<UsageUploadWorker>();
             services.AddHostedService<StatusUploadWorker>();
 
