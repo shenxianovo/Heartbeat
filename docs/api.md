@@ -35,7 +35,23 @@ nswag openapi2tsclient /input:http://localhost:5023/openapi/v1.json /output:fron
 | `/usage` | GET  | 无       | [前端] 按条件查询原始使用记录。通常包含 Query 参数: `deviceId`, `start`, `end` |
 | `/usage` | POST | `[Auth]` | [客户端] 批量上传时间段内的应用使用记录 (由 AppName, StartTime, EndTime 组成)  |
 
-## 4. 统计报表 (Reports)
+## 4. 输入事件 (InputEvents)
+
+键盘按下与鼠标操作的原始事件流。详见 [ADR-012](adr/012-input-event-tracking.md)。
+
+| 接口路径                | 方法 | 鉴权     | 说明                                                                              |
+| ----------------------- | ---- | -------- | --------------------------------------------------------------------------------- |
+| `/input-events`         | POST | `[Auth]` | [客户端] 批量上传输入事件 (由 Id, EventType, Code, Timestamp 组成，幂等)           |
+| `/input-events/counts`  | GET  | 无       | [前端] 获取某时间段内的键盘/鼠标操作计数。参数: `deviceId` (可选), `start`, `end` |
+
+`/input-events/counts` 返回示例：
+
+```json
+{ "keyboardTotal": 48213, "mouseLeft": 6201, "mouseRight": 842,
+  "mouseMiddle": 33, "scrollUp": 1502, "scrollDown": 1789 }
+```
+
+## 5. 统计报表 (Reports)
 
 由服务端进行聚合后提供给前端面板展示的视图查询接口。
 
@@ -61,6 +77,12 @@ Base URL: https://shenxianovo.com/heartbeat/api/v1
   - ?deviceId=                  // 设备Id
   - &start=                     // 开始时间
   - &end=                       // 结束时间
+
+- input-events (POST)           // 客户端用：上传输入事件
+  - counts (GET)                // 前端用：键盘/鼠标操作计数
+    - ?deviceId=                // 设备Id
+    - &start=                   // 开始时间
+    - &end=                     // 结束时间
 
 - reports                       // 前端用：统计数据
   - daily (GET)                 // 每日使用统计

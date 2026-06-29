@@ -33,7 +33,23 @@ erDiagram
         integer DurationSeconds "持续时长(秒)"
     }
 
+    InputEvent {
+        uuid Id PK "主键兼去重键 (UUIDv7, Agent 生成)"
+        bigint DeviceId FK "外键 -> Device.Id"
+        smallint EventType "事件类型: 1=KeyDown 2=MouseButton 3=MouseScroll"
+        smallint Code "键盘=VK码; 鼠标按钮=1左/2右/3中; 滚轮=1上/2下"
+        timestamp Timestamp "事件发生时刻 (毫秒精度, 算速度的权威时间源)"
+    }
+
     Device ||--o{ AppUsage : "产生"
     App ||--o{ AppUsage : "被使用"
     App ||--o| AppIcon : "拥有 (1对1)"
+    Device ||--o{ InputEvent : "产生"
 ```
+
+## InputEvent 说明
+
+原始输入事件流，一行一个键盘按下/鼠标操作事件，不做时间桶聚合或 delta 编码（详见 [ADR-012](adr/012-input-event-tracking.md)）。
+
+- `Id` 为 UUIDv7，既是主键又是唯一去重键，服务端插入用 `ON CONFLICT (Id) DO NOTHING` 保证离线重传幂等。
+- 推荐索引 `(DeviceId, Timestamp)`，支撑按设备 + 时间范围的计数查询。

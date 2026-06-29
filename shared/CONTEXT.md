@@ -16,3 +16,4 @@
 | AppIcon | App 对应的图标二进制数据，由 Agent 上传，供 Dashboard 展示。 |
 | ApiKey | Collection 上传数据到 Analytics 的凭证，类似 LLM API Key。 |
 | UsageMerger | 合并因上传分片截断而产生的同一 App 碎片记录。规则：同 AppName + 时间间隔 ≤1s 则合并。客户端和服务端双层执行。不做跨切换的聚合——用户切走再切回产生的两段记录是独立的。 |
+| InputEvent | 一次键盘按下或鼠标操作的离散事件记录（一行一事件）。由 Agent 通过全局低级钩子（WH_KEYBOARD_LL/WH_MOUSE_LL）采集。EventType 区分 KeyDown(1)/MouseButton(2)/MouseScroll(3)；Code 在键盘事件中为 Windows 虚拟键码原始值，鼠标按钮为 1左/2右/3中，滚轮为 1上/2下。只记按下，KeyUp 仅用于过滤长按自动重复，不落盘。隐私上等价于键盘记录器输出，仅用于单用户自部署的个人统计。主键 Id 为 Agent 生成的 UUIDv7，兼作去重键，保证离线重传幂等（服务端 ON CONFLICT DO NOTHING）。 |
