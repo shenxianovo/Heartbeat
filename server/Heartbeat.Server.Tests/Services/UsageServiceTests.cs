@@ -1,18 +1,18 @@
 using Heartbeat.Core.DTOs.Usage;
+using Heartbeat.Server.Data;
 using Heartbeat.Server.Entities;
 using Heartbeat.Server.Services;
 using Heartbeat.Server.Tests.Fixtures;
 
 namespace Heartbeat.Server.Tests.Services;
 
-public class UsageServiceTests : IDisposable
+[Collection("postgres")]
+public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestBase(fixture)
 {
-    private readonly SqliteFixture _fixture = new();
-    private readonly long _deviceId;
+    private long _deviceId;
 
-    public UsageServiceTests()
+    protected override async Task SeedAsync(AppDbContext db)
     {
-        using var db = _fixture.CreateDbContext();
         var device = new Device
         {
             OwnerId = "user-1",
@@ -20,11 +20,9 @@ public class UsageServiceTests : IDisposable
             DeviceName = "Test PC"
         };
         db.Devices.Add(device);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         _deviceId = device.Id;
     }
-
-    public void Dispose() => _fixture.Dispose();
 
     private static DateTimeOffset Now => DateTimeOffset.UtcNow;
 
@@ -38,7 +36,7 @@ public class UsageServiceTests : IDisposable
     [Fact]
     public async Task SaveUsage_ValidRecords_CreatesAppsAndUsages()
     {
-        using var db = _fixture.CreateDbContext();
+        using var db = CreateDbContext();
         var svc = new UsageService(db);
 
         var start = Now.AddMinutes(-5);
@@ -58,7 +56,7 @@ public class UsageServiceTests : IDisposable
     [Fact]
     public async Task SaveUsage_FiltersInvalidRecords()
     {
-        using var db = _fixture.CreateDbContext();
+        using var db = CreateDbContext();
         var svc = new UsageService(db);
 
         var request = new UsageUploadRequest
@@ -82,7 +80,7 @@ public class UsageServiceTests : IDisposable
     [Fact]
     public async Task SaveUsage_MergesWithExistingRecord_WhenOverlapping()
     {
-        using var db = _fixture.CreateDbContext();
+        using var db = CreateDbContext();
         var svc = new UsageService(db);
 
         var app = new App { Name = "VSCode" };
@@ -120,7 +118,7 @@ public class UsageServiceTests : IDisposable
     [Fact]
     public async Task SaveUsage_DoesNotMerge_WhenGapExceedsTolerance()
     {
-        using var db = _fixture.CreateDbContext();
+        using var db = CreateDbContext();
         var svc = new UsageService(db);
 
         var app = new App { Name = "VSCode" };
@@ -152,7 +150,7 @@ public class UsageServiceTests : IDisposable
     [Fact]
     public async Task SaveUsage_CreatesApp_WhenNotExists()
     {
-        using var db = _fixture.CreateDbContext();
+        using var db = CreateDbContext();
         var svc = new UsageService(db);
 
         var request = new UsageUploadRequest
@@ -173,7 +171,7 @@ public class UsageServiceTests : IDisposable
     [Fact]
     public async Task SaveUsage_ReusesExistingApp()
     {
-        using var db = _fixture.CreateDbContext();
+        using var db = CreateDbContext();
         var svc = new UsageService(db);
 
         db.Apps.Add(new App { Name = "VSCode" });
@@ -193,7 +191,7 @@ public class UsageServiceTests : IDisposable
     [Fact]
     public async Task SaveUsage_CalculatesDurationSeconds()
     {
-        using var db = _fixture.CreateDbContext();
+        using var db = CreateDbContext();
         var svc = new UsageService(db);
 
         var start = Now.AddMinutes(-5);

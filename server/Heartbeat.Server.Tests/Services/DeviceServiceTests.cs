@@ -3,16 +3,13 @@ using Heartbeat.Server.Tests.Fixtures;
 
 namespace Heartbeat.Server.Tests.Services
 {
-    public class DeviceServiceTests : IDisposable
+    [Collection("postgres")]
+    public class DeviceServiceTests(PostgresContainerFixture fixture) : PostgresTestBase(fixture)
     {
-        private readonly SqliteFixture _fixture = new();
-
-        public void Dispose() => _fixture.Dispose();
-
         [Fact]
         public async Task ResolveByHardwareId_CreatesNewDevice_WhenNotExists()
         {
-            using var db = _fixture.CreateDbContext();
+            using var db = CreateDbContext();
             var service = new DeviceService(db);
 
             var device = await service.ResolveByHardwareIdAsync("user-1", "hw-abc", "My PC");
@@ -26,7 +23,7 @@ namespace Heartbeat.Server.Tests.Services
         [Fact]
         public async Task ResolveByHardwareId_ReturnsSameDevice_WhenAlreadyExists()
         {
-            using var db = _fixture.CreateDbContext();
+            using var db = CreateDbContext();
             var service = new DeviceService(db);
 
             var first = await service.ResolveByHardwareIdAsync("user-1", "hw-abc", "My PC");
@@ -38,7 +35,7 @@ namespace Heartbeat.Server.Tests.Services
         [Fact]
         public async Task ResolveByHardwareId_DifferentUsers_SameHardwareId_CreatesSeparateDevices()
         {
-            using var db = _fixture.CreateDbContext();
+            using var db = CreateDbContext();
             var service = new DeviceService(db);
 
             var deviceA = await service.ResolveByHardwareIdAsync("user-1", "hw-abc", "PC");
@@ -52,7 +49,7 @@ namespace Heartbeat.Server.Tests.Services
         [Fact]
         public async Task GetAllAsync_ReturnsOnlyDevicesForOwner()
         {
-            using var db = _fixture.CreateDbContext();
+            using var db = CreateDbContext();
             var service = new DeviceService(db);
 
             await service.ResolveByHardwareIdAsync("user-1", "hw-1", "PC1");
