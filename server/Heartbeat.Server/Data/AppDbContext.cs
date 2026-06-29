@@ -10,6 +10,7 @@ namespace Heartbeat.Server.Data
         public DbSet<App> Apps => Set<App>();
         public DbSet<AppUsage> AppUsages => Set<AppUsage>();
         public DbSet<AppIcon> AppIcons => Set<AppIcon>();
+        public DbSet<InputEvent> InputEvents => Set<InputEvent>();
 
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
@@ -70,6 +71,24 @@ namespace Heartbeat.Server.Data
 
                 entity.HasIndex(e => e.AppId)
                     .IsUnique();
+            });
+
+            modelBuilder.Entity<InputEvent>(entity =>
+            {
+                // Id 为客户端生成的 UUIDv7，兼作去重键（上传幂等）。
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).ValueGeneratedNever();
+
+                // 枚举以 short 落库。
+                entity.Property(e => e.EventType)
+                    .HasConversion<short>();
+
+                entity.HasOne(e => e.Device)
+                    .WithMany()
+                    .HasForeignKey(e => e.DeviceId);
+
+                // 计数查询走 (DeviceId, Timestamp)。
+                entity.HasIndex(e => new { e.DeviceId, e.Timestamp });
             });
         }
     }
