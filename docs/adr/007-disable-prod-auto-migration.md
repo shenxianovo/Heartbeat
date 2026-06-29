@@ -1,6 +1,6 @@
 # ADR-007: Disable Auto-Migration in Production
 
-## Status: Accepted
+## Status: Superseded by ADR-013
 
 ## Date: 2026-03-19
 
