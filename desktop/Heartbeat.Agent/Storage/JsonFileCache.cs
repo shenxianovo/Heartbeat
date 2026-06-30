@@ -7,15 +7,11 @@ namespace Heartbeat.Agent.Storage
     /// 捕获两个离线缓存（usage / input event）的全部公共机制：
     /// ReaderWriterLockSlim 并发控制、temp-swap 原子写、容量裁剪（丢最旧）、
     /// 失败回滚、加载容错。不认识任何业务语义。
-    ///
-    /// 注意：transform 是 1a 过渡期的可选后处理钩子（usage 在此跑 UsageMerger），
-    /// 1b 会移除 usage 的 transform，使本类彻底不含业务概念。
     /// </summary>
     public class JsonFileCache<T> : IDisposable
     {
         private readonly string _filePath;
         private readonly int _maxItems;
-        private readonly Func<List<T>, List<T>>? _transform;
         private readonly bool _indented;
         private readonly ReaderWriterLockSlim _lock = new();
         private List<T> _cache;
@@ -23,12 +19,10 @@ namespace Heartbeat.Agent.Storage
         public JsonFileCache(
             string filePath,
             int maxItems,
-            Func<List<T>, List<T>>? transform = null,
             bool indented = false)
         {
             _filePath = filePath;
             _maxItems = maxItems;
-            _transform = transform;
             _indented = indented;
             _cache = LoadInternal();
         }
@@ -42,9 +36,6 @@ namespace Heartbeat.Agent.Storage
             {
                 var snapshot = new List<T>(_cache);
                 _cache.AddRange(items);
-
-                if (_transform != null)
-                    _cache = _transform(_cache);
 
                 if (_cache.Count > _maxItems)
                     _cache = _cache.GetRange(_cache.Count - _maxItems, _maxItems);
