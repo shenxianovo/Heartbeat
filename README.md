@@ -85,18 +85,7 @@ Heartbeat
 
 ## Architecture Decision Records (ADR)
 
-| # | Decision | Date | Commit |
-|---|---|---|---|
-| [001](./docs/adr/001-server-side-usage-merging.md) | Server-Side Usage Record Merging | 2026-02-26 | `328b754` |
-| [002](./docs/adr/002-event-driven-window-tracking.md) | Event-Driven Foreground Window Tracking via WinEvent Hooks | 2026-02-27 | `0ad53dc` |
-| [003](./docs/adr/003-generic-host-lifecycle.md) | Adopt .NET Generic Host for Desktop Client Lifecycle | 2026-03-03 | `b851b7c` |
-| [004](./docs/adr/004-apikey-header-authentication.md) | Custom ApiKey Authentication via HTTP Header | 2026-03-04 | `877851d` |
-| [005](./docs/adr/005-extract-agent-library.md) | Extract Heartbeat.Agent as Reusable Class Library | 2026-03-18 | `8bc6966` |
-| [006](./docs/adr/006-dedicated-report-endpoints.md) | Redesign API with Dedicated Report Endpoints | 2026-03-05 | `04120cc` |
-| [007](./docs/adr/007-disable-prod-auto-migration.md) | Disable Auto-Migration in Production | 2026-03-19 | `0bcc0db` |
-| [008](./docs/adr/008-local-cache-offline-retry.md) | Local JSON Cache with Offline Retry for Usage Upload | 2026-03-03 | `b851b7c` |
-
-> ADR template: [`docs/adr/adr-template.md`](./docs/adr/adr-template.md)
+See [`docs/adr/`](./docs/adr/) for all architecture decisions ([template](./docs/adr/adr-template.md)).
 
 ## Documentation
 
