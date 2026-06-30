@@ -234,4 +234,99 @@ public class InputEventServiceTests(PostgresContainerFixture fixture) : Postgres
         Assert.Equal(0, counts.MouseLeft);
         Assert.Equal(0, counts.ScrollDown);
     }
+
+    [Fact]
+    public async Task GetKeyFrequency_GroupsByCode_OnlyKeyboard()
+    {
+        var now = DateTimeOffset.UtcNow;
+        using (var db = CreateDbContext())
+        {
+            await new InputEventService(db).SaveAsync(_deviceId, new InputEventUploadRequest
+            {
+                Events =
+                [
+                    Item(InputEventType.KeyDown, 65, now),                  // A x3
+                    Item(InputEventType.KeyDown, 65, now.AddMilliseconds(1)),
+                    Item(InputEventType.KeyDown, 65, now.AddMilliseconds(2)),
+                    Item(InputEventType.KeyDown, 66, now.AddMilliseconds(3)), // B x1
+                    Item(InputEventType.MouseButton, 1, now.AddMilliseconds(4)), // 不算
+                    Item(InputEventType.MouseScroll, 1, now.AddMilliseconds(5)), // 不算
+                ]
+            });
+        }
+
+        using (var db = CreateDbContext())
+        {
+            var freq = await new InputEventService(db).GetKeyFrequencyAsync("user-1", null, null, null);
+
+            Assert.Equal(2, freq.Keys.Count);
+            // 按 count 降序
+            Assert.Equal((short)65, freq.Keys[0].Code);
+            Assert.Equal(3, freq.Keys[0].Count);
+            Assert.Equal((short)66, freq.Keys[1].Code);
+            Assert.Equal(1, freq.Keys[1].Count);
+        }
+    }
+
+    [Fact]
+    public async Task GetKeyFrequency_FiltersByTimeRange()
+    {
+        var now = DateTimeOffset.UtcNow;
+        using (var db = CreateDbContext())
+        {
+            await new InputEventService(db).SaveAsync(_deviceId, new InputEventUploadRequest
+            {
+                Events =
+                [
+                    Item(InputEventType.KeyDown, 65, now.AddHours(-2)),     // 范围外
+                    Item(InputEventType.KeyDown, 65, now.AddMinutes(-30)),  // 范围内
+                ]
+            });
+        }
+
+        using (var db = CreateDbContext())
+        {
+            var freq = await new InputEventService(db)
+                .GetKeyFrequencyAsync("user-1", null, now.AddHours(-1), now);
+
+            Assert.Single(freq.Keys);
+            Assert.Equal(1, freq.Keys[0].Count);
+        }
+    }
+
+    [Fact]
+    public async Task GetKeyFrequency_OnlyOwnerDevices()
+    {
+        var now = DateTimeOffset.UtcNow;
+        using (var db = CreateDbContext())
+        {
+            var other = new Device { OwnerId = "user-2", HardwareId = "hw-2", DeviceName = "Other" };
+            db.Devices.Add(other);
+            await db.SaveChangesAsync();
+
+            await new InputEventService(db).SaveAsync(_deviceId, new InputEventUploadRequest
+            {
+                Events = [Item(InputEventType.KeyDown, 65, now)]
+            });
+            await new InputEventService(db).SaveAsync(other.Id, new InputEventUploadRequest
+            {
+                Events = [Item(InputEventType.KeyDown, 65, now.AddMilliseconds(1))]
+            });
+        }
+
+        using (var db = CreateDbContext())
+        {
+            var freq = await new InputEventService(db).GetKeyFrequencyAsync("user-1", null, null, null);
+            Assert.Single(freq.Keys);
+            Assert.Equal(1, freq.Keys[0].Count);
+        }
+    }
+
+    [Fact]
+    public async Task GetKeyFrequency_EmptyData_ReturnsEmpty()
+    {
+        using var db = CreateDbContext();
+        var freq = await new InputEventService(db).GetKeyFrequencyAsync("user-1", null, null, null);
+        Assert.Empty(freq.Keys);
+    }
 }

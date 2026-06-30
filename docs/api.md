@@ -44,11 +44,19 @@ nswag openapi2tsclient /input:http://localhost:5023/openapi/v1.json /output:fron
 | `/input-events`         | POST | `[Auth]` | [客户端] 批量上传输入事件 (由 Id, EventType, Code, Timestamp 组成，幂等)           |
 | `/input-events/counts`  | GET  | `[Auth]` | [前端] 获取某时间段内的键盘/鼠标操作计数。参数: `deviceId` (可选), `start`, `end` |
 
+> 公开（按用户名）的逐键频率端点见下方 PublicUser 区：`/users/{username}/input-events/key-frequency`。
+
 `/input-events/counts` 返回示例：
 
 ```json
 { "keyboardTotal": 48213, "mouseLeft": 6201, "mouseRight": 842,
   "mouseMiddle": 33, "scrollUp": 1502, "scrollDown": 1789 }
+```
+
+`/users/{username}/input-events/key-frequency` 返回键盘逐键（VK 码）按下次数，全部按键、按次数降序。参数: `deviceId` (可选), `start`, `end`：
+
+```json
+{ "keys": [ { "code": 65, "count": 1203 }, { "code": 32, "count": 980 } ] }
 ```
 
 ## 5. 统计报表 (Reports)

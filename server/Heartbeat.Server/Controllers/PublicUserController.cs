@@ -10,7 +10,8 @@ namespace Heartbeat.Server.Controllers
         DeviceService deviceService,
         ReportService reportService,
         UsageService usageService,
-        AppService appService) : ControllerBase
+        AppService appService,
+        InputEventService inputEventService) : ControllerBase
     {
         [HttpGet("devices")]
         public async Task<IActionResult> GetDevices(string username)
@@ -83,6 +84,20 @@ namespace Heartbeat.Server.Controllers
             var status = await deviceService.GetStatusAsync(deviceId, user.Id);
             if (status == null) return NotFound();
             return Ok(status);
+        }
+
+        [HttpGet("input-events/key-frequency")]
+        public async Task<IActionResult> GetKeyFrequency(
+            string username,
+            [FromQuery] long? deviceId,
+            [FromQuery] DateTimeOffset? start,
+            [FromQuery] DateTimeOffset? end)
+        {
+            var user = await userService.ResolveByUsernameAsync(username);
+            if (user == null) return NotFound();
+
+            var result = await inputEventService.GetKeyFrequencyAsync(user.Id, deviceId, start, end);
+            return Ok(result);
         }
     }
 }

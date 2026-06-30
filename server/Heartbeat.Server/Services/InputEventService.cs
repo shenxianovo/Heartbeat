@@ -94,5 +94,33 @@ namespace Heartbeat.Server.Services
 
             return response;
         }
+
+        /// <summary>
+        /// 统计某时间段内键盘逐键（VK 码）的按下次数。返回全部按键，不裁剪。
+        /// </summary>
+        public async Task<KeyFrequencyResponse> GetKeyFrequencyAsync(
+            string ownerId, long? deviceId, DateTimeOffset? start, DateTimeOffset? end)
+        {
+            var query = _db.InputEvents
+                .Where(e => e.Device.OwnerId == ownerId)
+                .Where(e => e.EventType == InputEventType.KeyDown);
+
+            if (deviceId.HasValue)
+                query = query.Where(e => e.DeviceId == deviceId.Value);
+
+            if (start.HasValue)
+                query = query.Where(e => e.Timestamp >= start.Value);
+
+            if (end.HasValue)
+                query = query.Where(e => e.Timestamp < end.Value);
+
+            var keys = await query
+                .GroupBy(e => e.Code)
+                .Select(g => new KeyFrequencyItem { Code = g.Key, Count = g.LongCount() })
+                .OrderByDescending(k => k.Count)
+                .ToListAsync();
+
+            return new KeyFrequencyResponse { Keys = keys };
+        }
     }
 }
