@@ -20,7 +20,7 @@ export class Client {
     /**
      * @return OK
      */
-    appsAll(): Promise<AppInfoResponse[]> {
+    getApps(): Promise<AppInfoResponse[]> {
         let url_ = this.baseUrl + "/api/v1/apps";
         url_ = url_.replace(/[?&]$/, "");
 
@@ -32,11 +32,11 @@ export class Client {
         };
 
         return this.http.fetch(url_, options_).then((_response: Response) => {
-            return this.processAppsAll(_response);
+            return this.processGetApps(_response);
         });
     }
 
-    protected processAppsAll(response: Response): Promise<AppInfoResponse[]> {
+    protected processGetApps(response: Response): Promise<AppInfoResponse[]> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
@@ -64,7 +64,7 @@ export class Client {
     /**
      * @return OK
      */
-    iconGET(appId: number): Promise<void> {
+    getAppIcon(appId: number): Promise<void> {
         let url_ = this.baseUrl + "/api/v1/apps/{appId}/icon";
         if (appId === undefined || appId === null)
             throw new globalThis.Error("The parameter 'appId' must be defined.");
@@ -78,11 +78,11 @@ export class Client {
         };
 
         return this.http.fetch(url_, options_).then((_response: Response) => {
-            return this.processIconGET(_response);
+            return this.processGetAppIcon(_response);
         });
     }
 
-    protected processIconGET(response: Response): Promise<void> {
+    protected processGetAppIcon(response: Response): Promise<void> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
@@ -100,7 +100,7 @@ export class Client {
     /**
      * @return OK
      */
-    iconPOST(body: IconUploadRequest): Promise<void> {
+    uploadAppIcon(body: IconUploadRequest): Promise<void> {
         let url_ = this.baseUrl + "/api/v1/apps/icon";
         url_ = url_.replace(/[?&]$/, "");
 
@@ -115,11 +115,11 @@ export class Client {
         };
 
         return this.http.fetch(url_, options_).then((_response: Response) => {
-            return this.processIconPOST(_response);
+            return this.processUploadAppIcon(_response);
         });
     }
 
-    protected processIconPOST(response: Response): Promise<void> {
+    protected processUploadAppIcon(response: Response): Promise<void> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
@@ -137,7 +137,7 @@ export class Client {
     /**
      * @return OK
      */
-    devicesAll(): Promise<DeviceInfoResponse[]> {
+    getDevices(): Promise<DeviceInfoResponse[]> {
         let url_ = this.baseUrl + "/api/v1/devices";
         url_ = url_.replace(/[?&]$/, "");
 
@@ -149,11 +149,11 @@ export class Client {
         };
 
         return this.http.fetch(url_, options_).then((_response: Response) => {
-            return this.processDevicesAll(_response);
+            return this.processGetDevices(_response);
         });
     }
 
-    protected processDevicesAll(response: Response): Promise<DeviceInfoResponse[]> {
+    protected processGetDevices(response: Response): Promise<DeviceInfoResponse[]> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
@@ -181,7 +181,7 @@ export class Client {
     /**
      * @return OK
      */
-    devices(deviceId: number): Promise<DeviceStatusResponse> {
+    getDevice(deviceId: number): Promise<DeviceStatusResponse> {
         let url_ = this.baseUrl + "/api/v1/devices/{deviceId}";
         if (deviceId === undefined || deviceId === null)
             throw new globalThis.Error("The parameter 'deviceId' must be defined.");
@@ -196,11 +196,11 @@ export class Client {
         };
 
         return this.http.fetch(url_, options_).then((_response: Response) => {
-            return this.processDevices(_response);
+            return this.processGetDevice(_response);
         });
     }
 
-    protected processDevices(response: Response): Promise<DeviceStatusResponse> {
+    protected processGetDevice(response: Response): Promise<DeviceStatusResponse> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
@@ -221,7 +221,7 @@ export class Client {
     /**
      * @return OK
      */
-    heartbeat(body: DeviceStatusRequest): Promise<void> {
+    uploadHeartbeat(body: DeviceStatusRequest): Promise<void> {
         let url_ = this.baseUrl + "/api/v1/devices/heartbeat";
         url_ = url_.replace(/[?&]$/, "");
 
@@ -236,11 +236,11 @@ export class Client {
         };
 
         return this.http.fetch(url_, options_).then((_response: Response) => {
-            return this.processHeartbeat(_response);
+            return this.processUploadHeartbeat(_response);
         });
     }
 
-    protected processHeartbeat(response: Response): Promise<void> {
+    protected processUploadHeartbeat(response: Response): Promise<void> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
@@ -258,7 +258,7 @@ export class Client {
     /**
      * @return OK
      */
-    inputEvents(body: InputEventUploadRequest): Promise<void> {
+    uploadInputEvents(body: InputEventUploadRequest): Promise<void> {
         let url_ = this.baseUrl + "/api/v1/input-events";
         url_ = url_.replace(/[?&]$/, "");
 
@@ -273,11 +273,11 @@ export class Client {
         };
 
         return this.http.fetch(url_, options_).then((_response: Response) => {
-            return this.processInputEvents(_response);
+            return this.processUploadInputEvents(_response);
         });
     }
 
-    protected processInputEvents(response: Response): Promise<void> {
+    protected processUploadInputEvents(response: Response): Promise<void> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
@@ -298,7 +298,7 @@ export class Client {
      * @param end (optional) 
      * @return OK
      */
-    counts(deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<InputCountsResponse> {
+    getInputCounts(deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<InputCountsResponse> {
         let url_ = this.baseUrl + "/api/v1/input-events/counts?";
         if (deviceId === null)
             throw new globalThis.Error("The parameter 'deviceId' cannot be null.");
@@ -322,11 +322,11 @@ export class Client {
         };
 
         return this.http.fetch(url_, options_).then((_response: Response) => {
-            return this.processCounts(_response);
+            return this.processGetInputCounts(_response);
         });
     }
 
-    protected processCounts(response: Response): Promise<InputCountsResponse> {
+    protected processGetInputCounts(response: Response): Promise<InputCountsResponse> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
@@ -347,7 +347,7 @@ export class Client {
     /**
      * @return OK
      */
-    devices2(username: string): Promise<void> {
+    getUserDevices(username: string): Promise<void> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/devices";
         if (username === undefined || username === null)
             throw new globalThis.Error("The parameter 'username' must be defined.");
@@ -361,11 +361,11 @@ export class Client {
         };
 
         return this.http.fetch(url_, options_).then((_response: Response) => {
-            return this.processDevices2(_response);
+            return this.processGetUserDevices(_response);
         });
     }
 
-    protected processDevices2(response: Response): Promise<void> {
+    protected processGetUserDevices(response: Response): Promise<void> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
@@ -385,7 +385,7 @@ export class Client {
      * @param date (optional) 
      * @return OK
      */
-    daily(username: string, deviceId: number | undefined, date: Date | undefined): Promise<void> {
+    getUserDailyReport(username: string, deviceId: number | undefined, date: Date | undefined): Promise<void> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/reports/daily?";
         if (username === undefined || username === null)
             throw new globalThis.Error("The parameter 'username' must be defined.");
@@ -407,11 +407,11 @@ export class Client {
         };
 
         return this.http.fetch(url_, options_).then((_response: Response) => {
-            return this.processDaily(_response);
+            return this.processGetUserDailyReport(_response);
         });
     }
 
-    protected processDaily(response: Response): Promise<void> {
+    protected processGetUserDailyReport(response: Response): Promise<void> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
@@ -431,7 +431,7 @@ export class Client {
      * @param date (optional) 
      * @return OK
      */
-    weekly(username: string, deviceId: number | undefined, date: Date | undefined): Promise<void> {
+    getUserWeeklyReport(username: string, deviceId: number | undefined, date: Date | undefined): Promise<void> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/reports/weekly?";
         if (username === undefined || username === null)
             throw new globalThis.Error("The parameter 'username' must be defined.");
@@ -453,11 +453,11 @@ export class Client {
         };
 
         return this.http.fetch(url_, options_).then((_response: Response) => {
-            return this.processWeekly(_response);
+            return this.processGetUserWeeklyReport(_response);
         });
     }
 
-    protected processWeekly(response: Response): Promise<void> {
+    protected processGetUserWeeklyReport(response: Response): Promise<void> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
@@ -478,7 +478,7 @@ export class Client {
      * @param end (optional) 
      * @return OK
      */
-    usageGET(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<void> {
+    getUserUsage(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<void> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/usage?";
         if (username === undefined || username === null)
             throw new globalThis.Error("The parameter 'username' must be defined.");
@@ -504,11 +504,11 @@ export class Client {
         };
 
         return this.http.fetch(url_, options_).then((_response: Response) => {
-            return this.processUsageGET(_response);
+            return this.processGetUserUsage(_response);
         });
     }
 
-    protected processUsageGET(response: Response): Promise<void> {
+    protected processGetUserUsage(response: Response): Promise<void> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
@@ -526,7 +526,7 @@ export class Client {
     /**
      * @return OK
      */
-    apps(username: string): Promise<void> {
+    getUserApps(username: string): Promise<void> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/apps";
         if (username === undefined || username === null)
             throw new globalThis.Error("The parameter 'username' must be defined.");
@@ -540,11 +540,11 @@ export class Client {
         };
 
         return this.http.fetch(url_, options_).then((_response: Response) => {
-            return this.processApps(_response);
+            return this.processGetUserApps(_response);
         });
     }
 
-    protected processApps(response: Response): Promise<void> {
+    protected processGetUserApps(response: Response): Promise<void> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
@@ -562,7 +562,7 @@ export class Client {
     /**
      * @return OK
      */
-    status(username: string, deviceId: number): Promise<void> {
+    getUserDeviceStatus(username: string, deviceId: number): Promise<void> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/devices/{deviceId}/status";
         if (username === undefined || username === null)
             throw new globalThis.Error("The parameter 'username' must be defined.");
@@ -579,11 +579,11 @@ export class Client {
         };
 
         return this.http.fetch(url_, options_).then((_response: Response) => {
-            return this.processStatus(_response);
+            return this.processGetUserDeviceStatus(_response);
         });
     }
 
-    protected processStatus(response: Response): Promise<void> {
+    protected processGetUserDeviceStatus(response: Response): Promise<void> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
@@ -604,7 +604,7 @@ export class Client {
      * @param end (optional) 
      * @return OK
      */
-    keyFrequency(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<void> {
+    getUserKeyFrequency(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<void> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/input-events/key-frequency?";
         if (username === undefined || username === null)
             throw new globalThis.Error("The parameter 'username' must be defined.");
@@ -630,11 +630,11 @@ export class Client {
         };
 
         return this.http.fetch(url_, options_).then((_response: Response) => {
-            return this.processKeyFrequency(_response);
+            return this.processGetUserKeyFrequency(_response);
         });
     }
 
-    protected processKeyFrequency(response: Response): Promise<void> {
+    protected processGetUserKeyFrequency(response: Response): Promise<void> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
@@ -654,7 +654,7 @@ export class Client {
      * @param date (optional) 
      * @return OK
      */
-    daily2(deviceId: number | undefined, date: Date | undefined): Promise<DailyReportResponse> {
+    getDailyReport(deviceId: number | undefined, date: Date | undefined): Promise<DailyReportResponse> {
         let url_ = this.baseUrl + "/api/v1/reports/daily?";
         if (deviceId === null)
             throw new globalThis.Error("The parameter 'deviceId' cannot be null.");
@@ -674,11 +674,11 @@ export class Client {
         };
 
         return this.http.fetch(url_, options_).then((_response: Response) => {
-            return this.processDaily2(_response);
+            return this.processGetDailyReport(_response);
         });
     }
 
-    protected processDaily2(response: Response): Promise<DailyReportResponse> {
+    protected processGetDailyReport(response: Response): Promise<DailyReportResponse> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
@@ -701,7 +701,7 @@ export class Client {
      * @param date (optional) 
      * @return OK
      */
-    weekly2(deviceId: number | undefined, date: Date | undefined): Promise<WeeklyReportResponse> {
+    getWeeklyReport(deviceId: number | undefined, date: Date | undefined): Promise<WeeklyReportResponse> {
         let url_ = this.baseUrl + "/api/v1/reports/weekly?";
         if (deviceId === null)
             throw new globalThis.Error("The parameter 'deviceId' cannot be null.");
@@ -721,11 +721,11 @@ export class Client {
         };
 
         return this.http.fetch(url_, options_).then((_response: Response) => {
-            return this.processWeekly2(_response);
+            return this.processGetWeeklyReport(_response);
         });
     }
 
-    protected processWeekly2(response: Response): Promise<WeeklyReportResponse> {
+    protected processGetWeeklyReport(response: Response): Promise<WeeklyReportResponse> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
@@ -746,7 +746,7 @@ export class Client {
     /**
      * @return OK
      */
-    usagePOST(body: UsageUploadRequest): Promise<void> {
+    uploadUsage(body: UsageUploadRequest): Promise<void> {
         let url_ = this.baseUrl + "/api/v1/usage";
         url_ = url_.replace(/[?&]$/, "");
 
@@ -761,11 +761,11 @@ export class Client {
         };
 
         return this.http.fetch(url_, options_).then((_response: Response) => {
-            return this.processUsagePOST(_response);
+            return this.processUploadUsage(_response);
         });
     }
 
-    protected processUsagePOST(response: Response): Promise<void> {
+    protected processUploadUsage(response: Response): Promise<void> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
@@ -786,7 +786,7 @@ export class Client {
      * @param end (optional) 
      * @return OK
      */
-    usageAll(deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<AppUsageResponse[]> {
+    getUsage(deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<AppUsageResponse[]> {
         let url_ = this.baseUrl + "/api/v1/usage?";
         if (deviceId === null)
             throw new globalThis.Error("The parameter 'deviceId' cannot be null.");
@@ -810,11 +810,11 @@ export class Client {
         };
 
         return this.http.fetch(url_, options_).then((_response: Response) => {
-            return this.processUsageAll(_response);
+            return this.processGetUsage(_response);
         });
     }
 
-    protected processUsageAll(response: Response): Promise<AppUsageResponse[]> {
+    protected processGetUsage(response: Response): Promise<AppUsageResponse[]> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {

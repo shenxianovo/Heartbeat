@@ -16,6 +16,7 @@ namespace Heartbeat.Server.Controllers
         private readonly ICurrentUserService _currentUser = currentUser;
 
         [HttpPost]
+        [EndpointName("uploadUsage")]
         public async Task<IActionResult> Upload([FromBody] UsageUploadRequest request)
         {
             if (request.Usages == null || request.Usages.Count == 0)
@@ -34,6 +35,7 @@ namespace Heartbeat.Server.Controllers
         }
 
         [HttpGet]
+        [EndpointName("getUsage")]
         [ProducesResponseType(typeof(List<AppUsageResponse>), 200)]
         public async Task<IActionResult> GetUsage(
             [FromQuery] long? deviceId,

@@ -77,7 +77,7 @@ export function getTimezoneLabel(): string {
 
 export async function fetchDevices(): Promise<DeviceInfoResponse[]> {
   try {
-    return await client.devicesAll()
+    return await client.getDevices()
   } catch {
     return []
   }
@@ -85,7 +85,7 @@ export async function fetchDevices(): Promise<DeviceInfoResponse[]> {
 
 export async function fetchApps(): Promise<AppInfoResponse[]> {
   try {
-    return await client.appsAll()
+    return await client.getApps()
   } catch {
     return []
   }
@@ -93,7 +93,7 @@ export async function fetchApps(): Promise<AppInfoResponse[]> {
 
 export async function fetchDeviceStatus(deviceId: number): Promise<DeviceStatusResponse | null> {
   try {
-    return await client.devices(deviceId)
+    return await client.getDevice(deviceId)
   } catch {
     return null
   }
@@ -105,7 +105,7 @@ export async function fetchUsage(params: {
   end?: string
 }): Promise<AppUsageResponse[]> {
   try {
-    return await client.usageAll(
+    return await client.getUsage(
       params.deviceId,
       params.start ? new Date(params.start) : undefined,
       params.end ? new Date(params.end) : undefined,

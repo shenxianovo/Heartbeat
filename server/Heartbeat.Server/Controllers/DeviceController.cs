@@ -14,6 +14,7 @@ namespace Heartbeat.Server.Controllers
         private readonly ICurrentUserService _currentUser = currentUser;
 
         [HttpGet]
+        [EndpointName("getDevices")]
         public async Task<List<DeviceInfoResponse>> GetDevices()
         {
             var userId = _currentUser.GetUserId();
@@ -21,6 +22,7 @@ namespace Heartbeat.Server.Controllers
         }
 
         [HttpGet("{deviceId:long}")]
+        [EndpointName("getDevice")]
         [ProducesResponseType(typeof(DeviceStatusResponse), 200)]
         public async Task<IActionResult> GetDevice([FromRoute] long deviceId)
         {
@@ -31,6 +33,7 @@ namespace Heartbeat.Server.Controllers
         }
 
         [HttpPost("heartbeat")]
+        [EndpointName("uploadHeartbeat")]
         public async Task<IActionResult> Upload([FromBody] DeviceStatusRequest status)
         {
             var userId = _currentUser.GetUserId();

@@ -18,6 +18,7 @@ namespace Heartbeat.Server.Controllers
         private readonly ICurrentUserService _currentUser = currentUser;
 
         [HttpPost]
+        [EndpointName("uploadInputEvents")]
         public async Task<IActionResult> Upload([FromBody] InputEventUploadRequest request)
         {
             if (request.Events == null || request.Events.Count == 0)
@@ -36,6 +37,7 @@ namespace Heartbeat.Server.Controllers
         }
 
         [HttpGet("counts")]
+        [EndpointName("getInputCounts")]
         [ProducesResponseType(typeof(InputCountsResponse), 200)]
         public async Task<IActionResult> GetCounts(
             [FromQuery] long? deviceId,

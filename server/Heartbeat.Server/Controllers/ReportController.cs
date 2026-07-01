@@ -14,6 +14,7 @@ namespace Heartbeat.Server.Controllers
         private readonly ICurrentUserService _currentUser = currentUser;
 
         [HttpGet("daily")]
+        [EndpointName("getDailyReport")]
         [ProducesResponseType(typeof(DailyReportResponse), 200)]
         public async Task<IActionResult> GetDailyReport(
             [FromQuery] long? deviceId,
@@ -26,6 +27,7 @@ namespace Heartbeat.Server.Controllers
         }
 
         [HttpGet("weekly")]
+        [EndpointName("getWeeklyReport")]
         [ProducesResponseType(typeof(WeeklyReportResponse), 200)]
         public async Task<IActionResult> GetWeeklyReport(
             [FromQuery] long? deviceId,

@@ -14,6 +14,7 @@ namespace Heartbeat.Server.Controllers
         InputEventService inputEventService) : ControllerBase
     {
         [HttpGet("devices")]
+        [EndpointName("getUserDevices")]
         public async Task<IActionResult> GetDevices(string username)
         {
             var user = await userService.ResolveByUsernameAsync(username);
@@ -24,6 +25,7 @@ namespace Heartbeat.Server.Controllers
         }
 
         [HttpGet("reports/daily")]
+        [EndpointName("getUserDailyReport")]
         public async Task<IActionResult> GetDailyReport(
             string username,
             [FromQuery] long? deviceId,
@@ -38,6 +40,7 @@ namespace Heartbeat.Server.Controllers
         }
 
         [HttpGet("reports/weekly")]
+        [EndpointName("getUserWeeklyReport")]
         public async Task<IActionResult> GetWeeklyReport(
             string username,
             [FromQuery] long? deviceId,
@@ -52,6 +55,7 @@ namespace Heartbeat.Server.Controllers
         }
 
         [HttpGet("usage")]
+        [EndpointName("getUserUsage")]
         public async Task<IActionResult> GetUsage(
             string username,
             [FromQuery] long? deviceId,
@@ -66,6 +70,7 @@ namespace Heartbeat.Server.Controllers
         }
 
         [HttpGet("apps")]
+        [EndpointName("getUserApps")]
         public async Task<IActionResult> GetApps(string username)
         {
             var user = await userService.ResolveByUsernameAsync(username);
@@ -76,6 +81,7 @@ namespace Heartbeat.Server.Controllers
         }
 
         [HttpGet("devices/{deviceId:long}/status")]
+        [EndpointName("getUserDeviceStatus")]
         public async Task<IActionResult> GetDeviceStatus(string username, long deviceId)
         {
             var user = await userService.ResolveByUsernameAsync(username);
@@ -87,6 +93,7 @@ namespace Heartbeat.Server.Controllers
         }
 
         [HttpGet("input-events/key-frequency")]
+        [EndpointName("getUserKeyFrequency")]
         public async Task<IActionResult> GetKeyFrequency(
             string username,
             [FromQuery] long? deviceId,

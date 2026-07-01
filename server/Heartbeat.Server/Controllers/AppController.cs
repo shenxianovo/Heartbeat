@@ -14,6 +14,7 @@ namespace Heartbeat.Server.Controllers
         private readonly ICurrentUserService _currentUser = currentUser;
 
         [HttpGet]
+        [EndpointName("getApps")]
         public async Task<List<AppInfoResponse>> List()
         {
             var userId = _currentUser.GetUserId();
@@ -22,6 +23,7 @@ namespace Heartbeat.Server.Controllers
 
         [AllowAnonymous]
         [HttpGet("{appId:long}/icon")]
+        [EndpointName("getAppIcon")]
         public async Task<IActionResult> GetIcon(long appId)
         {
             var iconData = await _appService.GetIconAsync(appId);
@@ -33,6 +35,7 @@ namespace Heartbeat.Server.Controllers
 
         [Authorize]
         [HttpPost("icon")]
+        [EndpointName("uploadAppIcon")]
         public async Task<IActionResult> UploadIcon([FromBody] IconUploadRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.AppName))
