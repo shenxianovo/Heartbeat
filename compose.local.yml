@@ -1,0 +1,57 @@
+# 本地端到端验证栈（不用于线上部署，线上见 compose.yml）。
+#
+# 与 compose.yml 的区别：
+#   - backend/frontend 从本地源码 build（验证本地改动，而非拉 ghcr 镜像）
+#   - db 不挂持久 volume：每次 `down` 后数据清空，保证干净起点
+#   - backend 跑 Development 环境：额外暴露 /openapi/v1.json（可 regen 前端 client）
+#   - 鉴权走真实 Auth 平台（路径甲）：AuthService__* 从 .env.local 读，指向线上 auth
+#   - 前端映射到 127.0.0.1:8080，真机 Agent 把 ApiBaseUrl 指到这里即可闭环
+#
+# 用法见 README「本地端到端验证」。
+# 先 `cp .env.local.example .env.local` 并填入真实 Auth 值。
+
+services:
+  db:
+    image: postgres:18.4-alpine
+    environment:
+      POSTGRES_USER: heartbeat
+      POSTGRES_PASSWORD: devlocal
+      POSTGRES_DB: heartbeat
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U heartbeat"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks:
+      - local
+
+  backend:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=heartbeat;Username=heartbeat;Password=devlocal"
+      AuthService__Authority: ${AUTH_AUTHORITY}
+      AuthService__Issuer: ${AUTH_ISSUER:-https://auth.shenxianovo.com}
+      AuthService__Audience: ${AUTH_AUDIENCE:-https://auth.shenxianovo.com}
+    networks:
+      - local
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    depends_on:
+      - backend
+    ports:
+      - "127.0.0.1:8080:8080"
+    networks:
+      - local
+
+networks:
+  local:
+    driver: bridge
