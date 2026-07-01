@@ -158,8 +158,8 @@ export const keyFrequency: { code: number; count: number }[] = [
   { code: 87, count: 740 },   // W
   { code: 89, count: 690 },   // Y
   { code: 66, count: 640 },   // B
-  { code: 16, count: 1240 },  // Shift
-  { code: 17, count: 580 },   // Ctrl
+  { code: 160, count: 1240 }, // LShift
+  { code: 162, count: 580 },  // LCtrl
   { code: 86, count: 520 },   // V
   { code: 75, count: 480 },   // K
   { code: 9, count: 360 },    // Tab
@@ -171,8 +171,11 @@ export const keyFrequency: { code: number; count: number }[] = [
   { code: 188, count: 380 },  // ,
   { code: 191, count: 160 },  // /
   { code: 186, count: 140 },  // ;
-  { code: 18, count: 220 },   // Alt
+  { code: 164, count: 220 },  // LAlt
   { code: 20, count: 90 },    // Caps
+  { code: 161, count: 210 },  // RShift
+  { code: 163, count: 110 },  // RCtrl
+  { code: 165, count: 70 },   // RAlt
   { code: 49, count: 280 },   // 1
   { code: 50, count: 260 },   // 2
   { code: 51, count: 240 },   // 3

@@ -33,16 +33,16 @@ const ROWS: KeyDef[][] = [
     { code: 13, label: 'Enter', w: 2.25 },
   ],
   [
-    { code: 16, label: 'Shift', w: 2.25 }, { code: 90, label: 'Z' }, { code: 88, label: 'X' },
+    { code: 160, label: 'LShift', w: 2.25 }, { code: 90, label: 'Z' }, { code: 88, label: 'X' },
     { code: 67, label: 'C' }, { code: 86, label: 'V' }, { code: 66, label: 'B' },
     { code: 78, label: 'N' }, { code: 77, label: 'M' }, { code: 188, label: ',' },
-    { code: 190, label: '.' }, { code: 191, label: '/' }, { code: 16, label: 'Shift', w: 2.75 },
+    { code: 190, label: '.' }, { code: 191, label: '/' }, { code: 161, label: 'RShift', w: 2.75 },
   ],
   [
-    { code: 17, label: 'Ctrl', w: 1.25 }, { code: 91, label: 'Win', w: 1.25 },
-    { code: 18, label: 'Alt', w: 1.25 }, { code: 32, label: 'Space', w: 6.25 },
-    { code: 18, label: 'Alt', w: 1.25 }, { code: 93, label: 'Menu', w: 1.25 },
-    { code: 17, label: 'Ctrl', w: 1.25 },
+    { code: 162, label: 'LCtrl', w: 1.25 }, { code: 91, label: 'Win', w: 1.25 },
+    { code: 164, label: 'LAlt', w: 1.25 }, { code: 32, label: 'Space', w: 6.25 },
+    { code: 165, label: 'RAlt', w: 1.25 }, { code: 93, label: 'Menu', w: 1.25 },
+    { code: 163, label: 'RCtrl', w: 1.25 },
   ],
 ]
 
