@@ -12,6 +12,26 @@ namespace Heartbeat.Server.Services
 
         private readonly AppDbContext _db = db;
 
+        /// <summary>
+        /// Agent 通过 HTTP header 传设备名时会用 Uri.EscapeDataString 编码
+        /// （header 不能直接携带非 ASCII 字符）。此处解码还原真实设备名。
+        /// 对未编码的明文是幂等安全的。
+        /// </summary>
+        internal static string DecodeDeviceName(string? deviceName)
+        {
+            if (string.IsNullOrEmpty(deviceName))
+                return string.Empty;
+
+            try
+            {
+                return Uri.UnescapeDataString(deviceName);
+            }
+            catch (Exception)
+            {
+                return deviceName;
+            }
+        }
+
         public async Task<List<DeviceInfoResponse>> GetAllAsync(string ownerId)
         {
             return await _db.Devices
@@ -48,7 +68,7 @@ namespace Heartbeat.Server.Services
                 {
                     OwnerId = ownerId,
                     HardwareId = hardwareId,
-                    DeviceName = deviceName ?? string.Empty
+                    DeviceName = DecodeDeviceName(deviceName)
                 };
                 _db.Devices.Add(device);
                 await _db.SaveChangesAsync();

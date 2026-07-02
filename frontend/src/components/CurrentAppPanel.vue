@@ -22,7 +22,7 @@ defineProps<{
         <img
           v-if="currentAppId"
           :src="getIconUrl(currentAppId)"
-          class="h-7 w-7 shrink-0 rounded-md object-contain"
+          class="h-7 w-7 shrink-0 object-contain"
           @error="($event.target as HTMLImageElement).style.display = 'none'"
         />
         <div class="flex flex-col gap-0.5">

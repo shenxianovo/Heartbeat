@@ -82,7 +82,7 @@ const donutSegments = computed(() => {
             <template v-if="hoveredSegment !== null">
               <img
                 :src="getIconUrl(donutSegments[hoveredSegment].appId)"
-                class="mb-1 h-6 w-6 rounded object-contain"
+                class="mb-1 h-6 w-6 object-contain"
                 @error="($event.target as HTMLImageElement).style.display = 'none'"
               />
               <span class="max-w-[100px] truncate text-center text-[0.8rem] font-semibold text-foreground">
@@ -111,7 +111,7 @@ const donutSegments = computed(() => {
             <span class="h-2 w-2 shrink-0 rounded-full" :style="{ background: seg.color }"></span>
             <img
               :src="getIconUrl(seg.appId)"
-              class="h-4 w-4 shrink-0 rounded-sm object-contain"
+              class="h-4 w-4 shrink-0 object-contain"
               @error="($event.target as HTMLImageElement).style.display = 'none'"
             />
             <span class="flex-1 truncate">{{ seg.appName }}</span>
