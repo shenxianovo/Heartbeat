@@ -14,6 +14,7 @@ namespace Heartbeat.Agent.Services
             {
                 Usages = items.ConvertAll(i => new AppUsageItem
                 {
+                    Id = i.Id,
                     AppName = i.AppName,
                     Title = i.Title,
                     StartTime = i.StartTime,

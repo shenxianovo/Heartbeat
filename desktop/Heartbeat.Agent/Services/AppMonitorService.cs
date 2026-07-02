@@ -223,6 +223,8 @@ namespace Heartbeat.Agent.Services
 
             _usages.Add(new AppUsageItem
             {
+                // UUIDv7 兼作服务端去重键，离线重传幂等（ADR-017，InputEvent 先例）。
+                Id = Guid.CreateVersion7(),
                 AppName = appName,
                 Title = title,
                 StartTime = start,

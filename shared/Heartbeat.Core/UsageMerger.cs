@@ -49,7 +49,7 @@ namespace Heartbeat.Core
 
             var result = new List<AppUsageItem>
             {
-                new() { AppName = sorted[0].AppName, Title = sorted[0].Title, StartTime = sorted[0].StartTime, EndTime = sorted[0].EndTime }
+                new() { Id = sorted[0].Id, AppName = sorted[0].AppName, Title = sorted[0].Title, StartTime = sorted[0].StartTime, EndTime = sorted[0].EndTime }
             };
 
             for (var i = 1; i < sorted.Count; i++)
@@ -61,13 +61,13 @@ namespace Heartbeat.Core
                     ActivitySources.System, SystemIdentityKey(prev.AppName, prev.Title), prev.EndTime,
                     ActivitySources.System, SystemIdentityKey(curr.AppName, curr.Title), curr.StartTime))
                 {
-                    // 同活动且重叠或首尾相连 → 扩展上一条的结束时间
+                    // 同活动且重叠或首尾相连 → 扩展上一条的结束时间（保留最早段的 Id，保证重传幂等）
                     if (curr.EndTime > prev.EndTime)
                         prev.EndTime = curr.EndTime;
                 }
                 else
                 {
-                    result.Add(new() { AppName = curr.AppName, Title = curr.Title, StartTime = curr.StartTime, EndTime = curr.EndTime });
+                    result.Add(new() { Id = curr.Id, AppName = curr.AppName, Title = curr.Title, StartTime = curr.StartTime, EndTime = curr.EndTime });
                 }
             }
 
