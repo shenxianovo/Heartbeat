@@ -7,7 +7,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 defineProps<{
   appSummaries: { appId: number; appName: string; totalSeconds: number }[]
   maxSeconds: number
-  titleBreakdown: (appId: number) => { title: string; totalSeconds: number; count: number }[]
+  titleBreakdown: (appId: number) => { title: string; secondary?: string; category?: string; totalSeconds: number; count: number }[]
 }>()
 </script>
 
@@ -57,8 +57,12 @@ defineProps<{
                 v-for="(t, ti) in titleBreakdown(app.appId)"
                 :key="ti"
                 class="flex items-center gap-2 text-[0.8rem]"
+                :class="t.category === 'system' ? 'opacity-50' : ''"
               >
-                <span class="flex-1 truncate" :title="t.title">{{ t.title }}</span>
+                <span class="flex min-w-0 flex-1 flex-col">
+                  <span class="truncate" :class="t.title ? '' : 'text-muted-foreground italic'" :title="t.title">{{ t.title || '无标题窗口' }}</span>
+                  <span v-if="t.secondary" class="truncate text-[0.65rem] text-muted-foreground" :title="t.secondary">{{ t.secondary }}</span>
+                </span>
                 <span class="shrink-0 text-[0.7rem] text-muted-foreground">×{{ t.count }}</span>
                 <span class="shrink-0 font-mono text-[0.75rem] text-muted-foreground">{{ formatDuration(t.totalSeconds) }}</span>
               </div>

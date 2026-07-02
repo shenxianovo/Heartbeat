@@ -2,6 +2,7 @@ import { ref, computed, type Ref } from 'vue'
 import type { AppSummary, AppUsageResponse, DailyReportResponse, WeeklyReportResponse } from '../api/index'
 import { fetchPublicUsage, fetchPublicDailyReport, fetchPublicWeeklyReport } from '../api/index'
 import { AWAY_APP } from '../appLabels'
+import { formatTitle } from '../titleFormatters'
 
 interface AppDurationLike {
   appId?: number
@@ -94,22 +95,24 @@ export function useReports(
   }
 
   /**
-   * 某个 App 在当前 usageData 内、按窗口标题聚合的时长明细（降序）。
-   * 用于排行点击后的 popup —— App 是聚合单位，标题是段内细节。详见 ADR-015。
+   * 某个 App 在当前 usageData 内、按格式化后标题聚合的时长明细（降序）。
+   * 标题先过 formatTitle 归一化（无损，仅展示），故 spinner 变体等会自动合并计数。
+   * 详见 ADR-015 / ADR-016。
    */
-  function titleBreakdown(appId: number): { title: string; totalSeconds: number; count: number }[] {
-    const byTitle = new Map<string, { totalSeconds: number; count: number }>()
+  function titleBreakdown(appId: number): { title: string; secondary?: string; category?: string; totalSeconds: number; count: number }[] {
+    const byTitle = new Map<string, { secondary?: string; category?: string; totalSeconds: number; count: number }>()
     for (const u of usageData.value) {
       if (u.appId !== appId || !u.startTime || !u.endTime) continue
-      const key = u.title && u.title.length > 0 ? u.title : '(无标题)'
+      const fmt = formatTitle(u.appName, u.title)
+      const key = fmt.primary
       const secs = Math.round((u.endTime.getTime() - u.startTime.getTime()) / 1000)
-      const cur = byTitle.get(key) ?? { totalSeconds: 0, count: 0 }
+      const cur = byTitle.get(key) ?? { secondary: fmt.secondary, category: fmt.category, totalSeconds: 0, count: 0 }
       cur.totalSeconds += secs
       cur.count += 1
       byTitle.set(key, cur)
     }
     return [...byTitle.entries()]
-      .map(([title, v]) => ({ title, totalSeconds: v.totalSeconds, count: v.count }))
+      .map(([title, v]) => ({ title, secondary: v.secondary, category: v.category, totalSeconds: v.totalSeconds, count: v.count }))
       .sort((a, b) => b.totalSeconds - a.totalSeconds)
   }
 
