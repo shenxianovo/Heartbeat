@@ -12,8 +12,11 @@
 |------|-----------|
 | Device | 一台唯一的物理机器。由 (OwnerId, HardwareId) 联合唯一标识。HardwareId 取自 Windows MachineGuid（HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid）。DeviceName 为纯显示字段（默认取 hostname，用户可改）。属于某个 User（OwnerId = JWT sub claim，string 类型）。 |
 | App | 一个应用程序，由进程可执行文件名（不含路径）唯一标识。同一 exe 无论开几个窗口都算同一个 App。 |
-| AppUsage | 一段某个 App 处于前台的时间记录（StartTime → EndTime）。系统忠实记录所有前台窗口，包括 explorer.exe（桌面）和 LockApp.exe（锁屏），不做活跃/非活跃过滤。 |
+| AppUsage | 一段某个 App 处于前台的时间记录（StartTime → EndTime）。系统忠实记录所有前台窗口，包括 explorer.exe（桌面）和 LockApp.exe（锁屏），不做活跃/非活跃过滤。规划中将泛化为 ActivitySegment 的 system source（ADR-017，未实现）。 |
+| ActivitySegment | 一段有界的活动记录（StartTime → EndTime），由某个采集器（Source）观测并折叠产出。瞬时点事件为零长度段（StartTime == EndTime）。AppUsage 的泛化形态；统计只消费 source='system'（互斥轨），插件段只进回放。详见 ADR-017（规划中）。 |
+| Source | 观测者维度：一条 ActivitySegment 是"谁采集的"（system / browser / vscode / …）。与 AppId 正交——AppId 说段"关于哪个应用"，Source 说"谁观测到的"；同一时刻同一 App 可有多个 Source 的段合法重叠。system 是唯一观测前台性的 Source，其段互斥、时长可求和。 |
+| IdentityKey | 采集器声明的"同一个活动"判据字符串，用于服务端跨批次续接（CanMerge 泛化为同 Source + 同 IdentityKey + 时间相连）。browser=URL，vscode=文件路径，system=App+Title。 |
 | AppIcon | App 对应的图标二进制数据，由 Agent 上传，供 Dashboard 展示。 |
 | ApiKey | Collection 上传数据到 Analytics 的凭证，类似 LLM API Key。 |
-| UsageMerger | 合并因上传分片截断而产生的同一 App 碎片记录。规则：同 AppName + 时间间隔 ≤1s 则合并。客户端和服务端双层执行。不做跨切换的聚合——用户切走再切回产生的两段记录是独立的。 |
+| UsageMerger | 合并因上传分片截断而产生的同一 App 碎片记录。规则：同 AppName + 同 Title + 时间间隔 ≤1s 则合并（CanMerge 为唯一判据真源，客户端与服务端共用）。不做跨切换的聚合——用户切走再切回产生的两段记录是独立的。ADR-017 规划将判据泛化为同 Source + 同 IdentityKey。 |
 | InputEvent | 一次键盘按下或鼠标操作的离散事件记录（一行一事件）。由 Agent 通过全局低级钩子（WH_KEYBOARD_LL/WH_MOUSE_LL）采集。EventType 区分 KeyDown(1)/MouseButton(2)/MouseScroll(3)；Code 在键盘事件中为 Windows 虚拟键码原始值，鼠标按钮为 1左/2右/3中，滚轮为 1上/2下。只记按下，KeyUp 仅用于过滤长按自动重复，不落盘。隐私上等价于键盘记录器输出，仅用于单用户自部署的个人统计。主键 Id 为 Agent 生成的 UUIDv7，兼作去重键，保证离线重传幂等（服务端 ON CONFLICT DO NOTHING）。 |
