@@ -53,7 +53,14 @@ export interface KeyFrequencyResponse {
   keys: KeyFrequencyItem[]
 }
 
-/** 将 "yyyy-MM-dd" 格式化为带本地时区偏移的 ISO 字符串，如 "2026-03-06T00:00:00+08:00" */
+/**
+ * 将 "yyyy-MM-dd" 格式化为带本地时区偏移的 ISO 字符串，如 "2026-03-06T00:00:00+08:00"。
+ *
+ * 报表端点(daily/weekly)必须用它手拼查询串、不能走生成的 client 方法:
+ * NSwag 生成的方法把 Date 序列化为 toISOString()(UTC),会丢掉本地时区偏移,
+ * 而服务端 DateRange.Day/Week 靠参数的 Offset 划定"今天/本周"边界(见 shared/CONTEXT.md)。
+ * usage/segments 的 start/end 是时刻过滤,UTC 表示同一瞬间,不受影响。
+ */
 function toLocalDateTimeOffsetString(dateStr: string): string {
   const offset = new Date().getTimezoneOffset()
   const sign = offset <= 0 ? '+' : '-'
@@ -115,6 +122,7 @@ export async function fetchUsage(params: {
   }
 }
 
+// daily/weekly 报表(认证版)不走生成的 client:时区偏移必须存活,见 toLocalDateTimeOffsetString。
 export async function fetchDailyReport(params: {
   deviceId?: number
   date?: string
@@ -152,12 +160,12 @@ export function getIconUrl(appId: number): string {
 }
 
 // ===== Public API Functions (no auth required, by username) =====
+// 统一走 NSwag 生成的 client 方法(响应类型由 OpenAPI schema 保证);
+// 唯二例外是 daily/weekly 报表——时区偏移必须存活,见 toLocalDateTimeOffsetString。
 
 export async function fetchPublicDevices(username: string): Promise<DeviceInfoResponse[]> {
   try {
-    const res = await fetch(`${API_BASE}/users/${username}/devices`)
-    if (!res.ok) return []
-    return (await res.json()).map((d: any) => DeviceInfoResponse.fromJS(d))
+    return await client.getUserDevices(username)
   } catch {
     return []
   }
@@ -165,9 +173,7 @@ export async function fetchPublicDevices(username: string): Promise<DeviceInfoRe
 
 export async function fetchPublicApps(username: string): Promise<AppInfoResponse[]> {
   try {
-    const res = await fetch(`${API_BASE}/users/${username}/apps`)
-    if (!res.ok) return []
-    return (await res.json()).map((a: any) => AppInfoResponse.fromJS(a))
+    return await client.getUserApps(username)
   } catch {
     return []
   }
@@ -207,9 +213,7 @@ export async function fetchPublicWeeklyReport(username: string, params: {
 
 export async function fetchPublicDeviceStatus(username: string, deviceId: number): Promise<DeviceStatusResponse | null> {
   try {
-    const res = await fetch(`${API_BASE}/users/${username}/devices/${deviceId}/status`)
-    if (!res.ok) return null
-    return DeviceStatusResponse.fromJS(await res.json())
+    return await client.getUserDeviceStatus(username, deviceId)
   } catch {
     return null
   }
@@ -221,13 +225,12 @@ export async function fetchPublicUsage(username: string, params: {
   end?: string
 }): Promise<AppUsageResponse[]> {
   try {
-    const searchParams = new URLSearchParams()
-    if (params.deviceId !== undefined) searchParams.set('deviceId', String(params.deviceId))
-    if (params.start) searchParams.set('start', params.start)
-    if (params.end) searchParams.set('end', params.end)
-    const res = await fetch(`${API_BASE}/users/${username}/usage?${searchParams}`)
-    if (!res.ok) return []
-    return (await res.json()).map((u: any) => AppUsageResponse.fromJS(u))
+    return await client.getUserUsage(
+      username,
+      params.deviceId,
+      params.start ? new Date(params.start) : undefined,
+      params.end ? new Date(params.end) : undefined,
+    )
   } catch {
     return []
   }
@@ -241,15 +244,14 @@ export async function fetchPublicSegments(username: string, params: {
   end?: string
 }): Promise<SegmentResponse[]> {
   try {
-    const searchParams = new URLSearchParams()
-    if (params.deviceId !== undefined) searchParams.set('deviceId', String(params.deviceId))
-    if (params.source) searchParams.set('source', params.source)
-    if (params.appId !== undefined) searchParams.set('appId', String(params.appId))
-    if (params.start) searchParams.set('start', params.start)
-    if (params.end) searchParams.set('end', params.end)
-    const res = await fetch(`${API_BASE}/users/${username}/segments?${searchParams}`)
-    if (!res.ok) return []
-    return (await res.json()).map((s: any) => SegmentResponse.fromJS(s))
+    return await client.getUserSegments(
+      username,
+      params.deviceId,
+      params.source,
+      params.appId,
+      params.start ? new Date(params.start) : undefined,
+      params.end ? new Date(params.end) : undefined,
+    )
   } catch {
     return []
   }
@@ -261,13 +263,13 @@ export async function fetchPublicKeyFrequency(username: string, params: {
   end?: string
 }): Promise<KeyFrequencyResponse> {
   try {
-    const searchParams = new URLSearchParams()
-    if (params.deviceId !== undefined) searchParams.set('deviceId', String(params.deviceId))
-    if (params.start) searchParams.set('start', params.start)
-    if (params.end) searchParams.set('end', params.end)
-    const res = await fetch(`${API_BASE}/users/${username}/input-events/key-frequency?${searchParams}`)
-    if (!res.ok) return { keys: [] }
-    return await res.json()
+    const res = await client.getUserKeyFrequency(
+      username,
+      params.deviceId,
+      params.start ? new Date(params.start) : undefined,
+      params.end ? new Date(params.end) : undefined,
+    )
+    return { keys: (res.keys ?? []).map(k => ({ code: k.code ?? 0, count: k.count ?? 0 })) }
   } catch {
     return { keys: [] }
   }

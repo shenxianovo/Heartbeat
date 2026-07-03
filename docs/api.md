@@ -1,11 +1,16 @@
 
 # Heartbeat API 接口文档
 
-API Client 使用 NSwag 自动生成
+API Client 使用 NSwag 自动生成。本地开发的完整生成步骤（含 OpenAPI 端点获取、类型约定）见
+[README 的 Local End-to-End Verification 一节](../README.md#4-regenerate-the-api-client-when-server-dtosendpoints-changed)。
 
-``` sh
-nswag openapi2tsclient /input:http://localhost:5023/openapi/v1.json /output:frontend/src/api/client.ts
+```sh
+# 简版：从 Development 后端的 OpenAPI 文档生成
+nswag openapi2tsclient /input:http://localhost:8080/openapi/v1.json /output:frontend/src/api/client.ts
 ```
+
+> 查询端点的 action 一律用 `ActionResult<T>` 而非 `IActionResult`，否则 OpenAPI 推不出响应
+> schema、NSwag 会生成 `Promise<void>`（详见 README）。
 
 基础路径：`/api/v1`
 

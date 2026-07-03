@@ -38,15 +38,13 @@ namespace Heartbeat.Server.Controllers
 
         [HttpGet("counts")]
         [EndpointName("getInputCounts")]
-        [ProducesResponseType(typeof(InputCountsResponse), 200)]
-        public async Task<IActionResult> GetCounts(
+        public async Task<ActionResult<InputCountsResponse>> GetCounts(
             [FromQuery] long? deviceId,
             [FromQuery] DateTimeOffset? start,
             [FromQuery] DateTimeOffset? end)
         {
             var userId = _currentUser.GetUserId();
-            var result = await _inputEventService.GetCountsAsync(userId, deviceId, start, end);
-            return Ok(result);
+            return await _inputEventService.GetCountsAsync(userId, deviceId, start, end);
         }
     }
 }

@@ -347,7 +347,7 @@ export class Client {
     /**
      * @return OK
      */
-    getUserDevices(username: string): Promise<void> {
+    getUserDevices(username: string): Promise<DeviceInfoResponse[]> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/devices";
         if (username === undefined || username === null)
             throw new globalThis.Error("The parameter 'username' must be defined.");
@@ -357,6 +357,7 @@ export class Client {
         let options_: RequestInit = {
             method: "GET",
             headers: {
+                "Accept": "application/json"
             }
         };
 
@@ -365,19 +366,29 @@ export class Client {
         });
     }
 
-    protected processGetUserDevices(response: Response): Promise<void> {
+    protected processGetUserDevices(response: Response): Promise<DeviceInfoResponse[]> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
             return response.text().then((_responseText) => {
-            return;
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            if (Array.isArray(resultData200)) {
+                result200 = [] as any;
+                for (let item of resultData200)
+                    result200!.push(DeviceInfoResponse.fromJS(item));
+            }
+            else {
+                result200 = null as any;
+            }
+            return result200;
             });
         } else if (status !== 200 && status !== 204) {
             return response.text().then((_responseText) => {
             return throwException("An unexpected server error occurred.", status, _responseText, _headers);
             });
         }
-        return Promise.resolve<void>(null as any);
+        return Promise.resolve<DeviceInfoResponse[]>(null as any);
     }
 
     /**
@@ -385,7 +396,7 @@ export class Client {
      * @param date (optional) 
      * @return OK
      */
-    getUserDailyReport(username: string, deviceId: number | undefined, date: Date | undefined): Promise<void> {
+    getUserDailyReport(username: string, deviceId: number | undefined, date: Date | undefined): Promise<DailyReportResponse> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/reports/daily?";
         if (username === undefined || username === null)
             throw new globalThis.Error("The parameter 'username' must be defined.");
@@ -403,6 +414,7 @@ export class Client {
         let options_: RequestInit = {
             method: "GET",
             headers: {
+                "Accept": "application/json"
             }
         };
 
@@ -411,19 +423,22 @@ export class Client {
         });
     }
 
-    protected processGetUserDailyReport(response: Response): Promise<void> {
+    protected processGetUserDailyReport(response: Response): Promise<DailyReportResponse> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
             return response.text().then((_responseText) => {
-            return;
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = DailyReportResponse.fromJS(resultData200);
+            return result200;
             });
         } else if (status !== 200 && status !== 204) {
             return response.text().then((_responseText) => {
             return throwException("An unexpected server error occurred.", status, _responseText, _headers);
             });
         }
-        return Promise.resolve<void>(null as any);
+        return Promise.resolve<DailyReportResponse>(null as any);
     }
 
     /**
@@ -431,7 +446,7 @@ export class Client {
      * @param date (optional) 
      * @return OK
      */
-    getUserWeeklyReport(username: string, deviceId: number | undefined, date: Date | undefined): Promise<void> {
+    getUserWeeklyReport(username: string, deviceId: number | undefined, date: Date | undefined): Promise<WeeklyReportResponse> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/reports/weekly?";
         if (username === undefined || username === null)
             throw new globalThis.Error("The parameter 'username' must be defined.");
@@ -449,6 +464,7 @@ export class Client {
         let options_: RequestInit = {
             method: "GET",
             headers: {
+                "Accept": "application/json"
             }
         };
 
@@ -457,19 +473,22 @@ export class Client {
         });
     }
 
-    protected processGetUserWeeklyReport(response: Response): Promise<void> {
+    protected processGetUserWeeklyReport(response: Response): Promise<WeeklyReportResponse> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
             return response.text().then((_responseText) => {
-            return;
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = WeeklyReportResponse.fromJS(resultData200);
+            return result200;
             });
         } else if (status !== 200 && status !== 204) {
             return response.text().then((_responseText) => {
             return throwException("An unexpected server error occurred.", status, _responseText, _headers);
             });
         }
-        return Promise.resolve<void>(null as any);
+        return Promise.resolve<WeeklyReportResponse>(null as any);
     }
 
     /**
@@ -478,7 +497,7 @@ export class Client {
      * @param end (optional) 
      * @return OK
      */
-    getUserUsage(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<void> {
+    getUserUsage(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<AppUsageResponse[]> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/usage?";
         if (username === undefined || username === null)
             throw new globalThis.Error("The parameter 'username' must be defined.");
@@ -500,6 +519,7 @@ export class Client {
         let options_: RequestInit = {
             method: "GET",
             headers: {
+                "Accept": "application/json"
             }
         };
 
@@ -508,19 +528,29 @@ export class Client {
         });
     }
 
-    protected processGetUserUsage(response: Response): Promise<void> {
+    protected processGetUserUsage(response: Response): Promise<AppUsageResponse[]> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
             return response.text().then((_responseText) => {
-            return;
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            if (Array.isArray(resultData200)) {
+                result200 = [] as any;
+                for (let item of resultData200)
+                    result200!.push(AppUsageResponse.fromJS(item));
+            }
+            else {
+                result200 = null as any;
+            }
+            return result200;
             });
         } else if (status !== 200 && status !== 204) {
             return response.text().then((_responseText) => {
             return throwException("An unexpected server error occurred.", status, _responseText, _headers);
             });
         }
-        return Promise.resolve<void>(null as any);
+        return Promise.resolve<AppUsageResponse[]>(null as any);
     }
 
     /**
@@ -598,7 +628,7 @@ export class Client {
     /**
      * @return OK
      */
-    getUserApps(username: string): Promise<void> {
+    getUserApps(username: string): Promise<AppInfoResponse[]> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/apps";
         if (username === undefined || username === null)
             throw new globalThis.Error("The parameter 'username' must be defined.");
@@ -608,6 +638,7 @@ export class Client {
         let options_: RequestInit = {
             method: "GET",
             headers: {
+                "Accept": "application/json"
             }
         };
 
@@ -616,25 +647,35 @@ export class Client {
         });
     }
 
-    protected processGetUserApps(response: Response): Promise<void> {
+    protected processGetUserApps(response: Response): Promise<AppInfoResponse[]> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
             return response.text().then((_responseText) => {
-            return;
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            if (Array.isArray(resultData200)) {
+                result200 = [] as any;
+                for (let item of resultData200)
+                    result200!.push(AppInfoResponse.fromJS(item));
+            }
+            else {
+                result200 = null as any;
+            }
+            return result200;
             });
         } else if (status !== 200 && status !== 204) {
             return response.text().then((_responseText) => {
             return throwException("An unexpected server error occurred.", status, _responseText, _headers);
             });
         }
-        return Promise.resolve<void>(null as any);
+        return Promise.resolve<AppInfoResponse[]>(null as any);
     }
 
     /**
      * @return OK
      */
-    getUserDeviceStatus(username: string, deviceId: number): Promise<void> {
+    getUserDeviceStatus(username: string, deviceId: number): Promise<DeviceStatusResponse> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/devices/{deviceId}/status";
         if (username === undefined || username === null)
             throw new globalThis.Error("The parameter 'username' must be defined.");
@@ -647,6 +688,7 @@ export class Client {
         let options_: RequestInit = {
             method: "GET",
             headers: {
+                "Accept": "application/json"
             }
         };
 
@@ -655,19 +697,22 @@ export class Client {
         });
     }
 
-    protected processGetUserDeviceStatus(response: Response): Promise<void> {
+    protected processGetUserDeviceStatus(response: Response): Promise<DeviceStatusResponse> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
             return response.text().then((_responseText) => {
-            return;
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = DeviceStatusResponse.fromJS(resultData200);
+            return result200;
             });
         } else if (status !== 200 && status !== 204) {
             return response.text().then((_responseText) => {
             return throwException("An unexpected server error occurred.", status, _responseText, _headers);
             });
         }
-        return Promise.resolve<void>(null as any);
+        return Promise.resolve<DeviceStatusResponse>(null as any);
     }
 
     /**
@@ -676,7 +721,7 @@ export class Client {
      * @param end (optional) 
      * @return OK
      */
-    getUserKeyFrequency(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<void> {
+    getUserKeyFrequency(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<KeyFrequencyResponse> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/input-events/key-frequency?";
         if (username === undefined || username === null)
             throw new globalThis.Error("The parameter 'username' must be defined.");
@@ -698,6 +743,7 @@ export class Client {
         let options_: RequestInit = {
             method: "GET",
             headers: {
+                "Accept": "application/json"
             }
         };
 
@@ -706,19 +752,22 @@ export class Client {
         });
     }
 
-    protected processGetUserKeyFrequency(response: Response): Promise<void> {
+    protected processGetUserKeyFrequency(response: Response): Promise<KeyFrequencyResponse> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
             return response.text().then((_responseText) => {
-            return;
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = KeyFrequencyResponse.fromJS(resultData200);
+            return result200;
             });
         } else if (status !== 200 && status !== 204) {
             return response.text().then((_responseText) => {
             return throwException("An unexpected server error occurred.", status, _responseText, _headers);
             });
         }
-        return Promise.resolve<void>(null as any);
+        return Promise.resolve<KeyFrequencyResponse>(null as any);
     }
 
     /**
@@ -1765,6 +1814,114 @@ export class JsonElement implements IJsonElement {
 }
 
 export interface IJsonElement {
+
+    [key: string]: any;
+}
+
+export class KeyFrequencyItem implements IKeyFrequencyItem {
+    code?: number;
+    count?: number;
+
+    [key: string]: any;
+
+    constructor(data?: IKeyFrequencyItem) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.code = _data["code"];
+            this.count = _data["count"];
+        }
+    }
+
+    static fromJS(data: any): KeyFrequencyItem {
+        data = typeof data === 'object' ? data : {};
+        let result = new KeyFrequencyItem();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["code"] = this.code;
+        data["count"] = this.count;
+        return data;
+    }
+}
+
+export interface IKeyFrequencyItem {
+    code?: number;
+    count?: number;
+
+    [key: string]: any;
+}
+
+export class KeyFrequencyResponse implements IKeyFrequencyResponse {
+    keys?: KeyFrequencyItem[];
+
+    [key: string]: any;
+
+    constructor(data?: IKeyFrequencyResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            if (Array.isArray(_data["keys"])) {
+                this.keys = [] as any;
+                for (let item of _data["keys"])
+                    this.keys!.push(KeyFrequencyItem.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): KeyFrequencyResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new KeyFrequencyResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        if (Array.isArray(this.keys)) {
+            data["keys"] = [];
+            for (let item of this.keys)
+                data["keys"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface IKeyFrequencyResponse {
+    keys?: KeyFrequencyItem[];
 
     [key: string]: any;
 }

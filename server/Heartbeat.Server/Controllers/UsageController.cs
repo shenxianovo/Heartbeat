@@ -36,15 +36,13 @@ namespace Heartbeat.Server.Controllers
 
         [HttpGet]
         [EndpointName("getUsage")]
-        [ProducesResponseType(typeof(List<AppUsageResponse>), 200)]
-        public async Task<IActionResult> GetUsage(
+        public async Task<ActionResult<List<AppUsageResponse>>> GetUsage(
             [FromQuery] long? deviceId,
             [FromQuery] DateTimeOffset? start,
             [FromQuery] DateTimeOffset? end)
         {
             var userId = _currentUser.GetUserId();
-            var result = await _usageService.GetUsageAsync(userId, deviceId, start, end);
-            return Ok(result);
+            return await _usageService.GetUsageAsync(userId, deviceId, start, end);
         }
     }
 }

@@ -15,28 +15,24 @@ namespace Heartbeat.Server.Controllers
 
         [HttpGet("daily")]
         [EndpointName("getDailyReport")]
-        [ProducesResponseType(typeof(DailyReportResponse), 200)]
-        public async Task<IActionResult> GetDailyReport(
+        public async Task<ActionResult<DailyReportResponse>> GetDailyReport(
             [FromQuery] long? deviceId,
             [FromQuery] DateTimeOffset? date)
         {
             var userId = _currentUser.GetUserId();
             var targetDate = date ?? DateTimeOffset.UtcNow;
-            var report = await _reportService.GetDailyReportAsync(userId, deviceId, targetDate);
-            return Ok(report);
+            return await _reportService.GetDailyReportAsync(userId, deviceId, targetDate);
         }
 
         [HttpGet("weekly")]
         [EndpointName("getWeeklyReport")]
-        [ProducesResponseType(typeof(WeeklyReportResponse), 200)]
-        public async Task<IActionResult> GetWeeklyReport(
+        public async Task<ActionResult<WeeklyReportResponse>> GetWeeklyReport(
             [FromQuery] long? deviceId,
             [FromQuery] DateTimeOffset? date)
         {
             var userId = _currentUser.GetUserId();
             var targetDate = date ?? DateTimeOffset.UtcNow;
-            var report = await _reportService.GetWeeklyReportAsync(userId, deviceId, targetDate);
-            return Ok(report);
+            return await _reportService.GetWeeklyReportAsync(userId, deviceId, targetDate);
         }
     }
 }
