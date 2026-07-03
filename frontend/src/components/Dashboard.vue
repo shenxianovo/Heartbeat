@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useHeartbeat } from '../composables/useHeartbeat'
 import { authStore } from '../stores/auth'
 import ActivityTimeline from './ActivityTimeline.vue'
@@ -8,6 +8,7 @@ import CurrentAppPanel from './CurrentAppPanel.vue'
 import TodayRanking from './TodayRanking.vue'
 import WeeklyChart from './WeeklyChart.vue'
 import KeyboardHeatmap from './KeyboardHeatmap.vue'
+import AppDetailModal from './AppDetailModal.vue'
 import {
   Select,
   SelectContent,
@@ -53,6 +54,9 @@ const selectedDeviceStr = computed({
   get: () => String(selectedDevice.value),
   set: (v: string) => { selectedDevice.value = Number(v) },
 })
+
+// 点击排行条目 → 全局全屏应用详情弹窗（回放多轨 + 标题明细）
+const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number } | null>(null)
 </script>
 
 <template>
@@ -142,7 +146,7 @@ const selectedDeviceStr = computed({
           <TodayRanking
             :appSummaries="appSummaries"
             :maxSeconds="maxSeconds"
-            :titleBreakdown="titleBreakdown"
+            @select="selectedApp = $event"
           />
 
           <WeeklyChart
@@ -152,6 +156,17 @@ const selectedDeviceStr = computed({
         </div>
       </div>
     </main>
+
+    <AppDetailModal
+      v-if="selectedApp"
+      :username="username"
+      :deviceId="selectedDevice"
+      :selectedDate="selectedDate"
+      :app="selectedApp"
+      :usageData="usageData"
+      :titleBreakdown="titleBreakdown"
+      @close="selectedApp = null"
+    />
 
     <div v-if="loading" class="loading-bar"></div>
   </div>

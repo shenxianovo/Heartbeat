@@ -2,13 +2,13 @@
 import { getIconUrl } from '../api/index'
 import { formatDuration } from '../composables/useHeartbeat'
 import { Card } from '@/components/ui/card'
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 
 defineProps<{
   appSummaries: { appId: number; appName: string; totalSeconds: number }[]
   maxSeconds: number
-  titleBreakdown: (appId: number) => { title: string; secondary?: string; category?: string; totalSeconds: number; count: number }[]
 }>()
+
+const emit = defineEmits<{ select: [app: { appId: number; appName: string; totalSeconds: number }] }>()
 </script>
 
 <template>
@@ -20,62 +20,29 @@ defineProps<{
         v-if="appSummaries.length"
         class="flex max-h-[200px] flex-col gap-3 overflow-y-auto pr-1 min-[900px]:max-h-[280px] min-[1200px]:max-h-[340px]"
       >
-        <Popover v-for="(app, i) in appSummaries" :key="app.appName">
-          <PopoverTrigger as-child>
-            <div class="flex cursor-pointer flex-col gap-1 rounded-md transition-colors hover:bg-accent/50">
-              <div class="flex items-center gap-2 text-[0.85rem]">
-                <span class="w-6 text-center text-xs font-semibold text-muted-foreground">{{ i + 1 }}</span>
-                <img
-                  :src="getIconUrl(app.appId)"
-                  class="h-[18px] w-[18px] rounded object-contain"
-                  @error="($event.target as HTMLImageElement).style.display = 'none'"
-                />
-                <span class="flex-1 truncate">{{ app.appName }}</span>
-                <span class="font-mono text-[0.8rem] text-muted-foreground">{{ formatDuration(app.totalSeconds) }}</span>
-              </div>
-              <div class="ml-8 h-1 overflow-hidden rounded-sm bg-secondary">
-                <div
-                  class="h-full rounded-sm bg-primary"
-                  :style="{ width: `${(app.totalSeconds / maxSeconds) * 100}%` }"
-                ></div>
-              </div>
-            </div>
-          </PopoverTrigger>
-          <PopoverContent align="start" class="max-h-[320px] w-80 overflow-y-auto">
-            <div class="flex flex-col gap-2">
-              <div class="flex items-center gap-2 border-b border-border pb-2 text-[0.85rem] font-semibold">
-                <img
-                  :src="getIconUrl(app.appId)"
-                  class="h-4 w-4 rounded object-contain"
-                  @error="($event.target as HTMLImageElement).style.display = 'none'"
-                />
-                <span class="truncate">{{ app.appName }}</span>
-                <span class="ml-auto font-mono text-xs font-normal text-muted-foreground">{{ formatDuration(app.totalSeconds) }}</span>
-              </div>
-
-              <div
-                v-for="(t, ti) in titleBreakdown(app.appId)"
-                :key="ti"
-                class="flex items-center gap-2 text-[0.8rem]"
-                :class="t.category === 'system' ? 'opacity-50' : ''"
-              >
-                <span class="flex min-w-0 flex-1 flex-col">
-                  <span class="truncate" :class="t.title ? '' : 'text-muted-foreground italic'" :title="t.title">{{ t.title || '无标题窗口' }}</span>
-                  <span v-if="t.secondary" class="truncate text-[0.65rem] text-muted-foreground" :title="t.secondary">{{ t.secondary }}</span>
-                </span>
-                <span class="shrink-0 text-[0.7rem] text-muted-foreground">×{{ t.count }}</span>
-                <span class="shrink-0 font-mono text-[0.75rem] text-muted-foreground">{{ formatDuration(t.totalSeconds) }}</span>
-              </div>
-
-              <div
-                v-if="titleBreakdown(app.appId).length === 0"
-                class="py-2 text-center text-[0.8rem] text-muted-foreground"
-              >
-                无标题明细
-              </div>
-            </div>
-          </PopoverContent>
-        </Popover>
+        <div
+          v-for="(app, i) in appSummaries"
+          :key="app.appName"
+          class="flex cursor-pointer flex-col gap-1 rounded-md transition-colors hover:bg-accent/50"
+          @click="emit('select', app)"
+        >
+          <div class="flex items-center gap-2 text-[0.85rem]">
+            <span class="w-6 text-center text-xs font-semibold text-muted-foreground">{{ i + 1 }}</span>
+            <img
+              :src="getIconUrl(app.appId)"
+              class="h-[18px] w-[18px] rounded object-contain"
+              @error="($event.target as HTMLImageElement).style.display = 'none'"
+            />
+            <span class="flex-1 truncate">{{ app.appName }}</span>
+            <span class="font-mono text-[0.8rem] text-muted-foreground">{{ formatDuration(app.totalSeconds) }}</span>
+          </div>
+          <div class="ml-8 h-1 overflow-hidden rounded-sm bg-secondary">
+            <div
+              class="h-full rounded-sm bg-primary"
+              :style="{ width: `${(app.totalSeconds / maxSeconds) * 100}%` }"
+            ></div>
+          </div>
+        </div>
       </div>
 
       <div v-else class="py-8 text-center text-[0.9rem] text-muted-foreground">暂无数据</div>

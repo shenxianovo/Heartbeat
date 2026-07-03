@@ -132,6 +132,54 @@ namespace Heartbeat.Server.Services
             await _db.SaveChangesAsync();
         }
 
+        /// <summary>
+        /// 插件段查询（ADR-017 §4）：回放多轨用。默认返回全部非 system source
+        /// （system 轨走 GetUsageAsync，两者互补不重叠）；source 指定时只查该轨。
+        /// </summary>
+        public async Task<List<SegmentResponse>> GetSegmentsAsync(
+            string ownerId, long? deviceId, string? source, long? appId,
+            DateTimeOffset? start, DateTimeOffset? end)
+        {
+            var query = _db.ActivitySegments
+                .Include(x => x.App)
+                .Where(x => x.Device.OwnerId == ownerId)
+                .AsQueryable();
+
+            query = string.IsNullOrWhiteSpace(source)
+                ? query.Where(x => x.Source != ActivitySources.System)
+                : query.Where(x => x.Source == source);
+
+            if (deviceId.HasValue)
+                query = query.Where(x => x.DeviceId == deviceId.Value);
+
+            if (appId.HasValue)
+                query = query.Where(x => x.AppId == appId.Value);
+
+            if (start.HasValue)
+                query = query.Where(x => x.StartTime >= start.Value);
+
+            if (end.HasValue)
+                query = query.Where(x => x.StartTime < end.Value);
+
+            return await query
+                .OrderByDescending(x => x.StartTime)
+                .Take(10000)
+                .Select(x => new SegmentResponse
+                {
+                    Id = x.Id,
+                    Source = x.Source,
+                    IdentityKey = x.IdentityKey,
+                    AppId = x.AppId,
+                    AppName = x.App != null ? x.App.Name : null,
+                    Title = x.Title,
+                    StartTime = x.StartTime,
+                    EndTime = x.EndTime,
+                    DurationSeconds = x.DurationSeconds,
+                    Attributes = x.Attributes
+                })
+                .ToListAsync();
+        }
+
         public async Task<List<AppUsageResponse>> GetUsageAsync(string ownerId, long? deviceId, DateTimeOffset? start, DateTimeOffset? end)
         {
             var query = _db.ActivitySegments

@@ -236,6 +236,61 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     }
 
     [Fact]
+    public async Task GetSegments_DefaultExcludesSystem_SourceParamFilters()
+    {
+        using var db = CreateDbContext();
+        var svc = new UsageService(db);
+
+        var app = new App { Name = "msedge" };
+        db.Apps.Add(app);
+        await db.SaveChangesAsync();
+
+        var t0 = Now.AddMinutes(-10);
+        db.ActivitySegments.Add(SystemSegment(app.Id, "msedge", t0, t0.AddMinutes(5)));
+        db.ActivitySegments.Add(new ActivitySegment
+        {
+            Id = Guid.CreateVersion7(),
+            DeviceId = _deviceId,
+            Source = "browser",
+            IdentityKey = "https://example.com",
+            AppId = app.Id,
+            StartTime = t0,
+            EndTime = t0.AddMinutes(2),
+            DurationSeconds = 120,
+            Attributes = """{"url":"https://example.com"}"""
+        });
+        db.ActivitySegments.Add(new ActivitySegment
+        {
+            Id = Guid.CreateVersion7(),
+            DeviceId = _deviceId,
+            Source = "vscode",
+            IdentityKey = "d:/repo/file.cs",
+            StartTime = t0,
+            EndTime = t0.AddMinutes(1),
+            DurationSeconds = 60
+        });
+        await db.SaveChangesAsync();
+
+        // 默认:全部非 system 轨(system 轨走 GetUsageAsync,互补不重叠)
+        var all = await svc.GetSegmentsAsync("user-1", null, null, null, null, null);
+        Assert.Equal(2, all.Count);
+        Assert.DoesNotContain(all, s => s.Source == ActivitySources.System);
+
+        // source 过滤 + AppName 关联提示带出
+        var browser = await svc.GetSegmentsAsync("user-1", null, "browser", null, null, null);
+        var seg = Assert.Single(browser);
+        Assert.Equal("msedge", seg.AppName);
+        Assert.Contains("example.com", seg.Attributes);
+
+        // appId 过滤:vscode 段无 AppId,不命中
+        var byApp = await svc.GetSegmentsAsync("user-1", null, null, app.Id, null, null);
+        Assert.Single(byApp);
+
+        // owner 隔离
+        Assert.Empty(await svc.GetSegmentsAsync("user-2", null, null, null, null, null));
+    }
+
+    [Fact]
     public async Task SaveUsage_ReuploadSameBatch_IsIdempotent()
     {
         using var db = CreateDbContext();

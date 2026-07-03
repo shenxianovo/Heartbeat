@@ -1,4 +1,4 @@
-import { Client, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse } from './client'
+import { Client, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, SegmentResponse } from './client'
 import { authStore } from '../stores/auth'
 
 // ===== Base URL =====
@@ -35,7 +35,7 @@ const authHttp = {
 const client = new Client(BASE_URL, authHttp)
 
 // Re-export generated types
-export type { AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, DailyReportResponse, WeeklyReportResponse }
+export type { AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, DailyReportResponse, WeeklyReportResponse, SegmentResponse }
 export type { AppDurationItem } from './client'
 
 export interface AppSummary {
@@ -228,6 +228,28 @@ export async function fetchPublicUsage(username: string, params: {
     const res = await fetch(`${API_BASE}/users/${username}/usage?${searchParams}`)
     if (!res.ok) return []
     return (await res.json()).map((u: any) => AppUsageResponse.fromJS(u))
+  } catch {
+    return []
+  }
+}
+
+export async function fetchPublicSegments(username: string, params: {
+  deviceId?: number
+  source?: string
+  appId?: number
+  start?: string
+  end?: string
+}): Promise<SegmentResponse[]> {
+  try {
+    const searchParams = new URLSearchParams()
+    if (params.deviceId !== undefined) searchParams.set('deviceId', String(params.deviceId))
+    if (params.source) searchParams.set('source', params.source)
+    if (params.appId !== undefined) searchParams.set('appId', String(params.appId))
+    if (params.start) searchParams.set('start', params.start)
+    if (params.end) searchParams.set('end', params.end)
+    const res = await fetch(`${API_BASE}/users/${username}/segments?${searchParams}`)
+    if (!res.ok) return []
+    return (await res.json()).map((s: any) => SegmentResponse.fromJS(s))
   } catch {
     return []
   }

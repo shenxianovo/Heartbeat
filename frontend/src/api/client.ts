@@ -14,7 +14,7 @@ export class Client {
 
     constructor(baseUrl?: string, http?: { fetch(url: RequestInfo, init?: RequestInit): Promise<Response> }) {
         this.http = http ? http : window as any;
-        this.baseUrl = baseUrl ?? "http://localhost:5023/";
+        this.baseUrl = baseUrl ?? "http://backend:8080/";
     }
 
     /**
@@ -524,6 +524,78 @@ export class Client {
     }
 
     /**
+     * @param deviceId (optional) 
+     * @param source (optional) 
+     * @param appId (optional) 
+     * @param start (optional) 
+     * @param end (optional) 
+     * @return OK
+     */
+    getUserSegments(username: string, deviceId: number | undefined, source: string | undefined, appId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<SegmentResponse[]> {
+        let url_ = this.baseUrl + "/api/v1/users/{username}/segments?";
+        if (username === undefined || username === null)
+            throw new globalThis.Error("The parameter 'username' must be defined.");
+        url_ = url_.replace("{username}", encodeURIComponent("" + username));
+        if (deviceId === null)
+            throw new globalThis.Error("The parameter 'deviceId' cannot be null.");
+        else if (deviceId !== undefined)
+            url_ += "deviceId=" + encodeURIComponent("" + deviceId) + "&";
+        if (source === null)
+            throw new globalThis.Error("The parameter 'source' cannot be null.");
+        else if (source !== undefined)
+            url_ += "source=" + encodeURIComponent("" + source) + "&";
+        if (appId === null)
+            throw new globalThis.Error("The parameter 'appId' cannot be null.");
+        else if (appId !== undefined)
+            url_ += "appId=" + encodeURIComponent("" + appId) + "&";
+        if (start === null)
+            throw new globalThis.Error("The parameter 'start' cannot be null.");
+        else if (start !== undefined)
+            url_ += "start=" + encodeURIComponent(start ? "" + start.toISOString() : "") + "&";
+        if (end === null)
+            throw new globalThis.Error("The parameter 'end' cannot be null.");
+        else if (end !== undefined)
+            url_ += "end=" + encodeURIComponent(end ? "" + end.toISOString() : "") + "&";
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processGetUserSegments(_response);
+        });
+    }
+
+    protected processGetUserSegments(response: Response): Promise<SegmentResponse[]> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            if (Array.isArray(resultData200)) {
+                result200 = [] as any;
+                for (let item of resultData200)
+                    result200!.push(SegmentResponse.fromJS(item));
+            }
+            else {
+                result200 = null as any;
+            }
+            return result200;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<SegmentResponse[]>(null as any);
+    }
+
+    /**
      * @return OK
      */
     getUserApps(username: string): Promise<void> {
@@ -746,6 +818,43 @@ export class Client {
     /**
      * @return OK
      */
+    uploadSegments(body: SegmentUploadRequest): Promise<void> {
+        let url_ = this.baseUrl + "/api/v1/segments";
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processUploadSegments(_response);
+        });
+    }
+
+    protected processUploadSegments(response: Response): Promise<void> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            return;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<void>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
     uploadUsage(body: UsageUploadRequest): Promise<void> {
         let url_ = this.baseUrl + "/api/v1/usage";
         url_ = url_.replace(/[?&]$/, "");
@@ -838,6 +947,82 @@ export class Client {
         }
         return Promise.resolve<AppUsageResponse[]>(null as any);
     }
+}
+
+export class ActivitySegmentItem implements IActivitySegmentItem {
+    id?: string;
+    source?: string;
+    identityKey?: string;
+    appName?: string | undefined;
+    title?: string | undefined;
+    startTime?: Date;
+    endTime?: Date;
+    attributes?: JsonElement | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IActivitySegmentItem) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.id = _data["id"];
+            this.source = _data["source"];
+            this.identityKey = _data["identityKey"];
+            this.appName = _data["appName"];
+            this.title = _data["title"];
+            this.startTime = _data["startTime"] ? new Date(_data["startTime"].toString()) : undefined as any;
+            this.endTime = _data["endTime"] ? new Date(_data["endTime"].toString()) : undefined as any;
+            this.attributes = _data["attributes"] ? JsonElement.fromJS(_data["attributes"]) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): ActivitySegmentItem {
+        data = typeof data === 'object' ? data : {};
+        let result = new ActivitySegmentItem();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["id"] = this.id;
+        data["source"] = this.source;
+        data["identityKey"] = this.identityKey;
+        data["appName"] = this.appName;
+        data["title"] = this.title;
+        data["startTime"] = this.startTime ? this.startTime.toISOString() : undefined as any;
+        data["endTime"] = this.endTime ? this.endTime.toISOString() : undefined as any;
+        data["attributes"] = this.attributes ? this.attributes.toJSON() : undefined as any;
+        return data;
+    }
+}
+
+export interface IActivitySegmentItem {
+    id?: string;
+    source?: string;
+    identityKey?: string;
+    appName?: string | undefined;
+    title?: string | undefined;
+    startTime?: Date;
+    endTime?: Date;
+    attributes?: JsonElement | undefined;
+
+    [key: string]: any;
 }
 
 export class AppDurationItem implements IAppDurationItem {
@@ -949,6 +1134,7 @@ export interface IAppInfoResponse {
 }
 
 export class AppUsageItem implements IAppUsageItem {
+    id?: string;
     appName?: string;
     title?: string | undefined;
     startTime?: Date;
@@ -971,6 +1157,7 @@ export class AppUsageItem implements IAppUsageItem {
                 if (_data.hasOwnProperty(property))
                     this[property] = _data[property];
             }
+            this.id = _data["id"];
             this.appName = _data["appName"];
             this.title = _data["title"];
             this.startTime = _data["startTime"] ? new Date(_data["startTime"].toString()) : undefined as any;
@@ -991,6 +1178,7 @@ export class AppUsageItem implements IAppUsageItem {
             if (this.hasOwnProperty(property))
                 data[property] = this[property];
         }
+        data["id"] = this.id;
         data["appName"] = this.appName;
         data["title"] = this.title;
         data["startTime"] = this.startTime ? this.startTime.toISOString() : undefined as any;
@@ -1000,6 +1188,7 @@ export class AppUsageItem implements IAppUsageItem {
 }
 
 export interface IAppUsageItem {
+    id?: string;
     appName?: string;
     title?: string | undefined;
     startTime?: Date;
@@ -1009,7 +1198,7 @@ export interface IAppUsageItem {
 }
 
 export class AppUsageResponse implements IAppUsageResponse {
-    id?: number;
+    id?: string;
     appId?: number;
     appName?: string;
     title?: string | undefined;
@@ -1069,7 +1258,7 @@ export class AppUsageResponse implements IAppUsageResponse {
 }
 
 export interface IAppUsageResponse {
-    id?: number;
+    id?: string;
     appId?: number;
     appName?: string;
     title?: string | undefined;
@@ -1532,6 +1721,190 @@ export class InputEventUploadRequest implements IInputEventUploadRequest {
 
 export interface IInputEventUploadRequest {
     events?: InputEventItem[];
+
+    [key: string]: any;
+}
+
+export class JsonElement implements IJsonElement {
+
+    [key: string]: any;
+
+    constructor(data?: IJsonElement) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+        }
+    }
+
+    static fromJS(data: any): JsonElement {
+        data = typeof data === 'object' ? data : {};
+        let result = new JsonElement();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        return data;
+    }
+}
+
+export interface IJsonElement {
+
+    [key: string]: any;
+}
+
+export class SegmentResponse implements ISegmentResponse {
+    id?: string;
+    source?: string;
+    identityKey?: string;
+    appId?: number | undefined;
+    appName?: string | undefined;
+    title?: string | undefined;
+    startTime?: Date;
+    endTime?: Date;
+    durationSeconds?: number;
+    attributes?: string | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: ISegmentResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.id = _data["id"];
+            this.source = _data["source"];
+            this.identityKey = _data["identityKey"];
+            this.appId = _data["appId"];
+            this.appName = _data["appName"];
+            this.title = _data["title"];
+            this.startTime = _data["startTime"] ? new Date(_data["startTime"].toString()) : undefined as any;
+            this.endTime = _data["endTime"] ? new Date(_data["endTime"].toString()) : undefined as any;
+            this.durationSeconds = _data["durationSeconds"];
+            this.attributes = _data["attributes"];
+        }
+    }
+
+    static fromJS(data: any): SegmentResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new SegmentResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["id"] = this.id;
+        data["source"] = this.source;
+        data["identityKey"] = this.identityKey;
+        data["appId"] = this.appId;
+        data["appName"] = this.appName;
+        data["title"] = this.title;
+        data["startTime"] = this.startTime ? this.startTime.toISOString() : undefined as any;
+        data["endTime"] = this.endTime ? this.endTime.toISOString() : undefined as any;
+        data["durationSeconds"] = this.durationSeconds;
+        data["attributes"] = this.attributes;
+        return data;
+    }
+}
+
+export interface ISegmentResponse {
+    id?: string;
+    source?: string;
+    identityKey?: string;
+    appId?: number | undefined;
+    appName?: string | undefined;
+    title?: string | undefined;
+    startTime?: Date;
+    endTime?: Date;
+    durationSeconds?: number;
+    attributes?: string | undefined;
+
+    [key: string]: any;
+}
+
+export class SegmentUploadRequest implements ISegmentUploadRequest {
+    segments?: ActivitySegmentItem[];
+
+    [key: string]: any;
+
+    constructor(data?: ISegmentUploadRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            if (Array.isArray(_data["segments"])) {
+                this.segments = [] as any;
+                for (let item of _data["segments"])
+                    this.segments!.push(ActivitySegmentItem.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): SegmentUploadRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new SegmentUploadRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        if (Array.isArray(this.segments)) {
+            data["segments"] = [];
+            for (let item of this.segments)
+                data["segments"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface ISegmentUploadRequest {
+    segments?: ActivitySegmentItem[];
 
     [key: string]: any;
 }

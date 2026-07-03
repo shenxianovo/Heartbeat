@@ -69,6 +69,24 @@ namespace Heartbeat.Server.Controllers
             return Ok(result);
         }
 
+        [HttpGet("segments")]
+        [EndpointName("getUserSegments")]
+        [ProducesResponseType(typeof(List<Heartbeat.Core.DTOs.Segments.SegmentResponse>), StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetSegments(
+            string username,
+            [FromQuery] long? deviceId,
+            [FromQuery] string? source,
+            [FromQuery] long? appId,
+            [FromQuery] DateTimeOffset? start,
+            [FromQuery] DateTimeOffset? end)
+        {
+            var user = await userService.ResolveByUsernameAsync(username);
+            if (user == null) return NotFound();
+
+            var result = await usageService.GetSegmentsAsync(user.Id, deviceId, source, appId, start, end);
+            return Ok(result);
+        }
+
         [HttpGet("apps")]
         [EndpointName("getUserApps")]
         public async Task<IActionResult> GetApps(string username)
