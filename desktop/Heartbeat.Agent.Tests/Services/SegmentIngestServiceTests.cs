@@ -88,6 +88,25 @@ public class SegmentIngestServiceTests
     }
 
     [Fact]
+    public void Accept_SameIdSnapshot_ReplacesEarlier()
+    {
+        // 缓冲按 Id 键控（ADR-018）：同段后到快照覆盖先到，攒批自动压缩
+        var svc = new SegmentIngestService(new FakeClock());
+        var t0 = DateTimeOffset.UtcNow.AddMinutes(-5);
+        var first = Segment(start: t0, end: t0.AddMinutes(1));
+        var second = Segment(start: t0, end: t0.AddMinutes(3));
+        second.Id = first.Id;
+
+        svc.Accept([first]);
+        svc.Accept([second]);
+
+        var drained = svc.GetAndClearSegments();
+        var single = Assert.Single(drained);
+        Assert.Equal(first.Id, single.Id);
+        Assert.Equal(t0.AddMinutes(3), single.EndTime);
+    }
+
+    [Fact]
     public void GetAndClearSegments_DrainsBuffer()
     {
         var svc = new SegmentIngestService(new FakeClock());

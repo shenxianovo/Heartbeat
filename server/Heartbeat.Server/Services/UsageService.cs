@@ -28,7 +28,7 @@ namespace Heartbeat.Server.Services
                 // 旧版按 flush 周期成行（碎片），随 Agent 自动更新自然消失。
                 Id = u.Id != Guid.Empty ? u.Id : Guid.CreateVersion7(),
                 Source = ActivitySources.System,
-                IdentityKey = UsageMerger.SystemIdentityKey(u.AppName, u.Title),
+                IdentityKey = SystemIdentity.Key(u.AppName, u.Title),
                 AppName = u.AppName,
                 Title = u.Title,
                 StartTime = u.StartTime,

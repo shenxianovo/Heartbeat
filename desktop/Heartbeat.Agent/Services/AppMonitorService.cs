@@ -20,12 +20,15 @@ namespace Heartbeat.Agent.Services
 
         private readonly object _lock = new();
         private string? _currentApp;
-        private string? _currentTitle;
+        private string? _currentTitle;   // 最新观测标题：仅用于变化比较（门控），不写入段
+        private string? _segmentTitle;   // 段标题：切段时刻定格，非门控抖动不改写（同 Id 快照身份不变，ADR-018）
+        private Guid _currentId;         // 活动身份：段开始时生成，跨 flush 快照复用（ADR-018）
         private DateTimeOffset _currentStart;
         private readonly List<AppUsageItem> _usages = [];
 
-        // away 状态（息屏 / 睡眠）。详见 ADR-014。
+        // away 状态（息屏 / 睡眠）。详见 ADR-014。away 段与真实段同构：稳定 Id + 快照生长。
         private bool _isAway;
+        private Guid _awayId;
         private DateTimeOffset _awayStart;
 
         // AwayProcessNames 的快照，避免热路径（高频 NAMECHANGE）每次 clone 整个配置。
@@ -54,9 +57,7 @@ namespace Heartbeat.Agent.Services
             {
                 lock (_lock)
                 {
-                    _currentApp = initialApp;
-                    _currentTitle = initial.Title;
-                    _currentStart = clock.UtcNow;
+                    StartSegment(initialApp, initial.Title, clock.UtcNow);
                     Log.Information("初始前台应用: {App}", initialApp);
                 }
             }
@@ -106,15 +107,14 @@ namespace Heartbeat.Agent.Services
                 // 否则视为程序自身抖动（spinner/后台刷新/自动播放），只更新当前标题、不切段。
                 if (appSame && !inputActivity.ClickedWithin(TitleGateWindow))
                 {
+                    // 只更新比较基准，不改段标题：段身份（app+起始标题）在 Id 生命周期内不变，
+                    // 抖动值不参与归因（顺带修复 ADR-017 记录的 last-title-wins 缺陷）。
                     _currentTitle = newTitle;
                     return;
                 }
 
                 CloseCurrentSegment(now);
-
-                _currentApp = newApp;
-                _currentTitle = newTitle;
-                _currentStart = now;
+                StartSegment(newApp, newTitle, now);
 
                 if (newApp != null)
                     Log.Debug("应用切换: {App} / {Title}", newApp, newTitle);
@@ -135,9 +135,11 @@ namespace Heartbeat.Agent.Services
                 CloseCurrentSegment(now);
 
                 _isAway = true;
+                _awayId = Guid.CreateVersion7();
                 _awayStart = now;
                 _currentApp = null;
                 _currentTitle = null;
+                _segmentTitle = null;
                 _currentStart = default;
                 Log.Information("进入 away（息屏/睡眠），封口当前应用段");
             }
@@ -154,17 +156,15 @@ namespace Heartbeat.Agent.Services
             {
                 if (!_isAway) return;
 
-                // 发出 away 段 [_awayStart, now]（复用 ≥1s 规则）。
-                AppendSegment(SyntheticApps.Away, null, _awayStart, now);
+                // 发出 away 终态快照 [_awayStart, now]（与中途 flush 快照同 Id，服务端收敛为一行）。
+                AppendSegment(_awayId, SyntheticApps.Away, null, _awayStart, now);
 
                 _isAway = false;
 
-                // 以当前真实前台重开新段（可能仍是睡前应用，也可能变了）。
+                // 以当前真实前台开新段（可能仍是睡前应用，也可能变了）。
                 var resumed = windowMonitor.GetForegroundWindow();
                 resumedApp = Normalize(resumed.ProcessName);
-                _currentApp = resumedApp;
-                _currentTitle = resumed.Title;
-                _currentStart = now;
+                StartSegment(resumedApp, resumed.Title, now);
                 Log.Information("退出 away（亮屏/唤醒），恢复前台: {App}", resumedApp ?? "(无)");
             }
 
@@ -185,11 +185,15 @@ namespace Heartbeat.Agent.Services
 
             lock (_lock)
             {
-                // away 期间不封口、不累加；away 段只在 OnExitAway 发出。
+                // flush 发进行中段的快照，不封口不重开：Id/StartTime 保持，服务端按 Id 生长（ADR-018）。
+                // away 进行中同样快照，长息屏在服务端可见地生长。
                 if (!_isAway && _currentApp != null && _currentStart != default)
                 {
-                    CloseCurrentSegment(now);
-                    _currentStart = now;
+                    AppendSegment(_currentId, _currentApp, _segmentTitle, _currentStart, now);
+                }
+                else if (_isAway)
+                {
+                    AppendSegment(_awayId, SyntheticApps.Away, null, _awayStart, now);
                 }
 
                 var copy = new List<AppUsageItem>(_usages);
@@ -207,15 +211,25 @@ namespace Heartbeat.Agent.Services
             }
         }
 
+        /// <summary>开一个新活动段：新 Id、标题定格。调用方必须持有 _lock。</summary>
+        private void StartSegment(string? app, string? title, DateTimeOffset now)
+        {
+            _currentId = Guid.CreateVersion7();
+            _currentApp = app;
+            _currentTitle = title;
+            _segmentTitle = title;
+            _currentStart = now;
+        }
+
         /// <summary>封口当前真实应用段（仅 ≥1s 记录）。调用方必须持有 _lock。</summary>
         private void CloseCurrentSegment(DateTimeOffset now)
         {
             if (_currentApp != null && _currentStart != default)
-                AppendSegment(_currentApp, _currentTitle, _currentStart, now);
+                AppendSegment(_currentId, _currentApp, _segmentTitle, _currentStart, now);
         }
 
-        /// <summary>追加一个 ≥1s 的使用段。调用方必须持有 _lock。</summary>
-        private void AppendSegment(string appName, string? title, DateTimeOffset start, DateTimeOffset end)
+        /// <summary>追加一个 ≥1s 的段快照。调用方必须持有 _lock。</summary>
+        private void AppendSegment(Guid id, string appName, string? title, DateTimeOffset start, DateTimeOffset end)
         {
             if (start == default) return;
             var duration = end - start;
@@ -223,14 +237,14 @@ namespace Heartbeat.Agent.Services
 
             _usages.Add(new AppUsageItem
             {
-                // UUIDv7 兼作服务端去重键，离线重传幂等（ADR-017，InputEvent 先例）。
-                Id = Guid.CreateVersion7(),
+                // Id 即活动身份（ADR-018）：同段跨 flush 复用，服务端按 Id upsert 收敛。
+                Id = id,
                 AppName = appName,
                 Title = title,
                 StartTime = start,
                 EndTime = end
             });
-            Log.Debug("应用结束: {App} / {Title}，时长 {Duration:F1}s", appName, title, duration.TotalSeconds);
+            Log.Debug("段快照: {App} / {Title}，累计 {Duration:F1}s", appName, title, duration.TotalSeconds);
         }
 
         private void OnConfigChanged(AgentConfig config)

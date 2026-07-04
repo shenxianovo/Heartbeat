@@ -1,5 +1,6 @@
 using Heartbeat.Agent.Http;
 using Heartbeat.Agent.Storage;
+using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Segments;
 using Serilog;
 
@@ -33,8 +34,11 @@ namespace Heartbeat.Agent.Services
             var cached = cache.Load();
             if (cached.Count == 0) return;
 
-            Log.Information("发现 {Count} 条缓存插件段，尝试上传...", cached.Count);
-            var result = await apiClient.UploadSegmentsAsync(new SegmentUploadRequest { Segments = cached });
+            // 缓存为纯追加，离线期间会积累同 Id 的多个快照，出网前统一压缩（ADR-018）。
+            var compacted = SnapshotCompaction.KeepLatest(cached);
+
+            Log.Information("发现 {Count} 条缓存插件段，尝试上传...", compacted.Count);
+            var result = await apiClient.UploadSegmentsAsync(new SegmentUploadRequest { Segments = compacted });
             if (!result.Success) return;
 
             cache.Clear();

@@ -5,7 +5,7 @@ namespace Heartbeat.Agent.Storage
     /// <summary>
     /// AppUsage 的离线缓存。基于 <see cref="JsonFileCache{T}"/>，
     /// 行为：缩进 JSON、上限 10000 条、纯追加。
-    /// 合并相邻碎片由上传前的 UsageMerger 负责（落点甲），缓存不碰业务语义。
+    /// 同 Id 快照压缩由上传前的 SnapshotCompaction 负责（ADR-018），缓存不碰业务语义。
     /// </summary>
     public class LocalCache : IUsageCache, IDisposable
     {

@@ -8,14 +8,15 @@ namespace Heartbeat.Agent.Services
     /// <summary>
     /// 插件段的内存缓冲（ADR-017 枢纽的接收侧）。
     /// 接收 → 校验 → 缓冲，由 UsageUploadWorker 周期性取走上传。
-    /// 与 AppMonitorService.GetAndClearUsages 同构。
+    /// 缓冲按 Id 键控（ADR-018）：同段后到快照覆盖先到——快照单调生长，
+    /// 最新一份携带全部信息，攒批自动压缩。
     /// </summary>
     public class SegmentIngestService(IClock clock)
     {
         private readonly object _lock = new();
-        private readonly List<ActivitySegmentItem> _segments = [];
+        private readonly Dictionary<Guid, ActivitySegmentItem> _segments = [];
 
-        /// <summary>单个缓冲上限：防失控采集器把 Agent 内存吃满（超出丢最旧）。</summary>
+        /// <summary>缓冲上限：防失控采集器把 Agent 内存吃满（超出丢最旧）。</summary>
         private const int MaxBuffered = 20000;
 
         /// <summary>
@@ -40,9 +41,12 @@ namespace Heartbeat.Agent.Services
 
             lock (_lock)
             {
-                _segments.AddRange(valid);
-                if (_segments.Count > MaxBuffered)
-                    _segments.RemoveRange(0, _segments.Count - MaxBuffered);
+                foreach (var s in valid)
+                {
+                    if (_segments.Count >= MaxBuffered && !_segments.ContainsKey(s.Id))
+                        EvictOldest();
+                    _segments[s.Id] = s;
+                }
             }
 
             Log.Debug("接收插件段 {Count} 条（source: {Sources}）",
@@ -54,10 +58,19 @@ namespace Heartbeat.Agent.Services
         {
             lock (_lock)
             {
-                var copy = new List<ActivitySegmentItem>(_segments);
+                var copy = _segments.Values.OrderBy(s => s.StartTime).ToList();
                 _segments.Clear();
                 return copy;
             }
+        }
+
+        /// <summary>失效安全阀（调用方必须持有 _lock）：缓冲满时丢最旧段，留痕。</summary>
+        private void EvictOldest()
+        {
+            var oldest = _segments.Values.MinBy(s => s.StartTime)!;
+            _segments.Remove(oldest.Id);
+            Log.Warning("插件段缓冲已满（{Max} 条），丢弃最旧段 {Id}（source: {Source}）",
+                MaxBuffered, oldest.Id, oldest.Source);
         }
     }
 

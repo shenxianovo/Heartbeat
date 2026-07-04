@@ -4,7 +4,7 @@ namespace Heartbeat.Core.DTOs.Segments
 {
     /// <summary>
     /// 插件采集器段的上传/接收形状（ADR-017）。
-    /// 系统采集器仍走 /usage（AppName 必填、批内 UsageMerger 合并）；
+    /// 系统采集器仍走 /usage（AppName 必填）；
     /// 本形状面向插件 source（browser / vscode / …），经 Agent 本地枢纽转发。
     /// </summary>
     public class SegmentUploadRequest

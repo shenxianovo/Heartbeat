@@ -56,33 +56,47 @@ public class UsageUploadServiceTests : IDisposable
     private static readonly DateTimeOffset Base = new(2025, 6, 1, 10, 0, 0, TimeSpan.Zero);
     private static AppUsageItem Item(string app, int startSec, int endSec) => new()
     {
+        Id = Guid.CreateVersion7(),
         AppName = app,
         StartTime = Base.AddSeconds(startSec),
         EndTime = Base.AddSeconds(endSec)
     };
 
-    [Fact]
-    public async Task UploadAsync_MergesAdjacentSegments_BeforeSending()
+    private static AppUsageItem Snapshot(Guid id, string app, int startSec, int endSec)
     {
-        var (svc, _, handler) = Build(HttpStatusCode.OK);
-
-        // 两段相邻同应用碎片（gap=1s，在容差内）应被合并为一条再发出
-        await svc.UploadAsync([Item("VSCode", 0, 60), Item("VSCode", 61, 120)]);
-
-        var sent = handler.LastRequest!.Usages;
-        Assert.Single(sent);
-        Assert.Equal(Base, sent[0].StartTime);
-        Assert.Equal(Base.AddSeconds(120), sent[0].EndTime);
+        var item = Item(app, startSec, endSec);
+        item.Id = id;
+        return item;
     }
 
     [Fact]
-    public async Task UploadAsync_Failure_CachesMergedSegments()
+    public async Task UploadAsync_CompactsSnapshots_KeepsLatestPerId()
+    {
+        var (svc, _, handler) = Build(HttpStatusCode.OK);
+
+        // 同 Id 两个快照只发最新；不同 Id 相邻同应用不再合并（ADR-018）
+        var id = Guid.CreateVersion7();
+        await svc.UploadAsync([
+            Snapshot(id, "VSCode", 0, 60),
+            Snapshot(id, "VSCode", 0, 120),
+            Item("VSCode", 121, 180)
+        ]);
+
+        var sent = handler.LastRequest!.Usages;
+        Assert.Equal(2, sent.Count);
+        var snapshot = sent.Single(u => u.Id == id);
+        Assert.Equal(Base.AddSeconds(120), snapshot.EndTime);
+    }
+
+    [Fact]
+    public async Task UploadAsync_Failure_CachesCompactedSnapshots()
     {
         var (svc, cache, _) = Build(HttpStatusCode.InternalServerError);
 
-        await svc.UploadAsync([Item("VSCode", 0, 60), Item("VSCode", 61, 120)]);
+        var id = Guid.CreateVersion7();
+        await svc.UploadAsync([Snapshot(id, "VSCode", 0, 60), Snapshot(id, "VSCode", 0, 120)]);
 
-        // 落盘的也应是已合并的结果
+        // 落盘的也应是压缩后的结果
         Assert.Single(cache.Items);
         Assert.Equal(Base.AddSeconds(120), cache.Items[0].EndTime);
     }
@@ -99,12 +113,13 @@ public class UsageUploadServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task UploadCachedAsync_MergesCrossBatchFragments_BeforeSending()
+    public async Task UploadCachedAsync_CompactsCrossBatchSnapshots_BeforeSending()
     {
         var (svc, cache, handler) = Build(HttpStatusCode.OK);
-        // 模拟纯追加缓存里积累的跨批次碎片
-        cache.Add([Item("VSCode", 0, 60)]);
-        cache.Add([Item("VSCode", 61, 120)]);
+        // 模拟离线期间纯追加缓存里积累的同 Id 快照（每个 flush 周期一个）
+        var id = Guid.CreateVersion7();
+        cache.Add([Snapshot(id, "VSCode", 0, 60)]);
+        cache.Add([Snapshot(id, "VSCode", 0, 120)]);
 
         await svc.UploadCachedAsync();
 

@@ -48,7 +48,7 @@ Three repair layers exist today: client in-batch merge (`UsageMerger.Merge`, sys
 
 ### 3. Simplifications that fall out
 
-- **Client in-batch merge retires.** Slices of one activity share an Id, so batch compaction is "keep latest snapshot per Id" — trivial, and identical for system and plugin paths. `UsageMerger.Merge`/`CanMerge` are deleted; `SystemIdentityKey` remains (IdentityKey is still the system source's activity predicate and the query/replay grouping dimension).
+- **Client in-batch merge retires.** Slices of one activity share an Id, so batch compaction is "keep latest snapshot per Id" (`SnapshotCompaction`) — trivial, and identical for system and plugin paths. `UsageMerger` is deleted; its `SystemIdentityKey` survives as `SystemIdentity.Key` (IdentityKey is still the system source's activity predicate and the query/replay grouping dimension).
 - **Hub buffer becomes a dictionary keyed by Id** (later snapshot replaces earlier). Batching compresses automatically; upload volume shrinks.
 - The composite index `(DeviceId, Source, IdentityKey, EndTime)` is no longer needed for ingest (PK lookup suffices); it is kept for replay/query filtering only.
 
@@ -75,5 +75,6 @@ Time-window queries switch from `StartTime ∈ [start, end)` to overlap semantic
 - [ADR-009](./009-velopack-auto-update.md) — auto-update, basis for dropping legacy gluing
 - `desktop/Heartbeat.Agent/Services/AppMonitorService.cs` — Id generation moves to activity start; flush emits snapshots
 - `desktop/Heartbeat.Agent/Services/SegmentIngestService.cs` — hub buffer keyed by Id
-- `shared/Heartbeat.Core/UsageMerger.cs` — `Merge`/`CanMerge` deleted; `SystemIdentityKey` retained
+- `shared/Heartbeat.Core/SystemIdentity.cs` — system IdentityKey definition (sole survivor of the retired `UsageMerger`)
+- `shared/Heartbeat.Core/SnapshotCompaction.cs` — keep-latest-per-Id batch compaction
 - `server/Heartbeat.Server/Services/UsageService.cs` — `SaveSegmentsAsync` upsert with identity guard

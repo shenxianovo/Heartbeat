@@ -42,7 +42,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         Id = Guid.CreateVersion7(),
         DeviceId = _deviceId,
         Source = ActivitySources.System,
-        IdentityKey = UsageMerger.SystemIdentityKey(appName, title),
+        IdentityKey = SystemIdentity.Key(appName, title),
         AppId = appId,
         Title = title,
         StartTime = start,
@@ -69,7 +69,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         Assert.Equal("VSCode", db.Apps.First().Name);
         var segment = db.ActivitySegments.Single();
         Assert.Equal(ActivitySources.System, segment.Source);
-        Assert.Equal(UsageMerger.SystemIdentityKey("VSCode", null), segment.IdentityKey);
+        Assert.Equal(SystemIdentity.Key("VSCode", null), segment.IdentityKey);
         Assert.NotEqual(Guid.Empty, segment.Id);
     }
 

@@ -147,27 +147,54 @@ public class AppMonitorServiceTests : IDisposable
     }
 
     [Fact]
-    public void GetAndClearUsages_WhileAway_DoesNotCloseSegment()
+    public void GetAndClearUsages_WhileAway_SnapshotsGrowingAwaySegment()
     {
         var (svc, clock, _, power, _) = Build("vscode");
 
         clock.Advance(TimeSpan.FromSeconds(20));
         power.RaiseDisplayOff();
 
-        // 上传周期恰好落在 away 期间：不应该泄漏出任何段（vscode 已在息屏时封口）
+        // 上传周期落在 away 期间：vscode 已在息屏时封口，进行中的 away 以快照发出（ADR-018）
         clock.Advance(TimeSpan.FromMinutes(3));
         var midAway = svc.GetAndClearUsages();
-        Assert.Single(midAway);                       // 只有息屏时封口的 vscode
+        Assert.Equal(2, midAway.Count);
         Assert.Equal("vscode", midAway[0].AppName);
         Assert.Equal(20, (midAway[0].EndTime - midAway[0].StartTime).TotalSeconds);
+        var awaySnapshot = midAway[1];
+        Assert.Equal(SyntheticApps.Away, awaySnapshot.AppName);
+        Assert.Equal(180, (awaySnapshot.EndTime - awaySnapshot.StartTime).TotalSeconds);
 
-        // 继续 away 后亮屏，away 段从 _awayStart 到亮屏时刻
+        // 亮屏发终态快照：同 Id 同起点，服务端 upsert 收敛为一行
         clock.Advance(TimeSpan.FromMinutes(2));
         power.RaiseDisplayOn();
         var afterAway = svc.GetAndClearUsages();
         Assert.Single(afterAway);
         Assert.Equal(SyntheticApps.Away, afterAway[0].AppName);
+        Assert.Equal(awaySnapshot.Id, afterAway[0].Id);
+        Assert.Equal(awaySnapshot.StartTime, afterAway[0].StartTime);
         Assert.Equal(300, (afterAway[0].EndTime - afterAway[0].StartTime).TotalSeconds); // 3+2 分钟
+    }
+
+    [Fact]
+    public void Flush_MidActivity_EmitsSnapshot_KeepingIdAndStart()
+    {
+        var (svc, clock, win, _, _) = Build("vscode");
+
+        // flush 不封口不重开：发进行中段快照（ADR-018）
+        clock.Advance(TimeSpan.FromSeconds(60));
+        var flush1 = svc.GetAndClearUsages();
+        var snapshot = Assert.Single(flush1);
+        Assert.Equal("vscode", snapshot.AppName);
+        Assert.Equal(60, (snapshot.EndTime - snapshot.StartTime).TotalSeconds);
+
+        // 真实切换 → 终态快照与首个快照同 Id 同起点，覆盖全程 [0, 90]
+        clock.Advance(TimeSpan.FromSeconds(30));
+        win.Switch("chrome");
+        var flush2 = svc.GetAndClearUsages();
+        var final = Assert.Single(flush2);
+        Assert.Equal(snapshot.Id, final.Id);
+        Assert.Equal(snapshot.StartTime, final.StartTime);
+        Assert.Equal(90, (final.EndTime - final.StartTime).TotalSeconds);
     }
 
     [Fact]
@@ -389,10 +416,11 @@ public class AppMonitorServiceTests : IDisposable
         win.Switch("vscode", "main.cs");                // app 变，封口
 
         var usages = svc.GetAndClearUsages();
-        // 只应有一段 WindowsTerminal（spinner 抖动没切段），标题为最新值
+        // 只应有一段 WindowsTerminal（spinner 抖动没切段），标题定格在起始值：
+        // 抖动值不参与归因（ADR-018，同 Id 快照身份不变）
         var terminalSegs = usages.Where(u => u.AppName == "WindowsTerminal").ToList();
         Assert.Single(terminalSegs);
-        Assert.Equal("⠐ Claude Code", terminalSegs[0].Title); // 未切段但当前标题被更新为最新
+        Assert.Equal("✳ Claude Code", terminalSegs[0].Title);
         Assert.Equal(60, (terminalSegs[0].EndTime - terminalSegs[0].StartTime).TotalSeconds);
     }
 

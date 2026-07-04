@@ -44,7 +44,7 @@ namespace Heartbeat.Server.Migrations
                 });
 
             // 历史 AppUsages 全部迁入,source='system'(ADR-017)。
-            // Id 用 PG18 内置 uuidv7() 生成;IdentityKey 与 UsageMerger.SystemIdentityKey
+            // Id 用 PG18 内置 uuidv7() 生成;IdentityKey 与 SystemIdentity.Key
             // 保持一致:lower(AppName) + '\n' + coalesce(Title, '')。
             migrationBuilder.Sql(@"
                 INSERT INTO ""ActivitySegments""
