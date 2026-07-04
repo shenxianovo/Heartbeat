@@ -41,11 +41,17 @@ namespace Heartbeat.Server.Services
 
         private async Task<List<AppDurationItem>> AggregateAsync(string ownerId, long? deviceId, DateRange range)
         {
+            // DateRange 是 UTC DateTime，先转 DateTimeOffset，让 EF 以参数形式翻译比较与裁剪。
+            DateTimeOffset windowStart = range.UtcStart;
+            DateTimeOffset windowEnd = range.UtcEnd;
+
             // 统计只消费 system source（互斥轨，时长可求和）。插件段只进回放。详见 ADR-017 §4。
+            // 区间重叠 + 裁剪（ADR-018 §4）：跨窗段（如跨午夜的 away/长会话）只把
+            // 落在本窗口内的部分计入，既不漏也不双计。
             var query = _db.ActivitySegments
                 .Where(x => x.Device.OwnerId == ownerId)
                 .Where(x => x.Source == ActivitySources.System)
-                .Where(x => x.StartTime >= range.UtcStart && x.StartTime < range.UtcEnd);
+                .Where(x => x.EndTime > windowStart && x.StartTime < windowEnd);
 
             if (deviceId.HasValue)
                 query = query.Where(x => x.DeviceId == deviceId.Value);
@@ -56,7 +62,9 @@ namespace Heartbeat.Server.Services
                 {
                     AppId = g.Key.AppId!.Value,
                     AppName = g.Key.AppName,
-                    DurationSeconds = g.Sum(x => x.DurationSeconds)
+                    DurationSeconds = (int)g.Sum(x =>
+                        ((x.EndTime > windowEnd ? windowEnd : x.EndTime)
+                         - (x.StartTime < windowStart ? windowStart : x.StartTime)).TotalSeconds)
                 })
                 .OrderByDescending(x => x.DurationSeconds)
                 .ToListAsync();

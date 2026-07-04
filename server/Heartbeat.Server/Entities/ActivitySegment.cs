@@ -24,7 +24,6 @@ namespace Heartbeat.Server.Entities
 
         public DateTimeOffset StartTime { get; set; }
         public DateTimeOffset EndTime { get; set; }
-        public int DurationSeconds { get; set; }
 
         /// <summary>各 Source 自由结构（jsonb）：{url, domain} / {file, project} / …。不参与续接。</summary>
         public string? Attributes { get; set; }

@@ -5,7 +5,6 @@ using Heartbeat.Core.DTOs.Usage;
 using Heartbeat.Server.Data;
 using Heartbeat.Server.Entities;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 
 namespace Heartbeat.Server.Services
 {
@@ -97,7 +96,6 @@ namespace Heartbeat.Server.Services
                     var isNewest = s.EndTime >= row.EndTime;
                     if (s.StartTime < row.StartTime) row.StartTime = s.StartTime;
                     if (s.EndTime > row.EndTime) row.EndTime = s.EndTime;
-                    row.DurationSeconds = (int)(row.EndTime - row.StartTime).TotalSeconds;
                     if (isNewest)
                     {
                         if (s.Title != null) row.Title = s.Title;
@@ -116,7 +114,6 @@ namespace Heartbeat.Server.Services
                         Title = s.Title,
                         StartTime = s.StartTime,
                         EndTime = s.EndTime,
-                        DurationSeconds = (int)(s.EndTime - s.StartTime).TotalSeconds,
                         Attributes = s.Attributes?.GetRawText()
                     };
                     _db.ActivitySegments.Add(entity);
@@ -150,8 +147,11 @@ namespace Heartbeat.Server.Services
             if (appId.HasValue)
                 query = query.Where(x => x.AppId == appId.Value);
 
+            // 区间重叠语义（ADR-018 §4）：跨窗长段在其覆盖的每个窗口都可见。
+            // 下界用 >= 而非 >：零长度点事件恰落在窗口起点时不丢
+            //（代价是恰好首尾贴边的段以零重叠出现，回放按时间轴裁剪无感）。
             if (start.HasValue)
-                query = query.Where(x => x.StartTime >= start.Value);
+                query = query.Where(x => x.EndTime >= start.Value);
 
             if (end.HasValue)
                 query = query.Where(x => x.StartTime < end.Value);
@@ -169,7 +169,8 @@ namespace Heartbeat.Server.Services
                     Title = x.Title,
                     StartTime = x.StartTime,
                     EndTime = x.EndTime,
-                    DurationSeconds = x.DurationSeconds,
+                    // 时长是派生量（ADR-018）：不落盘，投影现算
+                    DurationSeconds = (int)(x.EndTime - x.StartTime).TotalSeconds,
                     Attributes = x.Attributes
                 })
                 .ToListAsync();
@@ -186,8 +187,10 @@ namespace Heartbeat.Server.Services
             if (deviceId.HasValue)
                 query = query.Where(x => x.DeviceId == deviceId.Value);
 
+            // 区间重叠语义（ADR-018 §4）。system 段无零长度（≥1s），下界用严格 >，
+            // 避免恰在窗口起点结束的段以零重叠混入列表。
             if (start.HasValue)
-                query = query.Where(x => x.StartTime >= start.Value);
+                query = query.Where(x => x.EndTime > start.Value);
 
             if (end.HasValue)
                 query = query.Where(x => x.StartTime < end.Value);
@@ -203,7 +206,7 @@ namespace Heartbeat.Server.Services
                     Title = x.Title,
                     StartTime = x.StartTime,
                     EndTime = x.EndTime,
-                    DurationSeconds = x.DurationSeconds
+                    DurationSeconds = (int)(x.EndTime - x.StartTime).TotalSeconds
                 })
                 .ToListAsync();
         }

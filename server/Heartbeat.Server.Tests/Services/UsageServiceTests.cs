@@ -46,8 +46,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         AppId = appId,
         Title = title,
         StartTime = start,
-        EndTime = end,
-        DurationSeconds = (int)(end - start).TotalSeconds
+        EndTime = end
     };
 
     [Fact]
@@ -118,7 +117,6 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         var row = db.ActivitySegments.Single();
         Assert.Equal(t0, row.StartTime);
         Assert.Equal(t0.AddMinutes(5), row.EndTime);
-        Assert.Equal(300, row.DurationSeconds);
     }
 
     [Fact]
@@ -272,7 +270,6 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
             AppId = app.Id,
             StartTime = t0,
             EndTime = t0.AddMinutes(2),
-            DurationSeconds = 120,
             Attributes = """{"url":"https://example.com"}"""
         });
         db.ActivitySegments.Add(new ActivitySegment
@@ -282,8 +279,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
             Source = "vscode",
             IdentityKey = "d:/repo/file.cs",
             StartTime = t0,
-            EndTime = t0.AddMinutes(1),
-            DurationSeconds = 60
+            EndTime = t0.AddMinutes(1)
         });
         await db.SaveChangesAsync();
 
@@ -304,6 +300,44 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
 
         // owner 隔离
         Assert.Empty(await svc.GetSegmentsAsync("user-2", null, null, null, null, null));
+    }
+
+    [Fact]
+    public async Task WindowQueries_UseOverlapSemantics_LongSegmentCrossingWindowIsVisible()
+    {
+        using var db = CreateDbContext();
+        var svc = new UsageService(db);
+
+        var app = new App { Name = "vscode" };
+        db.Apps.Add(app);
+        await db.SaveChangesAsync();
+
+        // 3 小时长段（快照生长的产物），起点在查询窗口之前（ADR-018 §4）
+        var t0 = Now.AddHours(-4);
+        db.ActivitySegments.Add(SystemSegment(app.Id, "vscode", t0, t0.AddHours(3)));
+        db.ActivitySegments.Add(new ActivitySegment
+        {
+            Id = Guid.CreateVersion7(),
+            DeviceId = _deviceId,
+            Source = "vscode",
+            IdentityKey = "d:/repo/file.cs",
+            StartTime = t0,
+            EndTime = t0.AddHours(3)
+        });
+        await db.SaveChangesAsync();
+
+        // 窗口 [t0+2h, t0+4h)：段起点在窗口外、区间与窗口重叠 → 两条查询路径都应返回
+        var windowStart = t0.AddHours(2);
+        var windowEnd = t0.AddHours(4);
+
+        var usage = await svc.GetUsageAsync("user-1", null, windowStart, windowEnd);
+        Assert.Single(usage);
+
+        var segments = await svc.GetSegmentsAsync("user-1", null, null, null, windowStart, windowEnd);
+        Assert.Single(segments);
+
+        // 窗口完全在段结束之后 → 不返回
+        Assert.Empty(await svc.GetUsageAsync("user-1", null, t0.AddHours(3.5), t0.AddHours(4)));
     }
 
     [Fact]
@@ -370,7 +404,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     }
 
     [Fact]
-    public async Task SaveUsage_CalculatesDurationSeconds()
+    public async Task GetUsage_ComputesDurationSeconds_FromInterval()
     {
         using var db = CreateDbContext();
         var svc = new UsageService(db);
@@ -384,7 +418,8 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
 
         await svc.SaveUsageAsync(_deviceId, request);
 
-        var segment = db.ActivitySegments.Single();
-        Assert.Equal((int)(end - start).TotalSeconds, segment.DurationSeconds);
+        // 时长是派生量（ADR-018）：不落盘，查询投影现算
+        var usage = Assert.Single(await svc.GetUsageAsync("user-1", null, null, null));
+        Assert.Equal((int)(end - start).TotalSeconds, usage.DurationSeconds);
     }
 }

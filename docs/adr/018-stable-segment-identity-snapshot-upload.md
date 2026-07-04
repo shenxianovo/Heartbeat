@@ -1,10 +1,8 @@
 # ADR-018: Stable Segment Identity — Snapshot Upload Replaces Heal-on-Ingest Merging
 
-## Status: Proposed
+## Status: Accepted
 
 ## Date: 2026-07-04
-
-(pending implementation)
 
 ## Context
 
@@ -50,6 +48,7 @@ Three repair layers exist today: client in-batch merge (`UsageMerger.Merge`, sys
 
 - **Client in-batch merge retires.** Slices of one activity share an Id, so batch compaction is "keep latest snapshot per Id" (`SnapshotCompaction`) — trivial, and identical for system and plugin paths. `UsageMerger` is deleted; its `SystemIdentityKey` survives as `SystemIdentity.Key` (IdentityKey is still the system source's activity predicate and the query/replay grouping dimension).
 - **Hub buffer becomes a dictionary keyed by Id** (later snapshot replaces earlier). Batching compresses automatically; upload volume shrinks.
+- **The stored `DurationSeconds` column drops.** Duration is a derived quantity of a growing snapshot; persisting it was an invariant the upsert had to keep repairing. List projections compute `EndTime - StartTime` on the fly; reports clip-and-sum in SQL (§4).
 - The composite index `(DeviceId, Source, IdentityKey, EndTime)` is no longer needed for ingest (PK lookup suffices); it is kept for replay/query filtering only.
 
 ### 4. Query semantics — interval overlap
