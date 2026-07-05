@@ -8,7 +8,7 @@ export default defineConfig({
     target: 'es2022',
     minify: false,
     rollupOptions: {
-      input: { background: 'src/background.ts' },
+      input: { background: 'src/background.ts', options: 'options.html' },
       output: { entryFileNames: '[name].js', format: 'es' },
     },
   },

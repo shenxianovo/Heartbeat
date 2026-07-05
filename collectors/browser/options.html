@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>Heartbeat Browser Collector</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 28rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        color: #222;
+      }
+      label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+      }
+      input {
+        width: 8rem;
+        padding: 0.35rem 0.5rem;
+        font-size: 1rem;
+      }
+      button {
+        margin-left: 0.5rem;
+        padding: 0.35rem 1rem;
+        font-size: 1rem;
+        cursor: pointer;
+      }
+      #status {
+        margin-top: 0.75rem;
+        font-size: 0.9rem;
+        color: #2a7;
+      }
+      .hint {
+        margin-top: 1rem;
+        font-size: 0.85rem;
+        color: #777;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Heartbeat Browser Collector</h1>
+    <label for="port">Agent ingest 端口</label>
+    <input id="port" type="number" min="1" max="65535" />
+    <button id="save">保存</button>
+    <div id="status"></div>
+    <p class="hint">
+      与 Agent 配置中的 IngestPort 保持一致（默认 48200）。扩展只向
+      127.0.0.1 推送，数据经本机 Agent 统一上传。
+    </p>
+    <script type="module" src="/src/options.ts"></script>
+  </body>
+</html>

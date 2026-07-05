@@ -16,9 +16,9 @@ import {
 import { domainOf, identityKeyOf } from './normalize'
 import { uuidv7 } from './ids'
 import { postSegments } from './hub'
+import { loadConfig } from './config'
+import { backoffAfterFailure, noBackoff, shouldSkipAttempt, type BackoffState } from './backoff'
 
-/** 与 Agent 侧 AgentConfig.IngestPort 默认值一致；可配置化见 issue 01-B。 */
-const DEFAULT_PORT = 48200
 /** chrome.alarms 最小周期 30s（Chrome 120+），与 manifest.minimum_chrome_version 对应。 */
 const FLUSH_PERIOD_MINUTES = 0.5
 /** 队列按 Id 键控压缩后仍超上限时丢最旧（失控保险，镜像 SegmentIngestService.MaxBuffered 思路）。 */
@@ -26,6 +26,7 @@ const MAX_QUEUED = 5000
 
 const STATE_KEY = 'foldState'
 const QUEUE_KEY = 'pendingSegments'
+const BACKOFF_KEY = 'backoff'
 const ALARM_NAME = 'heartbeat-flush'
 
 const deps: FoldDeps = {
@@ -77,6 +78,15 @@ async function saveQueue(queue: Record<string, SegmentSnapshot>): Promise<void> 
   await chrome.storage.local.set({ [QUEUE_KEY]: queue })
 }
 
+async function loadBackoff(): Promise<BackoffState> {
+  const got = await chrome.storage.session.get(BACKOFF_KEY)
+  return (got[BACKOFF_KEY] as BackoffState | undefined) ?? noBackoff
+}
+
+async function saveBackoff(state: BackoffState): Promise<void> {
+  await chrome.storage.session.set({ [BACKOFF_KEY]: state })
+}
+
 /** 入队按 Id 键控：同段后到快照覆盖先到（快照单调生长，攒批自动压缩，ADR-018）。 */
 async function enqueue(snapshots: SegmentSnapshot[]): Promise<void> {
   if (snapshots.length === 0) return
@@ -109,19 +119,29 @@ async function flushAndUpload(): Promise<void> {
   if (next !== state) await saveState(next)
   await enqueue(out)
 
+  // 退避门：hub 连续不可达时拉开尝试间隔（快照照常入队，不丢）。
+  const backoff = await loadBackoff()
+  const now = Date.now()
+  if (shouldSkipAttempt(backoff, now)) return
+
   const queue = await loadQueue()
   const items = Object.values(queue)
   if (items.length === 0) return
 
-  const result = await postSegments(DEFAULT_PORT, items)
+  const { port } = await loadConfig()
+  const result = await postSegments(port, items)
   if (result === 'ok') {
     await saveQueue({})
+    if (backoff.fails > 0) await saveBackoff(noBackoff)
   } else if (result === 'rejected') {
     // 毒批次整批丢弃：hub 明确拒绝的数据重传无意义（403 停用语义见 issue 04）。
     console.warn(`[heartbeat] hub 拒收 ${items.length} 条段，丢弃`)
     await saveQueue({})
+    if (backoff.fails > 0) await saveBackoff(noBackoff)
+  } else {
+    // unreachable：保留队列，指数退避后重试（Agent 未运行时数据在 storage.local 缓冲）。
+    await saveBackoff(backoffAfterFailure(backoff, now))
   }
-  // unreachable：保留队列，下个周期重试（Agent 未运行时数据在 storage.local 缓冲）。
 }
 
 /**
