@@ -92,6 +92,10 @@ const awayAppIds = computed(() => {
 
 const isAwayApp = (appId: number) => awayAppIds.value.has(appId)
 
+// 同一 App 相邻段合并阈值：标题切段首尾相接，仅 <1s 丢段会留小缝，
+// ≤2s 缝合这些缝隙，又不会把真实切走别的 App 画成连续使用。
+const MERGE_GAP_MS = 2000
+
 const parsedUsageByApp = computed(() => {
   const map = new Map<number, ParsedSegment[]>()
   for (const u of props.usageData) {
@@ -99,6 +103,20 @@ const parsedUsageByApp = computed(() => {
     let arr = map.get(u.appId)
     if (!arr) { arr = []; map.set(u.appId, arr) }
     arr.push({ start: new Date(u.startTime).getTime(), end: new Date(u.endTime).getTime() })
+  }
+  // 每个 App 内按开始时间排序，间隙 ≤2s 的相邻段合并为一段（标题不同不切分）
+  for (const [appId, segments] of map) {
+    segments.sort((a, b) => a.start - b.start)
+    const merged: ParsedSegment[] = []
+    for (const seg of segments) {
+      const last = merged[merged.length - 1]
+      if (last && seg.start - last.end <= MERGE_GAP_MS) {
+        last.end = Math.max(last.end, seg.end)
+      } else {
+        merged.push({ ...seg })
+      }
+    }
+    map.set(appId, merged)
   }
   return map
 })

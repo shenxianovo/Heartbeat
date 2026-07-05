@@ -60,7 +60,8 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
 </script>
 
 <template>
-  <div class="relative z-10 mx-auto w-[min(100%,1400px)] px-[clamp(0.75rem,3vw,2.5rem)] py-[clamp(1rem,3vw,2.5rem)]">
+  <!-- pb-[50vh]：底部留出半屏可滚动空间，滚到底时露出左下角固定的看板娘背景 -->
+  <div class="relative z-10 mx-auto w-[min(100%,1400px)] px-[clamp(0.75rem,3vw,2.5rem)] py-[clamp(1rem,3vw,2.5rem)] pb-[50vh]">
     <header class="mb-[clamp(1.25rem,3vw,2rem)] flex flex-wrap items-center justify-between gap-x-4 gap-y-3 pr-12 max-[640px]:flex-col max-[640px]:items-stretch max-[640px]:pr-0">
       <div class="flex select-none items-center gap-3 whitespace-nowrap font-display text-[clamp(1.15rem,2.5vw,1.5rem)] font-bold tracking-tight max-[640px]:pr-12">
         <span class="status-dot" :class="{ alive: isAlive }"></span>
