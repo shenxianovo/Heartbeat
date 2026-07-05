@@ -1,6 +1,6 @@
 # 03: 回放注意力线标签升级（ADR-019）
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -17,12 +17,16 @@ Status: ready-for-agent
 
 ## Acceptance criteria
 
-- [ ] 扩展覆盖时段：浏览器 App 的详情/时间线标签显示页面/URL 级信息，不再是窗口标题明细
-- [ ] 扩展未覆盖时段（历史数据）：显示与现状完全一致（fallback 按时间窗口判定，不是按 App 全局判定）
-- [ ] 非浏览器 App 的显示不受影响
-- [ ] 时长数字仍来自 system 段（统计互斥轨不变，ADR-017 §4）
-- [ ] 前端有针对"重叠判定 + fallback 窗口"逻辑的测试
+- [x] 扩展覆盖时段：浏览器 App 的详情/时间线标签显示页面/URL 级信息，不再是窗口标题明细（用户实测，页面级行带圆点 + URL 副标签）
+- [x] 扩展未覆盖时段（历史数据）：显示与现状完全一致（fallback 按时间窗口判定，不是按 App 全局判定；单测覆盖升级行与 fallback 行并存）
+- [x] 非浏览器 App 的显示不受影响（无重叠插件段 → 纯 fallback 路径，单测覆盖与旧行为一致）
+- [x] 时长数字仍来自 system 段（统计互斥轨不变，ADR-017 §4；单测断言时长取 system 段）
+- [x] 前端有针对"重叠判定 + fallback 窗口"逻辑的测试（labelUpgrade.test.ts，8 例）
 
 ## Blocked by
 
 - [01](./01-browser-extension-e2e.md)
+
+## Comments
+
+- 2026-07-05: 落地于 df6b64b。勘察发现 AppDetailModal 已有多轨回放 v1（即 ADR-019 的泳道展开态），故本片只做标题明细的标签升级；升级映射利用了"system 段按标题切段 ≈ 一段一页面"的结构性事实，按最大重叠择插件段，无需时长切割。附带 e5736f8：edge formatter 削除 " 和另外 N 个页面" 后缀（fallback 层永久服务扩展前历史）。
