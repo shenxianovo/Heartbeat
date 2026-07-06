@@ -23,13 +23,17 @@ Status: ready-for-agent
 
 ## Acceptance criteria
 
-- [ ] Edge 加载扩展后正常浏览，服务端库中出现 `source='browser'` 的段，`GetSegmentsAsync` 可查到
+- [x] Edge 加载扩展后正常浏览，服务端库中出现 `source='browser'` 的段，`GetSegmentsAsync` 可查到（2026-07-05 用户实测链路通）
 - [ ] 同一页面停留跨多个上报周期，服务端续接为一条段（不碎裂）
-- [ ] URL query/fragment 变化不切段（`watch?v=a` → `watch?v=b` 本片允许被合并，覆写表在 02 修正）
-- [ ] 双窗口场景两条段并存，windowId 区分
-- [ ] Agent 未运行时扩展不丢数据，Agent 恢复后补传
-- [ ] 折叠纯函数有单元测试（切换、URL 变化、多窗口、close-and-reopen）
-- [ ] `source='system'` 冒充被 hub 拒收的既有行为不受影响
+- [x] URL query/fragment 变化不切段（单测覆盖；`watch?v=` 过度合并留待 02 覆写表）
+- [x] 双窗口场景两条段并存，windowId 区分（单测覆盖）
+- [ ] Agent 未运行时扩展不丢数据，Agent 恢复后补传（实现：storage.local 队列 + 指数退避，待实测）
+- [x] 折叠纯函数有单元测试（切换、URL 变化、多窗口、快照生长、24h 轮换）
+- [x] `source='system'` 冒充被 hub 拒收的既有行为不受影响（hub 接收侧未改动）
+
+## Comments
+
+- 2026-07-05: 01-A 落地于 575a380（骨架 + 折叠 + 上报），01-B 落地于 bda86cf（选项页 + 退避）。相对原文的两处实现决策：(1) 快照机制按 ADR-018 稳定 Id upsert 而非 close-and-reopen；(2) 发现服务端 MaxDuration=24h 校验会静默丢弃超长快照，fold 增加 23h 自动轮换。
 
 ## Blocked by
 
