@@ -1,6 +1,6 @@
 # 02: 服务端 /segments 放行 system 源
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 

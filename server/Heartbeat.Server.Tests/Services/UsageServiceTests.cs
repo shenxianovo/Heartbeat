@@ -224,6 +224,45 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     }
 
     [Fact]
+    public async Task SaveSegments_SystemSource_EntersStatsPath()
+    {
+        using var db = CreateDbContext();
+        var svc = new UsageService(db);
+
+        // ADR-020：system 段经 /segments 摄入路径（客户端已算好 IdentityKey）——
+        // App 关联、快照生长、报表统计与旧 /usage 路径完全一致。
+        // 校验策略拒收 >24h 前的段，须用相对当前的时间；再避开 UTC 午夜跨日。
+        var start = Now.AddMinutes(-90);
+        if (start.UtcDateTime.Date != start.AddMinutes(30).UtcDateTime.Date)
+            start = start.AddHours(-1);
+
+        var id = Guid.CreateVersion7();
+        ActivitySegmentItem Snapshot(DateTimeOffset end) => new()
+        {
+            Id = id,
+            Source = ActivitySources.System,
+            IdentityKey = SystemIdentity.Key("VSCode", "main.cs"),
+            AppName = "VSCode",
+            Title = "main.cs",
+            StartTime = start,
+            EndTime = end
+        };
+
+        await svc.SaveSegmentsAsync(_deviceId, [Snapshot(start.AddMinutes(10))]);
+        await svc.SaveSegmentsAsync(_deviceId, [Snapshot(start.AddMinutes(30))]);
+
+        var row = db.ActivitySegments.Single();
+        Assert.Equal(ActivitySources.System, row.Source);
+        Assert.NotNull(row.AppId); // AppName 提示建立了 App 关联
+        Assert.Equal(start.AddMinutes(30), row.EndTime); // 同 Id 快照生长
+
+        var report = await new ReportService(db).GetDailyReportAsync("user-1", null, start);
+        var item = Assert.Single(report.Apps);
+        Assert.Equal("VSCode", item.AppName);
+        Assert.Equal(1800, item.DurationSeconds); // 统计路径可见
+    }
+
+    [Fact]
     public async Task SaveSegments_IdReuseWithDifferentIdentity_IsRejected()
     {
         using var db = CreateDbContext();

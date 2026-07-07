@@ -5,7 +5,7 @@ namespace Heartbeat.Core;
 /// <summary>
 /// 插件段的通用完整性校验（ADR-017）。与 <see cref="UsageValidationPolicy"/> 共用时间阈值；
 /// 差异：允许零长度段（点事件），要求 Source/IdentityKey/Id 齐全。
-/// 不限制 Source 取值——'system' 的拒收是公开接缝（枢纽/控制器）的职责，策略本身 source 无关。
+/// 不限制 Source 取值——'system' 冒充的拒收是 Agent 枢纽 loopback 层的职责（ADR-020），策略本身 source 无关。
 /// </summary>
 public static class SegmentValidationPolicy
 {
