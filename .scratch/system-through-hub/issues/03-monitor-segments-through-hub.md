@@ -1,6 +1,6 @@
 # 03: 主射弹 —— monitor 产段经 hub 直达 /segments
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 

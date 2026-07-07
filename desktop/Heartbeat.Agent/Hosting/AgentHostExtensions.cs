@@ -47,13 +47,6 @@ namespace Heartbeat.Agent.Hosting
                 .AddHttpMessageHandler<BearerTokenHandler>();
 
             // 本地缓存
-            services.AddSingleton<IUsageCache>(sp =>
-            {
-                var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                var cachePath = Path.Combine(localAppData, "Heartbeat", "cache.json");
-                return new LocalCache(cachePath);
-            });
-
             services.AddSingleton<IInputEventCache>(sp =>
             {
                 var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -77,24 +70,25 @@ namespace Heartbeat.Agent.Hosting
 
             // 业务服务
             services.AddSingleton<AppMonitorService>();
-            services.AddSingleton<UsageUploadService>();
             services.AddSingleton<IconUploadService>();
             services.AddSingleton<StatusUploadService>();
             services.AddSingleton<InputEventCollector>();
             services.AddSingleton<InputEventUploadService>();
             services.AddSingleton<SegmentIngestService>();
+            services.AddSingleton<ISegmentSink>(sp => sp.GetRequiredService<SegmentIngestService>());
             services.AddSingleton<SegmentIngestRequestHandler>();
             services.AddSingleton<SegmentUploadService>();
 
             // 自启动服务
             services.AddSingleton<IAutoStartService, RegistryAutoStartService>();
 
-            // 托管后台服务
-            services.AddHostedService(sp => sp.GetRequiredService<AppMonitorService>());
+            // 托管后台服务。停止顺序为注册的逆序：AppMonitorService 必须最后注册、最先停止，
+            // 使其终态快照先推入 hub，再由 UsageUploadWorker.StopAsync 的最终 drain 带走（ADR-020）。
             services.AddHostedService(sp => sp.GetRequiredService<InputEventCollector>());
             services.AddHostedService<UsageUploadWorker>();
             services.AddHostedService<StatusUploadWorker>();
             services.AddHostedService<SegmentIngestWorker>();
+            services.AddHostedService(sp => sp.GetRequiredService<AppMonitorService>());
 
             return services;
         }

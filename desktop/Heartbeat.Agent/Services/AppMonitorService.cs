@@ -2,29 +2,37 @@ using Heartbeat.Agent.Configuration;
 using Heartbeat.Agent.Models;
 using Heartbeat.Agent.Utils;
 using Heartbeat.Core;
-using Heartbeat.Core.DTOs.Usage;
+using Heartbeat.Core.DTOs.Segments;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 
 namespace Heartbeat.Agent.Services
 {
+    /// <summary>
+    /// 内置 system 采集器（ADR-020）：折叠前台/标题/电源事件为 ActivitySegment 快照，
+    /// 经 ISegmentSink 推进 hub 缓冲——闭合即推，进行中段按 SnapshotInterval 周期推快照，
+    /// 与插件采集器的"观测 → 折叠 → 推送"同模式。
+    /// </summary>
     public class AppMonitorService(
         IClock clock,
         IWindowEventMonitor windowMonitor,
         IPowerMonitor powerMonitor,
         IInputActivitySignal inputActivity,
+        ISegmentSink sink,
         ConfigManager configManager) : IHostedService, IDisposable
     {
         // 标题变化门控窗口：标题变化前此时段内有点击才切段（ADR-016）。
         private static readonly TimeSpan TitleGateWindow = TimeSpan.FromSeconds(1);
 
+        // 进行中段快照节律（ADR-020）：EndTime 尾部新鲜度上界即此值，下个快照追平，统计无损。
+        private static readonly TimeSpan SnapshotInterval = TimeSpan.FromSeconds(30);
+
         private readonly object _lock = new();
         private string? _currentApp;
         private string? _currentTitle;   // 最新观测标题：仅用于变化比较（门控），不写入段
         private string? _segmentTitle;   // 段标题：切段时刻定格，非门控抖动不改写（同 Id 快照身份不变，ADR-018）
-        private Guid _currentId;         // 活动身份：段开始时生成，跨 flush 快照复用（ADR-018）
+        private Guid _currentId;         // 活动身份：段开始时生成，跨快照复用（ADR-018）
         private DateTimeOffset _currentStart;
-        private readonly List<AppUsageItem> _usages = [];
 
         // away 状态（息屏 / 睡眠）。详见 ADR-014。away 段与真实段同构：稳定 Id + 快照生长。
         private bool _isAway;
@@ -34,6 +42,9 @@ namespace Heartbeat.Agent.Services
         // AwayProcessNames 的快照，避免热路径（高频 NAMECHANGE）每次 clone 整个配置。
         // 仅在配置变更时刷新（ConfigChanged 事件），读取无锁。
         private volatile string[] _awayProcessNames = [];
+
+        private CancellationTokenSource? _snapshotCts;
+        private Task? _snapshotLoop;
 
         public event Action<string?>? CurrentAppChanged;
 
@@ -64,12 +75,21 @@ namespace Heartbeat.Agent.Services
 
             windowMonitor.Start();
             powerMonitor.Start();
+
+            _snapshotCts = new CancellationTokenSource();
+            _snapshotLoop = Task.Run(() => SnapshotLoopAsync(_snapshotCts.Token), CancellationToken.None);
             return Task.CompletedTask;
         }
 
         public Task StopAsync(CancellationToken cancellationToken)
         {
             Log.Information("应用监测服务停止");
+            _snapshotCts?.Cancel();
+
+            // 终态快照：注册顺序保证本服务先于 UsageUploadWorker 停止（ADR-020），
+            // 快照进入 hub 后由 worker 的最终 drain 带走。
+            PushCurrentSnapshot();
+
             configManager.ConfigChanged -= OnConfigChanged;
             windowMonitor.ForegroundWindowChanged -= OnForegroundChanged;
             windowMonitor.Stop();
@@ -82,11 +102,44 @@ namespace Heartbeat.Agent.Services
             return Task.CompletedTask;
         }
 
+        private async Task SnapshotLoopAsync(CancellationToken ct)
+        {
+            using var timer = new PeriodicTimer(SnapshotInterval);
+            try
+            {
+                while (await timer.WaitForNextTickAsync(ct))
+                    PushCurrentSnapshot();
+            }
+            catch (OperationCanceledException)
+            {
+                // 正常停止
+            }
+        }
+
+        /// <summary>
+        /// 推送进行中段（真实或 away）的当前快照：不封口不重开，Id/StartTime 保持，
+        /// 服务端按 Id 生长（ADR-018）。定时循环与 StopAsync 调用；测试直接调用模拟 flush。
+        /// </summary>
+        public void PushCurrentSnapshot()
+        {
+            var now = clock.UtcNow;
+            ActivitySegmentItem? snapshot;
+            lock (_lock)
+            {
+                snapshot = _isAway
+                    ? BuildSegment(_awayId, SyntheticApps.Away, null, _awayStart, now)
+                    : BuildSegment(_currentId, _currentApp, _segmentTitle, _currentStart, now);
+            }
+            if (snapshot != null)
+                sink.Push([snapshot]);
+        }
+
         private void OnForegroundChanged(ForegroundWindow fw)
         {
             var newApp = Normalize(fw.ProcessName);
             var newTitle = fw.Title;
             var now = clock.UtcNow;
+            ActivitySegmentItem? closed;
 
             lock (_lock)
             {
@@ -113,13 +166,15 @@ namespace Heartbeat.Agent.Services
                     return;
                 }
 
-                CloseCurrentSegment(now);
+                closed = CloseCurrentSegment(now);
                 StartSegment(newApp, newTitle, now);
 
                 if (newApp != null)
                     Log.Debug("应用切换: {App} / {Title}", newApp, newTitle);
             }
 
+            if (closed != null)
+                sink.Push([closed]);
             CurrentAppChanged?.Invoke(newApp);
         }
 
@@ -127,12 +182,13 @@ namespace Heartbeat.Agent.Services
         private void OnEnterAway()
         {
             var now = clock.UtcNow;
+            ActivitySegmentItem? closed;
             lock (_lock)
             {
                 if (_isAway) return;
 
                 // 用信号到达时刻封口当前真实应用段（Suspend 在挂起前执行，≈ 入睡时刻）。
-                CloseCurrentSegment(now);
+                closed = CloseCurrentSegment(now);
 
                 _isAway = true;
                 _awayId = Guid.CreateVersion7();
@@ -144,6 +200,8 @@ namespace Heartbeat.Agent.Services
                 Log.Information("进入 away（息屏/睡眠），封口当前应用段");
             }
 
+            if (closed != null)
+                sink.Push([closed]);
             CurrentAppChanged?.Invoke(null);
         }
 
@@ -152,12 +210,13 @@ namespace Heartbeat.Agent.Services
         {
             var now = clock.UtcNow;
             string? resumedApp;
+            ActivitySegmentItem? awayFinal;
             lock (_lock)
             {
                 if (!_isAway) return;
 
-                // 发出 away 终态快照 [_awayStart, now]（与中途 flush 快照同 Id，服务端收敛为一行）。
-                AppendSegment(_awayId, SyntheticApps.Away, null, _awayStart, now);
+                // away 终态快照 [_awayStart, now]（与中途周期快照同 Id，服务端收敛为一行）。
+                awayFinal = BuildSegment(_awayId, SyntheticApps.Away, null, _awayStart, now);
 
                 _isAway = false;
 
@@ -168,6 +227,8 @@ namespace Heartbeat.Agent.Services
                 Log.Information("退出 away（亮屏/唤醒），恢复前台: {App}", resumedApp ?? "(无)");
             }
 
+            if (awayFinal != null)
+                sink.Push([awayFinal]);
             CurrentAppChanged?.Invoke(resumedApp);
         }
 
@@ -176,38 +237,6 @@ namespace Heartbeat.Agent.Services
             lock (_lock)
             {
                 return _isAway ? null : _currentApp;
-            }
-        }
-
-        public List<AppUsageItem> GetAndClearUsages()
-        {
-            var now = clock.UtcNow;
-
-            lock (_lock)
-            {
-                // flush 发进行中段的快照，不封口不重开：Id/StartTime 保持，服务端按 Id 生长（ADR-018）。
-                // away 进行中同样快照，长息屏在服务端可见地生长。
-                if (!_isAway && _currentApp != null && _currentStart != default)
-                {
-                    AppendSegment(_currentId, _currentApp, _segmentTitle, _currentStart, now);
-                }
-                else if (_isAway)
-                {
-                    AppendSegment(_awayId, SyntheticApps.Away, null, _awayStart, now);
-                }
-
-                var copy = new List<AppUsageItem>(_usages);
-                _usages.Clear();
-
-                Log.Information("收集到 {Count} 条使用记录，准备上传", copy.Count);
-                foreach (var item in copy)
-                {
-                    Log.Debug("  {App}: {Start:HH:mm:ss} - {End:HH:mm:ss} ({Duration:F1}s)",
-                        item.AppName, item.StartTime.LocalDateTime, item.EndTime.LocalDateTime,
-                        (item.EndTime - item.StartTime).TotalSeconds);
-                }
-
-                return copy;
             }
         }
 
@@ -221,30 +250,32 @@ namespace Heartbeat.Agent.Services
             _currentStart = now;
         }
 
-        /// <summary>封口当前真实应用段（仅 ≥1s 记录）。调用方必须持有 _lock。</summary>
-        private void CloseCurrentSegment(DateTimeOffset now)
-        {
-            if (_currentApp != null && _currentStart != default)
-                AppendSegment(_currentId, _currentApp, _segmentTitle, _currentStart, now);
-        }
+        /// <summary>封口当前真实应用段的终态快照（仅 ≥1s）。调用方必须持有 _lock。</summary>
+        private ActivitySegmentItem? CloseCurrentSegment(DateTimeOffset now)
+            => BuildSegment(_currentId, _currentApp, _segmentTitle, _currentStart, now);
 
-        /// <summary>追加一个 ≥1s 的段快照。调用方必须持有 _lock。</summary>
-        private void AppendSegment(Guid id, string appName, string? title, DateTimeOffset start, DateTimeOffset end)
+        /// <summary>
+        /// 构造一个 ≥1s 的 system 段快照（不足 1s 返回 null，不产噪声段）。
+        /// IdentityKey 由客户端计算（ADR-020）——与插件采集器"自己声明身份判据"对齐。
+        /// </summary>
+        private static ActivitySegmentItem? BuildSegment(Guid id, string? appName, string? title, DateTimeOffset start, DateTimeOffset end)
         {
-            if (start == default) return;
+            if (appName == null || start == default) return null;
             var duration = end - start;
-            if (duration.TotalSeconds < 1) return;
+            if (duration.TotalSeconds < 1) return null;
 
-            _usages.Add(new AppUsageItem
+            Log.Debug("段快照: {App} / {Title}，累计 {Duration:F1}s", appName, title, duration.TotalSeconds);
+            return new ActivitySegmentItem
             {
-                // Id 即活动身份（ADR-018）：同段跨 flush 复用，服务端按 Id upsert 收敛。
+                // Id 即活动身份（ADR-018）：同段跨快照复用，服务端按 Id upsert 收敛。
                 Id = id,
+                Source = ActivitySources.System,
+                IdentityKey = SystemIdentity.Key(appName, title),
                 AppName = appName,
                 Title = title,
                 StartTime = start,
                 EndTime = end
-            });
-            Log.Debug("段快照: {App} / {Title}，累计 {Duration:F1}s", appName, title, duration.TotalSeconds);
+            };
         }
 
         private void OnConfigChanged(AgentConfig config)
@@ -268,6 +299,8 @@ namespace Heartbeat.Agent.Services
 
         public void Dispose()
         {
+            _snapshotCts?.Cancel();
+            _snapshotCts?.Dispose();
             configManager.ConfigChanged -= OnConfigChanged;
             windowMonitor.ForegroundWindowChanged -= OnForegroundChanged;
             windowMonitor.Stop();

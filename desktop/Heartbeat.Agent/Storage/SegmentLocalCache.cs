@@ -2,7 +2,7 @@ using Heartbeat.Core.DTOs.Segments;
 
 namespace Heartbeat.Agent.Storage
 {
-    /// <summary>插件段的离线缓存接缝（与 <see cref="IUsageCache"/> 同构）。</summary>
+    /// <summary>段的离线缓存接缝。</summary>
     public interface ISegmentCache
     {
         void Add(List<ActivitySegmentItem> items);
@@ -11,7 +11,7 @@ namespace Heartbeat.Agent.Storage
     }
 
     /// <summary>
-    /// 插件段的离线缓存。基于 <see cref="JsonFileCache{T}"/>，
+    /// 段的离线缓存（system 与插件段共用，ADR-020）。基于 <see cref="JsonFileCache{T}"/>，
     /// 行为：紧凑 JSON、上限 20000 条、纯追加。
     /// 同 Id 快照压缩由上传前的 SnapshotCompaction 负责（ADR-018），服务端按 Id upsert 收敛。
     /// </summary>

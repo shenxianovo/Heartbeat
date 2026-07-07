@@ -11,7 +11,7 @@ namespace Heartbeat.Agent.Services
     /// 缓冲按 Id 键控（ADR-018）：同段后到快照覆盖先到——快照单调生长，
     /// 最新一份携带全部信息，攒批自动压缩。
     /// </summary>
-    public class SegmentIngestService(IClock clock)
+    public class SegmentIngestService(IClock clock) : ISegmentSink
     {
         private readonly object _lock = new();
         private readonly Dictionary<Guid, ActivitySegmentItem> _segments = [];
@@ -47,10 +47,13 @@ namespace Heartbeat.Agent.Services
                 }
             }
 
-            Log.Debug("接收插件段 {Count} 条（source: {Sources}）",
+            Log.Debug("接收段 {Count} 条（source: {Sources}）",
                 valid.Count, string.Join(",", valid.Select(v => v.Source).Distinct()));
             return valid.Count;
         }
+
+        /// <summary>ISegmentSink adapter（ADR-020）：内置采集器进程内推送，与 Accept 同一缓冲。</summary>
+        public void Push(List<ActivitySegmentItem> snapshots) => Accept(snapshots);
 
         public List<ActivitySegmentItem> GetAndClearSegments()
         {
@@ -67,7 +70,7 @@ namespace Heartbeat.Agent.Services
         {
             var oldest = _segments.Values.MinBy(s => s.StartTime)!;
             _segments.Remove(oldest.Id);
-            Log.Warning("插件段缓冲已满（{Max} 条），丢弃最旧段 {Id}（source: {Source}）",
+            Log.Warning("段缓冲已满（{Max} 条），丢弃最旧段 {Id}（source: {Source}）",
                 MaxBuffered, oldest.Id, oldest.Source);
         }
     }
