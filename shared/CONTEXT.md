@@ -12,7 +12,7 @@
 |------|-----------|
 | Device | 一台唯一的物理机器。由 (OwnerId, HardwareId) 联合唯一标识。HardwareId 取自 Windows MachineGuid（HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid）。DeviceName 为纯显示字段（默认取 hostname，用户可改）。属于某个 User（OwnerId = JWT sub claim，string 类型）。 |
 | App | 一个应用程序，由进程可执行文件名（不含路径）唯一标识。同一 exe 无论开几个窗口都算同一个 App。 |
-| AppUsage | 一段某个 App 处于前台的时间记录（StartTime → EndTime）。系统忠实记录所有前台窗口，包括 explorer.exe（桌面）和 LockApp.exe（锁屏），不做活跃/非活跃过滤。规划中将泛化为 ActivitySegment 的 system source（ADR-017，未实现）。 |
+| AppUsage | 一段某个 App 处于前台的时间记录（StartTime → EndTime）。系统忠实记录所有前台窗口，包括 explorer.exe（桌面）和 LockApp.exe（锁屏），不做活跃/非活跃过滤。存储上已泛化为 ActivitySegment 的 system source（ADR-017/018 已落地）；`AppUsageItem` 上传 DTO 随 ADR-020 退役（待落地）后，本词仅指"system 段"这一语义，不再对应独立数据形状。 |
 | ActivitySegment | 一段有界的活动记录（StartTime → EndTime），由某个采集器（Source）观测并折叠产出。瞬时点事件为零长度段（StartTime == EndTime）。AppUsage 的泛化形态；统计只消费 source='system'（互斥轨），插件段只进回放。详见 ADR-017（规划中）。 |
 | Source | 观测者维度：一条 ActivitySegment 是"谁采集的"（system / browser / vscode / …）。与 AppId 正交——AppId 说段"关于哪个应用"，Source 说"谁观测到的"；同一时刻同一 App 可有多个 Source 的段合法重叠。system 是唯一观测前台性的 Source，其段互斥、时长可求和。 |
 | IdentityKey | 采集器声明的"同一个活动"判据字符串，用于服务端跨批次续接（CanMerge 泛化为同 Source + 同 IdentityKey + 时间相连）。browser=规范化 URL（origin+pathname，掐掉 query/fragment；per-domain 覆写表处理"query 即身份"的站点，如 youtube.com/watch 保留 v 参数），完整原始 URL 存 Attributes——判据可有损，原始数据无损（ADR-012 原则）。vscode=文件路径，system=App+Title。 |

@@ -9,7 +9,11 @@
 _Avoid_: Service, Worker（这些是 Agent 内部的实现层）
 
 **Collector（采集器）**:
-一个观测特定应用内活动并向 hub 推送 ActivitySegment 的组件（browser 扩展、vscode 插件等）。system 采集器是特例，内置于 Agent。代码位于顶层 `collectors/`。
+一个观测特定应用内活动并向 hub 推送 ActivitySegment 的组件（browser 扩展、vscode 插件等）。system 采集器内置于 Agent，同样经 hub 汇入（ADR-020，待落地），特例性仅剩两点：进程内直连 hub（不走 loopback）、不可停用。插件采集器代码位于顶层 `collectors/`。
+
+**Upload Channel（上传通道）**:
+泛化的出网通道（ADR-020，待落地）：喂入一批项，送达，或落离线缓存，否则原样退回由调用方重注入源 buffer。compact 为按流策略（segments 出网前压缩快照，input-events 不压缩）。segments 与 input-events 各一实例。
+_Avoid_: UploadService（退役的三份同构模板）
 
 **Active（采集器活跃）**:
 从流量推断：某 Source 最近一段时间内向 hub POST 过即为 Active。无注册表、无心跳协议——"活跃"回答的是"数据管道通不通"，浏览器没开时 browser 采集器显示为不活跃是诚实的。

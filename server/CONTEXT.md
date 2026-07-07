@@ -5,7 +5,7 @@
 ## Language
 
 **Ingest（摄入）**:
-统一摄入例程（ADR-018）：校验 → App 关联 → 按 Id 快照 upsert。两条入口：`/usage`（system 采集器，服务端代算 IdentityKey）与 `/segments`（插件段）。摄入可交换、可重入——乱序重传与批内同 Id 快照收敛到同一行。
+统一摄入例程（ADR-018）：校验 → App 关联 → 按 Id 快照 upsert。摄入可交换、可重入——乱序重传与批内同 Id 快照收敛到同一行。上传入口收敛为 `/segments` 单条（ADR-020，待落地）：system 段由 Agent 客户端算好 IdentityKey 经同一入口上传；`POST /usage` 及其映射层退役，`GET /usage` 仅存查询投影。
 _Avoid_: Merge、续接（ADR-001 的服务端合并已被 ADR-018 快照 upsert 取代；CanMerge 一词只存在于历史 ADR 中）
 
 **Snapshot Upsert（快照 upsert）**:
