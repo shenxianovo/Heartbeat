@@ -67,6 +67,7 @@ export function useHeartbeat(username: string) {
 
     usageTimer = setInterval(() => {
       if (isToday.value) {
+        reports.loadUsage()
         reports.loadDaily()
         reports.loadWeekly()
         loadKeyFrequency()
