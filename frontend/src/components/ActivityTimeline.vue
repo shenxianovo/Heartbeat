@@ -5,7 +5,8 @@ import type { AppUsageResponse } from '../api/index'
 import { useTimelineDrag } from '../composables/useTimelineDrag'
 import { Card } from '@/components/ui/card'
 import { LayoutGrid, AlignJustify } from 'lucide-vue-next'
-import { AWAY_APP } from '../appLabels'
+import { parseUsage, buildRows, mergeActivityBursts, initialViewBounds } from '../timeline/timelineModel'
+import { niceTicks } from '../timeline/timeScale'
 
 const props = defineProps<{
   activeHours: Set<number>,
@@ -23,8 +24,6 @@ const timelineEl = ref<HTMLElement | null>(null)
 const viewStart = ref<number>(0)
 const viewEnd = ref<number>(0)
 
-const ONE_HOUR = 60 * 60 * 1000
-
 // --- Drag interaction (composable) ---
 const {
   isDraggingTimeline,
@@ -35,24 +34,9 @@ const {
 
 // Initialize view bounds
 const initViewBounds = () => {
-  const d = new Date(props.selectedDate)
-  const baseTime = d.getTime()
-
-  if (props.isToday) {
-    const now = Date.now()
-    viewStart.value = now - ONE_HOUR
-    viewEnd.value = now + ONE_HOUR
-  } else {
-    const firstEvent = props.usageData.find(u => u.startTime)
-    if (firstEvent && firstEvent.startTime) {
-      const startT = new Date(firstEvent.startTime).getTime()
-      viewStart.value = startT - ONE_HOUR
-      viewEnd.value = startT + ONE_HOUR
-    } else {
-      viewStart.value = baseTime + 11 * ONE_HOUR
-      viewEnd.value = baseTime + 13 * ONE_HOUR
-    }
-  }
+  const b = initialViewBounds(props.selectedDate, props.isToday, props.usageData, Date.now())
+  viewStart.value = b.start
+  viewEnd.value = b.end
 }
 
 watch(
@@ -77,127 +61,22 @@ const handleResize = () => {
   if (timelineEl.value) containerWidth.value = timelineEl.value.clientWidth
 }
 
-// ========== Pre-parsed data (only recomputes when usageData changes) ==========
+// ========== 模型（纯逻辑在 timeline/timelineModel.ts，此处只做响应式接线与显示映射） ==========
 
-interface ParsedSegment { start: number; end: number }
+const parsed = computed(() => parseUsage(props.usageData))
 
-// away（离开）段对应的 appId 集合 —— 由 appName === '__away__' 识别。
-const awayAppIds = computed(() => {
-  const set = new Set<number>()
-  for (const u of props.usageData) {
-    if (u.appId && u.appName === AWAY_APP) set.add(u.appId)
-  }
-  return set
-})
-
-const isAwayApp = (appId: number) => awayAppIds.value.has(appId)
-
-// 同一 App 相邻段合并阈值：标题切段首尾相接，仅 <1s 丢段会留小缝，
-// ≤2s 缝合这些缝隙，又不会把真实切走别的 App 画成连续使用。
-const MERGE_GAP_MS = 2000
-
-const parsedUsageByApp = computed(() => {
-  const map = new Map<number, ParsedSegment[]>()
-  for (const u of props.usageData) {
-    if (!u.appId || !u.startTime || !u.endTime) continue
-    let arr = map.get(u.appId)
-    if (!arr) { arr = []; map.set(u.appId, arr) }
-    arr.push({ start: new Date(u.startTime).getTime(), end: new Date(u.endTime).getTime() })
-  }
-  // 每个 App 内按开始时间排序，间隙 ≤2s 的相邻段合并为一段（标题不同不切分）
-  for (const [appId, segments] of map) {
-    segments.sort((a, b) => a.start - b.start)
-    const merged: ParsedSegment[] = []
-    for (const seg of segments) {
-      const last = merged[merged.length - 1]
-      if (last && seg.start - last.end <= MERGE_GAP_MS) {
-        last.end = Math.max(last.end, seg.end)
-      } else {
-        merged.push({ ...seg })
-      }
-    }
-    map.set(appId, merged)
-  }
-  return map
-})
-
-// ========== View-dependent computeds ==========
-
-const activeAppsInView = computed(() => {
-  const appDurations: [number, number][] = []
-  const vs = viewStart.value, ve = viewEnd.value
-  for (const [appId, segments] of parsedUsageByApp.value) {
-    let totalDur = 0
-    for (const seg of segments) {
-      if (seg.end < vs || seg.start > ve) continue
-      totalDur += Math.min(seg.end, ve) - Math.max(seg.start, vs)
-    }
-    if (totalDur > 0) appDurations.push([appId, totalDur])
-  }
-  appDurations.sort((a, b) => b[1] - a[1])
-  return appDurations.map(d => d[0])
-})
-
-const fmtTime = (time: number) => {
-  const d = new Date(time)
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
-const detailedRows = computed(() => {
-  const vs = viewStart.value, ve = viewEnd.value
-  const totalRange = ve - vs
-  if (totalRange <= 0) return []
-
-  return activeAppsInView.value.map(appId => {
-    const allSegments = parsedUsageByApp.value.get(appId) || []
-    const visibleUsages: { start: number; end: number; left: number; width: number; title: string }[] = []
-    for (const seg of allSegments) {
-      if (seg.end < vs || seg.start > ve) continue
-      const l = Math.max(0, Math.min(100, ((seg.start - vs) / totalRange) * 100))
-      const r = Math.max(0, Math.min(100, ((seg.end - vs) / totalRange) * 100))
-      visibleUsages.push({
-        start: seg.start, end: seg.end,
-        left: l, width: Math.max(0.5, r - l),
-        title: `${fmtTime(seg.start)} - ${fmtTime(seg.end)}`
-      })
-    }
-    return {
-      appId,
-      name: isAwayApp(appId) ? '离开' : (props.appNameMap.get(appId) || `App ${appId}`),
-      isAway: isAwayApp(appId),
-      usages: visibleUsages
-    }
-  })
-})
+const detailedRows = computed(() =>
+  buildRows(parsed.value, { start: viewStart.value, end: viewEnd.value }).map(row => ({
+    ...row,
+    name: row.isAway ? '离开' : (props.appNameMap.get(row.appId) || `App ${row.appId}`),
+  }))
+)
 
 // Adaptive tick intervals based on available width
 const ticks = computed(() => {
-  const result: { percent: number; label: string }[] = []
-  const range = viewEnd.value - viewStart.value
-  if (range <= 0) return result
-
   const trackWidth = (containerWidth.value || 800) - 120
-  const minTickSpacingPx = 70
-  const maxTicks = Math.max(2, Math.floor(trackWidth / minTickSpacingPx))
-
-  // Nice intervals in ms: 1m, 2m, 5m, 10m, 15m, 30m, 1h, 2h, 3h, 6h
-  const niceIntervals = [
-    60_000, 120_000, 300_000, 600_000, 900_000, 1_800_000,
-    3_600_000, 7_200_000, 10_800_000, 21_600_000
-  ]
-  let interval = niceIntervals[niceIntervals.length - 1]
-  for (const ni of niceIntervals) {
-    if (range / ni <= maxTicks) { interval = ni; break }
-  }
-
-  const firstTick = Math.ceil(viewStart.value / interval) * interval
-  for (let t = firstTick; t <= viewEnd.value; t += interval) {
-    result.push({
-      percent: ((t - viewStart.value) / range) * 100,
-      label: fmtTime(t)
-    })
-  }
-  return result
+  const maxTicks = Math.max(2, Math.floor(trackWidth / 70))
+  return niceTicks(viewStart.value, viewEnd.value, maxTicks)
 })
 
 // ========== Minimap ==========
@@ -214,28 +93,7 @@ const minimapRangeStyle = computed(() => {
 const minimapActivities = computed(() => {
   const day = 24 * 60 * 60 * 1000
   const dayS = dayStartMs.value
-  const rawIntervals: { start: number; end: number }[] = []
-  for (const [appId, segments] of parsedUsageByApp.value) {
-    if (isAwayApp(appId)) continue // away 不算活跃，不进缩略图
-    for (const seg of segments) rawIntervals.push(seg)
-  }
-  rawIntervals.sort((a, b) => a.start - b.start)
-  if (rawIntervals.length === 0) return []
-
-  const merged: { start: number; end: number }[] = []
-  let current = { ...rawIntervals[0] }
-  for (let i = 1; i < rawIntervals.length; i++) {
-    const next = rawIntervals[i]
-    if (next.start <= current.end + 60000) {
-      current.end = Math.max(current.end, next.end)
-    } else {
-      merged.push(current)
-      current = { ...next }
-    }
-  }
-  merged.push(current)
-
-  return merged.map(iv => {
+  return mergeActivityBursts(parsed.value).map(iv => {
     const startP = Math.max(0, ((iv.start - dayS) / day) * 100)
     const endP = Math.min(100, ((iv.end - dayS) / day) * 100)
     return { left: `${startP}%`, width: `${Math.max(0.2, endP - startP)}%` }
@@ -366,12 +224,12 @@ const minimapActivities = computed(() => {
               </div>
               <div class="relative flex-1">
                 <div
-                  v-for="(seg, idx) in row.usages"
+                  v-for="(bar, idx) in row.bars"
                   :key="idx"
                   class="absolute top-2.5 h-5 cursor-pointer rounded-sm opacity-80 hover:z-[3] hover:opacity-100"
                   :class="row.isAway ? 'bg-muted-foreground/40' : 'bg-primary'"
-                  :style="{ left: seg.left + '%', width: seg.width + '%' }"
-                  :title="seg.title"
+                  :style="{ left: bar.left + '%', width: bar.width + '%' }"
+                  :title="bar.label"
                 ></div>
               </div>
             </div>

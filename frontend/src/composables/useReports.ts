@@ -1,7 +1,7 @@
 import { ref, computed, type Ref } from 'vue'
 import type { AppSummary, AppUsageResponse, DailyReportResponse, WeeklyReportResponse } from '../api/index'
 import { fetchPublicUsage, fetchPublicDailyReport, fetchPublicWeeklyReport } from '../api/index'
-import { AWAY_APP } from '../appLabels'
+import { isAwayName } from '../appLabels'
 
 interface AppDurationLike {
   appId?: number
@@ -13,7 +13,7 @@ interface AppDurationLike {
 function realApps(apps: AppDurationLike[] | undefined): AppSummary[] {
   if (!apps) return []
   return apps
-    .filter(a => a.appName !== AWAY_APP)
+    .filter(a => !isAwayName(a.appName))
     .map(a => ({
       appId: a.appId!,
       appName: a.appName ?? `App ${a.appId}`,
@@ -23,7 +23,7 @@ function realApps(apps: AppDurationLike[] | undefined): AppSummary[] {
 }
 
 function awayOf(apps: AppDurationLike[] | undefined): number {
-  return apps?.find(a => a.appName === AWAY_APP)?.durationSeconds ?? 0
+  return apps?.find(a => isAwayName(a.appName))?.durationSeconds ?? 0
 }
 
 /**
@@ -64,7 +64,7 @@ export function useReports(
   const activeHours = computed(() => {
     const hours = new Set<number>()
     for (const u of usageData.value) {
-      if (u.appName === AWAY_APP) continue
+      if (isAwayName(u.appName)) continue
       const s = u.startTime!.getHours()
       const e = u.endTime!.getHours()
       if (e >= s) {

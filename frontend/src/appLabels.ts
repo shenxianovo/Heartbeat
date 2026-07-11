@@ -4,6 +4,11 @@
  */
 export const AWAY_APP = '__away__'
 
+/** away 判定谓词：全前端唯一的比对点（报表、时间轴、在场面板共用）。 */
+export function isAwayName(appName?: string | null): boolean {
+  return appName === AWAY_APP
+}
+
 /**
  * 应用名 → 文字描述 映射表
  * key 不区分大小写，直接添加新行即可扩展
