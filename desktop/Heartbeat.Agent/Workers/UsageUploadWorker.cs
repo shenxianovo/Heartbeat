@@ -8,16 +8,13 @@ using Serilog;
 namespace Heartbeat.Agent.Workers
 {
     /// <summary>
-    /// 出网调度（ADR-020）：周期性 drain 两个内存缓冲进各自的上传通道，
-    /// cached 先于 fresh（离线恢复后先清积压，保持服务端时序大体有序）。
-    /// 通道退回的批重注入源 buffer——段按 Id 收敛幂等，事件保 Id 重排队。
+    /// 出网调度（ADR-020/022）：周期性驱动各上传流 drain 一轮。
+    /// 退回重注入由流自持（ADR-022），本类只负责节律与图标挂点。
     /// </summary>
     public class UsageUploadWorker(
         IconUploadService iconService,
-        IUploadSource<InputEventItem> inputSource,
-        IUploadSource<ActivitySegmentItem> segmentSource,
-        UploadChannel<ActivitySegmentItem> segmentChannel,
-        UploadChannel<InputEventItem> inputChannel,
+        UploadStream<ActivitySegmentItem> segmentStream,
+        UploadStream<InputEventItem> inputStream,
         ConfigManager configManager) : BackgroundService
     {
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -34,13 +31,7 @@ namespace Heartbeat.Agent.Workers
                     Log.Debug("上传间隔: {Interval}", interval);
 
                     await Task.Delay(interval, stoppingToken);
-
-                    // cached 先于 fresh
-                    await inputChannel.UploadCachedAsync();
-                    await segmentChannel.UploadCachedAsync();
-
-                    await UploadInputEventsAsync();
-                    await UploadSegmentsAsync();
+                    await DrainOnceAsync();
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
@@ -60,8 +51,7 @@ namespace Heartbeat.Agent.Workers
             // AppMonitorService 已先停止（注册逆序，ADR-020），其终态快照已在 hub 缓冲中。
             try
             {
-                await UploadInputEventsAsync();
-                await UploadSegmentsAsync();
+                await DrainOnceAsync();
             }
             catch (Exception ex)
             {
@@ -71,26 +61,12 @@ namespace Heartbeat.Agent.Workers
             await base.StopAsync(cancellationToken);
         }
 
-        private async Task UploadInputEventsAsync()
+        /// <summary>驱动两条流各 drain 一轮；段批次顺带触发图标挂点（ADR-020 §6）。</summary>
+        private async Task DrainOnceAsync()
         {
-            var events = inputSource.Drain();
-            if (events.Count == 0) return;
+            await inputStream.DrainAsync();
+            var segments = await segmentStream.DrainAsync();
 
-            var returned = await inputChannel.UploadAsync(events);
-            if (returned.Count > 0)
-                inputSource.Reinject(returned);
-        }
-
-        private async Task UploadSegmentsAsync()
-        {
-            var segments = segmentSource.Drain();
-            if (segments.Count == 0) return;
-
-            var returned = await segmentChannel.UploadAsync(segments);
-            if (returned.Count > 0)
-                segmentSource.Reinject(returned);
-
-            // 图标挂点（ADR-020）：从段批次的 AppName 关联提示触发。
             var appNames = segments
                 .Where(s => !string.IsNullOrEmpty(s.AppName))
                 .Select(s => s.AppName!)

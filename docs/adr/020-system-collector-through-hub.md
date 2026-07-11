@@ -84,6 +84,7 @@ reject-system 从 `SegmentIngestService.Accept` 搬到 `SegmentIngestWorker`:它
 - `server/Heartbeat.Server/Services/UsageService.cs` — SaveSegmentsAsync 唯一摄入例程(§4)
 - `shared/Heartbeat.Core/SegmentValidationPolicy.cs` — 唯一摄入校验策略(§1)
 - Amends [ADR-017](./017-activity-segment-pluggable-collectors.md) §1/§2 —— 内置采集器从"绕过 hub"变为"经由 hub";数据模型与统计边界不变
+- Amended by [ADR-022](./022-upload-stream-owns-reinjection.md) —— §5 的"退回项由调用方重注入"收进 Upload Stream（更名自 Upload Channel）自持
 - Amends [ADR-018](./018-stable-segment-identity-snapshot-upload.md) —— 双上传入口收敛为 `/segments` 单入口;快照契约(Id 即身份、单调生长)不变
 - [ADR-008](./008-local-cache-offline-retry.md) —— usage 缓存(`LocalCache`)退役;离线重试语义由上传通道继承
 - [ADR-006](./006-dedicated-report-endpoints.md) —— GET /usage 读端点不受影响

@@ -58,8 +58,29 @@ namespace Heartbeat.Agent.Services
         /// <summary>IUploadSource adapter：出网侧的统一 drain 词汇。</summary>
         List<ActivitySegmentItem> IUploadSource<ActivitySegmentItem>.Drain() => GetAndClearSegments();
 
-        /// <summary>IUploadSource adapter：退回批经 Accept 重注入，按 Id 收敛幂等。</summary>
-        void IUploadSource<ActivitySegmentItem>.Reinject(List<ActivitySegmentItem> items) => Accept(items);
+        /// <summary>
+        /// IUploadSource adapter：退回批重注入（ADR-022）。缺席才插入，在位者保留
+        /// EndTime 更晚的快照——批次在外期间 hub 可能已收到同 Id 的更新快照，
+        /// 重注入不得回滚（与服务端单调生长门同一条规则，ADR-018）。
+        /// 退回批已过一次门卫，不再校验——重过滤即丢数据，违背不蒸发不变量。
+        /// </summary>
+        void IUploadSource<ActivitySegmentItem>.Reinject(List<ActivitySegmentItem> items)
+        {
+            if (items.Count == 0) return;
+
+            lock (_lock)
+            {
+                foreach (var s in items)
+                {
+                    if (_segments.TryGetValue(s.Id, out var existing) && existing.EndTime >= s.EndTime)
+                        continue;
+                    if (_segments.Count >= MaxBuffered && !_segments.ContainsKey(s.Id))
+                        EvictOldest();
+                    _segments[s.Id] = s;
+                }
+            }
+            Log.Debug("重注入退回段 {Count} 条", items.Count);
+        }
 
         public List<ActivitySegmentItem> GetAndClearSegments()
         {

@@ -83,12 +83,13 @@ namespace Heartbeat.Agent.Hosting
             services.AddSingleton<IUploadSource<ActivitySegmentItem>>(sp => sp.GetRequiredService<SegmentIngestService>());
             services.AddSingleton<SegmentIngestRequestHandler>();
 
-            // 上传通道（ADR-020）：行为差异只剩注入的 compact 策略
+            // 上传流（ADR-020/022）：绑定源 + 出网 + 缓存；行为差异只剩注入的 compact 策略
             services.AddSingleton(sp =>
             {
                 var api = sp.GetRequiredService<HeartbeatApiClient>();
-                return new UploadChannel<ActivitySegmentItem>(
+                return new UploadStream<ActivitySegmentItem>(
                     "段",
+                    sp.GetRequiredService<IUploadSource<ActivitySegmentItem>>(),
                     batch => api.UploadSegmentsAsync(new SegmentUploadRequest { Segments = batch }),
                     sp.GetRequiredService<ICache<ActivitySegmentItem>>(),
                     SnapshotCompaction.KeepLatest);
@@ -96,8 +97,9 @@ namespace Heartbeat.Agent.Hosting
             services.AddSingleton(sp =>
             {
                 var api = sp.GetRequiredService<HeartbeatApiClient>();
-                return new UploadChannel<InputEventItem>(
+                return new UploadStream<InputEventItem>(
                     "输入事件",
+                    sp.GetRequiredService<IUploadSource<InputEventItem>>(),
                     batch => api.UploadInputEventsAsync(new InputEventUploadRequest { Events = batch }),
                     sp.GetRequiredService<ICache<InputEventItem>>());
             });

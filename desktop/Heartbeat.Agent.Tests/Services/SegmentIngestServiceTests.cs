@@ -119,4 +119,35 @@ public class SegmentIngestServiceTests
         Assert.Single(svc.GetAndClearSegments());
         Assert.Empty(svc.GetAndClearSegments());
     }
+
+    [Fact]
+    public void Reinject_Absent_Inserts()
+    {
+        var svc = new SegmentIngestService(new FakeClock());
+        IUploadSource<ActivitySegmentItem> source = svc;
+        var seg = Segment();
+
+        source.Reinject([seg]);
+
+        Assert.Same(seg, Assert.Single(svc.GetAndClearSegments()));
+    }
+
+    [Fact]
+    public void Reinject_DoesNotRollBackNewerSnapshot()
+    {
+        // 不回滚（ADR-022）：批次在外期间 hub 已收到同 Id 更新快照，
+        // 退回的旧快照不得覆盖——与服务端单调生长门同一条规则（ADR-018）。
+        var svc = new SegmentIngestService(new FakeClock());
+        IUploadSource<ActivitySegmentItem> source = svc;
+        var t0 = DateTimeOffset.UtcNow.AddMinutes(-5);
+        var stale = Segment(start: t0, end: t0.AddMinutes(1));
+        var newer = Segment(start: t0, end: t0.AddMinutes(3));
+        newer.Id = stale.Id;
+
+        svc.Accept([newer]);
+        source.Reinject([stale]);
+
+        var single = Assert.Single(svc.GetAndClearSegments());
+        Assert.Equal(t0.AddMinutes(3), single.EndTime);
+    }
 }
