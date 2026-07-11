@@ -344,7 +344,7 @@ const minimapActivities = computed(() => {
           <TransitionGroup
             name="row-list"
             tag="div"
-            class="relative z-[1] max-h-[220px] overflow-y-auto min-[900px]:max-h-[320px] min-[1200px]:max-h-[400px]"
+            class="timeline-rows relative z-[1] max-h-[220px] overflow-y-auto min-[900px]:max-h-[320px] min-[1200px]:max-h-[400px]"
           >
             <div
               v-if="detailedRows.length === 0"
@@ -358,7 +358,8 @@ const minimapActivities = computed(() => {
               :key="row.appId"
               class="flex h-10 border-b border-border last:border-b-0"
             >
-              <div class="z-[2] flex w-[80px] shrink-0 items-center gap-2 border-r border-border bg-muted px-2 min-[640px]:w-[120px]">
+              <!-- row-header / timeline-rows 是 useTimelineDrag 的功能性选择器锚点，不是样式 -->
+              <div class="row-header z-[2] flex w-[80px] shrink-0 items-center gap-2 border-r border-border bg-muted px-2 min-[640px]:w-[120px]">
                 <img v-if="!row.isAway" :src="getIconUrl(row.appId)" class="h-5 w-5 rounded object-contain" @error="($event.target as HTMLImageElement).style.display = 'none'"/>
                 <span v-else class="flex h-5 w-5 shrink-0 items-center justify-center text-muted-foreground">💤</span>
                 <span class="flex-1 truncate text-[0.75rem]" :class="row.isAway ? 'text-muted-foreground' : 'text-foreground'" :title="row.name">{{ row.name }}</span>
