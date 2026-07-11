@@ -3,8 +3,9 @@ using System.Runtime.InteropServices;
 namespace Heartbeat.Agent.Utils
 {
     /// <summary>
-    /// 低级键盘/鼠标钩子（WH_KEYBOARD_LL / WH_MOUSE_LL）。
-    /// 必须在专用线程上调用 StartHook（内部运行消息循环），详见 ADR-012。
+    /// 低级键盘/鼠标钩子（WH_KEYBOARD_LL / WH_MOUSE_LL），详见 ADR-012。
+    /// 生产实现自持专用钩子线程（内部消息泵）：StartHook 立即返回，StopHook 阻塞收尾
+    /// （三个 Win32 消息泵组件的统一形态）。
     /// 回调保持最小工作（解析 + 转发），避免触发 LowLevelHooksTimeout 被系统摘钩。
     /// </summary>
     public interface ILowLevelInputHook
@@ -110,8 +111,31 @@ namespace Heartbeat.Agent.Utils
         private IntPtr _keyboardHook;
         private IntPtr _mouseHook;
         private uint _threadId;
+        private Thread? _thread;
 
         public void StartHook()
+        {
+            _thread = new Thread(() =>
+            {
+                try { RunMessageLoop(); }
+                catch (Exception ex) { Serilog.Log.Error(ex, "低级输入钩子线程异常"); }
+            })
+            {
+                IsBackground = true,
+                Name = "InputHookThread"
+            };
+            _thread.Start();
+        }
+
+        public void StopHook()
+        {
+            if (_threadId != 0)
+                PostThreadMessage(_threadId, WM_QUIT, IntPtr.Zero, IntPtr.Zero);
+            _thread?.Join(TimeSpan.FromSeconds(3));
+        }
+
+        /// <summary>安装钩子并阻塞运行消息循环（在自持线程上执行，低级钩子要求线程有消息泵）。</summary>
+        private void RunMessageLoop()
         {
             _threadId = GetCurrentThreadId();
             _keyboardProc = KeyboardCallback;
@@ -121,7 +145,6 @@ namespace Heartbeat.Agent.Utils
             _keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, _keyboardProc, hMod, 0);
             _mouseHook = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc, hMod, 0);
 
-            // 运行消息循环（阻塞当前线程，低级钩子要求线程有消息泵）
             int ret;
             while ((ret = GetMessage(out MSG msg, IntPtr.Zero, 0, 0)) != 0)
             {
@@ -134,12 +157,6 @@ namespace Heartbeat.Agent.Utils
             if (_mouseHook != IntPtr.Zero) UnhookWindowsHookEx(_mouseHook);
             _keyboardHook = IntPtr.Zero;
             _mouseHook = IntPtr.Zero;
-        }
-
-        public void StopHook()
-        {
-            if (_threadId != 0)
-                PostThreadMessage(_threadId, WM_QUIT, IntPtr.Zero, IntPtr.Zero);
         }
 
         private IntPtr KeyboardCallback(int nCode, IntPtr wParam, IntPtr lParam)

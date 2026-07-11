@@ -5,8 +5,8 @@ using Serilog;
 namespace Heartbeat.Agent.Services
 {
     /// <summary>
-    /// 输入事件采集服务。在专用线程上运行低级键鼠钩子（与 WinEvent 线程隔离），
-    /// 将原始钩子事件翻译为 InputEventBuffer 的语义调用。详见 ADR-012。
+    /// 输入事件采集服务：钩子生命周期 + 将原始钩子事件翻译为 InputEventBuffer 的语义调用。
+    /// 钩子线程由 WindowsLowLevelInputHook 自持（消息泵统一形态），详见 ADR-012。
     /// buffer 为共享单例：本服务只写入，出网侧经 IUploadSource 直接 drain。
     /// </summary>
     public sealed class InputEventCollector(ILowLevelInputHook hook, IInputActivitySignal inputActivity, InputEventBuffer buffer) : IHostedService, IDisposable
@@ -14,7 +14,6 @@ namespace Heartbeat.Agent.Services
         private readonly ILowLevelInputHook _hook = hook;
         private readonly IInputActivitySignal _inputActivity = inputActivity;
         private readonly InputEventBuffer _buffer = buffer;
-        private Thread? _hookThread;
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
@@ -25,17 +24,7 @@ namespace Heartbeat.Agent.Services
             _hook.MouseButton += OnMouseButton;
             _hook.Scroll += OnScroll;
 
-            _hookThread = new Thread(() =>
-            {
-                try { _hook.StartHook(); }
-                catch (Exception ex) { Log.Error(ex, "低级输入钩子线程异常"); }
-            })
-            {
-                IsBackground = true,
-                Name = "InputHookThread"
-            };
-            _hookThread.Start();
-
+            _hook.StartHook();
             return Task.CompletedTask;
         }
 
@@ -44,7 +33,6 @@ namespace Heartbeat.Agent.Services
             Log.Information("输入事件采集服务停止");
             Unsubscribe();
             _hook.StopHook();
-            _hookThread?.Join(TimeSpan.FromSeconds(3));
             return Task.CompletedTask;
         }
 

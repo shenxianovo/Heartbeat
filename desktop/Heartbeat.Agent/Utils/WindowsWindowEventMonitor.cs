@@ -3,10 +3,15 @@ using System.Runtime.InteropServices;
 
 namespace Heartbeat.Agent.Utils
 {
-    public static class ActiveWindowHelper
+    /// <summary>
+    /// IWindowEventMonitor 的 Win32 实现：WinEvent 钩子（前台切换/最小化/标题变化）。
+    /// 自持专用钩子线程（内部消息泵）——与 WindowsPowerMonitor、WindowsLowLevelInputHook
+    /// 同一形态：Start 立即返回，Stop 投递 WM_QUIT 并等待线程收尾。
+    /// </summary>
+    public sealed class WindowsWindowEventMonitor : IWindowEventMonitor
     {
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll", EntryPoint = "GetForegroundWindow")]
+        private static extern IntPtr GetForegroundWindowNative();
 
         [DllImport("user32.dll")]
         private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
@@ -17,7 +22,6 @@ namespace Heartbeat.Agent.Utils
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
 
-        // WinEventHook 相关
         private delegate void WinEventDelegate(
             IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
             int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
@@ -74,38 +78,50 @@ namespace Heartbeat.Agent.Utils
         private const int OBJID_WINDOW = 0;
         private const int CHILDID_SELF = 0;
 
-        private static WinEventDelegate? _winEventDelegate;
-        private static IntPtr _foregroundHook;
-        private static IntPtr _minimizeStartHook;
-        private static IntPtr _minimizeEndHook;
-        private static IntPtr _nameChangeHook;
-        private static uint _messageLoopThreadId;
+        private WinEventDelegate? _winEventDelegate;
+        private IntPtr _foregroundHook;
+        private IntPtr _minimizeStartHook;
+        private IntPtr _minimizeEndHook;
+        private IntPtr _nameChangeHook;
+        private uint _messageLoopThreadId;
+        private Thread? _thread;
 
         /// <summary>
         /// 前台窗口切换时触发，参数为新的前台窗口采样（进程名 + 标题，可能为 None）
         /// </summary>
-        public static event Action<ForegroundWindow>? ForegroundWindowChanged;
+        public event Action<ForegroundWindow>? ForegroundWindowChanged;
 
         /// <summary>
         /// 获取当前前台窗口采样（进程名 + 标题）
         /// </summary>
-        public static ForegroundWindow GetForegroundWindowSample()
+        public ForegroundWindow GetForegroundWindow()
+            => SampleWindow(GetForegroundWindowNative());
+
+        public void Start()
         {
-            IntPtr hwnd = GetForegroundWindow();
-            return SampleWindow(hwnd);
+            _thread = new Thread(() =>
+            {
+                try { RunMessageLoop(); }
+                catch (Exception ex) { Serilog.Log.Error(ex, "WinEvent 钩子线程异常"); }
+            })
+            {
+                IsBackground = true,
+                Name = "WinEventHookThread"
+            };
+            _thread.Start();
         }
 
-        /// <summary>给定窗口句柄采样（进程名 + 标题）。</summary>
-        private static ForegroundWindow SampleWindow(IntPtr hwnd)
+        public void Stop()
         {
-            if (hwnd == IntPtr.Zero) return ForegroundWindow.None;
-            return new ForegroundWindow(GetProcessNameFromHwnd(hwnd), GetWindowTitle(hwnd));
+            if (_messageLoopThreadId != 0)
+            {
+                PostThreadMessage(_messageLoopThreadId, WM_QUIT, IntPtr.Zero, IntPtr.Zero);
+            }
+            _thread?.Join(TimeSpan.FromSeconds(3));
         }
 
-        /// <summary>
-        /// 启动事件钩子，监听前台窗口切换。必须在专用线程上调用（内部运行消息循环）。
-        /// </summary>
-        public static void StartHook()
+        /// <summary>安装 WinEvent 钩子并阻塞运行消息循环（在自持线程上执行）。</summary>
+        private void RunMessageLoop()
         {
             _messageLoopThreadId = GetCurrentThreadId();
 
@@ -158,22 +174,11 @@ namespace Heartbeat.Agent.Utils
             _nameChangeHook = IntPtr.Zero;
         }
 
-        /// <summary>
-        /// 停止事件钩子，退出消息循环
-        /// </summary>
-        public static void StopHook()
-        {
-            if (_messageLoopThreadId != 0)
-            {
-                PostThreadMessage(_messageLoopThreadId, WM_QUIT, IntPtr.Zero, IntPtr.Zero);
-            }
-        }
-
-        private static void OnWinEvent(
+        private void OnWinEvent(
             IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
             int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
         {
-            IntPtr fg = GetForegroundWindow();
+            IntPtr fg = GetForegroundWindowNative();
 
             if (eventType == EVENT_OBJECT_NAMECHANGE)
             {
@@ -185,6 +190,13 @@ namespace Heartbeat.Agent.Utils
 
             // FOREGROUND / MINIMIZE / 通过过滤的 NAMECHANGE：以当前前台窗口采样后上报。
             ForegroundWindowChanged?.Invoke(SampleWindow(fg));
+        }
+
+        /// <summary>给定窗口句柄采样（进程名 + 标题）。</summary>
+        private ForegroundWindow SampleWindow(IntPtr hwnd)
+        {
+            if (hwnd == IntPtr.Zero) return ForegroundWindow.None;
+            return new ForegroundWindow(GetProcessNameFromHwnd(hwnd), GetWindowTitle(hwnd));
         }
 
         private static string? GetWindowTitle(IntPtr hWnd)
@@ -199,10 +211,10 @@ namespace Heartbeat.Agent.Utils
 
         // 进程名单条缓存：同一前台窗口在一次"停留"内 hwnd 不变，
         // 高频 NAMECHANGE（标题抖动）时命中缓存，省去 Process.GetProcessById 开销。
-        private static IntPtr _cachedHwnd;
-        private static string? _cachedProcessName;
+        private IntPtr _cachedHwnd;
+        private string? _cachedProcessName;
 
-        private static string? GetProcessNameFromHwnd(IntPtr hWnd)
+        private string? GetProcessNameFromHwnd(IntPtr hWnd)
         {
             if (hWnd == _cachedHwnd) return _cachedProcessName;
 
