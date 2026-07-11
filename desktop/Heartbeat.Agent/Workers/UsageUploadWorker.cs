@@ -14,8 +14,8 @@ namespace Heartbeat.Agent.Workers
     /// </summary>
     public class UsageUploadWorker(
         IconUploadService iconService,
-        InputEventCollector inputCollector,
-        SegmentIngestService segmentIngest,
+        IUploadSource<InputEventItem> inputSource,
+        IUploadSource<ActivitySegmentItem> segmentSource,
         UploadChannel<ActivitySegmentItem> segmentChannel,
         UploadChannel<InputEventItem> inputChannel,
         ConfigManager configManager) : BackgroundService
@@ -73,22 +73,22 @@ namespace Heartbeat.Agent.Workers
 
         private async Task UploadInputEventsAsync()
         {
-            var events = inputCollector.GetAndClearEvents();
+            var events = inputSource.Drain();
             if (events.Count == 0) return;
 
             var returned = await inputChannel.UploadAsync(events);
             if (returned.Count > 0)
-                inputCollector.Requeue(returned);
+                inputSource.Reinject(returned);
         }
 
         private async Task UploadSegmentsAsync()
         {
-            var segments = segmentIngest.GetAndClearSegments();
+            var segments = segmentSource.Drain();
             if (segments.Count == 0) return;
 
             var returned = await segmentChannel.UploadAsync(segments);
             if (returned.Count > 0)
-                segmentIngest.Accept(returned);
+                segmentSource.Reinject(returned);
 
             // 图标挂点（ADR-020）：从段批次的 AppName 关联提示触发。
             var appNames = segments

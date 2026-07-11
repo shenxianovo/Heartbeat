@@ -1,5 +1,4 @@
 using Heartbeat.Agent.Utils;
-using Heartbeat.Core.DTOs.Input;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 
@@ -8,12 +7,13 @@ namespace Heartbeat.Agent.Services
     /// <summary>
     /// 输入事件采集服务。在专用线程上运行低级键鼠钩子（与 WinEvent 线程隔离），
     /// 将原始钩子事件翻译为 InputEventBuffer 的语义调用。详见 ADR-012。
+    /// buffer 为共享单例：本服务只写入，出网侧经 IUploadSource 直接 drain。
     /// </summary>
-    public sealed class InputEventCollector(IClock clock, ILowLevelInputHook hook, IInputActivitySignal inputActivity) : IHostedService, IDisposable
+    public sealed class InputEventCollector(ILowLevelInputHook hook, IInputActivitySignal inputActivity, InputEventBuffer buffer) : IHostedService, IDisposable
     {
         private readonly ILowLevelInputHook _hook = hook;
         private readonly IInputActivitySignal _inputActivity = inputActivity;
-        private readonly InputEventBuffer _buffer = new(clock);
+        private readonly InputEventBuffer _buffer = buffer;
         private Thread? _hookThread;
 
         public Task StartAsync(CancellationToken cancellationToken)
@@ -47,18 +47,6 @@ namespace Heartbeat.Agent.Services
             _hookThread?.Join(TimeSpan.FromSeconds(3));
             return Task.CompletedTask;
         }
-
-        /// <summary>取走当前缓冲的所有输入事件（供上传调度调用）。</summary>
-        public List<InputEventItem> GetAndClearEvents()
-        {
-            var events = _buffer.DrainAll();
-            if (events.Count > 0)
-                Log.Information("收集到 {Count} 条输入事件，准备上传", events.Count);
-            return events;
-        }
-
-        /// <summary>退回重注入（ADR-020 上传通道契约）：保 Id 回队，服务端幂等去重。</summary>
-        public void Requeue(List<InputEventItem> events) => _buffer.Requeue(events);
 
         // 回调保持最小工作：仅转发给 buffer（buffer 内部为并发安全的轻量操作）
         private void OnKeyDown(int vk) => _buffer.OnKeyDown(vk);

@@ -74,9 +74,13 @@ namespace Heartbeat.Agent.Hosting
             // 业务服务
             services.AddSingleton<AppMonitorService>();
             services.AddSingleton<IconUploadService>();
+            // 输入缓冲为共享单例：collector 写入，出网侧经 IUploadSource drain
+            services.AddSingleton(sp => new InputEventBuffer(sp.GetRequiredService<IClock>()));
+            services.AddSingleton<IUploadSource<InputEventItem>>(sp => sp.GetRequiredService<InputEventBuffer>());
             services.AddSingleton<InputEventCollector>();
             services.AddSingleton<SegmentIngestService>();
             services.AddSingleton<ISegmentSink>(sp => sp.GetRequiredService<SegmentIngestService>());
+            services.AddSingleton<IUploadSource<ActivitySegmentItem>>(sp => sp.GetRequiredService<SegmentIngestService>());
             services.AddSingleton<SegmentIngestRequestHandler>();
 
             // 上传通道（ADR-020）：行为差异只剩注入的 compact 策略

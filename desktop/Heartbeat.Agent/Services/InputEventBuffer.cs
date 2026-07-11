@@ -13,7 +13,7 @@ namespace Heartbeat.Agent.Services
     /// - 入队封顶丢旧，防止常驻进程内存无界增长
     /// - 为每个事件生成 UUIDv7
     /// </summary>
-    public sealed class InputEventBuffer(IClock clock, int capacity = 100_000)
+    public sealed class InputEventBuffer(IClock clock, int capacity = 100_000) : IUploadSource<InputEventItem>
     {
         public const int WheelDelta = 120;
 
@@ -105,6 +105,12 @@ namespace Heartbeat.Agent.Services
             foreach (var item in items)
                 EnqueueItem(item);
         }
+
+        /// <summary>IUploadSource adapter：出网侧的统一 drain 词汇。</summary>
+        List<InputEventItem> IUploadSource<InputEventItem>.Drain() => DrainAll();
+
+        /// <summary>IUploadSource adapter：退回批保 Id 回队。</summary>
+        void IUploadSource<InputEventItem>.Reinject(List<InputEventItem> items) => Requeue(items);
 
         private void Enqueue(InputEventType type, short code)
         {

@@ -11,7 +11,7 @@ namespace Heartbeat.Agent.Services
     /// 缓冲按 Id 键控（ADR-018）：同段后到快照覆盖先到——快照单调生长，
     /// 最新一份携带全部信息，攒批自动压缩。
     /// </summary>
-    public class SegmentIngestService(IClock clock) : ISegmentSink
+    public class SegmentIngestService(IClock clock) : ISegmentSink, IUploadSource<ActivitySegmentItem>
     {
         private readonly object _lock = new();
         private readonly Dictionary<Guid, ActivitySegmentItem> _segments = [];
@@ -54,6 +54,12 @@ namespace Heartbeat.Agent.Services
 
         /// <summary>ISegmentSink adapter（ADR-020）：内置采集器进程内推送，与 Accept 同一缓冲。</summary>
         public void Push(List<ActivitySegmentItem> snapshots) => Accept(snapshots);
+
+        /// <summary>IUploadSource adapter：出网侧的统一 drain 词汇。</summary>
+        List<ActivitySegmentItem> IUploadSource<ActivitySegmentItem>.Drain() => GetAndClearSegments();
+
+        /// <summary>IUploadSource adapter：退回批经 Accept 重注入，按 Id 收敛幂等。</summary>
+        void IUploadSource<ActivitySegmentItem>.Reinject(List<ActivitySegmentItem> items) => Accept(items);
 
         public List<ActivitySegmentItem> GetAndClearSegments()
         {
