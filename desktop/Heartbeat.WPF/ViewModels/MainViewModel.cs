@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Heartbeat.Agent.Configuration;
 using Heartbeat.Agent.Services;
+using Heartbeat.Core;
 using Heartbeat.WPF.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog.Events;
@@ -12,7 +13,7 @@ namespace Heartbeat.WPF.ViewModels
     public partial class MainViewModel : ObservableObject, IDisposable
     {
         private readonly ConfigManager _configManager;
-        private readonly AppMonitorService _monitor;
+        private readonly ICollectionStatus _status;
         private readonly IAutoStartService _autoStartService;
 
         [ObservableProperty]
@@ -62,18 +63,17 @@ namespace Heartbeat.WPF.ViewModels
         public MainViewModel()
         {
             _configManager = App.ConfigManager;
-            _monitor = App.Services.GetRequiredService<AppMonitorService>();
+            _status = App.Services.GetRequiredService<ICollectionStatus>();
             _autoStartService = App.Services.GetRequiredService<IAutoStartService>();
 
             LoadConfig();
             LoadAutoStartState();
 
-            // 显示当前前台应用
-            var current = _monitor.GetCurrentApp();
-            CurrentApp = current ?? "(未检测)";
+            // 显示当前前台应用（hub 集面读模型，ADR-021）
+            CurrentApp = FormatApp(_status.CurrentApp) ?? "(未检测)";
 
             // 订阅事件
-            _monitor.CurrentAppChanged += HandleCurrentAppChanged;
+            _status.CurrentAppChanged += HandleCurrentAppChanged;
             App.LogSink.LogChanged += HandleLogChanged;
 
             // 加载已有日志（GetAll 同时会同步 lastNotifiedAt，后续事件只推增量）
@@ -183,11 +183,15 @@ namespace Heartbeat.WPF.ViewModels
             });
         }
 
+        /// <summary>away 原样来自读模型（ADR-021），显示语义在此解释。</summary>
+        private static string? FormatApp(string? app)
+            => app == SyntheticApps.Away ? "(离开)" : app;
+
         private void HandleCurrentAppChanged(string? appName)
         {
             Application.Current?.Dispatcher.BeginInvoke(() =>
             {
-                CurrentApp = appName ?? "(无)";
+                CurrentApp = FormatApp(appName) ?? "(无)";
             });
         }
 
@@ -223,7 +227,7 @@ namespace Heartbeat.WPF.ViewModels
 
         public void Dispose()
         {
-            _monitor.CurrentAppChanged -= HandleCurrentAppChanged;
+            _status.CurrentAppChanged -= HandleCurrentAppChanged;
             App.LogSink.LogChanged -= HandleLogChanged;
             GC.SuppressFinalize(this);
         }

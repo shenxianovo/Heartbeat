@@ -10,11 +10,18 @@ namespace Heartbeat.Agent.Services
     /// 接收 → 校验 → 缓冲，由 UploadWorker 周期性取走上传。
     /// 缓冲按 Id 键控（ADR-018）：同段后到快照覆盖先到——快照单调生长，
     /// 最新一份携带全部信息，攒批自动压缩。
+    /// 同时维护集面读模型（ADR-021）：Current Activity + per-Source last-seen，
+    /// 与缓冲分离，不随 drain 清空。
     /// </summary>
-    public class SegmentIngestService(IClock clock) : ISegmentSink, IUploadSource<ActivitySegmentItem>
+    public class SegmentIngestService(IClock clock) : ISegmentSink, IUploadSource<ActivitySegmentItem>, ICurrentActivitySink, ICollectionStatus
     {
         private readonly object _lock = new();
         private readonly Dictionary<Guid, ActivitySegmentItem> _segments = [];
+
+        // ---- 集面读模型（ADR-021）：独立小锁，读写不与缓冲争用 ----
+        private readonly object _statusLock = new();
+        private string? _currentApp;
+        private readonly Dictionary<string, DateTimeOffset> _lastSeen = [];
 
         /// <summary>缓冲上限：防失控采集器把 Agent 内存吃满（超出丢最旧）。</summary>
         private const int MaxBuffered = 20000;
@@ -47,6 +54,14 @@ namespace Heartbeat.Agent.Services
                 }
             }
 
+            // 读模型盖戳（ADR-021）：per-Source last-seen 从流量派生，即 Active 的机制。
+            var now = clock.UtcNow;
+            lock (_statusLock)
+            {
+                foreach (var src in valid.Select(v => v.Source).Distinct())
+                    _lastSeen[src!] = now;
+            }
+
             Log.Debug("接收段 {Count} 条（source: {Sources}）",
                 valid.Count, string.Join(",", valid.Select(v => v.Source).Distinct()));
             return valid.Count;
@@ -54,6 +69,35 @@ namespace Heartbeat.Agent.Services
 
         /// <summary>ISegmentSink adapter（ADR-020）：内置采集器进程内推送，与 Accept 同一缓冲。</summary>
         public void Push(List<ActivitySegmentItem> snapshots) => Accept(snapshots);
+
+        // ---- 集面读模型（ADR-021） ----
+
+        public event Action<string?>? CurrentAppChanged;
+
+        public string? CurrentApp
+        {
+            get { lock (_statusLock) return _currentApp; }
+        }
+
+        public IReadOnlyDictionary<string, DateTimeOffset> SourceLastSeen
+        {
+            get { lock (_statusLock) return new Dictionary<string, DateTimeOffset>(_lastSeen); }
+        }
+
+        /// <summary>
+        /// ICurrentActivitySink adapter（ADR-021）：system 采集器在转场点推送。
+        /// 值实际变化才广播，重复上报静默——下游（心跳的变了就推）依赖此去重。
+        /// </summary>
+        public void Report(string? app)
+        {
+            lock (_statusLock)
+            {
+                if (string.Equals(_currentApp, app, StringComparison.Ordinal))
+                    return;
+                _currentApp = app;
+            }
+            CurrentAppChanged?.Invoke(app);
+        }
 
         /// <summary>IUploadSource adapter：出网侧的统一 drain 词汇。</summary>
         List<ActivitySegmentItem> IUploadSource<ActivitySegmentItem>.Drain() => GetAndClearSegments();

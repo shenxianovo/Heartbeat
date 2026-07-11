@@ -9,10 +9,11 @@ namespace Heartbeat.Agent.Workers
 {
     /// <summary>
     /// 状态心跳上传。presence 是易逝信息：无缓存无重试是设计（下一个心跳自然覆盖），
-    /// 不入上传通道（ADR-020）。
+    /// 不入上传通道（ADR-020）。数据源为 hub 集面读模型（ADR-021），不伸手进采集器；
+    /// away 原样上报（__away__）。
     /// </summary>
     public class StatusUploadWorker(
-        AppMonitorService monitor,
+        ICollectionStatus status,
         HeartbeatApiClient apiClient,
         ConfigManager configManager) : BackgroundService
     {
@@ -46,7 +47,7 @@ namespace Heartbeat.Agent.Workers
 
         private async Task UploadStatusAsync()
         {
-            var currentApp = monitor.GetCurrentApp();
+            var currentApp = status.CurrentApp;
             var dto = new DeviceStatusRequest { CurrentApp = currentApp ?? string.Empty };
 
             var result = await apiClient.SendHeartbeatAsync(dto);

@@ -82,6 +82,9 @@ namespace Heartbeat.Agent.Hosting
             services.AddSingleton<SegmentIngestService>();
             services.AddSingleton<ISegmentSink>(sp => sp.GetRequiredService<SegmentIngestService>());
             services.AddSingleton<IUploadSource<ActivitySegmentItem>>(sp => sp.GetRequiredService<SegmentIngestService>());
+            // 集面读模型（ADR-021）：写入口给 system 采集器，读表面给 WPF 与心跳
+            services.AddSingleton<ICurrentActivitySink>(sp => sp.GetRequiredService<SegmentIngestService>());
+            services.AddSingleton<ICollectionStatus>(sp => sp.GetRequiredService<SegmentIngestService>());
             services.AddSingleton<SegmentIngestRequestHandler>();
 
             // 上传流（ADR-020/022）：绑定源 + 出网 + 缓存；行为差异只剩注入的 compact 策略

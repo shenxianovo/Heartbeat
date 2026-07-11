@@ -73,6 +73,16 @@ public class AppMonitorServiceTests : IDisposable
         }
     }
 
+    /// <summary>捕获 Current Activity 推送（ADR-021 读模型的观察点）。Build 后经 _activitySink 断言。</summary>
+    private sealed class FakeActivitySink : ICurrentActivitySink
+    {
+        public List<string?> Reports { get; } = [];
+        public string? Current => Reports.Count > 0 ? Reports[^1] : null;
+        public void Report(string? app) => Reports.Add(app);
+    }
+
+    private FakeActivitySink _activitySink = new();
+
     private ConfigManager NewConfig(params string[] awayNames)
     {
         var tempPath = Path.Combine(Path.GetTempPath(), $"heartbeat-cfg-{Guid.NewGuid()}.json");
@@ -91,8 +101,9 @@ public class AppMonitorServiceTests : IDisposable
         var power = new FakePowerMonitor();
         var input = new FakeInputActivity();
         var sink = new FakeSink();
+        _activitySink = new FakeActivitySink();
         var cm = config ?? NewConfig();
-        var svc = new AppMonitorService(clock, win, power, input, sink, cm);
+        var svc = new AppMonitorService(clock, win, power, input, sink, _activitySink, cm);
         svc.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
         return (svc, clock, win, power, input, sink);
     }
@@ -364,19 +375,24 @@ public class AppMonitorServiceTests : IDisposable
     }
 
     [Fact]
-    public void GetCurrentApp_WhileAway_ReturnsNull()
+    public void CurrentActivity_ReportedAtTransitions_AwayAsIs()
     {
-        var (svc, clock, _, power, _, _) = Build("vscode");
+        // ADR-021：转场点推送 Current Activity 给 hub 读模型，away 原样上报 __away__
+        var (svc, clock, win, power, _, _) = Build("vscode");
 
-        Assert.Equal("vscode", svc.GetCurrentApp());
+        Assert.Equal("vscode", _activitySink.Current); // 初始前台已上报
+
+        clock.Advance(TimeSpan.FromSeconds(10));
+        win.Switch("chrome");
+        Assert.Equal("chrome", _activitySink.Current);
 
         clock.Advance(TimeSpan.FromSeconds(10));
         power.RaiseDisplayOff();
-        Assert.Null(svc.GetCurrentApp());
+        Assert.Equal(SyntheticApps.Away, _activitySink.Current);
 
         clock.Advance(TimeSpan.FromMinutes(1));
         power.RaiseDisplayOn();
-        Assert.Equal("vscode", svc.GetCurrentApp());
+        Assert.Equal("chrome", _activitySink.Current);
     }
 
     [Fact]
@@ -445,7 +461,7 @@ public class AppMonitorServiceTests : IDisposable
         var power = new FakePowerMonitor();
         var sink = new FakeSink();
         var cm = NewConfig("__none__"); // 不含 LockApp
-        var svc = new AppMonitorService(clock, win, power, new FakeInputActivity(), sink, cm);
+        var svc = new AppMonitorService(clock, win, power, new FakeInputActivity(), sink, new FakeActivitySink(), cm);
         svc.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
 
         clock.Advance(TimeSpan.FromSeconds(30));

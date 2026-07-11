@@ -150,4 +150,67 @@ public class SegmentIngestServiceTests
         var single = Assert.Single(svc.GetAndClearSegments());
         Assert.Equal(t0.AddMinutes(3), single.EndTime);
     }
+
+    // ---- 集面读模型（ADR-021） ----
+
+    [Fact]
+    public void Report_UpdatesCurrentApp_AndRaisesEvent()
+    {
+        var svc = new SegmentIngestService(new FakeClock());
+        var events = new List<string?>();
+        svc.CurrentAppChanged += events.Add;
+
+        svc.Report("vscode");
+        svc.Report("__away__");
+
+        Assert.Equal("__away__", svc.CurrentApp);
+        Assert.Equal(new List<string?> { "vscode", "__away__" }, events);
+    }
+
+    [Fact]
+    public void Report_SameValue_Silent()
+    {
+        // 去重：下游（心跳的变了就推）依赖"值实际变化才广播"
+        var svc = new SegmentIngestService(new FakeClock());
+        var events = new List<string?>();
+        svc.CurrentAppChanged += events.Add;
+
+        svc.Report("vscode");
+        svc.Report("vscode");
+
+        Assert.Single(events);
+    }
+
+    [Fact]
+    public void Accept_StampsSourceLastSeen_PerSource()
+    {
+        // Active 的机制（ADR-021）：last-seen 从流量派生，Accept 时刻戳
+        var baseTime = new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
+        var clock = new FakeClock { UtcNow = baseTime };
+        var svc = new SegmentIngestService(clock);
+        var t0 = baseTime.AddMinutes(-5);
+
+        svc.Accept([
+            Segment(source: "browser", start: t0, end: t0.AddMinutes(1)),
+            Segment(source: "system", identityKey: "code|t", start: t0, end: t0.AddMinutes(1))]);
+        clock.UtcNow = baseTime.AddMinutes(10);
+        svc.Accept([Segment(source: "browser", start: t0, end: t0.AddMinutes(2))]);
+
+        Assert.Equal(baseTime, svc.SourceLastSeen["system"]);
+        Assert.Equal(baseTime.AddMinutes(10), svc.SourceLastSeen["browser"]);
+    }
+
+    [Fact]
+    public void ReadModel_SurvivesDrain()
+    {
+        // 读模型与出网 buffer 分离（ADR-021）：drain 不清空集面状态
+        var svc = new SegmentIngestService(new FakeClock());
+        svc.Report("vscode");
+        svc.Accept([Segment()]);
+
+        svc.GetAndClearSegments();
+
+        Assert.Equal("vscode", svc.CurrentApp);
+        Assert.True(svc.SourceLastSeen.ContainsKey("browser"));
+    }
 }

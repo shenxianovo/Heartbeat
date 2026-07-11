@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { getIconUrl } from '../api/index'
-import { getAppLabel } from '../appLabels'
+import { getAppLabel, AWAY_APP } from '../appLabels'
 import { Card } from '@/components/ui/card'
 
 defineProps<{
@@ -16,8 +16,14 @@ defineProps<{
     <div class="flex flex-col gap-3 px-5">
       <h2 class="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">当前使用</h2>
 
+      <!-- 在线但人离开（心跳照实上报 __away__，ADR-021） -->
+      <div v-if="isAlive && currentApp === AWAY_APP" class="flex items-center gap-3 py-1">
+        <span class="status-dot alive"></span>
+        <span class="text-[1.1rem] font-normal text-muted-foreground">离开中</span>
+      </div>
+
       <!-- 在线 + 有前台应用 -->
-      <div v-if="isAlive && currentApp" class="flex items-center gap-3 py-1">
+      <div v-else-if="isAlive && currentApp" class="flex items-center gap-3 py-1">
         <span class="status-dot alive"></span>
         <img
           v-if="currentAppId"

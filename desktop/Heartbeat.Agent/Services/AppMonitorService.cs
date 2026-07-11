@@ -12,6 +12,7 @@ namespace Heartbeat.Agent.Services
     /// 内置 system 采集器（ADR-020）：折叠前台/标题/电源事件为 ActivitySegment 快照，
     /// 经 ISegmentSink 推进 hub 缓冲——闭合即推，进行中段按 SnapshotInterval 周期推快照，
     /// 与插件采集器的"观测 → 折叠 → 推送"同模式。
+    /// 转场点同步向 hub 读模型推送 Current Activity（ADR-021），本类不再直接服务 UI/心跳。
     /// </summary>
     public class AppMonitorService(
         IClock clock,
@@ -19,6 +20,7 @@ namespace Heartbeat.Agent.Services
         IPowerMonitor powerMonitor,
         IInputActivitySignal inputActivity,
         ISegmentSink sink,
+        ICurrentActivitySink activitySink,
         ConfigManager configManager) : IHostedService, IDisposable
     {
         // 标题变化门控窗口：标题变化前此时段内有点击才切段（ADR-016）。
@@ -46,8 +48,6 @@ namespace Heartbeat.Agent.Services
         private CancellationTokenSource? _snapshotCts;
         private Task? _snapshotLoop;
 
-        public event Action<string?>? CurrentAppChanged;
-
         public Task StartAsync(CancellationToken cancellationToken)
         {
             Log.Information("应用监测服务启动");
@@ -72,6 +72,7 @@ namespace Heartbeat.Agent.Services
                     Log.Information("初始前台应用: {App}", initialApp);
                 }
             }
+            activitySink.Report(initialApp);
 
             windowMonitor.Start();
             powerMonitor.Start();
@@ -175,7 +176,7 @@ namespace Heartbeat.Agent.Services
 
             if (closed != null)
                 sink.Push([closed]);
-            CurrentAppChanged?.Invoke(newApp);
+            activitySink.Report(newApp);
         }
 
         /// <summary>进入 away（息屏 / 睡眠）。首个触发生效，期间重复信号忽略。</summary>
@@ -202,7 +203,8 @@ namespace Heartbeat.Agent.Services
 
             if (closed != null)
                 sink.Push([closed]);
-            CurrentAppChanged?.Invoke(null);
+            // away 原样上报（ADR-021）：在线 + 人离开是真实信息，语义解释留给消费者。
+            activitySink.Report(SyntheticApps.Away);
         }
 
         /// <summary>退出 away（亮屏 / 唤醒）。发出 away 段并以当前前台重开。</summary>
@@ -229,15 +231,7 @@ namespace Heartbeat.Agent.Services
 
             if (awayFinal != null)
                 sink.Push([awayFinal]);
-            CurrentAppChanged?.Invoke(resumedApp);
-        }
-
-        public string? GetCurrentApp()
-        {
-            lock (_lock)
-            {
-                return _isAway ? null : _currentApp;
-            }
+            activitySink.Report(resumedApp);
         }
 
         /// <summary>开一个新活动段：新 Id、标题定格。调用方必须持有 _lock。</summary>
