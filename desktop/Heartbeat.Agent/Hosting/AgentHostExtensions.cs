@@ -72,13 +72,11 @@ namespace Heartbeat.Agent.Hosting
             services.AddSingleton<IInputActivitySignal, InputActivitySignal>();
 
             // 业务服务
-            services.AddSingleton<AppMonitorService>();
             services.AddSingleton<IconUploadService>();
             services.AddSingleton<IIconUploadService>(sp => sp.GetRequiredService<IconUploadService>());
             // 输入缓冲为共享单例：collector 写入，出网侧经 IUploadSource drain
             services.AddSingleton(sp => new InputEventBuffer(sp.GetRequiredService<IClock>()));
             services.AddSingleton<IUploadSource<InputEventItem>>(sp => sp.GetRequiredService<InputEventBuffer>());
-            services.AddSingleton<InputEventCollector>();
             services.AddSingleton<SegmentIngestService>();
             services.AddSingleton<ISegmentSink>(sp => sp.GetRequiredService<SegmentIngestService>());
             services.AddSingleton<IUploadSource<ActivitySegmentItem>>(sp => sp.GetRequiredService<SegmentIngestService>());
@@ -114,11 +112,14 @@ namespace Heartbeat.Agent.Hosting
             // 托管后台服务。停止顺序为注册的逆序：AppMonitorService 必须最后注册、最先停止，
             // 使其终态快照先推入 hub，再由 UploadWorker.StopAsync 的最终 drain 带走（ADR-020）。
             // 此顺序由 AgentHostExtensionsTests 钉住。
-            services.AddHostedService(sp => sp.GetRequiredService<InputEventCollector>());
+            // 注意：IDisposable 的托管服务只通过 AddHostedService 注册一次。此前 AppMonitorService /
+            // InputEventCollector 另有 AddSingleton 注册，容器把同一实例捕获进 disposables 两次，
+            // host.Dispose() 双重 Dispose → 对已释放 CTS 调 Cancel 抛异常 → 退出流程中断、端口不释放。
+            services.AddHostedService<InputEventCollector>();
             services.AddHostedService<UploadWorker>();
             services.AddHostedService<StatusUploadWorker>();
             services.AddHostedService<SegmentIngestWorker>();
-            services.AddHostedService(sp => sp.GetRequiredService<AppMonitorService>());
+            services.AddHostedService<AppMonitorService>();
 
             return services;
         }
