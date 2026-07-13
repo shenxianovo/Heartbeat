@@ -20,7 +20,7 @@
 | ApiKey | Collection 上传数据到 Analytics 的凭证，类似 LLM API Key。 |
 | InputEvent | 一次键盘按下或鼠标操作的离散事件记录（一行一事件）。由 Agent 通过全局低级钩子（WH_KEYBOARD_LL/WH_MOUSE_LL）采集。EventType 区分 KeyDown(1)/MouseButton(2)/MouseScroll(3)；Code 在键盘事件中为 Windows 虚拟键码原始值，鼠标按钮为 1左/2右/3中，滚轮为 1上/2下。只记按下，KeyUp 仅用于过滤长按自动重复，不落盘。隐私上等价于键盘记录器输出，仅用于单用户自部署的个人统计。主键 Id 为 Agent 生成的 UUIDv7，兼作去重键，保证离线重传幂等（服务端 ON CONFLICT DO NOTHING）。 |
 | Replay | 某时间段内 ActivitySegment 的交互式还原视图，用户自己拖时间轴探索。主视图为**注意力线**：单一时间线跟随 system 前台段，存在重叠插件段时段标签升级为插件语义（URL/文件），无插件覆盖的时间窗口 fallback 到窗口标题（ADR-019）。泳道多轨为展开态。_Avoid_: 用 Replay 指代叙事摘要（那是 Recap）。 |
-| Recap | 对某时间段的自然语言叙事摘要（"那天你上午在写迁移代码，下午打了三小时 Minecraft"），由 LLM 从 segments 生成，回答"x年前的今天我在做什么"。是 Replay 之上的意义层，也是通往 Replay 的入口。**实现取向：云端 LLM API，显式接受标题/URL 出境的敞口（与 ADR-012 接受键盘钩子同格式的单用户 trade-off），先云后本地可逆。推迟至浏览器扩展落地、输入数据从窗口标题升级为 URL 级之后再启动——Recap 质量由输入决定，先修数据管道再开意义层。** 规划中，未实现，正式 ADR 待动工补。 |
+| Recap | 对某时间段的自然语言叙事摘要（"那天你上午在写迁移代码，下午打了三小时 Minecraft"），由 LLM 从 segments 生成，回答"x年前的今天我在做什么"。是 Replay 之上的意义层，也是通往 Replay 的入口。实现见 ADR-023：云端 OpenAI 兼容 LLM（供应商纯配置，先云后本地可逆）、投影/生成两层、缓存按 (Owner, 日窗口) 落库；显式接受标题/URL 出境的单用户 trade-off（与 ADR-012 同格式）。属 Analytics 上下文，详见 server/CONTEXT.md。 |
 
 ## Anti-goals
 

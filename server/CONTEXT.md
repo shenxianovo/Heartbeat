@@ -21,5 +21,13 @@ _Avoid_: Statistics, Summary
 **Owner / Device**:
 数据隔离的两级键：所有查询以 `Device.OwnerId` 过滤（多用户就绪，见 CONTEXT-MAP 定位不变量 2）；Device 是一台采集来源机器，报表可按 Device 过滤或跨设备聚合。
 
+**Recap（叙事摘要）**:
+对某 Owner 某日窗口的 LLM 叙事视图（ADR-023）：投影 → 云端 LLM → 落库缓存。纯派生物——segments 是事实，Recap 随时可重生成，故无主动失效：历史日期永不过期，今天按水位（生成时消费到的最新 segment 时间，落后 >1h 重生成）+ 显式重生成入口。跨设备聚合，无 deviceId 维度。口吻是日记/档案：只叙事，不评判不打分不建议。空日不调 LLM，失败不写缓存。
+_Avoid_: Summary（Report 词条同禁）、日报（汇报工具的词，Recap 是记忆）
+
+**Recap Projection（Recap 投影）**:
+segments → LLM 输入的确定性压缩（纯函数，可单测）：system 段按设备分轨作注意力骨架（轨内互斥、带时长），插件段按 IdentityKey 聚合作语义细节轨；碎段合并/丢弃只影响投影不动数据。未来外部 Agent/MCP 能力暴露的开门处（不预建，ADR-023 §2）。
+_Avoid_: 复刻标签升级喂单线（ADR-019 是展示层且有损，被 ADR-023 §3 否决）
+
 **Validation Policy**:
 摄入门卫（SegmentValidationPolicy / UsageValidationPolicy）：拒收未来时间戳、非法区间等畸形数据。拒收即丢弃，不修复——采集端负责数据正确性。
