@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useHeartbeat } from '../composables/useHeartbeat'
 import { authStore } from '../stores/auth'
 import ActivityTimeline from './ActivityTimeline.vue'
+import RecapCard from './RecapCard.vue'
 import StatusCards from './StatusCards.vue'
 import CurrentAppPanel from './CurrentAppPanel.vue'
 import TodayRanking from './TodayRanking.vue'
@@ -153,6 +154,9 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
             :currentApp="currentApp"
             :currentAppId="currentAppId"
           />
+
+          <!-- Recap 是通往 Replay 的入口（glossary），置于时间轴上方；仅本人可见（ADR-023 §5） -->
+          <RecapCard v-if="isOwnProfile" :selectedDate="selectedDate" />
 
           <ActivityTimeline
             :activeHours="activeHours"

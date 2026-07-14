@@ -78,6 +78,18 @@ export const handlers = [
     return HttpResponse.json({ keys: keyFrequency })
   }),
 
+  // GET /recaps/daily?date&force（认证版；mock 环境无鉴权，直接返回叙事）
+  http.get(`${API}/recaps/daily`, () => {
+    return HttpResponse.json({
+      date: todayDateStr(),
+      isEmpty: false,
+      narrative:
+        '上午你大部分时间在 vscode 里，围绕 Heartbeat 项目的服务端代码来回打磨，中途穿插着几段浏览器查阅——EF Core 迁移文档和几篇 Stack Overflow 讨论。\n\n下午的节奏慢了下来，你在 chrome 里看了将近一小时的技术视频，随后回到编辑器继续收尾。傍晚有一段四十分钟的离开，回来后你只做了些零碎的整理便合上了电脑。',
+      generatedAt: new Date().toISOString(),
+      model: 'mock-model',
+    })
+  }),
+
   // GET /apps/:appId/icon —— 返回按 appId 生成的色块 SVG
   http.get(`${API}/apps/:appId/icon`, ({ params }) => {
     const appId = Number(params.appId)

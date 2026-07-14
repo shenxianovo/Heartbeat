@@ -157,6 +157,27 @@ export function getIconUrl(appId: number): string {
   return `${API_BASE}/apps/${appId}/icon`
 }
 
+// ===== Recap（ADR-023）=====
+// 认证版专属：叙事是私人记忆，且生成烧 LLM token，不提供 public 版。
+// date 与报表同理必须携带本地时区偏移，手拼请求（见 toLocalDateTimeOffsetString）。
+
+export interface DailyRecapResponse {
+  date?: string
+  isEmpty?: boolean
+  narrative?: string | null
+  generatedAt?: string | null
+  model?: string | null
+}
+
+export async function fetchDailyRecap(params: { date?: string; force?: boolean }): Promise<DailyRecapResponse> {
+  const searchParams = new URLSearchParams()
+  if (params.date) searchParams.set('date', toLocalDateTimeOffsetString(params.date))
+  if (params.force) searchParams.set('force', 'true')
+  const res = await authHttp.fetch(`${API_BASE}/recaps/daily?${searchParams}`)
+  if (!res.ok) throw new ApiException('Recap request failed.', res.status, await res.text(), {}, null)
+  return await res.json() as DailyRecapResponse
+}
+
 // ===== Public API Functions (no auth required, by username) =====
 // 统一走 NSwag 生成的 client 方法(响应类型由 OpenAPI schema 保证);
 // 唯二例外是 daily/weekly 报表——时区偏移必须存活,见 toLocalDateTimeOffsetString。
