@@ -1,10 +1,22 @@
 import { ref, readonly } from 'vue'
+import {
+  AUTH_CLIENT_ID,
+  AUTH_URL,
+  base64UrlEncode,
+  buildAuthorizeUrl,
+  createPkcePair,
+  decodeJwtPayload,
+} from './oidc'
 
-const AUTH_SERVICE_URL = 'https://auth.shenxianovo.com'
 const TOKEN_KEY = 'access_token'
 const REFRESH_TOKEN_KEY = 'refresh_token'
 const USER_ID_KEY = 'user_id'
 const USERNAME_KEY = 'username'
+
+// PKCE 流程中间态（跨跳转存活即可，用 sessionStorage）
+const VERIFIER_KEY = 'oidc_verifier'
+const STATE_KEY = 'oidc_state'
+const RETURN_KEY = 'oidc_return_to'
 
 const token = ref<string | null>(localStorage.getItem(TOKEN_KEY))
 const refreshToken = ref<string | null>(localStorage.getItem(REFRESH_TOKEN_KEY))
@@ -39,24 +51,67 @@ function clearAuth() {
   localStorage.removeItem(USERNAME_KEY)
 }
 
-function redirectToLogin() {
-  const redirectUrl = window.location.origin + window.location.pathname
-  window.location.href = `${AUTH_SERVICE_URL}?redirect=${encodeURIComponent(redirectUrl)}`
+function redirectUri(): string {
+  return `${window.location.origin}/callback`
 }
 
-function handleCallback(): boolean {
-  const params = new URLSearchParams(window.location.search)
-  const callbackToken = params.get('token')
-  const callbackUserId = params.get('userId')
-  const callbackRefresh = params.get('refreshToken')
-  const callbackUsername = params.get('username')
+async function redirectToLogin() {
+  const { verifier, challenge } = await createPkcePair()
+  const state = base64UrlEncode(crypto.getRandomValues(new Uint8Array(16)))
+  sessionStorage.setItem(VERIFIER_KEY, verifier)
+  sessionStorage.setItem(STATE_KEY, state)
+  sessionStorage.setItem(RETURN_KEY, window.location.pathname + window.location.search)
+  window.location.href = buildAuthorizeUrl({ challenge, state, redirectUri: redirectUri() })
+}
 
-  if (callbackToken && callbackUserId) {
-    setAuth(callbackToken, callbackUserId, callbackUsername ?? undefined, callbackRefresh ?? undefined)
-    window.history.replaceState({}, document.title, window.location.pathname)
-    return true
+async function fetchToken(body: URLSearchParams): Promise<Record<string, unknown> | null> {
+  try {
+    const res = await fetch(`${AUTH_URL}/connect/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    })
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
   }
-  return false
+}
+
+/** 用回调 ?code 换令牌。成功返回登录前的路径（供跳回），失败返回 null。 */
+async function handleCallback(): Promise<string | null> {
+  const params = new URLSearchParams(window.location.search)
+  const code = params.get('code')
+  const state = params.get('state')
+  const verifier = sessionStorage.getItem(VERIFIER_KEY)
+  const expectedState = sessionStorage.getItem(STATE_KEY)
+  const returnTo = sessionStorage.getItem(RETURN_KEY)
+  sessionStorage.removeItem(VERIFIER_KEY)
+  sessionStorage.removeItem(STATE_KEY)
+  sessionStorage.removeItem(RETURN_KEY)
+
+  if (!code || !state || !verifier || state !== expectedState) return null
+
+  const data = await fetchToken(
+    new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: redirectUri(),
+      client_id: AUTH_CLIENT_ID,
+      code_verifier: verifier,
+    }),
+  )
+  if (!data) return null
+
+  const claims = decodeJwtPayload(data.id_token as string)
+  setAuth(
+    data.access_token as string,
+    claims.sub as string,
+    claims.preferred_username as string | undefined,
+    data.refresh_token as string | undefined,
+  )
+  window.history.replaceState({}, document.title, window.location.pathname)
+  return returnTo
 }
 
 async function tryRefresh(): Promise<boolean> {
@@ -66,18 +121,22 @@ async function tryRefresh(): Promise<boolean> {
 
   refreshPromise = (async () => {
     try {
-      const res = await fetch(`${AUTH_SERVICE_URL}/api/v1/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken: refreshToken.value }),
-      })
-      if (!res.ok) return false
-      const data = await res.json()
-      // 第三参是 username（传 undefined 保持已存值）；轮换后的 refresh token 是第四参
-      setAuth(data.accessToken, data.userId ?? userId.value!, undefined, data.refreshToken)
+      const data = await fetchToken(
+        new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: refreshToken.value!,
+          client_id: AUTH_CLIENT_ID,
+        }),
+      )
+      if (!data) return false
+      // 响应可能轮换 refresh token；缺省时 setAuth 保留旧值
+      setAuth(
+        data.access_token as string,
+        userId.value!,
+        undefined,
+        (data.refresh_token as string | undefined) ?? undefined,
+      )
       return true
-    } catch {
-      return false
     } finally {
       refreshPromise = null
     }
@@ -87,8 +146,9 @@ async function tryRefresh(): Promise<boolean> {
 }
 
 function logout() {
+  // 上游无 end-session 端点（grant 有意比 session 长寿，AuthService ADR-020），本地清除即登出
   clearAuth()
-  redirectToLogin()
+  window.location.href = '/'
 }
 
 export const authStore = {
