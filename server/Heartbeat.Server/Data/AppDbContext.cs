@@ -11,6 +11,7 @@ namespace Heartbeat.Server.Data
         public DbSet<ActivitySegment> ActivitySegments => Set<ActivitySegment>();
         public DbSet<AppIcon> AppIcons => Set<AppIcon>();
         public DbSet<InputEvent> InputEvents => Set<InputEvent>();
+        public DbSet<Recap> Recaps => Set<Recap>();
 
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
@@ -96,6 +97,17 @@ namespace Heartbeat.Server.Data
 
                 // 计数查询走 (DeviceId, Timestamp)。
                 entity.HasIndex(e => new { e.DeviceId, e.Timestamp });
+            });
+            modelBuilder.Entity<Recap>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Model).HasMaxLength(128);
+                entity.Property(e => e.PromptHash).HasMaxLength(16);
+
+                // 缓存身份：一个 Owner 的一个日窗口一份（ADR-023 §4）。
+                entity.HasIndex(e => new { e.OwnerId, e.WindowStart })
+                    .IsUnique();
             });
         }
     }
