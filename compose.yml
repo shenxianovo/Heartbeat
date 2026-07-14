@@ -27,6 +27,9 @@ services:
       AuthService__Authority: ${AUTH_AUTHORITY}
       AuthService__Issuer: ${AUTH_ISSUER:-https://auth.shenxianovo.com}
       AuthService__Audience: ${AUTH_AUDIENCE:-https://auth.shenxianovo.com}
+      AuthService__OidcIssuer: ${AUTH_OIDC_ISSUER:-https://auth.shenxianovo.com/}
+      AuthService__OidcClientId: ${AUTH_OIDC_CLIENT_ID:-heartbeat-web}
+      AuthService__OidcAudience: ${AUTH_OIDC_AUDIENCE:-}
       Recap__BaseUrl: ${RECAP_BASE_URL:-https://api.deepseek.com/v1}
       Recap__Model: ${RECAP_MODEL:-deepseek-v4-pro}
       Recap__ApiKey: ${RECAP_API_KEY}
