@@ -25,8 +25,10 @@ Agent 请求额外携带 `X-Hardware-Id` / `X-Device-Name`,服务端以
 (OwnerId, HardwareId) 解析设备。历史上的 `Authorization: ApiKey` 方案已退役
 ([ADR-004](adr/004-apikey-header-authentication.md))。
 
-公开只读端点(按用户名分享的 `/users/{username}/...` 族)不要求鉴权,详见
-`PublicUserController`。
+按用户名分享的 `/users/{username}/...` 族施加**可见性门**（[ADR-025](adr/025-multi-user-visibility-identity.md)）：
+用户默认 private，对匿名/他人一律 404（不泄露用户名存在性），仅本人（携带 JWT 且
+`sub == User.Id`）可读。用户设为 public 后该族对匿名放行。本人视角的 `/me`
+（GET 供给 + 读设置，PUT `/me/settings` 改可见性）要求鉴权。
 
 ## 调用方约定
 

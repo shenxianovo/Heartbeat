@@ -21,6 +21,14 @@ _Avoid_: Statistics, Summary
 **Owner / Device**:
 数据隔离的两级键：所有查询以 `Device.OwnerId` 过滤（多用户就绪，见 CONTEXT-MAP 定位不变量 2）；Device 是一台采集来源机器，报表可按 Device 过滤或跨设备聚合。
 
+**User Provisioning（用户供给）**:
+懒建，由**本人首次带 JWT 的请求**触发：upsert User 行（`Id = sub`，`Username = preferred_username`，默认 private）。匿名按用户名读取只查本地 Users 表，查不到即 404——不回源 Auth 平台、不建行（防爬虫刷空行 + 用户名枚举）。**sub-first 规则**：带 JWT 请求一律用 `sub` 定位 User 行，Username 只是可刷新的显示缓存 + 匿名查询入口。username 当前在 AuthService 无改名入口、事实不可变；改名联动雷见 `.scratch/multi-user/issues/01-username-rename-landmine.md`。
+_Avoid_: 注册/Registration（Heartbeat 无注册概念，账号归 Auth 平台；显式注册流程留给未来隐私条款同意场景）
+
+**Dashboard Visibility（看板可见性）**:
+每个 User 一个 `IsPublic` 开关，默认 private。private 时按用户名的匿名读路径一律 404（不泄露用户名存在性）；本人经 JWT（`sub == User.Id`）读自己的数据，不受开关影响。当前阶段 public = 全保真放行现有读端点（决策：先 A 后 C——待自定义看板落地后升级为每卡片可见性配置，全保真公开届时退役）。
+_Avoid_: Public Profile（GitHub 语义是粗聚合展示，这里 public 是全量数据，语义不同不要混用）
+
 **Recap（叙事摘要）**:
 对某 Owner 某日窗口的 LLM 叙事视图（ADR-023）：投影 → 云端 LLM → 落库缓存。纯派生物——segments 是事实，Recap 随时可重生成，故无主动失效：历史日期永不过期，今天按水位（生成时消费到的最新 segment 时间，落后 >1h 重生成）+ 显式重生成入口。跨设备聚合，无 deviceId 维度。口吻是日记/档案：只叙事，不评判不打分不建议。空日不调 LLM，失败不写缓存。
 _Avoid_: Summary（Report 词条同禁）、日报（汇报工具的词，Recap 是记忆）
