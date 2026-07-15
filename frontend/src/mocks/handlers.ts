@@ -90,8 +90,8 @@ export const handlers = [
     })
   }),
 
-  // GET /apps/:appId/icon —— 返回按 appId 生成的色块 SVG
-  http.get(`${API}/apps/:appId/icon`, ({ params }) => {
+  // GET /users/:username/apps/:appId/icon —— 返回按 appId 生成的色块 SVG
+  http.get(`${API}/users/:username/apps/:appId/icon`, ({ params }) => {
     const appId = Number(params.appId)
     return new HttpResponse(iconSvg(appId), {
       headers: { 'Content-Type': 'image/svg+xml' },

@@ -9,6 +9,7 @@ import { parseUsage, buildRows, mergeActivityBursts, initialViewBounds } from '.
 import { niceTicks } from '../timeline/timeScale'
 
 const props = defineProps<{
+  username: string,
   activeHours: Set<number>,
   usageData: AppUsageResponse[],
   appNameMap: Map<number, string>,
@@ -218,7 +219,7 @@ const minimapActivities = computed(() => {
             >
               <!-- row-header / timeline-rows 是 useTimelineDrag 的功能性选择器锚点，不是样式 -->
               <div class="row-header z-[2] flex w-[80px] shrink-0 items-center gap-2 border-r border-border bg-muted px-2 min-[640px]:w-[120px]">
-                <img v-if="!row.isAway" :src="getIconUrl(row.appId)" class="h-5 w-5 rounded object-contain" @error="($event.target as HTMLImageElement).style.display = 'none'"/>
+                <img v-if="!row.isAway" :src="getIconUrl(username, row.appId)" class="h-5 w-5 rounded object-contain" @error="($event.target as HTMLImageElement).style.display = 'none'"/>
                 <span v-else class="flex h-5 w-5 shrink-0 items-center justify-center text-muted-foreground">💤</span>
                 <span class="flex-1 truncate text-[0.75rem]" :class="row.isAway ? 'text-muted-foreground' : 'text-foreground'" :title="row.name">{{ row.name }}</span>
               </div>

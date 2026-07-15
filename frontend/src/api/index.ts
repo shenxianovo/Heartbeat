@@ -153,8 +153,8 @@ export async function fetchWeeklyReport(params: {
   return reportRequest(u => authHttp.fetch(u), `${API_BASE}/reports/weekly?${reportDateParams(params)}`, WeeklyReportResponse.fromJS)
 }
 
-export function getIconUrl(appId: number): string {
-  return `${API_BASE}/apps/${appId}/icon`
+export function getIconUrl(username: string, appId: number): string {
+  return `${API_BASE}/users/${encodeURIComponent(username)}/apps/${appId}/icon`
 }
 
 // ===== Recap（ADR-023）=====

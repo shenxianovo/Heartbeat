@@ -4,6 +4,7 @@ import { getAppLabel, isAwayName } from '../appLabels'
 import { Card } from '@/components/ui/card'
 
 defineProps<{
+  username: string
   isToday: boolean
   isAlive: boolean
   currentApp: string | null
@@ -27,7 +28,7 @@ defineProps<{
         <span class="status-dot alive"></span>
         <img
           v-if="currentAppId"
-          :src="getIconUrl(currentAppId)"
+          :src="getIconUrl(username, currentAppId)"
           class="h-7 w-7 shrink-0 object-contain"
           @error="($event.target as HTMLImageElement).style.display = 'none'"
         />

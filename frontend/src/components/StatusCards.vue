@@ -4,6 +4,7 @@ import { formatDuration } from '../composables/useHeartbeat'
 import { Card } from '@/components/ui/card'
 
 defineProps<{
+  username: string
   isToday: boolean
   isAlive: boolean
   lastSeenStr: string
@@ -49,7 +50,7 @@ defineProps<{
         <span class="text-xs uppercase tracking-[0.06em] text-muted-foreground">今日最爱</span>
         <span v-if="appSummaries[0]" class="flex items-center gap-2 text-[1.25rem] font-bold text-foreground">
           <img
-            :src="getIconUrl(appSummaries[0].appId)"
+            :src="getIconUrl(username, appSummaries[0].appId)"
             class="h-6 w-6 rounded object-contain"
             @error="($event.target as HTMLImageElement).style.display = 'none'"
           />

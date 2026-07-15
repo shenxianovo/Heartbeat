@@ -137,6 +137,7 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
 
     <main>
       <StatusCards
+        :username="username"
         :isToday="isToday"
         :isAlive="isAlive"
         :lastSeenStr="lastSeenStr"
@@ -149,6 +150,7 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
       <div class="grid grid-cols-1 gap-0 min-[900px]:grid-cols-[1fr_340px] min-[900px]:items-start min-[900px]:gap-5 min-[1200px]:grid-cols-[1fr_420px] min-[1200px]:gap-6">
         <div class="min-w-0">
           <CurrentAppPanel
+            :username="username"
             :isToday="isToday"
             :isAlive="isAlive"
             :currentApp="currentApp"
@@ -159,6 +161,7 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
           <RecapCard v-if="isOwnProfile" :selectedDate="selectedDate" />
 
           <ActivityTimeline
+            :username="username"
             :activeHours="activeHours"
             :usageData="usageData"
             :appNameMap="appNameMap"
@@ -171,12 +174,14 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
 
         <div class="min-w-0 min-[900px]:sticky min-[900px]:top-4">
           <TodayRanking
+            :username="username"
             :appSummaries="appSummaries"
             :maxSeconds="maxSeconds"
             @select="selectedApp = $event"
           />
 
           <WeeklyChart
+            :username="username"
             :weeklyAppSummaries="weeklyAppSummaries"
             :weeklyTotalSeconds="weeklyTotalSeconds"
           />

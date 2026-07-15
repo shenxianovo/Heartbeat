@@ -4,6 +4,7 @@ import { formatDuration } from '../composables/useHeartbeat'
 import { Card } from '@/components/ui/card'
 
 defineProps<{
+  username: string
   appSummaries: { appId: number; appName: string; totalSeconds: number }[]
   maxSeconds: number
 }>()
@@ -29,7 +30,7 @@ const emit = defineEmits<{ select: [app: { appId: number; appName: string; total
           <div class="flex items-center gap-2 text-[0.85rem]">
             <span class="w-6 text-center text-xs font-semibold text-muted-foreground">{{ i + 1 }}</span>
             <img
-              :src="getIconUrl(app.appId)"
+              :src="getIconUrl(username, app.appId)"
               class="h-[18px] w-[18px] rounded object-contain"
               @error="($event.target as HTMLImageElement).style.display = 'none'"
             />

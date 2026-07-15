@@ -21,18 +21,6 @@ namespace Heartbeat.Server.Controllers
             return await _appService.GetAppsForUserAsync(userId);
         }
 
-        [AllowAnonymous]
-        [HttpGet("{appId:long}/icon")]
-        [EndpointName("getAppIcon")]
-        public async Task<IActionResult> GetIcon(long appId)
-        {
-            var iconData = await _appService.GetIconAsync(appId);
-            if (iconData == null)
-                return NotFound();
-
-            return File(iconData, "image/png");
-        }
-
         [Authorize]
         [HttpPost("icon")]
         [EndpointName("uploadAppIcon")]
@@ -47,7 +35,7 @@ namespace Heartbeat.Server.Controllers
             if (request.IconData.Length > 1024 * 1024)
                 return BadRequest("Icon data too large (max 1MB).");
 
-            await _appService.UploadIconAsync(request.AppName, request.IconData);
+            await _appService.UploadIconAsync(_currentUser.GetUserId(), request.AppName, request.IconData);
             return Ok();
         }
     }

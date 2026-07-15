@@ -114,6 +114,21 @@ namespace Heartbeat.Server.Controllers
             return await appService.GetAppsForUserAsync(user.Id);
         }
 
+        // 图标经 <img src> 加载，带不了 JWT，故匿名可达但受同一可见性门约束；
+        // owner 上下文取自 URL 的 username（图标按 owner 隔离，ADR-025）。
+        [HttpGet("apps/{appId:long}/icon")]
+        [EndpointName("getUserAppIcon")]
+        public async Task<IActionResult> GetAppIcon(string username, long appId)
+        {
+            var user = await ResolveVisibleAsync(username);
+            if (user == null) return NotFound();
+
+            var iconData = await appService.GetIconAsync(user.Id, appId);
+            if (iconData == null) return NotFound();
+
+            return File(iconData, "image/png");
+        }
+
         [HttpGet("devices/{deviceId:long}/status")]
         [EndpointName("getUserDeviceStatus")]
         public async Task<ActionResult<DeviceStatusResponse>> GetDeviceStatus(string username, long deviceId)

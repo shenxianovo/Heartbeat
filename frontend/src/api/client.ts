@@ -64,42 +64,6 @@ export class Client {
     /**
      * @return OK
      */
-    getAppIcon(appId: number): Promise<void> {
-        let url_ = this.baseUrl + "/api/v1/apps/{appId}/icon";
-        if (appId === undefined || appId === null)
-            throw new globalThis.Error("The parameter 'appId' must be defined.");
-        url_ = url_.replace("{appId}", encodeURIComponent("" + appId));
-        url_ = url_.replace(/[?&]$/, "");
-
-        let options_: RequestInit = {
-            method: "GET",
-            headers: {
-            }
-        };
-
-        return this.http.fetch(url_, options_).then((_response: Response) => {
-            return this.processGetAppIcon(_response);
-        });
-    }
-
-    protected processGetAppIcon(response: Response): Promise<void> {
-        const status = response.status;
-        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
-        if (status === 200) {
-            return response.text().then((_responseText) => {
-            return;
-            });
-        } else if (status !== 200 && status !== 204) {
-            return response.text().then((_responseText) => {
-            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
-            });
-        }
-        return Promise.resolve<void>(null as any);
-    }
-
-    /**
-     * @return OK
-     */
     uploadAppIcon(body: IconUploadRequest): Promise<void> {
         let url_ = this.baseUrl + "/api/v1/apps/icon";
         url_ = url_.replace(/[?&]$/, "");
@@ -342,6 +306,84 @@ export class Client {
             });
         }
         return Promise.resolve<InputCountsResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    getMe(): Promise<MeResponse> {
+        let url_ = this.baseUrl + "/api/v1/me";
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processGetMe(_response);
+        });
+    }
+
+    protected processGetMe(response: Response): Promise<MeResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = MeResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<MeResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    updateMySettings(body: UpdateMySettingsRequest): Promise<MeResponse> {
+        let url_ = this.baseUrl + "/api/v1/me/settings";
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processUpdateMySettings(_response);
+        });
+    }
+
+    protected processUpdateMySettings(response: Response): Promise<MeResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = MeResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<MeResponse>(null as any);
     }
 
     /**
@@ -675,6 +717,45 @@ export class Client {
     /**
      * @return OK
      */
+    getUserAppIcon(username: string, appId: number): Promise<void> {
+        let url_ = this.baseUrl + "/api/v1/users/{username}/apps/{appId}/icon";
+        if (username === undefined || username === null)
+            throw new globalThis.Error("The parameter 'username' must be defined.");
+        url_ = url_.replace("{username}", encodeURIComponent("" + username));
+        if (appId === undefined || appId === null)
+            throw new globalThis.Error("The parameter 'appId' must be defined.");
+        url_ = url_.replace("{appId}", encodeURIComponent("" + appId));
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "GET",
+            headers: {
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processGetUserAppIcon(_response);
+        });
+    }
+
+    protected processGetUserAppIcon(response: Response): Promise<void> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            return;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<void>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
     getUserDeviceStatus(username: string, deviceId: number): Promise<DeviceStatusResponse> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/devices/{deviceId}/status";
         if (username === undefined || username === null)
@@ -768,6 +849,53 @@ export class Client {
             });
         }
         return Promise.resolve<KeyFrequencyResponse>(null as any);
+    }
+
+    /**
+     * @param date (optional) 
+     * @param force (optional) 
+     * @return OK
+     */
+    getDailyRecap(date: Date | undefined, force: boolean | undefined): Promise<DailyRecapResponse> {
+        let url_ = this.baseUrl + "/api/v1/recaps/daily?";
+        if (date === null)
+            throw new globalThis.Error("The parameter 'date' cannot be null.");
+        else if (date !== undefined)
+            url_ += "date=" + encodeURIComponent(date ? "" + date.toISOString() : "") + "&";
+        if (force === null)
+            throw new globalThis.Error("The parameter 'force' cannot be null.");
+        else if (force !== undefined)
+            url_ += "force=" + encodeURIComponent("" + force) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processGetDailyRecap(_response);
+        });
+    }
+
+    protected processGetDailyRecap(response: Response): Promise<DailyRecapResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = DailyRecapResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<DailyRecapResponse>(null as any);
     }
 
     /**
@@ -1213,6 +1341,70 @@ export interface IAppUsageResponse {
     startTime?: Date;
     endTime?: Date;
     durationSeconds?: number;
+
+    [key: string]: any;
+}
+
+export class DailyRecapResponse implements IDailyRecapResponse {
+    date?: string;
+    isEmpty?: boolean;
+    narrative?: string | undefined;
+    generatedAt?: Date | undefined;
+    model?: string | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IDailyRecapResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.date = _data["date"];
+            this.isEmpty = _data["isEmpty"];
+            this.narrative = _data["narrative"];
+            this.generatedAt = _data["generatedAt"] ? new Date(_data["generatedAt"].toString()) : undefined as any;
+            this.model = _data["model"];
+        }
+    }
+
+    static fromJS(data: any): DailyRecapResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new DailyRecapResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["date"] = this.date;
+        data["isEmpty"] = this.isEmpty;
+        data["narrative"] = this.narrative;
+        data["generatedAt"] = this.generatedAt ? this.generatedAt.toISOString() : undefined as any;
+        data["model"] = this.model;
+        return data;
+    }
+}
+
+export interface IDailyRecapResponse {
+    date?: string;
+    isEmpty?: boolean;
+    narrative?: string | undefined;
+    generatedAt?: Date | undefined;
+    model?: string | undefined;
 
     [key: string]: any;
 }
@@ -1825,6 +2017,58 @@ export interface IKeyFrequencyResponse {
     [key: string]: any;
 }
 
+export class MeResponse implements IMeResponse {
+    username?: string;
+    isPublic?: boolean;
+
+    [key: string]: any;
+
+    constructor(data?: IMeResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.username = _data["username"];
+            this.isPublic = _data["isPublic"];
+        }
+    }
+
+    static fromJS(data: any): MeResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new MeResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["username"] = this.username;
+        data["isPublic"] = this.isPublic;
+        return data;
+    }
+}
+
+export interface IMeResponse {
+    username?: string;
+    isPublic?: boolean;
+
+    [key: string]: any;
+}
+
 export class SegmentResponse implements ISegmentResponse {
     id?: string;
     source?: string;
@@ -1961,6 +2205,54 @@ export class SegmentUploadRequest implements ISegmentUploadRequest {
 
 export interface ISegmentUploadRequest {
     segments?: ActivitySegmentItem[];
+
+    [key: string]: any;
+}
+
+export class UpdateMySettingsRequest implements IUpdateMySettingsRequest {
+    isPublic?: boolean;
+
+    [key: string]: any;
+
+    constructor(data?: IUpdateMySettingsRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.isPublic = _data["isPublic"];
+        }
+    }
+
+    static fromJS(data: any): UpdateMySettingsRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new UpdateMySettingsRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["isPublic"] = this.isPublic;
+        return data;
+    }
+}
+
+export interface IUpdateMySettingsRequest {
+    isPublic?: boolean;
 
     [key: string]: any;
 }

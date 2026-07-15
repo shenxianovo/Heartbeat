@@ -77,7 +77,8 @@ namespace Heartbeat.Server.Data
                     .WithMany()
                     .HasForeignKey(e => e.AppId);
 
-                entity.HasIndex(e => e.AppId)
+                // 写权按 owner 隔离（ADR-025）：一个 App 每个 owner 一份图标。
+                entity.HasIndex(e => new { e.OwnerId, e.AppId })
                     .IsUnique();
             });
 

@@ -103,7 +103,7 @@ onUnmounted(() => {
         <!-- Header -->
         <div class="flex items-center gap-3 border-b border-border px-5 py-4">
           <img
-            :src="getIconUrl(app.appId)"
+            :src="getIconUrl(username, app.appId)"
             class="h-7 w-7 rounded object-contain"
             @error="($event.target as HTMLImageElement).style.display = 'none'"
           />
