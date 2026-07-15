@@ -1,10 +1,10 @@
 # ADR-017: ActivitySegment — Pluggable Collectors behind a Local Ingest Hub
 
-## Status: Proposed
+## Status: Accepted
 
 ## Date: 2026-07-02
 
-(pending implementation)
+(Implemented: loopback ingest hub + browser collector landed; ADR-020/021/022 build on this design. The vscode collector remains planned.)
 
 ## Context
 

@@ -1,107 +1,48 @@
+# Heartbeat API 导读
 
-# Heartbeat API 接口文档
+本文档只讲**机器生成不了的约定**。端点清单、参数、响应 schema 的唯一真相源是
+OpenAPI 文档与 Controller 代码本身——不在这里复述,复述必漂移。
 
-API Client 使用 NSwag 自动生成。本地开发的完整生成步骤（含 OpenAPI 端点获取、类型约定）见
-[README 的 Local End-to-End Verification 一节](../README.md#4-regenerate-the-api-client-when-server-dtosendpoints-changed)。
+## 真相源
 
-```sh
-# 简版：从 Development 后端的 OpenAPI 文档生成
+| 想知道 | 去哪看 |
+| --- | --- |
+| 有哪些端点、参数、响应形状 | Development 后端的 `/openapi/v1.json`(本地栈经 nginx 代理 `/openapi/`;生产不暴露) |
+| 端点的实现与授权标记 | `server/Heartbeat.Server/Controllers/` |
+| 前端实际怎么调 | `frontend/src/api/`(NSwag 生成的 `client.ts` + 手写 wrapper `index.ts`) |
+
+基础路径:`/api/v1`。
+
+## 鉴权约定
+
+所有业务端点要求 `Authorization: Bearer {token}`。服务端同时接受两种 token
+(按 JWT `typ` 路由,详见 [ADR-024](adr/024-oidc-jwt-authentication.md)):
+
+- **OIDC access token** — Dashboard 经授权码 + PKCE 登录取得
+- **Agent session JWT** — 桌面 Agent 用 ApiKey 在 Auth 平台换取
+
+Agent 请求额外携带 `X-Hardware-Id` / `X-Device-Name`,服务端以
+(OwnerId, HardwareId) 解析设备。历史上的 `Authorization: ApiKey` 方案已退役
+([ADR-004](adr/004-apikey-header-authentication.md))。
+
+公开只读端点(按用户名分享的 `/users/{username}/...` 族)不要求鉴权,详见
+`PublicUserController`。
+
+## 调用方约定
+
+- 端点按调用方分两类:**[前端]**(Dashboard 只读消费)与 **[客户端]**(Agent
+  上传)。上传类端点设计为幂等,支撑离线缓存重传(ADR-008/018)。
+- 查询端点的 action 一律用 `ActionResult<T>` 而非 `IActionResult`,否则 OpenAPI
+  推不出响应 schema、NSwag 会生成 `Promise<void>`。
+- 报表端点(`/reports/daily|weekly`)的 `date` 参数必须携带浏览器本地时区偏移,
+  服务端 `DateRange.Day/Week` 依赖它确定"今天/本周"边界(见 `shared/CONTEXT.md`
+  时间存储约定);因此前端这两个 wrapper 手拼 query string,其余 wrapper 直接用
+  生成的 client。
+
+## 客户端重新生成
+
+```powershell
 nswag openapi2tsclient /input:http://localhost:8080/openapi/v1.json /output:frontend/src/api/client.ts
 ```
 
-> 查询端点的 action 一律用 `ActionResult<T>` 而非 `IActionResult`，否则 OpenAPI 推不出响应
-> schema、NSwag 会生成 `Promise<void>`（详见 README）。
-
-基础路径：`/api/v1`
-
-> 带有 `[Auth]` 标记的接口，代表需要在 HTTP Header 中携带身份验证，格式为：
-> `Authorization: ApiKey {your_api_key}`
-
-## 1. 设备与状态 (Devices)
-
-| 接口路径              | 方法 | 鉴权     | 说明                                                             |
-| --------------------- | ---- | -------- | ---------------------------------------------------------------- |
-| `/devices`            | GET  | 无       | [前端] 获取所有已注册或有记录的设备列表                          |
-| `/devices/{deviceId}` | GET  | 无       | [前端] 获取指定设备的当前状态 (主要包含在线状态和当前使用的应用) |
-| `/devices/heartbeat`  | POST | `[Auth]` | [客户端] 上报设备心跳与当前前台运行的 App 状态                   |
-
-## 2. 应用信息 (Apps)
-
-| 接口路径             | 方法 | 鉴权     | 说明                                                                  |
-| -------------------- | ---- | -------- | --------------------------------------------------------------------- |
-| `/apps`              | GET  | 无       | [前端] 获取系统中所有已记录的应用列表信息                             |
-| `/apps/{appId}/icon` | GET  | 无       | [前端] 获取指定应用的图标数据 (直接返回图片二进制流)                  |
-| `/apps/icon`         | POST | `[Auth]` | [客户端] 上传指定应用的图标 (包含 AppName 与 base64 编码的图标，幂等) |
-
-## 3. 使用记录 (Usage)
-
-| 接口路径 | 方法 | 鉴权     | 说明                                                                           |
-| -------- | ---- | -------- | ------------------------------------------------------------------------------ |
-| `/usage` | GET  | 无       | [前端] 按条件查询原始使用记录。通常包含 Query 参数: `deviceId`, `start`, `end` |
-| `/usage` | POST | `[Auth]` | [客户端] 批量上传时间段内的应用使用记录 (由 AppName, StartTime, EndTime 组成)  |
-
-## 4. 输入事件 (InputEvents)
-
-键盘按下与鼠标操作的原始事件流。详见 [ADR-012](adr/012-input-event-tracking.md)。
-
-| 接口路径                | 方法 | 鉴权     | 说明                                                                              |
-| ----------------------- | ---- | -------- | --------------------------------------------------------------------------------- |
-| `/input-events`         | POST | `[Auth]` | [客户端] 批量上传输入事件 (由 Id, EventType, Code, Timestamp 组成，幂等)           |
-| `/input-events/counts`  | GET  | `[Auth]` | [前端] 获取某时间段内的键盘/鼠标操作计数。参数: `deviceId` (可选), `start`, `end` |
-
-> 公开（按用户名）的逐键频率端点见下方 PublicUser 区：`/users/{username}/input-events/key-frequency`。
-
-`/input-events/counts` 返回示例：
-
-```json
-{ "keyboardTotal": 48213, "mouseLeft": 6201, "mouseRight": 842,
-  "mouseMiddle": 33, "scrollUp": 1502, "scrollDown": 1789 }
-```
-
-`/users/{username}/input-events/key-frequency` 返回键盘逐键（VK 码）按下次数，全部按键、按次数降序。参数: `deviceId` (可选), `start`, `end`：
-
-```json
-{ "keys": [ { "code": 65, "count": 1203 }, { "code": 32, "count": 980 } ] }
-```
-
-## 5. 统计报表 (Reports)
-
-由服务端进行聚合后提供给前端面板展示的视图查询接口。
-
-| 接口路径          | 方法 | 鉴权 | 说明                                                                                                    |
-| ----------------- | ---- | ---- | ------------------------------------------------------------------------------------------------------- |
-| `/reports/daily`  | GET  | 无   | [前端] 获取每日维度的使用统计。参数: `deviceId` (可选), `date` (可选, 默认今日)                         |
-| `/reports/weekly` | GET  | 无   | [前端] 获取包含指定日期的那一周(周一至周日)的使用概览。参数: `deviceId` (可选), `date` (可选, 默认本周) |
-
-# 自查用
-
-```
-Base URL: https://shenxianovo.com/heartbeat/api/v1
-- devices (GET)                 // 前端用：获取设备列表
-  - {deviceId} (GET)            // 前端用：获取单个设备信息
-  - heartbeat (POST)            // 客户端用：上传设备心跳
-
-- apps (GET)                    // 前端用：获取应用列表
-  - {appId}/icon (GET)          // 前端用：获取应用图标
-  - icon (POST)                 // 客户端用：上传应用图标
-
-- usage (POST)                  // 客户端用：上传 usage 记录
-- usage (GET)                   // 前端用：查询 usage
-  - ?deviceId=                  // 设备Id
-  - &start=                     // 开始时间
-  - &end=                       // 结束时间
-
-- input-events (POST)           // 客户端用：上传输入事件
-  - counts (GET)                // 前端用：键盘/鼠标操作计数
-    - ?deviceId=                // 设备Id
-    - &start=                   // 开始时间
-    - &end=                     // 结束时间
-
-- reports                       // 前端用：统计数据
-  - daily (GET)                 // 每日使用统计
-    - ?deviceId=                // 设备Id 
-    - &date=                    // 日期
-  - weekly (GET)                // 每周使用统计
-    - ?deviceId=                // 设备Id
-    - &date=                    // 周内任意一天日期（Mon-Sun
-```
+完整流程(启动本地栈、类型检查、重建镜像)见 [docs/development.md](development.md)。

@@ -1,17 +1,12 @@
 # ADR-004: Custom ApiKey Authentication via HTTP Header
 
-## Status: Superseded
+## Status: Superseded by [ADR-024](./024-oidc-jwt-authentication.md)
 
-> **Superseded** — ApiKey authentication has been fully removed from the codebase.
-> The system now uses **JWT Bearer (OIDC)** tokens issued by an external `AuthService`,
-> combined with `X-Hardware-Id` / `X-Device-Name` headers for device resolution.
-> The `ApiKey` column was dropped (migration `20260513084042_RemoveDeviceApiKey`), and
-> neither `ApiKeyAuthenticationHandler` nor `ApiKeyDelegatingHandler` exist anymore.
-> Current state (code is the source of truth):
-> - Server validates JWT in [`server/Heartbeat.Server/Program.cs`](../../server/Heartbeat.Server/Program.cs) via `AddJwtBearer` (keys auto-discovered from `{Authority}/.well-known/openid-configuration`).
-> - Client injects the bearer token + hardware/device headers in [`desktop/Heartbeat.Agent/Http/BearerTokenHandler.cs`](../../desktop/Heartbeat.Agent/Http/BearerTokenHandler.cs); tokens are managed by `TokenManager` / `AuthServiceClient`.
-> - Device identity is resolved server-side from JWT owner + `X-Hardware-Id` (see `DeviceService.ResolveByHardwareIdAsync`).
->
+> ApiKey authentication has been fully removed: the `ApiKey` column was dropped
+> (migration `20260513084042_RemoveDeviceApiKey`), and neither
+> `ApiKeyAuthenticationHandler` nor `ApiKeyDelegatingHandler` exist anymore.
+> The current OIDC/JWT design — dual token families, PKCE login, `X-Hardware-Id`
+> device resolution — is documented in [ADR-024](./024-oidc-jwt-authentication.md).
 > The sections below describe the original (now-defunct) ApiKey design and are kept for historical context.
 
 ## Date: 2026-03-04

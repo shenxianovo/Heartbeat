@@ -1,55 +1,28 @@
-# Heartbeat 数据库设计
+# Heartbeat 数据库导读
 
-本项目使用 EF Core (PostgreSQL) 作为数据持久化方案。实体关系图如下：
+持久化用 EF Core + PostgreSQL,**schema 的唯一真相源是实体类与迁移**——本文不再
+维护逐字段 ER 图(手抄副本必漂移,旧版 ER 图里已删的 `Device.ApiKey` 列就是教训)。
 
-```mermaid
-erDiagram
-    Device {
-        bigint Id PK "主键"
-        text DeviceName "设备名称 (Unique)"
-        text ApiKey "API 鉴权密钥"
-        text CurrentApp "当前正在使用的前台应用"
-        timestamp LastSeen "设备最后活跃时间"
-    }
+## 真相源
 
-    App {
-        bigint Id PK "主键"
-        text Name "应用名称/进程名 (Unique)"
-    }
+| 想知道 | 去哪看 |
+| --- | --- |
+| 实体与字段 | `server/Heartbeat.Server/Entities/`(App / AppIcon / Device / User / InputEvent / ActivitySegment / Recap) |
+| 关系、索引、约束 | `server/Heartbeat.Server/Data/AppDbContext.cs` |
+| schema 演进历史 | `server/Heartbeat.Server/Migrations/`(迁移名即变更意图,如 `RemoveDeviceApiKey`) |
+| 各实体的领域语义 | `shared/CONTEXT.md` Glossary(Device / App / ActivitySegment / Source / IdentityKey / InputEvent / Recap 等) |
 
-    AppIcon {
-        bigint Id PK "主键"
-        bigint AppId FK "外键 -> App.Id (Unique)"
-        bytea IconData "图标二进制数据"
-        timestamp UpdatedAt "最后更新时间"
-    }
+迁移在启动时全环境自动应用(ADR-013)。
 
-    AppUsage {
-        bigint Id PK "主键"
-        bigint DeviceId FK "外键 -> Device.Id"
-        bigint AppId FK "外键 -> App.Id"
-        timestamp StartTime "该段使用记录的开始时间"
-        timestamp EndTime "该段使用记录的结束时间"
-        integer DurationSeconds "持续时长(秒)"
-    }
+## 生成不出来的设计意图
 
-    InputEvent {
-        uuid Id PK "主键兼去重键 (UUIDv7, Agent 生成)"
-        bigint DeviceId FK "外键 -> Device.Id"
-        smallint EventType "事件类型: 1=KeyDown 2=MouseButton 3=MouseScroll"
-        smallint Code "键盘=VK码; 鼠标按钮=1左/2右/3中; 滚轮=1上/2下"
-        timestamp Timestamp "事件发生时刻 (毫秒精度, 算速度的权威时间源)"
-    }
-
-    Device ||--o{ AppUsage : "产生"
-    App ||--o{ AppUsage : "被使用"
-    App ||--o| AppIcon : "拥有 (1对1)"
-    Device ||--o{ InputEvent : "产生"
-```
-
-## InputEvent 说明
-
-原始输入事件流，一行一个键盘按下/鼠标操作事件，不做时间桶聚合或 delta 编码（详见 [ADR-012](adr/012-input-event-tracking.md)）。
-
-- `Id` 为 UUIDv7，既是主键又是唯一去重键，服务端上传时按 `Id` 预过滤已存在记录后再插入，保证离线重传幂等（主键约束兜底）。
-- 推荐索引 `(DeviceId, Timestamp)`，支撑按设备 + 时间范围的计数查询。
+- **多租户不焊死**:User 拥有多个 Device(`OwnerId` = JWT sub),业务查询在
+  Service 层显式按 OwnerId 过滤——隔离是代码约定,不是 schema 强制(行级安全
+  未启用)。设备身份 = (OwnerId, HardwareId),见 ADR-024。
+- **ActivitySegment 是使用记录的泛化形态**(ADR-017/018):`AppUsage` 一词仅指
+  "system source 的段"这一语义,不再是独立表形状。(Source, IdentityKey) 做
+  upsert 的 identity guard,快照生长而非追加。
+- **InputEvent 一行一事件,不聚合**(ADR-012):`Id` 为 Agent 生成的 UUIDv7,
+  兼作去重键,离线重传幂等;`(DeviceId, Timestamp)` 索引支撑按设备+时间范围计数。
+- **Recap 缓存按 (Owner, 日窗口) 落库**(ADR-023),是 LLM 生成结果的持久化,
+  可随时重算。
