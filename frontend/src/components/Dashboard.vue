@@ -105,11 +105,11 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
           @click="includeAway = !includeAway"
         >{{ includeAway ? '含离开' : '不含离开' }}</button>
 
-        <a
+        <RouterLink
           v-if="isOwnProfile"
-          href="/heartbeat/settings"
+          to="/settings"
           class="glass-control px-3 py-1.5 text-[0.8rem] text-muted-foreground no-underline hover:text-foreground"
-        >设置</a>
+        >设置</RouterLink>
         <button
           v-if="authStore.isAuthenticated"
           class="glass-control px-3 py-1.5 text-[0.8rem] text-muted-foreground hover:text-foreground"

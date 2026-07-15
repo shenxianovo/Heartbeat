@@ -1,4 +1,4 @@
-import { Client, ApiException, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, SegmentResponse } from './client'
+import { Client, ApiException, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, SegmentResponse, UpdateMySettingsRequest } from './client'
 import { authStore } from '../stores/auth'
 
 // ===== Error model =====
@@ -178,6 +178,25 @@ export async function fetchDailyRecap(params: { date?: string; force?: boolean }
   return await res.json() as DailyRecapResponse
 }
 
+// ===== Me（本人视角,ADR-025）=====
+// GET /me 是懒建供给的触发点:登录后必须调一次,否则 User 行不存在,
+// 本人的 /:username 看板会 404(可见性门查不到用户)。
+
+export interface MeSettings {
+  username: string
+  isPublic: boolean
+}
+
+export async function fetchMe(): Promise<MeSettings> {
+  const res = await client.getMe()
+  return { username: res.username ?? '', isPublic: res.isPublic ?? false }
+}
+
+export async function updateMySettings(isPublic: boolean): Promise<MeSettings> {
+  const res = await client.updateMySettings(UpdateMySettingsRequest.fromJS({ isPublic }))
+  return { username: res.username ?? '', isPublic: res.isPublic ?? false }
+}
+
 // ===== Public API Functions (no auth required, by username) =====
 // 统一走 NSwag 生成的 client 方法(响应类型由 OpenAPI schema 保证);
 // 唯二例外是 daily/weekly 报表——时区偏移必须存活,见 toLocalDateTimeOffsetString。
@@ -194,14 +213,15 @@ export async function fetchPublicDailyReport(username: string, params: {
   deviceId?: number
   date?: string
 }): Promise<DailyReportResponse> {
-  return reportRequest(u => fetch(u), `${API_BASE}/users/${username}/reports/daily?${reportDateParams(params)}`, DailyReportResponse.fromJS)
+  // authHttp:可见性门（ADR-025）下本人看 private 看板靠 JWT 识别,裸 fetch 会 404
+  return reportRequest(u => authHttp.fetch(u), `${API_BASE}/users/${username}/reports/daily?${reportDateParams(params)}`, DailyReportResponse.fromJS)
 }
 
 export async function fetchPublicWeeklyReport(username: string, params: {
   deviceId?: number
   date?: string
 }): Promise<WeeklyReportResponse> {
-  return reportRequest(u => fetch(u), `${API_BASE}/users/${username}/reports/weekly?${reportDateParams(params)}`, WeeklyReportResponse.fromJS)
+  return reportRequest(u => authHttp.fetch(u), `${API_BASE}/users/${username}/reports/weekly?${reportDateParams(params)}`, WeeklyReportResponse.fromJS)
 }
 
 export async function fetchPublicDeviceStatus(username: string, deviceId: number): Promise<DeviceStatusResponse> {

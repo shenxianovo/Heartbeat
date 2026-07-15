@@ -1,14 +1,14 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { authStore } from '../stores/auth'
 
-const RESERVED_ROUTES = ['settings', 'callback']
-
+// 用户看板挂在 /u/ 前缀下（ADR-025）：顶层系统路由（/、/settings、/callback、
+// 未来的 /pricing 等）与用户名空间永不冲突，无需维护保留字名单。
 const router = createRouter({
   history: createWebHistory('/'),
   routes: [
     {
       path: '/',
-      redirect: '/shenxianovo',
+      component: () => import('../views/HomeView.vue'),
     },
     {
       path: '/callback',
@@ -20,7 +20,7 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
-      path: '/:username',
+      path: '/u/:username',
       component: () => import('../views/ProfileView.vue'),
     },
   ],
@@ -33,5 +33,4 @@ router.beforeEach((to) => {
   }
 })
 
-export { RESERVED_ROUTES }
 export default router

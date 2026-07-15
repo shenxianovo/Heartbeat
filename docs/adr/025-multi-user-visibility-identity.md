@@ -9,7 +9,10 @@
 ## Context
 
 CONTEXT-MAP 定位把商业化列为"被保留的选项"，并靠三条不变量保持多用户之门敞开。
-现在正式走向多用户：GitHub 式 URL（`base/:username` 即用户看板）保留，但访问语义必须反转。
+现在正式走向多用户：用户看板 URL 采用 `/u/:username`（前缀式，Reddit 同款；
+放弃 GitHub 式裸 `/:username`——裸命名空间让每个未来的顶层系统路由都要
+与用户名抢词，GitHub 为此维护数百词的保留名单，`/u/` 前缀让该问题不存在），
+访问语义必须反转。
 
 单用户时代的三个前提在多用户下失效：
 
@@ -62,8 +65,9 @@ CONTEXT-MAP 定位把商业化列为"被保留的选项"，并靠三条不变量
 - 带 JWT 请求一律用 `sub`（AuthService User.Id，UUIDv7，永不变）定位 User 行，
   并回写 `preferred_username`——username 只是可刷新的显示缓存 + 匿名查询入口。
 - `Users.Username` 加唯一索引。
-- 保留名单（`settings`、`callback` 等前端路由）应进 AuthService 的 username 校验
-  （其 `InvalidUsername` 错误码已含 "reserved" 语义），不在 Heartbeat 侧防御。
+- 用户看板路由挂 `/u/` 前缀，与顶层系统路由（`/`、`/settings`、`/callback`……）
+  命名空间隔离——**无需维护保留用户名名单**（一个叫 `settings` 的用户其看板是
+  `/u/settings`，与 `/settings` 无冲突）。
 
 ### 4. AppIcon — 写权按 owner 隔离
 
@@ -91,7 +95,7 @@ CONTEXT-MAP 定位把商业化列为"被保留的选项"，并靠三条不变量
 - [`server/Heartbeat.Server/Entities/User.cs`](../../server/Heartbeat.Server/Entities/User.cs) — IsPublic 字段落点
 - [`server/Heartbeat.Server/Entities/AppIcon.cs`](../../server/Heartbeat.Server/Entities/AppIcon.cs) — OwnerId 落点
 - [`server/Heartbeat.Server/Controllers/AppController.cs`](../../server/Heartbeat.Server/Controllers/AppController.cs) — UploadIcon 写权隔离
-- [`frontend/src/router/index.ts`](../../frontend/src/router/index.ts) — `/:username` 路由、RESERVED_ROUTES、`/` 硬编码重定向
+- [`frontend/src/router/index.ts`](../../frontend/src/router/index.ts) — `/u/:username` 路由、landing 页
 - `server/CONTEXT.md` — Dashboard Visibility / User Provisioning 词条
 - `.scratch/multi-user/issues/01-username-rename-landmine.md` — username 改名联动雷
 - [ADR-024](./024-oidc-jwt-authentication.md) — sub / preferred_username claim 的来源
