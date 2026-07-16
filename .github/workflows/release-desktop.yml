@@ -37,13 +37,22 @@ jobs:
             -c Release `
             -r ${{ matrix.rid }} `
             --self-contained `
-            -p:PublishSingleFile=true `
-            -p:IncludeNativeLibrariesForSelfExtract=true `
             -p:Version=${{ steps.version.outputs.version }} `
             -o publish
 
       - name: Install Velopack CLI
-        run: dotnet tool install -g vpk
+        run: dotnet tool install -g vpk --version 1.2.0
+
+      # 下载上一版本作为 diff 基线，否则 vpk pack 不会生成 delta 包。
+      # 首次发布（无上一版本）时允许失败，退化为只出完整包。
+      - name: Download previous release for delta baseline
+        continue-on-error: true
+        run: |
+          vpk download github `
+            --repoUrl https://github.com/${{ github.repository }} `
+            --token ${{ secrets.GITHUB_TOKEN }} `
+            --channel ${{ matrix.rid }} `
+            --outputDir releases
 
       - name: Pack with Velopack
         run: |

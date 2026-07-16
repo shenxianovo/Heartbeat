@@ -104,6 +104,7 @@ namespace Heartbeat.WPF
             _updateService = new UpdateService();
             _updateService.UpdateAvailable += OnUpdateAvailable;
             _updateService.UpdateReady += OnUpdateReady;
+            _updateService.DownloadFailed += OnUpdateDownloadFailed;
             _updateService.Start();
 
             Log.Information("后台服务已启动");
@@ -142,10 +143,17 @@ namespace Heartbeat.WPF
             var updateItem = new System.Windows.Controls.MenuItem { Header = "检查更新" };
             updateItem.Click += async (_, _) =>
             {
-                await (_updateService?.CheckForUpdateAsync() ?? Task.CompletedTask);
-                if (_updateService?.HasPendingUpdate != true)
+                var result = await (_updateService?.CheckForUpdateAsync()
+                    ?? Task.FromResult(CheckResult.Skipped));
+                switch (result)
                 {
-                    _trayIcon?.ShowNotification("Heartbeat", "当前已是最新版本。", H.NotifyIcon.Core.NotificationIcon.Info);
+                    case CheckResult.UpToDate:
+                        _trayIcon?.ShowNotification("Heartbeat", "当前已是最新版本。", H.NotifyIcon.Core.NotificationIcon.Info);
+                        break;
+                    case CheckResult.CheckFailed:
+                        _trayIcon?.ShowNotification("Heartbeat", "检查更新失败，请检查网络后重试。", H.NotifyIcon.Core.NotificationIcon.Warning);
+                        break;
+                    // UpdateFound 由 UpdateAvailable 事件通知；Skipped 表示更新已在下载/待安装，无需提示
                 }
             };
             menu.Items.Add(updateItem);
@@ -262,9 +270,20 @@ namespace Heartbeat.WPF
             });
         }
 
+        private void OnUpdateDownloadFailed(string reason)
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                _trayIcon?.ShowNotification(
+                    "Heartbeat 更新下载失败",
+                    "将在下次检查更新时自动重试，也可从托盘菜单手动检查。",
+                    H.NotifyIcon.Core.NotificationIcon.Warning);
+            });
+        }
+
         private void PromptRestart()
         {
-            if (_updateService?.HasPendingUpdate != true) return;
+            if (_updateService?.State != UpdateState.ReadyToApply) return;
 
             var result = MessageBox.Show(
                 $"Heartbeat {_updateService.PendingVersion} 已下载完成。\n\n立即重启安装更新？",
@@ -307,7 +326,7 @@ namespace Heartbeat.WPF
             _msgWindow?.Dispose();
             _trayIcon?.Dispose();
 
-            if (_updateService?.HasPendingUpdate == true)
+            if (_updateService?.State == UpdateState.ReadyToApply)
             {
                 _guard?.Dispose();
                 _guard = null;

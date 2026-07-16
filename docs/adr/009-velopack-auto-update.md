@@ -28,3 +28,7 @@
 - ✅ 增量更新，用户体验好
 - ⚠️ 安装位置固定为 `%LocalAppData%`（见 [ADR-010](./010-per-user-localappdata-install.md)）
 - ⚠️ 需在 Main 入口最早调用 `VelopackApp.Build().Run()`，影响启动流程
+- ⚠️ 增量更新有两个前提，缺一则退化为全量下载（2026-07 曾同时缺失）：
+  1. CI 打包前必须 `vpk download` 上一版本作为 diff 基线，否则 delta 包根本不会生成；
+  2. 发布不能用 single-file——delta 按 nupkg 内文件逐个 diff，单个大 EXE 任何改动都接近全量，非 single-file 下未变的程序集（runtime DLL、确定性编译的未改项目）delta 为零。本项目分发由 Velopack 接管、安装目录用户不可见，single-file 无收益，故弃用。
+- ⚠️ 客户端 `Velopack` 包与 CI 的 `vpk` CLI 必须锁定同一版本（当前 1.2.0），升级时两处同步。

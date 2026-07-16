@@ -38,8 +38,8 @@ _Avoid_: Installer
 _Avoid_: Build, Package
 
 **Update**:
-应用检测到新版本后，下载增量/完整包并在用户确认重启后应用的过程。
-_Avoid_: Upgrade, Patch
+应用检测到新版本后，下载增量/完整包并在用户确认重启后应用的过程。生命周期为 Idle → UpdateAvailable → Downloading → ReadyToApply，下载失败退回 UpdateAvailable（携带失败原因）；**只有 ReadyToApply 的更新才允许被应用**。"检查"是瞬时动作而非状态，结果三分：UpToDate / UpdateFound / CheckFailed——检查失败 ≠ 已是最新。
+_Avoid_: Upgrade, Patch; Pending Update（旧名，混淆了"发现"与"已下载"）
 
 ## Relationships
 
