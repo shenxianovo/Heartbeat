@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { discoverHub, PORT_RANGE, postToHub, probeHub } from '../src/hub'
+import { discoverHub, fetchCollectorConfig, PORT_RANGE, postToHub, probeHub } from '../src/hub'
 import type { SegmentSnapshot } from '../src/fold'
 
 const BASE = 24820
@@ -140,5 +140,59 @@ describe('postToHub', () => {
       result: 'ok',
       port: BASE,
     })
+  })
+})
+
+describe('fetchCollectorConfig', () => {
+  it('拉取成功：带 source 与 flushPeriodMs，返回 enabled（ADR-026 §2）', async () => {
+    const calls: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        calls.push(String(input))
+        return Response.json({ enabled: true })
+      }),
+    )
+
+    await expect(fetchCollectorConfig(BASE, 'browser', 30_000)).resolves.toEqual({ enabled: true })
+    expect(calls).toEqual([
+      `http://127.0.0.1:${BASE}/v1/collectors/browser/config?flushPeriodMs=30000`,
+    ])
+  })
+
+  it('hub 侧已停用 → enabled:false（礼貌层据此自停）', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ enabled: false })),
+    )
+    await expect(fetchCollectorConfig(BASE, 'browser', 30_000)).resolves.toEqual({
+      enabled: false,
+    })
+  })
+
+  it('连接失败 → null（调用方保守视为未停用）', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('fetch failed')
+      }),
+    )
+    await expect(fetchCollectorConfig(BASE, 'browser', 30_000)).resolves.toBe(null)
+  })
+
+  it('旧版 hub 无此路由（404）→ null，不误停', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('not found', { status: 404 })),
+    )
+    await expect(fetchCollectorConfig(BASE, 'browser', 30_000)).resolves.toBe(null)
+  })
+
+  it('应答缺 enabled 字段 → 视为启用（未来字段扩展不破坏契约）', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({})),
+    )
+    await expect(fetchCollectorConfig(BASE, 'browser', 30_000)).resolves.toEqual({ enabled: true })
   })
 })

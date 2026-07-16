@@ -15,12 +15,16 @@ import {
 } from './fold'
 import { domainOf, identityKeyOf } from './normalize'
 import { uuidv7 } from './ids'
-import { postToHub } from './hub'
+import { postToHub, fetchCollectorConfig } from './hub'
 import { loadConfig } from './config'
 import { backoffAfterFailure, noBackoff, shouldSkipAttempt, type BackoffState } from './backoff'
 
 /** chrome.alarms 最小周期 30s（Chrome 120+），与 manifest.minimum_chrome_version 对应。 */
 const FLUSH_PERIOD_MINUTES = 0.5
+/** flush 周期毫秒值（= FLUSH_PERIOD_MINUTES）：自报给 hub，hub 据此派生 Active 窗口（ADR-026 §3）。 */
+const FLUSH_PERIOD_MS = FLUSH_PERIOD_MINUTES * 60_000
+/** 本采集器的 Source 名（ADR-017）：与 hub 注册表 key、段的 source 字段一致。 */
+const SOURCE = 'browser'
 /** 队列按 Id 键控压缩后仍超上限时丢最旧（失控保险，镜像 SegmentIngestService.MaxBuffered 思路）。 */
 const MAX_QUEUED = 5000
 
@@ -136,12 +140,26 @@ async function flushAndUpload(): Promise<void> {
   const now = Date.now()
   if (shouldSkipAttempt(backoff, now)) return
 
+  const { port: basePort } = await loadConfig()
+  const targetPort = await loadHubPort(basePort)
+
+  // 礼貌层停用（ADR-026 §4）：每轮 flush 拉一次 hub 侧配置——此调用同时是注册
+  // （首次触达即"已安装"）与 flushPeriodMs 自报。enabled:false 则丢队列、不上报，
+  // 免去注定被 403 的无效 POST；拉取失败（hub 不在/端口漂移）保守视为未停用。
+  const collectorConfig = await fetchCollectorConfig(targetPort, SOURCE, FLUSH_PERIOD_MS)
+  if (collectorConfig?.enabled === false) {
+    const queued = Object.keys(await loadQueue()).length
+    if (queued > 0) {
+      console.warn(`[heartbeat] 采集器已在 hub 停用，丢弃 ${queued} 条段`)
+      await saveQueue({})
+    }
+    return
+  }
+
   const queue = await loadQueue()
   const items = Object.values(queue)
   if (items.length === 0) return
 
-  const { port: basePort } = await loadConfig()
-  const targetPort = await loadHubPort(basePort)
   const { result, port } = await postToHub(basePort, targetPort, items)
   if (port !== targetPort) await saveHubPort(port)
 
@@ -149,7 +167,7 @@ async function flushAndUpload(): Promise<void> {
     await saveQueue({})
     if (backoff.fails > 0) await saveBackoff(noBackoff)
   } else if (result === 'rejected') {
-    // 毒批次整批丢弃：hub 明确拒绝的数据重传无意义（403 停用语义见 issue 04）。
+    // 毒批次整批丢弃：hub 明确拒绝的数据重传无意义（含 403 = 被停用，强制层兜底）。
     // 身份已由 postToHub 确认——陌生服务的 4xx 不会走到这里。
     console.warn(`[heartbeat] hub 拒收 ${items.length} 条段，丢弃`)
     await saveQueue({})
