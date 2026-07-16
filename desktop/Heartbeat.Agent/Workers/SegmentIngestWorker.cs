@@ -117,7 +117,9 @@ namespace Heartbeat.Agent.Workers
         private async Task HandleRequestAsync(HttpListenerContext ctx)
         {
             var req = ctx.Request;
-            var response = await handler.HandleAsync(req.HttpMethod, req.Url?.AbsolutePath, req.InputStream);
+            // Url.Query 含前导 '?'；剥掉传给协议层（GET config 的 flushPeriodMs 由此读）。
+            var query = req.Url?.Query is { Length: > 0 } q ? q.TrimStart('?') : null;
+            var response = await handler.HandleAsync(req.HttpMethod, req.Url?.AbsolutePath, req.InputStream, query);
             TryRespond(ctx, response.StatusCode, response.Body, response.IsJson);
         }
 

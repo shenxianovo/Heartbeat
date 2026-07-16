@@ -31,5 +31,11 @@ namespace Heartbeat.Agent.Models
         /// ≤0 表示禁用。
         /// </summary>
         public int IngestPort { get; set; } = 24820;
+
+        /// <summary>
+        /// 采集器注册表（ADR-026）：source → 条目。hub 首次见到某采集器（其 GET config）时自动记入，
+        /// 即"已安装"的定义；关闭浏览器或 Agent 重启不丢。用户翻 enabled 也写此处。
+        /// </summary>
+        public Dictionary<string, CollectorEntry> Collectors { get; set; } = [];
     }
 }

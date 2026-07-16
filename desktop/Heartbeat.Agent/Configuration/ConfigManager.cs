@@ -136,6 +136,7 @@ namespace Heartbeat.Agent.Configuration
         private static void Normalize(AgentConfig config)
         {
             config.AwayProcessNames ??= [];
+            config.Collectors ??= [];
         }
 
         /// <summary>
@@ -168,6 +169,9 @@ namespace Heartbeat.Agent.Configuration
                 UploadIntervalMinutes = source.UploadIntervalMinutes,
                 AwayProcessNames = [.. source.AwayProcessNames ?? []],
                 IngestPort = source.IngestPort,
+                Collectors = (source.Collectors ?? []).ToDictionary(
+                    kv => kv.Key,
+                    kv => new CollectorEntry { Enabled = kv.Value.Enabled, FlushPeriodMs = kv.Value.FlushPeriodMs }),
             };
         }
 
