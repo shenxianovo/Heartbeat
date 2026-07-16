@@ -7,10 +7,10 @@ using System.Net.Http.Json;
 
 namespace Heartbeat.Agent.Http
 {
-    public class HeartbeatApiClient(HttpClient http, ConfigManager configManager)
+    public class HeartbeatApiClient(HttpClient http)
     {
-        private string Url(string path)
-            => $"{configManager.Current.ApiBaseUrl.TrimEnd('/')}/api/v1/{path}";
+        private static string Url(string path)
+            => $"{Endpoints.ApiBaseUrl}/api/v1/{path}";
 
         public async Task<ApiResult> UploadSegmentsAsync(SegmentUploadRequest dto, CancellationToken ct = default)
             => await PostAsync(Url("segments"), dto, "段上传", ct);

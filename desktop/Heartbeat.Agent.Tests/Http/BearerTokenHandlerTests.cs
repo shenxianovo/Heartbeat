@@ -61,9 +61,7 @@ public class BearerTokenHandlerTests : IDisposable
         var cm = new ConfigManager(tempPath);
         cm.Update(c =>
         {
-            c.ApiBaseUrl = config.ApiBaseUrl;
             c.ApiKey = config.ApiKey;
-            c.AuthServiceBaseUrl = config.AuthServiceBaseUrl;
             c.DeviceName = config.DeviceName;
         });
         return cm;

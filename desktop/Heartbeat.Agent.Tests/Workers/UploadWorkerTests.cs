@@ -73,9 +73,8 @@ public class UploadWorkerTests : IDisposable
         var tempPath = Path.Combine(Path.GetTempPath(), $"heartbeat-cfg-{Guid.NewGuid()}.json");
         _tempFiles.Add(tempPath);
         var cm = new ConfigManager(tempPath);
-        cm.Update(c => c.ApiBaseUrl = "http://localhost");
 
-        var api = new HeartbeatApiClient(new HttpClient(new OkHandler()), cm);
+        var api = new HeartbeatApiClient(new HttpClient(new OkHandler()));
         var segSource = new FakeSource<ActivitySegmentItem>();
         var inputSource = new FakeSource<InputEventItem>();
         var icons = new FakeIconUploader();

@@ -2,9 +2,9 @@ namespace Heartbeat.Agent.Models
 {
     public class AgentConfig
     {
-        public string ApiBaseUrl { get; set; } = string.Empty;
+        // ApiBaseUrl / AuthServiceBaseUrl 已退役：服务端点为代码常量（Configuration.Endpoints），
+        // 旧 config.json 中的字段被反序列化静默忽略。
         public string ApiKey { get; set; } = string.Empty;
-        public string AuthServiceBaseUrl { get; set; } = string.Empty;
         public string DeviceName { get; set; } = string.Empty;
 
         private int _uploadIntervalMinutes = 1;

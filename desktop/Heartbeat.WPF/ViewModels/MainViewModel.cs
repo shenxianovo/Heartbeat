@@ -19,13 +19,7 @@ namespace Heartbeat.WPF.ViewModels
         private string _currentApp = "(未检测)";
 
         [ObservableProperty]
-        private string _apiBaseUrl = string.Empty;
-
-        [ObservableProperty]
         private string _apiKey = string.Empty;
-
-        [ObservableProperty]
-        private string _authServiceBaseUrl = string.Empty;
 
         [ObservableProperty]
         private string _deviceName = string.Empty;
@@ -110,9 +104,7 @@ namespace Heartbeat.WPF.ViewModels
         private void LoadConfig()
         {
             var config = _configManager.Current;
-            ApiBaseUrl = config.ApiBaseUrl;
             ApiKey = config.ApiKey;
-            AuthServiceBaseUrl = config.AuthServiceBaseUrl;
             DeviceName = config.DeviceName;
             UploadIntervalMinutes = config.UploadIntervalMinutes.ToString();
         }
@@ -153,9 +145,7 @@ namespace Heartbeat.WPF.ViewModels
 
             _configManager.Update(c =>
             {
-                c.ApiBaseUrl = ApiBaseUrl.Trim();
                 c.ApiKey = ApiKey.Trim();
-                c.AuthServiceBaseUrl = AuthServiceBaseUrl.Trim();
                 c.DeviceName = DeviceName.Trim();
                 c.UploadIntervalMinutes = uploadInterval;
             });

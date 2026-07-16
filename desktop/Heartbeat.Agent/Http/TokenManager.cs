@@ -73,9 +73,9 @@ namespace Heartbeat.Agent.Http
         {
             var config = _configManager.Current;
 
-            if (string.IsNullOrEmpty(config.ApiKey) || string.IsNullOrEmpty(config.AuthServiceBaseUrl))
+            if (string.IsNullOrEmpty(config.ApiKey))
             {
-                Log.Warning("AuthService base URL or API key is not configured; skipping token exchange.");
+                Log.Warning("API key is not configured; skipping token exchange.");
                 return null;
             }
 

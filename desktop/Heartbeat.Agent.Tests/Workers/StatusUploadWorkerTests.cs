@@ -1,4 +1,3 @@
-using Heartbeat.Agent.Configuration;
 using Heartbeat.Agent.Http;
 using Heartbeat.Agent.Services;
 using Heartbeat.Agent.Workers;
@@ -11,16 +10,8 @@ namespace Heartbeat.Agent.Tests.Workers;
 /// presence 心跳契约（ADR-021）：启动即推一次；Current Activity 变更立刻补推（事件＝新鲜度）；
 /// 周期 keepalive（30s 常量）由信号量超时驱动，不在此测（时序型，行为等价于今天的周期循环）。
 /// </summary>
-public class StatusUploadWorkerTests : IDisposable
+public class StatusUploadWorkerTests
 {
-    private readonly List<string> _tempFiles = [];
-
-    public void Dispose()
-    {
-        foreach (var f in _tempFiles)
-            if (File.Exists(f)) File.Delete(f);
-    }
-
     private sealed class FakeStatus : ICollectionStatus
     {
         private string? _current;
@@ -52,15 +43,10 @@ public class StatusUploadWorkerTests : IDisposable
         }
     }
 
-    private (StatusUploadWorker worker, FakeStatus status, CapturingHandler handler) Build()
+    private static (StatusUploadWorker worker, FakeStatus status, CapturingHandler handler) Build()
     {
-        var tempPath = Path.Combine(Path.GetTempPath(), $"heartbeat-cfg-{Guid.NewGuid()}.json");
-        _tempFiles.Add(tempPath);
-        var cm = new ConfigManager(tempPath);
-        cm.Update(c => c.ApiBaseUrl = "http://localhost");
-
         var handler = new CapturingHandler();
-        var api = new HeartbeatApiClient(new HttpClient(handler), cm);
+        var api = new HeartbeatApiClient(new HttpClient(handler));
         var status = new FakeStatus();
         return (new StatusUploadWorker(status, api), status, handler);
     }

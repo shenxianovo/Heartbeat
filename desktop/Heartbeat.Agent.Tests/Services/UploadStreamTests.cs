@@ -1,4 +1,3 @@
-using Heartbeat.Agent.Configuration;
 using Heartbeat.Agent.Http;
 using Heartbeat.Agent.Services;
 using Heartbeat.Agent.Storage;
@@ -13,16 +12,8 @@ namespace Heartbeat.Agent.Tests.Services;
 /// 送达，或落离线缓存，否则重注入源。"批次不蒸发"由流自持。
 /// 经真实 HeartbeatApiClient + 桩 HttpMessageHandler 驱动，传输层（URL/负载）一并覆盖。
 /// </summary>
-public class UploadStreamTests : IDisposable
+public class UploadStreamTests
 {
-    private readonly List<string> _tempFiles = [];
-
-    public void Dispose()
-    {
-        foreach (var f in _tempFiles)
-            if (File.Exists(f)) File.Delete(f);
-    }
-
     private sealed class FakeSource : IUploadSource<ActivitySegmentItem>
     {
         public List<ActivitySegmentItem> Items { get; } = [];
@@ -67,15 +58,10 @@ public class UploadStreamTests : IDisposable
         }
     }
 
-    private (UploadStream<ActivitySegmentItem> stream, FakeSource source, FakeCache cache, CapturingHandler handler) Build(HttpStatusCode status)
+    private static (UploadStream<ActivitySegmentItem> stream, FakeSource source, FakeCache cache, CapturingHandler handler) Build(HttpStatusCode status)
     {
-        var tempPath = Path.Combine(Path.GetTempPath(), $"heartbeat-cfg-{Guid.NewGuid()}.json");
-        _tempFiles.Add(tempPath);
-        var cm = new ConfigManager(tempPath);
-        cm.Update(c => c.ApiBaseUrl = "http://localhost");
-
         var handler = new CapturingHandler(status);
-        var api = new HeartbeatApiClient(new HttpClient(handler), cm);
+        var api = new HeartbeatApiClient(new HttpClient(handler));
         var source = new FakeSource();
         var cache = new FakeCache();
 

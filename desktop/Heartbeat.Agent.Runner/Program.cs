@@ -33,7 +33,7 @@ try
     var config = configManager.Current;
 
     Log.Information("Heartbeat 客户端启动 (Console)");
-    Log.Information("Base URL: {URL}", config.ApiBaseUrl);
+    Log.Information("Base URL: {URL}", Endpoints.ApiBaseUrl);
     Log.Information("配置加载完成 - 上传间隔: {Upload}min", config.UploadIntervalMinutes);
 
     var builder = Host.CreateApplicationBuilder(args);
