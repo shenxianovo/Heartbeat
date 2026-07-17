@@ -1,4 +1,4 @@
-import { Client, ApiException, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, SegmentResponse, UpdateMySettingsRequest } from './client'
+import { Client, ApiException, DailyRecapResponse, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, SegmentResponse, UpdateMySettingsRequest } from './client'
 import { authStore } from '../stores/auth'
 
 // ===== Error model =====
@@ -49,7 +49,7 @@ const authHttp = {
 const client = new Client(BASE_URL, authHttp)
 
 // Re-export generated types
-export type { AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, DailyReportResponse, WeeklyReportResponse, SegmentResponse }
+export type { AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, DailyRecapResponse, DailyReportResponse, WeeklyReportResponse, SegmentResponse }
 export type { AppDurationItem } from './client'
 
 export interface AppSummary {
@@ -161,21 +161,13 @@ export function getIconUrl(username: string, appId: number): string {
 // 认证版专属：叙事是私人记忆，且生成烧 LLM token，不提供 public 版。
 // date 与报表同理必须携带本地时区偏移，手拼请求（见 toLocalDateTimeOffsetString）。
 
-export interface DailyRecapResponse {
-  date?: string
-  isEmpty?: boolean
-  narrative?: string | null
-  generatedAt?: string | null
-  model?: string | null
-}
-
 export async function fetchDailyRecap(params: { date?: string; force?: boolean }): Promise<DailyRecapResponse> {
   const searchParams = new URLSearchParams()
   if (params.date) searchParams.set('date', toLocalDateTimeOffsetString(params.date))
   if (params.force) searchParams.set('force', 'true')
   const res = await authHttp.fetch(`${API_BASE}/recaps/daily?${searchParams}`)
   if (!res.ok) throw new ApiException('Recap request failed.', res.status, await res.text(), {}, null)
-  return await res.json() as DailyRecapResponse
+  return DailyRecapResponse.fromJS(await res.json())
 }
 
 /** 公开 Recap 只读取 owner 已生成的缓存，匿名访问永不触发 LLM 生成。 */
@@ -184,7 +176,7 @@ export async function fetchPublicDailyRecap(username: string, params: { date?: s
   if (params.date) searchParams.set('date', toLocalDateTimeOffsetString(params.date))
   const res = await authHttp.fetch(`${API_BASE}/users/${encodeURIComponent(username)}/recaps/daily?${searchParams}`)
   if (!res.ok) throw new ApiException('Public recap request failed.', res.status, await res.text(), {}, null)
-  return await res.json() as DailyRecapResponse
+  return DailyRecapResponse.fromJS(await res.json())
 }
 
 // ===== Me（本人视角,ADR-025）=====
