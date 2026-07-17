@@ -70,6 +70,48 @@ namespace Heartbeat.Server.Tests.Services
         }
 
         [Fact]
+        public async Task Provision_EvictsStaleHolder_WhenUsernameReclaimedByDifferentSub()
+        {
+            using var db = CreateDbContext();
+            var service = new UserService(db);
+
+            await service.ProvisionAsync("sub-1", "alice");
+            var newOwner = await service.ProvisionAsync("sub-2", "alice");
+
+            Assert.Equal("alice", newOwner.Username);
+            var evicted = await db.Users.FindAsync("sub-1");
+            Assert.Equal("~sub-1", evicted!.Username);
+        }
+
+        [Fact]
+        public async Task Provision_SelfHealsEvictedUser_OnNextLogin()
+        {
+            using var db = CreateDbContext();
+            var service = new UserService(db);
+
+            await service.ProvisionAsync("sub-1", "alice");
+            await service.ProvisionAsync("sub-2", "alice");
+            var healed = await service.ProvisionAsync("sub-1", "alice-new");
+
+            Assert.Equal("alice-new", healed.Username);
+            Assert.Equal(2, db.Users.Count());
+        }
+
+        [Fact]
+        public async Task ResolveByUsername_RejectsEvictionPlaceholder()
+        {
+            using var db = CreateDbContext();
+            var service = new UserService(db);
+
+            await service.ProvisionAsync("sub-1", "alice");
+            await service.ProvisionAsync("sub-2", "alice");
+
+            var probed = await service.ResolveByUsernameAsync("~sub-1");
+
+            Assert.Null(probed);
+        }
+
+        [Fact]
         public async Task ResolveByUsername_FindsProvisionedUser()
         {
             using var db = CreateDbContext();
