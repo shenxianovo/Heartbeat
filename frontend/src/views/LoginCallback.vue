@@ -2,7 +2,7 @@
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { authStore } from '../stores/auth'
-import { fetchMe } from '../api/index'
+import { fetchMe, fetchPublicDevices } from '../api/index'
 
 const router = useRouter()
 
@@ -15,10 +15,20 @@ onMounted(async () => {
     try { await fetchMe() } catch { /* 降级:跳转后由看板报错 */ }
   }
 
+  const username = authStore.username.value
+  if (username && (!returnTo || returnTo === '/')) {
+    // 首次登录（尚无设备）进入安装引导；已有设备的用户保持原来的直达 Dashboard 体验。
+    try {
+      const devices = await fetchPublicDevices(username)
+      router.replace(devices.length > 0 ? `/u/${username}` : '/get-started')
+      return
+    } catch { /* 降级到原有跳转 */ }
+  }
+
   if (returnTo) {
     router.replace(returnTo)
-  } else if (authStore.username.value) {
-    router.replace(`/u/${authStore.username.value}`)
+  } else if (username) {
+    router.replace(`/u/${username}`)
   } else {
     router.replace('/')
   }

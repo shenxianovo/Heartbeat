@@ -107,6 +107,11 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
 
         <RouterLink
           v-if="isOwnProfile"
+          to="/get-started"
+          class="glass-control px-3 py-1.5 text-[0.8rem] text-muted-foreground no-underline hover:text-foreground"
+        >客户端</RouterLink>
+        <RouterLink
+          v-if="isOwnProfile"
           to="/settings"
           class="glass-control px-3 py-1.5 text-[0.8rem] text-muted-foreground no-underline hover:text-foreground"
         >设置</RouterLink>
@@ -157,8 +162,12 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
             :currentAppId="currentAppId"
           />
 
-          <!-- Recap 是通往 Replay 的入口（glossary），置于时间轴上方；仅本人可见（ADR-023 §5） -->
-          <RecapCard v-if="isOwnProfile" :selectedDate="selectedDate" />
+          <!-- owner 可生成/重生成；公开访客只读已有缓存，不触发 LLM。 -->
+          <RecapCard
+            :selectedDate="selectedDate"
+            :username="username"
+            :canRegenerate="isOwnProfile"
+          />
 
           <ActivityTimeline
             :username="username"

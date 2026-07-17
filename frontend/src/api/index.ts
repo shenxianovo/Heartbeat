@@ -178,6 +178,15 @@ export async function fetchDailyRecap(params: { date?: string; force?: boolean }
   return await res.json() as DailyRecapResponse
 }
 
+/** 公开 Recap 只读取 owner 已生成的缓存，匿名访问永不触发 LLM 生成。 */
+export async function fetchPublicDailyRecap(username: string, params: { date?: string }): Promise<DailyRecapResponse> {
+  const searchParams = new URLSearchParams()
+  if (params.date) searchParams.set('date', toLocalDateTimeOffsetString(params.date))
+  const res = await authHttp.fetch(`${API_BASE}/users/${encodeURIComponent(username)}/recaps/daily?${searchParams}`)
+  if (!res.ok) throw new ApiException('Public recap request failed.', res.status, await res.text(), {}, null)
+  return await res.json() as DailyRecapResponse
+}
+
 // ===== Me（本人视角,ADR-025）=====
 // GET /me 是懒建供给的触发点:登录后必须调一次,否则 User 行不存在,
 // 本人的 /:username 看板会 404(可见性门查不到用户)。

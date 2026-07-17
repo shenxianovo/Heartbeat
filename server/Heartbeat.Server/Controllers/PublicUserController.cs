@@ -2,6 +2,7 @@ using Heartbeat.Core.DTOs.Apps;
 using Heartbeat.Core.DTOs.Devices;
 using Heartbeat.Core.DTOs.Input;
 using Heartbeat.Core.DTOs.Reports;
+using Heartbeat.Core.DTOs.Recaps;
 using Heartbeat.Core.DTOs.Segments;
 using Heartbeat.Server.Entities;
 using Heartbeat.Server.Services;
@@ -24,6 +25,7 @@ namespace Heartbeat.Server.Controllers
         UsageService usageService,
         AppService appService,
         InputEventService inputEventService,
+        RecapService recapService,
         ICurrentUserService currentUser) : ControllerBase
     {
         /// <summary>解析用户名并施加可见性门：不存在或对当前调用者不可见都返回 null（上层 404）。</summary>
@@ -72,6 +74,23 @@ namespace Heartbeat.Server.Controllers
 
             var targetDate = date ?? DateTimeOffset.UtcNow;
             return await reportService.GetWeeklyReportAsync(user.Id, deviceId, targetDate);
+        }
+
+
+        [HttpGet("recaps/daily")]
+        [EndpointName("getUserDailyRecap")]
+        public async Task<ActionResult<DailyRecapResponse>> GetDailyRecap(
+            string username,
+            [FromQuery] DateTimeOffset? date,
+            CancellationToken ct)
+        {
+            var user = await ResolveVisibleAsync(username);
+            if (user == null) return NotFound();
+
+            // 公开路径只读缓存：访客不能触发生成，也没有 force 参数。
+            var recap = await recapService.GetCachedDailyRecapAsync(
+                user.Id, date ?? DateTimeOffset.UtcNow, ct);
+            return recap == null ? NotFound() : recap;
         }
 
         [HttpGet("usage")]

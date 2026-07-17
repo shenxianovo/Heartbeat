@@ -158,6 +158,40 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     }
 
     [Fact]
+    public async Task CachedOnly_MissingRecap_ReturnsNullWithoutGeneration()
+    {
+        using var db = CreateDbContext();
+        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        await db.SaveChangesAsync();
+
+        var fake = new FakeGenerator();
+        var svc = new RecapService(db, fake);
+
+        var result = await svc.GetCachedDailyRecapAsync("user-1", PastDay);
+
+        Assert.Null(result);
+        Assert.Equal(0, fake.Calls);
+    }
+
+    [Fact]
+    public async Task CachedOnly_ExistingRecap_ReturnsItWithoutRegeneration()
+    {
+        using var db = CreateDbContext();
+        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        await db.SaveChangesAsync();
+
+        var fake = new FakeGenerator();
+        var svc = new RecapService(db, fake);
+        await svc.GetDailyRecapAsync("user-1", PastDay, force: false);
+
+        var result = await svc.GetCachedDailyRecapAsync("user-1", PastDay);
+
+        Assert.NotNull(result);
+        Assert.Equal("narrative-1", result.Narrative);
+        Assert.Equal(1, fake.Calls);
+    }
+
+    [Fact]
     public async Task GeneratorFailure_NothingCached()
     {
         using var db = CreateDbContext();

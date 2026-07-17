@@ -55,6 +55,21 @@ namespace Heartbeat.Server.Services
             return ToResponse(date, cached);
         }
 
+        /// <summary>
+        /// 公开视角只读已有缓存：不查询段、不判断水位、不调用生成器。
+        /// 未生成过的日期返回 null，由公开端点映射为 404，前端不渲染卡片。
+        /// </summary>
+        public async Task<DailyRecapResponse?> GetCachedDailyRecapAsync(
+            string ownerId, DateTimeOffset date, CancellationToken ct = default)
+        {
+            var windowStart = DateRange.Day(date).UtcStart;
+            var cached = await _db.Recaps
+                .AsNoTracking()
+                .FirstOrDefaultAsync(r => r.OwnerId == ownerId && r.WindowStart == windowStart, ct);
+
+            return cached == null ? null : ToResponse(date, cached);
+        }
+
         private async Task<bool> IsFreshAsync(
             string ownerId, DateTimeOffset windowStart, DateTimeOffset windowEnd, Recap cached, CancellationToken ct)
         {

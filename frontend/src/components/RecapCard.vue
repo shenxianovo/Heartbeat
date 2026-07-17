@@ -1,19 +1,24 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import { fetchDailyRecap, type DailyRecapResponse } from '../api/index'
+import { fetchDailyRecap, fetchPublicDailyRecap, type DailyRecapResponse } from '../api/index'
 import { useAsyncData } from '../composables/useAsyncData'
 import { Card } from '@/components/ui/card'
 
 /**
- * 当日 Recap 卡片（ADR-023）：某一天的 LLM 叙事回顾。
- * 只在本人档案渲染（叙事是私人记忆，生成烧 token，无 public 版）。
- * 服务端缓存：历史日期秒回，今天按水位；"重新生成"透传 force。
+ * 当日 Recap 卡片（ADR-023）：owner 可生成/重新生成；访客只能读取 owner 已生成的缓存。
+ * 公开读取永不触发 LLM，既避免访客烧 token，也让“重新生成”保持 owner-only。
  */
-const props = defineProps<{ selectedDate: string }>()
+const props = defineProps<{
+  selectedDate: string
+  username: string
+  canRegenerate: boolean
+}>()
 
 let forceNext = false
 const recap = useAsyncData<DailyRecapResponse | null>(
-  () => fetchDailyRecap({ date: props.selectedDate, force: forceNext }),
+  () => props.canRegenerate
+    ? fetchDailyRecap({ date: props.selectedDate, force: forceNext })
+    : fetchPublicDailyRecap(props.username, { date: props.selectedDate }),
   null,
 )
 
@@ -43,6 +48,10 @@ const generatedAtStr = computed(() => {
   })
 })
 
+const isUnavailableToVisitor = computed(() =>
+  !props.canRegenerate && recap.error.value?.kind === 'http' && recap.error.value.status === 404
+)
+
 const errorMessage = computed(() => {
   const e = recap.error.value
   if (!e) return ''
@@ -54,12 +63,12 @@ const errorMessage = computed(() => {
 </script>
 
 <template>
-  <Card class="mb-6 gap-3 border-border/60 bg-card/80 py-5 backdrop-blur-sm">
+  <Card v-if="!isUnavailableToVisitor" class="mb-6 gap-3 border-border/60 bg-card/80 py-5 backdrop-blur-sm">
     <div class="flex flex-col gap-3 px-5">
       <div class="flex items-center justify-between gap-3">
         <h2 class="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">这一天 · Recap</h2>
         <button
-          v-if="recap.data.value && !recap.data.value.isEmpty"
+          v-if="canRegenerate && recap.data.value && !recap.data.value.isEmpty"
           class="glass-control cursor-pointer whitespace-nowrap px-2.5 py-1 text-[0.75rem] text-muted-foreground transition-colors hover:text-foreground disabled:cursor-default disabled:opacity-50"
           :disabled="recap.pending.value"
           title="用最新数据重新生成这一天的回顾"

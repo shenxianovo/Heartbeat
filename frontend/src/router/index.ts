@@ -11,6 +11,11 @@ const router = createRouter({
       component: () => import('../views/HomeView.vue'),
     },
     {
+      path: '/get-started',
+      component: () => import('../views/GetStartedView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/callback',
       component: () => import('../views/LoginCallback.vue'),
     },
