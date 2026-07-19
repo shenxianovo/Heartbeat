@@ -16,54 +16,61 @@ namespace Heartbeat.Server.Services
     }
 
     /// <summary>
-    /// 一个候选提问（ADR-028 §4，单锚点重构）：针对**一个**高特异性把手发问，而非一簇。
-    /// 40 项勾选框没有信息量——"这一个是什么"才是用户当初要的"问花生是什么"。
+    /// 粗筛后的一个短名单候选（ADR-028 §4 定稿）：确定性层保证它"值得送分诊"，
+    /// 但**不判它该不该问**——该不该问是世界知识判断，交给 LLM 分诊（QuestionService）。
     /// </summary>
-    public sealed class QuestionCandidate
+    public sealed class HandleCandidate
     {
-        /// <summary>被问的把手：命名提案的主体，也是回答落库时 Strand 的种子成员。</summary>
-        public required HandleRef Anchor { get; init; }
+        /// <summary>候选把手。</summary>
+        public required HandleRef Handle { get; init; }
 
-        /// <summary>该把手当日累计时长（并集，避免重叠双计）。gate 与排序用。</summary>
+        /// <summary>当日累计时长（并集，避免重叠双计）。</summary>
         public required double TotalSeconds { get; init; }
 
         public required DateTimeOffset Start { get; init; }
         public required DateTimeOffset End { get; init; }
 
-        /// <summary>与 Anchor 时间贴邻共现的少量其它高特异性把手（提示上下文，≤3；不是待勾成员集）。</summary>
+        /// <summary>是否在回看窗内反复出现（分诊的先验之一：无处不在的基础设施）。</summary>
+        public required bool Recurring { get; init; }
+
+        /// <summary>与该把手时间贴邻共现的其它候选把手（分诊/提案的消歧上下文，≤3）。</summary>
         public required IReadOnlyList<HandleRef> CoOccurring { get; init; }
     }
 
     /// <summary>
-    /// 提问器投影（ADR-028 §4，单锚点重构）：Recap 投影的第三出口。纯函数、无 I/O。
+    /// 提问器投影（ADR-028 §4 定稿）：Recap 投影的第三出口。纯函数、无 I/O。
     ///
-    /// 真实的一天没有空闲缝可断会话（explorer/微信/浏览器连续交错），constellation 聚簇会把
-    /// 整天塌成一个 40 把手巨簇、毫无信息量。改为：每个把手独立评分，剔除已裁决 / OS 外壳 /
-    /// 低特异性 / 不够时长的，按"特异性 × 未解释时长"排序，一个把手一个问题，封顶 3。
+    /// **只做确定性粗筛限流，不做选题**。哨兵剔除（OS 外壳 + 浏览器进程）、噪声地板、
+    /// ubiquity 门槛，把候选缩到一个短名单送 LLM 分诊。选"该不该问"是世界知识判断，
+    /// 确定性层结构上做不到，交给 QuestionService 里的分诊器（用 bind/mute 当锚）。
+    ///
+    /// 历史教训：曾用 constellation 聚簇（真实数据里塌成 40 把手巨簇），又用
+    /// 特异性×时长打分选题（把 bilibili/github 顶到最前——它们恰恰最不该问）。两者皆被证伪。
     /// </summary>
     public static class QuestionProjection
     {
         /// <summary>单把手当日累计低于此值视为噪声（复用 ADR-023 噪声地板）。</summary>
         private const int NoiseFloorSeconds = 60;
 
-        /// <summary>非复现把手的单日时长 gate：达到才值得问（复现把手放宽，见下）。</summary>
+        /// <summary>非复现把手进短名单的时长下限。</summary>
         private const int MeaningfulSeconds = 1800;
 
-        /// <summary>复现把手（天天出现）的更高时长 gate：ubiquity 惩罚——微信 QQ 这类要花更久才配问。</summary>
+        /// <summary>复现把手（天天出现）的更高门槛：ubiquity 压制，无处不在的基础设施要花更久才进名单。</summary>
         private const int RecurringMeaningfulSeconds = 7200;
 
-        /// <summary>每日封顶提问数（ADR-028 §4）。</summary>
-        private const int MaxQuestions = 3;
+        /// <summary>短名单上限：控 LLM 分诊调用量（每个候选一次调用）。</summary>
+        private const int MaxShortlist = 8;
 
-        /// <summary>共现提示上下文的把手数上限（只作 LLM 提示，非待勾成员集）。</summary>
+        /// <summary>共现提示上下文的把手数上限。</summary>
         private const int MaxCoOccurring = 3;
 
         /// <summary>时间贴邻：区间间隔在此内视为同一注意力语境，用于挑共现提示把手。</summary>
         private const int AdjacencySeconds = 300;
 
         /// <summary>
-        /// OS 外壳 / 系统 chrome：忠实记录里合法，但对"你在做什么"零信息，绝不当锚点也不作提示。
-        /// system Source 下匹配（browser 的 newtab 等另在 <see cref="IsShellDomain"/> 处理）。
+        /// OS 外壳 + 浏览器进程 + away：对"你在做什么"零信息，绝不当候选也不作提示。
+        /// 浏览器进程（msedge/chrome…）是卫星工具，且与 browser 源的域名把手重复计数——
+        /// 真正的身份在域名那侧，进程名这侧永远压掉（ADR-028 §4 定稿）。
         /// </summary>
         private static readonly HashSet<string> ShellApps = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -72,32 +79,35 @@ namespace Heartbeat.Server.Services
             "SearchHost", "SearchApp", "TextInputHost", "LockApp", "SystemSettings",
             "dwm", "sihost", "ctfmon", "RuntimeBroker", "backgroundTaskHost",
             "WindowsTerminal", "cmd", "conhost", "powershell", "pwsh",
+            // 浏览器进程：卫星，身份在 browser 域名把手那侧。
+            "msedge", "chrome", "firefox", "iexplore", "opera", "brave", "vivaldi",
+            "msedgewebview2", "WeChatAppEx", "WeChatBrowser",
             SyntheticApps.Away,
         };
 
-        public static IReadOnlyList<QuestionCandidate> Project(
+        /// <summary>确定性粗筛：产出送 LLM 分诊的短名单。不选题、不打分排序。</summary>
+        public static IReadOnlyList<HandleCandidate> Shortlist(
             IReadOnlyList<HandleInterval> intervals,
             IReadOnlySet<HandleRef> adjudicated,
             IReadOnlySet<HandleRef> recurring)
         {
-            // 1. diff：已绑定/已 Mute 的把手整体退出（也含自锚优先——它们已是别的 Strand 的成员）。
+            // 1. diff：已绑定/已 Mute 的把手整体退出。
             var live = intervals.Where(i => !adjudicated.Contains(i.Handle)).ToList();
             if (live.Count == 0) return [];
 
-            // 2. per-把手聚合：并集时长 + 区间（挑共现提示用）。
+            // 2. per-把手聚合：并集时长 + 区间。
             var byHandle = live
                 .GroupBy(i => i.Handle)
                 .Select(g => new
                 {
                     Handle = g.Key,
                     Seconds = UnionSeconds([.. g]),
-                    Intervals = g.OrderBy(i => i.Start).ToList(),
                     Start = g.Min(i => i.Start),
                     End = g.Max(i => i.End),
                 })
                 .ToList();
 
-            // 3. 剔除：OS 外壳 / 低特异性 / 噪声地板 / 未过 gate。
+            // 3. 粗筛：哨兵剔除 / 噪声地板 / ubiquity 门槛。
             var candidates = byHandle
                 .Where(h => !IsShell(h.Handle))
                 .Where(h => h.Seconds >= NoiseFloorSeconds)
@@ -105,39 +115,25 @@ namespace Heartbeat.Server.Services
                 .ToList();
             if (candidates.Count == 0) return [];
 
-            // 4. 排序：特异性 × 未解释时长。复现把手降权（ubiquity 惩罚，已在 gate 体现，这里再排后）。
-            var lookup = candidates.ToDictionary(h => h.Handle);
+            var candidateSet = candidates.Select(h => h.Handle).ToHashSet();
+
+            // 4. 限流：仅按时长取头部若干送分诊（限流，非选题——谁该问由分诊定）。
             return candidates
-                .OrderByDescending(h => Specificity(h.Handle, recurring))
-                .ThenByDescending(h => h.Seconds)
-                .ThenBy(h => h.Handle.Token, StringComparer.Ordinal)
-                .Take(MaxQuestions)
-                .Select(h => new QuestionCandidate
+                .OrderByDescending(h => h.Seconds)
+                .Take(MaxShortlist)
+                .Select(h => new HandleCandidate
                 {
-                    Anchor = h.Handle,
+                    Handle = h.Handle,
                     TotalSeconds = h.Seconds,
                     Start = h.Start,
                     End = h.End,
-                    CoOccurring = PickCoOccurring(h.Handle, h.Intervals, lookup.Keys, live),
+                    Recurring = recurring.Contains(h.Handle),
+                    CoOccurring = PickCoOccurring(h.Handle, live, candidateSet),
                 })
                 .ToList();
         }
 
-        /// <summary>特异性先验（ADR-028 §3 冷启动）：browser 域名 / vscode 仓库 ≫ 裸系统进程；复现再减。</summary>
-        private static int Specificity(HandleRef h, IReadOnlySet<HandleRef> recurring)
-        {
-            var baseScore = h.Source switch
-            {
-                ActivitySources.Browser => 3,   // 具体域名最具身份性
-                "vscode" => 3,                  // 仓库根（采集器落地后）
-                ActivitySources.System => 1,    // 裸 app 名弱
-                _ => 0,
-            };
-            // 天天出现的把手更像卫星（无处不在的基础设施），特异性再扣。
-            return recurring.Contains(h) ? baseScore - 2 : baseScore;
-        }
-
-        /// <summary>时长 gate：复现把手要花更久才配问（惩罚微信 QQ 这类无处不在的把手）。</summary>
+        /// <summary>时长门槛：复现把手要花更久才进名单（ubiquity 压制）。</summary>
         private static int GateFor(HandleRef h, IReadOnlySet<HandleRef> recurring)
             => recurring.Contains(h) ? RecurringMeaningfulSeconds : MeaningfulSeconds;
 
@@ -147,21 +143,20 @@ namespace Heartbeat.Server.Services
 
         /// <summary>浏览器里的非站点身份：新标签页 / 本地回环 / 空白。</summary>
         private static bool IsShellDomain(string token) =>
-            token is "newtab" or "localhost" or "127.0.0.1" or "" || token.StartsWith("newtab", StringComparison.OrdinalIgnoreCase);
+            token is "newtab" or "localhost" or "127.0.0.1" or ""
+            || token.StartsWith("newtab", StringComparison.OrdinalIgnoreCase);
 
-        /// <summary>与锚点时间贴邻、且本身也是候选（高特异性）的少量其它把手，作 LLM 提示上下文。</summary>
+        /// <summary>与把手时间贴邻、且本身也在短名单的少量其它把手，作分诊/提案消歧上下文。</summary>
         private static IReadOnlyList<HandleRef> PickCoOccurring(
-            HandleRef anchor, List<HandleInterval> anchorIntervals,
-            IEnumerable<HandleRef> candidateHandles, List<HandleInterval> allLive)
+            HandleRef anchor, List<HandleInterval> allLive, IReadOnlySet<HandleRef> candidateSet)
         {
-            var candidateSet = candidateHandles.ToHashSet();
+            var anchorIntervals = allLive.Where(i => i.Handle == anchor).ToList();
             var neighbours = new HashSet<HandleRef>();
             foreach (var a in anchorIntervals)
             {
                 foreach (var other in allLive)
                 {
                     if (other.Handle == anchor || !candidateSet.Contains(other.Handle)) continue;
-                    // 时间贴邻：区间相交或间隔 < AdjacencySeconds。
                     var gap = other.Start > a.End ? (other.Start - a.End).TotalSeconds
                             : a.Start > other.End ? (a.Start - other.End).TotalSeconds
                             : 0;

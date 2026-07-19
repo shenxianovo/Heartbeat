@@ -15,6 +15,7 @@ namespace Heartbeat.Server.Data
         public DbSet<Strand> Strands => Set<Strand>();
         public DbSet<StrandHandle> StrandHandles => Set<StrandHandle>();
         public DbSet<MutedHandle> MutedHandles => Set<MutedHandle>();
+        public DbSet<TriageDecision> TriageDecisions => Set<TriageDecision>();
 
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
@@ -153,6 +154,20 @@ namespace Heartbeat.Server.Data
                 entity.Property(e => e.Source).HasMaxLength(64);
                 entity.Property(e => e.Token).HasMaxLength(512);
 
+                entity.HasIndex(e => new { e.OwnerId, e.Source, e.Token })
+                    .IsUnique();
+            });
+
+            modelBuilder.Entity<TriageDecision>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Source).HasMaxLength(64);
+                entity.Property(e => e.Token).HasMaxLength(512);
+                entity.Property(e => e.Verdict).HasMaxLength(16);
+                entity.Property(e => e.Name).HasMaxLength(256);
+
+                // 分诊缓存身份：一个 Owner 的一个把手一份裁定，upsert 收敛。
                 entity.HasIndex(e => new { e.OwnerId, e.Source, e.Token })
                     .IsUnique();
             });

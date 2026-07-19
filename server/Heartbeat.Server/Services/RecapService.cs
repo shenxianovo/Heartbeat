@@ -107,19 +107,29 @@ namespace Heartbeat.Server.Services
         }
 
         /// <summary>
-        /// 载入 Owner 的 Strand 成员，铺成 把手 → (名字, 释义) 映射，供投影反哺（ADR-028 §6）。
+        /// 载入 把手 → (名字, 释义) 映射，供投影反哺（ADR-028 §6）。两个来源，用户覆盖机器：
+        /// 先铺 LLM 分诊判 known 的世界知识 gloss（bilibili/POWERPNT 这类，让叙事直接用正名），
+        /// 再铺用户确认的 Strand 成员——同把手时 Strand 胜（策展层 > 分诊猜测）。
         /// 同一把手落在多个 Strand 时后写胜——多对多消歧本属提问器职责，投影只做展示。
         /// </summary>
         private async Task<Dictionary<HandleRef, StrandGloss>> LoadKnownStrandsAsync(string ownerId, CancellationToken ct)
         {
+            var map = new Dictionary<HandleRef, StrandGloss>();
+
+            var known = await _db.TriageDecisions
+                .Where(t => t.OwnerId == ownerId && t.Verdict == "known" && t.Name != "")
+                .Select(t => new { t.Source, t.Token, t.Name, t.Gloss })
+                .ToListAsync(ct);
+            foreach (var k in known)
+                map[new HandleRef(k.Source, k.Token)] = new StrandGloss(k.Name, k.Gloss);
+
             var members = await _db.StrandHandles
                 .Where(m => m.Strand.OwnerId == ownerId)
                 .Select(m => new { m.Source, m.Token, m.Strand.Name, m.Strand.Gloss })
                 .ToListAsync(ct);
-
-            var map = new Dictionary<HandleRef, StrandGloss>();
             foreach (var m in members)
                 map[new HandleRef(m.Source, m.Token)] = new StrandGloss(m.Name, m.Gloss);
+
             return map;
         }
 

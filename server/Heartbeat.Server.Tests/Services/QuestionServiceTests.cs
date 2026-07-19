@@ -3,6 +3,7 @@ using Heartbeat.Server.Data;
 using Heartbeat.Server.Entities;
 using Heartbeat.Server.Services;
 using Heartbeat.Server.Tests.Fixtures;
+using Microsoft.EntityFrameworkCore;
 
 namespace Heartbeat.Server.Tests.Services;
 
@@ -62,9 +63,8 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
 
         var candidates = await new QuestionService(db).GetCandidatesAsync("user-1", Day);
 
-        // 单锚点：每个候选一个锚点把手，域名比裸系统进程更该问（特异性先验）。
-        Assert.Contains(candidates, c => c.Anchor == new HandleRef(ActivitySources.Browser, "proj.com"));
-        Assert.Equal(new HandleRef(ActivitySources.Browser, "proj.com"), candidates[0].Anchor);
+        // 每个候选一个把手；两者都过 gate 进短名单（选题交给分诊，粗筛不判该不该问）。
+        Assert.Contains(candidates, c => c.Handle == new HandleRef(ActivitySources.Browser, "proj.com"));
     }
 
     [Fact]
@@ -125,13 +125,87 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
         await db.SaveChangesAsync();
         var svc = new QuestionService(db);
 
-        // 首见：90min 过非复现 gate → 问。
-        var q = Assert.Single(await svc.GetCandidatesAsync("user-1", Day));
-        Assert.Equal(new HandleRef(ActivitySources.Browser, "chat.example.com"), q.Anchor);
+        // 首见：90min 过非复现 gate → 进候选。
+        var c = Assert.Single(await svc.GetCandidatesAsync("user-1", Day));
+        Assert.Equal(new HandleRef(ActivitySources.Browser, "chat.example.com"), c.Handle);
 
-        // 补往日同把手 → 变复现（无处不在），90min 不再够 → 不问（ubiquity 惩罚）。
+        // 补往日同把手 → 变复现（无处不在），90min 不再够 → 不进候选（ubiquity 惩罚）。
         db.ActivitySegments.Add(BrowserSeg("chat.example.com", At(-72), At(-71)));
         await db.SaveChangesAsync();
         Assert.Empty(await svc.GetCandidatesAsync("user-1", Day));
+    }
+
+    // ===== 分诊路径（LLM 三态）=====
+
+    /// <summary>可编程分诊器：按 token 返回预置裁定，未列出的默认 Ask。记录调用次数验缓存。</summary>
+    private sealed class FakeTriage(Dictionary<string, TriageResult> byToken) : ITriageGenerator
+    {
+        public int Calls { get; private set; }
+        public Task<TriageResult> TriageAsync(TriageInput input, TriageAnchors anchors, CancellationToken ct = default)
+        {
+            Calls++;
+            return Task.FromResult(byToken.TryGetValue(input.Token, out var r) ? r : TriageResult.FallbackAsk);
+        }
+    }
+
+    [Fact]
+    public async Task Triage_OnlyAskVerdicts_BecomeQuestions()
+    {
+        using var db = CreateDbContext();
+        db.ActivitySegments.AddRange(
+            BrowserSeg("huasheng.cn", At(9), At(12)),      // ask
+            BrowserSeg("bilibili.com", At(9), At(11.5)),   // known → 不问
+            BrowserSeg("mystery.io", At(9), At(11)));      // silent → 不问
+        await db.SaveChangesAsync();
+
+        var fake = new FakeTriage(new()
+        {
+            ["huasheng.cn"] = new(TriageVerdict.Ask, "花生", "毕设"),
+            ["bilibili.com"] = new(TriageVerdict.Known, "哔哩哔哩", "视频站"),
+            ["mystery.io"] = new(TriageVerdict.Silent, "", ""),
+        });
+        var svc = new QuestionService(db, fake);
+
+        var res = await svc.GetDailyQuestionsAsync("user-1", Day);
+
+        var q = Assert.Single(res.Questions);
+        Assert.Equal("huasheng.cn", q.Anchor!.Token);
+        Assert.Equal("花生", q.ProposedName);
+    }
+
+    [Fact]
+    public async Task Triage_DecisionsCached_NoRepeatLlmCalls()
+    {
+        using var db = CreateDbContext();
+        db.ActivitySegments.Add(BrowserSeg("huasheng.cn", At(9), At(12)));
+        await db.SaveChangesAsync();
+
+        var fake = new FakeTriage(new() { ["huasheng.cn"] = new(TriageVerdict.Ask, "花生", "毕设") });
+
+        await new QuestionService(db, fake).GetDailyQuestionsAsync("user-1", Day);
+        Assert.Equal(1, fake.Calls);
+
+        // 第二次：缓存命中，不再调 LLM。
+        using var db2 = CreateDbContext();
+        await new QuestionService(db2, fake).GetDailyQuestionsAsync("user-1", Day);
+        Assert.Equal(1, fake.Calls); // 未增
+
+        var cached = Assert.Single(await db2.TriageDecisions.ToListAsync());
+        Assert.Equal("ask", cached.Verdict);
+    }
+
+    [Fact]
+    public async Task Triage_NoGenerator_AllFallbackToAsk()
+    {
+        using var db = CreateDbContext();
+        db.ActivitySegments.Add(BrowserSeg("huasheng.cn", At(9), At(12)));
+        await db.SaveChangesAsync();
+
+        // 无分诊器（LLM 未配置）：不假装认识，退化为 Ask，用户仍可命名。
+        var res = await new QuestionService(db).GetDailyQuestionsAsync("user-1", Day);
+
+        Assert.Single(res.Questions);
+        // 缺席时不落缓存（等配置好再真判）。
+        Assert.Empty(await db.TriageDecisions.ToListAsync());
     }
 }
