@@ -12,6 +12,9 @@ namespace Heartbeat.Server.Data
         public DbSet<AppIcon> AppIcons => Set<AppIcon>();
         public DbSet<InputEvent> InputEvents => Set<InputEvent>();
         public DbSet<Recap> Recaps => Set<Recap>();
+        public DbSet<Strand> Strands => Set<Strand>();
+        public DbSet<StrandHandle> StrandHandles => Set<StrandHandle>();
+        public DbSet<MutedHandle> MutedHandles => Set<MutedHandle>();
 
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
@@ -108,6 +111,49 @@ namespace Heartbeat.Server.Data
 
                 // 缓存身份：一个 Owner 的一个日窗口一份（ADR-023 §4）。
                 entity.HasIndex(e => new { e.OwnerId, e.WindowStart })
+                    .IsUnique();
+            });
+
+            modelBuilder.Entity<Strand>(entity =>
+            {
+                // Id 为服务端生成的 UUIDv7。
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).ValueGeneratedNever();
+
+                entity.Property(e => e.Name).HasMaxLength(256);
+
+                // 无 Id 提交的收敛键：按 (OwnerId, Name) 定位既有行，重复提交幂等不产重复 Strand。
+                entity.HasIndex(e => new { e.OwnerId, e.Name })
+                    .IsUnique();
+
+                entity.HasMany(e => e.Members)
+                    .WithOne(m => m.Strand)
+                    .HasForeignKey(m => m.StrandId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<StrandHandle>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Source).HasMaxLength(64);
+                entity.Property(e => e.Token).HasMaxLength(512);
+
+                entity.HasIndex(e => new { e.StrandId, e.Source, e.Token })
+                    .IsUnique();
+
+                // 反哺解析按把手反查 Strand（ADR-028 §6，issue 03 起用）。
+                entity.HasIndex(e => new { e.Source, e.Token });
+            });
+
+            modelBuilder.Entity<MutedHandle>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Source).HasMaxLength(64);
+                entity.Property(e => e.Token).HasMaxLength(512);
+
+                entity.HasIndex(e => new { e.OwnerId, e.Source, e.Token })
                     .IsUnique();
             });
         }

@@ -10,5 +10,10 @@ namespace Heartbeat.Core
         /// 其段互斥、时长可求和——统计路径只消费此 Source。
         /// </summary>
         public const string System = "system";
+
+        /// <summary>
+        /// 浏览器扩展采集器。段为页面级活动，IdentityKey = 规范化 URL（origin+pathname）。
+        /// </summary>
+        public const string Browser = "browser";
     }
 }
