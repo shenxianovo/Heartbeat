@@ -1,6 +1,6 @@
 # 02: 提问器投影 —— diff + 时间贴邻聚簇 + Anchor/Satellite
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -19,12 +19,22 @@ Status: ready-for-agent
 
 ## Acceptance criteria
 
-- [ ] 时间贴邻聚簇:同日**不交错**的两活动(打游戏 vs 做项目来回切前台)不入同簇(单测)
-- [ ] 闸:低于噪声地板 / 不复现的簇不产问题
-- [ ] diff:已 Mute 或已绑定 Strand 的把手不再产问题
-- [ ] 自锚优先:已成某 Strand 锚点的把手,不被当天别的锚点吸走(单测)
-- [ ] 每天封顶 1–3,按未解释时长排序
-- [ ] 全流程纯函数 / 可脱离 DB 与 HttpContext 构造测试(投影可单测纪律,ADR-023 §2)
+- [x] 时间贴邻聚簇:同日**不交错**的两活动(打游戏 vs 做项目来回切前台)不入同簇(单测)
+- [x] 闸:低于噪声地板 / 不复现的簇不产问题
+- [x] diff:已 Mute 或已绑定 Strand 的把手不再产问题
+- [x] 自锚优先:已成某 Strand 锚点的把手,不被当天别的锚点吸走(单测)
+- [x] 每天封顶 1–3,按未解释时长排序
+- [x] 全流程纯函数 / 可脱离 DB 与 HttpContext 构造测试(投影可单测纪律,ADR-023 §2)
+
+## Comments
+
+- 2026-07-19 实现落地:`QuestionProjection`(纯静态,`HandleInterval`/`HandleRef`/`QuestionCluster` 类型)+ `QuestionService`(薄 DB 装配:查当日段→HandleDerivation→区间;载 strand 成员∪mute;14d 回看派生复现)。测试 14 个(10 纯投影 AC + 4 真库集成),服务端套件 99/99 绿。无 controller(端点属 issue 03),已在 Program.cs 注册 service。
+- **落地时定的启发式旋钮(常量,易调,待用户确认)**:
+  - 会话间隔阈值 `SessionGapSeconds = 600`(10 min):间隔超此即断为不同注意力会话。
+  - 噪声地板 `NoiseFloorSeconds = 60`:复用 ADR-023,per-把手当日累计低于此聚簇前剔除。
+  - gate 语义取 **"有意义时长(≥20min) OR 复现"** 而非严格"必须复现"——否则首日 4h 的新项目会被漏问。AC 里"非复现不问"因此精确化为"既不够时长又不复现才不问"。
+  - 强度 v1 粗:锚点 = 簇内 recurring 优先、再按当日时长取头部;ADR-028 §3 的摊布特异性精算留后续深化。
+  - 同一 constellation(把手集相同)跨会话合并为一簇、时长累加。
 
 ## Blocked by
 
