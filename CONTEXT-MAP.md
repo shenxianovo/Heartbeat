@@ -33,4 +33,4 @@ Collection ──uploads──▶ Analytics ──serves──▶ Dashboard
 ```
 
 - Collection → Analytics: 上游/下游（Upstream/Downstream），Collection 生产数据，Analytics 消费并持久化
-- Analytics → Dashboard: 上游/下游，Analytics 提供 API，Dashboard 只读消费
+- Analytics → Dashboard: 上游/下游，Analytics 提供 API，Dashboard 消费。**读为主**：使用数据只读呈现。**一处写例外**——Strand 知识层（ADR-028）：Dashboard 把用户对把手簇的裁决（绑定 Strand / Mute）POST 回 Analytics，知识库归 Analytics 所有（提案 LLM 调用与投影都在服务端）

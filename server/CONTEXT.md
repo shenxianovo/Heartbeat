@@ -37,5 +37,21 @@ _Avoid_: Summary（Report 词条同禁）、日报（汇报工具的词，Recap 
 segments → LLM 输入的确定性压缩（纯函数，可单测）：system 段按设备分轨作注意力骨架（轨内互斥、带时长），插件段按 IdentityKey 聚合作语义细节轨；碎段合并/丢弃只影响投影不动数据。未来外部 Agent/MCP 能力暴露的开门处（不预建，ADR-023 §2）。
 _Avoid_: 复刻标签升级喂单线（ADR-019 是展示层且有损，被 ADR-023 §3 否决）
 
+**Strand（脉络）**:
+用户生活里一个有名字的持续活动线索（项目 / 爱好 / 一个人 / 追的剧），被 Recap 用来把叙事从"开了哪些 App"升级为"在做什么"。形状 = 名字 + 自由释义 + 一组成员 Handle（它的可观测指纹）；单 Handle 是退化形态（等价一条实体释义，如"花生 = 敏毕设"）。**策展层，非派生物**——名字与含义只存在于用户脑中，segments 只提供证据、AI 提供猜想、用户确认成事实。per-Owner，独立存储，按值引用 Handle，**绝不写回 segment**（无损原则，ADR-012/017）。
+_Avoid_: Project（太窄，排除爱好 / 人 / 剧）、Tag、Note
+
+**Handle（把手）**:
+知识层的可观测身份单元：一个 (Source, token) 对，token 取该 Source 最自然的**粗**身份（browser→domain、system→AppName、vscode→仓库根）。是 segment 上 IdentityKey 的粗化 / 派生，**不是 IdentityKey 本身**——IdentityKey 是采集器"同一活动"判据（可细到 origin+path），Handle 是知识层选定的挂载粒度。Strand 靠它认出自己；反哺时靠它把当天 segment 归给某个 Strand。
+_Avoid_: 直接拿 IdentityKey 指代（粒度不同）
+
+**Anchor / Satellite（锚点 / 卫星）**:
+Handle 的强度角色，从"摊布特异性"推断（冷启动用 Source / 类型作弱先验）：近乎只与一个 Strand 共现的是 **Anchor**（强，看到即认出 Strand）；摊在多个 Strand / 多天里的通用工具（blender / AE / 浏览器）是 **Satellite**（单独无身份，逐日跟随在场 Anchor 归属）。语义时效性（同一工具先后服务不同项目）由此吸收——Satellite 跟锚点走，无需时间窗记账。
+_Avoid_: 把 Satellite 当 Strand 的定义性证据
+
+**Mute（静音）**:
+对一个锚点 Handle 的负向裁决——"这把手不承载知识，别再就它发问、也别试图绑定 Strand"。与"把手绑定到 Strand"是裁决一个把手的两个出口，同住知识库。单位是锚点 Handle（非易逝的簇）；只作用于知识 / 提问层，**不碰 Recap**（被静音的把手照样如实进叙事，无损原则）。
+_Avoid_: 墓碑 / Tombstone / Adjudication（设计期黑话，已弃用）、Hide（Mute 不从 Recap 隐藏）
+
 **Validation Policy**:
 摄入门卫（SegmentValidationPolicy / UsageValidationPolicy）：拒收未来时间戳、非法区间等畸形数据。拒收即丢弃，不修复——采集端负责数据正确性。
