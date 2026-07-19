@@ -21,10 +21,10 @@ namespace Heartbeat.Server.Services
         public async Task<DailyQuestionsResponse> GetDailyQuestionsAsync(
             string ownerId, DateTimeOffset date, CancellationToken ct = default)
         {
-            var clusters = await GetCandidatesAsync(ownerId, date, ct);
+            var candidates = await GetCandidatesAsync(ownerId, date, ct);
             var response = new DailyQuestionsResponse();
 
-            foreach (var c in clusters)
+            foreach (var c in candidates)
             {
                 var draft = _proposals == null
                     ? ProposalDraft.Empty
@@ -33,7 +33,7 @@ namespace Heartbeat.Server.Services
                 response.Questions.Add(new QuestionItemResponse
                 {
                     Anchor = new HandleDto { Source = c.Anchor.Source, Token = c.Anchor.Token },
-                    Handles = c.Handles.Select(h => new HandleDto { Source = h.Source, Token = h.Token }).ToList(),
+                    Handles = c.CoOccurring.Select(h => new HandleDto { Source = h.Source, Token = h.Token }).ToList(),
                     TotalSeconds = c.TotalSeconds,
                     Start = c.Start,
                     End = c.End,
@@ -44,15 +44,17 @@ namespace Heartbeat.Server.Services
             return response;
         }
 
-        /// <summary>喂提案 LLM 的文字上下文：把手清单 + 总时长。thin——更丰富的页面标题上下文留后续深化。</summary>
-        private static string BuildContext(QuestionCluster c)
+        /// <summary>喂提案 LLM 的文字上下文：被问的把手 + 时长 + 少量贴邻共现（提示）。</summary>
+        private static string BuildContext(QuestionCandidate c)
         {
-            var handles = string.Join("、", c.Handles.Select(h => $"{h.Source}/{h.Token}"));
             var minutes = (int)Math.Round(c.TotalSeconds / 60);
-            return $"共现标识：{handles}\n今日累计：约 {minutes} 分钟";
+            var context = $"要识别的标识：{c.Anchor.Source}/{c.Anchor.Token}\n今日累计：约 {minutes} 分钟";
+            if (c.CoOccurring.Count > 0)
+                context += $"\n同时段还出现：{string.Join("、", c.CoOccurring.Select(h => $"{h.Source}/{h.Token}"))}";
+            return context;
         }
 
-        public async Task<IReadOnlyList<QuestionCluster>> GetCandidatesAsync(
+        public async Task<IReadOnlyList<QuestionCandidate>> GetCandidatesAsync(
             string ownerId, DateTimeOffset date, CancellationToken ct = default)
         {            var window = DateRange.Day(date);
             var windowStart = window.UtcStart;

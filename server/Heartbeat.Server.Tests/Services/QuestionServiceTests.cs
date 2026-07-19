@@ -11,6 +11,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
 {
     private long _deviceId;
     private long _codeAppId;
+    private long _explorerAppId;
 
     private static readonly DateTimeOffset Day = new(2026, 7, 8, 0, 0, 0, TimeSpan.Zero);
     private static DateTimeOffset At(double hour) => Day.AddHours(hour);
@@ -19,11 +20,13 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
     {
         var device = new Device { OwnerId = "user-1", HardwareId = "hw-1", DeviceName = "PC" };
         var code = new App { Name = "code.exe" };
+        var explorer = new App { Name = "explorer" };
         db.Devices.Add(device);
-        db.Apps.Add(code);
+        db.Apps.AddRange(code, explorer);
         await db.SaveChangesAsync();
         _deviceId = device.Id;
         _codeAppId = code.Id;
+        _explorerAppId = explorer.Id;
     }
 
     private ActivitySegment SystemSeg(string appName, long appId, DateTimeOffset start, DateTimeOffset end) => new()
@@ -49,7 +52,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
     };
 
     [Fact]
-    public async Task DerivesHandlesFromSegments_ClustersCoOccurring()
+    public async Task DerivesHandles_SingleAnchorPerCandidate()
     {
         using var db = CreateDbContext();
         db.ActivitySegments.AddRange(
@@ -57,11 +60,21 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
             BrowserSeg("proj.com", At(9.2), At(10.8)));
         await db.SaveChangesAsync();
 
-        var clusters = await new QuestionService(db).GetCandidatesAsync("user-1", Day);
+        var candidates = await new QuestionService(db).GetCandidatesAsync("user-1", Day);
 
-        var cluster = Assert.Single(clusters);
-        Assert.Contains(new HandleRef(ActivitySources.System, "code.exe"), cluster.Handles);
-        Assert.Contains(new HandleRef(ActivitySources.Browser, "proj.com"), cluster.Handles);
+        // 单锚点：每个候选一个锚点把手，域名比裸系统进程更该问（特异性先验）。
+        Assert.Contains(candidates, c => c.Anchor == new HandleRef(ActivitySources.Browser, "proj.com"));
+        Assert.Equal(new HandleRef(ActivitySources.Browser, "proj.com"), candidates[0].Anchor);
+    }
+
+    [Fact]
+    public async Task ShellApp_NeverAsked_EvenAllDay()
+    {
+        using var db = CreateDbContext();
+        db.ActivitySegments.Add(SystemSeg("explorer", _explorerAppId, At(6), At(22)));
+        await db.SaveChangesAsync();
+
+        Assert.Empty(await new QuestionService(db).GetCandidatesAsync("user-1", Day));
     }
 
     [Fact]
@@ -104,21 +117,21 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
     }
 
     [Fact]
-    public async Task ShortToday_BecomesCandidate_OnlyWhenSeenOnPriorDay()
+    public async Task RecurringHandle_HasHigherGate_UbiquityPenalty()
     {
         using var db = CreateDbContext();
-        // 今天只有 5 分钟，低于有意义时长。
-        db.ActivitySegments.Add(BrowserSeg("ritual.com", At(9), At(9 + 5.0 / 60)));
+        // 今天 90 分钟。
+        db.ActivitySegments.Add(BrowserSeg("chat.example.com", At(9), At(10.5)));
         await db.SaveChangesAsync();
         var svc = new QuestionService(db);
 
-        Assert.Empty(await svc.GetCandidatesAsync("user-1", Day)); // 非复现 → 不问
+        // 首见：90min 过非复现 gate → 问。
+        var q = Assert.Single(await svc.GetCandidatesAsync("user-1", Day));
+        Assert.Equal(new HandleRef(ActivitySources.Browser, "chat.example.com"), q.Anchor);
 
-        // 补一条往日（3 天前，落在回看窗内）同把手的段。
-        db.ActivitySegments.Add(BrowserSeg("ritual.com", At(-72), At(-71)));
+        // 补往日同把手 → 变复现（无处不在），90min 不再够 → 不问（ubiquity 惩罚）。
+        db.ActivitySegments.Add(BrowserSeg("chat.example.com", At(-72), At(-71)));
         await db.SaveChangesAsync();
-
-        var cluster = Assert.Single(await svc.GetCandidatesAsync("user-1", Day)); // 复现 → 放行
-        Assert.Equal(new HandleRef(ActivitySources.Browser, "ritual.com"), cluster.Anchor);
+        Assert.Empty(await svc.GetCandidatesAsync("user-1", Day));
     }
 }

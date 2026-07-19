@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { fetchDailyQuestions, bindStrand, muteHandle, type QuestionItem, type HandleDto } from '../api/index'
+import { fetchDailyQuestions, bindStrand, muteHandle, type QuestionItem } from '../api/index'
 import { Card } from '@/components/ui/card'
 
 /**
- * Strand 提问面板（ADR-028 §4/§5）：owner-only。
- * 每天封顶 1–3 个"疑惑簇"，AI 给一次性提案，用户表单纠错后三出口：提交 / Mute / 跳过。
- * 跳过纯客户端（下次 diff 自然再端上来）；提交/ Mute 落库。
+ * Strand 提问面板（ADR-028 §4/§5，单锚点重构）：owner-only。
+ * 每天封顶 1–3 个问题，每个问题针对**一个**高特异性把手："huasheng.cn 是什么？"。
+ * 共现把手只作提示文案。三出口：入库 / 别再问（Mute）/ 跳过（纯客户端，下次 diff 再端上来）。
  */
 const props = defineProps<{ selectedDate: string }>()
 
@@ -14,7 +14,6 @@ interface Draft {
   q: QuestionItem
   name: string
   gloss: string
-  selected: boolean[]
   busy: boolean
 }
 
@@ -27,7 +26,6 @@ async function load() {
       q,
       name: q.proposedName ?? '',
       gloss: q.proposedGloss ?? '',
-      selected: q.handles.map(() => true),
       busy: false,
     }))
   } catch {
@@ -43,15 +41,14 @@ function remove(d: Draft) {
 
 function minutes(seconds: number): string {
   const m = Math.round(seconds / 60)
-  return m >= 60 ? `${Math.floor(m / 60)}小时${m % 60}分` : `${m}分`
+  return m >= 60 ? `${Math.floor(m / 60)}小时${m % 60 > 0 ? `${m % 60}分` : ''}` : `${m}分钟`
 }
 
 async function submit(d: Draft) {
-  const members = d.q.handles.filter((_, i) => d.selected[i])
-  if (!d.name.trim() || members.length === 0) return
+  if (!d.name.trim()) return
   d.busy = true
   try {
-    await bindStrand({ name: d.name.trim(), gloss: d.gloss.trim(), members })
+    await bindStrand({ name: d.name.trim(), gloss: d.gloss.trim(), members: [d.q.anchor] })
     remove(d)
   } catch {
     d.busy = false
@@ -67,17 +64,13 @@ async function mute(d: Draft) {
     d.busy = false
   }
 }
-
-function handleName(h: HandleDto): string {
-  return h.token
-}
 </script>
 
 <template>
   <Card v-if="drafts.length > 0" class="mb-6 gap-3 border-border/60 bg-card/80 py-5 backdrop-blur-sm">
     <div class="flex flex-col gap-4 px-5">
       <h2 class="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-        AI 有 {{ drafts.length }} 个问题 · 这些是什么？
+        认识一下 · {{ drafts.length }} 个没见过的东西
       </h2>
 
       <div
@@ -85,27 +78,20 @@ function handleName(h: HandleDto): string {
         :key="d.q.anchor.source + '/' + d.q.anchor.token"
         class="flex flex-col gap-3 rounded-lg border border-border/50 bg-background/40 p-4"
       >
-        <p class="text-[0.8rem] text-muted-foreground">
-          今天这些一起出现了约 {{ minutes(d.q.totalSeconds) }}，是一件事吗？是什么？
+        <p class="text-[0.92rem]">
+          <span class="font-semibold">{{ d.q.anchor.token }}</span>
+          <span class="text-muted-foreground"> · 今天 {{ minutes(d.q.totalSeconds) }}，这是什么？</span>
         </p>
 
-        <div class="flex flex-wrap gap-2">
-          <label
-            v-for="(h, i) in d.q.handles"
-            :key="h.source + '/' + h.token"
-            class="flex cursor-pointer items-center gap-1.5 rounded-md border border-border/50 px-2 py-1 text-[0.78rem]"
-            :class="d.selected[i] ? 'text-foreground' : 'text-muted-foreground/60 line-through'"
-          >
-            <input v-model="d.selected[i]" type="checkbox" class="accent-current" />
-            {{ handleName(h) }}
-          </label>
-        </div>
+        <p v-if="d.q.handles.length > 0" class="text-[0.78rem] text-muted-foreground/70">
+          同时段还有：{{ d.q.handles.map(h => h.token).join('、') }}
+        </p>
 
         <div class="flex flex-col gap-2">
           <input
             v-model="d.name"
             type="text"
-            placeholder="给它起个名字（如 HyperFrames）"
+            placeholder="给它一个名字（如 花生）"
             class="w-full rounded-md border border-border/50 bg-background/60 px-2.5 py-1.5 text-[0.9rem] outline-none focus:border-border"
           />
           <input
@@ -131,7 +117,7 @@ function handleName(h: HandleDto): string {
           >别再问</button>
           <button
             class="glass-control cursor-pointer px-3 py-1 text-[0.75rem] text-foreground transition-colors hover:text-foreground disabled:opacity-50"
-            :disabled="d.busy || !d.name.trim() || d.selected.every(s => !s)"
+            :disabled="d.busy || !d.name.trim()"
             @click="submit(d)"
           >入库</button>
         </div>
