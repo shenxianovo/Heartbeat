@@ -33,7 +33,8 @@ namespace Heartbeat.Server.Services
                 return ToResponse(date, cached);
 
             var segments = await QuerySegmentsAsync(ownerId, windowStart, windowEnd, ct);
-            var projection = RecapProjection.Project(segments, window, date.Offset);
+            var knownStrands = await LoadKnownStrandsAsync(ownerId, ct);
+            var projection = RecapProjection.Project(segments, window, date.Offset, knownStrands);
 
             if (projection.IsEmpty)
                 return new DailyRecapResponse { Date = FormatDate(date), IsEmpty = true };
@@ -100,8 +101,26 @@ namespace Heartbeat.Server.Services
                     x.App != null ? x.App.Name : null,
                     x.Title,
                     x.StartTime,
-                    x.EndTime))
+                    x.EndTime,
+                    x.Attributes))
                 .ToListAsync(ct);
+        }
+
+        /// <summary>
+        /// 载入 Owner 的 Strand 成员，铺成 把手 → (名字, 释义) 映射，供投影反哺（ADR-028 §6）。
+        /// 同一把手落在多个 Strand 时后写胜——多对多消歧本属提问器职责，投影只做展示。
+        /// </summary>
+        private async Task<Dictionary<HandleRef, StrandGloss>> LoadKnownStrandsAsync(string ownerId, CancellationToken ct)
+        {
+            var members = await _db.StrandHandles
+                .Where(m => m.Strand.OwnerId == ownerId)
+                .Select(m => new { m.Source, m.Token, m.Strand.Name, m.Strand.Gloss })
+                .ToListAsync(ct);
+
+            var map = new Dictionary<HandleRef, StrandGloss>();
+            foreach (var m in members)
+                map[new HandleRef(m.Source, m.Token)] = new StrandGloss(m.Name, m.Gloss);
+            return map;
         }
 
         private static DailyRecapResponse ToResponse(DateTimeOffset date, Recap recap) => new()

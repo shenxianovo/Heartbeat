@@ -58,6 +58,37 @@ public class RecapProjectionTests
     }
 
     [Fact]
+    public void KnownStrands_PresentHandles_AppendedAsBlock()
+    {
+        var known = new Dictionary<HandleRef, StrandGloss>
+        {
+            [new(ActivitySources.System, "code.exe")] = new("HyperFrames", "我在搞的 AI 动效框架"),
+            [new("browser", "huasheng.com")] = new("花生", "敏毕设"),
+            [new(ActivitySources.System, "never.exe")] = new("缺席项目", "今天没出现"),
+        };
+
+        var result = RecapProjection.Project(
+            [
+                new("Main PC", ActivitySources.System, "code.exe|x", "code.exe", "x", Day.AddHours(9), Day.AddHours(11)),
+                Browser("https://huasheng.com/dashboard", "花生看板", Day.AddHours(9), Day.AddHours(10)),
+            ],
+            Window, TimeSpan.Zero, known);
+
+        Assert.Contains("已知脉络", result.Digest);
+        Assert.Contains("HyperFrames：我在搞的 AI 动效框架", result.Digest);
+        Assert.Contains("花生：敏毕设", result.Digest);
+        Assert.DoesNotContain("缺席项目", result.Digest); // 今天没出现的 Strand 不进块
+    }
+
+    [Fact]
+    public void KnownStrands_Null_NoBlock()
+    {
+        var result = Project(Sys("vscode", null, Day.AddHours(9), Day.AddHours(10)));
+
+        Assert.DoesNotContain("已知脉络", result.Digest);
+    }
+
+    [Fact]
     public void ShortBlock_DroppedFromTimeline_ButCountedInAppTotals()
     {
         var result = Project(

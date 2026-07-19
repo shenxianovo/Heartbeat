@@ -3,6 +3,9 @@ namespace Heartbeat.Server.Services
     /// <summary>(Source, Token) 把手引用。投影内的分组/集合键。</summary>
     public readonly record struct HandleRef(string Source, string Token);
 
+    /// <summary>把手所属 Strand 的展示信息（Recap 反哺注入用，ADR-028 §6）。</summary>
+    public readonly record struct StrandGloss(string Name, string Gloss);
+
     /// <summary>一段带把手的当日活动区间（已裁剪到日窗口）。QuestionProjection 的输入行。</summary>
     public readonly record struct HandleInterval(string Source, string Token, DateTimeOffset Start, DateTimeOffset End)
     {

@@ -179,6 +179,74 @@ export async function fetchPublicDailyRecap(username: string, params: { date?: s
   return DailyRecapResponse.fromJS(await res.json())
 }
 
+// ===== Strand 知识层（ADR-028）=====
+// owner-only：确认写知识 + 提案烧 LLM token，无 public 版。手写 wrapper：
+// questions 的 date 与 recap 同理须携带本地时区偏移；bind/mute 是普通 JSON POST。
+// 未走 NSwag 生成 client——端点新增，client 重生成需服务器在跑，留作后续同步。
+
+export interface HandleDto {
+  source: string
+  token: string
+}
+
+export interface QuestionItem {
+  anchor: HandleDto
+  handles: HandleDto[]
+  totalSeconds: number
+  start: string
+  end: string
+  proposedName: string
+  proposedGloss: string
+}
+
+export interface DailyQuestions {
+  questions: QuestionItem[]
+}
+
+export interface BindStrandRequest {
+  id?: string
+  name: string
+  gloss: string
+  members: HandleDto[]
+}
+
+export interface StrandResponse {
+  id: string
+  name: string
+  gloss: string
+  members: HandleDto[]
+  createdAt: string
+  updatedAt: string
+}
+
+export async function fetchDailyQuestions(params: { date?: string }): Promise<DailyQuestions> {
+  const searchParams = new URLSearchParams()
+  if (params.date) searchParams.set('date', toLocalDateTimeOffsetString(params.date))
+  const res = await authHttp.fetch(`${API_BASE}/knowledge/questions?${searchParams}`)
+  if (!res.ok) throw new ApiException('Questions request failed.', res.status, await res.text(), {}, null)
+  return (await res.json()) as DailyQuestions
+}
+
+export async function bindStrand(req: BindStrandRequest): Promise<StrandResponse> {
+  const res = await authHttp.fetch(`${API_BASE}/knowledge/strands`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) throw new ApiException('Bind strand failed.', res.status, await res.text(), {}, null)
+  return (await res.json()) as StrandResponse
+}
+
+/** Mute 一个把手（负向裁决）。MuteHandleRequest 与 HandleDto 同形（source/token）。 */
+export async function muteHandle(handle: HandleDto): Promise<void> {
+  const res = await authHttp.fetch(`${API_BASE}/knowledge/mutes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(handle),
+  })
+  if (!res.ok) throw new ApiException('Mute handle failed.', res.status, await res.text(), {}, null)
+}
+
 // ===== Me（本人视角,ADR-025）=====
 // GET /me 是懒建供给的触发点:登录后必须调一次,否则 User 行不存在,
 // 本人的 /:username 看板会 404(可见性门查不到用户)。

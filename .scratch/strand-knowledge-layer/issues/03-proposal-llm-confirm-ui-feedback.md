@@ -1,6 +1,6 @@
 # 03: 主射弹 —— 提案 LLM + 确认 UI + recap 反哺,端到端薄线
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -23,6 +23,16 @@ Status: ready-for-agent
 - [ ] 提交经 01 端点入库;recap 投影注入生效(system 段标签升级为 Strand 名)
 - [ ] Mute / 跳过在 UI 可达且行为正确:Mute 后该把手不再被问(02 diff),跳过则下次再端上来
 - [ ] 隐私:提案调用出境数据不超过 recap 已出境范围(把手簇 + 标题,ADR-028 §7)
+
+## Comments
+
+- 2026-07-19 实现落地(后端可测部分 + 前端待用户端到端验证):
+  - **反哺注入**:`RecapProjection.Project` 加 `knownStrands` 映射参,digest 末尾追加"已知脉络"块(HandleDerivation 确定性解析,留投影层);`RecapService.LoadKnownStrandsAsync` 铺 把手→(名,释义) 映射;prompt 模板加"用脉络名称呼"规则(PromptHash 随之变,ADR-023 §4 靠字段可辨)。2 条投影单测。
+  - **提案 LLM**:`IProposalGenerator` + `OpenAiCompatibleProposalGenerator`(复用 RecapOptions,裸 HttpClient,一发出 `{name,gloss}`,宽容提取 JSON 围栏)。**失败/未配置一律降级空提案不抛**。
+  - **端点**:`GET /api/v1/knowledge/questions?date=`(带时区偏移);`QuestionService.GetDailyQuestionsAsync` 装配 clusters + 提案 → DTO。DTO `QuestionItemResponse`/`DailyQuestionsResponse` 入 Core。
+  - **前端**:`StrandQuestions.vue`(owner-only,挂 RecapCard 后)——提案表单卡:改名字/释义、勾/去勾成员、三出口 入库/别再问(Mute)/跳过。`api/index.ts` 手写 `fetchDailyQuestions`/`bindStrand`/`muteHandle` wrapper(questions 带偏移,同 recap 先例)。
+  - 验证状态:服务端 101/101 绿,`vue-tsc -b` 通过,全解决方案构建 0 错误。**端到端手测那条待用户在真环境验收**(需配 Recap:LLM + 真采集数据)。
+  - 刻意留的薄:提案上下文只喂"把手 + 时长"(页面标题上下文留深化);对话式纠错未做(表单起步);NSwag client 未重生成(端点走手写 wrapper,client 同步留后续)。
 
 ## Blocked by
 

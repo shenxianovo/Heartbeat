@@ -21,6 +21,7 @@ builder.Services.AddScoped<InputEventService>();
 builder.Services.AddScoped<RecapService>();
 builder.Services.AddScoped<KnowledgeService>();
 builder.Services.AddScoped<QuestionService>();
+builder.Services.AddHttpClient<IProposalGenerator, OpenAiCompatibleProposalGenerator>();
 builder.Services.Configure<RecapOptions>(builder.Configuration.GetSection(RecapOptions.Section));
 builder.Services.AddHttpClient<IRecapGenerator, OpenAiCompatibleRecapGenerator>();
 builder.Services.AddHttpClient("AuthService", client =>

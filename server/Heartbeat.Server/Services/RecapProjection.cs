@@ -15,7 +15,8 @@ namespace Heartbeat.Server.Services
         string? AppName,
         string? Title,
         DateTimeOffset StartTime,
-        DateTimeOffset EndTime);
+        DateTimeOffset EndTime,
+        string? Attributes = null);
 
     public class RecapProjectionResult
     {
@@ -50,7 +51,8 @@ namespace Heartbeat.Server.Services
         public static RecapProjectionResult Project(
             IReadOnlyList<RecapSegmentInput> segments,
             DateRange window,
-            TimeSpan displayOffset)
+            TimeSpan displayOffset,
+            IReadOnlyDictionary<HandleRef, StrandGloss>? knownStrands = null)
         {
             DateTimeOffset windowStart = window.UtcStart;
             DateTimeOffset windowEnd = window.UtcEnd;
@@ -97,12 +99,40 @@ namespace Heartbeat.Server.Services
                 AppendPluginTracks(sb, device.ToList());
             }
 
+            AppendKnownStrands(sb, clipped, knownStrands);
+
             return new RecapProjectionResult
             {
                 IsEmpty = false,
                 Digest = sb.ToString(),
                 SegmentWatermarkUtc = watermark
             };
+        }
+
+        /// <summary>
+        /// 已知脉络块（ADR-028 §6）：把当日观测到的把手归到用户确认过的 Strand，
+        /// 让生成层用项目名而非 app 名叙事。解析确定性（HandleDerivation），留在可测的投影层。
+        /// </summary>
+        private static void AppendKnownStrands(
+            StringBuilder sb, List<ClippedSegment> clipped, IReadOnlyDictionary<HandleRef, StrandGloss>? knownStrands)
+        {
+            if (knownStrands == null || knownStrands.Count == 0) return;
+
+            var present = new Dictionary<string, StrandGloss>(StringComparer.Ordinal);
+            foreach (var c in clipped)
+            {
+                var s = c.Segment;
+                if (HandleDerivation.Derive(s.Source, s.AppName, s.Attributes, s.IdentityKey) is not { } h)
+                    continue;
+                if (knownStrands.TryGetValue(new HandleRef(h.Source, h.Token), out var gloss))
+                    present.TryAdd(gloss.Name, gloss);
+            }
+            if (present.Count == 0) return;
+
+            sb.AppendLine();
+            sb.AppendLine("## 已知脉络（把观测归到你确认过的项目；用这些名字称呼对应活动）");
+            foreach (var g in present.Values.OrderBy(g => g.Name, StringComparer.Ordinal))
+                sb.AppendLine(string.IsNullOrWhiteSpace(g.Gloss) ? $"- {g.Name}" : $"- {g.Name}：{g.Gloss}");
         }
 
         private sealed record ClippedSegment(RecapSegmentInput Segment, DateTimeOffset Start, DateTimeOffset End)

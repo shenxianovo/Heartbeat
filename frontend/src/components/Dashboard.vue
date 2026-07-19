@@ -4,6 +4,7 @@ import { useHeartbeat } from '../composables/useHeartbeat'
 import { authStore } from '../stores/auth'
 import ActivityTimeline from './ActivityTimeline.vue'
 import RecapCard from './RecapCard.vue'
+import StrandQuestions from './StrandQuestions.vue'
 import StatusCards from './StatusCards.vue'
 import CurrentAppPanel from './CurrentAppPanel.vue'
 import TodayRanking from './TodayRanking.vue'
@@ -167,6 +168,12 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
             :selectedDate="selectedDate"
             :username="username"
             :canRegenerate="isOwnProfile"
+          />
+
+          <!-- Strand 提问面板（ADR-028）：owner-only，写知识 + 烧 LLM，无 public 版。 -->
+          <StrandQuestions
+            v-if="isOwnProfile"
+            :selectedDate="selectedDate"
           />
 
           <ActivityTimeline

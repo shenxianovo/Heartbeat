@@ -12,10 +12,24 @@ namespace Heartbeat.Server.Controllers
     [ApiController]
     [Route("api/v1/knowledge")]
     [Authorize]
-    public class KnowledgeController(KnowledgeService knowledgeService, ICurrentUserService currentUser) : ControllerBase
+    public class KnowledgeController(
+        KnowledgeService knowledgeService,
+        QuestionService questionService,
+        ICurrentUserService currentUser) : ControllerBase
     {
         private readonly KnowledgeService _knowledgeService = knowledgeService;
+        private readonly QuestionService _questionService = questionService;
         private readonly ICurrentUserService _currentUser = currentUser;
+
+        /// <summary>当日候选提问 + 一次性提案（ADR-028 §4/§5）。date 携带用户时区偏移切日窗口，镜像 recap 契约。</summary>
+        [HttpGet("questions")]
+        [EndpointName("getDailyQuestions")]
+        public async Task<ActionResult<DailyQuestionsResponse>> GetDailyQuestions(
+            [FromQuery] DateTimeOffset? date, CancellationToken ct = default)
+        {
+            var target = date ?? DateTimeOffset.UtcNow;
+            return await _questionService.GetDailyQuestionsAsync(_currentUser.GetUserId(), target, ct);
+        }
 
         [HttpPost("strands")]
         [EndpointName("bindStrand")]
