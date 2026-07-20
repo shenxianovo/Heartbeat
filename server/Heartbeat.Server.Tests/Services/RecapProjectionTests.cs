@@ -63,7 +63,7 @@ public class RecapProjectionTests
         var known = new Dictionary<HandleRef, StrandGloss>
         {
             [new(ActivitySources.System, "code.exe")] = new("HyperFrames", "我在搞的 AI 动效框架"),
-            [new("browser", "huasheng.com")] = new("花生", "敏毕设"),
+            [new("browser", "huasheng.com")] = new("花生", "B 站实习部门的产品"),
             [new(ActivitySources.System, "never.exe")] = new("缺席项目", "今天没出现"),
         };
 
@@ -76,7 +76,7 @@ public class RecapProjectionTests
 
         Assert.Contains("已知脉络", result.Digest);
         Assert.Contains("HyperFrames：我在搞的 AI 动效框架", result.Digest);
-        Assert.Contains("花生：敏毕设", result.Digest);
+        Assert.Contains("花生：B 站实习部门的产品", result.Digest);
         Assert.DoesNotContain("缺席项目", result.Digest); // 今天没出现的 Strand 不进块
     }
 

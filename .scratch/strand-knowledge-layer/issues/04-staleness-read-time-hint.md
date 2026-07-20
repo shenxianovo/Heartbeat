@@ -24,3 +24,7 @@ Status: ready-for-agent
 ## Blocked by
 
 - [03](./03-proposal-llm-confirm-ui-feedback.md)
+
+## Comments
+
+- 2026-07-20 ADR-029 重构后本片仍然成立（§6 缓存契约被原样继承），继续按本片实施；已裁决单位换 Matcher，判脏比较逻辑不变。

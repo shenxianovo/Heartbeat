@@ -39,3 +39,5 @@ Status: done
 ## Blocked by
 
 - [01](./01-foundation-model-and-commit.md)
+
+- 2026-07-20 ADR-029 推翻本片机制（摊平投影/分诊选题）：拆除与重建见 `.scratch/observation-depth-matcher/`。本文件保留为历史记录。
