@@ -5,8 +5,7 @@ namespace Heartbeat.Server.Services
 {
     /// <summary>
     /// Recap 投影的输入行：一条已物化的 segment 及其关联显示名。
-    /// Attributes 有意不进投影——browser 的 IdentityKey 已是规范化 URL，Title 已是页面标题，
-    /// 自由结构 JSON 只会稀释 token（ADR-023 §3）。
+    /// 自由结构 Attributes 有意不进投影——browser 的 IdentityKey 已是规范化 URL，Title 已是页面标题（ADR-023 §3）。
     /// </summary>
     public record RecapSegmentInput(
         string DeviceName,
@@ -15,8 +14,7 @@ namespace Heartbeat.Server.Services
         string? AppName,
         string? Title,
         DateTimeOffset StartTime,
-        DateTimeOffset EndTime,
-        string? Attributes = null);
+        DateTimeOffset EndTime);
 
     public class RecapProjectionResult
     {
@@ -58,7 +56,7 @@ namespace Heartbeat.Server.Services
             IReadOnlyList<RecapSegmentInput> segments,
             DateRange window,
             TimeSpan displayOffset,
-            IReadOnlyDictionary<HandleRef, StrandGloss>? knownStrands = null,
+            IReadOnlyList<KnownStrandInput>? knownStrands = null,
             IReadOnlyList<string>? recurringReadings = null)
         {
             DateTimeOffset windowStart = window.UtcStart;
@@ -118,28 +116,30 @@ namespace Heartbeat.Server.Services
         }
 
         /// <summary>
-        /// 已知脉络块（ADR-028 §6）：把当日观测到的把手归到用户确认过的 Strand，
-        /// 让生成层用项目名而非 app 名叙事。解析确定性（HandleDerivation），留在可测的投影层。
+        /// 已知脉络块（ADR-028 §6，解析随 ADR-029 换 Matcher 命中）：注入只在指纹当日命中时发生——
+        /// 把当日观测归到用户确认过的 Strand，让生成层用项目名而非 app 名叙事。
+        /// 解析确定性（DepthReadings + MatcherEval），留在可测的投影层。
         /// </summary>
         private static void AppendKnownStrands(
-            StringBuilder sb, List<ClippedSegment> clipped, IReadOnlyDictionary<HandleRef, StrandGloss>? knownStrands)
+            StringBuilder sb, List<ClippedSegment> clipped, IReadOnlyList<KnownStrandInput>? knownStrands)
         {
             if (knownStrands == null || knownStrands.Count == 0) return;
 
-            var present = new Dictionary<string, StrandGloss>(StringComparer.Ordinal);
-            foreach (var c in clipped)
-            {
-                var s = c.Segment;
-                if (HandleDerivation.Derive(s.Source, s.AppName, s.Attributes, s.IdentityKey) is not { } h)
-                    continue;
-                if (knownStrands.TryGetValue(new HandleRef(h.Source, h.Token), out var gloss))
-                    present.TryAdd(gloss.Name, gloss);
-            }
+            var observed = clipped
+                .Select(c => (c.Segment.Source, Readings: DepthReadings.For(
+                    c.Segment.Source, c.Segment.AppName, c.Segment.Title, c.Segment.IdentityKey)))
+                .ToList();
+
+            var present = knownStrands
+                .Where(s => s.Matchers.Any(m => observed.Any(o => MatcherEval.Hits(o.Source, o.Readings, m))))
+                .DistinctBy(s => s.Name)
+                .OrderBy(s => s.Name, StringComparer.Ordinal)
+                .ToList();
             if (present.Count == 0) return;
 
             sb.AppendLine();
             sb.AppendLine("## 已知脉络（把观测归到你确认过的项目；用这些名字称呼对应活动）");
-            foreach (var g in present.Values.OrderBy(g => g.Name, StringComparer.Ordinal))
+            foreach (var g in present)
                 sb.AppendLine(string.IsNullOrWhiteSpace(g.Gloss) ? $"- {g.Name}" : $"- {g.Name}：{g.Gloss}");
         }
 

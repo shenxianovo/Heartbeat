@@ -1,4 +1,5 @@
 using Heartbeat.Core;
+using Heartbeat.Core.DTOs.Knowledge;
 using Heartbeat.Server.Services;
 
 namespace Heartbeat.Server.Tests.Services;
@@ -16,6 +17,28 @@ public class RecapProjectionTests
 
     private static RecapProjectionResult Project(params RecapSegmentInput[] segments)
         => RecapProjection.Project(segments, Window, TimeSpan.Zero);
+
+    private static MatcherDto AppMatcher(string app) => new()
+    {
+        Source = ActivitySources.System,
+        Steps = [new() { Layer = 1, Reading = "app", Op = MatcherOps.Equal, Value = app }]
+    };
+
+    private static MatcherDto UrlContains(string fragment) => new()
+    {
+        Source = ActivitySources.Browser,
+        Steps = [new() { Layer = 1, Reading = "url", Op = MatcherOps.Contains, Value = fragment }]
+    };
+
+    private static MatcherDto PathMatcher(string app, string titleFragment) => new()
+    {
+        Source = ActivitySources.System,
+        Steps =
+        [
+            new() { Layer = 1, Reading = "app", Op = MatcherOps.Equal, Value = app },
+            new() { Layer = 2, Reading = "title", Op = MatcherOps.Contains, Value = titleFragment },
+        ]
+    };
 
     [Fact]
     public void EmptyDay_IsEmpty_WatermarkAtWindowStart()
@@ -58,13 +81,13 @@ public class RecapProjectionTests
     }
 
     [Fact]
-    public void KnownStrands_PresentHandles_AppendedAsBlock()
+    public void KnownStrands_MatcherHitsToday_AppendedAsBlock()
     {
-        var known = new Dictionary<HandleRef, StrandGloss>
+        var known = new List<KnownStrandInput>
         {
-            [new(ActivitySources.System, "code.exe")] = new("HyperFrames", "我在搞的 AI 动效框架"),
-            [new("browser", "huasheng.com")] = new("花生", "B 站实习部门的产品"),
-            [new(ActivitySources.System, "never.exe")] = new("缺席项目", "今天没出现"),
+            new("HyperFrames", "我在搞的 AI 动效框架", [AppMatcher("code.exe")]),
+            new("花生", "B 站实习部门的产品", [UrlContains("huasheng.com")]),
+            new("缺席项目", "今天没出现", [AppMatcher("never.exe")]),
         };
 
         var result = RecapProjection.Project(
@@ -77,7 +100,24 @@ public class RecapProjectionTests
         Assert.Contains("已知脉络", result.Digest);
         Assert.Contains("HyperFrames：我在搞的 AI 动效框架", result.Digest);
         Assert.Contains("花生：B 站实习部门的产品", result.Digest);
-        Assert.DoesNotContain("缺席项目", result.Digest); // 今天没出现的 Strand 不进块
+        Assert.DoesNotContain("缺席项目", result.Digest); // 指纹今天没命中的 Strand 不进块
+    }
+
+    [Fact]
+    public void KnownStrands_PathPredicate_L2MustAlsoMatch()
+    {
+        var known = new List<KnownStrandInput>
+        {
+            new("HyperFrames", "动效预研", [PathMatcher("Code", "hyperframes")]),
+            new("别的项目", "不该出现", [PathMatcher("Code", "unrelated")]),
+        };
+
+        var result = RecapProjection.Project(
+            [Sys("Code", "hyperframes-workspace — a.ts", Day.AddHours(9), Day.AddHours(10))],
+            Window, TimeSpan.Zero, known);
+
+        Assert.Contains("HyperFrames：动效预研", result.Digest);
+        Assert.DoesNotContain("别的项目", result.Digest); // L1 命中但 L2 不中 → 不注入
     }
 
     [Fact]

@@ -1,0 +1,36 @@
+namespace Heartbeat.Core.DTOs.Knowledge
+{
+    /// <summary>Matcher 谓词词汇表（ADR-029 §3）：刻意收窄成三种起步，防止长成规则引擎。</summary>
+    public static class MatcherOps
+    {
+        public const string Equal = "equals";
+        public const string Prefix = "prefix";
+        public const string Contains = "contains";
+    }
+
+    /// <summary>路径谓词的一步：某观测深度层的某读数上的一个谓词。</summary>
+    public class MatcherStepDto
+    {
+        /// <summary>观测深度层（≥1，浅→深；由该 Source 采集器契约声明）。</summary>
+        public int Layer { get; set; }
+
+        /// <summary>读数名（采集器契约词汇：system 的 app/title、browser 的 url/tab_title…）。</summary>
+        public string Reading { get; set; } = string.Empty;
+
+        /// <summary>谓词：equals / prefix / contains（见 MatcherOps）。</summary>
+        public string Op { get; set; } = string.Empty;
+
+        public string Value { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// Matcher（匹配子，ADR-029 §3）：知识层指纹原子——沿某 Source 深度树的路径谓词，
+    /// 各步合取，单步是退化形态。digest 是深度树的观测投影，Matcher 是同一棵树上的路径谓词。
+    /// </summary>
+    public class MatcherDto
+    {
+        public string Source { get; set; } = string.Empty;
+
+        public List<MatcherStepDto> Steps { get; set; } = [];
+    }
+}

@@ -1,6 +1,6 @@
 # 02: Matcher —— 路径谓词模型 + 知识库改形 + 注入换轨
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -32,3 +32,7 @@ Status: ready-for-agent
 ## Blocked by
 
 - 01（digest 树的读数路径是求值输入）
+
+## Comments
+
+- 2026-07-20 落地(含前置拆除,原 issue 03 的拆除清单大半在此片完成——实体改形逼的):删 QuestionProjection/QuestionService/TriageGenerator/HandleDerivation/TriageDecision/StrandHandle/MutedHandle 及其测试与 DTO;新增 MatcherDto(路径谓词,Core)、MatcherNormalizer/MatcherCodec/MatcherEval(纯函数)、StrandMatcher/MutedMatcher 实体、MatcherKnowledgeLayer 迁移(drop 3 表 create 2 表,数据不保已知情);KnowledgeService/Controller 换 matcher 形状(幂等含步骤换序收敛);Recap 注入换 matcher 命中、triage-gloss 路径删除;GET questions 端点随旧管线暂拆,issue 03 重建。测试:MatcherEvalTests 9 新增,Knowledge/RecapProjection 测试迁移;套件 102/102 绿。

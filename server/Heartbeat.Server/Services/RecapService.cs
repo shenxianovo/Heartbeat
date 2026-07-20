@@ -1,4 +1,5 @@
 using Heartbeat.Core;
+using Heartbeat.Core.DTOs.Knowledge;
 using Heartbeat.Core.DTOs.Recaps;
 using Heartbeat.Server.Data;
 using Heartbeat.Server.Entities;
@@ -101,36 +102,35 @@ namespace Heartbeat.Server.Services
                     x.App != null ? x.App.Name : null,
                     x.Title,
                     x.StartTime,
-                    x.EndTime,
-                    x.Attributes))
+                    x.EndTime))
                 .ToListAsync(ct);
         }
 
         /// <summary>
-        /// 载入 把手 → (名字, 释义) 映射，供投影反哺（ADR-028 §6）。两个来源，用户覆盖机器：
-        /// 先铺 LLM 分诊判 known 的世界知识 gloss（bilibili/POWERPNT 这类，让叙事直接用正名），
-        /// 再铺用户确认的 Strand 成员——同把手时 Strand 胜（策展层 > 分诊猜测）。
-        /// 同一把手落在多个 Strand 时后写胜——多对多消歧本属提问器职责，投影只做展示。
+        /// 载入该 Owner 的全部 Strand（名字 + 释义 + Matcher 指纹），供投影反哺（ADR-029 §1/§3）：
+        /// 注入只在指纹当日命中时发生，命中判断在投影层（可测）。
+        /// 机器世界知识不入库也不注入——叙事 LLM 自带（ADR-029 §1）。
         /// </summary>
-        private async Task<Dictionary<HandleRef, StrandGloss>> LoadKnownStrandsAsync(string ownerId, CancellationToken ct)
+        private async Task<List<KnownStrandInput>> LoadKnownStrandsAsync(string ownerId, CancellationToken ct)
         {
-            var map = new Dictionary<HandleRef, StrandGloss>();
-
-            var known = await _db.TriageDecisions
-                .Where(t => t.OwnerId == ownerId && t.Verdict == "known" && t.Name != "")
-                .Select(t => new { t.Source, t.Token, t.Name, t.Gloss })
+            var strands = await _db.Strands
+                .Where(s => s.OwnerId == ownerId)
+                .Select(s => new
+                {
+                    s.Name,
+                    s.Gloss,
+                    Matchers = s.Members.Select(m => new { m.Source, m.StepsJson }).ToList()
+                })
                 .ToListAsync(ct);
-            foreach (var k in known)
-                map[new HandleRef(k.Source, k.Token)] = new StrandGloss(k.Name, k.Gloss);
 
-            var members = await _db.StrandHandles
-                .Where(m => m.Strand.OwnerId == ownerId)
-                .Select(m => new { m.Source, m.Token, m.Strand.Name, m.Strand.Gloss })
-                .ToListAsync(ct);
-            foreach (var m in members)
-                map[new HandleRef(m.Source, m.Token)] = new StrandGloss(m.Name, m.Gloss);
-
-            return map;
+            return strands
+                .Select(s => new KnownStrandInput(
+                    s.Name,
+                    s.Gloss,
+                    s.Matchers
+                        .Select(m => new MatcherDto { Source = m.Source, Steps = MatcherCodec.Deserialize(m.StepsJson) })
+                        .ToList()))
+                .ToList();
         }
 
         private static DailyRecapResponse ToResponse(DateTimeOffset date, Recap recap) => new()

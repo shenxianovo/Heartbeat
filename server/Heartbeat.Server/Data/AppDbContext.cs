@@ -13,9 +13,8 @@ namespace Heartbeat.Server.Data
         public DbSet<InputEvent> InputEvents => Set<InputEvent>();
         public DbSet<Recap> Recaps => Set<Recap>();
         public DbSet<Strand> Strands => Set<Strand>();
-        public DbSet<StrandHandle> StrandHandles => Set<StrandHandle>();
-        public DbSet<MutedHandle> MutedHandles => Set<MutedHandle>();
-        public DbSet<TriageDecision> TriageDecisions => Set<TriageDecision>();
+        public DbSet<StrandMatcher> StrandMatchers => Set<StrandMatcher>();
+        public DbSet<MutedMatcher> MutedMatchers => Set<MutedMatcher>();
 
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
@@ -133,42 +132,24 @@ namespace Heartbeat.Server.Data
                     .OnDelete(DeleteBehavior.Cascade);
             });
 
-            modelBuilder.Entity<StrandHandle>(entity =>
+            modelBuilder.Entity<StrandMatcher>(entity =>
             {
                 entity.HasKey(e => e.Id);
 
                 entity.Property(e => e.Source).HasMaxLength(64);
-                entity.Property(e => e.Token).HasMaxLength(512);
 
-                entity.HasIndex(e => new { e.StrandId, e.Source, e.Token })
-                    .IsUnique();
-
-                // 反哺解析按把手反查 Strand（ADR-028 §6，issue 03 起用）。
-                entity.HasIndex(e => new { e.Source, e.Token });
-            });
-
-            modelBuilder.Entity<MutedHandle>(entity =>
-            {
-                entity.HasKey(e => e.Id);
-
-                entity.Property(e => e.Source).HasMaxLength(64);
-                entity.Property(e => e.Token).HasMaxLength(512);
-
-                entity.HasIndex(e => new { e.OwnerId, e.Source, e.Token })
+                // StepsJson 为规范化序列（MatcherNormalizer + MatcherCodec）：幂等按字符串相等收敛。
+                entity.HasIndex(e => new { e.StrandId, e.Source, e.StepsJson })
                     .IsUnique();
             });
 
-            modelBuilder.Entity<TriageDecision>(entity =>
+            modelBuilder.Entity<MutedMatcher>(entity =>
             {
                 entity.HasKey(e => e.Id);
 
                 entity.Property(e => e.Source).HasMaxLength(64);
-                entity.Property(e => e.Token).HasMaxLength(512);
-                entity.Property(e => e.Verdict).HasMaxLength(16);
-                entity.Property(e => e.Name).HasMaxLength(256);
 
-                // 分诊缓存身份：一个 Owner 的一个把手一份裁定，upsert 收敛。
-                entity.HasIndex(e => new { e.OwnerId, e.Source, e.Token })
+                entity.HasIndex(e => new { e.OwnerId, e.Source, e.StepsJson })
                     .IsUnique();
             });
         }

@@ -9,7 +9,7 @@ namespace Heartbeat.Core.DTOs.Knowledge
 
         public string Gloss { get; set; } = string.Empty;
 
-        public List<HandleDto> Members { get; set; } = [];
+        public List<MatcherDto> Members { get; set; } = [];
 
         public DateTimeOffset CreatedAt { get; set; }
 

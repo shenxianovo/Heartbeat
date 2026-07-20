@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Heartbeat.Server.Services
 {
     /// <summary>
-    /// 知识裁决的确定性提交端（ADR-028 §5/§8）：绑定 Strand / Mute 把手，皆幂等。
+    /// 知识裁决的确定性提交端（ADR-028 §5/§8，单位随 ADR-029 换 Matcher）：绑定 Strand / Mute，皆幂等。
     /// Dashboard → Analytics 的知识写路径；所有操作按 OwnerId 隔离。
     /// </summary>
     public class KnowledgeService(AppDbContext db, TimeProvider? clock = null)
@@ -16,7 +16,7 @@ namespace Heartbeat.Server.Services
 
         /// <summary>
         /// 建/改 Strand：带 Id 按 Id 定位（可改名）；无 Id 按 (OwnerId, Name) 收敛，重复提交不产重复行。
-        /// 成员整组替换。带 Id 但查无此行（含跨 owner）返回 null。
+        /// 成员整组替换；无效 Matcher（空 Source / 无有效步）剔除。带 Id 但查无此行（含跨 owner）返回 null。
         /// </summary>
         public async Task<StrandResponse?> BindStrandAsync(
             string ownerId, BindStrandRequest request, CancellationToken ct = default)
@@ -43,38 +43,44 @@ namespace Heartbeat.Server.Services
             strand.Gloss = request.Gloss.Trim();
             strand.UpdatedAt = now;
 
-            // 成员整组替换（必需 FK ⇒ 孤儿即删）。
+            // 成员整组替换（必需 FK ⇒ 孤儿即删）。规范化后按 (Source, StepsJson) 去重。
             strand.Members.Clear();
             var members = request.Members
-                .Select(m => (Source: m.Source.Trim(), Token: m.Token.Trim()))
-                .Where(m => m.Source.Length > 0 && m.Token.Length > 0)
+                .Select(MatcherNormalizer.Normalize)
+                .Where(m => m != null)
+                .Select(m => (m!.Source, StepsJson: MatcherCodec.Serialize(m.Steps)))
                 .Distinct();
-            foreach (var (source, token) in members)
-                strand.Members.Add(new StrandHandle { Source = source, Token = token });
+            foreach (var (source, stepsJson) in members)
+                strand.Members.Add(new StrandMatcher { Source = source, StepsJson = stepsJson });
 
             await _db.SaveChangesAsync(ct);
             return ToResponse(strand);
         }
 
-        /// <summary>Mute 一个把手：已静音即无事发生（幂等）。</summary>
-        public async Task MuteHandleAsync(
-            string ownerId, string source, string token, CancellationToken ct = default)
+        /// <summary>
+        /// Mute 一个 Matcher：已静音即无事发生（幂等，步骤顺序无关——规范化收敛）。
+        /// 无效 Matcher 返回 false（由端点映射 400）。
+        /// </summary>
+        public async Task<bool> MuteMatcherAsync(
+            string ownerId, MatcherDto matcher, CancellationToken ct = default)
         {
-            source = source.Trim();
-            token = token.Trim();
+            if (MatcherNormalizer.Normalize(matcher) is not { } normalized)
+                return false;
 
-            var exists = await _db.MutedHandles.AnyAsync(
-                m => m.OwnerId == ownerId && m.Source == source && m.Token == token, ct);
-            if (exists) return;
+            var stepsJson = MatcherCodec.Serialize(normalized.Steps);
+            var exists = await _db.MutedMatchers.AnyAsync(
+                m => m.OwnerId == ownerId && m.Source == normalized.Source && m.StepsJson == stepsJson, ct);
+            if (exists) return true;
 
-            _db.MutedHandles.Add(new MutedHandle
+            _db.MutedMatchers.Add(new MutedMatcher
             {
                 OwnerId = ownerId,
-                Source = source,
-                Token = token,
+                Source = normalized.Source,
+                StepsJson = stepsJson,
                 CreatedAt = _clock.GetUtcNow()
             });
             await _db.SaveChangesAsync(ct);
+            return true;
         }
 
         private static StrandResponse ToResponse(Strand strand) => new()
@@ -83,7 +89,7 @@ namespace Heartbeat.Server.Services
             Name = strand.Name,
             Gloss = strand.Gloss,
             Members = strand.Members
-                .Select(m => new HandleDto { Source = m.Source, Token = m.Token })
+                .Select(m => new MatcherDto { Source = m.Source, Steps = MatcherCodec.Deserialize(m.StepsJson) })
                 .ToList(),
             CreatedAt = strand.CreatedAt,
             UpdatedAt = strand.UpdatedAt
