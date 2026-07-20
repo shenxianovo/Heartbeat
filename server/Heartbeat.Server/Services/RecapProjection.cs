@@ -31,9 +31,10 @@ namespace Heartbeat.Server.Services
     }
 
     /// <summary>
-    /// Recap 投影（ADR-023 §2/§3）：segments → LLM 输入摘要的确定性压缩。
-    /// 纯函数、无 I/O——Recap 质量的可测核心，也是未来外部 Agent 能力暴露的开门处。
+    /// Recap 投影（ADR-023 §2/§3，ADR-029 §2）：segments → LLM 输入摘要的确定性压缩。
+    /// 纯函数、无 I/O——Recap 质量的可测核心，叙事与发问两次调用共用同一 digest。
     /// 双轨模型：system 段按设备分轨作注意力骨架（轨内互斥），插件段按 IdentityKey 聚合作语义细节。
+    /// 身份维度按观测深度长成深度树：块 = L1 读数聚合，块内挂下一深度分解（预算剪枝）。
     /// 压缩只影响本投影，不动数据层。
     /// </summary>
     public static class RecapProjection
@@ -44,7 +45,12 @@ namespace Heartbeat.Server.Services
         /// <summary>低于此时长的注意力块视为噪声丢弃（只丢时间轴行，应用时长统计仍如实累计）。</summary>
         private const int NoiseBlockSeconds = 60;
 
-        private const int MaxTitlesPerBlock = 2;
+        /// <summary>深度树预算（ADR-029 §2）：块时长达到此值才展开下一深度分解。</summary>
+        private const int BreakdownExpandSeconds = 600;
+
+        /// <summary>深度树预算：展开块的分解条目封顶，尾部折叠成"其他 N 个"。</summary>
+        private const int MaxBreakdownEntries = 4;
+
         private const int MaxAppsPerDevice = 8;
         private const int MaxPluginEntriesPerSource = 30;
 
@@ -52,7 +58,8 @@ namespace Heartbeat.Server.Services
             IReadOnlyList<RecapSegmentInput> segments,
             DateRange window,
             TimeSpan displayOffset,
-            IReadOnlyDictionary<HandleRef, StrandGloss>? knownStrands = null)
+            IReadOnlyDictionary<HandleRef, StrandGloss>? knownStrands = null,
+            IReadOnlyList<string>? recurringReadings = null)
         {
             DateTimeOffset windowStart = window.UtcStart;
             DateTimeOffset windowEnd = window.UtcEnd;
@@ -100,6 +107,7 @@ namespace Heartbeat.Server.Services
             }
 
             AppendKnownStrands(sb, clipped, knownStrands);
+            AppendRecurringNote(sb, recurringReadings);
 
             return new RecapProjectionResult
             {
@@ -188,11 +196,8 @@ namespace Heartbeat.Server.Services
             foreach (var b in blocks.Where(b => b.Seconds >= NoiseBlockSeconds))
             {
                 var label = b.App == SyntheticApps.Away ? "离开" : b.App;
-                var titles = b.App == SyntheticApps.Away
-                    ? []
-                    : b.TitleSeconds.OrderByDescending(t => t.Value).Take(MaxTitlesPerBlock).Select(t => t.Key).ToList();
-                var titlePart = titles.Count > 0 ? $"｜窗口: {string.Join("; ", titles)}" : string.Empty;
-                sb.AppendLine($"- {FormatTime(b.Start, windowEnd, displayOffset)}–{FormatTime(b.End, windowEnd, displayOffset)} {label}（{FormatDuration(b.Seconds)}）{titlePart}");
+                var breakdown = b.App == SyntheticApps.Away ? string.Empty : FormatBreakdown(b);
+                sb.AppendLine($"- {FormatTime(b.Start, windowEnd, displayOffset)}–{FormatTime(b.End, windowEnd, displayOffset)} {label}（{FormatDuration(b.Seconds)}）{breakdown}");
             }
 
             var totals = system
@@ -250,6 +255,38 @@ namespace Heartbeat.Server.Services
                 if (entries.Count > MaxPluginEntriesPerSource)
                     sb.AppendLine($"（另有 {entries.Count - MaxPluginEntriesPerSource} 条较短的记录未列出）");
             }
+        }
+
+        /// <summary>
+        /// 块的下一深度分解（ADR-029 §2 深度树）：块 = L1 读数（app），分解 = 块内 L2 读数（窗口标题）
+        /// 的去重分布（system 轨互斥，累计即并集时长）。标题是分布，不是风味样本。
+        /// 预算剪枝：展开门槛（短块只给头名）、子数封顶、尾部折叠。
+        /// </summary>
+        private static string FormatBreakdown(AttentionBlock b)
+        {
+            if (b.TitleSeconds.Count == 0) return string.Empty;
+
+            var ordered = b.TitleSeconds
+                .OrderByDescending(t => t.Value)
+                .ThenBy(t => t.Key, StringComparer.Ordinal)
+                .ToList();
+            var cap = b.Seconds >= BreakdownExpandSeconds ? MaxBreakdownEntries : 1;
+
+            var shown = ordered.Take(cap).Select(t => $"{t.Key} {FormatDuration(t.Value)}").ToList();
+            if (ordered.Count > cap)
+            {
+                var rest = ordered.Skip(cap).ToList();
+                shown.Add($"其他 {rest.Count} 个 {FormatDuration(rest.Sum(t => t.Value))}");
+            }
+            return $"｜其中: {string.Join(" · ", shown)}";
+        }
+
+        /// <summary>近 14 天高频读数注释（ADR-029 §4 确定性注释）：输入由 service 提供，投影只渲染。</summary>
+        private static void AppendRecurringNote(StringBuilder sb, IReadOnlyList<string>? recurringReadings)
+        {
+            if (recurringReadings == null || recurringReadings.Count == 0) return;
+            sb.AppendLine();
+            sb.AppendLine($"近 14 天高频出现（无处不在的基础设施，不是「在做的事」的证据）：{string.Join("、", recurringReadings)}");
         }
 
         private static string FormatTime(DateTimeOffset t, DateTimeOffset windowEnd, TimeSpan displayOffset)

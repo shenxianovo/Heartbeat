@@ -183,4 +183,80 @@ public class RecapProjectionTests
         Assert.False(result.IsEmpty);
         Assert.Contains("Ping（example.com/ping） — 合计 <1分，1 次", result.Digest);
     }
+
+    // ---- 深度树分解（ADR-029 §2）----
+
+    [Fact]
+    public void Breakdown_ExpandedBlock_DistinctTitlesWithUnionDurations()
+    {
+        // 同一标题两段累计、不同标题分列；按时长降序
+        var result = Project(
+            Sys("Code", "hyperframes-workspace", Day.AddHours(9), Day.AddHours(9).AddMinutes(30)),
+            Sys("Code", "heartbeat", Day.AddHours(9).AddMinutes(30), Day.AddHours(9).AddMinutes(45)),
+            Sys("Code", "hyperframes-workspace", Day.AddHours(9).AddMinutes(45), Day.AddHours(10)));
+
+        Assert.Contains("｜其中: hyperframes-workspace 45分 · heartbeat 15分", result.Digest);
+    }
+
+    [Fact]
+    public void Breakdown_ExpandedBlock_CappedWithTailFold()
+    {
+        // 6 个不同标题连续切换，展开封顶 4 条，尾部折叠"其他 2 个"并合计时长
+        var segments = new List<RecapSegmentInput>();
+        var cursor = Day.AddHours(9);
+        for (var i = 0; i < 6; i++)
+        {
+            var end = cursor.AddMinutes(10 - i);
+            segments.Add(Sys("Code", $"file-{i}", cursor, end));
+            cursor = end;
+        }
+
+        var result = RecapProjection.Project(segments, Window, TimeSpan.Zero);
+
+        Assert.Contains("file-0 10分", result.Digest);
+        Assert.Contains("file-3 7分", result.Digest);
+        Assert.DoesNotContain("file-4 6分", result.Digest);
+        Assert.Contains("其他 2 个 11分", result.Digest); // file-4 6分 + file-5 5分
+    }
+
+    [Fact]
+    public void Breakdown_ShortBlock_OnlyTopReading_NoTailDurations()
+    {
+        // 块 5 分钟 < 展开门槛：只给头名读数，其余折叠
+        var result = Project(
+            Sys("vscode", null, Day.AddHours(8), Day.AddHours(9)), // 占位长块避免整日过空
+            Sys("notepad", "notes-a", Day.AddHours(10), Day.AddHours(10).AddMinutes(3)),
+            Sys("notepad", "notes-b", Day.AddHours(10).AddMinutes(3), Day.AddHours(10).AddMinutes(5)));
+
+        Assert.Contains("notepad（5分）｜其中: notes-a 3分 · 其他 1 个 2分", result.Digest);
+    }
+
+    [Fact]
+    public void Breakdown_AwayBlock_NoBreakdown()
+    {
+        var result = Project(
+            Sys(SyntheticApps.Away, "ignored", Day.AddHours(12), Day.AddHours(13)));
+
+        Assert.Contains("12:00–13:00 离开（1小时00分）", result.Digest);
+        Assert.DoesNotContain("｜其中", result.Digest);
+    }
+
+    [Fact]
+    public void RecurringReadings_RenderedAsAnnotation()
+    {
+        var result = RecapProjection.Project(
+            [Sys("vscode", null, Day.AddHours(9), Day.AddHours(10))],
+            Window, TimeSpan.Zero, knownStrands: null, recurringReadings: ["WeChat", "qq.com"]);
+
+        Assert.Contains("近 14 天高频出现", result.Digest);
+        Assert.Contains("WeChat、qq.com", result.Digest);
+    }
+
+    [Fact]
+    public void RecurringReadings_EmptyOrNull_NoAnnotation()
+    {
+        var result = Project(Sys("vscode", null, Day.AddHours(9), Day.AddHours(10)));
+
+        Assert.DoesNotContain("近 14 天高频出现", result.Digest);
+    }
 }

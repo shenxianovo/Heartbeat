@@ -1,6 +1,6 @@
 # 01: 观测深度 —— digest 长成深度树
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -29,3 +29,7 @@ Status: ready-for-agent
 ## Blocked by
 
 （无）
+
+## Comments
+
+- 2026-07-20 落地:`DepthReadings.For` 纯函数(system 两层、browser L1 双读数、未知源兜底);`RecapProjection` 块内挂 L2 分解(去重+并集时长,展开门槛 600s、封顶 4 条、尾折"其他 N 个"),`MaxTitlesPerBlock` 抽样删除;`recurringReadings` 注释参数(渲染在投影,service 接线留 issue 03 发问 prompt 需要时)。测试 +12(DepthReadingsTests 6 + RecapProjectionTests 深度树 6),套件 117/117 绿。
