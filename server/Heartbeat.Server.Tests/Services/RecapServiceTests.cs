@@ -69,7 +69,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     {
         using var db = CreateDbContext();
         var fake = new FakeGenerator();
-        var svc = new RecapService(db, fake);
+        var svc = new RecapService(db, fake, new DigestAssembler(db));
 
         var result = await svc.GetDailyRecapAsync("user-1", PastDay, force: false);
 
@@ -87,7 +87,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator();
-        var svc = new RecapService(db, fake);
+        var svc = new RecapService(db, fake, new DigestAssembler(db));
 
         var first = await svc.GetDailyRecapAsync("user-1", PastDay, force: false);
         var second = await svc.GetDailyRecapAsync("user-1", PastDay, force: false);
@@ -110,7 +110,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator();
-        var svc = new RecapService(db, fake);
+        var svc = new RecapService(db, fake, new DigestAssembler(db));
 
         await svc.GetDailyRecapAsync("user-1", PastDay, force: false);
         var regenerated = await svc.GetDailyRecapAsync("user-1", PastDay, force: true);
@@ -128,7 +128,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator();
-        var svc = new RecapService(db, fake, new FixedClock(FixedNoon));
+        var svc = new RecapService(db, fake, new DigestAssembler(db), new FixedClock(FixedNoon));
 
         await svc.GetDailyRecapAsync("user-1", FixedNoon, force: false);
         await svc.GetDailyRecapAsync("user-1", FixedNoon, force: false);
@@ -144,7 +144,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator();
-        var svc = new RecapService(db, fake, new FixedClock(FixedNoon));
+        var svc = new RecapService(db, fake, new DigestAssembler(db), new FixedClock(FixedNoon));
         await svc.GetDailyRecapAsync("user-1", FixedNoon, force: false); // 水位 = 09:00
 
         // 新段到达：最新段尾 11:30 距缓存水位 09:00 有 2.5h > 1h 阈值
@@ -165,7 +165,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator();
-        var svc = new RecapService(db, fake);
+        var svc = new RecapService(db, fake, new DigestAssembler(db));
 
         var result = await svc.GetCachedDailyRecapAsync("user-1", PastDay);
 
@@ -181,7 +181,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator();
-        var svc = new RecapService(db, fake);
+        var svc = new RecapService(db, fake, new DigestAssembler(db));
         await svc.GetDailyRecapAsync("user-1", PastDay, force: false);
 
         var result = await svc.GetCachedDailyRecapAsync("user-1", PastDay);
@@ -199,7 +199,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator { Fail = true };
-        var svc = new RecapService(db, fake);
+        var svc = new RecapService(db, fake, new DigestAssembler(db));
 
         await Assert.ThrowsAsync<RecapGenerationException>(
             () => svc.GetDailyRecapAsync("user-1", PastDay, force: false));
@@ -226,7 +226,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator();
-        var svc = new RecapService(db, fake);
+        var svc = new RecapService(db, fake, new DigestAssembler(db));
 
         var result = await svc.GetDailyRecapAsync("user-1", PastDay, force: false);
 

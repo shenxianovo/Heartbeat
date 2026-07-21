@@ -61,6 +61,13 @@ namespace Heartbeat.Server.Services
         }
     }
 
+    /// <summary>Matcher 的人类可读渲染：few-shot 裁决日志行与调试用。</summary>
+    public static class MatcherRender
+    {
+        public static string Describe(string source, IReadOnlyList<MatcherStepDto> steps)
+            => $"{source}: {string.Join(" ∧ ", steps.Select(s => $"L{s.Layer} {s.Reading} {s.Op} \"{s.Value}\""))}";
+    }
+
     /// <summary>
     /// Matcher 求值（ADR-029 §3，纯函数）：路径谓词各步合取——每步须存在
     /// 同层同读数、且值满足谓词的读数。值比较不区分大小写（进程名/URL 宽容）。

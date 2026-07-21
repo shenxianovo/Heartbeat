@@ -20,8 +20,13 @@ builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<InputEventService>();
 builder.Services.AddScoped<RecapService>();
 builder.Services.AddScoped<KnowledgeService>();
+builder.Services.AddScoped<DigestAssembler>();
+builder.Services.AddScoped<QuestionService>();
 builder.Services.Configure<RecapOptions>(builder.Configuration.GetSection(RecapOptions.Section));
-builder.Services.AddHttpClient<IRecapGenerator, OpenAiCompatibleRecapGenerator>();
+// LLM 传输一处实现（ADR-029 issue 03）：叙事与发问共享 ChatCompletionClient，generator 退成 prompt+解析。
+builder.Services.AddHttpClient<ChatCompletionClient>();
+builder.Services.AddScoped<IRecapGenerator, OpenAiCompatibleRecapGenerator>();
+builder.Services.AddScoped<IAskingGenerator, OpenAiCompatibleAskingGenerator>();
 builder.Services.AddHttpClient("AuthService", client =>
 {
     client.BaseAddress = new Uri(builder.Configuration["AuthService:Authority"]!);

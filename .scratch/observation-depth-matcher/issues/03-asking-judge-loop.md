@@ -1,6 +1,6 @@
 # 03: 发问判官 —— 单调用判官 + 旧管线拆除 + LLM 传输合流
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -36,3 +36,7 @@ Status: ready-for-agent
 ## Blocked by
 
 - 02（问题卡锚定 matcher 提案;diff 过滤要 matcher 求值）
+
+## Comments
+
+- 2026-07-20 落地(拆除大半已随 issue 02 提前完成):ChatCompletionClient 合流传输(URL/Bearer/choices 提取/异常收敛/unconfigured,ExtractContent 纯函数);RecapGenerator 退成 prompt 模板 + 客户端调用;OpenAiCompatibleAskingGenerator(判官 system prompt + BuildUserPrompt digest 前置共享前缀 + Parse 宽容解析纯函数,失败返 null);DigestAssembler 取数装配(叙事/发问吃字节相同 digest,含近 14 天高频注释 ≥8/14 天、few-shot 裁决日志 MatcherRender 行、已裁决集);QuestionService 重写(缓存按天+水位同构 recap、失败不写、读时对已裁决 Matcher 确定性 diff、封顶 3);DailyQuestionSet 实体 + AddDailyQuestionCache 迁移;GET questions 端点重建。测试 +20(AskingGeneratorTests 11 纯函数 + QuestionServiceTests 7 + RecapServiceTests 适配),套件 122/122 绿。

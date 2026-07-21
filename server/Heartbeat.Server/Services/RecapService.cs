@@ -8,10 +8,10 @@ using Microsoft.EntityFrameworkCore;
 namespace Heartbeat.Server.Services
 {
     /// <summary>
-    /// 每日 Recap 编排（ADR-023）：缓存判读 → 投影 → 生成 → upsert。
+    /// 每日 Recap 编排（ADR-023）：缓存判读 → 装配 digest（DigestAssembler，与发问共用）→ 生成 → upsert。
     /// 历史窗口命中即回；今日窗口按水位（落后 >1h 重生成）；空日不调 LLM 不写缓存；失败不写缓存。
     /// </summary>
-    public class RecapService(AppDbContext db, IRecapGenerator generator, TimeProvider? clock = null)
+    public class RecapService(AppDbContext db, IRecapGenerator generator, DigestAssembler assembler, TimeProvider? clock = null)
     {
         /// <summary>今日缓存的新鲜度护栏：水位落后超过此值才重生成（防轮询烧 token，非产品语义）。</summary>
         private static readonly TimeSpan FreshnessThreshold = TimeSpan.FromHours(1);
@@ -33,9 +33,7 @@ namespace Heartbeat.Server.Services
             if (cached != null && !force && await IsFreshAsync(ownerId, windowStart, windowEnd, cached, ct))
                 return ToResponse(date, cached);
 
-            var segments = await QuerySegmentsAsync(ownerId, windowStart, windowEnd, ct);
-            var knownStrands = await LoadKnownStrandsAsync(ownerId, ct);
-            var projection = RecapProjection.Project(segments, window, date.Offset, knownStrands);
+            var projection = await assembler.AssembleAsync(ownerId, window, date.Offset, ct);
 
             if (projection.IsEmpty)
                 return new DailyRecapResponse { Date = FormatDate(date), IsEmpty = true };
@@ -78,59 +76,8 @@ namespace Heartbeat.Server.Services
             // 已结束的窗口是历史：命中即回，永不过期（离线重传的迟到段由用户显式重生成收敛）。
             if (_clock.GetUtcNow() >= windowEnd) return true;
 
-            var latestEnd = await _db.ActivitySegments
-                .Where(x => x.Device.OwnerId == ownerId)
-                .Where(x => x.EndTime > windowStart && x.StartTime < windowEnd)
-                .MaxAsync(x => (DateTimeOffset?)x.EndTime, ct) ?? windowStart;
-            if (latestEnd > windowEnd) latestEnd = windowEnd;
-
+            var latestEnd = await assembler.LatestSegmentEndAsync(ownerId, windowStart, windowEnd, ct);
             return latestEnd - cached.SegmentWatermark <= FreshnessThreshold;
-        }
-
-        private async Task<List<RecapSegmentInput>> QuerySegmentsAsync(
-            string ownerId, DateTimeOffset windowStart, DateTimeOffset windowEnd, CancellationToken ct)
-        {
-            // 与投影同一套窗口规则：区间重叠，零长度点事件按落点归窗。
-            return await _db.ActivitySegments
-                .Where(x => x.Device.OwnerId == ownerId)
-                .Where(x => x.EndTime > windowStart && x.StartTime < windowEnd
-                            || x.StartTime == x.EndTime && x.StartTime >= windowStart && x.StartTime < windowEnd)
-                .Select(x => new RecapSegmentInput(
-                    x.Device.DeviceName,
-                    x.Source,
-                    x.IdentityKey,
-                    x.App != null ? x.App.Name : null,
-                    x.Title,
-                    x.StartTime,
-                    x.EndTime))
-                .ToListAsync(ct);
-        }
-
-        /// <summary>
-        /// 载入该 Owner 的全部 Strand（名字 + 释义 + Matcher 指纹），供投影反哺（ADR-029 §1/§3）：
-        /// 注入只在指纹当日命中时发生，命中判断在投影层（可测）。
-        /// 机器世界知识不入库也不注入——叙事 LLM 自带（ADR-029 §1）。
-        /// </summary>
-        private async Task<List<KnownStrandInput>> LoadKnownStrandsAsync(string ownerId, CancellationToken ct)
-        {
-            var strands = await _db.Strands
-                .Where(s => s.OwnerId == ownerId)
-                .Select(s => new
-                {
-                    s.Name,
-                    s.Gloss,
-                    Matchers = s.Members.Select(m => new { m.Source, m.StepsJson }).ToList()
-                })
-                .ToListAsync(ct);
-
-            return strands
-                .Select(s => new KnownStrandInput(
-                    s.Name,
-                    s.Gloss,
-                    s.Matchers
-                        .Select(m => new MatcherDto { Source = m.Source, Steps = MatcherCodec.Deserialize(m.StepsJson) })
-                        .ToList()))
-                .ToList();
         }
 
         private static DailyRecapResponse ToResponse(DateTimeOffset date, Recap recap) => new()

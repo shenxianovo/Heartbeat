@@ -15,6 +15,7 @@ namespace Heartbeat.Server.Data
         public DbSet<Strand> Strands => Set<Strand>();
         public DbSet<StrandMatcher> StrandMatchers => Set<StrandMatcher>();
         public DbSet<MutedMatcher> MutedMatchers => Set<MutedMatcher>();
+        public DbSet<DailyQuestionSet> DailyQuestionSets => Set<DailyQuestionSet>();
 
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
@@ -150,6 +151,15 @@ namespace Heartbeat.Server.Data
                 entity.Property(e => e.Source).HasMaxLength(64);
 
                 entity.HasIndex(e => new { e.OwnerId, e.Source, e.StepsJson })
+                    .IsUnique();
+            });
+
+            modelBuilder.Entity<DailyQuestionSet>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+
+                // 缓存身份：一个 Owner 的一个日窗口一份（与 Recap 同构，ADR-029 §4）。
+                entity.HasIndex(e => new { e.OwnerId, e.WindowStart })
                     .IsUnique();
             });
         }
