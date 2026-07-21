@@ -1,6 +1,6 @@
 # 04: 前端 —— Matcher 提案卡 + NSwag 收编
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -27,3 +27,7 @@ Status: ready-for-agent
 ## Blocked by
 
 - 03（问题卡 DTO 定形）
+
+## Comments
+
+- 2026-07-20 落地:NSwag client 重生成(对本地 compose 栈,知识端点 getDailyQuestions/bindStrand/muteMatcher + Matcher 系列类型收编);index.ts 删全部手写知识类型与裸 fetch wrapper(questions 仍手拼查询串保时区 offset,解析走 fromJS;bind/mute 走生成 client);StrandQuestions.vue 改 Matcher 提案卡(问题文本 + 依据 + 指纹可读渲染"应用 = livehime 且…",三出口不变,gloss 占位文案带策展纪律提示)。vue-tsc clean。旧目录 issue 04(staleness 读时判脏)仍 ready-for-agent,与 matcher 形状兼容。

@@ -1,4 +1,4 @@
-import { Client, ApiException, DailyRecapResponse, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, SegmentResponse, UpdateMySettingsRequest } from './client'
+import { Client, ApiException, DailyRecapResponse, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, SegmentResponse, UpdateMySettingsRequest, DailyQuestionsResponse, BindStrandRequest, MuteMatcherRequest, StrandResponse, type IBindStrandRequest, type IMatcherDto } from './client'
 import { authStore } from '../stores/auth'
 
 // ===== Error model =====
@@ -179,72 +179,27 @@ export async function fetchPublicDailyRecap(username: string, params: { date?: s
   return DailyRecapResponse.fromJS(await res.json())
 }
 
-// ===== Strand 知识层（ADR-028）=====
-// owner-only：确认写知识 + 提案烧 LLM token，无 public 版。手写 wrapper：
-// questions 的 date 与 recap 同理须携带本地时区偏移；bind/mute 是普通 JSON POST。
-// 未走 NSwag 生成 client——端点新增，client 重生成需服务器在跑，留作后续同步。
+// ===== Strand 知识层（ADR-028/029）=====
+// owner-only：确认写知识 + 发问烧 LLM token，无 public 版。
+// questions 的 date 与 recap 同理须携带本地时区偏移，手拼请求；bind/mute 走生成 client。
 
-export interface HandleDto {
-  source: string
-  token: string
-}
+export type { IMatcherDto, IMatcherStepDto, IQuestionItemResponse, IBindStrandRequest, IStrandResponse } from './client'
 
-export interface QuestionItem {
-  anchor: HandleDto
-  handles: HandleDto[]
-  totalSeconds: number
-  start: string
-  end: string
-  proposedName: string
-  proposedGloss: string
-}
-
-export interface DailyQuestions {
-  questions: QuestionItem[]
-}
-
-export interface BindStrandRequest {
-  id?: string
-  name: string
-  gloss: string
-  members: HandleDto[]
-}
-
-export interface StrandResponse {
-  id: string
-  name: string
-  gloss: string
-  members: HandleDto[]
-  createdAt: string
-  updatedAt: string
-}
-
-export async function fetchDailyQuestions(params: { date?: string }): Promise<DailyQuestions> {
+export async function fetchDailyQuestions(params: { date?: string }): Promise<DailyQuestionsResponse> {
   const searchParams = new URLSearchParams()
   if (params.date) searchParams.set('date', toLocalDateTimeOffsetString(params.date))
   const res = await authHttp.fetch(`${API_BASE}/knowledge/questions?${searchParams}`)
   if (!res.ok) throw new ApiException('Questions request failed.', res.status, await res.text(), {}, null)
-  return (await res.json()) as DailyQuestions
+  return DailyQuestionsResponse.fromJS(await res.json())
 }
 
-export async function bindStrand(req: BindStrandRequest): Promise<StrandResponse> {
-  const res = await authHttp.fetch(`${API_BASE}/knowledge/strands`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(req),
-  })
-  if (!res.ok) throw new ApiException('Bind strand failed.', res.status, await res.text(), {}, null)
-  return (await res.json()) as StrandResponse
+export async function bindStrand(req: IBindStrandRequest): Promise<StrandResponse> {
+  return client.bindStrand(BindStrandRequest.fromJS(req))
 }
 
-/** Mute 一个把手（负向裁决）。MuteHandleRequest 与 HandleDto 同形（source/token）。 */
-export async function muteHandle(handle: HandleDto): Promise<void> {
-  const res = await authHttp.fetch(`${API_BASE}/knowledge/mutes`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(handle),
-  })
-  if (!res.ok) throw new ApiException('Mute handle failed.', res.status, await res.text(), {}, null)
+/** Mute 一个 Matcher（负向裁决）：别再就它发问。 */
+export async function muteMatcher(matcher: IMatcherDto): Promise<void> {
+  return client.muteMatcher(MuteMatcherRequest.fromJS({ matcher }))
 }
 
 // ===== Me（本人视角,ADR-025）=====

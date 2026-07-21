@@ -1,17 +1,18 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { fetchDailyQuestions, bindStrand, muteHandle, type QuestionItem } from '../api/index'
+import { fetchDailyQuestions, bindStrand, muteMatcher, type IQuestionItemResponse, type IMatcherDto } from '../api/index'
 import { Card } from '@/components/ui/card'
 
 /**
- * Strand 提问面板（ADR-028 §4/§5，单锚点重构）：owner-only。
- * 每天封顶 1–3 个问题，每个问题针对**一个**高特异性把手："huasheng.cn 是什么？"。
- * 共现把手只作提示文案。三出口：入库 / 别再问（Mute）/ 跳过（纯客户端，下次 diff 再端上来）。
+ * 发问面板（ADR-029 §4/§5）：owner-only。判官每天最多端上 3 张问题卡，
+ * 每张锚定一个 Matcher 提案（观测指纹）+ AI 的一次性名字/释义提案。
+ * 三出口：入库（绑定 Strand）/ 别再问（Mute Matcher）/ 跳过（纯客户端，下次 diff 再端上来）。
+ * 策展纪律：指纹只收特异性标识；通用工具写进释义，不进指纹。
  */
 const props = defineProps<{ selectedDate: string }>()
 
 interface Draft {
-  q: QuestionItem
+  q: IQuestionItemResponse
   name: string
   gloss: string
   busy: boolean
@@ -39,16 +40,26 @@ function remove(d: Draft) {
   drafts.value = drafts.value.filter(x => x !== d)
 }
 
-function minutes(seconds: number): string {
-  const m = Math.round(seconds / 60)
-  return m >= 60 ? `${Math.floor(m / 60)}小时${m % 60 > 0 ? `${m % 60}分` : ''}` : `${m}分钟`
+const OP_LABEL: Record<string, string> = { equals: '=', prefix: '开头是', contains: '含' }
+const READING_LABEL: Record<string, string> = { app: '应用', title: '窗口标题', url: '网址', tab_title: '标签页' }
+
+/** Matcher 的人类可读渲染：`应用 = "livehime" 且 窗口标题 含 "直播"`。 */
+function describeMatcher(m: IMatcherDto | undefined): string {
+  if (!m?.steps?.length) return ''
+  return m.steps
+    .map(s => `${READING_LABEL[s.reading ?? ''] ?? s.reading} ${OP_LABEL[s.op ?? ''] ?? s.op} “${s.value}”`)
+    .join(' 且 ')
+}
+
+function draftKey(d: Draft): string {
+  return JSON.stringify(d.q.matcher ?? {})
 }
 
 async function submit(d: Draft) {
-  if (!d.name.trim()) return
+  if (!d.name.trim() || !d.q.matcher) return
   d.busy = true
   try {
-    await bindStrand({ name: d.name.trim(), gloss: d.gloss.trim(), members: [d.q.anchor] })
+    await bindStrand({ name: d.name.trim(), gloss: d.gloss.trim(), members: [d.q.matcher] })
     remove(d)
   } catch {
     d.busy = false
@@ -56,9 +67,10 @@ async function submit(d: Draft) {
 }
 
 async function mute(d: Draft) {
+  if (!d.q.matcher) return
   d.busy = true
   try {
-    await muteHandle(d.q.anchor) // 静音锚点把手：别再问
+    await muteMatcher(d.q.matcher) // 静音这个观测指纹：别再问
     remove(d)
   } catch {
     d.busy = false
@@ -70,21 +82,22 @@ async function mute(d: Draft) {
   <Card v-if="drafts.length > 0" class="mb-6 gap-3 border-border/60 bg-card/80 py-5 backdrop-blur-sm">
     <div class="flex flex-col gap-4 px-5">
       <h2 class="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-        认识一下 · {{ drafts.length }} 个没见过的东西
+        认识一下 · {{ drafts.length }} 个说不清的活动
       </h2>
 
       <div
         v-for="d in drafts"
-        :key="d.q.anchor.source + '/' + d.q.anchor.token"
+        :key="draftKey(d)"
         class="flex flex-col gap-3 rounded-lg border border-border/50 bg-background/40 p-4"
       >
-        <p class="text-[0.92rem]">
-          <span class="font-semibold">{{ d.q.anchor.token }}</span>
-          <span class="text-muted-foreground"> · 今天 {{ minutes(d.q.totalSeconds) }}，这是什么？</span>
+        <p class="text-[0.92rem]">{{ d.q.question }}</p>
+
+        <p v-if="d.q.evidence" class="text-[0.78rem] text-muted-foreground/70">
+          依据：{{ d.q.evidence }}
         </p>
 
-        <p v-if="d.q.handles.length > 0" class="text-[0.78rem] text-muted-foreground/70">
-          同时段还有：{{ d.q.handles.map(h => h.token).join('、') }}
+        <p class="text-[0.78rem] text-muted-foreground/70">
+          指纹：<span class="font-mono">{{ describeMatcher(d.q.matcher) }}</span>
         </p>
 
         <div class="flex flex-col gap-2">
@@ -97,7 +110,7 @@ async function mute(d: Draft) {
           <input
             v-model="d.gloss"
             type="text"
-            placeholder="一句话说明这是什么（可留空）"
+            placeholder="一句话说明这是什么（常一起开的通用工具也写在这里）"
             class="w-full rounded-md border border-border/50 bg-background/60 px-2.5 py-1.5 text-[0.85rem] outline-none focus:border-border"
           />
         </div>

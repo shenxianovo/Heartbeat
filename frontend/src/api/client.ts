@@ -309,6 +309,126 @@ export class Client {
     }
 
     /**
+     * @param date (optional) 
+     * @return OK
+     */
+    getDailyQuestions(date: Date | undefined): Promise<DailyQuestionsResponse> {
+        let url_ = this.baseUrl + "/api/v1/knowledge/questions?";
+        if (date === null)
+            throw new globalThis.Error("The parameter 'date' cannot be null.");
+        else if (date !== undefined)
+            url_ += "date=" + encodeURIComponent(date ? "" + date.toISOString() : "") + "&";
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processGetDailyQuestions(_response);
+        });
+    }
+
+    protected processGetDailyQuestions(response: Response): Promise<DailyQuestionsResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = DailyQuestionsResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<DailyQuestionsResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    bindStrand(body: BindStrandRequest): Promise<StrandResponse> {
+        let url_ = this.baseUrl + "/api/v1/knowledge/strands";
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processBindStrand(_response);
+        });
+    }
+
+    protected processBindStrand(response: Response): Promise<StrandResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = StrandResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<StrandResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    muteMatcher(body: MuteMatcherRequest): Promise<void> {
+        let url_ = this.baseUrl + "/api/v1/knowledge/mutes";
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processMuteMatcher(_response);
+        });
+    }
+
+    protected processMuteMatcher(response: Response): Promise<void> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            return;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<void>(null as any);
+    }
+
+    /**
      * @return OK
      */
     getMe(): Promise<MeResponse> {
@@ -1390,6 +1510,130 @@ export interface IAppUsageResponse {
     [key: string]: any;
 }
 
+export class BindStrandRequest implements IBindStrandRequest {
+    id?: string | undefined;
+    name?: string;
+    gloss?: string;
+    members?: MatcherDto[];
+
+    [key: string]: any;
+
+    constructor(data?: IBindStrandRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.id = _data["id"];
+            this.name = _data["name"];
+            this.gloss = _data["gloss"];
+            if (Array.isArray(_data["members"])) {
+                this.members = [] as any;
+                for (let item of _data["members"])
+                    this.members!.push(MatcherDto.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): BindStrandRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new BindStrandRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["id"] = this.id;
+        data["name"] = this.name;
+        data["gloss"] = this.gloss;
+        if (Array.isArray(this.members)) {
+            data["members"] = [];
+            for (let item of this.members)
+                data["members"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface IBindStrandRequest {
+    id?: string | undefined;
+    name?: string;
+    gloss?: string;
+    members?: MatcherDto[];
+
+    [key: string]: any;
+}
+
+export class DailyQuestionsResponse implements IDailyQuestionsResponse {
+    questions?: QuestionItemResponse[];
+
+    [key: string]: any;
+
+    constructor(data?: IDailyQuestionsResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            if (Array.isArray(_data["questions"])) {
+                this.questions = [] as any;
+                for (let item of _data["questions"])
+                    this.questions!.push(QuestionItemResponse.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): DailyQuestionsResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new DailyQuestionsResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        if (Array.isArray(this.questions)) {
+            data["questions"] = [];
+            for (let item of this.questions)
+                data["questions"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface IDailyQuestionsResponse {
+    questions?: QuestionItemResponse[];
+
+    [key: string]: any;
+}
+
 export class DailyRecapResponse implements IDailyRecapResponse {
     date?: string;
     isEmpty?: boolean;
@@ -2062,6 +2306,126 @@ export interface IKeyFrequencyResponse {
     [key: string]: any;
 }
 
+export class MatcherDto implements IMatcherDto {
+    source?: string;
+    steps?: MatcherStepDto[];
+
+    [key: string]: any;
+
+    constructor(data?: IMatcherDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.source = _data["source"];
+            if (Array.isArray(_data["steps"])) {
+                this.steps = [] as any;
+                for (let item of _data["steps"])
+                    this.steps!.push(MatcherStepDto.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): MatcherDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new MatcherDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["source"] = this.source;
+        if (Array.isArray(this.steps)) {
+            data["steps"] = [];
+            for (let item of this.steps)
+                data["steps"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface IMatcherDto {
+    source?: string;
+    steps?: MatcherStepDto[];
+
+    [key: string]: any;
+}
+
+export class MatcherStepDto implements IMatcherStepDto {
+    layer?: number;
+    reading?: string;
+    op?: string;
+    value?: string;
+
+    [key: string]: any;
+
+    constructor(data?: IMatcherStepDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.layer = _data["layer"];
+            this.reading = _data["reading"];
+            this.op = _data["op"];
+            this.value = _data["value"];
+        }
+    }
+
+    static fromJS(data: any): MatcherStepDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new MatcherStepDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["layer"] = this.layer;
+        data["reading"] = this.reading;
+        data["op"] = this.op;
+        data["value"] = this.value;
+        return data;
+    }
+}
+
+export interface IMatcherStepDto {
+    layer?: number;
+    reading?: string;
+    op?: string;
+    value?: string;
+
+    [key: string]: any;
+}
+
 export class MeResponse implements IMeResponse {
     username?: string;
     isPublic?: boolean;
@@ -2110,6 +2474,118 @@ export class MeResponse implements IMeResponse {
 export interface IMeResponse {
     username?: string;
     isPublic?: boolean;
+
+    [key: string]: any;
+}
+
+export class MuteMatcherRequest implements IMuteMatcherRequest {
+    matcher?: MatcherDto;
+
+    [key: string]: any;
+
+    constructor(data?: IMuteMatcherRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.matcher = _data["matcher"] ? MatcherDto.fromJS(_data["matcher"]) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): MuteMatcherRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new MuteMatcherRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["matcher"] = this.matcher ? this.matcher.toJSON() : undefined as any;
+        return data;
+    }
+}
+
+export interface IMuteMatcherRequest {
+    matcher?: MatcherDto;
+
+    [key: string]: any;
+}
+
+export class QuestionItemResponse implements IQuestionItemResponse {
+    matcher?: MatcherDto;
+    question?: string;
+    evidence?: string;
+    proposedName?: string;
+    proposedGloss?: string;
+
+    [key: string]: any;
+
+    constructor(data?: IQuestionItemResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.matcher = _data["matcher"] ? MatcherDto.fromJS(_data["matcher"]) : undefined as any;
+            this.question = _data["question"];
+            this.evidence = _data["evidence"];
+            this.proposedName = _data["proposedName"];
+            this.proposedGloss = _data["proposedGloss"];
+        }
+    }
+
+    static fromJS(data: any): QuestionItemResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new QuestionItemResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["matcher"] = this.matcher ? this.matcher.toJSON() : undefined as any;
+        data["question"] = this.question;
+        data["evidence"] = this.evidence;
+        data["proposedName"] = this.proposedName;
+        data["proposedGloss"] = this.proposedGloss;
+        return data;
+    }
+}
+
+export interface IQuestionItemResponse {
+    matcher?: MatcherDto;
+    question?: string;
+    evidence?: string;
+    proposedName?: string;
+    proposedGloss?: string;
 
     [key: string]: any;
 }
@@ -2250,6 +2726,82 @@ export class SegmentUploadRequest implements ISegmentUploadRequest {
 
 export interface ISegmentUploadRequest {
     segments?: ActivitySegmentItem[];
+
+    [key: string]: any;
+}
+
+export class StrandResponse implements IStrandResponse {
+    id?: string;
+    name?: string;
+    gloss?: string;
+    members?: MatcherDto[];
+    createdAt?: Date;
+    updatedAt?: Date;
+
+    [key: string]: any;
+
+    constructor(data?: IStrandResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.id = _data["id"];
+            this.name = _data["name"];
+            this.gloss = _data["gloss"];
+            if (Array.isArray(_data["members"])) {
+                this.members = [] as any;
+                for (let item of _data["members"])
+                    this.members!.push(MatcherDto.fromJS(item));
+            }
+            this.createdAt = _data["createdAt"] ? new Date(_data["createdAt"].toString()) : undefined as any;
+            this.updatedAt = _data["updatedAt"] ? new Date(_data["updatedAt"].toString()) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): StrandResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new StrandResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["id"] = this.id;
+        data["name"] = this.name;
+        data["gloss"] = this.gloss;
+        if (Array.isArray(this.members)) {
+            data["members"] = [];
+            for (let item of this.members)
+                data["members"].push(item ? item.toJSON() : undefined as any);
+        }
+        data["createdAt"] = this.createdAt ? this.createdAt.toISOString() : undefined as any;
+        data["updatedAt"] = this.updatedAt ? this.updatedAt.toISOString() : undefined as any;
+        return data;
+    }
+}
+
+export interface IStrandResponse {
+    id?: string;
+    name?: string;
+    gloss?: string;
+    members?: MatcherDto[];
+    createdAt?: Date;
+    updatedAt?: Date;
 
     [key: string]: any;
 }
