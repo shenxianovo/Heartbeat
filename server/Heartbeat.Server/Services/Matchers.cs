@@ -26,17 +26,15 @@ namespace Heartbeat.Server.Services
             var steps = (matcher.Steps ?? [])
                 .Select(s => new MatcherStepDto
                 {
-                    Layer = s.Layer,
                     Reading = (s.Reading ?? string.Empty).Trim().ToLowerInvariant(),
                     Op = (s.Op ?? string.Empty).Trim().ToLowerInvariant(),
                     Value = (s.Value ?? string.Empty).Trim().ToLowerInvariant(),
                 })
-                .Where(s => s.Layer >= 1 && s.Reading.Length > 0 && s.Value.Length > 0 && ValidOps.Contains(s.Op))
-                .OrderBy(s => s.Layer)
-                .ThenBy(s => s.Reading, StringComparer.Ordinal)
+                .Where(s => s.Reading.Length > 0 && s.Value.Length > 0 && ValidOps.Contains(s.Op))
+                .OrderBy(s => s.Reading, StringComparer.Ordinal)
                 .ThenBy(s => s.Op, StringComparer.Ordinal)
                 .ThenBy(s => s.Value, StringComparer.Ordinal)
-                .DistinctBy(s => (s.Layer, s.Reading, s.Op, s.Value))
+                .DistinctBy(s => (s.Reading, s.Op, s.Value))
                 .ToList();
 
             return steps.Count == 0 ? null : new MatcherDto { Source = source, Steps = steps };
@@ -66,12 +64,13 @@ namespace Heartbeat.Server.Services
     public static class MatcherRender
     {
         public static string Describe(string source, IReadOnlyList<MatcherStepDto> steps)
-            => $"{source}: {string.Join(" ∧ ", steps.Select(s => $"L{s.Layer} {s.Reading} {s.Op} \"{s.Value}\""))}";
+            => $"{source}: {string.Join(" ∧ ", steps.Select(s => $"{s.Reading} {s.Op} \"{s.Value}\""))}";
     }
 
     /// <summary>
-    /// Matcher 求值（ADR-029 §3，纯函数）：路径谓词各步合取——每步须存在
-    /// 同层同读数、且值满足谓词的读数。Source / 读数名 / 值全部大小写不敏感：
+    /// Matcher 求值（ADR-029 §3，纯函数）：路径谓词各步合取——每步须存在同读数名、
+    /// 且值满足谓词的读数。步不带层号（ADR-030 §6）：按 (source, 读数名) 匹配，读数名在
+    /// source 内唯一由声明校验保证。Source / 读数名 / 值全部大小写不敏感：
     /// 命中等价类 = 裁决身份等价类（MatcherNormalizer canonical 小写形），一把尺子。
     /// </summary>
     public static class MatcherEval
@@ -80,8 +79,7 @@ namespace Heartbeat.Server.Services
             => string.Equals(matcher.Source, source, StringComparison.OrdinalIgnoreCase)
                && matcher.Steps.Count > 0
                && matcher.Steps.All(step => readings.Any(r =>
-                   r.Layer == step.Layer
-                   && string.Equals(r.Reading, step.Reading, StringComparison.OrdinalIgnoreCase)
+                   string.Equals(r.Reading, step.Reading, StringComparison.OrdinalIgnoreCase)
                    && Match(step.Op, r.Value, step.Value)));
 
         private static bool Match(string op, string actual, string expected) => op switch

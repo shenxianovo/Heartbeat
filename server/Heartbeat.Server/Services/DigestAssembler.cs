@@ -1,4 +1,6 @@
+using System.Text.Json;
 using Heartbeat.Core;
+using Heartbeat.Core.DTOs.Collectors;
 using Heartbeat.Core.DTOs.Knowledge;
 using Heartbeat.Server.Data;
 using Microsoft.EntityFrameworkCore;
@@ -25,7 +27,25 @@ namespace Heartbeat.Server.Services
             var segments = await QuerySegmentsAsync(ownerId, window.UtcStart, window.UtcEnd, ct);
             var knownStrands = await LoadKnownStrandsAsync(ownerId, ct);
             var recurring = await ComputeRecurringReadingsAsync(ownerId, window.UtcStart, ct);
-            return RecapProjection.Project(segments, window, displayOffset, knownStrands, recurring);
+            var depthTables = await LoadDepthTablesAsync(ct);
+            return RecapProjection.Project(segments, window, displayOffset, knownStrands, recurring, depthTables);
+        }
+
+        /// <summary>
+        /// 生效深度表集（ADR-030 §4）：编译期种子作地板 + DB 声明按 max(Version) 覆盖
+        /// （种子未跑 / 干净库也不失明）。表极小，每次装配现读——digest 装配本身低频（缓存判读挡在前面）。
+        /// </summary>
+        public async Task<DepthTables> LoadDepthTablesAsync(CancellationToken ct = default)
+        {
+            var payloads = await db.CollectorDeclarations
+                .GroupBy(d => d.Source)
+                .Select(g => g.OrderByDescending(d => d.Version).First().PayloadJson)
+                .ToListAsync(ct);
+            var declarations = payloads
+                .Select(p => JsonSerializer.Deserialize<CollectorDeclarationDto>(p))
+                .Where(d => d != null)
+                .Select(d => d!);
+            return new DepthTables(SeedDeclarations.All.Concat(declarations));
         }
 
         /// <summary>窗口内最新 segment 结束时间（裁剪到窗口终点）。今日缓存水位判读的比较端。</summary>
@@ -107,7 +127,8 @@ namespace Heartbeat.Server.Services
                     x.App != null ? x.App.Name : null,
                     x.Title,
                     x.StartTime,
-                    x.EndTime))
+                    x.EndTime,
+                    x.Attributes))
                 .ToListAsync(ct);
         }
 

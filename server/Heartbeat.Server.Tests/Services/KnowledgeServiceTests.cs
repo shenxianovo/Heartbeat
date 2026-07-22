@@ -12,13 +12,13 @@ public class KnowledgeServiceTests(PostgresContainerFixture fixture) : PostgresT
     private static MatcherDto AppMatcher(string app) => new()
     {
         Source = ActivitySources.System,
-        Steps = [new() { Layer = 1, Reading = "app", Op = MatcherOps.Equal, Value = app }]
+        Steps = [new() { Reading = "app", Op = MatcherOps.Equal, Value = app }]
     };
 
     private static MatcherDto UrlContains(string fragment) => new()
     {
         Source = ActivitySources.Browser,
-        Steps = [new() { Layer = 1, Reading = "url", Op = MatcherOps.Contains, Value = fragment }]
+        Steps = [new() { Reading = "url", Op = MatcherOps.Contains, Value = fragment }]
     };
 
     private static BindStrandRequest HyperFrames(Guid? id = null) => new()
@@ -192,8 +192,8 @@ public class KnowledgeServiceTests(PostgresContainerFixture fixture) : PostgresT
             Source = ActivitySources.System,
             Steps =
             [
-                new() { Layer = 1, Reading = "app", Op = MatcherOps.Equal, Value = "Code" },
-                new() { Layer = 2, Reading = "title", Op = MatcherOps.Contains, Value = "news" },
+                new() { Reading = "app", Op = MatcherOps.Equal, Value = "Code" },
+                new() { Reading = "title", Op = MatcherOps.Contains, Value = "news" },
             ]
         };
         var reversed = new MatcherDto
@@ -201,8 +201,8 @@ public class KnowledgeServiceTests(PostgresContainerFixture fixture) : PostgresT
             Source = ActivitySources.System,
             Steps =
             [
-                new() { Layer = 2, Reading = "title", Op = "CONTAINS", Value = " news " },
-                new() { Layer = 1, Reading = "app", Op = MatcherOps.Equal, Value = "CODE" },
+                new() { Reading = "title", Op = "CONTAINS", Value = " news " },
+                new() { Reading = "app", Op = MatcherOps.Equal, Value = "CODE" },
             ]
         };
 

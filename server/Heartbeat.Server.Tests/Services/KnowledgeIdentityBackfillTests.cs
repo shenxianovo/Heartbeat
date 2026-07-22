@@ -14,14 +14,15 @@ namespace Heartbeat.Server.Tests.Services;
 [Collection("postgres")]
 public class KnowledgeIdentityBackfillTests(PostgresContainerFixture fixture) : PostgresTestBase(fixture)
 {
+    /// <summary>老尺子写入的 StepsJson（含已退役的 Layer 字段与原大小写）——backfill 需剥层 + 归一。</summary>
     private static string LegacyStepsJson(string value) =>
-        MatcherCodec.Serialize([new MatcherStepDto { Layer = 1, Reading = "app", Op = MatcherOps.Equal, Value = value }]);
+        $$"""[{"Layer":1,"Reading":"app","Op":"equals","Value":"{{value}}"}]""";
 
     private static string Canonical(string value) =>
         MatcherCodec.Serialize(MatcherNormalizer.Normalize(new MatcherDto
         {
             Source = ActivitySources.System,
-            Steps = [new() { Layer = 1, Reading = "app", Op = MatcherOps.Equal, Value = value }]
+            Steps = [new() { Reading = "app", Op = MatcherOps.Equal, Value = value }]
         })!.Steps);
 
     [Fact]

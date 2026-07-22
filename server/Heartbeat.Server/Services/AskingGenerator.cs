@@ -43,13 +43,13 @@ namespace Heartbeat.Server.Services
 
             每个问题附带一个 matcher（观测指纹提案），用于以后自动认出这类活动：
             - source："system"（桌面进程）或 "browser"（浏览器）
-            - steps：观测深度路径谓词，每步 {"layer","reading","op","value"}；
-              system 读数：L1 "app"、L2 "title"；browser 读数：L1 "url"、L1 "tab_title"；
+            - steps：观测读数路径谓词，每步 {"reading","op","value"}；
+              system 读数："app"（进程/应用）、"title"（窗口标题）；browser 读数："url"、"tab_title"；
               op ∈ "equals" | "prefix" | "contains"
-            - 默认只用最粗一步（L1）；只有当同一 L1 下明显混着多件事时才加 L2 细化步。
+            - 默认只用最浅一步；只有当分解显示同一读数值下明显混着多件事时才加更深读数的细化步。
 
             严格输出 JSON 数组（可为空），不要输出任何其他文字：
-            [{"question":"向用户提的一句问题","evidence":"你在摘要里看到的依据（时段+组合）","matcher":{"source":"system","steps":[{"layer":1,"reading":"app","op":"equals","value":"…"}]},"proposedName":"猜的名字（没把握则空串）","proposedGloss":"猜的一句话释义（同上）"}]
+            [{"question":"向用户提的一句问题","evidence":"你在摘要里看到的依据（时段+组合）","matcher":{"source":"system","steps":[{"reading":"app","op":"equals","value":"…"}]},"proposedName":"猜的名字（没把握则空串）","proposedGloss":"猜的一句话释义（同上）"}]
             """;
 
         private static readonly JsonSerializerOptions ParseOptions = new() { PropertyNameCaseInsensitive = true };

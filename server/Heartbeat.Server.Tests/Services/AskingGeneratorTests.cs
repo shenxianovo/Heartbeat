@@ -61,7 +61,7 @@ public class AskingGeneratorTests
             好的，以下是问题：
             ```json
             [{"question":"这是在直播吗？","evidence":"12:00–15:00 VALORANT 与 livehime 并行",
-              "matcher":{"source":"system","steps":[{"layer":1,"reading":"app","op":"EQUALS","value":" livehime "}]},
+              "matcher":{"source":"system","steps":[{"reading":"app","op":"EQUALS","value":" livehime "}]},
               "proposedName":"直播","proposedGloss":"B 站直播"}]
             ```
             """;
@@ -91,10 +91,10 @@ public class AskingGeneratorTests
     {
         var content = """
             [
-              {"question":"","matcher":{"source":"system","steps":[{"layer":1,"reading":"app","op":"equals","value":"x"}]}},
+              {"question":"","matcher":{"source":"system","steps":[{"reading":"app","op":"equals","value":"x"}]}},
               {"question":"没有 matcher 的问题"},
               {"question":"matcher 无效","matcher":{"source":"system","steps":[]}},
-              {"question":"合法的","matcher":{"source":"system","steps":[{"layer":1,"reading":"app","op":"equals","value":"x"}]}}
+              {"question":"合法的","matcher":{"source":"system","steps":[{"reading":"app","op":"equals","value":"x"}]}}
             ]
             """;
 

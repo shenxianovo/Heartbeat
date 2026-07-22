@@ -21,13 +21,13 @@ public class RecapProjectionTests
     private static MatcherDto AppMatcher(string app) => new()
     {
         Source = ActivitySources.System,
-        Steps = [new() { Layer = 1, Reading = "app", Op = MatcherOps.Equal, Value = app }]
+        Steps = [new() { Reading = "app", Op = MatcherOps.Equal, Value = app }]
     };
 
     private static MatcherDto UrlContains(string fragment) => new()
     {
         Source = ActivitySources.Browser,
-        Steps = [new() { Layer = 1, Reading = "url", Op = MatcherOps.Contains, Value = fragment }]
+        Steps = [new() { Reading = "url", Op = MatcherOps.Contains, Value = fragment }]
     };
 
     private static MatcherDto PathMatcher(string app, string titleFragment) => new()
@@ -35,8 +35,8 @@ public class RecapProjectionTests
         Source = ActivitySources.System,
         Steps =
         [
-            new() { Layer = 1, Reading = "app", Op = MatcherOps.Equal, Value = app },
-            new() { Layer = 2, Reading = "title", Op = MatcherOps.Contains, Value = titleFragment },
+            new() { Reading = "app", Op = MatcherOps.Equal, Value = app },
+            new() { Reading = "title", Op = MatcherOps.Contains, Value = titleFragment },
         ]
     };
 

@@ -8,13 +8,14 @@ namespace Heartbeat.Core.DTOs.Knowledge
         public const string Contains = "contains";
     }
 
-    /// <summary>路径谓词的一步：某观测深度层的某读数上的一个谓词。</summary>
+    /// <summary>
+    /// 路径谓词的一步：某观测读数上的一个谓词。**不带层号**（ADR-030 §6）：读数名在
+    /// source 内唯一（采集器声明校验），深度是声明的展示 / 隐私属性，不进 Matcher——
+    /// 采集器重排 / 提拔深度层永不失效存量指纹。
+    /// </summary>
     public class MatcherStepDto
     {
-        /// <summary>观测深度层（≥1，浅→深；由该 Source 采集器契约声明）。</summary>
-        public int Layer { get; set; }
-
-        /// <summary>读数名（采集器契约词汇：system 的 app/title、browser 的 url/tab_title…）。</summary>
+        /// <summary>读数名（采集器声明词汇：system 的 app/title、browser 的 url/tab_title…）。</summary>
         public string Reading { get; set; } = string.Empty;
 
         /// <summary>谓词：equals / prefix / contains（见 MatcherOps）。</summary>

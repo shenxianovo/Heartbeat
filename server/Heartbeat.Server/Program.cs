@@ -126,6 +126,8 @@ using (var scope = app.Services.CreateScope())
     // NormalizeMatcherIdentity 迁移的 C# 半边：StepsJson canonical 字节只有
     // System.Text.Json 能产（见 KnowledgeIdentityBackfill 注释）。幂等，干净库空转。
     await KnowledgeIdentityBackfill.RunAsync(db);
+    // AddCollectorDeclarations 的种子半边（同理走 C#）：system/browser v1 幂等补插（ADR-030 §4）。
+    await SeedDeclarations.SeedAsync(db);
 }
 
 app.UseAuthentication();

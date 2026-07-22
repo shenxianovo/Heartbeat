@@ -16,6 +16,7 @@ namespace Heartbeat.Server.Data
         public DbSet<StrandMatcher> StrandMatchers => Set<StrandMatcher>();
         public DbSet<MutedMatcher> MutedMatchers => Set<MutedMatcher>();
         public DbSet<DailyQuestionSet> DailyQuestionSets => Set<DailyQuestionSet>();
+        public DbSet<CollectorDeclaration> CollectorDeclarations => Set<CollectorDeclaration>();
 
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
@@ -160,6 +161,18 @@ namespace Heartbeat.Server.Data
 
                 // 缓存身份：一个 Owner 的一个日窗口一份（与 Recap 同构，ADR-029 §4）。
                 entity.HasIndex(e => new { e.OwnerId, e.WindowStart })
+                    .IsUnique();
+            });
+
+            modelBuilder.Entity<CollectorDeclaration>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Source).HasMaxLength(64);
+                entity.Property(e => e.PayloadJson).HasColumnType("jsonb");
+
+                // 生效规则的读取键：每 Source 取 max(Version)；同 (Source, Version) 幂等覆盖（ADR-030 §4）。
+                entity.HasIndex(e => new { e.Source, e.Version })
                     .IsUnique();
             });
         }

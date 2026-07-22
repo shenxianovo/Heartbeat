@@ -2367,7 +2367,6 @@ export interface IMatcherDto {
 }
 
 export class MatcherStepDto implements IMatcherStepDto {
-    layer?: number;
     reading?: string;
     op?: string;
     value?: string;
@@ -2389,7 +2388,7 @@ export class MatcherStepDto implements IMatcherStepDto {
                 if (_data.hasOwnProperty(property))
                     this[property] = _data[property];
             }
-            this.layer = _data["layer"];
+
             this.reading = _data["reading"];
             this.op = _data["op"];
             this.value = _data["value"];
@@ -2409,7 +2408,7 @@ export class MatcherStepDto implements IMatcherStepDto {
             if (this.hasOwnProperty(property))
                 data[property] = this[property];
         }
-        data["layer"] = this.layer;
+
         data["reading"] = this.reading;
         data["op"] = this.op;
         data["value"] = this.value;
@@ -2418,7 +2417,7 @@ export class MatcherStepDto implements IMatcherStepDto {
 }
 
 export interface IMatcherStepDto {
-    layer?: number;
+
     reading?: string;
     op?: string;
     value?: string;

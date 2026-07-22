@@ -52,7 +52,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
     private static MatcherDto AppMatcher(string app) => new()
     {
         Source = ActivitySources.System,
-        Steps = [new() { Layer = 1, Reading = "app", Op = MatcherOps.Equal, Value = app }]
+        Steps = [new() { Reading = "app", Op = MatcherOps.Equal, Value = app }]
     };
 
     private static QuestionItemResponse Question(string app, string question = "这是什么？") => new()

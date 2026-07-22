@@ -5,7 +5,7 @@ namespace Heartbeat.Server.Services
 {
     /// <summary>
     /// Recap 投影的输入行：一条已物化的 segment 及其关联显示名。
-    /// 自由结构 Attributes 有意不进投影——browser 的 IdentityKey 已是规范化 URL，Title 已是页面标题（ADR-023 §3）。
+    /// AttributesJson 只供声明的 attributes.* 槽位取读数（ADR-030 §2），不做自由结构消费。
     /// </summary>
     public record RecapSegmentInput(
         string DeviceName,
@@ -14,7 +14,8 @@ namespace Heartbeat.Server.Services
         string? AppName,
         string? Title,
         DateTimeOffset StartTime,
-        DateTimeOffset EndTime);
+        DateTimeOffset EndTime,
+        string? AttributesJson = null);
 
     public class RecapProjectionResult
     {
@@ -57,8 +58,11 @@ namespace Heartbeat.Server.Services
             DateRange window,
             TimeSpan displayOffset,
             IReadOnlyList<KnownStrandInput>? knownStrands = null,
-            IReadOnlyList<string>? recurringReadings = null)
+            IReadOnlyList<string>? recurringReadings = null,
+            DepthTables? depthTables = null)
         {
+            // 生效声明由调用方从库取（DigestAssembler）；纯函数测试与 bootstrap 回落种子副本。
+            depthTables ??= DepthTables.Seeds;
             DateTimeOffset windowStart = window.UtcStart;
             DateTimeOffset windowEnd = window.UtcEnd;
 
@@ -104,7 +108,7 @@ namespace Heartbeat.Server.Services
                 AppendPluginTracks(sb, device.ToList());
             }
 
-            AppendKnownStrands(sb, clipped, knownStrands);
+            AppendKnownStrands(sb, clipped, knownStrands, depthTables);
             AppendRecurringNote(sb, recurringReadings);
 
             return new RecapProjectionResult
@@ -118,16 +122,18 @@ namespace Heartbeat.Server.Services
         /// <summary>
         /// 已知脉络块（ADR-028 §6，解析随 ADR-029 换 Matcher 命中）：注入只在指纹当日命中时发生——
         /// 把当日观测归到用户确认过的 Strand，让生成层用项目名而非 app 名叙事。
-        /// 解析确定性（DepthReadings + MatcherEval），留在可测的投影层。
+        /// 解析确定性（声明驱动的读数提取 + MatcherEval），留在可测的投影层。
         /// </summary>
         private static void AppendKnownStrands(
-            StringBuilder sb, List<ClippedSegment> clipped, IReadOnlyList<KnownStrandInput>? knownStrands)
+            StringBuilder sb, List<ClippedSegment> clipped, IReadOnlyList<KnownStrandInput>? knownStrands,
+            DepthTables depthTables)
         {
             if (knownStrands == null || knownStrands.Count == 0) return;
 
             var observed = clipped
-                .Select(c => (c.Segment.Source, Readings: DepthReadings.For(
-                    c.Segment.Source, c.Segment.AppName, c.Segment.Title, c.Segment.IdentityKey)))
+                .Select(c => (c.Segment.Source, Readings: depthTables.ReadingsFor(
+                    c.Segment.Source, c.Segment.AppName, c.Segment.Title, c.Segment.IdentityKey,
+                    c.Segment.AttributesJson)))
                 .ToList();
 
             var present = knownStrands
