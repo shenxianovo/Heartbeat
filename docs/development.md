@@ -74,9 +74,10 @@ Client conventions (see `frontend/src/api/index.ts` and [docs/api.md](api.md)):
   so NSwag generates typed methods. An action typed `IActionResult` produces a schema-less
   `200` and NSwag emits `Promise<void>`; avoid it for anything the frontend reads.
 - The `fetchPublic*` wrappers call the generated client methods directly. The **only**
-  exceptions are the daily/weekly report wrappers, which hand-build the query string so the
-  browser's local timezone offset survives in the `date` parameter (the server's
-  `DateRange.Day/Week` needs it to fix "today"/"this week" boundaries — see
+  exceptions are date-window endpoints (daily/weekly reports and daily Recap), which
+  hand-build the query string so the browser's local timezone offset survives in the `date`
+  parameter. NSwag serializes `Date` with `toISOString()` and would otherwise erase that
+  offset, while the server's `DateRange.Day/Week` needs it to fix local-day boundaries (see
   `shared/CONTEXT.md`). `usage`/`segments` use UTC instants, which are unaffected.
 
 ### 4b. Feed plugin segments through the local ingest hub (ADR-017)
