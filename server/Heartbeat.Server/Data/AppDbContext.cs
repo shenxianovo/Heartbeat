@@ -123,9 +123,9 @@ namespace Heartbeat.Server.Data
 
                 entity.Property(e => e.Name).HasMaxLength(256);
 
-                // 无 Id 提交的收敛键：按 (OwnerId, Name) 定位既有行，重复提交幂等不产重复 Strand。
-                entity.HasIndex(e => new { e.OwnerId, e.Name })
-                    .IsUnique();
+                // 无 Id 提交的收敛键：按 (OwnerId, lower(Name)) 定位既有行——大小写变体不裂出第二条
+                // Strand（指纹分家）。函数式唯一索引在 NormalizeMatcherIdentity 迁移里以 SQL 建，
+                // EF 模型不声明（EF Core 不支持表达式索引）。
 
                 entity.HasMany(e => e.Members)
                     .WithOne(m => m.Strand)

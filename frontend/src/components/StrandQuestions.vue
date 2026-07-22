@@ -20,6 +20,10 @@ interface Draft {
 
 const drafts = ref<Draft[]>([])
 
+/** 归入既有脉络的轻提示（新建保持静默）：让"指纹在长"可感知，也是撞错名的唯一发现信号。 */
+const notice = ref<string | null>(null)
+let noticeTimer: ReturnType<typeof setTimeout> | undefined
+
 async function load() {
   try {
     const res = await fetchDailyQuestions({ date: props.selectedDate })
@@ -59,7 +63,13 @@ async function submit(d: Draft) {
   if (!d.name.trim() || !d.q.matcher) return
   d.busy = true
   try {
-    await bindStrand({ name: d.name.trim(), gloss: d.gloss.trim(), members: [d.q.matcher] })
+    const res = await bindStrand({ name: d.name.trim(), gloss: d.gloss.trim(), members: [d.q.matcher] })
+    // createdAt < updatedAt ⇔ 服务端归入了既有 Strand（指纹并集追加，见 KnowledgeService）
+    if (res.createdAt && res.updatedAt && res.createdAt.getTime() < res.updatedAt.getTime()) {
+      notice.value = `已归入既有脉络「${res.name}」 · 指纹 ${res.members?.length ?? 0} 条`
+      clearTimeout(noticeTimer)
+      noticeTimer = setTimeout(() => { notice.value = null }, 5000)
+    }
     remove(d)
   } catch {
     d.busy = false
@@ -79,11 +89,13 @@ async function mute(d: Draft) {
 </script>
 
 <template>
-  <Card v-if="drafts.length > 0" class="mb-6 gap-3 border-border/60 bg-card/80 py-5 backdrop-blur-sm">
+  <Card v-if="drafts.length > 0 || notice" class="mb-6 gap-3 border-border/60 bg-card/80 py-5 backdrop-blur-sm">
     <div class="flex flex-col gap-4 px-5">
-      <h2 class="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+      <h2 v-if="drafts.length > 0" class="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
         认识一下 · {{ drafts.length }} 个说不清的活动
       </h2>
+
+      <p v-if="notice" class="text-[0.8rem] text-muted-foreground">✓ {{ notice }}</p>
 
       <div
         v-for="d in drafts"

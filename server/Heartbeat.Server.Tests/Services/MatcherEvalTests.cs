@@ -99,6 +99,29 @@ public class MatcherEvalTests
     }
 
     [Fact]
+    public void Normalize_CanonicalIdentity_IsCaseInsensitive()
+    {
+        // 一把尺子：裁决身份判等 = 命中等价类。大小写变体必须收敛到同一 canonical 形，
+        // 否则 Code.exe / code.exe 双身份 → 已裁决的问题复活（"别再问"食言）。
+        var upper = MatcherNormalizer.Normalize(Matcher("SYSTEM", Step(1, "App", "EQUALS", "Code.EXE")));
+        var lower = MatcherNormalizer.Normalize(Matcher("system", Step(1, "app", MatcherOps.Equal, "code.exe")));
+
+        Assert.NotNull(upper);
+        Assert.NotNull(lower);
+        Assert.Equal(lower.Source, upper.Source);
+        Assert.Equal(MatcherCodec.Serialize(lower.Steps), MatcherCodec.Serialize(upper.Steps));
+    }
+
+    [Fact]
+    public void Hits_SourceAndReading_CaseInsensitive()
+    {
+        // 判官提案 "App" 之类的大小写变体不产生永不命中的死 Matcher。
+        var m = Matcher("System", Step(1, "APP", MatcherOps.Equal, "code"));
+
+        Assert.True(MatcherEval.Hits(ActivitySources.System, SysReadings("Code"), m));
+    }
+
+    [Fact]
     public void Codec_RoundTrips()
     {
         var steps = MatcherNormalizer.Normalize(
@@ -107,7 +130,7 @@ public class MatcherEvalTests
         var roundTripped = MatcherCodec.Deserialize(MatcherCodec.Serialize(steps));
 
         var step = Assert.Single(roundTripped);
-        Assert.Equal((1, "app", "equals", "Code"), (step.Layer, step.Reading, step.Op, step.Value));
+        Assert.Equal((1, "app", "equals", "code"), (step.Layer, step.Reading, step.Op, step.Value));
     }
 
     [Fact]
