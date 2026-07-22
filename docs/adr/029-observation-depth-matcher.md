@@ -1,6 +1,6 @@
 # ADR-029: 观测深度与路径 Matcher——Strand 知识层第一性重构
 
-## Status: Accepted（supersedes ADR-028 §3/§4，amends §6 digest 形状）
+## Status: Accepted（supersedes ADR-028 §3/§4，amends §6 digest 形状；§2 深度表声明机制与 browser 例子、§3 Matcher 步的 Layer 语义 amended by [ADR-030](./030-collector-depth-declaration.md)）
 
 ## Date: 2026-07-20
 

@@ -42,11 +42,11 @@ _Avoid_: 复刻标签升级喂单线（ADR-019 是展示层且有损，被 ADR-0
 _Avoid_: Project（太窄，排除爱好 / 人 / 剧）、Tag、Note；把问题卡的归入当"重定义"（那会碾压用户亲口确认的既有指纹与释义）
 
 **Observation Depth（观测深度）**:
-每个采集器在自身契约里声明的有序观测读数表，浅 → 深（system：进程/App → 窗口标题；browser：URL / 标签页标题 →（未来）内容摘要 → DOM；vscode 规划：仓库根 → 文件路径）。层内可有多个读数；同一读数上的粗细（domain vs 全 URL）由谓词表达，不是深度。**同时是隐私敏感度轴**——与 ADR-017"采集能力分层可拆"是同一张表。digest 的身份维度按它长成**深度树**：节点 = (读数, 并集时长)，子节点 = 下一深度分解，渲染 = 确定性预算剪枝（展开门槛、子数封顶、尾部折叠）。
-_Avoid_: 粒度（粗细是谓词维度，不是深度）；在知识层写死采集器字段名（app / url / domain 归各采集器契约）
+每个采集器在自身实现里声明、**运行时经注册通道上报**的有序观测读数表，浅 → 深（ADR-030）：声明 = {source, 契约版本, layers:[{readings:[{name, from, label}]}]}；读数命名与人话标签归采集器主权（name 在 source 内唯一），`from` 只指运输槽位（appName / title / identityKey / attributes.*，新读数一律走 attributes.*）——服务端是按槽取值的无关层，不认识 app / url / site 这些词。生效表 = 每 source 取 max(版本)；未声明 source 走通用回落（L1 identity / L2 title）；读时取值，历史 segments 被新声明自动覆盖。现行表——system：进程/App → 窗口标题；browser：站点(site, eTLD+1) → URL → 标签页标题；vscode 规划：仓库根 → 文件路径。**单读数值空间内部的层级（域后缀 / 路径前缀）默认归谓词轴；digest 粗档证据需要时由采集器提拔为独立读数层**（版本+1，服务端零改动）。**同时是隐私敏感度轴**——与 ADR-017"采集能力分层可拆"是同一张表。digest 的身份维度按它长成**深度树**：节点 = (读数值, 并集时长)，子节点 = 下一深度分解，缺读数段挂最深可用读数；渲染 = 确定性预算剪枝（展开门槛、子数封顶、尾部折叠）。
+_Avoid_: 粒度（粗细是谓词维度，不是深度）；在知识层写死采集器字段名或读数词汇（server 侧不得出现 per-source 分支——ADR-030 前的"镜像"写法已退役）
 
 **Matcher（匹配子）**:
-知识层的指纹原子：沿某 Source 深度树的**路径谓词**——各层 (读数, 谓词, 值) 的合取，谓词 ∈ {等于, 前缀, 包含}，单层是退化形态。例：`(system, L1 app = Code) ∧ (L2 title contains "hyperframes")`。Strand 指纹 = Matcher 集合；Mute 的单位也是 Matcher。digest 是深度树的观测投影，Matcher 是同一棵树上的路径谓词——发问 LLM 看着前者提案后者，粗档默认、细档只在分解证据要求时提案。**裁决身份 = canonical 小写形**（Source / 读数 / 谓词 / 值 trim + 小写、步骤排序去重后的确定性 JSON）：唯一索引、Mute 幂等、读时 diff 皆按它判等，与命中语义（MatcherEval 大小写不敏感）是同一把尺子——身份等价类 ≠ 命中等价类时，"别再问"对着字符串承诺、对着观测事实食言。
+知识层的指纹原子：沿某 Source 深度树的**路径谓词**——各步 (读数, 谓词, 值) 的合取，谓词 ∈ {等于, 前缀, 包含}，单步是退化形态。例：`(system, app = code) ∧ (title contains "hyperframes")`。**步不带层号**（ADR-030）：读数名在 source 内唯一，深度是声明的展示 / 隐私属性，不进 Matcher——采集器重排 / 提拔深度层永不失效存量指纹。Strand 指纹 = Matcher 集合；Mute 的单位也是 Matcher。digest 是深度树的观测投影，Matcher 是同一棵树上的路径谓词——发问 LLM 看着前者提案后者，粗档默认、细档只在分解证据要求时提案。**裁决身份 = canonical 小写形**（读数 / 谓词 / 值 trim + 小写、步骤排序去重后的确定性 JSON）：唯一索引、Mute 幂等、读时 diff 皆按它判等，与命中语义（MatcherEval 大小写不敏感）是同一把尺子——身份等价类 ≠ 命中等价类时，"别再问"对着字符串承诺、对着观测事实食言。
 _Avoid_: Handle / 把手（ADR-028 固定粗粒度 (Source, token)，ADR-029 起退役）、直接拿 IdentityKey 指代（IdentityKey 是采集器"同一活动"判据，不是知识层挂载点）、身份与命中用两把尺子（大小写变体裂身份）
 
 **Anchor / Satellite（锚点 / 卫星）**:
