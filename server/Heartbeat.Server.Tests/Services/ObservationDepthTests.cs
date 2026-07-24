@@ -31,11 +31,12 @@ public class ObservationDepthTests
     }
 
     [Fact]
-    public void Seed_System_MissingApp_RootAxisFallsBackToUnknown()
+    public void Seed_System_MissingApp_YieldsNoRootReading()
     {
+        // 解释器不造假值(缺读数即跳过);"(unknown)" 展示回落归轨渲染层(见 RecapProjectionTests)。
         var readings = DepthTables.Seeds.ReadingsFor(ActivitySources.System, "  ", null, "x");
 
-        Assert.Equal("(unknown)", Assert.Single(readings).Value);
+        Assert.Empty(readings);
     }
 
     [Fact]
@@ -79,11 +80,18 @@ public class ObservationDepthTests
         DepthReading[] expected = [new(1, "site", "example.com"), new(2, "url", "blog.example.com/post")];
         Assert.Equal(expected, withSite);
 
-        // 老段无 attributes.site:该读数缺席,段挂最深可用读数(树构建负责),解释器不造假值——
-        // 但首层首读数是树根轴,缺值给 "(unknown)" 保段不消失。
+        // 老段无 attributes.site:该读数跳过、不造假值——路径从 url 起,段挂最深可用读数(ADR-030 §2)。
         var withoutSite = tables.ReadingsFor("browser", null, null, "blog.example.com/post", null);
-        Assert.Equal([new DepthReading(1, "site", "(unknown)"), new DepthReading(2, "url", "blog.example.com/post")],
-            withoutSite);
+        Assert.Equal([new DepthReading(2, "url", "blog.example.com/post")], withoutSite);
+    }
+
+    [Fact]
+    public void DescribeForPrompt_RendersDeclaredVocabulary()
+    {
+        var vocab = DepthTables.Seeds.DescribeForPrompt();
+
+        Assert.Contains("browser：\"url\"（网址） → \"tab_title\"（标签页）", vocab);
+        Assert.Contains("system：\"app\"（应用） → \"title\"（窗口标题）", vocab);
     }
 
     // ---- 生效规则 ----

@@ -1,4 +1,5 @@
 using Heartbeat.Core;
+using Heartbeat.Core.DTOs.Collectors;
 using Heartbeat.Core.DTOs.Knowledge;
 using Heartbeat.Server.Services;
 
@@ -169,7 +170,8 @@ public class RecapProjectionTests
             Browser(url, "EF Core 迁移", Day.AddHours(9), Day.AddHours(9).AddMinutes(20)),
             Browser(url, "EF Core 迁移", Day.AddHours(9).AddMinutes(40), Day.AddHours(9).AddMinutes(50)));
 
-        Assert.Contains($"EF Core 迁移（{url}） — 合计 30分，2 次", result.Digest);
+        // 声明驱动两层树(ADR-030 §7):url 节点聚合,tab_title 是其下一深度分解
+        Assert.Contains($"{url} — 合计 30分，2 次｜其中: EF Core 迁移 30分", result.Digest);
     }
 
     [Fact]
@@ -221,7 +223,45 @@ public class RecapProjectionTests
             Browser("example.com/ping", "Ping", Day.AddHours(9), Day.AddHours(9)));
 
         Assert.False(result.IsEmpty);
-        Assert.Contains("Ping（example.com/ping） — 合计 <1分，1 次", result.Digest);
+        Assert.Contains("example.com/ping — 合计 <1分，1 次｜其中: Ping <1分", result.Digest);
+    }
+
+    // ---- 声明驱动深度树（ADR-030 §7）----
+
+    [Fact]
+    public void PluginTrack_ThreeLayerDeclaration_RecursiveBreakdown_ServerCodeUntouched()
+    {
+        // browser v2 形状(site → url → tab_title):投影代码零改动,只换声明——ADR-030 的核心承诺。
+        var v2 = new CollectorDeclarationDto
+        {
+            Source = ActivitySources.Browser,
+            Version = 2,
+            Layers =
+            [
+                new() { Readings = [new() { Name = "site", From = "attributes.site" }] },
+                new() { Readings = [new() { Name = "url", From = DepthSlots.IdentityKey }] },
+                new() { Readings = [new() { Name = "tab_title", From = DepthSlots.Title }] },
+            ]
+        };
+        var tables = new DepthTables(SeedDeclarations.All.Append(v2));
+
+        var segments = new List<RecapSegmentInput>
+        {
+            Sys("chrome", null, Day.AddHours(9), Day.AddHours(11)),
+            new("Main PC", ActivitySources.Browser, "blog.shenxianovo.com/post-1", "chrome", "文章一",
+                Day.AddHours(9), Day.AddHours(9).AddMinutes(40), """{"site":"shenxianovo.com"}"""),
+            new("Main PC", ActivitySources.Browser, "heartbeat.shenxianovo.com/dashboard", "chrome", "看板",
+                Day.AddHours(10), Day.AddHours(10).AddMinutes(30), """{"site":"shenxianovo.com"}"""),
+            // 老段:无 attributes.site → 挂最深可用读数(url 直接成顶层节点)
+            new("Main PC", ActivitySources.Browser, "old.example.com/page", "chrome", "旧页",
+                Day.AddHours(10), Day.AddHours(10).AddMinutes(10)),
+        };
+
+        var result = RecapProjection.Project(segments, Window, TimeSpan.Zero, depthTables: tables);
+
+        // site 节点聚合 70 分,下一深度是两条 url,url 下再挂 tab_title(递归)
+        Assert.Contains("shenxianovo.com — 合计 1小时10分，2 次｜其中: blog.shenxianovo.com/post-1 40分｜其中: 文章一 40分 · heartbeat.shenxianovo.com/dashboard 30分｜其中: 看板 30分", result.Digest);
+        Assert.Contains("old.example.com/page — 合计 10分，1 次｜其中: 旧页 10分", result.Digest);
     }
 
     // ---- 深度树分解（ADR-029 §2）----

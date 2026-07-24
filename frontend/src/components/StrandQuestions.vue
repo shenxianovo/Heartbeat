@@ -20,6 +20,9 @@ interface Draft {
 
 const drafts = ref<Draft[]>([])
 
+/** 读数展示名词典（随 questions 响应下发，来自采集器声明的 label，ADR-030）：缺失回落读数原名。 */
+const readingLabels = ref<Record<string, string>>({})
+
 /** 归入既有脉络的轻提示（新建保持静默）：让"指纹在长"可感知，也是撞错名的唯一发现信号。 */
 const notice = ref<string | null>(null)
 let noticeTimer: ReturnType<typeof setTimeout> | undefined
@@ -27,6 +30,7 @@ let noticeTimer: ReturnType<typeof setTimeout> | undefined
 async function load() {
   try {
     const res = await fetchDailyQuestions({ date: props.selectedDate })
+    readingLabels.value = res.readingLabels ?? {}
     drafts.value = (res.questions ?? []).map(q => ({
       q,
       name: q.proposedName ?? '',
@@ -45,13 +49,12 @@ function remove(d: Draft) {
 }
 
 const OP_LABEL: Record<string, string> = { equals: '=', prefix: '开头是', contains: '含' }
-const READING_LABEL: Record<string, string> = { app: '应用', title: '窗口标题', url: '网址', tab_title: '标签页' }
 
 /** Matcher 的人类可读渲染：`应用 = "livehime" 且 窗口标题 含 "直播"`。 */
 function describeMatcher(m: IMatcherDto | undefined): string {
   if (!m?.steps?.length) return ''
   return m.steps
-    .map(s => `${READING_LABEL[s.reading ?? ''] ?? s.reading} ${OP_LABEL[s.op ?? ''] ?? s.op} “${s.value}”`)
+    .map(s => `${readingLabels.value[s.reading ?? ''] ?? s.reading} ${OP_LABEL[s.op ?? ''] ?? s.op} “${s.value}”`)
     .join(' 且 ')
 }
 

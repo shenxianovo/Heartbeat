@@ -105,9 +105,9 @@ namespace Heartbeat.Server.Services
     }
 
     /// <summary>
-    /// 生效深度表集（ADR-030 §4/§7）：每 source 一份声明（调用方已按 max(Version) 选出）+ 通用回落。
-    /// 解释器是纯函数：按声明层序取槽出读数路径；某读数缺值即跳过（段挂最深可用读数由树构建负责），
-    /// 唯一例外是首层首读数（树根轴）缺值给 "(unknown)"，段不因此从身份维度消失。
+    /// 生效深度表集（ADR-030 §4/§7）：每 source 一份声明（构造时按 max(Version) 合并）+ 通用回落。
+    /// 解释器是纯函数：按声明层序取槽出读数路径；某读数缺值即跳过、不造假值——
+    /// 段挂最深可用读数（树构建按剩余路径插入），根轴缺值的展示回落归各轨渲染层。
     /// </summary>
     public sealed class DepthTables
     {
@@ -132,7 +132,7 @@ namespace Heartbeat.Server.Services
 
         public CollectorDeclarationDto? For(string source) => _tables.GetValueOrDefault(source);
 
-        /// <summary>声明 label 词典（读数名 → 展示名），供前端渲染（issue 02 下发）。</summary>
+        /// <summary>声明 label 词典（读数名 → 展示名），供前端渲染（随 questions 响应下发）。</summary>
         public IReadOnlyDictionary<string, string> Labels()
         {
             var labels = new Dictionary<string, string>();
@@ -140,6 +140,25 @@ namespace Heartbeat.Server.Services
                 if (reading.Label != null)
                     labels.TryAdd(reading.Name, reading.Label);
             return labels;
+        }
+
+        /// <summary>
+        /// 判官 prompt 的读数词汇段（ADR-030 §7）：从生效声明渲染，硬编码词汇表退役。
+        /// 每 source 一行，读数按深度浅 → 深。
+        /// </summary>
+        public string DescribeForPrompt()
+        {
+            var lines = _tables.Values
+                .OrderBy(t => t.Source, StringComparer.Ordinal)
+                .Select(t =>
+                {
+                    var readings = t.Layers
+                        .Select(l => string.Join("、", l.Readings.Select(r =>
+                            r.Label == null ? $"\"{r.Name}\"" : $"\"{r.Name}\"（{r.Label}）")))
+                        .ToList();
+                    return $"  - {t.Source}：{string.Join(" → ", readings)}";
+                });
+            return string.Join("\n", lines);
         }
 
         public IReadOnlyList<DepthReading> ReadingsFor(
@@ -150,7 +169,7 @@ namespace Heartbeat.Server.Services
             if (table == null)
             {
                 // 未声明 source 的通用回落（ADR-030 §4）：digest 不死，树浅。
-                readings.Add(new(1, "identity", identityKey));
+                if (!string.IsNullOrWhiteSpace(identityKey)) readings.Add(new(1, "identity", identityKey));
                 if (!string.IsNullOrWhiteSpace(title)) readings.Add(new(2, "title", title));
                 return readings;
             }
@@ -160,13 +179,8 @@ namespace Heartbeat.Server.Services
                 foreach (var decl in table.Layers[i].Readings)
                 {
                     var value = DepthSlots.Resolve(decl.From, appName, title, identityKey, attributesJson);
-                    if (string.IsNullOrWhiteSpace(value))
-                    {
-                        if (i == 0 && ReferenceEquals(decl, table.Layers[0].Readings[0]))
-                            readings.Add(new(1, decl.Name, UnknownValue));
-                        continue;
-                    }
-                    readings.Add(new(i + 1, decl.Name, value));
+                    if (!string.IsNullOrWhiteSpace(value))
+                        readings.Add(new(i + 1, decl.Name, value));
                 }
             }
             return readings;

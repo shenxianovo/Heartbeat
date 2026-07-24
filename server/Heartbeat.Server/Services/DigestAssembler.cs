@@ -24,10 +24,10 @@ namespace Heartbeat.Server.Services
         public async Task<RecapProjectionResult> AssembleAsync(
             string ownerId, DateRange window, TimeSpan displayOffset, CancellationToken ct = default)
         {
+            var depthTables = await LoadDepthTablesAsync(ct);
             var segments = await QuerySegmentsAsync(ownerId, window.UtcStart, window.UtcEnd, ct);
             var knownStrands = await LoadKnownStrandsAsync(ownerId, ct);
-            var recurring = await ComputeRecurringReadingsAsync(ownerId, window.UtcStart, ct);
-            var depthTables = await LoadDepthTablesAsync(ct);
+            var recurring = await ComputeRecurringReadingsAsync(ownerId, window.UtcStart, depthTables, ct);
             return RecapProjection.Project(segments, window, displayOffset, knownStrands, recurring, depthTables);
         }
 
@@ -59,7 +59,7 @@ namespace Heartbeat.Server.Services
             return latestEnd > windowEnd ? windowEnd : latestEnd;
         }
 
-        /// <summary>发问 few-shot 语境：绑定/静音裁决的渲染行（ADR-029 §4 裁决日志当锚）。</summary>
+        /// <summary>发问 few-shot 语境：绑定/静音裁决的渲染行（ADR-029 §4 裁决日志当锚）+ 判官读数词汇（ADR-030 §7）。</summary>
         public async Task<AskingContext> LoadAskingContextAsync(string ownerId, CancellationToken ct = default)
         {
             var strands = await db.Strands
@@ -94,7 +94,8 @@ namespace Heartbeat.Server.Services
                 .Select(m => MatcherRender.Describe(m.Source, MatcherCodec.Deserialize(m.StepsJson)))
                 .ToList();
 
-            return new AskingContext(bound, mutedLines);
+            var depthTables = await LoadDepthTablesAsync(ct);
+            return new AskingContext(bound, mutedLines, depthTables.DescribeForPrompt());
         }
 
         /// <summary>已裁决 Matcher 集（Strand 成员 ∪ Mute），按 (Source, 规范化 StepsJson) 比对——缓存问题的读时 diff 输入。</summary>
@@ -159,11 +160,12 @@ namespace Heartbeat.Server.Services
         }
 
         /// <summary>
-        /// 近 14 天高频 L1 读数（ADR-029 §4 确定性注释）：lookback 内出现 ≥ RecurringMinDays 天。
-        /// browser 取 host 作注释单位（全 URL 对"常驻"无意义），离开合成段剔除。
+        /// 近 14 天高频根读数（ADR-029 §4 确定性注释，ADR-030 §7 声明驱动）：lookback 内出现
+        /// ≥ RecurringMinDays 天的首层读数值。per-Source 标签分支已退役——browser 的"常驻"单位
+        /// 随声明走（v1 = url，v2 提拔 site 后自动变站点）；离开合成段剔除。
         /// </summary>
         private async Task<IReadOnlyList<string>> ComputeRecurringReadingsAsync(
-            string ownerId, DateTimeOffset windowStart, CancellationToken ct)
+            string ownerId, DateTimeOffset windowStart, DepthTables depthTables, CancellationToken ct)
         {
             var from = windowStart.AddDays(-RecurringLookbackDays);
             var rows = await db.ActivitySegments
@@ -174,12 +176,19 @@ namespace Heartbeat.Server.Services
                     x.Source,
                     AppName = x.App != null ? x.App.Name : null,
                     x.IdentityKey,
+                    x.Title,
+                    x.Attributes,
                     x.StartTime
                 })
                 .ToListAsync(ct);
 
             return rows
-                .Select(r => (Label: RecurringLabel(r.Source, r.AppName, r.IdentityKey), Day: r.StartTime.UtcDateTime.Date))
+                .Select(r =>
+                {
+                    var readings = depthTables.ReadingsFor(r.Source, r.AppName, r.Title, r.IdentityKey, r.Attributes);
+                    var root = readings.Count > 0 && readings[0].Layer == 1 ? readings[0].Value : null;
+                    return (Label: root, Day: r.StartTime.UtcDateTime.Date);
+                })
                 .Where(t => t.Label != null && t.Label != SyntheticApps.Away)
                 .Distinct()
                 .GroupBy(t => t.Label!)
@@ -187,15 +196,6 @@ namespace Heartbeat.Server.Services
                 .Select(g => g.Key)
                 .OrderBy(l => l, StringComparer.Ordinal)
                 .ToList();
-        }
-
-        private static string? RecurringLabel(string source, string? appName, string identityKey)
-        {
-            if (source == ActivitySources.System)
-                return string.IsNullOrWhiteSpace(appName) ? null : appName;
-            if (source == ActivitySources.Browser)
-                return Uri.TryCreate(identityKey, UriKind.Absolute, out var uri) ? uri.Host : identityKey;
-            return identityKey;
         }
     }
 }

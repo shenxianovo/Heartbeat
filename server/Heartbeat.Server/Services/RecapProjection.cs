@@ -104,8 +104,8 @@ namespace Heartbeat.Server.Services
             {
                 sb.AppendLine();
                 sb.AppendLine($"## 设备「{device.Key}」");
-                AppendSystemTrack(sb, device.ToList(), windowEnd, displayOffset);
-                AppendPluginTracks(sb, device.ToList());
+                AppendSystemTrack(sb, device.ToList(), windowEnd, displayOffset, depthTables);
+                AppendPluginTracks(sb, device.ToList(), depthTables);
             }
 
             AppendKnownStrands(sb, clipped, knownStrands, depthTables);
@@ -154,47 +154,87 @@ namespace Heartbeat.Server.Services
             public double Seconds => (End - Start).TotalSeconds;
         }
 
-        /// <summary>注意力块：同 App 相邻 system 段折叠后的时间轴行。</summary>
+        /// <summary>
+        /// 深度树节点（ADR-030 §7）：某读数值下的并集时长 + 访问次数 + 下一深度分解。
+        /// 缺更深读数的段挂在当前节点（最深可用读数），不造假值。
+        /// </summary>
+        private sealed class DepthNode
+        {
+            public double Seconds;
+            public int Visits;
+            public Dictionary<string, DepthNode> Children { get; } = [];
+        }
+
+        /// <summary>把段插进深度树：按声明层序取每层首读数（分解轴）的值为路径。</summary>
+        private static void Insert(Dictionary<string, DepthNode> roots, IReadOnlyList<DepthReading> readings, ClippedSegment c)
+        {
+            var level = roots;
+            DepthNode? node = null;
+            var lastLayer = 0;
+            foreach (var r in readings)
+            {
+                if (r.Layer <= lastLayer) continue; // 层内非首读数不是分解轴
+                lastLayer = r.Layer;
+                if (!level.TryGetValue(r.Value, out var next))
+                    level[r.Value] = next = new DepthNode();
+                node = next;
+                node.Seconds += c.Seconds;
+                node.Visits += 1;
+                level = node.Children;
+            }
+        }
+
+        /// <summary>注意力块：同根读数值相邻 system 段折叠后的时间轴行，块内挂下一深度分解树。</summary>
         private sealed class AttentionBlock
         {
             public required string App { get; init; }
             public DateTimeOffset Start { get; init; }
             public DateTimeOffset End { get; set; }
-            public Dictionary<string, double> TitleSeconds { get; } = [];
+            public Dictionary<string, DepthNode> Breakdown { get; } = [];
 
             public double Seconds => (End - Start).TotalSeconds;
 
-            public void Absorb(ClippedSegment c)
+            public void Absorb(ClippedSegment c, IReadOnlyList<DepthReading> readings)
             {
                 if (c.End > End) End = c.End;
-                if (string.IsNullOrWhiteSpace(c.Segment.Title)) return;
-                TitleSeconds.TryGetValue(c.Segment.Title, out var acc);
-                TitleSeconds[c.Segment.Title] = acc + c.Seconds;
+                // 块轴 = 根读数；分解树从第二层起（根之下的读数路径）。
+                Insert(Breakdown, readings.Where(r => r.Layer > 1).ToList(), c);
             }
         }
 
         private static void AppendSystemTrack(
-            StringBuilder sb, List<ClippedSegment> deviceSegments, DateTimeOffset windowEnd, TimeSpan displayOffset)
+            StringBuilder sb, List<ClippedSegment> deviceSegments, DateTimeOffset windowEnd, TimeSpan displayOffset,
+            DepthTables depthTables)
         {
             var system = deviceSegments
                 .Where(c => c.Segment.Source == ActivitySources.System)
                 .OrderBy(c => c.Start)
+                .Select(c =>
+                {
+                    var readings = depthTables.ReadingsFor(
+                        c.Segment.Source, c.Segment.AppName, c.Segment.Title, c.Segment.IdentityKey,
+                        c.Segment.AttributesJson);
+                    // 根轴缺值的展示回落在轨渲染层（解释器不造假值）：段不从时间轴消失。
+                    var root = readings.Count > 0 && readings[0].Layer == 1
+                        ? readings[0].Value
+                        : DepthTables.UnknownValue;
+                    return (Clipped: c, Root: root, Readings: readings);
+                })
                 .ToList();
             if (system.Count == 0) return;
 
             var blocks = new List<AttentionBlock>();
             AttentionBlock? current = null;
-            foreach (var c in system)
+            foreach (var (c, root, readings) in system)
             {
-                var app = string.IsNullOrWhiteSpace(c.Segment.AppName) ? "(unknown)" : c.Segment.AppName;
-                if (current != null && current.App == app
+                if (current != null && current.App == root
                     && (c.Start - current.End).TotalSeconds <= MergeGapSeconds)
                 {
-                    current.Absorb(c);
+                    current.Absorb(c, readings);
                     continue;
                 }
-                current = new AttentionBlock { App = app, Start = c.Start, End = c.Start };
-                current.Absorb(c);
+                current = new AttentionBlock { App = root, Start = c.Start, End = c.Start };
+                current.Absorb(c, readings);
                 blocks.Add(current);
             }
 
@@ -202,13 +242,13 @@ namespace Heartbeat.Server.Services
             foreach (var b in blocks.Where(b => b.Seconds >= NoiseBlockSeconds))
             {
                 var label = b.App == SyntheticApps.Away ? "离开" : b.App;
-                var breakdown = b.App == SyntheticApps.Away ? string.Empty : FormatBreakdown(b);
+                var breakdown = b.App == SyntheticApps.Away ? string.Empty : FormatBreakdown(b.Breakdown, b.Seconds);
                 sb.AppendLine($"- {FormatTime(b.Start, windowEnd, displayOffset)}–{FormatTime(b.End, windowEnd, displayOffset)} {label}（{FormatDuration(b.Seconds)}）{breakdown}");
             }
 
             var totals = system
-                .GroupBy(c => string.IsNullOrWhiteSpace(c.Segment.AppName) ? "(unknown)" : c.Segment.AppName)
-                .Select(g => (App: g.Key, Seconds: g.Sum(c => c.Seconds)))
+                .GroupBy(t => t.Root)
+                .Select(g => (App: g.Key, Seconds: g.Sum(t => t.Clipped.Seconds)))
                 .ToList();
             var ranked = totals
                 .Where(t => t.App != SyntheticApps.Away)
@@ -223,7 +263,8 @@ namespace Heartbeat.Server.Services
                 sb.AppendLine($"离开合计：{FormatDuration(awaySeconds)}");
         }
 
-        private static void AppendPluginTracks(StringBuilder sb, List<ClippedSegment> deviceSegments)
+        private static void AppendPluginTracks(
+            StringBuilder sb, List<ClippedSegment> deviceSegments, DepthTables depthTables)
         {
             var bySource = deviceSegments
                 .Where(c => c.Segment.Source != ActivitySources.System)
@@ -232,57 +273,51 @@ namespace Heartbeat.Server.Services
 
             foreach (var source in bySource)
             {
-                var entries = source
-                    .GroupBy(c => c.Segment.IdentityKey)
-                    .Select(g =>
-                    {
-                        var longest = g.OrderByDescending(c => c.Seconds).First();
-                        return (
-                            IdentityKey: g.Key,
-                            Title: g.Where(c => !string.IsNullOrWhiteSpace(c.Segment.Title))
-                                    .OrderByDescending(c => c.Seconds)
-                                    .Select(c => c.Segment.Title)
-                                    .FirstOrDefault(),
-                            Seconds: g.Sum(c => c.Seconds),
-                            Visits: g.Count());
-                    })
-                    .OrderByDescending(e => e.Seconds)
-                    .ThenByDescending(e => e.Visits)
+                // 声明驱动的深度树（ADR-030 §7）：browser 由 url → tab_title 两层（v2 后 site→url→tab_title），
+                // 树根即最浅读数。轨内非互斥，节点时长为并集累计、次数为出现段数。
+                var roots = new Dictionary<string, DepthNode>();
+                foreach (var c in source)
+                {
+                    var readings = depthTables.ReadingsFor(
+                        c.Segment.Source, c.Segment.AppName, c.Segment.Title, c.Segment.IdentityKey, c.Segment.AttributesJson);
+                    Insert(roots, readings, c);
+                }
+
+                var entries = roots
+                    .OrderByDescending(e => e.Value.Seconds)
+                    .ThenByDescending(e => e.Value.Visits)
                     .ToList();
 
                 sb.AppendLine($"语义细节轨 [{source.Key}]（与注意力轨重叠为正常，时长不与上轨相加）：");
-                foreach (var e in entries.Take(MaxPluginEntriesPerSource))
-                {
-                    var display = e.Title != null && e.Title != e.IdentityKey
-                        ? $"{e.Title}（{e.IdentityKey}）"
-                        : e.IdentityKey;
-                    sb.AppendLine($"- {display} — 合计 {FormatDuration(e.Seconds)}，{e.Visits} 次");
-                }
+                foreach (var (value, node) in entries.Take(MaxPluginEntriesPerSource))
+                    sb.AppendLine($"- {value} — 合计 {FormatDuration(node.Seconds)}，{node.Visits} 次{FormatBreakdown(node.Children, node.Seconds)}");
                 if (entries.Count > MaxPluginEntriesPerSource)
                     sb.AppendLine($"（另有 {entries.Count - MaxPluginEntriesPerSource} 条较短的记录未列出）");
             }
         }
 
         /// <summary>
-        /// 块的下一深度分解（ADR-029 §2 深度树）：块 = L1 读数（app），分解 = 块内 L2 读数（窗口标题）
-        /// 的去重分布（system 轨互斥，累计即并集时长）。标题是分布，不是风味样本。
-        /// 预算剪枝：展开门槛（短块只给头名）、子数封顶、尾部折叠。
+        /// 深度树某节点的下一深度分解（ADR-030 §7）：子读数值的去重分布，按时长降序。
+        /// 预算剪枝：父时长未达展开门槛只给头名，子数封顶，尾部折叠"其他 N 个"。
+        /// 递归：更深读数继续下探（browser v2 的 url 下 tab_title）。
         /// </summary>
-        private static string FormatBreakdown(AttentionBlock b)
+        private static string FormatBreakdown(Dictionary<string, DepthNode> level, double parentSeconds)
         {
-            if (b.TitleSeconds.Count == 0) return string.Empty;
+            if (level.Count == 0) return string.Empty;
 
-            var ordered = b.TitleSeconds
-                .OrderByDescending(t => t.Value)
+            var ordered = level
+                .OrderByDescending(t => t.Value.Seconds)
                 .ThenBy(t => t.Key, StringComparer.Ordinal)
                 .ToList();
-            var cap = b.Seconds >= BreakdownExpandSeconds ? MaxBreakdownEntries : 1;
+            var cap = parentSeconds >= BreakdownExpandSeconds ? MaxBreakdownEntries : 1;
 
-            var shown = ordered.Take(cap).Select(t => $"{t.Key} {FormatDuration(t.Value)}").ToList();
+            var shown = ordered.Take(cap)
+                .Select(t => $"{t.Key} {FormatDuration(t.Value.Seconds)}{FormatBreakdown(t.Value.Children, t.Value.Seconds)}")
+                .ToList();
             if (ordered.Count > cap)
             {
                 var rest = ordered.Skip(cap).ToList();
-                shown.Add($"其他 {rest.Count} 个 {FormatDuration(rest.Sum(t => t.Value))}");
+                shown.Add($"其他 {rest.Count} 个 {FormatDuration(rest.Sum(t => t.Value.Seconds))}");
             }
             return $"｜其中: {string.Join(" · ", shown)}";
         }

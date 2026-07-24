@@ -23,5 +23,11 @@ namespace Heartbeat.Core.DTOs.Knowledge
     public class DailyQuestionsResponse
     {
         public List<QuestionItemResponse> Questions { get; set; } = [];
+
+        /// <summary>
+        /// 读数展示名词典（读数名 → 人话标签，ADR-030 §7）：来自采集器声明的 label，
+        /// 供指纹渲染。缺失的读数前端回落显示原名。
+        /// </summary>
+        public Dictionary<string, string> ReadingLabels { get; set; } = [];
     }
 }

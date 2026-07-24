@@ -1,6 +1,6 @@
 # 02: digest 深度树泛化——声明驱动的分解
 
-Status: ready
+Status: done
 
 ## Parent
 

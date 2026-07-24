@@ -5,10 +5,14 @@ using Heartbeat.Core.DTOs.Knowledge;
 namespace Heartbeat.Server.Services
 {
     /// <summary>
-    /// 发问的 few-shot 语境（ADR-029 §4 裁决日志当锚）：用户历史裁决的渲染行。
-    /// 空 = 冷启动，判官按世界知识裸判（更保守）。
+    /// 发问的 few-shot 语境（ADR-029 §4 裁决日志当锚）：用户历史裁决的渲染行 + 判官可用的
+    /// 读数词汇段（ADR-030 §7，从生效声明渲染；空 = 回落种子词汇）。
+    /// 裁决行空 = 冷启动，判官按世界知识裸判（更保守）。
     /// </summary>
-    public sealed record AskingContext(IReadOnlyList<string> BoundExamples, IReadOnlyList<string> MutedExamples);
+    public sealed record AskingContext(
+        IReadOnlyList<string> BoundExamples,
+        IReadOnlyList<string> MutedExamples,
+        string ReadingVocabulary = "");
 
     /// <summary>
     /// 发问判官（ADR-029 §4）：对当日 digest 的第二次独立 LLM 调用。
@@ -26,8 +30,10 @@ namespace Heartbeat.Server.Services
         /// <summary>
         /// 判官人格（ADR-029 §4）："什么是世界知识解释不了的"整体交给 LLM；
         /// 确定性层只供证据（digest + 注释 + 裁决日志）与裁剪（封顶、diff）。偏安静。
+        /// 读数词汇段占位 {{VOCAB}} 由生效声明渲染（ADR-030 §7），此外的模板文本稳定
+        /// （同出口重复调用吃 provider 前缀缓存）。
         /// </summary>
-        private const string SystemPrompt =
+        private const string SystemPromptTemplate =
             """
             你是 Heartbeat 的发问判官。下面是用户某一天的电脑活动摘要（digest），以及用户历史裁决记录。
             你的任务：找出摘要里**世界知识解释不了、大概率承载用户私有含义**的活动，以最多 3 个问题向用户求证。
@@ -42,15 +48,21 @@ namespace Heartbeat.Server.Services
             - 历史裁决记录是用户的口味锚点："已绑定"示范值得问的样子，"已静音"示范别问的样子。
 
             每个问题附带一个 matcher（观测指纹提案），用于以后自动认出这类活动：
-            - source："system"（桌面进程）或 "browser"（浏览器）
-            - steps：观测读数路径谓词，每步 {"reading","op","value"}；
-              system 读数："app"（进程/应用）、"title"（窗口标题）；browser 读数："url"、"tab_title"；
-              op ∈ "equals" | "prefix" | "contains"
-            - 默认只用最浅一步；只有当分解显示同一读数值下明显混着多件事时才加更深读数的细化步。
+            - source 与其读数词汇（浅 → 深；步的 reading 必须取自对应 source 的词汇）：
+            {{VOCAB}}
+            - steps：观测读数路径谓词，每步 {"reading","op","value"}；op ∈ "equals" | "prefix" | "contains"
+            - 默认只用最浅读数一步；只有当摘要分解显示同一读数值下明显混着多件事时才加更深读数的细化步。
 
             严格输出 JSON 数组（可为空），不要输出任何其他文字：
             [{"question":"向用户提的一句问题","evidence":"你在摘要里看到的依据（时段+组合）","matcher":{"source":"system","steps":[{"reading":"app","op":"equals","value":"…"}]},"proposedName":"猜的名字（没把握则空串）","proposedGloss":"猜的一句话释义（同上）"}]
             """;
+
+        /// <summary>组装判官 system prompt（纯函数）：词汇段注入模板。空词汇回落种子声明。</summary>
+        public static string BuildSystemPrompt(string readingVocabulary)
+            => SystemPromptTemplate.Replace("{{VOCAB}}",
+                string.IsNullOrWhiteSpace(readingVocabulary)
+                    ? DepthTables.Seeds.DescribeForPrompt()
+                    : readingVocabulary);
 
         private static readonly JsonSerializerOptions ParseOptions = new() { PropertyNameCaseInsensitive = true };
 
@@ -60,7 +72,7 @@ namespace Heartbeat.Server.Services
             string content;
             try
             {
-                content = await client.CompleteAsync(SystemPrompt, BuildUserPrompt(digest, context), ct);
+                content = await client.CompleteAsync(BuildSystemPrompt(context.ReadingVocabulary), BuildUserPrompt(digest, context), ct);
             }
             catch (ChatCompletionException)
             {

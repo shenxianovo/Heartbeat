@@ -97,7 +97,15 @@ namespace Heartbeat.Server.Services
                 .Where(i => MatcherNormalizer.Normalize(i.Matcher) is { } n
                             && !adjudicated.Contains((n.Source, MatcherCodec.Serialize(n.Steps))))
                 .ToList();
-            return new DailyQuestionsResponse { Questions = remaining };
+            if (remaining.Count == 0) return new DailyQuestionsResponse();
+
+            // 读数展示名随声明走（ADR-030 §7）：前端不再持硬编码标签字典。
+            var labels = (await assembler.LoadDepthTablesAsync(ct)).Labels();
+            return new DailyQuestionsResponse
+            {
+                Questions = remaining,
+                ReadingLabels = new Dictionary<string, string>(labels),
+            };
         }
     }
 }

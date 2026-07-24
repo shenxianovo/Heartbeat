@@ -52,6 +52,27 @@ public class AskingGeneratorTests
         Assert.Contains("暂无", prompt);
     }
 
+    // ---- OpenAiCompatibleAskingGenerator.BuildSystemPrompt（ADR-030 §7 声明驱动词汇）----
+
+    [Fact]
+    public void BuildSystemPrompt_InjectsDeclaredVocabulary()
+    {
+        var prompt = OpenAiCompatibleAskingGenerator.BuildSystemPrompt(
+            "  - vscode：\"repo\"（仓库） → \"file\"（文件）");
+
+        Assert.Contains("vscode：\"repo\"（仓库） → \"file\"（文件）", prompt);
+        Assert.DoesNotContain("{{VOCAB}}", prompt);
+    }
+
+    [Fact]
+    public void BuildSystemPrompt_EmptyVocabulary_FallsBackToSeeds()
+    {
+        var prompt = OpenAiCompatibleAskingGenerator.BuildSystemPrompt("");
+
+        Assert.Contains("system：\"app\"（应用） → \"title\"（窗口标题）", prompt);
+        Assert.DoesNotContain("{{VOCAB}}", prompt);
+    }
+
     // ---- OpenAiCompatibleAskingGenerator.Parse ----
 
     [Fact]

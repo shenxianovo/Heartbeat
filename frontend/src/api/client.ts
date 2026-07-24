@@ -1580,6 +1580,7 @@ export interface IBindStrandRequest {
 
 export class DailyQuestionsResponse implements IDailyQuestionsResponse {
     questions?: QuestionItemResponse[];
+    readingLabels?: { [key: string]: string; };
 
     [key: string]: any;
 
@@ -1603,6 +1604,13 @@ export class DailyQuestionsResponse implements IDailyQuestionsResponse {
                 for (let item of _data["questions"])
                     this.questions!.push(QuestionItemResponse.fromJS(item));
             }
+            if (_data["readingLabels"]) {
+                this.readingLabels = {} as any;
+                for (let key in _data["readingLabels"]) {
+                    if (_data["readingLabels"].hasOwnProperty(key))
+                        (<any>this.readingLabels)![key] = _data["readingLabels"][key];
+                }
+            }
         }
     }
 
@@ -1624,12 +1632,20 @@ export class DailyQuestionsResponse implements IDailyQuestionsResponse {
             for (let item of this.questions)
                 data["questions"].push(item ? item.toJSON() : undefined as any);
         }
+        if (this.readingLabels) {
+            data["readingLabels"] = {};
+            for (let key in this.readingLabels) {
+                if (this.readingLabels.hasOwnProperty(key))
+                    (<any>data["readingLabels"])[key] = (<any>this.readingLabels)[key];
+            }
+        }
         return data;
     }
 }
 
 export interface IDailyQuestionsResponse {
     questions?: QuestionItemResponse[];
+    readingLabels?: { [key: string]: string; };
 
     [key: string]: any;
 }
