@@ -73,6 +73,29 @@ export async function fetchCollectorConfig(
 }
 
 /**
+ * POST /v1/collectors/{source}/declaration（ADR-030 §3）：上报本采集器的观测深度表声明。
+ * hub 持久化并上行服务端；同版本重报 hub 侧幂等。返回是否确认送达（2xx）——
+ * 失败无害（下轮 flush 再试），调用方不必区分原因。
+ */
+export async function postDeclaration(port: number, declaration: object): Promise<boolean> {
+  try {
+    const source = (declaration as { source?: string }).source ?? ''
+    const res = await fetch(
+      `http://127.0.0.1:${port}/v1/collectors/${encodeURIComponent(source)}/declaration`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(declaration),
+        signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+      },
+    )
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+/**
  * 在 [basePort, basePort + PORT_RANGE) 内并发探测，返回首个（编号最小的）hub 端口；无则 null。
  * hub 端口被占时顺延到下一个，所以低编号优先即"hub 实际所在"。
  */

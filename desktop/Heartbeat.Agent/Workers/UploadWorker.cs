@@ -15,7 +15,8 @@ namespace Heartbeat.Agent.Workers
         IIconUploadService iconService,
         UploadStream<ActivitySegmentItem> segmentStream,
         UploadStream<InputEventItem> inputStream,
-        ConfigManager configManager) : BackgroundService
+        ConfigManager configManager,
+        DeclarationUplinkService declarationUplink) : BackgroundService
     {
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
@@ -62,11 +63,21 @@ namespace Heartbeat.Agent.Workers
         }
 
         /// <summary>
-        /// 驱动两条流各 drain 一轮；段批次顺带触发图标挂点（ADR-020 §6）。
+        /// 驱动两条流各 drain 一轮；段批次顺带触发图标挂点（ADR-020 §6）与声明上行
+        /// （ADR-030 §3，未确认的才发，失败不阻塞下一轮）。
         /// 周期循环与 StopAsync 终态 drain 共用此入口；测试直接调用模拟一轮调度。
         /// </summary>
         public async Task DrainOnceAsync()
         {
+            try
+            {
+                await declarationUplink.PushOnceAsync();
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "采集器声明上行异常");
+            }
+
             await inputStream.DrainAsync();
             var segments = await segmentStream.DrainAsync();
 

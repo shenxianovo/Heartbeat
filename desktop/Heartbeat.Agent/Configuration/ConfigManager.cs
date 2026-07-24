@@ -171,7 +171,13 @@ namespace Heartbeat.Agent.Configuration
                 IngestPort = source.IngestPort,
                 Collectors = (source.Collectors ?? []).ToDictionary(
                     kv => kv.Key,
-                    kv => new CollectorEntry { Enabled = kv.Value.Enabled, FlushPeriodMs = kv.Value.FlushPeriodMs }),
+                    kv => new CollectorEntry
+                    {
+                        Enabled = kv.Value.Enabled,
+                        FlushPeriodMs = kv.Value.FlushPeriodMs,
+                        DeclarationJson = kv.Value.DeclarationJson,
+                        DeclarationVersion = kv.Value.DeclarationVersion,
+                    }),
             };
         }
 

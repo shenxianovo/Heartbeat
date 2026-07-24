@@ -84,6 +84,8 @@ namespace Heartbeat.Agent.Hosting
             services.AddSingleton<ICurrentActivitySink>(sp => sp.GetRequiredService<SegmentIngestService>());
             services.AddSingleton<ICollectionStatus>(sp => sp.GetRequiredService<SegmentIngestService>());
             services.AddSingleton<SegmentIngestRequestHandler>();
+            // 采集器声明上行（ADR-030 §3）：system 常量 + registry 声明,挂 UploadWorker 节律
+            services.AddSingleton<DeclarationUplinkService>();
 
             // 上传流（ADR-020/022）：绑定源 + 出网 + 缓存；行为差异只剩注入的 compact 策略
             services.AddSingleton(sp =>

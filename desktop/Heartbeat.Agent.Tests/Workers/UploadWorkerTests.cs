@@ -89,7 +89,7 @@ public class UploadWorkerTests : IDisposable
             batch => api.UploadInputEventsAsync(new InputEventUploadRequest { Events = batch }),
             new FakeCache<InputEventItem>());
 
-        return (new UploadWorker(icons, segStream, inputStream, cm), segSource, inputSource, icons);
+        return (new UploadWorker(icons, segStream, inputStream, cm, new DeclarationUplinkService(api, cm)), segSource, inputSource, icons);
     }
 
     private static ActivitySegmentItem Segment(string? appName)

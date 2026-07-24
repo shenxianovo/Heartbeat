@@ -1,6 +1,6 @@
 # 03: 声明传输通道——loopback 动词 + hub 上行
 
-Status: ready
+Status: done
 
 ## Parent
 

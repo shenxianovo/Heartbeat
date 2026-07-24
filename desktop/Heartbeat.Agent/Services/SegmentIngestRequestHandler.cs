@@ -36,11 +36,15 @@ namespace Heartbeat.Agent.Services
                 return new Response(200, HubIdentityJson, true);
 
             // 采集器配置下行（ADR-026）：GET /v1/collectors/{source}/config
-            if (httpMethod == "GET" && TryParseCollectorConfigPath(path, out var source))
+            if (httpMethod == "GET" && TryParseCollectorPath(path, "/config", out var source))
                 return HandleCollectorConfig(source, query);
 
+            // 采集器声明上报（ADR-030 §3）：POST /v1/collectors/{source}/declaration
+            if (httpMethod == "POST" && TryParseCollectorPath(path, "/declaration", out var declSource))
+                return await HandleCollectorDeclarationAsync(declSource, body);
+
             if (httpMethod != "POST" || path != "/v1/segments")
-                return new Response(404, "not found; POST /v1/segments | GET /v1/hub | GET /v1/collectors/{source}/config", false);
+                return new Response(404, "not found; POST /v1/segments | GET /v1/hub | GET /v1/collectors/{source}/config | POST /v1/collectors/{source}/declaration", false);
 
             SegmentUploadRequest? dto;
             try
@@ -112,13 +116,65 @@ namespace Heartbeat.Agent.Services
             return new Response(200, $"{{\"enabled\":{(enabled ? "true" : "false")}}}", true);
         }
 
-        /// <summary>解析 /v1/collectors/{source}/config，提取 source。source 段非空且不含 '/'。</summary>
-        private static bool TryParseCollectorConfigPath(string? path, out string source)
+        /// <summary>
+        /// 采集器声明上报（ADR-030 §3）：hub 只做运输不做语义校验（schema 归服务端）——
+        /// 但守两条传输信任线：source 一致（body 里的 source 必须等于路径 source，防冒充邻居）、
+        /// 拒收 system（内置采集器进程内声明，不走 loopback）。同版本重报幂等不写盘。
+        /// </summary>
+        private async Task<Response> HandleCollectorDeclarationAsync(string source, Stream body)
+        {
+            if (string.Equals(source, ActivitySources.System, StringComparison.OrdinalIgnoreCase))
+                return new Response(400, $"Source '{ActivitySources.System}' is reserved for the built-in collector.", false);
+
+            string raw;
+            using (var reader = new StreamReader(body))
+                raw = await reader.ReadToEndAsync();
+
+            string? bodySource = null;
+            int version = 0;
+            try
+            {
+                using var doc = JsonDocument.Parse(raw);
+                if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                    return new Response(400, "declaration must be a JSON object", false);
+                if (doc.RootElement.TryGetProperty("source", out var s) && s.ValueKind == JsonValueKind.String)
+                    bodySource = s.GetString();
+                if (doc.RootElement.TryGetProperty("version", out var v) && v.ValueKind == JsonValueKind.Number)
+                    version = v.GetInt32();
+            }
+            catch (JsonException)
+            {
+                return new Response(400, "invalid JSON", false);
+            }
+
+            if (!string.Equals(bodySource, source, StringComparison.OrdinalIgnoreCase))
+                return new Response(400, "declaration source must match path source", false);
+            if (version < 1)
+                return new Response(400, "declaration version must be >= 1", false);
+
+            configManager.Update(c =>
+            {
+                if (!c.Collectors.TryGetValue(source, out var entry))
+                {
+                    entry = new Models.CollectorEntry();
+                    c.Collectors[source] = entry;
+                }
+                if (entry.DeclarationVersion != version || entry.DeclarationJson == null)
+                {
+                    entry.DeclarationJson = raw;
+                    entry.DeclarationVersion = version;
+                }
+            });
+
+            return new Response(204, string.Empty, false);
+        }
+
+        /// <summary>解析 /v1/collectors/{source}{suffix}，提取 source。source 段非空且不含 '/'。</summary>
+        private static bool TryParseCollectorPath(string? path, string suffix, out string source)
         {
             source = string.Empty;
             if (path is null) return false;
             const string prefix = "/v1/collectors/";
-            const string suffix = "/config";
             if (!path.StartsWith(prefix, StringComparison.Ordinal) || !path.EndsWith(suffix, StringComparison.Ordinal))
                 return false;
 

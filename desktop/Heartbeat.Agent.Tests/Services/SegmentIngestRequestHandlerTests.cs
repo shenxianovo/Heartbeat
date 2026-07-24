@@ -242,4 +242,72 @@ public class SegmentIngestRequestHandlerTests : IDisposable
         Assert.True(_config.Current.Collectors.TryGetValue("browser", out var entry));
         Assert.True(entry!.Enabled);
     }
+
+    // ---- 声明上报（ADR-030 §3）----
+
+    private const string BrowserDeclaration =
+        """{"source":"browser","version":2,"layers":[{"readings":[{"name":"site","from":"attributes.site"}]}]}""";
+
+    [Fact]
+    public async Task Declaration_Valid_204_PersistedInRegistry()
+    {
+        var response = await _handler.HandleAsync(
+            "POST", "/v1/collectors/browser/declaration", Body(BrowserDeclaration));
+
+        Assert.Equal(204, response.StatusCode);
+        Assert.True(_config.Current.Collectors.TryGetValue("browser", out var entry));
+        Assert.Equal(BrowserDeclaration, entry!.DeclarationJson);
+        Assert.Equal(2, entry.DeclarationVersion);
+    }
+
+    [Fact]
+    public async Task Declaration_SourceMismatch_400()
+    {
+        // 传输信任线：不许经邻居的路径替它声明。
+        var response = await _handler.HandleAsync(
+            "POST", "/v1/collectors/vscode/declaration", Body(BrowserDeclaration));
+
+        Assert.Equal(400, response.StatusCode);
+        Assert.Contains("match path source", response.Body);
+        Assert.False(_config.Current.Collectors.ContainsKey("vscode"));
+    }
+
+    [Fact]
+    public async Task Declaration_SystemSource_400()
+    {
+        // 内置采集器进程内声明，不走 loopback——与段上传的冒充守卫同线。
+        var json = """{"source":"system","version":1,"layers":[]}""";
+
+        var response = await _handler.HandleAsync(
+            "POST", "/v1/collectors/system/declaration", Body(json));
+
+        Assert.Equal(400, response.StatusCode);
+        Assert.Contains("reserved", response.Body);
+    }
+
+    [Fact]
+    public async Task Declaration_InvalidJsonOrVersion_400()
+    {
+        var badJson = await _handler.HandleAsync(
+            "POST", "/v1/collectors/browser/declaration", Body("{not json"));
+        var noVersion = await _handler.HandleAsync(
+            "POST", "/v1/collectors/browser/declaration", Body("""{"source":"browser"}"""));
+
+        Assert.Equal(400, badJson.StatusCode);
+        Assert.Equal(400, noVersion.StatusCode);
+    }
+
+    [Fact]
+    public async Task Declaration_SameVersionResubmit_KeepsFirstWrite()
+    {
+        // 同版本重报幂等不写盘（声明只随版本变——扩展每轮 flush 前报一次也不会反复写 config.json）。
+        await _handler.HandleAsync("POST", "/v1/collectors/browser/declaration", Body(BrowserDeclaration));
+        var variant = BrowserDeclaration.Replace("attributes.site", "attributes.other");
+
+        var response = await _handler.HandleAsync(
+            "POST", "/v1/collectors/browser/declaration", Body(variant));
+
+        Assert.Equal(204, response.StatusCode);
+        Assert.Equal(BrowserDeclaration, _config.Current.Collectors["browser"].DeclarationJson);
+    }
 }

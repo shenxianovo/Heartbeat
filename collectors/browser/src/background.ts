@@ -15,7 +15,7 @@ import {
 } from './fold'
 import { domainOf, identityKeyOf } from './normalize'
 import { uuidv7 } from './ids'
-import { postToHub, fetchCollectorConfig } from './hub'
+import { postToHub, fetchCollectorConfig, postDeclaration } from './hub'
 import { loadConfig } from './config'
 import { backoffAfterFailure, noBackoff, shouldSkipAttempt, type BackoffState } from './backoff'
 
@@ -25,6 +25,22 @@ const FLUSH_PERIOD_MINUTES = 0.5
 const FLUSH_PERIOD_MS = FLUSH_PERIOD_MINUTES * 60_000
 /** 本采集器的 Source 名（ADR-017）：与 hub 注册表 key、段的 source 字段一致。 */
 const SOURCE = 'browser'
+
+/**
+ * 观测深度表声明（ADR-030 §1）：本采集器的契约，读数命名归采集器主权。
+ * from 指段的运输槽位；深度表变更（加层/挪层）才递增 version。
+ * 与服务端种子 v1 同形——上报是让"来插即用"的通道跑通，服务端幂等收敛。
+ */
+const DECLARATION = {
+  source: SOURCE,
+  version: 1,
+  layers: [
+    { readings: [{ name: 'url', from: 'identityKey', label: '网址' }] },
+    { readings: [{ name: 'tab_title', from: 'title', label: '标签页' }] },
+  ],
+} as const
+
+const DECLARATION_ACK_KEY = 'declarationAckedVersion'
 /** 队列按 Id 键控压缩后仍超上限时丢最旧（失控保险，镜像 SegmentIngestService.MaxBuffered 思路）。 */
 const MAX_QUEUED = 5000
 
@@ -142,6 +158,14 @@ async function flushAndUpload(): Promise<void> {
 
   const { port: basePort } = await loadConfig()
   const targetPort = await loadHubPort(basePort)
+
+  // 声明上报（ADR-030 §3）：送达一次即闭嘴（ack 存 local,跨浏览器重启）;失败下轮再试,
+  // 不阻塞段上报——声明缺席时服务端种子兜底,采集不受影响。
+  const acked = await chrome.storage.local.get(DECLARATION_ACK_KEY)
+  if (acked[DECLARATION_ACK_KEY] !== DECLARATION.version) {
+    if (await postDeclaration(targetPort, DECLARATION))
+      await chrome.storage.local.set({ [DECLARATION_ACK_KEY]: DECLARATION.version })
+  }
 
   // 礼貌层停用（ADR-026 §4）：每轮 flush 拉一次 hub 侧配置——此调用同时是注册
   // （首次触达即"已安装"）与 flushPeriodMs 自报。enabled:false 则丢队列、不上报，
