@@ -13,7 +13,7 @@ import {
   type FoldState,
   type SegmentSnapshot,
 } from './fold'
-import { domainOf, identityKeyOf } from './normalize'
+import { domainOf, identityKeyOf, siteOf } from './normalize'
 import { uuidv7 } from './ids'
 import { postToHub, fetchCollectorConfig, postDeclaration } from './hub'
 import { loadConfig } from './config'
@@ -27,14 +27,16 @@ const FLUSH_PERIOD_MS = FLUSH_PERIOD_MINUTES * 60_000
 const SOURCE = 'browser'
 
 /**
- * 观测深度表声明（ADR-030 §1）：本采集器的契约，读数命名归采集器主权。
+ * 观测深度表声明（ADR-030 §1/§5）：本采集器的契约，读数命名归采集器主权。
  * from 指段的运输槽位；深度表变更（加层/挪层）才递增 version。
- * 与服务端种子 v1 同形——上报是让"来插即用"的通道跑通，服务端幂等收敛。
+ * v2 提拔 site（可注册域,值空间层级 → 深度层）为最浅层——digest browser 轨长成
+ * site → url → tab_title 三层树,判官粗档提案锚 site。服务端零改动,声明到即生效。
  */
 const DECLARATION = {
   source: SOURCE,
-  version: 1,
+  version: 2,
   layers: [
+    { readings: [{ name: 'site', from: 'attributes.site', label: '站点' }] },
     { readings: [{ name: 'url', from: 'identityKey', label: '网址' }] },
     { readings: [{ name: 'tab_title', from: 'title', label: '标签页' }] },
   ],
@@ -54,6 +56,7 @@ const deps: FoldDeps = {
   newId: uuidv7,
   identityKeyOf,
   domainOf,
+  siteOf,
   appName: detectAppName(),
 }
 

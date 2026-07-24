@@ -29,7 +29,7 @@ export interface SegmentSnapshot {
   title: string
   startTime: string // ISO 8601
   endTime: string
-  attributes: { url: string; domain: string; windowId: number }
+  attributes: { url: string; domain: string; site: string; windowId: number }
 }
 
 export type FoldEvent =
@@ -40,6 +40,8 @@ export interface FoldDeps {
   newId: () => string
   identityKeyOf: (url: string) => string
   domainOf: (url: string) => string
+  /** 可注册域（深度表 v2 的 site 读数,ADR-030 §5）;空串 = 读数缺席。 */
+  siteOf: (url: string) => string
   appName: string
 }
 
@@ -118,6 +120,6 @@ function snapshotOf(a: OpenActivity, endMs: number, deps: FoldDeps): SegmentSnap
     title: a.title,
     startTime: new Date(a.startTime).toISOString(),
     endTime: new Date(Math.max(endMs, a.startTime)).toISOString(),
-    attributes: { url: a.url, domain: deps.domainOf(a.url), windowId: a.windowId },
+    attributes: { url: a.url, domain: deps.domainOf(a.url), site: deps.siteOf(a.url), windowId: a.windowId },
   }
 }

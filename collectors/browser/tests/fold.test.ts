@@ -6,7 +6,7 @@ import {
   ROTATE_AFTER_MS,
   type FoldDeps,
 } from '../src/fold'
-import { identityKeyOf, domainOf } from '../src/normalize'
+import { identityKeyOf, domainOf, siteOf } from '../src/normalize'
 
 function makeDeps(): FoldDeps {
   let n = 0
@@ -14,6 +14,7 @@ function makeDeps(): FoldDeps {
     newId: () => `id-${++n}`,
     identityKeyOf,
     domainOf,
+    siteOf,
     appName: 'msedge',
   }
 }
@@ -103,7 +104,7 @@ describe('flush（ADR-018 稳定 Id 快照）', () => {
     expect(new Date(f2.out[0].endTime).getTime()).toBeGreaterThan(new Date(f1.out[0].endTime).getTime())
   })
 
-  it('快照携带完整原始 URL 与 domain（无损原则）', () => {
+  it('快照携带完整原始 URL、domain 与 site（无损原则 + 深度表 v2 运输槽）', () => {
     const deps = makeDeps()
     const { state } = applyEvent(
       emptyState(),
@@ -114,6 +115,7 @@ describe('flush（ADR-018 稳定 Id 快照）', () => {
     expect(f.out[0].attributes).toEqual({
       url: 'https://www.youtube.com/watch?v=abc#t=10',
       domain: 'www.youtube.com',
+      site: 'youtube.com',
       windowId: 1,
     })
   })

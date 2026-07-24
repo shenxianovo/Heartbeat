@@ -1,6 +1,6 @@
 # 04: browser v2——site 层提拔
 
-Status: ready
+Status: done
 
 ## Parent
 

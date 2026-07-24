@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { identityKeyOf, domainOf } from '../src/normalize'
+import { identityKeyOf, domainOf, siteOf } from '../src/normalize'
 
 describe('identityKeyOf', () => {
   it('掐掉 query 与 fragment', () => {
@@ -49,5 +49,32 @@ describe('domainOf', () => {
 
   it('非法 URL 返回空串', () => {
     expect(domainOf('nope')).toBe('')
+  })
+})
+
+describe('siteOf（可注册域,深度表 v2 的 site 读数,ADR-030 §5）', () => {
+  it('www 折叠进主站', () => {
+    expect(siteOf('https://www.youtube.com/watch')).toBe('youtube.com')
+    expect(siteOf('https://youtube.com/watch')).toBe('youtube.com')
+  })
+
+  it('子域归可注册域（同站不同子域 = 一个 site）', () => {
+    expect(siteOf('https://blog.shenxianovo.com/post')).toBe('shenxianovo.com')
+    expect(siteOf('https://heartbeat.shenxianovo.com/dashboard')).toBe('shenxianovo.com')
+  })
+
+  it('多段公共后缀取末三段', () => {
+    expect(siteOf('https://www.tsinghua.edu.cn/a')).toBe('tsinghua.edu.cn')
+    expect(siteOf('https://news.bbc.co.uk/x')).toBe('bbc.co.uk')
+  })
+
+  it('IP 与 localhost 原样即站（无注册域概念）', () => {
+    expect(siteOf('http://127.0.0.1:5173/app')).toBe('127.0.0.1')
+    expect(siteOf('http://localhost:8080/dev')).toBe('localhost')
+    expect(siteOf('http://[::1]:3000/')).toBe('[::1]')
+  })
+
+  it('非法 URL 返回空串（读数缺席,段挂最深可用读数）', () => {
+    expect(siteOf('not a url')).toBe('')
   })
 })
