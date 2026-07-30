@@ -1,6 +1,9 @@
 # ADR-029: 观测深度与路径 Matcher——Strand 知识层第一性重构
 
-## Status: Accepted（supersedes ADR-028 §3/§4，amends §6 digest 形状；§2 深度表声明机制与 browser 例子、§3 Matcher 步的 Layer 语义 amended by [ADR-030](./030-collector-depth-declaration.md)）
+## Status: Accepted（supersedes ADR-028 §3/§4；§2/§3 amended by [ADR-030](./030-collector-depth-declaration.md)；§1 时间语义、§4/§6 教学与缓存契约 amended by [ADR-031](./031-hierarchical-strand-episode-teaching-loop.md)）
+
+> ADR-031 保留深度树、路径 Matcher、同 digest 发问与“不从 Recap 散文自动发问”，但
+> 增加 Strand 日期/层级、Episode/Probe、两阶段确认及按日期知识投影 staleness。
 
 ## Date: 2026-07-20
 

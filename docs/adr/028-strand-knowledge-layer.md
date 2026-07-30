@@ -1,9 +1,10 @@
 # ADR-028: Strand——Recap 之上的人机共建知识层
 
-## Status: Superseded in part by [ADR-029](./029-observation-depth-matcher.md)
+## Status: Superseded in part by [ADR-029](./029-observation-depth-matcher.md) and [ADR-031](./031-hierarchical-strand-episode-teaching-loop.md)
 
-> §3（Handle 粗粒度、Anchor/Satellite 机制）、§4（粗筛 + LLM 分诊选题）作废；
-> §6 的 digest 形状被修订（深度树）。§1/§2/§5/§7/§8 存活并被 ADR-029 继承。
+> ADR-029 使 §3（Handle 粗粒度、Anchor/Satellite 机制）、§4（粗筛 + LLM 分诊选题）
+> 作废并修订 §6 digest。ADR-031 进一步把 §2 的扁平 Strand 扩展为带日期范围的单父级树，
+> 将 §5 单阶段表单改为两阶段教学，并以相关知识投影替代 §6 的 `UpdatedAt` 粗判脏。
 
 ## Date: 2026-07-19
 

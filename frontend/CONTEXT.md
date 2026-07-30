@@ -22,6 +22,10 @@ ADR-019 §2：渲染 system 段时若存在同 App 的重叠插件段，标签�
 ADR-016 的展示层无损归一化：per-app formatter 把原始窗口标题洗成友好显示（去应用名后缀、去 tab 计数后缀、spinner 归并等）。是 Label Upgrade 缺席时的兜底层。
 _Avoid_: 在采集端或服务端做标题清洗（无损原则，展示层是唯一动标题的地方）
 
+**Get Started（引导页）**:
+新用户唯一引导入口：登录后无设备强制着陆于此，三步（创建 API Key → 下载客户端 → 连接采集）打通第一条心跳。下载按钮架构感知（默认 x64，Chromium UA-CH 检测到 ARM 切换，另一架构保留手动链接），指向 latest 直链，依赖发版资产命名稳定。
+_Avoid_: 在此堆高级配置（上传间隔、采集器管理等）——只放"能跑起来"的必要步骤
+
 **Presence（在场）**:
 设备在线状态与当前前台应用（`useDeviceStatus` + CurrentAppPanel）：Dashboard 里唯一的"现在时"信息，其余都是回顾。
 

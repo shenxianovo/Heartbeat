@@ -30,24 +30,36 @@ _Avoid_: 注册/Registration（Heartbeat 无注册概念，账号归 Auth 平台
 _Avoid_: Public Profile（GitHub 语义是粗聚合展示，这里 public 是全量数据，语义不同不要混用）
 
 **Recap（叙事摘要）**:
-对某 Owner 某日窗口的 LLM 叙事视图（ADR-023）：投影 → 云端 LLM → 落库缓存。纯派生物——segments 是事实，Recap 随时可重生成，故无主动失效：历史日期永不过期，今天按水位（生成时消费到的最新 segment 时间，落后 >1h 重生成）+ 显式重生成入口。跨设备聚合，无 deviceId 维度。口吻是日记/档案：只叙事，不评判不打分不建议。空日不调 LLM，失败不写缓存。
-_Avoid_: Summary（Report 词条同禁）、日报（汇报工具的词，Recap 是记忆）
+对某 Owner 某日窗口的 LLM 叙事视图：Observation 是事实，Episode 与 Strand 提供用户确认的当天事实和持续语境，Recap 是可重生成的派生物。今天仍按 Segment 水位控制自动重生成；历史日期不因新段主动失效，但其相关知识投影变化时惰性标为“可重新生成”，不自动消耗 LLM。跨设备聚合，无 deviceId 维度；口吻是日记/档案，只叙事，不评判、不打分、不建议（ADR-023/031）。
+_Avoid_: Summary（Report 词条同禁）、日报（汇报工具的词，Recap 是记忆）、把 Recap 正文当事实库
 
 **Recap Projection（Recap 投影）**:
 segments → LLM 输入的确定性压缩（纯函数，可单测）：system 段按设备分轨作注意力骨架（轨内互斥、带时长），插件段按 IdentityKey 聚合作语义细节轨；碎段合并/丢弃只影响投影不动数据。digest 的身份维度按观测深度长成深度树（块内下一深度分解、预算剪枝，ADR-029），叙事与发问两次调用共用同一 digest。未来外部 Agent/MCP 能力暴露的开门处（不预建，ADR-023 §2）。
 _Avoid_: 复刻标签升级喂单线（ADR-019 是展示层且有损，被 ADR-023 §3 否决）
 
 **Strand（脉络）**:
-用户生活里一个有名字的持续活动线索（项目 / 爱好 / 一个人 / 追的剧），被 Recap 用来把叙事从"开了哪些 App"升级为"在做什么"。形状 = 名字 + 自由释义 + 指纹（一组 Matcher）；单 Matcher 是退化形态（等价一条实体释义，如"花生 = B 站实习时部门做的产品"）。**策展层，非派生物**——库里只存用户亲口确认的事实（ADR-029 契约）：segments 提供证据、AI 提供猜想、用户确认成事实，机器世界知识永不入库。名字 / 释义是自由文本，绝不加 schema。per-Owner，独立存储，**绝不写回 segment**（无损原则，ADR-012/017）。注入只在指纹当日命中时发生——"过期"由在场性自动处理，零时间字段（`validFrom/validTo` 留门不预建）。**指纹靠逐日裁决归入生长**（判官每卡只锚一个 Matcher）：绑定无 Id 撞名（大小写不敏感收敛）= **归入**——成员并集追加、释义空则补位非空不动（脊柱聚合、身体策展）；整组替换只属带 Id 的编辑路径（未来编辑表单契约）。
-_Avoid_: Project（太窄，排除爱好 / 人 / 剧）、Tag、Note；把问题卡的归入当"重定义"（那会碾压用户亲口确认的既有指纹与释义）
+用户确认的、跨日期延续的私人叙事语境。Strand 组成严格单父级、无环、无固定层数/类型的树；节点有名字、自由释义、可选的近似起止日期和 Matcher 指纹，父节点可以是零 Matcher 的纯语境容器。命中子节点时带入完整祖先链，命中父节点不激活后代；现实归属变化以结束旧 Strand、创建新 Strand 表达，移动只用于纠错（ADR-031）。
+_Avoid_: Project（太窄）、Tag、Note、Task；用 Strand 记录每次临时行为；把 Matcher 命中当 Segment 归属
+
+**Activity Cluster（活动簇）**:
+模型从完整时间线临时归纳出的跨 Source 证据视图，带大概时间区间，只用于发问和帮助用户回忆；它不是用户事实，不持久化，也不拥有 Segment。用户确认后可产生 Episode、Strand 或两者。
+_Avoid_: Episode（Episode 必须经用户确认）、持久化活动分类、精确工时区间
+
+**Episode（片段事实）**:
+用户确认的、有大概时间边界的一次具体发生；可独立存在，或至多关联一个最具体 Strand 并继承其祖先语境。Episode 不在 Strand 树中、不拥有 Segment、不会因 Matcher 命中自动生成；“提升”为 Strand 是保留 Episode 后新增/关联持续脉络，不是类型转换。
+_Avoid_: RecapNote（过于 UI 化）、ActivityCluster（未经确认）、Strand 叶节点、Task Log
+
+**Recurrence Probe（复现探针）**:
+附在“尚不确定是否持续”的 Episode 上、由用户确认的高精度观察谓词。命中只让 Asking 建议是否提升为 Strand，不向 Recap 注入旧 Episode、不自动归属或建 Strand；提升、否认或静音后即解决。
+_Avoid_: Strand Matcher（命中后果不同）、自动提升规则、后台分类器
 
 **Observation Depth（观测深度）**:
 每个采集器在自身实现里声明、**运行时经注册通道上报**的有序观测读数表，浅 → 深（ADR-030）：声明 = {source, 契约版本, layers:[{readings:[{name, from, label}]}]}；读数命名与人话标签归采集器主权（name 在 source 内唯一），`from` 只指运输槽位（appName / title / identityKey / attributes.*，新读数一律走 attributes.*）——服务端是按槽取值的无关层，不认识 app / url / site 这些词。生效表 = 每 source 取 max(版本)；未声明 source 走通用回落（L1 identity / L2 title）；读时取值，历史 segments 被新声明自动覆盖。现行表——system：进程/App → 窗口标题；browser：站点(site, eTLD+1) → URL → 标签页标题；vscode 规划：仓库根 → 文件路径。**单读数值空间内部的层级（域后缀 / 路径前缀）默认归谓词轴；digest 粗档证据需要时由采集器提拔为独立读数层**（版本+1，服务端零改动）。**同时是隐私敏感度轴**——与 ADR-017"采集能力分层可拆"是同一张表。digest 的身份维度按它长成**深度树**：节点 = (读数值, 并集时长)，子节点 = 下一深度分解，缺读数段挂最深可用读数；渲染 = 确定性预算剪枝（展开门槛、子数封顶、尾部折叠）。
 _Avoid_: 粒度（粗细是谓词维度，不是深度）；在知识层写死采集器字段名或读数词汇（server 侧不得出现 per-source 分支——ADR-030 前的"镜像"写法已退役）
 
 **Matcher（匹配子）**:
-知识层的指纹原子：沿某 Source 深度树的**路径谓词**——各步 (读数, 谓词, 值) 的合取，谓词 ∈ {等于, 前缀, 包含}，单步是退化形态。例：`(system, app = code) ∧ (title contains "hyperframes")`。**步不带层号**（ADR-030）：读数名在 source 内唯一，深度是声明的展示 / 隐私属性，不进 Matcher——采集器重排 / 提拔深度层永不失效存量指纹。Strand 指纹 = Matcher 集合；Mute 的单位也是 Matcher。digest 是深度树的观测投影，Matcher 是同一棵树上的路径谓词——发问 LLM 看着前者提案后者，粗档默认、细档只在分解证据要求时提案。**裁决身份 = canonical 小写形**（读数 / 谓词 / 值 trim + 小写、步骤排序去重后的确定性 JSON）：唯一索引、Mute 幂等、读时 diff 皆按它判等，与命中语义（MatcherEval 大小写不敏感）是同一把尺子——身份等价类 ≠ 命中等价类时，"别再问"对着字符串承诺、对着观测事实食言。
-_Avoid_: Handle / 把手（ADR-028 固定粗粒度 (Source, token)，ADR-029 起退役）、直接拿 IdentityKey 指代（IdentityKey 是采集器"同一活动"判据，不是知识层挂载点）、身份与命中用两把尺子（大小写变体裂身份）
+沿某 Source 观测深度树的路径谓词，是 Strand 知识的高精度检索触发器：命中后唤醒目标 Strand 及其祖先，不分类 Segment、不计算工时，也不确定性归因邻近 Satellite。步不带层号，身份按读数/谓词/值的 canonical 小写形判等；Matcher 只在目标日期落入 Strand 有效范围时激活（ADR-029/030/031）。
+_Avoid_: Handle / 把手、Segment 分类规则、工时归属规则、用通用工具补召回、直接拿 IdentityKey 指代
 
 **Anchor / Satellite（锚点 / 卫星）**:
 策展纪律词汇，**非机制**（ADR-029 降级）：特异性标识（锚点）才进 Strand 指纹；通用工具（卫星：blender / AE / 浏览器）不进指纹、写进自由释义（"做这个项目时通常开着 AE"），归因在叙事时由 LLM 对着时间线 + 释义完成——语义时效性（同一工具先后服务不同项目）由此消解。无强度推断代码、无角色存储字段。
@@ -58,8 +70,8 @@ _Avoid_: 当作实体 / 存储字段；把 Satellite 当 Strand 的定义性证�
 _Avoid_: 墓碑 / Tombstone / Adjudication（设计期黑话，已弃用）、Hide（Mute 不从 Recap 隐藏）
 
 **Asking（发问）**:
-与叙事吃**同一个 digest** 的第二次独立 LLM 调用（digest 作共享 prompt 前缀吃 provider 缓存）。判断"什么是世界知识解释不了的"整体交给 LLM——确定性层只供证据（digest 深度树 + 近 14 天高频注释 + 已裁决标注）与裁剪（每日 ≤3、对已裁决 Matcher 的 diff）。prompt 附 few-shot 裁决日志（空日志 = 冷启动裸判）；偏安静：宁可不问。不基于 recap 散文发问（有损派生物上不盖楼）。缓存按天 + 水位、失败不写；裁决后对缓存问题做确定性 diff 过滤，零 LLM 重调。产出 = 问题卡（Matcher 提案 + 时段 + 一次性名字/释义提案），走表单确认。
-_Avoid_: 分诊 / Triage（ADR-028 §4 的 per-handle 机制，已拆除）、提问器打分选题（两次被证伪的确定性选题）、对话式确认（留门不预建）
+与叙事吃同一 digest 的教学入口：先展示真实 ActivityCluster 的大概时段与跨 Source 证据，让用户用自然语言补充私有含义；再由 LLM 整理成可编辑的 Strand/Episode/Matcher/Probe 变更集，用户确认后确定性提交。偏安静、每日封顶；不基于 Recap 散文自动发问，但允许用户从 Recap 主动发起纠正（ADR-029/031）。
+_Avoid_: 分诊 / Triage、从散文自动反推事实、LLM 静默写知识、把结构化提案当用户确认
 
 **Validation Policy**:
 摄入门卫（SegmentValidationPolicy / UsageValidationPolicy）：拒收未来时间戳、非法区间等畸形数据。拒收即丢弃，不修复——采集端负责数据正确性。
