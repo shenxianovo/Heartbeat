@@ -7,6 +7,9 @@ namespace Heartbeat.Core.DTOs.Segments
     {
         public Guid Id { get; set; }
 
+        /// <summary>段所属设备。聚合查询（不传 deviceId）时前端据此分设备泳道。</summary>
+        public long DeviceId { get; set; }
+
         public string Source { get; set; } = string.Empty;
 
         public string IdentityKey { get; set; } = string.Empty;

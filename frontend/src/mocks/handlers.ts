@@ -40,8 +40,17 @@ export const handlers = [
   }),
 
   // GET /users/:username/devices/:deviceId/status
+  // 设备 1 在线且有前台应用；设备 2 在线但人离开（__away__）——presence 芯片的两种形态。
   http.get(`${API}/users/:username/devices/:deviceId/status`, ({ params }) => {
     const deviceId = Number(params.deviceId)
+    if (deviceId === 2) {
+      return HttpResponse.json({
+        id: 2,
+        currentApp: '__away__',
+        lastSeen: new Date(Date.now() - 8000).toISOString(),
+        isOnline: true,
+      })
+    }
     return HttpResponse.json({
       id: deviceId,
       currentApp: CURRENT_APP_NAME,
@@ -51,16 +60,26 @@ export const handlers = [
   }),
 
   // GET /users/:username/usage?deviceId&start&end
-  http.get(`${API}/users/:username/usage`, () => {
-    return HttpResponse.json(buildTodayUsage())
+  // deviceId 缺省 = 聚合（全部设备）；带 deviceId = 只返回该设备的段。
+  http.get(`${API}/users/:username/usage`, ({ request }) => {
+    const deviceId = new URL(request.url).searchParams.get('deviceId')
+    const all = buildTodayUsage()
+    return HttpResponse.json(
+      deviceId ? all.filter((u) => u.deviceId === Number(deviceId)) : all,
+    )
   }),
 
   // GET /users/:username/reports/daily?deviceId&date
-  http.get(`${API}/users/:username/reports/daily`, () => {
-    return HttpResponse.json({
-      date: todayDateStr(),
-      apps: dailyAppDurations,
-    })
+  // 聚合时返回两台设备的时长求和,单设备时按比例缩减,便于肉眼校验主/副数字。
+  http.get(`${API}/users/:username/reports/daily`, ({ request }) => {
+    const deviceId = new URL(request.url).searchParams.get('deviceId')
+    const apps = deviceId
+      ? dailyAppDurations.map((a) => ({
+          ...a,
+          durationSeconds: Math.round(a.durationSeconds * (Number(deviceId) === 1 ? 0.65 : 0.35)),
+        }))
+      : dailyAppDurations
+    return HttpResponse.json({ date: todayDateStr(), apps })
   }),
 
   // GET /users/:username/reports/weekly?deviceId&date

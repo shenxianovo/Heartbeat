@@ -101,6 +101,43 @@ export class Client {
     /**
      * @return OK
      */
+    reportCollectorDeclarations(body: CollectorDeclarationDto[]): Promise<void> {
+        let url_ = this.baseUrl + "/api/v1/collectors/declarations";
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processReportCollectorDeclarations(_response);
+        });
+    }
+
+    protected processReportCollectorDeclarations(response: Response): Promise<void> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            return;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<void>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
     getDevices(): Promise<DeviceInfoResponse[]> {
         let url_ = this.baseUrl + "/api/v1/devices";
         url_ = url_.replace(/[?&]$/, "");
@@ -1440,6 +1477,7 @@ export interface IAppInfoResponse {
 
 export class AppUsageResponse implements IAppUsageResponse {
     id?: string;
+    deviceId?: number;
     appId?: number;
     appName?: string;
     title?: string | undefined;
@@ -1465,6 +1503,7 @@ export class AppUsageResponse implements IAppUsageResponse {
                     this[property] = _data[property];
             }
             this.id = _data["id"];
+            this.deviceId = _data["deviceId"];
             this.appId = _data["appId"];
             this.appName = _data["appName"];
             this.title = _data["title"];
@@ -1488,6 +1527,7 @@ export class AppUsageResponse implements IAppUsageResponse {
                 data[property] = this[property];
         }
         data["id"] = this.id;
+        data["deviceId"] = this.deviceId;
         data["appId"] = this.appId;
         data["appName"] = this.appName;
         data["title"] = this.title;
@@ -1500,6 +1540,7 @@ export class AppUsageResponse implements IAppUsageResponse {
 
 export interface IAppUsageResponse {
     id?: string;
+    deviceId?: number;
     appId?: number;
     appName?: string;
     title?: string | undefined;
@@ -1578,6 +1619,74 @@ export interface IBindStrandRequest {
     [key: string]: any;
 }
 
+export class CollectorDeclarationDto implements ICollectorDeclarationDto {
+    source?: string;
+    version?: number;
+    collectorVersion?: string | undefined;
+    layers?: DepthLayerDto[];
+
+    [key: string]: any;
+
+    constructor(data?: ICollectorDeclarationDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.source = _data["source"];
+            this.version = _data["version"];
+            this.collectorVersion = _data["collectorVersion"];
+            if (Array.isArray(_data["layers"])) {
+                this.layers = [] as any;
+                for (let item of _data["layers"])
+                    this.layers!.push(DepthLayerDto.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): CollectorDeclarationDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new CollectorDeclarationDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["source"] = this.source;
+        data["version"] = this.version;
+        data["collectorVersion"] = this.collectorVersion;
+        if (Array.isArray(this.layers)) {
+            data["layers"] = [];
+            for (let item of this.layers)
+                data["layers"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface ICollectorDeclarationDto {
+    source?: string;
+    version?: number;
+    collectorVersion?: string | undefined;
+    layers?: DepthLayerDto[];
+
+    [key: string]: any;
+}
+
 export class DailyQuestionsResponse implements IDailyQuestionsResponse {
     questions?: QuestionItemResponse[];
     readingLabels?: { [key: string]: string; };
@@ -1608,7 +1717,7 @@ export class DailyQuestionsResponse implements IDailyQuestionsResponse {
                 this.readingLabels = {} as any;
                 for (let key in _data["readingLabels"]) {
                     if (_data["readingLabels"].hasOwnProperty(key))
-                        (<any>this.readingLabels)![key] = _data["readingLabels"][key];
+                        (this.readingLabels as any)![key] = _data["readingLabels"][key];
                 }
             }
         }
@@ -1636,7 +1745,7 @@ export class DailyQuestionsResponse implements IDailyQuestionsResponse {
             data["readingLabels"] = {};
             for (let key in this.readingLabels) {
                 if (this.readingLabels.hasOwnProperty(key))
-                    (<any>data["readingLabels"])[key] = (<any>this.readingLabels)[key];
+                    (data["readingLabels"] as any)[key] = (this.readingLabels as any)[key];
             }
         }
         return data;
@@ -1770,6 +1879,118 @@ export class DailyReportResponse implements IDailyReportResponse {
 export interface IDailyReportResponse {
     date?: string;
     apps?: AppDurationItem[];
+
+    [key: string]: any;
+}
+
+export class DepthLayerDto implements IDepthLayerDto {
+    readings?: DepthReadingDto[];
+
+    [key: string]: any;
+
+    constructor(data?: IDepthLayerDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            if (Array.isArray(_data["readings"])) {
+                this.readings = [] as any;
+                for (let item of _data["readings"])
+                    this.readings!.push(DepthReadingDto.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): DepthLayerDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new DepthLayerDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        if (Array.isArray(this.readings)) {
+            data["readings"] = [];
+            for (let item of this.readings)
+                data["readings"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface IDepthLayerDto {
+    readings?: DepthReadingDto[];
+
+    [key: string]: any;
+}
+
+export class DepthReadingDto implements IDepthReadingDto {
+    name?: string;
+    from?: string;
+    label?: string | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IDepthReadingDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.name = _data["name"];
+            this.from = _data["from"];
+            this.label = _data["label"];
+        }
+    }
+
+    static fromJS(data: any): DepthReadingDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new DepthReadingDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["name"] = this.name;
+        data["from"] = this.from;
+        data["label"] = this.label;
+        return data;
+    }
+}
+
+export interface IDepthReadingDto {
+    name?: string;
+    from?: string;
+    label?: string | undefined;
 
     [key: string]: any;
 }
@@ -2404,7 +2625,6 @@ export class MatcherStepDto implements IMatcherStepDto {
                 if (_data.hasOwnProperty(property))
                     this[property] = _data[property];
             }
-
             this.reading = _data["reading"];
             this.op = _data["op"];
             this.value = _data["value"];
@@ -2424,7 +2644,6 @@ export class MatcherStepDto implements IMatcherStepDto {
             if (this.hasOwnProperty(property))
                 data[property] = this[property];
         }
-
         data["reading"] = this.reading;
         data["op"] = this.op;
         data["value"] = this.value;
@@ -2433,7 +2652,6 @@ export class MatcherStepDto implements IMatcherStepDto {
 }
 
 export interface IMatcherStepDto {
-
     reading?: string;
     op?: string;
     value?: string;
@@ -2607,6 +2825,7 @@ export interface IQuestionItemResponse {
 
 export class SegmentResponse implements ISegmentResponse {
     id?: string;
+    deviceId?: number;
     source?: string;
     identityKey?: string;
     appId?: number | undefined;
@@ -2635,6 +2854,7 @@ export class SegmentResponse implements ISegmentResponse {
                     this[property] = _data[property];
             }
             this.id = _data["id"];
+            this.deviceId = _data["deviceId"];
             this.source = _data["source"];
             this.identityKey = _data["identityKey"];
             this.appId = _data["appId"];
@@ -2661,6 +2881,7 @@ export class SegmentResponse implements ISegmentResponse {
                 data[property] = this[property];
         }
         data["id"] = this.id;
+        data["deviceId"] = this.deviceId;
         data["source"] = this.source;
         data["identityKey"] = this.identityKey;
         data["appId"] = this.appId;
@@ -2676,6 +2897,7 @@ export class SegmentResponse implements ISegmentResponse {
 
 export interface ISegmentResponse {
     id?: string;
+    deviceId?: number;
     source?: string;
     identityKey?: string;
     appId?: number | undefined;

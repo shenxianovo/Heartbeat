@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, watch, onMounted, onUnmounted } from 'vue'
 import { getIconUrl, fetchPublicSegments } from '../api/index'
-import type { AppUsageResponse, SegmentResponse } from '../api/index'
+import type { AppUsageResponse, SegmentResponse, DeviceInfoResponse } from '../api/index'
 import { useAsyncData } from '../composables/useAsyncData'
 import { formatDuration } from '../composables/useHeartbeat'
 import { formatTitle } from '../titleFormatters'
@@ -18,6 +18,7 @@ const props = defineProps<{
   selectedDate: string
   app: { appId: number; appName: string; totalSeconds: number }
   usageData: AppUsageResponse[]
+  devices: DeviceInfoResponse[]
 }>()
 
 const emit = defineEmits<{ close: [] }>()
@@ -62,6 +63,36 @@ const tracks = computed<Track[]>(() => {
   if (!vb) return []
   return buildTracks(toReplaySegs(systemSegments.value, pluginSegments.value), vb)
 })
+
+/**
+ * 设备分组回放：聚合视图（deviceId=0）下同一 App 可能在多台设备上并行,
+ * 设备是最外层分组键,组内仍是 system 主轨 + 插件轨。共享同一时间视窗以便横向对比。
+ */
+const deviceGroups = computed(() => {
+  const vb = viewBounds.value
+  if (!vb || props.deviceId !== 0) return []
+
+  const ids = new Set<number>()
+  for (const u of systemSegments.value) ids.add(u.deviceId ?? 0)
+  for (const s of pluginSegments.value) ids.add(s.deviceId ?? 0)
+  if (ids.size <= 1) return []   // 单台活跃 → 退化为普通单设备回放
+
+  const groups: { deviceId: number; deviceName: string; tracks: Track[] }[] = []
+  for (const id of [...ids].sort((a, b) => a - b)) {
+    const sys = systemSegments.value.filter(u => (u.deviceId ?? 0) === id)
+    const plugins = pluginSegments.value.filter(s => (s.deviceId ?? 0) === id)
+    const t = buildTracks(toReplaySegs(sys, plugins), vb)
+    if (t.length === 0) continue
+    groups.push({
+      deviceId: id,
+      deviceName: props.devices.find(d => d.id === id)?.name ?? `设备 ${id}`,
+      tracks: t,
+    })
+  }
+  return groups
+})
+
+const showDeviceGroups = computed(() => deviceGroups.value.length > 1)
 
 // ── 标题明细（ADR-019 标签升级）──
 // system 段有重叠插件段时标签升级为页面标题/URL，无覆盖的时间窗口 fallback 到窗口标题。
@@ -134,9 +165,52 @@ onUnmounted(() => {
                   >{{ t.label }}</span>
                 </div>
               </div>
+              <!-- 设备分组回放:聚合视图下同一 App 在多台设备并行时,设备为最外层分组 -->
+              <template v-if="showDeviceGroups">
+                <div v-for="g in deviceGroups" :key="g.deviceId">
+                  <div class="flex h-6 items-center border-b border-border bg-muted/95 px-2">
+                    <span class="truncate text-[0.7rem] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                      {{ g.deviceName }}
+                    </span>
+                  </div>
+                  <div
+                    v-for="track in g.tracks"
+                    :key="track.source"
+                    class="flex border-b border-border last:border-b-0"
+                  >
+                    <div class="flex w-[80px] shrink-0 items-center border-r border-border bg-muted px-2">
+                      <span class="truncate font-mono text-[0.7rem] text-muted-foreground">{{ track.source }}</span>
+                    </div>
+                    <div class="flex-1">
+                      <div
+                        v-for="(lane, li) in track.lanes"
+                        :key="li"
+                        class="relative h-9 border-b border-dashed border-border/50 last:border-b-0"
+                      >
+                        <template v-for="(bar, i) in lane.bars" :key="i">
+                          <div
+                            v-if="bar.isPoint"
+                            class="absolute top-1/2 z-[1] h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 cursor-pointer bg-accent-3 hover:z-[2] hover:scale-125"
+                            :style="{ left: bar.left + '%' }"
+                            :title="bar.tooltip"
+                          ></div>
+                          <div
+                            v-else
+                            class="absolute top-2 h-5 cursor-pointer rounded-sm opacity-80 hover:z-[2] hover:opacity-100"
+                            :class="track.source === 'system' ? 'bg-primary' : 'bg-accent-3'"
+                            :style="{ left: bar.left + '%', width: bar.width + '%' }"
+                            :title="bar.tooltip"
+                          ></div>
+                        </template>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </template>
+
               <!-- 轨道行:system 主轨在前,插件轨挂在下方;轨内按副本分 lane（如浏览器窗口） -->
               <div
-                v-for="track in tracks"
+                v-for="track in showDeviceGroups ? [] : tracks"
                 :key="track.source"
                 class="flex border-b border-border last:border-b-0"
               >

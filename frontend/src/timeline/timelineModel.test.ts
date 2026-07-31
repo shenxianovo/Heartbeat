@@ -4,6 +4,8 @@ import {
   buildRows,
   mergeActivityBursts,
   initialViewBounds,
+  onlineUnionSeconds,
+  groupByDevice,
   MERGE_GAP_MS,
   type UsageLike,
 } from './timelineModel'
@@ -14,6 +16,10 @@ const sec = (n: number) => n * 1000
 
 function usage(appId: number, startMs: number, endMs: number, appName = `app${appId}`): UsageLike {
   return { appId, appName, startTime: new Date(startMs), endTime: new Date(endMs) }
+}
+
+function onDevice(deviceId: number, u: UsageLike): UsageLike {
+  return { ...u, deviceId }
 }
 
 describe('parseUsage', () => {
@@ -101,6 +107,79 @@ describe('mergeActivityBursts', () => {
 
   it('空数据返回空', () => {
     expect(mergeActivityBursts(parseUsage([]))).toEqual([])
+  })
+})
+
+describe('onlineUnionSeconds', () => {
+  it('单设备连续段 = 求和', () => {
+    expect(onlineUnionSeconds([
+      usage(1, base, base + sec(30)),
+      usage(2, base + sec(60), base + sec(90)),
+    ])).toBe(60)
+  })
+
+  it('双设备重叠只算一份墙钟（并集 < 求和）', () => {
+    const u = [
+      onDevice(1, usage(1, base, base + sec(60))),
+      onDevice(2, usage(2, base + sec(30), base + sec(90))),
+    ]
+    expect(onlineUnionSeconds(u)).toBe(90)
+  })
+
+  it('完全包含的段不增加时长', () => {
+    expect(onlineUnionSeconds([
+      onDevice(1, usage(1, base, base + sec(100))),
+      onDevice(2, usage(2, base + sec(20), base + sec(50))),
+    ])).toBe(100)
+  })
+
+  it('away 段不计入在线', () => {
+    expect(onlineUnionSeconds([
+      usage(1, base, base + sec(30)),
+      usage(9, base + sec(30), base + sec(600), AWAY_APP),
+    ])).toBe(30)
+  })
+
+  it('乱序输入、缺字段、零长段都安全', () => {
+    expect(onlineUnionSeconds([
+      usage(2, base + sec(60), base + sec(90)),
+      usage(1, base, base + sec(30)),
+      { appId: 3, appName: 'x' },
+      usage(4, base + sec(120), base + sec(120)),
+    ])).toBe(60)
+  })
+
+  it('空输入为 0', () => {
+    expect(onlineUnionSeconds([])).toBe(0)
+  })
+
+  it('相邻但不重叠的段不缝合(不在就是不在)', () => {
+    // 两段间隔 1s：mergeActivityBursts 会缝，并集不缝
+    expect(onlineUnionSeconds([
+      usage(1, base, base + sec(30)),
+      usage(1, base + sec(31), base + sec(61)),
+    ])).toBe(60)
+  })
+})
+
+describe('groupByDevice', () => {
+  it('按设备分组，组间按首段开始时间升序', () => {
+    const groups = groupByDevice([
+      onDevice(2, usage(1, base + sec(100), base + sec(200))),
+      onDevice(1, usage(2, base, base + sec(50))),
+      onDevice(2, usage(3, base + sec(300), base + sec(400))),
+    ])
+    expect([...groups.keys()]).toEqual([1, 2])
+    expect(groups.get(2)!.length).toBe(2)
+  })
+
+  it('缺 deviceId 归入 0 组', () => {
+    const groups = groupByDevice([usage(1, base, base + sec(10))])
+    expect([...groups.keys()]).toEqual([0])
+  })
+
+  it('空输入返回空 Map', () => {
+    expect(groupByDevice([]).size).toBe(0)
   })
 })
 

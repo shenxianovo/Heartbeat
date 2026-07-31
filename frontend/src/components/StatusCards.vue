@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { getIconUrl } from '../api/index'
 import { formatDuration } from '../composables/useHeartbeat'
 import { Card } from '@/components/ui/card'
 
-defineProps<{
+const props = defineProps<{
   username: string
   isToday: boolean
   isAlive: boolean
@@ -11,8 +12,19 @@ defineProps<{
   appSummaries: { appId: number; appName: string; totalSeconds: number }[]
   totalSeconds: number
   awaySeconds: number
+  /** 在线并集:滤掉 away 后跨设备去重的墙钟时长,答"我今天在多久" */
+  onlineSeconds: number
+  /** per-device 屏幕占用求和,允许超 24h,答"屏幕被谁占用" */
+  perDeviceSeconds: { deviceId: number; usageSeconds: number; awaySeconds: number }[]
+  hasConcurrentUse: boolean
+  isAllDevices: boolean
   includeAway: boolean
 }>()
+
+// 主数字用并集(人只有一个),求和降为副数字。单设备时两者相等,只显示一个。
+const showSumAsSecondary = computed(() =>
+  props.isAllDevices && props.hasConcurrentUse && props.totalSeconds > props.onlineSeconds
+)
 </script>
 
 <template>
@@ -37,9 +49,15 @@ defineProps<{
     <Card class="gap-1.5 border-border/60 bg-card/80 py-5 backdrop-blur-sm">
       <div class="flex flex-col gap-1.5 px-5">
         <span class="text-xs uppercase tracking-[0.06em] text-muted-foreground">本次存活</span>
-        <span class="font-mono text-[1.75rem] font-bold text-foreground">{{ formatDuration(totalSeconds) }}</span>
+        <!-- 主数字 = 在线并集:两台机同时开着不算两份人生 -->
+        <span
+          class="font-mono text-[1.75rem] font-bold text-foreground"
+          :title="showSumAsSecondary ? '跨设备去重后的实际在线时长' : undefined"
+        >{{ formatDuration(onlineSeconds) }}</span>
         <span class="text-[0.8rem] text-muted-foreground">
-          {{ appSummaries.length }} 个应用<template v-if="awaySeconds > 0"> · {{ includeAway ? '含' : '另有' }}离开 {{ formatDuration(awaySeconds) }}</template>
+          {{ appSummaries.length }} 个应用<!--
+          --><template v-if="showSumAsSecondary"> · <span title="各设备时长求和,并发使用会超过实际在线时长">屏幕占用 {{ formatDuration(totalSeconds) }}</span></template><!--
+          --><template v-if="awaySeconds > 0"> · <span title="设备开着但人不在(息屏/睡眠/锁屏),各设备求和">{{ includeAway ? '含' : '另有' }}空转 {{ formatDuration(awaySeconds) }}</span></template>
         </span>
       </div>
     </Card>

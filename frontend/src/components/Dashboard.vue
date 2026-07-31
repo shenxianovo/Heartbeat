@@ -37,12 +37,17 @@ const {
   loading,
   isToday,
   isAlive,
+  presences,
   currentApp,
   currentAppId,
   lastSeenStr,
+  isAllDevices,
   appSummaries,
   totalSeconds,
   awaySeconds,
+  onlineSeconds,
+  perDeviceSeconds,
+  hasConcurrentUse,
   maxSeconds,
   activeHours,
   weeklyAppSummaries,
@@ -75,9 +80,26 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
   <!-- pb-[50vh]：底部留出半屏可滚动空间，滚到底时露出左下角固定的看板娘背景 -->
   <div class="relative z-10 mx-auto w-[min(100%,1400px)] px-[clamp(0.75rem,3vw,2.5rem)] py-[clamp(1rem,3vw,2.5rem)] pb-[50vh]">
     <header class="mb-[clamp(1.25rem,3vw,2rem)] flex flex-wrap items-center justify-between gap-x-4 gap-y-3 pr-12 max-[640px]:flex-col max-[640px]:items-stretch max-[640px]:pr-0">
-      <div class="flex select-none items-center gap-3 whitespace-nowrap font-display text-[clamp(1.15rem,2.5vw,1.5rem)] font-bold tracking-tight max-[640px]:pr-12">
+      <div class="flex min-w-0 select-none flex-wrap items-center gap-x-3 gap-y-1.5 font-display text-[clamp(1.15rem,2.5vw,1.5rem)] font-bold tracking-tight max-[640px]:pr-12">
         <span class="status-dot" :class="{ alive: isAlive }"></span>
-        <span>{{ username }}</span>
+        <span class="whitespace-nowrap">{{ username }}</span>
+
+        <!-- per-device 在场芯片：双机并发时"当前应用"不是一个值,逐台展示而非合成 -->
+        <span v-if="isToday && presences.length > 1" class="flex flex-wrap items-center gap-1.5">
+          <span
+            v-for="p in presences"
+            :key="p.deviceId"
+            class="glass-control flex items-center gap-1.5 px-2 py-0.5 font-sans text-[0.7rem] font-normal"
+            :class="p.isOnline ? 'text-foreground' : 'text-muted-foreground'"
+            :title="p.isOnline
+              ? `${p.deviceName} 在线${p.currentApp ? ' · ' + p.currentApp : ''}`
+              : `${p.deviceName} 离线${p.lastSeenStr ? ' · 最后活跃 ' + p.lastSeenStr : ''}`"
+          >
+            <span class="status-dot !h-1.5 !w-1.5" :class="{ alive: p.isOnline }"></span>
+            <span class="max-w-[7rem] truncate">{{ p.deviceName }}</span>
+            <span v-if="p.isOnline && p.currentApp" class="max-w-[7rem] truncate text-muted-foreground">{{ p.currentApp }}</span>
+          </span>
+        </span>
       </div>
 
       <div class="flex flex-wrap items-center gap-2 max-[640px]:w-full">
@@ -86,6 +108,8 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
             <SelectValue placeholder="选择设备" />
           </SelectTrigger>
           <SelectContent>
+            <!-- 默认视图:跨设备聚合。单台活跃时自然退化成单设备看板。 -->
+            <SelectItem value="0">全部设备</SelectItem>
             <SelectItem v-for="d in devices" :key="d.id" :value="String(d.id)">
               {{ d.name }}
             </SelectItem>
@@ -150,6 +174,10 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
         :appSummaries="appSummaries"
         :totalSeconds="totalSeconds"
         :awaySeconds="awaySeconds"
+        :onlineSeconds="onlineSeconds"
+        :perDeviceSeconds="perDeviceSeconds"
+        :hasConcurrentUse="hasConcurrentUse"
+        :isAllDevices="isAllDevices"
         :includeAway="includeAway"
       />
 
@@ -161,6 +189,8 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
             :isAlive="isAlive"
             :currentApp="currentApp"
             :currentAppId="currentAppId"
+            :presences="presences"
+            :isAllDevices="isAllDevices"
           />
 
           <!-- owner 可生成/重生成；公开访客只读已有缓存，不触发 LLM。 -->
@@ -183,6 +213,8 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
             :appNameMap="appNameMap"
             :selectedDate="selectedDate"
             :isToday="isToday"
+            :devices="devices"
+            :isAllDevices="isAllDevices"
           />
 
           <KeyboardHeatmap :keyFrequency="keyFrequency" />
@@ -212,6 +244,7 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
       :selectedDate="selectedDate"
       :app="selectedApp"
       :usageData="usageData"
+      :devices="devices"
       @close="selectedApp = null"
     />
 

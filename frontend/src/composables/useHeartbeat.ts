@@ -32,7 +32,7 @@ export function useHeartbeat(username: string) {
     return map
   })
 
-  const status = useDeviceStatus(username, selectedDevice, isToday, appNameMap)
+  const status = useDeviceStatus(username, selection.devices, selectedDevice, isToday, appNameMap)
   const reports = useReports(username, selectedDevice, selectedDate)
 
   const kf = useAsyncData<KeyFrequencyItem[]>(() => {
@@ -44,8 +44,8 @@ export function useHeartbeat(username: string) {
     })
   }, [])
   const keyFrequency = kf.data
+  // 跨设备键频求和：打字就是打字,不存在"哪台机器的 W 键"的语义问题。
   async function loadKeyFrequency() {
-    if (!selectedDevice.value) return
     await kf.run()
   }
 
@@ -63,8 +63,8 @@ export function useHeartbeat(username: string) {
   async function refresh() {
     loading.value = true
     try {
-      // 设备列表没拉起来(selectedDevice 恒为 0)时,先补拉一次,否则下面全早退。
-      if (!selectedDevice.value) await selection.reload()
+      // 取数不再等设备列表：默认 deviceId=0 即聚合查询。
+      // 设备列表只影响选择器选项与 presence 目标,由 selection.reload() 独立拉。
       await Promise.all([
         appsData.run(),
         reports.loadUsage(),
@@ -81,7 +81,8 @@ export function useHeartbeat(username: string) {
   let usageTimer: ReturnType<typeof setInterval>
 
   onMounted(async () => {
-    await appsData.run()
+    // 默认选中值恒为"全部设备",watch 不会因 0→N 触发,首屏必须显式加载一次。
+    await refresh()
 
     usageTimer = setInterval(() => {
       if (isToday.value) {
@@ -109,13 +110,19 @@ export function useHeartbeat(username: string) {
     loading,
     isToday,
     isAlive: status.isAlive,
+    presences: status.presences,
+    onlinePresences: status.onlinePresences,
     currentApp: status.currentApp,
     currentAppId: status.currentAppId,
     lastSeenStr: status.lastSeenStr,
+    isAllDevices: selection.isAllDevices,
     appSummaries: reports.appSummaries,
     totalSeconds: reports.totalSeconds,
     usageSeconds: reports.usageSeconds,
     awaySeconds: reports.awaySeconds,
+    onlineSeconds: reports.onlineSeconds,
+    perDeviceSeconds: reports.perDeviceSeconds,
+    hasConcurrentUse: reports.hasConcurrentUse,
     maxSeconds: reports.maxSeconds,
     activeHours: reports.activeHours,
     weeklyAppSummaries: reports.weeklyAppSummaries,

@@ -59,20 +59,58 @@ export const weeklyAppDurations: { appId: number; appName: string; durationSecon
  * 基于当前日期，从早上 9 点开始铺一串连续的使用段，覆盖到接近 now。
  * 返回的时间是 ISO 字符串，匹配 AppUsageResponse.startTime/endTime。
  */
-export function buildTodayUsage(): {
+export interface MockUsage {
   id: number
+  deviceId: number
   appId: number
   appName: string
   title: string | null
   startTime: string
   endTime: string
   durationSeconds: number
-}[] {
-  const now = new Date()
-  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 0, 0)
+}
 
-  // 一串 (appId, 分钟数, 标题) 的会话序列，依次首尾相接。
-  const sessions: { appId: number; minutes: number; title: string | null }[] = [
+/** 单台设备的会话序列 → usage 段（首尾相接,不越过 now）。 */
+function buildDeviceUsage(
+  deviceId: number,
+  startHour: number,
+  sessions: { appId: number; minutes: number; title: string | null }[],
+  idBase: number,
+): MockUsage[] {
+  const now = new Date()
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), startHour, 0, 0)
+  const appNameById = new Map(apps.map((a) => [a.id, a.name]))
+  const result: MockUsage[] = []
+  let cursor = dayStart.getTime()
+  let id = idBase
+
+  for (const s of sessions) {
+    const start = new Date(cursor)
+    const end = new Date(cursor + s.minutes * 60_000)
+    if (start.getTime() >= now.getTime()) break
+    const clampedEnd = end.getTime() > now.getTime() ? now : end
+    result.push({
+      id: id++,
+      deviceId,
+      appId: s.appId,
+      appName: appNameById.get(s.appId) ?? `App ${s.appId}`,
+      title: s.title,
+      startTime: start.toISOString(),
+      endTime: clampedEnd.toISOString(),
+      durationSeconds: Math.round((clampedEnd.getTime() - start.getTime()) / 1000),
+    })
+    cursor = end.getTime()
+  }
+  return result
+}
+
+/**
+ * 生成"今天"的 usage 时间段（timeline 用）。双设备并发场景：
+ * 设备 1 从 9:00 起,设备 2 从 10:30 起——两者时间上真实重叠,
+ * 于是"并集在线时长 < 求和时长",正好是聚合视图要展示的那个差。
+ */
+export function buildTodayUsage(): MockUsage[] {
+  const device1 = buildDeviceUsage(1, 9, [
     { appId: 1, minutes: 50, title: 'useHeartbeat.ts - heartbeat' },
     { appId: 2, minutes: 25, title: 'YouTube' },
     { appId: 1, minutes: 40, title: 'ActivityTimeline.vue - heartbeat' },
@@ -84,33 +122,18 @@ export function buildTodayUsage(): {
     { appId: 2, minutes: 35, title: 'GitHub - heartbeat' },
     { appId: 6, minutes: 10, title: 'Dashboard mockup' },
     { appId: 1, minutes: 45, title: 'useReports.ts - heartbeat' },
-  ]
+  ], 1)
 
-  const appNameById = new Map(apps.map((a) => [a.id, a.name]))
-  const result: ReturnType<typeof buildTodayUsage> = []
-  let cursor = dayStart.getTime()
-  let id = 1
+  const device2 = buildDeviceUsage(2, 10, [
+    { appId: 2, minutes: 35, title: 'Confluence - 实习周报' },
+    { appId: 4, minutes: 20, title: '#team-standup' },
+    { appId: 99, minutes: 40, title: null },
+    { appId: 1, minutes: 55, title: 'Program.cs - internal-tool' },
+    { appId: 2, minutes: 30, title: 'Grafana - 服务监控' },
+    { appId: 5, minutes: 15, title: 'bash' },
+  ], 1000)
 
-  for (const s of sessions) {
-    const start = new Date(cursor)
-    const end = new Date(cursor + s.minutes * 60_000)
-    // 不要越过 now
-    if (start.getTime() >= now.getTime()) break
-    const clampedEnd = end.getTime() > now.getTime() ? now : end
-    const durationSeconds = Math.round((clampedEnd.getTime() - start.getTime()) / 1000)
-    result.push({
-      id: id++,
-      appId: s.appId,
-      appName: appNameById.get(s.appId) ?? `App ${s.appId}`,
-      title: s.title,
-      startTime: start.toISOString(),
-      endTime: clampedEnd.toISOString(),
-      durationSeconds,
-    })
-    cursor = end.getTime()
-  }
-
-  return result
+  return [...device1, ...device2]
 }
 
 /** "yyyy-MM-dd" 本地日期字符串 */

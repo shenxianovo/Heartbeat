@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { getIconUrl } from '../api/index'
-import type { AppUsageResponse } from '../api/index'
+import type { AppUsageResponse, DeviceInfoResponse } from '../api/index'
 import { useTimelineDrag } from '../composables/useTimelineDrag'
 import { Card } from '@/components/ui/card'
 import { LayoutGrid, AlignJustify } from 'lucide-vue-next'
-import { parseUsage, buildRows, mergeActivityBursts, initialViewBounds } from '../timeline/timelineModel'
+import { parseUsage, buildRows, mergeActivityBursts, initialViewBounds, groupByDevice } from '../timeline/timelineModel'
 import { niceTicks } from '../timeline/timeScale'
 
 const props = defineProps<{
@@ -14,7 +14,9 @@ const props = defineProps<{
   usageData: AppUsageResponse[],
   appNameMap: Map<number, string>,
   selectedDate: string,
-  isToday: boolean
+  isToday: boolean,
+  devices: DeviceInfoResponse[],
+  isAllDevices: boolean
 }>()
 
 const mode = ref<'simple' | 'detailed'>('detailed')
@@ -66,11 +68,43 @@ const handleResize = () => {
 
 const parsed = computed(() => parseUsage(props.usageData))
 
-const detailedRows = computed(() =>
-  buildRows(parsed.value, { start: viewStart.value, end: viewEnd.value }).map(row => ({
+function rowsOf(usage: AppUsageResponse[]) {
+  return buildRows(parseUsage(usage), { start: viewStart.value, end: viewEnd.value }).map(row => ({
     ...row,
     name: row.isAway ? '离开' : (props.appNameMap.get(row.appId) || `App ${row.appId}`),
   }))
+}
+
+const detailedRows = computed(() => rowsOf(props.usageData))
+
+/**
+ * 设备泳道：聚合视图下设备是最外层分组键（system 互斥不变量只在单设备内成立，
+ * 跨设备并发是真事实，不能压进同一条轨）。当天无段的设备不出轨。
+ */
+const deviceLanes = computed(() => {
+  if (!props.isAllDevices) return []
+  const groups = groupByDevice(props.usageData)
+  if (groups.size <= 1) return []   // 单台活跃 → 自然退化成普通单设备时间线
+  const lanes: { deviceId: number; deviceName: string; rows: ReturnType<typeof rowsOf> }[] = []
+  for (const [deviceId, usage] of groups) {
+    const rows = rowsOf(usage as AppUsageResponse[])
+    if (rows.length === 0) continue
+    lanes.push({
+      deviceId,
+      deviceName: props.devices.find(d => d.id === deviceId)?.name ?? `设备 ${deviceId}`,
+      rows,
+    })
+  }
+  return lanes
+})
+
+const showLanes = computed(() => deviceLanes.value.length > 1)
+
+// 泳道模式下每轨压到 5 行高（≈2 台 × 5 行仍在一屏内），单轨维持原高度。
+const rowsMaxHeightClass = computed(() =>
+  showLanes.value
+    ? 'max-h-[200px] min-[900px]:max-h-[240px]'
+    : 'max-h-[220px] min-[900px]:max-h-[320px] min-[1200px]:max-h-[400px]'
 )
 
 // Adaptive tick intervals based on available width
@@ -200,10 +234,48 @@ const minimapActivities = computed(() => {
             </div>
           </div>
 
+          <!-- 设备泳道模式：每台设备一组，组内是该设备的应用轨 -->
+          <div
+            v-if="showLanes"
+            class="timeline-rows relative z-[1] overflow-y-auto"
+            :class="rowsMaxHeightClass"
+          >
+            <div v-for="lane in deviceLanes" :key="lane.deviceId">
+              <div class="sticky top-0 z-[2] flex h-6 items-center gap-2 border-b border-border bg-muted/95 px-2 backdrop-blur-sm">
+                <span class="truncate text-[0.7rem] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                  {{ lane.deviceName }}
+                </span>
+              </div>
+              <div
+                v-for="row in lane.rows"
+                :key="row.appId"
+                class="flex h-9 border-b border-border last:border-b-0"
+              >
+                <div class="row-header z-[2] flex w-[80px] shrink-0 items-center gap-2 border-r border-border bg-muted px-2 min-[640px]:w-[120px]">
+                  <img v-if="!row.isAway" :src="getIconUrl(username, row.appId)" class="h-5 w-5 rounded object-contain" @error="($event.target as HTMLImageElement).style.display = 'none'"/>
+                  <span v-else class="flex h-5 w-5 shrink-0 items-center justify-center text-muted-foreground">💤</span>
+                  <span class="flex-1 truncate text-[0.75rem]" :class="row.isAway ? 'text-muted-foreground' : 'text-foreground'" :title="row.name">{{ row.name }}</span>
+                </div>
+                <div class="relative flex-1">
+                  <div
+                    v-for="(bar, idx) in row.bars"
+                    :key="idx"
+                    class="absolute top-2 h-5 cursor-pointer rounded-sm opacity-80 hover:z-[3] hover:opacity-100"
+                    :class="row.isAway ? 'bg-muted-foreground/40' : 'bg-primary'"
+                    :style="{ left: bar.left + '%', width: bar.width + '%' }"
+                    :title="bar.label"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <TransitionGroup
+            v-else
             name="row-list"
             tag="div"
-            class="timeline-rows relative z-[1] max-h-[220px] overflow-y-auto min-[900px]:max-h-[320px] min-[1200px]:max-h-[400px]"
+            class="timeline-rows relative z-[1] overflow-y-auto"
+            :class="rowsMaxHeightClass"
           >
             <div
               v-if="detailedRows.length === 0"

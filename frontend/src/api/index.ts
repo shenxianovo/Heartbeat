@@ -76,12 +76,21 @@ function toLocalDateTimeOffsetString(dateStr: string): string {
 }
 
 /**
+ * deviceId 归一：0 = "全部设备"（看板默认视图），对服务端即"不传 deviceId"→ 跨设备聚合。
+ * 收口在 API 边界,composable 与组件层可以一路传 0 不做特判。
+ */
+function deviceScope(deviceId?: number): number | undefined {
+  return deviceId ? deviceId : undefined
+}
+
+/**
  * 报表(daily/weekly)查询串:deviceId 可选,date 带本地时区偏移(见 toLocalDateTimeOffsetString)。
  * 认证版与 public 版共用同一套拼法。
  */
 function reportDateParams(params: { deviceId?: number; date?: string }): URLSearchParams {
   const searchParams = new URLSearchParams()
-  if (params.deviceId !== undefined) searchParams.set('deviceId', String(params.deviceId))
+  const scoped = deviceScope(params.deviceId)
+  if (scoped !== undefined) searchParams.set('deviceId', String(scoped))
   if (params.date) searchParams.set('date', toLocalDateTimeOffsetString(params.date))
   return searchParams
 }
@@ -132,7 +141,7 @@ export async function fetchUsage(params: {
   end?: string
 }): Promise<AppUsageResponse[]> {
   return client.getUsage(
-    params.deviceId,
+    deviceScope(params.deviceId),
     params.start ? new Date(params.start) : undefined,
     params.end ? new Date(params.end) : undefined,
   )
@@ -259,7 +268,7 @@ export async function fetchPublicUsage(username: string, params: {
 }): Promise<AppUsageResponse[]> {
   return client.getUserUsage(
     username,
-    params.deviceId,
+    deviceScope(params.deviceId),
     params.start ? new Date(params.start) : undefined,
     params.end ? new Date(params.end) : undefined,
   )
@@ -274,7 +283,7 @@ export async function fetchPublicSegments(username: string, params: {
 }): Promise<SegmentResponse[]> {
   return client.getUserSegments(
     username,
-    params.deviceId,
+    deviceScope(params.deviceId),
     params.source,
     params.appId,
     params.start ? new Date(params.start) : undefined,
@@ -289,7 +298,7 @@ export async function fetchPublicKeyFrequency(username: string, params: {
 }): Promise<KeyFrequencyItem[]> {
   const res = await client.getUserKeyFrequency(
     username,
-    params.deviceId,
+    deviceScope(params.deviceId),
     params.start ? new Date(params.start) : undefined,
     params.end ? new Date(params.end) : undefined,
   )

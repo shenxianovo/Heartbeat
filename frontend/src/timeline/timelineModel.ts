@@ -12,8 +12,10 @@ export interface Interval {
 export interface UsageLike {
   appId?: number
   appName?: string
+  deviceId?: number
   startTime?: Date
   endTime?: Date
+  durationSeconds?: number
 }
 
 export interface ParsedUsage {
@@ -139,6 +141,58 @@ export function mergeActivityBursts(parsed: ParsedUsage): Interval[] {
   }
   merged.push(current)
   return merged
+}
+
+/**
+ * 在线时长（秒）：全部真实使用段（away 不算）的严格区间并集。
+ * 聚合视图的"今天在多久"主数字——两台设备同时使用只算一份墙钟时间，
+ * 与按设备求和的"屏幕占用"（可 >24h）语义互补。不缝合缝隙：不在就是不在。
+ */
+export function onlineUnionSeconds(usage: UsageLike[]): number {
+  const raw: Interval[] = []
+  for (const u of usage) {
+    if (!u.startTime || !u.endTime || isAwayName(u.appName)) continue
+    const start = u.startTime.getTime()
+    const end = u.endTime.getTime()
+    if (end > start) raw.push({ start, end })
+  }
+  raw.sort((a, b) => a.start - b.start)
+
+  let total = 0
+  let curStart = 0
+  let curEnd = -1
+  for (const iv of raw) {
+    if (iv.start > curEnd) {
+      total += curEnd - curStart
+      curStart = iv.start
+      curEnd = iv.end
+    } else {
+      curEnd = Math.max(curEnd, iv.end)
+    }
+  }
+  total += curEnd - curStart
+  return Math.round(Math.max(0, total) / 1000)
+}
+
+/**
+ * 按设备分组（聚合视图的泳道键）：保持组内原始顺序，
+ * 组间按首段开始时间升序——先醒的设备排前面。缺 deviceId 的段归入 0 组（旧数据兜底）。
+ */
+export function groupByDevice(usage: UsageLike[]): Map<number, UsageLike[]> {
+  const groups = new Map<number, UsageLike[]>()
+  for (const u of usage) {
+    const key = u.deviceId ?? 0
+    let arr = groups.get(key)
+    if (!arr) {
+      arr = []
+      groups.set(key, arr)
+    }
+    arr.push(u)
+  }
+
+  const firstStart = (arr: UsageLike[]) =>
+    arr.reduce((min, u) => Math.min(min, u.startTime?.getTime() ?? Infinity), Infinity)
+  return new Map([...groups.entries()].sort((a, b) => firstStart(a[1]) - firstStart(b[1])))
 }
 
 /**

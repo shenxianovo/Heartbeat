@@ -137,6 +137,7 @@ namespace Heartbeat.Server.Services
                 .Select(x => new SegmentResponse
                 {
                     Id = x.Id,
+                    DeviceId = x.DeviceId,
                     Source = x.Source,
                     IdentityKey = x.IdentityKey,
                     AppId = x.AppId,
@@ -176,6 +177,7 @@ namespace Heartbeat.Server.Services
                 .Select(x => new AppUsageResponse
                 {
                     Id = x.Id,
+                    DeviceId = x.DeviceId,
                     AppId = x.AppId!.Value,
                     AppName = x.App!.Name,
                     Title = x.Title,

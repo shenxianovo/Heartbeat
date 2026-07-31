@@ -1,45 +1,102 @@
-import { computed, onMounted, onUnmounted, type Ref, type ComputedRef } from 'vue'
-import type { DeviceStatusResponse } from '../api/index'
-import { fetchPublicDeviceStatus } from '../api/index'
-import { useAsyncData } from './useAsyncData'
+import { ref, computed, onMounted, onUnmounted, type Ref, type ComputedRef } from 'vue'
+import type { ApiError, DeviceInfoResponse, DeviceStatusResponse } from '../api/index'
+import { fetchPublicDeviceStatus, toApiError } from '../api/index'
+
+/** 一台设备的在场事实。看板头部芯片与"当前应用"面板都吃这个。 */
+export interface DevicePresence {
+  deviceId: number
+  deviceName: string
+  isOnline: boolean
+  currentApp: string | null
+  currentAppId: number | null
+  lastSeenStr: string
+}
 
 /**
- * 在场域：设备实时状态（是否在线、当前应用、最后活跃时间）。
+ * 在场域：per-device 实时状态（是否在线、当前应用、最后活跃时间）。
  * 自带 5s 轮询（仅在查看今天时刷新）。与报表的 30s 轮询生命周期独立。
+ *
+ * 多设备：状态端点是 per-device 路径,聚合视图下前端并发拉 N 台（N 为个位数,
+ * 5s 多一两个请求可忽略,服务端零改动）。单台失败不影响其余（allSettled）。
+ * 不做的：把 N 台的"当前应用"合成一个值——双机并发时那不是一个值。
  */
 export function useDeviceStatus(
   username: string,
+  devices: Ref<DeviceInfoResponse[]>,
   selectedDevice: Ref<number>,
   isToday: Ref<boolean>,
   appNameMap: ComputedRef<Map<number, string>>,
 ) {
-  const status = useAsyncData<DeviceStatusResponse | null>(
-    () => fetchPublicDeviceStatus(username, selectedDevice.value),
-    null,
-  )
-  const deviceStatus = status.data
+  const statusMap = ref<Map<number, DeviceStatusResponse>>(new Map())
+  const error = ref<ApiError | null>(null)
 
-  const isAlive = computed(() => isToday.value && (deviceStatus.value?.isOnline ?? false))
-  const currentApp = computed(() => deviceStatus.value?.currentApp ?? null)
+  /** 聚合视图（0）拉全部设备；选中单台只拉那台。 */
+  const targetDeviceIds = computed<number[]>(() => {
+    if (selectedDevice.value) return [selectedDevice.value]
+    return devices.value.map(d => d.id!).filter(id => id != null)
+  })
 
-  const currentAppId = computed(() => {
-    const name = currentApp.value
+  function appIdOf(name: string | null): number | null {
     if (!name) return null
     for (const [id, n] of appNameMap.value) {
       if (n === name) return id
     }
     return null
-  })
+  }
 
-  const lastSeenStr = computed(() => {
-    const raw = deviceStatus.value?.lastSeen
+  function timeStr(raw: Date | undefined): string {
     if (!raw) return ''
     return raw.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  }
+
+  /** per-device 在场行。在线的排前面，其余按设备列表顺序。 */
+  const presences = computed<DevicePresence[]>(() => {
+    const rows: DevicePresence[] = []
+    for (const id of targetDeviceIds.value) {
+      const s = statusMap.value.get(id)
+      const name = devices.value.find(d => d.id === id)?.name ?? `设备 ${id}`
+      const online = isToday.value && (s?.isOnline ?? false)
+      const app = online ? (s?.currentApp ?? null) : null
+      rows.push({
+        deviceId: id,
+        deviceName: name,
+        isOnline: online,
+        currentApp: app,
+        currentAppId: appIdOf(app),
+        lastSeenStr: timeStr(s?.lastSeen),
+      })
+    }
+    return rows.sort((a, b) => Number(b.isOnline) - Number(a.isOnline))
+  })
+
+  const onlinePresences = computed(() => presences.value.filter(p => p.isOnline))
+
+  /** 任一设备在线即"在场"。 */
+  const isAlive = computed(() => onlinePresences.value.length > 0)
+
+  // 单值出口：仅在恰好一台在线时有意义（多台并发时由 presences 逐行展示）。
+  const currentApp = computed(() => onlinePresences.value[0]?.currentApp ?? null)
+  const currentAppId = computed(() => onlinePresences.value[0]?.currentAppId ?? null)
+  const lastSeenStr = computed(() => {
+    const seen = presences.value.map(p => p.lastSeenStr).filter(Boolean)
+    return seen[0] ?? ''
   })
 
   async function load() {
-    if (!selectedDevice.value) return
-    await status.run()
+    const ids = targetDeviceIds.value
+    if (ids.length === 0) return
+    const results = await Promise.allSettled(
+      ids.map(id => fetchPublicDeviceStatus(username, id).then(s => [id, s] as const)),
+    )
+    const next = new Map<string | number, DeviceStatusResponse>()
+    let lastErr: unknown = null
+    for (const r of results) {
+      if (r.status === 'fulfilled') next.set(r.value[0], r.value[1])
+      else lastErr = r.reason
+    }
+    statusMap.value = next as Map<number, DeviceStatusResponse>
+    // 全军覆没才算错误：部分设备探测失败不该让在场卡整体亮红。
+    error.value = next.size === 0 && lastErr !== null ? toApiError(lastErr) : null
   }
 
   let timer: ReturnType<typeof setInterval>
@@ -51,8 +108,9 @@ export function useDeviceStatus(
   onUnmounted(() => clearInterval(timer))
 
   return {
-    deviceStatus,
-    error: status.error,
+    presences,
+    onlinePresences,
+    error,
     isAlive,
     currentApp,
     currentAppId,
