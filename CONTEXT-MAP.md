@@ -16,7 +16,7 @@ Heartbeat 是一个 Windows PC 应用使用时长监控系统。系统分为三�
 
 | Context | Directory | Responsibility |
 |---------|-----------|----------------|
-| Collection | `desktop/`, `collectors/` | 监听前台窗口切换与各应用内活动，生成使用记录，上传至服务端。`desktop/` 为 ingest hub（Agent，含 system 采集器）；`collectors/` 存放各应用内采集器（browser 已落地，vscode 等规划中），经 loopback 汇入 hub（ADR-017） |
+| Collection | `desktop/`, `collectors/` | 监听前台窗口切换与各应用内活动，生成使用记录，上传至服务端。hub 是可复用的采集器宿主运行时，**多实例星形直连 ingest、不嵌套**（ADR-032）：`desktop/` 为桌面实例（Agent，含 system 采集器，兼 loopback ingest hub）；无头实例（server 旁部署，托管账号级代理采集器如 vrchat.account）规划中。`collectors/` 存放各应用内采集器（browser 已落地，vscode 等规划中），经 loopback 汇入桌面 hub（ADR-017） |
 | Analytics | `server/` | 接收使用数据，合并碎片记录，聚合报表 |
 | Dashboard | `frontend/` | 可视化使用数据 |
 

@@ -10,11 +10,11 @@
 
 | Term | Definition |
 |------|-----------|
-| Device | 一台唯一的物理机器。由 (OwnerId, HardwareId) 联合唯一标识。HardwareId 取自 Windows MachineGuid（HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid）。DeviceName 为纯显示字段（默认取 hostname，用户可改）。属于某个 User（OwnerId = JWT sub claim，string 类型）。 |
+| Device | 一个**观测主体**（ADR-032）：某采集器如实观测的对象——一台机器（桌面 Agent 观测本机），或一个账号（如无头 hub 的 vrchat.account 采集器观测 VRChat 账号）。由 (OwnerId, HardwareId) 联合唯一标识；HardwareId 是主体的稳定标识（桌面取 Windows MachineGuid，无头 hub 侧由配置给定稳定串）。DeviceName 为纯显示字段（默认取 hostname，用户可改）。属于某个 User（OwnerId = JWT sub claim，string 类型）。观测主体必须如实命名：账号采集器证明不了硬件，其 Device 是账号（"VRChat"），不是猜测的硬件（"Quest 3"）——设备归因是叙事层派生知识，不进事实层。 |
 | App | 一个应用程序，由进程可执行文件名（不含路径）唯一标识。同一 exe 无论开几个窗口都算同一个 App。 |
 | AppUsage | 一段某个 App 处于前台的时间记录（StartTime → EndTime）。系统忠实记录所有前台窗口，包括 explorer.exe（桌面）和 LockApp.exe（锁屏），不做活跃/非活跃过滤。存储上已泛化为 ActivitySegment 的 system source（ADR-017/018 已落地）；`AppUsageItem` 上传 DTO 已随 ADR-020 退役，本词仅指"system 段"这一语义，不再对应独立数据形状。 |
 | ActivitySegment | 一段有界的活动记录（StartTime → EndTime），由某个采集器（Source）观测并折叠产出。瞬时点事件为零长度段（StartTime == EndTime）。AppUsage 的泛化形态；统计只消费 source='system'（互斥轨），插件段只进回放。详见 ADR-017/018/020。 |
-| Source | 观测者维度：一条 ActivitySegment 是"谁采集的"（system / browser / vscode / …）。与 AppId 正交——AppId 说段"关于哪个应用"，Source 说"谁观测到的"；同一时刻同一 App 可有多个 Source 的段合法重叠。system 是唯一观测前台性的 Source，其段互斥、时长可求和。 |
+| Source | 观测者维度：一条 ActivitySegment 是"谁采集的"（system / browser / vscode / …）。**按观测者命名，不按产品**（ADR-032）：browser 观测几百个产品；同一产品可有多个观测者（规划中的 vrchat.account 云 API / vrchat.client 本机 OSC），因 source 是 ADR-030 声明的主权单位，各自的读数词汇与契约版本独立演化。与 AppId 正交——AppId 说段"关于哪个应用"，Source 说"谁观测到的"；同一时刻同一 App 可有多个 Source 的段合法重叠（对同一事实的独立证据，摄入不去重）。system 是唯一观测前台性的 Source，其段互斥、时长可求和。 |
 | IdentityKey | 采集器声明的"同一个活动"判据字符串：判据相同 ⇒ 同一活动 ⇒ 同一 Id（快照生长，ADR-018）；服务端以 (Source, IdentityKey) 做 upsert 的 identity guard，回放/查询以它分组。browser=规范化 URL（origin+pathname，掐掉 query/fragment；per-domain 覆写表处理"query 即身份"的站点，如 youtube.com/watch 保留 v 参数），完整原始 URL 存 Attributes——判据可有损，原始数据无损（ADR-012 原则）。vscode=文件路径，system=App+Title（`SystemIdentity.Key`，ADR-020 起由 Agent 客户端计算）。 |
 | AppIcon | App 对应的图标二进制数据，由 Agent 上传，供 Dashboard 展示。 |
 | ApiKey | Auth 平台为 Agent 签发的长期凭证，仅用于向 Auth 平台换取短期 session JWT，不随上传请求直接发送。上传时携带的凭证是换得的 Bearer JWT。_Avoid_: 把 ApiKey 说成"上传凭证"（那是 ADR-004 已退役的旧机制）。 |
