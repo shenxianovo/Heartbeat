@@ -1,4 +1,4 @@
-import { Client, ApiException, DailyRecapResponse, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, SegmentResponse, UpdateMySettingsRequest, DailyQuestionsResponse, BindStrandRequest, MuteMatcherRequest, StrandResponse, type IBindStrandRequest, type IMatcherDto } from './client'
+import { Client, ApiException, DailyRecapResponse, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, SegmentResponse, UpdateMySettingsRequest, DailyQuestionsResponse, CreateStrandRequest, UpdateStrandRequest, MuteMatcherRequest, StrandResponse, type ICreateStrandRequest, type IUpdateStrandRequest, type IMatcherDto } from './client'
 import { authStore } from '../stores/auth'
 
 // ===== Error model =====
@@ -188,11 +188,12 @@ export async function fetchPublicDailyRecap(username: string, params: { date?: s
   return DailyRecapResponse.fromJS(await res.json())
 }
 
-// ===== Strand 知识层（ADR-028/029）=====
+// ===== Strand 知识层（ADR-028/029/031）=====
 // owner-only：确认写知识 + 发问烧 LLM token，无 public 版。
-// questions 的 date 与 recap 同理须携带本地时区偏移，手拼请求；bind/mute 走生成 client。
+// questions 的 date 与 recap 同理须携带本地时区偏移，手拼请求；strand/mute 走生成 client。
+// 已有 Strand 一律按 UUIDv7 定位（ADR-031）——按名收敛的旧 bindStrand 已退役。
 
-export type { IMatcherDto, IMatcherStepDto, IQuestionItemResponse, IBindStrandRequest, IStrandResponse } from './client'
+export type { IMatcherDto, IMatcherStepDto, IQuestionItemResponse, IStrandResponse, ICreateStrandRequest, IUpdateStrandRequest, IKnowledgeErrorResponse } from './client'
 
 export async function fetchDailyQuestions(params: { date?: string }): Promise<DailyQuestionsResponse> {
   const searchParams = new URLSearchParams()
@@ -202,8 +203,17 @@ export async function fetchDailyQuestions(params: { date?: string }): Promise<Da
   return DailyQuestionsResponse.fromJS(await res.json())
 }
 
-export async function bindStrand(req: IBindStrandRequest): Promise<StrandResponse> {
-  return client.bindStrand(BindStrandRequest.fromJS(req))
+/** 整树读取：全部节点（含已结束时期）带 parent ID 与根到自身 path。 */
+export async function fetchStrands(): Promise<StrandResponse[]> {
+  return client.getStrands()
+}
+
+export async function createStrand(req: ICreateStrandRequest): Promise<StrandResponse> {
+  return client.createStrand(CreateStrandRequest.fromJS(req))
+}
+
+export async function updateStrand(id: string, req: IUpdateStrandRequest): Promise<StrandResponse> {
+  return client.updateStrand(id, UpdateStrandRequest.fromJS(req))
 }
 
 /** Mute 一个 Matcher（负向裁决）：别再就它发问。 */

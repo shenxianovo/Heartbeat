@@ -35,17 +35,20 @@ public class KnowledgeIdentityBackfillTests(PostgresContainerFixture fixture) : 
                 Id = Guid.CreateVersion7(),
                 OwnerId = "user-1",
                 Name = "HyperFrames",
+                NormalizedName = "hyperframes",
                 Gloss = "动效框架",
+                Version = 1,
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow,
             };
-            strand.Members.Add(new StrandMatcher { Source = "system", StepsJson = Canonical("code.exe") });
-            strand.Members.Add(new StrandMatcher { Source = "system", StepsJson = LegacyStepsJson("Code.EXE") }); // 归一后与上行撞身份
-            strand.Members.Add(new StrandMatcher { Source = "system", StepsJson = LegacyStepsJson("Blender.exe") }); // 只需改写
+            strand.Members.Add(new StrandMatcher { Id = Guid.CreateVersion7(), Source = "system", StepsJson = Canonical("code.exe") });
+            strand.Members.Add(new StrandMatcher { Id = Guid.CreateVersion7(), Source = "system", StepsJson = LegacyStepsJson("Code.EXE") }); // 归一后与上行撞身份
+            strand.Members.Add(new StrandMatcher { Id = Guid.CreateVersion7(), Source = "system", StepsJson = LegacyStepsJson("Blender.exe") }); // 只需改写
             db.Strands.Add(strand);
 
             db.MutedMatchers.Add(new MutedMatcher
             {
+                Id = Guid.CreateVersion7(),
                 OwnerId = "user-1",
                 Source = "system",
                 StepsJson = LegacyStepsJson("WeChat.EXE"), // 改写成 canonical
@@ -53,6 +56,7 @@ public class KnowledgeIdentityBackfillTests(PostgresContainerFixture fixture) : 
             });
             db.MutedMatchers.Add(new MutedMatcher
             {
+                Id = Guid.CreateVersion7(),
                 OwnerId = "user-1",
                 Source = "system",
                 StepsJson = "not-json", // 无法参与匹配的死行 → 删除
@@ -68,10 +72,10 @@ public class KnowledgeIdentityBackfillTests(PostgresContainerFixture fixture) : 
 
         using (var db = CreateDbContext())
         {
-            var members = await db.StrandMatchers.OrderBy(m => m.Id).ToListAsync();
-            Assert.Equal(2, members.Count); // 撞身份保最早，Blender 行改写保留
-            Assert.Equal(Canonical("code.exe"), members[0].StepsJson);
-            Assert.Equal(Canonical("blender.exe"), members[1].StepsJson);
+            var members = await db.StrandMatchers.ToListAsync();
+            Assert.Equal(2, members.Count); // 撞身份收敛成一行（UUIDv7 同毫秒平局，保哪行不影响身份），Blender 行改写保留
+            Assert.Contains(members, m => m.StepsJson == Canonical("code.exe"));
+            Assert.Contains(members, m => m.StepsJson == Canonical("blender.exe"));
 
             var muted = Assert.Single(await db.MutedMatchers.ToListAsync());
             Assert.Equal(Canonical("wechat.exe"), muted.StepsJson);

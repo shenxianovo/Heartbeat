@@ -1,0 +1,150 @@
+using System;
+using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace Heartbeat.Server.Migrations
+{
+    /// <summary>
+    /// ADR-031 issue 01：层级与时间化 Strand。
+    /// - Strand 增加 ParentStrandId / NormalizedName / StartedOn / EndedOn / Version；
+    ///   存量行全部保留原 UUID/名字/Gloss/Matcher，迁为日期未知的顶层节点。
+    /// - StrandMatcher / MutedMatcher 的自增 Id 迁为 UUIDv7（PG18 uuidv7()）；
+    ///   业务身份仍由 (Source, canonical StepsJson) 唯一索引承载，不受 Id 换型影响。
+    /// - 旧 (OwnerId, lower(Name)) 唯一索引随按名收敛语义退役（ADR-031：同父同名可分时期共存，
+    ///   不重叠由服务层校验）。
+    /// </summary>
+    public partial class HierarchicalTemporalStrand : Migration
+    {
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.AddColumn<DateOnly>(
+                name: "EndedOn",
+                table: "Strands",
+                type: "date",
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "NormalizedName",
+                table: "Strands",
+                type: "character varying(256)",
+                maxLength: 256,
+                nullable: false,
+                defaultValue: "");
+
+            migrationBuilder.AddColumn<Guid>(
+                name: "ParentStrandId",
+                table: "Strands",
+                type: "uuid",
+                nullable: true);
+
+            migrationBuilder.AddColumn<DateOnly>(
+                name: "StartedOn",
+                table: "Strands",
+                type: "date",
+                nullable: true);
+
+            migrationBuilder.AddColumn<long>(
+                name: "Version",
+                table: "Strands",
+                type: "bigint",
+                nullable: false,
+                defaultValue: 0L);
+
+            // 存量行：顶层、日期未知（列默认 NULL 即是）；规范名回填；并发版本从 1 起。
+            migrationBuilder.Sql(
+                """
+                UPDATE "Strands" SET "NormalizedName" = lower(btrim("Name")), "Version" = 1;
+                """);
+
+            // 按名收敛语义退役：同父同名的不同时期允许共存（不重叠由服务层校验）。
+            migrationBuilder.Sql(
+                """
+                DROP INDEX IF EXISTS "IX_Strands_OwnerId_LowerName";
+                """);
+
+            // bigint → uuid 无隐式转换，必须带 USING；存量行现场发 uuidv7()（PG18 内置）。
+            // 行的业务身份是 (Source, canonical StepsJson) 唯一索引，Id 只是持久化身份，可安全重发。
+            migrationBuilder.Sql(
+                """
+                ALTER TABLE "StrandMatchers" ALTER COLUMN "Id" DROP IDENTITY IF EXISTS;
+                ALTER TABLE "StrandMatchers" ALTER COLUMN "Id" TYPE uuid USING uuidv7();
+                ALTER TABLE "MutedMatchers" ALTER COLUMN "Id" DROP IDENTITY IF EXISTS;
+                ALTER TABLE "MutedMatchers" ALTER COLUMN "Id" TYPE uuid USING uuidv7();
+                """);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Strands_OwnerId_ParentStrandId_NormalizedName",
+                table: "Strands",
+                columns: new[] { "OwnerId", "ParentStrandId", "NormalizedName" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Strands_ParentStrandId",
+                table: "Strands",
+                column: "ParentStrandId");
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_Strands_Strands_ParentStrandId",
+                table: "Strands",
+                column: "ParentStrandId",
+                principalTable: "Strands",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.Restrict);
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropForeignKey(
+                name: "FK_Strands_Strands_ParentStrandId",
+                table: "Strands");
+
+            migrationBuilder.DropIndex(
+                name: "IX_Strands_OwnerId_ParentStrandId_NormalizedName",
+                table: "Strands");
+
+            migrationBuilder.DropIndex(
+                name: "IX_Strands_ParentStrandId",
+                table: "Strands");
+
+            migrationBuilder.DropColumn(
+                name: "EndedOn",
+                table: "Strands");
+
+            migrationBuilder.DropColumn(
+                name: "NormalizedName",
+                table: "Strands");
+
+            migrationBuilder.DropColumn(
+                name: "ParentStrandId",
+                table: "Strands");
+
+            migrationBuilder.DropColumn(
+                name: "StartedOn",
+                table: "Strands");
+
+            migrationBuilder.DropColumn(
+                name: "Version",
+                table: "Strands");
+
+            // uuid → bigint 同样无隐式转换：回退重发自增 Id（UUID 身份不可保留，业务身份在唯一索引上）。
+            migrationBuilder.Sql(
+                """
+                ALTER TABLE "StrandMatchers" ALTER COLUMN "Id" TYPE bigint USING (row_number() OVER ());
+                ALTER TABLE "StrandMatchers" ALTER COLUMN "Id" ADD GENERATED BY DEFAULT AS IDENTITY;
+                SELECT setval(pg_get_serial_sequence('"StrandMatchers"', 'Id'),
+                              COALESCE((SELECT max("Id") FROM "StrandMatchers"), 0) + 1, false);
+                ALTER TABLE "MutedMatchers" ALTER COLUMN "Id" TYPE bigint USING (row_number() OVER ());
+                ALTER TABLE "MutedMatchers" ALTER COLUMN "Id" ADD GENERATED BY DEFAULT AS IDENTITY;
+                SELECT setval(pg_get_serial_sequence('"MutedMatchers"', 'Id'),
+                              COALESCE((SELECT max("Id") FROM "MutedMatchers"), 0) + 1, false);
+                """);
+
+            migrationBuilder.Sql(
+                """
+                CREATE UNIQUE INDEX "IX_Strands_OwnerId_LowerName" ON "Strands" ("OwnerId", lower("Name"));
+                """);
+        }
+    }
+}

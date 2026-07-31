@@ -165,7 +165,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
 
         // 用户裁决：tool-a 绑进 Strand，tool-b 静音——两个出口都要把问题从队列里 diff 掉
         var knowledge = new KnowledgeService(db);
-        await knowledge.BindStrandAsync("user-1", new BindStrandRequest
+        await knowledge.CreateStrandAsync("user-1", new CreateStrandRequest
         {
             Name = "工具甲",
             Gloss = "",

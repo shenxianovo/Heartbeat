@@ -1,6 +1,6 @@
 # 01: 层级与时间化 Strand
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -40,15 +40,15 @@ Status: ready-for-agent
 
 ## Acceptance criteria
 
-- [ ] 现有 Strand 数据升级后均为顶层、日期未知且原 UUID/名称/Gloss/Matcher/Mute 完整保留
-- [ ] StrandMatcher 与 MutedMatcher 不再使用自增 ID，新建记录由应用层生成 UUIDv7
-- [ ] 已有 Strand 的所有写操作按 ID 定位；同名不再成为隐式更新或绑定依据
-- [ ] 服务层可阻止环、跨 Owner 父级、非法日期和同父同名的重叠有效范围
-- [ ] 子节点已知日期范围不能超出父节点已知范围，未知端点按无界规则一致处理
-- [ ] 父级可零 Matcher；读取树时可获得稳定的祖先路径
-- [ ] 结束含活跃子节点的父级返回显式冲突，不静默结束或移动子节点
-- [ ] 更新接口具备并发冲突检测，供后续 KnowledgeChangeSet 原子提交复用
-- [ ] 数据迁移与领域/API 测试覆盖主要成功和失败路径
+- [x] 现有 Strand 数据升级后均为顶层、日期未知且原 UUID/名称/Gloss/Matcher/Mute 完整保留
+- [x] StrandMatcher 与 MutedMatcher 不再使用自增 ID，新建记录由应用层生成 UUIDv7
+- [x] 已有 Strand 的所有写操作按 ID 定位；同名不再成为隐式更新或绑定依据
+- [x] 服务层可阻止环、跨 Owner 父级、非法日期和同父同名的重叠有效范围
+- [x] 子节点已知日期范围不能超出父节点已知范围，未知端点按无界规则一致处理
+- [x] 父级可零 Matcher；读取树时可获得稳定的祖先路径
+- [x] 结束含活跃子节点的父级返回显式冲突，不静默结束或移动子节点
+- [x] 更新接口具备并发冲突检测，供后续 KnowledgeChangeSet 原子提交复用
+- [x] 数据迁移与领域/API 测试覆盖主要成功和失败路径
 
 ## Blocked by
 

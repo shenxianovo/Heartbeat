@@ -118,15 +118,26 @@ namespace Heartbeat.Server.Data
 
             modelBuilder.Entity<Strand>(entity =>
             {
-                // Id 为服务端生成的 UUIDv7。
+                // Id 为应用层生成的 UUIDv7（ADR-031 §1）。
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Id).ValueGeneratedNever();
 
                 entity.Property(e => e.Name).HasMaxLength(256);
+                entity.Property(e => e.NormalizedName).HasMaxLength(256);
 
-                // 无 Id 提交的收敛键：按 (OwnerId, lower(Name)) 定位既有行——大小写变体不裂出第二条
-                // Strand（指纹分家）。函数式唯一索引在 NormalizeMatcherIdentity 迁移里以 SQL 建，
-                // EF 模型不声明（EF Core 不支持表达式索引）。
+                // 严格单父级树（ADR-031 §2）：自引用 FK，无环由服务层校验（数据库表达不了）。
+                // 不级联删除——没有删除子树的领域操作。
+                entity.HasOne(e => e.Parent)
+                    .WithMany()
+                    .HasForeignKey(e => e.ParentStrandId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                // 同 Owner、同父、同规范名允许多行（不同时期），日期范围不重叠由服务层校验——
+                // 旧 (OwnerId, lower(Name)) 唯一索引随按名收敛语义退役（ADR-031 迁移）。
+                entity.HasIndex(e => new { e.OwnerId, e.ParentStrandId, e.NormalizedName });
+
+                // 陈旧提案不覆盖新编辑（ADR-031 §6）：UPDATE 带 WHERE Version = 读取值。
+                entity.Property(e => e.Version).IsConcurrencyToken();
 
                 entity.HasMany(e => e.Members)
                     .WithOne(m => m.Strand)
@@ -136,7 +147,9 @@ namespace Heartbeat.Server.Data
 
             modelBuilder.Entity<StrandMatcher>(entity =>
             {
+                // Id 为应用层生成的 UUIDv7（ADR-031 §1）；业务身份仍是 canonical 谓词。
                 entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).ValueGeneratedNever();
 
                 entity.Property(e => e.Source).HasMaxLength(64);
 
@@ -147,7 +160,9 @@ namespace Heartbeat.Server.Data
 
             modelBuilder.Entity<MutedMatcher>(entity =>
             {
+                // Id 为应用层生成的 UUIDv7（ADR-031 §1）。
                 entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).ValueGeneratedNever();
 
                 entity.Property(e => e.Source).HasMaxLength(64);
 

@@ -6,7 +6,8 @@ namespace Heartbeat.Server.Entities
     /// </summary>
     public class MutedMatcher
     {
-        public long Id { get; set; }
+        /// <summary>UUIDv7，应用层生成（ADR-031 §1）；业务身份仍是 (Owner, Source, canonical StepsJson)。</summary>
+        public Guid Id { get; set; }
 
         public string OwnerId { get; set; } = string.Empty;
 

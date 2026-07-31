@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { fetchDailyQuestions, bindStrand, muteMatcher, type IQuestionItemResponse, type IMatcherDto } from '../api/index'
+import { fetchDailyQuestions, createStrand, muteMatcher, toApiError, type IQuestionItemResponse, type IMatcherDto } from '../api/index'
 import { Card } from '@/components/ui/card'
 
 /**
- * 发问面板（ADR-029 §4/§5）：owner-only。判官每天最多端上 3 张问题卡，
+ * 发问面板（ADR-029 §4/§5，身份随 ADR-031）：owner-only。判官每天最多端上 3 张问题卡，
  * 每张锚定一个 Matcher 提案（观测指纹）+ AI 的一次性名字/释义提案。
- * 三出口：入库（绑定 Strand）/ 别再问（Mute Matcher）/ 跳过（纯客户端，下次 diff 再端上来）。
+ * 三出口：入库（新建 Strand）/ 别再问（Mute Matcher）/ 跳过（纯客户端，下次 diff 再端上来）。
+ * 按名归入已退役（ADR-031）：撞上同名有效期即服务端 409，提示改用知识管理归入既有脉络。
  * 策展纪律：指纹只收特异性标识；通用工具写进释义，不进指纹。
  */
 const props = defineProps<{ selectedDate: string }>()
@@ -16,16 +17,13 @@ interface Draft {
   name: string
   gloss: string
   busy: boolean
+  error: string | null
 }
 
 const drafts = ref<Draft[]>([])
 
 /** 读数展示名词典（随 questions 响应下发，来自采集器声明的 label，ADR-030）：缺失回落读数原名。 */
 const readingLabels = ref<Record<string, string>>({})
-
-/** 归入既有脉络的轻提示（新建保持静默）：让"指纹在长"可感知，也是撞错名的唯一发现信号。 */
-const notice = ref<string | null>(null)
-let noticeTimer: ReturnType<typeof setTimeout> | undefined
 
 async function load() {
   try {
@@ -36,6 +34,7 @@ async function load() {
       name: q.proposedName ?? '',
       gloss: q.proposedGloss ?? '',
       busy: false,
+      error: null,
     }))
   } catch {
     drafts.value = [] // 提问是可选增强，取数失败静默不打扰
@@ -65,16 +64,22 @@ function draftKey(d: Draft): string {
 async function submit(d: Draft) {
   if (!d.name.trim() || !d.q.matcher) return
   d.busy = true
+  d.error = null
   try {
-    const res = await bindStrand({ name: d.name.trim(), gloss: d.gloss.trim(), members: [d.q.matcher] })
-    // createdAt < updatedAt ⇔ 服务端归入了既有 Strand（指纹并集追加，见 KnowledgeService）
-    if (res.createdAt && res.updatedAt && res.createdAt.getTime() < res.updatedAt.getTime()) {
-      notice.value = `已归入既有脉络「${res.name}」 · 指纹 ${res.members?.length ?? 0} 条`
-      clearTimeout(noticeTimer)
-      noticeTimer = setTimeout(() => { notice.value = null }, 5000)
-    }
+    await createStrand({
+      name: d.name.trim(),
+      gloss: d.gloss.trim(),
+      parentStrandId: undefined,
+      startedOn: undefined,
+      endedOn: undefined,
+      members: [d.q.matcher],
+    })
     remove(d)
-  } catch {
+  } catch (e) {
+    const err = toApiError(e)
+    d.error = err.kind === 'http' && err.status === 409
+      ? '已有同名脉络在有效期内——如果是同一件事，请到知识管理里把这个指纹加进它'
+      : '保存失败，请重试'
     d.busy = false
   }
 }
@@ -92,13 +97,11 @@ async function mute(d: Draft) {
 </script>
 
 <template>
-  <Card v-if="drafts.length > 0 || notice" class="mb-6 gap-3 border-border/60 bg-card/80 py-5 backdrop-blur-sm">
+  <Card v-if="drafts.length > 0" class="mb-6 gap-3 border-border/60 bg-card/80 py-5 backdrop-blur-sm">
     <div class="flex flex-col gap-4 px-5">
-      <h2 v-if="drafts.length > 0" class="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+      <h2 class="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
         认识一下 · {{ drafts.length }} 个说不清的活动
       </h2>
-
-      <p v-if="notice" class="text-[0.8rem] text-muted-foreground">✓ {{ notice }}</p>
 
       <div
         v-for="d in drafts"
@@ -129,6 +132,8 @@ async function mute(d: Draft) {
             class="w-full rounded-md border border-border/50 bg-background/60 px-2.5 py-1.5 text-[0.85rem] outline-none focus:border-border"
           />
         </div>
+
+        <p v-if="d.error" class="text-[0.78rem] text-destructive">{{ d.error }}</p>
 
         <div class="flex items-center justify-end gap-2">
           <button

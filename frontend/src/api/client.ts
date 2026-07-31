@@ -14,7 +14,7 @@ export class Client {
 
     constructor(baseUrl?: string, http?: { fetch(url: RequestInfo, init?: RequestInit): Promise<Response> }) {
         this.http = http ? http : window as any;
-        this.baseUrl = baseUrl ?? "http://localhost/";
+        this.baseUrl = baseUrl ?? "http://localhost:5023/";
     }
 
     /**
@@ -390,7 +390,51 @@ export class Client {
     /**
      * @return OK
      */
-    bindStrand(body: BindStrandRequest): Promise<StrandResponse> {
+    getStrands(): Promise<StrandResponse[]> {
+        let url_ = this.baseUrl + "/api/v1/knowledge/strands";
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processGetStrands(_response);
+        });
+    }
+
+    protected processGetStrands(response: Response): Promise<StrandResponse[]> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            if (Array.isArray(resultData200)) {
+                result200 = [] as any;
+                for (let item of resultData200)
+                    result200!.push(StrandResponse.fromJS(item));
+            }
+            else {
+                result200 = null as any;
+            }
+            return result200;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<StrandResponse[]>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    createStrand(body: CreateStrandRequest): Promise<StrandResponse> {
         let url_ = this.baseUrl + "/api/v1/knowledge/strands";
         url_ = url_.replace(/[?&]$/, "");
 
@@ -406,11 +450,11 @@ export class Client {
         };
 
         return this.http.fetch(url_, options_).then((_response: Response) => {
-            return this.processBindStrand(_response);
+            return this.processCreateStrand(_response);
         });
     }
 
-    protected processBindStrand(response: Response): Promise<StrandResponse> {
+    protected processCreateStrand(response: Response): Promise<StrandResponse> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
@@ -419,6 +463,215 @@ export class Client {
             let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
             result200 = StrandResponse.fromJS(resultData200);
             return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result400 = KnowledgeErrorResponse.fromJS(resultData400);
+            return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        } else if (status === 409) {
+            return response.text().then((_responseText) => {
+            let result409: any = null;
+            let resultData409 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result409 = KnowledgeErrorResponse.fromJS(resultData409);
+            return throwException("Conflict", status, _responseText, _headers, result409);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<StrandResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    updateStrand(id: string, body: UpdateStrandRequest): Promise<StrandResponse> {
+        let url_ = this.baseUrl + "/api/v1/knowledge/strands/{id}";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processUpdateStrand(_response);
+        });
+    }
+
+    protected processUpdateStrand(response: Response): Promise<StrandResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = StrandResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result400 = KnowledgeErrorResponse.fromJS(resultData400);
+            return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        } else if (status === 404) {
+            return response.text().then((_responseText) => {
+            let result404: any = null;
+            let resultData404 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result404 = KnowledgeErrorResponse.fromJS(resultData404);
+            return throwException("Not Found", status, _responseText, _headers, result404);
+            });
+        } else if (status === 409) {
+            return response.text().then((_responseText) => {
+            let result409: any = null;
+            let resultData409 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result409 = KnowledgeErrorResponse.fromJS(resultData409);
+            return throwException("Conflict", status, _responseText, _headers, result409);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<StrandResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    moveStrand(id: string, body: MoveStrandRequest): Promise<StrandResponse> {
+        let url_ = this.baseUrl + "/api/v1/knowledge/strands/{id}/move";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processMoveStrand(_response);
+        });
+    }
+
+    protected processMoveStrand(response: Response): Promise<StrandResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = StrandResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result400 = KnowledgeErrorResponse.fromJS(resultData400);
+            return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        } else if (status === 404) {
+            return response.text().then((_responseText) => {
+            let result404: any = null;
+            let resultData404 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result404 = KnowledgeErrorResponse.fromJS(resultData404);
+            return throwException("Not Found", status, _responseText, _headers, result404);
+            });
+        } else if (status === 409) {
+            return response.text().then((_responseText) => {
+            let result409: any = null;
+            let resultData409 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result409 = KnowledgeErrorResponse.fromJS(resultData409);
+            return throwException("Conflict", status, _responseText, _headers, result409);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<StrandResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    endStrand(id: string, body: EndStrandRequest): Promise<StrandResponse> {
+        let url_ = this.baseUrl + "/api/v1/knowledge/strands/{id}/end";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processEndStrand(_response);
+        });
+    }
+
+    protected processEndStrand(response: Response): Promise<StrandResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = StrandResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result400 = KnowledgeErrorResponse.fromJS(resultData400);
+            return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        } else if (status === 404) {
+            return response.text().then((_responseText) => {
+            let result404: any = null;
+            let resultData404 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result404 = KnowledgeErrorResponse.fromJS(resultData404);
+            return throwException("Not Found", status, _responseText, _headers, result404);
+            });
+        } else if (status === 409) {
+            return response.text().then((_responseText) => {
+            let result409: any = null;
+            let resultData409 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result409 = KnowledgeErrorResponse.fromJS(resultData409);
+            return throwException("Conflict", status, _responseText, _headers, result409);
             });
         } else if (status !== 200 && status !== 204) {
             return response.text().then((_responseText) => {
@@ -1551,74 +1804,6 @@ export interface IAppUsageResponse {
     [key: string]: any;
 }
 
-export class BindStrandRequest implements IBindStrandRequest {
-    id?: string | undefined;
-    name?: string;
-    gloss?: string;
-    members?: MatcherDto[];
-
-    [key: string]: any;
-
-    constructor(data?: IBindStrandRequest) {
-        if (data) {
-            for (var property in data) {
-                if (data.hasOwnProperty(property))
-                    (this as any)[property] = (data as any)[property];
-            }
-        }
-    }
-
-    init(_data?: any) {
-        if (_data) {
-            for (var property in _data) {
-                if (_data.hasOwnProperty(property))
-                    this[property] = _data[property];
-            }
-            this.id = _data["id"];
-            this.name = _data["name"];
-            this.gloss = _data["gloss"];
-            if (Array.isArray(_data["members"])) {
-                this.members = [] as any;
-                for (let item of _data["members"])
-                    this.members!.push(MatcherDto.fromJS(item));
-            }
-        }
-    }
-
-    static fromJS(data: any): BindStrandRequest {
-        data = typeof data === 'object' ? data : {};
-        let result = new BindStrandRequest();
-        result.init(data);
-        return result;
-    }
-
-    toJSON(data?: any) {
-        data = typeof data === 'object' ? data : {};
-        for (var property in this) {
-            if (this.hasOwnProperty(property))
-                data[property] = this[property];
-        }
-        data["id"] = this.id;
-        data["name"] = this.name;
-        data["gloss"] = this.gloss;
-        if (Array.isArray(this.members)) {
-            data["members"] = [];
-            for (let item of this.members)
-                data["members"].push(item ? item.toJSON() : undefined as any);
-        }
-        return data;
-    }
-}
-
-export interface IBindStrandRequest {
-    id?: string | undefined;
-    name?: string;
-    gloss?: string;
-    members?: MatcherDto[];
-
-    [key: string]: any;
-}
-
 export class CollectorDeclarationDto implements ICollectorDeclarationDto {
     source?: string;
     version?: number;
@@ -1683,6 +1868,82 @@ export interface ICollectorDeclarationDto {
     version?: number;
     collectorVersion?: string | undefined;
     layers?: DepthLayerDto[];
+
+    [key: string]: any;
+}
+
+export class CreateStrandRequest implements ICreateStrandRequest {
+    name?: string;
+    gloss?: string;
+    parentStrandId?: string | undefined;
+    startedOn?: Date | undefined;
+    endedOn?: Date | undefined;
+    members?: MatcherDto[];
+
+    [key: string]: any;
+
+    constructor(data?: ICreateStrandRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.name = _data["name"];
+            this.gloss = _data["gloss"];
+            this.parentStrandId = _data["parentStrandId"];
+            this.startedOn = _data["startedOn"] ? new Date(_data["startedOn"].toString()) : undefined as any;
+            this.endedOn = _data["endedOn"] ? new Date(_data["endedOn"].toString()) : undefined as any;
+            if (Array.isArray(_data["members"])) {
+                this.members = [] as any;
+                for (let item of _data["members"])
+                    this.members!.push(MatcherDto.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): CreateStrandRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new CreateStrandRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["name"] = this.name;
+        data["gloss"] = this.gloss;
+        data["parentStrandId"] = this.parentStrandId;
+        data["startedOn"] = this.startedOn ? formatDate(this.startedOn) : undefined as any;
+        data["endedOn"] = this.endedOn ? formatDate(this.endedOn) : undefined as any;
+        if (Array.isArray(this.members)) {
+            data["members"] = [];
+            for (let item of this.members)
+                data["members"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface ICreateStrandRequest {
+    name?: string;
+    gloss?: string;
+    parentStrandId?: string | undefined;
+    startedOn?: Date | undefined;
+    endedOn?: Date | undefined;
+    members?: MatcherDto[];
 
     [key: string]: any;
 }
@@ -2155,6 +2416,58 @@ export interface IDeviceStatusResponse {
     [key: string]: any;
 }
 
+export class EndStrandRequest implements IEndStrandRequest {
+    expectedVersion?: number;
+    endedOn?: Date;
+
+    [key: string]: any;
+
+    constructor(data?: IEndStrandRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.expectedVersion = _data["expectedVersion"];
+            this.endedOn = _data["endedOn"] ? new Date(_data["endedOn"].toString()) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): EndStrandRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new EndStrandRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["expectedVersion"] = this.expectedVersion;
+        data["endedOn"] = this.endedOn ? formatDate(this.endedOn) : undefined as any;
+        return data;
+    }
+}
+
+export interface IEndStrandRequest {
+    expectedVersion?: number;
+    endedOn?: Date;
+
+    [key: string]: any;
+}
+
 export class IconUploadRequest implements IIconUploadRequest {
     appName?: string;
     iconData?: string;
@@ -2543,6 +2856,70 @@ export interface IKeyFrequencyResponse {
     [key: string]: any;
 }
 
+export class KnowledgeErrorResponse implements IKnowledgeErrorResponse {
+    code?: string;
+    message?: string;
+    strands?: StrandBriefResponse[];
+
+    [key: string]: any;
+
+    constructor(data?: IKnowledgeErrorResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.code = _data["code"];
+            this.message = _data["message"];
+            if (Array.isArray(_data["strands"])) {
+                this.strands = [] as any;
+                for (let item of _data["strands"])
+                    this.strands!.push(StrandBriefResponse.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): KnowledgeErrorResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new KnowledgeErrorResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["code"] = this.code;
+        data["message"] = this.message;
+        if (Array.isArray(this.strands)) {
+            data["strands"] = [];
+            for (let item of this.strands)
+                data["strands"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface IKnowledgeErrorResponse {
+    code?: string;
+    message?: string;
+    strands?: StrandBriefResponse[];
+
+    [key: string]: any;
+}
+
 export class MatcherDto implements IMatcherDto {
     source?: string;
     steps?: MatcherStepDto[];
@@ -2707,6 +3084,58 @@ export class MeResponse implements IMeResponse {
 export interface IMeResponse {
     username?: string;
     isPublic?: boolean;
+
+    [key: string]: any;
+}
+
+export class MoveStrandRequest implements IMoveStrandRequest {
+    expectedVersion?: number;
+    newParentStrandId?: string | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IMoveStrandRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.expectedVersion = _data["expectedVersion"];
+            this.newParentStrandId = _data["newParentStrandId"];
+        }
+    }
+
+    static fromJS(data: any): MoveStrandRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new MoveStrandRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["expectedVersion"] = this.expectedVersion;
+        data["newParentStrandId"] = this.newParentStrandId;
+        return data;
+    }
+}
+
+export interface IMoveStrandRequest {
+    expectedVersion?: number;
+    newParentStrandId?: string | undefined;
 
     [key: string]: any;
 }
@@ -2967,10 +3396,75 @@ export interface ISegmentUploadRequest {
     [key: string]: any;
 }
 
-export class StrandResponse implements IStrandResponse {
+export class StrandBriefResponse implements IStrandBriefResponse {
     id?: string;
     name?: string;
+    startedOn?: Date | undefined;
+    endedOn?: Date | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IStrandBriefResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.id = _data["id"];
+            this.name = _data["name"];
+            this.startedOn = _data["startedOn"] ? new Date(_data["startedOn"].toString()) : undefined as any;
+            this.endedOn = _data["endedOn"] ? new Date(_data["endedOn"].toString()) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): StrandBriefResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new StrandBriefResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["id"] = this.id;
+        data["name"] = this.name;
+        data["startedOn"] = this.startedOn ? formatDate(this.startedOn) : undefined as any;
+        data["endedOn"] = this.endedOn ? formatDate(this.endedOn) : undefined as any;
+        return data;
+    }
+}
+
+export interface IStrandBriefResponse {
+    id?: string;
+    name?: string;
+    startedOn?: Date | undefined;
+    endedOn?: Date | undefined;
+
+    [key: string]: any;
+}
+
+export class StrandResponse implements IStrandResponse {
+    id?: string;
+    parentStrandId?: string | undefined;
+    name?: string;
     gloss?: string;
+    startedOn?: Date | undefined;
+    endedOn?: Date | undefined;
+    path?: string[];
+    version?: number;
     members?: MatcherDto[];
     createdAt?: Date;
     updatedAt?: Date;
@@ -2993,8 +3487,17 @@ export class StrandResponse implements IStrandResponse {
                     this[property] = _data[property];
             }
             this.id = _data["id"];
+            this.parentStrandId = _data["parentStrandId"];
             this.name = _data["name"];
             this.gloss = _data["gloss"];
+            this.startedOn = _data["startedOn"] ? new Date(_data["startedOn"].toString()) : undefined as any;
+            this.endedOn = _data["endedOn"] ? new Date(_data["endedOn"].toString()) : undefined as any;
+            if (Array.isArray(_data["path"])) {
+                this.path = [] as any;
+                for (let item of _data["path"])
+                    this.path!.push(item);
+            }
+            this.version = _data["version"];
             if (Array.isArray(_data["members"])) {
                 this.members = [] as any;
                 for (let item of _data["members"])
@@ -3019,8 +3522,17 @@ export class StrandResponse implements IStrandResponse {
                 data[property] = this[property];
         }
         data["id"] = this.id;
+        data["parentStrandId"] = this.parentStrandId;
         data["name"] = this.name;
         data["gloss"] = this.gloss;
+        data["startedOn"] = this.startedOn ? formatDate(this.startedOn) : undefined as any;
+        data["endedOn"] = this.endedOn ? formatDate(this.endedOn) : undefined as any;
+        if (Array.isArray(this.path)) {
+            data["path"] = [];
+            for (let item of this.path)
+                data["path"].push(item);
+        }
+        data["version"] = this.version;
         if (Array.isArray(this.members)) {
             data["members"] = [];
             for (let item of this.members)
@@ -3034,8 +3546,13 @@ export class StrandResponse implements IStrandResponse {
 
 export interface IStrandResponse {
     id?: string;
+    parentStrandId?: string | undefined;
     name?: string;
     gloss?: string;
+    startedOn?: Date | undefined;
+    endedOn?: Date | undefined;
+    path?: string[];
+    version?: number;
     members?: MatcherDto[];
     createdAt?: Date;
     updatedAt?: Date;
@@ -3087,6 +3604,82 @@ export class UpdateMySettingsRequest implements IUpdateMySettingsRequest {
 
 export interface IUpdateMySettingsRequest {
     isPublic?: boolean;
+
+    [key: string]: any;
+}
+
+export class UpdateStrandRequest implements IUpdateStrandRequest {
+    expectedVersion?: number;
+    name?: string;
+    gloss?: string;
+    startedOn?: Date | undefined;
+    endedOn?: Date | undefined;
+    members?: MatcherDto[];
+
+    [key: string]: any;
+
+    constructor(data?: IUpdateStrandRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.expectedVersion = _data["expectedVersion"];
+            this.name = _data["name"];
+            this.gloss = _data["gloss"];
+            this.startedOn = _data["startedOn"] ? new Date(_data["startedOn"].toString()) : undefined as any;
+            this.endedOn = _data["endedOn"] ? new Date(_data["endedOn"].toString()) : undefined as any;
+            if (Array.isArray(_data["members"])) {
+                this.members = [] as any;
+                for (let item of _data["members"])
+                    this.members!.push(MatcherDto.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): UpdateStrandRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new UpdateStrandRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["expectedVersion"] = this.expectedVersion;
+        data["name"] = this.name;
+        data["gloss"] = this.gloss;
+        data["startedOn"] = this.startedOn ? formatDate(this.startedOn) : undefined as any;
+        data["endedOn"] = this.endedOn ? formatDate(this.endedOn) : undefined as any;
+        if (Array.isArray(this.members)) {
+            data["members"] = [];
+            for (let item of this.members)
+                data["members"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface IUpdateStrandRequest {
+    expectedVersion?: number;
+    name?: string;
+    gloss?: string;
+    startedOn?: Date | undefined;
+    endedOn?: Date | undefined;
+    members?: MatcherDto[];
 
     [key: string]: any;
 }
@@ -3153,6 +3746,12 @@ export interface IWeeklyReportResponse {
     apps?: AppDurationItem[];
 
     [key: string]: any;
+}
+
+function formatDate(d: Date) {
+    return d.getFullYear() + '-' + 
+        (d.getMonth() < 9 ? ('0' + (d.getMonth()+1)) : (d.getMonth()+1)) + '-' +
+        (d.getDate() < 10 ? ('0' + d.getDate()) : d.getDate());
 }
 
 export class ApiException extends Error {
