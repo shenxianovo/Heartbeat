@@ -274,7 +274,10 @@ namespace Heartbeat.Server.Services
                     return PromotionResult.Fail(EpisodeErrorCodes.ProbeResolved, "Probe is already resolved.");
             }
 
-            await using var tx = await _db.Database.BeginTransactionAsync(ct);
+            // 提交端（KnowledgeCommitService）把整个 change set 包在一个事务里时加入之，
+            // 单独调用时自己开启——两条路径同一套校验与回滚语义。
+            var ownsTransaction = _db.Database.CurrentTransaction == null;
+            await using var tx = ownsTransaction ? await _db.Database.BeginTransactionAsync(ct) : null;
 
             Strand strand;
             if (request.NewStrand is { } create)
@@ -326,7 +329,7 @@ namespace Heartbeat.Server.Services
             try
             {
                 await _db.SaveChangesAsync(ct);
-                await tx.CommitAsync(ct);
+                if (tx != null) await tx.CommitAsync(ct);
             }
             catch (DbUpdateConcurrencyException)
             {

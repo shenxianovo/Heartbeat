@@ -81,9 +81,8 @@ public class AskingGeneratorTests
         var content = """
             好的，以下是问题：
             ```json
-            [{"question":"这是在直播吗？","evidence":"12:00–15:00 VALORANT 与 livehime 并行",
-              "matcher":{"source":"system","steps":[{"reading":"app","op":"EQUALS","value":" livehime "}]},
-              "proposedName":"直播","proposedGloss":"B 站直播"}]
+            [{"question":"这是在直播吗？",
+              "matcher":{"source":"system","steps":[{"reading":"app","op":"EQUALS","value":" livehime "}]}}]
             ```
             """;
 
@@ -92,10 +91,25 @@ public class AskingGeneratorTests
         Assert.NotNull(result);
         var q = Assert.Single(result);
         Assert.Equal("这是在直播吗？", q.Question);
-        Assert.Equal("直播", q.ProposedName);
         // matcher 已规范化：op 小写、值 trim
         var step = Assert.Single(q.Matcher.Steps);
         Assert.Equal(("equals", "livehime"), (step.Op, step.Value));
+    }
+
+    [Fact]
+    public void Parse_LegacySingleStageFields_Ignored()
+    {
+        // 判官若仍回旧单阶段字段（evidence / proposedName / proposedGloss），照常解析、字段丢弃——
+        // 证据由服务端物化，名字/释义归用户（ADR-031 §6）。
+        var content = """
+            [{"question":"这是什么？","evidence":"整段下午","proposedName":"猜的","proposedGloss":"猜的释义",
+              "matcher":{"source":"system","steps":[{"reading":"app","op":"equals","value":"x"}]}}]
+            """;
+
+        var result = OpenAiCompatibleAskingGenerator.Parse(content);
+
+        Assert.NotNull(result);
+        Assert.Equal("这是什么？", Assert.Single(result).Question);
     }
 
     [Fact]

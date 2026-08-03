@@ -15,12 +15,18 @@ namespace Heartbeat.Server.Services
         string ReadingVocabulary = "");
 
     /// <summary>
+    /// 判官提名的一条候选（ADR-031 §6 第一阶段）：只有"问什么"与锚定谓词——
+    /// 名字/释义的预填提案已退役，私有语义改由用户自然语言回答在第二阶段解释。
+    /// </summary>
+    public sealed record AskingCandidate(string Question, MatcherDto Matcher);
+
+    /// <summary>
     /// 发问判官（ADR-029 §4）：对当日 digest 的第二次独立 LLM 调用。
     /// 返回 null = 调用失败（不写缓存）；空列表 = 今天没有值得问的（合法结果，可缓存）。
     /// </summary>
     public interface IAskingGenerator
     {
-        Task<IReadOnlyList<QuestionItemResponse>?> AskAsync(
+        Task<IReadOnlyList<AskingCandidate>?> AskAsync(
             string digest, AskingContext context, CancellationToken ct = default);
     }
 
@@ -52,9 +58,13 @@ namespace Heartbeat.Server.Services
             {{VOCAB}}
             - steps：观测读数路径谓词，每步 {"reading","op","value"}；op ∈ "equals" | "prefix" | "contains"
             - 默认只用最浅读数一步；只有当摘要分解显示同一读数值下明显混着多件事时才加更深读数的细化步。
+            - 谓词必须命中摘要里真实出现过的活动。不要凭想象造值——命中不了的问题会被丢弃。
+
+            只提问，不要替用户猜答案：名字、释义、层级、起止日期都由用户自己在下一步用自然语言说明。
+            你的问题应当开放（"这是什么？"而不是"这是不是 X 项目？"）。
 
             严格输出 JSON 数组（可为空），不要输出任何其他文字：
-            [{"question":"向用户提的一句问题","evidence":"你在摘要里看到的依据（时段+组合）","matcher":{"source":"system","steps":[{"reading":"app","op":"equals","value":"…"}]},"proposedName":"猜的名字（没把握则空串）","proposedGloss":"猜的一句话释义（同上）"}]
+            [{"question":"向用户提的一句问题","matcher":{"source":"system","steps":[{"reading":"app","op":"equals","value":"…"}]}}]
             """;
 
         /// <summary>组装判官 system prompt（纯函数）：词汇段注入模板。空词汇回落种子声明。</summary>
@@ -66,7 +76,7 @@ namespace Heartbeat.Server.Services
 
         private static readonly JsonSerializerOptions ParseOptions = new() { PropertyNameCaseInsensitive = true };
 
-        public async Task<IReadOnlyList<QuestionItemResponse>?> AskAsync(
+        public async Task<IReadOnlyList<AskingCandidate>?> AskAsync(
             string digest, AskingContext context, CancellationToken ct = default)
         {
             string content;
@@ -103,8 +113,10 @@ namespace Heartbeat.Server.Services
         /// <summary>
         /// 宽容解析（纯函数）：剥代码围栏、取最外层数组；整体不可解析返回 null（视为失败），
         /// 个别条目无效（缺问题文本 / matcher 规范化失败）则剔除该条。
+        /// 判官若仍回旧字段（evidence / proposedName / proposedGloss）一并忽略——
+        /// 证据由服务端从真实 segments 物化，名字/释义归用户。
         /// </summary>
-        public static IReadOnlyList<QuestionItemResponse>? Parse(string content)
+        public static IReadOnlyList<AskingCandidate>? Parse(string content)
         {
             var start = content.IndexOf('[');
             var end = content.LastIndexOf(']');
@@ -121,19 +133,12 @@ namespace Heartbeat.Server.Services
             }
             if (items == null) return null;
 
-            var result = new List<QuestionItemResponse>();
+            var result = new List<AskingCandidate>();
             foreach (var item in items)
             {
                 if (item?.Matcher == null || string.IsNullOrWhiteSpace(item.Question)) continue;
                 if (MatcherNormalizer.Normalize(item.Matcher) is not { } matcher) continue;
-                result.Add(new QuestionItemResponse
-                {
-                    Matcher = matcher,
-                    Question = item.Question.Trim(),
-                    Evidence = (item.Evidence ?? string.Empty).Trim(),
-                    ProposedName = (item.ProposedName ?? string.Empty).Trim(),
-                    ProposedGloss = (item.ProposedGloss ?? string.Empty).Trim(),
-                });
+                result.Add(new AskingCandidate(item.Question.Trim(), matcher));
             }
             return result;
         }
@@ -141,10 +146,7 @@ namespace Heartbeat.Server.Services
         private sealed class RawItem
         {
             public string? Question { get; set; }
-            public string? Evidence { get; set; }
             public MatcherDto? Matcher { get; set; }
-            public string? ProposedName { get; set; }
-            public string? ProposedGloss { get; set; }
         }
     }
 }

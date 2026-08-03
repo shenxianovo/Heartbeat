@@ -16,22 +16,76 @@ namespace Heartbeat.Server.Controllers
     public class KnowledgeController(
         KnowledgeService knowledgeService,
         QuestionService questionService,
+        KnowledgeProposalService proposalService,
+        KnowledgeCommitService commitService,
         ICurrentUserService currentUser) : ControllerBase
     {
         private readonly KnowledgeService _knowledgeService = knowledgeService;
         private readonly QuestionService _questionService = questionService;
+        private readonly KnowledgeProposalService _proposalService = proposalService;
+        private readonly KnowledgeCommitService _commitService = commitService;
         private readonly ICurrentUserService _currentUser = currentUser;
 
         /// <summary>
-        /// 当日候选提问（ADR-029 §4 发问判官）：date 带调用方时区 offset 切日窗口（与 recap 同约）。
-        /// 缓存按天 + 水位；已裁决的问题读时 diff 掉。
+        /// 当日证据卡问题（ADR-031 §6 两阶段第一步）：date 带调用方时区 offset 切日窗口（与 recap 同约）。
+        /// 缓存按天 + 水位 + payload 版本；已裁决的问题读时 diff 掉；活跃 Probe 命中读时追加。
         /// </summary>
         [HttpGet("questions")]
         [EndpointName("getDailyQuestions")]
-        public async Task<ActionResult<DailyQuestionsResponse>> GetDailyQuestions(
+        public async Task<ActionResult<AskingQuestionsResponse>> GetDailyQuestions(
             [FromQuery] DateTimeOffset date, CancellationToken ct = default)
         {
             return await _questionService.GetDailyQuestionsAsync(_currentUser.GetUserId(), date, ct);
+        }
+
+        /// <summary>
+        /// 两阶段教学第二步（ADR-031 §6）：对某张证据卡的自然语言回答 → 可编辑 KnowledgeChangeSet
+        /// 提案。零写入——LLM 只产提案，用户确认后走 commit 端点。
+        /// </summary>
+        [HttpPost("questions/{id:guid}/propose")]
+        [EndpointName("proposeFromQuestion")]
+        [ProducesResponseType<KnowledgeProposalResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<KnowledgeErrorResponse>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<KnowledgeErrorResponse>(StatusCodes.Status404NotFound)]
+        [ProducesResponseType<KnowledgeErrorResponse>(StatusCodes.Status502BadGateway)]
+        public async Task<IActionResult> ProposeFromQuestion(
+            Guid id, [FromBody] ProposeFromQuestionRequest request, CancellationToken ct = default)
+        {
+            var result = await _proposalService.ProposeAsync(_currentUser.GetUserId(), id, request, ct);
+            if (result.Proposal != null) return Ok(result.Proposal);
+            return result.Error!.Code switch
+            {
+                ProposalErrorCodes.QuestionNotFound => NotFound(result.Error),
+                ProposalErrorCodes.GenerationFailed => StatusCode(StatusCodes.Status502BadGateway, result.Error),
+                _ => BadRequest(result.Error),
+            };
+        }
+
+        /// <summary>
+        /// 共享事务提交端（ADR-031 §6）：主动发问、Recap 纠正与手动复合操作共用。
+        /// 服务端重新校验全部领域不变量、Owner 与并发版本；选中操作全部成功才提交，
+        /// 失败整批回滚并定位到具体 operation。
+        /// </summary>
+        [HttpPost("changesets")]
+        [EndpointName("commitChangeSet")]
+        [ProducesResponseType<CommitChangeSetResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<ChangeSetErrorResponse>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<ChangeSetErrorResponse>(StatusCodes.Status404NotFound)]
+        [ProducesResponseType<ChangeSetErrorResponse>(StatusCodes.Status409Conflict)]
+        public async Task<IActionResult> CommitChangeSet(
+            [FromBody] CommitChangeSetRequest request, CancellationToken ct = default)
+        {
+            var result = await _commitService.CommitAsync(_currentUser.GetUserId(), request, ct);
+            if (result.Response != null) return Ok(result.Response);
+            return result.Error!.Error.Code switch
+            {
+                KnowledgeErrorCodes.NotFound => NotFound(result.Error),
+                KnowledgeErrorCodes.VersionConflict or KnowledgeErrorCodes.ActiveChildren
+                    or KnowledgeErrorCodes.Overlap or KnowledgeErrorCodes.Cycle
+                    or KnowledgeErrorCodes.ChildrenOutsideRange
+                    or EpisodeErrorCodes.ProbeResolved => Conflict(result.Error),
+                _ => BadRequest(result.Error),
+            };
         }
 
         /// <summary>整树读取：全部节点（含已结束时期）带 parent ID 与根到自身 path。</summary>
