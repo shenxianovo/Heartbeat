@@ -14,7 +14,7 @@ export class Client {
 
     constructor(baseUrl?: string, http?: { fetch(url: RequestInfo, init?: RequestInit): Promise<Response> }) {
         this.http = http ? http : window as any;
-        this.baseUrl = baseUrl ?? "http://localhost:5023/";
+        this.baseUrl = baseUrl ?? "http://127.0.0.1:58080/";
     }
 
     /**
@@ -257,6 +257,488 @@ export class Client {
     }
 
     /**
+     * @param date (optional) 
+     * @param strandId (optional) 
+     * @return OK
+     */
+    getEpisodes(date: Date | undefined, strandId: string | undefined): Promise<EpisodeResponse[]> {
+        let url_ = this.baseUrl + "/api/v1/knowledge/episodes?";
+        if (date === null)
+            throw new globalThis.Error("The parameter 'date' cannot be null.");
+        else if (date !== undefined)
+            url_ += "date=" + encodeURIComponent(date ? "" + date.toISOString() : "") + "&";
+        if (strandId === null)
+            throw new globalThis.Error("The parameter 'strandId' cannot be null.");
+        else if (strandId !== undefined)
+            url_ += "strandId=" + encodeURIComponent("" + strandId) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processGetEpisodes(_response);
+        });
+    }
+
+    protected processGetEpisodes(response: Response): Promise<EpisodeResponse[]> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            if (Array.isArray(resultData200)) {
+                result200 = [] as any;
+                for (let item of resultData200)
+                    result200!.push(EpisodeResponse.fromJS(item));
+            }
+            else {
+                result200 = null as any;
+            }
+            return result200;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<EpisodeResponse[]>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    createEpisode(body: CreateEpisodeRequest): Promise<EpisodeResponse> {
+        let url_ = this.baseUrl + "/api/v1/knowledge/episodes";
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processCreateEpisode(_response);
+        });
+    }
+
+    protected processCreateEpisode(response: Response): Promise<EpisodeResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = EpisodeResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result400 = KnowledgeErrorResponse.fromJS(resultData400);
+            return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<EpisodeResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    updateEpisode(id: string, body: UpdateEpisodeRequest): Promise<EpisodeResponse> {
+        let url_ = this.baseUrl + "/api/v1/knowledge/episodes/{id}";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processUpdateEpisode(_response);
+        });
+    }
+
+    protected processUpdateEpisode(response: Response): Promise<EpisodeResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = EpisodeResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result400 = KnowledgeErrorResponse.fromJS(resultData400);
+            return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        } else if (status === 404) {
+            return response.text().then((_responseText) => {
+            let result404: any = null;
+            let resultData404 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result404 = KnowledgeErrorResponse.fromJS(resultData404);
+            return throwException("Not Found", status, _responseText, _headers, result404);
+            });
+        } else if (status === 409) {
+            return response.text().then((_responseText) => {
+            let result409: any = null;
+            let resultData409 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result409 = KnowledgeErrorResponse.fromJS(resultData409);
+            return throwException("Conflict", status, _responseText, _headers, result409);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<EpisodeResponse>(null as any);
+    }
+
+    /**
+     * @param expectedVersion (optional) 
+     * @return No Content
+     */
+    deleteEpisode(id: string, expectedVersion: number | undefined): Promise<void> {
+        let url_ = this.baseUrl + "/api/v1/knowledge/episodes/{id}?";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        if (expectedVersion === null)
+            throw new globalThis.Error("The parameter 'expectedVersion' cannot be null.");
+        else if (expectedVersion !== undefined)
+            url_ += "expectedVersion=" + encodeURIComponent("" + expectedVersion) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "DELETE",
+            headers: {
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processDeleteEpisode(_response);
+        });
+    }
+
+    protected processDeleteEpisode(response: Response): Promise<void> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+            return;
+            });
+        } else if (status === 404) {
+            return response.text().then((_responseText) => {
+            let result404: any = null;
+            let resultData404 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result404 = KnowledgeErrorResponse.fromJS(resultData404);
+            return throwException("Not Found", status, _responseText, _headers, result404);
+            });
+        } else if (status === 409) {
+            return response.text().then((_responseText) => {
+            let result409: any = null;
+            let resultData409 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result409 = KnowledgeErrorResponse.fromJS(resultData409);
+            return throwException("Conflict", status, _responseText, _headers, result409);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<void>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    relateEpisode(id: string, body: RelateEpisodeRequest): Promise<EpisodeResponse> {
+        let url_ = this.baseUrl + "/api/v1/knowledge/episodes/{id}/relate";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processRelateEpisode(_response);
+        });
+    }
+
+    protected processRelateEpisode(response: Response): Promise<EpisodeResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = EpisodeResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result400 = KnowledgeErrorResponse.fromJS(resultData400);
+            return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        } else if (status === 404) {
+            return response.text().then((_responseText) => {
+            let result404: any = null;
+            let resultData404 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result404 = KnowledgeErrorResponse.fromJS(resultData404);
+            return throwException("Not Found", status, _responseText, _headers, result404);
+            });
+        } else if (status === 409) {
+            return response.text().then((_responseText) => {
+            let result409: any = null;
+            let resultData409 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result409 = KnowledgeErrorResponse.fromJS(resultData409);
+            return throwException("Conflict", status, _responseText, _headers, result409);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<EpisodeResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    createProbe(id: string, body: CreateProbeRequest): Promise<ProbeResponse> {
+        let url_ = this.baseUrl + "/api/v1/knowledge/episodes/{id}/probes";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processCreateProbe(_response);
+        });
+    }
+
+    protected processCreateProbe(response: Response): Promise<ProbeResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = ProbeResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result400 = KnowledgeErrorResponse.fromJS(resultData400);
+            return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        } else if (status === 404) {
+            return response.text().then((_responseText) => {
+            let result404: any = null;
+            let resultData404 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result404 = KnowledgeErrorResponse.fromJS(resultData404);
+            return throwException("Not Found", status, _responseText, _headers, result404);
+            });
+        } else if (status === 409) {
+            return response.text().then((_responseText) => {
+            let result409: any = null;
+            let resultData409 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result409 = KnowledgeErrorResponse.fromJS(resultData409);
+            return throwException("Conflict", status, _responseText, _headers, result409);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<ProbeResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    resolveProbe(id: string, body: ResolveProbeRequest): Promise<ProbeResponse> {
+        let url_ = this.baseUrl + "/api/v1/knowledge/probes/{id}/resolve";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processResolveProbe(_response);
+        });
+    }
+
+    protected processResolveProbe(response: Response): Promise<ProbeResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = ProbeResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result400 = KnowledgeErrorResponse.fromJS(resultData400);
+            return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        } else if (status === 404) {
+            return response.text().then((_responseText) => {
+            let result404: any = null;
+            let resultData404 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result404 = KnowledgeErrorResponse.fromJS(resultData404);
+            return throwException("Not Found", status, _responseText, _headers, result404);
+            });
+        } else if (status === 409) {
+            return response.text().then((_responseText) => {
+            let result409: any = null;
+            let resultData409 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result409 = KnowledgeErrorResponse.fromJS(resultData409);
+            return throwException("Conflict", status, _responseText, _headers, result409);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<ProbeResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    promoteEpisode(id: string, body: PromoteEpisodeRequest): Promise<PromoteEpisodeResponse> {
+        let url_ = this.baseUrl + "/api/v1/knowledge/episodes/{id}/promote";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processPromoteEpisode(_response);
+        });
+    }
+
+    protected processPromoteEpisode(response: Response): Promise<PromoteEpisodeResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = PromoteEpisodeResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result400 = KnowledgeErrorResponse.fromJS(resultData400);
+            return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        } else if (status === 404) {
+            return response.text().then((_responseText) => {
+            let result404: any = null;
+            let resultData404 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result404 = KnowledgeErrorResponse.fromJS(resultData404);
+            return throwException("Not Found", status, _responseText, _headers, result404);
+            });
+        } else if (status === 409) {
+            return response.text().then((_responseText) => {
+            let result409: any = null;
+            let resultData409 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result409 = KnowledgeErrorResponse.fromJS(resultData409);
+            return throwException("Conflict", status, _responseText, _headers, result409);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<PromoteEpisodeResponse>(null as any);
+    }
+
+    /**
      * @return OK
      */
     uploadInputEvents(body: InputEventUploadRequest): Promise<void> {
@@ -349,7 +831,7 @@ export class Client {
      * @param date (optional) 
      * @return OK
      */
-    getDailyQuestions(date: Date | undefined): Promise<DailyQuestionsResponse> {
+    getDailyQuestions(date: Date | undefined): Promise<AskingQuestionsResponse> {
         let url_ = this.baseUrl + "/api/v1/knowledge/questions?";
         if (date === null)
             throw new globalThis.Error("The parameter 'date' cannot be null.");
@@ -369,14 +851,14 @@ export class Client {
         });
     }
 
-    protected processGetDailyQuestions(response: Response): Promise<DailyQuestionsResponse> {
+    protected processGetDailyQuestions(response: Response): Promise<AskingQuestionsResponse> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
             return response.text().then((_responseText) => {
             let result200: any = null;
             let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
-            result200 = DailyQuestionsResponse.fromJS(resultData200);
+            result200 = AskingQuestionsResponse.fromJS(resultData200);
             return result200;
             });
         } else if (status !== 200 && status !== 204) {
@@ -384,7 +866,134 @@ export class Client {
             return throwException("An unexpected server error occurred.", status, _responseText, _headers);
             });
         }
-        return Promise.resolve<DailyQuestionsResponse>(null as any);
+        return Promise.resolve<AskingQuestionsResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    proposeFromQuestion(id: string, body: ProposeFromQuestionRequest): Promise<KnowledgeProposalResponse> {
+        let url_ = this.baseUrl + "/api/v1/knowledge/questions/{id}/propose";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processProposeFromQuestion(_response);
+        });
+    }
+
+    protected processProposeFromQuestion(response: Response): Promise<KnowledgeProposalResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = KnowledgeProposalResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result400 = KnowledgeErrorResponse.fromJS(resultData400);
+            return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        } else if (status === 404) {
+            return response.text().then((_responseText) => {
+            let result404: any = null;
+            let resultData404 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result404 = KnowledgeErrorResponse.fromJS(resultData404);
+            return throwException("Not Found", status, _responseText, _headers, result404);
+            });
+        } else if (status === 502) {
+            return response.text().then((_responseText) => {
+            let result502: any = null;
+            let resultData502 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result502 = KnowledgeErrorResponse.fromJS(resultData502);
+            return throwException("Bad Gateway", status, _responseText, _headers, result502);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<KnowledgeProposalResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    commitChangeSet(body: CommitChangeSetRequest): Promise<CommitChangeSetResponse> {
+        let url_ = this.baseUrl + "/api/v1/knowledge/changesets";
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processCommitChangeSet(_response);
+        });
+    }
+
+    protected processCommitChangeSet(response: Response): Promise<CommitChangeSetResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = CommitChangeSetResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result400 = ChangeSetErrorResponse.fromJS(resultData400);
+            return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        } else if (status === 404) {
+            return response.text().then((_responseText) => {
+            let result404: any = null;
+            let resultData404 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result404 = ChangeSetErrorResponse.fromJS(resultData404);
+            return throwException("Not Found", status, _responseText, _headers, result404);
+            });
+        } else if (status === 409) {
+            return response.text().then((_responseText) => {
+            let result409: any = null;
+            let resultData409 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result409 = ChangeSetErrorResponse.fromJS(resultData409);
+            return throwException("Conflict", status, _responseText, _headers, result409);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<CommitChangeSetResponse>(null as any);
     }
 
     /**
@@ -1804,6 +2413,282 @@ export interface IAppUsageResponse {
     [key: string]: any;
 }
 
+export class AskingQuestionResponse implements IAskingQuestionResponse {
+    id?: string;
+    kind?: string;
+    question?: string;
+    matcher?: MatcherDto;
+    approximateStart?: Date | undefined;
+    approximateEnd?: Date | undefined;
+    observations?: EvidenceObservationDto[];
+    probeId?: string | undefined;
+    episodeId?: string | undefined;
+    episodeText?: string | undefined;
+    episodeDate?: Date | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IAskingQuestionResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.id = _data["id"];
+            this.kind = _data["kind"];
+            this.question = _data["question"];
+            this.matcher = _data["matcher"] ? MatcherDto.fromJS(_data["matcher"]) : undefined as any;
+            this.approximateStart = _data["approximateStart"] ? new Date(_data["approximateStart"].toString()) : undefined as any;
+            this.approximateEnd = _data["approximateEnd"] ? new Date(_data["approximateEnd"].toString()) : undefined as any;
+            if (Array.isArray(_data["observations"])) {
+                this.observations = [] as any;
+                for (let item of _data["observations"])
+                    this.observations!.push(EvidenceObservationDto.fromJS(item));
+            }
+            this.probeId = _data["probeId"];
+            this.episodeId = _data["episodeId"];
+            this.episodeText = _data["episodeText"];
+            this.episodeDate = _data["episodeDate"] ? new Date(_data["episodeDate"].toString()) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): AskingQuestionResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new AskingQuestionResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["id"] = this.id;
+        data["kind"] = this.kind;
+        data["question"] = this.question;
+        data["matcher"] = this.matcher ? this.matcher.toJSON() : undefined as any;
+        data["approximateStart"] = this.approximateStart ? this.approximateStart.toISOString() : undefined as any;
+        data["approximateEnd"] = this.approximateEnd ? this.approximateEnd.toISOString() : undefined as any;
+        if (Array.isArray(this.observations)) {
+            data["observations"] = [];
+            for (let item of this.observations)
+                data["observations"].push(item ? item.toJSON() : undefined as any);
+        }
+        data["probeId"] = this.probeId;
+        data["episodeId"] = this.episodeId;
+        data["episodeText"] = this.episodeText;
+        data["episodeDate"] = this.episodeDate ? formatDate(this.episodeDate) : undefined as any;
+        return data;
+    }
+}
+
+export interface IAskingQuestionResponse {
+    id?: string;
+    kind?: string;
+    question?: string;
+    matcher?: MatcherDto;
+    approximateStart?: Date | undefined;
+    approximateEnd?: Date | undefined;
+    observations?: EvidenceObservationDto[];
+    probeId?: string | undefined;
+    episodeId?: string | undefined;
+    episodeText?: string | undefined;
+    episodeDate?: Date | undefined;
+
+    [key: string]: any;
+}
+
+export class AskingQuestionsResponse implements IAskingQuestionsResponse {
+    questions?: AskingQuestionResponse[];
+    readingLabels?: { [key: string]: string; };
+
+    [key: string]: any;
+
+    constructor(data?: IAskingQuestionsResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            if (Array.isArray(_data["questions"])) {
+                this.questions = [] as any;
+                for (let item of _data["questions"])
+                    this.questions!.push(AskingQuestionResponse.fromJS(item));
+            }
+            if (_data["readingLabels"]) {
+                this.readingLabels = {} as any;
+                for (let key in _data["readingLabels"]) {
+                    if (_data["readingLabels"].hasOwnProperty(key))
+                        (this.readingLabels as any)![key] = _data["readingLabels"][key];
+                }
+            }
+        }
+    }
+
+    static fromJS(data: any): AskingQuestionsResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new AskingQuestionsResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        if (Array.isArray(this.questions)) {
+            data["questions"] = [];
+            for (let item of this.questions)
+                data["questions"].push(item ? item.toJSON() : undefined as any);
+        }
+        if (this.readingLabels) {
+            data["readingLabels"] = {};
+            for (let key in this.readingLabels) {
+                if (this.readingLabels.hasOwnProperty(key))
+                    (data["readingLabels"] as any)[key] = (this.readingLabels as any)[key];
+            }
+        }
+        return data;
+    }
+}
+
+export interface IAskingQuestionsResponse {
+    questions?: AskingQuestionResponse[];
+    readingLabels?: { [key: string]: string; };
+
+    [key: string]: any;
+}
+
+export class BindMatcherOpDto implements IBindMatcherOpDto {
+    strand?: StrandRefDto;
+    expectedVersion?: number | undefined;
+    matcher?: MatcherDto;
+
+    [key: string]: any;
+
+    constructor(data?: IBindMatcherOpDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.strand = _data["strand"] ? StrandRefDto.fromJS(_data["strand"]) : undefined as any;
+            this.expectedVersion = _data["expectedVersion"];
+            this.matcher = _data["matcher"] ? MatcherDto.fromJS(_data["matcher"]) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): BindMatcherOpDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new BindMatcherOpDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["strand"] = this.strand ? this.strand.toJSON() : undefined as any;
+        data["expectedVersion"] = this.expectedVersion;
+        data["matcher"] = this.matcher ? this.matcher.toJSON() : undefined as any;
+        return data;
+    }
+}
+
+export interface IBindMatcherOpDto {
+    strand?: StrandRefDto;
+    expectedVersion?: number | undefined;
+    matcher?: MatcherDto;
+
+    [key: string]: any;
+}
+
+export class ChangeSetErrorResponse implements IChangeSetErrorResponse {
+    failedOpId?: string | undefined;
+    error?: KnowledgeErrorResponse;
+
+    [key: string]: any;
+
+    constructor(data?: IChangeSetErrorResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.failedOpId = _data["failedOpId"];
+            this.error = _data["error"] ? KnowledgeErrorResponse.fromJS(_data["error"]) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): ChangeSetErrorResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new ChangeSetErrorResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["failedOpId"] = this.failedOpId;
+        data["error"] = this.error ? this.error.toJSON() : undefined as any;
+        return data;
+    }
+}
+
+export interface IChangeSetErrorResponse {
+    failedOpId?: string | undefined;
+    error?: KnowledgeErrorResponse;
+
+    [key: string]: any;
+}
+
 export class CollectorDeclarationDto implements ICollectorDeclarationDto {
     source?: string;
     version?: number;
@@ -1868,6 +2753,422 @@ export interface ICollectorDeclarationDto {
     version?: number;
     collectorVersion?: string | undefined;
     layers?: DepthLayerDto[];
+
+    [key: string]: any;
+}
+
+export class CommitChangeSetRequest implements ICommitChangeSetRequest {
+    operations?: KnowledgeOperationDto[];
+
+    [key: string]: any;
+
+    constructor(data?: ICommitChangeSetRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            if (Array.isArray(_data["operations"])) {
+                this.operations = [] as any;
+                for (let item of _data["operations"])
+                    this.operations!.push(KnowledgeOperationDto.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): CommitChangeSetRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new CommitChangeSetRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        if (Array.isArray(this.operations)) {
+            data["operations"] = [];
+            for (let item of this.operations)
+                data["operations"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface ICommitChangeSetRequest {
+    operations?: KnowledgeOperationDto[];
+
+    [key: string]: any;
+}
+
+export class CommitChangeSetResponse implements ICommitChangeSetResponse {
+    results?: OperationResultResponse[];
+
+    [key: string]: any;
+
+    constructor(data?: ICommitChangeSetResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            if (Array.isArray(_data["results"])) {
+                this.results = [] as any;
+                for (let item of _data["results"])
+                    this.results!.push(OperationResultResponse.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): CommitChangeSetResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new CommitChangeSetResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        if (Array.isArray(this.results)) {
+            data["results"] = [];
+            for (let item of this.results)
+                data["results"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface ICommitChangeSetResponse {
+    results?: OperationResultResponse[];
+
+    [key: string]: any;
+}
+
+export class CreateEpisodeOpDto implements ICreateEpisodeOpDto {
+    localDate?: Date;
+    text?: string;
+    approximateStart?: Date | undefined;
+    approximateEnd?: Date | undefined;
+    relatedStrand?: StrandRefDto | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: ICreateEpisodeOpDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.localDate = _data["localDate"] ? new Date(_data["localDate"].toString()) : undefined as any;
+            this.text = _data["text"];
+            this.approximateStart = _data["approximateStart"] ? new Date(_data["approximateStart"].toString()) : undefined as any;
+            this.approximateEnd = _data["approximateEnd"] ? new Date(_data["approximateEnd"].toString()) : undefined as any;
+            this.relatedStrand = _data["relatedStrand"] ? StrandRefDto.fromJS(_data["relatedStrand"]) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): CreateEpisodeOpDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new CreateEpisodeOpDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["localDate"] = this.localDate ? formatDate(this.localDate) : undefined as any;
+        data["text"] = this.text;
+        data["approximateStart"] = this.approximateStart ? this.approximateStart.toISOString() : undefined as any;
+        data["approximateEnd"] = this.approximateEnd ? this.approximateEnd.toISOString() : undefined as any;
+        data["relatedStrand"] = this.relatedStrand ? this.relatedStrand.toJSON() : undefined as any;
+        return data;
+    }
+}
+
+export interface ICreateEpisodeOpDto {
+    localDate?: Date;
+    text?: string;
+    approximateStart?: Date | undefined;
+    approximateEnd?: Date | undefined;
+    relatedStrand?: StrandRefDto | undefined;
+
+    [key: string]: any;
+}
+
+export class CreateEpisodeRequest implements ICreateEpisodeRequest {
+    localDate?: Date;
+    text?: string;
+    approximateStart?: Date | undefined;
+    approximateEnd?: Date | undefined;
+    relatedStrandId?: string | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: ICreateEpisodeRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.localDate = _data["localDate"] ? new Date(_data["localDate"].toString()) : undefined as any;
+            this.text = _data["text"];
+            this.approximateStart = _data["approximateStart"] ? new Date(_data["approximateStart"].toString()) : undefined as any;
+            this.approximateEnd = _data["approximateEnd"] ? new Date(_data["approximateEnd"].toString()) : undefined as any;
+            this.relatedStrandId = _data["relatedStrandId"];
+        }
+    }
+
+    static fromJS(data: any): CreateEpisodeRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new CreateEpisodeRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["localDate"] = this.localDate ? formatDate(this.localDate) : undefined as any;
+        data["text"] = this.text;
+        data["approximateStart"] = this.approximateStart ? this.approximateStart.toISOString() : undefined as any;
+        data["approximateEnd"] = this.approximateEnd ? this.approximateEnd.toISOString() : undefined as any;
+        data["relatedStrandId"] = this.relatedStrandId;
+        return data;
+    }
+}
+
+export interface ICreateEpisodeRequest {
+    localDate?: Date;
+    text?: string;
+    approximateStart?: Date | undefined;
+    approximateEnd?: Date | undefined;
+    relatedStrandId?: string | undefined;
+
+    [key: string]: any;
+}
+
+export class CreateProbeOpDto implements ICreateProbeOpDto {
+    episode?: EpisodeRefDto;
+    matcher?: MatcherDto;
+
+    [key: string]: any;
+
+    constructor(data?: ICreateProbeOpDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.episode = _data["episode"] ? EpisodeRefDto.fromJS(_data["episode"]) : undefined as any;
+            this.matcher = _data["matcher"] ? MatcherDto.fromJS(_data["matcher"]) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): CreateProbeOpDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new CreateProbeOpDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["episode"] = this.episode ? this.episode.toJSON() : undefined as any;
+        data["matcher"] = this.matcher ? this.matcher.toJSON() : undefined as any;
+        return data;
+    }
+}
+
+export interface ICreateProbeOpDto {
+    episode?: EpisodeRefDto;
+    matcher?: MatcherDto;
+
+    [key: string]: any;
+}
+
+export class CreateProbeRequest implements ICreateProbeRequest {
+    matcher?: MatcherDto;
+
+    [key: string]: any;
+
+    constructor(data?: ICreateProbeRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.matcher = _data["matcher"] ? MatcherDto.fromJS(_data["matcher"]) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): CreateProbeRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new CreateProbeRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["matcher"] = this.matcher ? this.matcher.toJSON() : undefined as any;
+        return data;
+    }
+}
+
+export interface ICreateProbeRequest {
+    matcher?: MatcherDto;
+
+    [key: string]: any;
+}
+
+export class CreateStrandOpDto implements ICreateStrandOpDto {
+    name?: string;
+    gloss?: string;
+    parent?: StrandRefDto | undefined;
+    startedOn?: Date | undefined;
+    endedOn?: Date | undefined;
+    members?: MatcherDto[];
+
+    [key: string]: any;
+
+    constructor(data?: ICreateStrandOpDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.name = _data["name"];
+            this.gloss = _data["gloss"];
+            this.parent = _data["parent"] ? StrandRefDto.fromJS(_data["parent"]) : undefined as any;
+            this.startedOn = _data["startedOn"] ? new Date(_data["startedOn"].toString()) : undefined as any;
+            this.endedOn = _data["endedOn"] ? new Date(_data["endedOn"].toString()) : undefined as any;
+            if (Array.isArray(_data["members"])) {
+                this.members = [] as any;
+                for (let item of _data["members"])
+                    this.members!.push(MatcherDto.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): CreateStrandOpDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new CreateStrandOpDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["name"] = this.name;
+        data["gloss"] = this.gloss;
+        data["parent"] = this.parent ? this.parent.toJSON() : undefined as any;
+        data["startedOn"] = this.startedOn ? formatDate(this.startedOn) : undefined as any;
+        data["endedOn"] = this.endedOn ? formatDate(this.endedOn) : undefined as any;
+        if (Array.isArray(this.members)) {
+            data["members"] = [];
+            for (let item of this.members)
+                data["members"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface ICreateStrandOpDto {
+    name?: string;
+    gloss?: string;
+    parent?: StrandRefDto | undefined;
+    startedOn?: Date | undefined;
+    endedOn?: Date | undefined;
+    members?: MatcherDto[];
 
     [key: string]: any;
 }
@@ -1948,84 +3249,13 @@ export interface ICreateStrandRequest {
     [key: string]: any;
 }
 
-export class DailyQuestionsResponse implements IDailyQuestionsResponse {
-    questions?: QuestionItemResponse[];
-    readingLabels?: { [key: string]: string; };
-
-    [key: string]: any;
-
-    constructor(data?: IDailyQuestionsResponse) {
-        if (data) {
-            for (var property in data) {
-                if (data.hasOwnProperty(property))
-                    (this as any)[property] = (data as any)[property];
-            }
-        }
-    }
-
-    init(_data?: any) {
-        if (_data) {
-            for (var property in _data) {
-                if (_data.hasOwnProperty(property))
-                    this[property] = _data[property];
-            }
-            if (Array.isArray(_data["questions"])) {
-                this.questions = [] as any;
-                for (let item of _data["questions"])
-                    this.questions!.push(QuestionItemResponse.fromJS(item));
-            }
-            if (_data["readingLabels"]) {
-                this.readingLabels = {} as any;
-                for (let key in _data["readingLabels"]) {
-                    if (_data["readingLabels"].hasOwnProperty(key))
-                        (this.readingLabels as any)![key] = _data["readingLabels"][key];
-                }
-            }
-        }
-    }
-
-    static fromJS(data: any): DailyQuestionsResponse {
-        data = typeof data === 'object' ? data : {};
-        let result = new DailyQuestionsResponse();
-        result.init(data);
-        return result;
-    }
-
-    toJSON(data?: any) {
-        data = typeof data === 'object' ? data : {};
-        for (var property in this) {
-            if (this.hasOwnProperty(property))
-                data[property] = this[property];
-        }
-        if (Array.isArray(this.questions)) {
-            data["questions"] = [];
-            for (let item of this.questions)
-                data["questions"].push(item ? item.toJSON() : undefined as any);
-        }
-        if (this.readingLabels) {
-            data["readingLabels"] = {};
-            for (let key in this.readingLabels) {
-                if (this.readingLabels.hasOwnProperty(key))
-                    (data["readingLabels"] as any)[key] = (this.readingLabels as any)[key];
-            }
-        }
-        return data;
-    }
-}
-
-export interface IDailyQuestionsResponse {
-    questions?: QuestionItemResponse[];
-    readingLabels?: { [key: string]: string; };
-
-    [key: string]: any;
-}
-
 export class DailyRecapResponse implements IDailyRecapResponse {
     date?: string;
     isEmpty?: boolean;
     narrative?: string | undefined;
     generatedAt?: Date | undefined;
     model?: string | undefined;
+    knowledgeStale?: boolean;
 
     [key: string]: any;
 
@@ -2049,6 +3279,7 @@ export class DailyRecapResponse implements IDailyRecapResponse {
             this.narrative = _data["narrative"];
             this.generatedAt = _data["generatedAt"] ? new Date(_data["generatedAt"].toString()) : undefined as any;
             this.model = _data["model"];
+            this.knowledgeStale = _data["knowledgeStale"];
         }
     }
 
@@ -2070,6 +3301,7 @@ export class DailyRecapResponse implements IDailyRecapResponse {
         data["narrative"] = this.narrative;
         data["generatedAt"] = this.generatedAt ? this.generatedAt.toISOString() : undefined as any;
         data["model"] = this.model;
+        data["knowledgeStale"] = this.knowledgeStale;
         return data;
     }
 }
@@ -2080,6 +3312,7 @@ export interface IDailyRecapResponse {
     narrative?: string | undefined;
     generatedAt?: Date | undefined;
     model?: string | undefined;
+    knowledgeStale?: boolean;
 
     [key: string]: any;
 }
@@ -2416,6 +3649,62 @@ export interface IDeviceStatusResponse {
     [key: string]: any;
 }
 
+export class EndStrandOpDto implements IEndStrandOpDto {
+    strandId?: string;
+    expectedVersion?: number;
+    endedOn?: Date;
+
+    [key: string]: any;
+
+    constructor(data?: IEndStrandOpDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.strandId = _data["strandId"];
+            this.expectedVersion = _data["expectedVersion"];
+            this.endedOn = _data["endedOn"] ? new Date(_data["endedOn"].toString()) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): EndStrandOpDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new EndStrandOpDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["strandId"] = this.strandId;
+        data["expectedVersion"] = this.expectedVersion;
+        data["endedOn"] = this.endedOn ? formatDate(this.endedOn) : undefined as any;
+        return data;
+    }
+}
+
+export interface IEndStrandOpDto {
+    strandId?: string;
+    expectedVersion?: number;
+    endedOn?: Date;
+
+    [key: string]: any;
+}
+
 export class EndStrandRequest implements IEndStrandRequest {
     expectedVersion?: number;
     endedOn?: Date;
@@ -2464,6 +3753,226 @@ export class EndStrandRequest implements IEndStrandRequest {
 export interface IEndStrandRequest {
     expectedVersion?: number;
     endedOn?: Date;
+
+    [key: string]: any;
+}
+
+export class EpisodeRefDto implements IEpisodeRefDto {
+    episodeId?: string | undefined;
+    opId?: string | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IEpisodeRefDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.episodeId = _data["episodeId"];
+            this.opId = _data["opId"];
+        }
+    }
+
+    static fromJS(data: any): EpisodeRefDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new EpisodeRefDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["episodeId"] = this.episodeId;
+        data["opId"] = this.opId;
+        return data;
+    }
+}
+
+export interface IEpisodeRefDto {
+    episodeId?: string | undefined;
+    opId?: string | undefined;
+
+    [key: string]: any;
+}
+
+export class EpisodeResponse implements IEpisodeResponse {
+    id?: string;
+    localDate?: Date;
+    text?: string;
+    approximateStart?: Date | undefined;
+    approximateEnd?: Date | undefined;
+    relatedStrandId?: string | undefined;
+    relatedStrandPath?: string[];
+    version?: number;
+    probes?: ProbeResponse[];
+    createdAt?: Date;
+    updatedAt?: Date;
+
+    [key: string]: any;
+
+    constructor(data?: IEpisodeResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.id = _data["id"];
+            this.localDate = _data["localDate"] ? new Date(_data["localDate"].toString()) : undefined as any;
+            this.text = _data["text"];
+            this.approximateStart = _data["approximateStart"] ? new Date(_data["approximateStart"].toString()) : undefined as any;
+            this.approximateEnd = _data["approximateEnd"] ? new Date(_data["approximateEnd"].toString()) : undefined as any;
+            this.relatedStrandId = _data["relatedStrandId"];
+            if (Array.isArray(_data["relatedStrandPath"])) {
+                this.relatedStrandPath = [] as any;
+                for (let item of _data["relatedStrandPath"])
+                    this.relatedStrandPath!.push(item);
+            }
+            this.version = _data["version"];
+            if (Array.isArray(_data["probes"])) {
+                this.probes = [] as any;
+                for (let item of _data["probes"])
+                    this.probes!.push(ProbeResponse.fromJS(item));
+            }
+            this.createdAt = _data["createdAt"] ? new Date(_data["createdAt"].toString()) : undefined as any;
+            this.updatedAt = _data["updatedAt"] ? new Date(_data["updatedAt"].toString()) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): EpisodeResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new EpisodeResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["id"] = this.id;
+        data["localDate"] = this.localDate ? formatDate(this.localDate) : undefined as any;
+        data["text"] = this.text;
+        data["approximateStart"] = this.approximateStart ? this.approximateStart.toISOString() : undefined as any;
+        data["approximateEnd"] = this.approximateEnd ? this.approximateEnd.toISOString() : undefined as any;
+        data["relatedStrandId"] = this.relatedStrandId;
+        if (Array.isArray(this.relatedStrandPath)) {
+            data["relatedStrandPath"] = [];
+            for (let item of this.relatedStrandPath)
+                data["relatedStrandPath"].push(item);
+        }
+        data["version"] = this.version;
+        if (Array.isArray(this.probes)) {
+            data["probes"] = [];
+            for (let item of this.probes)
+                data["probes"].push(item ? item.toJSON() : undefined as any);
+        }
+        data["createdAt"] = this.createdAt ? this.createdAt.toISOString() : undefined as any;
+        data["updatedAt"] = this.updatedAt ? this.updatedAt.toISOString() : undefined as any;
+        return data;
+    }
+}
+
+export interface IEpisodeResponse {
+    id?: string;
+    localDate?: Date;
+    text?: string;
+    approximateStart?: Date | undefined;
+    approximateEnd?: Date | undefined;
+    relatedStrandId?: string | undefined;
+    relatedStrandPath?: string[];
+    version?: number;
+    probes?: ProbeResponse[];
+    createdAt?: Date;
+    updatedAt?: Date;
+
+    [key: string]: any;
+}
+
+export class EvidenceObservationDto implements IEvidenceObservationDto {
+    source?: string;
+    value?: string;
+    detail?: string | undefined;
+    seconds?: number;
+    matchesFingerprint?: boolean;
+
+    [key: string]: any;
+
+    constructor(data?: IEvidenceObservationDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.source = _data["source"];
+            this.value = _data["value"];
+            this.detail = _data["detail"];
+            this.seconds = _data["seconds"];
+            this.matchesFingerprint = _data["matchesFingerprint"];
+        }
+    }
+
+    static fromJS(data: any): EvidenceObservationDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new EvidenceObservationDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["source"] = this.source;
+        data["value"] = this.value;
+        data["detail"] = this.detail;
+        data["seconds"] = this.seconds;
+        data["matchesFingerprint"] = this.matchesFingerprint;
+        return data;
+    }
+}
+
+export interface IEvidenceObservationDto {
+    source?: string;
+    value?: string;
+    detail?: string | undefined;
+    seconds?: number;
+    matchesFingerprint?: boolean;
 
     [key: string]: any;
 }
@@ -2920,6 +4429,206 @@ export interface IKnowledgeErrorResponse {
     [key: string]: any;
 }
 
+export class KnowledgeOperationDto implements IKnowledgeOperationDto {
+    opId?: string;
+    type?: string;
+    createStrand?: CreateStrandOpDto | undefined;
+    updateStrand?: UpdateStrandOpDto | undefined;
+    moveStrand?: MoveStrandOpDto | undefined;
+    endStrand?: EndStrandOpDto | undefined;
+    bindMatcher?: BindMatcherOpDto | undefined;
+    muteMatcher?: MuteMatcherOpDto | undefined;
+    createEpisode?: CreateEpisodeOpDto | undefined;
+    updateEpisode?: UpdateEpisodeOpDto | undefined;
+    relateEpisode?: RelateEpisodeOpDto | undefined;
+    createProbe?: CreateProbeOpDto | undefined;
+    resolveProbe?: ResolveProbeOpDto | undefined;
+    promoteEpisode?: PromoteEpisodeOpDto | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IKnowledgeOperationDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.opId = _data["opId"];
+            this.type = _data["type"];
+            this.createStrand = _data["createStrand"] ? CreateStrandOpDto.fromJS(_data["createStrand"]) : undefined as any;
+            this.updateStrand = _data["updateStrand"] ? UpdateStrandOpDto.fromJS(_data["updateStrand"]) : undefined as any;
+            this.moveStrand = _data["moveStrand"] ? MoveStrandOpDto.fromJS(_data["moveStrand"]) : undefined as any;
+            this.endStrand = _data["endStrand"] ? EndStrandOpDto.fromJS(_data["endStrand"]) : undefined as any;
+            this.bindMatcher = _data["bindMatcher"] ? BindMatcherOpDto.fromJS(_data["bindMatcher"]) : undefined as any;
+            this.muteMatcher = _data["muteMatcher"] ? MuteMatcherOpDto.fromJS(_data["muteMatcher"]) : undefined as any;
+            this.createEpisode = _data["createEpisode"] ? CreateEpisodeOpDto.fromJS(_data["createEpisode"]) : undefined as any;
+            this.updateEpisode = _data["updateEpisode"] ? UpdateEpisodeOpDto.fromJS(_data["updateEpisode"]) : undefined as any;
+            this.relateEpisode = _data["relateEpisode"] ? RelateEpisodeOpDto.fromJS(_data["relateEpisode"]) : undefined as any;
+            this.createProbe = _data["createProbe"] ? CreateProbeOpDto.fromJS(_data["createProbe"]) : undefined as any;
+            this.resolveProbe = _data["resolveProbe"] ? ResolveProbeOpDto.fromJS(_data["resolveProbe"]) : undefined as any;
+            this.promoteEpisode = _data["promoteEpisode"] ? PromoteEpisodeOpDto.fromJS(_data["promoteEpisode"]) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): KnowledgeOperationDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new KnowledgeOperationDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["opId"] = this.opId;
+        data["type"] = this.type;
+        data["createStrand"] = this.createStrand ? this.createStrand.toJSON() : undefined as any;
+        data["updateStrand"] = this.updateStrand ? this.updateStrand.toJSON() : undefined as any;
+        data["moveStrand"] = this.moveStrand ? this.moveStrand.toJSON() : undefined as any;
+        data["endStrand"] = this.endStrand ? this.endStrand.toJSON() : undefined as any;
+        data["bindMatcher"] = this.bindMatcher ? this.bindMatcher.toJSON() : undefined as any;
+        data["muteMatcher"] = this.muteMatcher ? this.muteMatcher.toJSON() : undefined as any;
+        data["createEpisode"] = this.createEpisode ? this.createEpisode.toJSON() : undefined as any;
+        data["updateEpisode"] = this.updateEpisode ? this.updateEpisode.toJSON() : undefined as any;
+        data["relateEpisode"] = this.relateEpisode ? this.relateEpisode.toJSON() : undefined as any;
+        data["createProbe"] = this.createProbe ? this.createProbe.toJSON() : undefined as any;
+        data["resolveProbe"] = this.resolveProbe ? this.resolveProbe.toJSON() : undefined as any;
+        data["promoteEpisode"] = this.promoteEpisode ? this.promoteEpisode.toJSON() : undefined as any;
+        return data;
+    }
+}
+
+export interface IKnowledgeOperationDto {
+    opId?: string;
+    type?: string;
+    createStrand?: CreateStrandOpDto | undefined;
+    updateStrand?: UpdateStrandOpDto | undefined;
+    moveStrand?: MoveStrandOpDto | undefined;
+    endStrand?: EndStrandOpDto | undefined;
+    bindMatcher?: BindMatcherOpDto | undefined;
+    muteMatcher?: MuteMatcherOpDto | undefined;
+    createEpisode?: CreateEpisodeOpDto | undefined;
+    updateEpisode?: UpdateEpisodeOpDto | undefined;
+    relateEpisode?: RelateEpisodeOpDto | undefined;
+    createProbe?: CreateProbeOpDto | undefined;
+    resolveProbe?: ResolveProbeOpDto | undefined;
+    promoteEpisode?: PromoteEpisodeOpDto | undefined;
+
+    [key: string]: any;
+}
+
+export class KnowledgeProposalResponse implements IKnowledgeProposalResponse {
+    explanation?: string;
+    operations?: KnowledgeOperationDto[];
+    warnings?: string[];
+    suggestions?: string[];
+    readingLabels?: { [key: string]: string; };
+
+    [key: string]: any;
+
+    constructor(data?: IKnowledgeProposalResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.explanation = _data["explanation"];
+            if (Array.isArray(_data["operations"])) {
+                this.operations = [] as any;
+                for (let item of _data["operations"])
+                    this.operations!.push(KnowledgeOperationDto.fromJS(item));
+            }
+            if (Array.isArray(_data["warnings"])) {
+                this.warnings = [] as any;
+                for (let item of _data["warnings"])
+                    this.warnings!.push(item);
+            }
+            if (Array.isArray(_data["suggestions"])) {
+                this.suggestions = [] as any;
+                for (let item of _data["suggestions"])
+                    this.suggestions!.push(item);
+            }
+            if (_data["readingLabels"]) {
+                this.readingLabels = {} as any;
+                for (let key in _data["readingLabels"]) {
+                    if (_data["readingLabels"].hasOwnProperty(key))
+                        (this.readingLabels as any)![key] = _data["readingLabels"][key];
+                }
+            }
+        }
+    }
+
+    static fromJS(data: any): KnowledgeProposalResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new KnowledgeProposalResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["explanation"] = this.explanation;
+        if (Array.isArray(this.operations)) {
+            data["operations"] = [];
+            for (let item of this.operations)
+                data["operations"].push(item ? item.toJSON() : undefined as any);
+        }
+        if (Array.isArray(this.warnings)) {
+            data["warnings"] = [];
+            for (let item of this.warnings)
+                data["warnings"].push(item);
+        }
+        if (Array.isArray(this.suggestions)) {
+            data["suggestions"] = [];
+            for (let item of this.suggestions)
+                data["suggestions"].push(item);
+        }
+        if (this.readingLabels) {
+            data["readingLabels"] = {};
+            for (let key in this.readingLabels) {
+                if (this.readingLabels.hasOwnProperty(key))
+                    (data["readingLabels"] as any)[key] = (this.readingLabels as any)[key];
+            }
+        }
+        return data;
+    }
+}
+
+export interface IKnowledgeProposalResponse {
+    explanation?: string;
+    operations?: KnowledgeOperationDto[];
+    warnings?: string[];
+    suggestions?: string[];
+    readingLabels?: { [key: string]: string; };
+
+    [key: string]: any;
+}
+
 export class MatcherDto implements IMatcherDto {
     source?: string;
     steps?: MatcherStepDto[];
@@ -3088,6 +4797,62 @@ export interface IMeResponse {
     [key: string]: any;
 }
 
+export class MoveStrandOpDto implements IMoveStrandOpDto {
+    strandId?: string;
+    expectedVersion?: number;
+    newParent?: StrandRefDto | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IMoveStrandOpDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.strandId = _data["strandId"];
+            this.expectedVersion = _data["expectedVersion"];
+            this.newParent = _data["newParent"] ? StrandRefDto.fromJS(_data["newParent"]) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): MoveStrandOpDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new MoveStrandOpDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["strandId"] = this.strandId;
+        data["expectedVersion"] = this.expectedVersion;
+        data["newParent"] = this.newParent ? this.newParent.toJSON() : undefined as any;
+        return data;
+    }
+}
+
+export interface IMoveStrandOpDto {
+    strandId?: string;
+    expectedVersion?: number;
+    newParent?: StrandRefDto | undefined;
+
+    [key: string]: any;
+}
+
 export class MoveStrandRequest implements IMoveStrandRequest {
     expectedVersion?: number;
     newParentStrandId?: string | undefined;
@@ -3140,6 +4905,54 @@ export interface IMoveStrandRequest {
     [key: string]: any;
 }
 
+export class MuteMatcherOpDto implements IMuteMatcherOpDto {
+    matcher?: MatcherDto;
+
+    [key: string]: any;
+
+    constructor(data?: IMuteMatcherOpDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.matcher = _data["matcher"] ? MatcherDto.fromJS(_data["matcher"]) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): MuteMatcherOpDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new MuteMatcherOpDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["matcher"] = this.matcher ? this.matcher.toJSON() : undefined as any;
+        return data;
+    }
+}
+
+export interface IMuteMatcherOpDto {
+    matcher?: MatcherDto;
+
+    [key: string]: any;
+}
+
 export class MuteMatcherRequest implements IMuteMatcherRequest {
     matcher?: MatcherDto;
 
@@ -3188,16 +5001,17 @@ export interface IMuteMatcherRequest {
     [key: string]: any;
 }
 
-export class QuestionItemResponse implements IQuestionItemResponse {
-    matcher?: MatcherDto;
-    question?: string;
-    evidence?: string;
-    proposedName?: string;
-    proposedGloss?: string;
+export class OperationResultResponse implements IOperationResultResponse {
+    opId?: string;
+    type?: string;
+    strand?: StrandResponse | undefined;
+    episode?: EpisodeResponse | undefined;
+    probe?: ProbeResponse | undefined;
+    promotion?: PromoteEpisodeResponse | undefined;
 
     [key: string]: any;
 
-    constructor(data?: IQuestionItemResponse) {
+    constructor(data?: IOperationResultResponse) {
         if (data) {
             for (var property in data) {
                 if (data.hasOwnProperty(property))
@@ -3212,17 +5026,18 @@ export class QuestionItemResponse implements IQuestionItemResponse {
                 if (_data.hasOwnProperty(property))
                     this[property] = _data[property];
             }
-            this.matcher = _data["matcher"] ? MatcherDto.fromJS(_data["matcher"]) : undefined as any;
-            this.question = _data["question"];
-            this.evidence = _data["evidence"];
-            this.proposedName = _data["proposedName"];
-            this.proposedGloss = _data["proposedGloss"];
+            this.opId = _data["opId"];
+            this.type = _data["type"];
+            this.strand = _data["strand"] ? StrandResponse.fromJS(_data["strand"]) : undefined as any;
+            this.episode = _data["episode"] ? EpisodeResponse.fromJS(_data["episode"]) : undefined as any;
+            this.probe = _data["probe"] ? ProbeResponse.fromJS(_data["probe"]) : undefined as any;
+            this.promotion = _data["promotion"] ? PromoteEpisodeResponse.fromJS(_data["promotion"]) : undefined as any;
         }
     }
 
-    static fromJS(data: any): QuestionItemResponse {
+    static fromJS(data: any): OperationResultResponse {
         data = typeof data === 'object' ? data : {};
-        let result = new QuestionItemResponse();
+        let result = new OperationResultResponse();
         result.init(data);
         return result;
     }
@@ -3233,21 +5048,531 @@ export class QuestionItemResponse implements IQuestionItemResponse {
             if (this.hasOwnProperty(property))
                 data[property] = this[property];
         }
-        data["matcher"] = this.matcher ? this.matcher.toJSON() : undefined as any;
-        data["question"] = this.question;
-        data["evidence"] = this.evidence;
-        data["proposedName"] = this.proposedName;
-        data["proposedGloss"] = this.proposedGloss;
+        data["opId"] = this.opId;
+        data["type"] = this.type;
+        data["strand"] = this.strand ? this.strand.toJSON() : undefined as any;
+        data["episode"] = this.episode ? this.episode.toJSON() : undefined as any;
+        data["probe"] = this.probe ? this.probe.toJSON() : undefined as any;
+        data["promotion"] = this.promotion ? this.promotion.toJSON() : undefined as any;
         return data;
     }
 }
 
-export interface IQuestionItemResponse {
+export interface IOperationResultResponse {
+    opId?: string;
+    type?: string;
+    strand?: StrandResponse | undefined;
+    episode?: EpisodeResponse | undefined;
+    probe?: ProbeResponse | undefined;
+    promotion?: PromoteEpisodeResponse | undefined;
+
+    [key: string]: any;
+}
+
+export class ProbeResponse implements IProbeResponse {
+    id?: string;
+    episodeId?: string;
     matcher?: MatcherDto;
-    question?: string;
-    evidence?: string;
-    proposedName?: string;
-    proposedGloss?: string;
+    status?: string;
+    createdAt?: Date;
+    resolvedAt?: Date | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IProbeResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.id = _data["id"];
+            this.episodeId = _data["episodeId"];
+            this.matcher = _data["matcher"] ? MatcherDto.fromJS(_data["matcher"]) : undefined as any;
+            this.status = _data["status"];
+            this.createdAt = _data["createdAt"] ? new Date(_data["createdAt"].toString()) : undefined as any;
+            this.resolvedAt = _data["resolvedAt"] ? new Date(_data["resolvedAt"].toString()) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): ProbeResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new ProbeResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["id"] = this.id;
+        data["episodeId"] = this.episodeId;
+        data["matcher"] = this.matcher ? this.matcher.toJSON() : undefined as any;
+        data["status"] = this.status;
+        data["createdAt"] = this.createdAt ? this.createdAt.toISOString() : undefined as any;
+        data["resolvedAt"] = this.resolvedAt ? this.resolvedAt.toISOString() : undefined as any;
+        return data;
+    }
+}
+
+export interface IProbeResponse {
+    id?: string;
+    episodeId?: string;
+    matcher?: MatcherDto;
+    status?: string;
+    createdAt?: Date;
+    resolvedAt?: Date | undefined;
+
+    [key: string]: any;
+}
+
+export class PromoteEpisodeOpDto implements IPromoteEpisodeOpDto {
+    episode?: EpisodeRefDto;
+    expectedVersion?: number | undefined;
+    strand?: StrandRefDto;
+    probeId?: string | undefined;
+    bindProbeMatcher?: boolean;
+
+    [key: string]: any;
+
+    constructor(data?: IPromoteEpisodeOpDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.episode = _data["episode"] ? EpisodeRefDto.fromJS(_data["episode"]) : undefined as any;
+            this.expectedVersion = _data["expectedVersion"];
+            this.strand = _data["strand"] ? StrandRefDto.fromJS(_data["strand"]) : undefined as any;
+            this.probeId = _data["probeId"];
+            this.bindProbeMatcher = _data["bindProbeMatcher"];
+        }
+    }
+
+    static fromJS(data: any): PromoteEpisodeOpDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new PromoteEpisodeOpDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["episode"] = this.episode ? this.episode.toJSON() : undefined as any;
+        data["expectedVersion"] = this.expectedVersion;
+        data["strand"] = this.strand ? this.strand.toJSON() : undefined as any;
+        data["probeId"] = this.probeId;
+        data["bindProbeMatcher"] = this.bindProbeMatcher;
+        return data;
+    }
+}
+
+export interface IPromoteEpisodeOpDto {
+    episode?: EpisodeRefDto;
+    expectedVersion?: number | undefined;
+    strand?: StrandRefDto;
+    probeId?: string | undefined;
+    bindProbeMatcher?: boolean;
+
+    [key: string]: any;
+}
+
+export class PromoteEpisodeRequest implements IPromoteEpisodeRequest {
+    expectedVersion?: number;
+    existingStrandId?: string | undefined;
+    newStrand?: CreateStrandRequest | undefined;
+    probeId?: string | undefined;
+    bindProbeMatcher?: boolean;
+
+    [key: string]: any;
+
+    constructor(data?: IPromoteEpisodeRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.expectedVersion = _data["expectedVersion"];
+            this.existingStrandId = _data["existingStrandId"];
+            this.newStrand = _data["newStrand"] ? CreateStrandRequest.fromJS(_data["newStrand"]) : undefined as any;
+            this.probeId = _data["probeId"];
+            this.bindProbeMatcher = _data["bindProbeMatcher"];
+        }
+    }
+
+    static fromJS(data: any): PromoteEpisodeRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new PromoteEpisodeRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["expectedVersion"] = this.expectedVersion;
+        data["existingStrandId"] = this.existingStrandId;
+        data["newStrand"] = this.newStrand ? this.newStrand.toJSON() : undefined as any;
+        data["probeId"] = this.probeId;
+        data["bindProbeMatcher"] = this.bindProbeMatcher;
+        return data;
+    }
+}
+
+export interface IPromoteEpisodeRequest {
+    expectedVersion?: number;
+    existingStrandId?: string | undefined;
+    newStrand?: CreateStrandRequest | undefined;
+    probeId?: string | undefined;
+    bindProbeMatcher?: boolean;
+
+    [key: string]: any;
+}
+
+export class PromoteEpisodeResponse implements IPromoteEpisodeResponse {
+    episode?: EpisodeResponse;
+    strand?: StrandResponse;
+
+    [key: string]: any;
+
+    constructor(data?: IPromoteEpisodeResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.episode = _data["episode"] ? EpisodeResponse.fromJS(_data["episode"]) : undefined as any;
+            this.strand = _data["strand"] ? StrandResponse.fromJS(_data["strand"]) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): PromoteEpisodeResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new PromoteEpisodeResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["episode"] = this.episode ? this.episode.toJSON() : undefined as any;
+        data["strand"] = this.strand ? this.strand.toJSON() : undefined as any;
+        return data;
+    }
+}
+
+export interface IPromoteEpisodeResponse {
+    episode?: EpisodeResponse;
+    strand?: StrandResponse;
+
+    [key: string]: any;
+}
+
+export class ProposeFromQuestionRequest implements IProposeFromQuestionRequest {
+    date?: Date;
+    answer?: string;
+
+    [key: string]: any;
+
+    constructor(data?: IProposeFromQuestionRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.date = _data["date"] ? new Date(_data["date"].toString()) : undefined as any;
+            this.answer = _data["answer"];
+        }
+    }
+
+    static fromJS(data: any): ProposeFromQuestionRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new ProposeFromQuestionRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["date"] = this.date ? this.date.toISOString() : undefined as any;
+        data["answer"] = this.answer;
+        return data;
+    }
+}
+
+export interface IProposeFromQuestionRequest {
+    date?: Date;
+    answer?: string;
+
+    [key: string]: any;
+}
+
+export class RelateEpisodeOpDto implements IRelateEpisodeOpDto {
+    episode?: EpisodeRefDto;
+    expectedVersion?: number | undefined;
+    relatedStrand?: StrandRefDto | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IRelateEpisodeOpDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.episode = _data["episode"] ? EpisodeRefDto.fromJS(_data["episode"]) : undefined as any;
+            this.expectedVersion = _data["expectedVersion"];
+            this.relatedStrand = _data["relatedStrand"] ? StrandRefDto.fromJS(_data["relatedStrand"]) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): RelateEpisodeOpDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new RelateEpisodeOpDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["episode"] = this.episode ? this.episode.toJSON() : undefined as any;
+        data["expectedVersion"] = this.expectedVersion;
+        data["relatedStrand"] = this.relatedStrand ? this.relatedStrand.toJSON() : undefined as any;
+        return data;
+    }
+}
+
+export interface IRelateEpisodeOpDto {
+    episode?: EpisodeRefDto;
+    expectedVersion?: number | undefined;
+    relatedStrand?: StrandRefDto | undefined;
+
+    [key: string]: any;
+}
+
+export class RelateEpisodeRequest implements IRelateEpisodeRequest {
+    expectedVersion?: number;
+    relatedStrandId?: string | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IRelateEpisodeRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.expectedVersion = _data["expectedVersion"];
+            this.relatedStrandId = _data["relatedStrandId"];
+        }
+    }
+
+    static fromJS(data: any): RelateEpisodeRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new RelateEpisodeRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["expectedVersion"] = this.expectedVersion;
+        data["relatedStrandId"] = this.relatedStrandId;
+        return data;
+    }
+}
+
+export interface IRelateEpisodeRequest {
+    expectedVersion?: number;
+    relatedStrandId?: string | undefined;
+
+    [key: string]: any;
+}
+
+export class ResolveProbeOpDto implements IResolveProbeOpDto {
+    probeId?: string;
+    resolution?: string;
+
+    [key: string]: any;
+
+    constructor(data?: IResolveProbeOpDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.probeId = _data["probeId"];
+            this.resolution = _data["resolution"];
+        }
+    }
+
+    static fromJS(data: any): ResolveProbeOpDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new ResolveProbeOpDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["probeId"] = this.probeId;
+        data["resolution"] = this.resolution;
+        return data;
+    }
+}
+
+export interface IResolveProbeOpDto {
+    probeId?: string;
+    resolution?: string;
+
+    [key: string]: any;
+}
+
+export class ResolveProbeRequest implements IResolveProbeRequest {
+    resolution?: string;
+
+    [key: string]: any;
+
+    constructor(data?: IResolveProbeRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.resolution = _data["resolution"];
+        }
+    }
+
+    static fromJS(data: any): ResolveProbeRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new ResolveProbeRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["resolution"] = this.resolution;
+        return data;
+    }
+}
+
+export interface IResolveProbeRequest {
+    resolution?: string;
 
     [key: string]: any;
 }
@@ -3456,6 +5781,58 @@ export interface IStrandBriefResponse {
     [key: string]: any;
 }
 
+export class StrandRefDto implements IStrandRefDto {
+    strandId?: string | undefined;
+    opId?: string | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IStrandRefDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.strandId = _data["strandId"];
+            this.opId = _data["opId"];
+        }
+    }
+
+    static fromJS(data: any): StrandRefDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new StrandRefDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["strandId"] = this.strandId;
+        data["opId"] = this.opId;
+        return data;
+    }
+}
+
+export interface IStrandRefDto {
+    strandId?: string | undefined;
+    opId?: string | undefined;
+
+    [key: string]: any;
+}
+
 export class StrandResponse implements IStrandResponse {
     id?: string;
     parentStrandId?: string | undefined;
@@ -3560,6 +5937,138 @@ export interface IStrandResponse {
     [key: string]: any;
 }
 
+export class UpdateEpisodeOpDto implements IUpdateEpisodeOpDto {
+    episodeId?: string;
+    expectedVersion?: number;
+    localDate?: Date;
+    text?: string;
+    approximateStart?: Date | undefined;
+    approximateEnd?: Date | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IUpdateEpisodeOpDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.episodeId = _data["episodeId"];
+            this.expectedVersion = _data["expectedVersion"];
+            this.localDate = _data["localDate"] ? new Date(_data["localDate"].toString()) : undefined as any;
+            this.text = _data["text"];
+            this.approximateStart = _data["approximateStart"] ? new Date(_data["approximateStart"].toString()) : undefined as any;
+            this.approximateEnd = _data["approximateEnd"] ? new Date(_data["approximateEnd"].toString()) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): UpdateEpisodeOpDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new UpdateEpisodeOpDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["episodeId"] = this.episodeId;
+        data["expectedVersion"] = this.expectedVersion;
+        data["localDate"] = this.localDate ? formatDate(this.localDate) : undefined as any;
+        data["text"] = this.text;
+        data["approximateStart"] = this.approximateStart ? this.approximateStart.toISOString() : undefined as any;
+        data["approximateEnd"] = this.approximateEnd ? this.approximateEnd.toISOString() : undefined as any;
+        return data;
+    }
+}
+
+export interface IUpdateEpisodeOpDto {
+    episodeId?: string;
+    expectedVersion?: number;
+    localDate?: Date;
+    text?: string;
+    approximateStart?: Date | undefined;
+    approximateEnd?: Date | undefined;
+
+    [key: string]: any;
+}
+
+export class UpdateEpisodeRequest implements IUpdateEpisodeRequest {
+    expectedVersion?: number;
+    localDate?: Date;
+    text?: string;
+    approximateStart?: Date | undefined;
+    approximateEnd?: Date | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IUpdateEpisodeRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.expectedVersion = _data["expectedVersion"];
+            this.localDate = _data["localDate"] ? new Date(_data["localDate"].toString()) : undefined as any;
+            this.text = _data["text"];
+            this.approximateStart = _data["approximateStart"] ? new Date(_data["approximateStart"].toString()) : undefined as any;
+            this.approximateEnd = _data["approximateEnd"] ? new Date(_data["approximateEnd"].toString()) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): UpdateEpisodeRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new UpdateEpisodeRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["expectedVersion"] = this.expectedVersion;
+        data["localDate"] = this.localDate ? formatDate(this.localDate) : undefined as any;
+        data["text"] = this.text;
+        data["approximateStart"] = this.approximateStart ? this.approximateStart.toISOString() : undefined as any;
+        data["approximateEnd"] = this.approximateEnd ? this.approximateEnd.toISOString() : undefined as any;
+        return data;
+    }
+}
+
+export interface IUpdateEpisodeRequest {
+    expectedVersion?: number;
+    localDate?: Date;
+    text?: string;
+    approximateStart?: Date | undefined;
+    approximateEnd?: Date | undefined;
+
+    [key: string]: any;
+}
+
 export class UpdateMySettingsRequest implements IUpdateMySettingsRequest {
     isPublic?: boolean;
 
@@ -3604,6 +6113,86 @@ export class UpdateMySettingsRequest implements IUpdateMySettingsRequest {
 
 export interface IUpdateMySettingsRequest {
     isPublic?: boolean;
+
+    [key: string]: any;
+}
+
+export class UpdateStrandOpDto implements IUpdateStrandOpDto {
+    strandId?: string;
+    expectedVersion?: number;
+    name?: string;
+    gloss?: string;
+    startedOn?: Date | undefined;
+    endedOn?: Date | undefined;
+    members?: MatcherDto[] | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IUpdateStrandOpDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.strandId = _data["strandId"];
+            this.expectedVersion = _data["expectedVersion"];
+            this.name = _data["name"];
+            this.gloss = _data["gloss"];
+            this.startedOn = _data["startedOn"] ? new Date(_data["startedOn"].toString()) : undefined as any;
+            this.endedOn = _data["endedOn"] ? new Date(_data["endedOn"].toString()) : undefined as any;
+            if (Array.isArray(_data["members"])) {
+                this.members = [] as any;
+                for (let item of _data["members"])
+                    this.members!.push(MatcherDto.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): UpdateStrandOpDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new UpdateStrandOpDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["strandId"] = this.strandId;
+        data["expectedVersion"] = this.expectedVersion;
+        data["name"] = this.name;
+        data["gloss"] = this.gloss;
+        data["startedOn"] = this.startedOn ? formatDate(this.startedOn) : undefined as any;
+        data["endedOn"] = this.endedOn ? formatDate(this.endedOn) : undefined as any;
+        if (Array.isArray(this.members)) {
+            data["members"] = [];
+            for (let item of this.members)
+                data["members"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface IUpdateStrandOpDto {
+    strandId?: string;
+    expectedVersion?: number;
+    name?: string;
+    gloss?: string;
+    startedOn?: Date | undefined;
+    endedOn?: Date | undefined;
+    members?: MatcherDto[] | undefined;
 
     [key: string]: any;
 }

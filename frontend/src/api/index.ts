@@ -1,4 +1,4 @@
-import { Client, ApiException, DailyRecapResponse, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, SegmentResponse, UpdateMySettingsRequest, DailyQuestionsResponse, CreateStrandRequest, UpdateStrandRequest, MuteMatcherRequest, StrandResponse, type ICreateStrandRequest, type IUpdateStrandRequest, type IMatcherDto } from './client'
+import { Client, ApiException, DailyRecapResponse, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, SegmentResponse, UpdateMySettingsRequest, AskingQuestionsResponse, KnowledgeProposalResponse, CommitChangeSetRequest, CommitChangeSetResponse, ChangeSetErrorResponse, KnowledgeErrorResponse, CreateStrandRequest, UpdateStrandRequest, MuteMatcherRequest, StrandResponse, type ICreateStrandRequest, type IUpdateStrandRequest, type IMatcherDto, type IKnowledgeOperationDto, type IChangeSetErrorResponse, type IKnowledgeErrorResponse } from './client'
 import { authStore } from '../stores/auth'
 
 // ===== Error model =====
@@ -189,18 +189,81 @@ export async function fetchPublicDailyRecap(username: string, params: { date?: s
 }
 
 // ===== Strand 知识层（ADR-028/029/031）=====
-// owner-only：确认写知识 + 发问烧 LLM token，无 public 版。
-// questions 的 date 与 recap 同理须携带本地时区偏移，手拼请求；strand/mute 走生成 client。
+// owner-only：确认写知识 + 发问/整理烧 LLM token，无 public 版。
+// questions/propose 的 date 与 recap 同理须携带本地时区偏移，手拼请求；其余走生成 client。
 // 已有 Strand 一律按 UUIDv7 定位（ADR-031）——按名收敛的旧 bindStrand 已退役。
 
-export type { IMatcherDto, IMatcherStepDto, IQuestionItemResponse, IStrandResponse, ICreateStrandRequest, IUpdateStrandRequest, IKnowledgeErrorResponse } from './client'
+export type { IMatcherDto, IMatcherStepDto, IStrandResponse, ICreateStrandRequest, IUpdateStrandRequest, IKnowledgeErrorResponse } from './client'
+export type { IAskingQuestionResponse, IEvidenceObservationDto, IKnowledgeProposalResponse, IKnowledgeOperationDto, IOperationResultResponse, ICommitChangeSetResponse, IChangeSetErrorResponse, IStrandRefDto, IEpisodeRefDto } from './client'
+// review 编辑要构造引用与操作(生成 client 的嵌套字段是类类型,普通对象字面量过不了类型检查)
+export { StrandRefDto, KnowledgeOperationDto } from './client'
 
-export async function fetchDailyQuestions(params: { date?: string }): Promise<DailyQuestionsResponse> {
+/** 当日证据卡问题（ADR-031 §6 两阶段第一步）：真实活动簇的时段与跨 Source 观察。 */
+export async function fetchDailyQuestions(params: { date?: string }): Promise<AskingQuestionsResponse> {
   const searchParams = new URLSearchParams()
   if (params.date) searchParams.set('date', toLocalDateTimeOffsetString(params.date))
   const res = await authHttp.fetch(`${API_BASE}/knowledge/questions?${searchParams}`)
   if (!res.ok) throw new ApiException('Questions request failed.', res.status, await res.text(), {}, null)
-  return DailyQuestionsResponse.fromJS(await res.json())
+  return AskingQuestionsResponse.fromJS(await res.json())
+}
+
+/**
+ * 两阶段第二步：把用户对证据卡的自然语言回答交给服务端整理成可编辑提案。零写入。
+ * date 须与 questions 读取同一天窗口（服务端凭 (owner, 日窗口, 问题 id) 取回证据），
+ * 与报表同理手拼以保住本地时区偏移。失败时若响应带 KnowledgeErrorResponse，
+ * 塞进 ApiException.result 供上层读 code（question_not_found / generation_failed…）。
+ */
+export async function proposeFromQuestion(questionId: string, params: { date: string; answer: string }): Promise<KnowledgeProposalResponse> {
+  const res = await authHttp.fetch(`${API_BASE}/knowledge/questions/${encodeURIComponent(questionId)}/propose`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ date: toLocalDateTimeOffsetString(params.date), answer: params.answer }),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new ApiException('Propose request failed.', res.status, text, {}, tryParseError(text, KnowledgeErrorResponse.fromJS))
+  }
+  return KnowledgeProposalResponse.fromJS(await res.json())
+}
+
+/**
+ * 共享事务提交端（ADR-031 §6）：用户最终确认后提交选中的操作，全部成功才写入。
+ * body 经生成类 toJSON 序列化——DateOnly 字段（startedOn/endedOn/localDate）必须输出
+ * "yyyy-MM-dd"（本地日期分量），裸 JSON.stringify 会把 Date 变成 UTC datetime 被服务端拒收。
+ * 失败响应是 ChangeSetErrorResponse（failedOpId 定位具体操作），塞进 ApiException.result。
+ */
+export async function commitChangeSet(operations: IKnowledgeOperationDto[]): Promise<CommitChangeSetResponse> {
+  const body = CommitChangeSetRequest.fromJS({ operations })
+  const res = await authHttp.fetch(`${API_BASE}/knowledge/changesets`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new ApiException('Commit request failed.', res.status, text, {}, tryParseError(text, ChangeSetErrorResponse.fromJS))
+  }
+  return CommitChangeSetResponse.fromJS(await res.json())
+}
+
+function tryParseError<T>(text: string, fromJS: (data: unknown) => T): T | null {
+  try {
+    return fromJS(JSON.parse(text))
+  } catch {
+    return null
+  }
+}
+
+/** 从抛出的错误里取 changesets 的结构化错误体（failedOpId + code）；非该形状返回 null。 */
+export function changeSetErrorOf(e: unknown): IChangeSetErrorResponse | null {
+  if (ApiException.isApiException(e) && e.result instanceof ChangeSetErrorResponse) return e.result
+  return null
+}
+
+/** 从抛出的错误里取 KnowledgeErrorResponse（propose 端错误体）；非该形状返回 null。 */
+export function knowledgeErrorOf(e: unknown): IKnowledgeErrorResponse | null {
+  if (ApiException.isApiException(e) && e.result instanceof KnowledgeErrorResponse) return e.result
+  return null
 }
 
 /** 整树读取：全部节点（含已结束时期）带 parent ID 与根到自身 path。 */
