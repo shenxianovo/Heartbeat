@@ -15,6 +15,8 @@ namespace Heartbeat.Server.Data
         public DbSet<Strand> Strands => Set<Strand>();
         public DbSet<StrandMatcher> StrandMatchers => Set<StrandMatcher>();
         public DbSet<MutedMatcher> MutedMatchers => Set<MutedMatcher>();
+        public DbSet<Episode> Episodes => Set<Episode>();
+        public DbSet<RecurrenceProbe> RecurrenceProbes => Set<RecurrenceProbe>();
         public DbSet<DailyQuestionSet> DailyQuestionSets => Set<DailyQuestionSet>();
         public DbSet<CollectorDeclaration> CollectorDeclarations => Set<CollectorDeclaration>();
 
@@ -168,6 +170,50 @@ namespace Heartbeat.Server.Data
 
                 entity.HasIndex(e => new { e.OwnerId, e.Source, e.StepsJson })
                     .IsUnique();
+            });
+
+            modelBuilder.Entity<Episode>(entity =>
+            {
+                // Id 为应用层生成的 UUIDv7（ADR-031 §1）。
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).ValueGeneratedNever();
+
+                // 至多一个最具体 Strand（ADR-031 §4）：不级联——Strand 没有删除操作，
+                // 解除关联是显式的领域写。
+                entity.HasOne(e => e.RelatedStrand)
+                    .WithMany()
+                    .HasForeignKey(e => e.RelatedStrandId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                // 按日期与按 Strand 浏览的读取键（Owner 隔离）。
+                entity.HasIndex(e => new { e.OwnerId, e.LocalDate });
+                entity.HasIndex(e => e.RelatedStrandId);
+
+                // 陈旧提案不覆盖新编辑（ADR-031 §6）。
+                entity.Property(e => e.Version).IsConcurrencyToken();
+            });
+
+            modelBuilder.Entity<RecurrenceProbe>(entity =>
+            {
+                // Id 为应用层生成的 UUIDv7（ADR-031 §1）；业务身份是 (Episode, canonical 谓词)。
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).ValueGeneratedNever();
+
+                entity.Property(e => e.Source).HasMaxLength(64);
+                entity.Property(e => e.Status).HasMaxLength(16);
+
+                entity.HasOne(e => e.Episode)
+                    .WithMany(ep => ep.Probes)
+                    .HasForeignKey(e => e.EpisodeId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                // 同一 Episode 的同一 canonical 谓词只有一行——含已解决行：
+                // 解决结果"钉住"该谓词，不允许再建活跃 Probe 重复发问（ADR-031 §5）。
+                entity.HasIndex(e => new { e.EpisodeId, e.Source, e.StepsJson })
+                    .IsUnique();
+
+                // Asking 侧扫活跃 Probe 的读取键。
+                entity.HasIndex(e => new { e.OwnerId, e.Status });
             });
 
             modelBuilder.Entity<DailyQuestionSet>(entity =>

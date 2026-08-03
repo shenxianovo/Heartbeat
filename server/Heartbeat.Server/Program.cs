@@ -20,6 +20,7 @@ builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<InputEventService>();
 builder.Services.AddScoped<RecapService>();
 builder.Services.AddScoped<KnowledgeService>();
+builder.Services.AddScoped<EpisodeService>();
 builder.Services.AddScoped<DigestAssembler>();
 builder.Services.AddScoped<QuestionService>();
 builder.Services.Configure<RecapOptions>(builder.Configuration.GetSection(RecapOptions.Section));

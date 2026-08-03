@@ -1,6 +1,6 @@
 # 02: Episode 与 RecurrenceProbe
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -38,18 +38,27 @@ Status: ready-for-agent
 
 ## Acceptance criteria
 
-- [ ] Episode 以 UUIDv7 持久化，支持本地日期、近似时间、文本和可空单一 RelatedStrandId
-- [ ] Episode 不拥有 Segment、不进入 Strand 树，且不能关联多个 Strand 或其他 Owner 的 Strand
-- [ ] Episode 的创建只能通过显式、已确认的写路径完成
-- [ ] Probe 复用 Matcher 的 canonical 路径谓词，但不复用其 Recap 注入后果
-- [ ] 活跃 Probe 可被提升、否认或静音；解决后不再产生重复问题
-- [ ] 同一 Episode 和 canonical predicate 不会存在重复活跃 Probe
-- [ ] 提升保留原 Episode，并在一个事务中完成 Strand 选择/创建、可选 Matcher 绑定、Episode 关联和 Probe 解决
-- [ ] 提升失败整批回滚，且不会自动关联其他 Episode
-- [ ] 自动化测试覆盖领域约束、Owner 隔离、lifecycle 与负向自动化边界
+- [x] Episode 以 UUIDv7 持久化，支持本地日期、近似时间、文本和可空单一 RelatedStrandId
+- [x] Episode 不拥有 Segment、不进入 Strand 树，且不能关联多个 Strand 或其他 Owner 的 Strand
+- [x] Episode 的创建只能通过显式、已确认的写路径完成
+- [x] Probe 复用 Matcher 的 canonical 路径谓词，但不复用其 Recap 注入后果
+- [x] 活跃 Probe 可被提升、否认或静音；解决后不再产生重复问题
+- [x] 同一 Episode 和 canonical predicate 不会存在重复活跃 Probe
+- [x] 提升保留原 Episode，并在一个事务中完成 Strand 选择/创建、可选 Matcher 绑定、Episode 关联和 Probe 解决
+- [x] 提升失败整批回滚，且不会自动关联其他 Episode
+- [x] 自动化测试覆盖领域约束、Owner 隔离、lifecycle 与负向自动化边界
 
 ## Blocked by
 
 - [01](./01-hierarchical-temporal-strand.md)
 
 ## Comments
+
+- 2026-08-03 agent: 实现落地。要点——
+  - 实体 `Episode` / `RecurrenceProbe` + 纯增表迁移 `EpisodeRecurrenceProbe`（不动存量数据）。
+  - `EpisodeService` 是 Episode 唯一创建路径；摄入 / Matcher / Probe 命中没有到它的调用边（负向测试佐证）。
+  - Probe 身份 = (EpisodeId, Source, canonical StepsJson) 唯一索引，**含已解决行**：解决结果钉住谓词，重开被拒（`probe_resolved`），活跃期幂等收敛。
+  - `denied`/`muted` 走 `resolveProbe`；`promoted` 只由提升事务写入，API 层不可直接指定。
+  - 提升 = 单事务：新建 Strand 复用 `KnowledgeService.CreateStrandAsync` 全部树/日期/重叠校验，错误原样透传并整批回滚；Probe 谓词绑定 Matcher 时 canonical 已存在则收敛不报错。
+  - 删除按仓库现状取硬删（库中无归档约定），Probe 级联、Strand 不动；带 `expectedVersion` 并发防护。
+  - 近似时间校验：起止都提供时要求顺序 + LocalDate 落在起止本地日区间内；单端提供不校验（只服务叙事，不升级为工时模型）。
