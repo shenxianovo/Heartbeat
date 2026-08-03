@@ -3,9 +3,6 @@ using Heartbeat.Core.DTOs.Knowledge;
 
 namespace Heartbeat.Server.Services
 {
-    /// <summary>已确认 Strand 的投影输入（ADR-029 §3）：名字 + 释义 + 指纹（Matcher 集合）。</summary>
-    public sealed record KnownStrandInput(string Name, string Gloss, IReadOnlyList<MatcherDto> Matchers);
-
     /// <summary>
     /// Matcher 规范化（ADR-029 §3）：裁决提交的入口清洗——全字段 trim + 小写、Op 校验、
     /// 无效步剔除、步骤排序去重。canonical 小写形即裁决身份：身份判等（唯一索引 / Mute 幂等 /

@@ -1,4 +1,5 @@
 using Heartbeat.Core;
+using Heartbeat.Core.DTOs.Knowledge;
 using Heartbeat.Server.Data;
 using Heartbeat.Server.Entities;
 using Heartbeat.Server.Services;
@@ -232,5 +233,283 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
 
         Assert.True(result.IsEmpty); // user-2 的数据对 user-1 不可见
         Assert.Equal(0, fake.Calls);
+    }
+
+    // ---- 知识投影惰性判脏（ADR-031 §7）----
+
+    /// <summary>命中当日观测的 Strand（vscode 段 → app equal vscode）。</summary>
+    private Strand HittingStrand(string name = "Heartbeat", string gloss = "自部署监控") => new()
+    {
+        Id = Guid.CreateVersion7(),
+        OwnerId = "user-1",
+        Name = name,
+        NormalizedName = name.ToLowerInvariant(),
+        Gloss = gloss,
+        Version = 1,
+        CreatedAt = PastDay,
+        UpdatedAt = PastDay,
+        Members =
+        [
+            new StrandMatcher
+            {
+                Id = Guid.CreateVersion7(),
+                Source = ActivitySources.System,
+                StepsJson = """[{"Reading":"app","Op":"equals","Value":"vscode"}]""",
+            }
+        ],
+    };
+
+    [Fact]
+    public async Task HistoricalRead_RelevantKnowledgeChanged_StaleHintWithoutLlm()
+    {
+        using var db = CreateDbContext();
+        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        var strand = HittingStrand();
+        db.Strands.Add(strand);
+        await db.SaveChangesAsync();
+
+        var fake = new FakeGenerator();
+        var svc = new RecapService(db, fake, new DigestAssembler(db));
+        var fresh = await svc.GetDailyRecapAsync("user-1", PastDay, force: false);
+        Assert.False(fresh.KnowledgeStale);
+
+        // 相关知识变化：编辑 Gloss（叙事相关字段）
+        strand.Gloss = "改名后的项目";
+        await db.SaveChangesAsync();
+
+        var stale = await svc.GetDailyRecapAsync("user-1", PastDay, force: false);
+
+        Assert.True(stale.KnowledgeStale); // 只提示
+        Assert.Equal("narrative-1", stale.Narrative); // 正文仍是缓存
+        Assert.Equal(1, fake.Calls); // 读取不调 LLM
+    }
+
+    [Fact]
+    public async Task HistoricalRead_UnrelatedKnowledgeChange_NotStale()
+    {
+        using var db = CreateDbContext();
+        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        await db.SaveChangesAsync();
+
+        var fake = new FakeGenerator();
+        var svc = new RecapService(db, fake, new DigestAssembler(db));
+        await svc.GetDailyRecapAsync("user-1", PastDay, force: false);
+
+        // 新增一条当日观测命不中的 Strand：与该日无关
+        db.Strands.Add(new Strand
+        {
+            Id = Guid.CreateVersion7(),
+            OwnerId = "user-1",
+            Name = "无关项目",
+            NormalizedName = "无关项目",
+            Gloss = "",
+            Version = 1,
+            CreatedAt = PastDay,
+            UpdatedAt = PastDay,
+            Members =
+            [
+                new StrandMatcher
+                {
+                    Id = Guid.CreateVersion7(),
+                    Source = ActivitySources.System,
+                    StepsJson = """[{"Reading":"app","Op":"equals","Value":"never.exe"}]""",
+                }
+            ],
+        });
+        await db.SaveChangesAsync();
+
+        var result = await svc.GetDailyRecapAsync("user-1", PastDay, force: false);
+
+        Assert.False(result.KnowledgeStale); // 精确到相关知识，不是全局版本
+        Assert.Equal(1, fake.Calls);
+    }
+
+    [Fact]
+    public async Task LegacyRecap_NullKnowledgeHash_LazilyStale_NoBackfill()
+    {
+        using var db = CreateDbContext();
+        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.Recaps.Add(new Recap
+        {
+            OwnerId = "user-1",
+            WindowStart = DateRange.Day(PastDay).UtcStart,
+            Narrative = "旧配方写的",
+            GeneratedAt = PastDay,
+            KnowledgeHash = null, // 投影引入前的旧行
+        });
+        await db.SaveChangesAsync();
+
+        var fake = new FakeGenerator();
+        var svc = new RecapService(db, fake, new DigestAssembler(db));
+
+        var result = await svc.GetDailyRecapAsync("user-1", PastDay, force: false);
+
+        Assert.True(result.KnowledgeStale); // 惰性视为可重新生成
+        Assert.Equal("旧配方写的", result.Narrative);
+        Assert.Equal(0, fake.Calls); // 不自动回填、不调 LLM
+        Assert.Null((await db.Recaps.SingleAsync()).KnowledgeHash); // 读取不写库
+    }
+
+    [Fact]
+    public async Task ForceRegenerate_WritesNewHash_ClearsStale()
+    {
+        using var db = CreateDbContext();
+        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        var strand = HittingStrand();
+        db.Strands.Add(strand);
+        await db.SaveChangesAsync();
+
+        var fake = new FakeGenerator();
+        var svc = new RecapService(db, fake, new DigestAssembler(db));
+        await svc.GetDailyRecapAsync("user-1", PastDay, force: false);
+
+        strand.Gloss = "新的理解";
+        await db.SaveChangesAsync();
+        Assert.True((await svc.GetDailyRecapAsync("user-1", PastDay, force: false)).KnowledgeStale);
+
+        var regenerated = await svc.GetDailyRecapAsync("user-1", PastDay, force: true);
+
+        Assert.False(regenerated.KnowledgeStale);
+        Assert.Equal("narrative-2", regenerated.Narrative);
+        Assert.False((await svc.GetDailyRecapAsync("user-1", PastDay, force: false)).KnowledgeStale);
+    }
+
+    [Fact]
+    public async Task ForceRegenerateFailure_KeepsLastGoodNarrativeAndHash()
+    {
+        using var db = CreateDbContext();
+        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        await db.SaveChangesAsync();
+
+        var fake = new FakeGenerator();
+        var svc = new RecapService(db, fake, new DigestAssembler(db));
+        await svc.GetDailyRecapAsync("user-1", PastDay, force: false);
+        var goodHash = (await db.Recaps.AsNoTracking().SingleAsync()).KnowledgeHash;
+
+        fake.Fail = true;
+        await Assert.ThrowsAsync<RecapGenerationException>(
+            () => svc.GetDailyRecapAsync("user-1", PastDay, force: true));
+
+        // EF 变更追踪可能残留失败尝试的状态，重开上下文验证持久化事实。
+        using var verify = CreateDbContext();
+        var row = await verify.Recaps.SingleAsync();
+        Assert.Equal("narrative-1", row.Narrative); // 失败不覆盖上次成功正文
+        Assert.Equal(goodHash, row.KnowledgeHash); // 也不覆盖投影标识
+    }
+
+    [Fact]
+    public async Task RecurrenceProbe_NeverEntersProjection_NoStale()
+    {
+        using var db = CreateDbContext();
+        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        var episode = new Episode
+        {
+            Id = Guid.CreateVersion7(),
+            OwnerId = "user-1",
+            LocalDate = DateOnly.FromDateTime(PastDay.Date),
+            Text = "第一次出现的行为",
+            Version = 1,
+            CreatedAt = PastDay,
+            UpdatedAt = PastDay,
+        };
+        db.Episodes.Add(episode);
+        await db.SaveChangesAsync();
+
+        var fake = new FakeGenerator();
+        var svc = new RecapService(db, fake, new DigestAssembler(db));
+        await svc.GetDailyRecapAsync("user-1", PastDay, force: false);
+
+        // Probe 新增（谓词命中当日观测也一样）：知识投影结构上不含 Probe——不判脏
+        db.RecurrenceProbes.Add(new RecurrenceProbe
+        {
+            Id = Guid.CreateVersion7(),
+            OwnerId = "user-1",
+            EpisodeId = episode.Id,
+            Source = ActivitySources.System,
+            StepsJson = """[{"Reading":"app","Op":"equals","Value":"vscode"}]""",
+            Status = ProbeStatuses.Active,
+            CreatedAt = PastDay,
+        });
+        await db.SaveChangesAsync();
+
+        var result = await svc.GetDailyRecapAsync("user-1", PastDay, force: false);
+
+        Assert.False(result.KnowledgeStale);
+        Assert.Equal(1, fake.Calls);
+    }
+
+    [Fact]
+    public async Task DayEpisode_EntersDigest_AndChangesHash()
+    {
+        using var db = CreateDbContext();
+        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        await db.SaveChangesAsync();
+
+        var fake = new FakeGenerator();
+        var svc = new RecapService(db, fake, new DigestAssembler(db));
+        await svc.GetDailyRecapAsync("user-1", PastDay, force: false);
+
+        // 用户确认当天事实（经 EpisodeService 之外直接落库模拟已确认状态）
+        db.Episodes.Add(new Episode
+        {
+            Id = Guid.CreateVersion7(),
+            OwnerId = "user-1",
+            LocalDate = DateOnly.FromDateTime(PastDay.Date),
+            Text = "面了一场模拟面试",
+            Version = 1,
+            CreatedAt = PastDay,
+            UpdatedAt = PastDay,
+        });
+        await db.SaveChangesAsync();
+
+        var result = await svc.GetDailyRecapAsync("user-1", PastDay, force: false);
+
+        Assert.True(result.KnowledgeStale); // Episode 新增 → 相关知识变化
+        Assert.Equal(1, fake.Calls);
+    }
+
+    [Fact]
+    public async Task Today_SegmentWatermarkRefresh_StillWorks_IndependentOfKnowledge()
+    {
+        using var db = CreateDbContext();
+        db.ActivitySegments.Add(SystemSegment(FixedDay.AddHours(8), FixedDay.AddHours(9)));
+        await db.SaveChangesAsync();
+
+        var fake = new FakeGenerator();
+        var svc = new RecapService(db, fake, new DigestAssembler(db), new FixedClock(FixedNoon));
+        await svc.GetDailyRecapAsync("user-1", FixedNoon, force: false);
+
+        // 段水位落后（segment freshness）触发自动重生成——与知识判脏（只提示）互不干扰
+        db.ActivitySegments.Add(SystemSegment(FixedDay.AddHours(10.5), FixedDay.AddHours(11.5)));
+        await db.SaveChangesAsync();
+
+        var result = await svc.GetDailyRecapAsync("user-1", FixedNoon, force: false);
+
+        Assert.Equal(2, fake.Calls); // 水位路径照旧自动重生成
+        Assert.False(result.KnowledgeStale); // 重生成后知识标识同步刷新
+    }
+
+    [Fact]
+    public async Task PublicRead_CacheOnly_NeverStaleHint_NoKnowledgeAccess()
+    {
+        using var db = CreateDbContext();
+        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        var strand = HittingStrand();
+        db.Strands.Add(strand);
+        await db.SaveChangesAsync();
+
+        var fake = new FakeGenerator();
+        var svc = new RecapService(db, fake, new DigestAssembler(db));
+        await svc.GetDailyRecapAsync("user-1", PastDay, force: false);
+
+        // 知识已变化，但公开路径不重算投影
+        strand.Gloss = "变了";
+        await db.SaveChangesAsync();
+
+        var result = await svc.GetCachedDailyRecapAsync("user-1", PastDay);
+
+        Assert.NotNull(result);
+        Assert.False(result.KnowledgeStale); // 纯缓存：不暴露知识投影细节
+        Assert.Equal(1, fake.Calls); // 不触发生成
     }
 }

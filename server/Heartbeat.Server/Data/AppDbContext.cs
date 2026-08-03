@@ -112,6 +112,7 @@ namespace Heartbeat.Server.Data
 
                 entity.Property(e => e.Model).HasMaxLength(128);
                 entity.Property(e => e.PromptHash).HasMaxLength(16);
+                entity.Property(e => e.KnowledgeHash).HasMaxLength(64);
 
                 // 缓存身份：一个 Owner 的一个日窗口一份（ADR-023 §4）。
                 entity.HasIndex(e => new { e.OwnerId, e.WindowStart })

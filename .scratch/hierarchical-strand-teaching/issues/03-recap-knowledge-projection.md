@@ -1,6 +1,6 @@
 # 03: Recap 日期知识投影与惰性判脏
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -36,15 +36,15 @@ Status: ready-for-agent
 
 ## Acceptance criteria
 
-- [ ] 目标日期仅加载当日有效且被证据命中的 Strand，叶节点命中会按根到叶带入完整祖先链
-- [ ] 父节点命中不激活后代，重复祖先不会重复注入
-- [ ] 当日 Episode 可进入 Recap；非当日 Episode 和所有 RecurrenceProbe 均不进入
-- [ ] Recap 保存实际使用的日期级 canonical 知识投影标识，不使用全局知识版本
-- [ ] 相关知识变化会使历史认证读取返回 stale hint，读取本身不调用 LLM
-- [ ] 无投影标识的旧 Recap 惰性提示可重新生成，不批量回填
-- [ ] 今日 SegmentWatermark 自动刷新行为保持，并能与知识 stale 独立判断
-- [ ] public/share 读取保持纯缓存路径，不访问私有知识或触发生成
-- [ ] 自动化测试证明投影排序稳定且叙事相关变化能够被检测
+- [x] 目标日期仅加载当日有效且被证据命中的 Strand，叶节点命中会按根到叶带入完整祖先链
+- [x] 父节点命中不激活后代，重复祖先不会重复注入
+- [x] 当日 Episode 可进入 Recap；非当日 Episode 和所有 RecurrenceProbe 均不进入
+- [x] Recap 保存实际使用的日期级 canonical 知识投影标识，不使用全局知识版本
+- [x] 相关知识变化会使历史认证读取返回 stale hint，读取本身不调用 LLM
+- [x] 无投影标识的旧 Recap 惰性提示可重新生成，不批量回填
+- [x] 今日 SegmentWatermark 自动刷新行为保持，并能与知识 stale 独立判断
+- [x] public/share 读取保持纯缓存路径，不访问私有知识或触发生成
+- [x] 自动化测试证明投影排序稳定且叙事相关变化能够被检测
 
 ## Blocked by
 
@@ -52,3 +52,25 @@ Status: ready-for-agent
 - [02](./02-episode-recurrence-probe.md)
 
 ## Comments
+
+- 2026-08-03 agent: 实现落地。要点——
+  - 新纯函数层 `KnowledgeProjection.Resolve(date, strands, episodes, observations)`：日期有效性
+    （未知端点无界，与 KnowledgeService 重叠规则同尺）→ Matcher 命中 → 祖先链注入（按 Id 去重、
+    path 排序确定）→ 当日 Episode（关联 Strand 有效才带语境，失效降为独立事实）→ canonical hash。
+  - hash = SHA-256(STJ 序列化的 canonical 投影)：Strand 按 Id 排序（含结构/名字/释义/日期）、
+    命中 Matcher 按 (StrandId, Source, StepsJson) 排序、Episode 按 Id 排序、时间统一 UTC "O" 格式——
+    查询顺序无关；只覆盖**实际注入**的知识，无关知识变化不判脏。
+  - `RecapProjection.ResolveKnowledge` 是生成与判脏共用的单一入口（同一窗口规则、同一 DepthTables
+    读数提取），保证重算与生成时字节一致。digest 渲染换成 path 形式（"实习 → Hyperframes：gloss"）
+    加"当天事实"块；`KnownStrandInput`（ADR-029 平面注入）退役。
+  - `Recap.KnowledgeHash` 可空列纯增迁移；旧行 null → 认证读取恒 stale hint，不回填不调 LLM。
+    失败不覆盖上次成功正文/投影（原 fail-no-cache 路径天然满足，测试锁定）。
+  - `RecapService`：缓存命中时经 `DigestAssembler.ComputeKnowledgeHashAsync` 确定性重算比对，
+    只出 `DailyRecapResponse.KnowledgeStale` 提示；今日水位自动重生成照旧，两把尺独立。
+    `GetCachedDailyRecapAsync`（public 路径）零改动逻辑：不查知识、不重算、恒 false。
+  - Probe 不是投影输入（结构性排除）；负向测试证明 Probe 增删不影响 hash。
+  - 测试：`KnowledgeProjectionTests`（纯函数 13 例：边界日期、祖先链、去重、Episode、hash 稳定性/
+    敏感性）+ RecapProjection digest 渲染 3 例 + RecapServiceTests 7 例（stale hint、无关变化、
+    null hash、force 清除、失败保留、水位共存、public cache-only、Probe 排除）。全套 201 过。
+  - 注意：`frontend/src/api/client.ts` 是 NSwag 生成物，`KnowledgeStale` 字段待前端接 UI 时从
+    live OpenAPI 重新生成（issue 05/06 范畴）。

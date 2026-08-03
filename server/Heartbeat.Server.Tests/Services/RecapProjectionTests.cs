@@ -81,14 +81,17 @@ public class RecapProjectionTests
         Assert.Contains("10:00–11:00 chrome", result.Digest);
     }
 
+    private static StrandKnowledgeInput Strand(string name, string gloss, params MatcherDto[] matchers)
+        => new(Guid.CreateVersion7(), null, name, gloss, null, null, matchers);
+
     [Fact]
     public void KnownStrands_MatcherHitsToday_AppendedAsBlock()
     {
-        var known = new List<KnownStrandInput>
+        var known = new List<StrandKnowledgeInput>
         {
-            new("HyperFrames", "我在搞的 AI 动效框架", [AppMatcher("code.exe")]),
-            new("花生", "B 站实习部门的产品", [UrlContains("huasheng.com")]),
-            new("缺席项目", "今天没出现", [AppMatcher("never.exe")]),
+            Strand("HyperFrames", "我在搞的 AI 动效框架", AppMatcher("code.exe")),
+            Strand("花生", "B 站实习部门的产品", UrlContains("huasheng.com")),
+            Strand("缺席项目", "今天没出现", AppMatcher("never.exe")),
         };
 
         var result = RecapProjection.Project(
@@ -107,10 +110,10 @@ public class RecapProjectionTests
     [Fact]
     public void KnownStrands_PathPredicate_L2MustAlsoMatch()
     {
-        var known = new List<KnownStrandInput>
+        var known = new List<StrandKnowledgeInput>
         {
-            new("HyperFrames", "动效预研", [PathMatcher("Code", "hyperframes")]),
-            new("别的项目", "不该出现", [PathMatcher("Code", "unrelated")]),
+            Strand("HyperFrames", "动效预研", PathMatcher("Code", "hyperframes")),
+            Strand("别的项目", "不该出现", PathMatcher("Code", "unrelated")),
         };
 
         var result = RecapProjection.Project(
@@ -127,6 +130,70 @@ public class RecapProjectionTests
         var result = Project(Sys("vscode", null, Day.AddHours(9), Day.AddHours(10)));
 
         Assert.DoesNotContain("已知脉络", result.Digest);
+    }
+
+    // ---- 日期知识注入（ADR-031 §7）----
+
+    [Fact]
+    public void LeafHit_RendersRootToLeafPath()
+    {
+        var (root, leaf) = (Guid.CreateVersion7(), Guid.CreateVersion7());
+        var strands = new List<StrandKnowledgeInput>
+        {
+            new(root, null, "哔哩哔哩实习", "2026 暑期实习", null, null, []),
+            new(leaf, root, "Hyperframes", "产品调研", null, null, [AppMatcher("code.exe")]),
+        };
+
+        var result = RecapProjection.Project(
+            [new("Main PC", ActivitySources.System, "code.exe|x", "code.exe", "x", Day.AddHours(9), Day.AddHours(10))],
+            Window, TimeSpan.Zero, strands);
+
+        Assert.Contains("哔哩哔哩实习 → Hyperframes：产品调研", result.Digest); // 叶带全祖先链
+        Assert.Contains("- 哔哩哔哩实习：2026 暑期实习", result.Digest); // 祖先自身成行
+        Assert.NotNull(result.KnowledgeHash);
+    }
+
+    [Fact]
+    public void ExpiredStrand_NotInjected_EvenIfMatcherHits()
+    {
+        var strands = new List<StrandKnowledgeInput>
+        {
+            new(Guid.CreateVersion7(), null, "已结束的项目", "", null,
+                DateOnly.FromDateTime(Day.Date).AddDays(-1), [AppMatcher("code.exe")]),
+        };
+
+        var result = RecapProjection.Project(
+            [new("Main PC", ActivitySources.System, "code.exe|x", "code.exe", "x", Day.AddHours(9), Day.AddHours(10))],
+            Window, TimeSpan.Zero, strands);
+
+        Assert.DoesNotContain("已结束的项目", result.Digest);
+    }
+
+    [Fact]
+    public void DayEpisodes_RenderedAsFacts_WithTimeAndContext()
+    {
+        var strand = Guid.CreateVersion7();
+        var strands = new List<StrandKnowledgeInput>
+        {
+            new(strand, null, "Hyperframes", "", null, null, []),
+        };
+        var episodes = new List<EpisodeKnowledgeInput>
+        {
+            new(Guid.CreateVersion7(), DateOnly.FromDateTime(Day.Date), "和 mentor 对齐方案",
+                Day.AddHours(14), Day.AddHours(15), strand),
+            new(Guid.CreateVersion7(), DateOnly.FromDateTime(Day.Date), "下午去了趟牙医", null, null, null),
+            new(Guid.CreateVersion7(), DateOnly.FromDateTime(Day.Date).AddDays(-1), "昨天的事", null, null, null),
+        };
+
+        var result = RecapProjection.Project(
+            [Sys("vscode", null, Day.AddHours(9), Day.AddHours(10))],
+            Window, TimeSpan.Zero, strands, episodes);
+
+        Assert.Contains("当天事实", result.Digest);
+        Assert.Contains("14:00–15:00左右 和 mentor 对齐方案（属于：Hyperframes）", result.Digest);
+        Assert.Contains("- 下午去了趟牙医", result.Digest); // 独立 Episode 也作当天事实
+        Assert.DoesNotContain("昨天的事", result.Digest); // 非当日 Episode 不注入
+        Assert.Contains("- Hyperframes", result.Digest); // Episode 关联带入 Strand 语境
     }
 
     [Fact]
@@ -326,7 +393,7 @@ public class RecapProjectionTests
     {
         var result = RecapProjection.Project(
             [Sys("vscode", null, Day.AddHours(9), Day.AddHours(10))],
-            Window, TimeSpan.Zero, knownStrands: null, recurringReadings: ["WeChat", "qq.com"]);
+            Window, TimeSpan.Zero, strands: null, episodes: null, recurringReadings: ["WeChat", "qq.com"]);
 
         Assert.Contains("近 14 天高频出现", result.Digest);
         Assert.Contains("WeChat、qq.com", result.Digest);

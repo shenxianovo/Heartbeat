@@ -25,5 +25,12 @@ namespace Heartbeat.Server.Entities
 
         /// <summary>生成时消费到的最新 segment 时间（裁剪到窗口）。今日缓存的新鲜度水位。</summary>
         public DateTimeOffset SegmentWatermark { get; set; }
+
+        /// <summary>
+        /// 生成时实际使用的日期知识投影标识（ADR-031 §7）：相关 Strand 祖先链 + 命中 Matcher +
+        /// 当日 Episode 的 canonical hash，不是全局知识版本。读取历史时确定性重算比对——不同只提示
+        /// 可重新生成，绝不自动调 LLM。null = 旧行（投影引入前生成），惰性视为可重新生成，不批量回填。
+        /// </summary>
+        public string? KnowledgeHash { get; set; }
     }
 }

@@ -27,6 +27,9 @@ namespace Heartbeat.Server.Services
 
         /// <summary>本次投影消费到的最新 segment 时间（UTC，裁剪到窗口）。今日缓存的新鲜度水位（ADR-023 §4）。空日为窗口起点。</summary>
         public required DateTime SegmentWatermarkUtc { get; init; }
+
+        /// <summary>本次投影实际使用的日期知识投影标识（ADR-031 §7）。null = 装配方未提供知识层（纯段投影路径）。</summary>
+        public string? KnowledgeHash { get; init; }
     }
 
     /// <summary>
@@ -57,7 +60,8 @@ namespace Heartbeat.Server.Services
             IReadOnlyList<RecapSegmentInput> segments,
             DateRange window,
             TimeSpan displayOffset,
-            IReadOnlyList<KnownStrandInput>? knownStrands = null,
+            IReadOnlyList<StrandKnowledgeInput>? strands = null,
+            IReadOnlyList<EpisodeKnowledgeInput>? episodes = null,
             IReadOnlyList<string>? recurringReadings = null,
             DepthTables? depthTables = null)
         {
@@ -108,45 +112,76 @@ namespace Heartbeat.Server.Services
                 AppendPluginTracks(sb, device.ToList(), depthTables);
             }
 
-            AppendKnownStrands(sb, clipped, knownStrands, depthTables);
+            var knowledge = ResolveKnowledge(segments, window, displayOffset, strands ?? [], episodes ?? [], depthTables);
+            AppendKnowledge(sb, knowledge, windowEnd, displayOffset);
             AppendRecurringNote(sb, recurringReadings);
 
             return new RecapProjectionResult
             {
                 IsEmpty = false,
                 Digest = sb.ToString(),
-                SegmentWatermarkUtc = watermark
+                SegmentWatermarkUtc = watermark,
+                KnowledgeHash = knowledge.Hash
             };
         }
 
         /// <summary>
-        /// 已知脉络块（ADR-028 §6，解析随 ADR-029 换 Matcher 命中）：注入只在指纹当日命中时发生——
-        /// 把当日观测归到用户确认过的 Strand，让生成层用项目名而非 app 名叙事。
-        /// 解析确定性（声明驱动的读数提取 + MatcherEval），留在可测的投影层。
+        /// 该日实际使用的知识视图（ADR-031 §7，纯函数）：当日证据（同一窗口规则）+ Owner 知识库
+        /// → 命中解析 + 祖先链 + 当日 Episode + canonical hash。生成与历史判脏走同一入口，
+        /// 保证重算标识与生成时字节一致。
         /// </summary>
-        private static void AppendKnownStrands(
-            StringBuilder sb, List<ClippedSegment> clipped, IReadOnlyList<KnownStrandInput>? knownStrands,
+        public static DateKnowledge ResolveKnowledge(
+            IReadOnlyList<RecapSegmentInput> segments,
+            DateRange window,
+            TimeSpan displayOffset,
+            IReadOnlyList<StrandKnowledgeInput> strands,
+            IReadOnlyList<EpisodeKnowledgeInput> episodes,
             DepthTables depthTables)
         {
-            if (knownStrands == null || knownStrands.Count == 0) return;
-
-            var observed = clipped
-                .Select(c => (c.Segment.Source, Readings: depthTables.ReadingsFor(
-                    c.Segment.Source, c.Segment.AppName, c.Segment.Title, c.Segment.IdentityKey,
-                    c.Segment.AttributesJson)))
+            DateTimeOffset windowStart = window.UtcStart;
+            DateTimeOffset windowEnd = window.UtcEnd;
+            var observations = segments
+                .Where(s => s.EndTime > windowStart && s.StartTime < windowEnd
+                            || s.StartTime == s.EndTime && s.StartTime >= windowStart && s.StartTime < windowEnd)
+                .Select(s => new SourceObservation(s.Source, depthTables.ReadingsFor(
+                    s.Source, s.AppName, s.Title, s.IdentityKey, s.AttributesJson)))
                 .ToList();
+            var date = DateOnly.FromDateTime(windowStart.ToOffset(displayOffset).Date);
+            return KnowledgeProjection.Resolve(date, strands, episodes, observations);
+        }
 
-            var present = knownStrands
-                .Where(s => s.Matchers.Any(m => observed.Any(o => MatcherEval.Hits(o.Source, o.Readings, m))))
-                .DistinctBy(s => s.Name)
-                .OrderBy(s => s.Name, StringComparer.Ordinal)
-                .ToList();
-            if (present.Count == 0) return;
+        /// <summary>
+        /// 知识层注入（ADR-031 §7）：已知脉络按根到叶的 path 渲染（命中带全祖先链，父命中不展开后代），
+        /// 当日 Episode 作为用户确认的当天事实单列。两块都只补语境——Observation 时间线与
+        /// Satellite 的叙事判断保持原样，不用知识层替换原始活动证据。
+        /// </summary>
+        private static void AppendKnowledge(
+            StringBuilder sb, DateKnowledge knowledge, DateTimeOffset windowEnd, TimeSpan displayOffset)
+        {
+            if (knowledge.Strands.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("## 已知脉络（把观测归到你确认过的项目；用这些名字称呼对应活动，层级是它的上位语境）");
+                foreach (var s in knowledge.Strands)
+                {
+                    var path = string.Join(" → ", s.Path);
+                    sb.AppendLine(string.IsNullOrWhiteSpace(s.Gloss) ? $"- {path}" : $"- {path}：{s.Gloss}");
+                }
+            }
 
-            sb.AppendLine();
-            sb.AppendLine("## 已知脉络（把观测归到你确认过的项目；用这些名字称呼对应活动）");
-            foreach (var g in present)
-                sb.AppendLine(string.IsNullOrWhiteSpace(g.Gloss) ? $"- {g.Name}" : $"- {g.Name}：{g.Gloss}");
+            if (knowledge.Episodes.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("## 当天事实（用户亲自确认的具体发生，是可信的叙事依据）");
+                foreach (var e in knowledge.Episodes)
+                {
+                    var time = e.ApproximateStart is { } start && e.ApproximateEnd is { } end
+                        ? $"{FormatTime(start, windowEnd, displayOffset)}–{FormatTime(end, windowEnd, displayOffset)}左右 "
+                        : string.Empty;
+                    var context = e.StrandPath.Count > 0 ? $"（属于：{string.Join(" → ", e.StrandPath)}）" : string.Empty;
+                    sb.AppendLine($"- {time}{e.Text}{context}");
+                }
+            }
         }
 
         private sealed record ClippedSegment(RecapSegmentInput Segment, DateTimeOffset Start, DateTimeOffset End)

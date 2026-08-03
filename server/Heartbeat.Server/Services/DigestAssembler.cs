@@ -26,10 +26,28 @@ namespace Heartbeat.Server.Services
         {
             var depthTables = await LoadDepthTablesAsync(ct);
             var segments = await QuerySegmentsAsync(ownerId, window.UtcStart, window.UtcEnd, ct);
-            var knownStrands = await LoadKnownStrandsAsync(ownerId, ct);
+            var strands = await LoadStrandsAsync(ownerId, ct);
+            var episodes = await LoadEpisodesAsync(ownerId, LocalDateOf(window, displayOffset), ct);
             var recurring = await ComputeRecurringReadingsAsync(ownerId, window.UtcStart, depthTables, ct);
-            return RecapProjection.Project(segments, window, displayOffset, knownStrands, recurring, depthTables);
+            return RecapProjection.Project(segments, window, displayOffset, strands, episodes, recurring, depthTables);
         }
+
+        /// <summary>
+        /// 该日当前应使用的知识投影标识（ADR-031 §7）：与 AssembleAsync 同一取数、同一纯函数，
+        /// 确定性重算——历史读取判脏的比较端。只读，不调 LLM、不写缓存。
+        /// </summary>
+        public async Task<string> ComputeKnowledgeHashAsync(
+            string ownerId, DateRange window, TimeSpan displayOffset, CancellationToken ct = default)
+        {
+            var depthTables = await LoadDepthTablesAsync(ct);
+            var segments = await QuerySegmentsAsync(ownerId, window.UtcStart, window.UtcEnd, ct);
+            var strands = await LoadStrandsAsync(ownerId, ct);
+            var episodes = await LoadEpisodesAsync(ownerId, LocalDateOf(window, displayOffset), ct);
+            return RecapProjection.ResolveKnowledge(segments, window, displayOffset, strands, episodes, depthTables).Hash;
+        }
+
+        private static DateOnly LocalDateOf(DateRange window, TimeSpan displayOffset)
+            => DateOnly.FromDateTime(new DateTimeOffset(window.UtcStart, TimeSpan.Zero).ToOffset(displayOffset).Date);
 
         /// <summary>
         /// 生效深度表集（ADR-030 §4）：编译期种子作地板 + DB 声明按 max(Version) 覆盖
@@ -134,29 +152,44 @@ namespace Heartbeat.Server.Services
         }
 
         /// <summary>
-        /// 载入该 Owner 的全部 Strand（名字 + 释义 + Matcher 指纹），供投影反哺（ADR-029 §1/§3）：
-        /// 注入只在指纹当日命中时发生，命中判断在投影层（可测）。机器世界知识不入库也不注入。
+        /// 载入该 Owner 的全部 Strand（树身份 + 叙事字段 + 有效日期 + 指纹），供日期知识投影
+        /// （ADR-031 §7）：日期有效性过滤、命中解析、祖先链注入都在纯函数层（可测）。
+        /// 机器世界知识不入库也不注入。
         /// </summary>
-        private async Task<List<KnownStrandInput>> LoadKnownStrandsAsync(string ownerId, CancellationToken ct)
+        private async Task<List<StrandKnowledgeInput>> LoadStrandsAsync(string ownerId, CancellationToken ct)
         {
             var strands = await db.Strands
                 .Where(s => s.OwnerId == ownerId)
                 .Select(s => new
                 {
+                    s.Id,
+                    s.ParentStrandId,
                     s.Name,
                     s.Gloss,
+                    s.StartedOn,
+                    s.EndedOn,
                     Matchers = s.Members.Select(m => new { m.Source, m.StepsJson }).ToList()
                 })
                 .ToListAsync(ct);
 
             return strands
-                .Select(s => new KnownStrandInput(
-                    s.Name,
-                    s.Gloss,
+                .Select(s => new StrandKnowledgeInput(
+                    s.Id, s.ParentStrandId, s.Name, s.Gloss, s.StartedOn, s.EndedOn,
                     s.Matchers
                         .Select(m => new MatcherDto { Source = m.Source, Steps = MatcherCodec.Deserialize(m.StepsJson) })
                         .ToList()))
                 .ToList();
+        }
+
+        /// <summary>目标本地叙事日的 Episode（ADR-031 §7：只有 LocalDate 等于目标日期的进当日 Recap）。Probe 不取——不进 Recap prompt。</summary>
+        private async Task<List<EpisodeKnowledgeInput>> LoadEpisodesAsync(
+            string ownerId, DateOnly date, CancellationToken ct)
+        {
+            return await db.Episodes
+                .Where(e => e.OwnerId == ownerId && e.LocalDate == date)
+                .Select(e => new EpisodeKnowledgeInput(
+                    e.Id, e.LocalDate, e.Text, e.ApproximateStart, e.ApproximateEnd, e.RelatedStrandId))
+                .ToListAsync(ct);
         }
 
         /// <summary>
