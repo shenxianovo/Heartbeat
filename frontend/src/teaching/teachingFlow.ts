@@ -330,6 +330,17 @@ export function interpretProposeError(err: ApiErrorLike, code: string | undefine
   return { expired: false, message: '整理提案失败，请重试；你的回答已保留' }
 }
 
+/**
+ * Recap 纠正入口的提案失败解释（issue 06）：与证据卡入口共用分支，但没有"证据卡过期"
+ * 语义——纠正的证据是目标日期本身。空日（400 empty_day）意味着那天没有可纠正的观察。
+ */
+export function interpretCorrectionError(err: ApiErrorLike, code: string | undefined): ProposeFailure {
+  if (err.kind === 'http' && err.status === 400 && code === 'empty_day')
+    return { expired: false, message: '这一天没有活动记录，没有可纠正的回顾' }
+  const failure = interpretProposeError(err, code)
+  return { expired: false, message: failure.message } // 目标日期不会"过期"，永远可重试
+}
+
 export interface CommitFailure {
   message: string
   /** 失败操作的 OpId（null = set 级失败），用于在 review 里定位标红。 */

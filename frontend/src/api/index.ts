@@ -227,6 +227,24 @@ export async function proposeFromQuestion(questionId: string, params: { date: st
 }
 
 /**
+ * Recap 纠正入口（ADR-031 §6，issue 06）：把用户对某日回顾的自然语言纠正交给服务端整理成
+ * 可编辑提案。零写入——证据上下文由服务端按目标本地日期锁定，不提交散文 patch。
+ * date 与 recap 读取同一天窗口，手拼以保住本地时区偏移。
+ */
+export async function proposeCorrection(params: { date: string; correction: string }): Promise<KnowledgeProposalResponse> {
+  const res = await authHttp.fetch(`${API_BASE}/knowledge/corrections/propose`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ date: toLocalDateTimeOffsetString(params.date), correction: params.correction }),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new ApiException('Correction propose failed.', res.status, text, {}, tryParseError(text, KnowledgeErrorResponse.fromJS))
+  }
+  return KnowledgeProposalResponse.fromJS(await res.json())
+}
+
+/**
  * 共享事务提交端（ADR-031 §6）：用户最终确认后提交选中的操作，全部成功才写入。
  * body 经生成类 toJSON 序列化——DateOnly 字段（startedOn/endedOn/localDate）必须输出
  * "yyyy-MM-dd"（本地日期分量），裸 JSON.stringify 会把 Date 变成 UTC datetime 被服务端拒收。

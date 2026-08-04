@@ -62,6 +62,29 @@ namespace Heartbeat.Server.Controllers
         }
 
         /// <summary>
+        /// Recap 纠正入口（ADR-031 §6，issue 06）：对某日回顾的自然语言纠正 → 可编辑
+        /// KnowledgeChangeSet 提案。证据上下文由服务端锁定为该本地日期的活动摘要，
+        /// 不接受散文 patch。零写入；确认后走共享 commit 端点，目标日由前端提交成功后
+        /// 显式 force 重生成。
+        /// </summary>
+        [HttpPost("corrections/propose")]
+        [EndpointName("proposeCorrection")]
+        [ProducesResponseType<KnowledgeProposalResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<KnowledgeErrorResponse>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<KnowledgeErrorResponse>(StatusCodes.Status502BadGateway)]
+        public async Task<IActionResult> ProposeCorrection(
+            [FromBody] ProposeCorrectionRequest request, CancellationToken ct = default)
+        {
+            var result = await _proposalService.ProposeCorrectionAsync(_currentUser.GetUserId(), request, ct);
+            if (result.Proposal != null) return Ok(result.Proposal);
+            return result.Error!.Code switch
+            {
+                ProposalErrorCodes.GenerationFailed => StatusCode(StatusCodes.Status502BadGateway, result.Error),
+                _ => BadRequest(result.Error),
+            };
+        }
+
+        /// <summary>
         /// 共享事务提交端（ADR-031 §6）：主动发问、Recap 纠正与手动复合操作共用。
         /// 服务端重新校验全部领域不变量、Owner 与并发版本；选中操作全部成功才提交，
         /// 失败整批回滚并定位到具体 operation。

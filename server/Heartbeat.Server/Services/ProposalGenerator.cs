@@ -24,7 +24,12 @@ namespace Heartbeat.Server.Services
         IReadOnlyList<ProposalEpisode> Episodes,
         IReadOnlyList<ProposalProbe> Probes,
         DateOnly LocalDate,
-        string ReadingVocabulary = "");
+        string ReadingVocabulary = "",
+        IReadOnlyDictionary<string, string>? LabelsOrNull = null)
+    {
+        /// <summary>读数展示名词典（ADR-030 §7）：proposal 响应里 Matcher 渲染用。</summary>
+        public IReadOnlyDictionary<string, string> Labels => LabelsOrNull ?? new Dictionary<string, string>();
+    }
 
     /// <summary>LLM 原始提案信封：解析层只管形状，引用合法性归 ProposalSanitizer。</summary>
     public sealed class RawKnowledgeProposal
@@ -72,13 +77,22 @@ namespace Heartbeat.Server.Services
     }
 
     /// <summary>
-    /// 教学整理者（ADR-031 §6 第二阶段）：用户对证据卡的自然语言回答 → 原始结构化提案。
+    /// 教学整理者（ADR-031 §6 第二阶段）：用户的自然语言解释 → 原始结构化提案。
     /// 只产提案，不持有数据库写权限；返回 null = 调用失败（端点映射 502，无副作用）。
     /// </summary>
     public interface IProposalGenerator
     {
+        /// <summary>主动发问入口：解释一张服务端发出的证据卡。</summary>
         Task<RawKnowledgeProposal?> ProposeAsync(
             AskingQuestionResponse question, string answer, ProposalContext context,
+            CancellationToken ct = default);
+
+        /// <summary>
+        /// Recap 纠正入口（issue 06）：解释用户对某日回顾的纠正。证据是该日的活动摘要
+        /// （与叙事同一份 digest）——不喂 Recap 散文，事实只来自目标日观察与用户的话。
+        /// </summary>
+        Task<RawKnowledgeProposal?> ProposeCorrectionAsync(
+            string digest, string correction, ProposalContext context,
             CancellationToken ct = default);
     }
 
@@ -90,10 +104,23 @@ namespace Heartbeat.Server.Services
         /// 明确区分解释 / 操作 / 建议；已有对象只能按语境清单里的 id 引用——
         /// sanitizer 会把清单之外的引用整个剔除，名称绝不用于绑定。
         /// 读数词汇段占位 {{VOCAB}} 由生效声明渲染（ADR-030 §7）。
+        /// 两个入口（证据卡回答 / Recap 纠正）共享领域模型与操作词汇，只换开场语境。
         /// </summary>
-        private const string SystemPromptTemplate =
+        private const string QuestionIntro =
             """
             你是 Heartbeat 的知识整理者。Heartbeat 观察用户的电脑活动；刚才它向用户展示了一张"活动证据卡"提问，用户用自然语言回答了。你的任务：把用户的回答整理成一组结构化的知识操作提案，供用户逐项确认。你只提议，不写入——用户确认后才由系统提交。
+            """;
+
+        /// <summary>
+        /// Recap 纠正入口的开场（issue 06）：明确不改散文——纠正写入知识，回顾随后重新生成。
+        /// </summary>
+        private const string CorrectionIntro =
+            """
+            你是 Heartbeat 的知识整理者。Heartbeat 观察用户的电脑活动，并为每一天生成回顾叙事；用户刚才对某一天的回顾提出了纠正——指出遗漏、错误的关联，或希望 Heartbeat 长期记住的私人语境。你的任务：把用户的纠正整理成一组结构化的知识操作提案，供用户逐项确认。你只提议，不写入——用户确认后才由系统提交，那一天的回顾随后会用更新后的知识重新生成。不要试图直接改写回顾文字：只属于那一天的事实用 createEpisode（localDate = 目标日期）；跨日期持续或用户希望长期记住的语境用 Strand；不确定是否会再发生的用 createEpisode + createProbe。
+            """;
+
+        private const string SharedPromptBody =
+            """
 
             领域模型：
             - Strand（脉络）：跨日期延续的私人语境，组成严格单父级树（如"哔哩哔哩实习 → Hyperframes → 产品调研"）。有名字、一句话释义（gloss）、可选的近似起止日期（yyyy-MM-dd）。
@@ -130,7 +157,14 @@ namespace Heartbeat.Server.Services
 
         /// <summary>组装整理者 system prompt（纯函数）：词汇段注入模板。空词汇回落种子声明。</summary>
         public static string BuildSystemPrompt(string readingVocabulary)
-            => SystemPromptTemplate.Replace("{{VOCAB}}",
+            => InjectVocabulary(QuestionIntro + SharedPromptBody, readingVocabulary);
+
+        /// <summary>Recap 纠正入口的 system prompt（纯函数）：同一领域模型与操作词汇，换开场语境。</summary>
+        public static string BuildCorrectionSystemPrompt(string readingVocabulary)
+            => InjectVocabulary(CorrectionIntro + SharedPromptBody, readingVocabulary);
+
+        private static string InjectVocabulary(string template, string readingVocabulary)
+            => template.Replace("{{VOCAB}}",
                 string.IsNullOrWhiteSpace(readingVocabulary)
                     ? DepthTables.Seeds.DescribeForPrompt()
                     : readingVocabulary);
@@ -147,6 +181,24 @@ namespace Heartbeat.Server.Services
                 content = await client.CompleteAsync(
                     BuildSystemPrompt(context.ReadingVocabulary),
                     BuildUserPrompt(question, answer, context), ct);
+            }
+            catch (ChatCompletionException)
+            {
+                return null; // 失败无副作用：proposal 阶段本就零写入
+            }
+            return Parse(content);
+        }
+
+        public async Task<RawKnowledgeProposal?> ProposeCorrectionAsync(
+            string digest, string correction, ProposalContext context,
+            CancellationToken ct = default)
+        {
+            string content;
+            try
+            {
+                content = await client.CompleteAsync(
+                    BuildCorrectionSystemPrompt(context.ReadingVocabulary),
+                    BuildCorrectionUserPrompt(digest, correction, context), ct);
             }
             catch (ChatCompletionException)
             {
@@ -178,6 +230,38 @@ namespace Heartbeat.Server.Services
             if (question.Kind == AskingQuestionKinds.Recurrence && question.EpisodeText != null)
                 sb.AppendLine($"这个问题来自复现探针：用户 {question.EpisodeDate:yyyy-MM-dd} 确认过「{question.EpisodeText}」（episodeId: {question.EpisodeId}，probeId: {question.ProbeId}），现在相似活动又出现了。");
 
+            AppendKnownKnowledge(sb, context);
+
+            sb.AppendLine();
+            sb.AppendLine("## 用户的回答");
+            sb.AppendLine(answer.Trim());
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Recap 纠正入口的 user prompt（纯函数，issue 06）：目标日活动摘要（与叙事同一份
+        /// digest）+ 已知知识清单 + 用户的纠正。不含 Recap 散文——散文只是显示上下文，
+        /// 事实证据来自目标日观察与用户的话。
+        /// </summary>
+        public static string BuildCorrectionUserPrompt(string digest, string correction, ProposalContext context)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine($"## 被纠正的回顾日期：{context.LocalDate:yyyy-MM-dd}");
+            sb.AppendLine();
+            sb.AppendLine("## 那一天的活动摘要（系统观察，事实来源）");
+            sb.AppendLine(digest.Trim());
+
+            AppendKnownKnowledge(sb, context);
+
+            sb.AppendLine();
+            sb.AppendLine("## 用户对那一天回顾的纠正");
+            sb.AppendLine(correction.Trim());
+            return sb.ToString();
+        }
+
+        /// <summary>已知知识清单段（两个入口共用）：全部 Strand（path/日期/id）+ 语境内 Episode。</summary>
+        private static void AppendKnownKnowledge(StringBuilder sb, ProposalContext context)
+        {
             sb.AppendLine();
             sb.AppendLine("## 已知知识（引用已有对象只能用这里的 id）");
             if (context.Strands.Count == 0) sb.AppendLine("（还没有任何 Strand。）");
@@ -190,11 +274,6 @@ namespace Heartbeat.Server.Services
             }
             foreach (var e in context.Episodes)
                 sb.AppendLine($"- Episode {e.LocalDate:yyyy-MM-dd}「{e.Text}」（id: {e.Id}）");
-
-            sb.AppendLine();
-            sb.AppendLine("## 用户的回答");
-            sb.AppendLine(answer.Trim());
-            return sb.ToString();
         }
 
         /// <summary>

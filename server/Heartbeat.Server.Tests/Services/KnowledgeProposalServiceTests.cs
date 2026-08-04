@@ -44,12 +44,23 @@ public class KnowledgeProposalServiceTests(PostgresContainerFixture fixture) : P
         public AskingQuestionResponse? LastQuestion;
         public string? LastAnswer;
         public ProposalContext? LastContext;
+        public string? LastDigest;
+        public string? LastCorrection;
 
         public Task<RawKnowledgeProposal?> ProposeAsync(
             AskingQuestionResponse question, string answer, ProposalContext context, CancellationToken ct = default)
         {
             LastQuestion = question;
             LastAnswer = answer;
+            LastContext = context;
+            return Task.FromResult(Result);
+        }
+
+        public Task<RawKnowledgeProposal?> ProposeCorrectionAsync(
+            string digest, string correction, ProposalContext context, CancellationToken ct = default)
+        {
+            LastDigest = digest;
+            LastCorrection = correction;
             LastContext = context;
             return Task.FromResult(Result);
         }

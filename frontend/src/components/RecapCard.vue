@@ -2,6 +2,7 @@
 import { computed, watch } from 'vue'
 import { fetchDailyRecap, fetchPublicDailyRecap, type DailyRecapResponse } from '../api/index'
 import { useAsyncData } from '../composables/useAsyncData'
+import RecapCorrection from './RecapCorrection.vue'
 import { Card } from '@/components/ui/card'
 
 /**
@@ -29,6 +30,15 @@ async function load(force = false) {
   } finally {
     forceNext = false
   }
+}
+
+/**
+ * 纠正提交成功后的重生成：useAsyncData 吞错以保留上次成功叙事，所以这里显式把失败
+ * 重新抛出——纠正面板要据此区分"知识已存、Recap 未更新"。
+ */
+async function regenerateForCorrection() {
+  await load(true)
+  if (recap.error.value) throw recap.error.value
 }
 
 watch(() => props.selectedDate, () => {
@@ -109,6 +119,9 @@ const errorMessage = computed(() => {
           <span v-if="recap.pending.value" class="recap-thinking">更新中…</span>
           <span v-else-if="errorMessage">{{ errorMessage }}</span>
         </div>
+
+        <!-- 纠正入口：owner-only。写知识，不是散文补丁 -->
+        <RecapCorrection v-if="canRegenerate" :date="selectedDate" :regenerate="regenerateForCorrection" />
       </template>
     </div>
   </Card>

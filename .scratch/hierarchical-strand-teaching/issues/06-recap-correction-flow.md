@@ -1,6 +1,6 @@
 # 06: Recap 纠正与目标日重生成
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -36,15 +36,15 @@ Status: ready-for-agent
 
 ## Acceptance criteria
 
-- [ ] 私有 Recap 卡片可从明确的目标本地日期发起纠正
-- [ ] 纠正复用统一 KnowledgeChangeSet proposal/review/commit，不直接编辑 Recap 正文
-- [ ] UI 能区分持续 Strand、目标日 Episode 和 Episode + Probe
-- [ ] 只有最终确认后的知识变更会写库；提交失败不触发重生成
-- [ ] 提交成功后立即且仅强制重生成目标日期，并保存最新知识投影
-- [ ] 生成失败保留已确认知识和上一版成功 Recap，用户可单独重试
-- [ ] 其他历史日期不批量生成，只在读取时惰性提示 stale
-- [ ] public/share 路径不暴露纠正入口且保持 cache-only
-- [ ] 后端与前端测试覆盖成功、部分故障和日期隔离
+- [x] 私有 Recap 卡片可从明确的目标本地日期发起纠正
+- [x] 纠正复用统一 KnowledgeChangeSet proposal/review/commit，不直接编辑 Recap 正文
+- [x] UI 能区分持续 Strand、目标日 Episode 和 Episode + Probe
+- [x] 只有最终确认后的知识变更会写库；提交失败不触发重生成
+- [x] 提交成功后立即且仅强制重生成目标日期，并保存最新知识投影
+- [x] 生成失败保留已确认知识和上一版成功 Recap，用户可单独重试
+- [x] 其他历史日期不批量生成，只在读取时惰性提示 stale
+- [x] public/share 路径不暴露纠正入口且保持 cache-only
+- [x] 后端与前端测试覆盖成功、部分故障和日期隔离
 
 ## Blocked by
 
@@ -52,3 +52,42 @@ Status: ready-for-agent
 - [04](./04-two-stage-teaching-protocol.md)
 
 ## Comments
+
+- 2026-08-04 agent: 实现落地。要点——
+  - **后端纠正 propose 入口**：`POST knowledge/corrections/propose`（`ProposeCorrectionRequest`：date + correction）。
+    `KnowledgeProposalService.ProposeCorrectionAsync` 证据上下文锁定目标本地日期——调
+    `DigestAssembler.AssembleAsync` 取该日 digest（与叙事同一份），不喂 Recap 散文。
+    `IProposalGenerator.ProposeCorrectionAsync` 新方法复用同一领域模型/操作词汇/sanitizer，
+    只换开场语境（`BuildCorrectionSystemPrompt`）：明说"只属于那天的事实用 createEpisode，
+    跨日期持续的用 Strand，不确定的用 Episode + Probe，不要直接改写回顾文字"。
+    证据上下文 = 完整 digest + 已知知识清单（Strand/Episode/Probe 带 UUIDv7 + 版本）。
+    零写入——commit 走既有共享端点 `POST changesets`，不另建写协议。
+    空日（digest 为空）返回 400 `empty_day`（不是 404）。
+  - **Prompt 重构**：原 `SystemPromptTemplate` 拆成 `QuestionIntro + SharedPromptBody`
+    与 `CorrectionIntro + SharedPromptBody`（纯 const 拼接，编译时确定），`BuildSystemPrompt`
+    与 `BuildCorrectionSystemPrompt` 各注入词汇段。`SharedPromptBody` 包含领域模型、操作词汇
+    与整理规则——两个入口操作语义完全一致，只换开场角色描述。
+  - **提交后重生成编排（纯前端逻辑）**：`correctionFlow.ts` 的 `submitCorrection`——
+    顺序是契约：先 `commit` 再 `regenerate`；commit 抛错时 regenerate 绝不被调用。
+    三种出口：`done`（知识 + 叙事都成功）/ `regenerateFailed`（知识已存，Recap 尚未更新，
+    可单独 `retryRegenerate`）/ `commitFailed`（整批回滚，保留用户编辑）。
+    RecapService 的 `force=true` 语义天然满足"保存最新知识投影"（AssembleAsync 每次
+    重算 hash）；RecapGenerationException → 502 → UI 区分"生成失败"与"提交失败"。
+  - **RecapCard 集成**：`regenerateForCorrection` 透传 `load(true)`，但显式把
+    `useAsyncData` 吞掉的错误重新抛出——纠正面板据此判"知识已存、Recap 未更新"。
+    `<RecapCorrection>` 只在 `canRegenerate`（owner-only）时渲染；公开路径零暴露。
+  - **ProposalReview 抽取**：issue 05 的 StrandQuestions 和 issue 06 的 RecapCorrection
+    共用同一套分区渲染 + 逐项编辑；抽成独立组件 `ProposalReview.vue`，StrandQuestions 改为
+    引用它，RecapCorrection 同样引用。StrandQuestions 从 512→211 行（-59%）。
+  - **前端 `interpretCorrectionError`**：与 `interpretProposeError` 的关键差别——纠正的
+    证据是日期本身不会过期（`expired` 恒 false），不会出现"证据卡已失效只能刷新"的分支。
+    新增 `empty_day` 错误码映射"这一天没有活动记录，无法纠正"。
+  - **测试**：
+    - 后端 `RecapCorrectionFlowTests`（+10，Postgres 集成）：纠正 propose 零写入 + 证据
+      来自 digest 不来自散文、空日 400、Owner 隔离、与主动发问的 propose 同 sanitizer
+      共享消毒纪律、commit 后 force 重生成语义验证（知识投影 hash 更新）、commit 失败
+      不调生成、生成失败不回滚知识且不覆盖上一版 Recap、public 路径零暴露。
+    - 前端 `correctionFlow.test.ts`（+11）：submitCorrection 成功/提交失败/生成失败/
+      retryRegenerate/correctionStageHint 全分支。
+    - `teachingFlow.test.ts`（+4）：interpretCorrectionError 分支。
+    - 全套 160 前端 + 246 后端过；vue-tsc + vite build 干净。

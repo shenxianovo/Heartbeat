@@ -5,7 +5,7 @@ import {
   strandRefOptions, episodeRefOptions, strandDisplay, episodeRefDisplay, rebindMatcherTarget,
   refToValue, valueToRef, dateToInput, inputToDate, dateRangeLabel, strandLabel,
   describeMatcher, isRecurrence, knowledgeErrorMessage, commitSummary, CONFLICT_CODES,
-  interpretProposeError, interpretCommitError, findItemIndexByOpId,
+  interpretProposeError, interpretCommitError, interpretCorrectionError, findItemIndexByOpId,
   type ReviewItem,
 } from './teachingFlow'
 
@@ -311,6 +311,24 @@ describe('interpretProposeError', () => {
   it('400 按错误码出人话,无码有兜底', () => {
     expect(interpretProposeError({ kind: 'http', status: 400 }, 'empty_answer').message).toBeTruthy()
     expect(interpretProposeError({ kind: 'parse' }, undefined).message).toContain('重试')
+  })
+})
+
+describe('interpretCorrectionError', () => {
+  it('空日：这一天没有可纠正的观察', () => {
+    const f = interpretCorrectionError({ kind: 'http', status: 400 }, 'empty_day')
+    expect(f.expired).toBe(false)
+    expect(f.message).toContain('没有活动记录')
+  })
+
+  it('目标日期不会过期：即使 404 也允许原样重试', () => {
+    // 与证据卡入口的关键差别——纠正的证据是日期本身,不是一张会失效的卡
+    expect(interpretCorrectionError({ kind: 'http', status: 404 }, 'question_not_found').expired).toBe(false)
+  })
+
+  it('LLM/网络失败复用共享文案', () => {
+    expect(interpretCorrectionError({ kind: 'http', status: 502 }, undefined).message).toBeTruthy()
+    expect(interpretCorrectionError({ kind: 'network' }, undefined).expired).toBe(false)
   })
 })
 

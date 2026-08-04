@@ -15,6 +15,20 @@ namespace Heartbeat.Core.DTOs.Knowledge
     }
 
     /// <summary>
+    /// Recap 纠正入口的请求（ADR-031 §6，issue 06）：用户从某日 Recap 发起的自然语言纠正。
+    /// 证据上下文由服务端锁定为该本地日期的 Observation/Segment 窗口——散文只是用户正在
+    /// 纠正的显示上下文，事实证据来自目标日观察与用户的话，不从散文自动抽取知识。
+    /// </summary>
+    public class ProposeCorrectionRequest
+    {
+        /// <summary>纠正的目标日期（带调用方时区 offset，与 recap 读取同约）。</summary>
+        public DateTimeOffset Date { get; set; }
+
+        /// <summary>用户的自然语言纠正：遗漏、错误关联或应记住的私人语境。</summary>
+        public string Correction { get; set; } = string.Empty;
+    }
+
+    /// <summary>
     /// LLM 整理出的知识变更提案（ADR-031 §6）：只是提案，没有任何写入发生。
     /// 四个字段明确区分：模型解释 / 可编辑的结构化操作 / 约束警告 / 无需保存的建议。
     /// 用户可逐项编辑、取消，确认后把选中的操作提交到 commit 端点。
