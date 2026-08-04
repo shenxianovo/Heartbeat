@@ -637,3 +637,6 @@ FodyWeavers.xsd
 .idea/
 
 *.lscache
+
+# Project-local Docker runtime data
+.local/

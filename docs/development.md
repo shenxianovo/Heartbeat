@@ -26,12 +26,14 @@ Copy-Item .env.local.example .env.local
 ### 2. Start the local stack
 
 ```powershell
-docker compose -f compose.local.yml --env-file .env.local up --build
+./scripts/start-local.ps1
 ```
 
 - Frontend + API: <http://localhost:8080> (nginx reverse-proxies `/api/` to the backend)
 - Schema auto-migrates on startup (ADR-013), so no manual migration step.
-- Rebuild after code changes: re-run the same command (`--build` rebuilds changed layers).
+- The local database is stored under `.local/postgres-data` in the checkout and survives ordinary
+  `down/up`. This path works with Docker Desktop on Windows and is ignored by Git.
+- Works with an empty database (first run) or one seeded by `refresh-local-data.ps1`.
 
 ### 3. Point the desktop Agent at the local stack
 
@@ -106,13 +108,64 @@ under the app's replay modal (stats page → click an app) within an upload inte
 To run the real browser collector against the local hub, see
 [collectors/browser/README.md](../collectors/browser/README.md).
 
-### 5. Tear down
+### 5. Refresh local data from the server (optional)
+
+When a realistic history is needed, replace the local database with a read-only snapshot of the
+server database. The script runs `pg_dump` inside the server's Postgres container over SSH, so the
+server does not expose port 5432 and the local application never connects to production.
+
+Prerequisites:
+
+- You are authorized to copy all data in that database. The dump includes private activity,
+  browser metadata, account identifiers, and generated Recaps.
+- The SSH account can run Docker, and the remote directory contains `compose.yml` plus `.env`.
+  SSH key and password authentication are both supported.
+- The local checkout is at least as new as the deployed server. The script checks EF migration IDs
+  before it starts the application.
+
+Run the script without arguments and follow its prompts. The remote directory defaults to
+`/srv/heartbeat`, so press Enter to accept it:
 
 ```powershell
-docker compose -f compose.local.yml down
+./scripts/refresh-local-data.ps1
 ```
 
-The database is not persisted (no volume), so every run starts clean.
+Command-line parameters remain available for repeatable runs:
+
+```powershell
+./scripts/refresh-local-data.ps1 `
+  -SshDestination user@your-server `
+  -RemoteDirectory /srv/heartbeat
+```
+
+`-RemoteDir` is accepted as a shorter alias for `-RemoteDirectory`. For a non-default SSH key or
+port, add `-IdentityFile ~/.ssh/id_ed25519` or `-SshPort 2222`. If key authentication is unavailable,
+OpenSSH prompts for the account password during step 1; the password is not echoed, stored, or passed
+as a command-line argument.
+The operation is deliberately one-way and replaces **only** `.local/postgres-data`;
+it never writes to the server database. `pg_dump` provides a transaction-consistent snapshot while
+the server remains online. The temporary custom-format dump is deleted after restore unless
+`-KeepDump` is explicitly supplied.
+
+Do not connect a local backend directly to production PostgreSQL: local migrations and test writes
+would then act on production. Do not copy Docker's raw Postgres volume either; logical dumps are
+portable, consistent, and let the local backend apply migrations added by the checkout.
+
+### 6. Tear down or reset
+
+Stop containers while retaining the restored data:
+
+```powershell
+docker compose -f compose.local.yml --env-file .env.local down
+```
+
+Return to a completely clean database (destructive to local data only). Because this is a bind
+mount rather than a Docker named volume, stop the stack before deleting the project-local directory:
+
+```powershell
+docker compose -f compose.local.yml --env-file .env.local down
+Remove-Item -LiteralPath ./.local/postgres-data -Recurse -Force
+```
 
 ## Running Tests
 
