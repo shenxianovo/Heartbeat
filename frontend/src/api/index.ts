@@ -1,4 +1,4 @@
-import { Client, ApiException, DailyRecapResponse, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, SegmentResponse, UpdateMySettingsRequest, AskingQuestionsResponse, KnowledgeProposalResponse, CommitChangeSetRequest, CommitChangeSetResponse, ChangeSetErrorResponse, KnowledgeErrorResponse, CreateStrandRequest, UpdateStrandRequest, MuteMatcherRequest, StrandResponse, type ICreateStrandRequest, type IUpdateStrandRequest, type IMatcherDto, type IKnowledgeOperationDto, type IChangeSetErrorResponse, type IKnowledgeErrorResponse } from './client'
+import { Client, ApiException, DailyRecapResponse, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, SegmentResponse, UpdateMySettingsRequest, AskingQuestionsResponse, KnowledgeProposalResponse, CommitChangeSetRequest, CommitChangeSetResponse, ChangeSetErrorResponse, KnowledgeErrorResponse, CreateStrandRequest, UpdateStrandRequest, MoveStrandRequest, EndStrandRequest, MuteMatcherRequest, StrandResponse, EpisodeResponse, ProbeResponse, PromoteEpisodeResponse, CreateEpisodeRequest, UpdateEpisodeRequest, RelateEpisodeRequest, CreateProbeRequest, ResolveProbeRequest, PromoteEpisodeRequest, type ICreateStrandRequest, type IUpdateStrandRequest, type IMoveStrandRequest, type IEndStrandRequest, type IMatcherDto, type IKnowledgeOperationDto, type IChangeSetErrorResponse, type IKnowledgeErrorResponse, type ICreateEpisodeRequest, type IUpdateEpisodeRequest, type IRelateEpisodeRequest, type ICreateProbeRequest, type IResolveProbeRequest, type IPromoteEpisodeRequest } from './client'
 import { authStore } from '../stores/auth'
 
 // ===== Error model =====
@@ -193,9 +193,9 @@ export async function fetchPublicDailyRecap(username: string, params: { date?: s
 // questions/propose 的 date 与 recap 同理须携带本地时区偏移，手拼请求；其余走生成 client。
 // 已有 Strand 一律按 UUIDv7 定位（ADR-031）——按名收敛的旧 bindStrand 已退役。
 
-export type { IMatcherDto, IMatcherStepDto, IStrandResponse, ICreateStrandRequest, IUpdateStrandRequest, IKnowledgeErrorResponse } from './client'
+export type { IMatcherDto, IMatcherStepDto, IStrandResponse, ICreateStrandRequest, IUpdateStrandRequest, IMoveStrandRequest, IEndStrandRequest, IKnowledgeErrorResponse } from './client'
 export type { IAskingQuestionResponse, IEvidenceObservationDto, IKnowledgeProposalResponse, IKnowledgeOperationDto, IOperationResultResponse, ICommitChangeSetResponse, IChangeSetErrorResponse, IStrandRefDto, IEpisodeRefDto } from './client'
-// review 编辑要构造引用与操作(生成 client 的嵌套字段是类类型,普通对象字面量过不了类型检查)
+export type { IEpisodeResponse, IProbeResponse, IPromoteEpisodeResponse, ICreateEpisodeRequest, IUpdateEpisodeRequest, IRelateEpisodeRequest, ICreateProbeRequest, IResolveProbeRequest, IPromoteEpisodeRequest } from './client'
 export { StrandRefDto, KnowledgeOperationDto } from './client'
 
 /** 当日证据卡问题（ADR-031 §6 两阶段第一步）：真实活动簇的时段与跨 Source 观察。 */
@@ -297,9 +297,56 @@ export async function updateStrand(id: string, req: IUpdateStrandRequest): Promi
   return client.updateStrand(id, UpdateStrandRequest.fromJS(req))
 }
 
+export async function moveStrand(id: string, req: IMoveStrandRequest): Promise<StrandResponse> {
+  return client.moveStrand(id, MoveStrandRequest.fromJS(req))
+}
+
+export async function endStrand(id: string, req: IEndStrandRequest): Promise<StrandResponse> {
+  return client.endStrand(id, EndStrandRequest.fromJS(req))
+}
+
 /** Mute 一个 Matcher（负向裁决）：别再就它发问。 */
 export async function muteMatcher(matcher: IMatcherDto): Promise<void> {
   return client.muteMatcher(MuteMatcherRequest.fromJS({ matcher }))
+}
+
+// ===== Episode / Probe（ADR-031 §4/§5）=====
+
+export type { EpisodeResponse, ProbeResponse, PromoteEpisodeResponse } from './client'
+
+export async function fetchEpisodes(params: { date?: string; strandId?: string }): Promise<EpisodeResponse[]> {
+  return client.getEpisodes(
+    params.date ? new Date(params.date) : undefined,
+    params.strandId,
+  )
+}
+
+export async function createEpisode(req: ICreateEpisodeRequest): Promise<EpisodeResponse> {
+  return client.createEpisode(CreateEpisodeRequest.fromJS(req))
+}
+
+export async function updateEpisode(id: string, req: IUpdateEpisodeRequest): Promise<EpisodeResponse> {
+  return client.updateEpisode(id, UpdateEpisodeRequest.fromJS(req))
+}
+
+export async function relateEpisode(id: string, req: IRelateEpisodeRequest): Promise<EpisodeResponse> {
+  return client.relateEpisode(id, RelateEpisodeRequest.fromJS(req))
+}
+
+export async function deleteEpisode(id: string, expectedVersion: number): Promise<void> {
+  return client.deleteEpisode(id, expectedVersion)
+}
+
+export async function createProbe(episodeId: string, req: ICreateProbeRequest): Promise<ProbeResponse> {
+  return client.createProbe(episodeId, CreateProbeRequest.fromJS(req))
+}
+
+export async function resolveProbe(id: string, req: IResolveProbeRequest): Promise<ProbeResponse> {
+  return client.resolveProbe(id, ResolveProbeRequest.fromJS(req))
+}
+
+export async function promoteEpisode(id: string, req: IPromoteEpisodeRequest): Promise<PromoteEpisodeResponse> {
+  return client.promoteEpisode(id, PromoteEpisodeRequest.fromJS(req))
 }
 
 // ===== Me（本人视角,ADR-025）=====

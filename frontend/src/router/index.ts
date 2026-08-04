@@ -25,6 +25,11 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/settings/knowledge',
+      component: () => import('../views/KnowledgeView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/u/:username',
       component: () => import('../views/ProfileView.vue'),
     },

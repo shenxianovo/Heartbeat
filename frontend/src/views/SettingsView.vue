@@ -51,6 +51,16 @@ async function toggleVisibility() {
 
       <section class="row">
         <div class="row-text">
+          <div class="row-title">知识管理</div>
+          <div class="row-desc">
+            查看和修正 Strand 树、指纹、片段事实与复现探针。
+          </div>
+        </div>
+        <router-link to="/settings/knowledge" class="btn">管理</router-link>
+      </section>
+
+      <section class="row">
+        <div class="row-text">
           <div class="row-title">公开看板</div>
           <div class="row-desc">
             开启后，任何人可通过
