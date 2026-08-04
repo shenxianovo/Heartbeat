@@ -640,3 +640,6 @@ FodyWeavers.xsd
 
 # Project-local Docker runtime data
 .local/
+
+# VRChat collector session cookies
+.vrchat-cookies.json
