@@ -1,7 +1,7 @@
 using Heartbeat.Agent.Configuration;
-using Heartbeat.Agent.Http;
 using Heartbeat.Agent.Models;
-using Heartbeat.Agent.Services;
+using Heartbeat.Hub.Core.Collectors;
+using Heartbeat.Hub.Core.Http;
 using System.Net;
 
 namespace Heartbeat.Agent.Tests.Services;
@@ -33,7 +33,9 @@ public class DeclarationUplinkServiceTests : IDisposable
     public DeclarationUplinkServiceTests()
     {
         _config = new ConfigManager(_tempConfig);
-        _uplink = new DeclarationUplinkService(new HeartbeatApiClient(new HttpClient(_http)), _config);
+        _uplink = new DeclarationUplinkService(
+            new HeartbeatApiClient(new HttpClient(_http)),
+            new HubConfigurationAdapter(_config));
     }
 
     public void Dispose()

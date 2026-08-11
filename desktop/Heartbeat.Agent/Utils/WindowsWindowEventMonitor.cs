@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Heartbeat.Desktop.Core.Observations;
 
 namespace Heartbeat.Agent.Utils
 {
@@ -86,19 +87,26 @@ namespace Heartbeat.Agent.Utils
         private uint _messageLoopThreadId;
         private Thread? _thread;
 
-        /// <summary>
-        /// 前台窗口切换时触发，参数为新的前台窗口采样（进程名 + 标题，可能为 None）
-        /// </summary>
-        public event Action<ForegroundWindow>? ForegroundWindowChanged;
+        public event Action<DesktopObservation>? Observation;
 
-        /// <summary>
-        /// 获取当前前台窗口采样（进程名 + 标题）
-        /// </summary>
-        public ForegroundWindow GetForegroundWindow()
-            => SampleWindow(GetForegroundWindowNative());
+        public DesktopActivity CurrentActivity
+        {
+            get
+            {
+                var hwnd = GetForegroundWindowNative();
+                var activity = SampleWindow(hwnd);
+                _lastForegroundHwnd = hwnd;
+                _lastProcessName = activity.AppName;
+                return activity;
+            }
+        }
+
+        private IntPtr _lastForegroundHwnd;
+        private string? _lastProcessName;
 
         public void Start()
         {
+            _ = CurrentActivity;
             _thread = new Thread(() =>
             {
                 try { RunMessageLoop(); }
@@ -186,17 +194,34 @@ namespace Heartbeat.Agent.Utils
                 // 过滤掉子控件（idObject/idChild）和非前台窗口，否则引入大量噪声与开销。
                 if (idObject != OBJID_WINDOW || idChild != CHILDID_SELF) return;
                 if (hwnd != fg) return;
+
+                Observation?.Invoke(DesktopObservation.TitleChanged(SampleWindow(fg)));
+                return;
             }
 
-            // FOREGROUND / MINIMIZE / 通过过滤的 NAMECHANGE：以当前前台窗口采样后上报。
-            ForegroundWindowChanged?.Invoke(SampleWindow(fg));
+            // FOREGROUND / MINIMIZE：比较平台身份与 HWND，保留 App 激活和 focused-window
+            // 切换的语义差异；Desktop.Core 不需要知道句柄本身。
+            var activity = SampleWindow(fg);
+            if (fg == _lastForegroundHwnd
+                && string.Equals(_lastProcessName, activity.AppName, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var kind = string.Equals(_lastProcessName, activity.AppName, StringComparison.OrdinalIgnoreCase)
+                ? DesktopObservationKind.FocusedWindowChanged
+                : DesktopObservationKind.AppActivated;
+
+            _lastForegroundHwnd = fg;
+            _lastProcessName = activity.AppName;
+            Observation?.Invoke(new DesktopObservation(kind, activity));
         }
 
         /// <summary>给定窗口句柄采样（进程名 + 标题）。</summary>
-        private ForegroundWindow SampleWindow(IntPtr hwnd)
+        private DesktopActivity SampleWindow(IntPtr hwnd)
         {
-            if (hwnd == IntPtr.Zero) return ForegroundWindow.None;
-            return new ForegroundWindow(GetProcessNameFromHwnd(hwnd), GetWindowTitle(hwnd));
+            if (hwnd == IntPtr.Zero) return DesktopActivity.None;
+            return new DesktopActivity(GetProcessNameFromHwnd(hwnd), GetWindowTitle(hwnd));
         }
 
         private static string? GetWindowTitle(IntPtr hWnd)

@@ -1,4 +1,5 @@
 using Heartbeat.Agent.Utils;
+using Heartbeat.Desktop.Core.Input;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 

@@ -57,6 +57,9 @@ _Avoid_: Upgrade, Patch; Pending Update（旧名，混淆了"发现"与"已下�
 
 - 一个 **Release** 包含一个 **Setup** 和一个完整包
 - **Agent** 在应用生命周期内持续运行，**Update** 需重启应用才能生效
+- `Heartbeat.Hub.Core` 提供纯 .NET 的 hub 运行时（loopback ingest、Collector Registry/declaration、认证客户端、段缓冲、Current Activity、Upload Stream、presence 与缓存 seam），可由桌面或无头 host 组合，不依赖桌面采集或 UI
+- `Heartbeat.Desktop.Core` 消费 App 激活、focused-window 切换、同窗标题变化与 away 等语义观察，产出 system ActivitySegment；平台 adapter 不把原生回调形状泄漏进状态机
+- `Heartbeat.Agent` 是当前 Windows platform head/adapter 集合，负责 Win32 观察、MachineGuid、图标、自启动及与 WPF host 的组合
 
 ## Flagged ambiguities
 

@@ -9,6 +9,7 @@ using Heartbeat.Agent.Utils;
 using Heartbeat.WPF.Logging;
 using Heartbeat.WPF.Services;
 using Heartbeat.WPF.ViewModels;
+using Heartbeat.Hub.Core.Presence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;

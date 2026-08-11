@@ -1,7 +1,7 @@
 using Heartbeat.Agent.Configuration;
 using Heartbeat.Agent.Hosting;
-using Heartbeat.Agent.Services;
-using Heartbeat.Agent.Workers;
+using Heartbeat.Desktop.Core.Collection;
+using Heartbeat.Hub.Core.Runtime;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 

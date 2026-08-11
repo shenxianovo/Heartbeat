@@ -1,14 +1,15 @@
-namespace Heartbeat.Agent.Utils
+using Heartbeat.Desktop.Core.Observations;
+
+namespace Heartbeat.Agent.Utils;
+
+/// <summary>
+/// Windows 窗口 adapter 的内部 seam。它已经把 WinEvent 类型与 HWND 比较翻译成
+/// Desktop.Core 的语义观察，组合 adapter 只负责再合入 away 信号。
+/// </summary>
+public interface IWindowEventMonitor
 {
-    /// <summary>
-    /// 前台窗口事件监视 seam。生产实现 WindowsWindowEventMonitor 自持钩子线程：
-    /// Start 立即返回，Stop 阻塞收尾（三个 Win32 消息泵组件的统一形态）。
-    /// </summary>
-    public interface IWindowEventMonitor
-    {
-        event Action<ForegroundWindow>? ForegroundWindowChanged;
-        ForegroundWindow GetForegroundWindow();
-        void Start();
-        void Stop();
-    }
+    event Action<DesktopObservation>? Observation;
+    DesktopActivity CurrentActivity { get; }
+    void Start();
+    void Stop();
 }

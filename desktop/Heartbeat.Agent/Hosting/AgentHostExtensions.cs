@@ -1,12 +1,23 @@
 using Heartbeat.Agent.Configuration;
-using Heartbeat.Agent.Http;
 using Heartbeat.Agent.Services;
-using Heartbeat.Agent.Storage;
 using Heartbeat.Agent.Utils;
-using Heartbeat.Agent.Workers;
 using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Input;
 using Heartbeat.Core.DTOs.Segments;
+using Heartbeat.Desktop.Core.Collection;
+using Heartbeat.Desktop.Core.Configuration;
+using Heartbeat.Desktop.Core.Input;
+using Heartbeat.Desktop.Core.Observations;
+using Heartbeat.Hub.Core.Presence;
+using Heartbeat.Hub.Core.Segments;
+using Heartbeat.Hub.Core.Storage;
+using Heartbeat.Hub.Core.Time;
+using Heartbeat.Hub.Core.Upload;
+using Heartbeat.Hub.Core.Hosting;
+using Heartbeat.Hub.Core.Configuration;
+using Heartbeat.Hub.Core.Collectors;
+using Heartbeat.Hub.Core.Runtime;
+using Heartbeat.Hub.Core.Http;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Heartbeat.Agent.Hosting
@@ -21,6 +32,9 @@ namespace Heartbeat.Agent.Hosting
             ConfigManager? configManager = null,
             SingleInstanceGuard? guard = null)
         {
+            // 纯 .NET hub 运行时；无头 host 可独立调用同一入口，不会带入 desktop/UI。
+            services.AddHeartbeatHubCore();
+
             // 单实例守卫（由调用方创建并传入，Agent 负责管理生命周期）
             if (guard != null)
             {
@@ -37,17 +51,9 @@ namespace Heartbeat.Agent.Hosting
                 services.AddSingleton<ConfigManager>();
             }
 
-            // TokenManager（缓存 AuthService JWT）
-            services.AddSingleton<TokenManager>();
-            services.AddSingleton<IAccessTokenProvider>(sp => sp.GetRequiredService<TokenManager>());
-
-            // Typed HttpClient for AuthService token exchange (plain, no auth handler)
-            services.AddHttpClient<AuthServiceClient>();
-
-            // Typed HttpClient for Heartbeat API（注入 Bearer 处理器）
-            services.AddTransient<BearerTokenHandler>();
-            services.AddHttpClient<HeartbeatApiClient>()
-                .AddHttpMessageHandler<BearerTokenHandler>();
+            services.AddSingleton<HubConfigurationAdapter>();
+            services.AddSingleton<IHubConfiguration>(sp => sp.GetRequiredService<HubConfigurationAdapter>());
+            services.AddSingleton<ICollectorRegistry>(sp => sp.GetRequiredService<HubConfigurationAdapter>());
 
             // 本地缓存（JsonFileCache 直接充当 ICache<T> 生产 adapter，ADR-020）
             services.AddSingleton<ICache<InputEventItem>>(sp =>
@@ -65,10 +71,14 @@ namespace Heartbeat.Agent.Hosting
             });
 
             // 基础设施
-            services.AddSingleton<IClock, SystemClock>();
+            services.AddSingleton<IMachineIdentity, WindowsMachineIdentity>();
+            services.AddSingleton<IDeviceIdentity, WindowsDeviceIdentity>();
+            services.AddSingleton<IHubRuntimeHooks, WindowsHubRuntimeHooks>();
             services.AddSingleton<IWindowEventMonitor, WindowsWindowEventMonitor>();
             services.AddSingleton<ILowLevelInputHook, WindowsLowLevelInputHook>();
             services.AddSingleton<IPowerMonitor, WindowsPowerMonitor>();
+            services.AddSingleton<IDesktopObservationSource, WindowsDesktopObservationSource>();
+            services.AddSingleton<IDesktopSettings, DesktopSettingsAdapter>();
             services.AddSingleton<IInputActivitySignal, InputActivitySignal>();
 
             // 业务服务
@@ -77,16 +87,6 @@ namespace Heartbeat.Agent.Hosting
             // 输入缓冲为共享单例：collector 写入，出网侧经 IUploadSource drain
             services.AddSingleton(sp => new InputEventBuffer(sp.GetRequiredService<IClock>()));
             services.AddSingleton<IUploadSource<InputEventItem>>(sp => sp.GetRequiredService<InputEventBuffer>());
-            services.AddSingleton<SegmentIngestService>();
-            services.AddSingleton<ISegmentSink>(sp => sp.GetRequiredService<SegmentIngestService>());
-            services.AddSingleton<IUploadSource<ActivitySegmentItem>>(sp => sp.GetRequiredService<SegmentIngestService>());
-            // 集面读模型（ADR-021）：写入口给 system 采集器，读表面给 WPF 与心跳
-            services.AddSingleton<ICurrentActivitySink>(sp => sp.GetRequiredService<SegmentIngestService>());
-            services.AddSingleton<ICollectionStatus>(sp => sp.GetRequiredService<SegmentIngestService>());
-            services.AddSingleton<SegmentIngestRequestHandler>();
-            // 采集器声明上行（ADR-030 §3）：system 常量 + registry 声明,挂 UploadWorker 节律
-            services.AddSingleton<DeclarationUplinkService>();
-
             // 上传流（ADR-020/022）：绑定源 + 出网 + 缓存；行为差异只剩注入的 compact 策略
             services.AddSingleton(sp =>
             {
@@ -118,9 +118,6 @@ namespace Heartbeat.Agent.Hosting
             // InputEventCollector 另有 AddSingleton 注册，容器把同一实例捕获进 disposables 两次，
             // host.Dispose() 双重 Dispose → 对已释放 CTS 调 Cancel 抛异常 → 退出流程中断、端口不释放。
             services.AddHostedService<InputEventCollector>();
-            services.AddHostedService<UploadWorker>();
-            services.AddHostedService<StatusUploadWorker>();
-            services.AddHostedService<SegmentIngestWorker>();
             services.AddHostedService<AppMonitorService>();
 
             return services;

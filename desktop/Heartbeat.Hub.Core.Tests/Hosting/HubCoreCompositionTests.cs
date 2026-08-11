@@ -1,0 +1,89 @@
+using Heartbeat.Hub.Core.Hosting;
+using Heartbeat.Hub.Core.Collectors;
+using Heartbeat.Hub.Core.Configuration;
+using Heartbeat.Hub.Core.Http;
+using Heartbeat.Hub.Core.Presence;
+using Heartbeat.Hub.Core.Runtime;
+using Heartbeat.Hub.Core.Segments;
+using Heartbeat.Hub.Core.Storage;
+using Heartbeat.Hub.Core.Upload;
+using Heartbeat.Core.DTOs.Input;
+using Heartbeat.Core.DTOs.Segments;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+
+namespace Heartbeat.Hub.Core.Tests.Hosting;
+
+public class HubCoreCompositionTests
+{
+    private sealed class HeadlessConfiguration : IHubConfiguration, ICollectorRegistry, IDeviceIdentity
+    {
+        public HubRuntimeSettings Current => new("test-key", TimeSpan.FromMinutes(1), 0);
+        public event Action? Changed { add { } remove { } }
+        public IReadOnlyDictionary<string, CollectorRegistration> Snapshot { get; } =
+            new Dictionary<string, CollectorRegistration>();
+        public string HardwareId => "headless-subject";
+        public string DeviceName => "headless-hub";
+        public CollectorRegistration Touch(string source, int? flushPeriodMs = null)
+            => new(true, flushPeriodMs, null, null);
+        public void Discover(IEnumerable<string> sources) { }
+        public void StoreDeclaration(string source, string declarationJson, int version) { }
+    }
+
+    private sealed class EmptySource<T> : IUploadSource<T>
+    {
+        public List<T> Drain() => [];
+        public void Reinject(List<T> items) { }
+    }
+
+    private sealed class MemoryCache<T> : ICache<T>
+    {
+        public void Add(List<T> items) { }
+        public List<T> Load() => [];
+        public void Clear() { }
+    }
+
+    [Fact]
+    public void AddHeartbeatHubCore_ComposesWithoutDesktopOrPlatformAssembly()
+    {
+        var services = new ServiceCollection();
+        services.AddHeartbeatHubCore();
+        var configuration = new HeadlessConfiguration();
+        services.AddSingleton<IHubConfiguration>(configuration);
+        services.AddSingleton<ICollectorRegistry>(configuration);
+        services.AddSingleton<IDeviceIdentity>(configuration);
+        services.AddSingleton<IUploadSource<InputEventItem>, EmptySource<InputEventItem>>();
+        services.AddSingleton<ICache<ActivitySegmentItem>, MemoryCache<ActivitySegmentItem>>();
+        services.AddSingleton<ICache<InputEventItem>, MemoryCache<InputEventItem>>();
+        services.AddSingleton(sp => new UploadStream<ActivitySegmentItem>(
+            "segments",
+            sp.GetRequiredService<IUploadSource<ActivitySegmentItem>>(),
+            _ => Task.FromResult(ApiResult.Ok),
+            sp.GetRequiredService<ICache<ActivitySegmentItem>>()));
+        services.AddSingleton(sp => new UploadStream<InputEventItem>(
+            "input events",
+            sp.GetRequiredService<IUploadSource<InputEventItem>>(),
+            _ => Task.FromResult(ApiResult.Ok),
+            sp.GetRequiredService<ICache<InputEventItem>>()));
+
+        using var provider = services.BuildServiceProvider();
+        Assert.Same(
+            provider.GetRequiredService<SegmentIngestService>(),
+            provider.GetRequiredService<ISegmentSink>());
+        Assert.Same(
+            provider.GetRequiredService<SegmentIngestService>(),
+            provider.GetRequiredService<ICollectionStatus>());
+        var hosted = provider.GetServices<IHostedService>().ToList();
+        Assert.Contains(hosted, service => service is UploadWorker);
+        Assert.Contains(hosted, service => service is StatusUploadWorker);
+        Assert.Contains(hosted, service => service is Heartbeat.Hub.Core.Ingest.SegmentIngestWorker);
+
+        var references = typeof(SegmentIngestService).Assembly
+            .GetReferencedAssemblies()
+            .Select(name => name.Name)
+            .ToList();
+        Assert.DoesNotContain("Heartbeat.Desktop.Core", references);
+        Assert.DoesNotContain("Heartbeat.Agent", references);
+        Assert.DoesNotContain(references, name => name?.Contains("WPF", StringComparison.OrdinalIgnoreCase) == true);
+    }
+}

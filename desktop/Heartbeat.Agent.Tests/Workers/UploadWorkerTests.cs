@@ -1,11 +1,13 @@
 using Heartbeat.Agent.Configuration;
-using Heartbeat.Agent.Http;
 using Heartbeat.Agent.Services;
-using Heartbeat.Agent.Storage;
-using Heartbeat.Agent.Workers;
 using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Input;
 using Heartbeat.Core.DTOs.Segments;
+using Heartbeat.Hub.Core.Storage;
+using Heartbeat.Hub.Core.Upload;
+using Heartbeat.Hub.Core.Collectors;
+using Heartbeat.Hub.Core.Http;
+using Heartbeat.Hub.Core.Runtime;
 using System.Net;
 
 namespace Heartbeat.Agent.Tests.Workers;
@@ -89,7 +91,13 @@ public class UploadWorkerTests : IDisposable
             batch => api.UploadInputEventsAsync(new InputEventUploadRequest { Events = batch }),
             new FakeCache<InputEventItem>());
 
-        return (new UploadWorker(icons, segStream, inputStream, cm, new DeclarationUplinkService(api, cm)), segSource, inputSource, icons);
+        var hubConfig = new HubConfigurationAdapter(cm);
+        return (new UploadWorker(
+            segStream,
+            inputStream,
+            hubConfig,
+            new DeclarationUplinkService(api, hubConfig),
+            new WindowsHubRuntimeHooks(icons)), segSource, inputSource, icons);
     }
 
     private static ActivitySegmentItem Segment(string? appName)

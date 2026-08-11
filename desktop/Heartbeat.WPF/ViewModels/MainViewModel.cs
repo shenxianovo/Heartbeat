@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using Heartbeat.Agent.Configuration;
 using Heartbeat.Agent.Models;
 using Heartbeat.Agent.Services;
+using Heartbeat.Hub.Core.Presence;
 using Heartbeat.Core;
 using Heartbeat.WPF.Logging;
 using Serilog.Events;

@@ -1,6 +1,7 @@
 ﻿using Heartbeat.Agent.Configuration;
 using Heartbeat.Agent.Hosting;
 using Heartbeat.Agent.Utils;
+using Heartbeat.Hub.Core.Http;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 

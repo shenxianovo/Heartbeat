@@ -1,6 +1,6 @@
-using Heartbeat.Agent.Http;
 using Heartbeat.Agent.Utils;
 using Heartbeat.Core.DTOs.Apps;
+using Heartbeat.Hub.Core.Http;
 using Serilog;
 
 namespace Heartbeat.Agent.Services

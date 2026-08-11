@@ -1,5 +1,7 @@
 using Heartbeat.Agent.Configuration;
-using Heartbeat.Agent.Services;
+using Heartbeat.Hub.Core.Ingest;
+using Heartbeat.Hub.Core.Segments;
+using Heartbeat.Hub.Core.Time;
 using System.Text;
 
 namespace Heartbeat.Agent.Tests.Services;
@@ -10,7 +12,7 @@ namespace Heartbeat.Agent.Tests.Services;
 /// </summary>
 public class SegmentIngestRequestHandlerTests : IDisposable
 {
-    private sealed class FakeClock : Heartbeat.Agent.Utils.IClock
+    private sealed class FakeClock : IClock
     {
         public DateTimeOffset UtcNow { get; set; } = DateTimeOffset.UtcNow;
     }
@@ -24,7 +26,7 @@ public class SegmentIngestRequestHandlerTests : IDisposable
     {
         _config = new ConfigManager(_tempConfig);
         _ingest = new SegmentIngestService(new FakeClock());
-        _handler = new SegmentIngestRequestHandler(_ingest, _config);
+        _handler = new SegmentIngestRequestHandler(_ingest, new HubConfigurationAdapter(_config));
     }
 
     public void Dispose()
