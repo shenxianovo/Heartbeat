@@ -17,8 +17,14 @@ namespace Heartbeat.Server.Entities
         /// <summary>采集器声明的"同一个活动"判据，跨批次续接用。system = 规范化 App+Title。</summary>
         public string IdentityKey { get; set; } = string.Empty;
 
-        /// <summary>段关于哪个应用。system 段必填；插件段可选（关联提示，用于回放挂轨/复用图标）。</summary>
+        /// <summary>
+        /// expand 阶段保留的旧产品 FK。新事实同时写 AppIdentityId，产品读取必须经
+        /// AppIdentity → App；Ticket 04 完成消费者迁移后收缩此列。
+        /// </summary>
         public long? AppId { get; set; }
+
+        /// <summary>平台观测身份。system 段必填；插件段可选。</summary>
+        public long? AppIdentityId { get; set; }
 
         public string? Title { get; set; }
 
@@ -30,5 +36,6 @@ namespace Heartbeat.Server.Entities
 
         public Device Device { get; set; } = null!;
         public App? App { get; set; }
+        public AppIdentity? AppIdentity { get; set; }
     }
 }

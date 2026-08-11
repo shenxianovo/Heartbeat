@@ -16,12 +16,12 @@ namespace Heartbeat.Server.Services
             return await _db.ActivitySegments
                 .Where(u => u.Device.OwnerId == ownerId)
                 .Where(u => u.Source == ActivitySources.System)
-                .Select(u => u.App!)
+                .Select(u => u.AppIdentityId != null ? u.AppIdentity!.App : u.App!)
                 .Distinct()
                 .Select(a => new AppInfoResponse
                 {
                     Id = a.Id,
-                    Name = a.Name
+                    Name = a.DisplayName
                 })
                 .ToListAsync();
         }
@@ -37,10 +37,15 @@ namespace Heartbeat.Server.Services
 
         public async Task UploadIconAsync(string ownerId, string appName, byte[] iconData)
         {
-            var app = await _db.Apps.FirstOrDefaultAsync(a => a.Name == appName);
+            var app = await _db.Apps.FirstOrDefaultAsync(a => a.DisplayName == appName);
             if (app == null)
             {
-                app = new App { Name = appName };
+                app = new App
+                {
+                    Key = AppIdentityKeys.ProductSlug(appName),
+                    DisplayName = appName,
+                    IsProvisional = true
+                };
                 _db.Apps.Add(app);
                 await _db.SaveChangesAsync();
             }

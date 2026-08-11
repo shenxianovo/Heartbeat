@@ -60,7 +60,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
 
     private async Task<App> EnsureAppAsync(AppDbContext db, string name)
     {
-        var app = await db.Apps.FirstOrDefaultAsync(a => a.Name == name);
+        var app = await db.Apps.FirstOrDefaultAsync(a => a.DisplayName == name);
         if (app == null)
         {
             app = new App { Name = name };

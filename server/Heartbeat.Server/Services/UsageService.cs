@@ -7,9 +7,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Heartbeat.Server.Services
 {
-    public class UsageService(AppDbContext db, ILogger<UsageService>? logger = null)
+    public class UsageService(
+        AppDbContext db,
+        AppIdentityService? appIdentityService = null,
+        ILogger<UsageService>? logger = null)
     {
         private readonly AppDbContext _db = db;
+        private readonly AppIdentityService _appIdentityService = appIdentityService ?? new AppIdentityService(db);
 
         /// <summary>
         /// 统一摄入例程（ADR-018）：校验 → App 关联 → 按 Id 快照 upsert。
@@ -22,34 +26,34 @@ namespace Heartbeat.Server.Services
             var valid = SegmentValidationPolicy.Filter(segments, DateTimeOffset.UtcNow);
             if (valid.Count == 0) return;
 
-            // AppName 关联提示 → 获取或创建 App 记录
-            var appNames = valid
-                .Where(s => !string.IsNullOrWhiteSpace(s.AppName))
-                .Select(s => s.AppName!)
-                .Distinct()
-                .ToList();
-            var existingApps = await _db.Apps
-                .Where(a => appNames.Contains(a.Name))
-                .ToDictionaryAsync(a => a.Name);
-
-            foreach (var name in appNames)
-            {
-                if (!existingApps.ContainsKey(name))
-                {
-                    var app = new App { Name = name };
-                    _db.Apps.Add(app);
-                    existingApps[name] = app;
-                }
-            }
-            if (existingApps.Count > 0)
-                await _db.SaveChangesAsync(); // 保存以获取新 App 的 Id
-
             // 快照 upsert：一次批量取回本批涉及的已有行，新插入的行也进字典，
             // 让批内后续同 Id 快照走扩展路径（枢纽攒批场景）。
             var ids = valid.Select(s => s.Id).Distinct().ToList();
             var rows = await _db.ActivitySegments
                 .Where(x => ids.Contains(x.Id))
                 .ToDictionaryAsync(x => x.Id);
+
+            // 只为新事实解析身份；被 identity guard 拒绝的旧 Id 不得制造 provisional App。
+            var identityByItem = new Dictionary<ActivitySegmentItem, AppIdentity?>();
+            foreach (var item in valid.Where(x => !rows.ContainsKey(x.Id)))
+            {
+                var key = ResolveIdentityKey(item);
+                if (key == null)
+                {
+                    identityByItem[item] = null;
+                    continue;
+                }
+
+                try
+                {
+                    identityByItem[item] = await _appIdentityService.ResolveAsync(key, item.AppName);
+                }
+                catch (ArgumentException ex)
+                {
+                    logger?.LogWarning(ex, "段 {Id} 的 AppIdentityKey 无效，保留无 App 关联事实", item.Id);
+                    identityByItem[item] = null;
+                }
+            }
 
             foreach (var s in valid)
             {
@@ -79,13 +83,16 @@ namespace Heartbeat.Server.Services
                 }
                 else
                 {
+                    identityByItem.TryGetValue(s, out var appIdentity);
                     var entity = new ActivitySegment
                     {
                         Id = s.Id,
                         DeviceId = deviceId,
                         Source = s.Source,
                         IdentityKey = s.IdentityKey,
-                        AppId = !string.IsNullOrWhiteSpace(s.AppName) ? existingApps[s.AppName!].Id : null,
+                        AppIdentityId = appIdentity?.Id,
+                        // expand 双写：旧消费者仍读 AppId；产品语义的权威路径是 AppIdentity.AppId。
+                        AppId = appIdentity?.AppId,
                         Title = s.Title,
                         StartTime = s.StartTime,
                         EndTime = s.EndTime,
@@ -99,6 +106,15 @@ namespace Heartbeat.Server.Services
             await _db.SaveChangesAsync();
         }
 
+        private static string? ResolveIdentityKey(ActivitySegmentItem item)
+        {
+            if (!string.IsNullOrWhiteSpace(item.AppIdentityKey))
+                return item.AppIdentityKey;
+            if (!string.IsNullOrWhiteSpace(item.AppName))
+                return AppIdentityKeys.FromLegacyWindowsAppName(item.AppName);
+            return null;
+        }
+
         /// <summary>
         /// 插件段查询（ADR-017 §4）：回放多轨用。默认返回全部非 system source
         /// （system 轨走 GetUsageAsync，两者互补不重叠）；source 指定时只查该轨。
@@ -108,7 +124,6 @@ namespace Heartbeat.Server.Services
             DateTimeOffset? start, DateTimeOffset? end)
         {
             var query = _db.ActivitySegments
-                .Include(x => x.App)
                 .Where(x => x.Device.OwnerId == ownerId)
                 .AsQueryable();
 
@@ -120,7 +135,8 @@ namespace Heartbeat.Server.Services
                 query = query.Where(x => x.DeviceId == deviceId.Value);
 
             if (appId.HasValue)
-                query = query.Where(x => x.AppId == appId.Value);
+                query = query.Where(x =>
+                    (x.AppIdentityId != null ? x.AppIdentity!.AppId : x.AppId) == appId.Value);
 
             // 区间重叠语义（ADR-018 §4）：跨窗长段在其覆盖的每个窗口都可见。
             // 下界用 >= 而非 >：零长度点事件恰落在窗口起点时不丢
@@ -140,8 +156,12 @@ namespace Heartbeat.Server.Services
                     DeviceId = x.DeviceId,
                     Source = x.Source,
                     IdentityKey = x.IdentityKey,
-                    AppId = x.AppId,
-                    AppName = x.App != null ? x.App.Name : null,
+                    AppId = x.AppIdentityId != null ? x.AppIdentity!.AppId : x.AppId,
+                    AppName = x.AppIdentityId != null
+                        ? x.AppIdentity!.App.DisplayName
+                        : x.App != null ? x.App.DisplayName : null,
+                    AppIdentityId = x.AppIdentityId,
+                    AppIdentityKey = x.AppIdentity != null ? x.AppIdentity.Key : null,
                     Title = x.Title,
                     StartTime = x.StartTime,
                     EndTime = x.EndTime,
@@ -155,7 +175,6 @@ namespace Heartbeat.Server.Services
         public async Task<List<AppUsageResponse>> GetUsageAsync(string ownerId, long? deviceId, DateTimeOffset? start, DateTimeOffset? end)
         {
             var query = _db.ActivitySegments
-                .Include(x => x.App)
                 .Where(x => x.Device.OwnerId == ownerId)
                 .Where(x => x.Source == ActivitySources.System)
                 .AsQueryable();
@@ -178,8 +197,12 @@ namespace Heartbeat.Server.Services
                 {
                     Id = x.Id,
                     DeviceId = x.DeviceId,
-                    AppId = x.AppId!.Value,
-                    AppName = x.App!.Name,
+                    AppId = (x.AppIdentityId != null ? x.AppIdentity!.AppId : x.AppId)!.Value,
+                    AppName = x.AppIdentityId != null
+                        ? x.AppIdentity!.App.DisplayName
+                        : x.App!.DisplayName,
+                    AppIdentityId = x.AppIdentityId,
+                    AppIdentityKey = x.AppIdentity != null ? x.AppIdentity.Key : null,
                     Title = x.Title,
                     StartTime = x.StartTime,
                     EndTime = x.EndTime,

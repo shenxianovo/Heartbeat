@@ -8,6 +8,7 @@ namespace Heartbeat.Server.Data
         public DbSet<User> Users => Set<User>();
         public DbSet<Device> Devices => Set<Device>();
         public DbSet<App> Apps => Set<App>();
+        public DbSet<AppIdentity> AppIdentities => Set<AppIdentity>();
         public DbSet<ActivitySegment> ActivitySegments => Set<ActivitySegment>();
         public DbSet<AppIcon> AppIcons => Set<AppIcon>();
         public DbSet<InputEvent> InputEvents => Set<InputEvent>();
@@ -46,8 +47,23 @@ namespace Heartbeat.Server.Data
             {
                 entity.HasKey(e => e.Id);
 
-                entity.HasIndex(e => e.Name)
+                entity.Property(e => e.Key).HasMaxLength(256);
+                entity.Property(e => e.DisplayName).HasMaxLength(256);
+
+                entity.HasIndex(e => e.Key)
                     .IsUnique();
+            });
+
+            modelBuilder.Entity<AppIdentity>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Key).HasMaxLength(512);
+                entity.HasIndex(e => e.Key).IsUnique();
+
+                entity.HasOne(e => e.App)
+                    .WithMany(e => e.Identities)
+                    .HasForeignKey(e => e.AppId)
+                    .OnDelete(DeleteBehavior.Restrict);
             });
 
             modelBuilder.Entity<ActivitySegment>(entity =>
@@ -68,7 +84,13 @@ namespace Heartbeat.Server.Data
                     .WithMany()
                     .HasForeignKey(e => e.AppId);
 
+                entity.HasOne(e => e.AppIdentity)
+                    .WithMany()
+                    .HasForeignKey(e => e.AppIdentityId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
                 entity.HasIndex(e => e.DeviceId);
+                entity.HasIndex(e => e.AppIdentityId);
                 entity.HasIndex(e => e.StartTime);
 
                 // 复合索引：ADR-017 的续接查询已随 ADR-018 退役（摄入走 PK upsert）；

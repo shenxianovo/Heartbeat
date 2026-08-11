@@ -210,7 +210,9 @@ namespace Heartbeat.Server.Services
                     x.Device.DeviceName,
                     x.Source,
                     x.IdentityKey,
-                    x.App != null ? x.App.Name : null,
+                    x.AppIdentityId != null
+                        ? x.AppIdentity!.App.DisplayName
+                        : x.App != null ? x.App.DisplayName : null,
                     x.Title,
                     x.StartTime,
                     x.EndTime,

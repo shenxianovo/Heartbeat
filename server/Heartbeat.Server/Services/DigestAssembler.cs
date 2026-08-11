@@ -143,7 +143,9 @@ namespace Heartbeat.Server.Services
                     x.Device.DeviceName,
                     x.Source,
                     x.IdentityKey,
-                    x.App != null ? x.App.Name : null,
+                    x.AppIdentityId != null
+                        ? x.AppIdentity!.App.DisplayName
+                        : x.App != null ? x.App.DisplayName : null,
                     x.Title,
                     x.StartTime,
                     x.EndTime,
@@ -207,7 +209,9 @@ namespace Heartbeat.Server.Services
                 .Select(x => new
                 {
                     x.Source,
-                    AppName = x.App != null ? x.App.Name : null,
+                    AppName = x.AppIdentityId != null
+                        ? x.AppIdentity!.App.DisplayName
+                        : x.App != null ? x.App.DisplayName : null,
                     x.IdentityKey,
                     x.Title,
                     x.Attributes,

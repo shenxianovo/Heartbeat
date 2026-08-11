@@ -23,7 +23,13 @@ namespace Heartbeat.Core.DTOs.Segments
         /// <summary>采集器声明的"同一个活动"判据；服务端 upsert 的 identity guard，查询/回放按其分组（ADR-018）。</summary>
         public string IdentityKey { get; set; } = string.Empty;
 
-        /// <summary>关联提示：段发生在哪个 App 里（进程名），用于回放挂轨/复用图标。可空。</summary>
+        /// <summary>
+        /// 平台可观测身份（win:/mac:/sys:）。expand 阶段可空；为空时 Analytics 暂按
+        /// 旧 Windows AppName 生成身份，Ticket 05 strict cutover 后改为必填。
+        /// </summary>
+        public string? AppIdentityKey { get; set; }
+
+        /// <summary>旧 Windows 关联提示。仅为 expand 阶段兼容，Ticket 05 strict cutover 删除。</summary>
         public string? AppName { get; set; }
 
         public string? Title { get; set; }

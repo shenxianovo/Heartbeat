@@ -19,6 +19,11 @@ namespace Heartbeat.Core.DTOs.Segments
 
         public string? AppName { get; set; }
 
+        /// <summary>原始平台观测身份，和产品 App 投影同时保留。</summary>
+        public long? AppIdentityId { get; set; }
+
+        public string? AppIdentityKey { get; set; }
+
         public string? Title { get; set; }
 
         public DateTimeOffset StartTime { get; set; }

@@ -57,7 +57,13 @@ namespace Heartbeat.Server.Services
                 query = query.Where(x => x.DeviceId == deviceId.Value);
 
             return await query
-                .GroupBy(x => new { x.AppId, AppName = x.App!.Name })
+                .GroupBy(x => new
+                {
+                    AppId = x.AppIdentityId != null ? x.AppIdentity!.AppId : x.AppId,
+                    AppName = x.AppIdentityId != null
+                        ? x.AppIdentity!.App.DisplayName
+                        : x.App!.DisplayName
+                })
                 .Select(g => new AppDurationItem
                 {
                     AppId = g.Key.AppId!.Value,

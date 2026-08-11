@@ -4,6 +4,7 @@ using Heartbeat.Server.Data;
 using Heartbeat.Server.Entities;
 using Heartbeat.Server.Services;
 using Heartbeat.Server.Tests.Fixtures;
+using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 
 namespace Heartbeat.Server.Tests.Services;
@@ -134,6 +135,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         var seg = db.ActivitySegments.Single();
         Assert.Equal("browser", seg.Source);
         Assert.NotNull(seg.AppId);
+        Assert.NotNull(seg.AppIdentityId);
         Assert.Contains("example.com", seg.Attributes);
 
         // 第二批：同 Id 快照 → 同一行生长，attributes 后写胜（ADR-018）
@@ -200,6 +202,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         var row = db.ActivitySegments.Single();
         Assert.Equal(ActivitySources.System, row.Source);
         Assert.NotNull(row.AppId); // AppName 提示建立了 App 关联
+        Assert.NotNull(row.AppIdentityId); // expand 阶段同时保存平台观测身份
         Assert.Equal(start.AddMinutes(30), row.EndTime); // 同 Id 快照生长
 
         var report = await new ReportService(db).GetDailyReportAsync("user-1", null, start);
@@ -366,7 +369,8 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         using var db = CreateDbContext();
         var svc = new UsageService(db);
 
-        db.Apps.Add(new App { Name = "VSCode" });
+        var app = new App { Name = "VSCode" };
+        db.AppIdentities.Add(new AppIdentity { Key = "win:vscode", App = app });
         await db.SaveChangesAsync();
 
         await svc.SaveSegmentsAsync(_deviceId, [SystemItem("VSCode", Now.AddMinutes(-5), Now.AddMinutes(-2))]);
@@ -388,5 +392,123 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         // 时长是派生量（ADR-018）：不落盘，查询投影现算
         var usage = Assert.Single(await svc.GetUsageAsync("user-1", null, null, null));
         Assert.Equal((int)(end - start).TotalSeconds, usage.DurationSeconds);
+    }
+
+    [Fact]
+    public async Task SaveSegments_UnknownSimilarIdentities_CreateDistinctProvisionalApps()
+    {
+        using var db = CreateDbContext();
+        var svc = new UsageService(db);
+        var start = Now.AddMinutes(-10);
+
+        ActivitySegmentItem Item(string identity, DateTimeOffset offset) => new()
+        {
+            Id = Guid.CreateVersion7(),
+            Source = ActivitySources.System,
+            IdentityKey = identity + "\n",
+            AppIdentityKey = identity,
+            AppName = "Visual Studio Code",
+            StartTime = offset,
+            EndTime = offset.AddMinutes(1)
+        };
+
+        await svc.SaveSegmentsAsync(_deviceId,
+        [
+            Item("win:vscode", start),
+            Item("mac:com.microsoft.vscode", start.AddMinutes(2))
+        ]);
+
+        var identities = await db.AppIdentities.Include(x => x.App).OrderBy(x => x.Key).ToListAsync();
+        Assert.Equal(2, identities.Count);
+        Assert.Equal(2, identities.Select(x => x.AppId).Distinct().Count());
+        Assert.All(identities, x => Assert.True(x.App.IsProvisional));
+        Assert.Contains(identities, x => x.App.Key == "vscode");
+        Assert.Contains(identities, x => x.App.Key == "microsoft.vscode");
+    }
+
+    [Fact]
+    public async Task ExplicitCrossPlatformMapping_AggregatesProductAndPreservesRawIdentity()
+    {
+        using var db = CreateDbContext();
+        var product = new App { Key = "vscode", DisplayName = "Visual Studio Code" };
+        var windows = new AppIdentity { Key = "win:code", App = product };
+        var mac = new AppIdentity { Key = "mac:com.microsoft.vscode", App = product };
+        db.AppIdentities.AddRange(windows, mac);
+        var secondDevice = new Device
+        {
+            OwnerId = "user-1",
+            HardwareId = "hw-2",
+            DeviceName = "Test Mac"
+        };
+        var otherOwnerDevice = new Device
+        {
+            OwnerId = "user-2",
+            HardwareId = "hw-other",
+            DeviceName = "Other PC"
+        };
+        db.Devices.AddRange(secondDevice, otherOwnerDevice);
+        await db.SaveChangesAsync();
+
+        var svc = new UsageService(db);
+        var start = Now.AddMinutes(-20);
+        ActivitySegmentItem Item(string identity, DateTimeOffset from, int minutes) => new()
+        {
+            Id = Guid.CreateVersion7(),
+            Source = ActivitySources.System,
+            IdentityKey = identity + "\nmain.cs",
+            AppIdentityKey = identity,
+            Title = "main.cs",
+            StartTime = from,
+            EndTime = from.AddMinutes(minutes)
+        };
+
+        await svc.SaveSegmentsAsync(_deviceId, [Item("win:code", start, 3)]);
+        await svc.SaveSegmentsAsync(secondDevice.Id, [Item("mac:com.microsoft.vscode", start.AddMinutes(5), 4)]);
+        await svc.SaveSegmentsAsync(otherOwnerDevice.Id, [Item("win:code", start.AddMinutes(10), 9)]);
+
+        var report = await new ReportService(db).GetDailyReportAsync("user-1", null, start);
+        var app = Assert.Single(report.Apps);
+        Assert.Equal(product.Id, app.AppId);
+        Assert.Equal("Visual Studio Code", app.AppName);
+        Assert.Equal(7 * 60, app.DurationSeconds);
+
+        var windowsOnly = Assert.Single((await new ReportService(db)
+            .GetDailyReportAsync("user-1", _deviceId, start)).Apps);
+        Assert.Equal(3 * 60, windowsOnly.DurationSeconds);
+
+        var otherOwner = Assert.Single((await new ReportService(db)
+            .GetDailyReportAsync("user-2", null, start)).Apps);
+        Assert.Equal(9 * 60, otherOwner.DurationSeconds);
+
+        var facts = await svc.GetUsageAsync("user-1", null, null, null);
+        Assert.Equal(2, facts.Count);
+        Assert.Equal(["mac:com.microsoft.vscode", "win:code"], facts.Select(x => x.AppIdentityKey).Order().ToArray());
+        Assert.All(facts, x => Assert.Equal(product.Id, x.AppId));
+    }
+
+    [Fact]
+    public async Task SnapshotIdentityGuard_DoesNotReplaceOriginalAppIdentity()
+    {
+        using var db = CreateDbContext();
+        var svc = new UsageService(db);
+        var id = Guid.CreateVersion7();
+        var start = Now.AddMinutes(-10);
+        ActivitySegmentItem Item(string identity, DateTimeOffset end) => new()
+        {
+            Id = id,
+            Source = "browser",
+            IdentityKey = "https://example.com",
+            AppIdentityKey = identity,
+            StartTime = start,
+            EndTime = end
+        };
+
+        await svc.SaveSegmentsAsync(_deviceId, [Item("win:code", start.AddMinutes(1))]);
+        await svc.SaveSegmentsAsync(_deviceId, [Item("mac:com.microsoft.vscode", start.AddMinutes(2))]);
+
+        var row = await db.ActivitySegments.Include(x => x.AppIdentity).SingleAsync();
+        Assert.Equal("win:code", row.AppIdentity!.Key);
+        Assert.Equal(start.AddMinutes(2), row.EndTime);
+        Assert.Single(db.AppIdentities);
     }
 }

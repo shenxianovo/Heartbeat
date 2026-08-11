@@ -8,6 +8,8 @@ namespace Heartbeat.Core.DTOs.Apps
         public long DeviceId { get; set; }
         public long AppId { get; set; }
         public string AppName { get; set; } = string.Empty;
+        public long? AppIdentityId { get; set; }
+        public string? AppIdentityKey { get; set; }
         public string? Title { get; set; }
         public DateTimeOffset StartTime { get; set; }
         public DateTimeOffset EndTime { get; set; }

@@ -16,6 +16,7 @@ builder.Services.AddScoped<UsageService>();
 builder.Services.AddScoped<ReportService>();
 builder.Services.AddScoped<DeviceService>();
 builder.Services.AddScoped<AppService>();
+builder.Services.AddScoped<AppIdentityService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<InputEventService>();
 builder.Services.AddScoped<RecapService>();
