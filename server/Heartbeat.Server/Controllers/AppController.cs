@@ -26,8 +26,9 @@ namespace Heartbeat.Server.Controllers
         [EndpointName("uploadAppIcon")]
         public async Task<IActionResult> UploadIcon([FromBody] IconUploadRequest request)
         {
-            if (string.IsNullOrWhiteSpace(request.AppName))
-                return BadRequest("AppName is required.");
+            if (string.IsNullOrWhiteSpace(request.AppIdentityKey)
+                && string.IsNullOrWhiteSpace(request.AppName))
+                return BadRequest("AppIdentityKey is required.");
 
             if (request.IconData == null || request.IconData.Length == 0)
                 return BadRequest("Icon data is required.");
@@ -35,7 +36,16 @@ namespace Heartbeat.Server.Controllers
             if (request.IconData.Length > 1024 * 1024)
                 return BadRequest("Icon data too large (max 1MB).");
 
-            await _appService.UploadIconAsync(_currentUser.GetUserId(), request.AppName, request.IconData);
+            try
+            {
+                await _appService.UploadIconAsync(
+                    _currentUser.GetUserId(), request.AppIdentityKey, request.AppName,
+                    request.IconData, request.Refresh);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
             return Ok();
         }
     }

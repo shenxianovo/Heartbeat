@@ -2,11 +2,13 @@ import { ref, computed, type Ref } from 'vue'
 import type { AppSummary, AppUsageResponse, DailyReportResponse, WeeklyReportResponse } from '../api/index'
 import { fetchPublicUsage, fetchPublicDailyReport, fetchPublicWeeklyReport } from '../api/index'
 import { useAsyncData } from './useAsyncData'
-import { isAwayName } from '../appLabels'
+import { isAwayApp } from '../appLabels'
 import { onlineUnionSeconds, groupByDevice } from '../timeline/timelineModel'
 
 interface AppDurationLike {
   appId?: number
+  appKey?: string
+  appDisplayName?: string
   appName?: string
   durationSeconds?: number
 }
@@ -15,17 +17,17 @@ interface AppDurationLike {
 function realApps(apps: AppDurationLike[] | undefined): AppSummary[] {
   if (!apps) return []
   return apps
-    .filter(a => !isAwayName(a.appName))
+    .filter(a => !isAwayApp(a.appKey, a.appDisplayName ?? a.appName))
     .map(a => ({
       appId: a.appId!,
-      appName: a.appName ?? `App ${a.appId}`,
+      appName: a.appDisplayName ?? a.appName ?? `App ${a.appId}`,
       totalSeconds: a.durationSeconds!,
     }))
     .sort((a, b) => b.totalSeconds - a.totalSeconds)
 }
 
 function awayOf(apps: AppDurationLike[] | undefined): number {
-  return apps?.find(a => isAwayName(a.appName))?.durationSeconds ?? 0
+  return apps?.find(a => isAwayApp(a.appKey, a.appDisplayName ?? a.appName))?.durationSeconds ?? 0
 }
 
 /**
@@ -96,7 +98,7 @@ export function useReports(
       let awaySec = 0
       for (const s of segs) {
         const dur = s.durationSeconds ?? 0
-        if (isAwayName(s.appName)) awaySec += dur
+        if (isAwayApp(s.appKey, s.appDisplayName ?? s.appName)) awaySec += dur
         else usageSec += dur
       }
       rows.push({ deviceId, usageSeconds: usageSec, awaySeconds: awaySec })
@@ -119,7 +121,7 @@ export function useReports(
   const activeHours = computed(() => {
     const hours = new Set<number>()
     for (const u of usageData.value) {
-      if (isAwayName(u.appName)) continue
+      if (isAwayApp(u.appKey, u.appDisplayName ?? u.appName)) continue
       const s = u.startTime!.getHours()
       const e = u.endTime!.getHours()
       if (e >= s) {

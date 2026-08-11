@@ -44,12 +44,14 @@ describe('parseUsage', () => {
     ])
   })
 
-  it('away 段按 appName 识别进 awayAppIds', () => {
+  it('away 段优先按产品 Key 识别，旧响应回退 appName', () => {
     const parsed = parseUsage([
       usage(1, base, base + sec(10)),
       usage(9, base + sec(20), base + sec(30), AWAY_APP),
+      { ...usage(10, base + sec(40), base + sec(50), 'renamed'), appKey: 'away' },
+      { ...usage(11, base + sec(60), base + sec(70), AWAY_APP), appKey: 'not-away' },
     ])
-    expect(parsed.awayAppIds).toEqual(new Set([9]))
+    expect(parsed.awayAppIds).toEqual(new Set([9, 10]))
   })
 })
 
@@ -136,7 +138,7 @@ describe('onlineUnionSeconds', () => {
   it('away 段不计入在线', () => {
     expect(onlineUnionSeconds([
       usage(1, base, base + sec(30)),
-      usage(9, base + sec(30), base + sec(600), AWAY_APP),
+      { ...usage(9, base + sec(30), base + sec(600), 'renamed'), appKey: 'away' },
     ])).toBe(30)
   })
 

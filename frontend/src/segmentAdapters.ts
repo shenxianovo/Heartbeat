@@ -14,6 +14,8 @@ export interface SegmentLike {
 }
 
 export interface UsageSegLike {
+  appKey?: string
+  appDisplayName?: string
   appName?: string
   title?: string
   startTime?: Date
@@ -79,7 +81,8 @@ export function toSystemSegs(usage: UsageSegLike[]): SystemSeg[] {
     .map(u => ({
       start: u.startTime!.getTime(),
       end: u.endTime!.getTime(),
-      appName: u.appName,
+      // Title Formatter 按稳定产品 Key 路由；DisplayName 只承担呈现。
+      appName: u.appKey ?? u.appDisplayName ?? u.appName,
       title: u.title ?? undefined,
     }))
 }

@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { formatTitle } from './titleFormatters'
 
+describe('formatTitle: product key', () => {
+  it('按跨平台产品 Key 选择 VS Code formatter', () => {
+    expect(formatTitle('vscode', 'main.cs - heartbeat - Visual Studio Code')).toEqual({
+      primary: 'main.cs',
+      secondary: 'heartbeat',
+    })
+  })
+})
+
 describe('formatTitle: msedge', () => {
   it('削掉 " 和另外 N 个页面" 后缀，与无后缀标题合并为同一 primary', () => {
     const a = formatTitle('msedge', '补药视奸我ヽ（≧□≦）ノ 和另外 2 个页面')

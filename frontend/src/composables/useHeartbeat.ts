@@ -28,11 +28,11 @@ export function useHeartbeat(username: string) {
 
   const appNameMap = computed(() => {
     const map = new Map<number, string>()
-    for (const app of apps.value) map.set(app.id!, app.name!)
+    for (const app of apps.value) map.set(app.id!, app.displayName ?? app.name ?? `App ${app.id}`)
     return map
   })
 
-  const status = useDeviceStatus(username, selection.devices, selectedDevice, isToday, appNameMap)
+  const status = useDeviceStatus(username, selection.devices, selectedDevice, isToday)
   const reports = useReports(username, selectedDevice, selectedDate)
 
   const kf = useAsyncData<KeyFrequencyItem[]>(() => {
@@ -114,6 +114,7 @@ export function useHeartbeat(username: string) {
     onlinePresences: status.onlinePresences,
     currentApp: status.currentApp,
     currentAppId: status.currentAppId,
+    currentAppKey: status.currentAppKey,
     lastSeenStr: status.lastSeenStr,
     isAllDevices: selection.isAllDevices,
     appSummaries: reports.appSummaries,

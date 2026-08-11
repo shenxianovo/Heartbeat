@@ -11,6 +11,7 @@ namespace Heartbeat.Server.Data
         public DbSet<AppIdentity> AppIdentities => Set<AppIdentity>();
         public DbSet<ActivitySegment> ActivitySegments => Set<ActivitySegment>();
         public DbSet<AppIcon> AppIcons => Set<AppIcon>();
+        public DbSet<AppMergeReceipt> AppMergeReceipts => Set<AppMergeReceipt>();
         public DbSet<InputEvent> InputEvents => Set<InputEvent>();
         public DbSet<Recap> Recaps => Set<Recap>();
         public DbSet<Strand> Strands => Set<Strand>();
@@ -41,6 +42,13 @@ namespace Heartbeat.Server.Data
 
                 entity.HasIndex(e => new { e.OwnerId, e.HardwareId })
                     .IsUnique();
+
+                entity.HasOne(e => e.CurrentAppIdentity)
+                    .WithMany()
+                    .HasForeignKey(e => e.CurrentAppIdentityId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(e => e.CurrentAppIdentityId);
             });
 
             modelBuilder.Entity<App>(entity =>
@@ -109,6 +117,15 @@ namespace Heartbeat.Server.Data
                 // 写权按 owner 隔离（ADR-025）：一个 App 每个 owner 一份图标。
                 entity.HasIndex(e => new { e.OwnerId, e.AppId })
                     .IsUnique();
+            });
+
+            modelBuilder.Entity<AppMergeReceipt>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.SourceAppKey).HasMaxLength(256);
+                entity.Property(e => e.TargetAppKey).HasMaxLength(256);
+                entity.Property(e => e.ResponseJson).HasColumnType("jsonb");
+                entity.HasIndex(e => new { e.SourceAppKey, e.TargetAppKey }).IsUnique();
             });
 
             modelBuilder.Entity<InputEvent>(entity =>

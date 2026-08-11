@@ -88,6 +88,7 @@ const edge: TitleFormatter = (raw) => {
 /** 进程名（小写）→ formatter。 */
 const FORMATTERS: Record<string, TitleFormatter> = {
   code: vscode,
+  vscode,
   mpv,
   windowsterminal: windowsTerminal,
   explorer,

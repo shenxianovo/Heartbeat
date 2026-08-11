@@ -60,6 +60,9 @@ namespace Heartbeat.Server.Services
                 .GroupBy(x => new
                 {
                     AppId = x.AppIdentityId != null ? x.AppIdentity!.AppId : x.AppId,
+                    AppKey = x.AppIdentityId != null
+                        ? x.AppIdentity!.App.Key
+                        : x.App!.Key,
                     AppName = x.AppIdentityId != null
                         ? x.AppIdentity!.App.DisplayName
                         : x.App!.DisplayName
@@ -67,6 +70,8 @@ namespace Heartbeat.Server.Services
                 .Select(g => new AppDurationItem
                 {
                     AppId = g.Key.AppId!.Value,
+                    AppKey = g.Key.AppKey,
+                    AppDisplayName = g.Key.AppName,
                     AppName = g.Key.AppName,
                     DurationSeconds = (int)g.Sum(x =>
                         ((x.EndTime > windowEnd ? windowEnd : x.EndTime)

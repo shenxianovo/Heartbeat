@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { urlOf, laneKeyOf, toReplaySegs, toPluginSegs } from './segmentAdapters'
+import { urlOf, laneKeyOf, toReplaySegs, toPluginSegs, toSystemSegs } from './segmentAdapters'
 
 const base = new Date(2026, 0, 15, 10, 0, 0)
 const later = new Date(base.getTime() + 60_000)
@@ -56,6 +56,19 @@ describe('toReplaySegs', () => {
       [{ identityKey: 'x', startTime: base, endTime: later }],
     )
     expect(segs).toEqual([])
+  })
+})
+
+describe('toSystemSegs', () => {
+  it('稳定产品 Key 优先于 DisplayName 与 expand 兼容 AppName', () => {
+    const [segment] = toSystemSegs([{
+      appKey: 'vscode',
+      appDisplayName: 'Visual Studio Code',
+      appName: 'Code.exe',
+      startTime: base,
+      endTime: later,
+    }])
+    expect(segment.appName).toBe('vscode')
   })
 })
 

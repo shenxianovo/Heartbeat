@@ -1,4 +1,4 @@
-import { ref, computed, onMounted, onUnmounted, type Ref, type ComputedRef } from 'vue'
+import { ref, computed, onMounted, onUnmounted, type Ref } from 'vue'
 import type { ApiError, DeviceInfoResponse, DeviceStatusResponse } from '../api/index'
 import { fetchPublicDeviceStatus, toApiError } from '../api/index'
 
@@ -9,6 +9,8 @@ export interface DevicePresence {
   isOnline: boolean
   currentApp: string | null
   currentAppId: number | null
+  currentAppKey: string | null
+  currentAppIdentityKey: string | null
   lastSeenStr: string
 }
 
@@ -25,7 +27,6 @@ export function useDeviceStatus(
   devices: Ref<DeviceInfoResponse[]>,
   selectedDevice: Ref<number>,
   isToday: Ref<boolean>,
-  appNameMap: ComputedRef<Map<number, string>>,
 ) {
   const statusMap = ref<Map<number, DeviceStatusResponse>>(new Map())
   const error = ref<ApiError | null>(null)
@@ -35,14 +36,6 @@ export function useDeviceStatus(
     if (selectedDevice.value) return [selectedDevice.value]
     return devices.value.map(d => d.id!).filter(id => id != null)
   })
-
-  function appIdOf(name: string | null): number | null {
-    if (!name) return null
-    for (const [id, n] of appNameMap.value) {
-      if (n === name) return id
-    }
-    return null
-  }
 
   function timeStr(raw: Date | undefined): string {
     if (!raw) return ''
@@ -56,13 +49,15 @@ export function useDeviceStatus(
       const s = statusMap.value.get(id)
       const name = devices.value.find(d => d.id === id)?.name ?? `设备 ${id}`
       const online = isToday.value && (s?.isOnline ?? false)
-      const app = online ? (s?.currentApp ?? null) : null
+      const app = online ? (s?.currentAppDisplayName ?? s?.currentApp ?? null) : null
       rows.push({
         deviceId: id,
         deviceName: name,
         isOnline: online,
         currentApp: app,
-        currentAppId: appIdOf(app),
+        currentAppId: online ? (s?.currentAppId ?? null) : null,
+        currentAppKey: online ? (s?.currentAppKey ?? null) : null,
+        currentAppIdentityKey: online ? (s?.currentAppIdentityKey ?? null) : null,
         lastSeenStr: timeStr(s?.lastSeen),
       })
     }
@@ -77,6 +72,7 @@ export function useDeviceStatus(
   // 单值出口：仅在恰好一台在线时有意义（多台并发时由 presences 逐行展示）。
   const currentApp = computed(() => onlinePresences.value[0]?.currentApp ?? null)
   const currentAppId = computed(() => onlinePresences.value[0]?.currentAppId ?? null)
+  const currentAppKey = computed(() => onlinePresences.value[0]?.currentAppKey ?? null)
   const lastSeenStr = computed(() => {
     const seen = presences.value.map(p => p.lastSeenStr).filter(Boolean)
     return seen[0] ?? ''
@@ -114,6 +110,7 @@ export function useDeviceStatus(
     isAlive,
     currentApp,
     currentAppId,
+    currentAppKey,
     lastSeenStr,
     load,
   }

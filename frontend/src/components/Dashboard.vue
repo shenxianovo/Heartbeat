@@ -40,6 +40,7 @@ const {
   presences,
   currentApp,
   currentAppId,
+  currentAppKey,
   lastSeenStr,
   isAllDevices,
   appSummaries,
@@ -189,6 +190,7 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
             :isAlive="isAlive"
             :currentApp="currentApp"
             :currentAppId="currentAppId"
+            :currentAppKey="currentAppKey"
             :presences="presences"
             :isAllDevices="isAllDevices"
           />

@@ -95,4 +95,38 @@ public class AppIdentityMigrationTests(PostgresContainerFixture fixture) : IAsyn
                 JsonSerializer.Deserialize<JsonElement>(segment.Attributes!)));
         }
     }
+
+    [Fact]
+    public async Task Migration_BackfillsPresenceIdentity_FromLegacyCurrentApp()
+    {
+        var seen = new DateTimeOffset(2026, 8, 11, 3, 0, 0, TimeSpan.Zero);
+        using (var db = CreateDbContext())
+        {
+            await db.GetService<IMigrator>().MigrateAsync("20260811031312_ExpandAppIdentity");
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                INSERT INTO "Devices" ("Id", "OwnerId", "HardwareId", "DeviceName", "CurrentApp", "LastSeen")
+                VALUES (301, 'user-1', 'hw-presence', 'PC', 'Code.exe', {seen});
+                INSERT INTO "Apps" ("Id", "Key", "DisplayName", "IsProvisional")
+                VALUES
+                    (300, 'other-code', 'Code.exe', false),
+                    (302, 'vscode', 'Code.exe', false);
+                INSERT INTO "AppIdentities" ("Id", "Key", "AppId")
+                VALUES
+                    (301, 'win:other-code', 300),
+                    (303, 'win:code', 302);
+                """);
+        }
+
+        using (var db = CreateDbContext())
+            await db.Database.MigrateAsync();
+
+        using (var db = CreateDbContext())
+        {
+            var device = await db.Devices.Include(x => x.CurrentAppIdentity).SingleAsync();
+            Assert.Equal(303, device.CurrentAppIdentityId);
+            Assert.Equal("win:code", device.CurrentAppIdentity!.Key);
+            Assert.Equal("Code.exe", device.CurrentApp);
+        }
+    }
 }

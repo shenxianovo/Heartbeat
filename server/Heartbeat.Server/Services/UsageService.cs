@@ -157,6 +157,12 @@ namespace Heartbeat.Server.Services
                     Source = x.Source,
                     IdentityKey = x.IdentityKey,
                     AppId = x.AppIdentityId != null ? x.AppIdentity!.AppId : x.AppId,
+                    AppKey = x.AppIdentityId != null
+                        ? x.AppIdentity!.App.Key
+                        : x.App != null ? x.App.Key : null,
+                    AppDisplayName = x.AppIdentityId != null
+                        ? x.AppIdentity!.App.DisplayName
+                        : x.App != null ? x.App.DisplayName : null,
                     AppName = x.AppIdentityId != null
                         ? x.AppIdentity!.App.DisplayName
                         : x.App != null ? x.App.DisplayName : null,
@@ -198,6 +204,10 @@ namespace Heartbeat.Server.Services
                     Id = x.Id,
                     DeviceId = x.DeviceId,
                     AppId = (x.AppIdentityId != null ? x.AppIdentity!.AppId : x.AppId)!.Value,
+                    AppKey = x.AppIdentityId != null ? x.AppIdentity!.App.Key : x.App!.Key,
+                    AppDisplayName = x.AppIdentityId != null
+                        ? x.AppIdentity!.App.DisplayName
+                        : x.App!.DisplayName,
                     AppName = x.AppIdentityId != null
                         ? x.AppIdentity!.App.DisplayName
                         : x.App!.DisplayName,

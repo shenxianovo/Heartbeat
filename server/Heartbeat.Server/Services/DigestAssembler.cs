@@ -144,8 +144,8 @@ namespace Heartbeat.Server.Services
                     x.Source,
                     x.IdentityKey,
                     x.AppIdentityId != null
-                        ? x.AppIdentity!.App.DisplayName
-                        : x.App != null ? x.App.DisplayName : null,
+                        ? x.AppIdentity!.App.Key
+                        : x.App != null ? x.App.Key : null,
                     x.Title,
                     x.StartTime,
                     x.EndTime,
@@ -210,8 +210,8 @@ namespace Heartbeat.Server.Services
                 {
                     x.Source,
                     AppName = x.AppIdentityId != null
-                        ? x.AppIdentity!.App.DisplayName
-                        : x.App != null ? x.App.DisplayName : null,
+                        ? x.AppIdentity!.App.Key
+                        : x.App != null ? x.App.Key : null,
                     x.IdentityKey,
                     x.Title,
                     x.Attributes,

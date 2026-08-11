@@ -2231,6 +2231,8 @@ export interface IActivitySegmentItem {
 
 export class AppDurationItem implements IAppDurationItem {
     appId?: number;
+    appKey?: string;
+    appDisplayName?: string;
     appName?: string;
     durationSeconds?: number;
 
@@ -2252,6 +2254,8 @@ export class AppDurationItem implements IAppDurationItem {
                     this[property] = _data[property];
             }
             this.appId = _data["appId"];
+            this.appKey = _data["appKey"];
+            this.appDisplayName = _data["appDisplayName"];
             this.appName = _data["appName"];
             this.durationSeconds = _data["durationSeconds"];
         }
@@ -2271,6 +2275,8 @@ export class AppDurationItem implements IAppDurationItem {
                 data[property] = this[property];
         }
         data["appId"] = this.appId;
+        data["appKey"] = this.appKey;
+        data["appDisplayName"] = this.appDisplayName;
         data["appName"] = this.appName;
         data["durationSeconds"] = this.durationSeconds;
         return data;
@@ -2279,6 +2285,8 @@ export class AppDurationItem implements IAppDurationItem {
 
 export interface IAppDurationItem {
     appId?: number;
+    appKey?: string;
+    appDisplayName?: string;
     appName?: string;
     durationSeconds?: number;
 
@@ -2287,6 +2295,8 @@ export interface IAppDurationItem {
 
 export class AppInfoResponse implements IAppInfoResponse {
     id?: number;
+    key?: string;
+    displayName?: string;
     name?: string;
 
     [key: string]: any;
@@ -2307,6 +2317,8 @@ export class AppInfoResponse implements IAppInfoResponse {
                     this[property] = _data[property];
             }
             this.id = _data["id"];
+            this.key = _data["key"];
+            this.displayName = _data["displayName"];
             this.name = _data["name"];
         }
     }
@@ -2325,6 +2337,8 @@ export class AppInfoResponse implements IAppInfoResponse {
                 data[property] = this[property];
         }
         data["id"] = this.id;
+        data["key"] = this.key;
+        data["displayName"] = this.displayName;
         data["name"] = this.name;
         return data;
     }
@@ -2332,6 +2346,8 @@ export class AppInfoResponse implements IAppInfoResponse {
 
 export interface IAppInfoResponse {
     id?: number;
+    key?: string;
+    displayName?: string;
     name?: string;
 
     [key: string]: any;
@@ -2341,7 +2357,11 @@ export class AppUsageResponse implements IAppUsageResponse {
     id?: string;
     deviceId?: number;
     appId?: number;
+    appKey?: string;
+    appDisplayName?: string;
     appName?: string;
+    appIdentityId?: number | undefined;
+    appIdentityKey?: string | undefined;
     title?: string | undefined;
     startTime?: Date;
     endTime?: Date;
@@ -2367,7 +2387,11 @@ export class AppUsageResponse implements IAppUsageResponse {
             this.id = _data["id"];
             this.deviceId = _data["deviceId"];
             this.appId = _data["appId"];
+            this.appKey = _data["appKey"];
+            this.appDisplayName = _data["appDisplayName"];
             this.appName = _data["appName"];
+            this.appIdentityId = _data["appIdentityId"];
+            this.appIdentityKey = _data["appIdentityKey"];
             this.title = _data["title"];
             this.startTime = _data["startTime"] ? new Date(_data["startTime"].toString()) : undefined as any;
             this.endTime = _data["endTime"] ? new Date(_data["endTime"].toString()) : undefined as any;
@@ -2391,7 +2415,11 @@ export class AppUsageResponse implements IAppUsageResponse {
         data["id"] = this.id;
         data["deviceId"] = this.deviceId;
         data["appId"] = this.appId;
+        data["appKey"] = this.appKey;
+        data["appDisplayName"] = this.appDisplayName;
         data["appName"] = this.appName;
+        data["appIdentityId"] = this.appIdentityId;
+        data["appIdentityKey"] = this.appIdentityKey;
         data["title"] = this.title;
         data["startTime"] = this.startTime ? this.startTime.toISOString() : undefined as any;
         data["endTime"] = this.endTime ? this.endTime.toISOString() : undefined as any;
@@ -2404,7 +2432,11 @@ export interface IAppUsageResponse {
     id?: string;
     deviceId?: number;
     appId?: number;
+    appKey?: string;
+    appDisplayName?: string;
     appName?: string;
+    appIdentityId?: number | undefined;
+    appIdentityKey?: string | undefined;
     title?: string | undefined;
     startTime?: Date;
     endTime?: Date;
@@ -3542,6 +3574,7 @@ export interface IDeviceInfoResponse {
 }
 
 export class DeviceStatusRequest implements IDeviceStatusRequest {
+    currentAppIdentityKey?: string | undefined;
     currentApp?: string;
 
     [key: string]: any;
@@ -3561,6 +3594,7 @@ export class DeviceStatusRequest implements IDeviceStatusRequest {
                 if (_data.hasOwnProperty(property))
                     this[property] = _data[property];
             }
+            this.currentAppIdentityKey = _data["currentAppIdentityKey"];
             this.currentApp = _data["currentApp"];
         }
     }
@@ -3578,12 +3612,14 @@ export class DeviceStatusRequest implements IDeviceStatusRequest {
             if (this.hasOwnProperty(property))
                 data[property] = this[property];
         }
+        data["currentAppIdentityKey"] = this.currentAppIdentityKey;
         data["currentApp"] = this.currentApp;
         return data;
     }
 }
 
 export interface IDeviceStatusRequest {
+    currentAppIdentityKey?: string | undefined;
     currentApp?: string;
 
     [key: string]: any;
@@ -3591,6 +3627,10 @@ export interface IDeviceStatusRequest {
 
 export class DeviceStatusResponse implements IDeviceStatusResponse {
     id?: number;
+    currentAppId?: number | undefined;
+    currentAppKey?: string | undefined;
+    currentAppDisplayName?: string | undefined;
+    currentAppIdentityKey?: string | undefined;
     currentApp?: string | undefined;
     lastSeen?: Date | undefined;
     isOnline?: boolean;
@@ -3613,6 +3653,10 @@ export class DeviceStatusResponse implements IDeviceStatusResponse {
                     this[property] = _data[property];
             }
             this.id = _data["id"];
+            this.currentAppId = _data["currentAppId"];
+            this.currentAppKey = _data["currentAppKey"];
+            this.currentAppDisplayName = _data["currentAppDisplayName"];
+            this.currentAppIdentityKey = _data["currentAppIdentityKey"];
             this.currentApp = _data["currentApp"];
             this.lastSeen = _data["lastSeen"] ? new Date(_data["lastSeen"].toString()) : undefined as any;
             this.isOnline = _data["isOnline"];
@@ -3633,6 +3677,10 @@ export class DeviceStatusResponse implements IDeviceStatusResponse {
                 data[property] = this[property];
         }
         data["id"] = this.id;
+        data["currentAppId"] = this.currentAppId;
+        data["currentAppKey"] = this.currentAppKey;
+        data["currentAppDisplayName"] = this.currentAppDisplayName;
+        data["currentAppIdentityKey"] = this.currentAppIdentityKey;
         data["currentApp"] = this.currentApp;
         data["lastSeen"] = this.lastSeen ? this.lastSeen.toISOString() : undefined as any;
         data["isOnline"] = this.isOnline;
@@ -3642,6 +3690,10 @@ export class DeviceStatusResponse implements IDeviceStatusResponse {
 
 export interface IDeviceStatusResponse {
     id?: number;
+    currentAppId?: number | undefined;
+    currentAppKey?: string | undefined;
+    currentAppDisplayName?: string | undefined;
+    currentAppIdentityKey?: string | undefined;
     currentApp?: string | undefined;
     lastSeen?: Date | undefined;
     isOnline?: boolean;
@@ -3978,8 +4030,10 @@ export interface IEvidenceObservationDto {
 }
 
 export class IconUploadRequest implements IIconUploadRequest {
+    appIdentityKey?: string | undefined;
     appName?: string;
     iconData?: string;
+    refresh?: boolean;
 
     [key: string]: any;
 
@@ -3998,8 +4052,10 @@ export class IconUploadRequest implements IIconUploadRequest {
                 if (_data.hasOwnProperty(property))
                     this[property] = _data[property];
             }
+            this.appIdentityKey = _data["appIdentityKey"];
             this.appName = _data["appName"];
             this.iconData = _data["iconData"];
+            this.refresh = _data["refresh"];
         }
     }
 
@@ -4016,15 +4072,19 @@ export class IconUploadRequest implements IIconUploadRequest {
             if (this.hasOwnProperty(property))
                 data[property] = this[property];
         }
+        data["appIdentityKey"] = this.appIdentityKey;
         data["appName"] = this.appName;
         data["iconData"] = this.iconData;
+        data["refresh"] = this.refresh;
         return data;
     }
 }
 
 export interface IIconUploadRequest {
+    appIdentityKey?: string | undefined;
     appName?: string;
     iconData?: string;
+    refresh?: boolean;
 
     [key: string]: any;
 }
@@ -5583,7 +5643,11 @@ export class SegmentResponse implements ISegmentResponse {
     source?: string;
     identityKey?: string;
     appId?: number | undefined;
+    appKey?: string | undefined;
+    appDisplayName?: string | undefined;
     appName?: string | undefined;
+    appIdentityId?: number | undefined;
+    appIdentityKey?: string | undefined;
     title?: string | undefined;
     startTime?: Date;
     endTime?: Date;
@@ -5612,7 +5676,11 @@ export class SegmentResponse implements ISegmentResponse {
             this.source = _data["source"];
             this.identityKey = _data["identityKey"];
             this.appId = _data["appId"];
+            this.appKey = _data["appKey"];
+            this.appDisplayName = _data["appDisplayName"];
             this.appName = _data["appName"];
+            this.appIdentityId = _data["appIdentityId"];
+            this.appIdentityKey = _data["appIdentityKey"];
             this.title = _data["title"];
             this.startTime = _data["startTime"] ? new Date(_data["startTime"].toString()) : undefined as any;
             this.endTime = _data["endTime"] ? new Date(_data["endTime"].toString()) : undefined as any;
@@ -5639,7 +5707,11 @@ export class SegmentResponse implements ISegmentResponse {
         data["source"] = this.source;
         data["identityKey"] = this.identityKey;
         data["appId"] = this.appId;
+        data["appKey"] = this.appKey;
+        data["appDisplayName"] = this.appDisplayName;
         data["appName"] = this.appName;
+        data["appIdentityId"] = this.appIdentityId;
+        data["appIdentityKey"] = this.appIdentityKey;
         data["title"] = this.title;
         data["startTime"] = this.startTime ? this.startTime.toISOString() : undefined as any;
         data["endTime"] = this.endTime ? this.endTime.toISOString() : undefined as any;
@@ -5655,7 +5727,11 @@ export interface ISegmentResponse {
     source?: string;
     identityKey?: string;
     appId?: number | undefined;
+    appKey?: string | undefined;
+    appDisplayName?: string | undefined;
     appName?: string | undefined;
+    appIdentityId?: number | undefined;
+    appIdentityKey?: string | undefined;
     title?: string | undefined;
     startTime?: Date;
     endTime?: Date;

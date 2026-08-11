@@ -17,6 +17,11 @@ namespace Heartbeat.Core.DTOs.Segments
         /// <summary>关联提示:段发生在哪个 App 里。回放挂轨/复用图标用。可空。</summary>
         public long? AppId { get; set; }
 
+        public string? AppKey { get; set; }
+
+        public string? AppDisplayName { get; set; }
+
+        /// <summary>expand 兼容别名；新消费者使用 AppDisplayName。</summary>
         public string? AppName { get; set; }
 
         /// <summary>原始平台观测身份，和产品 App 投影同时保留。</summary>

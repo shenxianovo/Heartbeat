@@ -6,9 +6,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Heartbeat.Server.Services
 {
-    public class AppService(AppDbContext db)
+    public class AppService(AppDbContext db, AppIdentityService? identityService = null)
     {
         private readonly AppDbContext _db = db;
+        private readonly AppIdentityService _identityService = identityService ?? new AppIdentityService(db);
 
         public async Task<List<AppInfoResponse>> GetAppsForUserAsync(string ownerId)
         {
@@ -16,11 +17,20 @@ namespace Heartbeat.Server.Services
             return await _db.ActivitySegments
                 .Where(u => u.Device.OwnerId == ownerId)
                 .Where(u => u.Source == ActivitySources.System)
-                .Select(u => u.AppIdentityId != null ? u.AppIdentity!.App : u.App!)
+                .Select(u => new
+                {
+                    Id = u.AppIdentityId != null ? u.AppIdentity!.AppId : u.AppId!.Value,
+                    Key = u.AppIdentityId != null ? u.AppIdentity!.App.Key : u.App!.Key,
+                    DisplayName = u.AppIdentityId != null
+                        ? u.AppIdentity!.App.DisplayName
+                        : u.App!.DisplayName
+                })
                 .Distinct()
                 .Select(a => new AppInfoResponse
                 {
                     Id = a.Id,
+                    Key = a.Key,
+                    DisplayName = a.DisplayName,
                     Name = a.DisplayName
                 })
                 .ToListAsync();
@@ -35,26 +45,24 @@ namespace Heartbeat.Server.Services
             return icon?.IconData;
         }
 
-        public async Task UploadIconAsync(string ownerId, string appName, byte[] iconData)
+        public async Task UploadIconAsync(
+            string ownerId,
+            string? appIdentityKey,
+            string? observedDisplayName,
+            byte[] iconData,
+            bool refresh = false)
         {
-            var app = await _db.Apps.FirstOrDefaultAsync(a => a.DisplayName == appName);
-            if (app == null)
-            {
-                app = new App
-                {
-                    Key = AppIdentityKeys.ProductSlug(appName),
-                    DisplayName = appName,
-                    IsProvisional = true
-                };
-                _db.Apps.Add(app);
-                await _db.SaveChangesAsync();
-            }
+            var identityKey = !string.IsNullOrWhiteSpace(appIdentityKey)
+                ? appIdentityKey
+                : AppIdentityKeys.FromLegacyWindowsAppName(observedDisplayName!);
+            var identity = await _identityService.ResolveAsync(identityKey, observedDisplayName);
 
             var existing = await _db.AppIcons
-                .FirstOrDefaultAsync(x => x.OwnerId == ownerId && x.AppId == app.Id);
+                .FirstOrDefaultAsync(x => x.OwnerId == ownerId && x.AppId == identity.AppId);
 
             if (existing != null)
             {
+                if (!refresh) return;
                 existing.IconData = iconData;
                 existing.UpdatedAt = DateTimeOffset.UtcNow;
             }
@@ -62,7 +70,7 @@ namespace Heartbeat.Server.Services
             {
                 _db.AppIcons.Add(new AppIcon
                 {
-                    AppId = app.Id,
+                    AppId = identity.AppId,
                     OwnerId = ownerId,
                     IconData = iconData,
                     UpdatedAt = DateTimeOffset.UtcNow

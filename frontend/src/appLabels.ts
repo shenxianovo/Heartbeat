@@ -3,10 +3,21 @@
  * 这些不是真实应用，而是采集层用来在时间轴上占位的特殊段。详见 ADR-014。
  */
 export const AWAY_APP = '__away__'
+export const AWAY_APP_KEY = 'away'
 
 /** away 判定谓词：全前端唯一的比对点（报表、时间轴、在场面板共用）。 */
 export function isAwayName(appName?: string | null): boolean {
   return appName === AWAY_APP
+}
+
+/**
+ * 产品 DTO 优先按稳定 App Key 判定；只有旧响应没有 Key 时，才回退到历史展示串。
+ * Key 一旦存在就是权威值，不能再让可变 DisplayName 覆盖产品语义。
+ */
+export function isAwayApp(appKey?: string | null, legacyDisplayName?: string | null): boolean {
+  return appKey
+    ? appKey.toLowerCase() === AWAY_APP_KEY
+    : isAwayName(legacyDisplayName)
 }
 
 /**
@@ -16,6 +27,7 @@ export function isAwayName(appName?: string | null): boolean {
 const labels: Record<string, string> = {
     // 开发
     'Code': '在玩微软大战代码',
+    'vscode': '在玩微软大战代码',
     'devenv': '在写代码',
     'datagrip64': '在删库跑路',
 

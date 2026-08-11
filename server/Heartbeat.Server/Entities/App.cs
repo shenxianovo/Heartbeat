@@ -15,7 +15,7 @@ namespace Heartbeat.Server.Entities
 
         /// <summary>
         /// 旧服务端测试与尚未迁移的消费者使用的构造别名。数据库与查询必须使用
-        /// Key/DisplayName；Ticket 04 完成消费者迁移后可删除。
+        /// Key/DisplayName；Ticket 05 strict 收缩旧契约后可删除。
         /// </summary>
         [System.ComponentModel.DataAnnotations.Schema.NotMapped]
         public string Name

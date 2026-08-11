@@ -5,12 +5,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Heartbeat.Server.Services
 {
-    public class DeviceService(AppDbContext db)
+    public class DeviceService(AppDbContext db, AppIdentityService? identityService = null)
     {
         public const string DeviceNameHeader = "X-Device-Name";
         public const string HardwareIdHeader = "X-Hardware-Id";
 
         private readonly AppDbContext _db = db;
+        private readonly AppIdentityService _identityService = identityService ?? new AppIdentityService(db);
 
         /// <summary>
         /// Agent 通过 HTTP header 传设备名时会用 Uri.EscapeDataString 编码
@@ -51,7 +52,15 @@ namespace Heartbeat.Server.Services
                 .Select(d => new DeviceStatusResponse
                 {
                     Id = d.Id,
-                    CurrentApp = d.CurrentApp,
+                    CurrentAppId = d.CurrentAppIdentityId != null ? d.CurrentAppIdentity!.AppId : null,
+                    CurrentAppKey = d.CurrentAppIdentityId != null ? d.CurrentAppIdentity!.App.Key : null,
+                    CurrentAppDisplayName = d.CurrentAppIdentityId != null
+                        ? d.CurrentAppIdentity!.App.DisplayName
+                        : d.CurrentApp,
+                    CurrentAppIdentityKey = d.CurrentAppIdentityId != null ? d.CurrentAppIdentity!.Key : null,
+                    CurrentApp = d.CurrentAppIdentityId != null
+                        ? d.CurrentAppIdentity!.App.DisplayName
+                        : d.CurrentApp,
                     LastSeen = d.LastSeen
                 })
                 .FirstOrDefaultAsync();
@@ -78,9 +87,20 @@ namespace Heartbeat.Server.Services
         }
 
 
-        public async Task UpdateStatusAsync(Device device, string currentApp)
+        public async Task UpdateStatusAsync(
+            Device device,
+            string? currentAppIdentityKey,
+            string? observedDisplayName)
         {
-            device.CurrentApp = currentApp;
+            AppIdentity? identity = null;
+            if (!string.IsNullOrWhiteSpace(currentAppIdentityKey))
+                identity = await _identityService.ResolveAsync(currentAppIdentityKey, observedDisplayName);
+            else if (!string.IsNullOrWhiteSpace(observedDisplayName))
+                identity = await _identityService.ResolveAsync(
+                    Heartbeat.Core.AppIdentityKeys.FromLegacyWindowsAppName(observedDisplayName), observedDisplayName);
+
+            device.CurrentAppIdentityId = identity?.Id;
+            device.CurrentApp = identity?.App.DisplayName ?? observedDisplayName ?? string.Empty;
             device.LastSeen = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync();
         }

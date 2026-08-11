@@ -17,6 +17,8 @@ builder.Services.AddScoped<ReportService>();
 builder.Services.AddScoped<DeviceService>();
 builder.Services.AddScoped<AppService>();
 builder.Services.AddScoped<AppIdentityService>();
+builder.Services.AddScoped<AppMergeService>();
+builder.Services.AddScoped<AdminAuthorizationService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<InputEventService>();
 builder.Services.AddScoped<RecapService>();
@@ -27,6 +29,7 @@ builder.Services.AddScoped<QuestionService>();
 builder.Services.AddScoped<KnowledgeProposalService>();
 builder.Services.AddScoped<KnowledgeCommitService>();
 builder.Services.Configure<RecapOptions>(builder.Configuration.GetSection(RecapOptions.Section));
+builder.Services.Configure<AdministrationOptions>(builder.Configuration.GetSection(AdministrationOptions.Section));
 // LLM 传输一处实现（ADR-029 issue 03）：叙事与发问共享 ChatCompletionClient，generator 退成 prompt+解析。
 builder.Services.AddHttpClient<ChatCompletionClient>();
 builder.Services.AddScoped<IRecapGenerator, OpenAiCompatibleRecapGenerator>();
@@ -131,6 +134,9 @@ using (var scope = app.Services.CreateScope())
     // NormalizeMatcherIdentity 迁移的 C# 半边：StepsJson canonical 字节只有
     // System.Text.Json 能产（见 KnowledgeIdentityBackfill 注释）。幂等，干净库空转。
     await KnowledgeIdentityBackfill.RunAsync(db);
+    // AppIdentity expand 后，system/app 的权威 Matcher 值统一到产品 App.Key；
+    // 只重写能唯一解析到既有产品的旧表示，不做启发式产品合并。
+    await AppKnowledgeBackfill.RunAsync(db);
     // AddCollectorDeclarations 的种子半边（同理走 C#）：system/browser v1 幂等补插（ADR-030 §4）。
     await SeedDeclarations.SeedAsync(db);
 }

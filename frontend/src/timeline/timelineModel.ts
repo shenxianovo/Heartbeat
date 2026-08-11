@@ -1,7 +1,7 @@
 // 主时间轴模型（纯函数，无 Vue / API client 依赖）：解析 → 缝合 → 排行 → 投影。
 // 输入是结构化最小形状，AppUsageResponse 结构兼容。
 
-import { isAwayName } from '../appLabels'
+import { isAwayApp } from '../appLabels'
 import { fmtTime } from './timeScale'
 
 export interface Interval {
@@ -11,6 +11,8 @@ export interface Interval {
 
 export interface UsageLike {
   appId?: number
+  appKey?: string
+  appDisplayName?: string
   appName?: string
   deviceId?: number
   startTime?: Date
@@ -40,7 +42,7 @@ export function parseUsage(usage: UsageLike[]): ParsedUsage {
 
   for (const u of usage) {
     if (!u.appId || !u.startTime || !u.endTime) continue
-    if (isAwayName(u.appName)) awayAppIds.add(u.appId)
+    if (isAwayApp(u.appKey, u.appDisplayName ?? u.appName)) awayAppIds.add(u.appId)
     let arr = byApp.get(u.appId)
     if (!arr) {
       arr = []
@@ -151,7 +153,7 @@ export function mergeActivityBursts(parsed: ParsedUsage): Interval[] {
 export function onlineUnionSeconds(usage: UsageLike[]): number {
   const raw: Interval[] = []
   for (const u of usage) {
-    if (!u.startTime || !u.endTime || isAwayName(u.appName)) continue
+    if (!u.startTime || !u.endTime || isAwayApp(u.appKey, u.appDisplayName ?? u.appName)) continue
     const start = u.startTime.getTime()
     const end = u.endTime.getTime()
     if (end > start) raw.push({ start, end })

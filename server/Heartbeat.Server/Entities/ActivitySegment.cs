@@ -19,7 +19,7 @@ namespace Heartbeat.Server.Entities
 
         /// <summary>
         /// expand 阶段保留的旧产品 FK。新事实同时写 AppIdentityId，产品读取必须经
-        /// AppIdentity → App；Ticket 04 完成消费者迁移后收缩此列。
+        /// AppIdentity → App；Ticket 05 strict 收缩旧摄入契约后再评估删除此列。
         /// </summary>
         public long? AppId { get; set; }
 

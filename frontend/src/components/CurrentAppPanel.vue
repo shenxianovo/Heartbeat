@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { getIconUrl } from '../api/index'
-import { getAppLabel, isAwayName } from '../appLabels'
+import { getAppLabel, isAwayApp } from '../appLabels'
 import type { DevicePresence } from '../composables/useDeviceStatus'
 import { Card } from '@/components/ui/card'
 
@@ -11,6 +11,7 @@ const props = defineProps<{
   isAlive: boolean
   currentApp: string | null
   currentAppId: number | null
+  currentAppKey: string | null
   presences: DevicePresence[]
   isAllDevices: boolean
 }>()
@@ -33,7 +34,7 @@ const showPerDevice = computed(() => props.isAllDevices && props.presences.lengt
         >
           <span class="status-dot" :class="{ alive: p.isOnline }"></span>
           <img
-            v-if="p.isOnline && p.currentAppId && !isAwayName(p.currentApp)"
+            v-if="p.isOnline && p.currentAppId && !isAwayApp(p.currentAppKey, p.currentApp)"
             :src="getIconUrl(username, p.currentAppId)"
             class="h-6 w-6 shrink-0 object-contain"
             @error="($event.target as HTMLImageElement).style.display = 'none'"
@@ -41,11 +42,14 @@ const showPerDevice = computed(() => props.isAllDevices && props.presences.lengt
           <div class="flex min-w-0 flex-col gap-0.5">
             <span
               class="truncate text-[1rem]"
-              :class="p.isOnline && p.currentApp && !isAwayName(p.currentApp)
+              :class="p.isOnline && p.currentApp && !isAwayApp(p.currentAppKey, p.currentApp)
                 ? 'font-semibold'
                 : 'font-normal text-muted-foreground'"
             >
-              {{ !p.isOnline ? '离线' : isAwayName(p.currentApp) ? '离开中' : (p.currentApp ?? '无前台应用') }}
+              {{ !p.isOnline ? '离线' : isAwayApp(p.currentAppKey, p.currentApp) ? '离开中' : (p.currentApp ?? '无前台应用') }}
+            </span>
+            <span v-if="p.isOnline && p.currentApp && getAppLabel(p.currentAppKey ?? p.currentApp)" class="text-[0.7rem] text-muted-foreground">
+              {{ getAppLabel(p.currentAppKey ?? p.currentApp) }}
             </span>
             <span class="truncate text-[0.75rem] text-muted-foreground">
               {{ p.deviceName }}<template v-if="!p.isOnline && p.lastSeenStr"> · 最后活跃 {{ p.lastSeenStr }}</template>
@@ -55,7 +59,7 @@ const showPerDevice = computed(() => props.isAllDevices && props.presences.lengt
       </template>
 
       <!-- 在线但人离开（心跳照实上报 __away__，ADR-021） -->
-      <div v-else-if="isAlive && isAwayName(currentApp)" class="flex items-center gap-3 py-1">
+      <div v-else-if="isAlive && isAwayApp(currentAppKey, currentApp)" class="flex items-center gap-3 py-1">
         <span class="status-dot alive"></span>
         <span class="text-[1.1rem] font-normal text-muted-foreground">离开中</span>
       </div>
@@ -71,8 +75,8 @@ const showPerDevice = computed(() => props.isAllDevices && props.presences.lengt
         />
         <div class="flex flex-col gap-0.5">
           <span class="text-[1.1rem] font-semibold">{{ currentApp }}</span>
-          <span v-if="getAppLabel(currentApp)" class="text-[0.8rem] text-muted-foreground">
-            {{ getAppLabel(currentApp) }}
+          <span v-if="getAppLabel(currentAppKey ?? currentApp)" class="text-[0.8rem] text-muted-foreground">
+            {{ getAppLabel(currentAppKey ?? currentApp) }}
           </span>
         </div>
       </div>
