@@ -176,10 +176,16 @@
                                             </StackPanel>
                                         </StackPanel>
 
-                                        <!-- 开关只对 plugin 渲染；system 不可停用，无开关（非置灰） -->
-                                        <CheckBox Grid.Column="2" Content="启用" VerticalAlignment="Center" Margin="12,0,0,0"
-                                                  IsChecked="{Binding Enabled}"
-                                                  Visibility="{Binding CanToggle, Converter={StaticResource BoolToVis}}"/>
+                                        <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="12,0,0,0">
+                                            <!-- plugin 的采集器级开关 -->
+                                            <CheckBox Content="启用"
+                                                      IsChecked="{Binding Enabled}"
+                                                      Visibility="{Binding CanToggle, Converter={StaticResource BoolToVis}}"/>
+                                            <!-- system 本身不可停用；仅 durable InputEvent Recording 可独立关闭。 -->
+                                            <CheckBox Content="记录输入统计"
+                                                      IsChecked="{Binding RecordingEnabled}"
+                                                      Visibility="{Binding CanToggleRecording, Converter={StaticResource BoolToVis}}"/>
+                                        </StackPanel>
                                     </Grid>
                                 </Border>
                             </DataTemplate>

@@ -66,7 +66,7 @@ namespace Heartbeat.Agent.Hosting
                 return new JsonFileCache<InputEventItem>(
                     cachePath,
                     maxItems: 100_000,
-                    HeartbeatCacheFormats.InputEventVersion1(),
+                    HeartbeatCacheFormats.InputEventVersion2(),
                     HeartbeatCacheFormats.InputEventMigrations());
             });
 
@@ -90,6 +90,7 @@ namespace Heartbeat.Agent.Hosting
             services.AddSingleton<IPowerMonitor, WindowsPowerMonitor>();
             services.AddSingleton<IDesktopObservationSource, WindowsDesktopObservationSource>();
             services.AddSingleton<IDesktopSettings, DesktopSettingsAdapter>();
+            services.AddSingleton<IInputEventRecordingPolicy, InputEventRecordingSettingsAdapter>();
             services.AddSingleton<IInputActivitySignal, InputActivitySignal>();
 
             // 业务服务

@@ -8,7 +8,7 @@ namespace Heartbeat.Hub.Core.Storage;
 /// <summary>
 /// Production cache schemas. Domain DTOs never serve as persistence DTOs: both the current
 /// versioned envelope and the unversioned predecessor have explicit shapes and mappings.
-/// Segment v2 is the strict AppIdentity schema; input events remain v1 until Ticket 07.
+/// Segment v2 is the strict AppIdentity schema; input v2 adds the explicit CodeSet contract.
 /// </summary>
 public static class HeartbeatCacheFormats
 {
@@ -33,14 +33,15 @@ public static class HeartbeatCacheFormats
                 item.Title, item.StartTime, item.EndTime, item.Attributes))
     ];
 
-    public static IJsonCacheFileFormat<InputEventItem> InputEventVersion1() =>
-        new JsonCacheFileFormat<InputEventItem, InputEventCacheItemV1>(
-            version: 1,
-            item => new InputEventCacheItemV1(item.Id, item.EventType, item.Code, item.Timestamp),
+    public static IJsonCacheFileFormat<InputEventItem> InputEventVersion2() =>
+        new JsonCacheFileFormat<InputEventItem, InputEventCacheItemV2>(
+            version: 2,
+            item => new InputEventCacheItemV2(item.Id, item.EventType, item.CodeSet, item.Code, item.Timestamp),
             item => new InputEventItem
             {
                 Id = item.Id,
                 EventType = item.EventType,
+                CodeSet = item.CodeSet,
                 Code = item.Code,
                 Timestamp = item.Timestamp
             });
@@ -48,11 +49,23 @@ public static class HeartbeatCacheFormats
     public static IReadOnlyList<IJsonCacheMigration<InputEventItem>> InputEventMigrations() =>
     [
         JsonCacheMigration<InputEventItem, LegacyInputEventCacheItem>.FromUnversionedArray(
-            targetVersion: 1,
+            targetVersion: 2,
             item => new InputEventItem
             {
                 Id = item.Id,
                 EventType = item.EventType,
+                CodeSet = InputCodeSets.WindowsVirtualKeyV1,
+                Code = item.Code,
+                Timestamp = item.Timestamp
+            }),
+        JsonCacheMigration<InputEventItem, InputEventCacheItemV1>.FromVersion(
+            sourceVersion: 1,
+            targetVersion: 2,
+            item => new InputEventItem
+            {
+                Id = item.Id,
+                EventType = item.EventType,
+                CodeSet = InputCodeSets.WindowsVirtualKeyV1,
                 Code = item.Code,
                 Timestamp = item.Timestamp
             })
@@ -147,6 +160,13 @@ public static class HeartbeatCacheFormats
         DateTimeOffset StartTime,
         DateTimeOffset EndTime,
         JsonElement? Attributes);
+
+    private sealed record InputEventCacheItemV2(
+        Guid Id,
+        InputEventType EventType,
+        string CodeSet,
+        short Code,
+        DateTimeOffset Timestamp);
 
     private sealed record InputEventCacheItemV1(
         Guid Id,

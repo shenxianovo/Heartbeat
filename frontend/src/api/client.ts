@@ -4160,6 +4160,7 @@ export interface IInputCountsResponse {
 export class InputEventItem implements IInputEventItem {
     id?: string;
     eventType?: number;
+    codeSet?: string;
     code?: number;
     timestamp?: Date;
 
@@ -4182,6 +4183,7 @@ export class InputEventItem implements IInputEventItem {
             }
             this.id = _data["id"];
             this.eventType = _data["eventType"];
+            this.codeSet = _data["codeSet"];
             this.code = _data["code"];
             this.timestamp = _data["timestamp"] ? new Date(_data["timestamp"].toString()) : undefined as any;
         }
@@ -4202,6 +4204,7 @@ export class InputEventItem implements IInputEventItem {
         }
         data["id"] = this.id;
         data["eventType"] = this.eventType;
+        data["codeSet"] = this.codeSet;
         data["code"] = this.code;
         data["timestamp"] = this.timestamp ? this.timestamp.toISOString() : undefined as any;
         return data;
@@ -4211,6 +4214,7 @@ export class InputEventItem implements IInputEventItem {
 export interface IInputEventItem {
     id?: string;
     eventType?: number;
+    codeSet?: string;
     code?: number;
     timestamp?: Date;
 

@@ -25,10 +25,15 @@ public class InputEventServiceTests(PostgresContainerFixture fixture) : Postgres
         _deviceId = device.Id;
     }
 
-    private static InputEventItem Item(InputEventType type, short code, DateTimeOffset ts) => new()
+    private static InputEventItem Item(
+        InputEventType type,
+        short code,
+        DateTimeOffset ts,
+        string codeSet = InputCodeSets.WindowsVirtualKeyV1) => new()
     {
         Id = Guid.CreateVersion7(),
         EventType = type,
+        CodeSet = codeSet,
         Code = code,
         Timestamp = ts
     };
@@ -117,6 +122,7 @@ public class InputEventServiceTests(PostgresContainerFixture fixture) : Postgres
         Assert.Equal(item.Id, saved.Id);
         Assert.Equal(_deviceId, saved.DeviceId);
         Assert.Equal(InputEventType.MouseScroll, saved.EventType);
+        Assert.Equal(InputCodeSets.WindowsVirtualKeyV1, saved.CodeSet);
         Assert.Equal((short)1, saved.Code);
     }
 
@@ -261,9 +267,9 @@ public class InputEventServiceTests(PostgresContainerFixture fixture) : Postgres
 
             Assert.Equal(2, freq.Keys.Count);
             // 按 count 降序
-            Assert.Equal((short)65, freq.Keys[0].Code);
+            Assert.Equal((short)InputKeyPosition.KeyA, freq.Keys[0].Code);
             Assert.Equal(3, freq.Keys[0].Count);
-            Assert.Equal((short)66, freq.Keys[1].Code);
+            Assert.Equal((short)InputKeyPosition.KeyB, freq.Keys[1].Code);
             Assert.Equal(1, freq.Keys[1].Count);
         }
     }
@@ -328,5 +334,75 @@ public class InputEventServiceTests(PostgresContainerFixture fixture) : Postgres
         using var db = CreateDbContext();
         var freq = await new InputEventService(db).GetKeyFrequencyAsync("user-1", null, null, null);
         Assert.Empty(freq.Keys);
+    }
+
+    [Fact]
+    public async Task GetKeyFrequency_ProjectsLegacyAndPhysicalCodesToSameKey_WithoutMutatingRawRows()
+    {
+        var now = DateTimeOffset.UtcNow;
+        using (var db = CreateDbContext())
+        {
+            await new InputEventService(db).SaveAsync(_deviceId, new InputEventUploadRequest
+            {
+                Events =
+                [
+                    Item(InputEventType.KeyDown, 65, now, InputCodeSets.WindowsVirtualKeyV1),
+                    Item(InputEventType.KeyDown, (short)InputKeyPosition.KeyA, now.AddMilliseconds(1),
+                        InputCodeSets.HeartbeatKeyPositionV1)
+                ]
+            });
+        }
+
+        using (var db = CreateDbContext())
+        {
+            var freq = await new InputEventService(db).GetKeyFrequencyAsync("user-1", null, null, null);
+            var key = Assert.Single(freq.Keys);
+            Assert.Equal((short)InputKeyPosition.KeyA, key.Code);
+            Assert.Equal(2, key.Count);
+
+            var raw = await db.InputEvents.OrderBy(item => item.Timestamp).ToListAsync();
+            Assert.Equal(InputCodeSets.WindowsVirtualKeyV1, raw[0].CodeSet);
+            Assert.Equal((short)65, raw[0].Code);
+            Assert.Equal(InputCodeSets.HeartbeatKeyPositionV1, raw[1].CodeSet);
+            Assert.Equal((short)InputKeyPosition.KeyA, raw[1].Code);
+        }
+    }
+
+    [Theory]
+    [InlineData(0x0D)] // main Enter vs NumpadEnter
+    [InlineData(0x10)] // generic Shift has no side
+    [InlineData(0x11)] // generic Control has no side
+    [InlineData(0x12)] // generic Alt has no side
+    [InlineData(0x24)] // navigation cluster vs numpad with NumLock off
+    [InlineData(0x25)]
+    [InlineData(0x2D)]
+    [InlineData(0x2E)]
+    public void LegacyAmbiguousVk_DoesNotGuessPhysicalPosition(short code)
+    {
+        Assert.False(InputKeyProjection.TryProject(
+            InputCodeSets.WindowsVirtualKeyV1,
+            code,
+            out _));
+    }
+
+    [Fact]
+    public async Task SaveAsync_RejectsInvalidPhysicalCode_ButKeepsUnmappedLegacyVkTruthful()
+    {
+        var now = DateTimeOffset.UtcNow;
+        using var db = CreateDbContext();
+        var service = new InputEventService(db);
+
+        await service.SaveAsync(_deviceId, new InputEventUploadRequest
+        {
+            Events = [Item(InputEventType.KeyDown, 255, now, InputCodeSets.WindowsVirtualKeyV1)]
+        });
+
+        await Assert.ThrowsAsync<InputEventIngestContractException>(() => service.SaveAsync(
+            _deviceId,
+            new InputEventUploadRequest
+            {
+                Events = [Item(InputEventType.KeyDown, 255, now, InputCodeSets.HeartbeatKeyPositionV1)]
+            }));
+        Assert.Single(await db.InputEvents.ToListAsync());
     }
 }

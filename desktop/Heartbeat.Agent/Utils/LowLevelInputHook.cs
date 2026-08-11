@@ -2,6 +2,12 @@ using System.Runtime.InteropServices;
 
 namespace Heartbeat.Agent.Utils
 {
+    /// <summary>Windows 低级键盘钩子的原生观察；仅 platform adapter 解释此形状。</summary>
+    public readonly record struct WindowsNativeKeyObservation(
+        uint VirtualKey,
+        uint ScanCode,
+        bool IsExtended);
+
     /// <summary>
     /// 低级键盘/鼠标钩子（WH_KEYBOARD_LL / WH_MOUSE_LL），详见 ADR-012。
     /// 生产实现自持专用钩子线程（内部消息泵）：StartHook 立即返回，StopHook 阻塞收尾
@@ -10,8 +16,8 @@ namespace Heartbeat.Agent.Utils
     /// </summary>
     public interface ILowLevelInputHook
     {
-        event Action<int>? KeyDown;
-        event Action<int>? KeyUp;
+        event Action<WindowsNativeKeyObservation>? KeyDown;
+        event Action<WindowsNativeKeyObservation>? KeyUp;
         event Action<short>? MouseButton;  // 1=左 2=右 3=中
         event Action<int>? Scroll;          // 原始 wheel delta
         void StartHook();
@@ -21,8 +27,8 @@ namespace Heartbeat.Agent.Utils
     public sealed class WindowsLowLevelInputHook : ILowLevelInputHook
     {
         // ── 事件 ──
-        public event Action<int>? KeyDown;
-        public event Action<int>? KeyUp;
+        public event Action<WindowsNativeKeyObservation>? KeyDown;
+        public event Action<WindowsNativeKeyObservation>? KeyUp;
         public event Action<short>? MouseButton;
         public event Action<int>? Scroll;
 
@@ -34,6 +40,7 @@ namespace Heartbeat.Agent.Utils
         private const int WM_KEYUP = 0x0101;
         private const int WM_SYSKEYDOWN = 0x0104;
         private const int WM_SYSKEYUP = 0x0105;
+        private const uint LLKHF_EXTENDED = 0x01;
 
         private const int WM_LBUTTONDOWN = 0x0201;
         private const int WM_RBUTTONDOWN = 0x0204;
@@ -169,12 +176,15 @@ namespace Heartbeat.Agent.Utils
                 {
                     int msg = (int)wParam;
                     var data = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
-                    int vk = (int)data.vkCode;
+                    var observation = new WindowsNativeKeyObservation(
+                        data.vkCode,
+                        data.scanCode,
+                        (data.flags & LLKHF_EXTENDED) != 0);
 
                     if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
-                        KeyDown?.Invoke(vk);
+                        KeyDown?.Invoke(observation);
                     else if (msg == WM_KEYUP || msg == WM_SYSKEYUP)
-                        KeyUp?.Invoke(vk);
+                        KeyUp?.Invoke(observation);
                 }
                 catch (Exception ex)
                 {

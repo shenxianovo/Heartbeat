@@ -16,6 +16,7 @@ namespace Heartbeat.Hub.Core.Runtime
         UploadStream<ActivitySegmentItem> segmentStream,
         UploadStream<InputEventItem> inputStream,
         IHubConfiguration configuration,
+        IInputEventRecordingPolicy inputRecording,
         DeclarationUplinkService declarationUplink,
         IHubRuntimeHooks hooks) : BackgroundService
     {
@@ -79,7 +80,8 @@ namespace Heartbeat.Hub.Core.Runtime
                 Log.Warning(ex, "采集器声明上行异常");
             }
 
-            await inputStream.DrainAsync();
+            if (inputRecording.Enabled)
+                await inputStream.DrainAsync();
             var segments = await segmentStream.DrainAsync();
 
             await hooks.SegmentsDrainedAsync(segments);

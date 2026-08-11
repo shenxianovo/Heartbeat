@@ -169,6 +169,7 @@ namespace Heartbeat.Agent.Configuration
                 UploadIntervalMinutes = source.UploadIntervalMinutes,
                 AwayProcessNames = [.. source.AwayProcessNames ?? []],
                 IngestPort = source.IngestPort,
+                InputEventRecordingEnabled = source.InputEventRecordingEnabled,
                 Collectors = (source.Collectors ?? []).ToDictionary(
                     kv => kv.Key,
                     kv => new CollectorEntry

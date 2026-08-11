@@ -137,6 +137,8 @@ namespace Heartbeat.Server.Data
                 // 枚举以 short 落库。
                 entity.Property(e => e.EventType)
                     .HasConversion<short>();
+                entity.Property(e => e.CodeSet)
+                    .HasMaxLength(64);
 
                 entity.HasOne(e => e.Device)
                     .WithMany()

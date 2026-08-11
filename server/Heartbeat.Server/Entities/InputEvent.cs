@@ -14,7 +14,10 @@ namespace Heartbeat.Server.Entities
 
         public InputEventType EventType { get; set; }
 
-        /// <summary>键盘=VK 码；鼠标按钮=1左/2右/3中；滚轮=1上/2下。</summary>
+        /// <summary>Code 的原始解释版本；历史记录不会被投影结果回写。</summary>
+        public string CodeSet { get; set; } = string.Empty;
+
+        /// <summary>键盘=CodeSet 中的键位置；鼠标按钮=1左/2右/3中；滚轮=1上/2下。</summary>
         public short Code { get; set; }
 
         /// <summary>事件发生时刻（毫秒精度，算速度的权威时间源）。</summary>

@@ -10,7 +10,9 @@ namespace Heartbeat.WPF.ViewModels
     public partial class CollectorItemViewModel : ObservableObject
     {
         private readonly Action<string, bool>? _onEnabledChanged;
+        private readonly Action<bool>? _onRecordingEnabledChanged;
         private bool _suppressEnabledEvent;
+        private bool _suppressRecordingEvent;
 
         public string Source { get; }
 
@@ -19,6 +21,7 @@ namespace Heartbeat.WPF.ViewModels
 
         /// <summary>开关只对 plugin 渲染（IsSystem 时不渲染而非置灰——不可停用是本质）。</summary>
         public bool CanToggle => !IsSystem;
+        public bool CanToggleRecording => IsSystem;
 
         [ObservableProperty]
         private bool _isActive;
@@ -26,11 +29,19 @@ namespace Heartbeat.WPF.ViewModels
         [ObservableProperty]
         private bool _enabled = true;
 
-        public CollectorItemViewModel(string source, bool isSystem, Action<string, bool>? onEnabledChanged = null)
+        [ObservableProperty]
+        private bool _recordingEnabled = true;
+
+        public CollectorItemViewModel(
+            string source,
+            bool isSystem,
+            Action<string, bool>? onEnabledChanged = null,
+            Action<bool>? onRecordingEnabledChanged = null)
         {
             Source = source;
             IsSystem = isSystem;
             _onEnabledChanged = onEnabledChanged;
+            _onRecordingEnabledChanged = onRecordingEnabledChanged;
         }
 
         /// <summary>卡片图标（Segoe Fluent Icons 码位），按 source 约定映射，未知走通用。</summary>
@@ -62,6 +73,19 @@ namespace Heartbeat.WPF.ViewModels
         {
             if (!_suppressEnabledEvent)
                 _onEnabledChanged?.Invoke(Source, value);
+        }
+
+        public void SetRecordingEnabledSilently(bool value)
+        {
+            _suppressRecordingEvent = true;
+            RecordingEnabled = value;
+            _suppressRecordingEvent = false;
+        }
+
+        partial void OnRecordingEnabledChanged(bool value)
+        {
+            if (!_suppressRecordingEvent)
+                _onRecordingEnabledChanged?.Invoke(value);
         }
     }
 }

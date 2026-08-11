@@ -93,8 +93,66 @@ public sealed class HeartbeatCacheFormatsTests : IDisposable
         var migratedInput = Assert.Single(inputs.Load());
         Assert.Equal(inputId, migratedInput.Id);
         Assert.Equal((short)65, migratedInput.Code);
+        Assert.Equal(InputCodeSets.WindowsVirtualKeyV1, migratedInput.CodeSet);
         Assert.Equal(CacheFileState.Migrated, segments.Status.State);
         Assert.Equal(CacheFileState.Migrated, inputs.Status.State);
+    }
+
+    [Fact]
+    public void InputV1_MigratesToV2_PreservesRawFacts_Backup_AndMigratesOnlyOnce()
+    {
+        var path = Path.Combine(_directory, "input-v1.json");
+        var id = Guid.CreateVersion7();
+        var timestamp = DateTimeOffset.Parse("2026-08-11T01:00:30Z");
+        var legacyJson = JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1,
+            items = new[] { new { id, eventType = InputEventType.KeyDown, code = (short)65, timestamp } }
+        });
+        File.WriteAllText(path, legacyJson);
+
+        string backupPath;
+        using (var cache = NewInputCache(path))
+        {
+            var migrated = Assert.Single(cache.Load());
+            Assert.Equal(id, migrated.Id);
+            Assert.Equal(InputEventType.KeyDown, migrated.EventType);
+            Assert.Equal(InputCodeSets.WindowsVirtualKeyV1, migrated.CodeSet);
+            Assert.Equal((short)65, migrated.Code);
+            Assert.Equal(timestamp, migrated.Timestamp);
+            Assert.Equal(CacheFileState.Migrated, cache.Status.State);
+            backupPath = Assert.IsType<string>(cache.Status.BackupPath);
+            Assert.Equal(legacyJson, File.ReadAllText(backupPath));
+        }
+
+        using var restarted = NewInputCache(path);
+        var reloaded = Assert.Single(restarted.Load());
+        Assert.Equal(CacheFileState.Ready, restarted.Status.State);
+        Assert.Equal(InputCodeSets.WindowsVirtualKeyV1, reloaded.CodeSet);
+        Assert.Equal([backupPath], FindBackups(path));
+        using var document = JsonDocument.Parse(File.ReadAllText(path));
+        Assert.Equal(2, document.RootElement.GetProperty("schemaVersion").GetInt32());
+    }
+
+    [Fact]
+    public void InputV2_RoundTripsPhysicalCodeSet()
+    {
+        var path = Path.Combine(_directory, "input-v2.json");
+        var item = new InputEventItem
+        {
+            Id = Guid.CreateVersion7(),
+            EventType = InputEventType.KeyDown,
+            CodeSet = InputCodeSets.HeartbeatKeyPositionV1,
+            Code = (short)InputKeyPosition.KeyA,
+            Timestamp = DateTimeOffset.Parse("2026-08-11T01:00:30Z")
+        };
+        using (var cache = NewInputCache(path)) cache.Add([item]);
+
+        using var restarted = NewInputCache(path);
+        var loaded = Assert.Single(restarted.Load());
+        Assert.Equal(item.Id, loaded.Id);
+        Assert.Equal(item.CodeSet, loaded.CodeSet);
+        Assert.Equal(item.Code, loaded.Code);
     }
 
     [Fact]
@@ -222,6 +280,6 @@ public sealed class HeartbeatCacheFormatsTests : IDisposable
     private static JsonFileCache<InputEventItem> NewInputCache(string path) => new(
         path,
         100_000,
-        HeartbeatCacheFormats.InputEventVersion1(),
+        HeartbeatCacheFormats.InputEventVersion2(),
         HeartbeatCacheFormats.InputEventMigrations());
 }

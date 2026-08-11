@@ -154,52 +154,52 @@ export function weekRange(): { weekStart: string; weekEnd: string } {
 }
 
 /**
- * 键盘逐键按下次数（VK 码）。模拟常见打字分布：
+ * 键盘逐键按下次数（heartbeat-key-position-v1）。模拟常见打字分布：
  * 字母高频、空格/回车/退格次高、修饰键中等、符号偏低。
  */
 export const keyFrequency: { code: number; count: number }[] = [
-  { code: 32, count: 4820 },  // Space
-  { code: 69, count: 3120 },  // E
-  { code: 84, count: 2380 },  // T
-  { code: 65, count: 2210 },  // A
-  { code: 79, count: 2050 },  // O
-  { code: 73, count: 1980 },  // I
-  { code: 78, count: 1870 },  // N
-  { code: 83, count: 1790 },  // S
-  { code: 8, count: 1650 },   // Backspace
-  { code: 82, count: 1540 },  // R
-  { code: 72, count: 1420 },  // H
-  { code: 76, count: 1310 },  // L
-  { code: 68, count: 1280 },  // D
-  { code: 13, count: 1180 },  // Enter
-  { code: 67, count: 1090 },  // C
-  { code: 85, count: 980 },   // U
-  { code: 77, count: 920 },   // M
-  { code: 70, count: 880 },   // F
-  { code: 80, count: 810 },   // P
-  { code: 71, count: 760 },   // G
-  { code: 87, count: 740 },   // W
-  { code: 89, count: 690 },   // Y
-  { code: 66, count: 640 },   // B
-  { code: 160, count: 1240 }, // LShift
-  { code: 162, count: 580 },  // LCtrl
-  { code: 86, count: 520 },   // V
-  { code: 75, count: 480 },   // K
-  { code: 9, count: 360 },    // Tab
-  { code: 88, count: 320 },   // X
-  { code: 74, count: 300 },   // J
-  { code: 81, count: 240 },   // Q
-  { code: 90, count: 180 },   // Z
-  { code: 190, count: 420 },  // .
-  { code: 188, count: 380 },  // ,
-  { code: 191, count: 160 },  // /
-  { code: 186, count: 140 },  // ;
-  { code: 164, count: 220 },  // LAlt
-  { code: 20, count: 90 },    // Caps
-  { code: 161, count: 210 },  // RShift
-  { code: 163, count: 110 },  // RCtrl
-  { code: 165, count: 70 },   // RAlt
-  { code: 49, count: 280 },   // 1
-  { code: 50, count: 260 },   // 2
-  { code: 51, count: 240 },   // 3
+  { code: 44, count: 4820 },  // Space
+  { code: 8, count: 3120 },   // E
+  { code: 23, count: 2380 },  // T
+  { code: 4, count: 2210 },   // A
+  { code: 18, count: 2050 },  // O
+  { code: 12, count: 1980 },  // I
+  { code: 17, count: 1870 },  // N
+  { code: 22, count: 1790 },  // S
+  { code: 42, count: 1650 },  // Backspace
+  { code: 21, count: 1540 },  // R
+  { code: 11, count: 1420 },  // H
+  { code: 15, count: 1310 },  // L
+  { code: 7, count: 1280 },   // D
+  { code: 40, count: 1180 },  // Enter
+  { code: 6, count: 1090 },   // C
+  { code: 24, count: 980 },   // U
+  { code: 16, count: 920 },   // M
+  { code: 9, count: 880 },    // F
+  { code: 19, count: 810 },   // P
+  { code: 10, count: 760 },   // G
+  { code: 26, count: 740 },   // W
+  { code: 28, count: 690 },   // Y
+  { code: 5, count: 640 },    // B
+  { code: 225, count: 1240 }, // LShift
+  { code: 224, count: 580 },  // LCtrl
+  { code: 25, count: 520 },   // V
+  { code: 14, count: 480 },   // K
+  { code: 43, count: 360 },   // Tab
+  { code: 27, count: 320 },   // X
+  { code: 13, count: 300 },   // J
+  { code: 20, count: 240 },   // Q
+  { code: 29, count: 180 },   // Z
+  { code: 55, count: 420 },   // .
+  { code: 54, count: 380 },   // ,
+  { code: 56, count: 160 },   // /
+  { code: 51, count: 140 },   // ;
+  { code: 226, count: 220 },  // LAlt
+  { code: 57, count: 90 },    // Caps
+  { code: 229, count: 210 },  // RShift
+  { code: 228, count: 110 },  // RCtrl
+  { code: 230, count: 70 },   // RAlt
+  { code: 30, count: 280 },   // 1
+  { code: 31, count: 260 },   // 2
+  { code: 32, count: 240 },   // 3
 ]

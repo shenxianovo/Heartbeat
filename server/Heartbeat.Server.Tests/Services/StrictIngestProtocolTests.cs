@@ -2,6 +2,7 @@ using System.Text.Json;
 using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Apps;
 using Heartbeat.Core.DTOs.Devices;
+using Heartbeat.Core.DTOs.Input;
 using Heartbeat.Core.DTOs.Segments;
 using Heartbeat.Hub.Core.Collectors;
 using Heartbeat.Hub.Core.Ingest;
@@ -62,7 +63,7 @@ public class StrictIngestProtocolTests(PostgresContainerFixture fixture) : Postg
         Assert.False(endpointCalled);
         var result = Assert.IsType<ObjectResult>(executingContext.Result);
         Assert.Equal(StatusCodes.Status426UpgradeRequired, result.StatusCode);
-        Assert.Equal("Heartbeat/2", httpContext.Response.Headers.Upgrade);
+        Assert.Equal($"Heartbeat/{HeartbeatProtocol.RequiredVersion}", httpContext.Response.Headers.Upgrade);
 
         using var payload = JsonDocument.Parse(JsonSerializer.Serialize(result.Value));
         Assert.Equal(HeartbeatProtocol.UpdateRequiredCode, payload.RootElement.GetProperty("code").GetString());
@@ -123,7 +124,7 @@ public class StrictIngestProtocolTests(PostgresContainerFixture fixture) : Postg
         var result = Assert.IsType<ObjectResult>(await controller.Upload(request));
 
         Assert.Equal(StatusCodes.Status426UpgradeRequired, result.StatusCode);
-        Assert.Equal("Heartbeat/2", controller.Response.Headers.Upgrade);
+        Assert.Equal($"Heartbeat/{HeartbeatProtocol.RequiredVersion}", controller.Response.Headers.Upgrade);
         await AssertNoIngestFactsAsync(db);
     }
 
@@ -141,7 +142,7 @@ public class StrictIngestProtocolTests(PostgresContainerFixture fixture) : Postg
         }));
 
         Assert.Equal(StatusCodes.Status426UpgradeRequired, result.StatusCode);
-        Assert.Equal("Heartbeat/2", controller.Response.Headers.Upgrade);
+        Assert.Equal($"Heartbeat/{HeartbeatProtocol.RequiredVersion}", controller.Response.Headers.Upgrade);
         await AssertNoIngestFactsAsync(db);
     }
 
@@ -160,7 +161,7 @@ public class StrictIngestProtocolTests(PostgresContainerFixture fixture) : Postg
         }));
 
         Assert.Equal(StatusCodes.Status426UpgradeRequired, result.StatusCode);
-        Assert.Equal("Heartbeat/2", controller.Response.Headers.Upgrade);
+        Assert.Equal($"Heartbeat/{HeartbeatProtocol.RequiredVersion}", controller.Response.Headers.Upgrade);
         await AssertNoIngestFactsAsync(db);
         Assert.Empty(await db.AppIcons.AsNoTracking().ToListAsync());
     }
@@ -228,6 +229,57 @@ public class StrictIngestProtocolTests(PostgresContainerFixture fixture) : Postg
         Assert.Equal(StatusCodes.Status400BadRequest, result.StatusCode);
         await AssertNoIngestFactsAsync(db);
         Assert.Empty(await db.AppIcons.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task InputUpload_MissingCodeSet_Returns422BeforeDeviceResolution()
+    {
+        using var db = CreateDbContext();
+        var controller = CreateInputController(db, "user-1", "shared-hardware");
+
+        var result = Assert.IsType<UnprocessableEntityObjectResult>(await controller.Upload(
+            new InputEventUploadRequest
+            {
+                Events =
+                [
+                    new InputEventItem
+                    {
+                        Id = Guid.CreateVersion7(),
+                        EventType = InputEventType.KeyDown,
+                        Code = 65,
+                        Timestamp = Now
+                    }
+                ]
+            }));
+
+        Assert.Equal(StatusCodes.Status422UnprocessableEntity, result.StatusCode);
+        await AssertNoIngestFactsAsync(db);
+    }
+
+    [Fact]
+    public async Task InputUpload_UnknownCodeSet_Returns422BeforeDeviceResolution()
+    {
+        using var db = CreateDbContext();
+        var controller = CreateInputController(db, "user-1", "shared-hardware");
+
+        var result = Assert.IsType<UnprocessableEntityObjectResult>(await controller.Upload(
+            new InputEventUploadRequest
+            {
+                Events =
+                [
+                    new InputEventItem
+                    {
+                        Id = Guid.CreateVersion7(),
+                        EventType = InputEventType.KeyDown,
+                        CodeSet = "future-v9",
+                        Code = 4,
+                        Timestamp = Now
+                    }
+                ]
+            }));
+
+        Assert.Equal(StatusCodes.Status422UnprocessableEntity, result.StatusCode);
+        await AssertNoIngestFactsAsync(db);
     }
 
     [Fact]
@@ -370,6 +422,19 @@ public class StrictIngestProtocolTests(PostgresContainerFixture fixture) : Postg
         return controller;
     }
 
+    private static InputEventController CreateInputController(
+        AppDbContext db,
+        string userId,
+        string hardwareId)
+    {
+        var controller = new InputEventController(
+            new InputEventService(db),
+            new DeviceService(db),
+            new FakeCurrentUser(userId));
+        AttachHttpContext(controller, hardwareId);
+        return controller;
+    }
+
     private static void AttachHttpContext(ControllerBase controller, string? hardwareId = null)
     {
         var context = new DefaultHttpContext();
@@ -385,6 +450,7 @@ public class StrictIngestProtocolTests(PostgresContainerFixture fixture) : Postg
         Assert.Empty(await db.Apps.AsNoTracking().ToListAsync());
         Assert.Empty(await db.AppIdentities.AsNoTracking().ToListAsync());
         Assert.Empty(await db.ActivitySegments.AsNoTracking().ToListAsync());
+        Assert.Empty(await db.InputEvents.AsNoTracking().ToListAsync());
     }
 
     private sealed class FakeCurrentUser(string userId) : ICurrentUserService

@@ -283,9 +283,15 @@ namespace Heartbeat.WPF.ViewModels
                 if (existing == null)
                 {
                     var isSystem = source == ActivitySources.System;
-                    existing = new CollectorItemViewModel(source, isSystem, isSystem ? null : SetCollectorEnabled);
+                    existing = new CollectorItemViewModel(
+                        source,
+                        isSystem,
+                        isSystem ? null : SetCollectorEnabled,
+                        isSystem ? SetInputEventRecordingEnabled : null);
                     Collectors.Insert(Math.Min(i, Collectors.Count), existing);
                 }
+                if (existing.IsSystem)
+                    existing.SetRecordingEnabledSilently(_configManager.Current.InputEventRecordingEnabled);
                 if (registry.TryGetValue(source, out var entry))
                     existing.SetEnabledSilently(entry.Enabled);
             }
@@ -322,6 +328,9 @@ namespace Heartbeat.WPF.ViewModels
                     entry.Enabled = enabled;
             });
         }
+
+        private void SetInputEventRecordingEnabled(bool enabled)
+            => _configManager.Update(c => c.InputEventRecordingEnabled = enabled);
 
         /// <summary>注册表变化（采集器新注册/别处翻开关）→ 重建列表。事件可能来自 ingest 线程，回 UI 线程。</summary>
         private void HandleConfigChanged(AgentConfig _)

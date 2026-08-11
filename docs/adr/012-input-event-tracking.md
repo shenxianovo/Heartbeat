@@ -70,7 +70,7 @@ Windows 与 macOS 可让两项能力共享同一底层 hook/系统权限，但�
 ### Contract (Shared Kernel)
 
 - New endpoint **`POST /api/v1/input-events`** (`[Authorize]` JWT + `X-Hardware-Id`/`X-Device-Name`, same as other client upload endpoints; device resolved server-side via `DeviceService.ResolveByHardwareIdAsync`).
-- DTOs live in `Heartbeat.Core`: `InputEventUploadRequest { List<InputEventItem> Events }`, item = `Id, EventType, Code, Timestamp`. `DeviceId` is not in the DTO.
+- DTOs live in `Heartbeat.Core`: `InputEventUploadRequest { List<InputEventItem> Events }`, item = `Id, EventType, CodeSet, Code, Timestamp`. `DeviceId` is not in the DTO.
 
 ### Reporting (Analytics / Dashboard)
 

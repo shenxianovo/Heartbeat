@@ -10,7 +10,7 @@ namespace Heartbeat.Core.DTOs.Input
 
     public class KeyFrequencyItem
     {
-        /// <summary>Windows 虚拟键码（VK）。键名映射由展示层完成。</summary>
+        /// <summary>heartbeat-key-position-v1 中的 canonical 物理键位置。</summary>
         public short Code { get; set; }
 
         public long Count { get; set; }

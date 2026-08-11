@@ -33,6 +33,11 @@ namespace Heartbeat.Agent.Models
         public int IngestPort { get; set; } = 24820;
 
         /// <summary>
+        /// 是否持久化并上传 InputEvent。Interaction Signal 始终保持启用，二者只共享底层 hook。
+        /// </summary>
+        public bool InputEventRecordingEnabled { get; set; } = true;
+
+        /// <summary>
         /// 采集器注册表（ADR-026）：source → 条目。hub 首次见到某采集器（其 GET config）时自动记入，
         /// 即"已安装"的定义；关闭浏览器或 Agent 重启不丢。用户翻 enabled 也写此处。
         /// </summary>

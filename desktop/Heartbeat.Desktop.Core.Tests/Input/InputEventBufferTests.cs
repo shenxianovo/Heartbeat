@@ -19,12 +19,13 @@ public class InputEventBufferTests
     {
         var buf = NewBuffer();
 
-        Assert.True(buf.OnKeyDown(65));
+        Assert.True(buf.OnKeyDown(InputKeyPosition.KeyA));
 
         var items = buf.DrainAll();
         Assert.Single(items);
         Assert.Equal(InputEventType.KeyDown, items[0].EventType);
-        Assert.Equal((short)65, items[0].Code);
+        Assert.Equal((short)InputKeyPosition.KeyA, items[0].Code);
+        Assert.Equal(InputCodeSets.HeartbeatKeyPositionV1, items[0].CodeSet);
     }
 
     [Fact]
@@ -32,7 +33,7 @@ public class InputEventBufferTests
     {
         // 上传通道退回契约（ADR-020）：保 Id 回队，服务端按 Id 幂等去重
         var buf = NewBuffer();
-        buf.OnKeyDown(65);
+        buf.OnKeyDown(InputKeyPosition.KeyA);
         buf.OnMouseButton(1);
         var drained = buf.DrainAll();
 
@@ -47,12 +48,12 @@ public class InputEventBufferTests
     {
         var buf = NewBuffer();
 
-        Assert.True(buf.OnKeyDown(65));   // 首次记录
-        Assert.False(buf.OnKeyDown(65));  // 自动重复，丢弃
-        Assert.False(buf.OnKeyDown(65));  // 仍丢弃
+        Assert.True(buf.OnKeyDown(InputKeyPosition.KeyA));   // 首次记录
+        Assert.False(buf.OnKeyDown(InputKeyPosition.KeyA));  // 自动重复，丢弃
+        Assert.False(buf.OnKeyDown(InputKeyPosition.KeyA));  // 仍丢弃
 
-        buf.OnKeyUp(65);
-        Assert.True(buf.OnKeyDown(65));   // 抬起后再按，重新记录
+        buf.OnKeyUp(InputKeyPosition.KeyA);
+        Assert.True(buf.OnKeyDown(InputKeyPosition.KeyA));   // 抬起后再按，重新记录
 
         Assert.Equal(2, buf.DrainAll().Count);
     }
@@ -62,9 +63,9 @@ public class InputEventBufferTests
     {
         var buf = NewBuffer();
 
-        Assert.True(buf.OnKeyDown(65));
-        Assert.True(buf.OnKeyDown(66));
-        Assert.True(buf.OnKeyDown(67));
+        Assert.True(buf.OnKeyDown(InputKeyPosition.KeyA));
+        Assert.True(buf.OnKeyDown(InputKeyPosition.KeyB));
+        Assert.True(buf.OnKeyDown(InputKeyPosition.KeyC));
 
         Assert.Equal(3, buf.DrainAll().Count);
     }
@@ -168,10 +169,26 @@ public class InputEventBufferTests
     {
         var buf = NewBuffer();
 
-        buf.OnKeyDown(65);
+        buf.OnKeyDown(InputKeyPosition.KeyA);
         Assert.Single(buf.DrainAll());
         Assert.Empty(buf.DrainAll());
         Assert.Equal(0, buf.Count);
+    }
+
+    [Fact]
+    public void ResetTransientState_AllowsHeldKeyAgain_AndDropsScrollRemainder()
+    {
+        var buf = NewBuffer();
+        Assert.True(buf.OnKeyDown(InputKeyPosition.KeyA));
+        buf.OnScroll(80);
+
+        buf.ResetTransientState();
+
+        Assert.True(buf.OnKeyDown(InputKeyPosition.KeyA));
+        buf.OnScroll(40);
+        var items = buf.DrainAll();
+        Assert.Equal(2, items.Count(i => i.EventType == InputEventType.KeyDown));
+        Assert.DoesNotContain(items, i => i.EventType == InputEventType.MouseScroll);
     }
 
     [Fact]

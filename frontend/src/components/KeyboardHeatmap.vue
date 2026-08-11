@@ -1,50 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { Card } from '@/components/ui/card'
+import { KEYBOARD_ROWS } from '@/keyboard/keyPositions'
 
 const props = defineProps<{
   keyFrequency: { code: number; count: number }[]
 }>()
-
-// 主键区布局：每个键 { code: VK码, label: 显示名, w?: 相对宽度(默认1) }
-// VK 码参考 Windows Virtual-Key Codes。
-type KeyDef = { code: number; label: string; w?: number }
-
-const ROWS: KeyDef[][] = [
-  [
-    { code: 192, label: '`' }, { code: 49, label: '1' }, { code: 50, label: '2' },
-    { code: 51, label: '3' }, { code: 52, label: '4' }, { code: 53, label: '5' },
-    { code: 54, label: '6' }, { code: 55, label: '7' }, { code: 56, label: '8' },
-    { code: 57, label: '9' }, { code: 48, label: '0' }, { code: 189, label: '-' },
-    { code: 187, label: '=' }, { code: 8, label: 'Bksp', w: 2 },
-  ],
-  [
-    { code: 9, label: 'Tab', w: 1.5 }, { code: 81, label: 'Q' }, { code: 87, label: 'W' },
-    { code: 69, label: 'E' }, { code: 82, label: 'R' }, { code: 84, label: 'T' },
-    { code: 89, label: 'Y' }, { code: 85, label: 'U' }, { code: 73, label: 'I' },
-    { code: 79, label: 'O' }, { code: 80, label: 'P' }, { code: 219, label: '[' },
-    { code: 221, label: ']' }, { code: 220, label: '\\', w: 1.5 },
-  ],
-  [
-    { code: 20, label: 'Caps', w: 1.75 }, { code: 65, label: 'A' }, { code: 83, label: 'S' },
-    { code: 68, label: 'D' }, { code: 70, label: 'F' }, { code: 71, label: 'G' },
-    { code: 72, label: 'H' }, { code: 74, label: 'J' }, { code: 75, label: 'K' },
-    { code: 76, label: 'L' }, { code: 186, label: ';' }, { code: 222, label: "'" },
-    { code: 13, label: 'Enter', w: 2.25 },
-  ],
-  [
-    { code: 160, label: 'LShift', w: 2.25 }, { code: 90, label: 'Z' }, { code: 88, label: 'X' },
-    { code: 67, label: 'C' }, { code: 86, label: 'V' }, { code: 66, label: 'B' },
-    { code: 78, label: 'N' }, { code: 77, label: 'M' }, { code: 188, label: ',' },
-    { code: 190, label: '.' }, { code: 191, label: '/' }, { code: 161, label: 'RShift', w: 2.75 },
-  ],
-  [
-    { code: 162, label: 'LCtrl', w: 1.25 }, { code: 91, label: 'Win', w: 1.25 },
-    { code: 164, label: 'LAlt', w: 1.25 }, { code: 32, label: 'Space', w: 6.25 },
-    { code: 165, label: 'RAlt', w: 1.25 }, { code: 93, label: 'Menu', w: 1.25 },
-    { code: 163, label: 'RCtrl', w: 1.25 },
-  ],
-]
 
 const countByCode = computed(() => {
   const m = new Map<number, number>()
@@ -155,7 +116,7 @@ watch(funFacts, (facts) => {
 
       <div v-if="totalCount > 0" class="flex flex-col gap-1.5 overflow-x-auto">
         <div
-          v-for="(row, ri) in ROWS"
+          v-for="(row, ri) in KEYBOARD_ROWS"
           :key="ri"
           class="flex gap-1.5"
         >

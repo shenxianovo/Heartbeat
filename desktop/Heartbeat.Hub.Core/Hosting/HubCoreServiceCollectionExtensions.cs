@@ -8,6 +8,7 @@ using Heartbeat.Hub.Core.Ingest;
 using Heartbeat.Hub.Core.Http;
 using Heartbeat.Hub.Core.Runtime;
 using Heartbeat.Core.DTOs.Segments;
+using Heartbeat.Hub.Core.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -29,6 +30,7 @@ public static class HubCoreServiceCollectionExtensions
         services.TryAddSingleton<ICurrentActivitySink>(sp => sp.GetRequiredService<SegmentIngestService>());
         services.TryAddSingleton<ICollectionStatus>(sp => sp.GetRequiredService<SegmentIngestService>());
         services.TryAddSingleton<IHubRuntimeHooks, NullHubRuntimeHooks>();
+        services.TryAddSingleton<IInputEventRecordingPolicy, EnabledInputEventRecordingPolicy>();
         services.TryAddSingleton<ClientCompatibilityStatus>();
         services.TryAddSingleton<IClientCompatibilityStatus>(sp =>
             sp.GetRequiredService<ClientCompatibilityStatus>());

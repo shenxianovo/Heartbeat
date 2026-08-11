@@ -22,7 +22,13 @@ namespace Heartbeat.Core.DTOs.Input
 
         public InputEventType EventType { get; set; }
 
-        /// <summary>键盘=VK 码；鼠标按钮=1左/2右/3中；滚轮=1上/2下。</summary>
+        /// <summary>
+        /// Code 的显式解释版本。新事件使用 heartbeat-key-position-v1；
+        /// 历史 Windows 事件保持 windows-vk-v1，绝不猜测重写原始 Code。
+        /// </summary>
+        public string CodeSet { get; set; } = string.Empty;
+
+        /// <summary>键盘=CodeSet 中的物理位置；鼠标按钮=1左/2右/3中；滚轮=1上/2下。</summary>
         public short Code { get; set; }
 
         public DateTimeOffset Timestamp { get; set; }

@@ -6,6 +6,7 @@ using Heartbeat.Core.DTOs.Segments;
 using Heartbeat.Hub.Core.Storage;
 using Heartbeat.Hub.Core.Upload;
 using Heartbeat.Hub.Core.Collectors;
+using Heartbeat.Hub.Core.Configuration;
 using Heartbeat.Hub.Core.Http;
 using Heartbeat.Hub.Core.Runtime;
 using System.Net;
@@ -44,11 +45,27 @@ public class UploadWorkerTests : IDisposable
     private sealed class FakeCache<T> : ICache<T>
     {
         private List<T> _items = [];
+        public int LoadCalls { get; private set; }
         public CacheFileStatus Status => CacheFileStatus.Ready;
         public void Add(List<T> items) => _items.AddRange(items);
-        public List<T> Load() => new(_items);
+        public List<T> Load()
+        {
+            LoadCalls++;
+            return new(_items);
+        }
         public void Replace(List<T> items) => _items = new(items);
         public void Clear() => _items = [];
+    }
+
+    private sealed class TestRecordingPolicy(bool enabled) : IInputEventRecordingPolicy
+    {
+        public bool Enabled { get; set; } = enabled;
+        public event Action<bool>? Changed;
+        public void Set(bool enabled)
+        {
+            Enabled = enabled;
+            Changed?.Invoke(enabled);
+        }
     }
 
     private sealed class FakeIconUploader : IIconUploadService
@@ -72,7 +89,13 @@ public class UploadWorkerTests : IDisposable
             => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
     }
 
-    private (UploadWorker worker, FakeSource<ActivitySegmentItem> segSource, FakeSource<InputEventItem> inputSource, FakeIconUploader icons) Build()
+    private (
+        UploadWorker worker,
+        FakeSource<ActivitySegmentItem> segSource,
+        FakeSource<InputEventItem> inputSource,
+        FakeIconUploader icons,
+        FakeCache<InputEventItem> inputCache,
+        TestRecordingPolicy recording) Build(bool recordingEnabled = true)
     {
         var tempPath = Path.Combine(Path.GetTempPath(), $"heartbeat-cfg-{Guid.NewGuid()}.json");
         _tempFiles.Add(tempPath);
@@ -88,18 +111,21 @@ public class UploadWorkerTests : IDisposable
             batch => api.UploadSegmentsAsync(new SegmentUploadRequest { Segments = batch }),
             new FakeCache<ActivitySegmentItem>(),
             SnapshotCompaction.KeepLatest);
+        var inputCache = new FakeCache<InputEventItem>();
         var inputStream = new UploadStream<InputEventItem>(
             "输入事件", inputSource,
             batch => api.UploadInputEventsAsync(new InputEventUploadRequest { Events = batch }),
-            new FakeCache<InputEventItem>());
+            inputCache);
 
         var hubConfig = new HubConfigurationAdapter(cm);
+        var recording = new TestRecordingPolicy(recordingEnabled);
         return (new UploadWorker(
             segStream,
             inputStream,
             hubConfig,
+            recording,
             new DeclarationUplinkService(api, hubConfig),
-            new WindowsHubRuntimeHooks(icons)), segSource, inputSource, icons);
+            new WindowsHubRuntimeHooks(icons)), segSource, inputSource, icons, inputCache, recording);
     }
 
     private static ActivitySegmentItem Segment(string? appIdentityKey)
@@ -121,14 +147,15 @@ public class UploadWorkerTests : IDisposable
     {
         Id = Guid.CreateVersion7(),
         EventType = InputEventType.KeyDown,
-        Code = 65,
+        CodeSet = InputCodeSets.HeartbeatKeyPositionV1,
+        Code = (short)InputKeyPosition.KeyA,
         Timestamp = DateTimeOffset.UtcNow.AddMinutes(-1)
     };
 
     [Fact]
     public async Task DrainOnce_DrainsBothStreams()
     {
-        var (worker, segSource, inputSource, _) = Build();
+        var (worker, segSource, inputSource, _, _, _) = Build();
         segSource.Items.Add(Segment("win:code"));
         inputSource.Items.AddRange([Event(), Event()]);
 
@@ -141,7 +168,7 @@ public class UploadWorkerTests : IDisposable
     [Fact]
     public async Task DrainOnce_TriggersIcons_DistinctCaseInsensitive_SkipsEmpty()
     {
-        var (worker, segSource, _, icons) = Build();
+        var (worker, segSource, _, icons, _, _) = Build();
         segSource.Items.AddRange([Segment("win:code"), Segment("win:code"), Segment("win:mpv"), Segment(null)]);
 
         await worker.DrainOnceAsync();
@@ -154,7 +181,7 @@ public class UploadWorkerTests : IDisposable
     [Fact]
     public async Task DrainOnce_IconFailure_DoesNotAbortRemainingApps()
     {
-        var (worker, segSource, _, icons) = Build();
+        var (worker, segSource, _, icons, _, _) = Build();
         icons.ThrowFor = "win:code";
         segSource.Items.AddRange([Segment("win:code"), Segment("win:mpv")]);
 
@@ -167,7 +194,7 @@ public class UploadWorkerTests : IDisposable
     public async Task StopAsync_PerformsFinalDrain()
     {
         // 关机不丢尾巴的 worker 侧：monitor 停止时推入 hub 的终态快照由本次 drain 带走（ADR-020 §6）
-        var (worker, segSource, inputSource, _) = Build();
+        var (worker, segSource, inputSource, _, _, _) = Build();
         segSource.Items.Add(Segment("win:code"));
         inputSource.Items.Add(Event());
 
@@ -175,5 +202,19 @@ public class UploadWorkerTests : IDisposable
 
         Assert.Empty(segSource.Items);
         Assert.Empty(inputSource.Items);
+    }
+
+    [Fact]
+    public async Task DrainOnce_WhenRecordingDisabled_DoesNotReadCacheOrDrainInputSource()
+    {
+        var (worker, segSource, inputSource, _, inputCache, _) = Build(recordingEnabled: false);
+        segSource.Items.Add(Segment("win:code"));
+        inputSource.Items.Add(Event());
+
+        await worker.DrainOnceAsync();
+
+        Assert.Empty(segSource.Items);
+        Assert.Single(inputSource.Items);
+        Assert.Equal(0, inputCache.LoadCalls);
     }
 }

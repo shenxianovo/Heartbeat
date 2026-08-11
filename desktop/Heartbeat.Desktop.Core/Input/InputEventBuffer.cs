@@ -24,8 +24,8 @@ namespace Heartbeat.Desktop.Core.Input
         private readonly ConcurrentQueue<InputEventItem> _queue = new();
         private int _count;
 
-        // 按住状态：记录当前处于按下状态的 VK 码，用于过滤自动重复
-        private readonly HashSet<int> _heldKeys = [];
+        // 按住状态：记录当前处于按下状态的物理键位置，用于过滤自动重复
+        private readonly HashSet<short> _heldKeys = [];
         private readonly object _heldLock = new();
 
         // 滚轮累计 delta（按方向分别累计余量）
@@ -35,24 +35,25 @@ namespace Heartbeat.Desktop.Core.Input
         public int Count => Volatile.Read(ref _count);
 
         /// <summary>键盘按下。返回是否记录了事件（自动重复会被丢弃）。</summary>
-        public bool OnKeyDown(int vkCode)
+        public bool OnKeyDown(InputKeyPosition position)
         {
+            var code = (short)position;
             lock (_heldLock)
             {
-                if (!_heldKeys.Add(vkCode))
+                if (!_heldKeys.Add(code))
                     return false; // 已按住 → 自动重复，丢弃
             }
 
-            Enqueue(InputEventType.KeyDown, (short)vkCode);
+            Enqueue(InputEventType.KeyDown, code);
             return true;
         }
 
         /// <summary>键盘抬起。仅解除按住状态，不落盘。</summary>
-        public void OnKeyUp(int vkCode)
+        public void OnKeyUp(InputKeyPosition position)
         {
             lock (_heldLock)
             {
-                _heldKeys.Remove(vkCode);
+                _heldKeys.Remove((short)position);
             }
         }
 
@@ -83,6 +84,20 @@ namespace Heartbeat.Desktop.Core.Input
             int abs = Math.Abs(notches);
             for (int i = 0; i < abs; i++)
                 Enqueue(InputEventType.MouseScroll, code);
+        }
+
+        /// <summary>录制关闭时清空仅内存的 repeat / 精细滚轮状态，不触碰已生成事件。</summary>
+        public void ResetTransientState()
+        {
+            lock (_heldLock)
+            {
+                _heldKeys.Clear();
+            }
+
+            lock (_scrollLock)
+            {
+                _scrollAccum = 0;
+            }
         }
 
         /// <summary>取走当前所有事件并清空缓冲。</summary>
@@ -119,6 +134,7 @@ namespace Heartbeat.Desktop.Core.Input
             {
                 Id = Guid.CreateVersion7(),
                 EventType = type,
+                CodeSet = InputCodeSets.HeartbeatKeyPositionV1,
                 Code = code,
                 Timestamp = _clock.UtcNow
             });

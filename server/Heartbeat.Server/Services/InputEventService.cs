@@ -14,6 +14,8 @@ namespace Heartbeat.Server.Services
         /// </summary>
         public async Task SaveAsync(long deviceId, InputEventUploadRequest request)
         {
+            InputEventIngestContract.Validate(request.Events);
+
             // 批内按 Id 去重
             var items = request.Events
                 .GroupBy(e => e.Id)
@@ -36,6 +38,7 @@ namespace Heartbeat.Server.Services
                     Id = e.Id,
                     DeviceId = deviceId,
                     EventType = e.EventType,
+                    CodeSet = e.CodeSet,
                     Code = e.Code,
                     Timestamp = e.Timestamp
                 });
@@ -96,7 +99,8 @@ namespace Heartbeat.Server.Services
         }
 
         /// <summary>
-        /// 统计某时间段内键盘逐键（VK 码）的按下次数。返回全部按键，不裁剪。
+        /// 统计某时间段内键盘逐键按下次数。原始 (CodeSet, Code) 只读投影到 canonical
+        /// InputKeyPosition 后聚合，返回全部可识别按键，不裁剪。
         /// </summary>
         public async Task<KeyFrequencyResponse> GetKeyFrequencyAsync(
             string ownerId, long? deviceId, DateTimeOffset? start, DateTimeOffset? end)
@@ -114,11 +118,26 @@ namespace Heartbeat.Server.Services
             if (end.HasValue)
                 query = query.Where(e => e.Timestamp < end.Value);
 
-            var keys = await query
-                .GroupBy(e => e.Code)
-                .Select(g => new KeyFrequencyItem { Code = g.Key, Count = g.LongCount() })
-                .OrderByDescending(k => k.Count)
+            var rawGroups = await query
+                .GroupBy(e => new { e.CodeSet, e.Code })
+                .Select(g => new { g.Key.CodeSet, g.Key.Code, Count = g.LongCount() })
                 .ToListAsync();
+
+            var projected = new Dictionary<short, long>();
+            foreach (var group in rawGroups)
+            {
+                if (!InputKeyProjection.TryProject(group.CodeSet, group.Code, out var position))
+                    continue;
+
+                var code = (short)position;
+                projected[code] = projected.GetValueOrDefault(code) + group.Count;
+            }
+
+            var keys = projected
+                .Select(item => new KeyFrequencyItem { Code = item.Key, Count = item.Value })
+                .OrderByDescending(item => item.Count)
+                .ThenBy(item => item.Code)
+                .ToList();
 
             return new KeyFrequencyResponse { Keys = keys };
         }

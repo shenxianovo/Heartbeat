@@ -43,7 +43,7 @@ _Avoid_: InputEvent（后者是持久化并上传的事实流）
 用户在 WPF 翻 enabled=false，双层执行。**礼貌层（采集器侧）**：采集器 `GET /v1/collectors/{source}/config` 见 `enabled:false` 主动停采（省流量）。**强制层（hub 侧）**：hub 对被停用 Source 的 `POST /v1/segments` 返回 403，段被丢弃——这是 loopback 无鉴权信任模型下唯一的准入闸门，采集器有 bug/第三方/装死时的兜底，不可省。Agent 够不着其他进程里的采集器，"停用"永远是 hub 侧行为。config 下行本版仅 `{enabled}`，设置项字段将来往响应里加（不引入 schema registry，ADR-017 §5）。采集器管理 UI 位于 WPF（本机采集层事实，不进 Dashboard）。
 
 **采集器栏（Collector panel）**:
-WPF 左侧导航新增栏，逐采集器展示 **Active**（管道通不通，只读）与 **enabled**（用户开关），并容纳采集器设置。可管理性**分级**：plugin 采集器条目带 enable 开关；system 采集器为**只读**条目（不可停用，故无开关），将来长出采集粒度控件（如 InputEvent 记录 vs 只计数，对应 CONTEXT-MAP 的"采集能力分层可拆"）。条目模型 = 身份 + Active + 零或多个控件，天然容纳两类。
+WPF 左侧导航新增栏，逐采集器展示 **Active**（管道通不通，只读）与 **enabled**（用户开关），并容纳采集器设置。可管理性**分级**：plugin 采集器条目带 enable 开关；system 采集器不可停用，但提供独立的 InputEvent Recording 开关，关闭后 hook 与 Interaction Signal 仍运行，durable input buffer/cache 不再 drain。条目模型 = 身份 + Active + 零或多个控件，天然容纳两类。
 
 **Setup**:
 Velopack 生成的安装器（Setup.exe），用户首次安装时下载运行。
