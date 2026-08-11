@@ -38,8 +38,10 @@ public class HubCoreCompositionTests
 
     private sealed class MemoryCache<T> : ICache<T>
     {
+        public CacheFileStatus Status => CacheFileStatus.Ready;
         public void Add(List<T> items) { }
         public List<T> Load() => [];
+        public void Replace(List<T> items) { }
         public void Clear() { }
     }
 
@@ -73,6 +75,9 @@ public class HubCoreCompositionTests
         Assert.Same(
             provider.GetRequiredService<SegmentIngestService>(),
             provider.GetRequiredService<ICollectionStatus>());
+        Assert.Same(
+            provider.GetRequiredService<UploadStatusRegistry>(),
+            provider.GetRequiredService<IUploadStatus>());
         var hosted = provider.GetServices<IHostedService>().ToList();
         Assert.Contains(hosted, service => service is UploadWorker);
         Assert.Contains(hosted, service => service is StatusUploadWorker);

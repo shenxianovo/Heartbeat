@@ -44,8 +44,10 @@ public class UploadWorkerTests : IDisposable
     private sealed class FakeCache<T> : ICache<T>
     {
         private List<T> _items = [];
+        public CacheFileStatus Status => CacheFileStatus.Ready;
         public void Add(List<T> items) => _items.AddRange(items);
         public List<T> Load() => new(_items);
+        public void Replace(List<T> items) => _items = new(items);
         public void Clear() => _items = [];
     }
 

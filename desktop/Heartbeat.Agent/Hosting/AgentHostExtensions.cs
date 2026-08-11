@@ -60,14 +60,22 @@ namespace Heartbeat.Agent.Hosting
             {
                 var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
                 var cachePath = Path.Combine(localAppData, "Heartbeat", "input-events-cache.json");
-                return new JsonFileCache<InputEventItem>(cachePath, maxItems: 100_000);
+                return new JsonFileCache<InputEventItem>(
+                    cachePath,
+                    maxItems: 100_000,
+                    HeartbeatCacheFormats.InputEventVersion1(),
+                    HeartbeatCacheFormats.InputEventMigrations());
             });
 
             services.AddSingleton<ICache<ActivitySegmentItem>>(sp =>
             {
                 var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
                 var cachePath = Path.Combine(localAppData, "Heartbeat", "segments-cache.json");
-                return new JsonFileCache<ActivitySegmentItem>(cachePath, maxItems: 20_000);
+                return new JsonFileCache<ActivitySegmentItem>(
+                    cachePath,
+                    maxItems: 20_000,
+                    HeartbeatCacheFormats.SegmentVersion1(),
+                    HeartbeatCacheFormats.SegmentMigrations());
             });
 
             // 基础设施
@@ -96,7 +104,12 @@ namespace Heartbeat.Agent.Hosting
                     sp.GetRequiredService<IUploadSource<ActivitySegmentItem>>(),
                     batch => api.UploadSegmentsAsync(new SegmentUploadRequest { Segments = batch }),
                     sp.GetRequiredService<ICache<ActivitySegmentItem>>(),
-                    SnapshotCompaction.KeepLatest);
+                    SnapshotCompaction.KeepLatest,
+                    new JsonDeadLetterStore<ActivitySegmentItem>(Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "Heartbeat",
+                        "segments-dead-letter.json")),
+                    sp.GetRequiredService<UploadStatusRegistry>());
             });
             services.AddSingleton(sp =>
             {
@@ -105,7 +118,12 @@ namespace Heartbeat.Agent.Hosting
                     "输入事件",
                     sp.GetRequiredService<IUploadSource<InputEventItem>>(),
                     batch => api.UploadInputEventsAsync(new InputEventUploadRequest { Events = batch }),
-                    sp.GetRequiredService<ICache<InputEventItem>>());
+                    sp.GetRequiredService<ICache<InputEventItem>>(),
+                    deadLetterStore: new JsonDeadLetterStore<InputEventItem>(Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "Heartbeat",
+                        "input-events-dead-letter.json")),
+                    statusRegistry: sp.GetRequiredService<UploadStatusRegistry>());
             });
 
             // 自启动服务

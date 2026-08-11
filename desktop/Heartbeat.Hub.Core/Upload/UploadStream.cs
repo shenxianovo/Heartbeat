@@ -2,69 +2,255 @@ using Heartbeat.Hub.Core.Http;
 using Heartbeat.Hub.Core.Storage;
 using Serilog;
 
-namespace Heartbeat.Hub.Core.Upload
+namespace Heartbeat.Hub.Core.Upload;
+
+/// <summary>
+/// Durable Upload Stream. Retryable failures stay queued; 400/422 are bisected until bad records
+/// can be dead-lettered; 426 pauses the stream. At every return point each drained item has either
+/// been delivered, durably cached/dead-lettered, or reinjected into its source.
+/// </summary>
+public sealed class UploadStream<T>
 {
-    /// <summary>
-    /// 上传流（Upload Stream，ADR-020/022）：绑定出网源的泛化出网流。
-    /// drain 一轮 = 先重传离线缓存，再取 fresh 出网——送达，或落离线缓存，
-    /// 否则重注入源。"drain 后的批不静默蒸发"是流自持的不变量（ADR-022）。
-    /// compact 为按流策略，只作用于出缓存的批：缓存纯追加，离线期间积累同 Id 快照；
-    /// fresh 批来自按 Id 键控的 buffer，天然无重复。
-    /// </summary>
-    public class UploadStream<T>(
+    private readonly string _label;
+    private readonly IUploadSource<T> _source;
+    private readonly Func<List<T>, Task<ApiResult>> _send;
+    private readonly ICache<T> _cache;
+    private readonly Func<List<T>, List<T>>? _compactCached;
+    private readonly IDeadLetterStore<T>? _deadLetterStore;
+    private readonly UploadStatusRegistry? _statusRegistry;
+
+    public UploadStream(
         string label,
         IUploadSource<T> source,
         Func<List<T>, Task<ApiResult>> send,
         ICache<T> cache,
-        Func<List<T>, List<T>>? compactCached = null)
+        Func<List<T>, List<T>>? compactCached = null,
+        IDeadLetterStore<T>? deadLetterStore = null,
+        UploadStatusRegistry? statusRegistry = null)
     {
-        /// <summary>
-        /// drain 一轮。返回本轮从源取走的 fresh 批（无论送达/缓存/重注入，调用方只读——
-        /// 图标挂点从中提 AppName，与 ADR-020 §6 行为一致）。
-        /// </summary>
-        public async Task<List<T>> DrainAsync()
+        _label = label;
+        _source = source;
+        _send = send;
+        _cache = cache;
+        _compactCached = compactCached;
+        _deadLetterStore = deadLetterStore;
+        _statusRegistry = statusRegistry;
+
+        Status = cache.Status.State == CacheFileState.MigrationFailed
+            ? new UploadStreamStatus(
+                UploadStreamState.CacheMigrationFailed,
+                cache.Status.Message,
+                cache.Status.Action,
+                deadLetterStore?.Count ?? 0,
+                cache.Status.BackupPath,
+                deadLetterStore?.Location)
+            : UploadStreamStatus.Ready with
+            {
+                DeadLetterCount = deadLetterStore?.Count ?? 0,
+                DeadLetterPath = deadLetterStore?.Location
+            };
+        _statusRegistry?.Update(_label, Status);
+    }
+
+    public UploadStreamStatus Status { get; private set; }
+    public event Action<UploadStreamStatus>? StatusChanged;
+
+    /// <summary>
+    /// Clears an in-process 426 pause. A restarted (normally updated) Agent also begins unpaused and
+    /// retries the durably retained cache once.
+    /// </summary>
+    public void Resume()
+    {
+        if (Status.State != UploadStreamState.UpdateRequired) return;
+        SetStatus(ReadyStatus());
+    }
+
+    public async Task<List<T>> DrainAsync()
+    {
+        if (Status.State is UploadStreamState.UpdateRequired or UploadStreamState.CacheMigrationFailed)
+            return [];
+
+        var cachedResult = await UploadCachedAsync();
+        if (cachedResult.Paused) return [];
+
+        var items = _source.Drain();
+        if (items.Count == 0) return items;
+
+        Log.Information("正在上传 {Count} 条{Label}...", items.Count, _label);
+        var result = await ProcessBatchAsync(items);
+        if (result.RetryItems.Count > 0)
+            PreserveFreshRetryItems(result.RetryItems);
+        else if (!result.Paused)
+            RecoverTransientStatus(
+                UploadStreamState.CacheWriteFailed,
+                UploadStreamState.DeadLetterWriteFailed);
+        return items;
+    }
+
+    private async Task<BatchResult<T>> UploadCachedAsync()
+    {
+        List<T> cached;
+        try
         {
-            await UploadCachedAsync();
-
-            var items = source.Drain();
-            if (items.Count == 0) return items;
-
-            Log.Information("正在上传 {Count} 条{Label}...", items.Count, label);
-            var result = await send(items);
-            if (result.Success)
-            {
-                Log.Information("{Label}上传成功，共 {Count} 条", label, items.Count);
-                return items;
-            }
-
-            try
-            {
-                cache.Add(items);
-                Log.Information("{Count} 条{Label}已缓存到本地", items.Count, label);
-            }
-            catch (Exception ex)
-            {
-                // 缓存写盘失败（磁盘满等）：不吞数据，重注入源，下轮重试。
-                Log.Warning(ex, "{Label}缓存写入失败，{Count} 条重注入源 buffer", label, items.Count);
-                source.Reinject(items);
-            }
-            return items;
+            cached = _cache.Load();
+        }
+        catch (CacheUnavailableException ex)
+        {
+            SetStatus(new UploadStreamStatus(
+                UploadStreamState.CacheMigrationFailed,
+                ex.Message,
+                _cache.Status.Action,
+                _deadLetterStore?.Count ?? 0,
+                _cache.Status.BackupPath,
+                _deadLetterStore?.Location));
+            return BatchResult<T>.Pause([]);
         }
 
-        /// <summary>重传离线缓存。成功清空缓存，失败原样保留（下轮再试，ADR-008）。</summary>
-        private async Task UploadCachedAsync()
+        if (cached.Count == 0) return BatchResult<T>.Complete;
+        var toSend = _compactCached?.Invoke(cached) ?? cached;
+        Log.Information("发现 {Count} 条缓存{Label}，尝试上传...", toSend.Count, _label);
+
+        var result = await ProcessBatchAsync(toSend);
+        try
         {
-            var cached = cache.Load();
-            if (cached.Count == 0) return;
-
-            var toSend = compactCached?.Invoke(cached) ?? cached;
-
-            Log.Information("发现 {Count} 条缓存{Label}，尝试上传...", toSend.Count, label);
-            var result = await send(toSend);
-            if (!result.Success) return;
-
-            cache.Clear();
-            Log.Information("缓存{Label}上传成功，已清除本地缓存", label);
+            _cache.Replace(result.RetryItems);
+            if (result.RetryItems.Count == 0 && !result.Paused)
+            {
+                RecoverTransientStatus(
+                    UploadStreamState.CacheWriteFailed,
+                    UploadStreamState.DeadLetterWriteFailed);
+            }
+            else
+            {
+                RecoverTransientStatus(UploadStreamState.CacheWriteFailed);
+            }
         }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "提交{Label}缓存重传结果失败；原缓存仍保留", _label);
+            if (Status.State != UploadStreamState.UpdateRequired)
+            {
+                SetStatus(new UploadStreamStatus(
+                    UploadStreamState.CacheWriteFailed,
+                    ex.Message,
+                    "Free disk space or repair the cache path, then retry.",
+                    _deadLetterStore?.Count ?? 0,
+                    DeadLetterPath: _deadLetterStore?.Location));
+            }
+        }
+        return result;
+    }
+
+    private async Task<BatchResult<T>> ProcessBatchAsync(List<T> items)
+    {
+        if (items.Count == 0) return BatchResult<T>.Complete;
+
+        var response = await _send(items);
+        if (response.Success) return BatchResult<T>.Complete;
+
+        if (response.StatusCode == 426)
+        {
+            SetStatus(new UploadStreamStatus(
+                UploadStreamState.UpdateRequired,
+                response.ResponseBody ?? "The server requires a newer Heartbeat version.",
+                "Update Heartbeat, then resume this upload stream.",
+                _deadLetterStore?.Count ?? 0,
+                DeadLetterPath: _deadLetterStore?.Location));
+            return BatchResult<T>.Pause(items);
+        }
+
+        if (response.StatusCode is 400 or 422)
+        {
+            if (items.Count == 1)
+                return DeadLetterOrRetry(items[0], response);
+
+            var midpoint = items.Count / 2;
+            var left = await ProcessBatchAsync(items.GetRange(0, midpoint));
+            if (left.Paused)
+                return BatchResult<T>.Pause(left.RetryItems.Concat(items.Skip(midpoint)).ToList());
+
+            var right = await ProcessBatchAsync(items.GetRange(midpoint, items.Count - midpoint));
+            return new BatchResult<T>(
+                left.RetryItems.Concat(right.RetryItems).ToList(),
+                right.Paused);
+        }
+
+        // Network failures, recoverable auth (401), 408, 429 and 5xx are explicitly retryable.
+        // Unknown statuses also default to retain-and-retry: data loss is worse than delayed progress.
+        return BatchResult<T>.Retry(items);
+    }
+
+    private BatchResult<T> DeadLetterOrRetry(T item, ApiResult rejection)
+    {
+        try
+        {
+            if (_deadLetterStore == null)
+                throw new InvalidOperationException("No dead-letter store is configured.");
+            _deadLetterStore.Append(_label, item, rejection);
+            SetStatus(ReadyStatus());
+            return BatchResult<T>.Complete;
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "{Label}坏记录写入 dead letter 失败，保留重试", _label);
+            SetStatus(new UploadStreamStatus(
+                UploadStreamState.DeadLetterWriteFailed,
+                ex.Message,
+                "Repair the dead-letter path; the rejected record remains queued.",
+                _deadLetterStore?.Count ?? 0,
+                DeadLetterPath: _deadLetterStore?.Location));
+            return BatchResult<T>.Retry([item]);
+        }
+    }
+
+    private void PreserveFreshRetryItems(List<T> retryItems)
+    {
+        try
+        {
+            _cache.Add(retryItems);
+            Log.Information("{Count} 条{Label}已缓存到本地", retryItems.Count, _label);
+            RecoverTransientStatus(UploadStreamState.CacheWriteFailed);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "{Label}缓存写入失败，{Count} 条重注入源 buffer", _label, retryItems.Count);
+            _source.Reinject(retryItems);
+            if (Status.State != UploadStreamState.UpdateRequired)
+            {
+                SetStatus(new UploadStreamStatus(
+                    UploadStreamState.CacheWriteFailed,
+                    ex.Message,
+                    "Free disk space or repair the cache path, then retry.",
+                    _deadLetterStore?.Count ?? 0,
+                    DeadLetterPath: _deadLetterStore?.Location));
+            }
+        }
+    }
+
+    private void SetStatus(UploadStreamStatus status)
+    {
+        if (Status == status) return;
+        Status = status;
+        _statusRegistry?.Update(_label, status);
+        StatusChanged?.Invoke(status);
+    }
+
+    private void RecoverTransientStatus(params UploadStreamState[] recoverableStates)
+    {
+        if (!recoverableStates.Contains(Status.State)) return;
+        SetStatus(ReadyStatus());
+    }
+
+    private UploadStreamStatus ReadyStatus() => UploadStreamStatus.Ready with
+    {
+        DeadLetterCount = _deadLetterStore?.Count ?? 0,
+        DeadLetterPath = _deadLetterStore?.Location
+    };
+
+    private sealed record BatchResult<TItem>(List<TItem> RetryItems, bool Paused)
+    {
+        public static BatchResult<TItem> Complete { get; } = new([], false);
+        public static BatchResult<TItem> Retry(List<TItem> items) => new(new(items), false);
+        public static BatchResult<TItem> Pause(List<TItem> items) => new(new(items), true);
     }
 }
