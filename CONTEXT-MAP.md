@@ -1,6 +1,6 @@
 # Context Map
 
-Heartbeat 是一个 Windows PC 应用使用时长监控系统。系统分为三个领域上下文和一个共享内核。
+Heartbeat 是一个跨平台桌面活动监控系统。系统分为三个领域上下文和一个共享内核。
 
 ## Positioning
 

@@ -1,6 +1,6 @@
 # Collection
 
-采集 Windows 前台窗口使用时长与各应用内活动，上传至服务端。作为常驻托盘应用运行。
+采集桌面设备的前台应用使用时长与各应用内活动，上传至服务端。作为常驻托盘或菜单栏应用运行。
 
 ## Language
 
@@ -24,12 +24,16 @@ hub 持久化的采集器账本（存于 config.json 的 `collectors`，与 ApiK
 _Avoid_: 心跳注册、清单（manifest）
 
 **Current Activity（当前活动）**:
-集面读模型中"此刻在干什么"的条目：由 system 采集器在转场点（前台切换、进出 away）推送进 hub，进程内事件驱动、零延迟；away 原样暴露（`__away__`），语义解释留给消费者。WPF 当前应用显示与 Heartbeat 的唯一数据源。
+集面读模型中"此刻在干什么"的条目：由 system 采集器在转场点（前台切换、进出 away）把 AppIdentityKey 推送进 hub，进程内事件驱动、零延迟；away 原样暴露为 `sys:away`，语义解释留给消费者。桌面 UI 与 Heartbeat 的唯一数据源。
 _Avoid_: 从段流量派生（快照节律 + ≥1s 噪声闸门使派生值在转场后最长 30s 指向上一个 app，ADR-021 否决）
 
 **Heartbeat（心跳）**:
 presence 通道：周期 keepalive（活性，间隔为代码常量、不进配置）+ 变了就推（新鲜度），Current Activity 搭车上行。无缓存无重试（易逝信息，下一个心跳自然覆盖）。服务端在线窗口 ≥ 2× keepalive 间隔（ADR-021）。
 _Avoid_: Status Upload（旧名，只描述了周期维度）
+
+**Interaction Signal（交互信号）**:
+只存在于本机内存中的最近点击信号，用于同窗标题变化的噪声门控；不持久化、不上传。它与 InputEvent Recording 可以共享底层平台 hook 或系统权限，但启用交互信号不代表允许保存输入事件。
+_Avoid_: InputEvent（后者是持久化并上传的事实流）
 
 **Deactivate（停用采集器）**:
 用户在 WPF 翻 enabled=false，双层执行。**礼貌层（采集器侧）**：采集器 `GET /v1/collectors/{source}/config` 见 `enabled:false` 主动停采（省流量）。**强制层（hub 侧）**：hub 对被停用 Source 的 `POST /v1/segments` 返回 403，段被丢弃——这是 loopback 无鉴权信任模型下唯一的准入闸门，采集器有 bug/第三方/装死时的兜底，不可省。Agent 够不着其他进程里的采集器，"停用"永远是 hub 侧行为。config 下行本版仅 `{enabled}`，设置项字段将来往响应里加（不引入 schema registry，ADR-017 §5）。采集器管理 UI 位于 WPF（本机采集层事实，不进 Dashboard）。

@@ -1,10 +1,8 @@
 # ADR-014: Away Detection via Display-Off & Sleep (Hard Signals Only)
 
-## Status: Proposed
+## Status: Accepted
 
 ## Date: 2026-06-30
-
-(pending implementation)
 
 ## Context
 
@@ -23,8 +21,9 @@ We only react to deterministic, OS-broadcast signals:
 
 1. **Display off** (`GUID_CONSOLE_DISPLAY_STATE` via `WM_POWERBROADCAST`) — the primary signal. Covers power-plan timeout, manual screen-off, and the screen-off that accompanies lock/sleep.
 2. **System suspend/resume** (`PowerModeChanged.Suspend/Resume`) — a correctness backstop for sleep, where the process is frozen and event-arrival timestamps become unreliable (see below).
+3. **Session lock/inactive and unlock/active** — manual lock immediately means the user is away, even if the display remains lit briefly. Windows may also surface this through the configured LockApp identity; macOS uses workspace session notifications.
 
-Lock screen is **not** detected via a separate `SessionSwitch` API. In practice locking quickly triggers display-off (#1), which covers it, and avoiding a dedicated lock signal sidesteps the "locked but screen still on for ~30s" grey zone.
+Lock is a hard signal, not soft-idle inference. Platform adapters should use a reliable session inactive/active notification where available; process-name normalization remains a backstop rather than the primary cross-platform contract.
 
 ### Why display-off alone is not enough (the sleep problem)
 
@@ -62,12 +61,12 @@ Rationale for keeping it **in the Agent library** (not in the WPF host): the lib
 
 ### 2. Away state machine in `AppMonitorService`
 
-A single `_isAway` flag, entered/exited only by power signals:
+A single `_isAway` flag, entered/exited only by hard display, sleep or session signals:
 
-- **Enter away** (first of `DisplayOff` or `Suspend`; subsequent signals while already away are ignored):
+- **Enter away** (first of `DisplayOff`, `Suspend` or `SessionInactive`; subsequent signals while already away are ignored):
   - Close the current real-app segment at the **signal-arrival `clock.UtcNow`** (for `Suspend`, this runs in the pre-suspend window, so it's ≈ the true sleep moment).
   - Record `_awayStart`. Set `_isAway = true`.
-- **Exit away** (first of `DisplayOn` or `Resume`):
+- **Exit away** (first of `DisplayOn`, `Resume` or `SessionActive`):
   - Emit an away segment `[_awayStart, clock.UtcNow]` with `AppName = AwayAppName`.
   - Set `_isAway = false`, start a fresh real-app segment from the current foreground app at "now".
 - While `_isAway`, **no real-app accumulation and no new segments** — `OnForegroundChanged` and `GetAndClearUsages` must respect the flag so the away span cannot leak into a real app.
@@ -75,19 +74,19 @@ A single `_isAway` flag, entered/exited only by power signals:
 
 ### 3. Away as a synthetic segment (no schema change)
 
-The away period is uploaded as a normal `AppUsageItem` with a sentinel `AppName` (`AwayAppName`, e.g. `"__away__"`):
+The away period is uploaded as a normal system ActivitySegment with synthetic `AppIdentityKey = "sys:away"`:
 
-- A distinct app name **naturally bypasses the server merge** — away segments never fuse with the real apps before/after them, while *adjacent away segments do* merge into one (desired).
+- A distinct synthetic identity **naturally separates away from real apps** while mapping every platform to the same App product.
 - Reuses the entire existing pipeline: `≥1s` minimum, `LocalCache`, offline retry, server-side `App` upsert. **No entity / migration / DTO / server changes.**
-- The frontend filters the sentinel name out of app rankings and renders it as a distinct "away" block on the timeline.
+- The frontend filters the away App product out of app rankings and renders it as a distinct block on the timeline.
 
 ### 4. `LockApp` normalization (rename only, does NOT drive the state machine)
 
 Some machines surface the lock screen as a foreground process named `LockApp`; others have no such process. `LockApp` segments are semantically "user not present" and should not appear as a real app.
 
-- The away **state machine is driven solely by display-off + sleep** (universal, process-name-independent).
+- The away **state machine is driven by hard display, sleep and session signals** (process-name-independent).
 - Separately, when recording a normal segment, if the foreground process name is in a configurable `AwayProcessNames` list (default `["LockApp"]`), that segment's `AppName` is **normalized to `AwayAppName`** — a rename only, it does **not** enter/trigger the away state.
-- Net effect: whether away time came from a hard signal or from a `LockApp` foreground, it surfaces as the same `"__away__"` name and merges cleanly. Machines without `LockApp` are unaffected (the rule no-ops).
+- Net effect: whether away time came from a hard signal or from a lock-screen foreground identity, it surfaces as `sys:away`. Machines without such a process are unaffected.
 
 ### 5. Config
 

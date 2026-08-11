@@ -16,7 +16,7 @@ Id 即活动身份：已有行则单调生长（EndTime 取 max、attributes 后
 _Avoid_: Statistics, Summary
 
 **App**:
-归一化的应用记录（进程名唯一），摄入时由 AppName 提示关联或创建。AppIcon 由 Agent 单独上报，挂在 App 下。App 是统计聚合的主维度。
+跨平台应用产品，是统计聚合、Matcher 与详情查询的主维度。摄入时由 AppIdentityKey 解析并让 ActivitySegment 引用 AppIdentity；多个平台身份可显式映射到同一 App，查询经 AppIdentity → App 聚合。未知身份先创建一对一 provisional App，不按名称猜测归并；显式归并由事务化服务端操作完成。presence 同样接收 AppIdentityKey，并向 Dashboard 投影 App 的 Id/Key/DisplayName。AppIcon 由 Agent 以 AppIdentity 上传提示，每个 Owner/App 保留一份产品图标。
 
 **Owner / Device**:
 数据隔离的两级键：所有查询以 `Device.OwnerId` 过滤（多用户就绪，见 CONTEXT-MAP 定位不变量 2）；Device 是一个观测主体——机器或账号（ADR-032，词条详见 shared/CONTEXT.md），报表可按 Device 过滤或跨设备聚合。

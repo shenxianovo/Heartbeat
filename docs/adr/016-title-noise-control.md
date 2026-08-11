@@ -1,10 +1,8 @@
 # ADR-016: Title Change Noise Control — Click Gating + Display-Layer Formatters
 
-## Status: Proposed
+## Status: Accepted
 
 ## Date: 2026-07-01
-
-(pending implementation)
 
 ## Context
 
@@ -47,11 +45,13 @@ Two layers, strictly separated. The agent handles **volume** (never content); th
 - **Gate window `X = 1s`** (first cut, tunable). Rationale: a click almost always *precedes* the title change (click → navigation → title updates), but the gap varies (slow page loads). 1s covers the common gap without crediting stale clicks.
 - **Lossless**: gating decides *whether to open a new segment*, never alters a title. Stored segments always carry the original, complete title.
 - The tracked title is always updated to the latest value even when not splitting, so if the segment is later closed (app switch / flush) it records the most recent real title.
+- 跨平台窗口事件 seam 区分 **AppIdentity 激活**、**focused-window 切换**与**同窗标题变化**。前两者属于明确转场，始终切段；只有同窗标题变化需要点击门控。
+- macOS 已获 Accessibility、未获 Input Monitoring 时，仍记录 focused-window 切换及其标题，但忽略无法点击门控的同窗标题变化；权限不足不阻塞 App-only 采集。
 
 ### 2. Display layer — per-app formatters (lossless, iterable)
 
 - The agent stores raw complete titles (unchanged from ADR-015). Parsing/classification happens **only at display time**.
-- A formatter registry keyed by **process name**, each entry a **function** `(rawTitle: string) => { primary: string; secondary?: string }`. A function (not a declarative regex table) is chosen deliberately: the observed cases already need in-app branching (Terminal: Claude Code vs. PowerShell; browser: static vs. churning tab), and once more data accrues the owner will want richer parsing (multi-part splits, conditional logic, possibly semantic checks later) — a function has no expressiveness ceiling and avoids a future migration away from a table. Lookup falls back to the raw title when no formatter is registered for the process.
+- A formatter registry keyed by the cross-platform product **App.Key**, each entry a **function** `(rawTitle: string) => { primary: string; secondary?: string }`. A function (not a declarative regex table) is chosen deliberately: the observed cases already need in-app branching (Terminal: Claude Code vs. PowerShell; browser: static vs. churning tab), and once more data accrues the owner will want richer parsing (multi-part splits, conditional logic, possibly semantic checks later) — a function has no expressiveness ceiling and avoids a future migration away from a table. Lookup falls back to the raw title when no formatter is registered for the App.
 - Examples: VSCode formatter strips the ` - Visual Studio Code` tail and returns `{ primary: file, secondary: project }`; Edge formatter extracts the page name; explorer tray-popup titles classify to a "system/desktop" bucket; a novel-site formatter recognises chapter progression; the WindowsTerminal formatter collapses `✳ Claude Code` / `⠐ Claude Code` (any spinner glyph) to `{ primary: 'Claude Code' }`.
 - **Spinner collapse is display-layer fallback, not the primary defense.** Click gating (layer 1) suppresses the vast majority of spinner churn at the source (spinner changes without a click never split). But gating cannot be 100% clean — e.g. a click landing within the gate window while an animation runs lets a few spinner-titled segments through. The formatter's many-raw-titles → one-friendly-name mapping absorbs those stragglers at display time.
 - Formatters are frontend code: wrong rules or new apps → edit + recompute, no agent release, raw titles always intact.
@@ -66,6 +66,7 @@ Two layers, strictly separated. The agent handles **volume** (never content); th
 - ⚠️ Auto-advancing content folds into one segment (accepted, arguably better).
 - ⚠️ Gate window `X` is a guess (1s); a very slow page load whose title updates after >1s from the click would be treated as noise. Tunable after observing data.
 - ⚠️ New cross-collector coupling: `AppMonitorService` now reads an input signal. Kept minimal (one timestamp), injected via `IInputActivitySignal`.
+- ⚠️ 窗口监视 adapter 必须保留转场种类，不能再把 focused-window 切换与同窗标题变化压成同一个模糊事件。
 
 ## References
 
