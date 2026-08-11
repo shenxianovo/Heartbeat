@@ -536,8 +536,96 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
 
         var facts = await svc.GetUsageAsync("user-1", null, null, null);
         Assert.Equal(2, facts.Count);
-        Assert.Equal(["mac:com.microsoft.vscode", "win:code"], facts.Select(x => x.AppIdentityKey).Order().ToArray());
+        Assert.Equal(
+            ["mac:com.microsoft.vscode", "win:code"],
+            facts.Select(x => x.AppIdentityKey!).Order().ToArray());
         Assert.All(facts, x => Assert.Equal(product.Id, x.AppId));
+    }
+
+    [Fact]
+    public async Task CrossPlatformProduct_BrowserEvidenceSharesAppDetailDimensionWithSystemFacts()
+    {
+        using var db = CreateDbContext();
+        var product = new App { Key = "edge", DisplayName = "Microsoft Edge" };
+        db.AppIdentities.AddRange(
+            new AppIdentity { Key = "win:msedge", App = product },
+            new AppIdentity { Key = "mac:com.microsoft.edgemac", App = product });
+        var macDevice = new Device
+        {
+            OwnerId = "user-1",
+            HardwareId = "hw-mac",
+            DeviceName = "Test Mac"
+        };
+        db.Devices.Add(macDevice);
+        await db.SaveChangesAsync();
+
+        var svc = new UsageService(db);
+        var start = Now.AddMinutes(-20);
+
+        ActivitySegmentItem System(string identity, DateTimeOffset from) => new()
+        {
+            Id = Guid.CreateVersion7(),
+            Source = ActivitySources.System,
+            IdentityKey = SystemIdentity.Key(identity, "Heartbeat"),
+            AppIdentityKey = identity,
+            AppDisplayName = "Microsoft Edge",
+            Title = "Heartbeat",
+            StartTime = from,
+            EndTime = from.AddMinutes(5)
+        };
+
+        ActivitySegmentItem Browser(string identity, string url, DateTimeOffset from) => new()
+        {
+            Id = Guid.CreateVersion7(),
+            Source = "browser",
+            IdentityKey = url,
+            AppIdentityKey = identity,
+            AppDisplayName = "Microsoft Edge",
+            Title = "Heartbeat repository",
+            StartTime = from.AddMinutes(1),
+            EndTime = from.AddMinutes(4),
+            Attributes = JsonSerializer.Deserialize<JsonElement>($$"""{"url":"{{url}}"}""")
+        };
+
+        await svc.SaveSegmentsAsync(_deviceId,
+        [
+            System("win:msedge", start),
+            Browser("win:msedge", "https://github.com/example/heartbeat", start)
+        ]);
+        await svc.SaveSegmentsAsync(macDevice.Id,
+        [
+            System("mac:com.microsoft.edgemac", start.AddMinutes(10)),
+            Browser("mac:com.microsoft.edgemac", "https://github.com/example/heartbeat/pulls", start.AddMinutes(10))
+        ]);
+
+        var systemFacts = await svc.GetUsageAsync("user-1", null, start, start.AddMinutes(20));
+        Assert.Equal(2, systemFacts.Count);
+        Assert.All(systemFacts, x => Assert.Equal(product.Id, x.AppId));
+
+        var appDetailEvidence = await svc.GetSegmentsAsync(
+            "user-1", null, "browser", product.Id, start, start.AddMinutes(20));
+        Assert.Equal(2, appDetailEvidence.Count);
+        Assert.All(appDetailEvidence, x =>
+        {
+            Assert.Equal(product.Id, x.AppId);
+            Assert.Equal("edge", x.AppKey);
+            Assert.Equal("Microsoft Edge", x.AppDisplayName);
+
+            var system = Assert.Single(systemFacts, fact => fact.DeviceId == x.DeviceId);
+            Assert.Equal(system.AppId, x.AppId);
+            Assert.True(x.StartTime < system.EndTime && x.EndTime > system.StartTime);
+        });
+        Assert.Equal(
+            ["mac:com.microsoft.edgemac", "win:msedge"],
+            appDetailEvidence.Select(x => x.AppIdentityKey!).Order().ToArray());
+
+        var windowsDetail = Assert.Single(await svc.GetSegmentsAsync(
+            "user-1", _deviceId, "browser", product.Id, start, start.AddMinutes(20)));
+        Assert.Equal("win:msedge", windowsDetail.AppIdentityKey);
+
+        var macDetail = Assert.Single(await svc.GetSegmentsAsync(
+            "user-1", macDevice.Id, "browser", product.Id, start, start.AddMinutes(20)));
+        Assert.Equal("mac:com.microsoft.edgemac", macDetail.AppIdentityKey);
     }
 
     [Fact]

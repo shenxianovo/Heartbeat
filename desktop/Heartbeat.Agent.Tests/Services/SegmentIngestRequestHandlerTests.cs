@@ -1,4 +1,5 @@
 using Heartbeat.Agent.Configuration;
+using Heartbeat.Agent.Collectors;
 using Heartbeat.Hub.Core.Ingest;
 using Heartbeat.Hub.Core.Segments;
 using Heartbeat.Hub.Core.Time;
@@ -26,7 +27,10 @@ public class SegmentIngestRequestHandlerTests : IDisposable
     {
         _config = new ConfigManager(_tempConfig);
         _ingest = new SegmentIngestService(new FakeClock());
-        _handler = new SegmentIngestRequestHandler(_ingest, new HubConfigurationAdapter(_config));
+        _handler = new SegmentIngestRequestHandler(
+            _ingest,
+            new HubConfigurationAdapter(_config),
+            new WindowsCollectorAppHintResolver());
     }
 
     public void Dispose()
@@ -44,6 +48,7 @@ public class SegmentIngestRequestHandlerTests : IDisposable
               "id": "{{Guid.CreateVersion7()}}",
               "source": "{{source}}",
               "identityKey": "{{identityKey}}",
+              "appHint": "chrome",
               "startTime": "{{start:O}}",
               "endTime": "{{start.AddMinutes(2):O}}"
             }
@@ -67,7 +72,7 @@ public class SegmentIngestRequestHandlerTests : IDisposable
 
         Assert.Equal(200, response.StatusCode);
         Assert.True(response.IsJson);
-        Assert.Equal("""{"app":"heartbeat","proto":1}""", response.Body);
+        Assert.Equal("""{"app":"heartbeat","proto":2}""", response.Body);
     }
 
     [Fact]
@@ -131,7 +136,9 @@ public class SegmentIngestRequestHandlerTests : IDisposable
         Assert.Equal(200, response.StatusCode);
         Assert.True(response.IsJson);
         Assert.Equal("""{"accepted":2}""", response.Body);
-        Assert.Equal(2, _ingest.GetAndClearSegments().Count);
+        var buffered = _ingest.GetAndClearSegments();
+        Assert.Equal(2, buffered.Count);
+        Assert.All(buffered, segment => Assert.Equal("win:chrome", segment.AppIdentityKey));
     }
 
     [Fact]

@@ -15,7 +15,7 @@ function makeDeps(): FoldDeps {
     identityKeyOf,
     domainOf,
     siteOf,
-    appName: 'msedge',
+    appHint: 'edge',
   }
 }
 
@@ -53,7 +53,7 @@ describe('applyEvent', () => {
       id: 'id-1',
       source: 'browser',
       identityKey: 'https://a.com/x',
-      appName: 'msedge',
+      appHint: 'edge',
       startTime: new Date(T0).toISOString(),
       endTime: new Date(T0 + 5000).toISOString(),
     })
@@ -117,6 +117,19 @@ describe('flush（ADR-018 稳定 Id 快照）', () => {
       domain: 'www.youtube.com',
       site: 'youtube.com',
       windowId: 1,
+    })
+  })
+
+  it('品牌未知时省略 appHint，但保留段的其余事实', () => {
+    const deps = { ...makeDeps(), appHint: undefined }
+    const { state } = applyEvent(emptyState(), activated(1, 'https://a.com/x', T0), deps)
+    const [snapshot] = flush(state, T0 + 1000, deps).out
+
+    expect(snapshot).not.toHaveProperty('appHint')
+    expect(snapshot).toMatchObject({
+      source: 'browser',
+      identityKey: 'https://a.com/x',
+      title: 'page',
     })
   })
 

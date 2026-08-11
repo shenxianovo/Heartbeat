@@ -1,7 +1,9 @@
 using Heartbeat.Agent.Configuration;
+using Heartbeat.Agent.Collectors;
 using Heartbeat.Agent.Hosting;
 using Heartbeat.Desktop.Core.Collection;
 using Heartbeat.Hub.Core.Runtime;
+using Heartbeat.Hub.Core.Ingest;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -32,6 +34,9 @@ public class AgentHostExtensionsTests : IDisposable
         // 避免触发未启动组件的 Stop/Dispose 路径。
         var provider = services.BuildServiceProvider();
         var hosted = provider.GetServices<IHostedService>().ToList();
+
+        Assert.IsType<WindowsCollectorAppHintResolver>(
+            provider.GetRequiredService<ICollectorAppHintResolver>());
 
         var monitorIndex = hosted.FindIndex(h => h is AppMonitorService);
         var workerIndex = hosted.FindIndex(h => h is UploadWorker);

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Heartbeat.Agent.Mac</RootNamespace>
+    <AssemblyName>Heartbeat.Agent.Mac</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Heartbeat.Hub.Core\Heartbeat.Hub.Core.csproj" />
+  </ItemGroup>
+
+</Project>

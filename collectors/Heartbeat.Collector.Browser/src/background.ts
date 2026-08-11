@@ -15,9 +15,11 @@ import {
 } from './fold'
 import { domainOf, identityKeyOf, siteOf } from './normalize'
 import { uuidv7 } from './ids'
-import { postToHub, fetchCollectorConfig, postDeclaration } from './hub'
+import { findCompatibleHub, postToHub, fetchCollectorConfig, postDeclaration } from './hub'
 import { loadConfig } from './config'
 import { backoffAfterFailure, noBackoff, shouldSkipAttempt, type BackoffState } from './backoff'
+import { detectBrowserAppHint } from './app-hint'
+import { normalizeQueuedSnapshots } from './queue'
 
 /** chrome.alarms 最小周期 30s（Chrome 120+），与 manifest.minimum_chrome_version 对应。 */
 const FLUSH_PERIOD_MINUTES = 0.5
@@ -57,19 +59,21 @@ const deps: FoldDeps = {
   identityKeyOf,
   domainOf,
   siteOf,
-  appName: detectAppName(),
+  appHint: detectAppHint(),
 }
 
-/** 关联提示（ADR-017 §2）：对齐 system 采集器的 Process.ProcessName（不含 .exe），命中同一 App 行。 */
-function detectAppName(): string {
-  const brands: string[] =
-    (navigator as unknown as { userAgentData?: { brands?: { brand: string }[] } }).userAgentData?.brands?.map(
-      (b) => b.brand,
-    ) ?? []
-  if (brands.some((b) => b.includes('Edge'))) return 'msedge'
-  if (brands.some((b) => b.includes('Brave'))) return 'brave'
-  if (brands.some((b) => b.includes('Opera'))) return 'opera'
-  return 'chrome'
+/** 只报告逻辑产品；hub 的平台 adapter 再解析为 win:/mac: AppIdentity。 */
+function detectAppHint(): string | undefined {
+  const nav = navigator as unknown as {
+    userAgent: string
+    userAgentData?: { brands?: { brand: string }[] }
+    brave?: { isBrave?: () => Promise<boolean> }
+  }
+  return detectBrowserAppHint({
+    brands: nav.userAgentData?.brands?.map((b) => b.brand),
+    userAgent: nav.userAgent,
+    hasBraveApi: typeof nav.brave?.isBrave === 'function',
+  })
 }
 
 // ---- 串行化：storage 读改写不可交错（事件处理与 flush 共享折叠状态）。----
@@ -95,7 +99,12 @@ async function saveState(state: FoldState): Promise<void> {
 
 async function loadQueue(): Promise<Record<string, SegmentSnapshot>> {
   const got = await chrome.storage.local.get(QUEUE_KEY)
-  return (got[QUEUE_KEY] as Record<string, SegmentSnapshot> | undefined) ?? {}
+  const stored =
+    (got[QUEUE_KEY] as Record<string, SegmentSnapshot & { appName?: unknown }> | undefined) ?? {}
+
+  // 扩展更新前缓存可能仍带 Windows appName。重放时去掉平台字段，并用当前宿主浏览器的
+  // 逻辑 hint 补齐；若品牌不明确则省略 hint，段本身仍可由 hub 保留。
+  return normalizeQueuedSnapshots(stored, deps.appHint)
 }
 
 async function saveQueue(queue: Record<string, SegmentSnapshot>): Promise<void> {
@@ -161,19 +170,25 @@ async function flushAndUpload(): Promise<void> {
 
   const { port: basePort } = await loadConfig()
   const targetPort = await loadHubPort(basePort)
+  const compatiblePort = await findCompatibleHub(basePort, targetPort)
+  if (compatiblePort === null) {
+    await saveBackoff(backoffAfterFailure(backoff, now))
+    return
+  }
+  if (compatiblePort !== targetPort) await saveHubPort(compatiblePort)
 
   // 声明上报（ADR-030 §3）：送达一次即闭嘴（ack 存 local,跨浏览器重启）;失败下轮再试,
   // 不阻塞段上报——声明缺席时服务端种子兜底,采集不受影响。
   const acked = await chrome.storage.local.get(DECLARATION_ACK_KEY)
   if (acked[DECLARATION_ACK_KEY] !== DECLARATION.version) {
-    if (await postDeclaration(targetPort, DECLARATION))
+    if (await postDeclaration(compatiblePort, DECLARATION))
       await chrome.storage.local.set({ [DECLARATION_ACK_KEY]: DECLARATION.version })
   }
 
   // 礼貌层停用（ADR-026 §4）：每轮 flush 拉一次 hub 侧配置——此调用同时是注册
   // （首次触达即"已安装"）与 flushPeriodMs 自报。enabled:false 则丢队列、不上报，
   // 免去注定被 403 的无效 POST；拉取失败（hub 不在/端口漂移）保守视为未停用。
-  const collectorConfig = await fetchCollectorConfig(targetPort, SOURCE, FLUSH_PERIOD_MS)
+  const collectorConfig = await fetchCollectorConfig(compatiblePort, SOURCE, FLUSH_PERIOD_MS)
   if (collectorConfig?.enabled === false) {
     const queued = Object.keys(await loadQueue()).length
     if (queued > 0) {
@@ -187,8 +202,8 @@ async function flushAndUpload(): Promise<void> {
   const items = Object.values(queue)
   if (items.length === 0) return
 
-  const { result, port } = await postToHub(basePort, targetPort, items)
-  if (port !== targetPort) await saveHubPort(port)
+  const { result, port } = await postToHub(basePort, compatiblePort, items)
+  if (port !== compatiblePort) await saveHubPort(port)
 
   if (result === 'ok') {
     await saveQueue({})

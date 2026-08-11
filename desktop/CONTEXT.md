@@ -12,6 +12,10 @@ _Avoid_: Service, Worker（这些是 Agent 内部的实现层）
 一个观测特定应用内活动并向 hub 推送 ActivitySegment 的组件（browser 扩展、vscode 插件等）。system 采集器内置于 Agent，同样经 hub 汇入（ADR-020），特例性仅剩两点：进程内直连 hub（不走 loopback）、不可停用。非内置采集器代码位于顶层 `collectors/`。
 _Avoid_: 插件/Plugin（口语别名，UI 与文档统一用"采集器"；ADR-017 等历史文档中的 plugin 即此概念）
 
+**App Hint（应用提示）**:
+外部 Collector 在 loopback 摄入时可选上报的平台无关产品 slug（如 `edge`）。hub 的平台 adapter 在进入严格缓存前把它解析为本机可观测的 AppIdentity（Windows 进程或 macOS bundle）；缺失、未知或歧义时保留段但不关联 App，也不按名字猜测。`AppHint` 不进入 Analytics DTO、离线缓存或服务端事实。
+_Avoid_: 让 Collector 写 `win:`/`mac:` 身份；把 App Hint 当作 App Key 或 AppIdentity
+
 **Upload Stream（上传流）**:
 泛化的出网流（ADR-020/022）：绑定一个出网源（IUploadSource），drain 一轮 = 先重传离线缓存，再取 fresh 出网——送达，或落离线缓存，否则自动重注入源（重注入不回滚更新的快照）。"批次不蒸发"是流自持的不变量。compact 为按流策略（segments 出网前压缩快照，input-events 不压缩）。segments 与 input-events 各一实例。
 _Avoid_: UploadService（退役的三份同构模板）、Upload Channel（ADR-022 前的旧名，彼时退回项由调用方重注入）

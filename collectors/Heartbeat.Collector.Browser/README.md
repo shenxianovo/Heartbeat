@@ -31,8 +31,9 @@ npm test           # vitest
 唯一配置项是 hub 基准端口(默认 `24820`,与 Agent 的 `AgentConfig.IngestPort`
 一致),在扩展的 options 页修改,存 `chrome.storage.local`。
 
-基准端口被占时 hub 会向上顺延(范围 10 个端口),扩展凭 `GET /v1/hub` 的身份
-应答(`{"app":"heartbeat"}`)在范围内自动定位真正的 hub——不需要手动跟随。
+基准端口被占时 hub 会向上顺延(范围 10 个端口),扩展凭 `GET /v1/hub` 的身份与
+协议应答(`{"app":"heartbeat","proto":2}`)在范围内自动定位兼容 hub——不需要手动跟随。
+旧协议 hub 不会收到段 POST，待传队列会保留到兼容 Agent 启动。
 
 ## Behavior notes
 
@@ -40,6 +41,9 @@ npm test           # vitest
   Agent 未运行,保留队列退避重试。
 - `source = "system"` 是内置采集器的保留名,hub 会拒收——扩展的段一律
   `source = "browser"`。
+- 扩展只在能够唯一确认宿主品牌时发送平台无关 `appHint` (`chrome` / `edge` /
+  `brave` / `opera` / `vivaldi` / `firefox`)。未知或品牌信号冲突时省略 hint；hub
+  会保留段，但不会猜测 App 归属。`win:` / `mac:` AppIdentity 由本机平台 resolver 生成。
 - IdentityKey 为规范化 URL(origin + pathname,掐 query/fragment;per-domain
   覆写表处理 youtube.com/watch 这类"query 即身份"的站点),原始完整 URL 存
   Attributes。见 `src/normalize.ts` 与 `shared/CONTEXT.md` 的 IdentityKey 词条。

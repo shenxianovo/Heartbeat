@@ -22,6 +22,7 @@ public static class HubCoreServiceCollectionExtensions
     public static IServiceCollection AddHeartbeatHubCore(this IServiceCollection services)
     {
         services.TryAddSingleton<IClock, SystemClock>();
+        services.TryAddSingleton<ICollectorAppHintResolver, NullCollectorAppHintResolver>();
         services.TryAddSingleton<SegmentIngestService>();
         services.TryAddSingleton<ISegmentSink>(sp => sp.GetRequiredService<SegmentIngestService>());
         services.TryAddSingleton<IUploadSource<ActivitySegmentItem>>(sp => sp.GetRequiredService<SegmentIngestService>());

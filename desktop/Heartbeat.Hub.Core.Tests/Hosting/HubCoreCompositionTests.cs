@@ -2,6 +2,7 @@ using Heartbeat.Hub.Core.Hosting;
 using Heartbeat.Hub.Core.Collectors;
 using Heartbeat.Hub.Core.Configuration;
 using Heartbeat.Hub.Core.Http;
+using Heartbeat.Hub.Core.Ingest;
 using Heartbeat.Hub.Core.Presence;
 using Heartbeat.Hub.Core.Runtime;
 using Heartbeat.Hub.Core.Segments;
@@ -78,6 +79,9 @@ public class HubCoreCompositionTests
         Assert.Same(
             provider.GetRequiredService<UploadStatusRegistry>(),
             provider.GetRequiredService<IUploadStatus>());
+        Assert.Equal(
+            CollectorAppHintResolutionKind.Unknown,
+            provider.GetRequiredService<ICollectorAppHintResolver>().Resolve("chrome").Kind);
         var hosted = provider.GetServices<IHostedService>().ToList();
         Assert.Contains(hosted, service => service is UploadWorker);
         Assert.Contains(hosted, service => service is StatusUploadWorker);

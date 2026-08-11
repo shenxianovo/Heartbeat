@@ -1,4 +1,5 @@
 using Heartbeat.Agent.Configuration;
+using Heartbeat.Agent.Collectors;
 using Heartbeat.Agent.Services;
 using Heartbeat.Agent.Utils;
 using Heartbeat.Core;
@@ -14,6 +15,7 @@ using Heartbeat.Hub.Core.Storage;
 using Heartbeat.Hub.Core.Time;
 using Heartbeat.Hub.Core.Upload;
 using Heartbeat.Hub.Core.Hosting;
+using Heartbeat.Hub.Core.Ingest;
 using Heartbeat.Hub.Core.Configuration;
 using Heartbeat.Hub.Core.Collectors;
 using Heartbeat.Hub.Core.Runtime;
@@ -54,6 +56,7 @@ namespace Heartbeat.Agent.Hosting
             services.AddSingleton<HubConfigurationAdapter>();
             services.AddSingleton<IHubConfiguration>(sp => sp.GetRequiredService<HubConfigurationAdapter>());
             services.AddSingleton<ICollectorRegistry>(sp => sp.GetRequiredService<HubConfigurationAdapter>());
+            services.AddSingleton<ICollectorAppHintResolver, WindowsCollectorAppHintResolver>();
 
             // 本地缓存（JsonFileCache 直接充当 ICache<T> 生产 adapter，ADR-020）
             services.AddSingleton<ICache<InputEventItem>>(sp =>

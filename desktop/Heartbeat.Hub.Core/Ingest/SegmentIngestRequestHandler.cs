@@ -1,5 +1,4 @@
 using Heartbeat.Core;
-using Heartbeat.Core.DTOs.Segments;
 using Heartbeat.Hub.Core.Collectors;
 using Heartbeat.Hub.Core.Segments;
 using System.Text.Json;
@@ -14,7 +13,10 @@ namespace Heartbeat.Hub.Core.Ingest
     /// 冒充守卫（拒收 'system'）与停用守卫（403）放在这一层而非缓冲模块：它们防的是"谁在调"
     /// （传输信任问题）；缓冲模块对 source 无关，内置采集器进程内直调不经此层。
     /// </summary>
-    public class SegmentIngestRequestHandler(SegmentIngestService ingestService, ICollectorRegistry registry)
+    public class SegmentIngestRequestHandler(
+        SegmentIngestService ingestService,
+        ICollectorRegistry registry,
+        ICollectorAppHintResolver appHintResolver)
     {
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
@@ -28,7 +30,7 @@ namespace Heartbeat.Hub.Core.Ingest
         /// 而非恰好占用该端口的陌生服务（否则陌生 4xx 会被误判为"hub 拒收"而丢队列）。
         /// proto 为 ingest 协议版本，语义变更时递增。
         /// </summary>
-        public const string HubIdentityJson = """{"app":"heartbeat","proto":1}""";
+        public const string HubIdentityJson = """{"app":"heartbeat","proto":2}""";
 
         /// <param name="query">URL 查询串（不含 '?'）；GET config 的 flushPeriodMs 由此读。</param>
         public async Task<Response> HandleAsync(string httpMethod, string? path, Stream body, string? query = null)
@@ -47,10 +49,10 @@ namespace Heartbeat.Hub.Core.Ingest
             if (httpMethod != "POST" || path != "/v1/segments")
                 return new Response(404, "not found; POST /v1/segments | GET /v1/hub | GET /v1/collectors/{source}/config | POST /v1/collectors/{source}/declaration", false);
 
-            SegmentUploadRequest? dto;
+            CollectorSegmentUploadRequest? dto;
             try
             {
-                dto = await JsonSerializer.DeserializeAsync<SegmentUploadRequest>(body, JsonOptions);
+                dto = await JsonSerializer.DeserializeAsync<CollectorSegmentUploadRequest>(body, JsonOptions);
             }
             catch (JsonException)
             {
@@ -59,6 +61,9 @@ namespace Heartbeat.Hub.Core.Ingest
 
             if (dto?.Segments == null || dto.Segments.Count == 0)
                 return new Response(400, "segments cannot be empty", false);
+
+            if (dto.Segments.Any(s => s.AppHint is not null && s.LegacyAppName is not null))
+                return new Response(400, "appHint and legacy appName cannot both be present", false);
 
             if (dto.Segments.Any(s => string.Equals(s.Source, ActivitySources.System, StringComparison.OrdinalIgnoreCase)))
                 return new Response(400, $"Source '{ActivitySources.System}' is reserved for the built-in collector.", false);
@@ -75,7 +80,10 @@ namespace Heartbeat.Hub.Core.Ingest
             // 覆盖只推段、未实现 config 拉取的采集器。已注册的不重写盘。
             registry.Discover(sources);
 
-            var accepted = ingestService.Accept(dto.Segments);
+            // AppHint 在进入共享缓冲/缓存前解析并丢弃。未解析或歧义只表示“无 App 关联”，
+            // 段本身及 Source/IdentityKey/Attributes 等原始证据仍照常保留。
+            var segments = dto.Segments.Select(segment => segment.ToActivitySegment(appHintResolver)).ToList();
+            var accepted = ingestService.Accept(segments);
             return new Response(200, $"{{\"accepted\":{accepted}}}", true);
         }
 

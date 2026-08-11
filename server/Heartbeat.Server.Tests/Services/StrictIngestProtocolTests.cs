@@ -3,6 +3,10 @@ using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Apps;
 using Heartbeat.Core.DTOs.Devices;
 using Heartbeat.Core.DTOs.Segments;
+using Heartbeat.Hub.Core.Collectors;
+using Heartbeat.Hub.Core.Ingest;
+using Heartbeat.Hub.Core.Segments;
+using Heartbeat.Hub.Core.Time;
 using Heartbeat.Server.Controllers;
 using Heartbeat.Server.Data;
 using Heartbeat.Server.Filters;
@@ -15,6 +19,7 @@ using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using System.Text;
 
 namespace Heartbeat.Server.Tests.Services;
 
@@ -251,6 +256,53 @@ public class StrictIngestProtocolTests(PostgresContainerFixture fixture) : Postg
     }
 
     [Fact]
+    public async Task CollectorAppHint_FlowsThroughStrictUploadIntoReplayAppDimension()
+    {
+        var hubBuffer = new SegmentIngestService(new FixedClock(Now));
+        var loopback = new SegmentIngestRequestHandler(
+            hubBuffer,
+            new EnabledCollectorRegistry(),
+            new EdgeHintResolver());
+        var start = Now.AddMinutes(-2);
+        var id = Guid.CreateVersion7();
+        var body = new MemoryStream(Encoding.UTF8.GetBytes($$"""
+            {"segments":[{
+              "id":"{{id}}",
+              "source":"browser",
+              "identityKey":"https://example.com/work",
+              "appHint":"edge",
+              "title":"Example",
+              "startTime":"{{start:O}}",
+              "endTime":"{{start.AddMinutes(1):O}}",
+              "attributes":{"url":"https://example.com/work?q=1"}
+            }]}
+            """));
+
+        var loopbackResult = await loopback.HandleAsync("POST", "/v1/segments", body);
+
+        Assert.Equal(200, loopbackResult.StatusCode);
+        var strictSegment = Assert.Single(hubBuffer.GetAndClearSegments());
+        Assert.Equal("win:msedge", strictSegment.AppIdentityKey);
+        Assert.Null(strictSegment.AppName);
+
+        using var db = CreateDbContext();
+        var controller = CreateSegmentController(db, "user-1", "desktop-1");
+        var uploadResult = await controller.Upload(new SegmentUploadRequest
+        {
+            Segments = [strictSegment]
+        });
+
+        Assert.IsType<OkResult>(uploadResult);
+        var identity = await db.AppIdentities.Include(x => x.App).AsNoTracking().SingleAsync();
+        Assert.Equal("win:msedge", identity.Key);
+        var evidence = Assert.Single(await new UsageService(db).GetSegmentsAsync(
+            "user-1", null, ActivitySources.Browser, identity.AppId, start.AddMinutes(-1), Now));
+        Assert.Equal(id, evidence.Id);
+        Assert.Equal(identity.AppId, evidence.AppId);
+        Assert.Equal("https://example.com/work", evidence.IdentityKey);
+    }
+
+    [Fact]
     public async Task SegmentUpload_SameHardwareForDifferentOwners_RemainsDeviceIsolated()
     {
         using var db = CreateDbContext();
@@ -340,5 +392,28 @@ public class StrictIngestProtocolTests(PostgresContainerFixture fixture) : Postg
         public string GetUserId() => userId;
         public string? GetUserIdOrNull() => userId;
         public string? GetUsernameOrNull() => null;
+    }
+
+    private sealed class FixedClock(DateTimeOffset now) : IClock
+    {
+        public DateTimeOffset UtcNow { get; } = now;
+    }
+
+    private sealed class EnabledCollectorRegistry : ICollectorRegistry
+    {
+        public IReadOnlyDictionary<string, CollectorRegistration> Snapshot { get; } =
+            new Dictionary<string, CollectorRegistration>();
+        public CollectorRegistration Touch(string source, int? flushPeriodMs = null) =>
+            new(true, flushPeriodMs, null, null);
+        public void Discover(IEnumerable<string> sources) { }
+        public void StoreDeclaration(string source, string declarationJson, int version) { }
+    }
+
+    private sealed class EdgeHintResolver : ICollectorAppHintResolver
+    {
+        public CollectorAppHintResolution Resolve(string appHint) =>
+            appHint == "edge"
+                ? CollectorAppHintResolution.Resolved("win:msedge")
+                : CollectorAppHintResolution.Unknown;
     }
 }

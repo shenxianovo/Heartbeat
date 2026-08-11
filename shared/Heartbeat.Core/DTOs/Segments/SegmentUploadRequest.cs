@@ -4,9 +4,9 @@ using System.Text.Json.Serialization;
 namespace Heartbeat.Core.DTOs.Segments
 {
     /// <summary>
-    /// 段的统一上传/接收形状（ADR-017/020）：POST /segments 是唯一上传入口。
-    /// system 段由 Agent 内置采集器进程内产出，插件段（browser / vscode / …）
-    /// 经 loopback 汇入枢纽，同一批次上传。
+    /// Collection → Analytics 的严格段上传形状（ADR-017/020/035）。system 段由内置
+    /// Collector 产出；外部 Collector 的 loopback AppHint 先由 hub 平台 adapter 解析为
+    /// AppIdentityKey，再与 system 段经同一出网批次上传。
     /// </summary>
     public class SegmentUploadRequest
     {
