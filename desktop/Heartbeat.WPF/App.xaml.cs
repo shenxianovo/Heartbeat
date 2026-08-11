@@ -9,6 +9,7 @@ using Heartbeat.Agent.Utils;
 using Heartbeat.WPF.Logging;
 using Heartbeat.WPF.Services;
 using Heartbeat.WPF.ViewModels;
+using Heartbeat.Hub.Core.Http;
 using Heartbeat.Hub.Core.Presence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -177,6 +178,7 @@ namespace Heartbeat.WPF
                     ConfigManager,
                     Services.GetRequiredService<ICollectionStatus>(),
                     Services.GetRequiredService<IAutoStartService>(),
+                    Services.GetRequiredService<IClientCompatibilityStatus>(),
                     LogSink);
                 _mainWindow = new MainWindow(viewModel);
             }

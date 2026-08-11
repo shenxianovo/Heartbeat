@@ -1,9 +1,13 @@
-﻿namespace Heartbeat.Core.DTOs.Devices
+﻿using System.Text.Json.Serialization;
+
+namespace Heartbeat.Core.DTOs.Devices
 {
     public class DeviceStatusRequest
     {
         public string? CurrentAppIdentityKey { get; set; }
-        /// <summary>Ticket 05 strict 前保留的展示提示/旧字段。</summary>
-        public string CurrentApp { get; set; } = string.Empty;
+        public string? CurrentAppDisplayName { get; set; }
+        /// <summary>仅用于 strict 边界识别旧 payload；服务端见到该字段即返回 426。</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? CurrentApp { get; set; }
     }
 }

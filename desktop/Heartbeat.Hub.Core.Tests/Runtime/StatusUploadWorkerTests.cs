@@ -14,15 +14,14 @@ public class StatusUploadWorkerTests
 {
     private sealed class FakeStatus : ICollectionStatus
     {
-        private string? _current;
-        public string? CurrentApp => _current;
-        public event Action<string?>? CurrentAppChanged;
+        public CurrentActivity? CurrentActivity { get; private set; }
+        public event Action<CurrentActivity?>? CurrentActivityChanged;
         public IReadOnlyDictionary<string, DateTimeOffset> SourceLastSeen => new Dictionary<string, DateTimeOffset>();
 
-        public void Set(string? app)
+        public void Set(string? appIdentityKey, string? displayName = null)
         {
-            _current = app;
-            CurrentAppChanged?.Invoke(app);
+            CurrentActivity = appIdentityKey == null ? null : new CurrentActivity(appIdentityKey, displayName);
+            CurrentActivityChanged?.Invoke(CurrentActivity);
         }
     }
 
@@ -33,13 +32,17 @@ public class StatusUploadWorkerTests
 
         public int Count { get { lock (_lock) return _bodies.Count; } }
         public string Body(int index) { lock (_lock) return _bodies[index]; }
+        public HttpStatusCode Status { get; set; } = HttpStatusCode.OK;
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = request.Content == null ? "" : await request.Content.ReadAsStringAsync(cancellationToken);
             lock (_lock) _bodies.Add(body);
-            return new HttpResponseMessage(HttpStatusCode.OK);
+            return new HttpResponseMessage(Status)
+            {
+                Content = new StringContent(Status == HttpStatusCode.UpgradeRequired ? "update required" : "")
+            };
         }
     }
 
@@ -51,10 +54,13 @@ public class StatusUploadWorkerTests
         return (new StatusUploadWorker(status, api), status, handler);
     }
 
-    private static string? CurrentAppOf(string body)
+    private static (string? IdentityKey, string? DisplayName, string? LegacyApp) CurrentActivityOf(string body)
     {
         using var doc = JsonDocument.Parse(body);
-        return doc.RootElement.GetProperty("currentApp").GetString();
+        return (
+            doc.RootElement.GetProperty("currentAppIdentityKey").GetString(),
+            doc.RootElement.GetProperty("currentAppDisplayName").GetString(),
+            doc.RootElement.TryGetProperty("currentApp", out var legacy) ? legacy.GetString() : null);
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 5000)
@@ -69,13 +75,16 @@ public class StatusUploadWorkerTests
     public async Task Start_SendsInitialHeartbeat_WithCurrentApp()
     {
         var (worker, status, handler) = Build();
-        status.Set("vscode");
+        status.Set("win:code", "Code");
 
         await worker.StartAsync(CancellationToken.None);
         await WaitUntilAsync(() => handler.Count >= 1);
         await worker.StopAsync(CancellationToken.None);
 
-        Assert.Equal("vscode", CurrentAppOf(handler.Body(0)));
+        var current = CurrentActivityOf(handler.Body(0));
+        Assert.Equal("win:code", current.IdentityKey);
+        Assert.Equal("Code", current.DisplayName);
+        Assert.Null(current.LegacyApp);
     }
 
     [Fact]
@@ -83,15 +92,36 @@ public class StatusUploadWorkerTests
     {
         // 变了就推（ADR-021）：keepalive 常量 30s，5s 内到达的第二个心跳只能来自变更信号
         var (worker, status, handler) = Build();
-        status.Set("vscode");
+        status.Set("win:code", "Code");
 
         await worker.StartAsync(CancellationToken.None);
         await WaitUntilAsync(() => handler.Count >= 1);
 
-        status.Set("__away__");
+        status.Set("sys:away", "离开");
         await WaitUntilAsync(() => handler.Count >= 2);
         await worker.StopAsync(CancellationToken.None);
 
-        Assert.Equal("__away__", CurrentAppOf(handler.Body(1)));
+        Assert.Equal("sys:away", CurrentActivityOf(handler.Body(1)).IdentityKey);
+    }
+
+    [Fact]
+    public async Task UpgradeRequired_IsExposedAndSuppressesRepeatedPresenceRequests()
+    {
+        var handler = new CapturingHandler { Status = HttpStatusCode.UpgradeRequired };
+        var api = new HeartbeatApiClient(new HttpClient(handler));
+        var status = new FakeStatus();
+        var compatibility = new ClientCompatibilityStatus();
+        var worker = new StatusUploadWorker(status, api, compatibility);
+        status.Set("win:code", "Code");
+
+        await worker.StartAsync(CancellationToken.None);
+        await WaitUntilAsync(() => handler.Count >= 1);
+        status.Set("win:mpv", "mpv");
+        await Task.Delay(100);
+        await worker.StopAsync(CancellationToken.None);
+
+        Assert.True(compatibility.Current.UpdateRequired);
+        Assert.Contains("update required", compatibility.Current.Message);
+        Assert.Equal(1, handler.Count);
     }
 }

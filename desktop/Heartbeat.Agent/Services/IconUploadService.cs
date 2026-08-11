@@ -1,50 +1,67 @@
 using Heartbeat.Agent.Utils;
+using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Apps;
 using Heartbeat.Hub.Core.Http;
 using Serilog;
 
-namespace Heartbeat.Agent.Services
+namespace Heartbeat.Agent.Services;
+
+public interface IIconUploadService
 {
-    /// <summary>
-    /// 图标上传的窄 seam：生产实现经 IconHelper 提取真实进程图标（不可脱离活进程测试），
-    /// 测试注入 fake（IAccessTokenProvider 先例）。
-    /// </summary>
-    public interface IIconUploadService
+    Task EnsureIconUploadedAsync(string appIdentityKey, string? appDisplayName);
+}
+
+public interface IAppIconExtractor
+{
+    byte[]? Extract(string appIdentityKey);
+}
+
+public sealed class WindowsAppIconExtractor : IAppIconExtractor
+{
+    public byte[]? Extract(string appIdentityKey)
     {
-        Task EnsureIconUploadedAsync(string appName);
+        var normalized = AppIdentityKeys.Normalize(appIdentityKey);
+        if (!normalized.StartsWith(AppIdentityKeys.WindowsPrefix, StringComparison.Ordinal))
+            return null;
+        return IconHelper.GetIconPngByProcessName(normalized[AppIdentityKeys.WindowsPrefix.Length..]);
     }
+}
 
-    public class IconUploadService(HeartbeatApiClient apiClient) : IIconUploadService
+public sealed class IconUploadService(
+    HeartbeatApiClient apiClient,
+    IAppIconExtractor extractor,
+    ClientCompatibilityStatus compatibilityStatus) : IIconUploadService
+{
+    private readonly HashSet<string> _uploadedIdentities = new(StringComparer.OrdinalIgnoreCase);
+
+    public async Task EnsureIconUploadedAsync(string appIdentityKey, string? appDisplayName)
     {
-        private readonly HashSet<string> _uploadedApps = new(StringComparer.OrdinalIgnoreCase);
+        if (compatibilityStatus.Current.UpdateRequired) return;
 
-        public async Task EnsureIconUploadedAsync(string appName)
+        var normalized = AppIdentityKeys.Normalize(appIdentityKey);
+        if (_uploadedIdentities.Contains(normalized)) return;
+
+        var iconData = extractor.Extract(normalized);
+        if (iconData is not { Length: > 0 })
         {
-            if (_uploadedApps.Contains(appName))
-                return;
-
-            Log.Debug("检查图标: {App}", appName);
-
-            var iconData = IconHelper.GetIconPngByProcessName(appName);
-            if (iconData == null || iconData.Length == 0)
-            {
-                Log.Warning("无法提取图标，跳过上传: {App}", appName);
-                return;
-            }
-
-            Log.Debug("正在上传图标: {App}，大小 {Size} bytes", appName, iconData.Length);
-            var request = new IconUploadRequest
-            {
-                AppName = appName,
-                IconData = iconData
-            };
-
-            var result = await apiClient.UploadAppIconAsync(request);
-            if (result.Success)
-            {
-                _uploadedApps.Add(appName);
-                Log.Information("图标上传成功: {App}", appName);
-            }
+            Log.Warning("无法提取图标，跳过上传: {AppIdentity}", normalized);
+            return;
         }
+
+        var result = await apiClient.UploadAppIconAsync(new IconUploadRequest
+        {
+            AppIdentityKey = normalized,
+            AppDisplayName = appDisplayName,
+            IconData = iconData
+        });
+        if (result.StatusCode == 426)
+        {
+            compatibilityStatus.RequireUpdate(result.ResponseBody);
+            return;
+        }
+        if (!result.Success) return;
+
+        _uploadedIdentities.Add(normalized);
+        Log.Information("图标上传成功: {AppIdentity}", normalized);
     }
 }

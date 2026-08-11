@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Heartbeat.Core.DTOs.Segments
 {
@@ -29,7 +30,11 @@ namespace Heartbeat.Core.DTOs.Segments
         /// </summary>
         public string? AppIdentityKey { get; set; }
 
-        /// <summary>旧 Windows 关联提示。仅为 expand 阶段兼容，Ticket 05 strict cutover 删除。</summary>
+        /// <summary>观测时的可读展示提示；只用于 provisional App 命名，不参与身份判定。</summary>
+        public string? AppDisplayName { get; set; }
+
+        /// <summary>仅用于 strict 边界识别旧 payload；服务端见到该字段即返回 426。</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? AppName { get; set; }
 
         public string? Title { get; set; }

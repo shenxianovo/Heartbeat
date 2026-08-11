@@ -29,6 +29,7 @@ public sealed class AppMonitorService(
 
     private readonly object _lock = new();
     private string? _currentApp;
+    private string? _currentAppDisplayName;
     private string? _currentTitle;
     private string? _segmentTitle;
     private Guid _currentId;
@@ -51,16 +52,16 @@ public sealed class AppMonitorService(
         observations.Observation += OnObservation;
 
         var initial = observations.CurrentActivity;
-        var initialApp = Normalize(initial.AppName);
+        var initialApp = Normalize(initial.AppIdentityKey);
         if (initialApp != null)
         {
             lock (_lock)
             {
-                StartSegment(initialApp, initial.Title, clock.UtcNow);
+                StartSegment(initialApp, initial.AppDisplayName, initial.Title, clock.UtcNow);
                 Log.Information("初始前台应用: {App}", initialApp);
             }
         }
-        activitySink.Report(initialApp);
+        activitySink.Report(ToCurrentActivity(initialApp, initial.AppDisplayName));
 
         observations.Start();
 
@@ -104,8 +105,8 @@ public sealed class AppMonitorService(
         lock (_lock)
         {
             snapshot = _isAway
-                ? BuildSegment(_awayId, SyntheticApps.Away, null, _awayStart, now)
-                : BuildSegment(_currentId, _currentApp, _segmentTitle, _currentStart, now);
+                ? BuildSegment(_awayId, AppIdentityKeys.Away, "离开", null, _awayStart, now)
+                : BuildSegment(_currentId, _currentApp, _currentAppDisplayName, _segmentTitle, _currentStart, now);
         }
         if (snapshot != null)
             sink.Push([snapshot]);
@@ -131,7 +132,8 @@ public sealed class AppMonitorService(
 
     private void ObserveActivity(DesktopObservation observation)
     {
-        var newApp = Normalize(observation.Activity.AppName);
+        var newApp = Normalize(observation.Activity.AppIdentityKey);
+        var newAppDisplayName = observation.Activity.AppDisplayName;
         var newTitle = observation.Activity.Title;
         var now = clock.UtcNow;
         ActivitySegmentItem? closed = null;
@@ -166,7 +168,7 @@ public sealed class AppMonitorService(
             // 最终跨平台语义下 App 激活与 focused-window 切换必切段；Windows 本票通过
             // settings 的兼容策略保持旧输出，后续切换协议/语义时可独立翻转。
             closed = CloseCurrentSegment(now);
-            StartSegment(newApp, newTitle, now);
+            StartSegment(newApp, newAppDisplayName, newTitle, now);
             reportActivity = true;
 
             if (newApp != null)
@@ -176,7 +178,7 @@ public sealed class AppMonitorService(
         if (closed != null)
             sink.Push([closed]);
         if (reportActivity)
-            activitySink.Report(newApp);
+            activitySink.Report(ToCurrentActivity(newApp, newAppDisplayName));
     }
 
     private void EnterAway()
@@ -192,6 +194,7 @@ public sealed class AppMonitorService(
             _awayId = Guid.CreateVersion7();
             _awayStart = now;
             _currentApp = null;
+            _currentAppDisplayName = null;
             _currentTitle = null;
             _segmentTitle = null;
             _currentStart = default;
@@ -200,49 +203,51 @@ public sealed class AppMonitorService(
 
         if (closed != null)
             sink.Push([closed]);
-        activitySink.Report(SyntheticApps.Away);
+        activitySink.Report(new CurrentActivity(AppIdentityKeys.Away, "离开"));
     }
 
     private void ExitAway(DesktopActivity resumed)
     {
         var now = clock.UtcNow;
-        var resumedApp = Normalize(resumed.AppName);
+        var resumedApp = Normalize(resumed.AppIdentityKey);
         ActivitySegmentItem? awayFinal;
         lock (_lock)
         {
             if (!_isAway) return;
 
-            awayFinal = BuildSegment(_awayId, SyntheticApps.Away, null, _awayStart, now);
+            awayFinal = BuildSegment(_awayId, AppIdentityKeys.Away, "离开", null, _awayStart, now);
             _isAway = false;
-            StartSegment(resumedApp, resumed.Title, now);
+            StartSegment(resumedApp, resumed.AppDisplayName, resumed.Title, now);
             Log.Information("退出 away，恢复前台: {App}", resumedApp ?? "(无)");
         }
 
         if (awayFinal != null)
             sink.Push([awayFinal]);
-        activitySink.Report(resumedApp);
+        activitySink.Report(ToCurrentActivity(resumedApp, resumed.AppDisplayName));
     }
 
-    private void StartSegment(string? app, string? title, DateTimeOffset now)
+    private void StartSegment(string? app, string? appDisplayName, string? title, DateTimeOffset now)
     {
         _currentId = Guid.CreateVersion7();
         _currentApp = app;
+        _currentAppDisplayName = appDisplayName;
         _currentTitle = title;
         _segmentTitle = title;
         _currentStart = now;
     }
 
     private ActivitySegmentItem? CloseCurrentSegment(DateTimeOffset now)
-        => BuildSegment(_currentId, _currentApp, _segmentTitle, _currentStart, now);
+        => BuildSegment(_currentId, _currentApp, _currentAppDisplayName, _segmentTitle, _currentStart, now);
 
     private static ActivitySegmentItem? BuildSegment(
         Guid id,
-        string? appName,
+        string? appIdentityKey,
+        string? appDisplayName,
         string? title,
         DateTimeOffset start,
         DateTimeOffset end)
     {
-        if (appName == null || start == default) return null;
+        if (appIdentityKey == null || start == default) return null;
         var duration = end - start;
         if (duration.TotalSeconds < 1) return null;
 
@@ -250,8 +255,9 @@ public sealed class AppMonitorService(
         {
             Id = id,
             Source = ActivitySources.System,
-            IdentityKey = SystemIdentity.Key(appName, title),
-            AppName = appName,
+            IdentityKey = SystemIdentity.Key(appIdentityKey, title),
+            AppIdentityKey = appIdentityKey,
+            AppDisplayName = appDisplayName,
             Title = title,
             StartTime = start,
             EndTime = end
@@ -261,17 +267,23 @@ public sealed class AppMonitorService(
     private void OnAwayProcessNamesChanged(IReadOnlyList<string> names)
         => _awayProcessNames = [.. names];
 
-    private string? Normalize(string? app)
+    private string? Normalize(string? appIdentityKey)
     {
-        if (string.IsNullOrEmpty(app)) return app;
+        if (string.IsNullOrEmpty(appIdentityKey)) return appIdentityKey;
 
         foreach (var name in _awayProcessNames)
         {
-            if (string.Equals(app, name, StringComparison.OrdinalIgnoreCase))
-                return SyntheticApps.Away;
+            if (string.Equals(
+                    appIdentityKey,
+                    AppIdentityKeys.FromLegacyWindowsAppName(name),
+                    StringComparison.OrdinalIgnoreCase))
+                return AppIdentityKeys.Away;
         }
-        return app;
+        return AppIdentityKeys.Normalize(appIdentityKey);
     }
+
+    private static CurrentActivity? ToCurrentActivity(string? appIdentityKey, string? appDisplayName)
+        => appIdentityKey == null ? null : new CurrentActivity(appIdentityKey, appDisplayName);
 
     public void Dispose()
     {

@@ -15,7 +15,8 @@ namespace Heartbeat.Hub.Core.Runtime
     /// </summary>
     public class StatusUploadWorker(
         ICollectionStatus status,
-        HeartbeatApiClient apiClient) : BackgroundService
+        HeartbeatApiClient apiClient,
+        ClientCompatibilityStatus? compatibilityStatus = null) : BackgroundService
     {
         /// <summary>keepalive 节律：代码常量而非配置（ADR-021——没有任何用户决策需要调它）。</summary>
         private static readonly TimeSpan KeepaliveInterval = TimeSpan.FromSeconds(30);
@@ -26,7 +27,7 @@ namespace Heartbeat.Hub.Core.Runtime
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             Log.Information("状态上传服务启动");
-            status.CurrentAppChanged += OnCurrentAppChanged;
+            status.CurrentActivityChanged += OnCurrentActivityChanged;
             try
             {
                 while (!stoppingToken.IsCancellationRequested)
@@ -48,11 +49,11 @@ namespace Heartbeat.Hub.Core.Runtime
             }
             finally
             {
-                status.CurrentAppChanged -= OnCurrentAppChanged;
+                status.CurrentActivityChanged -= OnCurrentActivityChanged;
             }
         }
 
-        private void OnCurrentAppChanged(string? _)
+        private void OnCurrentActivityChanged(CurrentActivity? _)
         {
             try { _changed.Release(); }
             catch (SemaphoreFullException) { /* 已有待处理唤醒，合并 */ }
@@ -60,12 +61,20 @@ namespace Heartbeat.Hub.Core.Runtime
 
         private async Task UploadStatusAsync()
         {
-            var currentApp = status.CurrentApp;
-            var dto = new DeviceStatusRequest { CurrentApp = currentApp ?? string.Empty };
+            if (compatibilityStatus?.Current.UpdateRequired == true) return;
+
+            var currentActivity = status.CurrentActivity;
+            var dto = new DeviceStatusRequest
+            {
+                CurrentAppIdentityKey = currentActivity?.AppIdentityKey,
+                CurrentAppDisplayName = currentActivity?.AppDisplayName
+            };
 
             var result = await apiClient.SendHeartbeatAsync(dto);
+            if (result.StatusCode == 426)
+                compatibilityStatus?.RequireUpdate(result.ResponseBody);
             if (result.Success)
-                Log.Debug("状态上传成功: {App}", currentApp ?? "(无)");
+                Log.Debug("状态上传成功: {App}", currentActivity?.AppIdentityKey ?? "(无)");
         }
     }
 }

@@ -116,13 +116,13 @@ public sealed class WindowsHubRuntimeHooks(IIconUploadService icons) : IHubRunti
 
     public async Task SegmentsDrainedAsync(IReadOnlyCollection<Heartbeat.Core.DTOs.Segments.ActivitySegmentItem> segments)
     {
-        foreach (var appName in segments
-                     .Where(segment => !string.IsNullOrEmpty(segment.AppName))
-                     .Select(segment => segment.AppName!)
-                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        foreach (var app in segments
+                     .Where(segment => !string.IsNullOrEmpty(segment.AppIdentityKey))
+                     .Select(segment => (IdentityKey: segment.AppIdentityKey!, segment.AppDisplayName))
+                     .DistinctBy(item => item.IdentityKey, StringComparer.OrdinalIgnoreCase))
         {
-            try { await icons.EnsureIconUploadedAsync(appName); }
-            catch (Exception ex) { Serilog.Log.Warning(ex, "图标上传失败: {App}", appName); }
+            try { await icons.EnsureIconUploadedAsync(app.IdentityKey, app.AppDisplayName); }
+            catch (Exception ex) { Serilog.Log.Warning(ex, "图标上传失败: {App}", app.IdentityKey); }
         }
     }
 }

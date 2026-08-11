@@ -1,9 +1,15 @@
 namespace Heartbeat.Desktop.Core.Observations;
 
 /// <summary>平台 adapter 对当前桌面活动的一次语义采样。</summary>
-public readonly record struct DesktopActivity(string? AppName, string? Title)
+public readonly record struct DesktopActivity(
+    string? AppIdentityKey,
+    string? AppDisplayName,
+    string? Title)
 {
-    public static readonly DesktopActivity None = new(null, null);
+    public DesktopActivity(string? appIdentityKey, string? title)
+        : this(appIdentityKey, null, title) { }
+
+    public static readonly DesktopActivity None = new(null, null, null);
 }
 
 /// <summary>

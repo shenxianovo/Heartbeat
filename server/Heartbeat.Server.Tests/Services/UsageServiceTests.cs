@@ -34,8 +34,9 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     {
         Id = Guid.CreateVersion7(),
         Source = ActivitySources.System,
-        IdentityKey = SystemIdentity.Key(app, title),
-        AppName = app,
+        IdentityKey = SystemIdentity.Key(AppIdentityKeys.FromLegacyWindowsAppName(app), title),
+        AppIdentityKey = AppIdentityKeys.FromLegacyWindowsAppName(app),
+        AppDisplayName = app,
         Title = title,
         StartTime = start,
         EndTime = end
@@ -69,6 +70,57 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         ]);
 
         Assert.Empty(db.ActivitySegments);
+    }
+
+    [Fact]
+    public async Task SaveSegments_SystemWithoutAppIdentity_ThrowsBeforeCreatingFacts()
+    {
+        using var db = CreateDbContext();
+        var svc = new UsageService(db);
+        var item = SystemItem("VSCode", Now.AddMinutes(-2), Now.AddMinutes(-1));
+        item.AppIdentityKey = null;
+
+        var exception = await Assert.ThrowsAsync<SegmentIngestContractException>(
+            () => svc.SaveSegmentsAsync(_deviceId, [item]));
+
+        Assert.Equal(SegmentIngestContractViolation.MissingSystemAppIdentity, exception.Violation);
+        Assert.Empty(db.ActivitySegments);
+        Assert.Empty(db.Apps);
+        Assert.Empty(db.AppIdentities);
+    }
+
+    [Fact]
+    public async Task SaveSegments_MalformedAppIdentity_ThrowsBeforeCreatingFacts()
+    {
+        using var db = CreateDbContext();
+        var svc = new UsageService(db);
+        var item = SystemItem("VSCode", Now.AddMinutes(-2), Now.AddMinutes(-1));
+        item.AppIdentityKey = "sys:";
+
+        var exception = await Assert.ThrowsAsync<SegmentIngestContractException>(
+            () => svc.SaveSegmentsAsync(_deviceId, [item]));
+
+        Assert.Equal(SegmentIngestContractViolation.MalformedAppIdentity, exception.Violation);
+        Assert.Empty(db.ActivitySegments);
+        Assert.Empty(db.Apps);
+        Assert.Empty(db.AppIdentities);
+    }
+
+    [Fact]
+    public async Task SaveSegments_LegacyAppName_ThrowsBeforeCreatingFacts()
+    {
+        using var db = CreateDbContext();
+        var svc = new UsageService(db);
+        var item = SystemItem("VSCode", Now.AddMinutes(-2), Now.AddMinutes(-1));
+        item.AppName = "";
+
+        var exception = await Assert.ThrowsAsync<SegmentIngestContractException>(
+            () => svc.SaveSegmentsAsync(_deviceId, [item]));
+
+        Assert.Equal(SegmentIngestContractViolation.LegacyAppName, exception.Violation);
+        Assert.Empty(db.ActivitySegments);
+        Assert.Empty(db.Apps);
+        Assert.Empty(db.AppIdentities);
     }
 
     [Fact]
@@ -122,7 +174,8 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
             Id = id,
             Source = "browser",
             IdentityKey = "https://example.com/page",
-            AppName = "msedge",
+            AppIdentityKey = "win:msedge",
+            AppDisplayName = "Microsoft Edge",
             StartTime = start,
             EndTime = end,
             Attributes = JsonSerializer.Deserialize<JsonElement>(attrsJson)
@@ -189,8 +242,9 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         {
             Id = id,
             Source = ActivitySources.System,
-            IdentityKey = SystemIdentity.Key("VSCode", "main.cs"),
-            AppName = "VSCode",
+            IdentityKey = SystemIdentity.Key("win:vscode", "main.cs"),
+            AppIdentityKey = "win:vscode",
+            AppDisplayName = "VSCode",
             Title = "main.cs",
             StartTime = start,
             EndTime = end
@@ -201,7 +255,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
 
         var row = db.ActivitySegments.Single();
         Assert.Equal(ActivitySources.System, row.Source);
-        Assert.NotNull(row.AppId); // AppName 提示建立了 App 关联
+        Assert.NotNull(row.AppId); // AppIdentityKey 建立了 App 关联
         Assert.NotNull(row.AppIdentityId); // expand 阶段同时保存平台观测身份
         Assert.Equal(start.AddMinutes(30), row.EndTime); // 同 Id 快照生长
 
@@ -407,7 +461,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
             Source = ActivitySources.System,
             IdentityKey = identity + "\n",
             AppIdentityKey = identity,
-            AppName = "Visual Studio Code",
+            AppDisplayName = "Visual Studio Code",
             StartTime = offset,
             EndTime = offset.AddMinutes(1)
         };

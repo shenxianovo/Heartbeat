@@ -37,17 +37,17 @@ public class WindowsDesktopObservationSourceTests
         source.Observation += received.Add;
         source.Start();
 
-        windows.Raise(DesktopObservation.FocusedWindowChanged(new DesktopActivity("vscode", "README")));
+        windows.Raise(DesktopObservation.FocusedWindowChanged(new DesktopActivity("win:code", "README")));
 
         var observation = Assert.Single(received);
         Assert.Equal(DesktopObservationKind.FocusedWindowChanged, observation.Kind);
-        Assert.Equal("vscode", observation.Activity.AppName);
+        Assert.Equal("win:code", observation.Activity.AppIdentityKey);
     }
 
     [Fact]
     public void PowerSignals_BecomeAwayTransitions_WithFreshForegroundOnExit()
     {
-        var windows = new FakeWindows { CurrentActivity = new DesktopActivity("vscode", "main.cs") };
+        var windows = new FakeWindows { CurrentActivity = new DesktopActivity("win:code", "main.cs") };
         var power = new FakePower();
         var source = new WindowsDesktopObservationSource(windows, power);
         var received = new List<DesktopObservation>();
@@ -55,11 +55,11 @@ public class WindowsDesktopObservationSourceTests
         source.Start();
 
         power.RaiseSuspend();
-        windows.CurrentActivity = new DesktopActivity("chrome", "Docs");
+        windows.CurrentActivity = new DesktopActivity("win:chrome", "Docs");
         power.RaiseResume();
 
         Assert.Equal(DesktopObservationKind.EnteredAway, received[0].Kind);
         Assert.Equal(DesktopObservationKind.ExitedAway, received[1].Kind);
-        Assert.Equal("chrome", received[1].Activity.AppName);
+        Assert.Equal("win:chrome", received[1].Activity.AppIdentityKey);
     }
 }

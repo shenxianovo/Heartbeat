@@ -90,6 +90,24 @@ public class UploadStreamTests : IDisposable
         }
     }
 
+    private sealed class StrictContractHandler : HttpMessageHandler
+    {
+        public List<(string? ProtocolVersion, string Body)> Requests { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = request.Content == null
+                ? ""
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+            var protocol = request.Headers.TryGetValues(HeartbeatProtocol.VersionHeader, out var values)
+                ? values.SingleOrDefault()
+                : null;
+            Requests.Add((protocol, body));
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        }
+    }
+
     private sealed class ThrowingDeadLetterStore<T> : IDeadLetterStore<T>
     {
         public int Count => 0;
@@ -153,6 +171,12 @@ public class UploadStreamTests : IDisposable
                 version: 1,
                 item => JsonSerializer.SerializeToElement(item),
                 item => item.Deserialize<ActivitySegmentItem>()!));
+
+    private static JsonFileCache<ActivitySegmentItem> StrictSegmentCache(string path) => new(
+        path,
+        maxItems: 20_000,
+        HeartbeatCacheFormats.SegmentVersion2(),
+        HeartbeatCacheFormats.SegmentMigrations());
 
     private UploadStream<ActivitySegmentItem> RealStream(
         FakeSource source,
@@ -323,6 +347,64 @@ public class UploadStreamTests : IDisposable
         Assert.Equal(id, uploaded.Id);
         Assert.Equal(90, (uploaded.EndTime - uploaded.StartTime).TotalSeconds);
         Assert.Empty(RealCache(cachePath).Load());
+    }
+
+    [Fact]
+    public async Task MigratedLegacyCache_UploadsStrictPayloadOnce_ClearsCache_AndDoesNotReplayAgain()
+    {
+        var cachePath = Path.Combine(_tempDirectory, "legacy-v1-strict-replay.json");
+        var id = Guid.CreateVersion7();
+        const string originalIdentityKey = "Code.exe\nMain.cs\r\nraw-evidence";
+        File.WriteAllText(cachePath, JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1,
+            items = new[]
+            {
+                new
+                {
+                    id,
+                    source = "system",
+                    identityKey = originalIdentityKey,
+                    appIdentityKey = (string?)null,
+                    appName = "Code.exe",
+                    title = "Main.cs",
+                    startTime = DateTimeOffset.UtcNow.AddMinutes(-5),
+                    endTime = DateTimeOffset.UtcNow.AddMinutes(-4),
+                    attributes = (object?)null
+                }
+            }
+        }));
+
+        using var cache = StrictSegmentCache(cachePath);
+        Assert.Equal(CacheFileState.Migrated, cache.Status.State);
+        var handler = new StrictContractHandler();
+        var api = new HeartbeatApiClient(new HttpClient(handler));
+        var stream = new UploadStream<ActivitySegmentItem>(
+            "segments",
+            new FakeSource(),
+            batch => api.UploadSegmentsAsync(new SegmentUploadRequest { Segments = batch }),
+            cache,
+            SnapshotCompaction.KeepLatest);
+
+        await stream.DrainAsync();
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(HeartbeatProtocol.RequiredVersion, request.ProtocolVersion);
+        using (var payload = JsonDocument.Parse(request.Body))
+        {
+            var item = Assert.Single(payload.RootElement.GetProperty("segments").EnumerateArray());
+            Assert.Equal(id, item.GetProperty("id").GetGuid());
+            Assert.Equal("win:code", item.GetProperty("appIdentityKey").GetString());
+            Assert.Equal("Code.exe", item.GetProperty("appDisplayName").GetString());
+            Assert.Equal(originalIdentityKey, item.GetProperty("identityKey").GetString());
+            Assert.False(item.TryGetProperty("appName", out _));
+        }
+        Assert.Empty(cache.Load());
+
+        await stream.DrainAsync();
+
+        Assert.Single(handler.Requests);
+        Assert.Empty(cache.Load());
     }
 
     [Fact]

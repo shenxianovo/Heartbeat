@@ -74,7 +74,7 @@ namespace Heartbeat.Agent.Hosting
                 return new JsonFileCache<ActivitySegmentItem>(
                     cachePath,
                     maxItems: 20_000,
-                    HeartbeatCacheFormats.SegmentVersion1(),
+                    HeartbeatCacheFormats.SegmentVersion2(),
                     HeartbeatCacheFormats.SegmentMigrations());
             });
 
@@ -90,6 +90,7 @@ namespace Heartbeat.Agent.Hosting
             services.AddSingleton<IInputActivitySignal, InputActivitySignal>();
 
             // 业务服务
+            services.AddSingleton<IAppIconExtractor, WindowsAppIconExtractor>();
             services.AddSingleton<IconUploadService>();
             services.AddSingleton<IIconUploadService>(sp => sp.GetRequiredService<IconUploadService>());
             // 输入缓冲为共享单例：collector 写入，出网侧经 IUploadSource drain
@@ -109,7 +110,8 @@ namespace Heartbeat.Agent.Hosting
                         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                         "Heartbeat",
                         "segments-dead-letter.json")),
-                    sp.GetRequiredService<UploadStatusRegistry>());
+                    sp.GetRequiredService<UploadStatusRegistry>(),
+                    sp.GetRequiredService<ClientCompatibilityStatus>());
             });
             services.AddSingleton(sp =>
             {
@@ -123,7 +125,8 @@ namespace Heartbeat.Agent.Hosting
                         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                         "Heartbeat",
                         "input-events-dead-letter.json")),
-                    statusRegistry: sp.GetRequiredService<UploadStatusRegistry>());
+                    statusRegistry: sp.GetRequiredService<UploadStatusRegistry>(),
+                    compatibilityStatus: sp.GetRequiredService<ClientCompatibilityStatus>());
             });
 
             // 自启动服务

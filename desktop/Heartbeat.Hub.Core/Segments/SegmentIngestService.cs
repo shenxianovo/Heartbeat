@@ -22,7 +22,7 @@ namespace Heartbeat.Hub.Core.Segments
 
         // ---- 集面读模型（ADR-021）：独立小锁，读写不与缓冲争用 ----
         private readonly object _statusLock = new();
-        private string? _currentApp;
+        private CurrentActivity? _currentActivity;
         private readonly Dictionary<string, DateTimeOffset> _lastSeen = [];
 
         /// <summary>缓冲上限：防失控采集器把 Agent 内存吃满（超出丢最旧）。</summary>
@@ -74,11 +74,11 @@ namespace Heartbeat.Hub.Core.Segments
 
         // ---- 集面读模型（ADR-021） ----
 
-        public event Action<string?>? CurrentAppChanged;
+        public event Action<CurrentActivity?>? CurrentActivityChanged;
 
-        public string? CurrentApp
+        public CurrentActivity? CurrentActivity
         {
-            get { lock (_statusLock) return _currentApp; }
+            get { lock (_statusLock) return _currentActivity; }
         }
 
         public IReadOnlyDictionary<string, DateTimeOffset> SourceLastSeen
@@ -90,15 +90,15 @@ namespace Heartbeat.Hub.Core.Segments
         /// ICurrentActivitySink adapter（ADR-021）：system 采集器在转场点推送。
         /// 值实际变化才广播，重复上报静默——下游（心跳的变了就推）依赖此去重。
         /// </summary>
-        public void Report(string? app)
+        public void Report(CurrentActivity? activity)
         {
             lock (_statusLock)
             {
-                if (string.Equals(_currentApp, app, StringComparison.Ordinal))
+                if (_currentActivity == activity)
                     return;
-                _currentApp = app;
+                _currentActivity = activity;
             }
-            CurrentAppChanged?.Invoke(app);
+            CurrentActivityChanged?.Invoke(activity);
         }
 
         /// <summary>IUploadSource adapter：出网侧的统一 drain 词汇。</summary>

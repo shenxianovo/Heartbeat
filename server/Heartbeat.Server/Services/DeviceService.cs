@@ -95,9 +95,6 @@ namespace Heartbeat.Server.Services
             AppIdentity? identity = null;
             if (!string.IsNullOrWhiteSpace(currentAppIdentityKey))
                 identity = await _identityService.ResolveAsync(currentAppIdentityKey, observedDisplayName);
-            else if (!string.IsNullOrWhiteSpace(observedDisplayName))
-                identity = await _identityService.ResolveAsync(
-                    Heartbeat.Core.AppIdentityKeys.FromLegacyWindowsAppName(observedDisplayName), observedDisplayName);
 
             device.CurrentAppIdentityId = identity?.Id;
             device.CurrentApp = identity?.App.DisplayName ?? observedDisplayName ?? string.Empty;

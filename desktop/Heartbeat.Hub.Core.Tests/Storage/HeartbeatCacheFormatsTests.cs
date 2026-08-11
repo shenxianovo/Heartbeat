@@ -1,3 +1,4 @@
+using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Input;
 using Heartbeat.Core.DTOs.Segments;
 using Heartbeat.Hub.Core.Storage;
@@ -18,7 +19,7 @@ public sealed class HeartbeatCacheFormatsTests : IDisposable
     }
 
     [Fact]
-    public void SegmentV1_RoundTripsAllCurrentFieldsThroughProductionPersistenceDto()
+    public void SegmentV2_RoundTripsStrictFields_WithoutPersistingLegacyAppName()
     {
         var path = Path.Combine(_directory, "segments.json");
         var segment = new ActivitySegmentItem
@@ -27,7 +28,7 @@ public sealed class HeartbeatCacheFormatsTests : IDisposable
             Source = "browser",
             IdentityKey = "https://example.com",
             AppIdentityKey = "win:code",
-            AppName = "code",
+            AppDisplayName = "Code",
             Title = "HeartbeatCacheFormats.cs",
             StartTime = DateTimeOffset.Parse("2026-08-11T01:00:00Z"),
             EndTime = DateTimeOffset.Parse("2026-08-11T01:01:00Z"),
@@ -39,8 +40,12 @@ public sealed class HeartbeatCacheFormatsTests : IDisposable
         var loaded = Assert.Single(restarted.Load());
         Assert.Equal(segment.Id, loaded.Id);
         Assert.Equal("win:code", loaded.AppIdentityKey);
-        Assert.Equal("code", loaded.AppName);
+        Assert.Equal("Code", loaded.AppDisplayName);
+        Assert.Null(loaded.AppName);
         Assert.Equal("Heartbeat", loaded.Attributes!.Value.GetProperty("repository").GetString());
+        using var document = JsonDocument.Parse(File.ReadAllText(path));
+        Assert.Equal(2, document.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.False(document.RootElement.GetProperty("items")[0].TryGetProperty("appName", out _));
     }
 
     [Fact]
@@ -82,8 +87,9 @@ public sealed class HeartbeatCacheFormatsTests : IDisposable
         var migratedSegment = Assert.Single(segments.Load());
         Assert.Equal(segmentId, migratedSegment.Id);
         Assert.Equal("code\nrepo", migratedSegment.IdentityKey);
-        Assert.Equal("code", migratedSegment.AppName);
-        Assert.Null(migratedSegment.AppIdentityKey);
+        Assert.Equal("win:code", migratedSegment.AppIdentityKey);
+        Assert.Equal("code", migratedSegment.AppDisplayName);
+        Assert.Null(migratedSegment.AppName);
         var migratedInput = Assert.Single(inputs.Load());
         Assert.Equal(inputId, migratedInput.Id);
         Assert.Equal((short)65, migratedInput.Code);
@@ -91,10 +97,126 @@ public sealed class HeartbeatCacheFormatsTests : IDisposable
         Assert.Equal(CacheFileState.Migrated, inputs.Status.State);
     }
 
+    [Fact]
+    public void SegmentV1_MigratesDirectlyToV2_AndPreservesOriginalIdentityKey()
+    {
+        var path = Path.Combine(_directory, "segments-v1.json");
+        var id = Guid.CreateVersion7();
+        const string originalIdentityKey = "Code\nMain.cs";
+        var legacyJson = JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1,
+            items = new[]
+            {
+                new
+                {
+                    id,
+                    source = "system",
+                    identityKey = originalIdentityKey,
+                    appIdentityKey = (string?)null,
+                    appName = "Code.exe",
+                    title = "Main.cs",
+                    startTime = DateTimeOffset.Parse("2026-08-11T01:00:00Z"),
+                    endTime = DateTimeOffset.Parse("2026-08-11T01:05:00Z"),
+                    attributes = (object?)null
+                }
+            }
+        });
+        File.WriteAllText(path, legacyJson);
+
+        string backupPath;
+        using (var cache = NewSegmentCache(path))
+        {
+            var migrated = Assert.Single(cache.Load());
+            Assert.Equal("win:code", migrated.AppIdentityKey);
+            Assert.Equal("Code.exe", migrated.AppDisplayName);
+            Assert.Equal(originalIdentityKey, migrated.IdentityKey);
+            Assert.Null(migrated.AppName);
+            Assert.Equal(CacheFileState.Migrated, cache.Status.State);
+            backupPath = Assert.IsType<string>(cache.Status.BackupPath);
+            Assert.Equal(legacyJson, File.ReadAllText(backupPath));
+        }
+
+        using var restarted = NewSegmentCache(path);
+        Assert.Equal(CacheFileState.Ready, restarted.Status.State);
+        Assert.Equal(originalIdentityKey, Assert.Single(restarted.Load()).IdentityKey);
+        Assert.Equal([backupPath], FindBackups(path));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LegacySegmentFormats_MapAway_PreserveExistingIdentity_AndMigrateOnlyOnce(bool versioned)
+    {
+        var path = Path.Combine(_directory, versioned ? "segments-v1-special.json" : "segments-unversioned-special.json");
+        var awayId = Guid.CreateVersion7();
+        var identifiedId = Guid.CreateVersion7();
+        var items = new[]
+        {
+            new
+            {
+                id = awayId,
+                source = "system",
+                identityKey = "__away__\n",
+                appIdentityKey = (string?)null,
+                appName = "__away__",
+                title = (string?)null,
+                startTime = DateTimeOffset.Parse("2026-08-11T01:00:00Z"),
+                endTime = DateTimeOffset.Parse("2026-08-11T01:01:00Z"),
+                attributes = (object?)null
+            },
+            new
+            {
+                id = identifiedId,
+                source = "system",
+                identityKey = "ORIGINAL-BYTES\r\nTitle",
+                appIdentityKey = (string?)"mac:com.microsoft.VSCode",
+                appName = "Code.exe",
+                title = (string?)"Title",
+                startTime = DateTimeOffset.Parse("2026-08-11T01:02:00Z"),
+                endTime = DateTimeOffset.Parse("2026-08-11T01:03:00Z"),
+                attributes = (object?)null
+            }
+        };
+        var legacyJson = versioned
+            ? JsonSerializer.Serialize(new { schemaVersion = 1, items })
+            : JsonSerializer.Serialize(items);
+        File.WriteAllText(path, legacyJson);
+
+        string backupPath;
+        using (var cache = NewSegmentCache(path))
+        {
+            var migrated = cache.Load();
+            var away = Assert.Single(migrated, item => item.Id == awayId);
+            Assert.Equal(AppIdentityKeys.Away, away.AppIdentityKey);
+            Assert.Equal("__away__", away.AppDisplayName);
+            Assert.Equal("__away__\n", away.IdentityKey);
+
+            var identified = Assert.Single(migrated, item => item.Id == identifiedId);
+            Assert.Equal("mac:com.microsoft.vscode", identified.AppIdentityKey);
+            Assert.Equal("Code.exe", identified.AppDisplayName);
+            Assert.Equal("ORIGINAL-BYTES\r\nTitle", identified.IdentityKey);
+            Assert.Null(identified.AppName);
+
+            Assert.Equal(CacheFileState.Migrated, cache.Status.State);
+            backupPath = Assert.IsType<string>(cache.Status.BackupPath);
+            Assert.Equal(legacyJson, File.ReadAllText(backupPath));
+        }
+
+        using var restarted = NewSegmentCache(path);
+        Assert.Equal(CacheFileState.Ready, restarted.Status.State);
+        Assert.Equal(2, restarted.Load().Count);
+        Assert.Equal([backupPath], FindBackups(path));
+    }
+
+    private static string[] FindBackups(string path) => Directory.GetFiles(
+        Path.GetDirectoryName(path)!,
+        Path.GetFileName(path) + ".legacy-*.bak*");
+
     private static JsonFileCache<ActivitySegmentItem> NewSegmentCache(string path) => new(
         path,
         20_000,
-        HeartbeatCacheFormats.SegmentVersion1(),
+        HeartbeatCacheFormats.SegmentVersion2(),
         HeartbeatCacheFormats.SegmentMigrations());
 
     private static JsonFileCache<InputEventItem> NewInputCache(string path) => new(

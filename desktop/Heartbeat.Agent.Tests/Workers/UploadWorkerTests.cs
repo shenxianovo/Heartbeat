@@ -56,10 +56,10 @@ public class UploadWorkerTests : IDisposable
         public List<string> Calls { get; } = [];
         public string? ThrowFor { get; set; }
 
-        public Task EnsureIconUploadedAsync(string appName)
+        public Task EnsureIconUploadedAsync(string appIdentityKey, string? appDisplayName)
         {
-            Calls.Add(appName);
-            if (string.Equals(appName, ThrowFor, StringComparison.OrdinalIgnoreCase))
+            Calls.Add(appIdentityKey);
+            if (string.Equals(appIdentityKey, ThrowFor, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("icon boom");
             return Task.CompletedTask;
         }
@@ -102,15 +102,16 @@ public class UploadWorkerTests : IDisposable
             new WindowsHubRuntimeHooks(icons)), segSource, inputSource, icons);
     }
 
-    private static ActivitySegmentItem Segment(string? appName)
+    private static ActivitySegmentItem Segment(string? appIdentityKey)
     {
         var t0 = DateTimeOffset.UtcNow.AddMinutes(-10);
         return new ActivitySegmentItem
         {
             Id = Guid.CreateVersion7(),
             Source = "system",
-            IdentityKey = $"{appName}|t",
-            AppName = appName,
+            IdentityKey = $"{appIdentityKey}|t",
+            AppIdentityKey = appIdentityKey,
+            AppDisplayName = appIdentityKey?[4..],
             StartTime = t0,
             EndTime = t0.AddSeconds(60)
         };
@@ -128,7 +129,7 @@ public class UploadWorkerTests : IDisposable
     public async Task DrainOnce_DrainsBothStreams()
     {
         var (worker, segSource, inputSource, _) = Build();
-        segSource.Items.Add(Segment("Code"));
+        segSource.Items.Add(Segment("win:code"));
         inputSource.Items.AddRange([Event(), Event()]);
 
         await worker.DrainOnceAsync();
@@ -141,21 +142,21 @@ public class UploadWorkerTests : IDisposable
     public async Task DrainOnce_TriggersIcons_DistinctCaseInsensitive_SkipsEmpty()
     {
         var (worker, segSource, _, icons) = Build();
-        segSource.Items.AddRange([Segment("Code"), Segment("code"), Segment("mpv"), Segment(null)]);
+        segSource.Items.AddRange([Segment("win:code"), Segment("win:code"), Segment("win:mpv"), Segment(null)]);
 
         await worker.DrainOnceAsync();
 
         Assert.Equal(2, icons.Calls.Count);
-        Assert.Contains("Code", icons.Calls);
-        Assert.Contains("mpv", icons.Calls);
+        Assert.Contains("win:code", icons.Calls);
+        Assert.Contains("win:mpv", icons.Calls);
     }
 
     [Fact]
     public async Task DrainOnce_IconFailure_DoesNotAbortRemainingApps()
     {
         var (worker, segSource, _, icons) = Build();
-        icons.ThrowFor = "Code";
-        segSource.Items.AddRange([Segment("Code"), Segment("mpv")]);
+        icons.ThrowFor = "win:code";
+        segSource.Items.AddRange([Segment("win:code"), Segment("win:mpv")]);
 
         await worker.DrainOnceAsync(); // 不抛出
 
@@ -167,7 +168,7 @@ public class UploadWorkerTests : IDisposable
     {
         // 关机不丢尾巴的 worker 侧：monitor 停止时推入 hub 的终态快照由本次 drain 带走（ADR-020 §6）
         var (worker, segSource, inputSource, _) = Build();
-        segSource.Items.Add(Segment("Code"));
+        segSource.Items.Add(Segment("win:code"));
         inputSource.Items.Add(Event());
 
         await worker.StopAsync(CancellationToken.None);

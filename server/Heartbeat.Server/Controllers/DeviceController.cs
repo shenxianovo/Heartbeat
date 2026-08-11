@@ -1,5 +1,7 @@
 ﻿using Heartbeat.Core.DTOs.Devices;
 using Heartbeat.Server.Services;
+using Heartbeat.Server.Filters;
+using Heartbeat.Core;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -33,8 +35,20 @@ namespace Heartbeat.Server.Controllers
 
         [HttpPost("heartbeat")]
         [EndpointName("uploadHeartbeat")]
+        [RequireHeartbeatProtocol]
         public async Task<IActionResult> Upload([FromBody] DeviceStatusRequest status)
         {
+            if (status.CurrentApp is not null)
+                return UpgradeRequiredResult.Create(Response, "Legacy CurrentApp presence is no longer accepted. Update Heartbeat.");
+            if (!string.IsNullOrWhiteSpace(status.CurrentAppDisplayName)
+                && string.IsNullOrWhiteSpace(status.CurrentAppIdentityKey))
+                return BadRequest("CurrentAppIdentityKey is required when CurrentAppDisplayName is present.");
+            if (!string.IsNullOrWhiteSpace(status.CurrentAppIdentityKey))
+            {
+                try { _ = AppIdentityKeys.Normalize(status.CurrentAppIdentityKey); }
+                catch (ArgumentException ex) { return BadRequest(ex.Message); }
+            }
+
             var userId = _currentUser.GetUserId();
             var hardwareId = Request.Headers[DeviceService.HardwareIdHeader].FirstOrDefault();
             var deviceName = Request.Headers[DeviceService.DeviceNameHeader].FirstOrDefault();
@@ -46,7 +60,7 @@ namespace Heartbeat.Server.Controllers
             try
             {
                 await _deviceService.UpdateStatusAsync(
-                    device, status.CurrentAppIdentityKey, status.CurrentApp);
+                    device, status.CurrentAppIdentityKey, status.CurrentAppDisplayName);
             }
             catch (ArgumentException ex)
             {

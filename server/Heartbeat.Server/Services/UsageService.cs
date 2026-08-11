@@ -23,6 +23,8 @@ namespace Heartbeat.Server.Services
         /// </summary>
         public async Task SaveSegmentsAsync(long deviceId, List<ActivitySegmentItem> segments)
         {
+            SegmentIngestContract.Validate(segments);
+
             var valid = SegmentValidationPolicy.Filter(segments, DateTimeOffset.UtcNow);
             if (valid.Count == 0) return;
 
@@ -44,15 +46,7 @@ namespace Heartbeat.Server.Services
                     continue;
                 }
 
-                try
-                {
-                    identityByItem[item] = await _appIdentityService.ResolveAsync(key, item.AppName);
-                }
-                catch (ArgumentException ex)
-                {
-                    logger?.LogWarning(ex, "段 {Id} 的 AppIdentityKey 无效，保留无 App 关联事实", item.Id);
-                    identityByItem[item] = null;
-                }
+                identityByItem[item] = await _appIdentityService.ResolveAsync(key, item.AppDisplayName);
             }
 
             foreach (var s in valid)
@@ -108,11 +102,7 @@ namespace Heartbeat.Server.Services
 
         private static string? ResolveIdentityKey(ActivitySegmentItem item)
         {
-            if (!string.IsNullOrWhiteSpace(item.AppIdentityKey))
-                return item.AppIdentityKey;
-            if (!string.IsNullOrWhiteSpace(item.AppName))
-                return AppIdentityKeys.FromLegacyWindowsAppName(item.AppName);
-            return null;
+            return string.IsNullOrWhiteSpace(item.AppIdentityKey) ? null : item.AppIdentityKey;
         }
 
         /// <summary>

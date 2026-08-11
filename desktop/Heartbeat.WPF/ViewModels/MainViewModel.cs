@@ -4,6 +4,7 @@ using Heartbeat.Agent.Configuration;
 using Heartbeat.Agent.Models;
 using Heartbeat.Agent.Services;
 using Heartbeat.Hub.Core.Presence;
+using Heartbeat.Hub.Core.Http;
 using Heartbeat.Core;
 using Heartbeat.WPF.Logging;
 using Serilog.Events;
@@ -18,9 +19,16 @@ namespace Heartbeat.WPF.ViewModels
         private readonly ConfigManager _configManager;
         private readonly ICollectionStatus _status;
         private readonly IAutoStartService _autoStartService;
+        private readonly IClientCompatibilityStatus _compatibilityStatus;
 
         [ObservableProperty]
         private string _currentApp = "(未检测)";
+
+        [ObservableProperty]
+        private bool _updateRequiredVisible;
+
+        [ObservableProperty]
+        private string _updateRequiredMessage = string.Empty;
 
         [ObservableProperty]
         private string _apiKey = string.Empty;
@@ -66,11 +74,13 @@ namespace Heartbeat.WPF.ViewModels
             ConfigManager configManager,
             ICollectionStatus status,
             IAutoStartService autoStartService,
+            IClientCompatibilityStatus compatibilityStatus,
             RingBufferSink logSink)
         {
             _configManager = configManager;
             _status = status;
             _autoStartService = autoStartService;
+            _compatibilityStatus = compatibilityStatus;
             _logSink = logSink;
             _maxLogLines = logSink.Capacity;
 
@@ -78,10 +88,12 @@ namespace Heartbeat.WPF.ViewModels
             LoadAutoStartState();
 
             // 显示当前前台应用（hub 集面读模型，ADR-021）
-            CurrentApp = FormatApp(_status.CurrentApp) ?? "(未检测)";
+            CurrentApp = FormatActivity(_status.CurrentActivity) ?? "(未检测)";
+            ApplyCompatibilityStatus(_compatibilityStatus.Current);
 
             // 订阅事件
-            _status.CurrentAppChanged += HandleCurrentAppChanged;
+            _status.CurrentActivityChanged += HandleCurrentActivityChanged;
+            _compatibilityStatus.Changed += HandleCompatibilityChanged;
             _logSink.LogChanged += HandleLogChanged;
 
             // 采集器栏（ADR-026）：注册表变化（新发现/开关）重建列表；定时器周期重算 Active。
@@ -187,15 +199,30 @@ namespace Heartbeat.WPF.ViewModels
         }
 
         /// <summary>away 原样来自读模型（ADR-021），显示语义在此解释。</summary>
-        private static string? FormatApp(string? app)
-            => app == SyntheticApps.Away ? "(离开)" : app;
+        private static string? FormatActivity(CurrentActivity? activity)
+        {
+            if (activity == null) return null;
+            if (activity.AppIdentityKey == AppIdentityKeys.Away) return "(离开)";
+            return string.IsNullOrWhiteSpace(activity.AppDisplayName)
+                ? activity.AppIdentityKey
+                : activity.AppDisplayName;
+        }
 
-        private void HandleCurrentAppChanged(string? appName)
+        private void HandleCurrentActivityChanged(CurrentActivity? activity)
         {
             Application.Current?.Dispatcher.BeginInvoke(() =>
             {
-                CurrentApp = FormatApp(appName) ?? "(无)";
+                CurrentApp = FormatActivity(activity) ?? "(无)";
             });
+        }
+
+        private void HandleCompatibilityChanged(ClientCompatibilitySnapshot status)
+            => Application.Current?.Dispatcher.BeginInvoke(() => ApplyCompatibilityStatus(status));
+
+        private void ApplyCompatibilityStatus(ClientCompatibilitySnapshot status)
+        {
+            UpdateRequiredVisible = status.UpdateRequired;
+            UpdateRequiredMessage = status.Message ?? "服务器要求更新 Heartbeat 后再继续上传。";
         }
 
         private void HandleLogChanged(IReadOnlyList<LogEntry> newLogs)
@@ -304,7 +331,8 @@ namespace Heartbeat.WPF.ViewModels
 
         public void Dispose()
         {
-            _status.CurrentAppChanged -= HandleCurrentAppChanged;
+            _status.CurrentActivityChanged -= HandleCurrentActivityChanged;
+            _compatibilityStatus.Changed -= HandleCompatibilityChanged;
             _logSink.LogChanged -= HandleLogChanged;
             _configManager.ConfigChanged -= HandleConfigChanged;
             _activityTimer.Stop();

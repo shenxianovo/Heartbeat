@@ -1,5 +1,6 @@
 using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Segments;
+using Heartbeat.Hub.Core.Presence;
 using Heartbeat.Hub.Core.Segments;
 using Heartbeat.Hub.Core.Time;
 using Heartbeat.Hub.Core.Upload;
@@ -156,17 +157,17 @@ public class SegmentIngestServiceTests
     // ---- 集面读模型（ADR-021） ----
 
     [Fact]
-    public void Report_UpdatesCurrentApp_AndRaisesEvent()
+    public void Report_UpdatesCurrentActivity_AndRaisesEvent()
     {
         var svc = new SegmentIngestService(new FakeClock());
-        var events = new List<string?>();
-        svc.CurrentAppChanged += events.Add;
+        var events = new List<CurrentActivity?>();
+        svc.CurrentActivityChanged += events.Add;
 
-        svc.Report("vscode");
-        svc.Report("__away__");
+        svc.Report(new CurrentActivity("win:code", "Code"));
+        svc.Report(new CurrentActivity("sys:away", "离开"));
 
-        Assert.Equal("__away__", svc.CurrentApp);
-        Assert.Equal(new List<string?> { "vscode", "__away__" }, events);
+        Assert.Equal("sys:away", svc.CurrentActivity!.AppIdentityKey);
+        Assert.Equal(["win:code", "sys:away"], events.Select(x => x?.AppIdentityKey));
     }
 
     [Fact]
@@ -174,11 +175,11 @@ public class SegmentIngestServiceTests
     {
         // 去重：下游（心跳的变了就推）依赖"值实际变化才广播"
         var svc = new SegmentIngestService(new FakeClock());
-        var events = new List<string?>();
-        svc.CurrentAppChanged += events.Add;
+        var events = new List<CurrentActivity?>();
+        svc.CurrentActivityChanged += events.Add;
 
-        svc.Report("vscode");
-        svc.Report("vscode");
+        svc.Report(new CurrentActivity("win:code", "Code"));
+        svc.Report(new CurrentActivity("win:code", "Code"));
 
         Assert.Single(events);
     }
@@ -207,12 +208,12 @@ public class SegmentIngestServiceTests
     {
         // 读模型与出网 buffer 分离（ADR-021）：drain 不清空集面状态
         var svc = new SegmentIngestService(new FakeClock());
-        svc.Report("vscode");
+        svc.Report(new CurrentActivity("win:code", "Code"));
         svc.Accept([Segment()]);
 
         svc.GetAndClearSegments();
 
-        Assert.Equal("vscode", svc.CurrentApp);
+        Assert.Equal("win:code", svc.CurrentActivity!.AppIdentityKey);
         Assert.True(svc.SourceLastSeen.ContainsKey("browser"));
     }
 }

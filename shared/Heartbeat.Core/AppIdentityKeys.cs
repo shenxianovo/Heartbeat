@@ -8,13 +8,14 @@ public static partial class AppIdentityKeys
     public const string WindowsPrefix = "win:";
     public const string MacPrefix = "mac:";
     public const string SyntheticPrefix = "sys:";
+    public const string Away = SyntheticPrefix + "away";
 
     public static string FromLegacyWindowsAppName(string appName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(appName);
         var value = appName.Trim();
         if (string.Equals(value, SyntheticApps.Away, StringComparison.OrdinalIgnoreCase))
-            return SyntheticPrefix + "away";
+            return Away;
 
         return WindowsPrefix + StripExe(value).ToLowerInvariant();
     }

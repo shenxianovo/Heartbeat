@@ -2,6 +2,7 @@ using Heartbeat.Core.DTOs.Apps;
 using Heartbeat.Core.DTOs.Devices;
 using Heartbeat.Core.DTOs.Input;
 using Heartbeat.Core.DTOs.Segments;
+using Heartbeat.Core;
 using Heartbeat.Hub.Core.Http;
 using System.Net.Http.Json;
 
@@ -43,7 +44,14 @@ namespace Heartbeat.Hub.Core.Http
         {
             try
             {
-                var res = await http.PostAsJsonAsync(url, dto, ct);
+                using var request = new HttpRequestMessage(HttpMethod.Post, url)
+                {
+                    Content = JsonContent.Create(dto)
+                };
+                request.Headers.TryAddWithoutValidation(
+                    HeartbeatProtocol.VersionHeader,
+                    HeartbeatProtocol.RequiredVersion);
+                var res = await http.SendAsync(request, ct);
                 return res.IsSuccessStatusCode ? ApiResult.Ok : ApiResult.Fail(res, context);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

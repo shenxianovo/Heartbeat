@@ -52,10 +52,8 @@ namespace Heartbeat.Server.Services
             byte[] iconData,
             bool refresh = false)
         {
-            var identityKey = !string.IsNullOrWhiteSpace(appIdentityKey)
-                ? appIdentityKey
-                : AppIdentityKeys.FromLegacyWindowsAppName(observedDisplayName!);
-            var identity = await _identityService.ResolveAsync(identityKey, observedDisplayName);
+            ArgumentException.ThrowIfNullOrWhiteSpace(appIdentityKey);
+            var identity = await _identityService.ResolveAsync(appIdentityKey, observedDisplayName);
 
             var existing = await _db.AppIcons
                 .FirstOrDefaultAsync(x => x.OwnerId == ownerId && x.AppId == identity.AppId);

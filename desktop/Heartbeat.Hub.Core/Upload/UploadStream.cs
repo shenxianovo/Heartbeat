@@ -18,6 +18,7 @@ public sealed class UploadStream<T>
     private readonly Func<List<T>, List<T>>? _compactCached;
     private readonly IDeadLetterStore<T>? _deadLetterStore;
     private readonly UploadStatusRegistry? _statusRegistry;
+    private readonly ClientCompatibilityStatus? _compatibilityStatus;
 
     public UploadStream(
         string label,
@@ -26,7 +27,8 @@ public sealed class UploadStream<T>
         ICache<T> cache,
         Func<List<T>, List<T>>? compactCached = null,
         IDeadLetterStore<T>? deadLetterStore = null,
-        UploadStatusRegistry? statusRegistry = null)
+        UploadStatusRegistry? statusRegistry = null,
+        ClientCompatibilityStatus? compatibilityStatus = null)
     {
         _label = label;
         _source = source;
@@ -35,6 +37,7 @@ public sealed class UploadStream<T>
         _compactCached = compactCached;
         _deadLetterStore = deadLetterStore;
         _statusRegistry = statusRegistry;
+        _compatibilityStatus = compatibilityStatus;
 
         Status = cache.Status.State == CacheFileState.MigrationFailed
             ? new UploadStreamStatus(
@@ -56,8 +59,9 @@ public sealed class UploadStream<T>
     public event Action<UploadStreamStatus>? StatusChanged;
 
     /// <summary>
-    /// Clears an in-process 426 pause. A restarted (normally updated) Agent also begins unpaused and
-    /// retries the durably retained cache once.
+    /// Clears this stream's in-process 426 pause for diagnostics. It intentionally does not clear
+    /// the process-wide compatibility state: production recovery requires updating and restarting
+    /// the Agent, whose new process retries the durably retained cache once.
     /// </summary>
     public void Resume()
     {
@@ -153,9 +157,10 @@ public sealed class UploadStream<T>
             SetStatus(new UploadStreamStatus(
                 UploadStreamState.UpdateRequired,
                 response.ResponseBody ?? "The server requires a newer Heartbeat version.",
-                "Update Heartbeat, then resume this upload stream.",
+                "Update and restart Heartbeat; the retained data will retry automatically.",
                 _deadLetterStore?.Count ?? 0,
                 DeadLetterPath: _deadLetterStore?.Location));
+            _compatibilityStatus?.RequireUpdate(response.ResponseBody);
             return BatchResult<T>.Pause(items);
         }
 

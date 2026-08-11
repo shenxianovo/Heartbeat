@@ -1,5 +1,7 @@
 using Heartbeat.Core.DTOs.Apps;
 using Heartbeat.Server.Services;
+using Heartbeat.Server.Filters;
+using Heartbeat.Core;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -24,11 +26,17 @@ namespace Heartbeat.Server.Controllers
         [Authorize]
         [HttpPost("icon")]
         [EndpointName("uploadAppIcon")]
+        [RequireHeartbeatProtocol]
         public async Task<IActionResult> UploadIcon([FromBody] IconUploadRequest request)
         {
-            if (string.IsNullOrWhiteSpace(request.AppIdentityKey)
-                && string.IsNullOrWhiteSpace(request.AppName))
+            if (request.AppName is not null)
+                return UpgradeRequiredResult.Create(Response, "Legacy icon AppName is no longer accepted. Update Heartbeat.");
+
+            if (string.IsNullOrWhiteSpace(request.AppIdentityKey))
                 return BadRequest("AppIdentityKey is required.");
+
+            try { _ = AppIdentityKeys.Normalize(request.AppIdentityKey); }
+            catch (ArgumentException ex) { return BadRequest(ex.Message); }
 
             if (request.IconData == null || request.IconData.Length == 0)
                 return BadRequest("Icon data is required.");
@@ -39,7 +47,7 @@ namespace Heartbeat.Server.Controllers
             try
             {
                 await _appService.UploadIconAsync(
-                    _currentUser.GetUserId(), request.AppIdentityKey, request.AppName,
+                    _currentUser.GetUserId(), request.AppIdentityKey, request.AppDisplayName,
                     request.IconData, request.Refresh);
             }
             catch (ArgumentException ex)

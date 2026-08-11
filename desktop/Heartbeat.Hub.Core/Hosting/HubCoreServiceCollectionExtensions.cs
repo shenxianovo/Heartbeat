@@ -28,6 +28,9 @@ public static class HubCoreServiceCollectionExtensions
         services.TryAddSingleton<ICurrentActivitySink>(sp => sp.GetRequiredService<SegmentIngestService>());
         services.TryAddSingleton<ICollectionStatus>(sp => sp.GetRequiredService<SegmentIngestService>());
         services.TryAddSingleton<IHubRuntimeHooks, NullHubRuntimeHooks>();
+        services.TryAddSingleton<ClientCompatibilityStatus>();
+        services.TryAddSingleton<IClientCompatibilityStatus>(sp =>
+            sp.GetRequiredService<ClientCompatibilityStatus>());
         services.TryAddSingleton<UploadStatusRegistry>();
         services.TryAddSingleton<IUploadStatus>(sp => sp.GetRequiredService<UploadStatusRegistry>());
         services.TryAddSingleton<TokenManager>();

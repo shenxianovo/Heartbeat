@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Heartbeat.Core;
 using Heartbeat.Desktop.Core.Observations;
 
 namespace Heartbeat.Agent.Utils
@@ -96,13 +97,13 @@ namespace Heartbeat.Agent.Utils
                 var hwnd = GetForegroundWindowNative();
                 var activity = SampleWindow(hwnd);
                 _lastForegroundHwnd = hwnd;
-                _lastProcessName = activity.AppName;
+                _lastAppIdentityKey = activity.AppIdentityKey;
                 return activity;
             }
         }
 
         private IntPtr _lastForegroundHwnd;
-        private string? _lastProcessName;
+        private string? _lastAppIdentityKey;
 
         public void Start()
         {
@@ -203,17 +204,17 @@ namespace Heartbeat.Agent.Utils
             // 切换的语义差异；Desktop.Core 不需要知道句柄本身。
             var activity = SampleWindow(fg);
             if (fg == _lastForegroundHwnd
-                && string.Equals(_lastProcessName, activity.AppName, StringComparison.OrdinalIgnoreCase))
+                && string.Equals(_lastAppIdentityKey, activity.AppIdentityKey, StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
 
-            var kind = string.Equals(_lastProcessName, activity.AppName, StringComparison.OrdinalIgnoreCase)
+            var kind = string.Equals(_lastAppIdentityKey, activity.AppIdentityKey, StringComparison.OrdinalIgnoreCase)
                 ? DesktopObservationKind.FocusedWindowChanged
                 : DesktopObservationKind.AppActivated;
 
             _lastForegroundHwnd = fg;
-            _lastProcessName = activity.AppName;
+            _lastAppIdentityKey = activity.AppIdentityKey;
             Observation?.Invoke(new DesktopObservation(kind, activity));
         }
 
@@ -221,7 +222,11 @@ namespace Heartbeat.Agent.Utils
         private DesktopActivity SampleWindow(IntPtr hwnd)
         {
             if (hwnd == IntPtr.Zero) return DesktopActivity.None;
-            return new DesktopActivity(GetProcessNameFromHwnd(hwnd), GetWindowTitle(hwnd));
+            var processName = GetProcessNameFromHwnd(hwnd);
+            var identityKey = string.IsNullOrWhiteSpace(processName)
+                ? null
+                : AppIdentityKeys.FromLegacyWindowsAppName(processName);
+            return new DesktopActivity(identityKey, processName, GetWindowTitle(hwnd));
         }
 
         private static string? GetWindowTitle(IntPtr hWnd)

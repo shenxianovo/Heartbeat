@@ -7,11 +7,11 @@ namespace Heartbeat.Core
     public static class SystemIdentity
     {
         /// <summary>
-        /// 规范化 AppName + Title。AppName 不区分大小写（沿用 ADR-015 前的判据），Title 区分；
+        /// 规范化 AppIdentityKey + Title。AppIdentityKey 不区分大小写，Title 区分；
         /// null 与空标题折叠（GetWindowText 对空标题返回 null，"" 实际不会出现）。
         /// 服务端 migration 的历史数据回填 SQL 与此定义必须一致。
         /// </summary>
-        public static string Key(string appName, string? title)
-            => appName.ToLowerInvariant() + "\n" + (title ?? "");
+        public static string Key(string appIdentityKey, string? title)
+            => appIdentityKey.ToLowerInvariant() + "\n" + (title ?? "");
     }
 }

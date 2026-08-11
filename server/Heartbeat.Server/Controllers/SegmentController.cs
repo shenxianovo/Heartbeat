@@ -1,5 +1,7 @@
 using Heartbeat.Core.DTOs.Segments;
 using Heartbeat.Server.Services;
+using Heartbeat.Server.Filters;
+using Heartbeat.Core;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -24,10 +26,25 @@ namespace Heartbeat.Server.Controllers
 
         [HttpPost]
         [EndpointName("uploadSegments")]
+        [RequireHeartbeatProtocol]
         public async Task<IActionResult> Upload([FromBody] SegmentUploadRequest request)
         {
             if (request.Segments == null || request.Segments.Count == 0)
                 return BadRequest("Segments cannot be empty.");
+
+            try
+            {
+                SegmentIngestContract.Validate(request.Segments);
+            }
+            catch (SegmentIngestContractException ex)
+                when (ex.Violation == SegmentIngestContractViolation.LegacyAppName)
+            {
+                return UpgradeRequiredResult.Create(Response, ex.Message);
+            }
+            catch (SegmentIngestContractException ex)
+            {
+                return UnprocessableEntity(ex.Message);
+            }
 
             var userId = _currentUser.GetUserId();
             var hardwareId = Request.Headers[DeviceService.HardwareIdHeader].FirstOrDefault();
