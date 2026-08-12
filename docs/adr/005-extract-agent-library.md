@@ -41,4 +41,4 @@ The library owns:
 - [`desktop/Heartbeat.Agent/Hosting/AgentHostExtensions.cs`](../../desktop/Heartbeat.Agent/Hosting/AgentHostExtensions.cs) — `AddHeartbeatAgent()` registration
 - [`desktop/Heartbeat.Agent/Configuration/ConfigManager.cs`](../../desktop/Heartbeat.Agent/Configuration/ConfigManager.cs) — injectable config manager
 - [`desktop/Heartbeat.Agent.Runner/Program.cs`](../../desktop/Heartbeat.Agent.Runner/Program.cs) — console host using Agent
-- [`desktop/Heartbeat.WPF/App.xaml.cs`](../../desktop/Heartbeat.WPF/App.xaml.cs) — WPF host using Agent
+- [`desktop/Heartbeat.Desktop.Windows/WindowsDesktopRuntime.cs`](../../desktop/Heartbeat.Desktop.Windows/WindowsDesktopRuntime.cs) — current Windows platform head using Agent

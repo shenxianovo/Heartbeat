@@ -1,0 +1,196 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Heartbeat.Desktop.UI.Views.MainWindow"
+        x:CompileBindings="False"
+        Title="Heartbeat"
+        Width="860"
+        Height="640"
+        MinWidth="720"
+        MinHeight="520"
+        WindowStartupLocation="CenterScreen">
+  <Grid RowDefinitions="Auto,*">
+    <Border Grid.Row="0" Padding="20,14" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel>
+          <TextBlock Text="Heartbeat" FontSize="22" FontWeight="SemiBold"/>
+          <TextBlock Text="Agent 持续在后台采集；关闭此窗口不会停止采集。"
+                     Opacity="0.65" FontSize="12"/>
+        </StackPanel>
+        <Button Grid.Column="1" Content="隐藏" Command="{Binding CloseSettingsCommand}"/>
+      </Grid>
+    </Border>
+
+    <TabControl Grid.Row="1" Margin="16">
+      <TabItem Header="状态">
+        <ScrollViewer>
+          <StackPanel Spacing="12" Margin="4,12">
+            <Border Classes="card">
+              <StackPanel Spacing="4">
+                <TextBlock Text="当前活动" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding CurrentApp}" FontSize="20"/>
+              </StackPanel>
+            </Border>
+
+            <ItemsControl ItemsSource="{Binding OperationalNotices}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="warning-card" Margin="0,0,0,8">
+                    <StackPanel Spacing="4">
+                      <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                      <TextBlock Text="{Binding Message}" TextWrapping="Wrap"/>
+                      <TextBlock Text="{Binding Action}" Opacity="0.75"/>
+                      <TextBlock Text="{Binding Path}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap"/>
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Border Classes="card">
+              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
+                <TextBlock Text="更新" FontWeight="SemiBold"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                  <Button Content="检查更新" Command="{Binding CheckForUpdateCommand}"/>
+                  <Button Content="应用并重启" Command="{Binding ApplyUpdateCommand}"/>
+                </StackPanel>
+                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Margin="0,6,0,0"
+                           Text="{Binding UpdateState}"/>
+                <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding UpdateError}"
+                           Foreground="{DynamicResource SystemFillColorCriticalBrush}"/>
+                <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Text="{Binding UpdateCheckMessage}"/>
+              </Grid>
+            </Border>
+
+            <Border Classes="card">
+              <StackPanel Spacing="8">
+                <TextBlock Text="采集能力" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding CapabilityMessage}" TextWrapping="Wrap" Opacity="0.75"/>
+                <ItemsControl ItemsSource="{Binding Capabilities}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Grid ColumnDefinitions="160,*,Auto" Margin="0,4">
+                        <TextBlock Text="{Binding Name}"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Description}" Opacity="0.65" TextWrapping="Wrap"/>
+                        <TextBlock Grid.Column="2" Text="{Binding AvailabilityText}" FontWeight="SemiBold"/>
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+
+            <Border Classes="card">
+              <Grid RowDefinitions="Auto,*">
+                <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,0,8">
+                  <TextBlock Text="运行日志" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                  <Button Content="DBG" Command="{Binding SetLogLevelCommand}" CommandParameter="Debug"/>
+                  <Button Content="INF" Command="{Binding SetLogLevelCommand}" CommandParameter="Information"/>
+                  <Button Content="WRN" Command="{Binding SetLogLevelCommand}" CommandParameter="Warning"/>
+                  <Button Content="ERR" Command="{Binding SetLogLevelCommand}" CommandParameter="Error"/>
+                </StackPanel>
+                <TextBox Grid.Row="1" Text="{Binding LogText}" IsReadOnly="True"
+                         AcceptsReturn="True" TextWrapping="NoWrap" FontFamily="Consolas"
+                         MinHeight="180"/>
+              </Grid>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="采集器">
+        <ScrollViewer>
+          <ItemsControl ItemsSource="{Binding Collectors}" Margin="4,12">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border Classes="card" Margin="0,0,0,8">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="4">
+                      <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="{Binding Source}" FontSize="16" FontWeight="SemiBold"/>
+                        <TextBlock Text="内置" IsVisible="{Binding IsSystem}" Opacity="0.65"/>
+                      </StackPanel>
+                      <TextBlock Text="{Binding Description}" Opacity="0.7"/>
+                      <TextBlock Text="{Binding InteractionSignalDescription}"
+                                 IsVisible="{Binding IsSystem}" Opacity="0.7"/>
+                      <TextBlock Text="{Binding ActivityText}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Spacing="8" VerticalAlignment="Center">
+                      <CheckBox Content="启用" IsChecked="{Binding Enabled}"
+                                IsVisible="{Binding CanToggle}"/>
+                      <CheckBox Content="记录输入事件" IsChecked="{Binding RecordingEnabled}"
+                                IsVisible="{Binding CanToggleRecording}"/>
+                    </StackPanel>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="设置">
+        <ScrollViewer>
+          <StackPanel Spacing="10" Margin="4,12">
+            <Border Classes="card">
+              <Grid ColumnDefinitions="180,*">
+                <StackPanel>
+                  <TextBlock Text="API Key" FontWeight="SemiBold"/>
+                  <TextBlock Text="上传数据到 Analytics 的访问凭证" Opacity="0.65" TextWrapping="Wrap"/>
+                </StackPanel>
+                <TextBox Grid.Column="1" Text="{Binding ApiKey}"/>
+              </Grid>
+            </Border>
+            <Border Classes="card">
+              <Grid ColumnDefinitions="180,*">
+                <StackPanel>
+                  <TextBlock Text="设备名称" FontWeight="SemiBold"/>
+                  <TextBlock Text="此设备在报表中显示的名称" Opacity="0.65"/>
+                </StackPanel>
+                <TextBox Grid.Column="1" Text="{Binding DeviceName}"/>
+              </Grid>
+            </Border>
+            <Border Classes="card">
+              <Grid ColumnDefinitions="180,*">
+                <StackPanel>
+                  <TextBlock Text="上传间隔（分钟）" FontWeight="SemiBold"/>
+                  <TextBlock Text="必须是正整数" Opacity="0.65"/>
+                </StackPanel>
+                <TextBox Grid.Column="1" Text="{Binding UploadIntervalMinutes}" Width="100" HorizontalAlignment="Left"/>
+              </Grid>
+            </Border>
+            <Border Classes="card">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel>
+                  <TextBlock Text="登录时启动" FontWeight="SemiBold"/>
+                  <TextBlock Text="登录 Windows 后自动启动 Agent 并继续采集" Opacity="0.65"/>
+                </StackPanel>
+                <CheckBox Grid.Column="1" IsChecked="{Binding LoginStartEnabled}"/>
+              </Grid>
+            </Border>
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="{Binding SaveStatusMessage}" VerticalAlignment="Center"/>
+              <Button Grid.Column="1" Content="保存配置" Command="{Binding SaveConfigCommand}"/>
+            </Grid>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+    </TabControl>
+  </Grid>
+
+  <Window.Styles>
+    <Style Selector="Border.card">
+      <Setter Property="Padding" Value="16"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+    </Style>
+    <Style Selector="Border.warning-card">
+      <Setter Property="Padding" Value="14"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Background" Value="#33E5A000"/>
+      <Setter Property="BorderBrush" Value="#99E5A000"/>
+      <Setter Property="BorderThickness" Value="1"/>
+    </Style>
+  </Window.Styles>
+</Window>

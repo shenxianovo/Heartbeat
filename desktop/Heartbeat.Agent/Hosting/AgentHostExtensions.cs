@@ -43,7 +43,7 @@ namespace Heartbeat.Agent.Hosting
                 services.AddSingleton(guard);
             }
 
-            // ConfigManager（外部可注入已有实例，如 WPF 已创建）
+            // ConfigManager（外部可注入已有实例，如桌面 platform head 已创建）
             if (configManager != null)
             {
                 services.AddSingleton(configManager);

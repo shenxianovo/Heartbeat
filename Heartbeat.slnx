@@ -9,7 +9,9 @@
     <Project Path="desktop/Heartbeat.Agent.Tests/Heartbeat.Agent.Tests.csproj" />
     <Project Path="desktop/Heartbeat.Agent/Heartbeat.Agent.csproj" />
     <Project Path="desktop/Heartbeat.Agent.Runner/Heartbeat.Agent.Runner.csproj" />
-    <Project Path="desktop/Heartbeat.WPF/Heartbeat.WPF.csproj" />
+    <Project Path="desktop/Heartbeat.Desktop.UI.Tests/Heartbeat.Desktop.UI.Tests.csproj" />
+    <Project Path="desktop/Heartbeat.Desktop.UI/Heartbeat.Desktop.UI.csproj" />
+    <Project Path="desktop/Heartbeat.Desktop.Windows/Heartbeat.Desktop.Windows.csproj" />
   </Folder>
   <Folder Name="/server/">
     <Project Path="server/Heartbeat.Server.Tests/Heartbeat.Server.Tests.csproj" />

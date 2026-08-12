@@ -41,7 +41,7 @@ graph LR
 |---|---|
 | Backend | ASP.NET Core (.NET 10), EF Core, PostgreSQL |
 | Desktop Agent | .NET 10 (Windows), Generic Host, WinEvent Hooks (P/Invoke) |
-| Desktop GUI | WPF (.NET 10) |
+| Desktop GUI | Avalonia 12 (.NET 10) |
 | Collectors | Browser extension (TypeScript + Vite);vscode 等规划中 |
 | Frontend | Vue 3, TypeScript, Vite |
 | API Client | Auto-generated via OpenAPI / NSwag |
@@ -54,9 +54,10 @@ graph LR
 ```
 Heartbeat
 ├─ desktop
-│  ├─ Heartbeat.Agent/          # Monitoring & upload library     .NET Class Library
-│  ├─ Heartbeat.Agent.Runner/   # Console host                   .NET Console
-│  └─ Heartbeat.WPF/            # GUI host                       WPF
+│  ├─ Heartbeat.Agent/          # Windows adapters & Agent        .NET Class Library
+│  ├─ Heartbeat.Agent.Runner/   # Console host                    .NET Console
+│  ├─ Heartbeat.Desktop.UI/     # Shared desktop presentation     Avalonia
+│  └─ Heartbeat.Desktop.Windows/# Windows tray platform head      Avalonia
 ├─ collectors
 │  └─ browser/                  # Browser extension collector    TypeScript + Vite
 ├─ server

@@ -180,7 +180,7 @@ public class SegmentIngestRequestHandlerTests : IDisposable
     [Fact]
     public async Task GetConfig_ReflectsUserDisable()
     {
-        // 先发现，再由用户（WPF）停用，下次拉取应见 enabled:false（礼貌层据此自停）。
+        // 先发现，再由用户（共享桌面 UI）停用，下次拉取应见 enabled:false（礼貌层据此自停）。
         await _handler.HandleAsync("GET", "/v1/collectors/browser/config", Body(""));
         _config.Update(c => c.Collectors["browser"].Enabled = false);
 

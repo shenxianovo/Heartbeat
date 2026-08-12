@@ -71,7 +71,7 @@ system 在数据模型上是 Collector 之一（ADR-017），但"模型统一"�
 - [`desktop/Heartbeat.Agent/Services/SegmentIngestRequestHandler.cs`](../../desktop/Heartbeat.Agent/Services/SegmentIngestRequestHandler.cs) — GET config 路由 + 403 强制层（§2、§4）
 - [`desktop/Heartbeat.Agent/Services/ICollectionStatus.cs`](../../desktop/Heartbeat.Agent/Services/ICollectionStatus.cs) — SourceLastSeen，Active 数据源（§3）
 - [`collectors/browser/src/background.ts`](../../collectors/browser/src/background.ts) — flush 周期 30s（§3），需新增 GET config + enabled 尊重（§4）
-- [`desktop/Heartbeat.WPF/MainWindow.xaml`](../../desktop/Heartbeat.WPF/MainWindow.xaml) — 采集器栏 UI（§5）
-- [`desktop/Heartbeat.WPF/ViewModels/MainViewModel.cs`](../../desktop/Heartbeat.WPF/ViewModels/MainViewModel.cs) — 采集器栏 VM（§5）
+- [`desktop/Heartbeat.Desktop.UI/Views/MainWindow.axaml`](../../desktop/Heartbeat.Desktop.UI/Views/MainWindow.axaml) — 当前共享 Avalonia 采集器栏 UI（§5）
+- [`desktop/Heartbeat.Desktop.UI/ViewModels/MainViewModel.cs`](../../desktop/Heartbeat.Desktop.UI/ViewModels/MainViewModel.cs) — 当前共享采集器栏 ViewModel（§5）
 - Builds on [ADR-017](./017-activity-segment-pluggable-collectors.md) — pluggable collectors；§5 推迟的 SDK/packaging 即此处的市场愿景
 - Builds on [ADR-021](./021-hub-read-model-presence-heartbeat.md) — SourceLastSeen 读模型；Active 机制

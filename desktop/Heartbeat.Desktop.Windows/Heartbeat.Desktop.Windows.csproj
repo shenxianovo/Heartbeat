@@ -1,31 +1,32 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <UseWPF>true</UseWPF>
+    <RootNamespace>Heartbeat.Desktop.Windows</RootNamespace>
+    <AssemblyName>Heartbeat.Desktop.Windows</AssemblyName>
     <ApplicationIcon>heartbeat.ico</ApplicationIcon>
-    <StartupObject>Heartbeat.WPF.Program</StartupObject>
+    <StartupObject>Heartbeat.Desktop.Windows.Program</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>
-    <Resource Include="heartbeat.ico" />
+    <AvaloniaResource Include="heartbeat.ico" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
-    <PackageReference Include="H.NotifyIcon.Wpf" Version="2.4.1" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
     <PackageReference Include="Serilog" Version="4.3.1" />
     <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
-    <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
     <PackageReference Include="Velopack" Version="1.2.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Heartbeat.Agent\Heartbeat.Agent.csproj" />
+    <ProjectReference Include="..\Heartbeat.Desktop.UI\Heartbeat.Desktop.UI.csproj" />
   </ItemGroup>
 
 </Project>

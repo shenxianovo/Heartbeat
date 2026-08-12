@@ -33,7 +33,7 @@ jobs:
 
       - name: Publish
         run: |
-          dotnet publish desktop/Heartbeat.WPF/Heartbeat.WPF.csproj `
+          dotnet publish desktop/Heartbeat.Desktop.Windows/Heartbeat.Desktop.Windows.csproj `
             -c Release `
             -r ${{ matrix.rid }} `
             --self-contained `
@@ -60,7 +60,7 @@ jobs:
             --packId Heartbeat `
             --packVersion ${{ steps.version.outputs.version }} `
             --packDir publish `
-            --mainExe Heartbeat.WPF.exe `
+            --mainExe Heartbeat.Desktop.Windows.exe `
             --runtime ${{ matrix.rid }} `
             --channel ${{ matrix.rid }} `
             --outputDir releases

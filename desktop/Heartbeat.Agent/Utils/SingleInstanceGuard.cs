@@ -4,7 +4,7 @@ namespace Heartbeat.Agent.Utils
 {
     /// <summary>
     /// 单实例守卫：确保同一时刻只有一个 Heartbeat 客户端在运行。
-    /// WPF 和 Console Runner 都通过 Agent 注册服务，因此在 Agent 层统一处理。
+    /// 桌面 platform head 和 Console Runner 都通过 Agent 注册服务，因此在 Agent 层统一处理。
     /// </summary>
     public sealed class SingleInstanceGuard : IDisposable
     {

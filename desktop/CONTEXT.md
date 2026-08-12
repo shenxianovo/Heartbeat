@@ -5,7 +5,7 @@
 ## Language
 
 **Agent**:
-后台采集引擎，兼任本机 ingest hub（ADR-017）：监听窗口切换生成 system 段，接收各 Collector 经 loopback 推送的插件段，统一缓存与上传。hub 同时维护集面读模型（Current Activity + per-Source last-seen），是 WPF 与 Heartbeat 的唯一读表面（ADR-021）。
+后台采集引擎，兼任本机 ingest hub（ADR-017）：监听窗口切换生成 system 段，接收各 Collector 经 loopback 推送的插件段，统一缓存与上传。hub 同时维护集面读模型（Current Activity + per-Source last-seen），是桌面 UI 与 Heartbeat 的唯一读表面（ADR-021）。
 _Avoid_: Service, Worker（这些是 Agent 内部的实现层）
 
 **Collector（采集器）**:
@@ -24,7 +24,7 @@ _Avoid_: UploadService（退役的三份同构模板）、Upload Channel（ADR-0
 从流量推断：某 Source 最近一段时间内向 hub POST 过即为 Active。机制为 hub 读模型的 per-Source last-seen（`Accept` 时刻戳，ADR-021）。新鲜度窗口不是魔法常量，而从采集器自报的 flush 周期派生（窗口 = 3× flushPeriodMs，容一次丢失 flush + 一次重试）；采集器未报时回落默认。无心跳协议——"活跃"回答的是"数据管道通不通"，浏览器没开时 browser 采集器显示为不活跃是诚实的。
 
 **Collector Registry（采集器注册表）**:
-hub 持久化的采集器账本（存于 config.json 的 `collectors`，与 ApiKey 等同类本机配置）：`source → {enabled, flushPeriodMs}`。**"已安装"即在注册表中**——采集器首次 `GET /v1/collectors/{source}/config` 时被 hub 自动记入（自动发现），浏览器关闭或 Agent 重启都不丢。两个写入方：采集器（注册、报 flushPeriodMs）与用户（翻 enabled，经 WPF）。未来采集器市场时代的"已安装"只是账本多一个来源（catalog 装的 vs 开发者自装的），账本形状不变（ADR-017 §5 推迟的 SDK/packaging）。
+hub 持久化的采集器账本（存于 config.json 的 `collectors`，与 ApiKey 等同类本机配置）：`source → {enabled, flushPeriodMs}`。**"已安装"即在注册表中**——采集器首次 `GET /v1/collectors/{source}/config` 时被 hub 自动记入（自动发现），浏览器关闭或 Agent 重启都不丢。两个写入方：采集器（注册、报 flushPeriodMs）与用户（在共享 Avalonia UI 翻 enabled）。未来采集器市场时代的"已安装"只是账本多一个来源（catalog 装的 vs 开发者自装的），账本形状不变（ADR-017 §5 推迟的 SDK/packaging）。
 _Avoid_: 心跳注册、清单（manifest）
 
 **Current Activity（当前活动）**:
@@ -40,10 +40,10 @@ _Avoid_: Status Upload（旧名，只描述了周期维度）
 _Avoid_: InputEvent（后者是持久化并上传的事实流）
 
 **Deactivate（停用采集器）**:
-用户在 WPF 翻 enabled=false，双层执行。**礼貌层（采集器侧）**：采集器 `GET /v1/collectors/{source}/config` 见 `enabled:false` 主动停采（省流量）。**强制层（hub 侧）**：hub 对被停用 Source 的 `POST /v1/segments` 返回 403，段被丢弃——这是 loopback 无鉴权信任模型下唯一的准入闸门，采集器有 bug/第三方/装死时的兜底，不可省。Agent 够不着其他进程里的采集器，"停用"永远是 hub 侧行为。config 下行本版仅 `{enabled}`，设置项字段将来往响应里加（不引入 schema registry，ADR-017 §5）。采集器管理 UI 位于 WPF（本机采集层事实，不进 Dashboard）。
+用户在共享桌面 UI 翻 enabled=false，双层执行。**礼貌层（采集器侧）**：采集器 `GET /v1/collectors/{source}/config` 见 `enabled:false` 主动停采（省流量）。**强制层（hub 侧）**：hub 对被停用 Source 的 `POST /v1/segments` 返回 403，段被丢弃——这是 loopback 无鉴权信任模型下唯一的准入闸门，采集器有 bug/第三方/装死时的兜底，不可省。Agent 够不着其他进程里的采集器，"停用"永远是 hub 侧行为。config 下行本版仅 `{enabled}`，设置项字段将来往响应里加（不引入 schema registry，ADR-017 §5）。采集器管理 UI 位于共享 Avalonia presentation（本机采集层事实，不进 Dashboard）。
 
 **采集器栏（Collector panel）**:
-WPF 左侧导航新增栏，逐采集器展示 **Active**（管道通不通，只读）与 **enabled**（用户开关），并容纳采集器设置。可管理性**分级**：plugin 采集器条目带 enable 开关；system 采集器不可停用，但提供独立的 InputEvent Recording 开关，关闭后 hook 与 Interaction Signal 仍运行，durable input buffer/cache 不再 drain。条目模型 = 身份 + Active + 零或多个控件，天然容纳两类。
+共享 Avalonia UI 的采集器栏逐采集器展示 **Active**（管道通不通，只读）与 **enabled**（用户开关），并容纳采集器设置。可管理性**分级**：外部采集器条目带 enable 开关；system 采集器不可停用，但提供独立的 InputEvent Recording 开关，关闭后 hook 与 Interaction Signal 仍运行，durable input buffer/cache 不再 drain。条目模型 = 身份 + Active + 零或多个控件，天然容纳两类。
 
 **Setup**:
 Velopack 生成的安装器（Setup.exe），用户首次安装时下载运行。
@@ -63,7 +63,8 @@ _Avoid_: Upgrade, Patch; Pending Update（旧名，混淆了"发现"与"已下�
 - **Agent** 在应用生命周期内持续运行，**Update** 需重启应用才能生效
 - `Heartbeat.Hub.Core` 提供纯 .NET 的 hub 运行时（loopback ingest、Collector Registry/declaration、认证客户端、段缓冲、Current Activity、Upload Stream、presence 与缓存 seam），可由桌面或无头 host 组合，不依赖桌面采集或 UI
 - `Heartbeat.Desktop.Core` 消费 App 激活、focused-window 切换、同窗标题变化与 away 等语义观察，产出 system ActivitySegment；平台 adapter 不把原生回调形状泄漏进状态机
-- `Heartbeat.Agent` 是当前 Windows platform head/adapter 集合，负责 Win32 观察、MachineGuid、图标、自启动及与 WPF host 的组合
+- `Heartbeat.Agent` 是 Windows adapter 集合，负责 Win32 观察、MachineGuid、图标与自启动；`Heartbeat.Desktop.Windows` 是 Windows platform head，组合 Agent、共享 Avalonia UI、托盘与 Velopack Update
+- `Heartbeat.Desktop.UI` 是共享 Avalonia presentation module；ViewModel 只依赖 platform-head seam，可在不创建原生窗口时测试
 
 ## Flagged ambiguities
 

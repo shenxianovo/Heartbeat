@@ -45,7 +45,8 @@ overrides the upload target **for that process only, without touching config.jso
 $env:HEARTBEAT_API_BASE_URL = "http://localhost:8080"
 # then launch the Agent from the same shell:
 dotnet run --project desktop/Heartbeat.Agent.Runner
-# or run Heartbeat.WPF from this shell
+# or run the Avalonia Windows desktop head from this shell:
+dotnet run --project desktop/Heartbeat.Desktop.Windows
 ```
 
 Closing the shell reverts everything — no config to restore. Use the keyboard, switch

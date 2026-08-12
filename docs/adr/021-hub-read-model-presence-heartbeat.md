@@ -64,7 +64,7 @@
 - `desktop/Heartbeat.Agent/Services/SegmentIngestService.cs` — hub：段缓冲 + 集面读模型（§1）
 - `desktop/Heartbeat.Agent/Services/AppMonitorService.cs` — 卸下状态发布，转场点推 Current Activity（§1）
 - `desktop/Heartbeat.Agent/Workers/StatusUploadWorker.cs` — 周期 keepalive + 订阅变更即推（§2）
-- `desktop/Heartbeat.WPF/MainViewModel.cs` — 改消费 hub 读模型（§1）
+- [`desktop/Heartbeat.Desktop.UI/ViewModels/MainViewModel.cs`](../../desktop/Heartbeat.Desktop.UI/ViewModels/MainViewModel.cs) — 共享 Avalonia presentation 消费 hub 读模型（§1）
 - `shared/Heartbeat.Core/DTOs/Devices/DeviceStatusResponse.cs` — 在线窗口 30s→90s，魔数变显式常量（§2）
 - Amends [ADR-020](./020-system-collector-through-hub.md) §5 —— StatusUploadWorker 数据源从具体采集器改为 hub 读模型；"presence 无缓存"立场不变
 - [ADR-014](./014-away-detection-display-sleep.md) —— away 状态在读模型中原样暴露
