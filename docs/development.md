@@ -23,10 +23,22 @@ Copy-Item .env.local.example .env.local
 # .env.local is gitignored; the defaults already point at the real Auth platform.
 ```
 
+macOS/Linux:
+
+```bash
+cp .env.local.example .env.local
+```
+
 ### 2. Start the local stack
 
 ```powershell
 ./scripts/start-local.ps1
+```
+
+macOS/Linux:
+
+```bash
+./scripts/start-local.sh
 ```
 
 - Frontend + API: <http://localhost:8080> (nginx reverse-proxies `/api/` to the backend)
@@ -51,6 +63,13 @@ dotnet run --project desktop/Heartbeat.Desktop.Windows
 
 Closing the shell reverts everything — no config to restore. Use the keyboard, switch
 windows, then open <http://localhost:8080>; data should appear within an upload interval.
+
+On macOS, launch the Avalonia menu-bar app from the same shell:
+
+```bash
+export HEARTBEAT_API_BASE_URL=http://localhost:8080
+dotnet run --project desktop/Heartbeat.Desktop.Mac/Heartbeat.Desktop.Mac.csproj
+```
 
 ### 4. Regenerate the API client (when server DTOs/endpoints changed)
 
@@ -131,6 +150,12 @@ Run the script without arguments and follow its prompts. The remote directory de
 ./scripts/refresh-local-data.ps1
 ```
 
+macOS/Linux:
+
+```bash
+./scripts/refresh-local-data.sh
+```
+
 Command-line parameters remain available for repeatable runs:
 
 ```powershell
@@ -139,14 +164,24 @@ Command-line parameters remain available for repeatable runs:
   -RemoteDirectory /srv/heartbeat
 ```
 
-`-RemoteDir` is accepted as a shorter alias for `-RemoteDirectory`. For a non-default SSH key or
+macOS/Linux:
+
+```bash
+./scripts/refresh-local-data.sh \
+  --ssh-destination user@your-server \
+  --remote-directory /srv/heartbeat
+```
+
+`-RemoteDir` is accepted as a shorter alias for `-RemoteDirectory`; the shell equivalent is
+`--remote-dir`. For a non-default SSH key or
 port, add `-IdentityFile ~/.ssh/id_ed25519` or `-SshPort 2222`. If key authentication is unavailable,
 OpenSSH prompts for the account password during step 1; the password is not echoed, stored, or passed
 as a command-line argument.
+The shell script uses the equivalent `--identity-file` and `--ssh-port` options.
 The operation is deliberately one-way and replaces **only** `.local/postgres-data`;
 it never writes to the server database. `pg_dump` provides a transaction-consistent snapshot while
 the server remains online. The temporary custom-format dump is deleted after restore unless
-`-KeepDump` is explicitly supplied.
+`-KeepDump` (PowerShell) or `--keep-dump` (shell) is explicitly supplied.
 
 Do not connect a local backend directly to production PostgreSQL: local migrations and test writes
 would then act on production. Do not copy Docker's raw Postgres volume either; logical dumps are

@@ -21,7 +21,7 @@ services:
       POSTGRES_PASSWORD: devlocal
       POSTGRES_DB: heartbeat
     volumes:
-      # 左侧是 Windows/Linux 宿主机上的项目目录；右侧是容器内 PostgreSQL 固定路径。
+      # 左侧是 Windows/macOS/Linux 宿主机上的项目目录；右侧是容器内 PostgreSQL 固定路径。
       - ./.local/postgres-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U heartbeat"]
