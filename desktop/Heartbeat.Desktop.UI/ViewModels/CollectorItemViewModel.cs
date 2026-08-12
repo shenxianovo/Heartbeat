@@ -8,6 +8,7 @@ public partial class CollectorItemViewModel : ObservableObject
     private readonly Action<bool>? _setRecordingEnabled;
     private bool _suppressEnabled;
     private bool _suppressRecording;
+    private bool _interactionSignalAvailable = true;
 
     public CollectorItemViewModel(
         string source,
@@ -24,9 +25,11 @@ public partial class CollectorItemViewModel : ObservableObject
     public string Source { get; }
     public bool IsSystem { get; }
     public bool CanToggle => !IsSystem;
-    public bool CanToggleRecording => IsSystem;
+    public bool CanToggleRecording { get; private set; }
     public string InteractionSignalDescription => IsSystem
-        ? "仅本地，不保存、不上传"
+        ? _interactionSignalAvailable
+            ? "仅本地，不保存、不上传"
+            : "App-only 模式下不可用"
         : string.Empty;
 
     [ObservableProperty]
@@ -75,6 +78,14 @@ public partial class CollectorItemViewModel : ObservableObject
         _suppressRecording = true;
         RecordingEnabled = value;
         _suppressRecording = false;
+    }
+
+    public void SetSystemCapabilities(bool interactionSignalAvailable, bool inputRecordingAvailable)
+    {
+        _interactionSignalAvailable = interactionSignalAvailable;
+        CanToggleRecording = IsSystem && inputRecordingAvailable;
+        OnPropertyChanged(nameof(InteractionSignalDescription));
+        OnPropertyChanged(nameof(CanToggleRecording));
     }
 
     partial void OnRecordingEnabledChanged(bool value)

@@ -199,6 +199,32 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public void MacAppOnlyCapability_DoesNotOfferInputRecordingOrClaimInteractionSignal()
+    {
+        var state = new FakeDesktopState
+        {
+            Current = DesktopStateSnapshot.Empty with
+            {
+                Settings = DesktopSettingsSnapshot.Default with
+                {
+                    InputEventRecordingEnabled = false
+                },
+                Capabilities = DesktopCapabilitySnapshot.MacAppOnly
+            }
+        };
+
+        using var viewModel = TestViewModel.Create(state);
+
+        var system = Assert.Single(viewModel.Collectors, item => item.IsSystem);
+        Assert.False(system.CanToggleRecording);
+        Assert.Equal("App-only 模式下不可用", system.InteractionSignalDescription);
+        Assert.Contains(viewModel.Capabilities, item =>
+            item.Name == "前台应用" && item.Availability == CapabilityAvailability.Available);
+        Assert.Contains(viewModel.Capabilities, item =>
+            item.Name == "窗口活动" && item.Availability == CapabilityAvailability.Unavailable);
+    }
+
+    [Fact]
     public void LogPresentation_FiltersExistingEntriesByTheSelectedLevel()
     {
         var logs = new FakeLogFeed(

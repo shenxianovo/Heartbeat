@@ -4,6 +4,8 @@
     <Project Path="desktop/Heartbeat.Agent.Mac/Heartbeat.Agent.Mac.csproj" />
     <Project Path="desktop/Heartbeat.Desktop.Core.Tests/Heartbeat.Desktop.Core.Tests.csproj" />
     <Project Path="desktop/Heartbeat.Desktop.Core/Heartbeat.Desktop.Core.csproj" />
+    <Project Path="desktop/Heartbeat.Desktop.Mac.Tests/Heartbeat.Desktop.Mac.Tests.csproj" />
+    <Project Path="desktop/Heartbeat.Desktop.Mac/Heartbeat.Desktop.Mac.csproj" />
     <Project Path="desktop/Heartbeat.Hub.Core.Tests/Heartbeat.Hub.Core.Tests.csproj" />
     <Project Path="desktop/Heartbeat.Hub.Core/Heartbeat.Hub.Core.csproj" />
     <Project Path="desktop/Heartbeat.Agent.Tests/Heartbeat.Agent.Tests.csproj" />

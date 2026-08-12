@@ -39,6 +39,13 @@ public sealed record DesktopCapabilitySnapshot(
         CapabilityAvailability.Available,
         CapabilityAvailability.Available,
         CapabilityAvailability.Available);
+
+    public static DesktopCapabilitySnapshot MacAppOnly { get; } = new(
+        CapabilityAvailability.Available,
+        CapabilityAvailability.Unavailable,
+        CapabilityAvailability.Unavailable,
+        CapabilityAvailability.Unavailable,
+        "App-only 模式无需 Accessibility 或 Input Monitoring；更深采集能力当前未启用。");
 }
 
 public sealed record DesktopStateSnapshot(

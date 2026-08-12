@@ -269,7 +269,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
 
             if (item.IsSystem)
+            {
+                item.SetSystemCapabilities(
+                    snapshot.Capabilities.InteractionSignal == CapabilityAvailability.Available,
+                    snapshot.Capabilities.InputEventRecording == CapabilityAvailability.Available);
                 item.SetRecordingEnabledSilently(snapshot.Settings.InputEventRecordingEnabled);
+            }
             if (snapshot.Collectors.TryGetValue(source, out var registration))
                 item.SetEnabledSilently(registration.Enabled);
         }
