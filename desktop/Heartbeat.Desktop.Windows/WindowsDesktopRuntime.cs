@@ -1,11 +1,13 @@
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
+using System.Runtime.InteropServices;
 using Heartbeat.Agent.Configuration;
 using Heartbeat.Agent.Utils;
 using Heartbeat.Desktop.UI.Logging;
 using Heartbeat.Desktop.UI.Presentation;
 using Heartbeat.Desktop.UI.Views;
+using Heartbeat.Desktop.Update;
 using Heartbeat.Hub.Core.Http;
 using Heartbeat.Hub.Core.Presence;
 using Heartbeat.Hub.Core.Upload;
@@ -41,12 +43,15 @@ public sealed class WindowsDesktopRuntime : IWindowController, IAsyncDisposable
             host.Services.GetRequiredService<IAutoStartService>(),
             host.Services.GetRequiredService<IClientCompatibilityStatus>(),
             host.Services.GetRequiredService<IUploadStatus>());
-        Updates = new WindowsUpdateController(PrepareForUpdateAsync);
+        var channel = RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+            ? "win-arm64"
+            : "win-x64";
+        Updates = new VelopackUpdateController(channel, PrepareForUpdateAsync);
         Updates.Start();
     }
 
     public WindowsDesktopState DesktopState { get; }
-    public WindowsUpdateController Updates { get; }
+    public VelopackUpdateController Updates { get; }
     public RingBufferSink LogFeed { get; }
     public bool IsShutdownPrepared => Volatile.Read(ref _stopped) != 0;
 
@@ -83,8 +88,8 @@ public sealed class WindowsDesktopRuntime : IWindowController, IAsyncDisposable
         });
         _guard.Dispose();
 
-        if (!Updates.ApplyOnExitIfReady())
-            await Dispatcher.UIThread.InvokeAsync(() => _lifetime?.Shutdown());
+        Updates.ScheduleOnExitIfReady();
+        await Dispatcher.UIThread.InvokeAsync(() => _lifetime?.Shutdown());
     }
 
     private async Task PrepareForUpdateAsync()
@@ -94,6 +99,7 @@ public sealed class WindowsDesktopRuntime : IWindowController, IAsyncDisposable
         {
             if (_window != null) _window.AllowClose = true;
             _trayIcon?.Dispose();
+            _lifetime?.Shutdown();
         });
         _guard.Dispose();
     }

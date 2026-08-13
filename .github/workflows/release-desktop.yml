@@ -4,11 +4,10 @@ on:
   push:
     tags: ['v*']
 
-permissions:
-  contents: write
-
 jobs:
   build:
+    permissions:
+      contents: read
     strategy:
       matrix:
         include:
@@ -71,9 +70,186 @@ jobs:
           name: releases-${{ matrix.arch }}
           path: releases/*
 
+  macos-release:
+    runs-on: macos-15
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Run macOS desktop tests
+        run: dotnet test desktop/Heartbeat.Desktop.Mac.Tests/Heartbeat.Desktop.Mac.Tests.csproj -c Release
+
+      - name: Publish Apple Silicon application
+        run: |
+          dotnet publish desktop/Heartbeat.Desktop.Mac/Heartbeat.Desktop.Mac.csproj \
+            -c Release \
+            -r osx-arm64 \
+            --self-contained \
+            -p:Version=${{ steps.version.outputs.version }} \
+            -o publish-macos
+
+      - name: Install Velopack CLI
+        run: dotnet tool install -g vpk --version 1.2.0
+
+      - name: Install signing certificates and notarization profile
+        shell: bash
+        env:
+          APP_CERTIFICATE_BASE64: ${{ secrets.MACOS_APP_CERTIFICATE_BASE64 }}
+          INSTALLER_CERTIFICATE_BASE64: ${{ secrets.MACOS_INSTALLER_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          SIGNING_DIR="$RUNNER_TEMP/heartbeat-signing"
+          KEYCHAIN_PATH="$RUNNER_TEMP/heartbeat-signing.keychain-db"
+          mkdir -p "$SIGNING_DIR"
+          printf '%s' "$APP_CERTIFICATE_BASE64" | base64 --decode > "$SIGNING_DIR/application.p12"
+          printf '%s' "$INSTALLER_CERTIFICATE_BASE64" | base64 --decode > "$SIGNING_DIR/installer.p12"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$SIGNING_DIR/application.p12" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security import "$SIGNING_DIR/installer.p12" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          xcrun notarytool store-credentials heartbeat-ci \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --keychain "$KEYCHAIN_PATH" \
+            --validate
+
+      # 首次 macOS Release 没有 diff 基线；允许退化为完整包。
+      - name: Download previous macOS release for delta baseline
+        continue-on-error: true
+        run: |
+          vpk download github \
+            --repoUrl https://github.com/${{ github.repository }} \
+            --token ${{ secrets.GITHUB_TOKEN }} \
+            --channel osx-arm64-stable \
+            --outputDir releases-macos
+
+      - name: Pack, sign, and notarize macOS Release
+        run: |
+          vpk pack \
+            --packId Heartbeat \
+            --packVersion ${{ steps.version.outputs.version }} \
+            --packDir publish-macos \
+            --mainExe Heartbeat.Desktop.Mac \
+            --packTitle Heartbeat \
+            --runtime osx-arm64 \
+            --channel osx-arm64-stable \
+            --bundleId com.shenxianovo.heartbeat \
+            --icon "$GITHUB_WORKSPACE/desktop/Heartbeat.Desktop.Mac/heartbeat.icns" \
+            --instWelcome "$GITHUB_WORKSPACE/desktop/Heartbeat.Desktop.Mac/macos/INSTALL.txt" \
+            --signAppIdentity "${{ vars.MACOS_APP_SIGN_IDENTITY }}" \
+            --signEntitlements "$GITHUB_WORKSPACE/desktop/Heartbeat.Desktop.Mac/macos/Heartbeat.entitlements" \
+            --notaryProfile heartbeat-ci \
+            --keychain "$RUNNER_TEMP/heartbeat-signing.keychain-db" \
+            --outputDir releases-macos
+
+      - name: Constrain Setup to per-user installation
+        shell: bash
+        run: |
+          SETUP_PATH="releases-macos/Heartbeat-osx-arm64-stable-Setup.pkg"
+          SETUP_WORK="$RUNNER_TEMP/heartbeat-per-user-setup"
+          mkdir -p "$SETUP_WORK"
+          pkgutil --expand "$SETUP_PATH" "$SETUP_WORK/expanded"
+          sed -i '' 's/enable_localSystem="true"/enable_localSystem="false"/' "$SETUP_WORK/expanded/Distribution"
+          grep -q 'enable_currentUserHome="true"' "$SETUP_WORK/expanded/Distribution"
+          grep -q 'enable_localSystem="false"' "$SETUP_WORK/expanded/Distribution"
+          pkgutil --flatten "$SETUP_WORK/expanded" "$SETUP_WORK/unsigned.pkg"
+          productsign \
+            --sign "${{ vars.MACOS_INSTALLER_SIGN_IDENTITY }}" \
+            --keychain "$RUNNER_TEMP/heartbeat-signing.keychain-db" \
+            "$SETUP_WORK/unsigned.pkg" \
+            "$SETUP_WORK/signed.pkg"
+          mv "$SETUP_WORK/signed.pkg" "$SETUP_PATH"
+          xcrun notarytool submit "$SETUP_PATH" \
+            --keychain-profile heartbeat-ci \
+            --keychain "$RUNNER_TEMP/heartbeat-signing.keychain-db" \
+            --wait
+          xcrun stapler staple "$SETUP_PATH"
+
+      - name: Verify macOS Release
+        shell: bash
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          test -f releases-macos/Heartbeat-osx-arm64-stable-Setup.pkg
+          test -f releases-macos/Heartbeat-osx-arm64-stable-Portable.zip
+          test -f releases-macos/releases.osx-arm64-stable.json
+          test -f releases-macos/RELEASES-osx-arm64-stable
+          ls releases-macos/Heartbeat-*-osx-arm64-stable-full.nupkg >/dev/null
+
+          VERIFY_DIR="$RUNNER_TEMP/heartbeat-release-verification"
+          mkdir -p "$VERIFY_DIR/app" "$VERIFY_DIR/pkg"
+          ditto -x -k releases-macos/Heartbeat-osx-arm64-stable-Portable.zip "$VERIFY_DIR/app"
+          APP_PATH="$VERIFY_DIR/app/Heartbeat.app"
+          APP_EXECUTABLE="$APP_PATH/Contents/MacOS/Heartbeat.Desktop.Mac"
+
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Contents/Info.plist")" = "com.shenxianovo.heartbeat"
+          file "$APP_EXECUTABLE" | grep -q 'Mach-O 64-bit executable arm64'
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          codesign -d --verbose=4 "$APP_PATH" 2> "$VERIFY_DIR/signing.txt"
+          grep -q 'Authority=Developer ID Application' "$VERIFY_DIR/signing.txt"
+          grep -q "TeamIdentifier=$APPLE_TEAM_ID" "$VERIFY_DIR/signing.txt"
+          grep -q 'flags=.*runtime' "$VERIFY_DIR/signing.txt"
+          codesign -d --entitlements :- "$APP_PATH" > "$VERIFY_DIR/actual-entitlements.plist"
+          plutil -extract com.apple.security.cs.allow-jit raw "$VERIFY_DIR/actual-entitlements.plist" | grep -q true
+          plutil -extract com.apple.security.cs.allow-unsigned-executable-memory raw "$VERIFY_DIR/actual-entitlements.plist" | grep -q true
+          plutil -extract com.apple.security.cs.allow-dyld-environment-variables raw "$VERIFY_DIR/actual-entitlements.plist" | grep -q true
+          plutil -extract com.apple.security.cs.disable-library-validation raw "$VERIFY_DIR/actual-entitlements.plist" | grep -q true
+          ! plutil -extract com.apple.security.app-sandbox raw "$VERIFY_DIR/actual-entitlements.plist"
+          ! plutil -extract com.apple.security.automation.apple-events raw "$VERIFY_DIR/actual-entitlements.plist"
+          spctl --assess --type execute --verbose=2 "$APP_PATH"
+          xcrun stapler validate "$APP_PATH"
+
+          pkgutil --check-signature releases-macos/Heartbeat-osx-arm64-stable-Setup.pkg | grep -q 'Developer ID Installer'
+          spctl --assess --type install --verbose=2 releases-macos/Heartbeat-osx-arm64-stable-Setup.pkg
+          xcrun stapler validate releases-macos/Heartbeat-osx-arm64-stable-Setup.pkg
+          pkgutil --expand releases-macos/Heartbeat-osx-arm64-stable-Setup.pkg "$VERIFY_DIR/pkg"
+          grep -q 'enable_currentUserHome="true"' "$VERIFY_DIR/pkg/Distribution"
+          grep -q 'enable_localSystem="false"' "$VERIFY_DIR/pkg/Distribution"
+          grep -q 'id="com.shenxianovo.heartbeat"' "$VERIFY_DIR/pkg/Distribution"
+          grep -q 'Heartbeat-.*-osx-arm64-stable-full.nupkg' releases-macos/releases.osx-arm64-stable.json
+
+      - name: Upload macOS Release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: releases-macos-arm64
+          path: releases-macos/*
+
+      - name: Remove temporary signing material
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          security delete-keychain "$RUNNER_TEMP/heartbeat-signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/heartbeat-signing/application.p12"
+          rm -f "$RUNNER_TEMP/heartbeat-signing/installer.p12"
+          rmdir "$RUNNER_TEMP/heartbeat-signing" 2>/dev/null || true
+
   release:
-    needs: build
+    needs: [build, macos-release]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:

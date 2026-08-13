@@ -1,0 +1,5 @@
+Heartbeat is a per-user menu-bar application.
+
+This Setup installs Heartbeat under ~/Applications. Ordinary Updates can replace the app there without an administrator prompt.
+
+After installation, Heartbeat launches automatically and continues collecting while its settings window is closed.

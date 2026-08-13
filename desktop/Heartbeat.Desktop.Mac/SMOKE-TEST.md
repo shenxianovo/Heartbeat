@@ -1,6 +1,6 @@
-# macOS App-only smoke test
+# macOS smoke test
 
-This smoke test covers Issue 09 only. It must not request Accessibility or Input Monitoring.
+The App-only sections cover Issue 09 and must not request Accessibility or Input Monitoring. The Release sections cover Issue 10 and should be run only after all implementation issues are complete and a signed candidate has been published for end-to-end verification.
 
 For UI inspection, set `HEARTBEAT_SHOW_SETTINGS_ON_START=1` to open the window on launch.
 Set `HEARTBEAT_THEME_OVERRIDE=Light|Dark|System` to inspect a theme without changing user config.
@@ -50,3 +50,27 @@ Do not use a soft-idle timeout as a substitute for these checks.
 ## Permission regression
 
 After first launch and all App-only checks, confirm Heartbeat has not appeared as a newly requested app in either Accessibility or Input Monitoring privacy settings. No TCC prompt should have appeared.
+
+## Signed Release artifacts
+
+Run these checks against the GitHub Release candidate on a clean Apple Silicon Mac:
+
+1. Confirm the Release contains `Heartbeat-osx-arm64-stable-Setup.pkg`, `Heartbeat-osx-arm64-stable-Portable.zip`, a full `.nupkg`, `releases.osx-arm64-stable.json`, and `RELEASES-osx-arm64-stable` alongside the Windows artifacts.
+2. Run `pkgutil --check-signature Heartbeat-osx-arm64-stable-Setup.pkg` and confirm a Developer ID Installer identity.
+3. Run `spctl --assess --type install --verbose=2 Heartbeat-osx-arm64-stable-Setup.pkg` and `xcrun stapler validate Heartbeat-osx-arm64-stable-Setup.pkg`; both must pass.
+4. Install for the current user. Confirm the app is under `~/Applications/Heartbeat.app` and installation does not request administrator credentials.
+5. Confirm `CFBundleIdentifier` is `com.shenxianovo.heartbeat`, the main executable is arm64, and `codesign --verify --deep --strict --verbose=2 ~/Applications/Heartbeat.app` passes.
+6. Run `spctl --assess --type execute --verbose=2 ~/Applications/Heartbeat.app` and `xcrun stapler validate ~/Applications/Heartbeat.app`; both must pass.
+7. Launch from Finder and confirm Gatekeeper shows no untrusted-app warning.
+
+Record the bundle identifier and the Developer ID Application authority; the Update check below must produce the same values.
+
+## Update and permission continuity
+
+1. Install the previous signed stable version for the current user and complete the App-only checks above while collection is active.
+2. Publish a newer signed candidate to the `osx-arm64-stable` channel.
+3. Check for updates and confirm `UpdateAvailable → Downloading → ReadyToApply` while Current Activity and segment collection continue changing.
+4. Confirm Apply remains unavailable before `ReadyToApply`.
+5. Apply the Update. Confirm the Agent stops only at this point, the app relaunches into the new version, and collection resumes.
+6. Confirm the updated app remains under `~/Applications`, no administrator prompt appeared, and its bundle identifier and Developer ID Application authority match the previous version.
+7. Confirm login start still points into the same bundle, App-only operation still produces no new TCC prompt, existing settings/caches remain readable, and queued segments upload once after relaunch.

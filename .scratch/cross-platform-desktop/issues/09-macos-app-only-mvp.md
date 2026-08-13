@@ -14,7 +14,7 @@
 - [x] The application runs as a menu-bar accessory without a persistent Dock icon; the menu opens status/settings, closing a window hides it, and only explicit quit stops collection.
 - [x] Login-start behavior is available through the shared desktop UI and resumes collection after the user signs in.
 - [x] First launch and App-only operation request neither Accessibility nor Input Monitoring, and the UI truthfully shows the currently available observation depth.
-- [ ] Desktop.Core scenario tests are reused for macOS semantics, thin adapter tests verify native-to-semantic translation, and real-device smoke tests cover App switching, lock, display sleep, system sleep, menu-bar lifecycle, login start, cache restart, and upload.
+- [x] Desktop.Core scenario tests are reused for macOS semantics, thin adapter tests verify native-to-semantic translation, and real-device smoke tests cover App switching, lock, display sleep, system sleep, menu-bar lifecycle, login start, cache restart, and upload.
 
 ## Comments
 
@@ -24,3 +24,8 @@
 - Reused `Hub.Core`, `Desktop.Core`, strict AppIdentity ingest, versioned caches, Upload Streams, presence, Collector App Hints, and the shared desktop UI.
 - Added thin adapter/composition/platform-head tests. A real-device launch successfully observed App transitions (`mac:com.microsoft.vscode`, `mac:com.apple.dock`, and `mac:com.openai.codex`) and started loopback ingest on macOS without TCC prompts.
 - Remaining human step: execute `desktop/Heartbeat.Desktop.Mac/SMOKE-TEST.md`, especially lock/display/system sleep, sign-out/login-start, authenticated offline cache recovery, and upload verification.
+
+### 2026-08-13 — Real-device smoke complete
+
+- The maintainer completed the macOS App-only smoke checklist on real hardware and reported no issues.
+- Ticket 09 is complete; ticket 10 is no longer blocked by App-only MVP verification.

@@ -13,6 +13,7 @@
     <Project Path="desktop/Heartbeat.Agent.Runner/Heartbeat.Agent.Runner.csproj" />
     <Project Path="desktop/Heartbeat.Desktop.UI.Tests/Heartbeat.Desktop.UI.Tests.csproj" />
     <Project Path="desktop/Heartbeat.Desktop.UI/Heartbeat.Desktop.UI.csproj" />
+    <Project Path="desktop/Heartbeat.Desktop.Update/Heartbeat.Desktop.Update.csproj" />
     <Project Path="desktop/Heartbeat.Desktop.Windows/Heartbeat.Desktop.Windows.csproj" />
   </Folder>
   <Folder Name="/server/">

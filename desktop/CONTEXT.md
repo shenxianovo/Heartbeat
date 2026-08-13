@@ -64,6 +64,7 @@ _Avoid_: Upgrade, Patch; Pending Update（旧名，混淆了"发现"与"已下�
 - **Agent** 在应用生命周期内持续运行，**Update** 需重启应用才能生效
 - `Heartbeat.Hub.Core` 提供纯 .NET 的 hub 运行时（loopback ingest、Collector Registry/declaration、认证客户端、段缓冲、Current Activity、Upload Stream、presence 与缓存 seam），可由桌面或无头 host 组合，不依赖桌面采集或 UI
 - `Heartbeat.Desktop.Core` 消费 App 激活、focused-window 切换、同窗标题变化与 away 等语义观察，产出 system ActivitySegment；平台 adapter 不把原生回调形状泄漏进状态机
+- `Heartbeat.Desktop.Update` 统一承载 Windows/macOS 的 Velopack Update 生命周期（检查、下载、重试、ReadyToApply 门控与调度应用）；platform head 只选择 Release channel，并在 updater 成功启动后停止 Agent、退出当前进程
 - `Heartbeat.Agent` 是 Windows adapter 集合，负责 Win32 观察、MachineGuid、图标与自启动；`Heartbeat.Desktop.Windows` 是 Windows platform head，组合 Agent、共享 Avalonia UI、托盘与 Velopack Update
 - `Heartbeat.Agent.Mac` 是 macOS adapter 集合，负责 NSWorkspace App/硬 away 观察、IOPlatformUUID、bundle 图标与 App Hint；`Heartbeat.Desktop.Mac` 是 Apple Silicon platform head，组合 Agent、共享 Avalonia UI、菜单栏 accessory 生命周期与逐用户 login start
 - `Heartbeat.Desktop.UI` 是共享 Avalonia presentation module；ViewModel 只依赖 platform-head seam，可在不创建原生窗口时测试

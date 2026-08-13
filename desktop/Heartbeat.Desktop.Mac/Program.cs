@@ -6,6 +6,7 @@ using Heartbeat.Desktop.UI.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
+using Velopack;
 
 namespace Heartbeat.Desktop.Mac;
 
@@ -14,6 +15,8 @@ public static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        VelopackApp.Build().Run();
+
         var logFeed = new RingBufferSink(200);
         ConfigureLogging(logFeed);
         RegisterUnhandledExceptionLogging();

@@ -4,6 +4,7 @@ using Avalonia.Threading;
 using Heartbeat.Desktop.UI.Logging;
 using Heartbeat.Desktop.UI.Presentation;
 using Heartbeat.Desktop.UI.Views;
+using Heartbeat.Desktop.Update;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 
@@ -11,6 +12,8 @@ namespace Heartbeat.Desktop.Mac;
 
 public sealed class MacDesktopRuntime : IWindowController, IAsyncDisposable
 {
+    private const string ReleaseChannel = "osx-arm64-stable";
+
     private readonly IHost _host;
     private int _stopped;
     private int _quitting;
@@ -23,10 +26,12 @@ public sealed class MacDesktopRuntime : IWindowController, IAsyncDisposable
         _host = host;
         DesktopState = state;
         LogFeed = logFeed;
+        Updates = new VelopackUpdateController(ReleaseChannel, PrepareForUpdateAsync);
+        Updates.Start();
     }
 
     public MacDesktopState DesktopState { get; }
-    public MacNoUpdateController Updates { get; } = new();
+    public VelopackUpdateController Updates { get; }
     public RingBufferSink LogFeed { get; }
     public bool IsShutdownPrepared => Volatile.Read(ref _stopped) != 0;
 
@@ -59,6 +64,19 @@ public sealed class MacDesktopRuntime : IWindowController, IAsyncDisposable
         {
             if (_window != null) _window.AllowClose = true;
             _menuBarIcon?.Dispose();
+        });
+
+        Updates.ScheduleOnExitIfReady();
+        await Dispatcher.UIThread.InvokeAsync(() => _lifetime?.Shutdown());
+    }
+
+    private async Task PrepareForUpdateAsync()
+    {
+        await StopAgentAsync();
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            if (_window != null) _window.AllowClose = true;
+            _menuBarIcon?.Dispose();
             _lifetime?.Shutdown();
         });
     }
@@ -73,6 +91,7 @@ public sealed class MacDesktopRuntime : IWindowController, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await StopAgentAsync();
+        Updates.Dispose();
         DesktopState.Dispose();
         _menuBarIcon?.Dispose();
     }

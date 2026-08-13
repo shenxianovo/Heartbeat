@@ -21,5 +21,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Heartbeat.Agent.Mac\Heartbeat.Agent.Mac.csproj" />
     <ProjectReference Include="..\Heartbeat.Desktop.UI\Heartbeat.Desktop.UI.csproj" />
+    <ProjectReference Include="..\Heartbeat.Desktop.Update\Heartbeat.Desktop.Update.csproj" />
   </ItemGroup>
 </Project>
