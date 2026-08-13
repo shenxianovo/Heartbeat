@@ -26,6 +26,7 @@ internal sealed class FakeDesktopState : IDesktopState
     public bool? LastInputEventRecordingValue { get; private set; }
     public DesktopSettingsInput? LastSettings { get; private set; }
     public bool? LastLoginStartValue { get; private set; }
+    public DesktopThemeMode? LastThemeMode { get; private set; }
     public (string Source, bool Enabled)? LastCollectorValue { get; private set; }
     public event Action<DesktopStateSnapshot>? Changed;
 
@@ -33,6 +34,7 @@ internal sealed class FakeDesktopState : IDesktopState
     public void SetCollectorEnabled(string source, bool enabled) => LastCollectorValue = (source, enabled);
     public void SetInputEventRecordingEnabled(bool enabled) => LastInputEventRecordingValue = enabled;
     public void SetLoginStartEnabled(bool enabled) => LastLoginStartValue = enabled;
+    public void SetThemeMode(DesktopThemeMode mode) => LastThemeMode = mode;
 
     public void Publish(DesktopStateSnapshot snapshot)
     {
@@ -43,6 +45,7 @@ internal sealed class FakeDesktopState : IDesktopState
 
 internal sealed class FakeUpdateController : IUpdateController
 {
+    public bool IsSupported { get; set; } = true;
     public UpdateSnapshot Current { get; set; } = UpdateSnapshot.Idle;
     public int ApplyCount { get; private set; }
     public UpdateCheckResult CheckResult { get; set; } = UpdateCheckResult.UpToDate;

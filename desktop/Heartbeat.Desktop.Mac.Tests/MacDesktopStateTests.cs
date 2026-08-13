@@ -33,10 +33,12 @@ public sealed class MacDesktopStateTests : IDisposable
 
         state.SaveSettings(new DesktopSettingsInput(" key ", "Studio", 5));
         state.SetLoginStartEnabled(true);
+        state.SetThemeMode(DesktopThemeMode.Dark);
 
         Assert.Equal(" key ", state.Current.Settings.ApiKey);
         Assert.Equal("Studio", state.Current.Settings.DeviceName);
         Assert.Equal(5, state.Current.Settings.UploadIntervalMinutes);
+        Assert.Equal(DesktopThemeMode.Dark, state.Current.Settings.ThemeMode);
         Assert.True(state.Current.LoginStartEnabled);
         Assert.Equal(Environment.ProcessPath, login.EnabledExecutable);
     }

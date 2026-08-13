@@ -2,11 +2,17 @@ namespace Heartbeat.Desktop.Mac;
 
 internal sealed class MacSingleInstanceGuard : IDisposable
 {
+    private const string MutexName = "com.shenxianovo.heartbeat.agent";
     private Mutex? _mutex;
 
     public MacSingleInstanceGuard()
     {
-        _mutex = new Mutex(true, "com.shenxianovo.heartbeat.agent", out var created);
+        var options = new NamedWaitHandleOptions
+        {
+            CurrentUserOnly = true,
+            CurrentSessionOnly = false
+        };
+        _mutex = new Mutex(true, MutexName, options, out var created);
         IsFirstInstance = created;
         if (!created)
         {

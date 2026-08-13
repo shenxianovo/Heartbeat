@@ -6,11 +6,19 @@ namespace Heartbeat.Desktop.UI.Presentation;
 
 public sealed record CollectorRegistrationState(bool Enabled, int? FlushPeriodMs);
 
+public enum DesktopThemeMode
+{
+    System,
+    Light,
+    Dark
+}
+
 public sealed record DesktopSettingsSnapshot(
     string ApiKey,
     string DeviceName,
     int UploadIntervalMinutes,
-    bool InputEventRecordingEnabled)
+    bool InputEventRecordingEnabled,
+    DesktopThemeMode ThemeMode = DesktopThemeMode.System)
 {
     public static DesktopSettingsSnapshot Default { get; } = new("", "", 1, true);
 }
@@ -83,4 +91,5 @@ public interface IDesktopState
     void SetLoginStartEnabled(bool enabled);
     void SetCollectorEnabled(string source, bool enabled);
     void SetInputEventRecordingEnabled(bool enabled);
+    void SetThemeMode(DesktopThemeMode mode);
 }

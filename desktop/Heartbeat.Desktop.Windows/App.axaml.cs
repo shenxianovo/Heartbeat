@@ -43,6 +43,8 @@ public partial class App : Application
             _trayIcon = CreateTrayIcon();
 
             Runtime.Attach(desktop, window, _trayIcon);
+            if (Environment.GetEnvironmentVariable("HEARTBEAT_SHOW_SETTINGS_ON_START") == "1")
+                Runtime.ShowSettings();
             desktop.ShutdownRequested += (_, eventArgs) =>
             {
                 if (Runtime.IsShutdownPrepared) return;

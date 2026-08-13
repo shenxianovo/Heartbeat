@@ -7,6 +7,10 @@ public sealed record CapabilityItemViewModel(
     string Description,
     CapabilityAvailability Availability)
 {
+    public bool IsAvailable => Availability == CapabilityAvailability.Available;
+    public bool IsPermissionRequired => Availability == CapabilityAvailability.PermissionRequired;
+    public bool IsUnavailable => Availability == CapabilityAvailability.Unavailable;
+
     public string AvailabilityText => Availability switch
     {
         CapabilityAvailability.Available => "可用",

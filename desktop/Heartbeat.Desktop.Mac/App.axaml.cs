@@ -39,6 +39,8 @@ public partial class App : Application
             var window = new MainWindow(viewModel) { Icon = LoadIcon() };
             _menuBarIcon = CreateMenuBarIcon();
             Runtime.Attach(desktop, window, _menuBarIcon);
+            if (Environment.GetEnvironmentVariable("HEARTBEAT_SHOW_SETTINGS_ON_START") == "1")
+                Runtime.ShowSettings();
             desktop.ShutdownRequested += (_, eventArgs) =>
             {
                 if (Runtime.IsShutdownPrepared) return;

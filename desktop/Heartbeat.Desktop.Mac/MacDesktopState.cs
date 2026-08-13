@@ -63,6 +63,9 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
     // Issue 09 intentionally has no Input Monitoring. Ticket 12 owns enabling this setting.
     public void SetInputEventRecordingEnabled(bool enabled) { }
 
+    public void SetThemeMode(DesktopThemeMode mode) =>
+        _config.Update(config => config.ThemeMode = mode.ToString());
+
     private DesktopStateSnapshot BuildSnapshot()
     {
         var config = _config.Current;
@@ -72,7 +75,8 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
                 config.ApiKey,
                 config.DeviceName,
                 config.UploadIntervalMinutes,
-                false),
+                false,
+                ParseThemeMode(config.ThemeMode)),
             _loginStart.IsEnabled,
             config.Collectors.ToDictionary(
                 pair => pair.Key,
@@ -83,6 +87,11 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
             _uploads.Snapshot,
             DesktopCapabilitySnapshot.MacAppOnly);
     }
+
+    private static DesktopThemeMode ParseThemeMode(string? value) =>
+        Enum.TryParse<DesktopThemeMode>(value, true, out var mode)
+            ? mode
+            : DesktopThemeMode.System;
 
     private void OnConfigChanged(MacAgentConfig _) => Publish();
     private void OnCurrentActivityChanged(CurrentActivity? _) => Publish();

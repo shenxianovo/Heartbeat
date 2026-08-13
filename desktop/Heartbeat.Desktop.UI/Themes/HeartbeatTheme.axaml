@@ -1,0 +1,207 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Styles.Resources>
+    <ResourceDictionary>
+      <FontFamily x:Key="HeartbeatBrandFont">avares://Heartbeat.Desktop.UI/Assets/Fonts#Sora</FontFamily>
+
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+          <Color x:Key="SystemAccentColor">#268BD2</Color>
+          <SolidColorBrush x:Key="HeartbeatBackgroundBrush" Color="#F4F8FC" />
+          <SolidColorBrush x:Key="HeartbeatSidebarBrush" Color="#EDF4FA" />
+          <SolidColorBrush x:Key="HeartbeatSurfaceBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="HeartbeatSurfaceAltBrush" Color="#F7FAFD" />
+          <SolidColorBrush x:Key="HeartbeatSurfaceHoverBrush" Color="#E7F1FA" />
+          <SolidColorBrush x:Key="HeartbeatPrimaryBrush" Color="#268BD2" />
+          <SolidColorBrush x:Key="HeartbeatPrimaryHoverBrush" Color="#1678BA" />
+          <SolidColorBrush x:Key="HeartbeatPrimarySoftBrush" Color="#DCEFFC" />
+          <SolidColorBrush x:Key="HeartbeatForegroundBrush" Color="#172033" />
+          <SolidColorBrush x:Key="HeartbeatMutedBrush" Color="#66778B" />
+          <SolidColorBrush x:Key="HeartbeatSubtleBrush" Color="#8A9AAD" />
+          <SolidColorBrush x:Key="HeartbeatBorderBrush" Color="#DCE6F0" />
+          <SolidColorBrush x:Key="HeartbeatInputBrush" Color="#F8FBFE" />
+          <SolidColorBrush x:Key="HeartbeatSuccessBrush" Color="#20A464" />
+          <SolidColorBrush x:Key="HeartbeatSuccessSoftBrush" Color="#DDF5E8" />
+          <SolidColorBrush x:Key="HeartbeatWarningBrush" Color="#C98213" />
+          <SolidColorBrush x:Key="HeartbeatWarningSoftBrush" Color="#FFF2D8" />
+          <SolidColorBrush x:Key="HeartbeatDangerBrush" Color="#D9544D" />
+          <SolidColorBrush x:Key="HeartbeatDangerSoftBrush" Color="#FDE7E5" />
+          <SolidColorBrush x:Key="HeartbeatLogBrush" Color="#111A27" />
+          <SolidColorBrush x:Key="HeartbeatLogForegroundBrush" Color="#D8E6F3" />
+          <SolidColorBrush x:Key="HeartbeatShadowBrush" Color="#160E3452" />
+        </ResourceDictionary>
+
+        <ResourceDictionary x:Key="Dark">
+          <Color x:Key="SystemAccentColor">#63B8F3</Color>
+          <SolidColorBrush x:Key="HeartbeatBackgroundBrush" Color="#101925" />
+          <SolidColorBrush x:Key="HeartbeatSidebarBrush" Color="#142131" />
+          <SolidColorBrush x:Key="HeartbeatSurfaceBrush" Color="#192638" />
+          <SolidColorBrush x:Key="HeartbeatSurfaceAltBrush" Color="#1D2C40" />
+          <SolidColorBrush x:Key="HeartbeatSurfaceHoverBrush" Color="#263B53" />
+          <SolidColorBrush x:Key="HeartbeatPrimaryBrush" Color="#63B8F3" />
+          <SolidColorBrush x:Key="HeartbeatPrimaryHoverBrush" Color="#7BC5F7" />
+          <SolidColorBrush x:Key="HeartbeatPrimarySoftBrush" Color="#1C3A54" />
+          <SolidColorBrush x:Key="HeartbeatForegroundBrush" Color="#EEF7FF" />
+          <SolidColorBrush x:Key="HeartbeatMutedBrush" Color="#A1B3C7" />
+          <SolidColorBrush x:Key="HeartbeatSubtleBrush" Color="#7F93A9" />
+          <SolidColorBrush x:Key="HeartbeatBorderBrush" Color="#2C4057" />
+          <SolidColorBrush x:Key="HeartbeatInputBrush" Color="#142033" />
+          <SolidColorBrush x:Key="HeartbeatSuccessBrush" Color="#56D28D" />
+          <SolidColorBrush x:Key="HeartbeatSuccessSoftBrush" Color="#183D2B" />
+          <SolidColorBrush x:Key="HeartbeatWarningBrush" Color="#F2BA5C" />
+          <SolidColorBrush x:Key="HeartbeatWarningSoftBrush" Color="#493819" />
+          <SolidColorBrush x:Key="HeartbeatDangerBrush" Color="#FF7B73" />
+          <SolidColorBrush x:Key="HeartbeatDangerSoftBrush" Color="#4C2528" />
+          <SolidColorBrush x:Key="HeartbeatLogBrush" Color="#0B111A" />
+          <SolidColorBrush x:Key="HeartbeatLogForegroundBrush" Color="#D8E6F3" />
+          <SolidColorBrush x:Key="HeartbeatShadowBrush" Color="#66000000" />
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+    </ResourceDictionary>
+  </Styles.Resources>
+
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{DynamicResource HeartbeatBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource HeartbeatForegroundBrush}" />
+    <Setter Property="FontFamily" Value="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei UI,Noto Sans CJK SC,sans-serif" />
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+
+  <Style Selector="TextBlock.brand">
+    <Setter Property="FontFamily" Value="{DynamicResource HeartbeatBrandFont}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.page-title">
+    <Setter Property="FontSize" Value="27" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="LetterSpacing" Value="-0.35" />
+  </Style>
+  <Style Selector="TextBlock.section-title">
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.eyebrow">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource HeartbeatPrimaryBrush}" />
+    <Setter Property="LetterSpacing" Value="0.8" />
+  </Style>
+  <Style Selector="TextBlock.muted">
+    <Setter Property="Foreground" Value="{DynamicResource HeartbeatMutedBrush}" />
+  </Style>
+  <Style Selector="TextBlock.subtle">
+    <Setter Property="Foreground" Value="{DynamicResource HeartbeatSubtleBrush}" />
+  </Style>
+
+  <Style Selector="Border.sidebar">
+    <Setter Property="Background" Value="{DynamicResource HeartbeatSidebarBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HeartbeatBorderBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,1,0" />
+  </Style>
+  <Style Selector="Border.surface">
+    <Setter Property="Background" Value="{DynamicResource HeartbeatSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HeartbeatBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="Padding" Value="18" />
+  </Style>
+  <Style Selector="Border.surface.compact">
+    <Setter Property="Padding" Value="14" />
+  </Style>
+  <Style Selector="Border.surface-alt">
+    <Setter Property="Background" Value="{DynamicResource HeartbeatSurfaceAltBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HeartbeatBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="9" />
+    <Setter Property="Padding" Value="13" />
+  </Style>
+  <Style Selector="Border.notice">
+    <Setter Property="Background" Value="{DynamicResource HeartbeatWarningSoftBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HeartbeatWarningBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Padding" Value="14" />
+  </Style>
+  <Style Selector="Border.divider">
+    <Setter Property="Background" Value="{DynamicResource HeartbeatBorderBrush}" />
+    <Setter Property="Height" Value="1" />
+  </Style>
+
+  <Style Selector="Button">
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="13,8" />
+    <Setter Property="FontWeight" Value="Medium" />
+  </Style>
+  <Style Selector="Button.primary">
+    <Setter Property="Background" Value="{DynamicResource HeartbeatPrimaryBrush}" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+  <Style Selector="Button.primary:pointerover">
+    <Setter Property="Background" Value="{DynamicResource HeartbeatPrimaryHoverBrush}" />
+  </Style>
+  <Style Selector="Button.ghost">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Foreground" Value="{DynamicResource HeartbeatMutedBrush}" />
+  </Style>
+  <Style Selector="Button.ghost:pointerover">
+    <Setter Property="Background" Value="{DynamicResource HeartbeatSurfaceHoverBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource HeartbeatForegroundBrush}" />
+  </Style>
+  <Style Selector="Button.nav-item">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Foreground" Value="{DynamicResource HeartbeatMutedBrush}" />
+    <!-- Fluent Button defaults to content-sized/left-aligned on some desktop backends. -->
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Padding" Value="13,10" />
+    <Setter Property="MinHeight" Value="42" />
+  </Style>
+  <Style Selector="Button.nav-item.compact">
+    <Setter Property="Padding" Value="0,10" />
+  </Style>
+  <Style Selector="Button.nav-item:pointerover">
+    <Setter Property="Background" Value="{DynamicResource HeartbeatSurfaceHoverBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource HeartbeatForegroundBrush}" />
+  </Style>
+  <Style Selector="Button.nav-item.active">
+    <Setter Property="Background" Value="{DynamicResource HeartbeatPrimarySoftBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource HeartbeatPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.icon-button">
+    <Setter Property="Width" Value="34" />
+    <Setter Property="Height" Value="34" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="CornerRadius" Value="8" />
+  </Style>
+
+  <Style Selector="TextBox, ComboBox">
+    <Setter Property="Background" Value="{DynamicResource HeartbeatInputBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HeartbeatBorderBrush}" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="MinHeight" Value="38" />
+  </Style>
+  <Style Selector="TextBox">
+    <!-- Avalonia's Fluent TextBox template needs explicit centering for single-line fields. -->
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Padding" Value="10,8,10,4" />
+  </Style>
+  <Style Selector="Border.log-viewer">
+    <Setter Property="Background" Value="{DynamicResource HeartbeatLogBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="9" />
+  </Style>
+  <Style Selector="SelectableTextBlock.log-text">
+    <Setter Property="Foreground" Value="{DynamicResource HeartbeatLogForegroundBrush}" />
+    <Setter Property="FontFamily" Value="SF Mono,Cascadia Code,Consolas,monospace" />
+    <Setter Property="FontSize" Value="11" />
+  </Style>
+
+  <Style Selector="ToggleSwitch">
+    <Setter Property="OnContent" Value="" />
+    <Setter Property="OffContent" Value="" />
+  </Style>
+</Styles>

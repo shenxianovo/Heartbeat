@@ -10,6 +10,13 @@ using Serilog.Events;
 
 namespace Heartbeat.Desktop.UI.ViewModels;
 
+public enum MainPage
+{
+    Overview,
+    Collectors,
+    Settings
+}
+
 public partial class MainViewModel : ObservableObject, IDisposable
 {
     private readonly IDesktopState _desktopState;
@@ -21,10 +28,29 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private DesktopSettingsSnapshot? _lastSettings;
     private bool? _lastLoginStart;
     private bool _suppressLoginStart;
+    private bool _suppressSettings;
     private readonly List<LogEntry> _allLogs = [];
 
     [ObservableProperty]
     private string _currentApp = "(未检测)";
+
+    [ObservableProperty]
+    private MainPage _selectedPage = MainPage.Overview;
+
+    [ObservableProperty]
+    private bool _isDiagnosticsExpanded;
+
+    [ObservableProperty]
+    private bool _isApiKeyVisible;
+
+    [ObservableProperty]
+    private bool _hasUnsavedChanges;
+
+    [ObservableProperty]
+    private int _selectedThemeIndex;
+
+    [ObservableProperty]
+    private bool _isSidebarCollapsed;
 
     [ObservableProperty]
     private UpdateState _updateState;
@@ -74,6 +100,48 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<CollectorItemViewModel> Collectors { get; } = [];
     public ObservableCollection<OperationalNoticeViewModel> OperationalNotices { get; } = [];
     public ObservableCollection<CapabilityItemViewModel> Capabilities { get; } = [];
+    public bool UpdatesSupported { get; }
+    public bool IsOverviewSelected => SelectedPage == MainPage.Overview;
+    public bool IsCollectorsSelected => SelectedPage == MainPage.Collectors;
+    public bool IsSettingsSelected => SelectedPage == MainPage.Settings;
+    public bool ShowSidebarLabels => !IsSidebarCollapsed;
+    public int SidebarIconColumnSpan => IsSidebarCollapsed ? 2 : 1;
+    public bool IsApiKeyHidden => !IsApiKeyVisible;
+    public bool IsDiagnosticsCollapsed => !IsDiagnosticsExpanded;
+    public bool HasOperationalNotices => OperationalNotices.Count > 0;
+    public bool HasSaveStatusMessage => !string.IsNullOrWhiteSpace(SaveStatusMessage);
+    public bool ShowSaveSuccess => HasSaveStatusMessage && !SaveStatusIsError;
+    public bool ShowSaveError => HasSaveStatusMessage && SaveStatusIsError;
+    public bool HasCapabilityMessage => !string.IsNullOrWhiteSpace(CapabilityMessage);
+    public bool HasUpdateError => !string.IsNullOrWhiteSpace(UpdateError);
+    public bool HasUpdateCheckMessage => !string.IsNullOrWhiteSpace(UpdateCheckMessage);
+    public bool IsUpdateReady => UpdateState == UpdateState.ReadyToApply;
+    public string CurrentActivityDetail => CurrentApp == "(未检测)"
+        ? "等待系统采集器报告前台应用"
+        : CurrentApp == "(离开)"
+            ? "设备当前处于离开状态"
+            : "正在记录此应用的活动";
+    public string CapabilitySummary => $"{Capabilities.Count(item => item.IsAvailable)} / {Capabilities.Count} 项能力可用";
+    public string UpdateStateText => UpdateState switch
+    {
+        UpdateState.UpdateAvailable => "发现新版本",
+        UpdateState.Downloading => UpdateDownloadProgress is { } progress
+            ? $"正在下载 · {progress}%"
+            : "正在下载",
+        UpdateState.ReadyToApply => "更新已就绪",
+        _ => "自动更新已启用"
+    };
+    public string UpdateStateDetail => UpdateState switch
+    {
+        UpdateState.UpdateAvailable => UpdateVersion is { Length: > 0 }
+            ? $"Heartbeat {UpdateVersion} 可用"
+            : "正在准备下载",
+        UpdateState.Downloading => "下载完成后即可应用并重启",
+        UpdateState.ReadyToApply => UpdateVersion is { Length: > 0 }
+            ? $"Heartbeat {UpdateVersion} 已下载"
+            : "新版本已下载",
+        _ => "在后台检查并安全下载新版本"
+    };
 
     public MainViewModel(
         IDesktopState desktopState,
@@ -87,6 +155,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _window = window;
         _scheduler = scheduler;
         _logs = logs;
+        UpdatesSupported = updates.IsSupported;
 
         ApplyState(desktopState.Current);
         ApplyUpdateState(updates.Current);
@@ -122,6 +191,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         UpdateVersion = snapshot.Version;
         UpdateDownloadProgress = snapshot.DownloadProgress;
         UpdateError = snapshot.Error;
+        OnPropertyChanged(nameof(UpdateStateText));
+        OnPropertyChanged(nameof(UpdateStateDetail));
+        OnPropertyChanged(nameof(IsUpdateReady));
         ApplyUpdateCommand.NotifyCanExecuteChanged();
     }
 
@@ -167,17 +239,27 @@ public partial class MainViewModel : ObservableObject, IDisposable
             "持久化并上传物理按键与鼠标统计",
             capabilities.InputEventRecording));
         CapabilityMessage = capabilities.Message;
+        OnPropertyChanged(nameof(CapabilitySummary));
     }
 
     private void ApplySettings(DesktopStateSnapshot snapshot)
     {
-        if (_lastSettings != snapshot.Settings)
+        var textSettingsChanged = _lastSettings == null ||
+            _lastSettings.ApiKey != snapshot.Settings.ApiKey ||
+            _lastSettings.DeviceName != snapshot.Settings.DeviceName ||
+            _lastSettings.UploadIntervalMinutes != snapshot.Settings.UploadIntervalMinutes;
+
+        _suppressSettings = true;
+        if (_lastSettings == null || (!HasUnsavedChanges && textSettingsChanged))
         {
             ApiKey = snapshot.Settings.ApiKey;
             DeviceName = snapshot.Settings.DeviceName;
             UploadIntervalMinutes = snapshot.Settings.UploadIntervalMinutes.ToString();
-            _lastSettings = snapshot.Settings;
         }
+        SelectedThemeIndex = (int)snapshot.Settings.ThemeMode;
+        _lastSettings = snapshot.Settings;
+        _suppressSettings = false;
+        UpdateDirtyState();
 
         if (_lastLoginStart != snapshot.LoginStartEnabled)
         {
@@ -200,7 +282,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 snapshot.Compatibility.Message ?? "服务器要求更新 Heartbeat 后再继续上传。",
                 "检查并应用更新"));
         }
-
         foreach (var (stream, status) in snapshot.UploadStreams.OrderBy(pair => pair.Key))
         {
             var notice = status.State switch
@@ -239,6 +320,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     status.DeadLetterPath));
             }
         }
+        OnPropertyChanged(nameof(HasOperationalNotices));
     }
 
     private void RebuildCollectors(DesktopStateSnapshot snapshot)
@@ -322,13 +404,92 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void CloseSettings() => _window.HideSettings();
 
+    [RelayCommand]
+    private void Navigate(string page)
+    {
+        if (Enum.TryParse<MainPage>(page, true, out var target))
+            SelectedPage = target;
+    }
+
+    [RelayCommand]
+    private void ToggleDiagnostics() => IsDiagnosticsExpanded = !IsDiagnosticsExpanded;
+
+    [RelayCommand]
+    private void ToggleApiKeyVisibility() => IsApiKeyVisible = !IsApiKeyVisible;
+
+    partial void OnSelectedPageChanged(MainPage value)
+    {
+        OnPropertyChanged(nameof(IsOverviewSelected));
+        OnPropertyChanged(nameof(IsCollectorsSelected));
+        OnPropertyChanged(nameof(IsSettingsSelected));
+    }
+
+    partial void OnIsApiKeyVisibleChanged(bool value) => OnPropertyChanged(nameof(IsApiKeyHidden));
+
+    partial void OnIsDiagnosticsExpandedChanged(bool value) => OnPropertyChanged(nameof(IsDiagnosticsCollapsed));
+
+    partial void OnIsSidebarCollapsedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowSidebarLabels));
+        OnPropertyChanged(nameof(SidebarIconColumnSpan));
+    }
+
+    partial void OnCurrentAppChanged(string value) => OnPropertyChanged(nameof(CurrentActivityDetail));
+
+    partial void OnUpdateErrorChanged(string? value) => OnPropertyChanged(nameof(HasUpdateError));
+
+    partial void OnUpdateCheckMessageChanged(string value) => OnPropertyChanged(nameof(HasUpdateCheckMessage));
+
+    partial void OnSaveStatusMessageChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasSaveStatusMessage));
+        OnPropertyChanged(nameof(ShowSaveSuccess));
+        OnPropertyChanged(nameof(ShowSaveError));
+    }
+
+    partial void OnSaveStatusIsErrorChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowSaveSuccess));
+        OnPropertyChanged(nameof(ShowSaveError));
+    }
+
+    partial void OnCapabilityMessageChanged(string? value) => OnPropertyChanged(nameof(HasCapabilityMessage));
+
+    partial void OnApiKeyChanged(string value) => UpdateDirtyState();
+    partial void OnDeviceNameChanged(string value) => UpdateDirtyState();
+    partial void OnUploadIntervalMinutesChanged(string value) => UpdateDirtyState();
+
+    partial void OnSelectedThemeIndexChanged(int value)
+    {
+        OnPropertyChanged(nameof(SelectedThemeMode));
+        if (!_suppressSettings && Enum.IsDefined((DesktopThemeMode)value))
+            _desktopState.SetThemeMode((DesktopThemeMode)value);
+    }
+
+    public DesktopThemeMode SelectedThemeMode => Enum.IsDefined((DesktopThemeMode)SelectedThemeIndex)
+        ? (DesktopThemeMode)SelectedThemeIndex
+        : DesktopThemeMode.System;
+
+    private void UpdateDirtyState()
+    {
+        if (_suppressSettings || _lastSettings == null) return;
+        HasUnsavedChanges = ApiKey != _lastSettings.ApiKey ||
+            DeviceName != _lastSettings.DeviceName ||
+            UploadIntervalMinutes != _lastSettings.UploadIntervalMinutes.ToString();
+        SaveConfigCommand.NotifyCanExecuteChanged();
+        if (HasUnsavedChanges && !string.IsNullOrWhiteSpace(SaveStatusMessage))
+            SaveStatusMessage = string.Empty;
+    }
+
     partial void OnLoginStartEnabledChanged(bool value)
     {
         if (!_suppressLoginStart)
             _desktopState.SetLoginStartEnabled(value);
     }
 
-    [RelayCommand]
+    private bool CanSaveConfig() => HasUnsavedChanges;
+
+    [RelayCommand(CanExecute = nameof(CanSaveConfig))]
     private void SaveConfig()
     {
         if (!int.TryParse(UploadIntervalMinutes, out var uploadInterval) || uploadInterval < 1)
@@ -338,10 +499,23 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        _desktopState.SaveSettings(new DesktopSettingsInput(
-            ApiKey.Trim(),
-            DeviceName.Trim(),
-            uploadInterval));
+        var normalizedApiKey = ApiKey.Trim();
+        var normalizedDeviceName = DeviceName.Trim();
+        _desktopState.SaveSettings(new DesktopSettingsInput(normalizedApiKey, normalizedDeviceName, uploadInterval));
+        if (_lastSettings != null)
+            _lastSettings = _lastSettings with
+            {
+                ApiKey = normalizedApiKey,
+                DeviceName = normalizedDeviceName,
+                UploadIntervalMinutes = uploadInterval
+            };
+        _suppressSettings = true;
+        ApiKey = normalizedApiKey;
+        DeviceName = normalizedDeviceName;
+        UploadIntervalMinutes = uploadInterval.ToString();
+        _suppressSettings = false;
+        HasUnsavedChanges = false;
+        SaveConfigCommand.NotifyCanExecuteChanged();
         SaveStatusMessage = "配置已保存，下次上传周期将使用新配置";
         SaveStatusIsError = false;
     }

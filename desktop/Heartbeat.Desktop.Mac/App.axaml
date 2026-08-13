@@ -4,5 +4,6 @@
              RequestedThemeVariant="Default">
   <Application.Styles>
     <FluentTheme />
+    <StyleInclude Source="avares://Heartbeat.Desktop.UI/Themes/HeartbeatTheme.axaml" />
   </Application.Styles>
 </Application>

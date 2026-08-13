@@ -2,6 +2,9 @@
 
 This smoke test covers Issue 09 only. It must not request Accessibility or Input Monitoring.
 
+For UI inspection, set `HEARTBEAT_SHOW_SETTINGS_ON_START=1` to open the window on launch.
+Set `HEARTBEAT_THEME_OVERRIDE=Light|Dark|System` to inspect a theme without changing user config.
+
 ## Start and menu-bar lifecycle
 
 1. Run `dotnet run --project desktop/Heartbeat.Desktop.Mac/Heartbeat.Desktop.Mac.csproj`.

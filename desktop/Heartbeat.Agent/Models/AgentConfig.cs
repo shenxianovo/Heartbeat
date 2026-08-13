@@ -6,6 +6,7 @@ namespace Heartbeat.Agent.Models
         // 旧 config.json 中的字段被反序列化静默忽略。
         public string ApiKey { get; set; } = string.Empty;
         public string DeviceName { get; set; } = string.Empty;
+        public string ThemeMode { get; set; } = "System";
 
         private int _uploadIntervalMinutes = 1;
         public int UploadIntervalMinutes

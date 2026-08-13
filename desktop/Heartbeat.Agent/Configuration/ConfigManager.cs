@@ -137,7 +137,15 @@ namespace Heartbeat.Agent.Configuration
         {
             config.AwayProcessNames ??= [];
             config.Collectors ??= [];
+            config.ThemeMode = NormalizeThemeMode(config.ThemeMode);
         }
+
+        private static string NormalizeThemeMode(string? value) => value?.ToLowerInvariant() switch
+        {
+            "light" => "Light",
+            "dark" => "Dark",
+            _ => "System"
+        };
 
         /// <summary>
         /// 原子写入：先写临时文件，再替换目标文件
@@ -166,6 +174,7 @@ namespace Heartbeat.Agent.Configuration
             {
                 ApiKey = source.ApiKey,
                 DeviceName = source.DeviceName,
+                ThemeMode = source.ThemeMode,
                 UploadIntervalMinutes = source.UploadIntervalMinutes,
                 AwayProcessNames = [.. source.AwayProcessNames ?? []],
                 IngestPort = source.IngestPort,

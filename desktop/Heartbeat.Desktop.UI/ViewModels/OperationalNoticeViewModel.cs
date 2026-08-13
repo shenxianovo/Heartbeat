@@ -14,4 +14,8 @@ public sealed record OperationalNoticeViewModel(
     string Title,
     string Message,
     string? Action = null,
-    string? Path = null);
+    string? Path = null)
+{
+    public bool HasAction => !string.IsNullOrWhiteSpace(Action);
+    public bool HasPath => !string.IsNullOrWhiteSpace(Path);
+}

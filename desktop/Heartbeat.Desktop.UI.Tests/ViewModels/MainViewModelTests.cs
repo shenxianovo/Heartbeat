@@ -174,6 +174,62 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public void ThemeSelection_IsImmediateAndDoesNotCountAsAnUnsavedTextSetting()
+    {
+        var state = new FakeDesktopState();
+        using var viewModel = TestViewModel.Create(state);
+
+        viewModel.SelectedThemeIndex = (int)DesktopThemeMode.Dark;
+
+        Assert.Equal(DesktopThemeMode.Dark, state.LastThemeMode);
+        Assert.False(viewModel.HasUnsavedChanges);
+    }
+
+    [Fact]
+    public void ImmediateStateChanges_DoNotDiscardDraftConnectionSettings()
+    {
+        var initial = DesktopStateSnapshot.Empty with
+        {
+            Settings = new DesktopSettingsSnapshot("old-key", "Desktop", 2, true)
+        };
+        var state = new FakeDesktopState { Current = initial };
+        using var viewModel = TestViewModel.Create(state);
+        viewModel.ApiKey = "draft-key";
+
+        state.Publish(initial with
+        {
+            Settings = initial.Settings with { ThemeMode = DesktopThemeMode.Dark },
+            LoginStartEnabled = true
+        });
+
+        Assert.Equal("draft-key", viewModel.ApiKey);
+        Assert.True(viewModel.HasUnsavedChanges);
+        Assert.Equal(DesktopThemeMode.Dark, viewModel.SelectedThemeMode);
+    }
+
+    [Fact]
+    public void NavigationAndDiagnostics_AreExplicitPresentationState()
+    {
+        using var viewModel = TestViewModel.Create();
+
+        viewModel.NavigateCommand.Execute("Collectors");
+        viewModel.ToggleDiagnosticsCommand.Execute(null);
+
+        Assert.True(viewModel.IsCollectorsSelected);
+        Assert.False(viewModel.IsOverviewSelected);
+        Assert.True(viewModel.IsDiagnosticsExpanded);
+    }
+
+    [Fact]
+    public void UnsupportedPlatformUpdateOperations_AreHiddenByPresentationState()
+    {
+        using var viewModel = TestViewModel.Create(
+            updates: new FakeUpdateController { IsSupported = false });
+
+        Assert.False(viewModel.UpdatesSupported);
+    }
+
+    [Fact]
     public void CapabilityStates_ArePresentedFromThePlatformSnapshot()
     {
         var state = new FakeDesktopState

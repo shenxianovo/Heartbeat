@@ -4,6 +4,7 @@ public sealed class MacAgentConfig
 {
     public string ApiKey { get; set; } = string.Empty;
     public string DeviceName { get; set; } = string.Empty;
+    public string ThemeMode { get; set; } = "System";
 
     private int _uploadIntervalMinutes = 1;
     public int UploadIntervalMinutes

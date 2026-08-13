@@ -10,6 +10,7 @@ namespace Heartbeat.Desktop.Windows;
 
 public sealed class WindowsUpdateController : IUpdateController, IDisposable
 {
+    public bool IsSupported => true;
     private static readonly TimeSpan CheckInterval = TimeSpan.FromHours(4);
     private static readonly TimeSpan[] RetryDelays =
     [

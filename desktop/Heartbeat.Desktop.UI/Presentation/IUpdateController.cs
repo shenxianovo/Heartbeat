@@ -27,6 +27,7 @@ public sealed record UpdateSnapshot(
 
 public interface IUpdateController
 {
+    bool IsSupported { get; }
     UpdateSnapshot Current { get; }
     event Action<UpdateSnapshot>? Changed;
     Task<UpdateCheckResult> CheckAsync();

@@ -82,14 +82,23 @@ public sealed class MacConfigManager
     {
         config.AwayProcessNames ??= [];
         config.Collectors ??= [];
+        config.ThemeMode = NormalizeThemeMode(config.ThemeMode);
         // Issue 09 is App-only. Ticket 12 owns enabling durable input recording.
         config.InputEventRecordingEnabled = false;
     }
+
+    private static string NormalizeThemeMode(string? value) => value?.ToLowerInvariant() switch
+    {
+        "light" => "Light",
+        "dark" => "Dark",
+        _ => "System"
+    };
 
     private static MacAgentConfig Clone(MacAgentConfig source) => new()
     {
         ApiKey = source.ApiKey,
         DeviceName = source.DeviceName,
+        ThemeMode = source.ThemeMode,
         UploadIntervalMinutes = source.UploadIntervalMinutes,
         AwayProcessNames = [.. source.AwayProcessNames],
         IngestPort = source.IngestPort,

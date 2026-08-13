@@ -72,6 +72,9 @@ public sealed class WindowsDesktopState : IDesktopState, IDisposable
     public void SetInputEventRecordingEnabled(bool enabled) =>
         _config.Update(config => config.InputEventRecordingEnabled = enabled);
 
+    public void SetThemeMode(DesktopThemeMode mode) =>
+        _config.Update(config => config.ThemeMode = mode.ToString());
+
     private DesktopStateSnapshot BuildSnapshot()
     {
         var config = _config.Current;
@@ -81,7 +84,8 @@ public sealed class WindowsDesktopState : IDesktopState, IDisposable
                 config.ApiKey,
                 config.DeviceName,
                 config.UploadIntervalMinutes,
-                config.InputEventRecordingEnabled),
+                config.InputEventRecordingEnabled,
+                ParseThemeMode(config.ThemeMode)),
             _loginStart.IsEnabled,
             config.Collectors.ToDictionary(
                 pair => pair.Key,
@@ -92,6 +96,11 @@ public sealed class WindowsDesktopState : IDesktopState, IDisposable
             _uploads.Snapshot,
             DesktopCapabilitySnapshot.WindowsFull);
     }
+
+    private static DesktopThemeMode ParseThemeMode(string? value) =>
+        Enum.TryParse<DesktopThemeMode>(value, true, out var mode)
+            ? mode
+            : DesktopThemeMode.System;
 
     private void HandleConfigChanged(AgentConfig _) => Publish();
     private void HandleCurrentActivityChanged(CurrentActivity? _) => Publish();

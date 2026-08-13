@@ -24,6 +24,7 @@ public partial class CollectorItemViewModel : ObservableObject
 
     public string Source { get; }
     public bool IsSystem { get; }
+    public bool IsExternal => !IsSystem;
     public bool CanToggle => !IsSystem;
     public bool CanToggleRecording { get; private set; }
     public string InteractionSignalDescription => IsSystem
@@ -36,6 +37,7 @@ public partial class CollectorItemViewModel : ObservableObject
     private bool _isActive;
 
     public string ActivityText => IsActive ? "活跃" : "不活跃";
+    public bool IsInactive => !IsActive;
 
     [ObservableProperty]
     private bool _enabled = true;
@@ -71,7 +73,11 @@ public partial class CollectorItemViewModel : ObservableObject
             _setEnabled?.Invoke(Source, value);
     }
 
-    partial void OnIsActiveChanged(bool value) => OnPropertyChanged(nameof(ActivityText));
+    partial void OnIsActiveChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ActivityText));
+        OnPropertyChanged(nameof(IsInactive));
+    }
 
     public void SetRecordingEnabledSilently(bool value)
     {
