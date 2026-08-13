@@ -113,7 +113,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 SelectedPage = (MainPage)value;
         }
     }
-    public bool ShowSidebarLabels => !IsSidebarCollapsed;
+    public double SidebarLabelOpacity => IsSidebarCollapsed ? 0 : 1;
     public int SidebarIconColumnSpan => IsSidebarCollapsed ? 2 : 1;
     public bool IsApiKeyHidden => !IsApiKeyVisible;
     public bool IsDiagnosticsCollapsed => !IsDiagnosticsExpanded;
@@ -443,7 +443,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     partial void OnIsSidebarCollapsedChanged(bool value)
     {
-        OnPropertyChanged(nameof(ShowSidebarLabels));
+        OnPropertyChanged(nameof(SidebarLabelOpacity));
         OnPropertyChanged(nameof(SidebarIconColumnSpan));
     }
 

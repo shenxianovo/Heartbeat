@@ -231,6 +231,19 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public void SidebarPresentation_ExposesAnAnimatedLabelTarget()
+    {
+        using var viewModel = TestViewModel.Create();
+
+        Assert.Equal(1, viewModel.SidebarLabelOpacity);
+
+        viewModel.IsSidebarCollapsed = true;
+
+        Assert.Equal(0, viewModel.SidebarLabelOpacity);
+        Assert.Equal(2, viewModel.SidebarIconColumnSpan);
+    }
+
+    [Fact]
     public void UnsupportedPlatformUpdateOperations_AreHiddenByPresentationState()
     {
         using var viewModel = TestViewModel.Create(

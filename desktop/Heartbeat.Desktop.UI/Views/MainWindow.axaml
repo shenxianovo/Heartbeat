@@ -9,14 +9,24 @@
         MinWidth="760"
         MinHeight="520"
         WindowStartupLocation="CenterScreen">
-  <Grid x:Name="RootGrid">
+  <Grid>
     <Grid.ColumnDefinitions>
-      <ColumnDefinition Width="176" />
+      <ColumnDefinition Width="Auto" />
       <ColumnDefinition Width="*" />
     </Grid.ColumnDefinitions>
 
     <!-- Shared product shell: native window chrome outside, Heartbeat identity inside. -->
-    <Border Grid.Column="0" Classes="sidebar">
+    <Border x:Name="SidebarBorder" Grid.Column="0" Classes="sidebar"
+            Width="176" ClipToBounds="True">
+      <Border.Transitions>
+        <Transitions>
+          <DoubleTransition Property="Width" Duration="0:0:0.18">
+            <DoubleTransition.Easing>
+              <CubicEaseOut />
+            </DoubleTransition.Easing>
+          </DoubleTransition>
+        </Transitions>
+      </Border.Transitions>
       <Grid RowDefinitions="Auto,*,Auto" Margin="12,16,12,14">
         <Grid ColumnDefinitions="Auto,*" Margin="4,0,4,22">
           <Border Width="34" Height="34" CornerRadius="10"
@@ -24,9 +34,9 @@
             <LucideIcon Kind="HeartPulse" Size="19" StrokeWidth="2"
                         Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
           </Border>
-          <TextBlock Grid.Column="1" Text="Heartbeat" Classes="brand" FontSize="16"
+          <TextBlock Grid.Column="1" Text="Heartbeat" Classes="brand sidebar-label" FontSize="16"
                      Margin="10,0,0,0" VerticalAlignment="Center"
-                     IsVisible="{Binding ShowSidebarLabels}" />
+                     Opacity="{Binding SidebarLabelOpacity}" />
         </Grid>
 
         <Grid Grid.Row="1" RowDefinitions="Auto,Auto,Auto" RowSpacing="5"
@@ -42,8 +52,8 @@
                 <LucideIcon Kind="LayoutDashboard" Size="18" StrokeWidth="1.8"
                             HorizontalAlignment="Center" VerticalAlignment="Center" />
               </Grid>
-              <TextBlock Grid.Column="1" Text="概览" Margin="9,0,0,0"
-                         VerticalAlignment="Center" IsVisible="{Binding ShowSidebarLabels}" />
+              <TextBlock Grid.Column="1" Text="概览" Classes="sidebar-label" Margin="9,0,0,0"
+                         VerticalAlignment="Center" Opacity="{Binding SidebarLabelOpacity}" />
             </Grid>
           </Button>
           <Button Grid.Row="1" Classes="nav-item" Classes.active="{Binding IsCollectorsSelected}"
@@ -57,8 +67,8 @@
                 <LucideIcon Kind="Radio" Size="18" StrokeWidth="1.8"
                             HorizontalAlignment="Center" VerticalAlignment="Center" />
               </Grid>
-              <TextBlock Grid.Column="1" Text="采集器" Margin="9,0,0,0"
-                         VerticalAlignment="Center" IsVisible="{Binding ShowSidebarLabels}" />
+              <TextBlock Grid.Column="1" Text="采集器" Classes="sidebar-label" Margin="9,0,0,0"
+                         VerticalAlignment="Center" Opacity="{Binding SidebarLabelOpacity}" />
             </Grid>
           </Button>
           <Button Grid.Row="2" Classes="nav-item" Classes.active="{Binding IsSettingsSelected}"
@@ -72,8 +82,8 @@
                 <LucideIcon Kind="Settings" Size="18" StrokeWidth="1.8"
                             HorizontalAlignment="Center" VerticalAlignment="Center" />
               </Grid>
-              <TextBlock Grid.Column="1" Text="设置" Margin="9,0,0,0"
-                         VerticalAlignment="Center" IsVisible="{Binding ShowSidebarLabels}" />
+              <TextBlock Grid.Column="1" Text="设置" Classes="sidebar-label" Margin="9,0,0,0"
+                         VerticalAlignment="Center" Opacity="{Binding SidebarLabelOpacity}" />
             </Grid>
           </Button>
         </Grid>
@@ -84,9 +94,9 @@
                     Width="8" Height="8" CornerRadius="4" HorizontalAlignment="Center"
                     Background="{DynamicResource HeartbeatSuccessBrush}"
                     VerticalAlignment="Center" />
-            <TextBlock Grid.Column="1" Text="运行中" Margin="9,0,0,0"
+            <TextBlock Grid.Column="1" Text="运行中" Classes="sidebar-label" Margin="9,0,0,0"
                        FontWeight="SemiBold" FontSize="12"
-                       IsVisible="{Binding ShowSidebarLabels}" />
+                       Opacity="{Binding SidebarLabelOpacity}" />
         </Grid>
       </Grid>
     </Border>

@@ -43,7 +43,7 @@ public partial class MainWindow : Window
     private void ApplyResponsiveLayout(MainViewModel viewModel)
     {
         viewModel.IsSidebarCollapsed = Bounds.Width < 820;
-        RootGrid.ColumnDefinitions[0].Width = new GridLength(viewModel.IsSidebarCollapsed ? 68 : 176);
+        SidebarBorder.Width = viewModel.IsSidebarCollapsed ? 68 : 176;
     }
 
     private static void HandleViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
