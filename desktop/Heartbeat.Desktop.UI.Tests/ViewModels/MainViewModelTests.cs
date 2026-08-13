@@ -142,10 +142,12 @@ public sealed class MainViewModelTests
         using var viewModel = TestViewModel.Create(updates: updates);
 
         Assert.False(viewModel.ApplyUpdateCommand.CanExecute(null));
+        Assert.False(viewModel.HasAvailableUpdate);
 
         updates.Publish(new UpdateSnapshot(UpdateState.ReadyToApply, "2.0.0"));
 
         Assert.True(viewModel.ApplyUpdateCommand.CanExecute(null));
+        Assert.True(viewModel.HasAvailableUpdate);
         await viewModel.ApplyUpdateCommand.ExecuteAsync(null);
         Assert.Equal(1, updates.ApplyCount);
     }
@@ -163,14 +165,18 @@ public sealed class MainViewModelTests
         };
         using var viewModel = TestViewModel.Create(state);
 
+        Assert.False(viewModel.ShowSaveBar);
+
         viewModel.ApiKey = " new-key ";
         viewModel.DeviceName = " Desktop ";
         viewModel.UploadIntervalMinutes = "5";
+        Assert.True(viewModel.ShowSaveBar);
         viewModel.SaveConfigCommand.Execute(null);
         viewModel.LoginStartEnabled = true;
 
         Assert.Equal(new DesktopSettingsInput("new-key", "Desktop", 5), state.LastSettings);
         Assert.Equal(true, state.LastLoginStartValue);
+        Assert.True(viewModel.ShowSaveBar);
     }
 
     [Fact]
@@ -217,7 +223,11 @@ public sealed class MainViewModelTests
 
         Assert.True(viewModel.IsCollectorsSelected);
         Assert.False(viewModel.IsOverviewSelected);
+        Assert.Equal((int)MainPage.Collectors, viewModel.SelectedPageIndex);
         Assert.True(viewModel.IsDiagnosticsExpanded);
+
+        viewModel.SelectedPageIndex = (int)MainPage.Settings;
+        Assert.True(viewModel.IsSettingsSelected);
     }
 
     [Fact]

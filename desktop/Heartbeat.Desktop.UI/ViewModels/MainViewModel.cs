@@ -104,6 +104,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public bool IsOverviewSelected => SelectedPage == MainPage.Overview;
     public bool IsCollectorsSelected => SelectedPage == MainPage.Collectors;
     public bool IsSettingsSelected => SelectedPage == MainPage.Settings;
+    public int SelectedPageIndex
+    {
+        get => (int)SelectedPage;
+        set
+        {
+            if (Enum.IsDefined((MainPage)value))
+                SelectedPage = (MainPage)value;
+        }
+    }
     public bool ShowSidebarLabels => !IsSidebarCollapsed;
     public int SidebarIconColumnSpan => IsSidebarCollapsed ? 2 : 1;
     public bool IsApiKeyHidden => !IsApiKeyVisible;
@@ -112,10 +121,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public bool HasSaveStatusMessage => !string.IsNullOrWhiteSpace(SaveStatusMessage);
     public bool ShowSaveSuccess => HasSaveStatusMessage && !SaveStatusIsError;
     public bool ShowSaveError => HasSaveStatusMessage && SaveStatusIsError;
+    public bool ShowSaveBar => HasUnsavedChanges || HasSaveStatusMessage;
     public bool HasCapabilityMessage => !string.IsNullOrWhiteSpace(CapabilityMessage);
     public bool HasUpdateError => !string.IsNullOrWhiteSpace(UpdateError);
     public bool HasUpdateCheckMessage => !string.IsNullOrWhiteSpace(UpdateCheckMessage);
     public bool IsUpdateReady => UpdateState == UpdateState.ReadyToApply;
+    public bool HasAvailableUpdate => UpdatesSupported && UpdateState != UpdateState.Idle;
     public string CurrentActivityDetail => CurrentApp == "(未检测)"
         ? "等待系统采集器报告前台应用"
         : CurrentApp == "(离开)"
@@ -194,6 +205,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(UpdateStateText));
         OnPropertyChanged(nameof(UpdateStateDetail));
         OnPropertyChanged(nameof(IsUpdateReady));
+        OnPropertyChanged(nameof(HasAvailableUpdate));
         ApplyUpdateCommand.NotifyCanExecuteChanged();
     }
 
@@ -422,6 +434,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsOverviewSelected));
         OnPropertyChanged(nameof(IsCollectorsSelected));
         OnPropertyChanged(nameof(IsSettingsSelected));
+        OnPropertyChanged(nameof(SelectedPageIndex));
     }
 
     partial void OnIsApiKeyVisibleChanged(bool value) => OnPropertyChanged(nameof(IsApiKeyHidden));
@@ -445,7 +458,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasSaveStatusMessage));
         OnPropertyChanged(nameof(ShowSaveSuccess));
         OnPropertyChanged(nameof(ShowSaveError));
+        OnPropertyChanged(nameof(ShowSaveBar));
     }
+
+    partial void OnHasUnsavedChangesChanged(bool value) => OnPropertyChanged(nameof(ShowSaveBar));
 
     partial void OnSaveStatusIsErrorChanged(bool value)
     {

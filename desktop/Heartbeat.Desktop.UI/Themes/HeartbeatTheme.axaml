@@ -72,7 +72,7 @@
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
   <Style Selector="TextBlock.page-title">
-    <Setter Property="FontSize" Value="27" />
+    <Setter Property="FontSize" Value="24" />
     <Setter Property="FontWeight" Value="SemiBold" />
     <Setter Property="LetterSpacing" Value="-0.35" />
   </Style>
@@ -102,11 +102,16 @@
     <Setter Property="Background" Value="{DynamicResource HeartbeatSurfaceBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource HeartbeatBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="12" />
-    <Setter Property="Padding" Value="18" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Padding" Value="15" />
   </Style>
   <Style Selector="Border.surface.compact">
-    <Setter Property="Padding" Value="14" />
+    <Setter Property="Padding" Value="12" />
+  </Style>
+  <Style Selector="Border.status-pill">
+    <Setter Property="Background" Value="{DynamicResource HeartbeatSuccessSoftBrush}" />
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="Padding" Value="10,6" />
   </Style>
   <Style Selector="Border.surface-alt">
     <Setter Property="Background" Value="{DynamicResource HeartbeatSurfaceAltBrush}" />
@@ -157,8 +162,8 @@
     <Setter Property="HorizontalAlignment" Value="Stretch" />
     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
     <Setter Property="VerticalContentAlignment" Value="Center" />
-    <Setter Property="Padding" Value="13,10" />
-    <Setter Property="MinHeight" Value="42" />
+    <Setter Property="Padding" Value="11,9" />
+    <Setter Property="MinHeight" Value="40" />
   </Style>
   <Style Selector="Button.nav-item.compact">
     <Setter Property="Padding" Value="0,10" />
