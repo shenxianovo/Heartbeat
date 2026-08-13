@@ -11,3 +11,7 @@
 ### Domain docs
 
 多上下文布局（CONTEXT-MAP.md + 各子目录 CONTEXT.md）。详见 `docs/agents/domain.md`。
+
+### .NET refactoring
+
+修改 C# 命名或执行跨文件语义重构时，遵循 `docs/agents/dotnet-refactoring.md`。

@@ -47,8 +47,8 @@ builder.Services.AddHealthChecks();
 //   - OIDC access token（Web 用户，authorization code + PKCE）：typ=at+jwt，issuer 带尾斜杠
 //   - 会话 JWT（桌面 Agent 经 /api/v1/apikeys/exchange）：typ=JWT，issuer/audience 不带斜杠
 // 按 JWT header 的 typ 路由到各自的 scheme，分别精确校验。
-const string OidcScheme = "OidcBearer";
-const string SessionScheme = "SessionBearer";
+const string oidcScheme = "OidcBearer";
+const string sessionScheme = "SessionBearer";
 
 var authSection = builder.Configuration.GetSection("AuthService");
 builder.Services.AddAuthentication(options =>
@@ -62,10 +62,10 @@ builder.Services.AddAuthentication(options =>
         {
             var header = context.Request.Headers.Authorization.ToString();
             var token = header.StartsWith("Bearer ") ? header["Bearer ".Length..] : null;
-            return JwtTypeSniffer.IsOidcAccessToken(token) ? OidcScheme : SessionScheme;
+            return JwtTypeSniffer.IsOidcAccessToken(token) ? oidcScheme : sessionScheme;
         };
     })
-    .AddJwtBearer(OidcScheme, options =>
+    .AddJwtBearer(oidcScheme, options =>
     {
         options.Authority = authSection["Authority"];
         options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
@@ -100,7 +100,7 @@ builder.Services.AddAuthentication(options =>
             },
         };
     })
-    .AddJwtBearer(SessionScheme, options =>
+    .AddJwtBearer(sessionScheme, options =>
     {
         options.Authority = authSection["Authority"];
         options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();

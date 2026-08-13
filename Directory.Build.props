@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- Run .editorconfig code-style diagnostics during normal builds and CI. -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+</Project>
