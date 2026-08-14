@@ -16,7 +16,19 @@ Id 即活动身份：已有行则单调生长（EndTime 取 max、attributes 后
 _Avoid_: Statistics, Summary
 
 **App**:
-跨平台应用产品，是统计聚合、Matcher 与详情查询的主维度。摄入时由 AppIdentityKey 解析并让 ActivitySegment 引用 AppIdentity；多个平台身份可显式映射到同一 App，查询经 AppIdentity → App 聚合。未知身份先创建一对一 provisional App，不按名称猜测归并；显式归并由事务化服务端操作完成。presence 同样接收 AppIdentityKey，并向 Dashboard 投影 App 的 Id/Key/DisplayName。AppIcon 由 Agent 以 AppIdentity 上传提示，每个 Owner/App 保留一份产品图标。
+跨平台应用产品，是统计聚合、Matcher 与详情查询的主维度。稳定 Key 承载知识引用，DisplayName 是可更新文案；可同时安装和运行的发行渠道或产品变体默认是不同 App。摄入时由 AppIdentityKey 解析并让 ActivitySegment 引用 AppIdentity；多个平台身份映射到同一 App，查询经 AppIdentity → App 聚合。已知产品由 App Catalog 确定映射；未知身份先创建一对一 provisional App，不按名称猜测归并。presence 同样接收 AppIdentityKey，并向 Dashboard 投影 App 的 Id/Key/DisplayName。AppIcon 由 Agent 以 AppIdentity 上传提示，每个 Owner/App 保留一份产品图标。
+
+**App Catalog（应用目录）**:
+服务端维护的部署全局产品目录，声明经过真实设备观察或供应商资料确认的已知 App 规范 Key、DisplayName 与一个或多个平台 AppIdentity。单平台稳定产品同样可以进入目录；provisional 表示产品尚未被系统识别，不表示它缺少跨平台版本。已发布 Key 与 identity 映射默认只增不删；错误映射通过显式迁移修正。目录内身份确定映射；目录外身份保留为 provisional App，部署管理员可以显式补充或修正映射。
+_Avoid_: 名称相似度自动归并、每个 Owner 各自维护产品映射、把 App Catalog 当作已安装应用清单、在目录中塞报表隐藏或统计行为规则
+
+**App Catalog Override（应用目录覆盖）**:
+部署管理员对单个 AppIdentity 归属作出的部署本地决定，指向一个目标 App，优先于内置 App Catalog，并保留修改人和时间。AppIdentity.AppId 是当前生效结果；Override 是协调器必须长期尊重的管理员意图，不能从当前外键反向猜测。删除 Override 后立即重新协调：命中 Catalog 则恢复内置映射，否则拆回独立 provisional App。
+_Avoid_: 直接改 AppIdentity.AppId 充当覆盖、把 merge receipt 当作当前覆盖状态、按 Owner 建覆盖
+
+**Deployment Administrator（部署管理员）**:
+JWT `sub` 出现在部署环境白名单中的用户，可以管理影响所有 Owner 的 App Catalog 映射。Auth 平台负责让部署者取得不可变 `sub`；Heartbeat 只判断当前用户是否为部署管理员，不允许从产品 UI 授予或撤销该权限。
+_Avoid_: 用可变 username 授权、把普通 Owner 自动视为部署管理员、在 App Catalog 页面管理管理员权限
 
 **Owner / Device**:
 数据隔离的两级键：所有查询以 `Device.OwnerId` 过滤（多用户就绪，见 CONTEXT-MAP 定位不变量 2）；Device 是一个观测主体——机器或账号（ADR-032，词条详见 shared/CONTEXT.md），报表可按 Device 过滤或跨设备聚合。
