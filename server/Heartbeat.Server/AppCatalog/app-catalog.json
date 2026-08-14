@@ -1,5 +1,55 @@
 {
   "schemaVersion": 1,
-  "catalogVersion": 1,
-  "products": []
+  "catalogVersion": 2,
+  "products": [
+    {
+      "key": "chrome",
+      "displayName": "Google Chrome",
+      "identities": [
+        "mac:com.google.chrome",
+        "win:chrome"
+      ]
+    },
+    {
+      "key": "feishu",
+      "displayName": "Feishu",
+      "identities": [
+        "mac:com.electron.lark",
+        "win:feishu"
+      ]
+    },
+    {
+      "key": "finder",
+      "displayName": "Finder",
+      "identities": [
+        "mac:com.apple.finder"
+      ]
+    },
+    {
+      "key": "heartbeat",
+      "displayName": "Heartbeat",
+      "identities": [
+        "mac:com.shenxianovo.heartbeat",
+        "mac:exe.heartbeat.desktop.mac",
+        "win:heartbeat.desktop.windows",
+        "win:heartbeat.wpf"
+      ]
+    },
+    {
+      "key": "qq",
+      "displayName": "QQ",
+      "identities": [
+        "mac:com.tencent.qq",
+        "win:qq"
+      ]
+    },
+    {
+      "key": "vscode",
+      "displayName": "Visual Studio Code",
+      "identities": [
+        "mac:com.microsoft.vscode",
+        "win:code"
+      ]
+    }
+  ]
 }
