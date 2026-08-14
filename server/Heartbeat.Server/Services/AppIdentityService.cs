@@ -1,4 +1,5 @@
 using Heartbeat.Core;
+using Heartbeat.Server.AppCatalog;
 using Heartbeat.Server.Data;
 using Heartbeat.Server.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -6,10 +7,10 @@ using Microsoft.EntityFrameworkCore;
 namespace Heartbeat.Server.Services;
 
 /// <summary>
-/// 解析平台观测身份。未知身份始终创建一对一 provisional App；相似名称和短键绝不
-/// 自动绑定到既有产品。显式多身份映射由 Ticket 04 的管理领域操作负责。
+/// 解析平台观测身份。Catalog 内身份直接绑定规范产品；目录外身份创建一对一
+/// provisional App。相似名称和短键绝不作为产品归并证据。
 /// </summary>
-public class AppIdentityService(AppDbContext db)
+public class AppIdentityService(AppDbContext db, AppCatalogRuntimeSnapshot? catalog = null)
 {
     public async Task<AppIdentity> ResolveAsync(
         string identityKey,
@@ -22,15 +23,54 @@ public class AppIdentityService(AppDbContext db)
             .SingleOrDefaultAsync(x => x.Key == normalized, cancellationToken);
         if (existing != null) return existing;
 
-        var app = new App
+        // Serialize all previously unseen identities with Catalog reconciliation and Override
+        // mutations. This also closes the pre-existing race where segment/presence/icon could
+        // concurrently create two provisional products for the same identity.
+        var ownsTransaction = db.Database.CurrentTransaction is null;
+        await using var transaction = ownsTransaction
+            ? await db.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        await AppCatalogLock.AcquireAsync(db, cancellationToken);
+
+        existing = await db.AppIdentities
+            .Include(x => x.App)
+            .SingleOrDefaultAsync(x => x.Key == normalized, cancellationToken);
+        if (existing is not null)
         {
-            Key = await AllocateProductKeyAsync(normalized, cancellationToken),
-            DisplayName = ResolveDisplayName(normalized, observedDisplayName),
-            IsProvisional = true
-        };
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+            return existing;
+        }
+
+        App app;
+        if (catalog?.TryGetProduct(normalized, out var knownProduct) == true)
+        {
+            var canonical = await db.Apps.SingleOrDefaultAsync(
+                x => x.Key == knownProduct.Key, cancellationToken);
+            if (canonical?.IsProvisional == true)
+                throw new AppCatalogException(
+                    $"Catalog product key '{knownProduct.Key}' is occupied by an unrelated provisional App.");
+            app = canonical ?? new App
+                {
+                    Key = knownProduct.Key,
+                    DisplayName = knownProduct.DisplayName,
+                    IsProvisional = false
+                };
+            app.DisplayName = knownProduct.DisplayName;
+            app.IsProvisional = false;
+        }
+        else
+        {
+            app = new App
+            {
+                Key = await AllocateProductKeyAsync(normalized, cancellationToken),
+                DisplayName = ResolveDisplayName(normalized, observedDisplayName),
+                IsProvisional = true
+            };
+        }
         var identity = new AppIdentity { Key = normalized, App = app };
         db.AppIdentities.Add(identity);
         await db.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         return identity;
     }
 

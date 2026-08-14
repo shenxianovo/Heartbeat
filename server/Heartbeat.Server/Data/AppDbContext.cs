@@ -14,6 +14,7 @@ namespace Heartbeat.Server.Data
         public DbSet<AppMergeReceipt> AppMergeReceipts => Set<AppMergeReceipt>();
         public DbSet<AppCatalogState> AppCatalogStates => Set<AppCatalogState>();
         public DbSet<AppCatalogAudit> AppCatalogAudits => Set<AppCatalogAudit>();
+        public DbSet<AppCatalogOverride> AppCatalogOverrides => Set<AppCatalogOverride>();
         public DbSet<InputEvent> InputEvents => Set<InputEvent>();
         public DbSet<Recap> Recaps => Set<Recap>();
         public DbSet<Strand> Strands => Set<Strand>();
@@ -148,6 +149,33 @@ namespace Heartbeat.Server.Data
                 entity.Property(e => e.ActorSubject).HasMaxLength(256);
                 entity.Property(e => e.SummaryJson).HasColumnType("jsonb");
                 entity.HasIndex(e => e.OccurredAt);
+            });
+
+            modelBuilder.Entity<AppCatalogOverride>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Status).HasMaxLength(32);
+                entity.Property(e => e.TargetAppKey).HasMaxLength(256);
+                entity.Property(e => e.CreatedBySubject).HasMaxLength(256);
+                entity.Property(e => e.UpdatedBySubject).HasMaxLength(256);
+
+                entity.HasOne(e => e.AppIdentity)
+                    .WithMany()
+                    .HasForeignKey(e => e.AppIdentityId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(e => e.TargetApp)
+                    .WithMany()
+                    .HasForeignKey(e => e.TargetAppId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(e => e.AppIdentityId);
+                entity.HasIndex(e => e.TargetAppId);
+                entity.HasIndex(e => e.AppIdentityId)
+                    .IsUnique()
+                    .HasFilter($"\"Status\" = '{AppCatalogOverrideStatuses.Active}'");
+                entity.ToTable(table => table.HasCheckConstraint(
+                    "CK_AppCatalogOverrides_ActiveTarget",
+                    $"\"Status\" <> '{AppCatalogOverrideStatuses.Active}' OR \"TargetAppId\" IS NOT NULL"));
             });
 
             modelBuilder.Entity<InputEvent>(entity =>

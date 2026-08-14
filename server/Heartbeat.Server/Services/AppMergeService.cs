@@ -39,6 +39,7 @@ public class AppMergeService(AppDbContext db, TimeProvider? clock = null)
         }
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await AppCatalogLock.AcquireAsync(db, cancellationToken);
         foreach (var productKey in new[] { sourceKey, targetKey }.Order(StringComparer.Ordinal))
         {
             var lockKey = AdvisoryLockNamespace + productKey;
