@@ -48,5 +48,23 @@ npm test           # vitest
   覆写表处理 youtube.com/watch 这类"query 即身份"的站点),原始完整 URL 存
   Attributes。见 `src/normalize.ts` 与 [`shared/CONTEXT.md`](../../../shared/CONTEXT.md) 的 IdentityKey 词条。
 
-本地端到端验证(不装扩展、手工 POST 模拟)见
-[docs/development.md](../../../docs/development.md)。
+## Test the hub without loading the extension
+
+Agent 运行时，可手工 POST 一个 browser 段验证 loopback ingest、离线缓存和上传链路：
+
+```powershell
+$body = @{ segments = @(@{
+  id = [guid]::NewGuid(); source = "browser"
+  identityKey = "https://example.com/page"; appHint = "edge"
+  title = "Example"; startTime = (Get-Date).ToUniversalTime().AddMinutes(-5).ToString("o")
+  endTime = (Get-Date).ToUniversalTime().ToString("o")
+  attributes = @{ url = "https://example.com/page" }
+}) } | ConvertTo-Json -Depth 5
+Invoke-RestMethod -Uri http://127.0.0.1:24820/v1/segments -Method Post `
+  -ContentType application/json -Body $body
+```
+
+`appHint` 是平台无关的产品提示；hub 会在进入严格缓存前把它解析为本机 AppIdentity。
+`source = "system"` 是内置采集器的保留名，外部 Collector 使用时会被拒收。
+
+完成标准：请求返回 `accepted: 1`，且该段在一个上传周期内出现在本地 Dashboard 的 Replay 中。

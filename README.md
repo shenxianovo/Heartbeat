@@ -1,9 +1,9 @@
 # Heartbeat
 
-Personal Windows PC app usage monitor.
+Personal cross-platform desktop activity monitor.
 https://heartbeat.shenxianovo.com
 
-记录 PC 上的数字活动(前台应用、浏览器页面、输入事件),回答"x年前的今天我在做什么"。
+记录桌面设备上的数字活动(前台应用、浏览器页面、输入事件),回答"x年前的今天我在做什么"。
 单用户自部署系统,定位与边界见 [CONTEXT-MAP.md](./CONTEXT-MAP.md)。
 
 ## Architecture
@@ -12,14 +12,14 @@ https://heartbeat.shenxianovo.com
 
 ```mermaid
 graph LR
-    subgraph Collection["Collection (Windows)"]
+    subgraph Collection["Collection"]
         Collectors["Per-app collectors<br/><i>browser / vscode / ...</i>"]
         Agent["Agent<br/><i>system collector + local ingest hub</i>"]
         Collectors -- "loopback<br/>(ADR-017)" --> Agent
     end
 
     subgraph Analytics["Analytics (Linux)"]
-        API["ASP.NET Core API<br/><i>ingest + merge + aggregate</i>"]
+        API["ASP.NET Core API<br/><i>ingest + snapshot upsert + reports</i>"]
         DB[("PostgreSQL")]
         API --> DB
     end
@@ -40,7 +40,7 @@ graph LR
 | Layer | Technology |
 |---|---|
 | Backend | ASP.NET Core (.NET 10), EF Core, PostgreSQL |
-| Desktop Agent | .NET 10 (Windows), Generic Host, WinEvent Hooks (P/Invoke) |
+| Desktop Agent | .NET 10 (Windows/macOS), Generic Host, platform observers |
 | Desktop GUI | Avalonia 12 (.NET 10) |
 | Collectors | Browser extension (TypeScript + Vite);vscode 等规划中 |
 | Frontend | Vue 3, TypeScript, Vite |
@@ -72,15 +72,17 @@ Heartbeat
 │  └─ Heartbeat.Core/           # Shared DTOs & utilities        .NET Class Library
 └─ docs/                        # Documentation
    ├─ adr/                      # Architecture Decision Records
-   ├─ development.md            # Local E2E verification & tests
-   ├─ api.md                    # API conventions (导读)
-   └─ db.md                     # Database design (导读)
+   ├─ development.md            # 日常本地开发路径
+   ├─ api.md                    # API 调用方约定
+   ├─ db.md                     # 数据库设计导读
+   └─ runbooks/                 # 低频、高风险操作
 ```
 
 ## Documentation
 
-- [Development Guide](./docs/development.md) — 本地端到端验证、测试、API client 重生成
-- [API 导读](./docs/api.md) — 鉴权与调用方约定;端点真相源是 OpenAPI
-- [数据库导读](./docs/db.md) — 设计意图;schema 真相源是实体类与迁移
+- [Development Guide](./docs/development.md) — 启动本地栈、运行 Agent、验证与测试
+- [API 导读](./docs/api.md) — 鉴权、调用方与客户端生成约定；端点真相源是 OpenAPI
+- [数据库导读](./docs/db.md) — 数据设计意图；schema 真相源是实体类与迁移
+- [Runbooks](./docs/runbooks/) — 生产数据刷新与 App Catalog 运维
 - [CONTEXT-MAP](./CONTEXT-MAP.md) + 各上下文 `CONTEXT.md` — 领域术语表
 - [ADRs](./docs/adr/) — 架构决策记录([template](./docs/adr/adr-template.md))
