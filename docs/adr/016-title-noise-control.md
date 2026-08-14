@@ -72,9 +72,9 @@ Two layers, strictly separated. The agent handles **volume** (never content); th
 
 <!-- Filled in as implementation lands -->
 
-- `desktop/Heartbeat.Agent/Utils/IInputActivitySignal.cs` — shared last-click signal (pending)
-- `desktop/Heartbeat.Agent/Utils/LowLevelInputHook.cs` — click path updates the signal (pending)
-- `desktop/Heartbeat.Agent/Services/AppMonitorService.cs` — title-change click gating (pending)
+- `collection/desktop/Heartbeat.Collector.System/Input/IInputActivitySignal.cs` — shared last-click signal (pending)
+- `collection/desktop/Heartbeat.Desktop.Windows/Utils/LowLevelInputHook.cs` — click path updates the signal (pending)
+- `collection/desktop/Heartbeat.Collector.System/Collection/AppMonitorService.cs` — title-change click gating (pending)
 - `frontend/src/` — per-app title formatter registry (pending)
 - [ADR-015](./015-window-title-segment-dimension.md) — title as segment dimension (Strategy A) this refines
 - [ADR-012](./012-input-event-tracking.md) — raw-stream / lossless principle

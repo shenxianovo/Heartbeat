@@ -92,12 +92,12 @@ Analytics 将 App 定义为跨平台产品，并以 AppIdentity 保存平台可�
 ## Implementation Decisions
 
 - Follow the accepted phased sequence: first extract portable cores without behavior change; then land AppIdentity, strict protocol, cache migration, and InputCode on Windows; then replace WPF with Avalonia; then ship the macOS App-only MVP; finally add title and input depth.
-- Introduce a pure .NET `Hub.Core` module for loopback ingest, buffering, upload streams, durable cache, authentication clients, declaration uplink, Current Activity read model, and other reusable hub runtime behavior.
-- Introduce a pure .NET `Desktop.Core` module for the system Collector, ActivitySegment folding, away state, title-noise state machine, Interaction Signal abstraction, InputEvent buffering, and platform-neutral desktop configuration.
-- Keep Windows and macOS native integrations in separate platform adapter modules. Composition roots select the appropriate adapters; shared core modules contain no platform conditionals.
+- Introduce a pure .NET `Heartbeat.Collection.Hub` module for loopback ingest, buffering, upload streams, durable cache, authentication clients, declaration uplink, Current Activity read model, and other reusable hub runtime behavior.
+- Introduce a pure .NET `Heartbeat.Collector.System` module for the system Collector, ActivitySegment folding, away state, title-noise state machine, Interaction Signal abstraction, InputEvent buffering, and platform-neutral desktop configuration.
+- Keep Windows and macOS native integrations inside separate platform heads. Composition roots select the appropriate adapters; shared capability modules contain no platform conditionals.
 - Replace WPF with a shared Avalonia UI library and independent Windows/macOS platform heads. Each platform head hosts the Agent and UI in one process.
 - The Windows head remains a tray application. The macOS head is a menu-bar accessory application without a persistent Dock icon. Closing the settings window hides it and does not stop the Agent.
-- Keep unheaded hub deployments dependent only on `Hub.Core`; they must not reference desktop collection or UI modules.
+- Keep unheaded hub deployments dependent only on `Heartbeat.Collection.Hub`; they must not reference desktop collection or UI modules.
 - Redefine App as a cross-platform product with stable `Key` and `DisplayName`. Keys default to short product slugs and add qualifiers only to resolve real collisions.
 - Add AppIdentity as the global platform-observed identity mapped many-to-one to App. Windows identities use normalized `win:` keys, macOS identities use normalized `mac:` bundle identifiers, and synthetic identities use `sys:` keys.
 - ActivitySegment persists AppIdentity rather than App directly. Reports, Replay, Matcher readings, App detail queries, and other product views join through AppIdentity to App.
@@ -126,16 +126,16 @@ Analytics 将 App 定义为跨平台产品，并以 AppIdentity 保存平台可�
 ## Testing Decisions
 
 - Tests assert externally visible behavior and domain invariants rather than private class structure, native API call order, or implementation-specific threading.
-- The primary test seam is `Desktop.Core`: feed semantic platform observations and assert emitted ActivitySegment snapshots, Current Activity, away transitions, title gating, permission degradation, and terminal flush behavior.
+- The primary test seam is `Heartbeat.Collector.System`: feed semantic platform observations and assert emitted ActivitySegment snapshots, Current Activity, away transitions, title gating, permission degradation, and terminal flush behavior.
 - Reuse and elevate the existing AppMonitorService fake-window/fake-power/fake-clock scenario style as the shared Windows/macOS state-machine contract.
-- Test `Hub.Core` upload behavior with real temporary cache files and a controllable HTTP transport. Cover version detection, atomic migration, backup preservation, compaction, retry classification, batch splitting, dead-letter output, 426 pause, and restart recovery.
+- Test `Heartbeat.Collection.Hub` upload behavior with real temporary cache files and a controllable HTTP transport. Cover version detection, atomic migration, backup preservation, compaction, retry classification, batch splitting, dead-letter output, 426 pause, and restart recovery.
 - Reuse the existing UploadStream and JsonFileCache behavioral tests as prior art; retain the “batch does not evaporate” invariant across retries and dead-letter isolation.
 - Test Analytics with the existing PostgreSQL integration fixture. Cover AppIdentity creation, provisional App creation, multi-identity product aggregation, strict ingest validation, ActivitySegment identity guard, presence projection, icon selection, Matcher migration, and App merge dry-run/commit/idempotency/authorization.
 - Add end-to-end service scenarios proving `win:code` and `mac:com.microsoft.vscode` aggregate into one App report while remaining distinguishable AppIdentity facts.
 - Test external Collector App hints through the hub resolver and Analytics association, including browser Replay/App detail behavior on both Windows and macOS identities.
 - Test both InputCode sets in Analytics and Dashboard projections. A historical Windows VK event and a new physical-position event for the same key should contribute to the same displayed key without altering stored raw codes.
 - Test Avalonia ViewModels and state presentation independently of native windows. Cover capability states, degraded permissions, update-required state, cache migration failure, dead-letter visibility, collector management, login-start state, and close-to-hide commands.
-- Keep platform adapter tests thin: native callbacks or notification payloads are translated into semantic observations; shared state-machine outcomes belong to `Desktop.Core` tests.
+- Keep platform adapter tests thin: native callbacks or notification payloads are translated into semantic observations; shared state-machine outcomes belong to `Heartbeat.Collector.System` tests.
 - Use macOS real-device smoke tests for TCC prompts, permission persistence, session lock, screen sleep, system sleep, focused-window events, input monitoring, menu-bar lifecycle, login start, code signing, notarization, installation, and update. Do not mock undocumented operating-system internals as proof of correctness.
 - Add release verification for both Windows and macOS artifacts, including stable channels, stable bundle identity, signed/notarized macOS packages, and update from the previous published version with legacy caches present.
 - Keep all existing Windows behavior and server report regression suites green during the prefactor phase before changing contracts.

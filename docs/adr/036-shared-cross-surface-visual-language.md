@@ -29,6 +29,6 @@ Heartbeat 的 Web Dashboard 与桌面 Agent 共享品牌 Token 和组件语言�
 ## References
 
 - [ADR-033](./033-cross-platform-desktop-architecture.md) — 共享 Avalonia presentation 与独立 platform head
-- [`desktop/CONTEXT.md`](../../desktop/CONTEXT.md) — 桌面 Agent 与采集器页规范术语
-- [`HeartbeatTheme.axaml`](../../desktop/Heartbeat.Desktop.UI/Themes/HeartbeatTheme.axaml) — 共享主题 Token 与控件样式
-- [`MainWindow.axaml`](../../desktop/Heartbeat.Desktop.UI/Views/MainWindow.axaml) — 桌面信息架构与共享布局
+- [`collection/CONTEXT.md`](../../collection/CONTEXT.md) — 桌面 Agent 与采集器页规范术语
+- [`HeartbeatTheme.axaml`](../../collection/desktop/Heartbeat.Desktop.UI/Themes/HeartbeatTheme.axaml) — 共享主题 Token 与控件样式
+- [`MainWindow.axaml`](../../collection/desktop/Heartbeat.Desktop.UI/Views/MainWindow.axaml) — 桌面信息架构与共享布局

@@ -8,7 +8,7 @@
 
 ## 范围内
 
-1. MV3 浏览器扩展（`collectors/browser/`，仓库新顶层目录）
+1. MV3 浏览器扩展（`collection/collectors/Heartbeat.Collector.Browser/`）
 2. 回放注意力线标签升级（ADR-019 前端实现）
 3. WPF 插件管理页（Active = 流量推断，Deactivate = hub 黑名单 403）
 
@@ -30,7 +30,7 @@
 - IdentityKey = origin+pathname，掐 query/fragment；per-domain 覆写表处理"query 即身份"站点；完整 URL 存 Attributes（判据可有损，原始数据无损）
 - 扩展忠实记录 tab 活跃，不管窗口是否前台；多窗口时每窗口各记其 active tab（windowId 进 Attributes）
 - 主视图 = 注意力线 + 标签升级；fallback 按时间窗口判定（ADR-019）
-- Active/Deactivate 语义见 desktop/CONTEXT.md
+- Active/Deactivate 语义见 collection/CONTEXT.md
 
 ## Issues
 

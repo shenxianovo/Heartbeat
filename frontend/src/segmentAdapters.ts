@@ -45,7 +45,7 @@ export function urlOf(attributes?: string): string | undefined {
  * 未登记的 source 返回 undefined → 回放泳道走装箱兜底。
  */
 const LANE_KEY_EXTRACTORS: Record<string, (attrs: Record<string, unknown>) => string | undefined> = {
-  // browser：每窗口各记其 active tab，windowId 进 Attributes（collectors/browser fold.ts）。
+  // browser：每窗口各记其 active tab，windowId 进 Attributes（collection/collectors/Heartbeat.Collector.Browser/src/fold.ts）。
   // 注意 windowId 是浏览器会话内递增的，跨重启可能复用——同 lane 顺序排开，可读性无损。
   browser: a =>
     typeof a.windowId === 'number' || typeof a.windowId === 'string'

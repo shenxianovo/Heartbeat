@@ -113,9 +113,9 @@ There is exactly one mutually-exclusive track — foreground-ness is unique — 
 - `server/Heartbeat.Server/Migrations/20260702110038_GeneralizeUsageToActivitySegment.cs` — 保数据迁移（backfill source='system'）
 - `server/Heartbeat.Server/Services/UsageService.cs` — `SaveSegmentsAsync` 统一摄入例程（幂等 + 续接）
 - `server/Heartbeat.Server/Controllers/SegmentController.cs` — `/api/v1/segments`（拒收 source='system'）
-- `desktop/Heartbeat.Agent/Workers/SegmentIngestWorker.cs` — loopback ingest 枢纽（`POST /v1/segments`）
-- `desktop/Heartbeat.Agent/Services/SegmentIngestService.cs` — 接收缓冲 + 校验
-- `desktop/Heartbeat.Agent/Services/SegmentUploadService.cs` — 插件段上传 + 离线缓存
+- `collection/desktop/Heartbeat.Desktop.Windows/Workers/SegmentIngestWorker.cs` — loopback ingest 枢纽（`POST /v1/segments`）
+- `collection/hub/Heartbeat.Collection.Hub/Segments/SegmentIngestService.cs` — 接收缓冲 + 校验
+- `collection/desktop/Heartbeat.Desktop.Windows/Services/SegmentUploadService.cs` — 插件段上传 + 离线缓存
 - frontend 回放多轨（pending）
 - [ADR-001](./001-server-side-usage-merging.md) — cross-batch continuation this generalizes
 - [ADR-008](./008-local-cache-offline-retry.md) — offline cache the hub reuses for all sources

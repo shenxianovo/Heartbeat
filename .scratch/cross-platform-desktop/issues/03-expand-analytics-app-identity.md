@@ -2,7 +2,7 @@
 
 **What to build:** Redefine App as the cross-platform product users recognize while retaining each platform-observed AppIdentity as immutable evidence. Existing Windows history must be backfilled without losing ActivitySegment identity, and reports must aggregate explicitly related Windows and macOS identities into one product.
 
-**Blocked by:** 01 — Extract portable Hub.Core and Desktop.Core.
+**Blocked by:** 01 — Extract the portable Collection Hub and system Collector.
 
 **Status:** ready-for-agent
 

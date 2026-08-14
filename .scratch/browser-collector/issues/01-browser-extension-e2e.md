@@ -8,7 +8,7 @@ Status: ready-for-agent
 
 ## What to build
 
-在新顶层目录 `collectors/browser/` 建一个 Manifest V3 浏览器扩展（Chromium 系，Edge 验收），把"当前哪个 tab 活跃"折叠成 ActivitySegment，推送到 Agent 的 loopback ingest hub，走通 扩展 → hub → 上传 → 服务端入库 的完整链路。
+在 Collection 上下文的 `collection/collectors/Heartbeat.Collector.Browser/` 建一个 Manifest V3 浏览器扩展（Chromium 系，Edge 验收），把"当前哪个 tab 活跃"折叠成 ActivitySegment，推送到 Agent 的 loopback ingest hub，走通 扩展 → hub → 上传 → 服务端入库 的完整链路。
 
 行为：
 

@@ -110,8 +110,8 @@ Add to `AgentConfig`:
 
 <!-- Filled in as implementation lands -->
 
-- `desktop/Heartbeat.Agent/Utils/IPowerMonitor.cs` — power signal abstraction (pending)
-- `desktop/Heartbeat.Agent/Utils/WindowsPowerMonitor.cs` — message-only window + power-setting notification (pending)
-- `desktop/Heartbeat.Agent/Services/AppMonitorService.cs` — `_isAway` state machine, away segment emission (pending)
-- `desktop/Heartbeat.Agent/Models/AgentConfig.cs` — `AwayProcessNames` (pending)
+- `collection/desktop/Heartbeat.Desktop.Windows/Utils/IPowerMonitor.cs` — power signal abstraction (pending)
+- `collection/desktop/Heartbeat.Desktop.Windows/Utils/WindowsPowerMonitor.cs` — message-only window + power-setting notification (pending)
+- `collection/desktop/Heartbeat.Collector.System/Collection/AppMonitorService.cs` — `_isAway` state machine, away segment emission (pending)
+- `collection/desktop/Heartbeat.Desktop.Windows/Models/AgentConfig.cs` — `AwayProcessNames` (pending)
 - [ADR-002](./002-event-driven-window-tracking.md) — foreground window tracking this builds on

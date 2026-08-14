@@ -72,9 +72,9 @@ Server side ([`Program.cs`](../../server/Heartbeat.Server/Program.cs)):
 
 Client side:
 
-- Agent: [`TokenManager`](../../desktop/Heartbeat.Agent/Http/TokenManager.cs)
+- Agent: [`TokenManager`](../../collection/hub/Heartbeat.Collection.Hub/Auth/TokenManager.cs)
   exchanges the ApiKey for a session JWT, caches it, and refreshes 60s before
-  expiry; [`BearerTokenHandler`](../../desktop/Heartbeat.Agent/Http/BearerTokenHandler.cs)
+  expiry; [`BearerTokenHandler`](../../collection/hub/Heartbeat.Collection.Hub/Auth/BearerTokenHandler.cs)
   injects `Authorization: Bearer {jwt}` plus `X-Hardware-Id` / `X-Device-Name`.
 - Dashboard: [`stores/auth.ts`](../../frontend/src/stores/auth.ts) runs the PKCE
   flow and stores the access token + refresh token.
@@ -110,8 +110,8 @@ See `shared/CONTEXT.md` for the Device glossary entry.
 ## References
 
 - [`server/Heartbeat.Server/Program.cs`](../../server/Heartbeat.Server/Program.cs) — dual-scheme registration + `typ` selector
-- [`desktop/Heartbeat.Agent/Http/TokenManager.cs`](../../desktop/Heartbeat.Agent/Http/TokenManager.cs) — ApiKey → session JWT exchange + caching
-- [`desktop/Heartbeat.Agent/Http/BearerTokenHandler.cs`](../../desktop/Heartbeat.Agent/Http/BearerTokenHandler.cs) — bearer + device headers injection
+- [`collection/hub/Heartbeat.Collection.Hub/Auth/TokenManager.cs`](../../collection/hub/Heartbeat.Collection.Hub/Auth/TokenManager.cs) — ApiKey → session JWT exchange + caching
+- [`collection/hub/Heartbeat.Collection.Hub/Auth/BearerTokenHandler.cs`](../../collection/hub/Heartbeat.Collection.Hub/Auth/BearerTokenHandler.cs) — bearer + device headers injection
 - [`frontend/src/stores/auth.ts`](../../frontend/src/stores/auth.ts) — OIDC authorization code + PKCE
 - `shared/CONTEXT.md` — Device / ApiKey glossary entries
 - [ADR-004](./004-apikey-header-authentication.md) — the superseded ApiKey scheme

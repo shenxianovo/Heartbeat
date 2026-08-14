@@ -32,7 +32,7 @@ jobs:
 
       - name: Publish
         run: |
-          dotnet publish desktop/Heartbeat.Desktop.Windows/Heartbeat.Desktop.Windows.csproj `
+          dotnet publish collection/desktop/Heartbeat.Desktop.Windows/Heartbeat.Desktop.Windows.csproj `
             -c Release `
             -r ${{ matrix.rid }} `
             --self-contained `
@@ -90,11 +90,11 @@ jobs:
           echo "version=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Run macOS desktop tests
-        run: dotnet test desktop/Heartbeat.Desktop.Mac.Tests/Heartbeat.Desktop.Mac.Tests.csproj -c Release
+        run: dotnet test collection/desktop/Heartbeat.Desktop.Mac.Tests/Heartbeat.Desktop.Mac.Tests.csproj -c Release
 
       - name: Publish Apple Silicon application
         run: |
-          dotnet publish desktop/Heartbeat.Desktop.Mac/Heartbeat.Desktop.Mac.csproj \
+          dotnet publish collection/desktop/Heartbeat.Desktop.Mac/Heartbeat.Desktop.Mac.csproj \
             -c Release \
             -r osx-arm64 \
             --self-contained \
@@ -156,10 +156,10 @@ jobs:
             --runtime osx-arm64 \
             --channel osx-arm64-stable \
             --bundleId com.shenxianovo.heartbeat \
-            --icon "$GITHUB_WORKSPACE/desktop/Heartbeat.Desktop.Mac/heartbeat.icns" \
-            --instWelcome "$GITHUB_WORKSPACE/desktop/Heartbeat.Desktop.Mac/macos/INSTALL.txt" \
+            --icon "$GITHUB_WORKSPACE/collection/desktop/Heartbeat.Desktop.Mac/heartbeat.icns" \
+            --instWelcome "$GITHUB_WORKSPACE/collection/desktop/Heartbeat.Desktop.Mac/macos/INSTALL.txt" \
             --signAppIdentity "${{ vars.MACOS_APP_SIGN_IDENTITY }}" \
-            --signEntitlements "$GITHUB_WORKSPACE/desktop/Heartbeat.Desktop.Mac/macos/Heartbeat.entitlements" \
+            --signEntitlements "$GITHUB_WORKSPACE/collection/desktop/Heartbeat.Desktop.Mac/macos/Heartbeat.entitlements" \
             --notaryProfile heartbeat-ci \
             --keychain "$RUNNER_TEMP/heartbeat-signing.keychain-db" \
             --outputDir releases-macos

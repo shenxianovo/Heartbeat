@@ -80,5 +80,5 @@ dotnet_naming_style.underscored_camel_case.required_prefix = _
 dotnet_naming_style.underscored_camel_case.capitalization = camel_case
 
 # Native interop declarations mirror platform ABI names and are not application APIs.
-[desktop/Heartbeat.Agent/Utils/{IconHelper,LowLevelInputHook,WindowsPowerMonitor,WindowsWindowEventMonitor}.cs]
+[collection/desktop/Heartbeat.Desktop.Windows/Utils/{IconHelper,LowLevelInputHook,WindowsPowerMonitor,WindowsWindowEventMonitor}.cs]
 dotnet_diagnostic.IDE1006.severity = none

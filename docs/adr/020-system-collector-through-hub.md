@@ -21,7 +21,7 @@ ADR-018 之后,服务端把 `/usage` 上传映射为 ActivitySegment(补 `source
 `AppUsageItem` 是 `ActivitySegmentItem` 的真子集({Id, AppName, Title, Start, End} vs 多出 {Source, IdentityKey, Attributes});`SystemIdentity` 就在共享内核,客户端本来够得着。平行管道的具体成本:
 
 - 同一个上传模板(fresh 上传→失败入缓存;cached 先重传→成功清空)写了三遍(usage / segments / input-events),compact 时机的差异一半是意外而非设计;
-- hub 特性(Active 从流量推断、Deactivate 黑名单,`desktop/CONTEXT.md` 已定义待实现)天然不覆盖 system 源——内置采集器绕过了 ingest,而不是作为一等 Source 汇入同一漏斗;
+- hub 特性(Active 从流量推断、Deactivate 黑名单,`collection/CONTEXT.md` 已定义待实现)天然不覆盖 system 源——内置采集器绕过了 ingest,而不是作为一等 Source 汇入同一漏斗;
 - `SegmentIngestService.Accept` 拒收 `system` 的守卫,其存在本身就是两条管道分离的产物;
 - drain-then-fail 丢数据模式(drain 清空 buffer 后 `cache.Add` 抛异常,已 drain 项蒸发)在三处重复且无测试。
 
@@ -72,14 +72,14 @@ reject-system 从 `SegmentIngestService.Accept` 搬到 `SegmentIngestWorker`:它
 
 <!-- Filled in as implementation lands -->
 
-- `desktop/Heartbeat.Agent/Services/ISegmentSink.cs` — monitor→hub seam(§2)
-- `desktop/Heartbeat.Agent/Services/AppMonitorService.cs` — 产段 + 闭合即推 + 30s 快照循环(§1/§2)
-- `desktop/Heartbeat.Agent/Services/SegmentIngestService.cs` — source 无关的缓冲,ISegmentSink 生产 adapter(§3)
-- `desktop/Heartbeat.Agent/Services/SegmentIngestRequestHandler.cs` — loopback 协议层 + 冒充守卫(§3)
-- `desktop/Heartbeat.Agent/Services/UploadChannel.cs` — 上传通道:"送达、缓存、或退回"(§5)
-- `desktop/Heartbeat.Agent/Storage/ICache.cs` + `JsonFileCache.cs` — 离线缓存 seam 与唯一生产实现(§5)
-- `desktop/Heartbeat.Agent/Workers/UsageUploadWorker.cs` — 出网调度 + 退回重注入 + 旧缓存孤儿化日志(§5/§6)
-- `desktop/Heartbeat.Agent/Hosting/AgentHostExtensions.cs` — 通道装配 + 托管注册顺序翻转(§6)
+- `collection/hub/Heartbeat.Collection.Hub/Segments/ISegmentSink.cs` — monitor→hub seam(§2)
+- `collection/desktop/Heartbeat.Collector.System/Collection/AppMonitorService.cs` — 产段 + 闭合即推 + 30s 快照循环(§1/§2)
+- `collection/hub/Heartbeat.Collection.Hub/Segments/SegmentIngestService.cs` — source 无关的缓冲,ISegmentSink 生产 adapter(§3)
+- `collection/hub/Heartbeat.Collection.Hub/Ingest/SegmentIngestRequestHandler.cs` — loopback 协议层 + 冒充守卫(§3)
+- `collection/desktop/Heartbeat.Desktop.Windows/Services/UploadChannel.cs` — 上传通道:"送达、缓存、或退回"(§5)
+- `collection/hub/Heartbeat.Collection.Hub/Storage/ICache.cs` + `JsonFileCache.cs` — 离线缓存 seam 与唯一生产实现(§5)
+- `collection/desktop/Heartbeat.Desktop.Windows/Workers/UsageUploadWorker.cs` — 出网调度 + 退回重注入 + 旧缓存孤儿化日志(§5/§6)
+- `collection/desktop/Heartbeat.Desktop.Windows/Hosting/AgentHostExtensions.cs` — 通道装配 + 托管注册顺序翻转(§6)
 - `server/Heartbeat.Server/Controllers/UsageController.cs` — 只读查询投影(§4)
 - `server/Heartbeat.Server/Services/UsageService.cs` — SaveSegmentsAsync 唯一摄入例程(§4)
 - `shared/Heartbeat.Core/SegmentValidationPolicy.cs` — 唯一摄入校验策略(§1)

@@ -108,10 +108,10 @@ Dedicated-endpoint style (ADR-006). Two read paths are now shipped:
 - [`shared/Heartbeat.Core/DTOs/Input/InputEventUploadRequest.cs`](../../shared/Heartbeat.Core/DTOs/Input/InputEventUploadRequest.cs) — upload DTO + `InputEventType` enum
 - [`shared/Heartbeat.Core/DTOs/Input/InputCountsResponse.cs`](../../shared/Heartbeat.Core/DTOs/Input/InputCountsResponse.cs) — counts response DTO
 - [`shared/Heartbeat.Core/DTOs/Input/KeyFrequencyResponse.cs`](../../shared/Heartbeat.Core/DTOs/Input/KeyFrequencyResponse.cs) — per-key frequency response DTO
-- [`desktop/Heartbeat.Agent/Utils/LowLevelInputHook.cs`](../../desktop/Heartbeat.Agent/Utils/LowLevelInputHook.cs) — `WH_KEYBOARD_LL` / `WH_MOUSE_LL` hook + dedicated message pump
-- [`desktop/Heartbeat.Agent/Services/InputEventBuffer.cs`](../../desktop/Heartbeat.Agent/Services/InputEventBuffer.cs) — in-memory buffer, auto-repeat filter, scroll normalization, UUIDv7 generation
-- [`desktop/Heartbeat.Agent/Services/InputEventCollector.cs`](../../desktop/Heartbeat.Agent/Services/InputEventCollector.cs) — `IHostedService` owning the hook thread
-- [`desktop/Heartbeat.Agent/Storage/InputEventLocalCache.cs`](../../desktop/Heartbeat.Agent/Storage/InputEventLocalCache.cs) — offline cache (ADR-008)
+- [`collection/desktop/Heartbeat.Desktop.Windows/Utils/LowLevelInputHook.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Utils/LowLevelInputHook.cs) — `WH_KEYBOARD_LL` / `WH_MOUSE_LL` hook + dedicated message pump
+- [`collection/desktop/Heartbeat.Collector.System/Input/InputEventBuffer.cs`](../../collection/desktop/Heartbeat.Collector.System/Input/InputEventBuffer.cs) — in-memory buffer, auto-repeat filter, scroll normalization, UUIDv7 generation
+- [`collection/desktop/Heartbeat.Desktop.Windows/Services/InputEventCollector.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Services/InputEventCollector.cs) — `IHostedService` owning the hook thread
+- [`collection/desktop/Heartbeat.Desktop.Windows/Storage/InputEventLocalCache.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Storage/InputEventLocalCache.cs) — offline cache (ADR-008)
 - [`server/Heartbeat.Server/Entities/InputEvent.cs`](../../server/Heartbeat.Server/Entities/InputEvent.cs) — entity (UUIDv7 PK, `(DeviceId, Timestamp)` index)
 - [`server/Heartbeat.Server/Services/InputEventService.cs`](../../server/Heartbeat.Server/Services/InputEventService.cs) — idempotent save, counts + key-frequency aggregation
 - [`server/Heartbeat.Server/Controllers/InputEventController.cs`](../../server/Heartbeat.Server/Controllers/InputEventController.cs) — authenticated upload + counts

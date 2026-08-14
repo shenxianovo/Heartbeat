@@ -23,9 +23,9 @@ Multi-context repo (presence of `CONTEXT-MAP.md` at the root):
 ├── frontend/
 │   ├── CONTEXT.md
 │   └── docs/adr/                      ← frontend context decisions
-├── desktop/
+├── collection/
 │   ├── CONTEXT.md
-│   └── docs/adr/                      ← desktop context decisions
+│   └── docs/adr/                      ← collection context decisions
 └── shared/
     ├── CONTEXT.md
     └── docs/adr/                      ← shared context decisions

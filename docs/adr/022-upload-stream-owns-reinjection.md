@@ -46,13 +46,13 @@ hub 的 `Reinject`：缺席才插入，在位者保留 EndTime 更晚的快照�
 
 ## References
 
-- [`desktop/Heartbeat.Agent/Services/IUploadSource.cs`](../../desktop/Heartbeat.Agent/Services/IUploadSource.cs) — 出网源 seam（§1）
-- [`desktop/Heartbeat.Agent/Services/UploadStream.cs`](../../desktop/Heartbeat.Agent/Services/UploadStream.cs) — 上传流：drain 一轮自持不变量（§2）
-- [`desktop/Heartbeat.Agent/Services/SegmentIngestService.cs`](../../desktop/Heartbeat.Agent/Services/SegmentIngestService.cs) — hub 的 Drain/Reinject adapter，不回滚规则（§3）
-- [`desktop/Heartbeat.Agent/Services/InputEventBuffer.cs`](../../desktop/Heartbeat.Agent/Services/InputEventBuffer.cs) — 输入侧 adapter，共享单例（§1）
-- [`desktop/Heartbeat.Agent/Workers/UploadWorker.cs`](../../desktop/Heartbeat.Agent/Workers/UploadWorker.cs) — 调度器 + 图标挂点（§5，更名自 UsageUploadWorker）
-- [`desktop/Heartbeat.Agent.Tests/Services/UploadStreamTests.cs`](../../desktop/Heartbeat.Agent.Tests/Services/UploadStreamTests.cs) — 流契约测试（§2）
-- [`desktop/Heartbeat.Agent.Tests/Hosting/AgentHostExtensionsTests.cs`](../../desktop/Heartbeat.Agent.Tests/Hosting/AgentHostExtensionsTests.cs) — 注册顺序不变量测试（ADR-020 §6 脆弱点）
+- [`collection/hub/Heartbeat.Collection.Hub/Upload/IUploadSource.cs`](../../collection/hub/Heartbeat.Collection.Hub/Upload/IUploadSource.cs) — 出网源 seam（§1）
+- [`collection/hub/Heartbeat.Collection.Hub/Upload/UploadStream.cs`](../../collection/hub/Heartbeat.Collection.Hub/Upload/UploadStream.cs) — 上传流：drain 一轮自持不变量（§2）
+- [`collection/hub/Heartbeat.Collection.Hub/Segments/SegmentIngestService.cs`](../../collection/hub/Heartbeat.Collection.Hub/Segments/SegmentIngestService.cs) — hub 的 Drain/Reinject adapter，不回滚规则（§3）
+- [`collection/desktop/Heartbeat.Collector.System/Input/InputEventBuffer.cs`](../../collection/desktop/Heartbeat.Collector.System/Input/InputEventBuffer.cs) — 输入侧 adapter，共享单例（§1）
+- [`collection/hub/Heartbeat.Collection.Hub/Runtime/UploadWorker.cs`](../../collection/hub/Heartbeat.Collection.Hub/Runtime/UploadWorker.cs) — 调度器 + 图标挂点（§5，更名自 UsageUploadWorker）
+- [`collection/hub/Heartbeat.Collection.Hub.Tests/Upload/UploadStreamTests.cs`](../../collection/hub/Heartbeat.Collection.Hub.Tests/Upload/UploadStreamTests.cs) — 流契约测试（§2）
+- [`collection/desktop/Heartbeat.Desktop.Windows.Tests/Hosting/AgentHostExtensionsTests.cs`](../../collection/desktop/Heartbeat.Desktop.Windows.Tests/Hosting/AgentHostExtensionsTests.cs) — 注册顺序不变量测试（ADR-020 §6 脆弱点）
 - Amends [ADR-020](./020-system-collector-through-hub.md) §5 —— "退回项由调用方重注入"收进流自持；通道其余契约（送达/缓存/compact 按流策略）不变
 - [ADR-018](./018-stable-segment-identity-snapshot-upload.md) —— 不回滚规则是其单调生长门在客户端的对称
 - [ADR-008](./008-local-cache-offline-retry.md) —— 缓存重传语义不变

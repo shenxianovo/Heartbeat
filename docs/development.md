@@ -55,10 +55,8 @@ overrides the upload target **for that process only, without touching config.jso
 
 ```powershell
 $env:HEARTBEAT_API_BASE_URL = "http://localhost:8080"
-# then launch the Agent from the same shell:
-dotnet run --project desktop/Heartbeat.Agent.Runner
-# or run the Avalonia Windows desktop head from this shell:
-dotnet run --project desktop/Heartbeat.Desktop.Windows
+# launch the Windows desktop Agent from the same shell:
+dotnet run --project collection/desktop/Heartbeat.Desktop.Windows
 ```
 
 Closing the shell reverts everything — no config to restore. Use the keyboard, switch
@@ -68,7 +66,7 @@ On macOS, launch the Avalonia menu-bar app from the same shell:
 
 ```bash
 export HEARTBEAT_API_BASE_URL=http://localhost:8080
-dotnet run --project desktop/Heartbeat.Desktop.Mac/Heartbeat.Desktop.Mac.csproj
+dotnet run --project collection/desktop/Heartbeat.Desktop.Mac/Heartbeat.Desktop.Mac.csproj
 ```
 
 ### 4. Regenerate the API client (when server DTOs/endpoints changed)
@@ -126,7 +124,7 @@ collector so plugins can't pollute the mutually-exclusive stats track. The segme
 under the app's replay modal (stats page → click an app) within an upload interval.
 
 To run the real browser collector against the local hub, see
-[collectors/browser/README.md](../collectors/browser/README.md).
+[Browser Collector README](../collection/collectors/Heartbeat.Collector.Browser/README.md).
 
 ### 5. Refresh local data from the server (optional)
 
@@ -212,12 +210,15 @@ immediately with `DockerUnavailableException`:
 ```powershell
 dotnet test                                        # everything
 dotnet test server/Heartbeat.Server.Tests          # server services (needs Docker)
-dotnet test desktop/Heartbeat.Agent.Tests          # agent state machine & ingest hub (no Docker)
+dotnet test collection/hub/Heartbeat.Collection.Hub.Tests                  # hub runtime (no Docker)
+dotnet test collection/desktop/Heartbeat.Collector.System.Tests            # system Collector state machine (no Docker)
+dotnet test collection/desktop/Heartbeat.Desktop.Windows.Tests             # Windows adapters (no Docker)
+dotnet test collection/desktop/Heartbeat.Desktop.Mac.Tests                 # macOS adapters/head (no Docker)
 dotnet test shared/Heartbeat.Core.Tests            # merger / validation / DateRange (no Docker)
 ```
 
 The browser collector has its own vitest suite:
 
 ```powershell
-cd collectors/browser; npm test
+cd collection/collectors/Heartbeat.Collector.Browser; npm test
 ```

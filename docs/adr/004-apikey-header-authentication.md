@@ -44,5 +44,5 @@ On the client side, an `ApiKeyDelegatingHandler` injects the header into every o
 ## References
 
 - [`server/Heartbeat.Server/Authentication/ApiKeyAuthenticationHandler.cs`](../../server/Heartbeat.Server/Authentication/ApiKeyAuthenticationHandler.cs) — server-side auth handler
-- [`desktop/Heartbeat.Agent/Http/ApiKeyDelegatingHandler.cs`](../../desktop/Heartbeat.Agent/Http/ApiKeyDelegatingHandler.cs) — client-side header injection
+- [`collection/desktop/Heartbeat.Desktop.Windows/Http/ApiKeyDelegatingHandler.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Http/ApiKeyDelegatingHandler.cs) — client-side header injection
 - [`server/Heartbeat.Server/Program.cs`](../../server/Heartbeat.Server/Program.cs) — auth scheme registration

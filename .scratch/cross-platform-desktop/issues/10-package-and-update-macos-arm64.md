@@ -20,8 +20,8 @@
 
 ### 2026-08-13 — Implementation complete; final Release verification deferred
 
-- Added the shared `Heartbeat.Desktop.Update` lifecycle used by Windows and macOS. Checks and downloads leave the Agent running; Apply is gated on `ReadyToApply`, schedules the updater before stopping the Agent, and remains retryable if scheduling fails.
+- Added the shared `Heartbeat.Desktop.Updater.Velopack` lifecycle used by Windows and macOS. Checks and downloads leave the Agent running; Apply is gated on `ReadyToApply`, schedules the updater before stopping the Agent, and remains retryable if scheduling fails.
 - Added the Apple Silicon Velopack Release path with stable bundle identifier `com.shenxianovo.heartbeat` and channel `osx-arm64-stable`.
 - The protected macOS Release job imports ephemeral Developer ID credentials, signs with hardened-runtime entitlements, notarizes and staples the app, constrains the Velopack Setup to current-user installation, re-signs/re-notarizes it, and verifies identity, architecture, entitlements, Gatekeeper acceptance, per-user domain, and metadata.
 - Locally generated and inspected an unsigned arm64 `.app`, Setup, portable zip, full package, and stable-channel metadata. No GitHub Release was created or modified.
-- Per maintainer sequencing, the two remaining checks are deferred until all implementation issues are complete: publish the combined Windows/macOS Release, then execute the signed clean-machine installation and Update checklist in `desktop/Heartbeat.Desktop.Mac/SMOKE-TEST.md`.
+- Per maintainer sequencing, the two remaining checks are deferred to Issue 13 after all implementation issues are complete: publish the combined Windows/macOS Release, then execute signed clean-machine installation and Update acceptance.

@@ -33,7 +33,7 @@ Adopted **.NET Generic Host**. The monitoring service implements `IHostedService
 
 ## References
 
-- [`desktop/Heartbeat.Agent/Hosting/AgentHostExtensions.cs`](../../desktop/Heartbeat.Agent/Hosting/AgentHostExtensions.cs) — service registration
-- [`desktop/Heartbeat.Agent/Workers/UsageUploadWorker.cs`](../../desktop/Heartbeat.Agent/Workers/UsageUploadWorker.cs) — `BackgroundService` with graceful flush
-- [`desktop/Heartbeat.Agent/Workers/StatusUploadWorker.cs`](../../desktop/Heartbeat.Agent/Workers/StatusUploadWorker.cs) — status heartbeat worker
-- [`desktop/Heartbeat.Agent.Runner/Program.cs`](../../desktop/Heartbeat.Agent.Runner/Program.cs) — console host entry point
+- [`collection/desktop/Heartbeat.Desktop.Windows/Hosting/AgentHostExtensions.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Hosting/AgentHostExtensions.cs) — service registration
+- [`collection/desktop/Heartbeat.Desktop.Windows/Workers/UsageUploadWorker.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Workers/UsageUploadWorker.cs) — `BackgroundService` with graceful flush
+- [`collection/hub/Heartbeat.Collection.Hub/Runtime/StatusUploadWorker.cs`](../../collection/hub/Heartbeat.Collection.Hub/Runtime/StatusUploadWorker.cs) — status heartbeat worker
+- `Heartbeat.Agent.Runner` — historical console host, retired by ADR-037

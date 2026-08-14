@@ -8,7 +8,7 @@ Status: ready-for-agent
 
 ## What to build
 
-在 WPF（本机采集层 UI）加一个采集器管理页，按 desktop/CONTEXT.md 的 Active/Deactivate 语义：
+在 WPF（本机采集层 UI）加一个采集器管理页，按 collection/CONTEXT.md 的 Active/Deactivate 语义：
 
 - **Active = 流量推断**：hub（`SegmentIngestService`）记录 per-source 最近接收时间与累计条数；管理页列出见过的 Source 及其活跃状态（最近 N 分钟内有流量 = Active）。无注册表、无心跳协议。
 - **Deactivate = hub 拒收**：本地配置黑名单（随现有 Agent 配置持久化）；被停用 Source 的 POST 返回 403，段丢弃。管理页提供每个 Source 的启用/停用开关。

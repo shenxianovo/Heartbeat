@@ -49,7 +49,7 @@ and class (`InputEventLocalCache`) rather than extending `LocalCache`:
 
 ## References
 
-- [`desktop/Heartbeat.Agent/Storage/LocalCache.cs`](../../desktop/Heartbeat.Agent/Storage/LocalCache.cs) — usage cache implementation (10K cap, with merge)
-- [`desktop/Heartbeat.Agent/Storage/InputEventLocalCache.cs`](../../desktop/Heartbeat.Agent/Storage/InputEventLocalCache.cs) — input-event cache (100K cap, append-only; ADR-012)
-- [`desktop/Heartbeat.Agent/Services/UsageUploadService.cs`](../../desktop/Heartbeat.Agent/Services/UsageUploadService.cs) — upload with cache fallback
-- [`desktop/Heartbeat.Agent/Workers/UsageUploadWorker.cs`](../../desktop/Heartbeat.Agent/Workers/UsageUploadWorker.cs) — retry loop (cached first, then fresh; flushes both usage and input events)
+- [`collection/desktop/Heartbeat.Desktop.Windows/Storage/LocalCache.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Storage/LocalCache.cs) — usage cache implementation (10K cap, with merge)
+- [`collection/desktop/Heartbeat.Desktop.Windows/Storage/InputEventLocalCache.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Storage/InputEventLocalCache.cs) — input-event cache (100K cap, append-only; ADR-012)
+- [`collection/desktop/Heartbeat.Desktop.Windows/Services/UsageUploadService.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Services/UsageUploadService.cs) — upload with cache fallback
+- [`collection/desktop/Heartbeat.Desktop.Windows/Workers/UsageUploadWorker.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Workers/UsageUploadWorker.cs) — retry loop (cached first, then fresh; flushes both usage and input events)

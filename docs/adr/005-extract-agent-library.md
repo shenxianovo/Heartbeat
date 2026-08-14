@@ -1,6 +1,6 @@
 # ADR-005: Extract Heartbeat.Agent as Reusable Class Library
 
-## Status: Accepted
+## Status: Superseded by ADR-037
 
 ## Date: 2026-03-18
 
@@ -38,7 +38,7 @@ The library owns:
 
 ## References
 
-- [`desktop/Heartbeat.Agent/Hosting/AgentHostExtensions.cs`](../../desktop/Heartbeat.Agent/Hosting/AgentHostExtensions.cs) — `AddHeartbeatAgent()` registration
-- [`desktop/Heartbeat.Agent/Configuration/ConfigManager.cs`](../../desktop/Heartbeat.Agent/Configuration/ConfigManager.cs) — injectable config manager
-- [`desktop/Heartbeat.Agent.Runner/Program.cs`](../../desktop/Heartbeat.Agent.Runner/Program.cs) — console host using Agent
-- [`desktop/Heartbeat.Desktop.Windows/WindowsDesktopRuntime.cs`](../../desktop/Heartbeat.Desktop.Windows/WindowsDesktopRuntime.cs) — current Windows platform head using Agent
+- [`collection/desktop/Heartbeat.Desktop.Windows/Hosting/AgentHostExtensions.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Hosting/AgentHostExtensions.cs) — `AddHeartbeatAgent()` registration
+- [`collection/desktop/Heartbeat.Desktop.Windows/Configuration/ConfigManager.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Configuration/ConfigManager.cs) — injectable config manager
+- `Heartbeat.Agent.Runner` — historical console host, retired by ADR-037
+- [`collection/desktop/Heartbeat.Desktop.Windows/WindowsDesktopRuntime.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/WindowsDesktopRuntime.cs) — current Windows platform head using Agent

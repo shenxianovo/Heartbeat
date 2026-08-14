@@ -1,4 +1,4 @@
-# 01 — Extract portable Hub.Core and Desktop.Core
+# 01 — Extract the portable Collection Hub and system Collector
 
 **What to build:** Preserve the current Windows Agent end to end while separating reusable hub runtime behavior and platform-neutral desktop collection semantics from the Windows adapters and UI. The resulting cores must be usable without Windows APIs, and an unheaded hub must not acquire desktop or UI dependencies.
 

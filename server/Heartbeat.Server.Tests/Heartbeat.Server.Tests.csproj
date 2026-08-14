@@ -21,7 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Heartbeat.Server\Heartbeat.Server.csproj" />
-    <ProjectReference Include="..\..\desktop\Heartbeat.Hub.Core\Heartbeat.Hub.Core.csproj" />
+    <ProjectReference Include="..\..\collection\hub\Heartbeat.Collection.Hub\Heartbeat.Collection.Hub.csproj" />
   </ItemGroup>
 
 </Project>

@@ -31,3 +31,4 @@ macOS platform head 以菜单栏 accessory app 运行，不常驻 Dock；用户�
 - [ADR-032](./032-device-as-observed-subject.md) — `Hub.Core` 抽取与可复用 hub 拓扑
 - [ADR-016](./016-title-noise-control.md) — 跨平台窗口事件与权限降级
 - [ADR-011](./011-github-releases-update-source.md) — 桌面发布与更新来源
+- [ADR-037](./037-collection-project-boundaries.md) — 更新项目命名，合并平台 adapter 与 head，并退役 console Runner；独立 platform head 与纯共享能力边界不变

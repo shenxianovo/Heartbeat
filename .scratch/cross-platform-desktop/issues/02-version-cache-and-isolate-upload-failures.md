@@ -2,7 +2,7 @@
 
 **What to build:** Make every Upload Stream durable across format upgrades and capable of making progress when a batch contains permanently invalid data. Temporary failures must remain retryable, rejected records must remain inspectable, and an incompatible server must stop pointless retransmission without silently discarding cached activity.
 
-**Blocked by:** 01 — Extract portable Hub.Core and Desktop.Core.
+**Blocked by:** 01 — Extract the portable Collection Hub and system Collector.
 
 **Status:** ready-for-agent
 

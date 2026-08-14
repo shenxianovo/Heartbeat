@@ -10,7 +10,7 @@
 
 `AppMonitorService`（内置 system 采集器）一个类养三个观众：折叠状态机（本职）、WPF 的 `CurrentAppChanged` 事件（托盘 UI 显示当前应用）、`StatusUploadWorker` 的 `GetCurrentApp()`（presence 心跳搭载）。WPF 侧 `MainViewModel` 经 `App.Services` service-locate **具体采集器类**——UI 换个显示需求就要动核心状态机文件，VM 也因此无法脱离运行中的 App 实例化（WPF 零测试的根源之一）。
 
-同时 `desktop/CONTEXT.md` 已定义 **Active**（从流量推断采集器活跃）与 **Deactivate**（hub 侧黑名单），均未实现。实现 Active 需要 per-Source 状态，而 hub 是唯一看得到全部源流量的地方——hub 天然要长出一个读表面。
+同时 `collection/CONTEXT.md` 已定义 **Active**（从流量推断采集器活跃）与 **Deactivate**（hub 侧黑名单），均未实现。实现 Active 需要 per-Source 状态，而 hub 是唯一看得到全部源流量的地方——hub 天然要长出一个读表面。
 
 ### presence 心跳把两个维度捆在一个节律里
 
@@ -61,11 +61,11 @@
 
 <!-- Filled in as implementation lands -->
 
-- `desktop/Heartbeat.Agent/Services/SegmentIngestService.cs` — hub：段缓冲 + 集面读模型（§1）
-- `desktop/Heartbeat.Agent/Services/AppMonitorService.cs` — 卸下状态发布，转场点推 Current Activity（§1）
-- `desktop/Heartbeat.Agent/Workers/StatusUploadWorker.cs` — 周期 keepalive + 订阅变更即推（§2）
-- [`desktop/Heartbeat.Desktop.UI/ViewModels/MainViewModel.cs`](../../desktop/Heartbeat.Desktop.UI/ViewModels/MainViewModel.cs) — 共享 Avalonia presentation 消费 hub 读模型（§1）
+- `collection/hub/Heartbeat.Collection.Hub/Segments/SegmentIngestService.cs` — hub：段缓冲 + 集面读模型（§1）
+- `collection/desktop/Heartbeat.Collector.System/Collection/AppMonitorService.cs` — 卸下状态发布，转场点推 Current Activity（§1）
+- `collection/hub/Heartbeat.Collection.Hub/Runtime/StatusUploadWorker.cs` — 周期 keepalive + 订阅变更即推（§2）
+- [`collection/desktop/Heartbeat.Desktop.UI/ViewModels/MainViewModel.cs`](../../collection/desktop/Heartbeat.Desktop.UI/ViewModels/MainViewModel.cs) — 共享 Avalonia presentation 消费 hub 读模型（§1）
 - `shared/Heartbeat.Core/DTOs/Devices/DeviceStatusResponse.cs` — 在线窗口 30s→90s，魔数变显式常量（§2）
 - Amends [ADR-020](./020-system-collector-through-hub.md) §5 —— StatusUploadWorker 数据源从具体采集器改为 hub 读模型；"presence 无缓存"立场不变
 - [ADR-014](./014-away-detection-display-sleep.md) —— away 状态在读模型中原样暴露
-- `desktop/CONTEXT.md` —— Active 词条机制落地；新增 Current Activity / Heartbeat 词条
+- `collection/CONTEXT.md` —— Active 词条机制落地；新增 Current Activity / Heartbeat 词条

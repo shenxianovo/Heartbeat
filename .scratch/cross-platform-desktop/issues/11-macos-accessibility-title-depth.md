@@ -13,4 +13,4 @@
 - [ ] Stored titles remain lossless platform observations, and display formatting continues to use the shared product-key-based Title Formatter layer.
 - [ ] Denied, unavailable, or revoked Accessibility permission degrades immediately to App-only collection without stopping Heartbeat, cache draining, Current Activity, or away detection.
 - [ ] The Avalonia UI shows the current title capability and permission state, offers a user-initiated recovery path, and does not claim title collection when it is unavailable.
-- [ ] Desktop.Core tests cover focus/title semantics and degradation, adapter tests cover notification translation, and real-device smoke tests cover prompting, denial, grant, revocation, App switching, focused-window switching, and noisy title animation.
+- [ ] `Heartbeat.Collector.System` tests cover focus/title semantics and degradation, adapter tests cover notification translation, and real-device smoke tests cover prompting, denial, grant, revocation, App switching, focused-window switching, and noisy title animation.

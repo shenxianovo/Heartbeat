@@ -53,13 +53,18 @@ graph LR
 
 ```
 Heartbeat
-├─ desktop
-│  ├─ Heartbeat.Agent/          # Windows adapters & Agent        .NET Class Library
-│  ├─ Heartbeat.Agent.Runner/   # Console host                    .NET Console
-│  ├─ Heartbeat.Desktop.UI/     # Shared desktop presentation     Avalonia
-│  └─ Heartbeat.Desktop.Windows/# Windows tray platform head      Avalonia
-├─ collectors
-│  └─ browser/                  # Browser extension collector    TypeScript + Vite
+├─ collection
+│  ├─ hub
+│  │  └─ Heartbeat.Collection.Hub/          # Reusable ingest/upload runtime
+│  ├─ desktop
+│  │  ├─ Heartbeat.Collector.System/        # Platform-neutral system Collector
+│  │  ├─ Heartbeat.Desktop.UI/              # Shared Avalonia presentation
+│  │  ├─ Heartbeat.Desktop.Updater.Velopack/# Update adapter
+│  │  ├─ Heartbeat.Desktop.Windows/         # Windows tray app + adapters
+│  │  └─ Heartbeat.Desktop.Mac/             # macOS menu-bar app + adapters
+│  └─ collectors
+│     ├─ Heartbeat.Collector.Browser/        # Browser extension (TypeScript)
+│     └─ Heartbeat.Collector.VRChat/         # Account Collector (.NET)
 ├─ server
 │  └─ Heartbeat.Server/         # REST API server                ASP.NET Core
 ├─ frontend/                    # Dashboard web app              Vue 3 + Vite

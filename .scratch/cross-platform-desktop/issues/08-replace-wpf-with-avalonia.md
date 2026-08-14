@@ -2,7 +2,7 @@
 
 **What to build:** Replace the Windows-only WPF presentation with the shared Avalonia desktop experience while keeping the Windows Agent continuously active and preserving all operational controls. The Windows platform head remains one tray process hosting both Agent and UI, and WPF is removed rather than retained as a second long-lived implementation.
 
-**Blocked by:** 01 — Extract portable Hub.Core and Desktop.Core; 05 — Cut Windows collection over to the strict AppIdentity protocol; 07 — Ship cross-platform physical-key statistics on Windows.
+**Blocked by:** 01 — Extract the portable Collection Hub and system Collector; 05 — Cut Windows collection over to the strict AppIdentity protocol; 07 — Ship cross-platform physical-key statistics on Windows.
 
 **Status:** ready-for-human
 
@@ -24,4 +24,4 @@
 - Added `Heartbeat.Desktop.Windows` as the one-process Windows tray platform head hosting Agent and UI.
 - Removed `Heartbeat.WPF` and changed Windows Release publishing/Velopack entry point to `Heartbeat.Desktop.Windows.exe`.
 - Desktop regression suites pass and self-contained `win-x64` / `win-arm64` publishes produce the new executable.
-- Remaining human step: execute `desktop/Heartbeat.Desktop.Windows/SMOKE-TEST.md` on Windows.
+- Remaining Windows lifecycle verification is part of Issue 13 cross-platform acceptance.

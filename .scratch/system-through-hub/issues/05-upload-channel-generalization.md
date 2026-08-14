@@ -8,7 +8,7 @@ Status: done
 
 ## What to build
 
-issue 03 后 Collection 剩两条出网流(segments + input-events),两个 adapter = 真 seam。把两个手写上传 service 的同构模板提炼为一个泛型**上传通道**(Upload Channel,见 desktop/CONTEXT.md)module,契约:**喂入一批项,送达,或落离线缓存,否则原样退回**——退回项由调用方重注入源 buffer(hub 按 Id 收敛天然幂等;input buffer 重排队)。compact 为按流策略(segments 出网前 KeepLatest,input-events 不压缩)。
+issue 03 后 Collection 剩两条出网流(segments + input-events),两个 adapter = 真 seam。把两个手写上传 service 的同构模板提炼为一个泛型**上传通道**(Upload Channel,见 collection/CONTEXT.md)module,契约:**喂入一批项,送达,或落离线缓存,否则原样退回**——退回项由调用方重注入源 buffer(hub 按 Id 收敛天然幂等;input buffer 重排队)。compact 为按流策略(segments 出网前 KeepLatest,input-events 不压缩)。
 
 一次性修掉 drain-then-fail 丢数据模式(drain 清空 buffer 后缓存写盘失败→已 drain 项蒸发),并在通道契约层测试。顺势搭车:status 上传 service(无缓存是设计,presence 易逝)并入其 worker,不入通道。
 

@@ -2,7 +2,7 @@
 
 **What to build:** Establish the versioned physical-key contract using Windows as the first producer, while preserving the truthful meaning of historical Windows virtual-key data. Existing and new events must contribute to one Keyboard Heatmap without rewriting stored raw codes or conflating local interaction gating with persisted InputEvent Recording.
 
-**Blocked by:** 01 — Extract portable Hub.Core and Desktop.Core; 02 — Introduce versioned cache and upload failure isolation; 05 — Cut Windows collection over to the strict AppIdentity protocol.
+**Blocked by:** 01 — Extract the portable Collection Hub and system Collector; 02 — Introduce versioned cache and upload failure isolation; 05 — Cut Windows collection over to the strict AppIdentity protocol.
 
 **Status:** ready-for-agent
 

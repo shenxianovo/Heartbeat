@@ -59,9 +59,9 @@ Merge logic exists in two places (see the deferred half of ADR review candidate 
 
 ## References
 
-- `desktop/Heartbeat.Agent/Utils/ForegroundWindow.cs` — multi-signal container
-- `desktop/Heartbeat.Agent/Utils/ActiveWindowHelper.cs` — `GetWindowText` capture + `EVENT_OBJECT_NAMECHANGE` subscription with foreground/window filtering
-- `desktop/Heartbeat.Agent/Services/AppMonitorService.cs` — App-or-Title split, title into segment
+- `collection/desktop/Heartbeat.Desktop.Windows/Utils/ForegroundWindow.cs` — multi-signal container
+- `collection/desktop/Heartbeat.Desktop.Windows/Utils/ActiveWindowHelper.cs` — `GetWindowText` capture + `EVENT_OBJECT_NAMECHANGE` subscription with foreground/window filtering
+- `collection/desktop/Heartbeat.Collector.System/Collection/AppMonitorService.cs` — App-or-Title split, title into segment
 - `shared/Heartbeat.Core/UsageMerger.cs` — `CanMerge` shared predicate
 - `server/Heartbeat.Server/Migrations/20260701075246_AddAppUsageTitle.cs` — Title column
 - `frontend/src/composables/useReports.ts` — `titleBreakdown`

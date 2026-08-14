@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Heartbeat.Desktop.Updater.Velopack</RootNamespace>
+    <AssemblyName>Heartbeat.Desktop.Updater.Velopack</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Serilog" Version="4.3.1" />
+    <PackageReference Include="Velopack" Version="1.2.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Heartbeat.Desktop.UI\Heartbeat.Desktop.UI.csproj" />
+  </ItemGroup>
+</Project>

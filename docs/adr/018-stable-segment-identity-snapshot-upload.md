@@ -72,8 +72,8 @@ Time-window queries switch from `StartTime ∈ [start, end)` to overlap semantic
 - Amends [ADR-017](./017-activity-segment-pluggable-collectors.md) §3/§3a — "collectors close-and-reopen, server glues" becomes "collectors snapshot, server upserts"; §3's closed-intervals-only principle is preserved (every snapshot is a closed interval; no dangling-segment protocol state)
 - [ADR-008](./008-local-cache-offline-retry.md) — offline cache whose retry becomes order-insensitive
 - [ADR-009](./009-velopack-auto-update.md) — auto-update, basis for dropping legacy gluing
-- `desktop/Heartbeat.Agent/Services/AppMonitorService.cs` — Id generation moves to activity start; flush emits snapshots
-- `desktop/Heartbeat.Agent/Services/SegmentIngestService.cs` — hub buffer keyed by Id
+- `collection/desktop/Heartbeat.Collector.System/Collection/AppMonitorService.cs` — Id generation moves to activity start; flush emits snapshots
+- `collection/hub/Heartbeat.Collection.Hub/Segments/SegmentIngestService.cs` — hub buffer keyed by Id
 - `shared/Heartbeat.Core/SystemIdentity.cs` — system IdentityKey definition (sole survivor of the retired `UsageMerger`)
 - `shared/Heartbeat.Core/SnapshotCompaction.cs` — keep-latest-per-Id batch compaction
 - `server/Heartbeat.Server/Services/UsageService.cs` — `SaveSegmentsAsync` upsert with identity guard
