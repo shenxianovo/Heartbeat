@@ -4,5 +4,6 @@ namespace Heartbeat.Core.DTOs.Users
     {
         public string Username { get; set; } = string.Empty;
         public bool IsPublic { get; set; }
+        public bool IsAdmin { get; set; }
     }
 }

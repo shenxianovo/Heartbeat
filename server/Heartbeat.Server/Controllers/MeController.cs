@@ -12,7 +12,10 @@ namespace Heartbeat.Server.Controllers
     [ApiController]
     [Route("api/v1/me")]
     [Authorize]
-    public class MeController(UserService userService, ICurrentUserService currentUser) : ControllerBase
+    public class MeController(
+        UserService userService,
+        ICurrentUserService currentUser,
+        AdminAuthorizationService adminAuthorization) : ControllerBase
     {
         [HttpGet]
         [EndpointName("getMe")]
@@ -22,19 +25,31 @@ namespace Heartbeat.Server.Controllers
             // 会话 JWT（Agent）不走 /me；防御：无 preferred_username 的凭证不能供给。
             if (username == null) return Forbid();
 
-            var user = await userService.ProvisionAsync(currentUser.GetUserId(), username);
-            return new MeResponse { Username = user.Username, IsPublic = user.IsPublic };
+            var subject = currentUser.GetUserId();
+            var user = await userService.ProvisionAsync(subject, username);
+            return new MeResponse
+            {
+                Username = user.Username,
+                IsPublic = user.IsPublic,
+                IsAdmin = adminAuthorization.IsAdmin(subject)
+            };
         }
 
         [HttpPut("settings")]
         [EndpointName("updateMySettings")]
         public async Task<ActionResult<MeResponse>> UpdateSettings([FromBody] UpdateMySettingsRequest request)
         {
-            var user = await userService.UpdateVisibilityAsync(currentUser.GetUserId(), request.IsPublic);
+            var subject = currentUser.GetUserId();
+            var user = await userService.UpdateVisibilityAsync(subject, request.IsPublic);
             // 行不存在 = 还没经 GET /me 供给过；设置无处落，客户端应先调 GET /me。
             if (user == null) return NotFound();
 
-            return new MeResponse { Username = user.Username, IsPublic = user.IsPublic };
+            return new MeResponse
+            {
+                Username = user.Username,
+                IsPublic = user.IsPublic,
+                IsAdmin = adminAuthorization.IsAdmin(subject)
+            };
         }
     }
 }
