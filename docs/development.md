@@ -201,6 +201,146 @@ docker compose -f compose.local.yml --env-file .env.local down
 Remove-Item -LiteralPath ./.local/postgres-data -Recurse -Force
 ```
 
+## App Catalog Development and Operations
+
+The server-maintained App Catalog is the deployment-global mapping from platform evidence
+(`AppIdentity`, such as `win:chrome` or `mac:com.google.chrome`) to the cross-platform `App`
+product used by reports and knowledge. Its contract is defined by
+[ADR-038](adr/038-server-maintained-app-catalog.md).
+
+### Artifact and validation
+
+The authoritative artifact is
+`server/Heartbeat.Server/AppCatalog/app-catalog.json`. The server project copies it to build and
+publish output; do not add a second Catalog under compose, environment variables, or the frontend.
+
+- `schemaVersion` changes only when the JSON shape changes.
+- `catalogVersion` increases when Catalog content changes. Editing content without increasing the
+  version is detected as hash drift and prevents startup.
+- Products sort by canonical `key`; every product's `identities` sort ordinally.
+- Keys and identities must already be normalized. Duplicate product keys, duplicate identities,
+  unknown schema versions, blank fields, products without identities, and unstable ordering are rejected.
+- The canonical serializer fixes property order and emits deterministic UTF-8 bytes plus a trailing
+  newline. Use it rather than hand-reserializing an exported candidate.
+
+Run the contract tests before deploying a Catalog edit:
+
+```powershell
+dotnet test server/Heartbeat.Server.Tests --filter FullyQualifiedName~AppCatalogLoaderTests
+dotnet test server/Heartbeat.Server.Tests --filter FullyQualifiedName~AppCatalogReconcilerTests
+```
+
+Startup loads and validates the artifact before serving requests. An invalid file, version/hash
+drift, or failed reconciliation stops the backend; it does not continue with a partially applied
+Catalog.
+
+### Deployment administrator configuration
+
+Catalog management changes every Owner's product mapping, so authorization uses an immutable JWT
+`sub`, never the mutable username. Obtain the subject from the Auth platform and set it before
+starting the stack:
+
+```dotenv
+ADMIN_SUBJECT=the-auth-platform-jwt-sub
+```
+
+Both compose files map this to `Administration__Subjects__0`. For a direct deployment, or after
+adding more entries to the compose service's `environment` block, configure indexed ASP.NET values:
+
+```dotenv
+Administration__Subjects__0=first-sub
+Administration__Subjects__1=second-sub
+```
+
+Restart the backend after changing the list. Heartbeat intentionally has no UI for granting or
+revoking deployment administrators. `GET /api/v1/me` reports `isAdmin`; every administrator endpoint
+also repeats the server-side subject check.
+
+### Startup reconciliation and rollback compatibility
+
+After EF migrations and knowledge backfills, startup takes the PostgreSQL advisory transaction lock
+`heartbeat.app-catalog`. It applies active local Overrides first, then the built-in Catalog, updates
+legacy compatibility references and protected consumers, writes the append-only audit, and advances
+`AppCatalogStates` in the same transaction. Multiple backend replicas therefore serialize and
+converge.
+
+If the database has a newer applied `catalogVersion` than the binary, startup enters
+`rollback-compatible` mode. Existing database mappings remain intact and the older artifact is not
+reconciled. New Override writes and candidate export are disabled until a binary carrying an equal or
+newer Catalog is deployed. The inventory remains readable and reports the rollback flag.
+
+An equal version with a different hash is not rollback compatibility; it is invalid content drift and
+startup fails. Do not repair either condition by editing `AppCatalogStates` manually.
+
+### Promoting an Override into the repository
+
+The Settings page creates deployment-local Overrides immediately, but neither an Override nor an
+export changes `catalogVersion`. To upstream verified knowledge:
+
+1. Select only the active Overrides suitable for every deployment. Private mappings remain
+   unselected.
+2. Export `app-catalog.v{N}.candidate.json`. It is the complete current Catalog plus the selected
+   mappings, with proposed version `current + 1`.
+3. Review the exact downloaded bytes and independently verify every native identity.
+4. Replace `server/Heartbeat.Server/AppCatalog/app-catalog.json` with the reviewed candidate.
+5. Run the Catalog tests and normal server tests, then commit the JSON through code review.
+6. Deploy the backend. Only successful startup reconciliation records version `N` as applied and
+   promotes matching local Overrides to inactive history.
+
+There is deliberately no JSON import endpoint. Repeated exports before deployment keep the same
+proposed version and do not mutate Catalog state, Overrides, audit rows, Apps, or AppIdentities.
+
+### Read-only SQL diagnostics
+
+For the local stack, open `psql` inside the database container:
+
+```powershell
+docker compose -f compose.local.yml --env-file .env.local exec db `
+  psql -U heartbeat -d heartbeat
+```
+
+macOS/Linux:
+
+```bash
+docker compose -f compose.local.yml --env-file .env.local exec db \
+  psql -U heartbeat -d heartbeat
+```
+
+Useful read-only queries:
+
+```sql
+-- Last successfully applied artifact and current startup mode.
+SELECT "SchemaVersion", "CatalogVersion", "ContentHash", "AppliedAt", "StartupMode"
+FROM "AppCatalogStates";
+
+-- Recent reconciliation and Override history.
+SELECT "Id", "EventType", "CatalogVersion", "ContentHash", "ActorSubject",
+       "OccurredAt", "SummaryJson"
+FROM "AppCatalogAudits"
+ORDER BY "OccurredAt" DESC, "Id" DESC
+LIMIT 50;
+
+-- Active deployment-local intent. TargetAppKey remains the audit-safe product reference.
+SELECT o."Id", i."Key" AS "IdentityKey", o."TargetAppKey", o."Status",
+       o."CreatedBySubject", o."UpdatedBySubject", o."UpdatedAt"
+FROM "AppCatalogOverrides" o
+JOIN "AppIdentities" i ON i."Id" = o."AppIdentityId"
+WHERE o."Status" = 'active'
+ORDER BY i."Key";
+
+-- Diagnose a split product while preserving the raw platform evidence.
+SELECT i."Key" AS "IdentityKey", a."Id" AS "AppId", a."Key" AS "AppKey",
+       a."DisplayName", a."IsProvisional"
+FROM "AppIdentities" i
+JOIN "Apps" a ON a."Id" = i."AppId"
+WHERE i."Key" IN ('win:chrome', 'mac:com.google.chrome')
+ORDER BY i."Key";
+```
+
+Use the administrator API for changes. Directly updating `AppIdentity.AppId`, Catalog state, or
+Override rows bypasses reconciliation of historical compatibility rows, icons, knowledge, caches,
+and audit.
+
 ## Running Tests
 
 Server and shared tests use [Testcontainers](https://dotnet.testcontainers.org/) to spin up
