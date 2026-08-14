@@ -1,10 +1,15 @@
 using Heartbeat.Server.Data;
+using Heartbeat.Server.AppCatalog;
 using Heartbeat.Server.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
+
+var catalogPath = Path.Combine(
+    builder.Environment.ContentRootPath, "AppCatalog", "app-catalog.json");
+var builtInCatalog = AppCatalogLoader.LoadFile(catalogPath);
 
 builder.Services.AddOpenApi();
 builder.Services.AddControllers();
@@ -18,6 +23,8 @@ builder.Services.AddScoped<DeviceService>();
 builder.Services.AddScoped<AppService>();
 builder.Services.AddScoped<AppIdentityService>();
 builder.Services.AddScoped<AppMergeService>();
+builder.Services.AddScoped<AppCatalogStartupService>();
+builder.Services.AddSingleton(builtInCatalog);
 builder.Services.AddScoped<AdminAuthorizationService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<InputEventService>();
@@ -139,6 +146,9 @@ using (var scope = app.Services.CreateScope())
     await AppKnowledgeBackfill.RunAsync(db);
     // AddCollectorDeclarations 的种子半边（同理走 C#）：system/browser v1 幂等补插（ADR-030 §4）。
     await SeedDeclarations.SeedAsync(db);
+    // 在开始接收请求前验证并记录内置 App Catalog。票 02 在同一启动边界加入映射协调。
+    var catalogStartup = scope.ServiceProvider.GetRequiredService<AppCatalogStartupService>();
+    await catalogStartup.ApplyAsync(builtInCatalog);
 }
 
 app.UseAuthentication();

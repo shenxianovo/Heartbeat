@@ -12,6 +12,8 @@ namespace Heartbeat.Server.Data
         public DbSet<ActivitySegment> ActivitySegments => Set<ActivitySegment>();
         public DbSet<AppIcon> AppIcons => Set<AppIcon>();
         public DbSet<AppMergeReceipt> AppMergeReceipts => Set<AppMergeReceipt>();
+        public DbSet<AppCatalogState> AppCatalogStates => Set<AppCatalogState>();
+        public DbSet<AppCatalogAudit> AppCatalogAudits => Set<AppCatalogAudit>();
         public DbSet<InputEvent> InputEvents => Set<InputEvent>();
         public DbSet<Recap> Recaps => Set<Recap>();
         public DbSet<Strand> Strands => Set<Strand>();
@@ -126,6 +128,26 @@ namespace Heartbeat.Server.Data
                 entity.Property(e => e.TargetAppKey).HasMaxLength(256);
                 entity.Property(e => e.ResponseJson).HasColumnType("jsonb");
                 entity.HasIndex(e => new { e.SourceAppKey, e.TargetAppKey }).IsUnique();
+            });
+
+            modelBuilder.Entity<AppCatalogState>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).ValueGeneratedNever();
+                entity.Property(e => e.ContentHash).HasMaxLength(64);
+                entity.Property(e => e.StartupMode).HasMaxLength(32);
+                entity.ToTable(table => table.HasCheckConstraint(
+                    "CK_AppCatalogStates_Singleton", "\"Id\" = 1"));
+            });
+
+            modelBuilder.Entity<AppCatalogAudit>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.EventType).HasMaxLength(64);
+                entity.Property(e => e.ContentHash).HasMaxLength(64);
+                entity.Property(e => e.ActorSubject).HasMaxLength(256);
+                entity.Property(e => e.SummaryJson).HasColumnType("jsonb");
+                entity.HasIndex(e => e.OccurredAt);
             });
 
             modelBuilder.Entity<InputEvent>(entity =>
