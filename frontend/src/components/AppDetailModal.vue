@@ -19,6 +19,7 @@ const props = defineProps<{
   app: { appId: number; appName: string; totalSeconds: number }
   usageData: AppUsageResponse[]
   devices: DeviceInfoResponse[]
+  isProvisional: boolean
 }>()
 
 const emit = defineEmits<{ close: [] }>()
@@ -139,6 +140,10 @@ onUnmounted(() => {
             @error="($event.target as HTMLImageElement).style.display = 'none'"
           />
           <span class="truncate text-base font-semibold">{{ app.appName }}</span>
+          <span
+            v-if="isProvisional"
+            class="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[0.65rem] text-amber-200"
+          >待归类</span>
           <span class="font-mono text-sm text-muted-foreground">{{ formatDuration(app.totalSeconds) }}</span>
           <button
             class="ml-auto flex cursor-pointer items-center justify-center rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"

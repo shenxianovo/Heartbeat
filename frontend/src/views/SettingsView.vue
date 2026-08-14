@@ -8,12 +8,15 @@ const saving = ref(false)
 const error = ref('')
 const username = ref('')
 const isPublic = ref(false)
+const isAdmin = ref(false)
+const catalogDenied = new URLSearchParams(window.location.search).get('catalogDenied') === '1'
 
 onMounted(async () => {
   try {
     const me = await fetchMe()
     username.value = me.username
     isPublic.value = me.isPublic
+    isAdmin.value = me.isAdmin
   } catch {
     error.value = '加载设置失败，请刷新重试'
   } finally {
@@ -48,6 +51,7 @@ async function toggleVisibility() {
 
     <template v-else>
       <div v-if="error" class="error">{{ error }}</div>
+      <div v-if="catalogDenied" class="error">只有部署管理员可以访问 App Catalog。</div>
 
       <section class="row">
         <div class="row-text">
@@ -57,6 +61,16 @@ async function toggleVisibility() {
           </div>
         </div>
         <router-link to="/settings/knowledge" class="btn">管理</router-link>
+      </section>
+
+      <section v-if="isAdmin" class="row">
+        <div class="row-text">
+          <div class="row-title">App Catalog</div>
+          <div class="row-desc">
+            归类待识别的跨平台应用、检查本地 Override，并导出候选 Catalog JSON。
+          </div>
+        </div>
+        <router-link to="/settings/app-catalog" class="btn">管理</router-link>
       </section>
 
       <section class="row">

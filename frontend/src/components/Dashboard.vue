@@ -34,6 +34,7 @@ const {
   selectedDate,
   usageData,
   appNameMap,
+  provisionalAppIds,
   loading,
   isToday,
   isAlive,
@@ -227,6 +228,7 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
             :username="username"
             :appSummaries="appSummaries"
             :maxSeconds="maxSeconds"
+            :provisionalAppIds="provisionalAppIds"
             @select="selectedApp = $event"
           />
 
@@ -247,6 +249,7 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
       :app="selectedApp"
       :usageData="usageData"
       :devices="devices"
+      :isProvisional="provisionalAppIds.has(selectedApp.appId)"
       @close="selectedApp = null"
     />
 

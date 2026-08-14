@@ -1,6 +1,14 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import type { AppInfoResponse, KeyFrequencyItem } from '../api/index'
-import { fetchPublicApps, fetchPublicKeyFrequency, getTimezoneLabel } from '../api/index'
+import {
+  fetchAdminAppCatalog,
+  fetchMe,
+  fetchPublicApps,
+  fetchPublicKeyFrequency,
+  getTimezoneLabel,
+} from '../api/index'
+import { loadAdminProvisionalAppIds } from '../appCatalog/adminOverlay'
+import { authStore } from '../stores/auth'
 import { useAsyncData } from './useAsyncData'
 import { useDeviceSelection } from './useDeviceSelection'
 import { useDeviceStatus } from './useDeviceStatus'
@@ -24,6 +32,7 @@ export function useHeartbeat(username: string) {
 
   const appsData = useAsyncData<AppInfoResponse[]>(() => fetchPublicApps(username), [])
   const apps = appsData.data
+  const provisionalAppIds = ref<Set<number>>(new Set())
   const loading = ref(false)
 
   const appNameMap = computed(() => {
@@ -49,6 +58,20 @@ export function useHeartbeat(username: string) {
     await kf.run()
   }
 
+  async function loadAdminOverlay() {
+    try {
+      provisionalAppIds.value = await loadAdminProvisionalAppIds(username, {
+        isAuthenticated: authStore.isAuthenticated,
+        currentUsername: authStore.username.value,
+        fetchMe,
+        fetchInventory: fetchAdminAppCatalog,
+      })
+    } catch {
+      // 管理员标记是附加信息；失败不能让普通 Dashboard 取数整体失败。
+      provisionalAppIds.value = new Set()
+    }
+  }
+
   // 任一数据域出错就点亮:UI 据此区分"出错"与"这天没数据"。
   const error = computed(() =>
     selection.error.value
@@ -72,6 +95,7 @@ export function useHeartbeat(username: string) {
         reports.loadDaily(),
         reports.loadWeekly(),
         loadKeyFrequency(),
+        loadAdminOverlay(),
       ])
     } finally {
       loading.value = false
@@ -107,6 +131,7 @@ export function useHeartbeat(username: string) {
     selectedDate,
     usageData: reports.usageData,
     appNameMap,
+    provisionalAppIds,
     loading,
     isToday,
     isAlive: status.isAlive,

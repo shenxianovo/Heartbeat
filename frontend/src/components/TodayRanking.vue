@@ -7,6 +7,7 @@ defineProps<{
   username: string
   appSummaries: { appId: number; appName: string; totalSeconds: number }[]
   maxSeconds: number
+  provisionalAppIds: Set<number>
 }>()
 
 const emit = defineEmits<{ select: [app: { appId: number; appName: string; totalSeconds: number }] }>()
@@ -35,6 +36,11 @@ const emit = defineEmits<{ select: [app: { appId: number; appName: string; total
               @error="($event.target as HTMLImageElement).style.display = 'none'"
             />
             <span class="flex-1 truncate">{{ app.appName }}</span>
+            <span
+              v-if="provisionalAppIds.has(app.appId)"
+              class="rounded-full border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-[0.62rem] text-amber-200"
+              title="此产品仍是 provisional，等待部署管理员归类"
+            >待归类</span>
             <span class="font-mono text-[0.8rem] text-muted-foreground">{{ formatDuration(app.totalSeconds) }}</span>
           </div>
           <div class="ml-8 h-1 overflow-hidden rounded-sm bg-secondary">

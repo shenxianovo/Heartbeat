@@ -1,4 +1,13 @@
 import { Client, ApiException, DailyRecapResponse, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, SegmentResponse, UpdateMySettingsRequest, AskingQuestionsResponse, KnowledgeProposalResponse, CommitChangeSetRequest, CommitChangeSetResponse, ChangeSetErrorResponse, KnowledgeErrorResponse, CreateStrandRequest, UpdateStrandRequest, MoveStrandRequest, EndStrandRequest, MuteMatcherRequest, StrandResponse, EpisodeResponse, ProbeResponse, PromoteEpisodeResponse, CreateEpisodeRequest, UpdateEpisodeRequest, RelateEpisodeRequest, CreateProbeRequest, ResolveProbeRequest, PromoteEpisodeRequest, type ICreateStrandRequest, type IUpdateStrandRequest, type IMoveStrandRequest, type IEndStrandRequest, type IMatcherDto, type IKnowledgeOperationDto, type IChangeSetErrorResponse, type IKnowledgeErrorResponse, type ICreateEpisodeRequest, type IUpdateEpisodeRequest, type IRelateEpisodeRequest, type ICreateProbeRequest, type IResolveProbeRequest, type IPromoteEpisodeRequest } from './client'
+import {
+  AppCatalogAdminErrorResponse,
+  AppCatalogExportRequest,
+  AppCatalogOverrideSetRequest,
+  type AppCatalogAdminAuditResponse,
+  type AppCatalogAdminInventoryResponse,
+  type AppCatalogExportResponse,
+  type AppCatalogReconciliationResponse,
+} from './client'
 import { authStore } from '../stores/auth'
 
 // ===== Error model =====
@@ -356,16 +365,90 @@ export async function promoteEpisode(id: string, req: IPromoteEpisodeRequest): P
 export interface MeSettings {
   username: string
   isPublic: boolean
+  isAdmin: boolean
 }
 
 export async function fetchMe(): Promise<MeSettings> {
   const res = await client.getMe()
-  return { username: res.username ?? '', isPublic: res.isPublic ?? false }
+  return {
+    username: res.username ?? '',
+    isPublic: res.isPublic ?? false,
+    isAdmin: res.isAdmin ?? false,
+  }
 }
 
 export async function updateMySettings(isPublic: boolean): Promise<MeSettings> {
   const res = await client.updateMySettings(UpdateMySettingsRequest.fromJS({ isPublic }))
-  return { username: res.username ?? '', isPublic: res.isPublic ?? false }
+  return {
+    username: res.username ?? '',
+    isPublic: res.isPublic ?? false,
+    isAdmin: res.isAdmin ?? false,
+  }
+}
+
+// ===== Deployment administration: App Catalog =====
+
+export type {
+  AppCatalogAdminAuditResponse,
+  AppCatalogAdminInventoryResponse,
+  AppCatalogExportResponse,
+  AppCatalogReconciliationResponse,
+}
+
+export async function fetchAdminAppCatalog(): Promise<AppCatalogAdminInventoryResponse> {
+  return client.getAdminAppCatalog()
+}
+
+export async function fetchAdminAppCatalogAudit(limit = 50): Promise<AppCatalogAdminAuditResponse[]> {
+  return (await client.getAdminAppCatalogAudit(limit)).entries ?? []
+}
+
+export async function previewAdminAppCatalogOverride(
+  identityKey: string,
+  targetAppKey: string,
+  newAppDisplayName?: string,
+): Promise<AppCatalogReconciliationResponse> {
+  return client.previewAdminAppCatalogOverride(
+    identityKey,
+    AppCatalogOverrideSetRequest.fromJS({ targetAppKey, newAppDisplayName }),
+  )
+}
+
+export async function setAdminAppCatalogOverride(
+  identityKey: string,
+  targetAppKey: string,
+  newAppDisplayName?: string,
+): Promise<AppCatalogReconciliationResponse> {
+  return client.setAdminAppCatalogOverride(
+    identityKey,
+    AppCatalogOverrideSetRequest.fromJS({ targetAppKey, newAppDisplayName }),
+  )
+}
+
+export async function previewDeleteAdminAppCatalogOverride(
+  identityKey: string,
+): Promise<AppCatalogReconciliationResponse> {
+  return client.previewDeleteAdminAppCatalogOverride(identityKey)
+}
+
+export async function deleteAdminAppCatalogOverride(
+  identityKey: string,
+): Promise<AppCatalogReconciliationResponse> {
+  return client.deleteAdminAppCatalogOverride(identityKey)
+}
+
+export async function exportAdminAppCatalogCandidate(
+  selectedIdentityKeys: string[],
+): Promise<AppCatalogExportResponse> {
+  return client.exportAdminAppCatalogCandidate(
+    AppCatalogExportRequest.fromJS({ selectedIdentityKeys }),
+  )
+}
+
+export function appCatalogAdminErrorOf(error: unknown): AppCatalogAdminErrorResponse | null {
+  return ApiException.isApiException(error) && error.result instanceof AppCatalogAdminErrorResponse
+    ? error.result
+    : null
 }
 
 // ===== Public API Functions (no auth required, by username) =====

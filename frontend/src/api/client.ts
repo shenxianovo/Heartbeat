@@ -14,7 +14,490 @@ export class Client {
 
     constructor(baseUrl?: string, http?: { fetch(url: RequestInfo, init?: RequestInit): Promise<Response> }) {
         this.http = http ? http : window as any;
-        this.baseUrl = baseUrl ?? "http://127.0.0.1:58080/";
+        this.baseUrl = baseUrl ?? "http://localhost/";
+    }
+
+    /**
+     * @return OK
+     */
+    getAdminAppCatalog(): Promise<AppCatalogAdminInventoryResponse> {
+        let url_ = this.baseUrl + "/api/v1/admin/app-catalog";
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processGetAdminAppCatalog(_response);
+        });
+    }
+
+    protected processGetAdminAppCatalog(response: Response): Promise<AppCatalogAdminInventoryResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = AppCatalogAdminInventoryResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status === 403) {
+            return response.text().then((_responseText) => {
+            let result403: any = null;
+            let resultData403 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result403 = ProblemDetails.fromJS(resultData403);
+            return throwException("Forbidden", status, _responseText, _headers, result403);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<AppCatalogAdminInventoryResponse>(null as any);
+    }
+
+    /**
+     * @param limit (optional)
+     * @return OK
+     */
+    getAdminAppCatalogAudit(limit: number | undefined): Promise<AppCatalogAdminAuditListResponse> {
+        let url_ = this.baseUrl + "/api/v1/admin/app-catalog/audit?";
+        if (limit === null)
+            throw new globalThis.Error("The parameter 'limit' cannot be null.");
+        else if (limit !== undefined)
+            url_ += "limit=" + encodeURIComponent("" + limit) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processGetAdminAppCatalogAudit(_response);
+        });
+    }
+
+    protected processGetAdminAppCatalogAudit(response: Response): Promise<AppCatalogAdminAuditListResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = AppCatalogAdminAuditListResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status === 403) {
+            return response.text().then((_responseText) => {
+            let result403: any = null;
+            let resultData403 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result403 = ProblemDetails.fromJS(resultData403);
+            return throwException("Forbidden", status, _responseText, _headers, result403);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<AppCatalogAdminAuditListResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    previewAdminAppCatalogOverride(identityKey: string, body: AppCatalogOverrideSetRequest): Promise<AppCatalogReconciliationResponse> {
+        let url_ = this.baseUrl + "/api/v1/admin/app-catalog/overrides/{identityKey}/preview";
+        if (identityKey === undefined || identityKey === null)
+            throw new globalThis.Error("The parameter 'identityKey' must be defined.");
+        url_ = url_.replace("{identityKey}", encodeURIComponent("" + identityKey));
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processPreviewAdminAppCatalogOverride(_response);
+        });
+    }
+
+    protected processPreviewAdminAppCatalogOverride(response: Response): Promise<AppCatalogReconciliationResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = AppCatalogReconciliationResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result400 = AppCatalogAdminErrorResponse.fromJS(resultData400);
+            return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        } else if (status === 403) {
+            return response.text().then((_responseText) => {
+            let result403: any = null;
+            let resultData403 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result403 = ProblemDetails.fromJS(resultData403);
+            return throwException("Forbidden", status, _responseText, _headers, result403);
+            });
+        } else if (status === 404) {
+            return response.text().then((_responseText) => {
+            let result404: any = null;
+            let resultData404 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result404 = AppCatalogAdminErrorResponse.fromJS(resultData404);
+            return throwException("Not Found", status, _responseText, _headers, result404);
+            });
+        } else if (status === 409) {
+            return response.text().then((_responseText) => {
+            let result409: any = null;
+            let resultData409 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result409 = AppCatalogAdminErrorResponse.fromJS(resultData409);
+            return throwException("Conflict", status, _responseText, _headers, result409);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<AppCatalogReconciliationResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    setAdminAppCatalogOverride(identityKey: string, body: AppCatalogOverrideSetRequest): Promise<AppCatalogReconciliationResponse> {
+        let url_ = this.baseUrl + "/api/v1/admin/app-catalog/overrides/{identityKey}";
+        if (identityKey === undefined || identityKey === null)
+            throw new globalThis.Error("The parameter 'identityKey' must be defined.");
+        url_ = url_.replace("{identityKey}", encodeURIComponent("" + identityKey));
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processSetAdminAppCatalogOverride(_response);
+        });
+    }
+
+    protected processSetAdminAppCatalogOverride(response: Response): Promise<AppCatalogReconciliationResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = AppCatalogReconciliationResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result400 = AppCatalogAdminErrorResponse.fromJS(resultData400);
+            return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        } else if (status === 403) {
+            return response.text().then((_responseText) => {
+            let result403: any = null;
+            let resultData403 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result403 = ProblemDetails.fromJS(resultData403);
+            return throwException("Forbidden", status, _responseText, _headers, result403);
+            });
+        } else if (status === 404) {
+            return response.text().then((_responseText) => {
+            let result404: any = null;
+            let resultData404 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result404 = AppCatalogAdminErrorResponse.fromJS(resultData404);
+            return throwException("Not Found", status, _responseText, _headers, result404);
+            });
+        } else if (status === 409) {
+            return response.text().then((_responseText) => {
+            let result409: any = null;
+            let resultData409 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result409 = AppCatalogAdminErrorResponse.fromJS(resultData409);
+            return throwException("Conflict", status, _responseText, _headers, result409);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<AppCatalogReconciliationResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    deleteAdminAppCatalogOverride(identityKey: string): Promise<AppCatalogReconciliationResponse> {
+        let url_ = this.baseUrl + "/api/v1/admin/app-catalog/overrides/{identityKey}";
+        if (identityKey === undefined || identityKey === null)
+            throw new globalThis.Error("The parameter 'identityKey' must be defined.");
+        url_ = url_.replace("{identityKey}", encodeURIComponent("" + identityKey));
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "DELETE",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processDeleteAdminAppCatalogOverride(_response);
+        });
+    }
+
+    protected processDeleteAdminAppCatalogOverride(response: Response): Promise<AppCatalogReconciliationResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = AppCatalogReconciliationResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result400 = AppCatalogAdminErrorResponse.fromJS(resultData400);
+            return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        } else if (status === 403) {
+            return response.text().then((_responseText) => {
+            let result403: any = null;
+            let resultData403 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result403 = ProblemDetails.fromJS(resultData403);
+            return throwException("Forbidden", status, _responseText, _headers, result403);
+            });
+        } else if (status === 404) {
+            return response.text().then((_responseText) => {
+            let result404: any = null;
+            let resultData404 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result404 = AppCatalogAdminErrorResponse.fromJS(resultData404);
+            return throwException("Not Found", status, _responseText, _headers, result404);
+            });
+        } else if (status === 409) {
+            return response.text().then((_responseText) => {
+            let result409: any = null;
+            let resultData409 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result409 = AppCatalogAdminErrorResponse.fromJS(resultData409);
+            return throwException("Conflict", status, _responseText, _headers, result409);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<AppCatalogReconciliationResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    previewDeleteAdminAppCatalogOverride(identityKey: string): Promise<AppCatalogReconciliationResponse> {
+        let url_ = this.baseUrl + "/api/v1/admin/app-catalog/overrides/{identityKey}/delete-preview";
+        if (identityKey === undefined || identityKey === null)
+            throw new globalThis.Error("The parameter 'identityKey' must be defined.");
+        url_ = url_.replace("{identityKey}", encodeURIComponent("" + identityKey));
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "POST",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processPreviewDeleteAdminAppCatalogOverride(_response);
+        });
+    }
+
+    protected processPreviewDeleteAdminAppCatalogOverride(response: Response): Promise<AppCatalogReconciliationResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = AppCatalogReconciliationResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result400 = AppCatalogAdminErrorResponse.fromJS(resultData400);
+            return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        } else if (status === 403) {
+            return response.text().then((_responseText) => {
+            let result403: any = null;
+            let resultData403 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result403 = ProblemDetails.fromJS(resultData403);
+            return throwException("Forbidden", status, _responseText, _headers, result403);
+            });
+        } else if (status === 404) {
+            return response.text().then((_responseText) => {
+            let result404: any = null;
+            let resultData404 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result404 = AppCatalogAdminErrorResponse.fromJS(resultData404);
+            return throwException("Not Found", status, _responseText, _headers, result404);
+            });
+        } else if (status === 409) {
+            return response.text().then((_responseText) => {
+            let result409: any = null;
+            let resultData409 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result409 = AppCatalogAdminErrorResponse.fromJS(resultData409);
+            return throwException("Conflict", status, _responseText, _headers, result409);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<AppCatalogReconciliationResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    exportAdminAppCatalogCandidate(body: AppCatalogExportRequest): Promise<AppCatalogExportResponse> {
+        let url_ = this.baseUrl + "/api/v1/admin/app-catalog/export";
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processExportAdminAppCatalogCandidate(_response);
+        });
+    }
+
+    protected processExportAdminAppCatalogCandidate(response: Response): Promise<AppCatalogExportResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = AppCatalogExportResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result400 = AppCatalogAdminErrorResponse.fromJS(resultData400);
+            return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        } else if (status === 403) {
+            return response.text().then((_responseText) => {
+            let result403: any = null;
+            let resultData403 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result403 = ProblemDetails.fromJS(resultData403);
+            return throwException("Forbidden", status, _responseText, _headers, result403);
+            });
+        } else if (status === 404) {
+            return response.text().then((_responseText) => {
+            let result404: any = null;
+            let resultData404 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result404 = AppCatalogAdminErrorResponse.fromJS(resultData404);
+            return throwException("Not Found", status, _responseText, _headers, result404);
+            });
+        } else if (status === 409) {
+            return response.text().then((_responseText) => {
+            let result409: any = null;
+            let resultData409 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result409 = AppCatalogAdminErrorResponse.fromJS(resultData409);
+            return throwException("Conflict", status, _responseText, _headers, result409);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<AppCatalogExportResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    mergeApps(body: AppMergeRequest): Promise<AppMergeResponse> {
+        let url_ = this.baseUrl + "/api/v1/admin/apps/merge";
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processMergeApps(_response);
+        });
+    }
+
+    protected processMergeApps(response: Response): Promise<AppMergeResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = AppMergeResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<AppMergeResponse>(null as any);
     }
 
     /**
@@ -257,8 +740,8 @@ export class Client {
     }
 
     /**
-     * @param date (optional) 
-     * @param strandId (optional) 
+     * @param date (optional)
+     * @param strandId (optional)
      * @return OK
      */
     getEpisodes(date: Date | undefined, strandId: string | undefined): Promise<EpisodeResponse[]> {
@@ -424,7 +907,7 @@ export class Client {
     }
 
     /**
-     * @param expectedVersion (optional) 
+     * @param expectedVersion (optional)
      * @return No Content
      */
     deleteEpisode(id: string, expectedVersion: number | undefined): Promise<void> {
@@ -776,9 +1259,9 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional) 
-     * @param start (optional) 
-     * @param end (optional) 
+     * @param deviceId (optional)
+     * @param start (optional)
+     * @param end (optional)
      * @return OK
      */
     getInputCounts(deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<InputCountsResponse> {
@@ -828,7 +1311,7 @@ export class Client {
     }
 
     /**
-     * @param date (optional) 
+     * @param date (optional)
      * @return OK
      */
     getDailyQuestions(date: Date | undefined): Promise<AskingQuestionsResponse> {
@@ -918,6 +1401,61 @@ export class Client {
             let resultData404 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
             result404 = KnowledgeErrorResponse.fromJS(resultData404);
             return throwException("Not Found", status, _responseText, _headers, result404);
+            });
+        } else if (status === 502) {
+            return response.text().then((_responseText) => {
+            let result502: any = null;
+            let resultData502 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result502 = KnowledgeErrorResponse.fromJS(resultData502);
+            return throwException("Bad Gateway", status, _responseText, _headers, result502);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<KnowledgeProposalResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    proposeCorrection(body: ProposeCorrectionRequest): Promise<KnowledgeProposalResponse> {
+        let url_ = this.baseUrl + "/api/v1/knowledge/corrections/propose";
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processProposeCorrection(_response);
+        });
+    }
+
+    protected processProposeCorrection(response: Response): Promise<KnowledgeProposalResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = KnowledgeProposalResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result400 = KnowledgeErrorResponse.fromJS(resultData400);
+            return throwException("Bad Request", status, _responseText, _headers, result400);
             });
         } else if (status === 502) {
             return response.text().then((_responseText) => {
@@ -1453,8 +1991,8 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional) 
-     * @param date (optional) 
+     * @param deviceId (optional)
+     * @param date (optional)
      * @return OK
      */
     getUserDailyReport(username: string, deviceId: number | undefined, date: Date | undefined): Promise<DailyReportResponse> {
@@ -1503,8 +2041,8 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional) 
-     * @param date (optional) 
+     * @param deviceId (optional)
+     * @param date (optional)
      * @return OK
      */
     getUserWeeklyReport(username: string, deviceId: number | undefined, date: Date | undefined): Promise<WeeklyReportResponse> {
@@ -1553,7 +2091,7 @@ export class Client {
     }
 
     /**
-     * @param date (optional) 
+     * @param date (optional)
      * @return OK
      */
     getUserDailyRecap(username: string, date: Date | undefined): Promise<DailyRecapResponse> {
@@ -1598,9 +2136,9 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional) 
-     * @param start (optional) 
-     * @param end (optional) 
+     * @param deviceId (optional)
+     * @param start (optional)
+     * @param end (optional)
      * @return OK
      */
     getUserUsage(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<AppUsageResponse[]> {
@@ -1660,11 +2198,11 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional) 
-     * @param source (optional) 
-     * @param appId (optional) 
-     * @param start (optional) 
-     * @param end (optional) 
+     * @param deviceId (optional)
+     * @param source (optional)
+     * @param appId (optional)
+     * @param start (optional)
+     * @param end (optional)
      * @return OK
      */
     getUserSegments(username: string, deviceId: number | undefined, source: string | undefined, appId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<SegmentResponse[]> {
@@ -1861,9 +2399,9 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional) 
-     * @param start (optional) 
-     * @param end (optional) 
+     * @param deviceId (optional)
+     * @param start (optional)
+     * @param end (optional)
      * @return OK
      */
     getUserKeyFrequency(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<KeyFrequencyResponse> {
@@ -1916,8 +2454,8 @@ export class Client {
     }
 
     /**
-     * @param date (optional) 
-     * @param force (optional) 
+     * @param date (optional)
+     * @param force (optional)
      * @return OK
      */
     getDailyRecap(date: Date | undefined, force: boolean | undefined): Promise<DailyRecapResponse> {
@@ -1963,8 +2501,8 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional) 
-     * @param date (optional) 
+     * @param deviceId (optional)
+     * @param date (optional)
      * @return OK
      */
     getDailyReport(deviceId: number | undefined, date: Date | undefined): Promise<DailyReportResponse> {
@@ -2010,8 +2548,8 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional) 
-     * @param date (optional) 
+     * @param deviceId (optional)
+     * @param date (optional)
      * @return OK
      */
     getWeeklyReport(deviceId: number | undefined, date: Date | undefined): Promise<WeeklyReportResponse> {
@@ -2094,9 +2632,9 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional) 
-     * @param start (optional) 
-     * @param end (optional) 
+     * @param deviceId (optional)
+     * @param start (optional)
+     * @param end (optional)
      * @return OK
      */
     getUsage(deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<AppUsageResponse[]> {
@@ -2157,6 +2695,8 @@ export class ActivitySegmentItem implements IActivitySegmentItem {
     id?: string;
     source?: string;
     identityKey?: string;
+    appIdentityKey?: string | undefined;
+    appDisplayName?: string | undefined;
     appName?: string | undefined;
     title?: string | undefined;
     startTime?: Date;
@@ -2183,6 +2723,8 @@ export class ActivitySegmentItem implements IActivitySegmentItem {
             this.id = _data["id"];
             this.source = _data["source"];
             this.identityKey = _data["identityKey"];
+            this.appIdentityKey = _data["appIdentityKey"];
+            this.appDisplayName = _data["appDisplayName"];
             this.appName = _data["appName"];
             this.title = _data["title"];
             this.startTime = _data["startTime"] ? new Date(_data["startTime"].toString()) : undefined as any;
@@ -2207,6 +2749,8 @@ export class ActivitySegmentItem implements IActivitySegmentItem {
         data["id"] = this.id;
         data["source"] = this.source;
         data["identityKey"] = this.identityKey;
+        data["appIdentityKey"] = this.appIdentityKey;
+        data["appDisplayName"] = this.appDisplayName;
         data["appName"] = this.appName;
         data["title"] = this.title;
         data["startTime"] = this.startTime ? this.startTime.toISOString() : undefined as any;
@@ -2220,11 +2764,1085 @@ export interface IActivitySegmentItem {
     id?: string;
     source?: string;
     identityKey?: string;
+    appIdentityKey?: string | undefined;
+    appDisplayName?: string | undefined;
     appName?: string | undefined;
     title?: string | undefined;
     startTime?: Date;
     endTime?: Date;
     attributes?: JsonElement | undefined;
+
+    [key: string]: any;
+}
+
+export class AppCatalogAdminAuditListResponse implements IAppCatalogAdminAuditListResponse {
+    entries?: AppCatalogAdminAuditResponse[];
+
+    [key: string]: any;
+
+    constructor(data?: IAppCatalogAdminAuditListResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            if (Array.isArray(_data["entries"])) {
+                this.entries = [] as any;
+                for (let item of _data["entries"])
+                    this.entries!.push(AppCatalogAdminAuditResponse.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): AppCatalogAdminAuditListResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppCatalogAdminAuditListResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        if (Array.isArray(this.entries)) {
+            data["entries"] = [];
+            for (let item of this.entries)
+                data["entries"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface IAppCatalogAdminAuditListResponse {
+    entries?: AppCatalogAdminAuditResponse[];
+
+    [key: string]: any;
+}
+
+export class AppCatalogAdminAuditResponse implements IAppCatalogAdminAuditResponse {
+    id?: number;
+    eventType?: string;
+    schemaVersion?: number | undefined;
+    catalogVersion?: number | undefined;
+    contentHash?: string | undefined;
+    actorSubject?: string | undefined;
+    occurredAt?: Date;
+    summaryJson?: string;
+
+    [key: string]: any;
+
+    constructor(data?: IAppCatalogAdminAuditResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.id = _data["id"];
+            this.eventType = _data["eventType"];
+            this.schemaVersion = _data["schemaVersion"];
+            this.catalogVersion = _data["catalogVersion"];
+            this.contentHash = _data["contentHash"];
+            this.actorSubject = _data["actorSubject"];
+            this.occurredAt = _data["occurredAt"] ? new Date(_data["occurredAt"].toString()) : undefined as any;
+            this.summaryJson = _data["summaryJson"];
+        }
+    }
+
+    static fromJS(data: any): AppCatalogAdminAuditResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppCatalogAdminAuditResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["id"] = this.id;
+        data["eventType"] = this.eventType;
+        data["schemaVersion"] = this.schemaVersion;
+        data["catalogVersion"] = this.catalogVersion;
+        data["contentHash"] = this.contentHash;
+        data["actorSubject"] = this.actorSubject;
+        data["occurredAt"] = this.occurredAt ? this.occurredAt.toISOString() : undefined as any;
+        data["summaryJson"] = this.summaryJson;
+        return data;
+    }
+}
+
+export interface IAppCatalogAdminAuditResponse {
+    id?: number;
+    eventType?: string;
+    schemaVersion?: number | undefined;
+    catalogVersion?: number | undefined;
+    contentHash?: string | undefined;
+    actorSubject?: string | undefined;
+    occurredAt?: Date;
+    summaryJson?: string;
+
+    [key: string]: any;
+}
+
+export class AppCatalogAdminErrorResponse implements IAppCatalogAdminErrorResponse {
+    code?: string;
+    message?: string;
+
+    [key: string]: any;
+
+    constructor(data?: IAppCatalogAdminErrorResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.code = _data["code"];
+            this.message = _data["message"];
+        }
+    }
+
+    static fromJS(data: any): AppCatalogAdminErrorResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppCatalogAdminErrorResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["code"] = this.code;
+        data["message"] = this.message;
+        return data;
+    }
+}
+
+export interface IAppCatalogAdminErrorResponse {
+    code?: string;
+    message?: string;
+
+    [key: string]: any;
+}
+
+export class AppCatalogAdminIdentityResponse implements IAppCatalogAdminIdentityResponse {
+    id?: number;
+    key?: string;
+    effectiveSource?: string;
+    activeOverride?: AppCatalogAdminOverrideResponse | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IAppCatalogAdminIdentityResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.id = _data["id"];
+            this.key = _data["key"];
+            this.effectiveSource = _data["effectiveSource"];
+            this.activeOverride = _data["activeOverride"] ? AppCatalogAdminOverrideResponse.fromJS(_data["activeOverride"]) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): AppCatalogAdminIdentityResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppCatalogAdminIdentityResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["id"] = this.id;
+        data["key"] = this.key;
+        data["effectiveSource"] = this.effectiveSource;
+        data["activeOverride"] = this.activeOverride ? this.activeOverride.toJSON() : undefined as any;
+        return data;
+    }
+}
+
+export interface IAppCatalogAdminIdentityResponse {
+    id?: number;
+    key?: string;
+    effectiveSource?: string;
+    activeOverride?: AppCatalogAdminOverrideResponse | undefined;
+
+    [key: string]: any;
+}
+
+export class AppCatalogAdminInventoryResponse implements IAppCatalogAdminInventoryResponse {
+    schemaVersion?: number;
+    catalogVersion?: number;
+    isRollbackCompatible?: boolean;
+    products?: AppCatalogAdminProductResponse[];
+    activeOverrides?: AppCatalogAdminOverrideResponse[];
+
+    [key: string]: any;
+
+    constructor(data?: IAppCatalogAdminInventoryResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.schemaVersion = _data["schemaVersion"];
+            this.catalogVersion = _data["catalogVersion"];
+            this.isRollbackCompatible = _data["isRollbackCompatible"];
+            if (Array.isArray(_data["products"])) {
+                this.products = [] as any;
+                for (let item of _data["products"])
+                    this.products!.push(AppCatalogAdminProductResponse.fromJS(item));
+            }
+            if (Array.isArray(_data["activeOverrides"])) {
+                this.activeOverrides = [] as any;
+                for (let item of _data["activeOverrides"])
+                    this.activeOverrides!.push(AppCatalogAdminOverrideResponse.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): AppCatalogAdminInventoryResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppCatalogAdminInventoryResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["schemaVersion"] = this.schemaVersion;
+        data["catalogVersion"] = this.catalogVersion;
+        data["isRollbackCompatible"] = this.isRollbackCompatible;
+        if (Array.isArray(this.products)) {
+            data["products"] = [];
+            for (let item of this.products)
+                data["products"].push(item ? item.toJSON() : undefined as any);
+        }
+        if (Array.isArray(this.activeOverrides)) {
+            data["activeOverrides"] = [];
+            for (let item of this.activeOverrides)
+                data["activeOverrides"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface IAppCatalogAdminInventoryResponse {
+    schemaVersion?: number;
+    catalogVersion?: number;
+    isRollbackCompatible?: boolean;
+    products?: AppCatalogAdminProductResponse[];
+    activeOverrides?: AppCatalogAdminOverrideResponse[];
+
+    [key: string]: any;
+}
+
+export class AppCatalogAdminOverrideResponse implements IAppCatalogAdminOverrideResponse {
+    id?: number;
+    identityKey?: string;
+    targetAppKey?: string;
+    status?: string;
+    createdBySubject?: string;
+    updatedBySubject?: string;
+    createdAt?: Date;
+    updatedAt?: Date;
+
+    [key: string]: any;
+
+    constructor(data?: IAppCatalogAdminOverrideResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.id = _data["id"];
+            this.identityKey = _data["identityKey"];
+            this.targetAppKey = _data["targetAppKey"];
+            this.status = _data["status"];
+            this.createdBySubject = _data["createdBySubject"];
+            this.updatedBySubject = _data["updatedBySubject"];
+            this.createdAt = _data["createdAt"] ? new Date(_data["createdAt"].toString()) : undefined as any;
+            this.updatedAt = _data["updatedAt"] ? new Date(_data["updatedAt"].toString()) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): AppCatalogAdminOverrideResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppCatalogAdminOverrideResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["id"] = this.id;
+        data["identityKey"] = this.identityKey;
+        data["targetAppKey"] = this.targetAppKey;
+        data["status"] = this.status;
+        data["createdBySubject"] = this.createdBySubject;
+        data["updatedBySubject"] = this.updatedBySubject;
+        data["createdAt"] = this.createdAt ? this.createdAt.toISOString() : undefined as any;
+        data["updatedAt"] = this.updatedAt ? this.updatedAt.toISOString() : undefined as any;
+        return data;
+    }
+}
+
+export interface IAppCatalogAdminOverrideResponse {
+    id?: number;
+    identityKey?: string;
+    targetAppKey?: string;
+    status?: string;
+    createdBySubject?: string;
+    updatedBySubject?: string;
+    createdAt?: Date;
+    updatedAt?: Date;
+
+    [key: string]: any;
+}
+
+export class AppCatalogAdminProductResponse implements IAppCatalogAdminProductResponse {
+    id?: number;
+    key?: string;
+    displayName?: string;
+    isProvisional?: boolean;
+    identities?: AppCatalogAdminIdentityResponse[];
+    usage?: AppCatalogAdminUsageResponse;
+
+    [key: string]: any;
+
+    constructor(data?: IAppCatalogAdminProductResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.id = _data["id"];
+            this.key = _data["key"];
+            this.displayName = _data["displayName"];
+            this.isProvisional = _data["isProvisional"];
+            if (Array.isArray(_data["identities"])) {
+                this.identities = [] as any;
+                for (let item of _data["identities"])
+                    this.identities!.push(AppCatalogAdminIdentityResponse.fromJS(item));
+            }
+            this.usage = _data["usage"] ? AppCatalogAdminUsageResponse.fromJS(_data["usage"]) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): AppCatalogAdminProductResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppCatalogAdminProductResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["id"] = this.id;
+        data["key"] = this.key;
+        data["displayName"] = this.displayName;
+        data["isProvisional"] = this.isProvisional;
+        if (Array.isArray(this.identities)) {
+            data["identities"] = [];
+            for (let item of this.identities)
+                data["identities"].push(item ? item.toJSON() : undefined as any);
+        }
+        data["usage"] = this.usage ? this.usage.toJSON() : undefined as any;
+        return data;
+    }
+}
+
+export interface IAppCatalogAdminProductResponse {
+    id?: number;
+    key?: string;
+    displayName?: string;
+    isProvisional?: boolean;
+    identities?: AppCatalogAdminIdentityResponse[];
+    usage?: AppCatalogAdminUsageResponse;
+
+    [key: string]: any;
+}
+
+export class AppCatalogAdminUsageResponse implements IAppCatalogAdminUsageResponse {
+    segmentCount?: number;
+    durationSeconds?: number;
+    deviceCount?: number;
+    lastObservedAt?: Date | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IAppCatalogAdminUsageResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.segmentCount = _data["segmentCount"];
+            this.durationSeconds = _data["durationSeconds"];
+            this.deviceCount = _data["deviceCount"];
+            this.lastObservedAt = _data["lastObservedAt"] ? new Date(_data["lastObservedAt"].toString()) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): AppCatalogAdminUsageResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppCatalogAdminUsageResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["segmentCount"] = this.segmentCount;
+        data["durationSeconds"] = this.durationSeconds;
+        data["deviceCount"] = this.deviceCount;
+        data["lastObservedAt"] = this.lastObservedAt ? this.lastObservedAt.toISOString() : undefined as any;
+        return data;
+    }
+}
+
+export interface IAppCatalogAdminUsageResponse {
+    segmentCount?: number;
+    durationSeconds?: number;
+    deviceCount?: number;
+    lastObservedAt?: Date | undefined;
+
+    [key: string]: any;
+}
+
+export class AppCatalogAffectedProductResponse implements IAppCatalogAffectedProductResponse {
+    id?: number;
+    key?: string;
+    displayName?: string;
+    isProvisional?: boolean;
+
+    [key: string]: any;
+
+    constructor(data?: IAppCatalogAffectedProductResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.id = _data["id"];
+            this.key = _data["key"];
+            this.displayName = _data["displayName"];
+            this.isProvisional = _data["isProvisional"];
+        }
+    }
+
+    static fromJS(data: any): AppCatalogAffectedProductResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppCatalogAffectedProductResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["id"] = this.id;
+        data["key"] = this.key;
+        data["displayName"] = this.displayName;
+        data["isProvisional"] = this.isProvisional;
+        return data;
+    }
+}
+
+export interface IAppCatalogAffectedProductResponse {
+    id?: number;
+    key?: string;
+    displayName?: string;
+    isProvisional?: boolean;
+
+    [key: string]: any;
+}
+
+export class AppCatalogExportRequest implements IAppCatalogExportRequest {
+    selectedIdentityKeys?: string[];
+
+    [key: string]: any;
+
+    constructor(data?: IAppCatalogExportRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            if (Array.isArray(_data["selectedIdentityKeys"])) {
+                this.selectedIdentityKeys = [] as any;
+                for (let item of _data["selectedIdentityKeys"])
+                    this.selectedIdentityKeys!.push(item);
+            }
+        }
+    }
+
+    static fromJS(data: any): AppCatalogExportRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppCatalogExportRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        if (Array.isArray(this.selectedIdentityKeys)) {
+            data["selectedIdentityKeys"] = [];
+            for (let item of this.selectedIdentityKeys)
+                data["selectedIdentityKeys"].push(item);
+        }
+        return data;
+    }
+}
+
+export interface IAppCatalogExportRequest {
+    selectedIdentityKeys?: string[];
+
+    [key: string]: any;
+}
+
+export class AppCatalogExportResponse implements IAppCatalogExportResponse {
+    hasChanges?: boolean;
+    schemaVersion?: number;
+    proposedCatalogVersion?: number;
+    fileName?: string | undefined;
+    contentHash?: string | undefined;
+    content?: string | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IAppCatalogExportResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.hasChanges = _data["hasChanges"];
+            this.schemaVersion = _data["schemaVersion"];
+            this.proposedCatalogVersion = _data["proposedCatalogVersion"];
+            this.fileName = _data["fileName"];
+            this.contentHash = _data["contentHash"];
+            this.content = _data["content"];
+        }
+    }
+
+    static fromJS(data: any): AppCatalogExportResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppCatalogExportResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["hasChanges"] = this.hasChanges;
+        data["schemaVersion"] = this.schemaVersion;
+        data["proposedCatalogVersion"] = this.proposedCatalogVersion;
+        data["fileName"] = this.fileName;
+        data["contentHash"] = this.contentHash;
+        data["content"] = this.content;
+        return data;
+    }
+}
+
+export interface IAppCatalogExportResponse {
+    hasChanges?: boolean;
+    schemaVersion?: number;
+    proposedCatalogVersion?: number;
+    fileName?: string | undefined;
+    contentHash?: string | undefined;
+    content?: string | undefined;
+
+    [key: string]: any;
+}
+
+export class AppCatalogIconImpactResponse implements IAppCatalogIconImpactResponse {
+    resolution?: string;
+    count?: number;
+
+    [key: string]: any;
+
+    constructor(data?: IAppCatalogIconImpactResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.resolution = _data["resolution"];
+            this.count = _data["count"];
+        }
+    }
+
+    static fromJS(data: any): AppCatalogIconImpactResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppCatalogIconImpactResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["resolution"] = this.resolution;
+        data["count"] = this.count;
+        return data;
+    }
+}
+
+export interface IAppCatalogIconImpactResponse {
+    resolution?: string;
+    count?: number;
+
+    [key: string]: any;
+}
+
+export class AppCatalogKnowledgeChangeResponse implements IAppCatalogKnowledgeChangeResponse {
+    category?: string;
+    beforeStepsJson?: string;
+    afterStepsJson?: string;
+
+    [key: string]: any;
+
+    constructor(data?: IAppCatalogKnowledgeChangeResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.category = _data["category"];
+            this.beforeStepsJson = _data["beforeStepsJson"];
+            this.afterStepsJson = _data["afterStepsJson"];
+        }
+    }
+
+    static fromJS(data: any): AppCatalogKnowledgeChangeResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppCatalogKnowledgeChangeResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["category"] = this.category;
+        data["beforeStepsJson"] = this.beforeStepsJson;
+        data["afterStepsJson"] = this.afterStepsJson;
+        return data;
+    }
+}
+
+export interface IAppCatalogKnowledgeChangeResponse {
+    category?: string;
+    beforeStepsJson?: string;
+    afterStepsJson?: string;
+
+    [key: string]: any;
+}
+
+export class AppCatalogKnowledgeDeduplicationResponse implements IAppCatalogKnowledgeDeduplicationResponse {
+    category?: string;
+    removedRows?: number;
+
+    [key: string]: any;
+
+    constructor(data?: IAppCatalogKnowledgeDeduplicationResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.category = _data["category"];
+            this.removedRows = _data["removedRows"];
+        }
+    }
+
+    static fromJS(data: any): AppCatalogKnowledgeDeduplicationResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppCatalogKnowledgeDeduplicationResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["category"] = this.category;
+        data["removedRows"] = this.removedRows;
+        return data;
+    }
+}
+
+export interface IAppCatalogKnowledgeDeduplicationResponse {
+    category?: string;
+    removedRows?: number;
+
+    [key: string]: any;
+}
+
+export class AppCatalogOverrideSetRequest implements IAppCatalogOverrideSetRequest {
+    targetAppKey?: string;
+    newAppDisplayName?: string | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IAppCatalogOverrideSetRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.targetAppKey = _data["targetAppKey"];
+            this.newAppDisplayName = _data["newAppDisplayName"];
+        }
+    }
+
+    static fromJS(data: any): AppCatalogOverrideSetRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppCatalogOverrideSetRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["targetAppKey"] = this.targetAppKey;
+        data["newAppDisplayName"] = this.newAppDisplayName;
+        return data;
+    }
+}
+
+export interface IAppCatalogOverrideSetRequest {
+    targetAppKey?: string;
+    newAppDisplayName?: string | undefined;
+
+    [key: string]: any;
+}
+
+export class AppCatalogReconciliationResponse implements IAppCatalogReconciliationResponse {
+    targetAppId?: number | undefined;
+    targetAppKey?: string;
+    identityKeys?: string[];
+    legacySegmentsRebound?: number;
+    currentDevicesAffected?: number;
+    productsRemoved?: number;
+    iconsMovedOrRemoved?: number;
+    knowledgeRowsChangedOrDeduplicated?: number;
+    questionCachesInvalidated?: number;
+    removedProducts?: AppCatalogAffectedProductResponse[];
+    iconImpacts?: AppCatalogIconImpactResponse[];
+    knowledgeChanges?: AppCatalogKnowledgeChangeResponse[];
+    knowledgeDeduplications?: AppCatalogKnowledgeDeduplicationResponse[];
+    fallbackSource?: string | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IAppCatalogReconciliationResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.targetAppId = _data["targetAppId"];
+            this.targetAppKey = _data["targetAppKey"];
+            if (Array.isArray(_data["identityKeys"])) {
+                this.identityKeys = [] as any;
+                for (let item of _data["identityKeys"])
+                    this.identityKeys!.push(item);
+            }
+            this.legacySegmentsRebound = _data["legacySegmentsRebound"];
+            this.currentDevicesAffected = _data["currentDevicesAffected"];
+            this.productsRemoved = _data["productsRemoved"];
+            this.iconsMovedOrRemoved = _data["iconsMovedOrRemoved"];
+            this.knowledgeRowsChangedOrDeduplicated = _data["knowledgeRowsChangedOrDeduplicated"];
+            this.questionCachesInvalidated = _data["questionCachesInvalidated"];
+            if (Array.isArray(_data["removedProducts"])) {
+                this.removedProducts = [] as any;
+                for (let item of _data["removedProducts"])
+                    this.removedProducts!.push(AppCatalogAffectedProductResponse.fromJS(item));
+            }
+            if (Array.isArray(_data["iconImpacts"])) {
+                this.iconImpacts = [] as any;
+                for (let item of _data["iconImpacts"])
+                    this.iconImpacts!.push(AppCatalogIconImpactResponse.fromJS(item));
+            }
+            if (Array.isArray(_data["knowledgeChanges"])) {
+                this.knowledgeChanges = [] as any;
+                for (let item of _data["knowledgeChanges"])
+                    this.knowledgeChanges!.push(AppCatalogKnowledgeChangeResponse.fromJS(item));
+            }
+            if (Array.isArray(_data["knowledgeDeduplications"])) {
+                this.knowledgeDeduplications = [] as any;
+                for (let item of _data["knowledgeDeduplications"])
+                    this.knowledgeDeduplications!.push(AppCatalogKnowledgeDeduplicationResponse.fromJS(item));
+            }
+            this.fallbackSource = _data["fallbackSource"];
+        }
+    }
+
+    static fromJS(data: any): AppCatalogReconciliationResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppCatalogReconciliationResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["targetAppId"] = this.targetAppId;
+        data["targetAppKey"] = this.targetAppKey;
+        if (Array.isArray(this.identityKeys)) {
+            data["identityKeys"] = [];
+            for (let item of this.identityKeys)
+                data["identityKeys"].push(item);
+        }
+        data["legacySegmentsRebound"] = this.legacySegmentsRebound;
+        data["currentDevicesAffected"] = this.currentDevicesAffected;
+        data["productsRemoved"] = this.productsRemoved;
+        data["iconsMovedOrRemoved"] = this.iconsMovedOrRemoved;
+        data["knowledgeRowsChangedOrDeduplicated"] = this.knowledgeRowsChangedOrDeduplicated;
+        data["questionCachesInvalidated"] = this.questionCachesInvalidated;
+        if (Array.isArray(this.removedProducts)) {
+            data["removedProducts"] = [];
+            for (let item of this.removedProducts)
+                data["removedProducts"].push(item ? item.toJSON() : undefined as any);
+        }
+        if (Array.isArray(this.iconImpacts)) {
+            data["iconImpacts"] = [];
+            for (let item of this.iconImpacts)
+                data["iconImpacts"].push(item ? item.toJSON() : undefined as any);
+        }
+        if (Array.isArray(this.knowledgeChanges)) {
+            data["knowledgeChanges"] = [];
+            for (let item of this.knowledgeChanges)
+                data["knowledgeChanges"].push(item ? item.toJSON() : undefined as any);
+        }
+        if (Array.isArray(this.knowledgeDeduplications)) {
+            data["knowledgeDeduplications"] = [];
+            for (let item of this.knowledgeDeduplications)
+                data["knowledgeDeduplications"].push(item ? item.toJSON() : undefined as any);
+        }
+        data["fallbackSource"] = this.fallbackSource;
+        return data;
+    }
+}
+
+export interface IAppCatalogReconciliationResponse {
+    targetAppId?: number | undefined;
+    targetAppKey?: string;
+    identityKeys?: string[];
+    legacySegmentsRebound?: number;
+    currentDevicesAffected?: number;
+    productsRemoved?: number;
+    iconsMovedOrRemoved?: number;
+    knowledgeRowsChangedOrDeduplicated?: number;
+    questionCachesInvalidated?: number;
+    removedProducts?: AppCatalogAffectedProductResponse[];
+    iconImpacts?: AppCatalogIconImpactResponse[];
+    knowledgeChanges?: AppCatalogKnowledgeChangeResponse[];
+    knowledgeDeduplications?: AppCatalogKnowledgeDeduplicationResponse[];
+    fallbackSource?: string | undefined;
 
     [key: string]: any;
 }
@@ -2349,6 +3967,506 @@ export interface IAppInfoResponse {
     key?: string;
     displayName?: string;
     name?: string;
+
+    [key: string]: any;
+}
+
+export class AppMergeAppInfo implements IAppMergeAppInfo {
+    id?: number;
+    key?: string;
+    displayName?: string;
+    isProvisional?: boolean;
+
+    [key: string]: any;
+
+    constructor(data?: IAppMergeAppInfo) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.id = _data["id"];
+            this.key = _data["key"];
+            this.displayName = _data["displayName"];
+            this.isProvisional = _data["isProvisional"];
+        }
+    }
+
+    static fromJS(data: any): AppMergeAppInfo {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppMergeAppInfo();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["id"] = this.id;
+        data["key"] = this.key;
+        data["displayName"] = this.displayName;
+        data["isProvisional"] = this.isProvisional;
+        return data;
+    }
+}
+
+export interface IAppMergeAppInfo {
+    id?: number;
+    key?: string;
+    displayName?: string;
+    isProvisional?: boolean;
+
+    [key: string]: any;
+}
+
+export class AppMergeIconImpact implements IAppMergeIconImpact {
+    ownerId?: string;
+    sourceIconExists?: boolean;
+    targetIconExists?: boolean;
+    resolution?: string;
+
+    [key: string]: any;
+
+    constructor(data?: IAppMergeIconImpact) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.ownerId = _data["ownerId"];
+            this.sourceIconExists = _data["sourceIconExists"];
+            this.targetIconExists = _data["targetIconExists"];
+            this.resolution = _data["resolution"];
+        }
+    }
+
+    static fromJS(data: any): AppMergeIconImpact {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppMergeIconImpact();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["ownerId"] = this.ownerId;
+        data["sourceIconExists"] = this.sourceIconExists;
+        data["targetIconExists"] = this.targetIconExists;
+        data["resolution"] = this.resolution;
+        return data;
+    }
+}
+
+export interface IAppMergeIconImpact {
+    ownerId?: string;
+    sourceIconExists?: boolean;
+    targetIconExists?: boolean;
+    resolution?: string;
+
+    [key: string]: any;
+}
+
+export class AppMergeKnowledgeChange implements IAppMergeKnowledgeChange {
+    category?: string;
+    rowId?: string;
+    beforeStepsJson?: string;
+    afterStepsJson?: string;
+
+    [key: string]: any;
+
+    constructor(data?: IAppMergeKnowledgeChange) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.category = _data["category"];
+            this.rowId = _data["rowId"];
+            this.beforeStepsJson = _data["beforeStepsJson"];
+            this.afterStepsJson = _data["afterStepsJson"];
+        }
+    }
+
+    static fromJS(data: any): AppMergeKnowledgeChange {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppMergeKnowledgeChange();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["category"] = this.category;
+        data["rowId"] = this.rowId;
+        data["beforeStepsJson"] = this.beforeStepsJson;
+        data["afterStepsJson"] = this.afterStepsJson;
+        return data;
+    }
+}
+
+export interface IAppMergeKnowledgeChange {
+    category?: string;
+    rowId?: string;
+    beforeStepsJson?: string;
+    afterStepsJson?: string;
+
+    [key: string]: any;
+}
+
+export class AppMergeKnowledgeDeduplication implements IAppMergeKnowledgeDeduplication {
+    category?: string;
+    keptRowId?: string;
+    removedRowIds?: string[];
+    keptStatus?: string | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IAppMergeKnowledgeDeduplication) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.category = _data["category"];
+            this.keptRowId = _data["keptRowId"];
+            if (Array.isArray(_data["removedRowIds"])) {
+                this.removedRowIds = [] as any;
+                for (let item of _data["removedRowIds"])
+                    this.removedRowIds!.push(item);
+            }
+            this.keptStatus = _data["keptStatus"];
+        }
+    }
+
+    static fromJS(data: any): AppMergeKnowledgeDeduplication {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppMergeKnowledgeDeduplication();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["category"] = this.category;
+        data["keptRowId"] = this.keptRowId;
+        if (Array.isArray(this.removedRowIds)) {
+            data["removedRowIds"] = [];
+            for (let item of this.removedRowIds)
+                data["removedRowIds"].push(item);
+        }
+        data["keptStatus"] = this.keptStatus;
+        return data;
+    }
+}
+
+export interface IAppMergeKnowledgeDeduplication {
+    category?: string;
+    keptRowId?: string;
+    removedRowIds?: string[];
+    keptStatus?: string | undefined;
+
+    [key: string]: any;
+}
+
+export class AppMergeKnowledgeImpact implements IAppMergeKnowledgeImpact {
+    strandMatchers?: number;
+    mutedMatchers?: number;
+    recurrenceProbes?: number;
+    questionCachesInvalidated?: number;
+    changes?: AppMergeKnowledgeChange[];
+    deduplications?: AppMergeKnowledgeDeduplication[];
+
+    [key: string]: any;
+
+    constructor(data?: IAppMergeKnowledgeImpact) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.strandMatchers = _data["strandMatchers"];
+            this.mutedMatchers = _data["mutedMatchers"];
+            this.recurrenceProbes = _data["recurrenceProbes"];
+            this.questionCachesInvalidated = _data["questionCachesInvalidated"];
+            if (Array.isArray(_data["changes"])) {
+                this.changes = [] as any;
+                for (let item of _data["changes"])
+                    this.changes!.push(AppMergeKnowledgeChange.fromJS(item));
+            }
+            if (Array.isArray(_data["deduplications"])) {
+                this.deduplications = [] as any;
+                for (let item of _data["deduplications"])
+                    this.deduplications!.push(AppMergeKnowledgeDeduplication.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): AppMergeKnowledgeImpact {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppMergeKnowledgeImpact();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["strandMatchers"] = this.strandMatchers;
+        data["mutedMatchers"] = this.mutedMatchers;
+        data["recurrenceProbes"] = this.recurrenceProbes;
+        data["questionCachesInvalidated"] = this.questionCachesInvalidated;
+        if (Array.isArray(this.changes)) {
+            data["changes"] = [];
+            for (let item of this.changes)
+                data["changes"].push(item ? item.toJSON() : undefined as any);
+        }
+        if (Array.isArray(this.deduplications)) {
+            data["deduplications"] = [];
+            for (let item of this.deduplications)
+                data["deduplications"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface IAppMergeKnowledgeImpact {
+    strandMatchers?: number;
+    mutedMatchers?: number;
+    recurrenceProbes?: number;
+    questionCachesInvalidated?: number;
+    changes?: AppMergeKnowledgeChange[];
+    deduplications?: AppMergeKnowledgeDeduplication[];
+
+    [key: string]: any;
+}
+
+export class AppMergeRequest implements IAppMergeRequest {
+    sourceAppKey?: string;
+    targetAppKey?: string;
+    dryRun?: boolean;
+
+    [key: string]: any;
+
+    constructor(data?: IAppMergeRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.sourceAppKey = _data["sourceAppKey"];
+            this.targetAppKey = _data["targetAppKey"];
+            this.dryRun = _data["dryRun"];
+        }
+    }
+
+    static fromJS(data: any): AppMergeRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppMergeRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["sourceAppKey"] = this.sourceAppKey;
+        data["targetAppKey"] = this.targetAppKey;
+        data["dryRun"] = this.dryRun;
+        return data;
+    }
+}
+
+export interface IAppMergeRequest {
+    sourceAppKey?: string;
+    targetAppKey?: string;
+    dryRun?: boolean;
+
+    [key: string]: any;
+}
+
+export class AppMergeResponse implements IAppMergeResponse {
+    dryRun?: boolean;
+    committed?: boolean;
+    alreadyMerged?: boolean;
+    source?: AppMergeAppInfo;
+    target?: AppMergeAppInfo;
+    appIdentityKeys?: string[];
+    knowledge?: AppMergeKnowledgeImpact;
+    icons?: AppMergeIconImpact[];
+    provisionalAppsRemoved?: AppMergeAppInfo[];
+    legacySegmentsRebound?: number;
+    currentDevicesAffected?: number;
+
+    [key: string]: any;
+
+    constructor(data?: IAppMergeResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.dryRun = _data["dryRun"];
+            this.committed = _data["committed"];
+            this.alreadyMerged = _data["alreadyMerged"];
+            this.source = _data["source"] ? AppMergeAppInfo.fromJS(_data["source"]) : undefined as any;
+            this.target = _data["target"] ? AppMergeAppInfo.fromJS(_data["target"]) : undefined as any;
+            if (Array.isArray(_data["appIdentityKeys"])) {
+                this.appIdentityKeys = [] as any;
+                for (let item of _data["appIdentityKeys"])
+                    this.appIdentityKeys!.push(item);
+            }
+            this.knowledge = _data["knowledge"] ? AppMergeKnowledgeImpact.fromJS(_data["knowledge"]) : undefined as any;
+            if (Array.isArray(_data["icons"])) {
+                this.icons = [] as any;
+                for (let item of _data["icons"])
+                    this.icons!.push(AppMergeIconImpact.fromJS(item));
+            }
+            if (Array.isArray(_data["provisionalAppsRemoved"])) {
+                this.provisionalAppsRemoved = [] as any;
+                for (let item of _data["provisionalAppsRemoved"])
+                    this.provisionalAppsRemoved!.push(AppMergeAppInfo.fromJS(item));
+            }
+            this.legacySegmentsRebound = _data["legacySegmentsRebound"];
+            this.currentDevicesAffected = _data["currentDevicesAffected"];
+        }
+    }
+
+    static fromJS(data: any): AppMergeResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new AppMergeResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["dryRun"] = this.dryRun;
+        data["committed"] = this.committed;
+        data["alreadyMerged"] = this.alreadyMerged;
+        data["source"] = this.source ? this.source.toJSON() : undefined as any;
+        data["target"] = this.target ? this.target.toJSON() : undefined as any;
+        if (Array.isArray(this.appIdentityKeys)) {
+            data["appIdentityKeys"] = [];
+            for (let item of this.appIdentityKeys)
+                data["appIdentityKeys"].push(item);
+        }
+        data["knowledge"] = this.knowledge ? this.knowledge.toJSON() : undefined as any;
+        if (Array.isArray(this.icons)) {
+            data["icons"] = [];
+            for (let item of this.icons)
+                data["icons"].push(item ? item.toJSON() : undefined as any);
+        }
+        if (Array.isArray(this.provisionalAppsRemoved)) {
+            data["provisionalAppsRemoved"] = [];
+            for (let item of this.provisionalAppsRemoved)
+                data["provisionalAppsRemoved"].push(item ? item.toJSON() : undefined as any);
+        }
+        data["legacySegmentsRebound"] = this.legacySegmentsRebound;
+        data["currentDevicesAffected"] = this.currentDevicesAffected;
+        return data;
+    }
+}
+
+export interface IAppMergeResponse {
+    dryRun?: boolean;
+    committed?: boolean;
+    alreadyMerged?: boolean;
+    source?: AppMergeAppInfo;
+    target?: AppMergeAppInfo;
+    appIdentityKeys?: string[];
+    knowledge?: AppMergeKnowledgeImpact;
+    icons?: AppMergeIconImpact[];
+    provisionalAppsRemoved?: AppMergeAppInfo[];
+    legacySegmentsRebound?: number;
+    currentDevicesAffected?: number;
 
     [key: string]: any;
 }
@@ -3575,7 +5693,8 @@ export interface IDeviceInfoResponse {
 
 export class DeviceStatusRequest implements IDeviceStatusRequest {
     currentAppIdentityKey?: string | undefined;
-    currentApp?: string;
+    currentAppDisplayName?: string | undefined;
+    currentApp?: string | undefined;
 
     [key: string]: any;
 
@@ -3595,6 +5714,7 @@ export class DeviceStatusRequest implements IDeviceStatusRequest {
                     this[property] = _data[property];
             }
             this.currentAppIdentityKey = _data["currentAppIdentityKey"];
+            this.currentAppDisplayName = _data["currentAppDisplayName"];
             this.currentApp = _data["currentApp"];
         }
     }
@@ -3613,6 +5733,7 @@ export class DeviceStatusRequest implements IDeviceStatusRequest {
                 data[property] = this[property];
         }
         data["currentAppIdentityKey"] = this.currentAppIdentityKey;
+        data["currentAppDisplayName"] = this.currentAppDisplayName;
         data["currentApp"] = this.currentApp;
         return data;
     }
@@ -3620,7 +5741,8 @@ export class DeviceStatusRequest implements IDeviceStatusRequest {
 
 export interface IDeviceStatusRequest {
     currentAppIdentityKey?: string | undefined;
-    currentApp?: string;
+    currentAppDisplayName?: string | undefined;
+    currentApp?: string | undefined;
 
     [key: string]: any;
 }
@@ -4031,7 +6153,8 @@ export interface IEvidenceObservationDto {
 
 export class IconUploadRequest implements IIconUploadRequest {
     appIdentityKey?: string | undefined;
-    appName?: string;
+    appDisplayName?: string | undefined;
+    appName?: string | undefined;
     iconData?: string;
     refresh?: boolean;
 
@@ -4053,6 +6176,7 @@ export class IconUploadRequest implements IIconUploadRequest {
                     this[property] = _data[property];
             }
             this.appIdentityKey = _data["appIdentityKey"];
+            this.appDisplayName = _data["appDisplayName"];
             this.appName = _data["appName"];
             this.iconData = _data["iconData"];
             this.refresh = _data["refresh"];
@@ -4073,6 +6197,7 @@ export class IconUploadRequest implements IIconUploadRequest {
                 data[property] = this[property];
         }
         data["appIdentityKey"] = this.appIdentityKey;
+        data["appDisplayName"] = this.appDisplayName;
         data["appName"] = this.appName;
         data["iconData"] = this.iconData;
         data["refresh"] = this.refresh;
@@ -4082,7 +6207,8 @@ export class IconUploadRequest implements IIconUploadRequest {
 
 export interface IIconUploadRequest {
     appIdentityKey?: string | undefined;
-    appName?: string;
+    appDisplayName?: string | undefined;
+    appName?: string | undefined;
     iconData?: string;
     refresh?: boolean;
 
@@ -4812,6 +6938,7 @@ export interface IMatcherStepDto {
 export class MeResponse implements IMeResponse {
     username?: string;
     isPublic?: boolean;
+    isAdmin?: boolean;
 
     [key: string]: any;
 
@@ -4832,6 +6959,7 @@ export class MeResponse implements IMeResponse {
             }
             this.username = _data["username"];
             this.isPublic = _data["isPublic"];
+            this.isAdmin = _data["isAdmin"];
         }
     }
 
@@ -4850,6 +6978,7 @@ export class MeResponse implements IMeResponse {
         }
         data["username"] = this.username;
         data["isPublic"] = this.isPublic;
+        data["isAdmin"] = this.isAdmin;
         return data;
     }
 }
@@ -4857,6 +6986,7 @@ export class MeResponse implements IMeResponse {
 export interface IMeResponse {
     username?: string;
     isPublic?: boolean;
+    isAdmin?: boolean;
 
     [key: string]: any;
 }
@@ -5201,6 +7331,70 @@ export interface IProbeResponse {
     [key: string]: any;
 }
 
+export class ProblemDetails implements IProblemDetails {
+    type?: string | undefined;
+    title?: string | undefined;
+    status?: number | undefined;
+    detail?: string | undefined;
+    instance?: string | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IProblemDetails) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.type = _data["type"];
+            this.title = _data["title"];
+            this.status = _data["status"];
+            this.detail = _data["detail"];
+            this.instance = _data["instance"];
+        }
+    }
+
+    static fromJS(data: any): ProblemDetails {
+        data = typeof data === 'object' ? data : {};
+        let result = new ProblemDetails();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["type"] = this.type;
+        data["title"] = this.title;
+        data["status"] = this.status;
+        data["detail"] = this.detail;
+        data["instance"] = this.instance;
+        return data;
+    }
+}
+
+export interface IProblemDetails {
+    type?: string | undefined;
+    title?: string | undefined;
+    status?: number | undefined;
+    detail?: string | undefined;
+    instance?: string | undefined;
+
+    [key: string]: any;
+}
+
 export class PromoteEpisodeOpDto implements IPromoteEpisodeOpDto {
     episode?: EpisodeRefDto;
     expectedVersion?: number | undefined;
@@ -5377,6 +7571,58 @@ export class PromoteEpisodeResponse implements IPromoteEpisodeResponse {
 export interface IPromoteEpisodeResponse {
     episode?: EpisodeResponse;
     strand?: StrandResponse;
+
+    [key: string]: any;
+}
+
+export class ProposeCorrectionRequest implements IProposeCorrectionRequest {
+    date?: Date;
+    correction?: string;
+
+    [key: string]: any;
+
+    constructor(data?: IProposeCorrectionRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.date = _data["date"] ? new Date(_data["date"].toString()) : undefined as any;
+            this.correction = _data["correction"];
+        }
+    }
+
+    static fromJS(data: any): ProposeCorrectionRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new ProposeCorrectionRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["date"] = this.date ? this.date.toISOString() : undefined as any;
+        data["correction"] = this.correction;
+        return data;
+    }
+}
+
+export interface IProposeCorrectionRequest {
+    date?: Date;
+    correction?: string;
 
     [key: string]: any;
 }
@@ -6418,7 +8664,7 @@ export interface IWeeklyReportResponse {
 }
 
 function formatDate(d: Date) {
-    return d.getFullYear() + '-' + 
+    return d.getFullYear() + '-' +
         (d.getMonth() < 9 ? ('0' + (d.getMonth()+1)) : (d.getMonth()+1)) + '-' +
         (d.getDate() < 10 ? ('0' + d.getDate()) : d.getDate());
 }
