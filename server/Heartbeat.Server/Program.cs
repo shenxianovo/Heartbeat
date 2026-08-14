@@ -25,6 +25,8 @@ builder.Services.AddScoped<AppIdentityService>();
 builder.Services.AddScoped<AppMergeService>();
 builder.Services.AddScoped<AppProductReconciliationService>();
 builder.Services.AddScoped<AppCatalogOverrideService>();
+builder.Services.AddScoped<AppCatalogAdminQueryService>();
+builder.Services.AddScoped<AppCatalogExportService>();
 builder.Services.AddScoped<AppCatalogStartupService>();
 builder.Services.AddSingleton(builtInCatalog);
 builder.Services.AddSingleton<AppCatalogRuntimeSnapshot>();

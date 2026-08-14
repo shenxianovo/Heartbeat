@@ -280,11 +280,12 @@ public class AppCatalogReconcilerTests(PostgresContainerFixture fixture) : Postg
         Assert.Equal("admin-one", active.CreatedBySubject);
         Assert.Equal("admin-two", active.UpdatedBySubject);
 
-        await service.DeleteAsync(identity.Key, "admin-three");
+        var deletion = await service.DeleteAsync(identity.Key, "admin-three");
         db.ChangeTracker.Clear();
         Assert.False(await db.Apps.AnyAsync(x => x.Id == secondTargetId));
         var provisional = await db.Apps.Include(x => x.Identities).SingleAsync();
         Assert.True(provisional.IsProvisional);
+        Assert.Equal(provisional.Id, deletion.Reconciliation.TargetAppId);
         Assert.Equal("tool", provisional.Key);
         Assert.Equal(identity.Key, Assert.Single(provisional.Identities).Key);
         Assert.All(await db.ActivitySegments.ToListAsync(), x => Assert.Equal(provisional.Id, x.AppId));

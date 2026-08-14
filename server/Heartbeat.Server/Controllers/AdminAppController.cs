@@ -27,15 +27,19 @@ public class AdminAppController(
         }
         catch (ArgumentException ex)
         {
-            return BadRequest(new { code = "invalid_request", message = ex.Message });
+            return BadRequest(new AppCatalogAdminErrorResponse
+            {
+                Code = "invalid_request",
+                Message = ex.Message
+            });
         }
         catch (AppMergeException ex) when (ex.Code.EndsWith("_not_found", StringComparison.Ordinal))
         {
-            return NotFound(new { ex.Code, message = ex.Message });
+            return NotFound(new AppCatalogAdminErrorResponse { Code = ex.Code, Message = ex.Message });
         }
         catch (AppMergeException ex)
         {
-            return Conflict(new { ex.Code, message = ex.Message });
+            return Conflict(new AppCatalogAdminErrorResponse { Code = ex.Code, Message = ex.Message });
         }
     }
 }

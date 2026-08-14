@@ -16,7 +16,30 @@ public sealed record AppProductReconciliationResult(
     int AppsRemoved,
     int IconsMovedOrRemoved,
     int KnowledgeRowsRewritten,
-    int QuestionCachesInvalidated);
+    int QuestionCachesInvalidated)
+{
+    public IReadOnlyList<AppReconciliationProductImpact> RemovedProducts { get; init; } = [];
+    public IReadOnlyList<AppReconciliationIconImpact> IconImpacts { get; init; } = [];
+    public IReadOnlyList<AppReconciliationKnowledgeChange> KnowledgeChanges { get; init; } = [];
+    public IReadOnlyList<AppReconciliationKnowledgeDeduplication> KnowledgeDeduplications { get; init; } = [];
+}
+
+public sealed record AppReconciliationProductImpact(
+    long Id,
+    string Key,
+    string DisplayName,
+    bool IsProvisional);
+
+public sealed record AppReconciliationIconImpact(string Resolution, int Count);
+
+public sealed record AppReconciliationKnowledgeChange(
+    string Category,
+    string BeforeStepsJson,
+    string AfterStepsJson);
+
+public sealed record AppReconciliationKnowledgeDeduplication(
+    string Category,
+    int RemovedRows);
 
 /// <summary>
 /// Identity-to-product desired-state mutation used by built-in Catalog and local Overrides.
@@ -130,7 +153,7 @@ public sealed class AppProductReconciliationService(AppDbContext db)
             .ToListAsync(cancellationToken);
         foreach (var segment in legacySegments) segment.App = target;
 
-        var iconChanges = await ReconcileIconsAsync(target, drainedSources, cancellationToken);
+        var iconResult = await ReconcileIconsAsync(target, drainedSources, cancellationToken);
         var aliases = drainedSources
             .SelectMany(x => ProductAliases(x.Key, x.DisplayName, x.Identities.Select(i => i.Key)))
             .ToHashSet(StringComparer.Ordinal);
@@ -170,9 +193,16 @@ public sealed class AppProductReconciliationService(AppDbContext db)
             legacySegments.Count,
             currentDevices.Count,
             removableSources.Count,
-            iconChanges,
-            knowledge.Rewritten,
-            caches.Count);
+            iconResult.Changes,
+            knowledge.Rewritten + knowledge.DeduplicatedRows,
+            caches.Count)
+        {
+            RemovedProducts = removableSources.Select(x => new AppReconciliationProductImpact(
+                x.Id, x.Key, x.DisplayName, x.IsProvisional)).ToArray(),
+            IconImpacts = iconResult.Impacts,
+            KnowledgeChanges = knowledge.Changes,
+            KnowledgeDeduplications = knowledge.Deduplications
+        };
     }
 
     private async Task<App> SelectTargetAsync(
@@ -218,21 +248,24 @@ public sealed class AppProductReconciliationService(AppDbContext db)
             !authoritativeAliases.Contains(x) && aliasesOwnedElsewhere.Contains(x));
     }
 
-    private async Task<int> ReconcileIconsAsync(
+    private async Task<IconReconciliationResult> ReconcileIconsAsync(
         App target,
         IReadOnlyList<App> removableSources,
         CancellationToken cancellationToken)
     {
-        if (removableSources.Count == 0) return 0;
+        if (removableSources.Count == 0) return new(0, []);
         var sourceIds = removableSources.Select(x => x.Id).ToArray();
         var icons = await db.AppIcons
             .Where(x => x.AppId == target.Id || sourceIds.Contains(x.AppId))
             .OrderBy(x => x.OwnerId).ThenBy(x => x.UpdatedAt).ThenBy(x => x.Id)
             .ToListAsync(cancellationToken);
         var changes = 0;
+        var resolutions = new List<string>();
         foreach (var group in icons.GroupBy(x => x.OwnerId))
         {
-            var keep = group.FirstOrDefault(x => x.AppId == target.Id) ?? group.First();
+            var targetIcon = group.FirstOrDefault(x => x.AppId == target.Id);
+            var keep = targetIcon ?? group.First();
+            resolutions.Add(targetIcon is null ? "move-source" : "keep-target");
             if (keep.AppId != target.Id)
             {
                 keep.App = target;
@@ -242,7 +275,12 @@ public sealed class AppProductReconciliationService(AppDbContext db)
             changes += remove.Count;
             db.AppIcons.RemoveRange(remove);
         }
-        return changes;
+        return new IconReconciliationResult(
+            changes,
+            resolutions.GroupBy(x => x, StringComparer.Ordinal)
+                .OrderBy(x => x.Key, StringComparer.Ordinal)
+                .Select(x => new AppReconciliationIconImpact(x.Key, x.Count()))
+                .ToArray());
     }
 
     private async Task<KnowledgeRewriteResult> RewriteKnowledgeAsync(
@@ -250,43 +288,55 @@ public sealed class AppProductReconciliationService(AppDbContext db)
         string targetKey,
         CancellationToken cancellationToken)
     {
-        if (aliases.Count == 0) return new(0, []);
+        if (aliases.Count == 0) return new(0, 0, [], [], []);
         var strandRows = await db.StrandMatchers.Where(x => x.Source == ActivitySources.System).ToListAsync(cancellationToken);
         var mutedRows = await db.MutedMatchers.Where(x => x.Source == ActivitySources.System).ToListAsync(cancellationToken);
         var probeRows = await db.RecurrenceProbes.Where(x => x.Source == ActivitySources.System).ToListAsync(cancellationToken);
         var impactedOwners = new HashSet<string>(StringComparer.Ordinal);
         var rewritten = 0;
+        var changes = new List<AppReconciliationKnowledgeChange>();
 
         foreach (var row in strandRows)
         {
-            if (!TryRewrite(row.StepsJson, aliases, targetKey, out var json)) continue;
+            var before = row.StepsJson;
+            if (!TryRewrite(before, aliases, targetKey, out var json)) continue;
             row.StepsJson = json;
             rewritten++;
+            changes.Add(new("strand-matcher", before, json));
             var owner = await db.Strands.Where(x => x.Id == row.StrandId).Select(x => x.OwnerId).SingleAsync(cancellationToken);
             impactedOwners.Add(owner);
         }
         foreach (var row in mutedRows)
         {
-            if (!TryRewrite(row.StepsJson, aliases, targetKey, out var json)) continue;
+            var before = row.StepsJson;
+            if (!TryRewrite(before, aliases, targetKey, out var json)) continue;
             row.StepsJson = json;
             rewritten++;
+            changes.Add(new("muted-matcher", before, json));
             impactedOwners.Add(row.OwnerId);
         }
         foreach (var row in probeRows)
         {
-            if (!TryRewrite(row.StepsJson, aliases, targetKey, out var json)) continue;
+            var before = row.StepsJson;
+            if (!TryRewrite(before, aliases, targetKey, out var json)) continue;
             row.StepsJson = json;
             rewritten++;
+            changes.Add(new("recurrence-probe", before, json));
             impactedOwners.Add(row.OwnerId);
         }
 
-        Deduplicate(strandRows, x => (x.StrandId, x.Source, x.StepsJson), x => x.Id,
+        var deduplications = Deduplicate("strand-matcher", strandRows, x => (x.StrandId, x.Source, x.StepsJson), x => x.Id,
             rows => rows.OrderBy(x => x.Id).First(), rows => db.StrandMatchers.RemoveRange(rows));
-        Deduplicate(mutedRows, x => (x.OwnerId, x.Source, x.StepsJson), x => x.Id,
-            rows => rows.OrderBy(x => x.Id).First(), rows => db.MutedMatchers.RemoveRange(rows));
-        Deduplicate(probeRows, x => (x.EpisodeId, x.Source, x.StepsJson), x => x.Id,
-            rows => RecurrenceProbeDeduplication.OrderForKeep(rows).First(), rows => db.RecurrenceProbes.RemoveRange(rows));
-        return new(rewritten, impactedOwners.ToArray());
+        deduplications.AddRange(Deduplicate("muted-matcher", mutedRows, x => (x.OwnerId, x.Source, x.StepsJson), x => x.Id,
+            rows => rows.OrderBy(x => x.Id).First(), rows => db.MutedMatchers.RemoveRange(rows)));
+        deduplications.AddRange(Deduplicate("recurrence-probe", probeRows, x => (x.EpisodeId, x.Source, x.StepsJson), x => x.Id,
+            rows => RecurrenceProbeDeduplication.OrderForKeep(rows).First(), rows => db.RecurrenceProbes.RemoveRange(rows)));
+        return new(
+            rewritten,
+            deduplications.Sum(x => x.RemovedRows),
+            impactedOwners.ToArray(),
+            changes,
+            deduplications);
     }
 
     private static bool TryRewrite(string oldJson, HashSet<string> aliases, string targetKey, out string newJson)
@@ -313,7 +363,8 @@ public sealed class AppProductReconciliationService(AppDbContext db)
         return true;
     }
 
-    private static void Deduplicate<T, TKey>(
+    private static List<AppReconciliationKnowledgeDeduplication> Deduplicate<T, TKey>(
+        string category,
         IEnumerable<T> rows,
         Func<T, TKey> key,
         Func<T, Guid> id,
@@ -322,11 +373,15 @@ public sealed class AppProductReconciliationService(AppDbContext db)
         where T : class
         where TKey : notnull
     {
+        var impacts = new List<AppReconciliationKnowledgeDeduplication>();
         foreach (var group in rows.GroupBy(key).Where(x => x.Count() > 1))
         {
             var keep = selectKeep(group);
-            remove(group.Where(x => !ReferenceEquals(x, keep)).OrderBy(id).ToList());
+            var removed = group.Where(x => !ReferenceEquals(x, keep)).OrderBy(id).ToList();
+            remove(removed);
+            impacts.Add(new(category, removed.Count));
         }
+        return impacts;
     }
 
     private static IEnumerable<string> ProductAliases(
@@ -344,5 +399,14 @@ public sealed class AppProductReconciliationService(AppDbContext db)
         }
     }
 
-    private sealed record KnowledgeRewriteResult(int Rewritten, IReadOnlyList<string> ImpactedOwners);
+    private sealed record IconReconciliationResult(
+        int Changes,
+        IReadOnlyList<AppReconciliationIconImpact> Impacts);
+
+    private sealed record KnowledgeRewriteResult(
+        int Rewritten,
+        int DeduplicatedRows,
+        IReadOnlyList<string> ImpactedOwners,
+        IReadOnlyList<AppReconciliationKnowledgeChange> Changes,
+        IReadOnlyList<AppReconciliationKnowledgeDeduplication> Deduplications);
 }

@@ -12,6 +12,10 @@ public sealed class AppCatalogOverrideException(string code, string message) : E
     public string Code { get; } = code;
 }
 
+public sealed record AppCatalogOverrideDeleteResult(
+    AppProductReconciliationResult Reconciliation,
+    string FallbackSource);
+
 public sealed class AppCatalogOverrideService(
     AppDbContext db,
     AppProductReconciliationService products,
@@ -40,9 +44,22 @@ public sealed class AppCatalogOverrideService(
             identityKey, targetAppKey, newAppDisplayName, actorSubject,
             dryRun: false, cancellationToken);
 
-    public async Task<AppProductReconciliationResult> DeleteAsync(
+    public Task<AppCatalogOverrideDeleteResult> PreviewDeleteAsync(
         string identityKey,
         string actorSubject,
+        CancellationToken cancellationToken = default)
+        => DeleteCoreAsync(identityKey, actorSubject, dryRun: true, cancellationToken);
+
+    public Task<AppCatalogOverrideDeleteResult> DeleteAsync(
+        string identityKey,
+        string actorSubject,
+        CancellationToken cancellationToken = default)
+        => DeleteCoreAsync(identityKey, actorSubject, dryRun: false, cancellationToken);
+
+    private async Task<AppCatalogOverrideDeleteResult> DeleteCoreAsync(
+        string identityKey,
+        string actorSubject,
+        bool dryRun,
         CancellationToken cancellationToken = default)
     {
         EnsureWritableCatalog();
@@ -118,6 +135,14 @@ public sealed class AppCatalogOverrideService(
             fallback = "provisional";
         }
 
+        if (dryRun)
+        {
+            var preview = new AppCatalogOverrideDeleteResult(result, fallback);
+            await transaction.RollbackAsync(cancellationToken);
+            db.ChangeTracker.Clear();
+            return preview;
+        }
+
         db.AppCatalogAudits.Add(new AppCatalogAudit
         {
             EventType = "override-deleted",
@@ -133,8 +158,16 @@ public sealed class AppCatalogOverrideService(
             })
         });
         await db.SaveChangesAsync(cancellationToken);
+        var response = new AppCatalogOverrideDeleteResult(
+            result with
+            {
+                TargetAppId = result.TargetAppId == 0
+                    ? localOverride.AppIdentity.AppId
+                    : result.TargetAppId
+            },
+            fallback);
         await transaction.CommitAsync(cancellationToken);
-        return result with { TargetAppId = result.TargetAppId == 0 ? localOverride.AppIdentity.AppId : result.TargetAppId };
+        return response;
     }
 
     private async Task<AppProductReconciliationResult> SetCoreAsync(
