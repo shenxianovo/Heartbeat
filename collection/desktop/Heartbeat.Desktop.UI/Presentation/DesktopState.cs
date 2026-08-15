@@ -17,11 +17,9 @@ public sealed record DesktopSettingsSnapshot(
     string ApiKey,
     string DeviceName,
     int UploadIntervalMinutes,
-    bool InputEventRecordingEnabled,
-    DesktopThemeMode ThemeMode = DesktopThemeMode.System,
-    bool WindowTitleObservationEnabled = false)
+    DesktopThemeMode ThemeMode = DesktopThemeMode.System)
 {
-    public static DesktopSettingsSnapshot Default { get; } = new("", "", 1, true);
+    public static DesktopSettingsSnapshot Default { get; } = new("", "", 1);
 }
 
 public sealed record DesktopSettingsInput(
@@ -33,31 +31,46 @@ public enum CapabilityAvailability
 {
     Available,
     Unavailable,
-    PermissionRequired
+    PermissionRequired,
+    Paused
 }
 
-public sealed record DesktopCapabilitySnapshot(
-    CapabilityAvailability AppObservation,
-    CapabilityAvailability FocusedWindowObservation,
-    CapabilityAvailability InteractionSignal,
-    CapabilityAvailability InputEventRecording,
-    string? Message = null,
-    bool WindowTitleObservationConfigurable = false,
-    bool WindowTitlePermissionActionAvailable = false)
+public enum SystemCapability
 {
+    ForegroundApp,
+    WindowActivity,
+    InteractionSignal,
+    InputEventRecording
+}
+
+public sealed record SystemCapabilityState(
+    bool? RequestedEnabled,
+    CapabilityAvailability Availability,
+    bool RecoveryActionAvailable = false,
+    bool ApplicationLocationActionAvailable = false);
+
+public sealed record DesktopCapabilitySnapshot(
+    IReadOnlyDictionary<SystemCapability, SystemCapabilityState> System)
+{
+    public SystemCapabilityState Get(SystemCapability capability) => System[capability];
+
     public static DesktopCapabilitySnapshot WindowsFull { get; } = new(
-        CapabilityAvailability.Available,
-        CapabilityAvailability.Available,
-        CapabilityAvailability.Available,
-        CapabilityAvailability.Available);
+        new Dictionary<SystemCapability, SystemCapabilityState>
+        {
+            [SystemCapability.ForegroundApp] = new(null, CapabilityAvailability.Available),
+            [SystemCapability.WindowActivity] = new(true, CapabilityAvailability.Available),
+            [SystemCapability.InteractionSignal] = new(true, CapabilityAvailability.Available),
+            [SystemCapability.InputEventRecording] = new(true, CapabilityAvailability.Available),
+        });
 
     public static DesktopCapabilitySnapshot MacAppOnly { get; } = new(
-        CapabilityAvailability.Available,
-        CapabilityAvailability.Unavailable,
-        CapabilityAvailability.Unavailable,
-        CapabilityAvailability.Unavailable,
-        "App-only 模式无需 Accessibility；可按需启用窗口标题采集。",
-        WindowTitleObservationConfigurable: true);
+        new Dictionary<SystemCapability, SystemCapabilityState>
+        {
+            [SystemCapability.ForegroundApp] = new(null, CapabilityAvailability.Available),
+            [SystemCapability.WindowActivity] = new(false, CapabilityAvailability.Available),
+            [SystemCapability.InteractionSignal] = new(false, CapabilityAvailability.Available),
+            [SystemCapability.InputEventRecording] = new(false, CapabilityAvailability.Available),
+        });
 }
 
 public sealed record DesktopStateSnapshot(
@@ -94,8 +107,8 @@ public interface IDesktopState
     void SaveSettings(DesktopSettingsInput settings);
     void SetLoginStartEnabled(bool enabled);
     void SetCollectorEnabled(string source, bool enabled);
-    void SetWindowTitleObservationEnabled(bool enabled);
-    void OpenWindowTitlePermissionSettings();
-    void SetInputEventRecordingEnabled(bool enabled);
+    void SetSystemCapabilityEnabled(SystemCapability capability, bool enabled);
+    void RecoverSystemCapability(SystemCapability capability);
+    void RevealSystemCapabilityApplication(SystemCapability capability);
     void SetThemeMode(DesktopThemeMode mode);
 }

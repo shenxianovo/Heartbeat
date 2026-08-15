@@ -89,9 +89,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private bool _saveStatusIsError;
 
     [ObservableProperty]
-    private string? _capabilityMessage;
-
-    [ObservableProperty]
     private string _logText = string.Empty;
 
     [ObservableProperty]
@@ -99,7 +96,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<CollectorItemViewModel> Collectors { get; } = [];
     public ObservableCollection<OperationalNoticeViewModel> OperationalNotices { get; } = [];
-    public ObservableCollection<CapabilityItemViewModel> Capabilities { get; } = [];
     public bool UpdatesSupported { get; }
     public bool IsOverviewSelected => SelectedPage == MainPage.Overview;
     public bool IsCollectorsSelected => SelectedPage == MainPage.Collectors;
@@ -122,7 +118,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public bool ShowSaveSuccess => HasSaveStatusMessage && !SaveStatusIsError;
     public bool ShowSaveError => HasSaveStatusMessage && SaveStatusIsError;
     public bool ShowSaveBar => HasUnsavedChanges || HasSaveStatusMessage;
-    public bool HasCapabilityMessage => !string.IsNullOrWhiteSpace(CapabilityMessage);
     public bool HasUpdateError => !string.IsNullOrWhiteSpace(UpdateError);
     public bool HasUpdateCheckMessage => !string.IsNullOrWhiteSpace(UpdateCheckMessage);
     public bool IsUpdateReady => UpdateState == UpdateState.ReadyToApply;
@@ -132,7 +127,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         : CurrentApp == "(离开)"
             ? "设备当前处于离开状态"
             : "正在记录此应用的活动";
-    public string CapabilitySummary => $"{Capabilities.Count(item => item.IsAvailable)} / {Capabilities.Count} 项能力可用";
     public string UpdateStateText => UpdateState switch
     {
         UpdateState.UpdateAvailable => "发现新版本",
@@ -228,30 +222,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ApplySettings(snapshot);
         RebuildCollectors(snapshot);
         RebuildOperationalNotices(snapshot);
-        RebuildCapabilities(snapshot.Capabilities);
-    }
-
-    private void RebuildCapabilities(DesktopCapabilitySnapshot capabilities)
-    {
-        Capabilities.Clear();
-        Capabilities.Add(new CapabilityItemViewModel(
-            "前台应用",
-            "识别当前活动的 AppIdentity",
-            capabilities.AppObservation));
-        Capabilities.Add(new CapabilityItemViewModel(
-            "窗口活动",
-            "识别 focused-window 与标题变化",
-            capabilities.FocusedWindowObservation));
-        Capabilities.Add(new CapabilityItemViewModel(
-            "交互信号",
-            "仅本地用于标题噪声门控，不保存、不上传",
-            capabilities.InteractionSignal));
-        Capabilities.Add(new CapabilityItemViewModel(
-            "输入事件记录",
-            "持久化并上传物理按键与鼠标统计",
-            capabilities.InputEventRecording));
-        CapabilityMessage = capabilities.Message;
-        OnPropertyChanged(nameof(CapabilitySummary));
     }
 
     private void ApplySettings(DesktopStateSnapshot snapshot)
@@ -358,22 +328,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     source,
                     isSystem,
                     isSystem ? null : _desktopState.SetCollectorEnabled,
-                    isSystem ? _desktopState.SetWindowTitleObservationEnabled : null,
-                    isSystem ? _desktopState.OpenWindowTitlePermissionSettings : null,
-                    isSystem ? _desktopState.SetInputEventRecordingEnabled : null);
+                    isSystem ? _desktopState.SetSystemCapabilityEnabled : null,
+                    isSystem ? _desktopState.RecoverSystemCapability : null,
+                    isSystem ? _desktopState.RevealSystemCapabilityApplication : null);
                 Collectors.Insert(Math.Min(index, Collectors.Count), item);
             }
 
             if (item.IsSystem)
             {
-                item.SetSystemCapabilities(
-                    snapshot.Capabilities.InteractionSignal == CapabilityAvailability.Available,
-                    snapshot.Capabilities.InputEventRecording == CapabilityAvailability.Available,
-                    snapshot.Capabilities.WindowTitleObservationConfigurable,
-                    snapshot.Capabilities.WindowTitlePermissionActionAvailable);
-                item.SetWindowTitleObservationEnabledSilently(
-                    snapshot.Settings.WindowTitleObservationEnabled);
-                item.SetRecordingEnabledSilently(snapshot.Settings.InputEventRecordingEnabled);
+                item.SetSystemCapabilities(snapshot.Capabilities);
             }
             if (snapshot.Collectors.TryGetValue(source, out var registration))
                 item.SetEnabledSilently(registration.Enabled);
@@ -474,8 +437,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ShowSaveSuccess));
         OnPropertyChanged(nameof(ShowSaveError));
     }
-
-    partial void OnCapabilityMessageChanged(string? value) => OnPropertyChanged(nameof(HasCapabilityMessage));
 
     partial void OnApiKeyChanged(string value) => UpdateDirtyState();
     partial void OnDeviceNameChanged(string value) => UpdateDirtyState();

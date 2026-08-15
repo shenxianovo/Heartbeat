@@ -4,6 +4,7 @@ using Heartbeat.Desktop.Mac.Hosting;
 using Heartbeat.Desktop.Mac.Identity;
 using Heartbeat.Desktop.Mac.Observations;
 using Heartbeat.Desktop.Mac.Native;
+using Heartbeat.Desktop.Mac.Input;
 using Heartbeat.Collector.System.Collection;
 using Heartbeat.Collector.System.Observations;
 using Heartbeat.Collection.Hub.Configuration;
@@ -32,8 +33,13 @@ public sealed class MacAgentHostExtensionsTests : IDisposable
         var hosted = provider.GetServices<IHostedService>().ToList();
         var monitorIndex = hosted.FindIndex(item => item is AppMonitorService);
         var uploadIndex = hosted.FindIndex(item => item is UploadWorker);
+        var inputCollector = provider.GetRequiredService<MacInputEventCollector>();
+        var inputIndex = hosted.FindIndex(item => ReferenceEquals(item, inputCollector));
         Assert.Equal(hosted.Count - 1, monitorIndex);
         Assert.True(uploadIndex >= 0 && uploadIndex < monitorIndex);
+        Assert.True(inputIndex >= 0 && inputIndex < monitorIndex);
+        Assert.Same(inputCollector, provider.GetRequiredService<IMacInputMonitoringEvents>());
+        Assert.Same(inputCollector, provider.GetRequiredService<IInputEventRecordingPolicy>());
     }
 
     [Fact]
@@ -74,6 +80,7 @@ public sealed class MacAgentHostExtensionsTests : IDisposable
         services.AddLogging();
         services.AddSingleton<IMacWorkspaceNative, FakeWorkspace>();
         services.AddSingleton<IMacAccessibilityNative, FakeAccessibilityNative>();
+        services.AddSingleton<IMacInputMonitoringNative, FakeInputMonitoringNative>();
         services.AddSingleton<IMacPlatformUuid>(new StubPlatformUuid(
             "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"));
         services.AddHeartbeatMacAgent(new MacAgentPaths(_root));
@@ -109,5 +116,15 @@ public sealed class MacAgentHostExtensionsTests : IDisposable
         public string? ReadFocusedWindowTitle(int processIdentifier) => null;
         public void ObserveApplication(int processIdentifier) { }
         public void StopObserving() { }
+    }
+
+    private sealed class FakeInputMonitoringNative : IMacInputMonitoringNative
+    {
+        public event Action<MacInputObservation>? Observation { add { } remove { } }
+        public bool IsAvailable => true;
+        public bool IsAuthorized => false;
+        public void RequestAuthorization() { }
+        public void StartListening() { }
+        public void StopListening() { }
     }
 }

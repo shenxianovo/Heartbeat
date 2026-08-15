@@ -26,4 +26,7 @@
     <ProjectReference Include="..\..\hub\Heartbeat.Collection.Hub\Heartbeat.Collection.Hub.csproj" />
     <ProjectReference Include="..\..\..\shared\Heartbeat.Core\Heartbeat.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Heartbeat.Desktop.Mac.Tests" />
+  </ItemGroup>
 </Project>

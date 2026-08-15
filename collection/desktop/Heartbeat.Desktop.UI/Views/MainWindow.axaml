@@ -191,92 +191,102 @@
           <ItemsControl ItemsSource="{Binding Collectors}">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <Border Classes="surface compact" Margin="0,0,0,8">
-                  <Grid ColumnDefinitions="Auto,*,Auto">
-                    <Border Width="38" Height="38" CornerRadius="11"
-                            Background="{DynamicResource HeartbeatPrimarySoftBrush}">
-                      <Grid>
+                <Grid Margin="0,0,0,4">
+                  <controls:SettingsExpander IsExpanded="{Binding IsExpanded, Mode=TwoWay}"
+                                             IsVisible="{Binding IsSystem}"
+                                             Header="{Binding Source}"
+                                             Description="{Binding Summary}"
+                                             ItemsSource="{Binding Capabilities}">
+                    <controls:SettingsExpander.HeaderIcon>
+                      <Border Width="38" Height="38" CornerRadius="10"
+                              Background="{DynamicResource HeartbeatPrimarySoftBrush}">
                         <LucideIcon Kind="MonitorCog" Size="19" StrokeWidth="1.7"
                                     Foreground="{DynamicResource HeartbeatPrimaryBrush}"
-                                    HorizontalAlignment="Center" VerticalAlignment="Center"
-                                    IsVisible="{Binding IsSystem}" />
-                        <LucideIcon Kind="Radio" Size="19" StrokeWidth="1.7"
-                                    Foreground="{DynamicResource HeartbeatPrimaryBrush}"
-                                    HorizontalAlignment="Center" VerticalAlignment="Center"
-                                    IsVisible="{Binding IsExternal}" />
-                      </Grid>
-                    </Border>
-                    <StackPanel Grid.Column="1" Margin="12,0,18,0" Spacing="3"
-                                VerticalAlignment="Center">
-                      <StackPanel Orientation="Horizontal" Spacing="8">
-                        <TextBlock Text="{Binding Source}" FontSize="15" FontWeight="SemiBold" />
-                        <TextBlock Text="内置" FontSize="10" Classes="subtle"
-                                   VerticalAlignment="Center" IsVisible="{Binding IsSystem}" />
+                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
+                      </Border>
+                    </controls:SettingsExpander.HeaderIcon>
+                    <controls:SettingsExpander.ActionContent>
+                      <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                        <TextBlock Text="内置" FontSize="10" Classes="subtle" VerticalAlignment="Center" />
                         <Border Width="7" Height="7" CornerRadius="4"
                                 Background="{DynamicResource HeartbeatSuccessBrush}"
                                 IsVisible="{Binding IsActive}" VerticalAlignment="Center" />
-                        <Border Width="7" Height="7" CornerRadius="4"
-                                Background="{DynamicResource HeartbeatSubtleBrush}"
-                                IsVisible="{Binding IsInactive}" VerticalAlignment="Center" />
                         <TextBlock Text="{Binding ActivityText}" FontSize="10" Classes="muted"
                                    VerticalAlignment="Center" />
                       </StackPanel>
-                      <TextBlock Text="{Binding Description}" Classes="muted" FontSize="11" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="2" Spacing="10" VerticalAlignment="Center" MinWidth="118">
-                      <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding CanToggle}">
-                        <TextBlock Text="启用采集" VerticalAlignment="Center" />
-                        <ToggleSwitch Grid.Column="1" IsChecked="{Binding Enabled}" />
-                      </Grid>
-                      <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding CanToggleWindowTitleObservation}">
-                        <TextBlock Text="记录窗口标题" VerticalAlignment="Center" />
-                        <ToggleSwitch Grid.Column="1" IsChecked="{Binding WindowTitleObservationEnabled}" />
-                      </Grid>
-                      <Button Content="打开权限设置" Classes="ghost"
-                              IsVisible="{Binding ShowWindowTitlePermissionAction}"
-                              Command="{Binding OpenWindowTitlePermissionSettingsCommand}" />
-                      <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding CanToggleRecording}">
-                        <TextBlock Text="记录输入" VerticalAlignment="Center" />
-                        <ToggleSwitch Grid.Column="1" IsChecked="{Binding RecordingEnabled}" />
-                      </Grid>
-                    </StackPanel>
-                  </Grid>
-                </Border>
+                    </controls:SettingsExpander.ActionContent>
+                    <controls:SettingsExpander.ItemTemplate>
+                      <DataTemplate>
+                        <controls:SettingsCard IsNested="True" Header="{Binding Name}">
+                          <controls:SettingsCard.HeaderIcon>
+                            <Grid Width="38" Height="38">
+                              <Border Width="8" Height="8" CornerRadius="4"
+                                      Background="{DynamicResource HeartbeatSuccessBrush}"
+                                      IsVisible="{Binding IsEffective}"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+                              <Border Width="8" Height="8" CornerRadius="4"
+                                      Background="{DynamicResource HeartbeatSubtleBrush}"
+                                      IsVisible="{Binding IsIneffective}"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Grid>
+                          </controls:SettingsCard.HeaderIcon>
+                          <controls:SettingsCard.Description>
+                            <StackPanel Spacing="3">
+                              <TextBlock Text="{Binding Description}" TextWrapping="Wrap" />
+                              <TextBlock Text="{Binding PermissionHelpText}"
+                                         IsVisible="{Binding HasPermissionHelp}"
+                                         Foreground="{DynamicResource HeartbeatWarningBrush}"
+                                         TextWrapping="Wrap" />
+                            </StackPanel>
+                          </controls:SettingsCard.Description>
+                          <controls:SettingsCard.ActionContent>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                              <TextBlock Text="{Binding StatusText}" Classes="muted" FontSize="11"
+                                         VerticalAlignment="Center" />
+                              <Button Content="去授权" Classes="primary"
+                                      IsVisible="{Binding ShowRecoveryAction}"
+                                      Command="{Binding RecoverCommand}" />
+                              <Button Content="显示位置" Classes="ghost"
+                                      IsVisible="{Binding ShowApplicationLocationAction}"
+                                      Command="{Binding RevealApplicationCommand}" />
+                              <ToggleSwitch IsVisible="{Binding HasToggle}"
+                                            IsChecked="{Binding RequestedEnabled}" />
+                            </StackPanel>
+                          </controls:SettingsCard.ActionContent>
+                        </controls:SettingsCard>
+                      </DataTemplate>
+                    </controls:SettingsExpander.ItemTemplate>
+                  </controls:SettingsExpander>
+
+                  <controls:SettingsCard IsVisible="{Binding IsExternal}"
+                                         Header="{Binding Source}"
+                                         Description="{Binding Description}">
+                    <controls:SettingsCard.HeaderIcon>
+                      <Border Width="38" Height="38" CornerRadius="10"
+                              Background="{DynamicResource HeartbeatPrimarySoftBrush}">
+                        <LucideIcon Kind="Radio" Size="19" StrokeWidth="1.7"
+                                    Foreground="{DynamicResource HeartbeatPrimaryBrush}"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
+                      </Border>
+                    </controls:SettingsCard.HeaderIcon>
+                    <controls:SettingsCard.ActionContent>
+                      <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Border Width="7" Height="7" CornerRadius="4"
+                                Background="{DynamicResource HeartbeatSuccessBrush}"
+                                IsVisible="{Binding IsActive}" />
+                        <Border Width="7" Height="7" CornerRadius="4"
+                                Background="{DynamicResource HeartbeatSubtleBrush}"
+                                IsVisible="{Binding IsInactive}" />
+                        <TextBlock Text="{Binding ActivityText}" FontSize="10" Classes="muted"
+                                   VerticalAlignment="Center" />
+                        <ToggleSwitch IsChecked="{Binding Enabled}" />
+                      </StackPanel>
+                    </controls:SettingsCard.ActionContent>
+                  </controls:SettingsCard>
+                </Grid>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
-
-          <Border Classes="surface compact">
-            <StackPanel Spacing="10">
-              <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Text="采集能力" Classes="section-title" />
-                <TextBlock Grid.Column="1" Text="{Binding CapabilitySummary}"
-                           Classes="muted" FontSize="11" VerticalAlignment="Center" />
-              </Grid>
-              <TextBlock Text="{Binding CapabilityMessage}" IsVisible="{Binding HasCapabilityMessage}"
-                         Classes="muted" FontSize="11" TextWrapping="Wrap" />
-              <ItemsControl ItemsSource="{Binding Capabilities}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
-                    <Grid ColumnDefinitions="20,*,Auto" Margin="0,4">
-                      <Border Width="7" Height="7" CornerRadius="4" VerticalAlignment="Center"
-                              Background="{DynamicResource HeartbeatSuccessBrush}"
-                              IsVisible="{Binding IsAvailable}" />
-                      <Border Width="7" Height="7" CornerRadius="4" VerticalAlignment="Center"
-                              Background="{DynamicResource HeartbeatWarningBrush}"
-                              IsVisible="{Binding IsPermissionRequired}" />
-                      <Border Width="7" Height="7" CornerRadius="4" VerticalAlignment="Center"
-                              Background="{DynamicResource HeartbeatSubtleBrush}"
-                              IsVisible="{Binding IsUnavailable}" />
-                      <TextBlock Grid.Column="1" Text="{Binding Name}" />
-                      <TextBlock Grid.Column="2" Text="{Binding AvailabilityText}"
-                                 Classes="muted" FontSize="11" />
-                    </Grid>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </StackPanel>
-          </Border>
         </StackPanel>
       </ScrollViewer>
     </Grid>
@@ -286,105 +296,113 @@
       <TextBlock Text="设置" Classes="page-title" Margin="26,22,24,8" />
 
       <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="24,8,24,22" Spacing="12">
-          <Border Classes="surface">
-            <StackPanel Spacing="12">
-              <TextBlock Text="连接" Classes="section-title" />
-              <Border Classes="divider" />
+        <StackPanel Margin="24,8,24,22" Spacing="4">
+          <TextBlock Text="连接" Classes="settings-section-title" />
 
-              <Grid ColumnDefinitions="150,*">
-                <TextBlock Text="API Key" FontWeight="SemiBold" VerticalAlignment="Center"
-                           ToolTip.Tip="上传数据所需的访问凭证" />
-                <Grid Grid.Column="1" ColumnDefinitions="*,Auto" VerticalAlignment="Center">
-                  <TextBox Text="{Binding ApiKey}" PasswordChar="●"
-                           IsVisible="{Binding IsApiKeyHidden}" />
-                  <TextBox Text="{Binding ApiKey}" IsVisible="{Binding IsApiKeyVisible}" />
-                  <Button Grid.Column="1" Classes="ghost icon-button" Margin="7,0,0,0"
-                          Command="{Binding ToggleApiKeyVisibilityCommand}" ToolTip.Tip="显示或隐藏 API Key">
-                    <Grid>
-                      <LucideIcon Kind="EyeClosed" Size="17" IsVisible="{Binding IsApiKeyHidden}" />
-                      <LucideIcon Kind="EyeOff" Size="17" IsVisible="{Binding IsApiKeyVisible}" />
-                    </Grid>
-                  </Button>
-                </Grid>
+          <controls:SettingsCard Header="API Key" Description="上传数据所需的访问凭证">
+            <controls:SettingsCard.HeaderIcon>
+              <LucideIcon Kind="Key" Size="19" StrokeWidth="1.8"
+                          Foreground="{DynamicResource HeartbeatPrimaryBrush}" />
+            </controls:SettingsCard.HeaderIcon>
+            <controls:SettingsCard.ActionContent>
+              <Grid ColumnDefinitions="*,Auto" Width="300" VerticalAlignment="Center">
+                <TextBox Text="{Binding ApiKey}" PasswordChar="●"
+                         IsVisible="{Binding IsApiKeyHidden}" />
+                <TextBox Text="{Binding ApiKey}" IsVisible="{Binding IsApiKeyVisible}" />
+                <Button Grid.Column="1" Classes="ghost icon-button" Margin="7,0,0,0"
+                        Command="{Binding ToggleApiKeyVisibilityCommand}" ToolTip.Tip="显示或隐藏 API Key">
+                  <Grid>
+                    <LucideIcon Kind="EyeClosed" Size="17" IsVisible="{Binding IsApiKeyHidden}" />
+                    <LucideIcon Kind="EyeOff" Size="17" IsVisible="{Binding IsApiKeyVisible}" />
+                  </Grid>
+                </Button>
               </Grid>
+            </controls:SettingsCard.ActionContent>
+          </controls:SettingsCard>
 
-              <Border Classes="divider" />
-              <Grid ColumnDefinitions="150,*">
-                <TextBlock Text="设备名称" FontWeight="SemiBold" VerticalAlignment="Center"
-                           ToolTip.Tip="在 Dashboard 与报表中显示" />
-                <TextBox Grid.Column="1" Text="{Binding DeviceName}" />
-              </Grid>
+          <controls:SettingsCard Header="设备名称" Description="在 Dashboard 与报表中显示">
+            <controls:SettingsCard.HeaderIcon>
+              <LucideIcon Kind="Monitor" Size="19" StrokeWidth="1.8"
+                          Foreground="{DynamicResource HeartbeatPrimaryBrush}" />
+            </controls:SettingsCard.HeaderIcon>
+            <controls:SettingsCard.ActionContent>
+              <TextBox Text="{Binding DeviceName}" Width="300" />
+            </controls:SettingsCard.ActionContent>
+          </controls:SettingsCard>
 
-              <Border Classes="divider" />
-              <Grid ColumnDefinitions="150,*">
-                <TextBlock Text="上传间隔" FontWeight="SemiBold" VerticalAlignment="Center"
-                           ToolTip.Tip="必须为正整数" />
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                  <TextBox Text="{Binding UploadIntervalMinutes}" Width="90" />
-                  <TextBlock Text="分钟" Classes="muted" VerticalAlignment="Center" />
-                </StackPanel>
-              </Grid>
-            </StackPanel>
-          </Border>
-
-          <Border Classes="surface">
-            <StackPanel Spacing="12">
-              <TextBlock Text="通用" Classes="section-title" />
-              <Border Classes="divider" />
-              <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Text="登录时启动" FontWeight="SemiBold" VerticalAlignment="Center"
-                           ToolTip.Tip="登录系统后自动启动并继续后台采集" />
-                <ToggleSwitch Grid.Column="1" IsChecked="{Binding LoginStartEnabled}"
-                              VerticalAlignment="Center" />
-              </Grid>
-              <Border Classes="divider" />
-              <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Text="主题" FontWeight="SemiBold" VerticalAlignment="Center" />
-                <ComboBox Grid.Column="1" SelectedIndex="{Binding SelectedThemeIndex}"
-                          Width="130" VerticalAlignment="Center">
-                  <ComboBoxItem Content="跟随系统" />
-                  <ComboBoxItem Content="浅色" />
-                  <ComboBoxItem Content="深色" />
-                </ComboBox>
-              </Grid>
-            </StackPanel>
-          </Border>
-
-          <Border Classes="surface compact" IsVisible="{Binding UpdatesSupported}">
-            <Grid ColumnDefinitions="*,Auto">
-              <StackPanel Spacing="2" VerticalAlignment="Center">
-                <TextBlock Text="{Binding UpdateStateText}" FontWeight="SemiBold" />
-                <TextBlock Text="{Binding UpdateStateDetail}" Classes="muted" FontSize="11" />
-                <TextBlock Text="{Binding UpdateError}" IsVisible="{Binding HasUpdateError}"
-                           Foreground="{DynamicResource HeartbeatDangerBrush}" FontSize="11" />
-                <TextBlock Text="{Binding UpdateCheckMessage}" IsVisible="{Binding HasUpdateCheckMessage}"
-                           Classes="muted" FontSize="11" />
+          <controls:SettingsCard Header="上传间隔" Description="控制本地数据提交频率，必须为正整数">
+            <controls:SettingsCard.HeaderIcon>
+              <LucideIcon Kind="Clock" Size="19" StrokeWidth="1.8"
+                          Foreground="{DynamicResource HeartbeatPrimaryBrush}" />
+            </controls:SettingsCard.HeaderIcon>
+            <controls:SettingsCard.ActionContent>
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBox Text="{Binding UploadIntervalMinutes}" Width="90" />
+                <TextBlock Text="分钟" Classes="muted" VerticalAlignment="Center" />
               </StackPanel>
-              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            </controls:SettingsCard.ActionContent>
+          </controls:SettingsCard>
+
+          <TextBlock Text="通用" Classes="settings-section-title" />
+
+          <controls:SettingsCard Header="登录时启动" Description="登录系统后自动启动并继续后台采集">
+            <controls:SettingsCard.HeaderIcon>
+              <LucideIcon Kind="Power" Size="19" StrokeWidth="1.8"
+                          Foreground="{DynamicResource HeartbeatPrimaryBrush}" />
+            </controls:SettingsCard.HeaderIcon>
+            <controls:SettingsCard.ActionContent>
+              <ToggleSwitch IsChecked="{Binding LoginStartEnabled}" />
+            </controls:SettingsCard.ActionContent>
+          </controls:SettingsCard>
+
+          <controls:SettingsCard Header="主题" Description="选择 Heartbeat 的界面外观">
+            <controls:SettingsCard.HeaderIcon>
+              <LucideIcon Kind="Palette" Size="19" StrokeWidth="1.8"
+                          Foreground="{DynamicResource HeartbeatPrimaryBrush}" />
+            </controls:SettingsCard.HeaderIcon>
+            <controls:SettingsCard.ActionContent>
+              <ComboBox SelectedIndex="{Binding SelectedThemeIndex}" Width="130">
+                <ComboBoxItem Content="跟随系统" />
+                <ComboBoxItem Content="浅色" />
+                <ComboBoxItem Content="深色" />
+              </ComboBox>
+            </controls:SettingsCard.ActionContent>
+          </controls:SettingsCard>
+
+          <TextBlock Text="维护" Classes="settings-section-title" />
+
+          <controls:SettingsCard Header="软件更新"
+                                 Description="{Binding UpdateStateDetail}"
+                                 IsVisible="{Binding UpdatesSupported}">
+            <controls:SettingsCard.HeaderIcon>
+              <LucideIcon Kind="RefreshCw" Size="19" StrokeWidth="1.8"
+                          Foreground="{DynamicResource HeartbeatPrimaryBrush}" />
+            </controls:SettingsCard.HeaderIcon>
+            <controls:SettingsCard.ActionContent>
+              <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <StackPanel Spacing="2" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding UpdateStateText}" Classes="muted" FontSize="11" />
+                  <TextBlock Text="{Binding UpdateError}" IsVisible="{Binding HasUpdateError}"
+                             Foreground="{DynamicResource HeartbeatDangerBrush}" FontSize="11" />
+                  <TextBlock Text="{Binding UpdateCheckMessage}" IsVisible="{Binding HasUpdateCheckMessage}"
+                             Classes="muted" FontSize="11" />
+                </StackPanel>
                 <Button Content="检查更新" Classes="ghost" Command="{Binding CheckForUpdateCommand}" />
                 <Button Content="应用并重启" Classes="primary" Command="{Binding ApplyUpdateCommand}"
                         IsVisible="{Binding IsUpdateReady}" />
               </StackPanel>
-            </Grid>
-          </Border>
+            </controls:SettingsCard.ActionContent>
+          </controls:SettingsCard>
 
-          <Border Classes="surface compact">
-            <StackPanel Spacing="10">
-              <Button Classes="ghost" Command="{Binding ToggleDiagnosticsCommand}"
-                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="2">
-                <Grid ColumnDefinitions="Auto,*,Auto">
-                  <LucideIcon Kind="Logs" Size="17" StrokeWidth="1.8" />
-                  <TextBlock Grid.Column="1" Text="诊断" FontWeight="SemiBold" Margin="10,0,0,0" />
-                  <LucideIcon Grid.Column="2" Kind="ChevronDown" Size="17"
-                              IsVisible="{Binding IsDiagnosticsCollapsed}" VerticalAlignment="Center" />
-                  <LucideIcon Grid.Column="2" Kind="ChevronUp" Size="17"
-                              IsVisible="{Binding IsDiagnosticsExpanded}" VerticalAlignment="Center" />
-                </Grid>
-              </Button>
-
-              <StackPanel IsVisible="{Binding IsDiagnosticsExpanded}" Spacing="9">
-                <Border Classes="divider" />
+          <controls:SettingsExpander Header="诊断"
+                                     Description="调整日志级别并查看实时日志"
+                                     IsExpanded="{Binding IsDiagnosticsExpanded, Mode=TwoWay}">
+            <controls:SettingsExpander.HeaderIcon>
+              <LucideIcon Kind="Logs" Size="19" StrokeWidth="1.8"
+                          Foreground="{DynamicResource HeartbeatPrimaryBrush}" />
+            </controls:SettingsExpander.HeaderIcon>
+            <controls:SettingsExpander.ItemsHeader>
+              <StackPanel Spacing="9" Margin="15">
                 <StackPanel Orientation="Horizontal" Spacing="5">
                   <Button Content="DBG" Classes="ghost" Padding="8,4"
                           Command="{Binding SetLogLevelCommand}" CommandParameter="Debug" />
@@ -405,8 +423,8 @@
                   </controls:TailScrollViewer>
                 </Border>
               </StackPanel>
-            </StackPanel>
-          </Border>
+            </controls:SettingsExpander.ItemsHeader>
+          </controls:SettingsExpander>
         </StackPanel>
       </ScrollViewer>
 

@@ -178,6 +178,8 @@ namespace Heartbeat.Desktop.Windows.Configuration
                 UploadIntervalMinutes = source.UploadIntervalMinutes,
                 AwayProcessNames = [.. source.AwayProcessNames ?? []],
                 IngestPort = source.IngestPort,
+                WindowActivityCollectionEnabled = source.WindowActivityCollectionEnabled,
+                InteractionSignalEnabled = source.InteractionSignalEnabled,
                 InputEventRecordingEnabled = source.InputEventRecordingEnabled,
                 Collectors = (source.Collectors ?? []).ToDictionary(
                     kv => kv.Key,

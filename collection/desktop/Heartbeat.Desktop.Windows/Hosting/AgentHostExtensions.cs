@@ -90,7 +90,9 @@ namespace Heartbeat.Desktop.Windows.Hosting
             services.AddSingleton<IPowerMonitor, WindowsPowerMonitor>();
             services.AddSingleton<IDesktopObservationSource, WindowsDesktopObservationSource>();
             services.AddSingleton<IDesktopSettings, DesktopSettingsAdapter>();
+            services.AddSingleton<IWindowActivityCollectionPolicy, WindowActivitySettingsAdapter>();
             services.AddSingleton<IInputEventRecordingPolicy, InputEventRecordingSettingsAdapter>();
+            services.AddSingleton<IInteractionSignalPolicy, InteractionSignalSettingsAdapter>();
             services.AddSingleton<IInputActivitySignal, InputActivitySignal>();
 
             // 业务服务

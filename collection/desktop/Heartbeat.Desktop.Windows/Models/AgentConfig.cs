@@ -34,7 +34,15 @@ namespace Heartbeat.Desktop.Windows.Models
         public int IngestPort { get; set; } = 24820;
 
         /// <summary>
-        /// 是否持久化并上传 InputEvent。Interaction Signal 始终保持启用，二者只共享底层 hook。
+        /// 是否采集 focused-window 切换与原始窗口标题。
+        /// </summary>
+        public bool WindowActivityCollectionEnabled { get; set; } = true;
+
+        /// <summary>是否在本地使用最近点击辅助判断同窗标题变化。</summary>
+        public bool InteractionSignalEnabled { get; set; } = true;
+
+        /// <summary>
+        /// 是否持久化并上传 InputEvent。与 Interaction Signal 是独立用户意图。
         /// </summary>
         public bool InputEventRecordingEnabled { get; set; } = true;
 

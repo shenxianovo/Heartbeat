@@ -14,13 +14,17 @@ namespace Heartbeat.Desktop.Windows.Services
     public sealed class InputEventCollector(
         ILowLevelInputHook hook,
         IInputActivitySignal inputActivity,
+        IInteractionSignalPolicy interactionSettings,
         IInputEventRecordingPolicy recordingSettings,
         InputEventBuffer buffer) : IHostedService, IDisposable
     {
         private readonly ILowLevelInputHook _hook = hook;
         private readonly IInputActivitySignal _inputActivity = inputActivity;
+        private readonly IInteractionSignalPolicy _interactionSettings = interactionSettings;
         private readonly IInputEventRecordingPolicy _recordingSettings = recordingSettings;
         private readonly InputEventBuffer _buffer = buffer;
+        private bool _started;
+        private bool _hookRunning;
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
@@ -30,17 +34,20 @@ namespace Heartbeat.Desktop.Windows.Services
             _hook.KeyUp += OnKeyUp;
             _hook.MouseButton += OnMouseButton;
             _hook.Scroll += OnScroll;
+            _interactionSettings.Changed += OnInteractionChanged;
             _recordingSettings.Changed += OnRecordingChanged;
 
-            _hook.StartHook();
+            _started = true;
+            ReconcileHook();
             return Task.CompletedTask;
         }
 
         public Task StopAsync(CancellationToken cancellationToken)
         {
             Log.Information("输入事件采集服务停止");
+            _started = false;
             Unsubscribe();
-            _hook.StopHook();
+            StopHook();
             return Task.CompletedTask;
         }
 
@@ -63,7 +70,8 @@ namespace Heartbeat.Desktop.Windows.Services
         private void OnMouseButton(short code)
         {
             // 点击（含触摸板点击）标记输入活动，供标题变化门控使用（ADR-016）。
-            _inputActivity.MarkClick();
+            if (_interactionSettings.Enabled)
+                _inputActivity.MarkClick();
             if (_recordingSettings.Enabled)
                 _buffer.OnMouseButton(code);
         }
@@ -77,6 +85,30 @@ namespace Heartbeat.Desktop.Windows.Services
         {
             if (!enabled)
                 _buffer.ResetTransientState();
+            ReconcileHook();
+        }
+
+        private void OnInteractionChanged(bool enabled) => ReconcileHook();
+
+        private void ReconcileHook()
+        {
+            var shouldRun = _started && (_interactionSettings.Enabled || _recordingSettings.Enabled);
+            if (shouldRun && !_hookRunning)
+            {
+                _hook.StartHook();
+                _hookRunning = true;
+            }
+            else if (!shouldRun)
+            {
+                StopHook();
+            }
+        }
+
+        private void StopHook()
+        {
+            if (!_hookRunning) return;
+            _hook.StopHook();
+            _hookRunning = false;
         }
 
         private void Unsubscribe()
@@ -85,13 +117,14 @@ namespace Heartbeat.Desktop.Windows.Services
             _hook.KeyUp -= OnKeyUp;
             _hook.MouseButton -= OnMouseButton;
             _hook.Scroll -= OnScroll;
+            _interactionSettings.Changed -= OnInteractionChanged;
             _recordingSettings.Changed -= OnRecordingChanged;
         }
 
         public void Dispose()
         {
             Unsubscribe();
-            _hook.StopHook();
+            StopHook();
             GC.SuppressFinalize(this);
         }
     }

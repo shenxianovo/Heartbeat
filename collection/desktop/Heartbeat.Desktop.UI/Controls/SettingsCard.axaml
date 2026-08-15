@@ -1,0 +1,33 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Heartbeat.Desktop.UI.Controls.SettingsCard"
+             x:Name="Root"
+             HorizontalAlignment="Stretch">
+  <Border Classes="settings-card"
+          Classes.nested="{Binding IsNested, ElementName=Root}"
+          HorizontalAlignment="Stretch">
+    <Grid ColumnDefinitions="Auto,*,Auto" MinHeight="62">
+      <ContentPresenter Content="{Binding HeaderIcon, ElementName=Root}"
+                        Width="38" Height="38"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        VerticalAlignment="Center" />
+
+      <StackPanel Grid.Column="1" Margin="12,0,18,0" Spacing="3"
+                  VerticalAlignment="Center">
+        <ContentPresenter Content="{Binding Header, ElementName=Root}"
+                          FontSize="14" FontWeight="SemiBold"
+                          VerticalContentAlignment="Center" />
+        <ContentPresenter Content="{Binding Description, ElementName=Root}"
+                          FontSize="11"
+                          Foreground="{DynamicResource HeartbeatMutedBrush}" />
+      </StackPanel>
+
+      <ContentPresenter Grid.Column="2"
+                        Content="{Binding ActionContent, ElementName=Root}"
+                        HorizontalContentAlignment="Right"
+                        VerticalContentAlignment="Center"
+                        VerticalAlignment="Center" />
+    </Grid>
+  </Border>
+</UserControl>

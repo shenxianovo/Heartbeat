@@ -14,7 +14,7 @@ public sealed class DesktopSettingsAdapter : IDesktopSettings, IDisposable
     }
 
     public IReadOnlyList<string> AwayProcessNames => _configManager.Current.AwayProcessNames;
-    public bool SplitFocusedWindowChangesUnconditionally => false;
+    public bool SplitFocusedWindowChangesUnconditionally => true;
 
     public event Action<IReadOnlyList<string>>? AwayProcessNamesChanged;
 

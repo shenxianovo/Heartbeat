@@ -1,0 +1,63 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:lucide="using:Lucide.Avalonia"
+             x:Class="Heartbeat.Desktop.UI.Controls.SettingsExpander"
+             x:Name="Root"
+             HorizontalAlignment="Stretch">
+  <Border Classes="settings-expander" HorizontalAlignment="Stretch">
+    <Grid RowDefinitions="Auto,Auto" HorizontalAlignment="Stretch">
+      <Button Classes="settings-expander-header"
+              Click="ToggleExpanded"
+              HorizontalAlignment="Stretch"
+              HorizontalContentAlignment="Stretch">
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto" MinHeight="62"
+              HorizontalAlignment="Stretch">
+          <ContentPresenter Content="{Binding HeaderIcon, ElementName=Root}"
+                            Width="38" Height="38"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            VerticalAlignment="Center" />
+
+          <StackPanel Grid.Column="1" Margin="12,0,18,0" Spacing="3"
+                      VerticalAlignment="Center">
+            <ContentPresenter Content="{Binding Header, ElementName=Root}"
+                              FontSize="14" FontWeight="SemiBold"
+                              VerticalContentAlignment="Center" />
+            <ContentPresenter Content="{Binding Description, ElementName=Root}"
+                              FontSize="11"
+                              Foreground="{DynamicResource HeartbeatMutedBrush}" />
+          </StackPanel>
+
+          <ContentPresenter Grid.Column="2"
+                            Content="{Binding ActionContent, ElementName=Root}"
+                            Margin="12,0"
+                            HorizontalContentAlignment="Right"
+                            VerticalContentAlignment="Center"
+                            VerticalAlignment="Center" />
+
+          <Grid Grid.Column="3" Width="26" VerticalAlignment="Center">
+            <lucide:LucideIcon Kind="ChevronRight" Size="17"
+                               HorizontalAlignment="Center"
+                               IsVisible="{Binding !IsExpanded, ElementName=Root}" />
+            <lucide:LucideIcon Kind="ChevronDown" Size="17"
+                               HorizontalAlignment="Center"
+                               IsVisible="{Binding IsExpanded, ElementName=Root}" />
+          </Grid>
+        </Grid>
+      </Button>
+
+      <Border Grid.Row="1" Classes="settings-expander-items"
+              IsVisible="{Binding IsExpanded, ElementName=Root}">
+        <StackPanel>
+          <ContentPresenter Content="{Binding ItemsHeader, ElementName=Root}"
+                            HorizontalContentAlignment="Stretch" />
+          <ItemsControl ItemsSource="{Binding ItemsSource, ElementName=Root}"
+                        ItemTemplate="{Binding ItemTemplate, ElementName=Root}"
+                        HorizontalAlignment="Stretch" />
+          <ContentPresenter Content="{Binding ItemsFooter, ElementName=Root}"
+                            HorizontalContentAlignment="Stretch" />
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Border>
+</UserControl>

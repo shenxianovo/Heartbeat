@@ -69,12 +69,26 @@ public sealed class WindowsDesktopState : IDesktopState, IDisposable
                 collector.Enabled = enabled;
         });
 
-    public void SetInputEventRecordingEnabled(bool enabled) =>
-        _config.Update(config => config.InputEventRecordingEnabled = enabled);
+    public void SetSystemCapabilityEnabled(SystemCapability capability, bool enabled) =>
+        _config.Update(config =>
+        {
+            switch (capability)
+            {
+                case SystemCapability.WindowActivity:
+                    config.WindowActivityCollectionEnabled = enabled;
+                    break;
+                case SystemCapability.InteractionSignal:
+                    config.InteractionSignalEnabled = enabled;
+                    break;
+                case SystemCapability.InputEventRecording:
+                    config.InputEventRecordingEnabled = enabled;
+                    break;
+            }
+        });
 
-    public void SetWindowTitleObservationEnabled(bool enabled) { }
+    public void RecoverSystemCapability(SystemCapability capability) { }
 
-    public void OpenWindowTitlePermissionSettings() { }
+    public void RevealSystemCapabilityApplication(SystemCapability capability) { }
 
     public void SetThemeMode(DesktopThemeMode mode) =>
         _config.Update(config => config.ThemeMode = mode.ToString());
@@ -88,7 +102,6 @@ public sealed class WindowsDesktopState : IDesktopState, IDisposable
                 config.ApiKey,
                 config.DeviceName,
                 config.UploadIntervalMinutes,
-                config.InputEventRecordingEnabled,
                 ParseThemeMode(config.ThemeMode)),
             _loginStart.IsEnabled,
             config.Collectors.ToDictionary(
@@ -98,7 +111,21 @@ public sealed class WindowsDesktopState : IDesktopState, IDisposable
             new Dictionary<string, DateTimeOffset>(_collection.SourceLastSeen, StringComparer.OrdinalIgnoreCase),
             _compatibility.Current,
             _uploads.Snapshot,
-            DesktopCapabilitySnapshot.WindowsFull);
+            new DesktopCapabilitySnapshot(new Dictionary<SystemCapability, SystemCapabilityState>
+            {
+                [SystemCapability.ForegroundApp] = new(null, CapabilityAvailability.Available),
+                [SystemCapability.WindowActivity] = new(
+                    config.WindowActivityCollectionEnabled,
+                    CapabilityAvailability.Available),
+                [SystemCapability.InteractionSignal] = new(
+                    config.InteractionSignalEnabled,
+                    config.WindowActivityCollectionEnabled
+                        ? CapabilityAvailability.Available
+                        : CapabilityAvailability.Paused),
+                [SystemCapability.InputEventRecording] = new(
+                    config.InputEventRecordingEnabled,
+                    CapabilityAvailability.Available),
+            }));
     }
 
     private static DesktopThemeMode ParseThemeMode(string? value) =>

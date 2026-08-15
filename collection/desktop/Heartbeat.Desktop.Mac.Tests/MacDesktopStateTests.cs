@@ -5,6 +5,8 @@ using Heartbeat.Collection.Hub.Http;
 using Heartbeat.Collection.Hub.Presence;
 using Heartbeat.Collection.Hub.Upload;
 using Heartbeat.Desktop.Mac.Observations;
+using Heartbeat.Desktop.Mac.Input;
+using Heartbeat.Desktop.Mac.Native;
 
 namespace Heartbeat.Desktop.Mac.Tests;
 
@@ -19,16 +21,17 @@ public sealed class MacDesktopStateTests : IDisposable
         var accessibility = new FakeAccessibility();
         using var state = Build(login, accessibility);
 
-        Assert.Equal(CapabilityAvailability.Unavailable, state.Current.Capabilities.FocusedWindowObservation);
-        Assert.True(state.Current.Capabilities.WindowTitleObservationConfigurable);
-        Assert.False(state.Current.Settings.WindowTitleObservationEnabled);
-        Assert.False(state.Current.Settings.InputEventRecordingEnabled);
+        Assert.Equal(
+            CapabilityAvailability.Available,
+            state.Current.Capabilities.Get(SystemCapability.WindowActivity).Availability);
+        Assert.False(state.Current.Capabilities.Get(SystemCapability.WindowActivity).RequestedEnabled);
+        Assert.False(state.Current.Capabilities.Get(SystemCapability.InputEventRecording).RequestedEnabled);
 
-        state.SetWindowTitleObservationEnabled(true);
-        state.SetInputEventRecordingEnabled(true);
+        state.SetSystemCapabilityEnabled(SystemCapability.WindowActivity, true);
+        state.SetSystemCapabilityEnabled(SystemCapability.InputEventRecording, true);
 
         Assert.True(accessibility.Enabled);
-        Assert.False(state.Current.Settings.InputEventRecordingEnabled);
+        Assert.True(state.Current.Capabilities.Get(SystemCapability.InputEventRecording).RequestedEnabled);
     }
 
     [Fact]
@@ -39,15 +42,55 @@ public sealed class MacDesktopStateTests : IDisposable
             Enabled = true,
             CapabilityState = MacAccessibilityCapabilityState.PermissionRequired
         };
-        using var state = Build(new FakeLoginStart(), accessibility);
+        var applicationLocator = new FakeApplicationLocator();
+        using var state = Build(
+            new FakeLoginStart(),
+            accessibility,
+            applicationLocator: applicationLocator);
 
-        Assert.Equal(CapabilityAvailability.Available, state.Current.Capabilities.AppObservation);
-        Assert.Equal(CapabilityAvailability.PermissionRequired, state.Current.Capabilities.FocusedWindowObservation);
-        Assert.True(state.Current.Capabilities.WindowTitlePermissionActionAvailable);
+        Assert.Equal(
+            CapabilityAvailability.Available,
+            state.Current.Capabilities.Get(SystemCapability.ForegroundApp).Availability);
+        Assert.Equal(
+            CapabilityAvailability.PermissionRequired,
+            state.Current.Capabilities.Get(SystemCapability.WindowActivity).Availability);
+        Assert.True(state.Current.Capabilities.Get(SystemCapability.WindowActivity).RecoveryActionAvailable);
+        Assert.True(state.Current.Capabilities.Get(SystemCapability.WindowActivity).ApplicationLocationActionAvailable);
 
-        state.OpenWindowTitlePermissionSettings();
+        state.RecoverSystemCapability(SystemCapability.WindowActivity);
 
         Assert.Equal(1, accessibility.OpenSettingsCount);
+        Assert.Equal(1, applicationLocator.RevealCount);
+
+        state.RevealSystemCapabilityApplication(SystemCapability.WindowActivity);
+
+        Assert.Equal(2, applicationLocator.RevealCount);
+    }
+
+    [Fact]
+    public void InteractionIntent_RemainsEnabledWhenInputMonitoringPermissionIsMissing()
+    {
+        var accessibility = new FakeAccessibility
+        {
+            Enabled = true,
+            CapabilityState = MacAccessibilityCapabilityState.Available
+        };
+        var inputMonitoring = new FakeInputMonitoring
+        {
+            CapabilityState = MacInputMonitoringCapabilityState.PermissionRequired
+        };
+        using var state = Build(new FakeLoginStart(), accessibility, inputMonitoring);
+
+        state.SetSystemCapabilityEnabled(SystemCapability.InteractionSignal, true);
+
+        var capability = state.Current.Capabilities.Get(SystemCapability.InteractionSignal);
+        Assert.True(capability.RequestedEnabled);
+        Assert.Equal(CapabilityAvailability.PermissionRequired, capability.Availability);
+        Assert.True(capability.RecoveryActionAvailable);
+
+        state.RecoverSystemCapability(SystemCapability.InteractionSignal);
+
+        Assert.Equal(1, inputMonitoring.OpenSettingsCount);
     }
 
     [Fact]
@@ -68,12 +111,22 @@ public sealed class MacDesktopStateTests : IDisposable
         Assert.Equal(Environment.ProcessPath, login.EnabledExecutable);
     }
 
-    private MacDesktopState Build(FakeLoginStart login, FakeAccessibility? accessibility = null)
+    private MacDesktopState Build(
+        FakeLoginStart login,
+        FakeAccessibility? accessibility = null,
+        FakeInputMonitoring? inputMonitoring = null,
+        FakeApplicationLocator? applicationLocator = null)
     {
         var config = new MacConfigManager(new MacAgentPaths(_root));
         accessibility ??= new FakeAccessibility();
         accessibility.SetEnabledAction = enabled =>
             config.Update(value => value.WindowTitleObservationEnabled = enabled);
+        inputMonitoring ??= new FakeInputMonitoring();
+        inputMonitoring.SetInteractionSignalEnabledAction = enabled =>
+            config.Update(value => value.InteractionSignalEnabled = enabled);
+        inputMonitoring.SetInputEventRecordingEnabledAction = enabled =>
+            config.Update(value => value.InputEventRecordingEnabled = enabled);
+        applicationLocator ??= new FakeApplicationLocator();
         if (accessibility.Enabled)
             config.Update(value => value.WindowTitleObservationEnabled = true);
         return new MacDesktopState(
@@ -82,7 +135,9 @@ public sealed class MacDesktopStateTests : IDisposable
             login,
             new ClientCompatibilityStatus(),
             new UploadStatusRegistry(),
-            accessibility);
+            accessibility,
+            inputMonitoring,
+            applicationLocator);
     }
 
     public void Dispose()
@@ -134,5 +189,26 @@ public sealed class MacDesktopStateTests : IDisposable
             CapabilityChanged?.Invoke(CapabilityState);
         }
         public void OpenPermissionSettingsFromUser() => OpenSettingsCount++;
+    }
+
+    private sealed class FakeInputMonitoring : IMacInputMonitoringEvents
+    {
+        public event Action<MacInputMonitoringCapabilityState>? CapabilityChanged { add { } remove { } }
+        public MacInputMonitoringCapabilityState CapabilityState { get; set; } =
+            MacInputMonitoringCapabilityState.Disabled;
+        public int OpenSettingsCount { get; private set; }
+        public Action<bool>? SetInteractionSignalEnabledAction { get; set; }
+        public Action<bool>? SetInputEventRecordingEnabledAction { get; set; }
+        public void SetInteractionSignalEnabledFromUser(bool enabled) =>
+            SetInteractionSignalEnabledAction?.Invoke(enabled);
+        public void SetInputEventRecordingEnabledFromUser(bool enabled) =>
+            SetInputEventRecordingEnabledAction?.Invoke(enabled);
+        public void OpenPermissionSettingsFromUser() => OpenSettingsCount++;
+    }
+
+    private sealed class FakeApplicationLocator : IMacApplicationLocator
+    {
+        public int RevealCount { get; private set; }
+        public void RevealFromUser() => RevealCount++;
     }
 }

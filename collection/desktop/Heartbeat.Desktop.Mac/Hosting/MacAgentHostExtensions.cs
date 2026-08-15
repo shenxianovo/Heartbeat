@@ -4,6 +4,7 @@ using Heartbeat.Desktop.Mac.Identity;
 using Heartbeat.Desktop.Mac.Icons;
 using Heartbeat.Desktop.Mac.Native;
 using Heartbeat.Desktop.Mac.Observations;
+using Heartbeat.Desktop.Mac.Input;
 using Heartbeat.Core.DTOs.Input;
 using Heartbeat.Core.DTOs.Segments;
 using Heartbeat.Collector.System.Collection;
@@ -36,10 +37,12 @@ public static class MacAgentHostExtensions
 
         services.TryAddSingleton<MacConfigManager>();
         services.TryAddSingleton<IMacCommandRunner, MacCommandRunner>();
+        services.TryAddSingleton<IMacApplicationLocator, MacApplicationLocator>();
         services.TryAddSingleton<IMacPlatformUuid, IoregPlatformUuid>();
         services.TryAddSingleton(sp => new MacMachineIdentity(sp.GetRequiredService<IMacPlatformUuid>()));
         services.TryAddSingleton<IMacWorkspaceNative, CocoaWorkspaceNative>();
         services.TryAddSingleton<IMacAccessibilityNative, MacAccessibilityNative>();
+        services.TryAddSingleton<IMacInputMonitoringNative, MacInputMonitoringNative>();
         services.TryAddSingleton<MacAccessibilityEvents>();
         services.TryAddSingleton<IMacAccessibilityEvents>(sp =>
             sp.GetRequiredService<MacAccessibilityEvents>());
@@ -59,7 +62,6 @@ public static class MacAgentHostExtensions
         services.TryAddSingleton<MacDesktopSettings>(sp =>
             new MacDesktopSettings(sp.GetRequiredService<MacConfigManager>()).Initialize());
         services.TryAddSingleton<IDesktopSettings>(sp => sp.GetRequiredService<MacDesktopSettings>());
-        services.Replace(ServiceDescriptor.Singleton<IInputEventRecordingPolicy, MacInputEventRecordingPolicy>());
         services.TryAddSingleton<IInputActivitySignal, InputActivitySignal>();
         services.TryAddSingleton<IDeviceIdentity, MacDeviceIdentity>();
         services.TryAddSingleton<IMacIconTools, MacIconTools>();
@@ -82,6 +84,11 @@ public static class MacAgentHostExtensions
 
         services.TryAddSingleton(sp => new InputEventBuffer(sp.GetRequiredService<IClock>()));
         services.TryAddSingleton<IUploadSource<InputEventItem>>(sp => sp.GetRequiredService<InputEventBuffer>());
+        services.TryAddSingleton<MacInputEventCollector>();
+        services.TryAddSingleton<IMacInputMonitoringEvents>(sp =>
+            sp.GetRequiredService<MacInputEventCollector>());
+        services.Replace(ServiceDescriptor.Singleton<IInputEventRecordingPolicy>(sp =>
+            sp.GetRequiredService<MacInputEventCollector>()));
         services.TryAddSingleton(sp =>
         {
             var root = sp.GetRequiredService<MacAgentPaths>().DataDirectory;
@@ -112,6 +119,7 @@ public static class MacAgentHostExtensions
 
         // AddHeartbeatHub registers workers first. Monitor stays last so its terminal
         // snapshot is available before UploadWorker performs the final drain.
+        services.AddHostedService(sp => sp.GetRequiredService<MacInputEventCollector>());
         services.AddHostedService<AppMonitorService>();
         return services;
     }

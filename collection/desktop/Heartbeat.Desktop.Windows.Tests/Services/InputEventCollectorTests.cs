@@ -16,12 +16,25 @@ public sealed class InputEventCollectorTests
         public event Action<WindowsNativeKeyObservation>? KeyUp;
         public event Action<short>? MouseButton;
         public event Action<int>? Scroll;
-        public void StartHook() { }
-        public void StopHook() { }
+        public int StartCount { get; private set; }
+        public int StopCount { get; private set; }
+        public void StartHook() => StartCount++;
+        public void StopHook() => StopCount++;
         public void RaiseKeyDown(WindowsNativeKeyObservation value) => KeyDown?.Invoke(value);
         public void RaiseKeyUp(WindowsNativeKeyObservation value) => KeyUp?.Invoke(value);
         public void RaiseMouse(short value) => MouseButton?.Invoke(value);
         public void RaiseScroll(int value) => Scroll?.Invoke(value);
+    }
+
+    private sealed class MutableInteractionPolicy(bool enabled) : IInteractionSignalPolicy
+    {
+        public bool Enabled { get; private set; } = enabled;
+        public event Action<bool>? Changed;
+        public void Set(bool value)
+        {
+            Enabled = value;
+            Changed?.Invoke(value);
+        }
     }
 
     private sealed class FakeSignal : IInputActivitySignal
@@ -54,7 +67,12 @@ public sealed class InputEventCollectorTests
         var signal = new FakeSignal();
         var policy = new MutablePolicy(false);
         var buffer = new InputEventBuffer(new FixedClock());
-        using var collector = new InputEventCollector(hook, signal, policy, buffer);
+        using var collector = new InputEventCollector(
+            hook,
+            signal,
+            new MutableInteractionPolicy(true),
+            policy,
+            buffer);
         await collector.StartAsync(CancellationToken.None);
 
         hook.RaiseMouse(1);
@@ -71,7 +89,12 @@ public sealed class InputEventCollectorTests
         var hook = new FakeHook();
         var policy = new MutablePolicy(true);
         var buffer = new InputEventBuffer(new FixedClock());
-        using var collector = new InputEventCollector(hook, new FakeSignal(), policy, buffer);
+        using var collector = new InputEventCollector(
+            hook,
+            new FakeSignal(),
+            new MutableInteractionPolicy(true),
+            policy,
+            buffer);
         await collector.StartAsync(CancellationToken.None);
         var keyA = new WindowsNativeKeyObservation(0x41, 0x1E, false);
 
@@ -85,5 +108,28 @@ public sealed class InputEventCollectorTests
         Assert.Equal(2, events.Count);
         Assert.All(events, item => Assert.Equal(InputCodeSets.HeartbeatKeyPositionV1, item.CodeSet));
         Assert.All(events, item => Assert.Equal((short)InputKeyPosition.KeyA, item.Code));
+    }
+
+    [Fact]
+    public async Task HookRunsOnlyWhileAtLeastOneInputCapabilityNeedsIt()
+    {
+        var hook = new FakeHook();
+        var interaction = new MutableInteractionPolicy(false);
+        var recording = new MutablePolicy(false);
+        using var collector = new InputEventCollector(
+            hook,
+            new FakeSignal(),
+            interaction,
+            recording,
+            new InputEventBuffer(new FixedClock()));
+
+        await collector.StartAsync(CancellationToken.None);
+        Assert.Equal(0, hook.StartCount);
+
+        interaction.Set(true);
+        Assert.Equal(1, hook.StartCount);
+
+        interaction.Set(false);
+        Assert.Equal(1, hook.StopCount);
     }
 }

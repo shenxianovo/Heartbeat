@@ -5,6 +5,8 @@ using Heartbeat.Collection.Hub.Http;
 using Heartbeat.Collection.Hub.Presence;
 using Heartbeat.Collection.Hub.Upload;
 using Heartbeat.Desktop.Mac.Observations;
+using Heartbeat.Desktop.Mac.Input;
+using Heartbeat.Desktop.Mac.Native;
 
 namespace Heartbeat.Desktop.Mac;
 
@@ -16,6 +18,8 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
     private readonly IClientCompatibilityStatus _compatibility;
     private readonly IUploadStatus _uploads;
     private readonly IMacAccessibilityEvents _accessibility;
+    private readonly IMacInputMonitoringEvents _inputMonitoring;
+    private readonly IMacApplicationLocator _applicationLocator;
 
     public MacDesktopState(
         MacConfigManager config,
@@ -23,7 +27,9 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
         IMacLoginStart loginStart,
         IClientCompatibilityStatus compatibility,
         IUploadStatus uploads,
-        IMacAccessibilityEvents accessibility)
+        IMacAccessibilityEvents accessibility,
+        IMacInputMonitoringEvents inputMonitoring,
+        IMacApplicationLocator applicationLocator)
     {
         _config = config;
         _collection = collection;
@@ -31,11 +37,14 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
         _compatibility = compatibility;
         _uploads = uploads;
         _accessibility = accessibility;
+        _inputMonitoring = inputMonitoring;
+        _applicationLocator = applicationLocator;
         _config.ConfigChanged += OnConfigChanged;
         _collection.CurrentActivityChanged += OnCurrentActivityChanged;
         _compatibility.Changed += OnCompatibilityChanged;
         _uploads.Changed += Publish;
         _accessibility.CapabilityChanged += OnAccessibilityCapabilityChanged;
+        _inputMonitoring.CapabilityChanged += OnInputMonitoringCapabilityChanged;
     }
 
     public DesktopStateSnapshot Current => BuildSnapshot();
@@ -65,14 +74,44 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
                 collector.Enabled = enabled;
         });
 
-    // Issue 09 intentionally has no Input Monitoring. Ticket 12 owns enabling this setting.
-    public void SetInputEventRecordingEnabled(bool enabled) { }
+    public void SetSystemCapabilityEnabled(SystemCapability capability, bool enabled)
+    {
+        switch (capability)
+        {
+            case SystemCapability.WindowActivity:
+                _accessibility.SetEnabledFromUser(enabled);
+                break;
+            case SystemCapability.InteractionSignal:
+                _inputMonitoring.SetInteractionSignalEnabledFromUser(enabled);
+                break;
+            case SystemCapability.InputEventRecording:
+                _inputMonitoring.SetInputEventRecordingEnabledFromUser(enabled);
+                break;
+        }
+    }
 
-    public void SetWindowTitleObservationEnabled(bool enabled) =>
-        _accessibility.SetEnabledFromUser(enabled);
+    public void RecoverSystemCapability(SystemCapability capability)
+    {
+        if (capability is SystemCapability.WindowActivity
+            or SystemCapability.InteractionSignal
+            or SystemCapability.InputEventRecording)
+        {
+            // Prepare the exact running app/binary in Finder before System Settings
+            // becomes frontmost, so the user can add or drag it into the privacy list.
+            _applicationLocator.RevealFromUser();
+        }
 
-    public void OpenWindowTitlePermissionSettings() =>
-        _accessibility.OpenPermissionSettingsFromUser();
+        if (capability == SystemCapability.WindowActivity)
+            _accessibility.OpenPermissionSettingsFromUser();
+        else if (capability is SystemCapability.InteractionSignal or SystemCapability.InputEventRecording)
+            _inputMonitoring.OpenPermissionSettingsFromUser();
+    }
+
+    public void RevealSystemCapabilityApplication(SystemCapability capability)
+    {
+        if (capability != SystemCapability.ForegroundApp)
+            _applicationLocator.RevealFromUser();
+    }
 
     public void SetThemeMode(DesktopThemeMode mode) =>
         _config.Update(config => config.ThemeMode = mode.ToString());
@@ -86,9 +125,7 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
                 config.ApiKey,
                 config.DeviceName,
                 config.UploadIntervalMinutes,
-                false,
-                ParseThemeMode(config.ThemeMode),
-                config.WindowTitleObservationEnabled),
+                ParseThemeMode(config.ThemeMode)),
             _loginStart.IsEnabled,
             config.Collectors.ToDictionary(
                 pair => pair.Key,
@@ -97,40 +134,54 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
             new Dictionary<string, DateTimeOffset>(_collection.SourceLastSeen, StringComparer.OrdinalIgnoreCase),
             _compatibility.Current,
             _uploads.Snapshot,
-            BuildCapabilities());
+            BuildCapabilities(config));
     }
 
-    private DesktopCapabilitySnapshot BuildCapabilities() => _accessibility.CapabilityState switch
+    private DesktopCapabilitySnapshot BuildCapabilities(MacAgentConfig config) => new(
+        new Dictionary<SystemCapability, SystemCapabilityState>
+        {
+            [SystemCapability.ForegroundApp] = new(null, CapabilityAvailability.Available),
+            [SystemCapability.WindowActivity] = WindowActivityState(config.WindowTitleObservationEnabled),
+            [SystemCapability.InteractionSignal] = InteractionSignalState(config),
+            [SystemCapability.InputEventRecording] = InputEventRecordingState(config.InputEventRecordingEnabled),
+        });
+
+    private SystemCapabilityState WindowActivityState(bool requested) => new(
+        requested,
+        !requested ? CapabilityAvailability.Available : _accessibility.CapabilityState switch
+        {
+            MacAccessibilityCapabilityState.Available => CapabilityAvailability.Available,
+            MacAccessibilityCapabilityState.PermissionRequired => CapabilityAvailability.PermissionRequired,
+            _ => CapabilityAvailability.Unavailable,
+        },
+        requested && _accessibility.CapabilityState == MacAccessibilityCapabilityState.PermissionRequired,
+        requested && _accessibility.CapabilityState == MacAccessibilityCapabilityState.PermissionRequired);
+
+    private SystemCapabilityState InteractionSignalState(MacAgentConfig config) => new(
+        config.InteractionSignalEnabled,
+        !config.InteractionSignalEnabled
+            ? CapabilityAvailability.Available
+            : !config.WindowTitleObservationEnabled
+                ? CapabilityAvailability.Paused
+                : InputMonitoringAvailability(),
+        config.InteractionSignalEnabled
+            && config.WindowTitleObservationEnabled
+            && _inputMonitoring.CapabilityState == MacInputMonitoringCapabilityState.PermissionRequired,
+        config.InteractionSignalEnabled
+            && config.WindowTitleObservationEnabled
+            && _inputMonitoring.CapabilityState == MacInputMonitoringCapabilityState.PermissionRequired);
+
+    private SystemCapabilityState InputEventRecordingState(bool requested) => new(
+        requested,
+        !requested ? CapabilityAvailability.Available : InputMonitoringAvailability(),
+        requested && _inputMonitoring.CapabilityState == MacInputMonitoringCapabilityState.PermissionRequired,
+        requested && _inputMonitoring.CapabilityState == MacInputMonitoringCapabilityState.PermissionRequired);
+
+    private CapabilityAvailability InputMonitoringAvailability() => _inputMonitoring.CapabilityState switch
     {
-        MacAccessibilityCapabilityState.Available => new DesktopCapabilitySnapshot(
-            CapabilityAvailability.Available,
-            CapabilityAvailability.Available,
-            CapabilityAvailability.Unavailable,
-            CapabilityAvailability.Unavailable,
-            "Accessibility 已授权：记录 focused-window 切换与原始窗口标题；同窗标题变化会在交互信号可用前忽略。",
-            WindowTitleObservationConfigurable: true),
-        MacAccessibilityCapabilityState.PermissionRequired => new DesktopCapabilitySnapshot(
-            CapabilityAvailability.Available,
-            CapabilityAvailability.PermissionRequired,
-            CapabilityAvailability.Unavailable,
-            CapabilityAvailability.Unavailable,
-            "窗口标题采集已启用，但 Accessibility 尚未授权；Heartbeat 正继续使用 App-only 模式。",
-            WindowTitleObservationConfigurable: true,
-            WindowTitlePermissionActionAvailable: true),
-        MacAccessibilityCapabilityState.Unavailable => new DesktopCapabilitySnapshot(
-            CapabilityAvailability.Available,
-            CapabilityAvailability.Unavailable,
-            CapabilityAvailability.Unavailable,
-            CapabilityAvailability.Unavailable,
-            "当前系统无法提供 Accessibility 窗口观察；Heartbeat 正继续使用 App-only 模式。",
-            WindowTitleObservationConfigurable: true),
-        _ => new DesktopCapabilitySnapshot(
-            CapabilityAvailability.Available,
-            CapabilityAvailability.Unavailable,
-            CapabilityAvailability.Unavailable,
-            CapabilityAvailability.Unavailable,
-            "App-only 模式无需 Accessibility；可按需启用窗口标题采集。",
-            WindowTitleObservationConfigurable: true),
+        MacInputMonitoringCapabilityState.Available => CapabilityAvailability.Available,
+        MacInputMonitoringCapabilityState.PermissionRequired => CapabilityAvailability.PermissionRequired,
+        _ => CapabilityAvailability.Unavailable,
     };
 
     private static DesktopThemeMode ParseThemeMode(string? value) =>
@@ -142,6 +193,7 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
     private void OnCurrentActivityChanged(CurrentActivity? _) => Publish();
     private void OnCompatibilityChanged(ClientCompatibilitySnapshot _) => Publish();
     private void OnAccessibilityCapabilityChanged(MacAccessibilityCapabilityState _) => Publish();
+    private void OnInputMonitoringCapabilityChanged(MacInputMonitoringCapabilityState _) => Publish();
     private void Publish() => Changed?.Invoke(BuildSnapshot());
 
     public void Dispose()
@@ -151,6 +203,7 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
         _compatibility.Changed -= OnCompatibilityChanged;
         _uploads.Changed -= Publish;
         _accessibility.CapabilityChanged -= OnAccessibilityCapabilityChanged;
+        _inputMonitoring.CapabilityChanged -= OnInputMonitoringCapabilityChanged;
         GC.SuppressFinalize(this);
     }
 }

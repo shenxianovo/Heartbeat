@@ -109,12 +109,6 @@ public sealed class MacDesktopSettings(MacConfigManager config) : IDesktopSettin
     }
 }
 
-public sealed class MacInputEventRecordingPolicy : IInputEventRecordingPolicy
-{
-    public bool Enabled => false;
-    public event Action<bool>? Changed { add { } remove { } }
-}
-
 public sealed class MacDeviceIdentity(
     MacConfigManager config,
     MacMachineIdentity machineIdentity) : IDeviceIdentity

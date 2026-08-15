@@ -62,29 +62,81 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public void SystemCollector_PresentsLocalInteractionSignalSeparatelyFromDurableInputRecording()
+    public void SystemCollector_OwnsCapabilityControlsAndKeepsRequestedIntentWhenPermissionIsBlocked()
     {
         var state = new FakeDesktopState
         {
             Current = DesktopStateSnapshot.Empty with
             {
-                Settings = DesktopSettingsSnapshot.Default with
+                Capabilities = new DesktopCapabilitySnapshot(new Dictionary<SystemCapability, SystemCapabilityState>
                 {
-                    InputEventRecordingEnabled = false
-                }
+                    [SystemCapability.ForegroundApp] = new(null, CapabilityAvailability.Available),
+                    [SystemCapability.WindowActivity] = new(true, CapabilityAvailability.PermissionRequired, RecoveryActionAvailable: true),
+                    [SystemCapability.InteractionSignal] = new(true, CapabilityAvailability.Paused),
+                    [SystemCapability.InputEventRecording] = new(false, CapabilityAvailability.Available),
+                })
             }
         };
 
         using var viewModel = TestViewModel.Create(state);
 
         var system = Assert.Single(viewModel.Collectors, item => item.IsSystem);
-        Assert.Equal("仅本地，不保存、不上传", system.InteractionSignalDescription);
-        Assert.True(system.CanToggleRecording);
-        Assert.False(system.RecordingEnabled);
+        Assert.False(system.IsExpanded);
+        Assert.Collection(
+            system.Capabilities,
+            capability => Assert.Equal(SystemCapability.ForegroundApp, capability.Id),
+            capability => Assert.Equal(SystemCapability.WindowActivity, capability.Id),
+            capability => Assert.Equal(SystemCapability.InteractionSignal, capability.Id),
+            capability => Assert.Equal(SystemCapability.InputEventRecording, capability.Id));
 
-        system.RecordingEnabled = true;
+        var windowActivity = Assert.Single(
+            system.Capabilities,
+            capability => capability.Id == SystemCapability.WindowActivity);
+        Assert.True(windowActivity.RequestedEnabled);
+        Assert.Equal("需要授权", windowActivity.StatusText);
+        Assert.True(windowActivity.ShowRecoveryAction);
 
-        Assert.Equal(true, state.LastInputEventRecordingValue);
+        windowActivity.RequestedEnabled = false;
+        windowActivity.RecoverCommand.Execute(null);
+
+        Assert.Equal((SystemCapability.WindowActivity, false), state.LastSystemCapabilityValue);
+        Assert.Equal(SystemCapability.WindowActivity, state.LastRecoveredSystemCapability);
+    }
+
+    [Fact]
+    public void PermissionBlockedCapability_ExplainsHowToAddAndLocateHeartbeat()
+    {
+        var state = new FakeDesktopState
+        {
+            Current = DesktopStateSnapshot.Empty with
+            {
+                Capabilities = new DesktopCapabilitySnapshot(new Dictionary<SystemCapability, SystemCapabilityState>
+                {
+                    [SystemCapability.ForegroundApp] = new(null, CapabilityAvailability.Available),
+                    [SystemCapability.WindowActivity] = new(
+                        true,
+                        CapabilityAvailability.PermissionRequired,
+                        RecoveryActionAvailable: true,
+                        ApplicationLocationActionAvailable: true),
+                    [SystemCapability.InteractionSignal] = new(false, CapabilityAvailability.Available),
+                    [SystemCapability.InputEventRecording] = new(false, CapabilityAvailability.Available),
+                })
+            }
+        };
+        using var viewModel = TestViewModel.Create(state);
+
+        var system = Assert.Single(viewModel.Collectors, item => item.IsSystem);
+        var capability = Assert.Single(
+            system.Capabilities,
+            item => item.Id == SystemCapability.WindowActivity);
+
+        Assert.True(capability.HasPermissionHelp);
+        Assert.Contains("左下角“+”", capability.PermissionHelpText);
+        Assert.True(capability.ShowApplicationLocationAction);
+
+        capability.RevealApplicationCommand.Execute(null);
+
+        Assert.Equal(SystemCapability.WindowActivity, state.LastRevealedSystemCapability);
     }
 
     [Fact]
@@ -159,7 +211,7 @@ public sealed class MainViewModelTests
         {
             Current = DesktopStateSnapshot.Empty with
             {
-                Settings = new DesktopSettingsSnapshot("old-key", "Workstation", 2, true),
+                Settings = new DesktopSettingsSnapshot("old-key", "Workstation", 2),
                 LoginStartEnabled = false
             }
         };
@@ -196,7 +248,7 @@ public sealed class MainViewModelTests
     {
         var initial = DesktopStateSnapshot.Empty with
         {
-            Settings = new DesktopSettingsSnapshot("old-key", "Desktop", 2, true)
+            Settings = new DesktopSettingsSnapshot("old-key", "Desktop", 2)
         };
         var state = new FakeDesktopState { Current = initial };
         using var viewModel = TestViewModel.Create(state);
@@ -253,41 +305,12 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public void CapabilityStates_ArePresentedFromThePlatformSnapshot()
+    public void OptionalSystemCapabilities_AreOffWithoutChangingTheForegroundBaseline()
     {
         var state = new FakeDesktopState
         {
             Current = DesktopStateSnapshot.Empty with
             {
-                Capabilities = new DesktopCapabilitySnapshot(
-                    CapabilityAvailability.Available,
-                    CapabilityAvailability.PermissionRequired,
-                    CapabilityAvailability.PermissionRequired,
-                    CapabilityAvailability.Unavailable,
-                    "需要授权后才能采集更深层活动")
-            }
-        };
-
-        using var viewModel = TestViewModel.Create(state);
-
-        Assert.Contains(viewModel.Capabilities, capability =>
-            capability.Name == "前台应用" && capability.Availability == CapabilityAvailability.Available);
-        Assert.Contains(viewModel.Capabilities, capability =>
-            capability.Name == "交互信号" && capability.Availability == CapabilityAvailability.PermissionRequired);
-        Assert.Equal("需要授权后才能采集更深层活动", viewModel.CapabilityMessage);
-    }
-
-    [Fact]
-    public void MacAppOnlyCapability_DoesNotOfferInputRecordingOrClaimInteractionSignal()
-    {
-        var state = new FakeDesktopState
-        {
-            Current = DesktopStateSnapshot.Empty with
-            {
-                Settings = DesktopSettingsSnapshot.Default with
-                {
-                    InputEventRecordingEnabled = false
-                },
                 Capabilities = DesktopCapabilitySnapshot.MacAppOnly
             }
         };
@@ -295,12 +318,13 @@ public sealed class MainViewModelTests
         using var viewModel = TestViewModel.Create(state);
 
         var system = Assert.Single(viewModel.Collectors, item => item.IsSystem);
-        Assert.False(system.CanToggleRecording);
-        Assert.Equal("App-only 模式下不可用", system.InteractionSignalDescription);
-        Assert.Contains(viewModel.Capabilities, item =>
-            item.Name == "前台应用" && item.Availability == CapabilityAvailability.Available);
-        Assert.Contains(viewModel.Capabilities, item =>
-            item.Name == "窗口活动" && item.Availability == CapabilityAvailability.Unavailable);
+        var foreground = Assert.Single(system.Capabilities, item => item.Id == SystemCapability.ForegroundApp);
+        var recording = Assert.Single(system.Capabilities, item => item.Id == SystemCapability.InputEventRecording);
+        Assert.False(foreground.HasToggle);
+        Assert.True(foreground.IsEffective);
+        Assert.True(recording.HasToggle);
+        Assert.False(recording.RequestedEnabled);
+        Assert.Equal("已关闭", recording.StatusText);
     }
 
     [Fact]
@@ -308,42 +332,44 @@ public sealed class MainViewModelTests
     {
         var initial = DesktopStateSnapshot.Empty with
         {
-            Settings = DesktopSettingsSnapshot.Default with
+            Capabilities = new DesktopCapabilitySnapshot(new Dictionary<SystemCapability, SystemCapabilityState>
             {
-                InputEventRecordingEnabled = false,
-                WindowTitleObservationEnabled = false
-            },
-            Capabilities = new DesktopCapabilitySnapshot(
-                CapabilityAvailability.Available,
-                CapabilityAvailability.Unavailable,
-                CapabilityAvailability.Unavailable,
-                CapabilityAvailability.Unavailable,
-                WindowTitleObservationConfigurable: true)
+                [SystemCapability.ForegroundApp] = new(null, CapabilityAvailability.Available),
+                [SystemCapability.WindowActivity] = new(false, CapabilityAvailability.Available),
+                [SystemCapability.InteractionSignal] = new(false, CapabilityAvailability.Available),
+                [SystemCapability.InputEventRecording] = new(false, CapabilityAvailability.Available),
+            })
         };
         var state = new FakeDesktopState { Current = initial };
         using var viewModel = TestViewModel.Create(state);
 
         var system = Assert.Single(viewModel.Collectors, item => item.IsSystem);
-        Assert.True(system.CanToggleWindowTitleObservation);
-        Assert.False(system.WindowTitleObservationEnabled);
+        var windowActivity = Assert.Single(
+            system.Capabilities,
+            item => item.Id == SystemCapability.WindowActivity);
+        Assert.True(windowActivity.HasToggle);
+        Assert.False(windowActivity.RequestedEnabled);
 
-        system.WindowTitleObservationEnabled = true;
+        windowActivity.RequestedEnabled = true;
 
-        Assert.Equal(true, state.LastWindowTitleObservationValue);
+        Assert.Equal((SystemCapability.WindowActivity, true), state.LastSystemCapabilityValue);
 
         state.Publish(initial with
         {
-            Settings = initial.Settings with { WindowTitleObservationEnabled = true },
-            Capabilities = initial.Capabilities with
+            Capabilities = new DesktopCapabilitySnapshot(new Dictionary<SystemCapability, SystemCapabilityState>
             {
-                FocusedWindowObservation = CapabilityAvailability.PermissionRequired,
-                WindowTitlePermissionActionAvailable = true
-            }
+                [SystemCapability.ForegroundApp] = new(null, CapabilityAvailability.Available),
+                [SystemCapability.WindowActivity] = new(true, CapabilityAvailability.PermissionRequired, true),
+                [SystemCapability.InteractionSignal] = new(false, CapabilityAvailability.Available),
+                [SystemCapability.InputEventRecording] = new(false, CapabilityAvailability.Available),
+            })
         });
 
-        Assert.True(system.ShowWindowTitlePermissionAction);
-        system.OpenWindowTitlePermissionSettingsCommand.Execute(null);
-        Assert.Equal(1, state.OpenWindowTitlePermissionSettingsCount);
+        Assert.True(windowActivity.RequestedEnabled);
+        Assert.Equal("需要授权", windowActivity.StatusText);
+        Assert.True(windowActivity.ShowRecoveryAction);
+        windowActivity.RecoverCommand.Execute(null);
+        Assert.Equal(SystemCapability.WindowActivity, state.LastRecoveredSystemCapability);
     }
 
     [Fact]

@@ -1,46 +1,52 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Heartbeat.Desktop.UI.Presentation;
 
 namespace Heartbeat.Desktop.UI.ViewModels;
 
 public partial class CollectorItemViewModel : ObservableObject
 {
+    private static readonly SystemCapability[] SystemCapabilityOrder =
+    [
+        SystemCapability.ForegroundApp,
+        SystemCapability.WindowActivity,
+        SystemCapability.InteractionSignal,
+        SystemCapability.InputEventRecording,
+    ];
+
     private readonly Action<string, bool>? _setEnabled;
-    private readonly Action<bool>? _setWindowTitleObservationEnabled;
-    private readonly Action? _openWindowTitlePermissionSettings;
-    private readonly Action<bool>? _setRecordingEnabled;
+    private readonly Action<SystemCapability, bool>? _setSystemCapabilityEnabled;
+    private readonly Action<SystemCapability>? _recoverSystemCapability;
+    private readonly Action<SystemCapability>? _revealSystemCapabilityApplication;
     private bool _suppressEnabled;
-    private bool _suppressWindowTitleObservation;
-    private bool _suppressRecording;
-    private bool _interactionSignalAvailable = true;
 
     public CollectorItemViewModel(
         string source,
         bool isSystem,
         Action<string, bool>? setEnabled,
-        Action<bool>? setWindowTitleObservationEnabled = null,
-        Action? openWindowTitlePermissionSettings = null,
-        Action<bool>? setRecordingEnabled = null)
+        Action<SystemCapability, bool>? setSystemCapabilityEnabled = null,
+        Action<SystemCapability>? recoverSystemCapability = null,
+        Action<SystemCapability>? revealSystemCapabilityApplication = null)
     {
         Source = source;
         IsSystem = isSystem;
         _setEnabled = setEnabled;
-        _setWindowTitleObservationEnabled = setWindowTitleObservationEnabled;
-        _openWindowTitlePermissionSettings = openWindowTitlePermissionSettings;
-        _setRecordingEnabled = setRecordingEnabled;
+        _setSystemCapabilityEnabled = setSystemCapabilityEnabled;
+        _recoverSystemCapability = recoverSystemCapability;
+        _revealSystemCapabilityApplication = revealSystemCapabilityApplication;
     }
 
     public string Source { get; }
     public bool IsSystem { get; }
     public bool IsExternal => !IsSystem;
     public bool CanToggle => !IsSystem;
-    public bool CanToggleWindowTitleObservation { get; private set; }
-    public bool ShowWindowTitlePermissionAction { get; private set; }
-    public bool CanToggleRecording { get; private set; }
-    public string InteractionSignalDescription => IsSystem
-        ? _interactionSignalAvailable
-            ? "仅本地，不保存、不上传"
-            : "App-only 模式下不可用"
-        : string.Empty;
+    public ObservableCollection<SystemCapabilityItemViewModel> Capabilities { get; } = [];
+    public bool HasCapabilities => Capabilities.Count > 0;
+
+    [ObservableProperty]
+    private bool _isExpanded;
+
+    public bool IsCollapsed => !IsExpanded;
 
     [ObservableProperty]
     private bool _isActive;
@@ -51,19 +57,22 @@ public partial class CollectorItemViewModel : ObservableObject
     [ObservableProperty]
     private bool _enabled = true;
 
-    [ObservableProperty]
-    private bool _recordingEnabled = true;
-
-    [ObservableProperty]
-    private bool _windowTitleObservationEnabled;
-
-    public string IconGlyph => char.ConvertFromUtf32(Source switch
+    public string Summary
     {
-        "system" => 0xE7F4,
-        "browser" => 0xE774,
-        "vscode" => 0xE943,
-        _ => 0xEA86,
-    });
+        get
+        {
+            var actionable = Capabilities.FirstOrDefault(item =>
+                item.RequestedEnabled && item.Availability is
+                    CapabilityAvailability.PermissionRequired or
+                    CapabilityAvailability.Unavailable or
+                    CapabilityAvailability.Paused);
+            if (actionable != null)
+                return $"{actionable.Name}{actionable.StatusText}";
+
+            var enabled = Capabilities.Count(item => item.HasToggle && item.RequestedEnabled);
+            return $"基础采集运行中 · {enabled} 项可选能力已启用";
+        }
+    }
 
     public string Description => Source switch
     {
@@ -79,6 +88,29 @@ public partial class CollectorItemViewModel : ObservableObject
         _suppressEnabled = false;
     }
 
+    public void SetSystemCapabilities(DesktopCapabilitySnapshot snapshot)
+    {
+        if (!IsSystem) return;
+
+        foreach (var capability in SystemCapabilityOrder)
+        {
+            var item = Capabilities.FirstOrDefault(existing => existing.Id == capability);
+            if (item == null)
+            {
+                item = new SystemCapabilityItemViewModel(
+                    capability,
+                    _setSystemCapabilityEnabled,
+                    _recoverSystemCapability,
+                    _revealSystemCapabilityApplication);
+                Capabilities.Add(item);
+            }
+            item.Update(snapshot.Get(capability));
+        }
+
+        OnPropertyChanged(nameof(HasCapabilities));
+        OnPropertyChanged(nameof(Summary));
+    }
+
     partial void OnEnabledChanged(bool value)
     {
         if (!_suppressEnabled)
@@ -91,48 +123,5 @@ public partial class CollectorItemViewModel : ObservableObject
         OnPropertyChanged(nameof(IsInactive));
     }
 
-    public void SetRecordingEnabledSilently(bool value)
-    {
-        _suppressRecording = true;
-        RecordingEnabled = value;
-        _suppressRecording = false;
-    }
-
-    public void SetWindowTitleObservationEnabledSilently(bool value)
-    {
-        _suppressWindowTitleObservation = true;
-        WindowTitleObservationEnabled = value;
-        _suppressWindowTitleObservation = false;
-    }
-
-    public void SetSystemCapabilities(
-        bool interactionSignalAvailable,
-        bool inputRecordingAvailable,
-        bool windowTitleObservationConfigurable,
-        bool windowTitlePermissionActionAvailable)
-    {
-        _interactionSignalAvailable = interactionSignalAvailable;
-        CanToggleWindowTitleObservation = IsSystem && windowTitleObservationConfigurable;
-        ShowWindowTitlePermissionAction = IsSystem && windowTitlePermissionActionAvailable;
-        CanToggleRecording = IsSystem && inputRecordingAvailable;
-        OnPropertyChanged(nameof(InteractionSignalDescription));
-        OnPropertyChanged(nameof(CanToggleWindowTitleObservation));
-        OnPropertyChanged(nameof(ShowWindowTitlePermissionAction));
-        OnPropertyChanged(nameof(CanToggleRecording));
-    }
-
-    partial void OnWindowTitleObservationEnabledChanged(bool value)
-    {
-        if (!_suppressWindowTitleObservation)
-            _setWindowTitleObservationEnabled?.Invoke(value);
-    }
-
-    [CommunityToolkit.Mvvm.Input.RelayCommand]
-    private void OpenWindowTitlePermissionSettings() => _openWindowTitlePermissionSettings?.Invoke();
-
-    partial void OnRecordingEnabledChanged(bool value)
-    {
-        if (!_suppressRecording)
-            _setRecordingEnabled?.Invoke(value);
-    }
+    partial void OnIsExpandedChanged(bool value) => OnPropertyChanged(nameof(IsCollapsed));
 }

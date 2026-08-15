@@ -36,14 +36,26 @@ presence 通道：周期 keepalive（活性，间隔为代码常量、不进配�
 _Avoid_: Status Upload（旧名，只描述了周期维度）
 
 **Interaction Signal（交互信号）**:
-只存在于本机内存中的最近点击信号，用于同窗标题变化的噪声门控；不持久化、不上传。它与 InputEvent Recording 可以共享底层平台 hook 或系统权限，但启用交互信号不代表允许保存输入事件。
+只存在于本机内存中的最近点击信号，用于同窗标题变化的噪声门控；不持久化、不上传。它是缺少专用 Collector 时的可选 fallback，Windows 与 macOS 都由用户独立开关；UI 使用直白名称“点击辅助判断”并说明其 fallback 与本地瞬时性。它与 InputEvent Recording 可以共享底层平台 hook 或系统权限，但启用交互信号不代表允许保存输入事件。
 _Avoid_: InputEvent（后者是持久化并上传的事实流）
+
+**前台应用采集（Foreground App Collection）**:
+system 采集器不可关闭的基线观测深度：记录当前前台 AppIdentity 与 away 转场。即使所有可选深度能力关闭，system 仍以该基线持续工作。
+_Avoid_: 把它呈现为 system 总开关或可关闭的采集能力
+
+**窗口活动采集（Window Activity Collection）**:
+system 采集器的一项可选观测深度，统一包含 focused-window 切换与原始窗口标题观测。同窗标题变化是否切段由 Interaction Signal 的点击门控决定，不影响 AppIdentity 激活或 focused-window 切换。
+_Avoid_: 把聚焦窗口与标题拆成两个用户能力开关
+
+**采集能力（Collection Capability）**:
+某个 Collector 拥有的一项用户可理解观测深度。固定基线没有开关；可选能力把用户的启用意图与实际运行状态分开，权限缺失、撤销或依赖未满足会暂停能力，但不改写用户意图。
+_Avoid_: 用一个 bool 同时表示用户开关、权限与实际可用性
 
 **Deactivate（停用采集器）**:
 用户在共享桌面 UI 翻 enabled=false，双层执行。**礼貌层（采集器侧）**：采集器 `GET /v1/collectors/{source}/config` 见 `enabled:false` 主动停采（省流量）。**强制层（hub 侧）**：hub 对被停用 Source 的 `POST /v1/segments` 返回 403，段被丢弃——这是 loopback 无鉴权信任模型下唯一的准入闸门，采集器有 bug/第三方/装死时的兜底，不可省。Agent 够不着其他进程里的采集器，"停用"永远是 hub 侧行为。config 下行本版仅 `{enabled}`，设置项字段将来往响应里加（不引入 schema registry，ADR-017 §5）。采集器管理 UI 位于共享 Avalonia presentation（本机采集层事实，不进 Dashboard）。
 
 **采集器页（Collector page）**:
-共享桌面 UI 中管理采集器的页面，逐采集器展示 **Active**（管道通不通，只读）与 **enabled**（用户开关），并容纳采集器设置。可管理性**分级**：外部采集器条目带 enable 开关；system 采集器不可停用，但提供独立的 InputEvent Recording 开关，关闭后 hook 与 Interaction Signal 仍运行，durable input buffer/cache 不再 drain。条目模型 = 身份 + Active + 零或多个控件，天然容纳两类。
+共享桌面 UI 中管理采集器的页面，逐采集器展示 **Active**（管道通不通，只读）与 **enabled**（用户开关），并容纳采集器设置。可管理性**分级**：外部采集器条目带 enable 开关；system 采集器不可停用，前台应用采集作为无开关的固定基线，其他可选观测深度作为独立采集能力管理。每项能力的开关、实际状态、权限恢复动作与说明都归属该 Collector 条目，不另建脱离所有者的全局“采集能力”区块。窗口活动采集是一个用户能力，不把 focused-window 切换与原始标题拆成两个开关。条目模型 = 身份 + Active + 零或多个能力，天然容纳两类。
 _Avoid_: 采集器栏、Collector panel
 
 **Setup**:
