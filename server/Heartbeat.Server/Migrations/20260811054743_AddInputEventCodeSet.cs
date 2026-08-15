@@ -15,16 +15,12 @@ namespace Heartbeat.Server.Migrations
                 table: "InputEvents",
                 type: "character varying(64)",
                 maxLength: 64,
-                nullable: true);
+                nullable: false,
+                defaultValue: "windows-vk-v1");
 
             // ADR-012/035: every row that predates CodeSet is truthful raw Windows VK data.
-            // Tag it in place without rewriting Code, then make the new strict field required.
-            migrationBuilder.Sql("""
-                UPDATE "InputEvents"
-                SET "CodeSet" = 'windows-vk-v1'
-                WHERE "CodeSet" IS NULL;
-                """);
-
+            // PostgreSQL can add a constant-default column without rewriting the historical
+            // table. Drop that temporary default immediately so new writes must stay explicit.
             migrationBuilder.AlterColumn<string>(
                 name: "CodeSet",
                 table: "InputEvents",
@@ -34,7 +30,7 @@ namespace Heartbeat.Server.Migrations
                 oldClrType: typeof(string),
                 oldType: "character varying(64)",
                 oldMaxLength: 64,
-                oldNullable: true);
+                oldDefaultValue: "windows-vk-v1");
         }
 
         /// <inheritdoc />

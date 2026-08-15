@@ -68,4 +68,30 @@ public sealed class InputEventMigrationTests(PostgresContainerFixture fixture) :
             Assert.Equal(timestamp, input.Timestamp);
         }
     }
+
+    [Fact]
+    public async Task Migration_DoesNotRewriteTheHistoricalInputEventTable()
+    {
+        using (var db = CreateDbContext())
+        {
+            await db.GetService<IMigrator>().MigrateAsync("20260811035550_CompleteAppConsumersAndAdminMerge");
+            await db.Database.ExecuteSqlRawAsync(
+                """
+                CREATE FUNCTION delay_input_event_update() RETURNS trigger AS $trigger$
+                BEGIN
+                    PERFORM pg_sleep(1.5);
+                    RETURN NULL;
+                END;
+                $trigger$ LANGUAGE plpgsql;
+
+                CREATE TRIGGER delay_input_event_update
+                BEFORE UPDATE ON "InputEvents"
+                FOR EACH STATEMENT
+                EXECUTE FUNCTION delay_input_event_update();
+                """);
+
+            db.Database.SetCommandTimeout(TimeSpan.FromSeconds(1));
+            await db.Database.MigrateAsync();
+        }
+    }
 }
