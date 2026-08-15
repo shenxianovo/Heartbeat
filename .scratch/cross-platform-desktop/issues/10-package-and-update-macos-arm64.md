@@ -10,7 +10,7 @@
 - [x] Release builds intentionally omit Developer ID signing and Apple notarization, and installation guidance explains the first-launch Gatekeeper approval step.
 - [x] The application installs per user under `~/Applications` and normal installation and Update flows do not require administrator privileges.
 - [x] Velopack produces the macOS Setup/Release metadata and applies Updates through the shared update lifecycle without stopping collection before an update is ready to apply.
-- [ ] GitHub Releases contains the expected macOS artifacts alongside Windows artifacts and supports the configured stable update channel.
+- [x] GitHub Releases contains the expected macOS artifacts alongside Windows artifacts and supports the configured stable update channel.
 - [x] macOS packaging does not require Apple Developer secrets or signing variables.
 - [x] macOS packaging and release verification run on a macOS CI runner using Apple tooling.
 - [x] Installation and Update preserve the bundle identifier and per-user location; permission continuity is treated as a real-device observation, not a guarantee.
@@ -32,3 +32,8 @@
 - CI no longer consumes Apple Developer certificates, identities, passwords, Team ID, keychain secrets, or notarization profiles.
 - The final real-device acceptance must record Gatekeeper behavior and whether Accessibility/Input Monitoring remain granted or require reauthorization across a concrete `vA -> vB` update.
 - A local Velopack 1.2.0 rehearsal produced unsigned Setup/Portable/full/feed artifacts, an arm64 `Heartbeat.app` with `UpdateMac` and `sq.version`, and a per-user installer. The app host reported an ad-hoc signature with no TeamIdentifier and the installer reported no signature, matching ADR-039. The Release workflow's same structural checks now pass locally.
+
+### 2026-08-15 — v4.0.0 Release published
+
+- The tag-first Release workflow completed successfully before the strict backend was pushed to `main`. Windows x64, Windows arm64, and unsigned macOS arm64 jobs all passed and published Setup, Portable, full/delta packages where a baseline existed, and stable-channel metadata to GitHub Release `v4.0.0`.
+- The remaining clean-install/Update checkbox is deliberately open: CI proves package structure, while Gatekeeper approval, installed-app relaunch, and TCC behavior require the real `vA -> vB` device rehearsal in Issue 13.

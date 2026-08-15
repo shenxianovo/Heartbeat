@@ -6,8 +6,8 @@
 
 **Status:** ready-for-agent
 
-- [ ] A releasable strict-contract Windows client is available before Analytics begins rejecting the legacy AppName contract.
-- [ ] The expected rollout window and observed collection rate fit within configured segment and input-event cache capacity, with a documented operator check before enforcement.
+- [x] A releasable strict-contract Windows client is available before Analytics begins rejecting the legacy AppName contract.
+- [x] The expected rollout window and observed collection rate fit within configured segment and input-event cache capacity, with a documented operator check before enforcement.
 - [ ] In a server-first rehearsal, an old client receives update-required responses, retains new activity locally without a retry storm, and clearly prompts for Update.
 - [ ] After Update, the client atomically migrates legacy segment/input caches, preserves segment IdentityKey and raw historical input Codes, tags the correct CodeSets, and uploads all valid cached records exactly once semantically.
 - [ ] Invalid legacy records are isolated as dead letters while valid neighbors continue, and restarting the Agent cannot reintroduce an endless rejection loop.
@@ -39,4 +39,11 @@
 - AppIdentity expansion is complete for all system segments. One historical browser segment remains without AppIdentity, which the plugin contract permits because association is optional. All Windows input rows are `windows-vk-v1`; all current Mac input rows are `heartbeat-key-position-v1`. Chrome, Feishu, Heartbeat, QQ, and VS Code each have Windows and macOS identities mapped to one App and have real segment history on both platforms.
 - Historical quality findings are preserved rather than mutated: six exact duplicate system rows exist on device 2 (five on 2026-03-30, one on 2026-06-14); old system tracks double-count 55.992 hours on device 1 and 18.039 hours on device 2 because of overlaps, while devices 3 and 4 have zero system-track overlap. Browser tracks may overlap by design. Thirty-eight expanded Windows rows retain a stale legacy `AppId` after normalized-identity collision handling, but their authoritative `AppIdentityId -> App` mapping is valid and all product consumers use that path.
 - Capacity was checked against observed history. The 20,000-segment cache covers at least 6.7 days at the worst observed system-segment day, but the 100,000-input cache covers only 2.5 days at the worst observed Windows input day (3.3 days on the other high-volume Windows device). Until capacity changes, the operational server-first rejection window should target no more than 48 hours; the checklist remains open until the maintainer accepts a rollout window.
-- Local unsigned packaging and complete .NET regression passed: Velopack 1.2.0 generated Setup/Portable/full/feed artifacts and the expected updater payload, and all 635 .NET tests passed. Still outstanding are an actual combined GitHub Release, a real old-Windows-client 426/cache/migrate/replay rehearsal, Windows device smoke, and a real installed macOS `vA -> vB` Gatekeeper/TCC update rehearsal.
+- Local unsigned packaging and complete .NET regression passed: Velopack 1.2.0 generated Setup/Portable/full/feed artifacts and the expected updater payload, and all 635 .NET tests passed. The combined Release was subsequently published as recorded below; still outstanding are a real old-Windows-client 426/cache/migrate/replay rehearsal, Windows device smoke, and a real installed macOS `vA -> vB` Gatekeeper/TCC update rehearsal.
+
+### 2026-08-15 — v4.0.0 client published before strict deployment
+
+- Commit `5bb9778` was tagged with annotated tag `v4.0.0` and the tag was pushed before `main`, so the desktop Release became available before the production backend could receive the strict protocol changes.
+- GitHub Actions run `31862008068` completed successfully for Windows x64, Windows arm64, unsigned macOS arm64, and the combined Release job. The public Release contains platform Setup/Portable packages, full packages, Windows deltas from v3.5.0, and each stable-channel feed.
+- The Release body now uses the curated annotated-tag message, with 46 commit subjects inside a collapsed details section. The workflow explicitly fetches the remote annotated tag object into an isolated ref so future checkout behavior cannot silently replace the curated message with a fallback.
+- The accepted enforcement target is at most 48 hours from strict backend deployment to old-client Update, below the observed worst-case 2.5-day input-cache capacity. Operators must monitor 426 and cache/dead-letter status during that window.
