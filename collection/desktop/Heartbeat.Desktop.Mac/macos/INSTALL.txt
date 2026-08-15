@@ -3,3 +3,5 @@ Heartbeat is a per-user menu-bar application.
 This Setup installs Heartbeat under ~/Applications. Ordinary Updates can replace the app there without an administrator prompt.
 
 After installation, Heartbeat launches automatically and continues collecting while its settings window is closed.
+
+This build is not notarized. If macOS blocks the first launch, open System Settings > Privacy & Security, find the Heartbeat warning, and choose Open Anyway. Subsequent Velopack updates keep the same application location and bundle identifier, but macOS may still ask you to confirm permissions again.

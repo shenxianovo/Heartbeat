@@ -1,20 +1,9 @@
-# macOS Release prerequisites
+# macOS Release notes
 
-The `macos-release` job runs only for a version tag and is attached to the protected `release` GitHub environment. Configure that environment before the first public Release and require reviewer approval.
+The `macos-release` job runs for version tags and publishes an unsigned Apple Silicon Release. It does not require Apple Developer certificates, notarization credentials, a protected GitHub environment, or macOS-specific secrets.
 
-Environment secrets:
+Velopack still produces the per-user Setup package, portable archive, full and (when a previous Release is available) delta packages, and stable-channel feed. The shared client update lifecycle continues to discover, download, apply, and relaunch from GitHub Releases.
 
-- `MACOS_APP_CERTIFICATE_BASE64`: base64 Developer ID Application `.p12`
-- `MACOS_INSTALLER_CERTIFICATE_BASE64`: base64 Developer ID Installer `.p12`
-- `MACOS_CERTIFICATE_PASSWORD`: password shared by the imported `.p12` files
-- `APPLE_ID`: Apple account used by `notarytool`
-- `APPLE_APP_PASSWORD`: app-specific password for that account
-- `APPLE_TEAM_ID`: Apple Developer team identifier
-- `MACOS_KEYCHAIN_PASSWORD`: ephemeral CI keychain password
+Because the application has no Developer ID identity and is not notarized, first installation on a downloaded build requires the user to allow Heartbeat in macOS Privacy & Security. Gatekeeper acceptance and Accessibility/Input Monitoring continuity are operating-system behavior, not guarantees provided by Velopack. Before promoting a Release, rehearse a real `vA -> vB` update on Apple Silicon and record whether either permission needs to be granted again.
 
-Environment variables:
-
-- `MACOS_APP_SIGN_IDENTITY`: `Developer ID Application: ...` certificate subject
-- `MACOS_INSTALLER_SIGN_IDENTITY`: `Developer ID Installer: ...` certificate subject
-
-The workflow materializes credentials only in the runner temporary directory, packages and verifies the Release, and deletes the temporary keychain in an `always()` cleanup step. Do not commit certificates, passwords, notary profiles, or generated unsigned Release directories.
+Do not commit generated Release directories. See [ADR-039](../../../../docs/adr/039-unsigned-macos-velopack-release.md) for the accepted trust and update tradeoff.

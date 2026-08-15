@@ -16,7 +16,7 @@ Analytics 将 App 定义为跨平台产品，并以 AppIdentity 保存平台可�
 
 协议升级采用严格切换：服务端不长期兼容旧 `AppName` 契约；新版 Agent 在本地原子升级旧缓存，保留旧活动 IdentityKey，并把旧输入事件标记为 `windows-vk-v1`。上传流区分可重试失败与永久坏记录，通过 dead-letter 保证数据不静默蒸发。
 
-桌面 UI 统一迁移到 Avalonia。macOS 作为菜单栏 accessory app 运行，不常驻 Dock，按功能启用时分别请求 Accessibility 与 Input Monitoring。拒绝权限时 Agent 继续以较浅观测深度工作。macOS 首发只支持 Apple Silicon，使用 Developer ID 签名、公证、GitHub Releases 和每用户安装更新。
+桌面 UI 统一迁移到 Avalonia。macOS 作为菜单栏 accessory app 运行，不常驻 Dock，按功能启用时分别请求 Accessibility 与 Input Monitoring。拒绝权限时 Agent 继续以较浅观测深度工作。macOS 首发只支持 Apple Silicon，通过 GitHub Releases 提供无 Developer ID 签名/公证的每用户安装包，并保留 Velopack 自动更新；首次运行接受由用户在“隐私与安全性”中手动放行。
 
 ## User Stories
 
@@ -79,11 +79,11 @@ Analytics 将 App 定义为跨平台产品，并以 AppIdentity 保存平台可�
 57. As a Heartbeat owner, I want the server-first cutover to buffer old-client activity locally, so that a short upload interruption does not lose work.
 58. As a release operator, I want the new Windows client available before enforcing the new protocol, so that users can update immediately.
 59. As a release operator, I want cache capacity verified against the expected upgrade window, so that strict cutover cannot overflow local storage.
-60. As a Mac user, I want a signed and notarized Apple Silicon package, so that macOS can install Heartbeat without untrusted-app warnings.
+60. As a Mac user, I want an Apple Silicon package with explicit Gatekeeper instructions, so that I can install the unsigned build without giving up automatic updates.
 61. As a Mac user, I want Heartbeat installed per user under `~/Applications`, so that updates normally do not require administrator privileges.
 62. As a Mac user, I want updates delivered from GitHub Releases, so that Windows and Mac use the same release source.
-63. As a Mac user, I want updates to preserve a stable bundle identifier and code signature, so that macOS permissions survive ordinary upgrades.
-64. As a release operator, I want macOS packaging performed on a macOS runner, so that signing, product building, and notarization use Apple tooling.
+63. As a Mac user, I want updates to preserve a stable bundle identifier and install location, so that permission continuity can be tested honestly across ordinary upgrades.
+64. As a release operator, I want macOS packaging performed on a macOS runner, so that native product building, packaging, and release verification use Apple tooling.
 65. As a developer, I want Windows and Mac platform adapters to translate native events into one semantic contract, so that the state machine is tested once.
 66. As a developer, I want hub runtime code independent of desktop concepts, so that desktop and headless hub instances can reuse it safely.
 67. As a developer, I want desktop state machines independent of operating-system APIs, so that platform adapters stay thin.
@@ -120,7 +120,7 @@ Analytics 将 App 定义为跨平台产品，并以 AppIdentity 保存平台可�
 - Perform the strict rollout server first. Old clients temporarily accumulate local cache until the update is installed; the updated Agent migrates and retransmits it.
 - Migrate App product knowledge authoritatively: App-related Strand Matchers, Muted Matchers, Recurrence Probes, Device Current Activity, and other canonical product references must retain meaning. Derived question caches are invalidated and regenerated; historical Recap prose remains unchanged.
 - macOS uses `IOPlatformUUID` as its stable machine identity; Windows retains `MachineGuid`. The domain promises a platform-native stable machine identifier, not identical reset behavior across operating systems.
-- macOS distribution is direct rather than Mac App Store. Initial builds target `osx-arm64`, use a stable bundle identifier, Developer ID signing, hardened runtime entitlements, notarization, GitHub Releases, Velopack updates, and per-user installation under `~/Applications`.
+- macOS distribution is direct rather than Mac App Store. Initial builds target `osx-arm64`, use a stable bundle identifier, GitHub Releases, Velopack updates, and per-user installation under `~/Applications`, but intentionally omit Developer ID signing and notarization. First launch may require manual Gatekeeper approval; see ADR-039.
 - Do not introduce a background daemon/UI split, a second long-lived UI implementation, or a nested hub topology.
 
 ## Testing Decisions
@@ -136,8 +136,8 @@ Analytics 将 App 定义为跨平台产品，并以 AppIdentity 保存平台可�
 - Test both InputCode sets in Analytics and Dashboard projections. A historical Windows VK event and a new physical-position event for the same key should contribute to the same displayed key without altering stored raw codes.
 - Test Avalonia ViewModels and state presentation independently of native windows. Cover capability states, degraded permissions, update-required state, cache migration failure, dead-letter visibility, collector management, login-start state, and close-to-hide commands.
 - Keep platform adapter tests thin: native callbacks or notification payloads are translated into semantic observations; shared state-machine outcomes belong to `Heartbeat.Collector.System` tests.
-- Use macOS real-device smoke tests for TCC prompts, permission persistence, session lock, screen sleep, system sleep, focused-window events, input monitoring, menu-bar lifecycle, login start, code signing, notarization, installation, and update. Do not mock undocumented operating-system internals as proof of correctness.
-- Add release verification for both Windows and macOS artifacts, including stable channels, stable bundle identity, signed/notarized macOS packages, and update from the previous published version with legacy caches present.
+- Use macOS real-device smoke tests for TCC prompts, permission behavior across updates, session lock, screen sleep, system sleep, focused-window events, input monitoring, menu-bar lifecycle, login start, unsigned Gatekeeper approval, installation, and update. Do not mock undocumented operating-system internals as proof of correctness.
+- Add release verification for both Windows and macOS artifacts, including stable channels, stable bundle identity, expected unsigned macOS packages, and update from the previous published version with legacy caches present.
 - Keep all existing Windows behavior and server report regression suites green during the prefactor phase before changing contracts.
 
 ## Out of Scope
@@ -160,7 +160,7 @@ Analytics 将 App 定义为跨平台产品，并以 AppIdentity 保存平台可�
 
 ## Further Notes
 
-- This spec implements ADR-033, ADR-034, and ADR-035 and extends the existing decisions for GitHub Releases, InputEvent collection, away detection, title-noise control, stable segment identity, hub upload streams, and Device as observed subject.
+- This spec implements ADR-033, ADR-034, ADR-035, and ADR-039 and extends the existing decisions for GitHub Releases, InputEvent collection, away detection, title-noise control, stable segment identity, hub upload streams, and Device as observed subject.
 - The feature is intentionally multi-session. Each implementation ticket should fit a fresh context window, declare blockers, and preserve a runnable or verifiable slice.
 - The strict protocol rollout accepts a temporary upload interruption. Before cutover, the release must exist, cache capacity must cover the expected delay, and update-required state must be visible.
 - Accessibility and Input Monitoring are observation-depth capabilities, not prerequisites for the Agent to run.

@@ -14,7 +14,7 @@ Velopack 客户端需配置更新源 URL。候选：
 
 ## Decision
 
-当前阶段桌面端 **直连 GitHub Releases**（`RepoUrl = "https://github.com/shenxianovo/Heartbeat"`），暂不引入 CDN 镜像。Windows 与 macOS 共用这一发布源；macOS 走站外直接分发而非 Mac App Store，发布物必须使用 Developer ID 签名并完成公证，首个发布目标只包含 Apple Silicon `arm64`，按用户安装到 `~/Applications` 以避免更新时要求管理员提权。
+当前阶段桌面端 **直连 GitHub Releases**（`RepoUrl = "https://github.com/shenxianovo/Heartbeat"`），暂不引入 CDN 镜像。Windows 与 macOS 共用这一发布源；macOS 走站外直接分发而非 Mac App Store，首个发布目标只包含 Apple Silicon `arm64`，按用户安装到 `~/Applications` 以避免更新时要求管理员提权。macOS 发布物的信任策略后来由 [ADR-039](./039-unsigned-macos-velopack-release.md) 修订为无 Developer ID 签名与公证、保留 Velopack 自动更新。
 
 原因：
 - 个人项目，用户量小，GitHub 可用性可接受
@@ -28,4 +28,4 @@ Velopack 客户端需配置更新源 URL。候选：
 - ✅ macOS 不受 App Store 沙箱约束，可提供全局活动监控能力
 - ⚠️ 国内用户可能下载失败/超时
 - ⚠️ 切换更新源需发布一个过渡版本（旧版本仍指向 GitHub）
-- ⚠️ macOS 发布链增加 Developer ID 证书、公证凭证与签名验证
+- ⚠️ macOS 未签名发布物的 Gatekeeper 放行、更新重启和 TCC 权限连续性必须在真机验证；详见 ADR-039

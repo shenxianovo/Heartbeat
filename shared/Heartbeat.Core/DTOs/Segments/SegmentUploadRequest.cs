@@ -25,8 +25,8 @@ namespace Heartbeat.Core.DTOs.Segments
         public string IdentityKey { get; set; } = string.Empty;
 
         /// <summary>
-        /// 平台可观测身份（win:/mac:/sys:）。expand 阶段可空；为空时 Analytics 暂按
-        /// 旧 Windows AppName 生成身份，Ticket 05 strict cutover 后改为必填。
+        /// 平台可观测身份（win:/mac:/sys:）。system 段在严格 Analytics 边界必须提供；
+        /// 外部 Collector 无法可靠解析 AppHint 时可以为空，段仍保留但不建立 App 关联。
         /// </summary>
         public string? AppIdentityKey { get; set; }
 
