@@ -6,7 +6,8 @@ namespace Heartbeat.Desktop.Mac.Observations;
 public sealed record MacApplication(
     string? BundleIdentifier,
     string? ExecutablePath,
-    string? DisplayName);
+    string? DisplayName,
+    int ProcessIdentifier = 0);
 
 public static class MacApplicationIdentity
 {

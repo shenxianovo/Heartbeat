@@ -5,6 +5,29 @@ namespace Heartbeat.Desktop.Mac.Tests.Observations;
 
 public sealed class MacDesktopObservationSourceTests
 {
+    private sealed class FakeAccessibility : IMacAccessibilityEvents
+    {
+        public event Action<MacAccessibilityObservation>? Observation;
+        public event Action<MacAccessibilityCapabilityState>? CapabilityChanged;
+        public bool Enabled { get; set; }
+        public MacAccessibilityCapabilityState CapabilityState { get; set; } =
+            MacAccessibilityCapabilityState.Disabled;
+        public string? CurrentTitle { get; set; }
+        public int CurrentProcessIdentifier { get; private set; }
+        public void Start() { }
+        public void Stop() { }
+        public void SetCurrentApplication(int processIdentifier) =>
+            CurrentProcessIdentifier = processIdentifier;
+        public void SetEnabledFromUser(bool enabled) => Enabled = enabled;
+        public void OpenPermissionSettingsFromUser() { }
+        public void Raise(MacAccessibilityObservation observation) => Observation?.Invoke(observation);
+        public void PublishCapability(MacAccessibilityCapabilityState state)
+        {
+            CapabilityState = state;
+            CapabilityChanged?.Invoke(state);
+        }
+    }
+
     private sealed class FakeEvents : IMacDesktopEvents
     {
         public event Action? ApplicationActivated;
@@ -30,7 +53,7 @@ public sealed class MacDesktopObservationSourceTests
             FrontmostApplication = new MacApplication(
                 "com.microsoft.VSCode", null, "Visual Studio Code")
         };
-        var source = new MacDesktopObservationSource(native);
+        var source = new MacDesktopObservationSource(native, new FakeAccessibility());
         var received = new List<DesktopObservation>();
         source.Observation += received.Add;
 
@@ -57,7 +80,7 @@ public sealed class MacDesktopObservationSourceTests
         {
             FrontmostApplication = new MacApplication("com.apple.Safari", null, "Safari")
         };
-        var source = new MacDesktopObservationSource(native);
+        var source = new MacDesktopObservationSource(native, new FakeAccessibility());
         var received = new List<DesktopObservation>();
         source.Observation += received.Add;
         source.Start();
@@ -83,7 +106,7 @@ public sealed class MacDesktopObservationSourceTests
         {
             FrontmostApplication = new MacApplication("com.apple.Safari", null, "Safari")
         };
-        var source = new MacDesktopObservationSource(native);
+        var source = new MacDesktopObservationSource(native, new FakeAccessibility());
         var received = new List<DesktopObservation>();
         source.Observation += received.Add;
         source.Start();
@@ -105,7 +128,7 @@ public sealed class MacDesktopObservationSourceTests
         {
             FrontmostApplication = new MacApplication("com.apple.Safari", null, "Safari")
         };
-        var source = new MacDesktopObservationSource(native);
+        var source = new MacDesktopObservationSource(native, new FakeAccessibility());
         var received = new List<DesktopObservation>();
         source.Observation += received.Add;
         source.Start();
@@ -113,5 +136,72 @@ public sealed class MacDesktopObservationSourceTests
         native.Exit(MacAwayReason.DisplaySleep);
 
         Assert.Empty(received);
+    }
+
+    [Fact]
+    public void AccessibilityNotifications_PreserveFocusAndTitleSemanticKinds()
+    {
+        var native = new FakeEvents
+        {
+            FrontmostApplication = new MacApplication(
+                "com.microsoft.VSCode", null, "Visual Studio Code", 42)
+        };
+        var accessibility = new FakeAccessibility
+        {
+            Enabled = true,
+            CapabilityState = MacAccessibilityCapabilityState.Available,
+            CurrentTitle = "README.md"
+        };
+        var source = new MacDesktopObservationSource(native, accessibility);
+        var received = new List<DesktopObservation>();
+        source.Observation += received.Add;
+        source.Start();
+
+        accessibility.Raise(new MacAccessibilityObservation(
+            MacAccessibilityObservationKind.FocusedWindowChanged,
+            "Program.cs"));
+        accessibility.Raise(new MacAccessibilityObservation(
+            MacAccessibilityObservationKind.TitleChanged,
+            "Program.cs — saved"));
+
+        Assert.Collection(
+            received,
+            focused =>
+            {
+                Assert.Equal(DesktopObservationKind.FocusedWindowChanged, focused.Kind);
+                Assert.Equal("Program.cs", focused.Activity.Title);
+                Assert.Equal("mac:com.microsoft.vscode", focused.Activity.AppIdentityKey);
+            },
+            title =>
+            {
+                Assert.Equal(DesktopObservationKind.TitleChanged, title.Kind);
+                Assert.Equal("Program.cs — saved", title.Activity.Title);
+            });
+        Assert.Equal(42, accessibility.CurrentProcessIdentifier);
+    }
+
+    [Fact]
+    public void PermissionUnavailable_StillForwardsAppOnlyActivation()
+    {
+        var native = new FakeEvents
+        {
+            FrontmostApplication = new MacApplication("com.apple.Safari", null, "Safari", 7)
+        };
+        var accessibility = new FakeAccessibility
+        {
+            Enabled = true,
+            CapabilityState = MacAccessibilityCapabilityState.PermissionRequired
+        };
+        var source = new MacDesktopObservationSource(native, accessibility);
+        var received = new List<DesktopObservation>();
+        source.Observation += received.Add;
+        source.Start();
+
+        native.Activate();
+
+        var observation = Assert.Single(received);
+        Assert.Equal(DesktopObservationKind.AppActivated, observation.Kind);
+        Assert.Equal("mac:com.apple.safari", observation.Activity.AppIdentityKey);
+        Assert.Null(observation.Activity.Title);
     }
 }

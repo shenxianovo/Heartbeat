@@ -3,6 +3,7 @@ using Heartbeat.Desktop.Mac.Collectors;
 using Heartbeat.Desktop.Mac.Hosting;
 using Heartbeat.Desktop.Mac.Identity;
 using Heartbeat.Desktop.Mac.Observations;
+using Heartbeat.Desktop.Mac.Native;
 using Heartbeat.Collector.System.Collection;
 using Heartbeat.Collector.System.Observations;
 using Heartbeat.Collection.Hub.Configuration;
@@ -72,6 +73,7 @@ public sealed class MacAgentHostExtensionsTests : IDisposable
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<IMacWorkspaceNative, FakeWorkspace>();
+        services.AddSingleton<IMacAccessibilityNative, FakeAccessibilityNative>();
         services.AddSingleton<IMacPlatformUuid>(new StubPlatformUuid(
             "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"));
         services.AddHeartbeatMacAgent(new MacAgentPaths(_root));
@@ -96,5 +98,16 @@ public sealed class MacAgentHostExtensionsTests : IDisposable
     private sealed class StubPlatformUuid(string value) : IMacPlatformUuid
     {
         public string? Read() => value;
+    }
+
+    private sealed class FakeAccessibilityNative : IMacAccessibilityNative
+    {
+        public event Action<MacAccessibilityObservation>? Observation { add { } remove { } }
+        public bool IsAvailable => true;
+        public bool IsProcessTrusted => false;
+        public void RequestProcessTrust() { }
+        public string? ReadFocusedWindowTitle(int processIdentifier) => null;
+        public void ObserveApplication(int processIdentifier) { }
+        public void StopObserving() { }
     }
 }

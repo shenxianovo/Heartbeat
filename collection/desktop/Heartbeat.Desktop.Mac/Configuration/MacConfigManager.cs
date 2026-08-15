@@ -102,6 +102,7 @@ public sealed class MacConfigManager
         UploadIntervalMinutes = source.UploadIntervalMinutes,
         AwayProcessNames = [.. source.AwayProcessNames],
         IngestPort = source.IngestPort,
+        WindowTitleObservationEnabled = source.WindowTitleObservationEnabled,
         InputEventRecordingEnabled = source.InputEventRecordingEnabled,
         Collectors = source.Collectors.ToDictionary(
             pair => pair.Key,

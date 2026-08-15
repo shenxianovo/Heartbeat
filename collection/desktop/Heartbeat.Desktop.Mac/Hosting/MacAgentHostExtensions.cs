@@ -39,6 +39,10 @@ public static class MacAgentHostExtensions
         services.TryAddSingleton<IMacPlatformUuid, IoregPlatformUuid>();
         services.TryAddSingleton(sp => new MacMachineIdentity(sp.GetRequiredService<IMacPlatformUuid>()));
         services.TryAddSingleton<IMacWorkspaceNative, CocoaWorkspaceNative>();
+        services.TryAddSingleton<IMacAccessibilityNative, MacAccessibilityNative>();
+        services.TryAddSingleton<MacAccessibilityEvents>();
+        services.TryAddSingleton<IMacAccessibilityEvents>(sp =>
+            sp.GetRequiredService<MacAccessibilityEvents>());
         services.TryAddSingleton<MacApplicationCatalog>();
         services.TryAddSingleton<MacWorkspaceEvents>();
         services.TryAddSingleton<IMacDesktopEvents>(sp => sp.GetRequiredService<MacWorkspaceEvents>());

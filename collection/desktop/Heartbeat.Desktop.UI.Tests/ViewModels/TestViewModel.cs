@@ -24,6 +24,8 @@ internal sealed class FakeDesktopState : IDesktopState
 {
     public DesktopStateSnapshot Current { get; set; } = DesktopStateSnapshot.Empty;
     public bool? LastInputEventRecordingValue { get; private set; }
+    public bool? LastWindowTitleObservationValue { get; private set; }
+    public int OpenWindowTitlePermissionSettingsCount { get; private set; }
     public DesktopSettingsInput? LastSettings { get; private set; }
     public bool? LastLoginStartValue { get; private set; }
     public DesktopThemeMode? LastThemeMode { get; private set; }
@@ -32,6 +34,8 @@ internal sealed class FakeDesktopState : IDesktopState
 
     public void SaveSettings(DesktopSettingsInput settings) => LastSettings = settings;
     public void SetCollectorEnabled(string source, bool enabled) => LastCollectorValue = (source, enabled);
+    public void SetWindowTitleObservationEnabled(bool enabled) => LastWindowTitleObservationValue = enabled;
+    public void OpenWindowTitlePermissionSettings() => OpenWindowTitlePermissionSettingsCount++;
     public void SetInputEventRecordingEnabled(bool enabled) => LastInputEventRecordingValue = enabled;
     public void SetLoginStartEnabled(bool enabled) => LastLoginStartValue = enabled;
     public void SetThemeMode(DesktopThemeMode mode) => LastThemeMode = mode;

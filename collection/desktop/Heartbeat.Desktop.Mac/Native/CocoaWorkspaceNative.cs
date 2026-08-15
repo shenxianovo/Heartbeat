@@ -63,7 +63,8 @@ public sealed class CocoaWorkspaceNative : IMacWorkspaceNative, IDisposable
             var executablePath = executableUrl == 0
                 ? null
                 : ObjC.ReadString(ObjC.Send(executableUrl, "path"));
-            return new MacApplication(bundleIdentifier, executablePath, displayName);
+            var processIdentifier = ObjC.SendInt(application, "processIdentifier");
+            return new MacApplication(bundleIdentifier, executablePath, displayName, processIdentifier);
         }
     }
 
@@ -170,6 +171,8 @@ public sealed class CocoaWorkspaceNative : IMacWorkspaceNative, IDisposable
         public static nint Selector(string name) => Native.sel_registerName(name);
         public static nint Send(nint receiver, string selector) =>
             Native.objc_msgSend(receiver, Selector(selector));
+        public static int SendInt(nint receiver, string selector) =>
+            Native.objc_msgSend_int(receiver, Selector(selector));
         public static void SendVoid(nint receiver, string selector) =>
             Native.objc_msgSend_void(receiver, Selector(selector));
         public static void SendVoid(nint receiver, string selector, nint argument) =>
@@ -216,6 +219,9 @@ public sealed class CocoaWorkspaceNative : IMacWorkspaceNative, IDisposable
 
         [DllImport(ObjCLibrary, EntryPoint = "objc_msgSend")]
         public static extern nint objc_msgSend(nint receiver, nint selector);
+
+        [DllImport(ObjCLibrary, EntryPoint = "objc_msgSend")]
+        public static extern int objc_msgSend_int(nint receiver, nint selector);
 
         [DllImport(ObjCLibrary, EntryPoint = "objc_msgSend")]
         public static extern void objc_msgSend_void(nint receiver, nint selector);

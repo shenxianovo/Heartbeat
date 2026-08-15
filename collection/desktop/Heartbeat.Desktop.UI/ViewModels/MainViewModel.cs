@@ -358,6 +358,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     source,
                     isSystem,
                     isSystem ? null : _desktopState.SetCollectorEnabled,
+                    isSystem ? _desktopState.SetWindowTitleObservationEnabled : null,
+                    isSystem ? _desktopState.OpenWindowTitlePermissionSettings : null,
                     isSystem ? _desktopState.SetInputEventRecordingEnabled : null);
                 Collectors.Insert(Math.Min(index, Collectors.Count), item);
             }
@@ -366,7 +368,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 item.SetSystemCapabilities(
                     snapshot.Capabilities.InteractionSignal == CapabilityAvailability.Available,
-                    snapshot.Capabilities.InputEventRecording == CapabilityAvailability.Available);
+                    snapshot.Capabilities.InputEventRecording == CapabilityAvailability.Available,
+                    snapshot.Capabilities.WindowTitleObservationConfigurable,
+                    snapshot.Capabilities.WindowTitlePermissionActionAvailable);
+                item.SetWindowTitleObservationEnabledSilently(
+                    snapshot.Settings.WindowTitleObservationEnabled);
                 item.SetRecordingEnabledSilently(snapshot.Settings.InputEventRecordingEnabled);
             }
             if (snapshot.Collectors.TryGetValue(source, out var registration))

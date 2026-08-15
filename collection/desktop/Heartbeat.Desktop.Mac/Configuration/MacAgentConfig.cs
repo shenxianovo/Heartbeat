@@ -15,6 +15,7 @@ public sealed class MacAgentConfig
 
     public List<string> AwayProcessNames { get; set; } = [];
     public int IngestPort { get; set; } = 24820;
+    public bool WindowTitleObservationEnabled { get; set; }
     public bool InputEventRecordingEnabled { get; set; }
     public Dictionary<string, MacCollectorEntry> Collectors { get; set; } = [];
 }

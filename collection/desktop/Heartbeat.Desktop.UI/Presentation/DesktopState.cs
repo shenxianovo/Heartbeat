@@ -18,7 +18,8 @@ public sealed record DesktopSettingsSnapshot(
     string DeviceName,
     int UploadIntervalMinutes,
     bool InputEventRecordingEnabled,
-    DesktopThemeMode ThemeMode = DesktopThemeMode.System)
+    DesktopThemeMode ThemeMode = DesktopThemeMode.System,
+    bool WindowTitleObservationEnabled = false)
 {
     public static DesktopSettingsSnapshot Default { get; } = new("", "", 1, true);
 }
@@ -40,7 +41,9 @@ public sealed record DesktopCapabilitySnapshot(
     CapabilityAvailability FocusedWindowObservation,
     CapabilityAvailability InteractionSignal,
     CapabilityAvailability InputEventRecording,
-    string? Message = null)
+    string? Message = null,
+    bool WindowTitleObservationConfigurable = false,
+    bool WindowTitlePermissionActionAvailable = false)
 {
     public static DesktopCapabilitySnapshot WindowsFull { get; } = new(
         CapabilityAvailability.Available,
@@ -53,7 +56,8 @@ public sealed record DesktopCapabilitySnapshot(
         CapabilityAvailability.Unavailable,
         CapabilityAvailability.Unavailable,
         CapabilityAvailability.Unavailable,
-        "App-only 模式无需 Accessibility 或 Input Monitoring；更深采集能力当前未启用。");
+        "App-only 模式无需 Accessibility；可按需启用窗口标题采集。",
+        WindowTitleObservationConfigurable: true);
 }
 
 public sealed record DesktopStateSnapshot(
@@ -90,6 +94,8 @@ public interface IDesktopState
     void SaveSettings(DesktopSettingsInput settings);
     void SetLoginStartEnabled(bool enabled);
     void SetCollectorEnabled(string source, bool enabled);
+    void SetWindowTitleObservationEnabled(bool enabled);
+    void OpenWindowTitlePermissionSettings();
     void SetInputEventRecordingEnabled(bool enabled);
     void SetThemeMode(DesktopThemeMode mode);
 }

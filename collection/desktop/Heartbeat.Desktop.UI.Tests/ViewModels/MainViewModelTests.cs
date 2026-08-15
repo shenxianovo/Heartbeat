@@ -304,6 +304,49 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public void MacTitleDepth_IsUserControlledAndOffersPermissionRecovery()
+    {
+        var initial = DesktopStateSnapshot.Empty with
+        {
+            Settings = DesktopSettingsSnapshot.Default with
+            {
+                InputEventRecordingEnabled = false,
+                WindowTitleObservationEnabled = false
+            },
+            Capabilities = new DesktopCapabilitySnapshot(
+                CapabilityAvailability.Available,
+                CapabilityAvailability.Unavailable,
+                CapabilityAvailability.Unavailable,
+                CapabilityAvailability.Unavailable,
+                WindowTitleObservationConfigurable: true)
+        };
+        var state = new FakeDesktopState { Current = initial };
+        using var viewModel = TestViewModel.Create(state);
+
+        var system = Assert.Single(viewModel.Collectors, item => item.IsSystem);
+        Assert.True(system.CanToggleWindowTitleObservation);
+        Assert.False(system.WindowTitleObservationEnabled);
+
+        system.WindowTitleObservationEnabled = true;
+
+        Assert.Equal(true, state.LastWindowTitleObservationValue);
+
+        state.Publish(initial with
+        {
+            Settings = initial.Settings with { WindowTitleObservationEnabled = true },
+            Capabilities = initial.Capabilities with
+            {
+                FocusedWindowObservation = CapabilityAvailability.PermissionRequired,
+                WindowTitlePermissionActionAvailable = true
+            }
+        });
+
+        Assert.True(system.ShowWindowTitlePermissionAction);
+        system.OpenWindowTitlePermissionSettingsCommand.Execute(null);
+        Assert.Equal(1, state.OpenWindowTitlePermissionSettingsCount);
+    }
+
+    [Fact]
     public void LogPresentation_FiltersExistingEntriesByTheSelectedLevel()
     {
         var logs = new FakeLogFeed(

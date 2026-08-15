@@ -30,17 +30,24 @@ public interface IMacDesktopEvents
 public sealed class MacDesktopObservationSource : IDesktopObservationSource
 {
     private readonly IMacDesktopEvents _events;
+    private readonly IMacAccessibilityEvents _accessibility;
     private readonly MacApplicationCatalog _catalog;
     private readonly object _gate = new();
     private readonly HashSet<MacAwayReason> _awayReasons = [];
     private bool _started;
 
-    public MacDesktopObservationSource(IMacDesktopEvents events)
-        : this(events, new MacApplicationCatalog()) { }
+    public MacDesktopObservationSource(
+        IMacDesktopEvents events,
+        IMacAccessibilityEvents accessibility)
+        : this(events, accessibility, new MacApplicationCatalog()) { }
 
-    public MacDesktopObservationSource(IMacDesktopEvents events, MacApplicationCatalog catalog)
+    public MacDesktopObservationSource(
+        IMacDesktopEvents events,
+        IMacAccessibilityEvents accessibility,
+        MacApplicationCatalog catalog)
     {
         _events = events;
+        _accessibility = accessibility;
         _catalog = catalog;
     }
 
@@ -53,7 +60,8 @@ public sealed class MacDesktopObservationSource : IDesktopObservationSource
             var application = _events.FrontmostApplication;
             var activity = MacApplicationIdentity.ToActivity(application);
             _catalog.Observe(activity.AppIdentityKey, application);
-            return activity;
+            _accessibility.SetCurrentApplication(application?.ProcessIdentifier ?? 0);
+            return activity with { Title = _accessibility.CurrentTitle };
         }
     }
 
@@ -68,6 +76,10 @@ public sealed class MacDesktopObservationSource : IDesktopObservationSource
         _events.ApplicationActivated += OnApplicationActivated;
         _events.AwayEntered += OnAwayEntered;
         _events.AwayExited += OnAwayExited;
+        _accessibility.Observation += OnAccessibilityObservation;
+        _accessibility.CapabilityChanged += OnAccessibilityCapabilityChanged;
+        _accessibility.SetCurrentApplication(_events.FrontmostApplication?.ProcessIdentifier ?? 0);
+        _accessibility.Start();
         _events.Start();
     }
 
@@ -83,6 +95,9 @@ public sealed class MacDesktopObservationSource : IDesktopObservationSource
         _events.ApplicationActivated -= OnApplicationActivated;
         _events.AwayEntered -= OnAwayEntered;
         _events.AwayExited -= OnAwayExited;
+        _accessibility.Observation -= OnAccessibilityObservation;
+        _accessibility.CapabilityChanged -= OnAccessibilityCapabilityChanged;
+        _accessibility.Stop();
         _events.Stop();
     }
 
@@ -92,7 +107,39 @@ public sealed class MacDesktopObservationSource : IDesktopObservationSource
         {
             if (_awayReasons.Count != 0) return;
         }
+        _accessibility.SetCurrentApplication(_events.FrontmostApplication?.ProcessIdentifier ?? 0);
         Observation?.Invoke(DesktopObservation.AppActivated(CurrentActivity));
+    }
+
+    private void OnAccessibilityObservation(MacAccessibilityObservation observation)
+    {
+        lock (_gate)
+        {
+            if (_awayReasons.Count != 0) return;
+        }
+
+        var application = _events.FrontmostApplication;
+        if (observation.ProcessIdentifier > 0
+            && observation.ProcessIdentifier != application?.ProcessIdentifier)
+            return;
+        var activity = MacApplicationIdentity.ToActivity(application) with { Title = observation.Title };
+        _catalog.Observe(activity.AppIdentityKey, application);
+        Observation?.Invoke(observation.Kind switch
+        {
+            MacAccessibilityObservationKind.FocusedWindowChanged =>
+                DesktopObservation.FocusedWindowChanged(activity),
+            _ => DesktopObservation.TitleChanged(activity),
+        });
+    }
+
+    private void OnAccessibilityCapabilityChanged(MacAccessibilityCapabilityState state)
+    {
+        if (state != MacAccessibilityCapabilityState.Available) return;
+        lock (_gate)
+        {
+            if (_awayReasons.Count != 0) return;
+        }
+        Observation?.Invoke(DesktopObservation.FocusedWindowChanged(CurrentActivity));
     }
 
     private void OnAwayEntered(MacAwayReason reason)

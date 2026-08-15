@@ -72,6 +72,10 @@ public sealed class WindowsDesktopState : IDesktopState, IDisposable
     public void SetInputEventRecordingEnabled(bool enabled) =>
         _config.Update(config => config.InputEventRecordingEnabled = enabled);
 
+    public void SetWindowTitleObservationEnabled(bool enabled) { }
+
+    public void OpenWindowTitlePermissionSettings() { }
+
     public void SetThemeMode(DesktopThemeMode mode) =>
         _config.Update(config => config.ThemeMode = mode.ToString());
 

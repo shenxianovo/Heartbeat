@@ -5,8 +5,11 @@ namespace Heartbeat.Desktop.UI.ViewModels;
 public partial class CollectorItemViewModel : ObservableObject
 {
     private readonly Action<string, bool>? _setEnabled;
+    private readonly Action<bool>? _setWindowTitleObservationEnabled;
+    private readonly Action? _openWindowTitlePermissionSettings;
     private readonly Action<bool>? _setRecordingEnabled;
     private bool _suppressEnabled;
+    private bool _suppressWindowTitleObservation;
     private bool _suppressRecording;
     private bool _interactionSignalAvailable = true;
 
@@ -14,11 +17,15 @@ public partial class CollectorItemViewModel : ObservableObject
         string source,
         bool isSystem,
         Action<string, bool>? setEnabled,
+        Action<bool>? setWindowTitleObservationEnabled = null,
+        Action? openWindowTitlePermissionSettings = null,
         Action<bool>? setRecordingEnabled = null)
     {
         Source = source;
         IsSystem = isSystem;
         _setEnabled = setEnabled;
+        _setWindowTitleObservationEnabled = setWindowTitleObservationEnabled;
+        _openWindowTitlePermissionSettings = openWindowTitlePermissionSettings;
         _setRecordingEnabled = setRecordingEnabled;
     }
 
@@ -26,6 +33,8 @@ public partial class CollectorItemViewModel : ObservableObject
     public bool IsSystem { get; }
     public bool IsExternal => !IsSystem;
     public bool CanToggle => !IsSystem;
+    public bool CanToggleWindowTitleObservation { get; private set; }
+    public bool ShowWindowTitlePermissionAction { get; private set; }
     public bool CanToggleRecording { get; private set; }
     public string InteractionSignalDescription => IsSystem
         ? _interactionSignalAvailable
@@ -44,6 +53,9 @@ public partial class CollectorItemViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _recordingEnabled = true;
+
+    [ObservableProperty]
+    private bool _windowTitleObservationEnabled;
 
     public string IconGlyph => char.ConvertFromUtf32(Source switch
     {
@@ -86,13 +98,37 @@ public partial class CollectorItemViewModel : ObservableObject
         _suppressRecording = false;
     }
 
-    public void SetSystemCapabilities(bool interactionSignalAvailable, bool inputRecordingAvailable)
+    public void SetWindowTitleObservationEnabledSilently(bool value)
+    {
+        _suppressWindowTitleObservation = true;
+        WindowTitleObservationEnabled = value;
+        _suppressWindowTitleObservation = false;
+    }
+
+    public void SetSystemCapabilities(
+        bool interactionSignalAvailable,
+        bool inputRecordingAvailable,
+        bool windowTitleObservationConfigurable,
+        bool windowTitlePermissionActionAvailable)
     {
         _interactionSignalAvailable = interactionSignalAvailable;
+        CanToggleWindowTitleObservation = IsSystem && windowTitleObservationConfigurable;
+        ShowWindowTitlePermissionAction = IsSystem && windowTitlePermissionActionAvailable;
         CanToggleRecording = IsSystem && inputRecordingAvailable;
         OnPropertyChanged(nameof(InteractionSignalDescription));
+        OnPropertyChanged(nameof(CanToggleWindowTitleObservation));
+        OnPropertyChanged(nameof(ShowWindowTitlePermissionAction));
         OnPropertyChanged(nameof(CanToggleRecording));
     }
+
+    partial void OnWindowTitleObservationEnabledChanged(bool value)
+    {
+        if (!_suppressWindowTitleObservation)
+            _setWindowTitleObservationEnabled?.Invoke(value);
+    }
+
+    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    private void OpenWindowTitlePermissionSettings() => _openWindowTitlePermissionSettings?.Invoke();
 
     partial void OnRecordingEnabledChanged(bool value)
     {
