@@ -1,28 +1,173 @@
-# Collector Plug-and-Play Runtime
+# 采集器即插即用运行时
 
 Status: needs-info
 
-## Idea
+## 构想
 
-Future exploration: make Collectors plug-and-play and investigate dynamic dependency injection for discovering, composing, activating, updating, or removing Collector capabilities without rebuilding the desktop host.
+未来让 Collector 能够独立发现、安装、组合、启用、更新、回滚和移除，而不必为了增减采集能力重新构建 Agent。
 
-The user has a relevant paper and will provide it later. This note records the direction only; it is not an accepted design and is not part of cross-platform desktop issue 12.
+版本管理可参考 pnpm、NuGet 等包管理器：不可变的包版本、带兼容约束的清单、版本范围解析、精确锁定状态，以及下载后校验、切换和回滚。这里借鉴的是依赖图、版本范围、内容校验、锁定和回滚等机制，不预设沿用它们的仓库形态或命令行体验。
 
-## Boundary
+用户有一篇相关论文，之后会补充。本文目前只记录探索方向，不代表设计已经通过，也不属于跨平台桌面 issue 12。
 
-- Use the canonical product term **Collector**; “plugin” is only the informal name for this future mechanism.
-- Do not choose an in-process or out-of-process architecture yet.
-- Do not assume that installation, activation, App coverage, hot reload, unloading, isolation, versioning, or dynamic DI are the same problem.
-- Any future design must explicitly reconcile ADR-017's loopback Collector topology and ADR-037's executable/assembly boundaries rather than silently bypassing them.
+## 术语
 
-## Questions intentionally deferred
+产品文案和正式模型统一使用 **Collector**；“插件”只作为未来机制的非正式称呼。
 
-- What exact problem and mechanism does the paper establish?
-- Does “plug-and-play” mean discovery, installation, activation, hot replacement, or all four?
-- Which dependencies may be injected dynamically, and which trust or platform boundaries must remain static?
-- How does a Collector declare supported Apps, capabilities, permissions, version compatibility, and coverage completeness?
-- What are the failure, rollback, isolation, and update semantics?
+以下版本轴彼此独立：
 
-## Next trigger
+| 版本轴 | 含义 | 示例用途 |
+| --- | --- | --- |
+| Collector 发布版本 | 某个 Collector 包/产品的 SemVer 发布版本 | 安装、升级、回滚、安全修复 |
+| Collector 协议版本 | Collector 与 Agent/本机宿主之间的协议版本 | 回环上报、配置、声明、生命周期协商 |
+| Agent 发布版本 | Windows、macOS 或无界面 Agent 的产品发布版本 | 客户端升级、问题定位、灰度分组 |
+| Agent 协议版本 | Agent 与 Analytics 之间的上报协议版本 | 服务端兼容协商；当前由 `X-Heartbeat-Protocol-Version` 表达 |
+| Collector 声明版本 | 现有 Observation Depth 声明本身的版本 | 判断采集能力声明是否变化 |
 
-When the paper is supplied, attach its citation or local copy, extract its applicable claims, compare them with the existing Collector topology, and start a separate design grill only if requested.
+Collector 声明版本不等于 Collector 发布版本，也不等于 Collector 协议版本；这些版本不要求同步递增。一个发布版本可以支持多个协议版本，多个发布版本也可以继续使用同一协议版本。
+
+## 产品边界
+
+- 在论文到达并完成评估前，不选择进程内或进程外加载模型。
+- 发现、安装、启用、热替换、卸载、隔离、版本解析和 App 覆盖度是不同问题，分别定义语义。
+- 后续设计必须显式兼容 ADR-017 的回环 Collector 拓扑和 ADR-037 的可执行文件/程序集边界。
+- “可下载”不等于“可启用”；安装前和启用前都必须进行兼容性检查。
+- 同一 `packageId + version` 的制品必须不可变；内容不同必须发布新版本。
+- 用户的启用意图与已安装、兼容、已授权、正在运行等事实分开保存，避免暂时失败导致配置丢失。
+
+## 包与清单模型
+
+每个 Collector 包至少携带一份机器可读清单，例如：
+
+```json
+{
+  "packageId": "heartbeat.collector.browser",
+  "source": "browser",
+  "version": "2.4.1",
+  "requires": {
+    "collectorProtocol": ">=2 <4",
+    "agent": ">=4.1.0"
+  },
+  "platforms": ["win-x64", "win-arm64", "osx-arm64"],
+  "capabilities": ["browser-tabs"],
+  "artifact": {
+    "sha256": "...",
+    "signature": "..."
+  }
+}
+```
+
+约束原则：
+
+- Collector 声明自己支持的 Collector 协议版本范围。
+- 只有当宿主能力依赖无法由协议范围表达时，才使用 `requires.agent` 限制 Agent 发布版本。
+- Agent 清单声明自己支持的 Collector 协议范围，以及 Agent 与 Analytics 之间可用的协议范围。
+- Analytics 元数据声明 Agent 协议的接受、弃用和拒绝范围。
+- 兼容解析器比较版本范围和能力需求，不做简单的版本相等判断。
+- 后续清单还需要表达平台/RID、CPU 架构、权限、入口点、依赖、配置 schema、磁盘需求和信任来源。
+
+## Package Registry、解析器与锁定状态
+
+为避免与现有 Collector Registry 以及 Windows Registry 混淆，未来的包索引暂称 **Package Registry（包仓库）**。
+
+Package Registry 保存可用包版本、清单、制品地址、哈希、签名和撤回状态。兼容解析器至少接收以下输入：
+
+- Agent 发布版本及其两侧支持的协议范围；
+- Analytics 当前接受的 Agent 协议范围；
+- 平台、CPU 架构、权限和能力条件；
+- 用户请求的 Collector 包；
+- 已安装包及其依赖约束。
+
+解析结果必须是一个精确、完整且兼容的版本集合，或者一个结构化冲突。冲突应指出相关包、当前版本、所需范围、宿主支持范围、可行升级候选以及被阻止的动作。
+
+本地锁定状态至少包含：
+
+- 精确的 Agent 发布版本和实际协商出的 Agent 协议版本；
+- 精确的 Collector 发布版本和实际使用的 Collector 协议版本；
+- 每个制品的哈希、来源和签名信息；
+- 上一个可回滚的完整版本集合。
+
+本地锁定状态是安装事实。现有 Collector Registry 继续负责 Source 发现、启用意图、刷新状态和声明缓存，不能为了保存包状态而丢失独立的包身份。
+
+## 协议协商与演进
+
+- 协议升级采用“新旧双支持 → 迁移 → 明确弃用窗口 → 移除”的过程。
+- 通信双方声明支持范围，并选择交集中的最高稳定版本；没有交集时返回结构化拒绝原因。
+- 当前 Agent 与 Analytics 之间精确匹配协议版本 `3` 可视为第一阶段，后续扩展为支持范围、弃用状态和协商结果。
+- 迁移期间，一个 Agent 可以同时支持多个 Collector 协议代际。
+- 每个受支持协议组合都要有契约测试，避免“版本号兼容但行为不兼容”。
+- 安全补丁应发布新的包版本，并支持撤回旧版本或声明最低安全版本；不应为了普通实现修复而无意义地提升协议版本。
+
+## 安装与更新事务
+
+一次安装或更新应作为完整事务执行：
+
+1. 解析完整依赖图和兼容版本集合。
+2. 下载全部候选制品，在修改运行状态前验证哈希、签名和平台匹配。
+3. 暂停受影响的 Collector，并保留完整回滚集合。
+4. 切换到候选集合，完成启动、协议握手和健康检查。
+5. 成功后提交新锁定状态；失败则恢复上一集合。
+
+Agent 自身升级前也必须检查已安装 Collector 的兼容性。若需要，解析器应给出可以共同升级的集合；没有兼容集合时阻止升级并说明原因。
+
+是否支持不重启热替换仍待设计。即使首版只支持重启切换，也应保留相同的事务和回滚语义。
+
+## 服务端记录与可观测性
+
+Analytics 应知道设备当前实际运行的版本。第一阶段保存“当前快照”，不急于保存完整历史：
+
+- Device 记录最后确认的 Agent 发布版本、协商出的 Agent 协议版本、平台、CPU 架构和确认时间。
+- Agent 定期报告已安装且实际启用的 Collector 清单，包括 `packageId`、Source、Collector 发布版本、实际使用的 Collector 协议版本和制品哈希。
+- 常规心跳可以只携带清单摘要；摘要变化时再上传完整清单，避免每次重复发送。
+- 服务端应能查询旧版 Agent、即将退役协议、受漏洞 Collector 影响的设备，以及按平台聚类的失败。
+- Dashboard 可以展示版本事实，但 Analytics 不能仅凭观察到版本就直接远程安装包。
+- 协议拒绝、版本冲突、自动回滚和命中撤回包应形成诊断事件；历史保留期限后续再定。
+
+服务端快照是设备上报的运行事实，不用于反向重建或替代本地锁定状态。
+
+## 必须覆盖的兼容场景
+
+1. Agent 4.2 支持 Collector 协议 `>=2 <4`，Collector 1.8 要求 `^2`：协商为协议 2。
+2. Collector 2.0 要求协议 4，而当前 Agent 最高只支持 3：拒绝启用，并提示需要升级 Agent。
+3. 候选 Agent 不再支持协议 2，但已安装 Collector 只支持协议 2：先寻找可共同升级的 Collector，否则阻止 Agent 升级。
+4. Analytics 接受 Agent 协议 `>=3 <5`，Agent 支持 `>=2 <4`：协商为协议 3；协议 3 被移除前必须经过弃用窗口。
+5. 仓库返回同一发布版本但哈希不同的制品：判定为仓库完整性错误。
+6. 协议握手成功但系统权限缺失：保留启用意图，将运行状态标记为暂停，而不是卸载。
+7. Package Registry 离线：已锁定的本地集合继续运行，安装和更新返回明确的离线结果。
+8. 某版本因安全问题被撤回：禁止新安装；对已安装实例按策略警告、停用或强制升级，不能由解析器静默处理。
+
+## 首阶段建议
+
+1. Agent 能读取并上报自己的发布版本、Agent 协议版本、平台和 CPU 架构。
+2. Analytics 在 Device 上保存当前 Agent 版本快照。
+3. Collector 配置和声明分别携带 Collector 发布版本与 Collector 协议版本，不复用声明版本。
+4. 定义最小包清单和本地锁定格式，首期只做兼容性验证，不急于实现在线安装。
+5. 增加版本范围交集、无交集、弃用和升级阻断的契约测试。
+
+这样可以先获得版本可见性和兼容性约束，而无需提前决定进程内或进程外实现。
+
+## 明确不在当前阶段解决
+
+- 默认使用中心仓库、私有仓库还是本地仓库；
+- 是否接受未签名的第三方 Collector；
+- 进程内、独立进程或混合加载模型；
+- 无重启热更新；
+- 服务端远程强制安装的控制面；
+- 用版本兼容替代权限、信任、沙箱和资源配额。
+
+## 待论文与后续设计回答的问题
+
+- 论文实际提出了什么机制，成立前提是什么？
+- 首版“即插即用”具体包含发现、安装、启用、更新、热替换中的哪些动作？
+- 哪些依赖允许动态注入，哪些信任或平台边界必须保持静态？
+- Package Registry 的来源优先级、签名根、撤回策略和离线镜像如何定义？
+- Collector 如何声明支持的 App、能力、权限、配置 schema 和覆盖完整度？
+- 多个 Collector 的共享运行时依赖应隔离还是统一解析？
+- 谁负责协议弃用决策，长期离线设备跨多个版本升级时如何处理？
+- 回滚是恢复整个锁定集合，还是只暂停单个 Collector？
+
+## 下一触发点
+
+收到论文后，附上引用或本地副本，提取适用结论，并与现有 Collector 拓扑逐项比较；只有用户明确要求时才开始单独的设计追问。
+
+版本事实采集和最小兼容契约可以不依赖论文，作为前置阶段继续细化。
