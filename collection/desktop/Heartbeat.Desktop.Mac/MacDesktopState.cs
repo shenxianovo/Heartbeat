@@ -39,6 +39,7 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
         _accessibility = accessibility;
         _inputMonitoring = inputMonitoring;
         _applicationLocator = applicationLocator;
+        ReconcileLoginStartRegistration();
         _config.ConfigChanged += OnConfigChanged;
         _collection.CurrentActivityChanged += OnCurrentActivityChanged;
         _compatibility.Changed += OnCompatibilityChanged;
@@ -115,6 +116,12 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
 
     public void SetThemeMode(DesktopThemeMode mode) =>
         _config.Update(config => config.ThemeMode = mode.ToString());
+
+    private void ReconcileLoginStartRegistration()
+    {
+        if (_loginStart.IsEnabled && Environment.ProcessPath is { Length: > 0 } executable)
+            _loginStart.Enable(executable);
+    }
 
     private DesktopStateSnapshot BuildSnapshot()
     {

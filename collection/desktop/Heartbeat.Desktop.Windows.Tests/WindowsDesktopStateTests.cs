@@ -37,6 +37,24 @@ public sealed class WindowsDesktopStateTests : IDisposable
         Assert.False(config.Current.InteractionSignalEnabled);
     }
 
+    [Fact]
+    public void ExistingLoginStartRegistration_IsRewrittenToCurrentExecutableOnStartup()
+    {
+        Directory.CreateDirectory(_root);
+        var config = new ConfigManager(Path.Combine(_root, "config.json"));
+        var login = new FakeAutoStart(isEnabled: true);
+
+        using var state = new WindowsDesktopState(
+            config,
+            new FakeCollectionStatus(),
+            login,
+            new ClientCompatibilityStatus(),
+            new UploadStatusRegistry());
+
+        Assert.Equal(Environment.ProcessPath, login.EnabledExecutable);
+        Assert.Equal(1, login.EnableCount);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
@@ -53,8 +71,17 @@ public sealed class WindowsDesktopStateTests : IDisposable
 
     private sealed class FakeAutoStart : IAutoStartService
     {
-        public bool IsEnabled => false;
-        public void Enable(string executablePath) { }
-        public void Disable() { }
+        public FakeAutoStart(bool isEnabled = false) => IsEnabled = isEnabled;
+
+        public bool IsEnabled { get; private set; }
+        public string? EnabledExecutable { get; private set; }
+        public int EnableCount { get; private set; }
+        public void Enable(string executablePath)
+        {
+            IsEnabled = true;
+            EnabledExecutable = executablePath;
+            EnableCount++;
+        }
+        public void Disable() => IsEnabled = false;
     }
 }

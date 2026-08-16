@@ -30,6 +30,7 @@ public sealed class WindowsDesktopState : IDesktopState, IDisposable
         _compatibility = compatibility;
         _uploads = uploads;
 
+        ReconcileLoginStartRegistration();
         _config.ConfigChanged += HandleConfigChanged;
         _collection.CurrentActivityChanged += HandleCurrentActivityChanged;
         _compatibility.Changed += HandleCompatibilityChanged;
@@ -92,6 +93,16 @@ public sealed class WindowsDesktopState : IDesktopState, IDisposable
 
     public void SetThemeMode(DesktopThemeMode mode) =>
         _config.Update(config => config.ThemeMode = mode.ToString());
+
+    private void ReconcileLoginStartRegistration()
+    {
+        if (!_loginStart.IsEnabled)
+            return;
+
+        var executablePath = Environment.ProcessPath;
+        if (!string.IsNullOrWhiteSpace(executablePath))
+            _loginStart.Enable(executablePath);
+    }
 
     private DesktopStateSnapshot BuildSnapshot()
     {

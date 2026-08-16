@@ -111,6 +111,17 @@ public sealed class MacDesktopStateTests : IDisposable
         Assert.Equal(Environment.ProcessPath, login.EnabledExecutable);
     }
 
+    [Fact]
+    public void ExistingLoginStartRegistration_IsRewrittenToCurrentExecutableOnStartup()
+    {
+        var login = new FakeLoginStart(isEnabled: true);
+
+        using var state = Build(login);
+
+        Assert.Equal(Environment.ProcessPath, login.EnabledExecutable);
+        Assert.Equal(1, login.EnableCount);
+    }
+
     private MacDesktopState Build(
         FakeLoginStart login,
         FakeAccessibility? accessibility = null,
@@ -148,12 +159,16 @@ public sealed class MacDesktopStateTests : IDisposable
 
     private sealed class FakeLoginStart : IMacLoginStart
     {
+        public FakeLoginStart(bool isEnabled = false) => IsEnabled = isEnabled;
+
         public bool IsEnabled { get; private set; }
         public string? EnabledExecutable { get; private set; }
+        public int EnableCount { get; private set; }
         public void Enable(string executablePath)
         {
             IsEnabled = true;
             EnabledExecutable = executablePath;
+            EnableCount++;
         }
         public void Disable() => IsEnabled = false;
     }
