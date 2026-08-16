@@ -62,7 +62,7 @@ export class Client {
     }
 
     /**
-     * @param limit (optional)
+     * @param limit (optional) 
      * @return OK
      */
     getAdminAppCatalogAudit(limit: number | undefined): Promise<AppCatalogAdminAuditListResponse> {
@@ -740,8 +740,8 @@ export class Client {
     }
 
     /**
-     * @param date (optional)
-     * @param strandId (optional)
+     * @param date (optional) 
+     * @param strandId (optional) 
      * @return OK
      */
     getEpisodes(date: Date | undefined, strandId: string | undefined): Promise<EpisodeResponse[]> {
@@ -907,7 +907,7 @@ export class Client {
     }
 
     /**
-     * @param expectedVersion (optional)
+     * @param expectedVersion (optional) 
      * @return No Content
      */
     deleteEpisode(id: string, expectedVersion: number | undefined): Promise<void> {
@@ -1259,9 +1259,9 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional)
-     * @param start (optional)
-     * @param end (optional)
+     * @param deviceId (optional) 
+     * @param start (optional) 
+     * @param end (optional) 
      * @return OK
      */
     getInputCounts(deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<InputCountsResponse> {
@@ -1311,7 +1311,7 @@ export class Client {
     }
 
     /**
-     * @param date (optional)
+     * @param date (optional) 
      * @return OK
      */
     getDailyQuestions(date: Date | undefined): Promise<AskingQuestionsResponse> {
@@ -1991,8 +1991,8 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional)
-     * @param date (optional)
+     * @param deviceId (optional) 
+     * @param date (optional) 
      * @return OK
      */
     getUserDailyReport(username: string, deviceId: number | undefined, date: Date | undefined): Promise<DailyReportResponse> {
@@ -2041,8 +2041,8 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional)
-     * @param date (optional)
+     * @param deviceId (optional) 
+     * @param date (optional) 
      * @return OK
      */
     getUserWeeklyReport(username: string, deviceId: number | undefined, date: Date | undefined): Promise<WeeklyReportResponse> {
@@ -2091,7 +2091,7 @@ export class Client {
     }
 
     /**
-     * @param date (optional)
+     * @param date (optional) 
      * @return OK
      */
     getUserDailyRecap(username: string, date: Date | undefined): Promise<DailyRecapResponse> {
@@ -2136,9 +2136,9 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional)
-     * @param start (optional)
-     * @param end (optional)
+     * @param deviceId (optional) 
+     * @param start (optional) 
+     * @param end (optional) 
      * @return OK
      */
     getUserUsage(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<AppUsageResponse[]> {
@@ -2198,11 +2198,11 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional)
-     * @param source (optional)
-     * @param appId (optional)
-     * @param start (optional)
-     * @param end (optional)
+     * @param deviceId (optional) 
+     * @param source (optional) 
+     * @param appId (optional) 
+     * @param start (optional) 
+     * @param end (optional) 
      * @return OK
      */
     getUserSegments(username: string, deviceId: number | undefined, source: string | undefined, appId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<SegmentResponse[]> {
@@ -2399,9 +2399,9 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional)
-     * @param start (optional)
-     * @param end (optional)
+     * @param deviceId (optional) 
+     * @param start (optional) 
+     * @param end (optional) 
      * @return OK
      */
     getUserKeyFrequency(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<KeyFrequencyResponse> {
@@ -2454,8 +2454,8 @@ export class Client {
     }
 
     /**
-     * @param date (optional)
-     * @param force (optional)
+     * @param date (optional) 
+     * @param force (optional) 
      * @return OK
      */
     getDailyRecap(date: Date | undefined, force: boolean | undefined): Promise<DailyRecapResponse> {
@@ -2501,8 +2501,8 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional)
-     * @param date (optional)
+     * @param deviceId (optional) 
+     * @param date (optional) 
      * @return OK
      */
     getDailyReport(deviceId: number | undefined, date: Date | undefined): Promise<DailyReportResponse> {
@@ -2548,8 +2548,8 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional)
-     * @param date (optional)
+     * @param deviceId (optional) 
+     * @param date (optional) 
      * @return OK
      */
     getWeeklyReport(deviceId: number | undefined, date: Date | undefined): Promise<WeeklyReportResponse> {
@@ -2632,9 +2632,9 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional)
-     * @param start (optional)
-     * @param end (optional)
+     * @param deviceId (optional) 
+     * @param start (optional) 
+     * @param end (optional) 
      * @return OK
      */
     getUsage(deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<AppUsageResponse[]> {
@@ -8664,7 +8664,7 @@ export interface IWeeklyReportResponse {
 }
 
 function formatDate(d: Date) {
-    return d.getFullYear() + '-' +
+    return d.getFullYear() + '-' + 
         (d.getMonth() < 9 ? ('0' + (d.getMonth()+1)) : (d.getMonth()+1)) + '-' +
         (d.getDate() < 10 ? ('0' + d.getDate()) : d.getDate());
 }

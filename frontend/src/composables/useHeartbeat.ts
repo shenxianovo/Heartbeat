@@ -141,6 +141,7 @@ export function useHeartbeat(username: string) {
     currentAppId: status.currentAppId,
     currentAppKey: status.currentAppKey,
     lastSeenStr: status.lastSeenStr,
+    lastSeenTitle: status.lastSeenTitle,
     isAllDevices: selection.isAllDevices,
     appSummaries: reports.appSummaries,
     totalSeconds: reports.totalSeconds,

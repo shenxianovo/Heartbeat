@@ -38,11 +38,12 @@ const {
   loading,
   isToday,
   isAlive,
-  presences,
+  onlinePresences,
   currentApp,
   currentAppId,
   currentAppKey,
   lastSeenStr,
+  lastSeenTitle,
   isAllDevices,
   appSummaries,
   totalSeconds,
@@ -87,15 +88,12 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
         <span class="whitespace-nowrap">{{ username }}</span>
 
         <!-- per-device 在场芯片：双机并发时"当前应用"不是一个值,逐台展示而非合成 -->
-        <span v-if="isToday && presences.length > 1" class="flex flex-wrap items-center gap-1.5">
+        <span v-if="isToday && onlinePresences.length > 1" class="flex flex-wrap items-center gap-1.5">
           <span
-            v-for="p in presences"
+            v-for="p in onlinePresences"
             :key="p.deviceId"
-            class="glass-control flex items-center gap-1.5 px-2 py-0.5 font-sans text-[0.7rem] font-normal"
-            :class="p.isOnline ? 'text-foreground' : 'text-muted-foreground'"
-            :title="p.isOnline
-              ? `${p.deviceName} 在线${p.currentApp ? ' · ' + p.currentApp : ''}`
-              : `${p.deviceName} 离线${p.lastSeenStr ? ' · 最后活跃 ' + p.lastSeenStr : ''}`"
+            class="glass-control flex items-center gap-1.5 px-2 py-0.5 font-sans text-[0.7rem] font-normal text-foreground"
+            :title="`${p.deviceName} 在线${p.currentApp ? ' · ' + p.currentApp : ''}`"
           >
             <span class="status-dot !h-1.5 !w-1.5" :class="{ alive: p.isOnline }"></span>
             <span class="max-w-[7rem] truncate">{{ p.deviceName }}</span>
@@ -173,6 +171,7 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
         :isToday="isToday"
         :isAlive="isAlive"
         :lastSeenStr="lastSeenStr"
+        :lastSeenTitle="lastSeenTitle"
         :appSummaries="appSummaries"
         :totalSeconds="totalSeconds"
         :awaySeconds="awaySeconds"
@@ -192,7 +191,7 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
             :currentApp="currentApp"
             :currentAppId="currentAppId"
             :currentAppKey="currentAppKey"
-            :presences="presences"
+            :presences="onlinePresences"
             :isAllDevices="isAllDevices"
           />
 

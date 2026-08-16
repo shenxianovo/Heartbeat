@@ -164,3 +164,23 @@
 .glass-control:focus-visible {
   border-color: var(--ring);
 }
+
+.glass-control-primary {
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--glass-border));
+  background: color-mix(in srgb, var(--primary) 12%, var(--glass-bg));
+  color: var(--primary);
+}
+
+.glass-control-destructive {
+  border-color: color-mix(in srgb, var(--destructive) 38%, var(--glass-border));
+  background: color-mix(in srgb, var(--destructive) 12%, var(--glass-bg));
+  color: var(--destructive);
+}
+
+.glass-control:disabled,
+.glass-control[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.5;
+  pointer-events: none;
+  transform: none;
+}

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { ArrowLeft } from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
 import {
   appCatalogAdminErrorOf,
   deleteAdminAppCatalogOverride,
@@ -248,7 +250,12 @@ function auditLabel(eventType?: string): string {
         <h1>App Catalog</h1>
         <p>把平台 AppIdentity 归到稳定的跨平台产品，并导出可进入代码审查的候选 JSON。</p>
       </div>
-      <router-link to="/settings" class="btn">返回设置</router-link>
+      <Button variant="glass" size="sm" as-child>
+        <router-link to="/settings">
+          <ArrowLeft />
+          返回设置
+        </router-link>
+      </Button>
     </header>
 
     <div v-if="error" class="notice error">{{ error }}</div>
@@ -288,12 +295,13 @@ function auditLabel(eventType?: string): string {
                   <code>{{ identity.key }}</code>
                   <span class="source">{{ identity.effectiveSource }}</span>
                 </div>
-                <button
-                  class="btn primary"
+                <Button
+                  variant="glassPrimary"
+                  size="xs"
                   :data-test="`configure-${identity.key}`"
                   :disabled="inventory.isRollbackCompatible"
                   @click="configure(identity.key ?? '')"
-                >归类</button>
+                >归类</Button>
               </div>
             </div>
           </article>
@@ -307,7 +315,7 @@ function auditLabel(eventType?: string): string {
             <h2>归类 {{ selectedIdentity.key }}</h2>
             <p>先预览影响；任何输入变化都会使旧预览失效。</p>
           </div>
-          <button class="text-button" @click="identityKey = ''">关闭</button>
+          <Button variant="ghost" size="xs" @click="identityKey = ''">关闭</Button>
         </div>
         <label>
           目标 App Key
@@ -328,15 +336,16 @@ function auditLabel(eventType?: string): string {
           <input v-model="newAppDisplayName" placeholder="例如 Google Chrome" />
         </label>
         <div class="actions">
-          <button data-test="preview" class="btn" :disabled="busy || !targetAppKey.trim()" @click="runPreview">
+          <Button data-test="preview" variant="glass" size="xs" :disabled="busy || !targetAppKey.trim()" @click="runPreview">
             {{ busy ? '处理中…' : '预览影响' }}
-          </button>
-          <button
+          </Button>
+          <Button
             data-test="commit"
-            class="btn primary"
+            variant="glassPrimary"
+            size="xs"
             :disabled="busy || !previewIsCurrent"
             @click="commitOverride"
-          >确认保存</button>
+          >确认保存</Button>
         </div>
         <div v-if="preview" class="impact" :class="{ stale: !previewIsCurrent }">
           <strong>{{ previewIsCurrent ? '当前预览' : '输入已变化，请重新预览' }}</strong>
@@ -385,12 +394,13 @@ function auditLabel(eventType?: string): string {
             <h2>本地 Override</h2>
             <p>默认不参与导出；只勾选确认适合沉淀到代码库的映射。</p>
           </div>
-          <button
+          <Button
             data-test="export-candidate"
-            class="btn primary"
+            variant="glassPrimary"
+            size="xs"
             :disabled="busy || exportSelection.size === 0 || inventory.isRollbackCompatible"
             @click="exportCandidate"
-          >导出 Catalog JSON</button>
+          >导出 Catalog JSON</Button>
         </div>
         <div v-if="activeOverrides.length" class="item-list">
           <article v-for="item in activeOverrides" :key="item.id" class="override-row">
@@ -404,12 +414,13 @@ function auditLabel(eventType?: string): string {
               <span><code>{{ item.identityKey }}</code> → <code>{{ item.targetAppKey }}</code></span>
             </label>
             <div class="actions compact">
-              <button class="text-button" @click="configure(item.identityKey ?? '')">修改</button>
-              <button
-                class="text-button danger"
+              <Button variant="ghost" size="xs" @click="configure(item.identityKey ?? '')">修改</Button>
+              <Button
+                variant="glassDestructive"
+                size="xs"
                 :data-test="`delete-preview-${item.identityKey}`"
                 @click="runDeletePreview(item.identityKey ?? '')"
-              >删除…</button>
+              >删除…</Button>
             </div>
           </article>
         </div>
@@ -422,8 +433,8 @@ function auditLabel(eventType?: string): string {
             （目标 <code>{{ deletePreview.targetAppKey }}</code>）。
           </p>
           <div class="actions">
-            <button class="btn" @click="deleteIdentityKey = ''; deletePreview = null">取消</button>
-            <button data-test="delete-commit" class="btn danger-solid" :disabled="busy" @click="commitDelete">确认删除</button>
+            <Button variant="glass" size="xs" @click="deleteIdentityKey = ''; deletePreview = null">取消</Button>
+            <Button data-test="delete-commit" variant="glassDestructive" size="xs" :disabled="busy" @click="commitDelete">确认删除</Button>
           </div>
         </div>
       </section>
@@ -441,7 +452,7 @@ function auditLabel(eventType?: string): string {
     </template>
     <div v-else class="panel empty-state">
       <p>无法读取 App Catalog 管理数据。</p>
-      <button data-test="retry-load" class="btn" @click="load">重试</button>
+      <Button data-test="retry-load" variant="glass" size="xs" @click="load">重试</Button>
     </div>
   </div>
 </template>
@@ -465,15 +476,10 @@ p { color: var(--muted-foreground); font-size: 0.85rem; line-height: 1.5; }
 .identity-row > div { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; min-width: 0; }
 code { overflow-wrap: anywhere; font-size: .78rem; }
 .source { padding: .1rem .4rem; border-radius: 999px; background: var(--secondary); color: var(--muted-foreground); font-size: .68rem; }
-.btn { flex-shrink: 0; padding: .42rem .75rem; border: 1px solid var(--border); border-radius: 7px; background: var(--card); color: var(--foreground); cursor: pointer; text-decoration: none; font-size: .82rem; }
-.btn.primary { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); color: var(--primary); }
-.btn:disabled { cursor: default; opacity: .45; }
 .editor label { display: flex; flex-direction: column; gap: .35rem; margin-top: .85rem; font-size: .8rem; color: var(--muted-foreground); }
 input { padding: .55rem .65rem; border: 1px solid var(--border); border-radius: 7px; background: var(--background); color: var(--foreground); }
 .actions { justify-content: flex-start; margin-top: .9rem; }
 .actions.compact { margin-top: 0; }
-.text-button { border: 0; background: none; color: var(--primary); cursor: pointer; }
-.text-button.danger { color: rgb(248 113 113); }
 .impact, .delete-confirm { margin-top: 1rem; padding: .85rem; border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border)); border-radius: 9px; background: color-mix(in srgb, var(--primary) 7%, transparent); }
 .impact.stale { opacity: .58; border-style: dashed; }
 .impact-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .45rem; margin-top: .6rem; font-size: .78rem; color: var(--muted-foreground); }
@@ -481,7 +487,6 @@ input { padding: .55rem .65rem; border: 1px solid var(--border); border-radius: 
 .impact-details h3 { color: var(--foreground); font-size: .76rem; font-weight: 650; }
 .impact-details > div { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
 .export-check { display: flex; align-items: center; gap: .65rem; min-width: 0; }
-.danger-solid { background: rgb(185 28 28); border-color: rgb(239 68 68 / .55); color: white; }
 .audit-row { display: flex; flex-direction: column; gap: .45rem; }
 .audit-row > div { display: flex; justify-content: space-between; gap: 1rem; }
 .audit-row span { color: var(--muted-foreground); font-size: .72rem; }

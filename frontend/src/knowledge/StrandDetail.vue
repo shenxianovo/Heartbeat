@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import type { IStrandResponse, IUpdateStrandRequest, IMoveStrandRequest, IEndStrandRequest, IMatcherDto } from '../api/index'
+import { Button } from '@/components/ui/button'
 
 const props = defineProps<{
   strand: IStrandResponse
@@ -104,12 +105,12 @@ function matcherDisplay(m: IMatcherDto): string {
   <div class="strand-detail">
     <div v-if="conflictError" class="conflict-banner">
       <span>{{ conflictError }}</span>
-      <button class="btn-sm" @click="emit('refresh')">刷新</button>
+      <Button variant="glass" size="xs" @click="emit('refresh')">刷新</Button>
     </div>
 
     <div class="detail-header">
       <h2>{{ strand.name }}</h2>
-      <button class="btn-sm" @click="emit('deselect')">关闭</button>
+      <Button variant="glass" size="xs" @click="emit('deselect')">关闭</Button>
     </div>
 
     <div class="detail-meta">
@@ -127,9 +128,9 @@ function matcherDisplay(m: IMatcherDto): string {
 
     <!-- View mode actions -->
     <div v-if="mode === 'view'" class="actions">
-      <button class="btn-sm" @click="startEdit">编辑</button>
-      <button class="btn-sm" @click="startMove">变更父级</button>
-      <button v-if="!strand.endedOn" class="btn-sm danger" @click="submitEnd">结束</button>
+      <Button variant="glass" size="xs" @click="startEdit">编辑</Button>
+      <Button variant="glass" size="xs" @click="startMove">变更父级</Button>
+      <Button v-if="!strand.endedOn" variant="glassDestructive" size="xs" @click="submitEnd">结束</Button>
     </div>
 
     <!-- Edit mode -->
@@ -151,8 +152,8 @@ function matcherDisplay(m: IMatcherDto): string {
         <input v-model="editEndedOn" type="date" class="input" />
       </label>
       <div class="form-actions">
-        <button class="btn-sm primary" :disabled="!editName.trim()" @click="submitEdit">保存</button>
-        <button class="btn-sm" @click="mode = 'view'">取消</button>
+        <Button variant="glassPrimary" size="xs" :disabled="!editName.trim()" @click="submitEdit">保存</Button>
+        <Button variant="glass" size="xs" @click="mode = 'view'">取消</Button>
       </div>
     </div>
 
@@ -184,8 +185,8 @@ function matcherDisplay(m: IMatcherDto): string {
           </select>
         </label>
         <div class="form-actions">
-          <button class="btn-sm primary" @click="submitMove">确认移动</button>
-          <button class="btn-sm" @click="mode = 'view'">取消</button>
+          <Button variant="glassPrimary" size="xs" @click="submitMove">确认移动</Button>
+          <Button variant="glass" size="xs" @click="mode = 'view'">取消</Button>
         </div>
       </template>
 
@@ -194,8 +195,8 @@ function matcherDisplay(m: IMatcherDto): string {
           请先结束当前脉络，然后在新父级下创建后继节点（名称和释义会预填）。
         </p>
         <div class="form-actions">
-          <button class="btn-sm danger" @click="submitEnd">结束当前脉络</button>
-          <button class="btn-sm" @click="mode = 'view'">取消</button>
+          <Button variant="glassDestructive" size="xs" @click="submitEnd">结束当前脉络</Button>
+          <Button variant="glass" size="xs" @click="mode = 'view'">取消</Button>
         </div>
       </template>
     </div>
@@ -206,7 +207,7 @@ function matcherDisplay(m: IMatcherDto): string {
       <div v-if="!strand.members?.length" class="placeholder">无指纹（纯语境容器）</div>
       <div v-for="m in strand.members" :key="matcherDisplay(m)" class="matcher-item">
         <span class="matcher-text">{{ matcherDisplay(m) }}</span>
-        <button class="btn-sm danger" @click="emit('mute', m)">静音</button>
+        <Button variant="glassDestructive" size="xs" @click="emit('mute', m)">静音</Button>
       </div>
     </div>
   </div>
@@ -251,25 +252,6 @@ function matcherDisplay(m: IMatcherDto): string {
 }
 .meta-row { display: flex; gap: 1rem; font-size: 0.75rem; color: var(--muted-foreground); }
 .actions { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
-.btn-sm {
-  font-size: 0.75rem;
-  padding: 0.25rem 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--card);
-  color: var(--foreground);
-  cursor: pointer;
-}
-.btn-sm.primary {
-  background: var(--primary);
-  color: var(--primary-foreground, #fff);
-  border-color: var(--primary);
-}
-.btn-sm.danger {
-  border-color: rgb(239 68 68 / 0.5);
-  color: rgb(239 68 68);
-}
-.btn-sm:disabled { opacity: 0.5; cursor: default; }
 .form-section {
   margin-bottom: 1rem;
   padding: 0.75rem;

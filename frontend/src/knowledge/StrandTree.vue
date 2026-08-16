@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import type { StrandTreeNode } from './useStrandTree'
 import type { ICreateStrandRequest } from '../api/index'
+import { Button } from '@/components/ui/button'
 
 const props = defineProps<{
   tree: StrandTreeNode[]
@@ -67,15 +68,15 @@ function formatDate(d: Date): string {
   <div class="strand-tree">
     <div class="tree-header">
       <span class="tree-title">脉络树</span>
-      <button class="btn-sm" @click="showCreateForm = !showCreateForm">
+      <Button variant="glass" size="xs" @click="showCreateForm = !showCreateForm">
         {{ showCreateForm ? '取消' : '新建' }}
-      </button>
+      </Button>
     </div>
 
     <div v-if="showCreateForm" class="create-form">
       <input v-model="newName" placeholder="名称" class="input" @keydown.enter="submitCreate" />
       <input v-model="newGloss" placeholder="释义（可选）" class="input" />
-      <button class="btn-sm primary" :disabled="!newName.trim()" @click="submitCreate">创建</button>
+      <Button variant="glassPrimary" size="xs" :disabled="!newName.trim()" @click="submitCreate">创建</Button>
     </div>
 
     <p v-if="loading" class="placeholder">加载中…</p>
@@ -129,21 +130,6 @@ function formatDate(d: Date): string {
   margin-bottom: 0.75rem;
 }
 .tree-title { font-weight: 600; font-size: 0.9rem; }
-.btn-sm {
-  font-size: 0.75rem;
-  padding: 0.25rem 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--card);
-  color: var(--foreground);
-  cursor: pointer;
-}
-.btn-sm.primary {
-  background: var(--primary);
-  color: var(--primary-foreground, #fff);
-  border-color: var(--primary);
-}
-.btn-sm:disabled { opacity: 0.5; cursor: default; }
 .create-form {
   display: flex;
   flex-direction: column;

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { ArrowLeft } from 'lucide-vue-next'
 import { authStore } from '../stores/auth'
 import { fetchMe, updateMySettings } from '../api/index'
+import { Button } from '@/components/ui/button'
 
 const loading = ref(true)
 const saving = ref(false)
@@ -44,7 +46,15 @@ async function toggleVisibility() {
   <div class="settings">
     <header class="settings-header">
       <h1>设置</h1>
-      <button class="btn" @click="authStore.logout()">登出</button>
+      <div class="header-actions">
+        <Button v-if="username" variant="glass" size="sm" as-child>
+          <router-link :to="`/u/${username}`">
+            <ArrowLeft />
+            返回看板
+          </router-link>
+        </Button>
+        <Button variant="glass" size="sm" @click="authStore.logout()">登出</Button>
+      </div>
     </header>
 
     <p v-if="loading" class="placeholder">加载中…</p>
@@ -60,7 +70,9 @@ async function toggleVisibility() {
             查看和修正 Strand 树、指纹、片段事实与复现探针。
           </div>
         </div>
-        <router-link to="/settings/knowledge" class="btn">管理</router-link>
+        <Button variant="glassPrimary" size="sm" as-child>
+          <router-link to="/settings/knowledge">管理</router-link>
+        </Button>
       </section>
 
       <section v-if="isAdmin" class="row">
@@ -70,7 +82,9 @@ async function toggleVisibility() {
             归类待识别的跨平台应用、检查本地 Override，并导出候选 Catalog JSON。
           </div>
         </div>
-        <router-link to="/settings/app-catalog" class="btn">管理</router-link>
+        <Button variant="glassPrimary" size="sm" as-child>
+          <router-link to="/settings/app-catalog">管理</router-link>
+        </Button>
       </section>
 
       <section class="row">
@@ -109,15 +123,8 @@ async function toggleVisibility() {
   align-items: center;
   margin-bottom: 2rem;
 }
+.header-actions { display: flex; align-items: center; gap: 0.5rem; }
 h1 { font-size: 1.5rem; font-weight: 700; }
-.btn {
-  background: var(--card);
-  border: 1px solid var(--border);
-  color: var(--foreground);
-  padding: 0.4rem 0.8rem;
-  border-radius: 6px;
-  cursor: pointer;
-}
 .placeholder { color: var(--muted-foreground); }
 .error {
   margin-bottom: 1rem;

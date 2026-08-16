@@ -16,19 +16,21 @@ const props = defineProps<{
   isAllDevices: boolean
 }>()
 
-// 多台设备时逐行展示：双机并发时"当前应用"本来就不是一个值,不合成。
-const showPerDevice = computed(() => props.isAllDevices && props.presences.length > 1)
+const onlinePresences = computed(() => props.presences.filter(p => p.isOnline))
+
+// 多台在线设备时逐行展示：双机并发时"当前应用"本来就不是一个值,不合成。
+const showPerDevice = computed(() => props.isAllDevices && onlinePresences.value.length > 1)
 </script>
 
 <template>
-  <Card v-if="isToday" class="mb-6 gap-3 border-border/60 bg-card/80 py-5 backdrop-blur-sm">
+  <Card v-if="isToday && isAlive && onlinePresences.length > 0" class="mb-6 gap-3 border-border/60 bg-card/80 py-5 backdrop-blur-sm">
     <div class="flex flex-col gap-3 px-5">
       <h2 class="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">当前使用</h2>
 
       <!-- 聚合视图多设备：per-device 行,每台各说自己的前台应用 -->
       <template v-if="showPerDevice">
         <div
-          v-for="p in presences"
+          v-for="p in onlinePresences"
           :key="p.deviceId"
           class="flex items-center gap-3 border-b border-border/40 py-1.5 last:border-0"
         >
@@ -46,13 +48,13 @@ const showPerDevice = computed(() => props.isAllDevices && props.presences.lengt
                 ? 'font-semibold'
                 : 'font-normal text-muted-foreground'"
             >
-              {{ !p.isOnline ? '离线' : isAwayApp(p.currentAppKey, p.currentApp) ? '离开中' : (p.currentApp ?? '无前台应用') }}
+              {{ isAwayApp(p.currentAppKey, p.currentApp) ? '离开中' : (p.currentApp ?? '无前台应用') }}
             </span>
             <span v-if="p.isOnline && p.currentApp && getAppLabel(p.currentAppKey ?? p.currentApp)" class="text-[0.7rem] text-muted-foreground">
               {{ getAppLabel(p.currentAppKey ?? p.currentApp) }}
             </span>
             <span class="truncate text-[0.75rem] text-muted-foreground">
-              {{ p.deviceName }}<template v-if="!p.isOnline && p.lastSeenStr"> · 最后活跃 {{ p.lastSeenStr }}</template>
+              {{ p.deviceName }}
             </span>
           </div>
         </div>
@@ -79,12 +81,6 @@ const showPerDevice = computed(() => props.isAllDevices && props.presences.lengt
             {{ getAppLabel(currentAppKey ?? currentApp) }}
           </span>
         </div>
-      </div>
-
-      <!-- 离线 -->
-      <div v-else-if="!isAlive" class="flex items-center gap-3 py-1">
-        <span class="status-dot"></span>
-        <span class="text-[1.1rem] font-normal text-muted-foreground">设备离线</span>
       </div>
 
       <!-- 在线但无前台应用 -->

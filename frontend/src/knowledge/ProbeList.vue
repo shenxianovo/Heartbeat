@@ -3,6 +3,7 @@ import type {
   IEpisodeResponse, IStrandResponse, IMatcherDto,
   IResolveProbeRequest, IPromoteEpisodeRequest,
 } from '../api/index'
+import { Button } from '@/components/ui/button'
 
 const props = defineProps<{
   episodes: IEpisodeResponse[]
@@ -87,7 +88,7 @@ function formatDate(d: Date | undefined): string {
   <div class="probe-list">
     <div v-if="conflictError" class="conflict-banner">
       <span>{{ conflictError }}</span>
-      <button class="btn-sm" @click="emit('reload')">刷新</button>
+      <Button variant="glass" size="xs" @click="emit('reload')">刷新</Button>
     </div>
 
     <section class="probe-section">
@@ -100,9 +101,9 @@ function formatDate(d: Date | undefined): string {
         </div>
         <p class="probe-episode">{{ row.episodeText }}</p>
         <div class="probe-actions">
-          <button class="btn-sm primary" @click="doResolve(row, 'promoted')">提升</button>
-          <button class="btn-sm" @click="doResolve(row, 'denied')">否认</button>
-          <button class="btn-sm" @click="doMute(row)">静音</button>
+          <Button variant="glassPrimary" size="xs" @click="doResolve(row, 'promoted')">提升</Button>
+          <Button variant="glass" size="xs" @click="doResolve(row, 'denied')">否认</Button>
+          <Button variant="glassDestructive" size="xs" @click="doMute(row)">静音</Button>
         </div>
       </div>
     </section>
@@ -162,18 +163,4 @@ function formatDate(d: Date | undefined): string {
 }
 .probe-episode { font-size: 0.85rem; line-height: 1.5; margin-bottom: 0.5rem; }
 .probe-actions { display: flex; gap: 0.4rem; }
-.btn-sm {
-  font-size: 0.75rem;
-  padding: 0.25rem 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--card);
-  color: var(--foreground);
-  cursor: pointer;
-}
-.btn-sm.primary {
-  background: var(--primary);
-  color: var(--primary-foreground, #fff);
-  border-color: var(--primary);
-}
 </style>

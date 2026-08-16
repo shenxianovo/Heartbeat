@@ -5,6 +5,7 @@ import type {
   ICreateEpisodeRequest, IUpdateEpisodeRequest,
   IRelateEpisodeRequest, IPromoteEpisodeRequest,
 } from '../api/index'
+import { Button } from '@/components/ui/button'
 
 const props = defineProps<{
   episodes: IEpisodeResponse[]
@@ -148,7 +149,7 @@ function strandName(id: string | undefined | null): string {
   <div class="episode-list">
     <div v-if="conflictError" class="conflict-banner">
       <span>{{ conflictError }}</span>
-      <button class="btn-sm" @click="emit('reload')">刷新</button>
+      <Button variant="glass" size="xs" @click="emit('reload')">刷新</Button>
     </div>
 
     <!-- Filters -->
@@ -177,7 +178,7 @@ function strandName(id: string | undefined | null): string {
         />
         仅未关联
       </label>
-      <button class="btn-sm" @click="startCreate">新建</button>
+      <Button variant="glass" size="xs" @click="startCreate">新建</Button>
     </div>
 
     <!-- Create/Edit form -->
@@ -200,14 +201,15 @@ function strandName(id: string | undefined | null): string {
         </select>
       </label>
       <div class="form-actions">
-        <button
-          class="btn-sm primary"
+        <Button
+          variant="glassPrimary"
+          size="xs"
           :disabled="!formText.trim()"
           @click="editMode === 'create' ? submitCreate() : submitEdit()"
         >
           {{ editMode === 'create' ? '创建' : '保存' }}
-        </button>
-        <button class="btn-sm" @click="cancel">取消</button>
+        </Button>
+        <Button variant="glass" size="xs" @click="cancel">取消</Button>
       </div>
     </div>
 
@@ -223,8 +225,8 @@ function strandName(id: string | undefined | null): string {
         </select>
       </label>
       <div class="form-actions">
-        <button class="btn-sm primary" @click="submitRelate">确认</button>
-        <button class="btn-sm" @click="cancel">取消</button>
+        <Button variant="glassPrimary" size="xs" @click="submitRelate">确认</Button>
+        <Button variant="glass" size="xs" @click="cancel">取消</Button>
       </div>
     </div>
 
@@ -245,10 +247,10 @@ function strandName(id: string | undefined | null): string {
         </select>
       </label>
       <div class="form-actions">
-        <button class="btn-sm primary" :disabled="!promoteNewStrandName.trim()" @click="submitPromote">
+        <Button variant="glassPrimary" size="xs" :disabled="!promoteNewStrandName.trim()" @click="submitPromote">
           提升
-        </button>
-        <button class="btn-sm" @click="cancel">取消</button>
+        </Button>
+        <Button variant="glass" size="xs" @click="cancel">取消</Button>
       </div>
     </div>
 
@@ -265,10 +267,10 @@ function strandName(id: string | undefined | null): string {
         </div>
         <p class="ep-text">{{ ep.text }}</p>
         <div class="ep-actions">
-          <button class="btn-sm" @click="startEdit(ep)">编辑</button>
-          <button class="btn-sm" @click="startRelate(ep)">关联</button>
-          <button class="btn-sm" @click="startPromote(ep)">提升</button>
-          <button class="btn-sm danger" @click="doDelete(ep)">删除</button>
+          <Button variant="glass" size="xs" @click="startEdit(ep)">编辑</Button>
+          <Button variant="glass" size="xs" @click="startRelate(ep)">关联</Button>
+          <Button variant="glass" size="xs" @click="startPromote(ep)">提升</Button>
+          <Button variant="glassDestructive" size="xs" @click="doDelete(ep)">删除</Button>
         </div>
       </div>
     </div>
@@ -330,25 +332,6 @@ function strandName(id: string | undefined | null): string {
 .textarea { resize: vertical; font-family: inherit; }
 .form-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
 .hint { font-size: 0.8rem; color: var(--muted-foreground); margin-bottom: 0.5rem; }
-.btn-sm {
-  font-size: 0.75rem;
-  padding: 0.25rem 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--card);
-  color: var(--foreground);
-  cursor: pointer;
-}
-.btn-sm.primary {
-  background: var(--primary);
-  color: var(--primary-foreground, #fff);
-  border-color: var(--primary);
-}
-.btn-sm.danger {
-  border-color: rgb(239 68 68 / 0.5);
-  color: rgb(239 68 68);
-}
-.btn-sm:disabled { opacity: 0.5; cursor: default; }
 .placeholder { color: var(--muted-foreground); font-size: 0.85rem; }
 .error-text { color: rgb(239 68 68); font-size: 0.85rem; }
 .list { display: flex; flex-direction: column; gap: 0.75rem; }

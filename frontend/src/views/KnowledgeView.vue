@@ -6,6 +6,8 @@ import StrandTree from '../knowledge/StrandTree.vue'
 import StrandDetail from '../knowledge/StrandDetail.vue'
 import EpisodeList from '../knowledge/EpisodeList.vue'
 import ProbeList from '../knowledge/ProbeList.vue'
+import { ArrowLeft } from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
 
 type Tab = 'strands' | 'episodes' | 'probes'
 const activeTab = ref<Tab>('strands')
@@ -23,7 +25,12 @@ onMounted(async () => {
   <div class="knowledge">
     <header class="knowledge-header">
       <h1>知识管理</h1>
-      <router-link to="/settings" class="btn">返回设置</router-link>
+      <Button variant="glass" size="sm" as-child>
+        <router-link to="/settings">
+          <ArrowLeft />
+          返回设置
+        </router-link>
+      </Button>
     </header>
 
     <nav class="tabs">
@@ -115,16 +122,6 @@ onMounted(async () => {
   margin-bottom: 1.5rem;
 }
 .knowledge-header h1 { font-size: 1.5rem; font-weight: 700; }
-.btn {
-  background: var(--card);
-  border: 1px solid var(--border);
-  color: var(--foreground);
-  padding: 0.4rem 0.8rem;
-  border-radius: 6px;
-  cursor: pointer;
-  text-decoration: none;
-  font-size: 0.85rem;
-}
 .tabs {
   display: flex;
   gap: 0;

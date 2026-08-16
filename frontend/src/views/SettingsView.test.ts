@@ -21,18 +21,20 @@ describe('SettingsView administrator navigation', () => {
     vi.mocked(fetchMe).mockResolvedValue({ username: 'alice', isPublic: false, isAdmin: true })
 
     const wrapper = mount(SettingsView, {
-      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+      global: { stubs: { RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' } } },
     })
     await flushPromises()
 
     expect(wrapper.text()).toContain('App Catalog')
+    expect(wrapper.get('a[href="/u/alice"]').text()).toContain('返回看板')
+    expect(wrapper.get('a[href="/settings/app-catalog"]').classes()).toContain('glass-control')
   })
 
   it('does not render the management entry for an ordinary user', async () => {
     vi.mocked(fetchMe).mockResolvedValue({ username: 'alice', isPublic: false, isAdmin: false })
 
     const wrapper = mount(SettingsView, {
-      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+      global: { stubs: { RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' } } },
     })
     await flushPromises()
 

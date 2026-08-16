@@ -9,6 +9,7 @@ const props = defineProps<{
   isToday: boolean
   isAlive: boolean
   lastSeenStr: string
+  lastSeenTitle: string
   appSummaries: { appId: number; appName: string; totalSeconds: number }[]
   totalSeconds: number
   awaySeconds: number
@@ -39,7 +40,11 @@ const showSumAsSecondary = computed(() =>
         >
           {{ isToday ? (isAlive ? '还活着' : '似了喵') : '--' }}
         </span>
-        <span class="text-[0.8rem] text-muted-foreground" v-if="lastSeenStr && isToday">
+        <span
+          v-if="lastSeenStr && isToday && !isAlive"
+          class="text-[0.8rem] text-muted-foreground"
+          :title="lastSeenTitle"
+        >
           最后活跃 {{ lastSeenStr }}
         </span>
       </div>

@@ -1,6 +1,7 @@
 import { ref, computed, onMounted, onUnmounted, type Ref } from 'vue'
 import type { ApiError, DeviceInfoResponse, DeviceStatusResponse } from '../api/index'
 import { fetchPublicDeviceStatus, toApiError } from '../api/index'
+import { formatExactLocalDateTime, formatLastSeen, latestDate } from '../lib/lastSeen'
 
 /** 一台设备的在场事实。看板头部芯片与"当前应用"面板都吃这个。 */
 export interface DevicePresence {
@@ -11,7 +12,7 @@ export interface DevicePresence {
   currentAppId: number | null
   currentAppKey: string | null
   currentAppIdentityKey: string | null
-  lastSeenStr: string
+  lastSeen: Date | null
 }
 
 /**
@@ -37,11 +38,6 @@ export function useDeviceStatus(
     return devices.value.map(d => d.id!).filter(id => id != null)
   })
 
-  function timeStr(raw: Date | undefined): string {
-    if (!raw) return ''
-    return raw.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-  }
-
   /** per-device 在场行。在线的排前面，其余按设备列表顺序。 */
   const presences = computed<DevicePresence[]>(() => {
     const rows: DevicePresence[] = []
@@ -58,7 +54,7 @@ export function useDeviceStatus(
         currentAppId: online ? (s?.currentAppId ?? null) : null,
         currentAppKey: online ? (s?.currentAppKey ?? null) : null,
         currentAppIdentityKey: online ? (s?.currentAppIdentityKey ?? null) : null,
-        lastSeenStr: timeStr(s?.lastSeen),
+        lastSeen: s?.lastSeen ?? null,
       })
     }
     return rows.sort((a, b) => Number(b.isOnline) - Number(a.isOnline))
@@ -73,10 +69,10 @@ export function useDeviceStatus(
   const currentApp = computed(() => onlinePresences.value[0]?.currentApp ?? null)
   const currentAppId = computed(() => onlinePresences.value[0]?.currentAppId ?? null)
   const currentAppKey = computed(() => onlinePresences.value[0]?.currentAppKey ?? null)
-  const lastSeenStr = computed(() => {
-    const seen = presences.value.map(p => p.lastSeenStr).filter(Boolean)
-    return seen[0] ?? ''
-  })
+  /** 聚合视图取所选范围内真正最近的一次心跳，而不是设备列表第一项。 */
+  const lastSeen = computed(() => latestDate(presences.value.map(p => p.lastSeen)))
+  const lastSeenStr = computed(() => formatLastSeen(lastSeen.value))
+  const lastSeenTitle = computed(() => formatExactLocalDateTime(lastSeen.value))
 
   async function load() {
     const ids = targetDeviceIds.value
@@ -112,6 +108,7 @@ export function useDeviceStatus(
     currentAppId,
     currentAppKey,
     lastSeenStr,
+    lastSeenTitle,
     load,
   }
 }
