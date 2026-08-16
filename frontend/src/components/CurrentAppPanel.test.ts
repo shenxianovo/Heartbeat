@@ -85,4 +85,26 @@ describe('CurrentAppPanel', () => {
     expect(wrapper.text()).toContain('Online desktop')
     expect(wrapper.text()).not.toContain('Offline desktop')
   })
+
+  it('shows the device name when exactly one device is online', () => {
+    const wrapper = mountPanel({
+      isAlive: true,
+      currentApp: 'Visual Studio Code',
+      currentAppId: 1,
+      currentAppKey: 'vscode',
+      presences: [{
+        deviceId: 1,
+        deviceName: 'MacBook Pro',
+        isOnline: true,
+        currentApp: 'Visual Studio Code',
+        currentAppId: 1,
+        currentAppKey: 'vscode',
+        currentAppIdentityKey: 'mac:com.microsoft.vscode',
+        lastSeen: new Date(),
+      }],
+    })
+
+    expect(wrapper.text()).toContain('Visual Studio Code')
+    expect(wrapper.text()).toContain('MacBook Pro')
+  })
 })

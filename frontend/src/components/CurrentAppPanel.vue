@@ -17,6 +17,7 @@ const props = defineProps<{
 }>()
 
 const onlinePresences = computed(() => props.presences.filter(p => p.isOnline))
+const singleDeviceName = computed(() => onlinePresences.value[0]?.deviceName ?? '')
 
 // 多台在线设备时逐行展示：双机并发时"当前应用"本来就不是一个值,不合成。
 const showPerDevice = computed(() => props.isAllDevices && onlinePresences.value.length > 1)
@@ -63,7 +64,10 @@ const showPerDevice = computed(() => props.isAllDevices && onlinePresences.value
       <!-- 在线但人离开（心跳照实上报 __away__，ADR-021） -->
       <div v-else-if="isAlive && isAwayApp(currentAppKey, currentApp)" class="flex items-center gap-3 py-1">
         <span class="status-dot alive"></span>
-        <span class="text-[1.1rem] font-normal text-muted-foreground">离开中</span>
+        <div class="flex min-w-0 flex-col gap-0.5">
+          <span class="text-[1.1rem] font-normal text-muted-foreground">离开中</span>
+          <span class="truncate text-[0.75rem] text-muted-foreground">{{ singleDeviceName }}</span>
+        </div>
       </div>
 
       <!-- 在线 + 有前台应用 -->
@@ -80,13 +84,17 @@ const showPerDevice = computed(() => props.isAllDevices && onlinePresences.value
           <span v-if="getAppLabel(currentAppKey ?? currentApp)" class="text-[0.8rem] text-muted-foreground">
             {{ getAppLabel(currentAppKey ?? currentApp) }}
           </span>
+          <span class="truncate text-[0.75rem] text-muted-foreground">{{ singleDeviceName }}</span>
         </div>
       </div>
 
       <!-- 在线但无前台应用 -->
       <div v-else class="flex items-center gap-3 py-1">
         <span class="status-dot alive"></span>
-        <span class="text-[1.1rem] font-normal text-muted-foreground">无前台应用</span>
+        <div class="flex min-w-0 flex-col gap-0.5">
+          <span class="text-[1.1rem] font-normal text-muted-foreground">无前台应用</span>
+          <span class="truncate text-[0.75rem] text-muted-foreground">{{ singleDeviceName }}</span>
+        </div>
       </div>
     </div>
   </Card>
