@@ -43,7 +43,12 @@ builder.Services.AddScoped<KnowledgeCommitService>();
 builder.Services.Configure<RecapOptions>(builder.Configuration.GetSection(RecapOptions.Section));
 builder.Services.Configure<AdministrationOptions>(builder.Configuration.GetSection(AdministrationOptions.Section));
 // LLM 传输一处实现（ADR-029 issue 03）：叙事与发问共享 ChatCompletionClient，generator 退成 prompt+解析。
-builder.Services.AddHttpClient<ChatCompletionClient>();
+// 显式超时（ADR-042）：默认 100s 恰好落在反向代理的读超时之后，于是代理先断、应用的可读错误被
+// 换成一张 HTML 504。120s 让应用总是先于代理放手，失败以 502 + 原因的形式抵达前端。
+builder.Services.AddHttpClient<ChatCompletionClient>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(120);
+});
 builder.Services.AddScoped<IRecapGenerator, OpenAiCompatibleRecapGenerator>();
 builder.Services.AddScoped<IAskingGenerator, OpenAiCompatibleAskingGenerator>();
 builder.Services.AddScoped<IProposalGenerator, OpenAiCompatibleProposalGenerator>();
