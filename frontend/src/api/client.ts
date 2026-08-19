@@ -2455,19 +2455,14 @@ export class Client {
 
     /**
      * @param date (optional) 
-     * @param force (optional) 
      * @return OK
      */
-    getDailyRecap(date: Date | undefined, force: boolean | undefined): Promise<DailyRecapResponse> {
+    getDailyRecap(date: Date | undefined): Promise<DailyRecapResponse> {
         let url_ = this.baseUrl + "/api/v1/recaps/daily?";
         if (date === null)
             throw new globalThis.Error("The parameter 'date' cannot be null.");
         else if (date !== undefined)
             url_ += "date=" + encodeURIComponent(date ? "" + date.toISOString() : "") + "&";
-        if (force === null)
-            throw new globalThis.Error("The parameter 'force' cannot be null.");
-        else if (force !== undefined)
-            url_ += "force=" + encodeURIComponent("" + force) + "&";
         url_ = url_.replace(/[?&]$/, "");
 
         let options_: RequestInit = {
@@ -5406,6 +5401,7 @@ export class DailyRecapResponse implements IDailyRecapResponse {
     generatedAt?: Date | undefined;
     model?: string | undefined;
     knowledgeStale?: boolean;
+    segmentStale?: boolean;
 
     [key: string]: any;
 
@@ -5430,6 +5426,7 @@ export class DailyRecapResponse implements IDailyRecapResponse {
             this.generatedAt = _data["generatedAt"] ? new Date(_data["generatedAt"].toString()) : undefined as any;
             this.model = _data["model"];
             this.knowledgeStale = _data["knowledgeStale"];
+            this.segmentStale = _data["segmentStale"];
         }
     }
 
@@ -5452,6 +5449,7 @@ export class DailyRecapResponse implements IDailyRecapResponse {
         data["generatedAt"] = this.generatedAt ? this.generatedAt.toISOString() : undefined as any;
         data["model"] = this.model;
         data["knowledgeStale"] = this.knowledgeStale;
+        data["segmentStale"] = this.segmentStale;
         return data;
     }
 }
@@ -5463,6 +5461,7 @@ export interface IDailyRecapResponse {
     generatedAt?: Date | undefined;
     model?: string | undefined;
     knowledgeStale?: boolean;
+    segmentStale?: boolean;
 
     [key: string]: any;
 }

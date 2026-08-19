@@ -1,5 +1,7 @@
+using System.Runtime.CompilerServices;
 using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Knowledge;
+using Heartbeat.Core.DTOs.Recaps;
 using Heartbeat.Server.Data;
 using Heartbeat.Server.Entities;
 using Heartbeat.Server.Services;
@@ -10,8 +12,9 @@ namespace Heartbeat.Server.Tests.Services;
 
 /// <summary>
 /// Recap 纠正闭环（ADR-031 §6，issue 06）：纠正 propose 锁定目标日证据 → 复用共享
-/// commit → 提交成功后目标日显式 force 重生成。知识事务与叙事生成是两个独立阶段：
-/// 提交失败不生成；生成失败不回滚知识、不覆盖上一版成功 Recap；其他日期零 LLM 只判脏。
+/// commit → 提交成功后目标日显式重生成（ADR-042 §2 起是 POST 流式生成，不再是 GET 的 force）。
+/// 知识事务与叙事生成是两个独立阶段：提交失败不生成；生成失败不回滚知识、不覆盖上一版成功
+/// Recap；其他日期零 LLM 只判脏。
 /// </summary>
 [Collection("postgres")]
 public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : PostgresTestBase(fixture)
@@ -68,19 +71,36 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
         }
     }
 
+    /// <summary>
+    /// 假生成器（流式接口随 ADR-042 §8）：分块吐出 "narrative-N"，拼接后才是完整叙事。
+    /// 失败点可选在首块之前或若干块之后——纠正闭环关心的是"生成失败不回滚知识、不覆盖上一版
+    /// 正文"，这两种失败形状都必须守住。
+    /// </summary>
     private sealed class FakeRecapGenerator : IRecapGenerator
     {
         public int Calls;
-        public bool Fail;
+
+        /// <summary>吐满这么多块后抛失败；0 = 首块之前就失败，null = 不失败。</summary>
+        public int? FailAfterChunks;
 
         public string Model => "fake-model";
         public string PromptHash => "deadbeef";
 
-        public Task<string> GenerateAsync(string digest, CancellationToken ct = default)
+        public async IAsyncEnumerable<LlmChunk> GenerateStreamAsync(
+            string digest, [EnumeratorCancellation] CancellationToken ct = default)
         {
-            Calls++;
-            if (Fail) throw new RecapGenerationException("upstream down");
-            return Task.FromResult($"narrative-{Calls}");
+            var call = ++Calls;
+            await Task.CompletedTask;
+
+            if (FailAfterChunks == 0) throw new RecapGenerationException("upstream down");
+
+            string[] chunks = ["narrative-", $"{call}"];
+            for (var i = 0; i < chunks.Length; i++)
+            {
+                // 纠正闭环只关心正文：思考块的语义由 RecapServiceTests 专门钉。
+                yield return LlmChunk.OfContent(chunks[i]);
+                if (FailAfterChunks == i + 1) throw new RecapGenerationException("upstream down");
+            }
         }
     }
 
@@ -127,6 +147,23 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
         foreach (var day in days)
             db.ActivitySegments.Add(Segment(day.AddHours(14), day.AddHours(16)));
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>抽干一条生成流，事件按到达顺序返回。</summary>
+    private static async Task<List<RecapStreamEvent>> DrainAsync(RecapService svc, DateTimeOffset date)
+    {
+        var events = new List<RecapStreamEvent>();
+        await foreach (var e in svc.GenerateDailyRecapStreamAsync("user-1", date))
+            events.Add(e);
+        return events;
+    }
+
+    /// <summary>显式重生成一次并要求成功，返回 done 里的 DTO。</summary>
+    private static async Task<DailyRecapResponse> RegenerateAsync(RecapService svc, DateTimeOffset date)
+    {
+        var events = await DrainAsync(svc, date);
+        Assert.DoesNotContain(events, e => e.Type == RecapStreamEvent.ErrorType);
+        return events.Single(e => e.Type == RecapStreamEvent.DoneType).Recap!;
     }
 
     // ===== 纠正 propose：证据锁定目标日，零写入 =====
@@ -215,18 +252,18 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
         Assert.DoesNotContain(env.Proposer.LastContext!.Strands, s => s.Path.Contains("别人的脉络"));
     }
 
-    // ===== 提交 + 目标日 force 重生成的闭环 =====
+    // ===== 提交 + 目标日重生成的闭环 =====
 
     /// <summary>先让目标日有一版成功 Recap（用户正在看、正在纠正的那一版）。</summary>
-    private async Task<string> GenerateInitialRecapAsync(Env env)
+    private static async Task<string> GenerateInitialRecapAsync(Env env)
     {
-        var initial = await env.Recaps.GetDailyRecapAsync("user-1", TargetDay, force: false);
+        var initial = await RegenerateAsync(env.Recaps, TargetDay);
         Assert.False(initial.IsEmpty);
         return initial.Narrative!;
     }
 
     [Fact]
-    public async Task EpisodeOnlyCorrection_CommitThenForceRegenerate_TargetDayUpdated()
+    public async Task EpisodeOnlyCorrection_CommitThenRegenerate_TargetDayUpdated()
     {
         using var db = CreateDbContext();
         var env = CreateEnv(db);
@@ -245,16 +282,16 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
         Assert.Null(commit.Error);
         Assert.Equal("做了 Hyperframes 调研", (await db.Episodes.SingleAsync()).Text);
 
-        // 提交成功后目标日显式 force 重生成：新叙事 + 新知识投影哈希，读取不再判脏
-        var regenerated = await env.Recaps.GetDailyRecapAsync("user-1", TargetDay, force: true);
+        // 提交成功后目标日显式重生成：新叙事 + 新知识投影哈希，读取不再判脏
+        var regenerated = await RegenerateAsync(env.Recaps, TargetDay);
         Assert.NotEqual(oldNarrative, regenerated.Narrative);
         Assert.False(regenerated.KnowledgeStale);
         Assert.Equal(2, env.Generator.Calls);
 
-        var reread = await env.Recaps.GetDailyRecapAsync("user-1", TargetDay, force: false);
+        var reread = await env.Recaps.GetDailyRecapAsync("user-1", TargetDay);
         Assert.Equal(regenerated.Narrative, reread.Narrative);
         Assert.False(reread.KnowledgeStale);
-        Assert.Equal(2, env.Generator.Calls); // 缓存命中，无追加生成
+        Assert.Equal(2, env.Generator.Calls); // 缓存命中，读取不追加生成
     }
 
     [Fact]
@@ -266,7 +303,7 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
 
         // 两天都先有成功 Recap
         await GenerateInitialRecapAsync(env);
-        var otherOld = await env.Recaps.GetDailyRecapAsync("user-1", OtherDay, force: false);
+        var otherOld = await RegenerateAsync(env.Recaps, OtherDay);
         Assert.Equal(2, env.Generator.Calls);
 
         // 只改 Strand 的纠正：新脉络 + 指纹（两天的段都命中）
@@ -282,13 +319,13 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
             new ProposeCorrectionRequest { Date = TargetDay, Correction = "这些活动属于 Hyperframes 调研" })).Proposal!;
         Assert.Null((await env.Commit.CommitAsync("user-1", new CommitChangeSetRequest { Operations = proposal.Operations })).Error);
 
-        // 只有目标日 force 重生成
-        var regenerated = await env.Recaps.GetDailyRecapAsync("user-1", TargetDay, force: true);
+        // 只有目标日被显式重生成
+        var regenerated = await RegenerateAsync(env.Recaps, TargetDay);
         Assert.False(regenerated.KnowledgeStale);
         Assert.Equal(3, env.Generator.Calls);
 
         // 其他历史日期：不批量生成，读取时零 LLM、惰性 stale hint，正文原样
-        var otherReread = await env.Recaps.GetDailyRecapAsync("user-1", OtherDay, force: false);
+        var otherReread = await env.Recaps.GetDailyRecapAsync("user-1", OtherDay);
         Assert.True(otherReread.KnowledgeStale);
         Assert.Equal(otherOld.Narrative, otherReread.Narrative);
         Assert.Equal(3, env.Generator.Calls);
@@ -330,7 +367,7 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
         var probe = await db.RecurrenceProbes.SingleAsync();
         Assert.Equal(episodes.Single(e => e.Text == "帮朋友调了一次直播").Id, probe.EpisodeId);
 
-        var regenerated = await env.Recaps.GetDailyRecapAsync("user-1", TargetDay, force: true);
+        var regenerated = await RegenerateAsync(env.Recaps, TargetDay);
         Assert.False(regenerated.KnowledgeStale);
     }
 
@@ -374,7 +411,7 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
         Assert.Equal(0, await db.Episodes.CountAsync());
 
         // 提交失败不得触发重生成（编排契约）：缓存与叙事原样
-        var reread = await env.Recaps.GetDailyRecapAsync("user-1", TargetDay, force: false);
+        var reread = await env.Recaps.GetDailyRecapAsync("user-1", TargetDay);
         Assert.Equal(oldNarrative, reread.Narrative);
         Assert.Equal(1, env.Generator.Calls);
     }
@@ -396,19 +433,21 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
             new ProposeCorrectionRequest { Date = TargetDay, Correction = "补一件事" })).Proposal!;
         Assert.Null((await env.Commit.CommitAsync("user-1", new CommitChangeSetRequest { Operations = proposal.Operations })).Error);
 
-        // force 重生成失败：不回滚知识，不覆盖上一版成功 Recap
-        env.Generator.Fail = true;
-        await Assert.ThrowsAsync<RecapGenerationException>(
-            () => env.Recaps.GetDailyRecapAsync("user-1", TargetDay, force: true));
+        // 重生成失败（首块之后断，半截叙事已发出）：失败以流内 error 抵达，头已发出后 502 不再可能。
+        // 不回滚知识，也不覆盖上一版成功 Recap。
+        env.Generator.FailAfterChunks = 1;
+        var events = await DrainAsync(env.Recaps, TargetDay);
+        Assert.Single(events, e => e.Type == RecapStreamEvent.ErrorType);
+        Assert.DoesNotContain(events, e => e.Type == RecapStreamEvent.DoneType);
         Assert.Equal(1, await db.Episodes.CountAsync()); // 已确认的知识还在
 
-        var cached = await env.Recaps.GetDailyRecapAsync("user-1", TargetDay, force: false);
+        var cached = await env.Recaps.GetDailyRecapAsync("user-1", TargetDay);
         Assert.Equal(oldNarrative, cached.Narrative);
         Assert.True(cached.KnowledgeStale); // 知识已保存，Recap 尚未更新
 
         // 单独重试重生成：成功后收敛
-        env.Generator.Fail = false;
-        var retried = await env.Recaps.GetDailyRecapAsync("user-1", TargetDay, force: true);
+        env.Generator.FailAfterChunks = null;
+        var retried = await RegenerateAsync(env.Recaps, TargetDay);
         Assert.NotEqual(oldNarrative, retried.Narrative);
         Assert.False(retried.KnowledgeStale);
     }

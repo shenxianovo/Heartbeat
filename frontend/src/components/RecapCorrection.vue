@@ -17,12 +17,12 @@ import ProposalReview from './ProposalReview.vue'
 /**
  * Recap 纠正面板（ADR-031 §6，issue 06）：owner-only。用户对这一天的回顾说哪里不对 →
  * 服务端整理成可编辑 KnowledgeChangeSet（零写入）→ 逐项确认 → 事务提交 → 提交成功后
- * 由父组件对这一天做一次显式 force 重生成。纠正写的是知识，不是散文补丁；
- * 生成失败不回滚知识，也不覆盖上一版成功 Recap。
+ * 由父组件对这一天做一次显式重生成（走 POST 的 SSE 流，ADR-042 §2）。纠正写的是知识，
+ * 不是散文补丁；生成失败不回滚知识，也不覆盖上一版成功 Recap。
  */
 const props = defineProps<{
   date: string
-  /** 目标日的显式 force 重生成；失败必须 reject（生成失败与提交失败语义不同）。 */
+  /** 目标日的显式流式重生成；失败必须 reject（生成失败与提交失败语义不同）。 */
   regenerate: () => Promise<void>
 }>()
 

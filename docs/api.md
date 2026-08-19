@@ -40,6 +40,43 @@ Agent 请求额外携带 `X-Hardware-Id` 和 `X-Device-Name`，服务端通过
   `toISOString()`，因此 daily/weekly Report、Recap 和知识发问相关 wrapper 在
   `frontend/src/api/index.ts` 手工构造 query string。时刻范围查询可以使用 UTC。
 
+## Recap 约定
+
+读与生成按动词拆分（[ADR-042](adr/042-recap-streaming-generation.md)）：**生成只由
+`POST /api/v1/recaps/daily/generate` 触发，`GET /api/v1/recaps/daily` 永不调用 LLM、永不写库。**
+GET 的 `force` 参数已取消。读取的三种态用字段组合隐式表达，不设 `notGenerated` 布尔：
+
+| 态 | 判据 | 前端表现 |
+| --- | --- | --- |
+| 空日 | `isEmpty = true` | "这一天没有记录"，不生成 |
+| 有数据但从未生成 | `isEmpty = false` 且 `narrative == null` | owner 视角自动发起一次生成 |
+| 有叙事 | `narrative != null` | 直接渲染，附 `generatedAt` / `model` |
+
+`segmentStale`（段数据长出了缓存水位）与 `knowledgeStale`（相关知识已更新）是两个平铺的判脏位，
+都只提示。水位阈值留在服务端——防轮询烧 token 的护栏不交给前端。owner 视角下
+`narrative == null` 或 `segmentStale` 触发一次自动生成，`knowledgeStale` 只提示。
+
+生成端点是 SSE（`text/event-stream`），**从 OpenAPI 描述中排除、不进 codegen**：NSwag 无法为流
+生成有意义的签名。它的契约由本文与 `frontend/src/api/index.ts` 里的手写 wrapper 维持——
+`fetch` + `ReadableStream` 手工解析帧（帧解析在 `frontend/src/api/sse.ts`），不用 `EventSource`，
+因为后者只能 GET 且带不了 `Authorization` 头，而认证是 Bearer。
+
+| 事件 | data | 客户端处理 |
+| --- | --- | --- |
+| `delta` | `{ "delta": "正文增量" }` | 原样追加 |
+| `thinking` | `{ "thinking": "推理增量" }` | 思考模型的思考期只有它；滚动显示"正在思考"，不进正文 |
+| `done` | `{ "recap": DailyRecapResponse }` | 与 GET 同一形状，收敛为最终状态 |
+| `error` | `{ "message": "可读原因" }` | 生成域的失败（响应头已发出，502 不再可能） |
+| `ping` | `{}` | 心跳，忽略——未知事件类型同样必须忽略 |
+
+时限（[ADR-042](adr/042-recap-streaming-generation.md) §5/§9）：**判死线量的是静默，不是总时长**
+——收到任何一帧（含 `thinking`）就重置，连续 60 秒没有任何帧才判死，整段兜底 600 秒。思考模型的
+第一个正文 token 可能来得很晚（实测 `deepseek-v4-pro` 默认 effort 下达 175 秒），这不是故障；
+思考成本用 `Recap__ReasoningEffort`（`default|low|high|max|none`）调。
+
+HTTP 状态码只负责鉴权/参数类 4xx 与并发 409：同一 (owner, 日窗口) 的生成互斥，撞上直接 409 +
+一句可读中文，不排队。
+
 ## App Catalog 管理约定
 
 `/api/v1/admin/app-catalog/...` 影响所有 Owner，只允许 JWT `sub` 位于

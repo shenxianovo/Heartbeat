@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Options;
@@ -16,6 +17,11 @@ namespace Heartbeat.Server.Services
         public string ApiKey { get; set; } = string.Empty;
 
         public string Model { get; set; } = string.Empty;
+
+        /// <summary>思考模式控制（DeepSeek thinking / reasoning_effort）：default|low|high|max|none。
+        /// 默认 high = 上游默认；none 走 thinking.disabled。实测 8/7 的 digest：high 首个正文 token +175s、
+        /// low +17s、非思考模型 +0.5s（ADR-042 §9）。</summary>
+        public string ReasoningEffort { get; set; } = "high";
     }
 
     /// <summary>Recap 生成失败（未配置 / 上游错误 / 响应不可解析）。控制器映射为 502，不写缓存（ADR-023 §4）。</summary>
@@ -29,7 +35,13 @@ namespace Heartbeat.Server.Services
         /// <summary>提示词模板的内容 hash。缓存的来源诊断字段。</summary>
         string PromptHash { get; }
 
-        Task<string> GenerateAsync(string digest, CancellationToken ct = default);
+        /// <summary>
+        /// 逐块产出叙事（ADR-042 §8）：只留流式一条路——Recap 是唯一消费者，留两条会漂移。
+        /// 分块带传输层的分型（正文 / 推理）原样透传：编排层要靠"有没有帧"判静默，靠"是不是正文"
+        /// 决定进不进叙事，生成层不该替它做这个决定（ADR-042 §9）。
+        /// 失败（含未配置、上游错误、流内无正文）抛 RecapGenerationException。
+        /// </summary>
+        IAsyncEnumerable<LlmChunk> GenerateStreamAsync(string digest, CancellationToken ct = default);
     }
 
     /// <summary>叙事生成：prompt 模板 + ChatCompletionClient 传输（ADR-029 issue 03 合流）。</summary>
@@ -60,15 +72,29 @@ namespace Heartbeat.Server.Services
 
         public string PromptHash => TemplateHash;
 
-        public async Task<string> GenerateAsync(string digest, CancellationToken ct = default)
+        public async IAsyncEnumerable<LlmChunk> GenerateStreamAsync(
+            string digest,
+            [EnumeratorCancellation] CancellationToken ct = default)
         {
-            try
+            var enumerator = client.CompleteStreamAsync(PromptTemplate, digest, ct).GetAsyncEnumerator(ct);
+            await using (enumerator.ConfigureAwait(false))
             {
-                return await client.CompleteAsync(PromptTemplate, digest, ct);
-            }
-            catch (ChatCompletionException ex)
-            {
-                throw new RecapGenerationException(ex.Message, ex);
+                while (true)
+                {
+                    bool moved;
+                    try
+                    {
+                        moved = await enumerator.MoveNextAsync();
+                    }
+                    catch (ChatCompletionException ex)
+                    {
+                        // 失败可能发生在首块之后：语义仍是"这次生成失败"，由编排层决定不落库（ADR-023 §4）。
+                        throw new RecapGenerationException(ex.Message, ex);
+                    }
+
+                    if (!moved) break;
+                    yield return enumerator.Current;
+                }
             }
         }
     }

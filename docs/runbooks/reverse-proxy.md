@@ -23,7 +23,9 @@ HTTP 连接的路径（ADR-023 / ADR-042），每次它出问题都要重新推�
 | Caddy | `flush_interval` | 默认不做周期 flush；`-1` = 关闭响应缓冲、每次写入立即 flush | 同上 |
 | nginx | `proxy_read_timeout` | **默认 60s** → 本仓库显式设为 `300s` | `frontend/nginx.conf` |
 | nginx | `proxy_buffering` | 默认 on → 本仓库显式 `off` | 同上 |
-| backend | `HttpClient.Timeout`（LLM 出口） | 默认 100s → 显式 `120s` | `server/Heartbeat.Server/Program.cs` |
+| backend | `HttpClient.Timeout`（LLM 出口） | 默认 100s → `Timeout.InfiniteTimeSpan`。实测它只管响应头与缓冲正文，管不到 `ResponseHeadersRead` 之后自己读的流；时限一律交给 CTS | `server/Heartbeat.Server/Program.cs` |
+| backend | 流式应用侧时限（CTS） | 上游静默 `60s`（收到任何帧就重置）、整段 `600s` | `server/Heartbeat.Server/Services/RecapService.cs` |
+| backend | 非流式应用侧时限（CTS） | `300s`（发问 / 整理仍是阻塞式） | `server/Heartbeat.Server/Services/ChatCompletionClient.cs` |
 
 ### 两个反复被搞错的语义
 
@@ -33,6 +35,10 @@ HTTP 连接的路径（ADR-023 / ADR-042），每次它出问题都要重新推�
 2. **缓冲不会造成超时。** 任何一层把响应体攒起来，都不影响它自己从上游持续读取（读活性照旧
    重置计时器）。缓冲的后果只有一个：客户端在最后一刻一次性收到全文，流式在体验上白做。
    **推论：缓冲是体验故障，超时是可用性故障，两者不要混在一起排查。**
+3. **思考期不是沉默。** 思考模型（`deepseek-v4-pro` 默认 effort `high`）在吐出第一个正文 token
+   之前会先吐几千到上万字的 `reasoning_content`：对代理来说这是持续的读，对应用来说也**必须**
+   算活着。实测 8/7 那天的 digest，首个正文 token 在 +175s（同一请求的响应头 +0.16s 就到了）。
+   判死线要量"有没有帧"，不是"有没有正文"——详见 [ADR-042](../adr/042-recap-streaming-generation.md) §9。
 
 ## 期望的 Caddy 配置（服务器上手工维护）
 
@@ -82,13 +88,31 @@ docker compose logs frontend --since 30m | grep -i "timed out"
 
 ### 症状：生成失败但前端只显示"服务器返回错误（504）"
 
-期望行为是 **502 + 可读原因**（ADR-023 §4）。如果拿到 504，说明代理先于应用放手：检查
-`HttpClient.Timeout`（120s）是否小于 nginx `proxy_read_timeout`（300s）——这个不变量的方向
-不能反。
+期望行为是流内 `event: error` + 可读原因（流式）或 **502 + 可读原因**（阻塞式出口，ADR-023 §4）。
+拿到 504 说明代理先于应用放手，按出口形状分别检查：
+
+- **流式（Recap 生成）**：靠 15s 心跳保持读活性，代理不该有机会超时。真出现 504 就查心跳是否
+  真的在发（`curl -N` 看有没有 `event: ping`）、以及 `proxy_read_timeout` 是否大于静默上限 60s。
+  注意代理的 read timeout 量的是**两次读的间隔**，跟整段 600s 无关。
+- **非流式（发问 / 整理）**：这里才需要"应用侧超时 < 代理侧超时"这个更强的不变量——
+  `CompleteAsync` 的 300s 必须小于 nginx 的 `proxy_read_timeout`（300s）……两者相等就是在赌，
+  真要改其中一个时记得同时改另一个。
+
+### 症状：生成刚开始就报"生成中断：LLM 连续 N 秒没有任何响应"
+
+先分清是**真静默**还是**思考期被误判**：`curl -N` 打一次 `POST /api/v1/recaps/daily/generate`，
+看流里有没有 `event: thinking`。
+
+- 有 `thinking` 在持续到达却还报中断 → 应用侧的判死线又开始量正文而不是量帧（回归 ADR-042 §9）。
+- 什么帧都没有 → 真的是上游或网络：直连上游打一次同样的请求确认，再看 `Recap__ApiKey` /
+  `Recap__BaseUrl` 是否有效。
+- 报的是"超过 N 分钟仍未产出完整叙事"（整段上限）→ 上游活着但太慢。这是模型/输入规模问题，
+  不是链路问题：先看 `Recap__ReasoningEffort`（`high` 的思考成本实测比 `low` 大一个数量级）。
 
 ## References
 
 - [`frontend/nginx.conf`](../../frontend/nginx.conf) — `/api/` 的超时与缓冲
 - [`server/Heartbeat.Server/Program.cs`](../../server/Heartbeat.Server/Program.cs) — LLM 出口的显式超时
 - [ADR-023](../adr/023-recap-cloud-llm-projection.md) — Recap 的失败语义（502、不写缓存）
-- [ADR-042](../adr/042-recap-streaming-generation.md) — 流式生成、心跳、端点按动词拆分
+- [ADR-042](../adr/042-recap-streaming-generation.md) — 流式生成、心跳、端点按动词拆分；§5 时限
+  与代理不变量、§9 推理模型的思考期

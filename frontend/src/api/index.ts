@@ -9,6 +9,7 @@ import {
   type AppCatalogReconciliationResponse,
 } from './client'
 import { authStore } from '../stores/auth'
+import { createSseFrameParser, type SseFrame } from './sse'
 
 // ===== Error model =====
 // 取数失败的归一形态。让取数策略层能区分"出错"(network/http/parse)与"没数据"(空数组)。
@@ -175,14 +176,18 @@ export function getIconUrl(username: string, appId: number): string {
   return `${API_BASE}/users/${encodeURIComponent(username)}/apps/${appId}/icon`
 }
 
-// ===== Recap（ADR-023）=====
+// ===== Recap（ADR-023，读写按动词拆分随 ADR-042）=====
 // 认证版专属：叙事是私人记忆，且生成烧 LLM token，不提供 public 版。
 // date 与报表同理必须携带本地时区偏移，手拼请求（见 toLocalDateTimeOffsetString）。
 
-export async function fetchDailyRecap(params: { date?: string; force?: boolean }): Promise<DailyRecapResponse> {
+/**
+ * 读取这一天的 Recap。纯读——服务端在这条路径上零 LLM、零写库（ADR-042 §2），`force` 已取消，
+ * 生成只由 streamDailyRecapGeneration 触发。三态由字段组合表达：
+ * `isEmpty` → 空日；`!isEmpty && narrative == null` → 有数据但从未生成；否则 → 有叙事。
+ */
+export async function fetchDailyRecap(params: { date?: string }): Promise<DailyRecapResponse> {
   const searchParams = new URLSearchParams()
   if (params.date) searchParams.set('date', toLocalDateTimeOffsetString(params.date))
-  if (params.force) searchParams.set('force', 'true')
   const res = await authHttp.fetch(`${API_BASE}/recaps/daily?${searchParams}`)
   if (!res.ok) throw new ApiException('Recap request failed.', res.status, await res.text(), {}, null)
   return DailyRecapResponse.fromJS(await res.json())
@@ -195,6 +200,136 @@ export async function fetchPublicDailyRecap(username: string, params: { date?: s
   const res = await authHttp.fetch(`${API_BASE}/users/${encodeURIComponent(username)}/recaps/daily?${searchParams}`)
   if (!res.ok) throw new ApiException('Public recap request failed.', res.status, await res.text(), {}, null)
   return DailyRecapResponse.fromJS(await res.json())
+}
+
+// ===== Recap 流式生成（ADR-042 §4）=====
+// POST /recaps/daily/generate 不在 OpenAPI 里（NSwag 无法为流生成有意义的签名），契约靠
+// docs/api.md 和这份手写 wrapper 维持。用 fetch + ReadableStream 而非 EventSource：后者只能
+// GET 且带不了 Authorization 头，而认证是 Bearer。
+
+/** 并发撞锁（HTTP 409）的兜底文案；服务端也会给一句可读原因，优先用服务端那句。 */
+export const RECAP_ALREADY_GENERATING_MESSAGE = '这一天正在生成中'
+
+/** 生成失败但服务端没给可读原因时的兜底文案。 */
+export const RECAP_GENERATION_FAILED_MESSAGE = '生成失败，请稍后重试'
+
+export interface RecapStreamHandlers {
+  /**
+   * 推理增量（ADR-042 §9）：思考模式的模型会先吐 `reasoning_content`——实测 8.5KB 的 digest
+   * 前 175 秒只有推理、第一个正文 token 才在 +175.5s 出现。这个事件存在是为了让那段沉默
+   * 有东西可显示；它与 delta 一样是增量，且首个 delta 之后不会再来。
+   */
+  onThinking?: (text: string) => void
+  /** 增量文本：原样追加，段落由上层对累积文本重算（不做打字机动画）。 */
+  onDelta?: (text: string) => void
+  /** 生成完成：与 GET 同一个 DTO 形状，上层只需一份渲染逻辑。 */
+  onDone?: (recap: DailyRecapResponse) => void
+  /** 生成域失败：响应头一发出 502 就不再可能，原因只能走流内事件（ADR-042 §4）。 */
+  onError?: (message: string) => void
+}
+
+/**
+ * 消费一次 Recap 流式生成。
+ *
+ * 失败分工：鉴权/参数/并发这类 4xx 抛 `ApiException`（上层用 `status === 409` 识别撞锁），
+ * 生成域的失败走 `onError`，`abort` 静默返回——切日期与卸载是意图，不是错误。
+ * 认证复用 `authHttp`：401 的刷新重试只可能发生在读流之前（那时响应体还没被消费），
+ * **流一旦开始就不重试**——重放一次生成等于再烧一次 token。
+ * 心跳（`event: ping`）与未知事件类型一律吞掉。
+ */
+export async function streamDailyRecapGeneration(
+  params: { date?: string; signal?: AbortSignal },
+  handlers: RecapStreamHandlers,
+): Promise<void> {
+  const searchParams = new URLSearchParams()
+  if (params.date) searchParams.set('date', toLocalDateTimeOffsetString(params.date))
+
+  try {
+    const res = await authHttp.fetch(`${API_BASE}/recaps/daily/generate?${searchParams}`, {
+      method: 'POST',
+      headers: { Accept: 'text/event-stream' },
+      signal: params.signal,
+    })
+    if (!res.ok) throw new ApiException('Recap generation failed.', res.status, await res.text(), {}, null)
+    if (!res.body) throw new ApiException('Recap generation returned no stream.', res.status, '', {}, null)
+
+    const reader = res.body.getReader()
+    const parser = createSseFrameParser()
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) {
+        dispatchRecapFrames(parser.flush(), handlers)
+        return
+      }
+      if (value) dispatchRecapFrames(parser.push(value), handlers)
+    }
+  } catch (e) {
+    if (isAbortError(e, params.signal)) return
+    throw e
+  }
+}
+
+/** 帧 → 四类回调。ping/未知事件类型吞掉，坏帧跳过（一帧解不出来不该杀掉整条流）。 */
+function dispatchRecapFrames(frames: SseFrame[], handlers: RecapStreamHandlers): void {
+  for (const frame of frames) {
+    // ping 是心跳：.NET 的 SseItem 输出不了 SSE 注释行，所以它占了一个事件类型（ADR-042 §4）
+    if (frame.event === 'ping') continue
+    const payload = tryParseJsonObject(frame.data)
+    if (!payload) continue
+    if (frame.event === 'thinking') {
+      const text = typeof payload.thinking === 'string' ? payload.thinking : ''
+      if (text) handlers.onThinking?.(text)
+    } else if (frame.event === 'delta') {
+      const text = typeof payload.delta === 'string' ? payload.delta : ''
+      if (text) handlers.onDelta?.(text)
+    } else if (frame.event === 'done') {
+      if (payload.recap) handlers.onDone?.(DailyRecapResponse.fromJS(payload.recap))
+    } else if (frame.event === 'error') {
+      const message = typeof payload.message === 'string' && payload.message ? payload.message : RECAP_GENERATION_FAILED_MESSAGE
+      handlers.onError?.(message)
+    }
+  }
+}
+
+function tryParseJsonObject(text: string): Record<string, unknown> | null {
+  if (!text) return null
+  try {
+    const parsed = JSON.parse(text)
+    return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : null
+  } catch {
+    return null
+  }
+}
+
+/** abort 在不同实现里形态不一（DOMException / 自造 Error），signal 自己的状态最可靠。 */
+function isAbortError(e: unknown, signal?: AbortSignal): boolean {
+  if (signal?.aborted) return true
+  return (e as { name?: string } | null)?.name === 'AbortError'
+}
+
+/**
+ * 流式生成的 HTTP/网络层失败 → 可读文案。生成域的失败不经过这里（走流内 error 事件），
+ * 这里只翻译"流还没开始就没了"的那几种：409 是并发撞锁，其余按状态码兜底。
+ */
+export function recapGenerationErrorMessage(e: unknown): string {
+  const err = toApiError(e)
+  if (err.kind === 'network') return '网络连接失败，请检查网络后重试'
+  if (err.kind === 'http' && err.status === 409) return readableErrorBody(e) ?? RECAP_ALREADY_GENERATING_MESSAGE
+  if (err.kind === 'http') return readableErrorBody(e) ?? `服务器返回错误（${err.status}），请稍后重试`
+  return RECAP_GENERATION_FAILED_MESSAGE
+}
+
+/** 取服务端给的可读 body。`TypedResults.Conflict(string)` 输出的是带引号的 JSON 字符串。 */
+function readableErrorBody(e: unknown): string | null {
+  if (!ApiException.isApiException(e)) return null
+  const text = (e.response ?? '').trim()
+  if (!text || text.startsWith('<')) return null // HTML 错误页不是给人看的文案
+  try {
+    const parsed = JSON.parse(text)
+    return typeof parsed === 'string' && parsed ? parsed : null
+  } catch {
+    return text
+  }
 }
 
 // ===== Strand 知识层（ADR-028/029/031）=====

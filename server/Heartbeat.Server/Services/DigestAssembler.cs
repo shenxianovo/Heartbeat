@@ -66,6 +66,17 @@ namespace Heartbeat.Server.Services
             return new DepthTables(SeedDeclarations.All.Concat(declarations));
         }
 
+        /// <summary>
+        /// 窗口内是否有段（ADR-042 §2）：读路径判空用，便宜的存在性查询——GET 允许查库，
+        /// 但不做完整装配、不调 LLM。
+        /// </summary>
+        public Task<bool> HasSegmentsAsync(
+            string ownerId, DateTimeOffset windowStart, DateTimeOffset windowEnd, CancellationToken ct = default)
+            => db.ActivitySegments
+                .Where(x => x.Device.OwnerId == ownerId)
+                .Where(x => x.EndTime > windowStart && x.StartTime < windowEnd)
+                .AnyAsync(ct);
+
         /// <summary>窗口内最新 segment 结束时间（裁剪到窗口终点）。今日缓存水位判读的比较端。</summary>
         public async Task<DateTimeOffset> LatestSegmentEndAsync(
             string ownerId, DateTimeOffset windowStart, DateTimeOffset windowEnd, CancellationToken ct = default)

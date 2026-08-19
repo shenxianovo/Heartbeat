@@ -4,7 +4,7 @@ using Heartbeat.Server.Services;
 
 namespace Heartbeat.Server.Tests.Services;
 
-/// <summary>LLM 传输与发问判官的纯函数半：choices 提取、prompt 构建、宽容解析。</summary>
+/// <summary>非流式 choices 提取与发问判官的纯函数半：prompt 构建、宽容解析。</summary>
 public class AskingGeneratorTests
 {
     // ---- ChatCompletionClient.ExtractContent ----
@@ -26,6 +26,9 @@ public class AskingGeneratorTests
     {
         Assert.Null(ChatCompletionClient.ExtractContent(body));
     }
+
+    // 流式分块的 delta 提取（ExtractChunk）与思考参数迁去了 ChatCompletionClientTests：
+    // 那边有 fake HttpMessageHandler，能把传输层的时限与分型一起钉住。
 
     // ---- OpenAiCompatibleAskingGenerator.BuildUserPrompt ----
 

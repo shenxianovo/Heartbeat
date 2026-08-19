@@ -5,7 +5,7 @@ import {
 
 /**
  * Recap 纠正的提交编排（ADR-031 §6/§7，issue 06 纯逻辑层）：
- * 知识事务提交成功后，**才**对目标日期执行一次显式 force 重生成。两个阶段的失败语义不同——
+ * 知识事务提交成功后，**才**对目标日期执行一次显式重生成。两个阶段的失败语义不同——
  * 提交失败不生成（知识未写入）；生成失败不回滚已确认的知识、也不覆盖上一版成功 Recap，
  * 只暴露"知识已保存，Recap 尚未更新"并允许单独重试。依赖注入，可纯函数测试。
  */
@@ -22,7 +22,7 @@ export type CorrectionOutcome =
 export interface CorrectionDeps {
   /** 共享事务提交端（选中操作全部成功才写入）。 */
   commit: (ops: IKnowledgeOperationDto[]) => Promise<ICommitChangeSetResponse>
-  /** 目标日期的显式 force 重生成（用最新 Segment 与知识投影保存新 Recap）。 */
+  /** 目标日期的显式重生成（流式：用最新 Segment 与知识投影生成并保存新 Recap）。 */
   regenerate: () => Promise<void>
   /** 传输层错误归一（注入以便测试）。 */
   toApiError: (e: unknown) => ApiErrorLike
@@ -33,7 +33,7 @@ export interface CorrectionDeps {
 export const REGENERATE_FAILED_MESSAGE = '知识已保存，Recap 尚未更新——可以重试生成'
 
 /**
- * 提交纠正：commit → （仅在成功后）force regenerate。
+ * 提交纠正：commit → （仅在成功后）regenerate。
  * 顺序是契约的一部分：commit 抛错时 regenerate 绝不被调用。
  */
 export async function submitCorrection(

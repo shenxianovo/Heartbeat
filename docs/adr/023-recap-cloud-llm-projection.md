@@ -1,9 +1,13 @@
 # ADR-023: Recap——云端 LLM 叙事摘要与投影/生成分层
 
-## Status: Accepted（§4 “历史 Recap 永不过期” amended by [ADR-031](./031-hierarchical-strand-episode-teaching-loop.md)）
+## Status: Accepted（§4 “历史 Recap 永不过期” amended by [ADR-031](./031-hierarchical-strand-episode-teaching-loop.md)；§5 “v1 不做流式” amended by [ADR-042](./042-recap-streaming-generation.md)）
 
 > Segment 水位对历史窗口仍不主动失效；但自 ADR-031 起，相关 Strand/Episode 知识投影
 > 变化会惰性标记“可重新生成”，且不会自动调用 LLM。
+>
+> §5 的“阻塞式请求”自 ADR-042 起改为 SSE 流式生成，且生成的触发口从 `GET ?force=true`
+> 迁到独立的 POST 端点：GET 退成零 LLM 的纯读（读缓存 + 判空 + 判脏），§4 的“今日水位落后
+> 自动重生成”随之改为只出 `segmentStale` 提示位、由前端显式触发生成。
 
 ## Date: 2026-07-13
 
