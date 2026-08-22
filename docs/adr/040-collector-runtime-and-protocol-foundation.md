@@ -1,0 +1,62 @@
+# ADR-040: 统一 Collector Runtime 与 Collector Protocol
+
+## Status: Accepted
+
+## Date: 2026-08-22
+
+## Context
+
+ADR-017 建立了 Collector → 本机 Hub → Analytics 的采集拓扑，但当前契约仍围绕 `ActivitySegment` 与 loopback HTTP 生长：system 在进程内运行，browser 由浏览器运行，VRChat 终端原型未来需要在常驻服务器上持续采集。如果继续按宿主逐个扩展，安装身份、配置、生命周期、版本协商和数据上报会形成多套互不兼容的机制，新增 Collector 仍会迫使 Agent 或 Hub 跟着改造和发布。
+
+DeepSeek Harness / Cordis 的生命周期所有权与 desired/actual 收敛思想可借鉴，但其边界主要在单一进程和 JavaScript 依赖图内，不能替代 Heartbeat 跨进程、跨语言、跨宿主的 Collector 协议。因此本期目标不是实现通用插件生态或细粒度组件热运行时，而是在 Collector 数量增长前固定统一的运行身份与协议边界。
+
+## Decision
+
+### 1. Runtime 分离 Package、Instance 与 Activation
+
+- **Collector Package** 是不可变发布物；同一版本可包含供不同 OS、CPU 架构与执行方式选择的制品，但不表示已经配置或正在运行。
+- **Collector Instance** 是稳定的配置与期望状态身份；Package 更新、Hub 重启或重新激活不改变 InstanceId。
+- **Collector Activation** 是 Instance 的一次协议会话和实际运行状态；每次重启或重连创建新的 ActivationId。
+- **Source** 只表示谁作出观测，不承担 Package、Instance 或 Activation 身份。
+
+Runtime 分开持有 Desired、Resolved、Installed 与 Runtime State，不用暂时的安装失败或运行失败改写用户意图。首版本地 Hub 持有 Desired State，Analytics 只观察运行事实；表达本身保持可同步，为未来控制面留边界。
+
+### 2. 制品交付与执行方式是两条轴
+
+Artifact Delivery 表示制品由宿主内置、Runtime 管理，还是由浏览器商店等外部系统管理；Execution Driver 表示代码在 Hub 进程内、Runtime 托管进程中，还是浏览器等外部宿主中执行。两条轴不能合成一个“插件类型”。
+
+因此 system、browser 与 vrchat.account 进入同一 Package / Instance / Activation 模型，但 Runtime 只承诺自己实际拥有的动作。vrchat.account 产品化后作为无头 Hub 同机的 ManagedProcess，经本机协议发送事实；这修订 ADR-032 中进程内 BackgroundService 的预设，但保留多个 Hub 对等直连 Analytics 的星形拓扑。一个 Hub 可以托管面向多个 Subject 的 Instance，不按观测主题拆 Hub。
+
+Collector Package 自包含私有依赖；Collector 之间不共享运行时服务或依赖。更新以单个 Instance 为事务边界，候选 Activation 到达 Ready 后才提交，失败只恢复该 Instance；本期允许通过重启完成切换，不承诺无停机热卸载。
+
+### 3. 一个语义协议，多种 Transport Binding
+
+Collector Protocol 定义与传输无关的握手、版本与能力协商、配置快照、Output Template / Fact Stream 开启、生命周期以及 Fact 交付语义。InProcess、ManagedProcess 与 ExternalHost 分别可以使用类型化调用、stdio/pipe 与 loopback HTTP，但必须通过同一组语义契约测试，不能形成三套协议。
+
+基础协议按 Major 协商；Fact、配置和生命周期能力独立版本化；Package SemVer 不参与 wire negotiation。Manifest 静态声明允许产生的 Source、FactKind、schema、SubjectKind 与 identifying dimensions，Activation 只能把声明绑定为具体 Fact Stream。
+
+Instance Desired State 使用单调 SpecRevision；Activation 报告已经应用的 Revision，不能动态应用时由 Runtime 重建 Activation。Collector → Hub 的 Fact 交付采用至少一次与幂等收敛：Collector 在 ACK 前负责保留，Hub 取得持久化责任后才 ACK，重复由 Fact 身份处理。批大小、背压、Stream Gap 和本地存储形态属于协议规范与实现细节，不再单独立 ADR。
+
+### 4. 本期明确不扩张到完整插件生态
+
+本期不实现中心 Package Registry、第三方插件市场、TUF/Sigstore、签名根与撤回、Activation 认证、Secret 管理、权限沙箱、资源配额、跨 Collector 依赖或细粒度组件热卸载。协议为这些能力保留可演进位置，但它们不阻塞统一协议与官方 Collector Runtime。
+
+## Consequences
+
+- ✅ system、browser、VRChat 以及未来 Collector 共享一套身份、期望/实际状态和协议语义。
+- ✅ Collector 可以独立发布与切换，不必为每次采集能力变化重建整个 Agent。
+- ✅ Transport 与宿主差异被限制在 Binding / Driver，不泄漏成不同领域模型。
+- ✅ 本期范围收敛在官方 Collector 的运行时和协议地基，不被插件市场与安全体系拖住。
+- ⚠️ Runtime 状态和协议比现有 `/v1/segments` 更显式，需要新的契约测试与迁移适配层。
+- ⚠️ ExternalHost 的安装、停止和回滚能力天然弱于 ManagedProcess，统一模型不能把这种差异伪装掉。
+- ⚠️ 允许重启切换意味着本期不保证零停机更新。
+
+## References
+
+- [ADR-017](./017-activity-segment-pluggable-collectors.md) — Collector 与本机 ingest Hub 起点
+- [ADR-020](./020-system-collector-through-hub.md) — system Collector 统一经 Hub
+- [ADR-026](./026-collector-registry-deactivation.md) — 现有启用意图与 Hub 准入
+- [ADR-032](./032-device-as-observed-subject.md) — 无头 Hub 与 VRChat 原始设计，本 ADR 修订其进程边界
+- [ADR-037](./037-collection-project-boundaries.md) — Collection 可执行与程序集边界
+- [Collector Runtime PRD](../../.scratch/collector-plugin-runtime/PRD.md) — 协议字段、状态机与后续实现细节
+- [DeepSeek Harness / Cordis 研究](../../.scratch/collector-plugin-runtime/research/deepseek-harness-and-cordis.md) — 可借鉴与不可照搬的边界

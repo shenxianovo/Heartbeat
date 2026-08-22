@@ -12,6 +12,66 @@ _Avoid_: Service, Worker（这些是 Agent 内部的实现层）
 一个观测特定应用内活动并向 hub 推送 ActivitySegment 的组件（browser 扩展、vscode 插件等）。system 采集器内置于 Agent，同样经 hub 汇入（ADR-020），特例性仅剩两点：进程内直连 hub（不走 loopback）、不可停用。非内置采集器代码位于 `collection/collectors/`。
 _Avoid_: 插件/Plugin（口语别名，UI 与文档统一用"采集器"；ADR-017 等历史文档中的 plugin 即此概念）
 
+**Collector Package（采集器包）**:
+Collector 的不可变发布物；一个确定版本对应确定内容。它不表示已经安装、配置或运行。
+_Avoid_: Plugin Package、把 Collector Package 与 Collector 混称为“插件”
+
+**Collector Runtime（采集器运行时）**:
+管理采集器包的安装事实、Collector 的期望状态与实际激活状态，并协调二者收敛的运行边界。它不等同于 Collector 内部可能使用的细粒度组件运行时。
+_Avoid_: Plugin Runtime、Package Manager（后者只覆盖制品管理）
+
+**Collector Protocol（采集器协议）**:
+Collector Activation 与 Hub 交换身份、能力、配置、生命周期和 Fact 的统一语义契约；它独立于具体传输，也独立于 Package 发布版本。
+_Avoid_: 把当前 loopback HTTP 路由集合当成完整协议
+
+**Transport Binding（传输绑定）**:
+Collector Protocol 在某种执行边界上的承载方式；不同 Binding 不改变协议语义。
+_Avoid_: 为每种执行方式发明不同协议
+
+**Output Template（输出模板）**:
+Collector Package 对一类可实例化 Fact Stream 的静态声明，限定其 Source、FactKind、schema、SubjectKind 与 identifying dimensions。
+_Avoid_: 运行时任意注册 schema、把每个动态 dimension value 写成新清单项
+
+**Hub Instance（Hub 实例）**:
+Collector Runtime 的一个持续运行宿主，可以是 Desktop Agent 内嵌 Hub，也可以是服务器上的无头 Hub。Hub Instance 是运维身份而非观测主体；一个无头 Hub 可以托管观测不同账号、身体或其他主体的多个 Collector Instance。
+_Avoid_: Device、Subject、把无头 Hub 按某个 Collector 命名
+
+**Collector Installation（采集器安装）**:
+本机持有某一精确 Collector Package 的事实。安装不表示 Collector 已启用、已获授权、能够激活或正在运行。
+_Avoid_: Discovery、Registration、Active
+
+**Collector Instance（采集器实例）**:
+一个稳定、已配置的 Collector 身份；更换其 Collector Package 版本或重新激活时，实例身份保持不变。同一采集器包可以对应多个实例，即使首版产品只暴露默认单实例。
+_Avoid_: 用 Source、进程 ID 或包版本充当实例身份
+
+**Collector Activation（采集器激活）**:
+Collector Instance 的一次协议会话和实际运行身份；重启、重连、成功或失败都不改写 Instance 身份。
+_Avoid_: Run（含义过泛）、Active（后者是按 Source 流量推断的既有状态）
+
+**Ready（激活就绪）**:
+Collector Activation 已完成协议协商并打开所需 Fact Stream，可以承担运行责任；Ready 不要求已经产生第一条 Fact。
+_Avoid_: 进程存活、首次产生数据、Active
+
+**Collector Desired State（采集器期望状态）**:
+用户对 Collector Instance 的版本范围、启用与配置意图；暂时的解析或运行失败不会改写它。
+_Avoid_: 把当前运行事实反写成用户意图
+
+**Resolved Collector Set（已解析采集器集合）**:
+为实现 Collector Desired State 而选出的精确、完整且兼容的 Collector Package 集合。它描述选择结果，不证明制品已安装或激活成功。
+_Avoid_: Installed State、Runtime State
+
+**Collector Runtime State（采集器运行状态）**:
+Collector Runtime 对当前 Collector Activation 的阶段、健康结果与失败原因的观察事实。运行状态可随重试和宿主变化而改变，不是用户配置。
+_Avoid_: Desired State、Active（后者只回答某 Source 最近是否有流量）
+
+**Artifact Delivery（制品交付）**:
+谁负责把 Collector Package 交付给运行位置并维持其版本；它与谁执行代码相互独立。
+_Avoid_: Lifecycle Ownership（把交付与执行混成单轴）
+
+**Execution Driver（执行驱动器）**:
+Collector Runtime 协调 Collector Activation 的方式，可以是进程内、托管进程或外部宿主；它不表示 Runtime 一定持有对应制品。
+_Avoid_: Lifecycle Driver（未区分制品交付）、假定 Hub 能直接停止所有 Collector
+
 **App Hint（应用提示）**:
 外部 Collector 在 loopback 摄入时可选上报的平台无关产品 slug（如 `edge`）。hub 的平台 adapter 在进入严格缓存前把它解析为本机可观测的 AppIdentity（Windows 进程或 macOS bundle）；缺失、未知或歧义时保留段但不关联 App，也不按名字猜测。`AppHint` 不进入 Analytics DTO、离线缓存或服务端事实。
 _Avoid_: 让 Collector 写 `win:`/`mac:` 身份；把 App Hint 当作 App Key 或 AppIdentity
@@ -24,7 +84,7 @@ _Avoid_: UploadService（退役的三份同构模板）、Upload Channel（ADR-0
 从流量推断：某 Source 最近一段时间内向 hub POST 过即为 Active。机制为 hub 读模型的 per-Source last-seen（`Accept` 时刻戳，ADR-021）。新鲜度窗口不是魔法常量，而从采集器自报的 flush 周期派生（窗口 = 3× flushPeriodMs，容一次丢失 flush + 一次重试）；采集器未报时回落默认。无心跳协议——"活跃"回答的是"数据管道通不通"，浏览器没开时 browser 采集器显示为不活跃是诚实的。
 
 **Collector Registry（采集器注册表）**:
-hub 持久化的采集器账本（存于 config.json 的 `collectors`，与 ApiKey 等同类本机配置）：`source → {enabled, flushPeriodMs}`。**"已安装"即在注册表中**——采集器首次 `GET /v1/collectors/{source}/config` 时被 hub 自动记入（自动发现），浏览器关闭或 Agent 重启都不丢。两个写入方：采集器（注册、报 flushPeriodMs）与用户（在共享 Avalonia UI 翻 enabled）。未来采集器市场时代的"已安装"只是账本多一个来源（catalog 装的 vs 开发者自装的），账本形状不变（ADR-017 §5 推迟的 SDK/packaging）。
+hub 持久化的已发现 Source 账本（当前存于 config.json 的 `collectors`）：`source → {enabled, flushPeriodMs}`。采集器首次触达 hub 时被记入，表示 hub 曾发现该 Source；它不证明本机持有对应 Collector Package，也不证明 Agent 拥有其生命周期。安装事实由 Collector Runtime 与 Collector Installation 表达。
 _Avoid_: 心跳注册、清单（manifest）
 
 **Current Activity（当前活动）**:
