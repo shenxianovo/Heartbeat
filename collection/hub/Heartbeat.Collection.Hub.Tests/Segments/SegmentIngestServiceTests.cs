@@ -154,6 +154,22 @@ public class SegmentIngestServiceTests
         Assert.Equal(t0.AddMinutes(3), single.EndTime);
     }
 
+    [Fact]
+    public void Reinject_RetractedSnapshotDoesNotResurrectAfterDrainFailure()
+    {
+        var svc = new SegmentIngestService(new FakeClock());
+        IUploadSource<ActivitySegmentItem> source = svc;
+        ISegmentRetractionSink retractionSink = svc;
+        var segment = Segment();
+        svc.Accept([segment]);
+        var drained = svc.GetAndClearSegments();
+
+        retractionSink.Retract(segment.Id);
+        source.Reinject(drained);
+
+        Assert.Empty(svc.GetAndClearSegments());
+    }
+
     // ---- 集面读模型（ADR-021） ----
 
     [Fact]

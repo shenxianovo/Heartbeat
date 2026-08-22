@@ -1,6 +1,6 @@
 # Collector Protocol v1
 
-Status: Draft 0.1
+Status: Draft 0.2
 
 本规范定义 Collector Activation 与 Hub 之间的统一语义协议。它是 ADR-040 的可实现草案，不定义 Package Registry、安全认证、Analytics ingest 或具体传输帧格式。
 
@@ -36,7 +36,7 @@ Collector Protocol v1 必须让以下三种 Collector 使用相同的会话和 F
 | 身份 | 所有者 | 稳定范围 | 是否进入 Fact Stream 身份 |
 | --- | --- | --- | --- |
 | `packageId + packageVersion` | Package 发布者 | 一个不可变发布版本 | 间接，不作为 Stream identity |
-| `collectorInstanceId` | Hub Runtime | 跨 Package 更新和 Activation | 是 |
+| `collectorInstanceId` | Hub Runtime | 同一 PackageId、Subject 与 Desired State 生命周期，跨 Activation | 是 |
 | `activationId` | Hub Runtime | 一次协议会话 | 否，仅 provenance |
 | `subjectId` | Owner/Analytics 领域 | 被观测主体生命周期 | 是 |
 | `source` | Output Template | 观测者语义兼容线 | 是 |
@@ -44,6 +44,8 @@ Collector Protocol v1 必须让以下三种 Collector 使用相同的会话和 F
 | `factId` | Collector | 一个事实及其全部 Revision | 与 StreamId 共同定位 Fact |
 
 Hub 是 Desired、Resolved、Installed 与 Runtime State 的权威。Collector 可以报告实际状态，但不得用自报状态改写 Hub 的 Desired State。
+
+Collector Instance 在创建时永久绑定一个 `packageId` 和一个 `subjectId + kind`。Activation、配置或 PackageVersion 更新不得改变这两项；要改 PackageId 或 Subject 必须创建新的 Instance。同一 PackageId 的候选 PackageVersion 可以在通过协议、制品、Output 与 schema 兼容检查并到达 Ready 后，原子替换 Instance 当前解析的版本与 fingerprint；失败时保留旧解析结果。同一 PackageVersion 对应不同 fingerprint 违反 Package 不可变性，必须拒绝。
 
 ## 3. 协议与能力版本
 
@@ -68,6 +70,8 @@ Hub 是 Desired、Resolved、Installed 与 Runtime State 的权威。Collector �
 | `diagnostics.stream-gap` | 报告不可恢复的数据缺口 |
 
 双方用 `name -> supported integer versions` 声明 `supportedCapabilities`。Hub 在 `selectedCapabilities` 中为每项能力选择双方交集中的一个版本；未被选择的能力不得在本次 Activation 使用。
+
+能力分**必需**与**可选**两档，无交集时的后果不同：Instance 已声明的 Output 所依赖的 `facts.*` 能力，以及所有产生 Fact 的 Activation 所需的 `diagnostics.stream-gap`，都是必需能力；任一无交集时 Hub 必须以 `capability_no_common_version` 拒绝 Hello。`config.dynamic` 是可选能力，无交集时不进入 `selectedCapabilities`，配置改动改走新 Activation。无法持久披露 Stream Gap 的 Activation 不得进入完整 Fact 交付的 Ready 状态。
 
 ## 4. Canonical JSON 消息
 
@@ -283,6 +287,8 @@ Collector 只能实例化 Package Manifest 中的 Output Template。一个模板
 
 `streams.opened` 返回完整 StreamDescriptor；Measurement Stream 还必须包含 Manifest 声明的 `measurement` descriptor。Descriptor 中的 `schema.revision/hash` 是新 Fact 默认使用的当前 revision，不属于 Stream identity；重放旧 outbox 时每条 Fact 仍声明其实际 `schemaRevision`。Hub 同时只把一个 Activation 设为某 Stream 的 writer。旧 Activation 或未获 writer lease 的会话发布到该 Stream 时，必须被拒绝为 `stream_writer_conflict`。
 
+v1 固定采用 stop-first writer 语义：Runtime 必须先停止旧 Activation 并释放全部 writer lease，之后才允许 replacement Activation 开始 initialize/open；不得预建两个同时存活的候选再抢占 lease。旧 Activation 停止后的迟到发布以 `stream_writer_conflict` 拒绝。更新失败时重新启动旧 Package 也是一次新的 Activation，并复用原 StreamId。
+
 `streams.open` 按请求原子处理：Hub 必须先验证全部 binding；任一个 binding 不合法时返回 `streams.rejected`，且不得创建或授予任何 Stream writer。成功时 `streams.opened.streams` 必须与请求 bindings 一一对应。
 
 ### 5.6 `activation.ready`：Collector → Hub
@@ -403,6 +409,10 @@ Hub 对每个输入 Fact 返回确定结果：
 
 只有 `committed`、`duplicate` 与 `superseded` 是 ACK。连接中断或响应无法解析时，Collector 必须假设未 ACK 并重试。
 
+“取得持久化责任”至少意味着该 Fact Revision 及其收敛元数据已经进入 Hub 可在进程重启后恢复的 durable inbox；写入临时内存缓冲或仅调用现有 Segment sink 不足以返回 ACK。Hub 必须先原子提交 inbox，再投影到现有缓冲；投影失败时保留 durable inbox，并在恢复时重放。一个 state file 同时只能有一个 Runtime owner，避免两个 writer 以整文件替换互相覆盖已 ACK 的状态。
+
+协议 Fact identity 是 `StreamId + FactId`。投影到仅以单个 Guid 键控的 legacy Segment 缓冲时，adapter 必须从这两个值派生稳定、带命名空间的投影 ID；直接使用裸 FactId 会让两个合法 Stream 相互覆盖或撤回。
+
 每个 result 是严格 tagged union：
 
 - `committed`、`duplicate`、`superseded`：只允许 `index` 与 `status`；
@@ -450,7 +460,7 @@ Collector 可以发送不要求响应的健康通知，body 固定为：
 
 ### 8.2 `stream.gap`
 
-仅在协商 `diagnostics.stream-gap` 后使用。Collector 确认某个 Stream 存在不可恢复的数据缺口时发送：
+所有产生 Fact 的 v1 Activation 都必须协商 `diagnostics.stream-gap`。Collector 确认某个 Stream 存在不可恢复的数据缺口时发送：
 
 ```json
 {
@@ -564,6 +574,7 @@ Manifest 不是 Activation 消息，但它约束 Hub 可以接受的握手和 St
         "id": "heartbeat.browser.tab",
         "major": 1,
         "revision": 1,
+        "document": "schemas/heartbeat.browser.tab-v1.1.schema.json",
         "hash": "sha256:..."
       },
       "subjectKinds": ["machine"],
@@ -588,6 +599,10 @@ Manifest 不是 Activation 消息，但它约束 Hub 可以接受的握手和 St
 
 Manifest 的 `supportedCapabilities` 是发布声明，Hello 的同名字段是实际进程报告；Hub 选择的能力必须同时位于 Manifest、Hello 与 Hub 支持集的交集。一个 output 使用的 Fact capability 必须同时出现在 Manifest 声明中，不允许只写 output 而省略能力版本。
 
+Fact Schema 引用中的 `document` 必须是 package root 内的 portable 相对路径，不允许绝对路径、反斜杠、`.` / `..` 段或符号链接穿越。`hash` 是该文档 UTF-8、无 BOM、未经任何规范化的**完整原始字节**之 SHA-256；空白、对象键顺序、换行风格或末尾换行变化都会改变 hash。文档的 `schemaId / schemaMajor / schemaRevision / factKind` 必须与 Output 引用一致；同一 schema identity 在一个 Package 内只能解析到同一 document 与 hash。文档格式见 [Fact Model v1 §8](./fact-model-v1.md#8-schema-版本)。
+
+Artifact 的 `entrypoint` 使用同样的安全相对路径规则。Runtime 必须先读取不可变快照，并同时核对精确 `size` 与 `contentHash`，之后才可交给 Binding。针对当前 `driver + os + arch` 必须恰好命中一个 Artifact，零个或多个都拒绝。参考本地实现以 Manifest 原始字节的 SHA-256 作为已验证 Package 内容集合的 fingerprint；因为 Manifest 固定所有 Artifact 与 Fact Schema hash，这能检测本地内容变化，但不替代签名或外部信任根。
+
 `dimensionKeys` 只声明允许的 key；v1 的绑定值统一为 NFC 规范化后的非 null string，不支持 number、boolean、array 或 object。需要其他类型时通过新的 capability/version 扩展，不能在 v1 中凭 JSON 外形猜测。
 
 `factKind: measurement` 的 output 必须额外声明完整 descriptor，例如：
@@ -601,6 +616,7 @@ Manifest 的 `supportedCapabilities` 是发布声明，Hello 的同名字段是�
     "id": "heartbeat.health.heart-rate",
     "major": 1,
     "revision": 1,
+    "document": "schemas/heartbeat.health.heart-rate-v1.1.schema.json",
     "hash": "sha256:..."
   },
   "subjectKinds": ["person"],
@@ -658,9 +674,9 @@ Manifest 的 `supportedCapabilities` 是发布声明，Hello 的同名字段是�
 8. ACK 丢失时以同一 messageId 重传并重放结果，不产生重复事实。
 9. 明确收到混合 `committed/retry` 结果后，只用新 messageId 重试未提交 Fact，已提交项不再发送。
 10. 新 Activation 可以用原 FactId、Fact Revision 与旧 SchemaRevision 重发旧 outbox。
-11. 超过批次或 in-flight 限制得到 retryable backpressure，不静默丢弃。
+11. 超过静态批次 shape/count 限制得到非 retryable 的消息级拒绝；超过 in-flight 限制或 durable inbox 暂无容量得到逐 Fact `retry/hub_backpressure`，不静默丢弃。
 12. Desired State 修改不会被 Activation 的失败或旧 SpecRevision 覆盖。
-13. 新 Activation 取得 Stream writer 后，旧 Activation 的迟到发布被拒绝。
+13. 旧 Activation 必须先停止并释放 writer；replacement 才能 initialize/open 并复用 StreamId，旧 Activation 的迟到发布被拒绝。
 14. ExternalHost 断连改变 Runtime State，但不伪造“浏览器已停止”或“制品已卸载”。
 
 ## 14. 代表场景走查

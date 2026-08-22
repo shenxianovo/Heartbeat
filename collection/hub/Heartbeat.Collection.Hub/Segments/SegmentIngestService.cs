@@ -4,21 +4,25 @@ using Heartbeat.Collection.Hub.Presence;
 using Heartbeat.Collection.Hub.Time;
 using Heartbeat.Collection.Hub.Upload;
 using Serilog;
+using System.Runtime.CompilerServices;
 
 namespace Heartbeat.Collection.Hub.Segments
 {
     /// <summary>
     /// 段的内存缓冲（ADR-017 枢纽的接收侧）。
     /// 接收 → 校验 → 缓冲，由 UploadWorker 周期性取走上传。
-    /// 缓冲按 Id 键控（ADR-018）：同段后到快照覆盖先到——快照单调生长，
-    /// 最新一份携带全部信息，攒批自动压缩。
+    /// 缓冲按 Id 键控（ADR-018）：legacy 快照按 EndTime 单调合并；Collector Fact
+    /// 投影则按显式 Revision 收敛，允许更高 Revision 缩短纠错。
     /// 同时维护集面读模型（ADR-021）：Current Activity + per-Source last-seen，
     /// 与缓冲分离，不随 drain 清空。
     /// </summary>
-    public class SegmentIngestService(IClock clock) : ISegmentSink, IUploadSource<ActivitySegmentItem>, ICurrentActivitySink, ICollectionStatus
+    public class SegmentIngestService(IClock clock) : ISegmentSink, ISegmentRetractionSink, IDurableSegmentProjectionSink, ICollectorTrafficSink, IUploadSource<ActivitySegmentItem>, ICurrentActivitySink, ICollectionStatus
     {
         private readonly object _lock = new();
         private readonly Dictionary<Guid, ActivitySegmentItem> _segments = [];
+        private readonly HashSet<Guid> _retractedSegmentIds = [];
+        private readonly Dictionary<Guid, DurableProjectionWatermark> _durableWatermarks = [];
+        private readonly ConditionalWeakTable<ActivitySegmentItem, DurableRevisionStamp> _durableRevisionStamps = new();
 
         // ---- 集面读模型（ADR-021）：独立小锁，读写不与缓冲争用 ----
         private readonly object _statusLock = new();
@@ -46,31 +50,60 @@ namespace Heartbeat.Collection.Hub.Segments
             var valid = SegmentValidationPolicy.Filter(segments, clock.UtcNow);
             if (valid.Count == 0) return 0;
 
-            lock (_lock)
-            {
-                foreach (var s in valid)
-                {
-                    if (_segments.Count >= MaxBuffered && !_segments.ContainsKey(s.Id))
-                        EvictOldest();
-                    _segments[s.Id] = s;
-                }
-            }
-
-            // 读模型盖戳（ADR-021）：per-Source last-seen 从流量派生，即 Active 的机制。
-            var now = clock.UtcNow;
-            lock (_statusLock)
-            {
-                foreach (var src in valid.Select(v => v.Source).Distinct())
-                    _lastSeen[src!] = now;
-            }
+            var accepted = Buffer(valid);
+            StampSourceLastSeen(accepted);
 
             Log.Debug("接收段 {Count} 条（source: {Sources}）",
-                valid.Count, string.Join(",", valid.Select(v => v.Source).Distinct()));
-            return valid.Count;
+                accepted.Count, string.Join(",", accepted.Select(v => v.Source).Distinct()));
+            return accepted.Count;
         }
 
         /// <summary>ISegmentSink adapter（ADR-020）：内置采集器进程内推送，与 Accept 同一缓冲。</summary>
         public void Push(List<ActivitySegmentItem> snapshots) => Accept(snapshots);
+
+        /// <summary>
+        /// Durable Collector Facts have already passed their declared schema and protocol time
+        /// rules. Preserve offline/replayed facts instead of applying the legacy 24-hour ingest
+        /// freshness window a second time.
+        /// </summary>
+        public void UpsertDurable(ActivitySegmentItem snapshot, long revision) =>
+            BufferDurable(snapshot, revision);
+
+        public void ReplayDurable(ActivitySegmentItem snapshot, long revision) =>
+            BufferDurable(snapshot, revision);
+
+        public void RetractDurable(Guid segmentId, long revision)
+        {
+            if (segmentId == Guid.Empty)
+                throw new ArgumentException("Durable Segment projection ID must not be empty.", nameof(segmentId));
+            if (revision <= 0)
+                throw new ArgumentOutOfRangeException(nameof(revision));
+
+            lock (_lock)
+            {
+                if (_durableWatermarks.TryGetValue(segmentId, out var current) &&
+                    current.Revision > revision)
+                    return;
+                _durableWatermarks[segmentId] = new DurableProjectionWatermark(revision, Retracted: true);
+                _retractedSegmentIds.Add(segmentId);
+                _segments.Remove(segmentId);
+            }
+        }
+
+        public void Retract(Guid segmentId)
+        {
+            lock (_lock)
+            {
+                _retractedSegmentIds.Add(segmentId);
+                _segments.Remove(segmentId);
+            }
+        }
+
+        public void MarkSourceActive(string source)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(source);
+            StampSourceLastSeen([source]);
+        }
 
         // ---- 集面读模型（ADR-021） ----
 
@@ -105,9 +138,9 @@ namespace Heartbeat.Collection.Hub.Segments
         List<ActivitySegmentItem> IUploadSource<ActivitySegmentItem>.Drain() => GetAndClearSegments();
 
         /// <summary>
-        /// IUploadSource adapter：退回批重注入（ADR-022）。缺席才插入，在位者保留
-        /// EndTime 更晚的快照——批次在外期间 hub 可能已收到同 Id 的更新快照，
-        /// 重注入不得回滚（与服务端单调生长门同一条规则，ADR-018）。
+        /// IUploadSource adapter：退回批重注入（ADR-022）。legacy 项在位时保留
+        /// EndTime 更晚的快照；durable Collector 投影按非序列化 Revision watermark
+        /// 判断，避免较长但更旧的在途快照覆盖缩短纠错。
         /// 退回批已过一次门卫，不再校验——重过滤即丢数据，违背不蒸发不变量。
         /// </summary>
         void IUploadSource<ActivitySegmentItem>.Reinject(List<ActivitySegmentItem> items)
@@ -118,8 +151,25 @@ namespace Heartbeat.Collection.Hub.Segments
             {
                 foreach (var s in items)
                 {
-                    if (_segments.TryGetValue(s.Id, out var existing) && existing.EndTime >= s.EndTime)
+                    if (_retractedSegmentIds.Contains(s.Id))
                         continue;
+                    if (_durableRevisionStamps.TryGetValue(s, out var incomingStamp))
+                    {
+                        if (!_durableWatermarks.TryGetValue(s.Id, out var watermark) ||
+                            watermark.Retracted || watermark.Revision != incomingStamp.Revision)
+                            continue;
+                        if (_segments.TryGetValue(s.Id, out var durableExisting) &&
+                            _durableRevisionStamps.TryGetValue(durableExisting, out var existingStamp) &&
+                            existingStamp.Revision >= incomingStamp.Revision)
+                            continue;
+                    }
+                    else
+                    {
+                        if (_durableWatermarks.ContainsKey(s.Id))
+                            continue;
+                        if (_segments.TryGetValue(s.Id, out var existing) && existing.EndTime >= s.EndTime)
+                            continue;
+                    }
                     if (_segments.Count >= MaxBuffered && !_segments.ContainsKey(s.Id))
                         EvictOldest();
                     _segments[s.Id] = s;
@@ -145,6 +195,71 @@ namespace Heartbeat.Collection.Hub.Segments
             _segments.Remove(oldest.Id);
             Log.Warning("段缓冲已满（{Max} 条），丢弃最旧段 {Id}（source: {Source}）",
                 MaxBuffered, oldest.Id, oldest.Source);
+        }
+
+        private List<ActivitySegmentItem> Buffer(List<ActivitySegmentItem> snapshots)
+        {
+            var accepted = new List<ActivitySegmentItem>(snapshots.Count);
+            lock (_lock)
+            {
+                foreach (var snapshot in snapshots)
+                {
+                    if (_retractedSegmentIds.Contains(snapshot.Id) ||
+                        _durableWatermarks.ContainsKey(snapshot.Id))
+                        continue;
+                    if (_segments.Count >= MaxBuffered && !_segments.ContainsKey(snapshot.Id))
+                        EvictOldest();
+                    _segments[snapshot.Id] = snapshot;
+                    accepted.Add(snapshot);
+                }
+            }
+            return accepted;
+        }
+
+        private void BufferDurable(ActivitySegmentItem snapshot, long revision)
+        {
+            ArgumentNullException.ThrowIfNull(snapshot);
+            if (snapshot.Id == Guid.Empty)
+                throw new ArgumentException("Durable Segment projection ID must not be empty.", nameof(snapshot));
+            if (revision <= 0)
+                throw new ArgumentOutOfRangeException(nameof(revision));
+
+            lock (_lock)
+            {
+                if (_durableWatermarks.TryGetValue(snapshot.Id, out var current) &&
+                    (current.Revision > revision || current.Retracted))
+                    return;
+                if (_retractedSegmentIds.Contains(snapshot.Id) &&
+                    !_durableWatermarks.ContainsKey(snapshot.Id))
+                    return;
+                if (_segments.Count >= MaxBuffered && !_segments.ContainsKey(snapshot.Id))
+                    EvictOldest();
+
+                _durableWatermarks[snapshot.Id] = new DurableProjectionWatermark(revision, Retracted: false);
+                _durableRevisionStamps.Remove(snapshot);
+                _durableRevisionStamps.Add(snapshot, new DurableRevisionStamp(revision));
+                _segments[snapshot.Id] = snapshot;
+            }
+        }
+
+        private void StampSourceLastSeen(List<ActivitySegmentItem> accepted) =>
+            StampSourceLastSeen(accepted.Select(item => item.Source));
+
+        private void StampSourceLastSeen(IEnumerable<string?> sources)
+        {
+            // 读模型盖戳（ADR-021）：per-Source last-seen 从实时流量派生，即 Active 的机制。
+            var now = clock.UtcNow;
+            lock (_statusLock)
+            {
+                foreach (var source in sources.Where(source => source is not null).Distinct())
+                    _lastSeen[source!] = now;
+            }
+        }
+
+        private sealed record DurableProjectionWatermark(long Revision, bool Retracted);
+        private sealed class DurableRevisionStamp(long revision)
+        {
+            public long Revision { get; } = revision;
         }
     }
 }

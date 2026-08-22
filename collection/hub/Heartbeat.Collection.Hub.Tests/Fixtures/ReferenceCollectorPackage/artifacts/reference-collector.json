@@ -1,0 +1,4 @@
+{
+  "kind": "heartbeat.reference.in-process",
+  "entrypoint": "Heartbeat.ReferenceCollector"
+}

@@ -1,6 +1,6 @@
 # Fact Model v1
 
-Status: Draft 0.1
+Status: Draft 0.2
 
 本规范定义 Collector Protocol v1 中的 Fact Stream、公共 Fact 信封，以及 Segment、Event、Measurement 三种事实家族。它是 ADR-041 的可实现草案，不规定 Analytics 的物理存储表。
 
@@ -161,7 +161,7 @@ Collector wire shape 称为 `FactSubmission`。Hub 持久接收后形成内部 `
 
 `recordState: retracted` 表示 Collector 撤回整个 FactId，而不是把 payload 更新为空。它必须使用更高 Revision，保留原 FactKind 要求的 `time`，并把 `schemaRevision` 指向明确允许该 retraction 的精确 Fact Schema revision，便于验证、审计与投影失效。
 
-v1 默认允许 Segment retraction；Event 与 Measurement 只有其 Fact Schema 明确声明 `allowRetraction: true` 时才允许。重用已撤回的 FactId 恢复为 `present` 不允许；需要恢复时生成新 FactId。
+v1 的 Segment Fact Schema 必须声明 `evolution.mode: segmentSnapshot` 与 `evolution.allowRetraction: true`；Event 与 Measurement 只有其 Fact Schema 的 `evolution.allowRetraction` 为 `true` 时才允许。重用已撤回的 FactId 恢复为 `present` 不允许；需要恢复时生成新 FactId。
 
 ## 5. Segment
 
@@ -270,7 +270,7 @@ Event 默认不可变：
 - 首次提交必须是 Revision `1`；
 - 相同 canonical 内容的 Revision `1` 重放是 duplicate；
 - 同一 FactId 的不同内容是 conflict；
-- 只有 Fact Schema 明确声明 `mutable: true` 时才允许更高的 `recordState: present` Revision，并必须定义允许修改的字段；`allowRetraction: true` 可以独立允许一次终结性的 `recordState: retracted` Revision，不要求 mutable。
+- 只有 Fact Schema 声明 `evolution.mode: mutableEvent` 时才允许更高的 `recordState: present` Revision，并必须用 `mutablePayloadPaths` 定义允许修改的字段；`evolution.allowRetraction: true` 可以独立允许一次终结性的 `recordState: retracted` Revision，不要求 mutableEvent。
 
 ### 6.2 Input Event 示例
 
@@ -415,11 +415,14 @@ Histogram 的时间语义与 Sum 相同；Stream metadata 固定 bounds。Value 
 
 ## 8. Schema 版本
 
+Manifest 中的 Fact Schema 引用固定 identity、locator 与 exact bytes hash：
+
 ```json
 {
   "id": "heartbeat.browser.tab",
   "major": 1,
   "revision": 2,
+  "document": "schemas/heartbeat.browser.tab-v1.2.schema.json",
   "hash": "sha256:..."
 }
 ```
@@ -427,7 +430,51 @@ Histogram 的时间语义与 Sum 相同；Stream metadata 固定 bounds。Value 
 - `id`：稳定语义名称，推荐反向域风格的小写点分段。
 - `major`：破坏性语义兼容线；改变 required 字段、字段含义、枚举含义或 identity 规则必须提高。
 - `revision`：同一 Major 内只增的兼容扩展，例如增加可选字段。
-- `hash`：该 Revision schema 文档 canonical bytes 的内容哈希。
+- `document`：Package root 内的 portable 相对路径；不得包含绝对路径、反斜杠、空段、`.` / `..` 段或符号链接穿越。
+- `hash`：`sha256:<64 lowercase hex>`，输入是 `document` 指向文件的完整原始字节。
+
+Fact Schema Document v1 是严格 JSON 对象，固定形状如下：
+
+```json
+{
+  "documentVersion": 1,
+  "schemaId": "heartbeat.browser.tab",
+  "schemaMajor": 1,
+  "schemaRevision": 2,
+  "factKind": "segment",
+  "evolution": {
+    "mode": "segmentSnapshot",
+    "allowRetraction": true
+  },
+  "payloadSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "payloadSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["url", "title"],
+    "properties": {
+      "url": { "type": "string", "minLength": 1 },
+      "title": { "type": "string", "minLength": 1 }
+    }
+  }
+}
+```
+
+顶层与 `evolution` 都严格拒绝未知字段和重复键。`payloadSchema` 使用 JSON Schema Draft 2020-12，可以是 object 或 boolean schema；v1 必须自包含，只允许 fragment 形式的本地 `$ref` / `$dynamicRef`，且每个引用都必须在 Package 校验阶段解析成功，不得解析网络或 Package 外部引用。若 payload 内嵌 `$schema`，它必须等于 `payloadSchemaDialect`。
+
+`schemaId / schemaMajor / schemaRevision / factKind` 必须逐项等于 Manifest Output 引用。同一个 Package 内，同一 `(schemaId, schemaMajor, schemaRevision)` 只能映射到一个 document 与 hash。`payloadSchema` 只验证 `recordState: present` 的 payload；公共 Fact 信封和 FactKind time/evolution 仍由协议 Runtime 验证。
+
+`evolution.mode` 与 FactKind 的合法组合固定为：
+
+| FactKind | mode | 附加规则 |
+| --- | --- | --- |
+| Segment | `segmentSnapshot` | `allowRetraction` 必须为 true；每个 Revision 是完整快照 |
+| Event | `immutableEvent` | present 内容不可修订；是否可撤回由 `allowRetraction` 决定 |
+| Event | `mutableEvent` | 必须增加非空 `mutablePayloadPaths`，每项为 JSON Pointer；只允许这些 payload 路径变化 |
+| Measurement | `measurementCorrection` | point/window time 不变，只允许更高 Revision 修正 value/missing/reset 等 payload |
+
+除 `mutableEvent` 外不得出现 `mutablePayloadPaths`。`allowRetraction` 必须显式给出；它与是否允许更高 present Revision 是两条独立规则。
+
+Hash 输入不做 canonicalization：文件必须是有效 UTF-8 且无 BOM，直接对**完整原始文件字节**计算 SHA-256。空白、键顺序、LF/CRLF 与末尾换行都参与 hash。Manifest 与 schema 文档可先解析后比较，但验证器不得重新序列化 JSON 来计算 expected hash。
 
 一个 Stream identity 绑定 `SchemaId + SchemaMajor`，schema catalog 保存该 Major 下每个 SchemaRevision → Hash 的精确映射。每条 FactSubmission 携带实际 SchemaRevision，使新 Activation 可以重发旧 outbox 而不误用当前 schema。Hub 只有在双方协商并持有该精确 schema 时才接受 payload；不得仅凭“JSON 能反序列化”就把语义未知内容当成兼容。
 

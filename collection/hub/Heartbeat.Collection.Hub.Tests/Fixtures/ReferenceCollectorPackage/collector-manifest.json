@@ -1,0 +1,39 @@
+{
+  "manifestVersion": 1,
+  "packageId": "heartbeat.collector.reference",
+  "version": "1.0.0",
+  "protocolMajors": [1],
+  "supportedCapabilities": {
+    "facts.segment": [1],
+    "diagnostics.stream-gap": [1]
+  },
+  "outputs": [
+    {
+      "outputId": "activity",
+      "source": "reference",
+      "factKind": "segment",
+      "schema": {
+        "id": "heartbeat.reference.segment",
+        "major": 1,
+        "revision": 1,
+        "document": "schemas/reference-segment.schema.json",
+        "hash": "sha256:050caac21cf58fb7a2238b50acd2e327fff6562168d164d01e227cfa0e3c0fc1"
+      },
+      "subjectKinds": ["machine"],
+      "dimensionKeys": []
+    }
+  ],
+  "artifacts": [
+    {
+      "artifactId": "reference.inprocess",
+      "selector": {
+        "driver": "inProcess",
+        "os": ["windows", "macos", "linux"],
+        "arch": ["x64", "arm64"]
+      },
+      "entrypoint": "artifacts/reference-collector.json",
+      "size": 95,
+      "contentHash": "sha256:de359aff82ed415958d16bc5fd08caad6b8fabdb8bf82556505dd2506399e02b"
+    }
+  ]
+}
