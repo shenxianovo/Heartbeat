@@ -1,36 +1,49 @@
-name: Release Desktop
+name: Desktop Release
+run-name: Desktop Release · ${{ github.ref_name }}
 
 on:
   push:
     tags: ['v*']
 
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  VELOPACK_VERSION: '1.2.0'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: 'true'
+
 jobs:
-  build:
+  windows:
+    name: Windows · ${{ matrix.rid }}
+    runs-on: windows-latest
+    timeout-minutes: 30
     permissions:
       contents: read
     strategy:
       matrix:
         include:
           - rid: win-x64
-            arch: x64
           - rid: win-arm64
-            arch: arm64
-    runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Extract version from tag
+      - name: Resolve package version
         id: version
         shell: bash
         run: |
           TAG="${GITHUB_REF#refs/tags/v}"
           echo "version=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Publish
+      - name: Build Windows app
         run: |
           dotnet publish collection/desktop/Heartbeat.Desktop.Windows/Heartbeat.Desktop.Windows.csproj `
             -c Release `
@@ -40,11 +53,10 @@ jobs:
             -o publish
 
       - name: Install Velopack CLI
-        run: dotnet tool install -g vpk --version 1.2.0
+        run: dotnet tool install -g vpk --version ${{ env.VELOPACK_VERSION }}
 
-      # 下载上一版本作为 diff 基线，否则 vpk pack 不会生成 delta 包。
-      # 首次发布（无上一版本）时允许失败，退化为只出完整包。
-      - name: Download previous release for delta baseline
+      - name: Fetch Windows delta baseline
+        id: delta_baseline
         continue-on-error: true
         run: |
           vpk download github `
@@ -53,7 +65,7 @@ jobs:
             --channel ${{ matrix.rid }} `
             --outputDir releases
 
-      - name: Pack with Velopack
+      - name: Package Windows release
         run: |
           vpk pack `
             --packId Heartbeat `
@@ -64,24 +76,54 @@ jobs:
             --channel ${{ matrix.rid }} `
             --outputDir releases
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: releases-${{ matrix.arch }}
-          path: releases/*
+      - name: Verify Windows release
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          CHANNEL="${{ matrix.rid }}"
+          test -f "releases/assets.$CHANNEL.json"
+          test -f "releases/releases.$CHANNEL.json"
+          test -f "releases/RELEASES-$CHANNEL"
+          test -f "releases/Heartbeat-$VERSION-$CHANNEL-full.nupkg"
+          if [ "${{ steps.delta_baseline.outcome }}" = "success" ]; then
+            test -f "releases/Heartbeat-$VERSION-$CHANNEL-delta.nupkg"
+          else
+            echo "::warning::Delta baseline unavailable for $CHANNEL; publishing a full-only release."
+          fi
+          test -f "releases/Heartbeat-$CHANNEL-Portable.zip"
+          test -f "releases/Heartbeat-$CHANNEL-Setup.exe"
 
-  macos-release:
+      - name: Upload Windows release artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.rid }}
+          path: |
+            releases/assets.${{ matrix.rid }}.json
+            releases/releases.${{ matrix.rid }}.json
+            releases/RELEASES-${{ matrix.rid }}
+            releases/Heartbeat-${{ steps.version.outputs.version }}-${{ matrix.rid }}-*.nupkg
+            releases/Heartbeat-${{ matrix.rid }}-Portable.zip
+            releases/Heartbeat-${{ matrix.rid }}-Setup.exe
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  macos:
+    name: macOS · osx-arm64
     runs-on: macos-15
+    timeout-minutes: 45
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Extract version from tag
+      - name: Resolve package version
         id: version
         shell: bash
         run: |
@@ -91,7 +133,7 @@ jobs:
       - name: Run macOS desktop tests
         run: dotnet test collection/desktop/Heartbeat.Desktop.Mac.Tests/Heartbeat.Desktop.Mac.Tests.csproj -c Release
 
-      - name: Publish Apple Silicon application
+      - name: Build macOS app
         run: |
           dotnet publish collection/desktop/Heartbeat.Desktop.Mac/Heartbeat.Desktop.Mac.csproj \
             -c Release \
@@ -101,10 +143,10 @@ jobs:
             -o publish-macos
 
       - name: Install Velopack CLI
-        run: dotnet tool install -g vpk --version 1.2.0
+        run: dotnet tool install -g vpk --version ${{ env.VELOPACK_VERSION }}
 
-      # 首次 macOS Release 没有 diff 基线；允许退化为完整包。
-      - name: Download previous macOS release for delta baseline
+      - name: Fetch macOS delta baseline
+        id: delta_baseline
         continue-on-error: true
         run: |
           vpk download github \
@@ -113,7 +155,7 @@ jobs:
             --channel osx-arm64-stable \
             --outputDir releases-macos
 
-      - name: Pack unsigned macOS Release
+      - name: Package unsigned macOS release
         run: |
           vpk pack \
             --packId Heartbeat \
@@ -141,14 +183,20 @@ jobs:
           pkgutil --flatten "$SETUP_WORK/expanded" "$SETUP_WORK/per-user.pkg"
           mv "$SETUP_WORK/per-user.pkg" "$SETUP_PATH"
 
-      - name: Verify unsigned macOS Release
+      - name: Verify unsigned macOS release
         shell: bash
         run: |
+          VERSION="${{ steps.version.outputs.version }}"
           test -f releases-macos/Heartbeat-osx-arm64-stable-Setup.pkg
           test -f releases-macos/Heartbeat-osx-arm64-stable-Portable.zip
           test -f releases-macos/releases.osx-arm64-stable.json
           test -f releases-macos/RELEASES-osx-arm64-stable
-          ls releases-macos/Heartbeat-*-osx-arm64-stable-full.nupkg >/dev/null
+          test -f "releases-macos/Heartbeat-$VERSION-osx-arm64-stable-full.nupkg"
+          if [ "${{ steps.delta_baseline.outcome }}" = "success" ]; then
+            test -f "releases-macos/Heartbeat-$VERSION-osx-arm64-stable-delta.nupkg"
+          else
+            echo "::warning::Delta baseline unavailable for osx-arm64-stable; publishing a full-only release."
+          fi
 
           VERIFY_DIR="$RUNNER_TEMP/heartbeat-release-verification"
           mkdir -p "$VERIFY_DIR/app"
@@ -172,29 +220,42 @@ jobs:
           grep -q 'id="com.shenxianovo.heartbeat"' "$VERIFY_DIR/pkg/Distribution"
           grep -q 'Heartbeat-.*-osx-arm64-stable-full.nupkg' releases-macos/releases.osx-arm64-stable.json
 
-      - name: Upload macOS Release artifacts
-        uses: actions/upload-artifact@v4
+      - name: Upload macOS release artifact
+        uses: actions/upload-artifact@v7
         with:
-          name: releases-macos-arm64
-          path: releases-macos/*
+          name: desktop-osx-arm64
+          path: |
+            releases-macos/assets.osx-arm64-stable.json
+            releases-macos/releases.osx-arm64-stable.json
+            releases-macos/RELEASES-osx-arm64-stable
+            releases-macos/Heartbeat-${{ steps.version.outputs.version }}-osx-arm64-stable-*.nupkg
+            releases-macos/Heartbeat-osx-arm64-stable-Portable.zip
+            releases-macos/Heartbeat-osx-arm64-stable-Setup.pkg
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
 
-  release:
-    needs: [build, macos-release]
+  github-release:
+    name: GitHub Release
+    needs: [windows, macos]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - name: Download desktop release artifacts
+        uses: actions/download-artifact@v8
         with:
+          pattern: desktop-*
           path: all-releases
           merge-multiple: true
 
-      - name: Generate release notes
+      - name: Build release notes
         shell: bash
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || echo "")
@@ -224,7 +285,7 @@ jobs:
             echo "</details>"
           } >> "$NOTES_PATH"
 
-      - name: Upload to GitHub Release
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           files: all-releases/*
