@@ -1,0 +1,39 @@
+{
+  "manifestVersion": 1,
+  "packageId": "heartbeat.collector.system",
+  "version": "1.0.0",
+  "protocolMajors": [1],
+  "supportedCapabilities": {
+    "facts.segment": [1],
+    "diagnostics.stream-gap": [1]
+  },
+  "outputs": [
+    {
+      "outputId": "foreground",
+      "source": "system",
+      "factKind": "segment",
+      "schema": {
+        "id": "heartbeat.system.foreground-segment",
+        "major": 1,
+        "revision": 1,
+        "document": "schemas/foreground-segment.schema.json",
+        "hash": "sha256:5aba9635508b585b9af3486ad22ea40490b10bcf7da3b86711c5fc5d8e0f4dc7"
+      },
+      "subjectKinds": ["machine"],
+      "dimensionKeys": []
+    }
+  ],
+  "artifacts": [
+    {
+      "artifactId": "system.inprocess",
+      "selector": {
+        "driver": "inProcess",
+        "os": ["windows", "macos"],
+        "arch": ["x64", "arm64"]
+      },
+      "entrypoint": "artifacts/system-collector.json",
+      "size": 91,
+      "contentHash": "sha256:23c16ebff6f3077c3a91524b4a72e9d38770cf2c0440b61d1d91490b9143c930"
+    }
+  ]
+}

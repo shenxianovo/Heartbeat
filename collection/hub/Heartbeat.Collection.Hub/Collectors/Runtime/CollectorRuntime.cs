@@ -179,6 +179,24 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         }
     }
 
+    public IReadOnlyList<CollectorInstance> FindInstances(
+        string packageId,
+        SubjectReference subject)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            return _state.Instances
+                .Where(instance =>
+                    instance.PackageId == packageId &&
+                    instance.SubjectId == subject.SubjectId &&
+                    instance.SubjectKind == subject.Kind)
+                .Select(ToPublic)
+                .ToArray();
+        }
+    }
+
     private static void ValidateSpec(CollectorInstanceSpec spec)
     {
         ArgumentNullException.ThrowIfNull(spec);

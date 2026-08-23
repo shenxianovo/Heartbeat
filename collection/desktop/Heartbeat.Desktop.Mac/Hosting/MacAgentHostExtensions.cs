@@ -120,7 +120,8 @@ public static class MacAgentHostExtensions
         // AddHeartbeatHub registers workers first. Monitor stays last so its terminal
         // snapshot is available before UploadWorker performs the final drain.
         services.AddHostedService(sp => sp.GetRequiredService<MacInputEventCollector>());
-        services.AddHostedService<AppMonitorService>();
+        services.AddSystemCollectorInProcessBinding(new SystemCollectorBindingOptions(
+            paths.DataDirectory));
         return services;
     }
 }

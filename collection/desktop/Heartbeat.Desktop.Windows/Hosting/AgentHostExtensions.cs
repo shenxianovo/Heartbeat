@@ -138,14 +138,17 @@ namespace Heartbeat.Desktop.Windows.Hosting
             // 自启动服务
             services.AddSingleton<IAutoStartService, RegistryAutoStartService>();
 
-            // 托管后台服务。停止顺序为注册的逆序：AppMonitorService 必须最后注册、最先停止，
+            // 托管后台服务。停止顺序为注册的逆序：system Binding 必须最后注册、最先停止，
             // 使其终态快照先推入 hub，再由 UploadWorker.StopAsync 的最终 drain 带走（ADR-020）。
             // 此顺序由 AgentHostExtensionsTests 钉住。
             // 注意：IDisposable 的托管服务只通过 AddHostedService 注册一次。此前 AppMonitorService /
             // InputEventCollector 另有 AddSingleton 注册，容器把同一实例捕获进 disposables 两次，
             // host.Dispose() 双重 Dispose → 对已释放 CTS 调 Cancel 抛异常 → 退出流程中断、端口不释放。
             services.AddHostedService<InputEventCollector>();
-            services.AddHostedService<AppMonitorService>();
+            services.AddSystemCollectorInProcessBinding(new SystemCollectorBindingOptions(
+                Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Heartbeat")));
 
             return services;
         }

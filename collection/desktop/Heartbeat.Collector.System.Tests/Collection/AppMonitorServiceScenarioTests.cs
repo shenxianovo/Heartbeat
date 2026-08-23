@@ -1,11 +1,9 @@
 using Heartbeat.Core;
-using Heartbeat.Core.DTOs.Segments;
 using Heartbeat.Collector.System.Collection;
 using Heartbeat.Collector.System.Configuration;
 using Heartbeat.Collector.System.Input;
 using Heartbeat.Collector.System.Observations;
 using Heartbeat.Collection.Hub.Presence;
-using Heartbeat.Collection.Hub.Segments;
 using Heartbeat.Collection.Hub.Time;
 
 namespace Heartbeat.Collector.System.Tests.Collection;
@@ -75,11 +73,11 @@ public class AppMonitorServiceScenarioTests
         }
     }
 
-    private sealed class CapturingSink : ISegmentSink
+    private sealed class CapturingSink : ISystemSegmentPublisher
     {
-        public List<ActivitySegmentItem> Items { get; } = [];
-        public void Push(List<ActivitySegmentItem> snapshots) => Items.AddRange(snapshots);
-        public List<ActivitySegmentItem> Drain()
+        public List<ForegroundSegmentSnapshot> Items { get; } = [];
+        public void Publish(ForegroundSegmentSnapshot snapshot) => Items.Add(snapshot);
+        public List<ForegroundSegmentSnapshot> Drain()
         {
             var result = Items.ToList();
             Items.Clear();
@@ -116,7 +114,7 @@ public class AppMonitorServiceScenarioTests
         return (service, clock, observations, interaction, settings, segments, activity);
     }
 
-    private static List<ActivitySegmentItem> Flush(AppMonitorService service, CapturingSink sink)
+    private static List<ForegroundSegmentSnapshot> Flush(AppMonitorService service, CapturingSink sink)
     {
         service.PushCurrentSnapshot();
         return sink.Drain();
@@ -132,9 +130,8 @@ public class AppMonitorServiceScenarioTests
 
         var segment = Assert.Single(x.Segments.Drain());
         Assert.Equal("win:code", segment.AppIdentityKey);
-        Assert.Null(segment.AppName);
         Assert.Equal("main.cs", segment.Title);
-        Assert.Equal(60, (segment.EndTime - segment.StartTime).TotalSeconds);
+        Assert.Equal(60, (segment.End - segment.Start).TotalSeconds);
         Assert.Equal("win:chrome", x.Activity.Values[^1]!.AppIdentityKey);
     }
 
@@ -149,7 +146,7 @@ public class AppMonitorServiceScenarioTests
         var segment = Assert.Single(x.Segments.Drain());
         Assert.Equal("win:code", segment.AppIdentityKey);
         Assert.Equal("README.md", segment.Title);
-        Assert.Equal(30, (segment.EndTime - segment.StartTime).TotalSeconds);
+        Assert.Equal(30, (segment.End - segment.Start).TotalSeconds);
     }
 
     [Fact]
@@ -175,7 +172,7 @@ public class AppMonitorServiceScenarioTests
 
         var segment = Assert.Single(Flush(x.Service, x.Segments));
         Assert.Equal("✳ Claude Code", segment.Title);
-        Assert.Equal(60, (segment.EndTime - segment.StartTime).TotalSeconds);
+        Assert.Equal(60, (segment.End - segment.Start).TotalSeconds);
     }
 
     [Fact]
@@ -204,8 +201,7 @@ public class AppMonitorServiceScenarioTests
         Assert.Equal(2, segments.Count);
         Assert.Equal("win:code", segments[0].AppIdentityKey);
         Assert.Equal("sys:away", segments[1].AppIdentityKey);
-        Assert.All(segments, segment => Assert.Null(segment.AppName));
-        Assert.Equal(300, (segments[1].EndTime - segments[1].StartTime).TotalSeconds);
+        Assert.Equal(300, (segments[1].End - segments[1].Start).TotalSeconds);
         Assert.Equal(
             ["win:code", "sys:away", "win:chrome"],
             x.Activity.Values.Select(value => value?.AppIdentityKey));
@@ -235,7 +231,7 @@ public class AppMonitorServiceScenarioTests
 
         var segment = Assert.Single(x.Segments.Drain());
         Assert.Equal("win:code", segment.AppIdentityKey);
-        Assert.Equal(45, (segment.EndTime - segment.StartTime).TotalSeconds);
+        Assert.Equal(45, (segment.End - segment.Start).TotalSeconds);
     }
 
     [Fact]

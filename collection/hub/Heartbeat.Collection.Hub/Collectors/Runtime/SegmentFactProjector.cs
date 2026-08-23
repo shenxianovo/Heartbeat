@@ -20,10 +20,12 @@ internal interface ISegmentFactProjector
         out ActivitySegmentItem? item);
 }
 
-internal sealed class ReferenceActivitySegmentProjector : ISegmentFactProjector
+internal sealed class ActivitySegmentFactProjector : ISegmentFactProjector
 {
     public bool Supports(string schemaId, int schemaMajor) =>
-        schemaId == "heartbeat.reference.segment" && schemaMajor == 1;
+        schemaMajor == 1 && schemaId is
+            "heartbeat.reference.segment" or
+            "heartbeat.system.foreground-segment";
 
     public Guid ProjectedId(Guid streamId, Guid factId)
     {
@@ -59,7 +61,9 @@ internal sealed class ReferenceActivitySegmentProjector : ISegmentFactProjector
             AppDisplayName = StringProperty(payload, "appDisplayName"),
             StartTime = start,
             EndTime = end,
-            Attributes = payload.Clone()
+            Attributes = stream.SchemaId == "heartbeat.system.foreground-segment"
+                ? null
+                : payload.Clone()
         };
         return true;
     }

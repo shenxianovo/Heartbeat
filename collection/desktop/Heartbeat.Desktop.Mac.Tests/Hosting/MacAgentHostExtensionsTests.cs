@@ -9,7 +9,9 @@ using Heartbeat.Collector.System.Collection;
 using Heartbeat.Collector.System.Observations;
 using Heartbeat.Collection.Hub.Configuration;
 using Heartbeat.Collection.Hub.Ingest;
+using Heartbeat.Collection.Hub.Presence;
 using Heartbeat.Collection.Hub.Runtime;
+using Heartbeat.Collection.Hub.Time;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -31,13 +33,17 @@ public sealed class MacAgentHostExtensionsTests : IDisposable
             provider.GetRequiredService<IDesktopObservationSource>());
 
         var hosted = provider.GetServices<IHostedService>().ToList();
-        var monitorIndex = hosted.FindIndex(item => item is AppMonitorService);
+        var monitorIndex = hosted.FindIndex(item => item is SystemCollectorHostedService);
         var uploadIndex = hosted.FindIndex(item => item is UploadWorker);
         var inputCollector = provider.GetRequiredService<MacInputEventCollector>();
         var inputIndex = hosted.FindIndex(item => ReferenceEquals(item, inputCollector));
         Assert.Equal(hosted.Count - 1, monitorIndex);
         Assert.True(uploadIndex >= 0 && uploadIndex < monitorIndex);
         Assert.True(inputIndex >= 0 && inputIndex < monitorIndex);
+        Assert.DoesNotContain(hosted, service => service is AppMonitorService);
+        Assert.Same(
+            provider.GetRequiredService<SystemCollectorProtocolAdapter>(),
+            provider.GetRequiredService<ISystemSegmentPublisher>());
         Assert.Same(inputCollector, provider.GetRequiredService<IMacInputMonitoringEvents>());
         Assert.Same(inputCollector, provider.GetRequiredService<IInputEventRecordingPolicy>());
     }
@@ -56,6 +62,24 @@ public sealed class MacAgentHostExtensionsTests : IDisposable
             config.DeviceName = "Studio Mac");
 
         Assert.Equal("Studio Mac", identity.DeviceName);
+    }
+
+    [Fact]
+    public async Task Composition_SystemBindingActivatesAndPublishesThroughProtocol()
+    {
+        var services = BuildServices();
+        using var provider = services.BuildServiceProvider();
+        var binding = Assert.Single(
+            provider.GetServices<IHostedService>().OfType<SystemCollectorHostedService>());
+
+        await binding.StartAsync(CancellationToken.None);
+        provider.GetRequiredService<FakeClock>().Advance(TimeSpan.FromSeconds(2));
+        provider.GetRequiredService<AppMonitorService>().PushCurrentSnapshot();
+
+        Assert.True(File.Exists(Path.Combine(_root, "collector-runtime.json")));
+        Assert.NotNull(provider.GetRequiredService<ICollectionStatus>().CurrentActivity);
+        Assert.Contains("system", provider.GetRequiredService<ICollectionStatus>().SourceLastSeen.Keys);
+        await binding.StopAsync(CancellationToken.None);
     }
 
     [Fact]
@@ -78,6 +102,8 @@ public sealed class MacAgentHostExtensionsTests : IDisposable
         Directory.CreateDirectory(_root);
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddSingleton<FakeClock>();
+        services.AddSingleton<IClock>(provider => provider.GetRequiredService<FakeClock>());
         services.AddSingleton<IMacWorkspaceNative, FakeWorkspace>();
         services.AddSingleton<IMacAccessibilityNative, FakeAccessibilityNative>();
         services.AddSingleton<IMacInputMonitoringNative, FakeInputMonitoringNative>();
@@ -100,6 +126,12 @@ public sealed class MacAgentHostExtensionsTests : IDisposable
             new("com.apple.Terminal", "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal", "Terminal");
         public void Start(IReadOnlyCollection<string> notificationNames) { }
         public void Stop() { }
+    }
+
+    private sealed class FakeClock : IClock
+    {
+        public DateTimeOffset UtcNow { get; private set; } = DateTimeOffset.UnixEpoch;
+        public void Advance(TimeSpan duration) => UtcNow += duration;
     }
 
     private sealed class StubPlatformUuid(string value) : IMacPlatformUuid

@@ -69,6 +69,28 @@ public class CollectorRuntimeInstanceTests
     }
 
     [Fact]
+    public void FindInstances_AllowsMultipleInstancesForTheSamePackageAndSubject()
+    {
+        using var stateDirectory = TemporaryDirectory.Create();
+        var package = LocalCollectorPackage.Load(ReferencePackagePath);
+        var subject = new SubjectReference(
+            Guid.Parse("0198d5df-5df3-70a1-937d-68a7d64623e2"),
+            SubjectKind.Machine);
+        using var config = JsonDocument.Parse("{}");
+        var spec = new CollectorInstanceSpec(1, 1, config.RootElement.Clone());
+        using var runtime = CollectorRuntime.Open(
+            Path.Combine(stateDirectory.Path, "collector-runtime.json"),
+            new RecordingSegmentSink());
+        var first = runtime.CreateInstance(package, subject, spec);
+        var second = runtime.CreateInstance(package, subject, spec);
+
+        var matches = runtime.FindInstances(package.Manifest.PackageId, subject);
+
+        Assert.Equal([first.CollectorInstanceId, second.CollectorInstanceId],
+            matches.Select(instance => instance.CollectorInstanceId));
+    }
+
+    [Fact]
     public void Open_SameStateFileAlreadyOwned_RejectsConcurrentRuntime()
     {
         using var stateDirectory = TemporaryDirectory.Create();

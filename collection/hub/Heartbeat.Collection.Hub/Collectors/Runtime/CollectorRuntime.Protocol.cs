@@ -25,7 +25,7 @@ public sealed partial class CollectorRuntime
     private readonly Dictionary<Guid, PendingPackageFingerprint> _pendingPackageFingerprints = [];
     private readonly Dictionary<string, FactSchemaDocument> _factSchemasByHash = new(StringComparer.Ordinal);
     private readonly IReadOnlyList<ISegmentFactProjector> _segmentProjectors =
-        [new ReferenceActivitySegmentProjector()];
+        [new ActivitySegmentFactProjector()];
     private readonly Dictionary<Guid, Guid> _streamWriters = [];
     private readonly HashSet<Guid> _startingInstances = [];
     private readonly Dictionary<Guid, StartingCollector> _startingCollectors = [];

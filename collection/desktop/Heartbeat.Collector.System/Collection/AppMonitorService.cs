@@ -1,10 +1,8 @@
 using Heartbeat.Core;
-using Heartbeat.Core.DTOs.Segments;
 using Heartbeat.Collector.System.Configuration;
 using Heartbeat.Collector.System.Input;
 using Heartbeat.Collector.System.Observations;
 using Heartbeat.Collection.Hub.Presence;
-using Heartbeat.Collection.Hub.Segments;
 using Heartbeat.Collection.Hub.Time;
 using Microsoft.Extensions.Hosting;
 using Serilog;
@@ -13,14 +11,14 @@ namespace Heartbeat.Collector.System.Collection;
 
 /// <summary>
 /// 内置 system Collector 的平台无关状态机。它只消费语义桌面观察，折叠为
-/// ActivitySegment 快照与 Current Activity 转场；原生 API、窗口句柄和平台生命周期
+/// foreground Segment Fact 完整快照与 Current Activity 转场；原生 API、窗口句柄和平台生命周期
 /// 均留在 adapter 与 platform head（ADR-020/021/033）。
 /// </summary>
 public sealed class AppMonitorService(
     IClock clock,
     IDesktopObservationSource observations,
     IInputActivitySignal inputActivity,
-    ISegmentSink sink,
+    ISystemSegmentPublisher publisher,
     ICurrentActivitySink activitySink,
     IDesktopSettings settings) : IHostedService, IDisposable
 {
@@ -33,10 +31,12 @@ public sealed class AppMonitorService(
     private string? _currentTitle;
     private string? _segmentTitle;
     private Guid _currentId;
+    private long _currentRevision;
     private DateTimeOffset _currentStart;
 
     private bool _isAway;
     private Guid _awayId;
+    private long _awayRevision;
     private DateTimeOffset _awayStart;
     private volatile string[] _awayProcessNames = [];
 
@@ -76,7 +76,7 @@ public sealed class AppMonitorService(
         _snapshotCts?.Cancel();
 
         // 终态快照先进入 hub；Windows composition root 保持 monitor 最先停、UploadWorker 后停。
-        PushCurrentSnapshot();
+        PushCurrentSnapshot(isFinal: true);
 
         settings.AwayProcessNamesChanged -= OnAwayProcessNamesChanged;
         observations.Observation -= OnObservation;
@@ -98,18 +98,36 @@ public sealed class AppMonitorService(
         }
     }
 
-    public void PushCurrentSnapshot()
+    public void PushCurrentSnapshot() => PushCurrentSnapshot(isFinal: false);
+
+    private void PushCurrentSnapshot(bool isFinal)
     {
         var now = clock.UtcNow;
-        ActivitySegmentItem? snapshot;
+        ForegroundSegmentSnapshot? snapshot;
         lock (_lock)
         {
             snapshot = _isAway
-                ? BuildSegment(_awayId, AppIdentityKeys.Away, "离开", null, _awayStart, now)
-                : BuildSegment(_currentId, _currentApp, _currentAppDisplayName, _segmentTitle, _currentStart, now);
+                ? BuildSegment(
+                    _awayId,
+                    ref _awayRevision,
+                    AppIdentityKeys.Away,
+                    "离开",
+                    null,
+                    _awayStart,
+                    now,
+                    isFinal)
+                : BuildSegment(
+                    _currentId,
+                    ref _currentRevision,
+                    _currentApp,
+                    _currentAppDisplayName,
+                    _segmentTitle,
+                    _currentStart,
+                    now,
+                    isFinal);
         }
         if (snapshot != null)
-            sink.Push([snapshot]);
+            publisher.Publish(snapshot);
     }
 
     private void OnObservation(DesktopObservation observation)
@@ -136,7 +154,7 @@ public sealed class AppMonitorService(
         var newAppDisplayName = observation.Activity.AppDisplayName;
         var newTitle = observation.Activity.Title;
         var now = clock.UtcNow;
-        ActivitySegmentItem? closed = null;
+        ForegroundSegmentSnapshot? closed = null;
         var reportActivity = false;
 
         lock (_lock)
@@ -176,7 +194,7 @@ public sealed class AppMonitorService(
         }
 
         if (closed != null)
-            sink.Push([closed]);
+            publisher.Publish(closed);
         if (reportActivity)
             activitySink.Report(ToCurrentActivity(newApp, newAppDisplayName));
     }
@@ -184,7 +202,7 @@ public sealed class AppMonitorService(
     private void EnterAway()
     {
         var now = clock.UtcNow;
-        ActivitySegmentItem? closed;
+        ForegroundSegmentSnapshot? closed;
         lock (_lock)
         {
             if (_isAway) return;
@@ -192,6 +210,7 @@ public sealed class AppMonitorService(
             closed = CloseCurrentSegment(now);
             _isAway = true;
             _awayId = Guid.CreateVersion7();
+            _awayRevision = 0;
             _awayStart = now;
             _currentApp = null;
             _currentAppDisplayName = null;
@@ -202,7 +221,7 @@ public sealed class AppMonitorService(
         }
 
         if (closed != null)
-            sink.Push([closed]);
+            publisher.Publish(closed);
         activitySink.Report(new CurrentActivity(AppIdentityKeys.Away, "离开"));
     }
 
@@ -210,25 +229,34 @@ public sealed class AppMonitorService(
     {
         var now = clock.UtcNow;
         var resumedApp = Normalize(resumed.AppIdentityKey);
-        ActivitySegmentItem? awayFinal;
+        ForegroundSegmentSnapshot? awayFinal;
         lock (_lock)
         {
             if (!_isAway) return;
 
-            awayFinal = BuildSegment(_awayId, AppIdentityKeys.Away, "离开", null, _awayStart, now);
+            awayFinal = BuildSegment(
+                _awayId,
+                ref _awayRevision,
+                AppIdentityKeys.Away,
+                "离开",
+                null,
+                _awayStart,
+                now,
+                isFinal: true);
             _isAway = false;
             StartSegment(resumedApp, resumed.AppDisplayName, resumed.Title, now);
             Log.Information("退出 away，恢复前台: {App}", resumedApp ?? "(无)");
         }
 
         if (awayFinal != null)
-            sink.Push([awayFinal]);
+            publisher.Publish(awayFinal);
         activitySink.Report(ToCurrentActivity(resumedApp, resumed.AppDisplayName));
     }
 
     private void StartSegment(string? app, string? appDisplayName, string? title, DateTimeOffset now)
     {
         _currentId = Guid.CreateVersion7();
+        _currentRevision = 0;
         _currentApp = app;
         _currentAppDisplayName = appDisplayName;
         _currentTitle = title;
@@ -236,32 +264,42 @@ public sealed class AppMonitorService(
         _currentStart = now;
     }
 
-    private ActivitySegmentItem? CloseCurrentSegment(DateTimeOffset now)
-        => BuildSegment(_currentId, _currentApp, _currentAppDisplayName, _segmentTitle, _currentStart, now);
+    private ForegroundSegmentSnapshot? CloseCurrentSegment(DateTimeOffset now)
+        => BuildSegment(
+            _currentId,
+            ref _currentRevision,
+            _currentApp,
+            _currentAppDisplayName,
+            _segmentTitle,
+            _currentStart,
+            now,
+            isFinal: true);
 
-    private static ActivitySegmentItem? BuildSegment(
+    private static ForegroundSegmentSnapshot? BuildSegment(
         Guid id,
+        ref long revision,
         string? appIdentityKey,
         string? appDisplayName,
         string? title,
         DateTimeOffset start,
-        DateTimeOffset end)
+        DateTimeOffset end,
+        bool isFinal)
     {
         if (appIdentityKey == null || start == default) return null;
         var duration = end - start;
         if (duration.TotalSeconds < 1) return null;
 
-        return new ActivitySegmentItem
-        {
-            Id = id,
-            Source = ActivitySources.System,
-            IdentityKey = SystemIdentity.Key(appIdentityKey, title),
-            AppIdentityKey = appIdentityKey,
-            AppDisplayName = appDisplayName,
-            Title = title,
-            StartTime = start,
-            EndTime = end
-        };
+        revision++;
+        return new ForegroundSegmentSnapshot(
+            id,
+            revision,
+            SystemIdentity.Key(appIdentityKey, title),
+            appIdentityKey,
+            appDisplayName,
+            title,
+            start,
+            end,
+            isFinal);
     }
 
     private void OnAwayProcessNamesChanged(IReadOnlyList<string> names)
