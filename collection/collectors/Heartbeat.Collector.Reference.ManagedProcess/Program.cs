@@ -35,8 +35,17 @@ internal sealed class ReferenceManagedProcessCollector(TextReader input, TextWri
             await output.FlushAsync();
             return;
         }
+        if (behavior == "exit_before_hello")
+            return;
 
         var helloMessageId = Guid.CreateVersion7();
+        var capabilities = new Dictionary<string, int[]>
+        {
+            ["facts.segment"] = [1],
+            ["diagnostics.stream-gap"] = [1]
+        };
+        if (behavior == "extra_capability")
+            capabilities["reference.unsupported"] = [1];
         await WriteAsync(new
         {
             protocol = "heartbeat.collector.bootstrap/1",
@@ -53,17 +62,16 @@ internal sealed class ReferenceManagedProcessCollector(TextReader input, TextWri
                     artifactHash = Required("HEARTBEAT_COLLECTOR_ARTIFACT_HASH")
                 },
                 protocolMajors = new[] { 1 },
-                supportedCapabilities = new Dictionary<string, int[]>
-                {
-                    ["facts.segment"] = [1],
-                    ["diagnostics.stream-gap"] = [1]
-                }
+                supportedCapabilities = capabilities
             }
         });
 
         using var accepted = await ReadAsync();
         Require(accepted.RootElement, "activation.accepted", helloMessageId);
         _activationId = accepted.RootElement.GetProperty("body").GetProperty("activationId").GetGuid();
+        if (accepted.RootElement.GetProperty("body").GetProperty("selectedCapabilities")
+            .TryGetProperty("reference.unsupported", out _))
+            throw new InvalidOperationException("Hub selected a capability absent from its own and the Package's support.");
 
         using var initialize = await ReadAsync();
         Require(initialize.RootElement, "activation.initialize", activationId: _activationId);
@@ -133,6 +141,13 @@ internal sealed class ReferenceManagedProcessCollector(TextReader input, TextWri
                 continue;
             if (type != "activation.drain")
                 throw new InvalidOperationException($"Unexpected Hub message '{type}'.");
+            if (behavior == "corrupt_on_drain")
+            {
+                await output.WriteLineAsync("{broken-drain");
+                await output.FlushAsync();
+                await Task.Delay(Timeout.InfiniteTimeSpan);
+                return;
+            }
             if (behavior == "ignore_drain")
             {
                 await Task.Delay(Timeout.InfiniteTimeSpan);
@@ -170,12 +185,12 @@ internal sealed class ReferenceManagedProcessCollector(TextReader input, TextWri
                         schemaRevision = 1,
                         factId = Guid.Parse("0198d5eb-fc31-7d7b-8bf0-c2d009ec8999"),
                         revision = 1,
-                        observedAt = new DateTimeOffset(2026, 8, 22, 12, 5, 0, TimeSpan.Zero),
+                        observedAt = "2026-08-22T12:05:00.0000000Z",
                         recordState = "present",
                         time = new
                         {
-                            start = new DateTimeOffset(2026, 8, 22, 12, 0, 0, TimeSpan.Zero),
-                            end = new DateTimeOffset(2026, 8, 22, 12, 5, 0, TimeSpan.Zero),
+                            start = "2026-08-22T12:00:00.0000000Z",
+                            end = "2026-08-22T12:05:00.0000000Z",
                             isFinal = false
                         },
                         payload = new { identityKey = "reference.account|online", title = "Reference account online" }

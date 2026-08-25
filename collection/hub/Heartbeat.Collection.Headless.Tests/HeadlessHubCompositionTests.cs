@@ -27,8 +27,7 @@ public sealed class HeadlessHubCompositionTests : IDisposable
             DataDirectory = _directory,
             PackageDirectory = Path.Combine(_directory, "package"),
             SubjectId = accountSubjectId,
-            HubHardwareId = "headless-runtime-machine",
-            HubName = "headless-runtime",
+            SubjectName = "Reference account",
             Config = config.RootElement.Clone()
         };
         var builder = Host.CreateApplicationBuilder();
@@ -43,8 +42,9 @@ public sealed class HeadlessHubCompositionTests : IDisposable
         Assert.NotNull(host.Services.GetRequiredService<UploadStream<ActivitySegmentItem>>());
         Assert.NotNull(host.Services.GetRequiredService<UploadStream<InputEventItem>>());
         var identity = host.Services.GetRequiredService<IDeviceIdentity>();
-        Assert.Equal("headless-runtime-machine", identity.HardwareId);
-        Assert.NotEqual(accountSubjectId.ToString("D"), identity.HardwareId);
+        Assert.Equal($"subject:account:{accountSubjectId:D}", identity.HardwareId);
+        Assert.Equal("Reference account", identity.DeviceName);
+        Assert.DoesNotContain(Environment.MachineName, identity.HardwareId, StringComparison.OrdinalIgnoreCase);
 
         var references = typeof(HeadlessHubComposition).Assembly
             .GetReferencedAssemblies()

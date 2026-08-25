@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Heartbeat.Collection.Hub.Collectors.Packages;
 using Heartbeat.Collection.Hub.Collectors.Protocol;
 using Serilog;
@@ -103,6 +104,7 @@ public sealed partial class CollectorRuntime
         {
             client = await ManagedProcessProtocolClient.StartAsync(
                 package, artifact, collectorInstanceId, options, linkedCancellation.Token);
+            client.SetSelectedCapabilities(SelectedCapabilities(package, client.ProtocolSupport));
             SetManagedProcessState(collectorInstanceId, new CollectorRuntimeSnapshot(
                 collectorInstanceId, null, CollectorRuntimePhase.Negotiating));
 
@@ -139,7 +141,15 @@ public sealed partial class CollectorRuntime
             var failure = exception switch
             {
                 CollectorActivationException activationException => new CollectorRuntimeFailure(
-                    activationException.Error.Code, activationException.Error.Message, client?.ExitCode),
+                    ContainsProcessExit(activationException)
+                        ? "process_exited"
+                        : activationException.Error.Code,
+                    ContainsProcessExit(activationException)
+                        ? "ManagedProcess Collector exited before reaching Ready."
+                        : activationException.Error.Message,
+                    client?.ExitCode ?? FindProcessExit(activationException)?.ExitCode),
+                ManagedProcessExitedException exitedException => new CollectorRuntimeFailure(
+                    "process_exited", exitedException.Message, exitedException.ExitCode),
                 ManagedProcessProtocolException protocolException => new CollectorRuntimeFailure(
                     "protocol_invalid_message", protocolException.Message, client?.ExitCode),
                 _ => new CollectorRuntimeFailure("process_start_failed", exception.Message, client?.ExitCode)
@@ -147,7 +157,8 @@ public sealed partial class CollectorRuntime
             SetManagedProcessState(collectorInstanceId, new CollectorRuntimeSnapshot(
                 collectorInstanceId, client?.ActivationId, CollectorRuntimePhase.Failed, failure,
                 ProcessTerminated: client?.WasTerminated == true));
-            if (exception is CollectorActivationException)
+            if (exception is CollectorActivationException originalActivationException &&
+                failure.Code == originalActivationException.Error.Code)
                 throw;
             throw ActivationError(failure.Code, failure.Message, exception, retryable: true);
         }
@@ -201,20 +212,21 @@ public sealed partial class CollectorRuntime
             _managedProcessStates[collectorInstanceId] = state;
     }
 
-    private static VerifiedCollectorArtifact ResolveManagedProcessArtifact(LocalCollectorPackage package)
+    private static bool ContainsProcessExit(Exception exception) =>
+        FindProcessExit(exception) is not null;
+
+    private static ManagedProcessExitedException? FindProcessExit(Exception exception)
     {
-        var operatingSystem = CurrentOperatingSystem();
-        var architecture = CurrentArchitecture();
-        var candidates = package.Manifest.Artifacts.Where(artifact =>
-            artifact.Driver == "managedProcess" &&
-            artifact.OperatingSystems.Contains(operatingSystem, StringComparer.Ordinal) &&
-            artifact.Architectures.Contains(architecture, StringComparer.Ordinal)).ToArray();
-        if (candidates.Length != 1)
-            throw ActivationError(
-                "package_mismatch",
-                $"Collector Package must have exactly one Artifact for managedProcess/{operatingSystem}/{architecture}; found {candidates.Length}.");
-        return package.Artifacts.Single(artifact => artifact.ArtifactId == candidates[0].ArtifactId);
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is ManagedProcessExitedException exited)
+                return exited;
+        }
+        return null;
     }
+
+    private static VerifiedCollectorArtifact ResolveManagedProcessArtifact(LocalCollectorPackage package) =>
+        ResolveProtocolArtifact(package, "managedProcess");
 }
 
 public sealed class ManagedProcessCollectorActivation : IAsyncDisposable
@@ -243,7 +255,8 @@ public sealed class ManagedProcessCollectorActivation : IAsyncDisposable
     public CollectorActivationState State => _protocolActivation.State;
     public ActivationDeliveryCapability DeliveryCapability => _protocolActivation.DeliveryCapability;
     public IReadOnlyList<CollectorHandshakeStep> HandshakeTranscript => _protocolActivation.HandshakeTranscript;
-    public IReadOnlyDictionary<string, InProcessFactStream> Streams => _protocolActivation.Streams;
+    public IReadOnlyDictionary<string, FactStreamDescriptor> Streams => _protocolActivation.Streams
+        .ToDictionary(pair => pair.Key, pair => pair.Value.Descriptor, StringComparer.Ordinal);
     public CollectorRuntimeSnapshot RuntimeState => _runtime.GetManagedProcessRuntimeState(CollectorInstanceId);
     public Task Completion => Client.Completion;
     internal ManagedProcessProtocolClient Client { get; }
@@ -269,7 +282,11 @@ public sealed class ManagedProcessCollectorActivation : IAsyncDisposable
         Interlocked.Exchange(ref _stopRequested, 1);
         _runtime.ManagedProcessDraining(this);
         await _protocolActivation.StopAsync(CancellationToken.None);
-        _runtime.ManagedProcessStopped(this, Client.DrainResult);
+        var result = Client.DrainResult;
+        if (result.Failure is not null)
+            _runtime.ManagedProcessFailed(this, result.Failure);
+        else
+            _runtime.ManagedProcessStopped(this, result);
     }
 
     private async Task SuperviseAsync()
@@ -289,11 +306,21 @@ public sealed class ManagedProcessCollectorActivation : IAsyncDisposable
     }
 }
 
-internal sealed record ManagedProcessDrainResult(int? PendingFacts, int? PendingGaps, bool ProcessTerminated);
+internal sealed record ManagedProcessDrainResult(
+    int? PendingFacts,
+    int? PendingGaps,
+    bool ProcessTerminated,
+    ManagedProcessExit? Failure = null);
 internal sealed record ManagedProcessExit(int? ExitCode, Exception? ProtocolError);
 
 internal sealed class ManagedProcessProtocolException(string message, Exception? innerException = null)
     : Exception(message, innerException);
+
+internal sealed class ManagedProcessExitedException(string message, int? exitCode = null)
+    : Exception(message)
+{
+    public int? ExitCode { get; } = exitCode;
+}
 
 internal interface ICollectorProtocolBinding
 {
@@ -304,7 +331,8 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
     private readonly Process _process;
@@ -317,6 +345,10 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
     private readonly object _stopGate = new();
     private Task? _stopTask;
     private InProcessCollectorActivation? _activation;
+    private IReadOnlyDictionary<string, int> _selectedCapabilities = ImmutableDictionary<string, int>.Empty;
+    private long _specRevision;
+    private Guid? _drainMessageId;
+    private ManagedProcessDrainResult? _drainResult;
 
     private ManagedProcessProtocolClient(
         Process process,
@@ -359,9 +391,12 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
     public int? PendingGaps { get; private set; }
     public Task Completion => _exit.Task;
     public Task<ManagedProcessExit> ExitCompletion => _exit.Task;
-    public ManagedProcessDrainResult DrainResult => _drained.Task.IsCompletedSuccessfully
+    public ManagedProcessDrainResult DrainResult => _drainResult ?? (_drained.Task.IsCompletedSuccessfully
         ? _drained.Task.Result
-        : new ManagedProcessDrainResult(PendingFacts, PendingGaps, WasTerminated);
+        : new ManagedProcessDrainResult(PendingFacts, PendingGaps, WasTerminated));
+
+    public void SetSelectedCapabilities(IReadOnlyDictionary<string, int> selectedCapabilities) =>
+        _selectedCapabilities = selectedCapabilities;
 
     public static async Task<ManagedProcessProtocolClient> StartAsync(
         LocalCollectorPackage package,
@@ -432,6 +467,15 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
                 ReadCapabilities(body, "supportedCapabilities"));
             return new ManagedProcessProtocolClient(process, options, messageId, artifact.ArtifactId, support);
         }
+        catch (ManagedProcessExitedException exception)
+        {
+            await WaitForExitAsync(process);
+            var exitCode = process.HasExited ? process.ExitCode : exception.ExitCode;
+            process.Dispose();
+            throw new ManagedProcessExitedException(
+                "ManagedProcess Collector exited before activation.hello completed.",
+                exitCode);
+        }
         catch
         {
             Kill(process);
@@ -455,9 +499,7 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
             {
                 activationId = initialization.ActivationId,
                 selectedProtocolMajor = 1,
-                selectedCapabilities = ProtocolSupport.Capabilities
-                    .Where(pair => pair.Value.Contains(1))
-                    .ToDictionary(pair => pair.Key, _ => 1, StringComparer.Ordinal)
+                selectedCapabilities = _selectedCapabilities
             }
         }, cancellationToken);
 
@@ -485,13 +527,14 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
                     config = new { schemaVersion = initialization.Spec.ConfigSchemaVersion, value = initialization.Spec.Config }
                 },
                 limits = initialization.Limits,
-                hubTime = DateTimeOffset.UtcNow
+                hubTime = ProtocolTimestamp(DateTimeOffset.UtcNow)
             }
         }, cancellationToken);
 
         using var initialized = await ReadRequiredMessageAsync(_reader, cancellationToken);
         RequireResponse(initialized.RootElement, "activation.initialized", initializeMessageId, initialization.ActivationId);
         var appliedSpecRevision = ReadPositiveLong(RequireObject(initialized.RootElement, "body"), "appliedSpecRevision");
+        _specRevision = initialization.Spec.SpecRevision;
 
         using var open = await ReadRequiredMessageAsync(_reader, cancellationToken);
         RequireEnvelope(open.RootElement, "heartbeat.collector/1", "streams.open", initialization.ActivationId);
@@ -533,6 +576,8 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
         RequireEnvelope(ready.RootElement, "heartbeat.collector/1", "activation.ready", opened.ActivationId);
         var readyMessageId = ReadUuidV7(ready.RootElement, "messageId");
         var appliedSpecRevision = ReadPositiveLong(RequireObject(ready.RootElement, "body"), "appliedSpecRevision");
+        if (appliedSpecRevision != _specRevision)
+            throw new ManagedProcessProtocolException("activation.ready appliedSpecRevision does not match the initialized Spec.");
         _activation = await opened.ReadyAsync(cancellationToken);
         await WriteAsync(new
         {
@@ -572,23 +617,41 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
     {
         if (_process.HasExited)
         {
-            _drained.TrySetResult(new ManagedProcessDrainResult(PendingFacts, PendingGaps, false));
+            var exited = await _exit.Task;
+            _drainResult = new ManagedProcessDrainResult(
+                PendingFacts,
+                PendingGaps,
+                false,
+                exited);
+            _drained.TrySetResult(_drainResult);
+            return;
+        }
+        if (_activation is null)
+        {
+            WasTerminated = true;
+            Kill(_process);
+            await WaitForExitAsync(_process);
+            _drainResult = new ManagedProcessDrainResult(null, null, true);
+            _drained.TrySetResult(_drainResult);
             return;
         }
 
         var deadline = DateTimeOffset.UtcNow + _options.DrainGracePeriod;
+        _drainMessageId = Guid.CreateVersion7();
         await WriteAsync(new
         {
             protocol = "heartbeat.collector/1",
             type = "activation.drain",
-            messageId = Guid.CreateVersion7(),
+            messageId = _drainMessageId,
             activationId = ActivationId,
-            body = new { deadline }
+            body = new { deadline = ProtocolTimestamp(deadline) }
         }, CancellationToken.None);
 
+        var drainAcknowledged = false;
         try
         {
-            await _drained.Task.WaitAsync(_options.DrainGracePeriod);
+            var drain = await _drained.Task.WaitAsync(_options.DrainGracePeriod);
+            drainAcknowledged = drain.Failure is null;
             var remaining = deadline - DateTimeOffset.UtcNow;
             if (remaining > TimeSpan.Zero)
                 await WaitForExitAsync(_process).WaitAsync(remaining);
@@ -602,7 +665,18 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
             }
         }
         await WaitForExitAsync(_process);
-        _drained.TrySetResult(new ManagedProcessDrainResult(PendingFacts, PendingGaps, WasTerminated));
+        var exit = await _exit.Task;
+        var failure = exit.ProtocolError is not null ||
+                      (!drainAcknowledged && !WasTerminated) ||
+                      (!WasTerminated && exit.ExitCode is not null and not 0)
+            ? exit
+            : null;
+        _drainResult = new ManagedProcessDrainResult(
+            PendingFacts,
+            PendingGaps,
+            WasTerminated,
+            failure);
+        _drained.TrySetResult(_drainResult);
     }
 
     private async Task PumpAsync()
@@ -646,7 +720,20 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
         finally
         {
             await WaitForExitAsync(_process);
-            _exit.TrySetResult(new ManagedProcessExit(ExitCode, protocolError));
+            var exit = new ManagedProcessExit(ExitCode, protocolError);
+            _exit.TrySetResult(exit);
+            if (_drainMessageId is not null && !_drained.Task.IsCompleted)
+            {
+                var failure = protocolError is not null || !WasTerminated
+                    ? exit
+                    : null;
+                _drainResult = new ManagedProcessDrainResult(
+                    PendingFacts,
+                    PendingGaps,
+                    WasTerminated,
+                    failure);
+                _drained.TrySetResult(_drainResult);
+            }
         }
     }
 
@@ -711,10 +798,14 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
     {
         RequireEnvelope(root, "heartbeat.collector/1", "activation.drained", ActivationId!.Value);
         var body = RequireObject(root, "body");
-        _ = ReadPositiveLong(body, "appliedSpecRevision");
+        if (_drainMessageId is null || ReadGuid(root, "replyTo") != _drainMessageId)
+            throw new ManagedProcessProtocolException("activation.drained replyTo does not match activation.drain.");
+        if (ReadPositiveLong(body, "appliedSpecRevision") != _specRevision)
+            throw new ManagedProcessProtocolException("activation.drained appliedSpecRevision does not match the initialized Spec.");
         PendingFacts = ReadNonNegativeInt(body, "pendingFacts");
         PendingGaps = ReadNonNegativeInt(body, "pendingGaps");
-        _drained.TrySetResult(new ManagedProcessDrainResult(PendingFacts, PendingGaps, false));
+        _drainResult = new ManagedProcessDrainResult(PendingFacts, PendingGaps, false);
+        _drained.TrySetResult(_drainResult);
     }
 
     private async Task WriteAsync(object message, CancellationToken cancellationToken)
@@ -738,7 +829,7 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
 
     private static async Task<JsonDocument> ReadRequiredMessageAsync(StreamReader reader, CancellationToken cancellationToken) =>
         await ReadOptionalMessageAsync(reader, cancellationToken)
-        ?? throw new ManagedProcessProtocolException("ManagedProcess protocol connection closed unexpectedly.");
+        ?? throw new ManagedProcessExitedException("ManagedProcess protocol connection closed unexpectedly.");
 
     private static async Task<JsonDocument?> ReadOptionalMessageAsync(StreamReader reader, CancellationToken cancellationToken)
     {
@@ -888,10 +979,14 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
     private static DateTimeOffset ReadUtcTimestamp(JsonElement parent, string name)
     {
         if (!parent.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.String ||
+            value.GetString() is not { } text || !text.EndsWith('Z') ||
             !value.TryGetDateTimeOffset(out var result) || result.Offset != TimeSpan.Zero)
             throw new ManagedProcessProtocolException($"{name} must be an RFC 3339 UTC timestamp.");
         return result;
     }
+
+    private static string ProtocolTimestamp(DateTimeOffset value) =>
+        value.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", CultureInfo.InvariantCulture);
 
     private static void RejectDuplicateKeys(JsonElement element)
     {

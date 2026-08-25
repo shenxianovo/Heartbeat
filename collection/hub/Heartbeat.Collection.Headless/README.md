@@ -2,8 +2,8 @@
 
 The headless Hub runs the same authentication, durable Collector inbox, segment buffer, cache,
 and upload streams as the desktop Agent, without UI, foreground-window APIs, or release-vendor
-dependencies. Its operational machine identity is used only for Hub authentication/status; the
-configured Account remains the Collector Fact Subject.
+dependencies. The legacy Analytics header adapter is bound to the configured Account Subject;
+the server machine hosting the Hub Instance is never written as the Fact Subject.
 
 Build a deterministic local reference Package:
 
@@ -21,9 +21,7 @@ Create `heartbeat-headless.json` (paths are resolved relative to this file):
   "dataDirectory": "./data",
   "packageDirectory": "./reference-package",
   "subjectId": "0198d5df-5df3-70a1-937d-68a7d64623e2",
-  "subjectKind": "account",
-  "hubHardwareId": "headless:my-server",
-  "hubName": "My server Hub",
+  "subjectName": "My reference account",
   "uploadIntervalSeconds": 60,
   "configSchemaVersion": 1,
   "config": {},

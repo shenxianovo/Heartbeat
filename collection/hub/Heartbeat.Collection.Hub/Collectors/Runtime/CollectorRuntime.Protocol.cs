@@ -1159,6 +1159,16 @@ public sealed partial class CollectorRuntime
         string artifactId,
         string executionDriver)
     {
+        var artifact = ResolveProtocolArtifact(package, executionDriver);
+        if (artifact.ArtifactId != artifactId)
+            throw ActivationError("package_mismatch", $"Artifact '{artifactId}' is not the selected current {executionDriver} target.");
+        return artifact;
+    }
+
+    private static VerifiedCollectorArtifact ResolveProtocolArtifact(
+        LocalCollectorPackage package,
+        string executionDriver)
+    {
         var operatingSystem = CurrentOperatingSystem();
         var architecture = CurrentArchitecture();
         var candidates = package.Manifest.Artifacts.Where(artifact =>
@@ -1169,8 +1179,6 @@ public sealed partial class CollectorRuntime
             throw ActivationError(
                 "package_mismatch",
                 $"Collector Package must have exactly one Artifact for {executionDriver}/{operatingSystem}/{architecture}; found {candidates.Length}.");
-        if (candidates[0].ArtifactId != artifactId)
-            throw ActivationError("package_mismatch", $"Artifact '{artifactId}' is not the selected current {executionDriver} target.");
         return package.Artifacts.Single(artifact => artifact.ArtifactId == candidates[0].ArtifactId);
     }
 

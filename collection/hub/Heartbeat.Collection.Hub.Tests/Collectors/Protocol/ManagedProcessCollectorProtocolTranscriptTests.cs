@@ -49,12 +49,13 @@ public class ManagedProcessCollectorProtocolTranscriptTests
                 DrainGracePeriod = TimeSpan.FromSeconds(5)
             });
 
-        CollectorProtocolTranscriptContract.AssertReady(
+        CollectorProtocolTranscriptContract.AssertHappyPath(
             activation.State,
             activation.DeliveryCapability,
-            activation.HandshakeTranscript);
-        Assert.Equal(SubjectKind.Account, activation.Streams["activity"].Descriptor.Subject.Kind);
-        Assert.Equal(accountSubject.SubjectId, activation.Streams["activity"].Descriptor.Subject.SubjectId);
+            activation.HandshakeTranscript,
+            activation.Streams,
+            accountSubject,
+            "reference.account");
         var segment = await WaitForSegmentAsync(sink);
         Assert.Equal("reference.account", segment.Source);
         Assert.Equal("reference.account|online", segment.IdentityKey);
@@ -124,8 +125,22 @@ public class ManagedProcessCollectorProtocolTranscriptTests
             fixture.Instance.CollectorInstanceId,
             fixture.Package,
             Options());
-        Assert.Equal(failed.Streams["activity"].Descriptor.StreamId, replacement.Streams["activity"].Descriptor.StreamId);
+        Assert.Equal(failed.Streams["activity"].StreamId, replacement.Streams["activity"].StreamId);
         await replacement.StopAsync();
+    }
+
+    [Fact]
+    public async Task Hello_OnlySelectsCapabilitiesSharedByCollectorPackageAndHub()
+    {
+        using var fixture = ManagedRuntimeFixture.Create();
+
+        var activation = await fixture.Runtime.ActivateManagedProcessAsync(
+            fixture.Instance.CollectorInstanceId,
+            fixture.Package,
+            Options("extra_capability"));
+
+        Assert.Equal(CollectorRuntimePhase.Ready, activation.RuntimeState.Phase);
+        await activation.StopAsync();
     }
 
     [Fact]
@@ -143,6 +158,44 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         Assert.Equal(CollectorActivationState.Stopped, activation.State);
         Assert.Equal("protocol_invalid_message", activation.RuntimeState.Failure?.Code);
         Assert.True(activation.RuntimeState.ProcessTerminated);
+    }
+
+    [Fact]
+    public async Task ProcessExitBeforeHello_IsDistinctFromProtocolCorruption()
+    {
+        using var fixture = ManagedRuntimeFixture.Create();
+
+        var error = await Assert.ThrowsAsync<CollectorActivationException>(async () =>
+            await fixture.Runtime.ActivateManagedProcessAsync(
+                fixture.Instance.CollectorInstanceId,
+                fixture.Package,
+                Options("exit_before_hello")));
+
+        Assert.Equal("process_exited", error.Error.Code);
+        var state = fixture.Runtime.GetManagedProcessRuntimeState(fixture.Instance.CollectorInstanceId);
+        Assert.Equal("process_exited", state.Failure?.Code);
+        Assert.Equal(0, state.Failure?.ProcessExitCode);
+    }
+
+    [Fact]
+    public async Task ProtocolCorruptionDuringDrain_IsFailedAndWriterIsReleased()
+    {
+        using var fixture = ManagedRuntimeFixture.Create();
+        var activation = await fixture.Runtime.ActivateManagedProcessAsync(
+            fixture.Instance.CollectorInstanceId,
+            fixture.Package,
+            Options("corrupt_on_drain"));
+
+        await activation.StopAsync();
+
+        Assert.Equal(CollectorActivationState.Stopped, activation.State);
+        Assert.Equal(CollectorRuntimePhase.Failed, activation.RuntimeState.Phase);
+        Assert.Equal("protocol_invalid_message", activation.RuntimeState.Failure?.Code);
+        var replacement = await fixture.Runtime.ActivateManagedProcessAsync(
+            fixture.Instance.CollectorInstanceId,
+            fixture.Package,
+            Options());
+        await replacement.StopAsync();
     }
 
     [Fact]

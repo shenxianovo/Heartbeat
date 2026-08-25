@@ -53,18 +53,18 @@ public class InProcessCollectorProtocolTranscriptTests
             collector,
             Guid.Parse("0198d5e8-2b66-7a27-91b8-6524bdca51c5"));
 
-        CollectorProtocolTranscriptContract.AssertReady(
+        CollectorProtocolTranscriptContract.AssertHappyPath(
             activation.State,
             activation.DeliveryCapability,
-            activation.HandshakeTranscript);
+            activation.HandshakeTranscript,
+            activation.Streams.ToDictionary(pair => pair.Key, pair => pair.Value.Descriptor),
+            subject,
+            "reference");
         Assert.Equal(7, collector.Initialization!.Spec.SpecRevision);
         Assert.Equal(1_048_576, collector.Initialization.Limits.MaxBatchBytes);
         Assert.Equal(
             "sha256:de359aff82ed415958d16bc5fd08caad6b8fabdb8bf82556505dd2506399e02b",
             collector.Initialization.Artifact.ContentHash);
-        var stream = activation.Streams["activity"];
-        Assert.Equal("reference", stream.Descriptor.Source);
-
         var ack = Assert.IsType<FactBatchAcknowledgement>(collector.InitialAcknowledgement);
 
         Assert.False(ack.IsMessageRejected);

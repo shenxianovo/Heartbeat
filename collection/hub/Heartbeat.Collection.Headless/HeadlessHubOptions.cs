@@ -9,9 +9,7 @@ public sealed class HeadlessHubOptions
     public required string DataDirectory { get; init; }
     public required string PackageDirectory { get; init; }
     public required Guid SubjectId { get; init; }
-    public string SubjectKind { get; init; } = "account";
-    public string HubHardwareId { get; init; } = $"headless:{Environment.MachineName}";
-    public string HubName { get; init; } = $"Heartbeat Headless Hub ({Environment.MachineName})";
+    public string SubjectName { get; init; } = "Managed account";
     public int UploadIntervalSeconds { get; init; } = 60;
     public int ConfigSchemaVersion { get; init; } = 1;
     public JsonElement Config { get; init; } = JsonDocument.Parse("{}").RootElement.Clone();
@@ -47,10 +45,8 @@ public sealed class HeadlessHubOptions
             throw new InvalidOperationException("packageDirectory is required.");
         if (SubjectId == Guid.Empty)
             throw new InvalidOperationException("subjectId must not be empty.");
-        if (SubjectKind != "account")
-            throw new InvalidOperationException("The reference Headless Hub slice requires subjectKind 'account'.");
-        if (string.IsNullOrWhiteSpace(HubHardwareId) || string.IsNullOrWhiteSpace(HubName))
-            throw new InvalidOperationException("Hub operational identity is required.");
+        if (string.IsNullOrWhiteSpace(SubjectName))
+            throw new InvalidOperationException("subjectName is required.");
         if (UploadIntervalSeconds <= 0 || ConfigSchemaVersion <= 0 ||
             StartupTimeoutSeconds <= 0 || DrainGraceSeconds <= 0)
             throw new InvalidOperationException("Headless Hub numeric settings must be positive.");
@@ -64,9 +60,7 @@ public sealed class HeadlessHubOptions
         DataDirectory = dataDirectory,
         PackageDirectory = packageDirectory,
         SubjectId = SubjectId,
-        SubjectKind = SubjectKind,
-        HubHardwareId = HubHardwareId,
-        HubName = HubName,
+        SubjectName = SubjectName,
         UploadIntervalSeconds = UploadIntervalSeconds,
         ConfigSchemaVersion = ConfigSchemaVersion,
         Config = Config.Clone(),

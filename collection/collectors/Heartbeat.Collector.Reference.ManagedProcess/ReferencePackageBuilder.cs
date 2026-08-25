@@ -7,12 +7,17 @@ namespace Heartbeat.Collector.Reference.ManagedProcess;
 
 internal static class ReferencePackageBuilder
 {
-    public static void Create(string packageDirectory)
+    public static void Create(string packageDirectory) =>
+        Create(AppContext.BaseDirectory, packageDirectory);
+
+    internal static void Create(string sourceDirectory, string packageDirectory)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(packageDirectory);
+        var sourceRoot = Path.GetFullPath(sourceDirectory);
         var root = Path.GetFullPath(packageDirectory);
         Directory.CreateDirectory(root);
-        foreach (var source in Directory.EnumerateFiles(AppContext.BaseDirectory))
+        foreach (var source in Directory.EnumerateFiles(sourceRoot))
         {
             var name = Path.GetFileName(source);
             if (name is "collector-manifest.json")

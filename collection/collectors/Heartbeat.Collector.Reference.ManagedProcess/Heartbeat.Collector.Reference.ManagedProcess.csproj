@@ -9,4 +9,8 @@
     <RootNamespace>Heartbeat.Collector.Reference.ManagedProcess</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Heartbeat.Collector.Reference.ManagedProcess.Tests" />
+  </ItemGroup>
+
 </Project>

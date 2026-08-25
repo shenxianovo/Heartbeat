@@ -78,8 +78,10 @@ public sealed class HeadlessHubConfiguration : IHubConfiguration, ICollectorRegi
     public HeadlessHubConfiguration(HeadlessHubOptions options)
     {
         Current = new HubRuntimeSettings(options.ApiKey, TimeSpan.FromSeconds(options.UploadIntervalSeconds), 0);
-        HardwareId = options.HubHardwareId;
-        DeviceName = options.HubName;
+        // The legacy Analytics ingest boundary still resolves its Subject from these headers.
+        // Bind them to the configured Account, never to the server hosting this Hub Instance.
+        HardwareId = $"subject:account:{options.SubjectId:D}";
+        DeviceName = options.SubjectName;
     }
 
     public HubRuntimeSettings Current { get; }
