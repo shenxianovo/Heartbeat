@@ -25,10 +25,20 @@ const snapshot = (id = '0198d5eb-fc31-7d7b-8bf0-c2d009ec8999'): SegmentSnapshot 
 
 afterEach(() => vi.unstubAllGlobals())
 
-const protocolResponse = (type: string, body: object) => Response.json({
+const ACTIVATION_ID = '0198d5e8-30cb-7d54-bab1-250087147e4c'
+const STREAM_ID = '0198d5e2-e0d4-7b30-9da7-342ee261bf62'
+
+const protocolResponse = (
+  type: string,
+  body: object,
+  activationId?: string,
+  replyTo?: string,
+) => Response.json({
   protocol: type.startsWith('activation.accept') ? 'heartbeat.collector.bootstrap/1' : 'heartbeat.collector/1',
   type,
   messageId: '0198d5e8-30cc-743c-a3d6-ac61956f26b5',
+  ...(activationId === undefined ? {} : { activationId }),
+  ...(replyTo === undefined ? {} : { replyTo }),
   body,
 })
 
@@ -65,22 +75,30 @@ describe('browser Collector Protocol outbox', () => {
     const calls: { url: string; body: unknown }[] = []
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
-      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined })
+      const request = init?.body ? JSON.parse(String(init.body)) : undefined
+      calls.push({ url, body: request })
       if (url.endsWith('/hello')) return protocolResponse('activation.accepted', {
-        activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
-      })
+        activationId: ACTIVATION_ID,
+        selectedProtocolMajor: 1,
+        selectedCapabilities: { 'facts.segment': 1, 'diagnostics.stream-gap': 1 },
+      }, undefined, request.messageId)
       if (url.endsWith('/initialize')) return protocolResponse('activation.initialize', {
         spec: { revision: 3, config: { value: { enabled: true, flushPeriodMs: 30_000 } } },
         limits: { maxFactsPerBatch: 500, maxBatchBytes: 1_048_576, maxInFlightBatches: 1 },
-      })
+      }, ACTIVATION_ID)
       if (url.endsWith('/initialized')) return new Response(null, { status: 204 })
       if (url.endsWith('/streams')) return protocolResponse('streams.opened', {
-        streams: { tabs: { streamId: '0198d5e2-e0d4-7b30-9da7-342ee261bf62' } },
-      })
+        streams: { tabs: { streamId: STREAM_ID } },
+      }, ACTIVATION_ID, request.messageId)
       if (url.endsWith('/ready')) return protocolResponse('activation.readyAck', {
         lease: { token: 'lease', expiresAt: '2026-08-25T08:01:00Z' },
-      })
-      return protocolResponse('facts.ack', { results: [{ index: 0, status: 'committed' }] })
+      }, ACTIVATION_ID, request.messageId)
+      return protocolResponse(
+        'facts.ack',
+        { results: [{ index: 0, status: 'committed' }] },
+        ACTIVATION_ID,
+        request.messageId,
+      )
     }))
 
     const applySpec = vi.fn(async () => {})
@@ -107,23 +125,26 @@ describe('browser Collector Protocol outbox', () => {
 
   it('opens the Package-backed protocol session even when the outbox is empty', async () => {
     const calls: string[] = []
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
+      const request = init?.body ? JSON.parse(String(init.body)) : undefined
       calls.push(url)
       if (url.endsWith('/hello')) return protocolResponse('activation.accepted', {
-        activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
-      })
+        activationId: ACTIVATION_ID,
+        selectedProtocolMajor: 1,
+        selectedCapabilities: { 'facts.segment': 1, 'diagnostics.stream-gap': 1 },
+      }, undefined, request.messageId)
       if (url.endsWith('/initialize')) return protocolResponse('activation.initialize', {
         spec: { revision: 3, config: { value: { enabled: true, flushPeriodMs: 30_000 } } },
         limits: { maxFactsPerBatch: 500, maxBatchBytes: 1_048_576, maxInFlightBatches: 1 },
-      })
+      }, ACTIVATION_ID)
       if (url.endsWith('/initialized')) return new Response(null, { status: 204 })
       if (url.endsWith('/streams')) return protocolResponse('streams.opened', {
-        streams: { tabs: { streamId: '0198d5e2-e0d4-7b30-9da7-342ee261bf62' } },
-      })
+        streams: { tabs: { streamId: STREAM_ID } },
+      }, ACTIVATION_ID, request.messageId)
       return protocolResponse('activation.readyAck', {
         lease: { token: 'lease', expiresAt: '2026-08-25T08:01:00Z' },
-      })
+      }, ACTIVATION_ID, request.messageId)
     }))
 
     const result = await uploadWithBrowserProtocol(24820, 'edge', [])
@@ -153,7 +174,12 @@ describe('browser Collector Protocol outbox', () => {
         vi.spyOn(response, 'json').mockRejectedValue(new Error('lost response'))
         return response
       }
-      return protocolResponse('facts.ack', { results: [{ index: 0, status: 'duplicate' }] })
+      return protocolResponse(
+        'facts.ack',
+        { results: [{ index: 0, status: 'duplicate' }] },
+        session.activationId,
+        body.messageId,
+      )
     }))
     const session: BrowserProtocolSession = {
       port: 24820,
@@ -191,7 +217,13 @@ describe('browser Collector Protocol outbox', () => {
         body: { facts: { factId: string }[] }
       }
       publishedFactId = request.body.facts[0].factId
-      return protocolResponse('facts.ack', { results: [{ index: 0, status: 'committed' }] })
+      const wire = JSON.parse(String(init?.body)) as { messageId: string }
+      return protocolResponse(
+        'facts.ack',
+        { results: [{ index: 0, status: 'committed' }] },
+        session.activationId,
+        wire.messageId,
+      )
     }))
     const session: BrowserProtocolSession = {
       port: 24820,
@@ -214,12 +246,17 @@ describe('browser Collector Protocol outbox', () => {
   })
 
   it('surfaces permanent rejection and retry timing separately from ACKs', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => protocolResponse('facts.ack', {
-      results: [
-        { index: 0, status: 'rejected', error: { code: 'fact_schema_invalid' } },
-        { index: 1, status: 'retry', retryAfterMs: 4_000, error: { code: 'hub_backpressure' } },
-      ],
-    })))
+    let sentMessageId = ''
+    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const wire = JSON.parse(String(init?.body)) as { messageId: string }
+      sentMessageId = wire.messageId
+      return protocolResponse('facts.ack', {
+        results: [
+          { index: 0, status: 'rejected', error: { code: 'fact_schema_invalid' } },
+          { index: 1, status: 'retry', retryAfterMs: 4_000, error: { code: 'hub_backpressure' } },
+        ],
+      }, ACTIVATION_ID, wire.messageId)
+    }))
     const session: BrowserProtocolSession = {
       port: 24820,
       activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
@@ -240,14 +277,45 @@ describe('browser Collector Protocol outbox', () => {
       expect(result.acknowledgedIds).toEqual([])
       expect(result.rejectedRevisions[rejected.id]).toBe(snapshotRevision(rejected))
       expect(result.retryAfterMilliseconds).toBe(4_000)
+      expect(result.nextPublishAttempt?.snapshots).toEqual([retry])
+      expect(result.nextPublishAttempt?.messageId).not.toBe(sentMessageId)
     }
+  })
+
+  it('does not treat a miscorrelated 2xx response as an explicit Fact ACK', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => protocolResponse(
+      'facts.ack',
+      { results: [{ index: 0, status: 'committed' }] },
+      ACTIVATION_ID,
+      '0198d5e8-30cc-743c-a3d6-ac61956f26b6',
+    )))
+    const session: BrowserProtocolSession = {
+      port: 24820,
+      activationId: ACTIVATION_ID,
+      leaseToken: 'lease',
+      streamId: STREAM_ID,
+      specRevision: 3,
+      expiresAt: '2026-08-25T08:01:00Z',
+      limits: { maxFactsPerBatch: 1, maxBatchBytes: 1_048_576, maxInFlightBatches: 1 },
+      flushPeriodMilliseconds: 30_000,
+    }
+
+    const result = await publishBrowserFacts(session, [snapshot()])
+
+    expect(result.kind).toBe('unavailable')
+    if (result.kind === 'unavailable') expect(result.publishAttempt?.snapshots).toEqual([snapshot()])
   })
 
   it('reports bounded-outbox loss through the durable stream-gap capability', async () => {
     let request: { messageId?: string; body?: { gap?: { reason?: string } } } = {}
     vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       request = JSON.parse(String(init?.body))
-      return protocolResponse('stream.gapAck', { status: 'committed' })
+      return protocolResponse(
+        'stream.gapAck',
+        { streamId: STREAM_ID },
+        ACTIVATION_ID,
+        request.messageId,
+      )
     }))
     const session: BrowserProtocolSession = {
       port: 24820,
@@ -261,6 +329,7 @@ describe('browser Collector Protocol outbox', () => {
     }
     const gap: BrowserPendingGap = {
       messageId: '0198d5eb-fc31-7d7b-8bf0-c2d009ec8999',
+      activationId: ACTIVATION_ID,
       start: '2026-08-25T08:00:00.000Z',
       end: '2026-08-25T08:01:00.000Z',
       reason: 'buffer_overflow',

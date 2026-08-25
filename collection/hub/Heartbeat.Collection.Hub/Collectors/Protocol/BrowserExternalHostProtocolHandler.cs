@@ -457,9 +457,19 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
             message.MessageId,
             request.Gap,
             cancellationToken);
-        return outcome.Status == GapDeliveryStatus.Rejected
-            ? Rejected(400, "stream.gapRejected", activationId, message.MessageId, outcome.Error!)
-            : ProtocolResponse(200, "stream.gapAck", activationId, message.MessageId, outcome);
+        return outcome.Status switch
+        {
+            GapDeliveryStatus.Rejected =>
+                Rejected(400, "stream.gapRejected", activationId, message.MessageId, outcome.Error!),
+            GapDeliveryStatus.Retry =>
+                Rejected(503, "stream.gapRejected", activationId, message.MessageId, outcome.Error!),
+            _ => ProtocolResponse(
+                200,
+                "stream.gapAck",
+                activationId,
+                message.MessageId,
+                new { streamId = outcome.StreamId })
+        };
     }
 
     private ProtocolHttpResponse HandleDrained(Guid activationId, ProtocolMessage<DrainedRequest> message)
@@ -622,21 +632,6 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
     private static async ValueTask<T> DeserializeAsync<T>(Stream body, CancellationToken cancellationToken) =>
         await JsonSerializer.DeserializeAsync<T>(body, JsonOptions, cancellationToken)
         ?? throw new JsonException("Protocol request body is required.");
-
-    private static async ValueTask<ProtocolMessage<T>> DeserializeMessageAsync<T>(
-        Stream body,
-        string expectedProtocol,
-        string expectedType,
-        Guid? expectedActivationId,
-        CancellationToken cancellationToken)
-    {
-        var message = await DeserializeAsync<ProtocolMessage<T>>(body, cancellationToken);
-        if (message.Protocol != expectedProtocol || message.Type != expectedType ||
-            !IsUuidV7(message.MessageId) || message.Body is null ||
-            message.ReplyTo is not null || message.ActivationId != expectedActivationId)
-            throw new JsonException("Collector Protocol envelope is malformed or does not match the HTTP route.");
-        return message;
-    }
 
     private static ProtocolHttpResponse Json(int statusCode, object body) =>
         new(statusCode, JsonSerializer.Serialize(body, JsonOptions));

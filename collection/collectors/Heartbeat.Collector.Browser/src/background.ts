@@ -125,29 +125,36 @@ async function saveQueue(queue: Record<string, SegmentSnapshot>): Promise<void> 
   await chrome.storage.local.set({ [QUEUE_KEY]: queue })
 }
 
-async function loadPendingGap(): Promise<BrowserPendingGap | undefined> {
+async function loadPendingGaps(): Promise<BrowserPendingGap[]> {
   const got = await chrome.storage.local.get(PENDING_GAP_KEY)
-  return got[PENDING_GAP_KEY] as BrowserPendingGap | undefined
+  const stored = got[PENDING_GAP_KEY]
+  if (Array.isArray(stored)) return stored as BrowserPendingGap[]
+  return stored === undefined ? [] : [stored as BrowserPendingGap]
 }
 
-async function savePendingGap(gap: BrowserPendingGap | undefined): Promise<void> {
-  if (gap === undefined) await chrome.storage.local.remove(PENDING_GAP_KEY)
-  else await chrome.storage.local.set({ [PENDING_GAP_KEY]: gap })
+async function savePendingGaps(gaps: BrowserPendingGap[]): Promise<void> {
+  if (gaps.length === 0) await chrome.storage.local.remove(PENDING_GAP_KEY)
+  else await chrome.storage.local.set({ [PENDING_GAP_KEY]: gaps })
 }
 
 async function recordBufferGap(snapshots: SegmentSnapshot[]): Promise<void> {
   if (snapshots.length === 0) return
-  const existing = await loadPendingGap()
   const starts = snapshots.map((snapshot) => snapshot.startTime)
   const ends = snapshots.map((snapshot) => snapshot.endTime)
   const gap: BrowserPendingGap = {
-    messageId: existing?.messageId ?? uuidv7(),
-    start: [existing?.start, ...starts].filter((value): value is string => value !== undefined).sort()[0],
-    end: [existing?.end, ...ends].filter((value): value is string => value !== undefined).sort().at(-1)!,
+    start: starts.sort()[0],
+    end: ends.sort().at(-1)!,
     reason: 'buffer_overflow',
-    estimatedFactsLost: (existing?.estimatedFactsLost ?? 0) + snapshots.length,
+    estimatedFactsLost: snapshots.length,
   }
-  await savePendingGap(gap)
+  await savePendingGaps([...(await loadPendingGaps()), gap])
+}
+
+async function persistFirstGapAttempt(gap: BrowserPendingGap): Promise<void> {
+  const gaps = await loadPendingGaps()
+  if (gaps.length === 0) return
+  gaps[0] = gap
+  await savePendingGaps(gaps)
 }
 
 async function appendDeadLetters(snapshots: SegmentSnapshot[]): Promise<void> {
@@ -234,7 +241,7 @@ async function applyProtocolSpec(spec: {
   await saveDesiredEnabled(spec.enabled)
   await chrome.storage.session.set({ [FLUSH_PERIOD_KEY]: spec.flushPeriodMilliseconds })
   chrome.alarms.create(ALARM_NAME, {
-    periodInMinutes: Math.max(FLUSH_PERIOD_MINUTES, spec.flushPeriodMilliseconds / 60_000),
+    periodInMinutes: spec.flushPeriodMilliseconds / 60_000,
   })
 }
 
@@ -325,12 +332,14 @@ async function flushAndUpload(): Promise<void> {
     saveProtocolActivationAttempt,
     saveProtocolPublishAttempt,
     applyProtocolSpec,
-    await loadPendingGap(),
+    (await loadPendingGaps())[0],
+    persistFirstGapAttempt,
   )
 
   if ((protocolResult.kind === 'acked' || protocolResult.kind === 'unavailable') &&
       protocolResult.gapAcknowledged === true) {
-    await savePendingGap(undefined)
+    const gaps = await loadPendingGaps()
+    await savePendingGaps(gaps.slice(1))
   }
 
   if (protocolResult.kind === 'acked') {
@@ -349,7 +358,7 @@ async function flushAndUpload(): Promise<void> {
     await saveQueue(remaining)
     await saveProtocolSession(protocolResult.session)
     await saveProtocolActivationAttempt(undefined)
-    await saveProtocolPublishAttempt(undefined)
+    await saveProtocolPublishAttempt(protocolResult.nextPublishAttempt)
     if (protocolResult.retryAfterMilliseconds !== undefined) {
       await saveBackoff({
         fails: 0,

@@ -29,7 +29,8 @@ export interface BrowserPublishAttempt {
 }
 
 export interface BrowserPendingGap {
-  messageId: string
+  messageId?: string
+  activationId?: string
   start: string
   end: string
   reason: 'buffer_overflow'
@@ -55,6 +56,7 @@ export type ProtocolUploadResult =
       acknowledgedRevisions: Record<string, number>
       rejectedRevisions: Record<string, number>
       retryAfterMilliseconds?: number
+      nextPublishAttempt?: BrowserPublishAttempt
       gapAcknowledged?: boolean
       session: BrowserProtocolSession
     }
@@ -70,6 +72,8 @@ export type ProtocolUploadResult =
 
 interface HelloResponse {
   activationId: string
+  selectedProtocolMajor: number
+  selectedCapabilities: Record<string, number>
 }
 
 interface InitializeResponse {
@@ -181,17 +185,40 @@ export async function openBrowserProtocolSession(
     })
     if (hello.status === 404) return 'legacy-required'
     if (!hello.ok) return 'rejected'
-    const accepted = ((await hello.json()) as ProtocolMessage<HelloResponse>).body
+    const acceptedMessage = (await hello.json()) as ProtocolMessage<HelloResponse>
+    if (!isCorrelatedResponse(
+      acceptedMessage,
+      'heartbeat.collector.bootstrap/1',
+      'activation.accepted',
+      undefined,
+      attempt.helloMessageId,
+    ) || !isUuidV7(acceptedMessage.body.activationId) ||
+      acceptedMessage.body.selectedProtocolMajor !== 1 ||
+      acceptedMessage.body.selectedCapabilities?.['facts.segment'] !== 1 ||
+      acceptedMessage.body.selectedCapabilities?.['diagnostics.stream-gap'] !== 1)
+      return 'rejected'
+    const accepted = acceptedMessage.body
     const initialize = await fetch(
       `http://127.0.0.1:${port}${ROUTE}/${accepted.activationId}/initialize`,
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
     )
     if (!initialize.ok) return 'rejected'
     const initializeMessage = (await initialize.json()) as ProtocolMessage<InitializeResponse>
+    if (!isCorrelatedResponse(
+      initializeMessage,
+      'heartbeat.collector/1',
+      'activation.initialize',
+      accepted.activationId,
+      undefined,
+    )) return 'rejected'
     const initialized = initializeMessage.body
     if (initialized.spec.config.value.enabled === false) return 'disabled'
     const flushPeriodMilliseconds = positiveInteger(initialized.spec.config.value.flushPeriodMs)
-    if (flushPeriodMilliseconds === undefined) return 'rejected'
+    if (flushPeriodMilliseconds === undefined || flushPeriodMilliseconds < 30_000) return 'rejected'
+    if (positiveInteger(initialized.limits?.maxFactsPerBatch) === undefined ||
+      positiveInteger(initialized.limits?.maxBatchBytes) === undefined ||
+      positiveInteger(initialized.limits?.maxInFlightBatches) === undefined)
+      return 'rejected'
     await applySpec?.({ enabled: true, flushPeriodMilliseconds })
 
     const initializedAck = await fetch(
@@ -228,7 +255,15 @@ export async function openBrowserProtocolSession(
       },
     )
     if (!streams.ok) return 'rejected'
-    const opened = ((await streams.json()) as ProtocolMessage<StreamsOpenedResponse>).body
+    const openedMessage = (await streams.json()) as ProtocolMessage<StreamsOpenedResponse>
+    if (!isCorrelatedResponse(
+      openedMessage,
+      'heartbeat.collector/1',
+      'streams.opened',
+      accepted.activationId,
+      attempt.streamsMessageId,
+    )) return 'rejected'
+    const opened = openedMessage.body
     const stream = opened.streams.tabs
     if (!stream?.streamId) return 'rejected'
 
@@ -248,7 +283,15 @@ export async function openBrowserProtocolSession(
       },
     )
     if (!ready.ok) return 'rejected'
-    const readyAcknowledgement = ((await ready.json()) as ProtocolMessage<ReadyResponse>).body
+    const readyMessage = (await ready.json()) as ProtocolMessage<ReadyResponse>
+    if (!isCorrelatedResponse(
+      readyMessage,
+      'heartbeat.collector/1',
+      'activation.readyAck',
+      accepted.activationId,
+      attempt.readyMessageId,
+    )) return 'rejected'
+    const readyAcknowledgement = readyMessage.body
     if (!readyAcknowledgement.lease?.token) return null
     return {
       port,
@@ -329,14 +372,30 @@ export async function publishBrowserFacts(
     )
     if (response.status === 403) return { kind: 'disabled' }
     if (!response.ok) return { kind: 'unavailable' }
-    const acknowledgement = ((await response.json()) as ProtocolMessage<AckResponse>).body
+    const acknowledgementMessage = (await response.json()) as ProtocolMessage<AckResponse>
+    if (!isCorrelatedResponse(
+      acknowledgementMessage,
+      'heartbeat.collector/1',
+      'facts.ack',
+      session.activationId,
+      attempt.messageId,
+    ) || !hasCompleteFactResults(acknowledgementMessage.body, batch.length)) {
+      throw new Error('facts.ack is malformed or does not match the publish attempt')
+    }
+    const acknowledgement = acknowledgementMessage.body
     const acknowledgedIds = acknowledgedSnapshotIds(batch, acknowledgement)
     const rejected = acknowledgement.results.filter((result) =>
       Number.isInteger(result.index) && result.index >= 0 && result.index < batch.length &&
       result.status === 'rejected')
-    const retries = acknowledgement.results
-      .filter((result) => result.status === 'retry')
-      .map((result) => positiveInteger(result.retryAfterMs) ?? 1_000)
+    const retryResults = acknowledgement.results.filter((result) => result.status === 'retry')
+    const retries = retryResults.map((result) => positiveInteger(result.retryAfterMs) ?? 1_000)
+    const nextPublishAttempt = retryResults.length === 0
+      ? undefined
+      : {
+          messageId: uuidv7(),
+          snapshots: retryResults.map((result) => batch[result.index]),
+        }
+    if (nextPublishAttempt !== undefined) await persistAttempt?.(nextPublishAttempt)
     return {
       kind: 'acked',
       acknowledgedIds,
@@ -351,6 +410,7 @@ export async function publishBrowserFacts(
         snapshotRevision(batch[result.index]),
       ])),
       ...(retries.length === 0 ? {} : { retryAfterMilliseconds: Math.max(...retries) }),
+      ...(nextPublishAttempt === undefined ? {} : { nextPublishAttempt }),
       session,
     }
   } catch {
@@ -369,6 +429,7 @@ export async function uploadWithBrowserProtocol(
   persistPublishAttempt?: (attempt: BrowserPublishAttempt) => Promise<void>,
   applySpec?: (spec: { enabled: boolean; flushPeriodMilliseconds: number }) => Promise<void>,
   pendingGap?: BrowserPendingGap,
+  persistGapAttempt?: (gap: BrowserPendingGap) => Promise<void>,
 ): Promise<ProtocolUploadResult> {
   if (!appHint) return { kind: 'legacy-required' }
   const renewed = previousSession?.port === port
@@ -388,7 +449,7 @@ export async function uploadWithBrowserProtocol(
   if (session === null) return { kind: 'unavailable', activationAttempt }
   let gapAcknowledged = false
   if (pendingGap !== undefined) {
-    const gapResult = await reportBrowserGap(session, pendingGap)
+    const gapResult = await reportBrowserGap(session, pendingGap, persistGapAttempt)
     if (gapResult !== 'acked') {
       return {
         kind: 'unavailable',
@@ -411,7 +472,12 @@ export async function uploadWithBrowserProtocol(
 export async function reportBrowserGap(
   session: BrowserProtocolSession,
   gap: BrowserPendingGap,
+  persistAttempt?: (gap: BrowserPendingGap) => Promise<void>,
 ): Promise<'acked' | 'unavailable' | 'rejected'> {
+  const attempt = gap.activationId === session.activationId && gap.messageId !== undefined
+    ? gap
+    : { ...gap, activationId: session.activationId, messageId: uuidv7() }
+  await persistAttempt?.(attempt)
   try {
     const response = await fetch(
       `http://127.0.0.1:${session.port}${ROUTE}/${session.activationId}/gap`,
@@ -421,25 +487,28 @@ export async function reportBrowserGap(
         body: JSON.stringify(message(
           'heartbeat.collector/1',
           'stream.gap',
-          gap.messageId,
+          attempt.messageId!,
           session.activationId,
           {
             leaseToken: session.leaseToken,
             streamId: session.streamId,
             gap: {
-              start: gap.start,
-              end: gap.end,
-              reason: gap.reason,
-              estimatedFactsLost: gap.estimatedFactsLost,
+              start: attempt.start,
+              end: attempt.end,
+              reason: attempt.reason,
+              estimatedFactsLost: attempt.estimatedFactsLost,
             },
           },
         )),
       },
     )
     if (!response.ok) return 'rejected'
-    const acknowledgement = (await response.json()) as ProtocolMessage<{ status?: string }>
-    return acknowledgement.type === 'stream.gapAck' &&
-      acknowledgement.body.status !== 'rejected' && acknowledgement.body.status !== 'retry'
+    const acknowledgement = (await response.json()) as ProtocolMessage<{ streamId?: string }>
+    return acknowledgement.protocol === 'heartbeat.collector/1' &&
+      acknowledgement.type === 'stream.gapAck' &&
+      acknowledgement.activationId === session.activationId &&
+      acknowledgement.replyTo === attempt.messageId &&
+      acknowledgement.body.streamId === session.streamId
       ? 'acked'
       : 'unavailable'
   } catch {
@@ -496,6 +565,30 @@ function normalizeLimits(limits: Partial<ProtocolLimits> | undefined): ProtocolL
 
 function positiveInteger(value: unknown): number | undefined {
   return Number.isSafeInteger(value) && Number(value) > 0 ? Number(value) : undefined
+}
+
+function isCorrelatedResponse<T>(
+  response: ProtocolMessage<T>,
+  protocol: string,
+  type: string,
+  activationId: string | undefined,
+  replyTo: string | undefined,
+): boolean {
+  return response?.protocol === protocol && response.type === type &&
+    isUuidV7(response.messageId) && response.activationId === activationId &&
+    response.replyTo === replyTo && response.body !== undefined
+}
+
+function hasCompleteFactResults(acknowledgement: AckResponse, factCount: number): boolean {
+  if (!Array.isArray(acknowledgement?.results) || acknowledgement.results.length !== factCount)
+    return false
+  const indices = acknowledgement.results.map((result) => result.index).sort((left, right) => left - right)
+  if (!indices.every((index, position) => index === position)) return false
+  return acknowledgement.results.every((result) => {
+    if (!['committed', 'duplicate', 'superseded', 'rejected', 'retry'].includes(result.status)) return false
+    if (result.status === 'retry') return positiveInteger(result.retryAfterMs) !== undefined
+    return result.retryAfterMs === undefined
+  })
 }
 
 function message<T>(
