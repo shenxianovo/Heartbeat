@@ -20,4 +20,8 @@
     <ProjectReference Include="..\..\..\shared\Heartbeat.Core\Heartbeat.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Heartbeat.Collection.Hub.Tests" />
+  </ItemGroup>
+
 </Project>

@@ -50,12 +50,27 @@ public sealed partial class CollectorRuntime
             Guid.CreateVersion7(),
             cancellationToken);
 
-    public async ValueTask<InProcessCollectorActivation> ActivateInProcessAsync(
+    public ValueTask<InProcessCollectorActivation> ActivateInProcessAsync(
         Guid collectorInstanceId,
         LocalCollectorPackage package,
         IInProcessCollector collector,
         Guid helloMessageId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        ActivateProtocolAsync(
+            collectorInstanceId,
+            package,
+            collector,
+            "inProcess",
+            helloMessageId,
+            cancellationToken);
+
+    private async ValueTask<InProcessCollectorActivation> ActivateProtocolAsync(
+        Guid collectorInstanceId,
+        LocalCollectorPackage package,
+        IInProcessCollector collector,
+        string executionDriver,
+        Guid helloMessageId,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(package);
         ArgumentNullException.ThrowIfNull(collector);
@@ -146,7 +161,7 @@ public sealed partial class CollectorRuntime
                 artifact = ResolveProtocolArtifact(
                     package,
                     artifactId,
-                    collector is ICollectorProtocolBinding binding ? binding.ExecutionDriver : "inProcess");
+                    executionDriver);
                 ValidateProtocolSupport(package, protocolSupport);
                 var previousHelloAttempt = _state.HelloAttempts.SingleOrDefault(attempt =>
                     attempt.CollectorInstanceId == collectorInstanceId &&

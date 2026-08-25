@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Heartbeat.Collector.Reference.ManagedProcess;
 
 if (args is ["--create-package", var packageDirectory])
@@ -46,11 +47,17 @@ internal sealed class ReferenceManagedProcessCollector(TextReader input, TextWri
         };
         if (behavior == "extra_capability")
             capabilities["reference.unsupported"] = [1];
-        await WriteAsync(new
+        object advertisedCapabilities = behavior == "invalid_capability_type"
+            ? new Dictionary<string, object> { ["facts.segment"] = 1 }
+            : capabilities;
+        object helloMessageIdValue = behavior == "uppercase_uuid"
+            ? helloMessageId.ToString("D").ToUpperInvariant()
+            : helloMessageId;
+        var hello = JsonSerializer.SerializeToNode(new
         {
             protocol = "heartbeat.collector.bootstrap/1",
             type = "activation.hello",
-            messageId = helloMessageId,
+            messageId = helloMessageIdValue,
             body = new
             {
                 collectorInstanceId = RequiredGuid("HEARTBEAT_COLLECTOR_INSTANCE_ID"),
@@ -62,9 +69,12 @@ internal sealed class ReferenceManagedProcessCollector(TextReader input, TextWri
                     artifactHash = Required("HEARTBEAT_COLLECTOR_ARTIFACT_HASH")
                 },
                 protocolMajors = new[] { 1 },
-                supportedCapabilities = capabilities
+                supportedCapabilities = advertisedCapabilities
             }
-        });
+        }, SerializerOptions)!.AsObject();
+        if (behavior == "unknown_hello_field")
+            hello["body"]!.AsObject()["unexpected"] = true;
+        await WriteAsync(hello);
 
         using var accepted = await ReadAsync();
         Require(accepted.RootElement, "activation.accepted", helloMessageId);
@@ -131,7 +141,6 @@ internal sealed class ReferenceManagedProcessCollector(TextReader input, TextWri
             await Task.Delay(Timeout.InfiniteTimeSpan);
             return;
         }
-
         await PublishReferenceFactAsync();
         while (true)
         {

@@ -38,6 +38,7 @@ public sealed class ManagedProcessActivationOptions
     public TimeSpan DrainGracePeriod { get; init; } = TimeSpan.FromSeconds(10);
     public IReadOnlyDictionary<string, string> EnvironmentVariables { get; init; } =
         ImmutableDictionary<string, string>.Empty;
+    internal Func<TextWriter, TextWriter>? StandardInputDecorator { get; init; }
 
     internal void Validate()
     {
@@ -108,8 +109,13 @@ public sealed partial class CollectorRuntime
             SetManagedProcessState(collectorInstanceId, new CollectorRuntimeSnapshot(
                 collectorInstanceId, null, CollectorRuntimePhase.Negotiating));
 
-            var protocolActivation = await ActivateInProcessAsync(
-                collectorInstanceId, package, client, client.HelloMessageId, linkedCancellation.Token);
+            var protocolActivation = await ActivateProtocolAsync(
+                collectorInstanceId,
+                package,
+                client,
+                "managedProcess",
+                client.HelloMessageId,
+                linkedCancellation.Token);
             var activation = new ManagedProcessCollectorActivation(
                 this, collectorInstanceId, client, protocolActivation);
             lock (_gate)
@@ -322,12 +328,7 @@ internal sealed class ManagedProcessExitedException(string message, int? exitCod
     public int? ExitCode { get; } = exitCode;
 }
 
-internal interface ICollectorProtocolBinding
-{
-    string ExecutionDriver { get; }
-}
-
-internal sealed class ManagedProcessProtocolClient : IInProcessCollector, ICollectorProtocolBinding
+internal sealed class ManagedProcessProtocolClient : IInProcessCollector
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -337,7 +338,7 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
 
     private readonly Process _process;
     private readonly StreamReader _reader;
-    private readonly StreamWriter _writer;
+    private readonly TextWriter _writer;
     private readonly ManagedProcessActivationOptions _options;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly TaskCompletionSource<ManagedProcessExit> _exit = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -359,7 +360,7 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
     {
         _process = process;
         _reader = process.StandardOutput;
-        _writer = process.StandardInput;
+        _writer = options.StandardInputDecorator?.Invoke(process.StandardInput) ?? process.StandardInput;
         _options = options;
         HelloMessageId = helloMessageId;
         ArtifactId = artifactId;
@@ -367,7 +368,6 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
     }
 
     public Guid HelloMessageId { get; }
-    public string ExecutionDriver => "managedProcess";
     public Guid? ActivationId { get; private set; }
     public string ArtifactId { get; }
     public ProtocolSupport ProtocolSupport { get; }
@@ -454,9 +454,11 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
             RequireEnvelope(hello.RootElement, "heartbeat.collector.bootstrap/1", "activation.hello");
             var messageId = ReadUuidV7(hello.RootElement, "messageId");
             var body = RequireObject(hello.RootElement, "body");
+            RequireExactProperties(body, "collectorInstanceId", "runtimeArtifact", "protocolMajors", "supportedCapabilities");
             if (ReadGuid(body, "collectorInstanceId") != collectorInstanceId)
                 throw new ManagedProcessProtocolException("activation.hello collectorInstanceId does not match the configured Instance.");
             var runtimeArtifact = RequireObject(body, "runtimeArtifact");
+            RequireExactProperties(runtimeArtifact, "packageId", "packageVersion", "artifactId", "artifactHash");
             if (ReadString(runtimeArtifact, "packageId") != package.Manifest.PackageId ||
                 ReadString(runtimeArtifact, "packageVersion") != package.Manifest.Version ||
                 ReadString(runtimeArtifact, "artifactId") != artifact.ArtifactId ||
@@ -533,16 +535,20 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
 
         using var initialized = await ReadRequiredMessageAsync(_reader, cancellationToken);
         RequireResponse(initialized.RootElement, "activation.initialized", initializeMessageId, initialization.ActivationId);
-        var appliedSpecRevision = ReadPositiveLong(RequireObject(initialized.RootElement, "body"), "appliedSpecRevision");
+        var initializedBody = RequireObject(initialized.RootElement, "body");
+        RequireExactProperties(initializedBody, "appliedSpecRevision");
+        var appliedSpecRevision = ReadPositiveLong(initializedBody, "appliedSpecRevision");
         _specRevision = initialization.Spec.SpecRevision;
 
         using var open = await ReadRequiredMessageAsync(_reader, cancellationToken);
         RequireEnvelope(open.RootElement, "heartbeat.collector/1", "streams.open", initialization.ActivationId);
         var openBody = RequireObject(open.RootElement, "body");
+        RequireExactProperties(openBody, "specRevision", "bindings");
         if (ReadPositiveLong(openBody, "specRevision") != appliedSpecRevision)
             throw new ManagedProcessProtocolException("streams.open specRevision does not match activation.initialized.");
         var bindings = RequireArray(openBody, "bindings").EnumerateArray().Select(binding =>
         {
+            RequireExactProperties(binding, "bindingId", "outputId", "dimensions");
             var dimensions = RequireObject(binding, "dimensions").EnumerateObject().ToDictionary(
                 property => property.Name,
                 property => property.Value.ValueKind == JsonValueKind.String
@@ -575,7 +581,9 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
         using var ready = await ReadRequiredMessageAsync(_reader, cancellationToken);
         RequireEnvelope(ready.RootElement, "heartbeat.collector/1", "activation.ready", opened.ActivationId);
         var readyMessageId = ReadUuidV7(ready.RootElement, "messageId");
-        var appliedSpecRevision = ReadPositiveLong(RequireObject(ready.RootElement, "body"), "appliedSpecRevision");
+        var readyBody = RequireObject(ready.RootElement, "body");
+        RequireExactProperties(readyBody, "appliedSpecRevision");
+        var appliedSpecRevision = ReadPositiveLong(readyBody, "appliedSpecRevision");
         if (appliedSpecRevision != _specRevision)
             throw new ManagedProcessProtocolException("activation.ready appliedSpecRevision does not match the initialized Spec.");
         _activation = await opened.ReadyAsync(cancellationToken);
@@ -638,14 +646,35 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
 
         var deadline = DateTimeOffset.UtcNow + _options.DrainGracePeriod;
         _drainMessageId = Guid.CreateVersion7();
-        await WriteAsync(new
+        try
         {
-            protocol = "heartbeat.collector/1",
-            type = "activation.drain",
-            messageId = _drainMessageId,
-            activationId = ActivationId,
-            body = new { deadline = ProtocolTimestamp(deadline) }
-        }, CancellationToken.None);
+            await WriteAsync(new
+            {
+                protocol = "heartbeat.collector/1",
+                type = "activation.drain",
+                messageId = _drainMessageId,
+                activationId = ActivationId,
+                body = new { deadline = ProtocolTimestamp(deadline) }
+            }, CancellationToken.None);
+        }
+        catch (ManagedProcessProtocolException exception)
+        {
+            if (!_process.HasExited)
+            {
+                WasTerminated = true;
+                Kill(_process);
+            }
+            await WaitForExitAsync(_process);
+            var drainWriteFailure = new ManagedProcessExit(ExitCode, exception);
+            _exit.TrySetResult(drainWriteFailure);
+            _drainResult = new ManagedProcessDrainResult(
+                PendingFacts,
+                PendingGaps,
+                WasTerminated,
+                drainWriteFailure);
+            _drained.TrySetResult(_drainResult);
+            return;
+        }
 
         var drainAcknowledged = false;
         try
@@ -741,7 +770,9 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
     {
         RequireEnvelope(root, "heartbeat.collector/1", "facts.publish", ActivationId!.Value);
         var messageId = ReadUuidV7(root, "messageId");
-        var facts = RequireArray(RequireObject(root, "body"), "facts").EnumerateArray().Select(ReadFact).ToArray();
+        var body = RequireObject(root, "body");
+        RequireExactProperties(body, "facts");
+        var facts = RequireArray(body, "facts").EnumerateArray().Select(ReadFact).ToArray();
         var streamIds = facts.Select(fact => fact.StreamId).Distinct().ToArray();
         if (streamIds.Length != 1 || _activation is null ||
             _activation.Streams.Values.All(stream => stream.Descriptor.StreamId != streamIds[0]))
@@ -775,8 +806,10 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
         RequireEnvelope(root, "heartbeat.collector/1", "stream.gap", ActivationId!.Value);
         var messageId = ReadUuidV7(root, "messageId");
         var body = RequireObject(root, "body");
+        RequireExactProperties(body, "streamId", "factTime", "reason", "estimatedFactsLost");
         var streamId = ReadGuid(body, "streamId");
         var time = RequireObject(body, "factTime");
+        RequireExactProperties(time, "start", "end");
         var gap = new StreamGapReport(
             ReadUtcTimestamp(time, "start"), ReadUtcTimestamp(time, "end"), ReadString(body, "reason"),
             body.TryGetProperty("estimatedFactsLost", out var estimate) ? estimate.GetInt32() : null);
@@ -796,8 +829,9 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
 
     private void HandleDrained(JsonElement root)
     {
-        RequireEnvelope(root, "heartbeat.collector/1", "activation.drained", ActivationId!.Value);
+        RequireEnvelope(root, "heartbeat.collector/1", "activation.drained", ActivationId!.Value, hasReplyTo: true);
         var body = RequireObject(root, "body");
+        RequireExactProperties(body, "appliedSpecRevision", "pendingFacts", "pendingGaps");
         if (_drainMessageId is null || ReadGuid(root, "replyTo") != _drainMessageId)
             throw new ManagedProcessProtocolException("activation.drained replyTo does not match activation.drain.");
         if (ReadPositiveLong(body, "appliedSpecRevision") != _specRevision)
@@ -857,14 +891,28 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
 
     private static void RequireResponse(JsonElement root, string type, Guid replyTo, Guid activationId)
     {
-        RequireEnvelope(root, "heartbeat.collector/1", type, activationId);
+        RequireEnvelope(root, "heartbeat.collector/1", type, activationId, hasReplyTo: true);
         if (ReadGuid(root, "replyTo") != replyTo)
             throw new ManagedProcessProtocolException($"{type} replyTo does not match its request.");
     }
 
-    private static void RequireEnvelope(JsonElement root, string protocol, string type, Guid? activationId = null)
+    private static void RequireEnvelope(
+        JsonElement root,
+        string protocol,
+        string type,
+        Guid? activationId = null,
+        bool hasReplyTo = false)
     {
-        if (root.ValueKind != JsonValueKind.Object || ReadString(root, "protocol") != protocol || ReadString(root, "type") != type)
+        if (root.ValueKind != JsonValueKind.Object)
+            throw new ManagedProcessProtocolException($"Expected {type} protocol envelope.");
+        RequireExactProperties(
+            root,
+            activationId is null
+                ? ["protocol", "type", "messageId", "body"]
+                : hasReplyTo
+                    ? ["protocol", "type", "messageId", "activationId", "replyTo", "body"]
+                    : ["protocol", "type", "messageId", "activationId", "body"]);
+        if (ReadString(root, "protocol") != protocol || ReadString(root, "type") != type)
             throw new ManagedProcessProtocolException($"Expected {type} protocol envelope.");
         _ = ReadUuidV7(root, "messageId");
         if (activationId is not null && ReadGuid(root, "activationId") != activationId)
@@ -886,6 +934,16 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
 
     private static FactSubmission ReadFact(JsonElement fact)
     {
+        RequireExactProperties(
+            fact,
+            "streamId",
+            "schemaRevision",
+            "factId",
+            "revision",
+            "observedAt",
+            "recordState",
+            "time",
+            "payload");
         var recordState = ReadString(fact, "recordState") switch
         {
             "present" => FactRecordState.Present,
@@ -893,6 +951,7 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
             var value => throw new ManagedProcessProtocolException($"Unknown Fact recordState '{value}'.")
         };
         var time = RequireObject(fact, "time");
+        RequireExactProperties(time, "start", "end", "isFinal");
         return new FactSubmission(
             ReadGuid(fact, "streamId"), ReadPositiveInt(fact, "schemaRevision"), ReadUuidV7(fact, "factId"),
             ReadPositiveLong(fact, "revision"),
@@ -905,12 +964,22 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
     private static IReadOnlyDictionary<string, IReadOnlyList<int>> ReadCapabilities(JsonElement parent, string name) =>
         RequireObject(parent, name).EnumerateObject().ToDictionary(
             property => property.Name,
-            property => (IReadOnlyList<int>)property.Value.EnumerateArray().Select(value => value.GetInt32()).ToArray(),
+            property => (IReadOnlyList<int>)ReadPositiveIntArrayValue(property.Value, $"{name}.{property.Name}"),
             StringComparer.Ordinal);
 
     private static IReadOnlyList<int> ReadPositiveIntArray(JsonElement parent, string name)
     {
-        var values = RequireArray(parent, name).EnumerateArray().Select(value => value.GetInt32()).ToArray();
+        return ReadPositiveIntArrayValue(RequireArray(parent, name), name);
+    }
+
+    private static int[] ReadPositiveIntArrayValue(JsonElement value, string name)
+    {
+        if (value.ValueKind != JsonValueKind.Array)
+            throw new ManagedProcessProtocolException($"{name} must be an array.");
+        var values = value.EnumerateArray().Select(item =>
+            item.TryGetInt32(out var result)
+                ? result
+                : throw new ManagedProcessProtocolException($"{name} must contain integers.")).ToArray();
         if (values.Length == 0 || values.Any(value => value <= 0))
             throw new ManagedProcessProtocolException($"{name} must contain positive integers.");
         return values;
@@ -938,9 +1007,23 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector, IColle
     }
 
     private static Guid ReadGuid(JsonElement parent, string name) =>
-        Guid.TryParseExact(ReadString(parent, name), "D", out var value) && value != Guid.Empty
+        ReadString(parent, name) is { } text &&
+        Guid.TryParseExact(text, "D", out var value) &&
+        value != Guid.Empty &&
+        string.Equals(text, value.ToString("D"), StringComparison.Ordinal)
             ? value
             : throw new ManagedProcessProtocolException($"{name} must be a canonical UUID.");
+
+    private static void RequireExactProperties(JsonElement element, params string[] allowedProperties)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+            throw new ManagedProcessProtocolException("Protocol message field must be an object.");
+        foreach (var property in element.EnumerateObject())
+        {
+            if (allowedProperties.IndexOf(property.Name) < 0)
+                throw new ManagedProcessProtocolException($"Unknown protocol field '{property.Name}'.");
+        }
+    }
 
     private static Guid ReadUuidV7(JsonElement parent, string name)
     {

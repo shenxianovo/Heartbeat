@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Heartbeat.Collection.Hub.Collectors.Packages;
 using Heartbeat.Collection.Hub.Collectors.Protocol;
@@ -160,6 +161,26 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         Assert.True(activation.RuntimeState.ProcessTerminated);
     }
 
+    [Theory]
+    [InlineData("invalid_capability_type")]
+    [InlineData("unknown_hello_field")]
+    [InlineData("uppercase_uuid")]
+    public async Task InvalidHelloFields_AreReportedAsProtocolCorruption(string behavior)
+    {
+        using var fixture = ManagedRuntimeFixture.Create();
+
+        var error = await Assert.ThrowsAsync<CollectorActivationException>(async () =>
+            await fixture.Runtime.ActivateManagedProcessAsync(
+                fixture.Instance.CollectorInstanceId,
+                fixture.Package,
+                Options(behavior)));
+
+        Assert.Equal("protocol_invalid_message", error.Error.Code);
+        Assert.Equal(
+            "protocol_invalid_message",
+            fixture.Runtime.GetManagedProcessRuntimeState(fixture.Instance.CollectorInstanceId).Failure?.Code);
+    }
+
     [Fact]
     public async Task ProcessExitBeforeHello_IsDistinctFromProtocolCorruption()
     {
@@ -185,6 +206,27 @@ public class ManagedProcessCollectorProtocolTranscriptTests
             fixture.Instance.CollectorInstanceId,
             fixture.Package,
             Options("corrupt_on_drain"));
+
+        await activation.StopAsync();
+
+        Assert.Equal(CollectorActivationState.Stopped, activation.State);
+        Assert.Equal(CollectorRuntimePhase.Failed, activation.RuntimeState.Phase);
+        Assert.Equal("protocol_invalid_message", activation.RuntimeState.Failure?.Code);
+        var replacement = await fixture.Runtime.ActivateManagedProcessAsync(
+            fixture.Instance.CollectorInstanceId,
+            fixture.Package,
+            Options());
+        await replacement.StopAsync();
+    }
+
+    [Fact]
+    public async Task DrainWriteDisconnect_IsFailedAndWriterIsReleased()
+    {
+        using var fixture = ManagedRuntimeFixture.Create();
+        var activation = await fixture.Runtime.ActivateManagedProcessAsync(
+            fixture.Instance.CollectorInstanceId,
+            fixture.Package,
+            Options(disconnectDrain: true));
 
         await activation.StopAsync();
 
@@ -261,14 +303,19 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         }
     }
 
-    private static ManagedProcessActivationOptions Options(string? behavior = null) => new()
-    {
-        StartupTimeout = TimeSpan.FromSeconds(5),
-        DrainGracePeriod = TimeSpan.FromSeconds(2),
-        EnvironmentVariables = behavior is null
+    private static ManagedProcessActivationOptions Options(
+        string? behavior = null,
+        bool disconnectDrain = false) => new()
+        {
+            StartupTimeout = TimeSpan.FromSeconds(5),
+            DrainGracePeriod = TimeSpan.FromSeconds(2),
+            StandardInputDecorator = disconnectDrain
+            ? writer => new DisconnectOnDrainWriter(writer)
+            : null,
+            EnvironmentVariables = behavior is null
             ? new Dictionary<string, string>()
             : new Dictionary<string, string> { ["HEARTBEAT_REFERENCE_BEHAVIOR"] = behavior }
-    };
+        };
 
     private static async Task WaitForPhaseAsync(
         ManagedProcessCollectorActivation activation,
@@ -285,6 +332,22 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         public void UpsertDurable(Heartbeat.Core.DTOs.Segments.ActivitySegmentItem snapshot, long revision) { }
         public void ReplayDurable(Heartbeat.Core.DTOs.Segments.ActivitySegmentItem snapshot, long revision) { }
         public void RetractDurable(Guid segmentId, long revision) { }
+    }
+
+    private sealed class DisconnectOnDrainWriter(TextWriter inner) : TextWriter
+    {
+        public override Encoding Encoding => inner.Encoding;
+
+        public override Task WriteLineAsync(
+            ReadOnlyMemory<char> buffer,
+            CancellationToken cancellationToken = default) =>
+            buffer.Span.Contains("\"type\":\"activation.drain\"", StringComparison.Ordinal)
+                ? Task.FromException(new IOException("Simulated disconnected ManagedProcess stdin."))
+                : inner.WriteLineAsync(buffer, cancellationToken);
+
+        public override Task FlushAsync() => inner.FlushAsync();
+        public override Task FlushAsync(CancellationToken cancellationToken) =>
+            inner.FlushAsync(cancellationToken);
     }
 
     private sealed class TestClock(DateTimeOffset utcNow) : IClock
