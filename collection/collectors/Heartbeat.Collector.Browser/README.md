@@ -39,7 +39,10 @@ npm test           # vitest
 ## Behavior notes
 
 - 上报语义见 `src/protocol.ts`：只有 `committed`、`duplicate`、`superseded` 会逐 Fact
-  删除 outbox；拒收、断连或无法解析 ACK 均保留。`src/hub.ts` 只承担旧请求兼容。
+  ACK；永久 `rejected` 会保留到有界 dead-letter 诊断区，`retry` 遵守 Hub 的
+  `retryAfterMs`，断连或无法解析 ACK 则以同一 messageId 和原始批次重放。
+- durable outbox 有明确容量上限，绝不为新数据驱逐未 ACK 项；超出的观测合并成
+  持久 `stream.gap(buffer_overflow)`，在恢复连接后先于后续 Fact 交付。
 - Activation 使用 45 秒 ACK lease；浏览器退出或 Service Worker 长期不续租后，Hub
   在有界时间内释放 Stream writer，但不会声称自己终止了浏览器。
 - Hub 的 `enabled` 是 Desired State。停用后扩展结束本地 fold、停止采集/发布，但保留

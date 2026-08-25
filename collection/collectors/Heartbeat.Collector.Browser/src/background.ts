@@ -19,11 +19,12 @@ import { findCompatibleHub, postToHub, fetchCollectorConfig, postDeclaration } f
 import { loadConfig } from './config'
 import { backoffAfterFailure, noBackoff, shouldSkipAttempt, type BackoffState } from './backoff'
 import { detectBrowserAppHint } from './app-hint'
-import { normalizeQueuedSnapshots } from './queue'
+import { enqueueBounded, normalizeQueuedSnapshots } from './queue'
 import {
   uploadWithBrowserProtocol,
   snapshotRevision,
   type BrowserActivationAttempt,
+  type BrowserPendingGap,
   type BrowserPublishAttempt,
   type BrowserProtocolSession,
 } from './protocol'
@@ -60,6 +61,10 @@ const HUB_PORT_KEY = 'hubPort'
 const PROTOCOL_SESSION_KEY = 'collectorProtocolSession'
 const PROTOCOL_ACTIVATION_ATTEMPT_KEY = 'collectorProtocolActivationAttempt'
 const PROTOCOL_PUBLISH_ATTEMPT_KEY = 'collectorProtocolPublishAttempt'
+const FLUSH_PERIOD_KEY = 'browserCollectorFlushPeriodMs'
+const DEAD_LETTER_KEY = 'browserCollectorDeadLetters'
+const MAX_DEAD_LETTERS = 100
+const PENDING_GAP_KEY = 'browserCollectorPendingGap'
 const DESIRED_ENABLED_KEY = 'browserCollectorDesiredEnabled'
 const ALARM_NAME = 'heartbeat-flush'
 
@@ -118,6 +123,43 @@ async function loadQueue(): Promise<Record<string, SegmentSnapshot>> {
 
 async function saveQueue(queue: Record<string, SegmentSnapshot>): Promise<void> {
   await chrome.storage.local.set({ [QUEUE_KEY]: queue })
+}
+
+async function loadPendingGap(): Promise<BrowserPendingGap | undefined> {
+  const got = await chrome.storage.local.get(PENDING_GAP_KEY)
+  return got[PENDING_GAP_KEY] as BrowserPendingGap | undefined
+}
+
+async function savePendingGap(gap: BrowserPendingGap | undefined): Promise<void> {
+  if (gap === undefined) await chrome.storage.local.remove(PENDING_GAP_KEY)
+  else await chrome.storage.local.set({ [PENDING_GAP_KEY]: gap })
+}
+
+async function recordBufferGap(snapshots: SegmentSnapshot[]): Promise<void> {
+  if (snapshots.length === 0) return
+  const existing = await loadPendingGap()
+  const starts = snapshots.map((snapshot) => snapshot.startTime)
+  const ends = snapshots.map((snapshot) => snapshot.endTime)
+  const gap: BrowserPendingGap = {
+    messageId: existing?.messageId ?? uuidv7(),
+    start: [existing?.start, ...starts].filter((value): value is string => value !== undefined).sort()[0],
+    end: [existing?.end, ...ends].filter((value): value is string => value !== undefined).sort().at(-1)!,
+    reason: 'buffer_overflow',
+    estimatedFactsLost: (existing?.estimatedFactsLost ?? 0) + snapshots.length,
+  }
+  await savePendingGap(gap)
+}
+
+async function appendDeadLetters(snapshots: SegmentSnapshot[]): Promise<void> {
+  if (snapshots.length === 0) return
+  const got = await chrome.storage.local.get(DEAD_LETTER_KEY)
+  const existing = Array.isArray(got[DEAD_LETTER_KEY])
+    ? got[DEAD_LETTER_KEY] as SegmentSnapshot[]
+    : []
+  await chrome.storage.local.set({
+    [DEAD_LETTER_KEY]: [...existing, ...snapshots].slice(-MAX_DEAD_LETTERS),
+  })
+  console.warn(`[heartbeat] ${snapshots.length} 条 Fact 被 Hub 永久拒绝，已移入诊断 dead-letter`)
 }
 
 async function loadBackoff(): Promise<BackoffState> {
@@ -179,6 +221,23 @@ async function saveDesiredEnabled(enabled: boolean): Promise<void> {
   await chrome.storage.session.set({ [DESIRED_ENABLED_KEY]: enabled })
 }
 
+async function desiredFlushPeriodMilliseconds(): Promise<number> {
+  const got = await chrome.storage.session.get(FLUSH_PERIOD_KEY)
+  const value = Number(got[FLUSH_PERIOD_KEY])
+  return Number.isSafeInteger(value) && value >= 30_000 ? value : FLUSH_PERIOD_MS
+}
+
+async function applyProtocolSpec(spec: {
+  enabled: boolean
+  flushPeriodMilliseconds: number
+}): Promise<void> {
+  await saveDesiredEnabled(spec.enabled)
+  await chrome.storage.session.set({ [FLUSH_PERIOD_KEY]: spec.flushPeriodMilliseconds })
+  chrome.alarms.create(ALARM_NAME, {
+    periodInMinutes: Math.max(FLUSH_PERIOD_MINUTES, spec.flushPeriodMilliseconds / 60_000),
+  })
+}
+
 async function applyDesiredEnabled(enabled: boolean): Promise<void> {
   const wasEnabled = await desiredEnabled()
   await saveDesiredEnabled(enabled)
@@ -194,9 +253,15 @@ async function applyDesiredEnabled(enabled: boolean): Promise<void> {
 /** 入队按 Id 键控：同段后到快照覆盖先到（快照单调生长，攒批自动压缩，ADR-018）。 */
 async function enqueue(snapshots: SegmentSnapshot[]): Promise<void> {
   if (snapshots.length === 0) return
-  const queue = await loadQueue()
-  for (const s of snapshots) queue[s.id] = s
-  await saveQueue(queue)
+  const { queue, overflow } = enqueueBounded(await loadQueue(), snapshots)
+  try {
+    await saveQueue(queue)
+  } catch (error) {
+    console.warn('[heartbeat] outbox 写入失败，记录 Stream Gap', error)
+    await recordBufferGap(snapshots)
+    return
+  }
+  await recordBufferGap(overflow)
 }
 
 // ---- 事件处理 ----
@@ -234,7 +299,11 @@ async function flushAndUpload(): Promise<void> {
   // 礼貌层停用（ADR-026 §4）：每轮 flush 拉一次 hub 侧配置——此调用同时是注册
   // （首次触达即"已安装"）与 flushPeriodMs 自报。enabled:false 时保留 outbox、不上报，
   // 免去注定被 403 的无效 POST；拉取失败（hub 不在/端口漂移）保守视为未停用。
-  const collectorConfig = await fetchCollectorConfig(compatiblePort, SOURCE, FLUSH_PERIOD_MS)
+  const collectorConfig = await fetchCollectorConfig(
+    compatiblePort,
+    SOURCE,
+    await desiredFlushPeriodMilliseconds(),
+  )
   if (collectorConfig?.enabled === false) {
     await applyDesiredEnabled(false)
     return
@@ -255,19 +324,38 @@ async function flushAndUpload(): Promise<void> {
     await loadProtocolPublishAttempt(),
     saveProtocolActivationAttempt,
     saveProtocolPublishAttempt,
+    applyProtocolSpec,
+    await loadPendingGap(),
   )
 
+  if ((protocolResult.kind === 'acked' || protocolResult.kind === 'unavailable') &&
+      protocolResult.gapAcknowledged === true) {
+    await savePendingGap(undefined)
+  }
+
   if (protocolResult.kind === 'acked') {
+    const latestQueue = await loadQueue()
+    const rejected = Object.entries(latestQueue)
+      .filter(([id, snapshot]) =>
+        protocolResult.rejectedRevisions[id] === snapshotRevision(snapshot))
+      .map(([, snapshot]) => snapshot)
+    await appendDeadLetters(rejected)
     const remaining = Object.fromEntries(
-      Object.entries(await loadQueue()).filter(([id, snapshot]) =>
-        protocolResult.acknowledgedRevisions[id] !== snapshotRevision(snapshot),
+      Object.entries(latestQueue).filter(([id, snapshot]) =>
+        protocolResult.acknowledgedRevisions[id] !== snapshotRevision(snapshot) &&
+        protocolResult.rejectedRevisions[id] !== snapshotRevision(snapshot),
       ),
     )
     await saveQueue(remaining)
     await saveProtocolSession(protocolResult.session)
     await saveProtocolActivationAttempt(undefined)
     await saveProtocolPublishAttempt(undefined)
-    if (backoff.fails > 0) await saveBackoff(noBackoff)
+    if (protocolResult.retryAfterMilliseconds !== undefined) {
+      await saveBackoff({
+        fails: 0,
+        nextAttemptAt: now + protocolResult.retryAfterMilliseconds,
+      })
+    } else if (backoff.fails > 0) await saveBackoff(noBackoff)
     return
   }
   if (protocolResult.kind === 'disabled') {

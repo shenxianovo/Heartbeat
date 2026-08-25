@@ -13,6 +13,7 @@ export interface BrowserProtocolSession {
   specRevision: number
   expiresAt: string
   limits: ProtocolLimits
+  flushPeriodMilliseconds: number
 }
 
 export interface BrowserActivationAttempt {
@@ -25,6 +26,14 @@ export interface BrowserActivationAttempt {
 export interface BrowserPublishAttempt {
   messageId: string
   snapshots: SegmentSnapshot[]
+}
+
+export interface BrowserPendingGap {
+  messageId: string
+  start: string
+  end: string
+  reason: 'buffer_overflow'
+  estimatedFactsLost: number
 }
 
 interface ProtocolLimits {
@@ -44,6 +53,9 @@ export type ProtocolUploadResult =
       kind: 'acked'
       acknowledgedIds: string[]
       acknowledgedRevisions: Record<string, number>
+      rejectedRevisions: Record<string, number>
+      retryAfterMilliseconds?: number
+      gapAcknowledged?: boolean
       session: BrowserProtocolSession
     }
   | { kind: 'disabled' }
@@ -52,6 +64,7 @@ export type ProtocolUploadResult =
       activationAttempt?: BrowserActivationAttempt
       publishAttempt?: BrowserPublishAttempt
       session?: BrowserProtocolSession
+      gapAcknowledged?: boolean
     }
   | { kind: 'legacy-required' }
 
@@ -62,7 +75,7 @@ interface HelloResponse {
 interface InitializeResponse {
   spec: {
     revision: number
-    config: { value: { enabled?: boolean } }
+    config: { value: { enabled?: boolean; flushPeriodMs?: number } }
   }
   limits: ProtocolLimits
 }
@@ -76,7 +89,12 @@ interface ReadyResponse {
 }
 
 interface AckResponse {
-  results: { index: number; status: string }[]
+  results: {
+    index: number
+    status: string
+    retryAfterMs?: number
+    error?: { code?: string; message?: string }
+  }[]
 }
 
 interface ProtocolMessage<T> {
@@ -139,6 +157,7 @@ export async function openBrowserProtocolSession(
   port: number,
   appHint: string,
   attempt: BrowserActivationAttempt,
+  applySpec?: (spec: { enabled: boolean; flushPeriodMilliseconds: number }) => Promise<void>,
 ): Promise<BrowserProtocolSession | 'disabled' | 'legacy-required' | 'rejected' | null> {
   try {
     const hello = await fetch(`http://127.0.0.1:${port}${ROUTE}/hello`, {
@@ -171,6 +190,9 @@ export async function openBrowserProtocolSession(
     const initializeMessage = (await initialize.json()) as ProtocolMessage<InitializeResponse>
     const initialized = initializeMessage.body
     if (initialized.spec.config.value.enabled === false) return 'disabled'
+    const flushPeriodMilliseconds = positiveInteger(initialized.spec.config.value.flushPeriodMs)
+    if (flushPeriodMilliseconds === undefined) return 'rejected'
+    await applySpec?.({ enabled: true, flushPeriodMilliseconds })
 
     const initializedAck = await fetch(
       `http://127.0.0.1:${port}${ROUTE}/${accepted.activationId}/initialized`,
@@ -236,6 +258,7 @@ export async function openBrowserProtocolSession(
       specRevision: initialized.spec.revision,
       expiresAt: readyAcknowledgement.lease.expiresAt,
       limits: normalizeLimits(initialized.limits),
+      flushPeriodMilliseconds,
     }
   } catch {
     return null
@@ -277,7 +300,13 @@ export async function publishBrowserFacts(
   const facts = batch.map((snapshot) => toProtocolFact(snapshot, session.streamId))
   if (facts.some((fact) => fact === null)) return { kind: 'legacy-required' }
   if (facts.length === 0) {
-    return { kind: 'acked', acknowledgedIds: [], acknowledgedRevisions: {}, session }
+    return {
+      kind: 'acked',
+      acknowledgedIds: [],
+      acknowledgedRevisions: {},
+      rejectedRevisions: {},
+      session,
+    }
   }
   const attempt = previousAttempt ?? { messageId: uuidv7(), snapshots: batch }
   await persistAttempt?.(attempt)
@@ -302,6 +331,12 @@ export async function publishBrowserFacts(
     if (!response.ok) return { kind: 'unavailable' }
     const acknowledgement = ((await response.json()) as ProtocolMessage<AckResponse>).body
     const acknowledgedIds = acknowledgedSnapshotIds(batch, acknowledgement)
+    const rejected = acknowledgement.results.filter((result) =>
+      Number.isInteger(result.index) && result.index >= 0 && result.index < batch.length &&
+      result.status === 'rejected')
+    const retries = acknowledgement.results
+      .filter((result) => result.status === 'retry')
+      .map((result) => positiveInteger(result.retryAfterMs) ?? 1_000)
     return {
       kind: 'acked',
       acknowledgedIds,
@@ -311,6 +346,11 @@ export async function publishBrowserFacts(
           snapshotRevision(batch.find((snapshot) => snapshot.id === id)!),
         ]),
       ),
+      rejectedRevisions: Object.fromEntries(rejected.map((result) => [
+        batch[result.index].id,
+        snapshotRevision(batch[result.index]),
+      ])),
+      ...(retries.length === 0 ? {} : { retryAfterMilliseconds: Math.max(...retries) }),
       session,
     }
   } catch {
@@ -327,6 +367,8 @@ export async function uploadWithBrowserProtocol(
   previousPublishAttempt?: BrowserPublishAttempt,
   persistActivationAttempt?: (attempt: BrowserActivationAttempt) => Promise<void>,
   persistPublishAttempt?: (attempt: BrowserPublishAttempt) => Promise<void>,
+  applySpec?: (spec: { enabled: boolean; flushPeriodMilliseconds: number }) => Promise<void>,
+  pendingGap?: BrowserPendingGap,
 ): Promise<ProtocolUploadResult> {
   if (!appHint) return { kind: 'legacy-required' }
   const renewed = previousSession?.port === port
@@ -339,17 +381,70 @@ export async function uploadWithBrowserProtocol(
     readyMessageId: uuidv7(),
   }
   if (renewed === null) await persistActivationAttempt?.(activationAttempt)
-  const session = renewed ?? await openBrowserProtocolSession(port, appHint, activationAttempt)
+  const session = renewed ?? await openBrowserProtocolSession(port, appHint, activationAttempt, applySpec)
   if (session === 'disabled') return { kind: 'disabled' }
   if (session === 'legacy-required') return { kind: 'legacy-required' }
   if (session === 'rejected') return { kind: 'unavailable' }
   if (session === null) return { kind: 'unavailable', activationAttempt }
-  return publishBrowserFacts(
+  let gapAcknowledged = false
+  if (pendingGap !== undefined) {
+    const gapResult = await reportBrowserGap(session, pendingGap)
+    if (gapResult !== 'acked') {
+      return {
+        kind: 'unavailable',
+        session,
+      }
+    }
+    gapAcknowledged = true
+  }
+  const result = await publishBrowserFacts(
     session,
     snapshots,
     renewed === null && previousSession !== undefined ? undefined : previousPublishAttempt,
     persistPublishAttempt,
   )
+  return result.kind === 'acked' || result.kind === 'unavailable'
+    ? { ...result, ...(gapAcknowledged ? { gapAcknowledged: true } : {}) }
+    : result
+}
+
+export async function reportBrowserGap(
+  session: BrowserProtocolSession,
+  gap: BrowserPendingGap,
+): Promise<'acked' | 'unavailable' | 'rejected'> {
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${session.port}${ROUTE}/${session.activationId}/gap`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(message(
+          'heartbeat.collector/1',
+          'stream.gap',
+          gap.messageId,
+          session.activationId,
+          {
+            leaseToken: session.leaseToken,
+            streamId: session.streamId,
+            gap: {
+              start: gap.start,
+              end: gap.end,
+              reason: gap.reason,
+              estimatedFactsLost: gap.estimatedFactsLost,
+            },
+          },
+        )),
+      },
+    )
+    if (!response.ok) return 'rejected'
+    const acknowledgement = (await response.json()) as ProtocolMessage<{ status?: string }>
+    return acknowledgement.type === 'stream.gapAck' &&
+      acknowledgement.body.status !== 'rejected' && acknowledgement.body.status !== 'retry'
+      ? 'acked'
+      : 'unavailable'
+  } catch {
+    return 'unavailable'
+  }
 }
 
 function takeBatchWithinByteLimit(

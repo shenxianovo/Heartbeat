@@ -270,6 +270,24 @@ public class SegmentIngestRequestHandlerTests : IDisposable
     }
 
     [Fact]
+    public void PackageDeclaration_SameVersion_ReplacesLegacySelfReportedDocument()
+    {
+        _config.Update(config => config.Collectors["browser"] = new Heartbeat.Desktop.Windows.Models.CollectorEntry
+        {
+            DeclarationJson = BrowserDeclaration,
+            DeclarationVersion = 2
+        });
+        const string packageDeclaration =
+            """{"source":"browser","version":2,"layers":[{"readings":[{"name":"site","from":"payload.attributes.site"}]}]}""";
+
+        using var registry = new HubConfigurationAdapter(_config);
+        registry.StoreVerifiedPackageDeclaration("browser", packageDeclaration, 2);
+
+        Assert.Equal(packageDeclaration, _config.Current.Collectors["browser"].DeclarationJson);
+        Assert.Equal(2, _config.Current.Collectors["browser"].DeclarationVersion);
+    }
+
+    [Fact]
     public async Task Declaration_SourceMismatch_400()
     {
         // 传输信任线：不许经邻居的路径替它声明。

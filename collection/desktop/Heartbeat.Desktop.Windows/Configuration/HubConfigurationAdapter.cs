@@ -81,6 +81,23 @@ public sealed class HubConfigurationAdapter : IHubConfiguration, ICollectorRegis
         });
     }
 
+    public void StoreVerifiedPackageDeclaration(string source, string declarationJson, int version)
+    {
+        _config.Update(config =>
+        {
+            if (!config.Collectors.TryGetValue(source, out var entry))
+            {
+                entry = new CollectorEntry();
+                config.Collectors[source] = entry;
+            }
+            if (entry.DeclarationVersion != version || entry.DeclarationJson != declarationJson)
+            {
+                entry.DeclarationJson = declarationJson;
+                entry.DeclarationVersion = version;
+            }
+        });
+    }
+
     private void OnConfigChanged(AgentConfig _) => Changed?.Invoke();
 
     private static CollectorRegistration ToRegistration(CollectorEntry entry)

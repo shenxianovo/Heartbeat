@@ -13,4 +13,11 @@ public interface ICollectorRegistry
     CollectorRegistration Touch(string source, int? flushPeriodMs = null);
     void Discover(IEnumerable<string> sources);
     void StoreDeclaration(string source, string declarationJson, int version);
+
+    /// <summary>
+    /// Stores a declaration verified from the active Collector Package. Package content is
+    /// authoritative over a legacy self-reported document at the same semantic version.
+    /// </summary>
+    void StoreVerifiedPackageDeclaration(string source, string declarationJson, int version) =>
+        StoreDeclaration(source, declarationJson, version);
 }

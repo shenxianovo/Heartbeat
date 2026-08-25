@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SegmentSnapshot } from '../src/fold'
-import { normalizeQueuedSnapshots } from '../src/queue'
+import { enqueueBounded, normalizeQueuedSnapshots } from '../src/queue'
 
 function legacySnapshot(): SegmentSnapshot & { appName: string } {
   return {
@@ -51,5 +51,27 @@ describe('normalizeQueuedSnapshots', () => {
   it('旧缓存缺少 isFinal 时按开放快照提升', () => {
     const { isFinal: _isFinal, ...stored } = legacySnapshot()
     expect(normalizeQueuedSnapshots({ s1: stored }, 'edge').s1.isFinal).toBe(false)
+  })
+})
+
+describe('enqueueBounded', () => {
+  it('never evicts unacknowledged entries and reports only new overflow snapshots', () => {
+    const first = legacySnapshot()
+    const second = { ...legacySnapshot(), id: 's2' }
+
+    const result = enqueueBounded({ s1: first }, [second], 1)
+
+    expect(result.queue).toEqual({ s1: first })
+    expect(result.overflow).toEqual([second])
+  })
+
+  it('allows a newer revision to replace the same queued Fact at capacity', () => {
+    const first = legacySnapshot()
+    const grown = { ...first, endTime: '2026-08-11T00:02:00.000Z' }
+
+    const result = enqueueBounded({ s1: first }, [grown], 1)
+
+    expect(result.queue.s1).toEqual(grown)
+    expect(result.overflow).toEqual([])
   })
 })

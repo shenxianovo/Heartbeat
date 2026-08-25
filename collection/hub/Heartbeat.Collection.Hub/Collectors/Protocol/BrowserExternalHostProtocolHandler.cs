@@ -31,7 +31,7 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
     private readonly LocalCollectorPackage _package;
     private readonly SubjectReference _subject;
     private readonly Dictionary<Guid, Session> _sessions = [];
-    private readonly Dictionary<Guid, Guid> _helloAttempts = [];
+    private readonly Dictionary<Guid, HelloAttempt> _helloAttempts = [];
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -76,15 +76,37 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         if (path is null || !path.StartsWith(RoutePrefix, StringComparison.Ordinal))
             return null;
         ExpireLeases();
+        Guid? replyTo = null;
+        Guid? responseActivationId = null;
+        string? rejectedType = null;
+        var responseProtocol = "heartbeat.collector/1";
+
+        async ValueTask<ProtocolMessage<T>> ReadRequest<T>(
+            string protocol,
+            string type,
+            string failureType,
+            Guid? activationId)
+        {
+            var message = await DeserializeAsync<ProtocolMessage<T>>(body, cancellationToken);
+            replyTo = message.MessageId;
+            responseActivationId = activationId;
+            rejectedType = failureType;
+            responseProtocol = protocol;
+            if (message.Protocol != protocol || message.Type != type ||
+                !IsUuidV7(message.MessageId) || message.Body is null ||
+                message.ReplyTo is not null || message.ActivationId != activationId)
+                throw new JsonException("Collector Protocol envelope is malformed or does not match the HTTP route.");
+            return message;
+        }
+
         try
         {
             if (httpMethod == "POST" && path == $"{RoutePrefix}/hello")
-                return HandleHello(await DeserializeMessageAsync<HelloRequest>(
-                    body,
+                return HandleHello(await ReadRequest<HelloRequest>(
                     "heartbeat.collector.bootstrap/1",
                     "activation.hello",
-                    null,
-                    cancellationToken));
+                    "activation.rejected",
+                    null));
             if (!TryParseSessionPath(path, out var activationId, out var operation) || httpMethod != "POST")
                 return Json(404, new { error = Error("protocol_invalid_message", "Unknown ExternalHost protocol route.") });
             return operation switch
@@ -93,33 +115,50 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
                 "initialized" => HandleInitialized(
                     activationId,
                     await DeserializeAsync<ProtocolMessage<InitializedRequest>>(body, cancellationToken)),
-                "streams" => HandleStreams(activationId, await DeserializeMessageAsync<StreamsOpenRequest>(
-                    body, "heartbeat.collector/1", "streams.open", activationId, cancellationToken)),
-                "ready" => HandleReady(activationId, await DeserializeMessageAsync<ReadyRequest>(
-                    body, "heartbeat.collector/1", "activation.ready", activationId, cancellationToken)),
+                "streams" => HandleStreams(activationId, await ReadRequest<StreamsOpenRequest>(
+                    "heartbeat.collector/1", "streams.open", "streams.rejected", activationId)),
+                "ready" => HandleReady(activationId, await ReadRequest<ReadyRequest>(
+                    "heartbeat.collector/1", "activation.ready", "activation.readyRejected", activationId)),
                 "renew" => HandleRenew(activationId, await DeserializeAsync<RenewRequest>(body, cancellationToken)),
                 "facts" => await HandleFactsAsync(
                     activationId,
-                    await DeserializeMessageAsync<PublishRequest>(
-                        body, "heartbeat.collector/1", "facts.publish", activationId, cancellationToken),
+                    await ReadRequest<PublishRequest>(
+                        "heartbeat.collector/1", "facts.publish", "facts.rejected", activationId),
                     cancellationToken),
                 "gap" => await HandleGapAsync(
                     activationId,
-                    await DeserializeMessageAsync<GapRequest>(
-                        body, "heartbeat.collector/1", "stream.gap", activationId, cancellationToken),
+                    await ReadRequest<GapRequest>(
+                        "heartbeat.collector/1", "stream.gap", "stream.gapRejected", activationId),
                     cancellationToken),
-                "drained" => HandleDrained(activationId, await DeserializeMessageAsync<DrainedRequest>(
-                    body, "heartbeat.collector/1", "activation.drained", activationId, cancellationToken)),
+                "drained" => HandleDrained(activationId, await ReadRequest<DrainedRequest>(
+                    "heartbeat.collector/1", "activation.drained", "activation.drainRejected", activationId)),
                 _ => Json(404, new { error = Error("protocol_invalid_message", "Unknown ExternalHost protocol operation.") })
             };
         }
         catch (JsonException exception)
         {
-            return Json(400, new { error = Error("protocol_invalid_message", exception.Message) });
+            var error = Error("protocol_invalid_message", exception.Message);
+            return replyTo is { } requestId && rejectedType is not null
+                ? ProtocolResponse(
+                    400,
+                    rejectedType,
+                    responseActivationId,
+                    requestId,
+                    new { error },
+                    protocol: responseProtocol)
+                : Json(400, new { error });
         }
         catch (CollectorActivationException exception)
         {
-            return Json(exception.Error.Retryable ? 503 : 409, new { error = exception.Error });
+            return replyTo is { } requestId && rejectedType is not null
+                ? ProtocolResponse(
+                    exception.Error.Retryable ? 503 : 409,
+                    rejectedType,
+                    responseActivationId,
+                    requestId,
+                    new { error = exception.Error },
+                    protocol: responseProtocol)
+                : Json(exception.Error.Retryable ? 503 : 409, new { error = exception.Error });
         }
     }
 
@@ -133,7 +172,6 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
             foreach (var session in expired)
             {
                 _sessions.Remove(session.ActivationId);
-                _helloAttempts.Remove(session.HelloMessageId);
             }
         }
         foreach (var session in expired)
@@ -175,15 +213,30 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         var request = message.Body;
         var validationError = ValidateHello(request);
         if (validationError is not null)
-            return Json(400, new { error = validationError });
+            return HelloRejected(message.MessageId, validationError, 400);
         lock (_gate)
         {
-            if (_helloAttempts.TryGetValue(message.MessageId, out var replayId) &&
-                _sessions.TryGetValue(replayId, out var replay))
-                return HelloResponse(replay, message.MessageId);
+            if (_helloAttempts.TryGetValue(message.MessageId, out var attempt))
+            {
+                if (attempt.Error is not null)
+                    return HelloRejected(message.MessageId, attempt.Error, 403);
+                if (attempt.ActivationId is { } replayId && _sessions.TryGetValue(replayId, out var replay))
+                    return HelloResponse(replay, message.MessageId);
+                return HelloRejected(
+                    message.MessageId,
+                    Error("activation_stopping", "The original ExternalHost Activation attempt has ended."),
+                    409);
+            }
         }
 
-        _registry.Touch(Source, _options.FlushPeriodMilliseconds);
+        var registration = _registry.Touch(Source, _options.FlushPeriodMilliseconds);
+        if (!registration.Enabled)
+        {
+            var error = Error("activation_stopping", "Browser Collector is disabled by Desired State.");
+            lock (_gate)
+                _helloAttempts[message.MessageId] = new HelloAttempt(null, error);
+            return HelloRejected(message.MessageId, error, 403);
+        }
         var instance = ConvergeDesiredSpec();
         Session[] replaced;
         lock (_gate)
@@ -213,7 +266,7 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         lock (_gate)
         {
             _sessions.Add(activationId, session);
-            _helloAttempts[message.MessageId] = activationId;
+            _helloAttempts[message.MessageId] = new HelloAttempt(activationId, null);
         }
         return HelloResponse(session, message.MessageId);
     }
@@ -276,17 +329,21 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
             return StreamsResponse(session, message.MessageId);
         if (request.Bindings is null ||
             request.Bindings.Any(binding => binding is null || binding.Dimensions is null))
-            return Json(400, new
-            {
-                error = Error("protocol_invalid_message", "ready messageId and bindings are malformed.")
-            });
+            return Rejected(
+                400,
+                "streams.rejected",
+                activationId,
+                message.MessageId,
+                Error("protocol_invalid_message", "streams.open bindings are malformed."));
         if (request.Bindings.Any(binding => binding.Dimensions.ContainsKey("appHint")))
-            return Json(400, new
-            {
-                error = Error(
+            return Rejected(
+                400,
+                "streams.rejected",
+                activationId,
+                message.MessageId,
+                Error(
                     "output_not_declared",
-                    "appHint is supplied by the ExternalHost Binding and cannot be overridden by the Collector.")
-            });
+                    "appHint is supplied by the ExternalHost Binding and cannot be overridden by the Collector."));
         var bindings = request.Bindings.Select(binding => new OutputBinding(
             binding.BindingId,
             binding.OutputId,
@@ -311,10 +368,12 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         var request = message.Body;
         var session = GetSession(activationId);
         if (session.Activation is null)
-            return Json(400, new
-            {
-                error = Error("protocol_invalid_message", "ready messageId is malformed or streams are not open.")
-            });
+            return Rejected(
+                400,
+                "activation.readyRejected",
+                activationId,
+                message.MessageId,
+                Error("protocol_invalid_message", "streams.opened is required before activation.ready."));
         if (session.Activation.State == CollectorActivationState.Ready)
             return ReadyResponse(session, message.MessageId);
         var activation = _runtime.MarkExternalHostReady(session.Activation, request.AppliedSpecRevision);
@@ -331,8 +390,7 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
 
     private ProtocolHttpResponse HandleRenew(Guid activationId, RenewRequest request)
     {
-        var session = GetSession(activationId);
-        if (session.Activation is null || !FixedTimeEquals(session.LeaseToken, request.LeaseToken))
+        if (!TryGetActiveLease(activationId, request.LeaseToken, out var session))
             return Json(409, new { error = Error("activation_stopping", "ExternalHost lease is not active.") });
         var renewed = session with { ExpiresAt = _timeProvider.GetUtcNow() + _options.LeaseDuration };
         ReplaceSession(renewed);
@@ -345,20 +403,34 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         CancellationToken cancellationToken)
     {
         var request = message.Body;
-        var session = GetSession(activationId);
-        if (session.Activation is null || !FixedTimeEquals(session.LeaseToken, request.LeaseToken))
-            return Json(409, new { error = Error("activation_stopping", "ExternalHost lease is not active.") });
+        if (!TryGetActiveLease(activationId, request.LeaseToken, out var session))
+            return Rejected(
+                409,
+                "facts.rejected",
+                activationId,
+                message.MessageId,
+                Error("activation_stopping", "ExternalHost lease is not active."));
         if (_registry.Snapshot.TryGetValue(Source, out var registration) && !registration.Enabled)
-            return Json(403, new { error = Error("activation_stopping", "Browser Collector is disabled by Desired State.") });
+            return Rejected(
+                403,
+                "facts.rejected",
+                activationId,
+                message.MessageId,
+                Error("activation_stopping", "Browser Collector is disabled by Desired State."));
         if (request.Facts is null || request.Facts.Count == 0)
-            return Json(400, new { error = Error("protocol_invalid_message", "facts.publish must contain Facts.") });
-        var acknowledgement = await session.Activation.PublishAsync(
+            return Rejected(
+                400,
+                "facts.rejected",
+                activationId,
+                message.MessageId,
+                Error("protocol_invalid_message", "facts.publish must contain Facts."));
+        var acknowledgement = await session.Activation!.PublishAsync(
             request.Facts[0].StreamId,
             message.MessageId,
             request.Facts,
             cancellationToken);
         if (acknowledgement.IsMessageRejected)
-            return Json(400, new { error = acknowledgement.MessageError });
+            return Rejected(400, "facts.rejected", activationId, message.MessageId, acknowledgement.MessageError!);
         return ProtocolResponse(
             200,
             "facts.ack",
@@ -373,35 +445,42 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         CancellationToken cancellationToken)
     {
         var request = message.Body;
-        var session = GetSession(activationId);
-        if (session.Activation is null || !FixedTimeEquals(session.LeaseToken, request.LeaseToken))
-            return Json(409, new { error = Error("activation_stopping", "ExternalHost lease is not active.") });
-        var outcome = await session.Activation.ReportGapAsync(
+        if (!TryGetActiveLease(activationId, request.LeaseToken, out var session))
+            return Rejected(
+                409,
+                "stream.gapRejected",
+                activationId,
+                message.MessageId,
+                Error("activation_stopping", "ExternalHost lease is not active."));
+        var outcome = await session.Activation!.ReportGapAsync(
             request.StreamId,
             message.MessageId,
             request.Gap,
             cancellationToken);
-        return ProtocolResponse(
-            outcome.Status == GapDeliveryStatus.Rejected ? 400 : 200,
-            "stream.gapAck",
-            activationId,
-            message.MessageId,
-            outcome);
+        return outcome.Status == GapDeliveryStatus.Rejected
+            ? Rejected(400, "stream.gapRejected", activationId, message.MessageId, outcome.Error!)
+            : ProtocolResponse(200, "stream.gapAck", activationId, message.MessageId, outcome);
     }
 
     private ProtocolHttpResponse HandleDrained(Guid activationId, ProtocolMessage<DrainedRequest> message)
     {
         var request = message.Body;
-        var session = GetSession(activationId);
-        if (session.Activation is null || !FixedTimeEquals(session.LeaseToken, request.LeaseToken))
-            return Json(409, new { error = Error("activation_stopping", "ExternalHost lease is not active.") });
+        if (!TryGetActiveLease(activationId, request.LeaseToken, out var session))
+            return Rejected(
+                409,
+                "activation.drainRejected",
+                activationId,
+                message.MessageId,
+                Error("activation_stopping", "ExternalHost lease is not active."));
         if (request.PendingFacts < 0 || request.PendingGaps < 0)
-            return Json(400, new { error = Error("protocol_invalid_message", "Pending counts must not be negative.") });
+            return Rejected(
+                400,
+                "activation.drainRejected",
+                activationId,
+                message.MessageId,
+                Error("protocol_invalid_message", "Pending counts must not be negative."));
         StopAndRemove(session, ExternalHostActivationStopReason.CollectorDrained);
-        return ProtocolResponse(200, "activation.drainedAck", activationId, message.MessageId, new
-        {
-            externalHostTerminated = false
-        });
+        return new ProtocolHttpResponse(204, string.Empty, false);
     }
 
     private CollectorInstance ConvergeDesiredSpec()
@@ -423,7 +502,7 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
     {
         if (_package.ObservationDeclaration is not { } declaration)
             return;
-        _registry.StoreDeclaration(Source, declaration.Json, declaration.Version);
+        _registry.StoreVerifiedPackageDeclaration(Source, declaration.Json, declaration.Version);
     }
 
     private CollectorProtocolError? ValidateHello(HelloRequest request)
@@ -455,6 +534,12 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
                 : throw ActivationFailure("activation_stopping", "ExternalHost Activation was not found.");
     }
 
+    private bool TryGetActiveLease(Guid activationId, string? leaseToken, out Session session)
+    {
+        session = GetSession(activationId);
+        return session.Activation is not null && FixedTimeEquals(session.LeaseToken, leaseToken);
+    }
+
     private void ReplaceSession(Session session)
     {
         lock (_gate)
@@ -466,7 +551,6 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         lock (_gate)
         {
             _sessions.Remove(session.ActivationId);
-            _helloAttempts.Remove(session.HelloMessageId);
         }
         if (session.Activation is null)
             _runtime.AbandonExternalHostActivation(session.ActivationId);
@@ -486,6 +570,18 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
             selectedCapabilities = session.Initialization.SelectedCapabilities
         },
         protocol: "heartbeat.collector.bootstrap/1");
+
+    private static ProtocolHttpResponse HelloRejected(
+        Guid replyTo,
+        CollectorProtocolError error,
+        int statusCode) =>
+        ProtocolResponse(
+            statusCode,
+            "activation.rejected",
+            null,
+            replyTo,
+            new { error },
+            protocol: "heartbeat.collector.bootstrap/1");
 
     private ProtocolHttpResponse ReadyResponse(Session session, Guid replyTo) => ProtocolResponse(
         200,
@@ -563,6 +659,14 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
             body
         });
 
+    private static ProtocolHttpResponse Rejected(
+        int statusCode,
+        string type,
+        Guid activationId,
+        Guid replyTo,
+        CollectorProtocolError error) =>
+        ProtocolResponse(statusCode, type, activationId, replyTo, new { error });
+
     private static CollectorProtocolError Error(string code, string message) => new(code, message, false);
 
     private static CollectorActivationException ActivationFailure(string code, string message) =>
@@ -590,6 +694,8 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         ExternalHostCollectorActivation? Activation,
         string? LeaseToken,
         DateTimeOffset ExpiresAt);
+
+    private sealed record HelloAttempt(Guid? ActivationId, CollectorProtocolError? Error);
 
     public sealed record ProtocolMessage<T>(
         string Protocol,

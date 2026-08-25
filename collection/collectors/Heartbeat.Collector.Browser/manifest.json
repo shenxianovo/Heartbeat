@@ -12,6 +12,6 @@
     "page": "options.html",
     "open_in_tab": false
   },
-  "permissions": ["tabs", "storage", "alarms"],
+  "permissions": ["tabs", "storage", "unlimitedStorage", "alarms"],
   "host_permissions": ["http://127.0.0.1/*"]
 }

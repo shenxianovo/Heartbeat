@@ -3,10 +3,12 @@ import type { SegmentSnapshot } from '../src/fold'
 import {
   acknowledgedSnapshotIds,
   publishBrowserFacts,
+  reportBrowserGap,
   snapshotRevision,
   toProtocolFact,
   uploadWithBrowserProtocol,
   type BrowserProtocolSession,
+  type BrowserPendingGap,
 } from '../src/protocol'
 
 const snapshot = (id = '0198d5eb-fc31-7d7b-8bf0-c2d009ec8999'): SegmentSnapshot => ({
@@ -68,7 +70,7 @@ describe('browser Collector Protocol outbox', () => {
         activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
       })
       if (url.endsWith('/initialize')) return protocolResponse('activation.initialize', {
-        spec: { revision: 3, config: { value: { enabled: true } } },
+        spec: { revision: 3, config: { value: { enabled: true, flushPeriodMs: 30_000 } } },
         limits: { maxFactsPerBatch: 500, maxBatchBytes: 1_048_576, maxInFlightBatches: 1 },
       })
       if (url.endsWith('/initialized')) return new Response(null, { status: 204 })
@@ -81,9 +83,21 @@ describe('browser Collector Protocol outbox', () => {
       return protocolResponse('facts.ack', { results: [{ index: 0, status: 'committed' }] })
     }))
 
-    const result = await uploadWithBrowserProtocol(24820, 'edge', [snapshot()])
+    const applySpec = vi.fn(async () => {})
+    const result = await uploadWithBrowserProtocol(
+      24820,
+      'edge',
+      [snapshot()],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      applySpec,
+    )
 
     expect(result.kind).toBe('acked')
+    expect(applySpec).toHaveBeenCalledWith({ enabled: true, flushPeriodMilliseconds: 30_000 })
     if (result.kind === 'acked') expect(result.acknowledgedIds).toEqual([snapshot().id])
     expect(calls.map((call) => call.url.split('/').at(-1))).toEqual([
       'hello', 'initialize', 'initialized', 'streams', 'ready', 'facts',
@@ -100,7 +114,7 @@ describe('browser Collector Protocol outbox', () => {
         activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
       })
       if (url.endsWith('/initialize')) return protocolResponse('activation.initialize', {
-        spec: { revision: 3, config: { value: { enabled: true } } },
+        spec: { revision: 3, config: { value: { enabled: true, flushPeriodMs: 30_000 } } },
         limits: { maxFactsPerBatch: 500, maxBatchBytes: 1_048_576, maxInFlightBatches: 1 },
       })
       if (url.endsWith('/initialized')) return new Response(null, { status: 204 })
@@ -149,6 +163,7 @@ describe('browser Collector Protocol outbox', () => {
       specRevision: 3,
       expiresAt: '2026-08-25T08:01:00Z',
       limits: { maxFactsPerBatch: 1, maxBatchBytes: 1_048_576, maxInFlightBatches: 1 },
+      flushPeriodMilliseconds: 30_000,
     }
     const items = [snapshot(), snapshot('0198d5eb-fc31-7d7b-8bf0-c2d009ec8998')]
 
@@ -186,6 +201,7 @@ describe('browser Collector Protocol outbox', () => {
       specRevision: 3,
       expiresAt: '2026-08-25T08:01:00Z',
       limits: { maxFactsPerBatch: 2, maxBatchBytes: 900, maxInFlightBatches: 1 },
+      flushPeriodMilliseconds: 30_000,
     }
     const oversized = { ...snapshot(), title: '你'.repeat(500) }
     const deliverable = snapshot('0198d5eb-fc31-7d7b-8bf0-c2d009ec8998')
@@ -195,5 +211,64 @@ describe('browser Collector Protocol outbox', () => {
     expect(result.kind).toBe('acked')
     expect(publishedFactId).toBe(deliverable.id)
     if (result.kind === 'acked') expect(result.acknowledgedIds).toEqual([deliverable.id])
+  })
+
+  it('surfaces permanent rejection and retry timing separately from ACKs', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => protocolResponse('facts.ack', {
+      results: [
+        { index: 0, status: 'rejected', error: { code: 'fact_schema_invalid' } },
+        { index: 1, status: 'retry', retryAfterMs: 4_000, error: { code: 'hub_backpressure' } },
+      ],
+    })))
+    const session: BrowserProtocolSession = {
+      port: 24820,
+      activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
+      leaseToken: 'lease',
+      streamId: '0198d5e2-e0d4-7b30-9da7-342ee261bf62',
+      specRevision: 3,
+      expiresAt: '2026-08-25T08:01:00Z',
+      limits: { maxFactsPerBatch: 2, maxBatchBytes: 1_048_576, maxInFlightBatches: 1 },
+      flushPeriodMilliseconds: 30_000,
+    }
+    const rejected = snapshot()
+    const retry = snapshot('0198d5eb-fc31-7d7b-8bf0-c2d009ec8998')
+
+    const result = await publishBrowserFacts(session, [rejected, retry])
+
+    expect(result.kind).toBe('acked')
+    if (result.kind === 'acked') {
+      expect(result.acknowledgedIds).toEqual([])
+      expect(result.rejectedRevisions[rejected.id]).toBe(snapshotRevision(rejected))
+      expect(result.retryAfterMilliseconds).toBe(4_000)
+    }
+  })
+
+  it('reports bounded-outbox loss through the durable stream-gap capability', async () => {
+    let request: { messageId?: string; body?: { gap?: { reason?: string } } } = {}
+    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      request = JSON.parse(String(init?.body))
+      return protocolResponse('stream.gapAck', { status: 'committed' })
+    }))
+    const session: BrowserProtocolSession = {
+      port: 24820,
+      activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
+      leaseToken: 'lease',
+      streamId: '0198d5e2-e0d4-7b30-9da7-342ee261bf62',
+      specRevision: 3,
+      expiresAt: '2026-08-25T08:01:00Z',
+      limits: { maxFactsPerBatch: 2, maxBatchBytes: 1_048_576, maxInFlightBatches: 1 },
+      flushPeriodMilliseconds: 30_000,
+    }
+    const gap: BrowserPendingGap = {
+      messageId: '0198d5eb-fc31-7d7b-8bf0-c2d009ec8999',
+      start: '2026-08-25T08:00:00.000Z',
+      end: '2026-08-25T08:01:00.000Z',
+      reason: 'buffer_overflow',
+      estimatedFactsLost: 3,
+    }
+
+    await expect(reportBrowserGap(session, gap)).resolves.toBe('acked')
+    expect(request.messageId).toBe(gap.messageId)
+    expect(request.body?.gap?.reason).toBe('buffer_overflow')
   })
 })

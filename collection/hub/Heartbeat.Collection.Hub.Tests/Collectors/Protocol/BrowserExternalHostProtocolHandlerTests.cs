@@ -149,6 +149,37 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
         Assert.False(_registry.Enabled);
     }
 
+    [Fact]
+    public async Task DisabledHelloIsRejectedBeforeInitializeAndExpiredHelloReplayDoesNotCreateActivation()
+    {
+        _registry.Enabled = false;
+        var disabled = await Post("/v1/collector-protocol/browser/hello", Message(
+            "activation.hello",
+            """{"artifactId":"browser.extension","artifactHash":"sha256:0c4d749ffa5d7dc6467c04a66cc054c54433a951b2e00555215d923bf7a14f46","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
+            bootstrap: true));
+        Assert.Equal(403, disabled.StatusCode);
+        using (var json = JsonDocument.Parse(disabled.Body))
+            Assert.Equal("activation.rejected", json.RootElement.GetProperty("type").GetString());
+
+        _registry.Enabled = true;
+        var helloMessageId = Guid.CreateVersion7();
+        var helloBody = Message(
+            "activation.hello",
+            """{"artifactId":"browser.extension","artifactHash":"sha256:0c4d749ffa5d7dc6467c04a66cc054c54433a951b2e00555215d923bf7a14f46","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
+            bootstrap: true,
+            messageId: helloMessageId);
+        Assert.Equal(200, (await Post("/v1/collector-protocol/browser/hello", helloBody)).StatusCode);
+        _time.Advance(TimeSpan.FromSeconds(11));
+        _handler.ExpireLeases();
+
+        var replay = await Post("/v1/collector-protocol/browser/hello", helloBody);
+
+        Assert.Equal(409, replay.StatusCode);
+        using var replayJson = JsonDocument.Parse(replay.Body);
+        Assert.Equal("activation.rejected", replayJson.RootElement.GetProperty("type").GetString());
+        Assert.Equal(helloMessageId, replayJson.RootElement.GetProperty("replyTo").GetGuid());
+    }
+
     private async Task<(Guid ActivationId, Guid StreamId, string LeaseToken)> Activate()
     {
         var hello = await Post("/v1/collector-protocol/browser/hello", Message(
@@ -193,11 +224,12 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
         string body,
         Guid? activationId = null,
         bool bootstrap = false,
-        Guid? replyTo = null) => $$$"""
+        Guid? replyTo = null,
+        Guid? messageId = null) => $$$"""
         {
           "protocol":"{{{(bootstrap ? "heartbeat.collector.bootstrap/1" : "heartbeat.collector/1")}}}",
           "type":"{{{type}}}",
-          "messageId":"{{{Guid.CreateVersion7()}}}",
+          "messageId":"{{{messageId ?? Guid.CreateVersion7()}}}",
           {{{(activationId is null ? string.Empty : $"\"activationId\":\"{activationId}\"," )}}}
           {{{(replyTo is null ? string.Empty : $"\"replyTo\":\"{replyTo}\"," )}}}
           "body":{{{body}}}
