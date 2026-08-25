@@ -43,10 +43,13 @@ public sealed class ExternalHostCollectorProtocolTranscriptTests
         Assert.Equal(4, initialization.Spec.SpecRevision);
         Assert.True(initialization.Spec.Config.GetProperty("enabled").GetBoolean());
 
-        var activation = runtime.ReadyExternalHostActivation(
+        var activation = runtime.OpenExternalHostStreams(
             activationId,
             initialization.Spec.SpecRevision,
             [new OutputBinding("activity", "activity", new Dictionary<string, string>())]);
+        Assert.Equal(CollectorActivationState.OpeningStreams, activation.State);
+        runtime.MarkExternalHostReady(activation, initialization.Spec.SpecRevision);
+        Assert.Equal(CollectorActivationState.Ready, activation.State);
         var stream = activation.Streams["activity"];
         using var payload = JsonDocument.Parse("""{"identityKey":"reference|work","title":"Work"}""");
         var fact = new FactSubmission(

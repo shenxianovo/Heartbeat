@@ -42,40 +42,63 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
     [Fact]
     public async Task BrowserTranscript_ConvergesSpecRegistersDeclarationAndProjectsWithoutChangingWirePayload()
     {
-        var hello = await Post("/v1/collector-protocol/browser/hello", $$$"""
+        var hello = await Post("/v1/collector-protocol/browser/hello", Message(
+            "activation.hello",
+            $$$"""
         {
-          "messageId":"{{{Guid.CreateVersion7()}}}",
           "artifactId":"browser.extension",
           "artifactHash":"sha256:0c4d749ffa5d7dc6467c04a66cc054c54433a951b2e00555215d923bf7a14f46",
           "protocolMajors":[1],
           "supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},
           "appHint":"edge"
         }
-        """);
+        """, bootstrap: true));
         Assert.Equal(200, hello.StatusCode);
         using var helloJson = JsonDocument.Parse(hello.Body);
-        var activationId = helloJson.RootElement.GetProperty("activationId").GetGuid();
-        var specRevision = helloJson.RootElement.GetProperty("spec").GetProperty("specRevision").GetInt64();
-        Assert.True(helloJson.RootElement.GetProperty("spec").GetProperty("config").GetProperty("enabled").GetBoolean());
+        var accepted = helloJson.RootElement.GetProperty("body");
+        var activationId = accepted.GetProperty("activationId").GetGuid();
+        Assert.False(helloJson.RootElement.TryGetProperty("spec", out _));
+        Assert.False(helloJson.RootElement.TryGetProperty("limits", out _));
 
-        var ready = await Post($"/v1/collector-protocol/browser/{activationId}/ready", $$$"""
+        var initialize = await Post($"/v1/collector-protocol/browser/{activationId}/initialize", "{}");
+        using var initializeJson = JsonDocument.Parse(initialize.Body);
+        var initialization = initializeJson.RootElement.GetProperty("body");
+        var specRevision = initialization.GetProperty("spec").GetProperty("revision").GetInt64();
+        Assert.True(initialization.GetProperty("spec").GetProperty("config").GetProperty("value").GetProperty("enabled").GetBoolean());
+        Assert.Equal(500, initialization.GetProperty("limits").GetProperty("maxFactsPerBatch").GetInt32());
+        var initialized = await Post($"/v1/collector-protocol/browser/{activationId}/initialized", Message(
+            "activation.initialized",
+            $$$"""{"appliedSpecRevision":{{{specRevision}}}}""",
+            activationId,
+            replyTo: initializeJson.RootElement.GetProperty("messageId").GetGuid()));
+        Assert.Equal(204, initialized.StatusCode);
+
+        var streams = await Post($"/v1/collector-protocol/browser/{activationId}/streams", Message(
+            "streams.open",
+            $$$"""
         {
-          "messageId":"{{{Guid.CreateVersion7()}}}",
-          "appliedSpecRevision":{{{specRevision}}},
+          "specRevision":{{{specRevision}}},
           "bindings":[{"bindingId":"tabs","outputId":"activeTab","dimensions":{}}]
         }
-        """);
+        """, activationId));
+        Assert.Equal(200, streams.StatusCode);
+        using var streamsJson = JsonDocument.Parse(streams.Body);
+        var streamId = streamsJson.RootElement.GetProperty("body").GetProperty("streams").GetProperty("tabs").GetProperty("streamId").GetGuid();
+
+        var ready = await Post($"/v1/collector-protocol/browser/{activationId}/ready", Message(
+            "activation.ready",
+            $$$"""{"appliedSpecRevision":{{{specRevision}}}}""",
+            activationId));
         Assert.Equal(200, ready.StatusCode);
         using var readyJson = JsonDocument.Parse(ready.Body);
-        var streamId = readyJson.RootElement.GetProperty("streams").GetProperty("tabs").GetProperty("streamId").GetGuid();
-        var leaseToken = readyJson.RootElement.GetProperty("lease").GetProperty("token").GetString()!;
+        var leaseToken = readyJson.RootElement.GetProperty("body").GetProperty("lease").GetProperty("token").GetString()!;
 
         var factId = Guid.CreateVersion7();
-        var publish = await Post($"/v1/collector-protocol/browser/{activationId}/facts", $$$"""
+        var publish = await Post($"/v1/collector-protocol/browser/{activationId}/facts", Message(
+            "facts.publish",
+            $$$"""
         {
-          "messageId":"{{{Guid.CreateVersion7()}}}",
           "leaseToken":"{{{leaseToken}}}",
-          "streamId":"{{{streamId}}}",
           "facts":[{
             "streamId":"{{{streamId}}}",
             "schemaRevision":1,
@@ -87,11 +110,11 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
             "payload":{"identityKey":"https://example.com/docs","title":"Docs","attributes":{"url":"https://example.com/docs?q=1","domain":"example.com","site":"example.com","windowId":7}}
           }]
         }
-        """);
+        """, activationId));
 
         Assert.Equal(200, publish.StatusCode);
         using var ack = JsonDocument.Parse(publish.Body);
-        Assert.Equal("committed", ack.RootElement.GetProperty("results")[0].GetProperty("status").GetString());
+        Assert.Equal("committed", ack.RootElement.GetProperty("body").GetProperty("results")[0].GetProperty("status").GetString());
         var segment = Assert.Single(_sink.GetAndClearSegments());
         Assert.Equal("browser", segment.Source);
         Assert.Equal("win:msedge", segment.AppIdentityKey);
@@ -107,14 +130,14 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
         var session = await Activate();
         _registry.Enabled = false;
 
-        var rejected = await Post($"/v1/collector-protocol/browser/{session.ActivationId}/facts", $$$"""
+        var rejected = await Post($"/v1/collector-protocol/browser/{session.ActivationId}/facts", Message(
+            "facts.publish",
+            $$$"""
         {
-          "messageId":"{{{Guid.CreateVersion7()}}}",
           "leaseToken":"{{{session.LeaseToken}}}",
-          "streamId":"{{{session.StreamId}}}",
           "facts":[]
         }
-        """);
+        """, session.ActivationId));
         Assert.Equal(403, rejected.StatusCode);
 
         _time.Advance(TimeSpan.FromSeconds(11));
@@ -128,20 +151,34 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
 
     private async Task<(Guid ActivationId, Guid StreamId, string LeaseToken)> Activate()
     {
-        var hello = await Post("/v1/collector-protocol/browser/hello", $$$"""
-        {"messageId":"{{{Guid.CreateVersion7()}}}","artifactId":"browser.extension","artifactHash":"sha256:0c4d749ffa5d7dc6467c04a66cc054c54433a951b2e00555215d923bf7a14f46","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}
-        """);
+        var hello = await Post("/v1/collector-protocol/browser/hello", Message(
+            "activation.hello",
+            """{"artifactId":"browser.extension","artifactHash":"sha256:0c4d749ffa5d7dc6467c04a66cc054c54433a951b2e00555215d923bf7a14f46","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
+            bootstrap: true));
         using var helloJson = JsonDocument.Parse(hello.Body);
-        var activationId = helloJson.RootElement.GetProperty("activationId").GetGuid();
-        var revision = helloJson.RootElement.GetProperty("spec").GetProperty("specRevision").GetInt64();
-        var ready = await Post($"/v1/collector-protocol/browser/{activationId}/ready", $$$"""
-        {"messageId":"{{{Guid.CreateVersion7()}}}","appliedSpecRevision":{{{revision}}},"bindings":[{"bindingId":"tabs","outputId":"activeTab","dimensions":{}}]}
-        """);
+        var activationId = helloJson.RootElement.GetProperty("body").GetProperty("activationId").GetGuid();
+        var initialize = await Post($"/v1/collector-protocol/browser/{activationId}/initialize", "{}");
+        using var initializeJson = JsonDocument.Parse(initialize.Body);
+        var revision = initializeJson.RootElement.GetProperty("body").GetProperty("spec").GetProperty("revision").GetInt64();
+        await Post($"/v1/collector-protocol/browser/{activationId}/initialized", Message(
+            "activation.initialized",
+            $$$"""{"appliedSpecRevision":{{{revision}}}}""",
+            activationId,
+            replyTo: initializeJson.RootElement.GetProperty("messageId").GetGuid()));
+        var streams = await Post($"/v1/collector-protocol/browser/{activationId}/streams", Message(
+            "streams.open",
+            $$$"""{"specRevision":{{{revision}}},"bindings":[{"bindingId":"tabs","outputId":"activeTab","dimensions":{}}]}""",
+            activationId));
+        using var streamsJson = JsonDocument.Parse(streams.Body);
+        var ready = await Post($"/v1/collector-protocol/browser/{activationId}/ready", Message(
+            "activation.ready",
+            $$$"""{"appliedSpecRevision":{{{revision}}}}""",
+            activationId));
         using var readyJson = JsonDocument.Parse(ready.Body);
         return (
             activationId,
-            readyJson.RootElement.GetProperty("streams").GetProperty("tabs").GetProperty("streamId").GetGuid(),
-            readyJson.RootElement.GetProperty("lease").GetProperty("token").GetString()!);
+            streamsJson.RootElement.GetProperty("body").GetProperty("streams").GetProperty("tabs").GetProperty("streamId").GetGuid(),
+            readyJson.RootElement.GetProperty("body").GetProperty("lease").GetProperty("token").GetString()!);
     }
 
     private async Task<ProtocolHttpResponse> Post(string path, string json)
@@ -150,6 +187,22 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
         return Assert.IsType<ProtocolHttpResponse>(
             await _handler.HandleAsync("POST", path, body));
     }
+
+    private static string Message(
+        string type,
+        string body,
+        Guid? activationId = null,
+        bool bootstrap = false,
+        Guid? replyTo = null) => $$$"""
+        {
+          "protocol":"{{{(bootstrap ? "heartbeat.collector.bootstrap/1" : "heartbeat.collector/1")}}}",
+          "type":"{{{type}}}",
+          "messageId":"{{{Guid.CreateVersion7()}}}",
+          {{{(activationId is null ? string.Empty : $"\"activationId\":\"{activationId}\"," )}}}
+          {{{(replyTo is null ? string.Empty : $"\"replyTo\":\"{replyTo}\"," )}}}
+          "body":{{{body}}}
+        }
+        """;
 
     public void Dispose()
     {

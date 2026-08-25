@@ -12,29 +12,80 @@ export interface BrowserProtocolSession {
   streamId: string
   specRevision: number
   expiresAt: string
+  limits: ProtocolLimits
+}
+
+export interface BrowserActivationAttempt {
+  helloMessageId: string
+  initializedMessageId: string
+  streamsMessageId: string
+  readyMessageId: string
+}
+
+export interface BrowserPublishAttempt {
+  messageId: string
+  snapshots: SegmentSnapshot[]
+}
+
+interface ProtocolLimits {
+  maxFactsPerBatch: number
+  maxBatchBytes: number
+  maxInFlightBatches: number
+}
+
+const DEFAULT_LIMITS: ProtocolLimits = {
+  maxFactsPerBatch: 500,
+  maxBatchBytes: 1_048_576,
+  maxInFlightBatches: 1,
 }
 
 export type ProtocolUploadResult =
-  | { kind: 'acked'; acknowledgedIds: string[]; session: BrowserProtocolSession }
+  | {
+      kind: 'acked'
+      acknowledgedIds: string[]
+      acknowledgedRevisions: Record<string, number>
+      session: BrowserProtocolSession
+    }
   | { kind: 'disabled' }
-  | { kind: 'unavailable' }
+  | {
+      kind: 'unavailable'
+      activationAttempt?: BrowserActivationAttempt
+      publishAttempt?: BrowserPublishAttempt
+      session?: BrowserProtocolSession
+    }
   | { kind: 'legacy-required' }
 
 interface HelloResponse {
   activationId: string
+}
+
+interface InitializeResponse {
   spec: {
-    specRevision: number
-    config: { enabled?: boolean }
+    revision: number
+    config: { value: { enabled?: boolean } }
   }
+  limits: ProtocolLimits
+}
+
+interface StreamsOpenedResponse {
+  streams: Record<string, { streamId: string }>
 }
 
 interface ReadyResponse {
-  streams: Record<string, { streamId: string }>
   lease: { token: string; expiresAt: string }
 }
 
 interface AckResponse {
   results: { index: number; status: string }[]
+}
+
+interface ProtocolMessage<T> {
+  protocol: string
+  type: string
+  messageId: string
+  activationId?: string
+  replyTo?: string
+  body: T
 }
 
 const acknowledgedStatuses = new Set(['committed', 'duplicate', 'superseded'])
@@ -60,7 +111,7 @@ export function toProtocolFact(snapshot: SegmentSnapshot, streamId: string) {
     time: {
       start: snapshot.startTime,
       end: snapshot.endTime,
-      isFinal: false,
+      isFinal: snapshot.isFinal,
     },
     payload: {
       identityKey: snapshot.identityKey,
@@ -87,13 +138,18 @@ export function acknowledgedSnapshotIds(
 export async function openBrowserProtocolSession(
   port: number,
   appHint: string,
-): Promise<BrowserProtocolSession | 'disabled' | 'legacy-required' | null> {
+  attempt: BrowserActivationAttempt,
+): Promise<BrowserProtocolSession | 'disabled' | 'legacy-required' | 'rejected' | null> {
   try {
     const hello = await fetch(`http://127.0.0.1:${port}${ROUTE}/hello`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messageId: uuidv7(),
+      body: JSON.stringify(message(
+        'heartbeat.collector.bootstrap/1',
+        'activation.hello',
+        attempt.helloMessageId,
+        undefined,
+        {
         artifactId: ARTIFACT_ID,
         artifactHash: ARTIFACT_HASH,
         protocolMajors: [1],
@@ -102,36 +158,84 @@ export async function openBrowserProtocolSession(
           'diagnostics.stream-gap': [1],
         },
         appHint,
-      }),
+      })),
     })
     if (hello.status === 404) return 'legacy-required'
-    if (!hello.ok) return null
-    const accepted = (await hello.json()) as HelloResponse
-    if (accepted.spec.config.enabled === false) return 'disabled'
+    if (!hello.ok) return 'rejected'
+    const accepted = ((await hello.json()) as ProtocolMessage<HelloResponse>).body
+    const initialize = await fetch(
+      `http://127.0.0.1:${port}${ROUTE}/${accepted.activationId}/initialize`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
+    )
+    if (!initialize.ok) return 'rejected'
+    const initializeMessage = (await initialize.json()) as ProtocolMessage<InitializeResponse>
+    const initialized = initializeMessage.body
+    if (initialized.spec.config.value.enabled === false) return 'disabled'
+
+    const initializedAck = await fetch(
+      `http://127.0.0.1:${port}${ROUTE}/${accepted.activationId}/initialized`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(message(
+          'heartbeat.collector/1',
+          'activation.initialized',
+          attempt.initializedMessageId,
+          accepted.activationId,
+          { appliedSpecRevision: initialized.spec.revision },
+          initializeMessage.messageId,
+        )),
+      },
+    )
+    if (!initializedAck.ok) return 'rejected'
+
+    const streams = await fetch(
+      `http://127.0.0.1:${port}${ROUTE}/${accepted.activationId}/streams`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(message(
+          'heartbeat.collector/1',
+          'streams.open',
+          attempt.streamsMessageId,
+          accepted.activationId,
+          {
+          specRevision: initialized.spec.revision,
+          bindings: [{ bindingId: 'tabs', outputId: 'activeTab', dimensions: {} }],
+        })),
+      },
+    )
+    if (!streams.ok) return 'rejected'
+    const opened = ((await streams.json()) as ProtocolMessage<StreamsOpenedResponse>).body
+    const stream = opened.streams.tabs
+    if (!stream?.streamId) return 'rejected'
 
     const ready = await fetch(
       `http://127.0.0.1:${port}${ROUTE}/${accepted.activationId}/ready`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messageId: uuidv7(),
-          appliedSpecRevision: accepted.spec.specRevision,
-          bindings: [{ bindingId: 'tabs', outputId: 'activeTab', dimensions: {} }],
-        }),
+        body: JSON.stringify(message(
+          'heartbeat.collector/1',
+          'activation.ready',
+          attempt.readyMessageId,
+          accepted.activationId,
+          {
+          appliedSpecRevision: initialized.spec.revision,
+        })),
       },
     )
-    if (!ready.ok) return null
-    const opened = (await ready.json()) as ReadyResponse
-    const stream = opened.streams.tabs
-    if (!stream?.streamId || !opened.lease?.token) return null
+    if (!ready.ok) return 'rejected'
+    const readyAcknowledgement = ((await ready.json()) as ProtocolMessage<ReadyResponse>).body
+    if (!readyAcknowledgement.lease?.token) return null
     return {
       port,
       activationId: accepted.activationId,
-      leaseToken: opened.lease.token,
+      leaseToken: readyAcknowledgement.lease.token,
       streamId: stream.streamId,
-      specRevision: accepted.spec.specRevision,
-      expiresAt: opened.lease.expiresAt,
+      specRevision: initialized.spec.revision,
+      expiresAt: readyAcknowledgement.lease.expiresAt,
+      limits: normalizeLimits(initialized.limits),
     }
   } catch {
     return null
@@ -163,34 +267,54 @@ export async function renewBrowserProtocolSession(
 export async function publishBrowserFacts(
   session: BrowserProtocolSession,
   snapshots: SegmentSnapshot[],
+  previousAttempt?: BrowserPublishAttempt,
+  persistAttempt?: (attempt: BrowserPublishAttempt) => Promise<void>,
 ): Promise<ProtocolUploadResult> {
-  const batch = snapshots.slice(0, 500)
+  const limits = normalizeLimits(session.limits)
+  const maxFacts = Math.max(1, Math.min(limits.maxFactsPerBatch, 500))
+  const batch = previousAttempt?.snapshots ?? takeBatchWithinByteLimit(snapshots, session, maxFacts)
+  if (snapshots.length > 0 && batch.length === 0) return { kind: 'unavailable' }
   const facts = batch.map((snapshot) => toProtocolFact(snapshot, session.streamId))
   if (facts.some((fact) => fact === null)) return { kind: 'legacy-required' }
+  if (facts.length === 0) {
+    return { kind: 'acked', acknowledgedIds: [], acknowledgedRevisions: {}, session }
+  }
+  const attempt = previousAttempt ?? { messageId: uuidv7(), snapshots: batch }
+  await persistAttempt?.(attempt)
   try {
     const response = await fetch(
       `http://127.0.0.1:${session.port}${ROUTE}/${session.activationId}/facts`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messageId: uuidv7(),
+        body: JSON.stringify(message(
+          'heartbeat.collector/1',
+          'facts.publish',
+          attempt.messageId,
+          session.activationId,
+          {
           leaseToken: session.leaseToken,
-          streamId: session.streamId,
           facts,
-        }),
+        })),
       },
     )
     if (response.status === 403) return { kind: 'disabled' }
     if (!response.ok) return { kind: 'unavailable' }
-    const acknowledgement = (await response.json()) as AckResponse
+    const acknowledgement = ((await response.json()) as ProtocolMessage<AckResponse>).body
+    const acknowledgedIds = acknowledgedSnapshotIds(batch, acknowledgement)
     return {
       kind: 'acked',
-      acknowledgedIds: acknowledgedSnapshotIds(batch, acknowledgement),
+      acknowledgedIds,
+      acknowledgedRevisions: Object.fromEntries(
+        acknowledgedIds.map((id) => [
+          id,
+          snapshotRevision(batch.find((snapshot) => snapshot.id === id)!),
+        ]),
+      ),
       session,
     }
   } catch {
-    return { kind: 'unavailable' }
+    return { kind: 'unavailable', publishAttempt: attempt, session }
   }
 }
 
@@ -199,14 +323,100 @@ export async function uploadWithBrowserProtocol(
   appHint: string | undefined,
   snapshots: SegmentSnapshot[],
   previousSession?: BrowserProtocolSession,
+  previousActivationAttempt?: BrowserActivationAttempt,
+  previousPublishAttempt?: BrowserPublishAttempt,
+  persistActivationAttempt?: (attempt: BrowserActivationAttempt) => Promise<void>,
+  persistPublishAttempt?: (attempt: BrowserPublishAttempt) => Promise<void>,
 ): Promise<ProtocolUploadResult> {
   if (!appHint) return { kind: 'legacy-required' }
   const renewed = previousSession?.port === port
     ? await renewBrowserProtocolSession(previousSession)
     : null
-  const session = renewed ?? await openBrowserProtocolSession(port, appHint)
+  const activationAttempt = previousActivationAttempt ?? {
+    helloMessageId: uuidv7(),
+    initializedMessageId: uuidv7(),
+    streamsMessageId: uuidv7(),
+    readyMessageId: uuidv7(),
+  }
+  if (renewed === null) await persistActivationAttempt?.(activationAttempt)
+  const session = renewed ?? await openBrowserProtocolSession(port, appHint, activationAttempt)
   if (session === 'disabled') return { kind: 'disabled' }
   if (session === 'legacy-required') return { kind: 'legacy-required' }
-  if (session === null) return { kind: 'unavailable' }
-  return publishBrowserFacts(session, snapshots)
+  if (session === 'rejected') return { kind: 'unavailable' }
+  if (session === null) return { kind: 'unavailable', activationAttempt }
+  return publishBrowserFacts(
+    session,
+    snapshots,
+    renewed === null && previousSession !== undefined ? undefined : previousPublishAttempt,
+    persistPublishAttempt,
+  )
+}
+
+function takeBatchWithinByteLimit(
+  snapshots: SegmentSnapshot[],
+  session: BrowserProtocolSession,
+  maxFacts: number,
+): SegmentSnapshot[] {
+  const limit = normalizeLimits(session.limits).maxBatchBytes
+  const batch: SegmentSnapshot[] = []
+  for (const snapshot of snapshots.slice(0, maxFacts)) {
+    const candidate = [...batch, snapshot]
+    const facts = candidate.map((item) => toProtocolFact(item, session.streamId))
+    const logicalMessage = {
+      protocol: 'heartbeat.collector/1',
+      type: 'facts.publish',
+      messageId: '00000000-0000-7000-8000-000000000000',
+      activationId: session.activationId,
+      body: { facts },
+    }
+    if (dotNetJsonUpperBoundBytes(logicalMessage) > limit) {
+      if (batch.length === 0) continue
+      break
+    }
+    batch.push(snapshot)
+  }
+  return batch
+}
+
+function dotNetJsonUpperBoundBytes(value: unknown): number {
+  const json = JSON.stringify(value)
+  let bytes = 0
+  for (let index = 0; index < json.length; index += 1) {
+    const code = json.charCodeAt(index)
+    // System.Text.Json's default encoder escapes non-Basic-Latin and HTML-sensitive characters.
+    bytes += code > 0x7f || code === 0x2b || code === 0x3c || code === 0x3e || code === 0x26 || code === 0x27
+      ? 6
+      : 1
+  }
+  return bytes
+}
+
+function normalizeLimits(limits: Partial<ProtocolLimits> | undefined): ProtocolLimits {
+  return {
+    maxFactsPerBatch: positiveInteger(limits?.maxFactsPerBatch) ?? DEFAULT_LIMITS.maxFactsPerBatch,
+    maxBatchBytes: positiveInteger(limits?.maxBatchBytes) ?? DEFAULT_LIMITS.maxBatchBytes,
+    maxInFlightBatches: positiveInteger(limits?.maxInFlightBatches) ?? DEFAULT_LIMITS.maxInFlightBatches,
+  }
+}
+
+function positiveInteger(value: unknown): number | undefined {
+  return Number.isSafeInteger(value) && Number(value) > 0 ? Number(value) : undefined
+}
+
+function message<T>(
+  protocol: string,
+  type: string,
+  messageId: string,
+  activationId: string | undefined,
+  body: T,
+  replyTo?: string,
+): ProtocolMessage<T> {
+  return {
+    protocol,
+    type,
+    messageId,
+    ...(activationId === undefined ? {} : { activationId }),
+    ...(replyTo === undefined ? {} : { replyTo }),
+    body,
+  }
 }

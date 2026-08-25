@@ -56,6 +56,7 @@ describe('applyEvent', () => {
       appHint: 'edge',
       startTime: new Date(T0).toISOString(),
       endTime: new Date(T0 + 5000).toISOString(),
+      isFinal: true,
     })
     expect(r.state.open[1]).toMatchObject({ id: 'id-2', identityKey: 'https://b.com/y' })
   })
@@ -80,6 +81,7 @@ describe('applyEvent', () => {
     const closed = applyEvent(r.state, { kind: 'windowClosed', windowId: 1, at: T0 + 3000 }, deps)
     expect(closed.out).toHaveLength(1)
     expect(closed.out[0].endTime).toBe(new Date(T0 + 3000).toISOString())
+    expect(closed.out[0].isFinal).toBe(true)
     expect(closed.state.open[1]).toBeUndefined()
   })
 
@@ -101,6 +103,7 @@ describe('flush（ADR-018 稳定 Id 快照）', () => {
     expect(f1.out[0].id).toBe('id-1')
     expect(f2.out[0].id).toBe('id-1')
     expect(f1.out[0].startTime).toBe(f2.out[0].startTime)
+    expect(f1.out[0].isFinal).toBe(false)
     expect(new Date(f2.out[0].endTime).getTime()).toBeGreaterThan(new Date(f1.out[0].endTime).getTime())
   })
 
@@ -151,6 +154,7 @@ describe('flush（ADR-018 稳定 Id 快照）', () => {
     expect(f.out).toHaveLength(1)
     expect(f.out[0].id).toBe('id-1') // 旧段最终快照
     expect(f.out[0].endTime).toBe(new Date(rotateAt).toISOString())
+    expect(f.out[0].isFinal).toBe(true)
 
     const rotated = f.state.open[1]
     expect(rotated.id).toBe('id-2') // 新 Id 从 now 续记
@@ -160,5 +164,6 @@ describe('flush（ADR-018 稳定 Id 快照）', () => {
     // 轮换后的下一次 flush 用新 Id
     const f2 = flush(f.state, rotateAt + 30_000, deps)
     expect(f2.out[0].id).toBe('id-2')
+    expect(f2.out[0].isFinal).toBe(false)
   })
 })

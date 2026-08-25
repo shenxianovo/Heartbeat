@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SegmentSnapshot } from '../src/fold'
 import {
   acknowledgedSnapshotIds,
+  publishBrowserFacts,
   snapshotRevision,
   toProtocolFact,
   uploadWithBrowserProtocol,
+  type BrowserProtocolSession,
 } from '../src/protocol'
 
 const snapshot = (id = '0198d5eb-fc31-7d7b-8bf0-c2d009ec8999'): SegmentSnapshot => ({
@@ -15,10 +17,18 @@ const snapshot = (id = '0198d5eb-fc31-7d7b-8bf0-c2d009ec8999'): SegmentSnapshot 
   title: 'Docs',
   startTime: '2026-08-25T08:00:00.000Z',
   endTime: '2026-08-25T08:01:00.000Z',
+  isFinal: false,
   attributes: { url: 'https://example.com/docs?q=1', domain: 'example.com', site: 'example.com', windowId: 7 },
 })
 
 afterEach(() => vi.unstubAllGlobals())
+
+const protocolResponse = (type: string, body: object) => Response.json({
+  protocol: type.startsWith('activation.accept') ? 'heartbeat.collector.bootstrap/1' : 'heartbeat.collector/1',
+  type,
+  messageId: '0198d5e8-30cc-743c-a3d6-ac61956f26b5',
+  body,
+})
 
 describe('browser Collector Protocol outbox', () => {
   it('canonical Fact excludes AppHint while preserving typed browser payload', () => {
@@ -30,6 +40,7 @@ describe('browser Collector Protocol outbox', () => {
     })
     expect(fact.payload).not.toHaveProperty('appHint')
     expect(fact.revision).toBe(snapshotRevision(snapshot()))
+    expect(fact.time.isFinal).toBe(false)
   })
 
   it('only explicitly acknowledged results select outbox entries for deletion', () => {
@@ -53,22 +64,136 @@ describe('browser Collector Protocol outbox', () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
       calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined })
-      if (url.endsWith('/hello')) return Response.json({
+      if (url.endsWith('/hello')) return protocolResponse('activation.accepted', {
         activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
-        spec: { specRevision: 3, config: { enabled: true } },
       })
-      if (url.endsWith('/ready')) return Response.json({
+      if (url.endsWith('/initialize')) return protocolResponse('activation.initialize', {
+        spec: { revision: 3, config: { value: { enabled: true } } },
+        limits: { maxFactsPerBatch: 500, maxBatchBytes: 1_048_576, maxInFlightBatches: 1 },
+      })
+      if (url.endsWith('/initialized')) return new Response(null, { status: 204 })
+      if (url.endsWith('/streams')) return protocolResponse('streams.opened', {
         streams: { tabs: { streamId: '0198d5e2-e0d4-7b30-9da7-342ee261bf62' } },
+      })
+      if (url.endsWith('/ready')) return protocolResponse('activation.readyAck', {
         lease: { token: 'lease', expiresAt: '2026-08-25T08:01:00Z' },
       })
-      return Response.json({ results: [{ index: 0, status: 'committed' }] })
+      return protocolResponse('facts.ack', { results: [{ index: 0, status: 'committed' }] })
     }))
 
     const result = await uploadWithBrowserProtocol(24820, 'edge', [snapshot()])
 
     expect(result.kind).toBe('acked')
     if (result.kind === 'acked') expect(result.acknowledgedIds).toEqual([snapshot().id])
-    expect(calls.map((call) => call.url.split('/').at(-1))).toEqual(['hello', 'ready', 'facts'])
-    expect((calls[2].body as { facts: { payload: object }[] }).facts[0].payload).not.toHaveProperty('appHint')
+    expect(calls.map((call) => call.url.split('/').at(-1))).toEqual([
+      'hello', 'initialize', 'initialized', 'streams', 'ready', 'facts',
+    ])
+    expect((calls[5].body as { body: { facts: { payload: object }[] } }).body.facts[0].payload).not.toHaveProperty('appHint')
+  })
+
+  it('opens the Package-backed protocol session even when the outbox is empty', async () => {
+    const calls: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      calls.push(url)
+      if (url.endsWith('/hello')) return protocolResponse('activation.accepted', {
+        activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
+      })
+      if (url.endsWith('/initialize')) return protocolResponse('activation.initialize', {
+        spec: { revision: 3, config: { value: { enabled: true } } },
+        limits: { maxFactsPerBatch: 500, maxBatchBytes: 1_048_576, maxInFlightBatches: 1 },
+      })
+      if (url.endsWith('/initialized')) return new Response(null, { status: 204 })
+      if (url.endsWith('/streams')) return protocolResponse('streams.opened', {
+        streams: { tabs: { streamId: '0198d5e2-e0d4-7b30-9da7-342ee261bf62' } },
+      })
+      return protocolResponse('activation.readyAck', {
+        lease: { token: 'lease', expiresAt: '2026-08-25T08:01:00Z' },
+      })
+    }))
+
+    const result = await uploadWithBrowserProtocol(24820, 'edge', [])
+
+    expect(result.kind).toBe('acked')
+    if (result.kind === 'acked') expect(result.acknowledgedIds).toEqual([])
+    expect(calls.map((url) => url.split('/').at(-1))).toEqual([
+      'hello', 'initialize', 'initialized', 'streams', 'ready',
+    ])
+  })
+
+  it('respects negotiated batch limits and reuses messageId after response loss', async () => {
+    const messageIds: string[] = []
+    const revisions: number[] = []
+    let loseResponse = true
+    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as {
+        messageId: string
+        body: { facts: unknown[] }
+      }
+      messageIds.push(body.messageId)
+      expect(body.body.facts).toHaveLength(1)
+      revisions.push((body.body.facts[0] as { revision: number }).revision)
+      if (loseResponse) {
+        loseResponse = false
+        const response = Response.json({})
+        vi.spyOn(response, 'json').mockRejectedValue(new Error('lost response'))
+        return response
+      }
+      return protocolResponse('facts.ack', { results: [{ index: 0, status: 'duplicate' }] })
+    }))
+    const session: BrowserProtocolSession = {
+      port: 24820,
+      activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
+      leaseToken: 'lease',
+      streamId: '0198d5e2-e0d4-7b30-9da7-342ee261bf62',
+      specRevision: 3,
+      expiresAt: '2026-08-25T08:01:00Z',
+      limits: { maxFactsPerBatch: 1, maxBatchBytes: 1_048_576, maxInFlightBatches: 1 },
+    }
+    const items = [snapshot(), snapshot('0198d5eb-fc31-7d7b-8bf0-c2d009ec8998')]
+
+    const lost = await publishBrowserFacts(session, items)
+    expect(lost.kind).toBe('unavailable')
+    const attempt = lost.kind === 'unavailable' ? lost.publishAttempt : undefined
+    expect(attempt).toBeDefined()
+    if (lost.kind === 'unavailable') expect(lost.session).toEqual(session)
+    const grown = [{ ...items[0], endTime: '2026-08-25T08:02:00.000Z' }, items[1]]
+    const replay = await publishBrowserFacts(session, grown, attempt)
+
+    expect(replay.kind).toBe('acked')
+    expect(messageIds[1]).toBe(messageIds[0])
+    expect(revisions[1]).toBe(revisions[0])
+    if (replay.kind === 'acked') {
+      expect(replay.acknowledgedRevisions[items[0].id]).toBe(revisions[0])
+      expect(replay.acknowledgedRevisions[items[0].id]).not.toBe(snapshotRevision(grown[0]))
+    }
+  })
+
+  it('uses a conservative UTF-8 limit and skips an oversized head without dropping it', async () => {
+    let publishedFactId = ''
+    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body)) as {
+        body: { facts: { factId: string }[] }
+      }
+      publishedFactId = request.body.facts[0].factId
+      return protocolResponse('facts.ack', { results: [{ index: 0, status: 'committed' }] })
+    }))
+    const session: BrowserProtocolSession = {
+      port: 24820,
+      activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
+      leaseToken: 'lease',
+      streamId: '0198d5e2-e0d4-7b30-9da7-342ee261bf62',
+      specRevision: 3,
+      expiresAt: '2026-08-25T08:01:00Z',
+      limits: { maxFactsPerBatch: 2, maxBatchBytes: 900, maxInFlightBatches: 1 },
+    }
+    const oversized = { ...snapshot(), title: '你'.repeat(500) }
+    const deliverable = snapshot('0198d5eb-fc31-7d7b-8bf0-c2d009ec8998')
+
+    const result = await publishBrowserFacts(session, [oversized, deliverable])
+
+    expect(result.kind).toBe('acked')
+    expect(publishedFactId).toBe(deliverable.id)
+    if (result.kind === 'acked') expect(result.acknowledgedIds).toEqual([deliverable.id])
   })
 })

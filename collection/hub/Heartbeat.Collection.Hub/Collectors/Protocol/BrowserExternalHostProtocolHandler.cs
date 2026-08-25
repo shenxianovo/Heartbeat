@@ -37,6 +37,7 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
     {
         PropertyNameCaseInsensitive = false,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
     };
 
@@ -78,22 +79,37 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         try
         {
             if (httpMethod == "POST" && path == $"{RoutePrefix}/hello")
-                return HandleHello(await DeserializeAsync<HelloRequest>(body, cancellationToken));
+                return HandleHello(await DeserializeMessageAsync<HelloRequest>(
+                    body,
+                    "heartbeat.collector.bootstrap/1",
+                    "activation.hello",
+                    null,
+                    cancellationToken));
             if (!TryParseSessionPath(path, out var activationId, out var operation) || httpMethod != "POST")
                 return Json(404, new { error = Error("protocol_invalid_message", "Unknown ExternalHost protocol route.") });
             return operation switch
             {
-                "ready" => HandleReady(activationId, await DeserializeAsync<ReadyRequest>(body, cancellationToken)),
+                "initialize" => HandleInitialize(activationId),
+                "initialized" => HandleInitialized(
+                    activationId,
+                    await DeserializeAsync<ProtocolMessage<InitializedRequest>>(body, cancellationToken)),
+                "streams" => HandleStreams(activationId, await DeserializeMessageAsync<StreamsOpenRequest>(
+                    body, "heartbeat.collector/1", "streams.open", activationId, cancellationToken)),
+                "ready" => HandleReady(activationId, await DeserializeMessageAsync<ReadyRequest>(
+                    body, "heartbeat.collector/1", "activation.ready", activationId, cancellationToken)),
                 "renew" => HandleRenew(activationId, await DeserializeAsync<RenewRequest>(body, cancellationToken)),
                 "facts" => await HandleFactsAsync(
                     activationId,
-                    await DeserializeAsync<PublishRequest>(body, cancellationToken),
+                    await DeserializeMessageAsync<PublishRequest>(
+                        body, "heartbeat.collector/1", "facts.publish", activationId, cancellationToken),
                     cancellationToken),
                 "gap" => await HandleGapAsync(
                     activationId,
-                    await DeserializeAsync<GapRequest>(body, cancellationToken),
+                    await DeserializeMessageAsync<GapRequest>(
+                        body, "heartbeat.collector/1", "stream.gap", activationId, cancellationToken),
                     cancellationToken),
-                "drained" => HandleDrained(activationId, await DeserializeAsync<DrainedRequest>(body, cancellationToken)),
+                "drained" => HandleDrained(activationId, await DeserializeMessageAsync<DrainedRequest>(
+                    body, "heartbeat.collector/1", "activation.drained", activationId, cancellationToken)),
                 _ => Json(404, new { error = Error("protocol_invalid_message", "Unknown ExternalHost protocol operation.") })
             };
         }
@@ -154,16 +170,17 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
 
     public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 
-    private ProtocolHttpResponse HandleHello(HelloRequest request)
+    private ProtocolHttpResponse HandleHello(ProtocolMessage<HelloRequest> message)
     {
+        var request = message.Body;
         var validationError = ValidateHello(request);
         if (validationError is not null)
             return Json(400, new { error = validationError });
         lock (_gate)
         {
-            if (_helloAttempts.TryGetValue(request.MessageId, out var replayId) &&
+            if (_helloAttempts.TryGetValue(message.MessageId, out var replayId) &&
                 _sessions.TryGetValue(replayId, out var replay))
-                return HelloResponse(replay);
+                return HelloResponse(replay, message.MessageId);
         }
 
         _registry.Touch(Source, _options.FlushPeriodMilliseconds);
@@ -182,29 +199,82 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
             request.ArtifactHash,
             new ProtocolSupport(request.ProtocolMajors, request.SupportedCapabilities),
             activationId,
-            request.MessageId);
+            message.MessageId);
         var session = new Session(
             activationId,
-            request.MessageId,
+            message.MessageId,
+            Guid.CreateVersion7(),
             request.AppHint,
             initialization,
+            false,
             null,
             null,
             _timeProvider.GetUtcNow() + _options.LeaseDuration);
         lock (_gate)
         {
             _sessions.Add(activationId, session);
-            _helloAttempts[request.MessageId] = activationId;
+            _helloAttempts[message.MessageId] = activationId;
         }
-        return HelloResponse(session);
+        return HelloResponse(session, message.MessageId);
     }
 
-    private ProtocolHttpResponse HandleReady(Guid activationId, ReadyRequest request)
+    private ProtocolHttpResponse HandleInitialize(Guid activationId)
     {
         var session = GetSession(activationId);
+        return ProtocolResponse(200, "activation.initialize", activationId, null, new
+        {
+            instance = new
+            {
+                collectorInstanceId = session.Initialization.Instance.CollectorInstanceId,
+                subject = session.Initialization.Instance.Subject
+            },
+            spec = new
+            {
+                revision = session.Initialization.Spec.SpecRevision,
+                config = new
+                {
+                    schemaVersion = session.Initialization.Spec.ConfigSchemaVersion,
+                    value = session.Initialization.Spec.Config
+                }
+            },
+            limits = session.Initialization.Limits,
+            hubTime = _timeProvider.GetUtcNow()
+        }, session.InitializeMessageId);
+    }
+
+    private ProtocolHttpResponse HandleInitialized(
+        Guid activationId,
+        ProtocolMessage<InitializedRequest> message)
+    {
+        var session = GetSession(activationId);
+        if (message.Protocol != "heartbeat.collector/1" || message.Type != "activation.initialized" ||
+            !IsUuidV7(message.MessageId) || message.ActivationId != activationId ||
+            message.ReplyTo != session.InitializeMessageId || message.Body is null ||
+            message.Body.AppliedSpecRevision != session.Initialization.Spec.SpecRevision)
+            return ProtocolResponse(
+                409,
+                "activation.initializeRejected",
+                activationId,
+                message.MessageId,
+                new { error = Error("spec_revision_stale", "Collector did not apply the current SpecRevision.") });
+        ReplaceSession(session with { Initialized = true });
+        return new ProtocolHttpResponse(204, string.Empty, false);
+    }
+
+    private ProtocolHttpResponse HandleStreams(Guid activationId, ProtocolMessage<StreamsOpenRequest> message)
+    {
+        var request = message.Body;
+        var session = GetSession(activationId);
+        if (!session.Initialized)
+            return ProtocolResponse(
+                409,
+                "streams.rejected",
+                activationId,
+                message.MessageId,
+                new { error = Error("protocol_invalid_message", "activation.initialized is required before streams.open.") });
         if (session.Activation is not null)
-            return ReadyResponse(session);
-        if (!IsUuidV7(request.MessageId) || request.Bindings is null ||
+            return StreamsResponse(session, message.MessageId);
+        if (request.Bindings is null ||
             request.Bindings.Any(binding => binding is null || binding.Dimensions is null))
             return Json(400, new
             {
@@ -223,10 +293,31 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
             binding.Dimensions
                 .Append(new KeyValuePair<string, string>("appHint", session.AppHint))
                 .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal))).ToArray();
-        var activation = _runtime.ReadyExternalHostActivation(
+        var activation = _runtime.OpenExternalHostStreams(
             activationId,
-            request.AppliedSpecRevision,
+            request.SpecRevision,
             bindings);
+        var opened = session with
+        {
+            Activation = activation,
+            ExpiresAt = _timeProvider.GetUtcNow() + _options.LeaseDuration
+        };
+        ReplaceSession(opened);
+        return StreamsResponse(opened, message.MessageId);
+    }
+
+    private ProtocolHttpResponse HandleReady(Guid activationId, ProtocolMessage<ReadyRequest> message)
+    {
+        var request = message.Body;
+        var session = GetSession(activationId);
+        if (session.Activation is null)
+            return Json(400, new
+            {
+                error = Error("protocol_invalid_message", "ready messageId is malformed or streams are not open.")
+            });
+        if (session.Activation.State == CollectorActivationState.Ready)
+            return ReadyResponse(session, message.MessageId);
+        var activation = _runtime.MarkExternalHostReady(session.Activation, request.AppliedSpecRevision);
         var ready = session with
         {
             Activation = activation,
@@ -235,7 +326,7 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         };
         ReplaceSession(ready);
         RegisterPackageDeclaration();
-        return ReadyResponse(ready);
+        return ReadyResponse(ready, message.MessageId);
     }
 
     private ProtocolHttpResponse HandleRenew(Guid activationId, RenewRequest request)
@@ -250,53 +341,65 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
 
     private async ValueTask<ProtocolHttpResponse> HandleFactsAsync(
         Guid activationId,
-        PublishRequest request,
+        ProtocolMessage<PublishRequest> message,
         CancellationToken cancellationToken)
     {
+        var request = message.Body;
         var session = GetSession(activationId);
         if (session.Activation is null || !FixedTimeEquals(session.LeaseToken, request.LeaseToken))
             return Json(409, new { error = Error("activation_stopping", "ExternalHost lease is not active.") });
         if (_registry.Snapshot.TryGetValue(Source, out var registration) && !registration.Enabled)
             return Json(403, new { error = Error("activation_stopping", "Browser Collector is disabled by Desired State.") });
+        if (request.Facts is null || request.Facts.Count == 0)
+            return Json(400, new { error = Error("protocol_invalid_message", "facts.publish must contain Facts.") });
         var acknowledgement = await session.Activation.PublishAsync(
-            request.StreamId,
-            request.MessageId,
+            request.Facts[0].StreamId,
+            message.MessageId,
             request.Facts,
             cancellationToken);
         if (acknowledgement.IsMessageRejected)
             return Json(400, new { error = acknowledgement.MessageError });
-        return Json(200, new { results = acknowledgement.Results });
+        return ProtocolResponse(
+            200,
+            "facts.ack",
+            activationId,
+            message.MessageId,
+            new { results = acknowledgement.Results });
     }
 
     private async ValueTask<ProtocolHttpResponse> HandleGapAsync(
         Guid activationId,
-        GapRequest request,
+        ProtocolMessage<GapRequest> message,
         CancellationToken cancellationToken)
     {
+        var request = message.Body;
         var session = GetSession(activationId);
         if (session.Activation is null || !FixedTimeEquals(session.LeaseToken, request.LeaseToken))
             return Json(409, new { error = Error("activation_stopping", "ExternalHost lease is not active.") });
         var outcome = await session.Activation.ReportGapAsync(
             request.StreamId,
-            request.MessageId,
+            message.MessageId,
             request.Gap,
             cancellationToken);
-        return Json(outcome.Status == GapDeliveryStatus.Rejected ? 400 : 200, outcome);
+        return ProtocolResponse(
+            outcome.Status == GapDeliveryStatus.Rejected ? 400 : 200,
+            "stream.gapAck",
+            activationId,
+            message.MessageId,
+            outcome);
     }
 
-    private ProtocolHttpResponse HandleDrained(Guid activationId, DrainedRequest request)
+    private ProtocolHttpResponse HandleDrained(Guid activationId, ProtocolMessage<DrainedRequest> message)
     {
+        var request = message.Body;
         var session = GetSession(activationId);
         if (session.Activation is null || !FixedTimeEquals(session.LeaseToken, request.LeaseToken))
             return Json(409, new { error = Error("activation_stopping", "ExternalHost lease is not active.") });
         if (request.PendingFacts < 0 || request.PendingGaps < 0)
             return Json(400, new { error = Error("protocol_invalid_message", "Pending counts must not be negative.") });
         StopAndRemove(session, ExternalHostActivationStopReason.CollectorDrained);
-        return Json(200, new
+        return ProtocolResponse(200, "activation.drainedAck", activationId, message.MessageId, new
         {
-            appliedSpecRevision = request.AppliedSpecRevision,
-            pendingFacts = request.PendingFacts,
-            pendingGaps = request.PendingGaps,
             externalHostTerminated = false
         });
     }
@@ -325,9 +428,9 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
 
     private CollectorProtocolError? ValidateHello(HelloRequest request)
     {
-        if (!IsUuidV7(request.MessageId) || string.IsNullOrWhiteSpace(request.AppHint) ||
+        if (string.IsNullOrWhiteSpace(request.AppHint) ||
             request.ProtocolMajors is null || request.SupportedCapabilities is null)
-            return Error("protocol_invalid_message", "messageId, protocol support, and appHint are required.");
+            return Error("protocol_invalid_message", "protocol support and appHint are required.");
         var artifact = _package.Artifacts.SingleOrDefault(candidate => candidate.ArtifactId == request.ArtifactId);
         if (artifact is null || !string.Equals(artifact.ContentHash, request.ArtifactHash, StringComparison.Ordinal))
             return Error("package_mismatch", "ExternalHost Artifact does not match the verified browser Package.");
@@ -371,26 +474,36 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
             _runtime.StopExternalHostActivation(session.Activation, reason);
     }
 
-    private ProtocolHttpResponse HelloResponse(Session session) => Json(200, new
-    {
-        activationId = session.ActivationId,
-        selectedProtocolMajor = 1,
-        selectedCapabilities = session.Initialization.SelectedCapabilities,
-        spec = new
+    private ProtocolHttpResponse HelloResponse(Session session, Guid replyTo) => ProtocolResponse(
+        200,
+        "activation.accepted",
+        null,
+        replyTo,
+        new
         {
-            specRevision = session.Initialization.Spec.SpecRevision,
-            configSchemaVersion = session.Initialization.Spec.ConfigSchemaVersion,
-            config = session.Initialization.Spec.Config
+            activationId = session.ActivationId,
+            selectedProtocolMajor = 1,
+            selectedCapabilities = session.Initialization.SelectedCapabilities
         },
-        limits = session.Initialization.Limits,
-        readyWithinMs = (int)_options.LeaseDuration.TotalMilliseconds
-    });
+        protocol: "heartbeat.collector.bootstrap/1");
 
-    private ProtocolHttpResponse ReadyResponse(Session session) => Json(200, new
-    {
-        streams = session.Activation!.Streams,
-        lease = LeaseBody(session)
-    });
+    private ProtocolHttpResponse ReadyResponse(Session session, Guid replyTo) => ProtocolResponse(
+        200,
+        "activation.readyAck",
+        session.ActivationId,
+        replyTo,
+        new
+        {
+            appliedSpecRevision = session.Initialization.Spec.SpecRevision,
+            lease = LeaseBody(session)
+        });
+
+    private ProtocolHttpResponse StreamsResponse(Session session, Guid replyTo) => ProtocolResponse(
+        200,
+        "streams.opened",
+        session.ActivationId,
+        replyTo,
+        new { streams = session.Activation!.Streams });
 
     private object LeaseBody(Session session) => new
     {
@@ -414,8 +527,41 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         await JsonSerializer.DeserializeAsync<T>(body, JsonOptions, cancellationToken)
         ?? throw new JsonException("Protocol request body is required.");
 
+    private static async ValueTask<ProtocolMessage<T>> DeserializeMessageAsync<T>(
+        Stream body,
+        string expectedProtocol,
+        string expectedType,
+        Guid? expectedActivationId,
+        CancellationToken cancellationToken)
+    {
+        var message = await DeserializeAsync<ProtocolMessage<T>>(body, cancellationToken);
+        if (message.Protocol != expectedProtocol || message.Type != expectedType ||
+            !IsUuidV7(message.MessageId) || message.Body is null ||
+            message.ReplyTo is not null || message.ActivationId != expectedActivationId)
+            throw new JsonException("Collector Protocol envelope is malformed or does not match the HTTP route.");
+        return message;
+    }
+
     private static ProtocolHttpResponse Json(int statusCode, object body) =>
         new(statusCode, JsonSerializer.Serialize(body, JsonOptions));
+
+    private static ProtocolHttpResponse ProtocolResponse(
+        int statusCode,
+        string type,
+        Guid? activationId,
+        Guid? replyTo,
+        object body,
+        Guid? messageId = null,
+        string protocol = "heartbeat.collector/1") =>
+        Json(statusCode, new
+        {
+            protocol,
+            type,
+            messageId = messageId ?? Guid.CreateVersion7(),
+            activationId,
+            replyTo,
+            body
+        });
 
     private static CollectorProtocolError Error(string code, string message) => new(code, message, false);
 
@@ -437,14 +583,23 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
     private sealed record Session(
         Guid ActivationId,
         Guid HelloMessageId,
+        Guid InitializeMessageId,
         string AppHint,
         ExternalHostCollectorInitialization Initialization,
+        bool Initialized,
         ExternalHostCollectorActivation? Activation,
         string? LeaseToken,
         DateTimeOffset ExpiresAt);
 
-    public sealed record HelloRequest(
+    public sealed record ProtocolMessage<T>(
+        string Protocol,
+        string Type,
         Guid MessageId,
+        Guid? ActivationId,
+        Guid? ReplyTo,
+        T Body);
+
+    public sealed record HelloRequest(
         string ArtifactId,
         string ArtifactHash,
         IReadOnlyList<int> ProtocolMajors,
@@ -456,21 +611,21 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         string OutputId,
         IReadOnlyDictionary<string, string> Dimensions);
 
-    public sealed record ReadyRequest(
-        Guid MessageId,
-        long AppliedSpecRevision,
+    public sealed record InitializedRequest(long AppliedSpecRevision);
+
+    public sealed record StreamsOpenRequest(
+        long SpecRevision,
         IReadOnlyList<BindingRequest> Bindings);
+
+    public sealed record ReadyRequest(long AppliedSpecRevision);
 
     public sealed record RenewRequest(string LeaseToken);
 
     public sealed record PublishRequest(
-        Guid MessageId,
         string LeaseToken,
-        Guid StreamId,
         IReadOnlyList<FactSubmission> Facts);
 
     public sealed record GapRequest(
-        Guid MessageId,
         string LeaseToken,
         Guid StreamId,
         StreamGapReport Gap);

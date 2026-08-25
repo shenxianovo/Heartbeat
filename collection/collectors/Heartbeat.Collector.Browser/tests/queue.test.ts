@@ -11,6 +11,7 @@ function legacySnapshot(): SegmentSnapshot & { appName: string } {
     title: 'Example',
     startTime: '2026-08-11T00:00:00.000Z',
     endTime: '2026-08-11T00:01:00.000Z',
+    isFinal: false,
     attributes: {
       url: 'https://example.com/page?q=1',
       domain: 'example.com',
@@ -45,5 +46,10 @@ describe('normalizeQueuedSnapshots', () => {
   it('已有 appHint 保持原值，不被当前检测结果覆盖', () => {
     const stored = { ...legacySnapshot(), appHint: 'chrome' }
     expect(normalizeQueuedSnapshots({ s1: stored }, 'edge').s1.appHint).toBe('chrome')
+  })
+
+  it('旧缓存缺少 isFinal 时按开放快照提升', () => {
+    const { isFinal: _isFinal, ...stored } = legacySnapshot()
+    expect(normalizeQueuedSnapshots({ s1: stored }, 'edge').s1.isFinal).toBe(false)
   })
 })

@@ -87,6 +87,15 @@ public sealed partial class CollectorRuntime
         long appliedSpecRevision,
         IReadOnlyList<OutputBinding> bindings)
     {
+        var activation = OpenExternalHostStreams(activationId, appliedSpecRevision, bindings);
+        return MarkExternalHostReady(activation, appliedSpecRevision);
+    }
+
+    public ExternalHostCollectorActivation OpenExternalHostStreams(
+        Guid activationId,
+        long appliedSpecRevision,
+        IReadOnlyList<OutputBinding> bindings)
+    {
         lock (_gate)
         {
             ThrowIfDisposed();
@@ -107,9 +116,31 @@ public sealed partial class CollectorRuntime
                 pending.Package,
                 descriptors);
 
-            var next = _state.WithInstanceAndStreams(
-                streamPlan.Commit.Instance,
-                streamPlan.Commit.Streams);
+            _externalHostActivations.Add(activationId, activation);
+            _pendingActivationCommits.Add(activationId, streamPlan.Commit);
+            _pendingExternalHostActivations.Remove(activationId);
+            return activation;
+        }
+    }
+
+    public ExternalHostCollectorActivation MarkExternalHostReady(
+        ExternalHostCollectorActivation activation,
+        long appliedSpecRevision)
+    {
+        ArgumentNullException.ThrowIfNull(activation);
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            if (activation.State == CollectorActivationState.Ready)
+                return activation;
+            if (activation.State != CollectorActivationState.OpeningStreams)
+                throw ActivationError("protocol_invalid_message", "activation.ready is only valid after streams.opened.");
+            if (!_pendingActivationCommits.TryGetValue(activation.ActivationId, out var pendingCommit))
+                throw ActivationError("protocol_invalid_message", "ExternalHost Activation has no pending Stream commit.");
+            if (appliedSpecRevision != pendingCommit.Instance.SpecRevision)
+                throw ActivationError("spec_revision_stale", "Collector did not apply the current SpecRevision.");
+
+            var next = _state.WithInstanceAndStreams(pendingCommit.Instance, pendingCommit.Streams);
             try
             {
                 _store.Save(next);
@@ -124,14 +155,14 @@ public sealed partial class CollectorRuntime
             }
 
             _state = next;
-            foreach (var schema in pending.Package.FactSchemas)
+            foreach (var schema in activation.Package.FactSchemas)
                 _factSchemasByHash[schema.ContentHash] = schema;
-            foreach (var stream in descriptors.Values)
-                _streamWriters[stream.StreamId] = activationId;
-            _externalHostActivations.Add(activationId, activation);
-            _pendingExternalHostActivations.Remove(activationId);
-            _pendingPackageFingerprints.Remove(activationId);
-            _startingInstances.Remove(pending.Instance.CollectorInstanceId);
+            foreach (var stream in activation.Streams.Values)
+                _streamWriters[stream.StreamId] = activation.ActivationId;
+            _pendingActivationCommits.Remove(activation.ActivationId);
+            _pendingPackageFingerprints.Remove(activation.ActivationId);
+            _startingInstances.Remove(pendingCommit.Instance.CollectorInstanceId);
+            activation.State = CollectorActivationState.Ready;
             return activation;
         }
     }
@@ -165,6 +196,9 @@ public sealed partial class CollectorRuntime
             activation.StopReason = reason;
             activation.State = CollectorActivationState.Stopped;
             _externalHostActivations.Remove(activation.ActivationId);
+            if (_pendingActivationCommits.Remove(activation.ActivationId, out var pendingCommit))
+                _startingInstances.Remove(pendingCommit.Instance.CollectorInstanceId);
+            _pendingPackageFingerprints.Remove(activation.ActivationId);
         }
         ForgetActivationAttempts(activation.ActivationId);
     }

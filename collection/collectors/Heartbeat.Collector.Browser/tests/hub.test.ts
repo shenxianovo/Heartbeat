@@ -20,6 +20,7 @@ const COMPLETE_SEGMENT: SegmentSnapshot = {
   title: 'Example',
   startTime: '2026-08-11T00:00:00.000Z',
   endTime: '2026-08-11T00:01:00.000Z',
+  isFinal: false,
   attributes: {
     url: 'https://example.com/page?q=1',
     domain: 'example.com',

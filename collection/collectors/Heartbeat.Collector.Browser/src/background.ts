@@ -22,6 +22,9 @@ import { detectBrowserAppHint } from './app-hint'
 import { normalizeQueuedSnapshots } from './queue'
 import {
   uploadWithBrowserProtocol,
+  snapshotRevision,
+  type BrowserActivationAttempt,
+  type BrowserPublishAttempt,
   type BrowserProtocolSession,
 } from './protocol'
 
@@ -55,6 +58,8 @@ const QUEUE_KEY = 'pendingSegments'
 const BACKOFF_KEY = 'backoff'
 const HUB_PORT_KEY = 'hubPort'
 const PROTOCOL_SESSION_KEY = 'collectorProtocolSession'
+const PROTOCOL_ACTIVATION_ATTEMPT_KEY = 'collectorProtocolActivationAttempt'
+const PROTOCOL_PUBLISH_ATTEMPT_KEY = 'collectorProtocolPublishAttempt'
 const DESIRED_ENABLED_KEY = 'browserCollectorDesiredEnabled'
 const ALARM_NAME = 'heartbeat-flush'
 
@@ -145,6 +150,26 @@ async function saveProtocolSession(session: BrowserProtocolSession | undefined):
   else await chrome.storage.session.set({ [PROTOCOL_SESSION_KEY]: session })
 }
 
+async function loadProtocolActivationAttempt(): Promise<BrowserActivationAttempt | undefined> {
+  const got = await chrome.storage.session.get(PROTOCOL_ACTIVATION_ATTEMPT_KEY)
+  return got[PROTOCOL_ACTIVATION_ATTEMPT_KEY] as BrowserActivationAttempt | undefined
+}
+
+async function saveProtocolActivationAttempt(attempt: BrowserActivationAttempt | undefined): Promise<void> {
+  if (attempt === undefined) await chrome.storage.session.remove(PROTOCOL_ACTIVATION_ATTEMPT_KEY)
+  else await chrome.storage.session.set({ [PROTOCOL_ACTIVATION_ATTEMPT_KEY]: attempt })
+}
+
+async function loadProtocolPublishAttempt(): Promise<BrowserPublishAttempt | undefined> {
+  const got = await chrome.storage.session.get(PROTOCOL_PUBLISH_ATTEMPT_KEY)
+  return got[PROTOCOL_PUBLISH_ATTEMPT_KEY] as BrowserPublishAttempt | undefined
+}
+
+async function saveProtocolPublishAttempt(attempt: BrowserPublishAttempt | undefined): Promise<void> {
+  if (attempt === undefined) await chrome.storage.session.remove(PROTOCOL_PUBLISH_ATTEMPT_KEY)
+  else await chrome.storage.session.set({ [PROTOCOL_PUBLISH_ATTEMPT_KEY]: attempt })
+}
+
 async function desiredEnabled(): Promise<boolean> {
   const got = await chrome.storage.session.get(DESIRED_ENABLED_KEY)
   return got[DESIRED_ENABLED_KEY] !== false
@@ -206,16 +231,8 @@ async function flushAndUpload(): Promise<void> {
   }
   if (compatiblePort !== targetPort) await saveHubPort(compatiblePort)
 
-  // 声明上报（ADR-030 §3）：送达一次即闭嘴（ack 存 local,跨浏览器重启）;失败下轮再试,
-  // 不阻塞段上报——声明缺席时服务端种子兜底,采集不受影响。
-  const acked = await chrome.storage.local.get(DECLARATION_ACK_KEY)
-  if (acked[DECLARATION_ACK_KEY] !== DECLARATION.version) {
-    if (await postDeclaration(compatiblePort, DECLARATION))
-      await chrome.storage.local.set({ [DECLARATION_ACK_KEY]: DECLARATION.version })
-  }
-
   // 礼貌层停用（ADR-026 §4）：每轮 flush 拉一次 hub 侧配置——此调用同时是注册
-  // （首次触达即"已安装"）与 flushPeriodMs 自报。enabled:false 则丢队列、不上报，
+  // （首次触达即"已安装"）与 flushPeriodMs 自报。enabled:false 时保留 outbox、不上报，
   // 免去注定被 403 的无效 POST；拉取失败（hub 不在/端口漂移）保守视为未停用。
   const collectorConfig = await fetchCollectorConfig(compatiblePort, SOURCE, FLUSH_PERIOD_MS)
   if (collectorConfig?.enabled === false) {
@@ -226,36 +243,68 @@ async function flushAndUpload(): Promise<void> {
 
   const queue = await loadQueue()
   const items = Object.values(queue)
-  if (items.length === 0) return
 
+  // outbox 为空也要完成或续租 Activation：新 Hub 由已验证 Package 注册 typed-payload
+  // 声明，并让浏览器退出后能通过租约如实结束会话。
   const protocolResult = await uploadWithBrowserProtocol(
     compatiblePort,
     deps.appHint,
     items,
     await loadProtocolSession(),
+    await loadProtocolActivationAttempt(),
+    await loadProtocolPublishAttempt(),
+    saveProtocolActivationAttempt,
+    saveProtocolPublishAttempt,
   )
 
   if (protocolResult.kind === 'acked') {
-    const acknowledged = new Set(protocolResult.acknowledgedIds)
     const remaining = Object.fromEntries(
-      Object.entries(await loadQueue()).filter(([id]) => !acknowledged.has(id)),
+      Object.entries(await loadQueue()).filter(([id, snapshot]) =>
+        protocolResult.acknowledgedRevisions[id] !== snapshotRevision(snapshot),
+      ),
     )
     await saveQueue(remaining)
     await saveProtocolSession(protocolResult.session)
+    await saveProtocolActivationAttempt(undefined)
+    await saveProtocolPublishAttempt(undefined)
     if (backoff.fails > 0) await saveBackoff(noBackoff)
     return
   }
   if (protocolResult.kind === 'disabled') {
+    await saveProtocolActivationAttempt(undefined)
+    await saveProtocolPublishAttempt(undefined)
     await applyDesiredEnabled(false)
     return
   }
   if (protocolResult.kind === 'unavailable') {
-    await saveProtocolSession(undefined)
+    if (protocolResult.activationAttempt !== undefined) {
+      await saveProtocolActivationAttempt(protocolResult.activationAttempt)
+    } else {
+      await saveProtocolActivationAttempt(undefined)
+    }
+    if (protocolResult.publishAttempt !== undefined) {
+      await saveProtocolPublishAttempt(protocolResult.publishAttempt)
+      if (protocolResult.session !== undefined) await saveProtocolSession(protocolResult.session)
+    } else {
+      await saveProtocolPublishAttempt(undefined)
+      await saveProtocolSession(undefined)
+    }
     await saveBackoff(backoffAfterFailure(backoff, now))
     return
   }
 
-  // 旧缓存（非 UUIDv7）或旧 hub 明确要求 legacy adapter 时，维持原路由兼容。
+  // 旧缓存（非 UUIDv7）或旧 hub 明确要求 legacy adapter 时，才沿旧路由上报声明。
+  // 这样不会抢先以同版本 legacy 声明遮蔽新 Hub 从 Package 注册的 typed-payload 声明。
+  const acked = await chrome.storage.local.get(DECLARATION_ACK_KEY)
+  await saveProtocolSession(undefined)
+  await saveProtocolActivationAttempt(undefined)
+  await saveProtocolPublishAttempt(undefined)
+  if (acked[DECLARATION_ACK_KEY] !== DECLARATION.version) {
+    if (await postDeclaration(compatiblePort, DECLARATION))
+      await chrome.storage.local.set({ [DECLARATION_ACK_KEY]: DECLARATION.version })
+  }
+  if (items.length === 0) return
+
   const { result, port } = await postToHub(basePort, compatiblePort, items)
   if (port !== compatiblePort) await saveHubPort(port)
 

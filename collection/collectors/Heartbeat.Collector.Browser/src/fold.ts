@@ -30,6 +30,8 @@ export interface SegmentSnapshot {
   title: string
   startTime: string // ISO 8601
   endTime: string
+  /** true 表示 Collector 已确认 Segment 结束；旧缓存缺席时按 false 提升。 */
+  isFinal: boolean
   attributes: { url: string; domain: string; site: string; windowId: number }
 }
 
@@ -65,7 +67,7 @@ export function applyEvent(state: FoldState, ev: FoldEvent, deps: FoldDeps): Fol
     if (!cur) return { state, out: [] }
     const open = { ...state.open }
     delete open[ev.windowId]
-    return { state: { open }, out: [snapshotOf(cur, ev.at, deps)] }
+    return { state: { open }, out: [snapshotOf(cur, ev.at, deps, true)] }
   }
 
   const key = deps.identityKeyOf(ev.url)
@@ -77,7 +79,7 @@ export function applyEvent(state: FoldState, ev: FoldEvent, deps: FoldDeps): Fol
     return { state: { open }, out: [] }
   }
 
-  const out = cur ? [snapshotOf(cur, ev.at, deps)] : []
+  const out = cur ? [snapshotOf(cur, ev.at, deps, true)] : []
   const next: OpenActivity = {
     id: deps.newId(),
     identityKey: key,
@@ -99,8 +101,9 @@ export function flush(state: FoldState, now: number, deps: FoldDeps): FoldResult
   let copied = false
 
   for (const [wid, a] of Object.entries(state.open)) {
-    out.push(snapshotOf(a, now, deps))
-    if (now - a.startTime >= ROTATE_AFTER_MS) {
+    const isFinal = now - a.startTime >= ROTATE_AFTER_MS
+    out.push(snapshotOf(a, now, deps, isFinal))
+    if (isFinal) {
       if (!copied) {
         open = { ...open }
         copied = true
@@ -112,7 +115,7 @@ export function flush(state: FoldState, now: number, deps: FoldDeps): FoldResult
   return { state: copied ? { open } : state, out }
 }
 
-function snapshotOf(a: OpenActivity, endMs: number, deps: FoldDeps): SegmentSnapshot {
+function snapshotOf(a: OpenActivity, endMs: number, deps: FoldDeps, isFinal: boolean): SegmentSnapshot {
   return {
     id: a.id,
     source: 'browser',
@@ -121,6 +124,7 @@ function snapshotOf(a: OpenActivity, endMs: number, deps: FoldDeps): SegmentSnap
     title: a.title,
     startTime: new Date(a.startTime).toISOString(),
     endTime: new Date(Math.max(endMs, a.startTime)).toISOString(),
+    isFinal,
     attributes: { url: a.url, domain: deps.domainOf(a.url), site: deps.siteOf(a.url), windowId: a.windowId },
   }
 }

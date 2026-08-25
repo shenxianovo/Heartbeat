@@ -1,6 +1,9 @@
 import type { SegmentSnapshot } from './fold'
 
-type PersistedSegmentSnapshot = SegmentSnapshot & { appName?: unknown }
+type PersistedSegmentSnapshot = Omit<SegmentSnapshot, 'isFinal'> & {
+  appName?: unknown
+  isFinal?: boolean
+}
 
 /**
  * 把旧扩展留下的 Windows appName 队列提升到 appHint 契约。
@@ -13,9 +16,13 @@ export function normalizeQueuedSnapshots(
   return Object.fromEntries(
     Object.entries(stored).map(([id, { appName: _legacyAppName, ...snapshot }]) => [
       id,
-      snapshot.appHint === undefined && currentAppHint !== undefined
-        ? { ...snapshot, appHint: currentAppHint }
-        : snapshot,
+      {
+        ...snapshot,
+        isFinal: snapshot.isFinal === true,
+        ...(snapshot.appHint === undefined && currentAppHint !== undefined
+          ? { appHint: currentAppHint }
+          : {}),
+      },
     ]),
   )
 }

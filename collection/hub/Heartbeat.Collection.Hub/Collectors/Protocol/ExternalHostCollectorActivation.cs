@@ -23,7 +23,7 @@ public sealed class ExternalHostCollectorActivation
         HelloMessageId = helloMessageId;
         Package = package;
         Streams = streams.ToImmutableDictionary(StringComparer.Ordinal);
-        State = CollectorActivationState.Ready;
+        State = CollectorActivationState.OpeningStreams;
     }
 
     public Guid ActivationId { get; }
