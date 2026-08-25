@@ -24,8 +24,7 @@ public sealed partial class CollectorRuntime
     private readonly Dictionary<Guid, PendingActivationCommit> _pendingActivationCommits = [];
     private readonly Dictionary<Guid, PendingPackageFingerprint> _pendingPackageFingerprints = [];
     private readonly Dictionary<string, FactSchemaDocument> _factSchemasByHash = new(StringComparer.Ordinal);
-    private readonly IReadOnlyList<ISegmentFactProjector> _segmentProjectors =
-        [new ActivitySegmentFactProjector()];
+    private readonly IReadOnlyList<ISegmentFactProjector> _segmentProjectors;
     private readonly Dictionary<Guid, Guid> _streamWriters = [];
     private readonly HashSet<Guid> _startingInstances = [];
     private readonly Dictionary<Guid, StartingCollector> _startingCollectors = [];
@@ -747,9 +746,12 @@ public sealed partial class CollectorRuntime
     {
         if (!_streamWriters.TryGetValue(fact.StreamId, out var writer) || writer != activationId)
             return Rejected(index, "stream_writer_conflict", "Activation does not hold this Fact Stream writer lease.");
-        if (!_activations.TryGetValue(activationId, out var activation))
-            return Rejected(index, "activation_stopping", "Collector Activation is not active.");
-        if (activation.State is not (CollectorActivationState.Ready or CollectorActivationState.Draining))
+        var activationState = _activations.TryGetValue(activationId, out var inProcessActivation)
+            ? inProcessActivation.State
+            : _externalHostActivations.TryGetValue(activationId, out var externalHostActivation)
+                ? externalHostActivation.State
+                : CollectorActivationState.Stopped;
+        if (activationState is not (CollectorActivationState.Ready or CollectorActivationState.Draining))
             return Rejected(index, "activation_stopping", "Collector Activation cannot deliver Facts in its current state.");
 
         var stream = _state.Streams.SingleOrDefault(candidate => candidate.StreamId == fact.StreamId);

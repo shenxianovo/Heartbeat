@@ -26,6 +26,10 @@
     <Content Include="Fixtures/**/*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="..\..\collectors\Heartbeat.Collector.Browser\Package\**\*">
+      <Link>Fixtures\BrowserCollectorPackage\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

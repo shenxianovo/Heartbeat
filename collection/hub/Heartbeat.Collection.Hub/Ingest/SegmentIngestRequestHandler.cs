@@ -1,5 +1,7 @@
 using Heartbeat.Core;
 using Heartbeat.Collection.Hub.Collectors;
+using Heartbeat.Collection.Hub.Collectors.Protocol;
+using Microsoft.Extensions.DependencyInjection;
 using Heartbeat.Collection.Hub.Segments;
 using System.Text.Json;
 using System.Web;
@@ -16,7 +18,8 @@ namespace Heartbeat.Collection.Hub.Ingest
     public class SegmentIngestRequestHandler(
         SegmentIngestService ingestService,
         ICollectorRegistry registry,
-        ICollectorAppHintResolver appHintResolver)
+        ICollectorAppHintResolver appHintResolver,
+        IServiceProvider? serviceProvider = null)
     {
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
@@ -35,6 +38,17 @@ namespace Heartbeat.Collection.Hub.Ingest
         /// <param name="query">URL 查询串（不含 '?'）；GET config 的 flushPeriodMs 由此读。</param>
         public async Task<Response> HandleAsync(string httpMethod, string? path, Stream body, string? query = null)
         {
+            var externalHostProtocol = serviceProvider?.GetService<IExternalHostProtocolHttpHandler>();
+            if (externalHostProtocol is not null)
+            {
+                var protocolResponse = await externalHostProtocol.HandleAsync(httpMethod, path, body);
+                if (protocolResponse is not null)
+                    return new Response(
+                        protocolResponse.StatusCode,
+                        protocolResponse.Body,
+                        protocolResponse.IsJson);
+            }
+
             if (httpMethod == "GET" && path == "/v1/hub")
                 return new Response(200, HubIdentityJson, true);
 

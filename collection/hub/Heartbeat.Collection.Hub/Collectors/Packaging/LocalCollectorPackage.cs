@@ -56,6 +56,12 @@ public sealed record CollectorArtifactManifest(
     long Size,
     string ContentHash);
 
+public sealed record VerifiedObservationDeclaration(
+    string Source,
+    int Version,
+    string Json,
+    string ContentHash);
+
 public sealed class VerifiedCollectorArtifact
 {
     private readonly ImmutableArray<byte> _content;
@@ -143,6 +149,8 @@ public sealed class PackageValidationException(string message, Exception? innerE
 /// </summary>
 public sealed class LocalCollectorPackage
 {
+    private sealed record ObservationDeclarationReference(string Document, string Hash);
+
     private const string ManifestFileName = "collector-manifest.json";
     private static readonly Regex PackageIdPattern = new(
         "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$",
@@ -160,17 +168,20 @@ public sealed class LocalCollectorPackage
         CollectorPackageManifest manifest,
         IReadOnlyList<VerifiedCollectorArtifact> artifacts,
         IReadOnlyList<FactSchemaDocument> factSchemas,
+        VerifiedObservationDeclaration? observationDeclaration,
         string packageContentHash)
     {
         Manifest = manifest;
         Artifacts = artifacts.ToImmutableArray();
         FactSchemas = factSchemas.ToImmutableArray();
+        ObservationDeclaration = observationDeclaration;
         PackageContentHash = packageContentHash;
     }
 
     public CollectorPackageManifest Manifest { get; }
     public IReadOnlyList<VerifiedCollectorArtifact> Artifacts { get; }
     public IReadOnlyList<FactSchemaDocument> FactSchemas { get; }
+    public VerifiedObservationDeclaration? ObservationDeclaration { get; }
     /// <summary>
     /// SHA-256 of the exact UTF-8 Manifest bytes. Because the Manifest fixes every Artifact and
     /// Fact Schema hash, this fingerprints the verified local package; it is not a trust proof.
@@ -189,6 +200,7 @@ public sealed class LocalCollectorPackage
         RejectSymbolicLinks(root, [ManifestFileName], "Collector Package manifest");
         var manifestBytes = ReadStrictUtf8File(manifestPath, "Collector Package manifest");
         var manifest = ParseManifest(manifestBytes);
+        var declarationReference = ReadObservationDeclarationReference(manifestBytes);
 
         var artifacts = manifest.Artifacts
             .Select(artifact => VerifyArtifact(root, artifact))
@@ -198,11 +210,15 @@ public sealed class LocalCollectorPackage
             .GroupBy(schema => (schema.SchemaId, schema.SchemaMajor, schema.SchemaRevision))
             .Select(group => group.First())
             .ToArray();
+        var declaration = declarationReference is null
+            ? null
+            : VerifyObservationDeclaration(root, declarationReference, manifest);
 
         return new LocalCollectorPackage(
             manifest,
             artifacts,
             schemas,
+            declaration,
             "sha256:" + Convert.ToHexStringLower(SHA256.HashData(manifestBytes)));
     }
 
@@ -213,7 +229,7 @@ public sealed class LocalCollectorPackage
         RequireObject(
             root,
             "Collector Package manifest",
-            ["manifestVersion", "packageId", "version", "protocolMajors", "supportedCapabilities", "outputs", "artifacts"],
+            ["manifestVersion", "packageId", "version", "protocolMajors", "supportedCapabilities", "outputs", "artifacts", "observationDeclaration"],
             ["manifestVersion", "packageId", "version", "protocolMajors", "supportedCapabilities", "outputs", "artifacts"]);
 
         var manifestVersion = ReadPositiveInt(root, "manifestVersion", "Collector Package manifest");
@@ -271,6 +287,52 @@ public sealed class LocalCollectorPackage
             capabilities,
             outputs,
             artifacts);
+    }
+
+    private static ObservationDeclarationReference? ReadObservationDeclarationReference(byte[] manifestBytes)
+    {
+        using var document = ParseJson(manifestBytes, "Collector Package manifest");
+        if (!document.RootElement.TryGetProperty("observationDeclaration", out var element))
+            return null;
+        RequireObject(
+            element,
+            "observationDeclaration",
+            ["document", "hash"],
+            ["document", "hash"]);
+        return new ObservationDeclarationReference(
+            ReadNonEmptyString(element, "document", "observationDeclaration"),
+            ReadSha256(element, "hash", "observationDeclaration"));
+    }
+
+    private static VerifiedObservationDeclaration VerifyObservationDeclaration(
+        string root,
+        ObservationDeclarationReference reference,
+        CollectorPackageManifest manifest)
+    {
+        var path = ResolvePackageFile(root, reference.Document, "Observation Depth declaration");
+        var bytes = ReadStrictUtf8File(path, "Observation Depth declaration");
+        VerifyHash(bytes, reference.Hash, "Observation Depth declaration");
+        using var document = ParseJson(bytes, "Observation Depth declaration");
+        var declaration = document.RootElement;
+        RejectDuplicateObjectKeys(declaration, "Observation Depth declaration");
+        RequireObject(
+            declaration,
+            "Observation Depth declaration",
+            ["source", "version", "collectorVersion", "layers"],
+            ["source", "version", "layers"]);
+        var source = ReadNonEmptyString(declaration, "source", "Observation Depth declaration");
+        if (!manifest.Outputs.Any(output => output.Source == source))
+            throw new PackageValidationException(
+                $"Observation Depth declaration source '{source}' is not produced by this Package.");
+        var version = ReadPositiveInt(declaration, "version", "Observation Depth declaration");
+        if (declaration.GetProperty("layers").ValueKind != JsonValueKind.Array ||
+            declaration.GetProperty("layers").GetArrayLength() == 0)
+            throw new PackageValidationException("Observation Depth declaration layers must be a non-empty array.");
+        return new VerifiedObservationDeclaration(
+            source,
+            version,
+            Encoding.UTF8.GetString(bytes),
+            reference.Hash);
     }
 
     private static IReadOnlyDictionary<string, IReadOnlyList<int>> ReadCapabilities(JsonElement element)

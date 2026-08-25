@@ -62,11 +62,16 @@ namespace Heartbeat.Server.Services
         public const string Title = "title";
         public const string IdentityKey = "identityKey";
         public const string AttributesPrefix = "attributes.";
+        public const string PayloadPrefix = "payload.";
+        public const string PayloadAttributesPrefix = PayloadPrefix + AttributesPrefix;
 
         public static bool IsValid(string? from) =>
             from is AppName or Title or IdentityKey
             || from != null && from.StartsWith(AttributesPrefix, StringComparison.Ordinal)
-                            && from.Length > AttributesPrefix.Length;
+                            && from.Length > AttributesPrefix.Length
+            || from is PayloadPrefix + AppName or PayloadPrefix + Title or PayloadPrefix + IdentityKey
+            || from != null && from.StartsWith(PayloadAttributesPrefix, StringComparison.Ordinal)
+                            && from.Length > PayloadAttributesPrefix.Length;
 
         public static string? Resolve(string from, string? appName, string? title, string identityKey, string? attributesJson)
         {
@@ -75,6 +80,13 @@ namespace Heartbeat.Server.Services
             if (from == IdentityKey) return identityKey;
             if (from.StartsWith(AttributesPrefix, StringComparison.Ordinal))
                 return ResolveAttributePath(attributesJson, from[AttributesPrefix.Length..]);
+            if (from == PayloadPrefix + AppName) return appName;
+            if (from == PayloadPrefix + Title) return title;
+            if (from == PayloadPrefix + IdentityKey) return identityKey;
+            if (from.StartsWith(PayloadAttributesPrefix, StringComparison.Ordinal))
+                return ResolveAttributePath(
+                    attributesJson,
+                    from[PayloadAttributesPrefix.Length..]);
             return null;
         }
 

@@ -4,6 +4,7 @@ using Heartbeat.Collection.Hub.Time;
 using Heartbeat.Collection.Hub.Upload;
 using Heartbeat.Collection.Hub.Auth;
 using Heartbeat.Collection.Hub.Collectors;
+using Heartbeat.Collection.Hub.Collectors.Protocol;
 using Heartbeat.Collection.Hub.Ingest;
 using Heartbeat.Collection.Hub.Http;
 using Heartbeat.Collection.Hub.Runtime;
@@ -42,10 +43,24 @@ public static class HubServiceCollectionExtensions
         services.AddTransient<BearerTokenHandler>();
         services.AddHttpClient<HeartbeatApiClient>().AddHttpMessageHandler<BearerTokenHandler>();
         services.TryAddSingleton<SegmentIngestRequestHandler>();
+        services.TryAddSingleton<IExternalHostProtocolHttpHandler, NullExternalHostProtocolHttpHandler>();
         services.TryAddSingleton<DeclarationUplinkService>();
         services.AddHostedService<UploadWorker>();
         services.AddHostedService<StatusUploadWorker>();
         services.AddHostedService<SegmentIngestWorker>();
+        return services;
+    }
+
+    public static IServiceCollection AddBrowserExternalHostBinding(
+        this IServiceCollection services,
+        BrowserExternalHostBindingOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        services.AddSingleton(options);
+        services.AddSingleton<BrowserExternalHostProtocolHandler>();
+        services.Replace(ServiceDescriptor.Singleton<IExternalHostProtocolHttpHandler>(provider =>
+            provider.GetRequiredService<BrowserExternalHostProtocolHandler>()));
+        services.AddHostedService<ExternalHostLeaseMonitor>();
         return services;
     }
 }

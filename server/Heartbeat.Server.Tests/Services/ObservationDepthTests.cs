@@ -86,6 +86,38 @@ public class ObservationDepthTests
     }
 
     [Fact]
+    public void TypedPayloadPaths_KeepBrowserSiteUrlTitleProjectionAndMatcherVocabularyStable()
+    {
+        var tables = new DepthTables([new CollectorDeclarationDto
+        {
+            Source = "browser",
+            Version = 2,
+            Layers =
+            [
+                new() { Readings = [new() { Name = "site", From = "payload.attributes.site" }] },
+                new() { Readings = [new() { Name = "url", From = "payload.attributes.url" }] },
+                new() { Readings = [new() { Name = "tab_title", From = "payload.title" }] },
+            ]
+        }]);
+
+        var readings = tables.ReadingsFor(
+            "browser",
+            null,
+            "Example Docs",
+            "https://example.com/docs",
+            """{"url":"https://example.com/docs?q=1","site":"example.com"}""");
+
+        Assert.Equal(
+            [
+                new DepthReading(1, "site", "example.com"),
+                new DepthReading(2, "url", "https://example.com/docs?q=1"),
+                new DepthReading(3, "tab_title", "Example Docs")
+            ],
+            readings);
+        Assert.Null(DeclarationValidator.Validate(tables.For("browser")!));
+    }
+
+    [Fact]
     public void DescribeForPrompt_RendersDeclaredVocabulary()
     {
         var vocab = DepthTables.Seeds.DescribeForPrompt();

@@ -34,4 +34,11 @@
     <ProjectReference Include="..\..\..\shared\Heartbeat.Core\Heartbeat.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="..\..\collectors\Heartbeat.Collector.Browser\Package\**\*">
+      <Link>CollectorPackages\Browser\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

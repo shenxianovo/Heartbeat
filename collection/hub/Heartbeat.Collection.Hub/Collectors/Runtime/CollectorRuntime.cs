@@ -2,6 +2,7 @@ using System.Text.Json;
 using Heartbeat.Collection.Hub.Collectors.Packages;
 using Heartbeat.Collection.Hub.Collectors.Protocol;
 using Heartbeat.Collection.Hub.Segments;
+using Heartbeat.Collection.Hub.Ingest;
 
 namespace Heartbeat.Collection.Hub.Collectors.Runtime;
 
@@ -87,18 +88,21 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         JsonCollectorRuntimeStore store,
         ISegmentSink segmentSink,
         CollectorRuntimeOptions options,
-        CollectorRuntimeState state)
+        CollectorRuntimeState state,
+        ICollectorAppHintResolver? appHintResolver)
     {
         _store = store;
         _segmentSink = segmentSink;
         _options = options;
         _state = state;
+        _segmentProjectors = [new ActivitySegmentFactProjector(appHintResolver)];
     }
 
     public static CollectorRuntime Open(
         string stateFilePath,
         ISegmentSink segmentSink,
-        CollectorRuntimeOptions? options = null)
+        CollectorRuntimeOptions? options = null,
+        ICollectorAppHintResolver? appHintResolver = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(stateFilePath);
         ArgumentNullException.ThrowIfNull(segmentSink);
@@ -109,7 +113,7 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         try
         {
             var state = store.Load();
-            var runtime = new CollectorRuntime(store, segmentSink, options, state);
+            var runtime = new CollectorRuntime(store, segmentSink, options, state, appHintResolver);
             runtime.RestorePersistedFactSchemas();
             runtime.ReplayCommittedSegments();
             return runtime;
@@ -197,6 +201,42 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         }
     }
 
+    public CollectorInstance UpdateInstanceSpec(
+        Guid collectorInstanceId,
+        int configSchemaVersion,
+        JsonElement config)
+    {
+        if (configSchemaVersion <= 0)
+            throw new ArgumentOutOfRangeException(nameof(configSchemaVersion));
+        if (config.ValueKind == JsonValueKind.Undefined)
+            throw new ArgumentException("Config must contain a JSON value.", nameof(config));
+
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            var current = GetInstanceStateLocked(collectorInstanceId);
+            if (current.SpecRevision >= MaxSafeJsonInteger)
+                throw new InvalidOperationException("Collector Instance SpecRevision cannot be incremented safely.");
+            var updated = new CollectorInstanceState
+            {
+                CollectorInstanceId = current.CollectorInstanceId,
+                PackageId = current.PackageId,
+                PackageVersion = current.PackageVersion,
+                PackageContentHash = current.PackageContentHash,
+                PackageFingerprints = new Dictionary<string, string>(current.PackageFingerprints, StringComparer.Ordinal),
+                SubjectId = current.SubjectId,
+                SubjectKind = current.SubjectKind,
+                SpecRevision = current.SpecRevision + 1,
+                ConfigSchemaVersion = configSchemaVersion,
+                Config = config.Clone()
+            };
+            var next = _state.WithInstanceAndStreams(updated, []);
+            _store.Save(next);
+            _state = next;
+            return ToPublic(updated);
+        }
+    }
+
     private static void ValidateSpec(CollectorInstanceSpec spec)
     {
         ArgumentNullException.ThrowIfNull(spec);
@@ -260,6 +300,7 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
     private async Task DisposeCoreAsync()
     {
         InProcessCollectorActivation[] activations;
+        ExternalHostCollectorActivation[] externalHostActivations;
         StartingCollector[] startingCollectors;
         lock (_gate)
         {
@@ -267,6 +308,9 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
                 return;
             _disposing = true;
             activations = _activations.Values
+                .Where(activation => activation.State != CollectorActivationState.Stopped)
+                .ToArray();
+            externalHostActivations = _externalHostActivations.Values
                 .Where(activation => activation.State != CollectorActivationState.Stopped)
                 .ToArray();
             startingCollectors = _startingCollectors.Values.ToArray();
@@ -309,6 +353,9 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
                 stopFailures.Add(exception);
             }
         }
+
+        foreach (var activation in externalHostActivations)
+            StopExternalHostActivation(activation, ExternalHostActivationStopReason.RuntimeStopping);
 
         if (stopFailures.Count != 0)
             throw new AggregateException("One or more Collectors did not stop; Runtime ownership is retained.", stopFailures);

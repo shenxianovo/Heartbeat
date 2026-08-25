@@ -20,6 +20,10 @@ import { loadConfig } from './config'
 import { backoffAfterFailure, noBackoff, shouldSkipAttempt, type BackoffState } from './backoff'
 import { detectBrowserAppHint } from './app-hint'
 import { normalizeQueuedSnapshots } from './queue'
+import {
+  uploadWithBrowserProtocol,
+  type BrowserProtocolSession,
+} from './protocol'
 
 /** chrome.alarms 最小周期 30s（Chrome 120+），与 manifest.minimum_chrome_version 对应。 */
 const FLUSH_PERIOD_MINUTES = 0.5
@@ -45,13 +49,13 @@ const DECLARATION = {
 } as const
 
 const DECLARATION_ACK_KEY = 'declarationAckedVersion'
-/** 队列按 Id 键控压缩后仍超上限时丢最旧（失控保险，镜像 SegmentIngestService.MaxBuffered 思路）。 */
-const MAX_QUEUED = 5000
 
 const STATE_KEY = 'foldState'
 const QUEUE_KEY = 'pendingSegments'
 const BACKOFF_KEY = 'backoff'
 const HUB_PORT_KEY = 'hubPort'
+const PROTOCOL_SESSION_KEY = 'collectorProtocolSession'
+const DESIRED_ENABLED_KEY = 'browserCollectorDesiredEnabled'
 const ALARM_NAME = 'heartbeat-flush'
 
 const deps: FoldDeps = {
@@ -131,26 +135,49 @@ async function saveHubPort(port: number): Promise<void> {
   await chrome.storage.session.set({ [HUB_PORT_KEY]: port })
 }
 
+async function loadProtocolSession(): Promise<BrowserProtocolSession | undefined> {
+  const got = await chrome.storage.session.get(PROTOCOL_SESSION_KEY)
+  return got[PROTOCOL_SESSION_KEY] as BrowserProtocolSession | undefined
+}
+
+async function saveProtocolSession(session: BrowserProtocolSession | undefined): Promise<void> {
+  if (session === undefined) await chrome.storage.session.remove(PROTOCOL_SESSION_KEY)
+  else await chrome.storage.session.set({ [PROTOCOL_SESSION_KEY]: session })
+}
+
+async function desiredEnabled(): Promise<boolean> {
+  const got = await chrome.storage.session.get(DESIRED_ENABLED_KEY)
+  return got[DESIRED_ENABLED_KEY] !== false
+}
+
+async function saveDesiredEnabled(enabled: boolean): Promise<void> {
+  await chrome.storage.session.set({ [DESIRED_ENABLED_KEY]: enabled })
+}
+
+async function applyDesiredEnabled(enabled: boolean): Promise<void> {
+  const wasEnabled = await desiredEnabled()
+  await saveDesiredEnabled(enabled)
+  if (!enabled) {
+    // 结束本地 fold 会话但保留已生成且未 ACK 的 durable outbox。
+    await saveState(emptyState())
+  } else if (!wasEnabled) {
+    // 重新启用从当前 tab 新开活动，避免把停用区间补进旧 Segment。
+    await reconcile()
+  }
+}
+
 /** 入队按 Id 键控：同段后到快照覆盖先到（快照单调生长，攒批自动压缩，ADR-018）。 */
 async function enqueue(snapshots: SegmentSnapshot[]): Promise<void> {
   if (snapshots.length === 0) return
   const queue = await loadQueue()
   for (const s of snapshots) queue[s.id] = s
-
-  const ids = Object.keys(queue)
-  if (ids.length > MAX_QUEUED) {
-    const byOldest = Object.values(queue).sort((a, b) => a.startTime.localeCompare(b.startTime))
-    for (const victim of byOldest.slice(0, ids.length - MAX_QUEUED)) {
-      delete queue[victim.id]
-      console.warn(`[heartbeat] 队列已满（${MAX_QUEUED}），丢弃最旧段 ${victim.id}`)
-    }
-  }
   await saveQueue(queue)
 }
 
 // ---- 事件处理 ----
 
 async function handleEvent(ev: FoldEvent): Promise<void> {
+  if (!await desiredEnabled()) return
   const state = await loadState()
   const { state: next, out } = applyEvent(state, ev, deps)
   if (next !== state) await saveState(next)
@@ -158,10 +185,12 @@ async function handleEvent(ev: FoldEvent): Promise<void> {
 }
 
 async function flushAndUpload(): Promise<void> {
-  const state = await loadState()
-  const { state: next, out } = flush(state, Date.now(), deps)
-  if (next !== state) await saveState(next)
-  await enqueue(out)
+  if (await desiredEnabled()) {
+    const state = await loadState()
+    const { state: next, out } = flush(state, Date.now(), deps)
+    if (next !== state) await saveState(next)
+    await enqueue(out)
+  }
 
   // 退避门：hub 连续不可达时拉开尝试间隔（快照照常入队，不丢）。
   const backoff = await loadBackoff()
@@ -190,18 +219,43 @@ async function flushAndUpload(): Promise<void> {
   // 免去注定被 403 的无效 POST；拉取失败（hub 不在/端口漂移）保守视为未停用。
   const collectorConfig = await fetchCollectorConfig(compatiblePort, SOURCE, FLUSH_PERIOD_MS)
   if (collectorConfig?.enabled === false) {
-    const queued = Object.keys(await loadQueue()).length
-    if (queued > 0) {
-      console.warn(`[heartbeat] 采集器已在 hub 停用，丢弃 ${queued} 条段`)
-      await saveQueue({})
-    }
+    await applyDesiredEnabled(false)
     return
   }
+  if (collectorConfig?.enabled === true) await applyDesiredEnabled(true)
 
   const queue = await loadQueue()
   const items = Object.values(queue)
   if (items.length === 0) return
 
+  const protocolResult = await uploadWithBrowserProtocol(
+    compatiblePort,
+    deps.appHint,
+    items,
+    await loadProtocolSession(),
+  )
+
+  if (protocolResult.kind === 'acked') {
+    const acknowledged = new Set(protocolResult.acknowledgedIds)
+    const remaining = Object.fromEntries(
+      Object.entries(await loadQueue()).filter(([id]) => !acknowledged.has(id)),
+    )
+    await saveQueue(remaining)
+    await saveProtocolSession(protocolResult.session)
+    if (backoff.fails > 0) await saveBackoff(noBackoff)
+    return
+  }
+  if (protocolResult.kind === 'disabled') {
+    await applyDesiredEnabled(false)
+    return
+  }
+  if (protocolResult.kind === 'unavailable') {
+    await saveProtocolSession(undefined)
+    await saveBackoff(backoffAfterFailure(backoff, now))
+    return
+  }
+
+  // 旧缓存（非 UUIDv7）或旧 hub 明确要求 legacy adapter 时，维持原路由兼容。
   const { result, port } = await postToHub(basePort, compatiblePort, items)
   if (port !== compatiblePort) await saveHubPort(port)
 
@@ -209,11 +263,8 @@ async function flushAndUpload(): Promise<void> {
     await saveQueue({})
     if (backoff.fails > 0) await saveBackoff(noBackoff)
   } else if (result === 'rejected') {
-    // 毒批次整批丢弃：hub 明确拒绝的数据重传无意义（含 403 = 被停用，强制层兜底）。
-    // 身份已由 postToHub 确认——陌生服务的 4xx 不会走到这里。
-    console.warn(`[heartbeat] hub 拒收 ${items.length} 条段，丢弃`)
-    await saveQueue({})
-    if (backoff.fails > 0) await saveBackoff(noBackoff)
+    // 未收到逐 Fact ACK，不删除 outbox；旧请求可以在升级完成后再次投递。
+    console.warn(`[heartbeat] legacy hub 拒收 ${items.length} 条段，保留 outbox`)
   } else {
     // unreachable：保留队列，指数退避后重试（Agent 未运行时数据在 storage.local 缓冲）。
     await saveBackoff(backoffAfterFailure(backoff, now))
@@ -225,6 +276,7 @@ async function flushAndUpload(): Promise<void> {
  * 幂等——同 identityKey 不产生边界；已消失窗口的活动就地封口。
  */
 async function reconcile(): Promise<void> {
+  if (!await desiredEnabled()) return
   const tabs = await chrome.tabs.query({ active: true })
   const liveWindows = new Set(tabs.map((t) => t.windowId))
   const now = Date.now()

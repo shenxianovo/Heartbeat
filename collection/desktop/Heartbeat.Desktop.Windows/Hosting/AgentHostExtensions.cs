@@ -20,6 +20,7 @@ using Heartbeat.Collection.Hub.Configuration;
 using Heartbeat.Collection.Hub.Collectors;
 using Heartbeat.Collection.Hub.Runtime;
 using Heartbeat.Collection.Hub.Http;
+using Heartbeat.Collection.Hub.Collectors.Protocol;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Heartbeat.Desktop.Windows.Hosting
@@ -145,6 +146,8 @@ namespace Heartbeat.Desktop.Windows.Hosting
             // InputEventCollector 另有 AddSingleton 注册，容器把同一实例捕获进 disposables 两次，
             // host.Dispose() 双重 Dispose → 对已释放 CTS 调 Cancel 抛异常 → 退出流程中断、端口不释放。
             services.AddHostedService<InputEventCollector>();
+            services.AddBrowserExternalHostBinding(new BrowserExternalHostBindingOptions(
+                Path.Combine(AppContext.BaseDirectory, "CollectorPackages", "Browser")));
             services.AddSystemCollectorInProcessBinding(new SystemCollectorBindingOptions(
                 Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

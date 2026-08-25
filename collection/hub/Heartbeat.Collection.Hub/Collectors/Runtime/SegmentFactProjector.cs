@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Heartbeat.Core.DTOs.Segments;
+using Heartbeat.Collection.Hub.Ingest;
 
 namespace Heartbeat.Collection.Hub.Collectors.Runtime;
 
@@ -20,12 +21,13 @@ internal interface ISegmentFactProjector
         out ActivitySegmentItem? item);
 }
 
-internal sealed class ActivitySegmentFactProjector : ISegmentFactProjector
+internal sealed class ActivitySegmentFactProjector(ICollectorAppHintResolver? appHintResolver) : ISegmentFactProjector
 {
     public bool Supports(string schemaId, int schemaMajor) =>
         schemaMajor == 1 && schemaId is
             "heartbeat.reference.segment" or
-            "heartbeat.system.foreground-segment";
+            "heartbeat.system.foreground-segment" or
+            "heartbeat.browser.active-tab-segment";
 
     public Guid ProjectedId(Guid streamId, Guid factId)
     {
@@ -51,19 +53,32 @@ internal sealed class ActivitySegmentFactProjector : ISegmentFactProjector
             identityKey.ValueKind != JsonValueKind.String)
             return false;
 
+        var isBrowser = stream.SchemaId == "heartbeat.browser.active-tab-segment";
+        var appIdentityKey = isBrowser &&
+                             stream.Dimensions.TryGetValue("appHint", out var appHint) &&
+                             appHintResolver?.Resolve(appHint) is
+                             { Kind: CollectorAppHintResolutionKind.Resolved } resolution
+            ? resolution.AppIdentityKey
+            : StringProperty(payload, "appIdentityKey");
+        JsonElement? attributes = isBrowser &&
+                         payload.TryGetProperty("attributes", out var browserAttributes) &&
+                         browserAttributes.ValueKind == JsonValueKind.Object
+            ? browserAttributes.Clone()
+            : stream.SchemaId == "heartbeat.system.foreground-segment"
+                ? null
+                : payload.Clone();
+
         item = new ActivitySegmentItem
         {
             Id = ProjectedId(stream.StreamId, factId),
             Source = stream.Source,
             IdentityKey = identityKey.GetString()!,
             Title = StringProperty(payload, "title"),
-            AppIdentityKey = StringProperty(payload, "appIdentityKey"),
+            AppIdentityKey = appIdentityKey,
             AppDisplayName = StringProperty(payload, "appDisplayName"),
             StartTime = start,
             EndTime = end,
-            Attributes = stream.SchemaId == "heartbeat.system.foreground-segment"
-                ? null
-                : payload.Clone()
+            Attributes = attributes
         };
         return true;
     }

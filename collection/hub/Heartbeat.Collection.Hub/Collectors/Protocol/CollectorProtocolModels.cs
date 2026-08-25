@@ -29,6 +29,13 @@ public sealed record InProcessCollectorInitialization(
     long AppliedSpecRevision,
     IReadOnlyList<OutputBinding> Bindings);
 
+public sealed record ExternalHostCollectorInitialization(
+    Guid ActivationId,
+    CollectorInstance Instance,
+    CollectorInstanceSpec Spec,
+    CollectorProtocolLimits Limits,
+    IReadOnlyDictionary<string, int> SelectedCapabilities);
+
 public interface IInProcessCollector
 {
     string ArtifactId { get; }
@@ -60,6 +67,14 @@ public enum CollectorActivationState
     Ready,
     Draining,
     Stopped
+}
+
+public enum ExternalHostActivationStopReason
+{
+    LeaseExpired,
+    LeaseReplaced,
+    CollectorDrained,
+    RuntimeStopping
 }
 
 public enum CollectorHandshakeStep

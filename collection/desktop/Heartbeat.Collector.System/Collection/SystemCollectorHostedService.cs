@@ -18,24 +18,20 @@ public sealed record SystemCollectorBindingOptions(
 /// </summary>
 public sealed class SystemCollectorHostedService(
     SystemCollectorBindingOptions options,
-    ISegmentSink legacySegmentAdapter,
+    CollectorRuntime runtime,
     IDeviceIdentity deviceIdentity,
     SystemInProcessCollector collector) : IHostedService, IDisposable, IAsyncDisposable
 {
-    private CollectorRuntime? _runtime;
     private InProcessCollectorActivation? _activation;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        if (_runtime is not null)
+        if (_activation is not null)
             throw new InvalidOperationException("The system Collector Binding is already started.");
 
         Directory.CreateDirectory(options.DataDirectory);
         var package = LocalCollectorPackage.Load(
             options.PackageDirectory ?? SystemCollectorPackage.Path);
-        var runtime = CollectorRuntime.Open(
-            Path.Combine(options.DataDirectory, "collector-runtime.json"),
-            legacySegmentAdapter);
         try
         {
             using var config = JsonDocument.Parse("{}");
@@ -55,12 +51,10 @@ public sealed class SystemCollectorHostedService(
                 package,
                 collector,
                 cancellationToken);
-            _runtime = runtime;
             _activation = activation;
         }
         catch
         {
-            await runtime.DisposeAsync();
             throw;
         }
     }
@@ -71,11 +65,6 @@ public sealed class SystemCollectorHostedService(
         {
             await _activation.StopAsync(cancellationToken);
             _activation = null;
-        }
-        if (_runtime is not null)
-        {
-            await _runtime.DisposeAsync();
-            _runtime = null;
         }
     }
 

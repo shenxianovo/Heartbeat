@@ -1,0 +1,43 @@
+{
+  "manifestVersion": 1,
+  "packageId": "heartbeat.collector.browser",
+  "version": "0.1.0",
+  "protocolMajors": [1],
+  "supportedCapabilities": {
+    "facts.segment": [1],
+    "diagnostics.stream-gap": [1]
+  },
+  "observationDeclaration": {
+    "document": "observation-depth.json",
+    "hash": "sha256:d26d98f441c05265a41a5a714993217c1070ab3d631af921b5c03abf262646b1"
+  },
+  "outputs": [
+    {
+      "outputId": "activeTab",
+      "source": "browser",
+      "factKind": "segment",
+      "schema": {
+        "id": "heartbeat.browser.active-tab-segment",
+        "major": 1,
+        "revision": 1,
+        "document": "schemas/active-tab-segment.schema.json",
+        "hash": "sha256:e36103c75e7032e6c4cd5c3e8455255ca6fb4ebd5addf581735a1f84dc28d6eb"
+      },
+      "subjectKinds": ["machine"],
+      "dimensionKeys": ["appHint"]
+    }
+  ],
+  "artifacts": [
+    {
+      "artifactId": "browser.extension",
+      "selector": {
+        "driver": "externalHost",
+        "os": ["windows", "macos"],
+        "arch": ["x64", "arm64"]
+      },
+      "entrypoint": "artifacts/browser-extension.json",
+      "size": 72,
+      "contentHash": "sha256:0c4d749ffa5d7dc6467c04a66cc054c54433a951b2e00555215d923bf7a14f46"
+    }
+  ]
+}

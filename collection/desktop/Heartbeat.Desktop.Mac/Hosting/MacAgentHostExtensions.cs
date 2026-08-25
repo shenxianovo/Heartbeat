@@ -20,6 +20,7 @@ using Heartbeat.Collection.Hub.Runtime;
 using Heartbeat.Collection.Hub.Storage;
 using Heartbeat.Collection.Hub.Time;
 using Heartbeat.Collection.Hub.Upload;
+using Heartbeat.Collection.Hub.Collectors.Protocol;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -120,6 +121,8 @@ public static class MacAgentHostExtensions
         // AddHeartbeatHub registers workers first. Monitor stays last so its terminal
         // snapshot is available before UploadWorker performs the final drain.
         services.AddHostedService(sp => sp.GetRequiredService<MacInputEventCollector>());
+        services.AddBrowserExternalHostBinding(new BrowserExternalHostBindingOptions(
+            Path.Combine(AppContext.BaseDirectory, "CollectorPackages", "Browser")));
         services.AddSystemCollectorInProcessBinding(new SystemCollectorBindingOptions(
             paths.DataDirectory));
         return services;

@@ -1,0 +1,10 @@
+{
+  "source": "browser",
+  "version": 2,
+  "collectorVersion": "0.1.0",
+  "layers": [
+    { "readings": [{ "name": "site", "from": "payload.attributes.site", "label": "站点" }] },
+    { "readings": [{ "name": "url", "from": "payload.attributes.url", "label": "网址" }] },
+    { "readings": [{ "name": "tab_title", "from": "payload.title", "label": "标签页" }] }
+  ]
+}
