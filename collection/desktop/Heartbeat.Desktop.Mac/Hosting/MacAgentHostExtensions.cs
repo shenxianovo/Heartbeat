@@ -122,7 +122,10 @@ public static class MacAgentHostExtensions
         // snapshot is available before UploadWorker performs the final drain.
         services.AddHostedService(sp => sp.GetRequiredService<MacInputEventCollector>());
         services.AddBrowserExternalHostBinding(new BrowserExternalHostBindingOptions(
-            Path.Combine(AppContext.BaseDirectory, "CollectorPackages", "Browser")));
+            Path.Combine(AppContext.BaseDirectory, "CollectorPackages", "Browser"))
+        {
+            DataDirectory = paths.DataDirectory
+        });
         services.AddSystemCollectorInProcessBinding(new SystemCollectorBindingOptions(
             paths.DataDirectory));
         return services;

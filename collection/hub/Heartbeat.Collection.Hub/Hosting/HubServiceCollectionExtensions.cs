@@ -5,6 +5,8 @@ using Heartbeat.Collection.Hub.Upload;
 using Heartbeat.Collection.Hub.Auth;
 using Heartbeat.Collection.Hub.Collectors;
 using Heartbeat.Collection.Hub.Collectors.Protocol;
+using Heartbeat.Collection.Hub.Collectors.Packages;
+using Heartbeat.Collection.Hub.Collectors.Runtime;
 using Heartbeat.Collection.Hub.Ingest;
 using Heartbeat.Collection.Hub.Http;
 using Heartbeat.Collection.Hub.Runtime;
@@ -57,6 +59,16 @@ public static class HubServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(options);
         services.AddSingleton(options);
+        services.AddSingleton(provider =>
+        {
+            var runtime = new BrowserCollectorRuntime(
+                provider.GetRequiredService<CollectorRuntime>(),
+                provider.GetRequiredService<ICollectorRegistry>(),
+                provider.GetRequiredService<IDeviceIdentity>(),
+                options);
+            runtime.EnsureBundledPackageInstalled();
+            return runtime;
+        });
         services.AddSingleton<BrowserExternalHostProtocolHandler>();
         services.Replace(ServiceDescriptor.Singleton<IExternalHostProtocolHttpHandler>(provider =>
             provider.GetRequiredService<BrowserExternalHostProtocolHandler>()));

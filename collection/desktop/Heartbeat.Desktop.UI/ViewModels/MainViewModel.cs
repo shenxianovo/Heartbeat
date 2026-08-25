@@ -307,8 +307,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void RebuildCollectors(DesktopStateSnapshot snapshot)
     {
-        var wanted = new List<string> { ActivitySources.System };
-        wanted.AddRange(snapshot.Collectors.Keys.OrderBy(key => key, StringComparer.OrdinalIgnoreCase));
+        var wanted = new List<string> { ActivitySources.System, ActivitySources.Browser };
+        wanted.AddRange(snapshot.Collectors.Keys
+            .Where(key => !wanted.Contains(key, StringComparer.OrdinalIgnoreCase))
+            .OrderBy(key => key, StringComparer.OrdinalIgnoreCase));
 
         for (var index = Collectors.Count - 1; index >= 0; index--)
         {
@@ -330,7 +332,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     isSystem ? null : _desktopState.SetCollectorEnabled,
                     isSystem ? _desktopState.SetSystemCapabilityEnabled : null,
                     isSystem ? _desktopState.RecoverSystemCapability : null,
-                    isSystem ? _desktopState.RevealSystemCapabilityApplication : null);
+                    isSystem ? _desktopState.RevealSystemCapabilityApplication : null,
+                    source == ActivitySources.Browser ? _desktopState.ImportBrowserCollectorPackage : null);
                 Collectors.Insert(Math.Min(index, Collectors.Count), item);
             }
 
@@ -338,7 +341,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 item.SetSystemCapabilities(snapshot.Capabilities);
             }
-            if (snapshot.Collectors.TryGetValue(source, out var registration))
+            if (source == ActivitySources.Browser && snapshot.BrowserCollector is { } browserRuntime)
+                item.UpdateBrowserRuntime(browserRuntime);
+            else if (snapshot.Collectors.TryGetValue(source, out var registration))
                 item.SetEnabledSilently(registration.Enabled);
         }
 
@@ -355,7 +360,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 item.IsActive = true;
                 continue;
             }
-
             snapshot.Collectors.TryGetValue(item.Source, out var registration);
             DateTimeOffset? lastSeen = snapshot.SourceLastSeen.TryGetValue(item.Source, out var seen)
                 ? seen

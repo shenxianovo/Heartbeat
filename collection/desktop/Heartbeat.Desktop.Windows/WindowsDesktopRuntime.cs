@@ -12,6 +12,7 @@ using Heartbeat.Collection.Hub.Http;
 using Heartbeat.Collection.Hub.Presence;
 using Heartbeat.Collection.Hub.Upload;
 using Heartbeat.Desktop.Windows.Services;
+using Heartbeat.Collection.Hub.Collectors.Runtime;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
@@ -42,7 +43,8 @@ public sealed class WindowsDesktopRuntime : IWindowController, IAsyncDisposable
             host.Services.GetRequiredService<ICollectionStatus>(),
             host.Services.GetRequiredService<IAutoStartService>(),
             host.Services.GetRequiredService<IClientCompatibilityStatus>(),
-            host.Services.GetRequiredService<IUploadStatus>());
+            host.Services.GetRequiredService<IUploadStatus>(),
+            host.Services.GetRequiredService<BrowserCollectorRuntime>());
         var channel = RuntimeInformation.ProcessArchitecture == Architecture.Arm64
             ? "win-arm64"
             : "win-x64";

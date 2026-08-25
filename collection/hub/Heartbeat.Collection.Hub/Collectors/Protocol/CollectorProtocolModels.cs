@@ -74,6 +74,7 @@ public enum ExternalHostActivationStopReason
 {
     LeaseExpired,
     LeaseReplaced,
+    DesiredDisabled,
     CollectorDrained,
     RuntimeStopping
 }

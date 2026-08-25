@@ -1,1 +1,31 @@
-{"kind":"heartbeat.browser.external-host","entrypoint":"manifest.json"}
+{
+  "kind": "heartbeat.browser.external-host",
+  "entrypoint": "browser-extension/manifest.json",
+  "files": [
+    {
+      "path": "browser-extension/manifest.json",
+      "size": 485,
+      "contentHash": "sha256:25b576c479d4bb3f93c4b41a6c1024003f5d3ed3c34096a55a40696a61f8298b"
+    },
+    {
+      "path": "browser-extension/background.js",
+      "size": 38627,
+      "contentHash": "sha256:d79d5940fc05c70a5cd2ef05ba007664fecf8334b31405dbb96e02d10a6ecfb8"
+    },
+    {
+      "path": "browser-extension/options.html",
+      "size": 1445,
+      "contentHash": "sha256:dac5b4757877b2de788ec1e5ba473f41d849071be5ab71b2ae9ff531dacb625e"
+    },
+    {
+      "path": "browser-extension/options.js",
+      "size": 1929,
+      "contentHash": "sha256:0f12426e083d7a518ce0cf5660695a77e21e0231d88e4f586844b6744a81c074"
+    },
+    {
+      "path": "browser-extension/assets/config-CudPlTIo.js",
+      "size": 501,
+      "contentHash": "sha256:bc90e4ba497d8a67cc28b7da60f332eba4c573565cc355f4be2c7f8e3a107008"
+    }
+  ]
+}

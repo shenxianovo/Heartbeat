@@ -3,7 +3,18 @@ import { uuidv7 } from './ids'
 
 const ROUTE = '/v1/collector-protocol/browser'
 const ARTIFACT_ID = 'browser.extension'
-const ARTIFACT_HASH = 'sha256:0c4d749ffa5d7dc6467c04a66cc054c54433a951b2e00555215d923bf7a14f46'
+const TEST_ARTIFACT_HASH = `sha256:${'0'.repeat(64)}`
+
+async function browserArtifactHash(): Promise<string> {
+  if (typeof chrome === 'undefined' || !chrome.runtime?.getURL) return TEST_ARTIFACT_HASH
+  const response = await fetch(chrome.runtime.getURL('package-metadata.json'))
+  if (!response.ok) throw new Error('browser Package metadata is unavailable')
+  const metadata = await response.json() as { artifactHash?: unknown }
+  if (typeof metadata.artifactHash !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(metadata.artifactHash)) {
+    throw new Error('browser Package metadata has an invalid artifact hash')
+  }
+  return metadata.artifactHash
+}
 
 export interface BrowserProtocolSession {
   port: number
@@ -174,7 +185,7 @@ export async function openBrowserProtocolSession(
         undefined,
         {
         artifactId: ARTIFACT_ID,
-        artifactHash: ARTIFACT_HASH,
+        artifactHash: await browserArtifactHash(),
         protocolMajors: [1],
         supportedCapabilities: {
           'facts.segment': [1],

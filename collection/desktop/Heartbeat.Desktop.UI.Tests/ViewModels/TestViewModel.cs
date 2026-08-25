@@ -30,10 +30,13 @@ internal sealed class FakeDesktopState : IDesktopState
     public bool? LastLoginStartValue { get; private set; }
     public DesktopThemeMode? LastThemeMode { get; private set; }
     public (string Source, bool Enabled)? LastCollectorValue { get; private set; }
+    public string? LastBrowserPackageImport { get; private set; }
     public event Action<DesktopStateSnapshot>? Changed;
 
     public void SaveSettings(DesktopSettingsInput settings) => LastSettings = settings;
     public void SetCollectorEnabled(string source, bool enabled) => LastCollectorValue = (source, enabled);
+    public void ImportBrowserCollectorPackage(string packageDirectory) =>
+        LastBrowserPackageImport = packageDirectory;
     public void SetSystemCapabilityEnabled(SystemCapability capability, bool enabled) =>
         LastSystemCapabilityValue = (capability, enabled);
     public void RecoverSystemCapability(SystemCapability capability) =>

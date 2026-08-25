@@ -62,6 +62,46 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public void BrowserPackage_IsPresentedFromRuntimeInstallationAndSupportsImportAndDesiredState()
+    {
+        var state = new FakeDesktopState
+        {
+            Current = DesktopStateSnapshot.Empty with
+            {
+                BrowserCollector = new BrowserCollectorState(
+                    true,
+                    "0.2.0",
+                    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "/data/packages/browser/0.2.0",
+                    "/data/packages/browser/0.2.0/browser-extension",
+                    true,
+                    ExternalHostRuntimeStatus.Degraded,
+                    "浏览器仍在运行旧版本；请重新加载。",
+                    true,
+                    "0.1.0")
+            }
+        };
+        using var viewModel = TestViewModel.Create(state);
+
+        var browser = Assert.Single(viewModel.Collectors, item => item.Source == "browser");
+        Assert.True(browser.IsPackageInstalled);
+        Assert.Equal("0.2.0", browser.PackageVersion);
+        Assert.Equal("Degraded", browser.RuntimeStatusText);
+        Assert.Equal("不活跃", browser.ActivityText);
+        Assert.Contains("重新加载", browser.RuntimeStatusDetail);
+        Assert.Equal("/data/packages/browser/0.2.0/browser-extension", browser.SideloadDirectory);
+        Assert.Equal("0.1.0", browser.PreviousKnownGoodVersion);
+        Assert.True(browser.ReloadRequired);
+
+        browser.Enabled = false;
+        browser.ImportPath = "/tmp/browser-package";
+        browser.ImportPackageCommand.Execute(null);
+
+        Assert.Equal(("browser", false), state.LastCollectorValue);
+        Assert.Equal("/tmp/browser-package", state.LastBrowserPackageImport);
+    }
+
+    [Fact]
     public void SystemCollector_OwnsCapabilityControlsAndKeepsRequestedIntentWhenPermissionIsBlocked()
     {
         var state = new FakeDesktopState

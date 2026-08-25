@@ -37,7 +37,9 @@ public sealed class CollectorPageLayoutTests
             window.Show();
             Dispatcher.UIThread.RunJobs();
 
-            var expander = Assert.Single(window.GetVisualDescendants().OfType<SettingsExpander>());
+            var expander = Assert.Single(
+                window.GetVisualDescendants().OfType<SettingsExpander>(),
+                control => control.IsVisible);
             var header = Assert.Single(
                 expander.GetVisualDescendants().OfType<Button>(),
                 control => control.Classes.Contains("settings-expander-header"));

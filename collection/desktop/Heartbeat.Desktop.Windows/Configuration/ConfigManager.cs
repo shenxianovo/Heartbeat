@@ -25,6 +25,8 @@ namespace Heartbeat.Desktop.Windows.Configuration
         /// </summary>
         public event Action<AgentConfig>? ConfigChanged;
 
+        public string DataDirectory => Path.GetDirectoryName(Path.GetFullPath(_configPath))!;
+
         public ConfigManager() : this(null) { }
 
         public ConfigManager(string? configPath)

@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Heartbeat.Collection.Hub.Collectors;
 using Heartbeat.Collection.Hub.Collectors.Protocol;
+using Heartbeat.Collection.Hub.Collectors.Packages;
 using Heartbeat.Collection.Hub.Collectors.Runtime;
 using Heartbeat.Collection.Hub.Configuration;
 using Heartbeat.Collection.Hub.Ingest;
@@ -19,6 +20,7 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
     private readonly ManualTimeProvider _time = new();
     private readonly SegmentIngestService _sink;
     private readonly CollectorRuntime _runtime;
+    private readonly BrowserCollectorRuntime _browserRuntime;
     private readonly BrowserExternalHostProtocolHandler _handler;
 
     public BrowserExternalHostProtocolHandlerTests()
@@ -29,13 +31,19 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
             Path.Combine(_root, "runtime.json"),
             _sink,
             appHintResolver: new Resolver());
+        var options = new BrowserExternalHostBindingOptions(
+            Path.Combine(AppContext.BaseDirectory, "Fixtures", "BrowserCollectorPackage"),
+            TimeSpan.FromSeconds(10))
+        {
+            DataDirectory = _root
+        };
+        _browserRuntime = new BrowserCollectorRuntime(_runtime, _registry, new Device(), options);
+        _browserRuntime.Import(options.PackageDirectory);
         _handler = new BrowserExternalHostProtocolHandler(
             _runtime,
             _registry,
-            new Device(),
-            new BrowserExternalHostBindingOptions(
-                Path.Combine(AppContext.BaseDirectory, "Fixtures", "BrowserCollectorPackage"),
-                TimeSpan.FromSeconds(10)),
+            _browserRuntime,
+            options,
             _time);
     }
 
@@ -47,7 +55,7 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
             $$$"""
         {
           "artifactId":"browser.extension",
-          "artifactHash":"sha256:0c4d749ffa5d7dc6467c04a66cc054c54433a951b2e00555215d923bf7a14f46",
+          "artifactHash":"sha256:848b79cd7fa7337f94766f7b2b380dff5ab62b453ef01f9e9b22b5e43dd27492",
           "protocolMajors":[1],
           "supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},
           "appHint":"edge"
@@ -128,7 +136,8 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
     public async Task DisabledDesiredStateRejectsFactsAndLeaseExpiryEndsSessionWithoutChangingDesiredState()
     {
         var session = await Activate();
-        _registry.Enabled = false;
+        Assert.Equal(BrowserCollectorRuntimeStatus.Ready, _browserRuntime.Current.RuntimeStatus);
+        _browserRuntime.SetDesiredEnabled(false);
 
         var rejected = await Post($"/v1/collector-protocol/browser/{session.ActivationId}/facts", Message(
             "facts.publish",
@@ -138,7 +147,7 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
           "facts":[]
         }
         """, session.ActivationId));
-        Assert.Equal(403, rejected.StatusCode);
+        Assert.Equal(409, rejected.StatusCode);
 
         _time.Advance(TimeSpan.FromSeconds(11));
         _handler.ExpireLeases();
@@ -146,26 +155,27 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
         {"leaseToken":"{{{session.LeaseToken}}}"}
         """);
         Assert.Equal(409, renew.StatusCode);
-        Assert.False(_registry.Enabled);
+        Assert.False(_browserRuntime.Current.DesiredEnabled);
+        Assert.Equal(BrowserCollectorRuntimeStatus.Waiting, _browserRuntime.Current.RuntimeStatus);
     }
 
     [Fact]
     public async Task DisabledHelloIsRejectedBeforeInitializeAndExpiredHelloReplayDoesNotCreateActivation()
     {
-        _registry.Enabled = false;
+        _browserRuntime.SetDesiredEnabled(false);
         var disabled = await Post("/v1/collector-protocol/browser/hello", Message(
             "activation.hello",
-            """{"artifactId":"browser.extension","artifactHash":"sha256:0c4d749ffa5d7dc6467c04a66cc054c54433a951b2e00555215d923bf7a14f46","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
+            """{"artifactId":"browser.extension","artifactHash":"sha256:848b79cd7fa7337f94766f7b2b380dff5ab62b453ef01f9e9b22b5e43dd27492","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
             bootstrap: true));
         Assert.Equal(403, disabled.StatusCode);
         using (var json = JsonDocument.Parse(disabled.Body))
             Assert.Equal("activation.rejected", json.RootElement.GetProperty("type").GetString());
 
-        _registry.Enabled = true;
+        _browserRuntime.SetDesiredEnabled(true);
         var helloMessageId = Guid.CreateVersion7();
         var helloBody = Message(
             "activation.hello",
-            """{"artifactId":"browser.extension","artifactHash":"sha256:0c4d749ffa5d7dc6467c04a66cc054c54433a951b2e00555215d923bf7a14f46","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
+            """{"artifactId":"browser.extension","artifactHash":"sha256:848b79cd7fa7337f94766f7b2b380dff5ab62b453ef01f9e9b22b5e43dd27492","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
             bootstrap: true,
             messageId: helloMessageId);
         Assert.Equal(200, (await Post("/v1/collector-protocol/browser/hello", helloBody)).StatusCode);
@@ -184,7 +194,7 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
     {
         var hello = await Post("/v1/collector-protocol/browser/hello", Message(
             "activation.hello",
-            """{"artifactId":"browser.extension","artifactHash":"sha256:0c4d749ffa5d7dc6467c04a66cc054c54433a951b2e00555215d923bf7a14f46","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
+            """{"artifactId":"browser.extension","artifactHash":"sha256:848b79cd7fa7337f94766f7b2b380dff5ab62b453ef01f9e9b22b5e43dd27492","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
             bootstrap: true));
         using var helloJson = JsonDocument.Parse(hello.Body);
         var activationId = helloJson.RootElement.GetProperty("body").GetProperty("activationId").GetGuid();

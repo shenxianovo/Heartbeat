@@ -147,7 +147,11 @@ namespace Heartbeat.Desktop.Windows.Hosting
             // host.Dispose() 双重 Dispose → 对已释放 CTS 调 Cancel 抛异常 → 退出流程中断、端口不释放。
             services.AddHostedService<InputEventCollector>();
             services.AddBrowserExternalHostBinding(new BrowserExternalHostBindingOptions(
-                Path.Combine(AppContext.BaseDirectory, "CollectorPackages", "Browser")));
+                Path.Combine(AppContext.BaseDirectory, "CollectorPackages", "Browser"))
+            {
+                DataDirectory = configManager?.DataDirectory ?? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Heartbeat")
+            });
             services.AddSystemCollectorInProcessBinding(new SystemCollectorBindingOptions(
                 Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

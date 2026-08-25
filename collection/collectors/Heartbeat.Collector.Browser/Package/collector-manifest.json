@@ -36,8 +36,8 @@
         "arch": ["x64", "arm64"]
       },
       "entrypoint": "artifacts/browser-extension.json",
-      "size": 72,
-      "contentHash": "sha256:0c4d749ffa5d7dc6467c04a66cc054c54433a951b2e00555215d923bf7a14f46"
+      "size": 1008,
+      "contentHash": "sha256:848b79cd7fa7337f94766f7b2b380dff5ab62b453ef01f9e9b22b5e43dd27492"
     }
   ]
 }

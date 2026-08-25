@@ -7,6 +7,7 @@ using Heartbeat.Collection.Hub.Upload;
 using Heartbeat.Desktop.Mac.Observations;
 using Heartbeat.Desktop.Mac.Input;
 using Heartbeat.Desktop.Mac.Native;
+using Heartbeat.Collection.Hub.Collectors.Runtime;
 
 namespace Heartbeat.Desktop.Mac;
 
@@ -20,6 +21,7 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
     private readonly IMacAccessibilityEvents _accessibility;
     private readonly IMacInputMonitoringEvents _inputMonitoring;
     private readonly IMacApplicationLocator _applicationLocator;
+    private readonly BrowserCollectorRuntime? _browserRuntime;
 
     public MacDesktopState(
         MacConfigManager config,
@@ -29,7 +31,8 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
         IUploadStatus uploads,
         IMacAccessibilityEvents accessibility,
         IMacInputMonitoringEvents inputMonitoring,
-        IMacApplicationLocator applicationLocator)
+        IMacApplicationLocator applicationLocator,
+        BrowserCollectorRuntime? browserRuntime = null)
     {
         _config = config;
         _collection = collection;
@@ -39,6 +42,7 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
         _accessibility = accessibility;
         _inputMonitoring = inputMonitoring;
         _applicationLocator = applicationLocator;
+        _browserRuntime = browserRuntime;
         ReconcileLoginStartRegistration();
         _config.ConfigChanged += OnConfigChanged;
         _collection.CurrentActivityChanged += OnCurrentActivityChanged;
@@ -46,6 +50,8 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
         _uploads.Changed += Publish;
         _accessibility.CapabilityChanged += OnAccessibilityCapabilityChanged;
         _inputMonitoring.CapabilityChanged += OnInputMonitoringCapabilityChanged;
+        if (_browserRuntime is not null)
+            _browserRuntime.Changed += OnBrowserRuntimeChanged;
     }
 
     public DesktopStateSnapshot Current => BuildSnapshot();
@@ -68,12 +74,20 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
         Publish();
     }
 
-    public void SetCollectorEnabled(string source, bool enabled) =>
+    public void SetCollectorEnabled(string source, bool enabled)
+    {
+        if (string.Equals(source, ActivitySources.Browser, StringComparison.OrdinalIgnoreCase))
+            _browserRuntime?.SetDesiredEnabled(enabled);
         _config.Update(config =>
         {
             if (config.Collectors.TryGetValue(source, out var collector))
                 collector.Enabled = enabled;
         });
+    }
+
+    public void ImportBrowserCollectorPackage(string packageDirectory) =>
+        (_browserRuntime ?? throw new NotSupportedException("Browser Collector Runtime is unavailable."))
+        .Import(packageDirectory);
 
     public void SetSystemCapabilityEnabled(SystemCapability capability, bool enabled)
     {
@@ -141,7 +155,8 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
             new Dictionary<string, DateTimeOffset>(_collection.SourceLastSeen, StringComparer.OrdinalIgnoreCase),
             _compatibility.Current,
             _uploads.Snapshot,
-            BuildCapabilities(config));
+            BuildCapabilities(config),
+            MapBrowserRuntime(_browserRuntime?.Current));
     }
 
     private DesktopCapabilitySnapshot BuildCapabilities(MacAgentConfig config) => new(
@@ -196,11 +211,30 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
             ? mode
             : DesktopThemeMode.System;
 
+    private static BrowserCollectorState? MapBrowserRuntime(BrowserCollectorRuntimeSnapshot? snapshot) =>
+        snapshot is null ? null : new BrowserCollectorState(
+            snapshot.IsInstalled,
+            snapshot.PackageVersion,
+            snapshot.PackageContentHash,
+            snapshot.InstallDirectory,
+            snapshot.SideloadDirectory,
+            snapshot.DesiredEnabled,
+            snapshot.RuntimeStatus switch
+            {
+                BrowserCollectorRuntimeStatus.Ready => ExternalHostRuntimeStatus.Ready,
+                BrowserCollectorRuntimeStatus.Degraded => ExternalHostRuntimeStatus.Degraded,
+                _ => ExternalHostRuntimeStatus.Waiting
+            },
+            snapshot.RuntimeStatusDetail,
+            snapshot.ReloadRequired,
+            snapshot.PreviousKnownGoodVersion);
+
     private void OnConfigChanged(MacAgentConfig _) => Publish();
     private void OnCurrentActivityChanged(CurrentActivity? _) => Publish();
     private void OnCompatibilityChanged(ClientCompatibilitySnapshot _) => Publish();
     private void OnAccessibilityCapabilityChanged(MacAccessibilityCapabilityState _) => Publish();
     private void OnInputMonitoringCapabilityChanged(MacInputMonitoringCapabilityState _) => Publish();
+    private void OnBrowserRuntimeChanged(BrowserCollectorRuntimeSnapshot _) => Publish();
     private void Publish() => Changed?.Invoke(BuildSnapshot());
 
     public void Dispose()
@@ -211,6 +245,8 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
         _uploads.Changed -= Publish;
         _accessibility.CapabilityChanged -= OnAccessibilityCapabilityChanged;
         _inputMonitoring.CapabilityChanged -= OnInputMonitoringCapabilityChanged;
+        if (_browserRuntime is not null)
+            _browserRuntime.Changed -= OnBrowserRuntimeChanged;
         GC.SuppressFinalize(this);
     }
 }

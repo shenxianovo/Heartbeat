@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Heartbeat.Desktop.UI.Presentation;
+using Heartbeat.Core;
 
 namespace Heartbeat.Desktop.UI.ViewModels;
 
@@ -18,6 +20,7 @@ public partial class CollectorItemViewModel : ObservableObject
     private readonly Action<SystemCapability, bool>? _setSystemCapabilityEnabled;
     private readonly Action<SystemCapability>? _recoverSystemCapability;
     private readonly Action<SystemCapability>? _revealSystemCapabilityApplication;
+    private readonly Action<string>? _importPackage;
     private bool _suppressEnabled;
 
     public CollectorItemViewModel(
@@ -26,7 +29,8 @@ public partial class CollectorItemViewModel : ObservableObject
         Action<string, bool>? setEnabled,
         Action<SystemCapability, bool>? setSystemCapabilityEnabled = null,
         Action<SystemCapability>? recoverSystemCapability = null,
-        Action<SystemCapability>? revealSystemCapabilityApplication = null)
+        Action<SystemCapability>? revealSystemCapabilityApplication = null,
+        Action<string>? importPackage = null)
     {
         Source = source;
         IsSystem = isSystem;
@@ -34,11 +38,14 @@ public partial class CollectorItemViewModel : ObservableObject
         _setSystemCapabilityEnabled = setSystemCapabilityEnabled;
         _recoverSystemCapability = recoverSystemCapability;
         _revealSystemCapabilityApplication = revealSystemCapabilityApplication;
+        _importPackage = importPackage;
     }
 
     public string Source { get; }
     public bool IsSystem { get; }
     public bool IsExternal => !IsSystem;
+    public bool IsBrowser => Source == ActivitySources.Browser;
+    public bool IsNotBrowser => !IsBrowser;
     public bool CanToggle => !IsSystem;
     public ObservableCollection<SystemCapabilityItemViewModel> Capabilities { get; } = [];
     public bool HasCapabilities => Capabilities.Count > 0;
@@ -53,6 +60,41 @@ public partial class CollectorItemViewModel : ObservableObject
 
     public string ActivityText => IsActive ? "活跃" : "不活跃";
     public bool IsInactive => !IsActive;
+
+    [ObservableProperty]
+    private bool _isPackageInstalled;
+
+    [ObservableProperty]
+    private string? _packageVersion;
+
+    [ObservableProperty]
+    private string? _sideloadDirectory;
+
+    [ObservableProperty]
+    private string _runtimeStatusDetail = string.Empty;
+
+    [ObservableProperty]
+    private bool _reloadRequired;
+
+    [ObservableProperty]
+    private string? _previousKnownGoodVersion;
+
+    [ObservableProperty]
+    private string _importPath = string.Empty;
+
+    [ObservableProperty]
+    private string _importError = string.Empty;
+
+    public bool HasImportError => !string.IsNullOrWhiteSpace(ImportError);
+    public ExternalHostRuntimeStatus? RuntimeStatus { get; private set; }
+    public string RuntimeStatusText => RuntimeStatus?.ToString() ?? string.Empty;
+    public string PackageVersionText => IsPackageInstalled
+        ? $"Package {PackageVersion}"
+        : "尚未导入 Package";
+    public string PreviousKnownGoodText => PreviousKnownGoodVersion is { Length: > 0 } version
+        ? $"上一已知良好版本 {version} 已保留"
+        : string.Empty;
+    public bool HasPreviousKnownGood => PreviousKnownGoodVersion is { Length: > 0 };
 
     [ObservableProperty]
     private bool _enabled = true;
@@ -77,7 +119,7 @@ public partial class CollectorItemViewModel : ObservableObject
     public string Description => Source switch
     {
         "system" => "内置系统采集器，不可停用",
-        "browser" => "浏览器采集器，采集标签页活动",
+        ActivitySources.Browser => "浏览器采集器，采集标签页活动",
         _ => "外部采集器，经 loopback 汇入",
     };
 
@@ -111,6 +153,43 @@ public partial class CollectorItemViewModel : ObservableObject
         OnPropertyChanged(nameof(Summary));
     }
 
+    public void UpdateBrowserRuntime(BrowserCollectorState snapshot)
+    {
+        if (!IsBrowser) return;
+        IsPackageInstalled = snapshot.IsInstalled;
+        PackageVersion = snapshot.PackageVersion;
+        SideloadDirectory = snapshot.SideloadDirectory;
+        RuntimeStatusDetail = snapshot.RuntimeStatusDetail;
+        ReloadRequired = snapshot.ReloadRequired;
+        PreviousKnownGoodVersion = snapshot.PreviousKnownGoodVersion;
+        RuntimeStatus = snapshot.RuntimeStatus;
+        SetEnabledSilently(snapshot.DesiredEnabled);
+        ImportError = string.Empty;
+        OnPropertyChanged(nameof(RuntimeStatusText));
+        OnPropertyChanged(nameof(PackageVersionText));
+        OnPropertyChanged(nameof(PreviousKnownGoodText));
+        OnPropertyChanged(nameof(HasPreviousKnownGood));
+    }
+
+    [RelayCommand]
+    private void ImportPackage()
+    {
+        if (string.IsNullOrWhiteSpace(ImportPath))
+        {
+            ImportError = "请输入本地 Collector Package 目录。";
+            return;
+        }
+        try
+        {
+            _importPackage?.Invoke(ImportPath.Trim());
+            ImportError = string.Empty;
+        }
+        catch (Exception exception)
+        {
+            ImportError = exception.Message;
+        }
+    }
+
     partial void OnEnabledChanged(bool value)
     {
         if (!_suppressEnabled)
@@ -122,6 +201,8 @@ public partial class CollectorItemViewModel : ObservableObject
         OnPropertyChanged(nameof(ActivityText));
         OnPropertyChanged(nameof(IsInactive));
     }
+
+    partial void OnImportErrorChanged(string value) => OnPropertyChanged(nameof(HasImportError));
 
     partial void OnIsExpandedChanged(bool value) => OnPropertyChanged(nameof(IsCollapsed));
 }
