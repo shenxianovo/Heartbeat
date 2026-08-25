@@ -165,12 +165,14 @@ public sealed class LocalCollectorPackage
         ImmutableHashSet.Create(StringComparer.Ordinal, "machine", "account", "person");
 
     private LocalCollectorPackage(
+        string packageDirectory,
         CollectorPackageManifest manifest,
         IReadOnlyList<VerifiedCollectorArtifact> artifacts,
         IReadOnlyList<FactSchemaDocument> factSchemas,
         VerifiedObservationDeclaration? observationDeclaration,
         string packageContentHash)
     {
+        PackageDirectory = packageDirectory;
         Manifest = manifest;
         Artifacts = artifacts.ToImmutableArray();
         FactSchemas = factSchemas.ToImmutableArray();
@@ -179,6 +181,7 @@ public sealed class LocalCollectorPackage
     }
 
     public CollectorPackageManifest Manifest { get; }
+    public string PackageDirectory { get; }
     public IReadOnlyList<VerifiedCollectorArtifact> Artifacts { get; }
     public IReadOnlyList<FactSchemaDocument> FactSchemas { get; }
     public VerifiedObservationDeclaration? ObservationDeclaration { get; }
@@ -215,6 +218,7 @@ public sealed class LocalCollectorPackage
             : VerifyObservationDeclaration(root, declarationReference, manifest);
 
         return new LocalCollectorPackage(
+            root,
             manifest,
             artifacts,
             schemas,

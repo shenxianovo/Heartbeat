@@ -1,5 +1,7 @@
 <Solution>
   <Folder Name="/collection/hub/">
+    <Project Path="collection/hub/Heartbeat.Collection.Headless.Tests/Heartbeat.Collection.Headless.Tests.csproj" />
+    <Project Path="collection/hub/Heartbeat.Collection.Headless/Heartbeat.Collection.Headless.csproj" />
     <Project Path="collection/hub/Heartbeat.Collection.Hub.Tests/Heartbeat.Collection.Hub.Tests.csproj" />
     <Project Path="collection/hub/Heartbeat.Collection.Hub/Heartbeat.Collection.Hub.csproj" />
   </Folder>
@@ -16,6 +18,7 @@
     <Project Path="collection/desktop/Heartbeat.Desktop.Windows/Heartbeat.Desktop.Windows.csproj" />
   </Folder>
   <Folder Name="/collection/collectors/">
+    <Project Path="collection/collectors/Heartbeat.Collector.Reference.ManagedProcess/Heartbeat.Collector.Reference.ManagedProcess.csproj" />
     <Project Path="collection/collectors/Heartbeat.Collector.VRChat/Heartbeat.Collector.VRChat.csproj" />
   </Folder>
   <Folder Name="/server/">

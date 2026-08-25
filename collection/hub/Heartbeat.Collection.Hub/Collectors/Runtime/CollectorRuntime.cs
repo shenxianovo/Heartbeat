@@ -300,6 +300,7 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
     private async Task DisposeCoreAsync()
     {
         InProcessCollectorActivation[] activations;
+        ManagedProcessCollectorActivation[] managedProcessActivations;
         ExternalHostCollectorActivation[] externalHostActivations;
         StartingCollector[] startingCollectors;
         lock (_gate)
@@ -308,8 +309,11 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
                 return;
             _disposing = true;
             activations = _activations.Values
-                .Where(activation => activation.State != CollectorActivationState.Stopped)
+                .Where(activation =>
+                    activation.State != CollectorActivationState.Stopped &&
+                    !_managedProcessActivations.ContainsKey(activation.ActivationId))
                 .ToArray();
+            managedProcessActivations = _managedProcessActivations.Values.ToArray();
             externalHostActivations = _externalHostActivations.Values
                 .Where(activation => activation.State != CollectorActivationState.Stopped)
                 .ToArray();
@@ -334,6 +338,22 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         }
         if (stopFailures.Count != 0)
             throw new AggregateException("One or more Collectors did not stop; Runtime ownership is retained.", stopFailures);
+
+        foreach (var activation in managedProcessActivations)
+        {
+            try
+            {
+                await activation.StopAsync(CancellationToken.None);
+            }
+            catch (Exception exception)
+            {
+                Serilog.Log.Warning(
+                    exception,
+                    "释放 Collector Runtime 时停止 ManagedProcess Activation {ActivationId} 失败",
+                    activation.ActivationId);
+                stopFailures.Add(exception);
+            }
+        }
 
         foreach (var startingCollector in startingCollectors)
             await startingCollector.ActivationCompleted;

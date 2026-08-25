@@ -143,7 +143,10 @@ public sealed partial class CollectorRuntime
                     PackageVersion = package.Manifest.Version,
                     PackageContentHash = package.PackageContentHash
                 };
-                artifact = ResolveInProcessArtifact(package, artifactId);
+                artifact = ResolveProtocolArtifact(
+                    package,
+                    artifactId,
+                    collector is ICollectorProtocolBinding binding ? binding.ExecutionDriver : "inProcess");
                 ValidateProtocolSupport(package, protocolSupport);
                 var previousHelloAttempt = _state.HelloAttempts.SingleOrDefault(attempt =>
                     attempt.CollectorInstanceId == collectorInstanceId &&
@@ -206,6 +209,7 @@ public sealed partial class CollectorRuntime
             }
 
             var initialization = new CollectorInitialization(
+                activationId,
                 instance,
                 instance.Spec,
                 artifact,
@@ -1150,22 +1154,23 @@ public sealed partial class CollectorRuntime
         return knownFingerprint;
     }
 
-    private static VerifiedCollectorArtifact ResolveInProcessArtifact(
+    private static VerifiedCollectorArtifact ResolveProtocolArtifact(
         LocalCollectorPackage package,
-        string artifactId)
+        string artifactId,
+        string executionDriver)
     {
         var operatingSystem = CurrentOperatingSystem();
         var architecture = CurrentArchitecture();
         var candidates = package.Manifest.Artifacts.Where(artifact =>
-            artifact.Driver == "inProcess" &&
+            artifact.Driver == executionDriver &&
             artifact.OperatingSystems.Contains(operatingSystem, StringComparer.Ordinal) &&
             artifact.Architectures.Contains(architecture, StringComparer.Ordinal)).ToArray();
         if (candidates.Length != 1)
             throw ActivationError(
                 "package_mismatch",
-                $"Collector Package must have exactly one Artifact for inProcess/{operatingSystem}/{architecture}; found {candidates.Length}.");
+                $"Collector Package must have exactly one Artifact for {executionDriver}/{operatingSystem}/{architecture}; found {candidates.Length}.");
         if (candidates[0].ArtifactId != artifactId)
-            throw ActivationError("package_mismatch", $"Artifact '{artifactId}' is not the selected current InProcess target.");
+            throw ActivationError("package_mismatch", $"Artifact '{artifactId}' is not the selected current {executionDriver} target.");
         return package.Artifacts.Single(artifact => artifact.ArtifactId == candidates[0].ArtifactId);
     }
 

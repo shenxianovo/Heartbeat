@@ -16,7 +16,18 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Heartbeat.Collection.Hub\Heartbeat.Collection.Hub.csproj" />
+    <ProjectReference Include="..\..\collectors\Heartbeat.Collector.Reference.ManagedProcess\Heartbeat.Collector.Reference.ManagedProcess.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
+
+  <Target Name="CopyManagedReferenceCollector" AfterTargets="Build">
+    <ItemGroup>
+      <ManagedReferenceCollectorFiles Include="..\..\collectors\Heartbeat.Collector.Reference.ManagedProcess\bin\$(Configuration)\net10.0\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ManagedReferenceCollectorFiles)"
+          DestinationFiles="@(ManagedReferenceCollectorFiles->'$(OutDir)Fixtures/ManagedReferenceCollector/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 
   <ItemGroup>
     <Using Include="Xunit" />

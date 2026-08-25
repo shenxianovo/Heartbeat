@@ -53,15 +53,9 @@ public class InProcessCollectorProtocolTranscriptTests
             collector,
             Guid.Parse("0198d5e8-2b66-7a27-91b8-6524bdca51c5"));
 
-        Assert.Equal(CollectorActivationState.Ready, activation.State);
-        Assert.Equal(ActivationDeliveryCapability.Complete, activation.DeliveryCapability);
-        Assert.Equal(
-            [
-                CollectorHandshakeStep.Hello,
-                CollectorHandshakeStep.Initialize,
-                CollectorHandshakeStep.StreamsOpen,
-                CollectorHandshakeStep.Ready
-            ],
+        CollectorProtocolTranscriptContract.AssertReady(
+            activation.State,
+            activation.DeliveryCapability,
             activation.HandshakeTranscript);
         Assert.Equal(7, collector.Initialization!.Spec.SpecRevision);
         Assert.Equal(1_048_576, collector.Initialization.Limits.MaxBatchBytes);

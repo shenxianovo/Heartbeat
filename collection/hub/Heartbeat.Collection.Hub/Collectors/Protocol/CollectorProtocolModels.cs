@@ -10,6 +10,7 @@ public sealed record ProtocolSupport(
     IReadOnlyDictionary<string, IReadOnlyList<int>> Capabilities);
 
 public sealed record CollectorInitialization(
+    Guid ActivationId,
     CollectorInstance Instance,
     CollectorInstanceSpec Spec,
     VerifiedCollectorArtifact Artifact,

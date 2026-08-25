@@ -4,11 +4,11 @@
 
 **Blocked by:** 01 — 本地参考 Package 跑通 Collector Protocol.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 无头 Hub composition 不依赖桌面 UI、前台窗口 API 或平台发布供应商，可以使用现有认证、缓存和上传能力独立启动。
-- [ ] Runtime 按 Manifest 选择唯一兼容 ManagedProcess Artifact，启动进程但只有完成 initialize、Stream 和 Ready 后才视为 Activation 可用。
-- [ ] 参考子进程面向 Account Subject 发布一个 Segment，经 Hub 进入现有上传责任边界；运行服务器的 Machine 不会被写成 Subject。
-- [ ] 进程退出、协议损坏和启动超时形成结构化 Runtime State；断连结束 Activation 并释放 writer。
-- [ ] Hub 停止时发送 drain，等待有界宽限期后再终止仍未退出的子进程，并保留真实 pending Fact/Gap 诊断。
-- [ ] ManagedProcess 与 InProcess 使用同一组逻辑 transcript contract tests，差异只存在于 Binding 和进程控制。
+- [x] 无头 Hub composition 不依赖桌面 UI、前台窗口 API 或平台发布供应商，可以使用现有认证、缓存和上传能力独立启动。
+- [x] Runtime 按 Manifest 选择唯一兼容 ManagedProcess Artifact，启动进程但只有完成 initialize、Stream 和 Ready 后才视为 Activation 可用。
+- [x] 参考子进程面向 Account Subject 发布一个 Segment，经 Hub 进入现有上传责任边界；运行服务器的 Machine 不会被写成 Subject。
+- [x] 进程退出、协议损坏和启动超时形成结构化 Runtime State；断连结束 Activation 并释放 writer。
+- [x] Hub 停止时发送 drain，等待有界宽限期后再终止仍未退出的子进程，并保留真实 pending Fact/Gap 诊断。
+- [x] ManagedProcess 与 InProcess 使用同一组逻辑 transcript contract tests，差异只存在于 Binding 和进程控制。

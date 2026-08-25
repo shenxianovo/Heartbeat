@@ -1,0 +1,79 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace Heartbeat.Collection.Headless;
+
+public sealed class HeadlessHubOptions
+{
+    public required string ApiKey { get; init; }
+    public required string DataDirectory { get; init; }
+    public required string PackageDirectory { get; init; }
+    public required Guid SubjectId { get; init; }
+    public string SubjectKind { get; init; } = "account";
+    public string HubHardwareId { get; init; } = $"headless:{Environment.MachineName}";
+    public string HubName { get; init; } = $"Heartbeat Headless Hub ({Environment.MachineName})";
+    public int UploadIntervalSeconds { get; init; } = 60;
+    public int ConfigSchemaVersion { get; init; } = 1;
+    public JsonElement Config { get; init; } = JsonDocument.Parse("{}").RootElement.Clone();
+    public int StartupTimeoutSeconds { get; init; } = 30;
+    public int DrainGraceSeconds { get; init; } = 10;
+
+    public string RuntimeStatePath => Path.Combine(DataDirectory, "collector-runtime.json");
+
+    public static HeadlessHubOptions Load(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var options = JsonSerializer.Deserialize<HeadlessHubOptions>(
+            File.ReadAllBytes(fullPath),
+            new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                PropertyNameCaseInsensitive = false,
+                UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
+            }) ?? throw new JsonException("Headless Hub configuration is null.");
+        var root = Path.GetDirectoryName(fullPath)!;
+        return options.WithPaths(
+            Resolve(root, options.DataDirectory),
+            Resolve(root, options.PackageDirectory));
+    }
+
+    public void Validate()
+    {
+        if (string.IsNullOrWhiteSpace(ApiKey))
+            throw new InvalidOperationException("apiKey is required.");
+        if (string.IsNullOrWhiteSpace(DataDirectory))
+            throw new InvalidOperationException("dataDirectory is required.");
+        if (string.IsNullOrWhiteSpace(PackageDirectory))
+            throw new InvalidOperationException("packageDirectory is required.");
+        if (SubjectId == Guid.Empty)
+            throw new InvalidOperationException("subjectId must not be empty.");
+        if (SubjectKind != "account")
+            throw new InvalidOperationException("The reference Headless Hub slice requires subjectKind 'account'.");
+        if (string.IsNullOrWhiteSpace(HubHardwareId) || string.IsNullOrWhiteSpace(HubName))
+            throw new InvalidOperationException("Hub operational identity is required.");
+        if (UploadIntervalSeconds <= 0 || ConfigSchemaVersion <= 0 ||
+            StartupTimeoutSeconds <= 0 || DrainGraceSeconds <= 0)
+            throw new InvalidOperationException("Headless Hub numeric settings must be positive.");
+        if (Config.ValueKind == JsonValueKind.Undefined)
+            throw new InvalidOperationException("config must contain a JSON value.");
+    }
+
+    private HeadlessHubOptions WithPaths(string dataDirectory, string packageDirectory) => new()
+    {
+        ApiKey = ApiKey,
+        DataDirectory = dataDirectory,
+        PackageDirectory = packageDirectory,
+        SubjectId = SubjectId,
+        SubjectKind = SubjectKind,
+        HubHardwareId = HubHardwareId,
+        HubName = HubName,
+        UploadIntervalSeconds = UploadIntervalSeconds,
+        ConfigSchemaVersion = ConfigSchemaVersion,
+        Config = Config.Clone(),
+        StartupTimeoutSeconds = StartupTimeoutSeconds,
+        DrainGraceSeconds = DrainGraceSeconds
+    };
+
+    private static string Resolve(string root, string path) =>
+        Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(root, path));
+}
