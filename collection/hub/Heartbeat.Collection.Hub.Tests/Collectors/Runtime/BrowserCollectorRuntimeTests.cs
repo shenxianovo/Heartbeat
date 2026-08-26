@@ -71,6 +71,47 @@ public sealed class BrowserCollectorRuntimeTests : IDisposable
     }
 
     [Fact]
+    public void Current_WhenInstalledPayloadChanges_ReportsDegradedInsteadOfCrashingTheHost()
+    {
+        var runtime = CreateRuntime();
+        var installed = runtime.Import(BrowserPackagePath);
+        File.AppendAllText(Path.Combine(installed.SideloadDirectory!, "background.js"), " ");
+
+        var snapshot = runtime.Current;
+
+        Assert.True(snapshot.IsInstalled);
+        Assert.Equal(BrowserCollectorRuntimeStatus.Degraded, snapshot.RuntimeStatus);
+        Assert.Contains("content", snapshot.RuntimeStatusDetail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Startup_WhenInstalledPayloadChanged_ReportsDegradedInsteadOfCrashingTheHost()
+    {
+        var runtime = CreateRuntime();
+        var installed = runtime.Import(BrowserPackagePath);
+        File.AppendAllText(Path.Combine(installed.SideloadDirectory!, "background.js"), " ");
+
+        var reloaded = CreateRuntime();
+        var snapshot = reloaded.Current;
+
+        Assert.Equal(BrowserCollectorRuntimeStatus.Degraded, snapshot.RuntimeStatus);
+        Assert.Contains("content", snapshot.RuntimeStatusDetail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Current_IgnoresFinderMetadataCreatedInsideTheInstalledPackage()
+    {
+        var runtime = CreateRuntime();
+        var installed = runtime.Import(BrowserPackagePath);
+        File.WriteAllBytes(Path.Combine(installed.InstallDirectory!, ".DS_Store"), [1, 2, 3]);
+        File.WriteAllBytes(Path.Combine(installed.SideloadDirectory!, ".DS_Store"), [4, 5, 6]);
+
+        var snapshot = runtime.Current;
+
+        Assert.Equal(BrowserCollectorRuntimeStatus.Waiting, snapshot.RuntimeStatus);
+    }
+
+    [Fact]
     public void DesiredState_UpdatesStableInstanceWithoutRemovingInstallation()
     {
         var browserRuntime = CreateRuntime();

@@ -78,11 +78,13 @@ public sealed class BrowserCollectorRuntime
         _installRoot = Path.Combine(Path.GetFullPath(options.DataDirectory), "collector-packages");
         _statePath = Path.Combine(Path.GetFullPath(options.DataDirectory), "browser-package-state.json");
         _state = LoadState();
-        ValidatePersistedState();
-        _runtimeStatus = BrowserCollectorRuntimeStatus.Waiting;
-        _runtimeStatusDetail = PendingReloadAfterKnownGood()
+        var installationValidationError = ValidatePersistedState();
+        _runtimeStatus = installationValidationError is null
+            ? BrowserCollectorRuntimeStatus.Waiting
+            : BrowserCollectorRuntimeStatus.Degraded;
+        _runtimeStatusDetail = installationValidationError ?? (PendingReloadAfterKnownGood()
             ? "新版本已安装；请在浏览器扩展页重新加载。"
-            : "等待浏览器加载旁加载目录并建立连接。";
+            : "等待浏览器加载旁加载目录并建立连接。");
     }
 
     public BrowserCollectorRuntimeSnapshot Current
@@ -317,21 +319,33 @@ public sealed class BrowserCollectorRuntime
                 false,
                 null);
 
-        var package = LoadCurrentPackageLocked();
-        var instance = EnsureStableInstanceLocked(package);
-        return new BrowserCollectorRuntimeSnapshot(
+        try
+        {
+            var package = LoadCurrentPackageLocked();
+            var instance = EnsureStableInstanceLocked(package);
+            return BuildInstalledSnapshotLocked(ReadDesiredEnabled(instance));
+        }
+        catch (PackageValidationException exception)
+        {
+            _runtimeStatus = BrowserCollectorRuntimeStatus.Degraded;
+            _runtimeStatusDetail = $"Installed Package content validation failed: {exception.Message}";
+            return BuildInstalledSnapshotLocked(ReadDesiredEnabledWithoutCreatingInstanceLocked());
+        }
+    }
+
+    private BrowserCollectorRuntimeSnapshot BuildInstalledSnapshotLocked(bool desiredEnabled) =>
+        new(
             true,
-            _state.Current.Version,
+            _state.Current!.Version,
             _state.Current.PackageContentHash,
             _state.Current.InstallDirectory,
             Path.Combine(_state.Current.InstallDirectory, PathFromPortable(_state.Current.SideloadRelativePath)),
-            ReadDesiredEnabled(instance),
+            desiredEnabled,
             _runtimeStatus,
             _runtimeStatusDetail,
             _state.KnownGood is not null &&
                 _state.KnownGood.PackageContentHash != _state.Current.PackageContentHash,
             _state.PreviousKnownGood?.Version);
-    }
 
     private LocalCollectorPackage LoadCurrentPackageLocked()
     {
@@ -347,6 +361,16 @@ public sealed class BrowserCollectorRuntime
 
     private static bool ReadDesiredEnabled(CollectorInstance instance) =>
         !instance.Spec.Config.TryGetProperty("enabled", out var enabled) || enabled.GetBoolean();
+
+    private bool ReadDesiredEnabledWithoutCreatingInstanceLocked()
+    {
+        var instances = _runtime.FindInstances(BrowserPackageId, _subject);
+        if (instances.Count > 1)
+            throw new InvalidOperationException("Desktop browser Collector requires exactly one stable Collector Instance.");
+        if (instances.Count == 1)
+            return ReadDesiredEnabled(instances[0]);
+        return !_legacyRegistry.Snapshot.TryGetValue(ActivitySources.Browser, out var legacy) || legacy.Enabled;
+    }
 
     private bool PendingReloadAfterKnownGood() =>
         _state.Current is not null &&
@@ -441,6 +465,7 @@ public sealed class BrowserCollectorRuntime
 
         var actualPayloadFiles = Directory.EnumerateFiles(sideloadDirectory, "*", SearchOption.AllDirectories)
             .Select(path => Path.GetRelativePath(package.PackageDirectory, path).Replace(Path.DirectorySeparatorChar, '/'))
+            .Where(path => !IsIgnorableMetadataFile(path))
             .Where(path => path != $"{sideloadRelativePath}/package-metadata.json")
             .ToHashSet(StringComparer.Ordinal);
         if (!actualPayloadFiles.SetEquals(declaredFiles))
@@ -478,7 +503,7 @@ public sealed class BrowserCollectorRuntime
         }
     }
 
-    private void ValidatePersistedState()
+    private string? ValidatePersistedState()
     {
         foreach (var installation in new[] { _state.Current, _state.KnownGood, _state.PreviousKnownGood })
         {
@@ -490,8 +515,16 @@ public sealed class BrowserCollectorRuntime
                 string.IsNullOrWhiteSpace(installation.InstallDirectory) ||
                 string.IsNullOrWhiteSpace(installation.SideloadRelativePath))
                 throw new CollectorRuntimeStateException("Browser Package installation state is invalid.");
-            _ = LoadAndVerifyInstallation(installation);
+            try
+            {
+                _ = LoadAndVerifyInstallation(installation);
+            }
+            catch (Exception exception) when (exception is CollectorRuntimeStateException or PackageValidationException)
+            {
+                return $"Installed Package content validation failed: {exception.Message}";
+            }
         }
+        return null;
     }
 
     private LocalCollectorPackage LoadAndVerifyInstallation(PackageInstallationState installation)
@@ -544,6 +577,8 @@ public sealed class BrowserCollectorRuntime
             }
             else if (entry is FileInfo file)
             {
+                if (IsIgnorableMetadataFile(file.Name))
+                    continue;
                 file.CopyTo(target);
             }
         }
@@ -554,6 +589,7 @@ public sealed class BrowserCollectorRuntime
         EnsureTreeHasNoLinks(new DirectoryInfo(root));
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         foreach (var path in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+                     .Where(path => !IsIgnorableMetadataFile(path))
                      .OrderBy(path => Path.GetRelativePath(root, path), StringComparer.Ordinal))
         {
             var relative = Path.GetRelativePath(root, path).Replace(Path.DirectorySeparatorChar, '/');
@@ -566,6 +602,9 @@ public sealed class BrowserCollectorRuntime
         }
         return "sha256:" + Convert.ToHexStringLower(hash.GetHashAndReset());
     }
+
+    private static bool IsIgnorableMetadataFile(string path) =>
+        string.Equals(Path.GetFileName(path), ".DS_Store", StringComparison.Ordinal);
 
     private static void EnsureTreeHasNoLinks(DirectoryInfo directory)
     {
