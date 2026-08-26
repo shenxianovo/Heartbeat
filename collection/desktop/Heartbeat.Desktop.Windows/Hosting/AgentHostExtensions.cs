@@ -100,8 +100,14 @@ namespace Heartbeat.Desktop.Windows.Hosting
             services.AddSingleton<IAppIconExtractor, WindowsAppIconExtractor>();
             services.AddSingleton<IconUploadService>();
             services.AddSingleton<IIconUploadService>(sp => sp.GetRequiredService<IconUploadService>());
-            // 输入缓冲为共享单例：collector 写入，出网侧经 IUploadSource drain
-            services.AddSingleton(sp => new InputEventBuffer(sp.GetRequiredService<IClock>()));
+            // 输入事件经 system Collector Protocol 回投到同一 legacy upload buffer。
+            services.AddSingleton(sp => new InputEventBuffer(
+                sp.GetRequiredService<IClock>(),
+                publisher: sp.GetRequiredService<ISystemInputEventPublisher>(),
+                durableProjectionPath: Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Heartbeat",
+                    "input-event-facts-buffer.json")));
             services.AddSingleton<IUploadSource<InputEventItem>>(sp => sp.GetRequiredService<InputEventBuffer>());
             // 上传流（ADR-020/022）：绑定源 + 出网 + 缓存；行为差异只剩注入的 compact 策略
             services.AddSingleton(sp =>
@@ -139,13 +145,12 @@ namespace Heartbeat.Desktop.Windows.Hosting
             // 自启动服务
             services.AddSingleton<IAutoStartService, RegistryAutoStartService>();
 
-            // 托管后台服务。停止顺序为注册的逆序：system Binding 必须最后注册、最先停止，
-            // 使其终态快照先推入 hub，再由 UploadWorker.StopAsync 的最终 drain 带走（ADR-020）。
+            // 托管后台服务。停止顺序为注册的逆序：输入 hook 最后注册、最先停止，随后
+            // system Binding 停止并推入终态快照，最后由 UploadWorker 的最终 drain 带走（ADR-020）。
             // 此顺序由 AgentHostExtensionsTests 钉住。
             // 注意：IDisposable 的托管服务只通过 AddHostedService 注册一次。此前 AppMonitorService /
             // InputEventCollector 另有 AddSingleton 注册，容器把同一实例捕获进 disposables 两次，
             // host.Dispose() 双重 Dispose → 对已释放 CTS 调 Cancel 抛异常 → 退出流程中断、端口不释放。
-            services.AddHostedService<InputEventCollector>();
             services.AddBrowserExternalHostBinding(new BrowserExternalHostBindingOptions(
                 Path.Combine(AppContext.BaseDirectory, "CollectorPackages", "Browser"))
             {
@@ -156,6 +161,9 @@ namespace Heartbeat.Desktop.Windows.Hosting
                 Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "Heartbeat")));
+            // Input hook starts only after the system Activation has opened its Event Stream and
+            // stops before that Activation drains.
+            services.AddHostedService<InputEventCollector>();
 
             return services;
         }

@@ -58,11 +58,10 @@ internal static class FactCanonicalization
                 _ => throw new InvalidOperationException("Unknown Fact record state cannot be canonicalized.")
             });
             writer.WritePropertyName("time");
-            writer.WriteStartObject();
-            writer.WriteString("start", fact.Time.Start.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
-            writer.WriteString("end", fact.Time.End.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
-            writer.WriteBoolean("isFinal", fact.Time.IsFinal);
-            writer.WriteEndObject();
+            WriteFactTime(
+                writer,
+                fact.Time,
+                value => value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
             if (fact.RecordState == FactRecordState.Present)
             {
                 writer.WritePropertyName("payload");
@@ -92,11 +91,10 @@ internal static class FactCanonicalization
                     writer.WriteNull("observedAt");
                 writer.WriteNumber("recordState", (int)fact.RecordState);
                 writer.WritePropertyName("time");
-                writer.WriteStartObject();
-                writer.WriteString("start", fact.Time.Start.ToString("O", CultureInfo.InvariantCulture));
-                writer.WriteString("end", fact.Time.End.ToString("O", CultureInfo.InvariantCulture));
-                writer.WriteBoolean("isFinal", fact.Time.IsFinal);
-                writer.WriteEndObject();
+                WriteFactTime(
+                    writer,
+                    fact.Time,
+                    value => value.ToString("O", CultureInfo.InvariantCulture));
                 var hasPayload = fact.Payload.ValueKind != JsonValueKind.Undefined;
                 writer.WriteBoolean("hasPayload", hasPayload);
                 if (hasPayload)
@@ -144,11 +142,7 @@ internal static class FactCanonicalization
                     _ => throw new InvalidOperationException("Unknown Fact record state cannot be canonicalized.")
                 });
                 writer.WritePropertyName("time");
-                writer.WriteStartObject();
-                writer.WriteString("start", FormatProtocolTimestamp(fact.Time.Start));
-                writer.WriteString("end", FormatProtocolTimestamp(fact.Time.End));
-                writer.WriteBoolean("isFinal", fact.Time.IsFinal);
-                writer.WriteEndObject();
+                WriteFactTime(writer, fact.Time, FormatProtocolTimestamp);
                 if (fact.RecordState == FactRecordState.Present)
                 {
                     writer.WritePropertyName("payload");
@@ -161,6 +155,29 @@ internal static class FactCanonicalization
             writer.WriteEndObject();
         }
         return counter.BytesWritten;
+    }
+
+    private static void WriteFactTime(
+        Utf8JsonWriter writer,
+        FactTime time,
+        Func<DateTimeOffset, string> formatTimestamp)
+    {
+        writer.WriteStartObject();
+        if (time.OccurredAt is { } occurredAt)
+        {
+            writer.WriteString("occurredAt", formatTimestamp(occurredAt));
+        }
+        else if (time.Start is { } start && time.End is { } end && time.IsFinal is { } isFinal)
+        {
+            writer.WriteString("start", formatTimestamp(start));
+            writer.WriteString("end", formatTimestamp(end));
+            writer.WriteBoolean("isFinal", isFinal);
+        }
+        else
+        {
+            throw new InvalidOperationException("Fact time cannot be canonically represented.");
+        }
+        writer.WriteEndObject();
     }
 
     private static void WriteCanonical(Utf8JsonWriter writer, JsonElement element)

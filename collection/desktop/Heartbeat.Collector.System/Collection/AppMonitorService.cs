@@ -75,7 +75,7 @@ public sealed class AppMonitorService(
         Log.Information("应用监测服务停止");
         _snapshotCts?.Cancel();
 
-        // 终态快照先进入 hub；Windows composition root 保持 monitor 最先停、UploadWorker 后停。
+        // 终态快照先进入 hub；desktop composition 保持 system Binding 先于 UploadWorker 停止。
         PushCurrentSnapshot(isFinal: true);
 
         settings.AwayProcessNamesChanged -= OnAwayProcessNamesChanged;

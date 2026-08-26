@@ -84,7 +84,12 @@ public static class MacAgentHostExtensions
                 HeartbeatCacheFormats.InputEventVersion2(),
                 HeartbeatCacheFormats.InputEventMigrations()));
 
-        services.TryAddSingleton(sp => new InputEventBuffer(sp.GetRequiredService<IClock>()));
+        services.TryAddSingleton(sp => new InputEventBuffer(
+            sp.GetRequiredService<IClock>(),
+            publisher: sp.GetRequiredService<ISystemInputEventPublisher>(),
+            durableProjectionPath: Path.Combine(
+                sp.GetRequiredService<MacAgentPaths>().DataDirectory,
+                "input-event-facts-buffer.json")));
         services.TryAddSingleton<IUploadSource<InputEventItem>>(sp => sp.GetRequiredService<InputEventBuffer>());
         services.TryAddSingleton<MacInputEventCollector>();
         services.TryAddSingleton<IMacInputMonitoringEvents>(sp =>
@@ -119,9 +124,8 @@ public static class MacAgentHostExtensions
                 compatibilityStatus: sp.GetRequiredService<ClientCompatibilityStatus>());
         });
 
-        // AddHeartbeatHub registers workers first. Monitor stays last so its terminal
-        // snapshot is available before UploadWorker performs the final drain.
-        services.AddHostedService(sp => sp.GetRequiredService<MacInputEventCollector>());
+        // AddHeartbeatHub registers workers first. The system Binding stops after input monitoring
+        // and before UploadWorker so no Event arrives after drain and its terminal Segment is uploaded.
         services.AddBrowserExternalHostBinding(new BrowserExternalHostBindingOptions(
             Path.Combine(AppContext.BaseDirectory, "CollectorPackages", "Browser"))
         {
@@ -129,6 +133,9 @@ public static class MacAgentHostExtensions
         });
         services.AddSystemCollectorInProcessBinding(new SystemCollectorBindingOptions(
             paths.DataDirectory));
+        // Input monitoring starts after the system Activation opens its Event Stream and stops
+        // before that Activation drains.
+        services.AddHostedService(sp => sp.GetRequiredService<MacInputEventCollector>());
         return services;
     }
 }

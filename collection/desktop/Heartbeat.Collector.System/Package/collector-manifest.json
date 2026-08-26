@@ -1,10 +1,11 @@
 {
   "manifestVersion": 1,
   "packageId": "heartbeat.collector.system",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "protocolMajors": [1],
   "supportedCapabilities": {
     "facts.segment": [1],
+    "facts.event": [1],
     "diagnostics.stream-gap": [1]
   },
   "outputs": [
@@ -18,6 +19,20 @@
         "revision": 1,
         "document": "schemas/foreground-segment.schema.json",
         "hash": "sha256:5aba9635508b585b9af3486ad22ea40490b10bcf7da3b86711c5fc5d8e0f4dc7"
+      },
+      "subjectKinds": ["machine"],
+      "dimensionKeys": []
+    },
+    {
+      "outputId": "input-events",
+      "source": "system",
+      "factKind": "event",
+      "schema": {
+        "id": "heartbeat.input",
+        "major": 1,
+        "revision": 1,
+        "document": "schemas/input-event.schema.json",
+        "hash": "sha256:b0eaefd27a7be4c8d72e556faec7f6dbc2dfba16dbdbbf37517cb412eff08860"
       },
       "subjectKinds": ["machine"],
       "dimensionKeys": []

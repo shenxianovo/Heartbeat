@@ -22,21 +22,27 @@ internal static class SystemCollectorOutbox
     public static IReadOnlyList<SystemCollectorOutboxEntry> Load(string path)
         => LoadFile<SystemCollectorOutboxEntry>(path, "outbox");
 
+    public static string DeadLetterPath(string outboxPath) => Path.Combine(
+        Path.GetDirectoryName(outboxPath)
+            ?? throw new InvalidOperationException("The system Collector outbox path has no directory."),
+        "system-collector-dead-letter.json");
+
+    public static int DeadLetterCount(string outboxPath) =>
+        LoadFile<SystemCollectorDeadLetterEntry>(DeadLetterPath(outboxPath), "dead letter file").Count;
+
     public static void Save(string path, IReadOnlyList<SystemCollectorOutboxEntry> entries) =>
         SaveFile(path, entries);
 
-    public static void AppendDeadLetter(
+    public static int AppendDeadLetter(
         string outboxPath,
         SystemCollectorOutboxEntry entry,
         CollectorProtocolError error)
     {
-        var path = Path.Combine(
-            Path.GetDirectoryName(outboxPath)
-                ?? throw new InvalidOperationException("The system Collector outbox path has no directory."),
-            "system-collector-dead-letter.json");
+        var path = DeadLetterPath(outboxPath);
         var entries = LoadFile<SystemCollectorDeadLetterEntry>(path, "dead letter file").ToList();
         entries.Add(new SystemCollectorDeadLetterEntry(DateTimeOffset.UtcNow, entry, error));
         SaveFile(path, entries);
+        return entries.Count;
     }
 
     private static IReadOnlyList<T> LoadFile<T>(string path, string description)

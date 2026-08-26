@@ -1,5 +1,7 @@
 using Heartbeat.Collector.System.Input;
+using Heartbeat.Collection.Hub.Collectors.Runtime;
 using Heartbeat.Collection.Hub.Time;
+using Heartbeat.Collection.Hub.Upload;
 using Heartbeat.Core.DTOs.Input;
 
 namespace Heartbeat.Collector.System.Tests.Input;
@@ -202,5 +204,39 @@ public class InputEventBufferTests
         var items = buf.DrainAll();
         Assert.NotEqual(items[0].Id, items[1].Id);
         Assert.NotEqual(Guid.Empty, items[0].Id);
+    }
+
+    [Fact]
+    public void DurableProjection_DeduplicatesFactId_SurvivesRestart_AndCommitsDrain()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-input-buffer-{Guid.NewGuid():N}");
+        var path = Path.Combine(root, "input-event-facts-buffer.json");
+        var item = new InputEventItem
+        {
+            Id = Guid.CreateVersion7(),
+            EventType = InputEventType.KeyDown,
+            CodeSet = InputCodeSets.HeartbeatKeyPositionV1,
+            Code = (short)InputKeyPosition.KeyA,
+            Timestamp = DateTimeOffset.UnixEpoch
+        };
+        try
+        {
+            var first = new InputEventBuffer(new FakeClock(), durableProjectionPath: path);
+            ((IInputEventFactSink)first).Accept(item, isReplay: false);
+            ((IInputEventFactSink)first).Accept(item, isReplay: true);
+
+            var restarted = new InputEventBuffer(new FakeClock(), durableProjectionPath: path);
+            var drained = ((IUploadSource<InputEventItem>)restarted).Drain();
+
+            Assert.Equal(item.Id, Assert.Single(drained).Id);
+            ((IDurableUploadSource<InputEventItem>)restarted).CompleteDrain(drained, []);
+            var completed = new InputEventBuffer(new FakeClock(), durableProjectionPath: path);
+            Assert.Empty(((IUploadSource<InputEventItem>)completed).Drain());
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
     }
 }

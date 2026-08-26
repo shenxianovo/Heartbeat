@@ -372,9 +372,9 @@ public sealed class LocalCollectorPackage
 
             var source = ReadNonEmptyString(item, "source", $"output '{outputId}'");
             var factKind = ParseFactKind(ReadNonEmptyString(item, "factKind", $"output '{outputId}'"));
-            if (factKind != FactKind.Segment)
+            if (factKind == FactKind.Measurement)
                 throw new PackageValidationException(
-                    $"Output '{outputId}' uses FactKind '{factKind}', but this reference runtime slice supports only Segment outputs.");
+                    $"Output '{outputId}' uses FactKind '{factKind}', but this runtime slice does not yet support Measurement outputs.");
             var schema = ReadSchemaReference(item.GetProperty("schema"), outputId);
             var subjectKinds = ReadStringArray(item, "subjectKinds", $"output '{outputId}'");
             if (subjectKinds.Distinct(StringComparer.Ordinal).Count() != subjectKinds.Count ||

@@ -40,6 +40,22 @@ public class UploadStreamTests : IDisposable
         public void Reinject(List<ActivitySegmentItem> items) => Reinjected.AddRange(items);
     }
 
+    private sealed class FakeDurableSource : IDurableUploadSource<ActivitySegmentItem>
+    {
+        public List<ActivitySegmentItem> Items { get; } = [];
+        public List<ActivitySegmentItem> Drain() => new(Items);
+        public void Reinject(List<ActivitySegmentItem> items) => Items.AddRange(items);
+
+        public void CompleteDrain(
+            IReadOnlyList<ActivitySegmentItem> drained,
+            IReadOnlyList<ActivitySegmentItem> retryItems)
+        {
+            var drainedIds = drained.Select(item => item.Id).ToHashSet();
+            var retryIds = retryItems.Select(item => item.Id).ToHashSet();
+            Items.RemoveAll(item => drainedIds.Contains(item.Id) && !retryIds.Contains(item.Id));
+        }
+    }
+
     private sealed class FakeCache : ICache<ActivitySegmentItem>
     {
         public List<ActivitySegmentItem> Items { get; private set; } = [];
@@ -223,6 +239,31 @@ public class UploadStreamTests : IDisposable
         Assert.Equal(2, drained.Count);
         Assert.Equal(2, cache.Items.Count);
         Assert.Empty(source.Reinjected);
+    }
+
+    [Fact]
+    public async Task DurableSource_CommitsSuccess_AndRetainsRetryWithoutCopyingToCache()
+    {
+        var cache = new FakeCache();
+        var source = new FakeDurableSource();
+        var item = Segment();
+        source.Items.Add(item);
+        var attempts = 0;
+        var stream = new UploadStream<ActivitySegmentItem>(
+            "段",
+            source,
+            _ => Task.FromResult(++attempts == 1
+                ? new ApiResult(false, 500)
+                : ApiResult.Ok),
+            cache);
+
+        await stream.DrainAsync();
+        Assert.Equal(item.Id, Assert.Single(source.Items).Id);
+        Assert.Empty(cache.Items);
+
+        await stream.DrainAsync();
+        Assert.Empty(source.Items);
+        Assert.Empty(cache.Items);
     }
 
     [Fact]

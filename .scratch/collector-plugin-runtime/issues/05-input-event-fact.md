@@ -4,10 +4,10 @@
 
 **Blocked by:** 02 — system Collector 切换到 InProcess Binding.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] system Package 声明 Input Event Output，启用输入记录时在同一 Activation 中打开 Event Stream。
-- [ ] 每个输入事件使用稳定 FactId、Revision 1、occurredAt 和现有 CodeSet/code；默认 Event 的更高 present Revision 被拒绝。
-- [ ] ACK 丢失和重传不会在 Hub 或 Analytics 产生重复 InputEvent；永久 schema 错误进入可诊断的 dead letter。
-- [ ] 现有 Input Event Recording 用户意图、权限状态和 Interaction Signal 的本地瞬时语义保持不变。
-- [ ] 现有服务端查询与 UI 行为无需先迁移物理表即可继续工作，协议适配层有覆盖测试。
+- [x] system Package 声明 Input Event Output，启用输入记录时在同一 Activation 中打开 Event Stream。
+- [x] 每个输入事件使用稳定 FactId、Revision 1、occurredAt 和现有 CodeSet/code；默认 Event 的更高 present Revision 被拒绝。
+- [x] ACK 丢失和重传不会在 Hub 或 Analytics 产生重复 InputEvent；永久 schema 错误进入可诊断的 dead letter。
+- [x] 现有 Input Event Recording 用户意图、权限状态和 Interaction Signal 的本地瞬时语义保持不变。
+- [x] 现有服务端查询与 UI 行为无需先迁移物理表即可继续工作，协议适配层有覆盖测试。

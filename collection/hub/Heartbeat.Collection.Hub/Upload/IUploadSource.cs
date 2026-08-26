@@ -14,4 +14,14 @@ namespace Heartbeat.Collection.Hub.Upload
         /// <summary>退回重注入：双失败（送不达且缓存不住）的批回到源，下轮重试。</summary>
         void Reinject(List<T> items);
     }
+
+    /// <summary>
+    /// A durable source keeps a drained snapshot until the upload stream atomically commits which
+    /// records still require retry. A crash before completion therefore replays stable IDs instead
+    /// of losing the in-flight batch.
+    /// </summary>
+    public interface IDurableUploadSource<T> : IUploadSource<T>
+    {
+        void CompleteDrain(IReadOnlyList<T> drained, IReadOnlyList<T> retryItems);
+    }
 }

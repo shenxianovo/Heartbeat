@@ -951,13 +951,26 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
             var value => throw new ManagedProcessProtocolException($"Unknown Fact recordState '{value}'.")
         };
         var time = RequireObject(fact, "time");
-        RequireExactProperties(time, "start", "end", "isFinal");
+        FactTime factTime;
+        if (time.TryGetProperty("occurredAt", out _))
+        {
+            RequireExactProperties(time, "occurredAt");
+            factTime = new EventFactTime(ReadUtcTimestamp(time, "occurredAt"));
+        }
+        else
+        {
+            RequireExactProperties(time, "start", "end", "isFinal");
+            factTime = new SegmentFactTime(
+                ReadUtcTimestamp(time, "start"),
+                ReadUtcTimestamp(time, "end"),
+                ReadBoolean(time, "isFinal"));
+        }
         return new FactSubmission(
             ReadGuid(fact, "streamId"), ReadPositiveInt(fact, "schemaRevision"), ReadUuidV7(fact, "factId"),
             ReadPositiveLong(fact, "revision"),
             fact.TryGetProperty("observedAt", out _) ? ReadUtcTimestamp(fact, "observedAt") : null,
             recordState,
-            new SegmentFactTime(ReadUtcTimestamp(time, "start"), ReadUtcTimestamp(time, "end"), ReadBoolean(time, "isFinal")),
+            factTime,
             recordState == FactRecordState.Present ? fact.GetProperty("payload").Clone() : default);
     }
 

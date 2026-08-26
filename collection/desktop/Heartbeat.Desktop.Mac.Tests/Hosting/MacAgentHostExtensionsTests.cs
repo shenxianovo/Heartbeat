@@ -37,9 +37,10 @@ public sealed class MacAgentHostExtensionsTests : IDisposable
         var uploadIndex = hosted.FindIndex(item => item is UploadWorker);
         var inputCollector = provider.GetRequiredService<MacInputEventCollector>();
         var inputIndex = hosted.FindIndex(item => ReferenceEquals(item, inputCollector));
-        Assert.Equal(hosted.Count - 1, monitorIndex);
+        Assert.Equal(hosted.Count - 1, inputIndex);
+        Assert.Equal(inputIndex - 1, monitorIndex);
         Assert.True(uploadIndex >= 0 && uploadIndex < monitorIndex);
-        Assert.True(inputIndex >= 0 && inputIndex < monitorIndex);
+        Assert.True(inputIndex >= 0);
         Assert.DoesNotContain(hosted, service => service is AppMonitorService);
         Assert.Same(
             provider.GetRequiredService<SystemCollectorProtocolAdapter>(),

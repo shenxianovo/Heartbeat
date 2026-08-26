@@ -335,7 +335,7 @@ public class LocalCollectorPackageTests
     }
 
     [Fact]
-    public void Load_MeasurementWithoutDescriptor_IsRejectedAsUnsupportedBySegmentSlice()
+    public void Load_MeasurementWithoutDescriptor_IsRejectedAsUnsupportedByRuntimeSlice()
     {
         using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
         var schemaPath = Path.Combine(
@@ -357,7 +357,7 @@ public class LocalCollectorPackageTests
         var error = Assert.Throws<PackageValidationException>(() =>
             LocalCollectorPackage.Load(packageCopy.Path));
 
-        Assert.Contains("Segment", error.Message, StringComparison.Ordinal);
+        Assert.Contains("Measurement", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -1,0 +1,22 @@
+{
+  "documentVersion": 1,
+  "schemaId": "heartbeat.input",
+  "schemaMajor": 1,
+  "schemaRevision": 1,
+  "factKind": "event",
+  "evolution": {
+    "mode": "immutableEvent",
+    "allowRetraction": false
+  },
+  "payloadSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "payloadSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["eventType", "codeSet", "code"],
+    "properties": {
+      "eventType": { "enum": ["keyDown", "mouseButton", "mouseScroll"] },
+      "codeSet": { "const": "heartbeat-key-position-v1" },
+      "code": { "type": "integer", "minimum": -32768, "maximum": 32767 }
+    }
+  }
+}

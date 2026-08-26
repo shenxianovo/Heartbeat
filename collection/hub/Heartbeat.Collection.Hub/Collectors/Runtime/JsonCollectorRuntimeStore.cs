@@ -218,14 +218,26 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
             throw new JsonException("Collector Runtime state contains an activation.hello attempt for an unknown Collector Instance.");
         foreach (var fact in state.Facts)
         {
+            var stream = state.Streams.SingleOrDefault(candidate => candidate.StreamId == fact.StreamId);
             if (fact.StreamId == Guid.Empty || !IsUuidV7(fact.FactId) || fact.SchemaRevision <= 0 ||
                 fact.Revision is <= 0 or > 9_007_199_254_740_991 || !Enum.IsDefined(fact.RecordState) ||
-                !IsSha256(fact.ContentHash) || fact.End < fact.Start ||
-                fact.Start.Offset != TimeSpan.Zero || fact.End.Offset != TimeSpan.Zero ||
+                !IsSha256(fact.ContentHash) || stream is null ||
                 fact.ObservedAt is { Offset: var offset } && offset != TimeSpan.Zero ||
                 fact.RecordState == FactRecordState.Present && fact.Payload is null ||
                 fact.RecordState == FactRecordState.Retracted && fact.Payload is not null)
                 throw new JsonException("Collector Runtime state contains an invalid committed Fact.");
+            FactTime time = stream.FactKind switch
+            {
+                FactKind.Segment when fact.OccurredAt is null &&
+                                      fact.End >= fact.Start &&
+                                      fact.Start.Offset == TimeSpan.Zero &&
+                                      fact.End.Offset == TimeSpan.Zero =>
+                    new SegmentFactTime(fact.Start, fact.End, fact.IsFinal),
+                FactKind.Event when fact.OccurredAt is { Offset: var eventOffset } occurredAt &&
+                                    eventOffset == TimeSpan.Zero =>
+                    new EventFactTime(occurredAt),
+                _ => throw new JsonException("Collector Runtime state contains an invalid Fact time.")
+            };
 
             var payload = fact.Payload ?? default;
             if (payload.ValueKind != JsonValueKind.Undefined &&
@@ -241,7 +253,7 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
                     fact.Revision,
                     fact.ObservedAt,
                     fact.RecordState,
-                    new SegmentFactTime(fact.Start, fact.End, fact.IsFinal),
+                    time,
                     payload));
             }
             catch (Exception exception) when (exception is
@@ -255,7 +267,7 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
         if (state.Facts.Any(fact => state.Streams.All(stream => stream.StreamId != fact.StreamId)))
             throw new JsonException("Collector Runtime state contains a Fact for an unknown Fact Stream.");
         if (state.Facts.Any(fact => state.Streams.All(stream =>
-                stream.StreamId != fact.StreamId || stream.FactKind != FactKind.Segment ||
+                stream.StreamId != fact.StreamId ||
                 !stream.SchemaCatalog.ContainsKey(fact.SchemaRevision))))
             throw new JsonException("Collector Runtime state contains a Fact with a mismatched Stream schema.");
         if (state.Gaps.Select(gap => (gap.StreamId, gap.Start, gap.End, gap.Reason)).Distinct().Count() != state.Gaps.Count)
@@ -353,15 +365,20 @@ internal sealed class CollectorRuntimeState
         left.Dimensions.All(pair =>
             right.Dimensions.TryGetValue(pair.Key, out var value) && value == pair.Value);
 
-    public CollectorRuntimeState WithFact(CommittedFactState fact) => new()
-    {
-        SchemaVersion = SchemaVersion,
-        Instances = [.. Instances],
-        Streams = [.. Streams],
-        Facts = [.. Facts.Where(existing => existing.StreamId != fact.StreamId || existing.FactId != fact.FactId), fact],
-        Gaps = [.. Gaps],
-        HelloAttempts = [.. HelloAttempts]
-    };
+    public CollectorRuntimeState WithFact(
+        CommittedFactState fact,
+        CommittedFactState? evictedFact = null) => new()
+        {
+            SchemaVersion = SchemaVersion,
+            Instances = [.. Instances],
+            Streams = [.. Streams],
+            Facts = [.. Facts.Where(existing =>
+            (existing.StreamId != fact.StreamId || existing.FactId != fact.FactId) &&
+            (evictedFact is null ||
+             existing.StreamId != evictedFact.StreamId || existing.FactId != evictedFact.FactId)), fact],
+            Gaps = [.. Gaps],
+            HelloAttempts = [.. HelloAttempts]
+        };
 
     public CollectorRuntimeState WithGap(CommittedGapState gap) => new()
     {
@@ -427,6 +444,7 @@ internal sealed class CommittedFactState
     public DateTimeOffset Start { get; init; }
     public DateTimeOffset End { get; init; }
     public bool IsFinal { get; init; }
+    public DateTimeOffset? OccurredAt { get; init; }
     public JsonElement? Payload { get; init; }
     public string ContentHash { get; init; } = string.Empty;
 }

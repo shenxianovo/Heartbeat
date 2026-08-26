@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Heartbeat.Collection.Hub.Collectors.Runtime;
 using Heartbeat.Collection.Hub.Ingest;
 using Heartbeat.Collection.Hub.Segments;
+using Heartbeat.Collector.System.Input;
 
 namespace Heartbeat.Collector.System.Collection;
 
@@ -15,8 +16,12 @@ public static class SystemCollectorServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(options);
         services.AddSingleton(options);
         services.AddSingleton<SystemCollectorProtocolAdapter>();
+        services.AddSingleton<ISystemInputEventPublisher>(provider =>
+            provider.GetRequiredService<SystemCollectorProtocolAdapter>());
         services.AddSingleton<ISystemSegmentPublisher>(provider =>
             provider.GetRequiredService<SystemCollectorProtocolAdapter>());
+        services.TryAddSingleton<IInputEventFactSink>(provider =>
+            provider.GetRequiredService<InputEventBuffer>());
         services.AddSingleton<AppMonitorService>();
         services.AddSingleton<SystemInProcessCollector>();
         services.TryAddSingleton(provider =>
@@ -25,7 +30,8 @@ public static class SystemCollectorServiceCollectionExtensions
             return CollectorRuntime.Open(
                 Path.Combine(bindingOptions.DataDirectory, "collector-runtime.json"),
                 provider.GetRequiredService<ISegmentSink>(),
-                appHintResolver: provider.GetRequiredService<ICollectorAppHintResolver>());
+                appHintResolver: provider.GetRequiredService<ICollectorAppHintResolver>(),
+                inputEventSink: provider.GetRequiredService<IInputEventFactSink>());
         });
         services.AddHostedService<SystemCollectorHostedService>();
         return services;

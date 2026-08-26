@@ -239,8 +239,8 @@ public class InProcessCollectorProtocolTranscriptTests
             ObservedAt = fact.ObservedAt!.Value.ToOffset(offset),
             Time = fact.Time with
             {
-                Start = fact.Time.Start.ToOffset(offset),
-                End = fact.Time.End.ToOffset(offset)
+                Start = fact.Time.Start!.Value.ToOffset(offset),
+                End = fact.Time.End!.Value.ToOffset(offset)
             }
         };
 

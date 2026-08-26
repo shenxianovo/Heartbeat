@@ -17,6 +17,7 @@ public sealed partial class CollectorRuntime
         new Dictionary<string, IReadOnlyList<int>>(StringComparer.Ordinal)
         {
             ["facts.segment"] = [1],
+            ["facts.event"] = [1],
             ["diagnostics.stream-gap"] = [1]
         };
 
@@ -25,6 +26,7 @@ public sealed partial class CollectorRuntime
     private readonly Dictionary<Guid, PendingPackageFingerprint> _pendingPackageFingerprints = [];
     private readonly Dictionary<string, FactSchemaDocument> _factSchemasByHash = new(StringComparer.Ordinal);
     private readonly IReadOnlyList<ISegmentFactProjector> _segmentProjectors;
+    private readonly IReadOnlyList<IEventFactProjector> _eventProjectors;
     private readonly Dictionary<Guid, Guid> _streamWriters = [];
     private readonly HashSet<Guid> _startingInstances = [];
     private readonly Dictionary<Guid, StartingCollector> _startingCollectors = [];
@@ -777,7 +779,7 @@ public sealed partial class CollectorRuntime
         if (stream is null)
             return Rejected(index, "fact_schema_invalid", "Fact Stream does not exist.");
 
-        var envelopeError = ValidateSegmentEnvelope(fact);
+        var envelopeError = ValidateFactEnvelope(fact);
         if (envelopeError is not null)
             return Rejected(index, "fact_schema_invalid", envelopeError);
         var current = _state.Facts.SingleOrDefault(existing =>
@@ -793,28 +795,29 @@ public sealed partial class CollectorRuntime
             schema.FactKind != stream.FactKind)
             return Rejected(index, "fact_schema_invalid", "Fact Schema revision is not available for this Stream.");
 
-        var validationError = ValidateSegmentContent(fact, schema);
+        var validationError = stream.FactKind switch
+        {
+            FactKind.Segment => ValidateSegmentContent(fact, schema),
+            FactKind.Event => ValidateEventContent(fact, schema, current),
+            _ => "FactKind is not supported by this Collector Runtime slice."
+        };
         if (validationError is not null)
             return Rejected(index, "fact_schema_invalid", validationError);
-        var projector = ResolveSegmentProjector(stream.SchemaId, stream.SchemaMajor);
-        if (projector is null ||
-            fact.RecordState == FactRecordState.Present &&
-            !projector.TryProject(
-                stream,
-                fact.FactId,
-                fact.Time.Start,
-                fact.Time.End,
-                fact.Payload,
-                out _))
+        if (!CanProject(stream, fact))
             return Rejected(
                 index,
                 "fact_schema_invalid",
-                "Fact Schema has no compatible Segment projection adapter for the existing Hub buffer.");
-        if (_segmentSink is not IDurableSegmentProjectionSink)
+                "Fact Schema has no compatible projection adapter for the existing Hub buffer.");
+        if (stream.FactKind == FactKind.Segment && _segmentSink is not IDurableSegmentProjectionSink)
             return Rejected(
                 index,
                 "fact_schema_invalid",
                 "The configured Segment projection cannot preserve durable Fact revisions.");
+        if (stream.FactKind == FactKind.Event && _inputEventSink is null)
+            return Rejected(
+                index,
+                "fact_schema_invalid",
+                "The configured Event projection cannot preserve the existing InputEvent upload path.");
 
         var contentHash = FactCanonicalization.ContentHash(fact);
         if (current is not null)
@@ -826,14 +829,28 @@ public sealed partial class CollectorRuntime
                     : Rejected(index, "fact_revision_conflict", "The same Fact Revision has different canonical content.");
             }
 
-            if (current.Start != fact.Time.Start ||
-                current.RecordState == FactRecordState.Retracted && fact.RecordState == FactRecordState.Present ||
-                current.IsFinal && !fact.Time.IsFinal)
+            if (stream.FactKind == FactKind.Segment &&
+                (current.Start != fact.Time.Start ||
+                 current.RecordState == FactRecordState.Retracted && fact.RecordState == FactRecordState.Present ||
+                 current.IsFinal && fact.Time.IsFinal != true))
                 return Rejected(index, "fact_schema_invalid", "Segment Revision violates its evolution rules.");
         }
-        else if (_state.Facts.Count >= _options.MaxDurableFacts)
+        CommittedFactState? evictedEvent = null;
+        if (current is null)
         {
-            return Retry(index, "Hub durable Fact inbox is applying backpressure.");
+            var sameKindStreamIds = _state.Streams
+                .Where(candidate => candidate.FactKind == stream.FactKind)
+                .Select(candidate => candidate.StreamId)
+                .ToHashSet();
+            var sameKindFacts = _state.Facts
+                .Where(existing => sameKindStreamIds.Contains(existing.StreamId))
+                .ToArray();
+            if (sameKindFacts.Length >= _options.MaxDurableFacts)
+            {
+                if (stream.FactKind != FactKind.Event)
+                    return Retry(index, "Hub durable Fact inbox is applying backpressure.");
+                evictedEvent = sameKindFacts[0];
+            }
         }
 
         var committed = new CommittedFactState
@@ -844,13 +861,19 @@ public sealed partial class CollectorRuntime
             Revision = fact.Revision,
             RecordState = fact.RecordState,
             ObservedAt = fact.ObservedAt,
-            Start = fact.Time.Start,
-            End = fact.Time.End,
-            IsFinal = fact.Time.IsFinal,
+            Start = fact.Time.Start ?? default,
+            End = fact.Time.End ?? default,
+            IsFinal = fact.Time.IsFinal ?? false,
+            OccurredAt = fact.Time.OccurredAt,
             Payload = fact.RecordState == FactRecordState.Present ? fact.Payload.Clone() : null,
             ContentHash = contentHash
         };
-        var next = _state.WithFact(committed);
+        // Immutable Events use the durable inbox as a bounded replay/deduplication window. Their
+        // projected InputEvent IDs remain stable downstream, so advancing this window keeps a raw
+        // production stream flowing without weakening ACK-loss idempotency for retained entries.
+        var next = _state.WithFact(committed, evictedEvent);
+        if (stream.FactKind == FactKind.Event && !ProjectEvent(stream, committed, isReplay: false))
+            return Retry(index, "Hub durable Event projection is applying backpressure.");
         try
         {
             _store.Save(next);
@@ -861,27 +884,32 @@ public sealed partial class CollectorRuntime
         }
 
         _state = next;
-        ProjectSegment(stream, committed, isReplay: false);
+        if (stream.FactKind != FactKind.Event)
+            ProjectFact(stream, committed, isReplay: false);
         return new FactDeliveryOutcome(index, FactDeliveryStatus.Committed);
     }
 
-    private static string? ValidateSegmentEnvelope(FactSubmission fact)
+    private static string? ValidateFactEnvelope(FactSubmission fact)
     {
         if (fact.StreamId == Guid.Empty || !IsUuidV7(fact.FactId) || fact.SchemaRevision <= 0 ||
             fact.Revision is <= 0 or > MaxSafeJsonInteger)
             return "Fact identity and revisions must be UUIDv7, positive, and JSON-safe.";
         if (!Enum.IsDefined(fact.RecordState))
             return "Fact recordState is not defined by Collector Protocol v1.";
-        if (fact.Time.Start.Offset != TimeSpan.Zero || fact.Time.End.Offset != TimeSpan.Zero ||
-            fact.ObservedAt is { Offset: var offset } && offset != TimeSpan.Zero)
-            return "Fact times must be UTC.";
-        if (fact.Time.End < fact.Time.Start)
-            return "Segment end must not precede start.";
+        if (fact.ObservedAt is { Offset: var offset } && offset != TimeSpan.Zero)
+            return "Fact observedAt must be UTC.";
         return null;
     }
 
     private static string? ValidateSegmentContent(FactSubmission fact, FactSchemaDocument schema)
     {
+        if (fact.Time.Start is not { } start || fact.Time.End is not { } end ||
+            fact.Time.IsFinal is null || fact.Time.OccurredAt is not null)
+            return "Segment time must contain exactly start, end, and isFinal.";
+        if (start.Offset != TimeSpan.Zero || end.Offset != TimeSpan.Zero)
+            return "Segment times must be UTC.";
+        if (end < start)
+            return "Segment end must not precede start.";
         if (fact.RecordState == FactRecordState.Retracted)
         {
             if (fact.Revision == 1)
@@ -893,6 +921,62 @@ public sealed partial class CollectorRuntime
         if (fact.Payload.ValueKind == System.Text.Json.JsonValueKind.Undefined || !schema.IsPayloadValid(fact.Payload))
             return "Fact payload does not satisfy its Fact Schema Document.";
         return null;
+    }
+
+    private static string? ValidateEventContent(
+        FactSubmission fact,
+        FactSchemaDocument schema,
+        CommittedFactState? current)
+    {
+        if (fact.Time.OccurredAt is not { } occurredAt ||
+            fact.Time.Start is not null || fact.Time.End is not null || fact.Time.IsFinal is not null)
+            return "Event time must contain exactly occurredAt.";
+        if (occurredAt.Offset != TimeSpan.Zero)
+            return "Event occurredAt must be UTC.";
+        if (current is null && fact.Revision != 1)
+            return "An Event must first be submitted at Revision 1.";
+        if (fact.RecordState == FactRecordState.Retracted)
+        {
+            if (fact.Revision == 1)
+                return "Retracted Fact must use a Revision higher than 1.";
+            if (fact.Payload.ValueKind != JsonValueKind.Undefined)
+                return "Retracted Fact must omit payload.";
+            return schema.AllowRetraction ? null : "Fact Schema does not allow retraction.";
+        }
+        if (fact.Payload.ValueKind == JsonValueKind.Undefined || !schema.IsPayloadValid(fact.Payload))
+            return "Fact payload does not satisfy its Fact Schema Document.";
+        if (current is not null && current.OccurredAt != occurredAt)
+            return "Event Revision cannot change occurredAt.";
+        if (current is not null && fact.Revision > current.Revision &&
+            schema.EvolutionMode != FactEvolutionMode.MutableEvent)
+            return "Immutable Event Fact Schema does not allow a higher present Revision.";
+        return null;
+    }
+
+    private bool CanProject(FactStreamState stream, FactSubmission fact)
+    {
+        if (fact.RecordState == FactRecordState.Retracted)
+            return stream.FactKind == FactKind.Segment;
+        return stream.FactKind switch
+        {
+            FactKind.Segment =>
+                ResolveSegmentProjector(stream.SchemaId, stream.SchemaMajor) is { } segmentProjector &&
+                segmentProjector.TryProject(
+                    stream,
+                    fact.FactId,
+                    fact.Time.Start!.Value,
+                    fact.Time.End!.Value,
+                    fact.Payload,
+                    out _),
+            FactKind.Event =>
+                ResolveEventProjector(stream.SchemaId, stream.SchemaMajor) is { } eventProjector &&
+                eventProjector.TryProject(
+                    fact.FactId,
+                    fact.Time.OccurredAt!.Value,
+                    fact.Payload,
+                    out _),
+            _ => false
+        };
     }
 
     private StreamOpenPlan PlanStreams(
@@ -920,10 +1004,16 @@ public sealed partial class CollectorRuntime
                 throw ActivationError("output_not_declared", "streams.open bindingId must not be empty.");
             var output = package.Manifest.Outputs.SingleOrDefault(candidate => candidate.OutputId == binding.OutputId)
                 ?? throw ActivationError("output_not_declared", $"Output '{binding.OutputId}' is not declared by the Package.");
-            if (ResolveSegmentProjector(output.Schema.Id, output.Schema.Major) is null)
+            var hasProjector = output.FactKind switch
+            {
+                FactKind.Segment => ResolveSegmentProjector(output.Schema.Id, output.Schema.Major) is not null,
+                FactKind.Event => ResolveEventProjector(output.Schema.Id, output.Schema.Major) is not null,
+                _ => false
+            };
+            if (!hasProjector)
                 throw ActivationError(
                     "output_not_declared",
-                    $"Output '{binding.OutputId}' has no registered Segment projection adapter for " +
+                    $"Output '{binding.OutputId}' has no registered Fact projection adapter for " +
                     $"schema '{output.Schema.Id}/{output.Schema.Major}'.");
             if (!output.SubjectKinds.Contains(SubjectKindName(instance.Subject.Kind), StringComparer.Ordinal))
                 throw ActivationError("output_not_declared", $"Output '{binding.OutputId}' does not support this SubjectKind.");
@@ -1197,7 +1287,7 @@ public sealed partial class CollectorRuntime
         return package.Artifacts.Single(artifact => artifact.ArtifactId == candidates[0].ArtifactId);
     }
 
-    private static void ValidateProtocolSupport(LocalCollectorPackage package, ProtocolSupport? support)
+    private void ValidateProtocolSupport(LocalCollectorPackage package, ProtocolSupport? support)
     {
         if (support?.ProtocolMajors is null || support.Capabilities is null ||
             support.ProtocolMajors.Count == 0 ||
@@ -1221,7 +1311,8 @@ public sealed partial class CollectorRuntime
                      _ => string.Empty
                  }).Append("diagnostics.stream-gap"))
         {
-            if (!HubProtocolCapabilities.TryGetValue(capability, out var hubVersions) ||
+            if (capability == "facts.event" && _inputEventSink is null ||
+                !HubProtocolCapabilities.TryGetValue(capability, out var hubVersions) ||
                 !package.Manifest.SupportedCapabilities.TryGetValue(capability, out var packageVersions) ||
                 !support.Capabilities.TryGetValue(capability, out var collectorVersions) ||
                 !hubVersions.Intersect(packageVersions).Intersect(collectorVersions).Any())
@@ -1529,16 +1620,29 @@ public sealed partial class CollectorRuntime
         }
     }
 
-    private void ReplayCommittedSegments()
+    private void ReplayCommittedFacts()
     {
         lock (_gate)
         {
             foreach (var fact in _state.Facts)
             {
                 var stream = _state.Streams.SingleOrDefault(candidate => candidate.StreamId == fact.StreamId);
-                if (stream is not null && stream.FactKind == FactKind.Segment)
-                    ProjectSegment(stream, fact, isReplay: true);
+                if (stream is not null)
+                    ProjectFact(stream, fact, isReplay: true);
             }
+        }
+    }
+
+    private void ProjectFact(FactStreamState stream, CommittedFactState fact, bool isReplay)
+    {
+        switch (stream.FactKind)
+        {
+            case FactKind.Segment:
+                ProjectSegment(stream, fact, isReplay);
+                break;
+            case FactKind.Event:
+                ProjectEvent(stream, fact, isReplay);
+                break;
         }
     }
 
@@ -1611,6 +1715,41 @@ public sealed partial class CollectorRuntime
         }
     }
 
+    private bool ProjectEvent(FactStreamState stream, CommittedFactState fact, bool isReplay)
+    {
+        if (fact.RecordState != FactRecordState.Present ||
+            fact.OccurredAt is not { } occurredAt ||
+            fact.Payload is not { } payload ||
+            ResolveEventProjector(stream.SchemaId, stream.SchemaMajor) is not { } projector ||
+            !projector.TryProject(fact.FactId, occurredAt, payload, out var item))
+        {
+            Log.Error(
+                "已持久接收 Collector Event Fact {FactId}，但其 payload 无法由 schema adapter 投影",
+                fact.FactId);
+            return false;
+        }
+        if (_inputEventSink is null)
+        {
+            Log.Error(
+                "已持久接收 Collector Event Fact {FactId}，但未配置 InputEvent 投影 sink",
+                fact.FactId);
+            return false;
+        }
+        try
+        {
+            _inputEventSink.Accept(item!, isReplay);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            Log.Error(
+                exception,
+                "已持久接收 Collector Event Fact {FactId}，投影到 InputEvent 上传缓冲失败；重启时将重放",
+                fact.FactId);
+            return false;
+        }
+    }
+
     private void MarkAcknowledgedLiveTraffic(
         Guid streamId,
         IReadOnlyList<FactDeliveryOutcome> outcomes)
@@ -1648,6 +1787,9 @@ public sealed partial class CollectorRuntime
 
     private ISegmentFactProjector? ResolveSegmentProjector(string schemaId, int schemaMajor) =>
         _segmentProjectors.SingleOrDefault(projector => projector.Supports(schemaId, schemaMajor));
+
+    private IEventFactProjector? ResolveEventProjector(string schemaId, int schemaMajor) =>
+        _eventProjectors.SingleOrDefault(projector => projector.Supports(schemaId, schemaMajor));
 
     private sealed record OpenedBinding(string BindingId, FactStreamState Stream);
     private sealed record StreamOpenPlan(

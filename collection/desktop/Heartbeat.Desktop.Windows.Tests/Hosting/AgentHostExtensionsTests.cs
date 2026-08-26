@@ -16,7 +16,7 @@ namespace Heartbeat.Desktop.Windows.Tests.Hosting;
 
 /// <summary>
 /// 组合根的注册顺序契约（ADR-020 §6）：托管服务停止顺序为注册逆序，
-/// system InProcess Binding 必须最后注册（最先停止，终态快照入 hub），
+/// 输入 hook 最后注册（最先停止），system InProcess Binding 紧随其前（随后停止，终态快照入 hub），
 /// UploadWorker 在其之前注册（之后停止，终态 drain 带走快照）。
 /// 此前该不变量只有注释钉住——重排两行注册就会让每次关机丢掉最后一段。
 /// </summary>
@@ -36,6 +36,7 @@ public class AgentHostExtensionsTests : IDisposable
     {
         var services = new ServiceCollection();
         services.AddHeartbeatAgent(new ConfigManager(_tempConfig));
+        services.AddSingleton(new SystemCollectorBindingOptions(_tempRuntime));
 
         // 不 Dispose provider：托管服务未 Start，实例化即足以断言顺序，
         // 避免触发未启动组件的 Stop/Dispose 路径。
@@ -46,10 +47,12 @@ public class AgentHostExtensionsTests : IDisposable
             provider.GetRequiredService<ICollectorAppHintResolver>());
 
         var monitorIndex = hosted.FindIndex(h => h is SystemCollectorHostedService);
+        var inputIndex = hosted.FindIndex(h => h is Heartbeat.Desktop.Windows.Services.InputEventCollector);
         var workerIndex = hosted.FindIndex(h => h is UploadWorker);
 
-        Assert.True(monitorIndex >= 0 && workerIndex >= 0);
-        Assert.Equal(hosted.Count - 1, monitorIndex); // monitor 最后注册 → 最先停止
+        Assert.True(monitorIndex >= 0 && inputIndex >= 0 && workerIndex >= 0);
+        Assert.Equal(hosted.Count - 1, inputIndex);   // input hook 最先停止，不再向 Event Stream 写入
+        Assert.Equal(inputIndex - 1, monitorIndex);   // system Activation 随后 drain
         Assert.True(workerIndex < monitorIndex);      // worker 在 monitor 之后停止，终态 drain 兜底
         Assert.DoesNotContain(hosted, service => service is AppMonitorService);
         Assert.Same(

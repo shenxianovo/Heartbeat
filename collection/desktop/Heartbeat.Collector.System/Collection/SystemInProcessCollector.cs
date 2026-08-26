@@ -9,6 +9,8 @@ public sealed class SystemInProcessCollector(
     public const string PackageId = "heartbeat.collector.system";
     public const string ForegroundBindingId = "foreground";
     public const string ForegroundOutputId = "foreground";
+    public const string InputEventBindingId = "input-events";
+    public const string InputEventOutputId = "input-events";
 
     private bool _monitorStarted;
 
@@ -19,6 +21,7 @@ public sealed class SystemInProcessCollector(
         new Dictionary<string, IReadOnlyList<int>>(StringComparer.Ordinal)
         {
             ["facts.segment"] = [1],
+            ["facts.event"] = [1],
             ["diagnostics.stream-gap"] = [1]
         });
 
@@ -37,7 +40,11 @@ public sealed class SystemInProcessCollector(
             [new OutputBinding(
                 ForegroundBindingId,
                 ForegroundOutputId,
-                new Dictionary<string, string>(StringComparer.Ordinal))]));
+                new Dictionary<string, string>(StringComparer.Ordinal)),
+             new OutputBinding(
+                 InputEventBindingId,
+                 InputEventOutputId,
+                 new Dictionary<string, string>(StringComparer.Ordinal))]));
     }
 
     public async ValueTask OnStreamsOpenedAsync(
@@ -46,14 +53,16 @@ public sealed class SystemInProcessCollector(
     {
         if (!opened.Streams.ContainsKey(ForegroundBindingId))
             throw new InvalidOperationException("The system Collector foreground Stream was not opened.");
+        if (!opened.Streams.ContainsKey(InputEventBindingId))
+            throw new InvalidOperationException("The system Collector Input Event Stream was not opened.");
 
-        protocol.BeginOpening(opened.Streams[ForegroundBindingId]);
+        protocol.BeginOpening(opened.Streams);
         try
         {
             await monitor.StartAsync(cancellationToken);
             _monitorStarted = true;
             var activation = await opened.ReadyAsync(cancellationToken);
-            protocol.Open(activation.Streams[ForegroundBindingId]);
+            protocol.Open(activation.Streams);
         }
         catch
         {
@@ -62,7 +71,7 @@ public sealed class SystemInProcessCollector(
                 await monitor.StopAsync(CancellationToken.None);
                 _monitorStarted = false;
             }
-            protocol.Close();
+            await protocol.CloseAsync();
             throw;
         }
     }
@@ -79,7 +88,7 @@ public sealed class SystemInProcessCollector(
         }
         finally
         {
-            protocol.Close();
+            await protocol.CloseAsync();
         }
     }
 }

@@ -82,13 +82,45 @@ public sealed class UploadStream<T>
 
         Log.Information("正在上传 {Count} 条{Label}...", items.Count, _label);
         var result = await ProcessBatchAsync(items);
-        if (result.RetryItems.Count > 0)
+        if (_source is IDurableUploadSource<T> durableSource)
+            CompleteDurableSourceDrain(durableSource, items, result);
+        else if (result.RetryItems.Count > 0)
             PreserveFreshRetryItems(result.RetryItems);
         else if (!result.Paused)
             RecoverTransientStatus(
                 UploadStreamState.CacheWriteFailed,
                 UploadStreamState.DeadLetterWriteFailed);
         return items;
+    }
+
+    private void CompleteDurableSourceDrain(
+        IDurableUploadSource<T> source,
+        IReadOnlyList<T> drained,
+        BatchResult<T> result)
+    {
+        try
+        {
+            source.CompleteDrain(drained, result.RetryItems);
+            if (!result.Paused)
+            {
+                RecoverTransientStatus(
+                    UploadStreamState.CacheWriteFailed,
+                    UploadStreamState.DeadLetterWriteFailed);
+            }
+        }
+        catch (Exception exception)
+        {
+            Log.Warning(exception, "提交{Label}持久源 drain 结果失败；原记录仍保留", _label);
+            if (Status.State != UploadStreamState.UpdateRequired)
+            {
+                SetStatus(new UploadStreamStatus(
+                    UploadStreamState.CacheWriteFailed,
+                    exception.Message,
+                    "Free disk space or repair the durable source path, then retry.",
+                    _deadLetterStore?.Count ?? 0,
+                    DeadLetterPath: _deadLetterStore?.Location));
+            }
+        }
     }
 
     private async Task<BatchResult<T>> UploadCachedAsync()

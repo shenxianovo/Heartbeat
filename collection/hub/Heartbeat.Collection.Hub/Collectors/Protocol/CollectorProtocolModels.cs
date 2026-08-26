@@ -115,10 +115,31 @@ public enum FactRecordState
     Retracted
 }
 
-public sealed record SegmentFactTime(
-    DateTimeOffset Start,
-    DateTimeOffset End,
-    bool IsFinal);
+public record FactTime
+{
+    public DateTimeOffset? Start { get; init; }
+    public DateTimeOffset? End { get; init; }
+    public bool? IsFinal { get; init; }
+    public DateTimeOffset? OccurredAt { get; init; }
+}
+
+public sealed record SegmentFactTime : FactTime
+{
+    public SegmentFactTime(DateTimeOffset start, DateTimeOffset end, bool isFinal)
+    {
+        Start = start;
+        End = end;
+        IsFinal = isFinal;
+    }
+}
+
+public sealed record EventFactTime : FactTime
+{
+    public EventFactTime(DateTimeOffset occurredAt)
+    {
+        OccurredAt = occurredAt;
+    }
+}
 
 public sealed record FactSubmission(
     Guid StreamId,
@@ -127,7 +148,7 @@ public sealed record FactSubmission(
     long Revision,
     DateTimeOffset? ObservedAt,
     FactRecordState RecordState,
-    SegmentFactTime Time,
+    FactTime Time,
     JsonElement Payload);
 
 public enum FactDeliveryStatus

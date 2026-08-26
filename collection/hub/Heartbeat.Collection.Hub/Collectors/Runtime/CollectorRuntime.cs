@@ -48,6 +48,7 @@ public sealed class CollectorRuntimeOptions
     public int MaxFactsPerBatch { get; init; } = 500;
     public int MaxBatchBytes { get; init; } = 1_048_576;
     public int MaxInFlightBatches { get; init; } = 2;
+    /// <summary>Maximum durable replay-window entries retained for each Fact family.</summary>
     public int MaxDurableFacts { get; init; } = 20_000;
     public int RetryAfterMilliseconds { get; init; } = 1_000;
 
@@ -77,6 +78,7 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
     private readonly object _gate = new();
     private readonly JsonCollectorRuntimeStore _store;
     private readonly ISegmentSink _segmentSink;
+    private readonly IInputEventFactSink? _inputEventSink;
     private readonly CollectorRuntimeOptions _options;
     private readonly object _disposeGate = new();
     private CollectorRuntimeState _state;
@@ -89,20 +91,24 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         ISegmentSink segmentSink,
         CollectorRuntimeOptions options,
         CollectorRuntimeState state,
-        ICollectorAppHintResolver? appHintResolver)
+        ICollectorAppHintResolver? appHintResolver,
+        IInputEventFactSink? inputEventSink)
     {
         _store = store;
         _segmentSink = segmentSink;
+        _inputEventSink = inputEventSink;
         _options = options;
         _state = state;
         _segmentProjectors = [new ActivitySegmentFactProjector(appHintResolver)];
+        _eventProjectors = [new InputEventFactProjector()];
     }
 
     public static CollectorRuntime Open(
         string stateFilePath,
         ISegmentSink segmentSink,
         CollectorRuntimeOptions? options = null,
-        ICollectorAppHintResolver? appHintResolver = null)
+        ICollectorAppHintResolver? appHintResolver = null,
+        IInputEventFactSink? inputEventSink = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(stateFilePath);
         ArgumentNullException.ThrowIfNull(segmentSink);
@@ -113,9 +119,15 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         try
         {
             var state = store.Load();
-            var runtime = new CollectorRuntime(store, segmentSink, options, state, appHintResolver);
+            var runtime = new CollectorRuntime(
+                store,
+                segmentSink,
+                options,
+                state,
+                appHintResolver,
+                inputEventSink);
             runtime.RestorePersistedFactSchemas();
-            runtime.ReplayCommittedSegments();
+            runtime.ReplayCommittedFacts();
             return runtime;
         }
         catch
