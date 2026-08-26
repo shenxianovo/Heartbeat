@@ -13,6 +13,12 @@ public enum ExternalHostRuntimeStatus
     Degraded
 }
 
+public enum BrowserKind
+{
+    Chrome,
+    Edge
+}
+
 public sealed record BrowserCollectorState(
     bool IsInstalled,
     string? PackageVersion,
@@ -127,7 +133,7 @@ public interface IDesktopState
     void SaveSettings(DesktopSettingsInput settings);
     void SetLoginStartEnabled(bool enabled);
     void SetCollectorEnabled(string source, bool enabled);
-    void ImportBrowserCollectorPackage(string packageDirectory);
+    void OpenBrowserCollectorSetup(BrowserKind browser);
     void SetSystemCapabilityEnabled(SystemCapability capability, bool enabled);
     void RecoverSystemCapability(SystemCapability capability);
     void RevealSystemCapabilityApplication(SystemCapability capability);

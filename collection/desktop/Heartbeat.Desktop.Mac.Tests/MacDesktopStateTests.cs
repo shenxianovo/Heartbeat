@@ -148,7 +148,8 @@ public sealed class MacDesktopStateTests : IDisposable
             new UploadStatusRegistry(),
             accessibility,
             inputMonitoring,
-            applicationLocator);
+            applicationLocator,
+            new FakeBrowserSetupLauncher());
     }
 
     public void Dispose()
@@ -225,5 +226,10 @@ public sealed class MacDesktopStateTests : IDisposable
     {
         public int RevealCount { get; private set; }
         public void RevealFromUser() => RevealCount++;
+    }
+
+    private sealed class FakeBrowserSetupLauncher : IMacBrowserSetupLauncher
+    {
+        public void Open(BrowserKind browser, string sideloadDirectory) { }
     }
 }

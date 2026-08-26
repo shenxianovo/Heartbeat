@@ -21,6 +21,7 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
     private readonly IMacAccessibilityEvents _accessibility;
     private readonly IMacInputMonitoringEvents _inputMonitoring;
     private readonly IMacApplicationLocator _applicationLocator;
+    private readonly IMacBrowserSetupLauncher _browserSetupLauncher;
     private readonly BrowserCollectorRuntime? _browserRuntime;
 
     public MacDesktopState(
@@ -32,6 +33,7 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
         IMacAccessibilityEvents accessibility,
         IMacInputMonitoringEvents inputMonitoring,
         IMacApplicationLocator applicationLocator,
+        IMacBrowserSetupLauncher browserSetupLauncher,
         BrowserCollectorRuntime? browserRuntime = null)
     {
         _config = config;
@@ -42,6 +44,7 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
         _accessibility = accessibility;
         _inputMonitoring = inputMonitoring;
         _applicationLocator = applicationLocator;
+        _browserSetupLauncher = browserSetupLauncher;
         _browserRuntime = browserRuntime;
         ReconcileLoginStartRegistration();
         _config.ConfigChanged += OnConfigChanged;
@@ -85,9 +88,13 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
         });
     }
 
-    public void ImportBrowserCollectorPackage(string packageDirectory) =>
-        (_browserRuntime ?? throw new NotSupportedException("Browser Collector Runtime is unavailable."))
-        .Import(packageDirectory);
+    public void OpenBrowserCollectorSetup(BrowserKind browser)
+    {
+        var directory = _browserRuntime?.Current.SideloadDirectory;
+        if (string.IsNullOrWhiteSpace(directory))
+            throw new InvalidOperationException("浏览器采集器目录尚未准备好。");
+        _browserSetupLauncher.Open(browser, directory);
+    }
 
     public void SetSystemCapabilityEnabled(SystemCapability capability, bool enabled)
     {

@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input.Platform;
 using Avalonia.Threading;
 using Heartbeat.Desktop.UI.Logging;
 using Heartbeat.Desktop.UI.Presentation;
@@ -55,6 +56,12 @@ public sealed class MacDesktopRuntime : IWindowController, IAsyncDisposable
     });
 
     public void HideSettings() => Dispatcher.UIThread.Post(() => _window?.Hide());
+
+    public void CopyTextToClipboard(string text) => Dispatcher.UIThread.Post(async () =>
+    {
+        if (_window?.Clipboard is { } clipboard)
+            await clipboard.SetTextAsync(text);
+    });
 
     public async Task QuitAsync()
     {

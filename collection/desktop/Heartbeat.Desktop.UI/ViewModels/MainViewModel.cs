@@ -333,7 +333,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     isSystem ? _desktopState.SetSystemCapabilityEnabled : null,
                     isSystem ? _desktopState.RecoverSystemCapability : null,
                     isSystem ? _desktopState.RevealSystemCapabilityApplication : null,
-                    source == ActivitySources.Browser ? _desktopState.ImportBrowserCollectorPackage : null);
+                    source == ActivitySources.Browser ? _desktopState.OpenBrowserCollectorSetup : null,
+                    source == ActivitySources.Browser ? _window.CopyTextToClipboard : null);
                 Collectors.Insert(Math.Min(index, Collectors.Count), item);
             }
 

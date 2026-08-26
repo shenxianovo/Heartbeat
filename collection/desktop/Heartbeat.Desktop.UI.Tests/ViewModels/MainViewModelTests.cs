@@ -62,7 +62,7 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public void BrowserPackage_IsPresentedFromRuntimeInstallationAndSupportsImportAndDesiredState()
+    public void BrowserCollector_PresentsOneUserStatusAndOpensSetupFromBrowserIcons()
     {
         var state = new FakeDesktopState
         {
@@ -81,24 +81,29 @@ public sealed class MainViewModelTests
                     "0.1.0")
             }
         };
-        using var viewModel = TestViewModel.Create(state);
+        var window = new FakeWindowController();
+        using var viewModel = TestViewModel.Create(state, window: window);
 
         var browser = Assert.Single(viewModel.Collectors, item => item.Source == "browser");
         Assert.True(browser.IsPackageInstalled);
         Assert.Equal("0.2.0", browser.PackageVersion);
-        Assert.Equal("Degraded", browser.RuntimeStatusText);
-        Assert.Equal("不活跃", browser.ActivityText);
+        Assert.Equal("需要修复", browser.BrowserStatusText);
+        Assert.True(browser.IsBrowserDegraded);
         Assert.Contains("重新加载", browser.RuntimeStatusDetail);
         Assert.Equal("/data/packages/browser/0.2.0/browser-extension", browser.SideloadDirectory);
         Assert.Equal("0.1.0", browser.PreviousKnownGoodVersion);
         Assert.True(browser.ReloadRequired);
 
-        browser.Enabled = false;
-        browser.ImportPath = "/tmp/browser-package";
-        browser.ImportPackageCommand.Execute(null);
+        browser.OpenBrowserSetupCommand.Execute(BrowserKind.Edge);
 
+        Assert.Equal(BrowserKind.Edge, state.LastBrowserSetup);
+        Assert.Equal("/data/packages/browser/0.2.0/browser-extension", window.ClipboardText);
+        Assert.True(browser.IsBrowserSetupVisible);
+        Assert.Equal("在 Edge 中完成连接", browser.BrowserSetupTitle);
+
+        browser.Enabled = false;
         Assert.Equal(("browser", false), state.LastCollectorValue);
-        Assert.Equal("/tmp/browser-package", state.LastBrowserPackageImport);
+        Assert.Equal("已停用", browser.BrowserStatusText);
     }
 
     [Fact]

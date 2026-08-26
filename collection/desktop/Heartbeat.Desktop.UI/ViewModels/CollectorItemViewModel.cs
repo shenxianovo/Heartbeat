@@ -20,7 +20,8 @@ public partial class CollectorItemViewModel : ObservableObject
     private readonly Action<SystemCapability, bool>? _setSystemCapabilityEnabled;
     private readonly Action<SystemCapability>? _recoverSystemCapability;
     private readonly Action<SystemCapability>? _revealSystemCapabilityApplication;
-    private readonly Action<string>? _importPackage;
+    private readonly Action<BrowserKind>? _openBrowserSetup;
+    private readonly Action<string>? _copyText;
     private bool _suppressEnabled;
 
     public CollectorItemViewModel(
@@ -30,7 +31,8 @@ public partial class CollectorItemViewModel : ObservableObject
         Action<SystemCapability, bool>? setSystemCapabilityEnabled = null,
         Action<SystemCapability>? recoverSystemCapability = null,
         Action<SystemCapability>? revealSystemCapabilityApplication = null,
-        Action<string>? importPackage = null)
+        Action<BrowserKind>? openBrowserSetup = null,
+        Action<string>? copyText = null)
     {
         Source = source;
         IsSystem = isSystem;
@@ -38,7 +40,8 @@ public partial class CollectorItemViewModel : ObservableObject
         _setSystemCapabilityEnabled = setSystemCapabilityEnabled;
         _recoverSystemCapability = recoverSystemCapability;
         _revealSystemCapabilityApplication = revealSystemCapabilityApplication;
-        _importPackage = importPackage;
+        _openBrowserSetup = openBrowserSetup;
+        _copyText = copyText;
     }
 
     public string Source { get; }
@@ -79,15 +82,23 @@ public partial class CollectorItemViewModel : ObservableObject
     [ObservableProperty]
     private string? _previousKnownGoodVersion;
 
-    [ObservableProperty]
-    private string _importPath = string.Empty;
-
-    [ObservableProperty]
-    private string _importError = string.Empty;
-
-    public bool HasImportError => !string.IsNullOrWhiteSpace(ImportError);
     public ExternalHostRuntimeStatus? RuntimeStatus { get; private set; }
-    public string RuntimeStatusText => RuntimeStatus?.ToString() ?? string.Empty;
+    public string BrowserStatusText => !IsPackageInstalled
+        ? "尚未连接浏览器"
+        : !Enabled
+            ? "已停用"
+            : RuntimeStatus switch
+            {
+                ExternalHostRuntimeStatus.Ready => "正在采集",
+                ExternalHostRuntimeStatus.Degraded => "需要修复",
+                _ => "等待浏览器启动"
+            };
+    public string BrowserStatusDetail => RuntimeStatus == ExternalHostRuntimeStatus.Degraded
+        ? RuntimeStatusDetail
+        : "采集每个浏览器窗口当前打开的标签页";
+    public bool IsBrowserReady => Enabled && RuntimeStatus == ExternalHostRuntimeStatus.Ready;
+    public bool IsBrowserDegraded => Enabled && RuntimeStatus == ExternalHostRuntimeStatus.Degraded;
+    public bool IsBrowserWaiting => !IsBrowserReady && !IsBrowserDegraded;
     public string PackageVersionText => IsPackageInstalled
         ? $"Package {PackageVersion}"
         : "尚未导入 Package";
@@ -95,6 +106,24 @@ public partial class CollectorItemViewModel : ObservableObject
         ? $"上一已知良好版本 {version} 已保留"
         : string.Empty;
     public bool HasPreviousKnownGood => PreviousKnownGoodVersion is { Length: > 0 };
+
+    [ObservableProperty]
+    private bool _isBrowserSetupVisible;
+
+    [ObservableProperty]
+    private bool _isBrowserDetailsExpanded;
+
+    [ObservableProperty]
+    private BrowserKind _setupBrowser;
+
+    [ObservableProperty]
+    private string _browserSetupError = string.Empty;
+
+    public string SetupBrowserName => SetupBrowser == BrowserKind.Edge ? "Edge" : "Chrome";
+    public string BrowserSetupTitle => $"在 {SetupBrowserName} 中完成连接";
+    public bool HasBrowserSetupError => !string.IsNullOrWhiteSpace(BrowserSetupError);
+    public bool HasSideloadDirectory => !string.IsNullOrWhiteSpace(SideloadDirectory);
+    public string BrowserDetailsToggleText => IsBrowserDetailsExpanded ? "收起诊断" : "高级诊断";
 
     [ObservableProperty]
     private bool _enabled = true;
@@ -164,36 +193,55 @@ public partial class CollectorItemViewModel : ObservableObject
         PreviousKnownGoodVersion = snapshot.PreviousKnownGoodVersion;
         RuntimeStatus = snapshot.RuntimeStatus;
         SetEnabledSilently(snapshot.DesiredEnabled);
-        ImportError = string.Empty;
-        OnPropertyChanged(nameof(RuntimeStatusText));
+        if (snapshot.RuntimeStatus == ExternalHostRuntimeStatus.Ready)
+            IsBrowserSetupVisible = false;
+        BrowserSetupError = string.Empty;
+        OnPropertyChanged(nameof(BrowserStatusText));
+        OnPropertyChanged(nameof(BrowserStatusDetail));
+        OnPropertyChanged(nameof(IsBrowserReady));
+        OnPropertyChanged(nameof(IsBrowserDegraded));
+        OnPropertyChanged(nameof(IsBrowserWaiting));
         OnPropertyChanged(nameof(PackageVersionText));
         OnPropertyChanged(nameof(PreviousKnownGoodText));
         OnPropertyChanged(nameof(HasPreviousKnownGood));
+        OnPropertyChanged(nameof(HasSideloadDirectory));
     }
 
     [RelayCommand]
-    private void ImportPackage()
+    private void OpenBrowserSetup(BrowserKind browser)
     {
-        if (string.IsNullOrWhiteSpace(ImportPath))
+        if (string.IsNullOrWhiteSpace(SideloadDirectory))
         {
-            ImportError = "请输入本地 Collector Package 目录。";
+            BrowserSetupError = "浏览器采集器目录尚未准备好。";
+            IsBrowserSetupVisible = true;
             return;
         }
         try
         {
-            _importPackage?.Invoke(ImportPath.Trim());
-            ImportError = string.Empty;
+            SetupBrowser = browser;
+            _copyText?.Invoke(SideloadDirectory);
+            _openBrowserSetup?.Invoke(browser);
+            BrowserSetupError = string.Empty;
+            IsBrowserSetupVisible = true;
         }
         catch (Exception exception)
         {
-            ImportError = exception.Message;
+            BrowserSetupError = exception.Message;
+            IsBrowserSetupVisible = true;
         }
     }
+
+    [RelayCommand]
+    private void ToggleBrowserDetails() => IsBrowserDetailsExpanded = !IsBrowserDetailsExpanded;
 
     partial void OnEnabledChanged(bool value)
     {
         if (!_suppressEnabled)
             _setEnabled?.Invoke(Source, value);
+        OnPropertyChanged(nameof(BrowserStatusText));
+        OnPropertyChanged(nameof(IsBrowserReady));
+        OnPropertyChanged(nameof(IsBrowserDegraded));
+        OnPropertyChanged(nameof(IsBrowserWaiting));
     }
 
     partial void OnIsActiveChanged(bool value)
@@ -202,7 +250,16 @@ public partial class CollectorItemViewModel : ObservableObject
         OnPropertyChanged(nameof(IsInactive));
     }
 
-    partial void OnImportErrorChanged(string value) => OnPropertyChanged(nameof(HasImportError));
-
     partial void OnIsExpandedChanged(bool value) => OnPropertyChanged(nameof(IsCollapsed));
+
+    partial void OnSetupBrowserChanged(BrowserKind value)
+    {
+        OnPropertyChanged(nameof(SetupBrowserName));
+        OnPropertyChanged(nameof(BrowserSetupTitle));
+    }
+
+    partial void OnBrowserSetupErrorChanged(string value) => OnPropertyChanged(nameof(HasBrowserSetupError));
+
+    partial void OnIsBrowserDetailsExpandedChanged(bool value) =>
+        OnPropertyChanged(nameof(BrowserDetailsToggleText));
 }

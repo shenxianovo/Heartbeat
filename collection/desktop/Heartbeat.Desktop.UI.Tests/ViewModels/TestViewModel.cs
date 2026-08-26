@@ -30,13 +30,12 @@ internal sealed class FakeDesktopState : IDesktopState
     public bool? LastLoginStartValue { get; private set; }
     public DesktopThemeMode? LastThemeMode { get; private set; }
     public (string Source, bool Enabled)? LastCollectorValue { get; private set; }
-    public string? LastBrowserPackageImport { get; private set; }
+    public BrowserKind? LastBrowserSetup { get; private set; }
     public event Action<DesktopStateSnapshot>? Changed;
 
     public void SaveSettings(DesktopSettingsInput settings) => LastSettings = settings;
     public void SetCollectorEnabled(string source, bool enabled) => LastCollectorValue = (source, enabled);
-    public void ImportBrowserCollectorPackage(string packageDirectory) =>
-        LastBrowserPackageImport = packageDirectory;
+    public void OpenBrowserCollectorSetup(BrowserKind browser) => LastBrowserSetup = browser;
     public void SetSystemCapabilityEnabled(SystemCapability capability, bool enabled) =>
         LastSystemCapabilityValue = (capability, enabled);
     public void RecoverSystemCapability(SystemCapability capability) =>
@@ -76,7 +75,9 @@ internal sealed class FakeUpdateController : IUpdateController
 internal sealed class FakeWindowController : IWindowController
 {
     public int HideCount { get; private set; }
+    public string? ClipboardText { get; private set; }
     public void HideSettings() => HideCount++;
+    public void CopyTextToClipboard(string text) => ClipboardText = text;
 }
 
 internal sealed class ManualPresentationScheduler : IPresentationScheduler

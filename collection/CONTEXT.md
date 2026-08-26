@@ -41,12 +41,20 @@ _Avoid_: Device、Subject、把无头 Hub 按某个 Collector 命名
 _Avoid_: Discovery、Registration、Active
 
 **Collector Instance（采集器实例）**:
-一个稳定、已配置的 Collector 身份；更换其 Collector Package 版本或重新激活时，实例身份保持不变。同一采集器包可以对应多个实例，即使首版产品只暴露默认单实例。
+一个稳定、已配置的 Collector 身份；更换其 Collector Package 版本或重新激活时，实例身份保持不变。同一采集器包可以对应多个实例。机器级 browser Collector 只有一个共享 Instance 与启用意图，可以同时接受多个浏览器宿主的 Activation；浏览器 Profile 不是独立 Instance。
 _Avoid_: 用 Source、进程 ID 或包版本充当实例身份
 
 **Collector Activation（采集器激活）**:
-Collector Instance 的一次协议会话和实际运行身份；重启、重连、成功或失败都不改写 Instance 身份。
+Collector Instance 的一次协议会话和实际运行身份；重启、重连、成功或失败都不改写 Instance 身份。ExternalHost Instance 可以同时拥有多个 Activation，各自代表一份独立运行的外部宿主。
 _Avoid_: Run（含义过泛）、Active（后者是按 Source 流量推断的既有状态）
+
+**External Host Identity（外部宿主身份）**:
+ExternalHost Collector 中一份独立宿主安装的内部稳定身份，例如某个浏览器 Profile 中加载的扩展；它只用于区分并发 Activation、维持 Stream 与重传连续性，不形成独立 Collector Instance、启用意图或主 UI 管理项。
+_Avoid_: Collector Instance、Browser Profile 设置、把外部宿主身份暴露为用户必须管理的采集器
+
+**Browser Window Activity（浏览器窗口活动）**:
+browser Collector 对每个浏览器窗口当前所选 active tab 的如实观察，不判断该窗口或浏览器是否处于操作系统前台。多个窗口、浏览器或 Profile 的活动可以合法重叠；它们是对应 App 的内部细节，不是可求和的用户注意力或使用时长。
+_Avoid_: 浏览器前台活动、把 active tab 解释为 OS 前台窗口、按 Host/Profile 拆成用户事实
 
 **Ready（激活就绪）**:
 Collector Activation 已完成协议协商并打开所需 Fact Stream，可以承担运行责任；Ready 不要求已经产生第一条 Fact。
@@ -115,7 +123,9 @@ _Avoid_: 用一个 bool 同时表示用户开关、权限与实际可用性
 用户在共享桌面 UI 翻 enabled=false，双层执行。**礼貌层（采集器侧）**：采集器 `GET /v1/collectors/{source}/config` 见 `enabled:false` 主动停采（省流量）。**强制层（hub 侧）**：hub 对被停用 Source 的 `POST /v1/segments` 返回 403，段被丢弃——这是 loopback 无鉴权信任模型下唯一的准入闸门，采集器有 bug/第三方/装死时的兜底，不可省。Agent 够不着其他进程里的采集器，"停用"永远是 hub 侧行为。config 下行本版仅 `{enabled}`，设置项字段将来往响应里加（不引入 schema registry，ADR-017 §5）。采集器管理 UI 位于共享 Avalonia presentation（本机采集层事实，不进 Dashboard）。
 
 **采集器页（Collector page）**:
-共享桌面 UI 中管理采集器的页面，逐采集器展示 **Active**（管道通不通，只读）与 **enabled**（用户开关），并容纳采集器设置。可管理性**分级**：外部采集器条目带 enable 开关；system 采集器不可停用，前台应用采集作为无开关的固定基线，其他可选观测深度作为独立采集能力管理。每项能力的开关、实际状态、权限恢复动作与说明都归属该 Collector 条目，不另建脱离所有者的全局“采集能力”区块。窗口活动采集是一个用户能力，不把 focused-window 切换与原始标题拆成两个开关。条目模型 = 身份 + Active + 零或多个能力，天然容纳两类。
+共享桌面 UI 中管理采集器的页面，并容纳采集器设置。可管理性**分级**：system 采集器不可停用，前台应用采集作为无开关的固定基线，其他可选观测深度作为独立采集能力管理；外部采集器提供一个全局启用意图与由运行事实推导的用户状态。每项能力的开关、实际状态、权限恢复动作与说明都归属该 Collector 条目，不另建脱离所有者的全局“采集能力”区块。窗口活动采集是一个用户能力，不把 focused-window 切换与原始标题拆成两个开关。
+
+browser Collector 只占一个主卡，状态收敛为“尚未连接浏览器 / 等待浏览器启动 / 正在采集 / 需要修复”；Chrome、Edge 等宿主用浏览器图标表达添加与连接，不成为独立采集器条目。Package、Activation、HostId、目录和协议错误只在高级诊断中展示，不与主状态并列。
 _Avoid_: 采集器栏、Collector panel
 
 **Setup**:

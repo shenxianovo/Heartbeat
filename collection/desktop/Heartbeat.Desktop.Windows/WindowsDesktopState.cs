@@ -80,9 +80,13 @@ public sealed class WindowsDesktopState : IDesktopState, IDisposable
         });
     }
 
-    public void ImportBrowserCollectorPackage(string packageDirectory) =>
-        (_browserRuntime ?? throw new NotSupportedException("Browser Collector Runtime is unavailable."))
-        .Import(packageDirectory);
+    public void OpenBrowserCollectorSetup(BrowserKind browser)
+    {
+        var directory = _browserRuntime?.Current.SideloadDirectory;
+        if (string.IsNullOrWhiteSpace(directory))
+            throw new InvalidOperationException("浏览器采集器目录尚未准备好。");
+        WindowsBrowserSetupLauncher.Open(browser, directory);
+    }
 
     public void SetSystemCapabilityEnabled(SystemCapability capability, bool enabled) =>
         _config.Update(config =>

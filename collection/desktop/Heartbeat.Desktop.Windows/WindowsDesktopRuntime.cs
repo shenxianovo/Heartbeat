@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input.Platform;
 using Avalonia.Threading;
 using System.Runtime.InteropServices;
 using Heartbeat.Desktop.Windows.Configuration;
@@ -77,6 +78,12 @@ public sealed class WindowsDesktopRuntime : IWindowController, IAsyncDisposable
     });
 
     public void HideSettings() => Dispatcher.UIThread.Post(() => _window?.Hide());
+
+    public void CopyTextToClipboard(string text) => Dispatcher.UIThread.Post(async () =>
+    {
+        if (_window?.Clipboard is { } clipboard)
+            await clipboard.SetTextAsync(text);
+    });
 
     public async Task QuitAsync()
     {
