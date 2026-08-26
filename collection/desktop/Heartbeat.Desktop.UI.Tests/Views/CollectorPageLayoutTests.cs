@@ -93,13 +93,30 @@ public sealed class CollectorPageLayoutTests
             var browserCard = Assert.Single(
                 window.GetVisualDescendants().OfType<Border>(),
                 border => border.IsVisible && border.Classes.Contains("browser-card"));
+            Assert.DoesNotContain(
+                browserCard.GetVisualDescendants().OfType<Button>(),
+                button => button.IsEffectivelyVisible && button.Classes.Contains("browser-choice"));
+            Assert.DoesNotContain(
+                browserCard.GetVisualDescendants().OfType<TextBlock>(),
+                text => text.IsEffectivelyVisible && text.Text is "C" or "e");
+
+            var configurationButton = Assert.Single(
+                browserCard.GetVisualDescendants().OfType<Button>(),
+                button => button.IsEffectivelyVisible && button.Classes.Contains("browser-config-toggle"));
+            Assert.NotNull(configurationButton.Command);
+            configurationButton.Command.Execute(configurationButton.CommandParameter);
+            Dispatcher.UIThread.RunJobs();
+
             var browserActions = browserCard.GetVisualDescendants()
                 .OfType<Button>()
-                .Where(button => button.IsVisible && button.Classes.Contains("browser-choice"))
+                .Where(button => button.IsEffectivelyVisible && button.Classes.Contains("browser-choice"))
                 .ToArray();
             Assert.Equal(2, browserActions.Length);
             Assert.Contains(browserActions, button => button.CommandParameter?.Equals(BrowserKind.Chrome) == true);
             Assert.Contains(browserActions, button => button.CommandParameter?.Equals(BrowserKind.Edge) == true);
+            Assert.Equal(2, browserCard.GetVisualDescendants()
+                .OfType<PathIcon>()
+                .Count(icon => icon.IsEffectivelyVisible && icon.Classes.Contains("browser-brand-icon")));
             Assert.Empty(browserCard.GetVisualDescendants().OfType<TextBox>());
 
             var diagnostics = Assert.Single(

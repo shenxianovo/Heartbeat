@@ -111,6 +111,9 @@ public partial class CollectorItemViewModel : ObservableObject
     private bool _isBrowserSetupVisible;
 
     [ObservableProperty]
+    private bool _isBrowserConfigurationExpanded;
+
+    [ObservableProperty]
     private bool _isBrowserDetailsExpanded;
 
     [ObservableProperty]
@@ -210,6 +213,7 @@ public partial class CollectorItemViewModel : ObservableObject
     [RelayCommand]
     private void OpenBrowserSetup(BrowserKind browser)
     {
+        IsBrowserConfigurationExpanded = true;
         if (string.IsNullOrWhiteSpace(SideloadDirectory))
         {
             BrowserSetupError = "浏览器采集器目录尚未准备好。";
@@ -230,6 +234,10 @@ public partial class CollectorItemViewModel : ObservableObject
             IsBrowserSetupVisible = true;
         }
     }
+
+    [RelayCommand]
+    private void ToggleBrowserConfiguration() =>
+        IsBrowserConfigurationExpanded = !IsBrowserConfigurationExpanded;
 
     [RelayCommand]
     private void ToggleBrowserDetails() => IsBrowserDetailsExpanded = !IsBrowserDetailsExpanded;
