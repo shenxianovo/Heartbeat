@@ -21,8 +21,7 @@ public sealed record CollectorResources(string? DataDirectory);
 
 public sealed record CollectorProtocolLimits(
     int MaxFactsPerBatch,
-    int MaxBatchBytes,
-    int MaxInFlightBatches);
+    int MaxBatchBytes);
 
 public sealed record OutputBinding(
     string BindingId,
@@ -68,6 +67,7 @@ public interface IInProcessCollector
 
 public enum CollectorActivationState
 {
+    Negotiating,
     OpeningStreams,
     Ready,
     Draining,

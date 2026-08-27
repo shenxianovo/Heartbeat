@@ -8,37 +8,30 @@ public sealed class InProcessCollectorActivation : IAsyncDisposable
 {
     private readonly CollectorRuntime _runtime;
     private readonly IInProcessCollector _collector;
+    private readonly CollectorActivationSession _session;
     private readonly object _stopGate = new();
     private Task? _stopTask;
 
     internal InProcessCollectorActivation(
         CollectorRuntime runtime,
-        Guid activationId,
-        Guid helloMessageId,
-        LocalCollectorPackage package,
+        CollectorActivationSession session,
         IInProcessCollector collector,
-        ActivationDeliveryCapability deliveryCapability,
-        IReadOnlyList<CollectorHandshakeStep> handshakeTranscript,
         IReadOnlyDictionary<string, InProcessFactStream> streams)
     {
         _runtime = runtime;
-        ActivationId = activationId;
-        HelloMessageId = helloMessageId;
-        Package = package;
+        _session = session;
         _collector = collector;
-        DeliveryCapability = deliveryCapability;
-        HandshakeTranscript = handshakeTranscript.ToImmutableArray();
         Streams = streams;
-        State = CollectorActivationState.OpeningStreams;
     }
 
-    public Guid ActivationId { get; }
-    public Guid HelloMessageId { get; }
-    public CollectorActivationState State { get; internal set; }
-    public ActivationDeliveryCapability DeliveryCapability { get; }
-    public IReadOnlyList<CollectorHandshakeStep> HandshakeTranscript { get; internal set; }
+    public Guid ActivationId => _session.ActivationId;
+    public Guid HelloMessageId => _session.HelloMessageId;
+    public CollectorActivationState State => _session.State;
+    public ActivationDeliveryCapability DeliveryCapability => _session.DeliveryCapability;
+    public IReadOnlyList<CollectorHandshakeStep> HandshakeTranscript => _session.HandshakeTranscript;
     public IReadOnlyDictionary<string, InProcessFactStream> Streams { get; }
-    internal LocalCollectorPackage Package { get; }
+    internal LocalCollectorPackage Package => _session.Package;
+    internal CollectorActivationSession Session => _session;
 
     public ValueTask StopAsync(CancellationToken cancellationToken = default)
         => new(WaitForStopAsync(cancellationToken));
@@ -73,10 +66,10 @@ public sealed class InProcessCollectorActivation : IAsyncDisposable
 
     private async Task StopCoreAsync()
     {
-        if (!_runtime.BeginStopping(this))
+        if (!_session.BeginDrain())
             return;
         await _collector.StopAsync(CancellationToken.None);
-        _runtime.CompleteStop(this);
+        _session.CompleteStop(() => _runtime.CompleteStop(this));
     }
 }
 
@@ -118,16 +111,13 @@ public sealed class InProcessCollectorStreamsOpened
 
 public sealed class InProcessFactStream
 {
-    private readonly CollectorRuntime _runtime;
-    private readonly Guid _activationId;
+    private readonly CollectorActivationSession _session;
 
     internal InProcessFactStream(
-        CollectorRuntime runtime,
-        Guid activationId,
+        CollectorActivationSession session,
         FactStreamDescriptor descriptor)
     {
-        _runtime = runtime;
-        _activationId = activationId;
+        _session = session;
         Descriptor = descriptor;
     }
 
@@ -137,11 +127,11 @@ public sealed class InProcessFactStream
         Guid messageId,
         IReadOnlyList<FactSubmission> facts,
         CancellationToken cancellationToken = default) =>
-        _runtime.PublishAsync(_activationId, Descriptor.StreamId, messageId, facts, cancellationToken);
+        _session.PublishAsync(Descriptor.StreamId, messageId, facts, cancellationToken);
 
     public ValueTask<GapDeliveryOutcome> ReportGapAsync(
         Guid messageId,
         StreamGapReport gap,
         CancellationToken cancellationToken = default) =>
-        _runtime.ReportGapAsync(_activationId, Descriptor.StreamId, messageId, gap, cancellationToken);
+        _session.ReportGapAsync(Descriptor.StreamId, messageId, gap, cancellationToken);
 }

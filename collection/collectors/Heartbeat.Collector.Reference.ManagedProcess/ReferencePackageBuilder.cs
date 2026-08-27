@@ -52,12 +52,7 @@ internal static class ReferencePackageBuilder
             },
             config = new
             {
-                schema = new
-                {
-                    id = "heartbeat.collector.reference-managed.config",
-                    version = 1,
-                    hash = "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0"
-                },
+                version = 1,
                 accepts = new[] { 1 }
             },
             outputs = new[]

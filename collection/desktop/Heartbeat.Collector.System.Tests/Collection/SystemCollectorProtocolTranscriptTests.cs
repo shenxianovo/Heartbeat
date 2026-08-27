@@ -466,10 +466,13 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             status.DeadLetterCount == 1);
 
         Assert.Empty(inputSink.Items);
-        Assert.Equal("[]", File.ReadAllText(outboxPath).Trim());
+        using var outbox = JsonDocument.Parse(File.ReadAllText(outboxPath));
+        Assert.Equal(1, outbox.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Empty(outbox.RootElement.GetProperty("entries").EnumerateArray());
         using var deadLetters = JsonDocument.Parse(File.ReadAllText(
             Path.Combine(_root, "system-collector-dead-letter.json")));
-        var deadLetter = Assert.Single(deadLetters.RootElement.EnumerateArray());
+        Assert.Equal(1, deadLetters.RootElement.GetProperty("schemaVersion").GetInt32());
+        var deadLetter = Assert.Single(deadLetters.RootElement.GetProperty("entries").EnumerateArray());
         var fact = deadLetter.GetProperty("Entry").GetProperty("Fact");
         Assert.Equal(1, fact.GetProperty("Revision").GetInt64());
         Assert.Equal(
@@ -529,9 +532,11 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         await WaitUntilAsync(() =>
             inputSink.Items.Count == 1 &&
             File.Exists(outboxPath) &&
-            File.ReadAllText(outboxPath).Trim() == "[]");
+            IsEmptyOutbox(outboxPath));
 
-        Assert.Equal("[]", File.ReadAllText(outboxPath).Trim());
+        using var outbox = JsonDocument.Parse(File.ReadAllText(outboxPath));
+        Assert.Equal(1, outbox.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Empty(outbox.RootElement.GetProperty("entries").EnumerateArray());
     }
 
     [Fact]
@@ -613,7 +618,8 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         monitor.PushCurrentSnapshot();
 
         using var outbox = JsonDocument.Parse(File.ReadAllText(outboxPath));
-        var entry = Assert.Single(outbox.RootElement.EnumerateArray());
+        Assert.Equal(1, outbox.RootElement.GetProperty("schemaVersion").GetInt32());
+        var entry = Assert.Single(outbox.RootElement.GetProperty("entries").EnumerateArray());
         Assert.NotEqual(Guid.Empty, entry.GetProperty("MessageId").GetGuid());
         var fact = entry.GetProperty("Fact");
         Assert.Equal(1, fact.GetProperty("SchemaRevision").GetInt32());
@@ -683,6 +689,13 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         while (!condition())
             await Task.Delay(10, timeout.Token);
+    }
+
+    private static bool IsEmptyOutbox(string path)
+    {
+        using var outbox = JsonDocument.Parse(File.ReadAllText(path));
+        return outbox.RootElement.GetProperty("schemaVersion").GetInt32() == 1 &&
+               !outbox.RootElement.GetProperty("entries").EnumerateArray().Any();
     }
 
     private static void CopyDirectory(string source, string destination)

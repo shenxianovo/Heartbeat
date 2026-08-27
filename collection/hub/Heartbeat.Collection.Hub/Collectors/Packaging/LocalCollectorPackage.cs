@@ -34,13 +34,8 @@ public sealed record CollectorPackageManifest(
     IReadOnlyList<CollectorArtifactManifest> Artifacts);
 
 public sealed record CollectorConfigManifest(
-    CollectorConfigSchemaReference Schema,
-    IReadOnlyList<int> AcceptedSchemaVersions);
-
-public sealed record CollectorConfigSchemaReference(
-    string Id,
     int Version,
-    string Hash);
+    IReadOnlyList<int> AcceptedVersions);
 
 public sealed record CollectorOutputTemplate(
     string OutputId,
@@ -308,19 +303,13 @@ public sealed class LocalCollectorPackage
     private static CollectorConfigManifest ReadConfig(JsonElement root)
     {
         var config = root.GetProperty("config");
-        RequireObject(config, "Collector Package config", ["schema", "accepts"], ["schema", "accepts"]);
-        var schema = config.GetProperty("schema");
-        RequireObject(
-            schema,
-            "Collector Package config schema",
-            ["id", "version", "hash"],
-            ["id", "version", "hash"]);
-        return new CollectorConfigManifest(
-            new CollectorConfigSchemaReference(
-                ReadNonEmptyString(schema, "id", "Collector Package config schema"),
-                ReadPositiveInt(schema, "version", "Collector Package config schema"),
-                ReadSha256(schema, "hash", "Collector Package config schema")),
-            ReadPositiveIntArray(config, "accepts", "Collector Package config"));
+        RequireObject(config, "Collector Package config", ["version", "accepts"], ["version", "accepts"]);
+        var version = ReadPositiveInt(config, "version", "Collector Package config");
+        var acceptedVersions = ReadPositiveIntArray(config, "accepts", "Collector Package config");
+        if (!acceptedVersions.Contains(version))
+            throw new PackageValidationException(
+                "Collector Package config.accepts must include its current config.version.");
+        return new CollectorConfigManifest(version, acceptedVersions);
     }
 
     private static ObservationDeclarationReference? ReadObservationDeclarationReference(byte[] manifestBytes)

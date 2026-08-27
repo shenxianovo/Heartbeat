@@ -164,7 +164,7 @@ public sealed class ManagedCollectorHostedService(
             0 => runtime.CreateInstance(
                 package,
                 subject,
-                new CollectorInstanceSpec(1, options.ConfigSchemaVersion, options.Config.Clone())),
+                new CollectorInstanceSpec(1, options.ConfigVersion, options.Config.Clone())),
             1 => instances[0],
             _ => throw new InvalidOperationException(
                 "Headless Hub configuration resolves to more than one Collector Instance.")

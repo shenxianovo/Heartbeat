@@ -26,6 +26,11 @@ public sealed partial class CollectorRuntime
                 "ExternalHost activationId and activation.hello messageId must be UUIDv7 values.");
 
         var support = SnapshotProtocolSupport(protocolSupport);
+        var helloRequestHash = HelloRequestHash(
+            collectorInstanceId,
+            package,
+            artifactId,
+            support);
         lock (_gate)
         {
             ThrowIfDisposed();
@@ -38,6 +43,11 @@ public sealed partial class CollectorRuntime
             if (_pendingExternalHostActivations.ContainsKey(activationId) ||
                 _externalHostActivations.ContainsKey(activationId))
                 throw ActivationError("protocol_invalid_message", "ExternalHost activationId is already in use.");
+            PersistActivationAttemptTombstoneLocked(
+                collectorInstanceId,
+                helloMessageId,
+                helloRequestHash,
+                activationId);
             if (_startingInstances.Contains(collectorInstanceId) ||
                 _activations.Values.Any(activation =>
                     activation.State != CollectorActivationState.Stopped &&
@@ -63,12 +73,14 @@ public sealed partial class CollectorRuntime
                     package.Manifest.PackageId,
                     package.Manifest.Version,
                     package.PackageContentHash));
+            var session = CreateActivationSession(
+                activationId,
+                helloMessageId,
+                package,
+                ActivationDeliveryCapability.Complete);
             _pendingExternalHostActivations.Add(
                 activationId,
-                new PendingExternalHostActivation(
-                    helloMessageId,
-                    instance,
-                    package));
+                new PendingExternalHostActivation(instance, package, session));
 
             return new ExternalHostCollectorInitialization(
                 activationId,
@@ -76,8 +88,7 @@ public sealed partial class CollectorRuntime
                 instance.Spec,
                 new CollectorProtocolLimits(
                     _options.MaxFactsPerBatch,
-                    _options.MaxBatchBytes,
-                    _options.MaxInFlightBatches),
+                    _options.MaxBatchBytes),
                 new CollectorResources(null),
                 SelectedCapabilities(package, support!)
                     .Where(capability => capability.Key != "resources.instance-data")
@@ -102,26 +113,35 @@ public sealed partial class CollectorRuntime
         long appliedSpecRevision,
         IReadOnlyList<OutputBinding> bindings)
     {
+        PendingExternalHostActivation pending;
+        StreamOpenPlan streamPlan;
         lock (_gate)
         {
             ThrowIfDisposed();
-            if (!_pendingExternalHostActivations.TryGetValue(activationId, out var pending))
+            if (!_pendingExternalHostActivations.TryGetValue(activationId, out var candidate))
                 throw ActivationError("protocol_invalid_message", "ExternalHost Activation is not awaiting ready.");
+            pending = candidate;
             if (appliedSpecRevision != pending.Instance.Spec.SpecRevision)
                 throw ActivationError("spec_revision_stale", "Collector did not apply the current SpecRevision.");
+            streamPlan = PlanStreams(activationId, pending.Instance, pending.Package, bindings);
+        }
 
-            var streamPlan = PlanStreams(activationId, pending.Instance, pending.Package, bindings);
-            var descriptors = streamPlan.Bindings.ToImmutableDictionary(
-                pair => pair.BindingId,
-                pair => ToDescriptor(pair.Stream),
-                StringComparer.Ordinal);
-            var activation = new ExternalHostCollectorActivation(
-                this,
-                activationId,
-                pending.HelloMessageId,
-                pending.Package,
-                descriptors);
+        pending.Session.AcceptInitialized(appliedSpecRevision, pending.Instance.Spec.SpecRevision);
+        var descriptors = streamPlan.Bindings.ToImmutableDictionary(
+            pair => pair.BindingId,
+            pair => ToDescriptor(pair.Stream),
+            StringComparer.Ordinal);
+        pending.Session.AcceptStreams(descriptors);
+        var activation = new ExternalHostCollectorActivation(pending.Session);
 
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            if (!_pendingExternalHostActivations.TryGetValue(activationId, out var current) ||
+                !ReferenceEquals(current, pending))
+                throw ActivationError(
+                    "activation_stopping",
+                    "ExternalHost Activation ended while its Streams were opening.");
             _externalHostActivations.Add(activationId, activation);
             _pendingActivationCommits.Add(activationId, streamPlan.Commit);
             _pendingExternalHostActivations.Remove(activationId);
@@ -134,18 +154,30 @@ public sealed partial class CollectorRuntime
         long appliedSpecRevision)
     {
         ArgumentNullException.ThrowIfNull(activation);
+        long expectedSpecRevision;
         lock (_gate)
         {
             ThrowIfDisposed();
             if (activation.State == CollectorActivationState.Ready)
                 return activation;
-            if (activation.State != CollectorActivationState.OpeningStreams)
-                throw ActivationError("protocol_invalid_message", "activation.ready is only valid after streams.opened.");
             if (!_pendingActivationCommits.TryGetValue(activation.ActivationId, out var pendingCommit))
                 throw ActivationError("protocol_invalid_message", "ExternalHost Activation has no pending Stream commit.");
-            if (appliedSpecRevision != pendingCommit.Instance.SpecRevision)
-                throw ActivationError("spec_revision_stale", "Collector did not apply the current SpecRevision.");
+            expectedSpecRevision = pendingCommit.Instance.SpecRevision;
+        }
+        activation.Session.AcceptReady(
+            appliedSpecRevision,
+            expectedSpecRevision,
+            () => CommitExternalHostReady(activation));
+        return activation;
+    }
 
+    private void CommitExternalHostReady(ExternalHostCollectorActivation activation)
+    {
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            if (!_pendingActivationCommits.TryGetValue(activation.ActivationId, out var pendingCommit))
+                throw ActivationError("protocol_invalid_message", "ExternalHost Activation has no pending Stream commit.");
             var next = _state.WithInstanceAndStreams(pendingCommit.Instance, pendingCommit.Streams);
             try
             {
@@ -168,20 +200,25 @@ public sealed partial class CollectorRuntime
             _pendingActivationCommits.Remove(activation.ActivationId);
             _pendingPackageFingerprints.Remove(activation.ActivationId);
             _startingInstances.Remove(pendingCommit.Instance.CollectorInstanceId);
-            activation.State = CollectorActivationState.Ready;
-            return activation;
         }
     }
 
     public void AbandonExternalHostActivation(Guid activationId)
     {
+        PendingExternalHostActivation? pending;
         lock (_gate)
         {
-            if (!_pendingExternalHostActivations.Remove(activationId, out var pending))
+            if (!_pendingExternalHostActivations.Remove(activationId, out pending))
                 return;
-            _pendingPackageFingerprints.Remove(activationId);
-            _startingInstances.Remove(pending.Instance.CollectorInstanceId);
         }
+        pending.Session.CompleteStop(() =>
+        {
+            lock (_gate)
+            {
+                _pendingPackageFingerprints.Remove(activationId);
+                _startingInstances.Remove(pending.Instance.CollectorInstanceId);
+            }
+        });
     }
 
     public void StopExternalHostActivation(
@@ -189,43 +226,21 @@ public sealed partial class CollectorRuntime
         ExternalHostActivationStopReason reason)
     {
         ArgumentNullException.ThrowIfNull(activation);
-        lock (_gate)
+        activation.Session.CompleteStop(() =>
         {
-            if (activation.State == CollectorActivationState.Stopped)
-                return;
-            activation.State = CollectorActivationState.Draining;
-            foreach (var streamId in activation.Streams.Values.Select(stream => stream.StreamId))
+            lock (_gate)
             {
-                if (_streamWriters.TryGetValue(streamId, out var writer) && writer == activation.ActivationId)
-                    _streamWriters.Remove(streamId);
+                foreach (var streamId in activation.Streams.Values.Select(stream => stream.StreamId))
+                {
+                    if (_streamWriters.TryGetValue(streamId, out var writer) && writer == activation.ActivationId)
+                        _streamWriters.Remove(streamId);
+                }
+                _externalHostActivations.Remove(activation.ActivationId);
+                if (_pendingActivationCommits.Remove(activation.ActivationId, out var pendingCommit))
+                    _startingInstances.Remove(pendingCommit.Instance.CollectorInstanceId);
+                _pendingPackageFingerprints.Remove(activation.ActivationId);
             }
-            activation.StopReason = reason;
-            activation.State = CollectorActivationState.Stopped;
-            _externalHostActivations.Remove(activation.ActivationId);
-            if (_pendingActivationCommits.Remove(activation.ActivationId, out var pendingCommit))
-                _startingInstances.Remove(pendingCommit.Instance.CollectorInstanceId);
-            _pendingPackageFingerprints.Remove(activation.ActivationId);
-        }
-        ForgetActivationAttempts(activation.ActivationId);
-    }
-
-    private void ForgetActivationAttempts(Guid activationId)
-    {
-        lock (_publishAttemptGate)
-        {
-            foreach (var key in _publishAttempts.Keys.Where(key => key.ActivationId == activationId).ToArray())
-                _publishAttempts.Remove(key);
-        }
-        lock (_messageAttemptGate)
-        {
-            foreach (var key in _messageAttempts.Keys.Where(key => key.ActivationId == activationId).ToArray())
-                _messageAttempts.Remove(key);
-        }
-        lock (_gate)
-        {
-            foreach (var key in _gapReplays.Keys.Where(key => key.ActivationId == activationId).ToArray())
-                _gapReplays.Remove(key);
-        }
+        }, reason);
     }
 
     private static VerifiedCollectorArtifact ResolveExternalHostArtifact(
@@ -265,7 +280,7 @@ public sealed partial class CollectorRuntime
     }
 
     private sealed record PendingExternalHostActivation(
-        Guid HelloMessageId,
         CollectorInstance Instance,
-        LocalCollectorPackage Package);
+        LocalCollectorPackage Package,
+        CollectorActivationSession Session);
 }

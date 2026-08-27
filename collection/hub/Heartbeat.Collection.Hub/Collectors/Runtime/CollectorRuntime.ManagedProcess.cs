@@ -210,7 +210,7 @@ public sealed partial class CollectorRuntime
                 previousPackage.PackageContentHash,
                 previousArtifact.ArtifactId,
                 previousArtifact.ContentHash,
-                instance.ConfigSchemaVersion);
+                instance.ConfigVersion);
             if (!_managedProcessUpdates.Add(collectorInstanceId))
                 throw ActivationError(
                     "stream_writer_conflict",
@@ -245,7 +245,7 @@ public sealed partial class CollectorRuntime
                                 candidate.PackageContentHash,
                                 candidateArtifact.ArtifactId,
                                 candidateArtifact.ContentHash,
-                                previousInstallation.ConfigSchemaVersion));
+                                previousInstallation.ConfigVersion));
                         return new ManagedProcessUpdateResult(
                             ManagedProcessUpdateOutcome.Updated,
                             candidateActivation);
@@ -1000,7 +1000,7 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
                 spec = new
                 {
                     revision = initialization.Spec.SpecRevision,
-                    config = new { schemaVersion = initialization.Spec.ConfigSchemaVersion, value = initialization.Spec.Config }
+                    config = new { version = initialization.Spec.ConfigVersion, value = initialization.Spec.Config }
                 },
                 limits = initialization.Limits,
                 resources = initialization.Resources,

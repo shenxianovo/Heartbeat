@@ -8,11 +8,7 @@
     "diagnostics.stream-gap": [1]
   },
   "config": {
-    "schema": {
-      "id": "heartbeat.collector.browser.config",
-      "version": 1,
-      "hash": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0"
-    },
+    "version": 1,
     "accepts": [1]
   },
   "observationDeclaration": {
@@ -45,7 +41,7 @@
       },
       "entrypoint": "artifacts/browser-extension.json",
       "size": 1008,
-      "contentHash": "sha256:848b79cd7fa7337f94766f7b2b380dff5ab62b453ef01f9e9b22b5e43dd27492"
+      "contentHash": "sha256:3c78bf8d23a9ee3d9210110b80fc66deea3ae723b757fa06bed3da076c5e58cd"
     }
   ]
 }

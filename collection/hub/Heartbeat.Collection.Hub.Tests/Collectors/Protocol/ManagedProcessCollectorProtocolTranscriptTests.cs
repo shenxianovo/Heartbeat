@@ -171,7 +171,7 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         Assert.Equal("1.1.0", lastKnownGood.PackageVersion);
         Assert.Equal(candidate.PackageContentHash, lastKnownGood.PackageContentHash);
         Assert.Equal("reference.managed", lastKnownGood.ArtifactId);
-        Assert.Equal(1, lastKnownGood.ConfigSchemaVersion);
+        Assert.Equal(1, lastKnownGood.ConfigVersion);
         await result.Activation.StopAsync();
         runtime.Dispose();
 
@@ -187,7 +187,7 @@ public class ManagedProcessCollectorProtocolTranscriptTests
     public async Task PackageUpdate_UnsupportedConfigIsRejectedBeforeStoppingCurrentActivation()
     {
         using var originalCopy = ManagedReferenceCollectorPackage.Create();
-        using var candidateCopy = ManagedReferenceCollectorPackage.Create("1.1.0", [2]);
+        using var candidateCopy = ManagedReferenceCollectorPackage.Create("1.1.0", [2], 2);
         var original = LocalCollectorPackage.Load(originalCopy.Path);
         var candidate = LocalCollectorPackage.Load(candidateCopy.Path);
         using var stateDirectory = TemporaryDirectory.Create();
@@ -210,7 +210,7 @@ public class ManagedProcessCollectorProtocolTranscriptTests
                 candidate,
                 FastUpdateOptions()));
 
-        Assert.Equal("config_schema_unsupported", error.Error.Code);
+        Assert.Equal("config_version_unsupported", error.Error.Code);
         Assert.Equal(CollectorActivationState.Ready, current.State);
         Assert.False(current.Completion.IsCompleted);
         Assert.Equal("1.0.0", runtime.GetInstance(instance.CollectorInstanceId).PackageVersion);
@@ -318,7 +318,7 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         cancellation.Cancel();
         var result = await update;
         Assert.Equal(ManagedProcessUpdateOutcome.RolledBack, result.Outcome);
-        Assert.Equal(1, fixture.Runtime.GetInstance(fixture.Instance.CollectorInstanceId).Spec.ConfigSchemaVersion);
+        Assert.Equal(1, fixture.Runtime.GetInstance(fixture.Instance.CollectorInstanceId).Spec.ConfigVersion);
         await result.Activation.StopAsync();
     }
 

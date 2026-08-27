@@ -50,7 +50,7 @@ multiple accounts and, later, other managed Account Collector Packages:
       "subjectId": "0198d5df-5df3-70a1-937d-68a7d64623e2",
       "subjectKind": "Account",
       "subjectName": "VRChat · Alice",
-      "configSchemaVersion": 1,
+      "configVersion": 1,
       "config": { "pollIntervalSeconds": 60 },
       "startupTimeoutSeconds": 30,
       "drainGraceSeconds": 10

@@ -11,41 +11,36 @@ namespace Heartbeat.Collection.Hub.Collectors.Protocol;
 /// </summary>
 public sealed class ExternalHostCollectorActivation
 {
+    private readonly CollectorActivationSession _session;
+
     internal ExternalHostCollectorActivation(
-        CollectorRuntime runtime,
-        Guid activationId,
-        Guid helloMessageId,
-        LocalCollectorPackage package,
-        IReadOnlyDictionary<string, FactStreamDescriptor> streams)
+        CollectorActivationSession session)
     {
-        Runtime = runtime;
-        ActivationId = activationId;
-        HelloMessageId = helloMessageId;
-        Package = package;
-        Streams = streams.ToImmutableDictionary(StringComparer.Ordinal);
-        State = CollectorActivationState.OpeningStreams;
+        _session = session;
     }
 
-    public Guid ActivationId { get; }
-    public Guid HelloMessageId { get; }
-    public CollectorActivationState State { get; internal set; }
-    public ExternalHostActivationStopReason? StopReason { get; internal set; }
+    public Guid ActivationId => _session.ActivationId;
+    public Guid HelloMessageId => _session.HelloMessageId;
+    public CollectorActivationState State => _session.State;
+    public ExternalHostActivationStopReason? StopReason => _session.StopReason;
+    public ActivationDeliveryCapability DeliveryCapability => _session.DeliveryCapability;
+    public IReadOnlyList<CollectorHandshakeStep> HandshakeTranscript => _session.HandshakeTranscript;
     public bool ExternalHostWasTerminated => false;
-    public IReadOnlyDictionary<string, FactStreamDescriptor> Streams { get; }
-    internal CollectorRuntime Runtime { get; }
-    internal LocalCollectorPackage Package { get; }
+    public IReadOnlyDictionary<string, FactStreamDescriptor> Streams => _session.Streams;
+    internal LocalCollectorPackage Package => _session.Package;
+    internal CollectorActivationSession Session => _session;
 
     public ValueTask<FactBatchAcknowledgement> PublishAsync(
         Guid streamId,
         Guid messageId,
         IReadOnlyList<FactSubmission> facts,
         CancellationToken cancellationToken = default) =>
-        Runtime.PublishAsync(ActivationId, streamId, messageId, facts, cancellationToken);
+        _session.PublishAsync(streamId, messageId, facts, cancellationToken);
 
     public ValueTask<GapDeliveryOutcome> ReportGapAsync(
         Guid streamId,
         Guid messageId,
         StreamGapReport gap,
         CancellationToken cancellationToken = default) =>
-        Runtime.ReportGapAsync(ActivationId, streamId, messageId, gap, cancellationToken);
+        _session.ReportGapAsync(streamId, messageId, gap, cancellationToken);
 }

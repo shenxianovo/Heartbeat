@@ -13,7 +13,7 @@ public sealed class HeadlessHubOptions
     public SubjectKind SubjectKind { get; init; } = SubjectKind.Account;
     public string SubjectName { get; init; } = "Managed account";
     public int UploadIntervalSeconds { get; init; } = 60;
-    public int ConfigSchemaVersion { get; init; } = 1;
+    public int ConfigVersion { get; init; } = 1;
     public JsonElement Config { get; init; } = JsonDocument.Parse("{}").RootElement.Clone();
     public int StartupTimeoutSeconds { get; init; } = 30;
     public int DrainGraceSeconds { get; init; } = 10;
@@ -51,7 +51,7 @@ public sealed class HeadlessHubOptions
             throw new InvalidOperationException("subjectKind is invalid.");
         if (string.IsNullOrWhiteSpace(SubjectName))
             throw new InvalidOperationException("subjectName is required.");
-        if (UploadIntervalSeconds <= 0 || ConfigSchemaVersion <= 0 ||
+        if (UploadIntervalSeconds <= 0 || ConfigVersion <= 0 ||
             StartupTimeoutSeconds <= 0 || DrainGraceSeconds <= 0)
             throw new InvalidOperationException("Headless Hub numeric settings must be positive.");
         if (Config.ValueKind == JsonValueKind.Undefined)
@@ -67,7 +67,7 @@ public sealed class HeadlessHubOptions
         SubjectKind = SubjectKind,
         SubjectName = SubjectName,
         UploadIntervalSeconds = UploadIntervalSeconds,
-        ConfigSchemaVersion = ConfigSchemaVersion,
+        ConfigVersion = ConfigVersion,
         Config = Config.Clone(),
         StartupTimeoutSeconds = StartupTimeoutSeconds,
         DrainGraceSeconds = DrainGraceSeconds

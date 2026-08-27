@@ -205,7 +205,7 @@ Hub 选择协议与能力并分配 ActivationId。Bootstrap response 不携带�
     "spec": {
       "revision": 7,
       "config": {
-        "schemaVersion": 1,
+        "version": 1,
         "value": {
           "flushPeriodMs": 30000
         }
@@ -213,8 +213,7 @@ Hub 选择协议与能力并分配 ActivationId。Bootstrap response 不携带�
     },
     "limits": {
       "maxFactsPerBatch": 500,
-      "maxBatchBytes": 1048576,
-      "maxInFlightBatches": 2
+      "maxBatchBytes": 1048576
     },
     "hubTime": "2026-08-22T12:00:00Z"
   }
@@ -331,7 +330,7 @@ Hub 返回 `activation.readyAck` 后双方才进入 Ready。Ready 不要求已�
     "spec": {
       "revision": 8,
       "config": {
-        "schemaVersion": 1,
+        "version": 1,
         "value": {
           "flushPeriodMs": 60000
         }
@@ -343,7 +342,7 @@ Hub 返回 `activation.readyAck` 后双方才进入 Ready。Ready 不要求已�
 
 Collector 原子应用后返回 `spec.applied { appliedSpecRevision }`；无法应用时返回 `spec.rejected`，包含结构化原因。Hub 不因拒绝而改写 Desired State，可以选择保持旧 Revision 或重建 Activation。
 
-不支持 `config.dynamic` 时，任何会改变运行行为的 SpecRevision 都通过新 Activation 收敛。即使支持动态配置，Package、Subject、Output binding 或 enabled 状态的变化仍必须走 Activation 切换或 drain；`spec.apply` v1 只用于同一配置 schema 内的运行参数完整快照。
+不支持 `config.dynamic` 时，任何会改变运行行为的 SpecRevision 都通过新 Activation 收敛。即使支持动态配置，Package、Subject、Output binding 或 enabled 状态的变化仍必须走 Activation 切换或 drain；`spec.apply` v1 只用于同一 ConfigVersion 所表示配置形状内的运行参数完整快照。
 
 ## 7. Fact 发布与 ACK
 
@@ -441,7 +440,7 @@ Hub 对每个输入 Fact 返回确定结果：
 }
 ```
 
-Collector 不得超过 `maxFactsPerBatch`、`maxBatchBytes` 与 `maxInFlightBatches`。`maxBatchBytes` 按该 `facts.publish` 逻辑消息 canonical JSON 的 UTF-8 字节数计算，与 Transport Binding 的帧开销、压缩和 TLS 无关；InProcess Binding 没有真实序列化时可以把它当作建议值，但仍必须遵守 `maxFactsPerBatch` 与 `maxInFlightBatches`。Hub 可以通过 `retry` 和 `retryAfterMs` 降低发送速率，不需要把传输断开伪装成背压。
+Collector 不得超过 `maxFactsPerBatch` 与 `maxBatchBytes`。`maxBatchBytes` 按该 `facts.publish` 逻辑消息 canonical JSON 的 UTF-8 字节数计算，与 Transport Binding 的帧开销、压缩和 TLS 无关；InProcess Binding 没有真实序列化时可以把它当作建议值。v1 的每个 Activation 串行处理协议消息，不协商并发批次数；Hub 通过 `retry` 和 `retryAfterMs` 降低发送速率，不需要把传输断开伪装成背压。
 
 同一批次内不得出现同一 `(streamId, factId)` 的两条 Fact，无论 Revision 是否相同；需要连续提交多个 Revision 时拆成多个批次，让 ACK 结果对每个 Revision 都是明确的。违反时 Hub 必须在处理任何 Fact 之前返回 `facts.rejected`。
 
@@ -541,7 +540,7 @@ v1 至少固定以下稳定代码：
 - `instance_not_found`
 - `package_mismatch`
 - `spec_revision_stale`
-- `config_schema_unsupported`
+- `config_version_unsupported`
 - `output_not_declared`
 - `stream_writer_conflict`
 - `fact_schema_invalid`
@@ -568,11 +567,7 @@ Manifest 不是 Activation 消息，但它约束 Hub 可以接受的握手和 St
     "diagnostics.stream-gap": [1]
   },
   "config": {
-    "schema": {
-      "id": "heartbeat.collector.browser.config",
-      "version": 1,
-      "hash": "sha256:..."
-    },
+    "version": 1,
     "accepts": [1]
   },
   "outputs": [
@@ -609,6 +604,8 @@ Manifest 不是 Activation 消息，但它约束 Hub 可以接受的握手和 St
 
 Manifest 的 `supportedCapabilities` 是发布声明，Hello 的同名字段是实际进程报告；Hub 选择的能力必须同时位于 Manifest、Hello 与 Hub 支持集的交集。一个 output 使用的 Fact capability 必须同时出现在 Manifest 声明中，不允许只写 output 而省略能力版本。
 
+Manifest `config.version` 标识该 Package 当前写出的配置形状，`config.accepts` 声明它能够读取的配置版本。v1 不宣称存在独立 Config JSON Schema，也不携带虚假的 schema identity/hash；各官方 Collector 在应用配置时负责强类型校验。未来需要机器可读结构校验时，应另行定义带 document/hash 的 Config Schema Document。
+
 Fact Schema 引用中的 `document` 必须是 package root 内的 portable 相对路径，不允许绝对路径、反斜杠、`.` / `..` 段或符号链接穿越。`hash` 是该文档 UTF-8、无 BOM、未经任何规范化的**完整原始字节**之 SHA-256；空白、对象键顺序、换行风格或末尾换行变化都会改变 hash。文档的 `schemaId / schemaMajor / schemaRevision / factKind` 必须与 Output 引用一致；同一 schema identity 在一个 Package 内只能解析到同一 document 与 hash。文档格式见 [Fact Model v1 §8](./fact-model-v1.md#8-schema-版本)。
 
 Artifact 的 `entrypoint` 使用同样的安全相对路径规则。Runtime 必须先读取不可变快照，并同时核对精确 `size` 与 `contentHash`，之后才可交给 Binding。针对当前 `driver + os + arch` 必须恰好命中一个 Artifact，零个或多个都拒绝。参考本地实现以 Manifest 原始字节的 SHA-256 作为已验证 Package 内容集合的 fingerprint；因为 Manifest 固定所有 Artifact 与 Fact Schema hash，这能检测本地内容变化，但不替代签名或外部信任根。
@@ -640,6 +637,21 @@ Artifact 的 `entrypoint` 使用同样的安全相对路径规则。Runtime 必�
 ```
 
 同一 `outputId` 在 Package 的一个 Major 兼容线内不得改变 Source、FactKind、Schema Major 或 Measurement descriptor。需要改变时创建新 Stream；破坏性 schema 变化同时提高 Schema Major。
+
+### 10.1 JSON 文档的职责边界
+
+v1 不为所有 JSON 都建立 JSON Schema。只有需要跨 Package、跨实现验证业务 payload 的 Fact Schema 是正式 schema document；其余 JSON 由各自协议或私有状态版本负责。
+
+| JSON 类别 | 权威与版本方式 | 是否新增 JSON Schema 文档 |
+| --- | --- | --- |
+| Collector Protocol 消息 | 本协议、protocol major 与 capability version | 否 |
+| Package Manifest | `manifestVersion` 与 Package 解析器 | 否 |
+| Instance Config | `config.version` / `config.accepts`，官方 Collector 强类型校验 | 否 |
+| Fact payload | Package 内 Fact Schema document + identity/hash | 是 |
+| Observation Depth | Package 内 `observation-depth.json` 及其独立版本 | 否；它不是 Fact Schema |
+| Runtime、outbox、secret 等本地私有状态 | 每个文件根部的 `schemaVersion` envelope | 否；不进入 wire contract |
+
+新增 JSON Schema 前必须先证明该 JSON 需要独立于实现的结构协商；仅为本地反序列化或将来可能迁移，不构成新增 schema document 的理由。
 
 ## 11. Transport Binding 要求
 

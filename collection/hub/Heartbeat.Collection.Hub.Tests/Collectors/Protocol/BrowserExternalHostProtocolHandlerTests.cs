@@ -55,7 +55,7 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
             $$$"""
         {
           "artifactId":"browser.extension",
-          "artifactHash":"sha256:848b79cd7fa7337f94766f7b2b380dff5ab62b453ef01f9e9b22b5e43dd27492",
+          "artifactHash":"sha256:3c78bf8d23a9ee3d9210110b80fc66deea3ae723b757fa06bed3da076c5e58cd",
           "protocolMajors":[1],
           "supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},
           "appHint":"edge"
@@ -165,7 +165,7 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
         _browserRuntime.SetDesiredEnabled(false);
         var disabled = await Post("/v1/collector-protocol/browser/hello", Message(
             "activation.hello",
-            """{"artifactId":"browser.extension","artifactHash":"sha256:848b79cd7fa7337f94766f7b2b380dff5ab62b453ef01f9e9b22b5e43dd27492","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
+            """{"artifactId":"browser.extension","artifactHash":"sha256:3c78bf8d23a9ee3d9210110b80fc66deea3ae723b757fa06bed3da076c5e58cd","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
             bootstrap: true));
         Assert.Equal(403, disabled.StatusCode);
         using (var json = JsonDocument.Parse(disabled.Body))
@@ -175,10 +175,20 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
         var helloMessageId = Guid.CreateVersion7();
         var helloBody = Message(
             "activation.hello",
-            """{"artifactId":"browser.extension","artifactHash":"sha256:848b79cd7fa7337f94766f7b2b380dff5ab62b453ef01f9e9b22b5e43dd27492","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
+            """{"artifactId":"browser.extension","artifactHash":"sha256:3c78bf8d23a9ee3d9210110b80fc66deea3ae723b757fa06bed3da076c5e58cd","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
             bootstrap: true,
             messageId: helloMessageId);
         Assert.Equal(200, (await Post("/v1/collector-protocol/browser/hello", helloBody)).StatusCode);
+        var conflictingReplay = await Post("/v1/collector-protocol/browser/hello", Message(
+            "activation.hello",
+            """{"artifactId":"browser.extension","artifactHash":"sha256:3c78bf8d23a9ee3d9210110b80fc66deea3ae723b757fa06bed3da076c5e58cd","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"chrome"}""",
+            bootstrap: true,
+            messageId: helloMessageId));
+        Assert.Equal(400, conflictingReplay.StatusCode);
+        using (var conflictJson = JsonDocument.Parse(conflictingReplay.Body))
+            Assert.Equal(
+                "protocol_invalid_message",
+                conflictJson.RootElement.GetProperty("body").GetProperty("error").GetProperty("code").GetString());
         _time.Advance(TimeSpan.FromSeconds(11));
         _handler.ExpireLeases();
 
@@ -194,7 +204,7 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
     {
         var hello = await Post("/v1/collector-protocol/browser/hello", Message(
             "activation.hello",
-            """{"artifactId":"browser.extension","artifactHash":"sha256:848b79cd7fa7337f94766f7b2b380dff5ab62b453ef01f9e9b22b5e43dd27492","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
+            """{"artifactId":"browser.extension","artifactHash":"sha256:3c78bf8d23a9ee3d9210110b80fc66deea3ae723b757fa06bed3da076c5e58cd","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
             bootstrap: true));
         using var helloJson = JsonDocument.Parse(hello.Body);
         var activationId = helloJson.RootElement.GetProperty("body").GetProperty("activationId").GetGuid();
@@ -240,8 +250,8 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
           "protocol":"{{{(bootstrap ? "heartbeat.collector.bootstrap/1" : "heartbeat.collector/1")}}}",
           "type":"{{{type}}}",
           "messageId":"{{{messageId ?? Guid.CreateVersion7()}}}",
-          {{{(activationId is null ? string.Empty : $"\"activationId\":\"{activationId}\"," )}}}
-          {{{(replyTo is null ? string.Empty : $"\"replyTo\":\"{replyTo}\"," )}}}
+          {{{(activationId is null ? string.Empty : $"\"activationId\":\"{activationId}\",")}}}
+          {{{(replyTo is null ? string.Empty : $"\"replyTo\":\"{replyTo}\",")}}}
           "body":{{{body}}}
         }
         """;

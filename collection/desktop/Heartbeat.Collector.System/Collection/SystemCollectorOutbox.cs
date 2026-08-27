@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Heartbeat.Collection.Hub.Collectors.Protocol;
 
 namespace Heartbeat.Collector.System.Collection;
@@ -16,6 +17,7 @@ internal static class SystemCollectorOutbox
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         WriteIndented = true
     };
 
@@ -49,8 +51,11 @@ internal static class SystemCollectorOutbox
     {
         if (!File.Exists(path))
             return [];
-        return JsonSerializer.Deserialize<List<T>>(File.ReadAllText(path), JsonOptions)
-               ?? throw new InvalidDataException($"The system Collector {description} cannot be null.");
+        var envelope = JsonSerializer.Deserialize<OutboxEnvelope<T>>(File.ReadAllText(path), JsonOptions)
+                       ?? throw new InvalidDataException($"The system Collector {description} cannot be null.");
+        if (envelope.SchemaVersion != 1 || envelope.Entries is null)
+            throw new InvalidDataException($"The system Collector {description} has an unsupported schemaVersion.");
+        return envelope.Entries;
     }
 
     private static void SaveFile<T>(string path, IReadOnlyList<T> entries)
@@ -59,7 +64,13 @@ internal static class SystemCollectorOutbox
             ?? throw new InvalidOperationException("The system Collector state path has no directory.");
         Directory.CreateDirectory(directory);
         var temporaryPath = path + ".new";
-        File.WriteAllText(temporaryPath, JsonSerializer.Serialize(entries, JsonOptions));
+        File.WriteAllText(
+            temporaryPath,
+            JsonSerializer.Serialize(new OutboxEnvelope<T>(1, [.. entries]), JsonOptions));
         File.Move(temporaryPath, path, overwrite: true);
     }
+
+    private sealed record OutboxEnvelope<T>(
+        [property: JsonPropertyName("schemaVersion")] int SchemaVersion,
+        [property: JsonPropertyName("entries")] List<T> Entries);
 }

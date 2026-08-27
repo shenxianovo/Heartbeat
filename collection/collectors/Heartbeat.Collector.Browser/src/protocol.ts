@@ -51,13 +51,11 @@ export interface BrowserPendingGap {
 interface ProtocolLimits {
   maxFactsPerBatch: number
   maxBatchBytes: number
-  maxInFlightBatches: number
 }
 
 const DEFAULT_LIMITS: ProtocolLimits = {
   maxFactsPerBatch: 500,
   maxBatchBytes: 1_048_576,
-  maxInFlightBatches: 1,
 }
 
 export type ProtocolUploadResult =
@@ -227,8 +225,7 @@ export async function openBrowserProtocolSession(
     const flushPeriodMilliseconds = positiveInteger(initialized.spec.config.value.flushPeriodMs)
     if (flushPeriodMilliseconds === undefined || flushPeriodMilliseconds < 30_000) return 'rejected'
     if (positiveInteger(initialized.limits?.maxFactsPerBatch) === undefined ||
-      positiveInteger(initialized.limits?.maxBatchBytes) === undefined ||
-      positiveInteger(initialized.limits?.maxInFlightBatches) === undefined)
+      positiveInteger(initialized.limits?.maxBatchBytes) === undefined)
       return 'rejected'
     await applySpec?.({ enabled: true, flushPeriodMilliseconds })
 
@@ -443,6 +440,7 @@ export async function uploadWithBrowserProtocol(
   persistGapAttempt?: (gap: BrowserPendingGap) => Promise<void>,
 ): Promise<ProtocolUploadResult> {
   if (!appHint) return { kind: 'legacy-required' }
+  if (snapshots.some((snapshot) => !isUuidV7(snapshot.id))) return { kind: 'legacy-required' }
   const renewed = previousSession?.port === port
     ? await renewBrowserProtocolSession(previousSession)
     : null
@@ -570,7 +568,6 @@ function normalizeLimits(limits: Partial<ProtocolLimits> | undefined): ProtocolL
   return {
     maxFactsPerBatch: positiveInteger(limits?.maxFactsPerBatch) ?? DEFAULT_LIMITS.maxFactsPerBatch,
     maxBatchBytes: positiveInteger(limits?.maxBatchBytes) ?? DEFAULT_LIMITS.maxBatchBytes,
-    maxInFlightBatches: positiveInteger(limits?.maxInFlightBatches) ?? DEFAULT_LIMITS.maxInFlightBatches,
   }
 }
 

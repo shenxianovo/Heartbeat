@@ -52,12 +52,7 @@ internal static class VRChatPackageBuilder
             },
             config = new
             {
-                schema = new
-                {
-                    id = "heartbeat.collector.vrchat.config",
-                    version = 1,
-                    hash = Hash(Encoding.UTF8.GetBytes("{\"pollIntervalSeconds\":\"positive integer\"}"))
-                },
+                version = 1,
                 accepts = new[] { 1 }
             },
             outputs = new[]

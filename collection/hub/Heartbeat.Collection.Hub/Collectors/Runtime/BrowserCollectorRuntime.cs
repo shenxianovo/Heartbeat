@@ -505,6 +505,9 @@ public sealed class BrowserCollectorRuntime
 
     private string? ValidatePersistedState()
     {
+        if (_state.SchemaVersion != 1)
+            throw new CollectorRuntimeStateException(
+                $"Unsupported browser Package state schemaVersion {_state.SchemaVersion}.");
         foreach (var installation in new[] { _state.Current, _state.KnownGood, _state.PreviousKnownGood })
         {
             if (installation is null)
@@ -641,6 +644,7 @@ public sealed class BrowserCollectorRuntime
 
     private sealed class BrowserRuntimeState
     {
+        public int SchemaVersion { get; init; } = 1;
         public PackageInstallationState? Current { get; init; }
         public PackageInstallationState? KnownGood { get; init; }
         public PackageInstallationState? PreviousKnownGood { get; init; }

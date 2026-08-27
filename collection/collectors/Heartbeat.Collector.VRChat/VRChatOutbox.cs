@@ -155,7 +155,7 @@ public sealed class VRChatOutbox
 
     private static void Validate(OutboxState state)
     {
-        if (state.Facts is null || state.Gaps is null ||
+        if (state.SchemaVersion != 1 || state.Facts is null || state.Gaps is null ||
             state.Facts.Any(fact => fact is null || fact.FactId == Guid.Empty || fact.Revision <= 0) ||
             state.Gaps.Any(gap => gap is null || gap.GapId == Guid.Empty || gap.End < gap.Start))
             throw new JsonException("VRChat outbox contains invalid state.");
@@ -165,6 +165,7 @@ public sealed class VRChatOutbox
 
     private sealed class OutboxState
     {
+        public int SchemaVersion { get; init; } = 1;
         public VRChatPresenceFact? Active { get; init; }
         public List<VRChatPresenceFact> Facts { get; init; } = [];
         public List<VRChatStreamGap> Gaps { get; init; } = [];

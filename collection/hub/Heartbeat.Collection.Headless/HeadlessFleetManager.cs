@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Heartbeat.Collection.Hub.Auth;
 using Heartbeat.Collection.Hub.Collectors.Packages;
 using Heartbeat.Collection.Hub.Collectors.Runtime;
@@ -31,6 +32,11 @@ public sealed record HeadlessSubjectStatusResponse(
 public sealed class HeadlessFleetManager(
     HeadlessFleetOptions options) : BackgroundService
 {
+    private static readonly JsonSerializerOptions StateJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        WriteIndented = true
+    };
     private readonly object _gate = new();
     private readonly List<Entry> _entries = [];
     private readonly HeadlessSubjectRouter _router = new();
@@ -167,11 +173,11 @@ public sealed class HeadlessFleetManager(
                     instance.Subject != new SubjectReference(configured.SubjectId, configured.SubjectKind))
                     throw new InvalidOperationException(
                         $"Configured Instance key '{configured.InstanceKey}' changed its Package or Subject identity.");
-                if (instance.Spec.ConfigSchemaVersion != configured.ConfigSchemaVersion ||
+                if (instance.Spec.ConfigVersion != configured.ConfigVersion ||
                     !JsonElement.DeepEquals(instance.Spec.Config, configured.Config))
                     instance = _runtime.UpdateInstanceSpec(
                         instance.CollectorInstanceId,
-                        configured.ConfigSchemaVersion,
+                        configured.ConfigVersion,
                         configured.Config);
             }
             else
@@ -180,7 +186,7 @@ public sealed class HeadlessFleetManager(
                 var recoverable = _runtime.FindInstances(package.Manifest.PackageId, subject)
                     .Where(candidate => !claimedInstanceIds.Contains(candidate.CollectorInstanceId))
                     .Where(candidate =>
-                        candidate.Spec.ConfigSchemaVersion == configured.ConfigSchemaVersion &&
+                        candidate.Spec.ConfigVersion == configured.ConfigVersion &&
                         JsonElement.DeepEquals(candidate.Spec.Config, configured.Config))
                     .ToArray();
                 instance = recoverable.Length switch
@@ -188,7 +194,7 @@ public sealed class HeadlessFleetManager(
                     0 => _runtime.CreateInstance(
                         package,
                         subject,
-                        new CollectorInstanceSpec(1, configured.ConfigSchemaVersion, configured.Config.Clone())),
+                        new CollectorInstanceSpec(1, configured.ConfigVersion, configured.Config.Clone())),
                     1 => recoverable[0],
                     _ => throw new InvalidOperationException(
                         $"Instance key '{configured.InstanceKey}' has multiple unmapped Runtime candidates.")
@@ -293,10 +299,11 @@ public sealed class HeadlessFleetManager(
     {
         var path = InstanceMapPath;
         if (!File.Exists(path)) return new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
-        return JsonSerializer.Deserialize<Dictionary<string, Guid>>(File.ReadAllText(path))
-            is { } mappings
-            ? new Dictionary<string, Guid>(mappings, StringComparer.OrdinalIgnoreCase)
-            : throw new JsonException("Headless Instance mapping is empty.");
+        var state = JsonSerializer.Deserialize<InstanceMapState>(File.ReadAllText(path), StateJsonOptions)
+                    ?? throw new JsonException("Headless Instance mapping is empty.");
+        if (state.SchemaVersion != 1 || state.Mappings is null)
+            throw new JsonException($"Unsupported Headless Instance mapping schemaVersion {state.SchemaVersion}.");
+        return new Dictionary<string, Guid>(state.Mappings, StringComparer.OrdinalIgnoreCase);
     }
 
     private void SaveInstanceMappings(IReadOnlyDictionary<string, Guid> mappings)
@@ -304,12 +311,16 @@ public sealed class HeadlessFleetManager(
         var temporary = InstanceMapPath + $".{Guid.NewGuid():N}.tmp";
         File.WriteAllText(
             temporary,
-            JsonSerializer.Serialize(mappings, new JsonSerializerOptions { WriteIndented = true }),
+            JsonSerializer.Serialize(
+                new InstanceMapState(1, new Dictionary<string, Guid>(mappings)),
+                StateJsonOptions),
             new UTF8Encoding(false));
         File.Move(temporary, InstanceMapPath, overwrite: true);
     }
 
     private string InstanceMapPath => Path.Combine(options.DataDirectory, "headless-instance-map.json");
+
+    private sealed record InstanceMapState(int SchemaVersion, Dictionary<string, Guid> Mappings);
 
     private sealed class Entry(
         HeadlessManagedInstanceOptions options,

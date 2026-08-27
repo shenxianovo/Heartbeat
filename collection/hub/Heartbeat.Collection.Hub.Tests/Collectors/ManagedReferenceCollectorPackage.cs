@@ -13,9 +13,10 @@ internal sealed class ManagedReferenceCollectorPackage : IDisposable
 
     public static ManagedReferenceCollectorPackage Create(
         string version = "1.0.0",
-        IReadOnlyList<int>? acceptedConfigSchemaVersions = null)
+        IReadOnlyList<int>? acceptedConfigVersions = null,
+        int configVersion = 1)
     {
-        acceptedConfigSchemaVersions ??= [1];
+        acceptedConfigVersions ??= [1];
         var source = System.IO.Path.Combine(
             AppContext.BaseDirectory,
             "Fixtures",
@@ -86,13 +87,8 @@ internal sealed class ManagedReferenceCollectorPackage : IDisposable
             },
             config = new
             {
-                schema = new
-                {
-                    id = "heartbeat.collector.reference-managed.config",
-                    version = 1,
-                    hash = "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0"
-                },
-                accepts = acceptedConfigSchemaVersions
+                version = configVersion,
+                accepts = acceptedConfigVersions
             },
             outputs = new[]
             {

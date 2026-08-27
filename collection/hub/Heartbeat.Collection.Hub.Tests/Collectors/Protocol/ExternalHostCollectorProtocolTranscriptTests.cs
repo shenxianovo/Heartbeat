@@ -49,7 +49,13 @@ public sealed class ExternalHostCollectorProtocolTranscriptTests
             [new OutputBinding("activity", "activity", new Dictionary<string, string>())]);
         Assert.Equal(CollectorActivationState.OpeningStreams, activation.State);
         runtime.MarkExternalHostReady(activation, initialization.Spec.SpecRevision);
-        Assert.Equal(CollectorActivationState.Ready, activation.State);
+        CollectorProtocolTranscriptContract.AssertHappyPath(
+            activation.State,
+            activation.DeliveryCapability,
+            activation.HandshakeTranscript,
+            activation.Streams,
+            instance.Subject,
+            "reference");
         var stream = activation.Streams["activity"];
         using var payload = JsonDocument.Parse("""{"identityKey":"reference|work","title":"Work"}""");
         var fact = new FactSubmission(
@@ -122,6 +128,49 @@ public sealed class ExternalHostCollectorProtocolTranscriptTests
                 payload.RootElement.Clone())]);
         Assert.Equal(FactDeliveryStatus.Rejected, Assert.Single(late.Results).Status);
         Assert.Equal("stream_writer_conflict", Assert.Single(late.Results).Error!.Code);
+    }
+
+    [Fact]
+    public void Hello_SameAttemptAfterRuntimeRestart_IsRejectedInsteadOfAllocatingNewActivation()
+    {
+        using var directory = TemporaryDirectory.Create();
+        using var packageCopy = ExternalHostPackageCopy();
+        var package = LocalCollectorPackage.Load(packageCopy.Path);
+        var statePath = Path.Combine(directory.Path, "runtime.json");
+        using var config = JsonDocument.Parse("{}");
+        Guid collectorInstanceId;
+        var helloMessageId = Guid.CreateVersion7();
+        var firstActivationId = Guid.CreateVersion7();
+        using (var runtime = CollectorRuntime.Open(statePath, new SegmentIngestService(new FixedClock())))
+        {
+            var instance = runtime.CreateInstance(
+                package,
+                new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+                new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+            collectorInstanceId = instance.CollectorInstanceId;
+            runtime.BeginExternalHostActivation(
+                collectorInstanceId,
+                package,
+                "reference.inprocess",
+                package.Artifacts.Single().ContentHash,
+                Support(),
+                firstActivationId,
+                helloMessageId);
+        }
+
+        using var reopened = CollectorRuntime.Open(statePath, new SegmentIngestService(new FixedClock()));
+        var error = Assert.Throws<CollectorActivationException>(() =>
+            reopened.BeginExternalHostActivation(
+                collectorInstanceId,
+                package,
+                "reference.inprocess",
+                package.Artifacts.Single().ContentHash,
+                Support(),
+                Guid.CreateVersion7(),
+                helloMessageId));
+
+        Assert.Equal("protocol_invalid_message", error.Error.Code);
+        Assert.Contains("previous Runtime session", error.Message, StringComparison.Ordinal);
     }
 
     private static ProtocolSupport Support() => new(

@@ -537,45 +537,6 @@ public class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task Publish_ExceedsNegotiatedInFlightLimit_ReturnsRetryableBackpressure()
-    {
-        using var directory = TemporaryDirectory.Create();
-        var package = LocalCollectorPackage.Load(ReferencePackagePath);
-        var sink = new BlockingSegmentSink();
-        using var runtime = CollectorRuntime.Open(
-            Path.Combine(directory.Path, "collector-runtime.json"),
-            sink,
-            new CollectorRuntimeOptions { MaxInFlightBatches = 1 });
-        using var config = JsonDocument.Parse("{}");
-        var instance = runtime.CreateInstance(
-            package,
-            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
-            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
-        await using var activation = await runtime.ActivateInProcessAsync(
-            instance.CollectorInstanceId,
-            package,
-            new ReferenceInProcessCollector());
-        var stream = activation.Streams["activity"];
-
-        var firstPublish = Task.Run(async () => await stream.PublishAsync(
-            Guid.CreateVersion7(),
-            [CreateFact(stream.Descriptor.StreamId)]));
-        Assert.True(sink.Entered.Wait(TimeSpan.FromSeconds(5)));
-
-        var backpressured = await stream.PublishAsync(
-            Guid.CreateVersion7(),
-            [CreateFact(stream.Descriptor.StreamId, factId: Guid.CreateVersion7())]);
-
-        var retry = Assert.Single(backpressured.Results);
-        Assert.Equal(FactDeliveryStatus.Retry, retry.Status);
-        Assert.Equal("hub_backpressure", retry.Error!.Code);
-        Assert.True(retry.Error.Retryable);
-        sink.Release.Set();
-        var committed = await firstPublish;
-        Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(committed.Results).Status);
-    }
-
-    [Fact]
     public async Task RuntimeReopen_ReplaysDurableFactAndKeepsDuplicateAndStreamIdentity()
     {
         await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
@@ -2442,27 +2403,6 @@ public class InProcessCollectorProtocolTranscriptTests
             UpsertDurable(snapshot, revision);
 
         public void RetractDurable(Guid segmentId, long revision) => Retract(segmentId);
-    }
-
-    private sealed class BlockingSegmentSink : ISegmentSink, IDurableSegmentProjectionSink
-    {
-        public ManualResetEventSlim Entered { get; } = new(false);
-        public ManualResetEventSlim Release { get; } = new(false);
-
-        public void Push(List<ActivitySegmentItem> snapshots)
-        {
-            Entered.Set();
-            if (!Release.Wait(TimeSpan.FromSeconds(10)))
-                throw new TimeoutException("Test did not release the blocked Segment projection.");
-        }
-
-        public void UpsertDurable(ActivitySegmentItem snapshot, long revision) => Push([snapshot]);
-
-        public void ReplayDurable(ActivitySegmentItem snapshot, long revision) => Push([snapshot]);
-
-        public void RetractDurable(Guid segmentId, long revision)
-        {
-        }
     }
 
     private sealed class FixedClock(DateTimeOffset utcNow) : IClock

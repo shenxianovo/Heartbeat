@@ -21,9 +21,8 @@ public class LocalCollectorPackageTests
 
         Assert.Equal("heartbeat.collector.reference", package.Manifest.PackageId);
         Assert.Equal("1.0.0", package.Manifest.Version);
-        Assert.Equal("heartbeat.collector.reference.config", package.Manifest.Config.Schema.Id);
-        Assert.Equal(1, package.Manifest.Config.Schema.Version);
-        Assert.Equal([1], package.Manifest.Config.AcceptedSchemaVersions);
+        Assert.Equal(1, package.Manifest.Config.Version);
+        Assert.Equal([1], package.Manifest.Config.AcceptedVersions);
         Assert.Equal("reference.inprocess", Assert.Single(package.Artifacts).ArtifactId);
         var schema = Assert.Single(package.FactSchemas);
         Assert.Equal("heartbeat.reference.segment", schema.SchemaId);
@@ -82,7 +81,7 @@ public class LocalCollectorPackageTests
     }
 
     [Fact]
-    public void Load_ManifestDoesNotDeclareConfigSchema_RejectsPackage()
+    public void Load_ManifestDoesNotDeclareConfigVersion_RejectsPackage()
     {
         using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
         var manifest = packageCopy.ReadManifest();
@@ -93,6 +92,20 @@ public class LocalCollectorPackageTests
             LocalCollectorPackage.Load(packageCopy.Path));
 
         Assert.Contains("config", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Load_ConfigDoesNotAcceptItsCurrentVersion_RejectsPackage()
+    {
+        using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
+        var manifest = packageCopy.ReadManifest();
+        manifest["config"]!["accepts"] = new JsonArray(2);
+        packageCopy.WriteManifest(manifest);
+
+        var error = Assert.Throws<PackageValidationException>(() =>
+            LocalCollectorPackage.Load(packageCopy.Path));
+
+        Assert.Contains("config.accepts", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

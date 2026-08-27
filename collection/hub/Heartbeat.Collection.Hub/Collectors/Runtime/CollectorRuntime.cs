@@ -31,7 +31,7 @@ public readonly record struct SubjectReference
 
 public sealed record CollectorInstanceSpec(
     long SpecRevision,
-    int ConfigSchemaVersion,
+    int ConfigVersion,
     JsonElement Config);
 
 public sealed record LastKnownGoodCollectorPackage(
@@ -39,7 +39,7 @@ public sealed record LastKnownGoodCollectorPackage(
     string PackageContentHash,
     string ArtifactId,
     string ArtifactContentHash,
-    int ConfigSchemaVersion);
+    int ConfigVersion);
 
 public sealed record CollectorInstance(
     Guid CollectorInstanceId,
@@ -55,7 +55,6 @@ public sealed class CollectorRuntimeOptions
     public Func<Guid> IdGenerator { get; init; } = Guid.CreateVersion7;
     public int MaxFactsPerBatch { get; init; } = 500;
     public int MaxBatchBytes { get; init; } = 1_048_576;
-    public int MaxInFlightBatches { get; init; } = 2;
     /// <summary>Maximum durable replay-window entries retained for each Fact family.</summary>
     public int MaxDurableFacts { get; init; } = 20_000;
     public int RetryAfterMilliseconds { get; init; } = 1_000;
@@ -67,8 +66,6 @@ public sealed class CollectorRuntimeOptions
             throw new ArgumentOutOfRangeException(nameof(MaxFactsPerBatch));
         if (MaxBatchBytes <= 0)
             throw new ArgumentOutOfRangeException(nameof(MaxBatchBytes));
-        if (MaxInFlightBatches <= 0)
-            throw new ArgumentOutOfRangeException(nameof(MaxInFlightBatches));
         if (MaxDurableFacts <= 0)
             throw new ArgumentOutOfRangeException(nameof(MaxDurableFacts));
         if (RetryAfterMilliseconds <= 0)
@@ -190,7 +187,7 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
                 SubjectId = subject.SubjectId,
                 SubjectKind = subject.Kind,
                 SpecRevision = spec.SpecRevision,
-                ConfigSchemaVersion = spec.ConfigSchemaVersion,
+                ConfigVersion = spec.ConfigVersion,
                 Config = spec.Config.Clone(),
                 LastKnownGoodPackage = null
             };
@@ -233,11 +230,11 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
 
     public CollectorInstance UpdateInstanceSpec(
         Guid collectorInstanceId,
-        int configSchemaVersion,
+        int configVersion,
         JsonElement config)
     {
-        if (configSchemaVersion <= 0)
-            throw new ArgumentOutOfRangeException(nameof(configSchemaVersion));
+        if (configVersion <= 0)
+            throw new ArgumentOutOfRangeException(nameof(configVersion));
         if (config.ValueKind == JsonValueKind.Undefined)
             throw new ArgumentException("Config must contain a JSON value.", nameof(config));
 
@@ -253,7 +250,7 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
             var updated = current with
             {
                 SpecRevision = current.SpecRevision + 1,
-                ConfigSchemaVersion = configSchemaVersion,
+                ConfigVersion = configVersion,
                 Config = config.Clone()
             };
             var next = _state.WithInstanceAndStreams(updated, []);
@@ -268,8 +265,8 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(spec);
         if (spec.SpecRevision is <= 0 or > MaxSafeJsonInteger)
             throw new ArgumentOutOfRangeException(nameof(spec), "SpecRevision must be a positive JSON-safe integer.");
-        if (spec.ConfigSchemaVersion <= 0)
-            throw new ArgumentOutOfRangeException(nameof(spec), "ConfigSchemaVersion must be positive.");
+        if (spec.ConfigVersion <= 0)
+            throw new ArgumentOutOfRangeException(nameof(spec), "ConfigVersion must be positive.");
         if (spec.Config.ValueKind == JsonValueKind.Undefined)
             throw new ArgumentException("Config must contain a JSON value.", nameof(spec));
     }
@@ -282,7 +279,7 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         new SubjectReference(state.SubjectId, state.SubjectKind),
         new CollectorInstanceSpec(
             state.SpecRevision,
-            state.ConfigSchemaVersion,
+            state.ConfigVersion,
             state.Config.Clone()),
         state.LastKnownGoodPackage);
 

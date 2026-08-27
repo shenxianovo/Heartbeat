@@ -33,15 +33,8 @@ public sealed partial class CollectorRuntime
     private readonly Dictionary<Guid, Guid> _streamWriters = [];
     private readonly HashSet<Guid> _startingInstances = [];
     private readonly Dictionary<Guid, StartingCollector> _startingCollectors = [];
-    private readonly object _publishAttemptGate = new();
-    private readonly Dictionary<(Guid ActivationId, Guid MessageId), PublishAttempt> _publishAttempts = [];
-    private readonly Dictionary<(Guid ActivationId, Guid MessageId), GapReplay> _gapReplays = [];
-    private readonly object _messageAttemptGate = new();
-    private readonly Dictionary<(Guid ActivationId, Guid MessageId), MessageAttemptIdentity> _messageAttempts = [];
     private readonly object _helloAttemptGate = new();
     private readonly Dictionary<(Guid InstanceId, Guid MessageId), HelloAttempt> _helloAttempts = [];
-    private readonly object _inFlightGate = new();
-    private readonly Dictionary<Guid, int> _inFlightPublishBatches = [];
 
     public ValueTask<InProcessCollectorActivation> ActivateInProcessAsync(
         Guid collectorInstanceId,
@@ -145,11 +138,11 @@ public sealed partial class CollectorRuntime
         var collectorInitializationStarted = false;
         StartingCollector? startingCollector = null;
         InProcessCollectorActivation? activation = null;
+        CollectorActivationSession? session = null;
         Guid? packageReservationActivationId = null;
 
         try
         {
-            var handshake = new CollectorProtocolHandshake();
             CollectorInstance instance;
             VerifiedCollectorArtifact artifact;
             Guid activationId;
@@ -168,44 +161,15 @@ public sealed partial class CollectorRuntime
                     artifactId,
                     executionDriver);
                 ValidateProtocolSupport(package, protocolSupport);
-                var previousHelloAttempt = _state.HelloAttempts.SingleOrDefault(attempt =>
-                    attempt.CollectorInstanceId == collectorInstanceId &&
-                    attempt.MessageId == helloMessageId);
-                if (previousHelloAttempt is not null)
-                {
-                    if (previousHelloAttempt.RequestHash != helloRequestHash)
-                        throw ActivationError(
-                            "protocol_invalid_message",
-                            "The same activation.hello messageId was reused with different content.");
-                    throw ActivationError(
-                        "protocol_invalid_message",
-                        "The activation.hello attempt belongs to a previous Runtime session; send a new messageId.");
-                }
                 activationId = NextUniqueId(
                     id => _activations.ContainsKey(id) ||
-                          _state.HelloAttempts.Any(attempt => attempt.ActivationId == id),
+                          _state.ActivationAttemptTombstones.Any(attempt => attempt.ActivationId == id),
                     "Collector Activation");
-                var helloState = new DurableHelloAttemptState
-                {
-                    CollectorInstanceId = collectorInstanceId,
-                    MessageId = helloMessageId,
-                    RequestHash = helloRequestHash,
-                    ActivationId = activationId
-                };
-                var next = _state.WithHelloAttempt(helloState);
-                try
-                {
-                    _store.Save(next);
-                    _state = next;
-                }
-                catch (CollectorRuntimeStateException exception)
-                {
-                    throw ActivationError(
-                        "hub_backpressure",
-                        "Hub could not persist activation.hello attempt identity.",
-                        exception,
-                        retryable: true);
-                }
+                PersistActivationAttemptTombstoneLocked(
+                    collectorInstanceId,
+                    helloMessageId,
+                    helloRequestHash,
+                    activationId);
                 if (_startingInstances.Contains(collectorInstanceId) ||
                     _activations.Values.Any(activation =>
                         activation.State != CollectorActivationState.Stopped &&
@@ -225,7 +189,11 @@ public sealed partial class CollectorRuntime
                         package.Manifest.Version,
                         package.PackageContentHash));
                 packageReservationActivationId = activationId;
-                handshake.AcceptHello();
+                session = CreateActivationSession(
+                    activationId,
+                    helloMessageId,
+                    package,
+                    ActivationDeliveryCapability.Complete);
             }
 
             var initialization = new CollectorInitialization(
@@ -235,8 +203,7 @@ public sealed partial class CollectorRuntime
                 artifact,
                 new CollectorProtocolLimits(
                     _options.MaxFactsPerBatch,
-                    _options.MaxBatchBytes,
-                    _options.MaxInFlightBatches),
+                    _options.MaxBatchBytes),
                 new CollectorResources(Path.Combine(
                     _instanceDataRoot,
                     collectorInstanceId.ToString("N"))));
@@ -250,7 +217,7 @@ public sealed partial class CollectorRuntime
                         "protocol_invalid_message",
                         "InProcess Collector returned a null activation.initialized response.");
                 initialized = SnapshotInitialization(initialized);
-                handshake.AcceptInitialize();
+                session!.AcceptInitialized(initialized.AppliedSpecRevision, instance.Spec.SpecRevision);
             }
             catch (OperationCanceledException)
             {
@@ -279,22 +246,21 @@ public sealed partial class CollectorRuntime
                     instance,
                     package,
                     initialized.Bindings);
-                handshake.AcceptStreamsOpen();
+                var descriptors = streamPlan.Bindings.ToImmutableDictionary(
+                    pair => pair.BindingId,
+                    pair => ToDescriptor(pair.Stream),
+                    StringComparer.Ordinal);
+                session!.AcceptStreams(descriptors);
                 var streams = streamPlan.Bindings.ToImmutableDictionary(
                     pair => pair.BindingId,
                     pair => new InProcessFactStream(
-                        this,
-                        activationId,
+                        session,
                         ToDescriptor(pair.Stream)),
                     StringComparer.Ordinal);
                 activation = new InProcessCollectorActivation(
                     this,
-                    activationId,
-                    helloMessageId,
-                    package,
+                    session,
                     collector,
-                    ActivationDeliveryCapability.Complete,
-                    [],
                     streams);
                 _activations.Add(activationId, activation);
                 _pendingActivationCommits.Add(activationId, streamPlan.Commit);
@@ -305,20 +271,8 @@ public sealed partial class CollectorRuntime
                         pair => pair.Key,
                         pair => pair.Value.Descriptor,
                         StringComparer.Ordinal),
-                    readyCancellationToken => CompleteCollectorReady(
-                        activation,
-                        handshake,
-                        readyCancellationToken));
+                    readyCancellationToken => CompleteCollectorReady(activation, readyCancellationToken));
             }
-
-            if (!TryRegisterMessageAttempt(
-                    activation.ActivationId,
-                    helloMessageId,
-                    "activation.hello",
-                    helloRequestHash))
-                throw ActivationError(
-                    "protocol_invalid_message",
-                    "activation.hello messageId conflicts with another protocol request.");
 
             try
             {
@@ -411,170 +365,19 @@ public sealed partial class CollectorRuntime
         }
     }
 
-    internal ValueTask<FactBatchAcknowledgement> PublishAsync(
+    private FactBatchAcknowledgement CommitFacts(
         Guid activationId,
         Guid streamId,
-        Guid messageId,
-        IReadOnlyList<FactSubmission> facts,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        ArgumentNullException.ThrowIfNull(facts);
-        var factSnapshot = facts.ToImmutableArray();
-
-        if (!IsUuidV7(messageId))
-            return ValueTask.FromResult(MessageRejected(
-                "protocol_invalid_message",
-                "facts.publish messageId must be a UUIDv7."));
-        if (factSnapshot.Any(fact => fact is null || fact.Time is null ||
-                                     !Enum.IsDefined(fact.RecordState) ||
-                                     fact.RecordState == FactRecordState.Present &&
-                                     fact.Payload.ValueKind == System.Text.Json.JsonValueKind.Undefined))
-        {
-            TryRegisterMessageAttempt(
-                activationId,
-                messageId,
-                "facts.publish",
-                "invalid:fact-shape");
-            return ValueTask.FromResult(MessageRejected(
-                "protocol_invalid_message",
-                "facts.publish contains an incomplete FactSubmission."));
-        }
-
-        var payloadJsonError = factSnapshot
-            .Where(fact => fact.Payload.ValueKind != JsonValueKind.Undefined)
-            .Select(fact => FactCanonicalization.ValidateProtocolJson(fact.Payload))
-            .FirstOrDefault(error => error is not null);
-        if (payloadJsonError is not null)
-        {
-            TryRegisterMessageAttempt(
-                activationId,
-                messageId,
-                "facts.publish",
-                "invalid:payload-json");
-            return ValueTask.FromResult(MessageRejected(
-                "protocol_invalid_message",
-                $"facts.publish payload is not valid protocol JSON: {payloadJsonError}"));
-        }
-
-        long logicalMessageSize;
-        string requestHash;
-        try
-        {
-            requestHash = FactCanonicalization.PublishRequestHash(factSnapshot);
-            logicalMessageSize = FactCanonicalization.PublishLogicalMessageSize(
-                activationId,
-                messageId,
-                factSnapshot);
-        }
-        catch (Exception exception) when (exception is
-            InvalidOperationException or FormatException or OverflowException)
-        {
-            TryRegisterMessageAttempt(
-                activationId,
-                messageId,
-                "facts.publish",
-                "invalid:canonical-value");
-            return ValueTask.FromResult(MessageRejected(
-                "protocol_invalid_message",
-                "facts.publish contains a value that cannot be canonically represented."));
-        }
-        if (!TryRegisterMessageAttempt(
-                activationId,
-                messageId,
-                "facts.publish",
-                requestHash))
-            return ValueTask.FromResult(MessageRejected(
-                "protocol_invalid_message",
-                "The same messageId was reused for another protocol request."));
-        if (factSnapshot.Length == 0 || factSnapshot.Length > _options.MaxFactsPerBatch)
-            return ValueTask.FromResult(MessageRejected(
-                "batch_limit_exceeded",
-                $"facts.publish must contain between 1 and {_options.MaxFactsPerBatch} Facts."));
-        if (logicalMessageSize > _options.MaxBatchBytes)
-            return ValueTask.FromResult(MessageRejected(
-                "batch_limit_exceeded",
-                $"facts.publish exceeds the negotiated {_options.MaxBatchBytes}-byte logical message limit."));
-
-        PublishAttempt attempt;
-        lock (_publishAttemptGate)
-        {
-            if (_publishAttempts.TryGetValue((activationId, messageId), out var existing))
-            {
-                if (existing.RequestHash != requestHash)
-                    return ValueTask.FromResult(MessageRejected(
-                        "protocol_invalid_message",
-                        "The same messageId was reused with different facts.publish content."));
-                return new ValueTask<FactBatchAcknowledgement>(
-                    ReplayPublishAcknowledgementAsync(
-                        streamId,
-                        existing.Completion.Task,
-                        cancellationToken));
-            }
-
-            attempt = new PublishAttempt(
-                requestHash,
-                new TaskCompletionSource<FactBatchAcknowledgement>(
-                    TaskCreationOptions.RunContinuationsAsynchronously));
-            _publishAttempts.Add((activationId, messageId), attempt);
-        }
-
-        if (!TryEnterPublishBatch(activationId))
-        {
-            var backpressured = new FactBatchAcknowledgement(
-                factSnapshot.Select((_, index) => Retry(
-                    index,
-                    "Collector exceeded the negotiated maxInFlightBatches limit.")).ToImmutableArray());
-            attempt.Completion.SetResult(backpressured);
-            return ValueTask.FromResult(backpressured);
-        }
-
-        try
-        {
-            lock (_gate)
-            {
-                ThrowIfDeliveryUnavailable(activationId);
-                FactBatchAcknowledgement acknowledgement;
-                if (factSnapshot.Any(fact => fact.StreamId != streamId) ||
-                    factSnapshot.Select(fact => (fact.StreamId, fact.FactId)).Distinct().Count() != factSnapshot.Length)
-                {
-                    acknowledgement = MessageRejected(
-                        "batch_limit_exceeded",
-                        "facts.publish contains an unexpected StreamId or duplicate (StreamId, FactId).");
-                }
-                else
-                {
-                    var results = new List<FactDeliveryOutcome>(factSnapshot.Length);
-                    for (var index = 0; index < factSnapshot.Length; index++)
-                        results.Add(CommitFact(activationId, index, factSnapshot[index]));
-                    MarkAcknowledgedLiveTraffic(streamId, results);
-                    acknowledgement = new FactBatchAcknowledgement(results);
-                }
-
-                attempt.Completion.SetResult(acknowledgement);
-                return ValueTask.FromResult(acknowledgement);
-            }
-        }
-        catch (Exception exception)
-        {
-            attempt.Completion.TrySetException(exception);
-            _ = attempt.Completion.Task.Exception;
-            throw;
-        }
-        finally
-        {
-            ExitPublishBatch(activationId);
-        }
-    }
-
-    internal bool BeginStopping(InProcessCollectorActivation activation)
+        IReadOnlyList<FactSubmission> facts)
     {
         lock (_gate)
         {
-            if (_disposed || activation.State == CollectorActivationState.Stopped)
-                return false;
-            activation.State = CollectorActivationState.Draining;
-            return true;
+            ThrowIfDeliveryUnavailable(activationId);
+            var results = new List<FactDeliveryOutcome>(facts.Count);
+            for (var index = 0; index < facts.Count; index++)
+                results.Add(CommitFact(activationId, index, facts[index]));
+            MarkAcknowledgedLiveTraffic(streamId, results);
+            return new FactBatchAcknowledgement(results);
         }
     }
 
@@ -588,34 +391,12 @@ public sealed partial class CollectorRuntime
                 if (_streamWriters.TryGetValue(streamId, out var writer) && writer == activation.ActivationId)
                     _streamWriters.Remove(streamId);
             }
-            activation.State = CollectorActivationState.Stopped;
             _activations.Remove(activation.ActivationId);
             _pendingActivationCommits.Remove(activation.ActivationId);
             _pendingPackageFingerprints.Remove(activation.ActivationId);
             collectorInstanceId = activation.Streams.Values
                 .Select(stream => stream.Descriptor.CollectorInstanceId)
                 .FirstOrDefault();
-        }
-        lock (_publishAttemptGate)
-        {
-            foreach (var key in _publishAttempts.Keys
-                         .Where(key => key.ActivationId == activation.ActivationId)
-                         .ToArray())
-                _publishAttempts.Remove(key);
-        }
-        lock (_messageAttemptGate)
-        {
-            foreach (var key in _messageAttempts.Keys
-                         .Where(key => key.ActivationId == activation.ActivationId)
-                         .ToArray())
-                _messageAttempts.Remove(key);
-        }
-        lock (_gate)
-        {
-            foreach (var key in _gapReplays.Keys
-                         .Where(key => key.ActivationId == activation.ActivationId)
-                         .ToArray())
-                _gapReplays.Remove(key);
         }
         if (collectorInstanceId != Guid.Empty)
         {
@@ -626,17 +407,31 @@ public sealed partial class CollectorRuntime
 
     private InProcessCollectorActivation CompleteCollectorReady(
         InProcessCollectorActivation activation,
-        CollectorProtocolHandshake handshake,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        long expectedSpecRevision;
         lock (_gate)
         {
             ThrowIfDisposed();
-            if (activation.State != CollectorActivationState.OpeningStreams)
+            if (!_pendingActivationCommits.TryGetValue(activation.ActivationId, out var pendingCommit))
                 throw ActivationError(
                     "protocol_invalid_message",
-                    "activation.ready is only valid after streams.opened.");
+                    "Collector Activation has no pending Package and Stream state to commit.");
+            expectedSpecRevision = pendingCommit.Instance.SpecRevision;
+        }
+        activation.Session.AcceptReady(
+            expectedSpecRevision,
+            expectedSpecRevision,
+            () => CommitCollectorReady(activation));
+        return activation;
+    }
+
+    private void CommitCollectorReady(InProcessCollectorActivation activation)
+    {
+        lock (_gate)
+        {
+            ThrowIfDisposed();
             foreach (var stream in activation.Streams.Values)
             {
                 if (_streamWriters.TryGetValue(stream.Descriptor.StreamId, out var writer) &&
@@ -645,8 +440,6 @@ public sealed partial class CollectorRuntime
                         "stream_writer_conflict",
                         "A previous Activation still holds the Fact Stream writer lease.");
             }
-
-            handshake.AcceptReady();
             if (!_pendingActivationCommits.TryGetValue(activation.ActivationId, out var pendingCommit))
                 throw ActivationError(
                     "protocol_invalid_message",
@@ -673,64 +466,25 @@ public sealed partial class CollectorRuntime
                 _factSchemasByHash[schema.ContentHash] = schema;
             foreach (var stream in activation.Streams.Values)
                 _streamWriters[stream.Descriptor.StreamId] = activation.ActivationId;
-            activation.HandshakeTranscript = handshake.Complete();
-            activation.State = CollectorActivationState.Ready;
-            return activation;
         }
     }
 
-    internal ValueTask<GapDeliveryOutcome> ReportGapAsync(
+    private GapDeliveryOutcome CommitGap(
         Guid activationId,
         Guid streamId,
-        Guid messageId,
-        StreamGapReport gap,
-        CancellationToken cancellationToken)
+        StreamGapReport gap)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        ArgumentNullException.ThrowIfNull(gap);
-        var requestHash = GapRequestHash(streamId, gap);
         lock (_gate)
         {
             ThrowIfDeliveryUnavailable(activationId);
             if (!_streamWriters.TryGetValue(streamId, out var activeWriter) || activeWriter != activationId)
-                return ValueTask.FromResult(GapRejected(
+                return GapRejected(
                     streamId,
                     "stream_writer_conflict",
-                    "Activation does not hold this Fact Stream writer lease."));
-        }
-        if (IsUuidV7(messageId) && !TryRegisterMessageAttempt(
-                activationId,
-                messageId,
-                "stream.gap",
-                requestHash))
-            return ValueTask.FromResult(GapRejected(
-                streamId,
-                "protocol_invalid_message",
-                "The same messageId was reused for another protocol request."));
-
-        lock (_gate)
-        {
-            ThrowIfDeliveryUnavailable(activationId);
-            if (messageId != Guid.Empty && _gapReplays.TryGetValue((activationId, messageId), out var replay))
-            {
-                return ValueTask.FromResult(replay.RequestHash == requestHash
-                    ? replay.Outcome
-                    : GapRejected(streamId, "protocol_invalid_message", "The same messageId was reused with different stream.gap content."));
-            }
+                    "Activation does not hold this Fact Stream writer lease.");
 
             GapDeliveryOutcome outcome;
-            if (!IsUuidV7(messageId) ||
-                gap.Start.Offset != TimeSpan.Zero || gap.End.Offset != TimeSpan.Zero || gap.End <= gap.Start ||
-                string.IsNullOrWhiteSpace(gap.Reason) || !IsSnakeCaseCode(gap.Reason) ||
-                gap.EstimatedFactsLost is <= 0)
-            {
-                outcome = GapRejected(streamId, "protocol_invalid_message", "stream.gap contains invalid identity, time, reason, or estimate.");
-            }
-            else if (!_streamWriters.TryGetValue(streamId, out var writer) || writer != activationId)
-            {
-                outcome = GapRejected(streamId, "stream_writer_conflict", "Activation does not hold this Fact Stream writer lease.");
-            }
-            else if (_state.Gaps.Any(existing =>
+            if (_state.Gaps.Any(existing =>
                          existing.StreamId == streamId && existing.Start == gap.Start &&
                          existing.End == gap.End && existing.Reason == gap.Reason))
             {
@@ -763,9 +517,7 @@ public sealed partial class CollectorRuntime
                 }
             }
 
-            if (IsUuidV7(messageId))
-                _gapReplays[(activationId, messageId)] = new GapReplay(requestHash, outcome);
-            return ValueTask.FromResult(outcome);
+            return outcome;
         }
     }
 
@@ -1232,10 +984,10 @@ public sealed partial class CollectorRuntime
             throw ActivationError(
                 "package_mismatch",
                 "An immutable Collector Package version cannot resolve to a different content fingerprint.");
-        if (!package.Manifest.Config.AcceptedSchemaVersions.Contains(instance.ConfigSchemaVersion))
+        if (!package.Manifest.Config.AcceptedVersions.Contains(instance.ConfigVersion))
             throw ActivationError(
-                "config_schema_unsupported",
-                $"Collector Package '{package.Manifest.PackageId}/{package.Manifest.Version}' does not accept ConfigSchemaVersion {instance.ConfigSchemaVersion}.");
+                "config_version_unsupported",
+                $"Collector Package '{package.Manifest.PackageId}/{package.Manifest.Version}' does not accept ConfigVersion {instance.ConfigVersion}.");
     }
 
     private string? KnownPackageFingerprint(string packageId, string packageVersion)
@@ -1388,46 +1140,20 @@ public sealed partial class CollectorRuntime
         return id;
     }
 
-    private bool TryEnterPublishBatch(Guid activationId)
-    {
-        lock (_inFlightGate)
-        {
-            _inFlightPublishBatches.TryGetValue(activationId, out var count);
-            if (count >= _options.MaxInFlightBatches)
-                return false;
-            _inFlightPublishBatches[activationId] = count + 1;
-            return true;
-        }
-    }
-
-    private void ExitPublishBatch(Guid activationId)
-    {
-        lock (_inFlightGate)
-        {
-            var remaining = _inFlightPublishBatches[activationId] - 1;
-            if (remaining == 0)
-                _inFlightPublishBatches.Remove(activationId);
-            else
-                _inFlightPublishBatches[activationId] = remaining;
-        }
-    }
-
-    private bool TryRegisterMessageAttempt(
+    private CollectorActivationSession CreateActivationSession(
         Guid activationId,
-        Guid messageId,
-        string messageType,
-        string requestHash)
-    {
-        lock (_messageAttemptGate)
-        {
-            if (_messageAttempts.TryGetValue((activationId, messageId), out var existing))
-                return existing.MessageType == messageType && existing.RequestHash == requestHash;
-            _messageAttempts.Add(
-                (activationId, messageId),
-                new MessageAttemptIdentity(messageType, requestHash));
-            return true;
-        }
-    }
+        Guid helloMessageId,
+        LocalCollectorPackage package,
+        ActivationDeliveryCapability deliveryCapability) =>
+        new(
+            activationId,
+            helloMessageId,
+            package,
+            new CollectorProtocolLimits(_options.MaxFactsPerBatch, _options.MaxBatchBytes),
+            deliveryCapability,
+            (streamId, facts) => CommitFacts(activationId, streamId, facts),
+            (streamId, gap) => CommitGap(activationId, streamId, gap),
+            MarkAcknowledgedLiveTraffic);
 
     private static string SubjectKindName(SubjectKind kind) => kind switch
     {
@@ -1483,18 +1209,6 @@ public sealed partial class CollectorRuntime
     private static FactBatchAcknowledgement MessageRejected(string code, string message) => new(
         [],
         new CollectorProtocolError(code, message, false));
-
-    private static string GapRequestHash(Guid streamId, StreamGapReport gap)
-    {
-        var content = string.Join(
-            "\n",
-            streamId.ToString("D"),
-            gap.Start.ToString("O", CultureInfo.InvariantCulture),
-            gap.End.ToString("O", CultureInfo.InvariantCulture),
-            gap.Reason,
-            gap.EstimatedFactsLost?.ToString(CultureInfo.InvariantCulture) ?? string.Empty);
-        return "sha256:" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
-    }
 
     private static string HelloRequestHash(
         Guid collectorInstanceId,
@@ -1563,27 +1277,50 @@ public sealed partial class CollectorRuntime
         return "sha256:" + Convert.ToHexStringLower(SHA256.HashData(buffer.ToArray()));
     }
 
-    private static bool IsSnakeCaseCode(string value)
+    private void PersistActivationAttemptTombstoneLocked(
+        Guid collectorInstanceId,
+        Guid helloMessageId,
+        string requestHash,
+        Guid activationId)
     {
-        if (value.Length == 0 || value[0] is < 'a' or > 'z' || value[^1] == '_')
-            return false;
-        var previousUnderscore = false;
-        foreach (var character in value)
+        var previous = _state.ActivationAttemptTombstones.SingleOrDefault(attempt =>
+            attempt.CollectorInstanceId == collectorInstanceId &&
+            attempt.MessageId == helloMessageId);
+        if (previous is not null)
         {
-            if (character == '_')
-            {
-                if (previousUnderscore)
-                    return false;
-                previousUnderscore = true;
-            }
-            else
-            {
-                if (character is not (>= 'a' and <= 'z') && character is not (>= '0' and <= '9'))
-                    return false;
-                previousUnderscore = false;
-            }
+            if (previous.RequestHash != requestHash)
+                throw ActivationError(
+                    "protocol_invalid_message",
+                    "The same activation.hello messageId was reused with different content.");
+            throw ActivationError(
+                "protocol_invalid_message",
+                "The activation.hello attempt belongs to a previous Runtime session; send a new messageId.");
         }
-        return true;
+        if (_state.ActivationAttemptTombstones.Any(attempt => attempt.ActivationId == activationId))
+            throw ActivationError(
+                "protocol_invalid_message",
+                "The Collector Activation identifier belongs to a previous Runtime session.");
+
+        var next = _state.WithActivationAttemptTombstone(new ActivationAttemptTombstoneState
+        {
+            CollectorInstanceId = collectorInstanceId,
+            MessageId = helloMessageId,
+            RequestHash = requestHash,
+            ActivationId = activationId
+        });
+        try
+        {
+            _store.Save(next);
+            _state = next;
+        }
+        catch (CollectorRuntimeStateException exception)
+        {
+            throw ActivationError(
+                "hub_backpressure",
+                "Hub could not persist activation.hello attempt identity.",
+                exception,
+                retryable: true);
+        }
     }
 
     private void RestorePersistedFactSchemas()
@@ -1814,16 +1551,6 @@ public sealed partial class CollectorRuntime
         }
     }
 
-    private async Task<FactBatchAcknowledgement> ReplayPublishAcknowledgementAsync(
-        Guid streamId,
-        Task<FactBatchAcknowledgement> completion,
-        CancellationToken cancellationToken)
-    {
-        var acknowledgement = await completion.WaitAsync(cancellationToken);
-        MarkAcknowledgedLiveTraffic(streamId, acknowledgement.Results);
-        return acknowledgement;
-    }
-
     private ISegmentFactProjector? ResolveSegmentProjector(string schemaId, int schemaMajor) =>
         _segmentProjectors.SingleOrDefault(projector => projector.Supports(schemaId, schemaMajor));
 
@@ -1841,14 +1568,9 @@ public sealed partial class CollectorRuntime
         string PackageId,
         string PackageVersion,
         string Fingerprint);
-    private sealed record PublishAttempt(
-        string RequestHash,
-        TaskCompletionSource<FactBatchAcknowledgement> Completion);
     private sealed record HelloAttempt(
         string RequestHash,
         TaskCompletionSource<InProcessCollectorActivation> Completion);
-    private sealed record MessageAttemptIdentity(string MessageType, string RequestHash);
-    private sealed record GapReplay(string RequestHash, GapDeliveryOutcome Outcome);
 
     private sealed class StartingCollector(
         Guid collectorInstanceId,

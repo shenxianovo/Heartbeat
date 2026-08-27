@@ -223,10 +223,18 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
                 _browserRuntime.MarkDegraded("浏览器仍在运行旧 Package；请在扩展页重新加载旁加载目录。");
             return HelloRejected(message.MessageId, validationError, 400);
         }
+        var requestHash = HelloRequestHash(request);
         lock (_gate)
         {
             if (_helloAttempts.TryGetValue(message.MessageId, out var attempt))
             {
+                if (attempt.RequestHash != requestHash)
+                    return HelloRejected(
+                        message.MessageId,
+                        Error(
+                            "protocol_invalid_message",
+                            "The same activation.hello messageId was reused with different content."),
+                        400);
                 if (attempt.Error is not null)
                     return HelloRejected(message.MessageId, attempt.Error, 403);
                 if (attempt.ActivationId is { } replayId && _sessions.TryGetValue(replayId, out var replay))
@@ -243,7 +251,7 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         {
             var error = Error("activation_stopping", "Browser Collector is disabled by Desired State.");
             lock (_gate)
-                _helloAttempts[message.MessageId] = new HelloAttempt(null, error);
+                _helloAttempts[message.MessageId] = new HelloAttempt(null, error, requestHash);
             return HelloRejected(message.MessageId, error, 403);
         }
         var instance = _browserRuntime.GetStableInstance();
@@ -278,7 +286,7 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         lock (_gate)
         {
             _sessions.Add(activationId, session);
-            _helloAttempts[message.MessageId] = new HelloAttempt(activationId, null);
+            _helloAttempts[message.MessageId] = new HelloAttempt(activationId, null, requestHash);
         }
         return HelloResponse(session, message.MessageId);
     }
@@ -298,7 +306,7 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
                 revision = session.Initialization.Spec.SpecRevision,
                 config = new
                 {
-                    schemaVersion = session.Initialization.Spec.ConfigSchemaVersion,
+                    version = session.Initialization.Spec.ConfigVersion,
                     value = session.Initialization.Spec.Config
                 }
             },
@@ -322,7 +330,13 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
                 activationId,
                 message.MessageId,
                 new { error = Error("spec_revision_stale", "Collector did not apply the current SpecRevision.") });
-        ReplaceSession(session with { Initialized = true });
+        if (!TryReplaceSession(session, session with { Initialized = true }))
+            return ProtocolResponse(
+                409,
+                "activation.initializeRejected",
+                activationId,
+                message.MessageId,
+                new { error = Error("activation_stopping", "ExternalHost Activation has ended.") });
         return new ProtocolHttpResponse(204, string.Empty, false);
     }
 
@@ -371,7 +385,16 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
             Activation = activation,
             ExpiresAt = _timeProvider.GetUtcNow() + _options.LeaseDuration
         };
-        ReplaceSession(opened);
+        if (!TryReplaceSession(session, opened))
+        {
+            _runtime.StopExternalHostActivation(activation, ExternalHostActivationStopReason.LeaseExpired);
+            return Rejected(
+                409,
+                "streams.rejected",
+                activationId,
+                message.MessageId,
+                Error("activation_stopping", "ExternalHost Activation has ended."));
+        }
         return StreamsResponse(opened, message.MessageId);
     }
 
@@ -395,7 +418,16 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
             LeaseToken = Convert.ToHexStringLower(Guid.NewGuid().ToByteArray()),
             ExpiresAt = _timeProvider.GetUtcNow() + _options.LeaseDuration
         };
-        ReplaceSession(ready);
+        if (!TryReplaceSession(session, ready))
+        {
+            _runtime.StopExternalHostActivation(activation, ExternalHostActivationStopReason.LeaseExpired);
+            return Rejected(
+                409,
+                "activation.readyRejected",
+                activationId,
+                message.MessageId,
+                Error("activation_stopping", "ExternalHost Activation has ended."));
+        }
         RegisterPackageDeclaration(ready.Package);
         _browserRuntime.MarkReady(ready.Package.PackageContentHash);
         return ReadyResponse(ready, message.MessageId);
@@ -403,16 +435,15 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
 
     private ProtocolHttpResponse HandleRenew(Guid activationId, RenewRequest request)
     {
-        if (!TryGetActiveLease(activationId, request.LeaseToken, out var session))
-            return Json(409, new { error = Error("activation_stopping", "ExternalHost lease is not active.") });
         if (!_browserRuntime.Current.DesiredEnabled)
         {
-            StopAndRemove(session, ExternalHostActivationStopReason.DesiredDisabled);
+            if (TryGetActiveLease(activationId, request.LeaseToken, out var disabledSession))
+                StopAndRemove(disabledSession, ExternalHostActivationStopReason.DesiredDisabled);
             _browserRuntime.MarkWaiting("已停用；Package 和 Collector Instance 已保留。");
             return Json(409, new { error = Error("activation_stopping", "Browser Collector is disabled by Desired State.") });
         }
-        var renewed = session with { ExpiresAt = _timeProvider.GetUtcNow() + _options.LeaseDuration };
-        ReplaceSession(renewed);
+        if (!TryRenewLease(activationId, request.LeaseToken, out var renewed))
+            return Json(409, new { error = Error("activation_stopping", "ExternalHost lease is not active.") });
         return Json(200, LeaseBody(renewed));
     }
 
@@ -540,6 +571,39 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         return null;
     }
 
+    private static string HelloRequestHash(HelloRequest request)
+    {
+        using var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("artifactId", request.ArtifactId);
+            writer.WriteString("artifactHash", request.ArtifactHash);
+            writer.WritePropertyName("protocolMajors");
+            writer.WriteStartArray();
+            foreach (var major in request.ProtocolMajors.Order())
+                writer.WriteNumberValue(major);
+            writer.WriteEndArray();
+            writer.WritePropertyName("supportedCapabilities");
+            writer.WriteStartObject();
+            foreach (var capability in request.SupportedCapabilities.OrderBy(
+                         pair => pair.Key,
+                         StringComparer.Ordinal))
+            {
+                writer.WritePropertyName(capability.Key);
+                writer.WriteStartArray();
+                foreach (var version in capability.Value.Order())
+                    writer.WriteNumberValue(version);
+                writer.WriteEndArray();
+            }
+            writer.WriteEndObject();
+            writer.WriteString("appHint", request.AppHint);
+            writer.WriteEndObject();
+        }
+        return "sha256:" + Convert.ToHexStringLower(
+            System.Security.Cryptography.SHA256.HashData(buffer.ToArray()));
+    }
+
     private Session GetSession(Guid activationId)
     {
         lock (_gate)
@@ -554,10 +618,33 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         return session.Activation is not null && FixedTimeEquals(session.LeaseToken, leaseToken);
     }
 
-    private void ReplaceSession(Session session)
+    private bool TryReplaceSession(Session expected, Session replacement)
     {
         lock (_gate)
-            _sessions[session.ActivationId] = session;
+        {
+            if (!_sessions.TryGetValue(expected.ActivationId, out var current) ||
+                !ReferenceEquals(current, expected))
+                return false;
+            _sessions[replacement.ActivationId] = replacement;
+            return true;
+        }
+    }
+
+    private bool TryRenewLease(Guid activationId, string? leaseToken, out Session renewed)
+    {
+        lock (_gate)
+        {
+            if (!_sessions.TryGetValue(activationId, out var current) ||
+                current.Activation is null || current.ExpiresAt <= _timeProvider.GetUtcNow() ||
+                !FixedTimeEquals(current.LeaseToken, leaseToken))
+            {
+                renewed = null!;
+                return false;
+            }
+            renewed = current with { ExpiresAt = _timeProvider.GetUtcNow() + _options.LeaseDuration };
+            _sessions[activationId] = renewed;
+            return true;
+        }
     }
 
     private void StopAndRemove(Session session, ExternalHostActivationStopReason reason)
@@ -707,7 +794,10 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         string? LeaseToken,
         DateTimeOffset ExpiresAt);
 
-    private sealed record HelloAttempt(Guid? ActivationId, CollectorProtocolError? Error);
+    private sealed record HelloAttempt(
+        Guid? ActivationId,
+        CollectorProtocolError? Error,
+        string RequestHash);
 
     public sealed record ProtocolMessage<T>(
         string Protocol,

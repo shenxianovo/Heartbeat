@@ -84,7 +84,7 @@ describe('browser Collector Protocol outbox', () => {
       }, undefined, request.messageId)
       if (url.endsWith('/initialize')) return protocolResponse('activation.initialize', {
         spec: { revision: 3, config: { value: { enabled: true, flushPeriodMs: 30_000 } } },
-        limits: { maxFactsPerBatch: 500, maxBatchBytes: 1_048_576, maxInFlightBatches: 1 },
+        limits: { maxFactsPerBatch: 500, maxBatchBytes: 1_048_576 },
       }, ACTIVATION_ID)
       if (url.endsWith('/initialized')) return new Response(null, { status: 204 })
       if (url.endsWith('/streams')) return protocolResponse('streams.opened', {
@@ -136,7 +136,7 @@ describe('browser Collector Protocol outbox', () => {
       }, undefined, request.messageId)
       if (url.endsWith('/initialize')) return protocolResponse('activation.initialize', {
         spec: { revision: 3, config: { value: { enabled: true, flushPeriodMs: 30_000 } } },
-        limits: { maxFactsPerBatch: 500, maxBatchBytes: 1_048_576, maxInFlightBatches: 1 },
+        limits: { maxFactsPerBatch: 500, maxBatchBytes: 1_048_576 },
       }, ACTIVATION_ID)
       if (url.endsWith('/initialized')) return new Response(null, { status: 204 })
       if (url.endsWith('/streams')) return protocolResponse('streams.opened', {
@@ -188,7 +188,7 @@ describe('browser Collector Protocol outbox', () => {
       streamId: '0198d5e2-e0d4-7b30-9da7-342ee261bf62',
       specRevision: 3,
       expiresAt: '2026-08-25T08:01:00Z',
-      limits: { maxFactsPerBatch: 1, maxBatchBytes: 1_048_576, maxInFlightBatches: 1 },
+      limits: { maxFactsPerBatch: 1, maxBatchBytes: 1_048_576 },
       flushPeriodMilliseconds: 30_000,
     }
     const items = [snapshot(), snapshot('0198d5eb-fc31-7d7b-8bf0-c2d009ec8998')]
@@ -232,7 +232,7 @@ describe('browser Collector Protocol outbox', () => {
       streamId: '0198d5e2-e0d4-7b30-9da7-342ee261bf62',
       specRevision: 3,
       expiresAt: '2026-08-25T08:01:00Z',
-      limits: { maxFactsPerBatch: 2, maxBatchBytes: 900, maxInFlightBatches: 1 },
+      limits: { maxFactsPerBatch: 2, maxBatchBytes: 900 },
       flushPeriodMilliseconds: 30_000,
     }
     const oversized = { ...snapshot(), title: '你'.repeat(500) }
@@ -264,7 +264,7 @@ describe('browser Collector Protocol outbox', () => {
       streamId: '0198d5e2-e0d4-7b30-9da7-342ee261bf62',
       specRevision: 3,
       expiresAt: '2026-08-25T08:01:00Z',
-      limits: { maxFactsPerBatch: 2, maxBatchBytes: 1_048_576, maxInFlightBatches: 1 },
+      limits: { maxFactsPerBatch: 2, maxBatchBytes: 1_048_576 },
       flushPeriodMilliseconds: 30_000,
     }
     const rejected = snapshot()
@@ -296,7 +296,7 @@ describe('browser Collector Protocol outbox', () => {
       streamId: STREAM_ID,
       specRevision: 3,
       expiresAt: '2026-08-25T08:01:00Z',
-      limits: { maxFactsPerBatch: 1, maxBatchBytes: 1_048_576, maxInFlightBatches: 1 },
+      limits: { maxFactsPerBatch: 1, maxBatchBytes: 1_048_576 },
       flushPeriodMilliseconds: 30_000,
     }
 
@@ -324,7 +324,7 @@ describe('browser Collector Protocol outbox', () => {
       streamId: '0198d5e2-e0d4-7b30-9da7-342ee261bf62',
       specRevision: 3,
       expiresAt: '2026-08-25T08:01:00Z',
-      limits: { maxFactsPerBatch: 2, maxBatchBytes: 1_048_576, maxInFlightBatches: 1 },
+      limits: { maxFactsPerBatch: 2, maxBatchBytes: 1_048_576 },
       flushPeriodMilliseconds: 30_000,
     }
     const gap: BrowserPendingGap = {

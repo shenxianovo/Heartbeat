@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Heartbeat.Collection.Hub.Collectors.Runtime;
 
@@ -28,6 +29,10 @@ public sealed class EncryptedFileCollectorSecretStore : ICollectorSecretStore
     private const int KeySize = 32;
     private const int NonceSize = 12;
     private const int TagSize = 16;
+    private static readonly JsonSerializerOptions EnvelopeJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
+    };
     private readonly string _directory;
     private readonly string _keyPath;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -52,8 +57,12 @@ public sealed class EncryptedFileCollectorSecretStore : ICollectorSecretStore
             if (!File.Exists(path))
                 return null;
             var envelope = JsonSerializer.Deserialize<SecretEnvelope>(
-                await File.ReadAllTextAsync(path, cancellationToken))
+                await File.ReadAllTextAsync(path, cancellationToken),
+                EnvelopeJsonOptions)
                 ?? throw new CryptographicException("Collector Secret envelope is empty.");
+            if (envelope.SchemaVersion != 1)
+                throw new CryptographicException(
+                    $"Unsupported Collector Secret schemaVersion {envelope.SchemaVersion}.");
             var encryptionKey = await LoadOrCreateKeyAsync(cancellationToken);
             var nonce = Convert.FromBase64String(envelope.Nonce);
             var ciphertext = Convert.FromBase64String(envelope.Ciphertext);
@@ -89,6 +98,7 @@ public sealed class EncryptedFileCollectorSecretStore : ICollectorSecretStore
             using (var aes = new AesGcm(encryptionKey, TagSize))
                 aes.Encrypt(nonce, plaintext, ciphertext, tag, AssociatedData(collectorInstanceId, key));
             var envelope = new SecretEnvelope(
+                1,
                 Convert.ToBase64String(nonce),
                 Convert.ToBase64String(ciphertext),
                 Convert.ToBase64String(tag));
@@ -96,7 +106,7 @@ public sealed class EncryptedFileCollectorSecretStore : ICollectorSecretStore
             var temporaryPath = path + $".{Guid.NewGuid():N}.tmp";
             await File.WriteAllTextAsync(
                 temporaryPath,
-                JsonSerializer.Serialize(envelope),
+                JsonSerializer.Serialize(envelope, EnvelopeJsonOptions),
                 new UTF8Encoding(false),
                 cancellationToken);
             RestrictPermissions(temporaryPath);
@@ -170,5 +180,5 @@ public sealed class EncryptedFileCollectorSecretStore : ICollectorSecretStore
             File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
 
-    private sealed record SecretEnvelope(string Nonce, string Ciphertext, string Tag);
+    private sealed record SecretEnvelope(int SchemaVersion, string Nonce, string Ciphertext, string Tag);
 }

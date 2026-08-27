@@ -47,7 +47,7 @@ Status: needs-info
 
 - 同一 PackageId + Version 使用一份 Manifest，内部列出多个按 OS、CPU 架构和 Execution Driver 选择的 Artifact Variant；每个变体独立记录入口点、大小与内容哈希。
 - Package manifest 静态声明 Output Template；Activation 只能把模板绑定到具体 Subject 与合法 dimension values 形成 Fact Stream。
-- Instance Config 归属于稳定 Collector Instance，以带 ConfigSchemaVersion 的 JSON 保存；候选包不能接受当前版本时阻止更新，首期不运行包提供的自动迁移代码。
+- Instance Config 归属于稳定 Collector Instance，以带 ConfigVersion 的 JSON 保存；候选包不能接受当前版本时阻止更新，首期不运行包提供的自动迁移代码。
 
 ### 协议与版本协商
 
@@ -118,7 +118,7 @@ Collector 声明版本不等于 Collector 发布版本，也不等于 Collector 
 - Analytics 元数据声明 Agent 协议的接受、弃用和拒绝范围。
 - 兼容解析器比较版本范围和能力需求，不做简单的版本相等判断。
 - 同一 Package 版本的 Artifact Variant 共享发布身份；Runtime 按 OS、CPU 架构与 Execution Driver 确定性选择唯一兼容项，零个或多个匹配都返回结构化冲突。
-- Manifest 为每个 Artifact Variant 固定入口点、大小与内容哈希，并声明配置 schema 身份、版本和可接受的旧版本。
+- Manifest 为每个 Artifact Variant 固定入口点、大小与内容哈希，并声明当前配置版本和可接受的旧版本。
 - 后续清单还需要表达磁盘需求；权限与信任字段只保留未来扩展位置。
 
 ## Package Registry、解析器与锁定状态
@@ -146,7 +146,7 @@ Package Registry 保存可用包版本、清单、制品地址与内容哈希；
 
 ## 实例配置与期望状态收敛
 
-Instance Config 是 Collector Instance 的持久意图，不随 Package 更新或 Activation 重启更换归属。配置保存为 JSON，并与创建它的 ConfigSchemaVersion 一起保留；Manifest 固定 schema 文档的身份与哈希，并声明候选包能够接受的配置版本。若候选包不能接受当前配置，解析器阻止更新并报告配置冲突，不尝试执行包内迁移代码，也不改写 Desired State。
+Instance Config 是 Collector Instance 的持久意图，不随 Package 更新或 Activation 重启更换归属。配置保存为 JSON，并与创建它的 ConfigVersion 一起保留；Manifest 声明当前写出版本与候选包能够接受的配置版本。首期由官方 Collector 强类型校验配置，不虚构尚不存在的 Config Schema 文档或哈希。若候选包不能接受当前配置，解析器阻止更新并报告配置冲突，不尝试执行包内迁移代码，也不改写 Desired State。
 
 Collector Desired State 每次有效修改都递增该 Instance 的 SpecRevision。Activation 在握手后取得完整规格快照，并报告 AppliedSpecRevision。若双方协商了动态配置能力，Runtime 可以把新 Revision 原地交给 Activation，并在明确 ACK 后更新实际状态；不支持、拒绝或超时时，Runtime 通过创建新 Activation 使实际状态收敛。Transport 可以采用推送或轮询，但不能改变 revision、完整快照与 ACK 的语义。
 
@@ -202,7 +202,7 @@ Heartbeat Server 应知道各 Hub Instance 当前实际运行的版本与 Collec
 5. 仓库返回同一发布版本但哈希不同的制品：判定为仓库完整性错误。
 6. 协议握手成功但系统权限缺失：保留启用意图，将运行状态标记为暂停，而不是卸载。
 7. Package Registry 离线：已锁定的本地集合继续运行，安装和更新返回明确的离线结果。
-8. 候选包不能接受 Instance 当前 ConfigSchemaVersion：保留 Desired State 和旧 Activation，阻止更新并返回配置冲突。
+8. 候选包不能接受 Instance 当前 ConfigVersion：保留 Desired State 和旧 Activation，阻止更新并返回配置冲突。
 9. ACK 丢失后 Collector 重发相同 Fact，但采用不同批次边界：Hub 以 Fact 身份幂等收敛，不能产生重复业务事实。
 10. Hub 长时间背压导致 Collector 缓冲耗尽：Collector 明确报告 Stream Gap，系统不能把缺口误判为“期间没有活动”。
 
@@ -217,7 +217,7 @@ Heartbeat Server 应知道各 Hub Instance 当前实际运行的版本与 Collec
 | 5 同版本不同哈希 | Runtime 侧 | 缺 |
 | 6 权限缺失保留启用意图 | Runtime 侧 | 缺 |
 | 7 Registry 离线 | Runtime 侧 | 缺 |
-| 8 ConfigSchemaVersion 不被候选包接受 | Runtime 侧 | 缺 |
+| 8 ConfigVersion 不被候选包接受 | Runtime 侧 | 缺 |
 | 9 换批次边界重发同一 Fact | 协议 | §13.8、§13.9 |
 | 10 缓冲耗尽后报告 Stream Gap | 协议 | 缺，§13 无 `stream.gap` 用例 |
 

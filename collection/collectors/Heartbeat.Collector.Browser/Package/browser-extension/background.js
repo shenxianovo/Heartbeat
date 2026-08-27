@@ -183,23 +183,6 @@ async function fetchCollectorConfig(port, source, flushPeriodMs) {
     return null;
   }
 }
-async function postDeclaration(port, declaration) {
-  try {
-    const source = declaration.source ?? "";
-    const res = await fetch(
-      `http://127.0.0.1:${port}/v1/collectors/${encodeURIComponent(source)}/declaration`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(declaration),
-        signal: AbortSignal.timeout(PROBE_TIMEOUT_MS)
-      }
-    );
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
 async function discoverHub(basePort) {
   const ports = Array.from({ length: PORT_RANGE }, (_, i) => basePort + i).filter(
     (p) => p <= 65535
@@ -304,8 +287,7 @@ async function browserArtifactHash() {
 }
 const DEFAULT_LIMITS = {
   maxFactsPerBatch: 500,
-  maxBatchBytes: 1048576,
-  maxInFlightBatches: 1
+  maxBatchBytes: 1048576
 };
 const acknowledgedStatuses = /* @__PURE__ */ new Set(["committed", "duplicate", "superseded"]);
 function isUuidV7(value) {
@@ -392,7 +374,7 @@ async function openBrowserProtocolSession(port, appHint, attempt, applySpec) {
     if (initialized.spec.config.value.enabled === false) return "disabled";
     const flushPeriodMilliseconds = positiveInteger(initialized.spec.config.value.flushPeriodMs);
     if (flushPeriodMilliseconds === void 0 || flushPeriodMilliseconds < 3e4) return "rejected";
-    if (positiveInteger(initialized.limits?.maxFactsPerBatch) === void 0 || positiveInteger(initialized.limits?.maxBatchBytes) === void 0 || positiveInteger(initialized.limits?.maxInFlightBatches) === void 0)
+    if (positiveInteger(initialized.limits?.maxFactsPerBatch) === void 0 || positiveInteger(initialized.limits?.maxBatchBytes) === void 0)
       return "rejected";
     await applySpec?.({ enabled: true, flushPeriodMilliseconds });
     const initializedAck = await fetch(
@@ -579,6 +561,7 @@ async function publishBrowserFacts(session, snapshots, previousAttempt, persistA
 }
 async function uploadWithBrowserProtocol(port, appHint, snapshots, previousSession, previousActivationAttempt, previousPublishAttempt, persistActivationAttempt, persistPublishAttempt, applySpec, pendingGap, persistGapAttempt) {
   if (!appHint) return { kind: "legacy-required" };
+  if (snapshots.some((snapshot) => !isUuidV7(snapshot.id))) return { kind: "legacy-required" };
   const renewed = previousSession?.port === port ? await renewBrowserProtocolSession(previousSession) : null;
   const activationAttempt = previousActivationAttempt ?? {
     helloMessageId: uuidv7(),
@@ -678,8 +661,7 @@ function dotNetJsonUpperBoundBytes(value) {
 function normalizeLimits(limits) {
   return {
     maxFactsPerBatch: positiveInteger(limits?.maxFactsPerBatch) ?? DEFAULT_LIMITS.maxFactsPerBatch,
-    maxBatchBytes: positiveInteger(limits?.maxBatchBytes) ?? DEFAULT_LIMITS.maxBatchBytes,
-    maxInFlightBatches: positiveInteger(limits?.maxInFlightBatches) ?? DEFAULT_LIMITS.maxInFlightBatches
+    maxBatchBytes: positiveInteger(limits?.maxBatchBytes) ?? DEFAULT_LIMITS.maxBatchBytes
   };
 }
 function positiveInteger(value) {
@@ -712,16 +694,6 @@ function message(protocol, type, messageId, activationId, body, replyTo) {
 const FLUSH_PERIOD_MINUTES = 0.5;
 const FLUSH_PERIOD_MS = FLUSH_PERIOD_MINUTES * 6e4;
 const SOURCE = "browser";
-const DECLARATION = {
-  source: SOURCE,
-  version: 2,
-  layers: [
-    { readings: [{ name: "site", from: "attributes.site", label: "站点" }] },
-    { readings: [{ name: "url", from: "identityKey", label: "网址" }] },
-    { readings: [{ name: "tab_title", from: "title", label: "标签页" }] }
-  ]
-};
-const DECLARATION_ACK_KEY = "declarationAckedVersion";
 const STATE_KEY = "foldState";
 const QUEUE_KEY = "pendingSegments";
 const BACKOFF_KEY = "backoff";
@@ -984,14 +956,9 @@ async function flushAndUpload() {
     await saveBackoff(backoffAfterFailure(backoff, now));
     return;
   }
-  const acked = await chrome.storage.local.get(DECLARATION_ACK_KEY);
   await saveProtocolSession(void 0);
   await saveProtocolActivationAttempt(void 0);
   await saveProtocolPublishAttempt(void 0);
-  if (acked[DECLARATION_ACK_KEY] !== DECLARATION.version) {
-    if (await postDeclaration(compatiblePort, DECLARATION))
-      await chrome.storage.local.set({ [DECLARATION_ACK_KEY]: DECLARATION.version });
-  }
   if (items.length === 0) return;
   const { result, port } = await postToHub(basePort, compatiblePort, items);
   if (port !== compatiblePort) await saveHubPort(port);

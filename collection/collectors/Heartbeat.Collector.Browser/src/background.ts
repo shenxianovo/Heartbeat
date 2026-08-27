@@ -15,7 +15,7 @@ import {
 } from './fold'
 import { domainOf, identityKeyOf, siteOf } from './normalize'
 import { uuidv7 } from './ids'
-import { findCompatibleHub, postToHub, fetchCollectorConfig, postDeclaration } from './hub'
+import { findCompatibleHub, postToHub, fetchCollectorConfig } from './hub'
 import { loadConfig } from './config'
 import { backoffAfterFailure, noBackoff, shouldSkipAttempt, type BackoffState } from './backoff'
 import { detectBrowserAppHint } from './app-hint'
@@ -35,24 +35,6 @@ const FLUSH_PERIOD_MINUTES = 0.5
 const FLUSH_PERIOD_MS = FLUSH_PERIOD_MINUTES * 60_000
 /** 本采集器的 Source 名（ADR-017）：与 hub 注册表 key、段的 source 字段一致。 */
 const SOURCE = 'browser'
-
-/**
- * 观测深度表声明（ADR-030 §1/§5）：本采集器的契约，读数命名归采集器主权。
- * from 指段的运输槽位；深度表变更（加层/挪层）才递增 version。
- * v2 提拔 site（可注册域,值空间层级 → 深度层）为最浅层——digest browser 轨长成
- * site → url → tab_title 三层树,判官粗档提案锚 site。服务端零改动,声明到即生效。
- */
-const DECLARATION = {
-  source: SOURCE,
-  version: 2,
-  layers: [
-    { readings: [{ name: 'site', from: 'attributes.site', label: '站点' }] },
-    { readings: [{ name: 'url', from: 'identityKey', label: '网址' }] },
-    { readings: [{ name: 'tab_title', from: 'title', label: '标签页' }] },
-  ],
-} as const
-
-const DECLARATION_ACK_KEY = 'declarationAckedVersion'
 
 const STATE_KEY = 'foldState'
 const QUEUE_KEY = 'pendingSegments'
@@ -390,16 +372,9 @@ async function flushAndUpload(): Promise<void> {
     return
   }
 
-  // 旧缓存（非 UUIDv7）或旧 hub 明确要求 legacy adapter 时，才沿旧路由上报声明。
-  // 这样不会抢先以同版本 legacy 声明遮蔽新 Hub 从 Package 注册的 typed-payload 声明。
-  const acked = await chrome.storage.local.get(DECLARATION_ACK_KEY)
   await saveProtocolSession(undefined)
   await saveProtocolActivationAttempt(undefined)
   await saveProtocolPublishAttempt(undefined)
-  if (acked[DECLARATION_ACK_KEY] !== DECLARATION.version) {
-    if (await postDeclaration(compatiblePort, DECLARATION))
-      await chrome.storage.local.set({ [DECLARATION_ACK_KEY]: DECLARATION.version })
-  }
   if (items.length === 0) return
 
   const { result, port } = await postToHub(basePort, compatiblePort, items)

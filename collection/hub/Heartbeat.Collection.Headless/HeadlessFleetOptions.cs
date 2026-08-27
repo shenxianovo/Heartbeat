@@ -67,7 +67,7 @@ public sealed class HeadlessFleetOptions
             SubjectKind = instance.SubjectKind,
             SubjectName = instance.SubjectName,
             UploadIntervalSeconds = UploadIntervalSeconds,
-            ConfigSchemaVersion = instance.ConfigSchemaVersion,
+            ConfigVersion = instance.ConfigVersion,
             Config = instance.Config.Clone(),
             StartupTimeoutSeconds = instance.StartupTimeoutSeconds,
             DrainGraceSeconds = instance.DrainGraceSeconds
@@ -77,14 +77,14 @@ public sealed class HeadlessFleetOptions
     private HeadlessFleetOptions WithResolvedPaths(
         string dataDirectory,
         IReadOnlyList<HeadlessManagedInstanceOptions> instances) => new()
-    {
-        ApiKey = ApiKey,
-        DataDirectory = dataDirectory,
-        UploadIntervalSeconds = UploadIntervalSeconds,
-        ListenUrl = ListenUrl,
-        Management = Management,
-        Instances = instances
-    };
+        {
+            ApiKey = ApiKey,
+            DataDirectory = dataDirectory,
+            UploadIntervalSeconds = UploadIntervalSeconds,
+            ListenUrl = ListenUrl,
+            Management = Management,
+            Instances = instances
+        };
 
     private static string Resolve(string root, string path) =>
         Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(root, path));
@@ -97,7 +97,7 @@ public sealed record HeadlessManagedInstanceOptions
     public required Guid SubjectId { get; init; }
     public SubjectKind SubjectKind { get; init; } = SubjectKind.Account;
     public string SubjectName { get; init; } = "Managed account";
-    public int ConfigSchemaVersion { get; init; } = 1;
+    public int ConfigVersion { get; init; } = 1;
     public JsonElement Config { get; init; } = JsonDocument.Parse("{}").RootElement.Clone();
     public int StartupTimeoutSeconds { get; init; } = 30;
     public int DrainGraceSeconds { get; init; } = 10;
@@ -112,7 +112,7 @@ public sealed record HeadlessManagedInstanceOptions
         if (SubjectId == Guid.Empty) throw new InvalidOperationException("subjectId must not be empty.");
         if (!Enum.IsDefined(SubjectKind)) throw new InvalidOperationException("subjectKind is invalid.");
         if (string.IsNullOrWhiteSpace(SubjectName)) throw new InvalidOperationException("subjectName is required.");
-        if (ConfigSchemaVersion <= 0 || StartupTimeoutSeconds <= 0 || DrainGraceSeconds <= 0)
+        if (ConfigVersion <= 0 || StartupTimeoutSeconds <= 0 || DrainGraceSeconds <= 0)
             throw new InvalidOperationException("Instance numeric settings must be positive.");
         if (Config.ValueKind == JsonValueKind.Undefined) throw new InvalidOperationException("config must contain a JSON value.");
     }

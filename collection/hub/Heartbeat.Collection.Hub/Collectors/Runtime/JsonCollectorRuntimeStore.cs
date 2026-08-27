@@ -115,25 +115,25 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
             throw new JsonException(
                 $"Unsupported Collector Runtime state schemaVersion {state.SchemaVersion}.");
         if (state.Instances is null || state.Streams is null || state.Facts is null ||
-            state.Gaps is null || state.HelloAttempts is null)
+            state.Gaps is null || state.ActivationAttemptTombstones is null)
             throw new JsonException("Collector Runtime state collections must be present.");
         if (state.Instances.Any(instance => instance is null) ||
             state.Streams.Any(stream => stream is null) ||
             state.Facts.Any(fact => fact is null) ||
             state.Gaps.Any(gap => gap is null) ||
-            state.HelloAttempts.Any(attempt => attempt is null))
+            state.ActivationAttemptTombstones.Any(attempt => attempt is null))
             throw new JsonException("Collector Runtime state collections must not contain null entries.");
         if (state.Instances.Select(instance => instance.CollectorInstanceId).Distinct().Count() != state.Instances.Count)
             throw new JsonException("Collector Runtime state contains duplicate Collector Instance IDs.");
         if (state.Streams.Select(stream => stream.StreamId).Distinct().Count() != state.Streams.Count)
             throw new JsonException("Collector Runtime state contains duplicate Fact Stream IDs.");
-        if (state.HelloAttempts
+        if (state.ActivationAttemptTombstones
                 .Select(attempt => (attempt.CollectorInstanceId, attempt.MessageId))
                 .Distinct()
-                .Count() != state.HelloAttempts.Count)
+                .Count() != state.ActivationAttemptTombstones.Count)
             throw new JsonException("Collector Runtime state contains duplicate activation.hello attempts.");
-        if (state.HelloAttempts.Select(attempt => attempt.ActivationId).Distinct().Count() !=
-            state.HelloAttempts.Count)
+        if (state.ActivationAttemptTombstones.Select(attempt => attempt.ActivationId).Distinct().Count() !=
+            state.ActivationAttemptTombstones.Count)
             throw new JsonException("Collector Runtime state contains duplicate Collector Activation IDs.");
         if (state.Facts.Select(fact => (fact.StreamId, fact.FactId)).Distinct().Count() != state.Facts.Count)
             throw new JsonException("Collector Runtime state contains duplicate committed Fact identities.");
@@ -149,7 +149,7 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
                 !instance.PackageFingerprints.TryGetValue(instance.PackageVersion, out var currentPackageHash) ||
                 currentPackageHash != instance.PackageContentHash ||
                 instance.SpecRevision is <= 0 or > 9_007_199_254_740_991 ||
-                instance.ConfigSchemaVersion <= 0 || instance.Config.ValueKind == JsonValueKind.Undefined ||
+                instance.ConfigVersion <= 0 || instance.Config.ValueKind == JsonValueKind.Undefined ||
                 instance.LastKnownGoodPackage is { } lastKnownGood &&
                 (string.IsNullOrWhiteSpace(lastKnownGood.PackageVersion) ||
                  !IsSha256(lastKnownGood.PackageContentHash) ||
@@ -159,7 +159,7 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
                  lastKnownGoodPackageHash != lastKnownGood.PackageContentHash ||
                  string.IsNullOrWhiteSpace(lastKnownGood.ArtifactId) ||
                  !IsSha256(lastKnownGood.ArtifactContentHash) ||
-                 lastKnownGood.ConfigSchemaVersion <= 0))
+                 lastKnownGood.ConfigVersion <= 0))
                 throw new JsonException("Collector Runtime state contains an invalid Collector Instance.");
         }
         var conflictingPackageVersion = state.Instances
@@ -217,13 +217,13 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
                 instance.CollectorInstanceId != stream.CollectorInstanceId ||
                 instance.SubjectId != stream.SubjectId || instance.SubjectKind != stream.SubjectKind)))
             throw new JsonException("Collector Runtime state contains a Fact Stream with a mismatched Subject binding.");
-        foreach (var attempt in state.HelloAttempts)
+        foreach (var attempt in state.ActivationAttemptTombstones)
         {
             if (attempt.CollectorInstanceId == Guid.Empty || !IsUuidV7(attempt.MessageId) ||
                 !IsUuidV7(attempt.ActivationId) || !IsSha256(attempt.RequestHash))
                 throw new JsonException("Collector Runtime state contains an invalid activation.hello attempt.");
         }
-        if (state.HelloAttempts.Any(attempt => state.Instances.All(
+        if (state.ActivationAttemptTombstones.Any(attempt => state.Instances.All(
                 instance => instance.CollectorInstanceId != attempt.CollectorInstanceId)))
             throw new JsonException("Collector Runtime state contains an activation.hello attempt for an unknown Collector Instance.");
         foreach (var fact in state.Facts)
@@ -316,7 +316,7 @@ internal sealed class CollectorRuntimeState
     public List<FactStreamState> Streams { get; init; } = [];
     public List<CommittedFactState> Facts { get; init; } = [];
     public List<CommittedGapState> Gaps { get; init; } = [];
-    public List<DurableHelloAttemptState> HelloAttempts { get; init; } = [];
+    public List<ActivationAttemptTombstoneState> ActivationAttemptTombstones { get; init; } = [];
 
     public CollectorRuntimeState WithInstance(CollectorInstanceState instance) => new()
     {
@@ -325,7 +325,7 @@ internal sealed class CollectorRuntimeState
         Streams = [.. Streams],
         Facts = [.. Facts],
         Gaps = [.. Gaps],
-        HelloAttempts = [.. HelloAttempts]
+        ActivationAttemptTombstones = [.. ActivationAttemptTombstones]
     };
 
     public CollectorRuntimeState WithInstanceAndStreams(
@@ -358,7 +358,7 @@ internal sealed class CollectorRuntimeState
             Streams = nextStreams,
             Facts = [.. Facts],
             Gaps = [.. Gaps],
-            HelloAttempts = [.. HelloAttempts]
+            ActivationAttemptTombstones = [.. ActivationAttemptTombstones]
         };
     }
 
@@ -387,7 +387,7 @@ internal sealed class CollectorRuntimeState
             (evictedFact is null ||
              existing.StreamId != evictedFact.StreamId || existing.FactId != evictedFact.FactId)), fact],
             Gaps = [.. Gaps],
-            HelloAttempts = [.. HelloAttempts]
+            ActivationAttemptTombstones = [.. ActivationAttemptTombstones]
         };
 
     public CollectorRuntimeState WithGap(CommittedGapState gap) => new()
@@ -397,17 +397,17 @@ internal sealed class CollectorRuntimeState
         Streams = [.. Streams],
         Facts = [.. Facts],
         Gaps = [.. Gaps, gap],
-        HelloAttempts = [.. HelloAttempts]
+        ActivationAttemptTombstones = [.. ActivationAttemptTombstones]
     };
 
-    public CollectorRuntimeState WithHelloAttempt(DurableHelloAttemptState attempt) => new()
+    public CollectorRuntimeState WithActivationAttemptTombstone(ActivationAttemptTombstoneState attempt) => new()
     {
         SchemaVersion = SchemaVersion,
         Instances = [.. Instances],
         Streams = [.. Streams],
         Facts = [.. Facts],
         Gaps = [.. Gaps],
-        HelloAttempts = [.. HelloAttempts, attempt]
+        ActivationAttemptTombstones = [.. ActivationAttemptTombstones, attempt]
     };
 }
 
@@ -421,7 +421,7 @@ internal sealed record CollectorInstanceState
     public Guid SubjectId { get; init; }
     public SubjectKind SubjectKind { get; init; }
     public long SpecRevision { get; init; }
-    public int ConfigSchemaVersion { get; init; }
+    public int ConfigVersion { get; init; }
     public JsonElement Config { get; init; }
     public LastKnownGoodCollectorPackage? LastKnownGoodPackage { get; init; }
 }
@@ -469,7 +469,7 @@ internal sealed class CommittedGapState
     public int? EstimatedFactsLost { get; init; }
 }
 
-internal sealed class DurableHelloAttemptState
+internal sealed class ActivationAttemptTombstoneState
 {
     public Guid CollectorInstanceId { get; init; }
     public Guid MessageId { get; init; }
