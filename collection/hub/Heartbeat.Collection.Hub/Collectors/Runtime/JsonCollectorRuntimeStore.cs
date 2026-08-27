@@ -149,7 +149,17 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
                 !instance.PackageFingerprints.TryGetValue(instance.PackageVersion, out var currentPackageHash) ||
                 currentPackageHash != instance.PackageContentHash ||
                 instance.SpecRevision is <= 0 or > 9_007_199_254_740_991 ||
-                instance.ConfigSchemaVersion <= 0 || instance.Config.ValueKind == JsonValueKind.Undefined)
+                instance.ConfigSchemaVersion <= 0 || instance.Config.ValueKind == JsonValueKind.Undefined ||
+                instance.LastKnownGoodPackage is { } lastKnownGood &&
+                (string.IsNullOrWhiteSpace(lastKnownGood.PackageVersion) ||
+                 !IsSha256(lastKnownGood.PackageContentHash) ||
+                 !instance.PackageFingerprints.TryGetValue(
+                     lastKnownGood.PackageVersion,
+                     out var lastKnownGoodPackageHash) ||
+                 lastKnownGoodPackageHash != lastKnownGood.PackageContentHash ||
+                 string.IsNullOrWhiteSpace(lastKnownGood.ArtifactId) ||
+                 !IsSha256(lastKnownGood.ArtifactContentHash) ||
+                 lastKnownGood.ConfigSchemaVersion <= 0))
                 throw new JsonException("Collector Runtime state contains an invalid Collector Instance.");
         }
         var conflictingPackageVersion = state.Instances
@@ -401,7 +411,7 @@ internal sealed class CollectorRuntimeState
     };
 }
 
-internal sealed class CollectorInstanceState
+internal sealed record CollectorInstanceState
 {
     public Guid CollectorInstanceId { get; init; }
     public string PackageId { get; init; } = string.Empty;
@@ -413,6 +423,7 @@ internal sealed class CollectorInstanceState
     public long SpecRevision { get; init; }
     public int ConfigSchemaVersion { get; init; }
     public JsonElement Config { get; init; }
+    public LastKnownGoodCollectorPackage? LastKnownGoodPackage { get; init; }
 }
 
 internal sealed class FactStreamState

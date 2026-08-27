@@ -23,6 +23,8 @@ public enum CollectorRuntimePhase
 
 public sealed record CollectorRuntimeFailure(string Code, string Message, int? ProcessExitCode = null);
 
+public sealed record CollectorRuntimeDiagnostic(string Code, string Message);
+
 public sealed record CollectorRuntimeSnapshot(
     Guid CollectorInstanceId,
     Guid? ActivationId,
@@ -30,7 +32,8 @@ public sealed record CollectorRuntimeSnapshot(
     CollectorRuntimeFailure? Failure = null,
     int? PendingFacts = null,
     int? PendingGaps = null,
-    bool ProcessTerminated = false);
+    bool ProcessTerminated = false,
+    IReadOnlyList<CollectorRuntimeDiagnostic>? Diagnostics = null);
 
 public sealed class ManagedProcessActivationOptions
 {
@@ -52,10 +55,49 @@ public sealed class ManagedProcessActivationOptions
     }
 }
 
+public enum ManagedProcessUpdateOutcome
+{
+    Updated,
+    RolledBack
+}
+
+public sealed record ManagedProcessUpdateResult(
+    ManagedProcessUpdateOutcome Outcome,
+    ManagedProcessCollectorActivation Activation,
+    CollectorRuntimeFailure? CandidateFailure = null);
+
+public sealed class ManagedProcessUpdateOptions
+{
+    public TimeSpan StabilityPeriod { get; init; } = TimeSpan.FromSeconds(30);
+    public ManagedProcessActivationOptions CandidateActivation { get; init; } = new();
+    public ManagedProcessActivationOptions RollbackActivation { get; init; } = new();
+
+    internal void Validate()
+    {
+        if (StabilityPeriod <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(StabilityPeriod));
+        ArgumentNullException.ThrowIfNull(CandidateActivation);
+        ArgumentNullException.ThrowIfNull(RollbackActivation);
+        CandidateActivation.Validate();
+        RollbackActivation.Validate();
+    }
+}
+
+public sealed class ManagedProcessUpdateException(
+    string message,
+    CollectorRuntimeFailure candidateFailure,
+    CollectorRuntimeFailure rollbackFailure,
+    Exception? innerException = null) : Exception(message, innerException)
+{
+    public CollectorRuntimeFailure CandidateFailure { get; } = candidateFailure;
+    public CollectorRuntimeFailure RollbackFailure { get; } = rollbackFailure;
+}
+
 public sealed partial class CollectorRuntime
 {
     private readonly Dictionary<Guid, ManagedProcessCollectorActivation> _managedProcessActivations = [];
     private readonly Dictionary<Guid, CollectorRuntimeSnapshot> _managedProcessStates = [];
+    private readonly HashSet<Guid> _managedProcessUpdates = [];
 
     public CollectorRuntimeSnapshot GetManagedProcessRuntimeState(Guid collectorInstanceId)
     {
@@ -74,6 +116,127 @@ public sealed partial class CollectorRuntime
         LocalCollectorPackage package,
         CancellationToken cancellationToken = default) =>
         ActivateManagedProcessAsync(collectorInstanceId, package, new ManagedProcessActivationOptions(), cancellationToken);
+
+    public ValueTask<ManagedProcessUpdateResult> UpdateManagedProcessAsync(
+        Guid collectorInstanceId,
+        LocalCollectorPackage candidate,
+        CancellationToken cancellationToken = default) =>
+        UpdateManagedProcessAsync(
+            collectorInstanceId,
+            candidate,
+            new ManagedProcessUpdateOptions(),
+            cancellationToken);
+
+    public async ValueTask<ManagedProcessUpdateResult> UpdateManagedProcessAsync(
+        Guid collectorInstanceId,
+        LocalCollectorPackage candidate,
+        ManagedProcessUpdateOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        ArgumentNullException.ThrowIfNull(options);
+        options.Validate();
+        cancellationToken.ThrowIfCancellationRequested();
+
+        ManagedProcessCollectorActivation currentActivation;
+        LocalCollectorPackage previousPackage;
+        VerifiedCollectorArtifact candidateArtifact;
+        VerifiedCollectorArtifact previousArtifact;
+        LastKnownGoodCollectorPackage previousInstallation;
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            var instance = GetInstanceStateLocked(collectorInstanceId);
+            ValidatePackageCandidate(instance, candidate);
+            candidateArtifact = ResolveManagedProcessArtifact(candidate);
+            ValidateManagedProcessArtifactSnapshot(candidate, candidateArtifact);
+            currentActivation = _managedProcessActivations.Values.SingleOrDefault(activation =>
+                    activation.CollectorInstanceId == collectorInstanceId &&
+                    activation.State == CollectorActivationState.Ready)
+                ?? throw ActivationError(
+                    "activation_not_ready",
+                    "ManagedProcess update requires a current Ready Activation.");
+            previousPackage = currentActivation.Package;
+            if (previousPackage.Manifest.Version != instance.PackageVersion ||
+                previousPackage.PackageContentHash != instance.PackageContentHash)
+                throw ActivationError(
+                    "package_mismatch",
+                    "The current ManagedProcess Activation does not match the resolved Collector Package.");
+            previousArtifact = ResolveManagedProcessArtifact(previousPackage);
+            previousInstallation = new LastKnownGoodCollectorPackage(
+                previousPackage.Manifest.Version,
+                previousPackage.PackageContentHash,
+                previousArtifact.ArtifactId,
+                previousArtifact.ContentHash,
+                instance.ConfigSchemaVersion);
+            if (!_managedProcessUpdates.Add(collectorInstanceId))
+                throw ActivationError(
+                    "stream_writer_conflict",
+                    "A ManagedProcess update is already running for this Collector Instance.");
+        }
+
+        try
+        {
+            PersistLastKnownGood(collectorInstanceId, previousInstallation);
+            await currentActivation.StopAsync(CancellationToken.None);
+            ManagedProcessCollectorActivation? candidateActivation = null;
+            CollectorRuntimeFailure? candidateFailure = null;
+            try
+            {
+                candidateActivation = await ActivateManagedProcessAsync(
+                    collectorInstanceId,
+                    candidate,
+                    options.CandidateActivation,
+                    cancellationToken);
+                using var stabilityCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                var stabilityElapsed = Task.Delay(options.StabilityPeriod, stabilityCancellation.Token);
+                var completed = await Task.WhenAny(candidateActivation.Completion, stabilityElapsed);
+                if (completed == stabilityElapsed)
+                {
+                    await stabilityElapsed;
+                    if (!candidateActivation.Completion.IsCompleted)
+                    {
+                        PersistLastKnownGood(
+                            collectorInstanceId,
+                            new LastKnownGoodCollectorPackage(
+                                candidate.Manifest.Version,
+                                candidate.PackageContentHash,
+                                candidateArtifact.ArtifactId,
+                                candidateArtifact.ContentHash,
+                                previousInstallation.ConfigSchemaVersion));
+                        return new ManagedProcessUpdateResult(
+                            ManagedProcessUpdateOutcome.Updated,
+                            candidateActivation);
+                    }
+                }
+
+                stabilityCancellation.Cancel();
+                await candidateActivation.StopAsync(CancellationToken.None);
+                candidateFailure = candidateActivation.RuntimeState.Failure ?? new CollectorRuntimeFailure(
+                    "process_exited",
+                    "Candidate ManagedProcess exited during its stability period.",
+                    candidateActivation.Client.ExitCode);
+            }
+            catch (Exception exception) when (exception is not ManagedProcessUpdateException)
+            {
+                if (candidateActivation is not null && candidateActivation.State != CollectorActivationState.Stopped)
+                    await candidateActivation.StopAsync(CancellationToken.None);
+                candidateFailure = ManagedProcessFailureFrom(exception, collectorInstanceId);
+            }
+
+            return await RollBackManagedProcessAsync(
+                collectorInstanceId,
+                previousPackage,
+                previousArtifact,
+                options.RollbackActivation,
+                candidateFailure!);
+        }
+        finally
+        {
+            lock (_gate)
+                _managedProcessUpdates.Remove(collectorInstanceId);
+        }
+    }
 
     public async ValueTask<ManagedProcessCollectorActivation> ActivateManagedProcessAsync(
         Guid collectorInstanceId,
@@ -176,10 +339,11 @@ public sealed partial class CollectorRuntime
         {
             if (_disposed)
                 return;
-            _managedProcessStates[activation.CollectorInstanceId] = activation.RuntimeState with
-            {
-                Phase = CollectorRuntimePhase.Draining
-            };
+            if (_managedProcessStates.TryGetValue(activation.CollectorInstanceId, out var state))
+                _managedProcessStates[activation.CollectorInstanceId] = state with
+                {
+                    Phase = CollectorRuntimePhase.Draining
+                };
         }
     }
 
@@ -218,6 +382,104 @@ public sealed partial class CollectorRuntime
             _managedProcessStates[collectorInstanceId] = state;
     }
 
+    private async ValueTask<ManagedProcessUpdateResult> RollBackManagedProcessAsync(
+        Guid collectorInstanceId,
+        LocalCollectorPackage previousPackage,
+        VerifiedCollectorArtifact previousArtifact,
+        ManagedProcessActivationOptions options,
+        CollectorRuntimeFailure candidateFailure)
+    {
+        try
+        {
+            var rollback = await ActivateManagedProcessAsync(
+                collectorInstanceId,
+                previousPackage,
+                options,
+                CancellationToken.None);
+            SetManagedProcessState(collectorInstanceId, rollback.RuntimeState with
+            {
+                Diagnostics =
+                [
+                    new CollectorRuntimeDiagnostic(
+                        "update_candidate_failed_rolled_back",
+                        $"Candidate failed ({candidateFailure.Code}); restored Last-Known-Good Package '{previousPackage.Manifest.Version}'.")
+                ]
+            });
+            return new ManagedProcessUpdateResult(
+                ManagedProcessUpdateOutcome.RolledBack,
+                rollback,
+                candidateFailure);
+        }
+        catch (Exception exception)
+        {
+            var artifactPath = Path.GetFullPath(Path.Combine(
+                previousPackage.PackageDirectory,
+                previousArtifact.Entrypoint.Replace('/', Path.DirectorySeparatorChar)));
+            var rollbackFailure = !Directory.Exists(previousPackage.PackageDirectory) || !File.Exists(artifactPath)
+                ? new CollectorRuntimeFailure(
+                    "last_known_good_package_missing",
+                    $"Last-Known-Good Package '{previousPackage.Manifest.PackageId}/{previousPackage.Manifest.Version}' or Artifact '{previousArtifact.ArtifactId}' is missing.")
+                : ManagedProcessFailureFrom(exception, collectorInstanceId);
+            var failure = new CollectorRuntimeFailure(
+                "update_rollback_failed",
+                $"Candidate failed ({candidateFailure.Code}) and Last-Known-Good rollback failed ({rollbackFailure.Code}).");
+            SetManagedProcessState(collectorInstanceId, new CollectorRuntimeSnapshot(
+                collectorInstanceId,
+                null,
+                CollectorRuntimePhase.Failed,
+                failure,
+                Diagnostics:
+                [
+                    new CollectorRuntimeDiagnostic(candidateFailure.Code, candidateFailure.Message),
+                    new CollectorRuntimeDiagnostic(rollbackFailure.Code, rollbackFailure.Message)
+                ]));
+            throw new ManagedProcessUpdateException(
+                failure.Message,
+                candidateFailure,
+                rollbackFailure,
+                exception);
+        }
+    }
+
+    private CollectorRuntimeFailure ManagedProcessFailureFrom(Exception exception, Guid collectorInstanceId)
+    {
+        lock (_gate)
+        {
+            if (_managedProcessStates.TryGetValue(collectorInstanceId, out var state) &&
+                state.Phase == CollectorRuntimePhase.Failed && state.Failure is not null)
+                return state.Failure;
+        }
+        return exception is CollectorActivationException activationException
+            ? new CollectorRuntimeFailure(activationException.Error.Code, activationException.Error.Message)
+            : new CollectorRuntimeFailure("process_start_failed", exception.Message);
+    }
+
+    private void PersistLastKnownGood(
+        Guid collectorInstanceId,
+        LastKnownGoodCollectorPackage lastKnownGood)
+    {
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            var current = GetInstanceStateLocked(collectorInstanceId);
+            var updated = current with { LastKnownGoodPackage = lastKnownGood };
+            var next = _state.WithInstanceAndStreams(updated, []);
+            try
+            {
+                _store.Save(next);
+            }
+            catch (CollectorRuntimeStateException exception)
+            {
+                throw ActivationError(
+                    "hub_backpressure",
+                    "Hub could not persist the Last-Known-Good Collector Package.",
+                    exception,
+                    retryable: true);
+            }
+            _state = next;
+        }
+    }
+
     private static bool ContainsProcessExit(Exception exception) =>
         FindProcessExit(exception) is not null;
 
@@ -233,6 +495,32 @@ public sealed partial class CollectorRuntime
 
     private static VerifiedCollectorArtifact ResolveManagedProcessArtifact(LocalCollectorPackage package) =>
         ResolveProtocolArtifact(package, "managedProcess");
+
+    private static void ValidateManagedProcessArtifactSnapshot(
+        LocalCollectorPackage package,
+        VerifiedCollectorArtifact artifact)
+    {
+        var artifactPath = Path.GetFullPath(Path.Combine(
+            package.PackageDirectory,
+            artifact.Entrypoint.Replace('/', Path.DirectorySeparatorChar)));
+        byte[] content;
+        try
+        {
+            content = File.ReadAllBytes(artifactPath);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            throw ActivationError(
+                "package_mismatch",
+                $"ManagedProcess Artifact '{artifact.ArtifactId}' is unavailable before update.",
+                exception);
+        }
+        var actualHash = "sha256:" + Convert.ToHexStringLower(SHA256.HashData(content));
+        if (actualHash != artifact.ContentHash || !content.AsSpan().SequenceEqual(artifact.Content.Span))
+            throw ActivationError(
+                "package_mismatch",
+                $"ManagedProcess Artifact '{artifact.ArtifactId}' changed after Package verification.");
+    }
 }
 
 public sealed class ManagedProcessCollectorActivation : IAsyncDisposable
@@ -266,6 +554,7 @@ public sealed class ManagedProcessCollectorActivation : IAsyncDisposable
     public CollectorRuntimeSnapshot RuntimeState => _runtime.GetManagedProcessRuntimeState(CollectorInstanceId);
     public Task Completion => Client.Completion;
     internal ManagedProcessProtocolClient Client { get; }
+    internal LocalCollectorPackage Package => _protocolActivation.Package;
 
     internal void StartSupervision() => _ = SuperviseAsync();
 

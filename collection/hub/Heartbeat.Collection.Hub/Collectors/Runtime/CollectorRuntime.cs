@@ -34,13 +34,21 @@ public sealed record CollectorInstanceSpec(
     int ConfigSchemaVersion,
     JsonElement Config);
 
+public sealed record LastKnownGoodCollectorPackage(
+    string PackageVersion,
+    string PackageContentHash,
+    string ArtifactId,
+    string ArtifactContentHash,
+    int ConfigSchemaVersion);
+
 public sealed record CollectorInstance(
     Guid CollectorInstanceId,
     string PackageId,
     string PackageVersion,
     string PackageContentHash,
     SubjectReference Subject,
-    CollectorInstanceSpec Spec);
+    CollectorInstanceSpec Spec,
+    LastKnownGoodCollectorPackage? LastKnownGoodPackage = null);
 
 public sealed class CollectorRuntimeOptions
 {
@@ -174,7 +182,8 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
                 SubjectKind = subject.Kind,
                 SpecRevision = spec.SpecRevision,
                 ConfigSchemaVersion = spec.ConfigSchemaVersion,
-                Config = spec.Config.Clone()
+                Config = spec.Config.Clone(),
+                LastKnownGoodPackage = null
             };
             var next = _state.WithInstance(instanceState);
             _store.Save(next);
@@ -226,18 +235,14 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         lock (_gate)
         {
             ThrowIfDisposed();
+            if (_managedProcessUpdates.Contains(collectorInstanceId))
+                throw new InvalidOperationException(
+                    "Collector Instance config cannot change during a ManagedProcess update.");
             var current = GetInstanceStateLocked(collectorInstanceId);
             if (current.SpecRevision >= MaxSafeJsonInteger)
                 throw new InvalidOperationException("Collector Instance SpecRevision cannot be incremented safely.");
-            var updated = new CollectorInstanceState
+            var updated = current with
             {
-                CollectorInstanceId = current.CollectorInstanceId,
-                PackageId = current.PackageId,
-                PackageVersion = current.PackageVersion,
-                PackageContentHash = current.PackageContentHash,
-                PackageFingerprints = new Dictionary<string, string>(current.PackageFingerprints, StringComparer.Ordinal),
-                SubjectId = current.SubjectId,
-                SubjectKind = current.SubjectKind,
                 SpecRevision = current.SpecRevision + 1,
                 ConfigSchemaVersion = configSchemaVersion,
                 Config = config.Clone()
@@ -269,7 +274,8 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         new CollectorInstanceSpec(
             state.SpecRevision,
             state.ConfigSchemaVersion,
-            state.Config.Clone()));
+            state.Config.Clone()),
+        state.LastKnownGoodPackage);
 
     public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 

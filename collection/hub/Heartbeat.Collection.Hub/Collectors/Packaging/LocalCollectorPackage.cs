@@ -29,8 +29,18 @@ public sealed record CollectorPackageManifest(
     string Version,
     IReadOnlyList<int> ProtocolMajors,
     IReadOnlyDictionary<string, IReadOnlyList<int>> SupportedCapabilities,
+    CollectorConfigManifest Config,
     IReadOnlyList<CollectorOutputTemplate> Outputs,
     IReadOnlyList<CollectorArtifactManifest> Artifacts);
+
+public sealed record CollectorConfigManifest(
+    CollectorConfigSchemaReference Schema,
+    IReadOnlyList<int> AcceptedSchemaVersions);
+
+public sealed record CollectorConfigSchemaReference(
+    string Id,
+    int Version,
+    string Hash);
 
 public sealed record CollectorOutputTemplate(
     string OutputId,
@@ -233,8 +243,8 @@ public sealed class LocalCollectorPackage
         RequireObject(
             root,
             "Collector Package manifest",
-            ["manifestVersion", "packageId", "version", "protocolMajors", "supportedCapabilities", "outputs", "artifacts", "observationDeclaration"],
-            ["manifestVersion", "packageId", "version", "protocolMajors", "supportedCapabilities", "outputs", "artifacts"]);
+            ["manifestVersion", "packageId", "version", "protocolMajors", "supportedCapabilities", "config", "outputs", "artifacts", "observationDeclaration"],
+            ["manifestVersion", "packageId", "version", "protocolMajors", "supportedCapabilities", "config", "outputs", "artifacts"]);
 
         var manifestVersion = ReadPositiveInt(root, "manifestVersion", "Collector Package manifest");
         if (manifestVersion != 1)
@@ -250,6 +260,7 @@ public sealed class LocalCollectorPackage
 
         var protocolMajors = ReadPositiveIntArray(root, "protocolMajors", "Collector Package manifest");
         var capabilities = ReadCapabilities(root.GetProperty("supportedCapabilities"));
+        var config = ReadConfig(root);
         var outputs = ReadOutputs(root.GetProperty("outputs"));
         var artifacts = ReadArtifacts(root.GetProperty("artifacts"));
 
@@ -289,8 +300,27 @@ public sealed class LocalCollectorPackage
             version,
             protocolMajors,
             capabilities,
+            config,
             outputs,
             artifacts);
+    }
+
+    private static CollectorConfigManifest ReadConfig(JsonElement root)
+    {
+        var config = root.GetProperty("config");
+        RequireObject(config, "Collector Package config", ["schema", "accepts"], ["schema", "accepts"]);
+        var schema = config.GetProperty("schema");
+        RequireObject(
+            schema,
+            "Collector Package config schema",
+            ["id", "version", "hash"],
+            ["id", "version", "hash"]);
+        return new CollectorConfigManifest(
+            new CollectorConfigSchemaReference(
+                ReadNonEmptyString(schema, "id", "Collector Package config schema"),
+                ReadPositiveInt(schema, "version", "Collector Package config schema"),
+                ReadSha256(schema, "hash", "Collector Package config schema")),
+            ReadPositiveIntArray(config, "accepts", "Collector Package config"));
     }
 
     private static ObservationDeclarationReference? ReadObservationDeclarationReference(byte[] manifestBytes)

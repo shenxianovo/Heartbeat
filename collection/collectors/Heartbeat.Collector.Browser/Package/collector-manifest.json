@@ -7,6 +7,14 @@
     "facts.segment": [1],
     "diagnostics.stream-gap": [1]
   },
+  "config": {
+    "schema": {
+      "id": "heartbeat.collector.browser.config",
+      "version": 1,
+      "hash": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0"
+    },
+    "accepts": [1]
+  },
   "observationDeclaration": {
     "document": "observation-depth.json",
     "hash": "sha256:d26d98f441c05265a41a5a714993217c1070ab3d631af921b5c03abf262646b1"

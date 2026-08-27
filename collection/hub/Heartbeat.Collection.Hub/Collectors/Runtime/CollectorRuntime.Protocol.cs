@@ -1098,18 +1098,11 @@ public sealed partial class CollectorRuntime
         {
             [instance.PackageVersion] = instance.PackageContentHash
         };
-        var resolvedInstance = new CollectorInstanceState
+        var resolvedInstance = persistedInstance with
         {
-            CollectorInstanceId = instance.CollectorInstanceId,
-            PackageId = instance.PackageId,
             PackageVersion = instance.PackageVersion,
             PackageContentHash = instance.PackageContentHash,
-            PackageFingerprints = packageFingerprints,
-            SubjectId = instance.Subject.SubjectId,
-            SubjectKind = instance.Subject.Kind,
-            SpecRevision = instance.Spec.SpecRevision,
-            ConfigSchemaVersion = instance.Spec.ConfigSchemaVersion,
-            Config = instance.Spec.Config.Clone()
+            PackageFingerprints = packageFingerprints
         };
         return new StreamOpenPlan(
             opened,
@@ -1232,6 +1225,10 @@ public sealed partial class CollectorRuntime
             throw ActivationError(
                 "package_mismatch",
                 "An immutable Collector Package version cannot resolve to a different content fingerprint.");
+        if (!package.Manifest.Config.AcceptedSchemaVersions.Contains(instance.ConfigSchemaVersion))
+            throw ActivationError(
+                "config_schema_unsupported",
+                $"Collector Package '{package.Manifest.PackageId}/{package.Manifest.Version}' does not accept ConfigSchemaVersion {instance.ConfigSchemaVersion}.");
     }
 
     private string? KnownPackageFingerprint(string packageId, string packageVersion)

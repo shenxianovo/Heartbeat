@@ -11,8 +11,11 @@ internal sealed class ManagedReferenceCollectorPackage : IDisposable
 
     public string Path { get; }
 
-    public static ManagedReferenceCollectorPackage Create()
+    public static ManagedReferenceCollectorPackage Create(
+        string version = "1.0.0",
+        IReadOnlyList<int>? acceptedConfigSchemaVersions = null)
     {
+        acceptedConfigSchemaVersions ??= [1];
         var source = System.IO.Path.Combine(
             AppContext.BaseDirectory,
             "Fixtures",
@@ -72,12 +75,22 @@ internal sealed class ManagedReferenceCollectorPackage : IDisposable
         {
             manifestVersion = 1,
             packageId = "heartbeat.collector.reference-managed",
-            version = "1.0.0",
+            version,
             protocolMajors = new[] { 1 },
             supportedCapabilities = new Dictionary<string, int[]>
             {
                 ["facts.segment"] = [1],
                 ["diagnostics.stream-gap"] = [1]
+            },
+            config = new
+            {
+                schema = new
+                {
+                    id = "heartbeat.collector.reference-managed.config",
+                    version = 1,
+                    hash = "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0"
+                },
+                accepts = acceptedConfigSchemaVersions
             },
             outputs = new[]
             {
@@ -126,7 +139,11 @@ internal sealed class ManagedReferenceCollectorPackage : IDisposable
         return new ManagedReferenceCollectorPackage(path);
     }
 
-    public void Dispose() => Directory.Delete(Path, recursive: true);
+    public void Dispose()
+    {
+        if (Directory.Exists(Path))
+            Directory.Delete(Path, recursive: true);
+    }
 
     private static string Hash(byte[] content) =>
         "sha256:" + Convert.ToHexStringLower(SHA256.HashData(content));

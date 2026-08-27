@@ -131,6 +131,252 @@ public class ManagedProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
+    public async Task PackageUpdate_CandidateStaysReady_PromotesCandidateToLastKnownGood()
+    {
+        using var originalCopy = ManagedReferenceCollectorPackage.Create();
+        using var candidateCopy = ManagedReferenceCollectorPackage.Create("1.1.0");
+        var original = LocalCollectorPackage.Load(originalCopy.Path);
+        var candidate = LocalCollectorPackage.Load(candidateCopy.Path);
+        using var stateDirectory = TemporaryDirectory.Create();
+        using var runtime = CollectorRuntime.Open(
+            Path.Combine(stateDirectory.Path, "collector-runtime.json"),
+            new RecordingSegmentSink());
+        using var config = JsonDocument.Parse("{}");
+        var instance = runtime.CreateInstance(
+            original,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Account),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        var originalActivation = await runtime.ActivateManagedProcessAsync(
+            instance.CollectorInstanceId,
+            original,
+            Options());
+        var originalStreamId = originalActivation.Streams["activity"].StreamId;
+
+        var result = await runtime.UpdateManagedProcessAsync(
+            instance.CollectorInstanceId,
+            candidate,
+            new ManagedProcessUpdateOptions
+            {
+                StabilityPeriod = TimeSpan.FromMilliseconds(100),
+                CandidateActivation = Options(),
+                RollbackActivation = Options()
+            });
+
+        Assert.Equal(ManagedProcessUpdateOutcome.Updated, result.Outcome);
+        Assert.Equal("1.1.0", runtime.GetInstance(instance.CollectorInstanceId).PackageVersion);
+        Assert.Equal(originalStreamId, result.Activation.Streams["activity"].StreamId);
+        Assert.NotEqual(originalActivation.ActivationId, result.Activation.ActivationId);
+        var lastKnownGood = Assert.IsType<LastKnownGoodCollectorPackage>(
+            runtime.GetInstance(instance.CollectorInstanceId).LastKnownGoodPackage);
+        Assert.Equal("1.1.0", lastKnownGood.PackageVersion);
+        Assert.Equal(candidate.PackageContentHash, lastKnownGood.PackageContentHash);
+        Assert.Equal("reference.managed", lastKnownGood.ArtifactId);
+        Assert.Equal(1, lastKnownGood.ConfigSchemaVersion);
+        await result.Activation.StopAsync();
+        runtime.Dispose();
+
+        using var reopened = CollectorRuntime.Open(
+            Path.Combine(stateDirectory.Path, "collector-runtime.json"),
+            new RecordingSegmentSink());
+        var restoredLastKnownGood = Assert.IsType<LastKnownGoodCollectorPackage>(
+            reopened.GetInstance(instance.CollectorInstanceId).LastKnownGoodPackage);
+        Assert.Equal(lastKnownGood, restoredLastKnownGood);
+    }
+
+    [Fact]
+    public async Task PackageUpdate_UnsupportedConfigIsRejectedBeforeStoppingCurrentActivation()
+    {
+        using var originalCopy = ManagedReferenceCollectorPackage.Create();
+        using var candidateCopy = ManagedReferenceCollectorPackage.Create("1.1.0", [2]);
+        var original = LocalCollectorPackage.Load(originalCopy.Path);
+        var candidate = LocalCollectorPackage.Load(candidateCopy.Path);
+        using var stateDirectory = TemporaryDirectory.Create();
+        using var runtime = CollectorRuntime.Open(
+            Path.Combine(stateDirectory.Path, "collector-runtime.json"),
+            new RecordingSegmentSink());
+        using var config = JsonDocument.Parse("{}");
+        var instance = runtime.CreateInstance(
+            original,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Account),
+            new CollectorInstanceSpec(7, 1, config.RootElement.Clone()));
+        var current = await runtime.ActivateManagedProcessAsync(
+            instance.CollectorInstanceId,
+            original,
+            Options());
+
+        var error = await Assert.ThrowsAsync<CollectorActivationException>(async () =>
+            await runtime.UpdateManagedProcessAsync(
+                instance.CollectorInstanceId,
+                candidate,
+                FastUpdateOptions()));
+
+        Assert.Equal("config_schema_unsupported", error.Error.Code);
+        Assert.Equal(CollectorActivationState.Ready, current.State);
+        Assert.False(current.Completion.IsCompleted);
+        Assert.Equal("1.0.0", runtime.GetInstance(instance.CollectorInstanceId).PackageVersion);
+        await current.StopAsync();
+    }
+
+    [Fact]
+    public async Task PackageUpdate_CandidateArtifactChangedAfterVerification_IsRejectedBeforeStoppingCurrentActivation()
+    {
+        using var fixture = ManagedUpdateFixture.Create();
+        using var candidateCopy = ManagedReferenceCollectorPackage.Create("1.1.0");
+        var candidate = LocalCollectorPackage.Load(candidateCopy.Path);
+        var artifact = Assert.Single(candidate.Artifacts);
+        var artifactPath = Path.Combine(candidate.PackageDirectory, artifact.Entrypoint);
+        var changed = File.ReadAllBytes(artifactPath).Append((byte)0).ToArray();
+        File.WriteAllBytes(artifactPath, changed);
+
+        var error = await Assert.ThrowsAsync<CollectorActivationException>(async () =>
+            await fixture.Runtime.UpdateManagedProcessAsync(
+                fixture.Instance.CollectorInstanceId,
+                candidate,
+                FastUpdateOptions()));
+
+        Assert.Equal("package_mismatch", error.Error.Code);
+        Assert.Equal(CollectorActivationState.Ready, fixture.Current.State);
+        Assert.False(fixture.Current.Completion.IsCompleted);
+        await fixture.Current.StopAsync();
+    }
+
+    [Fact]
+    public async Task PackageUpdate_HandshakeFailure_RestartsLastKnownGoodWithStableInstanceAndStream()
+    {
+        using var fixture = ManagedUpdateFixture.Create();
+        var originalActivationId = fixture.Current.ActivationId;
+        var originalStreamId = fixture.Current.Streams["activity"].StreamId;
+        using var candidateCopy = ManagedReferenceCollectorPackage.Create("1.1.0");
+        var candidate = LocalCollectorPackage.Load(candidateCopy.Path);
+
+        var result = await fixture.Runtime.UpdateManagedProcessAsync(
+            fixture.Instance.CollectorInstanceId,
+            candidate,
+            FastUpdateOptions("invalid_capability_type"));
+
+        Assert.Equal(ManagedProcessUpdateOutcome.RolledBack, result.Outcome);
+        Assert.Equal("protocol_invalid_message", result.CandidateFailure?.Code);
+        Assert.Equal(fixture.Instance.CollectorInstanceId, result.Activation.CollectorInstanceId);
+        Assert.Equal(originalStreamId, result.Activation.Streams["activity"].StreamId);
+        Assert.NotEqual(originalActivationId, result.Activation.ActivationId);
+        Assert.Equal("1.0.0", fixture.Runtime.GetInstance(fixture.Instance.CollectorInstanceId).PackageVersion);
+        Assert.Equal(
+            "1.0.0",
+            fixture.Runtime.GetInstance(fixture.Instance.CollectorInstanceId)
+                .LastKnownGoodPackage?.PackageVersion);
+        Assert.Contains(
+            result.Activation.RuntimeState.Diagnostics ?? [],
+            diagnostic => diagnostic.Code == "update_candidate_failed_rolled_back");
+        await result.Activation.StopAsync();
+    }
+
+    [Fact]
+    public async Task PackageUpdate_CandidateCrashesBeforeReady_RestartsLastKnownGood()
+    {
+        using var fixture = ManagedUpdateFixture.Create();
+        using var candidateCopy = ManagedReferenceCollectorPackage.Create("1.1.0");
+        var candidate = LocalCollectorPackage.Load(candidateCopy.Path);
+
+        var result = await fixture.Runtime.UpdateManagedProcessAsync(
+            fixture.Instance.CollectorInstanceId,
+            candidate,
+            FastUpdateOptions("exit_before_hello"));
+
+        Assert.Equal(ManagedProcessUpdateOutcome.RolledBack, result.Outcome);
+        Assert.Equal("process_exited", result.CandidateFailure?.Code);
+        Assert.Equal(CollectorRuntimePhase.Ready, result.Activation.RuntimeState.Phase);
+        Assert.Equal("1.0.0", fixture.Runtime.GetInstance(fixture.Instance.CollectorInstanceId).PackageVersion);
+        Assert.Equal(1, fixture.Runtime.GetInstance(fixture.Instance.CollectorInstanceId).Spec.SpecRevision);
+        await result.Activation.StopAsync();
+    }
+
+    [Fact]
+    public async Task PackageUpdate_ConfigCannotChangeAfterCompatibilityPreflight()
+    {
+        using var fixture = ManagedUpdateFixture.Create();
+        using var candidateCopy = ManagedReferenceCollectorPackage.Create("1.1.0");
+        var candidate = LocalCollectorPackage.Load(candidateCopy.Path);
+        using var cancellation = new CancellationTokenSource();
+        var update = fixture.Runtime.UpdateManagedProcessAsync(
+            fixture.Instance.CollectorInstanceId,
+            candidate,
+            FastUpdateOptions("startup_timeout"),
+            cancellation.Token).AsTask();
+        await WaitForPhaseAsync(
+            fixture.Runtime,
+            fixture.Instance.CollectorInstanceId,
+            CollectorRuntimePhase.Starting);
+        using var changedConfig = JsonDocument.Parse("{\"changed\":true}");
+
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            fixture.Runtime.UpdateInstanceSpec(
+                fixture.Instance.CollectorInstanceId,
+                2,
+                changedConfig.RootElement.Clone()));
+
+        Assert.Contains("during a ManagedProcess update", error.Message, StringComparison.Ordinal);
+        cancellation.Cancel();
+        var result = await update;
+        Assert.Equal(ManagedProcessUpdateOutcome.RolledBack, result.Outcome);
+        Assert.Equal(1, fixture.Runtime.GetInstance(fixture.Instance.CollectorInstanceId).Spec.ConfigSchemaVersion);
+        await result.Activation.StopAsync();
+    }
+
+    [Fact]
+    public async Task PackageUpdate_CandidateExitsDuringStabilityPeriod_RollsBackWithoutStoppingOtherInstance()
+    {
+        using var first = ManagedUpdateFixture.Create();
+        using var secondPackageCopy = ManagedReferenceCollectorPackage.Create();
+        var secondPackage = LocalCollectorPackage.Load(secondPackageCopy.Path);
+        using var config = JsonDocument.Parse("{}");
+        var secondInstance = first.Runtime.CreateInstance(
+            secondPackage,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Account),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        var secondActivation = await first.Runtime.ActivateManagedProcessAsync(
+            secondInstance.CollectorInstanceId,
+            secondPackage,
+            Options());
+        using var candidateCopy = ManagedReferenceCollectorPackage.Create("1.1.0");
+        var candidate = LocalCollectorPackage.Load(candidateCopy.Path);
+
+        var result = await first.Runtime.UpdateManagedProcessAsync(
+            first.Instance.CollectorInstanceId,
+            candidate,
+            FastUpdateOptions("exit_after_ready"));
+
+        Assert.Equal(ManagedProcessUpdateOutcome.RolledBack, result.Outcome);
+        Assert.Equal("process_exited", result.CandidateFailure?.Code);
+        Assert.Equal(CollectorActivationState.Ready, secondActivation.State);
+        Assert.False(secondActivation.Completion.IsCompleted);
+        await result.Activation.StopAsync();
+        await secondActivation.StopAsync();
+    }
+
+    [Fact]
+    public async Task PackageUpdate_LastKnownGoodArtifactMissing_ReportsCandidateAndRollbackFailures()
+    {
+        using var fixture = ManagedUpdateFixture.Create();
+        using var candidateCopy = ManagedReferenceCollectorPackage.Create("1.1.0");
+        var candidate = LocalCollectorPackage.Load(candidateCopy.Path);
+        Directory.Delete(fixture.PackageCopy.Path, recursive: true);
+
+        var error = await Assert.ThrowsAsync<ManagedProcessUpdateException>(async () =>
+            await fixture.Runtime.UpdateManagedProcessAsync(
+                fixture.Instance.CollectorInstanceId,
+                candidate,
+                FastUpdateOptions("exit_before_hello")));
+
+        Assert.Equal("process_exited", error.CandidateFailure.Code);
+        Assert.Equal("last_known_good_package_missing", error.RollbackFailure.Code);
+        var state = fixture.Runtime.GetManagedProcessRuntimeState(fixture.Instance.CollectorInstanceId);
+        Assert.Equal("update_rollback_failed", state.Failure?.Code);
+        Assert.Contains(
+            state.Diagnostics ?? [],
+            diagnostic => diagnostic.Code == "last_known_good_package_missing");
+    }
+
+    [Fact]
     public async Task Hello_OnlySelectsCapabilitiesSharedByCollectorPackageAndHub()
     {
         using var fixture = ManagedRuntimeFixture.Create();
@@ -317,12 +563,29 @@ public class ManagedProcessCollectorProtocolTranscriptTests
             : new Dictionary<string, string> { ["HEARTBEAT_REFERENCE_BEHAVIOR"] = behavior }
         };
 
+    private static ManagedProcessUpdateOptions FastUpdateOptions(string? candidateBehavior = null) => new()
+    {
+        StabilityPeriod = TimeSpan.FromMilliseconds(100),
+        CandidateActivation = Options(candidateBehavior),
+        RollbackActivation = Options()
+    };
+
     private static async Task WaitForPhaseAsync(
         ManagedProcessCollectorActivation activation,
         CollectorRuntimePhase phase)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         while (activation.RuntimeState.Phase != phase)
+            await Task.Delay(20, timeout.Token);
+    }
+
+    private static async Task WaitForPhaseAsync(
+        CollectorRuntime runtime,
+        Guid collectorInstanceId,
+        CollectorRuntimePhase phase)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (runtime.GetManagedProcessRuntimeState(collectorInstanceId).Phase != phase)
             await Task.Delay(20, timeout.Token);
     }
 
@@ -403,6 +666,7 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         }
 
         public LocalCollectorPackage Package { get; }
+        public ManagedReferenceCollectorPackage PackageCopy => _packageCopy;
         public CollectorRuntime Runtime { get; }
         public CollectorInstance Instance { get; }
 
@@ -437,5 +701,44 @@ public class ManagedProcessCollectorProtocolTranscriptTests
             _stateDirectory.Dispose();
             _packageCopy.Dispose();
         }
+    }
+
+    private sealed class ManagedUpdateFixture : IDisposable
+    {
+        private readonly ManagedRuntimeFixture _runtimeFixture;
+
+        private ManagedUpdateFixture(
+            ManagedRuntimeFixture runtimeFixture,
+            ManagedProcessCollectorActivation current)
+        {
+            _runtimeFixture = runtimeFixture;
+            Current = current;
+        }
+
+        public ManagedReferenceCollectorPackage PackageCopy => _runtimeFixture.PackageCopy;
+        public LocalCollectorPackage Package => _runtimeFixture.Package;
+        public CollectorRuntime Runtime => _runtimeFixture.Runtime;
+        public CollectorInstance Instance => _runtimeFixture.Instance;
+        public ManagedProcessCollectorActivation Current { get; }
+
+        public static ManagedUpdateFixture Create()
+        {
+            var runtimeFixture = ManagedRuntimeFixture.Create();
+            try
+            {
+                var current = runtimeFixture.Runtime.ActivateManagedProcessAsync(
+                    runtimeFixture.Instance.CollectorInstanceId,
+                    runtimeFixture.Package,
+                    Options()).AsTask().GetAwaiter().GetResult();
+                return new ManagedUpdateFixture(runtimeFixture, current);
+            }
+            catch
+            {
+                runtimeFixture.Dispose();
+                throw;
+            }
+        }
+
+        public void Dispose() => _runtimeFixture.Dispose();
     }
 }

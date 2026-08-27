@@ -8,6 +8,14 @@
     "facts.event": [1],
     "diagnostics.stream-gap": [1]
   },
+  "config": {
+    "schema": {
+      "id": "heartbeat.collector.system.config",
+      "version": 1,
+      "hash": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0"
+    },
+    "accepts": [1]
+  },
   "outputs": [
     {
       "outputId": "foreground",

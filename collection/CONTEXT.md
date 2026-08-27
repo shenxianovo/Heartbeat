@@ -60,6 +60,10 @@ _Avoid_: 浏览器前台活动、把 active tab 解释为 OS 前台窗口、按 
 Collector Activation 已完成协议协商并打开所需 Fact Stream，可以承担运行责任；Ready 不要求已经产生第一条 Fact。
 _Avoid_: 进程存活、首次产生数据、Active
 
+**候选稳定窗口（Candidate Stability Period）**:
+ManagedProcess 候选 Activation 到达 Ready 后、被判定为成功更新前的有界观察期；窗口内退出触发 Last-Known-Good 回滚，窗口结束时候选晋升为新的 Last-Known-Good，之后退出属于普通运行故障。
+_Avoid_: 把 Ready 等同于已通过稳定观察、无限期自动回滚
+
 **Collector Desired State（采集器期望状态）**:
 用户对 Collector Instance 的版本范围、启用与配置意图；暂时的解析或运行失败不会改写它。
 _Avoid_: 把当前运行事实反写成用户意图
