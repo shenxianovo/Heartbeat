@@ -136,6 +136,73 @@ public sealed class HeadlessHubCompositionTests : IDisposable
     }
 
     [Fact]
+    public void FleetConfiguration_LegacyConfigSchemaVersion_RemainsReadable()
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "heartbeat-headless.json");
+        File.WriteAllText(
+            path,
+            $$"""
+            {
+              "apiKey": "test-key",
+              "dataDirectory": "data",
+              "management": {
+                "ownerSubject": "owner-1",
+                "authority": "https://auth.example.test",
+                "issuer": "https://auth.example.test/",
+                "clientId": "heartbeat-web"
+              },
+              "instances": [{
+                "instanceKey": "legacy",
+                "packageDirectory": "package",
+                "subjectId": "{{Guid.CreateVersion7()}}",
+                "configSchemaVersion": 3,
+                "config": {}
+              }]
+            }
+            """);
+
+        var options = HeadlessFleetOptions.Load(path);
+
+        Assert.Equal(3, Assert.Single(options.Instances).ConfigVersion);
+    }
+
+    [Fact]
+    public void SingleInstanceConfiguration_LegacyConfigSchemaVersion_RemainsReadable()
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "heartbeat-headless-single.json");
+        File.WriteAllText(
+            path,
+            $$"""
+            {
+              "apiKey": "test-key",
+              "dataDirectory": "data",
+              "packageDirectory": "package",
+              "subjectId": "{{Guid.CreateVersion7()}}",
+              "configSchemaVersion": 4,
+              "config": {}
+            }
+            """);
+
+        var options = HeadlessHubOptions.Load(path);
+
+        Assert.Equal(4, options.ConfigVersion);
+    }
+
+    [Fact]
+    public void InstanceMapping_LegacyBareDictionary_RemainsReadable()
+    {
+        var collectorInstanceId = Guid.CreateVersion7();
+        var mappings = HeadlessFleetManager.DeserializeInstanceMappings(
+            JsonSerializer.Serialize(new Dictionary<string, Guid> { ["Legacy"] = collectorInstanceId }),
+            out var legacy);
+
+        Assert.True(legacy);
+        Assert.Equal(collectorInstanceId, mappings["legacy"]);
+    }
+
+    [Fact]
     public void SubjectStatus_UsesCollectorFinalityInsteadOfWallClockToTrackCurrentPresence()
     {
         var status = new HeadlessSubjectStatus();

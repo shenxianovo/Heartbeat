@@ -416,6 +416,19 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
     }
 
     [Fact]
+    public void LegacyOutboxArray_LoadsWithoutRequiringManualDeletion()
+    {
+        Directory.CreateDirectory(_root);
+        var outboxPath = Path.Combine(_root, "system-collector-outbox.json");
+        File.WriteAllText(outboxPath, "[]");
+        var protocol = new SystemCollectorProtocolAdapter();
+
+        protocol.ConfigureOutbox(outboxPath);
+
+        Assert.Equal("[]", File.ReadAllText(outboxPath));
+    }
+
+    [Fact]
     public async Task PermanentlyInvalidInputEvent_IsWrittenToDiagnosticDeadLetter()
     {
         Directory.CreateDirectory(_root);

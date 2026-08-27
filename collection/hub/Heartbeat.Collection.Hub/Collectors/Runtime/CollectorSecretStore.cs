@@ -60,7 +60,7 @@ public sealed class EncryptedFileCollectorSecretStore : ICollectorSecretStore
                 await File.ReadAllTextAsync(path, cancellationToken),
                 EnvelopeJsonOptions)
                 ?? throw new CryptographicException("Collector Secret envelope is empty.");
-            if (envelope.SchemaVersion != 1)
+            if (envelope.SchemaVersion is not (0 or 1))
                 throw new CryptographicException(
                     $"Unsupported Collector Secret schemaVersion {envelope.SchemaVersion}.");
             var encryptionKey = await LoadOrCreateKeyAsync(cancellationToken);

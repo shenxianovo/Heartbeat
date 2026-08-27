@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Heartbeat.Collection.Hub.Collectors.Packages;
 using Heartbeat.Collection.Hub.Collectors.Protocol;
@@ -8,7 +9,7 @@ namespace Heartbeat.Collection.Hub.Collectors.Runtime;
 
 internal sealed class JsonCollectorRuntimeStore : IDisposable
 {
-    private const int CurrentSchemaVersion = 1;
+    private const int CurrentSchemaVersion = 2;
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -52,10 +53,7 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
 
         try
         {
-            var state = JsonSerializer.Deserialize<CollectorRuntimeState>(
-                File.ReadAllBytes(_filePath),
-                SerializerOptions)
-                ?? throw new JsonException("Collector Runtime state is null.");
+            var state = Deserialize(File.ReadAllBytes(_filePath));
             Validate(state);
             return state;
         }
@@ -65,6 +63,42 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
                 $"Unable to load Collector Runtime state '{_filePath}'.",
                 exception);
         }
+    }
+
+    private static CollectorRuntimeState Deserialize(byte[] bytes)
+    {
+        var root = JsonNode.Parse(bytes) as JsonObject
+                   ?? throw new JsonException("Collector Runtime state must be a JSON object.");
+        if (root["schemaVersion"] is not JsonValue schemaVersionNode ||
+            !schemaVersionNode.TryGetValue<int>(out var schemaVersion))
+            throw new JsonException("Collector Runtime state schemaVersion must be an integer.");
+        if (schemaVersion == 1)
+        {
+            MoveLegacyProperty(root, "helloAttempts", "activationAttemptTombstones");
+            if (root["instances"] is JsonArray instances)
+            {
+                foreach (var instance in instances.OfType<JsonObject>())
+                {
+                    MoveLegacyProperty(instance, "configSchemaVersion", "configVersion");
+                    if (instance["lastKnownGoodPackage"] is JsonObject lastKnownGood)
+                        MoveLegacyProperty(lastKnownGood, "configSchemaVersion", "configVersion");
+                }
+            }
+            root["schemaVersion"] = CurrentSchemaVersion;
+        }
+        return root.Deserialize<CollectorRuntimeState>(SerializerOptions)
+               ?? throw new JsonException("Collector Runtime state is null.");
+    }
+
+    private static void MoveLegacyProperty(JsonObject owner, string legacyName, string currentName)
+    {
+        if (!owner.TryGetPropertyValue(legacyName, out var legacyValue))
+            return;
+        if (owner.ContainsKey(currentName))
+            throw new JsonException(
+                $"Collector Runtime state contains both '{legacyName}' and '{currentName}'.");
+        owner.Remove(legacyName);
+        owner[currentName] = legacyValue?.DeepClone();
     }
 
     public void Save(CollectorRuntimeState state)
@@ -311,7 +345,7 @@ public sealed class CollectorRuntimeStateException(string message, Exception? in
 
 internal sealed class CollectorRuntimeState
 {
-    public int SchemaVersion { get; init; } = 1;
+    public int SchemaVersion { get; init; } = 2;
     public List<CollectorInstanceState> Instances { get; init; } = [];
     public List<FactStreamState> Streams { get; init; } = [];
     public List<CommittedFactState> Facts { get; init; } = [];

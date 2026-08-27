@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Heartbeat.Collection.Hub.Collectors.Runtime;
 
@@ -18,15 +19,28 @@ public sealed class HeadlessFleetOptions
     public static HeadlessFleetOptions Load(string path)
     {
         var fullPath = Path.GetFullPath(path);
-        var options = JsonSerializer.Deserialize<HeadlessFleetOptions>(
-            File.ReadAllBytes(fullPath),
-            new JsonSerializerOptions
+        var rootNode = JsonNode.Parse(File.ReadAllBytes(fullPath)) as JsonObject
+                       ?? throw new JsonException("Headless Hub configuration must be a JSON object.");
+        if (rootNode["instances"] is JsonArray instances)
+        {
+            foreach (var instance in instances.OfType<JsonObject>())
             {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                PropertyNameCaseInsensitive = false,
-                UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
-                Converters = { new JsonStringEnumConverter() }
-            }) ?? throw new JsonException("Headless Hub configuration is null.");
+                if (!instance.TryGetPropertyValue("configSchemaVersion", out var legacyVersion))
+                    continue;
+                if (instance.ContainsKey("configVersion"))
+                    throw new JsonException(
+                        "Headless Hub configuration contains both configSchemaVersion and configVersion.");
+                instance.Remove("configSchemaVersion");
+                instance["configVersion"] = legacyVersion?.DeepClone();
+            }
+        }
+        var options = rootNode.Deserialize<HeadlessFleetOptions>(new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            PropertyNameCaseInsensitive = false,
+            UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+            Converters = { new JsonStringEnumConverter() }
+        }) ?? throw new JsonException("Headless Hub configuration is null.");
         var root = Path.GetDirectoryName(fullPath)!;
         return options.WithResolvedPaths(
             Resolve(root, options.DataDirectory),

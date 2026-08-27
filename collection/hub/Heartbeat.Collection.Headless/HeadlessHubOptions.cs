@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Heartbeat.Collection.Hub.Collectors.Runtime;
 
@@ -23,14 +24,22 @@ public sealed class HeadlessHubOptions
     public static HeadlessHubOptions Load(string path)
     {
         var fullPath = Path.GetFullPath(path);
-        var options = JsonSerializer.Deserialize<HeadlessHubOptions>(
-            File.ReadAllBytes(fullPath),
-            new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                PropertyNameCaseInsensitive = false,
-                UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
-            }) ?? throw new JsonException("Headless Hub configuration is null.");
+        var rootNode = JsonNode.Parse(File.ReadAllBytes(fullPath)) as JsonObject
+                       ?? throw new JsonException("Headless Hub configuration must be a JSON object.");
+        if (rootNode.TryGetPropertyValue("configSchemaVersion", out var legacyVersion))
+        {
+            if (rootNode.ContainsKey("configVersion"))
+                throw new JsonException(
+                    "Headless Hub configuration contains both configSchemaVersion and configVersion.");
+            rootNode.Remove("configSchemaVersion");
+            rootNode["configVersion"] = legacyVersion?.DeepClone();
+        }
+        var options = rootNode.Deserialize<HeadlessHubOptions>(new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            PropertyNameCaseInsensitive = false,
+            UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
+        }) ?? throw new JsonException("Headless Hub configuration is null.");
         var root = Path.GetDirectoryName(fullPath)!;
         return options.WithPaths(
             Resolve(root, options.DataDirectory),

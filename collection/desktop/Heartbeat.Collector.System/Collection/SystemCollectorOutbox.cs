@@ -51,7 +51,11 @@ internal static class SystemCollectorOutbox
     {
         if (!File.Exists(path))
             return [];
-        var envelope = JsonSerializer.Deserialize<OutboxEnvelope<T>>(File.ReadAllText(path), JsonOptions)
+        using var document = JsonDocument.Parse(File.ReadAllText(path));
+        if (document.RootElement.ValueKind == JsonValueKind.Array)
+            return document.RootElement.Deserialize<List<T>>(JsonOptions)
+                   ?? throw new InvalidDataException($"The system Collector legacy {description} cannot be null.");
+        var envelope = document.RootElement.Deserialize<OutboxEnvelope<T>>(JsonOptions)
                        ?? throw new InvalidDataException($"The system Collector {description} cannot be null.");
         if (envelope.SchemaVersion != 1 || envelope.Entries is null)
             throw new InvalidDataException($"The system Collector {description} has an unsupported schemaVersion.");

@@ -59,6 +59,24 @@ public sealed class VRChatOutboxTests : IDisposable
         Assert.True(File.Exists(path));
     }
 
+    [Fact]
+    public void LegacyOutboxWithoutSchemaVersion_RemainsReadable()
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "outbox.json");
+        var start = new DateTimeOffset(2026, 8, 27, 10, 0, 0, TimeSpan.Zero);
+        var outbox = VRChatOutbox.Open(path);
+        outbox.Enqueue(Fact(Guid.CreateVersion7(), 1, start, start, isFinal: false));
+        var legacyJson = File.ReadAllText(path)
+            .Replace("  \"schemaVersion\": 1,\n", string.Empty, StringComparison.Ordinal);
+        File.WriteAllText(path, legacyJson);
+
+        var reopened = VRChatOutbox.Open(path);
+
+        Assert.Single(reopened.PendingFacts);
+        Assert.Empty(reopened.PendingGaps);
+    }
+
     private static VRChatPresenceFact Fact(
         Guid factId,
         long revision,

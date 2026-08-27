@@ -299,10 +299,29 @@ public sealed class HeadlessFleetManager(
     {
         var path = InstanceMapPath;
         if (!File.Exists(path)) return new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
-        var state = JsonSerializer.Deserialize<InstanceMapState>(File.ReadAllText(path), StateJsonOptions)
+        var mappings = DeserializeInstanceMappings(File.ReadAllText(path), out var legacy);
+        if (legacy)
+            SaveInstanceMappings(mappings);
+        return mappings;
+    }
+
+    internal static Dictionary<string, Guid> DeserializeInstanceMappings(string json, out bool legacy)
+    {
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.ValueKind != JsonValueKind.Object)
+            throw new JsonException("Headless Instance mapping must be a JSON object.");
+        if (!document.RootElement.TryGetProperty("schemaVersion", out _))
+        {
+            var legacyMappings = document.RootElement.Deserialize<Dictionary<string, Guid>>(StateJsonOptions)
+                                 ?? throw new JsonException("Headless Instance mapping is empty.");
+            legacy = true;
+            return new Dictionary<string, Guid>(legacyMappings, StringComparer.OrdinalIgnoreCase);
+        }
+        var state = document.RootElement.Deserialize<InstanceMapState>(StateJsonOptions)
                     ?? throw new JsonException("Headless Instance mapping is empty.");
         if (state.SchemaVersion != 1 || state.Mappings is null)
             throw new JsonException($"Unsupported Headless Instance mapping schemaVersion {state.SchemaVersion}.");
+        legacy = false;
         return new Dictionary<string, Guid>(state.Mappings, StringComparer.OrdinalIgnoreCase);
     }
 

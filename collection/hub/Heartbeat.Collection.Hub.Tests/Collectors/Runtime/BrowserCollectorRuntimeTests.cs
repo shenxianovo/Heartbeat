@@ -99,6 +99,21 @@ public sealed class BrowserCollectorRuntimeTests : IDisposable
     }
 
     [Fact]
+    public void Startup_LegacyPackageStateWithoutSchemaVersion_RemainsReadable()
+    {
+        var runtime = CreateRuntime();
+        var installed = runtime.Import(BrowserPackagePath);
+        var statePath = Path.Combine(_root, "browser-package-state.json");
+        var legacyJson = File.ReadAllText(statePath)
+            .Replace("  \"schemaVersion\": 1,\n", string.Empty, StringComparison.Ordinal);
+        File.WriteAllText(statePath, legacyJson);
+
+        var reloaded = CreateRuntime();
+
+        Assert.Equal(installed.PackageContentHash, reloaded.Current.PackageContentHash);
+    }
+
+    [Fact]
     public void Current_IgnoresFinderMetadataCreatedInsideTheInstalledPackage()
     {
         var runtime = CreateRuntime();
