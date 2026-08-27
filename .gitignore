@@ -643,3 +643,5 @@ FodyWeavers.xsd
 
 # VRChat collector session cookies
 .vrchat-cookies.json
+
+.DS_Store

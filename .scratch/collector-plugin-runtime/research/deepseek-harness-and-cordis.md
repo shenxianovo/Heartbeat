@@ -1,5 +1,7 @@
 # DeepSeek Harness 与 Cordis 对采集器运行时的启示
 
+调查日期：2026-08-17
+
 调查基于 DeepSeek Harness 官方仓库提交 `47f943859bef60e4160492346772ded9b24f765a`、Cordis 官方仓库与用户提供的论文。Harness README 明确采用 “everything is a plugin”、以 Cordis 为底层，并链接同一论文：[DeepSeek Harness README](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/README.md)、[Cordis](https://github.com/cordiverse/cordis)、[论文仓库](https://github.com/cordiverse/paper)。
 
 ## 可借鉴

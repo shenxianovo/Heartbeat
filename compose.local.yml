@@ -6,6 +6,7 @@
 #   - backend 跑 Development 环境：额外暴露 /openapi/v1.json（可 regen 前端 client）
 #   - 鉴权走真实 Auth 平台（路径甲）：AuthService__* 从 .env.local 读，指向线上 auth
 #   - 前端映射到 127.0.0.1:8080，真机 Agent 把 ApiBaseUrl 指到这里即可闭环
+#   - 无头 Hub 是默认服务，随本地栈启动并托管 VRChat ManagedProcess Collector
 #
 # 用法见 README「本地端到端验证」。
 # 先 `cp .env.local.example .env.local` 并填入真实 Auth 值。
@@ -61,13 +62,13 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - backend
+      - headless
     ports:
       - "127.0.0.1:8080:8080"
     networks:
       - local
 
   headless:
-    profiles: ["headless"]
     build:
       context: .
       dockerfile: collection/hub/Heartbeat.Collection.Headless/Dockerfile
@@ -77,7 +78,12 @@ services:
       HEARTBEAT_API_BASE_URL: http://backend:8080
       HEARTBEAT_VRCHAT_MOCK: ${HEARTBEAT_VRCHAT_MOCK:-0}
     volumes:
-      - ${HEADLESS_CONFIG_PATH:-./.local/heartbeat-headless.json}:/app/heartbeat-headless.json:ro
+      - type: bind
+        source: ${HEADLESS_CONFIG_PATH:-./.local/heartbeat-headless.json}
+        target: /app/heartbeat-headless.json
+        read_only: true
+        bind:
+          create_host_path: false
       - ./.local/headless-data:/data
     networks:
       - local

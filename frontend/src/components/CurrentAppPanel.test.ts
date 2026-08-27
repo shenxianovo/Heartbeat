@@ -4,12 +4,8 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import CurrentAppPanel from './CurrentAppPanel.vue'
 
-const { submitManagedSubjectAuthorization } = vi.hoisted(() => ({
-  submitManagedSubjectAuthorization: vi.fn(async () => undefined),
-}))
 vi.mock('../api/index', () => ({
   getIconUrl: vi.fn(() => '/icon.svg'),
-  submitManagedSubjectAuthorization,
 }))
 
 function mountPanel(overrides: Record<string, unknown> = {}) {
@@ -26,7 +22,10 @@ function mountPanel(overrides: Record<string, unknown> = {}) {
       ...overrides,
     },
     global: {
-      stubs: { Card: { template: '<section><slot /></section>' } },
+      stubs: {
+        Card: { template: '<section><slot /></section>' },
+        RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
+      },
     },
   })
 }
@@ -114,7 +113,7 @@ describe('CurrentAppPanel', () => {
     expect(wrapper.text()).toContain('MacBook Pro')
   })
 
-  it('shows an owner login action without requiring an online machine', async () => {
+  it('shows only a settings entry for an account that needs login', () => {
     const wrapper = mountPanel({
       managedSubjects: [{
         subjectId: '0198d5df-5df3-70a1-937d-68a7d64623e2',
@@ -136,18 +135,9 @@ describe('CurrentAppPanel', () => {
     })
 
     expect(wrapper.text()).toContain('当前使用')
-    expect(wrapper.text()).toContain('需要登录')
-    await wrapper.get('button').trigger('click')
-    const inputs = wrapper.findAll('input')
-    await inputs[0].setValue('alice')
-    await inputs[1].setValue('secret')
-    await wrapper.get('form').trigger('submit')
-
-    expect(submitManagedSubjectAuthorization).toHaveBeenCalledWith(
-      '0198d5df-5df3-70a1-937d-68a7d64623e3',
-      '0198d5df-5df3-70a1-937d-68a7d64623e4',
-      { username: 'alice', password: 'secret' },
-    )
+    expect(wrapper.text()).toContain('未登录')
+    expect(wrapper.get('a[href="/settings/logins"]').text()).toBe('去设置')
+    expect(wrapper.find('form').exists()).toBe(false)
   })
 
   it('does not show a login action for an authorized account', () => {
@@ -169,5 +159,21 @@ describe('CurrentAppPanel', () => {
 
     expect(wrapper.text()).toContain('Mock World')
     expect(wrapper.findAll('button')).toHaveLength(0)
+  })
+
+  it('does not put an authorized account without activity in current usage', () => {
+    const wrapper = mountPanel({
+      managedSubjects: [{
+        subjectId: '0198d5df-5df3-70a1-937d-68a7d64623e2',
+        subjectName: 'VRChat · Alice',
+        subjectKind: 'Account',
+        phase: 'Ready',
+        authorization: null,
+        currentActivity: null,
+      }],
+    })
+
+    expect(wrapper.text()).not.toContain('当前使用')
+    expect(wrapper.text()).not.toContain('已登录')
   })
 })

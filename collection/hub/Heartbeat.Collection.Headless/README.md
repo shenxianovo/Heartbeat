@@ -66,15 +66,16 @@ dotnet run --project Heartbeat.Collection.Headless.csproj -- ./heartbeat-headles
 ```
 
 For the Compose stacks, copy `heartbeat-headless.compose.example.json` to
-`.local/heartbeat-headless.json`, replace the API key, owner `sub`, and Subject ID, then run:
+`.local/heartbeat-headless.json` and replace the API key, owner `sub`, and Subject ID. The Headless
+Hub is part of the default stack, so start it through the normal local command:
 
 ```bash
-docker compose -f compose.local.yml --profile headless up --build
+./scripts/start-local.sh
 ```
 
-The `headless` profile builds the Hub and bundled VRChat Package, mounts persistent `/data`, and
-joins the frontend network as the nginx upstream named `headless`. Set `HEADLESS_CONFIG_PATH` when
-the configuration lives elsewhere. Production `compose.yml` exposes the same opt-in profile.
+Compose builds the Hub and bundled VRChat Package, mounts persistent `/data`, and joins the frontend
+network as the nginx upstream named `headless`. Set `HEADLESS_CONFIG_PATH` when the configuration
+lives elsewhere. Production `compose.yml` starts the published Headless image on the same main path.
 
 For local ingest verification, `HEARTBEAT_API_BASE_URL` can override the Analytics endpoint.
 Set `HEARTBEAT_VRCHAT_MOCK=1` for the offline flow: username `test-user`, password

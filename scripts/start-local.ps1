@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-Starts the local end-to-end stack (Postgres + backend + frontend) from local source.
+Starts the local end-to-end stack (Postgres + backend + frontend + headless Hub) from local source.
 
 .DESCRIPTION
 Builds and starts compose.local.yml. The backend auto-migrates the database on startup,
@@ -58,6 +58,11 @@ for ($attempt = 1; $attempt -le 60; $attempt++) {
 }
 if (-not $ready) {
     throw 'http://localhost:8080 did not become ready within 60 seconds. Check: docker compose -f compose.local.yml --env-file .env.local logs'
+}
+
+$runningServices = @(& docker @composeArguments ps --status running --services headless)
+if ($LASTEXITCODE -ne 0 -or $runningServices -notcontains 'headless') {
+    throw 'The headless Hub did not remain running. Check: docker compose -f compose.local.yml --env-file .env.local logs headless'
 }
 
 Write-Host "Local stack ready: http://localhost:8080"

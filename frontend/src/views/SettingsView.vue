@@ -65,6 +65,18 @@ async function toggleVisibility() {
 
       <section class="row">
         <div class="row-text">
+          <div class="row-title">登录管理</div>
+          <div class="row-desc">
+            登录 VRChat 等由无头 Hub 托管的账号，并查看已登录但暂无状态的账号。
+          </div>
+        </div>
+        <Button variant="glassPrimary" size="sm" as-child>
+          <router-link to="/settings/logins">管理</router-link>
+        </Button>
+      </section>
+
+      <section class="row">
+        <div class="row-text">
           <div class="row-title">知识管理</div>
           <div class="row-desc">
             查看和修正 Strand 树、指纹、片段事实与复现探针。

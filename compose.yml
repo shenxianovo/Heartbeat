@@ -43,23 +43,26 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
+      - headless
     ports:
       - "127.0.0.1:8081:8080"
     networks:
       - backend
 
   headless:
-    profiles: ["headless"]
-    build:
-      context: .
-      dockerfile: collection/hub/Heartbeat.Collection.Headless/Dockerfile
+    image: ghcr.io/shenxianovo/heartbeat-headless:latest
     restart: unless-stopped
     depends_on:
       - backend
     environment:
       HEARTBEAT_API_BASE_URL: http://backend:8080
     volumes:
-      - ${HEADLESS_CONFIG_PATH:-./.local/heartbeat-headless.json}:/app/heartbeat-headless.json:ro
+      - type: bind
+        source: ${HEADLESS_CONFIG_PATH:-./.local/heartbeat-headless.json}
+        target: /app/heartbeat-headless.json
+        read_only: true
+        bind:
+          create_host_path: false
       - headless-data:/data
     networks:
       - backend

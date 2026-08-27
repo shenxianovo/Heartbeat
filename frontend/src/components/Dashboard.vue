@@ -218,7 +218,6 @@ onUnmounted(() => {
             :presences="onlinePresences"
             :isAllDevices="isAllDevices"
             :managedSubjects="managedSubjects"
-            @authorizationSubmitted="refreshManagedSubjects"
           />
 
           <!-- owner 可生成/重生成；公开访客只读已有缓存，不触发 LLM。 -->

@@ -3,6 +3,8 @@
 调查日期：2026-08-22  
 范围：ActivityWatch 官方文档，以及 `ActivityWatch` GitHub 组织下的 `aw-server-rust`、`aw-client`、`aw-core`、`aw-qt`、`activitywatch` 源码。本文只把 ActivityWatch 当作设计参照，不把它的实现细节自动转化成 Heartbeat 需求。
 
+> 本文写于 ADR-041 定名之前。文中的 `Sample` 对应现在的 **Measurement**；这是当时的调查快照，不随后续决策更新。
+
 ## 结论先行
 
 ActivityWatch 最值得 Heartbeat 借鉴的不是一套“插件运行时”，而是三件较小且久经使用的设计：

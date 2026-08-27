@@ -6,7 +6,7 @@ usage() {
     cat <<'EOF'
 Usage: ./scripts/start-local.sh [options]
 
-Build and start the local end-to-end stack (Postgres + backend + frontend).
+Build and start the local end-to-end stack (Postgres + backend + frontend + headless Hub).
 
 Options:
   --compose-file PATH  Compose file (default: compose.local.yml)
@@ -76,6 +76,12 @@ done
 if [[ "$ready" != true ]]; then
     echo 'http://localhost:8080 did not become ready within 60 seconds.' >&2
     echo "Check: docker compose --file '$compose_file' --env-file '$env_file' logs" >&2
+    exit 1
+fi
+
+if ! "${compose[@]}" ps --status running --services headless | grep -qx 'headless'; then
+    echo 'The headless Hub did not remain running.' >&2
+    echo "Check: docker compose --file '$compose_file' --env-file '$env_file' logs headless" >&2
     exit 1
 fi
 

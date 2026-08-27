@@ -3,6 +3,8 @@
 调查日期：2026-08-17  
 范围：Prometheus、OpenTelemetry、Grafana、Loki、Tempo、Mimir 的官方规范、官方文档与一手源码。本文只提炼可供 Heartbeat 设计参考的事实，不把这些系统的实现约束直接当作 Heartbeat 需求。
 
+> 本文写于 ADR-041 定名之前。文中的 `Sample` 对应现在的 **Measurement**；这是当时的调查快照，不随后续决策更新。
+
 ## 结论
 
 `Segment / Event / Sample` 是合理的 Heartbeat 顶层时间事实分类，但不宜表述成业界已经标准化的“三种核心事实形状”。可观测性领域更常说 traces / logs / metrics 三种信号；它们的数据形状大致映射为：

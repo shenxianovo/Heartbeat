@@ -35,8 +35,11 @@ macOS/Linux：
 ./scripts/start-local.sh
 ```
 
-脚本从本地源码构建服务，并等待 <http://localhost:8080> 可访问。后端启动时自动应用
-数据库迁移；数据保存在 `.local/postgres-data`，普通的 `down/up` 不会清空它。
+脚本从本地源码构建 Postgres、后端、前端与无头 Hub，并等待 <http://localhost:8080>
+可访问。无头 Hub 需要 `.local/heartbeat-headless.json`；可以从
+`collection/hub/Heartbeat.Collection.Headless/heartbeat-headless.compose.example.json` 复制并
+填入 API key、owner `sub` 与 Subject ID。后端启动时自动应用数据库迁移；数据保存在
+`.local/postgres-data`，普通的 `down/up` 不会清空它。
 
 完成标准：浏览器打开 <http://localhost:8080> 后能看到 Dashboard。
 

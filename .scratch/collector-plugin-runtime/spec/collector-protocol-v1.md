@@ -2,9 +2,9 @@
 
 Status: Draft 0.2
 
-本规范定义 Collector Activation 与 Hub 之间的统一语义协议。它是 ADR-040 的可实现草案，不定义 Package Registry、安全认证、Analytics ingest 或具体传输帧格式。
+本规范定义 Collector Activation 与 Hub 之间的统一语义协议。它是 [ADR-040](../../../docs/adr/040-collector-runtime-and-protocol-foundation.md) 的可实现草案，不定义 Package Registry、安全认证、Analytics ingest 或具体传输帧格式。Fact 的信封、时间语义与收敛规则见 [Fact Model v1](./fact-model-v1.md)；产品边界与尚未裁决的问题见 [PRD](../PRD.md)。
 
-本文使用“必须 / 不得 / 应 / 可以”表达规范强度。
+本文使用“必须 / 不得 / 应 / 可以”表达规范强度。仍待裁决、会改动本规范的问题集中在 [§15 未决问题](#15-未决问题)。
 
 ## 1. 目标与边界
 
@@ -81,7 +81,7 @@ Collector Instance 在创建时永久绑定一个 `packageId` 和一个 `subject
 - UUID 使用带连字符的小写 canonical 形式；
 - 时间使用带 `Z` 的 RFC 3339 UTC；
 - 标准信封和标准消息字段缺席时省略，不用 `null` 代替缺席；`config.value`、Fact `payload` 与 `error.details` 是否允许 null 由各自 schema 决定；
-- 不允许重复对象键、`NaN`、`Infinity` 或超出 JSON number 精确表达范围的整数；
+- 不允许重复对象键、`NaN`、`Infinity`，也不允许绝对值超过 `2^53 - 1` 的整数（IEEE 754 双精度可精确表示的范围）；需要更大整数时用 string 承载；
 - 标准信封和标准消息 body 中，未协商 capability 引入的未知字段必须拒绝，防止拼写错误被静默吞掉；`config.value`、Fact `payload` 与 `error.details` 只按各自 schema 判断未知字段。
 
 逻辑消息信封：
@@ -221,6 +221,8 @@ Hub 选择协议与能力并分配 ActivationId。Bootstrap response 不携带�
 }
 ```
 
+`hubTime` 只供 Collector 估计与 Hub 之间的时钟偏差并写进诊断，不得用它改写任何事实时间或 `observedAt`。
+
 Collector 成功验证并应用 snapshot 后返回 `activation.initialized { appliedSpecRevision }`；无法应用时返回 `activation.initializeRejected { error }`。Instance 和 Subject 是本次 Activation 的稳定 context，不属于可动态修改的 Spec。Disabled Instance 不会收到 initialize，而是在 bootstrap 阶段被拒绝或对现有 Activation 执行 drain。
 
 ### 5.4 `streams.open`：Collector → Hub
@@ -290,6 +292,10 @@ Collector 只能实例化 Package Manifest 中的 Output Template。一个模板
 v1 固定采用 stop-first writer 语义：Runtime 必须先停止旧 Activation 并释放全部 writer lease，之后才允许 replacement Activation 开始 initialize/open；不得预建两个同时存活的候选再抢占 lease。旧 Activation 停止后的迟到发布以 `stream_writer_conflict` 拒绝。更新失败时重新启动旧 Package 也是一次新的 Activation，并复用原 StreamId。
 
 `streams.open` 按请求原子处理：Hub 必须先验证全部 binding；任一个 binding 不合法时返回 `streams.rejected`，且不得创建或授予任何 Stream writer。成功时 `streams.opened.streams` 必须与请求 bindings 一一对应。
+
+请求中的 `specRevision` 声明本次绑定依据的 Desired State 版本。它与 Hub 当前 SpecRevision 不一致时，Hub 必须以 `spec_revision_stale` 原子拒绝整个请求，由 Collector 重新走一轮 `activation.initialize`；Hub 不得按旧 Spec 部分开流。这是 `spec_revision_stale` 在 v1 中唯一的使用位置。
+
+v1 允许在同一 Activation 内多次调用 `streams.open`：Ready 之前必须一次性打开当前 SpecRevision 要求的全部 Stream，Ready 之后只能追加新的 binding，不能重开已持有的 Stream。v1 不定义 `streams.close`；writer lease 随 Activation 结束释放。
 
 ### 5.6 `activation.ready`：Collector → Hub
 
@@ -435,7 +441,9 @@ Hub 对每个输入 Fact 返回确定结果：
 }
 ```
 
-Collector 不得超过 `maxFactsPerBatch`、`maxBatchBytes` 与 `maxInFlightBatches`。Hub 可以通过 `retry` 和 `retryAfterMs` 降低发送速率，不需要把传输断开伪装成背压。
+Collector 不得超过 `maxFactsPerBatch`、`maxBatchBytes` 与 `maxInFlightBatches`。`maxBatchBytes` 按该 `facts.publish` 逻辑消息 canonical JSON 的 UTF-8 字节数计算，与 Transport Binding 的帧开销、压缩和 TLS 无关；InProcess Binding 没有真实序列化时可以把它当作建议值，但仍必须遵守 `maxFactsPerBatch` 与 `maxInFlightBatches`。Hub 可以通过 `retry` 和 `retryAfterMs` 降低发送速率，不需要把传输断开伪装成背压。
+
+同一批次内不得出现同一 `(streamId, factId)` 的两条 Fact，无论 Revision 是否相同；需要连续提交多个 Revision 时拆成多个批次，让 ACK 结果对每个 Revision 都是明确的。违反时 Hub 必须在处理任何 Fact 之前返回 `facts.rejected`。
 
 ## 8. 诊断与停止
 
@@ -480,11 +488,13 @@ Collector 可以发送不要求响应的健康通知，body 固定为：
 }
 ```
 
+`reason` 是 Collector 定义的稳定 snake_case 代码，与 `error.code` 一样只供程序判断，不得放可读句子；`estimatedFactsLost` 可选，估算不出来时省略，不得填 `0` 冒充“没丢”。同一缺口重发时必须保持 `streamId` 与 `factTime` 不变，Hub 按这两项加 `reason` 幂等收敛。
+
 Hub 以 `stream.gapAck` 确认已经持久接受该诊断；未 ACK 时 Collector 可以重试同一 messageId。Gap 是协议诊断，不是第四种 Fact，也不能伪造成零值 Measurement 或空 Segment。
 
 ### 8.3 `activation.drain` / `activation.drained`
 
-Hub 请求停止时发送 `activation.drain { deadline }`。Collector 接受合法请求后立即停止产生新 Fact，尽力提交已有 outbox，并返回 `activation.drained { appliedSpecRevision, pendingFacts, pendingGaps }`；三项均必须存在，计数为非负整数。合法 drain 不可拒绝；body 非法时返回 `activation.drainRejected { error }`。deadline 到期后 Runtime 可以终止 ManagedProcess；ExternalHost 只能被标记为 Stopped/Waiting，不能虚假声称已杀死外部宿主。
+Hub 请求停止时发送 `activation.drain { deadline }`，`deadline` 是带 `Z` 的 RFC 3339 绝对时刻而不是相对毫秒；Collector 与 Hub 时钟不同步时以 `initialize` 里的 `hubTime` 校正。Collector 接受合法请求后立即停止产生新 Fact，尽力提交已有 outbox，并返回 `activation.drained { appliedSpecRevision, pendingFacts, pendingGaps }`；三项均必须存在，计数为非负整数。合法 drain 不可拒绝；body 非法时返回 `activation.drainRejected { error }`。deadline 到期后 Runtime 可以终止 ManagedProcess；ExternalHost 只能被标记为 Stopped/Waiting，不能虚假声称已杀死外部宿主。
 
 ## 9. 错误模型
 
@@ -641,6 +651,8 @@ Artifact 的 `entrypoint` 使用同样的安全相对路径规则。Runtime 必�
 
 每个 Binding 必须通过同一组 transcript contract tests。测试输入是逻辑消息序列，断言状态转换、响应码、ACK 和错误码，而不是具体 HTTP route 或 .NET interface。
 
+> **未决**：ExternalHost 没有连接概念，v1 也没有给出会话超时或作废条件，浏览器关掉之后那个 Activation 会一直停在 Ready。这同时决定了 ADR-021 的 Active 判定还能不能成立，见 [§15 未决问题](#15-未决问题)。
+
 ## 12. 现有协议迁移
 
 当前接口：
@@ -678,6 +690,15 @@ Artifact 的 `entrypoint` 使用同样的安全相对路径规则。Runtime 必�
 12. Desired State 修改不会被 Activation 的失败或旧 SpecRevision 覆盖。
 13. 旧 Activation 必须先停止并释放 writer；replacement 才能 initialize/open 并复用 StreamId，旧 Activation 的迟到发布被拒绝。
 14. ExternalHost 断连改变 Runtime State，但不伪造“浏览器已停止”或“制品已卸载”。
+15. 必需 `facts.*` 或 `diagnostics.stream-gap` 能力无交集时 Hello 被拒绝；可选 `config.dynamic` 无交集时 Activation 仍然建立并按退化路径工作。
+16. `streams.open` 携带过期 `specRevision` 时被 `spec_revision_stale` 原子拒绝，不部分开流。
+17. 标准信封或标准 body 出现未协商的未知字段时被拒绝，不静默忽略。
+18. Dimension value 的不同 Unicode 规范形式在 NFC 后落到同一个 StreamId。
+19. 同一批次内出现同一 `(streamId, factId)` 的两条 Fact 时整批被拒。
+20. `activation.drain` 在 deadline 前完成时返回真实的 `pendingFacts / pendingGaps`；ExternalHost 不被谎报为已终止。
+21. 同一 Stream Gap 重发得到幂等的 `stream.gapAck`，不产生第二条缺口记录。
+22. Package/Artifact/Fact Schema 任一精确 hash、Artifact size、schema identity 或安全相对路径不匹配时，在创建 Activation 前拒绝。
+23. Hub 重启后 durable inbox 仍能对同一 Fact 返回 duplicate/superseded，并重放尚未进入现有 Segment 缓冲的投影。
 
 ## 14. 代表场景走查
 
@@ -690,3 +711,15 @@ Artifact 的 `entrypoint` 使用同样的安全相对路径规则。Runtime 必�
 | 微信步数 | 一个微信 Collector Instance / Person | steps cumulative monotonic Sum | ManagedProcess |
 
 同一个无头 Hub 可以同时承载 VRChat Account、心率 Person 与微信步数 Person 的多个 Instance；它们共享协议和运行时，但不共享 Subject、Stream 或 Collector 依赖。
+
+## 15. 未决问题
+
+以下问题会改动本规范本身，实现前应先裁决；完整背景与冲突双方见 [PRD 草案暴露的矛盾](../PRD.md#草案暴露的矛盾待裁决)。
+
+| # | 问题 | 影响面 |
+| --- | --- | --- |
+| 1 | ADR-030 Observation Depth 声明在新模型里的落点（§12） | 阻塞：Matcher 与知识层的取值槽位已随 typed payload 消失 |
+| 2 | Manifest 的完整形状归属（§10 自称“最小面”，`requires.agent`、磁盘需求、权限占位无处安放） | 阻塞：Runtime 无法只按本节实现安装 |
+| 3 | ExternalHost Binding 的会话终止条件（§11）：没有连接概念时 Activation 靠什么从 Ready 结束 | 高：浏览器关闭后 Activation 永远停在 Ready |
+| 4 | ADR-021 的 Active 读模型：`flushPeriodMs` 改由 Hub 下发后，新鲜度窗口从哪里派生；Current Activity 与 presence 通道不属于三类 Fact，本规范无归宿 | 高：现有桌面 UI 读表面依赖它 |
+| 5 | `Collector Capability`（用户可见的观测深度）与 §3.2 `capability`（wire 能力协商）撞名 | 中：实现期两者会同时出现 |

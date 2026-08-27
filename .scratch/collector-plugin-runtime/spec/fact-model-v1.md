@@ -2,9 +2,9 @@
 
 Status: Draft 0.2
 
-本规范定义 Collector Protocol v1 中的 Fact Stream、公共 Fact 信封，以及 Segment、Event、Measurement 三种事实家族。它是 ADR-041 的可实现草案，不规定 Analytics 的物理存储表。
+本规范定义 Collector Protocol v1 中的 Fact Stream、公共 Fact 信封，以及 Segment、Event、Measurement 三种事实家族。它是 [ADR-041](../../../docs/adr/041-unified-observation-fact-model.md) 的可实现草案，不规定 Analytics 的物理存储表。承载这些 Fact 的消息、握手与 ACK 语义见 [Collector Protocol v1](./collector-protocol-v1.md)；产品边界见 [PRD](../PRD.md)。
 
-本文使用“必须 / 不得 / 应 / 可以”表达规范强度。
+本文使用“必须 / 不得 / 应 / 可以”表达规范强度。仍待裁决、会改动本规范的问题集中在 [§12 未决问题](#12-未决问题)。
 
 ## 1. 核心不变量
 
@@ -80,7 +80,9 @@ ActivationId、PackageVersion、SchemaRevision、显示名称和高基数 payloa
 
 ### 3.2 Identifying dimensions
 
-Dimensions 的 key 必须由 Output Template 预先声明，值在打开 Stream 时绑定。v1 的值只允许非 null JSON string：Hub 先做 Unicode NFC 规范化，再按 key ordinal 排序并以规范化结果计算 Stream identity。它们必须是稳定、低基数、确实影响序列身份的属性；number、boolean、array 与 object 一律拒绝。
+Dimensions 的 key 必须由 Output Template 预先声明，值在打开 Stream 时绑定。v1 的值只允许非 null JSON string：Hub 先做 Unicode NFC 规范化，再按 key ordinal 排序并以规范化结果计算 Stream identity。它们必须是稳定、低基数、确实影响序列身份的属性；number、boolean、array 与 object 一律拒绝。Dimension key 必须匹配 `^[a-z][a-zA-Z0-9]*$`，由 Output Template 固定，不做 NFC 规范化。
+
+> **未决**：“低基数”目前只是道德约束。v1 没有给出 value 长度上限、单 Stream dimension 数量上限、单 Output Template 允许的活跃 Stream 数上限，也没有对应的拒绝码，Hub 无从拦截基数爆炸——而这恰好是 research 里点名的经典失败模式。见 [PRD 草案暴露的矛盾第 8 条](../PRD.md#草案暴露的矛盾待裁决)。
 
 不得把 URL、窗口标题、世界实例 ID、文件路径等高基数事实内容放进 dimensions；这些内容属于 typed payload。一个动态值不应仅因“希望查询”就升级为 Stream identity。
 
@@ -334,7 +336,7 @@ Measurement 表示数值状态或时间窗中的数值总体。Measurement 的�
 | Sum | `status=value`, `value` | cumulative 时必须有 `reset` |
 | Histogram | `status=value`, `count`, `bucketCounts` | cumulative 时必须有 `reset`；`sum/min/max` 可选 |
 
-`status=missing` 时不得同时携带 value、count、bucketCounts、sum、min、max 或 reset。
+`temporality=delta` 时不得携带 `reset`：delta 值本身已经以窗口为界，重启只体现为窗口不连续。`status=missing` 时不得同时携带 value、count、bucketCounts、sum、min、max 或 reset。
 
 ### 7.2 Gauge
 
@@ -487,7 +489,7 @@ Hub 对同一 `StreamId + FactId` 按以下顺序处理：
 3. 已有相同 Revision：canonical 内容相同则 duplicate；不同则 `fact_revision_conflict`。
 4. 已有更高 Revision：返回 superseded，不回滚。
 
-Canonical 内容至少覆盖 `schemaRevision`、`recordState`、`time` 与 `payload`；ObservedAt、ingestMetadata 和传输字段不参与内容相等判断。
+Canonical 内容恰好覆盖 `schemaRevision`、`recordState`、`time` 与 `payload` 四项，不多不少；ObservedAt、ingestMetadata 和传输字段不参与内容相等判断。这里必须是精确集合而不是下界，否则两端对“内容相等”的判断会分叉，`duplicate` 与 `fact_revision_conflict` 的边界随实现漂移。
 
 内容相等在 schema 验证后按 JSON 语义比较：object key 顺序不参与相等，array 顺序参与；schema 为 number 时 `78`、`78.0` 与 `7.8e1` 相等，`-0` 与 `0` 相等；string 与 number 永不相等，字符串按 Unicode code point 原值比较。Dimension value 是唯一额外执行 NFC 规范化的字符串。标准信封字段严格拒绝未知字段；config、payload 与 error details 的未知字段/null 只由各自 schema 决定。
 
@@ -504,8 +506,11 @@ Canonical 内容至少覆盖 `schemaRevision`、`recordState`、`time` 与 `payl
 | `InputEvent.Id/Timestamp` | Event FactId/occurredAt | 可直接映射 |
 | Hub 按 Id 后到覆盖 | Revision 收敛 | legacy adapter 暂留旧规则，新 Collector 必须发送 Revision |
 | Device | Machine Subject | Account/Person 首次落地时另做 schema 迁移 |
+| `AppHint` → `AppIdentity` 解析 | 未定 | 现在由 hub 平台 adapter 在进入严格缓存前改写采集器内容（ADR-034），而 v1 只允许 Hub 附加 ReceivedAt；富化要么退到 legacy adapter 边界内，要么变成独立派生层 |
+| Observation Depth 声明（ADR-030） | 未定 | 声明谓词的 `from` 槽位（`appName`、`title`、`identityKey`、`attributes.<path>`）在 typed payload 下全部消失，Matcher（ADR-029/031）直接建在这些槽位上 |
+| Current Activity、presence keepalive（ADR-021） | 不是 Fact | 属于 hub 读模型，v1 三类事实里没有它的位置，需要单独说明它留在协议之外 |
 
-旧 Segment 没有 Revision、StreamId 和 SubjectKind，无法仅靠无状态字段重命名成为完整 v1 Fact。迁移适配器必须明确标记 legacy 来源，不得假装它已经满足新收敛规则。
+旧 Segment 没有 Revision、StreamId 和 SubjectKind，无法仅靠无状态字段重命名成为完整 v1 Fact。迁移适配器必须明确标记 legacy 来源，不得假装它已经满足新收敛规则。表中标“未定”的三行是 v1 的真实缺口，不是留给实现自由发挥的空间。
 
 ## 11. v1 校验矩阵
 
@@ -525,3 +530,23 @@ Canonical 内容至少覆盖 `schemaRevision`、`recordState`、`time` 与 `payl
 | 较低 Revision 迟到 | superseded |
 | Package 更新但 Stream identity 未变 | 复用 StreamId |
 | Subject、SchemaMajor、Measurement descriptor 或 dimensions 改变 | 新建 Stream |
+| Event 首次提交 Revision 大于 1 | 拒绝 |
+| Segment 或 Measurement 首次提交 Revision 大于 1（本地快照压缩） | 接受 |
+| Schema evolution 不是 `mutableEvent` 的 Event 提交更高 present Revision | 拒绝 |
+| Schema evolution 未声明 `allowRetraction: true` 的 Event 或 Measurement 提交 retracted | 拒绝 |
+| 已 retracted 的 FactId 用更高 Revision 恢复为 present | 拒绝 |
+| delta Sum 携带 `reset` | 拒绝 |
+| Dimension value 仅 Unicode 规范形式不同 | NFC 后落到同一 Stream |
+| Dimension key 不匹配 `^[a-z][a-zA-Z0-9]*$` 或未在 Output Template 声明 | 拒绝 |
+
+## 12. 未决问题
+
+以下问题会改动本规范本身，实现前应先裁决；完整背景见 [PRD 草案暴露的矛盾](../PRD.md#草案暴露的矛盾待裁决)。
+
+| # | 问题 | 影响面 |
+| --- | --- | --- |
+| 1 | AppHint → AppIdentity 富化与“Hub 只附加 ReceivedAt”的冲突（§10） | 阻塞：现有 system Collector 迁移路径 |
+| 2 | Observation Depth 声明在 typed payload 下的取值来源（§10） | 阻塞：Matcher 与知识层 |
+| 3 | identifying dimensions 的基数与长度约束及对应拒绝码（§3.2） | 高：无拦截点 |
+| 4 | 数值相等的比较精度：`78 == 78.0` 已定，但未说明按 IEEE 754 双精度还是十进制字面量比较（§9） | 中：两端 canonical 判断可能分叉 |
+| 5 | Retraction 后 `time` 与 Segment `isFinal` 是否仍受原 FactKind 约束（§4.1） | 低 |
