@@ -1,11 +1,13 @@
 using Heartbeat.Collection.Headless;
-using Microsoft.Extensions.Hosting;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 using Serilog;
+using System.Text.Json.Serialization;
 
 var configPath = args.Length > 0
     ? args[0]
     : Path.Combine(AppContext.BaseDirectory, "heartbeat-headless.json");
-var options = HeadlessHubOptions.Load(configPath);
+var options = HeadlessFleetOptions.Load(configPath);
 options.Validate();
 
 Log.Logger = new LoggerConfiguration()
@@ -15,12 +17,69 @@ Log.Logger = new LoggerConfiguration()
 
 try
 {
-    var builder = Host.CreateApplicationBuilder(args);
-    builder.Services.AddHeartbeatHeadlessHub(options);
-    using var host = builder.Build();
-    await host.RunAsync();
+    var builder = WebApplication.CreateBuilder(args);
+    builder.WebHost.UseUrls(options.ListenUrl);
+    builder.Services.AddSingleton(options);
+    builder.Services.AddSingleton<HeadlessFleetManager>();
+    builder.Services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<HeadlessFleetManager>());
+    builder.Services
+        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(authentication =>
+        {
+            authentication.Authority = options.Management.Authority;
+            authentication.RequireHttpsMetadata = options.Management.RequireHttpsMetadata;
+            authentication.MapInboundClaims = false;
+            authentication.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidateAudience = !string.IsNullOrWhiteSpace(options.Management.Audience),
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+                ValidIssuer = options.Management.Issuer,
+                ValidAudience = options.Management.Audience,
+                ValidTypes = ["at+jwt"],
+                NameClaimType = "preferred_username"
+            };
+            authentication.Events = new JwtBearerEvents
+            {
+                OnTokenValidated = context =>
+                {
+                    var clientId = context.Principal?.FindFirst("client_id")?.Value;
+                    var subject = context.Principal?.FindFirst("sub")?.Value;
+                    if (clientId != options.Management.ClientId || subject != options.Management.OwnerSubject)
+                        context.Fail("Token does not belong to this Hub owner and client.");
+                    return Task.CompletedTask;
+                }
+            };
+        });
+    builder.Services.AddAuthorization();
+    builder.Services.ConfigureHttpJsonOptions(json =>
+        json.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
+    await using var app = builder.Build();
+    app.UseAuthentication();
+    app.UseAuthorization();
+
+    var management = app.MapGroup("/hub/api/v1").RequireAuthorization();
+    management.MapGet("/subjects", (HeadlessFleetManager fleet) => Results.Ok(fleet.Snapshot()));
+    management.MapPost(
+        "/collector-instances/{collectorInstanceId:guid}/authorization/{interactionId:guid}",
+        async (Guid collectorInstanceId, Guid interactionId, AuthorizationResponse request, HeadlessFleetManager fleet, CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                await fleet.SubmitAuthorizationAsync(collectorInstanceId, interactionId, request.Values, cancellationToken);
+                return Results.Accepted();
+            }
+            catch (KeyNotFoundException) { return Results.NotFound(); }
+            catch (InvalidOperationException exception) { return Results.Conflict(new { error = exception.Message }); }
+        });
+
+    await app.RunAsync();
 }
 finally
 {
     await Log.CloseAndFlushAsync();
 }
+
+public sealed record AuthorizationResponse(IReadOnlyDictionary<string, string> Values);

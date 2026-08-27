@@ -18,6 +18,8 @@
     <ProjectReference Include="..\Heartbeat.Collection.Hub\Heartbeat.Collection.Hub.csproj" />
     <ProjectReference Include="..\..\collectors\Heartbeat.Collector.Reference.ManagedProcess\Heartbeat.Collector.Reference.ManagedProcess.csproj"
                       ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\collectors\Heartbeat.Collector.VRChat\Heartbeat.Collector.VRChat.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <Target Name="CopyManagedReferenceCollector" AfterTargets="Build">
@@ -26,6 +28,15 @@
     </ItemGroup>
     <Copy SourceFiles="@(ManagedReferenceCollectorFiles)"
           DestinationFiles="@(ManagedReferenceCollectorFiles->'$(OutDir)Fixtures/ManagedReferenceCollector/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyManagedVRChatCollector" AfterTargets="Build">
+    <ItemGroup>
+      <ManagedVRChatCollectorFiles Include="..\..\collectors\Heartbeat.Collector.VRChat\bin\$(Configuration)\net10.0\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ManagedVRChatCollectorFiles)"
+          DestinationFiles="@(ManagedVRChatCollectorFiles->'$(OutDir)Fixtures/ManagedVRChatCollector/%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
   </Target>
 

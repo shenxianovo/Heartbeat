@@ -15,6 +15,11 @@ frontend/dist/
 
 # Desktop client
 desktop/
+collection/desktop/
+
+# Local runtime data and planning scratch files
+.local/
+.scratch/
 
 # Git / IDE
 .git/

@@ -43,6 +43,8 @@ internal sealed class ReferenceManagedProcessCollector(TextReader input, TextWri
         var capabilities = new Dictionary<string, int[]>
         {
             ["facts.segment"] = [1],
+            ["auth.interactive"] = [1],
+            ["secrets.instance"] = [1],
             ["diagnostics.stream-gap"] = [1]
         };
         if (behavior == "extra_capability")
@@ -91,6 +93,15 @@ internal sealed class ReferenceManagedProcessCollector(TextReader input, TextWri
         if (subject.GetProperty("kind").GetString() != "account")
             throw new InvalidOperationException("Reference ManagedProcess Collector requires an Account Subject.");
         _specRevision = initializeBody.GetProperty("spec").GetProperty("revision").GetInt64();
+        if (behavior is "authorization_required" or "authorization_then_hang")
+            await AuthorizeAsync();
+        if (behavior == "authorization_then_hang")
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan);
+            return;
+        }
+        if (behavior == "secret_roundtrip")
+            await ExerciseSecretStoreAsync();
         await WriteAsync(new
         {
             protocol = "heartbeat.collector/1",
@@ -174,6 +185,76 @@ internal sealed class ReferenceManagedProcessCollector(TextReader input, TextWri
             });
             return;
         }
+    }
+
+    private async Task AuthorizeAsync()
+    {
+        var interactionId = Guid.CreateVersion7();
+        await WriteAsync(new
+        {
+            protocol = "heartbeat.collector/1",
+            type = "auth.challenge",
+            messageId = Guid.CreateVersion7(),
+            activationId = _activationId,
+            body = new
+            {
+                interactionId,
+                kind = "credentials",
+                title = "Reference account login",
+                message = "Authorization is required.",
+                fields = new object[]
+                {
+                    new { name = "username", label = "Username", isSecret = false, inputMode = "text" },
+                    new { name = "password", label = "Password", isSecret = true, inputMode = "password" }
+                }
+            }
+        });
+        using var response = await ReadAsync();
+        Require(response.RootElement, "auth.response", activationId: _activationId);
+        var body = response.RootElement.GetProperty("body");
+        if (body.GetProperty("interactionId").GetGuid() != interactionId ||
+            body.GetProperty("values").GetProperty("username").GetString() != "collector-user" ||
+            body.GetProperty("values").GetProperty("password").GetString() != "collector-password")
+            throw new InvalidOperationException("Reference authorization response was invalid.");
+        await WriteAsync(new
+        {
+            protocol = "heartbeat.collector/1",
+            type = "auth.completed",
+            messageId = Guid.CreateVersion7(),
+            activationId = _activationId,
+            body = new { interactionId }
+        });
+    }
+
+    private async Task ExerciseSecretStoreAsync()
+    {
+        var writeMessageId = Guid.CreateVersion7();
+        await WriteAsync(new
+        {
+            protocol = "heartbeat.collector/1",
+            type = "secret.write",
+            messageId = writeMessageId,
+            activationId = _activationId,
+            body = new { key = "session", value = "reference-secret-value" }
+        });
+        using (var stored = await ReadAsync())
+            Require(stored.RootElement, "secret.stored", writeMessageId, _activationId);
+
+        var readMessageId = Guid.CreateVersion7();
+        await WriteAsync(new
+        {
+            protocol = "heartbeat.collector/1",
+            type = "secret.read",
+            messageId = readMessageId,
+            activationId = _activationId,
+            body = new { key = "session" }
+        });
+        using var value = await ReadAsync();
+        Require(value.RootElement, "secret.value", readMessageId, _activationId);
+        var body = value.RootElement.GetProperty("body");
+        if (!body.GetProperty("found").GetBoolean() ||
+            body.GetProperty("value").GetString() != "reference-secret-value")
+            throw new InvalidOperationException("Reference Collector Secret round-trip failed.");
     }
 
     private async Task PublishReferenceFactAsync()

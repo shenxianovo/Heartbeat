@@ -78,7 +78,13 @@ public sealed partial class CollectorRuntime
                     _options.MaxFactsPerBatch,
                     _options.MaxBatchBytes,
                     _options.MaxInFlightBatches),
-                SelectedCapabilities(package, support!));
+                new CollectorResources(null),
+                SelectedCapabilities(package, support!)
+                    .Where(capability => capability.Key != "resources.instance-data")
+                    .ToImmutableDictionary(
+                        capability => capability.Key,
+                        capability => capability.Value,
+                        StringComparer.Ordinal));
         }
     }
 

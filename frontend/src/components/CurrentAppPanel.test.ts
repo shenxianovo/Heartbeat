@@ -4,7 +4,13 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import CurrentAppPanel from './CurrentAppPanel.vue'
 
-vi.mock('../api/index', () => ({ getIconUrl: vi.fn(() => '/icon.svg') }))
+const { submitManagedSubjectAuthorization } = vi.hoisted(() => ({
+  submitManagedSubjectAuthorization: vi.fn(async () => undefined),
+}))
+vi.mock('../api/index', () => ({
+  getIconUrl: vi.fn(() => '/icon.svg'),
+  submitManagedSubjectAuthorization,
+}))
 
 function mountPanel(overrides: Record<string, unknown> = {}) {
   return mount(CurrentAppPanel, {
@@ -106,5 +112,62 @@ describe('CurrentAppPanel', () => {
 
     expect(wrapper.text()).toContain('Visual Studio Code')
     expect(wrapper.text()).toContain('MacBook Pro')
+  })
+
+  it('shows an owner login action without requiring an online machine', async () => {
+    const wrapper = mountPanel({
+      managedSubjects: [{
+        subjectId: '0198d5df-5df3-70a1-937d-68a7d64623e2',
+        subjectName: 'VRChat · Alice',
+        subjectKind: 'Account',
+        collectorInstanceId: '0198d5df-5df3-70a1-937d-68a7d64623e3',
+        phase: 'WaitingForAuthorization',
+        authorization: {
+          interactionId: '0198d5df-5df3-70a1-937d-68a7d64623e4',
+          kind: 'Credentials',
+          title: '登录 VRChat',
+          message: '会话只保存在 Hub。',
+          fields: [
+            { name: 'username', label: '用户名或邮箱', isSecret: false },
+            { name: 'password', label: '密码', isSecret: true },
+          ],
+        },
+      }],
+    })
+
+    expect(wrapper.text()).toContain('当前使用')
+    expect(wrapper.text()).toContain('需要登录')
+    await wrapper.get('button').trigger('click')
+    const inputs = wrapper.findAll('input')
+    await inputs[0].setValue('alice')
+    await inputs[1].setValue('secret')
+    await wrapper.get('form').trigger('submit')
+
+    expect(submitManagedSubjectAuthorization).toHaveBeenCalledWith(
+      '0198d5df-5df3-70a1-937d-68a7d64623e3',
+      '0198d5df-5df3-70a1-937d-68a7d64623e4',
+      { username: 'alice', password: 'secret' },
+    )
+  })
+
+  it('does not show a login action for an authorized account', () => {
+    const wrapper = mountPanel({
+      managedSubjects: [{
+        subjectId: '0198d5df-5df3-70a1-937d-68a7d64623e2',
+        subjectName: 'VRChat · Alice',
+        subjectKind: 'Account',
+        phase: 'Ready',
+        authorization: null,
+        currentActivity: {
+          title: 'Mock World',
+          identityKey: 'instance:mock',
+          startTime: '2026-08-27T00:00:00Z',
+          endTime: '2026-08-27T01:00:00Z',
+        },
+      }],
+    })
+
+    expect(wrapper.text()).toContain('Mock World')
+    expect(wrapper.findAll('button')).toHaveLength(0)
   })
 })

@@ -17,6 +17,7 @@ internal interface ISegmentFactProjector
         Guid factId,
         DateTimeOffset start,
         DateTimeOffset end,
+        bool isFinal,
         JsonElement payload,
         out ActivitySegmentItem? item);
 }
@@ -27,7 +28,8 @@ internal sealed class ActivitySegmentFactProjector(ICollectorAppHintResolver? ap
         schemaMajor == 1 && schemaId is
             "heartbeat.reference.segment" or
             "heartbeat.system.foreground-segment" or
-            "heartbeat.browser.active-tab-segment";
+            "heartbeat.browser.active-tab-segment" or
+            "heartbeat.vrchat.presence-segment";
 
     public Guid ProjectedId(Guid streamId, Guid factId)
     {
@@ -44,6 +46,7 @@ internal sealed class ActivitySegmentFactProjector(ICollectorAppHintResolver? ap
         Guid factId,
         DateTimeOffset start,
         DateTimeOffset end,
+        bool isFinal,
         JsonElement payload,
         out ActivitySegmentItem? item)
     {

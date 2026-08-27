@@ -3,9 +3,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-namespace Heartbeat.Collector.Reference.ManagedProcess;
+namespace Heartbeat.Collector.VRChat;
 
-internal static class ReferencePackageBuilder
+internal static class VRChatPackageBuilder
 {
     public static void Create(string packageDirectory) =>
         Create(AppContext.BaseDirectory, packageDirectory);
@@ -20,14 +20,13 @@ internal static class ReferencePackageBuilder
         foreach (var source in Directory.EnumerateFiles(sourceRoot))
         {
             var name = Path.GetFileName(source);
-            if (name is "collector-manifest.json")
-                continue;
-            File.Copy(source, Path.Combine(root, name), overwrite: true);
+            if (name != "collector-manifest.json")
+                File.Copy(source, Path.Combine(root, name), overwrite: true);
         }
 
         var executableName = OperatingSystem.IsWindows()
-            ? "Heartbeat.Collector.Reference.ManagedProcess.exe"
-            : "Heartbeat.Collector.Reference.ManagedProcess";
+            ? "Heartbeat.Collector.VRChat.exe"
+            : "Heartbeat.Collector.VRChat";
         var executablePath = Path.Combine(root, executableName);
         if (!File.Exists(executablePath))
             throw new InvalidOperationException(
@@ -35,28 +34,29 @@ internal static class ReferencePackageBuilder
 
         var schemaDirectory = Path.Combine(root, "schemas");
         Directory.CreateDirectory(schemaDirectory);
-        var schemaPath = Path.Combine(schemaDirectory, "reference-segment.schema.json");
-        File.WriteAllText(schemaPath, Schema, new UTF8Encoding(false));
+        var schemaPath = Path.Combine(schemaDirectory, "vrchat-presence.schema.json");
+        File.WriteAllText(schemaPath, PresenceSchema, new UTF8Encoding(false));
         var manifest = new
         {
             manifestVersion = 1,
-            packageId = "heartbeat.collector.reference-managed",
-            version = "1.0.0",
+            packageId = "heartbeat.collector.vrchat",
+            version = "0.1.0",
             protocolMajors = new[] { 1 },
             supportedCapabilities = new Dictionary<string, int[]>
             {
                 ["facts.segment"] = [1],
                 ["auth.interactive"] = [1],
                 ["secrets.instance"] = [1],
+                ["resources.instance-data"] = [1],
                 ["diagnostics.stream-gap"] = [1]
             },
             config = new
             {
                 schema = new
                 {
-                    id = "heartbeat.collector.reference-managed.config",
+                    id = "heartbeat.collector.vrchat.config",
                     version = 1,
-                    hash = "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0"
+                    hash = Hash(Encoding.UTF8.GetBytes("{\"pollIntervalSeconds\":\"positive integer\"}"))
                 },
                 accepts = new[] { 1 }
             },
@@ -64,15 +64,15 @@ internal static class ReferencePackageBuilder
             {
                 new
                 {
-                    outputId = "activity",
-                    source = "reference.account",
+                    outputId = "presence",
+                    source = "vrchat.account",
                     factKind = "segment",
                     schema = new
                     {
-                        id = "heartbeat.reference.segment",
+                        id = "heartbeat.vrchat.presence-segment",
                         major = 1,
                         revision = 1,
-                        document = "schemas/reference-segment.schema.json",
+                        document = "schemas/vrchat-presence.schema.json",
                         hash = Hash(File.ReadAllBytes(schemaPath))
                     },
                     subjectKinds = new[] { "account" },
@@ -83,7 +83,7 @@ internal static class ReferencePackageBuilder
             {
                 new
                 {
-                    artifactId = "reference.managed",
+                    artifactId = "vrchat.managed",
                     selector = new
                     {
                         driver = "managedProcess",
@@ -122,10 +122,10 @@ internal static class ReferencePackageBuilder
         _ => throw new PlatformNotSupportedException()
     };
 
-    private const string Schema = """
+    private const string PresenceSchema = """
     {
       "documentVersion": 1,
-      "schemaId": "heartbeat.reference.segment",
+      "schemaId": "heartbeat.vrchat.presence-segment",
       "schemaMajor": 1,
       "schemaRevision": 1,
       "factKind": "segment",
@@ -137,10 +137,14 @@ internal static class ReferencePackageBuilder
       "payloadSchema": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["identityKey", "title"],
+        "required": ["identityKey", "title", "appDisplayName", "worldId", "instanceId"],
         "properties": {
           "identityKey": { "type": "string", "minLength": 1 },
-          "title": { "type": "string", "minLength": 1 }
+          "title": { "type": "string", "minLength": 1 },
+          "appDisplayName": { "const": "VRChat" },
+          "worldId": { "type": "string", "minLength": 1 },
+          "worldName": { "type": "string", "minLength": 1 },
+          "instanceId": { "type": "string", "minLength": 1 }
         }
       }
     }

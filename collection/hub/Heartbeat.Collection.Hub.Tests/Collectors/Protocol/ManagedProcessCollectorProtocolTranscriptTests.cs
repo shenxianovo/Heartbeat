@@ -391,6 +391,156 @@ public class ManagedProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
+    public async Task InteractiveAuthorization_WaitsWithoutFailingAndContinuesToReady()
+    {
+        using var fixture = ManagedRuntimeFixture.Create();
+        var activationTask = fixture.Runtime.ActivateManagedProcessAsync(
+            fixture.Instance.CollectorInstanceId,
+            fixture.Package,
+            Options("authorization_required")).AsTask();
+
+        await WaitForPhaseAsync(
+            fixture.Runtime,
+            fixture.Instance.CollectorInstanceId,
+            CollectorRuntimePhase.WaitingForAuthorization);
+        var waiting = fixture.Runtime.GetManagedProcessRuntimeState(fixture.Instance.CollectorInstanceId);
+        var challenge = Assert.IsType<CollectorAuthorizationChallenge>(waiting.AuthorizationChallenge);
+        Assert.Equal(CollectorAuthorizationChallengeKind.Credentials, challenge.Kind);
+        Assert.Equal(["username", "password"], challenge.Fields.Select(field => field.Name));
+        Assert.DoesNotContain("collector-password", JsonSerializer.Serialize(waiting), StringComparison.Ordinal);
+
+        await fixture.Runtime.SubmitManagedProcessAuthorizationAsync(
+            fixture.Instance.CollectorInstanceId,
+            challenge.InteractionId,
+            new Dictionary<string, string>
+            {
+                ["username"] = "collector-user",
+                ["password"] = "collector-password"
+            });
+        var activation = await activationTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(CollectorRuntimePhase.Ready, activation.RuntimeState.Phase);
+        Assert.Null(activation.RuntimeState.AuthorizationChallenge);
+        await activation.StopAsync();
+    }
+
+    [Fact]
+    public async Task InteractiveAuthorization_DoesNotConsumeTheStartupTimeout()
+    {
+        using var fixture = ManagedRuntimeFixture.Create();
+        var options = new ManagedProcessActivationOptions
+        {
+            StartupTimeout = TimeSpan.FromSeconds(1),
+            DrainGracePeriod = TimeSpan.FromSeconds(2),
+            EnvironmentVariables = new Dictionary<string, string>
+            {
+                ["HEARTBEAT_REFERENCE_BEHAVIOR"] = "authorization_required"
+            }
+        };
+        var activationTask = fixture.Runtime.ActivateManagedProcessAsync(
+            fixture.Instance.CollectorInstanceId,
+            fixture.Package,
+            options).AsTask();
+
+        await WaitForPhaseAsync(
+            fixture.Runtime,
+            fixture.Instance.CollectorInstanceId,
+            CollectorRuntimePhase.WaitingForAuthorization);
+        await Task.Delay(1_200);
+        Assert.False(activationTask.IsCompleted);
+        var challenge = Assert.IsType<CollectorAuthorizationChallenge>(
+            fixture.Runtime.GetManagedProcessRuntimeState(fixture.Instance.CollectorInstanceId)
+                .AuthorizationChallenge);
+
+        await fixture.Runtime.SubmitManagedProcessAuthorizationAsync(
+            fixture.Instance.CollectorInstanceId,
+            challenge.InteractionId,
+            new Dictionary<string, string>
+            {
+                ["username"] = "collector-user",
+                ["password"] = "collector-password"
+            });
+        var activation = await activationTask.WaitAsync(TimeSpan.FromSeconds(5));
+        await activation.StopAsync();
+    }
+
+    [Fact]
+    public async Task InteractiveAuthorization_ResumesStartupTimeoutAfterTheResponse()
+    {
+        using var fixture = ManagedRuntimeFixture.Create();
+        var options = new ManagedProcessActivationOptions
+        {
+            StartupTimeout = TimeSpan.FromSeconds(2),
+            DrainGracePeriod = TimeSpan.FromSeconds(2),
+            EnvironmentVariables = new Dictionary<string, string>
+            {
+                ["HEARTBEAT_REFERENCE_BEHAVIOR"] = "authorization_then_hang"
+            }
+        };
+        var activationTask = fixture.Runtime.ActivateManagedProcessAsync(
+            fixture.Instance.CollectorInstanceId,
+            fixture.Package,
+            options).AsTask();
+        await WaitForPhaseAsync(
+            fixture.Runtime,
+            fixture.Instance.CollectorInstanceId,
+            CollectorRuntimePhase.WaitingForAuthorization);
+        await Task.Delay(2_200);
+        var challenge = Assert.IsType<CollectorAuthorizationChallenge>(
+            fixture.Runtime.GetManagedProcessRuntimeState(fixture.Instance.CollectorInstanceId)
+                .AuthorizationChallenge);
+
+        await fixture.Runtime.SubmitManagedProcessAuthorizationAsync(
+            fixture.Instance.CollectorInstanceId,
+            challenge.InteractionId,
+            new Dictionary<string, string>
+            {
+                ["username"] = "collector-user",
+                ["password"] = "collector-password"
+            });
+
+        var exception = await Assert.ThrowsAsync<CollectorActivationException>(async () =>
+            await activationTask.WaitAsync(TimeSpan.FromSeconds(8)));
+        Assert.Equal("activation_start_timeout", exception.Error.Code);
+        Assert.Equal(
+            CollectorRuntimePhase.Failed,
+            fixture.Runtime.GetManagedProcessRuntimeState(fixture.Instance.CollectorInstanceId).Phase);
+    }
+
+    [Fact]
+    public async Task InstanceSecretMessages_UseTheSeparateEncryptedStore()
+    {
+        using var packageCopy = ManagedReferenceCollectorPackage.Create();
+        var package = LocalCollectorPackage.Load(packageCopy.Path);
+        using var stateDirectory = TemporaryDirectory.Create();
+        var secretStore = new EncryptedFileCollectorSecretStore(
+            Path.Combine(stateDirectory.Path, "secrets"));
+        using var runtime = CollectorRuntime.Open(
+            Path.Combine(stateDirectory.Path, "collector-runtime.json"),
+            new RecordingSegmentSink(),
+            secretStore: secretStore);
+        using var config = JsonDocument.Parse("{}");
+        var instance = runtime.CreateInstance(
+            package,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Account),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+
+        var activation = await runtime.ActivateManagedProcessAsync(
+            instance.CollectorInstanceId,
+            package,
+            Options("secret_roundtrip"));
+
+        Assert.Equal(
+            "reference-secret-value",
+            await secretStore.ReadAsync(instance.CollectorInstanceId, "session"));
+        Assert.DoesNotContain(
+            "reference-secret-value",
+            await File.ReadAllTextAsync(Path.Combine(stateDirectory.Path, "collector-runtime.json")),
+            StringComparison.Ordinal);
+        await activation.StopAsync();
+    }
+
+    [Fact]
     public async Task ProtocolCorruption_ProducesStructuredFailureAndStopsProcess()
     {
         using var fixture = ManagedRuntimeFixture.Create();

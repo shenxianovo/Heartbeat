@@ -1,4 +1,5 @@
 using Heartbeat.Core.DTOs.Segments;
+using Heartbeat.Collection.Hub.Collectors.Runtime;
 
 namespace Heartbeat.Collection.Hub.Segments
 {
@@ -36,6 +37,31 @@ namespace Heartbeat.Collection.Hub.Segments
 
         /// <summary>Applies a durable tombstone at the supplied Fact revision.</summary>
         void RetractDurable(Guid segmentId, long revision);
+    }
+
+    /// <summary>
+    /// Subject-aware durable projection used by a multi-Subject Hub head. Finality and ownership
+    /// stay in the Collection context instead of leaking into the strict Analytics DTO.
+    /// </summary>
+    public readonly record struct CollectorProjectionContext(
+        Guid CollectorInstanceId,
+        SubjectReference Subject);
+
+    public interface ISubjectSegmentProjectionSink
+    {
+        void UpsertDurable(
+            CollectorProjectionContext context,
+            ActivitySegmentItem snapshot,
+            long revision,
+            bool isFinal);
+
+        void ReplayDurable(
+            CollectorProjectionContext context,
+            ActivitySegmentItem snapshot,
+            long revision,
+            bool isFinal);
+
+        void RetractDurable(CollectorProjectionContext context, Guid segmentId, long revision);
     }
 
     /// <summary>

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Heartbeat.Collection.Hub.Collectors.Runtime;
 
 namespace Heartbeat.Collection.Headless;
 
@@ -9,6 +10,7 @@ public sealed class HeadlessHubOptions
     public required string DataDirectory { get; init; }
     public required string PackageDirectory { get; init; }
     public required Guid SubjectId { get; init; }
+    public SubjectKind SubjectKind { get; init; } = SubjectKind.Account;
     public string SubjectName { get; init; } = "Managed account";
     public int UploadIntervalSeconds { get; init; } = 60;
     public int ConfigSchemaVersion { get; init; } = 1;
@@ -45,6 +47,8 @@ public sealed class HeadlessHubOptions
             throw new InvalidOperationException("packageDirectory is required.");
         if (SubjectId == Guid.Empty)
             throw new InvalidOperationException("subjectId must not be empty.");
+        if (!Enum.IsDefined(SubjectKind))
+            throw new InvalidOperationException("subjectKind is invalid.");
         if (string.IsNullOrWhiteSpace(SubjectName))
             throw new InvalidOperationException("subjectName is required.");
         if (UploadIntervalSeconds <= 0 || ConfigSchemaVersion <= 0 ||
@@ -60,6 +64,7 @@ public sealed class HeadlessHubOptions
         DataDirectory = dataDirectory,
         PackageDirectory = packageDirectory,
         SubjectId = SubjectId,
+        SubjectKind = SubjectKind,
         SubjectName = SubjectName,
         UploadIntervalSeconds = UploadIntervalSeconds,
         ConfigSchemaVersion = ConfigSchemaVersion,

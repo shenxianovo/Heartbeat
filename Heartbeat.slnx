@@ -20,6 +20,7 @@
   <Folder Name="/collection/collectors/">
     <Project Path="collection/collectors/Heartbeat.Collector.Reference.ManagedProcess.Tests/Heartbeat.Collector.Reference.ManagedProcess.Tests.csproj" />
     <Project Path="collection/collectors/Heartbeat.Collector.Reference.ManagedProcess/Heartbeat.Collector.Reference.ManagedProcess.csproj" />
+    <Project Path="collection/collectors/Heartbeat.Collector.VRChat.Tests/Heartbeat.Collector.VRChat.Tests.csproj" />
     <Project Path="collection/collectors/Heartbeat.Collector.VRChat/Heartbeat.Collector.VRChat.csproj" />
   </Folder>
   <Folder Name="/server/">

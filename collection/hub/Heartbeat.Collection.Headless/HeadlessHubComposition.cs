@@ -31,6 +31,11 @@ public static class HeadlessHubComposition
         services.AddSingleton<IHubConfiguration>(provider => provider.GetRequiredService<HeadlessHubConfiguration>());
         services.AddSingleton<ICollectorRegistry>(provider => provider.GetRequiredService<HeadlessHubConfiguration>());
         services.AddSingleton<IDeviceIdentity>(provider => provider.GetRequiredService<HeadlessHubConfiguration>());
+        services.AddSingleton<HeadlessSubjectStatus>();
+        services.AddSingleton<SegmentIngestService>();
+        services.AddSingleton<ISegmentSink>(provider => new HeadlessSubjectSegmentSink(
+            provider.GetRequiredService<SegmentIngestService>(),
+            provider.GetRequiredService<HeadlessSubjectStatus>()));
         services.AddSingleton<IUploadSource<InputEventItem>, EmptyInputEventSource>();
         services.AddSingleton<ICache<ActivitySegmentItem>>(_ => new JsonFileCache<ActivitySegmentItem>(
             Path.Combine(options.DataDirectory, "segments-cache.json"),
@@ -61,9 +66,12 @@ public static class HeadlessHubComposition
             deadLetterStore: new JsonDeadLetterStore<InputEventItem>(Path.Combine(options.DataDirectory, "input-events-dead-letter.json")),
             statusRegistry: provider.GetRequiredService<UploadStatusRegistry>(),
             compatibilityStatus: provider.GetRequiredService<ClientCompatibilityStatus>()));
+        services.AddSingleton<ICollectorSecretStore>(_ => new EncryptedFileCollectorSecretStore(
+            Path.Combine(options.DataDirectory, "collector-secrets")));
         services.AddSingleton(provider => CollectorRuntime.Open(
             options.RuntimeStatePath,
-            provider.GetRequiredService<ISegmentSink>()));
+            provider.GetRequiredService<ISegmentSink>(),
+            secretStore: provider.GetRequiredService<ICollectorSecretStore>()));
 
         services.AddHostedService<ManagedCollectorHostedService>();
         return services;
@@ -80,7 +88,7 @@ public sealed class HeadlessHubConfiguration : IHubConfiguration, ICollectorRegi
         Current = new HubRuntimeSettings(options.ApiKey, TimeSpan.FromSeconds(options.UploadIntervalSeconds), 0);
         // The legacy Analytics ingest boundary still resolves its Subject from these headers.
         // Bind them to the configured Account, never to the server hosting this Hub Instance.
-        HardwareId = $"subject:account:{options.SubjectId:D}";
+        HardwareId = $"subject:{options.SubjectKind.ToString().ToLowerInvariant()}:{options.SubjectId:D}";
         DeviceName = options.SubjectName;
     }
 
@@ -138,13 +146,18 @@ public sealed class ManagedCollectorHostedService(
     IHostApplicationLifetime lifetime) : IHostedService
 {
     private ManagedProcessCollectorActivation? _activation;
+    private Task<ManagedProcessCollectorActivation>? _activationTask;
+    private CancellationTokenSource? _runCancellation;
+    private Guid? _collectorInstanceId;
 
     public ManagedProcessCollectorActivation? Activation => _activation;
+    public Guid? CollectorInstanceId => _collectorInstanceId;
+    public CollectorRuntime Runtime => runtime;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         var package = LocalCollectorPackage.Load(options.PackageDirectory);
-        var subject = new SubjectReference(options.SubjectId, SubjectKind.Account);
+        var subject = new SubjectReference(options.SubjectId, options.SubjectKind);
         var instances = runtime.FindInstances(package.Manifest.PackageId, subject);
         var instance = instances.Count switch
         {
@@ -156,7 +169,9 @@ public sealed class ManagedCollectorHostedService(
             _ => throw new InvalidOperationException(
                 "Headless Hub configuration resolves to more than one Collector Instance.")
         };
-        _activation = await runtime.ActivateManagedProcessAsync(
+        _collectorInstanceId = instance.CollectorInstanceId;
+        _runCancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopping);
+        _activationTask = runtime.ActivateManagedProcessAsync(
             instance.CollectorInstanceId,
             package,
             new ManagedProcessActivationOptions
@@ -164,14 +179,55 @@ public sealed class ManagedCollectorHostedService(
                 StartupTimeout = TimeSpan.FromSeconds(options.StartupTimeoutSeconds),
                 DrainGracePeriod = TimeSpan.FromSeconds(options.DrainGraceSeconds)
             },
-            cancellationToken);
-        _ = StopHostOnUnexpectedExitAsync(_activation);
+            _runCancellation.Token).AsTask();
+        _ = ObserveActivationAsync(_activationTask);
+        await Task.CompletedTask;
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
+        _runCancellation?.Cancel();
         if (_activation is not null)
             await _activation.StopAsync(cancellationToken);
+        else if (_activationTask is not null)
+        {
+            try { await _activationTask.WaitAsync(cancellationToken); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+            catch (OperationCanceledException) { }
+            catch { }
+        }
+    }
+
+    public CollectorRuntimeSnapshot? GetRuntimeState()
+    {
+        var instanceId = _collectorInstanceId;
+        if (instanceId is null)
+            return null;
+        try { return runtime.GetManagedProcessRuntimeState(instanceId.Value); }
+        catch (KeyNotFoundException) { return null; }
+    }
+
+    public ValueTask SubmitAuthorizationAsync(
+        Guid interactionId,
+        IReadOnlyDictionary<string, string> values,
+        CancellationToken cancellationToken)
+    {
+        var instanceId = _collectorInstanceId ?? throw new InvalidOperationException("Collector Instance is not initialized.");
+        return runtime.SubmitManagedProcessAuthorizationAsync(instanceId, interactionId, values, cancellationToken);
+    }
+
+    private async Task ObserveActivationAsync(Task<ManagedProcessCollectorActivation> activationTask)
+    {
+        try
+        {
+            _activation = await activationTask;
+            await StopHostOnUnexpectedExitAsync(_activation);
+        }
+        catch (OperationCanceledException) when (_runCancellation?.IsCancellationRequested == true) { }
+        catch
+        {
+            lifetime.StopApplication();
+        }
     }
 
     private async Task StopHostOnUnexpectedExitAsync(ManagedProcessCollectorActivation activation)

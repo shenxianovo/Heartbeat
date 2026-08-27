@@ -14,7 +14,10 @@ public sealed record CollectorInitialization(
     CollectorInstance Instance,
     CollectorInstanceSpec Spec,
     VerifiedCollectorArtifact Artifact,
-    CollectorProtocolLimits Limits);
+    CollectorProtocolLimits Limits,
+    CollectorResources Resources);
+
+public sealed record CollectorResources(string? DataDirectory);
 
 public sealed record CollectorProtocolLimits(
     int MaxFactsPerBatch,
@@ -35,6 +38,7 @@ public sealed record ExternalHostCollectorInitialization(
     CollectorInstance Instance,
     CollectorInstanceSpec Spec,
     CollectorProtocolLimits Limits,
+    CollectorResources Resources,
     IReadOnlyDictionary<string, int> SelectedCapabilities);
 
 public interface IInProcessCollector

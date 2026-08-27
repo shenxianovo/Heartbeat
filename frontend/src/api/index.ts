@@ -56,6 +56,59 @@ const authHttp = {
   },
 }
 
+export interface CollectorAuthorizationField {
+  name: string
+  label: string
+  isSecret: boolean
+  inputMode?: 'none' | 'text' | 'decimal' | 'numeric' | 'tel' | 'search' | 'email' | 'url' | null
+}
+
+export interface CollectorAuthorizationChallenge {
+  interactionId: string
+  kind: 'Credentials' | 'VerificationCode' | 'Notice'
+  title: string
+  message?: string | null
+  fields: CollectorAuthorizationField[]
+}
+
+export interface ManagedSubjectStatus {
+  subjectId: string
+  subjectName: string
+  subjectKind: 'Account' | 'Machine' | 'Person'
+  collectorInstanceId?: string | null
+  phase: string
+  authorization?: CollectorAuthorizationChallenge | null
+  currentActivity?: {
+    title?: string | null
+    identityKey?: string | null
+    startTime: string
+    endTime: string
+    attributes?: unknown
+  } | null
+}
+
+export async function fetchManagedSubjectStatuses(): Promise<ManagedSubjectStatus[]> {
+  const response = await authHttp.fetch('/hub/api/v1/subjects')
+  if (!response.ok) throw new ApiException('Hub subject status request failed.', response.status, await response.text(), {}, null)
+  return await response.json() as ManagedSubjectStatus[]
+}
+
+export async function submitManagedSubjectAuthorization(
+  collectorInstanceId: string,
+  interactionId: string,
+  values: Record<string, string>,
+): Promise<void> {
+  const response = await authHttp.fetch(
+    `/hub/api/v1/collector-instances/${encodeURIComponent(collectorInstanceId)}/authorization/${encodeURIComponent(interactionId)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values }),
+    },
+  )
+  if (!response.ok) throw new ApiException('Hub authorization response failed.', response.status, await response.text(), {}, null)
+}
+
 const client = new Client(BASE_URL, authHttp)
 
 // Re-export generated types

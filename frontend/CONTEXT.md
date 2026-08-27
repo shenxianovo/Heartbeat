@@ -7,6 +7,10 @@
 **Dashboard**:
 主页面：状态卡、今日排行、周图表、时间轴、键盘热力图的组合。30s 轮询报表；`useHeartbeat` 是瘦协调器，组合设备选择 / 在场 / 报表三个数据域。
 
+**Subject Status Panel（主体状态面板）**:
+Dashboard 中按 Subject 展示当下状态的区域：Machine 展示 Current Activity，Account 展示该账号来源能够如实观测的当前状态。需要交互授权时仅向 owner 提供恢复入口；授权不是进入 Dashboard 或查看其他 Subject 的前置条件。
+_Avoid_: Device-only Current App Panel、全屏登录门禁、把 Hub 认证阶段显示成业务活动
+
 **Timeline（时间轴）**:
 按天回放的注意力线（ADR-019 主视图）：单一时间线跟随 system 前台段。simple / detailed 双模式，detailed 可拖拽缩放、看标题明细。
 _Avoid_: Replay 泳道、多轨（那是 ADR-019 的展开态，未建）

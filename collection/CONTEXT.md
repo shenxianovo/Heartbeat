@@ -36,6 +36,10 @@ _Avoid_: 运行时任意注册 schema、把每个动态 dimension value 写成�
 Collector Runtime 的一个持续运行宿主，可以是 Desktop Agent 内嵌 Hub，也可以是服务器上的无头 Hub。Hub Instance 是运维身份而非观测主体；一个无头 Hub 可以托管观测不同账号、身体或其他主体的多个 Collector Instance。
 _Avoid_: Device、Subject、把无头 Hub 按某个 Collector 命名
 
+**Hub Management Surface（Hub 管理界面）**:
+由 Hub Instance 自己拥有的用户管理边界，用于需要交互授权的 Collector Instance 设置与恢复。Dashboard 可以提供入口，但 Analytics 不代理第三方账号凭据、授权应答或管理命令。
+_Avoid_: Analytics Collector Control Plane、要求用户通过服务器终端完成账号授权
+
 **Collector Installation（采集器安装）**:
 本机持有某一精确 Collector Package 的事实。安装不表示 Collector 已启用、已获授权、能够激活或正在运行。
 _Avoid_: Discovery、Registration、Active
@@ -47,6 +51,14 @@ _Avoid_: 用 Source、进程 ID 或包版本充当实例身份
 **Collector Activation（采集器激活）**:
 Collector Instance 的一次协议会话和实际运行身份；重启、重连、成功或失败都不改写 Instance 身份。ExternalHost Instance 可以同时拥有多个 Activation，各自代表一份独立运行的外部宿主。
 _Avoid_: Run（含义过泛）、Active（后者是按 Source 流量推断的既有状态）
+
+**Interactive Authorization（交互授权）**:
+Collector Activation 通过 Collector Protocol 请求用户完成的一次非阻塞授权交互。Collector 声明当前 challenge，Hub Management Surface 收集应答；敏感应答只在内存中传递，不成为配置或运行状态。
+_Avoid_: Hub 内置第三方登录流程、把登录设为 Dashboard 的强制前置步骤
+
+**Collector Secret（采集器秘密）**:
+按 Collector Instance 隔离保存、供 Collector 恢复第三方会话的不透明秘密。它与 Collector Runtime State 分库存放，不进入 Manifest、Fact、普通日志或用户配置。
+_Avoid_: Instance Config、Runtime State、在 Package 目录保存 cookie
 
 **External Host Identity（外部宿主身份）**:
 ExternalHost Collector 中一份独立宿主安装的内部稳定身份，例如某个浏览器 Profile 中加载的扩展；它只用于区分并发 Activation、维持 Stream 与重传连续性，不形成独立 Collector Instance、启用意图或主 UI 管理项。
@@ -149,7 +161,7 @@ _Avoid_: Upgrade, Patch; Pending Update（旧名，混淆了"发现"与"已下�
 - 一个 **Release** 包含一个 **Setup** 和一个完整包
 - **Agent** 在应用生命周期内持续运行，**Update** 需重启应用才能生效
 - `Heartbeat.Collection.Hub` 提供纯 .NET 的 hub 运行时（loopback ingest、Collector Registry/declaration、认证客户端、段缓冲、Current Activity、Upload Stream、presence 与缓存 seam），可由桌面或无头 host 组合，不依赖桌面采集、UI、平台 API 或发布供应商
-- `Heartbeat.Collection.Headless` 是 Generic Host 控制台 composition：从本地 Package/Instance 配置托管 Account Subject 的 ManagedProcess Collector，先 drain 子进程再执行 Hub 终态上传；现有 Analytics header adapter 绑定配置的 Account Subject，服务器 Machine 身份不进入 Fact 归属
+- `Heartbeat.Collection.Headless` 是带 owner-only 管理 API 的无头 Web host：一个 Collector Runtime 从本地配置托管多个 ManagedProcess Collector Instance，按 Collector Instance 路由独立 Analytics 上传身份与缓存，先 drain 子进程再执行终态上传；服务器 Machine 身份不进入 Fact 归属
 - `Heartbeat.Collector.System` 消费 App 激活、focused-window 切换、同窗标题变化与 away 等语义观察，产出 system ActivitySegment；平台 adapter 不把原生回调形状泄漏进状态机
 - `Heartbeat.Desktop.Updater.Velopack` 统一承载 Windows/macOS 的 Velopack Update 生命周期（检查、下载、重试、ReadyToApply 门控与调度应用），并作为供应商依赖防火墙；platform head 只选择 Release channel，并在 updater 成功启动后停止 Agent、退出当前进程
 - `Heartbeat.Desktop.Windows` 组合 Win32 观察、MachineGuid、图标、自启动、共享 Avalonia UI、托盘与 Velopack Update

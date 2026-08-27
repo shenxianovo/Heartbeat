@@ -63,6 +63,9 @@ public class InProcessCollectorProtocolTranscriptTests
         Assert.Equal(7, collector.Initialization!.Spec.SpecRevision);
         Assert.Equal(1_048_576, collector.Initialization.Limits.MaxBatchBytes);
         Assert.Equal(
+            Path.Combine(stateDirectory.Path, "collector-data", instance.CollectorInstanceId.ToString("N")),
+            collector.Initialization.Resources.DataDirectory);
+        Assert.Equal(
             "sha256:de359aff82ed415958d16bc5fd08caad6b8fabdb8bf82556505dd2506399e02b",
             collector.Initialization.Artifact.ContentHash);
         var ack = Assert.IsType<FactBatchAcknowledgement>(collector.InitialAcknowledgement);

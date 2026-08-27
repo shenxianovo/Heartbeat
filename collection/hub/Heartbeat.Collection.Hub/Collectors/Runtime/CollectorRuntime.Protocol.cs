@@ -18,6 +18,9 @@ public sealed partial class CollectorRuntime
         {
             ["facts.segment"] = [1],
             ["facts.event"] = [1],
+            ["auth.interactive"] = [1],
+            ["secrets.instance"] = [1],
+            ["resources.instance-data"] = [1],
             ["diagnostics.stream-gap"] = [1]
         };
 
@@ -233,7 +236,10 @@ public sealed partial class CollectorRuntime
                 new CollectorProtocolLimits(
                     _options.MaxFactsPerBatch,
                     _options.MaxBatchBytes,
-                    _options.MaxInFlightBatches));
+                    _options.MaxInFlightBatches),
+                new CollectorResources(Path.Combine(
+                    _instanceDataRoot,
+                    collectorInstanceId.ToString("N"))));
             InProcessCollectorInitialization initialized;
             try
             {
@@ -966,6 +972,7 @@ public sealed partial class CollectorRuntime
                     fact.FactId,
                     fact.Time.Start!.Value,
                     fact.Time.End!.Value,
+                    fact.Time.IsFinal == true,
                     fact.Payload,
                     out _),
             FactKind.Event =>
@@ -1657,7 +1664,24 @@ public sealed partial class CollectorRuntime
         }
         if (fact.RecordState == FactRecordState.Retracted)
         {
-            if (_segmentSink is IDurableSegmentProjectionSink durableSink)
+            if (_segmentSink is ISubjectSegmentProjectionSink subjectSink)
+            {
+                try
+                {
+                    subjectSink.RetractDurable(
+                        ContextForStream(stream),
+                        projector.ProjectedId(stream.StreamId, fact.FactId),
+                        fact.Revision);
+                }
+                catch (Exception exception)
+                {
+                    Log.Error(
+                        exception,
+                        "已持久接收 Collector Segment 撤回 {FactId}，从 Subject 缓冲移除失败；重启时将重放",
+                        fact.FactId);
+                }
+            }
+            else if (_segmentSink is IDurableSegmentProjectionSink durableSink)
             {
                 try
                 {
@@ -1681,6 +1705,7 @@ public sealed partial class CollectorRuntime
                 fact.FactId,
                 fact.Start,
                 fact.End,
+                fact.IsFinal,
                 payload,
                 out var item))
         {
@@ -1691,7 +1716,15 @@ public sealed partial class CollectorRuntime
         }
         try
         {
-            if (_segmentSink is IDurableSegmentProjectionSink durableSink)
+            if (_segmentSink is ISubjectSegmentProjectionSink subjectSink)
+            {
+                var context = ContextForStream(stream);
+                if (isReplay)
+                    subjectSink.ReplayDurable(context, item!, fact.Revision, fact.IsFinal);
+                else
+                    subjectSink.UpsertDurable(context, item!, fact.Revision, fact.IsFinal);
+            }
+            else if (_segmentSink is IDurableSegmentProjectionSink durableSink)
             {
                 if (isReplay)
                     durableSink.ReplayDurable(item!, fact.Revision);
@@ -1710,6 +1743,15 @@ public sealed partial class CollectorRuntime
                 "已持久接收 Collector Segment Fact {FactId}，投影到 Hub 缓冲失败；重启时将重放",
                 fact.FactId);
         }
+    }
+
+    private CollectorProjectionContext ContextForStream(FactStreamState stream)
+    {
+        var instance = _state.Instances.Single(candidate =>
+            candidate.CollectorInstanceId == stream.CollectorInstanceId);
+        return new CollectorProjectionContext(
+            stream.CollectorInstanceId,
+            new SubjectReference(instance.SubjectId, instance.SubjectKind));
     }
 
     private bool ProjectEvent(FactStreamState stream, CommittedFactState fact, bool isReplay)

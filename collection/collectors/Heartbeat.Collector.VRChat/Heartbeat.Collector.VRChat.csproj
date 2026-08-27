@@ -8,10 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
     <PackageReference Include="VRChat.API" Version="2.20.8" />
-    <PackageReference Include="VRChat.API.Extensions.Hosting" Version="2.20.8" />
-    <PackageReference Include="VRChat.API.Realtime" Version="1.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Heartbeat.Collector.VRChat.Tests" />
   </ItemGroup>
 
 </Project>

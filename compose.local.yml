@@ -66,6 +66,22 @@ services:
     networks:
       - local
 
+  headless:
+    profiles: ["headless"]
+    build:
+      context: .
+      dockerfile: collection/hub/Heartbeat.Collection.Headless/Dockerfile
+    depends_on:
+      - backend
+    environment:
+      HEARTBEAT_API_BASE_URL: http://backend:8080
+      HEARTBEAT_VRCHAT_MOCK: ${HEARTBEAT_VRCHAT_MOCK:-0}
+    volumes:
+      - ${HEADLESS_CONFIG_PATH:-./.local/heartbeat-headless.json}:/app/heartbeat-headless.json:ro
+      - ./.local/headless-data:/data
+    networks:
+      - local
+
 networks:
   local:
     driver: bridge

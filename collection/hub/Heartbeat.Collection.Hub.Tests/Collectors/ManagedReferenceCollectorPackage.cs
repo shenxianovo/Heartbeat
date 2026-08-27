@@ -80,6 +80,8 @@ internal sealed class ManagedReferenceCollectorPackage : IDisposable
             supportedCapabilities = new Dictionary<string, int[]>
             {
                 ["facts.segment"] = [1],
+                ["auth.interactive"] = [1],
+                ["secrets.instance"] = [1],
                 ["diagnostics.stream-gap"] = [1]
             },
             config = new

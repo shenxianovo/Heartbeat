@@ -14,6 +14,7 @@ public enum CollectorRuntimePhase
 {
     Starting,
     Negotiating,
+    WaitingForAuthorization,
     OpeningStreams,
     Ready,
     Draining,
@@ -25,6 +26,26 @@ public sealed record CollectorRuntimeFailure(string Code, string Message, int? P
 
 public sealed record CollectorRuntimeDiagnostic(string Code, string Message);
 
+public enum CollectorAuthorizationChallengeKind
+{
+    Credentials,
+    VerificationCode,
+    Notice
+}
+
+public sealed record CollectorAuthorizationField(
+    string Name,
+    string Label,
+    bool IsSecret = false,
+    string? InputMode = null);
+
+public sealed record CollectorAuthorizationChallenge(
+    Guid InteractionId,
+    CollectorAuthorizationChallengeKind Kind,
+    string Title,
+    string? Message,
+    IReadOnlyList<CollectorAuthorizationField> Fields);
+
 public sealed record CollectorRuntimeSnapshot(
     Guid CollectorInstanceId,
     Guid? ActivationId,
@@ -33,7 +54,8 @@ public sealed record CollectorRuntimeSnapshot(
     int? PendingFacts = null,
     int? PendingGaps = null,
     bool ProcessTerminated = false,
-    IReadOnlyList<CollectorRuntimeDiagnostic>? Diagnostics = null);
+    IReadOnlyList<CollectorRuntimeDiagnostic>? Diagnostics = null,
+    CollectorAuthorizationChallenge? AuthorizationChallenge = null);
 
 public sealed class ManagedProcessActivationOptions
 {
@@ -96,6 +118,7 @@ public sealed class ManagedProcessUpdateException(
 public sealed partial class CollectorRuntime
 {
     private readonly Dictionary<Guid, ManagedProcessCollectorActivation> _managedProcessActivations = [];
+    private readonly Dictionary<Guid, ManagedProcessProtocolClient> _managedProcessClients = [];
     private readonly Dictionary<Guid, CollectorRuntimeSnapshot> _managedProcessStates = [];
     private readonly HashSet<Guid> _managedProcessUpdates = [];
 
@@ -109,6 +132,25 @@ public sealed partial class CollectorRuntime
                 : throw new KeyNotFoundException(
                     $"ManagedProcess Runtime State for Collector Instance '{collectorInstanceId}' was not found.");
         }
+    }
+
+    public ValueTask SubmitManagedProcessAuthorizationAsync(
+        Guid collectorInstanceId,
+        Guid interactionId,
+        IReadOnlyDictionary<string, string> values,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+        ManagedProcessProtocolClient client;
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            client = _managedProcessClients.TryGetValue(collectorInstanceId, out var current)
+                ? current
+                : throw new KeyNotFoundException(
+                    $"ManagedProcess Collector Instance '{collectorInstanceId}' is not running.");
+        }
+        return client.SubmitAuthorizationAsync(interactionId, values, cancellationToken);
     }
 
     public ValueTask<ManagedProcessCollectorActivation> ActivateManagedProcessAsync(
@@ -264,28 +306,57 @@ public sealed partial class CollectorRuntime
         using var startupTimeout = new CancellationTokenSource(options.StartupTimeout);
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken, startupTimeout.Token);
+        var startupElapsed = Stopwatch.StartNew();
         try
         {
             client = await ManagedProcessProtocolClient.StartAsync(
-                package, artifact, collectorInstanceId, options, linkedCancellation.Token);
-            client.SetSelectedCapabilities(SelectedCapabilities(package, client.ProtocolSupport));
+                package,
+                artifact,
+                collectorInstanceId,
+                options,
+                _secretStore,
+                Path.Combine(_instanceDataRoot, collectorInstanceId.ToString("N")),
+                linkedCancellation.Token);
+            var selectedCapabilities = SelectedCapabilities(package, client.ProtocolSupport);
+            if (_secretStore is null && selectedCapabilities.ContainsKey("secrets.instance"))
+                selectedCapabilities = selectedCapabilities
+                    .Where(capability => capability.Key != "secrets.instance")
+                    .ToImmutableDictionary(capability => capability.Key, capability => capability.Value, StringComparer.Ordinal);
+            client.SetSelectedCapabilities(selectedCapabilities);
+            client.AuthorizationChallengeChanged += challenge =>
+                ManagedProcessAuthorizationChanged(collectorInstanceId, challenge);
+            lock (_gate)
+                _managedProcessClients[collectorInstanceId] = client;
             SetManagedProcessState(collectorInstanceId, new CollectorRuntimeSnapshot(
                 collectorInstanceId, null, CollectorRuntimePhase.Negotiating));
 
-            var protocolActivation = await ActivateProtocolAsync(
-                collectorInstanceId,
-                package,
+            var remainingStartup = options.StartupTimeout - startupElapsed.Elapsed;
+            if (remainingStartup <= TimeSpan.Zero)
+                startupTimeout.Cancel();
+            else
+                startupTimeout.CancelAfter(Timeout.InfiniteTimeSpan);
+            var protocolActivationTask = ActivateProtocolAsync(
+                    collectorInstanceId,
+                    package,
+                    client,
+                    "managedProcess",
+                    client.HelloMessageId,
+                    linkedCancellation.Token)
+                .AsTask();
+            var protocolActivation = await AwaitReadyWithAuthorizationPauseAsync(
+                protocolActivationTask,
                 client,
-                "managedProcess",
-                client.HelloMessageId,
-                linkedCancellation.Token);
+                remainingStartup,
+                startupTimeout,
+                cancellationToken);
             var activation = new ManagedProcessCollectorActivation(
                 this, collectorInstanceId, client, protocolActivation);
             lock (_gate)
             {
                 _managedProcessActivations[protocolActivation.ActivationId] = activation;
                 _managedProcessStates[collectorInstanceId] = new CollectorRuntimeSnapshot(
-                    collectorInstanceId, protocolActivation.ActivationId, CollectorRuntimePhase.Ready);
+                    collectorInstanceId, protocolActivation.ActivationId, CollectorRuntimePhase.Ready,
+                    AuthorizationChallenge: null);
             }
             activation.StartSupervision();
             return activation;
@@ -295,9 +366,11 @@ public sealed partial class CollectorRuntime
         {
             if (client is not null)
                 await client.AbortAsync();
+            lock (_gate)
+                _managedProcessClients.Remove(collectorInstanceId);
             var failure = new CollectorRuntimeFailure(
                 "activation_start_timeout",
-                $"ManagedProcess Collector did not reach Ready within {options.StartupTimeout}.");
+                $"ManagedProcess Collector exceeded {options.StartupTimeout} in non-authorization startup phases.");
             SetManagedProcessState(collectorInstanceId, new CollectorRuntimeSnapshot(
                 collectorInstanceId, client?.ActivationId, CollectorRuntimePhase.Failed, failure,
                 ProcessTerminated: client?.WasTerminated == true));
@@ -307,6 +380,8 @@ public sealed partial class CollectorRuntime
         {
             if (client is not null)
                 await client.AbortAsync();
+            lock (_gate)
+                _managedProcessClients.Remove(collectorInstanceId);
             var failure = exception switch
             {
                 CollectorActivationException activationException => new CollectorRuntimeFailure(
@@ -333,6 +408,58 @@ public sealed partial class CollectorRuntime
         }
     }
 
+    private static async Task<InProcessCollectorActivation> AwaitReadyWithAuthorizationPauseAsync(
+        Task<InProcessCollectorActivation> activationTask,
+        ManagedProcessProtocolClient client,
+        TimeSpan remaining,
+        CancellationTokenSource startupTimeout,
+        CancellationToken cancellationToken)
+    {
+        var last = Stopwatch.GetTimestamp();
+        while (!activationTask.IsCompleted)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var waitingForAuthorization = client.IsWaitingForAuthorization;
+            var slice = waitingForAuthorization
+                ? TimeSpan.FromMilliseconds(50)
+                : TimeSpan.FromMilliseconds(Math.Min(50, Math.Max(1, remaining.TotalMilliseconds)));
+            await Task.WhenAny(activationTask, Task.Delay(slice, cancellationToken));
+            var now = Stopwatch.GetTimestamp();
+            if (!waitingForAuthorization)
+            {
+                remaining -= Stopwatch.GetElapsedTime(last, now);
+                if (remaining <= TimeSpan.Zero && !activationTask.IsCompleted)
+                {
+                    startupTimeout.Cancel();
+                    break;
+                }
+            }
+            last = now;
+        }
+        return await activationTask;
+    }
+
+    private void ManagedProcessAuthorizationChanged(
+        Guid collectorInstanceId,
+        CollectorAuthorizationChallenge? challenge)
+    {
+        lock (_gate)
+        {
+            if (_disposed || !_managedProcessStates.TryGetValue(collectorInstanceId, out var current))
+                return;
+            var ready = _managedProcessActivations.Values.Any(activation =>
+                activation.CollectorInstanceId == collectorInstanceId &&
+                activation.State == CollectorActivationState.Ready);
+            _managedProcessStates[collectorInstanceId] = current with
+            {
+                Phase = challenge is not null
+                    ? CollectorRuntimePhase.WaitingForAuthorization
+                    : ready ? CollectorRuntimePhase.Ready : CollectorRuntimePhase.Negotiating,
+                AuthorizationChallenge = challenge
+            };
+        }
+    }
+
     internal void ManagedProcessDraining(ManagedProcessCollectorActivation activation)
     {
         lock (_gate)
@@ -352,6 +479,7 @@ public sealed partial class CollectorRuntime
         lock (_gate)
         {
             _managedProcessActivations.Remove(activation.ActivationId);
+            _managedProcessClients.Remove(activation.CollectorInstanceId);
             _managedProcessStates[activation.CollectorInstanceId] = new CollectorRuntimeSnapshot(
                 activation.CollectorInstanceId, activation.ActivationId, CollectorRuntimePhase.Stopped,
                 PendingFacts: result.PendingFacts, PendingGaps: result.PendingGaps,
@@ -369,6 +497,7 @@ public sealed partial class CollectorRuntime
         lock (_gate)
         {
             _managedProcessActivations.Remove(activation.ActivationId);
+            _managedProcessClients.Remove(activation.CollectorInstanceId);
             _managedProcessStates[activation.CollectorInstanceId] = new CollectorRuntimeSnapshot(
                 activation.CollectorInstanceId, activation.ActivationId, CollectorRuntimePhase.Failed,
                 failure, activation.Client.PendingFacts, activation.Client.PendingGaps,
@@ -629,28 +758,39 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
     private readonly StreamReader _reader;
     private readonly TextWriter _writer;
     private readonly ManagedProcessActivationOptions _options;
+    private readonly Guid _collectorInstanceId;
+    private readonly ICollectorSecretStore? _secretStore;
+    private readonly string _dataDirectory;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly TaskCompletionSource<ManagedProcessExit> _exit = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<ManagedProcessDrainResult> _drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly object _stopGate = new();
+    private readonly object _authorizationGate = new();
     private Task? _stopTask;
     private InProcessCollectorActivation? _activation;
     private IReadOnlyDictionary<string, int> _selectedCapabilities = ImmutableDictionary<string, int>.Empty;
     private long _specRevision;
     private Guid? _drainMessageId;
     private ManagedProcessDrainResult? _drainResult;
+    private CollectorAuthorizationChallenge? _authorizationChallenge;
 
     private ManagedProcessProtocolClient(
         Process process,
         ManagedProcessActivationOptions options,
         Guid helloMessageId,
         string artifactId,
-        ProtocolSupport protocolSupport)
+        ProtocolSupport protocolSupport,
+        Guid collectorInstanceId,
+        ICollectorSecretStore? secretStore,
+        string dataDirectory)
     {
         _process = process;
         _reader = process.StandardOutput;
         _writer = options.StandardInputDecorator?.Invoke(process.StandardInput) ?? process.StandardInput;
         _options = options;
+        _collectorInstanceId = collectorInstanceId;
+        _secretStore = secretStore;
+        _dataDirectory = dataDirectory;
         HelloMessageId = helloMessageId;
         ArtifactId = artifactId;
         ProtocolSupport = protocolSupport;
@@ -683,15 +823,51 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
     public ManagedProcessDrainResult DrainResult => _drainResult ?? (_drained.Task.IsCompletedSuccessfully
         ? _drained.Task.Result
         : new ManagedProcessDrainResult(PendingFacts, PendingGaps, WasTerminated));
+    public event Action<CollectorAuthorizationChallenge?>? AuthorizationChallengeChanged;
+
+    public bool IsWaitingForAuthorization
+    {
+        get { lock (_authorizationGate) return _authorizationChallenge is not null; }
+    }
 
     public void SetSelectedCapabilities(IReadOnlyDictionary<string, int> selectedCapabilities) =>
         _selectedCapabilities = selectedCapabilities;
+
+    public async ValueTask SubmitAuthorizationAsync(
+        Guid interactionId,
+        IReadOnlyDictionary<string, string> values,
+        CancellationToken cancellationToken)
+    {
+        CollectorAuthorizationChallenge challenge;
+        lock (_authorizationGate)
+        {
+            challenge = _authorizationChallenge
+                ?? throw new InvalidOperationException("Collector is not waiting for authorization.");
+            if (challenge.InteractionId != interactionId)
+                throw new InvalidOperationException("Authorization interaction is no longer current.");
+            var expected = challenge.Fields.Select(field => field.Name).ToHashSet(StringComparer.Ordinal);
+            if (!expected.SetEquals(values.Keys) || values.Any(pair => string.IsNullOrEmpty(pair.Value)))
+                throw new ArgumentException(
+                    "Authorization response must contain every declared non-empty field.",
+                    nameof(values));
+        }
+        await WriteAsync(new
+        {
+            protocol = "heartbeat.collector/1",
+            type = "auth.response",
+            messageId = Guid.CreateVersion7(),
+            activationId = ActivationId,
+            body = new { interactionId, values }
+        }, cancellationToken);
+    }
 
     public static async Task<ManagedProcessProtocolClient> StartAsync(
         LocalCollectorPackage package,
         VerifiedCollectorArtifact artifact,
         Guid collectorInstanceId,
         ManagedProcessActivationOptions options,
+        ICollectorSecretStore? secretStore,
+        string dataDirectory,
         CancellationToken cancellationToken)
     {
         var artifactPath = Path.GetFullPath(Path.Combine(
@@ -701,6 +877,7 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
         var actualHash = "sha256:" + Convert.ToHexStringLower(SHA256.HashData(content));
         if (actualHash != artifact.ContentHash || !content.AsSpan().SequenceEqual(artifact.Content.Span))
             throw new ManagedProcessProtocolException("ManagedProcess Artifact changed after Package verification.");
+        Directory.CreateDirectory(dataDirectory);
 
         var startInfo = new ProcessStartInfo
         {
@@ -756,7 +933,15 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
             var support = new ProtocolSupport(
                 ReadPositiveIntArray(body, "protocolMajors"),
                 ReadCapabilities(body, "supportedCapabilities"));
-            return new ManagedProcessProtocolClient(process, options, messageId, artifact.ArtifactId, support);
+            return new ManagedProcessProtocolClient(
+                process,
+                options,
+                messageId,
+                artifact.ArtifactId,
+                support,
+                collectorInstanceId,
+                secretStore,
+                dataDirectory);
         }
         catch (ManagedProcessExitedException exception)
         {
@@ -818,11 +1003,12 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
                     config = new { schemaVersion = initialization.Spec.ConfigSchemaVersion, value = initialization.Spec.Config }
                 },
                 limits = initialization.Limits,
+                resources = initialization.Resources,
                 hubTime = ProtocolTimestamp(DateTimeOffset.UtcNow)
             }
         }, cancellationToken);
 
-        using var initialized = await ReadRequiredMessageAsync(_reader, cancellationToken);
+        using var initialized = await ReadInitializationResponseAsync(initializeMessageId, cancellationToken);
         RequireResponse(initialized.RootElement, "activation.initialized", initializeMessageId, initialization.ActivationId);
         var initializedBody = RequireObject(initialized.RootElement, "body");
         RequireExactProperties(initializedBody, "appliedSpecRevision");
@@ -848,6 +1034,181 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
         }).ToArray();
         OpenMessageId = ReadUuidV7(open.RootElement, "messageId");
         return new InProcessCollectorInitialization(appliedSpecRevision, bindings);
+    }
+
+    private async Task<JsonDocument> ReadInitializationResponseAsync(
+        Guid initializeMessageId,
+        CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            var message = await ReadRequiredMessageAsync(_reader, cancellationToken);
+            var type = ReadString(message.RootElement, "type");
+            if (type == "activation.initialized")
+                return message;
+            try
+            {
+                switch (type)
+                {
+                    case "auth.challenge":
+                        HandleAuthorizationChallenge(message.RootElement);
+                        break;
+                    case "auth.completed":
+                        HandleAuthorizationCompleted(message.RootElement);
+                        break;
+                    case "secret.read":
+                        await HandleSecretReadAsync(message.RootElement, cancellationToken);
+                        break;
+                    case "secret.write":
+                        await HandleSecretWriteAsync(message.RootElement, cancellationToken);
+                        break;
+                    case "secret.delete":
+                        await HandleSecretDeleteAsync(message.RootElement, cancellationToken);
+                        break;
+                    default:
+                        throw new ManagedProcessProtocolException(
+                            $"Expected activation.initialized or authorization message for request '{initializeMessageId:D}'.");
+                }
+            }
+            finally
+            {
+                message.Dispose();
+            }
+        }
+    }
+
+    private void HandleAuthorizationChallenge(JsonElement root)
+    {
+        RequireAuthorizationCapability();
+        RequireEnvelope(root, "heartbeat.collector/1", "auth.challenge", ActivationId!.Value);
+        var body = RequireObject(root, "body");
+        RequireExactProperties(body, "interactionId", "kind", "title", "message", "fields");
+        var kind = ReadString(body, "kind") switch
+        {
+            "credentials" => CollectorAuthorizationChallengeKind.Credentials,
+            "verificationCode" => CollectorAuthorizationChallengeKind.VerificationCode,
+            "notice" => CollectorAuthorizationChallengeKind.Notice,
+            var value => throw new ManagedProcessProtocolException(
+                $"Unknown authorization challenge kind '{value}'.")
+        };
+        var fields = RequireArray(body, "fields").EnumerateArray().Select(field =>
+        {
+            RequireExactProperties(field, "name", "label", "isSecret", "inputMode");
+            return new CollectorAuthorizationField(
+                ReadString(field, "name"),
+                ReadString(field, "label"),
+                ReadBoolean(field, "isSecret"),
+                field.TryGetProperty("inputMode", out var inputMode) && inputMode.ValueKind == JsonValueKind.String
+                    ? inputMode.GetString()
+                    : null);
+        }).ToArray();
+        if ((kind != CollectorAuthorizationChallengeKind.Notice && fields.Length == 0) ||
+            fields.Select(field => field.Name).Distinct(StringComparer.Ordinal).Count() != fields.Length)
+            throw new ManagedProcessProtocolException(
+                "Authorization challenge fields must be non-empty and unique.");
+        var challenge = new CollectorAuthorizationChallenge(
+            ReadUuidV7(body, "interactionId"),
+            kind,
+            ReadString(body, "title"),
+            body.TryGetProperty("message", out var message) && message.ValueKind == JsonValueKind.String
+                ? message.GetString()
+                : null,
+            fields);
+        lock (_authorizationGate)
+            _authorizationChallenge = challenge;
+        AuthorizationChallengeChanged?.Invoke(challenge);
+    }
+
+    private void HandleAuthorizationCompleted(JsonElement root)
+    {
+        RequireAuthorizationCapability();
+        RequireEnvelope(root, "heartbeat.collector/1", "auth.completed", ActivationId!.Value);
+        var body = RequireObject(root, "body");
+        RequireExactProperties(body, "interactionId");
+        var interactionId = ReadGuid(body, "interactionId");
+        lock (_authorizationGate)
+        {
+            if (_authorizationChallenge?.InteractionId != interactionId)
+                throw new ManagedProcessProtocolException(
+                    "auth.completed does not match the current interaction.");
+            _authorizationChallenge = null;
+        }
+        AuthorizationChallengeChanged?.Invoke(null);
+    }
+
+    private async Task HandleSecretReadAsync(JsonElement root, CancellationToken cancellationToken)
+    {
+        RequireSecretCapability();
+        RequireEnvelope(root, "heartbeat.collector/1", "secret.read", ActivationId!.Value);
+        var messageId = ReadUuidV7(root, "messageId");
+        var body = RequireObject(root, "body");
+        RequireExactProperties(body, "key");
+        var key = ReadString(body, "key");
+        var value = await _secretStore!.ReadAsync(_collectorInstanceId, key, cancellationToken);
+        await WriteAsync(new
+        {
+            protocol = "heartbeat.collector/1",
+            type = "secret.value",
+            messageId = Guid.CreateVersion7(),
+            activationId = ActivationId,
+            replyTo = messageId,
+            body = new { key, found = value is not null, value }
+        }, cancellationToken);
+    }
+
+    private async Task HandleSecretWriteAsync(JsonElement root, CancellationToken cancellationToken)
+    {
+        RequireSecretCapability();
+        RequireEnvelope(root, "heartbeat.collector/1", "secret.write", ActivationId!.Value);
+        var messageId = ReadUuidV7(root, "messageId");
+        var body = RequireObject(root, "body");
+        RequireExactProperties(body, "key", "value");
+        var key = ReadString(body, "key");
+        var value = ReadString(body, "value");
+        await _secretStore!.WriteAsync(_collectorInstanceId, key, value, cancellationToken);
+        await WriteAsync(new
+        {
+            protocol = "heartbeat.collector/1",
+            type = "secret.stored",
+            messageId = Guid.CreateVersion7(),
+            activationId = ActivationId,
+            replyTo = messageId,
+            body = new { key }
+        }, cancellationToken);
+    }
+
+    private async Task HandleSecretDeleteAsync(JsonElement root, CancellationToken cancellationToken)
+    {
+        RequireSecretCapability();
+        RequireEnvelope(root, "heartbeat.collector/1", "secret.delete", ActivationId!.Value);
+        var messageId = ReadUuidV7(root, "messageId");
+        var body = RequireObject(root, "body");
+        RequireExactProperties(body, "key");
+        var key = ReadString(body, "key");
+        await _secretStore!.DeleteAsync(_collectorInstanceId, key, cancellationToken);
+        await WriteAsync(new
+        {
+            protocol = "heartbeat.collector/1",
+            type = "secret.deleted",
+            messageId = Guid.CreateVersion7(),
+            activationId = ActivationId,
+            replyTo = messageId,
+            body = new { key }
+        }, cancellationToken);
+    }
+
+    private void RequireSecretCapability()
+    {
+        if (!_selectedCapabilities.ContainsKey("secrets.instance") || _secretStore is null)
+            throw new ManagedProcessProtocolException(
+                "Collector attempted to use unavailable secrets.instance capability.");
+    }
+
+    private void RequireAuthorizationCapability()
+    {
+        if (!_selectedCapabilities.ContainsKey("auth.interactive"))
+            throw new ManagedProcessProtocolException(
+                "Collector attempted to use unavailable auth.interactive capability.");
     }
 
     private Guid OpenMessageId { get; set; }
@@ -1014,6 +1375,21 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
                             break;
                         case "stream.gap":
                             await HandleStreamGapAsync(root);
+                            break;
+                        case "auth.challenge":
+                            HandleAuthorizationChallenge(root);
+                            break;
+                        case "auth.completed":
+                            HandleAuthorizationCompleted(root);
+                            break;
+                        case "secret.read":
+                            await HandleSecretReadAsync(root, CancellationToken.None);
+                            break;
+                        case "secret.write":
+                            await HandleSecretWriteAsync(root, CancellationToken.None);
+                            break;
+                        case "secret.delete":
+                            await HandleSecretDeleteAsync(root, CancellationToken.None);
                             break;
                         case "activation.drained":
                             HandleDrained(root);

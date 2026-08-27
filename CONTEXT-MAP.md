@@ -34,3 +34,4 @@ Collection ──uploads──▶ Analytics ──serves──▶ Dashboard
 
 - Collection → Analytics: 上游/下游（Upstream/Downstream），Collection 生产数据，Analytics 消费并持久化
 - Analytics → Dashboard: 上游/下游，Analytics 提供 API，Dashboard 消费。**读为主**：使用数据只读呈现。**一处写例外**——叙事知识层（ADR-028/029/031）：Dashboard 把用户确认的 Strand 树、Episode、Matcher/Mute、RecurrenceProbe 与教学变更 POST 回 Analytics；知识库、发问/整理 LLM 调用和 Recap 知识投影均归 Analytics 所有。
+- Dashboard → Collection Hub Management Surface: owner 浏览器通过同源路由直接读取 Subject 授权状态并提交一次性交互应答；Analytics 不代理第三方账号凭据、Collector Secret 或管理命令（ADR-043）。

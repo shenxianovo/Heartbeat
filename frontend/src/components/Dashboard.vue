@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useHeartbeat } from '../composables/useHeartbeat'
 import { authStore } from '../stores/auth'
 import ActivityTimeline from './ActivityTimeline.vue'
@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import DatePicker from './DatePicker.vue'
+import { fetchManagedSubjectStatuses, type ManagedSubjectStatus } from '../api/index'
 
 const props = defineProps<{ username: string }>()
 
@@ -77,6 +78,29 @@ const selectedDeviceStr = computed({
 
 // 点击排行条目 → 全局全屏应用详情弹窗（回放多轨 + 标题明细）
 const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number } | null>(null)
+const managedSubjects = ref<ManagedSubjectStatus[]>([])
+let subjectPoll: ReturnType<typeof setInterval> | null = null
+
+async function refreshManagedSubjects() {
+  if (!isOwnProfile.value) {
+    managedSubjects.value = []
+    return
+  }
+  try {
+    managedSubjects.value = await fetchManagedSubjectStatuses()
+  } catch {
+    // Hub may be offline or not exposed on this deployment. Analytics remains usable.
+    managedSubjects.value = []
+  }
+}
+
+onMounted(() => {
+  void refreshManagedSubjects()
+  subjectPoll = setInterval(() => void refreshManagedSubjects(), 5_000)
+})
+onUnmounted(() => {
+  if (subjectPoll) clearInterval(subjectPoll)
+})
 </script>
 
 <template>
@@ -193,6 +217,8 @@ const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number }
             :currentAppKey="currentAppKey"
             :presences="onlinePresences"
             :isAllDevices="isAllDevices"
+            :managedSubjects="managedSubjects"
+            @authorizationSubmitted="refreshManagedSubjects"
           />
 
           <!-- owner 可生成/重生成；公开访客只读已有缓存，不触发 LLM。 -->

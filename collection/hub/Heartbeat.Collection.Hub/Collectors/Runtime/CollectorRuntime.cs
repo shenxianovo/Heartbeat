@@ -87,6 +87,8 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
     private readonly JsonCollectorRuntimeStore _store;
     private readonly ISegmentSink _segmentSink;
     private readonly IInputEventFactSink? _inputEventSink;
+    private readonly ICollectorSecretStore? _secretStore;
+    private readonly string _instanceDataRoot;
     private readonly CollectorRuntimeOptions _options;
     private readonly object _disposeGate = new();
     private CollectorRuntimeState _state;
@@ -100,11 +102,15 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         CollectorRuntimeOptions options,
         CollectorRuntimeState state,
         ICollectorAppHintResolver? appHintResolver,
-        IInputEventFactSink? inputEventSink)
+        IInputEventFactSink? inputEventSink,
+        ICollectorSecretStore? secretStore,
+        string instanceDataRoot)
     {
         _store = store;
         _segmentSink = segmentSink;
         _inputEventSink = inputEventSink;
+        _secretStore = secretStore;
+        _instanceDataRoot = instanceDataRoot;
         _options = options;
         _state = state;
         _segmentProjectors = [new ActivitySegmentFactProjector(appHintResolver)];
@@ -116,7 +122,8 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         ISegmentSink segmentSink,
         CollectorRuntimeOptions? options = null,
         ICollectorAppHintResolver? appHintResolver = null,
-        IInputEventFactSink? inputEventSink = null)
+        IInputEventFactSink? inputEventSink = null,
+        ICollectorSecretStore? secretStore = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(stateFilePath);
         ArgumentNullException.ThrowIfNull(segmentSink);
@@ -133,7 +140,9 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
                 options,
                 state,
                 appHintResolver,
-                inputEventSink);
+                inputEventSink,
+                secretStore,
+                Path.Combine(Path.GetDirectoryName(Path.GetFullPath(stateFilePath))!, "collector-data"));
             runtime.RestorePersistedFactSchemas();
             runtime.ReplayCommittedFacts();
             return runtime;

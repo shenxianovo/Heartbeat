@@ -48,8 +48,25 @@ services:
     networks:
       - backend
 
+  headless:
+    profiles: ["headless"]
+    build:
+      context: .
+      dockerfile: collection/hub/Heartbeat.Collection.Headless/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      HEARTBEAT_API_BASE_URL: http://backend:8080
+    volumes:
+      - ${HEADLESS_CONFIG_PATH:-./.local/heartbeat-headless.json}:/app/heartbeat-headless.json:ro
+      - headless-data:/data
+    networks:
+      - backend
+
 volumes:
   db-data:
+  headless-data:
 
 networks:
   backend:
