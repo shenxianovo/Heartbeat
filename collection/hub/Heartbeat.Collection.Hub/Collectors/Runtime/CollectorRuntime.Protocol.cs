@@ -26,7 +26,6 @@ public sealed partial class CollectorRuntime
 
     private readonly Dictionary<Guid, InProcessCollectorActivation> _activations = [];
     private readonly Dictionary<Guid, PendingActivationCommit> _pendingActivationCommits = [];
-    private readonly Dictionary<Guid, PendingPackageFingerprint> _pendingPackageFingerprints = [];
     private readonly Dictionary<string, FactSchemaDocument> _factSchemasByHash = new(StringComparer.Ordinal);
     private readonly IReadOnlyList<ISegmentFactProjector> _segmentProjectors;
     private readonly IReadOnlyList<IEventFactProjector> _eventProjectors;
@@ -139,7 +138,6 @@ public sealed partial class CollectorRuntime
         StartingCollector? startingCollector = null;
         InProcessCollectorActivation? activation = null;
         CollectorActivationSession? session = null;
-        Guid? packageReservationActivationId = null;
 
         try
         {
@@ -182,13 +180,6 @@ public sealed partial class CollectorRuntime
                 registeredStartingInstance = true;
                 startingCollector = new StartingCollector(collectorInstanceId, collector);
                 _startingCollectors.Add(collectorInstanceId, startingCollector);
-                _pendingPackageFingerprints.Add(
-                    activationId,
-                    new PendingPackageFingerprint(
-                        package.Manifest.PackageId,
-                        package.Manifest.Version,
-                        package.PackageContentHash));
-                packageReservationActivationId = activationId;
                 session = CreateActivationSession(
                     activationId,
                     helloMessageId,
@@ -354,8 +345,6 @@ public sealed partial class CollectorRuntime
                         _startingCollectors.TryGetValue(collectorInstanceId, out var registered) &&
                         ReferenceEquals(registered, startingCollector))
                         _startingCollectors.Remove(collectorInstanceId);
-                    if (packageReservationActivationId is { } reservedActivationId)
-                        _pendingPackageFingerprints.Remove(reservedActivationId);
                 }
             }
             startingCollector?.MarkActivationCompleted();
@@ -393,7 +382,6 @@ public sealed partial class CollectorRuntime
             }
             _activations.Remove(activation.ActivationId);
             _pendingActivationCommits.Remove(activation.ActivationId);
-            _pendingPackageFingerprints.Remove(activation.ActivationId);
             collectorInstanceId = activation.Streams.Values
                 .Select(stream => stream.Descriptor.CollectorInstanceId)
                 .FirstOrDefault();
@@ -461,7 +449,6 @@ public sealed partial class CollectorRuntime
             }
             _state = next;
             _pendingActivationCommits.Remove(activation.ActivationId);
-            _pendingPackageFingerprints.Remove(activation.ActivationId);
             foreach (var schema in activation.Package.FactSchemas)
                 _factSchemasByHash[schema.ContentHash] = schema;
             foreach (var stream in activation.Streams.Values)
@@ -851,17 +838,10 @@ public sealed partial class CollectorRuntime
 
         var persistedInstance = _state.Instances.Single(existing =>
             existing.CollectorInstanceId == instance.CollectorInstanceId);
-        var packageFingerprints = new Dictionary<string, string>(
-            persistedInstance.PackageFingerprints,
-            StringComparer.Ordinal)
-        {
-            [instance.PackageVersion] = instance.PackageContentHash
-        };
         var resolvedInstance = persistedInstance with
         {
             PackageVersion = instance.PackageVersion,
-            PackageContentHash = instance.PackageContentHash,
-            PackageFingerprints = packageFingerprints
+            PackageContentHash = instance.PackageContentHash
         };
         return new StreamOpenPlan(
             opened,
@@ -880,10 +860,12 @@ public sealed partial class CollectorRuntime
         foreach (var schema in PackageSchemas(package, output))
         {
             if (schemaCatalog.TryGetValue(schema.SchemaRevision, out var existingHash) &&
-                existingHash != schema.ContentHash)
+                existingHash != schema.ContentHash &&
+                (!schemaDocuments.TryGetValue(schema.SchemaRevision, out var existingDocument) ||
+                 !FactSchemaContent.SemanticallyEquals(existingDocument, schema.Content.Span)))
                 throw ActivationError(
                     "package_mismatch",
-                    $"Fact Schema '{output.Schema.Id}/{output.Schema.Major}/{schema.SchemaRevision}' changed content hash across Package versions.");
+                    $"Fact Schema '{output.Schema.Id}/{output.Schema.Major}/{schema.SchemaRevision}' changed meaning across Package versions.");
             schemaCatalog[schema.SchemaRevision] = schema.ContentHash;
             schemaDocuments[schema.SchemaRevision] = schema.Content.ToArray();
         }
@@ -925,10 +907,12 @@ public sealed partial class CollectorRuntime
                     stream.SchemaId == schema.SchemaId &&
                     stream.SchemaMajor == schema.SchemaMajor &&
                     stream.SchemaCatalog.TryGetValue(schema.SchemaRevision, out var existingHash) &&
-                    existingHash != schema.ContentHash))
+                    existingHash != schema.ContentHash &&
+                    (!stream.SchemaDocuments.TryGetValue(schema.SchemaRevision, out var existingDocument) ||
+                     !FactSchemaContent.SemanticallyEquals(existingDocument, schema.Content.Span))))
                 throw ActivationError(
                     "package_mismatch",
-                    $"Fact Schema '{schema.SchemaId}/{schema.SchemaMajor}/{schema.SchemaRevision}' changed content hash across Package versions.");
+                    $"Fact Schema '{schema.SchemaId}/{schema.SchemaMajor}/{schema.SchemaRevision}' changed meaning across Package versions.");
         }
     }
 
@@ -976,43 +960,10 @@ public sealed partial class CollectorRuntime
             throw ActivationError(
                 "package_mismatch",
                 "Collector Instance is permanently bound to its PackageId.");
-        var expectedFingerprint = KnownPackageFingerprint(
-            package.Manifest.PackageId,
-            package.Manifest.Version);
-        if (expectedFingerprint is not null &&
-            expectedFingerprint != package.PackageContentHash)
-            throw ActivationError(
-                "package_mismatch",
-                "An immutable Collector Package version cannot resolve to a different content fingerprint.");
         if (!package.Manifest.Config.AcceptedVersions.Contains(instance.ConfigVersion))
             throw ActivationError(
                 "config_version_unsupported",
                 $"Collector Package '{package.Manifest.PackageId}/{package.Manifest.Version}' does not accept ConfigVersion {instance.ConfigVersion}.");
-    }
-
-    private string? KnownPackageFingerprint(string packageId, string packageVersion)
-    {
-        string? knownFingerprint = null;
-        foreach (var instance in _state.Instances)
-        {
-            if (instance.PackageId != packageId ||
-                !instance.PackageFingerprints.TryGetValue(packageVersion, out var fingerprint))
-                continue;
-            if (knownFingerprint is not null && knownFingerprint != fingerprint)
-                throw new CollectorRuntimeStateException(
-                    $"Collector Runtime state contains conflicting fingerprints for Package '{packageId}/{packageVersion}'.");
-            knownFingerprint = fingerprint;
-        }
-        foreach (var pending in _pendingPackageFingerprints.Values)
-        {
-            if (pending.PackageId != packageId || pending.PackageVersion != packageVersion)
-                continue;
-            if (knownFingerprint is not null && knownFingerprint != pending.Fingerprint)
-                throw new CollectorRuntimeStateException(
-                    $"Collector Runtime state contains conflicting fingerprints for Package '{packageId}/{packageVersion}'.");
-            knownFingerprint = pending.Fingerprint;
-        }
-        return knownFingerprint;
     }
 
     private static VerifiedCollectorArtifact ResolveProtocolArtifact(
@@ -1564,10 +1515,6 @@ public sealed partial class CollectorRuntime
     private sealed record PendingActivationCommit(
         CollectorInstanceState Instance,
         IReadOnlyList<FactStreamState> Streams);
-    private sealed record PendingPackageFingerprint(
-        string PackageId,
-        string PackageVersion,
-        string Fingerprint);
     private sealed record HelloAttempt(
         string RequestHash,
         TaskCompletionSource<InProcessCollectorActivation> Completion);

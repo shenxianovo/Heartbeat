@@ -6,6 +6,71 @@ namespace Heartbeat.Collection.CollectorProtocol.Tests;
 public sealed class CollectorProtocolClientTests
 {
     [Fact]
+    public void SynchronousHostWait_DoesNotRequireItsSynchronizationContextToPumpProtocolContinuations()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-sync-context-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var binding = new SuspendedPublishBinding(root);
+        var context = new QueuedSynchronizationContext();
+        using var finished = new ManualResetEventSlim();
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            SynchronizationContext.SetSynchronizationContext(context);
+            try
+            {
+                var client = new CollectorProtocolClient(Definition(), binding);
+                try
+                {
+                    client.RunAsync(new PublishingApplication()).GetAwaiter().GetResult();
+                }
+                finally
+                {
+                    client.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                }
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+            finally
+            {
+                finished.Set();
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "Collector Protocol synchronous host fixture"
+        };
+
+        try
+        {
+            thread.Start();
+            Assert.True(binding.PublishEntered.Wait(TimeSpan.FromSeconds(2)));
+            binding.CompletePublish();
+            binding.RequestDrain();
+
+            var returnedWithoutPumping = finished.Wait(TimeSpan.FromSeconds(2));
+
+            while (!finished.IsSet && context.RunOne(TimeSpan.FromMilliseconds(100))) { }
+            Assert.True(finished.Wait(TimeSpan.FromSeconds(2)));
+            Assert.Null(failure);
+            Assert.True(
+                returnedWithoutPumping,
+                "Collector Protocol captured the synchronous host context and deadlocked its caller.");
+        }
+        finally
+        {
+            binding.CompletePublish();
+            binding.RequestDrain();
+            while (!finished.IsSet && context.RunOne(TimeSpan.FromMilliseconds(100))) { }
+            thread.Join(TimeSpan.FromSeconds(2));
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task FactAcknowledgementCorpusDrivesDurableRemovalRetryAndDeadLetter()
     {
         using var corpus = JsonDocument.Parse(File.ReadAllText(Path.Combine(
@@ -244,6 +309,113 @@ public sealed class CollectorProtocolClientTests
 
         public ValueTask<CollectorDrainRequest> WaitForDrainAsync(CancellationToken cancellationToken) =>
             ValueTask.FromResult(new CollectorDrainRequest(Guid.CreateVersion7(), DateTimeOffset.UtcNow.AddSeconds(5)));
+
+        public ValueTask CompleteDrainAsync(CollectorDrainResult result, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class QueuedSynchronizationContext : SynchronizationContext
+    {
+        private readonly System.Collections.Concurrent.BlockingCollection<
+            (SendOrPostCallback Callback, object? State)> _callbacks = [];
+
+        public override void Post(SendOrPostCallback d, object? state) => _callbacks.Add((d, state));
+
+        public bool RunOne(TimeSpan timeout)
+        {
+            if (!_callbacks.TryTake(out var work, timeout))
+                return false;
+            work.Callback(work.State);
+            return true;
+        }
+    }
+
+    private sealed class SuspendedPublishBinding(string dataDirectory) : ICollectorProtocolBinding
+    {
+        private readonly TaskCompletionSource<CollectorFactBatchAcknowledgement> _publish =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<CollectorDrainRequest> _drain =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public ManualResetEventSlim PublishEntered { get; } = new();
+
+        public void CompletePublish() => _publish.TrySetResult(new CollectorFactBatchAcknowledgement(
+            [new CollectorFactDeliveryOutcome(0, CollectorFactDeliveryStatus.Committed)]));
+
+        public void RequestDrain() => _drain.TrySetResult(new CollectorDrainRequest(
+            Guid.CreateVersion7(),
+            DateTimeOffset.UtcNow.AddSeconds(5)));
+
+        public ValueTask<CollectorClientInitialization> StartAsync(
+            CollectorClientDefinition definition,
+            CancellationToken cancellationToken) => ValueTask.FromResult(new CollectorClientInitialization(
+                Guid.CreateVersion7(),
+                Guid.CreateVersion7(),
+                Guid.CreateVersion7(),
+                "account",
+                1,
+                1,
+                JsonSerializer.SerializeToElement(new { }),
+                500,
+                1_048_576,
+                dataDirectory,
+                definition.Capabilities.ToDictionary(pair => pair.Key, _ => 1)));
+
+        public ValueTask<IReadOnlyDictionary<string, CollectorClientStream>> OpenStreamsAsync(
+            long specRevision,
+            IReadOnlyList<CollectorOutputBinding> outputs,
+            CancellationToken cancellationToken) => ValueTask.FromResult<IReadOnlyDictionary<string, CollectorClientStream>>(
+                new Dictionary<string, CollectorClientStream>
+                {
+                    ["activity"] = new(
+                        "activity", Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "account",
+                        "activity", "reference.account", "segment", "heartbeat.reference.segment", 1, 1,
+                        "sha256:test", new Dictionary<string, string>())
+                });
+
+        public ValueTask ReadyAsync(long appliedSpecRevision, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask<CollectorFactBatchAcknowledgement> PublishAsync(
+            Guid messageId,
+            IReadOnlyList<BoundCollectorFact> facts,
+            CancellationToken cancellationToken)
+        {
+            PublishEntered.Set();
+            return new ValueTask<CollectorFactBatchAcknowledgement>(_publish.Task);
+        }
+
+        public ValueTask<CollectorGapDeliveryOutcome> ReportGapAsync(
+            Guid messageId,
+            Guid streamId,
+            CollectorStreamGap gap,
+            CancellationToken cancellationToken) => ValueTask.FromResult(
+                new CollectorGapDeliveryOutcome(CollectorGapDeliveryStatus.Committed));
+
+        public ValueTask<CollectorAuthorizationResponse> ChallengeAsync(
+            Guid interactionId,
+            string kind,
+            string title,
+            string? message,
+            IReadOnlyList<CollectorAuthorizationField> fields,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public ValueTask CompleteAuthorizationAsync(Guid interactionId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public ValueTask<string?> ReadSecretAsync(string key, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public ValueTask WriteSecretAsync(string key, string value, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public ValueTask DeleteSecretAsync(string key, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public ValueTask<CollectorDrainRequest> WaitForDrainAsync(CancellationToken cancellationToken) =>
+            new(_drain.Task);
 
         public ValueTask CompleteDrainAsync(CollectorDrainResult result, CancellationToken cancellationToken) =>
             ValueTask.CompletedTask;

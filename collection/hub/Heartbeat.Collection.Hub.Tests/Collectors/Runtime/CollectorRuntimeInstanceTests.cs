@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Heartbeat.Collection.Hub.Collectors.Packages;
 using Heartbeat.Collection.Hub.Collectors.Runtime;
 using Heartbeat.Collection.Hub.Segments;
@@ -81,6 +82,40 @@ public class CollectorRuntimeInstanceTests
         Assert.Contains("\"activationAttemptTombstones\"", canonicalJson, StringComparison.Ordinal);
         Assert.DoesNotContain("\"configSchemaVersion\"", canonicalJson, StringComparison.Ordinal);
         Assert.DoesNotContain("\"helloAttempts\"", canonicalJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Open_ObsoletePackageFingerprintCatalog_LoadsAndRemovesItOnNextSave()
+    {
+        using var stateDirectory = TemporaryDirectory.Create();
+        var statePath = Path.Combine(stateDirectory.Path, "collector-runtime.json");
+        var package = LocalCollectorPackage.Load(ReferencePackagePath);
+        using var configDocument = JsonDocument.Parse("{}");
+        Guid collectorInstanceId;
+        using (var runtime = CollectorRuntime.Open(statePath, new RecordingSegmentSink()))
+        {
+            collectorInstanceId = runtime.CreateInstance(
+                package,
+                new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+                new CollectorInstanceSpec(1, 1, configDocument.RootElement.Clone()))
+                .CollectorInstanceId;
+        }
+        var root = JsonNode.Parse(File.ReadAllText(statePath))!.AsObject();
+        root["instances"]![0]!["packageFingerprints"] = new JsonObject
+        {
+            [package.Manifest.Version] = package.PackageContentHash
+        };
+        File.WriteAllText(statePath, root.ToJsonString());
+
+        using (var reopened = CollectorRuntime.Open(statePath, new RecordingSegmentSink()))
+        {
+            reopened.UpdateInstanceSpec(
+                collectorInstanceId,
+                2,
+                configDocument.RootElement.Clone());
+        }
+
+        Assert.DoesNotContain("\"packageFingerprints\"", File.ReadAllText(statePath), StringComparison.Ordinal);
     }
 
     [Fact]

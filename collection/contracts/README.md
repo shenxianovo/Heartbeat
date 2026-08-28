@@ -9,4 +9,4 @@ npm run build --prefix collection/collectors/Heartbeat.Collector.Browser
 node scripts/collector-contracts.mjs check --base-ref origin/main
 ```
 
-同一 `(schemaId, schemaMajor, schemaRevision)` 不允许改变 hash。兼容变更增加 `schemaRevision`；破坏性变更增加 `schemaMajor`，并同步修改引用它的 manifest template 与 producer/projector 行为测试。
+Package manifest 使用 schema 文件的原始字节 hash 校验 staging 完整性；演进 baseline 使用规范化 JSON hash，因此缩进、空白和对象字段顺序不会伪装成契约变化。同一 `(schemaId, schemaMajor, schemaRevision)` 不允许改变 JSON 含义。兼容变更增加 `schemaRevision`；破坏性变更增加 `schemaMajor`，并同步修改引用它的 manifest template 与 producer/projector 行为测试。

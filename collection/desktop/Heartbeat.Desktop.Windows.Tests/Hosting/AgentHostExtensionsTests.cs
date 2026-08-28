@@ -81,10 +81,17 @@ public class AgentHostExtensionsTests : IDisposable
         provider.GetRequiredService<AppMonitorService>().PushCurrentSnapshot();
 
         Assert.True(File.Exists(Path.Combine(_tempRuntime, "collector-runtime.json")));
-        Assert.Equal("win:code", provider.GetRequiredService<ICollectionStatus>()
-            .CurrentActivity!.AppIdentityKey);
-        Assert.Contains("system", provider.GetRequiredService<ICollectionStatus>().SourceLastSeen.Keys);
+        var status = provider.GetRequiredService<ICollectionStatus>();
+        Assert.Equal("win:code", status.CurrentActivity!.AppIdentityKey);
+        await WaitUntilAsync(() => status.SourceLastSeen.ContainsKey("system"));
         await binding.StopAsync(CancellationToken.None);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (!condition())
+            await Task.Delay(10, timeout.Token);
     }
 
     private sealed class FakeClock : IClock

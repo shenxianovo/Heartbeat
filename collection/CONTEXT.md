@@ -13,7 +13,7 @@ _Avoid_: Service, Worker（这些是 Agent 内部的实现层）
 _Avoid_: 插件/Plugin（口语别名，UI 与文档统一用"采集器"；ADR-017 等历史文档中的 plugin 即此概念）
 
 **Collector Package（采集器包）**:
-Collector 的不可变发布物；一个确定版本对应确定内容。它不表示已经安装、配置或运行。
+Collector 的内容快照；精确候选由声明版本与 content hash 共同确定。正式发布物不可变；当前本地官方 Package 在发布安装 seam 建立前允许同一声明版本换内容。它不表示已经安装、配置或运行。
 _Avoid_: Plugin Package、把 Collector Package 与 Collector 混称为“插件”
 
 **Collector Runtime（采集器运行时）**:
@@ -28,6 +28,10 @@ _Avoid_: 把当前 loopback HTTP 路由集合当成完整协议
 Collector 侧持有协议会话与未确认交付责任的参与者；它统一承担 Activation 生命周期、消息关联、ACK/重试、Stream Gap、授权、Collector Secret 与 drain，使 Collector 只需表达观测事实。
 _Avoid_: 每个 Collector 自行拼装协议状态机、把 Client 与某一种 Transport Binding 混称
 
+**Collector Ingress Queue（采集器入口队列）**:
+隔离观测回调与 Collector Protocol 交付背压的 Collector 内部边界。平台 UI、窗口事件和输入 hook 只入队；后台 delivery pump 才能等待持久化、ACK 或重试。
+_Avoid_: 在原生回调或 UI 线程同步等待 Fact 发布
+
 **Collector Protocol Conformance Suite（采集器协议一致性套件）**:
 跨语言共享的可执行协议 transcript，固定生命周期、ACK、重试、Gap 与 drain 结果；各语言实现通过同一语料证明其 Binding 没有改变协议语义。
 _Avoid_: 只共享 DTO、以某一种语言实现作为协议本身
@@ -41,7 +45,7 @@ Collector Package 对一类可实例化 Fact Stream 的静态声明，限定其 
 _Avoid_: 运行时任意注册 schema、把每个动态 dimension value 写成新清单项
 
 **Fact Schema（事实模式）**:
-可执行事实 payload 的版本化约束。唯一权威文件位于 `collection/contracts/facts/`；Package 内 schema 与最终 manifest 是 build staging 产物。相同 `(SchemaId, Major, Revision)` 的字节进入 baseline 后不可改变。当前 Collector Protocol v1 只执行 Segment 与 Event。
+可执行事实 payload 的版本化约束。唯一权威文件位于 `collection/contracts/facts/`；Package 内 schema 与最终 manifest 是 build staging 产物。Package 使用原始字节 hash 做完整性校验；baseline 与 Runtime 以解析后的 JSON 含义判断同一 `(SchemaId, Major, Revision)` 是否变化。当前 Collector Protocol v1 只执行 Segment 与 Event。
 _Avoid_: 在 Collector C# / TypeScript 里复制 schema 字符串、把私有状态文件的 `schemaVersion` 混入 Fact Schema 版本体系
 
 **Hub Instance（Hub 实例）**:

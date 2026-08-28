@@ -1657,7 +1657,7 @@ public class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task PackageUpdate_SameVersionWithDifferentFingerprint_IsRejected()
+    public async Task PackageUpdate_SameVersionWithDifferentFingerprint_ActivatesCandidate()
     {
         using var directory = TemporaryDirectory.Create();
         var original = LocalCollectorPackage.Load(ReferencePackagePath);
@@ -1677,17 +1677,18 @@ public class InProcessCollectorProtocolTranscriptTests
             new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
             new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
 
-        var error = await Assert.ThrowsAsync<CollectorActivationException>(async () =>
-            await runtime.ActivateInProcessAsync(
-                instance.CollectorInstanceId,
-                changed,
-                new ReferenceInProcessCollector()));
+        await using var activation = await runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            changed,
+            new ReferenceInProcessCollector());
 
-        Assert.Equal("package_mismatch", error.Error.Code);
+        var resolved = runtime.GetInstance(instance.CollectorInstanceId);
+        Assert.Equal(changed.Manifest.Version, resolved.PackageVersion);
+        Assert.Equal(changed.PackageContentHash, resolved.PackageContentHash);
     }
 
     [Fact]
-    public void CreateInstance_SamePackageVersionWithDifferentFingerprintAcrossInstances_IsRejected()
+    public void CreateInstance_SamePackageVersionWithDifferentFingerprintAcrossInstances_IsAllowed()
     {
         using var directory = TemporaryDirectory.Create();
         var original = LocalCollectorPackage.Load(ReferencePackagePath);
@@ -1700,21 +1701,22 @@ public class InProcessCollectorProtocolTranscriptTests
             Path.Combine(directory.Path, "collector-runtime.json"),
             new RecordingSegmentSink());
         using var config = JsonDocument.Parse("{}");
-        runtime.CreateInstance(
+        var originalInstance = runtime.CreateInstance(
             original,
             new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
             new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
 
-        var error = Assert.Throws<InvalidOperationException>(() => runtime.CreateInstance(
+        var changedInstance = runtime.CreateInstance(
             changed,
             new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
-            new CollectorInstanceSpec(1, 1, config.RootElement.Clone())));
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
 
-        Assert.Contains("immutable", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(original.PackageContentHash, originalInstance.PackageContentHash);
+        Assert.Equal(changed.PackageContentHash, changedInstance.PackageContentHash);
     }
 
     [Fact]
-    public async Task PackageUpdate_ConcurrentInitializeReservesOneFingerprintForNewVersion()
+    public async Task PackageUpdate_ConcurrentInitializeAllowsDifferentFingerprintsForOneVersion()
     {
         using var directory = TemporaryDirectory.Create();
         var original = LocalCollectorPackage.Load(ReferencePackagePath);
@@ -1761,13 +1763,12 @@ public class InProcessCollectorProtocolTranscriptTests
             await firstActivation.StopAsync();
         });
 
-        var conflict = Assert.IsType<CollectorActivationException>(secondError);
-        Assert.Equal("package_mismatch", conflict.Error.Code);
+        Assert.Null(secondError);
         Assert.Null(firstError);
     }
 
     [Fact]
-    public async Task PackageUpdate_PreviouslySeenVersionWithDifferentFingerprint_IsRejectedAfterUpgrade()
+    public async Task PackageUpdate_PreviouslySeenVersionWithDifferentFingerprint_ActivatesAfterUpgrade()
     {
         using var directory = TemporaryDirectory.Create();
         var original = LocalCollectorPackage.Load(ReferencePackagePath);
@@ -1802,14 +1803,103 @@ public class InProcessCollectorProtocolTranscriptTests
         runtime.Dispose();
 
         using var reopened = CollectorRuntime.Open(statePath, new RecordingSegmentSink());
-        var error = await Assert.ThrowsAsync<CollectorActivationException>(async () =>
-            await reopened.ActivateInProcessAsync(
-                instance.CollectorInstanceId,
-                changedOld,
-                new ReferenceInProcessCollector()));
+        await using var changedOldActivation = await reopened.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            changedOld,
+            new ReferenceInProcessCollector());
 
-        Assert.Equal("package_mismatch", error.Error.Code);
-        Assert.Equal("1.1.0", reopened.GetInstance(instance.CollectorInstanceId).PackageVersion);
+        var resolved = reopened.GetInstance(instance.CollectorInstanceId);
+        Assert.Equal(changedOld.Manifest.Version, resolved.PackageVersion);
+        Assert.Equal(changedOld.PackageContentHash, resolved.PackageContentHash);
+    }
+
+    [Fact]
+    public async Task PackageUpdate_SchemaFormattingOnly_IsAcceptedForSameRevision()
+    {
+        using var directory = TemporaryDirectory.Create();
+        var original = LocalCollectorPackage.Load(ReferencePackagePath);
+        using var reformattedCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
+        var schemaPath = Path.Combine(
+            reformattedCopy.Path,
+            "schemas",
+            "reference-segment.schema.json");
+        var schema = JsonNode.Parse(File.ReadAllText(schemaPath))!.AsObject();
+        var documentVersion = schema["documentVersion"]!.DeepClone();
+        schema.Remove("documentVersion");
+        schema["documentVersion"] = documentVersion;
+        File.WriteAllText(schemaPath, schema.ToJsonString());
+        reformattedCopy.UpdateSchemaHash(schemaPath);
+        var reformatted = LocalCollectorPackage.Load(reformattedCopy.Path);
+        Assert.Equal(original.Manifest.Version, reformatted.Manifest.Version);
+        Assert.NotEqual(
+            original.Manifest.Outputs[0].Schema.Hash,
+            reformatted.Manifest.Outputs[0].Schema.Hash);
+        using var runtime = CollectorRuntime.Open(
+            Path.Combine(directory.Path, "collector-runtime.json"),
+            new RecordingSegmentSink());
+        using var config = JsonDocument.Parse("{}");
+        var instance = runtime.CreateInstance(
+            original,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        var originalActivation = await runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            original,
+            new ReferenceInProcessCollector());
+        await originalActivation.StopAsync();
+
+        await using var reformattedActivation = await runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            reformatted,
+            new ReferenceInProcessCollector());
+
+        Assert.Equal(
+            reformatted.Manifest.Outputs[0].Schema.Hash,
+            reformattedActivation.Streams["activity"].Descriptor.Schema.Hash);
+    }
+
+    [Fact]
+    public async Task PackageActivation_SchemaFormattingOnly_IsAcceptedAcrossInstances()
+    {
+        using var directory = TemporaryDirectory.Create();
+        var original = LocalCollectorPackage.Load(ReferencePackagePath);
+        using var reformattedCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
+        var schemaPath = Path.Combine(
+            reformattedCopy.Path,
+            "schemas",
+            "reference-segment.schema.json");
+        var schema = JsonNode.Parse(File.ReadAllText(schemaPath))!.AsObject();
+        var documentVersion = schema["documentVersion"]!.DeepClone();
+        schema.Remove("documentVersion");
+        schema["documentVersion"] = documentVersion;
+        File.WriteAllText(schemaPath, schema.ToJsonString());
+        reformattedCopy.UpdateSchemaHash(schemaPath);
+        var reformatted = LocalCollectorPackage.Load(reformattedCopy.Path);
+        using var runtime = CollectorRuntime.Open(
+            Path.Combine(directory.Path, "collector-runtime.json"),
+            new RecordingSegmentSink());
+        using var config = JsonDocument.Parse("{}");
+        var firstInstance = runtime.CreateInstance(
+            original,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        var secondInstance = runtime.CreateInstance(
+            reformatted,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+
+        await using var firstActivation = await runtime.ActivateInProcessAsync(
+            firstInstance.CollectorInstanceId,
+            original,
+            new ReferenceInProcessCollector());
+        await using var secondActivation = await runtime.ActivateInProcessAsync(
+            secondInstance.CollectorInstanceId,
+            reformatted,
+            new ReferenceInProcessCollector());
+
+        Assert.NotEqual(
+            firstActivation.Streams["activity"].Descriptor.Schema.Hash,
+            secondActivation.Streams["activity"].Descriptor.Schema.Hash);
     }
 
     [Fact]

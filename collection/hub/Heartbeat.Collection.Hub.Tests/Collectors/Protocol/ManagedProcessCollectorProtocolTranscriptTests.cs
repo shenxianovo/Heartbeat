@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Heartbeat.Collection.Hub.Collectors.Packages;
 using Heartbeat.Collection.Hub.Collectors.Protocol;
 using Heartbeat.Collection.Hub.Collectors.Runtime;
@@ -181,6 +182,44 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         var restoredLastKnownGood = Assert.IsType<LastKnownGoodCollectorPackage>(
             reopened.GetInstance(instance.CollectorInstanceId).LastKnownGoodPackage);
         Assert.Equal(lastKnownGood, restoredLastKnownGood);
+    }
+
+    [Fact]
+    public async Task PackageUpdate_SameVersionWithDifferentContent_PreservesExactRollbackAndPromotesCandidate()
+    {
+        using var originalCopy = ManagedReferenceCollectorPackage.Create();
+        using var candidateCopy = ManagedReferenceCollectorPackage.Create();
+        var manifestPath = Path.Combine(candidateCopy.Path, "collector-manifest.json");
+        var manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!;
+        File.WriteAllText(manifestPath, manifest.ToJsonString());
+        var original = LocalCollectorPackage.Load(originalCopy.Path);
+        var candidate = LocalCollectorPackage.Load(candidateCopy.Path);
+        Assert.Equal(original.Manifest.Version, candidate.Manifest.Version);
+        Assert.NotEqual(original.PackageContentHash, candidate.PackageContentHash);
+        using var stateDirectory = TemporaryDirectory.Create();
+        using var runtime = CollectorRuntime.Open(
+            Path.Combine(stateDirectory.Path, "collector-runtime.json"),
+            new RecordingSegmentSink());
+        using var config = JsonDocument.Parse("{}");
+        var instance = runtime.CreateInstance(
+            original,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Account),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        _ = await runtime.ActivateManagedProcessAsync(
+            instance.CollectorInstanceId,
+            original,
+            Options());
+
+        var result = await runtime.UpdateManagedProcessAsync(
+            instance.CollectorInstanceId,
+            candidate,
+            FastUpdateOptions());
+
+        Assert.Equal(ManagedProcessUpdateOutcome.Updated, result.Outcome);
+        var resolved = runtime.GetInstance(instance.CollectorInstanceId);
+        Assert.Equal(candidate.PackageContentHash, resolved.PackageContentHash);
+        Assert.Equal(candidate.PackageContentHash, resolved.LastKnownGoodPackage?.PackageContentHash);
+        await result.Activation.StopAsync();
     }
 
     [Fact]

@@ -63,12 +63,6 @@ public sealed partial class CollectorRuntime
                 PackageContentHash = package.PackageContentHash
             };
             _startingInstances.Add(collectorInstanceId);
-            _pendingPackageFingerprints.Add(
-                activationId,
-                new PendingPackageFingerprint(
-                    package.Manifest.PackageId,
-                    package.Manifest.Version,
-                    package.PackageContentHash));
             var session = CreateActivationSession(
                 activationId,
                 helloMessageId,
@@ -194,7 +188,6 @@ public sealed partial class CollectorRuntime
             foreach (var stream in activation.Streams.Values)
                 _streamWriters[stream.StreamId] = activation.ActivationId;
             _pendingActivationCommits.Remove(activation.ActivationId);
-            _pendingPackageFingerprints.Remove(activation.ActivationId);
             _startingInstances.Remove(pendingCommit.Instance.CollectorInstanceId);
         }
     }
@@ -211,7 +204,6 @@ public sealed partial class CollectorRuntime
         {
             lock (_gate)
             {
-                _pendingPackageFingerprints.Remove(activationId);
                 _startingInstances.Remove(pending.Instance.CollectorInstanceId);
             }
         });
@@ -234,7 +226,6 @@ public sealed partial class CollectorRuntime
                 _externalHostActivations.Remove(activation.ActivationId);
                 if (_pendingActivationCommits.Remove(activation.ActivationId, out var pendingCommit))
                     _startingInstances.Remove(pendingCommit.Instance.CollectorInstanceId);
-                _pendingPackageFingerprints.Remove(activation.ActivationId);
             }
         }, reason);
     }

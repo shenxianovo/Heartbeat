@@ -79,7 +79,8 @@ public sealed class MacAgentHostExtensionsTests : IDisposable
 
         Assert.True(File.Exists(Path.Combine(_root, "collector-runtime.json")));
         Assert.NotNull(provider.GetRequiredService<ICollectionStatus>().CurrentActivity);
-        Assert.Contains("system", provider.GetRequiredService<ICollectionStatus>().SourceLastSeen.Keys);
+        var status = provider.GetRequiredService<ICollectionStatus>();
+        await WaitUntilAsync(() => status.SourceLastSeen.ContainsKey("system"));
         await binding.StopAsync(CancellationToken.None);
     }
 
@@ -118,6 +119,13 @@ public sealed class MacAgentHostExtensionsTests : IDisposable
     {
         if (Directory.Exists(_root))
             Directory.Delete(_root, recursive: true);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (!condition())
+            await Task.Delay(10, timeout.Token);
     }
 
     private sealed class FakeWorkspace : IMacWorkspaceNative

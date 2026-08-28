@@ -149,7 +149,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
 
         clock.Advance(TimeSpan.FromSeconds(30));
         monitor.PushCurrentSnapshot();
-        var first = Assert.Single(sink.GetAndClearSegments());
+        var first = Assert.Single(await WaitForSegmentsAsync(sink));
         Assert.Equal("system", first.Source);
         Assert.Equal("win:code", first.AppIdentityKey);
         Assert.Equal("Code", first.AppDisplayName);
@@ -161,7 +161,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
 
         clock.Advance(TimeSpan.FromSeconds(30));
         observations.Activate("win:chrome", "Docs", "Chrome");
-        var grown = Assert.Single(sink.GetAndClearSegments());
+        var grown = Assert.Single(await WaitForSegmentsAsync(sink));
         Assert.Equal(first.Id, grown.Id);
         Assert.Equal(first.StartTime, grown.StartTime);
         Assert.Equal(DateTimeOffset.UnixEpoch.AddSeconds(60), grown.EndTime);
@@ -405,6 +405,65 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
     }
 
     [Fact]
+    public async Task ForegroundObservation_ReturnsWhileProtocolDeliveryIsBackpressured()
+    {
+        Directory.CreateDirectory(_root);
+        var clock = new FakeClock();
+        var segmentSink = new SegmentIngestService(clock);
+        var inputSink = new BlockingInputEventSink();
+        var protocol = new SystemCollectorProtocolAdapter();
+        var inputBuffer = new InputEventBuffer(clock, publisher: protocol);
+        var observations = new FakeObservations
+        {
+            CurrentActivity = new DesktopActivity("mac:com.apple.Terminal", "Terminal", "shell")
+        };
+        var monitor = new AppMonitorService(
+            clock,
+            observations,
+            new FakeInteractionSignal(),
+            protocol,
+            segmentSink,
+            new FakeSettings());
+        var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
+        using var config = JsonDocument.Parse("{}");
+        await using var runtime = CollectorRuntime.Open(
+            Path.Combine(_root, "collector-runtime.json"),
+            segmentSink,
+            inputEventSink: inputSink);
+        var instance = runtime.CreateInstance(
+            package,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        await using var activation = await runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            package,
+            new SystemInProcessCollector(protocol, monitor));
+
+        inputBuffer.OnMouseButton(1);
+        Assert.True(inputSink.Entered.Wait(TimeSpan.FromSeconds(2)));
+        clock.Advance(TimeSpan.FromSeconds(30));
+        using var observationReturned = new ManualResetEventSlim();
+        var observationThread = new Thread(() =>
+        {
+            observations.Activate("mac:com.google.Chrome", "Docs", "Chrome");
+            observationReturned.Set();
+        })
+        {
+            IsBackground = true,
+            Name = "Blocked desktop observation fixture"
+        };
+
+        observationThread.Start();
+        var returnedWhileDeliveryBlocked = observationReturned.Wait(TimeSpan.FromSeconds(2));
+        inputSink.Release();
+        Assert.True(observationReturned.Wait(TimeSpan.FromSeconds(2)));
+
+        Assert.True(
+            returnedWhileDeliveryBlocked,
+            "Desktop observation synchronously waited for Collector Protocol delivery.");
+    }
+
+    [Fact]
     public void InputHookPublication_OnlyQueuesAndDoesNotRequireAnOpenedProtocolStream()
     {
         var protocol = new SystemCollectorProtocolAdapter();
@@ -506,6 +565,18 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             await Task.Delay(10, timeout.Token);
     }
 
+    private static async Task<List<Heartbeat.Core.DTOs.Segments.ActivitySegmentItem>> WaitForSegmentsAsync(
+        SegmentIngestService sink)
+    {
+        List<Heartbeat.Core.DTOs.Segments.ActivitySegmentItem> segments = [];
+        await WaitUntilAsync(() =>
+        {
+            segments = sink.GetAndClearSegments();
+            return segments.Count != 0;
+        });
+        return segments;
+    }
+
     private static void CopyDirectory(string source, string destination)
     {
         foreach (var directory in Directory.GetDirectories(source, "*", SearchOption.AllDirectories))
@@ -548,6 +619,21 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
     {
         public void Accept(InputEventItem item, bool isReplay) =>
             throw new IOException("durable projection unavailable");
+    }
+
+    private sealed class BlockingInputEventSink : IInputEventFactSink
+    {
+        private readonly ManualResetEventSlim _release = new();
+
+        public ManualResetEventSlim Entered { get; } = new();
+
+        public void Accept(InputEventItem item, bool isReplay)
+        {
+            Entered.Set();
+            _release.Wait();
+        }
+
+        public void Release() => _release.Set();
     }
 
     private sealed class FakeClock : IClock

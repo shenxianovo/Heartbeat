@@ -72,6 +72,11 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
         if (root["schemaVersion"] is not JsonValue schemaVersionNode ||
             !schemaVersionNode.TryGetValue<int>(out var schemaVersion))
             throw new JsonException("Collector Runtime state schemaVersion must be an integer.");
+        if (root["instances"] is JsonArray currentInstances)
+        {
+            foreach (var instance in currentInstances.OfType<JsonObject>())
+                instance.Remove("packageFingerprints");
+        }
         if (schemaVersion == 1)
         {
             MoveLegacyProperty(root, "helloAttempts", "activationAttemptTombstones");
@@ -188,40 +193,16 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
                 (string.IsNullOrWhiteSpace(instanceKey) || instanceKey.Length > 200 || instanceKey != instanceKey.Trim()) ||
                 string.IsNullOrWhiteSpace(instance.PackageId) || string.IsNullOrWhiteSpace(instance.PackageVersion) ||
                 !IsSha256(instance.PackageContentHash) ||
-                instance.PackageFingerprints is null || instance.PackageFingerprints.Count == 0 ||
-                instance.PackageFingerprints.Any(pair =>
-                    string.IsNullOrWhiteSpace(pair.Key) || !IsSha256(pair.Value)) ||
-                !instance.PackageFingerprints.TryGetValue(instance.PackageVersion, out var currentPackageHash) ||
-                currentPackageHash != instance.PackageContentHash ||
                 instance.SpecRevision is <= 0 or > 9_007_199_254_740_991 ||
                 instance.ConfigVersion <= 0 || instance.Config.ValueKind == JsonValueKind.Undefined ||
                 instance.LastKnownGoodPackage is { } lastKnownGood &&
                 (string.IsNullOrWhiteSpace(lastKnownGood.PackageVersion) ||
                  !IsSha256(lastKnownGood.PackageContentHash) ||
-                 !instance.PackageFingerprints.TryGetValue(
-                     lastKnownGood.PackageVersion,
-                     out var lastKnownGoodPackageHash) ||
-                 lastKnownGoodPackageHash != lastKnownGood.PackageContentHash ||
                  string.IsNullOrWhiteSpace(lastKnownGood.ArtifactId) ||
                  !IsSha256(lastKnownGood.ArtifactContentHash) ||
                  lastKnownGood.ConfigVersion <= 0))
                 throw new JsonException("Collector Runtime state contains an invalid Collector Instance.");
         }
-        var conflictingPackageVersion = state.Instances
-            .SelectMany(instance => instance.PackageFingerprints.Select(pair => new
-            {
-                instance.PackageId,
-                PackageVersion = pair.Key,
-                Fingerprint = pair.Value
-            }))
-            .GroupBy(item => (item.PackageId, item.PackageVersion))
-            .FirstOrDefault(group => group
-                .Select(item => item.Fingerprint)
-                .Distinct(StringComparer.Ordinal)
-                .Skip(1)
-                .Any());
-        if (conflictingPackageVersion is not null)
-            throw new JsonException("Collector Runtime state contains conflicting immutable Package fingerprints.");
         foreach (var stream in state.Streams)
         {
             if (stream.StreamId == Guid.Empty || stream.CollectorInstanceId == Guid.Empty ||
@@ -249,12 +230,19 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
                 stream.SchemaId,
                 stream.SchemaMajor,
                 SchemaRevision = pair.Key,
-                Hash = pair.Value
+                Hash = pair.Value,
+                Document = stream.SchemaDocuments[pair.Key]
             }))
             .GroupBy(item => (item.SchemaId, item.SchemaMajor, item.SchemaRevision))
-            .FirstOrDefault(group => group.Select(item => item.Hash).Distinct(StringComparer.Ordinal).Skip(1).Any());
+            .FirstOrDefault(group =>
+            {
+                var first = group.First();
+                return group.Skip(1).Any(item =>
+                    item.Hash != first.Hash &&
+                    !FactSchemaContent.SemanticallyEquals(item.Document, first.Document));
+            });
         if (conflictingSchemaIdentity is not null)
-            throw new JsonException("Collector Runtime state contains conflicting Fact Schema identity hashes.");
+            throw new JsonException("Collector Runtime state contains conflicting Fact Schema meanings.");
         if (state.Streams.Any(stream => state.Instances.All(
                 instance => instance.CollectorInstanceId != stream.CollectorInstanceId)))
             throw new JsonException("Collector Runtime state contains a Fact Stream for an unknown Collector Instance.");
@@ -463,7 +451,6 @@ internal sealed record CollectorInstanceState
     public string PackageId { get; init; } = string.Empty;
     public string PackageVersion { get; init; } = string.Empty;
     public string PackageContentHash { get; init; } = string.Empty;
-    public Dictionary<string, string> PackageFingerprints { get; init; } = new(StringComparer.Ordinal);
     public Guid SubjectId { get; init; }
     public SubjectKind SubjectKind { get; init; }
     public long SpecRevision { get; init; }

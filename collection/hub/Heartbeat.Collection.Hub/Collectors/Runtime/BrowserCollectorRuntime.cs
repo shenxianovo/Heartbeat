@@ -106,15 +106,8 @@ public sealed class BrowserCollectorRuntime
     public event Action<BrowserCollectorRuntimeSnapshot>? Changed;
     internal event Action<string, bool>? AppDesiredEnabledChanged;
 
-    public BrowserCollectorRuntimeSnapshot EnsureBundledPackageInstalled()
-    {
-        lock (_gate)
-        {
-            if (_state.Current is not null)
-                return BuildSnapshotLocked();
-        }
-        return Import(_options.PackageDirectory);
-    }
+    public BrowserCollectorRuntimeSnapshot EnsureBundledPackageInstalled() =>
+        Import(_options.PackageDirectory);
 
     public BrowserCollectorRuntimeSnapshot Import(string packageDirectory)
     {
@@ -123,19 +116,6 @@ public sealed class BrowserCollectorRuntime
         ValidateBrowserPackage(sourcePackage);
         var sourceSideloadRelativePath = ResolveSideloadRelativePath(sourcePackage);
         var treeHash = ComputeTreeHash(sourcePackage.PackageDirectory);
-        lock (_gate)
-        {
-            var conflicting = new[] { _state.Current, _state.KnownGood, _state.PreviousKnownGood }
-                .Where(installation => installation is not null)
-                .Cast<PackageInstallationState>()
-                .FirstOrDefault(installation =>
-                    installation.Version == sourcePackage.Manifest.Version &&
-                    (installation.PackageContentHash != sourcePackage.PackageContentHash ||
-                     installation.TreeContentHash != treeHash));
-            if (conflicting is not null)
-                throw new PackageValidationException(
-                    "The same immutable browser Collector Package version cannot have different content.");
-        }
         var installDirectory = Path.Combine(
             _installRoot,
             BrowserPackageId,
@@ -182,12 +162,6 @@ public sealed class BrowserCollectorRuntime
                 InstallDirectory = installDirectory,
                 SideloadRelativePath = sourceSideloadRelativePath
             };
-            if (_state.Current is not null &&
-                _state.Current.Version == nextInstallation.Version &&
-                _state.Current.PackageContentHash != nextInstallation.PackageContentHash)
-                throw new PackageValidationException(
-                    "The same immutable browser Collector Package version cannot have different content.");
-
             var previousKnownGood = _state.PreviousKnownGood;
             if (_state.KnownGood is not null &&
                 _state.KnownGood.PackageContentHash != nextInstallation.PackageContentHash)

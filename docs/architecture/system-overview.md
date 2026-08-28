@@ -16,8 +16,8 @@ flowchart LR
     LOOP["Browser ExternalHost binding\n127.0.0.1 port range"]
 
     UI -->|"typed calls · desired state"| HUB
-    OS -->|"typed observations"| SYS
-    SYS -->|"Collector Protocol v1\ntyped in-process binding"| HUB
+    OS -->|"typed observations\nenqueue-only callbacks"| SYS
+    SYS -->|"background delivery pump\nCollector Protocol v1 · typed in-process"| HUB
     LOOP -->|"Collector Protocol v1 adapter"| HUB
     HUB -->|"validated Facts"| PROJ
     PROJ --> CACHE
@@ -61,6 +61,8 @@ flowchart LR
 ```
 
 Browser discovery 只认 `GET /v1/collector-protocol/browser`；握手与后续消息走同一路径下的 HTTP JSON。旧的 `POST /v1/segments`、`GET /v1/hub` 和 source 级配置/声明入口已经退役。`SegmentIngestService` 仍是 Runtime projector 的内部 segment sink，不是外部协议。
+
+Desktop 的平台观察回调不执行协议 I/O：system Collector 先把 Segment / Event 放入 ingress queue，再由后台 delivery pump 持久化并发送。Collector Protocol Client 不捕获宿主 `SynchronizationContext`，因此 Hub 背压不会阻塞 Avalonia UI、macOS LaunchServices 回调或 Windows hook/message-loop 线程。
 
 ## Browser 身份与替换范围
 
@@ -116,4 +118,4 @@ flowchart LR
   PRODUCER -->|"behavior tests"| CI
 ```
 
-当前可执行协议只有 `segment` 与 `event`；`measurement` 保留在领域词汇中，但尚未进入 Collector Protocol v1。相同 `(schemaId, schemaMajor, schemaRevision)` 的字节一旦进入基线就不可改变；兼容演进增加 revision，破坏性演进增加 major。
+当前可执行协议只有 `segment` 与 `event`；`measurement` 保留在领域词汇中，但尚未进入 Collector Protocol v1。Package 用原始文件 hash 验证完整性；相同 `(schemaId, schemaMajor, schemaRevision)` 的 JSON 含义一旦进入基线就不可改变，纯排版变化不算演进。兼容演进增加 revision，破坏性演进增加 major。

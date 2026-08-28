@@ -1,39 +1,39 @@
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "contracts": [
     {
       "schemaId": "heartbeat.browser.active-tab-segment",
       "schemaMajor": 1,
       "schemaRevision": 1,
-      "hash": "sha256:d667e5a9dbaface104cf53159404cf5251d4536f3ed9b5edd54fc4c574fbe568",
+      "hash": "sha256:8a2411741a20bf9b06d3ccdbb277125efdf8ee21349f4e416f317173d5121dd2",
       "document": "browser-active-tab-segment.schema.json"
     },
     {
       "schemaId": "heartbeat.input",
       "schemaMajor": 1,
       "schemaRevision": 1,
-      "hash": "sha256:2fca2da4d7073ebe96bfbdb957a2ea12b4bc2a22ce6b75c444d13bf5f1ae0147",
+      "hash": "sha256:e719d97a70ec9b9176105bbb8c5648ef6c929a217c3b3d21a42a53e7ac29f024",
       "document": "input-event.schema.json"
     },
     {
       "schemaId": "heartbeat.reference.segment",
       "schemaMajor": 1,
       "schemaRevision": 1,
-      "hash": "sha256:043a944de3d3ea0a1fe8fd3b0896e9baa79516cfe81dded46d346a2973c12cbd",
+      "hash": "sha256:bc677ecdb5da032c7b2e52c4d123b96f03f83cfeef2e1bf917e5d3a1e58ab3cb",
       "document": "reference-segment.schema.json"
     },
     {
       "schemaId": "heartbeat.system.foreground-segment",
       "schemaMajor": 1,
       "schemaRevision": 1,
-      "hash": "sha256:5118f1c003cdc494a32827e94289d2dd7622bc9a86672087b3e021ce20a37b17",
+      "hash": "sha256:5acfa2a67a49716a1f92f36562dfc2d0087d20237a7a86547aee5ea5cd4072d4",
       "document": "system-foreground-segment.schema.json"
     },
     {
       "schemaId": "heartbeat.vrchat.presence-segment",
       "schemaMajor": 1,
       "schemaRevision": 1,
-      "hash": "sha256:2f03047779df9df1b7702bd0279e6350b2a84e53a543c7a5d46b492505bdd1eb",
+      "hash": "sha256:93ceb0250dc8abaa7709250d8a6dcfb972c3931f0ebe22704f6433439295d4e2",
       "document": "vrchat-presence-segment.schema.json"
     }
   ]

@@ -28,6 +28,17 @@ function sha256(content) {
   return `sha256:${createHash('sha256').update(content).digest('hex')}`
 }
 
+function normalizeJson(value) {
+  if (Array.isArray(value)) return value.map(normalizeJson)
+  if (value !== null && typeof value === 'object')
+    return Object.fromEntries(Object.keys(value).sort().map(key => [key, normalizeJson(value[key])]))
+  return value
+}
+
+function semanticJsonHash(value) {
+  return sha256(Buffer.from(JSON.stringify(normalizeJson(value))))
+}
+
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'))
 }
@@ -40,7 +51,14 @@ function factContracts() {
       const path = join(factsDirectory, name)
       const bytes = readFileSync(path)
       const document = JSON.parse(bytes)
-      return { name, path, bytes, document, hash: sha256(bytes) }
+      return {
+        name,
+        path,
+        bytes,
+        document,
+        contentHash: sha256(bytes),
+        evolutionHash: semanticJsonHash(document),
+      }
     })
 }
 
@@ -62,12 +80,12 @@ function validateContracts(contracts) {
 
 function baselineFor(contracts) {
   return {
-    formatVersion: 1,
+    formatVersion: 2,
     contracts: contracts.map(contract => ({
       schemaId: contract.document.schemaId,
       schemaMajor: contract.document.schemaMajor,
       schemaRevision: contract.document.schemaRevision,
-      hash: contract.hash,
+      hash: contract.evolutionHash,
       document: contract.name,
     })),
   }
@@ -91,6 +109,8 @@ function checkBaseRef(current, baseRef) {
     process.stdout.write(`Contract baseline does not exist at ${baseRef}; treating this branch as the initial baseline.\n`)
     return
   }
+  if (![1, 2].includes(old.formatVersion))
+    throw new Error(`unsupported Fact Schema baseline format ${old.formatVersion} at ${baseRef}`)
   const currentByIdentity = new Map(current.contracts.map(item => [
     `${item.schemaId}@${item.schemaMajor}.${item.schemaRevision}`,
     item,
@@ -98,8 +118,15 @@ function checkBaseRef(current, baseRef) {
   for (const previous of old.contracts) {
     const identity = `${previous.schemaId}@${previous.schemaMajor}.${previous.schemaRevision}`
     const candidate = currentByIdentity.get(identity)
-    if (candidate && candidate.hash !== previous.hash)
-      throw new Error(`${identity} changed bytes without changing schemaMajor/schemaRevision`)
+    const previousHash = old.formatVersion === 2
+      ? previous.hash
+      : semanticJsonHash(JSON.parse(execFileSync(
+        'git',
+        ['show', `${baseRef}:collection/contracts/facts/${previous.document}`],
+        { cwd: root, encoding: 'utf8' },
+      )))
+    if (candidate && candidate.hash !== previousHash)
+      throw new Error(`${identity} changed meaning without changing schemaMajor/schemaRevision`)
   }
 }
 
@@ -189,7 +216,7 @@ function stagePackage(name, destination) {
     const target = join(output, schema.document)
     mkdirSync(dirname(target), { recursive: true })
     writeFileSync(target, contract.bytes)
-    schema.hash = contract.hash
+    schema.hash = contract.contentHash
   }
   writeFileSync(join(output, 'collector-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
   process.stdout.write(`Staged ${name} Collector Package at ${output}\n`)

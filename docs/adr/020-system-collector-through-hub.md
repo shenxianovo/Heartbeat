@@ -4,7 +4,7 @@
 
 ## Date: 2026-07-07
 
-> 2026-08-28 implementation note: 本 ADR 的 `ISegmentSink` 内部投影 seam 仍有效；其中通用 loopback request handler 与 source 级冒充/停用入口已由 ADR-040 的 Package/Instance/Activation 与 Collector Protocol 取代。
+> 2026-08-28 implementation note: 本 ADR 的 `ISegmentSink` 内部投影 seam 仍有效；其中通用 loopback request handler 与 source 级冒充/停用入口已由 ADR-040 的 Package/Instance/Activation 与 Collector Protocol 取代。平台观察回调只进入 system Collector 的后台发布队列，不同步等待协议持久化或 ACK。
 
 ## Context
 

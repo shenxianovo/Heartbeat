@@ -24,7 +24,17 @@ public sealed class SystemCollectorProtocolAdapter :
     public const string StatusStreamName = "system Collector 协议";
     private const int InputEventIngressCapacity = 100_000;
     private const int InputEventPumpBatchSize = 500;
+    private const int SegmentPumpBatchSize = 500;
 
+    private readonly Channel<ForegroundSegmentSnapshot> _segments = Channel.CreateUnbounded<ForegroundSegmentSnapshot>(
+        new UnboundedChannelOptions
+        {
+            // Native desktop callbacks must only enqueue. Segment snapshots are low-rate,
+            // ordered state revisions, so they are never dropped under protocol backpressure.
+            SingleReader = true,
+            SingleWriter = false,
+            AllowSynchronousContinuations = false
+        });
     private readonly Channel<InputEventItem> _inputEvents = Channel.CreateBounded<InputEventItem>(
         new BoundedChannelOptions(InputEventIngressCapacity)
         {
@@ -42,6 +52,7 @@ public sealed class SystemCollectorProtocolAdapter :
     private DateTimeOffset? _droppedStart;
     private DateTimeOffset? _droppedEnd;
     private int _droppedCount;
+    private ForegroundSegmentSnapshot? _pendingSegment;
 
     public SystemCollectorProtocolAdapter(UploadStatusRegistry? statusRegistry = null)
     {
@@ -70,20 +81,26 @@ public sealed class SystemCollectorProtocolAdapter :
     {
         if (_pumpCancellation is null)
             return;
+
+        // Stop the background reader before the final drain so publication remains ordered and
+        // the monitor's terminal snapshot is durably handed to Collector Protocol before drain.
         SignalPump();
-        await DrainOnceAsync(CancellationToken.None);
-        await _pumpCancellation.CancelAsync();
+        await _pumpCancellation.CancelAsync().ConfigureAwait(false);
         if (_pump is not null)
         {
             try
             {
-                await _pump;
+                await _pump.ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
                 // Expected while draining.
             }
         }
+
+        while (HasPendingIngress())
+            await DrainOnceAsync(CancellationToken.None).ConfigureAwait(false);
+
         _pumpCancellation.Dispose();
         _pumpCancellation = null;
         _pump = null;
@@ -93,26 +110,9 @@ public sealed class SystemCollectorProtocolAdapter :
     public void Publish(ForegroundSegmentSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        var activation = _activation ?? throw new InvalidOperationException(
-            "The system Collector cannot publish before its Activation is Ready.");
-        activation.PublishAsync(new CollectorFact(
-                SystemInProcessCollector.ForegroundBindingId,
-                0,
-                snapshot.FactId,
-                snapshot.Revision,
-                null,
-                CollectorFactRecordState.Present,
-                new CollectorSegmentFactTime(snapshot.Start, snapshot.End, snapshot.IsFinal),
-                JsonSerializer.SerializeToElement(new
-                {
-                    identityKey = snapshot.IdentityKey,
-                    appIdentityKey = snapshot.AppIdentityKey,
-                    appDisplayName = snapshot.AppDisplayName,
-                    title = snapshot.Title
-                })))
-            .AsTask()
-            .GetAwaiter()
-            .GetResult();
+        if (!_segments.Writer.TryWrite(snapshot))
+            throw new InvalidOperationException("The system Collector segment ingress is unavailable.");
+        SignalPump();
     }
 
     public void Publish(InputEventItem item)
@@ -146,15 +146,15 @@ public sealed class SystemCollectorProtocolAdapter :
     {
         while (true)
         {
-            await _pumpSignal.WaitAsync(cancellationToken);
+            await _pumpSignal.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                await DrainOnceAsync(cancellationToken);
+                await DrainOnceAsync(cancellationToken).ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 Log.Error(exception, "system Collector Input Event 持久交付失败，将继续重试");
-                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
                 SignalPump();
             }
         }
@@ -165,6 +165,22 @@ public sealed class SystemCollectorProtocolAdapter :
         var activation = _activation;
         if (activation is null)
             return;
+
+        var processedSegments = 0;
+        while (processedSegments < SegmentPumpBatchSize && TryReadSegment(out var snapshot))
+        {
+            try
+            {
+                await activation.PublishAsync(ToFact(snapshot), cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                _pendingSegment = snapshot;
+                throw;
+            }
+            processedSegments++;
+        }
+
         DateTimeOffset? droppedStart;
         DateTimeOffset? droppedEnd;
         int droppedCount;
@@ -185,7 +201,7 @@ public sealed class SystemCollectorProtocolAdapter :
                 droppedStart.Value,
                 droppedEnd!.Value,
                 "input_ingress_capacity_exceeded",
-                droppedCount), cancellationToken);
+                droppedCount), cancellationToken).ConfigureAwait(false);
         }
 
         var processed = 0;
@@ -193,7 +209,7 @@ public sealed class SystemCollectorProtocolAdapter :
         {
             try
             {
-                await activation.PublishAsync(ToFact(item), cancellationToken);
+                await activation.PublishAsync(ToFact(item), cancellationToken).ConfigureAwait(false);
             }
             catch
             {
@@ -202,9 +218,46 @@ public sealed class SystemCollectorProtocolAdapter :
             }
             processed++;
         }
-        if (_inputEvents.Reader.TryPeek(out _))
+        if (HasPendingIngress())
             SignalPump();
     }
+
+    private bool TryReadSegment(out ForegroundSegmentSnapshot snapshot)
+    {
+        if (_pendingSegment is not null)
+        {
+            snapshot = _pendingSegment;
+            _pendingSegment = null;
+            return true;
+        }
+        return _segments.Reader.TryRead(out snapshot!);
+    }
+
+    private bool HasPendingIngress()
+    {
+        if (_pendingSegment is not null ||
+            _segments.Reader.TryPeek(out _) ||
+            _inputEvents.Reader.TryPeek(out _))
+            return true;
+        lock (_dropGate)
+            return _droppedStart is not null;
+    }
+
+    private static CollectorFact ToFact(ForegroundSegmentSnapshot snapshot) => new(
+        SystemInProcessCollector.ForegroundBindingId,
+        0,
+        snapshot.FactId,
+        snapshot.Revision,
+        null,
+        CollectorFactRecordState.Present,
+        new CollectorSegmentFactTime(snapshot.Start, snapshot.End, snapshot.IsFinal),
+        JsonSerializer.SerializeToElement(new
+        {
+            identityKey = snapshot.IdentityKey,
+            appIdentityKey = snapshot.AppIdentityKey,
+            appDisplayName = snapshot.AppDisplayName,
+            title = snapshot.Title
+        }));
 
     private static CollectorFact ToFact(InputEventItem item) => new(
         SystemInProcessCollector.InputEventBindingId,

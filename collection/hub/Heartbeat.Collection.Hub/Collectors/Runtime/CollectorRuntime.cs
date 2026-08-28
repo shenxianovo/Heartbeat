@@ -165,12 +165,6 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         lock (_gate)
         {
             ThrowIfDisposed();
-            var knownFingerprint = KnownPackageFingerprint(
-                package.Manifest.PackageId,
-                package.Manifest.Version);
-            if (knownFingerprint is not null && knownFingerprint != package.PackageContentHash)
-                throw new InvalidOperationException(
-                    "An immutable Collector Package version cannot resolve to a different content fingerprint.");
             var instanceId = _options.IdGenerator();
             if (!IsUuidV7(instanceId))
                 throw new InvalidOperationException("Collector Runtime ID generator must return a UUIDv7.");
@@ -191,10 +185,6 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
                 PackageId = package.Manifest.PackageId,
                 PackageVersion = package.Manifest.Version,
                 PackageContentHash = package.PackageContentHash,
-                PackageFingerprints = new Dictionary<string, string>(StringComparer.Ordinal)
-                {
-                    [package.Manifest.Version] = package.PackageContentHash
-                },
                 SubjectId = subject.SubjectId,
                 SubjectKind = subject.Kind,
                 SpecRevision = spec.SpecRevision,

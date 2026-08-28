@@ -170,10 +170,57 @@ public sealed class BrowserCollectorRuntimeTests : IDisposable
         Assert.True(Directory.Exists(second.InstallDirectory));
     }
 
-    private BrowserCollectorRuntime CreateRuntime() => new(
+    [Fact]
+    public void Update_SameVersionWithDifferentContent_StagesNewCandidate()
+    {
+        var runtime = CreateRuntime();
+        var first = runtime.Import(BrowserPackagePath);
+        var package = runtime.ResolvePackage("browser.extension", BrowserArtifactHash);
+        _ = runtime.GetOrCreateAppInstance("chrome", package);
+        runtime.MarkReady("chrome", first.PackageContentHash!);
+        var update = CopyPackage("same-version-update");
+        var manifestPath = Path.Combine(update, "collector-manifest.json");
+        var manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!;
+        File.WriteAllText(manifestPath, manifest.ToJsonString());
+
+        var second = runtime.Import(update);
+
+        Assert.Equal(first.PackageVersion, second.PackageVersion);
+        Assert.NotEqual(first.PackageContentHash, second.PackageContentHash);
+        Assert.True(second.ReloadRequired);
+        Assert.True(Directory.Exists(first.InstallDirectory));
+        Assert.True(Directory.Exists(second.InstallDirectory));
+    }
+
+    [Fact]
+    public void Startup_BundledContentChangedAtSameVersion_StagesNewCandidate()
+    {
+        var previousBundle = CopyPackage("previous-bundle");
+        var previousManifestPath = Path.Combine(previousBundle, "collector-manifest.json");
+        var previousManifest = JsonNode.Parse(File.ReadAllText(previousManifestPath))!;
+        File.WriteAllText(previousManifestPath, previousManifest.ToJsonString());
+        var previousRuntime = CreateRuntime(previousBundle);
+        var previous = previousRuntime.Import(previousBundle);
+        var previousPackage = previousRuntime.ResolvePackage("browser.extension", BrowserArtifactHash);
+        _ = previousRuntime.GetOrCreateAppInstance("chrome", previousPackage);
+        previousRuntime.MarkReady("chrome", previous.PackageContentHash!);
+
+        var reloaded = CreateRuntime();
+        var current = reloaded.EnsureBundledPackageInstalled();
+
+        Assert.Equal(previous.PackageVersion, current.PackageVersion);
+        Assert.NotEqual(previous.PackageContentHash, current.PackageContentHash);
+        Assert.True(current.ReloadRequired);
+        Assert.True(Directory.Exists(previous.InstallDirectory));
+        Assert.True(Directory.Exists(current.InstallDirectory));
+    }
+
+    private BrowserCollectorRuntime CreateRuntime(string? packageDirectory = null) => new(
         _runtime,
         new Device(),
-        new BrowserExternalHostBindingOptions(BrowserPackagePath, TimeSpan.FromSeconds(10))
+        new BrowserExternalHostBindingOptions(
+            packageDirectory ?? BrowserPackagePath,
+            TimeSpan.FromSeconds(10))
         {
             DataDirectory = _root
         });

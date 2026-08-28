@@ -14,7 +14,7 @@ DeepSeek Harness / Cordis 的生命周期所有权与 desired/actual 收敛思�
 
 ### 1. Runtime 分离 Package、Instance 与 Activation
 
-- **Collector Package** 是不可变发布物；同一版本可包含供不同 OS、CPU 架构与执行方式选择的制品，但不表示已经配置或正在运行。
+- **Collector Package** 是经过完整性校验的内容快照；同一版本可包含供不同 OS、CPU 架构与执行方式选择的制品，但不表示已经配置或正在运行。当前只有本地官方 Package，SemVer 是声明版本，Runtime 以 content hash 标识具体候选，不跨重启强制同一 SemVer 只能出现一个 hash。正式发布不可变性留到 Package Registry / 发布安装 seam 建立后执行。
 - **Collector Instance** 是稳定的配置与期望状态身份；Package 更新、Hub 重启或重新激活不改变 InstanceId。
 - **Collector Activation** 是 Instance 的一次协议会话和实际运行状态；每次重启或重连创建新的 ActivationId。
 - **Source** 只表示谁作出观测，不承担 Package、Instance 或 Activation 身份。
@@ -33,6 +33,8 @@ Collector Package 自包含私有依赖；Collector 之间不共享运行时服�
 
 Collector Protocol 定义与传输无关的握手、版本与能力协商、配置快照、Output Template / Fact Stream 开启、生命周期以及 Fact 交付语义。InProcess、ManagedProcess 与 ExternalHost 分别可以使用类型化调用、stdio/pipe 与 loopback HTTP，但必须通过同一组语义契约测试，不能形成三套协议。
 
+Collector Protocol Client 是宿主无关的库边界，不捕获调用方的 `SynchronizationContext`。平台原生回调只把观测放入 Collector 自有 ingress queue，由后台 delivery pump 执行持久化、背压与协议 I/O；任何 UI、窗口观察或输入 hook 线程都不能同步等待 Fact ACK。
+
 基础协议按 Major 协商；Fact、配置和生命周期能力独立版本化；Package SemVer 不参与 wire negotiation。Manifest 静态声明允许产生的 Source、FactKind、schema、SubjectKind 与 identifying dimensions，Activation 只能把声明绑定为具体 Fact Stream。
 
 Instance Desired State 使用单调 SpecRevision；Activation 报告已经应用的 Revision，不能动态应用时由 Runtime 重建 Activation。Collector → Hub 的 Fact 交付采用至少一次与幂等收敛：Collector 在 ACK 前负责保留，Hub 取得持久化责任后才 ACK，重复由 Fact 身份处理。批大小、背压、Stream Gap 和本地存储形态属于协议规范与实现细节，不再单独立 ADR。
@@ -50,12 +52,14 @@ Instance Desired State 使用单调 SpecRevision；Activation 报告已经应用
 - ExternalHost Stream 由 `appHint + externalHostIdentity` 形成 identifying dimensions。
 - browser 只使用 binding 专属 discovery 与 Collector Protocol v1。`POST /v1/segments`、`GET /v1/hub`、source 级 config/declaration 入口及 fallback 已退役。
 - Fact Schema 权威文件集中在 `collection/contracts/facts/`，Package schema 与最终 manifest 由 staging 工具生成并受演进基线约束。
+- Package 的原始文件 hash 只负责内容完整性；Fact Schema 跨版本演进比较解析后的 JSON 含义，排版变化不要求升 revision。同版本的新 Package content hash 可作为新候选走 Ready/LKG/回退流程。
 
 ## Consequences
 
 - ✅ system、browser、VRChat 以及未来 Collector 共享一套身份、期望/实际状态和协议语义。
 - ✅ Collector 可以独立发布与切换，不必为每次采集能力变化重建整个 Agent。
 - ✅ Transport 与宿主差异被限制在 Binding / Driver，不泄漏成不同领域模型。
+- ✅ 协议背压与宿主回调隔离；桌面 UI、窗口观察和输入 hook 不承担 Fact 交付延迟。
 - ✅ 本期范围收敛在官方 Collector 的运行时和协议地基，不被插件市场与安全体系拖住。
 - ✅ 旧 `/v1/segments` 迁移适配层已经删除，官方 Collector 只走统一协议。
 - ⚠️ ExternalHost 的安装、停止和回滚能力天然弱于 ManagedProcess，统一模型不能把这种差异伪装掉。
