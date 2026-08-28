@@ -35,6 +35,7 @@ export interface BrowserActivationAttempt {
 }
 
 export interface BrowserPublishAttempt {
+  activationId: string
   messageId: string
   snapshots: SegmentSnapshot[]
 }
@@ -346,7 +347,10 @@ export async function publishBrowserFacts(
 ): Promise<ProtocolUploadResult> {
   const limits = normalizeLimits(session.limits)
   const maxFacts = Math.max(1, Math.min(limits.maxFactsPerBatch, 500))
-  const batch = previousAttempt?.snapshots ?? takeBatchWithinByteLimit(snapshots, session, maxFacts)
+  const reusableAttempt = previousAttempt?.activationId === session.activationId
+    ? previousAttempt
+    : undefined
+  const batch = reusableAttempt?.snapshots ?? takeBatchWithinByteLimit(snapshots, session, maxFacts)
   if (snapshots.length > 0 && batch.length === 0) return { kind: 'unavailable' }
   const facts = batch.map((snapshot) => toProtocolFact(snapshot, session.streamId))
   if (facts.some((fact) => fact === null)) return { kind: 'legacy-required' }
@@ -359,7 +363,7 @@ export async function publishBrowserFacts(
       session,
     }
   }
-  const attempt = previousAttempt ?? { messageId: uuidv7(), snapshots: batch }
+  const attempt = reusableAttempt ?? { activationId: session.activationId, messageId: uuidv7(), snapshots: batch }
   await persistAttempt?.(attempt)
   try {
     const response = await fetch(
@@ -400,6 +404,7 @@ export async function publishBrowserFacts(
     const nextPublishAttempt = retryResults.length === 0
       ? undefined
       : {
+          activationId: session.activationId,
           messageId: uuidv7(),
           snapshots: retryResults.map((result) => batch[result.index]),
         }

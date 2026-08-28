@@ -197,6 +197,7 @@ describe('browser Collector Protocol outbox', () => {
     expect(lost.kind).toBe('unavailable')
     const attempt = lost.kind === 'unavailable' ? lost.publishAttempt : undefined
     expect(attempt).toBeDefined()
+    expect(attempt?.activationId).toBe(session.activationId)
     if (lost.kind === 'unavailable') expect(lost.session).toEqual(session)
     const grown = [{ ...items[0], endTime: '2026-08-25T08:02:00.000Z' }, items[1]]
     const replay = await publishBrowserFacts(session, grown, attempt)
@@ -208,6 +209,41 @@ describe('browser Collector Protocol outbox', () => {
       expect(replay.acknowledgedRevisions[items[0].id]).toBe(revisions[0])
       expect(replay.acknowledgedRevisions[items[0].id]).not.toBe(snapshotRevision(grown[0]))
     }
+  })
+
+  it('mints a new publish messageId when recovery creates a new Activation', async () => {
+    let sentMessageId = ''
+    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body)) as { messageId: string }
+      sentMessageId = request.messageId
+      return protocolResponse(
+        'facts.ack',
+        { results: [{ index: 0, status: 'duplicate' }] },
+        ACTIVATION_ID,
+        request.messageId,
+      )
+    }))
+    const currentSession: BrowserProtocolSession = {
+      port: 24820,
+      activationId: ACTIVATION_ID,
+      leaseToken: 'lease',
+      streamId: STREAM_ID,
+      specRevision: 3,
+      expiresAt: '2026-08-25T08:01:00Z',
+      limits: { maxFactsPerBatch: 1, maxBatchBytes: 1_048_576 },
+      flushPeriodMilliseconds: 30_000,
+    }
+    const staleMessageId = '0198d5e8-30cc-743c-a3d6-ac61956f26b6'
+    const staleAttempt = {
+      activationId: '0198d5e8-30cb-7d54-bab1-250087147e4d',
+      messageId: staleMessageId,
+      snapshots: [snapshot()],
+    }
+
+    const result = await publishBrowserFacts(currentSession, [snapshot()], staleAttempt)
+
+    expect(result.kind).toBe('acked')
+    expect(sentMessageId).not.toBe(staleMessageId)
   })
 
   it('uses a conservative UTF-8 limit and skips an oversized head without dropping it', async () => {

@@ -9,8 +9,8 @@
     },
     {
       "path": "browser-extension/background.js",
-      "size": 37403,
-      "contentHash": "sha256:8f82c2d364b976c9999bd87eeee1d4a2d7c6592a7b7149e947510e18414952d7"
+      "size": 44746,
+      "contentHash": "sha256:c9e953f52c93b3db4d3306a0dc3c0be241fc7ee05b1e4869a35dd625c2a7bcbb"
     },
     {
       "path": "browser-extension/options.html",

@@ -6,6 +6,8 @@
 // 恰好占用端口的陌生服务的 4xx 误判为"hub 拒收"而丢队列。
 
 import type { SegmentSnapshot } from './fold'
+import type { BrowserHubAdapter, BrowserProtocolDeliveryRequest } from './delivery'
+import { uploadWithBrowserProtocol } from './protocol'
 
 /** 与 Agent 侧 SegmentIngestWorker.PortRange 一致：基准端口起向上探测的端口数。 */
 export const PORT_RANGE = 10
@@ -114,4 +116,39 @@ export async function postToHub(
 
   // found 已通过身份与版本探测，其 4xx 即真实拒收。
   return { result: await postSegments(found, segments), port: found }
+}
+
+/** Production loopback HTTP adapter；wire 路由与响应 shape 不进入 BrowserDelivery interface。 */
+export class LoopbackBrowserHubAdapter implements BrowserHubAdapter {
+  findCompatibleHub(basePort: number, targetPort: number): Promise<number | null> {
+    return findCompatibleHub(basePort, targetPort)
+  }
+
+  fetchLegacyCollectorConfig(
+    port: number,
+    source: string,
+    flushPeriodMilliseconds: number,
+  ): Promise<{ enabled: boolean } | null> {
+    return fetchCollectorConfig(port, source, flushPeriodMilliseconds)
+  }
+
+  deliverProtocol(request: BrowserProtocolDeliveryRequest) {
+    return uploadWithBrowserProtocol(
+      request.port,
+      request.appHint,
+      request.snapshots,
+      request.previousSession,
+      request.previousActivationAttempt,
+      request.previousPublishAttempt,
+      request.persistActivationAttempt,
+      request.persistPublishAttempt,
+      request.applySpec,
+      request.pendingGap,
+      request.persistGapAttempt,
+    )
+  }
+
+  deliverLegacy(basePort: number, targetPort: number, snapshots: SegmentSnapshot[]) {
+    return postToHub(basePort, targetPort, snapshots)
+  }
 }

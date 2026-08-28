@@ -41,7 +41,7 @@
       },
       "entrypoint": "artifacts/browser-extension.json",
       "size": 1008,
-      "contentHash": "sha256:3c78bf8d23a9ee3d9210110b80fc66deea3ae723b757fa06bed3da076c5e58cd"
+      "contentHash": "sha256:48f764288e160365d6ad5d9a61686c8e214c27a2bcb77ebfbbd069155b1704e0"
     }
   ]
 }

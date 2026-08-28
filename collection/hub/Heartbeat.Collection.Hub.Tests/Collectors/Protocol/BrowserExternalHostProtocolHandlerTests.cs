@@ -55,7 +55,7 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
             $$$"""
         {
           "artifactId":"browser.extension",
-          "artifactHash":"sha256:3c78bf8d23a9ee3d9210110b80fc66deea3ae723b757fa06bed3da076c5e58cd",
+          "artifactHash":"sha256:48f764288e160365d6ad5d9a61686c8e214c27a2bcb77ebfbbd069155b1704e0",
           "protocolMajors":[1],
           "supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},
           "appHint":"edge"
@@ -165,7 +165,7 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
         _browserRuntime.SetDesiredEnabled(false);
         var disabled = await Post("/v1/collector-protocol/browser/hello", Message(
             "activation.hello",
-            """{"artifactId":"browser.extension","artifactHash":"sha256:3c78bf8d23a9ee3d9210110b80fc66deea3ae723b757fa06bed3da076c5e58cd","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
+            """{"artifactId":"browser.extension","artifactHash":"sha256:48f764288e160365d6ad5d9a61686c8e214c27a2bcb77ebfbbd069155b1704e0","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
             bootstrap: true));
         Assert.Equal(403, disabled.StatusCode);
         using (var json = JsonDocument.Parse(disabled.Body))
@@ -175,13 +175,13 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
         var helloMessageId = Guid.CreateVersion7();
         var helloBody = Message(
             "activation.hello",
-            """{"artifactId":"browser.extension","artifactHash":"sha256:3c78bf8d23a9ee3d9210110b80fc66deea3ae723b757fa06bed3da076c5e58cd","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
+            """{"artifactId":"browser.extension","artifactHash":"sha256:48f764288e160365d6ad5d9a61686c8e214c27a2bcb77ebfbbd069155b1704e0","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
             bootstrap: true,
             messageId: helloMessageId);
         Assert.Equal(200, (await Post("/v1/collector-protocol/browser/hello", helloBody)).StatusCode);
         var conflictingReplay = await Post("/v1/collector-protocol/browser/hello", Message(
             "activation.hello",
-            """{"artifactId":"browser.extension","artifactHash":"sha256:3c78bf8d23a9ee3d9210110b80fc66deea3ae723b757fa06bed3da076c5e58cd","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"chrome"}""",
+            """{"artifactId":"browser.extension","artifactHash":"sha256:48f764288e160365d6ad5d9a61686c8e214c27a2bcb77ebfbbd069155b1704e0","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"chrome"}""",
             bootstrap: true,
             messageId: helloMessageId));
         Assert.Equal(400, conflictingReplay.StatusCode);
@@ -204,7 +204,7 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
     {
         var hello = await Post("/v1/collector-protocol/browser/hello", Message(
             "activation.hello",
-            """{"artifactId":"browser.extension","artifactHash":"sha256:3c78bf8d23a9ee3d9210110b80fc66deea3ae723b757fa06bed3da076c5e58cd","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
+            """{"artifactId":"browser.extension","artifactHash":"sha256:48f764288e160365d6ad5d9a61686c8e214c27a2bcb77ebfbbd069155b1704e0","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
             bootstrap: true));
         using var helloJson = JsonDocument.Parse(hello.Body);
         var activationId = helloJson.RootElement.GetProperty("body").GetProperty("activationId").GetGuid();
