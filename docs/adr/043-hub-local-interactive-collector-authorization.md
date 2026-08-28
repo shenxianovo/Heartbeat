@@ -1,4 +1,10 @@
-# Keep interactive Collector authorization Hub-local
+# ADR-043: Keep interactive Collector authorization Hub-local
+
+## Status: Accepted
+
+## Date: 2026-08-27
+
+[`6667c11`](https://github.com/shenxianovo/heartbeat/commit/6667c11) — feat(collection): add managed VRChat account collector
 
 Collectors that require a third-party account use optional `auth.interactive/1` and
 `secrets.instance/1` Collector Protocol capabilities owned by the Hub Instance. An authorization

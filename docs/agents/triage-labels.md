@@ -11,3 +11,5 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 | `wontfix`                  | `wontfix`            | Will not be actioned                     |
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
+
+`done` is the repository's terminal completion state. It is not one of the five triage roles and may be used only when the issue's acceptance and verification are complete.

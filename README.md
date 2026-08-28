@@ -55,7 +55,10 @@ graph LR
 Heartbeat
 ├─ collection
 │  ├─ hub
-│  │  └─ Heartbeat.Collection.Hub/          # Reusable ingest/upload runtime
+│  │  ├─ Heartbeat.Collection.Hub/          # Reusable runtime, projection and upload
+│  │  └─ Heartbeat.Collection.Headless/     # Headless host + management API
+│  ├─ protocol
+│  │  └─ Heartbeat.Collection.CollectorProtocol/ # Collector-side protocol client
 │  ├─ desktop
 │  │  ├─ Heartbeat.Collector.System/        # Platform-neutral system Collector
 │  │  ├─ Heartbeat.Desktop.UI/              # Shared Avalonia presentation
@@ -64,6 +67,7 @@ Heartbeat
 │  │  └─ Heartbeat.Desktop.Mac/             # macOS menu-bar app + adapters
 │  └─ collectors
 │     ├─ Heartbeat.Collector.Browser/        # Browser extension (TypeScript)
+│     ├─ Heartbeat.Collector.Reference.ManagedProcess/ # Deterministic protocol fixture
 │     └─ Heartbeat.Collector.VRChat/         # Account Collector (.NET)
 ├─ server
 │  └─ Heartbeat.Server/         # REST API server                ASP.NET Core
@@ -82,9 +86,10 @@ Heartbeat
 
 - [Development Guide](./docs/development.md) — 启动本地栈、运行 Agent、验证与测试
 - [系统架构与协议图](./docs/architecture/system-overview.md) — 当前模块、身份层级、Transport Binding 与 schema 校验链
+- [兼容债务账本](./docs/architecture/compatibility-debt.md) — 当前仍服务的旧数据/客户端、退出门槛与验证
 - [Collector Fact Contracts](./collection/contracts/README.md) — 5 个 schema 的单一来源与演进检查
 - [API 导读](./docs/api.md) — 鉴权、调用方与客户端生成约定；端点真相源是 OpenAPI
 - [数据库导读](./docs/db.md) — 数据设计意图；schema 真相源是实体类与迁移
-- [Runbooks](./docs/runbooks/) — 生产数据刷新与 App Catalog 运维
+- [Runbooks](./docs/runbooks/) — 本地数据 smoke、生产数据刷新与 App Catalog 运维
 - [CONTEXT-MAP](./CONTEXT-MAP.md) + 各上下文 `CONTEXT.md` — 领域术语表
 - [ADRs](./docs/adr/) — 架构决策记录([template](./docs/adr/adr-template.md))
