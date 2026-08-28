@@ -6,12 +6,6 @@ using Heartbeat.Collection.Hub.Collectors.Packages;
 using Heartbeat.Collection.Hub.Collectors.Runtime;
 using Heartbeat.Collection.Hub.Configuration;
 using Heartbeat.Collection.Hub.Http;
-using Heartbeat.Collection.Hub.Segments;
-using Heartbeat.Collection.Hub.Storage;
-using Heartbeat.Collection.Hub.Time;
-using Heartbeat.Collection.Hub.Upload;
-using Heartbeat.Core;
-using Heartbeat.Core.DTOs.Segments;
 using Microsoft.Extensions.Hosting;
 
 namespace Heartbeat.Collection.Headless;
@@ -39,10 +33,10 @@ public sealed class HeadlessFleetManager(
     };
     private readonly object _gate = new();
     private readonly List<Entry> _entries = [];
-    private readonly HeadlessSubjectRouter _router = new();
     private readonly CancellationTokenSource _activationCancellation = new();
     private readonly List<IDisposable> _ownedDisposables = [];
     private CollectorRuntime? _runtime;
+    private HeadlessInstancePipelines? _pipelines;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -81,7 +75,7 @@ public sealed class HeadlessFleetManager(
                     entry.CollectorInstanceId,
                     runtime?.Phase.ToString() ?? "Starting",
                     runtime?.AuthorizationChallenge,
-                    entry.Pipeline.Status.Current);
+                    _pipelines?.CurrentActivity(entry.CollectorInstanceId));
             }).ToArray();
         }
     }
@@ -133,6 +127,7 @@ public sealed class HeadlessFleetManager(
     {
         _activationCancellation.Dispose();
         _runtime?.Dispose();
+        _pipelines?.Dispose();
         foreach (var disposable in _ownedDisposables) disposable.Dispose();
         base.Dispose();
     }
@@ -146,18 +141,23 @@ public sealed class HeadlessFleetManager(
         _ownedDisposables.Add(authHttp);
         var tokens = new TokenManager(configuration, new AuthServiceClient(authHttp));
         var mappings = LoadInstanceMappings();
+        var pipelines = new HeadlessInstancePipelines(
+            options.DataDirectory,
+            new HeadlessAnalyticsSegmentUploadAdapter(tokens));
+        _pipelines = pipelines;
+        var registeredPipelineIds = new HashSet<Guid>();
 
         foreach (var configured in options.Instances)
         {
             if (!mappings.TryGetValue(configured.InstanceKey, out var instanceId))
                 continue;
-            var pipeline = CreatePipeline(configured, instanceId, tokens);
-            _router.Add(instanceId, pipeline);
+            pipelines.Add(instanceId, configured);
+            registeredPipelineIds.Add(instanceId);
         }
 
         _runtime = CollectorRuntime.Open(
             Path.Combine(options.DataDirectory, "collector-runtime.json"),
-            _router,
+            pipelines,
             secretStore: new EncryptedFileCollectorSecretStore(
                 Path.Combine(options.DataDirectory, "collector-secrets")));
 
@@ -204,9 +204,9 @@ public sealed class HeadlessFleetManager(
                 SaveInstanceMappings(mappings);
             }
 
-            var pipeline = _router.Find(instance.CollectorInstanceId)
-                ?? CreateAndAddPipeline(configured, instance.CollectorInstanceId, tokens);
-            _entries.Add(new Entry(configured, package, instance.CollectorInstanceId, pipeline));
+            if (registeredPipelineIds.Add(instance.CollectorInstanceId))
+                pipelines.Add(instance.CollectorInstanceId, configured);
+            _entries.Add(new Entry(configured, package, instance.CollectorInstanceId));
         }
     }
 
@@ -242,57 +242,8 @@ public sealed class HeadlessFleetManager(
 
     private async Task DrainPipelinesAsync()
     {
-        Entry[] entries;
-        lock (_gate) entries = _entries.ToArray();
-        foreach (var entry in entries)
-            await entry.Pipeline.Upload.DrainAsync();
-    }
-
-    private InstancePipeline CreateAndAddPipeline(
-        HeadlessManagedInstanceOptions configured,
-        Guid instanceId,
-        TokenManager tokens)
-    {
-        var pipeline = CreatePipeline(configured, instanceId, tokens);
-        _router.Add(instanceId, pipeline);
-        return pipeline;
-    }
-
-    private InstancePipeline CreatePipeline(
-        HeadlessManagedInstanceOptions configured,
-        Guid instanceId,
-        TokenManager tokens)
-    {
-        var directory = Path.Combine(
-            options.DataDirectory,
-            "instances",
-            instanceId.ToString("D"));
-        Directory.CreateDirectory(directory);
-        var ingest = new SegmentIngestService(new SystemClock());
-        var identity = new FixedDeviceIdentity(
-            $"subject:{configured.SubjectKind.ToString().ToLowerInvariant()}:{configured.SubjectId:D}",
-            configured.SubjectName);
-        var handler = new BearerTokenHandler(tokens, identity) { InnerHandler = new HttpClientHandler() };
-        var http = new HttpClient(handler, disposeHandler: true);
-        _ownedDisposables.Add(http);
-        var api = new HeartbeatApiClient(http);
-        var statusRegistry = new UploadStatusRegistry();
-        var compatibility = new ClientCompatibilityStatus();
-        var upload = new UploadStream<ActivitySegmentItem>(
-            $"段/{configured.InstanceKey}",
-            (IUploadSource<ActivitySegmentItem>)ingest,
-            batch => api.UploadSegmentsAsync(new SegmentUploadRequest { Segments = batch }),
-            new JsonFileCache<ActivitySegmentItem>(
-                Path.Combine(directory, "segments-cache.json"),
-                20_000,
-                HeartbeatCacheFormats.SegmentVersion2(),
-                HeartbeatCacheFormats.SegmentMigrations()),
-            SnapshotCompaction.KeepLatest,
-            new JsonDeadLetterStore<ActivitySegmentItem>(
-                Path.Combine(directory, "segments-dead-letter.json")),
-            statusRegistry,
-            compatibility);
-        return new InstancePipeline(ingest, new HeadlessSubjectStatus(), upload);
+        if (_pipelines is not null)
+            await _pipelines.DrainAllAsync();
     }
 
     private Dictionary<string, Guid> LoadInstanceMappings()
@@ -344,18 +295,14 @@ public sealed class HeadlessFleetManager(
     private sealed class Entry(
         HeadlessManagedInstanceOptions options,
         LocalCollectorPackage package,
-        Guid collectorInstanceId,
-        InstancePipeline pipeline)
+        Guid collectorInstanceId)
     {
         public HeadlessManagedInstanceOptions Options { get; } = options;
         public LocalCollectorPackage Package { get; } = package;
         public Guid CollectorInstanceId { get; } = collectorInstanceId;
-        public InstancePipeline Pipeline { get; } = pipeline;
         public Task? ActivationTask { get; set; }
         public ManagedProcessCollectorActivation? Activation { get; set; }
     }
-
-    private sealed record FixedDeviceIdentity(string HardwareId, string DeviceName) : IDeviceIdentity;
 
     private sealed class FleetHubConfiguration(HeadlessFleetOptions options) : IHubConfiguration
     {
@@ -364,73 +311,5 @@ public sealed class HeadlessFleetManager(
             TimeSpan.FromSeconds(options.UploadIntervalSeconds),
             0);
         public event Action? Changed { add { } remove { } }
-    }
-}
-
-internal sealed record InstancePipeline(
-    SegmentIngestService Ingest,
-    HeadlessSubjectStatus Status,
-    UploadStream<ActivitySegmentItem> Upload);
-
-internal sealed class HeadlessSubjectRouter : ISegmentSink, ISubjectSegmentProjectionSink
-{
-    private readonly object _gate = new();
-    private readonly Dictionary<Guid, InstancePipeline> _pipelines = [];
-
-    public void Add(Guid collectorInstanceId, InstancePipeline pipeline)
-    {
-        lock (_gate)
-        {
-            if (!_pipelines.TryAdd(collectorInstanceId, pipeline))
-                throw new InvalidOperationException(
-                    $"Collector Instance '{collectorInstanceId:D}' already has a projection pipeline.");
-        }
-    }
-
-    public InstancePipeline? Find(Guid collectorInstanceId)
-    {
-        lock (_gate)
-            return _pipelines.GetValueOrDefault(collectorInstanceId);
-    }
-
-    public void Push(List<ActivitySegmentItem> snapshots) =>
-        throw new NotSupportedException("Multi-Subject projection requires Collector Instance context.");
-
-    public void UpsertDurable(
-        CollectorProjectionContext context,
-        ActivitySegmentItem snapshot,
-        long revision,
-        bool isFinal)
-    {
-        var pipeline = Required(context.CollectorInstanceId);
-        pipeline.Ingest.UpsertDurable(snapshot, revision);
-        pipeline.Status.Observe(snapshot, isFinal);
-    }
-
-    public void ReplayDurable(
-        CollectorProjectionContext context,
-        ActivitySegmentItem snapshot,
-        long revision,
-        bool isFinal)
-    {
-        var pipeline = Required(context.CollectorInstanceId);
-        pipeline.Ingest.ReplayDurable(snapshot, revision);
-        pipeline.Status.Observe(snapshot, isFinal);
-    }
-
-    public void RetractDurable(CollectorProjectionContext context, Guid segmentId, long revision)
-    {
-        var pipeline = Required(context.CollectorInstanceId);
-        pipeline.Ingest.RetractDurable(segmentId, revision);
-        pipeline.Status.Retract(segmentId);
-    }
-
-    private InstancePipeline Required(Guid collectorInstanceId)
-    {
-        lock (_gate)
-            return _pipelines.TryGetValue(collectorInstanceId, out var pipeline)
-                ? pipeline
-                : throw new KeyNotFoundException(
-                    $"Collector Instance '{collectorInstanceId:D}' has no projection pipeline.");
     }
 }

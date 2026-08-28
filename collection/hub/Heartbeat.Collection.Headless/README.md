@@ -3,8 +3,9 @@
 The headless Hub runs the same authentication, durable Collector inbox, segment buffer, cache,
 and upload streams as the desktop Agent, without foreground-window APIs or release-vendor
 dependencies. One Collector Runtime hosts every configured Instance; each Instance keeps an
-independent upload identity, cache, and encrypted secret namespace. A waiting login never blocks
-the other configured instances.
+independent upload identity, cache, and encrypted secret namespace. Per-Instance projection,
+current status, cache and final upload are owned by one pipeline module; a waiting login never
+blocks the other configured instances.
 
 The owner-facing management API is served at `/hub/api/v1`. It accepts only an OIDC access token
 whose `sub` and `client_id` match this Hub's configuration. The Dashboard calls it directly through
@@ -89,4 +90,4 @@ for this integration, so this collector remains experimental and must never be p
 official VRChat integration.
 
 SIGINT/SIGTERM sends `activation.drain`, waits the configured grace period, terminates an
-unresponsive child, then lets the upload worker perform its final drain.
+unresponsive child, then asks the per-Instance pipeline module to perform its final drain.

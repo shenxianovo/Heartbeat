@@ -181,7 +181,7 @@ _Avoid_: Upgrade, Patch; Pending Update（旧名，混淆了"发现"与"已下�
 - 一个 **Release** 包含一个 **Setup** 和一个完整包
 - **Agent** 在应用生命周期内持续运行，**Update** 需重启应用才能生效
 - `Heartbeat.Collection.Hub` 提供纯 .NET 的 hub 运行时（loopback ingest、Collector Registry/declaration、认证客户端、段缓冲、Current Activity、Upload Stream、presence 与缓存 seam），可由桌面或无头 host 组合，不依赖桌面采集、UI、平台 API 或发布供应商
-- `Heartbeat.Collection.Headless` 是带 owner-only 管理 API 的无头 Web host：一个 Collector Runtime 从本地配置托管多个 ManagedProcess Collector Instance，按 Collector Instance 路由独立 Analytics 上传身份与缓存，先 drain 子进程再执行终态上传；服务器 Machine 身份不进入 Fact 归属
+- `Heartbeat.Collection.Headless` 是带 owner-only 管理 API 的无头 Web host：一个 Collector Runtime 从本地配置托管多个 ManagedProcess Collector Instance；深 `HeadlessInstancePipelines` module 按 Instance 吸收投影、当前状态、Analytics 上传身份、缓存与终态 drain，Fleet 不接触这些实现；服务器 Machine 身份不进入 Fact 归属
 - `Heartbeat.Collector.System` 消费 App 激活、focused-window 切换、同窗标题变化与 away 等语义观察，产出 system ActivitySegment；平台 adapter 不把原生回调形状泄漏进状态机
 - `Heartbeat.Desktop.Updater.Velopack` 统一承载 Windows/macOS 的 Velopack Update 生命周期（检查、下载、重试、ReadyToApply 门控与调度应用），并作为供应商依赖防火墙；platform head 只选择 Release channel，并在 updater 成功启动后停止 Agent、退出当前进程
 - `Heartbeat.Desktop.Windows` 组合 Win32 观察、MachineGuid、图标、自启动、共享 Avalonia UI、托盘与 Velopack Update

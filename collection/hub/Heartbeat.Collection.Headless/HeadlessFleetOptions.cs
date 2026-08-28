@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -64,28 +62,6 @@ public sealed class HeadlessFleetOptions
             .FirstOrDefault(group => group.Count() > 1);
         if (duplicate is not null)
             throw new InvalidOperationException($"instanceKey '{duplicate.Key}' is configured more than once.");
-    }
-
-    public HeadlessHubOptions ForInstance(HeadlessManagedInstanceOptions instance)
-    {
-        var instanceData = Path.Combine(
-            DataDirectory,
-            "instances",
-            Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(instance.InstanceKey))));
-        return new HeadlessHubOptions
-        {
-            ApiKey = ApiKey,
-            DataDirectory = instanceData,
-            PackageDirectory = instance.PackageDirectory,
-            SubjectId = instance.SubjectId,
-            SubjectKind = instance.SubjectKind,
-            SubjectName = instance.SubjectName,
-            UploadIntervalSeconds = UploadIntervalSeconds,
-            ConfigVersion = instance.ConfigVersion,
-            Config = instance.Config.Clone(),
-            StartupTimeoutSeconds = instance.StartupTimeoutSeconds,
-            DrainGraceSeconds = instance.DrainGraceSeconds
-        };
     }
 
     private HeadlessFleetOptions WithResolvedPaths(

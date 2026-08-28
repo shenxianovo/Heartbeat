@@ -1,27 +1,19 @@
 using System.Text.Json;
-using Heartbeat.Collection.Hub.Configuration;
-using Heartbeat.Collection.Hub.Runtime;
-using Heartbeat.Collection.Hub.Upload;
 using Heartbeat.Collection.Hub.Collectors.Runtime;
 using Heartbeat.Collection.Hub.Http;
 using Heartbeat.Collection.Hub.Segments;
-using Heartbeat.Collection.Hub.Storage;
-using Heartbeat.Collection.Hub.Time;
-using Heartbeat.Core.DTOs.Input;
 using Heartbeat.Core.DTOs.Segments;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 
 namespace Heartbeat.Collection.Headless.Tests;
 
-public sealed class HeadlessHubCompositionTests : IDisposable
+public sealed class HeadlessFleetManagerTests : IDisposable
 {
     private readonly string _directory = Path.Combine(
         Path.GetTempPath(),
         $"heartbeat-headless-composition-{Guid.NewGuid():N}");
 
     [Fact]
-    public void FleetConfiguration_GivesEachAccountAnIndependentDataAndUploadIdentity()
+    public void FleetConfiguration_PreservesEachInstanceSubjectAndUploadIdentity()
     {
         Directory.CreateDirectory(_directory);
         var first = Guid.CreateVersion7();
@@ -58,14 +50,10 @@ public sealed class HeadlessHubCompositionTests : IDisposable
         };
 
         fleet.Validate();
-        var firstOptions = fleet.ForInstance(fleet.Instances[0]);
-        var secondOptions = fleet.ForInstance(fleet.Instances[1]);
-
-        Assert.NotEqual(firstOptions.DataDirectory, secondOptions.DataDirectory);
-        Assert.Equal(first, firstOptions.SubjectId);
-        Assert.Equal(Heartbeat.Collection.Hub.Collectors.Runtime.SubjectKind.Account, firstOptions.SubjectKind);
-        Assert.Equal(second, secondOptions.SubjectId);
-        Assert.Equal(Heartbeat.Collection.Hub.Collectors.Runtime.SubjectKind.Person, secondOptions.SubjectKind);
+        Assert.Equal(first, fleet.Instances[0].SubjectId);
+        Assert.Equal(SubjectKind.Account, fleet.Instances[0].SubjectKind);
+        Assert.Equal(second, fleet.Instances[1].SubjectId);
+        Assert.Equal(SubjectKind.Person, fleet.Instances[1].SubjectKind);
     }
 
     [Fact]
@@ -127,29 +115,6 @@ public sealed class HeadlessHubCompositionTests : IDisposable
     }
 
     [Fact]
-    public void SingleInstanceConfiguration_LegacyConfigSchemaVersion_RemainsReadable()
-    {
-        Directory.CreateDirectory(_directory);
-        var path = Path.Combine(_directory, "heartbeat-headless-single.json");
-        File.WriteAllText(
-            path,
-            $$"""
-            {
-              "apiKey": "test-key",
-              "dataDirectory": "data",
-              "packageDirectory": "package",
-              "subjectId": "{{Guid.CreateVersion7()}}",
-              "configSchemaVersion": 4,
-              "config": {}
-            }
-            """);
-
-        var options = HeadlessHubOptions.Load(path);
-
-        Assert.Equal(4, options.ConfigVersion);
-    }
-
-    [Fact]
     public void InstanceMapping_LegacyBareDictionary_RemainsReadable()
     {
         var collectorInstanceId = Guid.CreateVersion7();
@@ -162,74 +127,105 @@ public sealed class HeadlessHubCompositionTests : IDisposable
     }
 
     [Fact]
-    public void SubjectStatus_UsesCollectorFinalityInsteadOfWallClockToTrackCurrentPresence()
+    public async Task InstancePipelines_IsolateProjectionStatusAndUploadThroughProductionModule()
     {
-        var status = new HeadlessSubjectStatus();
+        Directory.CreateDirectory(_directory);
+        var upload = new RecordingSegmentUpload();
+        using var pipelines = new HeadlessInstancePipelines(_directory, upload);
+        var firstId = Guid.CreateVersion7();
+        var secondId = Guid.CreateVersion7();
+        pipelines.Add(firstId, Instance("first", "First account"));
+        pipelines.Add(secondId, Instance("second", "Second account"));
+        var projection = (ISubjectSegmentProjectionSink)pipelines;
+        var subject = new SubjectReference(Guid.CreateVersion7(), SubjectKind.Account);
         var now = DateTimeOffset.UtcNow;
-        var segmentId = Guid.CreateVersion7();
-        status.Observe(new ActivitySegmentItem
-        {
-            Id = segmentId,
-            Source = "vrchat.account",
-            IdentityKey = "wrld_mock|instance:mock",
-            Title = "Mock World",
-            StartTime = now,
-            EndTime = now
-        });
+        var firstSegment = Segment("first", now);
+        var secondSegment = Segment("second", now);
 
-        Assert.Equal("Mock World", status.Current?.Title);
+        projection.UpsertDurable(
+            new CollectorProjectionContext(firstId, subject),
+            firstSegment,
+            1,
+            false);
+        projection.UpsertDurable(
+            new CollectorProjectionContext(secondId, subject),
+            secondSegment,
+            1,
+            false);
 
-        status.Observe(new ActivitySegmentItem
-        {
-            Id = segmentId,
-            Source = "vrchat.account",
-            IdentityKey = "wrld_mock|instance:mock",
-            Title = "Mock World",
-            StartTime = now,
-            EndTime = now.AddMinutes(1)
-        }, isFinal: true);
+        Assert.Equal("first", pipelines.CurrentActivity(firstId)?.Title);
+        Assert.Equal("second", pipelines.CurrentActivity(secondId)?.Title);
 
-        Assert.Null(status.Current);
+        await pipelines.DrainAllAsync();
+
+        Assert.Equal("first", Assert.Single(upload.Batches[firstId]).Title);
+        Assert.Equal("second", Assert.Single(upload.Batches[secondId]).Title);
+
+        projection.UpsertDurable(
+            new CollectorProjectionContext(firstId, subject),
+            new ActivitySegmentItem
+            {
+                Id = firstSegment.Id,
+                Source = firstSegment.Source,
+                IdentityKey = firstSegment.IdentityKey,
+                Title = firstSegment.Title,
+                StartTime = firstSegment.StartTime,
+                EndTime = now.AddMinutes(1)
+            },
+            2,
+            true);
+
+        Assert.Null(pipelines.CurrentActivity(firstId));
+        Assert.Equal("second", pipelines.CurrentActivity(secondId)?.Title);
     }
 
     [Fact]
-    public void SubjectRouter_SeparatesTwoCollectorInstancesObservingTheSameSubject()
+    public async Task InstancePipelines_RetryCachesRemainIsolatedAcrossRestart()
     {
-        var subject = new SubjectReference(Guid.CreateVersion7(), SubjectKind.Account);
+        Directory.CreateDirectory(_directory);
         var firstId = Guid.CreateVersion7();
         var secondId = Guid.CreateVersion7();
-        var first = Pipeline("first");
-        var second = Pipeline("second");
-        var router = new HeadlessSubjectRouter();
-        router.Add(firstId, first);
-        router.Add(secondId, second);
+        var first = Instance("first", "First account");
+        var second = Instance("second", "Second account");
+        var subject = new SubjectReference(Guid.CreateVersion7(), SubjectKind.Account);
         var now = DateTimeOffset.UtcNow;
+        var unavailable = new RecordingSegmentUpload(succeeds: false);
+        using (var pipelines = new HeadlessInstancePipelines(_directory, unavailable))
+        {
+            pipelines.Add(firstId, first);
+            pipelines.Add(secondId, second);
+            var projection = (ISubjectSegmentProjectionSink)pipelines;
+            projection.UpsertDurable(
+                new CollectorProjectionContext(firstId, subject),
+                Segment("first-cached", now),
+                1,
+                false);
+            projection.UpsertDurable(
+                new CollectorProjectionContext(secondId, subject),
+                Segment("second-cached", now),
+                1,
+                false);
+            await pipelines.DrainAllAsync();
+        }
 
-        router.UpsertDurable(
-            new CollectorProjectionContext(firstId, subject),
-            Segment("first", now),
-            1,
-            false);
-        router.UpsertDurable(
-            new CollectorProjectionContext(secondId, subject),
-            Segment("second", now),
-            1,
-            false);
+        var recovered = new RecordingSegmentUpload();
+        using var restarted = new HeadlessInstancePipelines(_directory, recovered);
+        restarted.Add(firstId, first);
+        restarted.Add(secondId, second);
 
-        Assert.Equal("first", Assert.Single(first.Ingest.GetAndClearSegments()).Title);
-        Assert.Equal("second", Assert.Single(second.Ingest.GetAndClearSegments()).Title);
+        await restarted.DrainAllAsync();
+
+        Assert.Equal("first-cached", Assert.Single(recovered.Batches[firstId]).Title);
+        Assert.Equal("second-cached", Assert.Single(recovered.Batches[secondId]).Title);
     }
 
-    private static InstancePipeline Pipeline(string label)
+    private static HeadlessManagedInstanceOptions Instance(string key, string subjectName) => new()
     {
-        var ingest = new SegmentIngestService(new SystemClock());
-        var upload = new UploadStream<ActivitySegmentItem>(
-            label,
-            ingest,
-            _ => Task.FromResult(ApiResult.Ok),
-            new MemoryCache<ActivitySegmentItem>());
-        return new InstancePipeline(ingest, new HeadlessSubjectStatus(), upload);
-    }
+        InstanceKey = key,
+        PackageDirectory = $"{key}-package",
+        SubjectId = Guid.CreateVersion7(),
+        SubjectName = subjectName
+    };
 
     private static ActivitySegmentItem Segment(string title, DateTimeOffset now) => new()
     {
@@ -241,14 +237,20 @@ public sealed class HeadlessHubCompositionTests : IDisposable
         EndTime = now
     };
 
-    private sealed class MemoryCache<T> : ICache<T>
+    private sealed class RecordingSegmentUpload(bool succeeds = true) : IHeadlessSegmentUpload
     {
-        private List<T> _items = [];
-        public CacheFileStatus Status => CacheFileStatus.Ready;
-        public void Add(List<T> items) => _items.AddRange(items);
-        public List<T> Load() => [.. _items];
-        public void Replace(List<T> items) => _items = [.. items];
-        public void Clear() => _items.Clear();
+        public Dictionary<Guid, List<ActivitySegmentItem>> Batches { get; } = [];
+
+        public Task<ApiResult> SendAsync(
+            Guid collectorInstanceId,
+            HeadlessManagedInstanceOptions instance,
+            List<ActivitySegmentItem> batch)
+        {
+            Batches[collectorInstanceId] = [.. batch];
+            return Task.FromResult(succeeds ? ApiResult.Ok : new ApiResult(false));
+        }
+
+        public void Dispose() { }
     }
 
     public void Dispose()
