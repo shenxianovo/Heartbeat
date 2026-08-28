@@ -93,6 +93,10 @@ npm test
 
 完成标准：相关自动化测试通过，并在本地栈完成受影响用户路径的端到端验证。
 
+涉及采集、摄入、投影或持久化时，不以容器存活作为数据正确性的证明。按
+[Local Data Smoke](runbooks/local-data-smoke.md) 先记录客户端运行前基线，再验证 Segment 或
+InputEvent 水位推进以及历史数据不变量。
+
 ## 5. 停止或重置
 
 停止容器并保留本地数据：
@@ -118,6 +122,7 @@ rm -rf -- ./.local/postgres-data
 ## 低频流程
 
 - **需要真实历史数据**：使用[本地数据刷新 runbook](runbooks/refresh-local-data.md)。
+- **验证历史数据与新客户端写入**：使用 [Local Data Smoke](runbooks/local-data-smoke.md)。
 - **修改、发布或诊断 App Catalog**：使用 [App Catalog runbook](runbooks/app-catalog.md)。
 - **查看 API 鉴权、调用方和时区约定**：阅读 [API 导读](api.md)。
 - **查看数据库设计意图**：阅读 [数据库导读](db.md)。
