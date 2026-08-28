@@ -12,6 +12,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\protocol\Heartbeat.Collection.CollectorProtocol\Heartbeat.Collection.CollectorProtocol.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Heartbeat.Collector.VRChat.Tests" />
   </ItemGroup>
 

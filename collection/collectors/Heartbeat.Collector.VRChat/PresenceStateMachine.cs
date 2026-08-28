@@ -67,6 +67,16 @@ public sealed class PresenceStateMachine(Func<Guid>? idGenerator = null)
     public IReadOnlyList<VRChatPresenceFact> Stop(DateTimeOffset stoppedAt) =>
         FinalizeCurrent(stoppedAt);
 
+    public void Restore(VRChatPresenceFact active)
+    {
+        ArgumentNullException.ThrowIfNull(active);
+        if (_current is not null)
+            throw new InvalidOperationException("VRChat presence is already active.");
+        if (active.FactId == Guid.Empty || active.Revision <= 0 || active.IsFinal || active.End < active.Start)
+            throw new ArgumentException("Restored VRChat presence must be an active valid snapshot.", nameof(active));
+        _current = active;
+    }
+
     private IReadOnlyList<VRChatPresenceFact> FinalizeCurrent(DateTimeOffset observedAt)
     {
         if (_current is null)

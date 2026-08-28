@@ -14,6 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\protocol\Heartbeat.Collection.CollectorProtocol\Heartbeat.Collection.CollectorProtocol.csproj" />
     <ProjectReference Include="..\..\hub\Heartbeat.Collection.Hub\Heartbeat.Collection.Hub.csproj" />
     <ProjectReference Include="..\..\..\shared\Heartbeat.Core\Heartbeat.Core.csproj" />
   </ItemGroup>

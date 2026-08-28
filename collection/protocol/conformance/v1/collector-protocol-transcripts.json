@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "lifecycle": [
+    "activation.hello",
+    "activation.initialize",
+    "activation.initialized",
+    "streams.open",
+    "streams.opened",
+    "activation.ready",
+    "activation.readyAck",
+    "activation.drain",
+    "activation.drained"
+  ],
+  "factAcknowledgements": [
+    { "status": "committed", "removesFact": true, "startsNewAttempt": false },
+    { "status": "duplicate", "removesFact": true, "startsNewAttempt": false },
+    { "status": "superseded", "removesFact": true, "startsNewAttempt": false },
+    { "status": "rejected", "removesFact": true, "startsNewAttempt": false, "requiresDeadLetter": true },
+    { "status": "retry", "removesFact": false, "startsNewAttempt": true }
+  ],
+  "gapAcknowledgements": [
+    { "status": "committed", "removesGap": true, "startsNewAttempt": false },
+    { "status": "duplicate", "removesGap": true, "startsNewAttempt": false },
+    { "status": "rejected", "removesGap": false, "startsNewAttempt": false },
+    { "status": "retry", "removesGap": false, "startsNewAttempt": true }
+  ],
+  "attemptIdentity": {
+    "unknownOutcomeKeepsMessageId": true,
+    "explicitRetryChangesMessageId": true,
+    "newActivationChangesMessageId": true,
+    "factIdAndRevisionRemainStable": true
+  }
+}

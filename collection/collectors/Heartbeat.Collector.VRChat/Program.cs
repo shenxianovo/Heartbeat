@@ -1,4 +1,5 @@
 using Heartbeat.Collector.VRChat;
+using Heartbeat.Collection.CollectorProtocol;
 
 if (args is ["--create-package", var packageDirectory])
 {
@@ -15,5 +16,22 @@ IVRChatApiFactory apiFactory = Environment.GetEnvironmentVariable("HEARTBEAT_VRC
         "Heartbeat.Collector.VRChat",
         "0.1.0",
         Environment.GetEnvironmentVariable("HEARTBEAT_VRCHAT_CONTACT") ?? string.Empty);
-var collector = new VRChatManagedCollector(Console.In, Console.Out, apiFactory);
-await collector.RunAsync();
+var definition = new CollectorClientDefinition(
+    "vrchat.managed",
+    new Dictionary<string, IReadOnlyList<int>>(StringComparer.Ordinal)
+    {
+        ["facts.segment"] = [1],
+        ["auth.interactive"] = [1],
+        ["secrets.instance"] = [1],
+        ["resources.instance-data"] = [1],
+        ["diagnostics.stream-gap"] = [1]
+    },
+    "account",
+    [new CollectorOutputBinding(
+        "presence",
+        "presence",
+        new Dictionary<string, string>(StringComparer.Ordinal))],
+    OutboxCapacity: 512);
+await using var binding = StdioCollectorProtocolBinding.FromEnvironment(Console.In, Console.Out);
+await using var client = new CollectorProtocolClient(definition, binding);
+await client.RunAsync(new VRChatManagedCollector(apiFactory));

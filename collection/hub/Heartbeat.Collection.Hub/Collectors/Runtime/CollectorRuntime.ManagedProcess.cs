@@ -1249,7 +1249,7 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
         _ = PumpAsync();
     }
 
-    public ValueTask StopAsync(CancellationToken cancellationToken)
+    public async ValueTask<InProcessCollectorDrainResult> StopAsync(CancellationToken cancellationToken)
     {
         Task stopTask;
         lock (_stopGate)
@@ -1257,7 +1257,8 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
             _stopTask ??= StopCoreAsync();
             stopTask = _stopTask;
         }
-        return new ValueTask(stopTask.WaitAsync(cancellationToken));
+        await stopTask.WaitAsync(cancellationToken);
+        return new InProcessCollectorDrainResult(PendingFacts, PendingGaps);
     }
 
     public async Task AbortAsync()

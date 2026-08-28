@@ -43,9 +43,6 @@ public sealed class SystemCollectorHostedService(
                     package,
                     subject,
                     new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
-            collector.ConfigureOutbox(Path.Combine(
-                options.DataDirectory,
-                "system-collector-outbox.json"));
             var activation = await runtime.ActivateInProcessAsync(
                 instance.CollectorInstanceId,
                 package,

@@ -13,4 +13,8 @@
     <InternalsVisibleTo Include="Heartbeat.Collector.Reference.ManagedProcess.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\protocol\Heartbeat.Collection.CollectorProtocol\Heartbeat.Collection.CollectorProtocol.csproj" />
+  </ItemGroup>
+
 </Project>

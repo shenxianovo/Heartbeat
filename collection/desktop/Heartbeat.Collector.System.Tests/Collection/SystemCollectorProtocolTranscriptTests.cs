@@ -87,7 +87,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             NewCollector(protocol, clock, segmentSink));
 
         Assert.Equal(instanceId, runtime.GetInstance(instanceId).CollectorInstanceId);
-        Assert.Equal("1.1.0", runtime.GetInstance(instanceId).PackageVersion);
+        Assert.Equal("1.1.1", runtime.GetInstance(instanceId).PackageVersion);
         Assert.Equal(2, activation.Streams.Count);
     }
 
@@ -416,143 +416,6 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
     }
 
     [Fact]
-    public void LegacyOutboxArray_LoadsWithoutRequiringManualDeletion()
-    {
-        Directory.CreateDirectory(_root);
-        var outboxPath = Path.Combine(_root, "system-collector-outbox.json");
-        File.WriteAllText(outboxPath, "[]");
-        var protocol = new SystemCollectorProtocolAdapter();
-
-        protocol.ConfigureOutbox(outboxPath);
-
-        Assert.Equal("[]", File.ReadAllText(outboxPath));
-    }
-
-    [Fact]
-    public async Task PermanentlyInvalidInputEvent_IsWrittenToDiagnosticDeadLetter()
-    {
-        Directory.CreateDirectory(_root);
-        var outboxPath = Path.Combine(_root, "system-collector-outbox.json");
-        var clock = new FakeClock();
-        var segmentSink = new SegmentIngestService(clock);
-        var inputSink = new CapturingInputEventSink();
-        var statuses = new UploadStatusRegistry();
-        var protocol = new SystemCollectorProtocolAdapter(statuses);
-        protocol.ConfigureOutbox(outboxPath);
-        var collector = new SystemInProcessCollector(
-            protocol,
-            new AppMonitorService(
-                clock,
-                new FakeObservations(),
-                new FakeInteractionSignal(),
-                protocol,
-                segmentSink,
-                new FakeSettings()));
-        var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
-        using var config = JsonDocument.Parse("{}");
-        await using var runtime = CollectorRuntime.Open(
-            Path.Combine(_root, "collector-runtime.json"),
-            segmentSink,
-            inputEventSink: inputSink);
-        var instance = runtime.CreateInstance(
-            package,
-            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
-            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
-        await using var activation = await runtime.ActivateInProcessAsync(
-            instance.CollectorInstanceId,
-            package,
-            collector);
-
-        protocol.Publish(new InputEventItem
-        {
-            Id = Guid.CreateVersion7(),
-            EventType = (InputEventType)99,
-            CodeSet = InputCodeSets.HeartbeatKeyPositionV1,
-            Code = 1,
-            Timestamp = DateTimeOffset.UnixEpoch
-        });
-
-        await WaitUntilAsync(() =>
-            File.Exists(outboxPath) &&
-            File.Exists(Path.Combine(_root, "system-collector-dead-letter.json")) &&
-            statuses.Snapshot.TryGetValue(SystemCollectorProtocolAdapter.StatusStreamName, out var status) &&
-            status.DeadLetterCount == 1);
-
-        Assert.Empty(inputSink.Items);
-        using var outbox = JsonDocument.Parse(File.ReadAllText(outboxPath));
-        Assert.Equal(1, outbox.RootElement.GetProperty("schemaVersion").GetInt32());
-        Assert.Empty(outbox.RootElement.GetProperty("entries").EnumerateArray());
-        using var deadLetters = JsonDocument.Parse(File.ReadAllText(
-            Path.Combine(_root, "system-collector-dead-letter.json")));
-        Assert.Equal(1, deadLetters.RootElement.GetProperty("schemaVersion").GetInt32());
-        var deadLetter = Assert.Single(deadLetters.RootElement.GetProperty("entries").EnumerateArray());
-        var fact = deadLetter.GetProperty("Entry").GetProperty("Fact");
-        Assert.Equal(1, fact.GetProperty("Revision").GetInt64());
-        Assert.Equal(
-            DateTimeOffset.UnixEpoch,
-            fact.GetProperty("Time").GetProperty("OccurredAt").GetDateTimeOffset());
-        Assert.Equal("fact_schema_invalid", deadLetter.GetProperty("Error").GetProperty("Code").GetString());
-        Assert.False(deadLetter.GetProperty("Error").GetProperty("Retryable").GetBoolean());
-        var status = statuses.Snapshot[SystemCollectorProtocolAdapter.StatusStreamName];
-        Assert.Equal(1, status.DeadLetterCount);
-        Assert.Equal(
-            Path.Combine(_root, "system-collector-dead-letter.json"),
-            status.DeadLetterPath);
-    }
-
-    [Fact]
-    public async Task TransientOutboxWriteFailure_RetriesPromotedEventWithoutNewInput()
-    {
-        Directory.CreateDirectory(_root);
-        var outboxDirectory = Path.Combine(_root, "outbox-state");
-        Directory.CreateDirectory(outboxDirectory);
-        var outboxPath = Path.Combine(outboxDirectory, "system-collector-outbox.json");
-        var clock = new FakeClock();
-        var segmentSink = new SegmentIngestService(clock);
-        var inputSink = new CapturingInputEventSink();
-        var protocol = new SystemCollectorProtocolAdapter();
-        protocol.ConfigureOutbox(outboxPath);
-        var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
-        using var config = JsonDocument.Parse("{}");
-        await using var runtime = CollectorRuntime.Open(
-            Path.Combine(_root, "collector-runtime.json"),
-            segmentSink,
-            inputEventSink: inputSink);
-        var instance = runtime.CreateInstance(
-            package,
-            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
-            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
-        await using var activation = await runtime.ActivateInProcessAsync(
-            instance.CollectorInstanceId,
-            package,
-            NewCollector(protocol, clock, segmentSink));
-
-        Directory.Delete(outboxDirectory);
-        File.WriteAllText(outboxDirectory, "temporarily blocks the outbox directory");
-        protocol.Publish(new InputEventItem
-        {
-            Id = Guid.CreateVersion7(),
-            EventType = InputEventType.KeyDown,
-            CodeSet = InputCodeSets.HeartbeatKeyPositionV1,
-            Code = (short)InputKeyPosition.KeyA,
-            Timestamp = DateTimeOffset.UnixEpoch
-        });
-        await Task.Delay(200);
-        Assert.Empty(inputSink.Items);
-
-        File.Delete(outboxDirectory);
-        Directory.CreateDirectory(outboxDirectory);
-        await WaitUntilAsync(() =>
-            inputSink.Items.Count == 1 &&
-            File.Exists(outboxPath) &&
-            IsEmptyOutbox(outboxPath));
-
-        using var outbox = JsonDocument.Parse(File.ReadAllText(outboxPath));
-        Assert.Equal(1, outbox.RootElement.GetProperty("schemaVersion").GetInt32());
-        Assert.Empty(outbox.RootElement.GetProperty("entries").EnumerateArray());
-    }
-
-    [Fact]
     public async Task SnapshotPublisher_AssignsStableFactIdAndMonotonicRevision()
     {
         var x = BuildScenario("mac:com.apple.Terminal", "shell", "Terminal");
@@ -583,67 +446,6 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         Assert.Equal(3, final.Revision);
         Assert.True(final.IsFinal);
         Assert.Equal(x.Publisher.Snapshots[0].FactId, final.FactId);
-    }
-
-    [Fact]
-    public async Task HubRetry_RetainsLatestFullSnapshotInDurableCollectorOutbox()
-    {
-        Directory.CreateDirectory(_root);
-        var outboxPath = Path.Combine(_root, "system-collector-outbox.json");
-        var clock = new FakeClock();
-        var sink = new SegmentIngestService(clock);
-        var protocol = new SystemCollectorProtocolAdapter();
-        protocol.ConfigureOutbox(outboxPath);
-        var observations = new FakeObservations
-        {
-            CurrentActivity = new DesktopActivity("win:code", "Code", "main.cs")
-        };
-        var monitor = new AppMonitorService(
-            clock,
-            observations,
-            new FakeInteractionSignal(),
-            protocol,
-            sink,
-            new FakeSettings());
-        var collector = new SystemInProcessCollector(protocol, monitor);
-        var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
-        using var config = JsonDocument.Parse("{}");
-        await using var runtime = CollectorRuntime.Open(
-            Path.Combine(_root, "collector-runtime.json"),
-            sink,
-            new CollectorRuntimeOptions { MaxDurableFacts = 1 },
-            inputEventSink: new CapturingInputEventSink());
-        var instance = runtime.CreateInstance(
-            package,
-            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
-            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
-        await using var activation = await runtime.ActivateInProcessAsync(
-            instance.CollectorInstanceId,
-            package,
-            collector);
-
-        clock.Advance(TimeSpan.FromSeconds(30));
-        monitor.PushCurrentSnapshot();
-        clock.Advance(TimeSpan.FromSeconds(30));
-        observations.Activate("win:chrome", "Docs", "Chrome");
-        clock.Advance(TimeSpan.FromSeconds(30));
-
-        monitor.PushCurrentSnapshot();
-
-        using var outbox = JsonDocument.Parse(File.ReadAllText(outboxPath));
-        Assert.Equal(1, outbox.RootElement.GetProperty("schemaVersion").GetInt32());
-        var entry = Assert.Single(outbox.RootElement.GetProperty("entries").EnumerateArray());
-        Assert.NotEqual(Guid.Empty, entry.GetProperty("MessageId").GetGuid());
-        var fact = entry.GetProperty("Fact");
-        Assert.Equal(1, fact.GetProperty("SchemaRevision").GetInt32());
-        Assert.Equal(1, fact.GetProperty("Revision").GetInt64());
-        Assert.False(fact.GetProperty("Time").GetProperty("IsFinal").GetBoolean());
-        Assert.Equal(
-            "win:chrome",
-            fact.GetProperty("Payload").GetProperty("appIdentityKey").GetString());
-        Assert.Equal(
-            "Docs",
-            fact.GetProperty("Payload").GetProperty("title").GetString());
     }
 
     private static Scenario BuildScenario(
@@ -702,13 +504,6 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         while (!condition())
             await Task.Delay(10, timeout.Token);
-    }
-
-    private static bool IsEmptyOutbox(string path)
-    {
-        using var outbox = JsonDocument.Parse(File.ReadAllText(path));
-        return outbox.RootElement.GetProperty("schemaVersion").GetInt32() == 1 &&
-               !outbox.RootElement.GetProperty("entries").EnumerateArray().Any();
     }
 
     private static void CopyDirectory(string source, string destination)

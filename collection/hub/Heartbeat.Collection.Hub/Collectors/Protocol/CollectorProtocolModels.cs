@@ -32,6 +32,10 @@ public sealed record InProcessCollectorInitialization(
     long AppliedSpecRevision,
     IReadOnlyList<OutputBinding> Bindings);
 
+public sealed record InProcessCollectorDrainResult(
+    int? PendingFacts,
+    int? PendingGaps);
+
 public sealed record ExternalHostCollectorInitialization(
     Guid ActivationId,
     CollectorInstance Instance,
@@ -62,7 +66,7 @@ public interface IInProcessCollector
     /// Stops Collector-owned work. Completion is the stop-first boundary that permits a
     /// replacement Activation to start.
     /// </summary>
-    ValueTask StopAsync(CancellationToken cancellationToken);
+    ValueTask<InProcessCollectorDrainResult> StopAsync(CancellationToken cancellationToken);
 }
 
 public enum CollectorActivationState

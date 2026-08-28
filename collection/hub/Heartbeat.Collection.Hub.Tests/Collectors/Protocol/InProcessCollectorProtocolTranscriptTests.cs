@@ -2316,7 +2316,7 @@ public class InProcessCollectorProtocolTranscriptTests
                 cancellationToken);
         }
 
-        public async ValueTask StopAsync(CancellationToken cancellationToken)
+        public async ValueTask<InProcessCollectorDrainResult> StopAsync(CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref _stopCalls);
             _stopEntered.TrySetResult();
@@ -2333,6 +2333,7 @@ public class InProcessCollectorProtocolTranscriptTests
             _releaseInitialize.TrySetResult();
             if (Interlocked.Decrement(ref _stopFailuresRemaining) >= 0)
                 throw new InvalidOperationException("Collector stop failed before owned work ended.");
+            return new InProcessCollectorDrainResult(0, 0);
         }
 
         public void ReleaseStop()

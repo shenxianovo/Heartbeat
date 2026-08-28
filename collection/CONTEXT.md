@@ -24,6 +24,14 @@ _Avoid_: Plugin Runtime、Package Manager（后者只覆盖制品管理）
 Collector Activation 与 Hub 交换身份、能力、配置、生命周期和 Fact 的统一语义契约；它独立于具体传输，也独立于 Package 发布版本。
 _Avoid_: 把当前 loopback HTTP 路由集合当成完整协议
 
+**Collector Protocol Client（采集器协议客户端）**:
+Collector 侧持有协议会话与未确认交付责任的参与者；它统一承担 Activation 生命周期、消息关联、ACK/重试、Stream Gap、授权、Collector Secret 与 drain，使 Collector 只需表达观测事实。
+_Avoid_: 每个 Collector 自行拼装协议状态机、把 Client 与某一种 Transport Binding 混称
+
+**Collector Protocol Conformance Suite（采集器协议一致性套件）**:
+跨语言共享的可执行协议 transcript，固定生命周期、ACK、重试、Gap 与 drain 结果；各语言实现通过同一语料证明其 Binding 没有改变协议语义。
+_Avoid_: 只共享 DTO、以某一种语言实现作为协议本身
+
 **Transport Binding（传输绑定）**:
 Collector Protocol 在某种执行边界上的承载方式；不同 Binding 不改变协议语义。
 _Avoid_: 为每种执行方式发明不同协议

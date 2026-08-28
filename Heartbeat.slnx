@@ -1,4 +1,8 @@
 <Solution>
+  <Folder Name="/collection/protocol/">
+    <Project Path="collection/protocol/Heartbeat.Collection.CollectorProtocol.Tests/Heartbeat.Collection.CollectorProtocol.Tests.csproj" />
+    <Project Path="collection/protocol/Heartbeat.Collection.CollectorProtocol/Heartbeat.Collection.CollectorProtocol.csproj" />
+  </Folder>
   <Folder Name="/collection/hub/">
     <Project Path="collection/hub/Heartbeat.Collection.Headless.Tests/Heartbeat.Collection.Headless.Tests.csproj" />
     <Project Path="collection/hub/Heartbeat.Collection.Headless/Heartbeat.Collection.Headless.csproj" />

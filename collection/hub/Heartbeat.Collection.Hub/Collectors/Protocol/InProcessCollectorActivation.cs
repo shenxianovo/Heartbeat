@@ -30,6 +30,7 @@ public sealed class InProcessCollectorActivation : IAsyncDisposable
     public ActivationDeliveryCapability DeliveryCapability => _session.DeliveryCapability;
     public IReadOnlyList<CollectorHandshakeStep> HandshakeTranscript => _session.HandshakeTranscript;
     public IReadOnlyDictionary<string, InProcessFactStream> Streams { get; }
+    public InProcessCollectorDrainResult? DrainResult { get; private set; }
     internal LocalCollectorPackage Package => _session.Package;
     internal CollectorActivationSession Session => _session;
 
@@ -68,7 +69,7 @@ public sealed class InProcessCollectorActivation : IAsyncDisposable
     {
         if (!_session.BeginDrain())
             return;
-        await _collector.StopAsync(CancellationToken.None);
+        DrainResult = await _collector.StopAsync(CancellationToken.None);
         _session.CompleteStop(() => _runtime.CompleteStop(this));
     }
 }
