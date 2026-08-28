@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { getIconUrl } from '../api/index'
 import type { AppUsageResponse, DeviceInfoResponse } from '../api/index'
 import { useTimelineDrag } from '../composables/useTimelineDrag'
+import AppIcon from './AppIcon.vue'
 import { Card } from '@/components/ui/card'
 import { LayoutGrid, AlignJustify } from 'lucide-vue-next'
 import { parseUsage, buildRows, mergeActivityBursts, initialViewBounds, groupByDevice } from '../timeline/timelineModel'
@@ -252,7 +252,7 @@ const minimapActivities = computed(() => {
                 class="flex h-9 border-b border-border last:border-b-0"
               >
                 <div class="row-header z-[2] flex w-[80px] shrink-0 items-center gap-2 border-r border-border bg-muted px-2 min-[640px]:w-[120px]">
-                  <img v-if="!row.isAway" :src="getIconUrl(username, row.appId)" class="h-5 w-5 rounded object-contain" @error="($event.target as HTMLImageElement).style.display = 'none'"/>
+                  <AppIcon v-if="!row.isAway" :username="username" :app-id="row.appId" class="h-5 w-5 rounded object-contain" />
                   <span v-else class="flex h-5 w-5 shrink-0 items-center justify-center text-muted-foreground">💤</span>
                   <span class="flex-1 truncate text-[0.75rem]" :class="row.isAway ? 'text-muted-foreground' : 'text-foreground'" :title="row.name">{{ row.name }}</span>
                 </div>
@@ -291,7 +291,7 @@ const minimapActivities = computed(() => {
             >
               <!-- row-header / timeline-rows 是 useTimelineDrag 的功能性选择器锚点，不是样式 -->
               <div class="row-header z-[2] flex w-[80px] shrink-0 items-center gap-2 border-r border-border bg-muted px-2 min-[640px]:w-[120px]">
-                <img v-if="!row.isAway" :src="getIconUrl(username, row.appId)" class="h-5 w-5 rounded object-contain" @error="($event.target as HTMLImageElement).style.display = 'none'"/>
+                <AppIcon v-if="!row.isAway" :username="username" :app-id="row.appId" class="h-5 w-5 rounded object-contain" />
                 <span v-else class="flex h-5 w-5 shrink-0 items-center justify-center text-muted-foreground">💤</span>
                 <span class="flex-1 truncate text-[0.75rem]" :class="row.isAway ? 'text-muted-foreground' : 'text-foreground'" :title="row.name">{{ row.name }}</span>
               </div>

@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import CurrentAppPanel from './CurrentAppPanel.vue'
 
 vi.mock('../api/index', () => ({
-  getIconUrl: vi.fn(() => '/icon.svg'),
+  fetchAppIcon: vi.fn(async () => null),
 }))
 
 function mountPanel(overrides: Record<string, unknown> = {}) {

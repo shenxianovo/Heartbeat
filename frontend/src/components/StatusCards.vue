@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { getIconUrl } from '../api/index'
 import { formatDuration } from '../composables/useHeartbeat'
+import AppIcon from './AppIcon.vue'
 import { Card } from '@/components/ui/card'
 
 const props = defineProps<{
@@ -72,10 +72,10 @@ const showSumAsSecondary = computed(() =>
       <div class="flex flex-col gap-1.5 px-5">
         <span class="text-xs uppercase tracking-[0.06em] text-muted-foreground">今日最爱</span>
         <span v-if="appSummaries[0]" class="flex items-center gap-2 text-[1.25rem] font-bold text-foreground">
-          <img
-            :src="getIconUrl(username, appSummaries[0].appId)"
+          <AppIcon
+            :username="username"
+            :app-id="appSummaries[0].appId"
             class="h-6 w-6 rounded object-contain"
-            @error="($event.target as HTMLImageElement).style.display = 'none'"
           />
           <span class="truncate">{{ appSummaries[0].appName }}</span>
         </span>

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, watch, onMounted, onUnmounted } from 'vue'
-import { getIconUrl, fetchPublicSegments } from '../api/index'
+import { fetchPublicSegments } from '../api/index'
 import type { AppUsageResponse, SegmentResponse, DeviceInfoResponse } from '../api/index'
+import AppIcon from './AppIcon.vue'
 import { useAsyncData } from '../composables/useAsyncData'
 import { formatDuration } from '../composables/useHeartbeat'
 import { formatTitle } from '../titleFormatters'
@@ -134,10 +135,10 @@ onUnmounted(() => {
       <div class="flex max-h-full w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
         <!-- Header -->
         <div class="flex items-center gap-3 border-b border-border px-5 py-4">
-          <img
-            :src="getIconUrl(username, app.appId)"
+          <AppIcon
+            :username="username"
+            :app-id="app.appId"
             class="h-7 w-7 rounded object-contain"
-            @error="($event.target as HTMLImageElement).style.display = 'none'"
           />
           <span class="truncate text-base font-semibold">{{ app.appName }}</span>
           <span

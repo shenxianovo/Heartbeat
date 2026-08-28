@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { getIconUrl } from '../api/index'
 import { formatDuration } from '../composables/useHeartbeat'
+import AppIcon from './AppIcon.vue'
 import { Card } from '@/components/ui/card'
 
 defineProps<{
@@ -30,10 +30,10 @@ const emit = defineEmits<{ select: [app: { appId: number; appName: string; total
         >
           <div class="flex items-center gap-2 text-[0.85rem]">
             <span class="w-6 text-center text-xs font-semibold text-muted-foreground">{{ i + 1 }}</span>
-            <img
-              :src="getIconUrl(username, app.appId)"
+            <AppIcon
+              :username="username"
+              :app-id="app.appId"
               class="h-[18px] w-[18px] rounded object-contain"
-              @error="($event.target as HTMLImageElement).style.display = 'none'"
             />
             <span class="flex-1 truncate">{{ app.appName }}</span>
             <span

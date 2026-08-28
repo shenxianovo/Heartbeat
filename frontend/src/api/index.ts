@@ -225,8 +225,19 @@ export async function fetchWeeklyReport(params: {
   return reportRequest(u => authHttp.fetch(u), `${API_BASE}/reports/weekly?${reportDateParams(params)}`, WeeklyReportResponse.fromJS)
 }
 
-export function getIconUrl(username: string, appId: number): string {
+function getIconUrl(username: string, appId: number): string {
   return `${API_BASE}/users/${encodeURIComponent(username)}/apps/${appId}/icon`
+}
+
+/**
+ * 图标也服从 Dashboard Visibility。不能把 URL 直接交给 <img>：private owner 的
+ * Bearer 只由 authHttp 注入，浏览器的图片子资源请求不会自动携带它。
+ */
+export async function fetchAppIcon(username: string, appId: number): Promise<Blob | null> {
+  const res = await authHttp.fetch(getIconUrl(username, appId))
+  if (res.status === 404) return null
+  if (!res.ok) throw new ApiException('Icon request failed.', res.status, await res.text(), {}, null)
+  return res.blob()
 }
 
 // ===== Recap（ADR-023，读写按动词拆分随 ADR-042）=====

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { getIconUrl, type ManagedSubjectStatus } from '../api/index'
+import type { ManagedSubjectStatus } from '../api/index'
 import { getAppLabel, isAwayApp } from '../appLabels'
 import type { DevicePresence } from '../composables/useDeviceStatus'
+import AppIcon from './AppIcon.vue'
 import { Card } from '@/components/ui/card'
 
 const props = defineProps<{
@@ -47,11 +48,11 @@ function accountState(subject: ManagedSubjectStatus): string {
           class="flex items-center gap-3 border-b border-border/40 py-1.5 last:border-0"
         >
           <span class="status-dot" :class="{ alive: p.isOnline }"></span>
-          <img
+          <AppIcon
             v-if="p.isOnline && p.currentAppId && !isAwayApp(p.currentAppKey, p.currentApp)"
-            :src="getIconUrl(username, p.currentAppId)"
+            :username="username"
+            :app-id="p.currentAppId"
             class="h-6 w-6 shrink-0 object-contain"
-            @error="($event.target as HTMLImageElement).style.display = 'none'"
           />
           <div class="flex min-w-0 flex-col gap-0.5">
             <span
@@ -84,11 +85,11 @@ function accountState(subject: ManagedSubjectStatus): string {
       <!-- 在线 + 有前台应用 -->
       <div v-else-if="isAlive && currentApp" class="flex items-center gap-3 py-1">
         <span class="status-dot alive"></span>
-        <img
+        <AppIcon
           v-if="currentAppId"
-          :src="getIconUrl(username, currentAppId)"
+          :username="username"
+          :app-id="currentAppId"
           class="h-7 w-7 shrink-0 object-contain"
-          @error="($event.target as HTMLImageElement).style.display = 'none'"
         />
         <div class="flex flex-col gap-0.5">
           <span class="text-[1.1rem] font-semibold">{{ currentApp }}</span>

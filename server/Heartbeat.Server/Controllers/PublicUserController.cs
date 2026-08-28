@@ -133,8 +133,9 @@ namespace Heartbeat.Server.Controllers
             return await appService.GetAppsForUserAsync(user.Id);
         }
 
-        // 图标经 <img src> 加载，带不了 JWT，故匿名可达但受同一可见性门约束；
-        // owner 上下文取自 URL 的 username（图标按 owner 隔离，ADR-025）。
+        // 图标端点匿名可达但受同一可见性门约束；private owner 的 Dashboard 通过
+        // authHttp 拉取 Blob 以携带 JWT。owner 上下文仍取自 URL 的 username
+        //（图标按 owner 隔离，ADR-025）。
         [HttpGet("apps/{appId:long}/icon")]
         [EndpointName("getUserAppIcon")]
         public async Task<IActionResult> GetAppIcon(string username, long appId)

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { getIconUrl } from '../api/index'
 import { formatDuration } from '../composables/useHeartbeat'
+import AppIcon from './AppIcon.vue'
 import { Card } from '@/components/ui/card'
 
 const props = defineProps<{
@@ -81,10 +81,10 @@ const donutSegments = computed(() => {
           </svg>
           <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
             <template v-if="hoveredSegment !== null">
-              <img
-                :src="getIconUrl(username, donutSegments[hoveredSegment].appId)"
+              <AppIcon
+                :username="username"
+                :app-id="donutSegments[hoveredSegment].appId"
                 class="mb-1 h-6 w-6 object-contain"
-                @error="($event.target as HTMLImageElement).style.display = 'none'"
               />
               <span class="max-w-[100px] truncate text-center text-[0.8rem] font-semibold text-foreground">
                 {{ donutSegments[hoveredSegment].appName }}
@@ -110,10 +110,10 @@ const donutSegments = computed(() => {
             @mouseleave="hoveredSegment = null"
           >
             <span class="h-2 w-2 shrink-0 rounded-full" :style="{ background: seg.color }"></span>
-            <img
-              :src="getIconUrl(username, seg.appId)"
+            <AppIcon
+              :username="username"
+              :app-id="seg.appId"
               class="h-4 w-4 shrink-0 object-contain"
-              @error="($event.target as HTMLImageElement).style.display = 'none'"
             />
             <span class="flex-1 truncate">{{ seg.appName }}</span>
             <span class="font-mono text-muted-foreground">{{ formatDuration(seg.totalSeconds) }}</span>
