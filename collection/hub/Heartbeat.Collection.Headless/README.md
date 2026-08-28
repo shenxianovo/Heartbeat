@@ -1,17 +1,18 @@
-# Heartbeat Headless Hub
+# Heartbeat 无头 Hub
 
-The headless Hub runs the same authentication, durable Collector inbox, segment buffer, cache,
-and upload streams as the desktop Agent, without foreground-window APIs or release-vendor
-dependencies. One Collector Runtime hosts every configured Instance; each Instance keeps an
-independent upload identity, cache, and encrypted secret namespace. Per-Instance projection,
-current status, cache and final upload are owned by one pipeline module; a waiting login never
-blocks the other configured instances.
+无头 Hub 使用与桌面 Agent 相同的鉴权、持久 Collector inbox、Segment 缓冲、缓存和上传流，
+但不依赖前台窗口 API 或发布供应商。一个 Collector Runtime 托管全部已配置的 Collector
+Instance；每个 Instance 拥有独立的上传身份、缓存和加密 Secret 命名空间。每个 Instance 的
+投影、当前状态、缓存和最终上传由同一个 pipeline 模块负责；某个 Instance 等待登录时，不会
+阻塞其他已配置的 Instance。
 
-The owner-facing management API is served at `/hub/api/v1`. It accepts only an OIDC access token
-whose `sub` and `client_id` match this Hub's configuration. The Dashboard calls it directly through
-the same-origin reverse proxy; credentials and reusable VRChat sessions never traverse Analytics.
+面向 owner 的管理 API 位于 `/hub/api/v1`。它只接受 `sub` 和 `client_id` 与本 Hub 配置匹配的
+OIDC access token。Dashboard 通过同源反向代理直接调用该 API；凭据和可复用的 VRChat 会话
+不会经过 Analytics。
 
-Build a deterministic local reference Package:
+## 构建 Collector Package
+
+构建一个行为确定的本地参考 Package：
 
 ```bash
 dotnet build ../../collectors/Heartbeat.Collector.Reference.ManagedProcess/Heartbeat.Collector.Reference.ManagedProcess.csproj
@@ -19,7 +20,7 @@ dotnet build ../../collectors/Heartbeat.Collector.Reference.ManagedProcess/Heart
   --create-package ./reference-package
 ```
 
-Build a VRChat Package:
+构建 VRChat Package：
 
 ```bash
 dotnet build ../../collectors/Heartbeat.Collector.VRChat/Heartbeat.Collector.VRChat.csproj
@@ -27,8 +28,10 @@ dotnet build ../../collectors/Heartbeat.Collector.VRChat/Heartbeat.Collector.VRC
   --create-package ./vrchat-package
 ```
 
-Create `heartbeat-headless.json` (paths are resolved relative to this file). `instances` may contain
-multiple accounts and, later, other managed Account Collector Packages:
+## 配置
+
+创建 `heartbeat-headless.json`。其中的相对路径均以该配置文件所在目录为基准解析。
+`instances` 可以包含多个账号，后续也可以加入其他托管式 Account Collector Package：
 
 ```json
 {
@@ -60,34 +63,40 @@ multiple accounts and, later, other managed Account Collector Packages:
 }
 ```
 
-Run it:
+## 运行
+
+直接运行：
 
 ```bash
 dotnet run --project Heartbeat.Collection.Headless.csproj -- ./heartbeat-headless.json
 ```
 
-For the Compose stacks, copy `heartbeat-headless.compose.example.json` to
-`.local/heartbeat-headless.json` and replace the API key, owner `sub`, and Subject ID. The Headless
-Hub is part of the default stack, so start it through the normal local command:
+使用 Compose 栈时，把 `heartbeat-headless.compose.example.json` 复制到
+`.local/heartbeat-headless.json`，并替换 API key、owner `sub` 和 Subject ID。无头 Hub 是默认
+本地栈的一部分，通过常规命令启动：
 
 ```bash
 ./scripts/start-local.sh
 ```
 
-Compose builds the Hub and bundled VRChat Package, mounts persistent `/data`, and joins the frontend
-network as the nginx upstream named `headless`. Set `HEADLESS_CONFIG_PATH` when the configuration
-lives elsewhere. Production `compose.yml` starts the published Headless image on the same main path.
+Compose 会构建 Hub 和随附的 VRChat Package，挂载持久化 `/data`，并加入前端网络，作为名为
+`headless` 的 nginx upstream。配置文件位于其他位置时，设置 `HEADLESS_CONFIG_PATH`。生产环境的
+`compose.yml` 通过同一主路径启动已发布的 Headless 镜像。
 
-For local ingest verification, `HEARTBEAT_API_BASE_URL` can override the Analytics endpoint.
-Set `HEARTBEAT_VRCHAT_MOCK=1` for the offline flow: username `test-user`, password
-`test-password`, and verification code `123456`. Vite proxies `/hub` to `127.0.0.1:8082`;
-the production nginx configuration expects the Hub at `headless:8080` on its container network.
+## 本地验证
 
-Without `HEARTBEAT_VRCHAT_MOCK`, the package uses the real VRChat API. That path is deliberately a
-manual smoke test: open the owner's Dashboard, press **登录** under the Account Subject, and finish
-the credentials/verification steps in the browser. VRChat does not provide a supported OAuth flow
-for this integration, so this collector remains experimental and must never be presented as an
-official VRChat integration.
+本地验证摄入时，可以用 `HEARTBEAT_API_BASE_URL` 覆盖 Analytics 端点。
 
-SIGINT/SIGTERM sends `activation.drain`, waits the configured grace period, terminates an
-unresponsive child, then asks the per-Instance pipeline module to perform its final drain.
+设置 `HEARTBEAT_VRCHAT_MOCK=1` 可使用离线流程：用户名为 `test-user`，密码为
+`test-password`，验证码为 `123456`。Vite 把 `/hub` 代理到 `127.0.0.1:8082`；生产 nginx
+配置则要求容器网络中的 Hub 位于 `headless:8080`。
+
+未设置 `HEARTBEAT_VRCHAT_MOCK` 时，Package 会调用真实 VRChat API。该路径有意保留为人工
+smoke test：打开 owner 的 Dashboard，在 Account Subject 下点击 **登录**，然后在浏览器中完成
+凭据和验证码步骤。VRChat 没有为此集成提供受支持的 OAuth 流程，因此该 Collector 仍属于
+实验性适配器，不能表述为 VRChat 官方集成。
+
+## 停止
+
+收到 SIGINT/SIGTERM 后，Hub 会发送 `activation.drain`，等待配置的宽限期，终止仍无响应的
+子进程，然后要求对应 Instance 的 pipeline 模块执行最后一次 drain。

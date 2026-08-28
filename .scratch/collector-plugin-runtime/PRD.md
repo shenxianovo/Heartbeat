@@ -1,6 +1,6 @@
 # 采集器即插即用运行时
 
-Status: needs-info
+Status: ready-for-agent
 
 ## 构想
 
@@ -8,7 +8,7 @@ Status: needs-info
 
 版本管理可参考 pnpm、NuGet 等包管理器：不可变的包版本、带兼容约束的清单、版本范围解析、精确锁定状态，以及下载后校验、切换和回滚。这里借鉴的是依赖图、版本范围、内容校验、锁定和回滚等机制，不预设沿用它们的仓库形态或命令行体验。
 
-用户提供的 Cordis 论文及 DeepSeek Harness 开源实现已经完成评估；论文提供生命周期所有权与依赖驱动组合的参考，但不替代 Heartbeat 的跨进程统一协议与事实模型。本文仍处于设计 grilling，不属于跨平台桌面 issue 12。
+用户提供的 Cordis 论文及 DeepSeek Harness 开源实现已经完成评估；论文提供生命周期所有权与依赖驱动组合的参考，但不替代 Heartbeat 的跨进程统一协议与事实模型。设计 grilling 已结束，本文保留其决策背景；当前实现状态需要按 issue 10 与两份规范完成对账。
 
 ## 本轮收口目标
 
@@ -16,6 +16,14 @@ Status: needs-info
 
 1. **统一 Collector Runtime / Protocol**：Package、Instance、Activation、Desired/Actual、能力协商和 Fact 交付不再因 InProcess、ManagedProcess、ExternalHost 各长一套。
 2. **统一观测事实模型**：Subject 与 Hub 解耦，Segment、Event、Measurement 共享最小信封但保留各自时间与收敛语义。
+
+代码实现与自动验证已经完成，但需求还不能标为 `done`：issue 08 仍有本地真实 VRChat 账号
+smoke，issue 10 仍需把 PRD / Protocol / Fact 文档与已交付实现对账。因此本 PRD 当前是
+`ready-for-agent`；issue 10 完成后再转 `ready-for-human` 承接真实账号门禁。
+
+2026-08-28 closeout audit：完整 .NET、Dashboard、Browser 与 Fact contract 回归通过；恢复数据的
+baseline→新 Desktop 数据 verify 通过。审计同时发现本 PRD 的“实现前矛盾”、覆盖表和两份
+`Draft 0.2` 未随实现收口，已建 issue 10；真实 VRChat 账号 smoke 尚未执行。
 
 包市场、安全体系、完整包管理体验、磁盘保留策略与每个故障分支都不是本轮前置条件。已经讨论出的合理方向可以保留在 PRD，除非它影响上述两份公共契约，否则不再单独建 ADR，也不继续用 grilling 展开。
 

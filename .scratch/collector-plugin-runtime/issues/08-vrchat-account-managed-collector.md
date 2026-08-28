@@ -17,3 +17,4 @@
 
 - 2026-08-27：实现完成，等待本地/真实账号人工 smoke。Headless Hub 通过 owner-only OIDC 管理 API 向 Dashboard 暴露非阻塞登录 challenge；VRChat 会话进入按 Collector Instance 隔离的加密 secret store。Presence 保留原始 instance 字符串，待本地 E2E 后再决定结构化语义。
 - 自动验证：`dotnet test Heartbeat.slnx --no-restore`、`npm test`、`npm run build`，以及 Headless Docker image build。
+- 2026-08-28：恢复数据库与新 Desktop system 数据的 baseline→verify smoke 通过，证明本地栈的数据检查入口可用；这不覆盖真实 VRChat 账号登录与 presence，人工门禁仍保留。
