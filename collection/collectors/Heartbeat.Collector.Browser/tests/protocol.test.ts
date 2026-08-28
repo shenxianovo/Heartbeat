@@ -65,9 +65,14 @@ describe('browser Collector Protocol outbox', () => {
     })).toEqual([items[0].id])
   })
 
-  it('old non-UUIDv7 cache requests legacy adapter without deleting the queue', async () => {
-    await expect(uploadWithBrowserProtocol(24820, 'edge', [snapshot('legacy-id')])).resolves.toEqual({
-      kind: 'legacy-required',
+  it('old non-UUIDv7 cache remains unavailable without entering a legacy transport', async () => {
+    await expect(uploadWithBrowserProtocol(
+      24820,
+      'edge',
+      'host-a',
+      [snapshot('legacy-id')],
+    )).resolves.toEqual({
+      kind: 'unavailable',
     })
   })
 
@@ -105,6 +110,7 @@ describe('browser Collector Protocol outbox', () => {
     const result = await uploadWithBrowserProtocol(
       24820,
       'edge',
+      'host-a',
       [snapshot()],
       undefined,
       undefined,
@@ -120,6 +126,10 @@ describe('browser Collector Protocol outbox', () => {
     expect(calls.map((call) => call.url.split('/').at(-1))).toEqual([
       'hello', 'initialize', 'initialized', 'streams', 'ready', 'facts',
     ])
+    expect((calls[0].body as { body: object }).body).toMatchObject({
+      appHint: 'edge',
+      externalHostIdentity: 'host-a',
+    })
     expect((calls[5].body as { body: { facts: { payload: object }[] } }).body.facts[0].payload).not.toHaveProperty('appHint')
   })
 
@@ -147,7 +157,7 @@ describe('browser Collector Protocol outbox', () => {
       }, ACTIVATION_ID, request.messageId)
     }))
 
-    const result = await uploadWithBrowserProtocol(24820, 'edge', [])
+    const result = await uploadWithBrowserProtocol(24820, 'edge', 'host-a', [])
 
     expect(result.kind).toBe('acked')
     if (result.kind === 'acked') expect(result.acknowledgedIds).toEqual([])

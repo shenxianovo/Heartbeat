@@ -20,6 +20,11 @@ public sealed class ReferencePackageBuilderTests : IDisposable
             : "Heartbeat.Collector.Reference.ManagedProcess";
         File.WriteAllText(Path.Combine(source, executableName), "reference executable");
         File.WriteAllText(Path.Combine(source, "Heartbeat.Collector.Reference.ManagedProcess.dll"), "reference assembly");
+        var contractDirectory = Path.Combine(source, "contracts", "facts");
+        Directory.CreateDirectory(contractDirectory);
+        File.Copy(
+            Path.Combine(AppContext.BaseDirectory, "contracts", "facts", "reference-segment.schema.json"),
+            Path.Combine(contractDirectory, "reference-segment.schema.json"));
 
         ReferencePackageBuilder.Create(source, package);
 

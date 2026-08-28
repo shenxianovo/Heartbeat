@@ -12,7 +12,7 @@ namespace Heartbeat.Collection.Hub.Collectors
     /// 失败不阻塞段上传、下轮自然重试；acked 集只在内存（重启后重报一次,服务端同版幂等覆盖,无害）。
     /// hub 对插件声明不解析语义,原文转发;仅 system 声明因内置采集器无 loopback 通道而由 hub 持有。
     /// </summary>
-    public class DeclarationUplinkService(HeartbeatApiClient apiClient, ICollectorRegistry registry)
+    public class DeclarationUplinkService(HeartbeatApiClient apiClient, ICollectorDeclarationStore registry)
     {
         /// <summary>
         /// system 采集器的观测深度表（ADR-030 §1）:内置采集器的契约声明,与服务端种子 v1 同形。

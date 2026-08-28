@@ -6,10 +6,15 @@ public sealed record CollectorRegistration(
     string? DeclarationJson,
     int? DeclarationVersion);
 
-/// <summary>hub 持久化 Collector Registry 的 seam。</summary>
-public interface ICollectorRegistry
+public interface ICollectorDeclarationStore
 {
     IReadOnlyDictionary<string, CollectorRegistration> Snapshot { get; }
+    void StoreVerifiedPackageDeclaration(string source, string declarationJson, int version);
+}
+
+/// <summary>Legacy source-level registry. New Runtime code must depend on a narrower seam.</summary>
+public interface ICollectorRegistry : ICollectorDeclarationStore
+{
     CollectorRegistration Touch(string source, int? flushPeriodMs = null);
     void Discover(IEnumerable<string> sources);
     void StoreDeclaration(string source, string declarationJson, int version);
@@ -18,6 +23,9 @@ public interface ICollectorRegistry
     /// Stores a declaration verified from the active Collector Package. Package content is
     /// authoritative over a legacy self-reported document at the same semantic version.
     /// </summary>
-    void StoreVerifiedPackageDeclaration(string source, string declarationJson, int version) =>
+    void ICollectorDeclarationStore.StoreVerifiedPackageDeclaration(
+        string source,
+        string declarationJson,
+        int version) =>
         StoreDeclaration(source, declarationJson, version);
 }

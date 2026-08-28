@@ -44,12 +44,13 @@ public static class HubServiceCollectionExtensions
         services.AddHttpClient<AuthServiceClient>();
         services.AddTransient<BearerTokenHandler>();
         services.AddHttpClient<HeartbeatApiClient>().AddHttpMessageHandler<BearerTokenHandler>();
-        services.TryAddSingleton<SegmentIngestRequestHandler>();
         services.TryAddSingleton<IExternalHostProtocolHttpHandler, NullExternalHostProtocolHttpHandler>();
         services.TryAddSingleton<DeclarationUplinkService>();
+        services.TryAddSingleton<ICollectorDeclarationStore>(provider =>
+            provider.GetRequiredService<ICollectorRegistry>());
         services.AddHostedService<UploadWorker>();
         services.AddHostedService<StatusUploadWorker>();
-        services.AddHostedService<SegmentIngestWorker>();
+        services.AddHostedService<ExternalHostProtocolWorker>();
         return services;
     }
 
@@ -63,7 +64,6 @@ public static class HubServiceCollectionExtensions
         {
             var runtime = new BrowserCollectorRuntime(
                 provider.GetRequiredService<CollectorRuntime>(),
-                provider.GetRequiredService<ICollectorRegistry>(),
                 provider.GetRequiredService<IDeviceIdentity>(),
                 options);
             runtime.EnsureBundledPackageInstalled();

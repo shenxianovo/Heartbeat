@@ -16,4 +16,7 @@
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
+
+  <Import Project="..\..\collectors\Heartbeat.Collector.Browser\BrowserCollectorPackage.targets" />
+  <Import Project="..\Heartbeat.Collector.System\SystemCollectorPackage.targets" />
 </Project>

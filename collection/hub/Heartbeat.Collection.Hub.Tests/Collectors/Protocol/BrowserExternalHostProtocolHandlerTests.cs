@@ -37,7 +37,7 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
         {
             DataDirectory = _root
         };
-        _browserRuntime = new BrowserCollectorRuntime(_runtime, _registry, new Device(), options);
+        _browserRuntime = new BrowserCollectorRuntime(_runtime, new Device(), options);
         _browserRuntime.Import(options.PackageDirectory);
         _handler = new BrowserExternalHostProtocolHandler(
             _runtime,
@@ -52,15 +52,8 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
     {
         var hello = await Post("/v1/collector-protocol/browser/hello", Message(
             "activation.hello",
-            $$$"""
-        {
-          "artifactId":"browser.extension",
-          "artifactHash":"sha256:48f764288e160365d6ad5d9a61686c8e214c27a2bcb77ebfbbd069155b1704e0",
-          "protocolMajors":[1],
-          "supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},
-          "appHint":"edge"
-        }
-        """, bootstrap: true));
+            HelloBody("edge", "edge-profile-default"),
+            bootstrap: true));
         Assert.Equal(200, hello.StatusCode);
         using var helloJson = JsonDocument.Parse(hello.Body);
         var accepted = helloJson.RootElement.GetProperty("body");
@@ -137,7 +130,7 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
     {
         var session = await Activate();
         Assert.Equal(BrowserCollectorRuntimeStatus.Ready, _browserRuntime.Current.RuntimeStatus);
-        _browserRuntime.SetDesiredEnabled(false);
+        _browserRuntime.SetAppDesiredEnabled("edge", false);
 
         var rejected = await Post($"/v1/collector-protocol/browser/{session.ActivationId}/facts", Message(
             "facts.publish",
@@ -155,33 +148,33 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
         {"leaseToken":"{{{session.LeaseToken}}}"}
         """);
         Assert.Equal(409, renew.StatusCode);
-        Assert.False(_browserRuntime.Current.DesiredEnabled);
+        Assert.False(Assert.Single(_browserRuntime.Current.Apps).DesiredEnabled);
         Assert.Equal(BrowserCollectorRuntimeStatus.Waiting, _browserRuntime.Current.RuntimeStatus);
     }
 
     [Fact]
     public async Task DisabledHelloIsRejectedBeforeInitializeAndExpiredHelloReplayDoesNotCreateActivation()
     {
-        _browserRuntime.SetDesiredEnabled(false);
+        _browserRuntime.SetAppDesiredEnabled("edge", false);
         var disabled = await Post("/v1/collector-protocol/browser/hello", Message(
             "activation.hello",
-            """{"artifactId":"browser.extension","artifactHash":"sha256:48f764288e160365d6ad5d9a61686c8e214c27a2bcb77ebfbbd069155b1704e0","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
+            HelloBody("edge", "edge-profile-default"),
             bootstrap: true));
         Assert.Equal(403, disabled.StatusCode);
         using (var json = JsonDocument.Parse(disabled.Body))
             Assert.Equal("activation.rejected", json.RootElement.GetProperty("type").GetString());
 
-        _browserRuntime.SetDesiredEnabled(true);
+        _browserRuntime.SetAppDesiredEnabled("edge", true);
         var helloMessageId = Guid.CreateVersion7();
         var helloBody = Message(
             "activation.hello",
-            """{"artifactId":"browser.extension","artifactHash":"sha256:48f764288e160365d6ad5d9a61686c8e214c27a2bcb77ebfbbd069155b1704e0","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
+            HelloBody("edge", "edge-profile-default"),
             bootstrap: true,
             messageId: helloMessageId);
         Assert.Equal(200, (await Post("/v1/collector-protocol/browser/hello", helloBody)).StatusCode);
         var conflictingReplay = await Post("/v1/collector-protocol/browser/hello", Message(
             "activation.hello",
-            """{"artifactId":"browser.extension","artifactHash":"sha256:48f764288e160365d6ad5d9a61686c8e214c27a2bcb77ebfbbd069155b1704e0","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"chrome"}""",
+            HelloBody("chrome", "chrome-profile-default"),
             bootstrap: true,
             messageId: helloMessageId));
         Assert.Equal(400, conflictingReplay.StatusCode);
@@ -200,11 +193,33 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
         Assert.Equal(helloMessageId, replayJson.RootElement.GetProperty("replyTo").GetGuid());
     }
 
-    private async Task<(Guid ActivationId, Guid StreamId, string LeaseToken)> Activate()
+    [Fact]
+    public async Task HostsShareAppInstanceButHaveIndependentActivationsAndReplacementScope()
+    {
+        var firstProfile = await Activate("edge", "profile-a");
+        var secondProfile = await Activate("edge", "profile-b");
+
+        Assert.Single(_browserRuntime.Current.Apps);
+        Assert.Equal(200, (await Renew(firstProfile)).StatusCode);
+        Assert.Equal(200, (await Renew(secondProfile)).StatusCode);
+
+        var replacement = await Post("/v1/collector-protocol/browser/hello", Message(
+            "activation.hello",
+            HelloBody("edge", "profile-a"),
+            bootstrap: true));
+
+        Assert.Equal(200, replacement.StatusCode);
+        Assert.Equal(409, (await Renew(firstProfile)).StatusCode);
+        Assert.Equal(200, (await Renew(secondProfile)).StatusCode);
+    }
+
+    private async Task<(Guid ActivationId, Guid StreamId, string LeaseToken)> Activate(
+        string appHint = "edge",
+        string externalHostIdentity = "edge-profile-default")
     {
         var hello = await Post("/v1/collector-protocol/browser/hello", Message(
             "activation.hello",
-            """{"artifactId":"browser.extension","artifactHash":"sha256:48f764288e160365d6ad5d9a61686c8e214c27a2bcb77ebfbbd069155b1704e0","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"edge"}""",
+            HelloBody(appHint, externalHostIdentity),
             bootstrap: true));
         using var helloJson = JsonDocument.Parse(hello.Body);
         var activationId = helloJson.RootElement.GetProperty("body").GetProperty("activationId").GetGuid();
@@ -230,6 +245,23 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
             activationId,
             streamsJson.RootElement.GetProperty("body").GetProperty("streams").GetProperty("tabs").GetProperty("streamId").GetGuid(),
             readyJson.RootElement.GetProperty("body").GetProperty("lease").GetProperty("token").GetString()!);
+    }
+
+    private Task<ProtocolHttpResponse> Renew((Guid ActivationId, Guid StreamId, string LeaseToken) session) =>
+        Post(
+            $"/v1/collector-protocol/browser/{session.ActivationId}/renew",
+            $$$"""{"leaseToken":"{{{session.LeaseToken}}}"}""");
+
+    private static string HelloBody(string appHint, string externalHostIdentity)
+    {
+        using var metadata = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "Fixtures",
+            "BrowserCollectorPackage",
+            "browser-extension",
+            "package-metadata.json")));
+        var artifactHash = metadata.RootElement.GetProperty("artifactHash").GetString();
+        return $$"""{"artifactId":"browser.extension","artifactHash":"{{artifactHash}}","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"{{appHint}}","externalHostIdentity":"{{externalHostIdentity}}"}""";
     }
 
     private async Task<ProtocolHttpResponse> Post(string path, string json)

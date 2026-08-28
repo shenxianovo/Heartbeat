@@ -18,13 +18,13 @@ Owner 拥有 Machine、Account、Person 等 Subject；每个 Collector Instance 
 
 Device 回到 Machine Subject。VRChat 账号使用 Account Subject，心率等身体观测使用 Person Subject；不能为了复用 Device 字段制造未经观测的硬件归因。本节修订 ADR-032 将 Device 泛化为任意主体的临时方案。
 
-### 2. Collector Protocol 承认三类 Fact
+### 2. 领域模型区分三类 Fact，协议按真实需求落地
 
 - **Segment**：具有起止时间的区间事实；持续中的区间以同一 FactId、递增 Revision 的完整快照表达增长、纠正或撤回。
 - **Event**：发生在一个时刻的离散事实；默认不可变，同一 FactId 的相同内容是幂等重放，不同内容是冲突。
 - **Measurement**：数值状态或时间窗口内的数值总体；至少区分 Gauge、Sum 与 Histogram，并保留 unit、temporality、monotonic、reset 与 missing 等必要语义，不能退化为“时间戳 + 数字”。
 
-ActivitySegment 是现有 Segment，InputEvent 是现有 Event。首期实现可以只迁移已有管道，但公共协议和 Manifest 从一开始使用这三个 FactKind，不再把零长度 Segment 当作所有事件的最终模型。`Sample` 更名为 `Measurement`，避免暗示它只能表示瞬时标量。
+ActivitySegment 是现有 Segment，InputEvent 是现有 Event。领域模型从一开始保留三类 Fact 的语义边界，不把零长度 Segment 当作所有事件的最终模型；但可执行 Collector Protocol v1 与 Manifest 当前只实现已有真实需求的 Segment 和 Event。Measurement 等第一个真实 Collector 出现时再进入 capability、wire model、Package 校验与投影，不为尚不存在的来源预建半套协议。`Sample` 更名为 `Measurement`，避免暗示它只能表示瞬时标量。
 
 ### 3. Fact Stream 承载稳定上下文，Fact 保持最小信封
 
@@ -36,13 +36,13 @@ Fact Schema 使用 SchemaId + SchemaMajor 表示语义兼容线，以 SchemaRevi
 
 ## Consequences
 
-- ✅ 桌面活动、账号在线、输入事件、心率和步数可进入同一 Collector Protocol，而不被强塞成同一种事实。
+- ✅ 桌面活动、账号在线和输入事件进入同一 Collector Protocol；未来心率和步数仍有明确的 Measurement 扩展位置，不会被强塞成 Segment 或 Event。
 - ✅ Hub 的运行位置与事实主体解耦；一个常驻 Hub 可以如实托管多个账号、机器或人的 Collector Instance。
 - ✅ 公共信封保持小而稳定，类型语义和 schema 可以独立演进。
 - ✅ 明确的 FactId / Revision 规则为重试、乱序和修正提供统一幂等基础。
 - ⚠️ Device 不再能承担所有查询隔离与分组语义；引入第二种 Subject 时需要实际 schema 迁移。
 - ⚠️ Analytics 最终需要分别持久化或投影三类 Fact，不能继续假设所有输入都是 ActivitySegment。
-- ⚠️ Measurement 的完整语义先进入协议，具体 Collector 与存储实现仍按真实需求逐步落地。
+- ⚠️ Measurement 目前只有领域语义承诺，没有可执行协议兼容承诺；引入首个 Measurement Collector 时必须完整设计 capability、wire、schema、存储与查询语义。
 
 ## References
 

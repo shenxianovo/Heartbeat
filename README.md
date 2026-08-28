@@ -8,14 +8,14 @@ https://heartbeat.shenxianovo.com
 
 ## Architecture
 
-三个领域上下文 + 一个共享内核(详见 [CONTEXT-MAP.md](./CONTEXT-MAP.md)):
+三个领域上下文 + 一个共享内核。完整模块、Transport Binding 与协议关系见 [系统架构与协议图](./docs/architecture/system-overview.md)，领域边界见 [CONTEXT-MAP.md](./CONTEXT-MAP.md)。
 
 ```mermaid
 graph LR
     subgraph Collection["Collection"]
-        Collectors["Per-app collectors<br/><i>browser / vscode / ...</i>"]
-        Agent["Agent<br/><i>system collector + local ingest hub</i>"]
-        Collectors -- "loopback<br/>(ADR-017)" --> Agent
+        Collectors["Collectors<br/><i>browser / system / VRChat</i>"]
+        Agent["Collector Runtime<br/><i>in-process / ExternalHost / ManagedProcess</i>"]
+        Collectors -- "Collector Protocol v1<br/>typed / HTTP JSON / NDJSON stdio" --> Agent
     end
 
     subgraph Analytics["Analytics (Linux)"]
@@ -81,6 +81,8 @@ Heartbeat
 ## Documentation
 
 - [Development Guide](./docs/development.md) — 启动本地栈、运行 Agent、验证与测试
+- [系统架构与协议图](./docs/architecture/system-overview.md) — 当前模块、身份层级、Transport Binding 与 schema 校验链
+- [Collector Fact Contracts](./collection/contracts/README.md) — 5 个 schema 的单一来源与演进检查
 - [API 导读](./docs/api.md) — 鉴权、调用方与客户端生成约定；端点真相源是 OpenAPI
 - [数据库导读](./docs/db.md) — 数据设计意图；schema 真相源是实体类与迁移
 - [Runbooks](./docs/runbooks/) — 生产数据刷新与 App Catalog 运维

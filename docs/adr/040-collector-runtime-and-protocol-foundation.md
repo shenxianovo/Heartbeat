@@ -39,7 +39,17 @@ Instance Desired State 使用单调 SpecRevision；Activation 报告已经应用
 
 ### 4. 本期明确不扩张到完整插件生态
 
-本期不实现中心 Package Registry、第三方插件市场、TUF/Sigstore、签名根与撤回、Activation 认证、Secret 管理、权限沙箱、资源配额、跨 Collector 依赖或细粒度组件热卸载。协议为这些能力保留可演进位置，但它们不阻塞统一协议与官方 Collector Runtime。
+本期不实现中心 Package Registry、第三方插件市场、TUF/Sigstore、签名根与撤回、Activation 认证、权限沙箱、资源配额、跨 Collector 依赖或细粒度组件热卸载。协议为这些能力保留可演进位置，但它们不阻塞统一协议与官方 Collector Runtime。
+
+实现阶段已为官方 ManagedProcess Collector 增加 Instance 隔离的 Collector Secret 存储与交互授权；这比本 ADR 最初“不实现 Secret 管理”的范围向前推进了一步，但不构成通用第三方权限或信任体系。
+
+### 5. 实现收敛：Browser 多 App/Host 与旧 loopback 退役
+
+- browser 的一份 Package Installation 可在同一 Machine Subject 下形成多个按 App Key 稳定寻址的 Collector Instance；Chrome、Edge 等各自持有 Desired/Runtime/LKG 状态。
+- 每个扩展 profile/install 持久化独立 External Host Identity。同一 Host 重连只替换自己的 Activation；同一 App 的其他 Host 和其他 App Instance 可并行。
+- ExternalHost Stream 由 `appHint + externalHostIdentity` 形成 identifying dimensions。
+- browser 只使用 binding 专属 discovery 与 Collector Protocol v1。`POST /v1/segments`、`GET /v1/hub`、source 级 config/declaration 入口及 fallback 已退役。
+- Fact Schema 权威文件集中在 `collection/contracts/facts/`，Package schema 与最终 manifest 由 staging 工具生成并受演进基线约束。
 
 ## Consequences
 
@@ -47,7 +57,7 @@ Instance Desired State 使用单调 SpecRevision；Activation 报告已经应用
 - ✅ Collector 可以独立发布与切换，不必为每次采集能力变化重建整个 Agent。
 - ✅ Transport 与宿主差异被限制在 Binding / Driver，不泄漏成不同领域模型。
 - ✅ 本期范围收敛在官方 Collector 的运行时和协议地基，不被插件市场与安全体系拖住。
-- ⚠️ Runtime 状态和协议比现有 `/v1/segments` 更显式，需要新的契约测试与迁移适配层。
+- ✅ 旧 `/v1/segments` 迁移适配层已经删除，官方 Collector 只走统一协议。
 - ⚠️ ExternalHost 的安装、停止和回滚能力天然弱于 ManagedProcess，统一模型不能把这种差异伪装掉。
 - ⚠️ 允许重启切换意味着本期不保证零停机更新。
 

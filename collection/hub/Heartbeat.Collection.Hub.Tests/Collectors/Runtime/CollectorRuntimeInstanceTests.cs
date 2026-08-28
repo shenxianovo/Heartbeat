@@ -130,6 +130,66 @@ public class CollectorRuntimeInstanceTests
     }
 
     [Fact]
+    public void InstanceKey_IsUniqueWithinPackageAndSubjectAndSurvivesRestart()
+    {
+        using var stateDirectory = TemporaryDirectory.Create();
+        var statePath = Path.Combine(stateDirectory.Path, "collector-runtime.json");
+        var package = LocalCollectorPackage.Load(ReferencePackagePath);
+        var subject = new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine);
+        using var config = JsonDocument.Parse("{}");
+        var spec = new CollectorInstanceSpec(1, 1, config.RootElement.Clone());
+        Guid expectedId;
+
+        using (var runtime = CollectorRuntime.Open(statePath, new RecordingSegmentSink()))
+        {
+            var chrome = runtime.CreateInstance(package, subject, spec, "app/chrome");
+            expectedId = chrome.CollectorInstanceId;
+
+            Assert.Equal("app/chrome", chrome.InstanceKey);
+            Assert.Equal(expectedId, runtime.FindInstance(
+                package.Manifest.PackageId,
+                subject,
+                "app/chrome")?.CollectorInstanceId);
+            Assert.Throws<InvalidOperationException>(() =>
+                runtime.CreateInstance(package, subject, spec, "app/chrome"));
+
+            var edge = runtime.CreateInstance(package, subject, spec, "app/edge");
+            Assert.NotEqual(expectedId, edge.CollectorInstanceId);
+        }
+
+        using var reopened = CollectorRuntime.Open(statePath, new RecordingSegmentSink());
+        var restored = reopened.FindInstance(package.Manifest.PackageId, subject, "app/chrome");
+        Assert.NotNull(restored);
+        Assert.Equal(expectedId, restored.CollectorInstanceId);
+        Assert.Equal("app/chrome", restored.InstanceKey);
+    }
+
+    [Fact]
+    public void InstanceKey_SameValueIsIndependentAcrossSubjects()
+    {
+        using var stateDirectory = TemporaryDirectory.Create();
+        var package = LocalCollectorPackage.Load(ReferencePackagePath);
+        using var runtime = CollectorRuntime.Open(
+            Path.Combine(stateDirectory.Path, "collector-runtime.json"),
+            new RecordingSegmentSink());
+        using var config = JsonDocument.Parse("{}");
+        var spec = new CollectorInstanceSpec(1, 1, config.RootElement.Clone());
+
+        var first = runtime.CreateInstance(
+            package,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+            spec,
+            "app/chrome");
+        var second = runtime.CreateInstance(
+            package,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+            spec,
+            "app/chrome");
+
+        Assert.NotEqual(first.CollectorInstanceId, second.CollectorInstanceId);
+    }
+
+    [Fact]
     public void Open_SameStateFileAlreadyOwned_RejectsConcurrentRuntime()
     {
         using var stateDirectory = TemporaryDirectory.Create();

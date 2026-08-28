@@ -27,7 +27,7 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
     public const string RoutePrefix = "/v1/collector-protocol/browser";
     private readonly object _gate = new();
     private readonly CollectorRuntime _runtime;
-    private readonly ICollectorRegistry _registry;
+    private readonly ICollectorDeclarationStore _declarations;
     private readonly BrowserCollectorRuntime _browserRuntime;
     private readonly TimeProvider _timeProvider;
     private readonly BrowserExternalHostBindingOptions _options;
@@ -44,13 +44,13 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
 
     public BrowserExternalHostProtocolHandler(
         CollectorRuntime runtime,
-        ICollectorRegistry registry,
+        ICollectorDeclarationStore declarations,
         BrowserCollectorRuntime browserRuntime,
         BrowserExternalHostBindingOptions options,
         TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(runtime);
-        ArgumentNullException.ThrowIfNull(registry);
+        ArgumentNullException.ThrowIfNull(declarations);
         ArgumentNullException.ThrowIfNull(browserRuntime);
         ArgumentNullException.ThrowIfNull(options);
         if (options.LeaseDuration <= TimeSpan.Zero)
@@ -58,11 +58,11 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         if (options.FlushPeriodMilliseconds <= 0)
             throw new ArgumentOutOfRangeException(nameof(options), "FlushPeriodMilliseconds must be positive.");
         _runtime = runtime;
-        _registry = registry;
+        _declarations = declarations;
         _browserRuntime = browserRuntime;
         _options = options;
         _timeProvider = timeProvider ?? TimeProvider.System;
-        _browserRuntime.DesiredEnabledChanged += HandleDesiredEnabledChanged;
+        _browserRuntime.AppDesiredEnabledChanged += HandleAppDesiredEnabledChanged;
     }
 
     public async ValueTask<ProtocolHttpResponse?> HandleAsync(
@@ -99,6 +99,8 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
 
         try
         {
+            if (httpMethod == "GET" && path == RoutePrefix)
+                return Json(200, new { binding = "browser", protocolMajors = new[] { 1 } });
             if (httpMethod == "POST" && path == $"{RoutePrefix}/hello")
                 return HandleHello(await ReadRequest<HelloRequest>(
                     "heartbeat.collector.bootstrap/1",
@@ -181,13 +183,13 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
                     session.Activation,
                     ExternalHostActivationStopReason.LeaseExpired);
         }
-        if (expired.Length > 0)
-            _browserRuntime.MarkWaiting("浏览器未运行或连接租约已过期；启用意图保持不变。");
+        foreach (var appHint in expired.Select(session => session.AppHint).Distinct(StringComparer.Ordinal))
+            _browserRuntime.MarkWaiting(appHint, "浏览器未运行或连接租约已过期；启用意图保持不变。");
     }
 
     public async ValueTask DisposeAsync()
     {
-        _browserRuntime.DesiredEnabledChanged -= HandleDesiredEnabledChanged;
+        _browserRuntime.AppDesiredEnabledChanged -= HandleAppDesiredEnabledChanged;
         Session[] sessions;
         lock (_gate)
         {
@@ -204,8 +206,8 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
                     session.Activation,
                     ExternalHostActivationStopReason.RuntimeStopping);
         }
-        if (sessions.Length > 0)
-            _browserRuntime.MarkWaiting("Desktop Hub 正在停止；Package 和启用意图保持不变。");
+        foreach (var appHint in sessions.Select(session => session.AppHint).Distinct(StringComparer.Ordinal))
+            _browserRuntime.MarkWaiting(appHint, "Desktop Hub 正在停止；Package 和启用意图保持不变。");
         await ValueTask.CompletedTask;
     }
 
@@ -214,13 +216,26 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
     private ProtocolHttpResponse HandleHello(ProtocolMessage<HelloRequest> message)
     {
         var request = message.Body;
-        var package = _browserRuntime.LoadCurrentPackage();
+        LocalCollectorPackage package;
+        try
+        {
+            package = _browserRuntime.ResolvePackage(request.ArtifactId, request.ArtifactHash);
+        }
+        catch (PackageValidationException)
+        {
+            return HelloRejected(
+                message.MessageId,
+                Error("package_mismatch", "ExternalHost Artifact does not match an installed browser Package."),
+                400);
+        }
         var validationError = ValidateHello(request, package);
         if (validationError is not null)
         {
             if (validationError.Code == "package_mismatch" &&
                 _browserRuntime.Current.RuntimeStatus != BrowserCollectorRuntimeStatus.Ready)
-                _browserRuntime.MarkDegraded("浏览器仍在运行旧 Package；请在扩展页重新加载旁加载目录。");
+                _browserRuntime.MarkDegraded(
+                    request.AppHint,
+                    "浏览器仍在运行未知 Package；请在扩展页重新加载旁加载目录。");
             return HelloRejected(message.MessageId, validationError, 400);
         }
         var requestHash = HelloRequestHash(request);
@@ -246,22 +261,23 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
             }
         }
 
-        _registry.Touch(ActivitySources.Browser, _options.FlushPeriodMilliseconds);
-        if (!_browserRuntime.Current.DesiredEnabled)
+        if (!_browserRuntime.IsAppDesiredEnabled(request.AppHint))
         {
             var error = Error("activation_stopping", "Browser Collector is disabled by Desired State.");
             lock (_gate)
                 _helloAttempts[message.MessageId] = new HelloAttempt(null, error, requestHash);
             return HelloRejected(message.MessageId, error, 403);
         }
-        var instance = _browserRuntime.GetStableInstance();
+        var instance = _browserRuntime.GetOrCreateAppInstance(request.AppHint, package);
         Session[] replaced;
         lock (_gate)
-            replaced = _sessions.Values.ToArray();
+            replaced = _sessions.Values.Where(session =>
+                session.AppHint == BrowserCollectorRuntime.NormalizeAppHint(request.AppHint) &&
+                session.ExternalHostIdentity == request.ExternalHostIdentity).ToArray();
         foreach (var old in replaced)
             StopAndRemove(old, ExternalHostActivationStopReason.LeaseReplaced);
         if (replaced.Length > 0)
-            _browserRuntime.MarkWaiting("旧 Activation 已结束；等待浏览器完成新 Package 激活。");
+            _browserRuntime.MarkWaiting(request.AppHint, "该 Host 的旧 Activation 已结束；等待新 Activation 就绪。");
 
         var activationId = Guid.CreateVersion7();
         var initialization = _runtime.BeginExternalHostActivation(
@@ -276,7 +292,8 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
             activationId,
             message.MessageId,
             Guid.CreateVersion7(),
-            request.AppHint,
+            BrowserCollectorRuntime.NormalizeAppHint(request.AppHint),
+            request.ExternalHostIdentity,
             package,
             initialization,
             false,
@@ -361,7 +378,9 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
                 activationId,
                 message.MessageId,
                 Error("protocol_invalid_message", "streams.open bindings are malformed."));
-        if (request.Bindings.Any(binding => binding.Dimensions.ContainsKey("appHint")))
+        if (request.Bindings.Any(binding =>
+                binding.Dimensions.ContainsKey("appHint") ||
+                binding.Dimensions.ContainsKey("externalHostIdentity")))
             return Rejected(
                 400,
                 "streams.rejected",
@@ -369,12 +388,13 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
                 message.MessageId,
                 Error(
                     "output_not_declared",
-                    "appHint is supplied by the ExternalHost Binding and cannot be overridden by the Collector."));
+                    "ExternalHost identity dimensions are supplied by the binding and cannot be overridden."));
         var bindings = request.Bindings.Select(binding => new OutputBinding(
             binding.BindingId,
             binding.OutputId,
             binding.Dimensions
                 .Append(new KeyValuePair<string, string>("appHint", session.AppHint))
+                .Append(new KeyValuePair<string, string>("externalHostIdentity", session.ExternalHostIdentity))
                 .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal))).ToArray();
         var activation = _runtime.OpenExternalHostStreams(
             activationId,
@@ -429,17 +449,18 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
                 Error("activation_stopping", "ExternalHost Activation has ended."));
         }
         RegisterPackageDeclaration(ready.Package);
-        _browserRuntime.MarkReady(ready.Package.PackageContentHash);
+        _browserRuntime.MarkReady(ready.AppHint, ready.Package.PackageContentHash);
         return ReadyResponse(ready, message.MessageId);
     }
 
     private ProtocolHttpResponse HandleRenew(Guid activationId, RenewRequest request)
     {
-        if (!_browserRuntime.Current.DesiredEnabled)
+        var session = GetSession(activationId);
+        if (!_browserRuntime.IsAppDesiredEnabled(session.AppHint))
         {
             if (TryGetActiveLease(activationId, request.LeaseToken, out var disabledSession))
                 StopAndRemove(disabledSession, ExternalHostActivationStopReason.DesiredDisabled);
-            _browserRuntime.MarkWaiting("已停用；Package 和 Collector Instance 已保留。");
+            _browserRuntime.MarkWaiting(session.AppHint, "已停用；Package 和 App Instance 已保留。");
             return Json(409, new { error = Error("activation_stopping", "Browser Collector is disabled by Desired State.") });
         }
         if (!TryRenewLease(activationId, request.LeaseToken, out var renewed))
@@ -460,7 +481,7 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
                 activationId,
                 message.MessageId,
                 Error("activation_stopping", "ExternalHost lease is not active."));
-        if (!_browserRuntime.Current.DesiredEnabled)
+        if (!_browserRuntime.IsAppDesiredEnabled(session.AppHint))
             return Rejected(
                 403,
                 "facts.rejected",
@@ -547,14 +568,30 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
     {
         if (package.ObservationDeclaration is not { } declaration)
             return;
-        _registry.StoreVerifiedPackageDeclaration(ActivitySources.Browser, declaration.Json, declaration.Version);
+        _declarations.StoreVerifiedPackageDeclaration(ActivitySources.Browser, declaration.Json, declaration.Version);
     }
 
     private static CollectorProtocolError? ValidateHello(HelloRequest request, LocalCollectorPackage package)
     {
         if (string.IsNullOrWhiteSpace(request.AppHint) ||
+            string.IsNullOrWhiteSpace(request.ExternalHostIdentity) ||
             request.ProtocolMajors is null || request.SupportedCapabilities is null)
-            return Error("protocol_invalid_message", "protocol support and appHint are required.");
+            return Error(
+                "protocol_invalid_message",
+                "protocol support, appHint and externalHostIdentity are required.");
+        try
+        {
+            _ = BrowserCollectorRuntime.NormalizeAppHint(request.AppHint);
+        }
+        catch (ArgumentException exception)
+        {
+            return Error("protocol_invalid_message", exception.Message);
+        }
+        if (request.ExternalHostIdentity.Length > 200 ||
+            request.ExternalHostIdentity != request.ExternalHostIdentity.Trim())
+            return Error(
+                "protocol_invalid_message",
+                "externalHostIdentity must be stable, trimmed and at most 200 characters.");
         var artifact = package.Artifacts.SingleOrDefault(candidate => candidate.ArtifactId == request.ArtifactId);
         if (artifact is null || !string.Equals(artifact.ContentHash, request.ArtifactHash, StringComparison.Ordinal))
             return Error("package_mismatch", "ExternalHost Artifact does not match the verified browser Package.");
@@ -598,6 +635,7 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
             }
             writer.WriteEndObject();
             writer.WriteString("appHint", request.AppHint);
+            writer.WriteString("externalHostIdentity", request.ExternalHostIdentity);
             writer.WriteEndObject();
         }
         return "sha256:" + Convert.ToHexStringLower(
@@ -659,16 +697,16 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
             _runtime.StopExternalHostActivation(session.Activation, reason);
     }
 
-    private void HandleDesiredEnabledChanged(bool enabled)
+    private void HandleAppDesiredEnabledChanged(string appHint, bool enabled)
     {
         if (enabled)
             return;
         Session[] sessions;
         lock (_gate)
-            sessions = _sessions.Values.ToArray();
+            sessions = _sessions.Values.Where(session => session.AppHint == appHint).ToArray();
         foreach (var session in sessions)
             StopAndRemove(session, ExternalHostActivationStopReason.DesiredDisabled);
-        _browserRuntime.MarkWaiting("已停用；Package 和 Collector Instance 已保留。");
+        _browserRuntime.MarkWaiting(appHint, "已停用；Package 和 App Instance 已保留。");
     }
 
     private ProtocolHttpResponse HelloResponse(Session session, Guid replyTo) => ProtocolResponse(
@@ -787,6 +825,7 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         Guid HelloMessageId,
         Guid InitializeMessageId,
         string AppHint,
+        string ExternalHostIdentity,
         LocalCollectorPackage Package,
         ExternalHostCollectorInitialization Initialization,
         bool Initialized,
@@ -812,7 +851,8 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         string ArtifactHash,
         IReadOnlyList<int> ProtocolMajors,
         IReadOnlyDictionary<string, IReadOnlyList<int>> SupportedCapabilities,
-        string AppHint);
+        string AppHint,
+        string ExternalHostIdentity);
 
     public sealed record BindingRequest(
         string BindingId,

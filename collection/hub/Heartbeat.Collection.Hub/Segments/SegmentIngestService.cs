@@ -33,9 +33,9 @@ namespace Heartbeat.Collection.Hub.Segments
         private const int MaxBuffered = 20000;
 
         /// <summary>
-        /// 接收一批段。返回接受的条数。source 无关（ADR-020）：冒充守卫在
-        /// loopback 协议层（SegmentIngestRequestHandler），内置采集器进程内直调本方法。
-        /// 缺 Id 的补 UUIDv7。
+        /// Runtime projector 与内置采集路径共用的 segment sink。外部 Collector 必须先经
+        /// Collector Protocol 的 Package/Stream/schema 校验，不能直接调用此方法。
+        /// 缺 Id 的内部兼容输入补 UUIDv7。
         /// </summary>
         public int Accept(List<ActivitySegmentItem> segments)
         {

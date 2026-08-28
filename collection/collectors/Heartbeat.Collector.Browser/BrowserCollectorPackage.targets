@@ -1,0 +1,21 @@
+<Project>
+  <PropertyGroup>
+    <BrowserCollectorPackageStageDirectory>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\$(BaseIntermediateOutputPath)$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\CollectorPackage\Browser'))</BrowserCollectorPackageStageDirectory>
+    <BrowserCollectorPackageDestination Condition="'$(BrowserCollectorPackageDestination)' == ''">CollectorPackages/Browser</BrowserCollectorPackageDestination>
+    <HeartbeatRepositoryRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\..\'))</HeartbeatRepositoryRoot>
+  </PropertyGroup>
+
+  <Target Name="StageBrowserCollectorPackage" BeforeTargets="Build">
+    <Exec WorkingDirectory="$(HeartbeatRepositoryRoot)"
+          Command="node scripts/collector-contracts.mjs stage browser &quot;$(BrowserCollectorPackageStageDirectory)&quot;" />
+  </Target>
+
+  <Target Name="CopyBrowserCollectorPackage" AfterTargets="Build" DependsOnTargets="StageBrowserCollectorPackage">
+    <ItemGroup>
+      <BrowserCollectorPackageFiles Include="$(BrowserCollectorPackageStageDirectory)/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(BrowserCollectorPackageFiles)"
+          DestinationFiles="@(BrowserCollectorPackageFiles->'$(OutDir)$(BrowserCollectorPackageDestination)/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>

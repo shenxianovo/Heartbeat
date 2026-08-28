@@ -26,7 +26,7 @@ namespace Heartbeat.Desktop.Windows.Models
 
         /// <summary>
         /// 本地 ingest 枢纽监听基准端口（loopback），插件采集器往此推段（ADR-017）。
-        /// 被占时向上顺延试绑（范围见 Collection.Hub SegmentIngestWorker.PortRange），采集器按同一范围探测发现。
+        /// 被占时向上顺延试绑（范围见 Collection.Hub ExternalHostProtocolWorker.PortRange），采集器按同一范围探测发现。
         /// 默认 24820 位于 Windows（49152+）与 Linux（32768+，WSL mirrored 模式共享端口空间）
         /// 动态端口范围之外——曾因默认值落在 WSL 动态频段内被幽灵预留成片封锁。
         /// ≤0 表示禁用。

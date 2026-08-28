@@ -16,7 +16,7 @@ Heartbeat 是一个跨平台桌面活动监控系统。系统分为三个领域�
 
 | Context | Directory | Responsibility |
 |---------|-----------|----------------|
-| Collection | `collection/` | 监听前台窗口切换与各应用内活动，生成使用记录，上传至服务端。`hub/` 是可复用的采集器宿主运行时，**多实例星形直连 ingest、不嵌套**（ADR-032）；`desktop/` 是桌面实例（Agent，含 system Collector，兼 loopback ingest hub）；`collectors/` 存放 Browser、VRChat 等独立 Collector。server 旁的无头 hub 托管账号级代理 Collector，不携带桌面概念。 |
+| Collection | `collection/` | 监听前台窗口切换与各应用内活动，生成使用记录，上传至服务端。`hub/` 是可复用的 Collector Runtime，**多实例星形直连 Analytics、不嵌套**（ADR-032）；`desktop/` 是桌面实例（含 system Collector 与 Browser ExternalHost binding）；`collectors/` 存放 Browser、VRChat 等独立 Collector；`contracts/facts/` 是 Fact Schema 唯一权威来源。server 旁的无头 host 以一个 Runtime 托管多个账号级 Instance，不携带桌面概念。 |
 | Analytics | `server/` | 接收使用数据，合并碎片记录，聚合报表 |
 | Dashboard | `frontend/` | 可视化使用数据 |
 

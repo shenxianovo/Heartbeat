@@ -85,7 +85,7 @@ public class HubCompositionTests
         var hosted = provider.GetServices<IHostedService>().ToList();
         Assert.Contains(hosted, service => service is UploadWorker);
         Assert.Contains(hosted, service => service is StatusUploadWorker);
-        Assert.Contains(hosted, service => service is Heartbeat.Collection.Hub.Ingest.SegmentIngestWorker);
+        Assert.Contains(hosted, service => service is Heartbeat.Collection.Hub.Ingest.ExternalHostProtocolWorker);
 
         var references = typeof(SegmentIngestService).Assembly
             .GetReferencedAssemblies()

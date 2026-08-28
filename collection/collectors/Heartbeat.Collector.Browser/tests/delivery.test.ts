@@ -86,22 +86,12 @@ class MemoryStore implements BrowserDeliveryStore {
 
 class MemoryHub implements BrowserHubAdapter {
   compatiblePort: number | null = PORT
-  legacyConfig: { enabled: boolean } | null = null
   protocolCalls: BrowserProtocolDeliveryRequest[] = []
-  legacyCalls: SegmentSnapshot[][] = []
-  legacyConfigCalls = 0
   onProtocol: (request: BrowserProtocolDeliveryRequest) => Promise<ProtocolUploadResult> =
     async (request) => acknowledged(request)
-  onLegacy: (snapshots: SegmentSnapshot[]) => Promise<'ok' | 'rejected' | 'unreachable'> =
-    async () => 'ok'
 
   async findCompatibleHub(): Promise<number | null> {
     return this.compatiblePort
-  }
-
-  async fetchLegacyCollectorConfig(): Promise<{ enabled: boolean } | null> {
-    this.legacyConfigCalls += 1
-    return this.legacyConfig
   }
 
   async deliverProtocol(request: BrowserProtocolDeliveryRequest): Promise<ProtocolUploadResult> {
@@ -109,14 +99,6 @@ class MemoryHub implements BrowserHubAdapter {
     return this.onProtocol(request)
   }
 
-  async deliverLegacy(
-    _basePort: number,
-    targetPort: number,
-    snapshots: SegmentSnapshot[],
-  ) {
-    this.legacyCalls.push(structuredClone(snapshots))
-    return { result: await this.onLegacy(snapshots), port: targetPort }
-  }
 }
 
 function delivery(
@@ -129,6 +111,7 @@ function delivery(
     hub,
     appHint: 'edge',
     loadBasePort: async () => PORT,
+    loadExternalHostIdentity: async () => 'host-a',
     now: () => clock.now,
     warn: () => {},
   })
@@ -166,7 +149,7 @@ describe('BrowserDelivery interface', () => {
 
     expect(store.durable.queue).toEqual({})
     expect(store.transient.protocolSession?.activationId).toBe(ACTIVATION_ID)
-    expect(hub.legacyConfigCalls).toBe(0)
+    expect(hub.protocolCalls[0].externalHostIdentity).toBe('host-a')
 
     store.restartBrowser()
     await delivery(store, hub).deliveryCycle()
@@ -362,36 +345,16 @@ describe('BrowserDelivery interface', () => {
     await expect(delivery(store, hub).deliveryCycle()).resolves.toMatchObject({ enabled: true })
   })
 
-  it('isolates legacy config and never deletes its outbox on a batch rejection', async () => {
+  it('retains the outbox when Collector Protocol is unavailable', async () => {
     const store = new MemoryStore()
     const hub = new MemoryHub()
     const module = delivery(store, hub)
     const item = snapshot()
     await module.enqueue([item])
-    hub.onProtocol = async () => ({ kind: 'legacy-required' })
-    hub.legacyConfig = { enabled: true }
-    hub.onLegacy = async () => 'rejected'
+    hub.onProtocol = async () => ({ kind: 'unavailable' })
 
     await module.deliveryCycle()
     expect(store.durable.queue).toHaveProperty(item.id)
-    expect(hub.legacyConfigCalls).toBe(1)
-
-    hub.onLegacy = async () => 'ok'
-    await module.deliveryCycle()
-    expect(store.durable.queue).toEqual({})
-  })
-
-  it('honors legacy disabled without publishing or discarding durable outbox', async () => {
-    const store = new MemoryStore()
-    const hub = new MemoryHub()
-    const module = delivery(store, hub)
-    const item = snapshot()
-    await module.enqueue([item])
-    hub.onProtocol = async () => ({ kind: 'legacy-required' })
-    hub.legacyConfig = { enabled: false }
-
-    await expect(module.deliveryCycle()).resolves.toMatchObject({ enabled: false })
-    expect(hub.legacyCalls).toHaveLength(0)
-    expect(store.durable.queue).toHaveProperty(item.id)
+    expect(hub.protocolCalls).toHaveLength(1)
   })
 })

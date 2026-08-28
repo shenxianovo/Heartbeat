@@ -1,0 +1,40 @@
+{
+  "formatVersion": 1,
+  "contracts": [
+    {
+      "schemaId": "heartbeat.browser.active-tab-segment",
+      "schemaMajor": 1,
+      "schemaRevision": 1,
+      "hash": "sha256:d667e5a9dbaface104cf53159404cf5251d4536f3ed9b5edd54fc4c574fbe568",
+      "document": "browser-active-tab-segment.schema.json"
+    },
+    {
+      "schemaId": "heartbeat.input",
+      "schemaMajor": 1,
+      "schemaRevision": 1,
+      "hash": "sha256:2fca2da4d7073ebe96bfbdb957a2ea12b4bc2a22ce6b75c444d13bf5f1ae0147",
+      "document": "input-event.schema.json"
+    },
+    {
+      "schemaId": "heartbeat.reference.segment",
+      "schemaMajor": 1,
+      "schemaRevision": 1,
+      "hash": "sha256:043a944de3d3ea0a1fe8fd3b0896e9baa79516cfe81dded46d346a2973c12cbd",
+      "document": "reference-segment.schema.json"
+    },
+    {
+      "schemaId": "heartbeat.system.foreground-segment",
+      "schemaMajor": 1,
+      "schemaRevision": 1,
+      "hash": "sha256:5118f1c003cdc494a32827e94289d2dd7622bc9a86672087b3e021ce20a37b17",
+      "document": "system-foreground-segment.schema.json"
+    },
+    {
+      "schemaId": "heartbeat.vrchat.presence-segment",
+      "schemaMajor": 1,
+      "schemaRevision": 1,
+      "hash": "sha256:2f03047779df9df1b7702bd0279e6350b2a84e53a543c7a5d46b492505bdd1eb",
+      "document": "vrchat-presence-segment.schema.json"
+    }
+  ]
+}

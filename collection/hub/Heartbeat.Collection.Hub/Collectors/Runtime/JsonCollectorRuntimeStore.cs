@@ -159,6 +159,15 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
             throw new JsonException("Collector Runtime state collections must not contain null entries.");
         if (state.Instances.Select(instance => instance.CollectorInstanceId).Distinct().Count() != state.Instances.Count)
             throw new JsonException("Collector Runtime state contains duplicate Collector Instance IDs.");
+        if (state.Instances
+                .Where(instance => instance.InstanceKey is not null)
+                .GroupBy(instance => (
+                    instance.PackageId,
+                    instance.SubjectId,
+                    instance.SubjectKind,
+                    instance.InstanceKey))
+                .Any(group => group.Count() > 1))
+            throw new JsonException("Collector Runtime state contains duplicate Collector Instance keys.");
         if (state.Streams.Select(stream => stream.StreamId).Distinct().Count() != state.Streams.Count)
             throw new JsonException("Collector Runtime state contains duplicate Fact Stream IDs.");
         if (state.ActivationAttemptTombstones
@@ -175,6 +184,8 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
         {
             if (instance.CollectorInstanceId == Guid.Empty || instance.SubjectId == Guid.Empty ||
                 !Enum.IsDefined(instance.SubjectKind) ||
+                instance.InstanceKey is { } instanceKey &&
+                (string.IsNullOrWhiteSpace(instanceKey) || instanceKey.Length > 200 || instanceKey != instanceKey.Trim()) ||
                 string.IsNullOrWhiteSpace(instance.PackageId) || string.IsNullOrWhiteSpace(instance.PackageVersion) ||
                 !IsSha256(instance.PackageContentHash) ||
                 instance.PackageFingerprints is null || instance.PackageFingerprints.Count == 0 ||
@@ -448,6 +459,7 @@ internal sealed class CollectorRuntimeState
 internal sealed record CollectorInstanceState
 {
     public Guid CollectorInstanceId { get; init; }
+    public string? InstanceKey { get; init; }
     public string PackageId { get; init; } = string.Empty;
     public string PackageVersion { get; init; } = string.Empty;
     public string PackageContentHash { get; init; } = string.Empty;

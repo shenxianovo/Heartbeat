@@ -29,7 +29,15 @@ public sealed record BrowserCollectorState(
     ExternalHostRuntimeStatus RuntimeStatus,
     string RuntimeStatusDetail,
     bool ReloadRequired,
-    string? PreviousKnownGoodVersion);
+    string? PreviousKnownGoodVersion,
+    IReadOnlyList<BrowserCollectorAppState>? Apps = null);
+
+public sealed record BrowserCollectorAppState(
+    string AppHint,
+    bool DesiredEnabled,
+    ExternalHostRuntimeStatus RuntimeStatus,
+    string RuntimeStatusDetail,
+    string PackageVersion);
 
 public enum DesktopThemeMode
 {
@@ -133,6 +141,7 @@ public interface IDesktopState
     void SaveSettings(DesktopSettingsInput settings);
     void SetLoginStartEnabled(bool enabled);
     void SetCollectorEnabled(string source, bool enabled);
+    void SetBrowserCollectorAppEnabled(string appHint, bool enabled) { }
     void OpenBrowserCollectorSetup(BrowserKind browser);
     void SetSystemCapabilityEnabled(SystemCapability capability, bool enabled);
     void RecoverSystemCapability(SystemCapability capability);

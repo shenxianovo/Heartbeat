@@ -15,13 +15,15 @@ npm install
 npm run build      # tsc --noEmit + vite build → dist/
 npm run dev        # watch 模式
 npm test           # vitest
+cd ../../..
+node scripts/collector-contracts.mjs stage browser .local/browser-package
 ```
 
 ## Load(unpacked)
 
 1. Chrome/Edge 打开 `chrome://extensions`(Edge: `edge://extensions`)
 2. 开启 Developer mode
-3. Load unpacked → 选择 `collection/collectors/Heartbeat.Collector.Browser/dist/`
+3. Load unpacked → 选择 `.local/browser-package/browser-extension/`
 4. 本机启动 Heartbeat Agent(hub 随 Agent 运行)
 
 需要 Chrome ≥ 120(MV3 service worker + `AbortSignal.timeout`)。
@@ -31,13 +33,10 @@ npm test           # vitest
 唯一配置项是 hub 基准端口(默认 `24820`,与 Agent 的 `AgentConfig.IngestPort`
 一致),在扩展的 options 页修改,存 `chrome.storage.local`。
 
-基准端口被占时 hub 会向上顺延(范围 10 个端口),扩展凭 `GET /v1/hub` 的身份与
-协议应答(`{"app":"heartbeat","proto":2}`)在范围内自动定位兼容 hub——不需要手动跟随。
-新版扩展优先使用 Collector Protocol 的 Spec/Stream/lease/Fact ACK；旧 hub 或旧缓存
-仍经 `/v1/segments` legacy adapter 投递。协议请求失败或 Fact 未明确 ACK 时待传队列保留。
-modern Activation 只以 Spec 为 Desired State；旧 `GET /v1/collectors/browser/config` 仅在
-legacy fallback 内使用。fallback 也覆盖无法可靠识别宿主 `appHint` 的合法场景，因此当前
-不是可按版本直接删除的临时分支。
+基准端口被占时 hub 会向上顺延(范围 10 个端口)，扩展凭 binding 专属的
+`GET /v1/collector-protocol/browser` 在范围内定位兼容 hub。握手、Spec、Stream、lease、
+Fact ACK 与 Gap 全部使用 Collector Protocol v1；不存在 `/v1/segments` fallback。
+协议请求失败或 Fact 未明确 ACK 时待传队列保留。
 
 ## Behavior notes
 
@@ -48,39 +47,24 @@ legacy fallback 内使用。fallback 也覆盖无法可靠识别宿主 `appHint`
   持久 `stream.gap(buffer_overflow)`，在恢复连接后先于后续 Fact 交付。
 - Activation 使用 45 秒 ACK lease；浏览器退出或 Service Worker 长期不续租后，Hub
   在有界时间内释放 Stream writer，但不会声称自己终止了浏览器。
+- 扩展首次运行生成 `externalHostIdentity` 并持久化到 `chrome.storage.local`。同一 App
+  下不同 Profile/安装拥有独立 Stream 与重传连续性；清理扩展数据或重装会形成新 Host。
 - Hub 的 `enabled` 是 Desired State。停用后扩展结束本地 fold、停止采集/发布，但保留
   未 ACK outbox；临时断连不会改写这一意图。最近一次 collection policy 持久化在
   `chrome.storage.local`，浏览器重启不会在已知停用时先误采集。
 - `src/delivery.ts` 是 Browser-specific deep module；`background.ts` 只通过
   `policy / enqueue / deliveryCycle` interface 接线。Chrome storage 与 loopback HTTP
   是 internal seams，生产使用真实 adapters，测试使用内存 adapters。
-- `source = "system"` 是内置采集器的保留名,hub 会拒收——扩展的段一律
-  `source = "browser"`。
 - 扩展只在能够唯一确认宿主品牌时发送平台无关 `appHint` (`chrome` / `edge` /
-  `brave` / `opera` / `vivaldi` / `firefox`)。未知或品牌信号冲突时省略 hint；hub
-  会保留段，但不会猜测 App 归属。`win:` / `mac:` AppIdentity 由本机平台 resolver 生成。
+  `brave` / `opera` / `vivaldi` / `firefox`)。缺失或不稳定的 hint 无法形成 App Instance，
+  Hub 会拒绝 Activation；稳定但平台暂时无法解析的 slug 仍形成独立 Instance，不猜成 Chrome。
+  `win:` / `mac:` AppIdentity 由本机平台 resolver 生成。
 - IdentityKey 为规范化 URL(origin + pathname,掐 query/fragment;per-domain
   覆写表处理 youtube.com/watch 这类"query 即身份"的站点),原始完整 URL 存
   Attributes。见 `src/normalize.ts` 与 [`shared/CONTEXT.md`](../../../shared/CONTEXT.md) 的 IdentityKey 词条。
 
-## Test the hub without loading the extension
+## Verification
 
-Agent 运行时，可手工 POST 一个 browser 段验证 loopback ingest、离线缓存和上传链路：
-
-```powershell
-$body = @{ segments = @(@{
-  id = [guid]::NewGuid(); source = "browser"
-  identityKey = "https://example.com/page"; appHint = "edge"
-  title = "Example"; startTime = (Get-Date).ToUniversalTime().AddMinutes(-5).ToString("o")
-  endTime = (Get-Date).ToUniversalTime().ToString("o")
-  attributes = @{ url = "https://example.com/page" }
-}) } | ConvertTo-Json -Depth 5
-Invoke-RestMethod -Uri http://127.0.0.1:24820/v1/segments -Method Post `
-  -ContentType application/json -Body $body
-```
-
-`appHint` 是平台无关的独立 Stream enrichment；它不进入 canonical Fact payload。hub
-只在 legacy ActivitySegment 投影中把它解析为本机 AppIdentity。
-`source = "system"` 是内置采集器的保留名，外部 Collector 使用时会被拒收。
-
-完成标准：请求返回 `accepted: 1`，且该段在一个上传周期内出现在本地 Dashboard 的 Replay 中。
+`npm test` 覆盖 Browser producer、Host identity、outbox 与协议 transcript；Hub 侧
+`BrowserExternalHostProtocolHandlerTests` 覆盖 hello → schema validation → projector。
+不能用手工 `/v1/segments` POST 绕过协议验证。

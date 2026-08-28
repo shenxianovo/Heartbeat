@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Heartbeat.Collection.Hub.Collectors;
 using Heartbeat.Collection.Hub.Collectors.Packages;
 using Heartbeat.Collection.Hub.Collectors.Protocol;
@@ -15,7 +17,6 @@ public sealed class BrowserCollectorRuntimeTests : IDisposable
         Path.GetTempPath(),
         $"heartbeat-browser-packages-{Guid.NewGuid():N}");
     private readonly CollectorRuntime _runtime;
-    private readonly MutableRegistry _legacyRegistry = new();
 
     public BrowserCollectorRuntimeTests()
     {
@@ -37,6 +38,8 @@ public sealed class BrowserCollectorRuntimeTests : IDisposable
         Assert.StartsWith("sha256:", snapshot.PackageContentHash, StringComparison.Ordinal);
         Assert.Equal(BrowserCollectorRuntimeStatus.Waiting, snapshot.RuntimeStatus);
         Assert.True(snapshot.DesiredEnabled);
+        Assert.Empty(snapshot.Apps);
+        Assert.Empty(_runtime.FindInstances(BrowserCollectorRuntime.BrowserPackageId, MachineSubject));
         Assert.False(snapshot.ReloadRequired);
         Assert.True(File.Exists(Path.Combine(snapshot.SideloadDirectory!, "manifest.json")));
         Assert.DoesNotContain(BrowserPackagePath, snapshot.SideloadDirectory!, StringComparison.Ordinal);
@@ -59,9 +62,9 @@ public sealed class BrowserCollectorRuntimeTests : IDisposable
     {
         var package = CopyPackage("unsupported-platform");
         var manifestPath = Path.Combine(package, "collector-manifest.json");
-        var manifest = File.ReadAllText(manifestPath)
-            .Replace("[\"windows\", \"macos\"]", "[\"linux\"]", StringComparison.Ordinal);
-        File.WriteAllText(manifestPath, manifest);
+        var manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!;
+        manifest["artifacts"]![0]!["selector"]!["os"] = new JsonArray("linux");
+        File.WriteAllText(manifestPath, manifest.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         var runtime = CreateRuntime();
 
         var error = Assert.Throws<PackageValidationException>(() => runtime.Import(package));
@@ -127,25 +130,23 @@ public sealed class BrowserCollectorRuntimeTests : IDisposable
     }
 
     [Fact]
-    public void DesiredState_UpdatesStableInstanceWithoutRemovingInstallation()
+    public void DesiredState_IsIndependentForEachDiscoveredBrowserApp()
     {
         var browserRuntime = CreateRuntime();
         var installed = browserRuntime.Import(BrowserPackagePath);
-        var instanceId = Assert.Single(_runtime.FindInstances(
-            BrowserCollectorRuntime.BrowserPackageId,
-            MachineSubject)).CollectorInstanceId;
+        var package = browserRuntime.ResolvePackage("browser.extension", BrowserArtifactHash);
+        var chrome = browserRuntime.GetOrCreateAppInstance("chrome", package);
+        var edge = browserRuntime.GetOrCreateAppInstance("edge", package);
 
-        browserRuntime.SetDesiredEnabled(false);
+        browserRuntime.SetAppDesiredEnabled("chrome", false);
 
         var snapshot = browserRuntime.Current;
-        var instance = Assert.Single(_runtime.FindInstances(
-            BrowserCollectorRuntime.BrowserPackageId,
-            MachineSubject));
-        Assert.Equal(instanceId, instance.CollectorInstanceId);
+        Assert.Equal(2, snapshot.Apps.Count);
         Assert.False(snapshot.DesiredEnabled);
         Assert.True(snapshot.IsInstalled);
         Assert.Equal(installed.PackageContentHash, snapshot.PackageContentHash);
-        Assert.False(instance.Spec.Config.GetProperty("enabled").GetBoolean());
+        Assert.False(_runtime.GetInstance(chrome.CollectorInstanceId).Spec.Config.GetProperty("enabled").GetBoolean());
+        Assert.True(_runtime.GetInstance(edge.CollectorInstanceId).Spec.Config.GetProperty("enabled").GetBoolean());
     }
 
     [Fact]
@@ -153,7 +154,9 @@ public sealed class BrowserCollectorRuntimeTests : IDisposable
     {
         var runtime = CreateRuntime();
         var first = runtime.Import(BrowserPackagePath);
-        runtime.MarkReady(first.PackageContentHash!);
+        var package = runtime.ResolvePackage("browser.extension", BrowserArtifactHash);
+        _ = runtime.GetOrCreateAppInstance("chrome", package);
+        runtime.MarkReady("chrome", first.PackageContentHash!);
         var update = CopyPackage("update");
         RewriteVersion(update, "0.1.0", "0.2.0");
 
@@ -169,7 +172,6 @@ public sealed class BrowserCollectorRuntimeTests : IDisposable
 
     private BrowserCollectorRuntime CreateRuntime() => new(
         _runtime,
-        _legacyRegistry,
         new Device(),
         new BrowserExternalHostBindingOptions(BrowserPackagePath, TimeSpan.FromSeconds(10))
         {
@@ -217,6 +219,11 @@ public sealed class BrowserCollectorRuntimeTests : IDisposable
         "Fixtures",
         "BrowserCollectorPackage");
 
+    private static string BrowserArtifactHash => JsonNode.Parse(File.ReadAllText(Path.Combine(
+        BrowserPackagePath,
+        "browser-extension",
+        "package-metadata.json")))!["artifactHash"]!.GetValue<string>();
+
     public void Dispose()
     {
         _runtime.Dispose();
@@ -229,20 +236,6 @@ public sealed class BrowserCollectorRuntimeTests : IDisposable
         public const string HardwareIdValue = "AAAAAAAA-BBBB-7CCC-8DDD-EEEEEEEEEEEE";
         public string HardwareId => HardwareIdValue;
         public string DeviceName => "test";
-    }
-
-    private sealed class MutableRegistry : ICollectorRegistry
-    {
-        public bool Enabled { get; private set; } = true;
-        public IReadOnlyDictionary<string, CollectorRegistration> Snapshot =>
-            new Dictionary<string, CollectorRegistration>
-            {
-                ["browser"] = new(Enabled, 30_000, null, null)
-            };
-
-        public CollectorRegistration Touch(string source, int? flushPeriodMs = null) => Snapshot["browser"];
-        public void Discover(IEnumerable<string> sources) { }
-        public void StoreDeclaration(string source, string declarationJson, int version) { }
     }
 
     private sealed class RecordingSegmentSink : ISegmentSink

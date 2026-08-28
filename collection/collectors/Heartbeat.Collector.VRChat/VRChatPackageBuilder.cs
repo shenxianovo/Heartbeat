@@ -35,7 +35,10 @@ internal static class VRChatPackageBuilder
         var schemaDirectory = Path.Combine(root, "schemas");
         Directory.CreateDirectory(schemaDirectory);
         var schemaPath = Path.Combine(schemaDirectory, "vrchat-presence.schema.json");
-        File.WriteAllText(schemaPath, PresenceSchema, new UTF8Encoding(false));
+        File.Copy(
+            Path.Combine(sourceRoot, "contracts", "facts", "vrchat-presence-segment.schema.json"),
+            schemaPath,
+            overwrite: true);
         var manifest = new
         {
             manifestVersion = 1,
@@ -117,31 +120,4 @@ internal static class VRChatPackageBuilder
         _ => throw new PlatformNotSupportedException()
     };
 
-    private const string PresenceSchema = """
-    {
-      "documentVersion": 1,
-      "schemaId": "heartbeat.vrchat.presence-segment",
-      "schemaMajor": 1,
-      "schemaRevision": 1,
-      "factKind": "segment",
-      "evolution": {
-        "mode": "segmentSnapshot",
-        "allowRetraction": true
-      },
-      "payloadSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
-      "payloadSchema": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["identityKey", "title", "appDisplayName", "worldId", "instanceId"],
-        "properties": {
-          "identityKey": { "type": "string", "minLength": 1 },
-          "title": { "type": "string", "minLength": 1 },
-          "appDisplayName": { "const": "VRChat" },
-          "worldId": { "type": "string", "minLength": 1 },
-          "worldName": { "type": "string", "minLength": 1 },
-          "instanceId": { "type": "string", "minLength": 1 }
-        }
-      }
-    }
-    """;
 }

@@ -13,6 +13,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\protocol\Heartbeat.Collection.CollectorProtocol\Heartbeat.Collection.CollectorProtocol.csproj" />
+    <Content Include="..\..\contracts\facts\vrchat-presence-segment.schema.json">
+      <Link>contracts\facts\vrchat-presence-segment.schema.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>

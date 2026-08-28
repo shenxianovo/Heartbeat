@@ -4,6 +4,8 @@
 
 ## Date: 2026-07-07
 
+> 2026-08-28 implementation note: 本 ADR 的 `ISegmentSink` 内部投影 seam 仍有效；其中通用 loopback request handler 与 source 级冒充/停用入口已由 ADR-040 的 Package/Instance/Activation 与 Collector Protocol 取代。
+
 ## Context
 
 ### 服务端已经统一,客户端还剩一条平行管道
@@ -75,7 +77,7 @@ reject-system 从 `SegmentIngestService.Accept` 搬到 `SegmentIngestWorker`:它
 - `collection/hub/Heartbeat.Collection.Hub/Segments/ISegmentSink.cs` — monitor→hub seam(§2)
 - `collection/desktop/Heartbeat.Collector.System/Collection/AppMonitorService.cs` — 产段 + 闭合即推 + 30s 快照循环(§1/§2)
 - `collection/hub/Heartbeat.Collection.Hub/Segments/SegmentIngestService.cs` — source 无关的缓冲,ISegmentSink 生产 adapter(§3)
-- `collection/hub/Heartbeat.Collection.Hub/Ingest/SegmentIngestRequestHandler.cs` — loopback 协议层 + 冒充守卫(§3)
+- `collection/hub/Heartbeat.Collection.Hub/Ingest/ExternalHostProtocolWorker.cs` — ExternalHost binding 的 loopback listener；旧通用 request handler 已退役
 - `collection/desktop/Heartbeat.Desktop.Windows/Services/UploadChannel.cs` — 上传通道:"送达、缓存、或退回"(§5)
 - `collection/hub/Heartbeat.Collection.Hub/Storage/ICache.cs` + `JsonFileCache.cs` — 离线缓存 seam 与唯一生产实现(§5)
 - `collection/desktop/Heartbeat.Desktop.Windows/Workers/UsageUploadWorker.cs` — 出网调度 + 退回重注入 + 旧缓存孤儿化日志(§5/§6)

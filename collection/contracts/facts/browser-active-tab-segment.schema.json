@@ -4,10 +4,7 @@
   "schemaMajor": 1,
   "schemaRevision": 1,
   "factKind": "segment",
-  "evolution": {
-    "mode": "segmentSnapshot",
-    "allowRetraction": true
-  },
+  "evolution": { "mode": "segmentSnapshot", "allowRetraction": true },
   "payloadSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "payloadSchema": {
     "type": "object",

@@ -52,11 +52,7 @@ public sealed partial class CollectorRuntime
                 _activations.Values.Any(activation =>
                     activation.State != CollectorActivationState.Stopped &&
                     activation.Streams.Values.Any(stream =>
-                        stream.Descriptor.CollectorInstanceId == collectorInstanceId)) ||
-                _externalHostActivations.Values.Any(activation =>
-                    activation.State != CollectorActivationState.Stopped &&
-                    activation.Streams.Values.Any(stream =>
-                        stream.CollectorInstanceId == collectorInstanceId)))
+                        stream.Descriptor.CollectorInstanceId == collectorInstanceId)))
                 throw ActivationError(
                     "stream_writer_conflict",
                     "Stop the current Collector Activation before starting its replacement.");

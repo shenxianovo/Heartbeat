@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SegmentSnapshot } from '../src/fold'
-import { ChromeBrowserDeliveryStore } from '../src/delivery-chrome'
+import { ChromeBrowserDeliveryStore, loadExternalHostIdentity } from '../src/delivery-chrome'
 import { defaultBrowserDeliverySession } from '../src/delivery'
 
 class MemoryStorageArea {
@@ -58,6 +58,20 @@ const legacySnapshot = {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('ChromeBrowserDeliveryStore adapter contract', () => {
+  it('persists one External Host identity in local storage and creates a new one after reset', async () => {
+    const { localArea, sessionArea } = installChrome()
+
+    const first = await loadExternalHostIdentity()
+    sessionArea.values = {}
+    const afterBrowserRestart = await loadExternalHostIdentity()
+    localArea.values = {}
+    const afterExtensionReset = await loadExternalHostIdentity()
+
+    expect(afterBrowserRestart).toBe(first)
+    expect(afterExtensionReset).not.toBe(first)
+    expect(first).toMatch(/^[0-9a-f-]{36}$/)
+  })
+
   it('recovers the existing Chrome layout without leaking legacy fields', async () => {
     installChrome({
       pendingSegments: { [legacySnapshot.id]: legacySnapshot },

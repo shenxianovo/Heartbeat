@@ -1,0 +1,48 @@
+name: Collector Contracts
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: collection/collectors/Heartbeat.Collector.Browser/package-lock.json
+
+      - name: Build and test Browser Collector
+        working-directory: collection/collectors/Heartbeat.Collector.Browser
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Verify Fact Schema evolution and generated Browser payload
+        env:
+          CONTRACT_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: node scripts/collector-contracts.mjs check --base-ref "$CONTRACT_BASE_REF"
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore .NET tools and dependencies
+        run: |
+          dotnet tool restore
+          dotnet restore Heartbeat.slnx
+
+      - name: Verify producer → Runtime schema validation → projector behavior
+        run: dotnet test Heartbeat.slnx --no-restore

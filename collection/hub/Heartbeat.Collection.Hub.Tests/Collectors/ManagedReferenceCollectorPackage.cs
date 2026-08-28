@@ -47,30 +47,15 @@ internal sealed class ManagedReferenceCollectorPackage : IDisposable
         var schemaDirectory = System.IO.Path.Combine(path, "schemas");
         Directory.CreateDirectory(schemaDirectory);
         var schemaPath = System.IO.Path.Combine(schemaDirectory, "reference-segment.schema.json");
-        var schema = """
-        {
-          "documentVersion": 1,
-          "schemaId": "heartbeat.reference.segment",
-          "schemaMajor": 1,
-          "schemaRevision": 1,
-          "factKind": "segment",
-          "evolution": {
-            "mode": "segmentSnapshot",
-            "allowRetraction": true
-          },
-          "payloadSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
-          "payloadSchema": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["identityKey", "title"],
-            "properties": {
-              "identityKey": { "type": "string", "minLength": 1 },
-              "title": { "type": "string", "minLength": 1 }
-            }
-          }
-        }
-        """;
-        File.WriteAllText(schemaPath, schema, new UTF8Encoding(false));
+        File.Copy(
+            System.IO.Path.Combine(
+                AppContext.BaseDirectory,
+                "Fixtures",
+                "ReferenceCollectorPackage",
+                "schemas",
+                "reference-segment.schema.json"),
+            schemaPath,
+            overwrite: true);
 
         var manifest = new
         {

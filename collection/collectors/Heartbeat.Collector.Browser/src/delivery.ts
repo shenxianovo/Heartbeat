@@ -8,7 +8,6 @@ import {
   type ProtocolUploadResult,
 } from './protocol'
 
-const SOURCE = 'browser'
 const DEFAULT_FLUSH_PERIOD_MS = 30_000
 const BACKOFF_BASE_MS = 30_000
 const BACKOFF_MAX_MS = 10 * 60_000
@@ -58,6 +57,7 @@ export interface BrowserDeliveryStore {
 export interface BrowserProtocolDeliveryRequest {
   port: number
   appHint: string | undefined
+  externalHostIdentity: string
   snapshots: SegmentSnapshot[]
   previousSession?: BrowserProtocolSession
   previousActivationAttempt?: BrowserActivationAttempt
@@ -72,17 +72,7 @@ export interface BrowserProtocolDeliveryRequest {
 /** @internal loopback HTTP 与测试内存实现所在的 seam。 */
 export interface BrowserHubAdapter {
   findCompatibleHub(basePort: number, targetPort: number): Promise<number | null>
-  fetchLegacyCollectorConfig(
-    port: number,
-    source: string,
-    flushPeriodMilliseconds: number,
-  ): Promise<{ enabled: boolean } | null>
   deliverProtocol(request: BrowserProtocolDeliveryRequest): Promise<ProtocolUploadResult>
-  deliverLegacy(
-    basePort: number,
-    targetPort: number,
-    snapshots: SegmentSnapshot[],
-  ): Promise<{ result: 'ok' | 'rejected' | 'unreachable'; port: number }>
 }
 
 export interface BrowserDeliveryDependencies {
@@ -90,6 +80,7 @@ export interface BrowserDeliveryDependencies {
   hub: BrowserHubAdapter
   appHint: string | undefined
   loadBasePort(): Promise<number>
+  loadExternalHostIdentity(): Promise<string>
   now?(): number
   warn?(message: string, error?: unknown): void
 }
@@ -155,6 +146,7 @@ export function createBrowserDelivery(dependencies: BrowserDeliveryDependencies)
     const protocolResult = await dependencies.hub.deliverProtocol({
       port: compatiblePort,
       appHint: dependencies.appHint,
+      externalHostIdentity: await dependencies.loadExternalHostIdentity(),
       snapshots,
       previousSession: session.protocolSession,
       previousActivationAttempt: session.activationAttempt,
@@ -231,7 +223,6 @@ export function createBrowserDelivery(dependencies: BrowserDeliveryDependencies)
       return currentPolicy
     }
 
-    // 明确的新协议 404 或无法映射到 v1 Fact 身份的旧缓存才进入兼容 adapter。
     session = {
       ...session,
       protocolSession: undefined,
@@ -239,34 +230,7 @@ export function createBrowserDelivery(dependencies: BrowserDeliveryDependencies)
       publishAttempt: undefined,
     }
     await dependencies.store.saveSession(session)
-
-    const legacyConfig = await dependencies.hub.fetchLegacyCollectorConfig(
-      compatiblePort,
-      SOURCE,
-      currentPolicy.flushPeriodMilliseconds,
-    )
-    if (legacyConfig?.enabled === false) {
-      currentPolicy = { ...currentPolicy, enabled: false }
-      await persistPolicy(dependencies.store, currentPolicy)
-      return currentPolicy
-    }
-    if (legacyConfig?.enabled === true && !currentPolicy.enabled) {
-      currentPolicy = { ...currentPolicy, enabled: true }
-      await persistPolicy(dependencies.store, currentPolicy)
-    }
-    if (snapshots.length === 0) return currentPolicy
-
-    const legacy = await dependencies.hub.deliverLegacy(basePort, compatiblePort, snapshots)
-    if (legacy.port !== session.hubPort) session = { ...session, hubPort: legacy.port }
-    if (legacy.result === 'ok') {
-      await removeDeliveredRevisions(dependencies.store, snapshots)
-      session = { ...session, backoff: noBackoff() }
-    } else if (legacy.result === 'rejected') {
-      // legacy 只有整批 HTTP 状态，没有逐 Fact ACK；任何 4xx 都不能证明可安全删除。
-      warn(`[heartbeat] legacy hub 拒收 ${snapshots.length} 条段，保留 outbox`)
-    } else {
-      session = failWithBackoff(session, attemptAt)
-    }
+    session = failWithBackoff(session, attemptAt)
     await dependencies.store.saveSession(session)
     return currentPolicy
   }
@@ -338,20 +302,6 @@ async function convergeProtocolAcknowledgement(
       : removeGap(durable.pendingGaps, acknowledgedGap),
     deadLetters: [...durable.deadLetters, ...rejected].slice(-MAX_DEAD_LETTERS),
   })
-}
-
-async function removeDeliveredRevisions(
-  store: BrowserDeliveryStore,
-  delivered: SegmentSnapshot[],
-): Promise<void> {
-  const deliveredRevisions = Object.fromEntries(
-    delivered.map((snapshot) => [snapshot.id, snapshotRevision(snapshot)]),
-  )
-  const durable = await store.loadDurable()
-  const queue = Object.fromEntries(Object.entries(durable.queue).filter(([id, snapshot]) =>
-    deliveredRevisions[id] !== snapshotRevision(snapshot),
-  ))
-  await store.saveDurable({ ...durable, queue })
 }
 
 async function removeAcknowledgedGap(

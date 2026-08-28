@@ -260,7 +260,7 @@
                   </controls:SettingsExpander>
 
                   <Border Classes="settings-card browser-card" IsVisible="{Binding IsBrowser}">
-                    <Grid RowDefinitions="Auto,Auto,Auto,Auto">
+                    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto">
                       <Grid ColumnDefinitions="Auto,*,Auto">
                         <Border Width="38" Height="38" CornerRadius="10"
                                 Background="{DynamicResource HeartbeatPrimarySoftBrush}">
@@ -304,7 +304,23 @@
                         </StackPanel>
                       </Grid>
 
-                      <Border Grid.Row="1" Classes="browser-configuration"
+                      <ItemsControl Grid.Row="1" ItemsSource="{Binding BrowserApps}"
+                                    IsVisible="{Binding HasBrowserApps}" Margin="50,10,0,0">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate>
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,3">
+                              <StackPanel Spacing="2">
+                                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding StatusText}" Classes="muted" FontSize="11" />
+                              </StackPanel>
+                              <ToggleSwitch Grid.Column="1" IsChecked="{Binding Enabled}"
+                                            ToolTip.Tip="只切换这个浏览器 App" />
+                            </Grid>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+
+                      <Border Grid.Row="2" Classes="browser-configuration"
                               IsVisible="{Binding IsBrowserConfigurationExpanded}" Margin="50,12,0,0">
                         <StackPanel Spacing="9">
                           <StackPanel Spacing="2">
@@ -338,7 +354,7 @@
                         </StackPanel>
                       </Border>
 
-                      <Border Grid.Row="2" Classes="browser-setup"
+                      <Border Grid.Row="3" Classes="browser-setup"
                               IsVisible="{Binding IsBrowserSetupVisible}" Margin="50,8,0,0">
                         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="11">
                           <LucideIcon Kind="MousePointerClick" Size="18" StrokeWidth="1.8"
@@ -358,7 +374,7 @@
                         </Grid>
                       </Border>
 
-                      <StackPanel Grid.Row="3" Margin="50,8,0,0" Spacing="7">
+                      <StackPanel Grid.Row="4" Margin="50,8,0,0" Spacing="7">
                         <Button Content="{Binding BrowserDetailsToggleText}"
                                 Classes="ghost diagnostic-toggle" HorizontalAlignment="Left"
                                 Command="{Binding ToggleBrowserDetailsCommand}" />

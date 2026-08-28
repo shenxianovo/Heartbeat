@@ -1,0 +1,22 @@
+{
+  "documentVersion": 1,
+  "schemaId": "heartbeat.vrchat.presence-segment",
+  "schemaMajor": 1,
+  "schemaRevision": 1,
+  "factKind": "segment",
+  "evolution": { "mode": "segmentSnapshot", "allowRetraction": true },
+  "payloadSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "payloadSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["identityKey", "title", "appDisplayName", "worldId", "instanceId"],
+    "properties": {
+      "identityKey": { "type": "string", "minLength": 1 },
+      "title": { "type": "string", "minLength": 1 },
+      "appDisplayName": { "const": "VRChat" },
+      "worldId": { "type": "string", "minLength": 1 },
+      "worldName": { "type": "string", "minLength": 1 },
+      "instanceId": { "type": "string", "minLength": 1 }
+    }
+  }
+}

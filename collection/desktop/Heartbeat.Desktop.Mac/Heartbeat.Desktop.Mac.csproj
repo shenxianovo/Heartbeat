@@ -29,10 +29,6 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Heartbeat.Desktop.Mac.Tests" />
   </ItemGroup>
-  <ItemGroup>
-    <Content Include="..\..\collectors\Heartbeat.Collector.Browser\Package\**\*">
-      <Link>CollectorPackages\Browser\%(RecursiveDir)%(Filename)%(Extension)</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
+  <Import Project="..\..\collectors\Heartbeat.Collector.Browser\BrowserCollectorPackage.targets" />
+  <Import Project="..\Heartbeat.Collector.System\SystemCollectorPackage.targets" />
 </Project>

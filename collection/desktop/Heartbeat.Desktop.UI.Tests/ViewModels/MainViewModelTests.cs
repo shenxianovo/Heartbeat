@@ -78,7 +78,13 @@ public sealed class MainViewModelTests
                     ExternalHostRuntimeStatus.Degraded,
                     "浏览器仍在运行旧版本；请重新加载。",
                     true,
-                    "0.1.0")
+                    "0.1.0",
+                    [
+                        new BrowserCollectorAppState(
+                            "chrome", true, ExternalHostRuntimeStatus.Ready, "ready", "0.2.0"),
+                        new BrowserCollectorAppState(
+                            "edge", false, ExternalHostRuntimeStatus.Waiting, "disabled", "0.1.0"),
+                    ])
             }
         };
         var window = new FakeWindowController();
@@ -93,6 +99,11 @@ public sealed class MainViewModelTests
         Assert.Equal("/data/packages/browser/0.2.0/browser-extension", browser.SideloadDirectory);
         Assert.Equal("0.1.0", browser.PreviousKnownGoodVersion);
         Assert.True(browser.ReloadRequired);
+        Assert.Equal(2, browser.BrowserApps.Count);
+        var edge = Assert.Single(browser.BrowserApps, app => app.AppHint == "edge");
+        Assert.False(edge.Enabled);
+        edge.Enabled = true;
+        Assert.Equal(("edge", true), state.LastBrowserAppValue);
 
         browser.OpenBrowserSetupCommand.Execute(BrowserKind.Edge);
 

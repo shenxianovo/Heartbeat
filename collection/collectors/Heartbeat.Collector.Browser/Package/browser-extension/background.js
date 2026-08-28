@@ -229,7 +229,7 @@ function acknowledgedSnapshotIds(snapshots, acknowledgement) {
     (result) => Number.isInteger(result.index) && result.index >= 0 && result.index < snapshots.length && acknowledgedStatuses.has(result.status)
   ).map((result) => snapshots[result.index].id);
 }
-async function openBrowserProtocolSession(port, appHint, attempt, applySpec) {
+async function openBrowserProtocolSession(port, appHint, externalHostIdentity, attempt, applySpec) {
   try {
     const hello = await fetch(`http://127.0.0.1:${port}${ROUTE}/hello`, {
       method: "POST",
@@ -247,11 +247,11 @@ async function openBrowserProtocolSession(port, appHint, attempt, applySpec) {
             "facts.segment": [1],
             "diagnostics.stream-gap": [1]
           },
-          appHint
+          appHint,
+          externalHostIdentity
         }
       ))
     });
-    if (hello.status === 404) return "legacy-required";
     if (!hello.ok) return "rejected";
     const acceptedMessage = await hello.json();
     if (!isCorrelatedResponse(
@@ -393,7 +393,7 @@ async function publishBrowserFacts(session, snapshots, previousAttempt, persistA
   const batch = reusableAttempt?.snapshots ?? takeBatchWithinByteLimit(snapshots, session, maxFacts);
   if (snapshots.length > 0 && batch.length === 0) return { kind: "unavailable" };
   const facts = batch.map((snapshot) => toProtocolFact(snapshot, session.streamId));
-  if (facts.some((fact) => fact === null)) return { kind: "legacy-required" };
+  if (facts.some((fact) => fact === null)) return { kind: "unavailable", session };
   if (facts.length === 0) {
     return {
       kind: "acked",
@@ -467,9 +467,9 @@ async function publishBrowserFacts(session, snapshots, previousAttempt, persistA
     return { kind: "unavailable", publishAttempt: attempt, session };
   }
 }
-async function uploadWithBrowserProtocol(port, appHint, snapshots, previousSession, previousActivationAttempt, previousPublishAttempt, persistActivationAttempt, persistPublishAttempt, applySpec, pendingGap, persistGapAttempt) {
-  if (!appHint) return { kind: "legacy-required" };
-  if (snapshots.some((snapshot) => !isUuidV7(snapshot.id))) return { kind: "legacy-required" };
+async function uploadWithBrowserProtocol(port, appHint, externalHostIdentity, snapshots, previousSession, previousActivationAttempt, previousPublishAttempt, persistActivationAttempt, persistPublishAttempt, applySpec, pendingGap, persistGapAttempt) {
+  if (!appHint || !externalHostIdentity) return { kind: "unavailable" };
+  if (snapshots.some((snapshot) => !isUuidV7(snapshot.id))) return { kind: "unavailable" };
   const renewed = previousSession?.port === port ? await renewBrowserProtocolSession(previousSession) : null;
   const activationAttempt = previousActivationAttempt ?? {
     helloMessageId: uuidv7(),
@@ -478,9 +478,14 @@ async function uploadWithBrowserProtocol(port, appHint, snapshots, previousSessi
     readyMessageId: uuidv7()
   };
   if (renewed === null) await persistActivationAttempt?.(activationAttempt);
-  const session = renewed ?? await openBrowserProtocolSession(port, appHint, activationAttempt, applySpec);
+  const session = renewed ?? await openBrowserProtocolSession(
+    port,
+    appHint,
+    externalHostIdentity,
+    activationAttempt,
+    applySpec
+  );
   if (session === "disabled") return { kind: "disabled" };
-  if (session === "legacy-required") return { kind: "legacy-required" };
   if (session === "rejected") return { kind: "unavailable" };
   if (session === null) return { kind: "unavailable", activationAttempt };
   let gapAcknowledged = false;
@@ -600,42 +605,17 @@ function message(protocol, type, messageId, activationId, body, replyTo) {
   };
 }
 const PORT_RANGE = 10;
-const REQUIRED_HUB_PROTOCOL = 2;
 const PROBE_TIMEOUT_MS = 1500;
-async function postSegments(port, segments) {
-  try {
-    const res = await fetch(`http://127.0.0.1:${port}/v1/segments`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ segments })
-    });
-    if (res.ok) return "ok";
-    return res.status >= 400 && res.status < 500 ? "rejected" : "unreachable";
-  } catch {
-    return "unreachable";
-  }
-}
 async function probeHub(port) {
   try {
-    const res = await fetch(`http://127.0.0.1:${port}/v1/hub`, {
+    const res = await fetch(`http://127.0.0.1:${port}/v1/collector-protocol/browser`, {
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS)
     });
     if (!res.ok) return false;
     const body = await res.json();
-    return body.app === "heartbeat" && body.proto === REQUIRED_HUB_PROTOCOL;
+    return body.binding === "browser" && Array.isArray(body.protocolMajors) && body.protocolMajors.includes(1);
   } catch {
     return false;
-  }
-}
-async function fetchCollectorConfig(port, source, flushPeriodMs) {
-  try {
-    const url = `http://127.0.0.1:${port}/v1/collectors/${encodeURIComponent(source)}/config?flushPeriodMs=${flushPeriodMs}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
-    if (!res.ok) return null;
-    const body = await res.json();
-    return { enabled: body.enabled !== false };
-  } catch {
-    return null;
   }
 }
 async function discoverHub(basePort) {
@@ -650,22 +630,15 @@ async function findCompatibleHub(basePort, targetPort) {
   if (await probeHub(targetPort)) return targetPort;
   return discoverHub(basePort);
 }
-async function postToHub(basePort, targetPort, segments) {
-  const found = await findCompatibleHub(basePort, targetPort);
-  if (found === null) return { result: "unreachable", port: targetPort };
-  return { result: await postSegments(found, segments), port: found };
-}
 class LoopbackBrowserHubAdapter {
   findCompatibleHub(basePort, targetPort) {
     return findCompatibleHub(basePort, targetPort);
-  }
-  fetchLegacyCollectorConfig(port, source, flushPeriodMilliseconds) {
-    return fetchCollectorConfig(port, source, flushPeriodMilliseconds);
   }
   deliverProtocol(request) {
     return uploadWithBrowserProtocol(
       request.port,
       request.appHint,
+      request.externalHostIdentity,
       request.snapshots,
       request.previousSession,
       request.previousActivationAttempt,
@@ -677,11 +650,7 @@ class LoopbackBrowserHubAdapter {
       request.persistGapAttempt
     );
   }
-  deliverLegacy(basePort, targetPort, snapshots) {
-    return postToHub(basePort, targetPort, snapshots);
-  }
 }
-const SOURCE = "browser";
 const DEFAULT_FLUSH_PERIOD_MS = 3e4;
 const BACKOFF_BASE_MS = 3e4;
 const BACKOFF_MAX_MS = 10 * 6e4;
@@ -741,6 +710,7 @@ function createBrowserDelivery(dependencies) {
     const protocolResult = await dependencies.hub.deliverProtocol({
       port: compatiblePort,
       appHint: dependencies.appHint,
+      externalHostIdentity: await dependencies.loadExternalHostIdentity(),
       snapshots,
       previousSession: session.protocolSession,
       previousActivationAttempt: session.activationAttempt,
@@ -816,31 +786,7 @@ function createBrowserDelivery(dependencies) {
       publishAttempt: void 0
     };
     await dependencies.store.saveSession(session);
-    const legacyConfig = await dependencies.hub.fetchLegacyCollectorConfig(
-      compatiblePort,
-      SOURCE,
-      currentPolicy.flushPeriodMilliseconds
-    );
-    if (legacyConfig?.enabled === false) {
-      currentPolicy = { ...currentPolicy, enabled: false };
-      await persistPolicy(dependencies.store, currentPolicy);
-      return currentPolicy;
-    }
-    if (legacyConfig?.enabled === true && !currentPolicy.enabled) {
-      currentPolicy = { ...currentPolicy, enabled: true };
-      await persistPolicy(dependencies.store, currentPolicy);
-    }
-    if (snapshots.length === 0) return currentPolicy;
-    const legacy = await dependencies.hub.deliverLegacy(basePort, compatiblePort, snapshots);
-    if (legacy.port !== session.hubPort) session = { ...session, hubPort: legacy.port };
-    if (legacy.result === "ok") {
-      await removeDeliveredRevisions(dependencies.store, snapshots);
-      session = { ...session, backoff: noBackoff() };
-    } else if (legacy.result === "rejected") {
-      warn(`[heartbeat] legacy hub 拒收 ${snapshots.length} 条段，保留 outbox`);
-    } else {
-      session = failWithBackoff(session, attemptAt);
-    }
+    session = failWithBackoff(session, attemptAt);
     await dependencies.store.saveSession(session);
     return currentPolicy;
   }
@@ -895,16 +841,6 @@ async function convergeProtocolAcknowledgement(store, result, acknowledgedGap, w
     pendingGaps: acknowledgedGap === void 0 ? durable.pendingGaps : removeGap(durable.pendingGaps, acknowledgedGap),
     deadLetters: [...durable.deadLetters, ...rejected].slice(-100)
   });
-}
-async function removeDeliveredRevisions(store, delivered) {
-  const deliveredRevisions = Object.fromEntries(
-    delivered.map((snapshot) => [snapshot.id, snapshotRevision(snapshot)])
-  );
-  const durable = await store.loadDurable();
-  const queue = Object.fromEntries(Object.entries(durable.queue).filter(
-    ([id, snapshot]) => deliveredRevisions[id] !== snapshotRevision(snapshot)
-  ));
-  await store.saveDurable({ ...durable, queue });
 }
 async function removeAcknowledgedGap(store, acknowledged) {
   const durable = await store.loadDurable();
@@ -967,6 +903,7 @@ const DEAD_LETTER_KEY = "browserCollectorDeadLetters";
 const PENDING_GAP_KEY = "browserCollectorPendingGap";
 const DESIRED_ENABLED_KEY = "browserCollectorDesiredEnabled";
 const DELIVERY_POLICY_KEY = "browserCollectorDeliveryPolicy";
+const EXTERNAL_HOST_IDENTITY_KEY = "browserCollectorExternalHostIdentity";
 class ChromeBrowserDeliveryStore {
   constructor(currentAppHint) {
     this.currentAppHint = currentAppHint;
@@ -1043,8 +980,17 @@ function createChromeBrowserDelivery(appHint) {
     store: new ChromeBrowserDeliveryStore(appHint),
     hub: new LoopbackBrowserHubAdapter(),
     appHint,
-    loadBasePort: async () => (await loadConfig()).port
+    loadBasePort: async () => (await loadConfig()).port,
+    loadExternalHostIdentity
   });
+}
+async function loadExternalHostIdentity() {
+  const stored = await chrome.storage.local.get(EXTERNAL_HOST_IDENTITY_KEY);
+  const existing = stored[EXTERNAL_HOST_IDENTITY_KEY];
+  if (typeof existing === "string" && existing.length > 0) return existing;
+  const created = crypto.randomUUID();
+  await chrome.storage.local.set({ [EXTERNAL_HOST_IDENTITY_KEY]: created });
+  return created;
 }
 function normalizeQueuedSnapshots(stored, currentAppHint) {
   return Object.fromEntries(

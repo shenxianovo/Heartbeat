@@ -1,4 +1,5 @@
 using Heartbeat.Collection.Hub.Configuration;
+using Heartbeat.Collection.Hub.Collectors.Protocol;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 using System.Net;
@@ -6,19 +7,16 @@ using System.Net;
 namespace Heartbeat.Collection.Hub.Ingest
 {
     /// <summary>
-    /// 本地 ingest 枢纽（ADR-017）：在 loopback 上开 HTTP 接口，接收插件采集器
-    /// （浏览器扩展 / VSCode 插件 / 游戏模组）推送的已折叠段，进入统一上传管线。
-    /// 仅绑定 127.0.0.1——信任模型为"本机进程可信"（单用户自部署，ADR-017 §1）。
-    /// 协议逻辑（路由/解析/守卫/状态码）在 SegmentIngestRequestHandler，
-    /// 本类只负责 HttpListener 生命周期与上下文搬运（ADR-020）。
+    /// Browser ExternalHost Collector Protocol 的 loopback HTTP server。仅负责监听器生命周期；
+    /// 路由、协议协商与 Fact 交付由 binding handler 拥有。
     /// </summary>
-    public class SegmentIngestWorker(
-        SegmentIngestRequestHandler handler,
+    public class ExternalHostProtocolWorker(
+        IExternalHostProtocolHttpHandler handler,
         IHubConfiguration configuration) : BackgroundService
     {
         /// <summary>
         /// 端口浮动范围：基准端口被占时向上顺延试绑的端口数。
-        /// 采集器按同一范围探测（GET /v1/hub 验身份），两侧约定一致。
+        /// Browser binding 按同一范围探测专属 discovery endpoint，两侧约定一致。
         /// </summary>
         public const int PortRange = 10;
 
@@ -116,9 +114,12 @@ namespace Heartbeat.Collection.Hub.Ingest
         private async Task HandleRequestAsync(HttpListenerContext ctx)
         {
             var req = ctx.Request;
-            // Url.Query 含前导 '?'；剥掉传给协议层（GET config 的 flushPeriodMs 由此读）。
-            var query = req.Url?.Query is { Length: > 0 } q ? q.TrimStart('?') : null;
-            var response = await handler.HandleAsync(req.HttpMethod, req.Url?.AbsolutePath, req.InputStream, query);
+            var response = await handler.HandleAsync(req.HttpMethod, req.Url?.AbsolutePath, req.InputStream);
+            if (response is null)
+            {
+                TryRespond(ctx, 404, "not found");
+                return;
+            }
             TryRespond(ctx, response.StatusCode, response.Body, response.IsJson);
         }
 

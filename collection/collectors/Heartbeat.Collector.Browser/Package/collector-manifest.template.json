@@ -7,10 +7,7 @@
     "facts.segment": [1],
     "diagnostics.stream-gap": [1]
   },
-  "config": {
-    "version": 1,
-    "accepts": [1]
-  },
+  "config": { "version": 1, "accepts": [1] },
   "observationDeclaration": {
     "document": "observation-depth.json",
     "hash": "sha256:d26d98f441c05265a41a5a714993217c1070ab3d631af921b5c03abf262646b1"
@@ -24,11 +21,10 @@
         "id": "heartbeat.browser.active-tab-segment",
         "major": 1,
         "revision": 1,
-        "document": "schemas/active-tab-segment.schema.json",
-        "hash": "sha256:e36103c75e7032e6c4cd5c3e8455255ca6fb4ebd5addf581735a1f84dc28d6eb"
+        "document": "schemas/active-tab-segment.schema.json"
       },
       "subjectKinds": ["machine"],
-      "dimensionKeys": ["appHint"]
+      "dimensionKeys": ["appHint", "externalHostIdentity"]
     }
   ],
   "artifacts": [
@@ -39,9 +35,7 @@
         "os": ["windows", "macos"],
         "arch": ["x64", "arm64"]
       },
-      "entrypoint": "artifacts/browser-extension.json",
-      "size": 1008,
-      "contentHash": "sha256:48f764288e160365d6ad5d9a61686c8e214c27a2bcb77ebfbbd069155b1704e0"
+      "entrypoint": "artifacts/browser-extension.json"
     }
   ]
 }

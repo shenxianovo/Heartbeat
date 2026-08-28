@@ -15,6 +15,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\protocol\Heartbeat.Collection.CollectorProtocol\Heartbeat.Collection.CollectorProtocol.csproj" />
+    <Content Include="..\..\contracts\facts\reference-segment.schema.json">
+      <Link>contracts\facts\reference-segment.schema.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

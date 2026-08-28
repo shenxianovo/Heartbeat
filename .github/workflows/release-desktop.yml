@@ -36,6 +36,19 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: collection/collectors/Heartbeat.Collector.Browser/package-lock.json
+
+      - name: Verify Browser Collector package payload and contracts
+        shell: bash
+        run: |
+          npm ci --prefix collection/collectors/Heartbeat.Collector.Browser
+          npm run build --prefix collection/collectors/Heartbeat.Collector.Browser
+          node scripts/collector-contracts.mjs check
+
       - name: Resolve package version
         id: version
         shell: bash
@@ -122,6 +135,18 @@ jobs:
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: collection/collectors/Heartbeat.Collector.Browser/package-lock.json
+
+      - name: Verify Browser Collector package payload and contracts
+        run: |
+          npm ci --prefix collection/collectors/Heartbeat.Collector.Browser
+          npm run build --prefix collection/collectors/Heartbeat.Collector.Browser
+          node scripts/collector-contracts.mjs check
 
       - name: Resolve package version
         id: version

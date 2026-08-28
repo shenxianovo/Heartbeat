@@ -36,6 +36,7 @@ public class AgentHostExtensionsTests : IDisposable
     {
         var services = new ServiceCollection();
         services.AddHeartbeatAgent(new ConfigManager(_tempConfig));
+        services.AddSingleton<IDeviceIdentity>(new FakeDeviceIdentity());
         services.AddSingleton(new SystemCollectorBindingOptions(_tempRuntime));
 
         // 不 Dispose provider：托管服务未 Start，实例化即足以断言顺序，

@@ -7,6 +7,8 @@
 > 设计定于 2026-07-22 grilling session（候选②）。实现待动工，issue 拆片见
 > `.scratch/collector-depth-declaration/issues/`。
 
+> 2026-08-28 implementation note: collector 自报的 declaration HTTP 动词已退役；当前只接受经验证 Collector Package 携带的 observation declaration，再由 Hub 上行 Analytics。以下 loopback 方案保留为历史背景。
+
 ## Context
 
 ADR-029 §2 宣告"每个采集器在自身契约里声明一张有序观测深度表……新采集器带自己的

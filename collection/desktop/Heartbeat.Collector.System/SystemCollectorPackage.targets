@@ -1,0 +1,21 @@
+<Project>
+  <PropertyGroup>
+    <SystemCollectorPackageStageDirectory>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\$(BaseIntermediateOutputPath)$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\CollectorPackage\System'))</SystemCollectorPackageStageDirectory>
+    <SystemCollectorPackageDestination Condition="'$(SystemCollectorPackageDestination)' == ''">CollectorPackages/System</SystemCollectorPackageDestination>
+    <HeartbeatRepositoryRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\..\'))</HeartbeatRepositoryRoot>
+  </PropertyGroup>
+
+  <Target Name="StageSystemCollectorPackage" BeforeTargets="Build">
+    <Exec WorkingDirectory="$(HeartbeatRepositoryRoot)"
+          Command="node scripts/collector-contracts.mjs stage system &quot;$(SystemCollectorPackageStageDirectory)&quot;" />
+  </Target>
+
+  <Target Name="CopySystemCollectorPackage" AfterTargets="Build" DependsOnTargets="StageSystemCollectorPackage">
+    <ItemGroup>
+      <SystemCollectorPackageFiles Include="$(SystemCollectorPackageStageDirectory)/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(SystemCollectorPackageFiles)"
+          DestinationFiles="@(SystemCollectorPackageFiles->'$(OutDir)$(SystemCollectorPackageDestination)/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>

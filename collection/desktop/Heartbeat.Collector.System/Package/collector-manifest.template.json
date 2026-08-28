@@ -8,10 +8,7 @@
     "facts.event": [1],
     "diagnostics.stream-gap": [1]
   },
-  "config": {
-    "version": 1,
-    "accepts": [1]
-  },
+  "config": { "version": 1, "accepts": [1] },
   "outputs": [
     {
       "outputId": "foreground",
@@ -21,8 +18,7 @@
         "id": "heartbeat.system.foreground-segment",
         "major": 1,
         "revision": 1,
-        "document": "schemas/foreground-segment.schema.json",
-        "hash": "sha256:5aba9635508b585b9af3486ad22ea40490b10bcf7da3b86711c5fc5d8e0f4dc7"
+        "document": "schemas/foreground-segment.schema.json"
       },
       "subjectKinds": ["machine"],
       "dimensionKeys": []
@@ -35,8 +31,7 @@
         "id": "heartbeat.input",
         "major": 1,
         "revision": 1,
-        "document": "schemas/input-event.schema.json",
-        "hash": "sha256:b0eaefd27a7be4c8d72e556faec7f6dbc2dfba16dbdbbf37517cb412eff08860"
+        "document": "schemas/input-event.schema.json"
       },
       "subjectKinds": ["machine"],
       "dimensionKeys": []

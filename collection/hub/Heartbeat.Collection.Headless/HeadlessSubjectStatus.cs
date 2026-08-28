@@ -1,4 +1,3 @@
-using Heartbeat.Collection.Hub.Segments;
 using Heartbeat.Core.DTOs.Segments;
 
 namespace Heartbeat.Collection.Headless;
@@ -58,76 +57,5 @@ public sealed class HeadlessSubjectStatus
                 _currentSegmentId = null;
             }
         }
-    }
-}
-
-internal sealed class HeadlessSubjectSegmentSink(
-    SegmentIngestService inner,
-    HeadlessSubjectStatus status) :
-    ISegmentSink,
-    ISegmentRetractionSink,
-    IDurableSegmentProjectionSink,
-    ISubjectSegmentProjectionSink,
-    ICollectorTrafficSink
-{
-    public void Push(List<ActivitySegmentItem> snapshots)
-    {
-        inner.Push(snapshots);
-        foreach (var snapshot in snapshots) status.Observe(snapshot);
-    }
-
-    public void Retract(Guid segmentId)
-    {
-        inner.Retract(segmentId);
-        status.Retract(segmentId);
-    }
-
-    public void UpsertDurable(ActivitySegmentItem snapshot, long revision)
-    {
-        inner.UpsertDurable(snapshot, revision);
-        status.Observe(snapshot);
-    }
-
-    public void ReplayDurable(ActivitySegmentItem snapshot, long revision)
-    {
-        inner.ReplayDurable(snapshot, revision);
-        status.Observe(snapshot);
-    }
-
-    public void RetractDurable(Guid segmentId, long revision)
-    {
-        inner.RetractDurable(segmentId, revision);
-        status.Retract(segmentId);
-    }
-
-    public void MarkSourceActive(string source) => inner.MarkSourceActive(source);
-
-    public void UpsertDurable(
-        CollectorProjectionContext context,
-        ActivitySegmentItem snapshot,
-        long revision,
-        bool isFinal)
-    {
-        inner.UpsertDurable(snapshot, revision);
-        status.Observe(snapshot, isFinal);
-    }
-
-    public void ReplayDurable(
-        CollectorProjectionContext context,
-        ActivitySegmentItem snapshot,
-        long revision,
-        bool isFinal)
-    {
-        inner.ReplayDurable(snapshot, revision);
-        status.Observe(snapshot, isFinal);
-    }
-
-    public void RetractDurable(
-        CollectorProjectionContext context,
-        Guid segmentId,
-        long revision)
-    {
-        inner.RetractDurable(segmentId, revision);
-        status.Retract(segmentId);
     }
 }

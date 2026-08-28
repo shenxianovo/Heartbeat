@@ -36,7 +36,10 @@ internal static class ReferencePackageBuilder
         var schemaDirectory = Path.Combine(root, "schemas");
         Directory.CreateDirectory(schemaDirectory);
         var schemaPath = Path.Combine(schemaDirectory, "reference-segment.schema.json");
-        File.WriteAllText(schemaPath, Schema, new UTF8Encoding(false));
+        File.Copy(
+            Path.Combine(sourceRoot, "contracts", "facts", "reference-segment.schema.json"),
+            schemaPath,
+            overwrite: true);
         var manifest = new
         {
             manifestVersion = 1,
@@ -117,27 +120,4 @@ internal static class ReferencePackageBuilder
         _ => throw new PlatformNotSupportedException()
     };
 
-    private const string Schema = """
-    {
-      "documentVersion": 1,
-      "schemaId": "heartbeat.reference.segment",
-      "schemaMajor": 1,
-      "schemaRevision": 1,
-      "factKind": "segment",
-      "evolution": {
-        "mode": "segmentSnapshot",
-        "allowRetraction": true
-      },
-      "payloadSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
-      "payloadSchema": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["identityKey", "title"],
-        "properties": {
-          "identityKey": { "type": "string", "minLength": 1 },
-          "title": { "type": "string", "minLength": 1 }
-        }
-      }
-    }
-    """;
 }

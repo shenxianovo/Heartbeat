@@ -21,6 +21,7 @@ public partial class CollectorItemViewModel : ObservableObject
     private readonly Action<SystemCapability>? _recoverSystemCapability;
     private readonly Action<SystemCapability>? _revealSystemCapabilityApplication;
     private readonly Action<BrowserKind>? _openBrowserSetup;
+    private readonly Action<string, bool>? _setBrowserAppEnabled;
     private readonly Action<string>? _copyText;
     private bool _suppressEnabled;
 
@@ -32,7 +33,8 @@ public partial class CollectorItemViewModel : ObservableObject
         Action<SystemCapability>? recoverSystemCapability = null,
         Action<SystemCapability>? revealSystemCapabilityApplication = null,
         Action<BrowserKind>? openBrowserSetup = null,
-        Action<string>? copyText = null)
+        Action<string>? copyText = null,
+        Action<string, bool>? setBrowserAppEnabled = null)
     {
         Source = source;
         IsSystem = isSystem;
@@ -42,6 +44,7 @@ public partial class CollectorItemViewModel : ObservableObject
         _revealSystemCapabilityApplication = revealSystemCapabilityApplication;
         _openBrowserSetup = openBrowserSetup;
         _copyText = copyText;
+        _setBrowserAppEnabled = setBrowserAppEnabled;
     }
 
     public string Source { get; }
@@ -51,6 +54,8 @@ public partial class CollectorItemViewModel : ObservableObject
     public bool IsNotBrowser => !IsBrowser;
     public bool CanToggle => !IsSystem;
     public ObservableCollection<SystemCapabilityItemViewModel> Capabilities { get; } = [];
+    public ObservableCollection<BrowserAppItemViewModel> BrowserApps { get; } = [];
+    public bool HasBrowserApps => BrowserApps.Count > 0;
     public bool HasCapabilities => Capabilities.Count > 0;
 
     [ObservableProperty]
@@ -196,6 +201,20 @@ public partial class CollectorItemViewModel : ObservableObject
         PreviousKnownGoodVersion = snapshot.PreviousKnownGoodVersion;
         RuntimeStatus = snapshot.RuntimeStatus;
         SetEnabledSilently(snapshot.DesiredEnabled);
+        var incoming = snapshot.Apps ?? [];
+        foreach (var stale in BrowserApps.Where(item =>
+                     !incoming.Any(app => app.AppHint == item.AppHint)).ToArray())
+            BrowserApps.Remove(stale);
+        foreach (var app in incoming)
+        {
+            var item = BrowserApps.FirstOrDefault(existing => existing.AppHint == app.AppHint);
+            if (item is null)
+            {
+                item = new BrowserAppItemViewModel(app.AppHint, _setBrowserAppEnabled);
+                BrowserApps.Add(item);
+            }
+            item.Update(app);
+        }
         if (snapshot.RuntimeStatus == ExternalHostRuntimeStatus.Ready)
             IsBrowserSetupVisible = false;
         BrowserSetupError = string.Empty;
@@ -208,6 +227,7 @@ public partial class CollectorItemViewModel : ObservableObject
         OnPropertyChanged(nameof(PreviousKnownGoodText));
         OnPropertyChanged(nameof(HasPreviousKnownGood));
         OnPropertyChanged(nameof(HasSideloadDirectory));
+        OnPropertyChanged(nameof(HasBrowserApps));
     }
 
     [RelayCommand]
@@ -270,4 +290,49 @@ public partial class CollectorItemViewModel : ObservableObject
 
     partial void OnIsBrowserDetailsExpandedChanged(bool value) =>
         OnPropertyChanged(nameof(BrowserDetailsToggleText));
+}
+
+public partial class BrowserAppItemViewModel : ObservableObject
+{
+    private readonly Action<string, bool>? _setEnabled;
+    private bool _suppressEnabled;
+
+    public BrowserAppItemViewModel(string appHint, Action<string, bool>? setEnabled)
+    {
+        AppHint = appHint;
+        _setEnabled = setEnabled;
+    }
+
+    public string AppHint { get; }
+    public string DisplayName => AppHint switch
+    {
+        "chrome" => "Google Chrome",
+        "edge" => "Microsoft Edge",
+        _ => AppHint,
+    };
+
+    [ObservableProperty]
+    private bool _enabled;
+
+    [ObservableProperty]
+    private string _statusText = string.Empty;
+
+    public void Update(BrowserCollectorAppState state)
+    {
+        _suppressEnabled = true;
+        Enabled = state.DesiredEnabled;
+        _suppressEnabled = false;
+        StatusText = state.RuntimeStatus switch
+        {
+            ExternalHostRuntimeStatus.Ready => $"正在采集 · Package {state.PackageVersion}",
+            ExternalHostRuntimeStatus.Degraded => state.RuntimeStatusDetail,
+            _ => state.DesiredEnabled ? "等待浏览器连接" : "已停用",
+        };
+    }
+
+    partial void OnEnabledChanged(bool value)
+    {
+        if (!_suppressEnabled)
+            _setEnabled?.Invoke(AppHint, value);
+    }
 }

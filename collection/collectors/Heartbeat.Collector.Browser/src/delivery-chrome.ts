@@ -29,6 +29,7 @@ const DEAD_LETTER_KEY = 'browserCollectorDeadLetters'
 const PENDING_GAP_KEY = 'browserCollectorPendingGap'
 const DESIRED_ENABLED_KEY = 'browserCollectorDesiredEnabled'
 const DELIVERY_POLICY_KEY = 'browserCollectorDeliveryPolicy'
+const EXTERNAL_HOST_IDENTITY_KEY = 'browserCollectorExternalHostIdentity'
 
 type PersistedSegmentSnapshot = Omit<SegmentSnapshot, 'isFinal'> & {
   appName?: unknown
@@ -127,7 +128,17 @@ export function createChromeBrowserDelivery(appHint: string | undefined): Browse
     hub: new LoopbackBrowserHubAdapter(),
     appHint,
     loadBasePort: async () => (await loadConfig()).port,
+    loadExternalHostIdentity,
   })
+}
+
+export async function loadExternalHostIdentity(): Promise<string> {
+  const stored = await chrome.storage.local.get(EXTERNAL_HOST_IDENTITY_KEY)
+  const existing = stored[EXTERNAL_HOST_IDENTITY_KEY]
+  if (typeof existing === 'string' && existing.length > 0) return existing
+  const created = crypto.randomUUID()
+  await chrome.storage.local.set({ [EXTERNAL_HOST_IDENTITY_KEY]: created })
+  return created
 }
 
 function normalizeQueuedSnapshots(

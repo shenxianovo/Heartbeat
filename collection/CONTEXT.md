@@ -5,11 +5,11 @@
 ## Language
 
 **Agent**:
-后台采集引擎，兼任本机 ingest hub（ADR-017）：监听窗口切换生成 system 段，接收各 Collector 经 loopback 推送的插件段，统一缓存与上传。hub 同时维护集面读模型（Current Activity + per-Source last-seen），是桌面 UI 与 Heartbeat 的唯一读表面（ADR-021）。
+桌面采集宿主：承载 Collector Runtime、system Collector、Browser ExternalHost binding、集面读模型以及统一缓存/上传。它不再提供通用 source 级 loopback segment ingress。
 _Avoid_: Service, Worker（这些是 Agent 内部的实现层）
 
 **Collector（采集器）**:
-一个观测特定应用内活动并向 hub 推送 ActivitySegment 的组件（browser 扩展、vscode 插件等）。system 采集器内置于 Agent，同样经 hub 汇入（ADR-020），特例性仅剩两点：进程内直连 hub（不走 loopback）、不可停用。非内置采集器代码位于 `collection/collectors/`。
+一个观测特定应用内活动并通过 Collector Protocol 向 Runtime 发布 Fact 的组件（browser 扩展、VRChat 账号采集器等）。system 采集器内置于 Desktop，同样经 Runtime 汇入，特例性仅剩两点：进程内 binding、不可停用。非内置采集器代码位于 `collection/collectors/`。
 _Avoid_: 插件/Plugin（口语别名，UI 与文档统一用"采集器"；ADR-017 等历史文档中的 plugin 即此概念）
 
 **Collector Package（采集器包）**:
@@ -40,6 +40,10 @@ _Avoid_: 为每种执行方式发明不同协议
 Collector Package 对一类可实例化 Fact Stream 的静态声明，限定其 Source、FactKind、schema、SubjectKind 与 identifying dimensions。
 _Avoid_: 运行时任意注册 schema、把每个动态 dimension value 写成新清单项
 
+**Fact Schema（事实模式）**:
+可执行事实 payload 的版本化约束。唯一权威文件位于 `collection/contracts/facts/`；Package 内 schema 与最终 manifest 是 build staging 产物。相同 `(SchemaId, Major, Revision)` 的字节进入 baseline 后不可改变。当前 Collector Protocol v1 只执行 Segment 与 Event。
+_Avoid_: 在 Collector C# / TypeScript 里复制 schema 字符串、把私有状态文件的 `schemaVersion` 混入 Fact Schema 版本体系
+
 **Hub Instance（Hub 实例）**:
 Collector Runtime 的一个持续运行宿主，可以是 Desktop Agent 内嵌 Hub，也可以是服务器上的无头 Hub。Hub Instance 是运维身份而非观测主体；一个无头 Hub 可以托管观测不同账号、身体或其他主体的多个 Collector Instance。
 _Avoid_: Device、Subject、把无头 Hub 按某个 Collector 命名
@@ -49,15 +53,19 @@ _Avoid_: Device、Subject、把无头 Hub 按某个 Collector 命名
 _Avoid_: Analytics Collector Control Plane、要求用户通过服务器终端完成账号授权
 
 **Collector Installation（采集器安装）**:
-本机持有某一精确 Collector Package 的事实。安装不表示 Collector 已启用、已获授权、能够激活或正在运行。
+本机持有某一精确 Collector Package 的事实。安装不表示 Collector 已启用、已获授权、能够激活或正在运行。多个 Collector Instance 可以共享同一 Package 的已安装内容；并行升级时保留全局候选以及任一 Instance 当前或 Last-Known-Good 仍引用的精确版本，只有无人引用的版本才可回收。
 _Avoid_: Discovery、Registration、Active
 
 **Collector Instance（采集器实例）**:
-一个稳定、已配置的 Collector 身份；更换其 Collector Package 版本或重新激活时，实例身份保持不变。同一采集器包可以对应多个实例。机器级 browser Collector 只有一个共享 Instance 与启用意图，可以同时接受多个浏览器宿主的 Activation；浏览器 Profile 不是独立 Instance。
+一个稳定、已配置的 Collector 身份；更换其 Collector Package 版本或重新激活时，实例身份保持不变，同样不会因为长期离线而自动删除。同一采集器包可以对应多个实例。browser Collector 在同一 Machine Subject 上按 App 分 Instance：Chrome、Edge 等 App 各有独立启用意图与运行状态，但共享一份 Collector Installation；同一 App 的浏览器 Profile 不是独立 Instance。首次发现新的 browser App Instance 默认启用，删除身份与配置只能是显式用户操作。
 _Avoid_: 用 Source、进程 ID 或包版本充当实例身份
 
+**Collector Instance Key（采集器实例键）**:
+Hub 为需要幂等发现的 Collector Instance 分配的不透明、不可变稳定槽位；它在同一 `PackageId + Subject` 内唯一，不替代 CollectorInstanceId。browser adapter 以 App 形成 Instance Key，使同一 App 重连时回到原 Instance，而不是把 App 身份塞进可变配置。
+_Avoid_: 第二个 CollectorInstanceId、Instance Config、把 Source 当作 Instance Key
+
 **Collector Activation（采集器激活）**:
-Collector Instance 的一次协议会话和实际运行身份；重启、重连、成功或失败都不改写 Instance 身份。ExternalHost Instance 可以同时拥有多个 Activation，各自代表一份独立运行的外部宿主。
+Collector Instance 的一次协议会话和实际运行身份；重启、重连、成功或失败都不改写 Instance 身份。ExternalHost Instance 可以同时拥有多个 Activation，各自代表一份独立运行的外部宿主；同一 External Host Identity 的新 Activation 只接替该 Host 的旧会话，不影响同 App 的其他 Host 或其他 App Instance。
 _Avoid_: Run（含义过泛）、Active（后者是按 Source 流量推断的既有状态）
 
 **Interactive Authorization（交互授权）**:
@@ -69,7 +77,7 @@ _Avoid_: Hub 内置第三方登录流程、把登录设为 Dashboard 的强制�
 _Avoid_: Instance Config、Runtime State、在 Package 目录保存 cookie
 
 **External Host Identity（外部宿主身份）**:
-ExternalHost Collector 中一份独立宿主安装的内部稳定身份，例如某个浏览器 Profile 中加载的扩展；它只用于区分并发 Activation、维持 Stream 与重传连续性，不形成独立 Collector Instance、启用意图或主 UI 管理项。
+ExternalHost Collector 中一份独立宿主安装的内部稳定身份，例如某个浏览器 Profile 中加载的扩展；它由宿主首次运行时生成并本地持久化，区分并发 Activation，并使同一 App Instance 下的各 Host 拥有独立 Fact Stream、writer 与重传连续性。宿主数据被清理或重装后产生新的 External Host Identity 与 Stream，不根据 Profile 名、路径或进程猜回旧身份；旧 Stream 只变为不活跃。它不形成独立 Collector Instance、启用意图或主 UI 管理项。
 _Avoid_: Collector Instance、Browser Profile 设置、把外部宿主身份暴露为用户必须管理的采集器
 
 **Browser Window Activity（浏览器窗口活动）**:
@@ -81,7 +89,7 @@ Collector Activation 已完成协议协商并打开所需 Fact Stream，可以�
 _Avoid_: 进程存活、首次产生数据、Active
 
 **候选稳定窗口（Candidate Stability Period）**:
-ManagedProcess 候选 Activation 到达 Ready 后、被判定为成功更新前的有界观察期；窗口内退出触发 Last-Known-Good 回滚，窗口结束时候选晋升为新的 Last-Known-Good，之后退出属于普通运行故障。
+ManagedProcess 候选 Activation 到达 Ready 后、被判定为成功更新前的有界观察期；窗口内退出触发该 Collector Instance 的 Last-Known-Good 回滚，窗口结束时候选晋升为该 Instance 新的 Last-Known-Good，之后退出属于普通运行故障。共享同一 Installation 的其他 Instance 不因其中一个 Instance Ready 而被宣称更新成功。
 _Avoid_: 把 Ready 等同于已通过稳定观察、无限期自动回滚
 
 **Collector Desired State（采集器期望状态）**:
@@ -105,7 +113,7 @@ Collector Runtime 协调 Collector Activation 的方式，可以是进程内、�
 _Avoid_: Lifecycle Driver（未区分制品交付）、假定 Hub 能直接停止所有 Collector
 
 **App Hint（应用提示）**:
-外部 Collector 在 loopback 摄入时可选上报的平台无关产品 slug（如 `edge`）。hub 的平台 adapter 在进入严格缓存前把它解析为本机可观测的 AppIdentity（Windows 进程或 macOS bundle）；缺失、未知或歧义时保留段但不关联 App，也不按名字猜测。`AppHint` 不进入 Analytics DTO、离线缓存或服务端事实。
+ExternalHost Collector 上报的平台无关产品 slug（如 `edge`）。browser adapter 用非空、稳定的 App Hint 选择对应 Collector Instance，并由平台 adapter 尝试解析为本机可观测的 AppIdentity（Windows 进程或 macOS bundle）；暂时无法解析的稳定 slug 仍形成独立 App Instance 并保留事实，只显示身份未解析，不按名字猜成其他 App。缺失或不稳定的 App Hint 无法形成 Instance 身份，拒绝 Activation。`AppHint` 是 binding/Stream 维度，不进入 canonical Fact payload 或 Analytics 事实；Browser 本地 outbox 可为迁移恢复暂存它。
 _Avoid_: 让 Collector 写 `win:`/`mac:` 身份；把 App Hint 当作 App Key 或 AppIdentity
 
 **Upload Stream（上传流）**:
@@ -113,11 +121,11 @@ _Avoid_: 让 Collector 写 `win:`/`mac:` 身份；把 App Hint 当作 App Key �
 _Avoid_: UploadService（退役的三份同构模板）、Upload Channel（ADR-022 前的旧名，彼时退回项由调用方重注入）
 
 **Active（采集器活跃）**:
-从流量推断：某 Source 最近一段时间内向 hub POST 过即为 Active。机制为 hub 读模型的 per-Source last-seen（`Accept` 时刻戳，ADR-021）。新鲜度窗口不是魔法常量，而从采集器自报的 flush 周期派生（窗口 = 3× flushPeriodMs，容一次丢失 flush + 一次重试）；采集器未报时回落默认。无心跳协议——"活跃"回答的是"数据管道通不通"，浏览器没开时 browser 采集器显示为不活跃是诚实的。
+旧 source 级读模型术语。统一 Runtime 后，Collector 的实际状态由各 Instance/Activation 的 Runtime State 与 lease 表达；ExternalHost lease 过期只结束对应 Host Activation，不改写 Desired State，也不删除 Package、Instance 或历史 Stream。
 
 **Collector Registry（采集器注册表）**:
-hub 持久化的已发现 Source 账本（当前存于 config.json 的 `collectors`）：`source → {enabled, flushPeriodMs}`。采集器首次触达 hub 时被记入，表示 hub 曾发现该 Source；它不证明本机持有对应 Collector Package，也不证明 Agent 拥有其生命周期。安装事实由 Collector Runtime 与 Collector Installation 表达。
-_Avoid_: 心跳注册、清单（manifest）
+历史 source 级配置/声明账本；不再作为 browser 的安装、启用、发现或协议准入来源。新代码应依赖 Collector Installation、Instance Desired State、Runtime State 或更窄的声明存储 seam。
+_Avoid_: 为新 Collector 恢复 source 级自动注册/config HTTP 协议
 
 **Current Activity（当前活动）**:
 集面读模型中"此刻在干什么"的条目：由 system 采集器在转场点（前台切换、进出 away）把 AppIdentityKey 推送进 hub，进程内事件驱动、零延迟；away 原样暴露为 `sys:away`，语义解释留给消费者。桌面 UI 与 Heartbeat 的唯一数据源。
@@ -144,12 +152,12 @@ _Avoid_: 把聚焦窗口与标题拆成两个用户能力开关
 _Avoid_: 用一个 bool 同时表示用户开关、权限与实际可用性
 
 **Deactivate（停用采集器）**:
-用户在共享桌面 UI 翻 enabled=false，双层执行。**礼貌层（采集器侧）**：采集器 `GET /v1/collectors/{source}/config` 见 `enabled:false` 主动停采（省流量）。**强制层（hub 侧）**：hub 对被停用 Source 的 `POST /v1/segments` 返回 403，段被丢弃——这是 loopback 无鉴权信任模型下唯一的准入闸门，采集器有 bug/第三方/装死时的兜底，不可省。Agent 够不着其他进程里的采集器，"停用"永远是 hub 侧行为。config 下行本版仅 `{enabled}`，设置项字段将来往响应里加（不引入 schema registry，ADR-017 §5）。采集器管理 UI 位于共享 Avalonia presentation（本机采集层事实，不进 Dashboard）。
+用户把某个 Collector Instance 的 Desired State 设为 `enabled=false`；Collector Runtime 负责停止或拒绝该 Instance 的 Activation，并保留 Installation、Instance 身份与配置。ExternalHost 的停用只约束对应 Instance，不以 Source 级全局开关代替；主卡上的“全部启用/停用”只是对多个 Instance 执行批量变更，不形成另一份 Desired State。
 
 **采集器页（Collector page）**:
-共享桌面 UI 中管理采集器的页面，并容纳采集器设置。可管理性**分级**：system 采集器不可停用，前台应用采集作为无开关的固定基线，其他可选观测深度作为独立采集能力管理；外部采集器提供一个全局启用意图与由运行事实推导的用户状态。每项能力的开关、实际状态、权限恢复动作与说明都归属该 Collector 条目，不另建脱离所有者的全局“采集能力”区块。窗口活动采集是一个用户能力，不把 focused-window 切换与原始标题拆成两个开关。
+共享桌面 UI 中管理采集器的页面，并容纳采集器设置。可管理性**分级**：system 采集器不可停用，前台应用采集作为无开关的固定基线，其他可选观测深度作为独立采集能力管理；外部采集器按 Collector Instance 展示启用意图与由运行事实推导的用户状态。每项能力的开关、实际状态、权限恢复动作与说明都归属该 Collector 条目，不另建脱离所有者的全局“采集能力”区块。窗口活动采集是一个用户能力，不把 focused-window 切换与原始标题拆成两个开关。
 
-browser Collector 只占一个主卡，状态收敛为“尚未连接浏览器 / 等待浏览器启动 / 正在采集 / 需要修复”；Chrome、Edge 等宿主用浏览器图标表达添加与连接，不成为独立采集器条目。Package、Activation、HostId、目录和协议错误只在高级诊断中展示，不与主状态并列。
+browser Collector 只占一个主卡；Chrome、Edge 等 App 作为子项分别展示添加入口、启用意图与“尚未连接 / 等待启动 / 正在采集 / 需要修复”状态，主卡可提供批量启停快捷操作。App Instance 不重复呈现为多份 Package，Profile/Host 也不成为主 UI 管理项；Package、Activation、External Host Identity、目录和协议错误只在高级诊断中展示。
 _Avoid_: 采集器栏、Collector panel
 
 **Setup**:

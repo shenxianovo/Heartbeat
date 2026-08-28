@@ -6,6 +6,8 @@
 
 (Implemented: loopback ingest hub + browser collector landed; ADR-020/021/022 build on this design. The vscode collector remains planned.)
 
+> 2026-08-28 implementation note: ADR-040 的统一 Collector Protocol 已取代本 ADR 的通用 `POST /v1/segments` loopback 入口。本文以下内容保留为历史决策背景；当前拓扑见 [系统架构与协议图](../architecture/system-overview.md)。
+
 ## Context
 
 ### The vision: replay anything, feed it to an LLM
@@ -113,7 +115,7 @@ There is exactly one mutually-exclusive track — foreground-ness is unique — 
 - `server/Heartbeat.Server/Migrations/20260702110038_GeneralizeUsageToActivitySegment.cs` — 保数据迁移（backfill source='system'）
 - `server/Heartbeat.Server/Services/UsageService.cs` — `SaveSegmentsAsync` 统一摄入例程（幂等 + 续接）
 - `server/Heartbeat.Server/Controllers/SegmentController.cs` — `/api/v1/segments`（拒收 source='system'）
-- `collection/desktop/Heartbeat.Desktop.Windows/Workers/SegmentIngestWorker.cs` — loopback ingest 枢纽（`POST /v1/segments`）
+- `collection/hub/Heartbeat.Collection.Hub/Ingest/ExternalHostProtocolWorker.cs` — 当前仅承载 ExternalHost Collector Protocol 的 loopback listener
 - `collection/hub/Heartbeat.Collection.Hub/Segments/SegmentIngestService.cs` — 接收缓冲 + 校验
 - `collection/desktop/Heartbeat.Desktop.Windows/Services/SegmentUploadService.cs` — 插件段上传 + 离线缓存
 - frontend 回放多轨（pending）

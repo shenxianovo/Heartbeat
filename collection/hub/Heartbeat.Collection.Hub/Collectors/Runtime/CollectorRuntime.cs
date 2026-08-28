@@ -48,7 +48,8 @@ public sealed record CollectorInstance(
     string PackageContentHash,
     SubjectReference Subject,
     CollectorInstanceSpec Spec,
-    LastKnownGoodCollectorPackage? LastKnownGoodPackage = null);
+    LastKnownGoodCollectorPackage? LastKnownGoodPackage = null,
+    string? InstanceKey = null);
 
 public sealed class CollectorRuntimeOptions
 {
@@ -154,10 +155,12 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
     public CollectorInstance CreateInstance(
         LocalCollectorPackage package,
         SubjectReference subject,
-        CollectorInstanceSpec spec)
+        CollectorInstanceSpec spec,
+        string? instanceKey = null)
     {
         ArgumentNullException.ThrowIfNull(package);
         ValidateSpec(spec);
+        ValidateInstanceKey(instanceKey);
 
         lock (_gate)
         {
@@ -173,10 +176,18 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
                 throw new InvalidOperationException("Collector Runtime ID generator must return a UUIDv7.");
             if (_state.Instances.Any(instance => instance.CollectorInstanceId == instanceId))
                 throw new InvalidOperationException($"Collector Instance '{instanceId}' already exists.");
+            if (instanceKey is not null && _state.Instances.Any(instance =>
+                    instance.PackageId == package.Manifest.PackageId &&
+                    instance.SubjectId == subject.SubjectId &&
+                    instance.SubjectKind == subject.Kind &&
+                    instance.InstanceKey == instanceKey))
+                throw new InvalidOperationException(
+                    $"Collector Instance key '{instanceKey}' already exists for this Package and Subject.");
 
             var instanceState = new CollectorInstanceState
             {
                 CollectorInstanceId = instanceId,
+                InstanceKey = instanceKey,
                 PackageId = package.Manifest.PackageId,
                 PackageVersion = package.Manifest.Version,
                 PackageContentHash = package.PackageContentHash,
@@ -228,6 +239,25 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         }
     }
 
+    public CollectorInstance? FindInstance(
+        string packageId,
+        SubjectReference subject,
+        string instanceKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
+        ValidateInstanceKey(instanceKey);
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            var state = _state.Instances.SingleOrDefault(instance =>
+                instance.PackageId == packageId &&
+                instance.SubjectId == subject.SubjectId &&
+                instance.SubjectKind == subject.Kind &&
+                instance.InstanceKey == instanceKey);
+            return state is null ? null : ToPublic(state);
+        }
+    }
+
     public CollectorInstance UpdateInstanceSpec(
         Guid collectorInstanceId,
         int configVersion,
@@ -271,6 +301,16 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
             throw new ArgumentException("Config must contain a JSON value.", nameof(spec));
     }
 
+    private static void ValidateInstanceKey(string? instanceKey)
+    {
+        if (instanceKey is null)
+            return;
+        if (string.IsNullOrWhiteSpace(instanceKey) || instanceKey.Length > 200 || instanceKey != instanceKey.Trim())
+            throw new ArgumentException(
+                "InstanceKey must be a non-empty, trimmed string of at most 200 characters.",
+                nameof(instanceKey));
+    }
+
     private static CollectorInstance ToPublic(CollectorInstanceState state) => new(
         state.CollectorInstanceId,
         state.PackageId,
@@ -281,7 +321,8 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
             state.SpecRevision,
             state.ConfigVersion,
             state.Config.Clone()),
-        state.LastKnownGoodPackage);
+        state.LastKnownGoodPackage,
+        state.InstanceKey);
 
     public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 

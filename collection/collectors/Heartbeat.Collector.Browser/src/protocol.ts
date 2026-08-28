@@ -78,7 +78,6 @@ export type ProtocolUploadResult =
       session?: BrowserProtocolSession
       gapAcknowledged?: boolean
     }
-  | { kind: 'legacy-required' }
 
 interface HelloResponse {
   activationId: string
@@ -170,9 +169,10 @@ export function acknowledgedSnapshotIds(
 export async function openBrowserProtocolSession(
   port: number,
   appHint: string,
+  externalHostIdentity: string,
   attempt: BrowserActivationAttempt,
   applySpec?: (spec: { enabled: boolean; flushPeriodMilliseconds: number }) => Promise<void>,
-): Promise<BrowserProtocolSession | 'disabled' | 'legacy-required' | 'rejected' | null> {
+): Promise<BrowserProtocolSession | 'disabled' | 'rejected' | null> {
   try {
     const hello = await fetch(`http://127.0.0.1:${port}${ROUTE}/hello`, {
       method: 'POST',
@@ -191,9 +191,9 @@ export async function openBrowserProtocolSession(
           'diagnostics.stream-gap': [1],
         },
         appHint,
+        externalHostIdentity,
       })),
     })
-    if (hello.status === 404) return 'legacy-required'
     if (!hello.ok) return 'rejected'
     const acceptedMessage = (await hello.json()) as ProtocolMessage<HelloResponse>
     if (!isCorrelatedResponse(
@@ -353,7 +353,7 @@ export async function publishBrowserFacts(
   const batch = reusableAttempt?.snapshots ?? takeBatchWithinByteLimit(snapshots, session, maxFacts)
   if (snapshots.length > 0 && batch.length === 0) return { kind: 'unavailable' }
   const facts = batch.map((snapshot) => toProtocolFact(snapshot, session.streamId))
-  if (facts.some((fact) => fact === null)) return { kind: 'legacy-required' }
+  if (facts.some((fact) => fact === null)) return { kind: 'unavailable', session }
   if (facts.length === 0) {
     return {
       kind: 'acked',
@@ -434,6 +434,7 @@ export async function publishBrowserFacts(
 export async function uploadWithBrowserProtocol(
   port: number,
   appHint: string | undefined,
+  externalHostIdentity: string,
   snapshots: SegmentSnapshot[],
   previousSession?: BrowserProtocolSession,
   previousActivationAttempt?: BrowserActivationAttempt,
@@ -444,8 +445,8 @@ export async function uploadWithBrowserProtocol(
   pendingGap?: BrowserPendingGap,
   persistGapAttempt?: (gap: BrowserPendingGap) => Promise<void>,
 ): Promise<ProtocolUploadResult> {
-  if (!appHint) return { kind: 'legacy-required' }
-  if (snapshots.some((snapshot) => !isUuidV7(snapshot.id))) return { kind: 'legacy-required' }
+  if (!appHint || !externalHostIdentity) return { kind: 'unavailable' }
+  if (snapshots.some((snapshot) => !isUuidV7(snapshot.id))) return { kind: 'unavailable' }
   const renewed = previousSession?.port === port
     ? await renewBrowserProtocolSession(previousSession)
     : null
@@ -456,9 +457,14 @@ export async function uploadWithBrowserProtocol(
     readyMessageId: uuidv7(),
   }
   if (renewed === null) await persistActivationAttempt?.(activationAttempt)
-  const session = renewed ?? await openBrowserProtocolSession(port, appHint, activationAttempt, applySpec)
+  const session = renewed ?? await openBrowserProtocolSession(
+    port,
+    appHint,
+    externalHostIdentity,
+    activationAttempt,
+    applySpec,
+  )
   if (session === 'disabled') return { kind: 'disabled' }
-  if (session === 'legacy-required') return { kind: 'legacy-required' }
   if (session === 'rejected') return { kind: 'unavailable' }
   if (session === null) return { kind: 'unavailable', activationAttempt }
   let gapAcknowledged = false

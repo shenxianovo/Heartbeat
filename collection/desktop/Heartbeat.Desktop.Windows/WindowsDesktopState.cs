@@ -72,13 +72,19 @@ public sealed class WindowsDesktopState : IDesktopState, IDisposable
     public void SetCollectorEnabled(string source, bool enabled)
     {
         if (string.Equals(source, ActivitySources.Browser, StringComparison.OrdinalIgnoreCase))
-            _browserRuntime?.SetDesiredEnabled(enabled);
+        {
+            _browserRuntime?.SetAllAppsDesiredEnabled(enabled);
+            return;
+        }
         _config.Update(config =>
         {
             if (config.Collectors.TryGetValue(source, out var collector))
                 collector.Enabled = enabled;
         });
     }
+
+    public void SetBrowserCollectorAppEnabled(string appHint, bool enabled) =>
+        _browserRuntime?.SetAppDesiredEnabled(appHint, enabled);
 
     public void OpenBrowserCollectorSetup(BrowserKind browser)
     {
@@ -179,7 +185,18 @@ public sealed class WindowsDesktopState : IDesktopState, IDisposable
             },
             snapshot.RuntimeStatusDetail,
             snapshot.ReloadRequired,
-            snapshot.PreviousKnownGoodVersion);
+            snapshot.PreviousKnownGoodVersion,
+            snapshot.Apps.Select(app => new BrowserCollectorAppState(
+                app.AppHint,
+                app.DesiredEnabled,
+                app.RuntimeStatus switch
+                {
+                    BrowserCollectorRuntimeStatus.Ready => ExternalHostRuntimeStatus.Ready,
+                    BrowserCollectorRuntimeStatus.Degraded => ExternalHostRuntimeStatus.Degraded,
+                    _ => ExternalHostRuntimeStatus.Waiting
+                },
+                app.RuntimeStatusDetail,
+                app.PackageVersion)).ToArray());
 
     private void HandleConfigChanged(AgentConfig _) => Publish();
     private void HandleCurrentActivityChanged(CurrentActivity? _) => Publish();

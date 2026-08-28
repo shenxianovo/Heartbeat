@@ -4,10 +4,7 @@
   "schemaMajor": 1,
   "schemaRevision": 1,
   "factKind": "event",
-  "evolution": {
-    "mode": "immutableEvent",
-    "allowRetraction": false
-  },
+  "evolution": { "mode": "immutableEvent", "allowRetraction": false },
   "payloadSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "payloadSchema": {
     "type": "object",

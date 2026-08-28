@@ -17,6 +17,15 @@ public enum BrowserCollectorRuntimeStatus
     Degraded
 }
 
+public sealed record BrowserCollectorAppRuntimeSnapshot(
+    string AppHint,
+    Guid CollectorInstanceId,
+    bool DesiredEnabled,
+    BrowserCollectorRuntimeStatus RuntimeStatus,
+    string RuntimeStatusDetail,
+    string PackageVersion,
+    string PackageContentHash);
+
 public sealed record BrowserCollectorRuntimeSnapshot(
     bool IsInstalled,
     string? PackageVersion,
@@ -27,12 +36,13 @@ public sealed record BrowserCollectorRuntimeSnapshot(
     BrowserCollectorRuntimeStatus RuntimeStatus,
     string RuntimeStatusDetail,
     bool ReloadRequired,
-    string? PreviousKnownGoodVersion);
+    string? PreviousKnownGoodVersion,
+    IReadOnlyList<BrowserCollectorAppRuntimeSnapshot> Apps);
 
 /// <summary>
-/// Owns the Desktop Hub's exact local browser Package installation and the stable browser
-/// Collector Instance. A copied directory is only an Installation; ExternalHost callbacks are
-/// the sole authority for Ready/Degraded runtime state.
+/// Owns the Desktop Hub's exact local browser Package installations and the stable browser App
+/// Collector Instances. A copied directory is only an Installation; an App Instance is created
+/// only after a stable appHint is discovered or explicitly configured.
 /// </summary>
 public sealed class BrowserCollectorRuntime
 {
@@ -47,7 +57,6 @@ public sealed class BrowserCollectorRuntime
 
     private readonly object _gate = new();
     private readonly CollectorRuntime _runtime;
-    private readonly ICollectorRegistry _legacyRegistry;
     private readonly BrowserExternalHostBindingOptions _options;
     private readonly SubjectReference _subject;
     private readonly string _installRoot;
@@ -55,15 +64,14 @@ public sealed class BrowserCollectorRuntime
     private BrowserRuntimeState _state;
     private BrowserCollectorRuntimeStatus _runtimeStatus;
     private string _runtimeStatusDetail;
+    private readonly Dictionary<string, AppRuntimeStatus> _appStatuses = new(StringComparer.Ordinal);
 
     public BrowserCollectorRuntime(
         CollectorRuntime runtime,
-        ICollectorRegistry legacyRegistry,
         IDeviceIdentity deviceIdentity,
         BrowserExternalHostBindingOptions options)
     {
         ArgumentNullException.ThrowIfNull(runtime);
-        ArgumentNullException.ThrowIfNull(legacyRegistry);
         ArgumentNullException.ThrowIfNull(deviceIdentity);
         ArgumentNullException.ThrowIfNull(options);
         if (string.IsNullOrWhiteSpace(options.DataDirectory))
@@ -72,7 +80,6 @@ public sealed class BrowserCollectorRuntime
             throw new InvalidOperationException("Browser Collector requires a UUID machine identity.");
 
         _runtime = runtime;
-        _legacyRegistry = legacyRegistry;
         _options = options;
         _subject = new SubjectReference(subjectId, SubjectKind.Machine);
         _installRoot = Path.Combine(Path.GetFullPath(options.DataDirectory), "collector-packages");
@@ -97,7 +104,7 @@ public sealed class BrowserCollectorRuntime
     }
 
     public event Action<BrowserCollectorRuntimeSnapshot>? Changed;
-    internal event Action<bool>? DesiredEnabledChanged;
+    internal event Action<string, bool>? AppDesiredEnabledChanged;
 
     public BrowserCollectorRuntimeSnapshot EnsureBundledPackageInstalled()
     {
@@ -192,7 +199,6 @@ public sealed class BrowserCollectorRuntime
                 PreviousKnownGood = previousKnownGood
             };
             SaveStateLocked();
-            EnsureStableInstanceLocked(installed);
             if (PendingReloadAfterKnownGood() && _runtimeStatus == BrowserCollectorRuntimeStatus.Ready)
             {
                 _runtimeStatusDetail = "当前浏览器 Activation 仍 Ready；新版本等待用户 reload。";
@@ -210,103 +216,139 @@ public sealed class BrowserCollectorRuntime
         return snapshot;
     }
 
-    public void SetDesiredEnabled(bool enabled)
+    public void SetAppDesiredEnabled(string appHint, bool enabled)
     {
         BrowserCollectorRuntimeSnapshot snapshot;
         lock (_gate)
         {
             var package = LoadCurrentPackageLocked();
-            var instance = EnsureStableInstanceLocked(package);
+            var instance = GetOrCreateAppInstanceLocked(appHint, package);
             if (ReadDesiredEnabled(instance) == enabled)
                 return;
             using var config = JsonDocument.Parse(
                 $$"""{"enabled":{{enabled.ToString().ToLowerInvariant()}},"flushPeriodMs":{{_options.FlushPeriodMilliseconds}}}""");
             _runtime.UpdateInstanceSpec(instance.CollectorInstanceId, 1, config.RootElement.Clone());
-            if (_runtimeStatus != BrowserCollectorRuntimeStatus.Ready)
+            _appStatuses[NormalizeAppHint(appHint)] = new AppRuntimeStatus(
+                BrowserCollectorRuntimeStatus.Waiting,
+                enabled ? "已启用；等待浏览器建立连接。" : "已停用；App Instance 已保留。");
+            snapshot = BuildSnapshotLocked();
+        }
+        Changed?.Invoke(snapshot);
+        AppDesiredEnabledChanged?.Invoke(NormalizeAppHint(appHint), enabled);
+    }
+
+    public void SetAllAppsDesiredEnabled(bool enabled)
+    {
+        string[] appHints;
+        lock (_gate)
+            appHints = FindAppInstancesLocked().Select(instance => instance.InstanceKey!).ToArray();
+        foreach (var appHint in appHints)
+            SetAppDesiredEnabled(appHint, enabled);
+    }
+
+    internal LocalCollectorPackage ResolvePackage(string artifactId, string artifactHash)
+    {
+        lock (_gate)
+        {
+            foreach (var installDirectory in EnumerateInstalledPackageDirectoriesLocked())
             {
-                _runtimeStatus = BrowserCollectorRuntimeStatus.Waiting;
-                _runtimeStatusDetail = enabled
-                    ? "已启用；等待浏览器建立连接。"
-                    : "已停用；Package 和 Collector Instance 已保留。";
+                LocalCollectorPackage package;
+                try
+                {
+                    package = LocalCollectorPackage.Load(installDirectory);
+                    ValidateBrowserPackage(package);
+                }
+                catch (PackageValidationException)
+                {
+                    continue;
+                }
+                if (package.Artifacts.Any(artifact =>
+                        artifact.ArtifactId == artifactId &&
+                        artifact.ContentHash == artifactHash))
+                    return package;
             }
-            snapshot = BuildSnapshotLocked();
+            throw new PackageValidationException(
+                "ExternalHost Artifact does not match any installed browser Collector Package.");
         }
-        Changed?.Invoke(snapshot);
-        DesiredEnabledChanged?.Invoke(enabled);
     }
 
-    internal LocalCollectorPackage LoadCurrentPackage()
+    internal CollectorInstance GetOrCreateAppInstance(string appHint, LocalCollectorPackage package)
     {
         lock (_gate)
-            return LoadCurrentPackageLocked();
+            return GetOrCreateAppInstanceLocked(appHint, package);
     }
 
-    internal CollectorInstance GetStableInstance()
+    internal bool IsAppDesiredEnabled(string appHint)
     {
         lock (_gate)
-            return EnsureStableInstanceLocked(LoadCurrentPackageLocked());
+        {
+            var instance = _runtime.FindInstance(BrowserPackageId, _subject, NormalizeAppHint(appHint));
+            return instance is null || ReadDesiredEnabled(instance);
+        }
     }
 
-    internal void MarkReady(string packageContentHash)
+    internal void MarkReady(string appHint, string packageContentHash)
     {
         BrowserCollectorRuntimeSnapshot snapshot;
         lock (_gate)
         {
-            if (_state.Current is null || _state.Current.PackageContentHash != packageContentHash)
-                return;
-            _state = new BrowserRuntimeState
+            if (_state.Current is not null && _state.Current.PackageContentHash == packageContentHash)
             {
-                Current = _state.Current,
-                KnownGood = _state.Current,
-                PreviousKnownGood = _state.PreviousKnownGood
-            };
-            SaveStateLocked();
-            _runtimeStatus = BrowserCollectorRuntimeStatus.Ready;
-            _runtimeStatusDetail = "浏览器 Collector 已完成协议协商并就绪。";
+                _state = new BrowserRuntimeState
+                {
+                    Current = _state.Current,
+                    KnownGood = _state.Current,
+                    PreviousKnownGood = _state.PreviousKnownGood
+                };
+                SaveStateLocked();
+            }
+            _appStatuses[NormalizeAppHint(appHint)] = new AppRuntimeStatus(
+                BrowserCollectorRuntimeStatus.Ready,
+                "浏览器 App Collector 已完成协议协商并就绪。");
             snapshot = BuildSnapshotLocked();
         }
         Changed?.Invoke(snapshot);
     }
 
-    internal void MarkWaiting(string detail)
+    internal void MarkWaiting(string appHint, string detail)
     {
         BrowserCollectorRuntimeSnapshot snapshot;
         lock (_gate)
         {
-            _runtimeStatus = BrowserCollectorRuntimeStatus.Waiting;
-            _runtimeStatusDetail = detail;
+            _appStatuses[NormalizeAppHint(appHint)] = new AppRuntimeStatus(
+                BrowserCollectorRuntimeStatus.Waiting,
+                detail);
             snapshot = BuildSnapshotLocked();
         }
         Changed?.Invoke(snapshot);
     }
 
-    internal void MarkDegraded(string detail)
+    internal void MarkDegraded(string appHint, string detail)
     {
         BrowserCollectorRuntimeSnapshot snapshot;
         lock (_gate)
         {
-            _runtimeStatus = BrowserCollectorRuntimeStatus.Degraded;
-            _runtimeStatusDetail = detail;
+            _appStatuses[NormalizeAppHint(appHint)] = new AppRuntimeStatus(
+                BrowserCollectorRuntimeStatus.Degraded,
+                detail);
             snapshot = BuildSnapshotLocked();
         }
         Changed?.Invoke(snapshot);
     }
 
-    private CollectorInstance EnsureStableInstanceLocked(LocalCollectorPackage package)
+    private CollectorInstance GetOrCreateAppInstanceLocked(string appHint, LocalCollectorPackage package)
     {
-        var instances = _runtime.FindInstances(BrowserPackageId, _subject);
-        if (instances.Count > 1)
-            throw new InvalidOperationException("Desktop browser Collector requires exactly one stable Collector Instance.");
-        if (instances.Count == 1)
-            return instances[0];
-
-        var enabled = !_legacyRegistry.Snapshot.TryGetValue(ActivitySources.Browser, out var legacy) || legacy.Enabled;
+        var key = NormalizeAppHint(appHint);
+        var existing = _runtime.FindInstance(BrowserPackageId, _subject, key);
+        if (existing is not null)
+            return existing;
         using var config = JsonDocument.Parse(
-            $$"""{"enabled":{{enabled.ToString().ToLowerInvariant()}},"flushPeriodMs":{{_options.FlushPeriodMilliseconds}}}""");
+            $$"""{"enabled":true,"flushPeriodMs":{{_options.FlushPeriodMilliseconds}}}""");
         return _runtime.CreateInstance(
             package,
             _subject,
-            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()),
+            key);
     }
 
     private BrowserCollectorRuntimeSnapshot BuildSnapshotLocked()
@@ -317,35 +359,65 @@ public sealed class BrowserCollectorRuntime
                 BrowserCollectorRuntimeStatus.Waiting,
                 "尚未导入 browser Collector Package。",
                 false,
-                null);
+                null,
+                []);
 
         try
         {
             var package = LoadCurrentPackageLocked();
-            var instance = EnsureStableInstanceLocked(package);
-            return BuildInstalledSnapshotLocked(ReadDesiredEnabled(instance));
+            return BuildInstalledSnapshotLocked();
         }
         catch (PackageValidationException exception)
         {
             _runtimeStatus = BrowserCollectorRuntimeStatus.Degraded;
             _runtimeStatusDetail = $"Installed Package content validation failed: {exception.Message}";
-            return BuildInstalledSnapshotLocked(ReadDesiredEnabledWithoutCreatingInstanceLocked());
+            return BuildInstalledSnapshotLocked();
         }
     }
 
-    private BrowserCollectorRuntimeSnapshot BuildInstalledSnapshotLocked(bool desiredEnabled) =>
-        new(
+    private BrowserCollectorRuntimeSnapshot BuildInstalledSnapshotLocked()
+    {
+        var apps = FindAppInstancesLocked()
+            .Select(instance =>
+            {
+                var status = _appStatuses.GetValueOrDefault(
+                    instance.InstanceKey!,
+                    new AppRuntimeStatus(
+                        BrowserCollectorRuntimeStatus.Waiting,
+                        "等待该浏览器 App 的 ExternalHost 建立连接。"));
+                return new BrowserCollectorAppRuntimeSnapshot(
+                    instance.InstanceKey!,
+                    instance.CollectorInstanceId,
+                    ReadDesiredEnabled(instance),
+                    status.Status,
+                    status.Detail,
+                    instance.PackageVersion,
+                    instance.PackageContentHash);
+            })
+            .OrderBy(app => app.AppHint, StringComparer.Ordinal)
+            .ToArray();
+        var aggregateStatus = apps.Any(app => app.RuntimeStatus == BrowserCollectorRuntimeStatus.Degraded)
+            ? BrowserCollectorRuntimeStatus.Degraded
+            : apps.Any(app => app.RuntimeStatus == BrowserCollectorRuntimeStatus.Ready)
+                ? BrowserCollectorRuntimeStatus.Ready
+                : _runtimeStatus;
+        var aggregateDetail = apps.Length == 0
+            ? _runtimeStatusDetail
+            : $"已发现 {apps.Length} 个浏览器 App Instance。";
+        return new BrowserCollectorRuntimeSnapshot(
             true,
             _state.Current!.Version,
             _state.Current.PackageContentHash,
             _state.Current.InstallDirectory,
             Path.Combine(_state.Current.InstallDirectory, PathFromPortable(_state.Current.SideloadRelativePath)),
-            desiredEnabled,
-            _runtimeStatus,
-            _runtimeStatusDetail,
+            apps.Length == 0 || apps.All(app => app.DesiredEnabled),
+            aggregateStatus,
+            aggregateDetail,
             _state.KnownGood is not null &&
                 _state.KnownGood.PackageContentHash != _state.Current.PackageContentHash,
-            _state.PreviousKnownGood?.Version);
+            _state.PreviousKnownGood?.Version,
+            apps);
+    }
 
     private LocalCollectorPackage LoadCurrentPackageLocked()
     {
@@ -362,14 +434,32 @@ public sealed class BrowserCollectorRuntime
     private static bool ReadDesiredEnabled(CollectorInstance instance) =>
         !instance.Spec.Config.TryGetProperty("enabled", out var enabled) || enabled.GetBoolean();
 
-    private bool ReadDesiredEnabledWithoutCreatingInstanceLocked()
+    private IReadOnlyList<CollectorInstance> FindAppInstancesLocked() =>
+        _runtime.FindInstances(BrowserPackageId, _subject)
+            .Where(instance => instance.InstanceKey is not null)
+            .ToArray();
+
+    private IEnumerable<string> EnumerateInstalledPackageDirectoriesLocked()
     {
-        var instances = _runtime.FindInstances(BrowserPackageId, _subject);
-        if (instances.Count > 1)
-            throw new InvalidOperationException("Desktop browser Collector requires exactly one stable Collector Instance.");
-        if (instances.Count == 1)
-            return ReadDesiredEnabled(instances[0]);
-        return !_legacyRegistry.Snapshot.TryGetValue(ActivitySources.Browser, out var legacy) || legacy.Enabled;
+        var packageRoot = Path.Combine(_installRoot, BrowserPackageId);
+        if (!Directory.Exists(packageRoot))
+            yield break;
+        foreach (var versionDirectory in Directory.EnumerateDirectories(packageRoot))
+        foreach (var hashDirectory in Directory.EnumerateDirectories(versionDirectory))
+            yield return hashDirectory;
+    }
+
+    internal static string NormalizeAppHint(string appHint)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(appHint);
+        var normalized = appHint.Trim().ToLowerInvariant();
+        if (normalized.Length > 64 || !char.IsAsciiLetterOrDigit(normalized[0]) ||
+            normalized.Any(character =>
+                !char.IsAsciiLetterOrDigit(character) && character is not '.' and not '_' and not '-'))
+            throw new ArgumentException(
+                "appHint must be a stable slug of at most 64 ASCII letters, digits, '.', '_' or '-'.",
+                nameof(appHint));
+        return normalized;
     }
 
     private bool PendingReloadAfterKnownGood() =>
@@ -658,4 +748,6 @@ public sealed class BrowserCollectorRuntime
         public string InstallDirectory { get; init; } = string.Empty;
         public string SideloadRelativePath { get; init; } = string.Empty;
     }
+
+    private sealed record AppRuntimeStatus(BrowserCollectorRuntimeStatus Status, string Detail);
 }
