@@ -7,7 +7,7 @@
 > 设计定于 2026-07-22 grilling session（候选②）。实现待动工，issue 拆片见
 > `.scratch/collector-depth-declaration/issues/`。
 
-> 2026-08-28 implementation note: collector 自报的 declaration HTTP 动词已退役；当前只接受经验证 Collector Package 携带的 observation declaration，再由 Hub 上行 Analytics。以下 loopback 方案保留为历史背景。
+> 2026-08-28 implementation note: collector 自报的 declaration HTTP 动词已退役；System 与 Browser 都从各自 Collector Package 的 `observation-depth.declaration.json` 注册经验证声明，再由 Hub 上行 Analytics。以下 loopback 方案保留为历史背景。
 
 ## Context
 

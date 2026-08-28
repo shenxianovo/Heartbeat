@@ -31,7 +31,7 @@
         "os": ["windows", "macos", "linux"],
         "arch": ["x64", "arm64"]
       },
-      "entrypoint": "artifacts/reference-collector.json",
+      "entrypoint": "artifacts/reference-collector.artifact.json",
       "size": 95,
       "contentHash": "sha256:de359aff82ed415958d16bc5fd08caad6b8fabdb8bf82556505dd2506399e02b"
     }

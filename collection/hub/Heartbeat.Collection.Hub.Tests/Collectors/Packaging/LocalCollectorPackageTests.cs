@@ -55,7 +55,7 @@ public class LocalCollectorPackageTests
         var artifactPath = Path.Combine(
             packageCopy.Path,
             "artifacts",
-            "reference-collector.json");
+            "reference-collector.artifact.json");
         var bytes = File.ReadAllBytes(artifactPath);
         bytes[10] ^= 1;
         File.WriteAllBytes(artifactPath, bytes);
@@ -172,7 +172,7 @@ public class LocalCollectorPackageTests
         var artifactPath = Path.Combine(
             packageCopy.Path,
             "artifacts",
-            "reference-collector.json");
+            "reference-collector.artifact.json");
         var outsidePath = Path.Combine(
             Path.GetTempPath(),
             $"heartbeat-outside-artifact-{Guid.NewGuid():N}.json");

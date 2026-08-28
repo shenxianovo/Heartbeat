@@ -293,6 +293,12 @@ BenchmarkDotNet.Artifacts/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+!collection/desktop/Heartbeat.Collector.System/Package/artifacts/
+collection/desktop/Heartbeat.Collector.System/Package/artifacts/*
+!collection/desktop/Heartbeat.Collector.System/Package/artifacts/system-collector.artifact.json
+!collection/hub/Heartbeat.Collection.Hub.Tests/Fixtures/ReferenceCollectorPackage/artifacts/
+collection/hub/Heartbeat.Collection.Hub.Tests/Fixtures/ReferenceCollectorPackage/artifacts/*
+!collection/hub/Heartbeat.Collection.Hub.Tests/Fixtures/ReferenceCollectorPackage/artifacts/reference-collector.artifact.json
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt

@@ -52,6 +52,7 @@ Instance Desired State 使用单调 SpecRevision；Activation 报告已经应用
 - ExternalHost Stream 由 `appHint + externalHostIdentity` 形成 identifying dimensions。
 - browser 只使用 binding 专属 discovery 与 Collector Protocol v1。`POST /v1/segments`、`GET /v1/hub`、source 级 config/declaration 入口及 fallback 已退役。
 - Fact Schema 权威文件集中在 `collection/contracts/facts/`，Package schema 与最终 manifest 由 staging 工具生成并受演进基线约束。
+- Package 内的 observation declaration 与 Artifact descriptor 是独立 JSON 契约；跨语言协议行为由 `collection/protocol/conformance/` 的行为语料锁定，wire message shape 由协议/Runtime 代码严格校验。
 - Package 的原始文件 hash 只负责内容完整性；Fact Schema 跨版本演进比较解析后的 JSON 含义，排版变化不要求升 revision。同版本的新 Package content hash 可作为新候选走 Ready/LKG/回退流程。
 
 ## Consequences
@@ -72,5 +73,6 @@ Instance Desired State 使用单调 SpecRevision；Activation 报告已经应用
 - [ADR-026](./026-collector-registry-deactivation.md) — 现有启用意图与 Hub 准入
 - [ADR-032](./032-device-as-observed-subject.md) — 无头 Hub 与 VRChat 原始设计，本 ADR 修订其进程边界
 - [ADR-037](./037-collection-project-boundaries.md) — Collection 可执行与程序集边界
-- [Collector Runtime PRD](../../.scratch/collector-plugin-runtime/PRD.md) — 协议字段、状态机与后续实现细节
+- [系统架构与协议](../architecture/system-overview.md) — 当前 JSON 契约地图、Transport Binding 与校验链
+- [Collector Runtime PRD](../../.scratch/collector-plugin-runtime/PRD.md) — 一次性开发任务的范围、裁决与 closeout 记录
 - [DeepSeek Harness / Cordis 研究](../../.scratch/collector-plugin-runtime/research/deepseek-harness-and-cordis.md) — 可借鉴与不可照搬的边界

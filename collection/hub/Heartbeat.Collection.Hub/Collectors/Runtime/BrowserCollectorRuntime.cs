@@ -514,9 +514,9 @@ public sealed class BrowserCollectorRuntime
                     $"Declared browser Artifact file '{relativePath}' does not match its size or content hash.");
         }
 
-        var metadataPath = Path.Combine(sideloadDirectory, "package-metadata.json");
+        var metadataPath = Path.Combine(sideloadDirectory, "collector-artifact-ref.json");
         if (!File.Exists(metadataPath))
-            throw new PackageValidationException("Browser sideload directory is missing package-metadata.json.");
+            throw new PackageValidationException("Browser sideload directory is missing collector-artifact-ref.json.");
         using (var metadata = JsonDocument.Parse(File.ReadAllBytes(metadataPath)))
         {
             var metadataRoot = metadata.RootElement;
@@ -524,13 +524,13 @@ public sealed class BrowserCollectorRuntime
                 metadataRoot.EnumerateObject().Count() != 1 ||
                 !metadataRoot.TryGetProperty("artifactHash", out var artifactHash) ||
                 artifactHash.GetString() != verifiedArtifact.ContentHash)
-                throw new PackageValidationException("Browser package-metadata.json does not identify the verified Artifact descriptor.");
+                throw new PackageValidationException("Browser collector-artifact-ref.json does not identify the verified Artifact descriptor.");
         }
 
         var actualPayloadFiles = Directory.EnumerateFiles(sideloadDirectory, "*", SearchOption.AllDirectories)
             .Select(path => Path.GetRelativePath(package.PackageDirectory, path).Replace(Path.DirectorySeparatorChar, '/'))
             .Where(path => !IsIgnorableMetadataFile(path))
-            .Where(path => path != $"{sideloadRelativePath}/package-metadata.json")
+            .Where(path => path != $"{sideloadRelativePath}/collector-artifact-ref.json")
             .ToHashSet(StringComparer.Ordinal);
         if (!actualPayloadFiles.SetEquals(declaredFiles))
             throw new PackageValidationException("Browser sideload directory contains undeclared executable payload files.");

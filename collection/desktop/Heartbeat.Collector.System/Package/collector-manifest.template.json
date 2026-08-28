@@ -9,6 +9,10 @@
     "diagnostics.stream-gap": [1]
   },
   "config": { "version": 1, "accepts": [1] },
+  "observationDeclaration": {
+    "document": "observation-depth.declaration.json",
+    "hash": "sha256:54d06e302ef2d9a11d42771c015ec10f85ac3938ca7ff6a71c749574220bec5a"
+  },
   "outputs": [
     {
       "outputId": "foreground",
@@ -18,7 +22,7 @@
         "id": "heartbeat.system.foreground-segment",
         "major": 1,
         "revision": 1,
-        "document": "schemas/foreground-segment.schema.json"
+        "document": "schemas/system-foreground-segment.schema.json"
       },
       "subjectKinds": ["machine"],
       "dimensionKeys": []
@@ -31,7 +35,7 @@
         "id": "heartbeat.input",
         "major": 1,
         "revision": 1,
-        "document": "schemas/input-event.schema.json"
+        "document": "schemas/system-input-event.schema.json"
       },
       "subjectKinds": ["machine"],
       "dimensionKeys": []
@@ -45,7 +49,7 @@
         "os": ["windows", "macos"],
         "arch": ["x64", "arm64"]
       },
-      "entrypoint": "artifacts/system-collector.json",
+      "entrypoint": "artifacts/system-collector.artifact.json",
       "size": 91,
       "contentHash": "sha256:23c16ebff6f3077c3a91524b4a72e9d38770cf2c0440b61d1d91490b9143c930"
     }

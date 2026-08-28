@@ -11,6 +11,7 @@
   </Target>
 
   <Target Name="CopyBrowserCollectorPackage" AfterTargets="Build" DependsOnTargets="StageBrowserCollectorPackage">
+    <RemoveDir Directories="$(OutDir)$(BrowserCollectorPackageDestination)" />
     <ItemGroup>
       <BrowserCollectorPackageFiles Include="$(BrowserCollectorPackageStageDirectory)/**/*" />
     </ItemGroup>

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Heartbeat.Collection.CollectorProtocol;
 
 namespace Heartbeat.Collector.VRChat;
@@ -7,6 +8,11 @@ internal sealed class VRChatManagedCollector(
     IVRChatApiFactory apiFactory,
     Func<DateTimeOffset>? clock = null) : ICollectorProtocolApplication
 {
+    private static readonly JsonSerializerOptions PayloadJsonOptions = new()
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
     private readonly Func<DateTimeOffset> _clock = clock ?? (() => DateTimeOffset.UtcNow);
     private TimeSpan _pollInterval = TimeSpan.FromMinutes(1);
     private IVRChatApiSession? _session;
@@ -201,7 +207,7 @@ internal sealed class VRChatManagedCollector(
         }
     }
 
-    private static CollectorFact ToFact(VRChatPresenceFact fact) => new(
+    internal static CollectorFact ToFact(VRChatPresenceFact fact) => new(
         "presence",
         1,
         fact.FactId,
@@ -217,7 +223,7 @@ internal sealed class VRChatManagedCollector(
             worldId = fact.WorldId,
             worldName = fact.WorldName,
             instanceId = fact.InstanceId
-        }));
+        }, PayloadJsonOptions));
 
     private static CollectorStreamGap ToGap(VRChatPresenceRecoveryGap gap) => new(
         Guid.CreateVersion7(),

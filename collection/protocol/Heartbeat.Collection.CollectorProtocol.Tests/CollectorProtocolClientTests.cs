@@ -76,7 +76,7 @@ public sealed class CollectorProtocolClientTests
         using var corpus = JsonDocument.Parse(File.ReadAllText(Path.Combine(
             AppContext.BaseDirectory,
             "Conformance",
-            "collector-protocol-transcripts.json")));
+            "collector-protocol-conformance.json")));
         foreach (var item in corpus.RootElement.GetProperty("factAcknowledgements").EnumerateArray())
         {
             var status = Enum.Parse<CollectorFactDeliveryStatus>(

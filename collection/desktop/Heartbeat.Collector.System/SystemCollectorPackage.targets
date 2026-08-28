@@ -11,6 +11,7 @@
   </Target>
 
   <Target Name="CopySystemCollectorPackage" AfterTargets="Build" DependsOnTargets="StageSystemCollectorPackage">
+    <RemoveDir Directories="$(OutDir)$(SystemCollectorPackageDestination)" />
     <ItemGroup>
       <SystemCollectorPackageFiles Include="$(SystemCollectorPackageStageDirectory)/**/*" />
     </ItemGroup>

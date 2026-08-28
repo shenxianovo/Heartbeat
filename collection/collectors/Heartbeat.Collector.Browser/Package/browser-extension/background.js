@@ -183,7 +183,7 @@ const ARTIFACT_ID = "browser.extension";
 const TEST_ARTIFACT_HASH = `sha256:${"0".repeat(64)}`;
 async function browserArtifactHash() {
   if (typeof chrome === "undefined" || !chrome.runtime?.getURL) return TEST_ARTIFACT_HASH;
-  const response = await fetch(chrome.runtime.getURL("package-metadata.json"));
+  const response = await fetch(chrome.runtime.getURL("collector-artifact-ref.json"));
   if (!response.ok) throw new Error("browser Package metadata is unavailable");
   const metadata = await response.json();
   if (typeof metadata.artifactHash !== "string" || !/^sha256:[0-9a-f]{64}$/.test(metadata.artifactHash)) {

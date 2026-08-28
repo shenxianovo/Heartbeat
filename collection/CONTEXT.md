@@ -33,8 +33,16 @@ _Avoid_: 每个 Collector 自行拼装协议状态机、把 Client 与某一种 
 _Avoid_: 在原生回调或 UI 线程同步等待 Fact 发布
 
 **Collector Protocol Conformance Suite（采集器协议一致性套件）**:
-跨语言共享的可执行协议 transcript，固定生命周期、ACK、重试、Gap 与 drain 结果；各语言实现通过同一语料证明其 Binding 没有改变协议语义。
-_Avoid_: 只共享 DTO、以某一种语言实现作为协议本身
+跨语言共享的可执行协议行为语料，固定生命周期、ACK、重试、Gap 与 drain 结果；各语言实现通过同一组向量证明其 Binding 没有改变协议语义。它不是 wire-message schema，也不是完整请求/响应 transcript。
+_Avoid_: 只共享 DTO、以某一种语言实现作为协议本身、把行为语料误当消息格式定义
+
+**Observation Declaration（观测声明）**:
+Collector Package 携带的独立 JSON 声明，描述 Source 的有序观测深度、读数槽位和展示标签。Package loader 先验证其路径、hash、Source 与版本，再由 Hub 原文上行；它不属于 Fact payload，也不从 Fact Schema 或 Output Template 推导。
+_Avoid_: Fact Schema、Output Template、运行时自报 declaration
+
+**Artifact Descriptor（制品描述符）**:
+Collector Package 中描述一个可验证执行制品的 `*.artifact.json`。它固定入口与内容；Browser ExternalHost 描述符还枚举整个 sideload payload 的路径、大小与 hash。它的内容 hash 由最终 manifest 引用。
+_Avoid_: Collector Package manifest、浏览器内部 `manifest.json`、把 descriptor 当成可执行文件本身
 
 **Transport Binding（传输绑定）**:
 Collector Protocol 在某种执行边界上的承载方式；不同 Binding 不改变协议语义。

@@ -242,7 +242,7 @@ public sealed class BrowserCollectorRuntimeTests : IDisposable
 
     private static void RewriteVersion(string package, string oldVersion, string newVersion)
     {
-        var declarationPath = Path.Combine(package, "observation-depth.json");
+        var declarationPath = Path.Combine(package, "observation-depth.declaration.json");
         var declaration = File.ReadAllText(declarationPath)
             .Replace($"\"collectorVersion\": \"{oldVersion}\"", $"\"collectorVersion\": \"{newVersion}\"", StringComparison.Ordinal);
         File.WriteAllText(declarationPath, declaration);
@@ -269,7 +269,7 @@ public sealed class BrowserCollectorRuntimeTests : IDisposable
     private static string BrowserArtifactHash => JsonNode.Parse(File.ReadAllText(Path.Combine(
         BrowserPackagePath,
         "browser-extension",
-        "package-metadata.json")))!["artifactHash"]!.GetValue<string>();
+        "collector-artifact-ref.json")))!["artifactHash"]!.GetValue<string>();
 
     public void Dispose()
     {

@@ -706,6 +706,39 @@ public class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
+    public async Task Publish_SubjectAwareDurableSegmentSink_AcceptsAndProjectsFact()
+    {
+        using var directory = TemporaryDirectory.Create();
+        var package = LocalCollectorPackage.Load(ReferencePackagePath);
+        var sink = new RecordingSubjectSegmentSink();
+        using var runtime = CollectorRuntime.Open(
+            Path.Combine(directory.Path, "collector-runtime.json"),
+            sink);
+        using var config = JsonDocument.Parse("{}");
+        var subject = new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine);
+        var instance = runtime.CreateInstance(
+            package,
+            subject,
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        await using var activation = await runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            package,
+            new ReferenceInProcessCollector());
+        var stream = activation.Streams["activity"];
+
+        var acknowledgement = await stream.PublishAsync(
+            Guid.CreateVersion7(),
+            [CreateFact(stream.Descriptor.StreamId)]);
+
+        Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(acknowledgement.Results).Status);
+        var projected = Assert.Single(sink.Items);
+        Assert.Equal(instance.CollectorInstanceId, projected.Context.CollectorInstanceId);
+        Assert.Equal(subject, projected.Context.Subject);
+        Assert.False(projected.IsFinal);
+        Assert.Equal("Reference work", projected.Item.Title);
+    }
+
+    [Fact]
     public async Task RuntimeReopen_TamperedDurableFactPayloadFailsClosed()
     {
         await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
@@ -2494,6 +2527,31 @@ public class InProcessCollectorProtocolTranscriptTests
             UpsertDurable(snapshot, revision);
 
         public void RetractDurable(Guid segmentId, long revision) => Retract(segmentId);
+    }
+
+    private sealed class RecordingSubjectSegmentSink : ISegmentSink, ISubjectSegmentProjectionSink
+    {
+        public List<(CollectorProjectionContext Context, ActivitySegmentItem Item, bool IsFinal)> Items { get; } = [];
+
+        public void Push(List<ActivitySegmentItem> snapshots) =>
+            throw new NotSupportedException("Subject-aware projection requires Collector Instance context.");
+
+        public void UpsertDurable(
+            CollectorProjectionContext context,
+            ActivitySegmentItem snapshot,
+            long revision,
+            bool isFinal) => Items.Add((context, snapshot, isFinal));
+
+        public void ReplayDurable(
+            CollectorProjectionContext context,
+            ActivitySegmentItem snapshot,
+            long revision,
+            bool isFinal) => Items.Add((context, snapshot, isFinal));
+
+        public void RetractDurable(
+            CollectorProjectionContext context,
+            Guid segmentId,
+            long revision) { }
     }
 
     private sealed class FixedClock(DateTimeOffset utcNow) : IClock

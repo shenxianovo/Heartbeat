@@ -9,13 +9,6 @@
       "document": "browser-active-tab-segment.schema.json"
     },
     {
-      "schemaId": "heartbeat.input",
-      "schemaMajor": 1,
-      "schemaRevision": 1,
-      "hash": "sha256:e719d97a70ec9b9176105bbb8c5648ef6c929a217c3b3d21a42a53e7ac29f024",
-      "document": "input-event.schema.json"
-    },
-    {
       "schemaId": "heartbeat.reference.segment",
       "schemaMajor": 1,
       "schemaRevision": 1,
@@ -28,6 +21,13 @@
       "schemaRevision": 1,
       "hash": "sha256:5acfa2a67a49716a1f92f36562dfc2d0087d20237a7a86547aee5ea5cd4072d4",
       "document": "system-foreground-segment.schema.json"
+    },
+    {
+      "schemaId": "heartbeat.input",
+      "schemaMajor": 1,
+      "schemaRevision": 1,
+      "hash": "sha256:e719d97a70ec9b9176105bbb8c5648ef6c929a217c3b3d21a42a53e7ac29f024",
+      "document": "system-input-event.schema.json"
     },
     {
       "schemaId": "heartbeat.vrchat.presence-segment",

@@ -34,7 +34,7 @@ internal static class VRChatPackageBuilder
 
         var schemaDirectory = Path.Combine(root, "schemas");
         Directory.CreateDirectory(schemaDirectory);
-        var schemaPath = Path.Combine(schemaDirectory, "vrchat-presence.schema.json");
+        var schemaPath = Path.Combine(schemaDirectory, "vrchat-presence-segment.schema.json");
         File.Copy(
             Path.Combine(sourceRoot, "contracts", "facts", "vrchat-presence-segment.schema.json"),
             schemaPath,
@@ -70,7 +70,7 @@ internal static class VRChatPackageBuilder
                         id = "heartbeat.vrchat.presence-segment",
                         major = 1,
                         revision = 1,
-                        document = "schemas/vrchat-presence.schema.json",
+                        document = "schemas/vrchat-presence-segment.schema.json",
                         hash = Hash(File.ReadAllBytes(schemaPath))
                     },
                     subjectKinds = new[] { "account" },

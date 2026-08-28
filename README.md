@@ -88,6 +88,7 @@ Heartbeat
 - [系统架构与协议图](./docs/architecture/system-overview.md) — 当前模块、身份层级、Transport Binding 与 schema 校验链
 - [兼容债务账本](./docs/architecture/compatibility-debt.md) — 当前仍服务的旧数据/客户端、退出门槛与验证
 - [Collector Fact Contracts](./collection/contracts/README.md) — 5 个 schema 的单一来源与演进检查
+- [Collector Protocol Conformance](./collection/protocol/conformance/README.md) — 跨语言生命周期、ACK、重试、Gap 与 drain 行为语料
 - [API 导读](./docs/api.md) — 鉴权、调用方与客户端生成约定；端点真相源是 OpenAPI
 - [数据库导读](./docs/db.md) — 数据设计意图；schema 真相源是实体类与迁移
 - [Runbooks](./docs/runbooks/) — 本地数据 smoke、生产数据刷新与 App Catalog 运维

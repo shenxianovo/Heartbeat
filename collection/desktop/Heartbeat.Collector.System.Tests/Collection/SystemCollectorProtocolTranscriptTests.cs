@@ -26,6 +26,11 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
     {
         var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
 
+        var declaration = Assert.IsType<VerifiedObservationDeclaration>(package.ObservationDeclaration);
+        Assert.Equal("system", declaration.Source);
+        Assert.Equal(1, declaration.Version);
+        Assert.Contains("\"app\"", declaration.Json);
+
         Assert.Collection(
             package.Manifest.Outputs.OrderBy(output => output.OutputId, StringComparer.Ordinal),
             foreground =>

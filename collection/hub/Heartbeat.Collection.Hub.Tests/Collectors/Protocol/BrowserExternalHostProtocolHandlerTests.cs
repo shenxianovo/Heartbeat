@@ -259,7 +259,7 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
             "Fixtures",
             "BrowserCollectorPackage",
             "browser-extension",
-            "package-metadata.json")));
+            "collector-artifact-ref.json")));
         var artifactHash = metadata.RootElement.GetProperty("artifactHash").GetString();
         return $$"""{"artifactId":"browser.extension","artifactHash":"{{artifactHash}}","protocolMajors":[1],"supportedCapabilities":{"facts.segment":[1],"diagnostics.stream-gap":[1]},"appHint":"{{appHint}}","externalHostIdentity":"{{externalHostIdentity}}"}""";
     }

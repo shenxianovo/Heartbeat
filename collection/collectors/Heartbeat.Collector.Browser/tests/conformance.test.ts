@@ -11,7 +11,7 @@ type FactCase = {
 }
 
 const corpusPath = fileURLToPath(new URL(
-  '../../../protocol/conformance/v1/collector-protocol-transcripts.json',
+  '../../../protocol/conformance/v1/collector-protocol-conformance.json',
   import.meta.url,
 ))
 const corpus = JSON.parse(readFileSync(corpusPath, 'utf8')) as {

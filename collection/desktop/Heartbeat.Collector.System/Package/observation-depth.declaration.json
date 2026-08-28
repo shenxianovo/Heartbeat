@@ -1,0 +1,12 @@
+{
+  "source": "system",
+  "version": 1,
+  "layers": [
+    {
+      "readings": [
+        { "name": "app", "from": "appName", "label": "应用" },
+        { "name": "title", "from": "title", "label": "窗口标题" }
+      ]
+    }
+  ]
+}

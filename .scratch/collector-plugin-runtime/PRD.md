@@ -1,6 +1,6 @@
 # 采集器即插即用运行时
 
-Status: ready-for-agent
+Status: done
 
 ## 构想
 
@@ -8,7 +8,7 @@ Status: ready-for-agent
 
 版本管理可参考 pnpm、NuGet 等包管理器：不可变的包版本、带兼容约束的清单、版本范围解析、精确锁定状态，以及下载后校验、切换和回滚。这里借鉴的是依赖图、版本范围、内容校验、锁定和回滚等机制，不预设沿用它们的仓库形态或命令行体验。
 
-用户提供的 Cordis 论文及 DeepSeek Harness 开源实现已经完成评估；论文提供生命周期所有权与依赖驱动组合的参考，但不替代 Heartbeat 的跨进程统一协议与事实模型。设计 grilling 已结束，本文保留其决策背景；当前实现状态需要按 issue 10 与两份规范完成对账。
+用户提供的 Cordis 论文及 DeepSeek Harness 开源实现已经完成评估；论文提供生命周期所有权与依赖驱动组合的参考，但不替代 Heartbeat 的跨进程统一协议与事实模型。设计 grilling 与实现对账均已结束，本文保留一次性开发任务的范围、裁决与 closeout 记录。
 
 ## 本轮收口目标
 
@@ -17,19 +17,15 @@ Status: ready-for-agent
 1. **统一 Collector Runtime / Protocol**：Package、Instance、Activation、Desired/Actual、能力协商和 Fact 交付不再因 InProcess、ManagedProcess、ExternalHost 各长一套。
 2. **统一观测事实模型**：Subject 与 Hub 解耦，Segment、Event、Measurement 共享最小信封但保留各自时间与收敛语义。
 
-代码实现与自动验证已经完成，但需求还不能标为 `done`：issue 08 仍有本地真实 VRChat 账号
-smoke，issue 10 仍需把 PRD / Protocol / Fact 文档与已交付实现对账。因此本 PRD 当前是
-`ready-for-agent`；issue 10 完成后再转 `ready-for-human` 承接真实账号门禁。
+代码实现、协议 JSON 对账、自动验证与本地真实 VRChat 账号 smoke 均已完成；本轮统一 Collector Runtime / Protocol 与统一观测事实模型已收口。
 
-2026-08-28 closeout audit：完整 .NET、Dashboard、Browser 与 Fact contract 回归通过；恢复数据的
-baseline→新 Desktop 数据 verify 通过。审计同时发现本 PRD 的“实现前矛盾”、覆盖表和两份
-`Draft 0.2` 未随实现收口，已建 issue 10；真实 VRChat 账号 smoke 尚未执行。
+2026-08-28 closeout audit：完整 .NET、Dashboard、Browser 与 Fact contract 回归通过；恢复数据的 baseline→新 Desktop 数据 verify 通过。issue 10 又将旧 Draft 的已裁决内容对到账当前实现，把长期事实迁入正式架构、ADR、context、Fact contracts 与 conformance 文档，并退役两份一次性 Draft。issue 08 随后完成真实 VRChat 账号 smoke：无头 Hub 恢复加密会话、读取真实世界/instance、持续推进 Fact revision、上传 `vrchat.account` Segment，并在 Dashboard 展示当前世界；至此全部 required issue 均为 `done`。
 
 包市场、安全体系、完整包管理体验、磁盘保留策略与每个故障分支都不是本轮前置条件。已经讨论出的合理方向可以保留在 PRD，除非它影响上述两份公共契约，否则不再单独建 ADR，也不继续用 grilling 展开。
 
 ## 已确认的设计边界
 
-2026-08-17 至 2026-08-22 grilling session 已确认以下边界（ADR-040、ADR-041）。这里只保留决策本身；消息形状、字段与校验规则不在本文复制，权威定义在 [Collector Protocol v1](./spec/collector-protocol-v1.md) 与 [Fact Model v1](./spec/fact-model-v1.md)。
+2026-08-17 至 2026-08-22 grilling session 已确认以下边界（ADR-040、ADR-041）。这里只保留决策背景；当前实现与契约权威关系见 [系统架构与协议](../../docs/architecture/system-overview.md)，Fact payload 见 [Collector Fact Contracts](../../collection/contracts/README.md)，跨语言协议行为见 [Collector Protocol Conformance](../../collection/protocol/conformance/README.md)，消息 shape 与严格 validation 以共享协议/Runtime 代码为准。
 
 ### 身份与分层
 
@@ -103,7 +99,7 @@ baseline→新 Desktop 数据 verify 通过。审计同时发现本 PRD 的“�
 
 Collector 声明版本不等于 Collector 发布版本，也不等于 Collector 协议版本；这些版本不要求同步递增。一个发布版本可以支持多个协议版本，多个发布版本也可以继续使用同一协议版本。
 
-其中 **Collector 声明版本**（ADR-030 Observation Depth 声明）在两份草案里都还没有落点：Manifest 只声明 Output Template，Fact 信封里也没有 `appName / title / identityKey` 这些声明谓词赖以取值的槽位。这是本轮必须裁决的第 3 条矛盾，见[草案暴露的矛盾](#草案暴露的矛盾待裁决)。
+**Collector 声明版本**已经落在 Package 独立的 `observation-depth.declaration.json` 中。它与 Output Template、Fact Schema、Package 版本和 Collector Protocol 版本互不推导；System 与 Browser 都由 Package loader 验证后注册，再由 Hub 原文上行。
 
 ## 产品边界
 
@@ -116,7 +112,7 @@ Collector 声明版本不等于 Collector 发布版本，也不等于 Collector 
 
 ## 包与清单模型
 
-每个 Collector 包携带一份机器可读 Manifest。字段与示例只在 [Collector Protocol v1 §10](./spec/collector-protocol-v1.md#10-manifest-的协议相关最小面) 维护；PRD 不复制第二份 JSON shape。
+每个 Collector 包携带一份机器可读 Manifest。当前 shape 以各 Collector 的 `collector-manifest.template.json`、Package loader 和 staging tests 为准；字段职责与其他 JSON 契约的关系见 [系统架构与协议](../../docs/architecture/system-overview.md#跨实现-json-契约地图)。
 
 约束原则：
 
@@ -214,20 +210,22 @@ Heartbeat Server 应知道各 Hub Instance 当前实际运行的版本与 Collec
 9. ACK 丢失后 Collector 重发相同 Fact，但采用不同批次边界：Hub 以 Fact 身份幂等收敛，不能产生重复业务事实。
 10. Hub 长时间背压导致 Collector 缓冲耗尽：Collector 明确报告 Stream Gap，系统不能把缺口误判为“期间没有活动”。
 
-这十个场景与 [Collector Protocol v1 §13 契约测试](./spec/collector-protocol-v1.md#13-v1-契约测试最小集合) 是两份独立维护的清单，对照后覆盖情况如下。表里的“Runtime 侧”表示该场景不由 wire protocol 承担，需要在 Collector Runtime 的测试里单独立项，不能默认它已被协议测试覆盖。
+2026-08-28 与当前 runtime、conformance corpus 和测试对账如下。“未来”表示对应能力没有进入当前本地官方 Package v1，而不是已交付面的测试缺口。
 
 | 场景 | 归属 | 当前覆盖 |
 | --- | --- | --- |
-| 1 有交集时选最高 | 协议 | 缺，§13.4 只测无交集 |
-| 2 Collector 要求过高协议 | 协议 | §13.4 |
-| 3 宿主升级被已装 Collector 阻断 | Runtime 侧 | 缺 |
-| 4 Agent ↔ Analytics 协商与弃用窗口 | 另一协议（ADR-035） | 不在本规范 |
-| 5 同版本不同哈希 | Runtime 侧 | 缺 |
-| 6 权限缺失保留启用意图 | Runtime 侧 | 缺 |
-| 7 Registry 离线 | Runtime 侧 | 缺 |
-| 8 ConfigVersion 不被候选包接受 | Runtime 侧 | 缺 |
-| 9 换批次边界重发同一 Fact | 协议 | §13.8、§13.9 |
-| 10 缓冲耗尽后报告 Stream Gap | 协议 | 缺，§13 无 `stream.gap` 用例 |
+| 1 有交集时选最高 | 协议 | 未来：当前双方只声明 Major 1；多 Major 解析尚未进入 v1 可执行面 |
+| 2 Collector 要求过高协议 | 协议 | 已覆盖：无共同 Major 在 Hello 阶段拒绝 |
+| 3 宿主升级被已装 Collector 阻断 | Runtime 侧 | 未来：宿主升级全实例 preflight 尚未实现 |
+| 4 Agent ↔ Analytics 协商与弃用窗口 | 另一协议（ADR-035） | 当前是严格 v3 / HTTP 426，不属于 Collector Protocol |
+| 5 同版本不同哈希 | Package Registry | 未来 Registry 才执行发布不可变性；当前本地 Package 允许同 SemVer 的不同 content candidate |
+| 6 权限缺失保留启用意图 | Runtime 侧 | System 权限行为已有覆盖；通用第三方权限模型未来再建 |
+| 7 Registry 离线 | Package Registry | 未来：当前没有在线 Registry |
+| 8 ConfigVersion 不被候选包接受 | Runtime 侧 | 已覆盖：保留 Desired / 旧 Activation 并拒绝候选 |
+| 9 换批次边界重发同一 Fact | 协议 | 已覆盖：ACK/retry identity tests 固定 FactId + Revision，不让批次参与业务身份 |
+| 10 缓冲耗尽后报告 Stream Gap | 协议 | 已覆盖：Gap overflow、ACK 与重试行为进入 conformance corpus |
+
+覆盖证据：场景 1/2 的当前单 Major 与拒绝行为见 `InProcessCollectorProtocolTranscriptTests.Hello_MutableProtocolCollectionsAreSnapshottedBeforeHashAndValidation` 及各 Package manifest；场景 4 见 `StrictIngestProtocolTests` 与 `UploadStreamTests.UpgradeRequired_PausesStream_RetainsQueue_AndCanRecoverAfterRestart`；场景 5 的本地候选语义见 `InProcessCollectorProtocolTranscriptTests.PackageUpdate_SameVersionWithDifferentFingerprint_ActivatesCandidate`；场景 6 的平台权限行为由 System Collector 的平台测试覆盖；场景 8 见 `ManagedProcessCollectorProtocolTranscriptTests.PackageUpdate_UnsupportedConfigIsRejectedBeforeStoppingCurrentActivation`；场景 9/10 见 `collector-protocol-conformance.json`、`CollectorProtocolClientTests` 与 `InProcessCollectorProtocolTranscriptTests` 的 publish replay / Stream Gap 用例。
 
 ## 首阶段建议
 
@@ -261,31 +259,37 @@ Heartbeat Server 应知道各 Hub Instance 当前实际运行的版本与 Collec
 - Segment 的 Revision 如何取代现有 attributes 后写胜，使乱序旧快照不能覆盖新内容？
 - Measurement 的迟到窗口、历史修正与派生缓存失效如何按 Source 定义？
 
-## 草案暴露的矛盾（待裁决）
+## 实现对账结论
 
-“下一触发点”原本约定：schema 草案暴露真实矛盾之前不再扩张 grilling。草案写完后确实暴露了下面这些，它们不是措辞问题，是两处已确认边界互相打架、或者某个决策在两份草案里都没有落点。每条只描述冲突和需要裁决的内容，不预设答案。
+2026-08-28 对旧 Draft 暴露的十条矛盾逐项核对代码、JSON contracts、conformance corpus 与 ADR，结论如下：
 
-1. **Stream writer lease 的移交与更新回滚互斥。** 本文规定“更新只在候选取得所需 Stream writer lease 并到达 Ready 后提交”，而 [协议 §5.5](./spec/collector-protocol-v1.md) 规定同一 Stream 只有一个 writer、旧 Activation 发布即 `stream_writer_conflict`。候选一旦拿到 lease，旧 Activation 就已经写不进去；此时候选健康检查失败，回滚回去的旧 Activation 也发不出 Fact。需要定的是：lease 是抢占式移交、显式撤销式移交，还是失败时由 Hub 归还给旧 writer。
-2. **capability 无交集是致命还是降级。** 协议 §3.2 说“未被选择的能力不得在本次 Activation 使用”，读起来是降级；但错误码表里有 `capability_no_common_version`，读起来是致命。合理的切分大概是 `facts.*`（Output 依赖）无交集则 Activation 失败，`config.dynamic` / `diagnostics.stream-gap` 无交集则降级，但这条规则现在没写在任何地方。
-3. **ADR-030 的 Observation Depth 声明在新模型里没有落点。** 协议 §12 把 declaration 说成“Package Output Template 的临时来源”，但两者不是一回事：Output Template 描述的是 source / factKind / schema / dimensions，声明描述的是深度树与读数谓词，且谓词的 `from` 槽位（`appName`、`title`、`identityKey`、`attributes.<path>`）在 Fact 信封里已经全部消失，payload 改由各 schema 自定。Matcher（ADR-029/030/031）直接建在这套槽位上。需要定：声明是随 Manifest 一起静态声明的第四类内容，还是从 Fact Schema 派生。
-4. **Fact Schema 文档本身没有格式。** [Fact Model §8](./spec/fact-model-v1.md) 只定义了 schema 的*引用*（id / major / revision / hash），但 §4.1 与 §6.1 已经在引用 schema 级别的 `mutable: true` 和 `allowRetraction: true`，`hash` 也需要一份 canonical bytes 的定义才可验证。schema 用什么 JSON Schema 方言、这两个标志写在哪里、hash 怎么算，目前无处可查。
-5. **AppHint 解析与“Hub 不改写 Fact”冲突。** 现有 hub 的平台 adapter 会在进入严格缓存前把 AppHint 解析成 AppIdentity（ADR-034、collection/CONTEXT.md），这是 Hub 改写采集器 payload。Fact Model 只允许 Hub 附加 ReceivedAt。需要定：这类富化是留在 legacy adapter 边界内，还是作为独立的派生层，抑或承认 Hub 对某些 schema 有改写权。§10 的现有模型映射表里现在完全没有这一行。
-6. **ADR-021 的 Active 读模型没有对应物。** 现在 Active 由 hub 的 per-Source last-seen 判定，新鲜度窗口从**采集器自报**的 `flushPeriodMs` 派生；新协议里 `flushPeriodMs` 变成 Hub 通过 `spec.config` 下发给采集器，方向反了。同时 `activation.health` 明确“不等于 Source 最近产生了 Fact”，而 ExternalHost binding 没有连接概念，协议也没规定 Activation 因何超时结束——浏览器关掉之后那个 Activation 永远停在 Ready。Current Activity 与 presence 通道同样不属于三类 Fact，协议里没有归宿。
-7. **`Collector Capability` 撞名。** collection/CONTEXT.md 里它是“用户可理解的一项观测深度”，带 enabled 与实际运行状态；协议 §3.2 里它是 wire 层的扩展能力协商。两者在同一份实现里会同时出现，按 domain.md 的规矩必须拆开命名。
-8. **dimension“低基数”没有执行点。** Fact Model §3.2 要求 identifying dimensions 低基数，但除了“值必须是 string”之外没有任何长度、数量或每 Stream 上限的约束，Hub 也没有对应的拒绝码。基数爆炸恰好是 research 里点名的经典失败。
-9. **Collector Instance 与 packageId 的绑定没定义。** 错误码里有 `package_mismatch`，暗示 Instance 记着一个期望的 packageId；但本文只说“Package 更新不改变 InstanceId”，没说换成另一个 packageId 算不算同一个 Instance。这直接决定 StreamId 能不能跨包保持稳定。
-10. **Manifest 的完整形状无人认领。** 本文说字段与示例只在协议 §10 维护，而 §10 标题就叫“协议相关最小面”，`requires.agent`、磁盘需求、覆盖完整度、权限占位都不在里面。要么承认 Manifest 还差一份独立草案，要么把这些字段补进 §10。
+1. **writer lease / 回滚**：已采用 stop-first；失败回滚创建新的 Activation，并为相同 binding 复用 StreamId，不恢复已经结束的旧会话。
+2. **capability 无交集**：Output 所需的 `facts.*` 与 `diagnostics.stream-gap` 是必需能力，无交集拒绝；`config.dynamic` 是可选能力，缺失时以新 Activation 收敛。
+3. **Observation Declaration**：已成为 Package 独立 JSON 文档，不属于 Output Template，也不从 Fact Schema 派生；System 与 Browser 使用同一加载/验证/注册路径。
+4. **Fact Schema 格式与 hash**：五份权威文档位于 `collection/contracts/facts/`，含 fact kind、payload schema 与 evolution；Package 完整性使用原始字节 hash，演进 baseline 使用规范化 JSON 语义 hash。
+5. **AppHint / AppIdentity**：AppHint 是 ExternalHost binding 与 Stream dimension；AppIdentity 只在投影层派生，canonical wire payload 不被改写。
+6. **Active / ExternalHost / presence**：ExternalHost 用可续租 lease 结束失联 Activation；Actual state、Current Activity 和 presence 各自保持独立读模型，不强塞进 Fact 家族。
+7. **Capability 撞名**：wire 层使用 Protocol Capability，用户观测深度使用 Collection Capability。
+8. **dimension 配额**：不在当前 v1 提供数量、长度或活跃 Stream 配额保证；本轮明确不建 follow-up。
+9. **Instance / Package 绑定**：Collector Instance 永久绑定 PackageId；换 PackageId 必须创建新 Instance，同 PackageId 的兼容版本更新可复用 Stream。
+10. **Manifest 归属**：当前本地官方 Package 的完整 shape 已由 manifest template、staging 与严格 Package loader 共同认领；Registry、权限、磁盘需求等仍是未来发布/安装 seam，不伪装成当前字段。
 
-## 下一触发点
+逐项实现证据：
 
-停止继续扩张架构 grilling。下一步根据已确认的 ADR-040 / ADR-041 起草 Collector Protocol 消息、Manifest 与三类 Fact schema；在 schema 草案暴露真实矛盾前，不再追问包市场、安全、GC 或存储实现细节。
+| 项 | 主要证据 |
+| --- | --- |
+| 1 | `ManagedProcessCollectorProtocolTranscriptTests.PackageUpdate_HandshakeFailure_RestartsLastKnownGoodWithStableInstanceAndStream`；`InProcessCollectorProtocolTranscriptTests.WriterLease_StopOldActivationThenNewActivationReusesStream` |
+| 2 | `InProcessCollectorProtocolTranscriptTests.ActivationWithoutStreamGapCapability_CannotBecomeReadyForFactDelivery`；`ManagedProcessCollectorProtocolTranscriptTests.Hello_OnlySelectsCapabilitiesSharedByCollectorPackageAndHub` |
+| 3 | Browser/System `Package/observation-depth.declaration.json`；`SystemCollectorProtocolTranscriptTests.Package_DeclaresForegroundSegmentAndInputEventOutputs`；`BrowserExternalHostProtocolHandlerTests.BrowserTranscript_ConvergesSpecRegistersDeclarationAndProjectsWithoutChangingWirePayload` |
+| 4 | `collection/contracts/facts/*.schema.json`、`fact-schema-evolution-baseline.json`、`scripts/collector-contracts.mjs` 与 `LocalCollectorPackageTests` |
+| 5 | `BrowserExternalHostProtocolHandlerTests.BrowserTranscript_ConvergesSpecRegistersDeclarationAndProjectsWithoutChangingWirePayload`；Windows/macOS `CollectorAppHintResolverTests` |
+| 6 | `ExternalHostCollectorProtocolTranscriptTests.LeaseExpiry_LeavesReadyReleasesWriterAndDoesNotClaimBrowserTermination`；`BrowserExternalHostProtocolHandlerTests.DisabledDesiredStateRejectsFactsAndLeaseExpiryEndsSessionWithoutChangingDesiredState`；`collection/CONTEXT.md` 的 Active / Current Activity / Heartbeat 定义 |
+| 7 | `collection/CONTEXT.md` 的 Collector Protocol 与 Collection Capability 词条；manifest `supportedCapabilities` |
+| 8 | 本轮产品裁决：v1 不承诺 dimension 配额，不建 follow-up |
+| 9 | `CollectorRuntimeInstanceTests.CreateInstance_RuntimeReopensWithSamePackageAndSubjectBinding`；`InProcessCollectorProtocolTranscriptTests.InstanceBoundToAnotherPackageId_RejectsActivationAndRequiresNewInstance` |
+| 10 | 各 `collector-manifest.template.json`、`LocalCollectorPackage.Load`、`scripts/collector-contracts.mjs stage` 及 Package staging tests |
 
-**触发点已经命中。** 两份草案写完后暴露的矛盾见上一节，第 1、2、3、4 条会改动协议或 Fact 信封本身，应当先裁决再动手实现；第 5～10 条可以在实现期分批处理。裁决完成后，「首阶段建议」的五条按 `docs/agents/issue-tracker.md` 落成 `issues/01..05`。
-
-当前草案：
-
-- [Collector Protocol v1](./spec/collector-protocol-v1.md)
-- [Fact Model v1](./spec/fact-model-v1.md)
+两份 `Draft 0.2` 是实现前的推导工具，不再作为 shipped runtime 的规范。长期事实已经迁到 ADR-040/041、`collection/CONTEXT.md`、系统架构、Fact contracts、conformance README 与代码 validation；Draft 已在 issue 10 验证完成后删除。
 
 ## 研究记录
 

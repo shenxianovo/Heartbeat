@@ -60,6 +60,7 @@
           Command="node scripts/collector-contracts.mjs stage reference-fixture &quot;$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\$(BaseIntermediateOutputPath)$(Configuration)\$(TargetFramework)\CollectorPackage\ReferenceFixture'))&quot;" />
   </Target>
   <Target Name="CopyReferenceCollectorFixture" AfterTargets="Build" DependsOnTargets="StageReferenceCollectorFixture">
+    <RemoveDir Directories="$(OutDir)Fixtures/ReferenceCollectorPackage" />
     <ItemGroup>
       <ReferenceCollectorFixtureFiles Include="$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\$(BaseIntermediateOutputPath)$(Configuration)\$(TargetFramework)\CollectorPackage\ReferenceFixture'))/**/*" />
     </ItemGroup>

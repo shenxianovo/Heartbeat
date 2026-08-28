@@ -16,7 +16,8 @@ import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const factsDirectory = join(root, 'collection/contracts/facts')
-const baselinePath = join(factsDirectory, 'baseline.json')
+const baselineFileName = 'fact-schema-evolution-baseline.json'
+const baselinePath = join(factsDirectory, baselineFileName)
 
 const packageSources = {
   browser: join(root, 'collection/collectors/Heartbeat.Collector.Browser/Package'),
@@ -99,16 +100,29 @@ function compareBaseline(expected, actual, label) {
 }
 
 function checkBaseRef(current, baseRef) {
-  let old
+  let oldText
   try {
-    old = JSON.parse(execFileSync('git', ['show', `${baseRef}:collection/contracts/facts/baseline.json`], {
-      cwd: root,
-      encoding: 'utf8',
-    }))
+    try {
+      oldText = execFileSync(
+        'git',
+        ['show', `${baseRef}:collection/contracts/facts/${baselineFileName}`],
+        { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+      )
+    } catch {
+      // Compatibility for review bases created before the baseline filename migration. Remove this
+      // fallback once every supported CI base contains fact-schema-evolution-baseline.json;
+      // `check --base-ref <base>` is the verification gate.
+      oldText = execFileSync(
+        'git',
+        ['show', `${baseRef}:collection/contracts/facts/baseline.json`],
+        { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+      )
+    }
   } catch {
     process.stdout.write(`Contract baseline does not exist at ${baseRef}; treating this branch as the initial baseline.\n`)
     return
   }
+  const old = JSON.parse(oldText)
   if (![1, 2].includes(old.formatVersion))
     throw new Error(`unsupported Fact Schema baseline format ${old.formatVersion} at ${baseRef}`)
   const currentByIdentity = new Map(current.contracts.map(item => [
@@ -136,7 +150,7 @@ function checkBrowserPayload() {
   if (!existsSync(dist))
     throw new Error('Browser dist is missing; run npm run build before contract check')
   const snapshot = directory => Object.fromEntries(listFiles(directory)
-    .filter(path => !path.endsWith('package-metadata.json'))
+    .filter(path => !path.endsWith('collector-artifact-ref.json'))
     .map(path => [relative(directory, path).replaceAll('\\', '/'), sha256(readFileSync(path))])
     .sort(([left], [right]) => left.localeCompare(right)))
   if (JSON.stringify(snapshot(dist)) !== JSON.stringify(snapshot(packaged)))
@@ -166,9 +180,9 @@ function stageBrowserArtifact(destination, manifest) {
   const extension = join(destination, 'browser-extension')
   if (!existsSync(join(extension, 'background.js')))
     throw new Error('Browser Package payload is missing; run npm run build and sync dist first')
-  rmSync(join(extension, 'package-metadata.json'), { force: true })
+  rmSync(join(extension, 'collector-artifact-ref.json'), { force: true })
   const files = listFiles(extension)
-    .filter(path => !path.endsWith('package-metadata.json'))
+    .filter(path => !path.endsWith('collector-artifact-ref.json'))
     .sort()
     .map(path => {
       const bytes = readFileSync(path)
@@ -183,12 +197,12 @@ function stageBrowserArtifact(destination, manifest) {
     entrypoint: 'browser-extension/manifest.json',
     files,
   }, null, 2)}\n`)
-  const descriptorPath = join(destination, 'artifacts/browser-extension.json')
+  const descriptorPath = join(destination, 'artifacts/browser-extension.artifact.json')
   mkdirSync(dirname(descriptorPath), { recursive: true })
   writeFileSync(descriptorPath, descriptor)
   const artifactHash = sha256(descriptor)
   writeFileSync(
-    join(extension, 'package-metadata.json'),
+    join(extension, 'collector-artifact-ref.json'),
     `${JSON.stringify({ artifactHash }, null, 2)}\n`,
   )
   const artifact = manifest.artifacts.find(item => item.artifactId === 'browser.extension')
@@ -213,6 +227,9 @@ function stagePackage(name, destination) {
     const schema = outputDeclaration.schema
     if (schema.major !== contract.document.schemaMajor || schema.revision !== contract.document.schemaRevision)
       throw new Error(`${name}: manifest identity does not match ${contract.name}`)
+    const expectedDocument = `schemas/${contract.name}`
+    if (schema.document !== expectedDocument)
+      throw new Error(`${name}: schema ${schema.id} must retain authoritative basename ${expectedDocument}`)
     const target = join(output, schema.document)
     mkdirSync(dirname(target), { recursive: true })
     writeFileSync(target, contract.bytes)

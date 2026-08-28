@@ -19,8 +19,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\conformance\v1\collector-protocol-transcripts.json">
-      <Link>Conformance\collector-protocol-transcripts.json</Link>
+    <None Include="..\conformance\v1\collector-protocol-conformance.json">
+      <Link>Conformance\collector-protocol-conformance.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

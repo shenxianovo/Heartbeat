@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Heartbeat.Collection.Hub.Collectors;
 using Heartbeat.Collection.Hub.Collectors.Packages;
 using Heartbeat.Collection.Hub.Collectors.Protocol;
 using Heartbeat.Collection.Hub.Collectors.Runtime;
@@ -20,7 +21,8 @@ public sealed class SystemCollectorHostedService(
     SystemCollectorBindingOptions options,
     CollectorRuntime runtime,
     IDeviceIdentity deviceIdentity,
-    SystemInProcessCollector collector) : IHostedService, IDisposable, IAsyncDisposable
+    SystemInProcessCollector collector,
+    ICollectorDeclarationStore declarations) : IHostedService, IDisposable, IAsyncDisposable
 {
     private InProcessCollectorActivation? _activation;
 
@@ -32,6 +34,11 @@ public sealed class SystemCollectorHostedService(
         Directory.CreateDirectory(options.DataDirectory);
         var package = LocalCollectorPackage.Load(
             options.PackageDirectory ?? SystemCollectorPackage.Path);
+        if (package.ObservationDeclaration is { } declaration)
+            declarations.StoreVerifiedPackageDeclaration(
+                declaration.Source,
+                declaration.Json,
+                declaration.Version);
         try
         {
             using var config = JsonDocument.Parse("{}");

@@ -7,7 +7,7 @@ using System.Net;
 namespace Heartbeat.Desktop.Windows.Tests.Services;
 
 /// <summary>
-/// 声明上行（ADR-030 §3）：system 常量 + registry 声明推服务端;成功记 acked 不重发,
+/// 声明上行（ADR-030 §3）：已验证 Package 声明经 declaration store 推服务端;成功记 acked 不重发,
 /// 失败整批留待下轮;上行失败不抛（不阻塞段上传节律）。
 /// </summary>
 public class DeclarationUplinkServiceTests : IDisposable
@@ -33,9 +33,14 @@ public class DeclarationUplinkServiceTests : IDisposable
     public DeclarationUplinkServiceTests()
     {
         _config = new ConfigManager(_tempConfig);
+        var declarations = new HubConfigurationAdapter(_config);
+        declarations.StoreVerifiedPackageDeclaration(
+            "system",
+            SystemDeclaration,
+            1);
         _uplink = new DeclarationUplinkService(
             new HeartbeatApiClient(new HttpClient(_http)),
-            new HubConfigurationAdapter(_config));
+            declarations);
     }
 
     public void Dispose()
@@ -45,9 +50,11 @@ public class DeclarationUplinkServiceTests : IDisposable
 
     private const string BrowserDeclaration =
         """{"source":"browser","version":2,"layers":[{"readings":[{"name":"site","from":"attributes.site"}]}]}""";
+    private const string SystemDeclaration =
+        """{"source":"system","version":1,"layers":[{"readings":[{"name":"app","from":"appName"}]}]}""";
 
     [Fact]
-    public async Task Push_SendsSystemAndRegistryDeclarations_ThenAcks()
+    public async Task Push_SendsVerifiedPackageDeclarations_ThenAcks()
     {
         _config.Update(c => c.Collectors["browser"] = new CollectorEntry
         {

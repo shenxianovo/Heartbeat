@@ -553,7 +553,8 @@ public sealed partial class CollectorRuntime
                 index,
                 "fact_schema_invalid",
                 "Fact Schema has no compatible projection adapter for the existing Hub buffer.");
-        if (stream.FactKind == FactKind.Segment && _segmentSink is not IDurableSegmentProjectionSink)
+        if (stream.FactKind == FactKind.Segment &&
+            _segmentSink is not IDurableSegmentProjectionSink and not ISubjectSegmentProjectionSink)
             return Rejected(
                 index,
                 "fact_schema_invalid",

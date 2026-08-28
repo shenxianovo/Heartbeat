@@ -9,7 +9,7 @@
   },
   "config": { "version": 1, "accepts": [1] },
   "observationDeclaration": {
-    "document": "observation-depth.json",
+    "document": "observation-depth.declaration.json",
     "hash": "sha256:d26d98f441c05265a41a5a714993217c1070ab3d631af921b5c03abf262646b1"
   },
   "outputs": [
@@ -21,7 +21,7 @@
         "id": "heartbeat.browser.active-tab-segment",
         "major": 1,
         "revision": 1,
-        "document": "schemas/active-tab-segment.schema.json"
+        "document": "schemas/browser-active-tab-segment.schema.json"
       },
       "subjectKinds": ["machine"],
       "dimensionKeys": ["appHint", "externalHostIdentity"]
@@ -35,7 +35,7 @@
         "os": ["windows", "macos"],
         "arch": ["x64", "arm64"]
       },
-      "entrypoint": "artifacts/browser-extension.json"
+      "entrypoint": "artifacts/browser-extension.artifact.json"
     }
   ]
 }
