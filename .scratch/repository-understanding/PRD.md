@@ -1,6 +1,6 @@
 # 仓库理解与 Agent 可协作性收口
 
-Status: ready-for-human
+Status: needs-triage
 
 ## 目标
 
@@ -12,7 +12,8 @@ Status: ready-for-human
 - 一键本地栈已经解决“如何启动”，但此前只验证 HTTP 与容器存活，没有验证恢复数据和新客户端
   写入的数据语义。
 - 根 README、系统架构、Context/ADR、项目 README 的层级基本存在，但项目清单已经发生漂移，
-  并缺少一次 owner 主导的逐层走查。
+  owner 主导的逐层走查现已完成；项目清单由 solution/package manifest 负责，README 只维护
+  稳定目录责任。
 - 兼容债务散在注释与历史 issue 中，现已建立初始 ledger；具体支持窗口和删除优先级需要 owner
   裁决。
 - Agent issue closeout 与 friction closeout 已补充，但仓库其他 feature 的陈旧状态尚未批量清理。
@@ -23,3 +24,5 @@ Status: ready-for-human
 2. [02 — Owner 逐层走查仓库文档](issues/02-owner-documentation-walkthrough.md)
 3. [03 — 裁决兼容债务支持窗口与移除顺序](issues/03-compatibility-debt-retirement.md)
 4. [04 — 建立 Agent friction 与 issue closeout](issues/04-agent-friction-closeout.md)
+5. [05 — 让 Segment strict ingest 返回可判定结果](issues/05-strict-segment-ingest-outcomes.md)
+6. [06 — 设计 Collector Package 托管与下载](issues/06-package-registry-delivery-design.md)

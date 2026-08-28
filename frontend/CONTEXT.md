@@ -1,11 +1,16 @@
 # Dashboard
 
-可视化使用数据。只读消费 Analytics API，不产生数据（唯一例外：登录态）。
+Dashboard 是回顾与管理入口，以展示为主；它也把用户确认的叙事知识写回 Analytics，并
+直连对应 Hub 完成交互授权。Analytics 不代理第三方账号凭据、授权应答或 Hub 管理命令。
 
 ## Language
 
 **Dashboard**:
 主页面：状态卡、今日排行、周图表、时间轴、键盘热力图的组合。30s 轮询报表；`useHeartbeat` 是瘦协调器，组合设备选择 / 在场 / 报表三个数据域。
+
+**Local Calendar Window（本地日历窗口）**:
+Dashboard 对所选日期的解释：以当前浏览器 civil timezone 将日或周映射为 `[本地起点, 下一本地起点)` 的事实窗口，周一开周，夏令时切换日可以是 23 或 25 小时。同一窗口是 Report、Recap、Timeline 与 Asking 对“这天 / 这周”的共同含义。
+_Avoid_: 固定 24 小时日窗、用单个 UTC offset 代替时区规则、把 Episode / Strand 的 DateOnly 当作查询窗口
 
 **Subject Status Panel（主体状态面板）**:
 Dashboard 中按 Subject 展示当下状态的区域：Machine 展示 Current Activity，Account 展示该账号来源能够如实观测的当前状态。需要交互授权时仅向 owner 提供恢复入口；授权不是进入 Dashboard 或查看其他 Subject 的前置条件。

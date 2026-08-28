@@ -34,5 +34,5 @@ The hook runs on a **dedicated background thread** with its own Win32 message lo
 
 ## References
 
-- [`collection/desktop/Heartbeat.Desktop.Windows/Utils/ActiveWindowHelper.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Utils/ActiveWindowHelper.cs) — WinEvent hook + message loop
+- [`collection/desktop/Heartbeat.Desktop.Windows/Utils/WindowsWindowEventMonitor.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Utils/WindowsWindowEventMonitor.cs) — 当前 WinEvent hook + message loop adapter
 - [`collection/desktop/Heartbeat.Collector.System/Collection/AppMonitorService.cs`](../../collection/desktop/Heartbeat.Collector.System/Collection/AppMonitorService.cs) — hook thread lifecycle management

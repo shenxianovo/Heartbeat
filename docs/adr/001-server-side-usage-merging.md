@@ -30,6 +30,7 @@ Added a composite index `(DeviceId, AppId, EndTime)` to make the "find latest re
 
 ## References
 
-- [`shared/Heartbeat.Core/UsageMerger.cs`](../../shared/Heartbeat.Core/UsageMerger.cs) — client-side merge logic
-- [`server/Heartbeat.Server/Services/UsageService.cs`](../../server/Heartbeat.Server/Services/UsageService.cs) — server-side merge on write
-- [`server/Heartbeat.Server/Data/AppDbContext.cs`](../../server/Heartbeat.Server/Data/AppDbContext.cs) — composite index definition
+- `shared/Heartbeat.Core/UsageMerger.cs`、`server/Heartbeat.Server/Services/UsageService.cs` 与
+  `server/Heartbeat.Server/Data/AppDbContext.cs` — `328b754` 时的历史实现路径；旧 merge 与索引形状
+  已随本 ADR 被替代，不链接当前同名文件冒充旧实现
+- [ADR-018](./018-stable-segment-identity-snapshot-upload.md) — 当前稳定 FactId / snapshot upsert 语义

@@ -1,6 +1,6 @@
 # Heartbeat
 
-Personal cross-platform desktop activity monitor.
+A personal digital activity archive and replay system, centered on desktop activity.
 https://heartbeat.shenxianovo.com
 
 记录桌面设备上的数字活动(前台应用、浏览器页面、输入事件),回答"x年前的今天我在做什么"。
@@ -32,6 +32,9 @@ graph LR
     Web -- "OpenAPI client<br/>OIDC login (ADR-024)" --> API
 ```
 
+Dashboard 是回顾与管理入口，以展示为主；它把用户确认的叙事知识写回 Analytics，并为
+交互授权直连对应 Hub。Analytics 不代理第三方账号凭据、授权应答或 Hub 管理命令。
+
 鉴权:外部自建 Auth 平台签发 JWT——前端走 OIDC 授权码 + PKCE,Agent 用 ApiKey
 换取 session JWT,服务端双 scheme 接受(见 [ADR-024](./docs/adr/024-oidc-jwt-authentication.md))。
 
@@ -42,7 +45,7 @@ graph LR
 | Backend | ASP.NET Core (.NET 10), EF Core, PostgreSQL |
 | Desktop Agent | .NET 10 (Windows/macOS), Generic Host, platform observers |
 | Desktop GUI | Avalonia 12 (.NET 10) |
-| Collectors | Browser extension (TypeScript + Vite);vscode 等规划中 |
+| Collectors | System (.NET); Browser extension (TypeScript + Vite); VRChat Account (.NET) |
 | Frontend | Vue 3, TypeScript, Vite |
 | API Client | Auto-generated via OpenAPI / NSwag |
 | Shared | Heartbeat.Core (.NET Class Library) |
@@ -82,6 +85,10 @@ Heartbeat
    └─ runbooks/                 # 低频、高风险操作
 ```
 
+精确 .NET 项目与相邻测试项目以 [`Heartbeat.slnx`](./Heartbeat.slnx) 为准，npm 项目以各自
+`package.json` 为准；上图只维护生产目录责任。当前 Browser Package 随 Desktop release、
+VRChat Package 随 Headless image 交付；Package 托管与下载尚未实现。
+
 ## Documentation
 
 - [Development Guide](./docs/development.md) — 启动本地栈、运行 Agent、验证与测试
@@ -91,6 +98,6 @@ Heartbeat
 - [Collector Protocol Conformance](./collection/protocol/conformance/README.md) — 跨语言生命周期、ACK、重试、Gap 与 drain 行为语料
 - [API 导读](./docs/api.md) — 鉴权、调用方与客户端生成约定；端点真相源是 OpenAPI
 - [数据库导读](./docs/db.md) — 数据设计意图；schema 真相源是实体类与迁移
-- [Runbooks](./docs/runbooks/) — 本地数据 smoke、生产数据刷新与 App Catalog 运维
+- [Runbooks](./docs/runbooks/README.md) — 本地数据 smoke、生产数据刷新与 App Catalog 运维
 - [CONTEXT-MAP](./CONTEXT-MAP.md) + 各上下文 `CONTEXT.md` — 领域术语表
 - [ADRs](./docs/adr/) — 架构决策记录([template](./docs/adr/adr-template.md))

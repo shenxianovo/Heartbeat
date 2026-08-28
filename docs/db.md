@@ -14,6 +14,12 @@
 
 迁移在启动时全环境自动应用(ADR-013)。
 
+实体变更后生成迁移：
+
+```bash
+dotnet ef migrations add <Name> --project server/Heartbeat.Server
+```
+
 ## 生成不出来的设计意图
 
 - **多租户不焊死**:User 拥有多个 Device(`OwnerId` = JWT sub),业务查询在

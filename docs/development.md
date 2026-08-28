@@ -1,29 +1,31 @@
 # Development Guide
 
-这是一条日常开发的最短路径：从本地源码启动 Postgres、后端和前端，再让桌面
-Agent 把真实活动上传到本地环境。项目定位与领域术语见
-[CONTEXT-MAP](../CONTEXT-MAP.md)。
+这里只保留日常路径。领域边界见 [CONTEXT-MAP](../CONTEXT-MAP.md)；低频操作见
+[Runbooks](runbooks/README.md)。
 
-## 1. 准备环境
+## 1. 准备
 
-本地栈需要 Docker Desktop；直接运行 Agent 和测试还需要项目使用的 .NET、Node.js 工具链。
-首次运行时创建本地环境文件：
+需要 Docker、.NET 10 和 Node.js。首次运行：
 
 ```powershell
 Copy-Item .env.local.example .env.local
+New-Item -ItemType Directory -Force .local
+Copy-Item collection/hub/Heartbeat.Collection.Headless/heartbeat-headless.compose.example.json `
+  .local/heartbeat-headless.json
 ```
 
 macOS/Linux：
 
 ```bash
 cp .env.local.example .env.local
+mkdir -p .local
+cp collection/hub/Heartbeat.Collection.Headless/heartbeat-headless.compose.example.json \
+  .local/heartbeat-headless.json
 ```
 
-`.env.local` 已被 Git 忽略，默认连接真实 Auth 平台；本地仅运行 Postgres、后端和前端。
+填写 `.env.local` 与 `.local/heartbeat-headless.json` 中的 API key、owner `sub` 和 Subject ID。
 
-完成标准：Docker 已启动，仓库根目录存在 `.env.local`。
-
-## 2. 启动本地栈
+## 2. 启动
 
 ```powershell
 ./scripts/start-local.ps1
@@ -35,18 +37,7 @@ macOS/Linux：
 ./scripts/start-local.sh
 ```
 
-脚本从本地源码构建 Postgres、后端、前端与无头 Hub，并等待 <http://localhost:8080>
-可访问。无头 Hub 需要 `.local/heartbeat-headless.json`；可以从
-`collection/hub/Heartbeat.Collection.Headless/heartbeat-headless.compose.example.json` 复制并
-填入 API key、owner `sub` 与 Subject ID。后端启动时自动应用数据库迁移；数据保存在
-`.local/postgres-data`，普通的 `down/up` 不会清空它。
-
-完成标准：浏览器打开 <http://localhost:8080> 后能看到 Dashboard。
-
-## 3. 启动桌面 Agent
-
-`HEARTBEAT_API_BASE_URL` 只覆盖当前进程的上传目标，不修改 `config.json`。Auth 仍使用
-现有的 `AuthServiceBaseUrl`。
+打开 <http://localhost:8080>。需要桌面采集时另启 Agent：
 
 Windows：
 
@@ -62,64 +53,33 @@ export HEARTBEAT_API_BASE_URL=http://localhost:8080
 dotnet run --project collection/desktop/Heartbeat.Desktop.Mac/Heartbeat.Desktop.Mac.csproj
 ```
 
-完成标准：切换窗口或产生输入后，Dashboard 在一个上传周期内显示新的活动。
+Browser Collector 见其 [README](../collection/collectors/Heartbeat.Collector.Browser/README.md)。
 
-真实 Browser Collector 的本地运行方式见
-[Browser Collector README](../collection/collectors/Heartbeat.Collector.Browser/README.md)。
+## 3. 验证
 
-## 4. 验证改动
-
-运行与改动范围相符的最小测试集；跨项目改动运行完整测试：
+完整仓库验证入口：
 
 ```powershell
 dotnet test
-dotnet test server/Heartbeat.Server.Tests
-dotnet test collection/hub/Heartbeat.Collection.Hub.Tests
-dotnet test collection/desktop/Heartbeat.Collector.System.Tests
-dotnet test collection/desktop/Heartbeat.Desktop.Windows.Tests
-dotnet test collection/desktop/Heartbeat.Desktop.Mac.Tests
-dotnet test shared/Heartbeat.Core.Tests
+npm --prefix collection/collectors/Heartbeat.Collector.Browser test
+npm --prefix collection/collectors/Heartbeat.Collector.Browser run build
+npm --prefix frontend test
+npm --prefix frontend run build
+node scripts/collector-contracts.mjs check
 ```
 
-服务端数据库测试使用 Testcontainers，需要 Docker。Browser Collector 单独运行：
+DTO 或端点变更按 [API 导读](api.md#客户端重新生成) 重新生成客户端。采集、摄入、投影或
+持久化变更必须执行 [Local Data Smoke](runbooks/local-data-smoke.md)；容器存活不证明数据正确。
 
-```powershell
-cd collection/collectors/Heartbeat.Collector.Browser
-npm test
-```
-
-如果修改了服务端 DTO 或端点，按 [API 导读](api.md#客户端重新生成) 重新生成客户端并
-通过前端类型检查。
-
-完成标准：相关自动化测试通过，并在本地栈完成受影响用户路径的端到端验证。
-
-涉及采集、摄入、投影或持久化时，不以容器存活作为数据正确性的证明。按
-[Local Data Smoke](runbooks/local-data-smoke.md) 先记录客户端运行前基线，再验证 Segment 或
-InputEvent 水位推进以及历史数据不变量。
-
-## 5. 停止或重置
-
-停止容器并保留本地数据：
+## 4. 停止
 
 ```powershell
 docker compose -f compose.local.yml --env-file .env.local down
 ```
 
-需要空数据库时，先停止容器，再只删除仓库内的 `.local/postgres-data`：
+本地数据库位于 `.local/postgres-data`；`down/up` 不会清空它。
 
-```powershell
-Remove-Item -LiteralPath ./.local/postgres-data -Recurse -Force
-```
-
-macOS/Linux：
-
-```bash
-rm -rf -- ./.local/postgres-data
-```
-
-下次启动时会创建空数据库并应用全部迁移。
-
-## 低频流程
+## 按需阅读
 
 - **需要真实历史数据**：使用[本地数据刷新 runbook](runbooks/refresh-local-data.md)。
 - **验证历史数据与新客户端写入**：使用 [Local Data Smoke](runbooks/local-data-smoke.md)。

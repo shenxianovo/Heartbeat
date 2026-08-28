@@ -1,6 +1,10 @@
 # ADR-008: Local JSON Cache with Offline Retry for Usage Upload
 
-## Status: Accepted
+## Status: Accepted；implementation shape amended by [ADR-020](./020-system-collector-through-hub.md) and [ADR-035](./035-strict-ingest-contract-and-versioned-cache-migration.md)
+
+> 本 ADR 的持久离线重试不变量仍有效；下文的 `LocalCache`、`InputEventLocalCache`、
+> `UsageUploadService` 与 `UsageUploadWorker` 是历史实现。当前实现已统一到版本化
+> `JsonFileCache`、`UploadStream` 与 `UploadWorker`，不再维护两套平行 cache/service。
 
 ## Date: 2026-03-03
 
@@ -49,7 +53,9 @@ and class (`InputEventLocalCache`) rather than extending `LocalCache`:
 
 ## References
 
-- [`collection/desktop/Heartbeat.Desktop.Windows/Storage/LocalCache.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Storage/LocalCache.cs) — usage cache implementation (10K cap, with merge)
-- [`collection/desktop/Heartbeat.Desktop.Windows/Storage/InputEventLocalCache.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Storage/InputEventLocalCache.cs) — input-event cache (100K cap, append-only; ADR-012)
-- [`collection/desktop/Heartbeat.Desktop.Windows/Services/UsageUploadService.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Services/UsageUploadService.cs) — upload with cache fallback
-- [`collection/desktop/Heartbeat.Desktop.Windows/Workers/UsageUploadWorker.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Workers/UsageUploadWorker.cs) — retry loop (cached first, then fresh; flushes both usage and input events)
+- `collection/desktop/Heartbeat.Desktop.Windows/{Storage,Services,Workers}/...` — 本 ADR 两个提交时的
+  历史实现路径，已由 ADR-020/035 的统一流替代
+- [`JsonFileCache.cs`](../../collection/hub/Heartbeat.Collection.Hub/Storage/JsonFileCache.cs) 与
+  [`HeartbeatCacheFormats.cs`](../../collection/hub/Heartbeat.Collection.Hub/Storage/HeartbeatCacheFormats.cs) — 当前版本化 cache 与迁移
+- [`UploadStream.cs`](../../collection/hub/Heartbeat.Collection.Hub/Upload/UploadStream.cs) 与
+  [`UploadWorker.cs`](../../collection/hub/Heartbeat.Collection.Hub/Runtime/UploadWorker.cs) — 当前缓存优先、重试、dead-letter 与调度入口

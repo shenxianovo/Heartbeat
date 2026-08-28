@@ -43,6 +43,7 @@ On the client side, an `ApiKeyDelegatingHandler` injects the header into every o
 
 ## References
 
-- [`server/Heartbeat.Server/Authentication/ApiKeyAuthenticationHandler.cs`](../../server/Heartbeat.Server/Authentication/ApiKeyAuthenticationHandler.cs) — server-side auth handler
-- [`collection/desktop/Heartbeat.Desktop.Windows/Http/ApiKeyDelegatingHandler.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Http/ApiKeyDelegatingHandler.cs) — client-side header injection
+- `server/Heartbeat.Server/Authentication/ApiKeyAuthenticationHandler.cs` — `877851d` 时的历史服务端路径，已删除
+- `collection/desktop/Heartbeat.Desktop.Windows/Http/ApiKeyDelegatingHandler.cs` — `877851d` 时的历史客户端路径，已删除
 - [`server/Heartbeat.Server/Program.cs`](../../server/Heartbeat.Server/Program.cs) — auth scheme registration
+- [ADR-024](./024-oidc-jwt-authentication.md) — 当前 OIDC/JWT 与 Agent session token 入口

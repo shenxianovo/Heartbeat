@@ -4,6 +4,19 @@
 没有明确服务对象、移除门槛和验证方式的兼容分支才会永久化。领域决策仍以 ADR 和各
 `CONTEXT.md` 为准，本文只追踪实现债务。
 
+## Owner rulings（2026-08-28）
+
+- 兼容支持按**真实安装与落盘状态**退出，不凭提交日期猜窗口：所有 Desktop 安装、Browser
+  Profile 与 Headless/Runtime 状态分别完成当前版本迁移，并保留 fixture/backup 验证后，才删除
+  对应迁移代码。
+- Analytics 的目标边界是原生 **Subject + Fact/Stream ingest**；当前 Device 与
+  ActivitySegment/InputEvent 回投是待迁移兼容层，不提升为永久领域接口。
+- AppIdentity 双写与 response alias 计划删除；门槛是实际客户端矩阵、FK 回填与 orphan/引用审计，
+  不能用“旧上传已收到 426”替代读兼容证据。
+- Package/Installation/Instance identity、版本与 Desired State 归 Collector Runtime；旧 source
+  registry 最终只保留明确需要的 observation declaration seam，Enabled/准入消费者迁完后删除。
+- 严格上行协议当前保持单版本 lockstep；支持窗口同样由实际安装升级与缓存迁移演练决定。
+
 | 边界 | 当前兼容对象 | 主要证据 | 移除门槛 | 移除验证 |
 | --- | --- | --- | --- | --- |
 | Analytics 的 Subject 仍投影为 Device | Headless Account Subject 通过 `FixedSubjectIdentity` 进入现有 Device/Segment API | `collection/hub/Heartbeat.Collection.Headless/HeadlessInstancePipelines.cs`、`server/Heartbeat.Server/Entities/ActivitySegment.cs` | Analytics 建立独立 Subject 身份、完成存量迁移，并让查询/鉴权不再依赖 `DeviceId` | Account 与 Machine 数据迁移回放；报表、Replay、权限及多 Instance E2E |

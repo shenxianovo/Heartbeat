@@ -26,7 +26,7 @@ Adopted **.NET Generic Host**. The monitoring service implements `IHostedService
 ## Consequences
 
 - ✅ Clean DI: services declare dependencies via constructor injection, no manual wiring.
-- ✅ Graceful shutdown: `UsageUploadWorker.StopAsync` flushes remaining data before exit.
+- ✅ Graceful shutdown: current `UploadWorker.StopAsync` flushes remaining data before exit.
 - ✅ Reusable: the same service registrations later powered both Console Runner and WPF host (see [ADR-005](./005-extract-agent-library.md)).
 - ⚠️ Heavier startup for what was originally a 50-line console app.
 - ⚠️ Developers must understand the `IHostedService` lifecycle (Start → Run → Stop ordering).
@@ -34,6 +34,6 @@ Adopted **.NET Generic Host**. The monitoring service implements `IHostedService
 ## References
 
 - [`collection/desktop/Heartbeat.Desktop.Windows/Hosting/AgentHostExtensions.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Hosting/AgentHostExtensions.cs) — service registration
-- [`collection/desktop/Heartbeat.Desktop.Windows/Workers/UsageUploadWorker.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Workers/UsageUploadWorker.cs) — `BackgroundService` with graceful flush
+- [`collection/hub/Heartbeat.Collection.Hub/Runtime/UploadWorker.cs`](../../collection/hub/Heartbeat.Collection.Hub/Runtime/UploadWorker.cs) — current `BackgroundService` with graceful flush
 - [`collection/hub/Heartbeat.Collection.Hub/Runtime/StatusUploadWorker.cs`](../../collection/hub/Heartbeat.Collection.Hub/Runtime/StatusUploadWorker.cs) — status heartbeat worker
 - `Heartbeat.Agent.Runner` — historical console host, retired by ADR-037

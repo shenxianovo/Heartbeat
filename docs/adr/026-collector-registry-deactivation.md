@@ -1,6 +1,10 @@
 # ADR-026: 采集器注册表与双层停用
 
-## Status: Proposed
+## Status: Partially superseded by [ADR-040](./040-collector-runtime-and-protocol-foundation.md)
+
+> 本文的 source 级安装身份、GET config 与 `/v1/segments` 403 形状已退役；Package、Instance、
+> Desired State 与协议准入以 ADR-040 为准。旧 Collector Registry 仍暂存运行策略与 declaration
+> seam，待 Package/Instance 消费者完全接管后收窄为 declaration store。
 
 ## Date: 2026-07-16
 
@@ -68,7 +72,10 @@ system 在数据模型上是 Collector 之一（ADR-017），但"模型统一"�
 
 - [`collection/CONTEXT.md`](../../collection/CONTEXT.md) — Active / Collector Registry / Deactivate / 采集器栏 词条
 - [`collection/desktop/Heartbeat.Desktop.Windows/Configuration/ConfigManager.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Configuration/ConfigManager.cs) — 注册表持久化载体（§1）
-- [`collection/hub/Heartbeat.Collection.Hub/Ingest/SegmentIngestRequestHandler.cs`](../../collection/hub/Heartbeat.Collection.Hub/Ingest/SegmentIngestRequestHandler.cs) — GET config 路由 + 403 强制层（§2、§4）
+- `collection/hub/Heartbeat.Collection.Hub/Ingest/SegmentIngestRequestHandler.cs` — 本文设计时的历史
+  GET config / 403 路径，已随旧 loopback ingress 退役
+- [`collection/hub/Heartbeat.Collection.Hub/Collectors/ICollectorRegistry.cs`](../../collection/hub/Heartbeat.Collection.Hub/Collectors/ICollectorRegistry.cs) — 当前仍存的 source policy / declaration seam
+- [ADR-040](./040-collector-runtime-and-protocol-foundation.md) — 当前 Package/Instance/Desired State 与 Collector Protocol 边界
 - [`collection/hub/Heartbeat.Collection.Hub/Presence/ICollectionStatus.cs`](../../collection/hub/Heartbeat.Collection.Hub/Presence/ICollectionStatus.cs) — SourceLastSeen，Active 数据源（§3）
 - [`collection/collectors/Heartbeat.Collector.Browser/src/background.ts`](../../collection/collectors/Heartbeat.Collector.Browser/src/background.ts) — flush 周期 30s（§3），需新增 GET config + enabled 尊重（§4）
 - [`collection/desktop/Heartbeat.Desktop.UI/Views/MainWindow.axaml`](../../collection/desktop/Heartbeat.Desktop.UI/Views/MainWindow.axaml) — 当前共享 Avalonia 采集器栏 UI（§5）

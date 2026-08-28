@@ -111,7 +111,8 @@ Dedicated-endpoint style (ADR-006). Two read paths are now shipped:
 - [`collection/desktop/Heartbeat.Desktop.Windows/Utils/LowLevelInputHook.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Utils/LowLevelInputHook.cs) — `WH_KEYBOARD_LL` / `WH_MOUSE_LL` hook + dedicated message pump
 - [`collection/desktop/Heartbeat.Collector.System/Input/InputEventBuffer.cs`](../../collection/desktop/Heartbeat.Collector.System/Input/InputEventBuffer.cs) — in-memory buffer, auto-repeat filter, scroll normalization, UUIDv7 generation
 - [`collection/desktop/Heartbeat.Desktop.Windows/Services/InputEventCollector.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Services/InputEventCollector.cs) — `IHostedService` owning the hook thread
-- [`collection/desktop/Heartbeat.Desktop.Windows/Storage/InputEventLocalCache.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Storage/InputEventLocalCache.cs) — offline cache (ADR-008)
+- [`HeartbeatCacheFormats.cs`](../../collection/hub/Heartbeat.Collection.Hub/Storage/HeartbeatCacheFormats.cs) 与
+  [`UploadStream.cs`](../../collection/hub/Heartbeat.Collection.Hub/Upload/UploadStream.cs) — 当前 InputEvent 离线 cache、迁移与重试入口（ADR-008/020/035）
 - [`server/Heartbeat.Server/Entities/InputEvent.cs`](../../server/Heartbeat.Server/Entities/InputEvent.cs) — entity (UUIDv7 PK, `(DeviceId, Timestamp)` index)
 - [`server/Heartbeat.Server/Services/InputEventService.cs`](../../server/Heartbeat.Server/Services/InputEventService.cs) — idempotent save, counts + key-frequency aggregation
 - [`server/Heartbeat.Server/Controllers/InputEventController.cs`](../../server/Heartbeat.Server/Controllers/InputEventController.cs) — authenticated upload + counts
