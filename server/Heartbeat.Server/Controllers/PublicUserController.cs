@@ -84,17 +84,21 @@ namespace Heartbeat.Server.Controllers
 
         [HttpGet("recaps/daily")]
         [EndpointName("getUserDailyRecap")]
+        [ProducesResponseType<DailyRecapResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<CalendarWindowError>(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<DailyRecapResponse>> GetDailyRecap(
             string username,
-            [FromQuery] DateTimeOffset? date,
+            [FromQuery] LocalCalendarWindowEnvelope window,
             CancellationToken ct)
         {
             var user = await ResolveVisibleAsync(username);
             if (user == null) return NotFound();
 
-            // 公开路径只读缓存：访客不能触发生成，也没有 force 参数。
-            var recap = await recapService.GetCachedDailyRecapAsync(
-                user.Id, date ?? DateTimeOffset.UtcNow, ct);
+            var validation = LocalCalendarWindowValidator.ResolveDay(window);
+            if (validation.Error != null) return BadRequest(validation.Error);
+
+            // 公开路径只读同一个验证后 WindowKey 的缓存：访客不能触发生成。
+            var recap = await recapService.GetCachedDailyRecapAsync(user.Id, validation.Window!, ct);
             return recap == null ? NotFound() : recap;
         }
 

@@ -204,9 +204,14 @@ namespace Heartbeat.Server.Data
                 entity.Property(e => e.Model).HasMaxLength(128);
                 entity.Property(e => e.PromptHash).HasMaxLength(16);
                 entity.Property(e => e.KnowledgeHash).HasMaxLength(64);
+                entity.Property(e => e.WindowKey).HasMaxLength(256);
+                entity.Property(e => e.WindowKind).HasMaxLength(16);
+                entity.Property(e => e.LocalDate).HasMaxLength(10);
+                entity.Property(e => e.TimeZone).HasMaxLength(128);
 
-                // 缓存身份：一个 Owner 的一个日窗口一份（ADR-023 §4）。
-                entity.HasIndex(e => new { e.OwnerId, e.WindowStart })
+                // 缓存身份：只有 Analytics 验证后的 (Owner, WindowKey) 能命中（ADR-044 §3）。
+                // PostgreSQL unique index 允许多个 null，因此 legacy fixed-offset rows 可原样保留。
+                entity.HasIndex(e => new { e.OwnerId, e.WindowKey })
                     .IsUnique();
             });
 

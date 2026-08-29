@@ -1,5 +1,6 @@
 using System.Text;
 using Heartbeat.Core;
+using NodaTime;
 
 namespace Heartbeat.Server.Services
 {
@@ -63,12 +64,15 @@ namespace Heartbeat.Server.Services
             IReadOnlyList<StrandKnowledgeInput>? strands = null,
             IReadOnlyList<EpisodeKnowledgeInput>? episodes = null,
             IReadOnlyList<string>? recurringReadings = null,
-            DepthTables? depthTables = null)
+            DepthTables? depthTables = null,
+            string? displayTimeZone = null,
+            DateOnly? civilDate = null)
         {
             // 生效声明由调用方从库取（DigestAssembler）；纯函数测试与 bootstrap 回落种子副本。
             depthTables ??= DepthTables.Seeds;
             DateTimeOffset windowStart = window.UtcStart;
             DateTimeOffset windowEnd = window.UtcEnd;
+            var displayZone = displayTimeZone == null ? null : DateTimeZoneProviders.Tzdb[displayTimeZone];
 
             // 区间重叠 + 裁剪，与报表同一规则（ADR-018 §4）。零长度点事件（Start == End）在窗口内也保留。
             var clipped = segments
@@ -94,8 +98,9 @@ namespace Heartbeat.Server.Services
             var watermark = clipped.Max(c => c.End).UtcDateTime;
 
             var sb = new StringBuilder();
-            var localDate = windowStart.ToOffset(displayOffset);
-            sb.AppendLine($"# 活动摘要 {localDate:yyyy-MM-dd}（{FormatOffset(displayOffset)}）");
+            var localDate = civilDate ?? DateOnly.FromDateTime(windowStart.ToOffset(displayOffset).Date);
+            var zoneLabel = displayTimeZone ?? FormatOffset(displayOffset);
+            sb.AppendLine($"# 活动摘要 {localDate:yyyy-MM-dd}（{zoneLabel}）");
 
             var deviceGroups = clipped
                 .GroupBy(c => c.Segment.DeviceName)
@@ -108,12 +113,13 @@ namespace Heartbeat.Server.Services
             {
                 sb.AppendLine();
                 sb.AppendLine($"## 设备「{device.Key}」");
-                AppendSystemTrack(sb, device.ToList(), windowEnd, displayOffset, depthTables);
+                AppendSystemTrack(sb, device.ToList(), windowEnd, displayOffset, displayZone, depthTables);
                 AppendPluginTracks(sb, device.ToList(), depthTables);
             }
 
-            var knowledge = ResolveKnowledge(segments, window, displayOffset, strands ?? [], episodes ?? [], depthTables);
-            AppendKnowledge(sb, knowledge, windowEnd, displayOffset);
+            var knowledge = ResolveKnowledge(
+                segments, window, displayOffset, strands ?? [], episodes ?? [], depthTables, civilDate);
+            AppendKnowledge(sb, knowledge, windowEnd, displayOffset, displayZone);
             AppendRecurringNote(sb, recurringReadings);
 
             return new RecapProjectionResult
@@ -136,7 +142,8 @@ namespace Heartbeat.Server.Services
             TimeSpan displayOffset,
             IReadOnlyList<StrandKnowledgeInput> strands,
             IReadOnlyList<EpisodeKnowledgeInput> episodes,
-            DepthTables depthTables)
+            DepthTables depthTables,
+            DateOnly? civilDate = null)
         {
             DateTimeOffset windowStart = window.UtcStart;
             DateTimeOffset windowEnd = window.UtcEnd;
@@ -146,7 +153,7 @@ namespace Heartbeat.Server.Services
                 .Select(s => new SourceObservation(s.Source, depthTables.ReadingsFor(
                     s.Source, s.AppName, s.Title, s.IdentityKey, s.AttributesJson)))
                 .ToList();
-            var date = DateOnly.FromDateTime(windowStart.ToOffset(displayOffset).Date);
+            var date = civilDate ?? DateOnly.FromDateTime(windowStart.ToOffset(displayOffset).Date);
             return KnowledgeProjection.Resolve(date, strands, episodes, observations);
         }
 
@@ -156,7 +163,8 @@ namespace Heartbeat.Server.Services
         /// Satellite 的叙事判断保持原样，不用知识层替换原始活动证据。
         /// </summary>
         private static void AppendKnowledge(
-            StringBuilder sb, DateKnowledge knowledge, DateTimeOffset windowEnd, TimeSpan displayOffset)
+            StringBuilder sb, DateKnowledge knowledge, DateTimeOffset windowEnd, TimeSpan displayOffset,
+            DateTimeZone? displayZone)
         {
             if (knowledge.Strands.Count > 0)
             {
@@ -176,7 +184,7 @@ namespace Heartbeat.Server.Services
                 foreach (var e in knowledge.Episodes)
                 {
                     var time = e.ApproximateStart is { } start && e.ApproximateEnd is { } end
-                        ? $"{FormatTime(start, windowEnd, displayOffset)}–{FormatTime(end, windowEnd, displayOffset)}左右 "
+                        ? $"{FormatTime(start, windowEnd, displayOffset, displayZone)}–{FormatTime(end, windowEnd, displayOffset, displayZone)}左右 "
                         : string.Empty;
                     var context = e.StrandPath.Count > 0 ? $"（属于：{string.Join(" → ", e.StrandPath)}）" : string.Empty;
                     sb.AppendLine($"- {time}{e.Text}{context}");
@@ -239,7 +247,7 @@ namespace Heartbeat.Server.Services
 
         private static void AppendSystemTrack(
             StringBuilder sb, List<ClippedSegment> deviceSegments, DateTimeOffset windowEnd, TimeSpan displayOffset,
-            DepthTables depthTables)
+            DateTimeZone? displayZone, DepthTables depthTables)
         {
             var system = deviceSegments
                 .Where(c => c.Segment.Source == ActivitySources.System)
@@ -278,7 +286,7 @@ namespace Heartbeat.Server.Services
             {
                 var label = b.App == SyntheticApps.Away ? "离开" : b.App;
                 var breakdown = b.App == SyntheticApps.Away ? string.Empty : FormatBreakdown(b.Breakdown, b.Seconds);
-                sb.AppendLine($"- {FormatTime(b.Start, windowEnd, displayOffset)}–{FormatTime(b.End, windowEnd, displayOffset)} {label}（{FormatDuration(b.Seconds)}）{breakdown}");
+                sb.AppendLine($"- {FormatTime(b.Start, windowEnd, displayOffset, displayZone)}–{FormatTime(b.End, windowEnd, displayOffset, displayZone)} {label}（{FormatDuration(b.Seconds)}）{breakdown}");
             }
 
             var totals = system
@@ -365,8 +373,14 @@ namespace Heartbeat.Server.Services
             sb.AppendLine($"近 14 天高频出现（无处不在的基础设施，不是「在做的事」的证据）：{string.Join("、", recurringReadings)}");
         }
 
-        private static string FormatTime(DateTimeOffset t, DateTimeOffset windowEnd, TimeSpan displayOffset)
-            => t == windowEnd ? "24:00" : t.ToOffset(displayOffset).ToString("HH:mm");
+        private static string FormatTime(
+            DateTimeOffset t, DateTimeOffset windowEnd, TimeSpan displayOffset, DateTimeZone? displayZone)
+        {
+            if (t == windowEnd) return "24:00";
+            return displayZone == null
+                ? t.ToOffset(displayOffset).ToString("HH:mm")
+                : Instant.FromDateTimeOffset(t).InZone(displayZone).ToString("HH:mm", null);
+        }
 
         private static string FormatDuration(double seconds)
         {

@@ -43,7 +43,7 @@ _Avoid_: 注册/Registration（Heartbeat 无注册概念，账号归 Auth 平台
 _Avoid_: Public Profile（GitHub 语义是粗聚合展示，这里 public 是全量数据，语义不同不要混用）
 
 **Recap（叙事摘要）**:
-对某 Owner 某日窗口的 LLM 叙事视图：Observation 是事实，Episode 与 Strand 提供用户确认的当天事实和持续语境，Recap 是可重生成的派生物。今天仍按 Segment 水位控制自动重生成；历史日期不因新段主动失效，但其相关知识投影变化时惰性标为“可重新生成”，不自动消耗 LLM。跨设备聚合，无 deviceId 维度；口吻是日记/档案，只叙事，不评判、不打分、不建议（ADR-023/031）。
+对某 Owner 某个已验证 Local Calendar Window 的 LLM 叙事视图：Observation 是事实，Episode 与 Strand 提供用户确认的当天事实和持续语境，Recap 是可重生成的派生物。缓存、生成、投影、新鲜度与生成锁共享 `(OwnerId, WindowKey)` 身份；今天的 Segment 水位与历史知识变化都只提示“可重新生成”，不由读取自动消耗 LLM。跨设备聚合，无 deviceId 维度；口吻是日记/档案，只叙事，不评判、不打分、不建议（ADR-023/031/042/044）。
 _Avoid_: Summary（Report 词条同禁）、日报（汇报工具的词，Recap 是记忆）、把 Recap 正文当事实库
 
 **Recap Projection（Recap 投影）**:

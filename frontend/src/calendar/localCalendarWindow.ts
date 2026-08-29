@@ -19,6 +19,19 @@ export type CalendarContext = Readonly<{
   correlationIdentity: string
 }>
 
+/** 比较两个 Browser envelope 是否描述同一个规范窗口；刷新 correlation 不是窗口身份。 */
+export function sameCalendarWindow<Kind extends 'day' | 'week'>(
+  left: CalendarWindowEnvelope<Kind>,
+  right: CalendarWindowEnvelope<Kind>,
+): boolean {
+  return left.version === right.version
+    && left.kind === right.kind
+    && left.localDate === right.localDate
+    && left.timeZone === right.timeZone
+    && left.start === right.start
+    && left.endExclusive === right.endExclusive
+}
+
 export type CalendarContextErrorCode =
   | 'invalid_local_date'
   | 'unsupported_timezone'

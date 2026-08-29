@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Knowledge;
 using Heartbeat.Core.DTOs.Recaps;
+using Heartbeat.Server.Calendar;
 using Heartbeat.Server.Data;
 using Heartbeat.Server.Entities;
 using Heartbeat.Server.Services;
@@ -41,6 +42,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     private sealed class FakeGenerator : IRecapGenerator
     {
         public int Calls;
+        public string? LastDigest;
 
         /// <summary>吐满这么多块后抛失败；0 = 首块之前就失败，null = 不失败。</summary>
         public int? FailAfterChunks;
@@ -67,6 +69,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
             string digest, [EnumeratorCancellation] CancellationToken ct = default)
         {
             var call = ++Calls;
+            LastDigest = digest;
 
             // Gap = 0 时唯一的 await 已完成，MoveNextAsync 因此同步落地。那些测试要断言的是取消与
             // 落库的先后，不是线程调度——真流的异步性由 ChatCompletionClient 那层负责。
@@ -123,12 +126,38 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     private static readonly DateTimeOffset FixedDay = new(2026, 7, 8, 0, 0, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset FixedNoon = FixedDay.AddHours(12);
 
+    private static ResolvedCalendarWindow DayWindow(DateTimeOffset day) => new(
+        1,
+        "day",
+        day.ToString("yyyy-MM-dd"),
+        "Etc/UTC",
+        new DateTimeOffset(day.UtcDateTime.Date, TimeSpan.Zero),
+        new DateTimeOffset(day.UtcDateTime.Date.AddDays(1), TimeSpan.Zero),
+        NodaTime.LocalDate.FromDateTime(day.UtcDateTime.Date),
+        NodaTime.LocalDate.FromDateTime(day.UtcDateTime.Date.AddDays(1)));
+
+    private static ResolvedCalendarWindow DayWindow(
+        string localDate, string timeZone, string start, string endExclusive)
+    {
+        var validation = LocalCalendarWindowValidator.ResolveDay(new LocalCalendarWindowEnvelope
+        {
+            Version = 1,
+            Kind = "day",
+            LocalDate = localDate,
+            TimeZone = timeZone,
+            Start = DateTimeOffset.Parse(start),
+            EndExclusive = DateTimeOffset.Parse(endExclusive),
+        });
+        Assert.Null(validation.Error);
+        return validation.Window!;
+    }
+
     /// <summary>抽干一条生成流，事件按到达顺序返回。</summary>
     private static async Task<List<RecapStreamEvent>> DrainAsync(
         RecapService svc, DateTimeOffset date, CancellationToken ct = default)
     {
         var events = new List<RecapStreamEvent>();
-        await foreach (var e in svc.GenerateDailyRecapStreamAsync("user-1", date, ct))
+        await foreach (var e in svc.GenerateDailyRecapStreamAsync("user-1", DayWindow(date), ct))
             events.Add(e);
         return events;
     }
@@ -137,6 +166,16 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     private static async Task<DailyRecapResponse> GenerateAsync(RecapService svc, DateTimeOffset date)
     {
         var events = await DrainAsync(svc, date);
+        Assert.DoesNotContain(events, e => e.Type == RecapStreamEvent.ErrorType);
+        return events.Single(e => e.Type == RecapStreamEvent.DoneType).Recap!;
+    }
+
+    private static async Task<DailyRecapResponse> GenerateAsync(
+        RecapService svc, ResolvedCalendarWindow window)
+    {
+        var events = new List<RecapStreamEvent>();
+        await foreach (var e in svc.GenerateDailyRecapStreamAsync("user-1", window))
+            events.Add(e);
         Assert.DoesNotContain(events, e => e.Type == RecapStreamEvent.ErrorType);
         return events.Single(e => e.Type == RecapStreamEvent.DoneType).Recap!;
     }
@@ -156,13 +195,100 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     // ===== 读路径：零 LLM、零写库（ADR-042 §2）=====
 
     [Fact]
+    public async Task LegacyFixedOffsetRow_MissesWindowKey_ThenGenerationPersistsFullWindowIdentity()
+    {
+        using var db = CreateDbContext();
+        var window = DayWindow(PastDay);
+        db.ActivitySegments.Add(SystemSegment(window.Start.AddHours(9), window.Start.AddHours(11)));
+        db.Recaps.Add(new Recap
+        {
+            OwnerId = "user-1",
+            WindowStart = window.Start,
+            Narrative = "legacy narrative",
+            GeneratedAt = window.Start,
+        });
+        await db.SaveChangesAsync();
+
+        var fake = new FakeGenerator();
+        var svc = new RecapService(db, fake, new DigestAssembler(db));
+
+        var miss = await svc.GetDailyRecapAsync("user-1", window);
+        Assert.Null(miss.Narrative);
+
+        await GenerateAsync(svc, window);
+        var sameBoundsOtherZone = DayWindow(
+            window.LocalDate,
+            "Africa/Abidjan",
+            window.Start.ToString("O"),
+            window.EndExclusive.ToString("O"));
+        await GenerateAsync(svc, sameBoundsOtherZone);
+
+        var rows = await db.Recaps.OrderBy(r => r.Id).ToListAsync();
+        Assert.Equal(3, rows.Count);
+        Assert.Null(rows[0].WindowKey);
+        Assert.Equal(window.WindowKey.Value, rows[1].WindowKey);
+        Assert.Equal(window.Version, rows[1].WindowVersion);
+        Assert.Equal(window.Kind, rows[1].WindowKind);
+        Assert.Equal(window.LocalDate, rows[1].LocalDate);
+        Assert.Equal(window.TimeZone, rows[1].TimeZone);
+        Assert.Equal(window.Start, rows[1].WindowStart);
+        Assert.Equal(window.EndExclusive, rows[1].WindowEndExclusive);
+        Assert.Equal(sameBoundsOtherZone.WindowKey.Value, rows[2].WindowKey);
+        Assert.NotEqual(rows[1].WindowKey, rows[2].WindowKey);
+    }
+
+    [Theory]
+    [InlineData("2026-02-15", "Asia/Shanghai", "2026-02-14T16:00:00Z", "2026-02-15T16:00:00Z", 24)]
+    [InlineData("2026-03-08", "America/New_York", "2026-03-08T05:00:00Z", "2026-03-09T04:00:00Z", 23)]
+    [InlineData("2026-11-01", "America/New_York", "2026-11-01T04:00:00Z", "2026-11-02T05:00:00Z", 25)]
+    public async Task GenerationProjectionAndWatermarkUseTheExactResolvedDayBounds(
+        string localDate, string timeZone, string start, string endExclusive, int durationHours)
+    {
+        using var db = CreateDbContext();
+        var window = DayWindow(localDate, timeZone, start, endExclusive);
+        db.ActivitySegments.Add(SystemSegment(window.Start.AddHours(-1), window.EndExclusive.AddHours(1)));
+        await db.SaveChangesAsync();
+
+        var fake = new FakeGenerator();
+        var svc = new RecapService(db, fake, new DigestAssembler(db));
+
+        await GenerateAsync(svc, window);
+
+        Assert.Contains($"{durationHours}小时00分", fake.LastDigest);
+        Assert.Equal(window.EndExclusive, (await db.Recaps.SingleAsync()).SegmentWatermark);
+    }
+
+    [Fact]
+    public async Task SpringForwardProjectionFormatsPostTransitionActivityWithCivilTimezoneRules()
+    {
+        using var db = CreateDbContext();
+        var window = DayWindow(
+            "2026-03-08",
+            "America/New_York",
+            "2026-03-08T05:00:00Z",
+            "2026-03-09T04:00:00Z");
+        db.ActivitySegments.Add(SystemSegment(
+            DateTimeOffset.Parse("2026-03-08T13:00:00Z"),
+            DateTimeOffset.Parse("2026-03-08T14:00:00Z")));
+        await db.SaveChangesAsync();
+
+        var fake = new FakeGenerator();
+        var svc = new RecapService(db, fake, new DigestAssembler(db));
+
+        await GenerateAsync(svc, window);
+
+        Assert.Contains("09:00–10:00 vscode", fake.LastDigest);
+        Assert.DoesNotContain("08:00–09:00 vscode", fake.LastDigest);
+    }
+
+    [Fact]
     public async Task EmptyDay_Read_IsEmpty_NoLlmCall_NothingCached()
     {
         using var db = CreateDbContext();
         var fake = new FakeGenerator();
         var svc = new RecapService(db, fake, new DigestAssembler(db));
 
-        var result = await svc.GetDailyRecapAsync("user-1", PastDay);
+        var result = await svc.GetDailyRecapAsync("user-1", DayWindow(PastDay));
 
         Assert.True(result.IsEmpty);
         Assert.Null(result.Narrative);
@@ -180,7 +306,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         var fake = new FakeGenerator();
         var svc = new RecapService(db, fake, new DigestAssembler(db));
 
-        var result = await svc.GetDailyRecapAsync("user-1", PastDay);
+        var result = await svc.GetDailyRecapAsync("user-1", DayWindow(PastDay));
 
         // 三态的中间那一态：有数据、没叙事。读取不再顺手生成（旧行为的反向断言）。
         Assert.False(result.IsEmpty);
@@ -200,7 +326,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         var svc = new RecapService(db, fake, new DigestAssembler(db));
 
         var generated = await GenerateAsync(svc, PastDay);
-        var read = await svc.GetDailyRecapAsync("user-1", PastDay);
+        var read = await svc.GetDailyRecapAsync("user-1", DayWindow(PastDay));
 
         Assert.Equal("narrative-1", generated.Narrative);
         Assert.Equal("narrative-1", read.Narrative);
@@ -241,7 +367,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         var svc = new RecapService(db, fake, new DigestAssembler(db), new FixedClock(FixedNoon));
 
         await GenerateAsync(svc, FixedNoon);
-        var result = await svc.GetDailyRecapAsync("user-1", FixedNoon);
+        var result = await svc.GetDailyRecapAsync("user-1", DayWindow(FixedNoon));
 
         Assert.False(result.SegmentStale); // 无新数据，水位未落后
         Assert.Equal(1, fake.Calls);
@@ -262,7 +388,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         db.ActivitySegments.Add(SystemSegment(FixedDay.AddHours(10.5), FixedDay.AddHours(11.5)));
         await db.SaveChangesAsync();
 
-        var result = await svc.GetDailyRecapAsync("user-1", FixedNoon);
+        var result = await svc.GetDailyRecapAsync("user-1", DayWindow(FixedNoon));
 
         // 旧行为（水位落后即自动重生成）的反向断言：只提示，不烧 token，正文原样。
         Assert.True(result.SegmentStale);
@@ -288,7 +414,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         strand.Gloss = "改名后的项目";
         await db.SaveChangesAsync();
 
-        var result = await svc.GetDailyRecapAsync("user-1", PastDay);
+        var result = await svc.GetDailyRecapAsync("user-1", DayWindow(PastDay));
 
         Assert.False(result.SegmentStale);
         Assert.True(result.KnowledgeStale);
@@ -305,7 +431,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         var fake = new FakeGenerator();
         var svc = new RecapService(db, fake, new DigestAssembler(db));
 
-        var result = await svc.GetCachedDailyRecapAsync("user-1", PastDay);
+        var result = await svc.GetCachedDailyRecapAsync("user-1", DayWindow(PastDay));
 
         Assert.Null(result);
         Assert.Equal(0, fake.Calls);
@@ -322,7 +448,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         var svc = new RecapService(db, fake, new DigestAssembler(db));
         await GenerateAsync(svc, PastDay);
 
-        var result = await svc.GetCachedDailyRecapAsync("user-1", PastDay);
+        var result = await svc.GetCachedDailyRecapAsync("user-1", DayWindow(PastDay));
 
         Assert.NotNull(result);
         Assert.Equal("narrative-1", result.Narrative);
@@ -351,7 +477,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         var fake = new FakeGenerator();
         var svc = new RecapService(db, fake, new DigestAssembler(db));
 
-        var result = await svc.GetDailyRecapAsync("user-1", PastDay);
+        var result = await svc.GetDailyRecapAsync("user-1", DayWindow(PastDay));
 
         Assert.True(result.IsEmpty); // user-2 的数据对 user-1 不可见
         Assert.Equal(0, fake.Calls);
@@ -435,7 +561,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         var svc = new RecapService(db, fake, new DigestAssembler(db));
 
         var seen = new List<string>();
-        await foreach (var e in svc.GenerateDailyRecapStreamAsync("user-1", PastDay))
+        await foreach (var e in svc.GenerateDailyRecapStreamAsync("user-1", DayWindow(PastDay)))
         {
             if (e.Type == RecapStreamEvent.DeltaType) seen.Add(e.Delta!);
             if (seen.Count == 2) break; // 客户端关页面
@@ -461,7 +587,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         using var cts = new CancellationTokenSource();
         var events = new List<RecapStreamEvent>();
         var deltas = 0;
-        await foreach (var e in svc.GenerateDailyRecapStreamAsync("user-1", PastDay, cts.Token))
+        await foreach (var e in svc.GenerateDailyRecapStreamAsync("user-1", DayWindow(PastDay), cts.Token))
         {
             events.Add(e);
             // 最后一块已经到手之后请求才断：ADR-042 §6 的核心——货已经买到了就存下来，
@@ -527,13 +653,13 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         var fake = new FakeGenerator();
         var svc = new RecapService(db, fake, new DigestAssembler(db));
         await GenerateAsync(svc, PastDay);
-        Assert.False((await svc.GetDailyRecapAsync("user-1", PastDay)).KnowledgeStale);
+        Assert.False((await svc.GetDailyRecapAsync("user-1", DayWindow(PastDay))).KnowledgeStale);
 
         // 相关知识变化：编辑 Gloss（叙事相关字段）
         strand.Gloss = "改名后的项目";
         await db.SaveChangesAsync();
 
-        var stale = await svc.GetDailyRecapAsync("user-1", PastDay);
+        var stale = await svc.GetDailyRecapAsync("user-1", DayWindow(PastDay));
 
         Assert.True(stale.KnowledgeStale); // 只提示
         Assert.Equal("narrative-1", stale.Narrative); // 正文仍是缓存
@@ -574,21 +700,28 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         });
         await db.SaveChangesAsync();
 
-        var result = await svc.GetDailyRecapAsync("user-1", PastDay);
+        var result = await svc.GetDailyRecapAsync("user-1", DayWindow(PastDay));
 
         Assert.False(result.KnowledgeStale); // 精确到相关知识，不是全局版本
         Assert.Equal(1, fake.Calls);
     }
 
     [Fact]
-    public async Task LegacyRecap_NullKnowledgeHash_LazilyStale_NoBackfill()
+    public async Task PreKnowledgeHashRecap_WithWindowKey_LazilyStale_NoBackfill()
     {
         using var db = CreateDbContext();
+        var window = DayWindow(PastDay);
         db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         db.Recaps.Add(new Recap
         {
             OwnerId = "user-1",
-            WindowStart = DateRange.Day(PastDay).UtcStart,
+            WindowKey = window.WindowKey.Value,
+            WindowVersion = window.Version,
+            WindowKind = window.Kind,
+            LocalDate = window.LocalDate,
+            TimeZone = window.TimeZone,
+            WindowStart = window.Start,
+            WindowEndExclusive = window.EndExclusive,
             Narrative = "旧配方写的",
             GeneratedAt = PastDay,
             KnowledgeHash = null, // 投影引入前的旧行
@@ -598,7 +731,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         var fake = new FakeGenerator();
         var svc = new RecapService(db, fake, new DigestAssembler(db));
 
-        var result = await svc.GetDailyRecapAsync("user-1", PastDay);
+        var result = await svc.GetDailyRecapAsync("user-1", window);
 
         Assert.True(result.KnowledgeStale); // 惰性视为可重新生成
         Assert.Equal("旧配方写的", result.Narrative);
@@ -621,13 +754,13 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
 
         strand.Gloss = "新的理解";
         await db.SaveChangesAsync();
-        Assert.True((await svc.GetDailyRecapAsync("user-1", PastDay)).KnowledgeStale);
+        Assert.True((await svc.GetDailyRecapAsync("user-1", DayWindow(PastDay))).KnowledgeStale);
 
         var regenerated = await GenerateAsync(svc, PastDay);
 
         Assert.False(regenerated.KnowledgeStale);
         Assert.Equal("narrative-2", regenerated.Narrative);
-        Assert.False((await svc.GetDailyRecapAsync("user-1", PastDay)).KnowledgeStale);
+        Assert.False((await svc.GetDailyRecapAsync("user-1", DayWindow(PastDay))).KnowledgeStale);
     }
 
     [Fact]
@@ -688,7 +821,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         });
         await db.SaveChangesAsync();
 
-        var result = await svc.GetDailyRecapAsync("user-1", PastDay);
+        var result = await svc.GetDailyRecapAsync("user-1", DayWindow(PastDay));
 
         Assert.False(result.KnowledgeStale);
         Assert.Equal(1, fake.Calls);
@@ -718,7 +851,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         });
         await db.SaveChangesAsync();
 
-        var result = await svc.GetDailyRecapAsync("user-1", PastDay);
+        var result = await svc.GetDailyRecapAsync("user-1", DayWindow(PastDay));
 
         Assert.True(result.KnowledgeStale); // Episode 新增 → 相关知识变化
         Assert.Equal(1, fake.Calls);
@@ -739,7 +872,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         db.ActivitySegments.Add(SystemSegment(FixedDay.AddHours(10.5), FixedDay.AddHours(11.5)));
         await db.SaveChangesAsync();
 
-        var result = await svc.GetDailyRecapAsync("user-1", FixedNoon);
+        var result = await svc.GetDailyRecapAsync("user-1", DayWindow(FixedNoon));
 
         Assert.True(result.SegmentStale);
         Assert.False(result.KnowledgeStale);
@@ -763,7 +896,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         strand.Gloss = "变了";
         await db.SaveChangesAsync();
 
-        var result = await svc.GetCachedDailyRecapAsync("user-1", PastDay);
+        var result = await svc.GetCachedDailyRecapAsync("user-1", DayWindow(PastDay));
 
         Assert.NotNull(result);
         Assert.False(result.KnowledgeStale); // 纯缓存：不暴露知识投影细节
@@ -898,7 +1031,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         var svc = new RecapService(db, fake, new DigestAssembler(db), null, Timeouts(20_000, 30_000, 10_000));
 
         // 先跑一次纯读，把 EF 的模型编译与连接热起来——下面靠时间差判定，不想跟冷启动赛跑。
-        await svc.GetDailyRecapAsync("user-1", PastDay);
+        await svc.GetDailyRecapAsync("user-1", DayWindow(PastDay));
 
         using var cts = new CancellationTokenSource();
         var drain = DrainAsync(svc, PastDay, cts.Token);
@@ -943,7 +1076,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         var svc = new RecapService(db, fake, new DigestAssembler(db), null, Timeouts(20_000, 30_000, 60));
 
         var pings = 0;
-        await foreach (var e in svc.GenerateDailyRecapStreamAsync("user-1", PastDay))
+        await foreach (var e in svc.GenerateDailyRecapStreamAsync("user-1", DayWindow(PastDay)))
         {
             Assert.NotEqual(RecapStreamEvent.ErrorType, e.Type);
             // 等到第二个心跳才罢手：心跳必须是周期性的，而不是"只发一次然后忙循环/静默"。

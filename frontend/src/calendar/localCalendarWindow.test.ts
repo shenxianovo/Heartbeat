@@ -3,6 +3,7 @@ import scenarios from '../../../shared/calendar-window-golden-scenarios.json'
 import {
   CalendarContextError,
   resolveCalendarContext,
+  sameCalendarWindow,
 } from './localCalendarWindow'
 
 describe('resolveCalendarContext', () => {
@@ -80,6 +81,12 @@ describe('resolveCalendarContext', () => {
 
     expect(first.isToday).toBe(true)
     expect(first.correlationIdentity).not.toBe(second.correlationIdentity)
+    expect(sameCalendarWindow(first.day, second.day)).toBe(true)
+    expect(sameCalendarWindow(first.day, resolveCalendarContext('2026-08-28', {
+      ...options,
+      timeZone: 'Etc/UTC',
+      correlationIdentity: () => 'refresh-3',
+    }).day)).toBe(false)
   })
 
   it('exposes diagnostic errors without leaking Temporal exceptions', () => {

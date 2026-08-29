@@ -10,8 +10,25 @@ namespace Heartbeat.Server.Entities
 
         public string OwnerId { get; set; } = string.Empty;
 
-        /// <summary>日窗口起点（UTC）。窗口由用户时区切出，时区不同的"同一天"是不同窗口、不同行。</summary>
+        /// <summary>
+        /// Analytics 验证后生成的完整窗口身份。null 只表示 ADR-044 前的 fixed-offset 派生缓存；
+        /// legacy 行保留但永远不能命中新窗口。
+        /// </summary>
+        public string? WindowKey { get; set; }
+
+        public int? WindowVersion { get; set; }
+
+        public string? WindowKind { get; set; }
+
+        public string? LocalDate { get; set; }
+
+        public string? TimeZone { get; set; }
+
+        /// <summary>完整半开 UTC 窗口的起点；legacy 行也保留原值供诊断。</summary>
         public DateTimeOffset WindowStart { get; set; }
+
+        /// <summary>完整半开 UTC 窗口的 exclusive end；legacy fixed-offset 行为 null。</summary>
+        public DateTimeOffset? WindowEndExclusive { get; set; }
 
         public string Narrative { get; set; } = string.Empty;
 

@@ -177,5 +177,6 @@ export function useHeartbeat(username: string) {
     includeAway: reports.includeAway,
     keyFrequency,
     timezoneLabel,
+    calendarContext,
   }
 }

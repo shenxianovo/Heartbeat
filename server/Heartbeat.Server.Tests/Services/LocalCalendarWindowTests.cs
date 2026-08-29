@@ -124,6 +124,23 @@ public sealed class LocalCalendarWindowTests
         Assert.Equal(167, (result.Window.EndExclusive - result.Window.Start).TotalHours);
     }
 
+    [Fact]
+    public void ResolvedWindow_WindowKeyContainsTheCanonicalCalendarIdentity()
+    {
+        var result = LocalCalendarWindowValidator.Resolve(ValidEnvelope());
+
+        Assert.Null(result.Error);
+        Assert.Equal(
+            "local-calendar-window|1|day|2026-08-29|Asia/Shanghai|2026-08-28T16:00:00.0000000Z|2026-08-29T16:00:00.0000000Z",
+            result.Window!.WindowKey.Value);
+
+        var window = result.Window;
+        Assert.NotEqual(window.WindowKey, (window with { Version = 2 }).WindowKey);
+        Assert.NotEqual(window.WindowKey, (window with { Kind = "week" }).WindowKey);
+        Assert.NotEqual(window.WindowKey, (window with { TimeZone = "Etc/UTC" }).WindowKey);
+        Assert.NotEqual(window.WindowKey, (window with { EndExclusive = window.EndExclusive.AddHours(1) }).WindowKey);
+    }
+
     private static LocalCalendarWindowEnvelope ValidEnvelope() => new()
     {
         Version = 1,

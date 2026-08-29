@@ -59,6 +59,7 @@ const {
   includeAway,
   keyFrequency,
   timezoneLabel,
+  calendarContext,
 } = useHeartbeat(props.username)
 
 // 取数失败的人话:区分断网 / 服务端错误 / 解析异常(见 api ApiError)。
@@ -223,7 +224,7 @@ onUnmounted(() => {
 
           <!-- owner 可生成/重生成；公开访客只读已有缓存，不触发 LLM。 -->
           <RecapCard
-            :selectedDate="selectedDate"
+            :calendarContext="calendarContext"
             :username="username"
             :canRegenerate="isOwnProfile"
           />

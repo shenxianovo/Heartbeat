@@ -7,12 +7,14 @@ import {
   type DailyRecapResponse,
 } from '../api/index'
 import RecapCard from './RecapCard.vue'
+import { resolveCalendarContext, type CalendarWindowEnvelope } from '../calendar/localCalendarWindow'
 
 vi.mock('../api/index', () => ({
   fetchDailyRecap: vi.fn(),
   fetchPublicDailyRecap: vi.fn(),
   streamDailyRecapGeneration: vi.fn(),
   recapGenerationErrorMessage: vi.fn(() => '生成失败，请稍后重试'),
+  toApiError: vi.fn((error: unknown) => error),
 }))
 
 interface StreamHandlers {
@@ -23,7 +25,7 @@ interface StreamHandlers {
 }
 
 interface StreamCall {
-  date?: string
+  window: CalendarWindowEnvelope<'day'>
   signal?: AbortSignal
   handlers: StreamHandlers
   finish: () => void
@@ -34,7 +36,7 @@ function captureStreams(): StreamCall[] {
   const calls: StreamCall[] = []
   vi.mocked(streamDailyRecapGeneration).mockImplementation((params, handlers) =>
     new Promise<void>(resolve => {
-      calls.push({ date: params.date, signal: params.signal, handlers, finish: resolve })
+      calls.push({ window: params.window, signal: params.signal, handlers, finish: resolve })
     }))
   return calls
 }
@@ -54,7 +56,11 @@ function recap(overrides: Partial<DailyRecapResponse> = {}): DailyRecapResponse 
 
 async function mountCard(canRegenerate = true, date = '2026-08-19') {
   const wrapper = mount(RecapCard, {
-    props: { selectedDate: date, username: 'alice', canRegenerate },
+    props: {
+      calendarContext: context(date),
+      username: 'alice',
+      canRegenerate,
+    },
     global: {
       stubs: {
         Card: { template: '<section><slot /></section>' },
@@ -64,6 +70,22 @@ async function mountCard(canRegenerate = true, date = '2026-08-19') {
   })
   await flushPromises()
   return wrapper
+}
+
+function context(date: string) {
+  return resolveCalendarContext(date, {
+    timeZone: 'Etc/UTC',
+    now: '2026-08-19T12:00:00Z',
+    correlationIdentity: () => `context-${date}`,
+  })
+}
+
+function contextWithIdentity(date: string, identity: string) {
+  return resolveCalendarContext(date, {
+    timeZone: 'Etc/UTC',
+    now: '2026-08-19T12:00:00Z',
+    correlationIdentity: () => identity,
+  })
 }
 
 function regenerateButton(wrapper: ReturnType<typeof mount>) {
@@ -126,7 +148,7 @@ describe('RecapCard 三态渲染', () => {
     const wrapper = await mountCard()
 
     expect(calls).toHaveLength(1)
-    expect(calls[0].date).toBe('2026-08-19')
+    expect(calls[0].window.localDate).toBe('2026-08-19')
     expect(wrapper.text()).toContain('正在回忆这一天…')
 
     calls[0].handlers.onDelta?.('上午写代码。')
@@ -277,14 +299,14 @@ describe('RecapCard 推理透传（ADR-042 §9）', () => {
   })
 
   it('切日期清空推理：新一天的等待不该显示上一天的思考', async () => {
-    vi.mocked(fetchDailyRecap).mockImplementation(async ({ date }) => recap({ date }))
+    vi.mocked(fetchDailyRecap).mockImplementation(async ({ window }) => recap({ date: window.localDate }))
     const calls = captureStreams()
 
     const wrapper = await mountCard()
     calls[0].handlers.onThinking?.('上一天的推理')
     await flushPromises()
 
-    await wrapper.setProps({ selectedDate: '2026-08-18' })
+    await wrapper.setProps({ calendarContext: context('2026-08-18') })
     await flushPromises()
 
     expect(thinkingPanel(wrapper).exists()).toBe(false)
@@ -316,8 +338,10 @@ describe('RecapCard 中止与失败', () => {
   })
 
   it('切日期后 abort 旧流，迟到的 delta 不再写进卡片', async () => {
-    vi.mocked(fetchDailyRecap).mockImplementation(async ({ date }) =>
-      date === '2026-08-19' ? recap() : recap({ date, narrative: '另一天的叙事。' }))
+    vi.mocked(fetchDailyRecap).mockImplementation(async ({ window }) =>
+      window.localDate === '2026-08-19'
+        ? recap()
+        : recap({ date: window.localDate, narrative: '另一天的叙事。' }))
     const calls = captureStreams()
 
     const wrapper = await mountCard()
@@ -325,7 +349,7 @@ describe('RecapCard 中止与失败', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('这一天的第一句。')
 
-    await wrapper.setProps({ selectedDate: '2026-08-18' })
+    await wrapper.setProps({ calendarContext: context('2026-08-18') })
     await flushPromises()
 
     expect(calls[0].signal?.aborted).toBe(true)
@@ -336,6 +360,55 @@ describe('RecapCard 中止与失败', () => {
     expect(wrapper.text()).not.toContain('这一天的第一句。')
     expect(wrapper.text()).not.toContain('迟到的旧文本。')
     expect(wrapper.text()).toContain('另一天的叙事。')
+  })
+
+  it('同一规范窗口的下次刷新不中断已经开始的生成', async () => {
+    vi.mocked(fetchDailyRecap).mockResolvedValue(recap())
+    const calls = captureStreams()
+
+    const wrapper = await mountCard()
+    expect(calls).toHaveLength(1)
+
+    await wrapper.setProps({ calendarContext: contextWithIdentity('2026-08-19', 'next-refresh') })
+    await flushPromises()
+
+    expect(calls[0].signal?.aborted).toBe(false)
+    calls[0].handlers.onDone?.(recap({ narrative: '长生成正常完成。' }))
+    calls[0].finish()
+    await flushPromises()
+    expect(wrapper.text()).toContain('长生成正常完成。')
+  })
+
+  it('普通读取原样显示稳定的 calendar mismatch 诊断', async () => {
+    vi.mocked(fetchDailyRecap).mockRejectedValue({
+      kind: 'calendar',
+      code: 'calendar_rules_mismatch',
+      message: 'Browser 与 Analytics TZDB 不一致，请更新滞后的运行时。',
+    })
+
+    const wrapper = await mountCard()
+
+    expect(wrapper.text()).toContain('Browser 与 Analytics TZDB 不一致，请更新滞后的运行时。')
+    expect(wrapper.text()).not.toContain('数据解析失败')
+  })
+
+  it('切换 Calendar Context 后迟到的普通读取不能覆盖新窗口', async () => {
+    let resolveOld!: (value: DailyRecapResponse) => void
+    vi.mocked(fetchDailyRecap).mockImplementation(({ window }) =>
+      window.localDate === '2026-08-19'
+        ? new Promise(resolve => { resolveOld = resolve })
+        : Promise.resolve(recap({ date: window.localDate, narrative: '新窗口叙事。' })))
+
+    const wrapper = await mountCard()
+    await wrapper.setProps({ calendarContext: context('2026-08-18') })
+    await flushPromises()
+    expect(wrapper.text()).toContain('新窗口叙事。')
+
+    resolveOld(recap({ narrative: '迟到的旧窗口叙事。' }))
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('新窗口叙事。')
+    expect(wrapper.text()).not.toContain('迟到的旧窗口叙事。')
   })
 
   it('卸载时 abort 在途的生成（连接的寿命就是这次生成的寿命）', async () => {
