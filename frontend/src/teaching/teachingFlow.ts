@@ -319,9 +319,11 @@ export interface ProposeFailure {
 
 /** 提案失败的解释：无论哪种失败，用户的自然语言回答都保留可重试。 */
 export function interpretProposeError(err: ApiErrorLike, code: string | undefined): ProposeFailure {
-  if (err.kind === 'http' && err.status === 404)
+  if (code === 'question_window_mismatch')
+    return { expired: true, message: '日期或时区已经变化——请刷新问题后重新核对证据' }
+  if (code === 'question_not_found' || err.kind === 'http' && err.status === 404)
     return { expired: true, message: '这张证据卡已过期（问题可能已重新生成）——请刷新后重新核对' }
-  if (err.kind === 'http' && err.status === 502)
+  if (code === 'generation_failed' || err.kind === 'http' && err.status === 502)
     return { expired: false, message: '整理服务暂不可用，请稍后重试；你的回答已保留' }
   if (err.kind === 'http' && err.status === 400)
     return { expired: false, message: knowledgeErrorMessage(code, '请求无效，请检查回答后重试') }

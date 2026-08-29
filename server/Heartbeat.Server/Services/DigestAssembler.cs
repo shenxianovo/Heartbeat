@@ -35,7 +35,7 @@ namespace Heartbeat.Server.Services
             string ownerId, ResolvedCalendarWindow window, CancellationToken ct = default)
         {
             var instantWindow = InstantWindowOf(window);
-            var localDate = DateOnlyOf(window.CivilStartDate);
+            var localDate = window.CivilStartDateOnly;
             var displayOffset = DisplayOffsetAtStart(window);
             return await AssembleAsync(ownerId, instantWindow, localDate, displayOffset, window.TimeZone, ct);
         }
@@ -67,7 +67,7 @@ namespace Heartbeat.Server.Services
             => await ComputeKnowledgeHashAsync(
                 ownerId,
                 InstantWindowOf(window),
-                DateOnlyOf(window.CivilStartDate),
+                window.CivilStartDateOnly,
                 DisplayOffsetAtStart(window),
                 ct);
 
@@ -87,8 +87,6 @@ namespace Heartbeat.Server.Services
 
         private static DateRange InstantWindowOf(ResolvedCalendarWindow window) =>
             new(window.Start.UtcDateTime, window.EndExclusive.UtcDateTime);
-
-        private static DateOnly DateOnlyOf(LocalDate date) => new(date.Year, date.Month, date.Day);
 
         private static TimeSpan DisplayOffsetAtStart(ResolvedCalendarWindow window)
         {

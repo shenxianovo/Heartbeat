@@ -1,5 +1,6 @@
 using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Knowledge;
+using Heartbeat.Server.Calendar;
 using Heartbeat.Server.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,6 +19,7 @@ namespace Heartbeat.Server.Services
     public static class ProposalErrorCodes
     {
         public const string QuestionNotFound = "question_not_found";
+        public const string QuestionWindowMismatch = "question_window_mismatch";
         public const string EmptyAnswer = "empty_answer";
         public const string GenerationFailed = "generation_failed";
 
@@ -27,7 +29,7 @@ namespace Heartbeat.Server.Services
 
     /// <summary>
     /// 两阶段教学第二步的编排（ADR-031 §6）：零写入——SaveChanges 在这条调用链上不存在。
-    /// 主动发问入口按 (Owner, 日窗口, 问题 Id) 取回服务端自己发出的证据卡；Recap 纠正入口
+    /// 主动发问入口按 (Owner, WindowKey, 问题 Id) 取回服务端自己发出的证据卡；Recap 纠正入口
     /// （issue 06）把证据上下文锁定为目标本地日期的活动摘要（与叙事同一份 digest）。
     /// 两个入口共用知识语境装配（已有对象快照，UUIDv7 + 读取时版本）→ LLM 整理 →
     /// 消毒成可编辑 KnowledgeChangeSet。
@@ -36,18 +38,24 @@ namespace Heartbeat.Server.Services
         AppDbContext db, QuestionService questionService, DigestAssembler assembler, IProposalGenerator generator)
     {
         public async Task<ProposalResult> ProposeAsync(
-            string ownerId, Guid questionId, ProposeFromQuestionRequest request, CancellationToken ct = default)
+            string ownerId, Guid questionId, ResolvedCalendarWindow window,
+            ProposeFromQuestionRequest request, CancellationToken ct = default)
         {
             if (string.IsNullOrWhiteSpace(request.Answer))
                 return ProposalResult.Fail(ProposalErrorCodes.EmptyAnswer, "Answer is required.");
 
-            // 证据引用纪律（ADR-031 §6）：只解释服务端发出过的证据卡，不接受任意 Owner/Segment ID。
-            var question = await questionService.FindQuestionAsync(ownerId, request.Date, questionId, ct);
+            if (!string.Equals(request.WindowKey, window.WindowKey.Value, StringComparison.Ordinal))
+                return ProposalResult.Fail(
+                    ProposalErrorCodes.QuestionWindowMismatch,
+                    "Question belongs to a different Local Calendar Window. Refresh questions before submitting.");
+
+            var question = await questionService.FindQuestionAsync(ownerId, window, questionId, ct);
             if (question == null)
                 return ProposalResult.Fail(ProposalErrorCodes.QuestionNotFound,
-                    "Question not found for this owner and date. It may have been adjudicated or regenerated.");
+                    "Question not found for this owner and Local Calendar Window. It may have been adjudicated or regenerated.");
 
-            var context = await LoadContextAsync(ownerId, request.Date, question.EpisodeId, ct);
+            var context = await LoadContextAsync(
+                ownerId, window.CivilStartDateOnly, question.EpisodeId, ct);
             var raw = await generator.ProposeAsync(question, request.Answer, context, ct);
             return Sanitize(raw, context);
         }
@@ -70,7 +78,8 @@ namespace Heartbeat.Server.Services
                 return ProposalResult.Fail(ProposalErrorCodes.EmptyDay,
                     "No observations on this date; there is no recap to correct.");
 
-            var context = await LoadContextAsync(ownerId, request.Date, sourceEpisodeId: null, ct);
+            var context = await LoadContextAsync(
+                ownerId, DateOnly.FromDateTime(request.Date.Date), sourceEpisodeId: null, ct);
             var raw = await generator.ProposeCorrectionAsync(projection.Digest, request.Correction, context, ct);
             return Sanitize(raw, context);
         }
@@ -92,10 +101,8 @@ namespace Heartbeat.Server.Services
         /// 版本在此刻读取——sanitizer 盖章、commit 端比对，陈旧提案在提交时显式冲突。
         /// </summary>
         private async Task<ProposalContext> LoadContextAsync(
-            string ownerId, DateTimeOffset date, Guid? sourceEpisodeId, CancellationToken ct)
+            string ownerId, DateOnly localDate, Guid? sourceEpisodeId, CancellationToken ct)
         {
-            var localDate = DateOnly.FromDateTime(date.Date);
-
             var strandRows = await db.Strands
                 .Where(s => s.OwnerId == ownerId)
                 .Select(s => new { s.Id, s.ParentStrandId, s.Name, s.Gloss, s.StartedOn, s.EndedOn, s.Version })

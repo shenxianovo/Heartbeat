@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Knowledge;
+using Heartbeat.Server.Calendar;
 using Heartbeat.Server.Data;
 using Heartbeat.Server.Entities;
 using Heartbeat.Server.Services;
@@ -84,6 +85,58 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
     private QuestionService CreateService(AppDbContext db, FakeAsking fake, TimeProvider? clock = null)
         => new(db, new DigestAssembler(db), fake, clock);
 
+    private static ResolvedCalendarWindow ResolveDay(
+        string timeZone, string start, string endExclusive)
+    {
+        var result = LocalCalendarWindowValidator.ResolveDay(new LocalCalendarWindowEnvelope
+        {
+            Version = 1,
+            Kind = "day",
+            LocalDate = "2026-03-08",
+            TimeZone = timeZone,
+            Start = DateTimeOffset.Parse(start),
+            EndExclusive = DateTimeOffset.Parse(endExclusive),
+        });
+        return result.Window!;
+    }
+
+    private static ResolvedCalendarWindow UtcDay(DateTimeOffset date) =>
+        LocalCalendarWindowValidator.ResolveDay(LocalCalendarWindowTestData.UtcDay(date)).Window!;
+
+    [Fact]
+    public async Task SameLocalDateInDifferentTimeZonesUsesDistinctQuestionCaches()
+    {
+        using var db = CreateDbContext();
+        db.ActivitySegments.Add(Segment(
+            DateTimeOffset.Parse("2026-03-08T05:00:00Z"),
+            DateTimeOffset.Parse("2026-03-08T06:00:00Z")));
+        await db.SaveChangesAsync();
+
+        var fake = new FakeAsking { Result = [Candidate("sometool")] };
+        var svc = CreateService(db, fake);
+        var newYork = ResolveDay(
+            "America/New_York", "2026-03-08T05:00:00Z", "2026-03-09T04:00:00Z");
+        var utc = ResolveDay(
+            "UTC", "2026-03-08T00:00:00Z", "2026-03-09T00:00:00Z");
+
+        var easternQuestions = await svc.GetDailyQuestionsAsync("user-1", newYork);
+        var utcQuestions = await svc.GetDailyQuestionsAsync("user-1", utc);
+
+        Assert.Equal(2, fake.Calls);
+        var caches = await db.DailyQuestionSets.OrderBy(q => q.TimeZone).ToListAsync();
+        Assert.Equal(2, caches.Count);
+        Assert.All(caches, cache =>
+        {
+            Assert.Equal(1, cache.WindowVersion);
+            Assert.Equal("day", cache.WindowKind);
+            Assert.Equal("2026-03-08", cache.LocalDate);
+            Assert.NotNull(cache.WindowEndExclusive);
+        });
+        Assert.Equal(newYork.WindowKey.Value, Assert.Single(easternQuestions.Questions).WindowKey);
+        Assert.Equal(utc.WindowKey.Value, Assert.Single(utcQuestions.Questions).WindowKey);
+        Assert.NotEqual(easternQuestions.Questions[0].WindowKey, utcQuestions.Questions[0].WindowKey);
+    }
+
     [Fact]
     public async Task PastDay_GeneratesOnce_SecondReadHitsCache()
     {
@@ -94,8 +147,8 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
         var fake = new FakeAsking { Result = [Candidate("sometool")] };
         var svc = CreateService(db, fake);
 
-        var first = await svc.GetDailyQuestionsAsync("user-1", PastDay);
-        var second = await svc.GetDailyQuestionsAsync("user-1", PastDay);
+        var first = await svc.GetDailyQuestionsAsync("user-1", UtcDay(PastDay));
+        var second = await svc.GetDailyQuestionsAsync("user-1", UtcDay(PastDay));
 
         Assert.Single(first.Questions);
         Assert.Single(second.Questions);
@@ -120,7 +173,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
         var fake = new FakeAsking { Result = [Candidate("sometool")] };
         var svc = CreateService(db, fake);
 
-        var result = await svc.GetDailyQuestionsAsync("user-1", PastDay);
+        var result = await svc.GetDailyQuestionsAsync("user-1", UtcDay(PastDay));
 
         var q = Assert.Single(result.Questions);
         Assert.Equal(AskingQuestionKinds.Cluster, q.Kind);
@@ -146,7 +199,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
         var fake = new FakeAsking { Result = [Candidate("ghost-tool"), Candidate("sometool")] };
         var svc = CreateService(db, fake);
 
-        var result = await svc.GetDailyQuestionsAsync("user-1", PastDay);
+        var result = await svc.GetDailyQuestionsAsync("user-1", UtcDay(PastDay));
 
         var q = Assert.Single(result.Questions);
         Assert.Equal("sometool", q.Matcher.Steps[0].Value);
@@ -159,7 +212,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
         var fake = new FakeAsking { Result = [Candidate("sometool")] };
         var svc = CreateService(db, fake);
 
-        var result = await svc.GetDailyQuestionsAsync("user-1", PastDay);
+        var result = await svc.GetDailyQuestionsAsync("user-1", UtcDay(PastDay));
 
         Assert.Empty(result.Questions);
         Assert.Equal(0, fake.Calls);
@@ -176,12 +229,12 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
         var fake = new FakeAsking { Result = null };
         var svc = CreateService(db, fake);
 
-        var failed = await svc.GetDailyQuestionsAsync("user-1", PastDay);
+        var failed = await svc.GetDailyQuestionsAsync("user-1", UtcDay(PastDay));
         Assert.Empty(failed.Questions);
         Assert.Empty(await db.DailyQuestionSets.ToListAsync()); // 失败不写缓存
 
         fake.Result = [Candidate("sometool")];
-        var retried = await svc.GetDailyQuestionsAsync("user-1", PastDay);
+        var retried = await svc.GetDailyQuestionsAsync("user-1", UtcDay(PastDay));
         Assert.Single(retried.Questions);
         Assert.Equal(2, fake.Calls); // 无毒缓存，下次读重试
     }
@@ -204,7 +257,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
         };
         var svc = CreateService(db, fake);
 
-        var result = await svc.GetDailyQuestionsAsync("user-1", PastDay);
+        var result = await svc.GetDailyQuestionsAsync("user-1", UtcDay(PastDay));
 
         Assert.Equal(3, result.Questions.Count);
         var cached = Assert.Single(await db.DailyQuestionSets.ToListAsync());
@@ -224,7 +277,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
 
         var fake = new FakeAsking { Result = [Candidate("tool-a"), Candidate("tool-b")] };
         var svc = CreateService(db, fake);
-        Assert.Equal(2, (await svc.GetDailyQuestionsAsync("user-1", PastDay)).Questions.Count);
+        Assert.Equal(2, (await svc.GetDailyQuestionsAsync("user-1", UtcDay(PastDay))).Questions.Count);
 
         // 用户裁决：tool-a 绑进 Strand，tool-b 静音——两个出口都要把问题从队列里 diff 掉
         var knowledge = new KnowledgeService(db);
@@ -236,25 +289,25 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
         });
         await knowledge.MuteMatcherAsync("user-1", AppMatcher("tool-b"));
 
-        var after = await svc.GetDailyQuestionsAsync("user-1", PastDay);
+        var after = await svc.GetDailyQuestionsAsync("user-1", UtcDay(PastDay));
 
         Assert.Empty(after.Questions);
         Assert.Equal(1, fake.Calls); // diff 是读时确定性过滤，零 LLM 重调
     }
 
     [Fact]
-    public async Task LegacyPayloadVersion_TreatedAsCacheMiss_Regenerated()
+    public async Task LegacyFixedOffsetRowIsPreservedAndCannotSatisfyANewWindowKey()
     {
         using var db = CreateDbContext();
         db.ActivitySegments.Add(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
-        // 旧单阶段缓存行（隐式版本 0）：payload 是退役的 QuestionItemResponse 形状
+        // ADR-044 前的 fixed-offset row：没有可可靠回填的 IANA timezone / end / WindowKey。
         db.DailyQuestionSets.Add(new DailyQuestionSet
         {
             OwnerId = "user-1",
             WindowStart = DateRange.Day(PastDay).UtcStart,
             SegmentWatermark = PastDay.AddHours(16).UtcDateTime,
             GeneratedAt = PastDay.AddHours(16),
-            PayloadVersion = 0,
+            PayloadVersion = DailyQuestionSet.CurrentPayloadVersion,
             PayloadJson = """[{"matcher":{"source":"system","steps":[{"reading":"app","op":"equals","value":"sometool"}]},"question":"旧表单问题","evidence":"…","proposedName":"预填名字","proposedGloss":"预填释义"}]""",
         });
         await db.SaveChangesAsync();
@@ -262,15 +315,18 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
         var fake = new FakeAsking { Result = [Candidate("sometool", "新证据卡问题")] };
         var svc = CreateService(db, fake);
 
-        var result = await svc.GetDailyQuestionsAsync("user-1", PastDay);
+        var result = await svc.GetDailyQuestionsAsync("user-1", UtcDay(PastDay));
 
-        // 旧 payload 绝不透出：视为未命中，重新生成两阶段证据卡
+        // legacy row 即使 payload 版本当前也绝不命中新 WindowKey，并且原样保留。
         Assert.Equal(1, fake.Calls);
         var q = Assert.Single(result.Questions);
         Assert.Equal("新证据卡问题", q.Question);
-        var row = Assert.Single(await db.DailyQuestionSets.ToListAsync());
-        Assert.Equal(DailyQuestionSet.CurrentPayloadVersion, row.PayloadVersion);
-        Assert.DoesNotContain("预填名字", row.PayloadJson);
+        var rows = await db.DailyQuestionSets.OrderBy(row => row.Id).ToListAsync();
+        Assert.Equal(2, rows.Count);
+        Assert.Null(rows[0].WindowKey);
+        Assert.Contains("预填名字", rows[0].PayloadJson);
+        Assert.Equal(UtcDay(PastDay).WindowKey.Value, rows[1].WindowKey);
+        Assert.DoesNotContain("预填名字", rows[1].PayloadJson);
     }
 
     [Fact]
@@ -284,14 +340,14 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
         var fake = new FakeAsking { Result = [Candidate("sometool")] };
         var svc = CreateService(db, fake, new FixedClock(day.AddHours(12)));
 
-        await svc.GetDailyQuestionsAsync("user-1", day);
+        await svc.GetDailyQuestionsAsync("user-1", UtcDay(day));
         Assert.Equal(1, fake.Calls);
 
         // 水位 10:00，新段推进到 11:30 → 落后 1.5h 过阈值，重新发问
         db.ActivitySegments.Add(Segment(day.AddHours(10), day.AddHours(11.5)));
         await db.SaveChangesAsync();
 
-        await svc.GetDailyQuestionsAsync("user-1", day);
+        await svc.GetDailyQuestionsAsync("user-1", UtcDay(day));
         Assert.Equal(2, fake.Calls);
 
         var cached = Assert.Single(await db.DailyQuestionSets.ToListAsync());
@@ -308,8 +364,8 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
         var fake = new FakeAsking { Result = [Candidate("sometool")] };
         var svc = CreateService(db, fake);
 
-        var mine = await svc.GetDailyQuestionsAsync("user-1", PastDay);
-        var theirs = await svc.GetDailyQuestionsAsync("user-2", PastDay);
+        var mine = await svc.GetDailyQuestionsAsync("user-1", UtcDay(PastDay));
+        var theirs = await svc.GetDailyQuestionsAsync("user-2", UtcDay(PastDay));
 
         Assert.Single(mine.Questions);
         Assert.Empty(theirs.Questions); // user-2 无段 → 空日，不问
@@ -338,7 +394,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
         var fake = new FakeAsking { Result = [] };
         var svc = CreateService(db, fake);
 
-        var result = await svc.GetDailyQuestionsAsync("user-1", PastDay);
+        var result = await svc.GetDailyQuestionsAsync("user-1", UtcDay(PastDay));
 
         var q = Assert.Single(result.Questions);
         Assert.Equal(AskingQuestionKinds.Recurrence, q.Kind);
@@ -350,7 +406,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
 
         // 解决 Probe 后不再发问
         await episodes.ResolveProbeAsync("user-1", probe.Id, new ResolveProbeRequest { Resolution = "denied" });
-        Assert.Empty((await svc.GetDailyQuestionsAsync("user-1", PastDay)).Questions);
+        Assert.Empty((await svc.GetDailyQuestionsAsync("user-1", UtcDay(PastDay))).Questions);
         Assert.Equal(1, fake.Calls); // 全程只有首次生成调了判官
     }
 
@@ -376,7 +432,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
         var fake = new FakeAsking { Result = [Candidate("sometool")] };
         var svc = CreateService(db, fake);
 
-        var result = await svc.GetDailyQuestionsAsync("user-1", PastDay);
+        var result = await svc.GetDailyQuestionsAsync("user-1", UtcDay(PastDay));
 
         var q = Assert.Single(result.Questions);
         Assert.Equal(AskingQuestionKinds.Recurrence, q.Kind);
@@ -392,14 +448,15 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
         var fake = new FakeAsking { Result = [Candidate("sometool")] };
         var svc = CreateService(db, fake);
 
-        var served = (await svc.GetDailyQuestionsAsync("user-1", PastDay)).Questions.Single();
+        var window = UtcDay(PastDay);
+        var served = (await svc.GetDailyQuestionsAsync("user-1", window)).Questions.Single();
 
-        var found = await svc.FindQuestionAsync("user-1", PastDay, served.Id);
+        var found = await svc.FindQuestionAsync("user-1", window, served.Id);
         Assert.NotNull(found);
         Assert.Equal(served.Question, found.Question);
 
         // 伪造 Id / 跨 Owner 都取不到证据——第二阶段只能解释服务端发出过的证据卡
-        Assert.Null(await svc.FindQuestionAsync("user-1", PastDay, Guid.CreateVersion7()));
-        Assert.Null(await svc.FindQuestionAsync("user-2", PastDay, served.Id));
+        Assert.Null(await svc.FindQuestionAsync("user-1", window, Guid.CreateVersion7()));
+        Assert.Null(await svc.FindQuestionAsync("user-2", window, served.Id));
     }
 }

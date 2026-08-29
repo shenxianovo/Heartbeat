@@ -1,4 +1,5 @@
 using Heartbeat.Core.DTOs.Knowledge;
+using Heartbeat.Server.Calendar;
 using Heartbeat.Server.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -27,20 +28,26 @@ namespace Heartbeat.Server.Controllers
         private readonly ICurrentUserService _currentUser = currentUser;
 
         /// <summary>
-        /// 当日证据卡问题（ADR-031 §6 两阶段第一步）：date 带调用方时区 offset 切日窗口（与 recap 同约）。
+        /// 当日证据卡问题（ADR-031 §6 两阶段第一步）：完整日窗口先由 Analytics 严格验证。
         /// 缓存按天 + 水位 + payload 版本；已裁决的问题读时 diff 掉；活跃 Probe 命中读时追加。
         /// </summary>
         [HttpGet("questions")]
         [EndpointName("getDailyQuestions")]
+        [ProducesResponseType<AskingQuestionsResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<CalendarWindowError>(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<AskingQuestionsResponse>> GetDailyQuestions(
-            [FromQuery] DateTimeOffset date, CancellationToken ct = default)
+            [FromQuery] LocalCalendarWindowEnvelope window, CancellationToken ct = default)
         {
-            return await _questionService.GetDailyQuestionsAsync(_currentUser.GetUserId(), date, ct);
+            var validation = LocalCalendarWindowValidator.ResolveDay(window);
+            if (validation.Error != null) return BadRequest(validation.Error);
+            return await _questionService.GetDailyQuestionsAsync(
+                _currentUser.GetUserId(), validation.Window!, ct);
         }
 
         /// <summary>
         /// 两阶段教学第二步（ADR-031 §6）：对某张证据卡的自然语言回答 → 可编辑 KnowledgeChangeSet
-        /// 提案。零写入——LLM 只产提案，用户确认后走 commit 端点。
+        /// 提案。请求窗口必须与问题携带的 Analytics WindowKey 匹配。零写入——LLM 只产提案，
+        /// 用户确认后走 commit 端点。
         /// </summary>
         [HttpPost("questions/{id:guid}/propose")]
         [EndpointName("proposeFromQuestion")]
@@ -49,9 +56,18 @@ namespace Heartbeat.Server.Controllers
         [ProducesResponseType<KnowledgeErrorResponse>(StatusCodes.Status404NotFound)]
         [ProducesResponseType<KnowledgeErrorResponse>(StatusCodes.Status502BadGateway)]
         public async Task<IActionResult> ProposeFromQuestion(
-            Guid id, [FromBody] ProposeFromQuestionRequest request, CancellationToken ct = default)
+            Guid id, [FromQuery] LocalCalendarWindowEnvelope window,
+            [FromBody] ProposeFromQuestionRequest request, CancellationToken ct = default)
         {
-            var result = await _proposalService.ProposeAsync(_currentUser.GetUserId(), id, request, ct);
+            var validation = LocalCalendarWindowValidator.ResolveDay(window);
+            if (validation.Error != null)
+                return BadRequest(new KnowledgeErrorResponse
+                {
+                    Code = validation.Error.Code,
+                    Message = validation.Error.Message,
+                });
+            var result = await _proposalService.ProposeAsync(
+                _currentUser.GetUserId(), id, validation.Window!, request, ct);
             if (result.Proposal != null) return Ok(result.Proposal);
             return result.Error!.Code switch
             {

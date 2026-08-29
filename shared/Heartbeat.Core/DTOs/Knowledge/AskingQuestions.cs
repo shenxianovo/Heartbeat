@@ -36,6 +36,12 @@ namespace Heartbeat.Core.DTOs.Knowledge
     public class AskingQuestionResponse
     {
         /// <summary>
+        /// Analytics 在验证完整 Local Calendar Window 后生成的稳定提交凭据。Browser 必须在
+        /// proposal 时原样带回；它不是 Browser 的刷新 correlation identity。
+        /// </summary>
+        public string WindowKey { get; set; } = string.Empty;
+
+        /// <summary>
         /// 问题身份：cluster 为生成时的 UUIDv7（第二阶段凭它取回服务端缓存的证据，
         /// 不接受任意 Segment/Owner ID）；recurrence 恒等于 ProbeId（Owner 校验的库中对象）。
         /// </summary>

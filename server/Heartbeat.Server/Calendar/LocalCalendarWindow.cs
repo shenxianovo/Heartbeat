@@ -49,6 +49,9 @@ public sealed record ResolvedCalendarWindow(
     LocalDate CivilStartDate,
     LocalDate CivilEndExclusiveDate)
 {
+    public DateOnly CivilStartDateOnly =>
+        new(CivilStartDate.Year, CivilStartDate.Month, CivilStartDate.Day);
+
     /// <summary>
     /// Analytics-owned persistent identity derived only after strict calendar validation. The readable,
     /// versioned canonical form keeps every identity component diagnosable in stored rows and lock keys.

@@ -14,6 +14,7 @@ import {
 } from '../teaching/teachingFlow'
 import ProposalReview from './ProposalReview.vue'
 import { Card } from '@/components/ui/card'
+import type { CalendarContext } from '../calendar/localCalendarWindow'
 
 /**
  * 主动教学两阶段面板（ADR-031 §6，issue 05）：owner-only。
@@ -22,7 +23,7 @@ import { Card } from '@/components/ui/card'
  * 确认才调 commit。跳过纯客户端；静音按确认后的 Mute 语义提交（cluster 静音指纹，
  * recurrence 解决探针），不隐藏原始 Observation。
  */
-const props = defineProps<{ selectedDate: string }>()
+const props = defineProps<{ calendarContext: CalendarContext }>()
 
 type Stage = 'evidence' | 'proposing' | 'review' | 'committing' | 'done'
 
@@ -51,7 +52,7 @@ const strands = ref<IStrandResponse[]>([])
 
 async function load() {
   try {
-    const res = await fetchDailyQuestions({ date: props.selectedDate })
+    const res = await fetchDailyQuestions({ window: props.calendarContext.day })
     readingLabels.value = res.readingLabels ?? {}
     cards.value = (res.questions ?? []).map(q => ({
       q,
@@ -72,7 +73,7 @@ async function load() {
   }
 }
 
-watch(() => props.selectedDate, load, { immediate: true })
+watch(() => props.calendarContext.correlationIdentity, load, { immediate: true })
 
 function remove(c: TeachingCard) {
   cards.value = cards.value.filter(x => x !== c)
@@ -81,14 +82,18 @@ function remove(c: TeachingCard) {
 // ===== Stage 1 → 2：自然语言回答换提案（零写入） =====
 
 async function propose(c: TeachingCard) {
-  if (!c.answer.trim() || !c.q.id) return
+  if (!c.answer.trim() || !c.q.id || !c.q.windowKey) return
   c.stage = 'proposing'
   c.error = null
   c.conflict = false
   c.failedOpId = null
   try {
     const [proposal] = await Promise.all([
-      proposeFromQuestion(c.q.id, { date: props.selectedDate, answer: c.answer }),
+      proposeFromQuestion(c.q.id, {
+        window: props.calendarContext.day,
+        windowKey: c.q.windowKey,
+        answer: c.answer,
+      }),
       loadStrands(),
     ])
     c.proposal = proposal
@@ -252,7 +257,7 @@ function backToAnswer(c: TeachingCard) {
             >别再问</button>
             <button
               class="glass-control cursor-pointer px-3 py-1 text-[0.75rem] text-foreground transition-colors disabled:opacity-50"
-              :disabled="c.stage === 'proposing' || !c.answer.trim() || c.expired"
+              :disabled="c.stage === 'proposing' || !c.answer.trim() || !c.q.windowKey || c.expired"
               @click="propose(c)"
             >{{ c.stage === 'proposing' ? '整理中…' : '整理成变更' }}</button>
           </div>

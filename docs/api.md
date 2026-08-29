@@ -38,8 +38,9 @@ Agent 请求额外携带 `X-Hardware-Id` 和 `X-Device-Name`，服务端通过
 - 前端 wrapper 默认调用生成的 client，不复制 DTO 或响应类型。
 - Daily/Weekly Report 必须传完整的版本化 Local Calendar Window envelope；生成 client 把
   `Start` / `EndExclusive` 序列化为 UTC instant，不会丢失 civil 语义。Recap 的 owner/public GET
-  与手写 SSE POST 也必须传同一个完整 day envelope；只有尚未迁移的知识发问 `date` 端点仍保留
-  浏览器 offset，并在 `frontend/src/api/index.ts` 手工构造 query string。
+  与手写 SSE POST，以及 Asking 的问题读取 / proposal POST，也必须传同一个完整 day envelope。
+  Asking 问题响应额外携带 Analytics 生成的 `WindowKey` 作为提交凭据；Browser 把它与提交时的
+  当前 day envelope 一并带回，二者不一致稳定返回 `question_window_mismatch`。
   通用时刻范围查询可以直接使用 UTC。
 
 ## Recap 约定

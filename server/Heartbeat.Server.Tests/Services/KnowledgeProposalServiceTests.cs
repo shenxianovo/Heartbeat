@@ -1,5 +1,6 @@
 using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Knowledge;
+using Heartbeat.Server.Calendar;
 using Heartbeat.Server.Data;
 using Heartbeat.Server.Entities;
 using Heartbeat.Server.Services;
@@ -33,9 +34,15 @@ public class KnowledgeProposalServiceTests(PostgresContainerFixture fixture) : P
 
     private sealed class FakeAsking : IAskingGenerator
     {
+        public int Calls;
+
         public Task<IReadOnlyList<AskingCandidate>?> AskAsync(
             string digest, AskingContext context, CancellationToken ct = default)
-            => Task.FromResult<IReadOnlyList<AskingCandidate>?>([new("这是什么？", AppMatcher("sometool"))]);
+        {
+            Calls++;
+            return Task.FromResult<IReadOnlyList<AskingCandidate>?>(
+                [new("这是什么？", AppMatcher("sometool"))]);
+        }
     }
 
     private sealed class FakeProposer : IProposalGenerator
@@ -83,27 +90,72 @@ public class KnowledgeProposalServiceTests(PostgresContainerFixture fixture) : P
         EndTime = end
     };
 
-    private (KnowledgeProposalService Proposals, QuestionService Questions, FakeProposer Proposer)
+    private (KnowledgeProposalService Proposals, QuestionService Questions, FakeProposer Proposer, FakeAsking Asking)
         CreateServices(AppDbContext db)
     {
         var assembler = new DigestAssembler(db);
-        var questions = new QuestionService(db, assembler, new FakeAsking());
+        var asking = new FakeAsking();
+        var questions = new QuestionService(db, assembler, asking);
         var proposer = new FakeProposer();
-        return (new KnowledgeProposalService(db, questions, assembler, proposer), questions, proposer);
+        return (new KnowledgeProposalService(db, questions, assembler, proposer), questions, proposer, asking);
+    }
+
+    private static ResolvedCalendarWindow ResolveDay(
+        string timeZone, string start, string endExclusive)
+    {
+        var result = LocalCalendarWindowValidator.ResolveDay(new LocalCalendarWindowEnvelope
+        {
+            Version = 1,
+            Kind = "day",
+            LocalDate = "2026-03-08",
+            TimeZone = timeZone,
+            Start = DateTimeOffset.Parse(start),
+            EndExclusive = DateTimeOffset.Parse(endExclusive),
+        });
+        return result.Window!;
+    }
+
+    private static ResolvedCalendarWindow UtcDay(DateTimeOffset date) =>
+        LocalCalendarWindowValidator.ResolveDay(LocalCalendarWindowTestData.UtcDay(date)).Window!;
+
+    [Fact]
+    public async Task ProposeRejectsAQuestionFromADifferentCalendarWindow()
+    {
+        using var db = CreateDbContext();
+        var (proposals, questions, proposer, _) = CreateServices(db);
+        db.ActivitySegments.Add(Segment(
+            DateTimeOffset.Parse("2026-03-08T05:00:00Z"),
+            DateTimeOffset.Parse("2026-03-08T06:00:00Z")));
+        await db.SaveChangesAsync();
+        var originalWindow = ResolveDay(
+            "America/New_York", "2026-03-08T05:00:00Z", "2026-03-09T04:00:00Z");
+        var currentWindow = ResolveDay(
+            "UTC", "2026-03-08T00:00:00Z", "2026-03-09T00:00:00Z");
+        var question = Assert.Single(
+            (await questions.GetDailyQuestionsAsync("user-1", originalWindow)).Questions);
+
+        var result = await proposals.ProposeAsync(
+            "user-1", question.Id, currentWindow,
+            new ProposeFromQuestionRequest { WindowKey = question.WindowKey, Answer = "回答" });
+
+        Assert.Equal(ProposalErrorCodes.QuestionWindowMismatch, result.Error!.Code);
+        Assert.Null(proposer.LastQuestion);
+        Assert.Empty(await db.Strands.ToListAsync());
+        Assert.Empty(await db.Episodes.ToListAsync());
     }
 
     private async Task<Guid> ServeQuestionAsync(AppDbContext db, QuestionService questions)
     {
         db.ActivitySegments.Add(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
         await db.SaveChangesAsync();
-        return (await questions.GetDailyQuestionsAsync("user-1", PastDay)).Questions.Single().Id;
+        return (await questions.GetDailyQuestionsAsync("user-1", UtcDay(PastDay))).Questions.Single().Id;
     }
 
     [Fact]
     public async Task Propose_InterpretsServedEvidence_ZeroDatabaseWrites()
     {
         using var db = CreateDbContext();
-        var (proposals, questions, proposer) = CreateServices(db);
+        var (proposals, questions, proposer, _) = CreateServices(db);
         var questionId = await ServeQuestionAsync(db, questions);
 
         proposer.Result = new RawKnowledgeProposal
@@ -125,9 +177,9 @@ public class KnowledgeProposalServiceTests(PostgresContainerFixture fixture) : P
             Probes = await db.RecurrenceProbes.CountAsync(),
         };
 
-        var result = await proposals.ProposeAsync("user-1", questionId, new ProposeFromQuestionRequest
+        var result = await proposals.ProposeAsync("user-1", questionId, UtcDay(PastDay), new ProposeFromQuestionRequest
         {
-            Date = PastDay,
+            WindowKey = UtcDay(PastDay).WindowKey.Value,
             Answer = "这是我实习在调研的 Hyperframes",
         });
 
@@ -152,37 +204,38 @@ public class KnowledgeProposalServiceTests(PostgresContainerFixture fixture) : P
     public async Task Propose_UnknownOrForeignQuestionId_Rejected()
     {
         using var db = CreateDbContext();
-        var (proposals, questions, proposer) = CreateServices(db);
+        var (proposals, questions, proposer, asking) = CreateServices(db);
         var questionId = await ServeQuestionAsync(db, questions);
         proposer.Result = new RawKnowledgeProposal();
 
         // 伪造的问题 Id：取不到证据，第二阶段拒绝解释
-        var fabricated = await proposals.ProposeAsync("user-1", Guid.CreateVersion7(),
-            new ProposeFromQuestionRequest { Date = PastDay, Answer = "回答" });
+        var fabricated = await proposals.ProposeAsync("user-1", Guid.CreateVersion7(), UtcDay(PastDay),
+            new ProposeFromQuestionRequest { WindowKey = UtcDay(PastDay).WindowKey.Value, Answer = "回答" });
         Assert.Equal(ProposalErrorCodes.QuestionNotFound, fabricated.Error!.Code);
 
         // 别人的问题 Id：Owner 隔离（user-2 无段 → 无此问题）
-        var foreign = await proposals.ProposeAsync("user-2", questionId,
-            new ProposeFromQuestionRequest { Date = PastDay, Answer = "回答" });
+        var foreign = await proposals.ProposeAsync("user-2", questionId, UtcDay(PastDay),
+            new ProposeFromQuestionRequest { WindowKey = UtcDay(PastDay).WindowKey.Value, Answer = "回答" });
         Assert.Equal(ProposalErrorCodes.QuestionNotFound, foreign.Error!.Code);
 
         Assert.Null(proposer.LastQuestion); // LLM 根本没被调
+        Assert.Equal(1, asking.Calls); // proposal lookup 不会因 missing/foreign cache 重新生成问题
     }
 
     [Fact]
     public async Task Propose_EmptyAnswer_OrLlmFailure_NoSideEffects()
     {
         using var db = CreateDbContext();
-        var (proposals, questions, proposer) = CreateServices(db);
+        var (proposals, questions, proposer, _) = CreateServices(db);
         var questionId = await ServeQuestionAsync(db, questions);
 
-        var empty = await proposals.ProposeAsync("user-1", questionId,
-            new ProposeFromQuestionRequest { Date = PastDay, Answer = "  " });
+        var empty = await proposals.ProposeAsync("user-1", questionId, UtcDay(PastDay),
+            new ProposeFromQuestionRequest { WindowKey = UtcDay(PastDay).WindowKey.Value, Answer = "  " });
         Assert.Equal(ProposalErrorCodes.EmptyAnswer, empty.Error!.Code);
 
         proposer.Result = null; // LLM 失败
-        var failed = await proposals.ProposeAsync("user-1", questionId,
-            new ProposeFromQuestionRequest { Date = PastDay, Answer = "回答" });
+        var failed = await proposals.ProposeAsync("user-1", questionId, UtcDay(PastDay),
+            new ProposeFromQuestionRequest { WindowKey = UtcDay(PastDay).WindowKey.Value, Answer = "回答" });
         Assert.Equal(ProposalErrorCodes.GenerationFailed, failed.Error!.Code);
 
         Assert.Equal(0, await db.Strands.CountAsync());
@@ -202,12 +255,12 @@ public class KnowledgeProposalServiceTests(PostgresContainerFixture fixture) : P
         // 别人的知识不进语境
         await knowledge.CreateStrandAsync("user-2", new CreateStrandRequest { Name = "别人的脉络" });
 
-        var (proposals, questions, proposer) = CreateServices(db);
+        var (proposals, questions, proposer, _) = CreateServices(db);
         var questionId = await ServeQuestionAsync(db, questions);
         proposer.Result = new RawKnowledgeProposal();
 
-        await proposals.ProposeAsync("user-1", questionId,
-            new ProposeFromQuestionRequest { Date = PastDay, Answer = "回答" });
+        await proposals.ProposeAsync("user-1", questionId, UtcDay(PastDay),
+            new ProposeFromQuestionRequest { WindowKey = UtcDay(PastDay).WindowKey.Value, Answer = "回答" });
 
         var context = proposer.LastContext!;
         Assert.Equal(2, context.Strands.Count);
@@ -223,7 +276,7 @@ public class KnowledgeProposalServiceTests(PostgresContainerFixture fixture) : P
         // 两个入口（主动发问 proposal 流 / 直接投喂 commit 端点，即 Recap 纠正与手动复合操作的路径）
         // 提交同一 change set，领域效果一致。
         using var db = CreateDbContext();
-        var (proposals, questions, proposer) = CreateServices(db);
+        var (proposals, questions, proposer, _) = CreateServices(db);
         var questionId = await ServeQuestionAsync(db, questions);
 
         proposer.Result = new RawKnowledgeProposal
@@ -240,8 +293,12 @@ public class KnowledgeProposalServiceTests(PostgresContainerFixture fixture) : P
             ],
         };
 
-        var proposal = (await proposals.ProposeAsync("user-1", questionId,
-            new ProposeFromQuestionRequest { Date = PastDay, Answer = "实习调研" })).Proposal!;
+        var proposal = (await proposals.ProposeAsync("user-1", questionId, UtcDay(PastDay),
+            new ProposeFromQuestionRequest
+            {
+                WindowKey = UtcDay(PastDay).WindowKey.Value,
+                Answer = "实习调研",
+            })).Proposal!;
 
         var knowledge = new KnowledgeService(db);
         var commit = new KnowledgeCommitService(db, knowledge, new EpisodeService(db, knowledge));

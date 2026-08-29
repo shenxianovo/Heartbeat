@@ -310,6 +310,12 @@ describe('interpretProposeError', () => {
 
   it('400 按错误码出人话,无码有兜底', () => {
     expect(interpretProposeError({ kind: 'http', status: 400 }, 'empty_answer').message).toBeTruthy()
+    const mismatch = interpretProposeError(
+      { kind: 'http', status: 400 },
+      'question_window_mismatch',
+    )
+    expect(mismatch.message).toContain('日期或时区')
+    expect(mismatch.expired).toBe(true)
     expect(interpretProposeError({ kind: 'parse' }, undefined).message).toContain('重试')
   })
 })

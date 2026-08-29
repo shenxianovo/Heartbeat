@@ -129,3 +129,4 @@ Browser 将版本、窗口类型、本地日期、IANA timezone 与完整 UTC �
 ## Comments
 
 - 2026-08-29：Ticket 04 已完成；PRD 仍为 `ready-for-agent`，因为 03、05、06 与 07 尚未完成。
+- 2026-08-29：Ticket 05 已完成；PRD 仍为 `ready-for-agent`，剩余门禁为 06 与 07。

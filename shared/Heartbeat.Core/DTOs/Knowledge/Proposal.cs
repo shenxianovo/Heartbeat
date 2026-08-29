@@ -2,13 +2,13 @@ namespace Heartbeat.Core.DTOs.Knowledge
 {
     /// <summary>
     /// 两阶段教学第二步的请求（ADR-031 §6）：用户对证据卡的自然语言回答。
-    /// 证据本体不由客户端提供——服务端按 (Owner, 日窗口, 问题 Id) 取回自己发出的证据，
+    /// 证据本体不由客户端提供——服务端按 (Owner, WindowKey, 问题 Id) 取回自己发出的证据，
     /// 第二阶段只能解释用户实际看过的东西，不接受任意 Owner/Segment ID。
     /// </summary>
     public class ProposeFromQuestionRequest
     {
-        /// <summary>问题所属日期（带调用方时区 offset，与 questions 读取同约）。</summary>
-        public DateTimeOffset Date { get; set; }
+        /// <summary>问题响应携带的 Analytics submission credential；必须匹配当前请求窗口。</summary>
+        public string WindowKey { get; set; } = string.Empty;
 
         /// <summary>用户的自然语言解释。</summary>
         public string Answer { get; set; } = string.Empty;

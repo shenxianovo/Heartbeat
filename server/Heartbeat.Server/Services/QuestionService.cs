@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Knowledge;
+using Heartbeat.Server.Calendar;
 using Heartbeat.Server.Data;
 using Heartbeat.Server.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -10,7 +11,8 @@ namespace Heartbeat.Server.Services
     /// <summary>
     /// 发问编排（ADR-029 §4，证据卡随 ADR-031 §6）：缓存判读 → 装配 digest（与叙事同一份）→
     /// 判官提名候选 → 服务端从真实 segments 物化 ActivityCluster 证据卡 → 封顶落缓存。
-    /// 缓存契约与 recap 同构：历史窗口命中即回；今日按水位（落后 >1h 重生成）；空日不调 LLM；
+    /// 缓存契约与 recap 同构：验证后的 (Owner, WindowKey) 历史命中即回；今日按水位
+    /// （落后 >1h 重生成）；空日不调 LLM；
     /// 失败不写缓存；payload 版本不符视为未命中（旧单阶段表单安全失效，ADR-031 迁移）。
     /// 读取时对已裁决 Matcher 做确定性 diff 过滤；RecurrenceProbe 命中读时确定性追加
     /// （零 LLM，命中后果与 StrandMatcher 区分：只问"是否再次出现"）。
@@ -30,19 +32,18 @@ namespace Heartbeat.Server.Services
         private readonly TimeProvider _clock = clock ?? TimeProvider.System;
 
         public async Task<AskingQuestionsResponse> GetDailyQuestionsAsync(
-            string ownerId, DateTimeOffset date, CancellationToken ct = default)
+            string ownerId, ResolvedCalendarWindow window, CancellationToken ct = default)
         {
-            var window = DateRange.Day(date);
-            DateTimeOffset windowStart = window.UtcStart;
-            DateTimeOffset windowEnd = window.UtcEnd;
-
+            var instantWindow = new DateRange(window.Start.UtcDateTime, window.EndExclusive.UtcDateTime);
+            var windowKey = window.WindowKey.Value;
             var cached = await db.DailyQuestionSets
-                .FirstOrDefaultAsync(q => q.OwnerId == ownerId && q.WindowStart == windowStart, ct);
+                .FirstOrDefaultAsync(q => q.OwnerId == ownerId && q.WindowKey == windowKey, ct);
 
-            if (IsCurrent(cached) && await IsFreshAsync(ownerId, windowStart, windowEnd, cached!, ct))
-                return await ComposeAsync(ownerId, window, cached!, ct);
+            if (IsCurrent(cached) && await IsFreshAsync(
+                    ownerId, window.Start, window.EndExclusive, cached!, ct))
+                return await ComposeAsync(ownerId, instantWindow, cached!, windowKey, ct);
 
-            var projection = await assembler.AssembleAsync(ownerId, window, date.Offset, ct);
+            var projection = await assembler.AssembleAsync(ownerId, window, ct);
             if (projection.IsEmpty)
                 return new AskingQuestionsResponse();
 
@@ -50,20 +51,17 @@ namespace Heartbeat.Server.Services
             var candidates = await asking.AskAsync(projection.Digest, context, ct);
             if (candidates == null)
             {
-                // 判官失败（含未配置）：不写缓存；有当前版本旧缓存回旧缓存，没有则安静空手。
                 return IsCurrent(cached)
-                    ? await ComposeAsync(ownerId, window, cached!, ct)
+                    ? await ComposeAsync(ownerId, instantWindow, cached!, windowKey, ct)
                     : new AskingQuestionsResponse();
             }
 
-            // 证据物化（ADR-031 §6）：谓词在当日真实 segments 上零命中的候选整个丢弃——
-            // 发出去的每张证据卡都可核对。
-            var segments = await QuerySegmentsAsync(ownerId, windowStart, windowEnd, ct);
+            var segments = await QuerySegmentsAsync(ownerId, window.Start, window.EndExclusive, ct);
             var depthTables = await assembler.LoadDepthTablesAsync(ct);
             var questions = candidates
                 .Select(c => ActivityClusterEvidence.Materialize(
                     Guid.CreateVersion7(), AskingQuestionKinds.Cluster, c.Question, c.Matcher,
-                    segments, window, depthTables))
+                    segments, instantWindow, depthTables))
                 .Where(q => q != null)
                 .Select(q => q!)
                 .Take(MaxQuestions)
@@ -71,27 +69,38 @@ namespace Heartbeat.Server.Services
 
             if (cached == null)
             {
-                cached = new DailyQuestionSet { OwnerId = ownerId, WindowStart = windowStart };
+                cached = new DailyQuestionSet { OwnerId = ownerId, WindowKey = windowKey };
                 db.DailyQuestionSets.Add(cached);
             }
+            cached.WindowVersion = window.Version;
+            cached.WindowKind = window.Kind;
+            cached.LocalDate = window.LocalDate;
+            cached.TimeZone = window.TimeZone;
+            cached.WindowStart = window.Start;
+            cached.WindowEndExclusive = window.EndExclusive;
             cached.PayloadVersion = DailyQuestionSet.CurrentPayloadVersion;
             cached.PayloadJson = JsonSerializer.Serialize(questions);
             cached.SegmentWatermark = projection.SegmentWatermarkUtc;
             cached.GeneratedAt = _clock.GetUtcNow();
             await db.SaveChangesAsync(ct);
 
-            return await ComposeAsync(ownerId, window, cached, ct);
+            return await ComposeAsync(ownerId, instantWindow, cached, windowKey, ct);
         }
 
         /// <summary>
-        /// 第二阶段取证（ADR-031 §6）：按 (Owner, 日窗口, 问题 Id) 取回服务端自己发出的证据卡。
-        /// cluster 从缓存 payload 找；recurrence 按 ProbeId 对当日证据确定性重物化。
-        /// 找不到（过期重生成 / 伪造 Id / 已裁决）返回 null——proposal 只能解释用户实际看过的证据。
+        /// Proposal lookup is read-only: it only consults the exact existing (Owner, WindowKey) cache and
+        /// never regenerates questions or invokes an LLM while validating a submission credential.
         /// </summary>
         public async Task<AskingQuestionResponse?> FindQuestionAsync(
-            string ownerId, DateTimeOffset date, Guid questionId, CancellationToken ct = default)
+            string ownerId, ResolvedCalendarWindow window, Guid questionId, CancellationToken ct = default)
         {
-            var composed = await GetDailyQuestionsAsync(ownerId, date, ct);
+            var windowKey = window.WindowKey.Value;
+            var cached = await db.DailyQuestionSets
+                .FirstOrDefaultAsync(q => q.OwnerId == ownerId && q.WindowKey == windowKey, ct);
+            if (!IsCurrent(cached)) return null;
+
+            var instantWindow = new DateRange(window.Start.UtcDateTime, window.EndExclusive.UtcDateTime);
+            var composed = await ComposeAsync(ownerId, instantWindow, cached!, windowKey, ct);
             return composed.Questions.FirstOrDefault(q => q.Id == questionId);
         }
 
@@ -116,7 +125,7 @@ namespace Heartbeat.Server.Services
         /// 没答完的问题下次照常端上来，diff 本身就是"续上"机制。
         /// </summary>
         private async Task<AskingQuestionsResponse> ComposeAsync(
-            string ownerId, DateRange window, DailyQuestionSet cached, CancellationToken ct)
+            string ownerId, DateRange window, DailyQuestionSet cached, string windowKey, CancellationToken ct)
         {
             List<AskingQuestionResponse> items;
             try
@@ -145,6 +154,9 @@ namespace Heartbeat.Server.Services
 
             remaining.AddRange(await ComposeRecurrenceAsync(ownerId, window, ct));
             if (remaining.Count == 0) return new AskingQuestionsResponse();
+
+            foreach (var question in remaining)
+                question.WindowKey = windowKey;
 
             // 读数展示名随声明走（ADR-030 §7）：前端不再持硬编码标签字典。
             var labels = (await assembler.LoadDepthTablesAsync(ct)).Labels();

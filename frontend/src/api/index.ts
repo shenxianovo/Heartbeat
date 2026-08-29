@@ -1,4 +1,4 @@
-import { Client, ApiException, CalendarWindowError, DailyRecapResponse, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, SegmentResponse, UpdateMySettingsRequest, AskingQuestionsResponse, KnowledgeProposalResponse, CommitChangeSetRequest, CommitChangeSetResponse, ChangeSetErrorResponse, KnowledgeErrorResponse, CreateStrandRequest, UpdateStrandRequest, MoveStrandRequest, EndStrandRequest, MuteMatcherRequest, StrandResponse, EpisodeResponse, ProbeResponse, PromoteEpisodeResponse, CreateEpisodeRequest, UpdateEpisodeRequest, RelateEpisodeRequest, CreateProbeRequest, ResolveProbeRequest, PromoteEpisodeRequest, type ICreateStrandRequest, type IUpdateStrandRequest, type IMoveStrandRequest, type IEndStrandRequest, type IMatcherDto, type IKnowledgeOperationDto, type IChangeSetErrorResponse, type IKnowledgeErrorResponse, type ICreateEpisodeRequest, type IUpdateEpisodeRequest, type IRelateEpisodeRequest, type ICreateProbeRequest, type IResolveProbeRequest, type IPromoteEpisodeRequest } from './client'
+import { Client, ApiException, CalendarWindowError, DailyRecapResponse, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, SegmentResponse, UpdateMySettingsRequest, AskingQuestionsResponse, KnowledgeProposalResponse, ProposeFromQuestionRequest, CommitChangeSetRequest, CommitChangeSetResponse, ChangeSetErrorResponse, KnowledgeErrorResponse, CreateStrandRequest, UpdateStrandRequest, MoveStrandRequest, EndStrandRequest, MuteMatcherRequest, StrandResponse, EpisodeResponse, ProbeResponse, PromoteEpisodeResponse, CreateEpisodeRequest, UpdateEpisodeRequest, RelateEpisodeRequest, CreateProbeRequest, ResolveProbeRequest, PromoteEpisodeRequest, type ICreateStrandRequest, type IUpdateStrandRequest, type IMoveStrandRequest, type IEndStrandRequest, type IMatcherDto, type IKnowledgeOperationDto, type IChangeSetErrorResponse, type IKnowledgeErrorResponse, type ICreateEpisodeRequest, type IUpdateEpisodeRequest, type IRelateEpisodeRequest, type ICreateProbeRequest, type IResolveProbeRequest, type IPromoteEpisodeRequest } from './client'
 import {
   AppCatalogAdminErrorResponse,
   AppCatalogExportRequest,
@@ -445,7 +445,8 @@ function readableErrorBody(e: unknown): string | null {
 
 // ===== Strand 知识层（ADR-028/029/031）=====
 // owner-only：确认写知识 + 发问/整理烧 LLM token，无 public 版。
-// questions/propose 的 date 与 recap 同理须携带本地时区偏移，手拼请求；其余走生成 client。
+// questions/propose 都携带同一个完整 day envelope；问题响应的 WindowKey 是提交凭据，
+// Browser refresh correlation identity 不参与 transport 或持久化身份。
 // 已有 Strand 一律按 UUIDv7 定位（ADR-031）——按名收敛的旧 bindStrand 已退役。
 
 export type { IMatcherDto, IMatcherStepDto, IStrandResponse, ICreateStrandRequest, IUpdateStrandRequest, IMoveStrandRequest, IEndStrandRequest, IKnowledgeErrorResponse } from './client'
@@ -454,31 +455,42 @@ export type { IEpisodeResponse, IProbeResponse, IPromoteEpisodeResponse, ICreate
 export { StrandRefDto, KnowledgeOperationDto } from './client'
 
 /** 当日证据卡问题（ADR-031 §6 两阶段第一步）：真实活动簇的时段与跨 Source 观察。 */
-export async function fetchDailyQuestions(params: { date?: string }): Promise<AskingQuestionsResponse> {
-  const searchParams = new URLSearchParams()
-  if (params.date) searchParams.set('date', toLocalDateTimeOffsetString(params.date))
-  const res = await authHttp.fetch(`${API_BASE}/knowledge/questions?${searchParams}`)
-  if (!res.ok) throw new ApiException('Questions request failed.', res.status, await res.text(), {}, null)
-  return AskingQuestionsResponse.fromJS(await res.json())
+export async function fetchDailyQuestions(params: {
+  window: CalendarWindowEnvelope<'day'>
+}): Promise<AskingQuestionsResponse> {
+  const window = params.window
+  return client.getDailyQuestions(
+    window.version,
+    window.kind,
+    window.localDate,
+    window.timeZone,
+    new Date(window.start),
+    new Date(window.endExclusive),
+  )
 }
 
 /**
  * 两阶段第二步：把用户对证据卡的自然语言回答交给服务端整理成可编辑提案。零写入。
- * date 须与 questions 读取同一天窗口（服务端凭 (owner, 日窗口, 问题 id) 取回证据），
- * 与报表同理手拼以保住本地时区偏移。失败时若响应带 KnowledgeErrorResponse，
- * 塞进 ApiException.result 供上层读 code（question_not_found / generation_failed…）。
+ * WindowKey 须来自问题响应，window 须是提交时的当前 Calendar Context；服务端严格比较两者，
+ * 防止日期或 timezone 已变化后把旧证据解释成新窗口。失败时生成客户端会直接抛出 typed
+ * KnowledgeErrorResponse；兼容层也保留对旧式 ApiException.result 的读取。
  */
-export async function proposeFromQuestion(questionId: string, params: { date: string; answer: string }): Promise<KnowledgeProposalResponse> {
-  const res = await authHttp.fetch(`${API_BASE}/knowledge/questions/${encodeURIComponent(questionId)}/propose`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ date: toLocalDateTimeOffsetString(params.date), answer: params.answer }),
-  })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new ApiException('Propose request failed.', res.status, text, {}, tryParseError(text, KnowledgeErrorResponse.fromJS))
-  }
-  return KnowledgeProposalResponse.fromJS(await res.json())
+export async function proposeFromQuestion(questionId: string, params: {
+  window: CalendarWindowEnvelope<'day'>
+  windowKey: string
+  answer: string
+}): Promise<KnowledgeProposalResponse> {
+  const window = params.window
+  return client.proposeFromQuestion(
+    questionId,
+    window.version,
+    window.kind,
+    window.localDate,
+    window.timeZone,
+    new Date(window.start),
+    new Date(window.endExclusive),
+    ProposeFromQuestionRequest.fromJS({ windowKey: params.windowKey, answer: params.answer }),
+  )
 }
 
 /**
@@ -533,8 +545,9 @@ export function changeSetErrorOf(e: unknown): IChangeSetErrorResponse | null {
   return null
 }
 
-/** 从抛出的错误里取 KnowledgeErrorResponse（propose 端错误体）；非该形状返回 null。 */
+/** 从 generated client 直接抛出或手写 wrapper 包装的错误里取 KnowledgeErrorResponse。 */
 export function knowledgeErrorOf(e: unknown): IKnowledgeErrorResponse | null {
+  if (e instanceof KnowledgeErrorResponse) return e
   if (ApiException.isApiException(e) && e.result instanceof KnowledgeErrorResponse) return e.result
   return null
 }

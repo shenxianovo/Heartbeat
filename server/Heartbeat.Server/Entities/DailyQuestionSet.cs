@@ -1,7 +1,8 @@
 namespace Heartbeat.Server.Entities
 {
     /// <summary>
-    /// 当日发问缓存（ADR-029 §4）：与 recap 同构——按 (Owner, 日窗口) 一份，跟段水位，失败不写。
+    /// 当日发问缓存（ADR-029 §4 / ADR-044 §3）：与 recap 同构——按 (Owner, WindowKey) 一份，
+    /// 跟段水位，失败不写。
     /// PayloadJson 为封顶后的证据卡问题列表；读取时对已裁决 Matcher 做确定性 diff 过滤（零 LLM 重调）。
     /// </summary>
     public class DailyQuestionSet
@@ -17,8 +18,25 @@ namespace Heartbeat.Server.Entities
 
         public string OwnerId { get; set; } = string.Empty;
 
-        /// <summary>日窗口起点（UTC）。缓存身份的一半。</summary>
+        /// <summary>
+        /// Analytics 验证后生成的完整窗口身份。null 只表示 ADR-044 前的 fixed-offset 派生缓存；
+        /// legacy 行保留但永远不能命中新窗口。
+        /// </summary>
+        public string? WindowKey { get; set; }
+
+        public int? WindowVersion { get; set; }
+
+        public string? WindowKind { get; set; }
+
+        public string? LocalDate { get; set; }
+
+        public string? TimeZone { get; set; }
+
+        /// <summary>完整半开 UTC 窗口的起点；legacy 行也保留原值供诊断。</summary>
         public DateTimeOffset WindowStart { get; set; }
+
+        /// <summary>完整半开 UTC 窗口的 exclusive end；legacy fixed-offset 行为 null。</summary>
+        public DateTimeOffset? WindowEndExclusive { get; set; }
 
         /// <summary>生成时消费到的最新 segment 时间（裁剪到窗口）。今日新鲜度水位。</summary>
         public DateTime SegmentWatermark { get; set; }

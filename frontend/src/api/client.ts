@@ -1311,15 +1311,34 @@ export class Client {
     }
 
     /**
-     * @param date (optional) 
      * @return OK
      */
-    getDailyQuestions(date: Date | undefined): Promise<AskingQuestionsResponse> {
+    getDailyQuestions(version: number, kind: string, localDate: string, timeZone: string, start: Date, endExclusive: Date): Promise<AskingQuestionsResponse> {
         let url_ = this.baseUrl + "/api/v1/knowledge/questions?";
-        if (date === null)
-            throw new globalThis.Error("The parameter 'date' cannot be null.");
-        else if (date !== undefined)
-            url_ += "date=" + encodeURIComponent(date ? "" + date.toISOString() : "") + "&";
+        if (version === undefined || version === null)
+            throw new globalThis.Error("The parameter 'version' must be defined and cannot be null.");
+        else
+            url_ += "Version=" + encodeURIComponent("" + version) + "&";
+        if (kind === undefined || kind === null)
+            throw new globalThis.Error("The parameter 'kind' must be defined and cannot be null.");
+        else
+            url_ += "Kind=" + encodeURIComponent("" + kind) + "&";
+        if (localDate === undefined || localDate === null)
+            throw new globalThis.Error("The parameter 'localDate' must be defined and cannot be null.");
+        else
+            url_ += "LocalDate=" + encodeURIComponent("" + localDate) + "&";
+        if (timeZone === undefined || timeZone === null)
+            throw new globalThis.Error("The parameter 'timeZone' must be defined and cannot be null.");
+        else
+            url_ += "TimeZone=" + encodeURIComponent("" + timeZone) + "&";
+        if (start === undefined || start === null)
+            throw new globalThis.Error("The parameter 'start' must be defined and cannot be null.");
+        else
+            url_ += "Start=" + encodeURIComponent(start ? "" + start.toISOString() : "") + "&";
+        if (endExclusive === undefined || endExclusive === null)
+            throw new globalThis.Error("The parameter 'endExclusive' must be defined and cannot be null.");
+        else
+            url_ += "EndExclusive=" + encodeURIComponent(endExclusive ? "" + endExclusive.toISOString() : "") + "&";
         url_ = url_.replace(/[?&]$/, "");
 
         let options_: RequestInit = {
@@ -1344,6 +1363,13 @@ export class Client {
             result200 = AskingQuestionsResponse.fromJS(resultData200);
             return result200;
             });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result400 = CalendarWindowError.fromJS(resultData400);
+            return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
         } else if (status !== 200 && status !== 204) {
             return response.text().then((_responseText) => {
             return throwException("An unexpected server error occurred.", status, _responseText, _headers);
@@ -1355,11 +1381,35 @@ export class Client {
     /**
      * @return OK
      */
-    proposeFromQuestion(id: string, body: ProposeFromQuestionRequest): Promise<KnowledgeProposalResponse> {
-        let url_ = this.baseUrl + "/api/v1/knowledge/questions/{id}/propose";
+    proposeFromQuestion(id: string, version: number, kind: string, localDate: string, timeZone: string, start: Date, endExclusive: Date, body: ProposeFromQuestionRequest): Promise<KnowledgeProposalResponse> {
+        let url_ = this.baseUrl + "/api/v1/knowledge/questions/{id}/propose?";
         if (id === undefined || id === null)
             throw new globalThis.Error("The parameter 'id' must be defined.");
         url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        if (version === undefined || version === null)
+            throw new globalThis.Error("The parameter 'version' must be defined and cannot be null.");
+        else
+            url_ += "Version=" + encodeURIComponent("" + version) + "&";
+        if (kind === undefined || kind === null)
+            throw new globalThis.Error("The parameter 'kind' must be defined and cannot be null.");
+        else
+            url_ += "Kind=" + encodeURIComponent("" + kind) + "&";
+        if (localDate === undefined || localDate === null)
+            throw new globalThis.Error("The parameter 'localDate' must be defined and cannot be null.");
+        else
+            url_ += "LocalDate=" + encodeURIComponent("" + localDate) + "&";
+        if (timeZone === undefined || timeZone === null)
+            throw new globalThis.Error("The parameter 'timeZone' must be defined and cannot be null.");
+        else
+            url_ += "TimeZone=" + encodeURIComponent("" + timeZone) + "&";
+        if (start === undefined || start === null)
+            throw new globalThis.Error("The parameter 'start' must be defined and cannot be null.");
+        else
+            url_ += "Start=" + encodeURIComponent(start ? "" + start.toISOString() : "") + "&";
+        if (endExclusive === undefined || endExclusive === null)
+            throw new globalThis.Error("The parameter 'endExclusive' must be defined and cannot be null.");
+        else
+            url_ += "EndExclusive=" + encodeURIComponent(endExclusive ? "" + endExclusive.toISOString() : "") + "&";
         url_ = url_.replace(/[?&]$/, "");
 
         const content_ = JSON.stringify(body);
@@ -4715,6 +4765,7 @@ export interface IAppUsageResponse {
 }
 
 export class AskingQuestionResponse implements IAskingQuestionResponse {
+    windowKey?: string;
     id?: string;
     kind?: string;
     question?: string;
@@ -4744,6 +4795,7 @@ export class AskingQuestionResponse implements IAskingQuestionResponse {
                 if (_data.hasOwnProperty(property))
                     this[property] = _data[property];
             }
+            this.windowKey = _data["windowKey"];
             this.id = _data["id"];
             this.kind = _data["kind"];
             this.question = _data["question"];
@@ -4775,6 +4827,7 @@ export class AskingQuestionResponse implements IAskingQuestionResponse {
             if (this.hasOwnProperty(property))
                 data[property] = this[property];
         }
+        data["windowKey"] = this.windowKey;
         data["id"] = this.id;
         data["kind"] = this.kind;
         data["question"] = this.question;
@@ -4795,6 +4848,7 @@ export class AskingQuestionResponse implements IAskingQuestionResponse {
 }
 
 export interface IAskingQuestionResponse {
+    windowKey?: string;
     id?: string;
     kind?: string;
     question?: string;
@@ -7835,7 +7889,7 @@ export interface IProposeCorrectionRequest {
 }
 
 export class ProposeFromQuestionRequest implements IProposeFromQuestionRequest {
-    date?: Date;
+    windowKey?: string;
     answer?: string;
 
     [key: string]: any;
@@ -7855,7 +7909,7 @@ export class ProposeFromQuestionRequest implements IProposeFromQuestionRequest {
                 if (_data.hasOwnProperty(property))
                     this[property] = _data[property];
             }
-            this.date = _data["date"] ? new Date(_data["date"].toString()) : undefined as any;
+            this.windowKey = _data["windowKey"];
             this.answer = _data["answer"];
         }
     }
@@ -7873,14 +7927,14 @@ export class ProposeFromQuestionRequest implements IProposeFromQuestionRequest {
             if (this.hasOwnProperty(property))
                 data[property] = this[property];
         }
-        data["date"] = this.date ? this.date.toISOString() : undefined as any;
+        data["windowKey"] = this.windowKey;
         data["answer"] = this.answer;
         return data;
     }
 }
 
 export interface IProposeFromQuestionRequest {
-    date?: Date;
+    windowKey?: string;
     answer?: string;
 
     [key: string]: any;

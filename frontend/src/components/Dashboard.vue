@@ -254,7 +254,7 @@ onUnmounted(() => {
           <!-- Strand 提问面板（ADR-028）：owner-only，写知识 + 烧 LLM，无 public 版。 -->
           <StrandQuestions
             v-if="isOwnProfile"
-            :selectedDate="selectedDate"
+            :calendarContext="calendarContext"
           />
 
           <ActivityTimeline
