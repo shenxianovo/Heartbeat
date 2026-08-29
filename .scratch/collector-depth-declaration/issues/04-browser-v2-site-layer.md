@@ -1,6 +1,6 @@
 # 04: browser v2——site 层提拔
 
-Status: done
+Status: ready-for-human
 
 ## Parent
 
@@ -20,11 +20,15 @@ Status: done
 
 ## Acceptance criteria
 
-- [ ] siteOf 单测(www / 子域 / 多段后缀 / IP / localhost)
-- [ ] 段携带 attributes.site;声明 v2 上报后服务端生效表切 v2
-- [ ] 服务端零 diff;digest 三层树、老段退化挂 url 的行为测试(服务端已有泛化测试覆盖,补 browser 三层用例)
+- [x] siteOf 单测(www / 子域 / 多段后缀 / IP / localhost)
+- [x] 段携带 attributes.site;声明 v2 上报后服务端生效表切 v2
+- [x] 服务端零 diff;digest 三层树、老段退化挂 url 的行为测试(服务端已有泛化测试覆盖,补 browser 三层用例)
 - [ ] 判官提案可锚 (site equals ...)(prompt 词汇含 site,手测一轮)
 
 ## Blocked by
 
 02, 03
+
+## Comments
+
+- 2026-08-29 清理审计：`siteOf`、`attributes.site`、Package v2 三层声明、老段回退和声明驱动 prompt 词汇均已实现并有自动测试；browser 77 项及构建通过。未找到判官真实提案手测记录，故保留 `ready-for-human`。

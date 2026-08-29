@@ -34,6 +34,5 @@ Collector Protocol、Execution Driver、Package/Instance/Activation 身份与 pe
 
 ## Existing design seed
 
-- `.scratch/collector-plugin-runtime/PRD.md` 的 Package Registry、锁定状态、更新事务与兼容场景。
 - ADR-040 的 Artifact Delivery / Execution Driver 两轴、Package/Instance/Activation 身份与开发期
   同 SemVer content candidate 例外。

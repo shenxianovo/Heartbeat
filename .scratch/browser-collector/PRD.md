@@ -1,44 +1,24 @@
-# PRD: Browser Collector — 第一个真实采集器
+# Browser Collector IdentityKey refinement
 
-来源：2026-07-05 grilling 会话（ADR-019 + CONTEXT-MAP / shared / desktop CONTEXT.md 同日更新，commit 0383520）。
+Status: ready-for-agent
 
-## 目标
+## Current state
 
-把浏览器从"窗口标题最贫瘠的应用"变成语义最丰富的一条轨：MV3 扩展采集 active tab 活动，经 loopback hub 汇入既有管线；回放主视图按 ADR-019 做标签升级；WPF 提供采集器管理。
+Browser Collector 已通过 ExternalHost Binding 接入 Collector Protocol。稳定 FactId、Revision、ACK/重试、持久 outbox、Stream Gap、per-App Collector Instance Desired State，以及跨平台 Collector page 均已实现；回放标签升级也已完成。
 
-## 范围内
+现行运行时、身份和管理语义以 [ADR-040](../../docs/adr/040-collector-runtime-and-protocol-foundation.md) 与 [`collection/CONTEXT.md`](../../collection/CONTEXT.md) 为准。
 
-1. MV3 浏览器扩展（`collection/collectors/Heartbeat.Collector.Browser/`）
-2. 回放注意力线标签升级（ADR-019 前端实现）
-3. WPF 插件管理页（Active = 流量推断，Deactivate = hub 黑名单 403）
+## Remaining problem
 
-## 范围外
+默认 Browser IdentityKey 使用 `origin + pathname`，丢弃 query 与 fragment。这可以消除追踪参数造成的假碎片，但会把 query 承载页面身份的站点过度合并。例如 `youtube.com/watch?v=a` 与 `youtube.com/watch?v=b` 当前得到同一 IdentityKey，SPA 切换视频时可能不切段，旧段最终只保留最新 URL 与标题。
 
-- Recap（意义层）——显式推迟至本期落地后（见 shared/CONTEXT.md Recap 词条）
-- 泳道多轨展开态（ADR-019 §4）
-- Collector SDK / 模板——从第一、二个插件的共性中提炼（ADR-017 §5）
-- 交集统计（ADR-017 §4 overlay-first 纪律）
+## Outcome
 
-## 已就位的基础设施（勿重做）
+- 增加数据驱动的 per-domain query 参数保留规则，首个规则覆盖 YouTube `/watch` 的 `v`。
+- 默认规则继续丢弃无身份意义的 query 与 fragment。
+- 完整原始 URL 始终保存在 Attributes 中。
+- 规范化保持纯函数，并覆盖默认、覆写和边界行为测试。
 
-- hub ingest：`SegmentIngestWorker`（`POST 127.0.0.1:{IngestPort}/v1/segments`）+ `SegmentIngestService` 缓冲
-- 上传管线：`SegmentUploadService` → 服务端 `SegmentController` → `UsageService.SaveSegmentsAsync`（UUIDv7 幂等 + (Source, IdentityKey) 续接）
-- 查询：`UsageService.GetSegmentsAsync`（区间重叠语义，ADR-018）
+## Issue
 
-## 关键决策（详见 ADR/CONTEXT）
-
-- IdentityKey = origin+pathname，掐 query/fragment；per-domain 覆写表处理"query 即身份"站点；完整 URL 存 Attributes（判据可有损，原始数据无损）
-- 扩展忠实记录 tab 活跃，不管窗口是否前台；多窗口时每窗口各记其 active tab（windowId 进 Attributes）
-- 主视图 = 注意力线 + 标签升级；fallback 按时间窗口判定（ADR-019）
-- Active/Deactivate 语义见 collection/CONTEXT.md
-
-## Issues
-
-| # | Title | Type | Blocked by |
-|---|-------|------|-----------|
-| 01 | 浏览器扩展端到端走通 | AFK | — |
-| 02 | IdentityKey 规范化覆写表 | AFK | 01 |
-| 03 | 回放注意力线标签升级 | AFK | 01 |
-| 04 | WPF 插件管理页 | AFK | 01 |
-
-建议顺序：01 → 03（价值兑现点）→ 02 / 04。
+- [02 — IdentityKey 规范化覆写表](issues/02-identitykey-override-table.md)

@@ -74,5 +74,3 @@ Instance Desired State 使用单调 SpecRevision；Activation 报告已经应用
 - [ADR-032](./032-device-as-observed-subject.md) — 无头 Hub 与 VRChat 原始设计，本 ADR 修订其进程边界
 - [ADR-037](./037-collection-project-boundaries.md) — Collection 可执行与程序集边界
 - [系统架构与协议](../architecture/system-overview.md) — 当前 JSON 契约地图、Transport Binding 与校验链
-- [Collector Runtime PRD](../../.scratch/collector-plugin-runtime/PRD.md) — 一次性开发任务的范围、裁决与 closeout 记录
-- [DeepSeek Harness / Cordis 研究](../../.scratch/collector-plugin-runtime/research/deepseek-harness-and-cordis.md) — 可借鉴与不可照搬的边界

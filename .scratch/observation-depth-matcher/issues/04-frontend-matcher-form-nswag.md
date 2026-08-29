@@ -15,14 +15,12 @@ Status: done
 - **NSwag client 收编知识端点**:起服务器重生成 client,删
   `frontend/src/api/index.ts` 手写的 HandleDto/QuestionItem/BindStrandRequest/
   StrandResponse 及 `as` 裸转 wrapper;时区 offset 传参对齐 recap 端点做法。
-- Recap 卡的"知识已更新,重新生成?"提示若 issue 04(strand-knowledge-layer
-  旧目录,staleness 读时判脏)已落地,校验其在 matcher 形状下仍工作。
 
 ## Acceptance criteria
 
-- [ ] 问题卡渲染 matcher 路径与提案,绑定/Mute 走生成 client,请求形状与服务端 DTO 一致
-- [ ] 手写知识类型与 wrapper 删除,NSwag client 含知识端点
-- [ ] vue-tsc clean,现有 Dashboard/Recap 功能无回归
+- [x] 问题卡渲染 matcher 路径与提案,绑定/Mute 走生成 client,请求形状与服务端 DTO 一致
+- [x] 手写知识类型与 wrapper 删除,NSwag client 含知识端点
+- [x] vue-tsc clean,现有 Dashboard/Recap 功能无回归
 
 ## Blocked by
 
@@ -30,4 +28,5 @@ Status: done
 
 ## Comments
 
-- 2026-07-20 落地:NSwag client 重生成(对本地 compose 栈,知识端点 getDailyQuestions/bindStrand/muteMatcher + Matcher 系列类型收编);index.ts 删全部手写知识类型与裸 fetch wrapper(questions 仍手拼查询串保时区 offset,解析走 fromJS;bind/mute 走生成 client);StrandQuestions.vue 改 Matcher 提案卡(问题文本 + 依据 + 指纹可读渲染"应用 = livehime 且…",三出口不变,gloss 占位文案带策展纪律提示)。vue-tsc clean。旧目录 issue 04(staleness 读时判脏)仍 ready-for-agent,与 matcher 形状兼容。
+- 2026-07-20 落地:NSwag client 重生成(对本地 compose 栈,知识端点 getDailyQuestions/bindStrand/muteMatcher + Matcher 系列类型收编);index.ts 删全部手写知识类型与裸 fetch wrapper(questions 仍手拼查询串保时区 offset,解析走 fromJS;bind/mute 走生成 client);StrandQuestions.vue 改 Matcher 提案卡(问题文本 + 依据 + 指纹可读渲染"应用 = livehime 且…",三出口不变,gloss 占位文案带策展纪律提示)。vue-tsc clean。
+- 2026-08-29 清理审计：现行两阶段 UI 已继承 Matcher 可读渲染与生成 client 边界；前端 258 项、`vue-tsc --noEmit` 与构建通过。

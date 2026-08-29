@@ -242,4 +242,3 @@ ADR-023 的段水位策略仍独立存在：今天的 SegmentWatermark 落后超
   “时间语义零字段”和单阶段问题卡由本 ADR 修订
 - [ADR-030](./030-collector-depth-declaration.md) —— Matcher 使用的 source-native 读数声明
 - `server/CONTEXT.md` —— Strand / Episode / ActivityCluster / RecurrenceProbe / Asking 词条
-- 实现拆片：`.scratch/hierarchical-strand-teaching/issues/`

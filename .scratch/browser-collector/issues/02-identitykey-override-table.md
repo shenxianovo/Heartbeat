@@ -23,4 +23,4 @@ Status: ready-for-agent
 
 ## Blocked by
 
-- [01](./01-browser-extension-e2e.md)
+(无；基础 Browser Collector 已由现行 Collector Protocol 实现。)

@@ -51,6 +51,3 @@ Fact Schema 使用 SchemaId + SchemaMajor 表示语义兼容线，以 SchemaRevi
 - [ADR-032](./032-device-as-observed-subject.md) — Subject 与三类事实的绿场推导，本 ADR 固化并修订 Device 语义
 - [Collector Fact Contracts](../../collection/contracts/README.md) — 当前可执行 Fact payload 与演进规则
 - [系统架构与协议](../architecture/system-overview.md) — 当前协议、Package 与 Fact 契约的权威关系
-- [Collector Runtime PRD](../../.scratch/collector-plugin-runtime/PRD.md) — 一次性开发任务的范围、裁决与 closeout 记录
-- [可观测性事实模型研究](../../.scratch/collector-plugin-runtime/research/observability-fact-models.md) — OpenTelemetry、Prometheus 与 Grafana 对照
-- [ActivityWatch 数据模型研究](../../.scratch/collector-plugin-runtime/research/activitywatch-data-model.md) — watcher/bucket/event 模型的借鉴与限制

@@ -35,7 +35,7 @@ Owner 是事实的数据主人；Subject 是 Collector 如实观察的对象，�
 _Avoid_: 把 Hub Instance 当 Subject、把 Account 或 Person 称为 Device、用事实主体记录猜测的硬件归因
 
 **User Provisioning（用户供给）**:
-懒建，由**本人首次带 JWT 的请求**触发：upsert User 行（`Id = sub`，`Username = preferred_username`，默认 private）。匿名按用户名读取只查本地 Users 表，查不到即 404——不回源 Auth 平台、不建行（防爬虫刷空行 + 用户名枚举）。**sub-first 规则**：带 JWT 请求一律用 `sub` 定位 User 行，Username 只是可刷新的显示缓存 + 匿名查询入口。username 可变（AuthService 改名立即释放旧名，GitHub 模式）：供给回写含**驱逐**——同名异 sub 的 stale 行被改为 `~{sub}` 占位（`~` 不在上游字符集，永不撞真名），被驱逐者下次带 JWT 请求自愈。设计定于 2026-07-17（ADR-027），实现进度见 `.scratch/multi-user/issues/01-username-rename-landmine.md`。
+懒建，由**本人首次带 JWT 的请求**触发：upsert User 行（`Id = sub`，`Username = preferred_username`，默认 private）。匿名按用户名读取只查本地 Users 表，查不到即 404——不回源 Auth 平台、不建行（防爬虫刷空行 + 用户名枚举）。**sub-first 规则**：带 JWT 请求一律用 `sub` 定位 User 行，Username 只是可刷新的显示缓存 + 匿名查询入口。username 可变（AuthService 改名立即释放旧名，GitHub 模式）：供给回写含**驱逐**——同名异 sub 的 stale 行被改为 `~{sub}` 占位（`~` 不在上游字符集，永不撞真名），被驱逐者下次带 JWT 请求自愈。设计定于 2026-07-17（ADR-027）。
 _Avoid_: 注册/Registration（Heartbeat 无注册概念，账号归 Auth 平台；显式注册流程留给未来隐私条款同意场景）
 
 **Dashboard Visibility（看板可见性）**:
@@ -87,4 +87,4 @@ _Avoid_: 墓碑 / Tombstone / Adjudication（设计期黑话，已弃用）、Hi
 _Avoid_: 分诊 / Triage、从散文自动反推事实、LLM 静默写知识、把结构化提案当用户确认
 
 **Validation Policy**:
-摄入门卫（SegmentValidationPolicy / UsageValidationPolicy）：拒收未来时间戳、非法区间等畸形数据。拒收即丢弃，不修复——采集端负责数据正确性。
+摄入门卫（SegmentValidationPolicy）：拒收未来时间戳、非法区间等畸形数据。拒收即丢弃，不修复——采集端负责数据正确性。

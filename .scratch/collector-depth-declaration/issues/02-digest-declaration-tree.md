@@ -1,6 +1,6 @@
 # 02: digest 深度树泛化——声明驱动的分解
 
-Status: done
+Status: ready-for-agent
 
 ## Parent
 
@@ -23,11 +23,15 @@ Status: done
 ## Acceptance criteria
 
 - [ ] 树泛化单测:多层递归分解、并集不双计、缺读数挂最深可用、剪枝行为不回归
-- [ ] browser 轨断言从平铺迁移到两层树;system 块分解行为不变(digest 文本断言)
-- [ ] 判官 prompt 词汇段随声明变化的单测;RecurringLabel 分支删除
-- [ ] readingLabels 端到端:响应携带、前端渲染、未知读数回落
-- [ ] 服务端套件绿;vue-tsc 干净
+- [x] browser 轨断言从平铺迁移到两层树;system 块分解行为不变(digest 文本断言)
+- [x] 判官 prompt 词汇段随声明变化的单测;RecurringLabel 分支删除
+- [x] readingLabels 端到端:响应携带、前端渲染、未知读数回落
+- [x] 服务端套件绿;vue-tsc 干净
 
 ## Blocked by
 
 01
+
+## Comments
+
+- 2026-08-29 清理审计：除“并集不双计”外，其余验收均已由现行代码与测试覆盖。`RecapProjection.Insert` 当前对每段直接累加节点秒数，同一 site/URL 的重叠 browser 段会重复计时；现有 `Breakdown_ExpandedBlock_DistinctTitlesWithUnionDurations` 只覆盖不重叠的 system 段。修复需按时间并集累计，并增加重叠 plugin 段回归测试。

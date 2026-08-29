@@ -25,12 +25,16 @@ Status: done
 
 ## Acceptance criteria
 
-- [ ] 声明校验单测:读数重名拒收、非法槽位拒收、layers 序保持
-- [ ] 解释器单测:种子声明产出与旧 DepthReadings 一致(system/browser/未知源回落);attributes.<path> 取值
-- [ ] 生效规则测试:同 source 多版本取 max;同 (Source,Version) 重写幂等覆盖
-- [ ] Matcher 去层:Eval 按名匹配单测;canonical 无 Layer;backfill 剥层+去重行为测试
-- [ ] 服务端套件绿;vue-tsc 干净
+- [x] 声明校验单测:读数重名拒收、非法槽位拒收、layers 序保持
+- [x] 解释器单测:种子声明产出与旧 DepthReadings 一致(system/browser/未知源回落);attributes.<path> 取值
+- [x] 生效规则测试:同 source 多版本取 max;同 (Source,Version) 重写幂等覆盖
+- [x] Matcher 去层:Eval 按名匹配单测;canonical 无 Layer;backfill 剥层+去重行为测试
+- [x] 服务端套件绿;vue-tsc 干净
 
 ## Blocked by
 
 (无)
+
+## Comments
+
+- 2026-08-29 清理审计：声明表/校验/解释器、生效版本规则、Matcher 去层与 identity backfill 均有现行代码和测试覆盖；服务端 440 项、前端 258 项及类型检查通过。

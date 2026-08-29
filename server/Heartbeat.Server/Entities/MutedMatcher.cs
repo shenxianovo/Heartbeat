@@ -13,7 +13,7 @@ namespace Heartbeat.Server.Entities
 
         public string Source { get; set; } = string.Empty;
 
-        /// <summary>规范化的 [{Layer, Reading, Op, Value}] JSON（MatcherCodec canonical）。</summary>
+        /// <summary>规范化的 [{Reading, Op, Value}] JSON（MatcherCodec canonical）。</summary>
         public string StepsJson { get; set; } = string.Empty;
 
         public DateTimeOffset CreatedAt { get; set; }

@@ -15,7 +15,7 @@ namespace Heartbeat.Server.Entities
 
         public string Source { get; set; } = string.Empty;
 
-        /// <summary>规范化的 [{Layer, Reading, Op, Value}] JSON。</summary>
+        /// <summary>规范化的 [{Reading, Op, Value}] JSON。</summary>
         public string StepsJson { get; set; } = string.Empty;
 
         public Strand Strand { get; set; } = null!;

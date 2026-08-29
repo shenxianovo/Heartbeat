@@ -1,6 +1,6 @@
 # 03: 声明传输通道——loopback 动词 + hub 上行
 
-Status: done
+Status: ready-for-human
 
 ## Parent
 
@@ -21,11 +21,15 @@ Status: done
 
 ## Acceptance criteria
 
-- [ ] loopback 动词单测:写入 registry、source 不一致拒收、system 冒充拒收
-- [ ] hub 上行:启动上报、变更再报、失败退避不阻塞 segments 上传
-- [ ] 服务端端点行为测试:落表、同版幂等、坏声明 400(校验复用 issue 01)
+- [x] loopback 动词单测:写入 registry、source 不一致拒收、system 冒充拒收
+- [x] hub 上行:启动上报、变更再报、失败退避不阻塞 segments 上传
+- [x] 服务端端点行为测试:落表、同版幂等、坏声明 400(校验复用 issue 01)
 - [ ] browser 扩展构建绿;端到端手测一轮(hub 日志见上报、服务端表见行)
 
 ## Blocked by
 
 01
+
+## Comments
+
+- 2026-08-29 清理审计：原 source-level declaration loopback 已被 ADR-040 正式退役，现行实现由 Package 内 `observation-depth.declaration.json` 经严格 loader 注册，再由 Hub 上行 Analytics；启动/变更/失败重试与服务端落表均有自动测试。browser 构建通过，但未找到原验收所要求的端到端人工记录，故保留 `ready-for-human`。

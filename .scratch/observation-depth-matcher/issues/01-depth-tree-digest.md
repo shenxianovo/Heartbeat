@@ -1,6 +1,6 @@
 # 01: 观测深度 —— digest 长成深度树
 
-Status: done
+Status: ready-for-agent
 
 ## Parent
 
@@ -21,10 +21,10 @@ Status: done
 
 ## Acceptance criteria
 
-- [ ] 读数提取纯函数单测:system 两层、browser L1 双读数、缺失字段回退
+- [x] 读数提取纯函数单测:system 两层、browser L1 双读数、缺失字段回退
 - [ ] 深度树分解单测:去重聚合、并集时长不双计、展开门槛、子数封顶、尾部折叠
-- [ ] 近 14 天高频注释渲染单测
-- [ ] 旧标题抽样路径删除,RecapProjectionTests 全部迁移到树断言,服务端套件绿
+- [x] 近 14 天高频注释渲染单测
+- [x] 旧标题抽样路径删除,RecapProjectionTests 全部迁移到树断言,服务端套件绿
 
 ## Blocked by
 
@@ -33,3 +33,4 @@ Status: done
 ## Comments
 
 - 2026-07-20 落地:`DepthReadings.For` 纯函数(system 两层、browser L1 双读数、未知源兜底);`RecapProjection` 块内挂 L2 分解(去重+并集时长,展开门槛 600s、封顶 4 条、尾折"其他 N 个"),`MaxTitlesPerBlock` 抽样删除;`recurringReadings` 注释参数(渲染在投影,service 接线留 issue 03 发问 prompt 需要时)。测试 +12(DepthReadingsTests 6 + RecapProjectionTests 深度树 6),套件 117/117 绿。
+- 2026-08-29 清理审计：读数提取已由 ADR-030 演进为声明驱动，旧 browser L1 双读数形状由当前分层声明取代；高频注释、剪枝与旧抽样路径删除均有现行测试。唯一未完成项是重叠区间并集：`RecapProjection.Insert` 直接累加节点秒数，同一读数值的重叠 plugin 段会重复计时；现有 `Breakdown_ExpandedBlock_DistinctTitlesWithUnionDurations` 未覆盖重叠输入。

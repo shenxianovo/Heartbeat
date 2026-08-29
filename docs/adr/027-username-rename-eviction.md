@@ -4,16 +4,13 @@
 
 ## Date: 2026-07-17
 
-(Design session decision; implementation commits to be appended as they land.
-Upstream AuthService rename feature designed the same session, see
-`AuthService/.scratch/username-rename/`.)
+(Design session decision; implementation commits to be appended as they land.)
 
 ## Context
 
 ADR-025 的 sub-first 规则把 username 定义为"可刷新的显示缓存 + 匿名查询入口"，
 并显式否决了为改名预建防串号隔离——当时的前提是 AuthService 无改名端点、
-username 事实不可变，防线（若将来需要）的主体在上游（记雷代替，
-`.scratch/multi-user/issues/01-username-rename-landmine.md`）。
+username 事实不可变，防线（若将来需要）的主体在上游（记雷代替）。
 
 现在 AuthService 正式增加用户自助改名。上游同场决策采用 **GitHub 模式**：
 
@@ -81,7 +78,6 @@ username 事实不可变，防线（若将来需要）的主体在上游（记�
 ## References
 
 - [`server/Heartbeat.Server/Services/UserService.cs`](../../server/Heartbeat.Server/Services/UserService.cs) — ProvisionAsync 驱逐落点、ResolveByUsernameAsync guard 落点
-- `.scratch/multi-user/issues/01-username-rename-landmine.md` — 决策过程全记录（含被否备选）
 - [ADR-025](./025-multi-user-visibility-identity.md) — sub-first 规则与"记雷代替预建"的原始决策
 - `server/CONTEXT.md` — User Provisioning 词条（已更新驱逐语义）
-- AuthService: `Common/UsernameValidator.cs`（字符集）、`.scratch/username-rename/`（上游工作项）
+- AuthService: `Common/UsernameValidator.cs`（字符集）

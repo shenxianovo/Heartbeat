@@ -38,7 +38,7 @@ CONTEXT-MAP 定位把商业化列为"被保留的选项"，并靠三条不变量
   伤筋动骨的迁移，而 App 只是 `Id/Name` 归一化字典，读侧已有 OwnerId 过滤，共享无泄露。
 - **为 username 改名预建防串号隔离**：AuthService 当前无改名端点，username 事实不可变；
   串号前提（旧名被他人复用）由 AuthService 控制，防线不在本仓。违反"不预建"原则，
-  记雷代替（`.scratch/multi-user/issues/01-username-rename-landmine.md`）。
+  记雷代替。
 
 ## Decision
 
@@ -97,6 +97,5 @@ CONTEXT-MAP 定位把商业化列为"被保留的选项"，并靠三条不变量
 - [`server/Heartbeat.Server/Controllers/AppController.cs`](../../server/Heartbeat.Server/Controllers/AppController.cs) — UploadIcon 写权隔离
 - [`frontend/src/router/index.ts`](../../frontend/src/router/index.ts) — `/u/:username` 路由、landing 页
 - `server/CONTEXT.md` — Dashboard Visibility / User Provisioning 词条
-- `.scratch/multi-user/issues/01-username-rename-landmine.md` — username 改名联动雷
 - [ADR-024](./024-oidc-jwt-authentication.md) — sub / preferred_username claim 的来源
 - [ADR-012](./012-input-event-tracking.md) — 键击流单用户前提（本 ADR 未解决，SaaS 形态待决）

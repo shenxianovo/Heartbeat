@@ -7,7 +7,7 @@
 
 ## Date: 2026-07-20
 
-> 设计定于 2026-07-20 destruct-rebuild grilling session。实现待动工；
+> 设计定于 2026-07-20 destruct-rebuild grilling session；
 > 用户明示不保已采数据与既有实现（先破后立）。
 
 ## Context
@@ -184,4 +184,3 @@ RecapProjection 的 MaxTitlesPerBlock 抽样。
 - [ADR-012](./012-input-event-tracking.md) —— 出境 trade-off 先例
 - `server/CONTEXT.md` —— Observation Depth / Matcher / Asking 词条（本 ADR 同步更新）
 - `CONTEXT-MAP.md` —— 知识裁决写路径（措辞随本 ADR 更新为 Matcher）
-- 实现：待动工（`.scratch/` 重拆 issue）

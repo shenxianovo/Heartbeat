@@ -8,7 +8,7 @@
 
 ## Date: 2026-07-19
 
-> 设计定于 2026-07-19 grilling session（grill-with-docs）。实现待动工。
+> 设计定于 2026-07-19 grilling session（grill-with-docs）。
 
 ## Context
 
@@ -128,4 +128,3 @@ segments ──▶ 投影（确定性，可测）──┬─▶ ① prompt+LLM 
 - [ADR-019](./019-replay-attention-line-label-upgrade.md) —— 展示层标签升级（Strand 不复刻，走投影注入）
 - `server/CONTEXT.md` —— Strand / Handle / Anchor-Satellite / Mute 词条
 - `CONTEXT-MAP.md` —— `Dashboard → Analytics` 知识裁决写路径
-- 实现：待动工（`.scratch/` 建 issue 拆片）

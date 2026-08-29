@@ -4,8 +4,7 @@
 
 ## Date: 2026-07-22
 
-> 设计定于 2026-07-22 grilling session（候选②）。实现待动工，issue 拆片见
-> `.scratch/collector-depth-declaration/issues/`。
+> 设计定于 2026-07-22 grilling session（候选②）。
 
 > 2026-08-28 implementation note: collector 自报的 declaration HTTP 动词已退役；System 与 Browser 都从各自 Collector Package 的 `observation-depth.declaration.json` 注册经验证声明，再由 Hub 上行 Analytics。以下 loopback 方案保留为历史背景。
 
@@ -137,4 +136,3 @@ DepthReadings → 通用解释器（声明 + 槽位取值 + 回落）；RecapPro
 - [ADR-017](./017-activity-segment-pluggable-collectors.md) —— 观测深度 = 隐私轴，
   分层可拆
 - `server/CONTEXT.md` —— Observation Depth / Matcher 词条（本 ADR 同步更新）
-- 实现：`.scratch/collector-depth-declaration/issues/` 01-04

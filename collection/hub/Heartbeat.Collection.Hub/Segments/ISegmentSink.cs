@@ -4,9 +4,8 @@ using Heartbeat.Collection.Hub.Collectors.Runtime;
 namespace Heartbeat.Collection.Hub.Segments
 {
     /// <summary>
-    /// 段快照的接收侧 seam（ADR-020）：内置 system 采集器（AppMonitorService）
-    /// 把快照推进 hub 缓冲，与插件采集器经 loopback 推送同构。
-    /// 生产 adapter 是 <see cref="SegmentIngestService"/>；测试用 fake 断言推出的段。
+    /// 段快照的接收侧 seam（ADR-020/040），供 Hub 组合层注入 Collector Runtime。
+    /// 生产 adapter 是 <see cref="SegmentIngestService"/>；测试使用 fake 断言投影结果。
     /// </summary>
     public interface ISegmentSink
     {
