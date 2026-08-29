@@ -2143,18 +2143,37 @@ export class Client {
     }
 
     /**
-     * @param date (optional) 
      * @return OK
      */
-    getUserDailyRecap(username: string, date: Date | undefined): Promise<DailyRecapResponse> {
+    getUserDailyRecap(username: string, version: number, kind: string, localDate: string, timeZone: string, start: Date, endExclusive: Date): Promise<DailyRecapResponse> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/recaps/daily?";
         if (username === undefined || username === null)
             throw new globalThis.Error("The parameter 'username' must be defined.");
         url_ = url_.replace("{username}", encodeURIComponent("" + username));
-        if (date === null)
-            throw new globalThis.Error("The parameter 'date' cannot be null.");
-        else if (date !== undefined)
-            url_ += "date=" + encodeURIComponent(date ? "" + date.toISOString() : "") + "&";
+        if (version === undefined || version === null)
+            throw new globalThis.Error("The parameter 'version' must be defined and cannot be null.");
+        else
+            url_ += "Version=" + encodeURIComponent("" + version) + "&";
+        if (kind === undefined || kind === null)
+            throw new globalThis.Error("The parameter 'kind' must be defined and cannot be null.");
+        else
+            url_ += "Kind=" + encodeURIComponent("" + kind) + "&";
+        if (localDate === undefined || localDate === null)
+            throw new globalThis.Error("The parameter 'localDate' must be defined and cannot be null.");
+        else
+            url_ += "LocalDate=" + encodeURIComponent("" + localDate) + "&";
+        if (timeZone === undefined || timeZone === null)
+            throw new globalThis.Error("The parameter 'timeZone' must be defined and cannot be null.");
+        else
+            url_ += "TimeZone=" + encodeURIComponent("" + timeZone) + "&";
+        if (start === undefined || start === null)
+            throw new globalThis.Error("The parameter 'start' must be defined and cannot be null.");
+        else
+            url_ += "Start=" + encodeURIComponent(start ? "" + start.toISOString() : "") + "&";
+        if (endExclusive === undefined || endExclusive === null)
+            throw new globalThis.Error("The parameter 'endExclusive' must be defined and cannot be null.");
+        else
+            url_ += "EndExclusive=" + encodeURIComponent(endExclusive ? "" + endExclusive.toISOString() : "") + "&";
         url_ = url_.replace(/[?&]$/, "");
 
         let options_: RequestInit = {
@@ -2178,6 +2197,13 @@ export class Client {
             let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
             result200 = DailyRecapResponse.fromJS(resultData200);
             return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result400 = CalendarWindowError.fromJS(resultData400);
+            return throwException("Bad Request", status, _responseText, _headers, result400);
             });
         } else if (status !== 200 && status !== 204) {
             return response.text().then((_responseText) => {
@@ -2506,15 +2532,34 @@ export class Client {
     }
 
     /**
-     * @param date (optional) 
      * @return OK
      */
-    getDailyRecap(date: Date | undefined): Promise<DailyRecapResponse> {
+    getDailyRecap(version: number, kind: string, localDate: string, timeZone: string, start: Date, endExclusive: Date): Promise<DailyRecapResponse> {
         let url_ = this.baseUrl + "/api/v1/recaps/daily?";
-        if (date === null)
-            throw new globalThis.Error("The parameter 'date' cannot be null.");
-        else if (date !== undefined)
-            url_ += "date=" + encodeURIComponent(date ? "" + date.toISOString() : "") + "&";
+        if (version === undefined || version === null)
+            throw new globalThis.Error("The parameter 'version' must be defined and cannot be null.");
+        else
+            url_ += "Version=" + encodeURIComponent("" + version) + "&";
+        if (kind === undefined || kind === null)
+            throw new globalThis.Error("The parameter 'kind' must be defined and cannot be null.");
+        else
+            url_ += "Kind=" + encodeURIComponent("" + kind) + "&";
+        if (localDate === undefined || localDate === null)
+            throw new globalThis.Error("The parameter 'localDate' must be defined and cannot be null.");
+        else
+            url_ += "LocalDate=" + encodeURIComponent("" + localDate) + "&";
+        if (timeZone === undefined || timeZone === null)
+            throw new globalThis.Error("The parameter 'timeZone' must be defined and cannot be null.");
+        else
+            url_ += "TimeZone=" + encodeURIComponent("" + timeZone) + "&";
+        if (start === undefined || start === null)
+            throw new globalThis.Error("The parameter 'start' must be defined and cannot be null.");
+        else
+            url_ += "Start=" + encodeURIComponent(start ? "" + start.toISOString() : "") + "&";
+        if (endExclusive === undefined || endExclusive === null)
+            throw new globalThis.Error("The parameter 'endExclusive' must be defined and cannot be null.");
+        else
+            url_ += "EndExclusive=" + encodeURIComponent(endExclusive ? "" + endExclusive.toISOString() : "") + "&";
         url_ = url_.replace(/[?&]$/, "");
 
         let options_: RequestInit = {
@@ -2538,6 +2583,13 @@ export class Client {
             let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
             result200 = DailyRecapResponse.fromJS(resultData200);
             return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result400 = CalendarWindowError.fromJS(resultData400);
+            return throwException("Bad Request", status, _responseText, _headers, result400);
             });
         } else if (status !== 200 && status !== 204) {
             return response.text().then((_responseText) => {

@@ -26,6 +26,19 @@ public sealed record LocalCalendarWindowEnvelope
     public DateTimeOffset EndExclusive { get; init; }
 }
 
+/// <summary>
+/// Analytics 在严格验证日历窗口后才产生的持久化身份。构造器不对程序集外暴露，
+/// 避免缓存与生成锁边界退化成接受任意调用方字符串。
+/// </summary>
+public sealed record CalendarWindowKey
+{
+    internal CalendarWindowKey(string value) => Value = value;
+
+    public string Value { get; }
+
+    public override string ToString() => Value;
+}
+
 public sealed record ResolvedCalendarWindow(
     int Version,
     string Kind,
@@ -34,7 +47,15 @@ public sealed record ResolvedCalendarWindow(
     DateTimeOffset Start,
     DateTimeOffset EndExclusive,
     LocalDate CivilStartDate,
-    LocalDate CivilEndExclusiveDate);
+    LocalDate CivilEndExclusiveDate)
+{
+    /// <summary>
+    /// Analytics-owned persistent identity derived only after strict calendar validation. The readable,
+    /// versioned canonical form keeps every identity component diagnosable in stored rows and lock keys.
+    /// </summary>
+    public CalendarWindowKey WindowKey => new(
+        $"local-calendar-window|{Version}|{Kind}|{LocalDate}|{TimeZone}|{Start.UtcDateTime:O}|{EndExclusive.UtcDateTime:O}");
+}
 
 public sealed record CalendarWindowError(string Code, string Message);
 
@@ -120,5 +141,17 @@ public static class LocalCalendarWindowValidator
             expectedEndValue,
             windowStartDate,
             windowStartDate.PlusDays(windowLengthDays)));
+    }
+
+    public static CalendarWindowValidationResult ResolveDay(LocalCalendarWindowEnvelope envelope)
+    {
+        if (envelope.Kind != "day")
+        {
+            return CalendarWindowValidationResult.Failure(
+                "unsupported_calendar_window",
+                "This endpoint requires a version 1 day calendar window.");
+        }
+
+        return Resolve(envelope);
     }
 }

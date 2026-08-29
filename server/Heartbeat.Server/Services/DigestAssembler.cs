@@ -2,8 +2,10 @@ using System.Text.Json;
 using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Collectors;
 using Heartbeat.Core.DTOs.Knowledge;
+using Heartbeat.Server.Calendar;
 using Heartbeat.Server.Data;
 using Microsoft.EntityFrameworkCore;
+using NodaTime;
 
 namespace Heartbeat.Server.Services
 {
@@ -23,13 +25,32 @@ namespace Heartbeat.Server.Services
 
         public async Task<RecapProjectionResult> AssembleAsync(
             string ownerId, DateRange window, TimeSpan displayOffset, CancellationToken ct = default)
+            => await AssembleAsync(ownerId, window, LocalDateOf(window, displayOffset), displayOffset, null, ct);
+
+        /// <summary>
+        /// Recap calendar path: projection, episode lookup and clipping all consume the same Analytics-verified
+        /// instant window. The caller cannot substitute a correlation identity or rederive a fixed-duration end.
+        /// </summary>
+        public async Task<RecapProjectionResult> AssembleAsync(
+            string ownerId, ResolvedCalendarWindow window, CancellationToken ct = default)
+        {
+            var instantWindow = InstantWindowOf(window);
+            var localDate = DateOnlyOf(window.CivilStartDate);
+            var displayOffset = DisplayOffsetAtStart(window);
+            return await AssembleAsync(ownerId, instantWindow, localDate, displayOffset, window.TimeZone, ct);
+        }
+
+        private async Task<RecapProjectionResult> AssembleAsync(
+            string ownerId, DateRange window, DateOnly localDate, TimeSpan displayOffset,
+            string? displayTimeZone, CancellationToken ct)
         {
             var depthTables = await LoadDepthTablesAsync(ct);
             var segments = await QuerySegmentsAsync(ownerId, window.UtcStart, window.UtcEnd, ct);
             var strands = await LoadStrandsAsync(ownerId, ct);
-            var episodes = await LoadEpisodesAsync(ownerId, LocalDateOf(window, displayOffset), ct);
+            var episodes = await LoadEpisodesAsync(ownerId, localDate, ct);
             var recurring = await ComputeRecurringReadingsAsync(ownerId, window.UtcStart, depthTables, ct);
-            return RecapProjection.Project(segments, window, displayOffset, strands, episodes, recurring, depthTables);
+            return RecapProjection.Project(
+                segments, window, displayOffset, strands, episodes, recurring, depthTables, displayTimeZone, localDate);
         }
 
         /// <summary>
@@ -38,16 +59,42 @@ namespace Heartbeat.Server.Services
         /// </summary>
         public async Task<string> ComputeKnowledgeHashAsync(
             string ownerId, DateRange window, TimeSpan displayOffset, CancellationToken ct = default)
+            => await ComputeKnowledgeHashAsync(
+                ownerId, window, LocalDateOf(window, displayOffset), displayOffset, ct);
+
+        public async Task<string> ComputeKnowledgeHashAsync(
+            string ownerId, ResolvedCalendarWindow window, CancellationToken ct = default)
+            => await ComputeKnowledgeHashAsync(
+                ownerId,
+                InstantWindowOf(window),
+                DateOnlyOf(window.CivilStartDate),
+                DisplayOffsetAtStart(window),
+                ct);
+
+        private async Task<string> ComputeKnowledgeHashAsync(
+            string ownerId, DateRange window, DateOnly localDate, TimeSpan displayOffset, CancellationToken ct)
         {
             var depthTables = await LoadDepthTablesAsync(ct);
             var segments = await QuerySegmentsAsync(ownerId, window.UtcStart, window.UtcEnd, ct);
             var strands = await LoadStrandsAsync(ownerId, ct);
-            var episodes = await LoadEpisodesAsync(ownerId, LocalDateOf(window, displayOffset), ct);
-            return RecapProjection.ResolveKnowledge(segments, window, displayOffset, strands, episodes, depthTables).Hash;
+            var episodes = await LoadEpisodesAsync(ownerId, localDate, ct);
+            return RecapProjection.ResolveKnowledge(
+                segments, window, displayOffset, strands, episodes, depthTables, localDate).Hash;
         }
 
         private static DateOnly LocalDateOf(DateRange window, TimeSpan displayOffset)
             => DateOnly.FromDateTime(new DateTimeOffset(window.UtcStart, TimeSpan.Zero).ToOffset(displayOffset).Date);
+
+        private static DateRange InstantWindowOf(ResolvedCalendarWindow window) =>
+            new(window.Start.UtcDateTime, window.EndExclusive.UtcDateTime);
+
+        private static DateOnly DateOnlyOf(LocalDate date) => new(date.Year, date.Month, date.Day);
+
+        private static TimeSpan DisplayOffsetAtStart(ResolvedCalendarWindow window)
+        {
+            var zone = DateTimeZoneProviders.Tzdb[window.TimeZone];
+            return zone.GetUtcOffset(Instant.FromDateTimeOffset(window.Start)).ToTimeSpan();
+        }
 
         /// <summary>
         /// 生效深度表集（ADR-030 §4）：编译期种子作地板 + DB 声明按 max(Version) 覆盖

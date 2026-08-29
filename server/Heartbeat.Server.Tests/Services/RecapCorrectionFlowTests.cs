@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Knowledge;
 using Heartbeat.Core.DTOs.Recaps;
+using Heartbeat.Server.Calendar;
 using Heartbeat.Server.Data;
 using Heartbeat.Server.Entities;
 using Heartbeat.Server.Services;
@@ -27,6 +28,16 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
 
     /// <summary>另一个历史日：验证纠正后零 LLM、读取时惰性判脏。</summary>
     private static readonly DateTimeOffset OtherDay = new(2026, 7, 8, 0, 0, 0, TimeSpan.Zero);
+
+    private static ResolvedCalendarWindow DayWindow(DateTimeOffset day) => new(
+        1,
+        "day",
+        day.ToString("yyyy-MM-dd"),
+        "Etc/UTC",
+        new DateTimeOffset(day.UtcDateTime.Date, TimeSpan.Zero),
+        new DateTimeOffset(day.UtcDateTime.Date.AddDays(1), TimeSpan.Zero),
+        NodaTime.LocalDate.FromDateTime(day.UtcDateTime.Date),
+        NodaTime.LocalDate.FromDateTime(day.UtcDateTime.Date.AddDays(1)));
 
     protected override async Task SeedAsync(AppDbContext db)
     {
@@ -153,7 +164,7 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
     private static async Task<List<RecapStreamEvent>> DrainAsync(RecapService svc, DateTimeOffset date)
     {
         var events = new List<RecapStreamEvent>();
-        await foreach (var e in svc.GenerateDailyRecapStreamAsync("user-1", date))
+        await foreach (var e in svc.GenerateDailyRecapStreamAsync("user-1", DayWindow(date)))
             events.Add(e);
         return events;
     }
@@ -288,7 +299,7 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
         Assert.False(regenerated.KnowledgeStale);
         Assert.Equal(2, env.Generator.Calls);
 
-        var reread = await env.Recaps.GetDailyRecapAsync("user-1", TargetDay);
+        var reread = await env.Recaps.GetDailyRecapAsync("user-1", DayWindow(TargetDay));
         Assert.Equal(regenerated.Narrative, reread.Narrative);
         Assert.False(reread.KnowledgeStale);
         Assert.Equal(2, env.Generator.Calls); // 缓存命中，读取不追加生成
@@ -325,7 +336,7 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
         Assert.Equal(3, env.Generator.Calls);
 
         // 其他历史日期：不批量生成，读取时零 LLM、惰性 stale hint，正文原样
-        var otherReread = await env.Recaps.GetDailyRecapAsync("user-1", OtherDay);
+        var otherReread = await env.Recaps.GetDailyRecapAsync("user-1", DayWindow(OtherDay));
         Assert.True(otherReread.KnowledgeStale);
         Assert.Equal(otherOld.Narrative, otherReread.Narrative);
         Assert.Equal(3, env.Generator.Calls);
@@ -411,7 +422,7 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
         Assert.Equal(0, await db.Episodes.CountAsync());
 
         // 提交失败不得触发重生成（编排契约）：缓存与叙事原样
-        var reread = await env.Recaps.GetDailyRecapAsync("user-1", TargetDay);
+        var reread = await env.Recaps.GetDailyRecapAsync("user-1", DayWindow(TargetDay));
         Assert.Equal(oldNarrative, reread.Narrative);
         Assert.Equal(1, env.Generator.Calls);
     }
@@ -441,7 +452,7 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
         Assert.DoesNotContain(events, e => e.Type == RecapStreamEvent.DoneType);
         Assert.Equal(1, await db.Episodes.CountAsync()); // 已确认的知识还在
 
-        var cached = await env.Recaps.GetDailyRecapAsync("user-1", TargetDay);
+        var cached = await env.Recaps.GetDailyRecapAsync("user-1", DayWindow(TargetDay));
         Assert.Equal(oldNarrative, cached.Narrative);
         Assert.True(cached.KnowledgeStale); // 知识已保存，Recap 尚未更新
 
@@ -474,7 +485,7 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
         Assert.Null((await env.Commit.CommitAsync("user-1", new CommitChangeSetRequest { Operations = proposal.Operations })).Error);
 
         // 公开读取：纯缓存、不判脏、不触发生成
-        var pub = await env.Recaps.GetCachedDailyRecapAsync("user-1", TargetDay);
+        var pub = await env.Recaps.GetCachedDailyRecapAsync("user-1", DayWindow(TargetDay));
         Assert.Equal(oldNarrative, pub!.Narrative);
         Assert.False(pub.KnowledgeStale);
         Assert.Equal(1, env.Generator.Calls);

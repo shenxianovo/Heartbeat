@@ -246,7 +246,7 @@ onUnmounted(() => {
 
           <!-- owner 可生成/重生成；公开访客只读已有缓存，不触发 LLM。 -->
           <RecapCard
-            :selectedDate="selectedDate"
+            :calendarContext="calendarContext"
             :username="username"
             :canRegenerate="isOwnProfile"
           />

@@ -37,8 +37,9 @@ Agent 请求额外携带 `X-Hardware-Id` 和 `X-Device-Name`，服务端通过
 - Agent 上传端点保持幂等，以支持离线缓存重传。
 - 前端 wrapper 默认调用生成的 client，不复制 DTO 或响应类型。
 - Daily/Weekly Report 必须传完整的版本化 Local Calendar Window envelope；生成 client 把
-  `Start` / `EndExclusive` 序列化为 UTC instant，不会丢失 civil 语义。尚未迁移的 Recap 与知识
-  发问 `date` 端点仍需保留浏览器 offset，并在 `frontend/src/api/index.ts` 手工构造 query string。
+  `Start` / `EndExclusive` 序列化为 UTC instant，不会丢失 civil 语义。Recap 的 owner/public GET
+  与手写 SSE POST 也必须传同一个完整 day envelope；只有尚未迁移的知识发问 `date` 端点仍保留
+  浏览器 offset，并在 `frontend/src/api/index.ts` 手工构造 query string。
   通用时刻范围查询可以直接使用 UTC。
 
 ## Recap 约定
@@ -75,8 +76,10 @@ GET 的 `force` 参数已取消。读取的三种态用字段组合隐式表达�
 第一个正文 token 可能来得很晚（实测 `deepseek-v4-pro` 默认 effort 下达 175 秒），这不是故障；
 思考成本用 `Recap__ReasoningEffort`（`default|low|high|max|none`）调。
 
-HTTP 状态码只负责鉴权/参数类 4xx 与并发 409：同一 (owner, 日窗口) 的生成互斥，撞上直接 409 +
-一句可读中文，不排队。
+HTTP 状态码只负责鉴权/参数类 4xx 与并发 409。Analytics 严格验证 day envelope 后生成包含
+version/kind/LocalDate/timezone/完整 UTC bounds 的 WindowKey；缓存与生成锁都以
+`(OwnerId, WindowKey)` 识别，同一 key 撞上直接 409 + 一句可读中文，不排队。Browser 的
+`correlationIdentity` 只用于隔离迟到响应，绝不进入持久化身份。
 
 ## App Catalog 管理约定
 

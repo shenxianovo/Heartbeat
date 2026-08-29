@@ -7,6 +7,7 @@ import {
 import { useAsyncData } from '../composables/useAsyncData'
 import RecapCorrection from './RecapCorrection.vue'
 import { Card } from '@/components/ui/card'
+import { sameCalendarWindow, type CalendarContext } from '../calendar/localCalendarWindow'
 
 /**
  * 当日 Recap 卡片（ADR-023，读写按动词拆分随 ADR-042）。
@@ -17,15 +18,15 @@ import { Card } from '@/components/ui/card'
  * 访客只读 owner 已生成的缓存，永不触发 LLM。
  */
 const props = defineProps<{
-  selectedDate: string
+  calendarContext: CalendarContext
   username: string
   canRegenerate: boolean
 }>()
 
 const recap = useAsyncData<DailyRecapResponse | null>(
   () => props.canRegenerate
-    ? fetchDailyRecap({ date: props.selectedDate })
-    : fetchPublicDailyRecap(props.username, { date: props.selectedDate }),
+    ? fetchDailyRecap({ window: props.calendarContext.day })
+    : fetchPublicDailyRecap(props.username, { window: props.calendarContext.day }),
   null,
 )
 
@@ -45,6 +46,7 @@ let controller: AbortController | null = null
  * 序号对不上就丢弃——把旧流的 delta 写到已经换了日期的卡片上是 bug，不是取舍（ADR-042 §6）。
  */
 let streamSeq = 0
+let displayedWindow: CalendarContext['day'] | null = null
 
 // ===== 推理面板的滚动 =====
 // 推理动辄上万字符，容器必须限高 + 自己滚，否则一条流就把卡片撑出屏幕。
@@ -74,8 +76,9 @@ function abortStream() {
 }
 
 async function load() {
-  await recap.run()
-  autoGenerate()
+  const expectedIdentity = props.calendarContext.correlationIdentity
+  await recap.run(() => props.calendarContext.correlationIdentity === expectedIdentity)
+  if (props.calendarContext.correlationIdentity === expectedIdentity) autoGenerate()
 }
 
 /** 三态里的两种需要生成：从未生成、或已有叙事但段数据落后。空日与访客一律不生成。 */
@@ -89,6 +92,7 @@ function autoGenerate() {
 async function generate() {
   abortStream()
   const seq = ++streamSeq
+  const window = props.calendarContext.day
   controller = new AbortController()
   const signal = controller.signal
   streaming.value = true
@@ -97,7 +101,7 @@ async function generate() {
   thinkingText.value = ''
   stickToBottom.value = true // 新一次生成从贴底开始，上一次用户翻到哪儿不该被继承
   try {
-    await streamDailyRecapGeneration({ date: props.selectedDate, signal }, {
+    await streamDailyRecapGeneration({ window, signal }, {
       // 推理增量：与 delta 同样是增量、同样成千上万个，同样受 seq 防串保护
       onThinking: text => { if (seq === streamSeq) thinkingText.value += text },
       // 增量原样追加，段落由 paragraphs 对累积文本重算（不做打字机动画）
@@ -135,14 +139,19 @@ async function regenerateForCorrection() {
   if (streamError.value) throw new Error(streamError.value)
 }
 
-watch(() => props.selectedDate, () => {
-  streamSeq++ // 作废在途的流：它的 delta 属于上一天
-  abortStream()
-  streaming.value = false
-  streamText.value = ''
-  thinkingText.value = ''
-  streamError.value = ''
-  recap.data.value = null // 切日期不展示上一天的旧叙事
+watch(() => [props.calendarContext.correlationIdentity, props.calendarContext.day], () => {
+  const nextWindow = props.calendarContext.day
+  const windowChanged = displayedWindow !== null && !sameCalendarWindow(displayedWindow, nextWindow)
+  displayedWindow = nextWindow
+  if (windowChanged) {
+    streamSeq++ // 作废在途的流：它的 delta 属于另一个规范窗口
+    abortStream()
+    streaming.value = false
+    streamText.value = ''
+    thinkingText.value = ''
+    streamError.value = ''
+    recap.data.value = null // 换窗口不展示上一个窗口的旧叙事
+  }
   load()
 }, { immediate: true })
 
@@ -175,6 +184,7 @@ const isUnavailableToVisitor = computed(() =>
 const errorMessage = computed(() => {
   const e = recap.error.value
   if (!e) return ''
+  if (e.kind === 'calendar') return e.message
   if (e.kind === 'network') return '网络连接失败，请检查网络后重试'
   if (e.kind === 'http') return `服务器返回错误（${e.status}），请稍后重试`
   return '数据解析失败，请重试'
@@ -264,7 +274,7 @@ const errorMessage = computed(() => {
         </div>
 
         <!-- 纠正入口：owner-only。写知识，不是散文补丁 -->
-        <RecapCorrection v-if="canRegenerate" :date="selectedDate" :regenerate="regenerateForCorrection" />
+        <RecapCorrection v-if="canRegenerate" :date="calendarContext.day.localDate" :regenerate="regenerateForCorrection" />
       </template>
     </div>
   </Card>

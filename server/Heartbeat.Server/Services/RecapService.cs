@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
-using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Recaps;
+using Heartbeat.Server.Calendar;
 using Heartbeat.Server.Data;
 using Heartbeat.Server.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -51,29 +51,25 @@ namespace Heartbeat.Server.Services
         /// "不烧 token、不写库"，而不是"不查库"，所以判空用便宜的段存在性查询，不做完整装配。
         /// </summary>
         public async Task<DailyRecapResponse> GetDailyRecapAsync(
-            string ownerId, DateTimeOffset date, CancellationToken ct = default)
+            string ownerId, ResolvedCalendarWindow window, CancellationToken ct = default)
         {
-            var window = DateRange.Day(date);
-            DateTimeOffset windowStart = window.UtcStart;
-            DateTimeOffset windowEnd = window.UtcEnd;
-
             var cached = await _db.Recaps
                 .AsNoTracking()
-                .FirstOrDefaultAsync(r => r.OwnerId == ownerId && r.WindowStart == windowStart, ct);
+                .FirstOrDefaultAsync(r => r.OwnerId == ownerId && r.WindowKey == window.WindowKey.Value, ct);
 
             if (cached == null)
             {
                 // 从未生成：先分清"这天没数据"和"这天有数据但还没写过叙事"，免得前端白发一次生成请求。
-                var hasSegments = await assembler.HasSegmentsAsync(ownerId, windowStart, windowEnd, ct);
-                return new DailyRecapResponse { Date = FormatDate(date), IsEmpty = !hasSegments };
+                var hasSegments = await assembler.HasSegmentsAsync(ownerId, window.Start, window.EndExclusive, ct);
+                return new DailyRecapResponse { Date = window.LocalDate, IsEmpty = !hasSegments };
             }
 
             // 知识判脏只在认证读取时重算（确定性、零 LLM）；null hash 的旧行惰性视为可重新生成。
-            var currentHash = await assembler.ComputeKnowledgeHashAsync(ownerId, window, date.Offset, ct);
-            var segmentStale = !await IsFreshAsync(ownerId, windowStart, windowEnd, cached, ct);
+            var currentHash = await assembler.ComputeKnowledgeHashAsync(ownerId, window, ct);
+            var segmentStale = !await IsFreshAsync(ownerId, window.Start, window.EndExclusive, cached, ct);
 
             return ToResponse(
-                date, cached,
+                window.LocalDate, cached,
                 knowledgeStale: cached.KnowledgeHash != currentHash,
                 segmentStale: segmentStale);
         }
@@ -92,15 +88,12 @@ namespace Heartbeat.Server.Services
         /// 生成域的失败以 error 事件在流内抵达（头已发出，502 不再可能），且不写缓存。
         /// </summary>
         public async IAsyncEnumerable<RecapStreamEvent> GenerateDailyRecapStreamAsync(
-            string ownerId, DateTimeOffset date, [EnumeratorCancellation] CancellationToken ct = default)
+            string ownerId, ResolvedCalendarWindow window, [EnumeratorCancellation] CancellationToken ct = default)
         {
-            var window = DateRange.Day(date);
-            DateTimeOffset windowStart = window.UtcStart;
-
             RecapProjectionResult projection;
             try
             {
-                projection = await assembler.AssembleAsync(ownerId, window, date.Offset, ct);
+                projection = await assembler.AssembleAsync(ownerId, window, ct);
             }
             catch (OperationCanceledException)
             {
@@ -110,12 +103,12 @@ namespace Heartbeat.Server.Services
             if (projection.IsEmpty)
             {
                 // 空日不调 LLM 不写缓存（ADR-023 §5）：直接以 done 告知空态。
-                yield return RecapStreamEvent.OfDone(new DailyRecapResponse { Date = FormatDate(date), IsEmpty = true });
+                yield return RecapStreamEvent.OfDone(new DailyRecapResponse { Date = window.LocalDate, IsEmpty = true });
                 yield break;
             }
 
             var cached = await _db.Recaps
-                .FirstOrDefaultAsync(r => r.OwnerId == ownerId && r.WindowStart == windowStart, ct);
+                .FirstOrDefaultAsync(r => r.OwnerId == ownerId && r.WindowKey == window.WindowKey.Value, ct);
 
             var narrative = new System.Text.StringBuilder();
 
@@ -196,7 +189,7 @@ namespace Heartbeat.Server.Services
                 yield break;
             }
 
-            var response = await PersistAsync(ownerId, windowStart, date, cached, narrative.ToString(), projection);
+            var response = await PersistAsync(ownerId, window, cached, narrative.ToString(), projection);
             yield return RecapStreamEvent.OfDone(response);
         }
 
@@ -260,14 +253,20 @@ namespace Heartbeat.Server.Services
                 : $"{span.TotalSeconds:0.###} 秒";
 
         private async Task<DailyRecapResponse> PersistAsync(
-            string ownerId, DateTimeOffset windowStart, DateTimeOffset date,
+            string ownerId, ResolvedCalendarWindow window,
             Recap? cached, string narrative, RecapProjectionResult projection)
         {
             if (cached == null)
             {
-                cached = new Recap { OwnerId = ownerId, WindowStart = windowStart };
+                cached = new Recap { OwnerId = ownerId, WindowKey = window.WindowKey.Value };
                 _db.Recaps.Add(cached);
             }
+            cached.WindowVersion = window.Version;
+            cached.WindowKind = window.Kind;
+            cached.LocalDate = window.LocalDate;
+            cached.TimeZone = window.TimeZone;
+            cached.WindowStart = window.Start;
+            cached.WindowEndExclusive = window.EndExclusive;
             cached.Narrative = narrative;
             cached.GeneratedAt = _clock.GetUtcNow();
             cached.Model = _generator.Model;
@@ -278,7 +277,7 @@ namespace Heartbeat.Server.Services
             // 落库不受客户端取消影响（ADR-042 §6）：已完整生成的叙事不该因为用户手快而蒸发。
             await _db.SaveChangesAsync(CancellationToken.None);
 
-            return ToResponse(date, cached, knowledgeStale: false, segmentStale: false);
+            return ToResponse(window.LocalDate, cached, knowledgeStale: false, segmentStale: false);
         }
 
         /// <summary>
@@ -286,15 +285,14 @@ namespace Heartbeat.Server.Services
         /// 未生成过的日期返回 null，由公开端点映射为 404，前端不渲染卡片。
         /// </summary>
         public async Task<DailyRecapResponse?> GetCachedDailyRecapAsync(
-            string ownerId, DateTimeOffset date, CancellationToken ct = default)
+            string ownerId, ResolvedCalendarWindow window, CancellationToken ct = default)
         {
-            var windowStart = DateRange.Day(date).UtcStart;
             var cached = await _db.Recaps
                 .AsNoTracking()
-                .FirstOrDefaultAsync(r => r.OwnerId == ownerId && r.WindowStart == windowStart, ct);
+                .FirstOrDefaultAsync(r => r.OwnerId == ownerId && r.WindowKey == window.WindowKey.Value, ct);
 
             // 两个判脏位恒 false：判脏需要私有知识与段数据，公开路径不暴露投影细节。
-            return cached == null ? null : ToResponse(date, cached, knowledgeStale: false, segmentStale: false);
+            return cached == null ? null : ToResponse(window.LocalDate, cached, knowledgeStale: false, segmentStale: false);
         }
 
         private async Task<bool> IsFreshAsync(
@@ -308,9 +306,9 @@ namespace Heartbeat.Server.Services
         }
 
         private static DailyRecapResponse ToResponse(
-            DateTimeOffset date, Recap recap, bool knowledgeStale, bool segmentStale) => new()
+            string localDate, Recap recap, bool knowledgeStale, bool segmentStale) => new()
             {
-                Date = FormatDate(date),
+                Date = localDate,
                 IsEmpty = false,
                 Narrative = recap.Narrative,
                 GeneratedAt = recap.GeneratedAt,
@@ -318,8 +316,6 @@ namespace Heartbeat.Server.Services
                 KnowledgeStale = knowledgeStale,
                 SegmentStale = segmentStale
             };
-
-        private static string FormatDate(DateTimeOffset date) => date.Date.ToString("yyyy-MM-dd");
 
         /// <summary>
         /// 一次取块的结果：心跳 / 一块（带分型的）文本 / 正常结束 / 客户端断开 / 可读失败。

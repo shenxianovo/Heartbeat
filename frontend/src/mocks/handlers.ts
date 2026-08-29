@@ -155,13 +155,13 @@ export const handlers = [
     return HttpResponse.json({ keys: keyFrequency })
   }),
 
-  // GET /recaps/daily?date（认证版；mock 环境无鉴权）。纯读：永不生成、永不写"库"。
+  // GET /recaps/daily?完整 day envelope（认证版；mock 环境无鉴权）。纯读：永不生成、永不写"库"。
   http.get(`${API}/recaps/daily`, () => {
     // 三态里"空日"和"从未生成"都没有叙事，靠 isEmpty 区分（ADR-042 §3）
     return HttpResponse.json(recapResponse(recapMock.state === 'narrative' ? RECAP_NARRATIVE : null))
   }),
 
-  // POST /recaps/daily/generate?date —— SSE 流式生成（ADR-042 §4）
+  // POST /recaps/daily/generate?完整 day envelope —— SSE 流式生成（ADR-042 §4 / ADR-044）
   // 生成域的失败不走状态码，走流内 error；只有并发撞锁这种"流还没开始"的失败才是 409。
   http.post(`${API}/recaps/daily/generate`, () => {
     if (recapMock.conflict) {

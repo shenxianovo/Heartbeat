@@ -20,6 +20,14 @@ export type ApiError =
   | { kind: 'parse' }                 // 响应体不是预期结构
   | { kind: 'calendar'; code: string; message: string }
 
+const CALENDAR_WINDOW_ERROR_CODES = new Set([
+  'unsupported_calendar_window',
+  'invalid_local_date',
+  'unsupported_timezone',
+  'nonexistent_civil_date',
+  'calendar_rules_mismatch',
+])
+
 /** 把 NSwag ApiException、原生 fetch TypeError、以及其它意外统一成 ApiError。 */
 export function toApiError(e: unknown): ApiError {
   if (e instanceof CalendarWindowError) {
@@ -29,10 +37,29 @@ export function toApiError(e: unknown): ApiError {
     if (e.result instanceof CalendarWindowError) {
       return { kind: 'calendar', code: e.result.code, message: e.result.message }
     }
+    const calendarError = parseCalendarWindowError(e.response)
+    if (calendarError) return calendarError
     return { kind: 'http', status: e.status }
   }
   if (e instanceof TypeError) return { kind: 'network' }
   return { kind: 'parse' }
+}
+
+/**
+ * 手写 transport 没有 NSwag 的 DTO 反序列化层，但 calendar error 仍是同一个稳定 JSON contract。
+ * 只在 code/message 完整时接受，避免把任意 400 body 误报成日历规则错误。
+ */
+function parseCalendarWindowError(response: string | undefined): ApiError | null {
+  if (!response) return null
+  try {
+    const value = JSON.parse(response) as { code?: unknown; message?: unknown } | null
+    return value && typeof value.code === 'string' && CALENDAR_WINDOW_ERROR_CODES.has(value.code)
+      && typeof value.message === 'string'
+      ? { kind: 'calendar', code: value.code, message: value.message }
+      : null
+  } catch {
+    return null
+  }
 }
 
 // ===== Base URL =====
@@ -238,30 +265,52 @@ export async function fetchAppIcon(username: string, appId: number): Promise<Blo
   return res.blob()
 }
 
-// ===== Recap（ADR-023，读写按动词拆分随 ADR-042）=====
-// 认证版专属：叙事是私人记忆，且生成烧 LLM token，不提供 public 版。
-// date 与报表同理必须携带本地时区偏移，手拼请求（见 toLocalDateTimeOffsetString）。
+// ===== Recap（ADR-023，读写按动词拆分随 ADR-042，窗口身份随 ADR-044）=====
+
+function calendarWindowSearchParams(window: CalendarWindowEnvelope<'day'>): URLSearchParams {
+  return new URLSearchParams({
+    version: String(window.version),
+    kind: window.kind,
+    localDate: window.localDate,
+    timeZone: window.timeZone,
+    start: window.start,
+    endExclusive: window.endExclusive,
+  })
+}
 
 /**
  * 读取这一天的 Recap。纯读——服务端在这条路径上零 LLM、零写库（ADR-042 §2），`force` 已取消，
  * 生成只由 streamDailyRecapGeneration 触发。三态由字段组合表达：
  * `isEmpty` → 空日；`!isEmpty && narrative == null` → 有数据但从未生成；否则 → 有叙事。
  */
-export async function fetchDailyRecap(params: { date?: string }): Promise<DailyRecapResponse> {
-  const searchParams = new URLSearchParams()
-  if (params.date) searchParams.set('date', toLocalDateTimeOffsetString(params.date))
-  const res = await authHttp.fetch(`${API_BASE}/recaps/daily?${searchParams}`)
-  if (!res.ok) throw new ApiException('Recap request failed.', res.status, await res.text(), {}, null)
-  return DailyRecapResponse.fromJS(await res.json())
+export async function fetchDailyRecap(params: {
+  window: CalendarWindowEnvelope<'day'>
+}): Promise<DailyRecapResponse> {
+  const window = params.window
+  return client.getDailyRecap(
+    window.version,
+    window.kind,
+    window.localDate,
+    window.timeZone,
+    new Date(window.start),
+    new Date(window.endExclusive),
+  )
 }
 
 /** 公开 Recap 只读取 owner 已生成的缓存，匿名访问永不触发 LLM 生成。 */
-export async function fetchPublicDailyRecap(username: string, params: { date?: string }): Promise<DailyRecapResponse> {
-  const searchParams = new URLSearchParams()
-  if (params.date) searchParams.set('date', toLocalDateTimeOffsetString(params.date))
-  const res = await authHttp.fetch(`${API_BASE}/users/${encodeURIComponent(username)}/recaps/daily?${searchParams}`)
-  if (!res.ok) throw new ApiException('Public recap request failed.', res.status, await res.text(), {}, null)
-  return DailyRecapResponse.fromJS(await res.json())
+export async function fetchPublicDailyRecap(username: string, params: {
+  window: CalendarWindowEnvelope<'day'>
+}): Promise<DailyRecapResponse> {
+  const window = params.window
+  return client.getUserDailyRecap(
+    username,
+    window.version,
+    window.kind,
+    window.localDate,
+    window.timeZone,
+    new Date(window.start),
+    new Date(window.endExclusive),
+  )
 }
 
 // ===== Recap 流式生成（ADR-042 §4）=====
@@ -300,11 +349,10 @@ export interface RecapStreamHandlers {
  * 心跳（`event: ping`）与未知事件类型一律吞掉。
  */
 export async function streamDailyRecapGeneration(
-  params: { date?: string; signal?: AbortSignal },
+  params: { window: CalendarWindowEnvelope<'day'>; signal?: AbortSignal },
   handlers: RecapStreamHandlers,
 ): Promise<void> {
-  const searchParams = new URLSearchParams()
-  if (params.date) searchParams.set('date', toLocalDateTimeOffsetString(params.date))
+  const searchParams = calendarWindowSearchParams(params.window)
 
   try {
     const res = await authHttp.fetch(`${API_BASE}/recaps/daily/generate?${searchParams}`, {
@@ -375,6 +423,7 @@ function isAbortError(e: unknown, signal?: AbortSignal): boolean {
  */
 export function recapGenerationErrorMessage(e: unknown): string {
   const err = toApiError(e)
+  if (err.kind === 'calendar') return err.message
   if (err.kind === 'network') return '网络连接失败，请检查网络后重试'
   if (err.kind === 'http' && err.status === 409) return readableErrorBody(e) ?? RECAP_ALREADY_GENERATING_MESSAGE
   if (err.kind === 'http') return readableErrorBody(e) ?? `服务器返回错误（${err.status}），请稍后重试`

@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { authStore } from '../stores/auth'
 import { ApiException } from './client'
-import { recapGenerationErrorMessage, streamDailyRecapGeneration } from './index'
+import { fetchDailyRecap, recapGenerationErrorMessage, streamDailyRecapGeneration } from './index'
 
 vi.mock('../stores/auth', () => ({
   authStore: {
@@ -57,6 +57,15 @@ function response(init: { ok?: boolean; status?: number; body?: ReadableStream<U
 
 const fetchMock = vi.fn()
 
+const dayWindow = {
+  version: 1,
+  kind: 'day',
+  localDate: '2026-08-19',
+  timeZone: 'Asia/Shanghai',
+  start: '2026-08-18T16:00:00Z',
+  endExclusive: '2026-08-19T16:00:00Z',
+} as const
+
 function collect() {
   const deltas: string[] = []
   const thinkings: string[] = []
@@ -91,7 +100,7 @@ describe('Recap 流式生成 wrapper', () => {
     }))
     const sink = collect()
 
-    await streamDailyRecapGeneration({ date: '2026-08-19' }, sink.handlers)
+    await streamDailyRecapGeneration({ window: dayWindow }, sink.handlers)
 
     expect(sink.deltas).toEqual(['上午你在写代码', '，下午读文档。'])
     expect(sink.errors).toEqual([])
@@ -109,7 +118,7 @@ describe('Recap 流式生成 wrapper', () => {
     }))
     const sink = collect()
 
-    await streamDailyRecapGeneration({ date: '2026-08-19' }, sink.handlers)
+    await streamDailyRecapGeneration({ window: dayWindow }, sink.handlers)
 
     expect(sink.thinkings).toEqual(['先看 digest：', '上午都在 vscode。'])
     expect(sink.deltas).toEqual(['上午你在写代码。'])
@@ -126,20 +135,59 @@ describe('Recap 流式生成 wrapper', () => {
     }))
     const sink = collect()
 
-    await streamDailyRecapGeneration({ date: '2026-08-19' }, sink.handlers)
+    await streamDailyRecapGeneration({ window: dayWindow }, sink.handlers)
 
     expect(sink.thinkings).toEqual(['真的推理'])
   })
 
-  it('POST 到 generate 端点，date 带本地时区偏移，Bearer 由 authHttp 注入', async () => {
+  it('POST 到 generate 端点，编码完整 Calendar Window 且不携带 correlation identity', async () => {
     fetchMock.mockResolvedValue(response({ body: sseBody('') }))
 
-    await streamDailyRecapGeneration({ date: '2026-08-19' }, {})
+    await streamDailyRecapGeneration({ window: dayWindow }, {})
 
     const [url, init] = fetchMock.mock.calls[0]
-    expect(url).toContain('/api/v1/recaps/daily/generate?date=2026-08-19T00%3A00%3A00')
+    const parsed = new URL(url, 'https://heartbeat.test')
+    expect(parsed.pathname).toBe('/api/v1/recaps/daily/generate')
+    expect(Object.fromEntries(parsed.searchParams)).toEqual({
+      version: '1',
+      kind: 'day',
+      localDate: '2026-08-19',
+      timeZone: 'Asia/Shanghai',
+      start: '2026-08-18T16:00:00Z',
+      endExclusive: '2026-08-19T16:00:00Z',
+    })
+    expect(parsed.searchParams.has('correlationIdentity')).toBe(false)
     expect(init.method).toBe('POST')
     expect(new Headers(init.headers).get('Authorization')).toBe('Bearer tok-1')
+  })
+
+  it('generated GET 与手写 SSE 编码同一个 Calendar Window', async () => {
+    fetchMock
+      .mockResolvedValueOnce(response({
+        text: JSON.stringify({ date: '2026-08-19', isEmpty: true }),
+      }))
+      .mockResolvedValueOnce(response({ body: sseBody('') }))
+
+    await fetchDailyRecap({ window: dayWindow })
+    await streamDailyRecapGeneration({ window: dayWindow }, {})
+
+    const readUrl = new URL(fetchMock.mock.calls[0][0], 'https://heartbeat.test')
+    const streamUrl = new URL(fetchMock.mock.calls[1][0], 'https://heartbeat.test')
+    const read = Object.fromEntries(
+      [...readUrl.searchParams].map(([key, value]) => [key.toLowerCase(), value]),
+    )
+    const stream = Object.fromEntries(
+      [...streamUrl.searchParams].map(([key, value]) => [key.toLowerCase(), value]),
+    )
+
+    expect(read.version).toBe(stream.version)
+    expect(read.kind).toBe(stream.kind)
+    expect(read.localdate).toBe(stream.localdate)
+    expect(read.timezone).toBe(stream.timezone)
+    expect(new Date(read.start).toISOString()).toBe(new Date(stream.start).toISOString())
+    expect(new Date(read.endexclusive).toISOString()).toBe(new Date(stream.endexclusive).toISOString())
+    expect(readUrl.searchParams.has('correlationIdentity')).toBe(false)
+    expect(streamUrl.searchParams.has('correlationIdentity')).toBe(false)
   })
 
   it('流内 error 走 onError，不抛（生成域的失败不再是状态码）', async () => {
@@ -148,7 +196,7 @@ describe('Recap 流式生成 wrapper', () => {
     }))
     const sink = collect()
 
-    await expect(streamDailyRecapGeneration({ date: '2026-08-19' }, sink.handlers)).resolves.toBeUndefined()
+    await expect(streamDailyRecapGeneration({ window: dayWindow }, sink.handlers)).resolves.toBeUndefined()
 
     expect(sink.deltas).toEqual(['半截'])
     expect(sink.errors).toEqual(['上游模型 90 秒未吐出首个 token'])
@@ -158,11 +206,28 @@ describe('Recap 流式生成 wrapper', () => {
   it('并发撞锁的 409 抛 ApiException，上层能翻成"这一天正在生成中"', async () => {
     fetchMock.mockResolvedValue(response({ ok: false, status: 409, text: '"这一天正在生成中。"' }))
 
-    const error = await streamDailyRecapGeneration({ date: '2026-08-19' }, {}).catch((e: unknown) => e)
+    const error = await streamDailyRecapGeneration({ window: dayWindow }, {}).catch((e: unknown) => e)
 
     expect(ApiException.isApiException(error)).toBe(true)
     expect((error as ApiException).status).toBe(409)
     expect(recapGenerationErrorMessage(error)).toBe('这一天正在生成中。')
+  })
+
+  it('SSE 头前的 calendar mismatch 保留稳定诊断', async () => {
+    fetchMock.mockResolvedValue(response({
+      ok: false,
+      status: 400,
+      text: JSON.stringify({
+        code: 'calendar_rules_mismatch',
+        message: 'Browser 与 Analytics TZDB 不一致，请更新滞后的运行时。',
+      }),
+    }))
+
+    const error = await streamDailyRecapGeneration({ window: dayWindow }, {}).catch((e: unknown) => e)
+
+    expect(recapGenerationErrorMessage(error)).toBe(
+      'Browser 与 Analytics TZDB 不一致，请更新滞后的运行时。',
+    )
   })
 
   it('abort 后静默收场：既不抛，也不再吐 delta', async () => {
@@ -172,7 +237,7 @@ describe('Recap 流式生成 wrapper', () => {
     })))
     const sink = collect()
 
-    const streamed = streamDailyRecapGeneration({ date: '2026-08-19', signal: controller.signal }, sink.handlers)
+    const streamed = streamDailyRecapGeneration({ window: dayWindow, signal: controller.signal }, sink.handlers)
     await vi.waitUntil(() => sink.deltas.length === 1)
     controller.abort()
 
@@ -188,7 +253,7 @@ describe('Recap 流式生成 wrapper', () => {
       .mockResolvedValueOnce(response({ body: sseBody('event: delta\ndata: {"delta":"刷新后拿到的正文"}\n\n') }))
     const sink = collect()
 
-    await streamDailyRecapGeneration({ date: '2026-08-19' }, sink.handlers)
+    await streamDailyRecapGeneration({ window: dayWindow }, sink.handlers)
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(sink.deltas).toEqual(['刷新后拿到的正文'])

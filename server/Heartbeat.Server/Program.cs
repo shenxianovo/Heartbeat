@@ -34,7 +34,7 @@ builder.Services.AddScoped<AdminAuthorizationService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<InputEventService>();
 builder.Services.AddScoped<RecapService>();
-// 生成互斥必须是 singleton（ADR-042 §7）：锁的状态是"进程内哪些 (owner, 日窗口) 正在生成"，
+// 生成互斥必须是 singleton（ADR-042 §7 / ADR-044 §3）：锁的状态是"进程内哪些 (owner, WindowKey) 正在生成"，
 // scoped 会让每个请求拿到各自的空集合，撞车永远撞不上，409 那条路等于不存在。
 builder.Services.AddSingleton<RecapGenerationLock>();
 builder.Services.AddScoped<KnowledgeService>();

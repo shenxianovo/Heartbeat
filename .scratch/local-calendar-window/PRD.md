@@ -125,3 +125,7 @@ Browser 将版本、窗口类型、本地日期、IANA timezone 与完整 UTC �
 - UTC database storage is already correct. This work changes only the mapping from a Browser civil calendar selection to the UTC fact interval consumed by Analytics.
 - Strict validation intentionally turns timezone-database drift into an actionable request failure. It is preferable to generating a plausible but internally inconsistent archive.
 - This specification is a multi-session build. Ticketing should preserve tracer-bullet delivery, make every blocking edge explicit and keep the repository runnable after each completed ticket.
+
+## Comments
+
+- 2026-08-29：Ticket 04 已完成；PRD 仍为 `ready-for-agent`，因为 03、05、06 与 07 尚未完成。
