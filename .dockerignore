@@ -9,7 +9,7 @@
 # Test projects
 **/*.Tests/
 
-# Frontend build artifacts
+# Frontend (not needed for backend image)
 frontend/node_modules/
 frontend/dist/
 

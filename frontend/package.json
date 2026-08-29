@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "dev:mock": "vite --mode mock",
-    "build": "vue-tsc -b && vite build",
+    "typecheck": "vue-tsc -b",
+    "typecheck:app": "vue-tsc --noEmit -p tsconfig.build.json",
+    "build": "npm run typecheck:app && vite build",
     "test": "vitest run",
     "preview": "vite preview"
   },

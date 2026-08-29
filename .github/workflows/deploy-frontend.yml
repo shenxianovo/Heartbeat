@@ -6,7 +6,6 @@ on:
     paths:
       - 'frontend/**'
       - 'shared/calendar-window-golden-scenarios.json'
-      - '.dockerignore'
   workflow_dispatch:
 
 env:
@@ -32,7 +31,11 @@ jobs:
         working-directory: frontend
 
       - name: Type check
-        run: npx vue-tsc --noEmit
+        run: npm run typecheck
+        working-directory: frontend
+
+      - name: Test
+        run: npm test
         working-directory: frontend
 
       - uses: docker/setup-buildx-action@v3
@@ -47,8 +50,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: frontend/Dockerfile
+          context: ./frontend
           push: true
           tags: |
             ${{ env.IMAGE }}:latest

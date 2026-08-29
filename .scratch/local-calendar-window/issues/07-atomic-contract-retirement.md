@@ -32,17 +32,18 @@
 - 数据与发布：Recap / Daily Questions 迁移定向测试覆盖 existing schema 正向应用、legacy row 保留、
   新 WindowKey miss、唯一性与无 eager generation；`docs/runbooks/local-calendar-window-release.md`
   明确 Frontend + Analytics + schema/client 原子发布和整单元回滚边界。
-- 自动验证：review 修复后重新执行 `npm test`（38 files / 257 tests）、`npm run build`、
+- 自动验证：review 修复后重新执行 `npm test`（38 files / 258 tests）、`npm run build`、
   `dotnet test Heartbeat.slnx --no-restore`（882 tests）、`dotnet build Heartbeat.slnx --no-restore`
   （0 warnings / 0 errors）、`dotnet format style ... IDE1006 --verify-no-changes`、聚焦
   `vue-tsc -b` 与 `git diff --check` 全部通过。等待 maintainer 在本地 Dashboard 验收后再置 `done`。
 - Code review：Standards 初审的重复 calendar error mapper 与测试命名均已修正；Spec 初审及复审
   找到的两个 refresh 时序均补了 red test——原窗口生成不会被新页面取消，旧窗口后台生成也不会
   取消或回写新页面。最终 Standards / Spec 复审均为 0 findings。
-- 发布验证：本地 `npm run build` 通过后，实际 Frontend 镜像构建暴露了 Docker context 不包含共享
-  calendar golden fixture 的发布阻断。现已把 Frontend Dockerfile、local compose 与 deploy workflow
-  统一为仓库根 context，只复制 Frontend 与单一事实源 fixture；镜像重建成功，最终 Frontend +
-  Analytics 容器已更新，`/` 与 `/openapi/v1.json` smoke 均返回 200。
+- 发布验证：本地 `npm run build` 通过后，实际 Frontend 镜像构建暴露了生产 typecheck 把测试源码
+  一并纳入、而测试依赖仓库级 calendar golden fixture 的隐含边界。最终方案保持 Frontend Docker
+  context 不变，用独立 `tsconfig.build.json` 只检查生产源码；CI 在完整 checkout 中另跑全量 typecheck
+  与 Vitest，继续验证单一事实源 fixture。镜像重建成功，最终 Frontend + Analytics 容器已更新，
+  `/` 与 `/openapi/v1.json` smoke 均返回 200。
 - 2026-08-29 验收反馈：Dashboard 顶部重复的日期选择器与时区看板已合并为一个可点击的 Local
   Calendar Window 控件，完整显示 `日期 · IANA 时区 · UTC offset`，原日期选择交互保持不变；完整
   Frontend 验证更新为 38 files / 258 tests，生产构建与实际页面桌面/窄屏检查通过。
