@@ -107,7 +107,7 @@ public sealed class AskingHttpTests(PostgresContainerFixture fixture) : Postgres
     }
 
     [Fact]
-    public async Task OpenApiMarksEveryAskingEnvelopeFieldAsRequired()
+    public async Task OpenApiMarksEveryKnowledgeCalendarEnvelopeFieldAsRequired()
     {
         await using var application = CreateApplication();
         using var client = application.CreateClient();
@@ -132,6 +132,43 @@ public sealed class AskingHttpTests(PostgresContainerFixture fixture) : Postgres
             .ToArray();
         Assert.Equal(6, proposalParameters.Length);
         Assert.All(proposalParameters, parameter => Assert.True(parameter.GetProperty("required").GetBoolean()));
+
+        var correctionParameters = json.RootElement
+            .GetProperty("paths")
+            .GetProperty("/api/v1/knowledge/corrections/propose")
+            .GetProperty("post")
+            .GetProperty("parameters")
+            .EnumerateArray()
+            .ToArray();
+        Assert.Equal(6, correctionParameters.Length);
+        Assert.All(correctionParameters, parameter => Assert.True(parameter.GetProperty("required").GetBoolean()));
+    }
+
+    [Fact]
+    public async Task CorrectionProposalRequiresAndUsesTheCompleteVerifiedWindow()
+    {
+        await using var application = CreateApplication();
+        using var client = application.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        using var accepted = await client.PostAsync(
+            "/api/v1/knowledge/corrections/propose?" + NewYorkWindowQuery(),
+            JsonContent(new { correction = "那天其实是在做调研" }));
+        accepted.EnsureSuccessStatusCode();
+
+        using var missing = await client.PostAsync(
+            "/api/v1/knowledge/corrections/propose",
+            JsonContent(new { correction = "那天其实是在做调研" }));
+        Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
+
+        using var mismatch = await client.PostAsync(
+            "/api/v1/knowledge/corrections/propose?" + NewYorkWindowQuery("2026-03-09T04:00:01Z"),
+            JsonContent(new { correction = "那天其实是在做调研" }));
+        Assert.Equal(HttpStatusCode.BadRequest, mismatch.StatusCode);
+        var mismatchError = JsonDocument.Parse(await mismatch.Content.ReadAsStringAsync());
+        Assert.Equal("calendar_rules_mismatch", mismatchError.RootElement.GetProperty("code").GetString());
+
+        Assert.Equal(1, _proposer.CorrectionCalls);
     }
 
     private WebApplicationFactory<KnowledgeController> CreateApplication() =>
@@ -199,6 +236,7 @@ public sealed class AskingHttpTests(PostgresContainerFixture fixture) : Postgres
     private sealed class FakeProposer : IProposalGenerator
     {
         public int Calls;
+        public int CorrectionCalls;
 
         public Task<RawKnowledgeProposal?> ProposeAsync(
             AskingQuestionResponse question, string answer, ProposalContext context,
@@ -212,8 +250,11 @@ public sealed class AskingHttpTests(PostgresContainerFixture fixture) : Postgres
         }
 
         public Task<RawKnowledgeProposal?> ProposeCorrectionAsync(
-            string digest, string correction, ProposalContext context, CancellationToken ct = default) =>
-            Task.FromResult<RawKnowledgeProposal?>(new RawKnowledgeProposal());
+            string digest, string correction, ProposalContext context, CancellationToken ct = default)
+        {
+            CorrectionCalls++;
+            return Task.FromResult<RawKnowledgeProposal?>(new RawKnowledgeProposal());
+        }
     }
 
     private sealed class TestAuthenticationHandler(

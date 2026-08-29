@@ -1470,8 +1470,32 @@ export class Client {
     /**
      * @return OK
      */
-    proposeCorrection(body: ProposeCorrectionRequest): Promise<KnowledgeProposalResponse> {
-        let url_ = this.baseUrl + "/api/v1/knowledge/corrections/propose";
+    proposeCorrection(version: number, kind: string, localDate: string, timeZone: string, start: Date, endExclusive: Date, body: ProposeCorrectionRequest): Promise<KnowledgeProposalResponse> {
+        let url_ = this.baseUrl + "/api/v1/knowledge/corrections/propose?";
+        if (version === undefined || version === null)
+            throw new globalThis.Error("The parameter 'version' must be defined and cannot be null.");
+        else
+            url_ += "Version=" + encodeURIComponent("" + version) + "&";
+        if (kind === undefined || kind === null)
+            throw new globalThis.Error("The parameter 'kind' must be defined and cannot be null.");
+        else
+            url_ += "Kind=" + encodeURIComponent("" + kind) + "&";
+        if (localDate === undefined || localDate === null)
+            throw new globalThis.Error("The parameter 'localDate' must be defined and cannot be null.");
+        else
+            url_ += "LocalDate=" + encodeURIComponent("" + localDate) + "&";
+        if (timeZone === undefined || timeZone === null)
+            throw new globalThis.Error("The parameter 'timeZone' must be defined and cannot be null.");
+        else
+            url_ += "TimeZone=" + encodeURIComponent("" + timeZone) + "&";
+        if (start === undefined || start === null)
+            throw new globalThis.Error("The parameter 'start' must be defined and cannot be null.");
+        else
+            url_ += "Start=" + encodeURIComponent(start ? "" + start.toISOString() : "") + "&";
+        if (endExclusive === undefined || endExclusive === null)
+            throw new globalThis.Error("The parameter 'endExclusive' must be defined and cannot be null.");
+        else
+            url_ += "EndExclusive=" + encodeURIComponent(endExclusive ? "" + endExclusive.toISOString() : "") + "&";
         url_ = url_.replace(/[?&]$/, "");
 
         const content_ = JSON.stringify(body);
@@ -7837,7 +7861,6 @@ export interface IPromoteEpisodeResponse {
 }
 
 export class ProposeCorrectionRequest implements IProposeCorrectionRequest {
-    date?: Date;
     correction?: string;
 
     [key: string]: any;
@@ -7857,7 +7880,6 @@ export class ProposeCorrectionRequest implements IProposeCorrectionRequest {
                 if (_data.hasOwnProperty(property))
                     this[property] = _data[property];
             }
-            this.date = _data["date"] ? new Date(_data["date"].toString()) : undefined as any;
             this.correction = _data["correction"];
         }
     }
@@ -7875,14 +7897,12 @@ export class ProposeCorrectionRequest implements IProposeCorrectionRequest {
             if (this.hasOwnProperty(property))
                 data[property] = this[property];
         }
-        data["date"] = this.date ? this.date.toISOString() : undefined as any;
         data["correction"] = this.correction;
         return data;
     }
 }
 
 export interface IProposeCorrectionRequest {
-    date?: Date;
     correction?: string;
 
     [key: string]: any;

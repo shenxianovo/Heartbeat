@@ -8,7 +8,9 @@ namespace Heartbeat.Server.Tests.Services;
 public class RecapProjectionTests
 {
     private static readonly DateTimeOffset Day = new(2026, 7, 12, 0, 0, 0, TimeSpan.Zero);
-    private static readonly DateRange Window = DateRange.Day(Day);
+    private static readonly DateRange Window = new(
+        new DateTime(2026, 7, 12, 0, 0, 0, DateTimeKind.Utc),
+        new DateTime(2026, 7, 13, 0, 0, 0, DateTimeKind.Utc));
 
     private static RecapSegmentInput Sys(string app, string? title, DateTimeOffset start, DateTimeOffset end, string device = "Main PC")
         => new(device, ActivitySources.System, $"{app}|{title}", app, title, start, end);
@@ -271,9 +273,11 @@ public class RecapProjectionTests
     [Fact]
     public void DisplayOffset_RendersLocalWallClock()
     {
-        // UTC 01:00 在 UTC+8 显示为 09:00；日窗口本身由带时区的 date 参数切出
+        // UTC 01:00 在 UTC+8 显示为 09:00；投影只消费调用方给出的通用 instant window。
         var dayUtc8 = new DateTimeOffset(2026, 7, 12, 0, 0, 0, TimeSpan.FromHours(8));
-        var window = DateRange.Day(dayUtc8);
+        var window = new DateRange(
+            new DateTime(2026, 7, 11, 16, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 7, 12, 16, 0, 0, DateTimeKind.Utc));
         var seg = Sys("vscode", null, dayUtc8.AddHours(9), dayUtc8.AddHours(10));
 
         var result = RecapProjection.Project([seg], window, TimeSpan.FromHours(8));

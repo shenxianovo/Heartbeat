@@ -194,9 +194,8 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
             Operations = [new() { OpId = "op1", Type = "createEpisode", Text = "做了调研", LocalDate = "2026-07-10" }],
         };
 
-        var result = await env.Proposals.ProposeCorrectionAsync("user-1", new ProposeCorrectionRequest
+        var result = await env.Proposals.ProposeCorrectionAsync("user-1", DayWindow(TargetDay), new ProposeCorrectionRequest
         {
-            Date = TargetDay,
             Correction = "那天其实是在做 Hyperframes 的调研，回顾里没提",
         });
 
@@ -221,14 +220,14 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
         var env = CreateEnv(db);
 
         // 目标日没有任何观察：没有可核对的证据窗口
-        var emptyDay = await env.Proposals.ProposeCorrectionAsync("user-1",
-            new ProposeCorrectionRequest { Date = TargetDay, Correction = "纠正" });
+        var emptyDay = await env.Proposals.ProposeCorrectionAsync("user-1", DayWindow(TargetDay),
+            new ProposeCorrectionRequest { Correction = "纠正" });
         Assert.Equal(ProposalErrorCodes.EmptyDay, emptyDay.Error!.Code);
         Assert.Null(env.Proposer.LastDigest); // LLM 根本没被调
 
         await SeedSegmentsAsync(db, TargetDay);
-        var emptyText = await env.Proposals.ProposeCorrectionAsync("user-1",
-            new ProposeCorrectionRequest { Date = TargetDay, Correction = "  " });
+        var emptyText = await env.Proposals.ProposeCorrectionAsync("user-1", DayWindow(TargetDay),
+            new ProposeCorrectionRequest { Correction = "  " });
         Assert.Equal(ProposalErrorCodes.EmptyAnswer, emptyText.Error!.Code);
     }
 
@@ -240,8 +239,8 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
         await SeedSegmentsAsync(db, TargetDay);
 
         env.Proposer.Result = null; // LLM 失败
-        var failed = await env.Proposals.ProposeCorrectionAsync("user-1",
-            new ProposeCorrectionRequest { Date = TargetDay, Correction = "纠正" });
+        var failed = await env.Proposals.ProposeCorrectionAsync("user-1", DayWindow(TargetDay),
+            new ProposeCorrectionRequest { Correction = "纠正" });
 
         Assert.Equal(ProposalErrorCodes.GenerationFailed, failed.Error!.Code);
         Assert.Equal(0, await db.Episodes.CountAsync());
@@ -257,8 +256,8 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
         await knowledge.CreateStrandAsync("user-2", new CreateStrandRequest { Name = "别人的脉络" });
 
         env.Proposer.Result = new RawKnowledgeProposal();
-        await env.Proposals.ProposeCorrectionAsync("user-1",
-            new ProposeCorrectionRequest { Date = TargetDay, Correction = "纠正" });
+        await env.Proposals.ProposeCorrectionAsync("user-1", DayWindow(TargetDay),
+            new ProposeCorrectionRequest { Correction = "纠正" });
 
         Assert.DoesNotContain(env.Proposer.LastContext!.Strands, s => s.Path.Contains("别人的脉络"));
     }
@@ -286,8 +285,8 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
         {
             Operations = [new() { OpId = "op1", Type = "createEpisode", Text = "做了 Hyperframes 调研", LocalDate = "2026-07-10" }],
         };
-        var proposal = (await env.Proposals.ProposeCorrectionAsync("user-1",
-            new ProposeCorrectionRequest { Date = TargetDay, Correction = "补上调研这件事" })).Proposal!;
+        var proposal = (await env.Proposals.ProposeCorrectionAsync("user-1", DayWindow(TargetDay),
+            new ProposeCorrectionRequest { Correction = "补上调研这件事" })).Proposal!;
 
         var commit = await env.Commit.CommitAsync("user-1", new CommitChangeSetRequest { Operations = proposal.Operations });
         Assert.Null(commit.Error);
@@ -326,8 +325,8 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
                 new() { OpId = "op2", Type = "bindMatcher", StrandOpId = "op1", Matcher = AppMatcher("sometool") },
             ],
         };
-        var proposal = (await env.Proposals.ProposeCorrectionAsync("user-1",
-            new ProposeCorrectionRequest { Date = TargetDay, Correction = "这些活动属于 Hyperframes 调研" })).Proposal!;
+        var proposal = (await env.Proposals.ProposeCorrectionAsync("user-1", DayWindow(TargetDay),
+            new ProposeCorrectionRequest { Correction = "这些活动属于 Hyperframes 调研" })).Proposal!;
         Assert.Null((await env.Commit.CommitAsync("user-1", new CommitChangeSetRequest { Operations = proposal.Operations })).Error);
 
         // 只有目标日被显式重生成
@@ -362,8 +361,8 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
                 new() { OpId = "op5", Type = "createProbe", EpisodeOpId = "op4", Matcher = AppMatcher("livehime") },
             ],
         };
-        var proposal = (await env.Proposals.ProposeCorrectionAsync("user-1",
-            new ProposeCorrectionRequest { Date = TargetDay, Correction = "既有持续调研也有一次性帮忙" })).Proposal!;
+        var proposal = (await env.Proposals.ProposeCorrectionAsync("user-1", DayWindow(TargetDay),
+            new ProposeCorrectionRequest { Correction = "既有持续调研也有一次性帮忙" })).Proposal!;
         Assert.Equal(5, proposal.Operations.Count);
 
         var commit = await env.Commit.CommitAsync("user-1", new CommitChangeSetRequest { Operations = proposal.Operations });
@@ -440,8 +439,8 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
         {
             Operations = [new() { OpId = "op1", Type = "createEpisode", Text = "补记的事实", LocalDate = "2026-07-10" }],
         };
-        var proposal = (await env.Proposals.ProposeCorrectionAsync("user-1",
-            new ProposeCorrectionRequest { Date = TargetDay, Correction = "补一件事" })).Proposal!;
+        var proposal = (await env.Proposals.ProposeCorrectionAsync("user-1", DayWindow(TargetDay),
+            new ProposeCorrectionRequest { Correction = "补一件事" })).Proposal!;
         Assert.Null((await env.Commit.CommitAsync("user-1", new CommitChangeSetRequest { Operations = proposal.Operations })).Error);
 
         // 重生成失败（首块之后断，半截叙事已发出）：失败以流内 error 抵达，头已发出后 502 不再可能。
@@ -480,8 +479,8 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
                 new() { OpId = "op2", Type = "bindMatcher", StrandOpId = "op1", Matcher = AppMatcher("sometool") },
             ],
         };
-        var proposal = (await env.Proposals.ProposeCorrectionAsync("user-1",
-            new ProposeCorrectionRequest { Date = TargetDay, Correction = "属于 Hyperframes" })).Proposal!;
+        var proposal = (await env.Proposals.ProposeCorrectionAsync("user-1", DayWindow(TargetDay),
+            new ProposeCorrectionRequest { Correction = "属于 Hyperframes" })).Proposal!;
         Assert.Null((await env.Commit.CommitAsync("user-1", new CommitChangeSetRequest { Operations = proposal.Operations })).Error);
 
         // 公开读取：纯缓存、不判脏、不触发生成

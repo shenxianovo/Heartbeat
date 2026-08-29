@@ -1,6 +1,6 @@
 # Local Calendar Window
 
-Status: ready-for-agent
+Status: ready-for-human
 
 ## Problem Statement
 
@@ -131,3 +131,6 @@ Browser 将版本、窗口类型、本地日期、IANA timezone 与完整 UTC �
 - 2026-08-29：Ticket 04 已完成；PRD 仍为 `ready-for-agent`，因为 03、05、06 与 07 尚未完成。
 - 2026-08-29：Ticket 05 已完成；PRD 仍为 `ready-for-agent`，剩余门禁为 06 与 07。
 - 2026-08-29：Ticket 06 已完成；PRD 仍为 `ready-for-agent`，剩余门禁为 07 的旧契约退休与原子发布验证。
+- 2026-08-29：Ticket 07 的实现、自动验证与原子发布说明已完成；PRD 收口到
+  `ready-for-human`，仅剩 maintainer 的本地 Dashboard 最终功能验收。验收通过后同步把 Ticket 07
+  与本 PRD 置为 `done`。

@@ -2,7 +2,7 @@
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import {
   fetchDailyRecap, fetchPublicDailyRecap, streamDailyRecapGeneration, recapGenerationErrorMessage,
-  type DailyRecapResponse,
+  type DailyRecapResponse, type RecapStreamHandlers,
 } from '../api/index'
 import { useAsyncData } from '../composables/useAsyncData'
 import RecapCorrection from './RecapCorrection.vue'
@@ -76,6 +76,27 @@ function abortStream() {
   controller = null
 }
 
+async function consumeGenerationStream(
+  window: CalendarContext['day'],
+  signal: AbortSignal | undefined,
+  handlers: RecapStreamHandlers,
+): Promise<string> {
+  let generationError = ''
+  const captureError = (message: string) => {
+    generationError = message
+    handlers.onError?.(message)
+  }
+  try {
+    await streamDailyRecapGeneration({ window, ...(signal ? { signal } : {}) }, {
+      ...handlers,
+      onError: captureError,
+    })
+  } catch (error) {
+    captureError(recapGenerationErrorMessage(error))
+  }
+  return generationError
+}
+
 async function load() {
   const expectedIdentity = props.calendarContext.correlationIdentity
   await recap.run(() => props.calendarContext.correlationIdentity === expectedIdentity)
@@ -90,54 +111,67 @@ function autoGenerate() {
   if (data.narrative == null || data.segmentStale) generate()
 }
 
-async function generate() {
+async function runGeneration(
+  calendarContext: CalendarContext,
+  abortOnRefresh: boolean,
+): Promise<string> {
+  const expectedIdentity = calendarContext.correlationIdentity
+  const window = calendarContext.day
+  if (!abortOnRefresh
+    && props.calendarContext.correlationIdentity !== expectedIdentity) {
+    return consumeGenerationStream(window, undefined, {})
+  }
+
   abortStream()
   const seq = ++streamSeq
-  const window = props.calendarContext.day
-  controller = new AbortController()
-  const signal = controller.signal
-  streaming.value = true
-  streamError.value = ''
-  streamText.value = ''
-  thinkingText.value = ''
-  stickToBottom.value = true // 新一次生成从贴底开始，上一次用户翻到哪儿不该被继承
-  try {
-    await streamDailyRecapGeneration({ window, signal }, {
+  const activeController = abortOnRefresh ? new AbortController() : null
+  controller = activeController
+  const isVisible = () => seq === streamSeq
+    && props.calendarContext.correlationIdentity === expectedIdentity
+  if (isVisible()) {
+    streaming.value = true
+    streamError.value = ''
+    streamText.value = ''
+    thinkingText.value = ''
+    stickToBottom.value = true // 新一次生成从贴底开始，上一次用户翻到哪儿不该被继承
+  }
+  const generationError = await consumeGenerationStream(
+    window,
+    activeController?.signal,
+    {
       // 推理增量：与 delta 同样是增量、同样成千上万个，同样受 seq 防串保护
-      onThinking: text => { if (seq === streamSeq) thinkingText.value += text },
+      onThinking: text => { if (isVisible()) thinkingText.value += text },
       // 增量原样追加，段落由 paragraphs 对累积文本重算（不做打字机动画）
-      onDelta: text => { if (seq === streamSeq) streamText.value += text },
+      onDelta: text => { if (isVisible()) streamText.value += text },
       onDone: data => {
-        if (seq !== streamSeq) return
+        if (!isVisible()) return
         recap.data.value = data // 与 GET 同一个 DTO 形状，渲染逻辑只有一份
         streamText.value = ''
         thinkingText.value = ''
       },
       onError: message => {
-        if (seq !== streamSeq) return
+        if (!isVisible()) return
         streamError.value = message
         streamText.value = '' // 半截正文不是叙事：退回上次成功的那一版
         thinkingText.value = '' // 失败后留着一屏推理只是噪音
       },
-    })
-  } catch (e) {
-    // 走到这里的只有 HTTP/网络层失败（409、鉴权、断网）；生成域的失败在 onError 里
-    if (seq === streamSeq) {
-      streamError.value = recapGenerationErrorMessage(e)
-      streamText.value = ''
-      thinkingText.value = ''
-    }
-  } finally {
-    if (seq === streamSeq) streaming.value = false
-  }
+    },
+  )
+  if (activeController && controller === activeController) controller = null
+  if (isVisible()) streaming.value = false
+  return generationError
+}
+
+async function generate() {
+  await runGeneration(props.calendarContext, true)
 }
 
 /**
  * 纠正提交成功后的重生成：失败必须重新抛出——纠正面板要据此区分"知识已存、Recap 未更新"。
  */
-async function regenerateForCorrection() {
-  await generate()
-  if (streamError.value) throw new Error(streamError.value)
+async function regenerateForCorrection(calendarContext: CalendarContext) {
+  const generationError = await runGeneration(calendarContext, false)
+  if (generationError) throw new Error(generationError)
 }
 
 watch(() => [props.calendarContext.correlationIdentity, props.calendarContext.day], () => {
@@ -280,7 +314,7 @@ const errorMessage = computed(() => {
         </div>
 
         <!-- 纠正入口：owner-only。写知识，不是散文补丁 -->
-        <RecapCorrection v-if="canRegenerate" :date="calendarContext.day.localDate" :regenerate="regenerateForCorrection" />
+        <RecapCorrection v-if="canRegenerate" :calendar-context="calendarContext" :regenerate="regenerateForCorrection" />
       </template>
     </div>
   </Card>

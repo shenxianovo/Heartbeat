@@ -13,6 +13,7 @@ import {
   type CorrectionStage, type CorrectionOutcome,
 } from '../teaching/correctionFlow'
 import ProposalReview from './ProposalReview.vue'
+import type { CalendarContext } from '../calendar/localCalendarWindow'
 
 /**
  * Recap 纠正面板（ADR-031 §6，issue 06）：owner-only。用户对这一天的回顾说哪里不对 →
@@ -21,9 +22,9 @@ import ProposalReview from './ProposalReview.vue'
  * 不是散文补丁；生成失败不回滚知识，也不覆盖上一版成功 Recap。
  */
 const props = defineProps<{
-  date: string
+  calendarContext: CalendarContext
   /** 目标日的显式流式重生成；失败必须 reject（生成失败与提交失败语义不同）。 */
-  regenerate: () => Promise<void>
+  regenerate: (calendarContext: CalendarContext) => Promise<void>
 }>()
 
 const stage = ref<CorrectionStage>('closed')
@@ -37,8 +38,8 @@ const failedOpId = ref<string | null>(null)
 const conflict = ref(false)
 const summary = ref<string[]>([])
 
-/** 切日期：纠正的证据窗口就是这一天，跨日残留没有意义。 */
-watch(() => props.date, () => reset())
+/** 新 refresh generation：纠正必须重新绑定当前不可变 Calendar Context。 */
+watch(() => props.calendarContext.correlationIdentity, () => reset())
 
 function reset() {
   stage.value = 'closed'
@@ -59,21 +60,24 @@ function open() {
 /** 第一阶段：整理成提案。零写入——失败可原样重试。 */
 async function propose() {
   if (!correction.value.trim()) return
+  const expectedIdentity = props.calendarContext.correlationIdentity
   stage.value = 'proposing'
   error.value = ''
   failedOpId.value = null
   conflict.value = false
   try {
     const [res, strandList] = await Promise.all([
-      proposeCorrection({ date: props.date, correction: correction.value }),
+      proposeCorrection({ window: props.calendarContext.day, correction: correction.value }),
       fetchStrands().catch(() => [] as IStrandResponse[]),
     ])
+    if (props.calendarContext.correlationIdentity !== expectedIdentity) return
     proposal.value = res
     items.value = toReviewItems(res)
     strands.value = strandList
     readingLabels.value = { ...readingLabels.value, ...(res.readingLabels ?? {}) }
     stage.value = 'review'
   } catch (e) {
+    if (props.calendarContext.correlationIdentity !== expectedIdentity) return
     error.value = interpretCorrectionError(toApiError(e), knowledgeErrorOf(e)?.code).message
     stage.value = 'writing' // 回到可编辑态：用户的原话不丢
   }
@@ -81,21 +85,26 @@ async function propose() {
 
 /** 第二阶段：提交 → 仅在提交成功后重生成这一天。 */
 async function commit() {
+  const expectedContext = props.calendarContext
   stage.value = 'committing'
   error.value = ''
   failedOpId.value = null
   const outcome = await submitCorrection(selectedOps(items.value), {
     commit: ops => commitChangeSet(ops),
-    regenerate: props.regenerate,
+    regenerate: () => props.regenerate(expectedContext),
     toApiError,
     changeSetErrorOf,
   })
+  if (props.calendarContext.correlationIdentity !== expectedContext.correlationIdentity) return
   apply(outcome)
 }
 
 async function retry() {
+  const expectedContext = props.calendarContext
   stage.value = 'committing'
-  apply(await retryRegenerate(summary.value, props.regenerate))
+  const outcome = await retryRegenerate(summary.value, () => props.regenerate(expectedContext))
+  if (props.calendarContext.correlationIdentity !== expectedContext.correlationIdentity) return
+  apply(outcome)
 }
 
 function apply(outcome: CorrectionOutcome) {

@@ -7,7 +7,7 @@ import {
   type DailyRecapResponse,
 } from '../api/index'
 import RecapCard from './RecapCard.vue'
-import { resolveCalendarContext, type CalendarWindowEnvelope } from '../calendar/localCalendarWindow'
+import { resolveCalendarContext, type CalendarContext, type CalendarWindowEnvelope } from '../calendar/localCalendarWindow'
 
 vi.mock('../api/index', () => ({
   fetchDailyRecap: vi.fn(),
@@ -166,6 +166,65 @@ describe('RecapCard 三态渲染', () => {
 
     expect(streamDailyRecapGeneration).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('这一天还没有回顾。')
+  })
+})
+
+describe('Recap 纠正的 captured-window regeneration', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(fetchDailyRecap).mockResolvedValue(recap({ narrative: '原窗口叙事。' }))
+  })
+
+  it('stream 启动后切 refresh generation 仍完成原窗口生成且不回写新页面', async () => {
+    const calls = captureStreams()
+    const wrapper = await mountCard()
+    const originalContext = wrapper.props('calendarContext') as CalendarContext
+    const correction = wrapper.findComponent({ name: 'RecapCorrection' })
+    const regenerate = correction.props('regenerate') as (context: CalendarContext) => Promise<void>
+
+    const regenerated = regenerate(originalContext)
+    await vi.waitUntil(() => calls.length === 1)
+
+    await wrapper.setProps({ calendarContext: contextWithIdentity('2026-08-18', 'generation-2') })
+    await flushPromises()
+
+    expect(calls[0].window).toEqual(originalContext.day)
+    expect(calls[0].signal?.aborted).not.toBe(true)
+    calls[0].handlers.onDone?.(recap({ date: '2026-08-19', narrative: '旧窗口新叙事。' }))
+    calls[0].finish()
+    await expect(regenerated).resolves.toBeUndefined()
+
+    expect(wrapper.text()).not.toContain('旧窗口新叙事。')
+  })
+
+  it('旧窗口后台生成不会取消新页面已经开始的生成', async () => {
+    vi.mocked(fetchDailyRecap).mockResolvedValue(recap({ narrative: '当前页面旧叙事。' }))
+    const calls = captureStreams()
+    const wrapper = await mountCard()
+    await regenerateButton(wrapper)!.trigger('click')
+    await vi.waitUntil(() => calls.length === 1)
+    const currentWindow = wrapper.props('calendarContext').day
+    const correction = wrapper.findComponent({ name: 'RecapCorrection' })
+    const regenerate = correction.props('regenerate') as (context: CalendarContext) => Promise<void>
+    const oldContext = contextWithIdentity('2026-08-18', 'old-generation')
+
+    const regenerated = regenerate(oldContext)
+    await vi.waitUntil(() => calls.length === 2)
+
+    expect(calls[0].window).toEqual(currentWindow)
+    expect(calls[0].signal?.aborted).toBe(false)
+    expect(calls[1].window).toEqual(oldContext.day)
+    expect(calls[1].signal).toBeUndefined()
+
+    calls[1].handlers.onDone?.(recap({ date: '2026-08-18', narrative: '旧窗口已生成。' }))
+    calls[1].finish()
+    await expect(regenerated).resolves.toBeUndefined()
+
+    calls[0].handlers.onDone?.(recap({ date: '2026-08-19', narrative: '新页面叙事。' }))
+    calls[0].finish()
+    await flushPromises()
+    expect(wrapper.text()).toContain('新页面叙事。')
+    expect(wrapper.text()).not.toContain('旧窗口已生成。')
   })
 })
 

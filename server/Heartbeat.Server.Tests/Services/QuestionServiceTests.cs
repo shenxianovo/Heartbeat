@@ -304,7 +304,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
         db.DailyQuestionSets.Add(new DailyQuestionSet
         {
             OwnerId = "user-1",
-            WindowStart = DateRange.Day(PastDay).UtcStart,
+            WindowStart = PastDay.UtcDateTime.Date,
             SegmentWatermark = PastDay.AddHours(16).UtcDateTime,
             GeneratedAt = PastDay.AddHours(16),
             PayloadVersion = DailyQuestionSet.CurrentPayloadVersion,

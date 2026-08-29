@@ -1,4 +1,3 @@
-using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Knowledge;
 using Heartbeat.Server.Calendar;
 using Heartbeat.Server.Data;
@@ -66,20 +65,20 @@ namespace Heartbeat.Server.Services
         /// 用户的话。纠正不直接改正文：提案落知识，目标日由调用方在提交成功后强制重生成。
         /// </summary>
         public async Task<ProposalResult> ProposeCorrectionAsync(
-            string ownerId, ProposeCorrectionRequest request, CancellationToken ct = default)
+            string ownerId, ResolvedCalendarWindow window,
+            ProposeCorrectionRequest request, CancellationToken ct = default)
         {
             if (string.IsNullOrWhiteSpace(request.Correction))
                 return ProposalResult.Fail(ProposalErrorCodes.EmptyAnswer, "Correction is required.");
 
             // 与叙事同一份 digest（同窗口、同深度表、同投影规则）：用户纠正的就是从它生成的回顾。
-            var projection = await assembler.AssembleAsync(
-                ownerId, DateRange.Day(request.Date), request.Date.Offset, ct);
+            var projection = await assembler.AssembleAsync(ownerId, window, ct);
             if (projection.IsEmpty)
                 return ProposalResult.Fail(ProposalErrorCodes.EmptyDay,
                     "No observations on this date; there is no recap to correct.");
 
             var context = await LoadContextAsync(
-                ownerId, DateOnly.FromDateTime(request.Date.Date), sourceEpisodeId: null, ct);
+                ownerId, window.CivilStartDateOnly, sourceEpisodeId: null, ct);
             var raw = await generator.ProposeCorrectionAsync(projection.Digest, request.Correction, context, ct);
             return Sanitize(raw, context);
         }

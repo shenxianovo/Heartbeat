@@ -21,9 +21,6 @@ namespace Heartbeat.Core.DTOs.Knowledge
     /// </summary>
     public class ProposeCorrectionRequest
     {
-        /// <summary>纠正的目标日期（带调用方时区 offset，与 recap 读取同约）。</summary>
-        public DateTimeOffset Date { get; set; }
-
         /// <summary>用户的自然语言纠正：遗漏、错误关联或应记住的私人语境。</summary>
         public string Correction { get; set; } = string.Empty;
     }

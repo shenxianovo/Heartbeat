@@ -61,11 +61,7 @@ namespace Heartbeat.Server.Controllers
         {
             var validation = LocalCalendarWindowValidator.ResolveDay(window);
             if (validation.Error != null)
-                return BadRequest(new KnowledgeErrorResponse
-                {
-                    Code = validation.Error.Code,
-                    Message = validation.Error.Message,
-                });
+                return BadRequest(ToKnowledgeError(validation.Error));
             var result = await _proposalService.ProposeAsync(
                 _currentUser.GetUserId(), id, validation.Window!, request, ct);
             if (result.Proposal != null) return Ok(result.Proposal);
@@ -89,9 +85,14 @@ namespace Heartbeat.Server.Controllers
         [ProducesResponseType<KnowledgeErrorResponse>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<KnowledgeErrorResponse>(StatusCodes.Status502BadGateway)]
         public async Task<IActionResult> ProposeCorrection(
+            [FromQuery] LocalCalendarWindowEnvelope window,
             [FromBody] ProposeCorrectionRequest request, CancellationToken ct = default)
         {
-            var result = await _proposalService.ProposeCorrectionAsync(_currentUser.GetUserId(), request, ct);
+            var validation = LocalCalendarWindowValidator.ResolveDay(window);
+            if (validation.Error != null)
+                return BadRequest(ToKnowledgeError(validation.Error));
+            var result = await _proposalService.ProposeCorrectionAsync(
+                _currentUser.GetUserId(), validation.Window!, request, ct);
             if (result.Proposal != null) return Ok(result.Proposal);
             return result.Error!.Code switch
             {
@@ -190,6 +191,13 @@ namespace Heartbeat.Server.Controllers
             var ok = await _knowledgeService.MuteMatcherAsync(_currentUser.GetUserId(), request.Matcher, ct);
             return ok ? NoContent() : BadRequest("A valid matcher is required.");
         }
+
+        /// <summary>Local Calendar Window 的稳定错误映射到知识端点共享的响应形状。</summary>
+        private static KnowledgeErrorResponse ToKnowledgeError(CalendarWindowError error) => new()
+        {
+            Code = error.Code,
+            Message = error.Message,
+        };
 
         /// <summary>错误码 → HTTP：查无此行 404；依赖库中现状的冲突 409；请求本身非法 400。</summary>
         private IActionResult ToHttp(KnowledgeResult result)

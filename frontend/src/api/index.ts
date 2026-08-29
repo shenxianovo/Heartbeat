@@ -1,4 +1,4 @@
-import { Client, ApiException, CalendarWindowError, DailyRecapResponse, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, SegmentResponse, UpdateMySettingsRequest, AskingQuestionsResponse, KnowledgeProposalResponse, ProposeFromQuestionRequest, CommitChangeSetRequest, CommitChangeSetResponse, ChangeSetErrorResponse, KnowledgeErrorResponse, CreateStrandRequest, UpdateStrandRequest, MoveStrandRequest, EndStrandRequest, MuteMatcherRequest, StrandResponse, EpisodeResponse, ProbeResponse, PromoteEpisodeResponse, CreateEpisodeRequest, UpdateEpisodeRequest, RelateEpisodeRequest, CreateProbeRequest, ResolveProbeRequest, PromoteEpisodeRequest, type ICreateStrandRequest, type IUpdateStrandRequest, type IMoveStrandRequest, type IEndStrandRequest, type IMatcherDto, type IKnowledgeOperationDto, type IChangeSetErrorResponse, type IKnowledgeErrorResponse, type ICreateEpisodeRequest, type IUpdateEpisodeRequest, type IRelateEpisodeRequest, type ICreateProbeRequest, type IResolveProbeRequest, type IPromoteEpisodeRequest } from './client'
+import { Client, ApiException, CalendarWindowError, DailyRecapResponse, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, SegmentResponse, UpdateMySettingsRequest, AskingQuestionsResponse, KnowledgeProposalResponse, ProposeCorrectionRequest, ProposeFromQuestionRequest, CommitChangeSetRequest, CommitChangeSetResponse, ChangeSetErrorResponse, KnowledgeErrorResponse, CreateStrandRequest, UpdateStrandRequest, MoveStrandRequest, EndStrandRequest, MuteMatcherRequest, StrandResponse, EpisodeResponse, ProbeResponse, PromoteEpisodeResponse, CreateEpisodeRequest, UpdateEpisodeRequest, RelateEpisodeRequest, CreateProbeRequest, ResolveProbeRequest, PromoteEpisodeRequest, type ICreateStrandRequest, type IUpdateStrandRequest, type IMoveStrandRequest, type IEndStrandRequest, type IMatcherDto, type IKnowledgeOperationDto, type IChangeSetErrorResponse, type IKnowledgeErrorResponse, type ICreateEpisodeRequest, type IUpdateEpisodeRequest, type IRelateEpisodeRequest, type ICreateProbeRequest, type IResolveProbeRequest, type IPromoteEpisodeRequest } from './client'
 import {
   AppCatalogAdminErrorResponse,
   AppCatalogExportRequest,
@@ -31,6 +31,12 @@ const CALENDAR_WINDOW_ERROR_CODES = new Set([
 /** 把 NSwag ApiException、原生 fetch TypeError、以及其它意外统一成 ApiError。 */
 export function toApiError(e: unknown): ApiError {
   if (e instanceof CalendarWindowError) {
+    return { kind: 'calendar', code: e.code, message: e.message }
+  }
+  if (e instanceof KnowledgeErrorResponse
+    && typeof e.code === 'string'
+    && CALENDAR_WINDOW_ERROR_CODES.has(e.code)
+    && typeof e.message === 'string') {
     return { kind: 'calendar', code: e.code, message: e.message }
   }
   if (ApiException.isApiException(e)) {
@@ -156,23 +162,6 @@ export interface AppSummary {
   appId: number
   appName: string
   totalSeconds: number
-}
-
-/**
- * 将 "yyyy-MM-dd" 格式化为带本地时区偏移的 ISO 字符串，如 "2026-03-06T00:00:00+08:00"。
- *
- * 尚未迁移到 Local Calendar Window 的 date 端点必须用它手拼查询串:
- * NSwag 生成的方法把 Date 序列化为 toISOString()(UTC),会丢掉本地时区偏移,
- * 服务端旧接口仍靠参数 Offset 划定窗口。Daily / Weekly Report 已不走这条路径。
- * usage/segments 的 start/end 是时刻过滤,UTC 表示同一瞬间,不受影响。
- */
-function toLocalDateTimeOffsetString(dateStr: string): string {
-  const offset = new Date().getTimezoneOffset()
-  const sign = offset <= 0 ? '+' : '-'
-  const absMin = Math.abs(offset)
-  const h = String(Math.floor(absMin / 60)).padStart(2, '0')
-  const m = String(absMin % 60).padStart(2, '0')
-  return `${dateStr}T00:00:00${sign}${h}:${m}`
 }
 
 /**
@@ -494,21 +483,23 @@ export async function proposeFromQuestion(questionId: string, params: {
 }
 
 /**
- * Recap 纠正入口（ADR-031 §6，issue 06）：把用户对某日回顾的自然语言纠正交给服务端整理成
- * 可编辑提案。零写入——证据上下文由服务端按目标本地日期锁定，不提交散文 patch。
- * date 与 recap 读取同一天窗口，手拼以保住本地时区偏移。
+ * Recap 纠正入口（ADR-031 §6）：把用户对某日回顾的自然语言纠正交给服务端整理成
+ * 可编辑提案。零写入——证据上下文由服务端按同一个已验证 day window 锁定，不提交散文 patch。
  */
-export async function proposeCorrection(params: { date: string; correction: string }): Promise<KnowledgeProposalResponse> {
-  const res = await authHttp.fetch(`${API_BASE}/knowledge/corrections/propose`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ date: toLocalDateTimeOffsetString(params.date), correction: params.correction }),
-  })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new ApiException('Correction propose failed.', res.status, text, {}, tryParseError(text, KnowledgeErrorResponse.fromJS))
-  }
-  return KnowledgeProposalResponse.fromJS(await res.json())
+export async function proposeCorrection(params: {
+  window: CalendarWindowEnvelope<'day'>
+  correction: string
+}): Promise<KnowledgeProposalResponse> {
+  const window = params.window
+  return client.proposeCorrection(
+    window.version,
+    window.kind,
+    window.localDate,
+    window.timeZone,
+    new Date(window.start),
+    new Date(window.endExclusive),
+    ProposeCorrectionRequest.fromJS({ correction: params.correction }),
+  )
 }
 
 /**
