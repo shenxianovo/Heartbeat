@@ -26,9 +26,9 @@ const ButtonStub = defineComponent({
   template: '<button @click="$emit(\'click\')"><slot /></button>',
 })
 
-function mountPicker() {
+function mountPicker(contextLabel?: string) {
   return mount(DatePicker, {
-    props: { modelValue: '2026-08-01' },
+    props: { modelValue: '2026-08-01', contextLabel },
     global: {
       stubs: {
         Popover: PopoverStub,
@@ -44,6 +44,13 @@ function mountPicker() {
 
 describe('DatePicker', () => {
   afterEach(() => vi.useRealTimers())
+
+  it('renders the calendar window context as the single trigger label', () => {
+    const wrapper = mountPicker('2026-08-01 · Asia/Shanghai (UTC+08:00)')
+
+    expect(wrapper.get('button').text()).toBe('2026-08-01 · Asia/Shanghai (UTC+08:00)')
+    expect(wrapper.get('button').text().match(/2026-08-01/g)).toHaveLength(1)
+  })
 
   it('caps the calendar at browser-local today', () => {
     vi.useFakeTimers()

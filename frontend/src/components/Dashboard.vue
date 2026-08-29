@@ -165,12 +165,12 @@ onUnmounted(() => {
           </SelectContent>
         </Select>
 
-        <DatePicker v-model="selectedDate" class="max-[640px]:flex-1" />
-
-        <span
-          class="glass-control cursor-help whitespace-nowrap px-3 py-1.5 font-mono text-[0.7rem] text-muted-foreground"
+        <DatePicker
+          v-model="selectedDate"
+          :context-label="timezoneLabel"
+          class="max-[640px]:w-full"
           title="Local Calendar Window：所选日期按本次刷新捕获的浏览器 IANA 时区解释"
-        >{{ timezoneLabel }}</span>
+        />
 
         <button
           class="glass-control cursor-pointer whitespace-nowrap px-3 py-1.5 text-[0.8rem] transition-colors"

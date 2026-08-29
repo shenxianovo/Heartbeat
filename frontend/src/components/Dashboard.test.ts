@@ -11,6 +11,7 @@ import {
 import { resolveCalendarContext } from '../calendar/localCalendarWindow'
 import Dashboard from './Dashboard.vue'
 import ActivityTimeline from './ActivityTimeline.vue'
+import DatePicker from './DatePicker.vue'
 import RecapCard from './RecapCard.vue'
 import StrandQuestions from './StrandQuestions.vue'
 
@@ -96,10 +97,10 @@ describe('Dashboard Calendar Context orchestration', () => {
     expect(Object.isFrozen(context)).toBe(true)
     expect(context.correlationIdentity).toBe(scenario.identity)
     expect(context.day.timeZone).toBe(scenario.timeZone)
+    expect(wrapper.findComponent(DatePicker).props('contextLabel')).toBe(context.displayLabel)
     expect(wrapper.findComponent(StrandQuestions).props('calendarContext')).toBe(context)
     expect(wrapper.findComponent(ActivityTimeline).props('dayWindow')).toBe(context.day)
     expect(wrapper.findComponent(ActivityTimeline).props('isToday')).toBe(context.isToday)
-    expect(wrapper.text()).toContain(context.displayLabel)
 
     expect(fetchPublicDailyReport).toHaveBeenCalledWith('alice', {
       deviceId: 0,

@@ -43,3 +43,6 @@
   calendar golden fixture 的发布阻断。现已把 Frontend Dockerfile、local compose 与 deploy workflow
   统一为仓库根 context，只复制 Frontend 与单一事实源 fixture；镜像重建成功，最终 Frontend +
   Analytics 容器已更新，`/` 与 `/openapi/v1.json` smoke 均返回 200。
+- 2026-08-29 验收反馈：Dashboard 顶部重复的日期选择器与时区看板已合并为一个可点击的 Local
+  Calendar Window 控件，完整显示 `日期 · IANA 时区 · UTC offset`，原日期选择交互保持不变；完整
+  Frontend 验证更新为 38 files / 258 tests，生产构建与实际页面桌面/窄屏检查通过。

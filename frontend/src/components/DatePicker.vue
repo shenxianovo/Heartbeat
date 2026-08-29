@@ -7,7 +7,12 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-const props = defineProps<{ modelValue: string; class?: HTMLAttributes['class'] }>()
+const props = defineProps<{
+  modelValue: string
+  contextLabel?: string
+  title?: string
+  class?: HTMLAttributes['class']
+}>()
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const open = ref(false)
 const todayValue = today(getLocalTimeZone())
@@ -35,10 +40,11 @@ function selectToday() {
 <template>
   <Popover v-model:open="open">
     <PopoverTrigger
-      :class="cn('glass-control px-3 py-1.5 text-sm text-foreground', props.class)"
+      :class="cn('glass-control flex min-w-0 items-center gap-1.5 px-3 py-1.5 text-[0.8rem] text-foreground', props.class)"
+      :title="props.title"
     >
-      <CalendarIcon :size="15" class="text-muted-foreground" />
-      <span class="font-mono">{{ modelValue }}</span>
+      <CalendarIcon :size="15" class="shrink-0 text-muted-foreground" />
+      <span class="min-w-0 truncate font-mono">{{ contextLabel ?? modelValue }}</span>
     </PopoverTrigger>
     <PopoverContent class="w-auto p-0" align="end">
       <Calendar
