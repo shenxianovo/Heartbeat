@@ -1,6 +1,6 @@
 # ADR-042: Recap 流式生成——端点按动词拆分，生成寿命绑定连接
 
-## Status: Accepted（amends [ADR-023](./023-recap-cloud-llm-projection.md) §4/§5）
+## Status: Accepted（amends [ADR-023](./023-recap-cloud-llm-projection.md) §4/§5；§7 的窗口锁身份 amended by [ADR-044](./044-browser-civil-calendar-window.md)）
 
 ## Date: 2026-08-18
 

@@ -1,6 +1,6 @@
 # ADR-023: Recap——云端 LLM 叙事摘要与投影/生成分层
 
-## Status: Accepted（§4 “历史 Recap 永不过期” amended by [ADR-031](./031-hierarchical-strand-episode-teaching-loop.md)；§5 “v1 不做流式” amended by [ADR-042](./042-recap-streaming-generation.md)）
+## Status: Accepted（§4 “历史 Recap 永不过期” amended by [ADR-031](./031-hierarchical-strand-episode-teaching-loop.md)；§5 “v1 不做流式” amended by [ADR-042](./042-recap-streaming-generation.md)；§4/§5 的 fixed-offset 日窗口与缓存身份 amended by [ADR-044](./044-browser-civil-calendar-window.md)）
 
 > Segment 水位对历史窗口仍不主动失效；但自 ADR-031 起，相关 Strand/Episode 知识投影
 > 变化会惰性标记“可重新生成”，且不会自动调用 LLM。

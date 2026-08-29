@@ -1,6 +1,6 @@
 # ADR-006: Redesign API with Dedicated Report Endpoints
 
-## Status: Accepted
+## Status: Accepted（日/周报的单个 `DateTimeOffset date` 契约 amended by [ADR-044](./044-browser-civil-calendar-window.md)；通用 Usage instant range 保留）
 
 ## Date: 2026-03-05
 
