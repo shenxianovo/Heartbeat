@@ -1,0 +1,48 @@
+[
+  {
+    "name": "ordinary day",
+    "localDate": "2026-08-29",
+    "timeZone": "Asia/Shanghai",
+    "start": "2026-08-28T16:00:00Z",
+    "endExclusive": "2026-08-29T16:00:00Z",
+    "durationHours": 24
+  },
+  {
+    "name": "spring-forward day",
+    "localDate": "2026-03-08",
+    "timeZone": "America/New_York",
+    "start": "2026-03-08T05:00:00Z",
+    "endExclusive": "2026-03-09T04:00:00Z",
+    "durationHours": 23
+  },
+  {
+    "name": "fall-back day",
+    "localDate": "2026-11-01",
+    "timeZone": "America/New_York",
+    "start": "2026-11-01T04:00:00Z",
+    "endExclusive": "2026-11-02T05:00:00Z",
+    "durationHours": 25
+  },
+  {
+    "name": "leap day",
+    "localDate": "2024-02-29",
+    "timeZone": "Asia/Shanghai",
+    "start": "2024-02-28T16:00:00Z",
+    "endExclusive": "2024-02-29T16:00:00Z",
+    "durationHours": 24
+  },
+  {
+    "name": "midnight gap",
+    "localDate": "2018-11-04",
+    "timeZone": "America/Sao_Paulo",
+    "start": "2018-11-04T03:00:00Z",
+    "endExclusive": "2018-11-05T02:00:00Z",
+    "durationHours": 23
+  },
+  {
+    "name": "entirely skipped civil date",
+    "localDate": "2011-12-30",
+    "timeZone": "Pacific/Apia",
+    "error": "nonexistent_civil_date"
+  }
+]

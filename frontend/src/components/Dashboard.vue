@@ -67,6 +67,7 @@ const errorMessage = computed(() => {
   if (!e) return ''
   if (e.kind === 'network') return '网络连接失败，请检查网络后重试'
   if (e.kind === 'http') return `服务器返回错误（${e.status}），请稍后重试`
+  if (e.kind === 'calendar') return `日历窗口错误（${e.code}）：${e.message}`
   return '数据解析失败，请重试'
 })
 
@@ -144,7 +145,7 @@ onUnmounted(() => {
 
         <span
           class="glass-control cursor-help whitespace-nowrap px-3 py-1.5 font-mono text-[0.7rem] text-muted-foreground"
-          title="数据按浏览器所在时区的日期展示，不代表设备所在时区"
+          title="Local Calendar Window：所选日期按本次刷新捕获的浏览器 IANA 时区解释"
         >{{ timezoneLabel }}</span>
 
         <button

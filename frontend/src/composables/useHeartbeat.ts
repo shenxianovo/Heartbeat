@@ -1,18 +1,18 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import type { AppInfoResponse, KeyFrequencyItem } from '../api/index'
+import type { ApiError, AppInfoResponse, KeyFrequencyItem } from '../api/index'
 import {
   fetchAdminAppCatalog,
   fetchMe,
   fetchPublicApps,
   fetchPublicKeyFrequency,
-  getTimezoneLabel,
 } from '../api/index'
 import { loadAdminProvisionalAppIds } from '../appCatalog/adminOverlay'
 import { authStore } from '../stores/auth'
-import { useAsyncData } from './useAsyncData'
+import { runForCurrentIdentity, useAsyncData } from './useAsyncData'
 import { useDeviceSelection } from './useDeviceSelection'
 import { useDeviceStatus } from './useDeviceStatus'
 import { useReports } from './useReports'
+import { CalendarContextError, resolveCalendarContext } from '../calendar/localCalendarWindow'
 
 export function formatDuration(sec: number): string {
   const h = Math.floor(sec / 3600)
@@ -28,7 +28,10 @@ export function formatDuration(sec: number): string {
  */
 export function useHeartbeat(username: string) {
   const selection = useDeviceSelection(username)
-  const { selectedDevice, selectedDate, isToday } = selection
+  const { selectedDevice, selectedDate } = selection
+  const calendarContext = ref(resolveCalendarContext(selectedDate.value))
+  const calendarError = ref<ApiError | null>(null)
+  const isToday = computed(() => calendarContext.value.isToday)
 
   const appsData = useAsyncData<AppInfoResponse[]>(() => fetchPublicApps(username), [])
   const apps = appsData.data
@@ -42,20 +45,19 @@ export function useHeartbeat(username: string) {
   })
 
   const status = useDeviceStatus(username, selection.devices, selectedDevice, isToday)
-  const reports = useReports(username, selectedDevice, selectedDate)
+  const reports = useReports(username, selectedDevice, selectedDate, calendarContext)
 
   const kf = useAsyncData<KeyFrequencyItem[]>(() => {
-    const dateObj = new Date(selectedDate.value + 'T00:00:00')
     return fetchPublicKeyFrequency(username, {
       deviceId: selectedDevice.value,
-      start: dateObj.toISOString(),
-      end: new Date(dateObj.getTime() + 86400000).toISOString(),
+      start: calendarContext.value.day.start,
+      end: calendarContext.value.day.endExclusive,
     })
   }, [])
   const keyFrequency = kf.data
   // 跨设备键频求和：打字就是打字,不存在"哪台机器的 W 键"的语义问题。
   async function loadKeyFrequency() {
-    await kf.run()
+    await runForCurrentIdentity(kf, () => calendarContext.value.correlationIdentity)
   }
 
   async function loadAdminOverlay() {
@@ -74,18 +76,35 @@ export function useHeartbeat(username: string) {
 
   // 任一数据域出错就点亮:UI 据此区分"出错"与"这天没数据"。
   const error = computed(() =>
-    selection.error.value
+    calendarError.value
+    ?? selection.error.value
     ?? appsData.error.value
     ?? status.error.value
     ?? reports.error.value
     ?? kf.error.value,
   )
 
-  const timezoneLabel = getTimezoneLabel()
+  const timezoneLabel = computed(() => calendarContext.value.displayLabel)
+
+  function captureCalendarContext(): boolean {
+    try {
+      calendarContext.value = resolveCalendarContext(selectedDate.value)
+      calendarError.value = null
+      return true
+    } catch (error) {
+      if (error instanceof CalendarContextError) {
+        calendarError.value = { kind: 'calendar', code: error.code, message: error.message }
+        return false
+      }
+      throw error
+    }
+  }
 
   async function refresh() {
     loading.value = true
     try {
+      // 一次 refresh 只捕获一次浏览器 civil timezone；以下并发请求共享同一不可变 context。
+      if (!captureCalendarContext()) return
       // 取数不再等设备列表：默认 deviceId=0 即聚合查询。
       // 设备列表只影响选择器选项与 presence 目标,由 selection.reload() 独立拉。
       await Promise.all([
@@ -109,7 +128,7 @@ export function useHeartbeat(username: string) {
     await refresh()
 
     usageTimer = setInterval(() => {
-      if (isToday.value) {
+      if (captureCalendarContext() && isToday.value) {
         reports.loadUsage()
         reports.loadDaily()
         reports.loadWeekly()

@@ -371,7 +371,8 @@ public class AppMergeServiceTests(PostgresContainerFixture fixture) : PostgresTe
             Assert.Equal("vscode", x.AppKey);
             Assert.Equal("Visual Studio Code", x.AppDisplayName);
         });
-        var report = await new ReportService(db).GetDailyReportAsync("owner-1", null, DateTimeOffset.UtcNow);
+        var report = (await new ReportService(db).GetDailyReportAsync(
+            "owner-1", null, LocalCalendarWindowTestData.UtcDay(DateTimeOffset.UtcNow))).Report!;
         Assert.Single(report.Apps);
         Assert.Equal("vscode", report.Apps[0].AppKey);
     }

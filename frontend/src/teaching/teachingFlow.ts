@@ -307,7 +307,7 @@ export function knowledgeErrorMessage(code: string | undefined, fallback?: strin
 // ===== 两阶段各自的失败解释：组件只应用结果，分支在这里可测 =====
 
 export interface ApiErrorLike {
-  kind: 'network' | 'http' | 'parse'
+  kind: 'network' | 'http' | 'parse' | 'calendar'
   status?: number
 }
 

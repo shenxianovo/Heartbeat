@@ -2,7 +2,7 @@
 
 ## Conventions
 
-- **时间存储**：所有时间字段在数据库中以 UTC+0 存储。"今天"/"本周"的边界由前端根据用户浏览器时区确定，通过 DateTimeOffset 参数传给服务端。
+- **时间存储**：所有时间字段在数据库中以 UTC+0 存储。Dashboard 的“今天”/“本周”由 Browser 按当前 IANA civil timezone 解析为版本化 Local Calendar Window envelope，Analytics 用独立 TZDB 严格重算验证后才查询事实；通用 Instant Window 仍直接传 UTC 起止。
 - **认证架构**：依赖外部自建 Auth 平台（支持邮箱/Google/GitHub 登录）。Collection（Agent）持有 Auth 平台签发的 ApiKey，运行时经 `TokenManager` 在 Auth 平台换取短期 session JWT，上传请求携带 `Authorization: Bearer {JWT}`；Dashboard（前端）通过 OIDC 授权码 + PKCE 登录获取 access token。服务端同时接受 OIDC access token 与 Agent session JWT 两种 Bearer 凭证。
 - **数据隔离**：多用户模式下，Owner 拥有多个 Subject，用户只能看到属于自己的 Subject 的事实。当前机器上传路径仍通过 `X-Hardware-Id` 定位 Device；引入 Account 与 Person Subject 时必须保持同一 OwnerId 隔离不变量。
 

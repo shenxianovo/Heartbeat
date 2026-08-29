@@ -259,7 +259,8 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         Assert.NotNull(row.AppIdentityId); // expand 阶段同时保存平台观测身份
         Assert.Equal(start.AddMinutes(30), row.EndTime); // 同 Id 快照生长
 
-        var report = await new ReportService(db).GetDailyReportAsync("user-1", null, start);
+        var report = (await new ReportService(db).GetDailyReportAsync(
+            "user-1", null, LocalCalendarWindowTestData.UtcDay(start))).Report!;
         var item = Assert.Single(report.Apps);
         Assert.Equal("VSCode", item.AppName);
         Assert.Equal(1800, item.DurationSeconds); // 统计路径可见
@@ -520,18 +521,19 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         await svc.SaveSegmentsAsync(secondDevice.Id, [Item("mac:com.microsoft.vscode", start.AddMinutes(5), 4)]);
         await svc.SaveSegmentsAsync(otherOwnerDevice.Id, [Item("win:code", start.AddMinutes(10), 9)]);
 
-        var report = await new ReportService(db).GetDailyReportAsync("user-1", null, start);
+        var report = (await new ReportService(db).GetDailyReportAsync(
+            "user-1", null, LocalCalendarWindowTestData.UtcDay(start))).Report!;
         var app = Assert.Single(report.Apps);
         Assert.Equal(product.Id, app.AppId);
         Assert.Equal("Visual Studio Code", app.AppName);
         Assert.Equal(7 * 60, app.DurationSeconds);
 
         var windowsOnly = Assert.Single((await new ReportService(db)
-            .GetDailyReportAsync("user-1", _deviceId, start)).Apps);
+            .GetDailyReportAsync("user-1", _deviceId, LocalCalendarWindowTestData.UtcDay(start))).Report!.Apps);
         Assert.Equal(3 * 60, windowsOnly.DurationSeconds);
 
         var otherOwner = Assert.Single((await new ReportService(db)
-            .GetDailyReportAsync("user-2", null, start)).Apps);
+            .GetDailyReportAsync("user-2", null, LocalCalendarWindowTestData.UtcDay(start))).Report!.Apps);
         Assert.Equal(9 * 60, otherOwner.DurationSeconds);
 
         var facts = await svc.GetUsageAsync("user-1", null, null, null);

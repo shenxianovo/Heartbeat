@@ -1,0 +1,117 @@
+import { Temporal } from '@js-temporal/polyfill'
+
+export const CALENDAR_WINDOW_VERSION = 1 as const
+
+export type CalendarWindowEnvelope = Readonly<{
+  version: typeof CALENDAR_WINDOW_VERSION
+  kind: 'day'
+  localDate: string
+  timeZone: string
+  start: string
+  endExclusive: string
+}>
+
+export type CalendarContext = Readonly<{
+  day: CalendarWindowEnvelope
+  isToday: boolean
+  displayLabel: string
+  correlationIdentity: string
+}>
+
+export type CalendarContextErrorCode =
+  | 'invalid_local_date'
+  | 'unsupported_timezone'
+  | 'nonexistent_civil_date'
+
+export class CalendarContextError extends Error {
+  constructor(public readonly code: CalendarContextErrorCode, message: string) {
+    super(message)
+    this.name = 'CalendarContextError'
+  }
+}
+
+interface ResolveCalendarContextOptions {
+  timeZone?: string
+  now?: string
+  correlationIdentity?: () => string
+}
+
+function parseLocalDate(value: string): Temporal.PlainDate {
+  if (!/^(?!0000)\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new CalendarContextError('invalid_local_date', `Invalid local date: ${value}`)
+  }
+
+  try {
+    const date = Temporal.PlainDate.from(value, { overflow: 'reject' })
+    if (date.toString() !== value) throw new RangeError('Date is not canonical')
+    return date
+  } catch {
+    throw new CalendarContextError('invalid_local_date', `Invalid local date: ${value}`)
+  }
+}
+
+function civilDayStart(date: Temporal.PlainDate, timeZone: string): Temporal.ZonedDateTime {
+  const start = date.toZonedDateTime({ timeZone, plainTime: '00:00:00' })
+  if (!start.toPlainDate().equals(date)) {
+    throw new CalendarContextError(
+      'nonexistent_civil_date',
+      `Civil date ${date} does not exist in ${timeZone}`,
+    )
+  }
+  return start
+}
+
+function currentTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone
+}
+
+function defaultCorrelationIdentity(): string {
+  return globalThis.crypto.randomUUID()
+}
+
+function offsetLabel(start: Temporal.ZonedDateTime, end: Temporal.ZonedDateTime): string {
+  const first = `UTC${start.offset}`
+  const last = `UTC${end.offset}`
+  return first === last ? first : `${first} → ${last}`
+}
+
+export function resolveCalendarContext(
+  localDateValue: string,
+  options: ResolveCalendarContextOptions = {},
+): CalendarContext {
+  const localDate = parseLocalDate(localDateValue)
+  const timeZone = options.timeZone ?? currentTimeZone()
+
+  let start: Temporal.ZonedDateTime
+  let end: Temporal.ZonedDateTime
+  try {
+    start = civilDayStart(localDate, timeZone)
+    end = civilDayStart(localDate.add({ days: 1 }), timeZone)
+  } catch (error) {
+    if (error instanceof CalendarContextError) throw error
+    throw new CalendarContextError('unsupported_timezone', `Unsupported timezone: ${timeZone}`)
+  }
+
+  let now: Temporal.Instant
+  try {
+    now = options.now ? Temporal.Instant.from(options.now) : Temporal.Now.instant()
+  } catch {
+    throw new CalendarContextError('invalid_local_date', `Invalid current instant: ${options.now}`)
+  }
+
+  const day = Object.freeze<CalendarWindowEnvelope>({
+    version: CALENDAR_WINDOW_VERSION,
+    kind: 'day',
+    localDate: localDateValue,
+    timeZone,
+    start: start.toInstant().toString(),
+    endExclusive: end.toInstant().toString(),
+  })
+
+  return Object.freeze<CalendarContext>({
+    day,
+    isToday: now.toZonedDateTimeISO(timeZone).toPlainDate().equals(localDate),
+    displayLabel: `${localDateValue} · ${timeZone} (${offsetLabel(start, end)})`,
+    correlationIdentity: (options.correlationIdentity ?? defaultCorrelationIdentity)(),
+  })
+}

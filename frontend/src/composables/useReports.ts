@@ -1,9 +1,10 @@
 import { ref, computed, type Ref } from 'vue'
 import type { AppSummary, AppUsageResponse, DailyReportResponse, WeeklyReportResponse } from '../api/index'
 import { fetchPublicUsage, fetchPublicDailyReport, fetchPublicWeeklyReport } from '../api/index'
-import { useAsyncData } from './useAsyncData'
+import { runForCurrentIdentity, useAsyncData } from './useAsyncData'
 import { isAwayApp } from '../appLabels'
 import { onlineUnionSeconds, groupByDevice } from '../timeline/timelineModel'
+import type { CalendarContext } from '../calendar/localCalendarWindow'
 
 interface AppDurationLike {
   appId?: number
@@ -45,13 +46,13 @@ export function useReports(
   username: string,
   selectedDevice: Ref<number>,
   selectedDate: Ref<string>,
+  calendarContext: Ref<CalendarContext>,
 ) {
-  // usage 的 start/end 是时刻过滤(UTC 瞬间):所选日期的本地 0 点起 24 小时。
+  // usage 保持通用 Instant Window seam；Dashboard adapter 只映射已解析 day context 的精确两端。
   function usageWindow() {
-    const dateObj = new Date(selectedDate.value + 'T00:00:00')
     return {
-      start: dateObj.toISOString(),
-      end: new Date(dateObj.getTime() + 86400000).toISOString(),
+      start: calendarContext.value.day.start,
+      end: calendarContext.value.day.endExclusive,
     }
   }
 
@@ -60,7 +61,10 @@ export function useReports(
     [],
   )
   const daily = useAsyncData<DailyReportResponse | null>(
-    () => fetchPublicDailyReport(username, { deviceId: selectedDevice.value, date: selectedDate.value }),
+    () => fetchPublicDailyReport(username, {
+      deviceId: selectedDevice.value,
+      window: calendarContext.value.day,
+    }),
     null,
   )
   const weekly = useAsyncData<WeeklyReportResponse | null>(
@@ -135,15 +139,15 @@ export function useReports(
 
   // 取数不再依赖"设备列表已就位"：deviceId=0 即聚合查询，API 边界会归一为不传参。
   async function loadUsage() {
-    await usage.run()
+    await runForCurrentIdentity(usage, () => calendarContext.value.correlationIdentity)
   }
 
   async function loadDaily() {
-    await daily.run()
+    await runForCurrentIdentity(daily, () => calendarContext.value.correlationIdentity)
   }
 
   async function loadWeekly() {
-    await weekly.run()
+    await runForCurrentIdentity(weekly, () => calendarContext.value.correlationIdentity)
   }
 
   return {

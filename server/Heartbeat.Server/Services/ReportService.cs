@@ -1,5 +1,6 @@
 using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Reports;
+using Heartbeat.Server.Calendar;
 using Heartbeat.Server.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,16 +10,24 @@ namespace Heartbeat.Server.Services
     {
         private readonly AppDbContext _db = db;
 
-        public async Task<DailyReportResponse> GetDailyReportAsync(string ownerId, long? deviceId, DateTimeOffset date)
+        public async Task<DailyReportQueryResult> GetDailyReportAsync(
+            string ownerId,
+            long? deviceId,
+            LocalCalendarWindowEnvelope envelope)
         {
-            var range = DateRange.Day(date);
+            var validation = LocalCalendarWindowValidator.Resolve(envelope);
+            if (validation.Error != null)
+                return new DailyReportQueryResult(null, validation.Error);
+
+            var window = validation.Window!;
+            var range = new DateRange(window.Start.UtcDateTime, window.EndExclusive.UtcDateTime);
             var apps = await AggregateAsync(ownerId, deviceId, range);
 
-            return new DailyReportResponse
+            return new DailyReportQueryResult(new DailyReportResponse
             {
-                Date = date.Date.ToString("yyyy-MM-dd"),
+                Date = window.LocalDate,
                 Apps = apps
-            };
+            }, null);
         }
 
         public async Task<WeeklyReportResponse> GetWeeklyReportAsync(string ownerId, long? deviceId, DateTimeOffset date)
@@ -81,4 +90,8 @@ namespace Heartbeat.Server.Services
                 .ToListAsync();
         }
     }
+
+    public sealed record DailyReportQueryResult(
+        DailyReportResponse? Report,
+        CalendarWindowError? Error);
 }

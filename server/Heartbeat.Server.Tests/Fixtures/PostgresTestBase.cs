@@ -15,6 +15,8 @@ public abstract class PostgresTestBase : IAsyncLifetime
     private readonly string _dbName = $"test_{Guid.NewGuid():N}";
     private string _testConnectionString = string.Empty;
 
+    protected string TestConnectionString => _testConnectionString;
+
     protected PostgresTestBase(PostgresContainerFixture fixture)
     {
         _adminConnectionString = fixture.AdminConnectionString;

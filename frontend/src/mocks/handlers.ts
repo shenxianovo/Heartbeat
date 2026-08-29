@@ -127,7 +127,7 @@ export const handlers = [
     )
   }),
 
-  // GET /users/:username/reports/daily?deviceId&date
+  // GET /users/:username/reports/daily?deviceId&version&kind&localDate&timeZone&start&endExclusive
   // 聚合时返回两台设备的时长求和,单设备时按比例缩减,便于肉眼校验主/副数字。
   http.get(`${API}/users/:username/reports/daily`, ({ request }) => {
     const deviceId = new URL(request.url).searchParams.get('deviceId')

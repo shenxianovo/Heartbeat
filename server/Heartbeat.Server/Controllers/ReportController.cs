@@ -1,4 +1,5 @@
 using Heartbeat.Core.DTOs.Reports;
+using Heartbeat.Server.Calendar;
 using Heartbeat.Server.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -15,13 +16,15 @@ namespace Heartbeat.Server.Controllers
 
         [HttpGet("daily")]
         [EndpointName("getDailyReport")]
+        [ProducesResponseType<DailyReportResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<CalendarWindowError>(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<DailyReportResponse>> GetDailyReport(
             [FromQuery] long? deviceId,
-            [FromQuery] DateTimeOffset? date)
+            [FromQuery] LocalCalendarWindowEnvelope window)
         {
             var userId = _currentUser.GetUserId();
-            var targetDate = date ?? DateTimeOffset.UtcNow;
-            return await _reportService.GetDailyReportAsync(userId, deviceId, targetDate);
+            var result = await _reportService.GetDailyReportAsync(userId, deviceId, window);
+            return result.Error == null ? result.Report! : BadRequest(result.Error);
         }
 
         [HttpGet("weekly")]

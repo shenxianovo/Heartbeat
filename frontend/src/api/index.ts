@@ -1,4 +1,4 @@
-import { Client, ApiException, DailyRecapResponse, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, SegmentResponse, UpdateMySettingsRequest, AskingQuestionsResponse, KnowledgeProposalResponse, CommitChangeSetRequest, CommitChangeSetResponse, ChangeSetErrorResponse, KnowledgeErrorResponse, CreateStrandRequest, UpdateStrandRequest, MoveStrandRequest, EndStrandRequest, MuteMatcherRequest, StrandResponse, EpisodeResponse, ProbeResponse, PromoteEpisodeResponse, CreateEpisodeRequest, UpdateEpisodeRequest, RelateEpisodeRequest, CreateProbeRequest, ResolveProbeRequest, PromoteEpisodeRequest, type ICreateStrandRequest, type IUpdateStrandRequest, type IMoveStrandRequest, type IEndStrandRequest, type IMatcherDto, type IKnowledgeOperationDto, type IChangeSetErrorResponse, type IKnowledgeErrorResponse, type ICreateEpisodeRequest, type IUpdateEpisodeRequest, type IRelateEpisodeRequest, type ICreateProbeRequest, type IResolveProbeRequest, type IPromoteEpisodeRequest } from './client'
+import { Client, ApiException, CalendarWindowError, DailyRecapResponse, DailyReportResponse, WeeklyReportResponse, AppInfoResponse, DeviceInfoResponse, DeviceStatusResponse, AppUsageResponse, SegmentResponse, UpdateMySettingsRequest, AskingQuestionsResponse, KnowledgeProposalResponse, CommitChangeSetRequest, CommitChangeSetResponse, ChangeSetErrorResponse, KnowledgeErrorResponse, CreateStrandRequest, UpdateStrandRequest, MoveStrandRequest, EndStrandRequest, MuteMatcherRequest, StrandResponse, EpisodeResponse, ProbeResponse, PromoteEpisodeResponse, CreateEpisodeRequest, UpdateEpisodeRequest, RelateEpisodeRequest, CreateProbeRequest, ResolveProbeRequest, PromoteEpisodeRequest, type ICreateStrandRequest, type IUpdateStrandRequest, type IMoveStrandRequest, type IEndStrandRequest, type IMatcherDto, type IKnowledgeOperationDto, type IChangeSetErrorResponse, type IKnowledgeErrorResponse, type ICreateEpisodeRequest, type IUpdateEpisodeRequest, type IRelateEpisodeRequest, type ICreateProbeRequest, type IResolveProbeRequest, type IPromoteEpisodeRequest } from './client'
 import {
   AppCatalogAdminErrorResponse,
   AppCatalogExportRequest,
@@ -10,6 +10,7 @@ import {
 } from './client'
 import { authStore } from '../stores/auth'
 import { createSseFrameParser, type SseFrame } from './sse'
+import type { CalendarWindowEnvelope } from '../calendar/localCalendarWindow'
 
 // ===== Error model =====
 // 取数失败的归一形态。让取数策略层能区分"出错"(network/http/parse)与"没数据"(空数组)。
@@ -17,10 +18,19 @@ export type ApiError =
   | { kind: 'network' }               // fetch 抛 TypeError:断网 / DNS / CORS
   | { kind: 'http'; status: number }  // 4xx/5xx:NSwag ApiException.status
   | { kind: 'parse' }                 // 响应体不是预期结构
+  | { kind: 'calendar'; code: string; message: string }
 
 /** 把 NSwag ApiException、原生 fetch TypeError、以及其它意外统一成 ApiError。 */
 export function toApiError(e: unknown): ApiError {
-  if (ApiException.isApiException(e)) return { kind: 'http', status: e.status }
+  if (e instanceof CalendarWindowError) {
+    return { kind: 'calendar', code: e.code, message: e.message }
+  }
+  if (ApiException.isApiException(e)) {
+    if (e.result instanceof CalendarWindowError) {
+      return { kind: 'calendar', code: e.result.code, message: e.result.message }
+    }
+    return { kind: 'http', status: e.status }
+  }
   if (e instanceof TypeError) return { kind: 'network' }
   return { kind: 'parse' }
 }
@@ -124,9 +134,9 @@ export interface AppSummary {
 /**
  * 将 "yyyy-MM-dd" 格式化为带本地时区偏移的 ISO 字符串，如 "2026-03-06T00:00:00+08:00"。
  *
- * 报表端点(daily/weekly)必须用它手拼查询串、不能走生成的 client 方法:
+ * 尚未迁移到 Local Calendar Window 的 date 端点必须用它手拼查询串:
  * NSwag 生成的方法把 Date 序列化为 toISOString()(UTC),会丢掉本地时区偏移,
- * 而服务端 DateRange.Day/Week 靠参数的 Offset 划定"今天/本周"边界(见 shared/CONTEXT.md)。
+ * 服务端旧接口仍靠参数 Offset 划定窗口。Daily Report 已不走这条路径。
  * usage/segments 的 start/end 是时刻过滤,UTC 表示同一瞬间,不受影响。
  */
 function toLocalDateTimeOffsetString(dateStr: string): string {
@@ -147,8 +157,7 @@ function deviceScope(deviceId?: number): number | undefined {
 }
 
 /**
- * 报表(daily/weekly)查询串:deviceId 可选,date 带本地时区偏移(见 toLocalDateTimeOffsetString)。
- * 认证版与 public 版共用同一套拼法。
+ * Weekly Report 的旧查询串:deviceId 可选,date 带本地时区偏移。
  */
 function reportDateParams(params: { deviceId?: number; date?: string }): URLSearchParams {
   const searchParams = new URLSearchParams()
@@ -172,16 +181,6 @@ export interface KeyFrequencyItem {
 }
 function normalizeKeyFrequency(res: { keys?: { code?: number; count?: number }[] }): KeyFrequencyItem[] {
   return (res.keys ?? []).map(k => ({ code: k.code ?? 0, count: k.count ?? 0 }))
-}
-
-/** 获取浏览器时区标签，如 "UTC+8" */
-export function getTimezoneLabel(): string {
-  const offset = new Date().getTimezoneOffset()
-  const sign = offset <= 0 ? '+' : '-'
-  const absMin = Math.abs(offset)
-  const h = Math.floor(absMin / 60)
-  const m = absMin % 60
-  return `UTC${sign}${h}${m > 0 ? ':' + String(m).padStart(2, '0') : ''}`
 }
 
 // ===== API Functions (authenticated, own data) =====
@@ -210,12 +209,21 @@ export async function fetchUsage(params: {
   )
 }
 
-// daily/weekly 报表(认证版)不走生成的 client:时区偏移必须存活,见 toLocalDateTimeOffsetString。
+// Daily Report 使用完整 Local Calendar Window；Weekly 仍保留旧 fixed-offset contract。
 export async function fetchDailyReport(params: {
   deviceId?: number
-  date?: string
+  window: CalendarWindowEnvelope
 }): Promise<DailyReportResponse> {
-  return reportRequest(u => authHttp.fetch(u), `${API_BASE}/reports/daily?${reportDateParams(params)}`, DailyReportResponse.fromJS)
+  const window = params.window
+  return client.getDailyReport(
+    deviceScope(params.deviceId),
+    window.version,
+    window.kind,
+    window.localDate,
+    window.timeZone,
+    new Date(window.start),
+    new Date(window.endExclusive),
+  )
 }
 
 export async function fetchWeeklyReport(params: {
@@ -652,7 +660,7 @@ export function appCatalogAdminErrorOf(error: unknown): AppCatalogAdminErrorResp
 
 // ===== Public API Functions (no auth required, by username) =====
 // 统一走 NSwag 生成的 client 方法(响应类型由 OpenAPI schema 保证);
-// 唯二例外是 daily/weekly 报表——时区偏移必须存活,见 toLocalDateTimeOffsetString。
+// Daily Report 的 typed wrapper 委托 generated client；Weekly 仍由手写 adapter 保留旧 offset contract。
 
 export async function fetchPublicDevices(username: string): Promise<DeviceInfoResponse[]> {
   return client.getUserDevices(username)
@@ -664,10 +672,19 @@ export async function fetchPublicApps(username: string): Promise<AppInfoResponse
 
 export async function fetchPublicDailyReport(username: string, params: {
   deviceId?: number
-  date?: string
+  window: CalendarWindowEnvelope
 }): Promise<DailyReportResponse> {
-  // authHttp:可见性门（ADR-025）下本人看 private 看板靠 JWT 识别,裸 fetch 会 404
-  return reportRequest(u => authHttp.fetch(u), `${API_BASE}/users/${username}/reports/daily?${reportDateParams(params)}`, DailyReportResponse.fromJS)
+  const window = params.window
+  return client.getUserDailyReport(
+    username,
+    deviceScope(params.deviceId),
+    window.version,
+    window.kind,
+    window.localDate,
+    window.timeZone,
+    new Date(window.start),
+    new Date(window.endExclusive),
+  )
 }
 
 export async function fetchPublicWeeklyReport(username: string, params: {
