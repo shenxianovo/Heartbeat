@@ -384,6 +384,50 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     }
 
     [Fact]
+    public async Task InstantWindowQueries_KeepHalfOpenEndpoints_ForUsageAndSegments()
+    {
+        using var db = CreateDbContext();
+        var svc = new UsageService(db);
+        var app = new App { Name = "vscode" };
+        db.Apps.Add(app);
+        await db.SaveChangesAsync();
+
+        var start = Now.AddHours(-3);
+        var end = start.AddHours(1);
+        db.ActivitySegments.AddRange(
+            SystemSegment(app.Id, "vscode", start.AddMinutes(-10), start),
+            SystemSegment(app.Id, "vscode", start.AddMinutes(-10), start.AddMinutes(10)),
+            SystemSegment(app.Id, "vscode", end.AddMinutes(-10), end.AddMinutes(10)),
+            SystemSegment(app.Id, "vscode", end, end.AddMinutes(10)),
+            new ActivitySegment
+            {
+                Id = Guid.CreateVersion7(),
+                DeviceId = _deviceId,
+                Source = "browser",
+                IdentityKey = "point-at-start",
+                StartTime = start,
+                EndTime = start
+            },
+            new ActivitySegment
+            {
+                Id = Guid.CreateVersion7(),
+                DeviceId = _deviceId,
+                Source = "browser",
+                IdentityKey = "point-at-end",
+                StartTime = end,
+                EndTime = end
+            });
+        await db.SaveChangesAsync();
+
+        var usage = await svc.GetUsageAsync("user-1", null, start, end);
+        Assert.Equal(2, usage.Count);
+
+        var segments = await svc.GetSegmentsAsync("user-1", null, null, null, start, end);
+        var point = Assert.Single(segments);
+        Assert.Equal("point-at-start", point.IdentityKey);
+    }
+
+    [Fact]
     public async Task SaveSegments_ReuploadSameBatch_IsIdempotent()
     {
         using var db = CreateDbContext();

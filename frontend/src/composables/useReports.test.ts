@@ -60,6 +60,20 @@ describe('useReports Local Calendar Window', () => {
     })
   })
 
+  it('changes only device filtering when switching from all-device to single-device', async () => {
+    const selectedDevice = ref(0)
+    const reports = useReports('alice', selectedDevice, ref(context))
+
+    await reports.loadUsage()
+    selectedDevice.value = 42
+    await reports.loadUsage()
+
+    expect(vi.mocked(fetchPublicUsage).mock.calls).toEqual([
+      ['alice', { deviceId: 0, start: context.day.start, end: context.day.endExclusive }],
+      ['alice', { deviceId: 42, start: context.day.start, end: context.day.endExclusive }],
+    ])
+  })
+
   it('does not let an older refresh overwrite the current Daily Report', async () => {
     type DailyReport = Awaited<ReturnType<typeof fetchPublicDailyReport>>
     let resolveOld!: (value: DailyReport) => void

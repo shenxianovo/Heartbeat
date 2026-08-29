@@ -4,6 +4,8 @@ import {
   buildRows,
   mergeActivityBursts,
   initialViewBounds,
+  buildDayHourBins,
+  projectInterval,
   onlineUnionSeconds,
   groupByDevice,
   MERGE_GAP_MS,
@@ -90,6 +92,57 @@ describe('buildRows', () => {
   it('倒置视窗返回空', () => {
     const parsed = parseUsage([usage(1, base, base + sec(10))])
     expect(buildRows(parsed, { start: base, end: base })).toEqual([])
+  })
+
+  it('按半开窗口裁剪，恰好贴住两端的段不进入视图', () => {
+    const parsed = parseUsage([
+      usage(1, base - sec(10), base),
+      usage(2, base + sec(100), base + sec(110)),
+      usage(3, base - sec(10), base + sec(10)),
+      usage(4, base + sec(90), base + sec(110)),
+    ])
+
+    expect(buildRows(parsed, view).map(row => row.appId)).toEqual([3, 4])
+  })
+})
+
+describe('Local Calendar Window timeline layout', () => {
+  const H = 3_600_000
+  const start = Date.parse('2026-03-08T05:00:00Z')
+
+  it.each([23, 24, 25])('lays out a %i-hour day using its exact endpoints', (hours) => {
+    const day = { start, end: start + hours * H }
+    const bins = buildDayHourBins(day, [], 'America/New_York')
+
+    expect(bins).toHaveLength(hours)
+    expect(bins[0].start).toBe(day.start)
+    expect(bins[bins.length - 1].end).toBe(day.end)
+  })
+
+  it('distinguishes the repeated fall-back hour by instant while keeping its civil label', () => {
+    const day = {
+      start: Date.parse('2026-11-01T04:00:00Z'),
+      end: Date.parse('2026-11-02T05:00:00Z'),
+    }
+    const bins = buildDayHourBins(day, [], 'America/New_York')
+
+    expect(bins.filter(bin => bin.label === '01:00')).toHaveLength(2)
+    expect(new Set(bins.map(bin => bin.start)).size).toBe(25)
+  })
+
+  it('projects overlap into the day and excludes intervals touching only an endpoint', () => {
+    const day = { start, end: start + 23 * H }
+
+    expect(projectInterval({ start: start - H, end: start + H }, day)).toEqual({
+      left: 0,
+      width: 100 / 23,
+    })
+    expect(projectInterval({ start: start - H, end: start }, day)).toBeNull()
+    expect(projectInterval({ start: day.end, end: day.end + H }, day)).toBeNull()
+    expect(projectInterval({ start: start - H, end: day.end + H }, day)).toEqual({
+      left: 0,
+      width: 100,
+    })
   })
 })
 
@@ -188,24 +241,43 @@ describe('groupByDevice', () => {
 describe('initialViewBounds', () => {
   const now = base + sec(500)
   const H = 3_600_000
+  const day = { start: base - 12 * H, end: base + 11 * H }
 
   it('今天：now ±1h', () => {
-    expect(initialViewBounds('2026-01-15', true, [], now)).toEqual({
+    expect(initialViewBounds(day, true, [], now)).toEqual({
       start: now - H,
       end: now + H,
     })
   })
 
   it('历史日：首个事件 ±1h', () => {
-    const b = initialViewBounds('2026-01-14', false, [usage(1, base, base + sec(10))], now)
+    const b = initialViewBounds(day, false, [usage(1, base, base + sec(10))], now)
     expect(b).toEqual({ start: base - H, end: base + H })
   })
 
-  it('历史日无数据：落在当日 11:00-13:00', () => {
-    const dayBase = new Date('2026-01-14').getTime()
-    expect(initialViewBounds('2026-01-14', false, [], now)).toEqual({
-      start: dayBase + 11 * H,
-      end: dayBase + 13 * H,
+  it('历史日无数据：落在精确日窗的中间两小时', () => {
+    expect(initialViewBounds(day, false, [], now)).toEqual({
+      start: (day.start + day.end) / 2 - H,
+      end: (day.start + day.end) / 2 + H,
+    })
+  })
+
+  it('今天和首个事件靠近日窗边界时，视窗保持在 23 小时日内', () => {
+    const springStart = Date.parse('2026-03-08T05:00:00Z')
+    const springDay = { start: springStart, end: springStart + 23 * H }
+
+    expect(initialViewBounds(springDay, true, [], springStart + 30 * 60_000)).toEqual({
+      start: springStart,
+      end: springStart + 2 * H,
+    })
+    expect(initialViewBounds(
+      springDay,
+      false,
+      [usage(1, springDay.end - 30 * 60_000, springDay.end)],
+      now,
+    )).toEqual({
+      start: springDay.end - 2 * H,
+      end: springDay.end,
     })
   })
 })

@@ -4,12 +4,17 @@
 
 **Blocked by:** 01 — 日报主射弹：Calendar Context 到严格验证.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Dashboard adapters 把同一 Calendar Context 的 day start/end-exclusive 传给 Usage、Segments 与 Key Frequency，不自行重算日期或结束时间
-- [ ] Timeline 的刻度、布局与数据裁剪支持 23、24、25 小时日，不假设 86,400,000 毫秒
-- [ ] 展开 App Detail 时复用发起刷新时的 Calendar Context，慢响应不能因重新读取当前日期而查询另一个窗口
-- [ ] all-device 与 single-device 切换只改变设备过滤，不改变 Local Calendar Window
-- [ ] Usage、Segments 与 Key Frequency 的通用 Instant Window 接口保持可独立调用，未来任意范围调用方无需理解 civil calendar
-- [ ] 接口级测试证明日报、Timeline、Usage、App Detail 与 Key Frequency 收到完全相同的 day endpoints，并覆盖两端半开边界
-- [ ] Episode 与 Strand 的 DateOnly 行为以及 zero-length Segment 差异均未被本 ticket 顺带修改
+- [x] Dashboard adapters 把同一 Calendar Context 的 day start/end-exclusive 传给 Usage、Segments 与 Key Frequency，不自行重算日期或结束时间
+- [x] Timeline 的刻度、布局与数据裁剪支持 23、24、25 小时日，不假设 86,400,000 毫秒
+- [x] 展开 App Detail 时复用发起刷新时的 Calendar Context，慢响应不能因重新读取当前日期而查询另一个窗口
+- [x] all-device 与 single-device 切换只改变设备过滤，不改变 Local Calendar Window
+- [x] Usage、Segments 与 Key Frequency 的通用 Instant Window 接口保持可独立调用，未来任意范围调用方无需理解 civil calendar
+- [x] 接口级测试证明日报、Timeline、Usage、App Detail 与 Key Frequency 收到完全相同的 day endpoints，并覆盖两端半开边界
+- [x] Episode 与 Strand 的 DateOnly 行为以及 zero-length Segment 差异均未被本 ticket 顺带修改
+
+## Comments
+
+- 2026-08-29：实现完成。Dashboard 将同一不可变 day window 传给 Daily Report、Usage、Timeline、Key Frequency 与展开时捕获的 App Detail；Timeline 的简略格、刻度、minimap、拖拽/缩放和回放裁剪均以精确 endpoints 驱动，支持 23/24/25 小时日与 fall-back 重复 civil hour。
+- 自动验证：`npm test`（32 files / 223 tests）、`npm run build`、`dotnet test Heartbeat.slnx --no-restore`（867 tests）、`dotnet format style Heartbeat.slnx --diagnostics IDE1006 --verify-no-changes --no-restore` 全部通过。定向覆盖同一 23 小时 endpoints 贯通、all/single-device 只改过滤、App Detail 慢响应上下文、任意 Instant Window transport、Timeline 23/24/25 小时布局，以及 Usage / Segments / Key Frequency 两端半开边界；zero-length Segment 起点包含差异被保留并锁定。

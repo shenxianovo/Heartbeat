@@ -35,6 +35,19 @@ export interface Track {
 /** 点事件判定阈值：<1s 视为零长点事件（ADR-017），渲染为菱形。 */
 const POINT_THRESHOLD_MS = 1000
 
+function clipToView(seg: ReplaySeg, view: Interval): ReplaySeg | null {
+  const isPoint = seg.end - seg.start < POINT_THRESHOLD_MS
+  if (isPoint) {
+    return seg.start >= view.start && seg.start < view.end ? seg : null
+  }
+  if (seg.end <= view.start || seg.start >= view.end) return null
+  return {
+    ...seg,
+    start: Math.max(seg.start, view.start),
+    end: Math.min(seg.end, view.end),
+  }
+}
+
 /** 全部区间的时间包络，前后各 pad padRatio（下限 minPadMs）；无有效跨度返回 null。 */
 export function envelope(
   intervals: Interval[],
@@ -101,12 +114,14 @@ export function buildTracks(segs: ReplaySeg[], view: Interval): Track[] {
 
   const bySource = new Map<string, ReplaySeg[]>()
   for (const s of segs) {
-    let arr = bySource.get(s.source)
+    const visible = clipToView(s, view)
+    if (!visible) continue
+    let arr = bySource.get(visible.source)
     if (!arr) {
       arr = []
-      bySource.set(s.source, arr)
+      bySource.set(visible.source, arr)
     }
-    arr.push(s)
+    arr.push(visible)
   }
 
   const tracks: Track[] = []

@@ -123,22 +123,6 @@ export function useReports(
     weeklyUsageSeconds.value + (includeAway.value ? weeklyAwaySeconds.value : 0)
   )
 
-  // ── 活跃小时（时间线热力图用），away 不算活跃 ──
-  const activeHours = computed(() => {
-    const hours = new Set<number>()
-    for (const u of usageData.value) {
-      if (isAwayApp(u.appKey, u.appDisplayName ?? u.appName)) continue
-      const s = u.startTime!.getHours()
-      const e = u.endTime!.getHours()
-      if (e >= s) {
-        for (let h = s; h <= e; h++) hours.add(h)
-      } else {
-        for (let h = s; h < 24; h++) hours.add(h)
-      }
-    }
-    return hours
-  })
-
   // 取数不再依赖"设备列表已就位"：deviceId=0 即聚合查询，API 边界会归一为不传参。
   async function loadUsage() {
     await runForCurrentIdentity(usage, () => calendarContext.value.correlationIdentity)
@@ -167,7 +151,6 @@ export function useReports(
     weeklyAppSummaries,
     weeklyAwaySeconds,
     weeklyTotalSeconds,
-    activeHours,
     loadUsage,
     loadDaily,
     loadWeekly,

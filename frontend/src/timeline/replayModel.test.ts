@@ -92,4 +92,28 @@ describe('buildTracks', () => {
     expect(bars[0].tooltip).toMatch(/^\d{2}:\d{2} - \d{2}:\d{2}  main\.cs - VS Code$/)
     expect(bars[1].tooltip).toMatch(/^\d{2}:\d{2} - \d{2}:\d{2}$/)
   })
+
+  it('按半开视窗裁剪跨窗段，并排除只贴住端点的段', () => {
+    const tracks = buildTracks([
+      seg('system', base - sec(100), base + sec(1100)),
+      seg('system', base - sec(10), base),
+      seg('system', base + sec(1000), base + sec(1010)),
+    ], view)
+
+    expect(tracks).toHaveLength(1)
+    expect(tracks[0].lanes.flatMap(lane => lane.bars)).toEqual([
+      expect.objectContaining({ left: 0, width: 100 }),
+    ])
+  })
+
+  it('零长点在窗口起点可见，在 end-exclusive 不可见', () => {
+    const tracks = buildTracks([
+      seg('browser', view.start, view.start),
+      seg('browser', view.end, view.end),
+    ], view)
+
+    const bars = tracks[0].lanes.flatMap(lane => lane.bars)
+    expect(bars).toHaveLength(1)
+    expect(bars[0]).toEqual(expect.objectContaining({ left: 0, isPoint: true }))
+  })
 })

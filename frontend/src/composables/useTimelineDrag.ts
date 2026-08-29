@@ -1,4 +1,5 @@
 import { ref, onUnmounted, type Ref } from 'vue'
+import type { Interval } from '../timeline/timelineModel'
 
 type PointerEvent = MouseEvent | TouchEvent
 
@@ -15,7 +16,7 @@ export function useTimelineDrag(
   viewStart: Ref<number>,
   viewEnd: Ref<number>,
   timelineEl: Ref<HTMLElement | null>,
-  selectedDate: Ref<string>
+  dayBounds: Ref<Interval>,
 ) {
   // --- State ---
   const isDraggingTimeline = ref(false)
@@ -39,8 +40,7 @@ export function useTimelineDrag(
 
   // --- Helpers ---
   const getDayBounds = () => {
-    const dayStart = new Date(selectedDate.value).setHours(0, 0, 0, 0)
-    return { dayStart, dayEnd: dayStart + 24 * 60 * 60 * 1000 }
+    return { dayStart: dayBounds.value.start, dayEnd: dayBounds.value.end }
   }
 
   const applyViewUpdate = (newS: number, newE: number) => {
@@ -68,7 +68,7 @@ export function useTimelineDrag(
       let newEnd = pivotTime + (viewEnd.value - pivotTime) * zoomFactor
 
       const minRange = 5 * 60 * 1000
-      const maxRange = 24 * 60 * 60 * 1000
+      const maxRange = dayEnd - dayStart
 
       if (newEnd - newStart < minRange) {
         newStart = pivotTime - minRange * pivotPercent
@@ -178,9 +178,9 @@ export function useTimelineDrag(
     rafId = requestAnimationFrame(() => {
       const deltaX = clientX - mmDragStartX
       const minimapWidth = timelineEl.value?.clientWidth || 800
-      const dayRange = 24 * 60 * 60 * 1000
-      const timeDelta = (deltaX / minimapWidth) * dayRange
       const { dayStart, dayEnd } = getDayBounds()
+      const dayRange = dayEnd - dayStart
+      const timeDelta = (deltaX / minimapWidth) * dayRange
       const minRange = 5 * 60 * 1000
 
       if (mmDragType === 'center') {

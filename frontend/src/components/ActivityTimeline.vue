@@ -1,19 +1,28 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import type { AppUsageResponse, DeviceInfoResponse } from '../api/index'
+import type { CalendarWindowEnvelope } from '../calendar/localCalendarWindow'
 import { useTimelineDrag } from '../composables/useTimelineDrag'
 import AppIcon from './AppIcon.vue'
 import { Card } from '@/components/ui/card'
 import { LayoutGrid, AlignJustify } from 'lucide-vue-next'
-import { parseUsage, buildRows, mergeActivityBursts, initialViewBounds, groupByDevice } from '../timeline/timelineModel'
+import {
+  parseUsage,
+  buildRows,
+  buildDayHourBins,
+  mergeActivityBursts,
+  initialViewBounds,
+  groupByDevice,
+  projectInterval,
+  type Interval,
+} from '../timeline/timelineModel'
 import { niceTicks } from '../timeline/timeScale'
 
 const props = defineProps<{
   username: string,
-  activeHours: Set<number>,
   usageData: AppUsageResponse[],
   appNameMap: Map<number, string>,
-  selectedDate: string,
+  dayWindow: CalendarWindowEnvelope<'day'>,
   isToday: boolean,
   devices: DeviceInfoResponse[],
   isAllDevices: boolean
@@ -26,6 +35,10 @@ const containerWidth = ref(0)
 const timelineEl = ref<HTMLElement | null>(null)
 const viewStart = ref<number>(0)
 const viewEnd = ref<number>(0)
+const dayBounds = computed<Interval>(() => ({
+  start: Date.parse(props.dayWindow.start),
+  end: Date.parse(props.dayWindow.endExclusive),
+}))
 
 // --- Drag interaction (composable) ---
 const {
@@ -33,17 +46,17 @@ const {
   handleWheel,
   timelinePointerDown,
   minimapPointerDown,
-} = useTimelineDrag(viewStart, viewEnd, timelineEl, computed(() => props.selectedDate))
+} = useTimelineDrag(viewStart, viewEnd, timelineEl, dayBounds)
 
 // Initialize view bounds
 const initViewBounds = () => {
-  const b = initialViewBounds(props.selectedDate, props.isToday, props.usageData, Date.now())
+  const b = initialViewBounds(dayBounds.value, props.isToday, props.usageData, Date.now())
   viewStart.value = b.start
   viewEnd.value = b.end
 }
 
 watch(
-  [() => props.selectedDate, () => props.isToday, () => props.usageData],
+  [() => props.dayWindow, () => props.isToday, () => props.usageData],
   () => { initViewBounds() },
   { immediate: true }
 )
@@ -111,27 +124,33 @@ const rowsMaxHeightClass = computed(() =>
 const ticks = computed(() => {
   const trackWidth = (containerWidth.value || 800) - 120
   const maxTicks = Math.max(2, Math.floor(trackWidth / 70))
-  return niceTicks(viewStart.value, viewEnd.value, maxTicks)
+  return niceTicks(viewStart.value, viewEnd.value, maxTicks, props.dayWindow.timeZone)
 })
 
 // ========== Minimap ==========
 
-const dayStartMs = computed(() => new Date(props.selectedDate).setHours(0, 0, 0, 0))
+const simpleBins = computed(() =>
+  buildDayHourBins(dayBounds.value, props.usageData, props.dayWindow.timeZone)
+)
+
+const simpleTicks = computed(() =>
+  niceTicks(dayBounds.value.start, dayBounds.value.end, 5, props.dayWindow.timeZone)
+)
 
 const minimapRangeStyle = computed(() => {
-  const day = 24 * 60 * 60 * 1000
-  const l = ((viewStart.value - dayStartMs.value) / day) * 100
+  const day = dayBounds.value.end - dayBounds.value.start
+  if (day <= 0) return { left: '0%', width: '0%' }
+  const l = ((viewStart.value - dayBounds.value.start) / day) * 100
   const w = ((viewEnd.value - viewStart.value) / day) * 100
   return { left: `${Math.max(0, l)}%`, width: `${Math.min(100 - l, w)}%` }
 })
 
 const minimapActivities = computed(() => {
-  const day = 24 * 60 * 60 * 1000
-  const dayS = dayStartMs.value
-  return mergeActivityBursts(parsed.value).map(iv => {
-    const startP = Math.max(0, ((iv.start - dayS) / day) * 100)
-    const endP = Math.min(100, ((iv.end - dayS) / day) * 100)
-    return { left: `${startP}%`, width: `${Math.max(0.2, endP - startP)}%` }
+  return mergeActivityBursts(parsed.value).flatMap(interval => {
+    const projected = projectInterval(interval, dayBounds.value)
+    return projected
+      ? [{ left: `${projected.left}%`, width: `${Math.max(0.2, projected.width)}%` }]
+      : []
   })
 })
 </script>
@@ -165,19 +184,20 @@ const minimapActivities = computed(() => {
       <div v-if="mode === 'simple'">
         <div class="mb-2 flex h-[30px] gap-1">
           <div
-            v-for="h in 24"
-            :key="h - 1"
+            v-for="bin in simpleBins"
+            :key="bin.start"
             class="flex-1 rounded border transition-colors duration-300"
-            :class="activeHours.has(h - 1) ? 'border-primary bg-primary' : 'border-border bg-card'"
-            :title="`${String(h - 1).padStart(2, '0')}:00`"
+            :class="bin.active ? 'border-primary bg-primary' : 'border-border bg-card'"
+            :title="bin.label"
           ></div>
         </div>
-        <div class="flex justify-between font-mono text-xs text-muted-foreground">
-          <span>00</span>
-          <span>06</span>
-          <span>12</span>
-          <span>18</span>
-          <span>24</span>
+        <div class="relative h-4 font-mono text-xs text-muted-foreground">
+          <span
+            v-for="tick in simpleTicks"
+            :key="tick.at"
+            class="absolute -translate-x-1/2"
+            :style="{ left: tick.percent + '%' }"
+          >{{ tick.label }}</span>
         </div>
       </div>
 
@@ -225,7 +245,7 @@ const minimapActivities = computed(() => {
               <div
                 class="pointer-events-none absolute bottom-0 top-0 flex -translate-x-1/2 flex-col items-center"
                 v-for="t in ticks"
-                :key="t.label"
+                :key="t.at"
                 :style="{ left: t.percent + '%' }"
               >
                 <span class="mt-0.5 font-mono text-[0.65rem] text-muted-foreground">{{ t.label }}</span>

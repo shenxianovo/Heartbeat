@@ -170,12 +170,12 @@ export function useHeartbeat(username: string) {
     perDeviceSeconds: reports.perDeviceSeconds,
     hasConcurrentUse: reports.hasConcurrentUse,
     maxSeconds: reports.maxSeconds,
-    activeHours: reports.activeHours,
     weeklyAppSummaries: reports.weeklyAppSummaries,
     weeklyTotalSeconds: reports.weeklyTotalSeconds,
     weeklyAwaySeconds: reports.weeklyAwaySeconds,
     includeAway: reports.includeAway,
     keyFrequency,
+    calendarContext,
     timezoneLabel,
   }
 }

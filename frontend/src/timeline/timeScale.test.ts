@@ -49,4 +49,14 @@ describe('niceTicks', () => {
     const ticks = niceTicks(start, start + 3 * 24 * 3_600_000, 2)
     expect(ticks.length).toBe(13) // 3d/6h + 1
   })
+
+  it('fall-back 重复 civil label 仍以不同 instant 标识', () => {
+    const start = Date.parse('2026-11-01T04:00:00Z')
+    const end = Date.parse('2026-11-01T08:00:00Z')
+    const ticks = niceTicks(start, end, 8, 'America/New_York')
+    const repeated = ticks.filter(tick => tick.label === '01:00')
+
+    expect(repeated).toHaveLength(2)
+    expect(new Set(repeated.map(tick => tick.at)).size).toBe(2)
+  })
 })

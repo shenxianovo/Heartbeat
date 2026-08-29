@@ -301,6 +301,35 @@ public class InputEventServiceTests(PostgresContainerFixture fixture) : Postgres
     }
 
     [Fact]
+    public async Task GetKeyFrequency_UsesHalfOpenInstantWindowEndpoints()
+    {
+        var start = DateTimeOffset.UtcNow.AddHours(-2);
+        var end = start.AddHours(1);
+        using (var db = CreateDbContext())
+        {
+            await new InputEventService(db).SaveAsync(_deviceId, new InputEventUploadRequest
+            {
+                Events =
+                [
+                    Item(InputEventType.KeyDown, 65, start),
+                    Item(InputEventType.KeyDown, 65, start.AddMinutes(30)),
+                    Item(InputEventType.KeyDown, 66, end),
+                ]
+            });
+        }
+
+        using (var db = CreateDbContext())
+        {
+            var freq = await new InputEventService(db)
+                .GetKeyFrequencyAsync("user-1", null, start, end);
+
+            var key = Assert.Single(freq.Keys);
+            Assert.Equal((short)InputKeyPosition.KeyA, key.Code);
+            Assert.Equal(2, key.Count);
+        }
+    }
+
+    [Fact]
     public async Task GetKeyFrequency_OnlyOwnerDevices()
     {
         var now = DateTimeOffset.UtcNow;

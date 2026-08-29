@@ -2,8 +2,9 @@
 import { computed, watch, onMounted, onUnmounted } from 'vue'
 import { fetchPublicSegments } from '../api/index'
 import type { AppUsageResponse, SegmentResponse, DeviceInfoResponse } from '../api/index'
+import type { CalendarWindowEnvelope } from '../calendar/localCalendarWindow'
 import AppIcon from './AppIcon.vue'
-import { useAsyncData } from '../composables/useAsyncData'
+import { runForCurrentIdentity, useAsyncData } from '../composables/useAsyncData'
 import { formatDuration } from '../composables/useHeartbeat'
 import { formatTitle } from '../titleFormatters'
 import { upgradeBreakdown } from '../labelUpgrade'
@@ -16,7 +17,7 @@ import { X } from 'lucide-vue-next'
 const props = defineProps<{
   username: string
   deviceId: number
-  selectedDate: string
+  dayWindow: CalendarWindowEnvelope<'day'>
   app: { appId: number; appName: string; totalSeconds: number }
   usageData: AppUsageResponse[]
   devices: DeviceInfoResponse[]
@@ -25,21 +26,40 @@ const props = defineProps<{
 
 const emit = defineEmits<{ close: [] }>()
 
+const dayBounds = computed<Interval>(() => ({
+  start: Date.parse(props.dayWindow.start),
+  end: Date.parse(props.dayWindow.endExclusive),
+}))
+
 // ── 插件段(非 system 轨) ──
 const segs = useAsyncData<SegmentResponse[]>(() => {
-  const dateObj = new Date(props.selectedDate + 'T00:00:00')
   return fetchPublicSegments(props.username, {
     deviceId: props.deviceId,
     appId: props.app.appId,
-    start: dateObj.toISOString(),
-    end: new Date(dateObj.getTime() + 86400000).toISOString(),
+    start: props.dayWindow.start,
+    end: props.dayWindow.endExclusive,
   })
 }, [])
 const pluginSegments = segs.data
 const loading = segs.pending
 const segmentsFailed = computed(() => segs.error.value !== null)
 
-watch(() => props.app.appId, () => segs.run(), { immediate: true })
+// dayWindow 是 Dashboard 在“展开”动作发生时捕获的快照；设备切换只重跑过滤条件。
+function detailIdentity() {
+  return [
+    props.app.appId,
+    props.deviceId,
+    props.dayWindow.timeZone,
+    props.dayWindow.start,
+    props.dayWindow.endExclusive,
+  ].join('|')
+}
+
+watch(
+  [() => props.app.appId, () => props.deviceId],
+  () => runForCurrentIdentity(segs, detailIdentity),
+  { immediate: true },
+)
 
 // ── 多轨回放（静态视窗 = 全部轨道数据的时间包络；模型在 timeline/replayModel.ts）──
 
@@ -56,7 +76,11 @@ const viewBounds = computed(() => {
     if (!s.startTime || !s.endTime) continue
     intervals.push({ start: s.startTime.getTime(), end: s.endTime.getTime() })
   }
-  return envelope(intervals)
+  const content = envelope(intervals)
+  if (!content) return null
+  const start = Math.max(content.start, dayBounds.value.start)
+  const end = Math.min(content.end, dayBounds.value.end)
+  return end > start ? { start, end } : null
 })
 
 // system 主轨在前，插件轨按副本分 lane（browser: attributes.windowId）
@@ -109,7 +133,7 @@ const breakdown = computed(() =>
 
 const timeTicks = computed(() => {
   const vb = viewBounds.value
-  return vb ? niceTicks(vb.start, vb.end, 10) : []
+  return vb ? niceTicks(vb.start, vb.end, 10, props.dayWindow.timeZone) : []
 })
 
 // ── 全局弹窗行为:Esc 关闭 + 锁背景滚动 ──
@@ -165,7 +189,7 @@ onUnmounted(() => {
                 <div class="relative flex-1">
                   <span
                     v-for="t in timeTicks"
-                    :key="t.label"
+                    :key="t.at"
                     class="pointer-events-none absolute mt-0.5 -translate-x-1/2 font-mono text-[0.65rem] text-muted-foreground"
                     :style="{ left: t.percent + '%' }"
                   >{{ t.label }}</span>

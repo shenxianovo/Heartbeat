@@ -9,6 +9,11 @@ export interface Interval {
   end: number
 }
 
+export interface ProjectedInterval {
+  left: number
+  width: number
+}
+
 export interface UsageLike {
   appId?: number
   appKey?: string
@@ -95,7 +100,7 @@ export function buildRows(parsed: ParsedUsage, view: Interval): TimelineRow[] {
   for (const [appId, segments] of parsed.byApp) {
     let total = 0
     for (const seg of segments) {
-      if (seg.end < view.start || seg.start > view.end) continue
+      if (seg.end <= view.start || seg.start >= view.end) continue
       total += Math.min(seg.end, view.end) - Math.max(seg.start, view.start)
     }
     if (total > 0) durations.push([appId, total])
@@ -105,7 +110,7 @@ export function buildRows(parsed: ParsedUsage, view: Interval): TimelineRow[] {
   return durations.map(([appId]) => {
     const bars: RowBar[] = []
     for (const seg of parsed.byApp.get(appId)!) {
-      if (seg.end < view.start || seg.start > view.end) continue
+      if (seg.end <= view.start || seg.start >= view.end) continue
       const l = Math.max(0, Math.min(100, ((seg.start - view.start) / range) * 100))
       const r = Math.max(0, Math.min(100, ((seg.end - view.start) / range) * 100))
       bars.push({
@@ -118,6 +123,54 @@ export function buildRows(parsed: ParsedUsage, view: Interval): TimelineRow[] {
     }
     return { appId, isAway: parsed.awayAppIds.has(appId), bars }
   })
+}
+
+/** 把区间按半开语义裁剪并投影到窗口；只碰到任一端点不算可见。 */
+export function projectInterval(interval: Interval, window: Interval): ProjectedInterval | null {
+  const range = window.end - window.start
+  if (range <= 0 || interval.end <= window.start || interval.start >= window.end) return null
+
+  const start = Math.max(interval.start, window.start)
+  const end = Math.min(interval.end, window.end)
+  return {
+    left: ((start - window.start) / range) * 100,
+    width: ((end - start) / range) * 100,
+  }
+}
+
+export interface DayHourBin extends Interval {
+  label: string
+  active: boolean
+}
+
+/**
+ * 简略时间线按真实 instant 小时铺格：spring-forward 为 23 格，fall-back 为 25 格；
+ * civil label 使用刷新时捕获的 timezone，因此回拨日的两个 01:00 保持独立 instant。
+ */
+export function buildDayHourBins(
+  day: Interval,
+  usage: UsageLike[],
+  timeZone: string,
+): DayHourBin[] {
+  if (day.end <= day.start) return []
+
+  const active = usage
+    .filter(item => item.startTime && item.endTime)
+    .filter(item => !isAwayApp(item.appKey, item.appDisplayName ?? item.appName))
+    .map(item => ({ start: item.startTime!.getTime(), end: item.endTime!.getTime() }))
+    .filter(interval => interval.end > interval.start)
+
+  const bins: DayHourBin[] = []
+  for (let start = day.start; start < day.end; start += ONE_HOUR) {
+    const end = Math.min(start + ONE_HOUR, day.end)
+    bins.push({
+      start,
+      end,
+      label: fmtTime(start, timeZone),
+      active: active.some(interval => interval.end > start && interval.start < end),
+    })
+  }
+  return bins
 }
 
 /** 缩略图用的活动爆发区间：全 App 合并（away 不算活跃），间断 ≤1min 缝合。 */
@@ -199,22 +252,32 @@ export function groupByDevice(usage: UsageLike[]): Map<number, UsageLike[]> {
 
 /**
  * 初始视窗：今天以 now 为中心 ±1h；历史日以首个事件为中心 ±1h；
- * 无数据时落在当日 11:00-13:00。now 作参数保持纯函数。
+ * 无数据时取精确日窗中点 ±1h。所有路径都钳在 day endpoints 内。
  */
 export function initialViewBounds(
-  selectedDate: string,
+  day: Interval,
   isToday: boolean,
   usage: UsageLike[],
   now: number,
 ): Interval {
-  if (isToday) {
-    return { start: now - ONE_HOUR, end: now + ONE_HOUR }
+  const dayRange = day.end - day.start
+  if (dayRange <= 0) return { ...day }
+
+  const firstEvent = usage.find(item => item.startTime)?.startTime?.getTime()
+  const center = isToday
+    ? now
+    : firstEvent ?? (day.start + day.end) / 2
+  const range = Math.min(2 * ONE_HOUR, dayRange)
+  let start = center - range / 2
+  let end = center + range / 2
+
+  if (start < day.start) {
+    start = day.start
+    end = start + range
   }
-  const firstEvent = usage.find(u => u.startTime)
-  if (firstEvent && firstEvent.startTime) {
-    const t = firstEvent.startTime.getTime()
-    return { start: t - ONE_HOUR, end: t + ONE_HOUR }
+  if (end > day.end) {
+    end = day.end
+    start = end - range
   }
-  const baseTime = new Date(selectedDate).getTime()
-  return { start: baseTime + 11 * ONE_HOUR, end: baseTime + 13 * ONE_HOUR }
+  return { start, end }
 }

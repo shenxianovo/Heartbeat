@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useHeartbeat } from '../composables/useHeartbeat'
 import { authStore } from '../stores/auth'
 import ActivityTimeline from './ActivityTimeline.vue'
@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/select'
 import DatePicker from './DatePicker.vue'
 import { fetchManagedSubjectStatuses, type ManagedSubjectStatus } from '../api/index'
+import type { CalendarWindowEnvelope } from '../calendar/localCalendarWindow'
 
 const props = defineProps<{ username: string }>()
 
@@ -53,11 +54,11 @@ const {
   perDeviceSeconds,
   hasConcurrentUse,
   maxSeconds,
-  activeHours,
   weeklyAppSummaries,
   weeklyTotalSeconds,
   includeAway,
   keyFrequency,
+  calendarContext,
   timezoneLabel,
 } = useHeartbeat(props.username)
 
@@ -78,9 +79,31 @@ const selectedDeviceStr = computed({
 })
 
 // 点击排行条目 → 全局全屏应用详情弹窗（回放多轨 + 标题明细）
-const selectedApp = ref<{ appId: number; appName: string; totalSeconds: number } | null>(null)
+interface SelectedAppDetail {
+  app: { appId: number; appName: string; totalSeconds: number }
+  dayWindow: CalendarWindowEnvelope<'day'>
+}
+
+const selectedApp = ref<SelectedAppDetail | null>(null)
 const managedSubjects = ref<ManagedSubjectStatus[]>([])
 let subjectPoll: ReturnType<typeof setInterval> | null = null
+
+function openAppDetail(app: SelectedAppDetail['app']) {
+  selectedApp.value = { app, dayWindow: calendarContext.value.day }
+}
+
+watch(() => calendarContext.value.day, (current) => {
+  const captured = selectedApp.value?.dayWindow
+  if (!captured) return
+  if (
+    captured.localDate !== current.localDate
+    || captured.timeZone !== current.timeZone
+    || captured.start !== current.start
+    || captured.endExclusive !== current.endExclusive
+  ) {
+    selectedApp.value = null
+  }
+})
 
 async function refreshManagedSubjects() {
   if (!isOwnProfile.value) {
@@ -236,10 +259,9 @@ onUnmounted(() => {
 
           <ActivityTimeline
             :username="username"
-            :activeHours="activeHours"
             :usageData="usageData"
             :appNameMap="appNameMap"
-            :selectedDate="selectedDate"
+            :dayWindow="calendarContext.day"
             :isToday="isToday"
             :devices="devices"
             :isAllDevices="isAllDevices"
@@ -254,7 +276,7 @@ onUnmounted(() => {
             :appSummaries="appSummaries"
             :maxSeconds="maxSeconds"
             :provisionalAppIds="provisionalAppIds"
-            @select="selectedApp = $event"
+            @select="openAppDetail"
           />
 
           <WeeklyChart
@@ -270,11 +292,11 @@ onUnmounted(() => {
       v-if="selectedApp"
       :username="username"
       :deviceId="selectedDevice"
-      :selectedDate="selectedDate"
-      :app="selectedApp"
+      :dayWindow="selectedApp.dayWindow"
+      :app="selectedApp.app"
       :usageData="usageData"
       :devices="devices"
-      :isProvisional="provisionalAppIds.has(selectedApp.appId)"
+      :isProvisional="provisionalAppIds.has(selectedApp.app.appId)"
       @close="selectedApp = null"
     />
 
