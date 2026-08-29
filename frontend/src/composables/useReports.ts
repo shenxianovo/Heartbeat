@@ -3,7 +3,11 @@ import type { AppSummary, AppUsageResponse, DailyReportResponse, WeeklyReportRes
 import { fetchPublicUsage, fetchPublicDailyReport, fetchPublicWeeklyReport } from '../api/index'
 import { runForCurrentIdentity, useAsyncData } from './useAsyncData'
 import { isAwayApp } from '../appLabels'
-import { onlineUnionSeconds, groupByDevice } from '../timeline/timelineModel'
+import {
+  groupByDevice,
+  onlineUnionSeconds,
+  overlapDurationSeconds,
+} from '../timeline/timelineModel'
 import type { CalendarContext } from '../calendar/localCalendarWindow'
 
 interface AppDurationLike {
@@ -47,6 +51,11 @@ export function useReports(
   selectedDevice: Ref<number>,
   calendarContext: Ref<CalendarContext>,
 ) {
+  const dayBounds = computed(() => ({
+    start: Date.parse(calendarContext.value.day.start),
+    end: Date.parse(calendarContext.value.day.endExclusive),
+  }))
+
   // usage 保持通用 Instant Window seam；Dashboard adapter 只映射已解析 day context 的精确两端。
   function usageWindow() {
     return {
@@ -94,7 +103,7 @@ export function useReports(
   // ── 在线并集（多设备主数字）──
   // 对当天已在手的 usage 段做区间并集：两台设备重叠的时间只算一次。
   // 纯前端派生，不需要服务端字段（与 activeHours 同族运算）。
-  const onlineSeconds = computed(() => onlineUnionSeconds(usageData.value))
+  const onlineSeconds = computed(() => onlineUnionSeconds(usageData.value, dayBounds.value))
 
   /** 各设备的屏幕占用求和（明细层：谁贡献了多少）。按占用降序。 */
   const perDeviceSeconds = computed(() => {
@@ -103,7 +112,7 @@ export function useReports(
       let usageSec = 0
       let awaySec = 0
       for (const s of segs) {
-        const dur = s.durationSeconds ?? 0
+        const dur = overlapDurationSeconds(s, dayBounds.value)
         if (isAwayApp(s.appKey, s.appDisplayName ?? s.appName)) awaySec += dur
         else usageSec += dur
       }

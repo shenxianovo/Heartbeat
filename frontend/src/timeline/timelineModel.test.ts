@@ -15,6 +15,7 @@ import { AWAY_APP } from '../appLabels'
 
 const base = new Date(2026, 0, 15, 10, 0, 0).getTime()
 const sec = (n: number) => n * 1000
+const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 function usage(appId: number, startMs: number, endMs: number, appName = `app${appId}`): UsageLike {
   return { appId, appName, startTime: new Date(startMs), endTime: new Date(endMs) }
@@ -66,7 +67,7 @@ describe('buildRows', () => {
       usage(2, base + sec(20), base + sec(60)),             // 可见 40s
       usage(3, base + sec(200), base + sec(300)),           // 视窗外
     ])
-    const rows = buildRows(parsed, view)
+    const rows = buildRows(parsed, view, localTimeZone)
     expect(rows.map(r => r.appId)).toEqual([2, 1])
   })
 
@@ -75,7 +76,7 @@ describe('buildRows', () => {
       usage(1, base - sec(50), base + sec(50)),  // 左越界
       usage(2, base + sec(10), base + sec(10) + 100), // 0.1s 极窄段
     ])
-    const rows = buildRows(parsed, view)
+    const rows = buildRows(parsed, view, localTimeZone)
     const wide = rows.find(r => r.appId === 1)!.bars[0]
     expect(wide.left).toBe(0)
     expect(wide.width).toBeCloseTo(50)
@@ -84,14 +85,22 @@ describe('buildRows', () => {
     expect(wide.label).toMatch(/^\d{2}:\d{2} - \d{2}:\d{2}$/)
   })
 
+  it('用捕获的 Calendar Context timezone 格式化 bar tooltip', () => {
+    const start = Date.parse('2026-11-01T05:00:00Z')
+    const parsed = parseUsage([usage(1, start, start + 30 * 60_000)])
+    const rows = buildRows(parsed, { start, end: start + 60 * 60_000 }, 'America/New_York')
+
+    expect(rows[0].bars[0].label).toBe('01:00 - 01:30')
+  })
+
   it('away 行带 isAway 标记', () => {
     const parsed = parseUsage([usage(9, base, base + sec(10), AWAY_APP)])
-    expect(buildRows(parsed, view)[0].isAway).toBe(true)
+    expect(buildRows(parsed, view, localTimeZone)[0].isAway).toBe(true)
   })
 
   it('倒置视窗返回空', () => {
     const parsed = parseUsage([usage(1, base, base + sec(10))])
-    expect(buildRows(parsed, { start: base, end: base })).toEqual([])
+    expect(buildRows(parsed, { start: base, end: base }, localTimeZone)).toEqual([])
   })
 
   it('按半开窗口裁剪，恰好贴住两端的段不进入视图', () => {
@@ -102,7 +111,7 @@ describe('buildRows', () => {
       usage(4, base + sec(90), base + sec(110)),
     ])
 
-    expect(buildRows(parsed, view).map(row => row.appId)).toEqual([3, 4])
+    expect(buildRows(parsed, view, localTimeZone).map(row => row.appId)).toEqual([3, 4])
   })
 })
 

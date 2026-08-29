@@ -3,6 +3,7 @@
 
 import type { PluginSeg, SystemSeg } from './labelUpgrade'
 import type { ReplaySeg } from './timeline/replayModel'
+import { intersectInterval, type Interval } from './timeline/timelineModel'
 
 export interface SegmentLike {
   source?: string
@@ -61,50 +62,68 @@ export function laneKeyOf(source: string | undefined, attributes?: string): stri
   return attrs ? extract(attrs) : undefined
 }
 
+function boundedSpan(start: number, end: number, window?: Interval): Interval | null {
+  if (!window) return end >= start ? { start, end } : null
+  if (end === start) {
+    return start >= window.start && start < window.end ? { start, end } : null
+  }
+  return intersectInterval({ start, end }, window)
+}
+
 /** labelUpgrade 输入：插件段。 */
-export function toPluginSegs(segments: SegmentLike[]): PluginSeg[] {
+export function toPluginSegs(segments: SegmentLike[], window?: Interval): PluginSeg[] {
   return segments
     .filter(s => s.startTime && s.endTime)
-    .map(s => ({
-      start: s.startTime!.getTime(),
-      end: s.endTime!.getTime(),
-      identityKey: s.identityKey,
-      title: s.title ?? undefined,
-      url: urlOf(s.attributes),
-    }))
+    .flatMap(s => {
+      const span = boundedSpan(s.startTime!.getTime(), s.endTime!.getTime(), window)
+      return span ? [{
+        ...span,
+        identityKey: s.identityKey,
+        title: s.title ?? undefined,
+        url: urlOf(s.attributes),
+      }] : []
+    })
 }
 
 /** labelUpgrade 输入：system 段。 */
-export function toSystemSegs(usage: UsageSegLike[]): SystemSeg[] {
+export function toSystemSegs(usage: UsageSegLike[], window?: Interval): SystemSeg[] {
   return usage
     .filter(u => u.startTime && u.endTime)
-    .map(u => ({
-      start: u.startTime!.getTime(),
-      end: u.endTime!.getTime(),
-      // Title Formatter 按稳定产品 Key 路由；DisplayName 只承担呈现。
-      appName: u.appKey ?? u.appDisplayName ?? u.appName,
-      title: u.title ?? undefined,
-    }))
+    .flatMap(u => {
+      const span = boundedSpan(u.startTime!.getTime(), u.endTime!.getTime(), window)
+      return span ? [{
+        ...span,
+        // Title Formatter 按稳定产品 Key 路由；DisplayName 只承担呈现。
+        appName: u.appKey ?? u.appDisplayName ?? u.appName,
+        title: u.title ?? undefined,
+      }] : []
+    })
 }
 
 /** replayModel 输入：system 主轨在前，插件段带 laneKey（副本泳道）。 */
-export function toReplaySegs(usage: UsageSegLike[], segments: SegmentLike[]): ReplaySeg[] {
+export function toReplaySegs(
+  usage: UsageSegLike[],
+  segments: SegmentLike[],
+  window?: Interval,
+): ReplaySeg[] {
   const out: ReplaySeg[] = []
   for (const u of usage) {
     if (!u.startTime || !u.endTime) continue
+    const span = boundedSpan(u.startTime.getTime(), u.endTime.getTime(), window)
+    if (!span) continue
     out.push({
-      start: u.startTime.getTime(),
-      end: u.endTime.getTime(),
+      ...span,
       source: 'system',
       label: u.title ?? '',
     })
   }
   for (const s of segments) {
     if (!s.startTime || !s.endTime || !s.source) continue
+    const span = boundedSpan(s.startTime.getTime(), s.endTime.getTime(), window)
+    if (!span) continue
     // attributes 原始 JSON 直接进 tooltip（v1 行为保持）
     out.push({
-      start: s.startTime.getTime(),
-      end: s.endTime.getTime(),
+      ...span,
       source: s.source,
       label: [s.title ?? s.identityKey, s.attributes].filter(Boolean).join('  '),
       laneKey: laneKeyOf(s.source, s.attributes),

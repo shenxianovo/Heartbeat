@@ -1,11 +1,20 @@
 import { describe, it, expect } from 'vitest'
-import { envelope, buildTracks, type ReplaySeg } from './replayModel'
+import { envelope, buildTracks as buildTracksInTimeZone, type ReplaySeg } from './replayModel'
 
 const base = new Date(2026, 0, 15, 10, 0, 0).getTime()
 const sec = (n: number) => n * 1000
+const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 function seg(source: string, startMs: number, endMs: number, opts: Partial<ReplaySeg> = {}): ReplaySeg {
   return { source, start: startMs, end: endMs, label: '', ...opts }
+}
+
+function buildTracks(
+  segs: ReplaySeg[],
+  view: { start: number; end: number },
+  timeZone = localTimeZone,
+) {
+  return buildTracksInTimeZone(segs, view, timeZone)
 }
 
 describe('envelope', () => {
@@ -91,6 +100,15 @@ describe('buildTracks', () => {
     const bars = tracks[0].lanes[0].bars
     expect(bars[0].tooltip).toMatch(/^\d{2}:\d{2} - \d{2}:\d{2}  main\.cs - VS Code$/)
     expect(bars[1].tooltip).toMatch(/^\d{2}:\d{2} - \d{2}:\d{2}$/)
+  })
+
+  it('用捕获的 Calendar Context timezone 格式化回放 tooltip', () => {
+    const start = Date.parse('2026-11-01T05:00:00Z')
+    const tracks = buildTracks([
+      seg('system', start, start + 30 * 60_000),
+    ], { start, end: start + 60 * 60_000 }, 'America/New_York')
+
+    expect(tracks[0].lanes[0].bars[0].tooltip).toBe('01:00 - 01:30')
   })
 
   it('按半开视窗裁剪跨窗段，并排除只贴住端点的段', () => {

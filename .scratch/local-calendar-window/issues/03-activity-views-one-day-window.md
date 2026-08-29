@@ -17,4 +17,5 @@
 ## Comments
 
 - 2026-08-29：实现完成。Dashboard 将同一不可变 day window 传给 Daily Report、Usage、Timeline、Key Frequency 与展开时捕获的 App Detail；Timeline 的简略格、刻度、minimap、拖拽/缩放和回放裁剪均以精确 endpoints 驱动，支持 23/24/25 小时日与 fall-back 重复 civil hour。
-- 自动验证：`npm test`（32 files / 223 tests）、`npm run build`、`dotnet test Heartbeat.slnx --no-restore`（867 tests）、`dotnet format style Heartbeat.slnx --diagnostics IDE1006 --verify-no-changes --no-restore` 全部通过。定向覆盖同一 23 小时 endpoints 贯通、all/single-device 只改过滤、App Detail 慢响应上下文、任意 Instant Window transport、Timeline 23/24/25 小时布局，以及 Usage / Segments / Key Frequency 两端半开边界；zero-length Segment 起点包含差异被保留并锁定。
+- 自动验证：`npm test`（32 files / 228 tests）、`npm run build`、`dotnet test Heartbeat.slnx --no-restore`（867 tests）、`dotnet format style Heartbeat.slnx --diagnostics IDE1006 --verify-no-changes --no-restore` 全部通过。定向覆盖同一 23 小时 endpoints 贯通、all/single-device 只改过滤、App Detail 慢响应上下文、任意 Instant Window transport、Timeline 23/24/25 小时布局，以及 Usage / Segments / Key Frequency 两端半开边界；zero-length Segment 起点包含差异被保留并锁定。
+- Code review：Standards 与 Spec 两轴并行完成。审查发现的 tooltip 时区撕裂、Usage 派生时长未裁剪、App Detail 标题明细未裁剪与重复裁剪逻辑均已修正；复验 0 个未解决 findings。

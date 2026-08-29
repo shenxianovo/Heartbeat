@@ -74,6 +74,35 @@ describe('useReports Local Calendar Window', () => {
     ])
   })
 
+  it('clips Usage-derived dashboard durations to the captured day endpoints', async () => {
+    vi.mocked(fetchPublicUsage).mockResolvedValueOnce([
+      {
+        deviceId: 7,
+        appId: 1,
+        appName: 'Code',
+        startTime: new Date('2026-03-08T04:00:00Z'),
+        endTime: new Date('2026-03-08T06:00:00Z'),
+        durationSeconds: 7200,
+      },
+      {
+        deviceId: 7,
+        appId: 1,
+        appName: 'Code',
+        startTime: new Date('2026-03-09T03:00:00Z'),
+        endTime: new Date('2026-03-09T05:00:00Z'),
+        durationSeconds: 7200,
+      },
+    ] as Awaited<ReturnType<typeof fetchPublicUsage>>)
+    const reports = useReports('alice', ref(0), ref(context))
+
+    await reports.loadUsage()
+
+    expect(reports.onlineSeconds.value).toBe(7200)
+    expect(reports.perDeviceSeconds.value).toEqual([
+      { deviceId: 7, usageSeconds: 7200, awaySeconds: 0 },
+    ])
+  })
+
   it('does not let an older refresh overwrite the current Daily Report', async () => {
     type DailyReport = Awaited<ReturnType<typeof fetchPublicDailyReport>>
     let resolveOld!: (value: DailyReport) => void

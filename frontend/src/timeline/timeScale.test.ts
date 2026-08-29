@@ -1,8 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { fmtTime, niceTicks } from './timeScale'
+import { fmtTime as fmtTimeInZone, niceTicks as niceTicksInZone } from './timeScale'
 
 // 用本地时间构造，避免断言依赖运行环境时区
 const at = (h: number, m: number, s = 0) => new Date(2026, 0, 15, h, m, s).getTime()
+const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+const fmtTime = (ms: number) => fmtTimeInZone(ms, localTimeZone)
+const niceTicks = (start: number, end: number, maxTicks: number, timeZone = localTimeZone) =>
+  niceTicksInZone(start, end, maxTicks, timeZone)
 
 describe('fmtTime', () => {
   it('补零到 HH:MM', () => {

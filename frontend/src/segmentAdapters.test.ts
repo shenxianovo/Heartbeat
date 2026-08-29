@@ -84,3 +84,23 @@ describe('toPluginSegs', () => {
     expect(plugins[0].url).toBe('https://a.com/deep?q=1')
   })
 })
+
+describe('Local Calendar Window clipping', () => {
+  const start = base.getTime()
+  const end = later.getTime()
+  const window = { start, end }
+
+  it('clips interval rows and preserves the existing start-inclusive point policy', () => {
+    const system = toSystemSegs([{
+      startTime: new Date(start - 60_000),
+      endTime: new Date(start + 30_000),
+    }], window)
+    const plugins = toPluginSegs([
+      { source: 'browser', startTime: new Date(start), endTime: new Date(start) },
+      { source: 'browser', startTime: new Date(end), endTime: new Date(end) },
+    ], window)
+
+    expect(system[0]).toEqual(expect.objectContaining({ start, end: start + 30_000 }))
+    expect(plugins).toEqual([expect.objectContaining({ start, end: start })])
+  })
+})

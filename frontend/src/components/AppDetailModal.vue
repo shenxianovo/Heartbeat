@@ -87,7 +87,11 @@ const viewBounds = computed(() => {
 const tracks = computed<Track[]>(() => {
   const vb = viewBounds.value
   if (!vb) return []
-  return buildTracks(toReplaySegs(systemSegments.value, pluginSegments.value), vb)
+  return buildTracks(
+    toReplaySegs(systemSegments.value, pluginSegments.value, dayBounds.value),
+    vb,
+    props.dayWindow.timeZone,
+  )
 })
 
 /**
@@ -107,7 +111,11 @@ const deviceGroups = computed(() => {
   for (const id of [...ids].sort((a, b) => a - b)) {
     const sys = systemSegments.value.filter(u => (u.deviceId ?? 0) === id)
     const plugins = pluginSegments.value.filter(s => (s.deviceId ?? 0) === id)
-    const t = buildTracks(toReplaySegs(sys, plugins), vb)
+    const t = buildTracks(
+      toReplaySegs(sys, plugins, dayBounds.value),
+      vb,
+      props.dayWindow.timeZone,
+    )
     if (t.length === 0) continue
     groups.push({
       deviceId: id,
@@ -125,8 +133,8 @@ const showDeviceGroups = computed(() => deviceGroups.value.length > 1)
 
 const breakdown = computed(() =>
   upgradeBreakdown(
-    toSystemSegs(systemSegments.value),
-    toPluginSegs(pluginSegments.value),
+    toSystemSegs(systemSegments.value, dayBounds.value),
+    toPluginSegs(pluginSegments.value, dayBounds.value),
     formatTitle,
   )
 )

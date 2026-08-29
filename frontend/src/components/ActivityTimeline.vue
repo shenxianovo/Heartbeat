@@ -82,7 +82,11 @@ const handleResize = () => {
 const parsed = computed(() => parseUsage(props.usageData))
 
 function rowsOf(usage: AppUsageResponse[]) {
-  return buildRows(parseUsage(usage), { start: viewStart.value, end: viewEnd.value }).map(row => ({
+  return buildRows(
+    parseUsage(usage),
+    { start: viewStart.value, end: viewEnd.value },
+    props.dayWindow.timeZone,
+  ).map(row => ({
     ...row,
     name: row.isAway ? '离开' : (props.appNameMap.get(row.appId) || `App ${row.appId}`),
   }))

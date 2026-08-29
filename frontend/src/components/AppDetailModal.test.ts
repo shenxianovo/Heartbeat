@@ -102,4 +102,34 @@ describe('AppDetailModal Local Calendar Window adapter', () => {
     resolveRequest([])
     await flushPromises()
   })
+
+  it('clips title-detail duration to the captured day before aggregation', async () => {
+    const wrapper = shallowMount(AppDetailModal, {
+      props: {
+        username: 'alice',
+        deviceId: 0,
+        dayWindow: springDay,
+        app: { appId: 7, appName: 'Code', totalSeconds: 3600 },
+        usageData: [{
+          deviceId: 7,
+          appId: 7,
+          appKey: 'vscode',
+          appName: 'Code',
+          title: 'Work',
+          startTime: new Date('2026-03-08T03:00:00Z'),
+          endTime: new Date('2026-03-08T06:00:00Z'),
+          durationSeconds: 10800,
+        }] as never[],
+        devices: [],
+        isProvisional: false,
+      },
+      global: {
+        stubs: { Teleport: true, AppIcon: true },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('1h 0m')
+    expect(wrapper.text()).not.toContain('3h 0m')
+  })
 })

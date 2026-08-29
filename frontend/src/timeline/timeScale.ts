@@ -1,17 +1,12 @@
 // 时间轴标尺工具：ActivityTimeline 与 AppDetailModal 共用（原各持一份重复实现）。
 
-export function fmtTime(ms: number, timeZone?: string): string {
-  if (timeZone) {
-    return new Intl.DateTimeFormat('en-GB', {
-      timeZone,
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-    }).format(ms)
-  }
-
-  const d = new Date(ms)
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+export function fmtTime(ms: number, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(ms)
 }
 
 export interface Tick {
@@ -27,7 +22,7 @@ const NICE_INTERVALS = [
 ]
 
 /** 生成不超过 maxTicks 个、对齐到 nice 间隔整点的刻度（percent 相对 [start, end]）。 */
-export function niceTicks(start: number, end: number, maxTicks: number, timeZone?: string): Tick[] {
+export function niceTicks(start: number, end: number, maxTicks: number, timeZone: string): Tick[] {
   const range = end - start
   if (range <= 0) return []
 

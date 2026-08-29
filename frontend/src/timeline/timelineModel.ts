@@ -14,6 +14,14 @@ export interface ProjectedInterval {
   width: number
 }
 
+/** 正时长区间的半开交集；只碰到端点或任一窗口无正跨度时返回 null。 */
+export function intersectInterval(interval: Interval, window: Interval): Interval | null {
+  if (window.end <= window.start || interval.end <= interval.start) return null
+  const start = Math.max(interval.start, window.start)
+  const end = Math.min(interval.end, window.end)
+  return end > start ? { start, end } : null
+}
+
 export interface UsageLike {
   appId?: number
   appKey?: string
@@ -92,7 +100,7 @@ export interface TimelineRow {
 }
 
 /** 视窗内的行：按可见时长降序，段投影为百分比条。视窗外的 App 不出现。 */
-export function buildRows(parsed: ParsedUsage, view: Interval): TimelineRow[] {
+export function buildRows(parsed: ParsedUsage, view: Interval, timeZone: string): TimelineRow[] {
   const range = view.end - view.start
   if (range <= 0) return []
 
@@ -100,8 +108,9 @@ export function buildRows(parsed: ParsedUsage, view: Interval): TimelineRow[] {
   for (const [appId, segments] of parsed.byApp) {
     let total = 0
     for (const seg of segments) {
-      if (seg.end <= view.start || seg.start >= view.end) continue
-      total += Math.min(seg.end, view.end) - Math.max(seg.start, view.start)
+      const visible = intersectInterval(seg, view)
+      if (!visible) continue
+      total += visible.end - visible.start
     }
     if (total > 0) durations.push([appId, total])
   }
@@ -110,15 +119,16 @@ export function buildRows(parsed: ParsedUsage, view: Interval): TimelineRow[] {
   return durations.map(([appId]) => {
     const bars: RowBar[] = []
     for (const seg of parsed.byApp.get(appId)!) {
-      if (seg.end <= view.start || seg.start >= view.end) continue
-      const l = Math.max(0, Math.min(100, ((seg.start - view.start) / range) * 100))
-      const r = Math.max(0, Math.min(100, ((seg.end - view.start) / range) * 100))
+      const visible = intersectInterval(seg, view)
+      if (!visible) continue
+      const l = ((visible.start - view.start) / range) * 100
+      const r = ((visible.end - view.start) / range) * 100
       bars.push({
-        start: seg.start,
-        end: seg.end,
+        start: visible.start,
+        end: visible.end,
         left: l,
         width: Math.max(0.5, r - l),
-        label: `${fmtTime(seg.start)} - ${fmtTime(seg.end)}`,
+        label: `${fmtTime(visible.start, timeZone)} - ${fmtTime(visible.end, timeZone)}`,
       })
     }
     return { appId, isAway: parsed.awayAppIds.has(appId), bars }
@@ -128,13 +138,11 @@ export function buildRows(parsed: ParsedUsage, view: Interval): TimelineRow[] {
 /** 把区间按半开语义裁剪并投影到窗口；只碰到任一端点不算可见。 */
 export function projectInterval(interval: Interval, window: Interval): ProjectedInterval | null {
   const range = window.end - window.start
-  if (range <= 0 || interval.end <= window.start || interval.start >= window.end) return null
-
-  const start = Math.max(interval.start, window.start)
-  const end = Math.min(interval.end, window.end)
+  const visible = intersectInterval(interval, window)
+  if (range <= 0 || !visible) return null
   return {
-    left: ((start - window.start) / range) * 100,
-    width: ((end - start) / range) * 100,
+    left: ((visible.start - window.start) / range) * 100,
+    width: ((visible.end - visible.start) / range) * 100,
   }
 }
 
@@ -202,14 +210,26 @@ export function mergeActivityBursts(parsed: ParsedUsage): Interval[] {
  * 在线时长（秒）：全部真实使用段（away 不算）的严格区间并集。
  * 聚合视图的"今天在多久"主数字——两台设备同时使用只算一份墙钟时间，
  * 与按设备求和的"屏幕占用"（可 >24h）语义互补。不缝合缝隙：不在就是不在。
+ * 传 window 时先按同一半开 Instant Window 裁剪，供 Dashboard day adapter 使用。
  */
-export function onlineUnionSeconds(usage: UsageLike[]): number {
+export function overlapDurationSeconds(usage: UsageLike, window: Interval): number {
+  if (!usage.startTime || !usage.endTime) return 0
+  const visible = intersectInterval({
+    start: usage.startTime.getTime(),
+    end: usage.endTime.getTime(),
+  }, window)
+  return visible ? Math.floor((visible.end - visible.start) / 1000) : 0
+}
+
+export function onlineUnionSeconds(usage: UsageLike[], window?: Interval): number {
   const raw: Interval[] = []
   for (const u of usage) {
     if (!u.startTime || !u.endTime || isAwayApp(u.appKey, u.appDisplayName ?? u.appName)) continue
-    const start = u.startTime.getTime()
-    const end = u.endTime.getTime()
-    if (end > start) raw.push({ start, end })
+    const interval = { start: u.startTime.getTime(), end: u.endTime.getTime() }
+    const visible = window
+      ? intersectInterval(interval, window)
+      : interval.end > interval.start ? interval : null
+    if (visible) raw.push(visible)
   }
   raw.sort((a, b) => a.start - b.start)
 

@@ -3,7 +3,7 @@
 // 无身份贪心装箱兜底；system 前台互斥，恒为单 lane。
 
 import { fmtTime } from './timeScale'
-import type { Interval } from './timelineModel'
+import { intersectInterval, type Interval } from './timelineModel'
 
 export interface ReplaySeg {
   start: number
@@ -40,11 +40,11 @@ function clipToView(seg: ReplaySeg, view: Interval): ReplaySeg | null {
   if (isPoint) {
     return seg.start >= view.start && seg.start < view.end ? seg : null
   }
-  if (seg.end <= view.start || seg.start >= view.end) return null
+  const visible = intersectInterval(seg, view)
+  if (!visible) return null
   return {
     ...seg,
-    start: Math.max(seg.start, view.start),
-    end: Math.min(seg.end, view.end),
+    ...visible,
   }
 }
 
@@ -65,12 +65,14 @@ export function envelope(
   return { start: min - pad, end: max + pad }
 }
 
-function toBar(seg: ReplaySeg, view: Interval): TrackBar {
+function toBar(seg: ReplaySeg, view: Interval, timeZone: string): TrackBar {
   const range = view.end - view.start
   const left = ((seg.start - view.start) / range) * 100
   const isPoint = seg.end - seg.start < POINT_THRESHOLD_MS
   const width = isPoint ? 0 : Math.max(0.4, ((seg.end - seg.start) / range) * 100)
-  const time = isPoint ? fmtTime(seg.start) : `${fmtTime(seg.start)} - ${fmtTime(seg.end)}`
+  const time = isPoint
+    ? fmtTime(seg.start, timeZone)
+    : `${fmtTime(seg.start, timeZone)} - ${fmtTime(seg.end, timeZone)}`
   return { left, width, tooltip: seg.label ? `${time}  ${seg.label}` : time, isPoint }
 }
 
@@ -109,7 +111,7 @@ function assignLanes(segs: ReplaySeg[]): ReplaySeg[][] {
 }
 
 /** 按 Source 分轨（保持输入相遇顺序：调用方 system 在前），轨内分 lane 并投影。 */
-export function buildTracks(segs: ReplaySeg[], view: Interval): Track[] {
+export function buildTracks(segs: ReplaySeg[], view: Interval, timeZone: string): Track[] {
   if (view.end - view.start <= 0) return []
 
   const bySource = new Map<string, ReplaySeg[]>()
@@ -128,7 +130,7 @@ export function buildTracks(segs: ReplaySeg[], view: Interval): Track[] {
   for (const [source, group] of bySource) {
     const lanes = assignLanes(group).map(lane => ({
       key: lane[0].laneKey,
-      bars: lane.map(s => toBar(s, view)),
+      bars: lane.map(s => toBar(s, view, timeZone)),
     }))
     tracks.push({ source, lanes })
   }
