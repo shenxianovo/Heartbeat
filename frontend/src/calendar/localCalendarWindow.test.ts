@@ -33,6 +33,16 @@ describe('resolveCalendarContext', () => {
       })
       expect((Date.parse(context.day.endExclusive) - Date.parse(context.day.start)) / 3_600_000)
         .toBe(scenario.durationHours)
+      expect(context.week).toEqual({
+        version: 1,
+        kind: 'week',
+        localDate: scenario.localDate,
+        timeZone: scenario.timeZone,
+        start: scenario.weekStart,
+        endExclusive: scenario.weekEndExclusive,
+      })
+      expect((Date.parse(context.week.endExclusive) - Date.parse(context.week.start)) / 3_600_000)
+        .toBe(scenario.weekDurationHours)
       expect(context.correlationIdentity).toBe('refresh-1')
       expect(context.displayLabel).toContain(scenario.localDate)
       expect(context.displayLabel).toContain(scenario.timeZone)

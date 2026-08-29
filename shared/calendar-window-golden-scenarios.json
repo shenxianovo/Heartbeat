@@ -5,7 +5,10 @@
     "timeZone": "Asia/Shanghai",
     "start": "2026-08-28T16:00:00Z",
     "endExclusive": "2026-08-29T16:00:00Z",
-    "durationHours": 24
+    "durationHours": 24,
+    "weekStart": "2026-08-23T16:00:00Z",
+    "weekEndExclusive": "2026-08-30T16:00:00Z",
+    "weekDurationHours": 168
   },
   {
     "name": "spring-forward day",
@@ -13,7 +16,10 @@
     "timeZone": "America/New_York",
     "start": "2026-03-08T05:00:00Z",
     "endExclusive": "2026-03-09T04:00:00Z",
-    "durationHours": 23
+    "durationHours": 23,
+    "weekStart": "2026-03-02T05:00:00Z",
+    "weekEndExclusive": "2026-03-09T04:00:00Z",
+    "weekDurationHours": 167
   },
   {
     "name": "fall-back day",
@@ -21,7 +27,10 @@
     "timeZone": "America/New_York",
     "start": "2026-11-01T04:00:00Z",
     "endExclusive": "2026-11-02T05:00:00Z",
-    "durationHours": 25
+    "durationHours": 25,
+    "weekStart": "2026-10-26T04:00:00Z",
+    "weekEndExclusive": "2026-11-02T05:00:00Z",
+    "weekDurationHours": 169
   },
   {
     "name": "leap day",
@@ -29,7 +38,10 @@
     "timeZone": "Asia/Shanghai",
     "start": "2024-02-28T16:00:00Z",
     "endExclusive": "2024-02-29T16:00:00Z",
-    "durationHours": 24
+    "durationHours": 24,
+    "weekStart": "2024-02-25T16:00:00Z",
+    "weekEndExclusive": "2024-03-03T16:00:00Z",
+    "weekDurationHours": 168
   },
   {
     "name": "midnight gap",
@@ -37,7 +49,21 @@
     "timeZone": "America/Sao_Paulo",
     "start": "2018-11-04T03:00:00Z",
     "endExclusive": "2018-11-05T02:00:00Z",
-    "durationHours": 23
+    "durationHours": 23,
+    "weekStart": "2018-10-29T03:00:00Z",
+    "weekEndExclusive": "2018-11-05T02:00:00Z",
+    "weekDurationHours": 167
+  },
+  {
+    "name": "Sunday-to-Monday week ownership",
+    "localDate": "2026-08-30",
+    "timeZone": "Asia/Shanghai",
+    "start": "2026-08-29T16:00:00Z",
+    "endExclusive": "2026-08-30T16:00:00Z",
+    "durationHours": 24,
+    "weekStart": "2026-08-23T16:00:00Z",
+    "weekEndExclusive": "2026-08-30T16:00:00Z",
+    "weekDurationHours": 168
   },
   {
     "name": "entirely skipped civil date",

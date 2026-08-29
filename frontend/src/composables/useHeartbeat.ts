@@ -45,7 +45,7 @@ export function useHeartbeat(username: string) {
   })
 
   const status = useDeviceStatus(username, selection.devices, selectedDevice, isToday)
-  const reports = useReports(username, selectedDevice, selectedDate, calendarContext)
+  const reports = useReports(username, selectedDevice, calendarContext)
 
   const kf = useAsyncData<KeyFrequencyItem[]>(() => {
     return fetchPublicKeyFrequency(username, {

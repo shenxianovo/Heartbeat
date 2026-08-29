@@ -32,7 +32,9 @@ public sealed record ResolvedCalendarWindow(
     string LocalDate,
     string TimeZone,
     DateTimeOffset Start,
-    DateTimeOffset EndExclusive);
+    DateTimeOffset EndExclusive,
+    LocalDate CivilStartDate,
+    LocalDate CivilEndExclusiveDate);
 
 public sealed record CalendarWindowError(string Code, string Message);
 
@@ -53,11 +55,11 @@ public static class LocalCalendarWindowValidator
 
     public static CalendarWindowValidationResult Resolve(LocalCalendarWindowEnvelope envelope)
     {
-        if (envelope.Version != CurrentVersion || envelope.Kind != "day")
+        if (envelope.Version != CurrentVersion || envelope.Kind is not ("day" or "week"))
         {
             return CalendarWindowValidationResult.Failure(
                 "unsupported_calendar_window",
-                $"Only version {CurrentVersion} day calendar windows are supported.");
+                $"Only version {CurrentVersion} day or week calendar windows are supported.");
         }
 
         var dateResult = DatePattern.Parse(envelope.LocalDate ?? string.Empty);
@@ -78,10 +80,19 @@ public static class LocalCalendarWindowValidator
 
         Instant expectedStart;
         Instant expectedEnd;
+        LocalDate windowStartDate;
+        var isWeek = envelope.Kind == "week";
+        var windowLengthDays = isWeek ? 7 : 1;
         try
         {
-            expectedStart = zone.AtStartOfDay(dateResult.Value).ToInstant();
-            expectedEnd = zone.AtStartOfDay(dateResult.Value.PlusDays(1)).ToInstant();
+            var selectedDateStart = zone.AtStartOfDay(dateResult.Value).ToInstant();
+            windowStartDate = isWeek
+                ? dateResult.Value.PlusDays(1 - (int)dateResult.Value.DayOfWeek)
+                : dateResult.Value;
+            expectedStart = isWeek
+                ? zone.AtStartOfDay(windowStartDate).ToInstant()
+                : selectedDateStart;
+            expectedEnd = zone.AtStartOfDay(windowStartDate.PlusDays(windowLengthDays)).ToInstant();
         }
         catch (SkippedTimeException)
         {
@@ -102,10 +113,12 @@ public static class LocalCalendarWindowValidator
 
         return CalendarWindowValidationResult.Success(new ResolvedCalendarWindow(
             CurrentVersion,
-            "day",
+            envelope.Kind,
             envelope.LocalDate,
             envelope.TimeZone!,
             expectedStartValue,
-            expectedEndValue));
+            expectedEndValue,
+            windowStartDate,
+            windowStartDate.PlusDays(windowLengthDays)));
     }
 }

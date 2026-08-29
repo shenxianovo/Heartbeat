@@ -140,7 +140,7 @@ export const handlers = [
     return HttpResponse.json({ date: todayDateStr(), apps })
   }),
 
-  // GET /users/:username/reports/weekly?deviceId&date
+  // GET /users/:username/reports/weekly with a complete Local Calendar Window envelope
   http.get(`${API}/users/:username/reports/weekly`, () => {
     const { weekStart, weekEnd } = weekRange()
     return HttpResponse.json({

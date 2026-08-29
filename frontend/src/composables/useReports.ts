@@ -45,7 +45,6 @@ function awayOf(apps: AppDurationLike[] | undefined): number {
 export function useReports(
   username: string,
   selectedDevice: Ref<number>,
-  selectedDate: Ref<string>,
   calendarContext: Ref<CalendarContext>,
 ) {
   // usage 保持通用 Instant Window seam；Dashboard adapter 只映射已解析 day context 的精确两端。
@@ -68,7 +67,10 @@ export function useReports(
     null,
   )
   const weekly = useAsyncData<WeeklyReportResponse | null>(
-    () => fetchPublicWeeklyReport(username, { deviceId: selectedDevice.value, date: selectedDate.value }),
+    () => fetchPublicWeeklyReport(username, {
+      deviceId: selectedDevice.value,
+      window: calendarContext.value.week,
+    }),
     null,
   )
 

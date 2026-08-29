@@ -2,9 +2,9 @@ import { Temporal } from '@js-temporal/polyfill'
 
 export const CALENDAR_WINDOW_VERSION = 1 as const
 
-export type CalendarWindowEnvelope = Readonly<{
+export type CalendarWindowEnvelope<Kind extends 'day' | 'week' = 'day' | 'week'> = Readonly<{
   version: typeof CALENDAR_WINDOW_VERSION
-  kind: 'day'
+  kind: Kind
   localDate: string
   timeZone: string
   start: string
@@ -12,7 +12,8 @@ export type CalendarWindowEnvelope = Readonly<{
 }>
 
 export type CalendarContext = Readonly<{
-  day: CalendarWindowEnvelope
+  day: CalendarWindowEnvelope<'day'>
+  week: CalendarWindowEnvelope<'week'>
   isToday: boolean
   displayLabel: string
   correlationIdentity: string
@@ -84,9 +85,14 @@ export function resolveCalendarContext(
 
   let start: Temporal.ZonedDateTime
   let end: Temporal.ZonedDateTime
+  let weekStart: Temporal.ZonedDateTime
+  let weekEnd: Temporal.ZonedDateTime
   try {
     start = civilDayStart(localDate, timeZone)
     end = civilDayStart(localDate.add({ days: 1 }), timeZone)
+    const monday = localDate.subtract({ days: localDate.dayOfWeek - 1 })
+    weekStart = civilDayStart(monday, timeZone)
+    weekEnd = civilDayStart(monday.add({ days: 7 }), timeZone)
   } catch (error) {
     if (error instanceof CalendarContextError) throw error
     throw new CalendarContextError('unsupported_timezone', `Unsupported timezone: ${timeZone}`)
@@ -99,7 +105,7 @@ export function resolveCalendarContext(
     throw new CalendarContextError('invalid_local_date', `Invalid current instant: ${options.now}`)
   }
 
-  const day = Object.freeze<CalendarWindowEnvelope>({
+  const day = Object.freeze<CalendarWindowEnvelope<'day'>>({
     version: CALENDAR_WINDOW_VERSION,
     kind: 'day',
     localDate: localDateValue,
@@ -107,9 +113,18 @@ export function resolveCalendarContext(
     start: start.toInstant().toString(),
     endExclusive: end.toInstant().toString(),
   })
+  const week = Object.freeze<CalendarWindowEnvelope<'week'>>({
+    version: CALENDAR_WINDOW_VERSION,
+    kind: 'week',
+    localDate: localDateValue,
+    timeZone,
+    start: weekStart.toInstant().toString(),
+    endExclusive: weekEnd.toInstant().toString(),
+  })
 
   return Object.freeze<CalendarContext>({
     day,
+    week,
     isToday: now.toZonedDateTimeISO(timeZone).toPlainDate().equals(localDate),
     displayLabel: `${localDateValue} · ${timeZone} (${offsetLabel(start, end)})`,
     correlationIdentity: (options.correlationIdentity ?? defaultCorrelationIdentity)(),

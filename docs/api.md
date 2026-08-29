@@ -36,9 +36,10 @@ Agent 请求额外携带 `X-Hardware-Id` 和 `X-Device-Name`，服务端通过
   `IActionResult` 会使 NSwag 生成无类型的 `Promise<void>`。
 - Agent 上传端点保持幂等，以支持离线缓存重传。
 - 前端 wrapper 默认调用生成的 client，不复制 DTO 或响应类型。
-- 按本地日历窗口查询的 date 参数必须保留浏览器时区偏移。NSwag 会把 `Date` 转成 UTC
-  `toISOString()`，因此 daily/weekly Report、Recap 和知识发问相关 wrapper 在
-  `frontend/src/api/index.ts` 手工构造 query string。时刻范围查询可以使用 UTC。
+- Daily/Weekly Report 必须传完整的版本化 Local Calendar Window envelope；生成 client 把
+  `Start` / `EndExclusive` 序列化为 UTC instant，不会丢失 civil 语义。尚未迁移的 Recap 与知识
+  发问 `date` 端点仍需保留浏览器 offset，并在 `frontend/src/api/index.ts` 手工构造 query string。
+  通用时刻范围查询可以直接使用 UTC。
 
 ## Recap 约定
 

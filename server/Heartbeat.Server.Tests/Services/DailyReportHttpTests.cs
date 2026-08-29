@@ -81,24 +81,74 @@ public sealed class DailyReportHttpTests(PostgresContainerFixture fixture) : Pos
     }
 
     [Fact]
+    public async Task OwnerAndPublicWeeklyRoutes_BindAndSerializeTheSameCompleteEnvelope()
+    {
+        await using var app = CreateApplication();
+        using var client = app.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var owner = await client.GetAsync("/api/v1/reports/weekly?" + WeekWindowQuery());
+        var publicUser = await client.GetAsync(
+            "/api/v1/users/alice/reports/weekly?" + WeekWindowQuery());
+
+        owner.EnsureSuccessStatusCode();
+        publicUser.EnsureSuccessStatusCode();
+        var ownerJson = JsonDocument.Parse(await owner.Content.ReadAsStringAsync());
+        var publicJson = JsonDocument.Parse(await publicUser.Content.ReadAsStringAsync());
+        Assert.Equal("2026-03-02", ownerJson.RootElement.GetProperty("weekStart").GetString());
+        Assert.Equal("2026-03-08", ownerJson.RootElement.GetProperty("weekEnd").GetString());
+        Assert.Equal(
+            ownerJson.RootElement.GetProperty("apps")[0].GetProperty("durationSeconds").GetInt32(),
+            publicJson.RootElement.GetProperty("apps")[0].GetProperty("durationSeconds").GetInt32());
+    }
+
+    [Fact]
+    public async Task WeeklyHttpContract_RequiresTheEnvelopeAndPreservesDiagnosticMismatch()
+    {
+        await using var app = CreateApplication();
+        using var client = app.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var missing = await client.GetAsync("/api/v1/reports/weekly?date=2026-03-08");
+        var mismatch = await client.GetAsync(
+            "/api/v1/reports/weekly?" + WeekWindowQuery(endExclusive: "2026-03-09T04:00:01Z"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, mismatch.StatusCode);
+        var mismatchJson = JsonDocument.Parse(await mismatch.Content.ReadAsStringAsync());
+        Assert.Equal("calendar_rules_mismatch", mismatchJson.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
     public async Task OpenApi_MarksEveryCalendarEnvelopeFieldAsRequired()
     {
         await using var app = CreateApplication();
         using var client = app.CreateClient();
 
         var json = JsonDocument.Parse(await client.GetStringAsync("/openapi/v1.json"));
-        var parameters = json.RootElement
-            .GetProperty("paths")
-            .GetProperty("/api/v1/reports/daily")
-            .GetProperty("get")
-            .GetProperty("parameters")
-            .EnumerateArray()
-            .Where(parameter => parameter.GetProperty("name").GetString() != "deviceId")
-            .ToArray();
+        string[] paths =
+        [
+            "/api/v1/reports/daily",
+            "/api/v1/reports/weekly",
+            "/api/v1/users/{username}/reports/daily",
+            "/api/v1/users/{username}/reports/weekly",
+        ];
 
-        Assert.Equal(6, parameters.Length);
-        Assert.All(parameters, parameter => Assert.True(parameter.GetProperty("required").GetBoolean(),
-            $"{parameter.GetProperty("name").GetString()} should be required"));
+        foreach (var path in paths)
+        {
+            var parameters = json.RootElement
+                .GetProperty("paths")
+                .GetProperty(path)
+                .GetProperty("get")
+                .GetProperty("parameters")
+                .EnumerateArray()
+                .Where(parameter => parameter.GetProperty("name").GetString() is not ("deviceId" or "username"))
+                .ToArray();
+
+            Assert.Equal(6, parameters.Length);
+            Assert.All(parameters, parameter => Assert.True(parameter.GetProperty("required").GetBoolean(),
+                $"{path} {parameter.GetProperty("name").GetString()} should be required"));
+        }
     }
 
     private WebApplicationFactory<ReportController> CreateApplication() =>
@@ -123,6 +173,10 @@ public sealed class DailyReportHttpTests(PostgresContainerFixture fixture) : Pos
     private static string WindowQuery(string endExclusive = "2026-03-09T04:00:00Z") =>
         "version=1&kind=day&localDate=2026-03-08&timeZone=America%2FNew_York" +
         "&start=2026-03-08T05%3A00%3A00Z&endExclusive=" + Uri.EscapeDataString(endExclusive);
+
+    private static string WeekWindowQuery(string endExclusive = "2026-03-09T04:00:00Z") =>
+        "version=1&kind=week&localDate=2026-03-08&timeZone=America%2FNew_York" +
+        "&start=2026-03-02T05%3A00%3A00Z&endExclusive=" + Uri.EscapeDataString(endExclusive);
 
     private sealed class TestAuthenticationHandler(
         IOptionsMonitor<AuthenticationSchemeOptions> options,

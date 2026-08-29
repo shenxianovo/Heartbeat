@@ -12,6 +12,9 @@ public sealed class LocalCalendarWindowTests
         string? Start,
         string? EndExclusive,
         int? DurationHours,
+        string? WeekStart,
+        string? WeekEndExclusive,
+        int? WeekDurationHours,
         string? Error);
 
     public static TheoryData<GoldenScenario> GoldenScenarios()
@@ -56,6 +59,19 @@ public sealed class LocalCalendarWindowTests
         Assert.Equal(
             (double)scenario.DurationHours!.Value,
             (result.Window.EndExclusive - result.Window.Start).TotalHours);
+
+        var weekResult = LocalCalendarWindowValidator.Resolve(envelope with
+        {
+            Kind = "week",
+            Start = DateTimeOffset.Parse(scenario.WeekStart!),
+            EndExclusive = DateTimeOffset.Parse(scenario.WeekEndExclusive!),
+        });
+
+        Assert.Null(weekResult.Error);
+        Assert.Equal("week", weekResult.Window!.Kind);
+        Assert.Equal(
+            (double)scenario.WeekDurationHours!.Value,
+            (weekResult.Window.EndExclusive - weekResult.Window.Start).TotalHours);
     }
 
     [Theory]
@@ -89,6 +105,23 @@ public sealed class LocalCalendarWindowTests
 
         Assert.Equal("calendar_rules_mismatch", result.Error!.Code);
         Assert.Contains("TZDB", result.Error.Message);
+    }
+
+    [Fact]
+    public void Resolve_RecomputesTheMondayWeekAcrossSpringForward()
+    {
+        var result = LocalCalendarWindowValidator.Resolve(ValidEnvelope() with
+        {
+            Kind = "week",
+            LocalDate = "2026-03-08",
+            TimeZone = "America/New_York",
+            Start = DateTimeOffset.Parse("2026-03-02T05:00:00Z"),
+            EndExclusive = DateTimeOffset.Parse("2026-03-09T04:00:00Z"),
+        });
+
+        Assert.Null(result.Error);
+        Assert.Equal("week", result.Window!.Kind);
+        Assert.Equal(167, (result.Window.EndExclusive - result.Window.Start).TotalHours);
     }
 
     private static LocalCalendarWindowEnvelope ValidEnvelope() => new()

@@ -154,6 +154,89 @@ public class ReportServiceTests(PostgresContainerFixture fixture) : PostgresTest
         Assert.Equal("invalid_local_date", result.Error!.Code);
     }
 
+    [Theory]
+    [InlineData("2026-08-29", "Asia/Shanghai", "2026-08-23T16:00:00Z", "2026-08-30T16:00:00Z", 168)]
+    [InlineData("2026-03-08", "America/New_York", "2026-03-02T05:00:00Z", "2026-03-09T04:00:00Z", 167)]
+    [InlineData("2026-11-01", "America/New_York", "2026-10-26T04:00:00Z", "2026-11-02T05:00:00Z", 169)]
+    public async Task WeeklyReport_ClipsBothHalfOpenEdges_ForVariableLengthCivilWeeks(
+        string localDate, string timeZone, string startText, string endText, int expectedHours)
+    {
+        using var db = CreateDbContext();
+        var start = DateTimeOffset.Parse(startText);
+        var end = DateTimeOffset.Parse(endText);
+        db.ActivitySegments.AddRange(
+            SystemSegment(start.AddHours(-1), start.AddHours(1)),
+            SystemSegment(end.AddHours(-1), end.AddHours(1)),
+            SystemSegment(start.AddHours(-2), start),
+            SystemSegment(end, end.AddHours(2)));
+        await db.SaveChangesAsync();
+
+        var result = await new ReportService(db).GetWeeklyReportAsync(
+            "user-1", null, WeekWindow(localDate, timeZone, start, end));
+
+        var app = Assert.Single(result.Report!.Apps);
+        Assert.Equal(2 * 60 * 60, app.DurationSeconds);
+        Assert.Equal(expectedHours, (end - start).TotalHours);
+    }
+
+    [Fact]
+    public async Task WeeklyReport_AllAndSingleDevice_UseTheSameResolvedWindow()
+    {
+        using var db = CreateDbContext();
+        var secondDevice = new Device
+        {
+            OwnerId = "user-1",
+            HardwareId = "hw-2",
+            DeviceName = "Test Mac",
+        };
+        db.Devices.Add(secondDevice);
+        await db.SaveChangesAsync();
+
+        var start = DateTimeOffset.Parse("2026-10-26T04:00:00Z");
+        var end = DateTimeOffset.Parse("2026-11-02T05:00:00Z");
+        db.ActivitySegments.Add(SystemSegment(start, start.AddHours(1)));
+        db.ActivitySegments.Add(new ActivitySegment
+        {
+            Id = Guid.CreateVersion7(),
+            DeviceId = secondDevice.Id,
+            Source = ActivitySources.System,
+            IdentityKey = SystemIdentity.Key("VSCode", null),
+            AppId = _appId,
+            StartTime = end.AddHours(-1),
+            EndTime = end.AddHours(1),
+        });
+        await db.SaveChangesAsync();
+
+        var envelope = WeekWindow("2026-11-01", "America/New_York", start, end);
+        var all = await new ReportService(db).GetWeeklyReportAsync("user-1", null, envelope);
+        var single = await new ReportService(db).GetWeeklyReportAsync("user-1", _deviceId, envelope);
+
+        Assert.Equal(2 * 60 * 60, Assert.Single(all.Report!.Apps).DurationSeconds);
+        Assert.Equal(60 * 60, Assert.Single(single.Report!.Apps).DurationSeconds);
+        Assert.Equal("2026-10-26", all.Report.WeekStart);
+        Assert.Equal("2026-11-01", all.Report.WeekEnd);
+        Assert.Equal(all.Report.WeekStart, single.Report!.WeekStart);
+        Assert.Equal(all.Report.WeekEnd, single.Report.WeekEnd);
+    }
+
+    [Fact]
+    public async Task WeeklyReport_InvalidEnvelope_ReturnsBeforeQueryingFacts()
+    {
+        var db = CreateDbContext();
+        var service = new ReportService(db);
+        await db.DisposeAsync();
+
+        var result = await service.GetWeeklyReportAsync(
+            "user-1", null, WeekWindow(
+                "2026-03-08",
+                "America/New_York",
+                DateTimeOffset.Parse("2026-03-02T05:00:00Z"),
+                DateTimeOffset.Parse("2026-03-09T04:00:01Z")));
+
+        Assert.Null(result.Report);
+        Assert.Equal("calendar_rules_mismatch", result.Error!.Code);
+    }
+
     private static LocalCalendarWindowEnvelope DayWindow(DateTimeOffset start, DateTimeOffset end) =>
         DayWindow(start.ToString("yyyy-MM-dd"), "UTC", start, end);
 
@@ -165,6 +248,20 @@ public class ReportServiceTests(PostgresContainerFixture fixture) : PostgresTest
     {
         Version = 1,
         Kind = "day",
+        LocalDate = localDate,
+        TimeZone = timeZone,
+        Start = start,
+        EndExclusive = end,
+    };
+
+    private static LocalCalendarWindowEnvelope WeekWindow(
+        string localDate,
+        string timeZone,
+        DateTimeOffset start,
+        DateTimeOffset end) => new()
+    {
+        Version = 1,
+        Kind = "week",
         LocalDate = localDate,
         TimeZone = timeZone,
         Start = start,

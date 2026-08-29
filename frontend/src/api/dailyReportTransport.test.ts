@@ -1,7 +1,13 @@
 // @vitest-environment happy-dom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchDailyReport, fetchPublicDailyReport, toApiError } from './index'
+import {
+  fetchDailyReport,
+  fetchPublicDailyReport,
+  fetchPublicWeeklyReport,
+  fetchWeeklyReport,
+  toApiError,
+} from './index'
 import type { CalendarWindowEnvelope } from '../calendar/localCalendarWindow'
 
 vi.mock('../stores/auth', () => ({
@@ -13,12 +19,21 @@ vi.mock('../stores/auth', () => ({
 }))
 
 const fetchMock = vi.fn()
-const window: CalendarWindowEnvelope = {
+const dayWindow: CalendarWindowEnvelope<'day'> = {
   version: 1,
   kind: 'day',
   localDate: '2026-03-08',
   timeZone: 'America/New_York',
   start: '2026-03-08T05:00:00Z',
+  endExclusive: '2026-03-09T04:00:00Z',
+}
+
+const weekWindow: CalendarWindowEnvelope<'week'> = {
+  version: 1,
+  kind: 'week',
+  localDate: '2026-03-08',
+  timeZone: 'America/New_York',
+  start: '2026-03-02T05:00:00Z',
   endExclusive: '2026-03-09T04:00:00Z',
 }
 
@@ -35,15 +50,15 @@ describe('Daily Report Local Calendar Window transport', () => {
   })
 
   it('sends the complete immutable envelope to the owner endpoint', async () => {
-    await fetchDailyReport({ deviceId: 7, window })
+    await fetchDailyReport({ deviceId: 7, window: dayWindow })
 
-    expectRequest('/api/v1/reports/daily', '7')
+    expectRequest('/api/v1/reports/daily', '7', dayWindow)
   })
 
   it('sends identical window semantics to the public endpoint and omits all-device scope', async () => {
-    await fetchPublicDailyReport('alice', { deviceId: 0, window })
+    await fetchPublicDailyReport('alice', { deviceId: 0, window: dayWindow })
 
-    expectRequest('/api/v1/users/alice/reports/daily', null)
+    expectRequest('/api/v1/users/alice/reports/daily', null, dayWindow)
   })
 
   it('preserves a diagnostic calendar mismatch from Analytics', async () => {
@@ -57,7 +72,7 @@ describe('Daily Report Local Calendar Window transport', () => {
       }),
     } as Response)
 
-    const error = await fetchDailyReport({ window }).catch(toApiError)
+    const error = await fetchDailyReport({ window: dayWindow }).catch(toApiError)
 
     expect(error).toEqual({
       kind: 'calendar',
@@ -67,18 +82,51 @@ describe('Daily Report Local Calendar Window transport', () => {
   })
 })
 
-function expectRequest(path: string, deviceId: string | null) {
+describe('Weekly Report Local Calendar Window transport', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.stubGlobal('fetch', fetchMock)
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: async () => JSON.stringify({
+        weekStart: '2026-03-02',
+        weekEnd: '2026-03-08',
+        apps: [],
+      }),
+    } as Response)
+  })
+
+  it('sends the complete 167-hour week envelope to the owner endpoint', async () => {
+    await fetchWeeklyReport({ deviceId: 7, window: weekWindow })
+
+    expectRequest('/api/v1/reports/weekly', '7', weekWindow)
+  })
+
+  it('sends identical window semantics to the public endpoint and omits all-device scope', async () => {
+    await fetchPublicWeeklyReport('alice', { deviceId: 0, window: weekWindow })
+
+    expectRequest('/api/v1/users/alice/reports/weekly', null, weekWindow)
+  })
+})
+
+function expectRequest(
+  path: string,
+  deviceId: string | null,
+  window: CalendarWindowEnvelope,
+) {
   const [rawUrl] = fetchMock.mock.calls[0]
   const url = new URL(rawUrl, 'https://heartbeat.test')
   expect(url.pathname).toBe(path)
   expect(Object.fromEntries(url.searchParams)).toEqual({
     ...(deviceId == null ? {} : { deviceId }),
     Version: '1',
-    Kind: 'day',
-    LocalDate: '2026-03-08',
-    TimeZone: 'America/New_York',
-    Start: '2026-03-08T05:00:00.000Z',
-    EndExclusive: '2026-03-09T04:00:00.000Z',
+    Kind: window.kind,
+    LocalDate: window.localDate,
+    TimeZone: window.timeZone,
+    Start: new Date(window.start).toISOString(),
+    EndExclusive: new Date(window.endExclusive).toISOString(),
   })
   expect(url.searchParams.has('date')).toBe(false)
 }

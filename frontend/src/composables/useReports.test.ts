@@ -4,6 +4,7 @@ import type { CalendarContext } from '../calendar/localCalendarWindow'
 import { useReports } from './useReports'
 import {
   fetchPublicDailyReport,
+  fetchPublicWeeklyReport,
   fetchPublicUsage,
 } from '../api/index'
 
@@ -23,6 +24,14 @@ const context: CalendarContext = Object.freeze({
     start: '2026-03-08T05:00:00Z',
     endExclusive: '2026-03-09T04:00:00Z',
   }),
+  week: Object.freeze({
+    version: 1,
+    kind: 'week',
+    localDate: '2026-03-08',
+    timeZone: 'America/New_York',
+    start: '2026-03-02T05:00:00Z',
+    endExclusive: '2026-03-09T04:00:00Z',
+  }),
   isToday: false,
   displayLabel: '2026-03-08 · America/New_York (UTC-05:00 → UTC-04:00)',
   correlationIdentity: 'refresh-1',
@@ -31,10 +40,10 @@ const context: CalendarContext = Object.freeze({
 describe('useReports Local Calendar Window', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('reuses one captured context for Daily Report and the generic usage adapter', async () => {
-    const reports = useReports('alice', ref(0), ref('2026-03-08'), ref(context))
+  it('reuses one captured context for Daily, Weekly, and the generic usage adapter', async () => {
+    const reports = useReports('alice', ref(0), ref(context))
 
-    await Promise.all([reports.loadDaily(), reports.loadUsage()])
+    await Promise.all([reports.loadDaily(), reports.loadWeekly(), reports.loadUsage()])
 
     expect(fetchPublicDailyReport).toHaveBeenCalledWith('alice', {
       deviceId: 0,
@@ -44,6 +53,10 @@ describe('useReports Local Calendar Window', () => {
       deviceId: 0,
       start: context.day.start,
       end: context.day.endExclusive,
+    })
+    expect(fetchPublicWeeklyReport).toHaveBeenCalledWith('alice', {
+      deviceId: 0,
+      window: context.week,
     })
   })
 
@@ -56,7 +69,7 @@ describe('useReports Local Calendar Window', () => {
       .mockImplementationOnce(() => new Promise(resolve => { resolveNew = resolve }))
 
     const current = ref(context)
-    const reports = useReports('alice', ref(0), ref('2026-03-08'), current)
+    const reports = useReports('alice', ref(0), current)
     const oldRequest = reports.loadDaily()
     current.value = Object.freeze({ ...context, correlationIdentity: 'refresh-2' })
     const newRequest = reports.loadDaily()

@@ -136,7 +136,7 @@ export interface AppSummary {
  *
  * 尚未迁移到 Local Calendar Window 的 date 端点必须用它手拼查询串:
  * NSwag 生成的方法把 Date 序列化为 toISOString()(UTC),会丢掉本地时区偏移,
- * 服务端旧接口仍靠参数 Offset 划定窗口。Daily Report 已不走这条路径。
+ * 服务端旧接口仍靠参数 Offset 划定窗口。Daily / Weekly Report 已不走这条路径。
  * usage/segments 的 start/end 是时刻过滤,UTC 表示同一瞬间,不受影响。
  */
 function toLocalDateTimeOffsetString(dateStr: string): string {
@@ -154,24 +154,6 @@ function toLocalDateTimeOffsetString(dateStr: string): string {
  */
 function deviceScope(deviceId?: number): number | undefined {
   return deviceId ? deviceId : undefined
-}
-
-/**
- * Weekly Report 的旧查询串:deviceId 可选,date 带本地时区偏移。
- */
-function reportDateParams(params: { deviceId?: number; date?: string }): URLSearchParams {
-  const searchParams = new URLSearchParams()
-  const scoped = deviceScope(params.deviceId)
-  if (scoped !== undefined) searchParams.set('deviceId', String(scoped))
-  if (params.date) searchParams.set('date', toLocalDateTimeOffsetString(params.date))
-  return searchParams
-}
-
-/** 手拼报表请求的公共尾巴:非 2xx 归一成 ApiException(与生成 client 同型),响应体走 fromJS。 */
-async function reportRequest<T>(doFetch: (url: string) => Promise<Response>, url: string, fromJS: (data: unknown) => T): Promise<T> {
-  const res = await doFetch(url)
-  if (!res.ok) throw new ApiException('Report request failed.', res.status, await res.text(), {}, null)
-  return fromJS(await res.json())
 }
 
 /** 键频项的 null 归一:生成类型里 keys / code / count 都可空,收敛成密实数组。 */
@@ -209,10 +191,9 @@ export async function fetchUsage(params: {
   )
 }
 
-// Daily Report 使用完整 Local Calendar Window；Weekly 仍保留旧 fixed-offset contract。
 export async function fetchDailyReport(params: {
   deviceId?: number
-  window: CalendarWindowEnvelope
+  window: CalendarWindowEnvelope<'day'>
 }): Promise<DailyReportResponse> {
   const window = params.window
   return client.getDailyReport(
@@ -228,9 +209,18 @@ export async function fetchDailyReport(params: {
 
 export async function fetchWeeklyReport(params: {
   deviceId?: number
-  date?: string
+  window: CalendarWindowEnvelope<'week'>
 }): Promise<WeeklyReportResponse> {
-  return reportRequest(u => authHttp.fetch(u), `${API_BASE}/reports/weekly?${reportDateParams(params)}`, WeeklyReportResponse.fromJS)
+  const window = params.window
+  return client.getWeeklyReport(
+    deviceScope(params.deviceId),
+    window.version,
+    window.kind,
+    window.localDate,
+    window.timeZone,
+    new Date(window.start),
+    new Date(window.endExclusive),
+  )
 }
 
 function getIconUrl(username: string, appId: number): string {
@@ -660,7 +650,7 @@ export function appCatalogAdminErrorOf(error: unknown): AppCatalogAdminErrorResp
 
 // ===== Public API Functions (no auth required, by username) =====
 // 统一走 NSwag 生成的 client 方法(响应类型由 OpenAPI schema 保证);
-// Daily Report 的 typed wrapper 委托 generated client；Weekly 仍由手写 adapter 保留旧 offset contract。
+// Daily / Weekly Report 的 typed wrapper 都委托 generated client。
 
 export async function fetchPublicDevices(username: string): Promise<DeviceInfoResponse[]> {
   return client.getUserDevices(username)
@@ -672,7 +662,7 @@ export async function fetchPublicApps(username: string): Promise<AppInfoResponse
 
 export async function fetchPublicDailyReport(username: string, params: {
   deviceId?: number
-  window: CalendarWindowEnvelope
+  window: CalendarWindowEnvelope<'day'>
 }): Promise<DailyReportResponse> {
   const window = params.window
   return client.getUserDailyReport(
@@ -689,9 +679,19 @@ export async function fetchPublicDailyReport(username: string, params: {
 
 export async function fetchPublicWeeklyReport(username: string, params: {
   deviceId?: number
-  date?: string
+  window: CalendarWindowEnvelope<'week'>
 }): Promise<WeeklyReportResponse> {
-  return reportRequest(u => authHttp.fetch(u), `${API_BASE}/users/${username}/reports/weekly?${reportDateParams(params)}`, WeeklyReportResponse.fromJS)
+  const window = params.window
+  return client.getUserWeeklyReport(
+    username,
+    deviceScope(params.deviceId),
+    window.version,
+    window.kind,
+    window.localDate,
+    window.timeZone,
+    new Date(window.start),
+    new Date(window.endExclusive),
+  )
 }
 
 export async function fetchPublicDeviceStatus(username: string, deviceId: number): Promise<DeviceStatusResponse> {

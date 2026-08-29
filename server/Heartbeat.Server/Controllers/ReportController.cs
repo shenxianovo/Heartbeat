@@ -29,13 +29,15 @@ namespace Heartbeat.Server.Controllers
 
         [HttpGet("weekly")]
         [EndpointName("getWeeklyReport")]
+        [ProducesResponseType<WeeklyReportResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<CalendarWindowError>(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<WeeklyReportResponse>> GetWeeklyReport(
             [FromQuery] long? deviceId,
-            [FromQuery] DateTimeOffset? date)
+            [FromQuery] LocalCalendarWindowEnvelope window)
         {
             var userId = _currentUser.GetUserId();
-            var targetDate = date ?? DateTimeOffset.UtcNow;
-            return await _reportService.GetWeeklyReportAsync(userId, deviceId, targetDate);
+            var result = await _reportService.GetWeeklyReportAsync(userId, deviceId, window);
+            return result.Error == null ? result.Report! : BadRequest(result.Error);
         }
     }
 }

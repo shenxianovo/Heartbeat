@@ -15,7 +15,7 @@ namespace Heartbeat.Server.Services
             long? deviceId,
             LocalCalendarWindowEnvelope envelope)
         {
-            var validation = LocalCalendarWindowValidator.Resolve(envelope);
+            var validation = ResolveWindow(envelope, "day");
             if (validation.Error != null)
                 return new DailyReportQueryResult(null, validation.Error);
 
@@ -30,22 +30,39 @@ namespace Heartbeat.Server.Services
             }, null);
         }
 
-        public async Task<WeeklyReportResponse> GetWeeklyReportAsync(string ownerId, long? deviceId, DateTimeOffset date)
+        public async Task<WeeklyReportQueryResult> GetWeeklyReportAsync(
+            string ownerId,
+            long? deviceId,
+            LocalCalendarWindowEnvelope envelope)
         {
-            var range = DateRange.Week(date);
+            var validation = ResolveWindow(envelope, "week");
+            if (validation.Error != null)
+                return new WeeklyReportQueryResult(null, validation.Error);
+
+            var window = validation.Window!;
+            var range = new DateRange(window.Start.UtcDateTime, window.EndExclusive.UtcDateTime);
             var apps = await AggregateAsync(ownerId, deviceId, range);
 
-            var d = date.Date;
-            var dayOfWeek = d.DayOfWeek;
-            var mondayOffset = dayOfWeek == DayOfWeek.Sunday ? -6 : -(int)dayOfWeek + 1;
-            var monday = d.AddDays(mondayOffset);
-
-            return new WeeklyReportResponse
+            return new WeeklyReportQueryResult(new WeeklyReportResponse
             {
-                WeekStart = monday.ToString("yyyy-MM-dd"),
-                WeekEnd = monday.AddDays(6).ToString("yyyy-MM-dd"),
+                WeekStart = window.CivilStartDate.ToString("yyyy-MM-dd", null),
+                WeekEnd = window.CivilEndExclusiveDate.PlusDays(-1).ToString("yyyy-MM-dd", null),
                 Apps = apps
-            };
+            }, null);
+        }
+
+        private static CalendarWindowValidationResult ResolveWindow(
+            LocalCalendarWindowEnvelope envelope,
+            string expectedKind)
+        {
+            if (envelope.Kind != expectedKind)
+            {
+                return CalendarWindowValidationResult.Failure(
+                    "unsupported_calendar_window",
+                    $"This report requires a version 1 {expectedKind} calendar window.");
+            }
+
+            return LocalCalendarWindowValidator.Resolve(envelope);
         }
 
         private async Task<List<AppDurationItem>> AggregateAsync(string ownerId, long? deviceId, DateRange range)
@@ -93,5 +110,9 @@ namespace Heartbeat.Server.Services
 
     public sealed record DailyReportQueryResult(
         DailyReportResponse? Report,
+        CalendarWindowError? Error);
+
+    public sealed record WeeklyReportQueryResult(
+        WeeklyReportResponse? Report,
         CalendarWindowError? Error);
 }
