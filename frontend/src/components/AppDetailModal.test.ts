@@ -43,6 +43,7 @@ describe('AppDetailModal Local Calendar Window adapter', () => {
         username: 'alice',
         deviceId: 0,
         dayWindow: springDay,
+        refreshIdentity: 'refresh-1',
         app: { appId: 7, appName: 'Code', totalSeconds: 120 },
         usageData: [],
         devices: [],
@@ -82,6 +83,7 @@ describe('AppDetailModal Local Calendar Window adapter', () => {
         username: 'alice',
         deviceId: 0,
         dayWindow: springDay,
+        refreshIdentity: 'refresh-1',
         app: { appId: 7, appName: 'Code', totalSeconds: 120 },
         usageData: [],
         devices: [],
@@ -109,6 +111,7 @@ describe('AppDetailModal Local Calendar Window adapter', () => {
         username: 'alice',
         deviceId: 0,
         dayWindow: springDay,
+        refreshIdentity: 'refresh-1',
         app: { appId: 7, appName: 'Code', totalSeconds: 3600 },
         usageData: [{
           deviceId: 7,
@@ -131,5 +134,62 @@ describe('AppDetailModal Local Calendar Window adapter', () => {
 
     expect(wrapper.text()).toContain('1h 0m')
     expect(wrapper.text()).not.toContain('3h 0m')
+  })
+
+  it('does not let a slow App Detail response from an older refresh generation overwrite the current detail', async () => {
+    type Segments = Awaited<ReturnType<typeof fetchPublicSegments>>
+    let resolveOld!: (value: Segments) => void
+    let resolveNew!: (value: Segments) => void
+    vi.mocked(fetchPublicSegments)
+      .mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))
+      .mockImplementationOnce(() => new Promise(resolve => { resolveNew = resolve }))
+
+    const wrapper = shallowMount(AppDetailModal, {
+      props: {
+        username: 'alice',
+        deviceId: 0,
+        dayWindow: springDay,
+        refreshIdentity: 'refresh-1',
+        app: { appId: 7, appName: 'Code', totalSeconds: 3600 },
+        usageData: [{
+          deviceId: 7,
+          appId: 7,
+          appKey: 'browser',
+          appName: 'Browser',
+          title: 'Window',
+          startTime: new Date('2026-03-08T06:00:00Z'),
+          endTime: new Date('2026-03-08T07:00:00Z'),
+          durationSeconds: 3600,
+        }] as never[],
+        devices: [],
+        isProvisional: false,
+      },
+      global: {
+        stubs: { Teleport: true, AppIcon: true },
+      },
+    })
+
+    await wrapper.setProps({ refreshIdentity: 'refresh-2' })
+    expect(fetchPublicSegments).toHaveBeenCalledTimes(2)
+
+    resolveNew([{
+      source: 'browser',
+      identityKey: 'new-page',
+      title: 'New page',
+      startTime: new Date('2026-03-08T06:00:00Z'),
+      endTime: new Date('2026-03-08T07:00:00Z'),
+    }] as Segments)
+    await flushPromises()
+    resolveOld([{
+      source: 'browser',
+      identityKey: 'old-page',
+      title: 'Old page',
+      startTime: new Date('2026-03-08T06:00:00Z'),
+      endTime: new Date('2026-03-08T07:00:00Z'),
+    }] as Segments)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('New page')
+    expect(wrapper.text()).not.toContain('Old page')
   })
 })

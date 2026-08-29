@@ -47,6 +47,7 @@ let controller: AbortController | null = null
  */
 let streamSeq = 0
 let displayedWindow: CalendarContext['day'] | null = null
+let displayedIdentity: string | null = null
 
 // ===== 推理面板的滚动 =====
 // 推理动辄上万字符，容器必须限高 + 自己滚，否则一条流就把卡片撑出屏幕。
@@ -141,15 +142,20 @@ async function regenerateForCorrection() {
 
 watch(() => [props.calendarContext.correlationIdentity, props.calendarContext.day], () => {
   const nextWindow = props.calendarContext.day
+  const nextIdentity = props.calendarContext.correlationIdentity
   const windowChanged = displayedWindow !== null && !sameCalendarWindow(displayedWindow, nextWindow)
+  const generationChanged = displayedIdentity !== null && displayedIdentity !== nextIdentity
   displayedWindow = nextWindow
-  if (windowChanged) {
-    streamSeq++ // 作废在途的流：它的 delta 属于另一个规范窗口
+  displayedIdentity = nextIdentity
+  if (generationChanged) {
+    streamSeq++ // 作废在途的流：即使规范窗口相同，它也属于上一个 refresh generation
     abortStream()
     streaming.value = false
     streamText.value = ''
     thinkingText.value = ''
     streamError.value = ''
+  }
+  if (windowChanged) {
     recap.data.value = null // 换窗口不展示上一个窗口的旧叙事
   }
   load()

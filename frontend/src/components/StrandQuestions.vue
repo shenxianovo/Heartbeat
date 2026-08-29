@@ -51,8 +51,13 @@ const readingLabels = ref<Record<string, string>>({})
 const strands = ref<IStrandResponse[]>([])
 
 async function load() {
+  const expectedIdentity = props.calendarContext.correlationIdentity
+  // refresh generation 已切换时，旧问题不能继续接受回答；新读取完成前先收起旧证据。
+  cards.value = []
+  readingLabels.value = {}
   try {
     const res = await fetchDailyQuestions({ window: props.calendarContext.day })
+    if (props.calendarContext.correlationIdentity !== expectedIdentity) return
     readingLabels.value = res.readingLabels ?? {}
     cards.value = (res.questions ?? []).map(q => ({
       q,
@@ -69,7 +74,8 @@ async function load() {
       summary: [],
     }))
   } catch {
-    cards.value = [] // 提问是可选增强，取数失败静默不打扰
+    // 提问是可选增强，取数失败静默不打扰；旧 generation 的失败也不能清掉新列表。
+    if (props.calendarContext.correlationIdentity === expectedIdentity) cards.value = []
   }
 }
 

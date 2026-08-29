@@ -32,8 +32,6 @@ export function useDeviceSelection(username: string) {
     return d?.name ?? ''
   })
 
-  const isToday = computed(() => selectedDate.value === todayStr())
-
   /** 拉设备列表（选择器选项）。挂载时跑一次,错误重试时可重跑。不改变选中值。 */
   async function reload() {
     await devicesData.run()
@@ -49,6 +47,5 @@ export function useDeviceSelection(username: string) {
     selectedDate,
     selectedDeviceName,
     isAllDevices,
-    isToday,
   }
 }

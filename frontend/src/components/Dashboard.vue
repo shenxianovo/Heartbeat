@@ -293,6 +293,7 @@ onUnmounted(() => {
       :username="username"
       :deviceId="selectedDevice"
       :dayWindow="selectedApp.dayWindow"
+      :refreshIdentity="calendarContext.correlationIdentity"
       :app="selectedApp.app"
       :usageData="usageData"
       :devices="devices"

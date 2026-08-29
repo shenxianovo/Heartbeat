@@ -38,13 +38,17 @@ const changedContext = resolveCalendarContext('2026-03-08', {
   correlationIdentity: () => 'changed-refresh',
 })
 
-function questionResponse() {
+function questionResponse(
+  id = 'question-1',
+  windowKey = 'original-analytics-window-key',
+  question = '这是什么？',
+) {
   return {
     questions: [{
-      id: 'question-1',
-      windowKey: 'original-analytics-window-key',
+      id,
+      windowKey,
       kind: 'cluster',
-      question: '这是什么？',
+      question,
       matcher: { source: 'system', steps: [] },
       observations: [],
     }],
@@ -82,20 +86,55 @@ describe('StrandQuestions window identity', () => {
     expect(fetchDailyQuestions).toHaveBeenCalledWith({ window: originalContext.day })
   })
 
-  it('submits the original question credential against the current Calendar Context', async () => {
+  it('replaces old questions before submitting against a new Calendar Context', async () => {
     const wrapper = await mountQuestions()
-    vi.mocked(fetchDailyQuestions).mockImplementation(() => new Promise(() => {}))
+    vi.mocked(fetchDailyQuestions).mockResolvedValueOnce(
+      questionResponse('question-2', 'changed-analytics-window-key', '新窗口的问题？'),
+    )
 
     await wrapper.setProps({ calendarContext: changedContext })
+    await flushPromises()
+    expect(wrapper.text()).toContain('新窗口的问题？')
+    expect(wrapper.text()).not.toContain('这是什么？')
+
     await wrapper.find('textarea').setValue('这是项目调研')
     const proposeButton = wrapper.findAll('button').find(button => button.text() === '整理成变更')!
     await proposeButton.trigger('click')
     await flushPromises()
 
-    expect(proposeFromQuestion).toHaveBeenCalledWith('question-1', {
+    expect(proposeFromQuestion).toHaveBeenCalledWith('question-2', {
       window: changedContext.day,
-      windowKey: 'original-analytics-window-key',
+      windowKey: 'changed-analytics-window-key',
       answer: '这是项目调研',
     })
+  })
+
+  it('does not let a slow question read from an older refresh generation overwrite the new list', async () => {
+    let resolveOld!: (value: ReturnType<typeof questionResponse>) => void
+    vi.mocked(fetchDailyQuestions).mockImplementationOnce(
+      () => new Promise(resolve => { resolveOld = resolve }),
+    )
+    const wrapper = mount(StrandQuestions, {
+      props: { calendarContext: originalContext },
+      global: {
+        stubs: {
+          Card: { template: '<section><slot /></section>' },
+          ProposalReview: true,
+        },
+      },
+    })
+
+    vi.mocked(fetchDailyQuestions).mockResolvedValueOnce(
+      questionResponse('question-2', 'changed-analytics-window-key', '新窗口的问题？'),
+    )
+    await wrapper.setProps({ calendarContext: changedContext })
+    await flushPromises()
+    expect(wrapper.text()).toContain('新窗口的问题？')
+
+    resolveOld(questionResponse('question-1', 'original-analytics-window-key', '迟到的旧问题？'))
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('新窗口的问题？')
+    expect(wrapper.text()).not.toContain('迟到的旧问题？')
   })
 })

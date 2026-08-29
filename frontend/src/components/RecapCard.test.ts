@@ -362,7 +362,7 @@ describe('RecapCard 中止与失败', () => {
     expect(wrapper.text()).toContain('另一天的叙事。')
   })
 
-  it('同一规范窗口的下次刷新不中断已经开始的生成', async () => {
+  it('同一规范窗口进入新的 refresh generation 后中断旧流并隔离迟到事件', async () => {
     vi.mocked(fetchDailyRecap).mockResolvedValue(recap())
     const calls = captureStreams()
 
@@ -372,11 +372,15 @@ describe('RecapCard 中止与失败', () => {
     await wrapper.setProps({ calendarContext: contextWithIdentity('2026-08-19', 'next-refresh') })
     await flushPromises()
 
-    expect(calls[0].signal?.aborted).toBe(false)
-    calls[0].handlers.onDone?.(recap({ narrative: '长生成正常完成。' }))
+    expect(calls[0].signal?.aborted).toBe(true)
+    expect(calls).toHaveLength(2)
+    calls[0].handlers.onDone?.(recap({ narrative: '迟到的旧 generation。' }))
     calls[0].finish()
+    calls[1].handlers.onDone?.(recap({ narrative: '当前 generation。' }))
+    calls[1].finish()
     await flushPromises()
-    expect(wrapper.text()).toContain('长生成正常完成。')
+    expect(wrapper.text()).toContain('当前 generation。')
+    expect(wrapper.text()).not.toContain('迟到的旧 generation。')
   })
 
   it('普通读取原样显示稳定的 calendar mismatch 诊断', async () => {

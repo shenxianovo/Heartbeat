@@ -18,6 +18,7 @@ const props = defineProps<{
   username: string
   deviceId: number
   dayWindow: CalendarWindowEnvelope<'day'>
+  refreshIdentity: string
   app: { appId: number; appName: string; totalSeconds: number }
   usageData: AppUsageResponse[]
   devices: DeviceInfoResponse[]
@@ -49,6 +50,7 @@ function detailIdentity() {
   return [
     props.app.appId,
     props.deviceId,
+    props.refreshIdentity,
     props.dayWindow.timeZone,
     props.dayWindow.start,
     props.dayWindow.endExclusive,
@@ -56,7 +58,7 @@ function detailIdentity() {
 }
 
 watch(
-  [() => props.app.appId, () => props.deviceId],
+  [() => props.app.appId, () => props.deviceId, () => props.refreshIdentity],
   () => runForCurrentIdentity(segs, detailIdentity),
   { immediate: true },
 )

@@ -100,15 +100,13 @@ export function useHeartbeat(username: string) {
     }
   }
 
-  async function refresh() {
+  async function loadCapturedContext() {
     loading.value = true
     try {
-      // 一次 refresh 只捕获一次浏览器 civil timezone；以下并发请求共享同一不可变 context。
-      if (!captureCalendarContext()) return
       // 取数不再等设备列表：默认 deviceId=0 即聚合查询。
       // 设备列表只影响选择器选项与 presence 目标,由 selection.reload() 独立拉。
       await Promise.all([
-        appsData.run(),
+        runForCurrentIdentity(appsData, () => calendarContext.value.correlationIdentity),
         reports.loadUsage(),
         status.load(),
         reports.loadDaily(),
@@ -121,19 +119,27 @@ export function useHeartbeat(username: string) {
     }
   }
 
+  async function refresh() {
+    // 一次 refresh 只捕获一次浏览器 civil timezone；以下并发请求共享同一不可变 context。
+    if (!captureCalendarContext()) return
+    await loadCapturedContext()
+  }
+
   let usageTimer: ReturnType<typeof setInterval>
 
   onMounted(async () => {
+    // setup 已为首屏刷新捕获一次 context；这里直接消费它，避免子组件与报表各见一个 generation。
     // 默认选中值恒为"全部设备",watch 不会因 0→N 触发,首屏必须显式加载一次。
-    await refresh()
+    await loadCapturedContext()
 
     usageTimer = setInterval(() => {
-      if (captureCalendarContext() && isToday.value) {
-        reports.loadUsage()
-        reports.loadDaily()
-        reports.loadWeekly()
-        loadKeyFrequency()
-      }
+      // 报表 poll 属于当前 generation：复用其时区快照，避免长 Recap SSE 每 30s 被隐式作废。
+      // 时区变化与 today/historical 重新判定都在下一次显式 refresh 采纳。
+      if (!isToday.value) return
+      reports.loadUsage()
+      reports.loadDaily()
+      reports.loadWeekly()
+      loadKeyFrequency()
     }, 30_000)
   })
 
