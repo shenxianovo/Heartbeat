@@ -22,23 +22,26 @@ describe('useDeviceStatus refresh generation isolation', () => {
       .mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))
       .mockImplementationOnce(() => new Promise(resolve => { resolveNew = resolve }))
 
-    let generation = 1
     let status!: ReturnType<typeof useDeviceStatus>
+    const selectedDevice = ref(7)
     const wrapper = mount(defineComponent({
       setup() {
         status = useDeviceStatus(
           'alice',
-          ref([{ id: 7, name: 'Laptop' }] as never[]),
-          ref(7),
+          ref([
+            { id: 7, name: 'Old laptop' },
+            { id: 8, name: 'New laptop' },
+          ] as never[]),
+          selectedDevice,
           ref(true),
         )
         return () => null
       },
     }))
 
-    const oldLoad = status.load(() => generation === 1)
-    generation = 2
-    const newLoad = status.load(() => generation === 2)
+    const oldLoad = status.load()
+    selectedDevice.value = 8
+    const newLoad = status.load()
     resolveNew({ isOnline: true, currentApp: 'New app' } as Status)
     await newLoad
     resolveOld({ isOnline: true, currentApp: 'Old app' } as Status)

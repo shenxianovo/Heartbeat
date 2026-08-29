@@ -74,7 +74,10 @@ export function useDeviceStatus(
   const lastSeenStr = computed(() => formatLastSeen(lastSeen.value))
   const lastSeenTitle = computed(() => formatExactLocalDateTime(lastSeen.value))
 
+  let loadSequence = 0
+
   async function load(commitIf: () => boolean = () => true) {
+    const sequence = ++loadSequence
     const ids = targetDeviceIds.value
     if (ids.length === 0) return
     const results = await Promise.allSettled(
@@ -86,7 +89,7 @@ export function useDeviceStatus(
       if (r.status === 'fulfilled') next.set(r.value[0], r.value[1])
       else lastErr = r.reason
     }
-    if (!commitIf()) return
+    if (sequence !== loadSequence || !commitIf()) return
     statusMap.value = next as Map<number, DeviceStatusResponse>
     // 全军覆没才算错误：部分设备探测失败不该让在场卡整体亮红。
     error.value = next.size === 0 && lastErr !== null ? toApiError(lastErr) : null

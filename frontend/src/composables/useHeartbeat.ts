@@ -103,6 +103,7 @@ export function useHeartbeat(username: string) {
         // 没有有效 Context 也必须推进 generation，作废上一日期仍在途的普通响应。
         refreshIdentity.value = globalThis.crypto.randomUUID()
         calendarValid.value = false
+        loading.value = false
         calendarError.value = { kind: 'calendar', code: error.code, message: error.message }
         return false
       }
@@ -127,7 +128,7 @@ export function useHeartbeat(username: string) {
         loadAdminOverlay(isCurrent),
       ])
     } finally {
-      loading.value = false
+      if (isCurrent()) loading.value = false
     }
   }
 

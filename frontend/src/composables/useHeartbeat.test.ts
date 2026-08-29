@@ -242,6 +242,36 @@ describe('useHeartbeat activity view Calendar Context', () => {
     wrapper.unmount()
   })
 
+  it('keeps the current refresh loading state when an older generation finishes first', async () => {
+    let heartbeat!: ReturnType<typeof useHeartbeat>
+    const wrapper = mount(defineComponent({
+      setup() {
+        heartbeat = useHeartbeat('alice')
+        return () => null
+      },
+    }))
+    await flushPromises()
+
+    type Apps = Awaited<ReturnType<typeof fetchPublicApps>>
+    let resolveOld!: (value: Apps) => void
+    let resolveNew!: (value: Apps) => void
+    vi.mocked(fetchPublicApps)
+      .mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))
+      .mockImplementationOnce(() => new Promise(resolve => { resolveNew = resolve }))
+
+    const oldRefresh = heartbeat.refresh()
+    const newRefresh = heartbeat.refresh()
+    resolveOld([])
+    await oldRefresh
+    expect(heartbeat.loading.value).toBe(true)
+
+    resolveNew([])
+    await newRefresh
+    expect(heartbeat.loading.value).toBe(false)
+
+    wrapper.unmount()
+  })
+
   it('does not let an older admin overlay response overwrite a newer refresh generation', async () => {
     authState.isAuthenticated = true
     authState.username = 'alice'
