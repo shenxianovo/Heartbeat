@@ -2,7 +2,7 @@
 
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CalendarWindowEnvelope } from '../calendar/localCalendarWindow'
+import type { CalendarContext, CalendarWindowEnvelope } from '../calendar/localCalendarWindow'
 import AppDetailModal from './AppDetailModal.vue'
 import { fetchPublicSegments } from '../api/index'
 
@@ -34,6 +34,16 @@ const nextDay: CalendarWindowEnvelope<'day'> = Object.freeze({
   endExclusive: '2026-03-10T04:00:00Z',
 })
 
+function detailContext(
+  day: CalendarWindowEnvelope<'day'>,
+  correlationIdentity: string,
+): Pick<CalendarContext, 'day' | 'correlationIdentity'> {
+  return Object.freeze({ day, correlationIdentity })
+}
+
+const springContext = detailContext(springDay, 'refresh-1')
+const nextContext = detailContext(nextDay, 'refresh-2')
+
 describe('AppDetailModal Local Calendar Window adapter', () => {
   beforeEach(() => vi.clearAllMocks())
 
@@ -42,8 +52,7 @@ describe('AppDetailModal Local Calendar Window adapter', () => {
       props: {
         username: 'alice',
         deviceId: 0,
-        dayWindow: springDay,
-        refreshIdentity: 'refresh-1',
+        calendarContext: springContext,
         app: { appId: 7, appName: 'Code', totalSeconds: 120 },
         usageData: [],
         devices: [],
@@ -82,8 +91,7 @@ describe('AppDetailModal Local Calendar Window adapter', () => {
       props: {
         username: 'alice',
         deviceId: 0,
-        dayWindow: springDay,
-        refreshIdentity: 'refresh-1',
+        calendarContext: springContext,
         app: { appId: 7, appName: 'Code', totalSeconds: 120 },
         usageData: [],
         devices: [],
@@ -94,11 +102,15 @@ describe('AppDetailModal Local Calendar Window adapter', () => {
       },
     })
 
-    await wrapper.setProps({ dayWindow: nextDay })
-    expect(fetchPublicSegments).toHaveBeenCalledTimes(1)
-    expect(fetchPublicSegments).toHaveBeenCalledWith('alice', expect.objectContaining({
+    await wrapper.setProps({ calendarContext: nextContext })
+    expect(fetchPublicSegments).toHaveBeenCalledTimes(2)
+    expect(fetchPublicSegments).toHaveBeenNthCalledWith(1, 'alice', expect.objectContaining({
       start: springDay.start,
       end: springDay.endExclusive,
+    }))
+    expect(fetchPublicSegments).toHaveBeenNthCalledWith(2, 'alice', expect.objectContaining({
+      start: nextDay.start,
+      end: nextDay.endExclusive,
     }))
 
     resolveRequest([])
@@ -110,8 +122,7 @@ describe('AppDetailModal Local Calendar Window adapter', () => {
       props: {
         username: 'alice',
         deviceId: 0,
-        dayWindow: springDay,
-        refreshIdentity: 'refresh-1',
+        calendarContext: springContext,
         app: { appId: 7, appName: 'Code', totalSeconds: 3600 },
         usageData: [{
           deviceId: 7,
@@ -148,8 +159,7 @@ describe('AppDetailModal Local Calendar Window adapter', () => {
       props: {
         username: 'alice',
         deviceId: 0,
-        dayWindow: springDay,
-        refreshIdentity: 'refresh-1',
+        calendarContext: springContext,
         app: { appId: 7, appName: 'Code', totalSeconds: 3600 },
         usageData: [{
           deviceId: 7,
@@ -169,7 +179,7 @@ describe('AppDetailModal Local Calendar Window adapter', () => {
       },
     })
 
-    await wrapper.setProps({ refreshIdentity: 'refresh-2' })
+    await wrapper.setProps({ calendarContext: detailContext(springDay, 'refresh-2') })
     expect(fetchPublicSegments).toHaveBeenCalledTimes(2)
 
     resolveNew([{

@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useHeartbeat } from './useHeartbeat'
 import { resolveCalendarContext } from '../calendar/localCalendarWindow'
 import {
+  fetchAdminAppCatalog,
+  fetchMe,
   fetchPublicApps,
   fetchPublicDailyReport,
   fetchPublicKeyFrequency,
@@ -17,13 +19,26 @@ const calendarState = vi.hoisted(() => ({
   identity: 0,
   timeZone: 'America/New_York',
   isToday: false,
+  fail: false,
+}))
+
+const authState = vi.hoisted(() => ({
+  isAuthenticated: false,
+  username: null as string | null,
 }))
 
 vi.mock('../calendar/localCalendarWindow', async (importOriginal) => {
   const original = await importOriginal<typeof import('../calendar/localCalendarWindow')>()
   return {
     ...original,
-    resolveCalendarContext: vi.fn(() => Object.freeze({
+    resolveCalendarContext: vi.fn(() => {
+      if (calendarState.fail) {
+        throw new original.CalendarContextError(
+          'nonexistent_civil_date',
+          'Civil date does not exist in captured timezone',
+        )
+      }
+      return Object.freeze({
       day: Object.freeze({
         version: 1,
         kind: 'day',
@@ -50,15 +65,18 @@ vi.mock('../calendar/localCalendarWindow', async (importOriginal) => {
       }),
       isToday: calendarState.isToday,
       displayLabel: `2026-03-08 · ${calendarState.timeZone}`,
-      correlationIdentity: `refresh-${++calendarState.identity}`,
-    })),
+        correlationIdentity: `refresh-${++calendarState.identity}`,
+      })
+    }),
   }
 })
 
 vi.mock('../stores/auth', () => ({
   authStore: {
-    isAuthenticated: false,
-    username: { value: null },
+    get isAuthenticated() { return authState.isAuthenticated },
+    username: {
+      get value() { return authState.username },
+    },
   },
 }))
 
@@ -81,6 +99,9 @@ describe('useHeartbeat activity view Calendar Context', () => {
     calendarState.identity = 0
     calendarState.timeZone = 'America/New_York'
     calendarState.isToday = false
+    calendarState.fail = false
+    authState.isAuthenticated = false
+    authState.username = null
   })
 
   afterEach(() => vi.useRealTimers())
@@ -218,6 +239,68 @@ describe('useHeartbeat activity view Calendar Context', () => {
 
     expect(heartbeat.appNameMap.value).toEqual(new Map([[2, 'new-app']]))
 
+    wrapper.unmount()
+  })
+
+  it('does not let an older admin overlay response overwrite a newer refresh generation', async () => {
+    authState.isAuthenticated = true
+    authState.username = 'alice'
+    vi.mocked(fetchMe).mockResolvedValue({ isAdmin: true } as never)
+    let heartbeat!: ReturnType<typeof useHeartbeat>
+    const wrapper = mount(defineComponent({
+      setup() {
+        heartbeat = useHeartbeat('alice')
+        return () => null
+      },
+    }))
+    await flushPromises()
+
+    type Inventory = Awaited<ReturnType<typeof fetchAdminAppCatalog>>
+    let resolveOld!: (value: Inventory) => void
+    let resolveNew!: (value: Inventory) => void
+    vi.mocked(fetchAdminAppCatalog)
+      .mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))
+      .mockImplementationOnce(() => new Promise(resolve => { resolveNew = resolve }))
+
+    const oldRefresh = heartbeat.refresh()
+    const newRefresh = heartbeat.refresh()
+    await flushPromises()
+    resolveNew({ products: [{ id: 2, isProvisional: true }] } as Inventory)
+    await newRefresh
+    resolveOld({ products: [{ id: 1, isProvisional: true }] } as Inventory)
+    await oldRefresh
+
+    expect(heartbeat.provisionalAppIds.value).toEqual(new Set([2]))
+    wrapper.unmount()
+  })
+
+  it('invalidates old response commits when the next selected date cannot resolve a Calendar Context', async () => {
+    let heartbeat!: ReturnType<typeof useHeartbeat>
+    const wrapper = mount(defineComponent({
+      setup() {
+        heartbeat = useHeartbeat('alice')
+        return () => null
+      },
+    }))
+    await flushPromises()
+
+    type Apps = Awaited<ReturnType<typeof fetchPublicApps>>
+    let resolveOld!: (value: Apps) => void
+    vi.mocked(fetchPublicApps).mockImplementationOnce(
+      () => new Promise(resolve => { resolveOld = resolve }),
+    )
+    const oldRefresh = heartbeat.refresh()
+
+    calendarState.fail = true
+    heartbeat.selectedDate.value = '2011-12-30'
+    await flushPromises()
+    expect(heartbeat.calendarValid.value).toBe(false)
+    expect(heartbeat.timezoneLabel.value).toBe('日历窗口不可用')
+
+    resolveOld([{ id: 1, name: 'old-app' }] as Apps)
+    await oldRefresh
+
+    expect(heartbeat.appNameMap.value).toEqual(new Map())
     wrapper.unmount()
   })
 

@@ -8,6 +8,7 @@ import {
   proposeFromQuestion,
 } from '../api/index'
 import { resolveCalendarContext } from '../calendar/localCalendarWindow'
+import ProposalReview from './ProposalReview.vue'
 import StrandQuestions from './StrandQuestions.vue'
 
 vi.mock('../api/index', () => ({
@@ -136,5 +137,48 @@ describe('StrandQuestions window identity', () => {
 
     expect(wrapper.text()).toContain('新窗口的问题？')
     expect(wrapper.text()).not.toContain('迟到的旧问题？')
+  })
+
+  it('does not let an in-flight old proposal or strand read overwrite new-generation Knowledge review state', async () => {
+    type Proposal = Awaited<ReturnType<typeof proposeFromQuestion>>
+    type Strands = Awaited<ReturnType<typeof fetchStrands>>
+    let resolveOldProposal!: (value: Proposal) => void
+    let resolveOldStrands!: (value: Strands) => void
+    vi.mocked(proposeFromQuestion)
+      .mockImplementationOnce(() => new Promise(resolve => { resolveOldProposal = resolve }))
+      .mockResolvedValueOnce({
+        explanation: 'new proposal', operations: [], warnings: [], suggestions: [], readingLabels: {},
+      } as unknown as Proposal)
+    vi.mocked(fetchStrands)
+      .mockImplementationOnce(() => new Promise(resolve => { resolveOldStrands = resolve }))
+      .mockResolvedValueOnce([{ id: 'new-strand', name: 'New strand' }] as Strands)
+
+    const wrapper = await mountQuestions()
+    await wrapper.find('textarea').setValue('旧窗口回答')
+    await wrapper.findAll('button').find(button => button.text() === '整理成变更')!.trigger('click')
+
+    vi.mocked(fetchDailyQuestions).mockResolvedValueOnce(
+      questionResponse('question-2', 'changed-analytics-window-key', '新窗口的问题？'),
+    )
+    await wrapper.setProps({ calendarContext: changedContext })
+    await flushPromises()
+    await wrapper.find('textarea').setValue('新窗口回答')
+    await wrapper.findAll('button').find(button => button.text() === '整理成变更')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findComponent(ProposalReview).props('strands')).toEqual([
+      expect.objectContaining({ id: 'new-strand' }),
+    ])
+
+    resolveOldStrands([{ id: 'old-strand', name: 'Old strand' }] as Strands)
+    resolveOldProposal({
+      explanation: 'old proposal', operations: [], warnings: [], suggestions: [], readingLabels: {},
+    } as unknown as Proposal)
+    await flushPromises()
+
+    expect(wrapper.findComponent(ProposalReview).props('strands')).toEqual([
+      expect.objectContaining({ id: 'new-strand' }),
+    ])
+    expect(wrapper.text()).toContain('新窗口的问题？')
   })
 })

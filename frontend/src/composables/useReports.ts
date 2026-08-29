@@ -50,6 +50,7 @@ export function useReports(
   username: string,
   selectedDevice: Ref<number>,
   calendarContext: Ref<CalendarContext>,
+  refreshIdentity: Ref<string> = computed(() => calendarContext.value.correlationIdentity),
 ) {
   const dayBounds = computed(() => ({
     start: Date.parse(calendarContext.value.day.start),
@@ -134,15 +135,15 @@ export function useReports(
 
   // 取数不再依赖"设备列表已就位"：deviceId=0 即聚合查询，API 边界会归一为不传参。
   async function loadUsage() {
-    await runForCurrentIdentity(usage, () => calendarContext.value.correlationIdentity)
+    await runForCurrentIdentity(usage, () => refreshIdentity.value)
   }
 
   async function loadDaily() {
-    await runForCurrentIdentity(daily, () => calendarContext.value.correlationIdentity)
+    await runForCurrentIdentity(daily, () => refreshIdentity.value)
   }
 
   async function loadWeekly() {
-    await runForCurrentIdentity(weekly, () => calendarContext.value.correlationIdentity)
+    await runForCurrentIdentity(weekly, () => refreshIdentity.value)
   }
 
   return {

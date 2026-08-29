@@ -35,9 +35,9 @@ export function useAsyncData<T>(fetcher: () => Promise<T>, initial: T) {
 }
 
 /** 只提交仍属于当前 refresh identity 的响应；旧请求可以完成，但不能覆盖新状态。 */
-export async function runForCurrentIdentity(
+export async function runForCurrentIdentity<Identity>(
   source: { run: (commitIf?: () => boolean) => Promise<void> },
-  currentIdentity: () => string,
+  currentIdentity: () => Identity,
 ) {
   const expected = currentIdentity()
   await source.run(() => currentIdentity() === expected)

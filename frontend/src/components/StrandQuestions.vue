@@ -89,6 +89,8 @@ function remove(c: TeachingCard) {
 
 async function propose(c: TeachingCard) {
   if (!c.answer.trim() || !c.q.id || !c.q.windowKey) return
+  const context = props.calendarContext
+  const expectedIdentity = context.correlationIdentity
   c.stage = 'proposing'
   c.error = null
   c.conflict = false
@@ -96,12 +98,16 @@ async function propose(c: TeachingCard) {
   try {
     const [proposal] = await Promise.all([
       proposeFromQuestion(c.q.id, {
-        window: props.calendarContext.day,
+        window: context.day,
         windowKey: c.q.windowKey,
         answer: c.answer,
       }),
-      loadStrands(),
+      loadStrands(expectedIdentity),
     ])
+    if (
+      props.calendarContext.correlationIdentity !== expectedIdentity
+      || !cards.value.includes(c)
+    ) return
     c.proposal = proposal
     c.items = toReviewItems(proposal)
     // 提案可能引入证据卡之外的读数（如 LLM 引用了别的 Source 指纹）:标签词典做并集
@@ -116,9 +122,10 @@ async function propose(c: TeachingCard) {
 }
 
 /** 已有 Strand 树（path/日期/版本）：review 里"选择已有节点"的消歧数据源。失败不挡 review。 */
-async function loadStrands() {
+async function loadStrands(expectedIdentity = props.calendarContext.correlationIdentity) {
   try {
-    strands.value = await fetchStrands()
+    const next = await fetchStrands()
+    if (props.calendarContext.correlationIdentity === expectedIdentity) strands.value = next
   } catch {
     // 列表加载失败时,已有节点只能按 Id 展示;不阻塞主流程
   }

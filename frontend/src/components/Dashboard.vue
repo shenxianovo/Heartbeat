@@ -59,6 +59,7 @@ const {
   includeAway,
   keyFrequency,
   calendarContext,
+  calendarValid,
   timezoneLabel,
 } = useHeartbeat(props.username)
 
@@ -213,7 +214,7 @@ onUnmounted(() => {
       >重试</button>
     </div>
 
-    <main>
+    <main v-if="calendarValid">
       <StatusCards
         :username="username"
         :isToday="isToday"
@@ -289,11 +290,10 @@ onUnmounted(() => {
     </main>
 
     <AppDetailModal
-      v-if="selectedApp"
+      v-if="selectedApp && calendarValid"
       :username="username"
       :deviceId="selectedDevice"
-      :dayWindow="selectedApp.dayWindow"
-      :refreshIdentity="calendarContext.correlationIdentity"
+      :calendarContext="calendarContext"
       :app="selectedApp.app"
       :usageData="usageData"
       :devices="devices"

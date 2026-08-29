@@ -2,7 +2,7 @@
 import { computed, watch, onMounted, onUnmounted } from 'vue'
 import { fetchPublicSegments } from '../api/index'
 import type { AppUsageResponse, SegmentResponse, DeviceInfoResponse } from '../api/index'
-import type { CalendarWindowEnvelope } from '../calendar/localCalendarWindow'
+import type { CalendarContext } from '../calendar/localCalendarWindow'
 import AppIcon from './AppIcon.vue'
 import { runForCurrentIdentity, useAsyncData } from '../composables/useAsyncData'
 import { formatDuration } from '../composables/useHeartbeat'
@@ -17,8 +17,7 @@ import { X } from 'lucide-vue-next'
 const props = defineProps<{
   username: string
   deviceId: number
-  dayWindow: CalendarWindowEnvelope<'day'>
-  refreshIdentity: string
+  calendarContext: Pick<CalendarContext, 'day' | 'correlationIdentity'>
   app: { appId: number; appName: string; totalSeconds: number }
   usageData: AppUsageResponse[]
   devices: DeviceInfoResponse[]
@@ -26,10 +25,11 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ close: [] }>()
+const dayWindow = computed(() => props.calendarContext.day)
 
 const dayBounds = computed<Interval>(() => ({
-  start: Date.parse(props.dayWindow.start),
-  end: Date.parse(props.dayWindow.endExclusive),
+  start: Date.parse(dayWindow.value.start),
+  end: Date.parse(dayWindow.value.endExclusive),
 }))
 
 // ── 插件段(非 system 轨) ──
@@ -37,29 +37,24 @@ const segs = useAsyncData<SegmentResponse[]>(() => {
   return fetchPublicSegments(props.username, {
     deviceId: props.deviceId,
     appId: props.app.appId,
-    start: props.dayWindow.start,
-    end: props.dayWindow.endExclusive,
+    start: dayWindow.value.start,
+    end: dayWindow.value.endExclusive,
   })
 }, [])
 const pluginSegments = segs.data
 const loading = segs.pending
 const segmentsFailed = computed(() => segs.error.value !== null)
 
-// dayWindow 是 Dashboard 在“展开”动作发生时捕获的快照；设备切换只重跑过滤条件。
-function detailIdentity() {
-  return [
-    props.app.appId,
-    props.deviceId,
-    props.refreshIdentity,
-    props.dayWindow.timeZone,
-    props.dayWindow.start,
-    props.dayWindow.endExclusive,
-  ].join('|')
-}
+// App Detail 只消费当前 Context 的 day + correlation identity，不拥有整页 Window Session。
+const detailIdentity = computed(() => Object.freeze({
+  appId: props.app.appId,
+  deviceId: props.deviceId,
+  refreshIdentity: props.calendarContext.correlationIdentity,
+}))
 
 watch(
-  [() => props.app.appId, () => props.deviceId, () => props.refreshIdentity],
-  () => runForCurrentIdentity(segs, detailIdentity),
+  detailIdentity,
+  () => runForCurrentIdentity(segs, () => detailIdentity.value),
   { immediate: true },
 )
 
@@ -92,7 +87,7 @@ const tracks = computed<Track[]>(() => {
   return buildTracks(
     toReplaySegs(systemSegments.value, pluginSegments.value, dayBounds.value),
     vb,
-    props.dayWindow.timeZone,
+    dayWindow.value.timeZone,
   )
 })
 
@@ -116,7 +111,7 @@ const deviceGroups = computed(() => {
     const t = buildTracks(
       toReplaySegs(sys, plugins, dayBounds.value),
       vb,
-      props.dayWindow.timeZone,
+      dayWindow.value.timeZone,
     )
     if (t.length === 0) continue
     groups.push({
@@ -143,7 +138,7 @@ const breakdown = computed(() =>
 
 const timeTicks = computed(() => {
   const vb = viewBounds.value
-  return vb ? niceTicks(vb.start, vb.end, 10, props.dayWindow.timeZone) : []
+  return vb ? niceTicks(vb.start, vb.end, 10, dayWindow.value.timeZone) : []
 })
 
 // ── 全局弹窗行为:Esc 关闭 + 锁背景滚动 ──
