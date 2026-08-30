@@ -194,3 +194,13 @@ projection，但 ingress/outbox 的已 ACK remainder 不复活，第二次 drain
 
 新 smoke 单轮 1/1，随后独立连续 10 轮、10/10。该证据覆盖当前 OS/filesystem 上的真实进程崩溃、
 Protocol replay 与逻辑/完成 drain result；仍不外推为断电或三平台 directory-entry durability。
+
+### 2026-08-30 — Event projection final commit deadline fence
+
+第二轮独立复审发现 Hub 在 activation delivery fence 外调用同步 `IInputEventFactSink.Accept`；
+生产 `InputEventBuffer` 可在 Stop 返回后才完成 cache replacement。确定性 red 测试让 sink 阻塞到
+deadline，旧实现释放后记录到 2 次迟到 commit。新的强制 `ICollectorProjectionCommitFence`
+契约允许 sink 在 fence 外准备，但必须通过 activation 自有 fence 提交最终持久突变；
+deadline 抢先则 sink 返回 retry 且 cache 不变。`BeginDrain` 也改为不等待正在执行不受信
+projection 的 session lock，使硬 deadline 能在 Stop 入口建立。System transcript red→green 1/1；
+`InputEventBuffer` 拒绝 fence 后 restart 仍为空的生产 sink 测试 1/1。

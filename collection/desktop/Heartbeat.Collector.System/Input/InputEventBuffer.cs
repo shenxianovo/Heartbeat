@@ -206,7 +206,10 @@ namespace Heartbeat.Collector.System.Input
             }
         }
 
-        void IInputEventFactSink.Accept(InputEventItem item, bool isReplay) => EnqueueItem(item);
+        bool IInputEventFactSink.TryAccept(
+            InputEventItem item,
+            bool isReplay,
+            ICollectorProjectionCommitFence commitFence) => TryEnqueueItem(item, commitFence);
 
         private void Enqueue(InputEventType type, short code)
         {
@@ -226,23 +229,34 @@ namespace Heartbeat.Collector.System.Input
 
         private void EnqueueItem(InputEventItem item)
         {
+            if (!TryEnqueueItem(item, UnfencedInputEventCommitFence.Instance))
+                throw new InvalidOperationException("The local InputEvent enqueue was unexpectedly fenced.");
+        }
+
+        private bool TryEnqueueItem(
+            InputEventItem item,
+            ICollectorProjectionCommitFence commitFence)
+        {
+            ArgumentNullException.ThrowIfNull(commitFence);
             lock (_durableGate)
             {
                 if (_durableProjectionCache is not null)
                 {
                     var retained = _durableProjectionCache.Load();
                     if (retained.Any(existing => existing.Id == item.Id))
-                        return;
+                        return true;
                     if (retained.Count >= _capacity)
                     {
                         UpdateStatus(retained.Count);
                         throw new InputEventCapacityExceededException(_capacity, retained.Count);
                     }
                     retained.Add(item);
-                    _durableProjectionCache.Replace(retained);
-                    Volatile.Write(ref _count, retained.Count);
-                    UpdateStatus(retained.Count);
-                    return;
+                    return commitFence.TryCommit(() =>
+                    {
+                        _durableProjectionCache.Replace(retained);
+                        Volatile.Write(ref _count, retained.Count);
+                        UpdateStatus(retained.Count);
+                    });
                 }
 
                 if (_count >= _capacity)
@@ -250,9 +264,23 @@ namespace Heartbeat.Collector.System.Input
                     UpdateStatus(_count);
                     throw new InputEventCapacityExceededException(_capacity, _count);
                 }
-                _queue.Enqueue(item);
-                _count++;
-                UpdateStatus(_count);
+                return commitFence.TryCommit(() =>
+                {
+                    _queue.Enqueue(item);
+                    _count++;
+                    UpdateStatus(_count);
+                });
+            }
+        }
+
+        private sealed class UnfencedInputEventCommitFence : ICollectorProjectionCommitFence
+        {
+            public static UnfencedInputEventCommitFence Instance { get; } = new();
+
+            public bool TryCommit(Action commit)
+            {
+                commit();
+                return true;
             }
         }
 

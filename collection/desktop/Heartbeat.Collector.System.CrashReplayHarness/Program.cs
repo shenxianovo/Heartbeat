@@ -249,10 +249,14 @@ file sealed class CrashBlockingInputSink : IInputEventFactSink
 {
     public ManualResetEventSlim Entered { get; } = new();
 
-    public void Accept(InputEventItem item, bool isReplay)
+    public bool TryAccept(
+        InputEventItem item,
+        bool isReplay,
+        ICollectorProjectionCommitFence commitFence)
     {
         Entered.Set();
         Thread.Sleep(Timeout.Infinite);
+        return false;
     }
 }
 
@@ -270,11 +274,14 @@ file sealed class CapturingInputSink : IInputEventFactSink
         }
     }
 
-    public void Accept(InputEventItem item, bool isReplay)
-    {
-        lock (_gate)
-            _ids.Add(item.Id);
-    }
+    public bool TryAccept(
+        InputEventItem item,
+        bool isReplay,
+        ICollectorProjectionCommitFence commitFence) => commitFence.TryCommit(() =>
+        {
+            lock (_gate)
+                _ids.Add(item.Id);
+        });
 }
 
 file sealed class EmptyObservations : IDesktopObservationSource

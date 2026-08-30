@@ -265,13 +265,21 @@ internal sealed class CollectorActivationSession
 
     internal bool BeginDrain()
     {
-        lock (_gate)
+        // Publish/Gap delivery may be executing projection code outside our control. Stop must be
+        // able to establish its hard deadline without waiting for that synchronous invocation.
+        if (!Monitor.TryEnter(_gate))
+            return true;
+        try
         {
             if (_state == CollectorActivationState.Stopped)
                 return false;
             if (_state != CollectorActivationState.Draining)
                 _state = CollectorActivationState.Draining;
             return true;
+        }
+        finally
+        {
+            Monitor.Exit(_gate);
         }
     }
 

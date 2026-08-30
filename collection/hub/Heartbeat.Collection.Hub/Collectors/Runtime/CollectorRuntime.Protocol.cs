@@ -670,7 +670,8 @@ public sealed partial class CollectorRuntime
         // projected InputEvent IDs remain stable downstream, so advancing this window keeps a raw
         // production stream flowing without weakening ACK-loss idempotency for retained entries.
         var next = _state.WithFact(committed, evictedEvent);
-        if (stream.FactKind == FactKind.Event && !ProjectEvent(stream, committed, isReplay: false))
+        if (stream.FactKind == FactKind.Event &&
+            !ProjectEvent(stream, committed, isReplay: false, deliveryFence))
             return Retry(index, "Hub durable Event projection is applying backpressure.");
         try
         {
@@ -1503,7 +1504,11 @@ public sealed partial class CollectorRuntime
             new SubjectReference(instance.SubjectId, instance.SubjectKind));
     }
 
-    private bool ProjectEvent(FactStreamState stream, CommittedFactState fact, bool isReplay)
+    private bool ProjectEvent(
+        FactStreamState stream,
+        CommittedFactState fact,
+        bool isReplay,
+        ICollectorProjectionCommitFence? commitFence = null)
     {
         if (fact.RecordState != FactRecordState.Present ||
             fact.OccurredAt is not { } occurredAt ||
@@ -1525,8 +1530,10 @@ public sealed partial class CollectorRuntime
         }
         try
         {
-            _inputEventSink.Accept(item!, isReplay);
-            return true;
+            return _inputEventSink.TryAccept(
+                item!,
+                isReplay,
+                commitFence ?? UnfencedCollectorProjectionCommitFence.Instance);
         }
         catch (Exception exception)
         {

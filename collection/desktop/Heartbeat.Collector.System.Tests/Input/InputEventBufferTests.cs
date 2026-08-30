@@ -13,6 +13,11 @@ public class InputEventBufferTests
         public DateTimeOffset UtcNow { get; set; } = DateTimeOffset.UnixEpoch;
     }
 
+    private sealed class RejectingCommitFence : ICollectorProjectionCommitFence
+    {
+        public bool TryCommit(Action commit) => false;
+    }
+
     private static InputEventBuffer NewBuffer(int capacity = 100_000)
         => new(new FakeClock(), capacity);
 
@@ -233,6 +238,39 @@ public class InputEventBufferTests
             ((IDurableUploadSource<InputEventItem>)restarted).CompleteDrain(drained, []);
             var completed = new InputEventBuffer(new FakeClock(), durableProjectionPath: path);
             Assert.Empty(((IUploadSource<InputEventItem>)completed).Drain());
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void DurableProjection_DeadlineFenceRejectsFinalCacheMutation()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-input-buffer-{Guid.NewGuid():N}");
+        var path = Path.Combine(root, "input-event-facts-buffer.json");
+        var item = new InputEventItem
+        {
+            Id = Guid.CreateVersion7(),
+            EventType = InputEventType.MouseButton,
+            CodeSet = InputCodeSets.HeartbeatKeyPositionV1,
+            Code = 1,
+            Timestamp = DateTimeOffset.UnixEpoch
+        };
+        try
+        {
+            var buffer = new InputEventBuffer(new FakeClock(), durableProjectionPath: path);
+
+            var accepted = ((IInputEventFactSink)buffer).TryAccept(
+                item,
+                isReplay: false,
+                new RejectingCommitFence());
+
+            Assert.False(accepted);
+            var restarted = new InputEventBuffer(new FakeClock(), durableProjectionPath: path);
+            Assert.Empty(restarted.DrainAll());
         }
         finally
         {

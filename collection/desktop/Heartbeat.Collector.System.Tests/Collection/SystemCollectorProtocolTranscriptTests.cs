@@ -690,6 +690,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             var durableRemainder = OutboxFactCount(outboxPath);
             Assert.Equal(100, DurableFactIds(statePath, outboxPath, ingressPath).Count);
             await Task.Delay(50);
+            Assert.Equal(0, blockedSink.CommittedAfterRelease);
             Assert.Equal(durableRemainder, OutboxFactCount(outboxPath));
             Assert.Equal(hubStateAfterStop, File.ReadAllText(statePath));
         }
@@ -922,12 +923,19 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
     {
         public List<InputEventItem> Items { get; } = [];
 
-        public void Accept(InputEventItem item, bool isReplay) => Items.Add(item);
+        public bool TryAccept(
+            InputEventItem item,
+            bool isReplay,
+            ICollectorProjectionCommitFence commitFence) =>
+            commitFence.TryCommit(() => Items.Add(item));
     }
 
     private sealed class ThrowingInputEventSink : IInputEventFactSink
     {
-        public void Accept(InputEventItem item, bool isReplay) =>
+        public bool TryAccept(
+            InputEventItem item,
+            bool isReplay,
+            ICollectorProjectionCommitFence commitFence) =>
             throw new IOException("durable projection unavailable");
     }
 
@@ -936,11 +944,16 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         private readonly ManualResetEventSlim _release = new();
 
         public ManualResetEventSlim Entered { get; } = new();
+        public int CommittedAfterRelease { get; private set; }
 
-        public void Accept(InputEventItem item, bool isReplay)
+        public bool TryAccept(
+            InputEventItem item,
+            bool isReplay,
+            ICollectorProjectionCommitFence commitFence)
         {
             Entered.Set();
-            _release.Wait(TimeSpan.FromMilliseconds(1_500));
+            _release.Wait(TimeSpan.FromSeconds(5));
+            return commitFence.TryCommit(() => CommittedAfterRelease++);
         }
 
         public void Release() => _release.Set();

@@ -1,6 +1,6 @@
 namespace Heartbeat.Collection.Hub.Collectors.Protocol;
 
-internal sealed class ActivationDeliveryFence
+internal sealed class ActivationDeliveryFence : Runtime.ICollectorProjectionCommitFence
 {
     private readonly object _gate = new();
     private bool _fenced;

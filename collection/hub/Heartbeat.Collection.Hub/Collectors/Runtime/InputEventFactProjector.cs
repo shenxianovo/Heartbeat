@@ -9,7 +9,33 @@ public interface IInputEventFactSink
     /// Idempotently takes durable responsibility for an Event projection before the protocol ACK.
     /// Implementations must throw if the item was not durably retained.
     /// </summary>
-    void Accept(InputEventItem item, bool isReplay);
+    bool TryAccept(
+        InputEventItem item,
+        bool isReplay,
+        ICollectorProjectionCommitFence commitFence);
+
+    void Accept(InputEventItem item, bool isReplay)
+    {
+        if (!TryAccept(item, isReplay, UnfencedCollectorProjectionCommitFence.Instance))
+            throw new InvalidOperationException("The InputEvent projection commit was fenced.");
+    }
+}
+
+public interface ICollectorProjectionCommitFence
+{
+    bool TryCommit(Action commit);
+}
+
+internal sealed class UnfencedCollectorProjectionCommitFence : ICollectorProjectionCommitFence
+{
+    public static UnfencedCollectorProjectionCommitFence Instance { get; } = new();
+
+    public bool TryCommit(Action commit)
+    {
+        ArgumentNullException.ThrowIfNull(commit);
+        commit();
+        return true;
+    }
 }
 
 internal interface IEventFactProjector

@@ -192,7 +192,10 @@ public sealed class LongSessionSegmentHttpTests(PostgresContainerFixture fixture
 
     private sealed class DiscardingInputEventSink : IInputEventFactSink
     {
-        public void Accept(InputEventItem item, bool isReplay) { }
+        public bool TryAccept(
+            InputEventItem item,
+            bool isReplay,
+            ICollectorProjectionCommitFence commitFence) => commitFence.TryCommit(() => { });
     }
 
     private sealed class MemoryCache<T> : ICache<T>
