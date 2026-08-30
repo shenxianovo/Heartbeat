@@ -34,6 +34,9 @@ public sealed class InProcessCollectorActivation : IAsyncDisposable
     internal LocalCollectorPackage Package => _session.Package;
     internal CollectorActivationSession Session => _session;
 
+    internal bool TryCommitAcknowledgement(Action commit) =>
+        _session.TryCommitAcknowledgement(commit);
+
     public ValueTask StopAsync(CancellationToken cancellationToken = default)
         => new(WaitForStopAsync(cancellationToken));
 
@@ -74,9 +77,18 @@ public sealed class InProcessCollectorActivation : IAsyncDisposable
         using var deadlineCancellation = new CancellationTokenSource(
             remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero,
             _runtime.TimeProvider);
-        var stopTask = Task.Run(
-            async () => await _collector.StopAsync(deadline, deadlineCancellation.Token),
-            CancellationToken.None);
+        using var deliveryFence = deadlineCancellation.Token.Register(
+            static state => ((CollectorActivationSession)state!).FenceDeliveryAfterDeadline(),
+            _session);
+        var stopTask = Task.Factory.StartNew(
+            async () =>
+            {
+                deadlineCancellation.Token.ThrowIfCancellationRequested();
+                return await _collector.StopAsync(deadline, deadlineCancellation.Token);
+            },
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default).Unwrap();
         try
         {
             DrainResult = await stopTask.WaitAsync(deadlineCancellation.Token);
@@ -84,6 +96,7 @@ public sealed class InProcessCollectorActivation : IAsyncDisposable
         }
         catch (OperationCanceledException) when (deadlineCancellation.IsCancellationRequested)
         {
+            _session.FenceDeliveryAfterDeadline();
             if (_collector is IInProcessCollectorDeadlineFence fence)
                 Observe(Task.Run(fence.FenceAfterDeadline, CancellationToken.None));
             DrainResult = new InProcessCollectorDrainResult(
@@ -94,7 +107,12 @@ public sealed class InProcessCollectorActivation : IAsyncDisposable
                     RemainderDurable: false),
                 CollectorDrainCompletionReason.DeadlineExceeded);
             Observe(stopTask);
-            _session.CompleteStop(() => _runtime.CompleteStop(this));
+            if (!_session.TryCompleteStop(() => _runtime.CompleteStop(this)))
+            {
+                Observe(Task.Run(
+                    () => _session.CompleteStop(() => _runtime.CompleteStop(this)),
+                    CancellationToken.None));
+            }
         }
     }
 

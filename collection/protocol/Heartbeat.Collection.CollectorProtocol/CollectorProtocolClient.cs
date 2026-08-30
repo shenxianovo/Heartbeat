@@ -13,13 +13,14 @@ public sealed class CollectorProtocolClient(
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     private readonly SemaphoreSlim _deliveryGate = new(1, 1);
     private readonly SemaphoreSlim _flushSignal = new(0, 1);
+    private readonly CollectorDeliveryCommitFence _deliveryCommitFence = new(
+        commitBoundary: binding.TryCommitAcknowledgement);
     private CollectorProtocolOutbox? _outbox;
     private CollectorActivation? _activation;
     private Task? _backgroundFlush;
     private volatile bool _admissionOpen = true;
     private volatile bool _persistenceFailed;
     private int _activePersistenceRetries;
-    private int _deliveryEpoch;
 
     public async Task<CollectorDrainExecutionResult> RunAsync(
         ICollectorProtocolApplication application,
@@ -93,7 +94,7 @@ public sealed class CollectorProtocolClient(
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             deadlineTimer.Token);
-        Interlocked.Increment(ref _deliveryEpoch);
+        _deliveryCommitFence.Fence();
         using var deadlineFence = deadline.Token.Register(
             FenceAdmission);
         var reason = CollectorProtocolDrainReason.Drained;
@@ -197,6 +198,8 @@ public sealed class CollectorProtocolClient(
             if (reason == CollectorProtocolDrainReason.Drained)
                 reason = CollectorProtocolDrainReason.FlushCancelled;
         }
+        if (deadline.IsCancellationRequested)
+            FenceAdmission();
         var result = new CollectorDrainResult(
             initialization.SpecRevision,
             _outbox.Facts.Count,
@@ -345,7 +348,7 @@ public sealed class CollectorProtocolClient(
             {
                 _deliveryGate.Release();
             }
-            var deliveryEpoch = Volatile.Read(ref _deliveryEpoch);
+            var deliveryEpoch = _deliveryCommitFence.CaptureEpoch();
             var acknowledgement = await binding.PublishAsync(
                 pending.MessageId,
                 [fact],
@@ -363,11 +366,13 @@ public sealed class CollectorProtocolClient(
                     continue;
                 if (acknowledgement.IsMessageRejected)
                 {
-                    await PersistMutationAsync(
+                    await PersistDeliveryMutationAsync(
                         () => _outbox.DeadLetter(
                             pending,
                             acknowledgement.MessageError!,
-                            _timeProvider.GetUtcNow()),
+                            _timeProvider.GetUtcNow(),
+                            _deliveryCommitFence,
+                            deliveryEpoch),
                         cancellationToken).ConfigureAwait(false);
                     ReportDiagnostics();
                     continue;
@@ -375,27 +380,29 @@ public sealed class CollectorProtocolClient(
                 var outcome = acknowledgement.Results[0];
                 if (outcome.Status == CollectorFactDeliveryStatus.Retry)
                 {
-                    await PersistMutationAsync(
-                        () => _outbox.RetryFact(pending.MessageId),
+                    await PersistDeliveryMutationAsync(
+                        () => _outbox.RetryFact(pending.MessageId, _deliveryCommitFence, deliveryEpoch),
                         cancellationToken).ConfigureAwait(false);
                     retryAfter = outcome.RetryAfterMilliseconds ?? 1_000;
                 }
                 else if (outcome.IsAcknowledged)
                 {
-                    await PersistMutationAsync(
-                        () => _outbox.AcknowledgeFact(pending.MessageId),
+                    await PersistDeliveryMutationAsync(
+                        () => _outbox.AcknowledgeFact(pending.MessageId, _deliveryCommitFence, deliveryEpoch),
                         cancellationToken).ConfigureAwait(false);
                 }
                 else
                 {
-                    await PersistMutationAsync(
+                    await PersistDeliveryMutationAsync(
                         () => _outbox.DeadLetter(
                             pending,
                             outcome.Error ?? new CollectorProtocolError(
                                 "fact_delivery_failed",
                                 $"Hub returned '{outcome.Status}' for a Collector Fact.",
                                 false),
-                            _timeProvider.GetUtcNow()),
+                            _timeProvider.GetUtcNow(),
+                            _deliveryCommitFence,
+                            deliveryEpoch),
                         cancellationToken).ConfigureAwait(false);
                     ReportDiagnostics();
                 }
@@ -427,7 +434,7 @@ public sealed class CollectorProtocolClient(
             {
                 _deliveryGate.Release();
             }
-            var deliveryEpoch = Volatile.Read(ref _deliveryEpoch);
+            var deliveryEpoch = _deliveryCommitFence.CaptureEpoch();
             var outcome = await binding.ReportGapAsync(
                 pending.MessageId,
                 streamId,
@@ -443,14 +450,14 @@ public sealed class CollectorProtocolClient(
                     continue;
                 if (outcome.IsAcknowledged)
                 {
-                    await PersistMutationAsync(
-                        () => _outbox.AcknowledgeGap(pending.MessageId),
+                    await PersistDeliveryMutationAsync(
+                        () => _outbox.AcknowledgeGap(pending.MessageId, _deliveryCommitFence, deliveryEpoch),
                         cancellationToken).ConfigureAwait(false);
                 }
                 else if (outcome.Status == CollectorGapDeliveryStatus.Retry || outcome.Error?.Retryable == true)
                 {
-                    await PersistMutationAsync(
-                        () => _outbox.RetryGap(pending.MessageId),
+                    await PersistDeliveryMutationAsync(
+                        () => _outbox.RetryGap(pending.MessageId, _deliveryCommitFence, deliveryEpoch),
                         cancellationToken).ConfigureAwait(false);
                     retryAfter = outcome.RetryAfterMilliseconds ?? 1_000;
                 }
@@ -515,6 +522,53 @@ public sealed class CollectorProtocolClient(
         }
     }
 
+    private async Task PersistDeliveryMutationAsync(Action mutation, CancellationToken cancellationToken)
+    {
+        try
+        {
+            mutation();
+            return;
+        }
+        catch (IOException)
+        {
+            // Delivery mutations publish their proposed state only after the replacement commits,
+            // so the whole mutation is safe to retry.
+        }
+
+        Interlocked.Increment(ref _activePersistenceRetries);
+        var delay = TimeSpan.FromMilliseconds(50);
+        try
+        {
+            while (true)
+            {
+                try
+                {
+                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
+                {
+                    _persistenceFailed = true;
+                    throw new CollectorProtocolPersistenceException(
+                        "Collector Protocol could not persist the delivery outcome before drain deadline.",
+                        exception);
+                }
+                try
+                {
+                    mutation();
+                    return;
+                }
+                catch (IOException)
+                {
+                    delay = TimeSpan.FromMilliseconds(Math.Min(delay.TotalMilliseconds * 2, 1_000));
+                }
+            }
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _activePersistenceRetries);
+        }
+    }
+
     private void ReportDiagnostics() => definition.Diagnostics?.Report(new CollectorClientDiagnostic(
         _outbox!.DeadLetterCount,
         _outbox.DeadLetterPath));
@@ -546,14 +600,15 @@ public sealed class CollectorProtocolClient(
     private void FenceAdmission()
     {
         _admissionOpen = false;
-        Interlocked.Increment(ref _deliveryEpoch);
+        _deliveryCommitFence.Fence();
     }
 
     private void ThrowIfDeliverySuperseded(int deliveryEpoch, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (deliveryEpoch != Volatile.Read(ref _deliveryEpoch))
+        if (deliveryEpoch != _deliveryCommitFence.CaptureEpoch())
             throw new OperationCanceledException("Collector delivery attempt was superseded by drain.");
+        binding.ThrowIfAcknowledgementSuperseded();
     }
 
     private CancellationTokenSource CreateDeadlineCancellation(DateTimeOffset deadline)

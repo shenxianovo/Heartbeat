@@ -135,3 +135,23 @@ callback 原子关闭 Protocol admission 并推进 delivery epoch，故迟到 St
 10 次 10/10。该证据只证明当前 OS/filesystem 上的真实进程崩溃与重放，不外推为断电或三平台目录项
 durability；跨平台 replacement contract 仍按 issue 02 的明确退出条件暂缓。issue 在最终并行全量验证与
 双轴复审前保持 `needs-triage`。
+
+### 2026-08-30 — ACK replacement 与 Hub deadline 线性化
+
+完整 solution 的调度敏感失败在 `--no-build` 并发执行中稳定复现为 11/24：Stop 返回时 durable identity
+union 仍为 100，但 50 ms 后 Protocol outbox 从 100 变为 99。根因不是 late Hub publish，而是 Hub 已经
+返回 ACK 后，Collector 在锁外写 replacement 临时文件；Hub deadline 已 fence session 并返回，System
+client 的 cancellation/fence 传播仍可能排队，迟到的最终 `File.Move` 因而删除一条 durable
+responsibility。
+
+修复先以确定性失败测试暂停 ACK replacement、让 deadline epoch 抢先，再证明 outbox 保留原 Fact。
+Protocol outbox 的 delivery outcome 改为 copy-on-write：JSON 序列化与临时文件写入在提交门外，只有
+最终原子 replacement 和内存 state publish 进入短临界区。InProcess binding 把该临界区接到 Hub
+session 自有的 acknowledgement commit gate；Hub deadline 同步 fence 同一 gate，因此 ACK 抢先则
+replacement 在 Stop 返回前完成，deadline 抢先则 replacement 不执行。该 gate 不调用 application/
+Collector 代码，也不把平台 UI/window/input callback 接到磁盘 I/O。
+
+验证：确定性 Protocol regression 1/1，Protocol suite 22/22，Hub deadline 相关 17/17；原 System
+deadline/restart 测试在一次构建后的并发执行先复现 11/24 失败，修复后 24/24，再扩大到 50/50 全部
+通过。最终 solution、Browser、cross-process smoke 与双轴复审尚未执行，因此 issue 继续保持
+`needs-triage`。

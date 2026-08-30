@@ -242,6 +242,23 @@ public sealed class SystemInProcessCollector(
         return ValueTask.CompletedTask;
     }
 
+    void ICollectorProtocolBinding.ThrowIfAcknowledgementSuperseded()
+    {
+        if (_liveActivation?.State == CollectorActivationState.Stopped)
+        {
+            throw new OperationCanceledException(
+                "InProcess acknowledgement was superseded by the Hub drain deadline fence.");
+        }
+    }
+
+    bool ICollectorProtocolBinding.TryCommitAcknowledgement(Action commit)
+    {
+        ArgumentNullException.ThrowIfNull(commit);
+        var activation = _liveActivation ?? throw new InvalidOperationException(
+            "The system Collector cannot commit an acknowledgement before Ready.");
+        return activation.TryCommitAcknowledgement(commit);
+    }
+
     ValueTask ICollectorProtocolApplication.InitializeAsync(
         CollectorActivation activation,
         CancellationToken cancellationToken)

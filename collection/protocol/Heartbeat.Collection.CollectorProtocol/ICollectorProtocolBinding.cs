@@ -42,6 +42,26 @@ public interface ICollectorProtocolBinding : IAsyncDisposable
     ValueTask DeleteSecretAsync(string key, CancellationToken cancellationToken);
     ValueTask<CollectorDrainRequest> WaitForDrainAsync(CancellationToken cancellationToken);
     ValueTask CompleteDrainAsync(CollectorDrainResult result, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Binding-local fence checked immediately before the client mutates durable responsibility
+    /// from an ACK. Transport bindings normally keep the default no-op; an InProcess binding can
+    /// reject an ACK after its Hub writer session has been hard-fenced without waiting for
+    /// Collector stop code to observe cancellation.
+    /// </summary>
+    void ThrowIfAcknowledgementSuperseded() { }
+
+    /// <summary>
+    /// Linearizes the final durable ACK replacement with a binding-owned deadline fence.
+    /// The callback contains protocol-owned atomic replacement only, never Collector code.
+    /// </summary>
+    bool TryCommitAcknowledgement(Action commit)
+    {
+        ArgumentNullException.ThrowIfNull(commit);
+        ThrowIfAcknowledgementSuperseded();
+        commit();
+        return true;
+    }
 }
 
 public interface ICollectorProtocolApplication

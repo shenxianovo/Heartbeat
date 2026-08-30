@@ -232,7 +232,11 @@ public sealed class CollectorProtocolClientTests
             Assert.Equal(1, pendingGap.Gap.EstimatedFactsLost);
             Assert.Equal(7, pendingGap.Gap.GapId.Version);
 
-            restarted.AcknowledgeGap(pendingGap.MessageId);
+            var commitFence = new CollectorDeliveryCommitFence();
+            restarted.AcknowledgeGap(
+                pendingGap.MessageId,
+                commitFence,
+                commitFence.CaptureEpoch());
             var acknowledged = CollectorProtocolOutbox.Open(root, 2, Definition().Outputs, start.AddMinutes(2));
             Assert.Empty(acknowledged.Gaps);
             Assert.Equal(facts.Skip(1).Select(fact => fact.FactId), acknowledged.Facts.Select(item => item.Fact.FactId));
@@ -458,6 +462,58 @@ public sealed class CollectorProtocolClientTests
         finally
         {
             binding.CompletePublish();
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DeadlineFenceWinsBeforeAtomicAcknowledgementReplacement()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-ack-fence-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var outbox = CollectorProtocolOutbox.Open(
+                root,
+                16,
+                Definition().Outputs,
+                DateTimeOffset.UtcNow);
+            outbox.Enqueue(new CollectorFact(
+                "activity",
+                1,
+                PublishingApplication.FactId,
+                1,
+                null,
+                CollectorFactRecordState.Present,
+                new CollectorEventFactTime(DateTimeOffset.UtcNow),
+                JsonSerializer.SerializeToElement(new { identityKey = "reference|ack-fence" })));
+            var pending = Assert.Single(outbox.Facts);
+            using var replacementEntered = new ManualResetEventSlim();
+            using var releaseReplacement = new ManualResetEventSlim();
+            var fence = new CollectorDeliveryCommitFence(() =>
+            {
+                replacementEntered.Set();
+                releaseReplacement.Wait();
+            });
+            var epoch = fence.CaptureEpoch();
+
+            var acknowledge = Task.Run(() => outbox.AcknowledgeFact(pending.MessageId, fence, epoch));
+            Assert.True(replacementEntered.Wait(TimeSpan.FromSeconds(2)));
+            fence.Fence();
+            releaseReplacement.Set();
+
+            await Assert.ThrowsAsync<OperationCanceledException>(() => acknowledge);
+            Assert.Equal(
+                pending.Fact.FactId,
+                Assert.Single(CollectorProtocolOutbox.Open(
+                    root,
+                    16,
+                    Definition().Outputs,
+                    DateTimeOffset.UtcNow).Facts).Fact.FactId);
+        }
+        finally
+        {
             if (Directory.Exists(root))
                 Directory.Delete(root, recursive: true);
         }

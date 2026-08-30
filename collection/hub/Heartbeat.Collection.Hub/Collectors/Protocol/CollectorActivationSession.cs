@@ -12,6 +12,7 @@ namespace Heartbeat.Collection.Hub.Collectors.Protocol;
 internal sealed class CollectorActivationSession
 {
     private readonly object _gate = new();
+    private readonly object _acknowledgementCommitGate = new();
     private readonly CollectorProtocolLimits _limits;
     private readonly Func<Guid, IReadOnlyList<FactSubmission>, FactBatchAcknowledgement> _commitFacts;
     private readonly Func<Guid, StreamGapReport, GapDeliveryOutcome> _commitGap;
@@ -21,6 +22,8 @@ internal sealed class CollectorActivationSession
     private readonly Dictionary<Guid, GapReplay> _gapReplays = [];
     private readonly List<CollectorHandshakeStep> _handshakeTranscript = [CollectorHandshakeStep.Hello];
     private CollectorHandshakeStep _lastHandshakeStep = CollectorHandshakeStep.Hello;
+    private int _deliveryFencedAfterDeadline;
+    private CollectorActivationState _state;
     private ImmutableDictionary<string, FactStreamDescriptor> _streams =
         ImmutableDictionary<string, FactStreamDescriptor>.Empty.WithComparers(StringComparer.Ordinal);
 
@@ -45,12 +48,14 @@ internal sealed class CollectorActivationSession
         _messageAttempts.Add(
             helloMessageId,
             new MessageAttemptIdentity("activation.hello", "accepted"));
-        State = CollectorActivationState.Negotiating;
+        _state = CollectorActivationState.Negotiating;
     }
 
     public Guid ActivationId { get; }
     public Guid HelloMessageId { get; }
-    public CollectorActivationState State { get; private set; }
+    public CollectorActivationState State => Volatile.Read(ref _deliveryFencedAfterDeadline) != 0
+        ? CollectorActivationState.Stopped
+        : _state;
     public ExternalHostActivationStopReason? StopReason { get; private set; }
     public ActivationDeliveryCapability DeliveryCapability { get; }
     public IReadOnlyList<CollectorHandshakeStep> HandshakeTranscript
@@ -79,7 +84,7 @@ internal sealed class CollectorActivationSession
             RequireHandshakeStep(CollectorHandshakeStep.Initialize, "streams.open");
             _streams = streams.ToImmutableDictionary(StringComparer.Ordinal);
             AdvanceHandshake(CollectorHandshakeStep.StreamsOpen);
-            State = CollectorActivationState.OpeningStreams;
+            _state = CollectorActivationState.OpeningStreams;
         }
     }
 
@@ -93,7 +98,7 @@ internal sealed class CollectorActivationSession
                 throw ActivationError("spec_revision_stale", "Collector did not apply the current SpecRevision.");
             commit();
             AdvanceHandshake(CollectorHandshakeStep.Ready);
-            State = CollectorActivationState.Ready;
+            _state = CollectorActivationState.Ready;
         }
     }
 
@@ -103,11 +108,13 @@ internal sealed class CollectorActivationSession
         IReadOnlyList<FactSubmission> facts,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfDeliveryFencedAfterDeadline();
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(facts);
         var snapshot = facts.ToImmutableArray();
         lock (_gate)
         {
+            ThrowIfDeliveryFencedAfterDeadline();
             if (!IsUuidV7(messageId))
                 return ValueTask.FromResult(MessageRejected(
                     "protocol_invalid_message",
@@ -189,8 +196,13 @@ internal sealed class CollectorActivationSession
             try
             {
                 var acknowledgement = _commitFacts(streamId, snapshot);
+                ThrowIfDeliveryFencedAfterDeadline();
                 _publishReplays.Add(messageId, new PublishReplay(requestHash, acknowledgement, null));
                 return ValueTask.FromResult(acknowledgement);
+            }
+            catch (OperationCanceledException) when (IsDeliveryFencedAfterDeadline())
+            {
+                throw;
             }
             catch (Exception exception)
             {
@@ -208,10 +220,12 @@ internal sealed class CollectorActivationSession
         StreamGapReport gap,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfDeliveryFencedAfterDeadline();
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(gap);
         lock (_gate)
         {
+            ThrowIfDeliveryFencedAfterDeadline();
             var requestHash = GapRequestHash(streamId, gap);
             if (IsUuidV7(messageId) && !RegisterAttempt(messageId, "stream.gap", requestHash))
                 return ValueTask.FromResult(GapRejected(
@@ -240,6 +254,7 @@ internal sealed class CollectorActivationSession
             else
             {
                 outcome = _commitGap(streamId, gap);
+                ThrowIfDeliveryFencedAfterDeadline();
             }
             if (IsUuidV7(messageId))
                 _gapReplays[messageId] = new GapReplay(requestHash, outcome);
@@ -251,11 +266,44 @@ internal sealed class CollectorActivationSession
     {
         lock (_gate)
         {
-            if (State == CollectorActivationState.Stopped)
+            if (_state == CollectorActivationState.Stopped)
                 return false;
-            if (State != CollectorActivationState.Draining)
-                State = CollectorActivationState.Draining;
+            if (_state != CollectorActivationState.Draining)
+                _state = CollectorActivationState.Draining;
             return true;
+        }
+    }
+
+    internal void FenceDeliveryAfterDeadline()
+    {
+        lock (_acknowledgementCommitGate)
+            Interlocked.Exchange(ref _deliveryFencedAfterDeadline, 1);
+    }
+
+    internal bool TryCommitAcknowledgement(Action commit)
+    {
+        ArgumentNullException.ThrowIfNull(commit);
+        lock (_acknowledgementCommitGate)
+        {
+            if (IsDeliveryFencedAfterDeadline())
+                return false;
+            commit();
+            return true;
+        }
+    }
+
+    internal bool TryCompleteStop(Action release, ExternalHostActivationStopReason? reason = null)
+    {
+        if (!Monitor.TryEnter(_gate))
+            return false;
+        try
+        {
+            CompleteStopLocked(release, reason);
+            return true;
+        }
+        finally
+        {
+            Monitor.Exit(_gate);
         }
     }
 
@@ -263,22 +311,38 @@ internal sealed class CollectorActivationSession
     {
         ArgumentNullException.ThrowIfNull(release);
         lock (_gate)
+            CompleteStopLocked(release, reason);
+    }
+
+    private void CompleteStopLocked(Action release, ExternalHostActivationStopReason? reason)
+    {
+        if (_state == CollectorActivationState.Stopped)
+            return;
+        _state = CollectorActivationState.Draining;
+        release();
+        StopReason = reason;
+        _state = CollectorActivationState.Stopped;
+        _messageAttempts.Clear();
+        _publishReplays.Clear();
+        _gapReplays.Clear();
+    }
+
+    private bool IsDeliveryFencedAfterDeadline() =>
+        Volatile.Read(ref _deliveryFencedAfterDeadline) != 0;
+
+    private void ThrowIfDeliveryFencedAfterDeadline()
+    {
+        if (IsDeliveryFencedAfterDeadline())
         {
-            if (State == CollectorActivationState.Stopped)
-                return;
-            State = CollectorActivationState.Draining;
-            release();
-            StopReason = reason;
-            State = CollectorActivationState.Stopped;
-            _messageAttempts.Clear();
-            _publishReplays.Clear();
-            _gapReplays.Clear();
+            throw new OperationCanceledException(
+                "Collector delivery was fenced after the Activation drain deadline.");
         }
     }
 
     private void RequireHandshakeStep(CollectorHandshakeStep expected, string next)
     {
-        if (State is CollectorActivationState.Draining or CollectorActivationState.Stopped)
+        if (_state is CollectorActivationState.Draining or CollectorActivationState.Stopped ||
+            IsDeliveryFencedAfterDeadline())
             throw ActivationError(
                 "activation_stopping",
                 $"Collector Activation is stopping before '{next}'.");

@@ -160,49 +160,89 @@ internal sealed class CollectorProtocolOutbox
         Save();
     }
 
-    public void AcknowledgeFact(Guid messageId)
+    public void AcknowledgeFact(
+        Guid messageId,
+        CollectorDeliveryCommitFence commitFence,
+        int deliveryEpoch)
     {
-        _state.Facts.RemoveAll(item => item.MessageId == messageId);
-        _dirty = true;
-        Save();
+        var facts = _state.Facts.Where(item => item.MessageId != messageId).ToList();
+        if (facts.Count == _state.Facts.Count)
+            return;
+        SaveDeliveryState(_state with { Facts = facts }, commitFence, deliveryEpoch);
     }
 
-    public void RetryFact(Guid messageId)
+    public void RetryFact(
+        Guid messageId,
+        CollectorDeliveryCommitFence commitFence,
+        int deliveryEpoch)
     {
         var index = _state.Facts.FindIndex(item => item.MessageId == messageId);
         if (index < 0)
             return;
-        _state.Facts[index] = _state.Facts[index] with { MessageId = Guid.CreateVersion7() };
-        _dirty = true;
-        Save();
+        var facts = _state.Facts.ToList();
+        facts[index] = facts[index] with { MessageId = Guid.CreateVersion7() };
+        SaveDeliveryState(_state with { Facts = facts }, commitFence, deliveryEpoch);
     }
 
-    public void AcknowledgeGap(Guid messageId)
+    public void AcknowledgeGap(
+        Guid messageId,
+        CollectorDeliveryCommitFence commitFence,
+        int deliveryEpoch)
     {
-        _state.Gaps.RemoveAll(item => item.MessageId == messageId);
-        _dirty = true;
-        Save();
+        var gaps = _state.Gaps.Where(item => item.MessageId != messageId).ToList();
+        if (gaps.Count == _state.Gaps.Count)
+            return;
+        SaveDeliveryState(_state with { Gaps = gaps }, commitFence, deliveryEpoch);
     }
 
-    public void RetryGap(Guid messageId)
+    public void RetryGap(
+        Guid messageId,
+        CollectorDeliveryCommitFence commitFence,
+        int deliveryEpoch)
     {
         var index = _state.Gaps.FindIndex(item => item.MessageId == messageId);
         if (index < 0)
             return;
-        _state.Gaps[index] = _state.Gaps[index] with { MessageId = Guid.CreateVersion7() };
-        _dirty = true;
-        Save();
+        var gaps = _state.Gaps.ToList();
+        gaps[index] = gaps[index] with { MessageId = Guid.CreateVersion7() };
+        SaveDeliveryState(_state with { Gaps = gaps }, commitFence, deliveryEpoch);
     }
 
-    public void DeadLetter(PendingCollectorFact pending, CollectorProtocolError error, DateTimeOffset now)
+    public void DeadLetter(
+        PendingCollectorFact pending,
+        CollectorProtocolError error,
+        DateTimeOffset now,
+        CollectorDeliveryCommitFence commitFence,
+        int deliveryEpoch)
     {
         var nextDeadLetters = _deadLetters.ToList();
         nextDeadLetters.Add(new CollectorDeadLetter(now, pending.MessageId, pending.Fact, error));
-        _deadLetters = nextDeadLetters;
-        _deadLettersDirty = true;
-        _state.Facts.RemoveAll(item => item.MessageId == pending.MessageId);
-        _dirty = true;
-        Save();
+        var nextState = _state with
+        {
+            Facts = _state.Facts.Where(item => item.MessageId != pending.MessageId).ToList()
+        };
+        var deadLetterTemporary = WriteEnvelopeTemporary(
+            _deadLetterPath,
+            new DeadLetterState { Entries = nextDeadLetters });
+        var outboxTemporary = WriteEnvelopeTemporary(_path, nextState);
+        try
+        {
+            if (!commitFence.TryCommit(deliveryEpoch, () =>
+                {
+                    File.Move(deadLetterTemporary, _deadLetterPath, overwrite: true);
+                    File.Move(outboxTemporary, _path, overwrite: true);
+                    _deadLetters = nextDeadLetters;
+                    _state = nextState;
+                    _deadLettersDirty = false;
+                    _dirty = false;
+                }))
+                throw new OperationCanceledException("Collector delivery outcome was fenced before persistence.");
+        }
+        finally
+        {
+            DeleteTemporary(deadLetterTemporary);
+            DeleteTemporary(outboxTemporary);
+        }
     }
 
     public void PersistPending() => Save();
@@ -230,6 +270,41 @@ internal sealed class CollectorProtocolOutbox
 
     private static void SaveEnvelope<T>(string path, T state)
     {
+        var temporary = WriteEnvelopeTemporary(path, state);
+        try
+        {
+            File.Move(temporary, path, overwrite: true);
+        }
+        finally
+        {
+            DeleteTemporary(temporary);
+        }
+    }
+
+    private void SaveDeliveryState(
+        OutboxState nextState,
+        CollectorDeliveryCommitFence commitFence,
+        int deliveryEpoch)
+    {
+        var temporary = WriteEnvelopeTemporary(_path, nextState);
+        try
+        {
+            if (!commitFence.TryCommit(deliveryEpoch, () =>
+                {
+                    File.Move(temporary, _path, overwrite: true);
+                    _state = nextState;
+                    _dirty = false;
+                }))
+                throw new OperationCanceledException("Collector delivery outcome was fenced before persistence.");
+        }
+        finally
+        {
+            DeleteTemporary(temporary);
+        }
+    }
+
+    private static string WriteEnvelopeTemporary<T>(string path, T state)
+    {
         var directory = Path.GetDirectoryName(path)
             ?? throw new InvalidOperationException("Collector Protocol state path has no directory.");
         Directory.CreateDirectory(directory);
@@ -238,7 +313,19 @@ internal sealed class CollectorProtocolOutbox
             temporary,
             JsonSerializer.Serialize(new StateEnvelope<T>(1, state), JsonOptions),
             new UTF8Encoding(false));
-        File.Move(temporary, path, overwrite: true);
+        return temporary;
+    }
+
+    private static void DeleteTemporary(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+            // A stale uniquely-named temporary file is harmless and can be cleaned externally.
+        }
     }
 
     private static void Validate(OutboxState state)

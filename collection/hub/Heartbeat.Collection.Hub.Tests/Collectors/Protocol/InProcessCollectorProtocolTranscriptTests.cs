@@ -20,6 +20,31 @@ public class InProcessCollectorProtocolTranscriptTests
         "ReferenceCollectorPackage");
 
     [Fact]
+    public async Task DeadlineFenceLinearizesWithAcknowledgementReplacementCommit()
+    {
+        await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
+        using var commitEntered = new ManualResetEventSlim();
+        using var releaseCommit = new ManualResetEventSlim();
+        var committed = false;
+        var commit = Task.Run(() => fixture.Activation.TryCommitAcknowledgement(() =>
+        {
+            commitEntered.Set();
+            releaseCommit.Wait();
+            committed = true;
+        }));
+        Assert.True(commitEntered.Wait(TimeSpan.FromSeconds(2)));
+
+        var fence = Task.Run(fixture.Activation.Session.FenceDeliveryAfterDeadline);
+        releaseCommit.Set();
+
+        Assert.True(await commit.WaitAsync(TimeSpan.FromSeconds(2)));
+        await fence.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.True(committed);
+        Assert.False(fixture.Activation.TryCommitAcknowledgement(() =>
+            throw new InvalidOperationException("A fenced acknowledgement replacement ran.")));
+    }
+
+    [Fact]
     public async Task HappyPath_HelloInitializeOpenReadyThenSegmentIsDurablyAcknowledged()
     {
         using var stateDirectory = TemporaryDirectory.Create();
@@ -977,10 +1002,10 @@ public class InProcessCollectorProtocolTranscriptTests
             "in_process",
             hubInitiated: true,
             "fence_and_release");
-        var late = await oldStream.PublishAsync(
-            Guid.CreateVersion7(),
-            [CreateFact(oldStream.Descriptor.StreamId, factId: Guid.CreateVersion7())]);
-        Assert.Equal("stream_writer_conflict", Assert.Single(late.Results).Error!.Code);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await oldStream.PublishAsync(
+                Guid.CreateVersion7(),
+                [CreateFact(oldStream.Descriptor.StreamId, factId: Guid.CreateVersion7())]));
 
         var replacement = await runtime.ActivateInProcessAsync(
             instance.CollectorInstanceId,
