@@ -107,7 +107,7 @@ public sealed class InProcessCollectorActivation : IAsyncDisposable
             async () => await collectorCancellation.CancelAsync(),
             CancellationToken.None));
         if (_collector is IInProcessCollectorDeadlineFence fence)
-            Observe(Task.Run(fence.FenceAfterDeadline, CancellationToken.None));
+            fence.FenceAfterDeadline();
         DrainResult = new InProcessCollectorDrainResult(
             new InProcessCollectorLogicalDrainResult(
                 null,
