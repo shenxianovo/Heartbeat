@@ -9,10 +9,10 @@ public sealed class CrossProcessIngressSmokeTests : IDisposable
         $"heartbeat-system-cross-process-{Guid.NewGuid():N}");
 
     [Fact]
-    public async Task CrashThenTwoIndependentRestartsReplayAndAcknowledgeDurableRemainder()
+    public async Task CrashThenTwoIndependentRestartsReplayProtocolDrainAndDoNotResurrectRemainder()
     {
         Directory.CreateDirectory(_root);
-        var journalPath = Path.Combine(_root, "ingress.ndjson");
+        var statePath = Path.Combine(_root, "collector-runtime.json");
         var segmentId = Guid.Parse("0198f7d2-2c00-7a11-8f12-010101010101");
         var inputId = Guid.Parse("0198f7d2-2c01-7a11-8f12-020202020202");
         var rejectedInputId = Guid.Parse("0198f7d2-2c02-7a11-8f12-030303030303");
@@ -22,26 +22,39 @@ public sealed class CrossProcessIngressSmokeTests : IDisposable
 
         var crashed = await RunHarnessAsync(
             harnessPath,
-            "stage-crash",
-            journalPath,
+            "protocol-crash",
+            statePath,
             segmentId.ToString(),
             inputId.ToString(),
             rejectedInputId.ToString());
         Assert.NotEqual(0, crashed.ExitCode);
-        Assert.Contains("staged-before-crash", crashed.StandardOutput, StringComparison.Ordinal);
+        var prefix = "protocol-blocked-before-crash:";
+        var line = Assert.Single(crashed.StandardOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+        Assert.StartsWith(prefix, line, StringComparison.Ordinal);
+        var instanceId = Guid.Parse(line[prefix.Length..]);
 
         var replayed = await RunHarnessAsync(
             harnessPath,
-            "replay-ack",
-            journalPath,
+            "protocol-drain",
+            statePath,
+            instanceId.ToString(),
             segmentId.ToString(),
             inputId.ToString());
         Assert.Equal(0, replayed.ExitCode);
-        Assert.Contains($"replayed:{segmentId}:{inputId}:1", replayed.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains(
+            "protocol-drained:Drained:0:0:True:Completed",
+            replayed.StandardOutput,
+            StringComparison.Ordinal);
 
-        var verified = await RunHarnessAsync(harnessPath, "verify-empty", journalPath);
+        var verified = await RunHarnessAsync(
+            harnessPath,
+            "protocol-verify",
+            statePath,
+            instanceId.ToString(),
+            segmentId.ToString(),
+            inputId.ToString());
         Assert.Equal(0, verified.ExitCode);
-        Assert.Contains("durable-remainder-empty", verified.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains("protocol-restart-no-remainder", verified.StandardOutput, StringComparison.Ordinal);
     }
 
     private static string FindHarnessPath()

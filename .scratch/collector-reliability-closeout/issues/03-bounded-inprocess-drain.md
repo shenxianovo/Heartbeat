@@ -181,3 +181,16 @@ Stop 返回时快照 Hub state，释放阻塞 projection 后要求文件不再�
 
 验证：Hub Starting/deadline/commit gate 定向测试 4/4，System deadline/restart 回归 1/1；其余复审
 findings 尚未关闭，issue 保持 `needs-triage`。
+
+### 2026-08-30 — real Protocol cross-process crash/drain/restart smoke
+
+最终 Spec 复审指出原 smoke 虽启动三个进程，但只直接调用 ingress store，未经过真实 Protocol、
+Hub projection 和 drain result，无法证明 remainder 计数保真。替换后的 harness 在进程 A 启动真实
+`CollectorRuntime` + `SystemInProcessCollector`，待 InputEvent 交付进入阻塞的 Hub projection 后
+`Environment.FailFast`；进程 B 重启同一 runtime/data directory，经真实 Collector Protocol 重放
+Segment、InputEvent 与后续 Gap，并要求 drain 精确为 `Drained / PendingFacts=0 /
+PendingGaps=0 / RemainderDurable=true / Completed`；进程 C 再重启，证明已提交 Fact/Gap 仍可重放到
+projection，但 ingress/outbox 的已 ACK remainder 不复活，第二次 drain 仍为 fully drained。
+
+新 smoke 单轮 1/1，随后独立连续 10 轮、10/10。该证据覆盖当前 OS/filesystem 上的真实进程崩溃、
+Protocol replay 与逻辑/完成 drain result；仍不外推为断电或三平台 directory-entry durability。

@@ -11,4 +11,6 @@
     <ProjectReference Include="..\Heartbeat.Collector.System\Heartbeat.Collector.System.csproj" />
   </ItemGroup>
 
+  <Import Project="..\Heartbeat.Collector.System\SystemCollectorPackage.targets" />
+
 </Project>
