@@ -1,5 +1,4 @@
 using Heartbeat.Core.DTOs.Segments;
-using Heartbeat.Server.Data;
 using Heartbeat.Server.Services;
 using Heartbeat.Server.Filters;
 using Heartbeat.Core;
@@ -17,16 +16,11 @@ namespace Heartbeat.Server.Controllers
     [Route("api/v1/segments")]
     [Authorize]
     public class SegmentController(
-        UsageService usageService,
-        DeviceService deviceService,
-        ICurrentUserService currentUser,
-        AppDbContext db,
-        TimeProvider? timeProvider = null) : ControllerBase
+        ISegmentIngestApplicationService ingestService,
+        ICurrentUserService currentUser) : ControllerBase
     {
-        private readonly UsageService _usageService = usageService;
-        private readonly DeviceService _deviceService = deviceService;
+        private readonly ISegmentIngestApplicationService _ingestService = ingestService;
         private readonly ICurrentUserService _currentUser = currentUser;
-        private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
         [HttpPost]
         [EndpointName("uploadSegments")]
@@ -36,9 +30,16 @@ namespace Heartbeat.Server.Controllers
             if (request.Segments == null || request.Segments.Count == 0)
                 return BadRequest("Segments cannot be empty.");
 
+            var userId = _currentUser.GetUserId();
+            var hardwareId = Request.Headers[DeviceService.HardwareIdHeader].FirstOrDefault();
+            var deviceName = Request.Headers[DeviceService.DeviceNameHeader].FirstOrDefault();
+
+            if (string.IsNullOrWhiteSpace(hardwareId))
+                return BadRequest($"Missing {DeviceService.HardwareIdHeader} header.");
+
             try
             {
-                SegmentIngestContract.Validate(request.Segments, _timeProvider.GetUtcNow());
+                await _ingestService.IngestAsync(userId, hardwareId, deviceName, request.Segments);
             }
             catch (SegmentIngestContractException ex)
                 when (ex.Violation == SegmentIngestContractViolation.LegacyAppName)
@@ -47,26 +48,6 @@ namespace Heartbeat.Server.Controllers
             }
             catch (SegmentIngestContractException ex)
             {
-                return UnprocessableEntity(ex.Message);
-            }
-
-            var userId = _currentUser.GetUserId();
-            var hardwareId = Request.Headers[DeviceService.HardwareIdHeader].FirstOrDefault();
-            var deviceName = Request.Headers[DeviceService.DeviceNameHeader].FirstOrDefault();
-
-            if (string.IsNullOrWhiteSpace(hardwareId))
-                return BadRequest($"Missing {DeviceService.HardwareIdHeader} header.");
-
-            await using var transaction = await db.Database.BeginTransactionAsync();
-            try
-            {
-                var device = await _deviceService.ResolveByHardwareIdAsync(userId, hardwareId, deviceName);
-                await _usageService.SaveSegmentsAsync(device.Id, request.Segments);
-                await transaction.CommitAsync();
-            }
-            catch (SegmentIngestContractException ex)
-            {
-                await transaction.RollbackAsync();
                 return UnprocessableEntity(ex.Message);
             }
             return Ok();

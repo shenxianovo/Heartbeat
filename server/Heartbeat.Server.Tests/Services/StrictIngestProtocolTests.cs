@@ -37,6 +37,18 @@ public class StrictIngestProtocolTests(PostgresContainerFixture fixture) : Postg
 {
     private static readonly DateTimeOffset Now = DateTimeOffset.UtcNow;
 
+    [Fact]
+    public void SegmentController_DelegatesAtomicIngestToOneApplicationService()
+    {
+        var parameters = Assert.Single(typeof(SegmentController).GetConstructors()).GetParameters();
+
+        Assert.DoesNotContain(parameters, parameter => parameter.ParameterType == typeof(AppDbContext));
+        Assert.DoesNotContain(parameters, parameter => parameter.ParameterType == typeof(DeviceService));
+        Assert.DoesNotContain(parameters, parameter => parameter.ParameterType == typeof(UsageService));
+        Assert.Contains(parameters,
+            parameter => parameter.ParameterType == typeof(ISegmentIngestApplicationService));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -517,11 +529,13 @@ public class StrictIngestProtocolTests(PostgresContainerFixture fixture) : Postg
         string userId,
         string hardwareId)
     {
-        var controller = new SegmentController(
-            new UsageService(db),
+        var ingestService = new SegmentIngestApplicationService(
+            db,
             new DeviceService(db),
-            new FakeCurrentUser(userId),
-            db);
+            new UsageService(db));
+        var controller = new SegmentController(
+            ingestService,
+            new FakeCurrentUser(userId));
         AttachHttpContext(controller, hardwareId);
         return controller;
     }

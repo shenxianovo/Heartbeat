@@ -54,5 +54,17 @@ Envy 使事务不变量和测试 seam 分散在 Controller；在深 module 接�
 
 ## Reopened acceptance
 
-- [ ] 原子 strict ingest 的事务、Device/AppIdentity/ActivitySegment 副作用与 contract rejection
+- [x] 原子 strict ingest 的事务、Device/AppIdentity/ActivitySegment 副作用与 contract rejection
   收敛到一个 application module interface；Controller 只负责 HTTP 映射。
+
+### 2026-08-30 — atomic ingest application boundary closeout
+
+先增加架构回归测试，当前 `SegmentController` 因直接依赖 `AppDbContext` 而失败。随后新增窄接口
+`ISegmentIngestApplicationService.IngestAsync`：整批 shape/time validation 在任何 Device/AppIdentity
+副作用之前完成；Device resolution、snapshot projection 与 commit 位于同一数据库事务，异常统一回滚。
+Controller 现在只提取 user/header/body 并把 legacy contract 映射为 `426`、其他 contract rejection
+映射为 `422`，不再持有 DbContext、DeviceService、UsageService 或事务。`server/CONTEXT.md` 已记录
+该 unit-of-work 领域边界。
+
+验证：新增架构测试先按预期失败，修复后 `StrictIngestProtocolTests` 24/24；完整 Server suite 与 solution
+验证将在 Feature A 最终 closeout 统一记录。issue 在双轴复审前保持 `needs-triage`。
