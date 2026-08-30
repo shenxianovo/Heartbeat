@@ -1,6 +1,6 @@
 # 03 — 让 InProcess drain 受 deadline 约束
 
-Status: done
+Status: needs-triage
 
 Owner: Collection / Collector Protocol
 
@@ -14,13 +14,13 @@ InProcess System adapter 与通用 client 使用同一有界语义：到期后�
 
 ## Acceptance
 
-- [x] 收到 drain 后立即根据绝对 deadline 创建 token；`application.StopAsync`、pump flush、outbox flush
+- [ ] 收到 drain 后立即根据绝对 deadline 创建 token；`application.StopAsync`、pump flush、outbox flush
   与 completion 都受该 deadline 或更短局部预算约束。
 - [x] cooperative stop 正常完成；hung/ignoring-cancellation application 到期后 Runtime 仍在有界时间返回，
   并报告 durable pending fact/gap counts，或 truthful unknown/non-durable remainder。
 - [x] deadline 过去、stop 抛错、flush 取消、binding completion 失败各有稳定 runtime reason；不得宣称
   fully drained。
-- [x] InProcess adapter 不存在 deadline 外无限 retry；宿主退出后 restart 能重放 durable remainder。
+- [ ] InProcess adapter 不存在 deadline 外无限 retry；宿主退出后 restart 能重放 durable remainder。
 - [x] fake-clock/controlled-task tests 覆盖 stop-before-deadline、stop-at-deadline、never-stop、pending facts/
   gaps、completion failure 与 restart replay，且不会留下后台 task/双 writer。
 - [x] ManagedProcess/ExternalHost 现有 drain transcript 不回归；共用 conformance fixture 对三种 driver 的
@@ -84,3 +84,19 @@ ExternalHost 的真实行为测试分别验证 `fence_and_release`、`terminate_
 `dotnet test Heartbeat.slnx --no-restore --configuration Debug` 为 943/943；CollectorProtocol 18/18，System
 56/56，Hub 212/212。System deadline/restart 测试隔离连续运行 5/5；Browser 78/78 且 production build
 成功。三轮独立复审最终无 P1/P2，建议 closeout。
+
+### 2026-08-30 — closeout 复审重开
+
+新的调度敏感证据证明 deadline 只包住返回后的 Task，不包住调用本身：
+`applicationLifetime.CancelAsync()` 位于 deadline 外，`application.StopAsync(...).AsTask()` 与
+InProcess `_collector.StopAsync(...)` 都可能在返回 Task 前同步阻塞。完整 solution 并行运行曾为
+942/943，`DrainDeadlineStagesSystemIngressTailAndRestartReplaysDurableRemainder` expected 99、actual 98；
+隔离串行 5/5 不能关闭该竞态。`SystemCollectorIngressStore` 还会保留坏 NDJSON 尾部，后续 append
+导致下一次启动把坏行视为中间损坏。deadline 调用 fence、坏尾修复和真实跨进程 crash/restart/replay
+smoke 完成前，本 issue 恢复为 `needs-triage`。
+
+## Reopened acceptance
+
+- [ ] 所有用户/Collector 代码调用本身受硬 deadline/fence；到期后不能迟到 ACK 或突变 durable state。
+- [ ] 打开 ingress journal 时截断最后一行损坏尾部；append 后再次重启仍可恢复。
+- [ ] 真实跨进程 crash/restart/replay smoke 证明 durable remainder 可恢复，不以同进程 reopen 代替。

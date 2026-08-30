@@ -1,6 +1,6 @@
 # Collector 数据可靠性收口
 
-Status: done
+Status: needs-triage
 
 ## Problem
 
@@ -22,10 +22,10 @@ Status: done
 
 ## Required work
 
-- [x] 既有 [strict segment ingest issue](../repository-understanding/issues/05-strict-segment-ingest-outcomes.md)
-- [x] [01 — 在摄入边界前旋转连续 Segment](issues/01-rotate-continuous-segments.md)
-- [x] [02 — durable InputEvent 满容量不再静默丢失](issues/02-durable-input-capacity.md)
-- [x] [03 — 让 InProcess drain 受 deadline 约束](issues/03-bounded-inprocess-drain.md)
+- [ ] 既有 [strict segment ingest issue](../repository-understanding/issues/05-strict-segment-ingest-outcomes.md)
+- [ ] [01 — 在摄入边界前旋转连续 Segment](issues/01-rotate-continuous-segments.md)
+- [ ] [02 — durable InputEvent 满容量不再静默丢失](issues/02-durable-input-capacity.md)
+- [ ] [03 — 让 InProcess drain 受 deadline 约束](issues/03-bounded-inprocess-drain.md)
 
 全部四项 done 后，本 PRD 才能标 `done`，Registry rollout 才解除可靠性 gate。
 
@@ -37,6 +37,15 @@ Status: done
 四项 required work 已分别提交并通过自动验证；最终 A4 全量验证为解决方案 build 0 warnings / 0 errors、
 .NET 943/943、Browser 78/78 与 production build 成功。三轮独立复审最终无 P1/P2。Feature A reliability
 gate 已关闭；本 PRD 不包含 Package Registry 实现或 rollout。
+
+### 2026-08-30 — reliability closeout 复审重开
+
+上一轮 `done` 结论被新的可复现证据推翻，保留原 closeout 仅作为历史记录。四张 required issue
+均恢复为 `needs-triage`：同步阻塞调用可绕过 drain deadline；System Event 拒绝与 Stream Gap
+记录之间存在崩溃窗口且平台回调同步 fsync；rotation continuation 尚无 durable identity；ingress
+坏尾未修复；strict ingest 的事务编排仍泄漏在 Controller。另有 VRChat checkpoint 兼容退出台账、
+atomic JSON replacement 漂移及真实跨进程 crash/restart/replay smoke 未完成。所有 P1/P2 与重复并行
+验证、双轴复审关闭前，本 PRD 不得恢复 `done`，Registry reliability gate 继续关闭。
 
 ## Non-goals
 

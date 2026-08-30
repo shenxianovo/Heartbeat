@@ -1,6 +1,6 @@
 # 05 — 让 Segment strict ingest 返回可判定结果
 
-Status: done
+Status: needs-triage
 
 Owner: Analytics / Ingest
 
@@ -44,3 +44,15 @@ poison fact 写入 durable dead-letter；服务端必须给它真实结果。
   `dotnet test server/Heartbeat.Server.Tests/Heartbeat.Server.Tests.csproj --no-restore`（449/449）；
   `dotnet test collection/hub/Heartbeat.Collection.Hub.Tests/Heartbeat.Collection.Hub.Tests.csproj --no-restore`
   （205/205）；`dotnet build Heartbeat.slnx --no-restore --configuration Debug`（0 warnings / 0 errors）。
+
+### 2026-08-30 — closeout 复审重开
+
+HTTP 行为验收仍有覆盖，但 `SegmentController` 直接持有 `AppDbContext` 并编排 `DeviceService`、
+`UsageService` 与事务，原子 ingest interface 没有收敛到 Analytics application module。该 Feature
+Envy 使事务不变量和测试 seam 分散在 Controller；在深 module 接管整批 ingest、相关测试重新通过前，
+本 issue 恢复为 `needs-triage`。
+
+## Reopened acceptance
+
+- [ ] 原子 strict ingest 的事务、Device/AppIdentity/ActivitySegment 副作用与 contract rejection
+  收敛到一个 application module interface；Controller 只负责 HTTP 映射。

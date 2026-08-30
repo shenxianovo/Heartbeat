@@ -1,6 +1,6 @@
 # 02 — durable InputEvent 满容量不再静默丢失
 
-Status: done
+Status: needs-triage
 
 Owner: Collection / System Input + Protocol
 
@@ -16,7 +16,7 @@ Stream Gap。任何路径都不能只调用 `JsonFileCache.TrimToCapacity` 后�
 
 - [x] 指定唯一容量 owner；`InputEventBuffer`、protocol outbox 与 `JsonFileCache` 不再各自静默裁剪同一
   事实窗口。
-- [x] 满容量时 producer 得到可判定 backpressure，或 durable state 同时记录精确 Stream Gap；崩溃点
+- [ ] 满容量时 producer 得到可判定 backpressure，或 durable state 同时记录精确 Stream Gap；崩溃点
   不会出现“事件已删但 Gap 未写”或反向不一致。
 - [x] drain/ACK 只删除已确认 event；retry/restart 保持 event/gap 序列和 FactId，不重复吞吐。
 - [x] Current/diagnostic 能区分 backlog、backpressure、gap 与普通 idle，不把 count clamp 当作成功。
@@ -55,3 +55,15 @@ build 成功；`dotnet build Heartbeat.slnx --no-restore --configuration Debug` 
 `git diff --check` 通过。现有 `JsonFileCache`/`HeartbeatCacheFormats` 测试继续证明 current InputEvent
 v1→v2 backup、原子 rewrite、失败不替换与 restart recovery。独立复核确认原两项 P1/P2 finding 已
 关闭；随后发现的 current-state lost-ACK 迁移边角也以失败测试关闭。
+
+### 2026-08-30 — closeout 复审重开
+
+`SystemCollectorProtocolAdapter.Publish` 先 `TryEnqueue`、失败后才单独 `RecordDrop`，两次 mutation
+之间崩溃会留下“Event 已拒绝但无 Stream Gap”。此外 ingress store 的同步 append+fsync 位于平台
+UI/window/input 回调路径，违反 ADR-040 与 Collection glossary 的 Collector Ingress Queue interface。
+原子持久化语义必须移到不阻塞平台回调的后台边界；关闭前本 issue 恢复为 `needs-triage`。
+
+## Reopened acceptance
+
+- [ ] Event 接受或拒绝与对应 Stream Gap 在一个可证明的 durable atomic mutation 中提交。
+- [ ] 平台 UI、window 与 input 回调只做有界内存入队，不同步等待磁盘 fsync。

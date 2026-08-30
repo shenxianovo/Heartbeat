@@ -1,6 +1,6 @@
 # 01 — 在摄入边界前旋转连续 Segment
 
-Status: done
+Status: needs-triage
 
 Owner: Collection / System + VRChat
 
@@ -19,7 +19,7 @@ instant 以新 UUIDv7/revision 1 开始下一段。Browser 已有 23h 先例，�
   不复用，新 FactId 为 UUIDv7、revision 从 1 开始。
 - [x] System active、System away、VRChat presence 都在无 observation change 时由时钟触发 rotation；
   普通 app/title/world change 和 stop 语义保持正确。
-- [x] crash/restart 只从 durable current snapshot 恢复一次；不会同时继续旧 fact 又创建重复新 fact。
+- [ ] crash/restart 只从 durable current snapshot 恢复一次；不会同时继续旧 fact 又创建重复新 fact。
 - [x] fake-clock tests 覆盖阈值前、精确边界、跨多边界、边界同时发生状态变化、stop 与 restart。
 - [x] 真实 protocol → projection → HTTP 测试证明长于 24h 的模拟会话以多个合法段摄入，合计 union
   duration 与原会话一致。
@@ -78,3 +78,15 @@ downtime 只形成 `process_restart` Gap，新 fact 不从持久化 End 之前�
 Server 450/450、Browser 77/77 且 production build 成功；`dotnet build Heartbeat.slnx
 --no-restore --configuration Debug` 为 0 warning / 0 error；`git diff --check` 通过。第二轮独立
 correctness review 确认先前五项 finding 均关闭且无新 finding。
+
+### 2026-08-30 — closeout 复审重开
+
+System rotation 在 boundary 生成新的 FactId/start，但零时长 continuation 会被过滤；若进程在新段
+首次正时长 snapshot 前崩溃，continuation identity 与起点均未持久化，也没有 Stream Gap。VRChat
+checkpoint v1/v2 兼容读取同时缺少移除门槛、验证证据与责任边界。两项关闭前，本 issue 恢复为
+`needs-triage`。
+
+## Reopened acceptance
+
+- [ ] System rollover boundary 原子持久化 continuation identity/start，并以 crash/restart 测试证明恢复。
+- [ ] VRChat checkpoint v1/v2 兼容分支记录服务对象、移除门槛、验证方式与 owner 责任边界。
