@@ -1617,12 +1617,20 @@ public sealed partial class CollectorRuntime
 
         public async Task InvokeStreamsOpenedAsync(Func<ValueTask> callback)
         {
-            ValueTask callbackTask;
+            Task callbackTask;
             lock (_stopGate)
             {
                 if (_stopRequested)
                     throw new ObjectDisposedException(nameof(InProcessCollectorActivation));
-                callbackTask = callback();
+                callbackTask = Task.Factory.StartNew(
+                    async () =>
+                    {
+                        _lifetime.Token.ThrowIfCancellationRequested();
+                        await callback();
+                    },
+                    CancellationToken.None,
+                    TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default).Unwrap();
             }
             await callbackTask;
         }

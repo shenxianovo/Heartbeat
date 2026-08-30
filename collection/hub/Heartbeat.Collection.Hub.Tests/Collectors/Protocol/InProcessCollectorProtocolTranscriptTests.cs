@@ -1443,6 +1443,57 @@ public class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
+    public async Task RuntimeDispose_DeadlineBoundsSynchronouslyBlockingStreamsOpenedInvocation()
+    {
+        using var directory = TemporaryDirectory.Create();
+        var statePath = Path.Combine(directory.Path, "collector-runtime.json");
+        var package = LocalCollectorPackage.Load(ReferencePackagePath);
+        var time = new ControlledTimeProvider();
+        var runtime = CollectorRuntime.Open(
+            statePath,
+            new RecordingSegmentSink(),
+            new CollectorRuntimeOptions
+            {
+                InProcessDrainGracePeriod = TimeSpan.FromMinutes(10),
+                TimeProvider = time
+            });
+        using var config = JsonDocument.Parse("{}");
+        var instance = runtime.CreateInstance(
+            package,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        var collector = new ReferenceInProcessCollector(synchronouslyBlockStreamsOpened: true);
+        var activating = Task.Run(async () => await runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            package,
+            collector));
+        await collector.StreamsOpenedEntered.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var disposing = Task.Run(async () => await runtime.DisposeAsync());
+        try
+        {
+            await collector.StopEntered.WaitAsync(TimeSpan.FromSeconds(2));
+            time.Advance(TimeSpan.FromMinutes(10));
+
+            await disposing.WaitAsync(TimeSpan.FromSeconds(1));
+            using var reopened = CollectorRuntime.Open(statePath, new RecordingSegmentSink());
+            Assert.Equal(instance.CollectorInstanceId, reopened.GetInstance(instance.CollectorInstanceId).CollectorInstanceId);
+        }
+        finally
+        {
+            collector.ReleaseStreamsOpened();
+            try
+            {
+                await activating.WaitAsync(TimeSpan.FromSeconds(2));
+            }
+            catch
+            {
+                // The fixture intentionally races activation with Runtime disposal.
+            }
+        }
+    }
+
+    [Fact]
     public async Task StreamsOpen_ConcurrentPendingPlansCannotReserveTheSameStreamId()
     {
         using var directory = TemporaryDirectory.Create();
@@ -2659,6 +2710,7 @@ public class InProcessCollectorProtocolTranscriptTests
         private readonly bool _blockInitialize;
         private readonly bool _ignoreInitializeCancellation;
         private readonly bool _blockStreamsOpened;
+        private readonly bool _synchronouslyBlockStreamsOpened;
         private readonly bool _throwOnInitialize;
         private readonly bool _publishOnStop;
         private readonly bool _synchronouslyBlockStop;
@@ -2677,6 +2729,7 @@ public class InProcessCollectorProtocolTranscriptTests
             bool blockInitialize = false,
             bool ignoreInitializeCancellation = false,
             bool blockStreamsOpened = false,
+            bool synchronouslyBlockStreamsOpened = false,
             bool throwOnInitialize = false,
             bool publishOnStop = false,
             bool synchronouslyBlockStop = false,
@@ -2700,6 +2753,7 @@ public class InProcessCollectorProtocolTranscriptTests
             _blockInitialize = blockInitialize;
             _ignoreInitializeCancellation = ignoreInitializeCancellation;
             _blockStreamsOpened = blockStreamsOpened;
+            _synchronouslyBlockStreamsOpened = synchronouslyBlockStreamsOpened;
             _throwOnInitialize = throwOnInitialize;
             _publishOnStop = publishOnStop;
             _synchronouslyBlockStop = synchronouslyBlockStop;
@@ -2754,6 +2808,8 @@ public class InProcessCollectorProtocolTranscriptTests
             CancellationToken cancellationToken)
         {
             _streamsOpenedEntered.TrySetResult();
+            if (_synchronouslyBlockStreamsOpened)
+                _releaseStreamsOpened.Task.GetAwaiter().GetResult();
             if (_blockStreamsOpened)
                 await _releaseStreamsOpened.Task.WaitAsync(cancellationToken);
             if (!_sendReady)
