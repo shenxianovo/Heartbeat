@@ -512,6 +512,9 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
 
         inputSink.Release();
         await WaitUntilAsync(() => RuntimeHasGap(statePath, "input_ingress_capacity_exceeded"));
+        await WaitUntilAsync(() =>
+            statuses.Snapshot[SystemCollectorProtocolAdapter.StatusStreamName].State ==
+            UploadStreamState.Ready);
         Assert.Equal(
             UploadStreamState.Ready,
             statuses.Snapshot[SystemCollectorProtocolAdapter.StatusStreamName].State);
