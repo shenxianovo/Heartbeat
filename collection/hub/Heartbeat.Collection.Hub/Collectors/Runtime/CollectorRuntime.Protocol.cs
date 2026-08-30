@@ -371,15 +371,11 @@ public sealed partial class CollectorRuntime
         IReadOnlyList<FactSubmission> facts,
         ActivationDeliveryFence deliveryFence)
     {
-        lock (_gate)
-        {
-            ThrowIfDeliveryUnavailable(activationId);
-            var results = new List<FactDeliveryOutcome>(facts.Count);
-            for (var index = 0; index < facts.Count; index++)
-                results.Add(CommitFact(activationId, index, facts[index], deliveryFence));
-            MarkAcknowledgedLiveTraffic(streamId, results);
-            return new FactBatchAcknowledgement(results);
-        }
+        var results = new List<FactDeliveryOutcome>(facts.Count);
+        for (var index = 0; index < facts.Count; index++)
+            results.Add(CommitFact(activationId, index, facts[index], deliveryFence));
+        MarkAcknowledgedLiveTraffic(streamId, results);
+        return new FactBatchAcknowledgement(results);
     }
 
     internal void CompleteStop(InProcessCollectorActivation activation)
@@ -474,84 +470,103 @@ public sealed partial class CollectorRuntime
         StreamGapReport gap,
         ActivationDeliveryFence deliveryFence)
     {
-        lock (_gate)
+        while (true)
         {
-            ThrowIfDeliveryUnavailable(activationId);
-            if (!_streamWriters.TryGetValue(streamId, out var activeWriter) || activeWriter != activationId)
-                return GapRejected(
-                    streamId,
-                    "stream_writer_conflict",
-                    "Activation does not hold this Fact Stream writer lease.");
-
+            CollectorRuntimeState baseState;
+            CollectorRuntimeState next;
             GapDeliveryOutcome outcome;
-            if (_state.Gaps.FirstOrDefault(existing =>
-                    existing.StreamId == streamId && existing.GapId == gap.GapId) is { } existing)
+            string fencedMessage;
+            lock (_gate)
             {
-                outcome = existing.Start == gap.Start && existing.End == gap.End &&
-                          existing.Reason == gap.Reason &&
-                          existing.EstimatedFactsLost == gap.EstimatedFactsLost
-                    ? new GapDeliveryOutcome(streamId, GapDeliveryStatus.Duplicate)
-                    : GapRejected(
+                ThrowIfDeliveryUnavailable(activationId);
+                if (!_streamWriters.TryGetValue(streamId, out var activeWriter) || activeWriter != activationId)
+                    return GapRejected(
                         streamId,
-                        "gap_identity_conflict",
-                        "GapId was already committed with different content.");
-            }
-            // Runtime state schema v2 wrote committed Gaps without GapId. Bind an exact lost-ACK
-            // replay once; removal follows the state inventory/window in compatibility-debt.md.
-            else if (_state.Gaps.FirstOrDefault(existing =>
-                         existing.GapId == Guid.Empty &&
-                         existing.StreamId == streamId && existing.Start == gap.Start &&
-                         existing.End == gap.End && existing.Reason == gap.Reason &&
-                         existing.EstimatedFactsLost == gap.EstimatedFactsLost) is { } currentFormatGap)
-            {
-                var next = _state.WithBoundGapIdentity(currentFormatGap, gap.GapId);
-                try
+                        "stream_writer_conflict",
+                        "Activation does not hold this Fact Stream writer lease.");
+
+                if (_state.Gaps.FirstOrDefault(existing =>
+                        existing.StreamId == streamId && existing.GapId == gap.GapId) is { } existing)
                 {
-                    if (!deliveryFence.TryCommit(() =>
-                        {
-                            _store.Save(next);
-                            _state = next;
-                        }))
-                        return GapRetry(streamId, "Hub drain deadline fenced the Stream Gap identity commit.");
+                    return existing.Start == gap.Start && existing.End == gap.End &&
+                           existing.Reason == gap.Reason &&
+                           existing.EstimatedFactsLost == gap.EstimatedFactsLost
+                        ? new GapDeliveryOutcome(streamId, GapDeliveryStatus.Duplicate)
+                        : GapRejected(
+                            streamId,
+                            "gap_identity_conflict",
+                            "GapId was already committed with different content.");
+                }
+
+                baseState = _state;
+                // Runtime state schema v2 wrote committed Gaps without GapId. Bind an exact lost-ACK
+                // replay once; removal follows the state inventory/window in compatibility-debt.md.
+                if (_state.Gaps.FirstOrDefault(existing =>
+                        existing.GapId == Guid.Empty &&
+                        existing.StreamId == streamId && existing.Start == gap.Start &&
+                        existing.End == gap.End && existing.Reason == gap.Reason &&
+                        existing.EstimatedFactsLost == gap.EstimatedFactsLost) is { } currentFormatGap)
+                {
+                    next = baseState.WithBoundGapIdentity(currentFormatGap, gap.GapId);
                     outcome = new GapDeliveryOutcome(streamId, GapDeliveryStatus.Duplicate);
+                    fencedMessage = "Hub drain deadline fenced the Stream Gap identity commit.";
                 }
-                catch (CollectorRuntimeStateException)
+                else
                 {
-                    outcome = GapRetry(streamId, "Hub could not persist the Stream Gap identity and is applying backpressure.");
-                }
-            }
-            else if (_state.Gaps.Count >= _options.MaxDurableFacts)
-            {
-                outcome = GapRetry(streamId, "Hub durable Gap inbox is applying backpressure.");
-            }
-            else
-            {
-                var committed = new CommittedGapState
-                {
-                    StreamId = streamId,
-                    GapId = gap.GapId,
-                    Start = gap.Start,
-                    End = gap.End,
-                    Reason = gap.Reason,
-                    EstimatedFactsLost = gap.EstimatedFactsLost
-                };
-                var next = _state.WithGap(committed);
-                try
-                {
-                    if (!deliveryFence.TryCommit(() =>
+                    if (_state.Gaps.Count >= _options.MaxDurableFacts)
+                        return GapRetry(streamId, "Hub durable Gap inbox is applying backpressure.");
+                    next = baseState.WithGap(new CommittedGapState
                         {
-                            _store.Save(next);
-                            _state = next;
-                        }))
-                        return GapRetry(streamId, "Hub drain deadline fenced the Stream Gap commit.");
+                            StreamId = streamId,
+                            GapId = gap.GapId,
+                            Start = gap.Start,
+                            End = gap.End,
+                            Reason = gap.Reason,
+                            EstimatedFactsLost = gap.EstimatedFactsLost
+                        });
                     outcome = new GapDeliveryOutcome(streamId, GapDeliveryStatus.Committed);
-                }
-                catch (CollectorRuntimeStateException)
-                {
-                    outcome = GapRetry(streamId, "Hub could not persist the Stream Gap and is applying backpressure.");
+                    fencedMessage = "Hub drain deadline fenced the Stream Gap commit.";
                 }
             }
 
+            JsonCollectorRuntimeStore.PreparedReplacement replacement;
+            try
+            {
+                replacement = _store.Prepare(next);
+            }
+            catch (CollectorRuntimeStateException)
+            {
+                return GapRetry(streamId, "Hub could not persist the Stream Gap and is applying backpressure.");
+            }
+            using (replacement)
+            {
+                lock (_gate)
+                {
+                    if (!ReferenceEquals(_state, baseState))
+                        continue;
+                    if (deliveryFence.IsFenced)
+                        return GapRetry(streamId, fencedMessage);
+                    if (!_streamWriters.TryGetValue(streamId, out var activeWriter) ||
+                        activeWriter != activationId)
+                        return GapRejected(
+                            streamId,
+                            "stream_writer_conflict",
+                            "Activation does not hold this Fact Stream writer lease.");
+                    try
+                    {
+                        if (!deliveryFence.TryCommitHost(() =>
+                            {
+                                replacement.Commit();
+                                _state = next;
+                            }))
+                            return GapRetry(streamId, fencedMessage);
+                    }
+                    catch (CollectorRuntimeStateException)
+                    {
+                        return GapRetry(streamId, "Hub could not persist the Stream Gap and is applying backpressure.");
+                    }
+                }
+            }
             return outcome;
         }
     }
@@ -562,6 +577,69 @@ public sealed partial class CollectorRuntime
         FactSubmission fact,
         ActivationDeliveryFence deliveryFence)
     {
+        PreparedFactCommit prepared;
+        lock (_gate)
+        {
+            ThrowIfDeliveryUnavailable(activationId);
+            if (PrepareFactLocked(activationId, index, fact, out prepared) is { } immediate)
+                return immediate;
+        }
+
+        if (prepared.Stream.FactKind == FactKind.Event &&
+            !ProjectEvent(prepared.Stream, prepared.Committed, isReplay: false, deliveryFence))
+            return Retry(index, "Hub durable Event projection is applying backpressure.");
+
+        while (true)
+        {
+            CollectorRuntimeState baseState;
+            CollectorRuntimeState next;
+            lock (_gate)
+            {
+                if (PrepareFactLocked(activationId, index, fact, out prepared) is { } immediate)
+                    return immediate;
+                baseState = _state;
+                next = baseState.WithFact(prepared.Committed, prepared.EvictedEvent);
+            }
+
+            using var replacement = _store.Prepare(next);
+            lock (_gate)
+            {
+                if (!ReferenceEquals(_state, baseState))
+                    continue;
+                if (!_streamWriters.TryGetValue(fact.StreamId, out var writer) || writer != activationId)
+                    return Rejected(
+                        index,
+                        "stream_writer_conflict",
+                        "Activation does not hold this Fact Stream writer lease.");
+                try
+                {
+                    if (!deliveryFence.TryCommitHost(() =>
+                        {
+                            replacement.Commit();
+                            _state = next;
+                        }))
+                        return Retry(index, "Hub drain deadline fenced the durable Fact commit.");
+                }
+                catch (CollectorRuntimeStateException)
+                {
+                    return Retry(index, "Hub could not persist the Fact and is applying backpressure.");
+                }
+            }
+            break;
+        }
+
+        if (prepared.Stream.FactKind != FactKind.Event)
+            ProjectFact(prepared.Stream, prepared.Committed, isReplay: false);
+        return new FactDeliveryOutcome(index, FactDeliveryStatus.Committed);
+    }
+
+    private FactDeliveryOutcome? PrepareFactLocked(
+        Guid activationId,
+        int index,
+        FactSubmission fact,
+        out PreparedFactCommit prepared)
+    {
+        prepared = default!;
         if (!_streamWriters.TryGetValue(fact.StreamId, out var writer) || writer != activationId)
             return Rejected(index, "stream_writer_conflict", "Activation does not hold this Fact Stream writer lease.");
         var activationState = _activations.TryGetValue(activationId, out var inProcessActivation)
@@ -669,28 +747,14 @@ public sealed partial class CollectorRuntime
         // Immutable Events use the durable inbox as a bounded replay/deduplication window. Their
         // projected InputEvent IDs remain stable downstream, so advancing this window keeps a raw
         // production stream flowing without weakening ACK-loss idempotency for retained entries.
-        var next = _state.WithFact(committed, evictedEvent);
-        if (stream.FactKind == FactKind.Event &&
-            !ProjectEvent(stream, committed, isReplay: false, deliveryFence))
-            return Retry(index, "Hub durable Event projection is applying backpressure.");
-        try
-        {
-            if (!deliveryFence.TryCommit(() =>
-                {
-                    _store.Save(next);
-                    _state = next;
-                }))
-                return Retry(index, "Hub drain deadline fenced the durable Fact commit.");
-        }
-        catch (CollectorRuntimeStateException)
-        {
-            return Retry(index, "Hub could not persist the Fact and is applying backpressure.");
-        }
-
-        if (stream.FactKind != FactKind.Event)
-            ProjectFact(stream, committed, isReplay: false);
-        return new FactDeliveryOutcome(index, FactDeliveryStatus.Committed);
+        prepared = new PreparedFactCommit(stream, committed, evictedEvent);
+        return null;
     }
+
+    private sealed record PreparedFactCommit(
+        FactStreamState Stream,
+        CommittedFactState Committed,
+        CommittedFactState? EvictedEvent);
 
     private static string? ValidateFactEnvelope(FactSubmission fact)
     {

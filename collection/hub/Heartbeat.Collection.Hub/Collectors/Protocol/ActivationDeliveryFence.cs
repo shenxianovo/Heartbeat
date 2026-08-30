@@ -13,7 +13,20 @@ internal sealed class ActivationDeliveryFence : Runtime.ICollectorProjectionComm
             _fenced = true;
     }
 
-    public bool TryCommit(Action commit)
+    public bool TryPublishFile(string preparedPath, string authoritativePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(preparedPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(authoritativePath);
+        lock (_gate)
+        {
+            if (_fenced)
+                return false;
+            File.Move(preparedPath, authoritativePath, overwrite: true);
+            return true;
+        }
+    }
+
+    internal bool TryCommitHost(Action commit)
     {
         ArgumentNullException.ThrowIfNull(commit);
         lock (_gate)

@@ -698,6 +698,15 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
 
             var stopTask = activation.StopAsync().AsTask();
             await stopTask.WaitAsync(TimeSpan.FromSeconds(2));
+            var replacement = await runtime.ActivateInProcessAsync(
+                    instanceId,
+                    package,
+                    new IdleSystemCollector())
+                .AsTask()
+                .WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.Equal(
+                activation.Streams[SystemInProcessCollector.InputEventBindingId].Descriptor.StreamId,
+                replacement.Streams[SystemInProcessCollector.InputEventBindingId].Descriptor.StreamId);
             var hubStateAfterStop = File.ReadAllText(statePath);
             blockedSink.Release();
 
@@ -708,6 +717,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             Assert.Equal(0, blockedSink.CommittedAfterRelease);
             Assert.Equal(durableRemainder, OutboxFactCount(outboxPath));
             Assert.Equal(hubStateAfterStop, File.ReadAllText(statePath));
+            await replacement.StopAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
         }
         finally
         {
@@ -942,6 +952,51 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         public void ClearActiveCheckpoint(Guid factId, long revision) { }
     }
 
+    private sealed class IdleSystemCollector : IInProcessCollector
+    {
+        public string ArtifactId => "system.inprocess";
+
+        public ProtocolSupport ProtocolSupport { get; } = new(
+            [1],
+            new Dictionary<string, IReadOnlyList<int>>(StringComparer.Ordinal)
+            {
+                ["facts.segment"] = [1],
+                ["facts.event"] = [1],
+                ["diagnostics.stream-gap"] = [1]
+            });
+
+        public ValueTask<InProcessCollectorInitialization> InitializeAsync(
+            CollectorInitialization initialization,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new InProcessCollectorInitialization(
+                initialization.Spec.SpecRevision,
+                [
+                    new OutputBinding(
+                        SystemInProcessCollector.ForegroundBindingId,
+                        SystemInProcessCollector.ForegroundOutputId,
+                        new Dictionary<string, string>()),
+                    new OutputBinding(
+                        SystemInProcessCollector.InputEventBindingId,
+                        SystemInProcessCollector.InputEventOutputId,
+                        new Dictionary<string, string>())
+                ]));
+
+        public async ValueTask OnStreamsOpenedAsync(
+            InProcessCollectorStreamsOpened opened,
+            CancellationToken cancellationToken) =>
+            _ = await opened.ReadyAsync(cancellationToken);
+
+        public ValueTask<InProcessCollectorDrainResult> StopAsync(
+            DateTimeOffset deadline,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new InProcessCollectorDrainResult(
+                new InProcessCollectorLogicalDrainResult(
+                    0,
+                    0,
+                    CollectorDrainReason.Drained,
+                    RemainderDurable: true)));
+    }
+
     private sealed class CapturingActivity : ICurrentActivitySink
     {
         public void Report(CurrentActivity? activity) { }
@@ -954,8 +1009,13 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         public bool TryAccept(
             InputEventItem item,
             bool isReplay,
-            ICollectorProjectionCommitFence commitFence) =>
-            commitFence.TryCommit(() => Items.Add(item));
+            ICollectorProjectionCommitFence commitFence)
+        {
+            if (commitFence.IsFenced)
+                return false;
+            Items.Add(item);
+            return true;
+        }
     }
 
     private sealed class ThrowingInputEventSink : IInputEventFactSink
@@ -970,6 +1030,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
     private sealed class BlockingInputEventSink : IInputEventFactSink
     {
         private readonly ManualResetEventSlim _release = new();
+        private int _calls;
 
         public ManualResetEventSlim Entered { get; } = new();
         public int CommittedAfterRelease { get; private set; }
@@ -979,9 +1040,17 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             bool isReplay,
             ICollectorProjectionCommitFence commitFence)
         {
-            Entered.Set();
-            _release.Wait(TimeSpan.FromSeconds(5));
-            return commitFence.TryCommit(() => CommittedAfterRelease++);
+            var first = Interlocked.Increment(ref _calls) == 1;
+            if (first)
+            {
+                Entered.Set();
+                _release.Wait(TimeSpan.FromSeconds(5));
+            }
+            if (commitFence.IsFenced)
+                return false;
+            if (first)
+                CommittedAfterRelease++;
+            return true;
         }
 
         public void Release() => _release.Set();
@@ -1013,7 +1082,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
                     "input_ingress_capacity_exceeded");
                 SecondEntered.Set();
             }
-            return commitFence.TryCommit(() => { });
+            return !commitFence.IsFenced;
         }
 
         public void Release() => _release.Set();

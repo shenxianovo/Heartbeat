@@ -75,12 +75,32 @@ public sealed class JsonFileCache<T> : ICache<T>, IDisposable
     public void Replace(List<T> items)
     {
         EnsureAvailable();
+        using var replacement = PrepareReplacement(items);
+        File.Move(replacement.TemporaryPath, replacement.DestinationPath, overwrite: true);
+        AcceptPublishedReplacement(replacement);
+    }
+
+    public PreparedReplacement PrepareReplacement(List<T> items)
+    {
+        EnsureAvailable();
+        var replacement = new List<T>(items ?? []);
+        TrimToCapacity(replacement);
+        var temporaryPath = WriteAndValidateTemporary(replacement);
+        return new PreparedReplacement(this, temporaryPath, _filePath, replacement);
+    }
+
+    public void AcceptPublishedReplacement(PreparedReplacement replacement)
+    {
+        ArgumentNullException.ThrowIfNull(replacement);
+        if (!ReferenceEquals(replacement.Owner, this))
+            throw new InvalidOperationException("The prepared cache replacement belongs to another cache.");
+        if (File.Exists(replacement.TemporaryPath))
+            throw new InvalidOperationException("The prepared cache replacement has not been published.");
         _lock.EnterWriteLock();
         try
         {
-            var replacement = new List<T>(items ?? []);
-            TrimToCapacity(replacement);
-            CommitReplacement(replacement);
+            _cache = replacement.Items;
+            replacement.MarkAccepted();
         }
         finally
         {
@@ -164,10 +184,23 @@ public sealed class JsonFileCache<T> : ICache<T>, IDisposable
 
     private void WriteAndValidateReplacement(IReadOnlyList<T> items)
     {
+        var tempPath = WriteAndValidateTemporary(items);
+        try
+        {
+            File.Move(tempPath, _filePath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(tempPath)) File.Delete(tempPath);
+        }
+    }
+
+    private string WriteAndValidateTemporary(IReadOnlyList<T> items)
+    {
         var directory = Path.GetDirectoryName(_filePath);
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 
-        var tempPath = _filePath + ".tmp";
+        var tempPath = _filePath + $".{Guid.NewGuid():N}.tmp";
         try
         {
             var envelope = new CacheEnvelope(
@@ -188,11 +221,12 @@ public sealed class JsonFileCache<T> : ICache<T>, IDisposable
                 _ = ReadCurrent(validationRoot);
             }
 
-            File.Move(tempPath, _filePath, overwrite: true);
+            return tempPath;
         }
-        finally
+        catch
         {
             if (File.Exists(tempPath)) File.Delete(tempPath);
+            throw;
         }
     }
 
@@ -224,4 +258,34 @@ public sealed class JsonFileCache<T> : ICache<T>, IDisposable
     }
 
     private sealed record CacheEnvelope(int SchemaVersion, JsonElement Items);
+
+    public sealed class PreparedReplacement : IDisposable
+    {
+        private bool _accepted;
+
+        internal PreparedReplacement(
+            JsonFileCache<T> owner,
+            string temporaryPath,
+            string destinationPath,
+            List<T> items)
+        {
+            Owner = owner;
+            TemporaryPath = temporaryPath;
+            DestinationPath = destinationPath;
+            Items = items;
+        }
+
+        internal JsonFileCache<T> Owner { get; }
+        internal List<T> Items { get; }
+        public string TemporaryPath { get; }
+        public string DestinationPath { get; }
+
+        internal void MarkAccepted() => _accepted = true;
+
+        public void Dispose()
+        {
+            if (!_accepted && File.Exists(TemporaryPath))
+                File.Delete(TemporaryPath);
+        }
+    }
 }

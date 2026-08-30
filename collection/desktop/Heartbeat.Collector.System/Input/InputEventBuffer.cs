@@ -251,12 +251,15 @@ namespace Heartbeat.Collector.System.Input
                         throw new InputEventCapacityExceededException(_capacity, retained.Count);
                     }
                     retained.Add(item);
-                    return commitFence.TryCommit(() =>
-                    {
-                        _durableProjectionCache.Replace(retained);
-                        Volatile.Write(ref _count, retained.Count);
-                        UpdateStatus(retained.Count);
-                    });
+                    using var replacement = _durableProjectionCache.PrepareReplacement(retained);
+                    if (!commitFence.TryPublishFile(
+                            replacement.TemporaryPath,
+                            replacement.DestinationPath))
+                        return false;
+                    _durableProjectionCache.AcceptPublishedReplacement(replacement);
+                    Volatile.Write(ref _count, retained.Count);
+                    UpdateStatus(retained.Count);
+                    return true;
                 }
 
                 if (_count >= _capacity)
@@ -264,12 +267,12 @@ namespace Heartbeat.Collector.System.Input
                     UpdateStatus(_count);
                     throw new InputEventCapacityExceededException(_capacity, _count);
                 }
-                return commitFence.TryCommit(() =>
-                {
-                    _queue.Enqueue(item);
-                    _count++;
-                    UpdateStatus(_count);
-                });
+                if (commitFence.IsFenced)
+                    return false;
+                _queue.Enqueue(item);
+                _count++;
+                UpdateStatus(_count);
+                return true;
             }
         }
 
@@ -277,9 +280,11 @@ namespace Heartbeat.Collector.System.Input
         {
             public static UnfencedInputEventCommitFence Instance { get; } = new();
 
-            public bool TryCommit(Action commit)
+            public bool IsFenced => false;
+
+            public bool TryPublishFile(string preparedPath, string authoritativePath)
             {
-                commit();
+                File.Move(preparedPath, authoritativePath, overwrite: true);
                 return true;
             }
         }

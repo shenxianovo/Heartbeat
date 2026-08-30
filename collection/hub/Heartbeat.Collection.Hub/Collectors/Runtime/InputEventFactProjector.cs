@@ -23,17 +23,20 @@ public interface IInputEventFactSink
 
 public interface ICollectorProjectionCommitFence
 {
-    bool TryCommit(Action commit);
+    bool IsFenced { get; }
+
+    bool TryPublishFile(string preparedPath, string authoritativePath);
 }
 
 internal sealed class UnfencedCollectorProjectionCommitFence : ICollectorProjectionCommitFence
 {
     public static UnfencedCollectorProjectionCommitFence Instance { get; } = new();
 
-    public bool TryCommit(Action commit)
+    public bool IsFenced => false;
+
+    public bool TryPublishFile(string preparedPath, string authoritativePath)
     {
-        ArgumentNullException.ThrowIfNull(commit);
-        commit();
+        File.Move(preparedPath, authoritativePath, overwrite: true);
         return true;
     }
 }

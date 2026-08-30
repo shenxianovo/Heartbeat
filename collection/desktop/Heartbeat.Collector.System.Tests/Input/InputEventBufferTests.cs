@@ -15,7 +15,9 @@ public class InputEventBufferTests
 
     private sealed class RejectingCommitFence : ICollectorProjectionCommitFence
     {
-        public bool TryCommit(Action commit) => false;
+        public bool IsFenced => true;
+
+        public bool TryPublishFile(string preparedPath, string authoritativePath) => false;
     }
 
     private static InputEventBuffer NewBuffer(int capacity = 100_000)

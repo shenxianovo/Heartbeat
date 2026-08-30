@@ -116,12 +116,7 @@ public sealed class InProcessCollectorActivation : IAsyncDisposable
                 RemainderDurable: false),
             CollectorDrainCompletionReason.DeadlineExceeded);
         Observe(stopTask);
-        if (!_session.TryCompleteStop(() => _runtime.CompleteStop(this)))
-        {
-            Observe(Task.Run(
-                () => _session.CompleteStop(() => _runtime.CompleteStop(this)),
-                CancellationToken.None));
-        }
+        _session.CompleteStopAfterDeadline(() => _runtime.CompleteStop(this));
     }
 
     private static void Observe(Task task) => _ = task.ContinueWith(

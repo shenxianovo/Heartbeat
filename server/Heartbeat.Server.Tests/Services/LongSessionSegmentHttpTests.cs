@@ -195,7 +195,7 @@ public sealed class LongSessionSegmentHttpTests(PostgresContainerFixture fixture
         public bool TryAccept(
             InputEventItem item,
             bool isReplay,
-            ICollectorProjectionCommitFence commitFence) => commitFence.TryCommit(() => { });
+            ICollectorProjectionCommitFence commitFence) => !commitFence.IsFenced;
     }
 
     private sealed class MemoryCache<T> : ICache<T>

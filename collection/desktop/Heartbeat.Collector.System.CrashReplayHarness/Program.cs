@@ -277,11 +277,14 @@ file sealed class CapturingInputSink : IInputEventFactSink
     public bool TryAccept(
         InputEventItem item,
         bool isReplay,
-        ICollectorProjectionCommitFence commitFence) => commitFence.TryCommit(() =>
-        {
-            lock (_gate)
-                _ids.Add(item.Id);
-        });
+        ICollectorProjectionCommitFence commitFence)
+    {
+        if (commitFence.IsFenced)
+            return false;
+        lock (_gate)
+            _ids.Add(item.Id);
+        return true;
+    }
 }
 
 file sealed class EmptyObservations : IDesktopObservationSource

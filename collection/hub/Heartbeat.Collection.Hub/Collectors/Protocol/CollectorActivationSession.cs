@@ -23,6 +23,7 @@ internal sealed class CollectorActivationSession
     private readonly List<CollectorHandshakeStep> _handshakeTranscript = [CollectorHandshakeStep.Hello];
     private CollectorHandshakeStep _lastHandshakeStep = CollectorHandshakeStep.Hello;
     private CollectorActivationState _state;
+    private int _releaseCompleted;
     private ImmutableDictionary<string, FactStreamDescriptor> _streams =
         ImmutableDictionary<string, FactStreamDescriptor>.Empty.WithComparers(StringComparer.Ordinal);
 
@@ -289,7 +290,7 @@ internal sealed class CollectorActivationSession
     internal bool TryCommitAcknowledgement(Action commit)
     {
         ArgumentNullException.ThrowIfNull(commit);
-        return _deliveryFence.TryCommit(commit);
+        return _deliveryFence.TryCommitHost(commit);
     }
 
     internal bool TryCompleteStop(Action release, ExternalHostActivationStopReason? reason = null)
@@ -307,6 +308,18 @@ internal sealed class CollectorActivationSession
         }
     }
 
+    internal void CompleteStopAfterDeadline(
+        Action release,
+        ExternalHostActivationStopReason? reason = null)
+    {
+        ArgumentNullException.ThrowIfNull(release);
+        if (!_deliveryFence.IsFenced)
+            throw new InvalidOperationException("The Activation must be fenced before forced deadline release.");
+        if (Interlocked.Exchange(ref _releaseCompleted, 1) == 0)
+            release();
+        StopReason = reason;
+    }
+
     internal void CompleteStop(Action release, ExternalHostActivationStopReason? reason = null)
     {
         ArgumentNullException.ThrowIfNull(release);
@@ -316,10 +329,11 @@ internal sealed class CollectorActivationSession
 
     private void CompleteStopLocked(Action release, ExternalHostActivationStopReason? reason)
     {
-        if (_state == CollectorActivationState.Stopped)
+        if (_state == CollectorActivationState.Stopped && Volatile.Read(ref _releaseCompleted) != 0)
             return;
         _state = CollectorActivationState.Draining;
-        release();
+        if (Interlocked.Exchange(ref _releaseCompleted, 1) == 0)
+            release();
         StopReason = reason;
         _state = CollectorActivationState.Stopped;
         _messageAttempts.Clear();

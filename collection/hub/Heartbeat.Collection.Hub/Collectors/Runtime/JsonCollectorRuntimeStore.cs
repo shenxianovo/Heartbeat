@@ -108,11 +108,17 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
 
     public void Save(CollectorRuntimeState state)
     {
+        using var replacement = Prepare(state);
+        replacement.Commit();
+    }
+
+    public PreparedReplacement Prepare(CollectorRuntimeState state)
+    {
         var directory = Path.GetDirectoryName(_filePath);
         if (!string.IsNullOrEmpty(directory))
             Directory.CreateDirectory(directory);
 
-        var tempPath = _filePath + ".tmp";
+        var tempPath = _filePath + $".{Guid.NewGuid():N}.tmp";
         try
         {
             Validate(state);
@@ -133,18 +139,41 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
                 SerializerOptions)
                 ?? throw new JsonException("Collector Runtime replacement state is null.");
             Validate(reloaded);
-            File.Move(tempPath, _filePath, overwrite: true);
+            return new PreparedReplacement(tempPath, _filePath);
         }
         catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException)
         {
+            if (File.Exists(tempPath))
+                File.Delete(tempPath);
             throw new CollectorRuntimeStateException(
                 $"Unable to persist Collector Runtime state '{_filePath}'.",
                 exception);
         }
-        finally
+    }
+
+    internal sealed class PreparedReplacement(string temporaryPath, string destinationPath) : IDisposable
+    {
+        private bool _committed;
+
+        public void Commit()
         {
-            if (File.Exists(tempPath))
-                File.Delete(tempPath);
+            try
+            {
+                File.Move(temporaryPath, destinationPath, overwrite: true);
+                _committed = true;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                throw new CollectorRuntimeStateException(
+                    $"Unable to publish Collector Runtime state '{destinationPath}'.",
+                    exception);
+            }
+        }
+
+        public void Dispose()
+        {
+            if (!_committed && File.Exists(temporaryPath))
+                File.Delete(temporaryPath);
         }
     }
 
