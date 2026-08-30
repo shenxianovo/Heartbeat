@@ -78,7 +78,7 @@ public sealed class SystemCollectorIngressStoreTests : IDisposable
     }
 
     [Fact]
-    public void DurableJournalRotatesIntoBoundedSegmentsInsteadOfRewritingItsFullHistory()
+    public void DurableJournalBoundsHistoryCopiedIntoEachSegment()
     {
         var path = Path.Combine(_root, "ingress.ndjson");
         var store = SystemCollectorIngressStore.Open(path, 1_000);
@@ -122,6 +122,48 @@ public sealed class SystemCollectorIngressStoreTests : IDisposable
         Assert.Equal(2, restarted.PeekInputEvents(10).Count);
         Assert.Equal(2, restarted.PeekInputGaps(10).Count);
         Assert.Single(File.ReadLines(path));
+    }
+
+    [Fact]
+    public void OversizedAtomicSegmentBatchOwnsAChunkAndIsNotCopiedByTheNextMutation()
+    {
+        var path = Path.Combine(_root, "ingress.ndjson");
+        var store = SystemCollectorIngressStore.Open(path, 2);
+        var segment = NewSegment(
+            Guid.CreateVersion7(),
+            DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch.AddMinutes(1),
+            revision: 1,
+            isFinal: false) with
+        {
+            Title = new string('x', 64 * 1024)
+        };
+        store.StageSegmentBatch([segment]);
+        var oversizedChunk = File.ReadAllBytes(path);
+
+        store.StageInputEvent(NewInput(Guid.CreateVersion7()));
+
+        Assert.Equal(oversizedChunk, File.ReadAllBytes(path));
+        Assert.Equal(2, Directory.GetFiles(_root, "ingress.ndjson*").Length);
+        var restarted = SystemCollectorIngressStore.Open(path, 2);
+        Assert.Equal(segment.FactId, Assert.Single(restarted.PeekSegmentBatches(10)).Snapshots[0].FactId);
+        Assert.Single(restarted.PeekInputEvents(10));
+    }
+
+    [Fact]
+    public void OpenRemovesOnlyOrphanedJournalTemporaryFiles()
+    {
+        Directory.CreateDirectory(_root);
+        var path = Path.Combine(_root, "ingress.ndjson");
+        var orphan = path + ".deadbeef.tmp";
+        var unrelated = Path.Combine(_root, "unrelated.tmp");
+        File.WriteAllText(orphan, "partial");
+        File.WriteAllText(unrelated, "keep");
+
+        _ = SystemCollectorIngressStore.Open(path, 2);
+
+        Assert.False(File.Exists(orphan));
+        Assert.True(File.Exists(unrelated));
     }
 
     [Fact]

@@ -59,7 +59,9 @@ internal sealed class SystemCollectorIngressCommitFence : ICollectorDurableCommi
 }
 
 /// <summary>
-/// Durable first stage for System observations, published as bounded copy-on-write journal chunks.
+/// Durable first stage for System observations, published as history-bounded copy-on-write journal
+/// chunks. Chunks target 32 KiB; an indivisible larger atomic record owns one chunk so its payload
+/// is not truncated or split, and the following mutation rotates instead of copying it again.
 /// A segment batch and its active checkpoint are one mutation; acknowledgement tombstones retain
 /// the checkpoint and quiescent reset records make old chunks safely reclaimable. Input capacity
 /// likewise stages either each Event or its Gap in one atomic batch mutation.
@@ -78,7 +80,7 @@ internal sealed class SystemCollectorIngressStore
     private const string SegmentGapAcknowledgedKind = "segment_gap_acknowledged";
     private const string InputDeliveryAcknowledgedKind = "input_delivery_acknowledged";
     private const string ResetKind = "reset";
-    private const int MaxJournalChunkBytes = 32 * 1024;
+    private const int TargetJournalChunkBytes = 32 * 1024;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
@@ -134,6 +136,7 @@ internal sealed class SystemCollectorIngressStore
             throw new ArgumentOutOfRangeException(nameof(inputCapacity));
         ArgumentNullException.ThrowIfNull(commitFence);
         var fullPath = Path.GetFullPath(path);
+        RemoveOrphanedTemporaryFiles(fullPath);
         var segmentBatches = new List<PendingSystemSegmentIngress>();
         var segmentGaps = new List<PendingSystemSegmentGapIngress>();
         var inputDeliveries = new List<PendingSystemInputDelivery>();
@@ -579,7 +582,7 @@ internal sealed class SystemCollectorIngressStore
             ?? throw new InvalidOperationException("System Collector ingress path has no directory.");
         Directory.CreateDirectory(directory);
         var line = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(entry, JsonOptions) + "\n");
-        var chunkIndex = _tailChunkLength != 0 && _tailChunkLength + line.Length > MaxJournalChunkBytes
+        var chunkIndex = _tailChunkLength != 0 && _tailChunkLength + line.Length > TargetJournalChunkBytes
             ? checked(_tailChunkIndex + 1)
             : _tailChunkIndex;
         var chunkLength = chunkIndex == _tailChunkIndex ? _tailChunkLength : 0;
@@ -664,6 +667,29 @@ internal sealed class SystemCollectorIngressStore
         }
         chunks.Sort(static (left, right) => left.Index.CompareTo(right.Index));
         return chunks;
+    }
+
+    private static void RemoveOrphanedTemporaryFiles(string path)
+    {
+        var directory = Path.GetDirectoryName(path);
+        if (directory is null || !Directory.Exists(directory))
+            return;
+        var fileName = Path.GetFileName(path);
+        foreach (var temporary in Directory.EnumerateFiles(directory, fileName + ".*.tmp"))
+        {
+            try
+            {
+                File.Delete(temporary);
+            }
+            catch (IOException)
+            {
+                // A concurrent owner or antivirus may still hold it; it is never replay-visible.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Physical cleanup is best-effort and does not affect authoritative chunks.
+            }
+        }
     }
 
     private static string ChunkPath(string path, int index) =>
