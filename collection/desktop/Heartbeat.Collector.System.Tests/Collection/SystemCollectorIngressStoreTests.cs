@@ -78,6 +78,53 @@ public sealed class SystemCollectorIngressStoreTests : IDisposable
     }
 
     [Fact]
+    public void DurableJournalRotatesIntoBoundedSegmentsInsteadOfRewritingItsFullHistory()
+    {
+        var path = Path.Combine(_root, "ingress.ndjson");
+        var store = SystemCollectorIngressStore.Open(path, 1_000);
+
+        for (var index = 0; index < 400; index++)
+        {
+            Assert.Equal(
+                SystemInputIngressStageResult.EventStaged,
+                store.StageInputEvent(NewInput(
+                    Guid.CreateVersion7(),
+                    DateTimeOffset.UnixEpoch.AddTicks(index))));
+        }
+
+        var segments = Directory.GetFiles(_root, "ingress.ndjson*")
+            .Where(candidate => !candidate.EndsWith(".tmp", StringComparison.Ordinal))
+            .ToArray();
+        Assert.True(segments.Length > 1);
+        Assert.All(segments, segment => Assert.InRange(new FileInfo(segment).Length, 1, 36 * 1024));
+        var restarted = SystemCollectorIngressStore.Open(path, 1_000);
+        Assert.Equal(400, restarted.PeekInputEvents(1_000).Count);
+        restarted.AcknowledgeInputDeliveries(restarted.PeekInputDeliveries(1_000));
+
+        Assert.Single(Directory.GetFiles(_root, "ingress.ndjson*"));
+        Assert.Empty(SystemCollectorIngressStore.Open(path, 1_000).PeekInputDeliveries(1_000));
+    }
+
+    [Fact]
+    public void InputBatchPersistsCapacityDecisionsAsOneRestartableMutation()
+    {
+        var path = Path.Combine(_root, "ingress.ndjson");
+        var store = SystemCollectorIngressStore.Open(path, 2);
+        var inputs = Enumerable.Range(0, 4)
+            .Select(index => NewInput(
+                Guid.CreateVersion7(),
+                DateTimeOffset.UnixEpoch.AddTicks(index)))
+            .ToArray();
+
+        Assert.Equal(2, store.StageInputEvents(inputs));
+
+        var restarted = SystemCollectorIngressStore.Open(path, 2);
+        Assert.Equal(2, restarted.PeekInputEvents(10).Count);
+        Assert.Equal(2, restarted.PeekInputGaps(10).Count);
+        Assert.Single(File.ReadLines(path));
+    }
+
+    [Fact]
     public void RotationCheckpointSurvivesFactAckAndRestartAsFinalPointPlusGap()
     {
         var path = Path.Combine(_root, "ingress.ndjson");

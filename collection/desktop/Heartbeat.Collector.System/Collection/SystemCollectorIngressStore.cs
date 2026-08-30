@@ -59,9 +59,10 @@ internal sealed class SystemCollectorIngressCommitFence : ICollectorDurableCommi
 }
 
 /// <summary>
-/// Append-only durable first stage for System observations. A segment batch and its active
-/// checkpoint are one journal mutation; Fact ACK compaction never removes the checkpoint. Input
-/// capacity likewise stages either the Event or its Gap in one mutation.
+/// Durable first stage for System observations, published as bounded copy-on-write journal chunks.
+/// A segment batch and its active checkpoint are one mutation; acknowledgement tombstones retain
+/// the checkpoint and quiescent reset records make old chunks safely reclaimable. Input capacity
+/// likewise stages either each Event or its Gap in one atomic batch mutation.
 /// </summary>
 internal sealed class SystemCollectorIngressStore
 {
@@ -72,6 +73,12 @@ internal sealed class SystemCollectorIngressStore
     private const string SegmentCheckpointKind = "segment_checkpoint";
     private const string InputEventKind = "input_event";
     private const string InputGapKind = "input_gap";
+    private const string InputDeliveryBatchKind = "input_delivery_batch";
+    private const string SegmentBatchAcknowledgedKind = "segment_batch_acknowledged";
+    private const string SegmentGapAcknowledgedKind = "segment_gap_acknowledged";
+    private const string InputDeliveryAcknowledgedKind = "input_delivery_acknowledged";
+    private const string ResetKind = "reset";
+    private const int MaxJournalChunkBytes = 32 * 1024;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
@@ -86,6 +93,8 @@ internal sealed class SystemCollectorIngressStore
     private readonly List<PendingSystemSegmentGapIngress> _segmentGaps;
     private readonly List<PendingSystemInputDelivery> _inputDeliveries;
     private ForegroundSegmentSnapshot? _activeSegmentCheckpoint;
+    private int _tailChunkIndex;
+    private long _tailChunkLength;
 
     private SystemCollectorIngressStore(
         string path,
@@ -95,7 +104,9 @@ internal sealed class SystemCollectorIngressStore
         List<PendingSystemSegmentIngress> segmentBatches,
         List<PendingSystemSegmentGapIngress> segmentGaps,
         List<PendingSystemInputDelivery> inputDeliveries,
-        ForegroundSegmentSnapshot? activeSegmentCheckpoint)
+        ForegroundSegmentSnapshot? activeSegmentCheckpoint,
+        int tailChunkIndex,
+        long tailChunkLength)
     {
         _path = path;
         _inputCapacity = inputCapacity;
@@ -105,6 +116,8 @@ internal sealed class SystemCollectorIngressStore
         _segmentGaps = segmentGaps;
         _inputDeliveries = inputDeliveries;
         _activeSegmentCheckpoint = activeSegmentCheckpoint;
+        _tailChunkIndex = tailChunkIndex;
+        _tailChunkLength = tailChunkLength;
     }
 
     public static SystemCollectorIngressStore Open(string path, int inputCapacity)
@@ -125,9 +138,10 @@ internal sealed class SystemCollectorIngressStore
         var segmentGaps = new List<PendingSystemSegmentGapIngress>();
         var inputDeliveries = new List<PendingSystemInputDelivery>();
         ForegroundSegmentSnapshot? activeSegmentCheckpoint = null;
-        if (File.Exists(fullPath))
+        var chunks = JournalChunks(fullPath);
+        foreach (var chunk in chunks)
         {
-            var bytes = File.ReadAllBytes(fullPath);
+            var bytes = File.ReadAllBytes(chunk.Path);
             var lineStart = 0;
             while (lineStart < bytes.Length)
             {
@@ -145,9 +159,10 @@ internal sealed class SystemCollectorIngressStore
                 {
                     entry = JsonSerializer.Deserialize<StoredIngressEntry>(line, JsonOptions);
                 }
-                catch (JsonException) when (nextLineStart == bytes.Length)
+                catch (JsonException) when (
+                    chunk.Index == chunks[^1].Index && nextLineStart == bytes.Length)
                 {
-                    RepairMalformedTail(fullPath, lineStart);
+                    RepairMalformedTail(chunk.Path, lineStart);
                     break;
                 }
                 if (entry is null || entry.EntryId == Guid.Empty)
@@ -193,6 +208,23 @@ internal sealed class SystemCollectorIngressStore
                             entry.EntryId,
                             Gap: entry.InputGap));
                         break;
+                    case InputDeliveryBatchKind when ValidInputDeliveryBatch(entry.InputDeliveries):
+                        inputDeliveries.AddRange(entry.InputDeliveries!);
+                        break;
+                    case SegmentBatchAcknowledgedKind when entry.AcknowledgedEntryIds is not null:
+                        RemoveAcknowledged(segmentBatches, entry.AcknowledgedEntryIds, item => item.EntryId);
+                        break;
+                    case SegmentGapAcknowledgedKind when entry.AcknowledgedEntryIds is not null:
+                        RemoveAcknowledged(segmentGaps, entry.AcknowledgedEntryIds, item => item.EntryId);
+                        break;
+                    case InputDeliveryAcknowledgedKind when entry.AcknowledgedEntryIds is not null:
+                        RemoveAcknowledged(inputDeliveries, entry.AcknowledgedEntryIds, item => item.EntryId);
+                        break;
+                    case ResetKind:
+                        segmentBatches.Clear();
+                        segmentGaps.Clear();
+                        inputDeliveries.Clear();
+                        break;
                     default:
                         throw new InvalidDataException("System Collector ingress entry kind is invalid.");
                 }
@@ -203,10 +235,12 @@ internal sealed class SystemCollectorIngressStore
                     activeSegmentCheckpoint = entry.Checkpoint;
                 }
                 if (newline < 0)
-                    RepairMissingTailNewline(fullPath);
+                    RepairMissingTailNewline(chunk.Path);
                 lineStart = nextLineStart;
             }
         }
+        var tailChunkIndex = chunks.Count == 0 ? 0 : chunks[^1].Index;
+        var tailChunkPath = ChunkPath(fullPath, tailChunkIndex);
         return new SystemCollectorIngressStore(
             fullPath,
             inputCapacity,
@@ -215,7 +249,9 @@ internal sealed class SystemCollectorIngressStore
             segmentBatches,
             segmentGaps,
             inputDeliveries,
-            activeSegmentCheckpoint);
+            activeSegmentCheckpoint,
+            tailChunkIndex,
+            File.Exists(tailChunkPath) ? new FileInfo(tailChunkPath).Length : 0);
     }
 
     public void Enqueue(ForegroundSegmentSnapshot snapshot) => StageSegmentBatch([snapshot]);
@@ -293,40 +329,54 @@ internal sealed class SystemCollectorIngressStore
     }
 
     public SystemInputIngressStageResult StageInputEvent(InputEventItem item)
+        => StageInputEvents([item]) == 0
+            ? SystemInputIngressStageResult.EventStaged
+            : SystemInputIngressStageResult.GapStaged;
+
+    public int StageInputEvents(IReadOnlyList<InputEventItem> items)
     {
-        ArgumentNullException.ThrowIfNull(item);
+        ArgumentNullException.ThrowIfNull(items);
+        if (items.Count == 0)
+            return 0;
         lock (_gate)
         {
-            var copy = new InputEventItem
+            var staged = new List<PendingSystemInputDelivery>(items.Count);
+            var acceptedCount = _inputDeliveries.Count(delivery => delivery.Item is not null);
+            var gapCount = 0;
+            foreach (var item in items)
             {
-                Id = item.Id,
-                EventType = item.EventType,
-                CodeSet = item.CodeSet,
-                Code = item.Code,
-                Timestamp = item.Timestamp
-            };
-            if (_inputDeliveries.Count(delivery => delivery.Item is not null) >= _inputCapacity)
-            {
-                var gap = new SystemInputIngressGap(
-                    Guid.CreateVersion7(),
-                    copy.Timestamp,
-                    copy.Timestamp.AddTicks(1),
-                    1);
-                var pendingGap = new PendingSystemInputDelivery(Guid.CreateVersion7(), Gap: gap);
-                Append(new StoredIngressEntry(
-                    pendingGap.EntryId,
-                    InputGapKind,
-                    InputGap: gap));
-                _inputDeliveries.Add(pendingGap);
-                return SystemInputIngressStageResult.GapStaged;
+                ArgumentNullException.ThrowIfNull(item);
+                var copy = new InputEventItem
+                {
+                    Id = item.Id,
+                    EventType = item.EventType,
+                    CodeSet = item.CodeSet,
+                    Code = item.Code,
+                    Timestamp = item.Timestamp
+                };
+                if (acceptedCount >= _inputCapacity)
+                {
+                    staged.Add(new PendingSystemInputDelivery(
+                        Guid.CreateVersion7(),
+                        Gap: new SystemInputIngressGap(
+                            Guid.CreateVersion7(),
+                            copy.Timestamp,
+                            copy.Timestamp.AddTicks(1),
+                            1)));
+                    gapCount++;
+                }
+                else
+                {
+                    staged.Add(new PendingSystemInputDelivery(Guid.CreateVersion7(), Item: copy));
+                    acceptedCount++;
+                }
             }
-            var pending = new PendingSystemInputDelivery(Guid.CreateVersion7(), Item: copy);
             Append(new StoredIngressEntry(
-                pending.EntryId,
-                InputEventKind,
-                InputEvent: copy));
-            _inputDeliveries.Add(pending);
-            return SystemInputIngressStageResult.EventStaged;
+                Guid.CreateVersion7(),
+                InputDeliveryBatchKind,
+                InputDeliveries: staged));
+            _inputDeliveries.AddRange(staged);
+            return gapCount;
         }
     }
 
@@ -411,12 +461,9 @@ internal sealed class SystemCollectorIngressStore
         lock (_gate)
         {
             EnsurePrefix(_segmentBatches.Select(item => item.EntryId), entries.Select(item => item.EntryId));
-            Rewrite(
-                _segmentBatches.Skip(entries.Count),
-                _segmentGaps,
-                _inputDeliveries,
-                _activeSegmentCheckpoint);
+            AppendAcknowledgement(SegmentBatchAcknowledgedKind, entries.Select(item => item.EntryId));
             _segmentBatches.RemoveRange(0, entries.Count);
+            CompactQuiescentHistory();
         }
     }
 
@@ -425,12 +472,9 @@ internal sealed class SystemCollectorIngressStore
         lock (_gate)
         {
             EnsurePrefix(_segmentGaps.Select(item => item.EntryId), entries.Select(item => item.EntryId));
-            Rewrite(
-                _segmentBatches,
-                _segmentGaps.Skip(entries.Count),
-                _inputDeliveries,
-                _activeSegmentCheckpoint);
+            AppendAcknowledgement(SegmentGapAcknowledgedKind, entries.Select(item => item.EntryId));
             _segmentGaps.RemoveRange(0, entries.Count);
+            CompactQuiescentHistory();
         }
     }
 
@@ -439,12 +483,53 @@ internal sealed class SystemCollectorIngressStore
         lock (_gate)
         {
             EnsurePrefix(_inputDeliveries.Select(item => item.EntryId), entries.Select(item => item.EntryId));
-            Rewrite(
-                _segmentBatches,
-                _segmentGaps,
-                _inputDeliveries.Skip(entries.Count),
-                _activeSegmentCheckpoint);
+            AppendAcknowledgement(InputDeliveryAcknowledgedKind, entries.Select(item => item.EntryId));
             _inputDeliveries.RemoveRange(0, entries.Count);
+            CompactQuiescentHistory();
+        }
+    }
+
+    private void AppendAcknowledgement(string kind, IEnumerable<Guid> entryIds)
+    {
+        var ids = entryIds.ToArray();
+        if (ids.Length == 0)
+            return;
+        Append(new StoredIngressEntry(
+            Guid.CreateVersion7(),
+            kind,
+            AcknowledgedEntryIds: ids));
+    }
+
+    private void CompactQuiescentHistory()
+    {
+        if (_segmentBatches.Count != 0 || _segmentGaps.Count != 0 || _inputDeliveries.Count != 0)
+            return;
+        try
+        {
+            Append(new StoredIngressEntry(
+                Guid.CreateVersion7(),
+                ResetKind,
+                MutatesCheckpoint: true,
+                Checkpoint: _activeSegmentCheckpoint));
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        foreach (var chunk in JournalChunks(_path).Where(chunk => chunk.Index < _tailChunkIndex))
+        {
+            try
+            {
+                File.Delete(chunk.Path);
+            }
+            catch (IOException)
+            {
+                // Reset already made the older immutable history logically unreachable.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Best-effort physical cleanup can be retried after a later acknowledgement.
+            }
         }
     }
 
@@ -466,6 +551,12 @@ internal sealed class SystemCollectorIngressStore
         gap.End > gap.Start &&
         gap.EstimatedFactsLost > 0;
 
+    private static bool ValidInputDeliveryBatch(IReadOnlyList<PendingSystemInputDelivery>? batch) =>
+        batch is { Count: > 0 } && batch.All(item =>
+            item.EntryId != Guid.Empty &&
+            (item.Item is not null) != (item.Gap is not null) &&
+            (item.Gap is null || ValidInputGap(item.Gap)));
+
     private static void EnsurePrefix(IEnumerable<Guid> pending, IEnumerable<Guid> acknowledged)
     {
         var expected = acknowledged.ToArray();
@@ -473,12 +564,27 @@ internal sealed class SystemCollectorIngressStore
             throw new InvalidOperationException("System Collector ingress must be acknowledged in durable order.");
     }
 
+    private static void RemoveAcknowledged<T>(
+        List<T> pending,
+        IReadOnlyList<Guid> acknowledged,
+        Func<T, Guid> entryId)
+    {
+        var acknowledgedIds = acknowledged.ToHashSet();
+        pending.RemoveAll(item => acknowledgedIds.Contains(entryId(item)));
+    }
+
     private void Append(StoredIngressEntry entry)
     {
         var directory = Path.GetDirectoryName(_path)
             ?? throw new InvalidOperationException("System Collector ingress path has no directory.");
         Directory.CreateDirectory(directory);
-        var temporary = _path + $".{Guid.NewGuid():N}.tmp";
+        var line = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(entry, JsonOptions) + "\n");
+        var chunkIndex = _tailChunkLength != 0 && _tailChunkLength + line.Length > MaxJournalChunkBytes
+            ? checked(_tailChunkIndex + 1)
+            : _tailChunkIndex;
+        var chunkLength = chunkIndex == _tailChunkIndex ? _tailChunkLength : 0;
+        var chunkPath = ChunkPath(_path, chunkIndex);
+        var temporary = chunkPath + $".{Guid.NewGuid():N}.tmp";
         try
         {
             using (var stream = new FileStream(
@@ -489,24 +595,24 @@ internal sealed class SystemCollectorIngressStore
                        4096,
                        FileOptions.WriteThrough))
             {
-                if (File.Exists(_path))
+                if (File.Exists(chunkPath))
                 {
                     using var source = new FileStream(
-                        _path,
+                        chunkPath,
                         FileMode.Open,
                         FileAccess.Read,
                         FileShare.ReadWrite);
                     source.CopyTo(stream);
                 }
-                using var writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true);
-                writer.WriteLine(JsonSerializer.Serialize(entry, JsonOptions));
-                writer.Flush();
+                stream.Write(line);
                 stream.Flush(flushToDisk: true);
             }
             _beforeCommit?.Invoke();
-            if (!_commitFence.TryPublishFile(temporary, _path))
+            if (!_commitFence.TryPublishFile(temporary, chunkPath))
                 throw new OperationCanceledException(
                     "System Collector ingress mutation was fenced before publication.");
+            _tailChunkIndex = chunkIndex;
+            _tailChunkLength = chunkLength + line.Length;
         }
         finally
         {
@@ -541,68 +647,27 @@ internal sealed class SystemCollectorIngressStore
         stream.Flush(flushToDisk: true);
     }
 
-    private void Rewrite(
-        IEnumerable<PendingSystemSegmentIngress> segmentBatches,
-        IEnumerable<PendingSystemSegmentGapIngress> segmentGaps,
-        IEnumerable<PendingSystemInputDelivery> inputDeliveries,
-        ForegroundSegmentSnapshot? activeSegmentCheckpoint)
+    private static List<(string Path, int Index)> JournalChunks(string path)
     {
-        var directory = Path.GetDirectoryName(_path)
-            ?? throw new InvalidOperationException("System Collector ingress path has no directory.");
-        Directory.CreateDirectory(directory);
-        var temporary = _path + $".{Guid.NewGuid():N}.tmp";
-        try
+        var chunks = new List<(string Path, int Index)>();
+        if (File.Exists(path))
+            chunks.Add((path, 0));
+        var directory = Path.GetDirectoryName(path);
+        if (directory is null || !Directory.Exists(directory))
+            return chunks;
+        var fileName = Path.GetFileName(path);
+        foreach (var candidate in Directory.EnumerateFiles(directory, fileName + ".*.chunk"))
         {
-            using (var stream = new FileStream(
-                       temporary,
-                       FileMode.CreateNew,
-                       FileAccess.Write,
-                       FileShare.None,
-                       4096,
-                       FileOptions.WriteThrough))
-            using (var writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true))
-            {
-                var entries = segmentBatches.Select(item => new StoredIngressEntry(
-                        item.EntryId,
-                        SegmentBatchKind,
-                        SegmentBatch: item.Snapshots))
-                    .Concat(segmentGaps.Select(item => new StoredIngressEntry(
-                        item.EntryId,
-                        SegmentGapKind,
-                        SegmentGap: item.Gap)))
-                    .Concat(inputDeliveries.Select(item => item.Item is not null
-                        ? new StoredIngressEntry(
-                            item.EntryId,
-                            InputEventKind,
-                            InputEvent: item.Item)
-                        : new StoredIngressEntry(
-                            item.EntryId,
-                            InputGapKind,
-                            InputGap: item.Gap)));
-                foreach (var entry in entries)
-                    writer.WriteLine(JsonSerializer.Serialize(entry, JsonOptions));
-                if (activeSegmentCheckpoint is not null)
-                {
-                    writer.WriteLine(JsonSerializer.Serialize(new StoredIngressEntry(
-                        Guid.CreateVersion7(),
-                        SegmentCheckpointKind,
-                        MutatesCheckpoint: true,
-                        Checkpoint: activeSegmentCheckpoint), JsonOptions));
-                }
-                writer.Flush();
-                stream.Flush(flushToDisk: true);
-            }
-            _beforeCommit?.Invoke();
-            if (!_commitFence.TryPublishFile(temporary, _path))
-                throw new OperationCanceledException(
-                    "System Collector ingress mutation was fenced before publication.");
+            var suffix = Path.GetFileName(candidate)[(fileName.Length + 1)..^".chunk".Length];
+            if (int.TryParse(suffix, out var index) && index > 0)
+                chunks.Add((candidate, index));
         }
-        finally
-        {
-            if (File.Exists(temporary))
-                File.Delete(temporary);
-        }
+        chunks.Sort(static (left, right) => left.Index.CompareTo(right.Index));
+        return chunks;
     }
+
+    private static string ChunkPath(string path, int index) =>
+        index == 0 ? path : $"{path}.{index:D8}.chunk";
 
     private sealed record StoredIngressEntry(
         Guid EntryId,
@@ -613,5 +678,7 @@ internal sealed class SystemCollectorIngressStore
         IReadOnlyList<ForegroundSegmentSnapshot>? SegmentBatch = null,
         SystemSegmentIngressGap? SegmentGap = null,
         bool MutatesCheckpoint = false,
-        ForegroundSegmentSnapshot? Checkpoint = null);
+        ForegroundSegmentSnapshot? Checkpoint = null,
+        IReadOnlyList<Guid>? AcknowledgedEntryIds = null,
+        IReadOnlyList<PendingSystemInputDelivery>? InputDeliveries = null);
 }

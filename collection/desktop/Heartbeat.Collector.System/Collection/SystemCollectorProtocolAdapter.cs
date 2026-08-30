@@ -26,6 +26,7 @@ public sealed class SystemCollectorProtocolAdapter :
     private const int DefaultInputEventIngressCapacity = 100_000;
     private const int InputEventPumpBatchSize = 500;
     private const int SegmentPumpBatchSize = 500;
+    private const int IngressPersistenceBatchSize = 100;
 
     private readonly Channel<IReadOnlyList<ForegroundSegmentSnapshot>> _segments =
         Channel.CreateUnbounded<IReadOnlyList<ForegroundSegmentSnapshot>>(
@@ -314,9 +315,12 @@ public sealed class SystemCollectorProtocolAdapter :
         while (_segments.Reader.TryRead(out var snapshots))
             ingress.StageSegmentBatch(snapshots);
 
-        while (_inputEvents.Reader.TryRead(out var item))
+        while (_inputEvents.Reader.TryPeek(out _))
         {
-            if (ingress.StageInputEvent(item) == SystemInputIngressStageResult.GapStaged)
+            var batch = new List<InputEventItem>(IngressPersistenceBatchSize);
+            while (batch.Count < IngressPersistenceBatchSize && _inputEvents.Reader.TryRead(out var item))
+                batch.Add(item);
+            if (ingress.StageInputEvents(batch) != 0)
                 ReportPendingIngressGapStatus();
         }
     }
