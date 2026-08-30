@@ -35,6 +35,11 @@ Collector Protocol 定义与传输无关的握手、版本与能力协商、配�
 
 Collector Protocol Client 是宿主无关的库边界，不捕获调用方的 `SynchronizationContext`。平台原生回调只把观测放入 Collector 自有 ingress queue，由后台 delivery pump 执行持久化、背压与协议 I/O；任何 UI、窗口观察或输入 hook 线程都不能同步等待 Fact ACK。
 
+回调成功返回只表示观测进入进程内 ingress queue，不是 durable ACK。System InputEvent 的 durable
+capacity 判定属于后台 delivery pump：它必须在同一个 journal mutation 中二选一提交 Event 或覆盖该
+Event 的 Stream Gap，不能先删除/拒绝 Event、再写另一份 Gap ledger。进程在 pump 持久化前终止仍是
+明确的易失 ingress window；不得通过在平台回调中同步 fsync 来把它伪装成 durable responsibility。
+
 基础协议按 Major 协商；Fact、配置和生命周期能力独立版本化；Package SemVer 不参与 wire negotiation。Manifest 静态声明允许产生的 Source、FactKind、schema、SubjectKind 与 identifying dimensions，Activation 只能把声明绑定为具体 Fact Stream。
 
 Instance Desired State 使用单调 SpecRevision；Activation 报告已经应用的 Revision，不能动态应用时由 Runtime 重建 Activation。Collector → Hub 的 Fact 交付采用至少一次与幂等收敛：Collector 在 ACK 前负责保留，Hub 取得持久化责任后才 ACK，重复由 Fact 身份处理。批大小、背压、Stream Gap 和本地存储形态属于协议规范与实现细节，不再单独立 ADR。

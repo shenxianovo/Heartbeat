@@ -30,6 +30,9 @@ _Avoid_: 每个 Collector 自行拼装协议状态机、把 Client 与某一种 
 
 **Collector Ingress Queue（采集器入口队列）**:
 隔离观测回调与 Collector Protocol 交付背压的 Collector 内部边界。平台 UI、窗口事件和输入 hook 只入队；后台 delivery pump 才能等待持久化、ACK 或重试。
+回调返回只承诺进入进程内易失队列，不承诺 durable acceptance；System InputEvent 的后台容量判定必须
+在一个 durable journal mutation 中提交 Event 或覆盖它的 Stream Gap，不能用两个独立存储动作制造
+“已拒绝但无 Gap”的崩溃窗口。
 _Avoid_: 在原生回调或 UI 线程同步等待 Fact 发布
 
 **Stream Gap（流缺口）**:

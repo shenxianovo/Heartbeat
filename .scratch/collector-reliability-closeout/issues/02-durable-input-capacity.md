@@ -66,4 +66,12 @@ UI/window/input 回调路径，违反 ADR-040 与 Collection glossary 的 Collec
 ## Reopened acceptance
 
 - [ ] Event 接受或拒绝与对应 Stream Gap 在一个可证明的 durable atomic mutation 中提交。
-- [ ] 平台 UI、window 与 input 回调只做有界内存入队，不同步等待磁盘 fsync。
+- [ ] 平台 UI、window 与 input 回调只做内存入队，不同步等待磁盘 fsync。
+
+### 2026-08-30 — 责任边界裁决回写
+
+上一轮“平台 hook 不能阻塞，因此 overflow 在返回前写 durable Gap ledger”的 owner 评论与 ADR-040、
+Collection glossary 冲突：同步写 ledger 仍会让原生回调承担磁盘延迟。ADR-040 现明确回调返回只代表
+进入易失 ingress queue；后台 pump 才拥有 durable capacity 判定，并在同一 journal mutation 中提交
+Event 或覆盖它的 Stream Gap。进程在 pump 前终止属于明确的 volatile window，不得误报为 durable；
+实现将删除 callback `TryEnqueue -> RecordDrop` 的双存储路径。
