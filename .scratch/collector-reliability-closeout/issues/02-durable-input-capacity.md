@@ -96,7 +96,7 @@ closeout，因此 issue 保持 `needs-triage`。
 
 | Store | 当前保证 | 关键差异 |
 | --- | --- | --- |
-| `CollectorProtocolOutbox` | 同目录唯一 temp 后 overwrite | 无 fsync、无 replacement 验证、异常时没有 finally 清理；所在 Protocol 项目不依赖 `Heartbeat.Core` |
+| `CollectorProtocolOutbox` | 同目录唯一 temp 后 overwrite；delivery outcome 的最终 replacement 与 deadline fence 线性化；finally 清理 temp | 无 fsync、无 replacement 验证；所在 Protocol 项目不依赖 `Heartbeat.Core` |
 | `SystemCollectorIngressStore` | 同目录唯一 temp、WriteThrough + fsync、finally 清理 | NDJSON rewrite，且 append/tail repair 与同一锁共同定义 journal 语义 |
 | `VRChatPresenceCheckpoint` | 同目录唯一 temp、finally 清理 | JSON envelope，无 fsync；Stage 的内存回滚依赖 Persist 抛错边界 |
 | `JsonFileCache` / `JsonDeadLetterStore` | 固定 temp、替换前反序列化验证、finally 清理 | cache 还拥有 migration backup / unavailable 状态；当前无 fsync |
@@ -115,3 +115,10 @@ macOS / Linux directory-entry durability 的明确 contract；随后为上表每
 完成标准是生产路径不再自行调用 temp + overwrite，且三平台测试证明原有 migration backup、outbox
 重放、checkpoint 内存回滚和 ingress tail repair 语义均未改变。退出条件满足前，本审计关闭 P2，公共
 实现本身明确暂缓，不把“看起来原子”误报成跨崩溃 durable。
+
+### 2026-08-30 — valid NDJSON tail termination repair
+
+复审补充了“最后一条 JSON 完整但缺少 LF”的 crash fixture：旧 `Open` 会接受该条，下次 append
+把两个 JSON object 粘成一行，再启后丢失新条目。新测试先稳定失败（期望两个 FactId，实际仅
+恢复一个）；`Open` 现在只在最后一行通过严格反序列化与 entry 校验后，以 WriteThrough +
+fsync 补齐 LF，然后才允许后续 append。验证：ingress store 7/7；System suite 62/62。

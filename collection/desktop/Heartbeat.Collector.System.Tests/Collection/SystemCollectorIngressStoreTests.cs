@@ -143,6 +143,31 @@ public sealed class SystemCollectorIngressStoreTests : IDisposable
     }
 
     [Fact]
+    public void OpenRepairsValidJsonTailWithoutNewlineBeforeAppendAndSecondRestart()
+    {
+        var path = Path.Combine(_root, "ingress.ndjson");
+        var first = Guid.CreateVersion7();
+        var second = Guid.CreateVersion7();
+        var store = SystemCollectorIngressStore.Open(path, 2);
+        Assert.Equal(
+            SystemInputIngressStageResult.EventStaged,
+            store.StageInputEvent(NewInput(first)));
+        using (var stream = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.Read))
+        {
+            Assert.Equal((byte)'\n', ReadLastByte(path));
+            stream.SetLength(stream.Length - 1);
+        }
+
+        var repaired = SystemCollectorIngressStore.Open(path, 2);
+        Assert.Equal(
+            SystemInputIngressStageResult.EventStaged,
+            repaired.StageInputEvent(NewInput(second)));
+
+        var restarted = SystemCollectorIngressStore.Open(path, 2);
+        Assert.True(restarted.PendingFactIds.SetEquals([first, second]));
+    }
+
+    [Fact]
     public void OpenStillRejectsMalformedMiddleLine()
     {
         var path = Path.Combine(_root, "ingress.ndjson");
@@ -162,6 +187,13 @@ public sealed class SystemCollectorIngressStoreTests : IDisposable
         Code = 1,
         Timestamp = timestamp ?? DateTimeOffset.UnixEpoch
     };
+
+    private static byte ReadLastByte(string path)
+    {
+        using var stream = File.OpenRead(path);
+        stream.Position = stream.Length - 1;
+        return checked((byte)stream.ReadByte());
+    }
 
     private static ForegroundSegmentSnapshot NewSegment(
         Guid id,

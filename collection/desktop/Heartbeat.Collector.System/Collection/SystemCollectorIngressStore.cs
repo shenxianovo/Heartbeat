@@ -158,6 +158,8 @@ internal sealed class SystemCollectorIngressStore
                         throw new InvalidDataException("System Collector active checkpoint cannot be final.");
                     activeSegmentCheckpoint = entry.Checkpoint;
                 }
+                if (newline < 0)
+                    RepairMissingTailNewline(fullPath);
                 lineStart = nextLineStart;
             }
         }
@@ -464,6 +466,19 @@ internal sealed class SystemCollectorIngressStore
             4096,
             FileOptions.WriteThrough);
         stream.SetLength(validLength);
+        stream.Flush(flushToDisk: true);
+    }
+
+    private static void RepairMissingTailNewline(string path)
+    {
+        using var stream = new FileStream(
+            path,
+            FileMode.Append,
+            FileAccess.Write,
+            FileShare.Read,
+            4096,
+            FileOptions.WriteThrough);
+        stream.WriteByte((byte)'\n');
         stream.Flush(flushToDisk: true);
     }
 
