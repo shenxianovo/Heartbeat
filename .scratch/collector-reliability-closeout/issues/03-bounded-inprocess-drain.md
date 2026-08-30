@@ -1,6 +1,6 @@
 # 03 — 让 InProcess drain 受 deadline 约束
 
-Status: needs-triage
+Status: done
 
 Owner: Collection / Collector Protocol
 
@@ -204,3 +204,21 @@ deadline，旧实现释放后记录到 2 次迟到 commit。新的强制 `IColle
 deadline 抢先则 sink 返回 retry 且 cache 不变。`BeginDrain` 也改为不等待正在执行不受信
 projection 的 session lock，使硬 deadline 能在 Stop 入口建立。System transcript red→green 1/1；
 `InputEventBuffer` 拒绝 fence 后 restart 仍为空的生产 sink 测试 1/1。
+
+### 2026-08-30 — Hub-owned fence、transient retry 与 final closeout
+
+第四轮复审证明同步调用公开 `IInProcessCollectorDeadlineFence.FenceAfterDeadline()` 仍可绕过 deadline。
+失败测试让该方法同步阻塞，旧实现 1 秒超时。最终设计由 Hub 在 activation initialize 时注入并持有
+`ICollectorDurableCommitFence`；deadline 同步关闭的只有 Hub 自有 gate，Collector cancellation/fence
+notification 均在隔离 worker 上 best-effort 执行，writer release 不再进入任意 Collector 代码。System
+ingress journal 的最终 File.Move 使用同一 gate，故 late prepared mutation 无法成为权威状态。
+
+同时修复 Runtime Fact prepare 的瞬时持久化失败：Fact/Gap Retry outcome 不进入 message replay cache，
+storage 恢复后相同 messageId 可重新提交；System pump 的 unstaged prefix 在失败窗口计入 pending，持续
+失败不能报告 fully drained。相关提交：`7bec280`、`268e4c4`、`1741eda`。
+
+最终证据：Hub 219/219、System 73/73；Hub deadline stress 60/60，System deadline + ingress retry
+stress 80/80；真实 Protocol 跨进程 crash/drain/restart 10/10；完整 solution 并行连续三轮 974/974；
+build 0 warnings / 0 errors；Browser 78/78 + production build；第五轮 Spec 与 Standards 代码轴 P1/P2
+清零。本 issue 状态更新为 `done`。可靠性声明只覆盖当前 OS/filesystem 的进程崩溃/restart，不外推为
+断电或三平台 directory-entry durability。

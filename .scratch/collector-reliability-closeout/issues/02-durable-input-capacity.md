@@ -1,6 +1,6 @@
 # 02 — durable InputEvent 满容量不再静默丢失
 
-Status: needs-triage
+Status: done
 
 Owner: Collection / System Input + Protocol
 
@@ -97,7 +97,7 @@ closeout，因此 issue 保持 `needs-triage`。
 | Store | 当前保证 | 关键差异 |
 | --- | --- | --- |
 | `CollectorProtocolOutbox` | 同目录唯一 temp 后 overwrite；delivery outcome 的最终 replacement 与 deadline fence 线性化；finally 清理 temp | 无 fsync、无 replacement 验证；所在 Protocol 项目不依赖 `Heartbeat.Core` |
-| `SystemCollectorIngressStore` | 同目录唯一 temp、WriteThrough + fsync、finally 清理 | NDJSON rewrite，且 append/tail repair 与同一锁共同定义 journal 语义 |
+| `SystemCollectorIngressStore` | 同目录唯一 temp、WriteThrough + fsync、严格 temp 回收 | 32 KiB target 的 history-bounded COW NDJSON chunks；不可拆 oversized 原子记录独占 chunk；ACK tombstone/reset 与 tail repair 共同定义 journal 语义 |
 | `VRChatPresenceCheckpoint` | 同目录唯一 temp、finally 清理 | JSON envelope，无 fsync；Stage 的内存回滚依赖 Persist 抛错边界 |
 | `JsonFileCache` / `JsonDeadLetterStore` | 固定 temp、替换前反序列化验证、finally 清理 | cache 还拥有 migration backup / unavailable 状态；当前无 fsync |
 | `JsonCollectorRuntimeStore` | 固定 temp、WriteThrough + fsync、替换前验证、finally 清理 | 对持久化异常统一包装为 runtime state failure |
@@ -141,3 +141,22 @@ Event sink 阻塞时确认 outbox 同时持有 2 Facts + 1 Gap，释放后第二
 已持久后投影。无 `DeliveryOrder` 的已落盘 v1 不猜原始交错，仅按旧 binary 的
 Facts→Gaps 可观察语义恢复；退出盘点已记入 compatibility ledger。验证：Protocol 23/23；
 System 交错 runtime 1/1；实际 journal path 阻塞下的 native callback 非阻塞 1/1。
+
+### 2026-08-30 — chunked journal、失败重试与 final closeout
+
+全量 NDJSON rewrite 已由 history-bounded COW chunks 取代：普通 chunk 以 32 KiB 为 target；不可拆的
+atomic Segment rotation/Input capacity record 可独占 oversized chunk，下一 mutation 必须轮转，因此不会
+重复复制整个历史或裁剪真实 payload。后台 pump 每 100 个 InputEvent 在同一 mutation 中逐项作
+Event/Gap capacity 决策；ACK 写 durable tombstone，pending 清空后以保留 active checkpoint 的 reset
+令旧 chunks 逻辑不可达并 best-effort 物理删除。Open 只清理本 store 两种 UUID 命名 temp。
+
+复审发现 pump 在 Stage 前 `TryRead` 会在瞬时 I/O 失败时丢掉局部 batch；失败测试在旧逻辑稳定 5 秒
+超时。adapter 现在保留 unstaged Segment/Input prefix，只有 durable Stage 成功才清空，原序重试；持续
+失败进入 drain 时不得报告 fully drained。相关提交：`24df682`、`1741eda`、`07af2ad`、`eab572b`。
+System suite 73/73；store/retry/deadline/cross-process 定向复审 19/19；完整 solution 连续三轮 974/974；
+第五轮 Spec 与 Standards 代码轴无 P1/P2。本 issue 状态更新为 `done`。
+
+reset 发布后旧 chunk 删除位于 durable fence 外，但只删除已被 reset 证明逻辑不可达且 index 小于当前
+tail 的物理文件；删除失败不影响恢复，deadline 后也不会改变权威 pending/checkpoint 语义。跨平台
+directory-entry/power-loss durability 与公共 atomic replacement primitive 仍按上文退出条件保留，不作
+超出现有证据的承诺。

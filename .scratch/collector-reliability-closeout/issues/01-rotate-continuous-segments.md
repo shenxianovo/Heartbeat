@@ -1,6 +1,6 @@
 # 01 — 在摄入边界前旋转连续 Segment
 
-Status: needs-triage
+Status: done
 
 Owner: Collection / System + VRChat
 
@@ -138,3 +138,12 @@ rollover/transition/stop 回归连续 10 轮、30/30。
 现在在 monitor state lock 内同时记录 `DesktopObservation + ObservedAt`，持久边界完成后按原时刻
 顺序重放；既不让平台 callback 等 fsync，也不丢失真实转场时间。定向多转场、单转场、
 Stop 交错 3/3。
+
+### 2026-08-30 — final lifecycle closeout
+
+System rollover continuation、VRChat v1/v2 compatibility ledger、durable stage/transition 串行化与 deferred
+observation timestamp 均已完成；后续 System chunk journal 与 unstaged retry prefix 没有改变 final +
+continuation 的原子记录语义。最终 System suite 73/73，完整 solution 连续三轮 974/974，真实 Protocol
+跨进程 smoke 10/10；第五轮 Spec 与 Standards 代码复审均无 P1/P2。本 issue 验收已完整，状态更新为
+`done`。VRChat v1 读取分支仍按 `docs/architecture/compatibility-debt.md` 的盘点归零、rollback/离线窗口
+与 fixture 门槛退出，不因本 closeout 被删除。

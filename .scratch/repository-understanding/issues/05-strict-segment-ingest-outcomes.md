@@ -1,6 +1,6 @@
 # 05 — 让 Segment strict ingest 返回可判定结果
 
-Status: needs-triage
+Status: done
 
 Owner: Analytics / Ingest
 
@@ -68,3 +68,15 @@ Controller 现在只提取 user/header/body 并把 legacy contract 映射为 `42
 
 验证：新增架构测试先按预期失败，修复后 `StrictIngestProtocolTests` 24/24；完整 Server suite 与 solution
 验证将在 Feature A 最终 closeout 统一记录。issue 在双轴复审前保持 `needs-triage`。
+
+### 2026-08-30 — single validation instant 与 final closeout
+
+复审补充发现 application service 与 `UsageService` 分别读取当前时间，边界附近可能第一次通过、第二次
+拒绝。sequence TimeProvider 失败测试固定一次 ingest 只允许读取一个 validation instant；application
+service 完成整批 preflight 后调用内部 validated save seam，`UsageService` 的 public direct-call 入口仍
+保留自身 validation。提交 `9ff4628`。
+
+最终 Server suite 452/452，严格 ingest 单次-now 定向 2/2，完整 solution 并行连续三轮 974/974，
+build 0 warnings / 0 errors；第五轮 Spec 与 Standards 代码轴无 P1/P2。Controller 继续只映射 HTTP，
+事务、Device/AppIdentity/ActivitySegment 副作用与 contract rejection 均位于 application service
+unit-of-work。本 issue 验收完成，状态更新为 `done`。

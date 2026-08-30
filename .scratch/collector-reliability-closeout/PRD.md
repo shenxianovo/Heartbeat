@@ -1,6 +1,6 @@
 # Collector 数据可靠性收口
 
-Status: needs-triage
+Status: done
 
 ## Problem
 
@@ -22,10 +22,10 @@ Status: needs-triage
 
 ## Required work
 
-- [ ] 既有 [strict segment ingest issue](../repository-understanding/issues/05-strict-segment-ingest-outcomes.md)
-- [ ] [01 — 在摄入边界前旋转连续 Segment](issues/01-rotate-continuous-segments.md)
-- [ ] [02 — durable InputEvent 满容量不再静默丢失](issues/02-durable-input-capacity.md)
-- [ ] [03 — 让 InProcess drain 受 deadline 约束](issues/03-bounded-inprocess-drain.md)
+- [x] 既有 [strict segment ingest issue](../repository-understanding/issues/05-strict-segment-ingest-outcomes.md)
+- [x] [01 — 在摄入边界前旋转连续 Segment](issues/01-rotate-continuous-segments.md)
+- [x] [02 — durable InputEvent 满容量不再静默丢失](issues/02-durable-input-capacity.md)
+- [x] [03 — 让 InProcess drain 受 deadline 约束](issues/03-bounded-inprocess-drain.md)
 
 全部四项 done 后，本 PRD 才能标 `done`，Registry rollout 才解除可靠性 gate。
 
@@ -54,6 +54,23 @@ state v2 empty `GapId` 三条兼容读取仍只有“下一版删除”式注释
 `docs/architecture/compatibility-debt.md` 现分别记录真实服务对象、Collection 子域 owner、受支持
 Profile/data-directory/state 盘点归零、明确离线/回滚窗口与必保留 fixture。当前没有现场盘点
 和窗口证据，因此只关闭“无退出台账”的 P2，不删除分支，也不新增兼容行为。
+
+### 2026-08-30 — reopen 后最终 closeout
+
+上一轮 943/943 与“三轮复审通过”只保留为历史证据；本轮重开后的最终功能 HEAD 重新完成：solution
+build 0 warnings / 0 errors；`dotnet test Heartbeat.slnx --no-restore --no-build --configuration Debug`
+在项目并行执行下连续三轮均为 974/974；Browser 78/78、production build 与 Collector contract check
+通过；真实 Protocol 跨进程 crash/drain/restart smoke 连续 10/10；Hub deadline stress 60/60，System
+deadline + ingress retry stress 80/80。第五轮独立 Spec 复审与 Standards 代码轴均确认 P1/P2 清零；
+Standards 指出的 tracker 漂移由本 lifecycle commit 关闭。
+
+最终边界由 Hub-owned durable commit fence 负责：deadline 后不再同步进入 Collector；System ingress
+以 32 KiB target 的 history-bounded COW chunks、100-event atomic capacity batch、ACK tombstone/reset
+与 unstaged retry prefix 保证失败重试和 truthful drain。不可拆的 oversized rotation record 独占 chunk，
+不裁剪真实 payload；reset 后旧 chunk 删除只是逻辑不可达数据的 best-effort 物理清理，不属于 deadline
+后的权威状态突变。Local Data Smoke 使用现有外部 `.env.local` 完成 check → baseline → verify：Segment
+watermark 从 `2026-08-30T11:33:47.271Z` 推进到 `2026-08-30T11:43:47.279Z`，quality signals 全零；
+该证据不外推为一次新的 window-switch 或全平台断电 durability 验收。
 
 ## Non-goals
 
