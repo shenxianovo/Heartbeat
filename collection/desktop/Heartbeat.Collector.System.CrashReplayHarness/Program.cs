@@ -44,19 +44,17 @@ static int ReplayAndAcknowledge(string path, Guid segmentId, Guid inputId)
 {
     var store = SystemCollectorIngressStore.Open(path, inputCapacity: 1);
     var segmentBatches = store.PeekSegmentBatches(10);
-    var inputEvents = store.PeekInputEvents(10);
-    var inputGaps = store.PeekInputGaps(10);
+    var inputDeliveries = store.PeekInputDeliveries(10);
     var replayedSegment = AssertSingle(segmentBatches).Snapshots.Single();
-    var replayedInput = AssertSingle(inputEvents).Item;
-    var replayedGap = AssertSingle(inputGaps).Gap;
+    var replayedInput = inputDeliveries.Single(item => item.Item is not null).Item!;
+    var replayedGap = inputDeliveries.Single(item => item.Gap is not null).Gap!;
     if (replayedSegment.FactId != segmentId || replayedInput.Id != inputId ||
         replayedGap.EstimatedFactsLost != 1)
         throw new InvalidDataException("Restart did not replay the expected durable identities.");
 
     Console.WriteLine($"replayed:{segmentId}:{inputId}:{replayedGap.EstimatedFactsLost}");
     store.AcknowledgeSegmentBatches(segmentBatches);
-    store.AcknowledgeInputEvents(inputEvents);
-    store.AcknowledgeInputGaps(inputGaps);
+    store.AcknowledgeInputDeliveries(inputDeliveries);
     return 0;
 }
 

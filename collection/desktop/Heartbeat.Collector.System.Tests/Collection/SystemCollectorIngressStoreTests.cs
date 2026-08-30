@@ -70,7 +70,7 @@ public sealed class SystemCollectorIngressStoreTests : IDisposable
 
         var restarted = SystemCollectorIngressStore.Open(path, 1);
         Assert.True(restarted.PendingFactIds.SetEquals([acceptedId]));
-        var gap = Assert.Single(restarted.PeekInputGaps(10)).Gap;
+        var gap = Assert.IsType<SystemInputIngressGap>(Assert.Single(restarted.PeekInputGaps(10)).Gap);
         Assert.Equal(rejectedAt, gap.Start);
         Assert.Equal(rejectedAt.AddTicks(1), gap.End);
         Assert.Equal(1, gap.EstimatedFactsLost);

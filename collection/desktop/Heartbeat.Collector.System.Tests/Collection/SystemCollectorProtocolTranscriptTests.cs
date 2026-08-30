@@ -521,6 +521,50 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
     }
 
     [Fact]
+    public async Task RestartReplay_DeliversAcceptedInputEventBeforeItsFollowingCapacityGap()
+    {
+        Directory.CreateDirectory(_root);
+        var statePath = Path.Combine(_root, "collector-runtime.json");
+        var clock = new FakeClock();
+        var segmentSink = new SegmentIngestService(clock);
+        var inputSink = new BlockingInputEventSink();
+        var protocol = new SystemCollectorProtocolAdapter(inputEventIngressCapacity: 1);
+        var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
+        using var config = JsonDocument.Parse("{}");
+        await using var runtime = CollectorRuntime.Open(
+            statePath,
+            segmentSink,
+            inputEventSink: inputSink);
+        var instance = runtime.CreateInstance(
+            package,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        var ingressPath = Path.Combine(
+            _root,
+            "collector-data",
+            instance.CollectorInstanceId.ToString("N"),
+            "system-collector-ingress.json");
+        var store = SystemCollectorIngressStore.Open(ingressPath, 1);
+        Assert.Equal(
+            SystemInputIngressStageResult.EventStaged,
+            store.StageInputEvent(NewInputEvent(Guid.CreateVersion7(), clock.UtcNow)));
+        Assert.Equal(
+            SystemInputIngressStageResult.GapStaged,
+            store.StageInputEvent(NewInputEvent(Guid.CreateVersion7(), clock.UtcNow.AddSeconds(1))));
+        await using var activation = await runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            package,
+            NewCollector(protocol, clock, segmentSink));
+
+        Assert.True(inputSink.Entered.Wait(TimeSpan.FromSeconds(2)));
+        Assert.False(
+            RuntimeHasGap(statePath, "input_ingress_capacity_exceeded"),
+            "The later Gap overtook the accepted InputEvent during restart replay.");
+        inputSink.Release();
+        await WaitUntilAsync(() => RuntimeHasGap(statePath, "input_ingress_capacity_exceeded"));
+    }
+
+    [Fact]
     public async Task NativeInputCallbackDoesNotWaitForIngressJournalPersistence()
     {
         Directory.CreateDirectory(_root);
@@ -767,6 +811,15 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             codeSet = InputCodeSets.HeartbeatKeyPositionV1,
             code = (short)InputKeyPosition.KeyA
         }));
+
+    private static InputEventItem NewInputEvent(Guid id, DateTimeOffset timestamp) => new()
+    {
+        Id = id,
+        EventType = InputEventType.MouseButton,
+        CodeSet = InputCodeSets.HeartbeatKeyPositionV1,
+        Code = 1,
+        Timestamp = timestamp
+    };
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {

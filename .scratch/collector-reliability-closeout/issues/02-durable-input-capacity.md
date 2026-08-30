@@ -122,3 +122,11 @@ macOS / Linux directory-entry durability 的明确 contract；随后为上表每
 把两个 JSON object 粘成一行，再启后丢失新条目。新测试先稳定失败（期望两个 FactId，实际仅
 恢复一个）；`Open` 现在只在最后一行通过严格反序列化与 entry 校验后，以 WriteThrough +
 fsync 补齐 LF，然后才允许后续 append。验证：ingress store 7/7；System suite 62/62。
+
+### 2026-08-30 — InputEvent / Gap journal order 保真
+
+Spec 复审指出 store 将 accepted Event 与 overflow Gap 恢复到两张 list，adapter 又固定先交付
+Gap；任意 ACK rewrite 也会把两类重排，因此 restart 后 Gap 可越过先前已接受的 Event。新的
+`PendingSystemInputDelivery` 以单一 durable sequence 恢复、peek、prefix ACK 与 rewrite；adapter 只批量交付
+连续 Event，遇到 Gap 则严格在它所在的 journal 位置交付。真实 runtime restart fixture 在 InputEvent
+sink 阻塞期间证明后续 Gap 尚未进入 Hub 持久状态，释放 Event 后 Gap 才可见。

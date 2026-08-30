@@ -30,8 +30,8 @@ public sealed class SystemCollectorProtocolAdapter :
         Channel.CreateUnbounded<IReadOnlyList<ForegroundSegmentSnapshot>>(
         new UnboundedChannelOptions
         {
-            // Before Activation attachment, composition-time observations can only queue. Once
-            // attached, callbacks append to the durable ingress journal before returning.
+            // Platform callbacks always stop at this volatile queue. The background pump owns the
+            // durable journal handoff so UI/window callbacks never synchronously wait for fsync.
             SingleReader = true,
             SingleWriter = false,
             AllowSynchronousContinuations = false
@@ -252,26 +252,31 @@ public sealed class SystemCollectorProtocolAdapter :
             ingress.AcknowledgeSegmentGaps([segmentGap]);
         }
 
-        if (ingress.PeekInputGaps(1).FirstOrDefault() is { } dropped)
+        var inputDeliveries = ingress.PeekInputDeliveries(inputEventLimit);
+        if (inputDeliveries.FirstOrDefault() is { Gap: { } inputGap } dropped)
         {
             await activation.ReportGapAsync(new CollectorStreamGap(
-                dropped.Gap.GapId,
+                inputGap.GapId,
                 SystemInProcessCollector.InputEventBindingId,
-                dropped.Gap.Start,
-                dropped.Gap.End,
+                inputGap.Start,
+                inputGap.End,
                 "input_ingress_capacity_exceeded",
-                dropped.Gap.EstimatedFactsLost), cancellationToken).ConfigureAwait(false);
-            ingress.AcknowledgeInputGaps([dropped]);
+                inputGap.EstimatedFactsLost), cancellationToken).ConfigureAwait(false);
+            ingress.AcknowledgeInputDeliveries([dropped]);
             ReportReadyAfterIngressGapAcknowledged();
         }
-
-        var inputEvents = ingress.PeekInputEvents(inputEventLimit);
-        if (inputEvents.Count != 0)
+        else
         {
-            await activation.PublishBatchAsync(
-                inputEvents.Select(item => ToFact(item.Item)).ToArray(),
-                cancellationToken).ConfigureAwait(false);
-            ingress.AcknowledgeInputEvents(inputEvents);
+            var acceptedEvents = inputDeliveries
+                .TakeWhile(delivery => delivery.Item is not null)
+                .ToArray();
+            if (acceptedEvents.Length != 0)
+            {
+                await activation.PublishBatchAsync(
+                    acceptedEvents.Select(item => ToFact(item.Item!)).ToArray(),
+                    cancellationToken).ConfigureAwait(false);
+                ingress.AcknowledgeInputDeliveries(acceptedEvents);
+            }
         }
         if (HasPendingIngress())
             SignalPump();
