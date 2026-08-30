@@ -8,6 +8,13 @@ using Heartbeat.Collector.System.Collection;
 
 namespace Heartbeat.Collector.System.Input
 {
+    public sealed class InputEventCapacityExceededException(int capacity, int count) : Exception(
+        $"Durable InputEvent projection is applying backpressure at {count}/{capacity} events.")
+    {
+        public int Capacity { get; } = capacity;
+        public int Count { get; } = count;
+    }
+
     /// <summary>
     /// 输入事件的归一化与 legacy upload 缓冲（不含平台钩子，便于单测）。详见 ADR-012/041。
     ///
@@ -15,16 +22,18 @@ namespace Heartbeat.Collector.System.Input
     /// - 过滤长按自动重复（同一键在 KeyUp 之前的重复 KeyDown 丢弃）
     /// - 滚轮碎 delta 累加归一为整档（±120 = 一档）
     /// - 生产观察经 system Collector Protocol 发布，Hub 提交后投影回 legacy upload 缓冲
-    /// - 投影缓冲封顶丢旧，防止常驻进程内存无界增长
+    /// - durable projection 是待上传 InputEvent 的唯一容量 owner；满容量返回可判定 backpressure
     /// - 为每个事件生成 UUIDv7
     /// </summary>
     public sealed class InputEventBuffer : IDurableUploadSource<InputEventItem>, IInputEventFactSink
     {
         public const int WheelDelta = 120;
+        public const string StatusStreamName = "输入事件 durable projection";
 
         private readonly IClock _clock;
         private readonly ISystemInputEventPublisher? _publisher;
         private readonly int _capacity;
+        private readonly UploadStatusRegistry? _statusRegistry;
         private readonly JsonFileCache<InputEventItem>? _durableProjectionCache;
         private readonly object _durableGate = new();
 
@@ -43,7 +52,8 @@ namespace Heartbeat.Collector.System.Input
             IClock clock,
             int capacity = 100_000,
             ISystemInputEventPublisher? publisher = null,
-            string? durableProjectionPath = null)
+            string? durableProjectionPath = null,
+            UploadStatusRegistry? statusRegistry = null)
         {
             ArgumentNullException.ThrowIfNull(clock);
             if (capacity <= 0)
@@ -51,18 +61,22 @@ namespace Heartbeat.Collector.System.Input
             _clock = clock;
             _publisher = publisher;
             _capacity = capacity;
+            _statusRegistry = statusRegistry;
             if (!string.IsNullOrWhiteSpace(durableProjectionPath))
             {
                 _durableProjectionCache = new JsonFileCache<InputEventItem>(
                     durableProjectionPath,
-                    capacity,
+                    int.MaxValue,
                     HeartbeatCacheFormats.InputEventVersion2(),
                     HeartbeatCacheFormats.InputEventMigrations());
                 _count = _durableProjectionCache.Load().Count;
             }
+            UpdateStatus(_count);
         }
 
         public int Count => Volatile.Read(ref _count);
+        public int Capacity => _capacity;
+        public bool IsBackpressured => Count >= _capacity;
 
         /// <summary>键盘按下。返回是否记录了事件（自动重复会被丢弃）。</summary>
         public bool OnKeyDown(InputKeyPosition position)
@@ -140,13 +154,17 @@ namespace Heartbeat.Collector.System.Input
                 lock (_durableGate)
                     return _durableProjectionCache.Load();
             }
-            var result = new List<InputEventItem>();
-            while (_queue.TryDequeue(out var item))
+            lock (_durableGate)
             {
-                Interlocked.Decrement(ref _count);
-                result.Add(item);
+                var result = new List<InputEventItem>();
+                while (_queue.TryDequeue(out var item))
+                {
+                    _count--;
+                    result.Add(item);
+                }
+                UpdateStatus(_count);
+                return result;
             }
-            return result;
         }
 
         /// <summary>
@@ -184,6 +202,7 @@ namespace Heartbeat.Collector.System.Input
                     .ToList();
                 _durableProjectionCache.Replace(retained);
                 Volatile.Write(ref _count, retained.Count);
+                UpdateStatus(retained.Count);
             }
         }
 
@@ -207,27 +226,52 @@ namespace Heartbeat.Collector.System.Input
 
         private void EnqueueItem(InputEventItem item)
         {
-            if (_durableProjectionCache is not null)
+            lock (_durableGate)
             {
-                lock (_durableGate)
+                if (_durableProjectionCache is not null)
                 {
                     var retained = _durableProjectionCache.Load();
                     if (retained.Any(existing => existing.Id == item.Id))
                         return;
+                    if (retained.Count >= _capacity)
+                    {
+                        UpdateStatus(retained.Count);
+                        throw new InputEventCapacityExceededException(_capacity, retained.Count);
+                    }
                     retained.Add(item);
                     _durableProjectionCache.Replace(retained);
-                    Volatile.Write(ref _count, Math.Min(retained.Count, _capacity));
+                    Volatile.Write(ref _count, retained.Count);
+                    UpdateStatus(retained.Count);
+                    return;
                 }
-                return;
-            }
-            _queue.Enqueue(item);
-            var n = Interlocked.Increment(ref _count);
 
-            // 封顶丢旧
-            while (n > _capacity && _queue.TryDequeue(out _))
-            {
-                n = Interlocked.Decrement(ref _count);
+                if (_count >= _capacity)
+                {
+                    UpdateStatus(_count);
+                    throw new InputEventCapacityExceededException(_capacity, _count);
+                }
+                _queue.Enqueue(item);
+                _count++;
+                UpdateStatus(_count);
             }
+        }
+
+        private void UpdateStatus(int count)
+        {
+            if (_statusRegistry is null)
+                return;
+            var status = count switch
+            {
+                0 => UploadStreamStatus.Ready,
+                _ when count >= _capacity => new UploadStreamStatus(
+                    UploadStreamState.Backpressure,
+                    $"Durable InputEvent backlog reached capacity ({count}/{_capacity}).",
+                    "Allow InputEvent upload to drain or repair its upload path; retained events will retry."),
+                _ => new UploadStreamStatus(
+                    UploadStreamState.Backlog,
+                    $"Durable InputEvent backlog: {count}/{_capacity}.")
+            };
+            _statusRegistry.Update(StatusStreamName, status);
         }
     }
 }

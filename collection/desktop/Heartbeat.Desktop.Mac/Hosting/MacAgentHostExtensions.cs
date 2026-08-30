@@ -80,7 +80,8 @@ public static class MacAgentHostExtensions
         services.TryAddSingleton<ICache<InputEventItem>>(sp =>
             new JsonFileCache<InputEventItem>(
                 Path.Combine(sp.GetRequiredService<MacAgentPaths>().DataDirectory, "input-events-cache.json"),
-                100_000,
+                // Replay the current v2 retry file verbatim; new capacity is owned by InputEventBuffer.
+                int.MaxValue,
                 HeartbeatCacheFormats.InputEventVersion2(),
                 HeartbeatCacheFormats.InputEventMigrations()));
 
@@ -89,7 +90,8 @@ public static class MacAgentHostExtensions
             publisher: sp.GetRequiredService<ISystemInputEventPublisher>(),
             durableProjectionPath: Path.Combine(
                 sp.GetRequiredService<MacAgentPaths>().DataDirectory,
-                "input-event-facts-buffer.json")));
+                "input-event-facts-buffer.json"),
+            statusRegistry: sp.GetRequiredService<UploadStatusRegistry>()));
         services.TryAddSingleton<IUploadSource<InputEventItem>>(sp => sp.GetRequiredService<InputEventBuffer>());
         services.TryAddSingleton<MacInputEventCollector>();
         services.TryAddSingleton<IMacInputMonitoringEvents>(sp =>

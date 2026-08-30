@@ -181,7 +181,7 @@ public sealed class SystemInProcessCollector(
         var stream = activation.Streams.Values.Single(item => item.Descriptor.StreamId == streamId);
         var outcome = await stream.ReportGapAsync(
             messageId,
-            new StreamGapReport(gap.Start, gap.End, gap.Reason, gap.EstimatedFactsLost),
+            new StreamGapReport(gap.GapId, gap.Start, gap.End, gap.Reason, gap.EstimatedFactsLost),
             cancellationToken);
         return new CollectorGapDeliveryOutcome(
             Enum.Parse<CollectorGapDeliveryStatus>(outcome.Status.ToString()),

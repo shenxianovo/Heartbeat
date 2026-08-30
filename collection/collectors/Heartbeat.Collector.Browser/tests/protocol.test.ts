@@ -353,7 +353,7 @@ describe('browser Collector Protocol outbox', () => {
   })
 
   it('reports bounded-outbox loss through the durable stream-gap capability', async () => {
-    let request: { messageId?: string; body?: { gap?: { reason?: string } } } = {}
+    let request: { messageId?: string; body?: { gap?: { gapId?: string; reason?: string } } } = {}
     vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       request = JSON.parse(String(init?.body))
       return protocolResponse(
@@ -374,6 +374,7 @@ describe('browser Collector Protocol outbox', () => {
       flushPeriodMilliseconds: 30_000,
     }
     const gap: BrowserPendingGap = {
+      gapId: '0198d5eb-fc30-7d7b-8bf0-c2d009ec8999',
       messageId: '0198d5eb-fc31-7d7b-8bf0-c2d009ec8999',
       activationId: ACTIVATION_ID,
       start: '2026-08-25T08:00:00.000Z',
@@ -384,6 +385,7 @@ describe('browser Collector Protocol outbox', () => {
 
     await expect(reportBrowserGap(session, gap)).resolves.toBe('acked')
     expect(request.messageId).toBe(gap.messageId)
+    expect(request.body?.gap?.gapId).toMatch(/^[0-9a-f-]{36}$/)
     expect(request.body?.gap?.reason).toBe('buffer_overflow')
   })
 })

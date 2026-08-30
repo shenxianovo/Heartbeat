@@ -227,7 +227,7 @@ internal sealed class CollectorActivationSession
                         "The same messageId was reused with different stream.gap content."));
 
             GapDeliveryOutcome outcome;
-            if (!IsUuidV7(messageId) ||
+            if (!IsUuidV7(messageId) || !IsUuidV7(gap.GapId) ||
                 gap.Start.Offset != TimeSpan.Zero || gap.End.Offset != TimeSpan.Zero || gap.End <= gap.Start ||
                 string.IsNullOrWhiteSpace(gap.Reason) || !IsSnakeCaseCode(gap.Reason) ||
                 gap.EstimatedFactsLost is <= 0)
@@ -323,6 +323,7 @@ internal sealed class CollectorActivationSession
         var canonical = string.Join(
             "\n",
             streamId.ToString("D"),
+            gap.GapId.ToString("D"),
             gap.Start.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
             gap.End.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
             gap.Reason,

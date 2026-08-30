@@ -41,6 +41,7 @@ export interface BrowserPublishAttempt {
 }
 
 export interface BrowserPendingGap {
+  gapId: string
   messageId?: string
   activationId?: string
   start: string
@@ -513,6 +514,7 @@ export async function reportBrowserGap(
             leaseToken: session.leaseToken,
             streamId: session.streamId,
             gap: {
+              gapId: attempt.gapId,
               start: attempt.start,
               end: attempt.end,
               reason: attempt.reason,

@@ -1472,12 +1472,13 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
         RequireEnvelope(root, "heartbeat.collector/1", "stream.gap", ActivationId!.Value);
         var messageId = ReadUuidV7(root, "messageId");
         var body = RequireObject(root, "body");
-        RequireExactProperties(body, "streamId", "factTime", "reason", "estimatedFactsLost");
+        RequireExactProperties(body, "streamId", "gapId", "factTime", "reason", "estimatedFactsLost");
         var streamId = ReadGuid(body, "streamId");
+        var gapId = ReadUuidV7(body, "gapId");
         var time = RequireObject(body, "factTime");
         RequireExactProperties(time, "start", "end");
         var gap = new StreamGapReport(
-            ReadUtcTimestamp(time, "start"), ReadUtcTimestamp(time, "end"), ReadString(body, "reason"),
+            gapId, ReadUtcTimestamp(time, "start"), ReadUtcTimestamp(time, "end"), ReadString(body, "reason"),
             body.TryGetProperty("estimatedFactsLost", out var estimate) ? estimate.GetInt32() : null);
         var stream = _activation?.Streams.Values.SingleOrDefault(item => item.Descriptor.StreamId == streamId)
             ?? throw new ManagedProcessProtocolException("stream.gap references an unopened Stream.");

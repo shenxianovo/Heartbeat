@@ -19,6 +19,10 @@
     <ProjectReference Include="..\..\..\shared\Heartbeat.Core\Heartbeat.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Heartbeat.Collector.System.Tests" />
+  </ItemGroup>
+
   <Import Project="SystemCollectorPackage.targets" />
 
 </Project>

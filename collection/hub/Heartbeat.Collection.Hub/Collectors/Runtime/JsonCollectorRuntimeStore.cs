@@ -313,11 +313,14 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
                 stream.StreamId != fact.StreamId ||
                 !stream.SchemaCatalog.ContainsKey(fact.SchemaRevision))))
             throw new JsonException("Collector Runtime state contains a Fact with a mismatched Stream schema.");
-        if (state.Gaps.Select(gap => (gap.StreamId, gap.Start, gap.End, gap.Reason)).Distinct().Count() != state.Gaps.Count)
+        var identifiedGaps = state.Gaps.Where(gap => gap.GapId != Guid.Empty).ToArray();
+        if (identifiedGaps.Select(gap => (gap.StreamId, gap.GapId)).Distinct().Count() != identifiedGaps.Length)
             throw new JsonException("Collector Runtime state contains duplicate Stream Gaps.");
         foreach (var gap in state.Gaps)
         {
-            if (gap.StreamId == Guid.Empty || gap.End <= gap.Start || string.IsNullOrWhiteSpace(gap.Reason) ||
+            if (gap.StreamId == Guid.Empty ||
+                gap.GapId != Guid.Empty && !IsUuidV7(gap.GapId) ||
+                gap.End <= gap.Start || string.IsNullOrWhiteSpace(gap.Reason) ||
                 gap.EstimatedFactsLost is <= 0)
                 throw new JsonException("Collector Runtime state contains an invalid Stream Gap.");
         }
@@ -433,6 +436,27 @@ internal sealed class CollectorRuntimeState
         ActivationAttemptTombstones = [.. ActivationAttemptTombstones]
     };
 
+    public CollectorRuntimeState WithBoundGapIdentity(CommittedGapState gap, Guid gapId) => new()
+    {
+        SchemaVersion = SchemaVersion,
+        Instances = [.. Instances],
+        Streams = [.. Streams],
+        Facts = [.. Facts],
+        Gaps = Gaps.Select(existing => ReferenceEquals(existing, gap)
+                ? new CommittedGapState
+                {
+                    StreamId = existing.StreamId,
+                    GapId = gapId,
+                    Start = existing.Start,
+                    End = existing.End,
+                    Reason = existing.Reason,
+                    EstimatedFactsLost = existing.EstimatedFactsLost
+                }
+                : existing)
+            .ToList(),
+        ActivationAttemptTombstones = [.. ActivationAttemptTombstones]
+    };
+
     public CollectorRuntimeState WithActivationAttemptTombstone(ActivationAttemptTombstoneState attempt) => new()
     {
         SchemaVersion = SchemaVersion,
@@ -496,6 +520,7 @@ internal sealed class CommittedFactState
 internal sealed class CommittedGapState
 {
     public Guid StreamId { get; init; }
+    public Guid GapId { get; init; }
     public DateTimeOffset Start { get; init; }
     public DateTimeOffset End { get; init; }
     public string Reason { get; init; } = string.Empty;

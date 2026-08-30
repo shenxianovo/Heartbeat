@@ -32,6 +32,14 @@ _Avoid_: 每个 Collector 自行拼装协议状态机、把 Client 与某一种 
 隔离观测回调与 Collector Protocol 交付背压的 Collector 内部边界。平台 UI、窗口事件和输入 hook 只入队；后台 delivery pump 才能等待持久化、ACK 或重试。
 _Avoid_: 在原生回调或 UI 线程同步等待 Fact 发布
 
+**Stream Gap（流缺口）**:
+Collector 对某个 Fact Stream 已知丢失范围的持久事实；稳定 UUIDv7 GapId 是幂等身份，协议 messageId 只标识一次传输尝试。时间使用非空半开区间，同一范围可以有多个不同 GapId，不能仅按 range/reason 去重而吞掉独立丢失。
+_Avoid_: 用 messageId 充当 Gap 身份、把相同时间范围自动视为同一丢失、ACK 前删除本地 Gap
+
+**Durable InputEvent Projection（持久输入事件投影）**:
+Hub 已提交 Event Fact 后、Analytics InputEvent 上传确认前的持久责任窗口；`InputEventBuffer` 是该窗口唯一容量 owner。满容量返回 backpressure 并保留原 FactId，底层 JSON 文件只做原子持久化、不自行裁剪。
+_Avoid_: 在 JsonFileCache 与投影层分别封顶、把 count clamp 当成成功、满容量丢 oldest 却不报告 Gap
+
 **Collector Protocol Conformance Suite（采集器协议一致性套件）**:
 跨语言共享的可执行协议行为语料，固定生命周期、ACK、重试、Gap 与 drain 结果；各语言实现通过同一组向量证明其 Binding 没有改变协议语义。它不是 wire-message schema，也不是完整请求/响应 transcript。
 _Avoid_: 只共享 DTO、以某一种语言实现作为协议本身、把行为语料误当消息格式定义

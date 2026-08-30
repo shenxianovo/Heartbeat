@@ -73,7 +73,7 @@ describe('ChromeBrowserDeliveryStore adapter contract', () => {
   })
 
   it('recovers the existing Chrome layout without leaking legacy fields', async () => {
-    installChrome({
+    const { localArea } = installChrome({
       pendingSegments: { [legacySnapshot.id]: legacySnapshot },
       browserCollectorPendingGap: {
         start: legacySnapshot.startTime,
@@ -95,6 +95,9 @@ describe('ChromeBrowserDeliveryStore adapter contract', () => {
     expect(recovered).not.toHaveProperty('appName')
     expect(recovered).toMatchObject({ appHint: 'edge', isFinal: false })
     expect(durable.pendingGaps).toHaveLength(1)
+    expect(durable.pendingGaps[0].gapId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7/)
+    expect((localArea.values.browserCollectorPendingGap as Array<{ gapId: string }>)[0].gapId)
+      .toBe(durable.pendingGaps[0].gapId)
     expect(durable.policy).toEqual({ enabled: false, flushPeriodMilliseconds: 60_000 })
     await expect(store.loadSession()).resolves.toMatchObject({
       backoff: { fails: 2, nextAttemptAt: 123_000 },

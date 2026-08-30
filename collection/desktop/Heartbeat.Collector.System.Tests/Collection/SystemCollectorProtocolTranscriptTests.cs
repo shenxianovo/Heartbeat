@@ -340,12 +340,13 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
     }
 
     [Fact]
-    public async Task InputEvent_DurableWindowAtCapacity_EvictsOldReceiptInsteadOfStallingStream()
+    public async Task InputEvent_DurableProjectionAtCapacity_RetriesSameFactUntilConfirmedSpaceExists()
     {
         Directory.CreateDirectory(_root);
         var clock = new FakeClock();
         var segmentSink = new SegmentIngestService(clock);
-        var inputSink = new CapturingInputEventSink();
+        var projectionPath = Path.Combine(_root, "input-event-facts-buffer.json");
+        var inputSink = new InputEventBuffer(clock, capacity: 1, durableProjectionPath: projectionPath);
         var protocol = new SystemCollectorProtocolAdapter();
         var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
         using var config = JsonDocument.Parse("{}");
@@ -367,13 +368,19 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         var first = await stream.PublishAsync(
             Guid.CreateVersion7(),
             [InputFact(stream.Descriptor, Guid.CreateVersion7())]);
-        var second = await stream.PublishAsync(
-            Guid.CreateVersion7(),
-            [InputFact(stream.Descriptor, Guid.CreateVersion7())]);
+        var secondFact = InputFact(stream.Descriptor, Guid.CreateVersion7());
+        var second = await stream.PublishAsync(Guid.CreateVersion7(), [secondFact]);
 
         Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(first.Results).Status);
-        Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(second.Results).Status);
-        Assert.Equal(2, inputSink.Items.Count);
+        Assert.Equal(FactDeliveryStatus.Retry, Assert.Single(second.Results).Status);
+        var drained = ((IUploadSource<InputEventItem>)inputSink).Drain();
+        Assert.Single(drained);
+        ((IDurableUploadSource<InputEventItem>)inputSink).CompleteDrain(drained, []);
+
+        var retried = await stream.PublishAsync(Guid.CreateVersion7(), [secondFact]);
+
+        Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(retried.Results).Status);
+        Assert.Equal(secondFact.FactId, Assert.Single(inputSink.DrainAll()).Id);
     }
 
     [Fact]
@@ -466,6 +473,63 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         Assert.True(
             returnedWhileDeliveryBlocked,
             "Desktop observation synchronously waited for Collector Protocol delivery.");
+    }
+
+    [Fact]
+    public async Task InputIngressOverflow_PersistsExactGapBeforeReturningAndUploadsItAfterBackpressureClears()
+    {
+        Directory.CreateDirectory(_root);
+        var statePath = Path.Combine(_root, "collector-runtime.json");
+        var gapPath = Path.Combine(_root, "system-input-ingress-gaps.json");
+        var clock = new FakeClock();
+        var segmentSink = new SegmentIngestService(clock);
+        var inputSink = new BlockingInputEventSink();
+        var statuses = new UploadStatusRegistry();
+        var protocol = new SystemCollectorProtocolAdapter(
+            statuses,
+            new SystemCollectorBindingOptions(_root),
+            inputEventIngressCapacity: 1);
+        var inputBuffer = new InputEventBuffer(clock, publisher: protocol);
+        var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
+        using var config = JsonDocument.Parse("{}");
+        await using var runtime = CollectorRuntime.Open(
+            statePath,
+            segmentSink,
+            inputEventSink: inputSink);
+        var instance = runtime.CreateInstance(
+            package,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        await using var activation = await runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            package,
+            NewCollector(protocol, clock, segmentSink));
+
+        inputBuffer.OnMouseButton(1);
+        Assert.True(inputSink.Entered.Wait(TimeSpan.FromSeconds(2)));
+        clock.Advance(TimeSpan.FromSeconds(1));
+        inputBuffer.OnMouseButton(2);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        var droppedAt = clock.UtcNow;
+        inputBuffer.OnMouseButton(3);
+
+        Assert.Equal(
+            UploadStreamState.GapRecorded,
+            statuses.Snapshot[SystemCollectorProtocolAdapter.StatusStreamName].State);
+        var durableGap = Assert.IsType<SystemInputIngressGap>(
+            SystemInputIngressGapStore.Open(gapPath).Peek());
+        Assert.Equal(droppedAt, durableGap.Start);
+        Assert.Equal(droppedAt + TimeSpan.FromTicks(1), durableGap.End);
+        Assert.Equal(1, durableGap.EstimatedFactsLost);
+
+        inputSink.Release();
+        await WaitUntilAsync(() => SystemInputIngressGapStore.Open(gapPath).PendingCount == 0);
+        Assert.Equal(
+            UploadStreamState.Ready,
+            statuses.Snapshot[SystemCollectorProtocolAdapter.StatusStreamName].State);
+        Assert.True(
+            RuntimeHasGap(statePath, "input_ingress_capacity_exceeded"),
+            File.ReadAllText(statePath));
     }
 
     [Fact]
@@ -568,6 +632,20 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         while (!condition())
             await Task.Delay(10, timeout.Token);
+    }
+
+    private static bool RuntimeHasGap(string statePath, string reason)
+    {
+        try
+        {
+            using var state = JsonDocument.Parse(File.ReadAllText(statePath));
+            return state.RootElement.GetProperty("gaps").EnumerateArray().Any(gap =>
+                gap.GetProperty("reason").GetString() == reason);
+        }
+        catch (Exception exception) when (exception is IOException or JsonException)
+        {
+            return false;
+        }
     }
 
     private static async Task<List<Heartbeat.Core.DTOs.Segments.ActivitySegmentItem>> WaitForSegmentsAsync(

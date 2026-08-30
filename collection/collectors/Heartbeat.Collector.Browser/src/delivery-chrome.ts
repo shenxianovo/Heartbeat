@@ -1,4 +1,5 @@
 import type { SegmentSnapshot } from './fold'
+import { uuidv7 } from './ids'
 import { loadConfig } from './config'
 import { LoopbackBrowserHubAdapter } from './hub'
 import {
@@ -60,11 +61,13 @@ export class ChromeBrowserDeliveryStore implements BrowserDeliveryStore {
       transient[DESIRED_ENABLED_KEY],
       transient[FLUSH_PERIOD_KEY],
     )
+    const pendingGaps = normalizePendingGaps(rawGaps)
+    if (pendingGaps.migrated) {
+      await chrome.storage.local.set({ [PENDING_GAP_KEY]: pendingGaps.value })
+    }
     return {
       queue: normalizeQueuedSnapshots(rawQueue, this.currentAppHint),
-      pendingGaps: Array.isArray(rawGaps)
-        ? rawGaps as BrowserPendingGap[]
-        : rawGaps === undefined ? [] : [rawGaps as BrowserPendingGap],
+      pendingGaps: pendingGaps.value,
       deadLetters: Array.isArray(local[DEAD_LETTER_KEY])
         ? local[DEAD_LETTER_KEY] as SegmentSnapshot[]
         : defaults.deadLetters,
@@ -120,6 +123,21 @@ export class ChromeBrowserDeliveryStore implements BrowserDeliveryStore {
     ]
     if (remove.length > 0) await chrome.storage.session.remove(remove)
   }
+}
+
+function normalizePendingGaps(raw: unknown): { value: BrowserPendingGap[]; migrated: boolean } {
+  // Current browser storage predates GapId. Remove the missing-ID arm after one released Browser
+  // version has rewritten PENDING_GAP_KEY and Hub runtime state no longer accepts empty GapId.
+  const gaps = (Array.isArray(raw) ? raw : raw === undefined ? [] : [raw]) as BrowserPendingGap[]
+  let migrated = false
+  const value = gaps.map((gap) => {
+    if (typeof gap.gapId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(gap.gapId)) {
+      return gap
+    }
+    migrated = true
+    return { ...gap, gapId: uuidv7() }
+  })
+  return { value, migrated }
 }
 
 export function createChromeBrowserDelivery(appHint: string | undefined): BrowserDelivery {

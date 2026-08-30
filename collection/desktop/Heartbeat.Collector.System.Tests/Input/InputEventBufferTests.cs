@@ -153,17 +153,18 @@ public class InputEventBufferTests
     }
 
     [Fact]
-    public void Enqueue_RespectsCapacity_DropsOldest()
+    public void Enqueue_AtCapacity_ReturnsBackpressureAndPreservesExistingEvents()
     {
         var buf = NewBuffer(capacity: 3);
 
         buf.OnMouseButton(1);
         buf.OnMouseButton(2);
         buf.OnMouseButton(3);
-        buf.OnMouseButton(1);  // 超出容量，丢弃最旧
+        var error = Assert.Throws<InputEventCapacityExceededException>(() => buf.OnMouseButton(1));
 
+        Assert.Equal(3, error.Capacity);
         Assert.Equal(3, buf.Count);
-        Assert.Equal(3, buf.DrainAll().Count);
+        Assert.Equal([1, 2, 3], buf.DrainAll().Select(item => item.Code));
     }
 
     [Fact]
@@ -232,6 +233,168 @@ public class InputEventBufferTests
             ((IDurableUploadSource<InputEventItem>)restarted).CompleteDrain(drained, []);
             var completed = new InputEventBuffer(new FakeClock(), durableProjectionPath: path);
             Assert.Empty(((IUploadSource<InputEventItem>)completed).Drain());
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void DurableProjection_AtCapacityBackpressuresWithoutTrimmingAcrossRestart()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-input-buffer-{Guid.NewGuid():N}");
+        var path = Path.Combine(root, "input-event-facts-buffer.json");
+        var items = Enumerable.Range(1, 3).Select(index => new InputEventItem
+        {
+            Id = Guid.CreateVersion7(),
+            EventType = InputEventType.MouseButton,
+            CodeSet = InputCodeSets.HeartbeatKeyPositionV1,
+            Code = (short)index,
+            Timestamp = DateTimeOffset.UnixEpoch.AddSeconds(index)
+        }).ToArray();
+        try
+        {
+            var first = new InputEventBuffer(new FakeClock(), capacity: 2, durableProjectionPath: path);
+            ((IInputEventFactSink)first).Accept(items[0], isReplay: false);
+            ((IInputEventFactSink)first).Accept(items[1], isReplay: false);
+
+            Assert.Throws<InputEventCapacityExceededException>(() =>
+                ((IInputEventFactSink)first).Accept(items[2], isReplay: false));
+
+            var restarted = new InputEventBuffer(new FakeClock(), capacity: 2, durableProjectionPath: path);
+            var retained = ((IUploadSource<InputEventItem>)restarted).Drain();
+            Assert.Equal(items.Take(2).Select(item => item.Id), retained.Select(item => item.Id));
+
+            ((IDurableUploadSource<InputEventItem>)restarted).CompleteDrain(retained, [retained[1]]);
+            ((IInputEventFactSink)restarted).Accept(items[2], isReplay: false);
+            var completedRestart = new InputEventBuffer(
+                new FakeClock(), capacity: 2, durableProjectionPath: path);
+            Assert.Equal(
+                [items[1].Id, items[2].Id],
+                ((IUploadSource<InputEventItem>)completedRestart).Drain().Select(item => item.Id));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void CurrentCacheVersion_OverNewCapacityIsPreservedAndBackpressuresUntilDrained()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-input-buffer-{Guid.NewGuid():N}");
+        var path = Path.Combine(root, "input-event-facts-buffer.json");
+        try
+        {
+            var writer = new InputEventBuffer(new FakeClock(), capacity: 4, durableProjectionPath: path);
+            for (short code = 1; code <= 4; code++)
+                writer.OnMouseButton(code);
+
+            var reopened = new InputEventBuffer(new FakeClock(), capacity: 3, durableProjectionPath: path);
+            Assert.Equal(4, reopened.Count);
+            Assert.Throws<InputEventCapacityExceededException>(() => reopened.OnMouseButton(5));
+            Assert.Equal([1, 2, 3, 4], reopened.DrainAll().Select(item => item.Code));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void DiagnosticsDistinguishIdleBacklogAndBackpressure()
+    {
+        var registry = new UploadStatusRegistry();
+        var buffer = new InputEventBuffer(new FakeClock(), capacity: 2, statusRegistry: registry);
+        Assert.Equal(
+            UploadStreamState.Ready,
+            registry.Snapshot[InputEventBuffer.StatusStreamName].State);
+
+        buffer.OnMouseButton(1);
+        Assert.Equal(
+            UploadStreamState.Backlog,
+            registry.Snapshot[InputEventBuffer.StatusStreamName].State);
+
+        buffer.OnMouseButton(2);
+        Assert.Equal(
+            UploadStreamState.Backpressure,
+            registry.Snapshot[InputEventBuffer.StatusStreamName].State);
+
+        buffer.DrainAll();
+        Assert.Equal(
+            UploadStreamState.Ready,
+            registry.Snapshot[InputEventBuffer.StatusStreamName].State);
+    }
+
+    [Fact]
+    public async Task DurableProjection_ConcurrentConfirmedDrainAndEnqueuePreservesExactIds()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-input-buffer-{Guid.NewGuid():N}");
+        var path = Path.Combine(root, "input-event-facts-buffer.json");
+        try
+        {
+            var buffer = new InputEventBuffer(new FakeClock(), capacity: 10, durableProjectionPath: path);
+            var initial = Enumerable.Range(1, 10).Select(index => new InputEventItem
+            {
+                Id = Guid.CreateVersion7(),
+                EventType = InputEventType.MouseButton,
+                CodeSet = InputCodeSets.HeartbeatKeyPositionV1,
+                Code = (short)index,
+                Timestamp = DateTimeOffset.UnixEpoch.AddSeconds(index)
+            }).ToArray();
+            var next = Enumerable.Range(11, 5).Select(index => new InputEventItem
+            {
+                Id = Guid.CreateVersion7(),
+                EventType = InputEventType.MouseButton,
+                CodeSet = InputCodeSets.HeartbeatKeyPositionV1,
+                Code = (short)index,
+                Timestamp = DateTimeOffset.UnixEpoch.AddSeconds(index)
+            }).ToArray();
+            foreach (var item in initial)
+                ((IInputEventFactSink)buffer).Accept(item, isReplay: false);
+            var drained = ((IUploadSource<InputEventItem>)buffer).Drain();
+            using var start = new ManualResetEventSlim();
+
+            var complete = Task.Run(() =>
+            {
+                start.Wait();
+                ((IDurableUploadSource<InputEventItem>)buffer).CompleteDrain(
+                    drained,
+                    drained.Skip(5).ToArray());
+            });
+            var enqueue = Task.Run(async () =>
+            {
+                start.Wait();
+                foreach (var item in next)
+                {
+                    while (true)
+                    {
+                        try
+                        {
+                            ((IInputEventFactSink)buffer).Accept(item, isReplay: false);
+                            break;
+                        }
+                        catch (InputEventCapacityExceededException)
+                        {
+                            await Task.Yield();
+                        }
+                    }
+                }
+            });
+            start.Set();
+            await Task.WhenAll(complete, enqueue);
+
+            var restarted = new InputEventBuffer(new FakeClock(), capacity: 10, durableProjectionPath: path);
+            var retained = restarted.DrainAll();
+            Assert.Equal(10, retained.Count);
+            Assert.Equal(10, retained.Select(item => item.Id).Distinct().Count());
+            Assert.Equal(
+                initial.Skip(5).Select(item => item.Id).Concat(next.Select(item => item.Id)),
+                retained.Select(item => item.Id));
         }
         finally
         {

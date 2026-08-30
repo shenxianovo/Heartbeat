@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Heartbeat.Collection.CollectorProtocol;
 
 namespace Heartbeat.Collection.CollectorProtocol.Tests;
@@ -147,6 +148,153 @@ public sealed class CollectorProtocolClientTests
             Assert.Equal(lastWrite, gap.Start);
             Assert.Equal(recoveredAt, gap.End);
             Assert.Single(Directory.EnumerateFiles(root, "collector-protocol-outbox.json.corrupt-*"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void CorruptOutboxWithSameRecoveryInstantProducesUploadableGap()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-corrupt-instant-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, "collector-protocol-outbox.json");
+        var recoveredAt = new DateTimeOffset(2026, 8, 28, 8, 0, 0, TimeSpan.Zero);
+        File.WriteAllText(path, "{truncated");
+        File.SetLastWriteTimeUtc(path, recoveredAt.UtcDateTime);
+        try
+        {
+            var outbox = CollectorProtocolOutbox.Open(root, 16, Definition().Outputs, recoveredAt);
+
+            var gap = Assert.Single(outbox.Gaps).Gap;
+            Assert.Equal(recoveredAt, gap.Start);
+            Assert.Equal(recoveredAt.AddTicks(1), gap.End);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void CapacityEvictionPersistsExactGapAndRemainingFactsInOneRestartableMutation()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-capacity-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var start = new DateTimeOffset(2026, 8, 30, 10, 0, 0, TimeSpan.Zero);
+        var facts = Enumerable.Range(0, 3).Select(index => new CollectorFact(
+            "activity",
+            1,
+            Guid.CreateVersion7(),
+            1,
+            null,
+            CollectorFactRecordState.Present,
+            new CollectorEventFactTime(start.AddSeconds(index)),
+            JsonSerializer.SerializeToElement(new { code = index }))).ToArray();
+        try
+        {
+            var outbox = CollectorProtocolOutbox.Open(root, 2, Definition().Outputs, start);
+            foreach (var fact in facts)
+                outbox.Enqueue(fact);
+
+            var restarted = CollectorProtocolOutbox.Open(root, 2, Definition().Outputs, start.AddMinutes(1));
+            Assert.Equal(facts.Skip(1).Select(fact => fact.FactId), restarted.Facts.Select(item => item.Fact.FactId));
+            var pendingGap = Assert.Single(restarted.Gaps);
+            Assert.Equal("outbox_capacity_exceeded", pendingGap.Gap.Reason);
+            Assert.Equal(start, pendingGap.Gap.Start);
+            Assert.Equal(start.AddTicks(1), pendingGap.Gap.End);
+            Assert.Equal(1, pendingGap.Gap.EstimatedFactsLost);
+            Assert.Equal(7, pendingGap.Gap.GapId.Version);
+
+            restarted.AcknowledgeGap(pendingGap.MessageId);
+            var acknowledged = CollectorProtocolOutbox.Open(root, 2, Definition().Outputs, start.AddMinutes(2));
+            Assert.Empty(acknowledged.Gaps);
+            Assert.Equal(facts.Skip(1).Select(fact => fact.FactId), acknowledged.Facts.Select(item => item.Fact.FactId));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void CapacityEvictionOfPointSegmentPersistsUploadableHalfOpenGap()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-point-capacity-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var occurredAt = new DateTimeOffset(2026, 8, 30, 10, 0, 0, TimeSpan.Zero);
+        try
+        {
+            var outbox = CollectorProtocolOutbox.Open(root, 1, Definition().Outputs, occurredAt);
+            outbox.Enqueue(new CollectorFact(
+                "activity",
+                1,
+                Guid.CreateVersion7(),
+                1,
+                null,
+                CollectorFactRecordState.Present,
+                new CollectorSegmentFactTime(occurredAt, occurredAt, IsFinal: false),
+                JsonSerializer.SerializeToElement(new { code = 1 })));
+            outbox.Enqueue(new CollectorFact(
+                "activity",
+                1,
+                Guid.CreateVersion7(),
+                1,
+                null,
+                CollectorFactRecordState.Present,
+                new CollectorEventFactTime(occurredAt.AddMinutes(1)),
+                JsonSerializer.SerializeToElement(new { code = 2 })));
+
+            var gap = Assert.Single(outbox.Gaps).Gap;
+            Assert.Equal(occurredAt, gap.Start);
+            Assert.Equal(occurredAt.AddTicks(1), gap.End);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void CurrentOutboxPointGapIsRewrittenWithoutQuarantiningRetainedFacts()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-point-migration-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var occurredAt = new DateTimeOffset(2026, 8, 30, 10, 0, 0, TimeSpan.Zero);
+        try
+        {
+            var outbox = CollectorProtocolOutbox.Open(root, 1, Definition().Outputs, occurredAt);
+            var facts = Enumerable.Range(0, 2).Select(index => new CollectorFact(
+                "activity",
+                1,
+                Guid.CreateVersion7(),
+                1,
+                null,
+                CollectorFactRecordState.Present,
+                new CollectorEventFactTime(occurredAt.AddSeconds(index)),
+                JsonSerializer.SerializeToElement(new { code = index }))).ToArray();
+            foreach (var fact in facts)
+                outbox.Enqueue(fact);
+
+            var path = Path.Combine(root, "collector-protocol-outbox.json");
+            var envelope = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+            var gap = envelope["State"]!["Gaps"]![0]!["Gap"]!.AsObject();
+            gap["End"] = gap["Start"]!.DeepClone();
+            File.WriteAllText(path, envelope.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+
+            var restarted = CollectorProtocolOutbox.Open(
+                root,
+                1,
+                Definition().Outputs,
+                occurredAt.AddMinutes(1));
+
+            Assert.Equal(facts[1].FactId, Assert.Single(restarted.Facts).Fact.FactId);
+            var migrated = Assert.Single(restarted.Gaps).Gap;
+            Assert.Equal("outbox_capacity_exceeded", migrated.Reason);
+            Assert.Equal(migrated.Start.AddTicks(1), migrated.End);
+            Assert.Empty(Directory.EnumerateFiles(root, "collector-protocol-outbox.json.corrupt-*"));
         }
         finally
         {

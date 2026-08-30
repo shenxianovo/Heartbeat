@@ -310,8 +310,8 @@ describe('BrowserDelivery interface', () => {
     const module = delivery(store, hub)
     const item = snapshot()
     store.durable.pendingGaps = [
-      { start: item.startTime, end: item.endTime, reason: 'buffer_overflow', estimatedFactsLost: 1 },
-      { start: item.startTime, end: item.endTime, reason: 'buffer_overflow', estimatedFactsLost: 2 },
+      { gapId: '0198d5eb-fc30-7d7b-8bf0-000000000001', start: item.startTime, end: item.endTime, reason: 'buffer_overflow', estimatedFactsLost: 1 },
+      { gapId: '0198d5eb-fc30-7d7b-8bf0-000000000002', start: item.startTime, end: item.endTime, reason: 'buffer_overflow', estimatedFactsLost: 2 },
     ]
     await module.enqueue([item])
     hub.onProtocol = async (request) => {

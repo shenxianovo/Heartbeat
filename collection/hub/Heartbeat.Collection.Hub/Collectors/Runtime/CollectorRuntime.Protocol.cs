@@ -471,11 +471,37 @@ public sealed partial class CollectorRuntime
                     "Activation does not hold this Fact Stream writer lease.");
 
             GapDeliveryOutcome outcome;
-            if (_state.Gaps.Any(existing =>
-                         existing.StreamId == streamId && existing.Start == gap.Start &&
-                         existing.End == gap.End && existing.Reason == gap.Reason))
+            if (_state.Gaps.FirstOrDefault(existing =>
+                    existing.StreamId == streamId && existing.GapId == gap.GapId) is { } existing)
             {
-                outcome = new GapDeliveryOutcome(streamId, GapDeliveryStatus.Duplicate);
+                outcome = existing.Start == gap.Start && existing.End == gap.End &&
+                          existing.Reason == gap.Reason &&
+                          existing.EstimatedFactsLost == gap.EstimatedFactsLost
+                    ? new GapDeliveryOutcome(streamId, GapDeliveryStatus.Duplicate)
+                    : GapRejected(
+                        streamId,
+                        "gap_identity_conflict",
+                        "GapId was already committed with different content.");
+            }
+            // Runtime state schema v2 wrote committed Gaps without GapId. Bind an exact lost-ACK
+            // replay once; remove this arm when the next state schema rejects empty GapId.
+            else if (_state.Gaps.FirstOrDefault(existing =>
+                         existing.GapId == Guid.Empty &&
+                         existing.StreamId == streamId && existing.Start == gap.Start &&
+                         existing.End == gap.End && existing.Reason == gap.Reason &&
+                         existing.EstimatedFactsLost == gap.EstimatedFactsLost) is { } currentFormatGap)
+            {
+                var next = _state.WithBoundGapIdentity(currentFormatGap, gap.GapId);
+                try
+                {
+                    _store.Save(next);
+                    _state = next;
+                    outcome = new GapDeliveryOutcome(streamId, GapDeliveryStatus.Duplicate);
+                }
+                catch (CollectorRuntimeStateException)
+                {
+                    outcome = GapRetry(streamId, "Hub could not persist the Stream Gap identity and is applying backpressure.");
+                }
             }
             else if (_state.Gaps.Count >= _options.MaxDurableFacts)
             {
@@ -486,6 +512,7 @@ public sealed partial class CollectorRuntime
                 var committed = new CommittedGapState
                 {
                     StreamId = streamId,
+                    GapId = gap.GapId,
                     Start = gap.Start,
                     End = gap.End,
                     Reason = gap.Reason,

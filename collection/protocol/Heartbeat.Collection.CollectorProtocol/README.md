@@ -12,6 +12,8 @@ Collector 侧协议库。它统一承担 Activation 生命周期、持久 outbox
 - `CollectorProtocolModels.cs`：Collector 侧类型化协议模型。
 
 未 ACK 数据保持持久；drain 到期时如实返回剩余项，不伪装成已送达。
+Stream Gap 以稳定 UUIDv7 `GapId` 幂等；`messageId` 只关联一次传输尝试。各 Transport Binding
+必须原样传递 GapId，Hub 不按相同 range/reason 合并不同的丢失事实。
 
 ## 验证与归属
 

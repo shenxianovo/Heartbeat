@@ -52,11 +52,13 @@ internal sealed class CollectorProtocolOutbox
         var path = Path.Combine(Path.GetFullPath(dataDirectory), "collector-protocol-outbox.json");
         var deadLetterPath = Path.Combine(Path.GetDirectoryName(path)!, "collector-protocol-dead-letter.json");
         var state = new OutboxState();
+        var migratedCurrentPointGaps = false;
         if (File.Exists(path))
         {
             try
             {
                 state = ReadEnvelope<OutboxState>(path, "Collector Protocol outbox");
+                state = MigrateCurrentPointGaps(state, out migratedCurrentPointGaps);
                 Validate(state);
             }
             catch (Exception exception) when (exception is JsonException or InvalidDataException)
@@ -64,6 +66,7 @@ internal sealed class CollectorProtocolOutbox
                 var lastWrite = new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero);
                 var quarantine = path + $".corrupt-{now:yyyyMMddHHmmss}-{Guid.NewGuid():N}";
                 File.Move(path, quarantine);
+                var recoveredRange = NonEmptyRange(lastWrite <= now ? lastWrite : now, now);
                 state = new OutboxState
                 {
                     Gaps = outputs.Select(output => new PendingCollectorGap(
@@ -71,8 +74,8 @@ internal sealed class CollectorProtocolOutbox
                         new CollectorStreamGap(
                             Guid.CreateVersion7(),
                             output.BindingId,
-                            lastWrite <= now ? lastWrite : now,
-                            now,
+                            recoveredRange.Start,
+                            recoveredRange.End,
                             "outbox_corrupted"))).ToList()
                 };
             }
@@ -81,7 +84,8 @@ internal sealed class CollectorProtocolOutbox
             ? ReadEnvelope<DeadLetterState>(deadLetterPath, "Collector Protocol dead letter").Entries
             : [];
         var outbox = new CollectorProtocolOutbox(path, capacity, state, deadLetters);
-        if (!File.Exists(path) && (state.Facts.Count != 0 || state.Gaps.Count != 0))
+        if (migratedCurrentPointGaps ||
+            !File.Exists(path) && (state.Facts.Count != 0 || state.Gaps.Count != 0))
             outbox.Save();
         return outbox;
     }
@@ -242,16 +246,45 @@ internal sealed class CollectorProtocolOutbox
             state.Facts.Any(item => item.MessageId == Guid.Empty || item.Fact.FactId == Guid.Empty ||
                                     item.Fact.Revision <= 0 || string.IsNullOrWhiteSpace(item.Fact.BindingId)) ||
             state.Gaps.Any(item => item.MessageId == Guid.Empty || item.Gap.GapId == Guid.Empty ||
-                                   item.Gap.End < item.Gap.Start || string.IsNullOrWhiteSpace(item.Gap.BindingId)))
+                                   item.Gap.End <= item.Gap.Start || string.IsNullOrWhiteSpace(item.Gap.BindingId)))
             throw new InvalidDataException("Collector Protocol outbox contains invalid state.");
+    }
+
+    private static OutboxState MigrateCurrentPointGaps(OutboxState state, out bool migrated)
+    {
+        // Schema v1 previously emitted point Gaps for evicted Event facts. Remove this rewrite
+        // when the next outbox schema no longer accepts v1 state.
+        var changed = false;
+        var gaps = state.Gaps.Select(item =>
+        {
+            if (item.Gap.End != item.Gap.Start || item.Gap.Start == DateTimeOffset.MaxValue)
+                return item;
+            changed = true;
+            return item with { Gap = item.Gap with { End = item.Gap.Start.AddTicks(1) } };
+        }).ToList();
+        migrated = changed;
+        return migrated ? state with { Gaps = gaps } : state;
     }
 
     private static (DateTimeOffset Start, DateTimeOffset End) FactRange(CollectorFact fact) => fact.Time switch
     {
-        CollectorSegmentFactTime segment => (segment.Start, segment.End),
-        CollectorEventFactTime occurrence => (occurrence.OccurredAt, occurrence.OccurredAt),
+        CollectorSegmentFactTime segment => NonEmptyRange(segment.Start, segment.End),
+        CollectorEventFactTime occurrence => NonEmptyRange(occurrence.OccurredAt, occurrence.OccurredAt),
         _ => throw new InvalidOperationException("Unknown Collector Fact time shape.")
     };
+
+    private static (DateTimeOffset Start, DateTimeOffset End) NonEmptyRange(
+        DateTimeOffset start,
+        DateTimeOffset end)
+    {
+        if (end < start)
+            throw new InvalidDataException("Collector Fact range ends before it starts.");
+        if (end > start)
+            return (start, end);
+        if (start == DateTimeOffset.MaxValue)
+            throw new InvalidDataException("Collector Fact point cannot be represented as a half-open Gap range.");
+        return (start, start.AddTicks(1));
+    }
 
     private sealed record StateEnvelope<T>(int SchemaVersion, T State);
 

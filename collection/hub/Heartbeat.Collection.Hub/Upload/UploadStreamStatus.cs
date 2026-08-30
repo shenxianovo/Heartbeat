@@ -3,6 +3,9 @@ namespace Heartbeat.Collection.Hub.Upload;
 public enum UploadStreamState
 {
     Ready,
+    Backlog,
+    Backpressure,
+    GapRecorded,
     UpdateRequired,
     CacheMigrationFailed,
     CacheWriteFailed,

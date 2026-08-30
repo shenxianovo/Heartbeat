@@ -1,4 +1,5 @@
 import type { SegmentSnapshot } from './fold'
+import { uuidv7 } from './ids'
 import {
   snapshotRevision,
   type BrowserActivationAttempt,
@@ -266,6 +267,7 @@ function appendBufferGap(
 ): BrowserPendingGap[] {
   if (snapshots.length === 0) return gaps
   return [...gaps, {
+    gapId: uuidv7(),
     start: snapshots.reduce((earliest, item) => item.startTime < earliest ? item.startTime : earliest, snapshots[0].startTime),
     end: snapshots.reduce((latest, item) => item.endTime > latest ? item.endTime : latest, snapshots[0].endTime),
     reason: 'buffer_overflow',
@@ -332,11 +334,7 @@ function removeGap(gaps: BrowserPendingGap[], acknowledged: BrowserPendingGap): 
 }
 
 function sameGap(left: BrowserPendingGap, right: BrowserPendingGap): boolean {
-  if (left.messageId !== undefined || right.messageId !== undefined) {
-    return left.messageId === right.messageId && left.activationId === right.activationId
-  }
-  return left.start === right.start && left.end === right.end &&
-    left.reason === right.reason && left.estimatedFactsLost === right.estimatedFactsLost
+  return left.gapId === right.gapId
 }
 
 function relevantPublishAttempt(

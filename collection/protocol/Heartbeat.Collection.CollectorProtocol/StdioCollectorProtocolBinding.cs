@@ -224,6 +224,7 @@ public sealed class StdioCollectorProtocolBinding : ICollectorProtocolBinding
                 body = new
                 {
                     streamId,
+                    gapId = gap.GapId,
                     factTime = new { start = Timestamp(gap.Start), end = Timestamp(gap.End) },
                     reason = gap.Reason,
                     estimatedFactsLost = gap.EstimatedFactsLost

@@ -118,6 +118,7 @@ public class InProcessCollectorProtocolTranscriptTests
         await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
         var stream = fixture.Activation.Streams["activity"];
         var gap = new StreamGapReport(
+            Guid.CreateVersion7(),
             new DateTimeOffset(2026, 8, 22, 10, 0, 0, TimeSpan.Zero),
             new DateTimeOffset(2026, 8, 22, 10, 5, 0, TimeSpan.Zero),
             "outbox_overflow",
@@ -139,16 +140,93 @@ public class InProcessCollectorProtocolTranscriptTests
         await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
         var stream = fixture.Activation.Streams["activity"];
         var gap = new StreamGapReport(
+            Guid.CreateVersion7(),
             new DateTimeOffset(2026, 8, 22, 10, 0, 0, TimeSpan.Zero),
             new DateTimeOffset(2026, 8, 22, 10, 5, 0, TimeSpan.Zero),
             "outbox_overflow",
             12);
 
         await stream.ReportGapAsync(Guid.CreateVersion7(), gap);
-        var duplicate = await stream.ReportGapAsync(Guid.CreateVersion7(), gap with { EstimatedFactsLost = 13 });
+        var duplicate = await stream.ReportGapAsync(Guid.CreateVersion7(), gap);
 
         Assert.Equal(GapDeliveryStatus.Duplicate, duplicate.Status);
         Assert.True(duplicate.IsAcknowledged);
+    }
+
+    [Fact]
+    public async Task StreamGap_DistinctLossAtSameInstantIsNotDeduplicated()
+    {
+        await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
+        var stream = fixture.Activation.Streams["activity"];
+        var gap = new StreamGapReport(
+            Guid.CreateVersion7(),
+            new DateTimeOffset(2026, 8, 22, 10, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 8, 22, 10, 0, 0, TimeSpan.Zero).AddTicks(1),
+            "input_ingress_capacity_exceeded",
+            1);
+
+        var first = await stream.ReportGapAsync(Guid.CreateVersion7(), gap);
+        var second = await stream.ReportGapAsync(
+            Guid.CreateVersion7(),
+            gap with { GapId = Guid.CreateVersion7() });
+
+        Assert.Equal(GapDeliveryStatus.Committed, first.Status);
+        Assert.Equal(GapDeliveryStatus.Committed, second.Status);
+    }
+
+    [Fact]
+    public async Task StreamGap_SameIdentityWithDifferentLossCountIsRejected()
+    {
+        await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
+        var stream = fixture.Activation.Streams["activity"];
+        var gap = new StreamGapReport(
+            Guid.CreateVersion7(),
+            new DateTimeOffset(2026, 8, 22, 10, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 8, 22, 10, 5, 0, TimeSpan.Zero),
+            "outbox_overflow",
+            1);
+
+        await stream.ReportGapAsync(Guid.CreateVersion7(), gap);
+        var conflict = await stream.ReportGapAsync(
+            Guid.CreateVersion7(),
+            gap with { EstimatedFactsLost = 2 });
+
+        Assert.Equal(GapDeliveryStatus.Rejected, conflict.Status);
+        Assert.Equal("gap_identity_conflict", conflict.Error!.Code);
+    }
+
+    [Fact]
+    public async Task StreamGap_CurrentStateWithoutIdentityBindsMatchingLostAckRetryExactlyOnce()
+    {
+        await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
+        var stream = fixture.Activation.Streams["activity"];
+        var gap = new StreamGapReport(
+            Guid.CreateVersion7(),
+            new DateTimeOffset(2026, 8, 22, 10, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 8, 22, 10, 5, 0, TimeSpan.Zero),
+            "buffer_overflow",
+            1);
+        await stream.ReportGapAsync(Guid.CreateVersion7(), gap);
+        await fixture.Activation.StopAsync();
+        fixture.Runtime.Dispose();
+
+        var state = JsonNode.Parse(File.ReadAllText(fixture.StatePath))!.AsObject();
+        state["gaps"]![0]!.AsObject().Remove("gapId");
+        File.WriteAllText(
+            fixture.StatePath,
+            state.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+
+        using var reopened = CollectorRuntime.Open(fixture.StatePath, new RecordingSegmentSink());
+        await using var activation = await reopened.ActivateInProcessAsync(
+            fixture.Instance.CollectorInstanceId,
+            fixture.Package,
+            new ReferenceInProcessCollector());
+        var retried = await activation.Streams["activity"].ReportGapAsync(Guid.CreateVersion7(), gap);
+
+        Assert.Equal(GapDeliveryStatus.Duplicate, retried.Status);
+        var rebound = JsonNode.Parse(File.ReadAllText(fixture.StatePath))!.AsObject();
+        Assert.Single(rebound["gaps"]!.AsArray());
+        Assert.Equal(gap.GapId, rebound["gaps"]![0]!["gapId"]!.GetValue<Guid>());
     }
 
     [Fact]
@@ -158,6 +236,7 @@ public class InProcessCollectorProtocolTranscriptTests
         var stream = fixture.Activation.Streams["activity"];
         var messageId = Guid.CreateVersion7();
         var gap = new StreamGapReport(
+            Guid.CreateVersion7(),
             new DateTimeOffset(2026, 8, 22, 10, 0, 0, TimeSpan.Zero),
             new DateTimeOffset(2026, 8, 22, 10, 5, 0, TimeSpan.Zero),
             "outbox_overflow",
@@ -183,6 +262,7 @@ public class InProcessCollectorProtocolTranscriptTests
         await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
         var stream = fixture.Activation.Streams["activity"];
         var gap = new StreamGapReport(
+            Guid.CreateVersion7(),
             new DateTimeOffset(2026, 8, 22, 10, 0, 0, TimeSpan.Zero),
             new DateTimeOffset(2026, 8, 22, 10, 5, 0, TimeSpan.Zero),
             "outbox_overflow",
@@ -289,6 +369,7 @@ public class InProcessCollectorProtocolTranscriptTests
         var rejected = await stream.ReportGapAsync(
             messageId,
             new StreamGapReport(
+                Guid.CreateVersion7(),
                 new DateTimeOffset(2026, 8, 22, 10, 0, 0, TimeSpan.Zero),
                 new DateTimeOffset(2026, 8, 22, 10, 5, 0, TimeSpan.Zero),
                 "outbox_overflow"));

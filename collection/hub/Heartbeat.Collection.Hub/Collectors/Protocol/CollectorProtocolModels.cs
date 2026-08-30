@@ -184,6 +184,7 @@ public sealed record FactDeliveryOutcome(
 }
 
 public sealed record StreamGapReport(
+    Guid GapId,
     DateTimeOffset Start,
     DateTimeOffset End,
     string Reason,

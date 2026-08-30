@@ -66,7 +66,9 @@ namespace Heartbeat.Desktop.Windows.Hosting
                 var cachePath = Path.Combine(localAppData, "Heartbeat", "input-events-cache.json");
                 return new JsonFileCache<InputEventItem>(
                     cachePath,
-                    maxItems: 100_000,
+                    // Replay the current v2 retry file verbatim while the durable projection owns
+                    // new InputEvent capacity/backpressure.
+                    maxItems: int.MaxValue,
                     HeartbeatCacheFormats.InputEventVersion2(),
                     HeartbeatCacheFormats.InputEventMigrations());
             });
@@ -107,7 +109,8 @@ namespace Heartbeat.Desktop.Windows.Hosting
                 durableProjectionPath: Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "Heartbeat",
-                    "input-event-facts-buffer.json")));
+                    "input-event-facts-buffer.json"),
+                statusRegistry: sp.GetRequiredService<UploadStatusRegistry>()));
             services.AddSingleton<IUploadSource<InputEventItem>>(sp => sp.GetRequiredService<InputEventBuffer>());
             // 上传流（ADR-020/022）：绑定源 + 出网 + 缓存；行为差异只剩注入的 compact 策略
             services.AddSingleton(sp =>
