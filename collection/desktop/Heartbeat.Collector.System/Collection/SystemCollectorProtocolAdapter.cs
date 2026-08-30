@@ -54,6 +54,8 @@ public sealed class SystemCollectorProtocolAdapter :
     private CollectorActivation? _activation;
     private CancellationTokenSource? _pumpCancellation;
     private Task? _pump;
+    private IReadOnlyList<ForegroundSegmentSnapshot>? _unstagedSegments;
+    private IReadOnlyList<InputEventItem>? _unstagedInputEvents;
 
     public SystemCollectorProtocolAdapter(
         UploadStatusRegistry? statusRegistry = null,
@@ -312,22 +314,32 @@ public sealed class SystemCollectorProtocolAdapter :
         var ingress = _ingressStore;
         if (ingress is null)
             return;
-        while (_segments.Reader.TryRead(out var snapshots))
-            ingress.StageSegmentBatch(snapshots);
-
-        while (_inputEvents.Reader.TryPeek(out _))
+        while (_unstagedSegments is not null || _segments.Reader.TryRead(out _unstagedSegments))
         {
-            var batch = new List<InputEventItem>(IngressPersistenceBatchSize);
-            while (batch.Count < IngressPersistenceBatchSize && _inputEvents.Reader.TryRead(out var item))
-                batch.Add(item);
-            if (ingress.StageInputEvents(batch) != 0)
+            ingress.StageSegmentBatch(_unstagedSegments);
+            _unstagedSegments = null;
+        }
+
+        while (_unstagedInputEvents is not null || _inputEvents.Reader.TryPeek(out _))
+        {
+            if (_unstagedInputEvents is null)
+            {
+                var batch = new List<InputEventItem>(IngressPersistenceBatchSize);
+                while (batch.Count < IngressPersistenceBatchSize && _inputEvents.Reader.TryRead(out var item))
+                    batch.Add(item);
+                _unstagedInputEvents = batch;
+            }
+            if (ingress.StageInputEvents(_unstagedInputEvents) != 0)
                 ReportPendingIngressGapStatus();
+            _unstagedInputEvents = null;
         }
     }
 
     private bool HasPendingIngress()
     {
         if (_ingressStore?.HasPending == true ||
+            _unstagedSegments is not null ||
+            _unstagedInputEvents is not null ||
             _segments.Reader.TryPeek(out _) ||
             _inputEvents.Reader.TryPeek(out _))
             return true;

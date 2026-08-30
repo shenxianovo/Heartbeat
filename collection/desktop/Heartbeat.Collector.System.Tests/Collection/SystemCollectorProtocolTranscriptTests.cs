@@ -641,6 +641,78 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
     }
 
     [Fact]
+    public async Task TransientIngressStageFailureRetriesConsumedInputPrefixInOriginalOrder()
+    {
+        Directory.CreateDirectory(_root);
+        var statePath = Path.Combine(_root, "collector-runtime.json");
+        var clock = new FakeClock();
+        var segmentSink = new SegmentIngestService(clock);
+        var inputSink = new CapturingInputEventSink();
+        var failure = new ControllableCommitFailure();
+        var protocol = new SystemCollectorProtocolAdapter(failure.BeforeCommit);
+        var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
+        using var config = JsonDocument.Parse("{}");
+        await using var runtime = CollectorRuntime.Open(
+            statePath,
+            segmentSink,
+            inputEventSink: inputSink);
+        var instance = runtime.CreateInstance(
+            package,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        await using var activation = await runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            package,
+            NewCollector(protocol, clock, segmentSink));
+        var first = NewInputEvent(Guid.CreateVersion7(), clock.UtcNow);
+        var second = NewInputEvent(Guid.CreateVersion7(), clock.UtcNow.AddTicks(1));
+        failure.FailNext();
+
+        protocol.Publish(first);
+        protocol.Publish(second);
+
+        Assert.True(failure.Entered.Wait(TimeSpan.FromSeconds(2)));
+        await WaitUntilAsync(() => inputSink.Items.Count == 2);
+        Assert.Equal([first.Id, second.Id], inputSink.Items.Select(item => item.Id));
+    }
+
+    [Fact]
+    public async Task PersistentIngressStageFailureCannotReportFullyDrained()
+    {
+        Directory.CreateDirectory(_root);
+        var statePath = Path.Combine(_root, "collector-runtime.json");
+        var clock = new FakeClock();
+        var segmentSink = new SegmentIngestService(clock);
+        var failure = new ControllableCommitFailure();
+        var protocol = new SystemCollectorProtocolAdapter(failure.BeforeCommit);
+        var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
+        using var config = JsonDocument.Parse("{}");
+        await using var runtime = CollectorRuntime.Open(
+            statePath,
+            segmentSink,
+            new CollectorRuntimeOptions
+            {
+                InProcessDrainGracePeriod = TimeSpan.FromMilliseconds(150)
+            },
+            inputEventSink: new CapturingInputEventSink());
+        var instance = runtime.CreateInstance(
+            package,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        var activation = await runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            package,
+            NewCollector(protocol, clock, segmentSink));
+        failure.FailContinuously();
+        protocol.Publish(NewInputEvent(Guid.CreateVersion7(), clock.UtcNow));
+        Assert.True(failure.Entered.Wait(TimeSpan.FromSeconds(2)));
+
+        await activation.StopAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.False(activation.DrainResult!.IsFullyDrained);
+    }
+
+    [Fact]
     public async Task DrainDeadlineStagesSystemIngressTailAndRestartReplaysDurableRemainder()
     {
         Directory.CreateDirectory(_root);
@@ -1076,6 +1148,28 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         }
 
         public void Release() => _release.Set();
+    }
+
+    private sealed class ControllableCommitFailure
+    {
+        private int _failuresRemaining;
+
+        public ManualResetEventSlim Entered { get; } = new();
+
+        public void FailNext() => Volatile.Write(ref _failuresRemaining, 1);
+
+        public void FailContinuously() => Volatile.Write(ref _failuresRemaining, int.MaxValue);
+
+        public void BeforeCommit()
+        {
+            var remaining = Volatile.Read(ref _failuresRemaining);
+            if (remaining == 0)
+                return;
+            if (remaining != int.MaxValue)
+                Interlocked.Decrement(ref _failuresRemaining);
+            Entered.Set();
+            throw new IOException("Injected transient ingress publication failure.");
+        }
     }
 
     private sealed class CapturingActivity : ICurrentActivitySink
