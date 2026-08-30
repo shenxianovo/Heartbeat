@@ -43,7 +43,8 @@ public sealed class AppMonitorService(
     private long _awayRevision;
     private DateTimeOffset _awayStart;
     private bool _awayIsRotationContinuation;
-    private long _stateVersion;
+    private bool _durableStageInProgress;
+    private readonly Queue<DesktopObservation> _deferredObservations = [];
     private volatile string[] _awayProcessNames = [];
 
     private CancellationTokenSource? _snapshotCts;
@@ -83,8 +84,6 @@ public sealed class AppMonitorService(
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         Log.Information("应用监测服务停止");
-        lock (_lock)
-            _isStopping = true;
         settings.AwayProcessNamesChanged -= OnAwayProcessNamesChanged;
         observations.Observation -= OnObservation;
         observations.Stop();
@@ -104,6 +103,13 @@ public sealed class AppMonitorService(
                 // Snapshot loop observes the service-owned cancellation during normal stop.
             }
         }
+
+        // No new platform observations can enter after the source is stopped. Let an observation
+        // that was already deferred behind the durable rollover boundary commit before fencing the
+        // terminal snapshot, otherwise Stop could silently discard a transition that already returned
+        // to the platform callback.
+        lock (_lock)
+            _isStopping = true;
 
         // 终态快照先进入 hub；desktop composition 保持 system Binding 先于 UploadWorker 停止。
         PushCurrentSnapshot(isFinal: true);
@@ -129,7 +135,6 @@ public sealed class AppMonitorService(
     {
         IReadOnlyList<ForegroundSegmentSnapshot> snapshots;
         bool plannedAway;
-        long plannedVersion;
         Guid id;
         long revision;
         DateTimeOffset start;
@@ -138,9 +143,11 @@ public sealed class AppMonitorService(
         {
             if (_isStopping && !isFinal)
                 return;
+            if (_durableStageInProgress)
+                return;
+            _durableStageInProgress = true;
             var now = clock.UtcNow;
             plannedAway = _isAway;
-            plannedVersion = _stateVersion;
             id = plannedAway ? _awayId : _currentId;
             revision = plannedAway ? _awayRevision : _currentRevision;
             start = plannedAway ? _awayStart : _currentStart;
@@ -170,22 +177,10 @@ public sealed class AppMonitorService(
                     isFinal);
         }
 
-        publisher.StageDurableBatch(snapshots);
-
-        ForegroundSegmentSnapshot? staleCheckpoint = null;
-        lock (_lock)
+        try
         {
-            var stateMatchesPlan = plannedAway == _isAway &&
-                (plannedAway
-                    ? _awayId == id &&
-                      _awayRevision == revision &&
-                      _awayStart == start &&
-                      _awayIsRotationContinuation == continuation
-                    : _currentId == id &&
-                      _currentRevision == revision &&
-                      _currentStart == start &&
-                      _currentIsRotationContinuation == continuation);
-            if (plannedVersion == _stateVersion && plannedAway == _isAway)
+            publisher.StageDurableBatch(snapshots);
+            lock (_lock)
             {
                 if (plannedAway)
                 {
@@ -196,19 +191,25 @@ public sealed class AppMonitorService(
                 }
                 else
                 {
-                _currentId = id;
-                _currentRevision = revision;
-                _currentStart = start;
-                _currentIsRotationContinuation = continuation;
+                    _currentId = id;
+                    _currentRevision = revision;
+                    _currentStart = start;
+                    _currentIsRotationContinuation = continuation;
                 }
-                if (snapshots.Count != 0)
-                    _stateVersion++;
             }
-            else if (!stateMatchesPlan)
-                staleCheckpoint = snapshots.LastOrDefault(snapshot => !snapshot.IsFinal);
         }
-        if (staleCheckpoint is not null)
-            publisher.ClearActiveCheckpoint(staleCheckpoint.FactId, staleCheckpoint.Revision);
+        finally
+        {
+            DesktopObservation[] deferred;
+            lock (_lock)
+            {
+                _durableStageInProgress = false;
+                deferred = [.. _deferredObservations];
+                _deferredObservations.Clear();
+            }
+            foreach (var observation in deferred)
+                OnObservation(observation);
+        }
     }
 
     private void OnObservation(DesktopObservation observation)
@@ -216,10 +217,10 @@ public sealed class AppMonitorService(
         switch (observation.Kind)
         {
             case DesktopObservationKind.EnteredAway:
-                EnterAway();
+                EnterAway(observation);
                 break;
             case DesktopObservationKind.ExitedAway:
-                ExitAway(observation.Activity);
+                ExitAway(observation);
                 break;
             case DesktopObservationKind.AppActivated:
             case DesktopObservationKind.FocusedWindowChanged:
@@ -239,7 +240,7 @@ public sealed class AppMonitorService(
 
         lock (_lock)
         {
-            if (_isStopping || _isAway)
+            if (DeferObservationDuringDurableStage(observation) || _isAway)
                 return;
             var now = clock.UtcNow;
 
@@ -279,12 +280,12 @@ public sealed class AppMonitorService(
             activitySink.Report(ToCurrentActivity(newApp, newAppDisplayName));
     }
 
-    private void EnterAway()
+    private void EnterAway(DesktopObservation observation)
     {
         IReadOnlyList<ForegroundSegmentSnapshot> closed;
         lock (_lock)
         {
-            if (_isStopping || _isAway) return;
+            if (DeferObservationDuringDurableStage(observation) || _isAway) return;
             var now = clock.UtcNow;
 
             closed = CloseCurrentSegment(now);
@@ -298,7 +299,6 @@ public sealed class AppMonitorService(
             _currentTitle = null;
             _segmentTitle = null;
             _currentStart = default;
-            _stateVersion++;
             Log.Information("进入 away，封口当前应用段");
         }
 
@@ -306,13 +306,14 @@ public sealed class AppMonitorService(
         activitySink.Report(new CurrentActivity(AppIdentityKeys.Away, "离开"));
     }
 
-    private void ExitAway(DesktopActivity resumed)
+    private void ExitAway(DesktopObservation observation)
     {
+        var resumed = observation.Activity;
         var resumedApp = Normalize(resumed.AppIdentityKey);
         IReadOnlyList<ForegroundSegmentSnapshot> awayFinal;
         lock (_lock)
         {
-            if (_isStopping || !_isAway) return;
+            if (DeferObservationDuringDurableStage(observation) || !_isAway) return;
             var now = clock.UtcNow;
 
             awayFinal = BuildSegmentsThrough(
@@ -334,6 +335,16 @@ public sealed class AppMonitorService(
         activitySink.Report(ToCurrentActivity(resumedApp, resumed.AppDisplayName));
     }
 
+    private bool DeferObservationDuringDurableStage(DesktopObservation observation)
+    {
+        if (_isStopping)
+            return true;
+        if (!_durableStageInProgress)
+            return false;
+        _deferredObservations.Enqueue(observation);
+        return true;
+    }
+
     private void StartSegment(string? app, string? appDisplayName, string? title, DateTimeOffset now)
     {
         _currentId = Guid.CreateVersion7();
@@ -344,7 +355,6 @@ public sealed class AppMonitorService(
         _segmentTitle = title;
         _currentStart = now;
         _currentIsRotationContinuation = false;
-        _stateVersion++;
     }
 
     private IReadOnlyList<ForegroundSegmentSnapshot> CloseCurrentSegment(DateTimeOffset now)

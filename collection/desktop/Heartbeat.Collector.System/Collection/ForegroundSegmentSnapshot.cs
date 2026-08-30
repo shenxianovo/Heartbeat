@@ -25,14 +25,9 @@ public interface ISystemSegmentPublisher
             Publish(snapshot);
     }
 
-    void StageDurableBatch(IReadOnlyList<ForegroundSegmentSnapshot> snapshots) =>
-        PublishBatch(snapshots);
+    void StageDurableBatch(IReadOnlyList<ForegroundSegmentSnapshot> snapshots);
 
-    void RecoverInterruptedSegment(DateTimeOffset recoveredAt)
-    {
-    }
+    void RecoverInterruptedSegment(DateTimeOffset recoveredAt);
 
-    void ClearActiveCheckpoint(Guid factId, long revision)
-    {
-    }
+    void ClearActiveCheckpoint(Guid factId, long revision);
 }

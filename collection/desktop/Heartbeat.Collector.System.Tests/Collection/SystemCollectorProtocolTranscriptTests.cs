@@ -854,6 +854,10 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
     {
         public List<ForegroundSegmentSnapshot> Snapshots { get; } = [];
         public void Publish(ForegroundSegmentSnapshot snapshot) => Snapshots.Add(snapshot);
+        public void StageDurableBatch(IReadOnlyList<ForegroundSegmentSnapshot> snapshots) =>
+            Snapshots.AddRange(snapshots);
+        public void RecoverInterruptedSegment(DateTimeOffset recoveredAt) { }
+        public void ClearActiveCheckpoint(Guid factId, long revision) { }
     }
 
     private sealed class CapturingActivity : ICurrentActivitySink

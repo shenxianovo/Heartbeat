@@ -116,3 +116,16 @@ protocol→projection→HTTP 1/1；`git diff --check` 通过。VRChat v1/v2 兼�
 删除读取分支时必须保留 v1 fixture，并验证 FactId/Start/End 不 shrink、pending restart replay 与
 corrupt quarantine；部署清单和窗口尚无现场证据，因此本轮只关闭“缺少退出台账”的 P2，不删除
 兼容读取。当前自动证据：`VRChatPresenceCheckpointTests` 5/5。
+
+### 2026-08-30 — rollover durable stage 与转场串行化
+
+最终 Spec 复审复现了新的 TOCTOU：snapshot 在状态锁内规划 rollover、锁外持久化时，平台转场可先
+推进内存状态；旧实现随后提交 stale continuation，留下两个 non-final identity。先加入阻塞
+`StageDurableBatch` 的失败测试，证明转场与 rollover 交错会产生 ghost continuation；实现将 durable
+stage 设为显式状态边界，期间到达的平台观察只入内存 deferred queue 后立即返回，fsync 完成并提交
+rollover identity/start 后再按序重放。Stop 先停止 observation source、等待 in-flight stage 与已进入
+边界的 deferred observation 提交，再建立 terminal fence，避免静默丢弃已返回的平台回调。
+
+`ISystemSegmentPublisher` 的 stage/recover/checkpoint 方法同时改为强制持久化契约，不再允许测试或新实现
+继承默认 volatile/no-op 行为。验证：完整 System suite 61/61；定向
+rollover/transition/stop 回归连续 10 轮、30/30。

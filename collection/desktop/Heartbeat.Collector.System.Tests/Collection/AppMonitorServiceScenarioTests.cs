@@ -188,6 +188,9 @@ public class AppMonitorServiceScenarioTests
     {
         public List<ForegroundSegmentSnapshot> Items { get; } = [];
         public void Publish(ForegroundSegmentSnapshot snapshot) => Items.Add(snapshot);
+        public void StageDurableBatch(IReadOnlyList<ForegroundSegmentSnapshot> snapshots) => Items.AddRange(snapshots);
+        public void RecoverInterruptedSegment(DateTimeOffset recoveredAt) { }
+        public void ClearActiveCheckpoint(Guid factId, long revision) { }
         public List<ForegroundSegmentSnapshot> Drain()
         {
             var result = Items.ToList();
@@ -213,6 +216,14 @@ public class AppMonitorServiceScenarioTests
             }
             Items.Add(snapshot);
         }
+
+        public void StageDurableBatch(IReadOnlyList<ForegroundSegmentSnapshot> snapshots)
+        {
+            foreach (var snapshot in snapshots)
+                Publish(snapshot);
+        }
+        public void RecoverInterruptedSegment(DateTimeOffset recoveredAt) { }
+        public void ClearActiveCheckpoint(Guid factId, long revision) { }
 
         public void WaitUntilBlocked() => Assert.True(_entered.Wait(TimeSpan.FromSeconds(5)));
         public void Release() => _release.Set();
@@ -506,6 +517,96 @@ public class AppMonitorServiceScenarioTests
         Assert.Equal("win:code", snapshots[0].AppIdentityKey);
         Assert.Equal("win:chrome", snapshots[1].AppIdentityKey);
         Assert.Equal(snapshots[0].End, snapshots[1].Start);
+    }
+
+    [Fact]
+    public async Task TransitionDuringDurableRolloverStage_DoesNotPersistAnOverlappingPlan()
+    {
+        var clock = new FakeClock();
+        var observations = new FakeObservations
+        {
+            CurrentActivity = new DesktopActivity("win:code", "main.cs")
+        };
+        var segments = new BlockingSink();
+        var service = new AppMonitorService(
+            clock,
+            observations,
+            new FakeInteractionSignal(),
+            segments,
+            new CapturingActivity(),
+            new FakeSettings());
+        await service.StartAsync(CancellationToken.None);
+        clock.Advance(SegmentRotationPolicy.RotateAfter);
+
+        var rollover = Task.Run(service.PushCurrentSnapshot);
+        segments.WaitUntilBlocked();
+        clock.Advance(TimeSpan.FromSeconds(1));
+        var transition = Task.Run(() => observations.Activate("win:chrome", "Docs"));
+        await transition.WaitAsync(TimeSpan.FromSeconds(1));
+        segments.Release();
+        await rollover.WaitAsync(TimeSpan.FromSeconds(2));
+        clock.Advance(TimeSpan.FromSeconds(1));
+        service.PushCurrentSnapshot();
+
+        var latest = segments.Items
+            .GroupBy(snapshot => snapshot.FactId)
+            .Select(group => group.MaxBy(snapshot => snapshot.Revision)!)
+            .OrderBy(snapshot => snapshot.Start)
+            .ThenBy(snapshot => snapshot.End)
+            .ToList();
+        Assert.DoesNotContain(
+            segments.Items.GroupBy(snapshot => (snapshot.FactId, snapshot.Revision)),
+            attempts => attempts.Distinct().Count() != 1);
+        Assert.All(latest.Zip(latest.Skip(1)), pair => Assert.True(
+            pair.First.End <= pair.Second.Start,
+            $"Segments {pair.First.FactId} and {pair.Second.FactId} overlap."));
+        Assert.Equal("win:code", latest[0].AppIdentityKey);
+        Assert.Equal("win:chrome", latest[^1].AppIdentityKey);
+        Assert.Equal("win:chrome", Assert.Single(latest, snapshot => !snapshot.IsFinal).AppIdentityKey);
+    }
+
+    [Fact]
+    public async Task StopDuringDurableRolloverStage_CommitsAnAlreadyDeferredTransition()
+    {
+        var clock = new FakeClock();
+        var observations = new FakeObservations
+        {
+            CurrentActivity = new DesktopActivity("win:code", "main.cs")
+        };
+        var segments = new BlockingSink();
+        var activities = new CapturingActivity();
+        var service = new AppMonitorService(
+            clock,
+            observations,
+            new FakeInteractionSignal(),
+            segments,
+            activities,
+            new FakeSettings());
+        await service.StartAsync(CancellationToken.None);
+        clock.Advance(SegmentRotationPolicy.RotateAfter);
+
+        var rollover = Task.Run(service.PushCurrentSnapshot);
+        segments.WaitUntilBlocked();
+        clock.Advance(TimeSpan.FromSeconds(1));
+        observations.Activate("win:chrome", "Docs");
+
+        var stop = service.StopAsync(CancellationToken.None);
+        Assert.False(stop.IsCompleted);
+        segments.Release();
+        await Task.WhenAll(rollover, stop);
+
+        Assert.Contains(activities.Values, activity => activity?.AppIdentityKey == "win:chrome");
+        var latest = segments.Items
+            .GroupBy(snapshot => snapshot.FactId)
+            .Select(group => group.MaxBy(snapshot => snapshot.Revision)!)
+            .OrderBy(snapshot => snapshot.Start)
+            .ThenBy(snapshot => snapshot.End)
+            .ToList();
+        Assert.Contains(latest, snapshot =>
+            snapshot.AppIdentityKey == "win:code"
+            && snapshot.IsFinal
+            && snapshot.End == clock.UtcNow);
+        Assert.All(latest.Zip(latest.Skip(1)), pair => Assert.True(pair.First.End <= pair.Second.Start));
     }
 
     [Fact]
