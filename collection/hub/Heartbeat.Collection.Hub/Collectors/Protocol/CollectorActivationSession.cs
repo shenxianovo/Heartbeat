@@ -12,7 +12,7 @@ namespace Heartbeat.Collection.Hub.Collectors.Protocol;
 internal sealed class CollectorActivationSession
 {
     private readonly object _gate = new();
-    private readonly object _acknowledgementCommitGate = new();
+    private readonly ActivationDeliveryFence _deliveryFence;
     private readonly CollectorProtocolLimits _limits;
     private readonly Func<Guid, IReadOnlyList<FactSubmission>, FactBatchAcknowledgement> _commitFacts;
     private readonly Func<Guid, StreamGapReport, GapDeliveryOutcome> _commitGap;
@@ -22,7 +22,6 @@ internal sealed class CollectorActivationSession
     private readonly Dictionary<Guid, GapReplay> _gapReplays = [];
     private readonly List<CollectorHandshakeStep> _handshakeTranscript = [CollectorHandshakeStep.Hello];
     private CollectorHandshakeStep _lastHandshakeStep = CollectorHandshakeStep.Hello;
-    private int _deliveryFencedAfterDeadline;
     private CollectorActivationState _state;
     private ImmutableDictionary<string, FactStreamDescriptor> _streams =
         ImmutableDictionary<string, FactStreamDescriptor>.Empty.WithComparers(StringComparer.Ordinal);
@@ -33,6 +32,7 @@ internal sealed class CollectorActivationSession
         LocalCollectorPackage package,
         CollectorProtocolLimits limits,
         ActivationDeliveryCapability deliveryCapability,
+        ActivationDeliveryFence deliveryFence,
         Func<Guid, IReadOnlyList<FactSubmission>, FactBatchAcknowledgement> commitFacts,
         Func<Guid, StreamGapReport, GapDeliveryOutcome> commitGap,
         Action<Guid, IReadOnlyList<FactDeliveryOutcome>> markAcknowledgedTraffic)
@@ -42,6 +42,7 @@ internal sealed class CollectorActivationSession
         Package = package;
         _limits = limits;
         DeliveryCapability = deliveryCapability;
+        _deliveryFence = deliveryFence;
         _commitFacts = commitFacts;
         _commitGap = commitGap;
         _markAcknowledgedTraffic = markAcknowledgedTraffic;
@@ -53,7 +54,7 @@ internal sealed class CollectorActivationSession
 
     public Guid ActivationId { get; }
     public Guid HelloMessageId { get; }
-    public CollectorActivationState State => Volatile.Read(ref _deliveryFencedAfterDeadline) != 0
+    public CollectorActivationState State => _deliveryFence.IsFenced
         ? CollectorActivationState.Stopped
         : _state;
     public ExternalHostActivationStopReason? StopReason { get; private set; }
@@ -275,21 +276,12 @@ internal sealed class CollectorActivationSession
     }
 
     internal void FenceDeliveryAfterDeadline()
-    {
-        lock (_acknowledgementCommitGate)
-            Interlocked.Exchange(ref _deliveryFencedAfterDeadline, 1);
-    }
+        => _deliveryFence.Fence();
 
     internal bool TryCommitAcknowledgement(Action commit)
     {
         ArgumentNullException.ThrowIfNull(commit);
-        lock (_acknowledgementCommitGate)
-        {
-            if (IsDeliveryFencedAfterDeadline())
-                return false;
-            commit();
-            return true;
-        }
+        return _deliveryFence.TryCommit(commit);
     }
 
     internal bool TryCompleteStop(Action release, ExternalHostActivationStopReason? reason = null)
@@ -327,8 +319,7 @@ internal sealed class CollectorActivationSession
         _gapReplays.Clear();
     }
 
-    private bool IsDeliveryFencedAfterDeadline() =>
-        Volatile.Read(ref _deliveryFencedAfterDeadline) != 0;
+    private bool IsDeliveryFencedAfterDeadline() => _deliveryFence.IsFenced;
 
     private void ThrowIfDeliveryFencedAfterDeadline()
     {

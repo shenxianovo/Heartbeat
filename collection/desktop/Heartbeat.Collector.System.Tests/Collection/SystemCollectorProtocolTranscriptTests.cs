@@ -590,15 +590,13 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         string outboxPath;
         string ingressPath;
         var blockedSink = new BlockingInputEventSink();
-        var drainTime = new ControlledTimeProvider();
 
         var runtime = CollectorRuntime.Open(
             statePath,
             new SegmentIngestService(clock),
             new CollectorRuntimeOptions
             {
-                InProcessDrainGracePeriod = TimeSpan.FromMilliseconds(200),
-                TimeProvider = drainTime
+                InProcessDrainGracePeriod = TimeSpan.FromMilliseconds(200)
             },
             inputEventSink: blockedSink);
         try
@@ -640,8 +638,8 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             Assert.Equal(100, DurableFactIds(statePath, outboxPath, ingressPath).Count);
 
             var stopTask = activation.StopAsync().AsTask();
-            drainTime.Advance(TimeSpan.FromMilliseconds(200));
             await stopTask.WaitAsync(TimeSpan.FromSeconds(2));
+            var hubStateAfterStop = File.ReadAllText(statePath);
             blockedSink.Release();
 
             Assert.Equal(CollectorDrainReason.DeadlineExceeded, activation.DrainResult!.LogicalResult.Reason);
@@ -649,13 +647,12 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             Assert.Equal(100, DurableFactIds(statePath, outboxPath, ingressPath).Count);
             await Task.Delay(50);
             Assert.Equal(durableRemainder, OutboxFactCount(outboxPath));
+            Assert.Equal(hubStateAfterStop, File.ReadAllText(statePath));
         }
         finally
         {
             blockedSink.Release();
-            var disposeTask = runtime.DisposeAsync().AsTask();
-            drainTime.Advance(TimeSpan.FromSeconds(1));
-            await disposeTask.WaitAsync(TimeSpan.FromSeconds(2));
+            await runtime.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
         }
 
         var replaySink = new CapturingInputEventSink();
@@ -886,7 +883,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         public void Accept(InputEventItem item, bool isReplay)
         {
             Entered.Set();
-            _release.Wait(TimeSpan.FromMilliseconds(500));
+            _release.Wait(TimeSpan.FromMilliseconds(1_500));
         }
 
         public void Release() => _release.Set();

@@ -168,3 +168,16 @@ Runtime ownership。InProcess activation 的 deadline 判定也改为独立 time
 
 验证：Starting Collector deadline/failure 定向测试 3/3；Hub durable commit 的独立复审 finding 仍在
 下一提交修复，因此 issue 保持 `needs-triage`。
+
+### 2026-08-30 — Hub durable commit deadline fence
+
+Spec/Standards 复审用阻塞 Event projection 证明 Collector-side outbox ACK fence 仍不足：Hub
+`_commitFacts` 可持有 session gate 跨过 deadline，Stop 先返回，随后才写 Runtime state。回归测试现在在
+Stop 返回时快照 Hub state，释放阻塞 projection 后要求文件不再变化；修复前稳定失败。Activation 新增
+单一 delivery commit fence，Fact/Gap 的 `_store.Save + _state publish`、Collector outbox ACK replacement
+与 Hub deadline 共用该线性化边界：deadline 抢先则 Hub commit 返回 retry/被 session fence 取消，commit
+抢先则原子 store replacement 在 Stop 返回前完成。阻塞 projection 位于 commit gate 外，deadline 不等待
+不受信任 sink；其迟返结果不能再改变 Hub durable responsibility。
+
+验证：Hub Starting/deadline/commit gate 定向测试 4/4，System deadline/restart 回归 1/1；其余复审
+findings 尚未关闭，issue 保持 `needs-triage`。

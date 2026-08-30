@@ -368,14 +368,15 @@ public sealed partial class CollectorRuntime
     private FactBatchAcknowledgement CommitFacts(
         Guid activationId,
         Guid streamId,
-        IReadOnlyList<FactSubmission> facts)
+        IReadOnlyList<FactSubmission> facts,
+        ActivationDeliveryFence deliveryFence)
     {
         lock (_gate)
         {
             ThrowIfDeliveryUnavailable(activationId);
             var results = new List<FactDeliveryOutcome>(facts.Count);
             for (var index = 0; index < facts.Count; index++)
-                results.Add(CommitFact(activationId, index, facts[index]));
+                results.Add(CommitFact(activationId, index, facts[index], deliveryFence));
             MarkAcknowledgedLiveTraffic(streamId, results);
             return new FactBatchAcknowledgement(results);
         }
@@ -470,7 +471,8 @@ public sealed partial class CollectorRuntime
     private GapDeliveryOutcome CommitGap(
         Guid activationId,
         Guid streamId,
-        StreamGapReport gap)
+        StreamGapReport gap,
+        ActivationDeliveryFence deliveryFence)
     {
         lock (_gate)
         {
@@ -505,8 +507,12 @@ public sealed partial class CollectorRuntime
                 var next = _state.WithBoundGapIdentity(currentFormatGap, gap.GapId);
                 try
                 {
-                    _store.Save(next);
-                    _state = next;
+                    if (!deliveryFence.TryCommit(() =>
+                        {
+                            _store.Save(next);
+                            _state = next;
+                        }))
+                        return GapRetry(streamId, "Hub drain deadline fenced the Stream Gap identity commit.");
                     outcome = new GapDeliveryOutcome(streamId, GapDeliveryStatus.Duplicate);
                 }
                 catch (CollectorRuntimeStateException)
@@ -532,8 +538,12 @@ public sealed partial class CollectorRuntime
                 var next = _state.WithGap(committed);
                 try
                 {
-                    _store.Save(next);
-                    _state = next;
+                    if (!deliveryFence.TryCommit(() =>
+                        {
+                            _store.Save(next);
+                            _state = next;
+                        }))
+                        return GapRetry(streamId, "Hub drain deadline fenced the Stream Gap commit.");
                     outcome = new GapDeliveryOutcome(streamId, GapDeliveryStatus.Committed);
                 }
                 catch (CollectorRuntimeStateException)
@@ -546,7 +556,11 @@ public sealed partial class CollectorRuntime
         }
     }
 
-    private FactDeliveryOutcome CommitFact(Guid activationId, int index, FactSubmission fact)
+    private FactDeliveryOutcome CommitFact(
+        Guid activationId,
+        int index,
+        FactSubmission fact,
+        ActivationDeliveryFence deliveryFence)
     {
         if (!_streamWriters.TryGetValue(fact.StreamId, out var writer) || writer != activationId)
             return Rejected(index, "stream_writer_conflict", "Activation does not hold this Fact Stream writer lease.");
@@ -660,14 +674,18 @@ public sealed partial class CollectorRuntime
             return Retry(index, "Hub durable Event projection is applying backpressure.");
         try
         {
-            _store.Save(next);
+            if (!deliveryFence.TryCommit(() =>
+                {
+                    _store.Save(next);
+                    _state = next;
+                }))
+                return Retry(index, "Hub drain deadline fenced the durable Fact commit.");
         }
         catch (CollectorRuntimeStateException)
         {
             return Retry(index, "Hub could not persist the Fact and is applying backpressure.");
         }
 
-        _state = next;
         if (stream.FactKind != FactKind.Event)
             ProjectFact(stream, committed, isReplay: false);
         return new FactDeliveryOutcome(index, FactDeliveryStatus.Committed);
@@ -1134,16 +1152,20 @@ public sealed partial class CollectorRuntime
         Guid activationId,
         Guid helloMessageId,
         LocalCollectorPackage package,
-        ActivationDeliveryCapability deliveryCapability) =>
-        new(
+        ActivationDeliveryCapability deliveryCapability)
+    {
+        var deliveryFence = new ActivationDeliveryFence();
+        return new CollectorActivationSession(
             activationId,
             helloMessageId,
             package,
             new CollectorProtocolLimits(_options.MaxFactsPerBatch, _options.MaxBatchBytes),
             deliveryCapability,
-            (streamId, facts) => CommitFacts(activationId, streamId, facts),
-            (streamId, gap) => CommitGap(activationId, streamId, gap),
+            deliveryFence,
+            (streamId, facts) => CommitFacts(activationId, streamId, facts, deliveryFence),
+            (streamId, gap) => CommitGap(activationId, streamId, gap, deliveryFence),
             MarkAcknowledgedLiveTraffic);
+    }
 
     private static string SubjectKindName(SubjectKind kind) => kind switch
     {
