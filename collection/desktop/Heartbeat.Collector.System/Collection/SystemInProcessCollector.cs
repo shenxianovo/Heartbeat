@@ -141,7 +141,11 @@ public sealed class SystemInProcessCollector(
             execution.CompletionError);
     }
 
-    void IInProcessCollectorDeadlineFence.FenceAfterDeadline() => _clientLifetime.Cancel();
+    void IInProcessCollectorDeadlineFence.FenceAfterDeadline()
+    {
+        protocol.FenceDurableIngress();
+        _clientLifetime.Cancel();
+    }
 
     ValueTask<CollectorClientInitialization> ICollectorProtocolBinding.StartAsync(
         CollectorClientDefinition definition,

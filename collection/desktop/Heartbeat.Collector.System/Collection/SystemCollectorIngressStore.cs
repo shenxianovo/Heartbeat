@@ -30,6 +30,31 @@ internal enum SystemInputIngressStageResult
     GapStaged
 }
 
+internal sealed class SystemCollectorIngressCommitFence(Action? beforeCommit = null)
+{
+    private readonly object _gate = new();
+    private bool _fenced;
+
+    public void Fence()
+    {
+        lock (_gate)
+            _fenced = true;
+    }
+
+    public bool TryCommit(Action commit)
+    {
+        ArgumentNullException.ThrowIfNull(commit);
+        beforeCommit?.Invoke();
+        lock (_gate)
+        {
+            if (_fenced)
+                return false;
+            commit();
+            return true;
+        }
+    }
+}
+
 /// <summary>
 /// Append-only durable first stage for System observations. A segment batch and its active
 /// checkpoint are one journal mutation; Fact ACK compaction never removes the checkpoint. Input
@@ -52,6 +77,7 @@ internal sealed class SystemCollectorIngressStore
     private readonly object _gate = new();
     private readonly string _path;
     private readonly int _inputCapacity;
+    private readonly SystemCollectorIngressCommitFence _commitFence;
     private readonly List<PendingSystemSegmentIngress> _segmentBatches;
     private readonly List<PendingSystemSegmentGapIngress> _segmentGaps;
     private readonly List<PendingSystemInputDelivery> _inputDeliveries;
@@ -60,6 +86,7 @@ internal sealed class SystemCollectorIngressStore
     private SystemCollectorIngressStore(
         string path,
         int inputCapacity,
+        SystemCollectorIngressCommitFence commitFence,
         List<PendingSystemSegmentIngress> segmentBatches,
         List<PendingSystemSegmentGapIngress> segmentGaps,
         List<PendingSystemInputDelivery> inputDeliveries,
@@ -67,6 +94,7 @@ internal sealed class SystemCollectorIngressStore
     {
         _path = path;
         _inputCapacity = inputCapacity;
+        _commitFence = commitFence;
         _segmentBatches = segmentBatches;
         _segmentGaps = segmentGaps;
         _inputDeliveries = inputDeliveries;
@@ -74,10 +102,17 @@ internal sealed class SystemCollectorIngressStore
     }
 
     public static SystemCollectorIngressStore Open(string path, int inputCapacity)
+        => Open(path, inputCapacity, new SystemCollectorIngressCommitFence());
+
+    internal static SystemCollectorIngressStore Open(
+        string path,
+        int inputCapacity,
+        SystemCollectorIngressCommitFence commitFence)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         if (inputCapacity <= 0)
             throw new ArgumentOutOfRangeException(nameof(inputCapacity));
+        ArgumentNullException.ThrowIfNull(commitFence);
         var fullPath = Path.GetFullPath(path);
         var segmentBatches = new List<PendingSystemSegmentIngress>();
         var segmentGaps = new List<PendingSystemSegmentGapIngress>();
@@ -168,6 +203,7 @@ internal sealed class SystemCollectorIngressStore
         return new SystemCollectorIngressStore(
             fullPath,
             inputCapacity,
+            commitFence,
             segmentBatches,
             segmentGaps,
             inputDeliveries,
@@ -431,19 +467,43 @@ internal sealed class SystemCollectorIngressStore
 
     private void Append(StoredIngressEntry entry)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(_path)
-            ?? throw new InvalidOperationException("System Collector ingress path has no directory."));
-        using var stream = new FileStream(
-            _path,
-            FileMode.Append,
-            FileAccess.Write,
-            FileShare.Read,
-            4096,
-            FileOptions.WriteThrough);
-        using var writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true);
-        writer.WriteLine(JsonSerializer.Serialize(entry, JsonOptions));
-        writer.Flush();
-        stream.Flush(flushToDisk: true);
+        var directory = Path.GetDirectoryName(_path)
+            ?? throw new InvalidOperationException("System Collector ingress path has no directory.");
+        Directory.CreateDirectory(directory);
+        var temporary = _path + $".{Guid.NewGuid():N}.tmp";
+        try
+        {
+            using (var stream = new FileStream(
+                       temporary,
+                       FileMode.CreateNew,
+                       FileAccess.Write,
+                       FileShare.None,
+                       4096,
+                       FileOptions.WriteThrough))
+            {
+                if (File.Exists(_path))
+                {
+                    using var source = new FileStream(
+                        _path,
+                        FileMode.Open,
+                        FileAccess.Read,
+                        FileShare.ReadWrite);
+                    source.CopyTo(stream);
+                }
+                using var writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true);
+                writer.WriteLine(JsonSerializer.Serialize(entry, JsonOptions));
+                writer.Flush();
+                stream.Flush(flushToDisk: true);
+            }
+            if (!_commitFence.TryCommit(() => File.Move(temporary, _path, overwrite: true)))
+                throw new OperationCanceledException(
+                    "System Collector ingress mutation was fenced before publication.");
+        }
+        finally
+        {
+            if (File.Exists(temporary))
+                File.Delete(temporary);
+        }
     }
 
     private static void RepairMalformedTail(string path, long validLength)
@@ -523,7 +583,9 @@ internal sealed class SystemCollectorIngressStore
                 writer.Flush();
                 stream.Flush(flushToDisk: true);
             }
-            File.Move(temporary, _path, overwrite: true);
+            if (!_commitFence.TryCommit(() => File.Move(temporary, _path, overwrite: true)))
+                throw new OperationCanceledException(
+                    "System Collector ingress mutation was fenced before publication.");
         }
         finally
         {

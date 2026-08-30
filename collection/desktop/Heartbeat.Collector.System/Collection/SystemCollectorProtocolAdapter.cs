@@ -45,6 +45,7 @@ public sealed class SystemCollectorProtocolAdapter :
         });
     private readonly SemaphoreSlim _pumpSignal = new(0, 1);
     private readonly UploadStatusRegistry? _statusRegistry;
+    private readonly SystemCollectorIngressCommitFence _ingressCommitFence;
     private SystemCollectorIngressStore? _ingressStore;
     private readonly int _inputEventIngressCapacity;
     private CollectorActivation? _activation;
@@ -54,9 +55,19 @@ public sealed class SystemCollectorProtocolAdapter :
     public SystemCollectorProtocolAdapter(
         UploadStatusRegistry? statusRegistry = null,
         int inputEventIngressCapacity = DefaultInputEventIngressCapacity)
+        : this(new SystemCollectorIngressCommitFence(), statusRegistry, inputEventIngressCapacity)
     {
+    }
+
+    internal SystemCollectorProtocolAdapter(
+        SystemCollectorIngressCommitFence ingressCommitFence,
+        UploadStatusRegistry? statusRegistry = null,
+        int inputEventIngressCapacity = DefaultInputEventIngressCapacity)
+    {
+        ArgumentNullException.ThrowIfNull(ingressCommitFence);
         if (inputEventIngressCapacity <= 0)
             throw new ArgumentOutOfRangeException(nameof(inputEventIngressCapacity));
+        _ingressCommitFence = ingressCommitFence;
         _statusRegistry = statusRegistry;
         _inputEventIngressCapacity = inputEventIngressCapacity;
     }
@@ -69,7 +80,8 @@ public sealed class SystemCollectorProtocolAdapter :
         _ingressStore ??= SystemCollectorIngressStore.Open(Path.Combine(
             activation.Initialization.DataDirectory,
             "system-collector-ingress.json"),
-            _inputEventIngressCapacity);
+            _inputEventIngressCapacity,
+            _ingressCommitFence);
         PersistQueuedIngress();
         if (_ingressStore.PendingInputGapCount != 0)
             ReportPendingIngressGapStatus();
@@ -134,6 +146,8 @@ public sealed class SystemCollectorProtocolAdapter :
             _activation = null;
         }
     }
+
+    internal void FenceDurableIngress() => _ingressCommitFence.Fence();
 
     public void Publish(ForegroundSegmentSnapshot snapshot)
     {

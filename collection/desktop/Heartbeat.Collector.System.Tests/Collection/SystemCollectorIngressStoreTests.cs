@@ -179,6 +179,29 @@ public sealed class SystemCollectorIngressStoreTests : IDisposable
         Assert.Throws<JsonException>(() => SystemCollectorIngressStore.Open(path, 2));
     }
 
+    [Fact]
+    public async Task DeadlineFenceRejectsAPreparedJournalMutationThatReturnsLate()
+    {
+        var path = Path.Combine(_root, "ingress.ndjson");
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var fence = new SystemCollectorIngressCommitFence(() =>
+        {
+            entered.Set();
+            release.Wait(TimeSpan.FromSeconds(5));
+        });
+        var store = SystemCollectorIngressStore.Open(path, 2, fence);
+        var staging = Task.Run(() => store.StageInputEvent(NewInput(Guid.CreateVersion7())));
+        Assert.True(entered.Wait(TimeSpan.FromSeconds(2)));
+
+        fence.Fence();
+        release.Set();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => staging);
+        Assert.False(File.Exists(path));
+        Assert.Empty(SystemCollectorIngressStore.Open(path, 2).PeekInputDeliveries(10));
+    }
+
     private static InputEventItem NewInput(Guid id, DateTimeOffset? timestamp = null) => new()
     {
         Id = id,
