@@ -97,6 +97,19 @@ smoke 完成前，本 issue 恢复为 `needs-triage`。
 
 ## Reopened acceptance
 
-- [ ] 所有用户/Collector 代码调用本身受硬 deadline/fence；到期后不能迟到 ACK 或突变 durable state。
+- [x] 所有用户/Collector 代码调用本身受硬 deadline/fence；到期后不能迟到 ACK 或突变 durable state。
 - [ ] 打开 ingress journal 时截断最后一行损坏尾部；append 后再次重启仍可恢复。
 - [ ] 真实跨进程 crash/restart/replay smoke 证明 durable remainder 可恢复，不以同进程 reopen 代替。
+
+### 2026-08-30 — 同步调用 deadline fence 修复
+
+先以失败测试证明三条同步阻塞路径均可让现实现超过 1 秒测试 fence：application lifetime
+cancellation、application `StartAsync`/`StopAsync` 调用本身，以及 Hub 对 InProcess Collector
+`StopAsync` 的调用。实现把不受信任调用调度到独立 Task，再用同一绝对 deadline 等待；deadline
+callback 原子关闭 Protocol admission 并推进 delivery epoch，故迟到 Start/Stop 发布不能写 outbox、
+迟到 ACK 不能删除 durable responsibility。Hub deadline 先关闭 writer session，再只观察迟返 Collector
+与可选 deadline fence，replacement 不再被同步调用卡住。
+
+验证：CollectorProtocol 21/21、Hub 213/213、System 56/56；新增 Protocol 同步阻塞组重复 10 次
+30/30，Hub 同步 Stop 组重复 10 次 10/10；`git diff --check` 通过。坏尾修复与真实跨进程 smoke
+仍未完成，因此 issue 保持 `needs-triage`。

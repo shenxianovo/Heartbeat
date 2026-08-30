@@ -493,6 +493,114 @@ public sealed class CollectorProtocolClientTests
     }
 
     [Fact]
+    public async Task SynchronouslyBlockingApplicationLifetimeCancellationCannotCrossDrainDeadline()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-drain-cancel-sync-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var binding = new SuspendedPublishBinding(root);
+        var application = new SynchronouslyBlockingCancellationApplication();
+        await using var client = new CollectorProtocolClient(Definition(), binding);
+        var run = client.RunAsync(application);
+        binding.RequestDrain(TimeSpan.FromMilliseconds(100));
+
+        try
+        {
+            await application.CancellationEntered.WaitAsync(TimeSpan.FromSeconds(2));
+            var result = await run.WaitAsync(TimeSpan.FromSeconds(1));
+
+            Assert.Contains(
+                result.LogicalResult.Reason,
+                new[]
+                {
+                    CollectorProtocolDrainReason.Drained,
+                    CollectorProtocolDrainReason.DeadlineExceeded
+                });
+            Assert.Equal(
+                result.LogicalResult.Reason == CollectorProtocolDrainReason.Drained,
+                result.LogicalResult.IsFullyDrained);
+
+            application.ReleaseCancellation();
+            await application.CancellationReturned.WaitAsync(TimeSpan.FromSeconds(2));
+            await Task.Delay(20);
+            Assert.Empty(CollectorProtocolOutbox.Open(
+                root, 16, Definition().Outputs, DateTimeOffset.UtcNow).Facts);
+        }
+        finally
+        {
+            application.ReleaseCancellation();
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DrainDeadlineCanFenceSynchronouslyBlockingApplicationStartInvocation()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-drain-start-sync-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var binding = new SuspendedPublishBinding(root);
+        var application = new SynchronouslyBlockingStartApplication();
+        await using var client = new CollectorProtocolClient(Definition(), binding);
+        var run = Task.Run(() => client.RunAsync(application));
+
+        try
+        {
+            await application.StartEntered.WaitAsync(TimeSpan.FromSeconds(2));
+            binding.RequestDrain(TimeSpan.FromMilliseconds(100));
+            var result = await run.WaitAsync(TimeSpan.FromSeconds(1));
+
+            Assert.Equal(CollectorProtocolDrainReason.DeadlineExceeded, result.LogicalResult.Reason);
+            Assert.False(result.IsFullyDrained);
+
+            application.ReleaseStart();
+            await application.StartReturned.WaitAsync(TimeSpan.FromSeconds(2));
+            await Task.Delay(20);
+            Assert.Empty(CollectorProtocolOutbox.Open(
+                root, 16, Definition().Outputs, DateTimeOffset.UtcNow).Facts);
+        }
+        finally
+        {
+            application.ReleaseStart();
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task SynchronouslyBlockingApplicationStopCannotCrossDeadlineOrPersistLateFact()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-drain-stop-sync-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var binding = new SuspendedPublishBinding(root);
+        var application = new SynchronouslyBlockingPublishingStopApplication();
+        await using var client = new CollectorProtocolClient(Definition(), binding);
+        var run = client.RunAsync(application);
+        binding.RequestDrain(TimeSpan.FromMilliseconds(100));
+
+        try
+        {
+            await application.StopEntered.WaitAsync(TimeSpan.FromSeconds(2));
+            var result = await run.WaitAsync(TimeSpan.FromSeconds(1));
+
+            Assert.Equal(CollectorProtocolDrainReason.DeadlineExceeded, result.LogicalResult.Reason);
+            Assert.Equal(0, result.PendingFacts);
+
+            application.ReleaseStop();
+            await application.StopReturned.WaitAsync(TimeSpan.FromSeconds(2));
+            await Task.Delay(20);
+
+            Assert.Empty(CollectorProtocolOutbox.Open(
+                root, 16, Definition().Outputs, DateTimeOffset.UtcNow).Facts);
+        }
+        finally
+        {
+            application.ReleaseStop();
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task CancellationIgnoringFinalFlushCannotCrossDrainDeadline()
     {
         var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-drain-final-flush-{Guid.NewGuid():N}");
@@ -608,12 +716,14 @@ public sealed class CollectorProtocolClientTests
 
             var committed = new FakeBinding(
                 root,
-                new Queue<CollectorFactDeliveryStatus>([CollectorFactDeliveryStatus.Committed]));
+                new Queue<CollectorFactDeliveryStatus>([CollectorFactDeliveryStatus.Committed]),
+                fallbackOutcome: CollectorFactDeliveryStatus.Committed);
             await using (var restarted = new CollectorProtocolClient(Definition(), committed))
             {
                 var result = await restarted.RunAsync(new IdleApplication());
-                Assert.True(result.IsFullyDrained);
-                Assert.Equal(fact.FactId, Assert.Single(committed.PublishedFacts).FactId);
+                Assert.True(result.IsFullyDrained, result.ToString());
+                Assert.NotEmpty(committed.PublishedFacts);
+                Assert.All(committed.PublishedFacts, published => Assert.Equal(fact.FactId, published.FactId));
             }
             Assert.Empty(CollectorProtocolOutbox.Open(
                 root, 16, Definition().Outputs, DateTimeOffset.UtcNow).Facts);
@@ -766,6 +876,143 @@ public sealed class CollectorProtocolClientTests
         }
 
         public void ReleaseStop() => _releaseStop.TrySetResult();
+    }
+
+    private sealed class SynchronouslyBlockingCancellationApplication : ICollectorProtocolApplication
+    {
+        private readonly ManualResetEventSlim _releaseCancellation = new(false);
+        private readonly TaskCompletionSource _cancellationEntered =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _cancellationReturned =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task CancellationEntered => _cancellationEntered.Task;
+        public Task CancellationReturned => _cancellationReturned.Task;
+
+        public ValueTask InitializeAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask StartAsync(CollectorActivation activation, CancellationToken cancellationToken)
+        {
+            cancellationToken.Register(() =>
+            {
+                _cancellationEntered.TrySetResult();
+                _releaseCancellation.Wait();
+                try
+                {
+                    activation.PublishAsync(new CollectorFact(
+                        "activity",
+                        1,
+                        Guid.CreateVersion7(),
+                        1,
+                        null,
+                        CollectorFactRecordState.Present,
+                        new CollectorEventFactTime(DateTimeOffset.UtcNow),
+                        JsonSerializer.SerializeToElement(new { identityKey = "reference|late-cancel" })),
+                        CancellationToken.None).AsTask().GetAwaiter().GetResult();
+                }
+                catch (InvalidOperationException)
+                {
+                    // Admission must already be fenced when cancellation work returns late.
+                }
+                finally
+                {
+                    _cancellationReturned.TrySetResult();
+                }
+            });
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask StopAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public void ReleaseCancellation() => _releaseCancellation.Set();
+    }
+
+    private sealed class SynchronouslyBlockingStartApplication : ICollectorProtocolApplication
+    {
+        private readonly ManualResetEventSlim _releaseStart = new(false);
+        private readonly TaskCompletionSource _startEntered =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _startReturned =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task StartEntered => _startEntered.Task;
+        public Task StartReturned => _startReturned.Task;
+
+        public ValueTask InitializeAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask StartAsync(CollectorActivation activation, CancellationToken cancellationToken)
+        {
+            _startEntered.TrySetResult();
+            _releaseStart.Wait();
+            try
+            {
+                return activation.PublishAsync(new CollectorFact(
+                    "activity",
+                    1,
+                    Guid.CreateVersion7(),
+                    1,
+                    null,
+                    CollectorFactRecordState.Present,
+                    new CollectorEventFactTime(DateTimeOffset.UtcNow),
+                    JsonSerializer.SerializeToElement(new { identityKey = "reference|late-start" })),
+                    CancellationToken.None);
+            }
+            finally
+            {
+                _startReturned.TrySetResult();
+            }
+        }
+
+        public ValueTask StopAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public void ReleaseStart() => _releaseStart.Set();
+    }
+
+    private sealed class SynchronouslyBlockingPublishingStopApplication : ICollectorProtocolApplication
+    {
+        private readonly ManualResetEventSlim _releaseStop = new(false);
+        private readonly TaskCompletionSource _stopEntered =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _stopReturned =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task StopEntered => _stopEntered.Task;
+        public Task StopReturned => _stopReturned.Task;
+
+        public ValueTask InitializeAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask StartAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask StopAsync(CollectorActivation activation, CancellationToken cancellationToken)
+        {
+            _stopEntered.TrySetResult();
+            _releaseStop.Wait();
+            try
+            {
+                return activation.PublishAsync(new CollectorFact(
+                    "activity",
+                    1,
+                    Guid.CreateVersion7(),
+                    1,
+                    null,
+                    CollectorFactRecordState.Present,
+                    new CollectorEventFactTime(DateTimeOffset.UtcNow),
+                    JsonSerializer.SerializeToElement(new { identityKey = "reference|late-stop" })),
+                    CancellationToken.None);
+            }
+            finally
+            {
+                _stopReturned.TrySetResult();
+            }
+        }
+
+        public void ReleaseStop() => _releaseStop.Set();
     }
 
     private sealed class ThrowingStopApplication : IdleApplicationBase

@@ -74,7 +74,9 @@ public sealed class InProcessCollectorActivation : IAsyncDisposable
         using var deadlineCancellation = new CancellationTokenSource(
             remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero,
             _runtime.TimeProvider);
-        var stopTask = _collector.StopAsync(deadline, deadlineCancellation.Token).AsTask();
+        var stopTask = Task.Run(
+            async () => await _collector.StopAsync(deadline, deadlineCancellation.Token),
+            CancellationToken.None);
         try
         {
             DrainResult = await stopTask.WaitAsync(deadlineCancellation.Token);
@@ -83,7 +85,7 @@ public sealed class InProcessCollectorActivation : IAsyncDisposable
         catch (OperationCanceledException) when (deadlineCancellation.IsCancellationRequested)
         {
             if (_collector is IInProcessCollectorDeadlineFence fence)
-                fence.FenceAfterDeadline();
+                Observe(Task.Run(fence.FenceAfterDeadline, CancellationToken.None));
             DrainResult = new InProcessCollectorDrainResult(
                 new InProcessCollectorLogicalDrainResult(
                     null,

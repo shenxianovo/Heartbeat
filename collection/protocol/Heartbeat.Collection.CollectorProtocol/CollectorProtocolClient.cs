@@ -61,7 +61,22 @@ public sealed class CollectorProtocolClient(
         var backgroundFlush = FlushInBackgroundAsync(applicationLifetime.Token);
         _backgroundFlush = backgroundFlush;
         SignalFlush();
-        var applicationTask = application.StartAsync(_activation, applicationLifetime.Token).AsTask();
+        var startInvocationReturned = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var applicationTask = Task.Run(async () =>
+        {
+            try
+            {
+                var start = application.StartAsync(_activation, applicationLifetime.Token);
+                startInvocationReturned.TrySetResult();
+                await start.ConfigureAwait(false);
+            }
+            catch
+            {
+                startInvocationReturned.TrySetResult();
+                throw;
+            }
+        }, CancellationToken.None);
         var first = await Task.WhenAny(applicationTask, drainTask).ConfigureAwait(false);
         CollectorDrainRequest drain;
         if (ReferenceEquals(first, applicationTask))
@@ -80,10 +95,32 @@ public sealed class CollectorProtocolClient(
             deadlineTimer.Token);
         Interlocked.Increment(ref _deliveryEpoch);
         using var deadlineFence = deadline.Token.Register(
-            () => Interlocked.Increment(ref _deliveryEpoch));
+            FenceAdmission);
         var reason = CollectorProtocolDrainReason.Drained;
         var remainderDurable = true;
-        await applicationLifetime.CancelAsync().ConfigureAwait(false);
+        try
+        {
+            await startInvocationReturned.Task.WaitAsync(deadline.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        {
+            reason = CollectorProtocolDrainReason.DeadlineExceeded;
+            remainderDurable = false;
+            Observe(applicationTask);
+        }
+        var cancelApplication = Task.Run(
+            async () => await applicationLifetime.CancelAsync().ConfigureAwait(false),
+            CancellationToken.None);
+        try
+        {
+            await cancelApplication.WaitAsync(deadline.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        {
+            reason = CollectorProtocolDrainReason.DeadlineExceeded;
+            remainderDurable = false;
+            Observe(cancelApplication);
+        }
         try
         {
             await backgroundFlush.WaitAsync(deadline.Token).ConfigureAwait(false);
@@ -91,6 +128,8 @@ public sealed class CollectorProtocolClient(
         catch (OperationCanceledException) when (deadline.IsCancellationRequested)
         {
             Observe(backgroundFlush);
+            if (reason == CollectorProtocolDrainReason.Drained)
+                reason = CollectorProtocolDrainReason.DeadlineExceeded;
         }
         catch (IOException)
         {
@@ -102,35 +141,43 @@ public sealed class CollectorProtocolClient(
             reason = CollectorProtocolDrainReason.FlushCancelled;
         }
 
-        var stopTask = application.StopAsync(_activation, deadline.Token).AsTask();
-        try
+        Task? stopTask = null;
+        if (!deadline.IsCancellationRequested)
         {
-            await stopTask.WaitAsync(deadline.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
-        {
-            reason = _persistenceFailed || Volatile.Read(ref _activePersistenceRetries) != 0
-                ? CollectorProtocolDrainReason.PersistenceFailed
-                : CollectorProtocolDrainReason.DeadlineExceeded;
-            remainderDurable = false;
-            Observe(stopTask);
-        }
-        catch (IOException)
-        {
-            reason = CollectorProtocolDrainReason.PersistenceFailed;
-            remainderDurable = false;
-        }
-        catch
-        {
-            reason = CollectorProtocolDrainReason.StopFailed;
-            remainderDurable = false;
+            stopTask = Task.Run(
+                async () => await application.StopAsync(_activation, deadline.Token).ConfigureAwait(false),
+                CancellationToken.None);
+            try
+            {
+                await stopTask.WaitAsync(deadline.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+            {
+                reason = _persistenceFailed || Volatile.Read(ref _activePersistenceRetries) != 0
+                    ? CollectorProtocolDrainReason.PersistenceFailed
+                    : CollectorProtocolDrainReason.DeadlineExceeded;
+                remainderDurable = false;
+                Observe(stopTask);
+            }
+            catch (IOException)
+            {
+                reason = CollectorProtocolDrainReason.PersistenceFailed;
+                remainderDurable = false;
+            }
+            catch
+            {
+                reason = CollectorProtocolDrainReason.StopFailed;
+                remainderDurable = false;
+            }
         }
 
         _admissionOpen = false;
         Task? finalFlush = null;
         try
         {
-            finalFlush = FlushAsync(deadline.Token);
+            finalFlush = Task.Run(
+                () => FlushAsync(deadline.Token),
+                CancellationToken.None);
             await finalFlush.WaitAsync(deadline.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested)
@@ -158,7 +205,9 @@ public sealed class CollectorProtocolClient(
             remainderDurable);
         try
         {
-            var completion = binding.CompleteDrainAsync(result, deadline.Token).AsTask();
+            var completion = Task.Run(
+                async () => await binding.CompleteDrainAsync(result, deadline.Token).ConfigureAwait(false),
+                CancellationToken.None);
             try
             {
                 await completion.WaitAsync(deadline.Token).ConfigureAwait(false);
@@ -492,6 +541,12 @@ public sealed class CollectorProtocolClient(
         {
             // Another publisher already queued the single coalesced flush signal.
         }
+    }
+
+    private void FenceAdmission()
+    {
+        _admissionOpen = false;
+        Interlocked.Increment(ref _deliveryEpoch);
     }
 
     private void ThrowIfDeliverySuperseded(int deliveryEpoch, CancellationToken cancellationToken)

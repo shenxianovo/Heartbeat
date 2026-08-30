@@ -991,6 +991,49 @@ public class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
+    public async Task WriterLease_DeadlineBoundsSynchronousCollectorStopInvocation()
+    {
+        using var directory = TemporaryDirectory.Create();
+        var package = LocalCollectorPackage.Load(ReferencePackagePath);
+        using var runtime = CollectorRuntime.Open(
+            Path.Combine(directory.Path, "collector-runtime.json"),
+            new RecordingSegmentSink(),
+            new CollectorRuntimeOptions
+            {
+                InProcessDrainGracePeriod = TimeSpan.FromMilliseconds(100)
+            });
+        using var config = JsonDocument.Parse("{}");
+        var instance = runtime.CreateInstance(
+            package,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        var collector = new ReferenceInProcessCollector(synchronouslyBlockStop: true);
+        var activation = await runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            package,
+            collector);
+
+        var stopping = Task.Run(async () => await activation.StopAsync());
+        try
+        {
+            await collector.StopEntered.WaitAsync(TimeSpan.FromSeconds(2));
+            await stopping.WaitAsync(TimeSpan.FromSeconds(1));
+
+            Assert.Equal(CollectorActivationState.Stopped, activation.State);
+            Assert.Equal(CollectorDrainReason.DeadlineExceeded, activation.DrainResult!.LogicalResult.Reason);
+            var replacement = await runtime.ActivateInProcessAsync(
+                instance.CollectorInstanceId,
+                package,
+                new ReferenceInProcessCollector());
+            await replacement.DisposeAsync();
+        }
+        finally
+        {
+            collector.ReleaseStop();
+        }
+    }
+
+    [Fact]
     public async Task WriterLease_StopAllowsCollectorToFlushPendingFactBeforeLeaseRelease()
     {
         using var directory = TemporaryDirectory.Create();
@@ -2538,6 +2581,7 @@ public class InProcessCollectorProtocolTranscriptTests
         private readonly bool _blockStreamsOpened;
         private readonly bool _throwOnInitialize;
         private readonly bool _publishOnStop;
+        private readonly bool _synchronouslyBlockStop;
         private readonly CollectorDrainReason _stopResultReason;
         private readonly DateTimeOffset _referenceSegmentStart;
         private InProcessCollectorActivation? _activation;
@@ -2555,6 +2599,7 @@ public class InProcessCollectorProtocolTranscriptTests
             bool blockStreamsOpened = false,
             bool throwOnInitialize = false,
             bool publishOnStop = false,
+            bool synchronouslyBlockStop = false,
             CollectorDrainReason stopResultReason = CollectorDrainReason.Drained,
             int stopFailures = 0,
             DateTimeOffset? referenceSegmentStart = null,
@@ -2577,6 +2622,7 @@ public class InProcessCollectorProtocolTranscriptTests
             _blockStreamsOpened = blockStreamsOpened;
             _throwOnInitialize = throwOnInitialize;
             _publishOnStop = publishOnStop;
+            _synchronouslyBlockStop = synchronouslyBlockStop;
             _stopResultReason = stopResultReason;
             _stopFailuresRemaining = stopFailures;
             _referenceSegmentStart = referenceSegmentStart ??
@@ -2662,6 +2708,8 @@ public class InProcessCollectorProtocolTranscriptTests
         {
             Interlocked.Increment(ref _stopCalls);
             _stopEntered.TrySetResult();
+            if (_synchronouslyBlockStop)
+                _releaseStop.Task.GetAwaiter().GetResult();
             if (_publishOnStop)
             {
                 var stream = _activation!.Streams["activity"];
