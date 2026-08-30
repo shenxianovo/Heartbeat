@@ -610,6 +610,46 @@ public class AppMonitorServiceScenarioTests
     }
 
     [Fact]
+    public async Task MultipleTransitionsDuringDurableRolloverStage_PreserveTheirObservedTimes()
+    {
+        var clock = new FakeClock();
+        var observations = new FakeObservations
+        {
+            CurrentActivity = new DesktopActivity("win:a", "A")
+        };
+        var segments = new BlockingSink();
+        var service = new AppMonitorService(
+            clock,
+            observations,
+            new FakeInteractionSignal(),
+            segments,
+            new CapturingActivity(),
+            new FakeSettings());
+        await service.StartAsync(CancellationToken.None);
+        clock.Advance(SegmentRotationPolicy.RotateAfter);
+
+        var rollover = Task.Run(service.PushCurrentSnapshot);
+        segments.WaitUntilBlocked();
+        clock.Advance(TimeSpan.FromSeconds(1));
+        observations.Activate("win:b", "B");
+        clock.Advance(TimeSpan.FromSeconds(2));
+        observations.Activate("win:c", "C");
+        segments.Release();
+        await rollover;
+        clock.Advance(TimeSpan.FromSeconds(1));
+        service.PushCurrentSnapshot();
+
+        var latest = segments.Items
+            .GroupBy(snapshot => snapshot.FactId)
+            .Select(group => group.MaxBy(snapshot => snapshot.Revision)!)
+            .OrderBy(snapshot => snapshot.Start)
+            .ToList();
+        var middle = Assert.Single(latest, snapshot => snapshot.AppIdentityKey == "win:b");
+        Assert.Equal(TimeSpan.FromSeconds(2), middle.End - middle.Start);
+        Assert.All(latest.Zip(latest.Skip(1)), pair => Assert.True(pair.First.End <= pair.Second.Start));
+    }
+
+    [Fact]
     public async Task RealSnapshotTimer_RotatesWithoutObservationChange_AndStopsBeforeFinal()
     {
         var clock = new ManualTimerClock();

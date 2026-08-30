@@ -129,3 +129,12 @@ rollover identity/start 后再按序重放。Stop 先停止 observation source�
 `ISystemSegmentPublisher` 的 stage/recover/checkpoint 方法同时改为强制持久化契约，不再允许测试或新实现
 继承默认 volatile/no-op 行为。验证：完整 System suite 61/61；定向
 rollover/transition/stop 回归连续 10 轮、30/30。
+
+### 2026-08-30 — deferred observation 保留回调时刻
+
+第二轮 Spec 复审发现 durable stage 期间的 queue 只保留 observation，重放时才读时钟；阻塞期间
+先后返回的 B/C 转场会共用释放后的时刻，使 B 整段被零时长闸门吞掉且无 Gap。先加入
+确定性 red fixture，阻塞 rollover fsync 时令 B 真实持续 2 秒再转 C；旧实现找不到 B。queue
+现在在 monitor state lock 内同时记录 `DesktopObservation + ObservedAt`，持久边界完成后按原时刻
+顺序重放；既不让平台 callback 等 fsync，也不丢失真实转场时间。定向多转场、单转场、
+Stop 交错 3/3。

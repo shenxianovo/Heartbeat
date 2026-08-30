@@ -44,7 +44,7 @@ public sealed class AppMonitorService(
     private DateTimeOffset _awayStart;
     private bool _awayIsRotationContinuation;
     private bool _durableStageInProgress;
-    private readonly Queue<DesktopObservation> _deferredObservations = [];
+    private readonly Queue<TimedDesktopObservation> _deferredObservations = [];
     private volatile string[] _awayProcessNames = [];
 
     private CancellationTokenSource? _snapshotCts;
@@ -200,7 +200,7 @@ public sealed class AppMonitorService(
         }
         finally
         {
-            DesktopObservation[] deferred;
+            TimedDesktopObservation[] deferred;
             lock (_lock)
             {
                 _durableStageInProgress = false;
@@ -208,29 +208,31 @@ public sealed class AppMonitorService(
                 _deferredObservations.Clear();
             }
             foreach (var observation in deferred)
-                OnObservation(observation);
+                OnObservation(observation.Observation, observation.ObservedAt);
         }
     }
 
-    private void OnObservation(DesktopObservation observation)
+    private void OnObservation(DesktopObservation observation) => OnObservation(observation, null);
+
+    private void OnObservation(DesktopObservation observation, DateTimeOffset? observedAt)
     {
         switch (observation.Kind)
         {
             case DesktopObservationKind.EnteredAway:
-                EnterAway(observation);
+                EnterAway(observation, observedAt);
                 break;
             case DesktopObservationKind.ExitedAway:
-                ExitAway(observation);
+                ExitAway(observation, observedAt);
                 break;
             case DesktopObservationKind.AppActivated:
             case DesktopObservationKind.FocusedWindowChanged:
             case DesktopObservationKind.TitleChanged:
-                ObserveActivity(observation);
+                ObserveActivity(observation, observedAt);
                 break;
         }
     }
 
-    private void ObserveActivity(DesktopObservation observation)
+    private void ObserveActivity(DesktopObservation observation, DateTimeOffset? observedAt)
     {
         var newApp = Normalize(observation.Activity.AppIdentityKey);
         var newAppDisplayName = observation.Activity.AppDisplayName;
@@ -242,7 +244,7 @@ public sealed class AppMonitorService(
         {
             if (DeferObservationDuringDurableStage(observation) || _isAway)
                 return;
-            var now = clock.UtcNow;
+            var now = observedAt ?? clock.UtcNow;
 
             var appSame = string.Equals(_currentApp, newApp, StringComparison.OrdinalIgnoreCase);
             var titleSame = string.Equals(_currentTitle, newTitle, StringComparison.Ordinal);
@@ -280,13 +282,13 @@ public sealed class AppMonitorService(
             activitySink.Report(ToCurrentActivity(newApp, newAppDisplayName));
     }
 
-    private void EnterAway(DesktopObservation observation)
+    private void EnterAway(DesktopObservation observation, DateTimeOffset? observedAt)
     {
         IReadOnlyList<ForegroundSegmentSnapshot> closed;
         lock (_lock)
         {
             if (DeferObservationDuringDurableStage(observation) || _isAway) return;
-            var now = clock.UtcNow;
+            var now = observedAt ?? clock.UtcNow;
 
             closed = CloseCurrentSegment(now);
             _isAway = true;
@@ -306,7 +308,7 @@ public sealed class AppMonitorService(
         activitySink.Report(new CurrentActivity(AppIdentityKeys.Away, "离开"));
     }
 
-    private void ExitAway(DesktopObservation observation)
+    private void ExitAway(DesktopObservation observation, DateTimeOffset? observedAt)
     {
         var resumed = observation.Activity;
         var resumedApp = Normalize(resumed.AppIdentityKey);
@@ -314,7 +316,7 @@ public sealed class AppMonitorService(
         lock (_lock)
         {
             if (DeferObservationDuringDurableStage(observation) || !_isAway) return;
-            var now = clock.UtcNow;
+            var now = observedAt ?? clock.UtcNow;
 
             awayFinal = BuildSegmentsThrough(
                 ref _awayId,
@@ -341,9 +343,13 @@ public sealed class AppMonitorService(
             return true;
         if (!_durableStageInProgress)
             return false;
-        _deferredObservations.Enqueue(observation);
+        _deferredObservations.Enqueue(new TimedDesktopObservation(observation, clock.UtcNow));
         return true;
     }
+
+    private readonly record struct TimedDesktopObservation(
+        DesktopObservation Observation,
+        DateTimeOffset ObservedAt);
 
     private void StartSegment(string? app, string? appDisplayName, string? title, DateTimeOffset now)
     {
