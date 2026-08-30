@@ -75,9 +75,17 @@ public sealed class JsonFileCache<T> : ICache<T>, IDisposable
     public void Replace(List<T> items)
     {
         EnsureAvailable();
-        using var replacement = PrepareReplacement(items);
-        File.Move(replacement.TemporaryPath, replacement.DestinationPath, overwrite: true);
-        AcceptPublishedReplacement(replacement);
+        _lock.EnterWriteLock();
+        try
+        {
+            var replacement = new List<T>(items ?? []);
+            TrimToCapacity(replacement);
+            CommitReplacement(replacement);
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
     }
 
     public PreparedReplacement PrepareReplacement(List<T> items)
