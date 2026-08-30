@@ -868,6 +868,65 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task DrainDeadlineFencesLateSystemIngressJournalPublication()
+    {
+        Directory.CreateDirectory(_root);
+        var statePath = Path.Combine(_root, "collector-runtime.json");
+        var clock = new FakeClock();
+        var segmentSink = new SegmentIngestService(clock);
+        var blocker = new ControllableCommitBlocker();
+        var ingressFence = new SystemCollectorIngressCommitFence(blocker.BeforeCommit);
+        var protocol = new SystemCollectorProtocolAdapter(ingressFence);
+        var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
+        using var config = JsonDocument.Parse("{}");
+        var runtime = CollectorRuntime.Open(
+            statePath,
+            segmentSink,
+            new CollectorRuntimeOptions
+            {
+                InProcessDrainGracePeriod = TimeSpan.FromMilliseconds(150)
+            },
+            inputEventSink: new CapturingInputEventSink());
+        try
+        {
+            var instance = runtime.CreateInstance(
+                package,
+                new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+                new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+            var ingressPath = Path.Combine(
+                _root,
+                "collector-data",
+                instance.CollectorInstanceId.ToString("N"),
+                "system-collector-ingress.json");
+            var activation = await runtime.ActivateInProcessAsync(
+                instance.CollectorInstanceId,
+                package,
+                NewCollector(protocol, clock, segmentSink));
+            await Task.Delay(50);
+            blocker.Arm();
+            protocol.Publish(NewInputEvent(Guid.CreateVersion7(), clock.UtcNow));
+            Assert.True(blocker.Entered.Wait(TimeSpan.FromSeconds(2)));
+
+            await activation.StopAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+            var journalAfterStop = File.Exists(ingressPath)
+                ? File.ReadAllBytes(ingressPath)
+                : [];
+            blocker.Release();
+            await Task.Delay(100);
+
+            Assert.Equal(CollectorDrainReason.DeadlineExceeded, activation.DrainResult!.LogicalResult.Reason);
+            Assert.Equal(
+                journalAfterStop,
+                File.Exists(ingressPath) ? File.ReadAllBytes(ingressPath) : []);
+        }
+        finally
+        {
+            blocker.Release();
+            await runtime.DisposeAsync();
+        }
+    }
+
     private static int OutboxFactCount(string outboxPath)
     {
         try
@@ -995,6 +1054,26 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
                     0,
                     CollectorDrainReason.Drained,
                     RemainderDurable: true)));
+    }
+
+    private sealed class ControllableCommitBlocker
+    {
+        private readonly ManualResetEventSlim _release = new();
+        private int _armed;
+
+        public ManualResetEventSlim Entered { get; } = new();
+
+        public void Arm() => Volatile.Write(ref _armed, 1);
+
+        public void BeforeCommit()
+        {
+            if (Volatile.Read(ref _armed) == 0)
+                return;
+            Entered.Set();
+            _release.Wait(TimeSpan.FromSeconds(5));
+        }
+
+        public void Release() => _release.Set();
     }
 
     private sealed class CapturingActivity : ICurrentActivitySink
