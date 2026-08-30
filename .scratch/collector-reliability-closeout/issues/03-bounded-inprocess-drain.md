@@ -14,13 +14,13 @@ InProcess System adapter 与通用 client 使用同一有界语义：到期后�
 
 ## Acceptance
 
-- [ ] 收到 drain 后立即根据绝对 deadline 创建 token；`application.StopAsync`、pump flush、outbox flush
+- [x] 收到 drain 后立即根据绝对 deadline 创建 token；`application.StopAsync`、pump flush、outbox flush
   与 completion 都受该 deadline 或更短局部预算约束。
 - [x] cooperative stop 正常完成；hung/ignoring-cancellation application 到期后 Runtime 仍在有界时间返回，
   并报告 durable pending fact/gap counts，或 truthful unknown/non-durable remainder。
 - [x] deadline 过去、stop 抛错、flush 取消、binding completion 失败各有稳定 runtime reason；不得宣称
   fully drained。
-- [ ] InProcess adapter 不存在 deadline 外无限 retry；宿主退出后 restart 能重放 durable remainder。
+- [x] InProcess adapter 不存在 deadline 外无限 retry；宿主退出后 restart 能重放 durable remainder。
 - [x] fake-clock/controlled-task tests 覆盖 stop-before-deadline、stop-at-deadline、never-stop、pending facts/
   gaps、completion failure 与 restart replay，且不会留下后台 task/双 writer。
 - [x] ManagedProcess/ExternalHost 现有 drain transcript 不回归；共用 conformance fixture 对三种 driver 的
@@ -99,7 +99,7 @@ smoke 完成前，本 issue 恢复为 `needs-triage`。
 
 - [x] 所有用户/Collector 代码调用本身受硬 deadline/fence；到期后不能迟到 ACK 或突变 durable state。
 - [x] 打开 ingress journal 时截断最后一行损坏尾部；append 后再次重启仍可恢复。
-- [ ] 真实跨进程 crash/restart/replay smoke 证明 durable remainder 可恢复，不以同进程 reopen 代替。
+- [x] 真实跨进程 crash/restart/replay smoke 证明 durable remainder 可恢复，不以同进程 reopen 代替。
 
 ### 2026-08-30 — 同步调用 deadline fence 修复
 
@@ -121,3 +121,17 @@ callback 原子关闭 Protocol admission 并推进 delivery epoch，故迟到 St
 `SetLength(lastValidOffset)` 截断并 fsync，随后 append 从合法边界继续。中间损坏仍抛 `JsonException`，
 不会被尾部恢复规则掩盖。验证：System 58/58；坏尾修复与中间损坏拒绝重复 10 次 20/20；
 `git diff --check` 通过。真实跨进程 smoke 仍未完成，issue 保持 `needs-triage`。
+
+### 2026-08-30 — real cross-process crash/restart/replay smoke
+
+先加入测试并证明当前因独立 crash harness 不存在而失败。新增的测试专用
+`Heartbeat.Collector.System.CrashReplayHarness` 由 solution 与 System test project 显式构建，smoke
+不再把同一进程中的 `Open` 当 restart：进程 A 以固定 FactId 持久化 final Segment、InputEvent 与满容量
+拒绝对应的单条 Gap，flush 后 `Environment.FailFast` 硬退出；进程 B 从同一 NDJSON journal 启动，核对
+两个固定 FactId 和 Gap loss count 后逐项 ACK；进程 C 再次启动，证明已 ACK remainder 不会复活。
+每个子进程均有 15 秒硬上限，超时由父测试终止进程树。
+
+验证：新 smoke red 1/1（harness 缺失）→ green 1/1；完整 System suite 59/59；green smoke 独立重复
+10 次 10/10。该证据只证明当前 OS/filesystem 上的真实进程崩溃与重放，不外推为断电或三平台目录项
+durability；跨平台 replacement contract 仍按 issue 02 的明确退出条件暂缓。issue 在最终并行全量验证与
+双轴复审前保持 `needs-triage`。

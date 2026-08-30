@@ -10,6 +10,7 @@
     <Project Path="collection/hub/Heartbeat.Collection.Hub/Heartbeat.Collection.Hub.csproj" />
   </Folder>
   <Folder Name="/collection/desktop/">
+    <Project Path="collection/desktop/Heartbeat.Collector.System.CrashReplayHarness/Heartbeat.Collector.System.CrashReplayHarness.csproj" />
     <Project Path="collection/desktop/Heartbeat.Collector.System.Tests/Heartbeat.Collector.System.Tests.csproj" />
     <Project Path="collection/desktop/Heartbeat.Collector.System/Heartbeat.Collector.System.csproj" />
     <Project Path="collection/desktop/Heartbeat.Desktop.Mac.Tests/Heartbeat.Desktop.Mac.Tests.csproj" />
