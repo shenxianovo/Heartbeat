@@ -12,6 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\..\shared\Heartbeat.Core\Heartbeat.Core.csproj" />
     <ProjectReference Include="..\..\protocol\Heartbeat.Collection.CollectorProtocol\Heartbeat.Collection.CollectorProtocol.csproj" />
     <Content Include="..\..\contracts\facts\vrchat-presence-segment.schema.json">
       <Link>contracts\facts\vrchat-presence-segment.schema.json</Link>

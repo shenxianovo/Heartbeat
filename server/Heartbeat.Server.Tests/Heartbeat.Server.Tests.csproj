@@ -24,10 +24,13 @@
   <ItemGroup>
     <ProjectReference Include="..\Heartbeat.Server\Heartbeat.Server.csproj" />
     <ProjectReference Include="..\..\collection\hub\Heartbeat.Collection.Hub\Heartbeat.Collection.Hub.csproj" />
+    <ProjectReference Include="..\..\collection\desktop\Heartbeat.Collector.System\Heartbeat.Collector.System.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <None Include="..\..\shared\calendar-window-golden-scenarios.json" Link="Fixtures\calendar-window-golden-scenarios.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <Import Project="..\..\collection\desktop\Heartbeat.Collector.System\SystemCollectorPackage.targets" />
 
 </Project>

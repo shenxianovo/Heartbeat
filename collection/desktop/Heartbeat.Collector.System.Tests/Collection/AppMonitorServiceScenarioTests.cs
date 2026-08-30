@@ -19,6 +19,117 @@ public class AppMonitorServiceScenarioTests
         public void Advance(TimeSpan duration) => UtcNow += duration;
     }
 
+    private sealed class CoordinatedClock : IClock
+    {
+        private readonly ManualResetEventSlim _blockedReadEntered = new(false);
+        private readonly ManualResetEventSlim _releaseBlockedRead = new(false);
+        private DateTimeOffset _utcNow = DateTimeOffset.UnixEpoch;
+        private int _blockNextRead;
+
+        public DateTimeOffset UtcNow
+        {
+            get
+            {
+                var captured = _utcNow;
+                if (Interlocked.Exchange(ref _blockNextRead, 0) == 1)
+                {
+                    _blockedReadEntered.Set();
+                    _releaseBlockedRead.Wait();
+                }
+                return captured;
+            }
+        }
+
+        public void Advance(TimeSpan duration) => _utcNow += duration;
+        public void BlockNextRead() => Interlocked.Exchange(ref _blockNextRead, 1);
+        public void WaitForBlockedRead() => Assert.True(_blockedReadEntered.Wait(TimeSpan.FromSeconds(5)));
+        public void ReleaseBlockedRead() => _releaseBlockedRead.Set();
+    }
+
+    private sealed class ManualTimerClock : TimeProvider, IClock
+    {
+        private readonly object _lock = new();
+        private readonly List<ManualTimer> _timers = [];
+        private readonly ManualResetEventSlim _timerCreated = new(false);
+        private DateTimeOffset _utcNow = DateTimeOffset.UnixEpoch;
+
+        public DateTimeOffset UtcNow => GetUtcNow();
+        public override DateTimeOffset GetUtcNow() => _utcNow;
+
+        public void Advance(TimeSpan duration)
+        {
+            _utcNow += duration;
+            ManualTimer[] timers;
+            lock (_lock)
+                timers = [.. _timers];
+            foreach (var timer in timers)
+                timer.FireIfDue(_utcNow);
+        }
+
+        public override ITimer CreateTimer(
+            TimerCallback callback,
+            object? state,
+            TimeSpan dueTime,
+            TimeSpan period)
+        {
+            var timer = new ManualTimer(this, callback, state, _utcNow + dueTime, period);
+            lock (_lock)
+                _timers.Add(timer);
+            _timerCreated.Set();
+            return timer;
+        }
+
+        public void WaitForTimer() => Assert.True(_timerCreated.Wait(TimeSpan.FromSeconds(5)));
+
+        private void Remove(ManualTimer timer)
+        {
+            lock (_lock)
+                _timers.Remove(timer);
+        }
+
+        private sealed class ManualTimer(
+            ManualTimerClock owner,
+            TimerCallback callback,
+            object? state,
+            DateTimeOffset dueAt,
+            TimeSpan period) : ITimer
+        {
+            private DateTimeOffset _dueAt = dueAt;
+            private TimeSpan _period = period;
+            private bool _disposed;
+
+            public bool Change(TimeSpan dueTime, TimeSpan newPeriod)
+            {
+                if (_disposed) return false;
+                _dueAt = owner.GetUtcNow() + dueTime;
+                _period = newPeriod;
+                return true;
+            }
+
+            public void FireIfDue(DateTimeOffset now)
+            {
+                if (_disposed || now < _dueAt) return;
+                _dueAt = _period == Timeout.InfiniteTimeSpan
+                    ? DateTimeOffset.MaxValue
+                    : now + _period;
+                callback(state);
+            }
+
+            public void Dispose()
+            {
+                if (_disposed) return;
+                _disposed = true;
+                owner.Remove(this);
+            }
+
+            public ValueTask DisposeAsync()
+            {
+                Dispose();
+                return ValueTask.CompletedTask;
+            }
+        }
+    }
+
     private sealed class FakeObservations : IDesktopObservationSource
     {
         public event Action<DesktopObservation>? Observation;
@@ -83,6 +194,28 @@ public class AppMonitorServiceScenarioTests
             Items.Clear();
             return result;
         }
+    }
+
+    private sealed class BlockingSink : ISystemSegmentPublisher
+    {
+        private readonly ManualResetEventSlim _entered = new(false);
+        private readonly ManualResetEventSlim _release = new(false);
+        private int _blockNext = 1;
+
+        public List<ForegroundSegmentSnapshot> Items { get; } = [];
+
+        public void Publish(ForegroundSegmentSnapshot snapshot)
+        {
+            if (Interlocked.Exchange(ref _blockNext, 0) == 1)
+            {
+                _entered.Set();
+                _release.Wait();
+            }
+            Items.Add(snapshot);
+        }
+
+        public void WaitUntilBlocked() => Assert.True(_entered.Wait(TimeSpan.FromSeconds(5)));
+        public void Release() => _release.Set();
     }
 
     private sealed class CapturingActivity : ICurrentActivitySink
@@ -222,6 +355,258 @@ public class AppMonitorServiceScenarioTests
     }
 
     [Fact]
+    public void SnapshotAtRotationBoundary_FinalizesAndContinuesActiveSegment()
+    {
+        var x = Build("win:code", "main.cs");
+        var rotateAfter = SegmentValidationPolicy.MaxDuration - TimeSpan.FromHours(1);
+        x.Clock.Advance(rotateAfter);
+
+        var finalized = Assert.Single(Flush(x.Service, x.Segments));
+
+        Assert.True(finalized.IsFinal);
+        Assert.Equal(rotateAfter, finalized.End - finalized.Start);
+        Assert.Equal(1, finalized.Revision);
+        Assert.Equal(7, finalized.FactId.Version);
+
+        x.Clock.Advance(TimeSpan.FromSeconds(30));
+        var continued = Assert.Single(Flush(x.Service, x.Segments));
+        Assert.False(continued.IsFinal);
+        Assert.NotEqual(finalized.FactId, continued.FactId);
+        Assert.Equal(finalized.End, continued.Start);
+        Assert.Equal(1, continued.Revision);
+        Assert.Equal("win:code", continued.AppIdentityKey);
+        Assert.Equal("main.cs", continued.Title);
+    }
+
+    [Fact]
+    public void SnapshotBeforeRotationBoundary_RemainsOnCurrentFact()
+    {
+        var x = Build("win:code", "main.cs");
+        var beforeBoundary = SegmentRotationPolicy.RotateAfter - TimeSpan.FromSeconds(1);
+        x.Clock.Advance(beforeBoundary);
+
+        var snapshot = Assert.Single(Flush(x.Service, x.Segments));
+
+        Assert.False(snapshot.IsFinal);
+        Assert.Equal(beforeBoundary, snapshot.End - snapshot.Start);
+        Assert.Equal(1, snapshot.Revision);
+    }
+
+    [Fact]
+    public void AwaySnapshotAtRotationBoundary_FinalizesAndContinuesAwaySegment()
+    {
+        var x = Build("win:code");
+        x.Observations.EnterAway();
+        x.Segments.Drain();
+        x.Clock.Advance(SegmentRotationPolicy.RotateAfter);
+
+        var finalized = Assert.Single(Flush(x.Service, x.Segments));
+        x.Clock.Advance(TimeSpan.FromSeconds(30));
+        var continued = Assert.Single(Flush(x.Service, x.Segments));
+
+        Assert.True(finalized.IsFinal);
+        Assert.Equal(AppIdentityKeys.Away, finalized.AppIdentityKey);
+        Assert.False(continued.IsFinal);
+        Assert.Equal(AppIdentityKeys.Away, continued.AppIdentityKey);
+        Assert.NotEqual(finalized.FactId, continued.FactId);
+        Assert.Equal(finalized.End, continued.Start);
+        Assert.Equal(1, continued.Revision);
+    }
+
+    [Fact]
+    public void SnapshotAfterMultipleRotationBoundaries_EmitsContinuousBoundedChunks()
+    {
+        var x = Build("win:code", "main.cs");
+        var elapsed = SegmentRotationPolicy.RotateAfter * 2 + TimeSpan.FromMinutes(5);
+        x.Clock.Advance(elapsed);
+
+        var snapshots = Flush(x.Service, x.Segments);
+
+        Assert.Equal(3, snapshots.Count);
+        Assert.True(snapshots[0].IsFinal);
+        Assert.True(snapshots[1].IsFinal);
+        Assert.False(snapshots[2].IsFinal);
+        Assert.Equal(snapshots[0].End, snapshots[1].Start);
+        Assert.Equal(snapshots[1].End, snapshots[2].Start);
+        Assert.All(snapshots, snapshot =>
+        {
+            Assert.True(snapshot.End - snapshot.Start <= SegmentRotationPolicy.RotateAfter);
+            Assert.Equal(1, snapshot.Revision);
+        });
+        Assert.Equal(3, snapshots.Select(snapshot => snapshot.FactId).Distinct().Count());
+        Assert.Equal(elapsed, snapshots.Aggregate(
+            TimeSpan.Zero, (total, snapshot) => total + (snapshot.End - snapshot.Start)));
+    }
+
+    [Fact]
+    public void AppTransitionAtRotationBoundary_DoesNotOpenDuplicateContinuation()
+    {
+        var x = Build("win:code", "main.cs");
+        x.Clock.Advance(SegmentRotationPolicy.RotateAfter);
+
+        x.Observations.Activate("win:chrome", "Docs");
+
+        var finalized = Assert.Single(x.Segments.Drain());
+        Assert.True(finalized.IsFinal);
+        Assert.Equal("win:code", finalized.AppIdentityKey);
+
+        x.Clock.Advance(TimeSpan.FromSeconds(30));
+        var next = Assert.Single(Flush(x.Service, x.Segments));
+        Assert.Equal("win:chrome", next.AppIdentityKey);
+        Assert.Equal(finalized.End, next.Start);
+        Assert.NotEqual(finalized.FactId, next.FactId);
+    }
+
+    [Fact]
+    public async Task BoundaryTickAndTransition_ReadTimeInsideTheStateLock()
+    {
+        var clock = new CoordinatedClock();
+        var observations = new FakeObservations
+        {
+            CurrentActivity = new DesktopActivity("win:code", "main.cs")
+        };
+        var segments = new CapturingSink();
+        var service = new AppMonitorService(
+            clock,
+            observations,
+            new FakeInteractionSignal(),
+            segments,
+            new CapturingActivity(),
+            new FakeSettings());
+        await service.StartAsync(CancellationToken.None);
+        clock.Advance(SegmentRotationPolicy.RotateAfter - TimeSpan.FromSeconds(1));
+        clock.BlockNextRead();
+
+        var transition = Task.Run(() => observations.Activate("win:chrome", "Docs"));
+        clock.WaitForBlockedRead();
+        clock.Advance(TimeSpan.FromSeconds(1));
+        var tick = Task.Run(service.PushCurrentSnapshot);
+        clock.ReleaseBlockedRead();
+        await Task.WhenAll(transition, tick);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        service.PushCurrentSnapshot();
+
+        var snapshots = segments.Drain()
+            .GroupBy(snapshot => snapshot.FactId)
+            .Select(group => group.MaxBy(snapshot => snapshot.Revision)!)
+            .OrderBy(snapshot => snapshot.Start)
+            .ToList();
+        Assert.Equal(2, snapshots.Count);
+        Assert.Equal("win:code", snapshots[0].AppIdentityKey);
+        Assert.Equal("win:chrome", snapshots[1].AppIdentityKey);
+        Assert.Equal(snapshots[0].End, snapshots[1].Start);
+    }
+
+    [Fact]
+    public async Task RealSnapshotTimer_RotatesWithoutObservationChange_AndStopsBeforeFinal()
+    {
+        var clock = new ManualTimerClock();
+        var observations = new FakeObservations
+        {
+            CurrentActivity = new DesktopActivity("win:code", "main.cs")
+        };
+        var segments = new CapturingSink();
+        var service = new AppMonitorService(
+            clock,
+            observations,
+            new FakeInteractionSignal(),
+            segments,
+            new CapturingActivity(),
+            new FakeSettings(),
+            clock);
+        await service.StartAsync(CancellationToken.None);
+        clock.WaitForTimer();
+
+        clock.Advance(SegmentRotationPolicy.RotateAfter);
+        await WaitUntilAsync(() => segments.Items.Count != 0);
+        var rotated = Assert.Single(segments.Drain());
+        Assert.True(rotated.IsFinal);
+
+        clock.Advance(TimeSpan.FromSeconds(30));
+        await WaitUntilAsync(() => segments.Items.Count != 0);
+        await service.StopAsync(CancellationToken.None);
+        var stopped = segments.Drain();
+        Assert.True(stopped[^1].IsFinal);
+
+        clock.Advance(TimeSpan.FromMinutes(1));
+        await Task.Yield();
+        Assert.Empty(segments.Drain());
+    }
+
+    [Fact]
+    public async Task StopWaitsForInFlightTimerSnapshotBeforePublishingFinalRevision()
+    {
+        var clock = new ManualTimerClock();
+        var observations = new FakeObservations
+        {
+            CurrentActivity = new DesktopActivity("win:code", "main.cs")
+        };
+        var segments = new BlockingSink();
+        var service = new AppMonitorService(
+            clock,
+            observations,
+            new FakeInteractionSignal(),
+            segments,
+            new CapturingActivity(),
+            new FakeSettings(),
+            clock);
+        await service.StartAsync(CancellationToken.None);
+        clock.WaitForTimer();
+
+        var advance = Task.Run(() => clock.Advance(TimeSpan.FromMinutes(1)));
+        segments.WaitUntilBlocked();
+        var stop = service.StopAsync(CancellationToken.None);
+        Assert.False(stop.IsCompleted);
+
+        segments.Release();
+        await Task.WhenAll(advance, stop);
+        Assert.Equal(2, segments.Items.Count);
+        Assert.False(segments.Items[0].IsFinal);
+        Assert.True(segments.Items[1].IsFinal);
+        Assert.Equal(segments.Items[0].FactId, segments.Items[1].FactId);
+        Assert.True(segments.Items[1].Revision > segments.Items[0].Revision);
+
+        clock.Advance(TimeSpan.FromMinutes(1));
+        await Task.Yield();
+        Assert.Equal(2, segments.Items.Count);
+    }
+
+    [Fact]
+    public async Task StopAfterRotationBoundary_FinalizesEveryContinuousChunk()
+    {
+        var x = Build("win:code", "main.cs");
+        var elapsed = SegmentRotationPolicy.RotateAfter + TimeSpan.FromMinutes(5);
+        x.Clock.Advance(elapsed);
+
+        await x.Service.StopAsync(CancellationToken.None);
+
+        var snapshots = x.Segments.Drain();
+        Assert.Equal(2, snapshots.Count);
+        Assert.All(snapshots, snapshot => Assert.True(snapshot.IsFinal));
+        Assert.Equal(snapshots[0].End, snapshots[1].Start);
+        Assert.Equal(elapsed, snapshots.Aggregate(
+            TimeSpan.Zero, (total, snapshot) => total + (snapshot.End - snapshot.Start)));
+    }
+
+    [Fact]
+    public async Task StopWithinOneSecondAfterRotationBoundary_PreservesContinuationTail()
+    {
+        var x = Build("win:code", "main.cs");
+        var elapsed = SegmentRotationPolicy.RotateAfter + TimeSpan.FromMilliseconds(500);
+        x.Clock.Advance(elapsed);
+
+        await x.Service.StopAsync(CancellationToken.None);
+
+        var snapshots = x.Segments.Drain();
+        Assert.Equal(2, snapshots.Count);
+        Assert.All(snapshots, snapshot => Assert.True(snapshot.IsFinal));
+        Assert.Equal(snapshots[0].End, snapshots[1].Start);
+        Assert.Equal(TimeSpan.FromMilliseconds(500), snapshots[1].End - snapshots[1].Start);
+        Assert.Equal(elapsed, snapshots.Aggregate(
+            TimeSpan.Zero, (total, snapshot) => total + (snapshot.End - snapshot.Start)));
+    }
+
+    [Fact]
     public async Task StopAsync_PushesFinalSnapshot()
     {
         var x = Build("win:code", "main.cs");
@@ -244,5 +629,16 @@ public class AppMonitorServiceScenarioTests
         x.Observations.Activate("win:screenlock");
 
         Assert.Equal("sys:away", x.Activity.Values[^1]!.AppIdentityKey);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var timeout = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (!condition())
+        {
+            if (DateTime.UtcNow >= timeout)
+                throw new TimeoutException("The asynchronous test condition was not reached.");
+            await Task.Delay(10);
+        }
     }
 }

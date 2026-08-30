@@ -6,4 +6,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\collection\contracts\segment-rotation-policy.json"
+                      Link="Contracts\segment-rotation-policy.json"
+                      LogicalName="Heartbeat.Core.segment-rotation-policy.json" />
+  </ItemGroup>
+
 </Project>

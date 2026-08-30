@@ -34,22 +34,23 @@ internal sealed class VRChatManagedCollector(
         _checkpoint = VRChatPresenceCheckpoint.Open(
             Path.Combine(activation.Initialization.DataDirectory, "vrchat-presence.json"),
             _clock());
-        if (_checkpoint.RecoveryGap is { } recoveryGap)
-            await activation.ReportGapAsync(ToGap(recoveryGap), cancellationToken);
+        await PublishPendingAsync(cancellationToken);
         if (_checkpoint.Active is { } active)
         {
             _presence.Restore(active);
             var recoveredAt = _clock();
-            await PublishAsync(_presence.Stop(recoveredAt), cancellationToken);
-            if (recoveredAt > active.End)
-            {
-                await activation.ReportGapAsync(new CollectorStreamGap(
-                    Guid.CreateVersion7(),
-                    "presence",
-                    active.End,
-                    recoveredAt,
-                    "process_restart"), cancellationToken);
-            }
+            var finalized = _presence.FinalizeRestored();
+            var gaps = recoveredAt > active.End
+                ? new[]
+                {
+                    new VRChatPresenceRecoveryGap(
+                        Guid.CreateVersion7(),
+                        active.End,
+                        recoveredAt,
+                        "process_restart")
+                }
+                : [];
+            await PublishAsync([finalized], gaps, cancellationToken);
         }
         await EnsureAuthorizedAsync(cancellationToken);
     }
@@ -200,10 +201,33 @@ internal sealed class VRChatManagedCollector(
         IReadOnlyList<VRChatPresenceFact> facts,
         CancellationToken cancellationToken)
     {
-        foreach (var fact in facts)
+        await PublishAsync(facts, [], cancellationToken);
+    }
+
+    private async Task PublishAsync(
+        IReadOnlyList<VRChatPresenceFact> facts,
+        IReadOnlyList<VRChatPresenceRecoveryGap> gaps,
+        CancellationToken cancellationToken)
+    {
+        if (facts.Count == 0 && gaps.Count == 0)
+            return;
+        _checkpoint!.Stage(facts, gaps);
+        await PublishPendingAsync(cancellationToken);
+    }
+
+    private async Task PublishPendingAsync(CancellationToken cancellationToken)
+    {
+        while (_checkpoint!.PendingFacts.Count != 0)
         {
+            var fact = _checkpoint.PendingFacts[0];
             await _activation!.PublishAsync(ToFact(fact), cancellationToken);
-            _checkpoint!.Save(fact.IsFinal ? null : fact);
+            _checkpoint.Acknowledge(fact);
+        }
+        while (_checkpoint.PendingGaps.Count != 0)
+        {
+            var gap = _checkpoint.PendingGaps[0];
+            await _activation!.ReportGapAsync(ToGap(gap), cancellationToken);
+            _checkpoint.Acknowledge(gap);
         }
     }
 
@@ -226,7 +250,7 @@ internal sealed class VRChatManagedCollector(
         }, PayloadJsonOptions));
 
     private static CollectorStreamGap ToGap(VRChatPresenceRecoveryGap gap) => new(
-        Guid.CreateVersion7(),
+        gap.GapId,
         "presence",
         gap.Start,
         gap.End,

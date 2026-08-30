@@ -20,11 +20,13 @@ namespace Heartbeat.Server.Controllers
         UsageService usageService,
         DeviceService deviceService,
         ICurrentUserService currentUser,
-        AppDbContext db) : ControllerBase
+        AppDbContext db,
+        TimeProvider? timeProvider = null) : ControllerBase
     {
         private readonly UsageService _usageService = usageService;
         private readonly DeviceService _deviceService = deviceService;
         private readonly ICurrentUserService _currentUser = currentUser;
+        private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
         [HttpPost]
         [EndpointName("uploadSegments")]
@@ -36,7 +38,7 @@ namespace Heartbeat.Server.Controllers
 
             try
             {
-                SegmentIngestContract.Validate(request.Segments);
+                SegmentIngestContract.Validate(request.Segments, _timeProvider.GetUtcNow());
             }
             catch (SegmentIngestContractException ex)
                 when (ex.Violation == SegmentIngestContractViolation.LegacyAppName)

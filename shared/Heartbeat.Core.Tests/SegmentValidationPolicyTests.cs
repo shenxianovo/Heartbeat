@@ -145,4 +145,14 @@ public class SegmentValidationPolicyTests
         Assert.Equal("A", result[0].IdentityKey);
         Assert.Equal("B", result[1].IdentityKey);
     }
+
+    [Fact]
+    public void RotationContractLeavesPositiveToleranceBelowIngestMaximum()
+    {
+        Assert.True(SegmentRotationPolicy.RotateAfter < SegmentValidationPolicy.MaxDuration);
+        Assert.True(SegmentRotationPolicy.UploadAndClockTolerance > TimeSpan.Zero);
+        Assert.Equal(
+            SegmentValidationPolicy.MaxDuration,
+            SegmentRotationPolicy.RotateAfter + SegmentRotationPolicy.UploadAndClockTolerance);
+    }
 }

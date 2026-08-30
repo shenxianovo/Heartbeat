@@ -22,7 +22,7 @@ Status: ready-for-agent
 ## Required work
 
 - [x] 既有 [strict segment ingest issue](../repository-understanding/issues/05-strict-segment-ingest-outcomes.md)
-- [ ] [01 — 在摄入边界前旋转连续 Segment](issues/01-rotate-continuous-segments.md)
+- [x] [01 — 在摄入边界前旋转连续 Segment](issues/01-rotate-continuous-segments.md)
 - [ ] [02 — durable InputEvent 满容量不再静默丢失](issues/02-durable-input-capacity.md)
 - [ ] [03 — 让 InProcess drain 受 deadline 约束](issues/03-bounded-inprocess-drain.md)
 

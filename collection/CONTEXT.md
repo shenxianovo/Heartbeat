@@ -144,6 +144,10 @@ _Avoid_: 让 Collector 写 `win:`/`mac:` 身份；把 App Hint 当作 App Key �
 泛化的出网流（ADR-020/022）：绑定一个出网源（IUploadSource），drain 一轮 = 先重传离线缓存，再取 fresh 出网——送达，或落离线缓存，否则自动重注入源（重注入不回滚更新的快照）。"批次不蒸发"是流自持的不变量。compact 为按流策略（segments 出网前压缩快照，input-events 不压缩）。segments 与 input-events 各一实例。
 _Avoid_: UploadService（退役的三份同构模板）、Upload Channel（ADR-022 前的旧名，彼时退回项由调用方重注入）
 
+**Segment Rotation Boundary（段轮换边界）**:
+连续观察在摄入最大时长之前封口当前 Segment Fact、并从同一 instant 开始新 Fact 的共享边界；轮换前后 union 连续且不重叠。
+_Avoid_: 等服务端拒绝后切段、各 Collector 自定阈值、复用旧 FactId
+
 **Active（采集器活跃）**:
 旧 source 级读模型术语。统一 Runtime 后，Collector 的实际状态由各 Instance/Activation 的 Runtime State 与 lease 表达；ExternalHost lease 过期只结束对应 Host Activation，不改写 Desired State，也不删除 Package、Instance 或历史 Stream。
 

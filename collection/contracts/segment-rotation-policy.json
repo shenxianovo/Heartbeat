@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "maxDurationMilliseconds": 86400000,
+  "rotateAfterMilliseconds": 82800000
+}

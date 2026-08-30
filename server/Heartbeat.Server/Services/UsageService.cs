@@ -10,10 +10,12 @@ namespace Heartbeat.Server.Services
     public class UsageService(
         AppDbContext db,
         AppIdentityService? appIdentityService = null,
-        ILogger<UsageService>? logger = null)
+        ILogger<UsageService>? logger = null,
+        TimeProvider? timeProvider = null)
     {
         private readonly AppDbContext _db = db;
         private readonly AppIdentityService _appIdentityService = appIdentityService ?? new AppIdentityService(db);
+        private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
         /// <summary>
         /// 统一摄入例程（ADR-018）：校验 → App 关联 → 按 Id 快照 upsert。
@@ -23,7 +25,7 @@ namespace Heartbeat.Server.Services
         /// </summary>
         public async Task SaveSegmentsAsync(long deviceId, List<ActivitySegmentItem> segments)
         {
-            SegmentIngestContract.Validate(segments);
+            SegmentIngestContract.Validate(segments, _timeProvider.GetUtcNow());
 
             var ordered = segments.OrderBy(s => s.StartTime).ToList();
 

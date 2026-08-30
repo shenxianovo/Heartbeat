@@ -6,6 +6,8 @@
 //   服务端按 Id upsert 收敛（ADR-018），跨上报周期不碎裂。
 // - 单段生长逼近服务端 MaxDuration（24h）时轮换新 Id，防快照被校验丢弃。
 
+import rotationPolicy from '../../../contracts/segment-rotation-policy.json'
+
 export interface OpenActivity {
   id: string
   identityKey: string
@@ -54,7 +56,7 @@ export interface FoldResult {
 }
 
 /** 轮换阈值：低于服务端 MaxDuration（24h），留出上报周期与时钟偏差余量。 */
-export const ROTATE_AFTER_MS = 23 * 60 * 60 * 1000
+export const ROTATE_AFTER_MS = rotationPolicy.rotateAfterMilliseconds
 
 export function emptyState(): FoldState {
   return { open: {} }

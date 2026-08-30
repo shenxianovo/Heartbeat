@@ -26,7 +26,9 @@ public sealed class SegmentIngestContractException(
 /// </summary>
 public static class SegmentIngestContract
 {
-    public static void Validate(IReadOnlyCollection<ActivitySegmentItem> segments)
+    public static void Validate(
+        IReadOnlyCollection<ActivitySegmentItem> segments,
+        DateTimeOffset? evaluatedAt = null)
     {
         foreach (var segment in segments)
         {
@@ -60,7 +62,7 @@ public static class SegmentIngestContract
             }
         }
 
-        var now = DateTimeOffset.UtcNow;
+        var now = evaluatedAt ?? DateTimeOffset.UtcNow;
         if (segments.Any(segment => !SegmentValidationPolicy.IsValid(segment, now)))
         {
             throw new SegmentIngestContractException(
