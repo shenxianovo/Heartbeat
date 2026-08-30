@@ -482,7 +482,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         var statePath = Path.Combine(_root, "collector-runtime.json");
         var clock = new FakeClock();
         var segmentSink = new SegmentIngestService(clock);
-        var inputSink = new BlockingInputEventSink();
+        var inputSink = new GapAwareBlockingInputEventSink(statePath);
         var statuses = new UploadStatusRegistry();
         var protocol = new SystemCollectorProtocolAdapter(
             statuses,
@@ -527,7 +527,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         var statePath = Path.Combine(_root, "collector-runtime.json");
         var clock = new FakeClock();
         var segmentSink = new SegmentIngestService(clock);
-        var inputSink = new BlockingInputEventSink();
+        var inputSink = new GapAwareBlockingInputEventSink(statePath);
         var protocol = new SystemCollectorProtocolAdapter(inputEventIngressCapacity: 1);
         var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
         using var config = JsonDocument.Parse("{}");
@@ -544,6 +544,11 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             "collector-data",
             instance.CollectorInstanceId.ToString("N"),
             "system-collector-ingress.json");
+        var outboxPath = Path.Combine(
+            _root,
+            "collector-data",
+            instance.CollectorInstanceId.ToString("N"),
+            "collector-protocol-outbox.json");
         var store = SystemCollectorIngressStore.Open(ingressPath, 1);
         Assert.Equal(
             SystemInputIngressStageResult.EventStaged,
@@ -560,8 +565,14 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         Assert.False(
             RuntimeHasGap(statePath, "input_ingress_capacity_exceeded"),
             "The later Gap overtook the accepted InputEvent during restart replay.");
+        protocol.Publish(NewInputEvent(Guid.CreateVersion7(), clock.UtcNow.AddSeconds(2)));
+        await WaitUntilAsync(() => OutboxFactCount(outboxPath) == 2 && OutboxGapCount(outboxPath) == 1);
         inputSink.Release();
         await WaitUntilAsync(() => RuntimeHasGap(statePath, "input_ingress_capacity_exceeded"));
+        Assert.True(inputSink.SecondEntered.Wait(TimeSpan.FromSeconds(2)));
+        Assert.True(
+            inputSink.GapVisibleBeforeSecond,
+            "Collector Protocol outbox delivered the later InputEvent before the intervening Gap.");
     }
 
     [Fact]
@@ -569,7 +580,6 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
     {
         Directory.CreateDirectory(_root);
         var statePath = Path.Combine(_root, "collector-runtime.json");
-        var ingressPath = Path.Combine(_root, "system-collector-ingress.json");
         var clock = new FakeClock();
         var segmentSink = new SegmentIngestService(clock);
         var inputSink = new BlockingInputEventSink();
@@ -585,6 +595,11 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             package,
             new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
             new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        var ingressPath = Path.Combine(
+            _root,
+            "collector-data",
+            instance.CollectorInstanceId.ToString("N"),
+            "system-collector-ingress.json");
         await using var activation = await runtime.ActivateInProcessAsync(
             instance.CollectorInstanceId,
             package,
@@ -856,6 +871,19 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         }
     }
 
+    private static int OutboxGapCount(string outboxPath)
+    {
+        try
+        {
+            using var outbox = JsonDocument.Parse(File.ReadAllText(outboxPath));
+            return outbox.RootElement.GetProperty("State").GetProperty("Gaps").GetArrayLength();
+        }
+        catch (Exception exception) when (exception is IOException or JsonException)
+        {
+            return -1;
+        }
+    }
+
     private static int IngressFactCount(string ingressPath)
         => SystemCollectorIngressStore.Open(ingressPath, 100_000).PendingFactIds.Count;
 
@@ -954,6 +982,38 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             Entered.Set();
             _release.Wait(TimeSpan.FromSeconds(5));
             return commitFence.TryCommit(() => CommittedAfterRelease++);
+        }
+
+        public void Release() => _release.Set();
+    }
+
+    private sealed class GapAwareBlockingInputEventSink(string statePath) : IInputEventFactSink
+    {
+        private readonly ManualResetEventSlim _release = new();
+        private int _calls;
+
+        public ManualResetEventSlim Entered { get; } = new();
+        public ManualResetEventSlim SecondEntered { get; } = new();
+        public bool GapVisibleBeforeSecond { get; private set; }
+
+        public bool TryAccept(
+            InputEventItem item,
+            bool isReplay,
+            ICollectorProjectionCommitFence commitFence)
+        {
+            if (Interlocked.Increment(ref _calls) == 1)
+            {
+                Entered.Set();
+                _release.Wait(TimeSpan.FromSeconds(5));
+            }
+            else
+            {
+                GapVisibleBeforeSecond = RuntimeHasGap(
+                    statePath,
+                    "input_ingress_capacity_exceeded");
+                SecondEntered.Set();
+            }
+            return commitFence.TryCommit(() => { });
         }
 
         public void Release() => _release.Set();

@@ -310,8 +310,15 @@ public sealed class CollectorProtocolClient(
     {
         if (_activation is null || !_activation.HasStreams)
             return;
-        await FlushFactsAsync(cancellationToken).ConfigureAwait(false);
-        await FlushGapsAsync(cancellationToken).ConfigureAwait(false);
+        while (_outbox!.HasPending)
+        {
+            if (_outbox.FirstFact is not null)
+                await FlushFactsAsync(cancellationToken).ConfigureAwait(false);
+            else if (_outbox.FirstGap is not null)
+                await FlushGapsAsync(cancellationToken).ConfigureAwait(false);
+            else
+                throw new InvalidDataException("Collector Protocol outbox delivery order is invalid.");
+        }
     }
 
     private async Task FlushInBackgroundAsync(CancellationToken cancellationToken)
@@ -339,7 +346,7 @@ public sealed class CollectorProtocolClient(
             await _deliveryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                pending = _outbox!.Facts.FirstOrDefault();
+                pending = _outbox!.FirstFact;
                 if (pending is null)
                     return;
                 fact = Bind(pending.Fact, _activation!.Stream(pending.Fact.BindingId));
@@ -425,7 +432,7 @@ public sealed class CollectorProtocolClient(
             await _deliveryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                pending = _outbox!.Gaps.FirstOrDefault();
+                pending = _outbox!.FirstGap;
                 if (pending is null)
                     return;
                 streamId = _activation!.Stream(pending.Gap.BindingId).StreamId;

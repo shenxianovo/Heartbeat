@@ -248,6 +248,45 @@ public sealed class CollectorProtocolClientTests
     }
 
     [Fact]
+    public void RestartPreservesInterleavedFactGapFactDeliveryOrder()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-order-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var start = new DateTimeOffset(2026, 8, 30, 10, 0, 0, TimeSpan.Zero);
+        var first = new CollectorFact(
+            "activity", 1, Guid.CreateVersion7(), 1, null, CollectorFactRecordState.Present,
+            new CollectorEventFactTime(start),
+            JsonSerializer.SerializeToElement(new { code = 1 }));
+        var gap = new CollectorStreamGap(
+            Guid.CreateVersion7(), "activity", start.AddSeconds(1), start.AddSeconds(2), "fixture", 1);
+        var second = new CollectorFact(
+            "activity", 1, Guid.CreateVersion7(), 1, null, CollectorFactRecordState.Present,
+            new CollectorEventFactTime(start.AddSeconds(3)),
+            JsonSerializer.SerializeToElement(new { code = 2 }));
+        try
+        {
+            var outbox = CollectorProtocolOutbox.Open(root, 16, Definition().Outputs, start);
+            outbox.Enqueue(first);
+            outbox.EnqueueGap(gap);
+            outbox.Enqueue(second);
+
+            var restarted = CollectorProtocolOutbox.Open(root, 16, Definition().Outputs, start.AddMinutes(1));
+            var fence = new CollectorDeliveryCommitFence();
+            var firstPending = Assert.IsType<PendingCollectorFact>(restarted.FirstFact);
+            Assert.Equal(first.FactId, firstPending.Fact.FactId);
+            restarted.AcknowledgeFact(firstPending.MessageId, fence, fence.CaptureEpoch());
+            var gapPending = Assert.IsType<PendingCollectorGap>(restarted.FirstGap);
+            Assert.Equal(gap.GapId, gapPending.Gap.GapId);
+            restarted.AcknowledgeGap(gapPending.MessageId, fence, fence.CaptureEpoch());
+            Assert.Equal(second.FactId, Assert.IsType<PendingCollectorFact>(restarted.FirstFact).Fact.FactId);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void CapacityEvictionOfPointSegmentPersistsUploadableHalfOpenGap()
     {
         var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-point-capacity-{Guid.NewGuid():N}");

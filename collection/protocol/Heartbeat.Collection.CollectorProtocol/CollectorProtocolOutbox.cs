@@ -36,6 +36,13 @@ internal sealed class CollectorProtocolOutbox
 
     public IReadOnlyList<PendingCollectorFact> Facts => _state.Facts;
     public IReadOnlyList<PendingCollectorGap> Gaps => _state.Gaps;
+    public PendingCollectorFact? FirstFact => _state.DeliveryOrder.FirstOrDefault() is { } messageId
+        ? _state.Facts.FirstOrDefault(item => item.MessageId == messageId)
+        : null;
+    public PendingCollectorGap? FirstGap => _state.DeliveryOrder.FirstOrDefault() is { } messageId
+        ? _state.Gaps.FirstOrDefault(item => item.MessageId == messageId)
+        : null;
+    public bool HasPending => _state.DeliveryOrder.Count != 0;
     public int DeadLetterCount => _deadLetters.Count;
     public string DeadLetterPath => _deadLetterPath;
 
@@ -53,12 +60,14 @@ internal sealed class CollectorProtocolOutbox
         var deadLetterPath = Path.Combine(Path.GetDirectoryName(path)!, "collector-protocol-dead-letter.json");
         var state = new OutboxState();
         var migratedCurrentPointGaps = false;
+        var migratedDeliveryOrder = false;
         if (File.Exists(path))
         {
             try
             {
                 state = ReadEnvelope<OutboxState>(path, "Collector Protocol outbox");
                 state = MigrateCurrentPointGaps(state, out migratedCurrentPointGaps);
+                state = RestoreLegacyDeliveryOrder(state, out migratedDeliveryOrder);
                 Validate(state);
             }
             catch (Exception exception) when (exception is JsonException or InvalidDataException)
@@ -78,13 +87,14 @@ internal sealed class CollectorProtocolOutbox
                             recoveredRange.End,
                             "outbox_corrupted"))).ToList()
                 };
+                state = RestoreLegacyDeliveryOrder(state, out _);
             }
         }
         var deadLetters = File.Exists(deadLetterPath)
             ? ReadEnvelope<DeadLetterState>(deadLetterPath, "Collector Protocol dead letter").Entries
             : [];
         var outbox = new CollectorProtocolOutbox(path, capacity, state, deadLetters);
-        if (migratedCurrentPointGaps ||
+        if (migratedCurrentPointGaps || migratedDeliveryOrder ||
             !File.Exists(path) && (state.Facts.Count != 0 || state.Gaps.Count != 0))
             outbox.Save();
         return outbox;
@@ -94,10 +104,16 @@ internal sealed class CollectorProtocolOutbox
     {
         if (_state.Facts.Count == 0 && _state.Gaps.Count == 0)
             return;
+        var replacements = _state.DeliveryOrder.ToDictionary(
+            messageId => messageId,
+            _ => Guid.CreateVersion7());
         _state = _state with
         {
-            Facts = _state.Facts.Select(item => item with { MessageId = Guid.CreateVersion7() }).ToList(),
-            Gaps = _state.Gaps.Select(item => item with { MessageId = Guid.CreateVersion7() }).ToList()
+            Facts = _state.Facts.Select(item => item with
+                { MessageId = replacements[item.MessageId] }).ToList(),
+            Gaps = _state.Gaps.Select(item => item with
+                { MessageId = replacements[item.MessageId] }).ToList(),
+            DeliveryOrder = _state.DeliveryOrder.Select(messageId => replacements[messageId]).ToList()
         };
         _dirty = true;
         Save();
@@ -110,6 +126,7 @@ internal sealed class CollectorProtocolOutbox
         ArgumentNullException.ThrowIfNull(incomingFacts);
         var facts = _state.Facts.ToList();
         var gaps = _state.Gaps.ToList();
+        var deliveryOrder = _state.DeliveryOrder.ToList();
         foreach (var fact in incomingFacts)
         {
             ArgumentNullException.ThrowIfNull(fact);
@@ -118,19 +135,26 @@ internal sealed class CollectorProtocolOutbox
             if (index >= 0)
             {
                 if (facts[index].Fact.Revision < fact.Revision)
-                    facts[index] = new PendingCollectorFact(Guid.CreateVersion7(), fact);
+                {
+                    var replacement = new PendingCollectorFact(Guid.CreateVersion7(), fact);
+                    ReplaceDeliveryId(deliveryOrder, facts[index].MessageId, replacement.MessageId);
+                    facts[index] = replacement;
+                }
             }
             else
             {
-                facts.Add(new PendingCollectorFact(Guid.CreateVersion7(), fact));
+                var pending = new PendingCollectorFact(Guid.CreateVersion7(), fact);
+                facts.Add(pending);
+                deliveryOrder.Add(pending.MessageId);
             }
 
             while (facts.Count > _capacity)
             {
                 var evicted = facts[0].Fact;
+                var evictedMessageId = facts[0].MessageId;
                 facts.RemoveAt(0);
                 var (start, end) = FactRange(evicted);
-                gaps.Add(new PendingCollectorGap(
+                var pendingGap = new PendingCollectorGap(
                     Guid.CreateVersion7(),
                     new CollectorStreamGap(
                         Guid.CreateVersion7(),
@@ -138,10 +162,12 @@ internal sealed class CollectorProtocolOutbox
                         start,
                         end,
                         "outbox_capacity_exceeded",
-                        1)));
+                        1));
+                gaps.Add(pendingGap);
+                ReplaceDeliveryId(deliveryOrder, evictedMessageId, pendingGap.MessageId);
             }
         }
-        _state = _state with { Facts = facts, Gaps = gaps };
+        _state = _state with { Facts = facts, Gaps = gaps, DeliveryOrder = deliveryOrder };
         _dirty = true;
         Save();
     }
@@ -155,7 +181,9 @@ internal sealed class CollectorProtocolOutbox
                 Save();
             return;
         }
-        _state.Gaps.Add(new PendingCollectorGap(Guid.CreateVersion7(), gap));
+        var pending = new PendingCollectorGap(Guid.CreateVersion7(), gap);
+        _state.Gaps.Add(pending);
+        _state.DeliveryOrder.Add(pending.MessageId);
         _dirty = true;
         Save();
     }
@@ -168,7 +196,11 @@ internal sealed class CollectorProtocolOutbox
         var facts = _state.Facts.Where(item => item.MessageId != messageId).ToList();
         if (facts.Count == _state.Facts.Count)
             return;
-        SaveDeliveryState(_state with { Facts = facts }, commitFence, deliveryEpoch);
+        SaveDeliveryState(_state with
+        {
+            Facts = facts,
+            DeliveryOrder = _state.DeliveryOrder.Where(id => id != messageId).ToList()
+        }, commitFence, deliveryEpoch);
     }
 
     public void RetryFact(
@@ -180,8 +212,11 @@ internal sealed class CollectorProtocolOutbox
         if (index < 0)
             return;
         var facts = _state.Facts.ToList();
-        facts[index] = facts[index] with { MessageId = Guid.CreateVersion7() };
-        SaveDeliveryState(_state with { Facts = facts }, commitFence, deliveryEpoch);
+        var replacementId = Guid.CreateVersion7();
+        facts[index] = facts[index] with { MessageId = replacementId };
+        var order = _state.DeliveryOrder.ToList();
+        ReplaceDeliveryId(order, messageId, replacementId);
+        SaveDeliveryState(_state with { Facts = facts, DeliveryOrder = order }, commitFence, deliveryEpoch);
     }
 
     public void AcknowledgeGap(
@@ -192,7 +227,11 @@ internal sealed class CollectorProtocolOutbox
         var gaps = _state.Gaps.Where(item => item.MessageId != messageId).ToList();
         if (gaps.Count == _state.Gaps.Count)
             return;
-        SaveDeliveryState(_state with { Gaps = gaps }, commitFence, deliveryEpoch);
+        SaveDeliveryState(_state with
+        {
+            Gaps = gaps,
+            DeliveryOrder = _state.DeliveryOrder.Where(id => id != messageId).ToList()
+        }, commitFence, deliveryEpoch);
     }
 
     public void RetryGap(
@@ -204,8 +243,11 @@ internal sealed class CollectorProtocolOutbox
         if (index < 0)
             return;
         var gaps = _state.Gaps.ToList();
-        gaps[index] = gaps[index] with { MessageId = Guid.CreateVersion7() };
-        SaveDeliveryState(_state with { Gaps = gaps }, commitFence, deliveryEpoch);
+        var replacementId = Guid.CreateVersion7();
+        gaps[index] = gaps[index] with { MessageId = replacementId };
+        var order = _state.DeliveryOrder.ToList();
+        ReplaceDeliveryId(order, messageId, replacementId);
+        SaveDeliveryState(_state with { Gaps = gaps, DeliveryOrder = order }, commitFence, deliveryEpoch);
     }
 
     public void DeadLetter(
@@ -219,7 +261,8 @@ internal sealed class CollectorProtocolOutbox
         nextDeadLetters.Add(new CollectorDeadLetter(now, pending.MessageId, pending.Fact, error));
         var nextState = _state with
         {
-            Facts = _state.Facts.Where(item => item.MessageId != pending.MessageId).ToList()
+            Facts = _state.Facts.Where(item => item.MessageId != pending.MessageId).ToList(),
+            DeliveryOrder = _state.DeliveryOrder.Where(id => id != pending.MessageId).ToList()
         };
         var deadLetterTemporary = WriteEnvelopeTemporary(
             _deadLetterPath,
@@ -330,12 +373,47 @@ internal sealed class CollectorProtocolOutbox
 
     private static void Validate(OutboxState state)
     {
-        if (state.Facts is null || state.Gaps is null ||
-            state.Facts.Any(item => item.MessageId == Guid.Empty || item.Fact.FactId == Guid.Empty ||
+        if (state.Facts is null || state.Gaps is null || state.DeliveryOrder is null)
+            throw new InvalidDataException("Collector Protocol outbox contains invalid state.");
+        var messageIds = state.Facts.Select(item => item.MessageId)
+            .Concat(state.Gaps.Select(item => item.MessageId))
+            .ToArray();
+        if (state.Facts.Any(item => item.MessageId == Guid.Empty || item.Fact.FactId == Guid.Empty ||
                                     item.Fact.Revision <= 0 || string.IsNullOrWhiteSpace(item.Fact.BindingId)) ||
             state.Gaps.Any(item => item.MessageId == Guid.Empty || item.Gap.GapId == Guid.Empty ||
-                                   item.Gap.End <= item.Gap.Start || string.IsNullOrWhiteSpace(item.Gap.BindingId)))
+                                   item.Gap.End <= item.Gap.Start || string.IsNullOrWhiteSpace(item.Gap.BindingId)) ||
+            messageIds.Length != messageIds.Distinct().Count() ||
+            state.DeliveryOrder.Count != messageIds.Length ||
+            !messageIds.ToHashSet().SetEquals(state.DeliveryOrder))
             throw new InvalidDataException("Collector Protocol outbox contains invalid state.");
+    }
+
+    private static OutboxState RestoreLegacyDeliveryOrder(OutboxState state, out bool migrated)
+    {
+        if (state.Facts is null || state.Gaps is null || state.DeliveryOrder is null)
+            throw new InvalidDataException("Collector Protocol outbox contains invalid state.");
+        if (state.DeliveryOrder.Count != 0 || state.Facts.Count == 0 && state.Gaps.Count == 0)
+        {
+            migrated = false;
+            return state;
+        }
+        migrated = true;
+        return state with
+        {
+            // Schema v1 stored the two families separately and flushed Facts before Gaps. Preserve
+            // that exact legacy behavior; only current writes can retain their true interleaving.
+            DeliveryOrder = state.Facts.Select(item => item.MessageId)
+                .Concat(state.Gaps.Select(item => item.MessageId))
+                .ToList()
+        };
+    }
+
+    private static void ReplaceDeliveryId(List<Guid> order, Guid current, Guid replacement)
+    {
+        var index = order.IndexOf(current);
+        if (index < 0)
+            throw new InvalidDataException("Collector Protocol outbox delivery order is incomplete.");
+        order[index] = replacement;
     }
 
     private static OutboxState MigrateCurrentPointGaps(OutboxState state, out bool migrated)
@@ -380,7 +458,9 @@ internal sealed class CollectorProtocolOutbox
     {
         public List<PendingCollectorFact> Facts { get; init; } = [];
         public List<PendingCollectorGap> Gaps { get; init; } = [];
+        public List<Guid> DeliveryOrder { get; init; } = [];
     }
+
 
     private sealed record DeadLetterState
     {

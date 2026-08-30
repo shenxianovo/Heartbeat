@@ -130,3 +130,14 @@ Gap；任意 ACK rewrite 也会把两类重排，因此 restart 后 Gap 可越�
 `PendingSystemInputDelivery` 以单一 durable sequence 恢复、peek、prefix ACK 与 rewrite；adapter 只批量交付
 连续 Event，遇到 Gap 则严格在它所在的 journal 位置交付。真实 runtime restart fixture 在 InputEvent
 sink 阻塞期间证明后续 Gap 尚未进入 Hub 持久状态，释放 Event 后 Gap 才可见。
+
+### 2026-08-30 — Protocol outbox 交错顺序持久化
+
+第二轮 Spec 复审证明 ingress 的单一 sequence 进入 `CollectorProtocolOutbox` 后又被 Facts/Gaps 两张
+list 拆开，flush 固定 Facts 先行；`E1 → Gap → E2` 可变成 `E1 → E2 → Gap`。outbox v1
+现在同一 mutation 额外持久 `DeliveryOrder`，ACK、retry rekey、dead-letter 与 capacity eviction 都在原
+位更新；client 严格交付 sequence head，不再按类型全量清空。真实 System runtime 测试在 Hub
+Event sink 阻塞时确认 outbox 同时持有 2 Facts + 1 Gap，释放后第二个 Event 只能在 Hub Gap
+已持久后投影。无 `DeliveryOrder` 的已落盘 v1 不猜原始交错，仅按旧 binary 的
+Facts→Gaps 可观察语义恢复；退出盘点已记入 compatibility ledger。验证：Protocol 23/23；
+System 交错 runtime 1/1；实际 journal path 阻塞下的 native callback 非阻塞 1/1。
