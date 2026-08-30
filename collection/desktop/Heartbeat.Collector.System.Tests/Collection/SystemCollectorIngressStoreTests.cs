@@ -185,12 +185,13 @@ public sealed class SystemCollectorIngressStoreTests : IDisposable
         var path = Path.Combine(_root, "ingress.ndjson");
         using var entered = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
-        var fence = new SystemCollectorIngressCommitFence(() =>
+        var fence = new SystemCollectorIngressCommitFence();
+        void BeforeCommit()
         {
             entered.Set();
             release.Wait(TimeSpan.FromSeconds(5));
-        });
-        var store = SystemCollectorIngressStore.Open(path, 2, fence);
+        }
+        var store = SystemCollectorIngressStore.Open(path, 2, fence, BeforeCommit);
         var staging = Task.Run(() => store.StageInputEvent(NewInput(Guid.CreateVersion7())));
         Assert.True(entered.Wait(TimeSpan.FromSeconds(2)));
 

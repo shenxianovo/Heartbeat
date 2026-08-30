@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Heartbeat.Collection.Hub.Collectors.Protocol;
 using Heartbeat.Core.DTOs.Input;
 
 namespace Heartbeat.Collection.Hub.Collectors.Runtime;
@@ -21,11 +22,8 @@ public interface IInputEventFactSink
     }
 }
 
-public interface ICollectorProjectionCommitFence
+public interface ICollectorProjectionCommitFence : ICollectorDurableCommitFence
 {
-    bool IsFenced { get; }
-
-    bool TryPublishFile(string preparedPath, string authoritativePath);
 }
 
 internal sealed class UnfencedCollectorProjectionCommitFence : ICollectorProjectionCommitFence

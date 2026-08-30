@@ -17,7 +17,20 @@ public sealed record CollectorInitialization(
     CollectorProtocolLimits Limits,
     CollectorResources Resources);
 
-public sealed record CollectorResources(string? DataDirectory);
+public sealed record CollectorResources(
+    string? DataDirectory,
+    ICollectorDurableCommitFence? DurableCommitFence = null);
+
+/// <summary>
+/// Hub-owned publication fence for Collector durable state. Collectors may prepare replacement
+/// files independently, but the final authoritative replacement must pass through this boundary.
+/// </summary>
+public interface ICollectorDurableCommitFence
+{
+    bool IsFenced { get; }
+
+    bool TryPublishFile(string preparedPath, string authoritativePath);
+}
 
 public sealed record CollectorProtocolLimits(
     int MaxFactsPerBatch,
@@ -136,9 +149,9 @@ public interface IInProcessCollector
 }
 
 /// <summary>
-/// Optional hard fence for an InProcess Collector whose private delivery loop can outlive a
-/// cooperative stop request. The Hub invokes it synchronously before releasing writer ownership
-/// after the drain deadline.
+/// Optional best-effort notification for an InProcess Collector whose private delivery loop can
+/// outlive a cooperative stop request. The Hub invokes it on an unobserved worker after closing
+/// its own durable commit fence; implementations must not be required for deadline correctness.
 /// </summary>
 public interface IInProcessCollectorDeadlineFence
 {

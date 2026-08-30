@@ -79,6 +79,10 @@ public sealed class SystemInProcessCollector(
         if (initialization.Instance.PackageId != PackageId)
             throw new InvalidOperationException(
                 $"The system Collector cannot activate Package '{initialization.Instance.PackageId}'.");
+        protocol.AttachDurableIngressFence(
+            initialization.Resources.DurableCommitFence
+                ?? throw new InvalidOperationException(
+                    "Hub did not provide the system Collector durable commit fence."));
         StartClient();
         _initialization.TrySetResult(new CollectorClientInitialization(
             initialization.ActivationId,
@@ -143,7 +147,6 @@ public sealed class SystemInProcessCollector(
 
     void IInProcessCollectorDeadlineFence.FenceAfterDeadline()
     {
-        protocol.FenceDurableIngress();
         _clientLifetime.Cancel();
     }
 

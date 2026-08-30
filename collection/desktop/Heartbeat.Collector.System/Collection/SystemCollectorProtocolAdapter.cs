@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Threading.Channels;
 using Heartbeat.Collection.CollectorProtocol;
+using Heartbeat.Collection.Hub.Collectors.Protocol;
 using Heartbeat.Collection.Hub.Upload;
 using Heartbeat.Core.DTOs.Input;
 using Serilog;
@@ -45,7 +46,8 @@ public sealed class SystemCollectorProtocolAdapter :
         });
     private readonly SemaphoreSlim _pumpSignal = new(0, 1);
     private readonly UploadStatusRegistry? _statusRegistry;
-    private readonly SystemCollectorIngressCommitFence _ingressCommitFence;
+    private readonly Action? _beforeIngressCommit;
+    private ICollectorDurableCommitFence _ingressCommitFence;
     private SystemCollectorIngressStore? _ingressStore;
     private readonly int _inputEventIngressCapacity;
     private CollectorActivation? _activation;
@@ -55,19 +57,19 @@ public sealed class SystemCollectorProtocolAdapter :
     public SystemCollectorProtocolAdapter(
         UploadStatusRegistry? statusRegistry = null,
         int inputEventIngressCapacity = DefaultInputEventIngressCapacity)
-        : this(new SystemCollectorIngressCommitFence(), statusRegistry, inputEventIngressCapacity)
+        : this((Action?)null, statusRegistry, inputEventIngressCapacity)
     {
     }
 
     internal SystemCollectorProtocolAdapter(
-        SystemCollectorIngressCommitFence ingressCommitFence,
+        Action? beforeIngressCommit,
         UploadStatusRegistry? statusRegistry = null,
         int inputEventIngressCapacity = DefaultInputEventIngressCapacity)
     {
-        ArgumentNullException.ThrowIfNull(ingressCommitFence);
         if (inputEventIngressCapacity <= 0)
             throw new ArgumentOutOfRangeException(nameof(inputEventIngressCapacity));
-        _ingressCommitFence = ingressCommitFence;
+        _ingressCommitFence = new SystemCollectorIngressCommitFence();
+        _beforeIngressCommit = beforeIngressCommit;
         _statusRegistry = statusRegistry;
         _inputEventIngressCapacity = inputEventIngressCapacity;
     }
@@ -81,10 +83,20 @@ public sealed class SystemCollectorProtocolAdapter :
             activation.Initialization.DataDirectory,
             "system-collector-ingress.json"),
             _inputEventIngressCapacity,
-            _ingressCommitFence);
+            _ingressCommitFence,
+            _beforeIngressCommit);
         PersistQueuedIngress();
         if (_ingressStore.PendingInputGapCount != 0)
             ReportPendingIngressGapStatus();
+    }
+
+    internal void AttachDurableIngressFence(ICollectorDurableCommitFence ingressCommitFence)
+    {
+        ArgumentNullException.ThrowIfNull(ingressCommitFence);
+        if (_ingressStore is not null || _activation is not null)
+            throw new InvalidOperationException(
+                "The system Collector durable ingress fence must be attached before activation.");
+        _ingressCommitFence = ingressCommitFence;
     }
 
     internal void Start()
@@ -146,8 +158,6 @@ public sealed class SystemCollectorProtocolAdapter :
             _activation = null;
         }
     }
-
-    internal void FenceDurableIngress() => _ingressCommitFence.Fence();
 
     public void Publish(ForegroundSegmentSnapshot snapshot)
     {

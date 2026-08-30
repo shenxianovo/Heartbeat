@@ -876,8 +876,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         var clock = new FakeClock();
         var segmentSink = new SegmentIngestService(clock);
         var blocker = new ControllableCommitBlocker();
-        var ingressFence = new SystemCollectorIngressCommitFence(blocker.BeforeCommit);
-        var protocol = new SystemCollectorProtocolAdapter(ingressFence);
+        var protocol = new SystemCollectorProtocolAdapter(blocker.BeforeCommit);
         var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
         using var config = JsonDocument.Parse("{}");
         var runtime = CollectorRuntime.Open(

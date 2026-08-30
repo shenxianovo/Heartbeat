@@ -208,7 +208,8 @@ public sealed partial class CollectorRuntime
                     _options.MaxBatchBytes),
                 new CollectorResources(Path.Combine(
                     _instanceDataRoot,
-                    collectorInstanceId.ToString("N"))));
+                    collectorInstanceId.ToString("N")),
+                    session!.DurableCommitFence));
             InProcessCollectorInitialization initialized;
             try
             {

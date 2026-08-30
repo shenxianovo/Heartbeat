@@ -1059,6 +1059,54 @@ public class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
+    public async Task WriterLease_DeadlineBoundsSynchronousCollectorDeadlineFenceInvocation()
+    {
+        using var directory = TemporaryDirectory.Create();
+        var package = LocalCollectorPackage.Load(ReferencePackagePath);
+        using var runtime = CollectorRuntime.Open(
+            Path.Combine(directory.Path, "collector-runtime.json"),
+            new RecordingSegmentSink(),
+            new CollectorRuntimeOptions
+            {
+                InProcessDrainGracePeriod = TimeSpan.FromMilliseconds(100)
+            });
+        using var config = JsonDocument.Parse("{}");
+        var instance = runtime.CreateInstance(
+            package,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        var collector = new ReferenceInProcessCollector(
+            blockStop: true,
+            ignoreStopCancellation: true,
+            synchronouslyBlockDeadlineFence: true);
+        var activation = await runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            package,
+            collector);
+
+        var stopping = Task.Run(async () => await activation.StopAsync());
+        try
+        {
+            await collector.StopEntered.WaitAsync(TimeSpan.FromSeconds(2));
+            await collector.DeadlineFenceEntered.WaitAsync(TimeSpan.FromSeconds(2));
+            await stopping.WaitAsync(TimeSpan.FromSeconds(1));
+
+            Assert.Equal(CollectorActivationState.Stopped, activation.State);
+            Assert.Equal(CollectorDrainReason.DeadlineExceeded, activation.DrainResult!.LogicalResult.Reason);
+            var replacement = await runtime.ActivateInProcessAsync(
+                instance.CollectorInstanceId,
+                package,
+                new ReferenceInProcessCollector());
+            await replacement.DisposeAsync();
+        }
+        finally
+        {
+            collector.ReleaseDeadlineFence();
+            collector.ReleaseStop();
+        }
+    }
+
+    [Fact]
     public async Task WriterLease_StopAllowsCollectorToFlushPendingFactBeforeLeaseRelease()
     {
         using var directory = TemporaryDirectory.Create();
@@ -2688,7 +2736,9 @@ public class InProcessCollectorProtocolTranscriptTests
         return LocalCollectorPackage.Load(packageCopy.Path);
     }
 
-    private sealed class ReferenceInProcessCollector : IInProcessCollector
+    private sealed class ReferenceInProcessCollector :
+        IInProcessCollector,
+        IInProcessCollectorDeadlineFence
     {
         private readonly IReadOnlyList<OutputBinding> _bindings;
         private readonly bool _publishReferenceSegment;
@@ -2705,6 +2755,10 @@ public class InProcessCollectorProtocolTranscriptTests
             TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _releaseStreamsOpened = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _deadlineFenceEntered = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _releaseDeadlineFence = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly bool _blockStop;
         private readonly bool _ignoreStopCancellation;
         private readonly bool _blockInitialize;
@@ -2714,6 +2768,7 @@ public class InProcessCollectorProtocolTranscriptTests
         private readonly bool _throwOnInitialize;
         private readonly bool _publishOnStop;
         private readonly bool _synchronouslyBlockStop;
+        private readonly bool _synchronouslyBlockDeadlineFence;
         private readonly CollectorDrainReason _stopResultReason;
         private readonly DateTimeOffset _referenceSegmentStart;
         private InProcessCollectorActivation? _activation;
@@ -2733,6 +2788,7 @@ public class InProcessCollectorProtocolTranscriptTests
             bool throwOnInitialize = false,
             bool publishOnStop = false,
             bool synchronouslyBlockStop = false,
+            bool synchronouslyBlockDeadlineFence = false,
             CollectorDrainReason stopResultReason = CollectorDrainReason.Drained,
             int stopFailures = 0,
             DateTimeOffset? referenceSegmentStart = null,
@@ -2757,6 +2813,7 @@ public class InProcessCollectorProtocolTranscriptTests
             _throwOnInitialize = throwOnInitialize;
             _publishOnStop = publishOnStop;
             _synchronouslyBlockStop = synchronouslyBlockStop;
+            _synchronouslyBlockDeadlineFence = synchronouslyBlockDeadlineFence;
             _stopResultReason = stopResultReason;
             _stopFailuresRemaining = stopFailures;
             _referenceSegmentStart = referenceSegmentStart ??
@@ -2782,6 +2839,8 @@ public class InProcessCollectorProtocolTranscriptTests
         public Task InitializeEntered => _initializeEntered.Task;
 
         public Task StreamsOpenedEntered => _streamsOpenedEntered.Task;
+
+        public Task DeadlineFenceEntered => _deadlineFenceEntered.Task;
 
         public async ValueTask<InProcessCollectorInitialization> InitializeAsync(
             CollectorInitialization initialization,
@@ -2879,6 +2938,15 @@ public class InProcessCollectorProtocolTranscriptTests
         }
 
         public void ReleaseStreamsOpened() => _releaseStreamsOpened.TrySetResult();
+
+        public void FenceAfterDeadline()
+        {
+            _deadlineFenceEntered.TrySetResult();
+            if (_synchronouslyBlockDeadlineFence)
+                _releaseDeadlineFence.Task.GetAwaiter().GetResult();
+        }
+
+        public void ReleaseDeadlineFence() => _releaseDeadlineFence.TrySetResult();
 
         public void ReleaseInitialize() => _releaseInitialize.TrySetResult();
     }

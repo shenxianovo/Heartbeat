@@ -66,6 +66,7 @@ internal sealed class CollectorActivationSession
     }
     public IReadOnlyDictionary<string, FactStreamDescriptor> Streams => _streams;
     internal LocalCollectorPackage Package { get; }
+    internal ICollectorDurableCommitFence DurableCommitFence => _deliveryFence;
 
     internal void AcceptInitialized(long appliedSpecRevision, long expectedSpecRevision)
     {

@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Heartbeat.Collection.Hub.Collectors.Protocol;
 using Heartbeat.Core.DTOs.Input;
 
 namespace Heartbeat.Collector.System.Collection;
@@ -30,10 +31,12 @@ internal enum SystemInputIngressStageResult
     GapStaged
 }
 
-internal sealed class SystemCollectorIngressCommitFence(Action? beforeCommit = null)
+internal sealed class SystemCollectorIngressCommitFence : ICollectorDurableCommitFence
 {
     private readonly object _gate = new();
     private bool _fenced;
+
+    public bool IsFenced => Volatile.Read(ref _fenced);
 
     public void Fence()
     {
@@ -41,15 +44,15 @@ internal sealed class SystemCollectorIngressCommitFence(Action? beforeCommit = n
             _fenced = true;
     }
 
-    public bool TryCommit(Action commit)
+    public bool TryPublishFile(string preparedPath, string authoritativePath)
     {
-        ArgumentNullException.ThrowIfNull(commit);
-        beforeCommit?.Invoke();
+        ArgumentException.ThrowIfNullOrWhiteSpace(preparedPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(authoritativePath);
         lock (_gate)
         {
             if (_fenced)
                 return false;
-            commit();
+            File.Move(preparedPath, authoritativePath, overwrite: true);
             return true;
         }
     }
@@ -77,7 +80,8 @@ internal sealed class SystemCollectorIngressStore
     private readonly object _gate = new();
     private readonly string _path;
     private readonly int _inputCapacity;
-    private readonly SystemCollectorIngressCommitFence _commitFence;
+    private readonly ICollectorDurableCommitFence _commitFence;
+    private readonly Action? _beforeCommit;
     private readonly List<PendingSystemSegmentIngress> _segmentBatches;
     private readonly List<PendingSystemSegmentGapIngress> _segmentGaps;
     private readonly List<PendingSystemInputDelivery> _inputDeliveries;
@@ -86,7 +90,8 @@ internal sealed class SystemCollectorIngressStore
     private SystemCollectorIngressStore(
         string path,
         int inputCapacity,
-        SystemCollectorIngressCommitFence commitFence,
+        ICollectorDurableCommitFence commitFence,
+        Action? beforeCommit,
         List<PendingSystemSegmentIngress> segmentBatches,
         List<PendingSystemSegmentGapIngress> segmentGaps,
         List<PendingSystemInputDelivery> inputDeliveries,
@@ -95,6 +100,7 @@ internal sealed class SystemCollectorIngressStore
         _path = path;
         _inputCapacity = inputCapacity;
         _commitFence = commitFence;
+        _beforeCommit = beforeCommit;
         _segmentBatches = segmentBatches;
         _segmentGaps = segmentGaps;
         _inputDeliveries = inputDeliveries;
@@ -102,12 +108,13 @@ internal sealed class SystemCollectorIngressStore
     }
 
     public static SystemCollectorIngressStore Open(string path, int inputCapacity)
-        => Open(path, inputCapacity, new SystemCollectorIngressCommitFence());
+        => Open(path, inputCapacity, new SystemCollectorIngressCommitFence(), null);
 
     internal static SystemCollectorIngressStore Open(
         string path,
         int inputCapacity,
-        SystemCollectorIngressCommitFence commitFence)
+        ICollectorDurableCommitFence commitFence,
+        Action? beforeCommit = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         if (inputCapacity <= 0)
@@ -204,6 +211,7 @@ internal sealed class SystemCollectorIngressStore
             fullPath,
             inputCapacity,
             commitFence,
+            beforeCommit,
             segmentBatches,
             segmentGaps,
             inputDeliveries,
@@ -495,7 +503,8 @@ internal sealed class SystemCollectorIngressStore
                 writer.Flush();
                 stream.Flush(flushToDisk: true);
             }
-            if (!_commitFence.TryCommit(() => File.Move(temporary, _path, overwrite: true)))
+            _beforeCommit?.Invoke();
+            if (!_commitFence.TryPublishFile(temporary, _path))
                 throw new OperationCanceledException(
                     "System Collector ingress mutation was fenced before publication.");
         }
@@ -583,7 +592,8 @@ internal sealed class SystemCollectorIngressStore
                 writer.Flush();
                 stream.Flush(flushToDisk: true);
             }
-            if (!_commitFence.TryCommit(() => File.Move(temporary, _path, overwrite: true)))
+            _beforeCommit?.Invoke();
+            if (!_commitFence.TryPublishFile(temporary, _path))
                 throw new OperationCanceledException(
                     "System Collector ingress mutation was fenced before publication.");
         }
