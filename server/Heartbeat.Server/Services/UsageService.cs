@@ -26,7 +26,13 @@ namespace Heartbeat.Server.Services
         public async Task SaveSegmentsAsync(long deviceId, List<ActivitySegmentItem> segments)
         {
             SegmentIngestContract.Validate(segments, _timeProvider.GetUtcNow());
+            await SaveValidatedSegmentsAsync(deviceId, segments);
+        }
 
+        internal async Task SaveValidatedSegmentsAsync(
+            long deviceId,
+            List<ActivitySegmentItem> segments)
+        {
             var ordered = segments.OrderBy(s => s.StartTime).ToList();
 
             // 快照 upsert：一次批量取回本批涉及的已有行，新插入的行也进字典，

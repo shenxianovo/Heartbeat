@@ -42,7 +42,7 @@ public sealed class SegmentIngestApplicationService(
         try
         {
             var device = await deviceService.ResolveByHardwareIdAsync(ownerId, hardwareId, deviceName);
-            await usageService.SaveSegmentsAsync(device.Id, segments);
+            await usageService.SaveValidatedSegmentsAsync(device.Id, segments);
             await transaction.CommitAsync();
         }
         catch

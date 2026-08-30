@@ -49,6 +49,25 @@ public class StrictIngestProtocolTests(PostgresContainerFixture fixture) : Postg
             parameter => parameter.ParameterType == typeof(ISegmentIngestApplicationService));
     }
 
+    [Fact]
+    public async Task AtomicIngest_ValidatesTheBatchAgainstOneCapturedNow()
+    {
+        await using var db = CreateDbContext();
+        var now = new DateTimeOffset(2026, 8, 30, 12, 0, 0, TimeSpan.Zero);
+        var time = new SequenceTimeProvider(now, now.AddDays(-2));
+        var service = new SegmentIngestApplicationService(
+            db,
+            new DeviceService(db),
+            new UsageService(db, timeProvider: time),
+            time);
+        var segment = StrictSystemSegment("win:code", now.AddMinutes(-1), now);
+
+        await service.IngestAsync("owner", "hardware", "Device", [segment]);
+
+        Assert.Equal(1, time.Reads);
+        Assert.Equal(1, await db.ActivitySegments.CountAsync());
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -538,6 +557,19 @@ public class StrictIngestProtocolTests(PostgresContainerFixture fixture) : Postg
             new FakeCurrentUser(userId));
         AttachHttpContext(controller, hardwareId);
         return controller;
+    }
+
+    private sealed class SequenceTimeProvider(params DateTimeOffset[] values) : TimeProvider
+    {
+        private int _reads;
+
+        public int Reads => Volatile.Read(ref _reads);
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            var index = Interlocked.Increment(ref _reads) - 1;
+            return values[Math.Min(index, values.Length - 1)];
+        }
     }
 
     private static DeviceController CreateDeviceController(
