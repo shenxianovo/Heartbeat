@@ -643,6 +643,71 @@ public class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
+    public async Task Publish_StatePrepareFailureCanRetrySameMessageAfterStorageRecovers()
+    {
+        var failNextPrepare = 0;
+        await using var fixture = await ActivatedRuntimeFixture.CreateAsync(
+            new CollectorRuntimeOptions
+            {
+                BeforeStatePrepare = () =>
+                {
+                    if (Interlocked.Exchange(ref failNextPrepare, 0) != 0)
+                    {
+                        throw new CollectorRuntimeStateException(
+                            "Injected transient state prepare failure.");
+                    }
+                }
+            });
+        var stream = fixture.Activation.Streams["activity"];
+        var messageId = Guid.CreateVersion7();
+        var fact = CreateFact(stream.Descriptor.StreamId);
+        Volatile.Write(ref failNextPrepare, 1);
+
+        var first = await stream.PublishAsync(messageId, [fact]);
+        var retry = Assert.Single(first.Results);
+        Assert.Equal(FactDeliveryStatus.Retry, retry.Status);
+        Assert.True(retry.Error!.Retryable);
+
+        var recovered = await stream.PublishAsync(messageId, [fact]);
+        Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(recovered.Results).Status);
+        Assert.Single(fixture.Sink.Segments);
+    }
+
+    [Fact]
+    public async Task StreamGap_StatePrepareFailureCanRetrySameMessageAfterStorageRecovers()
+    {
+        var failNextPrepare = 0;
+        await using var fixture = await ActivatedRuntimeFixture.CreateAsync(
+            new CollectorRuntimeOptions
+            {
+                BeforeStatePrepare = () =>
+                {
+                    if (Interlocked.Exchange(ref failNextPrepare, 0) != 0)
+                    {
+                        throw new CollectorRuntimeStateException(
+                            "Injected transient state prepare failure.");
+                    }
+                }
+            });
+        var stream = fixture.Activation.Streams["activity"];
+        var messageId = Guid.CreateVersion7();
+        var gap = new StreamGapReport(
+            Guid.CreateVersion7(),
+            new DateTimeOffset(2026, 8, 22, 10, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 8, 22, 10, 5, 0, TimeSpan.Zero),
+            "storage_unavailable",
+            1);
+        Volatile.Write(ref failNextPrepare, 1);
+
+        var first = await stream.ReportGapAsync(messageId, gap);
+        Assert.Equal(GapDeliveryStatus.Retry, first.Status);
+        Assert.True(first.Error!.Retryable);
+
+        var recovered = await stream.ReportGapAsync(messageId, gap);
+        Assert.Equal(GapDeliveryStatus.Committed, recovered.Status);
+    }
+
+    [Fact]
     public async Task RuntimeReopen_ReplaysDurableFactAndKeepsDuplicateAndStreamIdentity()
     {
         await using var fixture = await ActivatedRuntimeFixture.CreateAsync();

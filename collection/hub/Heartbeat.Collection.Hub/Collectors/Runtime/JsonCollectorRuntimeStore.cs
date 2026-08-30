@@ -21,10 +21,12 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
 
     private readonly string _filePath;
     private readonly FileStream _ownershipLock;
+    private readonly Action? _beforePrepare;
 
-    public JsonCollectorRuntimeStore(string filePath)
+    public JsonCollectorRuntimeStore(string filePath, Action? beforePrepare = null)
     {
         _filePath = Path.GetFullPath(filePath);
+        _beforePrepare = beforePrepare;
         var directory = Path.GetDirectoryName(_filePath);
         if (!string.IsNullOrEmpty(directory))
             Directory.CreateDirectory(directory);
@@ -114,6 +116,7 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
 
     public PreparedReplacement Prepare(CollectorRuntimeState state)
     {
+        _beforePrepare?.Invoke();
         var directory = Path.GetDirectoryName(_filePath);
         if (!string.IsNullOrEmpty(directory))
             Directory.CreateDirectory(directory);

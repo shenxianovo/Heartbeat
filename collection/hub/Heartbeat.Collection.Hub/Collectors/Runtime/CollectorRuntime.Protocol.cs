@@ -602,28 +602,39 @@ public sealed partial class CollectorRuntime
                 next = baseState.WithFact(prepared.Committed, prepared.EvictedEvent);
             }
 
-            using var replacement = _store.Prepare(next);
-            lock (_gate)
+            JsonCollectorRuntimeStore.PreparedReplacement replacement;
+            try
             {
-                if (!ReferenceEquals(_state, baseState))
-                    continue;
-                if (!_streamWriters.TryGetValue(fact.StreamId, out var writer) || writer != activationId)
-                    return Rejected(
-                        index,
-                        "stream_writer_conflict",
-                        "Activation does not hold this Fact Stream writer lease.");
-                try
+                replacement = _store.Prepare(next);
+            }
+            catch (CollectorRuntimeStateException)
+            {
+                return Retry(index, "Hub could not persist the Fact and is applying backpressure.");
+            }
+            using (replacement)
+            {
+                lock (_gate)
                 {
-                    if (!deliveryFence.TryCommitHost(() =>
-                        {
-                            replacement.Commit();
-                            _state = next;
-                        }))
-                        return Retry(index, "Hub drain deadline fenced the durable Fact commit.");
-                }
-                catch (CollectorRuntimeStateException)
-                {
-                    return Retry(index, "Hub could not persist the Fact and is applying backpressure.");
+                    if (!ReferenceEquals(_state, baseState))
+                        continue;
+                    if (!_streamWriters.TryGetValue(fact.StreamId, out var writer) || writer != activationId)
+                        return Rejected(
+                            index,
+                            "stream_writer_conflict",
+                            "Activation does not hold this Fact Stream writer lease.");
+                    try
+                    {
+                        if (!deliveryFence.TryCommitHost(() =>
+                            {
+                                replacement.Commit();
+                                _state = next;
+                            }))
+                            return Retry(index, "Hub drain deadline fenced the durable Fact commit.");
+                    }
+                    catch (CollectorRuntimeStateException)
+                    {
+                        return Retry(index, "Hub could not persist the Fact and is applying backpressure.");
+                    }
                 }
             }
             break;

@@ -61,6 +61,7 @@ public sealed class CollectorRuntimeOptions
     public int RetryAfterMilliseconds { get; init; } = 1_000;
     public TimeSpan InProcessDrainGracePeriod { get; init; } = TimeSpan.FromSeconds(10);
     public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
+    internal Action? BeforeStatePrepare { get; init; }
 
     internal void Validate()
     {
@@ -133,7 +134,7 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         options ??= new CollectorRuntimeOptions();
         options.Validate();
 
-        var store = new JsonCollectorRuntimeStore(stateFilePath);
+        var store = new JsonCollectorRuntimeStore(stateFilePath, options.BeforeStatePrepare);
         try
         {
             var state = store.Load();

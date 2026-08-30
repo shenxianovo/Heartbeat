@@ -200,7 +200,8 @@ internal sealed class CollectorActivationSession
             {
                 var acknowledgement = _commitFacts(streamId, snapshot);
                 ThrowIfDeliveryFencedAfterDeadline();
-                _publishReplays.Add(messageId, new PublishReplay(requestHash, acknowledgement, null));
+                if (!acknowledgement.Results.Any(result => result.Status == FactDeliveryStatus.Retry))
+                    _publishReplays.Add(messageId, new PublishReplay(requestHash, acknowledgement, null));
                 return ValueTask.FromResult(acknowledgement);
             }
             catch (OperationCanceledException) when (IsDeliveryFencedAfterDeadline())
@@ -259,7 +260,7 @@ internal sealed class CollectorActivationSession
                 outcome = _commitGap(streamId, gap);
                 ThrowIfDeliveryFencedAfterDeadline();
             }
-            if (IsUuidV7(messageId))
+            if (IsUuidV7(messageId) && outcome.Status != GapDeliveryStatus.Retry)
                 _gapReplays[messageId] = new GapReplay(requestHash, outcome);
             return ValueTask.FromResult(outcome);
         }
