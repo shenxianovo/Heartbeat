@@ -1,6 +1,6 @@
 # 06 — 设计 Collector Package 托管与下载
 
-Status: needs-triage
+Status: done
 
 Owner: Collection / Package Delivery
 
@@ -25,14 +25,22 @@ Collector Protocol、Execution Driver、Package/Instance/Activation 身份与 pe
 
 ## Acceptance
 
-- [ ] 建立独立 feature PRD，明确 Registry metadata、Artifact 地址/hash、下载与本地锁定状态。
-- [ ] 裁决信任与发布范围：官方包、不可变发布、签名/撤回本期是否进入范围。
-- [ ] 定义 install/update transaction、Last-Known-Good、离线行为与结构化冲突。
-- [ ] 分别定义 BuiltIn、ManagedProcess 与 ExternalHost 的交付/激活成功判据。
-- [ ] 定义宿主升级 preflight、PackageId replacement 与 config/Secret/Stream 显式迁移边界。
-- [ ] 把实现拆成有 owner、依赖、自动验证和人工 smoke 的 issues；未裁决项不得伪装成字段。
+- [x] 建立独立 feature PRD，明确 Registry metadata、Artifact 地址/hash、下载与本地锁定状态。
+- [x] 裁决信任与发布范围：官方包、不可变发布、签名/撤回本期是否进入范围。
+- [x] 定义 install/update transaction、Last-Known-Good、离线行为与结构化冲突。
+- [x] 分别定义 BuiltIn、ManagedProcess 与 ExternalHost 的交付/激活成功判据。
+- [x] 定义宿主升级 preflight、PackageId replacement 与 config/Secret/Stream 显式迁移边界。
+- [x] 把实现拆成有 owner、依赖、自动验证和人工 smoke 的 issues；未裁决项不得伪装成字段。
 
 ## Existing design seed
 
 - ADR-040 的 Artifact Delivery / Execution Driver 两轴、Package/Instance/Activation 身份与开发期
   同 SemVer content candidate 例外。
+
+## Comments
+
+- 2026-08-30：owner 完成 Q1–Q25 裁决并确认共同理解。决策写入
+  [ADR-045](../../../docs/adr/045-independent-web-delivery-for-collector-packages.md) 与独立
+  [Collector Package Registry PRD](../../collector-package-registry/PRD.md)。
+- 2026-08-30：宿主升级 preflight 的边界已裁决为后续独立 Host Updater module，复用 resolver 但不
+  扩张 v1 Registry 管理 interface；因此本设计 issue 的验收已完成，而非声称 preflight 已实现。

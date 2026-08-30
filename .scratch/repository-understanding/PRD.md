@@ -17,6 +17,12 @@ Status: needs-triage
 - 兼容债务散在注释与历史 issue 中，现已建立初始 ledger；具体支持窗口和删除优先级需要 owner
   裁决。
 - Agent issue closeout 与 friction closeout 已补充，但仓库其他 feature 的陈旧状态尚未批量清理。
+- Collector Package Web 交付方向已经完成 owner 裁决并转入独立
+  [Collector Package Registry PRD](../collector-package-registry/PRD.md)；这里的设计 issue 已 closeout，
+  不代表 Registry 或 P1 可靠性修复已经实现。
+- `d69735b` 删除了仍为 `ready-for-agent` / `ready-for-human` 的 lifecycle 账本；扫描已恢复
+  cross-platform、local-calendar 以及其他被删的非 terminal issue 原文。恢复不自动证明旧状态仍准确，
+  对应 PRD/issue 必须以当前代码证据重新 closeout。
 
 ## Issues
 

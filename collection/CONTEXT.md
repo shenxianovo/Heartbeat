@@ -105,7 +105,7 @@ ManagedProcess 候选 Activation 到达 Ready 后、被判定为成功更新前�
 _Avoid_: 把 Ready 等同于已通过稳定观察、无限期自动回滚
 
 **Collector Desired State（采集器期望状态）**:
-用户对 Collector Instance 的版本范围、启用与配置意图；暂时的解析或运行失败不会改写它。
+用户对 Collector Instance 的发布 channel、版本范围、启用与配置意图；暂时的发现、下载、解析或运行失败不会改写它。
 _Avoid_: 把当前运行事实反写成用户意图
 
 **Resolved Collector Set（已解析采集器集合）**:
@@ -119,6 +119,18 @@ _Avoid_: Desired State、Active（后者只回答某 Source 最近是否有流�
 **Artifact Delivery（制品交付）**:
 谁负责把 Collector Package 交付给运行位置并维持其版本；它与谁执行代码相互独立。
 _Avoid_: Lifecycle Ownership（把交付与执行混成单轴）
+
+**BuiltIn Delivery（内置交付）**:
+Collector Package 随宿主应用一起构建和发布的 Artifact Delivery；System Collector 随 Desktop 升级，不进入 Web 更新候选或逐 Instance 包审批。
+_Avoid_: 把 System 当作可远程替换的独立 Package、把 BuiltIn 等同于 InProcess
+
+**Official Collector Package Registry（官方采集器包注册源）**:
+发布方为非 BuiltIn 官方 Collector Package 提供的已签名、不可变版本目录与制品来源；它提供可验证的发现和下载事实，不保存用户 Desired State，也不承担 Activation。
+_Avoid_: Collector Registry（旧 source 级配置账本）、Analytics 控制面、把 channel 指针当作不可变版本
+
+**Collector Update Offer（采集器更新候选）**:
+Runtime 已验证并解析出的某个 Collector Instance 的精确更新候选，绑定 PackageId、Version、内容 hash、宿主兼容结果与不透明候选标识；只有 owner 明确批准该标识后才可改变该 Instance 的安装/激活尝试。
+_Avoid_: latest、未验证的 Registry 响应、把发现或下载等同于批准和更新成功
 
 **Execution Driver（执行驱动器）**:
 Collector Runtime 协调 Collector Activation 的方式，可以是进程内、托管进程或外部宿主；它不表示 Runtime 一定持有对应制品。

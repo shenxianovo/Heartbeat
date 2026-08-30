@@ -1,6 +1,6 @@
 # Browser Collector IdentityKey refinement
 
-Status: ready-for-agent
+Status: needs-triage
 
 ## Current state
 
@@ -22,3 +22,12 @@ Browser Collector 已通过 ExternalHost Binding 接入 Collector Protocol。稳
 ## Issue
 
 - [02 — IdentityKey 规范化覆写表](issues/02-identitykey-override-table.md)
+
+## Lifecycle debt restored by repository scan
+
+- [01 — Browser extension 真实 E2E](issues/01-browser-extension-e2e.md)
+- [04 — Desktop Collector 管理入口](issues/04-wpf-collector-management.md)
+
+这两张旧 issue 在 `d69735b` 中以非 terminal 状态被删除，但当前叙述又把对应能力写成已实现。
+2026-08-30 扫描按 lifecycle 规则恢复原文；在用当前代码/真实 UI 逐项补齐证据并置 `done`，或明确
+裁决为 `wontfix` 之前，本 PRD 不再只宣称剩余 IdentityKey 一项。
