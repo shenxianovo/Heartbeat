@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Heartbeat.Core.DTOs.Input;
 using Heartbeat.Collector.System.Collection;
 using Heartbeat.Collector.System.Input;
@@ -118,6 +119,39 @@ public sealed class SystemCollectorIngressStoreTests : IDisposable
         Assert.Equal(recoveredAt, gap.End);
         Assert.Equal("process_restart", gap.Reason);
         Assert.Null(recovered.ActiveSegmentCheckpoint);
+    }
+
+    [Fact]
+    public void OpenRepairsMalformedTailBeforeAppendAndSecondRestart()
+    {
+        var path = Path.Combine(_root, "ingress.ndjson");
+        var first = Guid.CreateVersion7();
+        var second = Guid.CreateVersion7();
+        var store = SystemCollectorIngressStore.Open(path, 2);
+        Assert.Equal(
+            SystemInputIngressStageResult.EventStaged,
+            store.StageInputEvent(NewInput(first)));
+        File.AppendAllText(path, "{\"entryId\":");
+
+        var repaired = SystemCollectorIngressStore.Open(path, 2);
+        Assert.Equal(
+            SystemInputIngressStageResult.EventStaged,
+            repaired.StageInputEvent(NewInput(second)));
+
+        var restarted = SystemCollectorIngressStore.Open(path, 2);
+        Assert.True(restarted.PendingFactIds.SetEquals([first, second]));
+    }
+
+    [Fact]
+    public void OpenStillRejectsMalformedMiddleLine()
+    {
+        var path = Path.Combine(_root, "ingress.ndjson");
+        var store = SystemCollectorIngressStore.Open(path, 2);
+        store.StageInputEvent(NewInput(Guid.CreateVersion7()));
+        var valid = File.ReadAllText(path);
+        File.WriteAllText(path, valid + "{\"entryId\":\n" + valid);
+
+        Assert.Throws<JsonException>(() => SystemCollectorIngressStore.Open(path, 2));
     }
 
     private static InputEventItem NewInput(Guid id, DateTimeOffset? timestamp = null) => new()

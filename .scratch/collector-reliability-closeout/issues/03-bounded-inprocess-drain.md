@@ -98,7 +98,7 @@ smoke 完成前，本 issue 恢复为 `needs-triage`。
 ## Reopened acceptance
 
 - [x] 所有用户/Collector 代码调用本身受硬 deadline/fence；到期后不能迟到 ACK 或突变 durable state。
-- [ ] 打开 ingress journal 时截断最后一行损坏尾部；append 后再次重启仍可恢复。
+- [x] 打开 ingress journal 时截断最后一行损坏尾部；append 后再次重启仍可恢复。
 - [ ] 真实跨进程 crash/restart/replay smoke 证明 durable remainder 可恢复，不以同进程 reopen 代替。
 
 ### 2026-08-30 — 同步调用 deadline fence 修复
@@ -113,3 +113,11 @@ callback 原子关闭 Protocol admission 并推进 delivery epoch，故迟到 St
 验证：CollectorProtocol 21/21、Hub 213/213、System 56/56；新增 Protocol 同步阻塞组重复 10 次
 30/30，Hub 同步 Stop 组重复 10 次 10/10；`git diff --check` 通过。坏尾修复与真实跨进程 smoke
 仍未完成，因此 issue 保持 `needs-triage`。
+
+### 2026-08-30 — ingress journal 坏尾修复
+
+失败测试复现合法前缀后追加半行、Open 仅 `break`、继续 append 后二次启动丢失新 entry。Open 现在
+按 UTF-8 byte offset 扫描 NDJSON；仅当最后一条记录发生 JSON 语法损坏时，以 write-through
+`SetLength(lastValidOffset)` 截断并 fsync，随后 append 从合法边界继续。中间损坏仍抛 `JsonException`，
+不会被尾部恢复规则掩盖。验证：System 58/58；坏尾修复与中间损坏拒绝重复 10 次 20/20；
+`git diff --check` 通过。真实跨进程 smoke 仍未完成，issue 保持 `needs-triage`。

@@ -87,19 +87,27 @@ internal sealed class SystemCollectorIngressStore
         ForegroundSegmentSnapshot? activeSegmentCheckpoint = null;
         if (File.Exists(fullPath))
         {
-            var lines = File.ReadAllLines(fullPath, Encoding.UTF8);
-            for (var index = 0; index < lines.Length; index++)
+            var bytes = File.ReadAllBytes(fullPath);
+            var lineStart = 0;
+            while (lineStart < bytes.Length)
             {
-                if (string.IsNullOrWhiteSpace(lines[index]))
+                var newline = Array.IndexOf(bytes, (byte)'\n', lineStart);
+                var lineEnd = newline >= 0 ? newline : bytes.Length;
+                var nextLineStart = newline >= 0 ? newline + 1 : bytes.Length;
+                var line = Encoding.UTF8.GetString(bytes, lineStart, lineEnd - lineStart).TrimEnd('\r');
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    lineStart = nextLineStart;
                     continue;
+                }
                 StoredIngressEntry? entry;
                 try
                 {
-                    entry = JsonSerializer.Deserialize<StoredIngressEntry>(lines[index], JsonOptions);
+                    entry = JsonSerializer.Deserialize<StoredIngressEntry>(line, JsonOptions);
                 }
-                catch (JsonException) when (index == lines.Length - 1)
+                catch (JsonException) when (nextLineStart == bytes.Length)
                 {
-                    // The malformed tail is repaired by the dedicated tail-recovery slice.
+                    RepairMalformedTail(fullPath, lineStart);
                     break;
                 }
                 if (entry is null || entry.EntryId == Guid.Empty)
@@ -150,6 +158,7 @@ internal sealed class SystemCollectorIngressStore
                         throw new InvalidDataException("System Collector active checkpoint cannot be final.");
                     activeSegmentCheckpoint = entry.Checkpoint;
                 }
+                lineStart = nextLineStart;
             }
         }
         return new SystemCollectorIngressStore(
@@ -442,6 +451,19 @@ internal sealed class SystemCollectorIngressStore
         using var writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true);
         writer.WriteLine(JsonSerializer.Serialize(entry, JsonOptions));
         writer.Flush();
+        stream.Flush(flushToDisk: true);
+    }
+
+    private static void RepairMalformedTail(string path, long validLength)
+    {
+        using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Write,
+            FileShare.Read,
+            4096,
+            FileOptions.WriteThrough);
+        stream.SetLength(validLength);
         stream.Flush(flushToDisk: true);
     }
 
