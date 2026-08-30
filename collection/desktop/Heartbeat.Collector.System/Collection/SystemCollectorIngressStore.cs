@@ -5,8 +5,16 @@ using Heartbeat.Core.DTOs.Input;
 
 namespace Heartbeat.Collector.System.Collection;
 
-internal sealed record PendingSystemSegmentIngress(Guid EntryId, ForegroundSegmentSnapshot Snapshot);
+internal sealed record PendingSystemSegmentIngress(
+    Guid EntryId,
+    IReadOnlyList<ForegroundSegmentSnapshot> Snapshots);
 internal sealed record PendingSystemInputIngress(Guid EntryId, InputEventItem Item);
+internal sealed record SystemSegmentIngressGap(
+    Guid GapId,
+    DateTimeOffset Start,
+    DateTimeOffset End,
+    string Reason);
+internal sealed record PendingSystemSegmentGapIngress(Guid EntryId, SystemSegmentIngressGap Gap);
 internal sealed record SystemInputIngressGap(
     Guid GapId,
     DateTimeOffset Start,
@@ -21,13 +29,17 @@ internal enum SystemInputIngressStageResult
 }
 
 /// <summary>
-/// Append-only durable first stage for observations produced by native System callbacks. Entries
-/// are compacted away only after the Collector Protocol outbox accepts the same Fact identity and
-/// revision. A crash between those commits replays an idempotent duplicate.
+/// Append-only durable first stage for System observations. A segment batch and its active
+/// checkpoint are one journal mutation; Fact ACK compaction never removes the checkpoint. Input
+/// capacity likewise stages either the Event or its Gap in one mutation.
 /// </summary>
 internal sealed class SystemCollectorIngressStore
 {
     private const string SegmentKind = "segment";
+    private const string SegmentBatchKind = "segment_batch";
+    private const string SegmentRecoveryKind = "segment_recovery";
+    private const string SegmentGapKind = "segment_gap";
+    private const string SegmentCheckpointKind = "segment_checkpoint";
     private const string InputEventKind = "input_event";
     private const string InputGapKind = "input_gap";
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -38,22 +50,28 @@ internal sealed class SystemCollectorIngressStore
     private readonly object _gate = new();
     private readonly string _path;
     private readonly int _inputCapacity;
-    private readonly List<PendingSystemSegmentIngress> _segments;
+    private readonly List<PendingSystemSegmentIngress> _segmentBatches;
+    private readonly List<PendingSystemSegmentGapIngress> _segmentGaps;
     private readonly List<PendingSystemInputIngress> _inputEvents;
     private readonly List<PendingSystemInputGapIngress> _inputGaps;
+    private ForegroundSegmentSnapshot? _activeSegmentCheckpoint;
 
     private SystemCollectorIngressStore(
         string path,
         int inputCapacity,
-        List<PendingSystemSegmentIngress> segments,
+        List<PendingSystemSegmentIngress> segmentBatches,
+        List<PendingSystemSegmentGapIngress> segmentGaps,
         List<PendingSystemInputIngress> inputEvents,
-        List<PendingSystemInputGapIngress> inputGaps)
+        List<PendingSystemInputGapIngress> inputGaps,
+        ForegroundSegmentSnapshot? activeSegmentCheckpoint)
     {
         _path = path;
         _inputCapacity = inputCapacity;
-        _segments = segments;
+        _segmentBatches = segmentBatches;
+        _segmentGaps = segmentGaps;
         _inputEvents = inputEvents;
         _inputGaps = inputGaps;
+        _activeSegmentCheckpoint = activeSegmentCheckpoint;
     }
 
     public static SystemCollectorIngressStore Open(string path, int inputCapacity)
@@ -62,9 +80,11 @@ internal sealed class SystemCollectorIngressStore
         if (inputCapacity <= 0)
             throw new ArgumentOutOfRangeException(nameof(inputCapacity));
         var fullPath = Path.GetFullPath(path);
-        var segments = new List<PendingSystemSegmentIngress>();
+        var segmentBatches = new List<PendingSystemSegmentIngress>();
+        var segmentGaps = new List<PendingSystemSegmentGapIngress>();
         var inputEvents = new List<PendingSystemInputIngress>();
         var inputGaps = new List<PendingSystemInputGapIngress>();
+        ForegroundSegmentSnapshot? activeSegmentCheckpoint = null;
         if (File.Exists(fullPath))
         {
             var lines = File.ReadAllLines(fullPath, Encoding.UTF8);
@@ -79,44 +99,140 @@ internal sealed class SystemCollectorIngressStore
                 }
                 catch (JsonException) when (index == lines.Length - 1)
                 {
-                    // A crash may leave only the final append incomplete. It was never confirmed
-                    // durable to its producer and is not part of the restartable prefix.
+                    // The malformed tail is repaired by the dedicated tail-recovery slice.
                     break;
                 }
                 if (entry is null || entry.EntryId == Guid.Empty)
                     throw new InvalidDataException("System Collector ingress entry is invalid.");
                 switch (entry.Kind)
                 {
-                    case SegmentKind when entry.Segment is not null && entry.InputEvent is null:
-                        segments.Add(new PendingSystemSegmentIngress(entry.EntryId, entry.Segment));
+                    case SegmentKind when entry.Segment is not null &&
+                                                entry.SegmentBatch is null &&
+                                                entry.InputEvent is null:
+                        segmentBatches.Add(new PendingSystemSegmentIngress(
+                            entry.EntryId,
+                            [entry.Segment]));
+                        break;
+                    case SegmentBatchKind when ValidSegmentBatch(entry.SegmentBatch):
+                        segmentBatches.Add(new PendingSystemSegmentIngress(
+                            entry.EntryId,
+                            entry.SegmentBatch!));
+                        break;
+                    case SegmentRecoveryKind when ValidSegmentBatch(entry.SegmentBatch) &&
+                                                    ValidSegmentGapOrNull(entry.SegmentGap):
+                        segmentBatches.Add(new PendingSystemSegmentIngress(
+                            entry.EntryId,
+                            entry.SegmentBatch!));
+                        if (entry.SegmentGap is not null)
+                            segmentGaps.Add(new PendingSystemSegmentGapIngress(
+                                entry.EntryId,
+                                entry.SegmentGap));
+                        break;
+                    case SegmentGapKind when ValidSegmentGap(entry.SegmentGap):
+                        segmentGaps.Add(new PendingSystemSegmentGapIngress(entry.EntryId, entry.SegmentGap!));
+                        break;
+                    case SegmentCheckpointKind when entry.MutatesCheckpoint:
                         break;
                     case InputEventKind when entry.InputEvent is not null && entry.Segment is null:
                         inputEvents.Add(new PendingSystemInputIngress(entry.EntryId, entry.InputEvent));
                         break;
-                    case InputGapKind when entry.InputGap is not null &&
+                    case InputGapKind when ValidInputGap(entry.InputGap) &&
                                                 entry.Segment is null &&
-                                                entry.InputEvent is null &&
-                                                entry.InputGap.GapId != Guid.Empty &&
-                                                entry.InputGap.End > entry.InputGap.Start &&
-                                                entry.InputGap.EstimatedFactsLost > 0:
-                        inputGaps.Add(new PendingSystemInputGapIngress(entry.EntryId, entry.InputGap));
+                                                entry.InputEvent is null:
+                        inputGaps.Add(new PendingSystemInputGapIngress(entry.EntryId, entry.InputGap!));
                         break;
                     default:
                         throw new InvalidDataException("System Collector ingress entry kind is invalid.");
                 }
+                if (entry.MutatesCheckpoint)
+                {
+                    if (entry.Checkpoint is { IsFinal: true })
+                        throw new InvalidDataException("System Collector active checkpoint cannot be final.");
+                    activeSegmentCheckpoint = entry.Checkpoint;
+                }
             }
         }
-        return new SystemCollectorIngressStore(fullPath, inputCapacity, segments, inputEvents, inputGaps);
+        return new SystemCollectorIngressStore(
+            fullPath,
+            inputCapacity,
+            segmentBatches,
+            segmentGaps,
+            inputEvents,
+            inputGaps,
+            activeSegmentCheckpoint);
     }
 
-    public void Enqueue(ForegroundSegmentSnapshot snapshot)
+    public void Enqueue(ForegroundSegmentSnapshot snapshot) => StageSegmentBatch([snapshot]);
+
+    public void StageSegmentBatch(IReadOnlyList<ForegroundSegmentSnapshot> snapshots)
     {
-        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(snapshots);
+        if (snapshots.Count == 0)
+            return;
+        var copy = snapshots.ToArray();
         lock (_gate)
         {
-            var pending = new PendingSystemSegmentIngress(Guid.CreateVersion7(), snapshot);
-            Append(new StoredIngressEntry(pending.EntryId, SegmentKind, snapshot, null, null));
-            _segments.Add(pending);
+            var pending = new PendingSystemSegmentIngress(Guid.CreateVersion7(), copy);
+            var checkpoint = copy[^1].IsFinal ? null : copy[^1];
+            var mutatesCheckpoint = checkpoint is not null ||
+                _activeSegmentCheckpoint?.FactId == copy[^1].FactId;
+            Append(new StoredIngressEntry(
+                pending.EntryId,
+                SegmentBatchKind,
+                SegmentBatch: copy,
+                MutatesCheckpoint: mutatesCheckpoint,
+                Checkpoint: checkpoint));
+            _segmentBatches.Add(pending);
+            if (mutatesCheckpoint)
+                _activeSegmentCheckpoint = checkpoint;
+        }
+    }
+
+    public void ClearActiveCheckpoint(Guid factId, long revision)
+    {
+        lock (_gate)
+        {
+            if (_activeSegmentCheckpoint is not { } active ||
+                active.FactId != factId ||
+                active.Revision != revision)
+                return;
+            Append(new StoredIngressEntry(
+                Guid.CreateVersion7(),
+                SegmentCheckpointKind,
+                MutatesCheckpoint: true));
+            _activeSegmentCheckpoint = null;
+        }
+    }
+
+    public void RecoverInterruptedSegment(DateTimeOffset recoveredAt)
+    {
+        lock (_gate)
+        {
+            if (_activeSegmentCheckpoint is not { } active)
+                return;
+            var final = active with
+            {
+                Revision = checked(active.Revision + 1),
+                IsFinal = true
+            };
+            var gap = recoveredAt > active.End
+                ? new SystemSegmentIngressGap(
+                    Guid.CreateVersion7(),
+                    active.End,
+                    recoveredAt,
+                    "process_restart")
+                : null;
+            var entryId = Guid.CreateVersion7();
+            Append(new StoredIngressEntry(
+                entryId,
+                SegmentRecoveryKind,
+                SegmentBatch: [final],
+                SegmentGap: gap,
+                MutatesCheckpoint: true));
+            _segmentBatches.Add(new PendingSystemSegmentIngress(entryId, [final]));
+            if (gap is not null)
+                _segmentGaps.Add(new PendingSystemSegmentGapIngress(entryId, gap));
+            _activeSegmentCheckpoint = null;
         }
     }
 
@@ -144,14 +260,15 @@ internal sealed class SystemCollectorIngressStore
                 Append(new StoredIngressEntry(
                     pendingGap.EntryId,
                     InputGapKind,
-                    null,
-                    null,
-                    gap));
+                    InputGap: gap));
                 _inputGaps.Add(pendingGap);
                 return SystemInputIngressStageResult.GapStaged;
             }
             var pending = new PendingSystemInputIngress(Guid.CreateVersion7(), copy);
-            Append(new StoredIngressEntry(pending.EntryId, InputEventKind, null, copy, null));
+            Append(new StoredIngressEntry(
+                pending.EntryId,
+                InputEventKind,
+                InputEvent: copy));
             _inputEvents.Add(pending);
             return SystemInputIngressStageResult.EventStaged;
         }
@@ -160,10 +277,16 @@ internal sealed class SystemCollectorIngressStore
     public bool TryEnqueue(InputEventItem item) =>
         StageInputEvent(item) == SystemInputIngressStageResult.EventStaged;
 
-    public IReadOnlyList<PendingSystemSegmentIngress> PeekSegments(int limit)
+    public IReadOnlyList<PendingSystemSegmentIngress> PeekSegmentBatches(int limit)
     {
         lock (_gate)
-            return _segments.Take(limit).ToArray();
+            return _segmentBatches.Take(limit).ToArray();
+    }
+
+    public IReadOnlyList<PendingSystemSegmentGapIngress> PeekSegmentGaps(int limit)
+    {
+        lock (_gate)
+            return _segmentGaps.Take(limit).ToArray();
     }
 
     public IReadOnlyList<PendingSystemInputIngress> PeekInputEvents(int limit)
@@ -178,12 +301,24 @@ internal sealed class SystemCollectorIngressStore
             return _inputGaps.Take(limit).ToArray();
     }
 
+    public ForegroundSegmentSnapshot? ActiveSegmentCheckpoint
+    {
+        get
+        {
+            lock (_gate)
+                return _activeSegmentCheckpoint;
+        }
+    }
+
     public bool HasPending
     {
         get
         {
             lock (_gate)
-                return _segments.Count != 0 || _inputEvents.Count != 0 || _inputGaps.Count != 0;
+                return _segmentBatches.Count != 0 ||
+                    _segmentGaps.Count != 0 ||
+                    _inputEvents.Count != 0 ||
+                    _inputGaps.Count != 0;
         }
     }
 
@@ -201,19 +336,40 @@ internal sealed class SystemCollectorIngressStore
         get
         {
             lock (_gate)
-                return _segments.Select(item => item.Snapshot.FactId)
+                return _segmentBatches.SelectMany(item => item.Snapshots)
+                    .Select(item => item.FactId)
                     .Concat(_inputEvents.Select(item => item.Item.Id))
                     .ToHashSet();
         }
     }
 
-    public void AcknowledgeSegments(IReadOnlyList<PendingSystemSegmentIngress> entries)
+    public void AcknowledgeSegmentBatches(IReadOnlyList<PendingSystemSegmentIngress> entries)
     {
         lock (_gate)
         {
-            EnsurePrefix(_segments.Select(item => item.EntryId), entries.Select(item => item.EntryId));
-            Rewrite(_segments.Skip(entries.Count), _inputEvents, _inputGaps);
-            _segments.RemoveRange(0, entries.Count);
+            EnsurePrefix(_segmentBatches.Select(item => item.EntryId), entries.Select(item => item.EntryId));
+            Rewrite(
+                _segmentBatches.Skip(entries.Count),
+                _segmentGaps,
+                _inputEvents,
+                _inputGaps,
+                _activeSegmentCheckpoint);
+            _segmentBatches.RemoveRange(0, entries.Count);
+        }
+    }
+
+    public void AcknowledgeSegmentGaps(IReadOnlyList<PendingSystemSegmentGapIngress> entries)
+    {
+        lock (_gate)
+        {
+            EnsurePrefix(_segmentGaps.Select(item => item.EntryId), entries.Select(item => item.EntryId));
+            Rewrite(
+                _segmentBatches,
+                _segmentGaps.Skip(entries.Count),
+                _inputEvents,
+                _inputGaps,
+                _activeSegmentCheckpoint);
+            _segmentGaps.RemoveRange(0, entries.Count);
         }
     }
 
@@ -222,7 +378,12 @@ internal sealed class SystemCollectorIngressStore
         lock (_gate)
         {
             EnsurePrefix(_inputEvents.Select(item => item.EntryId), entries.Select(item => item.EntryId));
-            Rewrite(_segments, _inputEvents.Skip(entries.Count), _inputGaps);
+            Rewrite(
+                _segmentBatches,
+                _segmentGaps,
+                _inputEvents.Skip(entries.Count),
+                _inputGaps,
+                _activeSegmentCheckpoint);
             _inputEvents.RemoveRange(0, entries.Count);
         }
     }
@@ -232,10 +393,33 @@ internal sealed class SystemCollectorIngressStore
         lock (_gate)
         {
             EnsurePrefix(_inputGaps.Select(item => item.EntryId), entries.Select(item => item.EntryId));
-            Rewrite(_segments, _inputEvents, _inputGaps.Skip(entries.Count));
+            Rewrite(
+                _segmentBatches,
+                _segmentGaps,
+                _inputEvents,
+                _inputGaps.Skip(entries.Count),
+                _activeSegmentCheckpoint);
             _inputGaps.RemoveRange(0, entries.Count);
         }
     }
+
+    private static bool ValidSegmentBatch(IReadOnlyList<ForegroundSegmentSnapshot>? batch) =>
+        batch is { Count: > 0 } && batch.All(item => item.FactId != Guid.Empty && item.Revision > 0);
+
+    private static bool ValidSegmentGap(SystemSegmentIngressGap? gap) =>
+        gap is not null &&
+        gap.GapId != Guid.Empty &&
+        gap.End > gap.Start &&
+        !string.IsNullOrWhiteSpace(gap.Reason);
+
+    private static bool ValidSegmentGapOrNull(SystemSegmentIngressGap? gap) =>
+        gap is null || ValidSegmentGap(gap);
+
+    private static bool ValidInputGap(SystemInputIngressGap? gap) =>
+        gap is not null &&
+        gap.GapId != Guid.Empty &&
+        gap.End > gap.Start &&
+        gap.EstimatedFactsLost > 0;
 
     private static void EnsurePrefix(IEnumerable<Guid> pending, IEnumerable<Guid> acknowledged)
     {
@@ -262,9 +446,11 @@ internal sealed class SystemCollectorIngressStore
     }
 
     private void Rewrite(
-        IEnumerable<PendingSystemSegmentIngress> segments,
+        IEnumerable<PendingSystemSegmentIngress> segmentBatches,
+        IEnumerable<PendingSystemSegmentGapIngress> segmentGaps,
         IEnumerable<PendingSystemInputIngress> inputEvents,
-        IEnumerable<PendingSystemInputGapIngress> inputGaps)
+        IEnumerable<PendingSystemInputGapIngress> inputGaps,
+        ForegroundSegmentSnapshot? activeSegmentCheckpoint)
     {
         var directory = Path.GetDirectoryName(_path)
             ?? throw new InvalidOperationException("System Collector ingress path has no directory.");
@@ -281,13 +467,32 @@ internal sealed class SystemCollectorIngressStore
                        FileOptions.WriteThrough))
             using (var writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true))
             {
-                foreach (var entry in segments.Select(item =>
-                             new StoredIngressEntry(item.EntryId, SegmentKind, item.Snapshot, null, null))
-                         .Concat(inputEvents.Select(item =>
-                             new StoredIngressEntry(item.EntryId, InputEventKind, null, item.Item, null)))
-                         .Concat(inputGaps.Select(item =>
-                             new StoredIngressEntry(item.EntryId, InputGapKind, null, null, item.Gap))))
+                var entries = segmentBatches.Select(item => new StoredIngressEntry(
+                        item.EntryId,
+                        SegmentBatchKind,
+                        SegmentBatch: item.Snapshots))
+                    .Concat(segmentGaps.Select(item => new StoredIngressEntry(
+                        item.EntryId,
+                        SegmentGapKind,
+                        SegmentGap: item.Gap)))
+                    .Concat(inputEvents.Select(item => new StoredIngressEntry(
+                        item.EntryId,
+                        InputEventKind,
+                        InputEvent: item.Item)))
+                    .Concat(inputGaps.Select(item => new StoredIngressEntry(
+                        item.EntryId,
+                        InputGapKind,
+                        InputGap: item.Gap)));
+                foreach (var entry in entries)
                     writer.WriteLine(JsonSerializer.Serialize(entry, JsonOptions));
+                if (activeSegmentCheckpoint is not null)
+                {
+                    writer.WriteLine(JsonSerializer.Serialize(new StoredIngressEntry(
+                        Guid.CreateVersion7(),
+                        SegmentCheckpointKind,
+                        MutatesCheckpoint: true,
+                        Checkpoint: activeSegmentCheckpoint), JsonOptions));
+                }
                 writer.Flush();
                 stream.Flush(flushToDisk: true);
             }
@@ -303,7 +508,11 @@ internal sealed class SystemCollectorIngressStore
     private sealed record StoredIngressEntry(
         Guid EntryId,
         string Kind,
-        ForegroundSegmentSnapshot? Segment,
-        InputEventItem? InputEvent,
-        SystemInputIngressGap? InputGap);
+        ForegroundSegmentSnapshot? Segment = null,
+        InputEventItem? InputEvent = null,
+        SystemInputIngressGap? InputGap = null,
+        IReadOnlyList<ForegroundSegmentSnapshot>? SegmentBatch = null,
+        SystemSegmentIngressGap? SegmentGap = null,
+        bool MutatesCheckpoint = false,
+        ForegroundSegmentSnapshot? Checkpoint = null);
 }

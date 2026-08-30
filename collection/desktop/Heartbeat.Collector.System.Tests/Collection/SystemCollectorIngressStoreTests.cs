@@ -32,7 +32,7 @@ public sealed class SystemCollectorIngressStoreTests : IDisposable
         var restarted = SystemCollectorIngressStore.Open(path, 2);
 
         Assert.True(restarted.PendingFactIds.SetEquals([segmentId, eventId]));
-        restarted.AcknowledgeSegments(restarted.PeekSegments(10));
+        restarted.AcknowledgeSegmentBatches(restarted.PeekSegmentBatches(10));
         Assert.True(SystemCollectorIngressStore.Open(path, 2).PendingFactIds.SetEquals([eventId]));
     }
 
@@ -76,6 +76,50 @@ public sealed class SystemCollectorIngressStoreTests : IDisposable
         Assert.Equal(7, gap.GapId.Version);
     }
 
+    [Fact]
+    public void RotationCheckpointSurvivesFactAckAndRestartAsFinalPointPlusGap()
+    {
+        var path = Path.Combine(_root, "ingress.ndjson");
+        var boundary = new DateTimeOffset(2026, 8, 30, 10, 0, 0, TimeSpan.Zero);
+        var recoveredAt = boundary.AddMinutes(2);
+        var finalized = NewSegment(
+            Guid.CreateVersion7(),
+            DateTimeOffset.UnixEpoch,
+            boundary,
+            revision: 1,
+            isFinal: true);
+        var continuation = NewSegment(
+            Guid.CreateVersion7(),
+            boundary,
+            boundary,
+            revision: 1,
+            isFinal: false);
+        var store = SystemCollectorIngressStore.Open(path, 2);
+
+        store.StageSegmentBatch([finalized, continuation]);
+        var staged = Assert.Single(store.PeekSegmentBatches(10));
+        store.AcknowledgeSegmentBatches([staged]);
+
+        var restarted = SystemCollectorIngressStore.Open(path, 2);
+        Assert.Empty(restarted.PendingFactIds);
+        Assert.Equal(continuation, restarted.ActiveSegmentCheckpoint);
+        restarted.RecoverInterruptedSegment(recoveredAt);
+
+        var recovered = SystemCollectorIngressStore.Open(path, 2);
+        var replay = Assert.Single(recovered.PeekSegmentBatches(10)).Snapshots;
+        var recoveredFinal = Assert.Single(replay);
+        Assert.Equal(continuation.FactId, recoveredFinal.FactId);
+        Assert.Equal(2, recoveredFinal.Revision);
+        Assert.Equal(boundary, recoveredFinal.Start);
+        Assert.Equal(boundary, recoveredFinal.End);
+        Assert.True(recoveredFinal.IsFinal);
+        var gap = Assert.Single(recovered.PeekSegmentGaps(10)).Gap;
+        Assert.Equal(boundary, gap.Start);
+        Assert.Equal(recoveredAt, gap.End);
+        Assert.Equal("process_restart", gap.Reason);
+        Assert.Null(recovered.ActiveSegmentCheckpoint);
+    }
+
     private static InputEventItem NewInput(Guid id, DateTimeOffset? timestamp = null) => new()
     {
         Id = id,
@@ -84,6 +128,22 @@ public sealed class SystemCollectorIngressStoreTests : IDisposable
         Code = 1,
         Timestamp = timestamp ?? DateTimeOffset.UnixEpoch
     };
+
+    private static ForegroundSegmentSnapshot NewSegment(
+        Guid id,
+        DateTimeOffset start,
+        DateTimeOffset end,
+        long revision,
+        bool isFinal) => new(
+            id,
+            revision,
+            "system|win:code|main.cs",
+            "win:code",
+            "Code",
+            "main.cs",
+            start,
+            end,
+            isFinal);
 
     public void Dispose()
     {

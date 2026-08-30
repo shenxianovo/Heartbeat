@@ -43,6 +43,7 @@ public sealed class AppMonitorService(
     private long _awayRevision;
     private DateTimeOffset _awayStart;
     private bool _awayIsRotationContinuation;
+    private long _stateVersion;
     private volatile string[] _awayProcessNames = [];
 
     private CancellationTokenSource? _snapshotCts;
@@ -58,13 +59,15 @@ public sealed class AppMonitorService(
 
         var initial = observations.CurrentActivity;
         var initialApp = Normalize(initial.AppIdentityKey);
+        var startedAt = clock.UtcNow;
+        publisher.RecoverInterruptedSegment(startedAt);
         lock (_lock)
             _isStopping = false;
         if (initialApp != null)
         {
             lock (_lock)
             {
-                StartSegment(initialApp, initial.AppDisplayName, initial.Title, clock.UtcNow);
+                StartSegment(initialApp, initial.AppDisplayName, initial.Title, startedAt);
                 Log.Information("初始前台应用: {App}", initialApp);
             }
         }
@@ -125,35 +128,87 @@ public sealed class AppMonitorService(
     private void PushCurrentSnapshot(bool isFinal)
     {
         IReadOnlyList<ForegroundSegmentSnapshot> snapshots;
+        bool plannedAway;
+        long plannedVersion;
+        Guid id;
+        long revision;
+        DateTimeOffset start;
+        bool continuation;
         lock (_lock)
         {
             if (_isStopping && !isFinal)
                 return;
             var now = clock.UtcNow;
-            snapshots = _isAway
+            plannedAway = _isAway;
+            plannedVersion = _stateVersion;
+            id = plannedAway ? _awayId : _currentId;
+            revision = plannedAway ? _awayRevision : _currentRevision;
+            start = plannedAway ? _awayStart : _currentStart;
+            continuation = plannedAway
+                ? _awayIsRotationContinuation
+                : _currentIsRotationContinuation;
+            snapshots = plannedAway
                 ? BuildSegmentsThrough(
-                    ref _awayId,
-                    ref _awayRevision,
+                    ref id,
+                    ref revision,
                     AppIdentityKeys.Away,
                     "离开",
                     null,
-                    ref _awayStart,
-                    ref _awayIsRotationContinuation,
+                    ref start,
+                    ref continuation,
                     now,
                     isFinal)
                 : BuildSegmentsThrough(
-                    ref _currentId,
-                    ref _currentRevision,
+                    ref id,
+                    ref revision,
                     _currentApp,
                     _currentAppDisplayName,
                     _segmentTitle,
-                    ref _currentStart,
-                    ref _currentIsRotationContinuation,
+                    ref start,
+                    ref continuation,
                     now,
                     isFinal);
         }
-        foreach (var snapshot in snapshots)
-            publisher.Publish(snapshot);
+
+        publisher.StageDurableBatch(snapshots);
+
+        ForegroundSegmentSnapshot? staleCheckpoint = null;
+        lock (_lock)
+        {
+            var stateMatchesPlan = plannedAway == _isAway &&
+                (plannedAway
+                    ? _awayId == id &&
+                      _awayRevision == revision &&
+                      _awayStart == start &&
+                      _awayIsRotationContinuation == continuation
+                    : _currentId == id &&
+                      _currentRevision == revision &&
+                      _currentStart == start &&
+                      _currentIsRotationContinuation == continuation);
+            if (plannedVersion == _stateVersion && plannedAway == _isAway)
+            {
+                if (plannedAway)
+                {
+                    _awayId = id;
+                    _awayRevision = revision;
+                    _awayStart = start;
+                    _awayIsRotationContinuation = continuation;
+                }
+                else
+                {
+                _currentId = id;
+                _currentRevision = revision;
+                _currentStart = start;
+                _currentIsRotationContinuation = continuation;
+                }
+                if (snapshots.Count != 0)
+                    _stateVersion++;
+            }
+            else if (!stateMatchesPlan)
+                staleCheckpoint = snapshots.LastOrDefault(snapshot => !snapshot.IsFinal);
+        }
+        if (staleCheckpoint is not null)
+            publisher.ClearActiveCheckpoint(staleCheckpoint.FactId, staleCheckpoint.Revision);
     }
 
     private void OnObservation(DesktopObservation observation)
@@ -219,8 +274,7 @@ public sealed class AppMonitorService(
                 Log.Debug("桌面转场 {Kind}: {App} / {Title}", observation.Kind, newApp, newTitle);
         }
 
-        foreach (var snapshot in closed)
-            publisher.Publish(snapshot);
+        publisher.PublishBatch(closed);
         if (reportActivity)
             activitySink.Report(ToCurrentActivity(newApp, newAppDisplayName));
     }
@@ -244,11 +298,11 @@ public sealed class AppMonitorService(
             _currentTitle = null;
             _segmentTitle = null;
             _currentStart = default;
+            _stateVersion++;
             Log.Information("进入 away，封口当前应用段");
         }
 
-        foreach (var snapshot in closed)
-            publisher.Publish(snapshot);
+        publisher.PublishBatch(closed);
         activitySink.Report(new CurrentActivity(AppIdentityKeys.Away, "离开"));
     }
 
@@ -276,8 +330,7 @@ public sealed class AppMonitorService(
             Log.Information("退出 away，恢复前台: {App}", resumedApp ?? "(无)");
         }
 
-        foreach (var snapshot in awayFinal)
-            publisher.Publish(snapshot);
+        publisher.PublishBatch(awayFinal);
         activitySink.Report(ToCurrentActivity(resumedApp, resumed.AppDisplayName));
     }
 
@@ -291,6 +344,7 @@ public sealed class AppMonitorService(
         _segmentTitle = title;
         _currentStart = now;
         _currentIsRotationContinuation = false;
+        _stateVersion++;
     }
 
     private IReadOnlyList<ForegroundSegmentSnapshot> CloseCurrentSegment(DateTimeOffset now)
@@ -353,7 +407,8 @@ public sealed class AppMonitorService(
             start,
             end,
             isFinal,
-            allowPositiveSubsecond: isRotationContinuation);
+            allowPositiveSubsecond: isRotationContinuation,
+            allowZeroDuration: isRotationContinuation && end == start);
         if (current is not null)
             snapshots.Add(current);
         return snapshots;
@@ -368,11 +423,13 @@ public sealed class AppMonitorService(
         DateTimeOffset start,
         DateTimeOffset end,
         bool isFinal,
-        bool allowPositiveSubsecond = false)
+        bool allowPositiveSubsecond = false,
+        bool allowZeroDuration = false)
     {
         if (appIdentityKey == null || start == default) return null;
         var duration = end - start;
-        if (duration <= TimeSpan.Zero
+        if (duration < TimeSpan.Zero
+            || (duration == TimeSpan.Zero && !allowZeroDuration)
             || (duration.TotalSeconds < 1 && !allowPositiveSubsecond))
             return null;
 

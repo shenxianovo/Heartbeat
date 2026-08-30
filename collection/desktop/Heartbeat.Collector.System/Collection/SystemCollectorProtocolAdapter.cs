@@ -26,7 +26,8 @@ public sealed class SystemCollectorProtocolAdapter :
     private const int InputEventPumpBatchSize = 500;
     private const int SegmentPumpBatchSize = 500;
 
-    private readonly Channel<ForegroundSegmentSnapshot> _segments = Channel.CreateUnbounded<ForegroundSegmentSnapshot>(
+    private readonly Channel<IReadOnlyList<ForegroundSegmentSnapshot>> _segments =
+        Channel.CreateUnbounded<IReadOnlyList<ForegroundSegmentSnapshot>>(
         new UnboundedChannelOptions
         {
             // Before Activation attachment, composition-time observations can only queue. Once
@@ -137,9 +138,43 @@ public sealed class SystemCollectorProtocolAdapter :
     public void Publish(ForegroundSegmentSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        if (!_segments.Writer.TryWrite(snapshot))
+        PublishBatch([snapshot]);
+    }
+
+    public void PublishBatch(IReadOnlyList<ForegroundSegmentSnapshot> snapshots)
+    {
+        ArgumentNullException.ThrowIfNull(snapshots);
+        if (snapshots.Count == 0)
+            return;
+        if (!_segments.Writer.TryWrite(snapshots.ToArray()))
             throw new InvalidOperationException("The system Collector segment ingress is unavailable.");
         SignalPump();
+    }
+
+    public void StageDurableBatch(IReadOnlyList<ForegroundSegmentSnapshot> snapshots)
+    {
+        ArgumentNullException.ThrowIfNull(snapshots);
+        if (snapshots.Count == 0)
+            return;
+        var ingress = _ingressStore
+            ?? throw new InvalidOperationException("The system Collector durable ingress is unavailable.");
+        ingress.StageSegmentBatch(snapshots);
+        SignalPump();
+    }
+
+    public void RecoverInterruptedSegment(DateTimeOffset recoveredAt)
+    {
+        var ingress = _ingressStore
+            ?? throw new InvalidOperationException("The system Collector durable ingress is unavailable.");
+        ingress.RecoverInterruptedSegment(recoveredAt);
+        SignalPump();
+    }
+
+    public void ClearActiveCheckpoint(Guid factId, long revision)
+    {
+        var ingress = _ingressStore
+            ?? throw new InvalidOperationException("The system Collector durable ingress is unavailable.");
+        ingress.ClearActiveCheckpoint(factId, revision);
     }
 
     public void Publish(InputEventItem item)
@@ -197,13 +232,24 @@ public sealed class SystemCollectorProtocolAdapter :
         var ingress = _ingressStore
             ?? throw new InvalidOperationException("The system Collector durable ingress is unavailable.");
 
-        var segments = ingress.PeekSegments(segmentLimit);
-        if (segments.Count != 0)
+        var segmentBatches = ingress.PeekSegmentBatches(segmentLimit);
+        if (segmentBatches.Count != 0)
         {
             await activation.PublishBatchAsync(
-                segments.Select(item => ToFact(item.Snapshot)).ToArray(),
+                segmentBatches.SelectMany(item => item.Snapshots).Select(ToFact).ToArray(),
                 cancellationToken).ConfigureAwait(false);
-            ingress.AcknowledgeSegments(segments);
+            ingress.AcknowledgeSegmentBatches(segmentBatches);
+        }
+
+        if (ingress.PeekSegmentGaps(1).FirstOrDefault() is { } segmentGap)
+        {
+            await activation.ReportGapAsync(new CollectorStreamGap(
+                segmentGap.Gap.GapId,
+                SystemInProcessCollector.ForegroundBindingId,
+                segmentGap.Gap.Start,
+                segmentGap.Gap.End,
+                segmentGap.Gap.Reason), cancellationToken).ConfigureAwait(false);
+            ingress.AcknowledgeSegmentGaps([segmentGap]);
         }
 
         if (ingress.PeekInputGaps(1).FirstOrDefault() is { } dropped)
@@ -236,8 +282,8 @@ public sealed class SystemCollectorProtocolAdapter :
         var ingress = _ingressStore;
         if (ingress is null)
             return;
-        while (_segments.Reader.TryRead(out var snapshot))
-            ingress.Enqueue(snapshot);
+        while (_segments.Reader.TryRead(out var snapshots))
+            ingress.StageSegmentBatch(snapshots);
 
         while (_inputEvents.Reader.TryRead(out var item))
         {

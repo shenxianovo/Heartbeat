@@ -19,7 +19,7 @@ instant 以新 UUIDv7/revision 1 开始下一段。Browser 已有 23h 先例，�
   不复用，新 FactId 为 UUIDv7、revision 从 1 开始。
 - [x] System active、System away、VRChat presence 都在无 observation change 时由时钟触发 rotation；
   普通 app/title/world change 和 stop 语义保持正确。
-- [ ] crash/restart 只从 durable current snapshot 恢复一次；不会同时继续旧 fact 又创建重复新 fact。
+- [x] crash/restart 只从 durable current snapshot 恢复一次；不会同时继续旧 fact 又创建重复新 fact。
 - [x] fake-clock tests 覆盖阈值前、精确边界、跨多边界、边界同时发生状态变化、stop 与 restart。
 - [x] 真实 protocol → projection → HTTP 测试证明长于 24h 的模拟会话以多个合法段摄入，合计 union
   duration 与原会话一致。
@@ -88,5 +88,21 @@ checkpoint v1/v2 兼容读取同时缺少移除门槛、验证证据与责任边
 
 ## Reopened acceptance
 
-- [ ] System rollover boundary 原子持久化 continuation identity/start，并以 crash/restart 测试证明恢复。
+- [x] System rollover boundary 原子持久化 continuation identity/start，并以 crash/restart 测试证明恢复。
 - [ ] VRChat checkpoint v1/v2 兼容分支记录服务对象、移除门槛、验证方式与 owner 责任边界。
+
+### 2026-08-30 — System rollover crash recovery 修复
+
+先以 exact-boundary 失败测试证明 rotation 只发布旧 final、没有 continuation；再以 journal reopen
+编译失败测试固定 ACK 后 active checkpoint 仍必须存在。System snapshot 现在把旧 final、零长度新
+continuation 与 active checkpoint 作为同一 NDJSON mutation 持久化，之后才提交 monitor 内存状态；
+并发转场导致计划过期时只条件式清除匹配 checkpoint，不会误清新 Fact。Fact ACK 只 compact 待交付
+batch，checkpoint 保留。异常重启以相同 FactId、更高 revision 封成零长度 final，并对
+`[last durable End, recoveredAt)` 原子写稳定 `process_restart` Stream Gap，再从 recoveredAt 开始新的
+当前观察，因而不把停机时间伪装成 activity。
+
+快照持久化期间不持有 monitor 状态锁，平台 observation callback 不会因后台 fsync 的锁竞争被阻塞；
+普通 callback 仍只入内存 batch，由 pump 后台原子 stage。验证：System 56/56；active/away boundary、
+journal crash/reopen、真实 timer 与 transition race 五测试重复 10 次 50/50；真实 25h
+protocol→projection→HTTP 1/1；`git diff --check` 通过。VRChat v1/v2 兼容退出台账仍待 P2，故 issue
+保持 `needs-triage`。

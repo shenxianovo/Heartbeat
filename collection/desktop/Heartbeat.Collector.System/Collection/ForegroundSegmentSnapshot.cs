@@ -18,4 +18,21 @@ public sealed record ForegroundSegmentSnapshot(
 public interface ISystemSegmentPublisher
 {
     void Publish(ForegroundSegmentSnapshot snapshot);
+
+    void PublishBatch(IReadOnlyList<ForegroundSegmentSnapshot> snapshots)
+    {
+        foreach (var snapshot in snapshots)
+            Publish(snapshot);
+    }
+
+    void StageDurableBatch(IReadOnlyList<ForegroundSegmentSnapshot> snapshots) =>
+        PublishBatch(snapshots);
+
+    void RecoverInterruptedSegment(DateTimeOffset recoveredAt)
+    {
+    }
+
+    void ClearActiveCheckpoint(Guid factId, long revision)
+    {
+    }
 }

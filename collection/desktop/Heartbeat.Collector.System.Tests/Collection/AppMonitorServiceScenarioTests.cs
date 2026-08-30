@@ -361,19 +361,27 @@ public class AppMonitorServiceScenarioTests
         var rotateAfter = SegmentValidationPolicy.MaxDuration - TimeSpan.FromHours(1);
         x.Clock.Advance(rotateAfter);
 
-        var finalized = Assert.Single(Flush(x.Service, x.Segments));
+        var boundary = Flush(x.Service, x.Segments);
+        Assert.Equal(2, boundary.Count);
+        var finalized = boundary[0];
+        var continuation = boundary[1];
 
         Assert.True(finalized.IsFinal);
         Assert.Equal(rotateAfter, finalized.End - finalized.Start);
         Assert.Equal(1, finalized.Revision);
         Assert.Equal(7, finalized.FactId.Version);
+        Assert.False(continuation.IsFinal);
+        Assert.Equal(finalized.End, continuation.Start);
+        Assert.Equal(continuation.Start, continuation.End);
+        Assert.NotEqual(finalized.FactId, continuation.FactId);
+        Assert.Equal(1, continuation.Revision);
 
         x.Clock.Advance(TimeSpan.FromSeconds(30));
         var continued = Assert.Single(Flush(x.Service, x.Segments));
         Assert.False(continued.IsFinal);
-        Assert.NotEqual(finalized.FactId, continued.FactId);
+        Assert.Equal(continuation.FactId, continued.FactId);
         Assert.Equal(finalized.End, continued.Start);
-        Assert.Equal(1, continued.Revision);
+        Assert.Equal(2, continued.Revision);
         Assert.Equal("win:code", continued.AppIdentityKey);
         Assert.Equal("main.cs", continued.Title);
     }
@@ -400,7 +408,10 @@ public class AppMonitorServiceScenarioTests
         x.Segments.Drain();
         x.Clock.Advance(SegmentRotationPolicy.RotateAfter);
 
-        var finalized = Assert.Single(Flush(x.Service, x.Segments));
+        var boundary = Flush(x.Service, x.Segments);
+        Assert.Equal(2, boundary.Count);
+        var finalized = boundary[0];
+        var continuationAtBoundary = boundary[1];
         x.Clock.Advance(TimeSpan.FromSeconds(30));
         var continued = Assert.Single(Flush(x.Service, x.Segments));
 
@@ -408,9 +419,9 @@ public class AppMonitorServiceScenarioTests
         Assert.Equal(AppIdentityKeys.Away, finalized.AppIdentityKey);
         Assert.False(continued.IsFinal);
         Assert.Equal(AppIdentityKeys.Away, continued.AppIdentityKey);
-        Assert.NotEqual(finalized.FactId, continued.FactId);
+        Assert.Equal(continuationAtBoundary.FactId, continued.FactId);
         Assert.Equal(finalized.End, continued.Start);
-        Assert.Equal(1, continued.Revision);
+        Assert.Equal(2, continued.Revision);
     }
 
     [Fact]
@@ -519,8 +530,12 @@ public class AppMonitorServiceScenarioTests
 
         clock.Advance(SegmentRotationPolicy.RotateAfter);
         await WaitUntilAsync(() => segments.Items.Count != 0);
-        var rotated = Assert.Single(segments.Drain());
-        Assert.True(rotated.IsFinal);
+        var rotated = segments.Drain();
+        Assert.Equal(2, rotated.Count);
+        Assert.True(rotated[0].IsFinal);
+        Assert.False(rotated[1].IsFinal);
+        Assert.Equal(rotated[0].End, rotated[1].Start);
+        Assert.Equal(rotated[1].Start, rotated[1].End);
 
         clock.Advance(TimeSpan.FromSeconds(30));
         await WaitUntilAsync(() => segments.Items.Count != 0);
