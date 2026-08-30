@@ -12,12 +12,6 @@ public interface ISystemInputEventPublisher
     void Publish(InputEventItem item);
 }
 
-public sealed class InputEventIngressCapacityExceededException(int capacity) : Exception(
-    $"System InputEvent ingress is applying backpressure at its capacity of {capacity} events.")
-{
-    public int Capacity { get; } = capacity;
-}
-
 /// <summary>
 /// Maps system observations to domain-neutral Collector Facts. This adapter owns only the local
 /// durable ingress handoff; Collector Protocol owns the outbox, remote ACK/retry, Gap and drain.
@@ -41,10 +35,15 @@ public sealed class SystemCollectorProtocolAdapter :
             SingleWriter = false,
             AllowSynchronousContinuations = false
         });
-    private readonly Channel<InputEventItem> _inputEvents;
+    private readonly Channel<InputEventItem> _inputEvents = Channel.CreateUnbounded<InputEventItem>(
+        new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false,
+            AllowSynchronousContinuations = false
+        });
     private readonly SemaphoreSlim _pumpSignal = new(0, 1);
     private readonly UploadStatusRegistry? _statusRegistry;
-    private SystemInputIngressGapStore? _ingressGapStore;
     private SystemCollectorIngressStore? _ingressStore;
     private readonly int _inputEventIngressCapacity;
     private CollectorActivation? _activation;
@@ -53,29 +52,12 @@ public sealed class SystemCollectorProtocolAdapter :
 
     public SystemCollectorProtocolAdapter(
         UploadStatusRegistry? statusRegistry = null,
-        SystemCollectorBindingOptions? options = null,
         int inputEventIngressCapacity = DefaultInputEventIngressCapacity)
     {
         if (inputEventIngressCapacity <= 0)
             throw new ArgumentOutOfRangeException(nameof(inputEventIngressCapacity));
         _statusRegistry = statusRegistry;
         _inputEventIngressCapacity = inputEventIngressCapacity;
-        _inputEvents = Channel.CreateBounded<InputEventItem>(
-            new BoundedChannelOptions(inputEventIngressCapacity)
-            {
-                SingleReader = true,
-                SingleWriter = false,
-                FullMode = BoundedChannelFullMode.Wait,
-                AllowSynchronousContinuations = false
-            });
-        if (options is not null)
-        {
-            _ingressGapStore = SystemInputIngressGapStore.Open(Path.Combine(
-                options.DataDirectory,
-                "system-input-ingress-gaps.json"));
-            if (_ingressGapStore.PendingCount != 0)
-                ReportPendingIngressGapStatus();
-        }
     }
 
     internal void Attach(CollectorActivation activation)
@@ -87,10 +69,9 @@ public sealed class SystemCollectorProtocolAdapter :
             activation.Initialization.DataDirectory,
             "system-collector-ingress.json"),
             _inputEventIngressCapacity);
-        _ingressGapStore ??= SystemInputIngressGapStore.Open(Path.Combine(
-            activation.Initialization.DataDirectory,
-            "system-input-ingress-gaps.json"));
         PersistQueuedIngress();
+        if (_ingressStore.PendingInputGapCount != 0)
+            ReportPendingIngressGapStatus();
     }
 
     internal void Start()
@@ -156,9 +137,7 @@ public sealed class SystemCollectorProtocolAdapter :
     public void Publish(ForegroundSegmentSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        if (_ingressStore is { } store)
-            store.Enqueue(snapshot);
-        else if (!_segments.Writer.TryWrite(snapshot))
+        if (!_segments.Writer.TryWrite(snapshot))
             throw new InvalidOperationException("The system Collector segment ingress is unavailable.");
         SignalPump();
     }
@@ -166,22 +145,14 @@ public sealed class SystemCollectorProtocolAdapter :
     public void Publish(InputEventItem item)
     {
         ArgumentNullException.ThrowIfNull(item);
-        var accepted = _ingressStore is { } store
-            ? store.TryEnqueue(item)
-            : _inputEvents.Writer.TryWrite(item);
-        if (!accepted)
-        {
-            if (_ingressGapStore is null)
-                throw new InputEventIngressCapacityExceededException(_inputEventIngressCapacity);
-            _ingressGapStore.RecordDrop(item.Timestamp);
-            ReportPendingIngressGapStatus();
-        }
+        if (!_inputEvents.Writer.TryWrite(item))
+            throw new InvalidOperationException("The system Collector InputEvent ingress is unavailable.");
         SignalPump();
     }
 
     public void Report(CollectorClientDiagnostic diagnostic)
     {
-        if (_ingressGapStore?.PendingCount > 0)
+        if (_ingressStore?.PendingInputGapCount > 0)
         {
             ReportPendingIngressGapStatus();
             return;
@@ -235,16 +206,16 @@ public sealed class SystemCollectorProtocolAdapter :
             ingress.AcknowledgeSegments(segments);
         }
 
-        if (_ingressGapStore?.Claim() is { } dropped)
+        if (ingress.PeekInputGaps(1).FirstOrDefault() is { } dropped)
         {
             await activation.ReportGapAsync(new CollectorStreamGap(
-                dropped.GapId,
+                dropped.Gap.GapId,
                 SystemInProcessCollector.InputEventBindingId,
-                dropped.Start,
-                dropped.End,
+                dropped.Gap.Start,
+                dropped.Gap.End,
                 "input_ingress_capacity_exceeded",
-                dropped.EstimatedFactsLost), cancellationToken).ConfigureAwait(false);
-            _ingressGapStore.Acknowledge(dropped.GapId);
+                dropped.Gap.EstimatedFactsLost), cancellationToken).ConfigureAwait(false);
+            ingress.AcknowledgeInputGaps([dropped]);
             ReportReadyAfterIngressGapAcknowledged();
         }
 
@@ -270,12 +241,8 @@ public sealed class SystemCollectorProtocolAdapter :
 
         while (_inputEvents.Reader.TryRead(out var item))
         {
-            if (ingress.TryEnqueue(item))
-                continue;
-            if (_ingressGapStore is null)
-                throw new InputEventIngressCapacityExceededException(_inputEventIngressCapacity);
-            _ingressGapStore.RecordDrop(item.Timestamp);
-            ReportPendingIngressGapStatus();
+            if (ingress.StageInputEvent(item) == SystemInputIngressStageResult.GapStaged)
+                ReportPendingIngressGapStatus();
         }
     }
 
@@ -285,7 +252,7 @@ public sealed class SystemCollectorProtocolAdapter :
             _segments.Reader.TryPeek(out _) ||
             _inputEvents.Reader.TryPeek(out _))
             return true;
-        return _ingressGapStore?.PendingCount > 0;
+        return false;
     }
 
     private static CollectorFact ToFact(ForegroundSegmentSnapshot snapshot) => new(
@@ -343,7 +310,7 @@ public sealed class SystemCollectorProtocolAdapter :
 
     private void ReportPendingIngressGapStatus()
     {
-        var count = _ingressGapStore?.PendingCount ?? 0;
+        var count = _ingressStore?.PendingInputGapCount ?? 0;
         _statusRegistry?.Update(
             StatusStreamName,
             new UploadStreamStatus(
@@ -354,7 +321,7 @@ public sealed class SystemCollectorProtocolAdapter :
 
     private void ReportReadyAfterIngressGapAcknowledged()
     {
-        if (_ingressGapStore?.PendingCount != 0)
+        if (_ingressStore?.PendingInputGapCount != 0)
         {
             ReportPendingIngressGapStatus();
             return;

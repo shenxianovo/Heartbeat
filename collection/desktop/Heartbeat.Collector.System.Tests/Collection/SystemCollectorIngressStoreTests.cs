@@ -37,7 +37,7 @@ public sealed class SystemCollectorIngressStoreTests : IDisposable
     }
 
     [Fact]
-    public void InputCapacityRejectsWithoutTrimmingRestartablePrefix()
+    public void InputCapacityStagesGapWithoutTrimmingRestartablePrefix()
     {
         var path = Path.Combine(_root, "ingress.ndjson");
         var first = Guid.CreateVersion7();
@@ -48,15 +48,41 @@ public sealed class SystemCollectorIngressStoreTests : IDisposable
         Assert.False(store.TryEnqueue(NewInput(second)));
 
         Assert.True(SystemCollectorIngressStore.Open(path, 1).PendingFactIds.SetEquals([first]));
+        Assert.Single(SystemCollectorIngressStore.Open(path, 1).PeekInputGaps(10));
     }
 
-    private static InputEventItem NewInput(Guid id) => new()
+    [Fact]
+    public void CapacityDecisionAtomicallyStagesEitherInputEventOrStreamGap()
+    {
+        var path = Path.Combine(_root, "ingress.ndjson");
+        var acceptedId = Guid.CreateVersion7();
+        var rejectedId = Guid.CreateVersion7();
+        var rejectedAt = DateTimeOffset.UnixEpoch.AddSeconds(1);
+        var store = SystemCollectorIngressStore.Open(path, 1);
+
+        Assert.Equal(
+            SystemInputIngressStageResult.EventStaged,
+            store.StageInputEvent(NewInput(acceptedId)));
+        Assert.Equal(
+            SystemInputIngressStageResult.GapStaged,
+            store.StageInputEvent(NewInput(rejectedId, rejectedAt)));
+
+        var restarted = SystemCollectorIngressStore.Open(path, 1);
+        Assert.True(restarted.PendingFactIds.SetEquals([acceptedId]));
+        var gap = Assert.Single(restarted.PeekInputGaps(10)).Gap;
+        Assert.Equal(rejectedAt, gap.Start);
+        Assert.Equal(rejectedAt.AddTicks(1), gap.End);
+        Assert.Equal(1, gap.EstimatedFactsLost);
+        Assert.Equal(7, gap.GapId.Version);
+    }
+
+    private static InputEventItem NewInput(Guid id, DateTimeOffset? timestamp = null) => new()
     {
         Id = id,
         EventType = InputEventType.MouseButton,
         CodeSet = InputCodeSets.HeartbeatKeyPositionV1,
         Code = 1,
-        Timestamp = DateTimeOffset.UnixEpoch
+        Timestamp = timestamp ?? DateTimeOffset.UnixEpoch
     };
 
     public void Dispose()

@@ -16,7 +16,7 @@ Stream Gap。任何路径都不能只调用 `JsonFileCache.TrimToCapacity` 后�
 
 - [x] 指定唯一容量 owner；`InputEventBuffer`、protocol outbox 与 `JsonFileCache` 不再各自静默裁剪同一
   事实窗口。
-- [ ] 满容量时 producer 得到可判定 backpressure，或 durable state 同时记录精确 Stream Gap；崩溃点
+- [x] 满容量时 producer 得到可判定 backpressure，或 durable state 同时记录精确 Stream Gap；崩溃点
   不会出现“事件已删但 Gap 未写”或反向不一致。
 - [x] drain/ACK 只删除已确认 event；retry/restart 保持 event/gap 序列和 FactId，不重复吞吐。
 - [x] Current/diagnostic 能区分 backlog、backpressure、gap 与普通 idle，不把 count clamp 当作成功。
@@ -65,8 +65,9 @@ UI/window/input 回调路径，违反 ADR-040 与 Collection glossary 的 Collec
 
 ## Reopened acceptance
 
-- [ ] Event 接受或拒绝与对应 Stream Gap 在一个可证明的 durable atomic mutation 中提交。
-- [ ] 平台 UI、window 与 input 回调只做内存入队，不同步等待磁盘 fsync。
+- [x] Event 接受或拒绝与对应 Stream Gap 在一个可证明的 durable atomic mutation 中提交。
+- [x] 平台 UI、window 与 input 回调只做内存入队，不同步等待磁盘 fsync。
+- [ ] 盘点并统一本 feature 触达的 atomic JSON replacement，或记录明确暂缓原因与退出条件。
 
 ### 2026-08-30 — 责任边界裁决回写
 
@@ -75,3 +76,16 @@ Collection glossary 冲突：同步写 ledger 仍会让原生回调承担磁盘�
 进入易失 ingress queue；后台 pump 才拥有 durable capacity 判定，并在同一 journal mutation 中提交
 Event 或覆盖它的 Stream Gap。进程在 pump 前终止属于明确的 volatile window，不得误报为 durable；
 实现将删除 callback `TryEnqueue -> RecordDrop` 的双存储路径。
+
+### 2026-08-30 — atomic ingress mutation 实现
+
+先以编译失败测试固定 `StageInputEvent` seam，并用真实受阻文件路径证明原生 InputEvent callback 不能
+触碰 journal。`SystemCollectorIngressStore` 现在在同一锁、同一次 append+fsync 中根据 durable Event
+容量写入 Event 或稳定 UUIDv7 的单 tick Stream Gap；restart 从同一 NDJSON 恢复二者。adapter 的
+segment/input callbacks 一律只写内存 channel，后台 pump 才 stage、上报与 ACK。独立
+`SystemInputIngressGapStore` 已删除，故不存在“TryEnqueue 返回 false 后进程崩溃、Gap 尚未写”的第二
+存储窗口；没有为无现场证据的该临时 JSON 格式增加迁移分支。
+
+验证：System 55/55、Windows 47/47、Mac 78/78；atomic stage、受阻 journal callback、overflow
+protocol 三测试重复 10 次 30/30；`git diff --check` 通过。atomic JSON replacement 全仓盘点仍待 P2
+closeout，因此 issue 保持 `needs-triage`。

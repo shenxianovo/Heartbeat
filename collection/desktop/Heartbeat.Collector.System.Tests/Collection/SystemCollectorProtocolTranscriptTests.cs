@@ -476,18 +476,16 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
     }
 
     [Fact]
-    public async Task InputIngressOverflow_PersistsExactGapBeforeReturningAndUploadsItAfterBackpressureClears()
+    public async Task InputIngressOverflow_AtomicallyStagesGapAndUploadsItAfterBackpressureClears()
     {
         Directory.CreateDirectory(_root);
         var statePath = Path.Combine(_root, "collector-runtime.json");
-        var gapPath = Path.Combine(_root, "system-input-ingress-gaps.json");
         var clock = new FakeClock();
         var segmentSink = new SegmentIngestService(clock);
         var inputSink = new BlockingInputEventSink();
         var statuses = new UploadStatusRegistry();
         var protocol = new SystemCollectorProtocolAdapter(
             statuses,
-            new SystemCollectorBindingOptions(_root),
             inputEventIngressCapacity: 1);
         var inputBuffer = new InputEventBuffer(clock, publisher: protocol);
         var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
@@ -510,17 +508,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         clock.Advance(TimeSpan.FromSeconds(1));
         inputBuffer.OnMouseButton(2);
         clock.Advance(TimeSpan.FromSeconds(1));
-        var droppedAt = clock.UtcNow;
         inputBuffer.OnMouseButton(3);
-
-        Assert.Equal(
-            UploadStreamState.GapRecorded,
-            statuses.Snapshot[SystemCollectorProtocolAdapter.StatusStreamName].State);
-        var durableGap = Assert.IsType<SystemInputIngressGap>(
-            SystemInputIngressGapStore.Open(gapPath).Peek());
-        Assert.Equal(droppedAt, durableGap.Start);
-        Assert.Equal(droppedAt + TimeSpan.FromTicks(1), durableGap.End);
-        Assert.Equal(1, durableGap.EstimatedFactsLost);
 
         inputSink.Release();
         await WaitUntilAsync(() => RuntimeHasGap(statePath, "input_ingress_capacity_exceeded"));
@@ -530,6 +518,64 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         Assert.True(
             RuntimeHasGap(statePath, "input_ingress_capacity_exceeded"),
             File.ReadAllText(statePath));
+    }
+
+    [Fact]
+    public async Task NativeInputCallbackDoesNotWaitForIngressJournalPersistence()
+    {
+        Directory.CreateDirectory(_root);
+        var statePath = Path.Combine(_root, "collector-runtime.json");
+        var ingressPath = Path.Combine(_root, "system-collector-ingress.json");
+        var clock = new FakeClock();
+        var segmentSink = new SegmentIngestService(clock);
+        var inputSink = new BlockingInputEventSink();
+        var protocol = new SystemCollectorProtocolAdapter(inputEventIngressCapacity: 2);
+        var inputBuffer = new InputEventBuffer(clock, publisher: protocol);
+        var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
+        using var config = JsonDocument.Parse("{}");
+        await using var runtime = CollectorRuntime.Open(
+            statePath,
+            segmentSink,
+            inputEventSink: inputSink);
+        var instance = runtime.CreateInstance(
+            package,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        await using var activation = await runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            package,
+            NewCollector(protocol, clock, segmentSink));
+
+        inputBuffer.OnMouseButton(1);
+        Assert.True(inputSink.Entered.Wait(TimeSpan.FromSeconds(2)));
+        if (File.Exists(ingressPath))
+            File.Delete(ingressPath);
+        Directory.CreateDirectory(ingressPath);
+        Exception? callbackFailure = null;
+        using var callbackReturned = new ManualResetEventSlim();
+        var callbackThread = new Thread(() =>
+        {
+            try
+            {
+                inputBuffer.OnMouseButton(2);
+            }
+            catch (Exception exception)
+            {
+                callbackFailure = exception;
+            }
+            finally
+            {
+                callbackReturned.Set();
+            }
+        }) { IsBackground = true };
+
+        callbackThread.Start();
+        var returned = callbackReturned.Wait(TimeSpan.FromSeconds(2));
+        Directory.Delete(ingressPath);
+        inputSink.Release();
+
+        Assert.True(returned, "Native InputEvent callback waited for ingress journal persistence.");
+        Assert.Null(callbackFailure);
     }
 
     [Fact]
