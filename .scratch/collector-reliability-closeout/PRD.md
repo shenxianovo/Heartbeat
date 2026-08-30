@@ -47,6 +47,14 @@ gate 已关闭；本 PRD 不包含 Package Registry 实现或 rollout。
 atomic JSON replacement 漂移及真实跨进程 crash/restart/replay smoke 未完成。所有 P1/P2 与重复并行
 验证、双轴复审关闭前，本 PRD 不得恢复 `done`，Registry reliability gate 继续关闭。
 
+### 2026-08-30 — compatibility friction ledger 补齐
+
+复审发现 Browser pending Gap 缺 `gapId`、Collector Protocol outbox schema v1 point Gap、Hub Runtime
+state v2 empty `GapId` 三条兼容读取仍只有“下一版删除”式注释，没有可执行退出证据。
+`docs/architecture/compatibility-debt.md` 现分别记录真实服务对象、Collection 子域 owner、受支持
+Profile/data-directory/state 盘点归零、明确离线/回滚窗口与必保留 fixture。当前没有现场盘点
+和窗口证据，因此只关闭“无退出台账”的 P2，不删除分支，也不新增兼容行为。
+
 ## Non-goals
 
 - 不改变 24h server policy 的安全边界；Collector 通过有界 chunk 遵守它。

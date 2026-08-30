@@ -340,8 +340,8 @@ internal sealed class CollectorProtocolOutbox
 
     private static OutboxState MigrateCurrentPointGaps(OutboxState state, out bool migrated)
     {
-        // Schema v1 previously emitted point Gaps for evicted Event facts. Remove this rewrite
-        // when the next outbox schema no longer accepts v1 state.
+        // Schema v1 emitted point Gaps for evicted Event facts. Removal requires the supported
+        // data-directory inventory and offline/rollback evidence in compatibility-debt.md.
         var changed = false;
         var gaps = state.Gaps.Select(item =>
         {

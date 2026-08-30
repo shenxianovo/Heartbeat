@@ -497,7 +497,7 @@ public sealed partial class CollectorRuntime
                         "GapId was already committed with different content.");
             }
             // Runtime state schema v2 wrote committed Gaps without GapId. Bind an exact lost-ACK
-            // replay once; remove this arm when the next state schema rejects empty GapId.
+            // replay once; removal follows the state inventory/window in compatibility-debt.md.
             else if (_state.Gaps.FirstOrDefault(existing =>
                          existing.GapId == Guid.Empty &&
                          existing.StreamId == streamId && existing.Start == gap.Start &&

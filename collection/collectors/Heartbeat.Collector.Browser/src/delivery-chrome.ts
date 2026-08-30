@@ -126,8 +126,8 @@ export class ChromeBrowserDeliveryStore implements BrowserDeliveryStore {
 }
 
 function normalizePendingGaps(raw: unknown): { value: BrowserPendingGap[]; migrated: boolean } {
-  // Current browser storage predates GapId. Remove the missing-ID arm after one released Browser
-  // version has rewritten PENDING_GAP_KEY and Hub runtime state no longer accepts empty GapId.
+  // Current browser storage predates GapId. The removal threshold is the supported-Profile
+  // inventory and offline/rollback window in docs/architecture/compatibility-debt.md.
   const gaps = (Array.isArray(raw) ? raw : raw === undefined ? [] : [raw]) as BrowserPendingGap[]
   let migrated = false
   const value = gaps.map((gap) => {
