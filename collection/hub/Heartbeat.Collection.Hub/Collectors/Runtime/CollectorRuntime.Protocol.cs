@@ -1600,19 +1600,37 @@ public sealed partial class CollectorRuntime
 
         public async Task StopAsync()
         {
-            await _lifetime.CancelAsync();
+            var deadline = drainDeadline();
+            var remaining = deadline - timeProvider.GetUtcNow();
+            using var cancellation = new CancellationTokenSource(
+                remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero,
+                timeProvider);
+            var cancelLifetime = Task.Run(
+                async () => await _lifetime.CancelAsync(),
+                CancellationToken.None);
+            try
+            {
+                await cancelLifetime.WaitAsync(cancellation.Token);
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+                Observe(cancelLifetime);
+            }
+
             Task stopTask;
             lock (_stopGate)
             {
                 _stopRequested = true;
-                _stopTask ??= _activation is null
-                    ? StopStartingCollectorAsync()
-                    : _activation.StopAsync(CancellationToken.None).AsTask();
+                _stopTask ??= InvokeStopAsync(deadline, cancellation.Token);
                 stopTask = _stopTask;
             }
             try
             {
-                await stopTask;
+                await stopTask.WaitAsync(cancellation.Token);
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+                Observe(stopTask);
             }
             catch
             {
@@ -1629,27 +1647,27 @@ public sealed partial class CollectorRuntime
             }
         }
 
-        private async Task StopStartingCollectorAsync()
+        private Task InvokeStopAsync(DateTimeOffset deadline, CancellationToken cancellationToken)
         {
-            var deadline = drainDeadline();
-            var remaining = deadline - timeProvider.GetUtcNow();
-            using var cancellation = new CancellationTokenSource(
-                remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero,
-                timeProvider);
-            var stopTask = collector.StopAsync(deadline, cancellation.Token).AsTask();
-            try
-            {
-                await stopTask.WaitAsync(cancellation.Token);
-            }
-            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
-            {
-                _ = stopTask.ContinueWith(
-                    static completed => _ = completed.Exception,
-                    CancellationToken.None,
-                    TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
-                    TaskScheduler.Default);
-            }
+            return Task.Factory.StartNew(
+                async () =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (_activation is null)
+                        await collector.StopAsync(deadline, cancellationToken);
+                    else
+                        await _activation.StopAsync(cancellationToken);
+                },
+                CancellationToken.None,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default).Unwrap();
         }
+
+        private static void Observe(Task task) => _ = task.ContinueWith(
+            static completed => _ = completed.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
+            TaskScheduler.Default);
 
         public void MarkActivationCompleted() => _activationCompleted.TrySetResult();
     }

@@ -155,3 +155,16 @@ Collector 代码，也不把平台 UI/window/input callback 接到磁盘 I/O。
 deadline/restart 测试在一次构建后的并发执行先复现 11/24 失败，修复后 24/24，再扩大到 50/50 全部
 通过。最终 solution、Browser、cross-process smoke 与双轴复审尚未执行，因此 issue 继续保持
 `needs-triage`。
+
+### 2026-08-30 — Starting Collector 同步调用 deadline 修复
+
+最终 Standards 复审发现 Starting Collector cleanup 仍在 deadline 外直接等待 lifetime
+`CancelAsync`，且在 Collector 尚未完成 Initialize 时直接调用 `collector.StopAsync(...).AsTask()`；后者
+可在返回 `ValueTask` 前同步阻塞。新增回归测试让 Initialize 忽略取消、Stop 调用本身同步阻塞，修复前
+Runtime Dispose 超过 1 秒测试 fence。Starting cleanup 现在在入口即建立同一绝对 deadline，把 lifetime
+cancellation 与 Stop 调用调度到隔离 Task，并分别以 deadline 等待；迟返任务只观察异常，不再占住
+Runtime ownership。InProcess activation 的 deadline 判定也改为独立 timer task，collector cancellation
+在 deadline 后异步传播，避免任意 cancellation callback 反向阻塞硬截止。
+
+验证：Starting Collector deadline/failure 定向测试 3/3；Hub durable commit 的独立复审 finding 仍在
+下一提交修复，因此 issue 保持 `needs-triage`。

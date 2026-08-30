@@ -74,45 +74,53 @@ public sealed class InProcessCollectorActivation : IAsyncDisposable
             return;
         var deadline = _runtime.InProcessDrainDeadline();
         var remaining = deadline - _runtime.UtcNow;
-        using var deadlineCancellation = new CancellationTokenSource(
+        using var collectorCancellation = new CancellationTokenSource();
+        var deadlineTask = Task.Delay(
             remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero,
             _runtime.TimeProvider);
-        using var deliveryFence = deadlineCancellation.Token.Register(
-            static state => ((CollectorActivationSession)state!).FenceDeliveryAfterDeadline(),
-            _session);
         var stopTask = Task.Factory.StartNew(
             async () =>
             {
-                deadlineCancellation.Token.ThrowIfCancellationRequested();
-                return await _collector.StopAsync(deadline, deadlineCancellation.Token);
+                collectorCancellation.Token.ThrowIfCancellationRequested();
+                return await _collector.StopAsync(deadline, collectorCancellation.Token);
             },
             CancellationToken.None,
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default).Unwrap();
-        try
+        var first = await Task.WhenAny(stopTask, deadlineTask);
+        if (ReferenceEquals(first, stopTask))
         {
-            DrainResult = await stopTask.WaitAsync(deadlineCancellation.Token);
-            _session.CompleteStop(() => _runtime.CompleteStop(this));
-        }
-        catch (OperationCanceledException) when (deadlineCancellation.IsCancellationRequested)
-        {
-            _session.FenceDeliveryAfterDeadline();
-            if (_collector is IInProcessCollectorDeadlineFence fence)
-                Observe(Task.Run(fence.FenceAfterDeadline, CancellationToken.None));
-            DrainResult = new InProcessCollectorDrainResult(
-                new InProcessCollectorLogicalDrainResult(
-                    null,
-                    null,
-                    CollectorDrainReason.DeadlineExceeded,
-                    RemainderDurable: false),
-                CollectorDrainCompletionReason.DeadlineExceeded);
-            Observe(stopTask);
-            if (!_session.TryCompleteStop(() => _runtime.CompleteStop(this)))
+            DrainResult = await stopTask;
+            var completeStop = Task.Run(
+                () => _session.CompleteStop(() => _runtime.CompleteStop(this)),
+                CancellationToken.None);
+            if (ReferenceEquals(await Task.WhenAny(completeStop, deadlineTask), completeStop))
             {
-                Observe(Task.Run(
-                    () => _session.CompleteStop(() => _runtime.CompleteStop(this)),
-                    CancellationToken.None));
+                await completeStop;
+                return;
             }
+            Observe(completeStop);
+        }
+
+        _session.FenceDeliveryAfterDeadline();
+        Observe(Task.Run(
+            async () => await collectorCancellation.CancelAsync(),
+            CancellationToken.None));
+        if (_collector is IInProcessCollectorDeadlineFence fence)
+            Observe(Task.Run(fence.FenceAfterDeadline, CancellationToken.None));
+        DrainResult = new InProcessCollectorDrainResult(
+            new InProcessCollectorLogicalDrainResult(
+                null,
+                null,
+                CollectorDrainReason.DeadlineExceeded,
+                RemainderDurable: false),
+            CollectorDrainCompletionReason.DeadlineExceeded);
+        Observe(stopTask);
+        if (!_session.TryCompleteStop(() => _runtime.CompleteStop(this)))
+        {
+            Observe(Task.Run(
+                () => _session.CompleteStop(() => _runtime.CompleteStop(this)),
+                CancellationToken.None));
         }
     }
 

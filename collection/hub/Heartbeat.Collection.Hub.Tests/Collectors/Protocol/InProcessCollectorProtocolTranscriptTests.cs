@@ -1208,7 +1208,7 @@ public class InProcessCollectorProtocolTranscriptTests
             instance.CollectorInstanceId,
             package,
             failingCollector).AsTask();
-        Assert.True(failingCollector.StopEntered.IsCompleted);
+        await failingCollector.StopEntered.WaitAsync(TimeSpan.FromSeconds(2));
         var candidate = new ReferenceInProcessCollector();
         var conflict = await Assert.ThrowsAsync<CollectorActivationException>(async () =>
             await runtime.ActivateInProcessAsync(
@@ -1385,6 +1385,61 @@ public class InProcessCollectorProtocolTranscriptTests
         collector.ReleaseStop();
         collector.ReleaseInitialize();
         await Assert.ThrowsAnyAsync<Exception>(() => activating);
+    }
+
+    [Fact]
+    public async Task RuntimeDispose_DeadlineBoundsSynchronouslyBlockingStartingCollectorStopInvocation()
+    {
+        using var directory = TemporaryDirectory.Create();
+        var statePath = Path.Combine(directory.Path, "collector-runtime.json");
+        var package = LocalCollectorPackage.Load(ReferencePackagePath);
+        var time = new ControlledTimeProvider();
+        var runtime = CollectorRuntime.Open(
+            statePath,
+            new RecordingSegmentSink(),
+            new CollectorRuntimeOptions
+            {
+                InProcessDrainGracePeriod = TimeSpan.FromMinutes(10),
+                TimeProvider = time
+            });
+        using var config = JsonDocument.Parse("{}");
+        var instance = runtime.CreateInstance(
+            package,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        var collector = new ReferenceInProcessCollector(
+            blockInitialize: true,
+            ignoreInitializeCancellation: true,
+            synchronouslyBlockStop: true);
+        var activating = runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            package,
+            collector).AsTask();
+        await collector.InitializeEntered.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var disposing = runtime.DisposeAsync().AsTask();
+        try
+        {
+            await collector.StopEntered.WaitAsync(TimeSpan.FromSeconds(2));
+            time.Advance(TimeSpan.FromMinutes(10));
+
+            await disposing.WaitAsync(TimeSpan.FromSeconds(1));
+            using var reopened = CollectorRuntime.Open(statePath, new RecordingSegmentSink());
+            Assert.Equal(instance.CollectorInstanceId, reopened.GetInstance(instance.CollectorInstanceId).CollectorInstanceId);
+        }
+        finally
+        {
+            collector.ReleaseStop();
+            collector.ReleaseInitialize();
+            try
+            {
+                await activating.WaitAsync(TimeSpan.FromSeconds(2));
+            }
+            catch
+            {
+                // The fixture intentionally races activation with Runtime disposal.
+            }
+        }
     }
 
     [Fact]
