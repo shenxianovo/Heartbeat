@@ -1,5 +1,9 @@
 import { l as loadConfig } from "./assets/config-CudPlTIo.js";
-const ROTATE_AFTER_MS = 23 * 60 * 60 * 1e3;
+const rotateAfterMilliseconds = 828e5;
+const rotationPolicy = {
+  rotateAfterMilliseconds
+};
+const ROTATE_AFTER_MS = rotationPolicy.rotateAfterMilliseconds;
 function emptyState() {
   return { open: {} };
 }
@@ -525,6 +529,7 @@ async function reportBrowserGap(session, gap, persistAttempt) {
             leaseToken: session.leaseToken,
             streamId: session.streamId,
             gap: {
+              gapId: attempt.gapId,
               start: attempt.start,
               end: attempt.end,
               reason: attempt.reason,
@@ -813,6 +818,7 @@ function enqueueBounded(current, snapshots) {
 function appendBufferGap(gaps, snapshots) {
   if (snapshots.length === 0) return gaps;
   return [...gaps, {
+    gapId: uuidv7(),
     start: snapshots.reduce((earliest, item) => item.startTime < earliest ? item.startTime : earliest, snapshots[0].startTime),
     end: snapshots.reduce((latest, item) => item.endTime > latest ? item.endTime : latest, snapshots[0].endTime),
     reason: "buffer_overflow",
@@ -860,10 +866,7 @@ function removeGap(gaps, acknowledged) {
   return index < 0 ? gaps : gaps.filter((_, position) => position !== index);
 }
 function sameGap(left, right) {
-  if (left.messageId !== void 0 || right.messageId !== void 0) {
-    return left.messageId === right.messageId && left.activationId === right.activationId;
-  }
-  return left.start === right.start && left.end === right.end && left.reason === right.reason && left.estimatedFactsLost === right.estimatedFactsLost;
+  return left.gapId === right.gapId;
 }
 function relevantPublishAttempt(attempt, queue) {
   if (attempt === void 0) return void 0;
@@ -926,9 +929,13 @@ class ChromeBrowserDeliveryStore {
       transient[DESIRED_ENABLED_KEY],
       transient[FLUSH_PERIOD_KEY]
     );
+    const pendingGaps = normalizePendingGaps(rawGaps);
+    if (pendingGaps.migrated) {
+      await chrome.storage.local.set({ [PENDING_GAP_KEY]: pendingGaps.value });
+    }
     return {
       queue: normalizeQueuedSnapshots(rawQueue, this.currentAppHint),
-      pendingGaps: Array.isArray(rawGaps) ? rawGaps : rawGaps === void 0 ? [] : [rawGaps],
+      pendingGaps: pendingGaps.value,
       deadLetters: Array.isArray(local[DEAD_LETTER_KEY]) ? local[DEAD_LETTER_KEY] : defaults.deadLetters,
       policy
     };
@@ -974,6 +981,18 @@ class ChromeBrowserDeliveryStore {
     ];
     if (remove.length > 0) await chrome.storage.session.remove(remove);
   }
+}
+function normalizePendingGaps(raw) {
+  const gaps = Array.isArray(raw) ? raw : raw === void 0 ? [] : [raw];
+  let migrated = false;
+  const value = gaps.map((gap) => {
+    if (typeof gap.gapId === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(gap.gapId)) {
+      return gap;
+    }
+    migrated = true;
+    return { ...gap, gapId: uuidv7() };
+  });
+  return { value, migrated };
 }
 function createChromeBrowserDelivery(appHint) {
   return createBrowserDelivery({
