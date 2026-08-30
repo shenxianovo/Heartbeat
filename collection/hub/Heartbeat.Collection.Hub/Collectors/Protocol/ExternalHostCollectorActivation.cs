@@ -27,8 +27,15 @@ public sealed class ExternalHostCollectorActivation
     public IReadOnlyList<CollectorHandshakeStep> HandshakeTranscript => _session.HandshakeTranscript;
     public bool ExternalHostWasTerminated => false;
     public IReadOnlyDictionary<string, FactStreamDescriptor> Streams => _session.Streams;
+    public InProcessCollectorDrainResult? DrainResult { get; private set; }
     internal LocalCollectorPackage Package => _session.Package;
     internal CollectorActivationSession Session => _session;
+
+    internal void CompleteDrain(InProcessCollectorDrainResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        DrainResult ??= result;
+    }
 
     public ValueTask<FactBatchAcknowledgement> PublishAsync(
         Guid streamId,

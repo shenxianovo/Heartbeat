@@ -10,6 +10,12 @@ type FactCase = {
   startsNewAttempt: boolean
 }
 
+type DrainCase = {
+  reason: string
+  remainderDurable: boolean
+  canBeFullyDrained: boolean
+}
+
 const corpusPath = fileURLToPath(new URL(
   '../../../protocol/conformance/v1/collector-protocol-conformance.json',
   import.meta.url,
@@ -18,6 +24,9 @@ const corpus = JSON.parse(readFileSync(corpusPath, 'utf8')) as {
   schemaVersion: number
   lifecycle: string[]
   factAcknowledgements: FactCase[]
+  drainOutcomes: DrainCase[]
+  completionOutcomes: string[]
+  drainDrivers: Array<{ driver: string, hubInitiated: boolean, deadlineAction: string }>
 }
 
 const snapshot: SegmentSnapshot = {
@@ -58,6 +67,24 @@ describe('Collector Protocol conformance corpus', () => {
       'activation.readyAck',
       'activation.drain',
       'activation.drained',
+    ])
+  })
+
+  it('shares bounded drain outcomes across all three drivers', () => {
+    expect(corpus.drainOutcomes).toEqual([
+      { reason: 'drained', remainderDurable: true, canBeFullyDrained: true },
+      { reason: 'deadline_exceeded', remainderDurable: false, canBeFullyDrained: false },
+      { reason: 'stop_failed', remainderDurable: false, canBeFullyDrained: false },
+      { reason: 'flush_cancelled', remainderDurable: true, canBeFullyDrained: false },
+      { reason: 'persistence_failed', remainderDurable: false, canBeFullyDrained: false },
+    ])
+    expect(corpus.completionOutcomes).toEqual([
+      'completed', 'deadline_exceeded', 'completion_failed',
+    ])
+    expect(corpus.drainDrivers).toEqual([
+      { driver: 'in_process', hubInitiated: true, deadlineAction: 'fence_and_release' },
+      { driver: 'managed_process', hubInitiated: true, deadlineAction: 'terminate_and_release' },
+      { driver: 'external_host', hubInitiated: false, deadlineAction: 'revoke_lease' },
     ])
   })
 

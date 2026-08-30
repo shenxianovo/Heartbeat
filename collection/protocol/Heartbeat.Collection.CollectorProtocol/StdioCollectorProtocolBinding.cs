@@ -350,7 +350,9 @@ public sealed class StdioCollectorProtocolBinding : ICollectorProtocolBinding
             {
                 appliedSpecRevision = result.AppliedSpecRevision,
                 pendingFacts = result.PendingFacts,
-                pendingGaps = result.PendingGaps
+                pendingGaps = result.PendingGaps,
+                reason = CollectorProtocolDrainVocabulary.Format(result.Reason),
+                remainderDurable = result.RemainderDurable
             }
         }, cancellationToken);
     }

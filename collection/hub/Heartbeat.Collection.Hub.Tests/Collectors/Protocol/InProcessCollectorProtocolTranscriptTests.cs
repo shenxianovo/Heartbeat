@@ -939,6 +939,58 @@ public class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
+    public async Task WriterLease_DeadlineFencesCancellationIgnoringCollectorAndAllowsReplacement()
+    {
+        using var directory = TemporaryDirectory.Create();
+        var package = LocalCollectorPackage.Load(ReferencePackagePath);
+        var time = new ControlledTimeProvider();
+        using var runtime = CollectorRuntime.Open(
+            Path.Combine(directory.Path, "collector-runtime.json"),
+            new RecordingSegmentSink(),
+            new CollectorRuntimeOptions
+            {
+                InProcessDrainGracePeriod = TimeSpan.FromMinutes(10),
+                TimeProvider = time
+            });
+        using var config = JsonDocument.Parse("{}");
+        var instance = runtime.CreateInstance(
+            package,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        var oldCollector = new ReferenceInProcessCollector(blockStop: true, ignoreStopCancellation: true);
+        var oldActivation = await runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            package,
+            oldCollector);
+        var oldStream = oldActivation.Streams["activity"];
+
+        var stopping = oldActivation.StopAsync().AsTask();
+        await oldCollector.StopEntered.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.False(stopping.IsCompleted);
+        time.Advance(TimeSpan.FromMinutes(10));
+        await stopping.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(CollectorActivationState.Stopped, oldActivation.State);
+        Assert.Equal(CollectorDrainReason.DeadlineExceeded, oldActivation.DrainResult!.LogicalResult.Reason);
+        Assert.False(oldActivation.DrainResult.IsFullyDrained);
+        CollectorDrainDriverConformance.AssertObserved(
+            "in_process",
+            hubInitiated: true,
+            "fence_and_release");
+        var late = await oldStream.PublishAsync(
+            Guid.CreateVersion7(),
+            [CreateFact(oldStream.Descriptor.StreamId, factId: Guid.CreateVersion7())]);
+        Assert.Equal("stream_writer_conflict", Assert.Single(late.Results).Error!.Code);
+
+        var replacement = await runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            package,
+            new ReferenceInProcessCollector());
+        oldCollector.ReleaseStop();
+        await replacement.DisposeAsync();
+    }
+
+    [Fact]
     public async Task WriterLease_StopAllowsCollectorToFlushPendingFactBeforeLeaseRelease()
     {
         using var directory = TemporaryDirectory.Create();
@@ -1007,6 +1059,38 @@ public class InProcessCollectorProtocolTranscriptTests
             candidate);
         Assert.Equal(2, oldCollector.StopCalls);
         Assert.Equal(CollectorActivationState.Stopped, oldActivation.State);
+        await replacement.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task WriterLease_ReturnedStopFailedOutcomeIsAlreadyFencedAndAllowsReplacement()
+    {
+        using var directory = TemporaryDirectory.Create();
+        var package = LocalCollectorPackage.Load(ReferencePackagePath);
+        using var runtime = CollectorRuntime.Open(
+            Path.Combine(directory.Path, "collector-runtime.json"),
+            new RecordingSegmentSink());
+        using var config = JsonDocument.Parse("{}");
+        var instance = runtime.CreateInstance(
+            package,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        var oldCollector = new ReferenceInProcessCollector(
+            stopResultReason: CollectorDrainReason.StopFailed);
+        var oldActivation = await runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            package,
+            oldCollector);
+
+        await oldActivation.StopAsync();
+
+        Assert.Equal(CollectorActivationState.Stopped, oldActivation.State);
+        Assert.Equal(CollectorDrainReason.StopFailed, oldActivation.DrainResult!.LogicalResult.Reason);
+        Assert.False(oldActivation.DrainResult.IsFullyDrained);
+        var replacement = await runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            package,
+            new ReferenceInProcessCollector());
         await replacement.DisposeAsync();
     }
 
@@ -1163,7 +1247,7 @@ public class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task RuntimeDispose_WaitsForStreamsOpenedCallbackToFinishBeforeReleasingOwnership()
+    public async Task RuntimeDispose_CancelsStreamsOpenedCallbackBeforeReleasingOwnership()
     {
         using var directory = TemporaryDirectory.Create();
         var statePath = Path.Combine(directory.Path, "collector-runtime.json");
@@ -1183,18 +1267,56 @@ public class InProcessCollectorProtocolTranscriptTests
 
         var disposing = runtime.DisposeAsync().AsTask();
         await collector.StopEntered.WaitAsync(TimeSpan.FromSeconds(5));
-
-        Assert.False(disposing.IsCompleted);
-        Assert.Throws<CollectorRuntimeStateException>(() =>
-            CollectorRuntime.Open(statePath, new RecordingSegmentSink()));
-
-        collector.ReleaseStreamsOpened();
         await Assert.ThrowsAnyAsync<Exception>(() => activating);
         await disposing;
 
         Assert.Equal(1, collector.StopCalls);
         using var reopened = CollectorRuntime.Open(statePath, new RecordingSegmentSink());
         Assert.Equal(instance.CollectorInstanceId, reopened.GetInstance(instance.CollectorInstanceId).CollectorInstanceId);
+    }
+
+    [Fact]
+    public async Task RuntimeDispose_DeadlineBoundsCancellationIgnoringStartingCollector()
+    {
+        using var directory = TemporaryDirectory.Create();
+        var statePath = Path.Combine(directory.Path, "collector-runtime.json");
+        var package = LocalCollectorPackage.Load(ReferencePackagePath);
+        var time = new ControlledTimeProvider();
+        var runtime = CollectorRuntime.Open(
+            statePath,
+            new RecordingSegmentSink(),
+            new CollectorRuntimeOptions
+            {
+                InProcessDrainGracePeriod = TimeSpan.FromMinutes(10),
+                TimeProvider = time
+            });
+        using var config = JsonDocument.Parse("{}");
+        var instance = runtime.CreateInstance(
+            package,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        var collector = new ReferenceInProcessCollector(
+            blockInitialize: true,
+            ignoreInitializeCancellation: true,
+            blockStop: true,
+            ignoreStopCancellation: true);
+        var activating = runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            package,
+            collector).AsTask();
+        await collector.InitializeEntered.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var disposing = runtime.DisposeAsync().AsTask();
+        await collector.StopEntered.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.False(disposing.IsCompleted);
+        time.Advance(TimeSpan.FromMinutes(10));
+        await disposing.WaitAsync(TimeSpan.FromSeconds(2));
+
+        using (var reopened = CollectorRuntime.Open(statePath, new RecordingSegmentSink()))
+            Assert.Equal(instance.CollectorInstanceId, reopened.GetInstance(instance.CollectorInstanceId).CollectorInstanceId);
+        collector.ReleaseStop();
+        collector.ReleaseInitialize();
+        await Assert.ThrowsAnyAsync<Exception>(() => activating);
     }
 
     [Fact]
@@ -2410,10 +2532,13 @@ public class InProcessCollectorProtocolTranscriptTests
         private readonly TaskCompletionSource _releaseStreamsOpened = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly bool _blockStop;
+        private readonly bool _ignoreStopCancellation;
         private readonly bool _blockInitialize;
+        private readonly bool _ignoreInitializeCancellation;
         private readonly bool _blockStreamsOpened;
         private readonly bool _throwOnInitialize;
         private readonly bool _publishOnStop;
+        private readonly CollectorDrainReason _stopResultReason;
         private readonly DateTimeOffset _referenceSegmentStart;
         private InProcessCollectorActivation? _activation;
         private int _stopCalls;
@@ -2424,10 +2549,13 @@ public class InProcessCollectorProtocolTranscriptTests
             bool publishReferenceSegment = false,
             bool sendReady = true,
             bool blockStop = false,
+            bool ignoreStopCancellation = false,
             bool blockInitialize = false,
+            bool ignoreInitializeCancellation = false,
             bool blockStreamsOpened = false,
             bool throwOnInitialize = false,
             bool publishOnStop = false,
+            CollectorDrainReason stopResultReason = CollectorDrainReason.Drained,
             int stopFailures = 0,
             DateTimeOffset? referenceSegmentStart = null,
             IReadOnlyList<OutputBinding>? bindings = null,
@@ -2443,10 +2571,13 @@ public class InProcessCollectorProtocolTranscriptTests
             _publishReferenceSegment = publishReferenceSegment;
             _sendReady = sendReady;
             _blockStop = blockStop;
+            _ignoreStopCancellation = ignoreStopCancellation;
             _blockInitialize = blockInitialize;
+            _ignoreInitializeCancellation = ignoreInitializeCancellation;
             _blockStreamsOpened = blockStreamsOpened;
             _throwOnInitialize = throwOnInitialize;
             _publishOnStop = publishOnStop;
+            _stopResultReason = stopResultReason;
             _stopFailuresRemaining = stopFailures;
             _referenceSegmentStart = referenceSegmentStart ??
                 new DateTimeOffset(2026, 8, 22, 9, 0, 0, TimeSpan.Zero);
@@ -2481,7 +2612,12 @@ public class InProcessCollectorProtocolTranscriptTests
             if (_throwOnInitialize)
                 throw new InvalidOperationException("Collector failed after starting initialization work.");
             if (_blockInitialize)
-                await _releaseInitialize.Task.WaitAsync(cancellationToken);
+            {
+                if (_ignoreInitializeCancellation)
+                    await _releaseInitialize.Task;
+                else
+                    await _releaseInitialize.Task.WaitAsync(cancellationToken);
+            }
             return new InProcessCollectorInitialization(
                 initialization.Spec.SpecRevision,
                 _bindings);
@@ -2520,7 +2656,9 @@ public class InProcessCollectorProtocolTranscriptTests
                 cancellationToken);
         }
 
-        public async ValueTask<InProcessCollectorDrainResult> StopAsync(CancellationToken cancellationToken)
+        public async ValueTask<InProcessCollectorDrainResult> StopAsync(
+            DateTimeOffset deadline,
+            CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref _stopCalls);
             _stopEntered.TrySetResult();
@@ -2533,11 +2671,21 @@ public class InProcessCollectorProtocolTranscriptTests
                     cancellationToken);
             }
             if (_blockStop)
-                await _releaseStop.Task.WaitAsync(cancellationToken);
+            {
+                if (_ignoreStopCancellation)
+                    await _releaseStop.Task;
+                else
+                    await _releaseStop.Task.WaitAsync(cancellationToken);
+            }
             _releaseInitialize.TrySetResult();
             if (Interlocked.Decrement(ref _stopFailuresRemaining) >= 0)
                 throw new InvalidOperationException("Collector stop failed before owned work ended.");
-            return new InProcessCollectorDrainResult(0, 0);
+            return new InProcessCollectorDrainResult(
+                new InProcessCollectorLogicalDrainResult(
+                    0,
+                    0,
+                    _stopResultReason,
+                    RemainderDurable: _stopResultReason == CollectorDrainReason.Drained));
         }
 
         public void ReleaseStop()
@@ -2547,6 +2695,8 @@ public class InProcessCollectorProtocolTranscriptTests
         }
 
         public void ReleaseStreamsOpened() => _releaseStreamsOpened.TrySetResult();
+
+        public void ReleaseInitialize() => _releaseInitialize.TrySetResult();
     }
 
     private sealed class FlappingProtocolMajorList : IReadOnlyList<int>
@@ -2588,6 +2738,85 @@ public class InProcessCollectorProtocolTranscriptTests
         }
 
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    private sealed class ControlledTimeProvider : TimeProvider
+    {
+        private readonly object _gate = new();
+        private readonly List<ControlledTimer> _timers = [];
+        private DateTimeOffset _utcNow = new(2026, 8, 30, 8, 0, 0, TimeSpan.Zero);
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            lock (_gate)
+                return _utcNow;
+        }
+
+        public override ITimer CreateTimer(
+            TimerCallback callback,
+            object? state,
+            TimeSpan dueTime,
+            TimeSpan period)
+        {
+            var timer = new ControlledTimer(this, callback, state, dueTime, period);
+            lock (_gate)
+                _timers.Add(timer);
+            return timer;
+        }
+
+        public void Advance(TimeSpan duration)
+        {
+            ControlledTimer[] due;
+            lock (_gate)
+            {
+                _utcNow += duration;
+                due = _timers.Where(timer => timer.IsDue(_utcNow)).ToArray();
+            }
+            foreach (var timer in due)
+                timer.Fire();
+        }
+
+        private sealed class ControlledTimer(
+            ControlledTimeProvider owner,
+            TimerCallback callback,
+            object? state,
+            TimeSpan dueTime,
+            TimeSpan period) : ITimer
+        {
+            private DateTimeOffset _dueAt = owner.GetUtcNow() + dueTime;
+            private bool _disposed;
+
+            public bool IsDue(DateTimeOffset now) => !_disposed && now >= _dueAt;
+
+            public void Fire()
+            {
+                if (_disposed)
+                    return;
+                if (period == Timeout.InfiniteTimeSpan)
+                    _disposed = true;
+                else
+                    _dueAt += period;
+                callback(state);
+            }
+
+            public bool Change(TimeSpan newDueTime, TimeSpan newPeriod)
+            {
+                if (_disposed)
+                    return false;
+                dueTime = newDueTime;
+                period = newPeriod;
+                _dueAt = owner.GetUtcNow() + newDueTime;
+                return true;
+            }
+
+            public void Dispose() => _disposed = true;
+
+            public ValueTask DisposeAsync()
+            {
+                Dispose();
+                return ValueTask.CompletedTask;
+            }
+        }
     }
 
     private sealed class RecordingSegmentSink : ISegmentSink, ISegmentRetractionSink, IDurableSegmentProjectionSink

@@ -32,9 +32,73 @@ public sealed record InProcessCollectorInitialization(
     long AppliedSpecRevision,
     IReadOnlyList<OutputBinding> Bindings);
 
-public sealed record InProcessCollectorDrainResult(
+public enum CollectorDrainReason
+{
+    Drained,
+    DeadlineExceeded,
+    StopFailed,
+    FlushCancelled,
+    PersistenceFailed
+}
+
+public enum CollectorDrainCompletionReason
+{
+    Completed,
+    DeadlineExceeded,
+    CompletionFailed
+}
+
+public static class CollectorDrainVocabulary
+{
+    public static string Format(CollectorDrainReason reason) => reason switch
+    {
+        CollectorDrainReason.Drained => "drained",
+        CollectorDrainReason.DeadlineExceeded => "deadline_exceeded",
+        CollectorDrainReason.StopFailed => "stop_failed",
+        CollectorDrainReason.FlushCancelled => "flush_cancelled",
+        CollectorDrainReason.PersistenceFailed => "persistence_failed",
+        _ => throw new ArgumentOutOfRangeException(nameof(reason))
+    };
+
+    public static bool TryParse(string value, out CollectorDrainReason reason)
+    {
+        reason = value switch
+        {
+            "drained" => CollectorDrainReason.Drained,
+            "deadline_exceeded" => CollectorDrainReason.DeadlineExceeded,
+            "stop_failed" => CollectorDrainReason.StopFailed,
+            "flush_cancelled" => CollectorDrainReason.FlushCancelled,
+            "persistence_failed" => CollectorDrainReason.PersistenceFailed,
+            _ => default
+        };
+        return value is "drained" or "deadline_exceeded" or "stop_failed" or
+            "flush_cancelled" or "persistence_failed";
+    }
+}
+
+public sealed record InProcessCollectorLogicalDrainResult(
     int? PendingFacts,
-    int? PendingGaps);
+    int? PendingGaps,
+    CollectorDrainReason Reason = CollectorDrainReason.Drained,
+    bool RemainderDurable = true)
+{
+    public bool IsFullyDrained =>
+        Reason == CollectorDrainReason.Drained &&
+        RemainderDurable &&
+        PendingFacts == 0 &&
+        PendingGaps == 0;
+}
+
+public sealed record InProcessCollectorDrainResult(
+    InProcessCollectorLogicalDrainResult LogicalResult,
+    CollectorDrainCompletionReason CompletionReason = CollectorDrainCompletionReason.Completed,
+    string? CompletionError = null)
+{
+    public int? PendingFacts => LogicalResult.PendingFacts;
+    public int? PendingGaps => LogicalResult.PendingGaps;
+    public bool IsFullyDrained =>
+        CompletionReason == CollectorDrainCompletionReason.Completed && LogicalResult.IsFullyDrained;
+}
 
 public sealed record ExternalHostCollectorInitialization(
     Guid ActivationId,
@@ -66,7 +130,19 @@ public interface IInProcessCollector
     /// Stops Collector-owned work. Completion is the stop-first boundary that permits a
     /// replacement Activation to start.
     /// </summary>
-    ValueTask<InProcessCollectorDrainResult> StopAsync(CancellationToken cancellationToken);
+    ValueTask<InProcessCollectorDrainResult> StopAsync(
+        DateTimeOffset deadline,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Optional hard fence for an InProcess Collector whose private delivery loop can outlive a
+/// cooperative stop request. The Hub invokes it synchronously before releasing writer ownership
+/// after the drain deadline.
+/// </summary>
+public interface IInProcessCollectorDeadlineFence
+{
+    void FenceAfterDeadline();
 }
 
 public enum CollectorActivationState

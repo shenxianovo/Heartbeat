@@ -83,6 +83,11 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         Assert.Equal(0, activation.RuntimeState.PendingFacts);
         Assert.Equal(0, activation.RuntimeState.PendingGaps);
         Assert.False(activation.RuntimeState.ProcessTerminated);
+        Assert.Equal(CollectorDrainReason.Drained, activation.RuntimeState.DrainResult!.LogicalResult.Reason);
+        Assert.True(activation.RuntimeState.DrainResult.LogicalResult.RemainderDurable);
+        Assert.Equal(
+            CollectorDrainCompletionReason.Completed,
+            activation.RuntimeState.DrainResult.CompletionReason);
     }
 
     [Fact]
@@ -723,6 +728,17 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         Assert.True(activation.RuntimeState.ProcessTerminated);
         Assert.Null(activation.RuntimeState.PendingFacts);
         Assert.Null(activation.RuntimeState.PendingGaps);
+        Assert.Equal(
+            CollectorDrainReason.DeadlineExceeded,
+            activation.RuntimeState.DrainResult!.LogicalResult.Reason);
+        Assert.False(activation.RuntimeState.DrainResult.LogicalResult.RemainderDurable);
+        Assert.Equal(
+            CollectorDrainCompletionReason.Completed,
+            activation.RuntimeState.DrainResult.CompletionReason);
+        CollectorDrainDriverConformance.AssertObserved(
+            "managed_process",
+            hubInitiated: true,
+            "terminate_and_release");
     }
 
     private static async Task<Heartbeat.Core.DTOs.Segments.ActivitySegmentItem> WaitForSegmentAsync(

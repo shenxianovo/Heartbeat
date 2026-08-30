@@ -55,7 +55,8 @@ public sealed record CollectorRuntimeSnapshot(
     int? PendingGaps = null,
     bool ProcessTerminated = false,
     IReadOnlyList<CollectorRuntimeDiagnostic>? Diagnostics = null,
-    CollectorAuthorizationChallenge? AuthorizationChallenge = null);
+    CollectorAuthorizationChallenge? AuthorizationChallenge = null,
+    InProcessCollectorDrainResult? DrainResult = null);
 
 public sealed class ManagedProcessActivationOptions
 {
@@ -474,7 +475,10 @@ public sealed partial class CollectorRuntime
         }
     }
 
-    internal void ManagedProcessStopped(ManagedProcessCollectorActivation activation, ManagedProcessDrainResult result)
+    internal void ManagedProcessStopped(
+        ManagedProcessCollectorActivation activation,
+        ManagedProcessDrainResult result,
+        InProcessCollectorDrainResult drainResult)
     {
         lock (_gate)
         {
@@ -483,7 +487,8 @@ public sealed partial class CollectorRuntime
             _managedProcessStates[activation.CollectorInstanceId] = new CollectorRuntimeSnapshot(
                 activation.CollectorInstanceId, activation.ActivationId, CollectorRuntimePhase.Stopped,
                 PendingFacts: result.PendingFacts, PendingGaps: result.PendingGaps,
-                ProcessTerminated: result.ProcessTerminated);
+                ProcessTerminated: result.ProcessTerminated,
+                DrainResult: drainResult);
         }
     }
 
@@ -501,7 +506,8 @@ public sealed partial class CollectorRuntime
             _managedProcessStates[activation.CollectorInstanceId] = new CollectorRuntimeSnapshot(
                 activation.CollectorInstanceId, activation.ActivationId, CollectorRuntimePhase.Failed,
                 failure, activation.Client.PendingFacts, activation.Client.PendingGaps,
-                activation.Client.WasTerminated);
+                activation.Client.WasTerminated,
+                DrainResult: activation.ProtocolDrainResult);
         }
     }
 
@@ -684,6 +690,7 @@ public sealed class ManagedProcessCollectorActivation : IAsyncDisposable
     public Task Completion => Client.Completion;
     internal ManagedProcessProtocolClient Client { get; }
     internal LocalCollectorPackage Package => _protocolActivation.Package;
+    internal InProcessCollectorDrainResult? ProtocolDrainResult => _protocolActivation.DrainResult;
 
     internal void StartSupervision() => _ = SuperviseAsync();
 
@@ -698,7 +705,23 @@ public sealed class ManagedProcessCollectorActivation : IAsyncDisposable
             _stopTask ??= StopCoreAsync();
             stopTask = _stopTask;
         }
-        await stopTask.WaitAsync(cancellationToken);
+        try
+        {
+            await stopTask.WaitAsync(cancellationToken);
+        }
+        catch
+        {
+            if (stopTask.IsCompleted)
+            {
+                lock (_stopGate)
+                {
+                    if (ReferenceEquals(_stopTask, stopTask))
+                        _stopTask = null;
+                }
+                Interlocked.Exchange(ref _stopRequested, 0);
+            }
+            throw;
+        }
     }
 
     private async Task StopCoreAsync()
@@ -706,11 +729,13 @@ public sealed class ManagedProcessCollectorActivation : IAsyncDisposable
         Interlocked.Exchange(ref _stopRequested, 1);
         _runtime.ManagedProcessDraining(this);
         await _protocolActivation.StopAsync(CancellationToken.None);
+        var drainResult = _protocolActivation.DrainResult
+            ?? throw new InvalidOperationException("ManagedProcess protocol Activation stopped without a drain result.");
         var result = Client.DrainResult;
         if (result.Failure is not null)
             _runtime.ManagedProcessFailed(this, result.Failure);
         else
-            _runtime.ManagedProcessStopped(this, result);
+            _runtime.ManagedProcessStopped(this, result, drainResult);
     }
 
     private async Task SuperviseAsync()
@@ -818,6 +843,8 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
     public bool WasTerminated { get; private set; }
     public int? PendingFacts { get; private set; }
     public int? PendingGaps { get; private set; }
+    public CollectorDrainReason DrainReason { get; private set; } = CollectorDrainReason.FlushCancelled;
+    public bool RemainderDurable { get; private set; }
     public Task Completion => _exit.Task;
     public Task<ManagedProcessExit> ExitCompletion => _exit.Task;
     public ManagedProcessDrainResult DrainResult => _drainResult ?? (_drained.Task.IsCompletedSuccessfully
@@ -1249,16 +1276,43 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
         _ = PumpAsync();
     }
 
-    public async ValueTask<InProcessCollectorDrainResult> StopAsync(CancellationToken cancellationToken)
+    public async ValueTask<InProcessCollectorDrainResult> StopAsync(
+        DateTimeOffset deadline,
+        CancellationToken cancellationToken)
     {
+        var managedDeadline = DateTimeOffset.UtcNow + _options.DrainGracePeriod;
+        var effectiveDeadline = deadline < managedDeadline ? deadline : managedDeadline;
         Task stopTask;
         lock (_stopGate)
         {
-            _stopTask ??= StopCoreAsync();
+            _stopTask ??= StopCoreAsync(effectiveDeadline);
             stopTask = _stopTask;
         }
-        await stopTask.WaitAsync(cancellationToken);
-        return new InProcessCollectorDrainResult(PendingFacts, PendingGaps);
+        try
+        {
+            await stopTask.WaitAsync(cancellationToken);
+        }
+        catch
+        {
+            if (stopTask.IsCompleted)
+            {
+                lock (_stopGate)
+                {
+                    if (ReferenceEquals(_stopTask, stopTask))
+                        _stopTask = null;
+                }
+            }
+            throw;
+        }
+        var reason = WasTerminated
+            ? CollectorDrainReason.DeadlineExceeded
+            : DrainResult.Failure is null ? DrainReason : CollectorDrainReason.FlushCancelled;
+        return new InProcessCollectorDrainResult(
+            new InProcessCollectorLogicalDrainResult(
+                PendingFacts,
+                PendingGaps,
+                reason,
+                RemainderDurable && PendingFacts is not null && PendingGaps is not null));
     }
 
     public async Task AbortAsync()
@@ -1272,7 +1326,7 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
         _exit.TrySetResult(new ManagedProcessExit(ExitCode, null));
     }
 
-    private async Task StopCoreAsync()
+    private async Task StopCoreAsync(DateTimeOffset deadline)
     {
         if (_process.HasExited)
         {
@@ -1289,13 +1343,13 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
         {
             WasTerminated = true;
             Kill(_process);
-            await WaitForExitAsync(_process);
+            await TryWaitForExitBeforeAsync(deadline);
             _drainResult = new ManagedProcessDrainResult(null, null, true);
             _drained.TrySetResult(_drainResult);
             return;
         }
 
-        var deadline = DateTimeOffset.UtcNow + _options.DrainGracePeriod;
+        using var deadlineCancellation = CreateDeadlineCancellation(deadline);
         _drainMessageId = Guid.CreateVersion7();
         try
         {
@@ -1306,16 +1360,18 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
                 messageId = _drainMessageId,
                 activationId = ActivationId,
                 body = new { deadline = ProtocolTimestamp(deadline) }
-            }, CancellationToken.None);
+            }, deadlineCancellation.Token);
         }
-        catch (ManagedProcessProtocolException exception)
+        catch (Exception exception) when (
+            exception is ManagedProcessProtocolException ||
+            exception is OperationCanceledException && deadlineCancellation.IsCancellationRequested)
         {
             if (!_process.HasExited)
             {
                 WasTerminated = true;
                 Kill(_process);
             }
-            await WaitForExitAsync(_process);
+            await TryWaitForExitBeforeAsync(deadline);
             var drainWriteFailure = new ManagedProcessExit(ExitCode, exception);
             _exit.TrySetResult(drainWriteFailure);
             _drainResult = new ManagedProcessDrainResult(
@@ -1330,13 +1386,15 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
         var drainAcknowledged = false;
         try
         {
-            var drain = await _drained.Task.WaitAsync(_options.DrainGracePeriod);
+            var drain = await _drained.Task.WaitAsync(deadlineCancellation.Token);
             drainAcknowledged = drain.Failure is null;
             var remaining = deadline - DateTimeOffset.UtcNow;
             if (remaining > TimeSpan.Zero)
                 await WaitForExitAsync(_process).WaitAsync(remaining);
         }
-        catch (TimeoutException)
+        catch (Exception exception) when (
+            exception is TimeoutException ||
+            exception is OperationCanceledException && deadlineCancellation.IsCancellationRequested)
         {
             if (!_process.HasExited)
             {
@@ -1344,8 +1402,10 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
                 Kill(_process);
             }
         }
-        await WaitForExitAsync(_process);
-        var exit = await _exit.Task;
+        var processExited = await TryWaitForExitBeforeAsync(deadline);
+        var exit = processExited && _exit.Task.IsCompletedSuccessfully
+            ? _exit.Task.Result
+            : new ManagedProcessExit(ExitCode, null);
         var failure = exit.ProtocolError is not null ||
                       (!drainAcknowledged && !WasTerminated) ||
                       (!WasTerminated && exit.ExitCode is not null and not 0)
@@ -1358,6 +1418,41 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
             failure);
         _drained.TrySetResult(_drainResult);
     }
+
+    private CancellationTokenSource CreateDeadlineCancellation(DateTimeOffset deadline)
+    {
+        var remaining = deadline - DateTimeOffset.UtcNow;
+        return remaining > TimeSpan.Zero
+            ? new CancellationTokenSource(remaining)
+            : new CancellationTokenSource(TimeSpan.Zero);
+    }
+
+    private async Task<bool> TryWaitForExitBeforeAsync(DateTimeOffset deadline)
+    {
+        var wait = WaitForExitAsync(_process);
+        var remaining = deadline - DateTimeOffset.UtcNow;
+        if (remaining <= TimeSpan.Zero)
+        {
+            Observe(wait);
+            return wait.IsCompletedSuccessfully;
+        }
+        try
+        {
+            await wait.WaitAsync(remaining);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            Observe(wait);
+            return false;
+        }
+    }
+
+    private static void Observe(Task task) => _ = task.ContinueWith(
+        static completed => _ = completed.Exception,
+        CancellationToken.None,
+        TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
+        TaskScheduler.Default);
 
     private async Task PumpAsync()
     {
@@ -1498,13 +1593,24 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
     {
         RequireEnvelope(root, "heartbeat.collector/1", "activation.drained", ActivationId!.Value, hasReplyTo: true);
         var body = RequireObject(root, "body");
-        RequireExactProperties(body, "appliedSpecRevision", "pendingFacts", "pendingGaps");
+        RequireExactProperties(
+            body,
+            "appliedSpecRevision",
+            "pendingFacts",
+            "pendingGaps",
+            "reason",
+            "remainderDurable");
         if (_drainMessageId is null || ReadGuid(root, "replyTo") != _drainMessageId)
             throw new ManagedProcessProtocolException("activation.drained replyTo does not match activation.drain.");
         if (ReadPositiveLong(body, "appliedSpecRevision") != _specRevision)
             throw new ManagedProcessProtocolException("activation.drained appliedSpecRevision does not match the initialized Spec.");
         PendingFacts = ReadNonNegativeInt(body, "pendingFacts");
         PendingGaps = ReadNonNegativeInt(body, "pendingGaps");
+        var reason = ReadString(body, "reason");
+        if (!CollectorDrainVocabulary.TryParse(reason, out var drainReason))
+            throw new ManagedProcessProtocolException($"activation.drained reason '{reason}' is not supported.");
+        DrainReason = drainReason;
+        RemainderDurable = ReadBoolean(body, "remainderDurable");
         _drainResult = new ManagedProcessDrainResult(PendingFacts, PendingGaps, false);
         _drained.TrySetResult(_drainResult);
     }

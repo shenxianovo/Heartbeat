@@ -160,10 +160,68 @@ public sealed record CollectorAuthorizationResponse(
 
 public sealed record CollectorDrainRequest(Guid RequestMessageId, DateTimeOffset Deadline);
 
+public enum CollectorProtocolDrainReason
+{
+    Drained,
+    DeadlineExceeded,
+    StopFailed,
+    FlushCancelled,
+    PersistenceFailed
+}
+
+public enum CollectorProtocolDrainCompletionReason
+{
+    Completed,
+    DeadlineExceeded,
+    CompletionFailed
+}
+
+public static class CollectorProtocolDrainVocabulary
+{
+    public static string Format(CollectorProtocolDrainReason reason) => reason switch
+    {
+        CollectorProtocolDrainReason.Drained => "drained",
+        CollectorProtocolDrainReason.DeadlineExceeded => "deadline_exceeded",
+        CollectorProtocolDrainReason.StopFailed => "stop_failed",
+        CollectorProtocolDrainReason.FlushCancelled => "flush_cancelled",
+        CollectorProtocolDrainReason.PersistenceFailed => "persistence_failed",
+        _ => throw new ArgumentOutOfRangeException(nameof(reason))
+    };
+
+    public static string Format(CollectorProtocolDrainCompletionReason reason) => reason switch
+    {
+        CollectorProtocolDrainCompletionReason.Completed => "completed",
+        CollectorProtocolDrainCompletionReason.DeadlineExceeded => "deadline_exceeded",
+        CollectorProtocolDrainCompletionReason.CompletionFailed => "completion_failed",
+        _ => throw new ArgumentOutOfRangeException(nameof(reason))
+    };
+}
+
 public sealed record CollectorDrainResult(
     long AppliedSpecRevision,
     int PendingFacts,
-    int PendingGaps);
+    int PendingGaps,
+    CollectorProtocolDrainReason Reason = CollectorProtocolDrainReason.Drained,
+    bool RemainderDurable = true)
+{
+    public bool IsFullyDrained =>
+        Reason == CollectorProtocolDrainReason.Drained &&
+        RemainderDurable &&
+        PendingFacts == 0 &&
+        PendingGaps == 0;
+}
+
+public sealed record CollectorDrainExecutionResult(
+    CollectorDrainResult LogicalResult,
+    CollectorProtocolDrainCompletionReason CompletionReason,
+    string? CompletionError = null)
+{
+    public long AppliedSpecRevision => LogicalResult.AppliedSpecRevision;
+    public int PendingFacts => LogicalResult.PendingFacts;
+    public int PendingGaps => LogicalResult.PendingGaps;
+    public bool IsFullyDrained =>
+        CompletionReason == CollectorProtocolDrainCompletionReason.Completed && LogicalResult.IsFullyDrained;
+}
 
 public sealed record CollectorDeadLetter(
     DateTimeOffset FailedAt,

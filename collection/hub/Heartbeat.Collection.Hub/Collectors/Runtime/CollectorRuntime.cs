@@ -59,6 +59,8 @@ public sealed class CollectorRuntimeOptions
     /// <summary>Maximum durable replay-window entries retained for each Fact family.</summary>
     public int MaxDurableFacts { get; init; } = 20_000;
     public int RetryAfterMilliseconds { get; init; } = 1_000;
+    public TimeSpan InProcessDrainGracePeriod { get; init; } = TimeSpan.FromSeconds(10);
+    public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 
     internal void Validate()
     {
@@ -71,6 +73,9 @@ public sealed class CollectorRuntimeOptions
             throw new ArgumentOutOfRangeException(nameof(MaxDurableFacts));
         if (RetryAfterMilliseconds <= 0)
             throw new ArgumentOutOfRangeException(nameof(RetryAfterMilliseconds));
+        if (InProcessDrainGracePeriod <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(InProcessDrainGracePeriod));
+        ArgumentNullException.ThrowIfNull(TimeProvider);
     }
 }
 

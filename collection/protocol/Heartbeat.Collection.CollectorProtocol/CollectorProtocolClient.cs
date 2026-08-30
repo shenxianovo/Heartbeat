@@ -8,14 +8,20 @@ namespace Heartbeat.Collection.CollectorProtocol;
 public sealed class CollectorProtocolClient(
     CollectorClientDefinition definition,
     ICollectorProtocolBinding binding,
-    Func<DateTimeOffset>? clock = null) : IAsyncDisposable
+    TimeProvider? timeProvider = null) : IAsyncDisposable
 {
-    private readonly Func<DateTimeOffset> _clock = clock ?? (() => DateTimeOffset.UtcNow);
+    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     private readonly SemaphoreSlim _deliveryGate = new(1, 1);
+    private readonly SemaphoreSlim _flushSignal = new(0, 1);
     private CollectorProtocolOutbox? _outbox;
     private CollectorActivation? _activation;
+    private Task? _backgroundFlush;
+    private volatile bool _admissionOpen = true;
+    private volatile bool _persistenceFailed;
+    private int _activePersistenceRetries;
+    private int _deliveryEpoch;
 
-    public async Task<CollectorDrainResult> RunAsync(
+    public async Task<CollectorDrainExecutionResult> RunAsync(
         ICollectorProtocolApplication application,
         CancellationToken cancellationToken = default)
     {
@@ -38,7 +44,7 @@ public sealed class CollectorProtocolClient(
             initialization.DataDirectory,
             definition.OutboxCapacity,
             definition.Outputs,
-            _clock());
+            _timeProvider.GetUtcNow());
         await PersistMutationAsync(_outbox.BeginActivation, cancellationToken).ConfigureAwait(false);
         ReportDiagnostics();
         _activation = new CollectorActivation(this, initialization);
@@ -50,9 +56,12 @@ public sealed class CollectorProtocolClient(
             cancellationToken).ConfigureAwait(false);
         _activation.SetStreams(streams);
         await binding.ReadyAsync(initialization.SpecRevision, cancellationToken).ConfigureAwait(false);
-        await FlushAsync(cancellationToken).ConfigureAwait(false);
-        var applicationTask = application.StartAsync(_activation, cancellationToken).AsTask();
+        using var applicationLifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var drainTask = binding.WaitForDrainAsync(cancellationToken).AsTask();
+        var backgroundFlush = FlushInBackgroundAsync(applicationLifetime.Token);
+        _backgroundFlush = backgroundFlush;
+        SignalFlush();
+        var applicationTask = application.StartAsync(_activation, applicationLifetime.Token).AsTask();
         var first = await Task.WhenAny(applicationTask, drainTask).ConfigureAwait(false);
         CollectorDrainRequest drain;
         if (ReferenceEquals(first, applicationTask))
@@ -63,61 +72,165 @@ public sealed class CollectorProtocolClient(
         else
         {
             drain = await drainTask.ConfigureAwait(false);
+            Observe(applicationTask);
         }
-        await application.StopAsync(_activation, CancellationToken.None).ConfigureAwait(false);
-        using var deadline = new CancellationTokenSource();
-        var remaining = drain.Deadline - _clock();
-        if (remaining > TimeSpan.Zero)
-            deadline.CancelAfter(remaining);
-        else
-            deadline.Cancel();
+        using var deadlineTimer = CreateDeadlineCancellation(drain.Deadline);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            deadlineTimer.Token);
+        Interlocked.Increment(ref _deliveryEpoch);
+        using var deadlineFence = deadline.Token.Register(
+            () => Interlocked.Increment(ref _deliveryEpoch));
+        var reason = CollectorProtocolDrainReason.Drained;
+        var remainderDurable = true;
+        await applicationLifetime.CancelAsync().ConfigureAwait(false);
         try
         {
-            await FlushAsync(deadline.Token).ConfigureAwait(false);
+            await backgroundFlush.WaitAsync(deadline.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested)
         {
-            // Drain is best effort; the truthful pending counts below remain durable.
+            Observe(backgroundFlush);
+        }
+        catch (IOException)
+        {
+            reason = CollectorProtocolDrainReason.PersistenceFailed;
+            remainderDurable = false;
+        }
+        catch
+        {
+            reason = CollectorProtocolDrainReason.FlushCancelled;
+        }
+
+        var stopTask = application.StopAsync(_activation, deadline.Token).AsTask();
+        try
+        {
+            await stopTask.WaitAsync(deadline.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        {
+            reason = _persistenceFailed || Volatile.Read(ref _activePersistenceRetries) != 0
+                ? CollectorProtocolDrainReason.PersistenceFailed
+                : CollectorProtocolDrainReason.DeadlineExceeded;
+            remainderDurable = false;
+            Observe(stopTask);
+        }
+        catch (IOException)
+        {
+            reason = CollectorProtocolDrainReason.PersistenceFailed;
+            remainderDurable = false;
+        }
+        catch
+        {
+            reason = CollectorProtocolDrainReason.StopFailed;
+            remainderDurable = false;
+        }
+
+        _admissionOpen = false;
+        Task? finalFlush = null;
+        try
+        {
+            finalFlush = FlushAsync(deadline.Token);
+            await finalFlush.WaitAsync(deadline.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        {
+            if (finalFlush is not null)
+                Observe(finalFlush);
+            if (reason == CollectorProtocolDrainReason.Drained)
+                reason = CollectorProtocolDrainReason.FlushCancelled;
+        }
+        catch (IOException)
+        {
+            reason = CollectorProtocolDrainReason.PersistenceFailed;
+            remainderDurable = false;
+        }
+        catch
+        {
+            if (reason == CollectorProtocolDrainReason.Drained)
+                reason = CollectorProtocolDrainReason.FlushCancelled;
         }
         var result = new CollectorDrainResult(
             initialization.SpecRevision,
             _outbox.Facts.Count,
-            _outbox.Gaps.Count);
-        await binding.CompleteDrainAsync(result, CancellationToken.None).ConfigureAwait(false);
-        return result;
+            _outbox.Gaps.Count,
+            reason,
+            remainderDurable);
+        try
+        {
+            var completion = binding.CompleteDrainAsync(result, deadline.Token).AsTask();
+            try
+            {
+                await completion.WaitAsync(deadline.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+            {
+                Observe(completion);
+                throw;
+            }
+            return new CollectorDrainExecutionResult(
+                result,
+                CollectorProtocolDrainCompletionReason.Completed);
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        {
+            return new CollectorDrainExecutionResult(
+                result,
+                CollectorProtocolDrainCompletionReason.DeadlineExceeded);
+        }
+        catch (Exception exception)
+        {
+            return new CollectorDrainExecutionResult(
+                result,
+                CollectorProtocolDrainCompletionReason.CompletionFailed,
+                exception.Message);
+        }
     }
 
     internal IReadOnlyList<CollectorFact> PendingFacts =>
         _outbox?.Facts.Select(item => item.Fact).ToArray() ?? [];
 
     internal async ValueTask PublishAsync(CollectorFact fact, CancellationToken cancellationToken)
+        => await PublishBatchAsync([fact], cancellationToken).ConfigureAwait(false);
+
+    internal async ValueTask PublishBatchAsync(
+        IReadOnlyList<CollectorFact> facts,
+        CancellationToken cancellationToken)
     {
-        EnsureBinding(fact.BindingId);
+        ArgumentNullException.ThrowIfNull(facts);
+        if (facts.Count == 0)
+            return;
+        foreach (var fact in facts)
+            EnsureBinding(fact.BindingId);
+        EnsureAdmissionOpen();
         await _deliveryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await PersistMutationAsync(() => _outbox!.Enqueue(fact), cancellationToken).ConfigureAwait(false);
-            await FlushLockedAsync(cancellationToken).ConfigureAwait(false);
+            EnsureAdmissionOpen();
+            await PersistMutationAsync(() => _outbox!.EnqueueFacts(facts), cancellationToken).ConfigureAwait(false);
         }
         finally
         {
             _deliveryGate.Release();
         }
+        SignalFlush();
     }
 
     internal async ValueTask ReportGapAsync(CollectorStreamGap gap, CancellationToken cancellationToken)
     {
         EnsureBinding(gap.BindingId);
+        EnsureAdmissionOpen();
         await _deliveryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            EnsureAdmissionOpen();
             await PersistMutationAsync(() => _outbox!.EnqueueGap(gap), cancellationToken).ConfigureAwait(false);
-            await FlushLockedAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {
             _deliveryGate.Release();
         }
+        SignalFlush();
     }
 
     internal ValueTask<CollectorAuthorizationResponse> ChallengeAsync(
@@ -143,95 +256,166 @@ public sealed class CollectorProtocolClient(
 
     private async Task FlushAsync(CancellationToken cancellationToken)
     {
-        await _deliveryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        if (_activation is null || !_activation.HasStreams)
+            return;
+        await FlushFactsAsync(cancellationToken).ConfigureAwait(false);
+        await FlushGapsAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task FlushInBackgroundAsync(CancellationToken cancellationToken)
+    {
         try
         {
-            await FlushLockedAsync(cancellationToken).ConfigureAwait(false);
+            while (true)
+            {
+                await _flushSignal.WaitAsync(cancellationToken).ConfigureAwait(false);
+                await FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
         }
-        finally
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            _deliveryGate.Release();
+            // Drain owns the final bounded flush after stopping application ingress.
         }
     }
 
-    private async Task FlushLockedAsync(CancellationToken cancellationToken)
+    private async Task FlushFactsAsync(CancellationToken cancellationToken)
     {
-        if (_activation is null || !_activation.HasStreams)
-            return;
-        while (_outbox!.Facts.FirstOrDefault() is { } pending)
+        while (true)
         {
-            var stream = _activation.Stream(pending.Fact.BindingId);
-            var fact = Bind(pending.Fact, stream);
+            PendingCollectorFact? pending;
+            BoundCollectorFact fact;
+            await _deliveryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                pending = _outbox!.Facts.FirstOrDefault();
+                if (pending is null)
+                    return;
+                fact = Bind(pending.Fact, _activation!.Stream(pending.Fact.BindingId));
+            }
+            finally
+            {
+                _deliveryGate.Release();
+            }
+            var deliveryEpoch = Volatile.Read(ref _deliveryEpoch);
             var acknowledgement = await binding.PublishAsync(
                 pending.MessageId,
                 [fact],
                 cancellationToken).ConfigureAwait(false);
-            if (acknowledgement.IsMessageRejected)
-            {
-                await PersistMutationAsync(
-                    () => _outbox.DeadLetter(pending, acknowledgement.MessageError!, _clock()),
-                    cancellationToken).ConfigureAwait(false);
-                ReportDiagnostics();
-                continue;
-            }
-            if (acknowledgement.Results.Count != 1)
+            ThrowIfDeliverySuperseded(deliveryEpoch, cancellationToken);
+            if (!acknowledgement.IsMessageRejected && acknowledgement.Results.Count != 1)
                 throw new InvalidDataException("Collector Protocol returned an invalid Fact ACK count.");
-            var outcome = acknowledgement.Results[0];
-            if (outcome.Status == CollectorFactDeliveryStatus.Retry)
-            {
-                await PersistMutationAsync(
-                    () => _outbox.RetryFact(pending.MessageId),
-                    cancellationToken).ConfigureAwait(false);
-                await Task.Delay(
-                    TimeSpan.FromMilliseconds(outcome.RetryAfterMilliseconds ?? 1_000),
-                    cancellationToken).ConfigureAwait(false);
-                continue;
-            }
-            if (outcome.IsAcknowledged)
-            {
-                await PersistMutationAsync(
-                    () => _outbox.AcknowledgeFact(pending.MessageId),
-                    cancellationToken).ConfigureAwait(false);
-                continue;
-            }
-            await PersistMutationAsync(
-                () => _outbox.DeadLetter(
-                    pending,
-                    outcome.Error ?? new CollectorProtocolError(
-                        "fact_delivery_failed",
-                        $"Hub returned '{outcome.Status}' for a Collector Fact.",
-                        false),
-                    _clock()),
-                cancellationToken).ConfigureAwait(false);
-            ReportDiagnostics();
-        }
 
-        while (_outbox.Gaps.FirstOrDefault() is { } pending)
+            var retryAfter = default(int?);
+            await _deliveryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                ThrowIfDeliverySuperseded(deliveryEpoch, cancellationToken);
+                if (_outbox!.Facts.All(item => item.MessageId != pending.MessageId))
+                    continue;
+                if (acknowledgement.IsMessageRejected)
+                {
+                    await PersistMutationAsync(
+                        () => _outbox.DeadLetter(
+                            pending,
+                            acknowledgement.MessageError!,
+                            _timeProvider.GetUtcNow()),
+                        cancellationToken).ConfigureAwait(false);
+                    ReportDiagnostics();
+                    continue;
+                }
+                var outcome = acknowledgement.Results[0];
+                if (outcome.Status == CollectorFactDeliveryStatus.Retry)
+                {
+                    await PersistMutationAsync(
+                        () => _outbox.RetryFact(pending.MessageId),
+                        cancellationToken).ConfigureAwait(false);
+                    retryAfter = outcome.RetryAfterMilliseconds ?? 1_000;
+                }
+                else if (outcome.IsAcknowledged)
+                {
+                    await PersistMutationAsync(
+                        () => _outbox.AcknowledgeFact(pending.MessageId),
+                        cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    await PersistMutationAsync(
+                        () => _outbox.DeadLetter(
+                            pending,
+                            outcome.Error ?? new CollectorProtocolError(
+                                "fact_delivery_failed",
+                                $"Hub returned '{outcome.Status}' for a Collector Fact.",
+                                false),
+                            _timeProvider.GetUtcNow()),
+                        cancellationToken).ConfigureAwait(false);
+                    ReportDiagnostics();
+                }
+            }
+            finally
+            {
+                _deliveryGate.Release();
+            }
+            if (retryAfter is { } milliseconds)
+                await Task.Delay(TimeSpan.FromMilliseconds(milliseconds), cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task FlushGapsAsync(CancellationToken cancellationToken)
+    {
+        while (true)
         {
-            var stream = _activation.Stream(pending.Gap.BindingId);
+            PendingCollectorGap? pending;
+            Guid streamId;
+            await _deliveryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                pending = _outbox!.Gaps.FirstOrDefault();
+                if (pending is null)
+                    return;
+                streamId = _activation!.Stream(pending.Gap.BindingId).StreamId;
+            }
+            finally
+            {
+                _deliveryGate.Release();
+            }
+            var deliveryEpoch = Volatile.Read(ref _deliveryEpoch);
             var outcome = await binding.ReportGapAsync(
                 pending.MessageId,
-                stream.StreamId,
+                streamId,
                 pending.Gap,
                 cancellationToken).ConfigureAwait(false);
-            if (outcome.IsAcknowledged)
+            ThrowIfDeliverySuperseded(deliveryEpoch, cancellationToken);
+            var retryAfter = default(int?);
+            await _deliveryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
             {
-                await PersistMutationAsync(
-                    () => _outbox.AcknowledgeGap(pending.MessageId),
-                    cancellationToken).ConfigureAwait(false);
-                continue;
+                ThrowIfDeliverySuperseded(deliveryEpoch, cancellationToken);
+                if (_outbox!.Gaps.All(item => item.MessageId != pending.MessageId))
+                    continue;
+                if (outcome.IsAcknowledged)
+                {
+                    await PersistMutationAsync(
+                        () => _outbox.AcknowledgeGap(pending.MessageId),
+                        cancellationToken).ConfigureAwait(false);
+                }
+                else if (outcome.Status == CollectorGapDeliveryStatus.Retry || outcome.Error?.Retryable == true)
+                {
+                    await PersistMutationAsync(
+                        () => _outbox.RetryGap(pending.MessageId),
+                        cancellationToken).ConfigureAwait(false);
+                    retryAfter = outcome.RetryAfterMilliseconds ?? 1_000;
+                }
+                else
+                {
+                    return;
+                }
             }
-            if (outcome.Status == CollectorGapDeliveryStatus.Retry || outcome.Error?.Retryable == true)
+            finally
             {
-                await PersistMutationAsync(
-                    () => _outbox.RetryGap(pending.MessageId),
-                    cancellationToken).ConfigureAwait(false);
-                await Task.Delay(
-                    TimeSpan.FromMilliseconds(outcome.RetryAfterMilliseconds ?? 1_000),
-                    cancellationToken).ConfigureAwait(false);
-                continue;
+                _deliveryGate.Release();
             }
-            return;
+            if (retryAfter is { } milliseconds)
+                await Task.Delay(TimeSpan.FromMilliseconds(milliseconds), cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -248,19 +432,37 @@ public sealed class CollectorProtocolClient(
             // persistence attempt without requiring another domain observation.
         }
 
+        Interlocked.Increment(ref _activePersistenceRetries);
         var delay = TimeSpan.FromMilliseconds(50);
-        while (true)
+        try
         {
-            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-            try
+            while (true)
             {
-                _outbox!.PersistPending();
-                return;
+                try
+                {
+                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
+                {
+                    _persistenceFailed = true;
+                    throw new CollectorProtocolPersistenceException(
+                        "Collector Protocol could not persist the pending outbox mutation before drain deadline.",
+                        exception);
+                }
+                try
+                {
+                    _outbox!.PersistPending();
+                    return;
+                }
+                catch (IOException)
+                {
+                    delay = TimeSpan.FromMilliseconds(Math.Min(delay.TotalMilliseconds * 2, 1_000));
+                }
             }
-            catch (IOException)
-            {
-                delay = TimeSpan.FromMilliseconds(Math.Min(delay.TotalMilliseconds * 2, 1_000));
-            }
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _activePersistenceRetries);
         }
     }
 
@@ -273,6 +475,45 @@ public sealed class CollectorProtocolClient(
         if (definition.Outputs.All(output => output.BindingId != bindingId))
             throw new ArgumentException($"Collector output binding '{bindingId}' is not declared.", nameof(bindingId));
     }
+
+    private void EnsureAdmissionOpen()
+    {
+        if (!_admissionOpen)
+            throw new InvalidOperationException("Collector Protocol admission is fenced after drain.");
+    }
+
+    private void SignalFlush()
+    {
+        try
+        {
+            _flushSignal.Release();
+        }
+        catch (SemaphoreFullException)
+        {
+            // Another publisher already queued the single coalesced flush signal.
+        }
+    }
+
+    private void ThrowIfDeliverySuperseded(int deliveryEpoch, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (deliveryEpoch != Volatile.Read(ref _deliveryEpoch))
+            throw new OperationCanceledException("Collector delivery attempt was superseded by drain.");
+    }
+
+    private CancellationTokenSource CreateDeadlineCancellation(DateTimeOffset deadline)
+    {
+        var remaining = deadline - _timeProvider.GetUtcNow();
+        return remaining > TimeSpan.Zero
+            ? new CancellationTokenSource(remaining, _timeProvider)
+            : new CancellationTokenSource(TimeSpan.Zero, _timeProvider);
+    }
+
+    private static void Observe(Task task) => _ = task.ContinueWith(
+        static completed => _ = completed.Exception,
+        CancellationToken.None,
+        TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
+        TaskScheduler.Default);
 
     private void ValidateDefinition()
     {
@@ -297,10 +538,17 @@ public sealed class CollectorProtocolClient(
 
     public async ValueTask DisposeAsync()
     {
-        _deliveryGate.Dispose();
         await binding.DisposeAsync().ConfigureAwait(false);
+        if (_backgroundFlush is not { IsCompleted: false })
+        {
+            _deliveryGate.Dispose();
+            _flushSignal.Dispose();
+        }
     }
 }
+
+internal sealed class CollectorProtocolPersistenceException(string message, Exception innerException)
+    : IOException(message, innerException);
 
 public sealed class CollectorActivation
 {
@@ -323,6 +571,11 @@ public sealed class CollectorActivation
 
     public ValueTask PublishAsync(CollectorFact fact, CancellationToken cancellationToken = default) =>
         _client.PublishAsync(fact, cancellationToken);
+
+    public ValueTask PublishBatchAsync(
+        IReadOnlyList<CollectorFact> facts,
+        CancellationToken cancellationToken = default) =>
+        _client.PublishBatchAsync(facts, cancellationToken);
 
     public ValueTask ReportGapAsync(CollectorStreamGap gap, CancellationToken cancellationToken = default) =>
         _client.ReportGapAsync(gap, cancellationToken);

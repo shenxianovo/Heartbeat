@@ -13,6 +13,9 @@ namespace Heartbeat.Collection.Hub.Collectors.Runtime;
 
 public sealed partial class CollectorRuntime
 {
+    internal TimeProvider TimeProvider => _options.TimeProvider;
+    internal DateTimeOffset UtcNow => _options.TimeProvider.GetUtcNow();
+    internal DateTimeOffset InProcessDrainDeadline() => UtcNow + _options.InProcessDrainGracePeriod;
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<int>> HubProtocolCapabilities =
         new Dictionary<string, IReadOnlyList<int>>(StringComparer.Ordinal)
         {
@@ -178,7 +181,11 @@ public sealed partial class CollectorRuntime
                         "Stop the current Collector Activation before starting its replacement.");
                 _startingInstances.Add(collectorInstanceId);
                 registeredStartingInstance = true;
-                startingCollector = new StartingCollector(collectorInstanceId, collector);
+                startingCollector = new StartingCollector(
+                    collectorInstanceId,
+                    collector,
+                    InProcessDrainDeadline,
+                    _options.TimeProvider);
                 _startingCollectors.Add(collectorInstanceId, startingCollector);
                 session = CreateActivationSession(
                     activationId,
@@ -187,6 +194,10 @@ public sealed partial class CollectorRuntime
                     ActivationDeliveryCapability.Complete);
             }
 
+            using var activationCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                startingCollector!.LifetimeToken);
+            var activationToken = activationCancellation.Token;
             var initialization = new CollectorInitialization(
                 activationId,
                 instance,
@@ -202,7 +213,7 @@ public sealed partial class CollectorRuntime
             try
             {
                 collectorInitializationStarted = true;
-                initialized = await collector.InitializeAsync(initialization, cancellationToken);
+                initialized = await collector.InitializeAsync(initialization, activationToken);
                 if (initialized is null)
                     throw ActivationError(
                         "protocol_invalid_message",
@@ -222,7 +233,7 @@ public sealed partial class CollectorRuntime
                     exception);
             }
 
-            cancellationToken.ThrowIfCancellationRequested();
+            activationToken.ThrowIfCancellationRequested();
             InProcessCollectorStreamsOpened opened;
             lock (_gate)
             {
@@ -268,7 +279,7 @@ public sealed partial class CollectorRuntime
             try
             {
                 await startingCollector!.InvokeStreamsOpenedAsync(
-                    () => collector.OnStreamsOpenedAsync(opened, cancellationToken));
+                    () => collector.OnStreamsOpenedAsync(opened, activationToken));
             }
             catch (OperationCanceledException)
             {
@@ -1549,17 +1560,21 @@ public sealed partial class CollectorRuntime
 
     private sealed class StartingCollector(
         Guid collectorInstanceId,
-        IInProcessCollector collector)
+        IInProcessCollector collector,
+        Func<DateTimeOffset> drainDeadline,
+        TimeProvider timeProvider)
     {
         private readonly object _stopGate = new();
         private readonly TaskCompletionSource _activationCompleted = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly CancellationTokenSource _lifetime = new();
         private Task? _stopTask;
         private InProcessCollectorActivation? _activation;
         private bool _stopRequested;
 
         public Guid CollectorInstanceId { get; } = collectorInstanceId;
         public Task ActivationCompleted => _activationCompleted.Task;
+        public CancellationToken LifetimeToken => _lifetime.Token;
 
         public void AttachActivation(InProcessCollectorActivation activation)
         {
@@ -1585,12 +1600,13 @@ public sealed partial class CollectorRuntime
 
         public async Task StopAsync()
         {
+            await _lifetime.CancelAsync();
             Task stopTask;
             lock (_stopGate)
             {
                 _stopRequested = true;
                 _stopTask ??= _activation is null
-                    ? collector.StopAsync(CancellationToken.None).AsTask()
+                    ? StopStartingCollectorAsync()
                     : _activation.StopAsync(CancellationToken.None).AsTask();
                 stopTask = _stopTask;
             }
@@ -1606,6 +1622,32 @@ public sealed partial class CollectorRuntime
                         _stopTask = null;
                 }
                 throw;
+            }
+            finally
+            {
+                _activationCompleted.TrySetResult();
+            }
+        }
+
+        private async Task StopStartingCollectorAsync()
+        {
+            var deadline = drainDeadline();
+            var remaining = deadline - timeProvider.GetUtcNow();
+            using var cancellation = new CancellationTokenSource(
+                remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero,
+                timeProvider);
+            var stopTask = collector.StopAsync(deadline, cancellation.Token).AsTask();
+            try
+            {
+                await stopTask.WaitAsync(cancellation.Token);
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+                _ = stopTask.ContinueWith(
+                    static completed => _ = completed.Exception,
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
+                    TaskScheduler.Default);
             }
         }
 

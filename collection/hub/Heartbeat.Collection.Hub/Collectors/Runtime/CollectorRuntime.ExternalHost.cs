@@ -9,6 +9,14 @@ public sealed partial class CollectorRuntime
     private readonly Dictionary<Guid, PendingExternalHostActivation> _pendingExternalHostActivations = [];
     private readonly Dictionary<Guid, ExternalHostCollectorActivation> _externalHostActivations = [];
 
+    internal ExternalHostCollectorActivation FindExternalHostActivation(Guid activationId)
+    {
+        lock (_gate)
+            return _externalHostActivations.TryGetValue(activationId, out var activation)
+                ? activation
+                : throw new KeyNotFoundException($"ExternalHost Activation '{activationId}' is not active.");
+    }
+
     public ExternalHostCollectorInitialization BeginExternalHostActivation(
         Guid collectorInstanceId,
         LocalCollectorPackage package,

@@ -213,6 +213,41 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
         Assert.Equal(200, (await Renew(secondProfile)).StatusCode);
     }
 
+    [Fact]
+    public async Task ExternalHostDrainUsesSharedOutcomeVocabularyAndOnlyRevokesLease()
+    {
+        var rejectedSession = await Activate("edge", "profile-invalid-drain");
+        var rejected = await Post(
+            $"/v1/collector-protocol/browser/{rejectedSession.ActivationId}/drained",
+            Message(
+                "activation.drained",
+                $$$"""{"leaseToken":"{{{rejectedSession.LeaseToken}}}","appliedSpecRevision":1,"pendingFacts":0,"pendingGaps":0,"reason":"unknown","remainderDurable":false}""",
+                rejectedSession.ActivationId));
+        Assert.Equal(400, rejected.StatusCode);
+        Assert.Equal(200, (await Renew(rejectedSession)).StatusCode);
+
+        var session = await Activate("edge", "profile-drained");
+        var activation = _runtime.FindExternalHostActivation(session.ActivationId);
+        var drained = await Post(
+            $"/v1/collector-protocol/browser/{session.ActivationId}/drained",
+            Message(
+                "activation.drained",
+                $$$"""{"leaseToken":"{{{session.LeaseToken}}}","appliedSpecRevision":1,"pendingFacts":2,"pendingGaps":1,"reason":"flush_cancelled","remainderDurable":true}""",
+                session.ActivationId));
+
+        Assert.Equal(204, drained.StatusCode);
+        Assert.Equal(409, (await Renew(session)).StatusCode);
+        Assert.Equal(2, activation.DrainResult!.PendingFacts);
+        Assert.Equal(1, activation.DrainResult.PendingGaps);
+        Assert.Equal(CollectorDrainReason.FlushCancelled, activation.DrainResult.LogicalResult.Reason);
+        Assert.True(activation.DrainResult.LogicalResult.RemainderDurable);
+        Assert.Equal(CollectorDrainCompletionReason.Completed, activation.DrainResult.CompletionReason);
+        CollectorDrainDriverConformance.AssertObserved(
+            "external_host",
+            hubInitiated: false,
+            "revoke_lease");
+    }
+
     private async Task<(Guid ActivationId, Guid StreamId, string LeaseToken)> Activate(
         string appHint = "edge",
         string externalHostIdentity = "edge-profile-default")

@@ -15,6 +15,7 @@ public sealed class SystemInProcessCollector(
     SystemCollectorProtocolAdapter protocol,
     AppMonitorService monitor) :
     IInProcessCollector,
+    IInProcessCollectorDeadlineFence,
     ICollectorProtocolBinding,
     ICollectorProtocolApplication,
     IDisposable
@@ -54,9 +55,10 @@ public sealed class SystemInProcessCollector(
     private readonly TaskCompletionSource _applicationStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<CollectorDrainRequest> _drainRequested = NewSource<CollectorDrainRequest>();
     private readonly TaskCompletionSource<CollectorDrainResult> _drainCompleted = NewSource<CollectorDrainResult>();
+    private readonly CancellationTokenSource _clientLifetime = new();
     private readonly object _startGate = new();
     private CollectorProtocolClient? _client;
-    private Task<CollectorDrainResult>? _clientRun;
+    private Task<CollectorDrainExecutionResult>? _clientRun;
     private InProcessCollectorActivation? _liveActivation;
 
     public string ArtifactId => _definition.ArtifactId;
@@ -114,16 +116,32 @@ public sealed class SystemInProcessCollector(
         await _applicationStarted.Task.WaitAsync(cancellationToken);
     }
 
-    public async ValueTask<InProcessCollectorDrainResult> StopAsync(CancellationToken cancellationToken)
+    public async ValueTask<InProcessCollectorDrainResult> StopAsync(
+        DateTimeOffset deadline,
+        CancellationToken cancellationToken)
     {
+        using var deadlineFence = cancellationToken.Register(
+            static state => ((CancellationTokenSource)state!).Cancel(),
+            _clientLifetime);
         _drainRequested.TrySetResult(new CollectorDrainRequest(
             Guid.CreateVersion7(),
-            DateTimeOffset.UtcNow.AddSeconds(30)));
-        var result = await _drainCompleted.Task.WaitAsync(cancellationToken);
-        if (_clientRun is not null)
-            await _clientRun.WaitAsync(cancellationToken);
-        return new InProcessCollectorDrainResult(result.PendingFacts, result.PendingGaps);
+            deadline));
+        await _drainCompleted.Task.WaitAsync(cancellationToken);
+        var execution = _clientRun is null
+            ? throw new InvalidOperationException("The system Collector Protocol client is not running.")
+            : await _clientRun.WaitAsync(cancellationToken);
+        return new InProcessCollectorDrainResult(
+            new InProcessCollectorLogicalDrainResult(
+                execution.PendingFacts,
+                execution.PendingGaps,
+                Enum.Parse<CollectorDrainReason>(execution.LogicalResult.Reason.ToString()),
+                execution.LogicalResult.RemainderDurable),
+            Enum.Parse<Heartbeat.Collection.Hub.Collectors.Protocol.CollectorDrainCompletionReason>(
+                execution.CompletionReason.ToString()),
+            execution.CompletionError);
     }
+
+    void IInProcessCollectorDeadlineFence.FenceAfterDeadline() => _clientLifetime.Cancel();
 
     ValueTask<CollectorClientInitialization> ICollectorProtocolBinding.StartAsync(
         CollectorClientDefinition definition,
@@ -253,13 +271,15 @@ public sealed class SystemInProcessCollector(
         CollectorActivation activation,
         CancellationToken cancellationToken)
     {
+        var monitorStop = monitor.StopAsync(cancellationToken);
         try
         {
-            await monitor.StopAsync(cancellationToken);
+            await protocol.PrepareDrainAsync(cancellationToken);
+            await monitorStop.WaitAsync(cancellationToken);
         }
         finally
         {
-            await protocol.StopAsync();
+            await protocol.CompleteDrainAsync(cancellationToken);
         }
     }
 
@@ -278,7 +298,7 @@ public sealed class SystemInProcessCollector(
             if (_clientRun is not null)
                 return;
             _client = new CollectorProtocolClient(_definition, this);
-            _clientRun = _client.RunAsync(this);
+            _clientRun = _client.RunAsync(this, _clientLifetime.Token);
             _ = _clientRun.ContinueWith(
                 task =>
                 {

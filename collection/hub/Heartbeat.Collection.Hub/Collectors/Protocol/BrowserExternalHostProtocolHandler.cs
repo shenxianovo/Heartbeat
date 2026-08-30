@@ -560,6 +560,19 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
                 activationId,
                 message.MessageId,
                 Error("protocol_invalid_message", "Pending counts must not be negative."));
+        if (!CollectorDrainVocabulary.TryParse(request.Reason, out var reason))
+            return Rejected(
+                400,
+                "activation.drainRejected",
+                activationId,
+                message.MessageId,
+                Error("protocol_invalid_message", "Drain reason is not supported."));
+        session.Activation!.CompleteDrain(new InProcessCollectorDrainResult(
+            new InProcessCollectorLogicalDrainResult(
+                request.PendingFacts,
+                request.PendingGaps,
+                reason,
+                request.RemainderDurable)));
         StopAndRemove(session, ExternalHostActivationStopReason.CollectorDrained);
         return new ProtocolHttpResponse(204, string.Empty, false);
     }
@@ -882,5 +895,7 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         string LeaseToken,
         long AppliedSpecRevision,
         int PendingFacts,
-        int PendingGaps);
+        int PendingGaps,
+        string Reason,
+        bool RemainderDurable);
 }

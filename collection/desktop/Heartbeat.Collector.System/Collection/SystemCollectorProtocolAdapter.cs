@@ -19,8 +19,8 @@ public sealed class InputEventIngressCapacityExceededException(int capacity) : E
 }
 
 /// <summary>
-/// Maps system observations to domain-neutral Collector Facts. Lifecycle, persistent delivery,
-/// ACK/retry, Gap and drain are owned by the Collector Protocol client module.
+/// Maps system observations to domain-neutral Collector Facts. This adapter owns only the local
+/// durable ingress handoff; Collector Protocol owns the outbox, remote ACK/retry, Gap and drain.
 /// </summary>
 public sealed class SystemCollectorProtocolAdapter :
     ISystemSegmentPublisher,
@@ -35,8 +35,8 @@ public sealed class SystemCollectorProtocolAdapter :
     private readonly Channel<ForegroundSegmentSnapshot> _segments = Channel.CreateUnbounded<ForegroundSegmentSnapshot>(
         new UnboundedChannelOptions
         {
-            // Native desktop callbacks must only enqueue. Segment snapshots are low-rate,
-            // ordered state revisions, so they are never dropped under protocol backpressure.
+            // Before Activation attachment, composition-time observations can only queue. Once
+            // attached, callbacks append to the durable ingress journal before returning.
             SingleReader = true,
             SingleWriter = false,
             AllowSynchronousContinuations = false
@@ -44,12 +44,12 @@ public sealed class SystemCollectorProtocolAdapter :
     private readonly Channel<InputEventItem> _inputEvents;
     private readonly SemaphoreSlim _pumpSignal = new(0, 1);
     private readonly UploadStatusRegistry? _statusRegistry;
-    private readonly SystemInputIngressGapStore? _ingressGapStore;
+    private SystemInputIngressGapStore? _ingressGapStore;
+    private SystemCollectorIngressStore? _ingressStore;
     private readonly int _inputEventIngressCapacity;
     private CollectorActivation? _activation;
     private CancellationTokenSource? _pumpCancellation;
     private Task? _pump;
-    private ForegroundSegmentSnapshot? _pendingSegment;
 
     public SystemCollectorProtocolAdapter(
         UploadStatusRegistry? statusRegistry = null,
@@ -83,6 +83,14 @@ public sealed class SystemCollectorProtocolAdapter :
         if (_activation is not null)
             throw new InvalidOperationException("The system Collector is already attached to an Activation.");
         _activation = activation;
+        _ingressStore ??= SystemCollectorIngressStore.Open(Path.Combine(
+            activation.Initialization.DataDirectory,
+            "system-collector-ingress.json"),
+            _inputEventIngressCapacity);
+        _ingressGapStore ??= SystemInputIngressGapStore.Open(Path.Combine(
+            activation.Initialization.DataDirectory,
+            "system-input-ingress-gaps.json"));
+        PersistQueuedIngress();
     }
 
     internal void Start()
@@ -96,7 +104,7 @@ public sealed class SystemCollectorProtocolAdapter :
         SignalPump();
     }
 
-    internal async ValueTask StopAsync()
+    internal async ValueTask PrepareDrainAsync(CancellationToken cancellationToken)
     {
         if (_pumpCancellation is null)
             return;
@@ -109,27 +117,48 @@ public sealed class SystemCollectorProtocolAdapter :
         {
             try
             {
-                await _pump.ConfigureAwait(false);
+                await _pump.WaitAsync(cancellationToken).ConfigureAwait(false);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
                 // Expected while draining.
             }
         }
 
         while (HasPendingIngress())
-            await DrainOnceAsync(CancellationToken.None).ConfigureAwait(false);
+            await DrainOnceAsync(
+                cancellationToken,
+                segmentLimit: int.MaxValue,
+                inputEventLimit: int.MaxValue).ConfigureAwait(false);
+    }
 
-        _pumpCancellation.Dispose();
-        _pumpCancellation = null;
-        _pump = null;
-        _activation = null;
+    internal async ValueTask CompleteDrainAsync(CancellationToken cancellationToken)
+    {
+        if (_pumpCancellation is null)
+            return;
+        try
+        {
+            while (HasPendingIngress())
+                await DrainOnceAsync(
+                    cancellationToken,
+                    segmentLimit: int.MaxValue,
+                    inputEventLimit: int.MaxValue).ConfigureAwait(false);
+        }
+        finally
+        {
+            _pumpCancellation.Dispose();
+            _pumpCancellation = null;
+            _pump = null;
+            _activation = null;
+        }
     }
 
     public void Publish(ForegroundSegmentSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        if (!_segments.Writer.TryWrite(snapshot))
+        if (_ingressStore is { } store)
+            store.Enqueue(snapshot);
+        else if (!_segments.Writer.TryWrite(snapshot))
             throw new InvalidOperationException("The system Collector segment ingress is unavailable.");
         SignalPump();
     }
@@ -137,7 +166,10 @@ public sealed class SystemCollectorProtocolAdapter :
     public void Publish(InputEventItem item)
     {
         ArgumentNullException.ThrowIfNull(item);
-        if (!_inputEvents.Writer.TryWrite(item))
+        var accepted = _ingressStore is { } store
+            ? store.TryEnqueue(item)
+            : _inputEvents.Writer.TryWrite(item);
+        if (!accepted)
         {
             if (_ingressGapStore is null)
                 throw new InputEventIngressCapacityExceededException(_inputEventIngressCapacity);
@@ -182,25 +214,25 @@ public sealed class SystemCollectorProtocolAdapter :
         }
     }
 
-    private async Task DrainOnceAsync(CancellationToken cancellationToken)
+    private async Task DrainOnceAsync(
+        CancellationToken cancellationToken,
+        int segmentLimit = SegmentPumpBatchSize,
+        int inputEventLimit = InputEventPumpBatchSize)
     {
         var activation = _activation;
         if (activation is null)
             return;
+        PersistQueuedIngress();
+        var ingress = _ingressStore
+            ?? throw new InvalidOperationException("The system Collector durable ingress is unavailable.");
 
-        var processedSegments = 0;
-        while (processedSegments < SegmentPumpBatchSize && TryReadSegment(out var snapshot))
+        var segments = ingress.PeekSegments(segmentLimit);
+        if (segments.Count != 0)
         {
-            try
-            {
-                await activation.PublishAsync(ToFact(snapshot), cancellationToken).ConfigureAwait(false);
-            }
-            catch
-            {
-                _pendingSegment = snapshot;
-                throw;
-            }
-            processedSegments++;
+            await activation.PublishBatchAsync(
+                segments.Select(item => ToFact(item.Snapshot)).ToArray(),
+                cancellationToken).ConfigureAwait(false);
+            ingress.AcknowledgeSegments(segments);
         }
 
         if (_ingressGapStore?.Claim() is { } dropped)
@@ -216,38 +248,40 @@ public sealed class SystemCollectorProtocolAdapter :
             ReportReadyAfterIngressGapAcknowledged();
         }
 
-        var processed = 0;
-        while (processed < InputEventPumpBatchSize && _inputEvents.Reader.TryRead(out var item))
+        var inputEvents = ingress.PeekInputEvents(inputEventLimit);
+        if (inputEvents.Count != 0)
         {
-            try
-            {
-                await activation.PublishAsync(ToFact(item), cancellationToken).ConfigureAwait(false);
-            }
-            catch
-            {
-                _inputEvents.Writer.TryWrite(item);
-                throw;
-            }
-            processed++;
+            await activation.PublishBatchAsync(
+                inputEvents.Select(item => ToFact(item.Item)).ToArray(),
+                cancellationToken).ConfigureAwait(false);
+            ingress.AcknowledgeInputEvents(inputEvents);
         }
         if (HasPendingIngress())
             SignalPump();
     }
 
-    private bool TryReadSegment(out ForegroundSegmentSnapshot snapshot)
+    private void PersistQueuedIngress()
     {
-        if (_pendingSegment is not null)
+        var ingress = _ingressStore;
+        if (ingress is null)
+            return;
+        while (_segments.Reader.TryRead(out var snapshot))
+            ingress.Enqueue(snapshot);
+
+        while (_inputEvents.Reader.TryRead(out var item))
         {
-            snapshot = _pendingSegment;
-            _pendingSegment = null;
-            return true;
+            if (ingress.TryEnqueue(item))
+                continue;
+            if (_ingressGapStore is null)
+                throw new InputEventIngressCapacityExceededException(_inputEventIngressCapacity);
+            _ingressGapStore.RecordDrop(item.Timestamp);
+            ReportPendingIngressGapStatus();
         }
-        return _segments.Reader.TryRead(out snapshot!);
     }
 
     private bool HasPendingIngress()
     {
-        if (_pendingSegment is not null ||
+        if (_ingressStore?.HasPending == true ||
             _segments.Reader.TryPeek(out _) ||
             _inputEvents.Reader.TryPeek(out _))
             return true;

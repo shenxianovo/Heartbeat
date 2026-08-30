@@ -44,6 +44,10 @@ _Avoid_: 在 JsonFileCache 与投影层分别封顶、把 count clamp 当成成�
 跨语言共享的可执行协议行为语料，固定生命周期、ACK、重试、Gap 与 drain 结果；各语言实现通过同一组向量证明其 Binding 没有改变协议语义。它不是 wire-message schema，也不是完整请求/响应 transcript。
 _Avoid_: 只共享 DTO、以某一种语言实现作为协议本身、把行为语料误当消息格式定义
 
+**Collector Drain Outcome（采集器排空结果）**:
+Collector 在同一个绝对 deadline 内停止观测、把 ingress tail 先交给本地 durable first stage / outbox、尝试交付并报告 remainder 的逻辑结果；`drained`、`deadline_exceeded`、`stop_failed`、`flush_cancelled`、`persistence_failed` 是跨 Execution Driver 的稳定 reason。逻辑结果与 Runtime 是否成功接收 completion 分层记录；只有逻辑 reason 为 `drained`、remainder durable、pending facts/gaps 均为零且 completion 成功时才是 fully drained。InProcess 到期 fence 并释放 writer，ManagedProcess 到期终止并释放，ExternalHost 保持 lease revoke 弱语义。
+_Avoid_: 把未送达的 `activation.drained` 当成 completion 成功、用 pending=0 掩盖 non-durable/unknown tail、让 deadline 后的旧 Activation 继续写入
+
 **Observation Declaration（观测声明）**:
 Collector Package 携带的独立 JSON 声明，描述 Source 的有序观测深度、读数槽位和展示标签。Package loader 先验证其路径、hash、Source 与版本，再由 Hub 原文上行；它不属于 Fact payload，也不从 Fact Schema 或 Output Template 推导。
 _Avoid_: Fact Schema、Output Template、运行时自报 declaration

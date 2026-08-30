@@ -48,6 +48,10 @@
     <Content Include="Fixtures/**/*" Exclude="Fixtures/ReferenceCollectorPackage/**/*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <None Include="..\..\protocol\conformance\v1\collector-protocol-conformance.json">
+      <Link>Conformance\collector-protocol-conformance.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <PropertyGroup>

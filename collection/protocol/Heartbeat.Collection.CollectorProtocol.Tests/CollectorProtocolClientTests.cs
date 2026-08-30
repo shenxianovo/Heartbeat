@@ -7,6 +7,24 @@ namespace Heartbeat.Collection.CollectorProtocol.Tests;
 public sealed class CollectorProtocolClientTests
 {
     [Fact]
+    public void DrainOutcomeCorpusMatchesClientVocabulary()
+    {
+        using var corpus = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "Conformance",
+            "collector-protocol-conformance.json")));
+
+        Assert.Equal(
+            Enum.GetValues<CollectorProtocolDrainReason>().Select(CollectorProtocolDrainVocabulary.Format),
+            corpus.RootElement.GetProperty("drainOutcomes").EnumerateArray()
+                .Select(item => item.GetProperty("reason").GetString()));
+        Assert.Equal(
+            Enum.GetValues<CollectorProtocolDrainCompletionReason>().Select(CollectorProtocolDrainVocabulary.Format),
+            corpus.RootElement.GetProperty("completionOutcomes").EnumerateArray()
+                .Select(item => item.GetString()));
+    }
+
+    [Fact]
     public void SynchronousHostWait_DoesNotRequireItsSynchronizationContextToPumpProtocolContinuations()
     {
         var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-sync-context-{Guid.NewGuid():N}");
@@ -89,7 +107,13 @@ public sealed class CollectorProtocolClientTests
                 var outcomes = status == CollectorFactDeliveryStatus.Retry
                     ? new Queue<CollectorFactDeliveryStatus>([status, CollectorFactDeliveryStatus.Committed])
                     : new Queue<CollectorFactDeliveryStatus>([status]);
-                var binding = new FakeBinding(root, outcomes);
+                var binding = new FakeBinding(
+                    root,
+                    outcomes,
+                    fallbackOutcome: status == CollectorFactDeliveryStatus.Retry
+                        ? CollectorFactDeliveryStatus.Committed
+                        : status,
+                    drainAfterPublishes: status == CollectorFactDeliveryStatus.Retry ? 2 : 1);
                 await using var client = new CollectorProtocolClient(Definition(), binding);
 
                 var result = await client.RunAsync(new PublishingApplication());
@@ -108,7 +132,7 @@ public sealed class CollectorProtocolClientTests
                 Assert.Equal(outbox.Facts.Count, result.PendingFacts);
                 if (status == CollectorFactDeliveryStatus.Retry)
                 {
-                    Assert.Equal(2, binding.PublishMessageIds.Count);
+                    Assert.True(binding.PublishMessageIds.Count >= 2);
                     Assert.NotEqual(binding.PublishMessageIds[0], binding.PublishMessageIds[1]);
                     Assert.All(binding.PublishedFacts, fact =>
                     {
@@ -339,6 +363,342 @@ public sealed class CollectorProtocolClientTests
         }
     }
 
+    [Fact]
+    public async Task RestoredBacklogCannotPreventDeadlineBoundedDrain()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-drain-backlog-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var outbox = CollectorProtocolOutbox.Open(
+            root,
+            16,
+            Definition().Outputs,
+            DateTimeOffset.UtcNow);
+        outbox.Enqueue(new CollectorFact(
+            "activity",
+            1,
+            PublishingApplication.FactId,
+            1,
+            null,
+            CollectorFactRecordState.Present,
+            new CollectorEventFactTime(DateTimeOffset.UtcNow),
+            JsonSerializer.SerializeToElement(new { identityKey = "reference|online" })));
+        var binding = new SuspendedPublishBinding(root);
+        await using var client = new CollectorProtocolClient(Definition(), binding);
+        var run = client.RunAsync(new IdleApplication());
+
+        try
+        {
+            Assert.True(binding.PublishEntered.Wait(TimeSpan.FromSeconds(2)));
+            binding.RequestDrain(TimeSpan.FromMilliseconds(100));
+
+            var result = await run.WaitAsync(TimeSpan.FromSeconds(1));
+
+            Assert.Equal(1, result.PendingFacts);
+            Assert.Equal(CollectorProtocolDrainReason.FlushCancelled, result.LogicalResult.Reason);
+            Assert.True(result.LogicalResult.RemainderDurable);
+            Assert.False(result.IsFullyDrained);
+            AssertDrainConformance(result);
+            Assert.Single(CollectorProtocolOutbox.Open(
+                root,
+                16,
+                Definition().Outputs,
+                DateTimeOffset.UtcNow).Facts);
+        }
+        finally
+        {
+            binding.CompletePublish();
+            binding.RequestDrain();
+            Assert.True(binding.PublishExited.Wait(TimeSpan.FromSeconds(2)));
+            try
+            {
+                await run.WaitAsync(TimeSpan.FromSeconds(2));
+            }
+            catch
+            {
+                // Preserve the primary assertion failure while ensuring the controlled fixture
+                // cannot leave a protocol task behind.
+            }
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task CancellationIgnoringLateAcknowledgementCannotChangeReportedRemainder()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-drain-late-ack-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        CollectorProtocolOutbox.Open(root, 16, Definition().Outputs, DateTimeOffset.UtcNow).Enqueue(
+            new CollectorFact(
+                "activity",
+                1,
+                PublishingApplication.FactId,
+                1,
+                null,
+                CollectorFactRecordState.Present,
+                new CollectorEventFactTime(DateTimeOffset.UtcNow),
+                JsonSerializer.SerializeToElement(new { identityKey = "reference|late-ack" })));
+        var binding = new SuspendedPublishBinding(root, ignoreCancellation: true);
+        await using var client = new CollectorProtocolClient(Definition(), binding);
+        var run = client.RunAsync(new IdleApplication());
+        try
+        {
+            Assert.True(binding.PublishEntered.Wait(TimeSpan.FromSeconds(2)));
+            binding.RequestDrain(TimeSpan.FromMilliseconds(100));
+            var result = await run.WaitAsync(TimeSpan.FromSeconds(1));
+            Assert.Equal(1, result.PendingFacts);
+
+            binding.CompletePublish();
+            Assert.True(binding.PublishExited.Wait(TimeSpan.FromSeconds(2)));
+            await Task.Delay(20);
+
+            Assert.Single(CollectorProtocolOutbox.Open(
+                root, 16, Definition().Outputs, DateTimeOffset.UtcNow).Facts);
+        }
+        finally
+        {
+            binding.CompletePublish();
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task CancellationIgnoringApplicationStopReturnsDeadlineOutcome()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-drain-stop-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var binding = new SuspendedPublishBinding(root);
+        var application = new ControlledStopApplication();
+        await using var client = new CollectorProtocolClient(Definition(), binding);
+        var run = client.RunAsync(application);
+        binding.RequestDrain(TimeSpan.FromMilliseconds(100));
+
+        try
+        {
+            await application.StopEntered.WaitAsync(TimeSpan.FromSeconds(2));
+            var result = await run.WaitAsync(TimeSpan.FromSeconds(1));
+
+            Assert.Equal(CollectorProtocolDrainReason.DeadlineExceeded, result.LogicalResult.Reason);
+            Assert.False(result.LogicalResult.RemainderDurable);
+            Assert.False(result.IsFullyDrained);
+            AssertDrainConformance(result);
+        }
+        finally
+        {
+            application.ReleaseStop();
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task CancellationIgnoringFinalFlushCannotCrossDrainDeadline()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-drain-final-flush-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var binding = new SuspendedPublishBinding(root, ignoreCancellation: true);
+        await using var client = new CollectorProtocolClient(Definition(), binding);
+        var run = client.RunAsync(new PublishingOnStopApplication());
+        binding.RequestDrain(TimeSpan.FromMilliseconds(100));
+
+        try
+        {
+            Assert.True(binding.PublishEntered.Wait(TimeSpan.FromSeconds(2)));
+            var result = await run.WaitAsync(TimeSpan.FromSeconds(1));
+
+            Assert.Equal(CollectorProtocolDrainReason.FlushCancelled, result.LogicalResult.Reason);
+            Assert.Equal(1, result.PendingFacts);
+            Assert.False(result.IsFullyDrained);
+        }
+        finally
+        {
+            binding.CompletePublish();
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task CancellationIgnoringCompletionCannotCrossDrainDeadline()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-drain-final-completion-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var binding = new SuspendedPublishBinding(
+            root,
+            ignoreCompletionCancellation: true);
+        await using var client = new CollectorProtocolClient(Definition(), binding);
+        var run = client.RunAsync(new IdleApplication());
+        binding.RequestDrain(TimeSpan.FromMilliseconds(100));
+
+        try
+        {
+            Assert.True(binding.CompletionEntered.Wait(TimeSpan.FromSeconds(2)));
+            var result = await run.WaitAsync(TimeSpan.FromSeconds(1));
+
+            Assert.True(result.LogicalResult.IsFullyDrained);
+            Assert.Equal(CollectorProtocolDrainCompletionReason.DeadlineExceeded, result.CompletionReason);
+            Assert.False(result.IsFullyDrained);
+        }
+        finally
+        {
+            binding.CompleteCompletion();
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task CompletionFailureIsSeparateFromFullyDrainedLogicalOutcome()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-drain-completion-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var binding = new FakeBinding(
+                root,
+                new Queue<CollectorFactDeliveryStatus>(),
+                new IOException("completion unavailable"));
+            await using var client = new CollectorProtocolClient(Definition(), binding);
+
+            var result = await client.RunAsync(new IdleApplication());
+
+            Assert.True(result.LogicalResult.IsFullyDrained);
+            Assert.Equal(CollectorProtocolDrainCompletionReason.CompletionFailed, result.CompletionReason);
+            Assert.Equal("completion unavailable", result.CompletionError);
+            Assert.False(result.IsFullyDrained);
+            AssertDrainConformance(result);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DeadlineRemainderReplaysFromDurableOutboxOnRestart()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-drain-restart-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var fact = new CollectorFact(
+            "activity",
+            1,
+            PublishingApplication.FactId,
+            1,
+            null,
+            CollectorFactRecordState.Present,
+            new CollectorEventFactTime(DateTimeOffset.UtcNow),
+            JsonSerializer.SerializeToElement(new { identityKey = "reference|restart" }));
+        CollectorProtocolOutbox.Open(root, 16, Definition().Outputs, DateTimeOffset.UtcNow).Enqueue(fact);
+        try
+        {
+            var retrying = new FakeBinding(
+                root,
+                new Queue<CollectorFactDeliveryStatus>(),
+                fallbackOutcome: CollectorFactDeliveryStatus.Retry,
+                drainGrace: TimeSpan.FromMilliseconds(100));
+            await using (var first = new CollectorProtocolClient(Definition(), retrying))
+            {
+                var result = await first.RunAsync(new IdleApplication());
+                Assert.Equal(CollectorProtocolDrainReason.FlushCancelled, result.LogicalResult.Reason);
+                Assert.Equal(fact.FactId, Assert.Single(CollectorProtocolOutbox.Open(
+                    root, 16, Definition().Outputs, DateTimeOffset.UtcNow).Facts).Fact.FactId);
+            }
+
+            var committed = new FakeBinding(
+                root,
+                new Queue<CollectorFactDeliveryStatus>([CollectorFactDeliveryStatus.Committed]));
+            await using (var restarted = new CollectorProtocolClient(Definition(), committed))
+            {
+                var result = await restarted.RunAsync(new IdleApplication());
+                Assert.True(result.IsFullyDrained);
+                Assert.Equal(fact.FactId, Assert.Single(committed.PublishedFacts).FactId);
+            }
+            Assert.Empty(CollectorProtocolOutbox.Open(
+                root, 16, Definition().Outputs, DateTimeOffset.UtcNow).Facts);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task StopFailureHasStableNonDurableOutcome()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-drain-stop-failed-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var binding = new FakeBinding(root, new Queue<CollectorFactDeliveryStatus>());
+            await using var client = new CollectorProtocolClient(Definition(), binding);
+
+            var result = await client.RunAsync(new ThrowingStopApplication());
+
+            Assert.Equal(CollectorProtocolDrainReason.StopFailed, result.LogicalResult.Reason);
+            Assert.False(result.LogicalResult.RemainderDurable);
+            Assert.False(result.IsFullyDrained);
+            AssertDrainConformance(result);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task PermanentPersistenceFailureIsReportedAsUnknownNonDurableRemainder()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-drain-persistence-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(Path.Combine(root, "collector-protocol-outbox.json"));
+        try
+        {
+            var binding = new FakeBinding(
+                root,
+                new Queue<CollectorFactDeliveryStatus>(),
+                drainGrace: TimeSpan.FromMilliseconds(100));
+            await using var client = new CollectorProtocolClient(Definition(), binding);
+
+            var result = await client.RunAsync(new PublishingOnStopApplication());
+
+            Assert.Equal(CollectorProtocolDrainReason.PersistenceFailed, result.LogicalResult.Reason);
+            Assert.False(result.LogicalResult.RemainderDurable);
+            Assert.Equal(1, result.PendingFacts);
+            Assert.False(result.IsFullyDrained);
+            AssertDrainConformance(result);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static void AssertDrainConformance(CollectorDrainExecutionResult result)
+    {
+        using var corpus = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "Conformance",
+            "collector-protocol-conformance.json")));
+        var reason = CollectorProtocolDrainVocabulary.Format(result.LogicalResult.Reason);
+        var expected = corpus.RootElement.GetProperty("drainOutcomes").EnumerateArray()
+            .Single(item => item.GetProperty("reason").GetString() == reason);
+        Assert.Equal(
+            expected.GetProperty("remainderDurable").GetBoolean(),
+            result.LogicalResult.RemainderDurable);
+        Assert.Equal(
+            expected.GetProperty("canBeFullyDrained").GetBoolean(),
+            result.LogicalResult.IsFullyDrained);
+        Assert.Contains(
+            CollectorProtocolDrainVocabulary.Format(result.CompletionReason),
+            corpus.RootElement.GetProperty("completionOutcomes").EnumerateArray()
+                .Select(item => item.GetString()));
+    }
+
     private static CollectorClientDefinition Definition() => new(
         "reference.managed",
         new Dictionary<string, IReadOnlyList<int>>
@@ -372,10 +732,84 @@ public sealed class CollectorProtocolClientTests
             ValueTask.CompletedTask;
     }
 
+    private sealed class IdleApplication : ICollectorProtocolApplication
+    {
+        public ValueTask InitializeAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask StartAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask StopAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+    }
+
+    private sealed class ControlledStopApplication : ICollectorProtocolApplication
+    {
+        private readonly TaskCompletionSource _releaseStop =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _stopEntered =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task StopEntered => _stopEntered.Task;
+
+        public ValueTask InitializeAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask StartAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask StopAsync(CollectorActivation activation, CancellationToken cancellationToken)
+        {
+            _stopEntered.TrySetResult();
+            return new ValueTask(_releaseStop.Task);
+        }
+
+        public void ReleaseStop() => _releaseStop.TrySetResult();
+    }
+
+    private sealed class ThrowingStopApplication : IdleApplicationBase
+    {
+        public override ValueTask StopAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+            ValueTask.FromException(new InvalidOperationException("stop failed"));
+    }
+
+    private sealed class PublishingOnStopApplication : IdleApplicationBase
+    {
+        public override ValueTask StopAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+            activation.PublishAsync(new CollectorFact(
+                "activity",
+                1,
+                PublishingApplication.FactId,
+                1,
+                null,
+                CollectorFactRecordState.Present,
+                new CollectorEventFactTime(DateTimeOffset.UtcNow),
+                JsonSerializer.SerializeToElement(new { identityKey = "reference|persistence" })),
+                cancellationToken);
+    }
+
+    private abstract class IdleApplicationBase : ICollectorProtocolApplication
+    {
+        public ValueTask InitializeAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask StartAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public abstract ValueTask StopAsync(CollectorActivation activation, CancellationToken cancellationToken);
+    }
+
     private sealed class FakeBinding(
         string dataDirectory,
-        Queue<CollectorFactDeliveryStatus> outcomes) : ICollectorProtocolBinding
+        Queue<CollectorFactDeliveryStatus> outcomes,
+        Exception? completionFailure = null,
+        CollectorFactDeliveryStatus? fallbackOutcome = null,
+        TimeSpan? drainGrace = null,
+        int drainAfterPublishes = 0) : ICollectorProtocolBinding
     {
+        private readonly TaskCompletionSource _publishThresholdReached =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
         public List<Guid> PublishMessageIds { get; } = [];
         public List<BoundCollectorFact> PublishedFacts { get; } = [];
 
@@ -416,7 +850,11 @@ public sealed class CollectorProtocolClientTests
         {
             PublishMessageIds.Add(messageId);
             PublishedFacts.AddRange(facts);
-            var status = outcomes.Dequeue();
+            if (drainAfterPublishes > 0 && PublishMessageIds.Count >= drainAfterPublishes)
+                _publishThresholdReached.TrySetResult();
+            var status = outcomes.Count == 0
+                ? fallbackOutcome ?? throw new InvalidOperationException("Fixture has no Fact outcome.")
+                : outcomes.Dequeue();
             var error = status is CollectorFactDeliveryStatus.Rejected or CollectorFactDeliveryStatus.Retry
                 ? new CollectorProtocolError("fixture", "Fixture outcome.", status == CollectorFactDeliveryStatus.Retry)
                 : null;
@@ -455,11 +893,19 @@ public sealed class CollectorProtocolClientTests
         public ValueTask DeleteSecretAsync(string key, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
-        public ValueTask<CollectorDrainRequest> WaitForDrainAsync(CancellationToken cancellationToken) =>
-            ValueTask.FromResult(new CollectorDrainRequest(Guid.CreateVersion7(), DateTimeOffset.UtcNow.AddSeconds(5)));
+        public async ValueTask<CollectorDrainRequest> WaitForDrainAsync(CancellationToken cancellationToken)
+        {
+            if (drainAfterPublishes > 0)
+                await _publishThresholdReached.Task.WaitAsync(cancellationToken);
+            return new CollectorDrainRequest(
+                Guid.CreateVersion7(),
+                DateTimeOffset.UtcNow.Add(drainGrace ?? TimeSpan.FromSeconds(5)));
+        }
 
         public ValueTask CompleteDrainAsync(CollectorDrainResult result, CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
+            completionFailure is null
+                ? ValueTask.CompletedTask
+                : ValueTask.FromException(completionFailure);
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
@@ -480,21 +926,30 @@ public sealed class CollectorProtocolClientTests
         }
     }
 
-    private sealed class SuspendedPublishBinding(string dataDirectory) : ICollectorProtocolBinding
+    private sealed class SuspendedPublishBinding(
+        string dataDirectory,
+        bool ignoreCancellation = false,
+        bool ignoreCompletionCancellation = false) : ICollectorProtocolBinding
     {
         private readonly TaskCompletionSource<CollectorFactBatchAcknowledgement> _publish =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource<CollectorDrainRequest> _drain =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _completion =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public ManualResetEventSlim PublishEntered { get; } = new();
+        public ManualResetEventSlim PublishExited { get; } = new();
+        public ManualResetEventSlim CompletionEntered { get; } = new();
 
         public void CompletePublish() => _publish.TrySetResult(new CollectorFactBatchAcknowledgement(
             [new CollectorFactDeliveryOutcome(0, CollectorFactDeliveryStatus.Committed)]));
 
-        public void RequestDrain() => _drain.TrySetResult(new CollectorDrainRequest(
+        public void CompleteCompletion() => _completion.TrySetResult();
+
+        public void RequestDrain(TimeSpan? grace = null) => _drain.TrySetResult(new CollectorDrainRequest(
             Guid.CreateVersion7(),
-            DateTimeOffset.UtcNow.AddSeconds(5)));
+            DateTimeOffset.UtcNow.Add(grace ?? TimeSpan.FromSeconds(5))));
 
         public ValueTask<CollectorClientInitialization> StartAsync(
             CollectorClientDefinition definition,
@@ -526,13 +981,22 @@ public sealed class CollectorProtocolClientTests
         public ValueTask ReadyAsync(long appliedSpecRevision, CancellationToken cancellationToken) =>
             ValueTask.CompletedTask;
 
-        public ValueTask<CollectorFactBatchAcknowledgement> PublishAsync(
+        public async ValueTask<CollectorFactBatchAcknowledgement> PublishAsync(
             Guid messageId,
             IReadOnlyList<BoundCollectorFact> facts,
             CancellationToken cancellationToken)
         {
             PublishEntered.Set();
-            return new ValueTask<CollectorFactBatchAcknowledgement>(_publish.Task);
+            try
+            {
+                return ignoreCancellation
+                    ? await _publish.Task
+                    : await _publish.Task.WaitAsync(cancellationToken);
+            }
+            finally
+            {
+                PublishExited.Set();
+            }
         }
 
         public ValueTask<CollectorGapDeliveryOutcome> ReportGapAsync(
@@ -565,8 +1029,15 @@ public sealed class CollectorProtocolClientTests
         public ValueTask<CollectorDrainRequest> WaitForDrainAsync(CancellationToken cancellationToken) =>
             new(_drain.Task);
 
-        public ValueTask CompleteDrainAsync(CollectorDrainResult result, CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
+        public async ValueTask CompleteDrainAsync(
+            CollectorDrainResult result,
+            CancellationToken cancellationToken)
+        {
+            if (!ignoreCompletionCancellation)
+                return;
+            CompletionEntered.Set();
+            await _completion.Task;
+        }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

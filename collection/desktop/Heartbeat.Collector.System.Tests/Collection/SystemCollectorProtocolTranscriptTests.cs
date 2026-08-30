@@ -523,13 +523,111 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         Assert.Equal(1, durableGap.EstimatedFactsLost);
 
         inputSink.Release();
-        await WaitUntilAsync(() => SystemInputIngressGapStore.Open(gapPath).PendingCount == 0);
+        await WaitUntilAsync(() => RuntimeHasGap(statePath, "input_ingress_capacity_exceeded"));
         Assert.Equal(
             UploadStreamState.Ready,
             statuses.Snapshot[SystemCollectorProtocolAdapter.StatusStreamName].State);
         Assert.True(
             RuntimeHasGap(statePath, "input_ingress_capacity_exceeded"),
             File.ReadAllText(statePath));
+    }
+
+    [Fact]
+    public async Task DrainDeadlineStagesSystemIngressTailAndRestartReplaysDurableRemainder()
+    {
+        Directory.CreateDirectory(_root);
+        var statePath = Path.Combine(_root, "collector-runtime.json");
+        var clock = new FakeClock();
+        var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
+        using var config = JsonDocument.Parse("{}");
+        Guid instanceId;
+        string outboxPath;
+        string ingressPath;
+        var blockedSink = new BlockingInputEventSink();
+        var drainTime = new ControlledTimeProvider();
+
+        var runtime = CollectorRuntime.Open(
+            statePath,
+            new SegmentIngestService(clock),
+            new CollectorRuntimeOptions
+            {
+                InProcessDrainGracePeriod = TimeSpan.FromMilliseconds(200),
+                TimeProvider = drainTime
+            },
+            inputEventSink: blockedSink);
+        try
+        {
+            var instance = runtime.CreateInstance(
+                package,
+                new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+                new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+            instanceId = instance.CollectorInstanceId;
+            outboxPath = Path.Combine(
+                _root,
+                "collector-data",
+                instanceId.ToString("N"),
+                "collector-protocol-outbox.json");
+            ingressPath = Path.Combine(
+                _root,
+                "collector-data",
+                instanceId.ToString("N"),
+                "system-collector-ingress.json");
+            var protocol = new SystemCollectorProtocolAdapter();
+            var collector = NewCollector(protocol, clock, new SegmentIngestService(clock));
+            var activation = await runtime.ActivateInProcessAsync(
+                instanceId,
+                package,
+                collector);
+
+            for (var index = 0; index < 100; index++)
+            {
+                protocol.Publish(new InputEventItem
+                {
+                    Id = Guid.CreateVersion7(),
+                    EventType = InputEventType.MouseButton,
+                    CodeSet = InputCodeSets.HeartbeatKeyPositionV1,
+                    Code = (short)(index % 3 + 1),
+                    Timestamp = clock.UtcNow.AddTicks(index)
+                });
+            }
+            Assert.True(blockedSink.Entered.Wait(TimeSpan.FromSeconds(2)));
+            Assert.Equal(100, DurableFactIds(statePath, outboxPath, ingressPath).Count);
+
+            var stopTask = activation.StopAsync().AsTask();
+            drainTime.Advance(TimeSpan.FromMilliseconds(200));
+            await stopTask.WaitAsync(TimeSpan.FromSeconds(2));
+            blockedSink.Release();
+
+            Assert.Equal(CollectorDrainReason.DeadlineExceeded, activation.DrainResult!.LogicalResult.Reason);
+            var durableRemainder = OutboxFactCount(outboxPath);
+            Assert.Equal(100, DurableFactIds(statePath, outboxPath, ingressPath).Count);
+            await Task.Delay(50);
+            Assert.Equal(durableRemainder, OutboxFactCount(outboxPath));
+        }
+        finally
+        {
+            blockedSink.Release();
+            var disposeTask = runtime.DisposeAsync().AsTask();
+            drainTime.Advance(TimeSpan.FromSeconds(1));
+            await disposeTask.WaitAsync(TimeSpan.FromSeconds(2));
+        }
+
+        var replaySink = new CapturingInputEventSink();
+        await using (var restarted = CollectorRuntime.Open(
+            statePath,
+            new SegmentIngestService(clock),
+            inputEventSink: replaySink))
+        {
+            var protocol = new SystemCollectorProtocolAdapter();
+            await using var activation = await restarted.ActivateInProcessAsync(
+                instanceId,
+                package,
+                NewCollector(protocol, clock, new SegmentIngestService(clock)));
+            await WaitUntilAsync(() => OutboxFactCount(outboxPath) == 0 && IngressFactCount(ingressPath) == 0);
+        }
+
+        using var state = JsonDocument.Parse(File.ReadAllText(statePath));
+        Assert.Equal(100, state.RootElement.GetProperty("facts").GetArrayLength());
     }
 
     [Fact]
@@ -648,6 +746,35 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         }
     }
 
+    private static int OutboxFactCount(string outboxPath)
+    {
+        try
+        {
+            using var outbox = JsonDocument.Parse(File.ReadAllText(outboxPath));
+            return outbox.RootElement.GetProperty("State").GetProperty("Facts").GetArrayLength();
+        }
+        catch (Exception exception) when (exception is IOException or JsonException)
+        {
+            return -1;
+        }
+    }
+
+    private static int IngressFactCount(string ingressPath)
+        => SystemCollectorIngressStore.Open(ingressPath, 100_000).PendingFactIds.Count;
+
+    private static HashSet<Guid> DurableFactIds(string statePath, string outboxPath, string ingressPath)
+    {
+        using var state = JsonDocument.Parse(File.ReadAllText(statePath));
+        using var outbox = JsonDocument.Parse(File.ReadAllText(outboxPath));
+        var ingress = SystemCollectorIngressStore.Open(ingressPath, 100_000);
+        return state.RootElement.GetProperty("facts").EnumerateArray()
+            .Select(item => item.GetProperty("factId").GetGuid())
+            .Concat(outbox.RootElement.GetProperty("State").GetProperty("Facts").EnumerateArray()
+                .Select(item => item.GetProperty("Fact").GetProperty("FactId").GetGuid()))
+            .Concat(ingress.PendingFactIds)
+            .ToHashSet();
+    }
+
     private static async Task<List<Heartbeat.Core.DTOs.Segments.ActivitySegmentItem>> WaitForSegmentsAsync(
         SegmentIngestService sink)
     {
@@ -713,10 +840,89 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         public void Accept(InputEventItem item, bool isReplay)
         {
             Entered.Set();
-            _release.Wait();
+            _release.Wait(TimeSpan.FromMilliseconds(500));
         }
 
         public void Release() => _release.Set();
+    }
+
+    private sealed class ControlledTimeProvider : TimeProvider
+    {
+        private readonly object _gate = new();
+        private readonly List<ControlledTimer> _timers = [];
+        private DateTimeOffset _utcNow = new(2026, 8, 30, 8, 0, 0, TimeSpan.Zero);
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            lock (_gate)
+                return _utcNow;
+        }
+
+        public override ITimer CreateTimer(
+            TimerCallback callback,
+            object? state,
+            TimeSpan dueTime,
+            TimeSpan period)
+        {
+            var timer = new ControlledTimer(this, callback, state, dueTime, period);
+            lock (_gate)
+                _timers.Add(timer);
+            return timer;
+        }
+
+        public void Advance(TimeSpan duration)
+        {
+            ControlledTimer[] due;
+            lock (_gate)
+            {
+                _utcNow += duration;
+                due = _timers.Where(timer => timer.IsDue(_utcNow)).ToArray();
+            }
+            foreach (var timer in due)
+                timer.Fire();
+        }
+
+        private sealed class ControlledTimer(
+            ControlledTimeProvider owner,
+            TimerCallback callback,
+            object? state,
+            TimeSpan dueTime,
+            TimeSpan period) : ITimer
+        {
+            private DateTimeOffset _dueAt = owner.GetUtcNow() + dueTime;
+            private bool _disposed;
+
+            public bool IsDue(DateTimeOffset now) => !_disposed && now >= _dueAt;
+
+            public void Fire()
+            {
+                if (_disposed)
+                    return;
+                if (period == Timeout.InfiniteTimeSpan)
+                    _disposed = true;
+                else
+                    _dueAt += period;
+                callback(state);
+            }
+
+            public bool Change(TimeSpan newDueTime, TimeSpan newPeriod)
+            {
+                if (_disposed)
+                    return false;
+                dueTime = newDueTime;
+                period = newPeriod;
+                _dueAt = owner.GetUtcNow() + newDueTime;
+                return true;
+            }
+
+            public void Dispose() => _disposed = true;
+
+            public ValueTask DisposeAsync()
+            {
+                Dispose();
+                return ValueTask.CompletedTask;
+            }
+        }
     }
 
     private sealed class FakeClock : IClock

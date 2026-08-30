@@ -103,42 +103,43 @@ internal sealed class CollectorProtocolOutbox
         Save();
     }
 
-    public void Enqueue(CollectorFact fact)
-    {
-        ArgumentNullException.ThrowIfNull(fact);
-        var facts = _state.Facts.ToList();
-        var index = facts.FindIndex(item =>
-            item.Fact.BindingId == fact.BindingId && item.Fact.FactId == fact.FactId);
-        if (index >= 0)
-        {
-            if (facts[index].Fact.Revision >= fact.Revision)
-            {
-                if (_dirty)
-                    Save();
-                return;
-            }
-            facts[index] = new PendingCollectorFact(Guid.CreateVersion7(), fact);
-        }
-        else
-        {
-            facts.Add(new PendingCollectorFact(Guid.CreateVersion7(), fact));
-        }
+    public void Enqueue(CollectorFact fact) => EnqueueFacts([fact]);
 
+    public void EnqueueFacts(IReadOnlyList<CollectorFact> incomingFacts)
+    {
+        ArgumentNullException.ThrowIfNull(incomingFacts);
+        var facts = _state.Facts.ToList();
         var gaps = _state.Gaps.ToList();
-        while (facts.Count > _capacity)
+        foreach (var fact in incomingFacts)
         {
-            var evicted = facts[0].Fact;
-            facts.RemoveAt(0);
-            var (start, end) = FactRange(evicted);
-            gaps.Add(new PendingCollectorGap(
-                Guid.CreateVersion7(),
-                new CollectorStreamGap(
+            ArgumentNullException.ThrowIfNull(fact);
+            var index = facts.FindIndex(item =>
+                item.Fact.BindingId == fact.BindingId && item.Fact.FactId == fact.FactId);
+            if (index >= 0)
+            {
+                if (facts[index].Fact.Revision < fact.Revision)
+                    facts[index] = new PendingCollectorFact(Guid.CreateVersion7(), fact);
+            }
+            else
+            {
+                facts.Add(new PendingCollectorFact(Guid.CreateVersion7(), fact));
+            }
+
+            while (facts.Count > _capacity)
+            {
+                var evicted = facts[0].Fact;
+                facts.RemoveAt(0);
+                var (start, end) = FactRange(evicted);
+                gaps.Add(new PendingCollectorGap(
                     Guid.CreateVersion7(),
-                    evicted.BindingId,
-                    start,
-                    end,
-                    "outbox_capacity_exceeded",
-                    1)));
+                    new CollectorStreamGap(
+                        Guid.CreateVersion7(),
+                        evicted.BindingId,
+                        start,
+                        end,
+                        "outbox_capacity_exceeded",
+                        1)));
+            }
         }
         _state = _state with { Facts = facts, Gaps = gaps };
         _dirty = true;

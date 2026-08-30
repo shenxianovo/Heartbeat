@@ -29,5 +29,18 @@
     "explicitRetryChangesMessageId": true,
     "newActivationChangesMessageId": true,
     "factIdAndRevisionRemainStable": true
-  }
+  },
+  "drainOutcomes": [
+    { "reason": "drained", "remainderDurable": true, "canBeFullyDrained": true },
+    { "reason": "deadline_exceeded", "remainderDurable": false, "canBeFullyDrained": false },
+    { "reason": "stop_failed", "remainderDurable": false, "canBeFullyDrained": false },
+    { "reason": "flush_cancelled", "remainderDurable": true, "canBeFullyDrained": false },
+    { "reason": "persistence_failed", "remainderDurable": false, "canBeFullyDrained": false }
+  ],
+  "completionOutcomes": ["completed", "deadline_exceeded", "completion_failed"],
+  "drainDrivers": [
+    { "driver": "in_process", "hubInitiated": true, "deadlineAction": "fence_and_release" },
+    { "driver": "managed_process", "hubInitiated": true, "deadlineAction": "terminate_and_release" },
+    { "driver": "external_host", "hubInitiated": false, "deadlineAction": "revoke_lease" }
+  ]
 }

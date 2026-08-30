@@ -1,6 +1,6 @@
 # 03 — 让 InProcess drain 受 deadline 约束
 
-Status: needs-info
+Status: done
 
 Owner: Collection / Collector Protocol
 
@@ -14,16 +14,16 @@ InProcess System adapter 与通用 client 使用同一有界语义：到期后�
 
 ## Acceptance
 
-- [ ] 收到 drain 后立即根据绝对 deadline 创建 token；`application.StopAsync`、pump flush、outbox flush
+- [x] 收到 drain 后立即根据绝对 deadline 创建 token；`application.StopAsync`、pump flush、outbox flush
   与 completion 都受该 deadline 或更短局部预算约束。
-- [ ] cooperative stop 正常完成；hung/ignoring-cancellation application 到期后 Runtime 仍在有界时间返回，
-  并报告 durable pending fact/gap counts。
-- [ ] deadline 过去、stop 抛错、flush 取消、binding completion 失败各有稳定 runtime reason；不得宣称
+- [x] cooperative stop 正常完成；hung/ignoring-cancellation application 到期后 Runtime 仍在有界时间返回，
+  并报告 durable pending fact/gap counts，或 truthful unknown/non-durable remainder。
+- [x] deadline 过去、stop 抛错、flush 取消、binding completion 失败各有稳定 runtime reason；不得宣称
   fully drained。
-- [ ] InProcess adapter 不存在 deadline 外无限 retry；宿主退出后 restart 能重放 durable remainder。
-- [ ] fake-clock/controlled-task tests 覆盖 stop-before-deadline、stop-at-deadline、never-stop、pending facts/
+- [x] InProcess adapter 不存在 deadline 外无限 retry；宿主退出后 restart 能重放 durable remainder。
+- [x] fake-clock/controlled-task tests 覆盖 stop-before-deadline、stop-at-deadline、never-stop、pending facts/
   gaps、completion failure 与 restart replay，且不会留下后台 task/双 writer。
-- [ ] ManagedProcess/ExternalHost 现有 drain transcript 不回归；共用 conformance fixture 对三种 driver 的
+- [x] ManagedProcess/ExternalHost 现有 drain transcript 不回归；共用 conformance fixture 对三种 driver 的
   deadline/result 断言一致。
 
 ## Comments
@@ -55,3 +55,32 @@ pump final drain 也用 None。ManagedProcess 的 drain write 与 kill 后 wait 
 上述裁决前未保留探索性代码或失败测试，工作树回到已验证的 A3 HEAD。裁决后建议以单一绝对 deadline
 request、application lifetime cancellation、client/outbox admission fence 和两层 drain result 为最小
 实现 seam，再补 controlled-task/fake-time 与三 driver conformance vectors。
+
+### 2026-08-30 — owner 裁决，恢复实现
+
+Owner 确认采用推荐语义：System ingress 先进入 durable stage，再异步 remote flush；普通 stop failure
+保留 writer 供 retry，但 shutdown deadline 到期必须 fence admission 并 release；ExternalHost 保留
+ADR-040 的 lease-revoke 弱语义，只共享 outcome 词汇，不在本 issue 新增 Hub→host drain directive；
+永久磁盘失败允许 `non-durable/unknown remainder`，绝不宣称 fully drained。结果模型分 Collector
+logical outcome 与 Runtime completion outcome，`completion_failed` 不伪装成已送达的
+`activation.drained` 内容。
+
+### 2026-08-30 — 实现与验证完成
+
+实现以同一个绝对 deadline 收口 client application stop、System pump、final outbox flush 与 completion；
+所有可能忽略 cancellation 的最终 await 都有外层 deadline wait。System callback 在返回前先 append+fsync
+到实例级 ingress journal，Protocol outbox durable accept 后才 prefix compact；因此 deadline/crash 可从
+ingress journal、outbox 或 Hub durable state 的 Fact identity union 恢复，未知 ACK 不会被重复计数或删账。
+Hub deadline 在释放 writer 前同步 hard-fence System client；普通 returned `stop_failed` 视为 Collector 已
+fence 的逻辑结果，真实 thrown Stop failure 仍保留 writer 供 retry。Starting Collector、ManagedProcess kill/
+wait 与 Runtime dispose 均有界；ExternalHost 只保存 logical/completion outcome 并 revoke lease。
+
+结果模型已分 Collector logical outcome 与 Runtime completion outcome，ManagedProcess snapshot 与
+ExternalHost Activation 可查询该结果。共享 conformance corpus 不只校验词汇：InProcess、ManagedProcess、
+ExternalHost 的真实行为测试分别验证 `fence_and_release`、`terminate_and_release`、`revoke_lease` 后读取
+对应 driver row。
+
+验证：`dotnet build Heartbeat.slnx --no-restore --configuration Debug` 为 0 warnings / 0 errors；
+`dotnet test Heartbeat.slnx --no-restore --configuration Debug` 为 943/943；CollectorProtocol 18/18，System
+56/56，Hub 212/212。System deadline/restart 测试隔离连续运行 5/5；Browser 78/78 且 production build
+成功。三轮独立复审最终无 P1/P2，建议 closeout。
