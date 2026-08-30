@@ -89,7 +89,7 @@ checkpoint v1/v2 兼容读取同时缺少移除门槛、验证证据与责任边
 ## Reopened acceptance
 
 - [x] System rollover boundary 原子持久化 continuation identity/start，并以 crash/restart 测试证明恢复。
-- [ ] VRChat checkpoint v1/v2 兼容分支记录服务对象、移除门槛、验证方式与 owner 责任边界。
+- [x] VRChat checkpoint v1/v2 兼容分支记录服务对象、移除门槛、验证方式与 owner 责任边界。
 
 ### 2026-08-30 — System rollover crash recovery 修复
 
@@ -106,3 +106,13 @@ batch，checkpoint 保留。异常重启以相同 FactId、更高 revision 封�
 journal crash/reopen、真实 timer 与 transition race 五测试重复 10 次 50/50；真实 25h
 protocol→projection→HTTP 1/1；`git diff --check` 通过。VRChat v1/v2 兼容退出台账仍待 P2，故 issue
 保持 `needs-triage`。
+
+### 2026-08-30 — VRChat checkpoint compatibility debt closeout
+
+`docs/architecture/compatibility-debt.md` 现已记录此分支实际服务的对象：已落盘且只含非 final
+`Active` 的 schema v1 `presence.json`；schema v2 是当前写格式，增加 durable pending facts/gaps。
+移除不按提交日期猜测，而由 Collection / VRChat owner 盘点所有仍受支持的数据目录，并证明每个
+现存 v1 文件在当前 binary 下至少成功 Stage 为 v2、盘点归零且经过明确的 rollback/离线保留窗口。
+删除读取分支时必须保留 v1 fixture，并验证 FactId/Start/End 不 shrink、pending restart replay 与
+corrupt quarantine；部署清单和窗口尚无现场证据，因此本轮只关闭“缺少退出台账”的 P2，不删除
+兼容读取。当前自动证据：`VRChatPresenceCheckpointTests` 5/5。
