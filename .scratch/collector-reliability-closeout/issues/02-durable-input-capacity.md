@@ -67,7 +67,7 @@ UI/window/input 回调路径，违反 ADR-040 与 Collection glossary 的 Collec
 
 - [x] Event 接受或拒绝与对应 Stream Gap 在一个可证明的 durable atomic mutation 中提交。
 - [x] 平台 UI、window 与 input 回调只做内存入队，不同步等待磁盘 fsync。
-- [ ] 盘点并统一本 feature 触达的 atomic JSON replacement，或记录明确暂缓原因与退出条件。
+- [x] 盘点并统一本 feature 触达的 atomic JSON replacement，或记录明确暂缓原因与退出条件。
 
 ### 2026-08-30 — 责任边界裁决回写
 
@@ -89,3 +89,29 @@ segment/input callbacks 一律只写内存 channel，后台 pump 才 stage、上
 验证：System 55/55、Windows 47/47、Mac 78/78；atomic stage、受阻 journal callback、overflow
 protocol 三测试重复 10 次 30/30；`git diff --check` 通过。atomic JSON replacement 全仓盘点仍待 P2
 closeout，因此 issue 保持 `needs-triage`。
+
+### 2026-08-30 — atomic replacement audit and bounded deferral
+
+本 feature 实际触达的 replacement 已逐项盘点；它们当前不是可机械合并的同一契约：
+
+| Store | 当前保证 | 关键差异 |
+| --- | --- | --- |
+| `CollectorProtocolOutbox` | 同目录唯一 temp 后 overwrite | 无 fsync、无 replacement 验证、异常时没有 finally 清理；所在 Protocol 项目不依赖 `Heartbeat.Core` |
+| `SystemCollectorIngressStore` | 同目录唯一 temp、WriteThrough + fsync、finally 清理 | NDJSON rewrite，且 append/tail repair 与同一锁共同定义 journal 语义 |
+| `VRChatPresenceCheckpoint` | 同目录唯一 temp、finally 清理 | JSON envelope，无 fsync；Stage 的内存回滚依赖 Persist 抛错边界 |
+| `JsonFileCache` / `JsonDeadLetterStore` | 固定 temp、替换前反序列化验证、finally 清理 | cache 还拥有 migration backup / unavailable 状态；当前无 fsync |
+| `JsonCollectorRuntimeStore` | 固定 temp、WriteThrough + fsync、替换前验证、finally 清理 | 对持久化异常统一包装为 runtime state failure |
+
+本轮不抽取公共 helper：最低层 `Heartbeat.Collection.CollectorProtocol` 当前是独立协议程序集；把公共
+实现放进 `Heartbeat.Core` 会新增 protocol → domain/shared 依赖，放进现有 Hub/System 项目则形成反向
+依赖，而新增 solution-wide storage project 并同时修改五种失败契约会超出此可靠性收口的风险边界。
+只迁移一部分也会留下两个“公共”实现，不能消除权威漂移。这里没有证据允许把无 fsync 路径悄然宣称
+为 durable，或把 journal/迁移验证简化成普通 JSON replace。
+
+暂缓退出条件：owner 先裁定一个不依赖领域或 Protocol 的低层 storage primitive 归属，并固定
+同目录唯一 temp、write-through/fsync、替换前可注入验证、失败清理、异常契约、锁责任及 Windows /
+macOS / Linux directory-entry durability 的明确 contract；随后为上表每个 store 建立 replacement 前、
+写一半、验证失败、replace 前后 crash 的 characterization/restart tests，再按 store 独立迁移提交。
+完成标准是生产路径不再自行调用 temp + overwrite，且三平台测试证明原有 migration backup、outbox
+重放、checkpoint 内存回滚和 ingress tail repair 语义均未改变。退出条件满足前，本审计关闭 P2，公共
+实现本身明确暂缓，不把“看起来原子”误报成跨崩溃 durable。
