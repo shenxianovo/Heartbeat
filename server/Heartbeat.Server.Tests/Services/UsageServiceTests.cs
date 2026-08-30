@@ -55,21 +55,22 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     };
 
     [Fact]
-    public async Task SaveSegments_AllInvalid_SilentlyDropped()
+    public async Task SaveSegments_InvalidBatch_ThrowsBeforeCreatingFacts()
     {
         using var db = CreateDbContext();
         var svc = new UsageService(db);
 
-        // 校验丢弃不是错误（阈值细则见 SegmentValidationPolicyTests）——
-        // 全无效批静默丢弃、不抛异常，钉住这条最意外的契约
-        await svc.SaveSegmentsAsync(_deviceId,
-        [
-            SystemItem("App", default, Now),                              // default start
-            SystemItem("App", Now.AddMinutes(-2), Now.AddMinutes(-5)),    // end < start
-            SystemItem("App", Now.AddMinutes(20), Now.AddMinutes(30))     // future beyond skew
-        ]);
+        var exception = await Assert.ThrowsAsync<SegmentIngestContractException>(() =>
+            svc.SaveSegmentsAsync(_deviceId,
+            [
+                SystemItem("App", Now.AddMinutes(-2), Now.AddMinutes(-1)),
+                SystemItem("App", default, Now)
+            ]));
 
+        Assert.Equal(SegmentIngestContractViolation.InvalidSegment, exception.Violation);
         Assert.Empty(db.ActivitySegments);
+        Assert.Empty(db.Apps);
+        Assert.Empty(db.AppIdentities);
     }
 
     [Fact]
@@ -285,11 +286,61 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         };
 
         await svc.SaveSegmentsAsync(_deviceId, [Seg("browser", "https://example.com", t0.AddMinutes(2))]);
-        await svc.SaveSegmentsAsync(_deviceId, [Seg("vscode", "d:/repo/file.cs", t0.AddMinutes(9))]);
+        var exception = await Assert.ThrowsAsync<SegmentIngestContractException>(() =>
+            svc.SaveSegmentsAsync(_deviceId, [Seg("vscode", "d:/repo/file.cs", t0.AddMinutes(9))]));
 
+        Assert.Equal(SegmentIngestContractViolation.IdentityConflict, exception.Violation);
         var row = db.ActivitySegments.Single();
         Assert.Equal("browser", row.Source);
         Assert.Equal(t0.AddMinutes(2), row.EndTime);
+    }
+
+    [Fact]
+    public async Task SaveSegments_IdReuseFromDifferentDevice_RejectsBeforeChangingFacts()
+    {
+        using var db = CreateDbContext();
+        var svc = new UsageService(db);
+        var secondDevice = new Device
+        {
+            OwnerId = "user-1",
+            HardwareId = "hw-2",
+            DeviceName = "Second PC"
+        };
+        db.Devices.Add(secondDevice);
+        await db.SaveChangesAsync();
+
+        var existing = SystemItem("VSCode", Now.AddMinutes(-10), Now.AddMinutes(-8));
+        await svc.SaveSegmentsAsync(_deviceId, [existing]);
+        var extension = SystemItem("VSCode", existing.StartTime, Now.AddMinutes(-6));
+        extension.Id = existing.Id;
+
+        var exception = await Assert.ThrowsAsync<SegmentIngestContractException>(() =>
+            svc.SaveSegmentsAsync(secondDevice.Id, [extension]));
+
+        Assert.Equal(SegmentIngestContractViolation.IdentityConflict, exception.Violation);
+        var row = Assert.Single(await db.ActivitySegments.AsNoTracking().ToListAsync());
+        Assert.Equal(_deviceId, row.DeviceId);
+        Assert.Equal(existing.EndTime, row.EndTime);
+    }
+
+    [Fact]
+    public async Task SaveSegments_InBatchIdIdentityConflict_RejectsBeforeCreatingProvisionalApps()
+    {
+        using var db = CreateDbContext();
+        var svc = new UsageService(db);
+        var id = Guid.CreateVersion7();
+        var first = SystemItem("VSCode", Now.AddMinutes(-10), Now.AddMinutes(-8));
+        first.Id = id;
+        var conflict = SystemItem("Notepad", Now.AddMinutes(-10), Now.AddMinutes(-6));
+        conflict.Id = id;
+
+        var exception = await Assert.ThrowsAsync<SegmentIngestContractException>(() =>
+            svc.SaveSegmentsAsync(_deviceId, [first, conflict]));
+
+        Assert.Equal(SegmentIngestContractViolation.IdentityConflict, exception.Violation);
+        Assert.Empty(await db.ActivitySegments.AsNoTracking().ToListAsync());
+        Assert.Empty(await db.AppIdentities.AsNoTracking().ToListAsync());
+        Assert.Empty(await db.Apps.AsNoTracking().ToListAsync());
     }
 
     [Fact]

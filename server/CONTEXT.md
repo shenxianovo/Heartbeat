@@ -87,4 +87,7 @@ _Avoid_: 墓碑 / Tombstone / Adjudication（设计期黑话，已弃用）、Hi
 _Avoid_: 分诊 / Triage、从散文自动反推事实、LLM 静默写知识、把结构化提案当用户确认
 
 **Validation Policy**:
-摄入门卫（SegmentValidationPolicy）：拒收未来时间戳、非法区间等畸形数据。拒收即丢弃，不修复——采集端负责数据正确性。
+SegmentValidationPolicy 是 Collection 与 Analytics 共用的纯段完整性判定：拒绝未来时间戳、非法区间、
+缺失核心身份等畸形数据，不修复输入。Analytics strict ingest 对任一不合法项返回整批 `422`，且不创建
+ActivitySegment 或 provisional App；既有 Segment Id 的 Device / Source / IdentityKey 冲突同样整批拒绝。
+合法 duplicate、乱序 snapshot 与批内同 Id 单调扩展仍按 Snapshot Upsert 幂等收敛。

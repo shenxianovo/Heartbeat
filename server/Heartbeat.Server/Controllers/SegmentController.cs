@@ -1,4 +1,5 @@
 using Heartbeat.Core.DTOs.Segments;
+using Heartbeat.Server.Data;
 using Heartbeat.Server.Services;
 using Heartbeat.Server.Filters;
 using Heartbeat.Core;
@@ -18,7 +19,8 @@ namespace Heartbeat.Server.Controllers
     public class SegmentController(
         UsageService usageService,
         DeviceService deviceService,
-        ICurrentUserService currentUser) : ControllerBase
+        ICurrentUserService currentUser,
+        AppDbContext db) : ControllerBase
     {
         private readonly UsageService _usageService = usageService;
         private readonly DeviceService _deviceService = deviceService;
@@ -53,8 +55,18 @@ namespace Heartbeat.Server.Controllers
             if (string.IsNullOrWhiteSpace(hardwareId))
                 return BadRequest($"Missing {DeviceService.HardwareIdHeader} header.");
 
-            var device = await _deviceService.ResolveByHardwareIdAsync(userId, hardwareId, deviceName);
-            await _usageService.SaveSegmentsAsync(device.Id, request.Segments);
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            try
+            {
+                var device = await _deviceService.ResolveByHardwareIdAsync(userId, hardwareId, deviceName);
+                await _usageService.SaveSegmentsAsync(device.Id, request.Segments);
+                await transaction.CommitAsync();
+            }
+            catch (SegmentIngestContractException ex)
+            {
+                await transaction.RollbackAsync();
+                return UnprocessableEntity(ex.Message);
+            }
             return Ok();
         }
     }

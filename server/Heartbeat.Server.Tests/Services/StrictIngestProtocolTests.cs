@@ -1,4 +1,10 @@
+using System.Net.Http.Headers;
+using System.Security.Claims;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using Heartbeat.Collection.Hub.Http;
+using Heartbeat.Collection.Hub.Storage;
+using Heartbeat.Collection.Hub.Upload;
 using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Apps;
 using Heartbeat.Core.DTOs.Devices;
@@ -10,12 +16,19 @@ using Heartbeat.Server.Filters;
 using Heartbeat.Server.Services;
 using Heartbeat.Server.Tests.Fixtures;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Heartbeat.Server.Tests.Services;
 
@@ -195,6 +208,165 @@ public class StrictIngestProtocolTests(PostgresContainerFixture fixture) : Postg
     }
 
     [Fact]
+    public async Task SegmentUpload_InvalidTime_RejectsWholeMixedBatchWithoutSideEffects()
+    {
+        using var db = CreateDbContext();
+        var controller = CreateSegmentController(db, "user-1", "shared-hardware");
+        var invalid = StrictSystemSegment("win:poison", default, Now.AddMinutes(-1));
+
+        var result = Assert.IsType<UnprocessableEntityObjectResult>(await controller.Upload(
+            new SegmentUploadRequest
+            {
+                Segments =
+                [
+                    StrictSystemSegment("win:code", Now.AddMinutes(-4), Now.AddMinutes(-3)),
+                    invalid
+                ]
+            }));
+
+        Assert.Equal(StatusCodes.Status422UnprocessableEntity, result.StatusCode);
+        await AssertNoIngestFactsAsync(db);
+    }
+
+    [Theory]
+    [InlineData("id")]
+    [InlineData("source")]
+    [InlineData("identity")]
+    public async Task SegmentUpload_MissingCoreIdentity_Returns422WithoutSideEffects(string missing)
+    {
+        using var db = CreateDbContext();
+        var controller = CreateSegmentController(db, "user-1", "shared-hardware");
+        var invalid = StrictSystemSegment("win:code", Now.AddMinutes(-2), Now.AddMinutes(-1));
+        if (missing == "id") invalid.Id = Guid.Empty;
+        if (missing == "source") invalid.Source = " ";
+        if (missing == "identity") invalid.IdentityKey = " ";
+
+        var result = Assert.IsType<UnprocessableEntityObjectResult>(await controller.Upload(
+            new SegmentUploadRequest { Segments = [invalid] }));
+
+        Assert.Equal(StatusCodes.Status422UnprocessableEntity, result.StatusCode);
+        await AssertNoIngestFactsAsync(db);
+    }
+
+    [Fact]
+    public async Task SegmentUpload_ExistingIdIdentityConflict_RejectsWholeBatchWithoutNewFacts()
+    {
+        using var db = CreateDbContext();
+        var controller = CreateSegmentController(db, "user-1", "shared-hardware");
+        var existing = StrictSystemSegment("win:code", Now.AddMinutes(-8), Now.AddMinutes(-6));
+        Assert.IsType<OkResult>(await controller.Upload(new SegmentUploadRequest { Segments = [existing] }));
+
+        var conflict = StrictSystemSegment("win:poison", Now.AddMinutes(-8), Now.AddMinutes(-5));
+        conflict.Id = existing.Id;
+        var otherwiseValid = StrictSystemSegment(
+            "win:new-provisional", Now.AddMinutes(-4), Now.AddMinutes(-3));
+
+        var result = Assert.IsType<UnprocessableEntityObjectResult>(await controller.Upload(
+            new SegmentUploadRequest { Segments = [otherwiseValid, conflict] }));
+
+        Assert.Equal(StatusCodes.Status422UnprocessableEntity, result.StatusCode);
+        Assert.Equal(existing.Id, Assert.Single(await db.ActivitySegments.AsNoTracking().ToListAsync()).Id);
+        Assert.Equal("win:code", Assert.Single(await db.AppIdentities.AsNoTracking().ToListAsync()).Key);
+        Assert.Single(await db.Apps.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task SegmentUpload_ExistingIdDeviceConflict_DoesNotCreateRequestDevice()
+    {
+        using var db = CreateDbContext();
+        var first = CreateSegmentController(db, "user-1", "first-hardware");
+        var existing = StrictSystemSegment("win:code", Now.AddMinutes(-8), Now.AddMinutes(-6));
+        Assert.IsType<OkResult>(await first.Upload(new SegmentUploadRequest { Segments = [existing] }));
+
+        var second = CreateSegmentController(db, "user-1", "new-conflicting-hardware");
+        var conflict = StrictSystemSegment("win:code", Now.AddMinutes(-8), Now.AddMinutes(-5));
+        conflict.Id = existing.Id;
+
+        var result = Assert.IsType<UnprocessableEntityObjectResult>(await second.Upload(
+            new SegmentUploadRequest { Segments = [conflict] }));
+
+        Assert.Equal(StatusCodes.Status422UnprocessableEntity, result.StatusCode);
+        Assert.Equal("first-hardware", Assert.Single(
+            await db.Devices.AsNoTracking().ToListAsync()).HardwareId);
+        Assert.Equal(existing.Id, Assert.Single(
+            await db.ActivitySegments.AsNoTracking().ToListAsync()).Id);
+    }
+
+    [Fact]
+    public async Task RealHttpUploadStream_SplitsStrictBatch_AndDurablyIsolatesPoisonFact()
+    {
+        var tempDirectory = Path.Combine(
+            Path.GetTempPath(), $"heartbeat-strict-http-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDirectory);
+
+        try
+        {
+            await using var application = CreateApplication();
+            using var client = application.CreateClient();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+            client.DefaultRequestHeaders.Add(DeviceService.HardwareIdHeader, "strict-http-device");
+            client.DefaultRequestHeaders.Add(DeviceService.DeviceNameHeader, "Strict HTTP Device");
+
+            var validA = StrictSystemSegment(
+                "win:code", Now.AddMinutes(-8), Now.AddMinutes(-7));
+            var poison = StrictSystemSegment(
+                "win:poison", Now.AddMinutes(-6), Now.AddMinutes(-5));
+            poison.Id = Guid.Empty;
+            var validB = StrictSystemSegment(
+                "win:notepad", Now.AddMinutes(-4), Now.AddMinutes(-3));
+
+            var cachePath = Path.Combine(tempDirectory, "segments.json");
+            var deadLetterPath = Path.Combine(tempDirectory, "segments-dead-letter.json");
+            var cache = new JsonFileCache<ActivitySegmentItem>(
+                cachePath,
+                20_000,
+                HeartbeatCacheFormats.SegmentVersion2(),
+                HeartbeatCacheFormats.SegmentMigrations());
+            cache.Add([validA, poison, validB]);
+
+            var api = new HeartbeatApiClient(client);
+            var stream = new UploadStream<ActivitySegmentItem>(
+                "segments",
+                new EmptySegmentSource(),
+                batch => api.UploadSegmentsAsync(new SegmentUploadRequest { Segments = batch }),
+                cache,
+                SnapshotCompaction.KeepLatest,
+                new JsonDeadLetterStore<ActivitySegmentItem>(deadLetterPath));
+
+            await stream.DrainAsync();
+
+            Assert.Empty(cache.Load());
+            Assert.Equal(1, stream.Status.DeadLetterCount);
+            using (var deadLetters = JsonDocument.Parse(await File.ReadAllTextAsync(deadLetterPath)))
+            {
+                var entry = Assert.Single(
+                    deadLetters.RootElement.GetProperty("entries").EnumerateArray());
+                Assert.Equal(StatusCodes.Status422UnprocessableEntity,
+                    entry.GetProperty("statusCode").GetInt32());
+                Assert.Equal(Guid.Empty, entry.GetProperty("item").GetProperty("id").GetGuid());
+            }
+
+            using var verification = CreateDbContext();
+            var storedIds = await verification.ActivitySegments
+                .AsNoTracking()
+                .Select(segment => segment.Id)
+                .ToListAsync();
+            Assert.Equal(2, storedIds.Count);
+            Assert.Contains(validA.Id, storedIds);
+            Assert.Contains(validB.Id, storedIds);
+            Assert.DoesNotContain(await verification.AppIdentities.AsNoTracking().ToListAsync(),
+                identity => identity.Key == "win:poison");
+
+            var restartedDeadLetters = new JsonDeadLetterStore<ActivitySegmentItem>(deadLetterPath);
+            Assert.Equal(1, restartedDeadLetters.Count);
+        }
+        finally
+        {
+            Directory.Delete(tempDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task PresenceUpload_DisplayHintWithoutIdentity_Returns400BeforeDeviceResolution()
     {
         using var db = CreateDbContext();
@@ -348,7 +520,8 @@ public class StrictIngestProtocolTests(PostgresContainerFixture fixture) : Postg
         var controller = new SegmentController(
             new UsageService(db),
             new DeviceService(db),
-            new FakeCurrentUser(userId));
+            new FakeCurrentUser(userId),
+            db);
         AttachHttpContext(controller, hardwareId);
         return controller;
     }
@@ -399,6 +572,49 @@ public class StrictIngestProtocolTests(PostgresContainerFixture fixture) : Postg
         Assert.Empty(await db.AppIdentities.AsNoTracking().ToListAsync());
         Assert.Empty(await db.ActivitySegments.AsNoTracking().ToListAsync());
         Assert.Empty(await db.InputEvents.AsNoTracking().ToListAsync());
+    }
+
+    private WebApplicationFactory<SegmentController> CreateApplication() =>
+        new WebApplicationFactory<SegmentController>().WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Development");
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<AppDbContext>();
+                services.RemoveAll<DbContextOptions<AppDbContext>>();
+                services.AddDbContext<AppDbContext>(options => options.UseNpgsql(TestConnectionString));
+                services.AddAuthentication(options =>
+                    {
+                        options.DefaultAuthenticateScheme = "Test";
+                        options.DefaultChallengeScheme = "Test";
+                        options.DefaultScheme = "Test";
+                    })
+                    .AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>("Test", _ => { });
+            });
+        });
+
+    private sealed class EmptySegmentSource : IUploadSource<ActivitySegmentItem>
+    {
+        public List<ActivitySegmentItem> Drain() => [];
+        public void Reinject(List<ActivitySegmentItem> items) { }
+    }
+
+    private sealed class TestAuthenticationHandler(
+        IOptionsMonitor<AuthenticationSchemeOptions> options,
+        ILoggerFactory logger,
+        UrlEncoder encoder) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+    {
+        protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+        {
+            Claim[] claims =
+            [
+                new("sub", "user-1"),
+                new("preferred_username", "alice")
+            ];
+            var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme.Name));
+            return Task.FromResult(AuthenticateResult.Success(
+                new AuthenticationTicket(principal, Scheme.Name)));
+        }
     }
 
     private sealed class FakeCurrentUser(string userId) : ICurrentUserService

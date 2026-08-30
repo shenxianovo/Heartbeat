@@ -7,7 +7,9 @@ public enum SegmentIngestContractViolation
 {
     LegacyAppName,
     MissingSystemAppIdentity,
-    MalformedAppIdentity
+    MalformedAppIdentity,
+    InvalidSegment,
+    IdentityConflict
 }
 
 public sealed class SegmentIngestContractException(
@@ -56,6 +58,14 @@ public static class SegmentIngestContract
                     ex.Message,
                     ex);
             }
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (segments.Any(segment => !SegmentValidationPolicy.IsValid(segment, now)))
+        {
+            throw new SegmentIngestContractException(
+                SegmentIngestContractViolation.InvalidSegment,
+                "Segment batch contains an invalid Id, identity, source, or time range.");
         }
     }
 }

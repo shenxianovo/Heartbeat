@@ -13,18 +13,21 @@ public static class SegmentValidationPolicy
     public static readonly TimeSpan MaxDuration = TimeSpan.FromHours(24);
     public static readonly int MinYear = 2020;
 
+    public static bool IsValid(ActivitySegmentItem segment, DateTimeOffset now) =>
+        segment.Id != Guid.Empty
+        && !string.IsNullOrWhiteSpace(segment.Source)
+        && !string.IsNullOrWhiteSpace(segment.IdentityKey)
+        && segment.StartTime != default
+        && segment.EndTime >= segment.StartTime
+        && segment.StartTime.Year >= MinYear
+        && segment.EndTime <= now + TimeSkewTolerance
+        && segment.StartTime >= now - TimeSkewTolerance - MaxDuration
+        && (segment.EndTime - segment.StartTime) <= MaxDuration;
+
     public static List<ActivitySegmentItem> Filter(List<ActivitySegmentItem> segments, DateTimeOffset now)
     {
         return segments
-            .Where(s => s.Id != Guid.Empty
-                     && !string.IsNullOrWhiteSpace(s.Source)
-                     && !string.IsNullOrWhiteSpace(s.IdentityKey)
-                     && s.StartTime != default
-                     && s.EndTime >= s.StartTime
-                     && s.StartTime.Year >= MinYear
-                     && s.EndTime <= now + TimeSkewTolerance
-                     && s.StartTime >= now - TimeSkewTolerance - MaxDuration
-                     && (s.EndTime - s.StartTime) <= MaxDuration)
+            .Where(segment => IsValid(segment, now))
             .OrderBy(s => s.StartTime)
             .ToList();
     }

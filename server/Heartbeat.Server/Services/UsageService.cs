@@ -25,19 +25,46 @@ namespace Heartbeat.Server.Services
         {
             SegmentIngestContract.Validate(segments);
 
-            var valid = SegmentValidationPolicy.Filter(segments, DateTimeOffset.UtcNow);
-            if (valid.Count == 0) return;
+            var ordered = segments.OrderBy(s => s.StartTime).ToList();
 
             // 快照 upsert：一次批量取回本批涉及的已有行，新插入的行也进字典，
             // 让批内后续同 Id 快照走扩展路径（枢纽攒批场景）。
-            var ids = valid.Select(s => s.Id).Distinct().ToList();
+            var ids = ordered.Select(s => s.Id).Distinct().ToList();
             var rows = await _db.ActivitySegments
                 .Where(x => ids.Contains(x.Id))
                 .ToDictionaryAsync(x => x.Id);
 
+            foreach (var group in ordered.GroupBy(s => s.Id))
+            {
+                var expectedDeviceId = deviceId;
+                var expectedSource = group.First().Source;
+                var expectedIdentityKey = group.First().IdentityKey;
+                if (rows.TryGetValue(group.Key, out var existing))
+                {
+                    expectedDeviceId = existing.DeviceId;
+                    expectedSource = existing.Source;
+                    expectedIdentityKey = existing.IdentityKey;
+                }
+
+                if (expectedDeviceId == deviceId
+                    && group.All(item =>
+                        string.Equals(expectedSource, item.Source, StringComparison.Ordinal)
+                        && string.Equals(expectedIdentityKey, item.IdentityKey, StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+
+                logger?.LogWarning(
+                    "段 {Id} 身份不匹配，整批拒收: 预期 ({DeviceId}, {Source}, {Key})",
+                    group.Key, expectedDeviceId, expectedSource, expectedIdentityKey);
+                throw new SegmentIngestContractException(
+                    SegmentIngestContractViolation.IdentityConflict,
+                    $"Segment {group.Key} conflicts with its existing device, source, or identity key.");
+            }
+
             // 只为新事实解析身份；被 identity guard 拒绝的旧 Id 不得制造 provisional App。
             var identityByItem = new Dictionary<ActivitySegmentItem, AppIdentity?>();
-            foreach (var item in valid.Where(x => !rows.ContainsKey(x.Id)))
+            foreach (var item in ordered.Where(x => !rows.ContainsKey(x.Id)))
             {
                 var key = ResolveIdentityKey(item);
                 if (key == null)
@@ -49,22 +76,10 @@ namespace Heartbeat.Server.Services
                 identityByItem[item] = await _appIdentityService.ResolveAsync(key, item.AppDisplayName);
             }
 
-            foreach (var s in valid)
+            foreach (var s in ordered)
             {
                 if (rows.TryGetValue(s.Id, out var row))
                 {
-                    // 身份守卫（ADR-018 §2）：同 Id 必须同设备、同 Source、同 IdentityKey，
-                    // 失控采集器复用 Id 只能命中自己的行，无法污染他行。
-                    if (row.DeviceId != deviceId
-                        || !string.Equals(row.Source, s.Source, StringComparison.Ordinal)
-                        || !string.Equals(row.IdentityKey, s.IdentityKey, StringComparison.Ordinal))
-                    {
-                        logger?.LogWarning(
-                            "段 {Id} 身份不匹配被拒收: 既有 ({Source}, {Key}) vs 传入 ({NewSource}, {NewKey})",
-                            s.Id, row.Source, row.IdentityKey, s.Source, s.IdentityKey);
-                        continue;
-                    }
-
                     // 后写胜只对"最新快照"生效：乱序到达的旧快照不得回退 Title/Attributes。
                     var isNewest = s.EndTime >= row.EndTime;
                     if (s.StartTime < row.StartTime) row.StartTime = s.StartTime;
