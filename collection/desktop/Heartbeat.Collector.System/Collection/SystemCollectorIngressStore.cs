@@ -677,6 +677,8 @@ internal sealed class SystemCollectorIngressStore
         var fileName = Path.GetFileName(path);
         foreach (var temporary in Directory.EnumerateFiles(directory, fileName + ".*.tmp"))
         {
+            if (!IsOwnedTemporaryFile(Path.GetFileName(temporary), fileName))
+                continue;
             try
             {
                 File.Delete(temporary);
@@ -690,6 +692,20 @@ internal sealed class SystemCollectorIngressStore
                 // Physical cleanup is best-effort and does not affect authoritative chunks.
             }
         }
+    }
+
+    private static bool IsOwnedTemporaryFile(string candidate, string journalFileName)
+    {
+        var prefix = journalFileName + ".";
+        if (!candidate.StartsWith(prefix, StringComparison.Ordinal))
+            return false;
+        var parts = candidate[prefix.Length..].Split('.');
+        if (parts is [var replacementId, "tmp"])
+            return Guid.TryParseExact(replacementId, "N", out _);
+        return parts is [var chunkIndex, "chunk", var chunkReplacementId, "tmp"] &&
+            chunkIndex.Length == 8 &&
+            chunkIndex.All(char.IsAsciiDigit) &&
+            Guid.TryParseExact(chunkReplacementId, "N", out _);
     }
 
     private static string ChunkPath(string path, int index) =>

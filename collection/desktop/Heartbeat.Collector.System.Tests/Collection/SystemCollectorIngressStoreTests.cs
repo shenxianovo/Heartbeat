@@ -155,15 +155,18 @@ public sealed class SystemCollectorIngressStoreTests : IDisposable
     {
         Directory.CreateDirectory(_root);
         var path = Path.Combine(_root, "ingress.ndjson");
-        var orphan = path + ".deadbeef.tmp";
+        var orphan = path + $".{Guid.NewGuid():N}.tmp";
         var unrelated = Path.Combine(_root, "unrelated.tmp");
+        var samePrefixButUnowned = path + ".notes.tmp";
         File.WriteAllText(orphan, "partial");
         File.WriteAllText(unrelated, "keep");
+        File.WriteAllText(samePrefixButUnowned, "keep");
 
         _ = SystemCollectorIngressStore.Open(path, 2);
 
         Assert.False(File.Exists(orphan));
         Assert.True(File.Exists(unrelated));
+        Assert.True(File.Exists(samePrefixButUnowned));
     }
 
     [Fact]
