@@ -1,6 +1,6 @@
 # Collector 数据可靠性收口
 
-Status: ready-for-agent
+Status: needs-info
 
 ## Problem
 
