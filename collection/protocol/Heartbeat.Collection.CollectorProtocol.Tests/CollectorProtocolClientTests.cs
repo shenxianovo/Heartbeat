@@ -1157,6 +1157,9 @@ public sealed class CollectorProtocolClientTests
             Assert.True(result.IsFullyDrained, result.ToString());
             Assert.Equal(1, binding.ReportCount);
             Assert.Equal(1, diagnostics.Values[^1].DeadLetterCount);
+            Assert.Equal(
+                Path.Combine(root, "collector-protocol-gap-dead-letter.json"),
+                diagnostics.Values[^1].DeadLetterPath);
             Assert.Empty(CollectorProtocolOutbox.Open(
                 root, 16, definition.Outputs, DateTimeOffset.UtcNow).Gaps);
 

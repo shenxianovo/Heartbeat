@@ -5,23 +5,34 @@ namespace Heartbeat.Collection.Hub.Tests.Collectors.Protocol;
 
 public sealed class CollectorActivationLifetimeTests
 {
-    [Theory]
-    [InlineData(0, CollectorDrainReason.StopFailed, CollectorDrainCompletionReason.CompletionFailed)]
-    [InlineData(1, CollectorDrainReason.FlushCancelled, CollectorDrainCompletionReason.CompletionFailed)]
-    [InlineData(2, CollectorDrainReason.DeadlineExceeded, CollectorDrainCompletionReason.DeadlineExceeded)]
-    [InlineData(3, CollectorDrainReason.FlushCancelled, CollectorDrainCompletionReason.CompletionFailed)]
-    [InlineData(4, CollectorDrainReason.StopFailed, CollectorDrainCompletionReason.CompletionFailed)]
-    [InlineData(5, CollectorDrainReason.StopFailed, CollectorDrainCompletionReason.CompletionFailed)]
-    public void ManagedProcessTerminationCauseAuthoritativelyProjectsLogicalAndCompletionOutcome(
-        int causeValue,
-        CollectorDrainReason expectedReason,
-        CollectorDrainCompletionReason expectedCompletion)
+    [Fact]
+    public void ManagedProcessTerminationCauseAuthoritativelyProjectsLogicalAndCompletionOutcome()
     {
-        var cause = (ManagedProcessTerminationCause)causeValue;
-        var projection = ManagedProcessTerminationProjector.Project(cause);
+        var expected = new Dictionary<ManagedProcessTerminationCause, ManagedProcessTerminationDrainProjection>
+        {
+            [ManagedProcessTerminationCause.BeforeReady] = new(
+                CollectorDrainReason.StopFailed,
+                CollectorDrainCompletionReason.CompletionFailed),
+            [ManagedProcessTerminationCause.DrainWriteFailed] = new(
+                CollectorDrainReason.FlushCancelled,
+                CollectorDrainCompletionReason.CompletionFailed),
+            [ManagedProcessTerminationCause.DeadlineExceeded] = new(
+                CollectorDrainReason.DeadlineExceeded,
+                CollectorDrainCompletionReason.DeadlineExceeded),
+            [ManagedProcessTerminationCause.ProtocolFailure] = new(
+                CollectorDrainReason.FlushCancelled,
+                CollectorDrainCompletionReason.CompletionFailed),
+            [ManagedProcessTerminationCause.StartupAborted] = new(
+                CollectorDrainReason.StopFailed,
+                CollectorDrainCompletionReason.CompletionFailed),
+            [ManagedProcessTerminationCause.StopFailed] = new(
+                CollectorDrainReason.StopFailed,
+                CollectorDrainCompletionReason.CompletionFailed)
+        };
 
-        Assert.Equal(expectedReason, projection.Reason);
-        Assert.Equal(expectedCompletion, projection.CompletionReason);
+        Assert.Equal(Enum.GetValues<ManagedProcessTerminationCause>().Length, expected.Count);
+        foreach (var (cause, projection) in expected)
+            Assert.Equal(projection, ManagedProcessTerminationProjector.Project(cause));
     }
 
     [Fact]
@@ -580,7 +591,7 @@ public sealed class CollectorActivationLifetimeTests
         public CollectorActivationExecution ProjectFailedStop(CollectorDrainReason reason) =>
             new ManagedProcessTerminatedExecution(ManagedProcessTerminationCause.StopFailed, null);
 
-        public void FenceAfterDeadline(CollectorDrainReason reason) => fence();
+        public void FenceAfterFailedStop(CollectorDrainReason reason) => fence();
     }
 
     private sealed class DelegateDisposable(Action dispose) : IDisposable

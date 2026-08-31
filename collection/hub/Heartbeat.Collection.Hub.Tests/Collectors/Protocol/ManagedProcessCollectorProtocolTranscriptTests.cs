@@ -692,6 +692,34 @@ public class ManagedProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
+    public async Task StopInfrastructureFailureAfterProtocolTerminationPreservesAuthoritativeCause()
+    {
+        using var fixture = ManagedRuntimeFixture.Create();
+        var activation = await fixture.Runtime.ActivateManagedProcessAsync(
+            fixture.Instance.CollectorInstanceId,
+            fixture.Package,
+            Options("corrupt_after_ready"));
+        await activation.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(ManagedProcessTerminationCause.ProtocolFailure, activation.Client.TerminationCause);
+        var driver = new ManagedProcessCollectorActivationLifetimeDriver(
+            activation.Client,
+            session: null!,
+            beginDraining: () => throw new IOException("stop infrastructure failed"));
+
+        var result = await driver.StopAsync(
+            new CollectorActivationStopIntent(CollectorActivationStopCause.RuntimeStopping),
+            DateTimeOffset.UtcNow.AddSeconds(1),
+            CancellationToken.None);
+
+        var execution = Assert.IsType<ManagedProcessTerminatedExecution>(result.Execution);
+        Assert.Equal(ManagedProcessTerminationCause.ProtocolFailure, execution.Cause);
+        Assert.Equal(CollectorDrainReason.FlushCancelled, result.DrainOutcome.Reason);
+        Assert.Equal(
+            CollectorDrainCompletionReason.CompletionFailed,
+            result.DrainOutcome.CompletionReason);
+    }
+
+    [Fact]
     public async Task DrainWriteDisconnect_IsFailedAndWriterIsReleased()
     {
         using var fixture = ManagedRuntimeFixture.Create();

@@ -119,6 +119,13 @@ internal sealed record ManagedProcessTerminationDrainProjection(
 
 internal static class ManagedProcessTerminationProjector
 {
+    internal static ManagedProcessTerminationCause FromFailedStopReason(CollectorDrainReason reason) => reason switch
+    {
+        CollectorDrainReason.DeadlineExceeded => ManagedProcessTerminationCause.DeadlineExceeded,
+        CollectorDrainReason.StopFailed => ManagedProcessTerminationCause.StopFailed,
+        _ => throw new ArgumentOutOfRangeException(nameof(reason))
+    };
+
     internal static ManagedProcessTerminationDrainProjection Project(
         ManagedProcessTerminationCause cause) => cause switch
         {
@@ -202,7 +209,7 @@ internal interface ICollectorActivationLifetimeDriver
     CollectorActivationExecution ProjectFailedStop(CollectorDrainReason reason) =>
         new InProcessFencedExecution();
 
-    void FenceAfterDeadline(CollectorDrainReason reason) { }
+    void FenceAfterFailedStop(CollectorDrainReason reason) { }
 }
 
 internal sealed class InProcessCollectorActivationLifetimeDriver(
@@ -223,7 +230,7 @@ internal sealed class InProcessCollectorActivationLifetimeDriver(
             new InProcessStoppedExecution());
     }
 
-    public void FenceAfterDeadline(CollectorDrainReason reason)
+    public void FenceAfterFailedStop(CollectorDrainReason reason)
     {
         if (collector is IInProcessCollectorDeadlineFence fence)
         {
@@ -492,7 +499,7 @@ internal sealed class CollectorActivationLifetime
         try
         {
             if (driverResult.DrainOutcome.Reason is CollectorDrainReason.DeadlineExceeded or CollectorDrainReason.StopFailed)
-                _driver.FenceAfterDeadline(driverResult.DrainOutcome.Reason);
+                _driver.FenceAfterFailedStop(driverResult.DrainOutcome.Reason);
             _fence();
             fenced = true;
         }

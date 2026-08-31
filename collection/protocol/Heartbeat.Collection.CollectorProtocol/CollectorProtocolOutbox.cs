@@ -55,7 +55,9 @@ internal sealed class CollectorProtocolOutbox
     public bool HasPending => _state.DeliveryOrder.Count != 0;
     public bool PendingRemainderIsDurable => !_dirty && !_deadLettersDirty;
     public int DeadLetterCount => _deadLetters.Count + _gapDeadLetters.Count;
-    public string DeadLetterPath => _deadLetterPath;
+    public string DeadLetterPath => _deadLetters.Count == 0 && _gapDeadLetters.Count != 0
+        ? _gapDeadLetterPath
+        : _deadLetterPath;
     public int GapDeadLetterCount => _gapDeadLetters.Count;
     public string GapDeadLetterPath => _gapDeadLetterPath;
 

@@ -795,22 +795,21 @@ internal sealed class ManagedProcessCollectorActivationLifetimeDriver(
         catch (Exception exception)
         {
             var drain = await client.TerminateAfterStopFailureAsync(exception, deadline).ConfigureAwait(false);
+            var terminationCause = client.TerminationCause ?? ManagedProcessTerminationCause.StopFailed;
             return new CollectorActivationDriverStopResult(
                 CollectorActivationDrainOutcome.FromInProcess(drain),
                 new ManagedProcessTerminatedExecution(
-                    ManagedProcessTerminationCause.StopFailed,
+                    terminationCause,
                     client.ExitCode));
         }
     }
 
     public CollectorActivationExecution ProjectFailedStop(CollectorDrainReason reason) =>
         new ManagedProcessTerminatedExecution(
-            reason == CollectorDrainReason.DeadlineExceeded
-                ? ManagedProcessTerminationCause.DeadlineExceeded
-                : ManagedProcessTerminationCause.StopFailed,
+            ManagedProcessTerminationProjector.FromFailedStopReason(reason),
             client.ExitCode);
 
-    public void FenceAfterDeadline(CollectorDrainReason reason) =>
+    public void FenceAfterFailedStop(CollectorDrainReason reason) =>
         client.TerminateAfterLifetimeFailure(reason);
 }
 
@@ -1390,9 +1389,7 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
     {
         if (_process.HasExited)
             return;
-        Terminate(reason == CollectorDrainReason.DeadlineExceeded
-            ? ManagedProcessTerminationCause.DeadlineExceeded
-            : ManagedProcessTerminationCause.StopFailed);
+        Terminate(ManagedProcessTerminationProjector.FromFailedStopReason(reason));
     }
 
     internal async Task<InProcessCollectorDrainResult> TerminateAfterStopFailureAsync(
