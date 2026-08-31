@@ -161,3 +161,12 @@ equal-time 与 future-mtime 两个公开 `Open` 回归先稳定失败：旧实�
 `lastWrite < recoveredAt` 才声明可证明的非空半开丢失区间；相等或未来 mtime 只 quarantine 损坏文件，
 不伪造已知 loss range，也不产生协议无效 Gap。定向 red 0/2 → green VRChat suite 15/15。System
 rollover deferred handoff 尚未完成，因此 issue 继续保持 `needs-triage`。
+
+### 2026-08-31 — System rollover 单一有序交接
+
+确定性协调测试先用当前“先释放 gate、再重放 snapshot queue”的语义稳定得到实际顺序
+`C@t2 → B@t1`，违反期望 `B@t1 → C@t2`。新的内部 `OrderedDeferredHandoff` 在 durable stage 完成后
+仍保持 gate active，逐条于锁外重放；重放期间到达的平台 callback 只在短锁内按观察时刻入队，直到
+queue 真正排空才释放，因此不能越过更早 deferred observation，也不在状态锁内执行磁盘 I/O 或阻塞
+平台 callback。协调与既有 rollover/stop/multi-transition 定向 4/4，完整 System suite 76/76。最终
+完整门禁与双轴复审前 issue 保持 `needs-triage`。
