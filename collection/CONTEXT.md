@@ -95,6 +95,16 @@ _Avoid_: 第二个 CollectorInstanceId、Instance Config、把 Source 当作 Ins
 Collector Instance 的一次协议会话和实际运行身份；重启、重连、成功或失败都不改写 Instance 身份。ExternalHost Instance 可以同时拥有多个 Activation，各自代表一份独立运行的外部宿主；同一 External Host Identity 的新 Activation 只接替该 Host 的旧会话，不影响同 App 的其他 Host 或其他 App Instance。
 _Avoid_: Run（含义过泛）、Active（后者是按 Source 流量推断的既有状态）
 
+**Collector Activation Lifetime（采集器激活生命周期）**:
+从 Hub 接受一次 Activation 到其 writer/lease 最终释放的单一所有权事务；Hub 与 Collector Protocol Client
+在协议两侧各自拥有生命周期，彼此交换结果而不形成跨进程 owner。
+_Avoid_: 多个 caller 各自 Stop/释放、跨进程 Lifecycle Coordinator、Artifact Delivery
+
+**Collector Delivery Ownership（采集器交付所有权）**:
+Collector Protocol Client 对未确认 Fact/Stream Gap 的保留与交付责任；drain 时它从 background 原子转移到
+有绝对 deadline 的 drain owner，fenced 后不能再 ACK 或改变 durable responsibility。
+_Avoid_: background pump task、用 CancellationToken 或异常消费顺序表示 ownership
+
 **Interactive Authorization（交互授权）**:
 Collector Activation 通过 Collector Protocol 请求用户完成的一次非阻塞授权交互。Collector 声明当前 challenge，Hub Management Surface 收集应答；敏感应答只在内存中传递，不成为配置或运行状态。
 _Avoid_: Hub 内置第三方登录流程、把登录设为 Dashboard 的强制前置步骤

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # ADR-046: Collector Activation 两侧各自拥有唯一生命周期事务
@@ -13,6 +13,14 @@ deadline、writer release、truthful remainder 与 completion error 集中到各
 的 Package / Instance / Activation、单一 Collector Protocol、多 Transport Binding，以及 InProcess、
 ManagedProcess、ExternalHost 的真实能力差异。Artifact Delivery 与 Registry 不进入本决策。
 
-具体 Interface 在 Design It Twice 比较完成前保持 proposed；候选必须按 Depth、Locality 与 seam placement
-评估，并以 replace-not-layer 迁移删除旧 coordinator 和调度测试。
+Design It Twice 比较了最小 Interface、最强 typed state 与最易迁移三案；采用混合设计：Hub 的
+`CollectorActivationLifetime` 在 accepted Hello/reservation 时创建，只暴露 Ready publication、Stop Intent
+与持久 Terminal；Client 的 `CollectorDeliveryOwnership` 用 ordinary/drain-tail admission 与 background/drain
+lease 表达 ownership。InProcess 的有限 cooperative retry、ManagedProcess terminate 与 ExternalHost lease
+revoke 都由 Module/Driver Adapter 内部决定，caller 不通过 task reset 重试。
 
+Client drain 开始时一次线性化关闭 ordinary admission、supersede background lease、推进 commit epoch、
+转移 delivery ownership 并捕获 Hub 的绝对 deadline。Application Stop 只收到 drain-scoped context 来提交
+已截断 ingress tail；Fact/Gap commit 明确返回 Superseded/Fenced，而不借用 cancellation 异常。迁移必须
+replace-not-layer：旧 StartingCollector、Activation stop-task coordinators、direct Runtime Stop paths、client
+handoff bool/observer 与调度测试在对应 slice 中删除。
