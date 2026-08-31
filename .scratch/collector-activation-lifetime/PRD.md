@@ -1,6 +1,6 @@
 # Collector Activation 生命周期所有权收敛
 
-Status: done
+Status: ready-for-agent
 
 ## Problem
 
@@ -178,10 +178,10 @@ internal sealed class CollectorDeliveryLease
   Interface 级测试，旧调度测试已替换。
 - [x] Client vertical slice 统一 Fact/Gap、cooperative/deadline/failure；observer/barrier production hook 已删除。
 - [x] 三种 Execution Driver conformance/adapter 验证通过且不伪装 ExternalHost 能力。
-- [x] build、Protocol/Hub/System、Browser test/build、collector contracts、style、diff、真实 cross-process、
+- [ ] build、Protocol/Hub/System、Browser test/build、collector contracts、style、diff、真实 cross-process、
   stress 与 solution 项目并行连续多轮通过。
-- [x] 最终验证未发现新的无关 flaky gate；若后续出现，仍按产品/测试/环境分类并单独建 issue。
-- [x] Standards/Spec 双轴独立复审完成，P1/P2 清零；线性 commits、clean worktree、无 push。
+- [ ] 最终验证未发现新的无关 flaky gate；若后续出现，仍按产品/测试/环境分类并单独建 issue。
+- [ ] Standards/Spec 双轴独立复审完成，P1/P2 清零；线性 commits、clean worktree、无 push。
 
 ## Required work
 
@@ -191,6 +191,23 @@ internal sealed class CollectorDeliveryLease
 - [x] [04 — Client 侧显式 Delivery Ownership](issues/04-client-delivery-ownership.md)
 - [x] [05 — 三种 Execution Driver conformance](issues/05-execution-driver-conformance.md)
 - [x] [06 — 全量验证、复审与 lifecycle closeout](issues/06-validation-and-review.md)
+- [ ] [07 — 第三轮生命周期不变量收口](issues/07-third-round-lifecycle-invariants.md)
+
+## Comments
+
+### 2026-08-31 — third-round reopen
+
+固定基线 `bad584a5fbd8f93e64eabd9068b4b34386e142c5` 的复审证据表明，上一次 closeout 仍遗漏五类
+架构不变量：Terminal 异常路径可能 pending、remainder durable projection 可与真实 ownership 漂移、Gap
+non-retryable rejection 缺少穷尽式 pending-delivery 状态、Runtime Dispose 逐个短路、ManagedProcess termination
+cause 存在双权威。因此原 `done` 不成立，PRD 按 tracker lifecycle 重新打开；既有 01–06 保留为已完成历史，
+本轮由 07 统一承接并在新的验证与双轴复审完成后再次 closeout。
+
+### 2026-08-31 — Ready publication P3 disposition
+
+InProcess 与 ExternalHost 的 Ready prepare/commit 骨架确有近似，但 ExternalHost 仍包含 pending→active、applied
+revision 与弱 lease 特有事务；本轮抽取会扩大 callback/flag surface，不能明显减少权威来源。该项不阻断 07，
+已单独记录为 [08 — 评估统一 Ready publication transaction](issues/08-unify-ready-publication-transaction.md)。
 
 ## Non-goals
 
