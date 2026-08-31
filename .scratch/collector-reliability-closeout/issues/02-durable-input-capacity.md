@@ -180,3 +180,16 @@ directory-entry/power-loss durability 与公共 atomic replacement primitive 仍
 Initialize 带到 Runtime Dispose 之后。两种 repair 已统一为 COW prepared replacement，并通过 Hub-owned
 fence 发布；预先 fence 的两条 red 为 0/2，malformed-tail 另以 temp flush 后 fence→release 的确定性交错
 验证原 authoritative bytes 不变。该补充不扩大可修复输入集合，完整语义不兼容记录仍保留并 fail。
+
+### 2026-08-31 — native callback 验证夹具去竞态
+
+最终 solution 第一轮在项目并行负载下暴露测试夹具 TOCTOU：
+`NativeInputCallbackDoesNotWaitForIngressJournalPersistence` 在删除 journal 文件后创建同名目录来注入
+失败，但 `inputSink.Entered` 只证明 remote projection 已阻塞，并不证明本地 ingress ACK/reset append 已
+结束；后台 append 可在 `File.Delete` 与 `Directory.CreateDirectory` 之间重建文件。该轮因此以
+`IOException: file already exists` 失败，隔离旧夹具 20/20 全绿，符合负载窗口型失稳。
+
+夹具现改用生产已有的 `beforeIngressCommit` seam：先确定 background commit 已在 temp flush 后阻塞，
+再从独立 native callback thread 提交后续 InputEvent，仍要求 2 秒内返回且无异常。它不再修改正在使用的
+authoritative path，且直接验证“后台 fsync/commit 阻塞不得反向阻塞平台 callback”。新夹具隔离 20/20；
+完整 solution 连续三轮需从零重新计数，完成前 issue 保持 `needs-triage`。

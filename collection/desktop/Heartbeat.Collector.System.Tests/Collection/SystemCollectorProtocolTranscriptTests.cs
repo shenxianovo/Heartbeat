@@ -586,7 +586,10 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         var clock = new FakeClock();
         var segmentSink = new SegmentIngestService(clock);
         var inputSink = new BlockingInputEventSink();
-        var protocol = new SystemCollectorProtocolAdapter(inputEventIngressCapacity: 2);
+        var ingressCommit = new ControllableCommitBlocker();
+        var protocol = new SystemCollectorProtocolAdapter(
+            ingressCommit.BeforeCommit,
+            inputEventIngressCapacity: 2);
         var inputBuffer = new InputEventBuffer(clock, publisher: protocol);
         var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
         using var config = JsonDocument.Parse("{}");
@@ -598,11 +601,6 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             package,
             new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
             new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
-        var ingressPath = Path.Combine(
-            _root,
-            "collector-data",
-            instance.CollectorInstanceId.ToString("N"),
-            "system-collector-ingress.json");
         await using var activation = await runtime.ActivateInProcessAsync(
             instance.CollectorInstanceId,
             package,
@@ -610,34 +608,40 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
 
         inputBuffer.OnMouseButton(1);
         Assert.True(inputSink.Entered.Wait(TimeSpan.FromSeconds(2)));
-        if (File.Exists(ingressPath))
-            File.Delete(ingressPath);
-        Directory.CreateDirectory(ingressPath);
-        Exception? callbackFailure = null;
-        using var callbackReturned = new ManualResetEventSlim();
-        var callbackThread = new Thread(() =>
+        try
         {
-            try
+            ingressCommit.Arm();
+            inputBuffer.OnMouseButton(2);
+            Assert.True(ingressCommit.Entered.Wait(TimeSpan.FromSeconds(2)));
+            Exception? callbackFailure = null;
+            using var callbackReturned = new ManualResetEventSlim();
+            var callbackThread = new Thread(() =>
             {
-                inputBuffer.OnMouseButton(2);
-            }
-            catch (Exception exception)
-            {
-                callbackFailure = exception;
-            }
-            finally
-            {
-                callbackReturned.Set();
-            }
-        }) { IsBackground = true };
+                try
+                {
+                    inputBuffer.OnMouseButton(3);
+                }
+                catch (Exception exception)
+                {
+                    callbackFailure = exception;
+                }
+                finally
+                {
+                    callbackReturned.Set();
+                }
+            }) { IsBackground = true };
 
-        callbackThread.Start();
-        var returned = callbackReturned.Wait(TimeSpan.FromSeconds(2));
-        Directory.Delete(ingressPath);
-        inputSink.Release();
+            callbackThread.Start();
+            var returned = callbackReturned.Wait(TimeSpan.FromSeconds(2));
 
-        Assert.True(returned, "Native InputEvent callback waited for ingress journal persistence.");
-        Assert.Null(callbackFailure);
+            Assert.True(returned, "Native InputEvent callback waited for ingress journal persistence.");
+            Assert.Null(callbackFailure);
+        }
+        finally
+        {
+            ingressCommit.Release();
+            inputSink.Release();
+        }
     }
 
     [Fact]
