@@ -41,7 +41,7 @@ public sealed class StaticCollectorRegistryClient(HttpClient httpClient, Uri reg
         {
             body = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch (HttpRequestException exception)
+        catch (Exception exception) when (IsTransportFailure(exception))
         {
             return CollectorRegistryResult<CollectorRegistryIndex>.Failure(
                 CollectorRegistryFailureReason.RequestFailed,
@@ -100,7 +100,7 @@ public sealed class StaticCollectorRegistryClient(HttpClient httpClient, Uri reg
                 await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
             }
         }
-        catch (HttpRequestException exception)
+        catch (Exception exception) when (IsTransportFailure(exception))
         {
             return CollectorRegistryResult<CollectorRegistryArtifact>.Failure(
                 CollectorRegistryFailureReason.RequestFailed,
@@ -146,7 +146,7 @@ public sealed class StaticCollectorRegistryClient(HttpClient httpClient, Uri reg
                     .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
                     .ConfigureAwait(false);
             }
-            catch (HttpRequestException exception)
+            catch (Exception exception) when (IsTransportFailure(exception))
             {
                 return CollectorRegistryResult<HttpResponseMessage>.Failure(
                     CollectorRegistryFailureReason.RequestFailed,
@@ -193,6 +193,15 @@ public sealed class StaticCollectorRegistryClient(HttpClient httpClient, Uri reg
             CollectorRegistryFailureReason.TooManyRedirects,
             $"Registry redirected '{requestUri}' more than {MaxRedirects} times.");
     }
+
+    /// <summary>
+    /// A dropped or truncated connection arrives as <see cref="HttpIOException" />, which is an
+    /// <see cref="IOException" />. It is classified here as a Registry request failure so callers do
+    /// not have to tell a torn download apart from a local storage failure — and so a plain
+    /// <see cref="IOException" /> from writing the destination still means exactly that.
+    /// </summary>
+    private static bool IsTransportFailure(Exception exception) =>
+        exception is HttpRequestException or HttpIOException;
 
     private static bool IsRedirect(HttpStatusCode status) => status is
         HttpStatusCode.MovedPermanently or
