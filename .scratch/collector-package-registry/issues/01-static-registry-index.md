@@ -93,3 +93,9 @@ SemVer solver。
   - `dotnet test Heartbeat.slnx --no-build` → 1094 passed / 0 failed（基线 1036 + 新增 58，无回归）。
   - glossary：`collection/CONTEXT.md` 新增 **Collector Registry Index（采集器注册源索引）**；ADR-047 的
     路径形状未变，无需修订。
+
+- 2026-08-31（issue 03 期间回填）：`StaticCollectorRegistryClient` 原来只 catch `HttpRequestException`，
+  被中途掐断的 artifact 下载抛的 `HttpIOException` 会漏出去并在上层被误报成本地存储失败。现已把
+  `HttpRequestException`/`HttpIOException` 一起归为 `RequestFailed`，写目标文件的普通 `IOException` 仍属
+  本地失败。回归测试在 issue 03 的 `CollectorPackageInstallerTests.Install_DownloadTornMidStream_…`。
+  同时 `CollectorRegistryFailureReason` 由 18 扩到 27 个 case 以覆盖解压与安装失败，仍是唯一的失败 reason 权威。

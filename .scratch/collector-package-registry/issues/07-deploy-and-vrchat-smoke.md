@@ -45,6 +45,10 @@ Priority: P1 — 域名路由与真实 VRChat 更新需要 owner 操作和观察
 - [ ] 决定是否需要 CI 接线：`tag → build → stage → upload` 目前完全是人工流程。若要加 workflow，按冻结
   约束它只能是 `workflow_dispatch` / dry-run 形态。
 - [ ] 真实 `collector-vrchat/vX.Y.Z` tag 的推送与首个 artifact 的实际发布。
+- [ ] 2026-08-31（issue 03 加入）：确认 Headless `dataDirectory` 的磁盘余量，并在需要时人工删除旧的
+  `collector-packages/packages/{packageId}/{version}/{artifactSha256}/` 目录与残留 `collector-packages/pending/`。
+  安装按精确 version + artifact hash 建独立目录且**没有** cache GC（ADR-047 明确出范围），所以旧版本会一直
+  留着；删除没有完成标记的目录总是安全的。
 
 ## Comments
 
@@ -54,3 +58,5 @@ Priority: P1 — 域名路由与真实 VRChat 更新需要 owner 操作和观察
   完整迁移移出本 issue。
 - 2026-08-31：issue 01 已 done、issue 02 code complete（`ready-for-human`）。上面「Manual gates carried
   over」记录了它们留下的、必须由人执行的部署与 CI 门禁；本 issue 在这些门禁完成前保持 `ready-for-human`。
+- 2026-08-31：issue 03 已 done（版本目录安装 + 完成标记，全部由自动化测试覆盖，无新增人工门禁），只给上面
+  清单加了一条部署期磁盘/清理注意事项。真实 smoke 仍需 issue 04、05。

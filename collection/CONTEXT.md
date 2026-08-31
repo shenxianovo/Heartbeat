@@ -83,6 +83,10 @@ _Avoid_: Analytics Collector Control Plane、要求用户通过服务器终端�
 本机完整持有某一精确 Collector Package 的事实；部分下载或未完成目录不是 Installation。安装不表示 Collector 已启用、已获授权、能够激活或正在运行，多个 Collector Instance 可以共享同一份已安装内容。
 _Avoid_: Download、Staging、Registration、Active
 
+**Installation Completion Marker（安装完成标记）**:
+安装目录内声明该目录已完整持有某一精确 Collector Package 的记录；它是 Installation 的必要条件而非充分条件，标记缺失、指向别的精确候选或与目录内容不再一致时，该目录都不是 Installation。它只描述本机安装完整性，不表示批准、Ready、Last-Known-Good 或任何运行意图。
+_Avoid_: Install Journal、Lock File、把标记当作批准或 Ready 记录、用它保存 Desired State
+
 **Collector Instance（采集器实例）**:
 一个稳定、已配置的 Collector 身份；更换其 Collector Package 版本或重新激活时，实例身份保持不变，同样不会因为长期离线而自动删除。同一采集器包可以对应多个实例。browser Collector 在同一 Machine Subject 上按 App 分 Instance：Chrome、Edge 等 App 各有独立启用意图与运行状态，但共享一份 Collector Installation；同一 App 的浏览器 Profile 不是独立 Instance。首次发现新的 browser App Instance 默认启用，删除身份与配置只能是显式用户操作。
 _Avoid_: 用 Source、进程 ID 或包版本充当实例身份
