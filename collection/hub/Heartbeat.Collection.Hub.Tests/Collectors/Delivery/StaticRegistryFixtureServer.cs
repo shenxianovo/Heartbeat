@@ -41,6 +41,13 @@ internal sealed class StaticRegistryFixtureServer : IDisposable
     /// </summary>
     public ConcurrentDictionary<string, int> RequestCounts { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Absolute request path to the number of bytes to send before dropping the connection, while
+    /// still announcing the full <c>Content-Length</c>. That is a torn download rather than a short
+    /// file, so it exercises the transport failure path instead of the length check.
+    /// </summary>
+    public ConcurrentDictionary<string, int> TornResponses { get; } = new(StringComparer.Ordinal);
+
     public static StaticRegistryFixtureServer Start(string rootDirectory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
@@ -106,7 +113,15 @@ internal sealed class StaticRegistryFixtureServer : IDisposable
             }
             finally
             {
-                context.Response.Close();
+                try
+                {
+                    context.Response.Close();
+                }
+                catch (Exception exception) when (exception is HttpListenerException or
+                                                     ObjectDisposedException or InvalidOperationException)
+                {
+                    // The response was already aborted on purpose.
+                }
             }
         }
     }
@@ -142,6 +157,13 @@ internal sealed class StaticRegistryFixtureServer : IDisposable
             ? "application/json"
             : "application/octet-stream";
         context.Response.ContentLength64 = bytes.LongLength;
+        if (TornResponses.TryGetValue(path, out var sent))
+        {
+            context.Response.OutputStream.Write(bytes.AsSpan(0, Math.Min(sent, bytes.Length)));
+            context.Response.OutputStream.Flush();
+            context.Response.Abort();
+            return;
+        }
         context.Response.OutputStream.Write(bytes);
     }
 

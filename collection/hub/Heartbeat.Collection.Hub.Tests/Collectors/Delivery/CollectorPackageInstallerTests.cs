@@ -356,6 +356,20 @@ public sealed class CollectorPackageInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task Install_DownloadTornMidStream_FailsWithRequestFailed()
+    {
+        // A dropped connection is a transport failure, not a wrong-length artifact, and it must not
+        // be reported as a local storage problem either.
+        _server.TornResponses[_fixture.ArtifactUrl.AbsolutePath] = 4096;
+
+        var result = await InstallAsync();
+
+        Assert.Equal(CollectorRegistryFailureReason.RequestFailed, result.Reason);
+        Assert.False(Directory.Exists(_store.PackagesRoot));
+        AssertNothingPending();
+    }
+
+    [Fact]
     public async Task Install_Cancelled_FailsWithCancelledAndInstallsNothing()
     {
         using var cancellation = new CancellationTokenSource();
