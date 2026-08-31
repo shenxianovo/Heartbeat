@@ -1,6 +1,6 @@
 # Collector Activation 生命周期所有权收敛
 
-Status: ready-for-agent
+Status: done
 
 ## Problem
 
@@ -192,8 +192,8 @@ internal sealed class CollectorDeliveryLease
 - [x] [05 — 三种 Execution Driver conformance](issues/05-execution-driver-conformance.md)
 - [x] [06 — 全量验证、复审与 lifecycle closeout](issues/06-validation-and-review.md)
 - [x] [07 — 第三轮生命周期不变量收口](issues/07-third-round-lifecycle-invariants.md)
-- [ ] [09 — 修正 ManagedProcess termination truth](issues/09-delivery-durability-projection-residuals.md)
-- [ ] [10 — 移除 ManagedProcess 授权测试墙钟竞态](issues/10-managed-process-authorization-phase-wait-flake.md)
+- [x] [09 — 修正 ManagedProcess termination truth](issues/09-delivery-durability-projection-residuals.md)
+- [x] [10 — 移除 ManagedProcess 授权测试墙钟竞态](issues/10-managed-process-authorization-phase-wait-flake.md)
 
 ## Non-goals
 
@@ -245,3 +245,17 @@ evidence，outer lifetime timeout 也可能让 Execution cause 与 client 已首
 truthful remainder 与 termination cause 单权威，因此在 VRChat Web Delivery 纵切开始改变真实 Activation
 前升回 P2 blocker；相关真实时钟回归一并改成确定性测试。Gap dead-letter 双文件崩溃窗口、诊断聚合与
 重复事务保留为开发期 P3 限制，不阻塞纵切。PRD 状态重新打开，直到 issue 09、10 有实现和验证证据。
+
+### 2026-08-31 — 09/10 收口
+
+issue 09、10 均已完成并勾选，重开时列出的两条实现证据条件满足，PRD 状态回到 `done`。
+
+- 09：ManagedProcess termination 变成一次原子发布的事实，logical/completion/execution 投影全部从该状态派生；
+  Collector 已上报的 durable remainder 不再被后续 kill 抹掉；failed-stop 投影在 fence 写入 cause 之后进行。
+- 10：ManagedProcess 阶段等待改为 Runtime State 发布信号，授权超时用例改用虚拟启动时钟，墙钟 sleep 清零。
+
+四个线性 commit：`7bca697`（红灯回归）、`aaf916b`（termination truth 实现）、
+`91e0211`（确定性阶段等待）、`fada3cb`（protocol drain 预算虚拟时钟）。
+
+最后一次代码修改后完整 solution 项目并行连续三轮 1036/1036；目标用例各自 50/50。
+Gap dead-letter 双文件崩溃窗口等仍留在 [11](issues/11-dead-letter-durability-and-diagnostics-debt.md)，本轮不处理。
