@@ -73,8 +73,13 @@ public class CollectorRuntimeInstanceTests
                 new CollectorInstanceSpec(1, 1, configDocument.RootElement.Clone()))
                 .CollectorInstanceId;
         }
+        // Pinned against the current schema version rather than a literal, so adding a later
+        // migration cannot silently turn this into a test that never builds a legacy document.
         var legacyJson = File.ReadAllText(statePath)
-            .Replace("\"schemaVersion\": 2", "\"schemaVersion\": 1", StringComparison.Ordinal)
+            .Replace(
+                $"\"schemaVersion\": {JsonCollectorRuntimeStore.CurrentSchemaVersion}",
+                "\"schemaVersion\": 1",
+                StringComparison.Ordinal)
             .Replace("\"configVersion\"", "\"configSchemaVersion\"", StringComparison.Ordinal)
             .Replace("\"activationAttemptTombstones\"", "\"helloAttempts\"", StringComparison.Ordinal);
         File.WriteAllText(statePath, legacyJson);
@@ -89,11 +94,58 @@ public class CollectorRuntimeInstanceTests
         }
 
         var canonicalJson = File.ReadAllText(statePath);
-        Assert.Contains("\"schemaVersion\": 2", canonicalJson, StringComparison.Ordinal);
+        Assert.Contains(
+            $"\"schemaVersion\": {JsonCollectorRuntimeStore.CurrentSchemaVersion}",
+            canonicalJson,
+            StringComparison.Ordinal);
         Assert.Contains("\"configVersion\"", canonicalJson, StringComparison.Ordinal);
         Assert.Contains("\"activationAttemptTombstones\"", canonicalJson, StringComparison.Ordinal);
         Assert.DoesNotContain("\"configSchemaVersion\"", canonicalJson, StringComparison.Ordinal);
         Assert.DoesNotContain("\"helloAttempts\"", canonicalJson, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A state file written before the Collector Package update record existed is still a complete
+    /// state file: the record is optional, so an older Hub's document opens unchanged and simply
+    /// carries no update facts yet.
+    /// </summary>
+    [Fact]
+    public void Open_RuntimeStateWithoutPackageUpdateRecord_LoadsAndAdoptsTheCurrentSchemaVersion()
+    {
+        using var stateDirectory = TemporaryDirectory.Create();
+        var statePath = Path.Combine(stateDirectory.Path, "collector-runtime.json");
+        var package = LocalCollectorPackage.Load(ReferencePackagePath);
+        using var configDocument = JsonDocument.Parse("{}");
+        Guid collectorInstanceId;
+        using (var runtime = CollectorRuntime.Open(statePath, new RecordingSegmentSink()))
+        {
+            collectorInstanceId = runtime.CreateInstance(
+                package,
+                new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+                new CollectorInstanceSpec(1, 1, configDocument.RootElement.Clone()))
+                .CollectorInstanceId;
+        }
+        File.WriteAllText(
+            statePath,
+            File.ReadAllText(statePath).Replace(
+                $"\"schemaVersion\": {JsonCollectorRuntimeStore.CurrentSchemaVersion}",
+                "\"schemaVersion\": 2",
+                StringComparison.Ordinal));
+
+        using (var reopened = CollectorRuntime.Open(statePath, new RecordingSegmentSink()))
+        {
+            var status = reopened.GetPackageUpdateStatus(collectorInstanceId);
+            Assert.Null(status.InstalledCandidate);
+            Assert.Null(status.ApprovedCandidate);
+            Assert.Null(status.RegistryCurrent);
+            Assert.Null(status.LastFailure);
+            reopened.UpdateInstanceSpec(collectorInstanceId, 2, configDocument.RootElement.Clone());
+        }
+
+        Assert.Contains(
+            $"\"schemaVersion\": {JsonCollectorRuntimeStore.CurrentSchemaVersion}",
+            File.ReadAllText(statePath),
+            StringComparison.Ordinal);
     }
 
     [Fact]
