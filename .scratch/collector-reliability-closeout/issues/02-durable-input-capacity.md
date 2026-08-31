@@ -1,6 +1,6 @@
 # 02 — durable InputEvent 满容量不再静默丢失
 
-Status: done
+Status: needs-triage
 
 Owner: Collection / System Input + Protocol
 
@@ -160,3 +160,10 @@ reset 发布后旧 chunk 删除位于 durable fence 外，但只删除已被 res
 tail 的物理文件；删除失败不影响恢复，deadline 后也不会改变权威 pending/checkpoint 语义。跨平台
 directory-entry/power-loss durability 与公共 atomic replacement primitive 仍按上文退出条件保留，不作
 超出现有证据的承诺。
+
+### 2026-08-31 — 第二轮独立复审重开
+
+`SystemCollectorIngressStore.Open` 对末条任意 `JsonException` 都会截断，导致完整、带 LF、已 fsync
+但含未知字段或错误字段类型的记录被静默删除。只有可证明为 torn/un-terminated 的末条才允许修复；
+语义不兼容记录必须保留并 fail 或 quarantine。该边界及 append+restart 回归关闭前，本 issue 恢复为
+`needs-triage`。

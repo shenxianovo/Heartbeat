@@ -1,6 +1,6 @@
 # 03 — 让 InProcess drain 受 deadline 约束
 
-Status: done
+Status: needs-triage
 
 Owner: Collection / Collector Protocol
 
@@ -222,3 +222,10 @@ stress 80/80；真实 Protocol 跨进程 crash/drain/restart 10/10；完整 solu
 build 0 warnings / 0 errors；Browser 78/78 + production build；第五轮 Spec 与 Standards 代码轴 P1/P2
 清零。本 issue 状态更新为 `done`。可靠性声明只覆盖当前 OS/filesystem 的进程崩溃/restart，不外推为
 断电或三平台 directory-entry durability。
+
+### 2026-08-31 — 第二轮独立复审重开
+
+Starting Collector 在 Initialize 尚未返回时已经持有可发布 session，但 terminal cleanup 没有先关闭
+Hub-owned durable commit fence；忽略取消的 Initialize/background work 因而可能在 Runtime Dispose
+返回后继续提交 prepared mutation。terminal fence 与 Protocol 初始 outbox mutation 的确定性回归关闭前，
+本 issue 恢复为 `needs-triage`。

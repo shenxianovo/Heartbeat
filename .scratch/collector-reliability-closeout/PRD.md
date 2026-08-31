@@ -1,6 +1,6 @@
 # Collector 数据可靠性收口
 
-Status: done
+Status: needs-triage
 
 ## Problem
 
@@ -77,3 +77,12 @@ watermark 从 `2026-08-30T11:33:47.271Z` 推进到 `2026-08-30T11:43:47.279Z`，
 - 不改变 24h server policy 的安全边界；Collector 通过有界 chunk 遵守它。
 - 不借机实现 Package Registry、host self-update 或新的 Analytics facts。
 - 不对没有现场证据的旧 outbox 承诺迁移；迁移只覆盖当前真实格式。
+
+### 2026-08-31 — 第二轮独立复审重开
+
+新的可复现证据推翻上一轮 `done` 结论：VRChat checkpoint 在时钟回拨时可持久化无效空 Gap；
+System ingress 会把完整但语义不兼容的末条记录误当 torn tail 截断；strict ingest 的空 batch 拒绝仍
+停留在 Controller；System rollover 的 deferred observation 可被 gate 释放后的新 callback 超车；
+Starting Collector 在 Initialize 未返回时缺少 terminal Hub-owned durable fence；Protocol transcript
+的非 timeout 行为测试还共享过短 startup budget。所有六项严格 TDD、完整验证与双轴独立复审完成前，
+本 PRD 保持 `needs-triage`，Registry reliability gate 继续关闭。

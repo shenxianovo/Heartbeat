@@ -1,6 +1,6 @@
 # 05 — 让 Segment strict ingest 返回可判定结果
 
-Status: done
+Status: needs-triage
 
 Owner: Analytics / Ingest
 
@@ -80,3 +80,10 @@ service 完成整批 preflight 后调用内部 validated save seam，`UsageServi
 build 0 warnings / 0 errors；第五轮 Spec 与 Standards 代码轴无 P1/P2。Controller 继续只映射 HTTP，
 事务、Device/AppIdentity/ActivitySegment 副作用与 contract rejection 均位于 application service
 unit-of-work。本 issue 验收完成，状态更新为 `done`。
+
+### 2026-08-31 — 第二轮独立复审重开
+
+空 batch 仍由 Controller 自行拒绝，直接调用 `ISegmentIngestApplicationService.IngestAsync([])` 会继续
+解析并创建 Device。空 batch contract 必须在 application boundary、任何 Device/AppIdentity/
+ActivitySegment 副作用之前拒绝，Controller 只映射结果。direct application-service 与 HTTP 回归完成前，
+本 issue 恢复为 `needs-triage`。

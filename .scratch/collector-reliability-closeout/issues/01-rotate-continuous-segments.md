@@ -1,6 +1,6 @@
 # 01 — 在摄入边界前旋转连续 Segment
 
-Status: done
+Status: needs-triage
 
 Owner: Collection / System + VRChat
 
@@ -147,3 +147,9 @@ continuation 的原子记录语义。最终 System suite 73/73，完整 solution
 跨进程 smoke 10/10；第五轮 Spec 与 Standards 代码复审均无 P1/P2。本 issue 验收已完整，状态更新为
 `done`。VRChat v1 读取分支仍按 `docs/architecture/compatibility-debt.md` 的盘点归零、rollback/离线窗口
 与 fixture 门槛退出，不因本 closeout 被删除。
+
+### 2026-08-31 — 第二轮独立复审重开
+
+VRChat 损坏 checkpoint recovery 在 `lastWrite >= recoveredAt` 时可能产生 `Start == End` 的协议无效
+Stream Gap；System rollover 的 deferred observation 也可能被 gate 释放后的新 callback 超车。两项
+确定性回归与有序交接修复完成前，本 issue 恢复为 `needs-triage`。
