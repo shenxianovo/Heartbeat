@@ -28,7 +28,6 @@ SemVer solver。
 不实现 Ed25519、canonical signature bytes、channel、withdrawn、动态 Registry API、第三方上传或 owner approval。
 不复制 host version、protocol 或 capability compatibility matrix；这些由 Package loader 与真实握手判定。
 
-
 ## Comments
 
 - 2026-08-31：实现落在 `collection/hub/Heartbeat.Collection.Hub/Collectors/Delivery/`，没有新建 csproj。

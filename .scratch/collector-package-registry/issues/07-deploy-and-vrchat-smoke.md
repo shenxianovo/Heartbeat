@@ -30,9 +30,27 @@ Priority: P1 — 域名路由与真实 VRChat 更新需要 owner 操作和观察
 - [ ] Registry 离线、坏 index、错 hash 与候选启动失败均显示可区分结果。
 - [ ] 完成证据追加到 Comments；所有门禁完成前本 issue 保持 `ready-for-human`，PRD 不标 done。
 
+## Manual gates carried over from issues 01–02
+
+2026-08-31 加入。这些步骤必须由 owner 在真实服务器上执行，agent 不代做：
+
+- [ ] 选定真实 registry base URI 并作为参数传给发布工具（`--registry-base-uri`）；仓库里不硬编码域名，
+  当前默认值是占位符 `https://registry.example/collector-registry/v1/`。
+- [ ] 反向代理把 `/collector-registry/v1/` 映射到独立静态目录，且路径按真实 PackageId 组织：
+  `packages/heartbeat.collector.vrchat/…`（不是 `packages/vrchat/…`，见 issue 01 Comments）。
+- [ ] 上传顺序：先 `versions/{version}/vrchat.zip` 并确认可读，再替换 `current.json`。发布工具只保证
+  staging 目录内的写入顺序，rsync/拷贝顺序在人这边。
+- [ ] 发 tag 前手动确认 `node scripts/collector-contracts.mjs check` 为绿——本次没有建发布 workflow，
+  `collector-contracts` workflow 只在 PR / main push 上跑，不会在 tag push 上跑。
+- [ ] 决定是否需要 CI 接线：`tag → build → stage → upload` 目前完全是人工流程。若要加 workflow，按冻结
+  约束它只能是 `workflow_dispatch` / dry-run 形态。
+- [ ] 真实 `collector-vrchat/vX.Y.Z` tag 的推送与首个 artifact 的实际发布。
+
 ## Comments
 
 - 2026-08-30：本 issue 预先标为 `ready-for-human` 是因为域名和真实设备 smoke 必须由 owner 执行；
   这不表示其代码依赖已经完成。
 - 2026-08-31：ADR-047 将第一条纵切缩减为 unsigned VRChat development delivery；Browser、生产签名与
   完整迁移移出本 issue。
+- 2026-08-31：issue 01 已 done、issue 02 code complete（`ready-for-human`）。上面「Manual gates carried
+  over」记录了它们留下的、必须由人执行的部署与 CI 门禁；本 issue 在这些门禁完成前保持 `ready-for-human`。

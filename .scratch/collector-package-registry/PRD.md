@@ -103,6 +103,7 @@ signing key。
 
 - [ ] Activation lifetime issue 09、10 完成：termination cause、durable evidence 与相关墙钟回归可信。
 - [ ] `collector-vrchat/vX.Y.Z` dry-run 与真实 framework-dependent artifact 发布通过。
+      （2026-08-31：本地 dry-run 已通过并自校验，见 issue 02；真实 tag 与上传是 issue 07 的人工门禁。）
 - [ ] `/collector-registry/v1/packages/vrchat/current.json` 经真实域名可读，length/hash 与 artifact 一致。
 - [ ] Headless 手动 CheckNow、版本目录 Installation、authenticated exact-ref approval 与真实 Ready 通过。
 - [ ] 错 hash、损坏 Package、incompatible handshake 与 never-ready candidate 都保留旧 LKG 并显示最后错误。
