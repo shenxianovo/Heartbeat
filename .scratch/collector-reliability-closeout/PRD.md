@@ -86,3 +86,12 @@ System ingress 会把完整但语义不兼容的末条记录误当 torn tail 截
 Starting Collector 在 Initialize 未返回时缺少 terminal Hub-owned durable fence；Protocol transcript
 的非 timeout 行为测试还共享过短 startup budget。所有六项严格 TDD、完整验证与双轴独立复审完成前，
 本 PRD 保持 `needs-triage`，Registry reliability gate 继续关闭。
+
+### 2026-08-31 — ManagedProcess transcript 非 timeout 启动预算
+
+回归先固定非 timeout transcript 必须有 30 秒调度余量，当前共享 Options 的 5 秒预算稳定 0/1；修复仅
+集中提升测试 fixture 的非 timeout startup budget，不改生产默认值与 Runtime 超时语义。授权暂停/恢复
+的 1s/2s 测试及专门 `StartupTimeout_ProducesStructuredFailure` 的 250ms 预算保持原样；非法 hello 仍只
+接受 `protocol_invalid_message`，不把 `activation_start_timeout` 当成可接受结果。预算 contract 1/1，
+非法 hello + 专门 timeout 4/4，非法 hello 隔离 20 轮共 60/60，完整 ManagedProcess transcript 27/27。
+最终并行 solution 三轮门禁前 PRD 保持 `needs-triage`。

@@ -17,6 +17,8 @@ namespace Heartbeat.Collection.Hub.Tests.Collectors.Protocol;
 
 public class ManagedProcessCollectorProtocolTranscriptTests
 {
+    private static readonly TimeSpan NonTimeoutStartupBudget = TimeSpan.FromSeconds(30);
+
     private static string ReferencePackagePath => Path.Combine(
         AppContext.BaseDirectory,
         "Fixtures",
@@ -47,7 +49,7 @@ public class ManagedProcessCollectorProtocolTranscriptTests
             package,
             new ManagedProcessActivationOptions
             {
-                StartupTimeout = TimeSpan.FromSeconds(10),
+                StartupTimeout = NonTimeoutStartupBudget,
                 DrainGracePeriod = TimeSpan.FromSeconds(5)
             });
 
@@ -622,6 +624,14 @@ public class ManagedProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
+    public void NonTimeoutTranscriptOptions_LeaveSchedulerHeadroom()
+    {
+        var options = Options("invalid_capability_type");
+
+        Assert.Equal(TimeSpan.FromSeconds(30), options.StartupTimeout);
+    }
+
+    [Fact]
     public async Task ProcessExitBeforeHello_IsDistinctFromProtocolCorruption()
     {
         using var fixture = ManagedRuntimeFixture.Create();
@@ -714,7 +724,7 @@ public class ManagedProcessCollectorProtocolTranscriptTests
             fixture.Package,
             new ManagedProcessActivationOptions
             {
-                StartupTimeout = TimeSpan.FromSeconds(5),
+                StartupTimeout = NonTimeoutStartupBudget,
                 DrainGracePeriod = TimeSpan.FromMilliseconds(250),
                 EnvironmentVariables = new Dictionary<string, string>
                 {
@@ -758,7 +768,7 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         string? behavior = null,
         bool disconnectDrain = false) => new()
         {
-            StartupTimeout = TimeSpan.FromSeconds(5),
+            StartupTimeout = NonTimeoutStartupBudget,
             DrainGracePeriod = TimeSpan.FromSeconds(2),
             StandardInputDecorator = disconnectDrain
             ? writer => new DisconnectOnDrainWriter(writer)
