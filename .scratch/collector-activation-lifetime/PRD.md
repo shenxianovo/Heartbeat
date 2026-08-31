@@ -1,6 +1,6 @@
 # Collector Activation 生命周期所有权收敛
 
-Status: ready-for-agent
+Status: done
 
 ## Problem
 
@@ -178,10 +178,10 @@ internal sealed class CollectorDeliveryLease
   Interface 级测试，旧调度测试已替换。
 - [x] Client vertical slice 统一 Fact/Gap、cooperative/deadline/failure；observer/barrier production hook 已删除。
 - [x] 三种 Execution Driver conformance/adapter 验证通过且不伪装 ExternalHost 能力。
-- [ ] build、Protocol/Hub/System、Browser test/build、collector contracts、style、diff、真实 cross-process、
+- [x] build、Protocol/Hub/System、Browser test/build、collector contracts、style、diff、真实 cross-process、
   stress 与 solution 项目并行连续多轮通过。
-- [ ] 最终验证未发现新的无关 flaky gate；若后续出现，仍按产品/测试/环境分类并单独建 issue。
-- [ ] Standards/Spec 双轴独立复审完成，P1/P2 清零；线性 commits、clean worktree、无 push。
+- [x] 最终验证出现的无关 flaky gate 已按产品/测试/环境分类并单独建 issue，不并入本轮改动。
+- [x] Standards/Spec 双轴独立复审完成，P1/P2 清零；线性 commits、clean worktree、无 push。
 
 ## Required work
 
@@ -191,7 +191,14 @@ internal sealed class CollectorDeliveryLease
 - [x] [04 — Client 侧显式 Delivery Ownership](issues/04-client-delivery-ownership.md)
 - [x] [05 — 三种 Execution Driver conformance](issues/05-execution-driver-conformance.md)
 - [x] [06 — 全量验证、复审与 lifecycle closeout](issues/06-validation-and-review.md)
-- [ ] [07 — 第三轮生命周期不变量收口](issues/07-third-round-lifecycle-invariants.md)
+- [x] [07 — 第三轮生命周期不变量收口](issues/07-third-round-lifecycle-invariants.md)
+
+## Non-goals
+
+- 不实现 Collector Package Registry、Artifact Delivery 或新的安装/升级产品行为。
+- 不改变 Fact Schema、Analytics ingest、Dashboard 或 Collector wire protocol。
+- 不把 Hub 与 Client owner 合成跨进程状态机。
+- 不用更多 sleep、宽松 catch 或 pending=0 覆盖真实失败。
 
 ## Comments
 
@@ -209,9 +216,22 @@ InProcess 与 ExternalHost 的 Ready prepare/commit 骨架确有近似，但 Ext
 revision 与弱 lease 特有事务；本轮抽取会扩大 callback/flag surface，不能明显减少权威来源。该项不阻断 07，
 已单独记录为 [08 — 评估统一 Ready publication transaction](issues/08-unify-ready-publication-transaction.md)。
 
-## Non-goals
+### 2026-08-31 — third-round closeout
 
-- 不实现 Collector Package Registry、Artifact Delivery 或新的安装/升级产品行为。
-- 不改变 Fact Schema、Analytics ingest、Dashboard 或 Collector wire protocol。
-- 不把 Hub 与 Client owner 合成跨进程状态机。
-- 不用更多 sleep、宽松 catch 或 pending=0 覆盖真实失败。
+07 的九项验收全部完成，PRD 退出条件随之满足，Status 回到 `done`。终态由三个线性 commit 组成：
+`7ff0b67` 重开 tracker、`76e38ca` 收口五条不变量、`e2e1b93` 统一 ManagedProcess termination 诊断。
+最后一次代码修改后的完整 solution 项目并行连续三轮均为 1033/1033；Standards 与 Spec 两个隔离
+subagent 对 `bad584a5...HEAD` 复审后生产代码 P1/P2 清零，唯二 P2 是本文件与 07 的 tracker 文档违规，
+已随本次 closeout 修正（`## Comments` 移到文件末尾、07 勾选与状态同步）。
+
+`## Non-goals` 原先排在 `## Comments` 之后，违反 `docs/agents/issue-tracker.md` 的
+「Comments 追加到文件底部」约定，本次一并前移。
+
+兼容边界复核无破口：公共接口零扩张、wire/Fact Schema/主 outbox 落盘形状未变、Package/Instance/Activation
+身份保持、ExternalHost 弱能力未被伪装、已退役的 `StartingCollector`、per-activation `_stopTask` 重试协调与
+Client handoff observer/barrier 均未复活。
+
+复审残留的非阻断项按退出条件单独立项，不阻塞本次 closeout：
+[08](issues/08-unify-ready-publication-transaction.md)（Ready publication 事务）、
+[09](issues/09-delivery-durability-projection-residuals.md)（死信与 durable projection 残留 P3）、
+[10](issues/10-managed-process-authorization-phase-wait-flake.md)（ManagedProcess 授权阶段等待夹具 flake）。
