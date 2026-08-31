@@ -720,6 +720,82 @@ public class ManagedProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
+    public async Task TerminationAfterReportedDrainKeepsCollectorReportedDurableRemainder()
+    {
+        using var fixture = ManagedRuntimeFixture.Create();
+        var activation = await fixture.Runtime.ActivateManagedProcessAsync(
+            fixture.Instance.CollectorInstanceId,
+            fixture.Package,
+            Options("corrupt_after_drained"));
+
+        await activation.StopAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(30));
+
+        var terminal = await activation.Terminal;
+        var execution = Assert.IsType<ManagedProcessTerminatedExecution>(terminal.Execution);
+        Assert.Equal(ManagedProcessTerminationCause.ProtocolFailure, execution.Cause);
+        Assert.Equal(CollectorDrainReason.FlushCancelled, terminal.DrainOutcome.Reason);
+        Assert.Equal(
+            CollectorDrainCompletionReason.CompletionFailed,
+            terminal.DrainOutcome.CompletionReason);
+        Assert.Equal(0, terminal.DrainOutcome.PendingFacts);
+        Assert.Equal(0, terminal.DrainOutcome.PendingGaps);
+        Assert.True(
+            terminal.DrainOutcome.RemainderDurable,
+            "Terminating the process must not erase the durable remainder the Collector reported.");
+        Assert.False(terminal.DrainOutcome.IsFullyDrained);
+        var state = activation.RuntimeState;
+        Assert.True(state.ProcessTerminated);
+        Assert.True(state.DrainResult!.LogicalResult.RemainderDurable);
+        Assert.Equal(CollectorDrainReason.FlushCancelled, state.DrainResult.LogicalResult.Reason);
+    }
+
+    [Fact]
+    public async Task FailedStopProjectionUsesTheFirstWrittenTerminationCause()
+    {
+        using var fixture = ManagedRuntimeFixture.Create();
+        var activation = await fixture.Runtime.ActivateManagedProcessAsync(
+            fixture.Instance.CollectorInstanceId,
+            fixture.Package,
+            Options("corrupt_after_ready"));
+        await activation.Completion.WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.Equal(ManagedProcessTerminationCause.ProtocolFailure, activation.Client.TerminationCause);
+        var driver = new ManagedProcessCollectorActivationLifetimeDriver(
+            activation.Client,
+            session: null!,
+            beginDraining: () => { });
+
+        var afterDeadline = driver.ProjectFailedStop(CollectorDrainReason.DeadlineExceeded);
+        var afterStopFailure = driver.ProjectFailedStop(CollectorDrainReason.StopFailed);
+
+        Assert.Equal(
+            ManagedProcessTerminationCause.ProtocolFailure,
+            Assert.IsType<ManagedProcessTerminatedExecution>(afterDeadline).Cause);
+        Assert.Equal(
+            ManagedProcessTerminationCause.ProtocolFailure,
+            Assert.IsType<ManagedProcessTerminatedExecution>(afterStopFailure).Cause);
+    }
+
+    [Fact]
+    public async Task FailedStopProjectionReportsUnterminatedProcessExitAsExited()
+    {
+        using var fixture = ManagedRuntimeFixture.Create();
+        var activation = await fixture.Runtime.ActivateManagedProcessAsync(
+            fixture.Instance.CollectorInstanceId,
+            fixture.Package,
+            Options("exit_after_ready"));
+        await activation.Completion.WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.Null(activation.Client.TerminationCause);
+        var driver = new ManagedProcessCollectorActivationLifetimeDriver(
+            activation.Client,
+            session: null!,
+            beginDraining: () => { });
+
+        var execution = driver.ProjectFailedStop(CollectorDrainReason.DeadlineExceeded);
+
+        Assert.Equal(0, Assert.IsType<ManagedProcessExitedExecution>(execution).ExitCode);
+    }
+
+    [Fact]
     public async Task DrainWriteDisconnect_IsFailedAndWriterIsReleased()
     {
         using var fixture = ManagedRuntimeFixture.Create();

@@ -466,11 +466,14 @@ public sealed class CollectorActivationLifetimeTests
     }
 
     [Fact]
-    public async Task DriverProjectsFailedStopBeforeHubFenceAndOwnershipRelease()
+    public async Task FailedStopIsProjectedAfterTheDriverFenceWroteTheTerminationCause()
     {
         var ordering = new List<string>();
+        var driver = new ManagedFailureProjectionDriver(
+            () => ordering.Add("driver-fence"),
+            () => ordering.Add("project"));
         var lifetime = CreateLifetime(
-            new ManagedFailureProjectionDriver(() => ordering.Add("driver-fence")),
+            driver,
             fence: () => ordering.Add("hub-fence"),
             release: () => ordering.Add("release"));
 
@@ -479,7 +482,7 @@ public sealed class CollectorActivationLifetimeTests
 
         var execution = Assert.IsType<ManagedProcessTerminatedExecution>(terminal.Execution);
         Assert.Equal(ManagedProcessTerminationCause.StopFailed, execution.Cause);
-        Assert.Equal(["driver-fence", "hub-fence", "release"], ordering);
+        Assert.Equal(["driver-fence", "hub-fence", "release", "project"], ordering);
     }
 
     [Fact]
@@ -581,17 +584,33 @@ public sealed class CollectorActivationLifetimeTests
             CancellationToken cancellationToken) => stop(deadline, cancellationToken);
     }
 
-    private sealed class ManagedFailureProjectionDriver(Action fence) : ICollectorActivationLifetimeDriver
+    /// <summary>
+    /// Stands in for the ManagedProcess Driver: the fence is the only writer of the termination
+    /// cause, and the projection may only read back what the fence already published.
+    /// </summary>
+    private sealed class ManagedFailureProjectionDriver(Action fence, Action project)
+        : ICollectorActivationLifetimeDriver
     {
+        private ManagedProcessTerminationCause? _published;
+
         public ValueTask<CollectorActivationDriverStopResult> StopAsync(
             CollectorActivationStopIntent intent,
             DateTimeOffset deadline,
             CancellationToken cancellationToken) => throw new IOException("managed stop failed");
 
-        public CollectorActivationExecution ProjectFailedStop(CollectorDrainReason reason) =>
-            new ManagedProcessTerminatedExecution(ManagedProcessTerminationCause.StopFailed, null);
+        public CollectorActivationExecution ProjectFailedStop(CollectorDrainReason reason)
+        {
+            project();
+            return _published is { } cause
+                ? new ManagedProcessTerminatedExecution(cause, null)
+                : new ManagedProcessExitedExecution(null);
+        }
 
-        public void FenceAfterFailedStop(CollectorDrainReason reason) => fence();
+        public void FenceAfterFailedStop(CollectorDrainReason reason)
+        {
+            _published ??= ManagedProcessTerminationProjector.FromFailedStopReason(reason);
+            fence();
+        }
     }
 
     private sealed class DelegateDisposable(Action dispose) : IDisposable

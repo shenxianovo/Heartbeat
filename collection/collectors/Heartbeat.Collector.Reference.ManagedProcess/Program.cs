@@ -48,6 +48,14 @@ catch (ReferenceExitAfterReadyException)
 {
     // Deliberate successful process exit used by the Hub-side lifecycle fixture.
 }
+if (behavior == "corrupt_after_drained")
+{
+    // activation.drained already carried truthful durable evidence. Corrupting the stream afterwards
+    // makes the Hub terminate this process once that evidence exists.
+    await Console.Out.WriteLineAsync("[broken-after-drained");
+    await Console.Out.FlushAsync();
+    await Task.Delay(Timeout.InfiniteTimeSpan);
+}
 
 internal sealed class ReferenceFactCollector(string? behavior, TextWriter rawOutput)
     : ICollectorProtocolApplication
