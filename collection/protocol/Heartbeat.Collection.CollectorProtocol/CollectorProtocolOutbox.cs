@@ -145,6 +145,18 @@ internal sealed class CollectorProtocolOutbox
 
     public void EnqueueFacts(IReadOnlyList<CollectorFact> incomingFacts)
     {
+        _state = PrepareEnqueuedFacts(incomingFacts);
+        _dirty = true;
+        Save();
+    }
+
+    public CollectorAdmissionOutcome EnqueueFacts(
+        IReadOnlyList<CollectorFact> incomingFacts,
+        CollectorAdmissionLease admission) =>
+        SaveAdmissionState(PrepareEnqueuedFacts(incomingFacts), admission);
+
+    private OutboxState PrepareEnqueuedFacts(IReadOnlyList<CollectorFact> incomingFacts)
+    {
         ArgumentNullException.ThrowIfNull(incomingFacts);
         var facts = _state.Facts.ToList();
         var gaps = _state.Gaps.ToList();
@@ -189,9 +201,7 @@ internal sealed class CollectorProtocolOutbox
                 ReplaceDeliveryId(deliveryOrder, evictedMessageId, pendingGap.MessageId);
             }
         }
-        _state = _state with { Facts = facts, Gaps = gaps, DeliveryOrder = deliveryOrder };
-        _dirty = true;
-        Save();
+        return _state with { Facts = facts, Gaps = gaps, DeliveryOrder = deliveryOrder };
     }
 
     public void EnqueueGap(CollectorStreamGap gap)
@@ -210,74 +220,84 @@ internal sealed class CollectorProtocolOutbox
         Save();
     }
 
-    public void AcknowledgeFact(
+    public CollectorAdmissionOutcome EnqueueGap(
+        CollectorStreamGap gap,
+        CollectorAdmissionLease admission)
+    {
+        ArgumentNullException.ThrowIfNull(gap);
+        if (_state.Gaps.Any(item => item.Gap.GapId == gap.GapId))
+            return CollectorAdmissionOutcome.Committed;
+        var pending = new PendingCollectorGap(Guid.CreateVersion7(), gap);
+        return SaveAdmissionState(_state with
+        {
+            Gaps = [.. _state.Gaps, pending],
+            DeliveryOrder = [.. _state.DeliveryOrder, pending.MessageId]
+        }, admission);
+    }
+
+    public CollectorDeliveryCommitOutcome AcknowledgeFact(
         Guid messageId,
-        CollectorDeliveryCommitFence commitFence,
-        int deliveryEpoch)
+        CollectorDeliveryLease delivery)
     {
         var facts = _state.Facts.Where(item => item.MessageId != messageId).ToList();
         if (facts.Count == _state.Facts.Count)
-            return;
-        SaveDeliveryState(_state with
+            return CollectorDeliveryCommitOutcome.Committed;
+        return SaveDeliveryState(_state with
         {
             Facts = facts,
             DeliveryOrder = _state.DeliveryOrder.Where(id => id != messageId).ToList()
-        }, commitFence, deliveryEpoch);
+        }, delivery);
     }
 
-    public void RetryFact(
+    public CollectorDeliveryCommitOutcome RetryFact(
         Guid messageId,
-        CollectorDeliveryCommitFence commitFence,
-        int deliveryEpoch)
+        CollectorDeliveryLease delivery)
     {
         var index = _state.Facts.FindIndex(item => item.MessageId == messageId);
         if (index < 0)
-            return;
+            return CollectorDeliveryCommitOutcome.Committed;
         var facts = _state.Facts.ToList();
         var replacementId = Guid.CreateVersion7();
         facts[index] = facts[index] with { MessageId = replacementId };
         var order = _state.DeliveryOrder.ToList();
         ReplaceDeliveryId(order, messageId, replacementId);
-        SaveDeliveryState(_state with { Facts = facts, DeliveryOrder = order }, commitFence, deliveryEpoch);
+        return SaveDeliveryState(_state with { Facts = facts, DeliveryOrder = order }, delivery);
     }
 
-    public void AcknowledgeGap(
+    public CollectorDeliveryCommitOutcome AcknowledgeGap(
         Guid messageId,
-        CollectorDeliveryCommitFence commitFence,
-        int deliveryEpoch)
+        CollectorDeliveryLease delivery)
     {
         var gaps = _state.Gaps.Where(item => item.MessageId != messageId).ToList();
         if (gaps.Count == _state.Gaps.Count)
-            return;
-        SaveDeliveryState(_state with
+            return CollectorDeliveryCommitOutcome.Committed;
+        return SaveDeliveryState(_state with
         {
             Gaps = gaps,
             DeliveryOrder = _state.DeliveryOrder.Where(id => id != messageId).ToList()
-        }, commitFence, deliveryEpoch);
+        }, delivery);
     }
 
-    public void RetryGap(
+    public CollectorDeliveryCommitOutcome RetryGap(
         Guid messageId,
-        CollectorDeliveryCommitFence commitFence,
-        int deliveryEpoch)
+        CollectorDeliveryLease delivery)
     {
         var index = _state.Gaps.FindIndex(item => item.MessageId == messageId);
         if (index < 0)
-            return;
+            return CollectorDeliveryCommitOutcome.Committed;
         var gaps = _state.Gaps.ToList();
         var replacementId = Guid.CreateVersion7();
         gaps[index] = gaps[index] with { MessageId = replacementId };
         var order = _state.DeliveryOrder.ToList();
         ReplaceDeliveryId(order, messageId, replacementId);
-        SaveDeliveryState(_state with { Gaps = gaps, DeliveryOrder = order }, commitFence, deliveryEpoch);
+        return SaveDeliveryState(_state with { Gaps = gaps, DeliveryOrder = order }, delivery);
     }
 
-    public void DeadLetter(
+    public CollectorDeliveryCommitOutcome DeadLetter(
         PendingCollectorFact pending,
         CollectorProtocolError error,
         DateTimeOffset now,
-        CollectorDeliveryCommitFence commitFence,
-        int deliveryEpoch)
+        CollectorDeliveryLease delivery)
     {
         var nextDeadLetters = _deadLetters.ToList();
         nextDeadLetters.Add(new CollectorDeadLetter(now, pending.MessageId, pending.Fact, error));
@@ -292,16 +312,15 @@ internal sealed class CollectorProtocolOutbox
         var outboxTemporary = WriteEnvelopeTemporary(_path, nextState);
         try
         {
-            if (!commitFence.TryCommit(deliveryEpoch, () =>
-                {
-                    File.Move(deadLetterTemporary, _deadLetterPath, overwrite: true);
-                    File.Move(outboxTemporary, _path, overwrite: true);
-                    _deadLetters = nextDeadLetters;
-                    _state = nextState;
-                    _deadLettersDirty = false;
-                    _dirty = false;
-                }))
-                throw new OperationCanceledException("Collector delivery outcome was fenced before persistence.");
+            return delivery.TryCommit(() =>
+            {
+                File.Move(deadLetterTemporary, _deadLetterPath, overwrite: true);
+                File.Move(outboxTemporary, _path, overwrite: true);
+                _deadLetters = nextDeadLetters;
+                _state = nextState;
+                _deadLettersDirty = false;
+                _dirty = false;
+            });
         }
         finally
         {
@@ -348,21 +367,53 @@ internal sealed class CollectorProtocolOutbox
         }
     }
 
-    private void SaveDeliveryState(
+    private CollectorDeliveryCommitOutcome SaveDeliveryState(
         OutboxState nextState,
-        CollectorDeliveryCommitFence commitFence,
-        int deliveryEpoch)
+        CollectorDeliveryLease delivery)
     {
         var temporary = WriteEnvelopeTemporary(_path, nextState);
         try
         {
-            if (!commitFence.TryCommit(deliveryEpoch, () =>
+            return delivery.TryCommit(() =>
+            {
+                File.Move(temporary, _path, overwrite: true);
+                _state = nextState;
+                _dirty = false;
+            });
+        }
+        finally
+        {
+            DeleteTemporary(temporary);
+        }
+    }
+
+    private CollectorAdmissionOutcome SaveAdmissionState(
+        OutboxState nextState,
+        CollectorAdmissionLease admission)
+    {
+        var temporary = WriteEnvelopeTemporary(_path, nextState);
+        try
+        {
+            try
+            {
+                return admission.TryCommit(() =>
                 {
-                    File.Move(temporary, _path, overwrite: true);
+                    if (!_publishDurableFile(temporary, _path))
+                        return false;
                     _state = nextState;
                     _dirty = false;
-                }))
-                throw new OperationCanceledException("Collector delivery outcome was fenced before persistence.");
+                    return true;
+                });
+            }
+            catch (IOException)
+            {
+                // Preserve the observed, non-durable remainder in memory while the same
+                // admission lease retries publication. A drain may supersede that lease,
+                // but it must still report the known remainder truthfully.
+                _state = nextState;
+                _dirty = true;
+                throw;
+            }
         }
         finally
         {

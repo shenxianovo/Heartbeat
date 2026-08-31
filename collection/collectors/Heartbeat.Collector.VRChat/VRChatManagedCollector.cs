@@ -67,7 +67,7 @@ internal sealed class VRChatManagedCollector(
     }
 
     public async ValueTask StopAsync(
-        CollectorActivation activation,
+        CollectorDrainContext drain,
         CancellationToken cancellationToken)
     {
         if (_pollCancellation is not null)
@@ -88,7 +88,9 @@ internal sealed class VRChatManagedCollector(
             _pollCancellation = null;
             _pollTask = null;
         }
-        await PublishAsync(_presence.Stop(_clock()), cancellationToken);
+        var facts = _presence.Stop(_clock());
+        _checkpoint!.Stage(facts, []);
+        await PublishPendingAsync(drain, cancellationToken);
     }
 
     private async Task PollAsync(CancellationToken cancellationToken)
@@ -227,6 +229,24 @@ internal sealed class VRChatManagedCollector(
         {
             var gap = _checkpoint.PendingGaps[0];
             await _activation!.ReportGapAsync(ToGap(gap), cancellationToken);
+            _checkpoint.Acknowledge(gap);
+        }
+    }
+
+    private async Task PublishPendingAsync(
+        CollectorDrainContext drain,
+        CancellationToken cancellationToken)
+    {
+        while (_checkpoint!.PendingFacts.Count != 0)
+        {
+            var fact = _checkpoint.PendingFacts[0];
+            await drain.PublishAsync(ToFact(fact), cancellationToken);
+            _checkpoint.Acknowledge(fact);
+        }
+        while (_checkpoint.PendingGaps.Count != 0)
+        {
+            var gap = _checkpoint.PendingGaps[0];
+            await drain.ReportGapAsync(ToGap(gap), cancellationToken);
             _checkpoint.Acknowledge(gap);
         }
     }

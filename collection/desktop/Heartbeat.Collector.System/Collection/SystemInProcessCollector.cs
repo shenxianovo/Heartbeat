@@ -260,15 +260,6 @@ public sealed class SystemInProcessCollector(
         return durableCommitFence.TryPublishFile(preparedPath, authoritativePath);
     }
 
-    void ICollectorProtocolBinding.ThrowIfAcknowledgementSuperseded()
-    {
-        if (_liveActivation?.State == CollectorActivationState.Stopped)
-        {
-            throw new OperationCanceledException(
-                "InProcess acknowledgement was superseded by the Hub drain deadline fence.");
-        }
-    }
-
     bool ICollectorProtocolBinding.TryCommitAcknowledgement(Action commit)
     {
         ArgumentNullException.ThrowIfNull(commit);
@@ -303,18 +294,18 @@ public sealed class SystemInProcessCollector(
     }
 
     async ValueTask ICollectorProtocolApplication.StopAsync(
-        CollectorActivation activation,
+        CollectorDrainContext drain,
         CancellationToken cancellationToken)
     {
         var monitorStop = monitor.StopAsync(cancellationToken);
         try
         {
-            await protocol.PrepareDrainAsync(cancellationToken);
+            await protocol.PrepareDrainAsync(drain, cancellationToken);
             await monitorStop.WaitAsync(cancellationToken);
         }
         finally
         {
-            await protocol.CompleteDrainAsync(cancellationToken);
+            await protocol.CompleteDrainAsync(drain, cancellationToken);
         }
     }
 

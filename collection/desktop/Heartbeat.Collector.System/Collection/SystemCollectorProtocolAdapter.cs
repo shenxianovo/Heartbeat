@@ -52,6 +52,7 @@ public sealed class SystemCollectorProtocolAdapter :
     private SystemCollectorIngressStore? _ingressStore;
     private readonly int _inputEventIngressCapacity;
     private CollectorActivation? _activation;
+    private CollectorDrainContext? _drain;
     private CancellationTokenSource? _pumpCancellation;
     private Task? _pump;
     private IReadOnlyList<ForegroundSegmentSnapshot>? _unstagedSegments;
@@ -113,8 +114,11 @@ public sealed class SystemCollectorProtocolAdapter :
         SignalPump();
     }
 
-    internal async ValueTask PrepareDrainAsync(CancellationToken cancellationToken)
+    internal async ValueTask PrepareDrainAsync(
+        CollectorDrainContext drain,
+        CancellationToken cancellationToken)
     {
+        _drain = drain;
         if (_pumpCancellation is null)
             return;
 
@@ -141,7 +145,9 @@ public sealed class SystemCollectorProtocolAdapter :
                 inputEventLimit: int.MaxValue).ConfigureAwait(false);
     }
 
-    internal async ValueTask CompleteDrainAsync(CancellationToken cancellationToken)
+    internal async ValueTask CompleteDrainAsync(
+        CollectorDrainContext drain,
+        CancellationToken cancellationToken)
     {
         if (_pumpCancellation is null)
             return;
@@ -159,6 +165,7 @@ public sealed class SystemCollectorProtocolAdapter :
             _pumpCancellation = null;
             _pump = null;
             _activation = null;
+            _drain = null;
         }
     }
 
@@ -262,33 +269,43 @@ public sealed class SystemCollectorProtocolAdapter :
         var segmentBatches = ingress.PeekSegmentBatches(segmentLimit);
         if (segmentBatches.Count != 0)
         {
-            await activation.PublishBatchAsync(
-                segmentBatches.SelectMany(item => item.Snapshots).Select(ToFact).ToArray(),
-                cancellationToken).ConfigureAwait(false);
+            var facts = segmentBatches.SelectMany(item => item.Snapshots).Select(ToFact).ToArray();
+            if (_drain is { } drain)
+                await drain.PublishBatchAsync(facts, cancellationToken).ConfigureAwait(false);
+            else
+                await activation.PublishBatchAsync(facts, cancellationToken).ConfigureAwait(false);
             ingress.AcknowledgeSegmentBatches(segmentBatches);
         }
 
         if (ingress.PeekSegmentGaps(1).FirstOrDefault() is { } segmentGap)
         {
-            await activation.ReportGapAsync(new CollectorStreamGap(
+            var gap = new CollectorStreamGap(
                 segmentGap.Gap.GapId,
                 SystemInProcessCollector.ForegroundBindingId,
                 segmentGap.Gap.Start,
                 segmentGap.Gap.End,
-                segmentGap.Gap.Reason), cancellationToken).ConfigureAwait(false);
+                segmentGap.Gap.Reason);
+            if (_drain is { } drain)
+                await drain.ReportGapAsync(gap, cancellationToken).ConfigureAwait(false);
+            else
+                await activation.ReportGapAsync(gap, cancellationToken).ConfigureAwait(false);
             ingress.AcknowledgeSegmentGaps([segmentGap]);
         }
 
         var inputDeliveries = ingress.PeekInputDeliveries(inputEventLimit);
         if (inputDeliveries.FirstOrDefault() is { Gap: { } inputGap } dropped)
         {
-            await activation.ReportGapAsync(new CollectorStreamGap(
+            var gap = new CollectorStreamGap(
                 inputGap.GapId,
                 SystemInProcessCollector.InputEventBindingId,
                 inputGap.Start,
                 inputGap.End,
                 "input_ingress_capacity_exceeded",
-                inputGap.EstimatedFactsLost), cancellationToken).ConfigureAwait(false);
+                inputGap.EstimatedFactsLost);
+            if (_drain is { } drain)
+                await drain.ReportGapAsync(gap, cancellationToken).ConfigureAwait(false);
+            else
+                await activation.ReportGapAsync(gap, cancellationToken).ConfigureAwait(false);
             ingress.AcknowledgeInputDeliveries([dropped]);
             ReportReadyAfterIngressGapAcknowledged();
         }
@@ -299,9 +316,11 @@ public sealed class SystemCollectorProtocolAdapter :
                 .ToArray();
             if (acceptedEvents.Length != 0)
             {
-                await activation.PublishBatchAsync(
-                    acceptedEvents.Select(item => ToFact(item.Item!)).ToArray(),
-                    cancellationToken).ConfigureAwait(false);
+                var facts = acceptedEvents.Select(item => ToFact(item.Item!)).ToArray();
+                if (_drain is { } drain)
+                    await drain.PublishBatchAsync(facts, cancellationToken).ConfigureAwait(false);
+                else
+                    await activation.PublishBatchAsync(facts, cancellationToken).ConfigureAwait(false);
                 ingress.AcknowledgeInputDeliveries(acceptedEvents);
             }
         }

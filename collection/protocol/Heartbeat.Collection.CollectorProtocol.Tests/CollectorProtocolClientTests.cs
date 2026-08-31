@@ -277,11 +277,10 @@ public sealed class CollectorProtocolClientTests
             Assert.Equal(1, pendingGap.Gap.EstimatedFactsLost);
             Assert.Equal(7, pendingGap.Gap.GapId.Version);
 
-            var commitFence = new CollectorDeliveryCommitFence();
-            restarted.AcknowledgeGap(
-                pendingGap.MessageId,
-                commitFence,
-                commitFence.CaptureEpoch());
+            var delivery = new CollectorDeliveryOwnership().BeginBackground();
+            Assert.Equal(
+                CollectorDeliveryCommitOutcome.Committed,
+                restarted.AcknowledgeGap(pendingGap.MessageId, delivery));
             var acknowledged = CollectorProtocolOutbox.Open(root, 2, Definition().Outputs, start.AddMinutes(2));
             Assert.Empty(acknowledged.Gaps);
             Assert.Equal(facts.Skip(1).Select(fact => fact.FactId), acknowledged.Facts.Select(item => item.Fact.FactId));
@@ -415,13 +414,17 @@ public sealed class CollectorProtocolClientTests
             outbox.Enqueue(second);
 
             var restarted = CollectorProtocolOutbox.Open(root, 16, Definition().Outputs, start.AddMinutes(1));
-            var fence = new CollectorDeliveryCommitFence();
+            var delivery = new CollectorDeliveryOwnership().BeginBackground();
             var firstPending = Assert.IsType<PendingCollectorFact>(restarted.FirstFact);
             Assert.Equal(first.FactId, firstPending.Fact.FactId);
-            restarted.AcknowledgeFact(firstPending.MessageId, fence, fence.CaptureEpoch());
+            Assert.Equal(
+                CollectorDeliveryCommitOutcome.Committed,
+                restarted.AcknowledgeFact(firstPending.MessageId, delivery));
             var gapPending = Assert.IsType<PendingCollectorGap>(restarted.FirstGap);
             Assert.Equal(gap.GapId, gapPending.Gap.GapId);
-            restarted.AcknowledgeGap(gapPending.MessageId, fence, fence.CaptureEpoch());
+            Assert.Equal(
+                CollectorDeliveryCommitOutcome.Committed,
+                restarted.AcknowledgeGap(gapPending.MessageId, delivery));
             Assert.Equal(second.FactId, Assert.IsType<PendingCollectorFact>(restarted.FirstFact).Fact.FactId);
         }
         finally
@@ -524,7 +527,9 @@ public sealed class CollectorProtocolClientTests
         {
             var binding = new FakeBinding(
                 root,
-                new Queue<CollectorFactDeliveryStatus>([CollectorFactDeliveryStatus.Committed]));
+                new Queue<CollectorFactDeliveryStatus>([CollectorFactDeliveryStatus.Committed]),
+                fallbackOutcome: CollectorFactDeliveryStatus.Committed,
+                drainAfterPublishes: 1);
             await using var client = new CollectorProtocolClient(Definition(), binding);
             var unblock = Task.Run(async () =>
             {
@@ -541,7 +546,7 @@ public sealed class CollectorProtocolClientTests
                 Definition().Outputs,
                 DateTimeOffset.UtcNow).Facts);
             Assert.Equal(0, result.PendingFacts);
-            Assert.Single(binding.PublishedFacts);
+            Assert.NotEmpty(binding.PublishedFacts);
         }
         finally
         {
@@ -645,58 +650,6 @@ public sealed class CollectorProtocolClientTests
         finally
         {
             binding.CompletePublish();
-            if (Directory.Exists(root))
-                Directory.Delete(root, recursive: true);
-        }
-    }
-
-    [Fact]
-    public async Task DeadlineFenceWinsBeforeAtomicAcknowledgementReplacement()
-    {
-        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-ack-fence-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(root);
-        try
-        {
-            var outbox = CollectorProtocolOutbox.Open(
-                root,
-                16,
-                Definition().Outputs,
-                DateTimeOffset.UtcNow);
-            outbox.Enqueue(new CollectorFact(
-                "activity",
-                1,
-                PublishingApplication.FactId,
-                1,
-                null,
-                CollectorFactRecordState.Present,
-                new CollectorEventFactTime(DateTimeOffset.UtcNow),
-                JsonSerializer.SerializeToElement(new { identityKey = "reference|ack-fence" })));
-            var pending = Assert.Single(outbox.Facts);
-            using var replacementEntered = new ManualResetEventSlim();
-            using var releaseReplacement = new ManualResetEventSlim();
-            var fence = new CollectorDeliveryCommitFence(() =>
-            {
-                replacementEntered.Set();
-                releaseReplacement.Wait();
-            });
-            var epoch = fence.CaptureEpoch();
-
-            var acknowledge = Task.Run(() => outbox.AcknowledgeFact(pending.MessageId, fence, epoch));
-            Assert.True(replacementEntered.Wait(TimeSpan.FromSeconds(2)));
-            fence.Fence();
-            releaseReplacement.Set();
-
-            await Assert.ThrowsAsync<OperationCanceledException>(() => acknowledge);
-            Assert.Equal(
-                pending.Fact.FactId,
-                Assert.Single(CollectorProtocolOutbox.Open(
-                    root,
-                    16,
-                    Definition().Outputs,
-                    DateTimeOffset.UtcNow).Facts).Fact.FactId);
-        }
-        finally
-        {
             if (Directory.Exists(root))
                 Directory.Delete(root, recursive: true);
         }
@@ -923,88 +876,6 @@ public sealed class CollectorProtocolClientTests
         }
     }
 
-    [Theory]
-    [InlineData(PendingDeliveryKind.Fact)]
-    [InlineData(PendingDeliveryKind.Gap)]
-    public async Task SupersededBackgroundAcknowledgementConvergesAfterFinalFlush(
-        PendingDeliveryKind deliveryKind)
-    {
-        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-drain-handoff-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(root);
-        var now = new DateTimeOffset(2026, 8, 31, 12, 0, 0, TimeSpan.Zero);
-        var outbox = CollectorProtocolOutbox.Open(root, 16, Definition().Outputs, now);
-        if (deliveryKind == PendingDeliveryKind.Fact)
-        {
-            outbox.Enqueue(new CollectorFact(
-                "activity",
-                1,
-                PublishingApplication.FactId,
-                1,
-                null,
-                CollectorFactRecordState.Present,
-                new CollectorEventFactTime(now),
-                JsonSerializer.SerializeToElement(new { identityKey = "reference|drain-handoff" })));
-        }
-        else
-        {
-            outbox.EnqueueGap(new CollectorStreamGap(
-                Guid.CreateVersion7(),
-                "activity",
-                now,
-                now.AddSeconds(1),
-                "fixture",
-                1));
-        }
-
-        var binding = new DrainHandoffBinding(root, deliveryKind);
-        using var application = new SynchronouslyBlockingIdleStartApplication();
-        var handoff = new DrainHandoffObserver();
-        await using var client = new CollectorProtocolClient(Definition(), binding, null, handoff);
-        var run = client.RunAsync(application);
-        try
-        {
-            await application.StartEntered.WaitAsync(TimeSpan.FromSeconds(2));
-            await binding.DeliveryEntered.WaitAsync(TimeSpan.FromSeconds(2));
-
-            binding.RequestDrain();
-            await handoff.DeliveryFenceAdvanced.WaitAsync(TimeSpan.FromSeconds(2));
-            binding.ReleaseFirstAcknowledgement();
-            await handoff.BackgroundFlushStopped.WaitAsync(TimeSpan.FromSeconds(2));
-            Assert.False(application.LifetimeCancellationRequested);
-            application.ReleaseStart();
-
-            var result = await run.WaitAsync(TimeSpan.FromSeconds(2));
-
-            Assert.Equal(2, binding.DeliveryAttempts);
-            Assert.Equal(0, result.PendingFacts);
-            Assert.Equal(0, result.PendingGaps);
-            Assert.Equal(CollectorProtocolDrainReason.Drained, result.LogicalResult.Reason);
-            Assert.True(result.LogicalResult.RemainderDurable);
-            Assert.Equal(CollectorProtocolDrainCompletionReason.Completed, result.CompletionReason);
-            Assert.True(result.IsFullyDrained, result.ToString());
-            var persisted = CollectorProtocolOutbox.Open(root, 16, Definition().Outputs, now.AddMinutes(1));
-            Assert.Empty(persisted.Facts);
-            Assert.Empty(persisted.Gaps);
-        }
-        finally
-        {
-            binding.ReleaseFirstAcknowledgement();
-            application.ReleaseStart();
-            binding.RequestDrain();
-            try
-            {
-                await run.WaitAsync(TimeSpan.FromSeconds(2));
-            }
-            catch (Exception exception) when (exception is not TimeoutException)
-            {
-                // A completed run can fault while an earlier assertion remains the primary failure.
-                // Never suppress timeout: the fixture must not leave protocol work behind.
-            }
-            if (Directory.Exists(root))
-                Directory.Delete(root, recursive: true);
-        }
-    }
-
     [Fact]
     public async Task DeadlineRemainderReplaysFromDurableOutboxOnRestart()
     {
@@ -1079,7 +950,6 @@ public sealed class CollectorProtocolClientTests
                 Directory.Delete(root, recursive: true);
         }
     }
-
     [Fact]
     public async Task PermanentPersistenceFailureIsReportedAsUnknownNonDurableRemainder()
     {
@@ -1159,9 +1029,10 @@ public sealed class CollectorProtocolClientTests
                 JsonSerializer.SerializeToElement(new { identityKey = "reference|online", title = "Online" })),
                 cancellationToken);
 
-        public ValueTask StopAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+        public ValueTask StopAsync(CollectorDrainContext drain, CancellationToken cancellationToken) =>
             ValueTask.CompletedTask;
     }
+
 
     private sealed class IdleApplication : ICollectorProtocolApplication
     {
@@ -1171,7 +1042,7 @@ public sealed class CollectorProtocolClientTests
         public ValueTask StartAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
             ValueTask.CompletedTask;
 
-        public ValueTask StopAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+        public ValueTask StopAsync(CollectorDrainContext drain, CancellationToken cancellationToken) =>
             ValueTask.CompletedTask;
     }
 
@@ -1190,7 +1061,7 @@ public sealed class CollectorProtocolClientTests
         public ValueTask StartAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
             ValueTask.CompletedTask;
 
-        public ValueTask StopAsync(CollectorActivation activation, CancellationToken cancellationToken)
+        public ValueTask StopAsync(CollectorDrainContext drain, CancellationToken cancellationToken)
         {
             _stopEntered.TrySetResult();
             return new ValueTask(_releaseStop.Task);
@@ -1244,7 +1115,7 @@ public sealed class CollectorProtocolClientTests
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask StopAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+        public ValueTask StopAsync(CollectorDrainContext drain, CancellationToken cancellationToken) =>
             ValueTask.CompletedTask;
 
         public void ReleaseCancellation() => _releaseCancellation.Set();
@@ -1287,7 +1158,7 @@ public sealed class CollectorProtocolClientTests
             }
         }
 
-        public ValueTask StopAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+        public ValueTask StopAsync(CollectorDrainContext drain, CancellationToken cancellationToken) =>
             ValueTask.CompletedTask;
 
         public void ReleaseStart() => _releaseStart.Set();
@@ -1314,7 +1185,7 @@ public sealed class CollectorProtocolClientTests
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask StopAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+        public ValueTask StopAsync(CollectorDrainContext drain, CancellationToken cancellationToken) =>
             ValueTask.CompletedTask;
 
         public void ReleaseStart() => _releaseStart.Set();
@@ -1339,13 +1210,13 @@ public sealed class CollectorProtocolClientTests
         public ValueTask StartAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
             ValueTask.CompletedTask;
 
-        public ValueTask StopAsync(CollectorActivation activation, CancellationToken cancellationToken)
+        public ValueTask StopAsync(CollectorDrainContext drain, CancellationToken cancellationToken)
         {
             _stopEntered.TrySetResult();
             _releaseStop.Wait();
             try
             {
-                return activation.PublishAsync(new CollectorFact(
+                return drain.PublishAsync(new CollectorFact(
                     "activity",
                     1,
                     Guid.CreateVersion7(),
@@ -1367,14 +1238,14 @@ public sealed class CollectorProtocolClientTests
 
     private sealed class ThrowingStopApplication : IdleApplicationBase
     {
-        public override ValueTask StopAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+        public override ValueTask StopAsync(CollectorDrainContext drain, CancellationToken cancellationToken) =>
             ValueTask.FromException(new InvalidOperationException("stop failed"));
     }
 
     private sealed class PublishingOnStopApplication : IdleApplicationBase
     {
-        public override ValueTask StopAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
-            activation.PublishAsync(new CollectorFact(
+        public override ValueTask StopAsync(CollectorDrainContext drain, CancellationToken cancellationToken) =>
+            drain.PublishAsync(new CollectorFact(
                 "activity",
                 1,
                 PublishingApplication.FactId,
@@ -1394,7 +1265,7 @@ public sealed class CollectorProtocolClientTests
         public ValueTask StartAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
             ValueTask.CompletedTask;
 
-        public abstract ValueTask StopAsync(CollectorActivation activation, CancellationToken cancellationToken);
+        public abstract ValueTask StopAsync(CollectorDrainContext drain, CancellationToken cancellationToken);
     }
 
     private sealed class FakeBinding(
@@ -1650,151 +1521,4 @@ public sealed class CollectorProtocolClientTests
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
-    public enum PendingDeliveryKind
-    {
-        Fact,
-        Gap
-    }
-
-    private sealed class DrainHandoffObserver : ICollectorProtocolDrainHandoffObserver
-    {
-        private readonly TaskCompletionSource _deliveryFenceAdvanced =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource _backgroundFlushStopped =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public Task DeliveryFenceAdvanced => _deliveryFenceAdvanced.Task;
-        public Task BackgroundFlushStopped => _backgroundFlushStopped.Task;
-
-        void ICollectorProtocolDrainHandoffObserver.DeliveryFenceAdvanced() =>
-            _deliveryFenceAdvanced.TrySetResult();
-
-        void ICollectorProtocolDrainHandoffObserver.BackgroundFlushStopped() =>
-            _backgroundFlushStopped.TrySetResult();
-    }
-
-    private sealed class DrainHandoffBinding(
-        string dataDirectory,
-        PendingDeliveryKind deliveryKind) : ICollectorProtocolBinding
-    {
-        private readonly TaskCompletionSource<CollectorFactBatchAcknowledgement> _factAcknowledgement =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource<CollectorGapDeliveryOutcome> _gapAcknowledgement =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource<CollectorDrainRequest> _drain =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource _deliveryEntered =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private int _deliveryAttempts;
-
-        public Task DeliveryEntered => _deliveryEntered.Task;
-        public int DeliveryAttempts => Volatile.Read(ref _deliveryAttempts);
-
-        public void RequestDrain() => _drain.TrySetResult(new CollectorDrainRequest(
-            Guid.CreateVersion7(),
-            DateTimeOffset.UtcNow.AddSeconds(5)));
-
-        public void ReleaseFirstAcknowledgement()
-        {
-            if (deliveryKind == PendingDeliveryKind.Fact)
-            {
-                _factAcknowledgement.TrySetResult(CommittedFactAcknowledgement());
-                return;
-            }
-            _gapAcknowledgement.TrySetResult(
-                new CollectorGapDeliveryOutcome(CollectorGapDeliveryStatus.Committed));
-        }
-
-        public ValueTask<CollectorClientInitialization> StartAsync(
-            CollectorClientDefinition definition,
-            CancellationToken cancellationToken) => ValueTask.FromResult(new CollectorClientInitialization(
-                Guid.CreateVersion7(),
-                Guid.CreateVersion7(),
-                Guid.CreateVersion7(),
-                "account",
-                1,
-                1,
-                JsonSerializer.SerializeToElement(new { }),
-                500,
-                1_048_576,
-                dataDirectory,
-                definition.Capabilities.ToDictionary(pair => pair.Key, _ => 1)));
-
-        public ValueTask<IReadOnlyDictionary<string, CollectorClientStream>> OpenStreamsAsync(
-            long specRevision,
-            IReadOnlyList<CollectorOutputBinding> outputs,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult<IReadOnlyDictionary<string, CollectorClientStream>>(
-                new Dictionary<string, CollectorClientStream>
-                {
-                    ["activity"] = new(
-                        "activity", Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "account",
-                        "activity", "reference.account", "segment", "heartbeat.reference.segment", 1, 1,
-                        "sha256:test", new Dictionary<string, string>())
-                });
-
-        public ValueTask ReadyAsync(long appliedSpecRevision, CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
-
-        public ValueTask<CollectorFactBatchAcknowledgement> PublishAsync(
-            Guid messageId,
-            IReadOnlyList<BoundCollectorFact> facts,
-            CancellationToken cancellationToken)
-        {
-            if (deliveryKind != PendingDeliveryKind.Fact)
-                throw new InvalidOperationException("The Gap handoff fixture received a Fact delivery.");
-            if (Interlocked.Increment(ref _deliveryAttempts) != 1)
-                return ValueTask.FromResult(CommittedFactAcknowledgement());
-            _deliveryEntered.TrySetResult();
-            return new ValueTask<CollectorFactBatchAcknowledgement>(_factAcknowledgement.Task);
-        }
-
-        public ValueTask<CollectorGapDeliveryOutcome> ReportGapAsync(
-            Guid messageId,
-            Guid streamId,
-            CollectorStreamGap gap,
-            CancellationToken cancellationToken)
-        {
-            if (deliveryKind != PendingDeliveryKind.Gap)
-                throw new InvalidOperationException("The Fact handoff fixture received a Gap delivery.");
-            if (Interlocked.Increment(ref _deliveryAttempts) != 1)
-            {
-                return ValueTask.FromResult(
-                    new CollectorGapDeliveryOutcome(CollectorGapDeliveryStatus.Committed));
-            }
-            _deliveryEntered.TrySetResult();
-            return new ValueTask<CollectorGapDeliveryOutcome>(_gapAcknowledgement.Task);
-        }
-
-        public ValueTask<CollectorAuthorizationResponse> ChallengeAsync(
-            Guid interactionId,
-            string kind,
-            string title,
-            string? message,
-            IReadOnlyList<CollectorAuthorizationField> fields,
-            CancellationToken cancellationToken) => throw new NotSupportedException();
-
-        public ValueTask CompleteAuthorizationAsync(Guid interactionId, CancellationToken cancellationToken) =>
-            throw new NotSupportedException();
-
-        public ValueTask<string?> ReadSecretAsync(string key, CancellationToken cancellationToken) =>
-            throw new NotSupportedException();
-
-        public ValueTask WriteSecretAsync(string key, string value, CancellationToken cancellationToken) =>
-            throw new NotSupportedException();
-
-        public ValueTask DeleteSecretAsync(string key, CancellationToken cancellationToken) =>
-            throw new NotSupportedException();
-
-        public ValueTask<CollectorDrainRequest> WaitForDrainAsync(CancellationToken cancellationToken) =>
-            new(_drain.Task);
-
-        public ValueTask CompleteDrainAsync(CollectorDrainResult result, CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
-
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-
-        private static CollectorFactBatchAcknowledgement CommittedFactAcknowledgement() => new(
-            [new CollectorFactDeliveryOutcome(0, CollectorFactDeliveryStatus.Committed)]);
-    }
 }

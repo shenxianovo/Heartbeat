@@ -117,7 +117,7 @@ internal sealed class ReferenceFactCollector(string? behavior, TextWriter rawOut
     }
 
     public async ValueTask StopAsync(
-        CollectorActivation activation,
+        CollectorDrainContext drain,
         CancellationToken cancellationToken)
     {
         if (behavior == "corrupt_on_drain")
