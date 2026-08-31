@@ -1,8 +1,8 @@
-using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Heartbeat.Collection.CollectorRelease;
 using Heartbeat.Collection.Hub.Collectors.Delivery;
 
 namespace Heartbeat.Collection.Hub.Tests.Collectors.Delivery;
@@ -124,14 +124,12 @@ internal sealed class StaticRegistryFixture : IDisposable
         RepublishIndex();
     }
 
-    private static byte[] BuildArchive()
-    {
-        var archivePath = Path.Combine(Path.GetTempPath(), $"heartbeat-vrchat-sample-{Guid.NewGuid():N}.zip");
-        ZipFile.CreateFromDirectory(VRChatSamplePackage.PackageDirectory, archivePath, CompressionLevel.Fastest, false);
-        var bytes = File.ReadAllBytes(archivePath);
-        File.Delete(archivePath);
-        return bytes;
-    }
+    /// <summary>
+    /// The published artifact is packed by the release tooling itself, so the fixture cannot drift
+    /// into producing a shape the real pipeline never emits.
+    /// </summary>
+    private static byte[] BuildArchive() =>
+        CollectorPackageArchive.Pack(VRChatSamplePackage.PackageDirectory);
 
     public void Dispose()
     {
