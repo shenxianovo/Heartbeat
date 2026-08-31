@@ -6,21 +6,16 @@ namespace Heartbeat.Collection.Hub.Collectors.Protocol;
 
 public sealed class InProcessCollectorActivation : IAsyncDisposable
 {
-    private readonly CollectorRuntime _runtime;
-    private readonly IInProcessCollector _collector;
     private readonly CollectorActivationSession _session;
-    private readonly object _stopGate = new();
-    private Task? _stopTask;
+    private readonly CollectorActivationLifetime _lifetime;
 
     internal InProcessCollectorActivation(
-        CollectorRuntime runtime,
         CollectorActivationSession session,
-        IInProcessCollector collector,
+        CollectorActivationLifetime lifetime,
         IReadOnlyDictionary<string, InProcessFactStream> streams)
     {
-        _runtime = runtime;
         _session = session;
-        _collector = collector;
+        _lifetime = lifetime;
         Streams = streams;
     }
 
@@ -30,106 +25,22 @@ public sealed class InProcessCollectorActivation : IAsyncDisposable
     public ActivationDeliveryCapability DeliveryCapability => _session.DeliveryCapability;
     public IReadOnlyList<CollectorHandshakeStep> HandshakeTranscript => _session.HandshakeTranscript;
     public IReadOnlyDictionary<string, InProcessFactStream> Streams { get; }
-    public InProcessCollectorDrainResult? DrainResult { get; private set; }
+    public InProcessCollectorDrainResult? DrainResult =>
+        _lifetime.Terminal.IsCompletedSuccessfully
+            ? _lifetime.Terminal.Result.DrainOutcome.ToInProcess()
+            : null;
     internal LocalCollectorPackage Package => _session.Package;
     internal CollectorActivationSession Session => _session;
 
     internal bool TryCommitAcknowledgement(Action commit) =>
         _session.TryCommitAcknowledgement(commit);
 
-    public ValueTask StopAsync(CancellationToken cancellationToken = default)
-        => new(WaitForStopAsync(cancellationToken));
-
-    private async Task WaitForStopAsync(CancellationToken cancellationToken)
-    {
-        Task stopTask;
-        lock (_stopGate)
-        {
-            _stopTask ??= StopCoreAsync();
-            stopTask = _stopTask;
-        }
-        try
-        {
-            await stopTask.WaitAsync(cancellationToken);
-        }
-        catch
-        {
-            if (stopTask.IsCompleted)
-            {
-                lock (_stopGate)
-                {
-                    if (ReferenceEquals(_stopTask, stopTask))
-                        _stopTask = null;
-                }
-            }
-            throw;
-        }
-    }
+    public async ValueTask StopAsync(CancellationToken cancellationToken = default) =>
+        _ = await _lifetime.RequestStopAsync(
+            new CollectorActivationStopIntent(CollectorActivationStopCause.Deactivated),
+            cancellationToken);
 
     public ValueTask DisposeAsync() => StopAsync();
-
-    private async Task StopCoreAsync()
-    {
-        if (!_session.BeginDrain())
-            return;
-        var deadline = _runtime.InProcessDrainDeadline();
-        var remaining = deadline - _runtime.UtcNow;
-        using var collectorCancellation = new CancellationTokenSource();
-        var deadlineTask = Task.Delay(
-            remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero,
-            _runtime.TimeProvider);
-        var stopTask = Task.Factory.StartNew(
-            async () =>
-            {
-                collectorCancellation.Token.ThrowIfCancellationRequested();
-                return await _collector.StopAsync(deadline, collectorCancellation.Token);
-            },
-            CancellationToken.None,
-            TaskCreationOptions.LongRunning,
-            TaskScheduler.Default).Unwrap();
-        var first = await Task.WhenAny(stopTask, deadlineTask);
-        if (ReferenceEquals(first, stopTask))
-        {
-            DrainResult = await stopTask;
-            var completeStop = Task.Run(
-                () => _session.CompleteStop(() => _runtime.CompleteStop(this)),
-                CancellationToken.None);
-            if (ReferenceEquals(await Task.WhenAny(completeStop, deadlineTask), completeStop))
-            {
-                await completeStop;
-                return;
-            }
-            Observe(completeStop);
-        }
-
-        _session.FenceDeliveryAfterDeadline();
-        Observe(Task.Run(
-            async () => await collectorCancellation.CancelAsync(),
-            CancellationToken.None));
-        if (_collector is IInProcessCollectorDeadlineFence fence)
-        {
-            Observe(Task.Factory.StartNew(
-                fence.FenceAfterDeadline,
-                CancellationToken.None,
-                TaskCreationOptions.LongRunning,
-                TaskScheduler.Default));
-        }
-        DrainResult = new InProcessCollectorDrainResult(
-            new InProcessCollectorLogicalDrainResult(
-                null,
-                null,
-                CollectorDrainReason.DeadlineExceeded,
-                RemainderDurable: false),
-            CollectorDrainCompletionReason.DeadlineExceeded);
-        Observe(stopTask);
-        _session.CompleteStopAfterDeadline(() => _runtime.CompleteStop(this));
-    }
-
-    private static void Observe(Task task) => _ = task.ContinueWith(
-        static completed => _ = completed.Exception,
-        CancellationToken.None,
-        TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
-        TaskScheduler.Default);
 }
 
 /// <summary>
@@ -140,13 +51,13 @@ public sealed class InProcessCollectorActivation : IAsyncDisposable
 public sealed class InProcessCollectorStreamsOpened
 {
     private readonly object _gate = new();
-    private readonly Func<CancellationToken, InProcessCollectorActivation> _completeReady;
-    private InProcessCollectorActivation? _activation;
+    private readonly Func<ValueTask<InProcessCollectorActivation>> _completeReady;
+    private Task<InProcessCollectorActivation>? _ready;
 
     internal InProcessCollectorStreamsOpened(
         Guid activationId,
         IReadOnlyDictionary<string, FactStreamDescriptor> streams,
-        Func<CancellationToken, InProcessCollectorActivation> completeReady)
+        Func<ValueTask<InProcessCollectorActivation>> completeReady)
     {
         ActivationId = activationId;
         Streams = streams.ToImmutableDictionary(StringComparer.Ordinal);
@@ -156,15 +67,16 @@ public sealed class InProcessCollectorStreamsOpened
     public Guid ActivationId { get; }
     public IReadOnlyDictionary<string, FactStreamDescriptor> Streams { get; }
 
-    public ValueTask<InProcessCollectorActivation> ReadyAsync(
+    public async ValueTask<InProcessCollectorActivation> ReadyAsync(
         CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        Task<InProcessCollectorActivation> ready;
         lock (_gate)
         {
-            _activation ??= _completeReady(cancellationToken);
-            return ValueTask.FromResult(_activation);
+            _ready ??= _completeReady().AsTask();
+            ready = _ready;
         }
+        return await ready.WaitAsync(cancellationToken);
     }
 }
 

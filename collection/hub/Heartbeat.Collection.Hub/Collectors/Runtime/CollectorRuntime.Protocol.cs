@@ -13,9 +13,6 @@ namespace Heartbeat.Collection.Hub.Collectors.Runtime;
 
 public sealed partial class CollectorRuntime
 {
-    internal TimeProvider TimeProvider => _options.TimeProvider;
-    internal DateTimeOffset UtcNow => _options.TimeProvider.GetUtcNow();
-    internal DateTimeOffset InProcessDrainDeadline() => UtcNow + _options.InProcessDrainGracePeriod;
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<int>> HubProtocolCapabilities =
         new Dictionary<string, IReadOnlyList<int>>(StringComparer.Ordinal)
         {
@@ -34,7 +31,7 @@ public sealed partial class CollectorRuntime
     private readonly IReadOnlyList<IEventFactProjector> _eventProjectors;
     private readonly Dictionary<Guid, Guid> _streamWriters = [];
     private readonly HashSet<Guid> _startingInstances = [];
-    private readonly Dictionary<Guid, StartingCollector> _startingCollectors = [];
+    private readonly Dictionary<Guid, CollectorActivationLifetime> _activationLifetimes = [];
     private readonly object _helloAttemptGate = new();
     private readonly Dictionary<(Guid InstanceId, Guid MessageId), HelloAttempt> _helloAttempts = [];
 
@@ -137,10 +134,9 @@ public sealed partial class CollectorRuntime
             return await replayTask.WaitAsync(cancellationToken);
         var ownedHelloAttempt = helloAttempt!;
         var registeredStartingInstance = false;
-        var collectorInitializationStarted = false;
-        StartingCollector? startingCollector = null;
         InProcessCollectorActivation? activation = null;
         CollectorActivationSession? session = null;
+        CollectorActivationLifetime? lifetime = null;
 
         try
         {
@@ -186,18 +182,22 @@ public sealed partial class CollectorRuntime
                     helloMessageId,
                     package,
                     ActivationDeliveryCapability.Complete);
-                startingCollector = new StartingCollector(
-                    collectorInstanceId,
-                    collector,
-                    session,
-                    InProcessDrainDeadline,
-                    _options.TimeProvider);
-                _startingCollectors.Add(collectorInstanceId, startingCollector);
+                lifetime = new CollectorActivationLifetime(
+                    new InProcessCollectorActivationLifetimeDriver(collector, session),
+                    session.FenceDeliveryAfterDeadline,
+                    () => CompleteActivationLifetime(
+                        collectorInstanceId,
+                        activationId,
+                        helloMessageId,
+                        activation),
+                    _options.TimeProvider,
+                    _options.InProcessDrainGracePeriod);
+                _activationLifetimes.Add(activationId, lifetime);
             }
 
             using var activationCancellation = CancellationTokenSource.CreateLinkedTokenSource(
                 cancellationToken,
-                startingCollector!.LifetimeToken);
+                lifetime!.StopRequested);
             var activationToken = activationCancellation.Token;
             var initialization = new CollectorInitialization(
                 activationId,
@@ -214,7 +214,8 @@ public sealed partial class CollectorRuntime
             InProcessCollectorInitialization initialized;
             try
             {
-                collectorInitializationStarted = true;
+                if (lifetime.HasStopIntent)
+                    throw new OperationCanceledException(lifetime.StopRequested);
                 initialized = await collector.InitializeAsync(initialization, activationToken);
                 if (initialized is null)
                     throw ActivationError(
@@ -240,6 +241,10 @@ public sealed partial class CollectorRuntime
             lock (_gate)
             {
                 ThrowIfDisposed();
+                if (lifetime.HasStopIntent)
+                    throw ActivationError(
+                        "activation_stopping",
+                        "Collector Activation is stopping before streams.open.");
                 if (initialized.AppliedSpecRevision != instance.Spec.SpecRevision)
                     throw ActivationError(
                         "spec_revision_stale",
@@ -262,26 +267,31 @@ public sealed partial class CollectorRuntime
                         ToDescriptor(pair.Stream)),
                     StringComparer.Ordinal);
                 activation = new InProcessCollectorActivation(
-                    this,
                     session,
-                    collector,
+                    lifetime,
                     streams);
                 _activations.Add(activationId, activation);
                 _pendingActivationCommits.Add(activationId, streamPlan.Commit);
-                startingCollector!.AttachActivation(activation);
                 opened = new InProcessCollectorStreamsOpened(
                     activationId,
                     streams.ToImmutableDictionary(
                         pair => pair.Key,
                         pair => pair.Value.Descriptor,
                         StringComparer.Ordinal),
-                    readyCancellationToken => CompleteCollectorReady(activation, readyCancellationToken));
+                    () => CompleteCollectorReadyAsync(activation, lifetime));
             }
 
             try
             {
-                await startingCollector!.InvokeStreamsOpenedAsync(
-                    () => collector.OnStreamsOpenedAsync(opened, activationToken));
+                await Task.Factory.StartNew(
+                    async () =>
+                    {
+                        activationToken.ThrowIfCancellationRequested();
+                        await collector.OnStreamsOpenedAsync(opened, activationToken);
+                    },
+                    CancellationToken.None,
+                    TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default).Unwrap();
             }
             catch (OperationCanceledException)
             {
@@ -307,10 +317,6 @@ public sealed partial class CollectorRuntime
                         "protocol_invalid_message",
                         "InProcess Collector returned before sending activation.ready.");
                 _startingInstances.Remove(collectorInstanceId);
-                startingCollector.MarkActivationCompleted();
-                if (_startingCollectors.TryGetValue(collectorInstanceId, out var registered) &&
-                    ReferenceEquals(registered, startingCollector))
-                    _startingCollectors.Remove(collectorInstanceId);
                 registeredStartingInstance = false;
             }
             ownedHelloAttempt.Completion.SetResult(activation);
@@ -318,49 +324,22 @@ public sealed partial class CollectorRuntime
         }
         catch (Exception exception)
         {
-            var cleanupCompleted = true;
-            if (activation is not null && activation.State != CollectorActivationState.Stopped)
+            if (lifetime is not null)
             {
-                try
+                var terminal = await lifetime.RequestStopAsync(
+                    new CollectorActivationStopIntent(CollectorActivationStopCause.ActivationFailed));
+                if (!terminal.OwnershipReleased)
                 {
-                    await activation.StopAsync(CancellationToken.None);
-                }
-                catch (Exception stopException)
-                {
-                    cleanupCompleted = false;
                     Log.Warning(
-                        stopException,
-                        "停止失败的 InProcess Collector Activation {ActivationId} 时发生异常",
-                        activation.ActivationId);
+                        terminal.ReleaseError,
+                        "停止失败的 Collector Activation 后仍保留 ownership");
                 }
             }
-            else if (activation is null && collectorInitializationStarted && startingCollector is not null)
-            {
-                try
-                {
-                    await startingCollector.StopAsync();
-                }
-                catch (Exception stopException)
-                {
-                    cleanupCompleted = false;
-                    Log.Warning(
-                        stopException,
-                        "停止初始化失败的 InProcess Collector 时发生异常");
-                }
-            }
-            if (registeredStartingInstance && cleanupCompleted)
+            else if (registeredStartingInstance)
             {
                 lock (_gate)
-                {
                     _startingInstances.Remove(collectorInstanceId);
-                    startingCollector?.MarkActivationCompleted();
-                    if (startingCollector is not null &&
-                        _startingCollectors.TryGetValue(collectorInstanceId, out var registered) &&
-                        ReferenceEquals(registered, startingCollector))
-                        _startingCollectors.Remove(collectorInstanceId);
-                }
             }
-            startingCollector?.MarkActivationCompleted();
             ownedHelloAttempt.Completion.TrySetException(exception);
             _ = ownedHelloAttempt.Completion.Task.Exception;
             throw;
@@ -380,34 +359,38 @@ public sealed partial class CollectorRuntime
         return new FactBatchAcknowledgement(results);
     }
 
-    internal void CompleteStop(InProcessCollectorActivation activation)
+    private void CompleteActivationLifetime(
+        Guid collectorInstanceId,
+        Guid activationId,
+        Guid helloMessageId,
+        InProcessCollectorActivation? activation)
     {
-        Guid collectorInstanceId;
         lock (_gate)
         {
-            foreach (var streamId in activation.Streams.Values.Select(stream => stream.Descriptor.StreamId))
+            if (activation is not null)
             {
-                if (_streamWriters.TryGetValue(streamId, out var writer) && writer == activation.ActivationId)
-                    _streamWriters.Remove(streamId);
+                foreach (var streamId in activation.Streams.Values.Select(stream => stream.Descriptor.StreamId))
+                {
+                    if (_streamWriters.TryGetValue(streamId, out var writer) && writer == activationId)
+                        _streamWriters.Remove(streamId);
+                }
             }
-            _activations.Remove(activation.ActivationId);
-            _pendingActivationCommits.Remove(activation.ActivationId);
-            collectorInstanceId = activation.Streams.Values
-                .Select(stream => stream.Descriptor.CollectorInstanceId)
-                .FirstOrDefault();
+            _activations.Remove(activationId);
+            _activationLifetimes.Remove(activationId);
+            _pendingActivationCommits.Remove(activationId);
+            _startingInstances.Remove(collectorInstanceId);
         }
-        if (collectorInstanceId != Guid.Empty)
+        if (activation is not null)
         {
             lock (_helloAttemptGate)
-                _helloAttempts.Remove((collectorInstanceId, activation.HelloMessageId));
+                _helloAttempts.Remove((collectorInstanceId, helloMessageId));
         }
     }
 
-    private InProcessCollectorActivation CompleteCollectorReady(
+    private async ValueTask<InProcessCollectorActivation> CompleteCollectorReadyAsync(
         InProcessCollectorActivation activation,
-        CancellationToken cancellationToken)
+        CollectorActivationLifetime lifetime)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         long expectedSpecRevision;
         lock (_gate)
         {
@@ -418,10 +401,15 @@ public sealed partial class CollectorRuntime
                     "Collector Activation has no pending Package and Stream state to commit.");
             expectedSpecRevision = pendingCommit.Instance.SpecRevision;
         }
-        activation.Session.AcceptReady(
-            expectedSpecRevision,
-            expectedSpecRevision,
-            () => CommitCollectorReady(activation));
+        var ready = await lifetime.PublishReadyAsync(new CollectorReadyPublication(() =>
+            activation.Session.AcceptReady(
+                expectedSpecRevision,
+                expectedSpecRevision,
+                () => CommitCollectorReady(activation))));
+        if (ready == CollectorReadyOutcome.Stopping)
+            throw ActivationError(
+                "activation_stopping",
+                "Collector Activation is stopping before activation.ready.");
         return activation;
     }
 
@@ -1663,128 +1651,4 @@ public sealed partial class CollectorRuntime
     private sealed record HelloAttempt(
         string RequestHash,
         TaskCompletionSource<InProcessCollectorActivation> Completion);
-
-    private sealed class StartingCollector(
-        Guid collectorInstanceId,
-        IInProcessCollector collector,
-        CollectorActivationSession session,
-        Func<DateTimeOffset> drainDeadline,
-        TimeProvider timeProvider)
-    {
-        private readonly object _stopGate = new();
-        private readonly TaskCompletionSource _activationCompleted = new(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly CancellationTokenSource _lifetime = new();
-        private Task? _stopTask;
-        private InProcessCollectorActivation? _activation;
-        private bool _stopRequested;
-
-        public Guid CollectorInstanceId { get; } = collectorInstanceId;
-        public Task ActivationCompleted => _activationCompleted.Task;
-        public CancellationToken LifetimeToken => _lifetime.Token;
-
-        public void AttachActivation(InProcessCollectorActivation activation)
-        {
-            lock (_stopGate)
-            {
-                if (_stopRequested)
-                    throw new ObjectDisposedException(nameof(InProcessCollectorActivation));
-                _activation = activation;
-            }
-        }
-
-        public async Task InvokeStreamsOpenedAsync(Func<ValueTask> callback)
-        {
-            Task callbackTask;
-            lock (_stopGate)
-            {
-                if (_stopRequested)
-                    throw new ObjectDisposedException(nameof(InProcessCollectorActivation));
-                callbackTask = Task.Factory.StartNew(
-                    async () =>
-                    {
-                        _lifetime.Token.ThrowIfCancellationRequested();
-                        await callback();
-                    },
-                    CancellationToken.None,
-                    TaskCreationOptions.LongRunning,
-                    TaskScheduler.Default).Unwrap();
-            }
-            await callbackTask;
-        }
-
-        public async Task StopAsync()
-        {
-            var deadline = drainDeadline();
-            var remaining = deadline - timeProvider.GetUtcNow();
-            using var cancellation = new CancellationTokenSource(
-                remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero,
-                timeProvider);
-            var cancelLifetime = Task.Run(
-                async () => await _lifetime.CancelAsync(),
-                CancellationToken.None);
-            try
-            {
-                await cancelLifetime.WaitAsync(cancellation.Token);
-            }
-            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
-            {
-                Observe(cancelLifetime);
-            }
-
-            Task stopTask;
-            lock (_stopGate)
-            {
-                _stopRequested = true;
-                _stopTask ??= InvokeStopAsync(deadline, cancellation.Token);
-                stopTask = _stopTask;
-            }
-            try
-            {
-                await stopTask.WaitAsync(cancellation.Token);
-            }
-            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
-            {
-                Observe(stopTask);
-            }
-            catch
-            {
-                lock (_stopGate)
-                {
-                    if (ReferenceEquals(_stopTask, stopTask))
-                        _stopTask = null;
-                }
-                throw;
-            }
-            finally
-            {
-                session.FenceDeliveryAfterDeadline();
-                _activationCompleted.TrySetResult();
-            }
-        }
-
-        private Task InvokeStopAsync(DateTimeOffset deadline, CancellationToken cancellationToken)
-        {
-            return Task.Factory.StartNew(
-                async () =>
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    if (_activation is null)
-                        await collector.StopAsync(deadline, cancellationToken);
-                    else
-                        await _activation.StopAsync(cancellationToken);
-                },
-                CancellationToken.None,
-                TaskCreationOptions.LongRunning,
-                TaskScheduler.Default).Unwrap();
-        }
-
-        private static void Observe(Task task) => _ = task.ContinueWith(
-            static completed => _ = completed.Exception,
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
-            TaskScheduler.Default);
-
-        public void MarkActivationCompleted() => _activationCompleted.TrySetResult();
-    }
 }

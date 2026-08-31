@@ -994,10 +994,10 @@ public class InProcessCollectorProtocolTranscriptTests
         Assert.Equal(
             oldStream.Descriptor.StreamId,
             replacement.Streams["activity"].Descriptor.StreamId);
-        var late = await oldStream.PublishAsync(
-            Guid.CreateVersion7(),
-            [CreateFact(oldStream.Descriptor.StreamId)]);
-        Assert.Equal("stream_writer_conflict", Assert.Single(late.Results).Error!.Code);
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+            await oldStream.PublishAsync(
+                Guid.CreateVersion7(),
+                [CreateFact(oldStream.Descriptor.StreamId)]));
         await replacement.DisposeAsync();
     }
 
@@ -1212,14 +1212,14 @@ public class InProcessCollectorProtocolTranscriptTests
 
         Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(collector.StopAcknowledgement!.Results).Status);
         Assert.Single(sink.Segments);
-        var late = await stream.PublishAsync(
-            Guid.CreateVersion7(),
-            [CreateFact(stream.Descriptor.StreamId, factId: Guid.CreateVersion7())]);
-        Assert.Equal("stream_writer_conflict", Assert.Single(late.Results).Error!.Code);
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+            await stream.PublishAsync(
+                Guid.CreateVersion7(),
+                [CreateFact(stream.Descriptor.StreamId, factId: Guid.CreateVersion7())]));
     }
 
     [Fact]
-    public async Task WriterLease_FailedStopKeepsOwnershipUntilSuccessfulRetry()
+    public async Task WriterLease_TransientStopFailureRetriesInsideOneTerminalTransaction()
     {
         using var directory = TemporaryDirectory.Create();
         var package = LocalCollectorPackage.Load(ReferencePackagePath);
@@ -1237,19 +1237,8 @@ public class InProcessCollectorProtocolTranscriptTests
             package,
             oldCollector);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => oldActivation.StopAsync().AsTask());
-        var candidate = new ReferenceInProcessCollector();
-        var conflict = await Assert.ThrowsAsync<CollectorActivationException>(async () =>
-            await runtime.ActivateInProcessAsync(
-                instance.CollectorInstanceId,
-                package,
-                candidate));
-
-        Assert.Equal(CollectorActivationState.Draining, oldActivation.State);
-        Assert.Equal("stream_writer_conflict", conflict.Error.Code);
-        Assert.Null(candidate.Initialization);
-
         await oldActivation.StopAsync();
+        var candidate = new ReferenceInProcessCollector();
         var replacement = await runtime.ActivateInProcessAsync(
             instance.CollectorInstanceId,
             package,
@@ -1415,35 +1404,6 @@ public class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task RuntimeDispose_StopFailureCanBeRetriedWithoutReleasingOwnershipEarly()
-    {
-        using var directory = TemporaryDirectory.Create();
-        var statePath = Path.Combine(directory.Path, "collector-runtime.json");
-        var package = LocalCollectorPackage.Load(ReferencePackagePath);
-        var runtime = CollectorRuntime.Open(statePath, new RecordingSegmentSink());
-        using var config = JsonDocument.Parse("{}");
-        var instance = runtime.CreateInstance(
-            package,
-            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
-            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
-        var collector = new ReferenceInProcessCollector(stopFailures: 1);
-        await runtime.ActivateInProcessAsync(
-            instance.CollectorInstanceId,
-            package,
-            collector);
-
-        await Assert.ThrowsAsync<AggregateException>(() => runtime.DisposeAsync().AsTask());
-        Assert.Throws<CollectorRuntimeStateException>(() =>
-            CollectorRuntime.Open(statePath, new RecordingSegmentSink()));
-
-        await runtime.DisposeAsync();
-
-        Assert.Equal(2, collector.StopCalls);
-        using var reopened = CollectorRuntime.Open(statePath, new RecordingSegmentSink());
-        Assert.Equal(instance.CollectorInstanceId, reopened.GetInstance(instance.CollectorInstanceId).CollectorInstanceId);
-    }
-
-    [Fact]
     public async Task RuntimeDispose_CancelsStreamsOpenedCallbackBeforeReleasingOwnership()
     {
         using var directory = TemporaryDirectory.Create();
@@ -1473,7 +1433,7 @@ public class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task RuntimeDispose_DeadlineBoundsCancellationIgnoringStartingCollector()
+    public async Task RuntimeDispose_DeadlineBoundsCancellationIgnoringStartingActivation()
     {
         using var directory = TemporaryDirectory.Create();
         var statePath = Path.Combine(directory.Path, "collector-runtime.json");
@@ -1517,7 +1477,7 @@ public class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task RuntimeDispose_FencesStartingCollectorInitialDurableMutationBeforeOwnershipRelease()
+    public async Task RuntimeDispose_FencesStartingActivationInitialDurableMutationBeforeOwnershipRelease()
     {
         using var directory = TemporaryDirectory.Create();
         var statePath = Path.Combine(directory.Path, "collector-runtime.json");
@@ -1578,7 +1538,7 @@ public class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task RuntimeDispose_DeadlineBoundsSynchronouslyBlockingStartingCollectorStopInvocation()
+    public async Task RuntimeDispose_DeadlineBoundsSynchronouslyBlockingStartingActivationStopInvocation()
     {
         using var directory = TemporaryDirectory.Create();
         var statePath = Path.Combine(directory.Path, "collector-runtime.json");
@@ -1734,41 +1694,6 @@ public class InProcessCollectorProtocolTranscriptTests
             duplicateStreamId,
             firstActivation.Streams["activity"].Descriptor.StreamId);
         await firstActivation.StopAsync();
-    }
-
-    [Fact]
-    public async Task RuntimeDispose_StartingCollectorStopFailureRetainsOwnershipUntilActivationTerminates()
-    {
-        using var directory = TemporaryDirectory.Create();
-        var statePath = Path.Combine(directory.Path, "collector-runtime.json");
-        var package = LocalCollectorPackage.Load(ReferencePackagePath);
-        var runtime = CollectorRuntime.Open(statePath, new RecordingSegmentSink());
-        using var config = JsonDocument.Parse("{}");
-        var instance = runtime.CreateInstance(
-            package,
-            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
-            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
-        var collector = new ReferenceInProcessCollector(
-            synchronouslyBlockStreamsOpened: true,
-            stopFailures: 1);
-        var activating = runtime.ActivateInProcessAsync(
-            instance.CollectorInstanceId,
-            package,
-            collector).AsTask();
-        await collector.StreamsOpenedEntered.WaitAsync(TimeSpan.FromSeconds(5));
-
-        await Assert.ThrowsAsync<AggregateException>(async () =>
-            await runtime.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)));
-        Assert.Throws<CollectorRuntimeStateException>(() =>
-            CollectorRuntime.Open(statePath, new RecordingSegmentSink()));
-
-        collector.ReleaseStreamsOpened();
-        await Assert.ThrowsAnyAsync<Exception>(() => activating);
-        await runtime.DisposeAsync();
-
-        Assert.Equal(1, collector.StopCalls);
-        using var reopened = CollectorRuntime.Open(statePath, new RecordingSegmentSink());
-        Assert.Equal(instance.CollectorInstanceId, reopened.GetInstance(instance.CollectorInstanceId).CollectorInstanceId);
     }
 
     [Fact]

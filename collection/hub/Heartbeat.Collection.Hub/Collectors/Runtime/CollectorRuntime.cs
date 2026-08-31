@@ -360,41 +360,35 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
 
     private async Task DisposeCoreAsync()
     {
-        InProcessCollectorActivation[] activations;
+        CollectorActivationLifetime[] activationLifetimes;
         ManagedProcessCollectorActivation[] managedProcessActivations;
         ExternalHostCollectorActivation[] externalHostActivations;
-        StartingCollector[] startingCollectors;
         lock (_gate)
         {
             if (_disposed)
                 return;
             _disposing = true;
-            activations = _activations.Values
-                .Where(activation =>
-                    activation.State != CollectorActivationState.Stopped &&
-                    !_managedProcessActivations.ContainsKey(activation.ActivationId))
+            activationLifetimes = _activationLifetimes
+                .Where(pair => !_managedProcessActivations.ContainsKey(pair.Key))
+                .Select(pair => pair.Value)
                 .ToArray();
             managedProcessActivations = _managedProcessActivations.Values.ToArray();
             externalHostActivations = _externalHostActivations.Values
                 .Where(activation => activation.State != CollectorActivationState.Stopped)
                 .ToArray();
-            startingCollectors = _startingCollectors.Values.ToArray();
         }
 
         var stopFailures = new List<Exception>();
-        foreach (var startingCollector in startingCollectors)
+        foreach (var lifetime in activationLifetimes)
         {
-            try
+            var terminal = await lifetime.RequestStopAsync(
+                new CollectorActivationStopIntent(CollectorActivationStopCause.RuntimeStopping));
+            if (!terminal.OwnershipReleased)
             {
-                await startingCollector.StopAsync();
-            }
-            catch (Exception exception)
-            {
-                Serilog.Log.Warning(
-                    exception,
-                    "释放 Collector Runtime 时停止正在初始化的 Collector Instance {CollectorInstanceId} 失败",
-                    startingCollector.CollectorInstanceId);
-                stopFailures.Add(exception);
+                var failure = terminal.ReleaseError ?? new InvalidOperationException(
+                    "Collector Activation terminal transaction retained ownership.");
+                Serilog.Log.Warning(failure, "释放 Collector Runtime 时 Collector Activation 未能 release ownership");
+                stopFailures.Add(failure);
             }
         }
         if (stopFailures.Count != 0)
@@ -416,25 +410,6 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
             }
         }
 
-        foreach (var startingCollector in startingCollectors)
-            await startingCollector.ActivationCompleted;
-
-        foreach (var activation in activations)
-        {
-            try
-            {
-                await activation.StopAsync(CancellationToken.None);
-            }
-            catch (Exception exception)
-            {
-                Serilog.Log.Warning(
-                    exception,
-                    "释放 Collector Runtime 时停止 Activation {ActivationId} 失败",
-                    activation.ActivationId);
-                stopFailures.Add(exception);
-            }
-        }
-
         foreach (var activation in externalHostActivations)
             StopExternalHostActivation(activation, ExternalHostActivationStopReason.RuntimeStopping);
 
@@ -443,13 +418,6 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
 
         lock (_gate)
         {
-            foreach (var startingCollector in startingCollectors)
-            {
-                if (_startingCollectors.TryGetValue(startingCollector.CollectorInstanceId, out var registered) &&
-                    ReferenceEquals(registered, startingCollector))
-                    _startingCollectors.Remove(startingCollector.CollectorInstanceId);
-                _startingInstances.Remove(startingCollector.CollectorInstanceId);
-            }
             _streamWriters.Clear();
             _store.Dispose();
             _disposed = true;
