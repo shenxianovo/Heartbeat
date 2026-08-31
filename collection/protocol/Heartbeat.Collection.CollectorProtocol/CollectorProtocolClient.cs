@@ -225,6 +225,11 @@ public sealed class CollectorProtocolClient(
                 if (reason == CollectorProtocolDrainReason.Drained)
                     reason = CollectorProtocolDrainReason.FlushCancelled;
             }
+            if (!_outbox.PendingRemainderIsDurable)
+            {
+                reason = CollectorProtocolDrainReason.PersistenceFailed;
+                remainderDurable = false;
+            }
             var result = new CollectorDrainResult(
                 initialization.SpecRevision,
                 _outbox.Facts.Count,
@@ -455,52 +460,21 @@ public sealed class CollectorProtocolClient(
         {
             if (_outbox!.Facts.All(item => item.MessageId != pending.MessageId))
                 return CollectorDeliveryStepResult.Progressed;
-            CollectorDeliveryCommitOutcome commit;
-            if (acknowledgement.IsMessageRejected)
-            {
-                commit = await PersistDeliveryMutationAsync(
-                    () => _outbox.DeadLetter(
-                        pending,
-                        acknowledgement.MessageError!,
-                        _timeProvider.GetUtcNow(),
-                        delivery),
-                    cancellationToken).ConfigureAwait(false);
-                if (commit == CollectorDeliveryCommitOutcome.Committed)
-                    ReportDiagnostics();
-            }
-            else
-            {
-                var outcome = acknowledgement.Results[0];
-                if (outcome.Status == CollectorFactDeliveryStatus.Retry)
-                {
-                    commit = await PersistDeliveryMutationAsync(
-                        () => _outbox.RetryFact(pending.MessageId, delivery),
-                        cancellationToken).ConfigureAwait(false);
-                    retryAfter = outcome.RetryAfterMilliseconds ?? 1_000;
-                }
-                else if (outcome.IsAcknowledged)
-                {
-                    commit = await PersistDeliveryMutationAsync(
-                        () => _outbox.AcknowledgeFact(pending.MessageId, delivery),
-                        cancellationToken).ConfigureAwait(false);
-                }
-                else
-                {
-                    commit = await PersistDeliveryMutationAsync(
-                        () => _outbox.DeadLetter(
-                            pending,
-                            outcome.Error ?? new CollectorProtocolError(
-                                "fact_delivery_failed",
-                                $"Hub returned '{outcome.Status}' for a Collector Fact.",
-                                false),
-                            _timeProvider.GetUtcNow(),
-                            delivery),
-                        cancellationToken).ConfigureAwait(false);
-                    if (commit == CollectorDeliveryCommitOutcome.Committed)
-                        ReportDiagnostics();
-                }
-            }
-            current = ToStepResult(commit);
+            var resolution = acknowledgement.IsMessageRejected
+                ? ResolveError(acknowledgement.MessageError!, null)
+                : ResolveFact(acknowledgement.Results[0]);
+            var reduced = await ReducePendingDeliveryAsync(
+                resolution,
+                () => _outbox.AcknowledgeFact(pending.MessageId, delivery),
+                () => _outbox.RetryFact(pending.MessageId, delivery),
+                error => _outbox.DeadLetter(
+                    pending,
+                    error,
+                    _timeProvider.GetUtcNow(),
+                    delivery),
+                cancellationToken).ConfigureAwait(false);
+            current = reduced.Step;
+            retryAfter = reduced.RetryAfterMilliseconds;
         }
         finally
         {
@@ -545,21 +519,18 @@ public sealed class CollectorProtocolClient(
         {
             if (_outbox!.Gaps.All(item => item.MessageId != pending.MessageId))
                 return CollectorDeliveryStepResult.Progressed;
-            CollectorDeliveryCommitOutcome commit;
-            if (outcome.IsAcknowledged)
-                commit = await PersistDeliveryMutationAsync(
-                    () => _outbox.AcknowledgeGap(pending.MessageId, delivery),
-                    cancellationToken).ConfigureAwait(false);
-            else if (outcome.Status == CollectorGapDeliveryStatus.Retry || outcome.Error?.Retryable == true)
-            {
-                commit = await PersistDeliveryMutationAsync(
-                    () => _outbox.RetryGap(pending.MessageId, delivery),
-                    cancellationToken).ConfigureAwait(false);
-                retryAfter = outcome.RetryAfterMilliseconds ?? 1_000;
-            }
-            else
-                return CollectorDeliveryStepResult.Progressed;
-            current = ToStepResult(commit);
+            var reduced = await ReducePendingDeliveryAsync(
+                ResolveGap(outcome),
+                () => _outbox.AcknowledgeGap(pending.MessageId, delivery),
+                () => _outbox.RetryGap(pending.MessageId, delivery),
+                error => _outbox.DeadLetter(
+                    pending,
+                    error,
+                    _timeProvider.GetUtcNow(),
+                    delivery),
+                cancellationToken).ConfigureAwait(false);
+            current = reduced.Step;
+            retryAfter = reduced.RetryAfterMilliseconds;
         }
         finally
         {
@@ -571,6 +542,82 @@ public sealed class CollectorProtocolClient(
             await Task.Delay(TimeSpan.FromMilliseconds(milliseconds), cancellationToken).ConfigureAwait(false);
         return CollectorDeliveryStepResult.Progressed;
     }
+
+    private async Task<PendingDeliveryReduction> ReducePendingDeliveryAsync(
+        PendingDeliveryResolution resolution,
+        Func<CollectorDeliveryCommitOutcome> acknowledge,
+        Func<CollectorDeliveryCommitOutcome> retry,
+        Func<CollectorProtocolError, CollectorDeliveryCommitOutcome> reject,
+        CancellationToken cancellationToken)
+    {
+        var commit = resolution.Kind switch
+        {
+            PendingDeliveryResolutionKind.Acknowledged => await PersistDeliveryMutationAsync(
+                acknowledge,
+                cancellationToken).ConfigureAwait(false),
+            PendingDeliveryResolutionKind.Retry => await PersistDeliveryMutationAsync(
+                retry,
+                cancellationToken).ConfigureAwait(false),
+            PendingDeliveryResolutionKind.Rejected => await PersistDeliveryMutationAsync(
+                () => reject(resolution.Error!),
+                cancellationToken).ConfigureAwait(false),
+            _ => throw new ArgumentOutOfRangeException(nameof(resolution))
+        };
+        if (resolution.Kind == PendingDeliveryResolutionKind.Rejected &&
+            commit == CollectorDeliveryCommitOutcome.Committed)
+            ReportDiagnostics();
+        return new PendingDeliveryReduction(
+            ToStepResult(commit),
+            resolution.Kind == PendingDeliveryResolutionKind.Retry
+                ? resolution.RetryAfterMilliseconds ?? 1_000
+                : null);
+    }
+
+    private static PendingDeliveryResolution ResolveFact(CollectorFactDeliveryOutcome outcome) =>
+        outcome.Status switch
+        {
+            CollectorFactDeliveryStatus.Committed or
+            CollectorFactDeliveryStatus.Duplicate or
+            CollectorFactDeliveryStatus.Superseded => new(PendingDeliveryResolutionKind.Acknowledged),
+            CollectorFactDeliveryStatus.Retry => new(
+                PendingDeliveryResolutionKind.Retry,
+                outcome.Error,
+                outcome.RetryAfterMilliseconds),
+            CollectorFactDeliveryStatus.Rejected => ResolveError(
+                outcome.Error ?? new CollectorProtocolError(
+                    "fact_delivery_failed",
+                    "Hub rejected a Collector Fact without an error.",
+                    false),
+                outcome.RetryAfterMilliseconds),
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome))
+        };
+
+    private static PendingDeliveryResolution ResolveGap(CollectorGapDeliveryOutcome outcome) =>
+        outcome.Status switch
+        {
+            CollectorGapDeliveryStatus.Committed or
+            CollectorGapDeliveryStatus.Duplicate => new(PendingDeliveryResolutionKind.Acknowledged),
+            CollectorGapDeliveryStatus.Retry => new(
+                PendingDeliveryResolutionKind.Retry,
+                outcome.Error,
+                outcome.RetryAfterMilliseconds),
+            CollectorGapDeliveryStatus.Rejected => ResolveError(
+                outcome.Error ?? new CollectorProtocolError(
+                    "gap_delivery_failed",
+                    "Hub rejected a Stream Gap without an error.",
+                    false),
+                outcome.RetryAfterMilliseconds),
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome))
+        };
+
+    private static PendingDeliveryResolution ResolveError(
+        CollectorProtocolError error,
+        int? retryAfterMilliseconds) => error.Retryable
+            ? new PendingDeliveryResolution(
+                PendingDeliveryResolutionKind.Retry,
+                error,
+                retryAfterMilliseconds)
+            : new PendingDeliveryResolution(PendingDeliveryResolutionKind.Rejected, error);
 
     private async Task PersistMutationAsync(Action mutation, CancellationToken cancellationToken)
     {
@@ -685,7 +732,10 @@ public sealed class CollectorProtocolClient(
 
     private void ReportDiagnostics() => definition.Diagnostics?.Report(new CollectorClientDiagnostic(
         _outbox!.DeadLetterCount,
-        _outbox.DeadLetterPath));
+        _outbox.DeadLetterPath,
+        _outbox.GapDeadLetterCount == 0
+            ? null
+            : $"Rejected Stream Gap diagnostics: {_outbox.GapDeadLetterPath}"));
 
     private void EnsureBinding(string bindingId)
     {
@@ -759,6 +809,22 @@ public sealed class CollectorProtocolClient(
         }
     }
 }
+
+internal enum PendingDeliveryResolutionKind
+{
+    Acknowledged,
+    Retry,
+    Rejected
+}
+
+internal sealed record PendingDeliveryResolution(
+    PendingDeliveryResolutionKind Kind,
+    CollectorProtocolError? Error = null,
+    int? RetryAfterMilliseconds = null);
+
+internal sealed record PendingDeliveryReduction(
+    CollectorDeliveryStepResult Step,
+    int? RetryAfterMilliseconds);
 
 internal sealed class CollectorProtocolPersistenceException(string message, Exception innerException)
     : IOException(message, innerException);

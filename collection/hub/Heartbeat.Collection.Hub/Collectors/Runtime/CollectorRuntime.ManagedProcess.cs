@@ -68,10 +68,8 @@ public sealed class ManagedProcessActivationOptions
 
     internal void Validate()
     {
-        if (StartupTimeout <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(StartupTimeout));
-        if (DrainGracePeriod <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(DrainGracePeriod));
+        CollectorRuntimeTimeout.Validate(StartupTimeout, nameof(StartupTimeout));
+        CollectorRuntimeTimeout.Validate(DrainGracePeriod, nameof(DrainGracePeriod));
         ArgumentNullException.ThrowIfNull(EnvironmentVariables);
         if (EnvironmentVariables.Any(pair => string.IsNullOrWhiteSpace(pair.Key) || pair.Value is null))
             throw new ArgumentException("ManagedProcess environment variables must have non-empty names and values.");
@@ -97,8 +95,7 @@ public sealed class ManagedProcessUpdateOptions
 
     internal void Validate()
     {
-        if (StabilityPeriod <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(StabilityPeriod));
+        CollectorRuntimeTimeout.Validate(StabilityPeriod, nameof(StabilityPeriod));
         ArgumentNullException.ThrowIfNull(CandidateActivation);
         ArgumentNullException.ThrowIfNull(RollbackActivation);
         CandidateActivation.Validate();
@@ -813,7 +810,8 @@ internal sealed class ManagedProcessCollectorActivationLifetimeDriver(
                 : ManagedProcessTerminationCause.StopFailed,
             client.ExitCode);
 
-    public void FenceAfterDeadline() => client.TerminateAfterStopFailure();
+    public void FenceAfterDeadline(CollectorDrainReason reason) =>
+        client.TerminateAfterLifetimeFailure(reason);
 }
 
 internal sealed class ManagedProcessProtocolException(string message, Exception? innerException = null)
@@ -1348,15 +1346,29 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
         DateTimeOffset deadline)
     {
         await StopCoreAsync(deadline).ConfigureAwait(false);
-        var reason = WasTerminated
-            ? CollectorDrainReason.DeadlineExceeded
-            : DrainResult.Failure is null ? DrainReason : CollectorDrainReason.FlushCancelled;
+        if (TerminationCause is { } terminationCause)
+        {
+            var projection = ManagedProcessTerminationProjector.Project(terminationCause);
+            return new InProcessCollectorDrainResult(
+                new InProcessCollectorLogicalDrainResult(
+                    PendingFacts,
+                    PendingGaps,
+                    projection.Reason,
+                    RemainderDurable: false),
+                projection.CompletionReason,
+                DrainResult.Failure?.ProtocolError?.Message);
+        }
+        var reason = DrainResult.Failure is null ? DrainReason : CollectorDrainReason.FlushCancelled;
         return new InProcessCollectorDrainResult(
             new InProcessCollectorLogicalDrainResult(
                 PendingFacts,
                 PendingGaps,
                 reason,
-                RemainderDurable && PendingFacts is not null && PendingGaps is not null));
+                RemainderDurable && PendingFacts is not null && PendingGaps is not null),
+            DrainResult.Failure is null
+                ? CollectorDrainCompletionReason.Completed
+                : CollectorDrainCompletionReason.CompletionFailed,
+            DrainResult.Failure?.ProtocolError?.Message);
     }
 
     public async Task AbortAsync()
@@ -1374,6 +1386,15 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
         Terminate(ManagedProcessTerminationCause.StopFailed);
     }
 
+    internal void TerminateAfterLifetimeFailure(CollectorDrainReason reason)
+    {
+        if (_process.HasExited)
+            return;
+        Terminate(reason == CollectorDrainReason.DeadlineExceeded
+            ? ManagedProcessTerminationCause.DeadlineExceeded
+            : ManagedProcessTerminationCause.StopFailed);
+    }
+
     internal async Task<InProcessCollectorDrainResult> TerminateAfterStopFailureAsync(
         Exception exception,
         DateTimeOffset deadline)
@@ -1388,13 +1409,15 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
             WasTerminated,
             failure);
         _drained.TrySetResult(_drainResult);
+        var projection = ManagedProcessTerminationProjector.Project(
+            TerminationCause ?? ManagedProcessTerminationCause.StopFailed);
         return new InProcessCollectorDrainResult(
             new InProcessCollectorLogicalDrainResult(
                 PendingFacts,
                 PendingGaps,
-                CollectorDrainReason.StopFailed,
+                projection.Reason,
                 RemainderDurable: false),
-            CollectorDrainCompletionReason.CompletionFailed,
+            projection.CompletionReason,
             exception.Message);
     }
 
@@ -1438,7 +1461,9 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
             exception is OperationCanceledException && deadlineCancellation.IsCancellationRequested)
         {
             if (!_process.HasExited)
-                Terminate(ManagedProcessTerminationCause.DrainWriteFailed);
+                Terminate(exception is OperationCanceledException
+                    ? ManagedProcessTerminationCause.DeadlineExceeded
+                    : ManagedProcessTerminationCause.DrainWriteFailed);
             await TryWaitForExitBeforeAsync(deadline);
             var drainWriteFailure = new ManagedProcessExit(ExitCode, exception);
             _exit.TrySetResult(drainWriteFailure);

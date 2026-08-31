@@ -112,6 +112,45 @@ public sealed class CollectorDeliveryOwnershipTests
     }
 
     [Fact]
+    public void SupersededGapRejectionCannotCommitLateDiagnosticOrRemoveDurableGap()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-gap-rejection-owner-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var now = new DateTimeOffset(2026, 8, 31, 14, 30, 0, TimeSpan.Zero);
+        try
+        {
+            var outbox = CollectorProtocolOutbox.Open(
+                root,
+                16,
+                [new CollectorOutputBinding("activity", "activity", new Dictionary<string, string>())],
+                now);
+            var gap = new CollectorStreamGap(
+                Guid.CreateVersion7(), "activity", now, now.AddTicks(1), "fixture", 1);
+            outbox.EnqueueGap(gap);
+            var ownership = new CollectorDeliveryOwnership();
+            var background = ownership.BeginBackground();
+            var pending = outbox.FirstGap!;
+            var drain = ownership.BeginDrain(new CollectorDrainRequest(Guid.CreateVersion7(), now.AddMinutes(1)));
+            var error = new CollectorProtocolError("gap_rejected", "fixture", Retryable: false);
+
+            var stale = outbox.DeadLetter(pending, error, now, background);
+
+            Assert.Equal(CollectorDeliveryCommitOutcome.Superseded, stale);
+            Assert.Equal(gap.GapId, Assert.Single(outbox.Gaps).Gap.GapId);
+            Assert.False(File.Exists(Path.Combine(root, "collector-protocol-gap-dead-letter.json")));
+
+            Assert.Equal(
+                CollectorDeliveryCommitOutcome.Committed,
+                outbox.DeadLetter(pending, error, now, drain.Delivery));
+            Assert.Empty(outbox.Gaps);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void OrdinaryAdmissionPreparedBeforeDrainCannotPublishAfterOwnershipTransfer()
     {
         var ownership = new CollectorDeliveryOwnership();

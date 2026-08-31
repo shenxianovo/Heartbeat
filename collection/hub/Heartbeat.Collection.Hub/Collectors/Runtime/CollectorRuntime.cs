@@ -74,9 +74,22 @@ public sealed class CollectorRuntimeOptions
             throw new ArgumentOutOfRangeException(nameof(MaxDurableFacts));
         if (RetryAfterMilliseconds <= 0)
             throw new ArgumentOutOfRangeException(nameof(RetryAfterMilliseconds));
-        if (InProcessDrainGracePeriod <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(InProcessDrainGracePeriod));
+        CollectorRuntimeTimeout.Validate(InProcessDrainGracePeriod, nameof(InProcessDrainGracePeriod));
         ArgumentNullException.ThrowIfNull(TimeProvider);
+    }
+}
+
+internal static class CollectorRuntimeTimeout
+{
+    internal static readonly TimeSpan MaximumSchedulable = TimeSpan.FromMilliseconds(uint.MaxValue - 1L);
+
+    internal static void Validate(TimeSpan value, string parameterName)
+    {
+        if (value <= TimeSpan.Zero || value > MaximumSchedulable)
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                value,
+                $"Timeout must be positive and no greater than {MaximumSchedulable}.");
     }
 }
 
@@ -374,41 +387,18 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
             managedProcessActivations = _managedProcessActivations.Values.ToArray();
         }
 
-        var stopFailures = new List<Exception>();
-        foreach (var lifetime in activationLifetimes)
-        {
-            var terminal = await lifetime.RequestStopAsync(
-                new CollectorActivationStopIntent(CollectorActivationStopCause.RuntimeStopping));
-            if (!terminal.OwnershipReleased)
-            {
-                var failure = terminal.ReleaseError ?? new InvalidOperationException(
-                    "Collector Activation terminal transaction retained ownership.");
-                Serilog.Log.Warning(failure, "释放 Collector Runtime 时 Collector Activation 未能 release ownership");
-                stopFailures.Add(failure);
-            }
-        }
-        if (stopFailures.Count != 0)
-            throw new AggregateException("One or more Collectors did not stop; Runtime ownership is retained.", stopFailures);
-
-        foreach (var activation in managedProcessActivations)
-        {
-            var terminal = await activation.RequestStopAsync(
-                new CollectorActivationStopIntent(CollectorActivationStopCause.RuntimeStopping),
-                CancellationToken.None);
-            if (!terminal.OwnershipReleased)
-            {
-                var exception = terminal.ReleaseError ?? new InvalidOperationException(
-                    "ManagedProcess Collector Activation terminal transaction retained ownership.");
-                Serilog.Log.Warning(
-                    exception,
-                    "释放 Collector Runtime 时停止 ManagedProcess Activation {ActivationId} 失败",
-                    activation.ActivationId);
-                stopFailures.Add(exception);
-            }
-        }
-
-        if (stopFailures.Count != 0)
-            throw new AggregateException("One or more Collectors did not stop; Runtime ownership is retained.", stopFailures);
+        var stopTargets = activationLifetimes
+            .Select((lifetime, index) => new CollectorRuntimeStopTarget(
+                $"InProcess/ExternalHost Activation snapshot entry {index}",
+                () => lifetime.RequestStopAsync(
+                    new CollectorActivationStopIntent(CollectorActivationStopCause.RuntimeStopping))))
+            .Concat(managedProcessActivations.Select(activation => new CollectorRuntimeStopTarget(
+                $"ManagedProcess Activation {activation.ActivationId}",
+                () => activation.RequestStopAsync(
+                    new CollectorActivationStopIntent(CollectorActivationStopCause.RuntimeStopping),
+                    CancellationToken.None))))
+            .ToArray();
+        await CollectorRuntimeTerminationBatch.StopAllAsync(stopTargets).ConfigureAwait(false);
 
         lock (_gate)
         {

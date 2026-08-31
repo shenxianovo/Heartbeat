@@ -113,6 +113,37 @@ internal enum ManagedProcessTerminationCause
     StopFailed
 }
 
+internal sealed record ManagedProcessTerminationDrainProjection(
+    CollectorDrainReason Reason,
+    CollectorDrainCompletionReason CompletionReason);
+
+internal static class ManagedProcessTerminationProjector
+{
+    internal static ManagedProcessTerminationDrainProjection Project(
+        ManagedProcessTerminationCause cause) => cause switch
+        {
+            ManagedProcessTerminationCause.BeforeReady => new(
+                CollectorDrainReason.StopFailed,
+                CollectorDrainCompletionReason.CompletionFailed),
+            ManagedProcessTerminationCause.DrainWriteFailed => new(
+                CollectorDrainReason.FlushCancelled,
+                CollectorDrainCompletionReason.CompletionFailed),
+            ManagedProcessTerminationCause.DeadlineExceeded => new(
+                CollectorDrainReason.DeadlineExceeded,
+                CollectorDrainCompletionReason.DeadlineExceeded),
+            ManagedProcessTerminationCause.ProtocolFailure => new(
+                CollectorDrainReason.FlushCancelled,
+                CollectorDrainCompletionReason.CompletionFailed),
+            ManagedProcessTerminationCause.StartupAborted => new(
+                CollectorDrainReason.StopFailed,
+                CollectorDrainCompletionReason.CompletionFailed),
+            ManagedProcessTerminationCause.StopFailed => new(
+                CollectorDrainReason.StopFailed,
+                CollectorDrainCompletionReason.CompletionFailed),
+            _ => throw new ArgumentOutOfRangeException(nameof(cause))
+        };
+}
+
 internal sealed record ManagedProcessTerminatedExecution(
     ManagedProcessTerminationCause Cause,
     int? ExitCode) : CollectorActivationExecution;
@@ -171,7 +202,7 @@ internal interface ICollectorActivationLifetimeDriver
     CollectorActivationExecution ProjectFailedStop(CollectorDrainReason reason) =>
         new InProcessFencedExecution();
 
-    void FenceAfterDeadline() { }
+    void FenceAfterDeadline(CollectorDrainReason reason) { }
 }
 
 internal sealed class InProcessCollectorActivationLifetimeDriver(
@@ -192,7 +223,7 @@ internal sealed class InProcessCollectorActivationLifetimeDriver(
             new InProcessStoppedExecution());
     }
 
-    public void FenceAfterDeadline()
+    public void FenceAfterDeadline(CollectorDrainReason reason)
     {
         if (collector is IInProcessCollectorDeadlineFence fence)
         {
@@ -268,7 +299,6 @@ internal sealed class CollectorActivationLifetime
         TaskCreationOptions.RunContinuationsAsynchronously);
     private TaskCompletionSource<CollectorReadyOutcome>? _readyPublication;
     private CollectorActivationStopIntent? _winningIntent;
-    private DateTimeOffset _deadline;
     private int _released;
     private int _stopIntentSubmitted;
 
@@ -330,7 +360,6 @@ internal sealed class CollectorActivationLifetime
             if (_winningIntent is null)
             {
                 _winningIntent = intent;
-                _deadline = _timeProvider.GetUtcNow() + _drainBudget;
                 Volatile.Write(ref _stopIntentSubmitted, 1);
                 ownsTransaction = true;
             }
@@ -339,7 +368,7 @@ internal sealed class CollectorActivationLifetime
         if (ownsTransaction)
         {
             Observe(_stopRequested.CancelAsync());
-            _ = CompleteStopTransactionAsync();
+            _ = CompleteStopTransactionAsync(intent);
         }
         return waitCancellation.CanBeCanceled
             ? new ValueTask<CollectorActivationTerminalResult>(Terminal.WaitAsync(waitCancellation))
@@ -388,10 +417,21 @@ internal sealed class CollectorActivationLifetime
         }
     }
 
-    private async Task CompleteStopTransactionAsync()
+    private async Task CompleteStopTransactionAsync(CollectorActivationStopIntent intent)
     {
-        var intent = _winningIntent!;
-        var deadline = _deadline;
+        try
+        {
+            await CompleteStopTransactionCoreAsync(intent).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            _terminal.TrySetException(exception);
+        }
+    }
+
+    private async Task CompleteStopTransactionCoreAsync(CollectorActivationStopIntent intent)
+    {
+        var deadline = _timeProvider.GetUtcNow() + _drainBudget;
         var remaining = deadline - _timeProvider.GetUtcNow();
         using var deadlineCancellation = new CancellationTokenSource(
             remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero,
@@ -452,7 +492,7 @@ internal sealed class CollectorActivationLifetime
         try
         {
             if (driverResult.DrainOutcome.Reason is CollectorDrainReason.DeadlineExceeded or CollectorDrainReason.StopFailed)
-                _driver.FenceAfterDeadline();
+                _driver.FenceAfterDeadline(driverResult.DrainOutcome.Reason);
             _fence();
             fenced = true;
         }

@@ -25,6 +25,21 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         "ReferenceCollectorPackage");
 
     [Fact]
+    public async Task ActivateManagedProcessRejectsUnschedulablePositiveDrainBudgetBeforeStartingProcess()
+    {
+        using var fixture = ManagedRuntimeFixture.Create();
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
+            await fixture.Runtime.ActivateManagedProcessAsync(
+                fixture.Instance.CollectorInstanceId,
+                fixture.Package,
+                new ManagedProcessActivationOptions
+                {
+                    DrainGracePeriod = TimeSpan.MaxValue
+                }));
+    }
+
+    [Fact]
     public async Task HappyPath_UsesSharedTranscriptAndPublishesAccountSegment()
     {
         using var packageCopy = ManagedReferenceCollectorPackage.Create();
@@ -662,6 +677,13 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         Assert.Equal(CollectorActivationState.Stopped, activation.State);
         Assert.Equal(CollectorRuntimePhase.Failed, activation.RuntimeState.Phase);
         Assert.Equal("protocol_invalid_message", activation.RuntimeState.Failure?.Code);
+        var terminal = await activation.Terminal;
+        var execution = Assert.IsType<ManagedProcessTerminatedExecution>(terminal.Execution);
+        Assert.Equal(ManagedProcessTerminationCause.ProtocolFailure, execution.Cause);
+        Assert.Equal(CollectorDrainReason.FlushCancelled, terminal.DrainOutcome.Reason);
+        Assert.Equal(
+            CollectorDrainCompletionReason.CompletionFailed,
+            terminal.DrainOutcome.CompletionReason);
         var replacement = await fixture.Runtime.ActivateManagedProcessAsync(
             fixture.Instance.CollectorInstanceId,
             fixture.Package,
@@ -689,8 +711,13 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         Assert.Equal(1, disconnect!.DrainWrites);
         Assert.Equal(1, activation.TerminationRequests);
         Assert.True(activation.RuntimeState.ProcessTerminated);
-        Assert.IsType<ManagedProcessTerminatedExecution>(
-            (await activation.Terminal).Execution);
+        var terminal = await activation.Terminal;
+        var execution = Assert.IsType<ManagedProcessTerminatedExecution>(terminal.Execution);
+        Assert.Equal(ManagedProcessTerminationCause.DrainWriteFailed, execution.Cause);
+        Assert.Equal(CollectorDrainReason.FlushCancelled, terminal.DrainOutcome.Reason);
+        Assert.Equal(
+            CollectorDrainCompletionReason.CompletionFailed,
+            terminal.DrainOutcome.CompletionReason);
         var replacement = await fixture.Runtime.ActivateManagedProcessAsync(
             fixture.Instance.CollectorInstanceId,
             fixture.Package,

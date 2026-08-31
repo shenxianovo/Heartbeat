@@ -1,9 +1,104 @@
 using Heartbeat.Collection.Hub.Collectors.Protocol;
+using Heartbeat.Collection.Hub.Collectors.Runtime;
 
 namespace Heartbeat.Collection.Hub.Tests.Collectors.Protocol;
 
 public sealed class CollectorActivationLifetimeTests
 {
+    [Theory]
+    [InlineData(0, CollectorDrainReason.StopFailed, CollectorDrainCompletionReason.CompletionFailed)]
+    [InlineData(1, CollectorDrainReason.FlushCancelled, CollectorDrainCompletionReason.CompletionFailed)]
+    [InlineData(2, CollectorDrainReason.DeadlineExceeded, CollectorDrainCompletionReason.DeadlineExceeded)]
+    [InlineData(3, CollectorDrainReason.FlushCancelled, CollectorDrainCompletionReason.CompletionFailed)]
+    [InlineData(4, CollectorDrainReason.StopFailed, CollectorDrainCompletionReason.CompletionFailed)]
+    [InlineData(5, CollectorDrainReason.StopFailed, CollectorDrainCompletionReason.CompletionFailed)]
+    public void ManagedProcessTerminationCauseAuthoritativelyProjectsLogicalAndCompletionOutcome(
+        int causeValue,
+        CollectorDrainReason expectedReason,
+        CollectorDrainCompletionReason expectedCompletion)
+    {
+        var cause = (ManagedProcessTerminationCause)causeValue;
+        var projection = ManagedProcessTerminationProjector.Project(cause);
+
+        Assert.Equal(expectedReason, projection.Reason);
+        Assert.Equal(expectedCompletion, projection.CompletionReason);
+    }
+
+    [Fact]
+    public async Task RuntimeStopBatchSubmitsEveryDriverBeforeAggregatingTerminalFailure()
+    {
+        var inProcess = new ControlledDriver();
+        var externalHost = new ControlledDriver();
+        var managedProcess = new ControlledDriver();
+        var inProcessLifetime = CreateLifetime(
+            inProcess,
+            fence: () => throw new IOException("in-process fence failed"));
+        var externalLifetime = CreateLifetime(externalHost);
+        var managedLifetime = CreateLifetime(managedProcess);
+        var targets = new[]
+        {
+            Target("InProcess", inProcessLifetime),
+            Target("ExternalHost", externalLifetime),
+            Target("ManagedProcess", managedLifetime)
+        };
+
+        var stopping = CollectorRuntimeTerminationBatch.StopAllAsync(targets);
+        Assert.True(inProcessLifetime.StopRequested.IsCancellationRequested);
+        Assert.True(externalLifetime.StopRequested.IsCancellationRequested);
+        Assert.True(managedLifetime.StopRequested.IsCancellationRequested);
+        inProcess.Complete(Drained());
+        externalHost.Complete(Drained());
+        managedProcess.Complete(Drained());
+        var failure = await Assert.ThrowsAsync<AggregateException>(() => stopping);
+
+        Assert.Single(failure.InnerExceptions);
+        Assert.Contains("in-process fence failed", failure.InnerExceptions[0].Message, StringComparison.Ordinal);
+        _ = await Assert.ThrowsAsync<AggregateException>(() => CollectorRuntimeTerminationBatch.StopAllAsync(targets));
+        Assert.Equal(1, inProcess.StopCalls);
+        Assert.Equal(1, externalHost.StopCalls);
+        Assert.Equal(1, managedProcess.StopCalls);
+    }
+
+    private static CollectorRuntimeStopTarget Target(
+        string description,
+        CollectorActivationLifetime lifetime) => new(
+        description,
+        () => lifetime.RequestStopAsync(
+            new CollectorActivationStopIntent(CollectorActivationStopCause.RuntimeStopping)));
+
+    [Fact]
+    public void OversizedPositiveDrainBudgetFaultsTerminalInsteadOfLeavingItPending()
+    {
+        var lifetime = CreateLifetime(
+            new ControlledDriver(),
+            drainBudget: TimeSpan.MaxValue);
+
+        _ = lifetime.RequestStopAsync(
+            new CollectorActivationStopIntent(CollectorActivationStopCause.RuntimeStopping));
+
+        Assert.True(lifetime.Terminal.IsFaulted);
+        Assert.IsType<ArgumentOutOfRangeException>(lifetime.Terminal.Exception!.InnerException);
+    }
+
+    [Fact]
+    public async Task TimerInfrastructureFailureFaultsThePersistentTerminalForEveryCaller()
+    {
+        var failure = new InvalidOperationException("timer infrastructure unavailable");
+        var lifetime = CreateLifetime(
+            new ControlledDriver(),
+            timeProvider: new ThrowingTimerTimeProvider(failure));
+
+        var first = lifetime.RequestStopAsync(
+            new CollectorActivationStopIntent(CollectorActivationStopCause.RuntimeStopping));
+        var second = lifetime.RequestStopAsync(
+            new CollectorActivationStopIntent(CollectorActivationStopCause.ActivationFailed));
+
+        Assert.Same(lifetime.Terminal, first.AsTask());
+        Assert.Same(lifetime.Terminal, second.AsTask());
+        Assert.Same(failure, await Assert.ThrowsAsync<InvalidOperationException>(() => first.AsTask()));
+        Assert.Same(failure, await Assert.ThrowsAsync<InvalidOperationException>(() => second.AsTask()));
+    }
+
     [Fact]
     public async Task ConcurrentStopIntentsSharePersistentTerminalResult()
     {
@@ -447,6 +542,7 @@ public sealed class CollectorActivationLifetimeTests
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Task StopEntered => _entered.Task;
+        public int StopCalls { get; private set; }
         public int CooperativeStopAttempts => 2;
 
         public ValueTask<CollectorActivationDriverStopResult> StopAsync(
@@ -454,6 +550,7 @@ public sealed class CollectorActivationLifetimeTests
             DateTimeOffset deadline,
             CancellationToken cancellationToken)
         {
+            StopCalls++;
             _entered.TrySetResult();
             return new ValueTask<CollectorActivationDriverStopResult>(_completion.Task);
         }
@@ -483,7 +580,7 @@ public sealed class CollectorActivationLifetimeTests
         public CollectorActivationExecution ProjectFailedStop(CollectorDrainReason reason) =>
             new ManagedProcessTerminatedExecution(ManagedProcessTerminationCause.StopFailed, null);
 
-        public void FenceAfterDeadline() => fence();
+        public void FenceAfterDeadline(CollectorDrainReason reason) => fence();
     }
 
     private sealed class DelegateDisposable(Action dispose) : IDisposable
@@ -495,6 +592,15 @@ public sealed class CollectorActivationLifetimeTests
     {
         public override DateTimeOffset GetUtcNow() => now;
         public void Advance(TimeSpan value) => now += value;
+    }
+
+    private sealed class ThrowingTimerTimeProvider(Exception failure) : TimeProvider
+    {
+        public override ITimer CreateTimer(
+            TimerCallback callback,
+            object? state,
+            TimeSpan dueTime,
+            TimeSpan period) => throw failure;
     }
 
     private sealed class ControlledTimeProvider : TimeProvider

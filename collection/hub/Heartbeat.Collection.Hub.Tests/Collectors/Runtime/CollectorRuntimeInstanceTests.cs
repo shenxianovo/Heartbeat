@@ -15,6 +15,18 @@ public class CollectorRuntimeInstanceTests
         "ReferenceCollectorPackage");
 
     [Fact]
+    public void Open_RejectsDrainBudgetThatCannotBeScheduledByTimeProvider()
+    {
+        using var stateDirectory = TemporaryDirectory.Create();
+        var statePath = Path.Combine(stateDirectory.Path, "collector-runtime.json");
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => CollectorRuntime.Open(
+            statePath,
+            new RecordingSegmentSink(),
+            new CollectorRuntimeOptions { InProcessDrainGracePeriod = TimeSpan.MaxValue }));
+    }
+
+    [Fact]
     public void CreateInstance_RuntimeReopensWithSamePackageAndSubjectBinding()
     {
         using var stateDirectory = TemporaryDirectory.Create();

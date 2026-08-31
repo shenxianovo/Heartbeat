@@ -15,10 +15,12 @@ internal sealed class CollectorProtocolOutbox
 
     private readonly string _path;
     private readonly string _deadLetterPath;
+    private readonly string _gapDeadLetterPath;
     private readonly int _capacity;
     private readonly Func<string, string, bool> _publishDurableFile;
     private OutboxState _state;
     private List<CollectorDeadLetter> _deadLetters;
+    private List<CollectorGapDeadLetter> _gapDeadLetters;
     private bool _dirty;
     private bool _deadLettersDirty;
 
@@ -27,13 +29,18 @@ internal sealed class CollectorProtocolOutbox
         int capacity,
         OutboxState state,
         List<CollectorDeadLetter> deadLetters,
+        List<CollectorGapDeadLetter> gapDeadLetters,
         Func<string, string, bool> publishDurableFile)
     {
         _path = path;
         _deadLetterPath = Path.Combine(Path.GetDirectoryName(path)!, "collector-protocol-dead-letter.json");
+        _gapDeadLetterPath = Path.Combine(
+            Path.GetDirectoryName(path)!,
+            "collector-protocol-gap-dead-letter.json");
         _capacity = capacity;
         _state = state;
         _deadLetters = deadLetters;
+        _gapDeadLetters = gapDeadLetters;
         _publishDurableFile = publishDurableFile;
     }
 
@@ -46,8 +53,11 @@ internal sealed class CollectorProtocolOutbox
         ? _state.Gaps.FirstOrDefault(item => item.MessageId == messageId)
         : null;
     public bool HasPending => _state.DeliveryOrder.Count != 0;
-    public int DeadLetterCount => _deadLetters.Count;
+    public bool PendingRemainderIsDurable => !_dirty && !_deadLettersDirty;
+    public int DeadLetterCount => _deadLetters.Count + _gapDeadLetters.Count;
     public string DeadLetterPath => _deadLetterPath;
+    public int GapDeadLetterCount => _gapDeadLetters.Count;
+    public string GapDeadLetterPath => _gapDeadLetterPath;
 
     public static CollectorProtocolOutbox Open(
         string dataDirectory,
@@ -63,6 +73,9 @@ internal sealed class CollectorProtocolOutbox
         Directory.CreateDirectory(dataDirectory);
         var path = Path.Combine(Path.GetFullPath(dataDirectory), "collector-protocol-outbox.json");
         var deadLetterPath = Path.Combine(Path.GetDirectoryName(path)!, "collector-protocol-dead-letter.json");
+        var gapDeadLetterPath = Path.Combine(
+            Path.GetDirectoryName(path)!,
+            "collector-protocol-gap-dead-letter.json");
         var state = new OutboxState();
         var migratedCurrentPointGaps = false;
         var migratedDeliveryOrder = false;
@@ -110,11 +123,15 @@ internal sealed class CollectorProtocolOutbox
         var deadLetters = File.Exists(deadLetterPath)
             ? ReadEnvelope<DeadLetterState>(deadLetterPath, "Collector Protocol dead letter").Entries
             : [];
+        var gapDeadLetters = File.Exists(gapDeadLetterPath)
+            ? ReadEnvelope<GapDeadLetterState>(gapDeadLetterPath, "Collector Protocol Gap dead letter").Entries
+            : [];
         var outbox = new CollectorProtocolOutbox(
             path,
             capacity,
             state,
             deadLetters,
+            gapDeadLetters,
             publishDurableFile);
         if (migratedCurrentPointGaps || migratedDeliveryOrder || recoveredCorruptOutbox ||
             !File.Exists(path) && (state.Facts.Count != 0 || state.Gaps.Count != 0))
@@ -331,13 +348,51 @@ internal sealed class CollectorProtocolOutbox
         }
     }
 
+    public CollectorDeliveryCommitOutcome DeadLetter(
+        PendingCollectorGap pending,
+        CollectorProtocolError error,
+        DateTimeOffset now,
+        CollectorDeliveryLease delivery)
+    {
+        var nextGapDeadLetters = _gapDeadLetters.ToList();
+        nextGapDeadLetters.Add(new CollectorGapDeadLetter(now, pending.MessageId, pending.Gap, error));
+        var nextState = _state with
+        {
+            Gaps = _state.Gaps.Where(item => item.MessageId != pending.MessageId).ToList(),
+            DeliveryOrder = _state.DeliveryOrder.Where(id => id != pending.MessageId).ToList()
+        };
+        var deadLetterTemporary = WriteEnvelopeTemporary(
+            _gapDeadLetterPath,
+            new GapDeadLetterState { Entries = nextGapDeadLetters });
+        var outboxTemporary = WriteEnvelopeTemporary(_path, nextState);
+        try
+        {
+            return delivery.TryCommit(() =>
+            {
+                File.Move(deadLetterTemporary, _gapDeadLetterPath, overwrite: true);
+                File.Move(outboxTemporary, _path, overwrite: true);
+                _gapDeadLetters = nextGapDeadLetters;
+                _state = nextState;
+                _deadLettersDirty = false;
+                _dirty = false;
+            });
+        }
+        finally
+        {
+            DeleteTemporary(deadLetterTemporary);
+            DeleteTemporary(outboxTemporary);
+        }
+    }
+
     public void PersistPending() => Save();
 
     private void Save()
     {
         if (_deadLettersDirty)
         {
-            SaveEnvelope(_deadLetterPath, new DeadLetterState { Entries = _deadLetters });
+            SaveEnvelope(
+                _deadLetterPath,
+                new DeadLetterState { Entries = _deadLetters });
             _deadLettersDirty = false;
         }
         SaveEnvelope(_path, _state);
@@ -556,7 +611,17 @@ internal sealed class CollectorProtocolOutbox
     {
         public List<CollectorDeadLetter> Entries { get; init; } = [];
     }
+
+    private sealed record GapDeadLetterState
+    {
+        public List<CollectorGapDeadLetter> Entries { get; init; } = [];
+    }
 }
 
 internal sealed record PendingCollectorFact(Guid MessageId, CollectorFact Fact);
 internal sealed record PendingCollectorGap(Guid MessageId, CollectorStreamGap Gap);
+internal sealed record CollectorGapDeadLetter(
+    DateTimeOffset FailedAt,
+    Guid MessageId,
+    CollectorStreamGap Gap,
+    CollectorProtocolError Error);
