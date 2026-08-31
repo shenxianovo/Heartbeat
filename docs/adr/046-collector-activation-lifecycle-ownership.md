@@ -24,3 +24,13 @@ Client drain 开始时一次线性化关闭 ordinary admission、supersede backg
 已截断 ingress tail；Fact/Gap commit 明确返回 Superseded/Fenced，而不借用 cancellation 异常。迁移必须
 replace-not-layer：旧 StartingCollector、Activation stop-task coordinators、direct Runtime Stop paths、client
 handoff bool/observer 与调度测试在对应 slice 中删除。
+
+实现中的 Terminal 使用 closed Execution 结果保留 Driver 能力差异：InProcess 是 cooperative stopped 或
+deadline fenced；ManagedProcess 是 exited 或带明确 cause 的 terminated；ExternalHost 只记录 lease revoked
+及 `HostReported / NotReported` drain evidence。ExternalHost 没有 `activation.drained` 时 pending remainder
+保持 unknown、non-durable，且 `ExternalHostWasTerminated` 恒为 false。三种结果共享同一绝对 deadline、
+fence-before-release 和 persistent Terminal 语义，但不共享虚构的“进程已停止”能力。
+
+本 owner 是进程内 Activation lifetime 状态，不新增 durable runtime schema。若未来需要跨 Hub 重启恢复
+winning Stop Intent、deadline 或 Terminal，必须另立 schema migration、兼容窗口与退出条件，不能在本
+ADR 下添加无期限双写或旧 coordinator fallback。

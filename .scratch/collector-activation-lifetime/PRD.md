@@ -174,10 +174,10 @@ internal sealed class CollectorDeliveryLease
 ## Exit conditions
 
 - [x] Design It Twice 至少三案完成，按 Depth、Locality、seam placement 比较，推荐 Interface 写入本 PRD。
-- [ ] Hub vertical slice 通过 concurrent Dispose/failure cleanup、Stop failure policy、deadline、Ready race 的
+- [x] Hub vertical slice 通过 concurrent Dispose/failure cleanup、Stop failure policy、deadline、Ready race 的
   Interface 级测试，旧调度测试已替换。
 - [x] Client vertical slice 统一 Fact/Gap、cooperative/deadline/failure；observer/barrier production hook 已删除。
-- [ ] 三种 Execution Driver conformance/adapter 验证通过且不伪装 ExternalHost 能力。
+- [x] 三种 Execution Driver conformance/adapter 验证通过且不伪装 ExternalHost 能力。
 - [ ] build、Protocol/Hub/System、Browser test/build、collector contracts、style、diff、真实 cross-process、
   stress 与 solution 项目并行连续多轮通过。
 - [ ] 新的无关 flaky gate 已按产品/测试/环境分类并单独建 issue，不扩张本 feature。
@@ -187,9 +187,9 @@ internal sealed class CollectorDeliveryLease
 
 - [x] [01 — 固定已知 Runtime Dispose 测试夹具竞态](issues/01-fix-runtime-dispose-fixture-race.md)
 - [x] [02 — Design It Twice 并冻结生命周期 Interface](issues/02-design-lifecycle-interface.md)
-- [ ] [03 — Hub 侧单一 Activation Lifetime owner](issues/03-hub-activation-lifetime.md)
+- [x] [03 — Hub 侧单一 Activation Lifetime owner](issues/03-hub-activation-lifetime.md)
 - [x] [04 — Client 侧显式 Delivery Ownership](issues/04-client-delivery-ownership.md)
-- [ ] [05 — 三种 Execution Driver conformance](issues/05-execution-driver-conformance.md)
+- [x] [05 — 三种 Execution Driver conformance](issues/05-execution-driver-conformance.md)
 - [ ] [06 — 全量验证、复审与 lifecycle closeout](issues/06-validation-and-review.md)
 
 ## Non-goals
