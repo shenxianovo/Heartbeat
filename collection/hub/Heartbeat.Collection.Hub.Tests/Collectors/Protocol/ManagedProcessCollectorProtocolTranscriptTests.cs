@@ -18,6 +18,8 @@ namespace Heartbeat.Collection.Hub.Tests.Collectors.Protocol;
 public class ManagedProcessCollectorProtocolTranscriptTests
 {
     private static readonly TimeSpan NonTimeoutStartupBudget = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan PhaseSignalHangGuard = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan StartupWaitSlice = TimeSpan.FromMilliseconds(50);
 
     private static string ReferencePackagePath => Path.Combine(
         AppContext.BaseDirectory,
@@ -141,7 +143,10 @@ public class ManagedProcessCollectorProtocolTranscriptTests
             Options("exit_after_ready"));
 
         await failed.Completion.WaitAsync(TimeSpan.FromSeconds(5));
-        await WaitForPhaseAsync(failed, CollectorRuntimePhase.Failed);
+        await WaitForPhaseAsync(
+            fixture.Runtime,
+            fixture.Instance.CollectorInstanceId,
+            CollectorRuntimePhase.Failed);
 
         Assert.Equal(CollectorActivationState.Stopped, failed.State);
         Assert.Equal("process_exited", failed.RuntimeState.Failure?.Code);
@@ -488,7 +493,8 @@ public class ManagedProcessCollectorProtocolTranscriptTests
     [Fact]
     public async Task InteractiveAuthorization_DoesNotConsumeTheStartupTimeout()
     {
-        using var fixture = ManagedRuntimeFixture.Create();
+        var time = new StartupTimeProvider();
+        using var fixture = ManagedRuntimeFixture.Create(time);
         var options = new ManagedProcessActivationOptions
         {
             StartupTimeout = TimeSpan.FromSeconds(1),
@@ -507,7 +513,8 @@ public class ManagedProcessCollectorProtocolTranscriptTests
             fixture.Runtime,
             fixture.Instance.CollectorInstanceId,
             CollectorRuntimePhase.WaitingForAuthorization);
-        await Task.Delay(1_200);
+        await SettleStartupWaitAsync(time);
+        await AdvanceStartupClockAsync(time, options.StartupTimeout * 10);
         Assert.False(activationTask.IsCompleted);
         var challenge = Assert.IsType<CollectorAuthorizationChallenge>(
             fixture.Runtime.GetManagedProcessRuntimeState(fixture.Instance.CollectorInstanceId)
@@ -528,7 +535,8 @@ public class ManagedProcessCollectorProtocolTranscriptTests
     [Fact]
     public async Task InteractiveAuthorization_ResumesStartupTimeoutAfterTheResponse()
     {
-        using var fixture = ManagedRuntimeFixture.Create();
+        var time = new StartupTimeProvider();
+        using var fixture = ManagedRuntimeFixture.Create(time);
         var options = new ManagedProcessActivationOptions
         {
             StartupTimeout = TimeSpan.FromSeconds(2),
@@ -546,7 +554,8 @@ public class ManagedProcessCollectorProtocolTranscriptTests
             fixture.Runtime,
             fixture.Instance.CollectorInstanceId,
             CollectorRuntimePhase.WaitingForAuthorization);
-        await Task.Delay(2_200);
+        await SettleStartupWaitAsync(time);
+        await AdvanceStartupClockAsync(time, options.StartupTimeout * 10);
         var challenge = Assert.IsType<CollectorAuthorizationChallenge>(
             fixture.Runtime.GetManagedProcessRuntimeState(fixture.Instance.CollectorInstanceId)
                 .AuthorizationChallenge);
@@ -559,6 +568,12 @@ public class ManagedProcessCollectorProtocolTranscriptTests
                 ["username"] = "collector-user",
                 ["password"] = "collector-password"
             });
+        await WaitForPhaseAsync(
+            fixture.Runtime,
+            fixture.Instance.CollectorInstanceId,
+            CollectorRuntimePhase.Negotiating);
+        await SettleStartupWaitAsync(time);
+        time.Advance(options.StartupTimeout * 10);
 
         var exception = await Assert.ThrowsAsync<CollectorActivationException>(async () =>
             await activationTask.WaitAsync(TimeSpan.FromSeconds(8)));
@@ -611,7 +626,10 @@ public class ManagedProcessCollectorProtocolTranscriptTests
             Options("corrupt_after_ready"));
 
         await activation.Completion.WaitAsync(TimeSpan.FromSeconds(5));
-        await WaitForPhaseAsync(activation, CollectorRuntimePhase.Failed);
+        await WaitForPhaseAsync(
+            fixture.Runtime,
+            fixture.Instance.CollectorInstanceId,
+            CollectorRuntimePhase.Failed);
 
         Assert.Equal(CollectorActivationState.Stopped, activation.State);
         Assert.Equal("protocol_invalid_message", activation.RuntimeState.Failure?.Code);
@@ -978,23 +996,44 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         RollbackActivation = Options()
     };
 
-    private static async Task WaitForPhaseAsync(
-        ManagedProcessCollectorActivation activation,
-        CollectorRuntimePhase phase)
+    /// <summary>
+    /// Advances the virtual startup clock and returns once the startup wait scheduled its next wait on
+    /// the advanced clock, which proves the wait re-evaluated its budget after the advance.
+    /// </summary>
+    private static async Task AdvanceStartupClockAsync(StartupTimeProvider time, TimeSpan duration)
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        while (activation.RuntimeState.Phase != phase)
-            await Task.Delay(20, timeout.Token);
+        var scheduled = time.TimersScheduled;
+        time.Advance(duration);
+        await time.NextTimerScheduledAsync(scheduled).WaitAsync(PhaseSignalHangGuard);
     }
 
+    /// <summary>
+    /// Turns the startup wait once so the next iteration observes the authorization pause that was
+    /// just published, and returns when that iteration is running.
+    /// </summary>
+    private static Task SettleStartupWaitAsync(StartupTimeProvider time) =>
+        AdvanceStartupClockAsync(time, StartupWaitSlice);
+
+    /// <summary>
+    /// Waits for the Runtime State phase on the publication signal instead of sampling it. The budget
+    /// only guards against a hang, so it no longer competes with real Collector process startup cost.
+    /// </summary>
     private static async Task WaitForPhaseAsync(
         CollectorRuntime runtime,
         Guid collectorInstanceId,
         CollectorRuntimePhase phase)
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        while (runtime.GetManagedProcessRuntimeState(collectorInstanceId).Phase != phase)
-            await Task.Delay(20, timeout.Token);
+        using var hangGuard = new CancellationTokenSource(PhaseSignalHangGuard);
+        try
+        {
+            await runtime.WaitForManagedProcessPhaseAsync(collectorInstanceId, phase, hangGuard.Token);
+        }
+        catch (OperationCanceledException) when (hangGuard.IsCancellationRequested)
+        {
+            Assert.Fail(
+                $"ManagedProcess Runtime State never published '{phase}'; last published phase was " +
+                $"'{runtime.GetManagedProcessRuntimeState(collectorInstanceId).Phase}'.");
+        }
     }
 
     private sealed class RecordingSegmentSink : ISegmentSink, IDurableSegmentProjectionSink
@@ -1056,6 +1095,116 @@ public class ManagedProcessCollectorProtocolTranscriptTests
             inner.FlushAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Virtual clock for the ManagedProcess startup budget. It lets a test spend the whole startup
+    /// timeout without sleeping, and reports when the startup wait scheduled its next wait.
+    /// </summary>
+    private sealed class StartupTimeProvider : TimeProvider
+    {
+        private readonly object _gate = new();
+        private readonly List<VirtualTimer> _timers = [];
+        private DateTimeOffset _utcNow = new(2026, 9, 1, 8, 0, 0, TimeSpan.Zero);
+        private long _timersScheduled;
+        private TaskCompletionSource _scheduled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public long TimersScheduled
+        {
+            get { lock (_gate) return _timersScheduled; }
+        }
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            lock (_gate) return _utcNow;
+        }
+
+        public override long GetTimestamp()
+        {
+            lock (_gate) return _utcNow.UtcTicks;
+        }
+
+        public override ITimer CreateTimer(
+            TimerCallback callback,
+            object? state,
+            TimeSpan dueTime,
+            TimeSpan period)
+        {
+            var timer = new VirtualTimer(this, callback, state, dueTime, period);
+            TaskCompletionSource scheduled;
+            lock (_gate)
+            {
+                _timers.Add(timer);
+                _timersScheduled++;
+                scheduled = _scheduled;
+                _scheduled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+            scheduled.TrySetResult();
+            return timer;
+        }
+
+        public Task NextTimerScheduledAsync(long observed)
+        {
+            lock (_gate)
+                return _timersScheduled > observed ? Task.CompletedTask : _scheduled.Task;
+        }
+
+        public void Advance(TimeSpan duration)
+        {
+            VirtualTimer[] due;
+            lock (_gate)
+            {
+                _utcNow += duration;
+                due = [.. _timers.Where(timer => timer.IsDue(_utcNow))];
+            }
+            foreach (var timer in due)
+                timer.Fire();
+        }
+
+        private sealed class VirtualTimer(
+            StartupTimeProvider owner,
+            TimerCallback callback,
+            object? state,
+            TimeSpan dueTime,
+            TimeSpan period) : ITimer
+        {
+            private DateTimeOffset _dueAt = owner.GetUtcNow() + dueTime;
+            private bool _disposed;
+
+            public bool IsDue(DateTimeOffset now) =>
+                !_disposed && dueTime != Timeout.InfiniteTimeSpan && now >= _dueAt;
+
+            public void Fire()
+            {
+                if (_disposed)
+                    return;
+                if (period == Timeout.InfiniteTimeSpan)
+                    _disposed = true;
+                else
+                    _dueAt += period;
+                callback(state);
+            }
+
+            public bool Change(TimeSpan newDueTime, TimeSpan newPeriod)
+            {
+                if (_disposed)
+                    return false;
+                dueTime = newDueTime;
+                period = newPeriod;
+                _dueAt = owner.GetUtcNow() + newDueTime;
+                return true;
+            }
+
+            public void Dispose() => _disposed = true;
+
+            public ValueTask DisposeAsync()
+            {
+                Dispose();
+                return ValueTask.CompletedTask;
+            }
+        }
+    }
+
     private sealed class TestClock(DateTimeOffset utcNow) : IClock
     {
         public DateTimeOffset UtcNow => utcNow;
@@ -1113,7 +1262,7 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         public CollectorRuntime Runtime { get; }
         public CollectorInstance Instance { get; }
 
-        public static ManagedRuntimeFixture Create()
+        public static ManagedRuntimeFixture Create(TimeProvider? timeProvider = null)
         {
             var packageCopy = ManagedReferenceCollectorPackage.Create();
             var stateDirectory = TemporaryDirectory.Create();
@@ -1122,7 +1271,10 @@ public class ManagedProcessCollectorProtocolTranscriptTests
                 var package = LocalCollectorPackage.Load(packageCopy.Path);
                 var runtime = CollectorRuntime.Open(
                     Path.Combine(stateDirectory.Path, "collector-runtime.json"),
-                    new RecordingSegmentSink());
+                    new RecordingSegmentSink(),
+                    timeProvider is null
+                        ? null
+                        : new CollectorRuntimeOptions { TimeProvider = timeProvider });
                 using var config = JsonDocument.Parse("{}");
                 var instance = runtime.CreateInstance(
                     package,

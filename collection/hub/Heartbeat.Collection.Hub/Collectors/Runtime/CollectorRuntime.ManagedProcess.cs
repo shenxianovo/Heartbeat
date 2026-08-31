@@ -118,6 +118,7 @@ public sealed partial class CollectorRuntime
     private readonly Dictionary<Guid, ManagedProcessCollectorActivation> _managedProcessActivations = [];
     private readonly Dictionary<Guid, ManagedProcessProtocolClient> _managedProcessClients = [];
     private readonly Dictionary<Guid, CollectorRuntimeSnapshot> _managedProcessStates = [];
+    private readonly List<ManagedProcessPhaseWaiter> _managedProcessPhaseWaiters = [];
     private readonly HashSet<Guid> _managedProcessUpdates = [];
 
     public CollectorRuntimeSnapshot GetManagedProcessRuntimeState(Guid collectorInstanceId)
@@ -130,6 +131,29 @@ public sealed partial class CollectorRuntime
                 : throw new KeyNotFoundException(
                     $"ManagedProcess Runtime State for Collector Instance '{collectorInstanceId}' was not found.");
         }
+    }
+
+    /// <summary>
+    /// Completes as soon as the ManagedProcess Runtime State of the Collector Instance is published
+    /// with the phase. Every publication signals the waiters, so observers never poll the state.
+    /// </summary>
+    internal async Task WaitForManagedProcessPhaseAsync(
+        Guid collectorInstanceId,
+        CollectorRuntimePhase phase,
+        CancellationToken cancellationToken)
+    {
+        ManagedProcessPhaseWaiter waiter;
+        lock (_gate)
+        {
+            if (_managedProcessStates.TryGetValue(collectorInstanceId, out var state) && state.Phase == phase)
+                return;
+            waiter = new ManagedProcessPhaseWaiter(collectorInstanceId, phase);
+            _managedProcessPhaseWaiters.Add(waiter);
+        }
+        using var registration = cancellationToken.UnsafeRegister(
+            static (state, token) => ((ManagedProcessPhaseWaiter)state!).Completion.TrySetCanceled(token),
+            waiter);
+        await waiter.Completion.Task.ConfigureAwait(false);
     }
 
     public ValueTask SubmitManagedProcessAuthorizationAsync(
@@ -304,16 +328,16 @@ public sealed partial class CollectorRuntime
             var instance = GetInstanceStateLocked(collectorInstanceId);
             ValidatePackageCandidate(instance, package);
             artifact = ResolveManagedProcessArtifact(package);
-            _managedProcessStates[collectorInstanceId] = new CollectorRuntimeSnapshot(
-                collectorInstanceId, null, CollectorRuntimePhase.Starting);
+            PublishManagedProcessStateLocked(collectorInstanceId, new CollectorRuntimeSnapshot(
+                collectorInstanceId, null, CollectorRuntimePhase.Starting));
         }
 
         ManagedProcessProtocolClient? client = null;
         CollectorActivationLifetime? activationLifetime = null;
-        using var startupTimeout = new CancellationTokenSource(options.StartupTimeout);
+        using var startupTimeout = new CancellationTokenSource(options.StartupTimeout, _options.TimeProvider);
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken, startupTimeout.Token);
-        var startupElapsed = Stopwatch.StartNew();
+        var startupStarted = _options.TimeProvider.GetTimestamp();
         try
         {
             client = await ManagedProcessProtocolClient.StartAsync(
@@ -338,7 +362,7 @@ public sealed partial class CollectorRuntime
             SetManagedProcessState(collectorInstanceId, new CollectorRuntimeSnapshot(
                 collectorInstanceId, null, CollectorRuntimePhase.Negotiating));
 
-            var remainingStartup = options.StartupTimeout - startupElapsed.Elapsed;
+            var remainingStartup = options.StartupTimeout - _options.TimeProvider.GetElapsedTime(startupStarted);
             if (remainingStartup <= TimeSpan.Zero)
                 startupTimeout.Cancel();
             else
@@ -362,15 +386,16 @@ public sealed partial class CollectorRuntime
                 client,
                 remainingStartup,
                 startupTimeout,
+                _options.TimeProvider,
                 cancellationToken);
             var activation = new ManagedProcessCollectorActivation(
                 this, collectorInstanceId, client, protocolActivation);
             lock (_gate)
             {
                 _managedProcessActivations[protocolActivation.ActivationId] = activation;
-                _managedProcessStates[collectorInstanceId] = new CollectorRuntimeSnapshot(
+                PublishManagedProcessStateLocked(collectorInstanceId, new CollectorRuntimeSnapshot(
                     collectorInstanceId, protocolActivation.ActivationId, CollectorRuntimePhase.Ready,
-                    AuthorizationChallenge: null);
+                    AuthorizationChallenge: null));
             }
             activation.StartSupervision();
             return activation;
@@ -427,9 +452,10 @@ public sealed partial class CollectorRuntime
         ManagedProcessProtocolClient client,
         TimeSpan remaining,
         CancellationTokenSource startupTimeout,
+        TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
-        var last = Stopwatch.GetTimestamp();
+        var last = timeProvider.GetTimestamp();
         while (!activationTask.IsCompleted)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -437,11 +463,11 @@ public sealed partial class CollectorRuntime
             var slice = waitingForAuthorization
                 ? TimeSpan.FromMilliseconds(50)
                 : TimeSpan.FromMilliseconds(Math.Min(50, Math.Max(1, remaining.TotalMilliseconds)));
-            await Task.WhenAny(activationTask, Task.Delay(slice, cancellationToken));
-            var now = Stopwatch.GetTimestamp();
+            await Task.WhenAny(activationTask, Task.Delay(slice, timeProvider, cancellationToken));
+            var now = timeProvider.GetTimestamp();
             if (!waitingForAuthorization)
             {
-                remaining -= Stopwatch.GetElapsedTime(last, now);
+                remaining -= timeProvider.GetElapsedTime(last, now);
                 if (remaining <= TimeSpan.Zero && !activationTask.IsCompleted)
                 {
                     startupTimeout.Cancel();
@@ -464,13 +490,13 @@ public sealed partial class CollectorRuntime
             var ready = _managedProcessActivations.Values.Any(activation =>
                 activation.CollectorInstanceId == collectorInstanceId &&
                 activation.State == CollectorActivationState.Ready);
-            _managedProcessStates[collectorInstanceId] = current with
+            PublishManagedProcessStateLocked(collectorInstanceId, current with
             {
                 Phase = challenge is not null
                     ? CollectorRuntimePhase.WaitingForAuthorization
                     : ready ? CollectorRuntimePhase.Ready : CollectorRuntimePhase.Negotiating,
                 AuthorizationChallenge = challenge
-            };
+            });
         }
     }
 
@@ -482,10 +508,10 @@ public sealed partial class CollectorRuntime
                 return;
             if (_managedProcessStates.TryGetValue(collectorInstanceId, out var state) &&
                 state.Phase is not CollectorRuntimePhase.Stopped and not CollectorRuntimePhase.Failed)
-                _managedProcessStates[collectorInstanceId] = state with
+                PublishManagedProcessStateLocked(collectorInstanceId, state with
                 {
                     Phase = CollectorRuntimePhase.Draining
-                };
+                });
         }
     }
 
@@ -498,11 +524,11 @@ public sealed partial class CollectorRuntime
         {
             _managedProcessActivations.Remove(activation.ActivationId);
             _managedProcessClients.Remove(activation.CollectorInstanceId);
-            _managedProcessStates[activation.CollectorInstanceId] = new CollectorRuntimeSnapshot(
+            PublishManagedProcessStateLocked(activation.CollectorInstanceId, new CollectorRuntimeSnapshot(
                 activation.CollectorInstanceId, activation.ActivationId, CollectorRuntimePhase.Stopped,
                 PendingFacts: result.PendingFacts, PendingGaps: result.PendingGaps,
                 ProcessTerminated: result.ProcessTerminated,
-                DrainResult: drainResult);
+                DrainResult: drainResult));
         }
     }
 
@@ -520,18 +546,24 @@ public sealed partial class CollectorRuntime
         {
             _managedProcessActivations.Remove(activation.ActivationId);
             _managedProcessClients.Remove(activation.CollectorInstanceId);
-            _managedProcessStates[activation.CollectorInstanceId] = new CollectorRuntimeSnapshot(
+            PublishManagedProcessStateLocked(activation.CollectorInstanceId, new CollectorRuntimeSnapshot(
                 activation.CollectorInstanceId, activation.ActivationId, CollectorRuntimePhase.Failed,
                 failure, activation.Client.PendingFacts, activation.Client.PendingGaps,
                 activation.Client.WasTerminated,
-                DrainResult: drainResult);
+                DrainResult: drainResult));
         }
     }
 
     private void SetManagedProcessState(Guid collectorInstanceId, CollectorRuntimeSnapshot state)
     {
         lock (_gate)
-            _managedProcessStates[collectorInstanceId] = state;
+            PublishManagedProcessStateLocked(collectorInstanceId, state);
+    }
+
+    private void PublishManagedProcessStateLocked(Guid collectorInstanceId, CollectorRuntimeSnapshot state)
+    {
+        _managedProcessStates[collectorInstanceId] = state;
+        _managedProcessPhaseWaiters.RemoveAll(waiter => waiter.TryComplete(collectorInstanceId, state.Phase));
     }
 
     private async ValueTask<ManagedProcessUpdateResult> RollBackManagedProcessAsync(
@@ -758,6 +790,23 @@ public sealed class ManagedProcessCollectorActivation : IAsyncDisposable
             _runtime.ManagedProcessFailed(this, process.Failure, drain);
         else
             _runtime.ManagedProcessStopped(this, process, drain);
+    }
+}
+
+/// <summary>
+/// One registered observer of a ManagedProcess Runtime State phase. It is signalled by the state
+/// publication itself, so observers do not have to sample the Runtime State on a timer.
+/// </summary>
+internal sealed class ManagedProcessPhaseWaiter(Guid collectorInstanceId, CollectorRuntimePhase phase)
+{
+    public TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>Completes the waiter on a matching publication and reports whether it can be dropped.</summary>
+    public bool TryComplete(Guid publishedInstanceId, CollectorRuntimePhase publishedPhase)
+    {
+        if (publishedInstanceId == collectorInstanceId && publishedPhase == phase)
+            Completion.TrySetResult();
+        return Completion.Task.IsCompleted;
     }
 }
 
