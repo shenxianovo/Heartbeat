@@ -396,12 +396,13 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
 
         foreach (var activation in managedProcessActivations)
         {
-            try
+            var terminal = await activation.RequestStopAsync(
+                new CollectorActivationStopIntent(CollectorActivationStopCause.RuntimeStopping),
+                CancellationToken.None);
+            if (!terminal.OwnershipReleased)
             {
-                await activation.StopAsync(CancellationToken.None);
-            }
-            catch (Exception exception)
-            {
+                var exception = terminal.ReleaseError ?? new InvalidOperationException(
+                    "ManagedProcess Collector Activation terminal transaction retained ownership.");
                 Serilog.Log.Warning(
                     exception,
                     "释放 Collector Runtime 时停止 ManagedProcess Activation {ActivationId} 失败",

@@ -673,16 +673,24 @@ public class ManagedProcessCollectorProtocolTranscriptTests
     public async Task DrainWriteDisconnect_IsFailedAndWriterIsReleased()
     {
         using var fixture = ManagedRuntimeFixture.Create();
+        DisconnectOnDrainWriter? disconnect = null;
         var activation = await fixture.Runtime.ActivateManagedProcessAsync(
             fixture.Instance.CollectorInstanceId,
             fixture.Package,
-            Options(disconnectDrain: true));
+            Options(standardInputDecorator: writer => disconnect = new DisconnectOnDrainWriter(writer)));
 
-        await activation.StopAsync();
+        var first = activation.StopAsync().AsTask();
+        var second = activation.StopAsync().AsTask();
+        await Task.WhenAll(first, second);
 
         Assert.Equal(CollectorActivationState.Stopped, activation.State);
         Assert.Equal(CollectorRuntimePhase.Failed, activation.RuntimeState.Phase);
         Assert.Equal("protocol_invalid_message", activation.RuntimeState.Failure?.Code);
+        Assert.Equal(1, disconnect!.DrainWrites);
+        Assert.Equal(1, activation.TerminationRequests);
+        Assert.True(activation.RuntimeState.ProcessTerminated);
+        Assert.IsType<ManagedProcessTerminatedExecution>(
+            (await activation.Terminal).Execution);
         var replacement = await fixture.Runtime.ActivateManagedProcessAsync(
             fixture.Instance.CollectorInstanceId,
             fixture.Package,
@@ -743,12 +751,64 @@ public class ManagedProcessCollectorProtocolTranscriptTests
             activation.RuntimeState.DrainResult!.LogicalResult.Reason);
         Assert.False(activation.RuntimeState.DrainResult.LogicalResult.RemainderDurable);
         Assert.Equal(
-            CollectorDrainCompletionReason.Completed,
+            CollectorDrainCompletionReason.DeadlineExceeded,
             activation.RuntimeState.DrainResult.CompletionReason);
         CollectorDrainDriverConformance.AssertObserved(
             "managed_process",
             hubInitiated: true,
             "terminate_and_release");
+        var execution = Assert.IsType<ManagedProcessTerminatedExecution>(
+            (await activation.Terminal).Execution);
+        Assert.Equal(ManagedProcessTerminationCause.DeadlineExceeded, execution.Cause);
+    }
+
+    [Fact]
+    public async Task StopCallersShareOneManagedProcessTerminalResultAndAbsoluteWireDeadline()
+    {
+        using var fixture = ManagedRuntimeFixture.Create();
+        ObservedDrainWriter? observed = null;
+        var activation = await fixture.Runtime.ActivateManagedProcessAsync(
+            fixture.Instance.CollectorInstanceId,
+            fixture.Package,
+            Options(standardInputDecorator: writer => observed = new ObservedDrainWriter(writer)));
+
+        var first = activation.StopAsync().AsTask();
+        var second = activation.StopAsync().AsTask();
+        var terminal = await activation.Terminal;
+        await Task.WhenAll(first, second);
+
+        Assert.Same(terminal, await activation.Terminal);
+        Assert.Equal(terminal.Deadline, await observed!.DrainDeadline);
+        Assert.Equal(1, observed.DrainWrites);
+        Assert.IsType<ManagedProcessExitedExecution>(terminal.Execution);
+
+        await activation.StopAsync();
+        Assert.Equal(CollectorActivationState.Stopped, activation.State);
+        Assert.Equal(CollectorRuntimePhase.Stopped, activation.RuntimeState.Phase);
+        Assert.Same(terminal, await activation.Terminal);
+        Assert.Equal(1, observed.DrainWrites);
+    }
+
+    [Fact]
+    public async Task RuntimeDisposeAndPublicStopShareRuntimeStoppingTerminalTransaction()
+    {
+        using var fixture = ManagedRuntimeFixture.Create();
+        ObservedDrainWriter? observed = null;
+        var activation = await fixture.Runtime.ActivateManagedProcessAsync(
+            fixture.Instance.CollectorInstanceId,
+            fixture.Package,
+            Options(standardInputDecorator: writer => observed = new ObservedDrainWriter(writer)));
+
+        var disposing = fixture.Runtime.DisposeAsync().AsTask();
+        _ = await observed!.DrainDeadline.WaitAsync(TimeSpan.FromSeconds(5));
+        var publicStop = activation.StopAsync().AsTask();
+        await Task.WhenAll(disposing, publicStop);
+
+        var terminal = await activation.Terminal;
+        Assert.Equal(CollectorActivationStopCause.RuntimeStopping, terminal.WinningIntent.Cause);
+        Assert.True(terminal.OwnershipReleased);
+        Assert.Equal(1, terminal.StopAttempts);
+        Assert.Equal(1, observed.DrainWrites);
     }
 
     private static async Task<Heartbeat.Core.DTOs.Segments.ActivitySegmentItem> WaitForSegmentAsync(
@@ -766,13 +826,14 @@ public class ManagedProcessCollectorProtocolTranscriptTests
 
     private static ManagedProcessActivationOptions Options(
         string? behavior = null,
-        bool disconnectDrain = false) => new()
+        bool disconnectDrain = false,
+        Func<TextWriter, TextWriter>? standardInputDecorator = null) => new()
         {
             StartupTimeout = NonTimeoutStartupBudget,
             DrainGracePeriod = TimeSpan.FromSeconds(2),
-            StandardInputDecorator = disconnectDrain
-            ? writer => new DisconnectOnDrainWriter(writer)
-            : null,
+            StandardInputDecorator = standardInputDecorator ?? (disconnectDrain
+                ? writer => new DisconnectOnDrainWriter(writer)
+                : null),
             EnvironmentVariables = behavior is null
             ? new Dictionary<string, string>()
             : new Dictionary<string, string> { ["HEARTBEAT_REFERENCE_BEHAVIOR"] = behavior }
@@ -814,14 +875,49 @@ public class ManagedProcessCollectorProtocolTranscriptTests
 
     private sealed class DisconnectOnDrainWriter(TextWriter inner) : TextWriter
     {
+        private int _drainWrites;
+
         public override Encoding Encoding => inner.Encoding;
+        public int DrainWrites => Volatile.Read(ref _drainWrites);
 
         public override Task WriteLineAsync(
             ReadOnlyMemory<char> buffer,
-            CancellationToken cancellationToken = default) =>
-            buffer.Span.Contains("\"type\":\"activation.drain\"", StringComparison.Ordinal)
-                ? Task.FromException(new IOException("Simulated disconnected ManagedProcess stdin."))
-                : inner.WriteLineAsync(buffer, cancellationToken);
+            CancellationToken cancellationToken = default)
+        {
+            if (!buffer.Span.Contains("\"type\":\"activation.drain\"", StringComparison.Ordinal))
+                return inner.WriteLineAsync(buffer, cancellationToken);
+            Interlocked.Increment(ref _drainWrites);
+            return Task.FromException(new IOException("Simulated disconnected ManagedProcess stdin."));
+        }
+
+        public override Task FlushAsync() => inner.FlushAsync();
+        public override Task FlushAsync(CancellationToken cancellationToken) =>
+            inner.FlushAsync(cancellationToken);
+    }
+
+    private sealed class ObservedDrainWriter(TextWriter inner) : TextWriter
+    {
+        private readonly TaskCompletionSource<DateTimeOffset> _deadline = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _drainWrites;
+
+        public override Encoding Encoding => inner.Encoding;
+        public Task<DateTimeOffset> DrainDeadline => _deadline.Task;
+        public int DrainWrites => Volatile.Read(ref _drainWrites);
+
+        public override Task WriteLineAsync(
+            ReadOnlyMemory<char> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            if (buffer.Span.Contains("\"type\":\"activation.drain\"", StringComparison.Ordinal))
+            {
+                Interlocked.Increment(ref _drainWrites);
+                using var message = JsonDocument.Parse(buffer);
+                _deadline.TrySetResult(
+                    message.RootElement.GetProperty("body").GetProperty("deadline").GetDateTimeOffset());
+            }
+            return inner.WriteLineAsync(buffer, cancellationToken);
+        }
 
         public override Task FlushAsync() => inner.FlushAsync();
         public override Task FlushAsync(CancellationToken cancellationToken) =>

@@ -221,7 +221,9 @@ public sealed partial class CollectorRuntime
         try
         {
             PersistLastKnownGood(collectorInstanceId, previousInstallation);
-            await currentActivation.StopAsync(CancellationToken.None);
+            _ = await currentActivation.RequestStopAsync(
+                new CollectorActivationStopIntent(CollectorActivationStopCause.UpdateRequested),
+                CancellationToken.None);
             ManagedProcessCollectorActivation? candidateActivation = null;
             CollectorRuntimeFailure? candidateFailure = null;
             try
@@ -254,7 +256,9 @@ public sealed partial class CollectorRuntime
                 }
 
                 stabilityCancellation.Cancel();
-                await candidateActivation.StopAsync(CancellationToken.None);
+                _ = await candidateActivation.RequestStopAsync(
+                    new CollectorActivationStopIntent(CollectorActivationStopCause.UpdateRequested),
+                    CancellationToken.None);
                 candidateFailure = candidateActivation.RuntimeState.Failure ?? new CollectorRuntimeFailure(
                     "process_exited",
                     "Candidate ManagedProcess exited during its stability period.",
@@ -263,7 +267,11 @@ public sealed partial class CollectorRuntime
             catch (Exception exception) when (exception is not ManagedProcessUpdateException)
             {
                 if (candidateActivation is not null && candidateActivation.State != CollectorActivationState.Stopped)
-                    await candidateActivation.StopAsync(CancellationToken.None);
+                {
+                    _ = await candidateActivation.RequestStopAsync(
+                        new CollectorActivationStopIntent(CollectorActivationStopCause.ActivationFailed),
+                        CancellationToken.None);
+                }
                 candidateFailure = ManagedProcessFailureFrom(exception, collectorInstanceId);
             }
 
@@ -304,6 +312,7 @@ public sealed partial class CollectorRuntime
         }
 
         ManagedProcessProtocolClient? client = null;
+        CollectorActivationLifetime? activationLifetime = null;
         using var startupTimeout = new CancellationTokenSource(options.StartupTimeout);
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken, startupTimeout.Token);
@@ -317,6 +326,7 @@ public sealed partial class CollectorRuntime
                 options,
                 _secretStore,
                 Path.Combine(_instanceDataRoot, collectorInstanceId.ToString("N")),
+                _options.TimeProvider,
                 linkedCancellation.Token);
             var selectedCapabilities = SelectedCapabilities(package, client.ProtocolSupport);
             if (_secretStore is null && selectedCapabilities.ContainsKey("secrets.instance"))
@@ -342,7 +352,13 @@ public sealed partial class CollectorRuntime
                     client,
                     "managedProcess",
                     client.HelloMessageId,
-                    linkedCancellation.Token)
+                    linkedCancellation.Token,
+                    session => new ManagedProcessCollectorActivationLifetimeDriver(
+                        client!,
+                        session,
+                        () => ManagedProcessDraining(collectorInstanceId)),
+                    options.DrainGracePeriod,
+                    lifetime => activationLifetime = lifetime)
                 .AsTask();
             var protocolActivation = await AwaitReadyWithAuthorizationPauseAsync(
                 protocolActivationTask,
@@ -365,7 +381,7 @@ public sealed partial class CollectorRuntime
         catch (OperationCanceledException exception) when (
             startupTimeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
-            if (client is not null)
+            if (client is not null && activationLifetime is null)
                 await client.AbortAsync();
             lock (_gate)
                 _managedProcessClients.Remove(collectorInstanceId);
@@ -379,7 +395,7 @@ public sealed partial class CollectorRuntime
         }
         catch (Exception exception)
         {
-            if (client is not null)
+            if (client is not null && activationLifetime is null)
                 await client.AbortAsync();
             lock (_gate)
                 _managedProcessClients.Remove(collectorInstanceId);
@@ -461,14 +477,15 @@ public sealed partial class CollectorRuntime
         }
     }
 
-    internal void ManagedProcessDraining(ManagedProcessCollectorActivation activation)
+    private void ManagedProcessDraining(Guid collectorInstanceId)
     {
         lock (_gate)
         {
             if (_disposed)
                 return;
-            if (_managedProcessStates.TryGetValue(activation.CollectorInstanceId, out var state))
-                _managedProcessStates[activation.CollectorInstanceId] = state with
+            if (_managedProcessStates.TryGetValue(collectorInstanceId, out var state) &&
+                state.Phase is not CollectorRuntimePhase.Stopped and not CollectorRuntimePhase.Failed)
+                _managedProcessStates[collectorInstanceId] = state with
                 {
                     Phase = CollectorRuntimePhase.Draining
                 };
@@ -492,7 +509,10 @@ public sealed partial class CollectorRuntime
         }
     }
 
-    internal void ManagedProcessFailed(ManagedProcessCollectorActivation activation, ManagedProcessExit result)
+    internal void ManagedProcessFailed(
+        ManagedProcessCollectorActivation activation,
+        ManagedProcessExit result,
+        InProcessCollectorDrainResult drainResult)
     {
         var failure = new CollectorRuntimeFailure(
             result.ProtocolError is null ? "process_exited" : "protocol_invalid_message",
@@ -507,7 +527,7 @@ public sealed partial class CollectorRuntime
                 activation.CollectorInstanceId, activation.ActivationId, CollectorRuntimePhase.Failed,
                 failure, activation.Client.PendingFacts, activation.Client.PendingGaps,
                 activation.Client.WasTerminated,
-                DrainResult: activation.ProtocolDrainResult);
+                DrainResult: drainResult);
         }
     }
 
@@ -662,9 +682,8 @@ public sealed class ManagedProcessCollectorActivation : IAsyncDisposable
 {
     private readonly CollectorRuntime _runtime;
     private readonly InProcessCollectorActivation _protocolActivation;
-    private readonly object _stopGate = new();
-    private Task? _stopTask;
-    private int _stopRequested;
+    private readonly CollectorActivationLifetime _lifetime;
+    private Task? _terminalProjection;
 
     internal ManagedProcessCollectorActivation(
         CollectorRuntime runtime,
@@ -676,6 +695,7 @@ public sealed class ManagedProcessCollectorActivation : IAsyncDisposable
         CollectorInstanceId = collectorInstanceId;
         Client = client;
         _protocolActivation = protocolActivation;
+        _lifetime = protocolActivation.Lifetime;
     }
 
     public Guid CollectorInstanceId { get; }
@@ -687,71 +707,60 @@ public sealed class ManagedProcessCollectorActivation : IAsyncDisposable
     public IReadOnlyDictionary<string, FactStreamDescriptor> Streams => _protocolActivation.Streams
         .ToDictionary(pair => pair.Key, pair => pair.Value.Descriptor, StringComparer.Ordinal);
     public CollectorRuntimeSnapshot RuntimeState => _runtime.GetManagedProcessRuntimeState(CollectorInstanceId);
-    public Task Completion => Client.Completion;
+    public Task Completion => _terminalProjection ?? Client.Completion;
     internal ManagedProcessProtocolClient Client { get; }
     internal LocalCollectorPackage Package => _protocolActivation.Package;
     internal InProcessCollectorDrainResult? ProtocolDrainResult => _protocolActivation.DrainResult;
+    internal Task<CollectorActivationTerminalResult> Terminal => _lifetime.Terminal;
+    internal int TerminationRequests => Client.TerminationRequests;
 
-    internal void StartSupervision() => _ = SuperviseAsync();
-
-    public ValueTask StopAsync(CancellationToken cancellationToken = default) => new(WaitForStopAsync(cancellationToken));
-    public ValueTask DisposeAsync() => StopAsync();
-
-    private async Task WaitForStopAsync(CancellationToken cancellationToken)
+    internal void StartSupervision()
     {
-        Task stopTask;
-        lock (_stopGate)
-        {
-            _stopTask ??= StopCoreAsync();
-            stopTask = _stopTask;
-        }
-        try
-        {
-            await stopTask.WaitAsync(cancellationToken);
-        }
-        catch
-        {
-            if (stopTask.IsCompleted)
-            {
-                lock (_stopGate)
-                {
-                    if (ReferenceEquals(_stopTask, stopTask))
-                        _stopTask = null;
-                }
-                Interlocked.Exchange(ref _stopRequested, 0);
-            }
-            throw;
-        }
+        _terminalProjection = ObserveTerminalAsync();
+        _ = SuperviseAsync();
     }
 
-    private async Task StopCoreAsync()
+    public async ValueTask StopAsync(CancellationToken cancellationToken = default) =>
+        _ = await RequestStopAsync(
+            new CollectorActivationStopIntent(CollectorActivationStopCause.Deactivated),
+            cancellationToken);
+
+    public ValueTask DisposeAsync() => StopAsync();
+
+    internal async ValueTask<CollectorActivationTerminalResult> RequestStopAsync(
+        CollectorActivationStopIntent intent,
+        CancellationToken cancellationToken = default)
     {
-        Interlocked.Exchange(ref _stopRequested, 1);
-        _runtime.ManagedProcessDraining(this);
-        await _protocolActivation.StopAsync(CancellationToken.None);
-        var drainResult = _protocolActivation.DrainResult
-            ?? throw new InvalidOperationException("ManagedProcess protocol Activation stopped without a drain result.");
-        var result = Client.DrainResult;
-        if (result.Failure is not null)
-            _runtime.ManagedProcessFailed(this, result.Failure);
-        else
-            _runtime.ManagedProcessStopped(this, result, drainResult);
+        var terminal = await _lifetime.RequestStopAsync(intent, cancellationToken);
+        if (_terminalProjection is not null)
+            await _terminalProjection.WaitAsync(cancellationToken);
+        return terminal;
     }
 
     private async Task SuperviseAsync()
     {
-        var result = await Client.ExitCompletion;
-        if (Volatile.Read(ref _stopRequested) != 0)
-            return;
-        try
+        _ = await Client.ExitCompletion;
+        _ = await _lifetime.RequestStopAsync(
+            new CollectorActivationStopIntent(CollectorActivationStopCause.Supervision));
+    }
+
+    private async Task ObserveTerminalAsync()
+    {
+        var terminal = await _lifetime.Terminal;
+        var process = Client.DrainResult;
+        if (process.Failure is null && terminal.StopError is not null)
         {
-            await _protocolActivation.StopAsync(CancellationToken.None);
+            process = process with
+            {
+                ProcessTerminated = Client.WasTerminated,
+                Failure = new ManagedProcessExit(Client.ExitCode, terminal.StopError)
+            };
         }
-        catch (Exception exception)
-        {
-            Log.Warning(exception, "ManagedProcess Collector 意外退出后释放 writer 失败");
-        }
-        _runtime.ManagedProcessFailed(this, result);
+        var drain = terminal.DrainOutcome.ToInProcess();
+        if (process.Failure is not null)
+            _runtime.ManagedProcessFailed(this, process.Failure, drain);
+        else
+            _runtime.ManagedProcessStopped(this, process, drain);
     }
 }
 
@@ -761,6 +770,50 @@ internal sealed record ManagedProcessDrainResult(
     bool ProcessTerminated,
     ManagedProcessExit? Failure = null);
 internal sealed record ManagedProcessExit(int? ExitCode, Exception? ProtocolError);
+
+internal sealed class ManagedProcessCollectorActivationLifetimeDriver(
+    ManagedProcessProtocolClient client,
+    CollectorActivationSession session,
+    Action beginDraining) : ICollectorActivationLifetimeDriver
+{
+    public async ValueTask<CollectorActivationDriverStopResult> StopAsync(
+        DateTimeOffset deadline,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            beginDraining();
+            session.BeginDrain();
+            var drain = await client.StopOnceAsync(deadline).ConfigureAwait(false);
+            CollectorActivationExecution execution = client.WasTerminated
+                ? new ManagedProcessTerminatedExecution(
+                    client.TerminationCause ?? ManagedProcessTerminationCause.DeadlineExceeded,
+                    client.ExitCode)
+                : new ManagedProcessExitedExecution(client.ExitCode);
+            return new CollectorActivationDriverStopResult(
+                CollectorActivationDrainOutcome.FromInProcess(drain),
+                execution);
+        }
+        catch (Exception exception)
+        {
+            var drain = await client.TerminateAfterStopFailureAsync(exception, deadline).ConfigureAwait(false);
+            return new CollectorActivationDriverStopResult(
+                CollectorActivationDrainOutcome.FromInProcess(drain),
+                new ManagedProcessTerminatedExecution(
+                    ManagedProcessTerminationCause.StopFailed,
+                    client.ExitCode));
+        }
+    }
+
+    public CollectorActivationExecution ProjectFailedStop(CollectorDrainReason reason) =>
+        new ManagedProcessTerminatedExecution(
+            reason == CollectorDrainReason.DeadlineExceeded
+                ? ManagedProcessTerminationCause.DeadlineExceeded
+                : ManagedProcessTerminationCause.StopFailed,
+            client.ExitCode);
+
+    public void FenceAfterDeadline() => client.TerminateAfterStopFailure();
+}
 
 internal sealed class ManagedProcessProtocolException(string message, Exception? innerException = null)
     : Exception(message, innerException);
@@ -783,21 +836,21 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
     private readonly StreamReader _reader;
     private readonly TextWriter _writer;
     private readonly ManagedProcessActivationOptions _options;
+    private readonly TimeProvider _timeProvider;
     private readonly Guid _collectorInstanceId;
     private readonly ICollectorSecretStore? _secretStore;
     private readonly string _dataDirectory;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly TaskCompletionSource<ManagedProcessExit> _exit = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<ManagedProcessDrainResult> _drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly object _stopGate = new();
     private readonly object _authorizationGate = new();
-    private Task? _stopTask;
     private InProcessCollectorActivation? _activation;
     private IReadOnlyDictionary<string, int> _selectedCapabilities = ImmutableDictionary<string, int>.Empty;
     private long _specRevision;
     private Guid? _drainMessageId;
     private ManagedProcessDrainResult? _drainResult;
     private CollectorAuthorizationChallenge? _authorizationChallenge;
+    private int _terminationRequests;
 
     private ManagedProcessProtocolClient(
         Process process,
@@ -807,12 +860,14 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
         ProtocolSupport protocolSupport,
         Guid collectorInstanceId,
         ICollectorSecretStore? secretStore,
-        string dataDirectory)
+        string dataDirectory,
+        TimeProvider timeProvider)
     {
         _process = process;
         _reader = process.StandardOutput;
         _writer = options.StandardInputDecorator?.Invoke(process.StandardInput) ?? process.StandardInput;
         _options = options;
+        _timeProvider = timeProvider;
         _collectorInstanceId = collectorInstanceId;
         _secretStore = secretStore;
         _dataDirectory = dataDirectory;
@@ -841,6 +896,8 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
         }
     }
     public bool WasTerminated { get; private set; }
+    public ManagedProcessTerminationCause? TerminationCause { get; private set; }
+    internal int TerminationRequests => Volatile.Read(ref _terminationRequests);
     public int? PendingFacts { get; private set; }
     public int? PendingGaps { get; private set; }
     public CollectorDrainReason DrainReason { get; private set; } = CollectorDrainReason.FlushCancelled;
@@ -895,6 +952,7 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
         ManagedProcessActivationOptions options,
         ICollectorSecretStore? secretStore,
         string dataDirectory,
+        TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
         var artifactPath = Path.GetFullPath(Path.Combine(
@@ -968,7 +1026,8 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
                 support,
                 collectorInstanceId,
                 secretStore,
-                dataDirectory);
+                dataDirectory,
+                timeProvider);
         }
         catch (ManagedProcessExitedException exception)
         {
@@ -1280,30 +1339,14 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
         DateTimeOffset deadline,
         CancellationToken cancellationToken)
     {
-        var managedDeadline = DateTimeOffset.UtcNow + _options.DrainGracePeriod;
-        var effectiveDeadline = deadline < managedDeadline ? deadline : managedDeadline;
-        Task stopTask;
-        lock (_stopGate)
-        {
-            _stopTask ??= StopCoreAsync(effectiveDeadline);
-            stopTask = _stopTask;
-        }
-        try
-        {
-            await stopTask.WaitAsync(cancellationToken);
-        }
-        catch
-        {
-            if (stopTask.IsCompleted)
-            {
-                lock (_stopGate)
-                {
-                    if (ReferenceEquals(_stopTask, stopTask))
-                        _stopTask = null;
-                }
-            }
-            throw;
-        }
+        cancellationToken.ThrowIfCancellationRequested();
+        return await StopOnceAsync(deadline).ConfigureAwait(false);
+    }
+
+    internal async ValueTask<InProcessCollectorDrainResult> StopOnceAsync(
+        DateTimeOffset deadline)
+    {
+        await StopCoreAsync(deadline).ConfigureAwait(false);
         var reason = WasTerminated
             ? CollectorDrainReason.DeadlineExceeded
             : DrainResult.Failure is null ? DrainReason : CollectorDrainReason.FlushCancelled;
@@ -1318,12 +1361,40 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
     public async Task AbortAsync()
     {
         if (!_process.HasExited)
-        {
-            WasTerminated = true;
-            Kill(_process);
-        }
+            Terminate(ManagedProcessTerminationCause.StartupAborted);
         await WaitForExitAsync(_process);
         _exit.TrySetResult(new ManagedProcessExit(ExitCode, null));
+    }
+
+    internal void TerminateAfterStopFailure()
+    {
+        if (_process.HasExited)
+            return;
+        Terminate(ManagedProcessTerminationCause.StopFailed);
+    }
+
+    internal async Task<InProcessCollectorDrainResult> TerminateAfterStopFailureAsync(
+        Exception exception,
+        DateTimeOffset deadline)
+    {
+        TerminateAfterStopFailure();
+        _ = await TryWaitForExitBeforeAsync(deadline).ConfigureAwait(false);
+        var failure = new ManagedProcessExit(ExitCode, exception);
+        _exit.TrySetResult(failure);
+        _drainResult = new ManagedProcessDrainResult(
+            PendingFacts,
+            PendingGaps,
+            WasTerminated,
+            failure);
+        _drained.TrySetResult(_drainResult);
+        return new InProcessCollectorDrainResult(
+            new InProcessCollectorLogicalDrainResult(
+                PendingFacts,
+                PendingGaps,
+                CollectorDrainReason.StopFailed,
+                RemainderDurable: false),
+            CollectorDrainCompletionReason.CompletionFailed,
+            exception.Message);
     }
 
     private async Task StopCoreAsync(DateTimeOffset deadline)
@@ -1341,8 +1412,7 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
         }
         if (_activation is null)
         {
-            WasTerminated = true;
-            Kill(_process);
+            Terminate(ManagedProcessTerminationCause.BeforeReady);
             await TryWaitForExitBeforeAsync(deadline);
             _drainResult = new ManagedProcessDrainResult(null, null, true);
             _drained.TrySetResult(_drainResult);
@@ -1367,10 +1437,7 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
             exception is OperationCanceledException && deadlineCancellation.IsCancellationRequested)
         {
             if (!_process.HasExited)
-            {
-                WasTerminated = true;
-                Kill(_process);
-            }
+                Terminate(ManagedProcessTerminationCause.DrainWriteFailed);
             await TryWaitForExitBeforeAsync(deadline);
             var drainWriteFailure = new ManagedProcessExit(ExitCode, exception);
             _exit.TrySetResult(drainWriteFailure);
@@ -1388,7 +1455,7 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
         {
             var drain = await _drained.Task.WaitAsync(deadlineCancellation.Token);
             drainAcknowledged = drain.Failure is null;
-            var remaining = deadline - DateTimeOffset.UtcNow;
+            var remaining = deadline - _timeProvider.GetUtcNow();
             if (remaining > TimeSpan.Zero)
                 await WaitForExitAsync(_process).WaitAsync(remaining);
         }
@@ -1397,10 +1464,7 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
             exception is OperationCanceledException && deadlineCancellation.IsCancellationRequested)
         {
             if (!_process.HasExited)
-            {
-                WasTerminated = true;
-                Kill(_process);
-            }
+                Terminate(ManagedProcessTerminationCause.DeadlineExceeded);
         }
         var processExited = await TryWaitForExitBeforeAsync(deadline);
         var exit = processExited && _exit.Task.IsCompletedSuccessfully
@@ -1421,16 +1485,16 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
 
     private CancellationTokenSource CreateDeadlineCancellation(DateTimeOffset deadline)
     {
-        var remaining = deadline - DateTimeOffset.UtcNow;
+        var remaining = deadline - _timeProvider.GetUtcNow();
         return remaining > TimeSpan.Zero
-            ? new CancellationTokenSource(remaining)
-            : new CancellationTokenSource(TimeSpan.Zero);
+            ? new CancellationTokenSource(remaining, _timeProvider)
+            : new CancellationTokenSource(TimeSpan.Zero, _timeProvider);
     }
 
     private async Task<bool> TryWaitForExitBeforeAsync(DateTimeOffset deadline)
     {
         var wait = WaitForExitAsync(_process);
-        var remaining = deadline - DateTimeOffset.UtcNow;
+        var remaining = deadline - _timeProvider.GetUtcNow();
         if (remaining <= TimeSpan.Zero)
         {
             Observe(wait);
@@ -1502,10 +1566,7 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
                 ? exception
                 : new ManagedProcessProtocolException("ManagedProcess protocol stream is invalid.", exception);
             if (!_process.HasExited)
-            {
-                WasTerminated = true;
-                Kill(_process);
-            }
+                Terminate(ManagedProcessTerminationCause.ProtocolFailure);
         }
         finally
         {
@@ -1899,6 +1960,15 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
     }
 
     private static Task WaitForExitAsync(Process process) => process.HasExited ? Task.CompletedTask : process.WaitForExitAsync();
+
+    private void Terminate(ManagedProcessTerminationCause cause)
+    {
+        if (Interlocked.CompareExchange(ref _terminationRequests, 1, 0) != 0)
+            return;
+        WasTerminated = true;
+        TerminationCause = cause;
+        Kill(_process);
+    }
 
     private static void Kill(Process process)
     {

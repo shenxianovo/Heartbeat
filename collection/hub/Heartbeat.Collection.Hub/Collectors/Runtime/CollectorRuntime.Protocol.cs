@@ -67,7 +67,10 @@ public sealed partial class CollectorRuntime
         IInProcessCollector collector,
         string executionDriver,
         Guid helloMessageId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<CollectorActivationSession, ICollectorActivationLifetimeDriver>? lifetimeDriver = null,
+        TimeSpan? drainBudget = null,
+        Action<CollectorActivationLifetime>? lifetimeCreated = null)
     {
         ArgumentNullException.ThrowIfNull(package);
         ArgumentNullException.ThrowIfNull(collector);
@@ -183,7 +186,8 @@ public sealed partial class CollectorRuntime
                     package,
                     ActivationDeliveryCapability.Complete);
                 lifetime = new CollectorActivationLifetime(
-                    new InProcessCollectorActivationLifetimeDriver(collector, session),
+                    lifetimeDriver?.Invoke(session) ??
+                        new InProcessCollectorActivationLifetimeDriver(collector, session),
                     session.FenceDeliveryAfterDeadline,
                     () => CompleteActivationLifetime(
                         collectorInstanceId,
@@ -191,8 +195,9 @@ public sealed partial class CollectorRuntime
                         helloMessageId,
                         activation),
                     _options.TimeProvider,
-                    _options.InProcessDrainGracePeriod);
+                    drainBudget ?? _options.InProcessDrainGracePeriod);
                 _activationLifetimes.Add(activationId, lifetime);
+                lifetimeCreated?.Invoke(lifetime);
             }
 
             using var activationCancellation = CancellationTokenSource.CreateLinkedTokenSource(

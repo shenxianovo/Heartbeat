@@ -172,6 +172,23 @@ public sealed class CollectorActivationLifetimeTests
     }
 
     [Fact]
+    public async Task DriverProjectsFailedStopBeforeHubFenceAndOwnershipRelease()
+    {
+        var ordering = new List<string>();
+        var lifetime = CreateLifetime(
+            new ManagedFailureProjectionDriver(() => ordering.Add("driver-fence")),
+            fence: () => ordering.Add("hub-fence"),
+            release: () => ordering.Add("release"));
+
+        var terminal = await lifetime.RequestStopAsync(
+            new CollectorActivationStopIntent(CollectorActivationStopCause.RuntimeStopping));
+
+        var execution = Assert.IsType<ManagedProcessTerminatedExecution>(terminal.Execution);
+        Assert.Equal(ManagedProcessTerminationCause.StopFailed, execution.Cause);
+        Assert.Equal(["driver-fence", "hub-fence", "release"], ordering);
+    }
+
+    [Fact]
     public async Task FenceFailureRetainsOwnershipAndIsATerminalValue()
     {
         var released = 0;
@@ -193,9 +210,9 @@ public sealed class CollectorActivationLifetimeTests
     [Fact]
     public async Task DeadlineFencesCancellationIgnoringStopAndReleasesExactlyOnce()
     {
-        var never = new TaskCompletionSource<CollectorActivationDrainOutcome>(
+        var never = new TaskCompletionSource<CollectorActivationDriverStopResult>(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        var driver = new DelegateDriver((_, _) => new ValueTask<CollectorActivationDrainOutcome>(never.Task));
+        var driver = new DelegateDriver((_, _) => new ValueTask<CollectorActivationDriverStopResult>(never.Task));
         var fenced = 0;
         var released = 0;
         var lifetime = CreateLifetime(
@@ -226,42 +243,56 @@ public sealed class CollectorActivationLifetimeTests
             timeProvider ?? TimeProvider.System,
             drainBudget ?? TimeSpan.FromSeconds(5));
 
-    private static CollectorActivationDrainOutcome Drained() => new(
-        0,
-        0,
-        CollectorDrainReason.Drained,
-        RemainderDurable: true,
-        CollectorDrainCompletionReason.Completed);
+    private static CollectorActivationDriverStopResult Drained() => new(
+        new CollectorActivationDrainOutcome(
+            0,
+            0,
+            CollectorDrainReason.Drained,
+            RemainderDurable: true,
+            CollectorDrainCompletionReason.Completed),
+        new InProcessStoppedExecution());
 
     private sealed class ControlledDriver : ICollectorActivationLifetimeDriver
     {
         private readonly TaskCompletionSource _entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource<CollectorActivationDrainOutcome> _completion = new(
+        private readonly TaskCompletionSource<CollectorActivationDriverStopResult> _completion = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Task StopEntered => _entered.Task;
         public int CooperativeStopAttempts => 2;
 
-        public ValueTask<CollectorActivationDrainOutcome> StopAsync(
+        public ValueTask<CollectorActivationDriverStopResult> StopAsync(
             DateTimeOffset deadline,
             CancellationToken cancellationToken)
         {
             _entered.TrySetResult();
-            return new ValueTask<CollectorActivationDrainOutcome>(_completion.Task);
+            return new ValueTask<CollectorActivationDriverStopResult>(_completion.Task);
         }
 
-        public void Complete(CollectorActivationDrainOutcome result) => _completion.TrySetResult(result);
+        public void Complete(CollectorActivationDriverStopResult result) => _completion.TrySetResult(result);
     }
 
     private sealed class DelegateDriver(
-        Func<DateTimeOffset, CancellationToken, ValueTask<CollectorActivationDrainOutcome>> stop)
+        Func<DateTimeOffset, CancellationToken, ValueTask<CollectorActivationDriverStopResult>> stop)
         : ICollectorActivationLifetimeDriver
     {
         public int CooperativeStopAttempts => 2;
 
-        public ValueTask<CollectorActivationDrainOutcome> StopAsync(
+        public ValueTask<CollectorActivationDriverStopResult> StopAsync(
             DateTimeOffset deadline,
             CancellationToken cancellationToken) => stop(deadline, cancellationToken);
+    }
+
+    private sealed class ManagedFailureProjectionDriver(Action fence) : ICollectorActivationLifetimeDriver
+    {
+        public ValueTask<CollectorActivationDriverStopResult> StopAsync(
+            DateTimeOffset deadline,
+            CancellationToken cancellationToken) => throw new IOException("managed stop failed");
+
+        public CollectorActivationExecution ProjectFailedStop(CollectorDrainReason reason) =>
+            new ManagedProcessTerminatedExecution(ManagedProcessTerminationCause.StopFailed, null);
+
+        public void FenceAfterDeadline() => fence();
     }
 
     private sealed class MutableTimeProvider(DateTimeOffset now) : TimeProvider

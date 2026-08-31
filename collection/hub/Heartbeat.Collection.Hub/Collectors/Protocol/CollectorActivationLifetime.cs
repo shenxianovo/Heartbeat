@@ -5,7 +5,8 @@ internal enum CollectorActivationStopCause
     ActivationFailed,
     Deactivated,
     RuntimeStopping,
-    Supervision
+    Supervision,
+    UpdateRequested
 }
 
 internal sealed record CollectorActivationStopIntent(CollectorActivationStopCause Cause);
@@ -43,7 +44,34 @@ internal sealed record CollectorActivationTerminalResult(
     int StopAttempts,
     Exception? StopError,
     bool OwnershipReleased,
-    Exception? ReleaseError);
+    Exception? ReleaseError,
+    CollectorActivationExecution Execution);
+
+internal abstract record CollectorActivationExecution;
+
+internal sealed record InProcessStoppedExecution : CollectorActivationExecution;
+
+internal sealed record InProcessFencedExecution : CollectorActivationExecution;
+
+internal sealed record ManagedProcessExitedExecution(int? ExitCode) : CollectorActivationExecution;
+
+internal enum ManagedProcessTerminationCause
+{
+    BeforeReady,
+    DrainWriteFailed,
+    DeadlineExceeded,
+    ProtocolFailure,
+    StartupAborted,
+    StopFailed
+}
+
+internal sealed record ManagedProcessTerminatedExecution(
+    ManagedProcessTerminationCause Cause,
+    int? ExitCode) : CollectorActivationExecution;
+
+internal sealed record CollectorActivationDriverStopResult(
+    CollectorActivationDrainOutcome DrainOutcome,
+    CollectorActivationExecution Execution);
 
 internal sealed record CollectorActivationDrainOutcome(
     int? PendingFacts,
@@ -83,9 +111,12 @@ internal interface ICollectorActivationLifetimeDriver
 {
     int CooperativeStopAttempts => 1;
 
-    ValueTask<CollectorActivationDrainOutcome> StopAsync(
+    ValueTask<CollectorActivationDriverStopResult> StopAsync(
         DateTimeOffset deadline,
         CancellationToken cancellationToken);
+
+    CollectorActivationExecution ProjectFailedStop(CollectorDrainReason reason) =>
+        new InProcessFencedExecution();
 
     void FenceAfterDeadline() { }
 }
@@ -96,20 +127,34 @@ internal sealed class InProcessCollectorActivationLifetimeDriver(
 {
     public int CooperativeStopAttempts => 2;
 
-    public async ValueTask<CollectorActivationDrainOutcome> StopAsync(
+    public async ValueTask<CollectorActivationDriverStopResult> StopAsync(
         DateTimeOffset deadline,
         CancellationToken cancellationToken)
     {
         session.BeginDrain();
         var result = await collector.StopAsync(deadline, cancellationToken).ConfigureAwait(false);
-        return CollectorActivationDrainOutcome.FromInProcess(result);
+        return new CollectorActivationDriverStopResult(
+            CollectorActivationDrainOutcome.FromInProcess(result),
+            new InProcessStoppedExecution());
     }
 
     public void FenceAfterDeadline()
     {
         if (collector is IInProcessCollectorDeadlineFence fence)
-            fence.FenceAfterDeadline();
+        {
+            Observe(Task.Factory.StartNew(
+                fence.FenceAfterDeadline,
+                CancellationToken.None,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default));
+        }
     }
+
+    private static void Observe(Task task) => _ = task.ContinueWith(
+        static completed => _ = completed.Exception,
+        CancellationToken.None,
+        TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
+        TaskScheduler.Default);
 }
 
 /// <summary>
@@ -245,11 +290,12 @@ internal sealed class CollectorActivationLifetime
             remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero,
             _timeProvider);
 
-        CollectorActivationDrainOutcome? drainResult = null;
+        CollectorActivationDriverStopResult? driverResult = null;
         Exception? stopError = null;
         var attempts = 0;
         var deadlineExceeded = false;
-        while (attempts < _driver.CooperativeStopAttempts && !deadlineCancellation.IsCancellationRequested)
+        while (attempts < _driver.CooperativeStopAttempts &&
+               (attempts == 0 || !deadlineCancellation.IsCancellationRequested))
         {
             attempts++;
             var attempt = InvokeStopAsync(deadline, deadlineCancellation.Token);
@@ -261,7 +307,7 @@ internal sealed class CollectorActivationLifetime
             }
             try
             {
-                drainResult = await attempt.ConfigureAwait(false);
+                driverResult = await attempt.ConfigureAwait(false);
                 stopError = null;
                 break;
             }
@@ -271,27 +317,26 @@ internal sealed class CollectorActivationLifetime
             }
         }
 
-        if (drainResult is null)
+        if (driverResult is null)
         {
-            drainResult = deadlineExceeded || deadlineCancellation.IsCancellationRequested
-                ? DeadlineExceeded()
-                : StopFailed(stopError);
+            driverResult = new CollectorActivationDriverStopResult(
+                deadlineExceeded || deadlineCancellation.IsCancellationRequested
+                    ? DeadlineExceeded()
+                    : StopFailed(stopError),
+                _driver.ProjectFailedStop(
+                    deadlineExceeded || deadlineCancellation.IsCancellationRequested
+                        ? CollectorDrainReason.DeadlineExceeded
+                        : CollectorDrainReason.StopFailed));
         }
 
         Exception? releaseError = null;
         var fenced = false;
         try
         {
+            if (driverResult.DrainOutcome.Reason is CollectorDrainReason.DeadlineExceeded or CollectorDrainReason.StopFailed)
+                _driver.FenceAfterDeadline();
             _fence();
             fenced = true;
-            if (drainResult.Reason is CollectorDrainReason.DeadlineExceeded or CollectorDrainReason.StopFailed)
-            {
-                Observe(Task.Factory.StartNew(
-                    _driver.FenceAfterDeadline,
-                    CancellationToken.None,
-                    TaskCreationOptions.LongRunning,
-                    TaskScheduler.Default));
-            }
         }
         catch (Exception exception)
         {
@@ -313,14 +358,15 @@ internal sealed class CollectorActivationLifetime
         _terminal.TrySetResult(new CollectorActivationTerminalResult(
             intent,
             deadline,
-            drainResult,
+            driverResult.DrainOutcome,
             attempts,
             stopError,
             Volatile.Read(ref _released) != 0 && releaseError is null,
-            releaseError));
+            releaseError,
+            driverResult.Execution));
     }
 
-    private Task<CollectorActivationDrainOutcome> InvokeStopAsync(
+    private Task<CollectorActivationDriverStopResult> InvokeStopAsync(
         DateTimeOffset deadline,
         CancellationToken cancellationToken) => Task.Factory.StartNew(
         async () => await _driver.StopAsync(deadline, cancellationToken).ConfigureAwait(false),

@@ -31,6 +31,7 @@ public sealed class InProcessCollectorActivation : IAsyncDisposable
             : null;
     internal LocalCollectorPackage Package => _session.Package;
     internal CollectorActivationSession Session => _session;
+    internal CollectorActivationLifetime Lifetime => _lifetime;
 
     internal bool TryCommitAcknowledgement(Action commit) =>
         _session.TryCommitAcknowledgement(commit);
