@@ -640,7 +640,7 @@ public sealed class CollectorProtocolClient(
             {
                 try
                 {
-                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                    await Task.Delay(delay, _timeProvider, cancellationToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
                 {
@@ -705,7 +705,7 @@ public sealed class CollectorProtocolClient(
             {
                 try
                 {
-                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                    await Task.Delay(delay, _timeProvider, cancellationToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
                 {

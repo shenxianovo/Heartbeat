@@ -6,6 +6,9 @@ namespace Heartbeat.Collection.CollectorProtocol.Tests;
 
 public sealed class CollectorProtocolClientTests
 {
+    /// <summary>Drain budget spent on the virtual clock instead of on real scheduling.</summary>
+    private static readonly TimeSpan DrainBudget = TimeSpan.FromMilliseconds(100);
+
     [Fact]
     public void DrainOutcomeCorpusMatchesClientVocabulary()
     {
@@ -1097,6 +1100,7 @@ public sealed class CollectorProtocolClientTests
     {
         var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-dirty-supersede-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
+        var time = new VirtualTimeProvider();
         SuspendedPublishBinding? binding = null;
         var publicationAttempts = 0;
         binding = new SuspendedPublishBinding(
@@ -1106,19 +1110,24 @@ public sealed class CollectorProtocolClientTests
             {
                 if (Interlocked.Increment(ref publicationAttempts) == 1)
                 {
-                    binding!.RequestDrain(TimeSpan.FromMilliseconds(100));
+                    binding!.RequestDrain(DrainBudget);
                     throw new IOException("first ordinary admission publication failed");
                 }
                 File.Move(prepared, authoritative, overwrite: true);
                 return true;
-            });
-        await using var client = new CollectorProtocolClient(Definition(), binding);
+            },
+            timeProvider: time);
+        await using var client = new CollectorProtocolClient(Definition(), binding, time);
         var run = client.RunAsync(new PublishingApplication());
 
         try
         {
             Assert.True(binding.PublishEntered.Wait(TimeSpan.FromSeconds(2)));
-            var result = await run.WaitAsync(TimeSpan.FromSeconds(1));
+            // The drain deadline is spent on the virtual clock once it is scheduled, so the superseded
+            // admission is always still unpersisted when the deadline fires.
+            await time.TimerScheduledAsync(DrainBudget).WaitAsync(TimeSpan.FromSeconds(5));
+            time.Advance(DrainBudget);
+            var result = await run.WaitAsync(TimeSpan.FromSeconds(5));
 
             Assert.Equal(CollectorProtocolDrainReason.PersistenceFailed, result.LogicalResult.Reason);
             Assert.False(result.LogicalResult.RemainderDurable);
@@ -1801,11 +1810,122 @@ public sealed class CollectorProtocolClientTests
         }
     }
 
+    /// <summary>
+    /// Virtual clock for drain deadlines and persistence retries. Tests spend the drain budget by
+    /// advancing it, and wait for a scheduled delay instead of guessing how fast the machine is.
+    /// </summary>
+    private sealed class VirtualTimeProvider : TimeProvider
+    {
+        private readonly object _gate = new();
+        private readonly List<VirtualTimer> _timers = [];
+        private readonly Dictionary<TimeSpan, TaskCompletionSource> _scheduled = [];
+        private DateTimeOffset _utcNow = new(2026, 9, 1, 8, 0, 0, TimeSpan.Zero);
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            lock (_gate) return _utcNow;
+        }
+
+        public override ITimer CreateTimer(
+            TimerCallback callback,
+            object? state,
+            TimeSpan dueTime,
+            TimeSpan period)
+        {
+            var timer = new VirtualTimer(this, callback, state, dueTime, period);
+            TaskCompletionSource? scheduled;
+            lock (_gate)
+            {
+                _timers.Add(timer);
+                _ = _scheduled.Remove(dueTime, out scheduled);
+            }
+            scheduled?.TrySetResult();
+            if (dueTime <= TimeSpan.Zero && dueTime != Timeout.InfiniteTimeSpan)
+                timer.Fire();
+            return timer;
+        }
+
+        /// <summary>Completes once a delay of exactly this duration is scheduled on the clock.</summary>
+        public Task TimerScheduledAsync(TimeSpan dueTime)
+        {
+            lock (_gate)
+            {
+                if (_timers.Any(timer => timer.Matches(dueTime)))
+                    return Task.CompletedTask;
+                if (!_scheduled.TryGetValue(dueTime, out var scheduled))
+                {
+                    scheduled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _scheduled[dueTime] = scheduled;
+                }
+                return scheduled.Task;
+            }
+        }
+
+        public void Advance(TimeSpan duration)
+        {
+            VirtualTimer[] due;
+            lock (_gate)
+            {
+                _utcNow += duration;
+                due = [.. _timers.Where(timer => timer.IsDue(_utcNow)).OrderBy(timer => timer.DueAt)];
+            }
+            foreach (var timer in due)
+                timer.Fire();
+        }
+
+        private sealed class VirtualTimer(
+            VirtualTimeProvider owner,
+            TimerCallback callback,
+            object? state,
+            TimeSpan dueTime,
+            TimeSpan period) : ITimer
+        {
+            private bool _disposed;
+
+            public DateTimeOffset DueAt { get; private set; } = owner.GetUtcNow() + dueTime;
+
+            public bool Matches(TimeSpan scheduledDueTime) => !_disposed && dueTime == scheduledDueTime;
+
+            public bool IsDue(DateTimeOffset now) =>
+                !_disposed && dueTime != Timeout.InfiniteTimeSpan && now >= DueAt;
+
+            public void Fire()
+            {
+                if (_disposed)
+                    return;
+                if (period == Timeout.InfiniteTimeSpan)
+                    _disposed = true;
+                else
+                    DueAt += period;
+                callback(state);
+            }
+
+            public bool Change(TimeSpan newDueTime, TimeSpan newPeriod)
+            {
+                if (_disposed)
+                    return false;
+                dueTime = newDueTime;
+                period = newPeriod;
+                DueAt = owner.GetUtcNow() + newDueTime;
+                return true;
+            }
+
+            public void Dispose() => _disposed = true;
+
+            public ValueTask DisposeAsync()
+            {
+                Dispose();
+                return ValueTask.CompletedTask;
+            }
+        }
+    }
+
     private sealed class SuspendedPublishBinding(
         string dataDirectory,
         bool ignoreCancellation = false,
         bool ignoreCompletionCancellation = false,
-        Func<string, string, bool>? durableFilePublisher = null) : ICollectorProtocolBinding
+        Func<string, string, bool>? durableFilePublisher = null,
+        TimeProvider? timeProvider = null) : ICollectorProtocolBinding
     {
         private readonly TaskCompletionSource<CollectorFactBatchAcknowledgement> _publish =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1825,7 +1945,7 @@ public sealed class CollectorProtocolClientTests
 
         public void RequestDrain(TimeSpan? grace = null) => _drain.TrySetResult(new CollectorDrainRequest(
             Guid.CreateVersion7(),
-            DateTimeOffset.UtcNow.Add(grace ?? TimeSpan.FromSeconds(5))));
+            (timeProvider ?? TimeProvider.System).GetUtcNow().Add(grace ?? TimeSpan.FromSeconds(5))));
 
         public ValueTask<CollectorClientInitialization> StartAsync(
             CollectorClientDefinition definition,
