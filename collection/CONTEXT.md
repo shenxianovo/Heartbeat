@@ -153,6 +153,13 @@ _Avoid_: 把 System 当作可远程替换的独立 Package、把 BuiltIn 等同�
 发布方为非 BuiltIn 官方 Collector Package 提供的版本目录与制品来源；它提供精确候选的发现和下载事实，不保存用户 Desired State，也不承担 Installation、批准或 Activation。来源认证强度是部署能力，不改变 Registry 的领域身份。
 _Avoid_: Collector Registry（旧 source 级配置账本）、Analytics 控制面、把 channel 指针当作不可变版本
 
+**Collector Registry Index（采集器注册源索引）**:
+Official Collector Package Registry 中某个 Package 的 `current.json`：schema version、PackageId、Version 与
+唯一 artifact 的 URL、字节长度、SHA-256。它只回答“当前精确候选在哪、应当是哪些字节”，不重述 Package 身份
+（那是 Collector Package manifest 的权威），也不携带 channel、签名、兼容矩阵或发布时间。artifact URL 必须与
+Registry base URI 同 origin 且落在该 Package 该 Version 的目录内，redirect 同样受这条边界约束。
+_Avoid_: release manifest、channel 指针、把 index 当成 Package 身份或兼容性来源
+
 **Collector Update Offer（采集器更新候选）**:
 Runtime 已验证并解析出的某个 Collector Instance 的精确更新候选，绑定 PackageId、Version、内容 hash 与宿主兼容结果；只有 owner 明确批准该精确候选后才可开始该 Instance 的激活尝试。
 _Avoid_: latest、opaque workflow token、未验证的 Registry 响应、把发现或下载等同于批准和更新成功
