@@ -1737,7 +1737,7 @@ public class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task RuntimeDispose_StartingCollectorStopFailureReturnsSoDisposeCanBeRetried()
+    public async Task RuntimeDispose_StartingCollectorStopFailureRetainsOwnershipUntilActivationTerminates()
     {
         using var directory = TemporaryDirectory.Create();
         var statePath = Path.Combine(directory.Path, "collector-runtime.json");
@@ -1749,7 +1749,7 @@ public class InProcessCollectorProtocolTranscriptTests
             new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
             new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
         var collector = new ReferenceInProcessCollector(
-            blockStreamsOpened: true,
+            synchronouslyBlockStreamsOpened: true,
             stopFailures: 1);
         var activating = runtime.ActivateInProcessAsync(
             instance.CollectorInstanceId,
@@ -1766,7 +1766,7 @@ public class InProcessCollectorProtocolTranscriptTests
         await Assert.ThrowsAnyAsync<Exception>(() => activating);
         await runtime.DisposeAsync();
 
-        Assert.Equal(2, collector.StopCalls);
+        Assert.Equal(1, collector.StopCalls);
         using var reopened = CollectorRuntime.Open(statePath, new RecordingSegmentSink());
         Assert.Equal(instance.CollectorInstanceId, reopened.GetInstance(instance.CollectorInstanceId).CollectorInstanceId);
     }
