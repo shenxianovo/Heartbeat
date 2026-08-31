@@ -181,17 +181,18 @@ public sealed partial class CollectorRuntime
                         "Stop the current Collector Activation before starting its replacement.");
                 _startingInstances.Add(collectorInstanceId);
                 registeredStartingInstance = true;
-                startingCollector = new StartingCollector(
-                    collectorInstanceId,
-                    collector,
-                    InProcessDrainDeadline,
-                    _options.TimeProvider);
-                _startingCollectors.Add(collectorInstanceId, startingCollector);
                 session = CreateActivationSession(
                     activationId,
                     helloMessageId,
                     package,
                     ActivationDeliveryCapability.Complete);
+                startingCollector = new StartingCollector(
+                    collectorInstanceId,
+                    collector,
+                    session,
+                    InProcessDrainDeadline,
+                    _options.TimeProvider);
+                _startingCollectors.Add(collectorInstanceId, startingCollector);
             }
 
             using var activationCancellation = CancellationTokenSource.CreateLinkedTokenSource(
@@ -1666,6 +1667,7 @@ public sealed partial class CollectorRuntime
     private sealed class StartingCollector(
         Guid collectorInstanceId,
         IInProcessCollector collector,
+        CollectorActivationSession session,
         Func<DateTimeOffset> drainDeadline,
         TimeProvider timeProvider)
     {
@@ -1756,6 +1758,7 @@ public sealed partial class CollectorRuntime
             }
             finally
             {
+                session.FenceDeliveryAfterDeadline();
                 _activationCompleted.TrySetResult();
             }
         }

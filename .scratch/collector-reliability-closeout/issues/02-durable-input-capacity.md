@@ -175,3 +175,8 @@ directory-entry/power-loss durability 与公共 atomic replacement primitive 仍
 语法完整后的 schema 反序列化错误不会进入 repair catch。两条记录现在均保留原字节并 fail；既有半行
 断尾恢复、合法无 LF 补齐、中间损坏拒绝及修复后 append+restart 一并通过，ingress store 14/14。
 本 issue 等待 Feature A 最终完整门禁与双轴复审后再恢复 `done`。
+
+后续 terminal-fence 审计补充确认：即使 repair 判定正确，原地 `SetLength`/追加 LF 仍可被忽略取消的
+Initialize 带到 Runtime Dispose 之后。两种 repair 已统一为 COW prepared replacement，并通过 Hub-owned
+fence 发布；预先 fence 的两条 red 为 0/2，malformed-tail 另以 temp flush 后 fence→release 的确定性交错
+验证原 authoritative bytes 不变。该补充不扩大可修复输入集合，完整语义不兼容记录仍保留并 fail。

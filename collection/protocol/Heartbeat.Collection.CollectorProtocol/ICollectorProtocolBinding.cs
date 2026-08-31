@@ -44,6 +44,18 @@ public interface ICollectorProtocolBinding : IAsyncDisposable
     ValueTask CompleteDrainAsync(CollectorDrainResult result, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Linearizes publication of a prepared protocol-owned durable file with a binding-owned
+    /// terminal fence. Implementations must return false without moving the file once fenced.
+    /// </summary>
+    bool TryPublishDurableFile(string preparedPath, string authoritativePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(preparedPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(authoritativePath);
+        File.Move(preparedPath, authoritativePath, overwrite: true);
+        return true;
+    }
+
+    /// <summary>
     /// Binding-local fence checked immediately before the client mutates durable responsibility
     /// from an ACK. Transport bindings normally keep the default no-op; an InProcess binding can
     /// reject an ACK after its Hub writer session has been hard-fenced without waiting for

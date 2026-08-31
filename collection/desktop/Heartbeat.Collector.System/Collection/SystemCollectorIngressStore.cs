@@ -167,7 +167,13 @@ internal sealed class SystemCollectorIngressStore
                     newline < 0 &&
                     nextLineStart == bytes.Length)
                 {
-                    RepairMalformedTail(chunk.Path, lineStart);
+                    RepairTailChunk(
+                        chunk.Path,
+                        bytes,
+                        lineStart,
+                        appendNewline: false,
+                        commitFence,
+                        beforeCommit);
                     break;
                 }
                 catch (JsonException exception)
@@ -247,7 +253,15 @@ internal sealed class SystemCollectorIngressStore
                     activeSegmentCheckpoint = entry.Checkpoint;
                 }
                 if (newline < 0)
-                    RepairMissingTailNewline(chunk.Path);
+                {
+                    RepairTailChunk(
+                        chunk.Path,
+                        bytes,
+                        bytes.Length,
+                        appendNewline: true,
+                        commitFence,
+                        beforeCommit);
+                }
                 lineStart = nextLineStart;
             }
         }
@@ -633,30 +647,40 @@ internal sealed class SystemCollectorIngressStore
         }
     }
 
-    private static void RepairMalformedTail(string path, long validLength)
+    private static void RepairTailChunk(
+        string path,
+        byte[] bytes,
+        int retainedLength,
+        bool appendNewline,
+        ICollectorDurableCommitFence commitFence,
+        Action? beforeCommit)
     {
-        using var stream = new FileStream(
-            path,
-            FileMode.Open,
-            FileAccess.Write,
-            FileShare.Read,
-            4096,
-            FileOptions.WriteThrough);
-        stream.SetLength(validLength);
-        stream.Flush(flushToDisk: true);
-    }
-
-    private static void RepairMissingTailNewline(string path)
-    {
-        using var stream = new FileStream(
-            path,
-            FileMode.Append,
-            FileAccess.Write,
-            FileShare.Read,
-            4096,
-            FileOptions.WriteThrough);
-        stream.WriteByte((byte)'\n');
-        stream.Flush(flushToDisk: true);
+        var temporary = path + $".{Guid.NewGuid():N}.tmp";
+        try
+        {
+            using (var stream = new FileStream(
+                       temporary,
+                       FileMode.CreateNew,
+                       FileAccess.Write,
+                       FileShare.None,
+                       4096,
+                       FileOptions.WriteThrough))
+            {
+                stream.Write(bytes, 0, retainedLength);
+                if (appendNewline)
+                    stream.WriteByte((byte)'\n');
+                stream.Flush(flushToDisk: true);
+            }
+            beforeCommit?.Invoke();
+            if (!commitFence.TryPublishFile(temporary, path))
+                throw new OperationCanceledException(
+                    "System Collector ingress tail repair was fenced before publication.");
+        }
+        finally
+        {
+            if (File.Exists(temporary))
+                File.Delete(temporary);
+        }
     }
 
     private static List<(string Path, int Index)> JournalChunks(string path)

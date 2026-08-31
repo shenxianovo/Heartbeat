@@ -203,6 +203,51 @@ public sealed class CollectorProtocolClientTests
     }
 
     [Fact]
+    public void CorruptOutbox_FenceBetweenEvidenceAndRecoveryPublicationKeepsAuthoritativeEvidence()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-corrupt-fence-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, "collector-protocol-outbox.json");
+        var recoveredAt = new DateTimeOffset(2026, 8, 31, 8, 0, 0, TimeSpan.Zero);
+        const string corruptJson = "{truncated";
+        File.WriteAllText(path, corruptJson);
+        File.SetLastWriteTimeUtc(path, recoveredAt.AddMinutes(-5).UtcDateTime);
+        var publicationAttempts = 0;
+        try
+        {
+            Assert.Throws<OperationCanceledException>(() => CollectorProtocolOutbox.Open(
+                root,
+                16,
+                Definition().Outputs,
+                recoveredAt,
+                (preparedPath, authoritativePath) =>
+                {
+                    publicationAttempts++;
+                    if (publicationAttempts != 1)
+                        return false;
+                    File.Move(preparedPath, authoritativePath, overwrite: true);
+                    return true;
+                }));
+
+            Assert.Equal(2, publicationAttempts);
+            Assert.Equal(corruptJson, File.ReadAllText(path));
+            var restarted = CollectorProtocolOutbox.Open(
+                root,
+                16,
+                Definition().Outputs,
+                recoveredAt.AddMinutes(1));
+            var gap = Assert.Single(restarted.Gaps).Gap;
+            Assert.Equal("outbox_corrupted", gap.Reason);
+            Assert.Equal(recoveredAt.AddMinutes(-5), gap.Start);
+            Assert.Equal(recoveredAt.AddMinutes(1), gap.End);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void CapacityEvictionPersistsExactGapAndRemainingFactsInOneRestartableMutation()
     {
         var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-capacity-{Guid.NewGuid():N}");
@@ -240,6 +285,105 @@ public sealed class CollectorProtocolClientTests
             var acknowledged = CollectorProtocolOutbox.Open(root, 2, Definition().Outputs, start.AddMinutes(2));
             Assert.Empty(acknowledged.Gaps);
             Assert.Equal(facts.Skip(1).Select(fact => fact.FactId), acknowledged.Facts.Select(item => item.Fact.FactId));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task BeginActivation_PreparedOutboxReleasedAfterTerminalFenceDoesNotPublish()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-initial-fence-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, "collector-protocol-outbox.json");
+        var now = new DateTimeOffset(2026, 8, 31, 8, 0, 0, TimeSpan.Zero);
+        using var publicationEntered = new ManualResetEventSlim();
+        using var releasePublication = new ManualResetEventSlim();
+        var terminallyFenced = 0;
+        try
+        {
+            CollectorProtocolOutbox.Open(root, 16, Definition().Outputs, now).Enqueue(new CollectorFact(
+                "activity",
+                1,
+                Guid.CreateVersion7(),
+                1,
+                null,
+                CollectorFactRecordState.Present,
+                new CollectorEventFactTime(now),
+                JsonSerializer.SerializeToElement(new { identityKey = "reference|fenced" })));
+            var authoritativeBeforeActivation = File.ReadAllText(path);
+            var publicationAttempts = 0;
+            var restarted = CollectorProtocolOutbox.Open(
+                root,
+                16,
+                Definition().Outputs,
+                now.AddMinutes(1),
+                (preparedPath, authoritativePath) =>
+                {
+                    publicationAttempts++;
+                    Assert.True(File.Exists(preparedPath));
+                    publicationEntered.Set();
+                    Assert.True(releasePublication.Wait(TimeSpan.FromSeconds(5)));
+                    if (Volatile.Read(ref terminallyFenced) != 0)
+                        return false;
+                    File.Move(preparedPath, authoritativePath, overwrite: true);
+                    return true;
+                });
+
+            var beginActivation = Task.Run(restarted.BeginActivation);
+            Assert.True(publicationEntered.Wait(TimeSpan.FromSeconds(2)));
+            Volatile.Write(ref terminallyFenced, 1);
+            releasePublication.Set();
+
+            await Assert.ThrowsAsync<OperationCanceledException>(() => beginActivation);
+
+            Assert.Equal(1, publicationAttempts);
+            Assert.Equal(authoritativeBeforeActivation, File.ReadAllText(path));
+        }
+        finally
+        {
+            releasePublication.Set();
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ClientInitialOutboxMutation_UsesBindingDurablePublicationFence()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-client-initial-fence-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, "collector-protocol-outbox.json");
+        var now = new DateTimeOffset(2026, 8, 31, 8, 0, 0, TimeSpan.Zero);
+        try
+        {
+            CollectorProtocolOutbox.Open(root, 16, Definition().Outputs, now).Enqueue(new CollectorFact(
+                "activity",
+                1,
+                Guid.CreateVersion7(),
+                1,
+                null,
+                CollectorFactRecordState.Present,
+                new CollectorEventFactTime(now),
+                JsonSerializer.SerializeToElement(new { identityKey = "reference|binding-fenced" })));
+            var authoritativeBeforeActivation = File.ReadAllText(path);
+            var publicationAttempts = 0;
+            var binding = new FakeBinding(
+                root,
+                new Queue<CollectorFactDeliveryStatus>(),
+                durableFilePublisher: (_, _) =>
+                {
+                    publicationAttempts++;
+                    return false;
+                });
+            await using var client = new CollectorProtocolClient(Definition(), binding);
+
+            await Assert.ThrowsAsync<OperationCanceledException>(
+                () => client.RunAsync(new IdleApplication()));
+
+            Assert.Equal(1, publicationAttempts);
+            Assert.Equal(authoritativeBeforeActivation, File.ReadAllText(path));
         }
         finally
         {
@@ -1148,7 +1292,8 @@ public sealed class CollectorProtocolClientTests
         Exception? completionFailure = null,
         CollectorFactDeliveryStatus? fallbackOutcome = null,
         TimeSpan? drainGrace = null,
-        int drainAfterPublishes = 0) : ICollectorProtocolBinding
+        int drainAfterPublishes = 0,
+        Func<string, string, bool>? durableFilePublisher = null) : ICollectorProtocolBinding
     {
         private readonly TaskCompletionSource _publishThresholdReached =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1249,7 +1394,17 @@ public sealed class CollectorProtocolClientTests
                 ? ValueTask.CompletedTask
                 : ValueTask.FromException(completionFailure);
 
+        public bool TryPublishDurableFile(string preparedPath, string authoritativePath) =>
+            durableFilePublisher?.Invoke(preparedPath, authoritativePath) ??
+            PublishUnfenced(preparedPath, authoritativePath);
+
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        private static bool PublishUnfenced(string preparedPath, string authoritativePath)
+        {
+            File.Move(preparedPath, authoritativePath, overwrite: true);
+            return true;
+        }
     }
 
     private sealed class QueuedSynchronizationContext : SynchronizationContext

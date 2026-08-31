@@ -23,6 +23,7 @@ internal sealed class CollectorActivationSession
     private readonly List<CollectorHandshakeStep> _handshakeTranscript = [CollectorHandshakeStep.Hello];
     private CollectorHandshakeStep _lastHandshakeStep = CollectorHandshakeStep.Hello;
     private CollectorActivationState _state;
+    private int _deadlineFenced;
     private int _releaseCompleted;
     private ImmutableDictionary<string, FactStreamDescriptor> _streams =
         ImmutableDictionary<string, FactStreamDescriptor>.Empty.WithComparers(StringComparer.Ordinal);
@@ -287,7 +288,10 @@ internal sealed class CollectorActivationSession
     }
 
     internal void FenceDeliveryAfterDeadline()
-        => _deliveryFence.Fence();
+    {
+        Volatile.Write(ref _deadlineFenced, 1);
+        _deliveryFence.Fence();
+    }
 
     internal bool TryCommitAcknowledgement(Action commit)
     {
@@ -334,6 +338,7 @@ internal sealed class CollectorActivationSession
         if (_state == CollectorActivationState.Stopped && Volatile.Read(ref _releaseCompleted) != 0)
             return;
         _state = CollectorActivationState.Draining;
+        _deliveryFence.Fence();
         if (Interlocked.Exchange(ref _releaseCompleted, 1) == 0)
             release();
         StopReason = reason;
@@ -343,7 +348,7 @@ internal sealed class CollectorActivationSession
         _gapReplays.Clear();
     }
 
-    private bool IsDeliveryFencedAfterDeadline() => _deliveryFence.IsFenced;
+    private bool IsDeliveryFencedAfterDeadline() => Volatile.Read(ref _deadlineFenced) != 0;
 
     private void ThrowIfDeliveryFencedAfterDeadline()
     {

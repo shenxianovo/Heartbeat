@@ -45,7 +45,8 @@ public sealed class CollectorProtocolClient(
             initialization.DataDirectory,
             definition.OutboxCapacity,
             definition.Outputs,
-            _timeProvider.GetUtcNow());
+            _timeProvider.GetUtcNow(),
+            binding.TryPublishDurableFile);
         await PersistMutationAsync(_outbox.BeginActivation, cancellationToken).ConfigureAwait(false);
         ReportDiagnostics();
         _activation = new CollectorActivation(this, initialization);

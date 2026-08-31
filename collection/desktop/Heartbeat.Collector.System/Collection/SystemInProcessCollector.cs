@@ -60,6 +60,7 @@ public sealed class SystemInProcessCollector(
     private CollectorProtocolClient? _client;
     private Task<CollectorDrainExecutionResult>? _clientRun;
     private InProcessCollectorActivation? _liveActivation;
+    private ICollectorDurableCommitFence? _durableCommitFence;
 
     public string ArtifactId => _definition.ArtifactId;
 
@@ -79,10 +80,11 @@ public sealed class SystemInProcessCollector(
         if (initialization.Instance.PackageId != PackageId)
             throw new InvalidOperationException(
                 $"The system Collector cannot activate Package '{initialization.Instance.PackageId}'.");
-        protocol.AttachDurableIngressFence(
-            initialization.Resources.DurableCommitFence
-                ?? throw new InvalidOperationException(
-                    "Hub did not provide the system Collector durable commit fence."));
+        var durableCommitFence = initialization.Resources.DurableCommitFence
+            ?? throw new InvalidOperationException(
+                "Hub did not provide the system Collector durable commit fence.");
+        _durableCommitFence = durableCommitFence;
+        protocol.AttachDurableIngressFence(durableCommitFence);
         StartClient();
         _initialization.TrySetResult(new CollectorClientInitialization(
             initialization.ActivationId,
@@ -247,6 +249,15 @@ public sealed class SystemInProcessCollector(
     {
         _drainCompleted.TrySetResult(result);
         return ValueTask.CompletedTask;
+    }
+
+    bool ICollectorProtocolBinding.TryPublishDurableFile(
+        string preparedPath,
+        string authoritativePath)
+    {
+        var durableCommitFence = _durableCommitFence ?? throw new InvalidOperationException(
+            "The system Collector durable commit fence is unavailable before initialization.");
+        return durableCommitFence.TryPublishFile(preparedPath, authoritativePath);
     }
 
     void ICollectorProtocolBinding.ThrowIfAcknowledgementSuperseded()

@@ -95,3 +95,12 @@ Starting Collector 在 Initialize 未返回时缺少 terminal Hub-owned durable 
 接受 `protocol_invalid_message`，不把 `activation_start_timeout` 当成可接受结果。预算 contract 1/1，
 非法 hello + 专门 timeout 4/4，非法 hello 隔离 20 轮共 60/60，完整 ManagedProcess transcript 27/27。
 最终并行 solution 三轮门禁前 PRD 保持 `needs-triage`。
+
+### 2026-08-31 — Starting Collector terminal durable fence
+
+Starting Collector 现从资源暴露前即持有 Hub-owned session fence；Runtime Dispose/deadline 与正常 terminal
+Stop 都先 fence，再释放 ownership。System 把同一 fence 贯通到 Protocol 初始 outbox publication 与
+ingress tail repair；outbox corruption recovery 保留原 authoritative 证据直到 recovery Gap 的 fenced
+replacement 成功。确定性 red/green 覆盖 Initialize/Stop 迟返、prepared outbox fence、corrupt recovery
+中间 fence、两种 ingress repair 与 cooperative stop。相关完整套件为 Hub 222/222、System 78/78、
+Protocol 26/26；最终门禁与双轴复审前 PRD 继续保持 `needs-triage`。

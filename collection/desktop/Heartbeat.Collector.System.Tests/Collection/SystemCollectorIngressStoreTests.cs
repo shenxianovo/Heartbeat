@@ -260,6 +260,52 @@ public sealed class SystemCollectorIngressStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task OpenMalformedTailRepair_PreparedReplacementReleasedAfterFenceLeavesOriginal()
+    {
+        var path = Path.Combine(_root, "ingress.ndjson");
+        var store = SystemCollectorIngressStore.Open(path, 2);
+        store.StageInputEvent(NewInput(Guid.CreateVersion7()));
+        File.AppendAllText(path, "{\"entryId\":");
+        var authoritativeBytes = File.ReadAllBytes(path);
+        var fence = new SystemCollectorIngressCommitFence();
+        using var publicationEntered = new ManualResetEventSlim();
+        using var releasePublication = new ManualResetEventSlim();
+        void BeforeCommit()
+        {
+            publicationEntered.Set();
+            Assert.True(releasePublication.Wait(TimeSpan.FromSeconds(5)));
+        }
+
+        var opening = Task.Run(() =>
+            SystemCollectorIngressStore.Open(path, 2, fence, BeforeCommit));
+        Assert.True(publicationEntered.Wait(TimeSpan.FromSeconds(2)));
+        fence.Fence();
+        releasePublication.Set();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => opening);
+
+        Assert.Equal(authoritativeBytes, File.ReadAllBytes(path));
+    }
+
+    [Fact]
+    public void OpenMissingNewlineRepair_DoesNotReplaceAuthoritativeChunkAfterFence()
+    {
+        var path = Path.Combine(_root, "ingress.ndjson");
+        var store = SystemCollectorIngressStore.Open(path, 2);
+        store.StageInputEvent(NewInput(Guid.CreateVersion7()));
+        using (var stream = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.Read))
+            stream.SetLength(stream.Length - 1);
+        var authoritativeBytes = File.ReadAllBytes(path);
+        var fence = new SystemCollectorIngressCommitFence();
+        fence.Fence();
+
+        Assert.Throws<OperationCanceledException>(() =>
+            SystemCollectorIngressStore.Open(path, 2, fence));
+
+        Assert.Equal(authoritativeBytes, File.ReadAllBytes(path));
+    }
+
+    [Fact]
     public void OpenStillRejectsMalformedMiddleLine()
     {
         var path = Path.Combine(_root, "ingress.ndjson");

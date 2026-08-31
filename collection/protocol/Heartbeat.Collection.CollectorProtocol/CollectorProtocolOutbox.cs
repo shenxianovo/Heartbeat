@@ -16,6 +16,7 @@ internal sealed class CollectorProtocolOutbox
     private readonly string _path;
     private readonly string _deadLetterPath;
     private readonly int _capacity;
+    private readonly Func<string, string, bool> _publishDurableFile;
     private OutboxState _state;
     private List<CollectorDeadLetter> _deadLetters;
     private bool _dirty;
@@ -25,13 +26,15 @@ internal sealed class CollectorProtocolOutbox
         string path,
         int capacity,
         OutboxState state,
-        List<CollectorDeadLetter> deadLetters)
+        List<CollectorDeadLetter> deadLetters,
+        Func<string, string, bool> publishDurableFile)
     {
         _path = path;
         _deadLetterPath = Path.Combine(Path.GetDirectoryName(path)!, "collector-protocol-dead-letter.json");
         _capacity = capacity;
         _state = state;
         _deadLetters = deadLetters;
+        _publishDurableFile = publishDurableFile;
     }
 
     public IReadOnlyList<PendingCollectorFact> Facts => _state.Facts;
@@ -50,17 +53,20 @@ internal sealed class CollectorProtocolOutbox
         string dataDirectory,
         int capacity,
         IReadOnlyList<CollectorOutputBinding> outputs,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        Func<string, string, bool>? publishDurableFile = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dataDirectory);
         if (capacity <= 0)
             throw new ArgumentOutOfRangeException(nameof(capacity));
+        publishDurableFile ??= PublishUnfenced;
         Directory.CreateDirectory(dataDirectory);
         var path = Path.Combine(Path.GetFullPath(dataDirectory), "collector-protocol-outbox.json");
         var deadLetterPath = Path.Combine(Path.GetDirectoryName(path)!, "collector-protocol-dead-letter.json");
         var state = new OutboxState();
         var migratedCurrentPointGaps = false;
         var migratedDeliveryOrder = false;
+        var recoveredCorruptOutbox = false;
         if (File.Exists(path))
         {
             try
@@ -74,7 +80,17 @@ internal sealed class CollectorProtocolOutbox
             {
                 var lastWrite = new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero);
                 var quarantine = path + $".corrupt-{now:yyyyMMddHHmmss}-{Guid.NewGuid():N}";
-                File.Move(path, quarantine);
+                var quarantineTemporary = CopyToTemporary(path, quarantine);
+                try
+                {
+                    if (!publishDurableFile(quarantineTemporary, quarantine))
+                        throw new OperationCanceledException(
+                            "Collector Protocol outbox recovery was fenced before quarantine publication.");
+                }
+                finally
+                {
+                    DeleteTemporary(quarantineTemporary);
+                }
                 var recoveredRange = NonEmptyRange(lastWrite <= now ? lastWrite : now, now);
                 state = new OutboxState
                 {
@@ -88,13 +104,19 @@ internal sealed class CollectorProtocolOutbox
                             "outbox_corrupted"))).ToList()
                 };
                 state = RestoreLegacyDeliveryOrder(state, out _);
+                recoveredCorruptOutbox = true;
             }
         }
         var deadLetters = File.Exists(deadLetterPath)
             ? ReadEnvelope<DeadLetterState>(deadLetterPath, "Collector Protocol dead letter").Entries
             : [];
-        var outbox = new CollectorProtocolOutbox(path, capacity, state, deadLetters);
-        if (migratedCurrentPointGaps || migratedDeliveryOrder ||
+        var outbox = new CollectorProtocolOutbox(
+            path,
+            capacity,
+            state,
+            deadLetters,
+            publishDurableFile);
+        if (migratedCurrentPointGaps || migratedDeliveryOrder || recoveredCorruptOutbox ||
             !File.Exists(path) && (state.Facts.Count != 0 || state.Gaps.Count != 0))
             outbox.Save();
         return outbox;
@@ -311,12 +333,14 @@ internal sealed class CollectorProtocolOutbox
         return envelope.State;
     }
 
-    private static void SaveEnvelope<T>(string path, T state)
+    private void SaveEnvelope<T>(string path, T state)
     {
         var temporary = WriteEnvelopeTemporary(path, state);
         try
         {
-            File.Move(temporary, path, overwrite: true);
+            if (!_publishDurableFile(temporary, path))
+                throw new OperationCanceledException(
+                    "Collector Protocol durable mutation was fenced before publication.");
         }
         finally
         {
@@ -359,6 +383,13 @@ internal sealed class CollectorProtocolOutbox
         return temporary;
     }
 
+    private static string CopyToTemporary(string sourcePath, string destinationPath)
+    {
+        var temporary = destinationPath + $".{Guid.NewGuid():N}.tmp";
+        File.Copy(sourcePath, temporary);
+        return temporary;
+    }
+
     private static void DeleteTemporary(string path)
     {
         try
@@ -369,6 +400,12 @@ internal sealed class CollectorProtocolOutbox
         {
             // A stale uniquely-named temporary file is harmless and can be cleaned externally.
         }
+    }
+
+    private static bool PublishUnfenced(string preparedPath, string authoritativePath)
+    {
+        File.Move(preparedPath, authoritativePath, overwrite: true);
+        return true;
     }
 
     private static void Validate(OutboxState state)

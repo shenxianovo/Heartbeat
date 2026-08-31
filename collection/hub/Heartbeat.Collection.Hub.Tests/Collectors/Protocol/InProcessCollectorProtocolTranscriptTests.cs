@@ -45,6 +45,22 @@ public class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
+    public async Task CooperativeStop_FencesDurablePublicationBeforeWriterOwnershipRelease()
+    {
+        await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
+        var durableCommitFence = fixture.Activation.Session.DurableCommitFence;
+        var directory = Path.GetDirectoryName(fixture.StatePath)!;
+        var preparedPath = Path.Combine(directory, "late-cooperative-stop.prepared");
+        var authoritativePath = Path.Combine(directory, "late-cooperative-stop.json");
+        File.WriteAllText(preparedPath, "late durable mutation");
+
+        await fixture.Activation.StopAsync();
+
+        Assert.False(durableCommitFence.TryPublishFile(preparedPath, authoritativePath));
+        Assert.False(File.Exists(authoritativePath));
+    }
+
+    [Fact]
     public async Task HappyPath_HelloInitializeOpenReadyThenSegmentIsDurablyAcknowledged()
     {
         using var stateDirectory = TemporaryDirectory.Create();
@@ -1501,6 +1517,67 @@ public class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
+    public async Task RuntimeDispose_FencesStartingCollectorInitialDurableMutationBeforeOwnershipRelease()
+    {
+        using var directory = TemporaryDirectory.Create();
+        var statePath = Path.Combine(directory.Path, "collector-runtime.json");
+        var package = LocalCollectorPackage.Load(ReferencePackagePath);
+        var time = new ControlledTimeProvider();
+        var runtime = CollectorRuntime.Open(
+            statePath,
+            new RecordingSegmentSink(),
+            new CollectorRuntimeOptions
+            {
+                InProcessDrainGracePeriod = TimeSpan.FromMinutes(10),
+                TimeProvider = time
+            });
+        using var config = JsonDocument.Parse("{}");
+        var instance = runtime.CreateInstance(
+            package,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        var collector = new ReferenceInProcessCollector(
+            blockInitialize: true,
+            ignoreInitializeCancellation: true,
+            blockStop: true,
+            ignoreStopCancellation: true,
+            prepareDurableMutationDuringInitialize: true);
+        var activating = runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            package,
+            collector).AsTask();
+        await collector.DurableMutationPrepared.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var disposing = runtime.DisposeAsync().AsTask();
+        try
+        {
+            await collector.StopEntered.WaitAsync(TimeSpan.FromSeconds(2));
+            time.Advance(TimeSpan.FromMinutes(10));
+            await disposing.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.False(File.Exists(collector.AuthoritativeMutationPath));
+
+            collector.ReleaseStop();
+            await collector.DurableMutationAttempted.WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert.False(collector.DurableMutationPublished);
+            Assert.False(File.Exists(collector.AuthoritativeMutationPath));
+        }
+        finally
+        {
+            collector.ReleaseStop();
+            collector.ReleaseInitialize();
+            try
+            {
+                await activating.WaitAsync(TimeSpan.FromSeconds(2));
+            }
+            catch
+            {
+                // The fixture intentionally releases initialization after Runtime disposal.
+            }
+        }
+    }
+
+    [Fact]
     public async Task RuntimeDispose_DeadlineBoundsSynchronouslyBlockingStartingCollectorStopInvocation()
     {
         using var directory = TemporaryDirectory.Create();
@@ -2824,6 +2901,10 @@ public class InProcessCollectorProtocolTranscriptTests
             TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _releaseDeadlineFence = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _durableMutationPrepared = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _durableMutationAttempted = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly bool _blockStop;
         private readonly bool _ignoreStopCancellation;
         private readonly bool _blockInitialize;
@@ -2834,6 +2915,7 @@ public class InProcessCollectorProtocolTranscriptTests
         private readonly bool _publishOnStop;
         private readonly bool _synchronouslyBlockStop;
         private readonly bool _synchronouslyBlockDeadlineFence;
+        private readonly bool _prepareDurableMutationDuringInitialize;
         private readonly CollectorDrainReason _stopResultReason;
         private readonly DateTimeOffset _referenceSegmentStart;
         private InProcessCollectorActivation? _activation;
@@ -2854,6 +2936,7 @@ public class InProcessCollectorProtocolTranscriptTests
             bool publishOnStop = false,
             bool synchronouslyBlockStop = false,
             bool synchronouslyBlockDeadlineFence = false,
+            bool prepareDurableMutationDuringInitialize = false,
             CollectorDrainReason stopResultReason = CollectorDrainReason.Drained,
             int stopFailures = 0,
             DateTimeOffset? referenceSegmentStart = null,
@@ -2879,6 +2962,7 @@ public class InProcessCollectorProtocolTranscriptTests
             _publishOnStop = publishOnStop;
             _synchronouslyBlockStop = synchronouslyBlockStop;
             _synchronouslyBlockDeadlineFence = synchronouslyBlockDeadlineFence;
+            _prepareDurableMutationDuringInitialize = prepareDurableMutationDuringInitialize;
             _stopResultReason = stopResultReason;
             _stopFailuresRemaining = stopFailures;
             _referenceSegmentStart = referenceSegmentStart ??
@@ -2907,11 +2991,30 @@ public class InProcessCollectorProtocolTranscriptTests
 
         public Task DeadlineFenceEntered => _deadlineFenceEntered.Task;
 
+        public Task DurableMutationPrepared => _durableMutationPrepared.Task;
+
+        public Task DurableMutationAttempted => _durableMutationAttempted.Task;
+
+        public string? AuthoritativeMutationPath { get; private set; }
+
+        public bool DurableMutationPublished { get; private set; }
+
         public async ValueTask<InProcessCollectorInitialization> InitializeAsync(
             CollectorInitialization initialization,
             CancellationToken cancellationToken)
         {
             Initialization = initialization;
+            string? preparedMutationPath = null;
+            if (_prepareDurableMutationDuringInitialize)
+            {
+                var dataDirectory = initialization.Resources.DataDirectory
+                    ?? throw new InvalidOperationException("Hub did not provide Collector durable storage.");
+                Directory.CreateDirectory(dataDirectory);
+                AuthoritativeMutationPath = Path.Combine(dataDirectory, "initial-outbox.json");
+                preparedMutationPath = Path.Combine(dataDirectory, "initial-outbox.prepared.json");
+                File.WriteAllText(preparedMutationPath, "prepared outbox mutation");
+                _durableMutationPrepared.TrySetResult();
+            }
             _initializeEntered.TrySetResult();
             if (_throwOnInitialize)
                 throw new InvalidOperationException("Collector failed after starting initialization work.");
@@ -2921,6 +3024,15 @@ public class InProcessCollectorProtocolTranscriptTests
                     await _releaseInitialize.Task;
                 else
                     await _releaseInitialize.Task.WaitAsync(cancellationToken);
+            }
+            if (preparedMutationPath is not null)
+            {
+                var durableCommitFence = initialization.Resources.DurableCommitFence
+                    ?? throw new InvalidOperationException("Hub did not provide Collector durable commit fence.");
+                DurableMutationPublished = durableCommitFence.TryPublishFile(
+                    preparedMutationPath,
+                    AuthoritativeMutationPath!);
+                _durableMutationAttempted.TrySetResult();
             }
             return new InProcessCollectorInitialization(
                 initialization.Spec.SpecRevision,

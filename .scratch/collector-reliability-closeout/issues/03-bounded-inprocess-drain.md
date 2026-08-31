@@ -229,3 +229,23 @@ Starting Collector 在 Initialize 尚未返回时已经持有可发布 session�
 Hub-owned durable commit fence；忽略取消的 Initialize/background work 因而可能在 Runtime Dispose
 返回后继续提交 prepared mutation。terminal fence 与 Protocol 初始 outbox mutation 的确定性回归关闭前，
 本 issue 恢复为 `needs-triage`。
+
+### 2026-08-31 — Starting Collector terminal durable fence
+
+确定性回归先证明旧实现会在 Runtime Dispose 已越过 deadline 并返回后，让忽略取消的 Initialize 发布
+prepared durable mutation；Protocol 的 `BeginActivation` 也会绕过 binding，直接替换初始 outbox。Hub 现在
+在资源暴露前创建 session，并让 Starting Collector 从创建时持有它；deadline cleanup 和 cooperative
+Stop 都在 ownership/writer release 前关闭同一个 Hub-owned durable gate。System binding 在启动 Protocol
+client 前保存并转发该 gate，outbox 的 Open recovery/migration、`BeginActivation` 与普通 Save 只允许通过
+`TryPublishDurableFile` 发布 authoritative replacement。
+
+复审同时发现两条相邻 late-mutation 路径并以独立 red 关闭：corrupt outbox 不再先搬走唯一 authoritative
+证据，而是发布 quarantine copy 后用单次 fenced replacement 写 recovery Gap；若两次 publication 之间被
+fence，原 corrupt bytes 仍在且下一次启动恢复精确非空范围。System ingress 的 torn-tail 截断与缺 LF
+补齐也从原地修改改为 COW prepared replacement；temp flush 后由 terminal fence 抢先时，Open 抛出取消且
+原 chunk 字节不变。ACK/retry/dead-letter replacement 继续使用同一 session ACK commit gate。
+
+red 证据分别为 Starting late publication 1/1、Protocol 初始 outbox 拒绝 0/1、client 未转发 binding
+0/1、corrupt recovery 中间 fence 0/1、两种 ingress repair fence 0/2、cooperative stop 后 publication
+0/1；修复后 Hub 222/222、System 78/78、Protocol 26/26。完整 solution 三轮、真实跨进程 smoke 与最终
+双轴复审尚未完成，因此 issue 继续保持 `needs-triage`。
