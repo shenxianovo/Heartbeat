@@ -27,9 +27,6 @@ namespace Heartbeat.Server.Controllers
         [RequireHeartbeatProtocol]
         public async Task<IActionResult> Upload([FromBody] SegmentUploadRequest request)
         {
-            if (request.Segments == null || request.Segments.Count == 0)
-                return BadRequest("Segments cannot be empty.");
-
             var userId = _currentUser.GetUserId();
             var hardwareId = Request.Headers[DeviceService.HardwareIdHeader].FirstOrDefault();
             var deviceName = Request.Headers[DeviceService.DeviceNameHeader].FirstOrDefault();
@@ -45,6 +42,11 @@ namespace Heartbeat.Server.Controllers
                 when (ex.Violation == SegmentIngestContractViolation.LegacyAppName)
             {
                 return UpgradeRequiredResult.Create(Response, ex.Message);
+            }
+            catch (SegmentIngestContractException ex)
+                when (ex.Violation == SegmentIngestContractViolation.EmptyBatch)
+            {
+                return BadRequest(ex.Message);
             }
             catch (SegmentIngestContractException ex)
             {

@@ -87,3 +87,11 @@ unit-of-work。本 issue 验收完成，状态更新为 `done`。
 解析并创建 Device。空 batch contract 必须在 application boundary、任何 Device/AppIdentity/
 ActivitySegment 副作用之前拒绝，Controller 只映射结果。direct application-service 与 HTTP 回归完成前，
 本 issue 恢复为 `needs-triage`。
+
+### 2026-08-31 — 空 batch 收敛到 application contract
+
+direct application-service 与 Controller delegation 测试先因 contract 没有 `EmptyBatch` outcome 编译失败。
+实现将空集合拒绝放入 `SegmentIngestContract.Validate`，发生在 transaction、Device 解析及任何
+AppIdentity/ActivitySegment 投影之前；Controller 删除本地 count 判断，只把 application outcome 映射为
+400。定向 2/2、完整 `StrictIngestProtocolTests` 27/27。最终完整门禁与双轴复审前 issue 保持
+`needs-triage`。

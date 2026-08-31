@@ -5,6 +5,7 @@ namespace Heartbeat.Server.Services;
 
 public enum SegmentIngestContractViolation
 {
+    EmptyBatch,
     LegacyAppName,
     MissingSystemAppIdentity,
     MalformedAppIdentity,
@@ -30,6 +31,13 @@ public static class SegmentIngestContract
         IReadOnlyCollection<ActivitySegmentItem> segments,
         DateTimeOffset? evaluatedAt = null)
     {
+        if (segments.Count == 0)
+        {
+            throw new SegmentIngestContractException(
+                SegmentIngestContractViolation.EmptyBatch,
+                "Segments cannot be empty.");
+        }
+
         foreach (var segment in segments)
         {
             if (segment.AppName is not null)

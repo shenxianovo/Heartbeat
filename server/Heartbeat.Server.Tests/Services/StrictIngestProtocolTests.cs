@@ -68,6 +68,35 @@ public class StrictIngestProtocolTests(PostgresContainerFixture fixture) : Postg
         Assert.Equal(1, await db.ActivitySegments.CountAsync());
     }
 
+    [Fact]
+    public async Task AtomicIngest_EmptyBatchIsRejectedBeforeAnyProjectionSideEffects()
+    {
+        await using var db = CreateDbContext();
+        var service = new SegmentIngestApplicationService(
+            db,
+            new DeviceService(db),
+            new UsageService(db));
+
+        var error = await Assert.ThrowsAsync<SegmentIngestContractException>(
+            () => service.IngestAsync("owner", "hardware", "Device", []));
+
+        Assert.Equal(SegmentIngestContractViolation.EmptyBatch, error.Violation);
+        await AssertNoIngestFactsAsync(db);
+    }
+
+    [Fact]
+    public async Task SegmentUpload_EmptyBatchDelegatesContractRejectionAndMaps400()
+    {
+        var ingest = new EmptyBatchRejectingIngestService();
+        var controller = new SegmentController(ingest, new FakeCurrentUser("owner"));
+        AttachHttpContext(controller, "hardware");
+
+        var result = Assert.IsType<BadRequestObjectResult>(await controller.Upload(new SegmentUploadRequest()));
+
+        Assert.Equal(StatusCodes.Status400BadRequest, result.StatusCode);
+        Assert.Equal(1, ingest.Calls);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -668,6 +697,23 @@ public class StrictIngestProtocolTests(PostgresContainerFixture fixture) : Postg
         public string GetUserId() => userId;
         public string? GetUserIdOrNull() => userId;
         public string? GetUsernameOrNull() => null;
+    }
+
+    private sealed class EmptyBatchRejectingIngestService : ISegmentIngestApplicationService
+    {
+        public int Calls { get; private set; }
+
+        public Task IngestAsync(
+            string ownerId,
+            string hardwareId,
+            string? deviceName,
+            List<ActivitySegmentItem> segments)
+        {
+            Calls++;
+            throw new SegmentIngestContractException(
+                SegmentIngestContractViolation.EmptyBatch,
+                "Segments cannot be empty.");
+        }
     }
 
 }
