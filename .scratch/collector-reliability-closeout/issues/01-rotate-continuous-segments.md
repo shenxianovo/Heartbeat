@@ -153,3 +153,11 @@ continuation 的原子记录语义。最终 System suite 73/73，完整 solution
 VRChat 损坏 checkpoint recovery 在 `lastWrite >= recoveredAt` 时可能产生 `Start == End` 的协议无效
 Stream Gap；System rollover 的 deferred observation 也可能被 gate 释放后的新 callback 超车。两项
 确定性回归与有序交接修复完成前，本 issue 恢复为 `needs-triage`。
+
+### 2026-08-31 — VRChat 损坏 checkpoint 的 clock rollback 语义
+
+equal-time 与 future-mtime 两个公开 `Open` 回归先稳定失败：旧实现均持久化
+`Start == End == recoveredAt` 的 `presence_checkpoint_corrupted` Gap。修复后只有
+`lastWrite < recoveredAt` 才声明可证明的非空半开丢失区间；相等或未来 mtime 只 quarantine 损坏文件，
+不伪造已知 loss range，也不产生协议无效 Gap。定向 red 0/2 → green VRChat suite 15/15。System
+rollover deferred handoff 尚未完成，因此 issue 继续保持 `needs-triage`。

@@ -54,6 +54,38 @@ public sealed class VRChatPresenceCheckpointTests : IDisposable
     }
 
     [Fact]
+    public void CorruptCheckpointAtRecoveryTimeIsQuarantinedWithoutInventingAnEmptyGap()
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "presence.json");
+        var recoveredAt = new DateTimeOffset(2026, 8, 27, 10, 4, 0, TimeSpan.Zero);
+        File.WriteAllText(path, "{truncated");
+        File.SetLastWriteTimeUtc(path, recoveredAt.UtcDateTime);
+
+        var recovered = VRChatPresenceCheckpoint.Open(path, recoveredAt);
+
+        Assert.Null(recovered.RecoveryGap);
+        Assert.Empty(recovered.PendingGaps);
+        Assert.Single(Directory.EnumerateFiles(_directory, "presence.json.corrupt-*"));
+    }
+
+    [Fact]
+    public void CorruptCheckpointWithFutureMtimeIsQuarantinedWithoutInventingALossRange()
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "presence.json");
+        var recoveredAt = new DateTimeOffset(2026, 8, 27, 10, 4, 0, TimeSpan.Zero);
+        File.WriteAllText(path, "{truncated");
+        File.SetLastWriteTimeUtc(path, recoveredAt.AddMinutes(5).UtcDateTime);
+
+        var recovered = VRChatPresenceCheckpoint.Open(path, recoveredAt);
+
+        Assert.Null(recovered.RecoveryGap);
+        Assert.Empty(recovered.PendingGaps);
+        Assert.Single(Directory.EnumerateFiles(_directory, "presence.json.corrupt-*"));
+    }
+
+    [Fact]
     public void RotationTransitionRemainsReplayableAcrossEveryCheckpointCrashPoint()
     {
         Directory.CreateDirectory(_directory);

@@ -65,16 +65,18 @@ internal sealed class VRChatPresenceCheckpoint
         {
             var lastWrite = new DateTimeOffset(File.GetLastWriteTimeUtc(fullPath), TimeSpan.Zero);
             File.Move(fullPath, fullPath + $".corrupt-{recoveredAt:yyyyMMddHHmmss}-{Guid.NewGuid():N}");
-            var recoveryGap = new VRChatPresenceRecoveryGap(
-                Guid.CreateVersion7(),
-                lastWrite <= recoveredAt ? lastWrite : recoveredAt,
-                recoveredAt,
-                "presence_checkpoint_corrupted");
+            var recoveryGap = lastWrite < recoveredAt
+                ? new VRChatPresenceRecoveryGap(
+                    Guid.CreateVersion7(),
+                    lastWrite,
+                    recoveredAt,
+                    "presence_checkpoint_corrupted")
+                : null;
             var recovered = new VRChatPresenceCheckpoint(
                 fullPath,
                 null,
                 [],
-                [recoveryGap],
+                recoveryGap is null ? [] : [recoveryGap],
                 recoveryGap);
             recovered.Persist();
             return recovered;
