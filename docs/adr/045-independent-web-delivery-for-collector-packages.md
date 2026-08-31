@@ -1,6 +1,6 @@
 # ADR-045: 非内置 Collector Package 通过签名 Web Registry 独立发布
 
-## Status: Accepted（extends [ADR-040](./040-collector-runtime-and-protocol-foundation.md) 的 Artifact Delivery 轴与 [ADR-043](./043-hub-local-interactive-collector-authorization.md) 的本地 owner 授权边界）
+## Status: Accepted（生产目标保留；开发期 MVP 的 trust、Installation 与 approval 范围由 [ADR-047](./047-lean-development-collector-web-delivery.md) 修订）
 
 ## Date: 2026-08-30
 

@@ -1,32 +1,24 @@
-# 09 — 死信与 durable projection 残留 P3
+# 09 — 修正 ManagedProcess termination truth
 
 Status: ready-for-agent
 
 Owner: Collection / Collector Protocol
 
-Priority: P3 — 不影响当前不变量，但死信事务与 durable projection 里还留着重复形状、悲观覆盖与一处死标志，
-会让后续读代码的人分不清哪一处才是权威。
+Priority: P2 — 当前实现仍可能抹掉真实 durable evidence，或让 Execution cause 与 client 已首写 cause
+分叉；VRChat Web Delivery 不能建立在这个错误终态上。
 
 ## Acceptance
 
-- [ ] `CollectorProtocolOutbox` 的两个 `DeadLetter` 重载（`PendingCollectorFact` 与 `PendingCollectorGap`，
-  `CollectorProtocolOutbox.cs:317` / `:353`）事务形状相同（读列表 → 追加 → 持久化 → 更新 delivery order），
-  抽成一处共享实现，Fact 与 Gap 只提供各自的集合与路径。
-- [ ] `_deadLettersDirty` 要么真正在死信写入失败时置位，要么删除；当前它只被置 `false`，
-  `PendingRemainderIsDurable => !_dirty && !_deadLettersDirty` 的第二个合取项恒真，属于误导性死代码。
-- [ ] `CollectorProtocolClient` 里 `PendingRemainderIsDurable` 为假时把 drain reason 整体覆盖成
-  `PersistenceFailed`（`CollectorProtocolClient.cs:228` 附近）的做法需要复核：deadline 与 flush 原因在同时
-  发生持久化失败时会被掩盖，应确认「哪个原因优先」是刻意选择并加回归，或改为保留更具体的原因。
 - [ ] `ManagedProcessProtocolClient.StopOnceAsync`（`CollectorRuntime.ManagedProcess.cs:1356`）在
-  `TerminationCause` 非空时硬编码 `RemainderDurable: false`，会丢弃 Collector 已上报的真实 durable 证据；
-  需要确认这是保守兜底还是应改为沿用 client 上报值。
+  `TerminationCause` 非空时不得硬编码 `RemainderDurable: false`；logical result 必须保留 Collector 已上报的
+  真实 durable evidence，并有 termination + durable remainder 回归。
 - [ ] `ManagedProcessTerminationProjector.FromFailedStopReason` 只按 `CollectorDrainReason` 投影，不查
-  `client.TerminationCause`；超时短路时 Execution cause 可与 client 侧权威 cause 分叉。要么收敛成单一入口，
-  要么给出「此处为何不查权威 cause」的显式理由与回归。
-- [ ] `DeadLetterCount` / `DeadLetterPath` 在 Fact 与 Gap 同时有死信时只暴露 Fact 路径，
-  诊断面需要能表达混合状态。
-- [ ] Fact 的 message 级 rejection 在 `Retryable=true` 时由原来的直接死信改为重试（`ResolveError` 统一策略后
-  的连带变化），需要补一条明确回归钉住这个语义，避免以后被当成回归改回去。
+  `client.TerminationCause`；所有 logical/completion/execution projection 必须从一次原子发布的 termination
+  state 派生，不能再用 fallback 覆盖已首写 cause。
+- [ ] `WasTerminated` 与 `TerminationCause` 不得分步发布；并发 reader 不能观察到 terminated 但 cause 为空。
+- [ ] `SupersededFailedAdmissionCannotReportMemoryOnlyRemainderAsDurable` 及相关 termination 回归使用 fake time
+  和显式 barrier，不让 100ms drain 与 50ms retry 争真实调度。
+- [ ] Protocol、Hub 定向测试与完整 solution 通过；issue 07/PRD 的 truthful termination 声明重新成立。
 
 ## Comments
 
@@ -39,3 +31,8 @@ Priority: P3 — 不影响当前不变量，但死信事务与 durable projectio
 
 Spec 轴在 closeout 复核时补入了 `StopOnceAsync` 硬编码 `RemainderDurable: false` 一条，并要求把
 `FromFailedStopReason` 那条还原成「Execution cause 可与 client 权威 cause 分叉」而不是仅仅「补注释」。
+
+### 2026-08-31 — re-triaged for lean Web Delivery
+
+owner 选择先修 termination cause、durable evidence 与真实时钟回归，再开始 VRChat Web Delivery；其余
+dead-letter 与诊断残留移到 issue 11，作为开发期非阻断限制。

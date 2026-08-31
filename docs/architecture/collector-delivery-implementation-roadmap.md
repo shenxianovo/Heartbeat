@@ -10,6 +10,28 @@ tracker 的 feature，并固定它们之间与各自内部的依赖顺序：
 Analytics + Dashboard 原子发布、Headless production configuration 是扫描发现的独立应用/运维平面
 风险，不塞进这两个 Collection feature；它们必须在对应平面实际发布前单独 closeout。
 
+> **当前开发路径（2026-08-31）**：ADR-047 已把 Feature B 第一条纵切缩减为 unsigned VRChat
+> ManagedProcess delivery。下面 ADR-045 的生产目标仍保留作 later scope；当前 Agent 只执行“termination
+> truth gate → 最小 index/tag pipeline → 版本目录安装 → exact ref approval → VRChat Ready → 开发域名
+> smoke”，不得自行恢复签名、channel、solver、原子安装 journal、Browser 或全平台矩阵。
+
+```mermaid
+flowchart LR
+    T["修正 termination cause<br/>durable evidence + deterministic tests"]
+    I["per-Package current.json<br/>Version + URL + length + SHA-256"]
+    B["VRChat 显式 tag build<br/>当前真实平台"]
+    D["下载并安装到版本目录<br/>安全解压 + 完成标记"]
+    A["authenticated Headless API<br/>手动 CheckNow + 批准 exact ref"]
+    R["启动 VRChat candidate<br/>真实 Ready"]
+    W["静态目录 + 开发域名 smoke<br/>失败保留旧 LKG"]
+
+    T --> I
+    T --> B
+    I --> D
+    B --> D
+    D --> A --> R --> W
+```
+
 ## Feature 之间的实现顺序
 
 Registry contract、release tooling 和 Runtime delivery module 可以在可靠性修复期间开发；任何会改变
@@ -97,89 +119,8 @@ flowchart TD
 其中 A1 → A2 是推荐的 tracer 顺序：先让下游拒绝结果可信，再证明上游永远生成合法 chunk。A4、A5
 不依赖 Segment 代码，可以与 A1/A2 并行。
 
-## Feature B：Collector Package Registry
+## Deferred production target
 
-Registry schema/golden fixtures 是发布方和 Runtime 的共同地基。Release pipeline 可以先搭矩阵框架，
-但在签名/serialization contract 固定前不能发布 stable。Delivery module 完成后才向管理面暴露 offer；
-ManagedProcess 与 Browser adapter 随后并行，最终共同进入人工 rollout。
-
-```mermaid
-flowchart TD
-    C1["B1 · signed static Registry contract<br/>schema + canonical bytes + golden fixtures"]
-    C2["B2a · release pipeline scaffold<br/>tag + platform matrix + dry-run"]
-    C3["B2b · canonical assembly/publish<br/>sign + blob → release → channel"]
-    D1["B3 · package delivery deep module<br/>solve + verify + atomic install + offline"]
-    U1["B4 · per-Instance Update Offer<br/>Current + CheckNow + Approve"]
-    M1["B5 · ManagedProcess adapter<br/>Ready + stability + LKG"]
-    E1["B6 · Browser ExternalHost adapter<br/>stage + reload + exact hash Ready"]
-    R{"Feature A reliability gate"}
-    P1["B7 · production key + static hosting"]
-    P2["B8 · 真实安装 migration"]
-    P3["B9 · Browser/VRChat smoke + rollback"]
-
-    C1 --> C3
-    C2 --> C3
-    C1 --> D1 --> U1
-    U1 --> M1
-    U1 --> E1
-    C3 --> P1
-    M1 --> P2
-    E1 --> P2
-    R --> P2
-    P1 --> P2 --> P3
-
-    classDef gate fill:#fff2cc,stroke:#b8860b,color:#3d3200;
-    class R gate;
-```
-
-issue 映射：B1 = issue 01；B2a/B2b = issue 02；B3 = issue 03；B4 = issue 04；B5 =
-issue 05；B6 = issue 06；B7–B9 = issue 07。B1 与 B2a 可并行，B5 与 B6 可并行。
-
-## 每个 Collector 的发布与更新路径
-
-同一个 Registry feature 对不同 Execution Driver 有不同的真实成功判据；共享 Package publication，
-不共享 Activation transaction 或 Last-Known-Good。
-
-```mermaid
-flowchart TD
-    T["显式 collector-{name}/vX.Y.Z tag"]
-    B["按 OS / arch 独立构建"]
-    A["组装一个 canonical release"]
-    V["验证 + Ed25519 签名"]
-    W["发布 blob → release → stable channel"]
-    O["Runtime 发现、下载、验证 offer"]
-    Q{"owner 对该 Instance 批准"}
-
-    MP["ManagedProcess 启动 exact hash"]
-    MR["Ready"]
-    MS["候选稳定窗口"]
-    ML["晋升 per-Instance LKG"]
-
-    BE["Browser side-by-side stage"]
-    BR["owner reload extension"]
-    BH["新 ExternalHost exact hash Ready"]
-    BL["完成该 Instance 更新"]
-
-    T --> B --> A --> V --> W --> O --> Q
-    Q --> MP --> MR --> MS --> ML
-    Q --> BE --> BR --> BH --> BL
-
-    SYS["System Collector"] --> BUILTIN["Desktop build/release"]
-    BUILTIN --> SR["Desktop Runtime Ready"]
-```
-
-失败边界保持不变：发现、下载、验证或 Activation 失败不改写 Desired State；ManagedProcess 稳定窗口
-失败只回滚该 Instance；Browser 在新 exact hash Ready 前继续把旧 Host/LKG 视为真实运行状态。
-
-## 推荐落地批次
-
-1. **Batch 1（并行）**：strict ingest；InputEvent capacity；bounded drain；Registry contract；release
-   pipeline scaffold。
-2. **Batch 2（并行）**：Segment rotation + 长会话 E2E；canonical release publish；delivery deep module。
-3. **Batch 3**：per-Instance offer/approval；同时完成 reliability restart/replay gate。
-4. **Batch 4（并行）**：ManagedProcess adapter；Browser ExternalHost adapter。
-5. **Batch 5（人工门禁）**：production signing key、同域名静态 Registry、真实安装 migration、两类
-   Collector smoke 与 rollback。
-
-每个 batch 都应保持 main 可构建、可回滚；不得为了赶下一批把 `downloaded`、`approved`、`Ready` 或
-`stable` 合并成一个状态。
+签名、channel、完整平台矩阵、Browser ExternalHost、离线目录、cache GC、生产迁移与运维演练只保留在
+[ADR-045](../adr/045-independent-web-delivery-for-collector-packages.md) 作为未来目标，不进入当前 roadmap。
+VRChat MVP 完成后必须重新 grill，不能从旧图直接恢复这些范围。

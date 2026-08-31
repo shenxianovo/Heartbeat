@@ -1,10 +1,10 @@
 # 06 — 接入 Browser ExternalHost reload 与精确 hash Ready
 
-Status: ready-for-agent
+Status: needs-triage
 
 Owner: Collection / Browser ExternalHost
 
-Priority: P1 — 下载完成或旧扩展仍在线都不能伪装成 Browser 已更新。
+Priority: P3 — ADR-047 的 VRChat MVP 完成后重新 grill；当前不得作为 active implementation scope。
 
 ## What to build
 
@@ -29,3 +29,9 @@ Priority: P1 — 下载完成或旧扩展仍在线都不能伪装成 Browser 已
 ## Dependencies
 
 依赖 issue 04；不得复用旧 source-level Collector Registry 的安装/启用身份。
+
+## Comments
+
+### 2026-08-31 — deferred by lean development MVP
+
+owner 选择先走通 VRChat ManagedProcess；Browser、reload UI 与 ExternalHost Web update 不属于当前完成条件。

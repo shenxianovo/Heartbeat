@@ -80,8 +80,8 @@ _Avoid_: Device、Subject、把无头 Hub 按某个 Collector 命名
 _Avoid_: Analytics Collector Control Plane、要求用户通过服务器终端完成账号授权
 
 **Collector Installation（采集器安装）**:
-本机持有某一精确 Collector Package 的事实。安装不表示 Collector 已启用、已获授权、能够激活或正在运行。多个 Collector Instance 可以共享同一 Package 的已安装内容；并行升级时保留全局候选以及任一 Instance 当前或 Last-Known-Good 仍引用的精确版本，只有无人引用的版本才可回收。
-_Avoid_: Discovery、Registration、Active
+本机完整持有某一精确 Collector Package 的事实；部分下载或未完成目录不是 Installation。安装不表示 Collector 已启用、已获授权、能够激活或正在运行，多个 Collector Instance 可以共享同一份已安装内容。
+_Avoid_: Download、Staging、Registration、Active
 
 **Collector Instance（采集器实例）**:
 一个稳定、已配置的 Collector 身份；更换其 Collector Package 版本或重新激活时，实例身份保持不变，同样不会因为长期离线而自动删除。同一采集器包可以对应多个实例。browser Collector 在同一 Machine Subject 上按 App 分 Instance：Chrome、Edge 等 App 各有独立启用意图与运行状态，但共享一份 Collector Installation；同一 App 的浏览器 Profile 不是独立 Instance。首次发现新的 browser App Instance 默认启用，删除身份与配置只能是显式用户操作。
@@ -126,7 +126,7 @@ Collector Activation 已完成协议协商并打开所需 Fact Stream，可以�
 _Avoid_: 进程存活、首次产生数据、Active
 
 **候选稳定窗口（Candidate Stability Period）**:
-ManagedProcess 候选 Activation 到达 Ready 后、被判定为成功更新前的有界观察期；窗口内退出触发该 Collector Instance 的 Last-Known-Good 回滚，窗口结束时候选晋升为该 Instance 新的 Last-Known-Good，之后退出属于普通运行故障。共享同一 Installation 的其他 Instance 不因其中一个 Instance Ready 而被宣称更新成功。
+ManagedProcess 候选 Activation 到达 Ready 后、被判定为成功更新前的有界观察期；窗口内退出触发该 Collector Instance 的 Last-Known-Good 回滚，窗口结束时候选晋升为该 Instance 新的 Last-Known-Good，之后退出属于普通运行故障。共享同一 Installation 的其他 Instance 不因其中一个 Instance Ready 而被宣称更新成功。开发期 VRChat 纵切不实现该窗口（[ADR-047](../docs/adr/047-lean-development-collector-web-delivery.md)）：候选 Ready 即视为更新成功，Ready 后退出按普通运行故障处理。
 _Avoid_: 把 Ready 等同于已通过稳定观察、无限期自动回滚
 
 **Collector Desired State（采集器期望状态）**:
@@ -150,12 +150,12 @@ Collector Package 随宿主应用一起构建和发布的 Artifact Delivery；Sy
 _Avoid_: 把 System 当作可远程替换的独立 Package、把 BuiltIn 等同于 InProcess
 
 **Official Collector Package Registry（官方采集器包注册源）**:
-发布方为非 BuiltIn 官方 Collector Package 提供的已签名、不可变版本目录与制品来源；它提供可验证的发现和下载事实，不保存用户 Desired State，也不承担 Activation。
+发布方为非 BuiltIn 官方 Collector Package 提供的版本目录与制品来源；它提供精确候选的发现和下载事实，不保存用户 Desired State，也不承担 Installation、批准或 Activation。来源认证强度是部署能力，不改变 Registry 的领域身份。
 _Avoid_: Collector Registry（旧 source 级配置账本）、Analytics 控制面、把 channel 指针当作不可变版本
 
 **Collector Update Offer（采集器更新候选）**:
-Runtime 已验证并解析出的某个 Collector Instance 的精确更新候选，绑定 PackageId、Version、内容 hash、宿主兼容结果与不透明候选标识；只有 owner 明确批准该标识后才可改变该 Instance 的安装/激活尝试。
-_Avoid_: latest、未验证的 Registry 响应、把发现或下载等同于批准和更新成功
+Runtime 已验证并解析出的某个 Collector Instance 的精确更新候选，绑定 PackageId、Version、内容 hash 与宿主兼容结果；只有 owner 明确批准该精确候选后才可开始该 Instance 的激活尝试。
+_Avoid_: latest、opaque workflow token、未验证的 Registry 响应、把发现或下载等同于批准和更新成功
 
 **Execution Driver（执行驱动器）**:
 Collector Runtime 协调 Collector Activation 的方式，可以是进程内、托管进程或外部宿主；它不表示 Runtime 一定持有对应制品。

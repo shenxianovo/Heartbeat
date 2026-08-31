@@ -1,6 +1,6 @@
 # Collector Activation 生命周期所有权收敛
 
-Status: done
+Status: ready-for-agent
 
 ## Problem
 
@@ -192,6 +192,8 @@ internal sealed class CollectorDeliveryLease
 - [x] [05 — 三种 Execution Driver conformance](issues/05-execution-driver-conformance.md)
 - [x] [06 — 全量验证、复审与 lifecycle closeout](issues/06-validation-and-review.md)
 - [x] [07 — 第三轮生命周期不变量收口](issues/07-third-round-lifecycle-invariants.md)
+- [ ] [09 — 修正 ManagedProcess termination truth](issues/09-delivery-durability-projection-residuals.md)
+- [ ] [10 — 移除 ManagedProcess 授权测试墙钟竞态](issues/10-managed-process-authorization-phase-wait-flake.md)
 
 ## Non-goals
 
@@ -235,3 +237,11 @@ Client handoff observer/barrier 均未复活。
 [08](issues/08-unify-ready-publication-transaction.md)（Ready publication 事务）、
 [09](issues/09-delivery-durability-projection-residuals.md)（死信与 durable projection 残留 P3）、
 [10](issues/10-managed-process-authorization-phase-wait-flake.md)（ManagedProcess 授权阶段等待夹具 flake）。
+
+### 2026-08-31 — lean Web Delivery 前重新打开
+
+独立复审证明 issue 09 中两条并非 P3 代码形状：`StopOnceAsync` 会抹掉 Collector 已报告的 durable
+evidence，outer lifetime timeout 也可能让 Execution cause 与 client 已首写 cause 分叉。两者直接违反
+truthful remainder 与 termination cause 单权威，因此在 VRChat Web Delivery 纵切开始改变真实 Activation
+前升回 P2 blocker；相关真实时钟回归一并改成确定性测试。Gap dead-letter 双文件崩溃窗口、诊断聚合与
+重复事务保留为开发期 P3 限制，不阻塞纵切。PRD 状态重新打开，直到 issue 09、10 有实现和验证证据。
