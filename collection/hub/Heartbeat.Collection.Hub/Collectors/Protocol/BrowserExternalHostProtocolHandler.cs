@@ -73,7 +73,7 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
     {
         if (path is null || !path.StartsWith(RoutePrefix, StringComparison.Ordinal))
             return null;
-        ExpireLeases();
+        await ExpireLeasesAsync();
         Guid? replyTo = null;
         Guid? responseActivationId = null;
         string? rejectedType = null;
@@ -102,7 +102,7 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
             if (httpMethod == "GET" && path == RoutePrefix)
                 return Json(200, new { binding = "browser", protocolMajors = new[] { 1 } });
             if (httpMethod == "POST" && path == $"{RoutePrefix}/hello")
-                return HandleHello(await ReadRequest<HelloRequest>(
+                return await HandleHelloAsync(await ReadRequest<HelloRequest>(
                     "heartbeat.collector.bootstrap/1",
                     "activation.hello",
                     "activation.rejected",
@@ -115,11 +115,11 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
                 "initialized" => HandleInitialized(
                     activationId,
                     await DeserializeAsync<ProtocolMessage<InitializedRequest>>(body, cancellationToken)),
-                "streams" => HandleStreams(activationId, await ReadRequest<StreamsOpenRequest>(
+                "streams" => await HandleStreamsAsync(activationId, await ReadRequest<StreamsOpenRequest>(
                     "heartbeat.collector/1", "streams.open", "streams.rejected", activationId)),
-                "ready" => HandleReady(activationId, await ReadRequest<ReadyRequest>(
+                "ready" => await HandleReadyAsync(activationId, await ReadRequest<ReadyRequest>(
                     "heartbeat.collector/1", "activation.ready", "activation.readyRejected", activationId)),
-                "renew" => HandleRenew(activationId, await DeserializeAsync<RenewRequest>(body, cancellationToken)),
+                "renew" => await HandleRenewAsync(activationId, await DeserializeAsync<RenewRequest>(body, cancellationToken)),
                 "facts" => await HandleFactsAsync(
                     activationId,
                     await ReadRequest<PublishRequest>(
@@ -130,7 +130,7 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
                     await ReadRequest<GapRequest>(
                         "heartbeat.collector/1", "stream.gap", "stream.gapRejected", activationId),
                     cancellationToken),
-                "drained" => HandleDrained(activationId, await ReadRequest<DrainedRequest>(
+                "drained" => await HandleDrainedAsync(activationId, await ReadRequest<DrainedRequest>(
                     "heartbeat.collector/1", "activation.drained", "activation.drainRejected", activationId)),
                 _ => Json(404, new { error = Error("protocol_invalid_message", "Unknown ExternalHost protocol operation.") })
             };
@@ -162,7 +162,7 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         }
     }
 
-    public void ExpireLeases()
+    public async ValueTask ExpireLeasesAsync()
     {
         var now = _timeProvider.GetUtcNow();
         Session[] expired;
@@ -177,9 +177,11 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         foreach (var session in expired)
         {
             if (session.Activation is null)
-                _runtime.AbandonExternalHostActivation(session.ActivationId);
+                await _runtime.AbandonExternalHostActivationAsync(
+                    session.ActivationId,
+                    ExternalHostActivationStopReason.LeaseExpired);
             else
-                _runtime.StopExternalHostActivation(
+                await _runtime.StopExternalHostActivationAsync(
                     session.Activation,
                     ExternalHostActivationStopReason.LeaseExpired);
         }
@@ -200,9 +202,11 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         foreach (var session in sessions)
         {
             if (session.Activation is null)
-                _runtime.AbandonExternalHostActivation(session.ActivationId);
+                await _runtime.AbandonExternalHostActivationAsync(
+                    session.ActivationId,
+                    ExternalHostActivationStopReason.RuntimeStopping);
             else
-                _runtime.StopExternalHostActivation(
+                await _runtime.StopExternalHostActivationAsync(
                     session.Activation,
                     ExternalHostActivationStopReason.RuntimeStopping);
         }
@@ -213,7 +217,7 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
 
     public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 
-    private ProtocolHttpResponse HandleHello(ProtocolMessage<HelloRequest> message)
+    private async ValueTask<ProtocolHttpResponse> HandleHelloAsync(ProtocolMessage<HelloRequest> message)
     {
         var request = message.Body;
         LocalCollectorPackage package;
@@ -275,7 +279,7 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
                 session.AppHint == BrowserCollectorRuntime.NormalizeAppHint(request.AppHint) &&
                 session.ExternalHostIdentity == request.ExternalHostIdentity).ToArray();
         foreach (var old in replaced)
-            StopAndRemove(old, ExternalHostActivationStopReason.LeaseReplaced);
+            await StopAndRemoveAsync(old, ExternalHostActivationStopReason.LeaseReplaced);
         if (replaced.Length > 0)
             _browserRuntime.MarkWaiting(request.AppHint, "该 Host 的旧 Activation 已结束；等待新 Activation 就绪。");
 
@@ -357,7 +361,9 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         return new ProtocolHttpResponse(204, string.Empty, false);
     }
 
-    private ProtocolHttpResponse HandleStreams(Guid activationId, ProtocolMessage<StreamsOpenRequest> message)
+    private async ValueTask<ProtocolHttpResponse> HandleStreamsAsync(
+        Guid activationId,
+        ProtocolMessage<StreamsOpenRequest> message)
     {
         var request = message.Body;
         var session = GetSession(activationId);
@@ -407,7 +413,9 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         };
         if (!TryReplaceSession(session, opened))
         {
-            _runtime.StopExternalHostActivation(activation, ExternalHostActivationStopReason.LeaseExpired);
+            await _runtime.StopExternalHostActivationAsync(
+                activation,
+                ExternalHostActivationStopReason.LeaseExpired);
             return Rejected(
                 409,
                 "streams.rejected",
@@ -418,7 +426,9 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         return StreamsResponse(opened, message.MessageId);
     }
 
-    private ProtocolHttpResponse HandleReady(Guid activationId, ProtocolMessage<ReadyRequest> message)
+    private async ValueTask<ProtocolHttpResponse> HandleReadyAsync(
+        Guid activationId,
+        ProtocolMessage<ReadyRequest> message)
     {
         var request = message.Body;
         var session = GetSession(activationId);
@@ -431,7 +441,9 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
                 Error("protocol_invalid_message", "streams.opened is required before activation.ready."));
         if (session.Activation.State == CollectorActivationState.Ready)
             return ReadyResponse(session, message.MessageId);
-        var activation = _runtime.MarkExternalHostReady(session.Activation, request.AppliedSpecRevision);
+        var activation = await _runtime.MarkExternalHostReadyAsync(
+            session.Activation,
+            request.AppliedSpecRevision);
         var ready = session with
         {
             Activation = activation,
@@ -440,7 +452,9 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         };
         if (!TryReplaceSession(session, ready))
         {
-            _runtime.StopExternalHostActivation(activation, ExternalHostActivationStopReason.LeaseExpired);
+            await _runtime.StopExternalHostActivationAsync(
+                activation,
+                ExternalHostActivationStopReason.LeaseExpired);
             return Rejected(
                 409,
                 "activation.readyRejected",
@@ -453,13 +467,13 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         return ReadyResponse(ready, message.MessageId);
     }
 
-    private ProtocolHttpResponse HandleRenew(Guid activationId, RenewRequest request)
+    private async ValueTask<ProtocolHttpResponse> HandleRenewAsync(Guid activationId, RenewRequest request)
     {
         var session = GetSession(activationId);
         if (!_browserRuntime.IsAppDesiredEnabled(session.AppHint))
         {
             if (TryGetActiveLease(activationId, request.LeaseToken, out var disabledSession))
-                StopAndRemove(disabledSession, ExternalHostActivationStopReason.DesiredDisabled);
+                await StopAndRemoveAsync(disabledSession, ExternalHostActivationStopReason.DesiredDisabled);
             _browserRuntime.MarkWaiting(session.AppHint, "已停用；Package 和 App Instance 已保留。");
             return Json(409, new { error = Error("activation_stopping", "Browser Collector is disabled by Desired State.") });
         }
@@ -543,7 +557,9 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         };
     }
 
-    private ProtocolHttpResponse HandleDrained(Guid activationId, ProtocolMessage<DrainedRequest> message)
+    private async ValueTask<ProtocolHttpResponse> HandleDrainedAsync(
+        Guid activationId,
+        ProtocolMessage<DrainedRequest> message)
     {
         var request = message.Body;
         if (!TryGetActiveLease(activationId, request.LeaseToken, out var session))
@@ -567,13 +583,16 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
                 activationId,
                 message.MessageId,
                 Error("protocol_invalid_message", "Drain reason is not supported."));
-        session.Activation!.CompleteDrain(new InProcessCollectorDrainResult(
+        var drainResult = new InProcessCollectorDrainResult(
             new InProcessCollectorLogicalDrainResult(
                 request.PendingFacts,
                 request.PendingGaps,
                 reason,
-                request.RemainderDurable)));
-        StopAndRemove(session, ExternalHostActivationStopReason.CollectorDrained);
+                request.RemainderDurable));
+        await StopAndRemoveAsync(
+            session,
+            ExternalHostActivationStopReason.CollectorDrained,
+            drainResult);
         return new ProtocolHttpResponse(204, string.Empty, false);
     }
 
@@ -698,16 +717,19 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         }
     }
 
-    private void StopAndRemove(Session session, ExternalHostActivationStopReason reason)
+    private async ValueTask StopAndRemoveAsync(
+        Session session,
+        ExternalHostActivationStopReason reason,
+        InProcessCollectorDrainResult? drainResult = null)
     {
         lock (_gate)
         {
             _sessions.Remove(session.ActivationId);
         }
         if (session.Activation is null)
-            _runtime.AbandonExternalHostActivation(session.ActivationId);
+            await _runtime.AbandonExternalHostActivationAsync(session.ActivationId, reason);
         else
-            _runtime.StopExternalHostActivation(session.Activation, reason);
+            await _runtime.StopExternalHostActivationAsync(session.Activation, reason, drainResult);
     }
 
     private void HandleAppDesiredEnabledChanged(string appHint, bool enabled)
@@ -717,10 +739,23 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         Session[] sessions;
         lock (_gate)
             sessions = _sessions.Values.Where(session => session.AppHint == appHint).ToArray();
-        foreach (var session in sessions)
-            StopAndRemove(session, ExternalHostActivationStopReason.DesiredDisabled);
+        Observe(StopSessionsAsync(sessions, ExternalHostActivationStopReason.DesiredDisabled));
         _browserRuntime.MarkWaiting(appHint, "已停用；Package 和 App Instance 已保留。");
     }
+
+    private async Task StopSessionsAsync(
+        IReadOnlyList<Session> sessions,
+        ExternalHostActivationStopReason reason)
+    {
+        foreach (var session in sessions)
+            await StopAndRemoveAsync(session, reason);
+    }
+
+    private static void Observe(Task task) => _ = task.ContinueWith(
+        static completed => _ = completed.Exception,
+        CancellationToken.None,
+        TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
+        TaskScheduler.Default);
 
     private ProtocolHttpResponse HelloResponse(Session session, Guid replyTo) => ProtocolResponse(
         200,

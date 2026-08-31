@@ -24,7 +24,6 @@ internal sealed class CollectorActivationSession
     private CollectorHandshakeStep _lastHandshakeStep = CollectorHandshakeStep.Hello;
     private CollectorActivationState _state;
     private int _deadlineFenced;
-    private int _releaseCompleted;
     private ImmutableDictionary<string, FactStreamDescriptor> _streams =
         ImmutableDictionary<string, FactStreamDescriptor>.Empty.WithComparers(StringComparer.Ordinal);
 
@@ -299,53 +298,10 @@ internal sealed class CollectorActivationSession
         return _deliveryFence.TryCommitHost(commit);
     }
 
-    internal bool TryCompleteStop(Action release, ExternalHostActivationStopReason? reason = null)
+    internal void RecordExternalHostStopReason(ExternalHostActivationStopReason reason)
     {
-        if (!Monitor.TryEnter(_gate))
-            return false;
-        try
-        {
-            CompleteStopLocked(release, reason);
-            return true;
-        }
-        finally
-        {
-            Monitor.Exit(_gate);
-        }
-    }
-
-    internal void CompleteStopAfterDeadline(
-        Action release,
-        ExternalHostActivationStopReason? reason = null)
-    {
-        ArgumentNullException.ThrowIfNull(release);
-        if (!_deliveryFence.IsFenced)
-            throw new InvalidOperationException("The Activation must be fenced before forced deadline release.");
-        if (Interlocked.Exchange(ref _releaseCompleted, 1) == 0)
-            release();
-        StopReason = reason;
-    }
-
-    internal void CompleteStop(Action release, ExternalHostActivationStopReason? reason = null)
-    {
-        ArgumentNullException.ThrowIfNull(release);
         lock (_gate)
-            CompleteStopLocked(release, reason);
-    }
-
-    private void CompleteStopLocked(Action release, ExternalHostActivationStopReason? reason)
-    {
-        if (_state == CollectorActivationState.Stopped && Volatile.Read(ref _releaseCompleted) != 0)
-            return;
-        _state = CollectorActivationState.Draining;
-        _deliveryFence.Fence();
-        if (Interlocked.Exchange(ref _releaseCompleted, 1) == 0)
-            release();
-        StopReason = reason;
-        _state = CollectorActivationState.Stopped;
-        _messageAttempts.Clear();
-        _publishReplays.Clear();
-        _gapReplays.Clear();
+            StopReason ??= reason;
     }
 
     private bool IsDeliveryFencedAfterDeadline() => Volatile.Read(ref _deadlineFenced) != 0;

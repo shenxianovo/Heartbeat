@@ -17,6 +17,14 @@ public sealed partial class CollectorRuntime
                 : throw new KeyNotFoundException($"ExternalHost Activation '{activationId}' is not active.");
     }
 
+    internal Task<CollectorActivationTerminalResult> FindExternalHostActivationTerminal(Guid activationId)
+    {
+        lock (_gate)
+            return _activationLifetimes.TryGetValue(activationId, out var lifetime)
+                ? lifetime.Terminal
+                : throw new KeyNotFoundException($"ExternalHost Activation '{activationId}' has no lifetime owner.");
+    }
+
     public ExternalHostCollectorInitialization BeginExternalHostActivation(
         Guid collectorInstanceId,
         LocalCollectorPackage package,
@@ -76,9 +84,16 @@ public sealed partial class CollectorRuntime
                 helloMessageId,
                 package,
                 ActivationDeliveryCapability.Complete);
+            var lifetime = new CollectorActivationLifetime(
+                new ExternalHostCollectorActivationLifetimeDriver(session),
+                session.FenceDeliveryAfterDeadline,
+                () => CompleteExternalHostActivationLifetime(activationId),
+                _options.TimeProvider,
+                _options.InProcessDrainGracePeriod);
+            _activationLifetimes.Add(activationId, lifetime);
             _pendingExternalHostActivations.Add(
                 activationId,
-                new PendingExternalHostActivation(instance, package, session));
+                new PendingExternalHostActivation(instance, package, session, lifetime));
 
             return new ExternalHostCollectorInitialization(
                 activationId,
@@ -97,13 +112,13 @@ public sealed partial class CollectorRuntime
         }
     }
 
-    public ExternalHostCollectorActivation ReadyExternalHostActivation(
+    public async ValueTask<ExternalHostCollectorActivation> ReadyExternalHostActivationAsync(
         Guid activationId,
         long appliedSpecRevision,
         IReadOnlyList<OutputBinding> bindings)
     {
         var activation = OpenExternalHostStreams(activationId, appliedSpecRevision, bindings);
-        return MarkExternalHostReady(activation, appliedSpecRevision);
+        return await MarkExternalHostReadyAsync(activation, appliedSpecRevision);
     }
 
     public ExternalHostCollectorActivation OpenExternalHostStreams(
@@ -119,6 +134,8 @@ public sealed partial class CollectorRuntime
             if (!_pendingExternalHostActivations.TryGetValue(activationId, out var candidate))
                 throw ActivationError("protocol_invalid_message", "ExternalHost Activation is not awaiting ready.");
             pending = candidate;
+            if (pending.Lifetime.HasStopIntent)
+                throw ActivationError("activation_stopping", "ExternalHost Activation is stopping.");
             if (appliedSpecRevision != pending.Instance.Spec.SpecRevision)
                 throw ActivationError("spec_revision_stale", "Collector did not apply the current SpecRevision.");
             streamPlan = PlanStreams(activationId, pending.Instance, pending.Package, bindings);
@@ -130,13 +147,13 @@ public sealed partial class CollectorRuntime
             pair => ToDescriptor(pair.Stream),
             StringComparer.Ordinal);
         pending.Session.AcceptStreams(descriptors);
-        var activation = new ExternalHostCollectorActivation(pending.Session);
+        var activation = new ExternalHostCollectorActivation(pending.Session, pending.Lifetime);
 
         lock (_gate)
         {
             ThrowIfDisposed();
             if (!_pendingExternalHostActivations.TryGetValue(activationId, out var current) ||
-                !ReferenceEquals(current, pending))
+                !ReferenceEquals(current, pending) || pending.Lifetime.HasStopIntent)
                 throw ActivationError(
                     "activation_stopping",
                     "ExternalHost Activation ended while its Streams were opening.");
@@ -147,7 +164,7 @@ public sealed partial class CollectorRuntime
         }
     }
 
-    public ExternalHostCollectorActivation MarkExternalHostReady(
+    public async ValueTask<ExternalHostCollectorActivation> MarkExternalHostReadyAsync(
         ExternalHostCollectorActivation activation,
         long appliedSpecRevision)
     {
@@ -162,10 +179,13 @@ public sealed partial class CollectorRuntime
                 throw ActivationError("protocol_invalid_message", "ExternalHost Activation has no pending Stream commit.");
             expectedSpecRevision = pendingCommit.Instance.SpecRevision;
         }
-        activation.Session.AcceptReady(
-            appliedSpecRevision,
-            expectedSpecRevision,
-            () => CommitExternalHostReady(activation));
+        var outcome = await activation.Lifetime.PublishReadyAsync(new CollectorReadyPublication(() =>
+            activation.Session.AcceptReady(
+                appliedSpecRevision,
+                expectedSpecRevision,
+                () => CommitExternalHostReady(activation))));
+        if (outcome == CollectorReadyOutcome.Stopping)
+            throw ActivationError("activation_stopping", "ExternalHost Activation stopped before Ready publication.");
         return activation;
     }
 
@@ -200,42 +220,48 @@ public sealed partial class CollectorRuntime
         }
     }
 
-    public void AbandonExternalHostActivation(Guid activationId)
-    {
-        PendingExternalHostActivation? pending;
-        lock (_gate)
-        {
-            if (!_pendingExternalHostActivations.Remove(activationId, out pending))
-                return;
-        }
-        pending.Session.CompleteStop(() =>
-        {
-            lock (_gate)
-            {
-                _startingInstances.Remove(pending.Instance.CollectorInstanceId);
-            }
-        });
-    }
-
-    public void StopExternalHostActivation(
-        ExternalHostCollectorActivation activation,
+    public async ValueTask AbandonExternalHostActivationAsync(
+        Guid activationId,
         ExternalHostActivationStopReason reason)
     {
+        CollectorActivationLifetime? lifetime;
+        lock (_gate)
+            lifetime = _pendingExternalHostActivations.TryGetValue(activationId, out var pending)
+                ? pending.Lifetime
+                : null;
+        if (lifetime is not null)
+            _ = await lifetime.RequestStopAsync(new ExternalHostCollectorActivationStopIntent(
+                reason,
+                new ExternalHostDrainEvidence.NotReported()));
+    }
+
+    public async ValueTask StopExternalHostActivationAsync(
+        ExternalHostCollectorActivation activation,
+        ExternalHostActivationStopReason reason,
+        InProcessCollectorDrainResult? drainResult = null)
+    {
         ArgumentNullException.ThrowIfNull(activation);
-        activation.Session.CompleteStop(() =>
+        _ = await activation.RequestStopAsync(reason, drainResult);
+    }
+
+    private void CompleteExternalHostActivationLifetime(Guid activationId)
+    {
+        lock (_gate)
         {
-            lock (_gate)
+            if (_pendingExternalHostActivations.Remove(activationId, out var pending))
+                _startingInstances.Remove(pending.Instance.CollectorInstanceId);
+            if (_externalHostActivations.Remove(activationId, out var activation))
             {
                 foreach (var streamId in activation.Streams.Values.Select(stream => stream.StreamId))
                 {
-                    if (_streamWriters.TryGetValue(streamId, out var writer) && writer == activation.ActivationId)
+                    if (_streamWriters.TryGetValue(streamId, out var writer) && writer == activationId)
                         _streamWriters.Remove(streamId);
                 }
-                _externalHostActivations.Remove(activation.ActivationId);
-                if (_pendingActivationCommits.Remove(activation.ActivationId, out var pendingCommit))
-                    _startingInstances.Remove(pendingCommit.Instance.CollectorInstanceId);
             }
-        }, reason);
+            if (_pendingActivationCommits.Remove(activationId, out var pendingCommit))
+                _startingInstances.Remove(pendingCommit.Instance.CollectorInstanceId);
+            _activationLifetimes.Remove(activationId);
+        }
     }
 
     private static VerifiedCollectorArtifact ResolveExternalHostArtifact(
@@ -277,5 +303,6 @@ public sealed partial class CollectorRuntime
     private sealed record PendingExternalHostActivation(
         CollectorInstance Instance,
         LocalCollectorPackage Package,
-        CollectorActivationSession Session);
+        CollectorActivationSession Session,
+        CollectorActivationLifetime Lifetime);
 }

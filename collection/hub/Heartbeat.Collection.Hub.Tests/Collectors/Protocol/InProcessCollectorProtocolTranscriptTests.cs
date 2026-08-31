@@ -1081,6 +1081,7 @@ public class InProcessCollectorProtocolTranscriptTests
         Assert.False(oldActivation.DrainResult.IsFullyDrained);
         CollectorDrainDriverConformance.AssertObserved(
             "in_process",
+            await oldActivation.Lifetime.Terminal,
             hubInitiated: true,
             "fence_and_release");
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>

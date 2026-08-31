@@ -48,7 +48,7 @@ public sealed class ExternalHostCollectorProtocolTranscriptTests
             initialization.Spec.SpecRevision,
             [new OutputBinding("activity", "activity", new Dictionary<string, string>())]);
         Assert.Equal(CollectorActivationState.OpeningStreams, activation.State);
-        runtime.MarkExternalHostReady(activation, initialization.Spec.SpecRevision);
+        await runtime.MarkExternalHostReadyAsync(activation, initialization.Spec.SpecRevision);
         CollectorProtocolTranscriptContract.AssertHappyPath(
             activation.State,
             activation.DeliveryCapability,
@@ -102,32 +102,120 @@ public sealed class ExternalHostCollectorProtocolTranscriptTests
             Support(),
             activationId,
             Guid.CreateVersion7());
-        var activation = runtime.ReadyExternalHostActivation(
+        var activation = await runtime.ReadyExternalHostActivationAsync(
             activationId,
             initialization.Spec.SpecRevision,
             [new OutputBinding("activity", "activity", new Dictionary<string, string>())]);
         var stream = activation.Streams["activity"];
 
-        runtime.StopExternalHostActivation(activation, ExternalHostActivationStopReason.LeaseExpired);
+        await runtime.StopExternalHostActivationAsync(
+            activation,
+            ExternalHostActivationStopReason.LeaseExpired);
 
         Assert.Equal(CollectorActivationState.Stopped, activation.State);
         Assert.Equal(ExternalHostActivationStopReason.LeaseExpired, activation.StopReason);
         Assert.False(activation.ExternalHostWasTerminated);
         using var payload = JsonDocument.Parse("""{"identityKey":"late","title":"Late"}""");
-        var late = await activation.PublishAsync(
-            stream.StreamId,
-            Guid.CreateVersion7(),
-            [new FactSubmission(
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+            await activation.PublishAsync(
                 stream.StreamId,
-                1,
                 Guid.CreateVersion7(),
-                1,
-                null,
-                FactRecordState.Present,
-                new SegmentFactTime(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow, false),
-                payload.RootElement.Clone())]);
-        Assert.Equal(FactDeliveryStatus.Rejected, Assert.Single(late.Results).Status);
-        Assert.Equal("stream_writer_conflict", Assert.Single(late.Results).Error!.Code);
+                [new FactSubmission(
+                    stream.StreamId,
+                    1,
+                    Guid.CreateVersion7(),
+                    1,
+                    null,
+                    FactRecordState.Present,
+                    new SegmentFactTime(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow, false),
+                    payload.RootElement.Clone())]));
+    }
+
+    [Fact]
+    public async Task PendingReservation_RuntimeDisposeCompletesItsPersistentTerminal()
+    {
+        using var fixture = new ExternalHostFixture();
+        var pending = fixture.BeginReplacement();
+        var terminal = fixture.Runtime.FindExternalHostActivationTerminal(pending.ActivationId);
+
+        await fixture.Runtime.DisposeAsync();
+
+        var result = await terminal;
+        var execution = Assert.IsType<ExternalHostLeaseRevokedExecution>(result.Execution);
+        Assert.Equal(ExternalHostActivationStopReason.RuntimeStopping, execution.Reason);
+        Assert.True(result.OwnershipReleased);
+        Assert.IsType<ExternalHostDrainEvidence.NotReported>(execution.DrainEvidence);
+    }
+
+    [Fact]
+    public async Task ReadyPublicationWinningLeaseExpiryRaceStillReleasesOneWriter()
+    {
+        var publication = new BlockingStatePrepare();
+        using var fixture = new ExternalHostFixture(publication.Callback);
+        var activation = fixture.OpenStreams();
+        publication.Arm();
+
+        var ready = Task.Run(async () => await fixture.Runtime.MarkExternalHostReadyAsync(
+            activation,
+            fixture.SpecRevision));
+        await publication.Entered.WaitAsync(TimeSpan.FromSeconds(5));
+        var stopping = activation.RequestStopAsync(ExternalHostActivationStopReason.LeaseExpired).AsTask();
+        publication.Release();
+
+        await ready;
+        var terminal = await stopping;
+        Assert.Same(terminal, await activation.Terminal);
+        Assert.Contains(CollectorHandshakeStep.Ready, activation.HandshakeTranscript);
+        Assert.Equal(ExternalHostActivationStopReason.LeaseExpired, activation.StopReason);
+        Assert.True(terminal.OwnershipReleased);
+        Assert.False(activation.ExternalHostWasTerminated);
+
+        var replacement = await fixture.ReadyReplacementAsync();
+        Assert.Equal(CollectorActivationState.Ready, replacement.State);
+    }
+
+    [Fact]
+    public async Task ConcurrentExternalStopIntentsChooseOnePersistentTerminalAndReleaseOnce()
+    {
+        using var fixture = new ExternalHostFixture();
+        var activation = await fixture.ReadyAsync();
+        var intents = new[]
+        {
+            ExternalHostActivationStopReason.LeaseExpired,
+            ExternalHostActivationStopReason.LeaseReplaced,
+            ExternalHostActivationStopReason.DesiredDisabled
+        };
+
+        var results = await Task.WhenAll(intents.Select(reason => Task.Run(async () =>
+            await activation.RequestStopAsync(reason))));
+
+        Assert.All(results, result => Assert.Same(results[0], result));
+        Assert.True(activation.StopReason is { } winner && intents.Contains(winner));
+        Assert.True(results[0].OwnershipReleased);
+        Assert.Same(results[0], await activation.Terminal);
+        Assert.False(activation.ExternalHostWasTerminated);
+
+        var replacement = await fixture.ReadyReplacementAsync();
+        var competing = fixture.BeginReplacement();
+        var competingError = await Assert.ThrowsAsync<CollectorActivationException>(() =>
+            fixture.ReadyAsync(competing).AsTask());
+        Assert.Equal("stream_writer_conflict", competingError.Error.Code);
+        Assert.Equal(CollectorActivationState.Ready, replacement.State);
+    }
+
+    [Fact]
+    public async Task LeaseRevokeWithoutActivationDrainedNeverClaimsFullyDrainedOrTerminated()
+    {
+        using var fixture = new ExternalHostFixture();
+        var activation = await fixture.ReadyAsync();
+
+        var terminal = await activation.RequestStopAsync(
+            ExternalHostActivationStopReason.LeaseExpired);
+
+        Assert.Null(activation.DrainResult);
+        Assert.False(activation.ExternalHostWasTerminated);
+        Assert.False(terminal.DrainOutcome?.IsFullyDrained ?? false);
+        Assert.Equal(ExternalHostActivationStopReason.LeaseExpired, activation.StopReason);
     }
 
     [Fact]
@@ -193,6 +281,94 @@ public sealed class ExternalHostCollectorProtocolTranscriptTests
     private sealed class FixedClock : IClock
     {
         public DateTimeOffset UtcNow => DateTimeOffset.UtcNow;
+    }
+
+    private sealed class ExternalHostFixture : IDisposable
+    {
+        private readonly TemporaryDirectory _directory = TemporaryDirectory.Create();
+        private readonly ReferenceCollectorPackageCopy _packageCopy = ExternalHostPackageCopy();
+        private readonly JsonDocument _config = JsonDocument.Parse("{}");
+        private readonly LocalCollectorPackage _package;
+        private readonly CollectorInstance _instance;
+
+        public ExternalHostFixture(Action? beforeStatePrepare = null)
+        {
+            _package = LocalCollectorPackage.Load(_packageCopy.Path);
+            Runtime = CollectorRuntime.Open(
+                Path.Combine(_directory.Path, "runtime.json"),
+                new SegmentIngestService(new FixedClock()),
+                new CollectorRuntimeOptions { BeforeStatePrepare = beforeStatePrepare });
+            _instance = Runtime.CreateInstance(
+                _package,
+                new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+                new CollectorInstanceSpec(1, 1, _config.RootElement.Clone()));
+        }
+
+        public CollectorRuntime Runtime { get; }
+        public long SpecRevision => _instance.Spec.SpecRevision;
+
+        public ExternalHostCollectorActivation OpenStreams()
+        {
+            var initialization = BeginReplacement();
+            return Runtime.OpenExternalHostStreams(
+                initialization.ActivationId,
+                initialization.Spec.SpecRevision,
+                [new OutputBinding("activity", "activity", new Dictionary<string, string>())]);
+        }
+
+        public async ValueTask<ExternalHostCollectorActivation> ReadyAsync()
+        {
+            var initialization = BeginReplacement();
+            return await ReadyAsync(initialization);
+        }
+
+        public async ValueTask<ExternalHostCollectorActivation> ReadyAsync(
+            ExternalHostCollectorInitialization initialization)
+        {
+            return await Runtime.ReadyExternalHostActivationAsync(
+                initialization.ActivationId,
+                initialization.Spec.SpecRevision,
+                [new OutputBinding("activity", "activity", new Dictionary<string, string>())]);
+        }
+
+        public ValueTask<ExternalHostCollectorActivation> ReadyReplacementAsync() => ReadyAsync();
+
+        public ExternalHostCollectorInitialization BeginReplacement() =>
+            Runtime.BeginExternalHostActivation(
+                _instance.CollectorInstanceId,
+                _package,
+                "reference.inprocess",
+                _package.Artifacts.Single().ContentHash,
+                Support(),
+                Guid.CreateVersion7(),
+                Guid.CreateVersion7());
+
+        public void Dispose()
+        {
+            Runtime.Dispose();
+            _config.Dispose();
+            _packageCopy.Dispose();
+            _directory.Dispose();
+        }
+    }
+
+    private sealed class BlockingStatePrepare
+    {
+        private readonly TaskCompletionSource _entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _armed;
+
+        public Action Callback => () =>
+        {
+            if (Volatile.Read(ref _armed) == 0)
+                return;
+            _entered.TrySetResult();
+            _release.Task.GetAwaiter().GetResult();
+        };
+
+        public Task Entered => _entered.Task;
+        public void Arm() => Volatile.Write(ref _armed, 1);
+        public void Release() => _release.TrySetResult();
     }
 
     private sealed class TemporaryDirectory : IDisposable

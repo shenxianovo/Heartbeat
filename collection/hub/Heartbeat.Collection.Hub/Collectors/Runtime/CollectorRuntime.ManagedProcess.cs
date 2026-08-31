@@ -777,6 +777,7 @@ internal sealed class ManagedProcessCollectorActivationLifetimeDriver(
     Action beginDraining) : ICollectorActivationLifetimeDriver
 {
     public async ValueTask<CollectorActivationDriverStopResult> StopAsync(
+        CollectorActivationStopIntent intent,
         DateTimeOffset deadline,
         CancellationToken cancellationToken)
     {

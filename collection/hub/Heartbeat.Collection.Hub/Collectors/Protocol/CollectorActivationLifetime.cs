@@ -9,7 +9,21 @@ internal enum CollectorActivationStopCause
     UpdateRequested
 }
 
-internal sealed record CollectorActivationStopIntent(CollectorActivationStopCause Cause);
+internal record CollectorActivationStopIntent(CollectorActivationStopCause Cause);
+
+internal abstract record ExternalHostDrainEvidence
+{
+    internal sealed record NotReported : ExternalHostDrainEvidence;
+
+    internal sealed record HostReported(InProcessCollectorDrainResult Result) : ExternalHostDrainEvidence;
+}
+
+internal sealed record ExternalHostCollectorActivationStopIntent(
+    ExternalHostActivationStopReason Reason,
+    ExternalHostDrainEvidence DrainEvidence)
+    : CollectorActivationStopIntent(Reason == ExternalHostActivationStopReason.RuntimeStopping
+        ? CollectorActivationStopCause.RuntimeStopping
+        : CollectorActivationStopCause.Deactivated);
 
 internal enum CollectorReadyOutcome
 {
@@ -69,6 +83,10 @@ internal sealed record ManagedProcessTerminatedExecution(
     ManagedProcessTerminationCause Cause,
     int? ExitCode) : CollectorActivationExecution;
 
+internal sealed record ExternalHostLeaseRevokedExecution(
+    ExternalHostActivationStopReason Reason,
+    ExternalHostDrainEvidence DrainEvidence) : CollectorActivationExecution;
+
 internal sealed record CollectorActivationDriverStopResult(
     CollectorActivationDrainOutcome DrainOutcome,
     CollectorActivationExecution Execution);
@@ -112,6 +130,7 @@ internal interface ICollectorActivationLifetimeDriver
     int CooperativeStopAttempts => 1;
 
     ValueTask<CollectorActivationDriverStopResult> StopAsync(
+        CollectorActivationStopIntent intent,
         DateTimeOffset deadline,
         CancellationToken cancellationToken);
 
@@ -128,6 +147,7 @@ internal sealed class InProcessCollectorActivationLifetimeDriver(
     public int CooperativeStopAttempts => 2;
 
     public async ValueTask<CollectorActivationDriverStopResult> StopAsync(
+        CollectorActivationStopIntent intent,
         DateTimeOffset deadline,
         CancellationToken cancellationToken)
     {
@@ -155,6 +175,46 @@ internal sealed class InProcessCollectorActivationLifetimeDriver(
         CancellationToken.None,
         TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
         TaskScheduler.Default);
+}
+
+internal sealed class ExternalHostCollectorActivationLifetimeDriver(
+    CollectorActivationSession session) : ICollectorActivationLifetimeDriver
+{
+    public ValueTask<CollectorActivationDriverStopResult> StopAsync(
+        CollectorActivationStopIntent intent,
+        DateTimeOffset deadline,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        session.BeginDrain();
+        var external = intent as ExternalHostCollectorActivationStopIntent;
+        var reason = external?.Reason ?? intent.Cause switch
+        {
+            CollectorActivationStopCause.RuntimeStopping => ExternalHostActivationStopReason.RuntimeStopping,
+            _ => ExternalHostActivationStopReason.LeaseExpired
+        };
+        var evidence = external?.DrainEvidence ?? new ExternalHostDrainEvidence.NotReported();
+        session.RecordExternalHostStopReason(reason);
+        var drain = evidence switch
+        {
+            ExternalHostDrainEvidence.HostReported reported =>
+                CollectorActivationDrainOutcome.FromInProcess(reported.Result),
+            _ => new CollectorActivationDrainOutcome(
+                null,
+                null,
+                CollectorDrainReason.FlushCancelled,
+                RemainderDurable: false,
+                CollectorDrainCompletionReason.Completed)
+        };
+        return ValueTask.FromResult(new CollectorActivationDriverStopResult(
+            drain,
+            new ExternalHostLeaseRevokedExecution(reason, evidence)));
+    }
+
+    public CollectorActivationExecution ProjectFailedStop(CollectorDrainReason reason) =>
+        new ExternalHostLeaseRevokedExecution(
+            ExternalHostActivationStopReason.RuntimeStopping,
+            new ExternalHostDrainEvidence.NotReported());
 }
 
 /// <summary>
@@ -298,7 +358,7 @@ internal sealed class CollectorActivationLifetime
                (attempts == 0 || !deadlineCancellation.IsCancellationRequested))
         {
             attempts++;
-            var attempt = InvokeStopAsync(deadline, deadlineCancellation.Token);
+            var attempt = InvokeStopAsync(intent, deadline, deadlineCancellation.Token);
             if (!ReferenceEquals(await Task.WhenAny(attempt, deadlineTask).ConfigureAwait(false), attempt))
             {
                 deadlineExceeded = true;
@@ -367,9 +427,10 @@ internal sealed class CollectorActivationLifetime
     }
 
     private Task<CollectorActivationDriverStopResult> InvokeStopAsync(
+        CollectorActivationStopIntent intent,
         DateTimeOffset deadline,
         CancellationToken cancellationToken) => Task.Factory.StartNew(
-        async () => await _driver.StopAsync(deadline, cancellationToken).ConfigureAwait(false),
+        async () => await _driver.StopAsync(intent, deadline, cancellationToken).ConfigureAwait(false),
         CancellationToken.None,
         TaskCreationOptions.LongRunning,
         TaskScheduler.Default).Unwrap();

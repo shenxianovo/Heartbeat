@@ -262,6 +262,7 @@ public sealed class CollectorActivationLifetimeTests
         public int CooperativeStopAttempts => 2;
 
         public ValueTask<CollectorActivationDriverStopResult> StopAsync(
+            CollectorActivationStopIntent intent,
             DateTimeOffset deadline,
             CancellationToken cancellationToken)
         {
@@ -279,6 +280,7 @@ public sealed class CollectorActivationLifetimeTests
         public int CooperativeStopAttempts => 2;
 
         public ValueTask<CollectorActivationDriverStopResult> StopAsync(
+            CollectorActivationStopIntent intent,
             DateTimeOffset deadline,
             CancellationToken cancellationToken) => stop(deadline, cancellationToken);
     }
@@ -286,6 +288,7 @@ public sealed class CollectorActivationLifetimeTests
     private sealed class ManagedFailureProjectionDriver(Action fence) : ICollectorActivationLifetimeDriver
     {
         public ValueTask<CollectorActivationDriverStopResult> StopAsync(
+            CollectorActivationStopIntent intent,
             DateTimeOffset deadline,
             CancellationToken cancellationToken) => throw new IOException("managed stop failed");
 

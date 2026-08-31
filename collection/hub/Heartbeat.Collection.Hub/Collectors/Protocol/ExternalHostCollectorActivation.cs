@@ -12,30 +12,51 @@ namespace Heartbeat.Collection.Hub.Collectors.Protocol;
 public sealed class ExternalHostCollectorActivation
 {
     private readonly CollectorActivationSession _session;
+    private readonly CollectorActivationLifetime _lifetime;
 
     internal ExternalHostCollectorActivation(
-        CollectorActivationSession session)
+        CollectorActivationSession session,
+        CollectorActivationLifetime lifetime)
     {
         _session = session;
+        _lifetime = lifetime;
     }
 
     public Guid ActivationId => _session.ActivationId;
     public Guid HelloMessageId => _session.HelloMessageId;
     public CollectorActivationState State => _session.State;
-    public ExternalHostActivationStopReason? StopReason => _session.StopReason;
+    public ExternalHostActivationStopReason? StopReason =>
+        _lifetime.Terminal.IsCompletedSuccessfully &&
+        _lifetime.Terminal.Result.Execution is ExternalHostLeaseRevokedExecution execution
+            ? execution.Reason
+            : _session.StopReason;
     public ActivationDeliveryCapability DeliveryCapability => _session.DeliveryCapability;
     public IReadOnlyList<CollectorHandshakeStep> HandshakeTranscript => _session.HandshakeTranscript;
     public bool ExternalHostWasTerminated => false;
     public IReadOnlyDictionary<string, FactStreamDescriptor> Streams => _session.Streams;
-    public InProcessCollectorDrainResult? DrainResult { get; private set; }
+    public InProcessCollectorDrainResult? DrainResult =>
+        _lifetime.Terminal.IsCompletedSuccessfully &&
+        _lifetime.Terminal.Result.Execution is ExternalHostLeaseRevokedExecution
+        {
+            DrainEvidence: ExternalHostDrainEvidence.HostReported
+        }
+            ? _lifetime.Terminal.Result.DrainOutcome.ToInProcess()
+            : null;
     internal LocalCollectorPackage Package => _session.Package;
     internal CollectorActivationSession Session => _session;
+    internal CollectorActivationLifetime Lifetime => _lifetime;
 
-    internal void CompleteDrain(InProcessCollectorDrainResult result)
-    {
-        ArgumentNullException.ThrowIfNull(result);
-        DrainResult ??= result;
-    }
+    internal Task<CollectorActivationTerminalResult> Terminal => _lifetime.Terminal;
+
+    internal ValueTask<CollectorActivationTerminalResult> RequestStopAsync(
+        ExternalHostActivationStopReason reason,
+        InProcessCollectorDrainResult? drainResult = null,
+        CancellationToken cancellationToken = default) =>
+        _lifetime.RequestStopAsync(new ExternalHostCollectorActivationStopIntent(
+            reason,
+            drainResult is null
+                ? new ExternalHostDrainEvidence.NotReported()
+                : new ExternalHostDrainEvidence.HostReported(drainResult)), cancellationToken);
 
     public ValueTask<FactBatchAcknowledgement> PublishAsync(
         Guid streamId,

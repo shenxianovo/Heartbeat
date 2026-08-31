@@ -143,7 +143,7 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
         Assert.Equal(409, rejected.StatusCode);
 
         _time.Advance(TimeSpan.FromSeconds(11));
-        _handler.ExpireLeases();
+        await _handler.ExpireLeasesAsync();
         var renew = await Post($"/v1/collector-protocol/browser/{session.ActivationId}/renew", $$$"""
         {"leaseToken":"{{{session.LeaseToken}}}"}
         """);
@@ -183,7 +183,7 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
                 "protocol_invalid_message",
                 conflictJson.RootElement.GetProperty("body").GetProperty("error").GetProperty("code").GetString());
         _time.Advance(TimeSpan.FromSeconds(11));
-        _handler.ExpireLeases();
+        await _handler.ExpireLeasesAsync();
 
         var replay = await Post("/v1/collector-protocol/browser/hello", helloBody);
 
@@ -244,6 +244,7 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
         Assert.Equal(CollectorDrainCompletionReason.Completed, activation.DrainResult.CompletionReason);
         CollectorDrainDriverConformance.AssertObserved(
             "external_host",
+            await activation.Terminal,
             hubInitiated: false,
             "revoke_lease");
     }

@@ -14,6 +14,6 @@ public sealed class ExternalHostLeaseMonitor(
         var handler = services.GetRequiredService<BrowserExternalHostProtocolHandler>();
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1), _timeProvider);
         while (await timer.WaitForNextTickAsync(stoppingToken))
-            handler.ExpireLeases();
+            await handler.ExpireLeasesAsync();
     }
 }

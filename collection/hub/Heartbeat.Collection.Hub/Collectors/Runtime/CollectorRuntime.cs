@@ -362,7 +362,6 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
     {
         CollectorActivationLifetime[] activationLifetimes;
         ManagedProcessCollectorActivation[] managedProcessActivations;
-        ExternalHostCollectorActivation[] externalHostActivations;
         lock (_gate)
         {
             if (_disposed)
@@ -373,9 +372,6 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
                 .Select(pair => pair.Value)
                 .ToArray();
             managedProcessActivations = _managedProcessActivations.Values.ToArray();
-            externalHostActivations = _externalHostActivations.Values
-                .Where(activation => activation.State != CollectorActivationState.Stopped)
-                .ToArray();
         }
 
         var stopFailures = new List<Exception>();
@@ -410,9 +406,6 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
                 stopFailures.Add(exception);
             }
         }
-
-        foreach (var activation in externalHostActivations)
-            StopExternalHostActivation(activation, ExternalHostActivationStopReason.RuntimeStopping);
 
         if (stopFailures.Count != 0)
             throw new AggregateException("One or more Collectors did not stop; Runtime ownership is retained.", stopFailures);

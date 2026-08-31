@@ -755,6 +755,7 @@ public class ManagedProcessCollectorProtocolTranscriptTests
             activation.RuntimeState.DrainResult.CompletionReason);
         CollectorDrainDriverConformance.AssertObserved(
             "managed_process",
+            await activation.Terminal,
             hubInitiated: true,
             "terminate_and_release");
         var execution = Assert.IsType<ManagedProcessTerminatedExecution>(
