@@ -1,6 +1,6 @@
 # Collector Activation 生命周期所有权收敛
 
-Status: ready-for-agent
+Status: done
 
 ## Problem
 
@@ -178,10 +178,10 @@ internal sealed class CollectorDeliveryLease
   Interface 级测试，旧调度测试已替换。
 - [x] Client vertical slice 统一 Fact/Gap、cooperative/deadline/failure；observer/barrier production hook 已删除。
 - [x] 三种 Execution Driver conformance/adapter 验证通过且不伪装 ExternalHost 能力。
-- [ ] build、Protocol/Hub/System、Browser test/build、collector contracts、style、diff、真实 cross-process、
+- [x] build、Protocol/Hub/System、Browser test/build、collector contracts、style、diff、真实 cross-process、
   stress 与 solution 项目并行连续多轮通过。
-- [ ] 新的无关 flaky gate 已按产品/测试/环境分类并单独建 issue，不扩张本 feature。
-- [ ] Standards/Spec 双轴独立复审完成，P1/P2 清零；线性 commits、clean worktree、无 push。
+- [x] 最终验证未发现新的无关 flaky gate；若后续出现，仍按产品/测试/环境分类并单独建 issue。
+- [x] Standards/Spec 双轴独立复审完成，P1/P2 清零；线性 commits、clean worktree、无 push。
 
 ## Required work
 
@@ -190,7 +190,7 @@ internal sealed class CollectorDeliveryLease
 - [x] [03 — Hub 侧单一 Activation Lifetime owner](issues/03-hub-activation-lifetime.md)
 - [x] [04 — Client 侧显式 Delivery Ownership](issues/04-client-delivery-ownership.md)
 - [x] [05 — 三种 Execution Driver conformance](issues/05-execution-driver-conformance.md)
-- [ ] [06 — 全量验证、复审与 lifecycle closeout](issues/06-validation-and-review.md)
+- [x] [06 — 全量验证、复审与 lifecycle closeout](issues/06-validation-and-review.md)
 
 ## Non-goals
 
