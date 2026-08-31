@@ -783,34 +783,33 @@ internal sealed class ManagedProcessCollectorActivationLifetimeDriver(
             beginDraining();
             session.BeginDrain();
             var drain = await client.StopOnceAsync(deadline).ConfigureAwait(false);
-            CollectorActivationExecution execution = client.WasTerminated
-                ? new ManagedProcessTerminatedExecution(
-                    client.TerminationCause ?? ManagedProcessTerminationCause.DeadlineExceeded,
-                    client.ExitCode)
-                : new ManagedProcessExitedExecution(client.ExitCode);
             return new CollectorActivationDriverStopResult(
                 CollectorActivationDrainOutcome.FromInProcess(drain),
-                execution);
+                Project(client.Termination));
         }
         catch (Exception exception)
         {
             var drain = await client.TerminateAfterStopFailureAsync(exception, deadline).ConfigureAwait(false);
-            var terminationCause = client.TerminationCause ?? ManagedProcessTerminationCause.StopFailed;
             return new CollectorActivationDriverStopResult(
                 CollectorActivationDrainOutcome.FromInProcess(drain),
-                new ManagedProcessTerminatedExecution(
-                    terminationCause,
-                    client.ExitCode));
+                Project(client.Termination));
         }
     }
 
+    /// <summary>
+    /// Projects the terminal execution from the published termination state only. It runs after the
+    /// fence wrote the cause, so it reports the first written cause instead of the stop reason guess.
+    /// </summary>
     public CollectorActivationExecution ProjectFailedStop(CollectorDrainReason reason) =>
-        new ManagedProcessTerminatedExecution(
-            ManagedProcessTerminationProjector.FromFailedStopReason(reason),
-            client.ExitCode);
+        Project(client.Termination);
 
     public void FenceAfterFailedStop(CollectorDrainReason reason) =>
         client.TerminateAfterLifetimeFailure(reason);
+
+    private CollectorActivationExecution Project(ManagedProcessTermination? termination) =>
+        termination is null
+            ? new ManagedProcessExitedExecution(client.ExitCode)
+            : new ManagedProcessTerminatedExecution(termination.Cause, client.ExitCode);
 }
 
 internal sealed class ManagedProcessProtocolException(string message, Exception? innerException = null)
@@ -848,7 +847,7 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
     private Guid? _drainMessageId;
     private ManagedProcessDrainResult? _drainResult;
     private CollectorAuthorizationChallenge? _authorizationChallenge;
-    private int _terminationRequests;
+    private ManagedProcessTermination? _termination;
 
     private ManagedProcessProtocolClient(
         Process process,
@@ -893,13 +892,24 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
             }
         }
     }
-    public bool WasTerminated { get; private set; }
-    public ManagedProcessTerminationCause? TerminationCause { get; private set; }
-    internal int TerminationRequests => Volatile.Read(ref _terminationRequests);
+    /// <summary>
+    /// The single published termination fact, or <see langword="null"/> while the process was never
+    /// terminated by the Hub. Read it once and derive every projection from that snapshot.
+    /// </summary>
+    public ManagedProcessTermination? Termination => Volatile.Read(ref _termination);
+    public bool WasTerminated => Termination is not null;
+    public ManagedProcessTerminationCause? TerminationCause => Termination?.Cause;
+    internal int TerminationRequests => Termination is null ? 0 : 1;
     public int? PendingFacts { get; private set; }
     public int? PendingGaps { get; private set; }
     public CollectorDrainReason DrainReason { get; private set; } = CollectorDrainReason.FlushCancelled;
     public bool RemainderDurable { get; private set; }
+
+    /// <summary>
+    /// Whether the Collector-reported remainder evidence is complete enough to be trusted as durable.
+    /// Terminating the process later cannot make already reported durable evidence untrue.
+    /// </summary>
+    public bool LogicalRemainderDurable => RemainderDurable && PendingFacts is not null && PendingGaps is not null;
     public Task Completion => _exit.Task;
     public Task<ManagedProcessExit> ExitCompletion => _exit.Task;
     public ManagedProcessDrainResult DrainResult => _drainResult ?? (_drained.Task.IsCompletedSuccessfully
@@ -1345,15 +1355,15 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
         DateTimeOffset deadline)
     {
         await StopCoreAsync(deadline).ConfigureAwait(false);
-        if (TerminationCause is { } terminationCause)
+        if (Termination is { } termination)
         {
-            var projection = ManagedProcessTerminationProjector.Project(terminationCause);
+            var projection = ManagedProcessTerminationProjector.Project(termination.Cause);
             return new InProcessCollectorDrainResult(
                 new InProcessCollectorLogicalDrainResult(
                     PendingFacts,
                     PendingGaps,
                     projection.Reason,
-                    RemainderDurable: false),
+                    LogicalRemainderDurable),
                 projection.CompletionReason,
                 DrainResult.Failure?.ProtocolError?.Message);
         }
@@ -1363,7 +1373,7 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
                 PendingFacts,
                 PendingGaps,
                 reason,
-                RemainderDurable && PendingFacts is not null && PendingGaps is not null),
+                LogicalRemainderDurable),
             DrainResult.Failure is null
                 ? CollectorDrainCompletionReason.Completed
                 : CollectorDrainCompletionReason.CompletionFailed,
@@ -1407,13 +1417,13 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
             failure);
         _drained.TrySetResult(_drainResult);
         var projection = ManagedProcessTerminationProjector.Project(
-            TerminationCause ?? ManagedProcessTerminationCause.StopFailed);
+            Termination?.Cause ?? ManagedProcessTerminationCause.StopFailed);
         return new InProcessCollectorDrainResult(
             new InProcessCollectorLogicalDrainResult(
                 PendingFacts,
                 PendingGaps,
                 projection.Reason,
-                RemainderDurable: false),
+                LogicalRemainderDurable),
             projection.CompletionReason,
             exception.Message);
     }
@@ -1986,10 +1996,8 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
 
     private void Terminate(ManagedProcessTerminationCause cause)
     {
-        if (Interlocked.CompareExchange(ref _terminationRequests, 1, 0) != 0)
+        if (Interlocked.CompareExchange(ref _termination, new ManagedProcessTermination(cause), null) is not null)
             return;
-        WasTerminated = true;
-        TerminationCause = cause;
         Kill(_process);
     }
 

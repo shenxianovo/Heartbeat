@@ -113,12 +113,22 @@ internal enum ManagedProcessTerminationCause
     StopFailed
 }
 
+/// <summary>
+/// One atomically published ManagedProcess termination fact. Termination and its cause are the same
+/// value, so no reader can observe a terminated Activation whose cause is still missing.
+/// </summary>
+internal sealed record ManagedProcessTermination(ManagedProcessTerminationCause Cause);
+
 internal sealed record ManagedProcessTerminationDrainProjection(
     CollectorDrainReason Reason,
     CollectorDrainCompletionReason CompletionReason);
 
 internal static class ManagedProcessTerminationProjector
 {
+    /// <summary>
+    /// Picks the candidate cause a failed Hub stop would write first. It never reads the Collector
+    /// Protocol Client: the published termination state stays the only authority for what happened.
+    /// </summary>
     internal static ManagedProcessTerminationCause FromFailedStopReason(CollectorDrainReason reason) => reason switch
     {
         CollectorDrainReason.DeadlineExceeded => ManagedProcessTerminationCause.DeadlineExceeded,
@@ -482,24 +492,17 @@ internal sealed class CollectorActivationLifetime
             }
         }
 
-        if (driverResult is null)
-        {
-            driverResult = new CollectorActivationDriverStopResult(
-                deadlineExceeded || IsDeadlineReached(deadline, deadlineCancellation.Token)
-                    ? DeadlineExceeded()
-                    : StopFailed(stopError),
-                _driver.ProjectFailedStop(
-                    deadlineExceeded || IsDeadlineReached(deadline, deadlineCancellation.Token)
-                        ? CollectorDrainReason.DeadlineExceeded
-                        : CollectorDrainReason.StopFailed));
-        }
+        var drainOutcome = driverResult?.DrainOutcome ??
+            (deadlineExceeded || IsDeadlineReached(deadline, deadlineCancellation.Token)
+                ? DeadlineExceeded()
+                : StopFailed(stopError));
 
         Exception? releaseError = null;
         var fenced = false;
         try
         {
-            if (driverResult.DrainOutcome.Reason is CollectorDrainReason.DeadlineExceeded or CollectorDrainReason.StopFailed)
-                _driver.FenceAfterFailedStop(driverResult.DrainOutcome.Reason);
+            if (drainOutcome.Reason is CollectorDrainReason.DeadlineExceeded or CollectorDrainReason.StopFailed)
+                _driver.FenceAfterFailedStop(drainOutcome.Reason);
             _fence();
             fenced = true;
         }
@@ -520,15 +523,19 @@ internal sealed class CollectorActivationLifetime
             }
         }
 
+        // The fence is the only writer of a Driver's terminal cause, so the projection runs after it
+        // and can only read back the first written cause instead of overwriting it.
+        var execution = driverResult?.Execution ?? _driver.ProjectFailedStop(drainOutcome.Reason);
+
         _terminal.TrySetResult(new CollectorActivationTerminalResult(
             intent,
             deadline,
-            driverResult.DrainOutcome,
+            drainOutcome,
             attempts,
             stopError,
             Volatile.Read(ref _released) != 0 && releaseError is null,
             releaseError,
-            driverResult.Execution));
+            execution));
     }
 
     private Task<CollectorActivationDriverStopResult> InvokeStopAsync(
