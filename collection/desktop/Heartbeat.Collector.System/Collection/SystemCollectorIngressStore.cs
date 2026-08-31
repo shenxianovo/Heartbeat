@@ -157,17 +157,26 @@ internal sealed class SystemCollectorIngressStore
                     lineStart = nextLineStart;
                     continue;
                 }
-                StoredIngressEntry? entry;
+                JsonDocument document;
                 try
                 {
-                    entry = JsonSerializer.Deserialize<StoredIngressEntry>(line, JsonOptions);
+                    document = JsonDocument.Parse(line);
                 }
                 catch (JsonException) when (
-                    chunk.Index == chunks[^1].Index && nextLineStart == bytes.Length)
+                    chunk.Index == chunks[^1].Index &&
+                    newline < 0 &&
+                    nextLineStart == bytes.Length)
                 {
                     RepairMalformedTail(chunk.Path, lineStart);
                     break;
                 }
+                catch (JsonException exception)
+                {
+                    throw new JsonException("System Collector ingress entry JSON is invalid.", exception);
+                }
+                StoredIngressEntry? entry;
+                using (document)
+                    entry = document.RootElement.Deserialize<StoredIngressEntry>(JsonOptions);
                 if (entry is null || entry.EntryId == Guid.Empty)
                     throw new InvalidDataException("System Collector ingress entry is invalid.");
                 switch (entry.Kind)

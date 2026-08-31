@@ -272,6 +272,36 @@ public sealed class SystemCollectorIngressStoreTests : IDisposable
     }
 
     [Fact]
+    public void OpenDoesNotTruncateCompleteTailWithUnknownField()
+    {
+        var path = Path.Combine(_root, "ingress.ndjson");
+        var store = SystemCollectorIngressStore.Open(path, 2);
+        store.StageInputEvent(NewInput(Guid.CreateVersion7()));
+        File.AppendAllText(
+            path,
+            $$"""{"entryId":"{{Guid.CreateVersion7()}}","kind":"reset","unknown":true}""" + "\n");
+        var durableBytes = File.ReadAllBytes(path);
+
+        Assert.Throws<JsonException>(() => SystemCollectorIngressStore.Open(path, 2));
+        Assert.Equal(durableBytes, File.ReadAllBytes(path));
+    }
+
+    [Fact]
+    public void OpenDoesNotTruncateCompleteTailWithIncompatibleFieldType()
+    {
+        var path = Path.Combine(_root, "ingress.ndjson");
+        var store = SystemCollectorIngressStore.Open(path, 2);
+        store.StageInputEvent(NewInput(Guid.CreateVersion7()));
+        File.AppendAllText(
+            path,
+            $$"""{"entryId":"{{Guid.CreateVersion7()}}","kind":42}""" + "\n");
+        var durableBytes = File.ReadAllBytes(path);
+
+        Assert.Throws<JsonException>(() => SystemCollectorIngressStore.Open(path, 2));
+        Assert.Equal(durableBytes, File.ReadAllBytes(path));
+    }
+
+    [Fact]
     public async Task DeadlineFenceRejectsAPreparedJournalMutationThatReturnsLate()
     {
         var path = Path.Combine(_root, "ingress.ndjson");

@@ -167,3 +167,11 @@ directory-entry/power-loss durability 与公共 atomic replacement primitive 仍
 但含未知字段或错误字段类型的记录被静默删除。只有可证明为 torn/un-terminated 的末条才允许修复；
 语义不兼容记录必须保留并 fail 或 quarantine。该边界及 append+restart 回归关闭前，本 issue 恢复为
 `needs-triage`。
+
+### 2026-08-31 — ingress 尾部修复收窄到可证明 torn JSON
+
+完整 LF 结尾但带未知字段、错误字段类型的两条测试先稳定 0/2：旧 `Open` 无异常返回并截断已落盘
+字节。修复先单独解析 JSON syntax；只有最后一个无 LF 且语法不完整的 record 才按 torn tail 截断，
+语法完整后的 schema 反序列化错误不会进入 repair catch。两条记录现在均保留原字节并 fail；既有半行
+断尾恢复、合法无 LF 补齐、中间损坏拒绝及修复后 append+restart 一并通过，ingress store 14/14。
+本 issue 等待 Feature A 最终完整门禁与双轴复审后再恢复 `done`。
