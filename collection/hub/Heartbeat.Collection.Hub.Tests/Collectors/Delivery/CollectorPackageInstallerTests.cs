@@ -1,4 +1,6 @@
 using System.IO.Compression;
+using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using Heartbeat.Collection.CollectorRelease;
@@ -331,11 +333,25 @@ public sealed class CollectorPackageInstallerTests : IDisposable
     [Fact]
     public async Task Install_RegistryUnreachable_FailsWithRequestFailed()
     {
-        _server.Dispose();
+        // A loopback port nothing is listening on, so the connection is refused immediately instead
+        // of the test waiting for a timeout.
+        var probe = new TcpListener(IPAddress.Loopback, 0);
+        probe.Start();
+        var port = ((IPEndPoint)probe.LocalEndpoint).Port;
+        probe.Stop();
+        var unreachable = new CollectorPackageInstaller(
+            new StaticCollectorRegistryClient(
+                _httpClient,
+                new Uri($"http://127.0.0.1:{port}/collector-registry/v1/")),
+            _store);
 
-        var result = await InstallAsync();
+        var result = await unreachable.InstallCurrentAsync(_fixture.PackageId, _timeout.Token);
 
         Assert.Equal(CollectorRegistryFailureReason.RequestFailed, result.Reason);
+        Assert.Equal(
+            CollectorRegistryFailureReason.RequestFailed,
+            unreachable.LastFailure(_fixture.PackageId)!.Reason);
+        Assert.False(Directory.Exists(_store.PackagesRoot));
         AssertNothingPending();
     }
 

@@ -58,5 +58,39 @@ public enum CollectorRegistryFailureReason
     ArtifactLengthMismatch,
 
     /// <summary>The downloaded bytes hash to something other than the declared SHA-256.</summary>
-    ArtifactHashMismatch
+    ArtifactHashMismatch,
+
+    /// <summary>The caller cancelled the read, download or installation.</summary>
+    Cancelled,
+
+    /// <summary>The downloaded artifact is not a readable zip archive.</summary>
+    MalformedArchive,
+
+    /// <summary>
+    /// An archive entry is not a plain relative file inside the destination: traversal, a rooted or
+    /// drive-qualified path, a separator variant, a symbolic link or another non-regular entry, or a
+    /// name that would collide with an entry already extracted.
+    /// </summary>
+    UnsafeArchiveEntry,
+
+    /// <summary>The archive declares more entries or more uncompressed bytes than the limits allow.</summary>
+    ArchiveLimitExceeded,
+
+    /// <summary>The unpacked content is not a valid Collector Package according to the Package loader.</summary>
+    PackageValidationFailed,
+
+    /// <summary>The Collector Package manifest declares a different PackageId or Version than the candidate.</summary>
+    PackageManifestMismatch,
+
+    /// <summary>The directory that would own this candidate carries no completion marker, so it is not an Installation.</summary>
+    InstallationMarkerMissing,
+
+    /// <summary>
+    /// The completion marker is unreadable, or it names another PackageId, Version, artifact
+    /// SHA-256 or Package content hash than the candidate being asked about.
+    /// </summary>
+    InstallationMarkerMismatch,
+
+    /// <summary>Local storage refused the installation: an I/O error, no space, or a permission error.</summary>
+    InstallationStorageFailed
 }

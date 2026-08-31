@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using Heartbeat.Collection.Hub.Collectors.Delivery;
 
 namespace Heartbeat.Collection.CollectorRelease;
 
@@ -10,9 +11,10 @@ namespace Heartbeat.Collection.CollectorRelease;
 /// means the content really changed. Unix permission bits are carried so the published artifact
 /// stays runnable.
 ///
-/// The extractor here exists only to let the release tool re-open what it just wrote. The Runtime's
-/// Collector Installation path (its own version directory, completion marker and cleanup) is a
-/// separate concern and is not implemented here.
+/// Unpacking exists only to let the release tool re-open what it just wrote, and it delegates to the
+/// Runtime's <see cref="CollectorPackageArchiveExtractor" /> so archive safety has one implementation
+/// rather than a publisher-side copy that could drift. The Runtime's Collector Installation path (its
+/// own version directory, completion marker and cleanup) is a separate concern and is not here.
 /// </summary>
 public static class CollectorPackageArchive
 {
@@ -46,38 +48,15 @@ public static class CollectorPackageArchive
 
     /// <summary>
     /// Unpacks into <paramref name="destinationDirectory" />, refusing any entry that would write
-    /// outside it.
+    /// outside it or is otherwise not a portable relative file.
     /// </summary>
     public static void Unpack(byte[] archiveBytes, string destinationDirectory)
     {
-        var root = Path.GetFullPath(destinationDirectory);
-        Directory.CreateDirectory(root);
-        var rootPrefix = root.EndsWith(Path.DirectorySeparatorChar) ? root : root + Path.DirectorySeparatorChar;
-
         using var buffer = new MemoryStream(archiveBytes, writable: false);
-        using var archive = new ZipArchive(buffer, ZipArchiveMode.Read);
-        foreach (var entry in archive.Entries)
-        {
-            if (entry.FullName.Length == 0 || entry.FullName.EndsWith('/'))
-                continue;
-            if (Path.IsPathRooted(entry.FullName) ||
-                entry.FullName.Contains('\\') ||
-                entry.FullName.Split('/').Any(segment => segment is "" or "." or ".."))
-                throw new InvalidOperationException($"Archive entry '{entry.FullName}' is not a portable relative path.");
-
-            var target = Path.GetFullPath(Path.Combine(root, Path.Combine(entry.FullName.Split('/'))));
-            if (!target.StartsWith(rootPrefix, StringComparison.Ordinal))
-                throw new InvalidOperationException($"Archive entry '{entry.FullName}' escapes the destination directory.");
-
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            using (var source = entry.Open())
-            using (var file = File.Create(target))
-                source.CopyTo(file);
-
-            var mode = (UnixFileMode)((entry.ExternalAttributes >> 16) & 0xFFF);
-            if (!OperatingSystem.IsWindows() && mode != UnixFileMode.None)
-                File.SetUnixFileMode(target, mode);
-        }
+        var result = CollectorPackageArchiveExtractor.Extract(buffer, destinationDirectory);
+        if (!result.IsSuccess)
+            throw new InvalidOperationException(
+                $"Collector Package archive was refused ({result.Reason}): {result.Detail}");
     }
 
     private static string RelativeName(string root, string path) =>
