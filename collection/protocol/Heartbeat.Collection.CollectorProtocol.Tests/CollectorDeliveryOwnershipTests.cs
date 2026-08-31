@@ -129,6 +129,97 @@ public sealed class CollectorDeliveryOwnershipTests
         Assert.False(authoritativeMutationRan);
     }
 
+    [Fact]
+    public void DirtyGapRetryWithSameAdmissionPersistsBeforeReportingCommitted()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-gap-retry-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var now = new DateTimeOffset(2026, 8, 31, 16, 0, 0, TimeSpan.Zero);
+        var firstPublish = true;
+        try
+        {
+            var outbox = CollectorProtocolOutbox.Open(
+                root,
+                16,
+                [new CollectorOutputBinding("activity", "activity", new Dictionary<string, string>())],
+                now,
+                (prepared, authoritative) =>
+                {
+                    if (firstPublish)
+                    {
+                        firstPublish = false;
+                        throw new IOException("fixture persistence failure");
+                    }
+                    File.Move(prepared, authoritative, overwrite: true);
+                    return true;
+                });
+            var gap = new CollectorStreamGap(
+                Guid.CreateVersion7(),
+                "activity",
+                now,
+                now.AddSeconds(1),
+                "fixture",
+                1);
+            var admission = new CollectorDeliveryOwnership().BeginOrdinaryAdmission();
+            Assert.Throws<IOException>(() => outbox.EnqueueGap(gap, admission));
+
+            Assert.Equal(
+                CollectorAdmissionOutcome.Committed,
+                outbox.EnqueueGap(gap, admission));
+
+            var restarted = CollectorProtocolOutbox.Open(
+                root,
+                16,
+                [new CollectorOutputBinding("activity", "activity", new Dictionary<string, string>())],
+                now.AddMinutes(1));
+            Assert.Equal(gap.GapId, Assert.Single(restarted.Gaps).Gap.GapId);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void DeadlineFirstRemainsTheTerminalCauseWhenCallerCancelsLater()
+    {
+        var ownership = new CollectorDeliveryOwnership();
+        ownership.BeginBackground();
+        var drain = ownership.BeginDrain(new CollectorDrainRequest(
+            Guid.CreateVersion7(),
+            new DateTimeOffset(2026, 8, 31, 17, 0, 0, TimeSpan.Zero)));
+        using var caller = new CancellationTokenSource();
+        using var deadline = new CancellationTokenSource();
+        using var cancellation = drain.BeginCancellation(caller.Token, deadline.Token);
+
+        deadline.Cancel();
+        caller.Cancel();
+
+        Assert.Equal(CollectorDrainCancellationCause.Deadline, cancellation.FirstCause);
+        Assert.True(cancellation.Token.IsCancellationRequested);
+        Assert.Throws<CollectorAdmissionClosedException>(drain.BeginTailAdmission);
+    }
+
+    [Fact]
+    public void CallerFirstRemainsTheTerminalCauseWhenDeadlineCancelsLater()
+    {
+        var ownership = new CollectorDeliveryOwnership();
+        ownership.BeginBackground();
+        var drain = ownership.BeginDrain(new CollectorDrainRequest(
+            Guid.CreateVersion7(),
+            new DateTimeOffset(2026, 8, 31, 18, 0, 0, TimeSpan.Zero)));
+        using var caller = new CancellationTokenSource();
+        using var deadline = new CancellationTokenSource();
+        using var cancellation = drain.BeginCancellation(caller.Token, deadline.Token);
+
+        caller.Cancel();
+        deadline.Cancel();
+
+        Assert.Equal(CollectorDrainCancellationCause.Caller, cancellation.FirstCause);
+        Assert.True(cancellation.Token.IsCancellationRequested);
+        Assert.Throws<CollectorAdmissionClosedException>(drain.BeginTailAdmission);
+    }
+
     public enum PendingDeliveryKind
     {
         Fact,

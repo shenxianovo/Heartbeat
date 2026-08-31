@@ -92,74 +92,55 @@ public sealed class CollectorProtocolClient(
             Observe(applicationTask);
         }
         using var deadlineTimer = CreateDeadlineCancellation(drain.Deadline);
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(
+        var drainTransition = _deliveryOwnership.BeginDrain(drain);
+        using var drainCancellation = drainTransition.BeginCancellation(
             cancellationToken,
             deadlineTimer.Token);
-        var drainTransition = _deliveryOwnership.BeginDrain(drain);
-        var drainContext = new CollectorDrainContext(this, drainTransition);
-        using var deadlineFence = deadline.Token.Register(drainTransition.Fence);
-        var reason = CollectorProtocolDrainReason.Drained;
-        var remainderDurable = true;
         try
         {
-            await startInvocationReturned.Task.WaitAsync(deadline.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
-        {
-            reason = CollectorProtocolDrainReason.DeadlineExceeded;
-            remainderDurable = false;
-            Observe(applicationTask);
-        }
-        var cancelApplication = Task.Run(
-            async () => await applicationLifetime.CancelAsync().ConfigureAwait(false),
-            CancellationToken.None);
-        try
-        {
-            await cancelApplication.WaitAsync(deadline.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
-        {
-            reason = CollectorProtocolDrainReason.DeadlineExceeded;
-            remainderDurable = false;
-            Observe(cancelApplication);
-        }
-        try
-        {
-            await backgroundFlush.WaitAsync(deadline.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
-        {
-            Observe(backgroundFlush);
-            if (reason == CollectorProtocolDrainReason.Drained)
+            var drainContext = new CollectorDrainContext(this, drainTransition);
+            var reason = CollectorProtocolDrainReason.Drained;
+            var remainderDurable = true;
+            try
+            {
+                await startInvocationReturned.Task.WaitAsync(drainCancellation.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (
+                drainCancellation.FirstCause == CollectorDrainCancellationCause.Deadline)
+            {
                 reason = CollectorProtocolDrainReason.DeadlineExceeded;
-        }
-        catch (IOException)
-        {
-            reason = CollectorProtocolDrainReason.PersistenceFailed;
-            remainderDurable = false;
-        }
-        catch
-        {
-            reason = CollectorProtocolDrainReason.FlushCancelled;
-        }
-
-        Task? stopTask = null;
-        if (!deadline.IsCancellationRequested)
-        {
-            stopTask = Task.Run(
-                async () => await application.StopAsync(drainContext, deadline.Token).ConfigureAwait(false),
+                remainderDurable = false;
+                Observe(applicationTask);
+            }
+            var cancelApplication = Task.Run(
+                async () => await applicationLifetime.CancelAsync().ConfigureAwait(false),
                 CancellationToken.None);
             try
             {
-                await stopTask.WaitAsync(deadline.Token).ConfigureAwait(false);
+                await cancelApplication.WaitAsync(drainCancellation.Token).ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+            catch (OperationCanceledException) when (
+                drainCancellation.FirstCause == CollectorDrainCancellationCause.Deadline)
             {
-                reason = _persistenceFailed || Volatile.Read(ref _activePersistenceRetries) != 0
-                    ? CollectorProtocolDrainReason.PersistenceFailed
-                    : CollectorProtocolDrainReason.DeadlineExceeded;
+                reason = CollectorProtocolDrainReason.DeadlineExceeded;
                 remainderDurable = false;
-                Observe(stopTask);
+                Observe(cancelApplication);
+            }
+            try
+            {
+                await backgroundFlush.WaitAsync(drainCancellation.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (
+                drainCancellation.FirstCause == CollectorDrainCancellationCause.Deadline)
+            {
+                Observe(backgroundFlush);
+                if (reason == CollectorProtocolDrainReason.Drained)
+                    reason = CollectorProtocolDrainReason.DeadlineExceeded;
+            }
+            catch (OperationCanceledException) when (
+                drainCancellation.FirstCause == CollectorDrainCancellationCause.Caller)
+            {
+                throw;
             }
             catch (IOException)
             {
@@ -168,78 +149,130 @@ public sealed class CollectorProtocolClient(
             }
             catch
             {
-                reason = CollectorProtocolDrainReason.StopFailed;
-                remainderDurable = false;
+                reason = CollectorProtocolDrainReason.FlushCancelled;
             }
-        }
-        drainTransition.SealTailAdmission();
-        Task? finalFlush = null;
-        var finalFlushOutcome = CollectorDeliveryStepResult.Progressed;
-        try
-        {
-            finalFlush = Task.Run(
-                async () => finalFlushOutcome = await FlushAsync(
-                    drainTransition.Delivery,
-                    deadline.Token).ConfigureAwait(false),
-                CancellationToken.None);
-            await finalFlush.WaitAsync(deadline.Token).ConfigureAwait(false);
-            if (finalFlushOutcome == CollectorDeliveryStepResult.Fenced &&
-                reason == CollectorProtocolDrainReason.Drained)
-                reason = CollectorProtocolDrainReason.FlushCancelled;
-        }
-        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
-        {
-            if (finalFlush is not null)
-                Observe(finalFlush);
-            if (reason == CollectorProtocolDrainReason.Drained)
-                reason = CollectorProtocolDrainReason.FlushCancelled;
-        }
-        catch (IOException)
-        {
-            reason = CollectorProtocolDrainReason.PersistenceFailed;
-            remainderDurable = false;
-        }
-        catch
-        {
-            if (reason == CollectorProtocolDrainReason.Drained)
-                reason = CollectorProtocolDrainReason.FlushCancelled;
-        }
-        var result = new CollectorDrainResult(
-            initialization.SpecRevision,
-            _outbox.Facts.Count,
-            _outbox.Gaps.Count,
-            reason,
-            remainderDurable);
-        try
-        {
-            var completion = Task.Run(
-                async () => await binding.CompleteDrainAsync(result, deadline.Token).ConfigureAwait(false),
-                CancellationToken.None);
+
+            Task? stopTask = null;
+            if (drainCancellation.FirstCause == CollectorDrainCancellationCause.None)
+            {
+                stopTask = Task.Run(
+                    async () => await application.StopAsync(drainContext, drainCancellation.Token).ConfigureAwait(false),
+                    CancellationToken.None);
+                try
+                {
+                    await stopTask.WaitAsync(drainCancellation.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (
+                    drainCancellation.FirstCause == CollectorDrainCancellationCause.Deadline)
+                {
+                    reason = _persistenceFailed || Volatile.Read(ref _activePersistenceRetries) != 0
+                        ? CollectorProtocolDrainReason.PersistenceFailed
+                        : CollectorProtocolDrainReason.DeadlineExceeded;
+                    remainderDurable = false;
+                    Observe(stopTask);
+                }
+                catch (OperationCanceledException) when (
+                    drainCancellation.FirstCause == CollectorDrainCancellationCause.Caller)
+                {
+                    throw;
+                }
+                catch (IOException)
+                {
+                    reason = CollectorProtocolDrainReason.PersistenceFailed;
+                    remainderDurable = false;
+                }
+                catch
+                {
+                    reason = CollectorProtocolDrainReason.StopFailed;
+                    remainderDurable = false;
+                }
+            }
+            drainTransition.SealTailAdmission();
+            Task? finalFlush = null;
+            var finalFlushOutcome = CollectorDeliveryStepResult.Progressed;
             try
             {
-                await completion.WaitAsync(deadline.Token).ConfigureAwait(false);
+                finalFlush = Task.Run(
+                    async () => finalFlushOutcome = await FlushAsync(
+                        drainTransition.Delivery,
+                        drainCancellation.Token).ConfigureAwait(false),
+                    CancellationToken.None);
+                await finalFlush.WaitAsync(drainCancellation.Token).ConfigureAwait(false);
+                if (finalFlushOutcome == CollectorDeliveryStepResult.Fenced &&
+                    reason == CollectorProtocolDrainReason.Drained)
+                    reason = CollectorProtocolDrainReason.FlushCancelled;
             }
-            catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+            catch (OperationCanceledException) when (
+                drainCancellation.FirstCause == CollectorDrainCancellationCause.Deadline)
             {
-                Observe(completion);
+                if (finalFlush is not null)
+                    Observe(finalFlush);
+                if (reason == CollectorProtocolDrainReason.Drained)
+                    reason = CollectorProtocolDrainReason.FlushCancelled;
+            }
+            catch (OperationCanceledException) when (
+                drainCancellation.FirstCause == CollectorDrainCancellationCause.Caller)
+            {
                 throw;
             }
-            return new CollectorDrainExecutionResult(
-                result,
-                CollectorProtocolDrainCompletionReason.Completed);
+            catch (IOException)
+            {
+                reason = CollectorProtocolDrainReason.PersistenceFailed;
+                remainderDurable = false;
+            }
+            catch
+            {
+                if (reason == CollectorProtocolDrainReason.Drained)
+                    reason = CollectorProtocolDrainReason.FlushCancelled;
+            }
+            var result = new CollectorDrainResult(
+                initialization.SpecRevision,
+                _outbox.Facts.Count,
+                _outbox.Gaps.Count,
+                reason,
+                remainderDurable);
+            try
+            {
+                var completion = Task.Run(
+                    async () => await binding.CompleteDrainAsync(result, drainCancellation.Token).ConfigureAwait(false),
+                    CancellationToken.None);
+                try
+                {
+                    await completion.WaitAsync(drainCancellation.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (
+                    drainCancellation.FirstCause == CollectorDrainCancellationCause.Deadline)
+                {
+                    Observe(completion);
+                    throw;
+                }
+                return new CollectorDrainExecutionResult(
+                    result,
+                    CollectorProtocolDrainCompletionReason.Completed);
+            }
+            catch (OperationCanceledException) when (
+                drainCancellation.FirstCause == CollectorDrainCancellationCause.Deadline)
+            {
+                return new CollectorDrainExecutionResult(
+                    result,
+                    CollectorProtocolDrainCompletionReason.DeadlineExceeded);
+            }
+            catch (OperationCanceledException) when (
+                drainCancellation.FirstCause == CollectorDrainCancellationCause.Caller)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                return new CollectorDrainExecutionResult(
+                    result,
+                    CollectorProtocolDrainCompletionReason.CompletionFailed,
+                    exception.Message);
+            }
         }
-        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        finally
         {
-            return new CollectorDrainExecutionResult(
-                result,
-                CollectorProtocolDrainCompletionReason.DeadlineExceeded);
-        }
-        catch (Exception exception)
-        {
-            return new CollectorDrainExecutionResult(
-                result,
-                CollectorProtocolDrainCompletionReason.CompletionFailed,
-                exception.Message);
+            drainTransition.Fence();
         }
     }
 
@@ -674,12 +707,12 @@ public sealed class CollectorProtocolClient(
 
     private static CollectorDeliveryStepResult ToStepResult(
         CollectorDeliveryCommitOutcome outcome) => outcome switch
-    {
-        CollectorDeliveryCommitOutcome.Committed => CollectorDeliveryStepResult.Progressed,
-        CollectorDeliveryCommitOutcome.Superseded => CollectorDeliveryStepResult.Superseded,
-        CollectorDeliveryCommitOutcome.Fenced => CollectorDeliveryStepResult.Fenced,
-        _ => throw new ArgumentOutOfRangeException(nameof(outcome))
-    };
+        {
+            CollectorDeliveryCommitOutcome.Committed => CollectorDeliveryStepResult.Progressed,
+            CollectorDeliveryCommitOutcome.Superseded => CollectorDeliveryStepResult.Superseded,
+            CollectorDeliveryCommitOutcome.Fenced => CollectorDeliveryStepResult.Fenced,
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome))
+        };
 
     private CancellationTokenSource CreateDeadlineCancellation(DateTimeOffset deadline)
     {

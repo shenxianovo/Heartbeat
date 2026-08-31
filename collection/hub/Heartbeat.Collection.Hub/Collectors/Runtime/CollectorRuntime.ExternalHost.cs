@@ -180,43 +180,101 @@ public sealed partial class CollectorRuntime
             expectedSpecRevision = pendingCommit.Instance.SpecRevision;
         }
         var outcome = await activation.Lifetime.PublishReadyAsync(new CollectorReadyPublication(() =>
-            activation.Session.AcceptReady(
+            ValueTask.FromResult(PrepareExternalHostReady(
+                activation,
                 appliedSpecRevision,
-                expectedSpecRevision,
-                () => CommitExternalHostReady(activation))));
+                expectedSpecRevision))));
         if (outcome == CollectorReadyOutcome.Stopping)
             throw ActivationError("activation_stopping", "ExternalHost Activation stopped before Ready publication.");
         return activation;
     }
 
-    private void CommitExternalHostReady(ExternalHostCollectorActivation activation)
+    private CollectorReadyPreparedCommit PrepareExternalHostReady(
+        ExternalHostCollectorActivation activation,
+        long appliedSpecRevision,
+        long expectedSpecRevision)
+    {
+        CollectorRuntimeState baseState;
+        CollectorRuntimeState next;
+        PendingActivationCommit pendingCommit;
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            if (!_pendingActivationCommits.TryGetValue(activation.ActivationId, out var currentPendingCommit))
+                throw ActivationError("protocol_invalid_message", "ExternalHost Activation has no pending Stream commit.");
+            pendingCommit = currentPendingCommit;
+            baseState = _state;
+            next = baseState.WithInstanceAndStreams(pendingCommit.Instance, pendingCommit.Streams);
+        }
+
+        JsonCollectorRuntimeStore.PreparedReplacement replacement;
+        try
+        {
+            replacement = _store.Prepare(next);
+        }
+        catch (CollectorRuntimeStateException exception)
+        {
+            throw ActivationError(
+                "hub_backpressure",
+                "Hub could not prepare the resolved Package and Fact Streams.",
+                exception,
+                retryable: true);
+        }
+
+        return new CollectorReadyPreparedCommit(
+            () => TryCommitExternalHostReady(
+                activation,
+                appliedSpecRevision,
+                expectedSpecRevision,
+                baseState,
+                next,
+                pendingCommit,
+                replacement),
+            replacement);
+    }
+
+    private bool TryCommitExternalHostReady(
+        ExternalHostCollectorActivation activation,
+        long appliedSpecRevision,
+        long expectedSpecRevision,
+        CollectorRuntimeState baseState,
+        CollectorRuntimeState next,
+        PendingActivationCommit pendingCommit,
+        JsonCollectorRuntimeStore.PreparedReplacement replacement)
     {
         lock (_gate)
         {
             ThrowIfDisposed();
-            if (!_pendingActivationCommits.TryGetValue(activation.ActivationId, out var pendingCommit))
-                throw ActivationError("protocol_invalid_message", "ExternalHost Activation has no pending Stream commit.");
-            var next = _state.WithInstanceAndStreams(pendingCommit.Instance, pendingCommit.Streams);
-            try
-            {
-                _store.Save(next);
-            }
-            catch (CollectorRuntimeStateException exception)
-            {
-                throw ActivationError(
-                    "hub_backpressure",
-                    "Hub could not persist the resolved Package and Fact Streams.",
-                    exception,
-                    retryable: true);
-            }
-
-            _state = next;
-            foreach (var schema in activation.Package.FactSchemas)
-                _factSchemasByHash[schema.ContentHash] = schema;
-            foreach (var stream in activation.Streams.Values)
-                _streamWriters[stream.StreamId] = activation.ActivationId;
-            _pendingActivationCommits.Remove(activation.ActivationId);
-            _startingInstances.Remove(pendingCommit.Instance.CollectorInstanceId);
+            if (!ReferenceEquals(_state, baseState) ||
+                !_pendingActivationCommits.TryGetValue(activation.ActivationId, out var current) ||
+                !ReferenceEquals(current, pendingCommit))
+                return false;
+            activation.Session.AcceptReady(
+                appliedSpecRevision,
+                expectedSpecRevision,
+                () =>
+                {
+                    try
+                    {
+                        replacement.Commit();
+                    }
+                    catch (CollectorRuntimeStateException exception)
+                    {
+                        throw ActivationError(
+                            "hub_backpressure",
+                            "Hub could not publish the resolved Package and Fact Streams.",
+                            exception,
+                            retryable: true);
+                    }
+                    _state = next;
+                    foreach (var schema in activation.Package.FactSchemas)
+                        _factSchemasByHash[schema.ContentHash] = schema;
+                    foreach (var stream in activation.Streams.Values)
+                        _streamWriters[stream.StreamId] = activation.ActivationId;
+                    _pendingActivationCommits.Remove(activation.ActivationId);
+                    _startingInstances.Remove(pendingCommit.Instance.CollectorInstanceId);
+                });
+            return true;
         }
     }
 

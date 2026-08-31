@@ -226,7 +226,9 @@ internal sealed class CollectorProtocolOutbox
     {
         ArgumentNullException.ThrowIfNull(gap);
         if (_state.Gaps.Any(item => item.Gap.GapId == gap.GapId))
-            return CollectorAdmissionOutcome.Committed;
+            return _dirty
+                ? SaveAdmissionState(_state, admission)
+                : CollectorAdmissionOutcome.Committed;
         var pending = new PendingCollectorGap(Guid.CreateVersion7(), gap);
         return SaveAdmissionState(_state with
         {

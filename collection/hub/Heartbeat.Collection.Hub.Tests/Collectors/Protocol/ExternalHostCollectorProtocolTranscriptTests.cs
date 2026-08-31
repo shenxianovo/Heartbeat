@@ -148,30 +148,63 @@ public sealed class ExternalHostCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task ReadyPublicationWinningLeaseExpiryRaceStillReleasesOneWriter()
+    public async Task LeaseExpiryDuringReadyPreparationStopsWithoutDurableMutationOrWriterGrant()
     {
         var publication = new BlockingStatePrepare();
         using var fixture = new ExternalHostFixture(publication.Callback);
         var activation = fixture.OpenStreams();
+        var durableBeforeReady = File.ReadAllText(fixture.StatePath);
         publication.Arm();
 
         var ready = Task.Run(async () => await fixture.Runtime.MarkExternalHostReadyAsync(
             activation,
             fixture.SpecRevision));
         await publication.Entered.WaitAsync(TimeSpan.FromSeconds(5));
-        var stopping = activation.RequestStopAsync(ExternalHostActivationStopReason.LeaseExpired).AsTask();
-        publication.Release();
+        var stopping = Task.Run(async () =>
+            await activation.RequestStopAsync(ExternalHostActivationStopReason.LeaseExpired));
 
-        await ready;
-        var terminal = await stopping;
+        CollectorActivationTerminalResult terminal;
+        try
+        {
+            terminal = await stopping.WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            if (!stopping.IsCompletedSuccessfully)
+                publication.Release();
+        }
         Assert.Same(terminal, await activation.Terminal);
-        Assert.Contains(CollectorHandshakeStep.Ready, activation.HandshakeTranscript);
+        Assert.DoesNotContain(CollectorHandshakeStep.Ready, activation.HandshakeTranscript);
         Assert.Equal(ExternalHostActivationStopReason.LeaseExpired, activation.StopReason);
         Assert.True(terminal.OwnershipReleased);
         Assert.False(activation.ExternalHostWasTerminated);
 
+        publication.Release();
+        var error = await Assert.ThrowsAsync<CollectorActivationException>(() => ready);
+        Assert.Equal("activation_stopping", error.Error.Code);
+        Assert.Equal(durableBeforeReady, File.ReadAllText(fixture.StatePath));
+        Assert.Empty(Directory.GetFiles(fixture.DirectoryPath, "*.tmp"));
+
         var replacement = await fixture.ReadyReplacementAsync();
         Assert.Equal(CollectorActivationState.Ready, replacement.State);
+    }
+
+    [Fact]
+    public async Task ReadyPreparationRetriesWhenConcurrentStateMutationMakesReplacementStale()
+    {
+        var mutation = new MutateStateOnceDuringPrepare();
+        using var fixture = new ExternalHostFixture(mutation.Callback);
+        var activation = fixture.OpenStreams();
+        Guid concurrentInstanceId = Guid.Empty;
+        mutation.Arm(() => concurrentInstanceId = fixture.CreateUnrelatedInstance().CollectorInstanceId);
+
+        await fixture.Runtime.MarkExternalHostReadyAsync(activation, fixture.SpecRevision);
+
+        Assert.Equal(CollectorActivationState.Ready, activation.State);
+        Assert.NotEqual(Guid.Empty, concurrentInstanceId);
+        Assert.Equal(concurrentInstanceId, fixture.Runtime.GetInstance(concurrentInstanceId).CollectorInstanceId);
+        Assert.True(mutation.ArmedPrepareCalls >= 3);
+        Assert.Empty(Directory.GetFiles(fixture.DirectoryPath, "*.tmp"));
     }
 
     [Fact]
@@ -306,6 +339,8 @@ public sealed class ExternalHostCollectorProtocolTranscriptTests
 
         public CollectorRuntime Runtime { get; }
         public long SpecRevision => _instance.Spec.SpecRevision;
+        public string DirectoryPath => _directory.Path;
+        public string StatePath => Path.Combine(_directory.Path, "runtime.json");
 
         public ExternalHostCollectorActivation OpenStreams()
         {
@@ -343,6 +378,11 @@ public sealed class ExternalHostCollectorProtocolTranscriptTests
                 Guid.CreateVersion7(),
                 Guid.CreateVersion7());
 
+        public CollectorInstance CreateUnrelatedInstance() => Runtime.CreateInstance(
+            _package,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+            new CollectorInstanceSpec(1, 1, _config.RootElement.Clone()));
+
         public void Dispose()
         {
             Runtime.Dispose();
@@ -369,6 +409,29 @@ public sealed class ExternalHostCollectorProtocolTranscriptTests
         public Task Entered => _entered.Task;
         public void Arm() => Volatile.Write(ref _armed, 1);
         public void Release() => _release.TrySetResult();
+    }
+
+    private sealed class MutateStateOnceDuringPrepare
+    {
+        private Action? _mutation;
+        private int _armed;
+        private int _calls;
+
+        public Action Callback => () =>
+        {
+            if (Volatile.Read(ref _armed) == 0)
+                return;
+            Interlocked.Increment(ref _calls);
+            Interlocked.Exchange(ref _mutation, null)?.Invoke();
+        };
+
+        public int ArmedPrepareCalls => Volatile.Read(ref _calls);
+
+        public void Arm(Action mutation)
+        {
+            _mutation = mutation;
+            Volatile.Write(ref _armed, 1);
+        }
     }
 
     private sealed class TemporaryDirectory : IDisposable

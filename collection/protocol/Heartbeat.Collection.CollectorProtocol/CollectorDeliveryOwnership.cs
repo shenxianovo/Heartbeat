@@ -22,6 +22,13 @@ internal enum CollectorAdmissionOutcome
     Closed
 }
 
+internal enum CollectorDrainCancellationCause
+{
+    None,
+    Caller,
+    Deadline
+}
+
 internal sealed class CollectorAdmissionClosedException()
     : InvalidOperationException("Collector Protocol admission is closed after drain ownership transfer.");
 
@@ -193,9 +200,63 @@ internal sealed class CollectorDrainTransition(
 
     public CollectorAdmissionLease BeginTailAdmission() => owner.BeginTailAdmission(this);
 
+    public CollectorDrainCancellation BeginCancellation(
+        CancellationToken callerCancellation,
+        CancellationToken deadlineCancellation) =>
+        new(this, callerCancellation, deadlineCancellation);
+
     public void SealTailAdmission() => owner.SealTailAdmission(this);
 
     public void Fence() => owner.Fence(this);
 
     internal void SealTailAdmissionLocked() => IsTailSealed = true;
+}
+
+internal sealed class CollectorDrainCancellation : IDisposable
+{
+    private readonly CollectorDrainTransition _transition;
+    private readonly CancellationTokenSource _cancellation = new();
+    private readonly CancellationTokenRegistration _callerRegistration;
+    private readonly CancellationTokenRegistration _deadlineRegistration;
+    private int _firstCause;
+
+    public CollectorDrainCancellation(
+        CollectorDrainTransition transition,
+        CancellationToken callerCancellation,
+        CancellationToken deadlineCancellation)
+    {
+        _transition = transition;
+        _callerRegistration = callerCancellation.UnsafeRegister(
+            static state => ((CollectorDrainCancellation)state!).Cancel(
+                CollectorDrainCancellationCause.Caller),
+            this);
+        _deadlineRegistration = deadlineCancellation.UnsafeRegister(
+            static state => ((CollectorDrainCancellation)state!).Cancel(
+                CollectorDrainCancellationCause.Deadline),
+            this);
+    }
+
+    public CancellationToken Token => _cancellation.Token;
+
+    public CollectorDrainCancellationCause FirstCause =>
+        (CollectorDrainCancellationCause)Volatile.Read(ref _firstCause);
+
+    public void Dispose()
+    {
+        _callerRegistration.Dispose();
+        _deadlineRegistration.Dispose();
+        _cancellation.Dispose();
+    }
+
+    private void Cancel(CollectorDrainCancellationCause cause)
+    {
+        if (Interlocked.CompareExchange(
+                ref _firstCause,
+                (int)cause,
+                (int)CollectorDrainCancellationCause.None) !=
+            (int)CollectorDrainCancellationCause.None)
+            return;
+        _transition.Fence();
+        _cancellation.Cancel();
+    }
 }

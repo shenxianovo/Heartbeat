@@ -685,6 +685,119 @@ public sealed class CollectorProtocolClientTests
     }
 
     [Fact]
+    public async Task CallerCancellationDuringDrainPropagatesWithoutBecomingDeadlineOutcome()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-caller-cancel-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var binding = new SuspendedPublishBinding(root);
+        var application = new ControlledStopApplication();
+        using var caller = new CancellationTokenSource();
+        await using var client = new CollectorProtocolClient(Definition(), binding);
+        var run = client.RunAsync(application, caller.Token);
+        binding.RequestDrain(TimeSpan.FromMinutes(1));
+
+        try
+        {
+            await application.StopEntered.WaitAsync(TimeSpan.FromSeconds(2));
+            caller.Cancel();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => run.WaitAsync(TimeSpan.FromSeconds(1)));
+        }
+        finally
+        {
+            application.ReleaseStop();
+            binding.CompletePublish();
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task CallerCancellationFencesLateFactAndGapFromCancellationIgnoringStop()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-caller-fence-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var binding = new SuspendedPublishBinding(root);
+        var application = new LateTailAfterCancellationApplication();
+        using var caller = new CancellationTokenSource();
+        await using var client = new CollectorProtocolClient(Definition(), binding);
+        var run = client.RunAsync(application, caller.Token);
+        binding.RequestDrain(TimeSpan.FromMinutes(1));
+
+        try
+        {
+            await application.StopEntered.WaitAsync(TimeSpan.FromSeconds(2));
+            caller.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => run.WaitAsync(TimeSpan.FromSeconds(1)));
+
+            application.ReleaseStop();
+            var attempts = await application.LateAttempts.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.IsType<CollectorAdmissionClosedException>(attempts.FactError);
+            Assert.IsType<CollectorAdmissionClosedException>(attempts.GapError);
+            Assert.False(binding.PublishEntered.IsSet);
+            var restarted = CollectorProtocolOutbox.Open(
+                root, 16, Definition().Outputs, DateTimeOffset.UtcNow);
+            Assert.Empty(restarted.Facts);
+            Assert.Empty(restarted.Gaps);
+        }
+        finally
+        {
+            application.ReleaseStop();
+            binding.CompletePublish();
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task NormalCompletionTerminalFencesCapturedDrainContext()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-completed-fence-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var binding = new FakeBinding(root, new Queue<CollectorFactDeliveryStatus>());
+            var application = new CapturingDrainApplication();
+            await using var client = new CollectorProtocolClient(Definition(), binding);
+
+            var result = await client.RunAsync(application);
+
+            Assert.True(result.IsFullyDrained);
+            var drain = Assert.IsType<CollectorDrainContext>(application.Drain);
+            await Assert.ThrowsAsync<CollectorAdmissionClosedException>(() => drain.PublishAsync(
+                new CollectorFact(
+                    "activity",
+                    1,
+                    Guid.CreateVersion7(),
+                    1,
+                    null,
+                    CollectorFactRecordState.Present,
+                    new CollectorEventFactTime(DateTimeOffset.UtcNow),
+                    JsonSerializer.SerializeToElement(new { identityKey = "reference|completed-fact" })),
+                CancellationToken.None).AsTask());
+            await Assert.ThrowsAsync<CollectorAdmissionClosedException>(() => drain.ReportGapAsync(
+                new CollectorStreamGap(
+                    Guid.CreateVersion7(),
+                    "activity",
+                    DateTimeOffset.UtcNow,
+                    DateTimeOffset.UtcNow.AddTicks(1),
+                    "completed_gap",
+                    1),
+                CancellationToken.None).AsTask());
+            var restarted = CollectorProtocolOutbox.Open(
+                root, 16, Definition().Outputs, DateTimeOffset.UtcNow);
+            Assert.Empty(restarted.Facts);
+            Assert.Empty(restarted.Gaps);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task SynchronouslyBlockingApplicationLifetimeCancellationCannotCrossDrainDeadline()
     {
         var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-drain-cancel-sync-{Guid.NewGuid():N}");
@@ -1068,6 +1181,85 @@ public sealed class CollectorProtocolClientTests
         }
 
         public void ReleaseStop() => _releaseStop.TrySetResult();
+    }
+
+    private sealed class LateTailAfterCancellationApplication : ICollectorProtocolApplication
+    {
+        private readonly TaskCompletionSource _releaseStop =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _stopEntered =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<(Exception? FactError, Exception? GapError)> _lateAttempts =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task StopEntered => _stopEntered.Task;
+        public Task<(Exception? FactError, Exception? GapError)> LateAttempts => _lateAttempts.Task;
+
+        public ValueTask InitializeAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask StartAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public async ValueTask StopAsync(CollectorDrainContext drain, CancellationToken cancellationToken)
+        {
+            _stopEntered.TrySetResult();
+            await _releaseStop.Task.ConfigureAwait(false);
+            Exception? factError = null;
+            Exception? gapError = null;
+            try
+            {
+                await drain.PublishAsync(new CollectorFact(
+                    "activity",
+                    1,
+                    Guid.CreateVersion7(),
+                    1,
+                    null,
+                    CollectorFactRecordState.Present,
+                    new CollectorEventFactTime(DateTimeOffset.UtcNow),
+                    JsonSerializer.SerializeToElement(new { identityKey = "reference|late-caller-fact" })),
+                    CancellationToken.None);
+            }
+            catch (Exception exception)
+            {
+                factError = exception;
+            }
+            try
+            {
+                await drain.ReportGapAsync(new CollectorStreamGap(
+                    Guid.CreateVersion7(),
+                    "activity",
+                    DateTimeOffset.UtcNow,
+                    DateTimeOffset.UtcNow.AddTicks(1),
+                    "late_caller_gap",
+                    1),
+                    CancellationToken.None);
+            }
+            catch (Exception exception)
+            {
+                gapError = exception;
+            }
+            _lateAttempts.TrySetResult((factError, gapError));
+        }
+
+        public void ReleaseStop() => _releaseStop.TrySetResult();
+    }
+
+    private sealed class CapturingDrainApplication : ICollectorProtocolApplication
+    {
+        public CollectorDrainContext? Drain { get; private set; }
+
+        public ValueTask InitializeAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask StartAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask StopAsync(CollectorDrainContext drain, CancellationToken cancellationToken)
+        {
+            Drain = drain;
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class SynchronouslyBlockingCancellationApplication : ICollectorProtocolApplication

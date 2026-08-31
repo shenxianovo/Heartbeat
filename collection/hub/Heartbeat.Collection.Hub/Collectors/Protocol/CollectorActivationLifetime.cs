@@ -33,22 +33,56 @@ internal enum CollectorReadyOutcome
 
 internal sealed class CollectorReadyPublication
 {
-    private readonly Func<ValueTask> _publish;
+    private readonly Func<ValueTask<CollectorReadyPreparedCommit>> _prepare;
 
-    public CollectorReadyPublication(Action publish)
+    public CollectorReadyPublication(Action commit)
     {
-        ArgumentNullException.ThrowIfNull(publish);
-        _publish = () =>
+        ArgumentNullException.ThrowIfNull(commit);
+        _prepare = () => ValueTask.FromResult(new CollectorReadyPreparedCommit(() =>
         {
-            publish();
-            return ValueTask.CompletedTask;
-        };
+            commit();
+            return true;
+        }));
     }
 
-    public CollectorReadyPublication(Func<ValueTask> publish) =>
-        _publish = publish ?? throw new ArgumentNullException(nameof(publish));
+    public CollectorReadyPublication(Func<ValueTask> prepare, Action commit)
+    {
+        ArgumentNullException.ThrowIfNull(prepare);
+        ArgumentNullException.ThrowIfNull(commit);
+        _prepare = () => PrepareCommitAsync(prepare, commit);
+    }
 
-    internal ValueTask PublishAsync() => _publish();
+    public CollectorReadyPublication(Func<ValueTask<CollectorReadyPreparedCommit>> prepare)
+    {
+        _prepare = prepare ?? throw new ArgumentNullException(nameof(prepare));
+    }
+
+    internal ValueTask<CollectorReadyPreparedCommit> PrepareAsync() => _prepare();
+
+    private static async ValueTask<CollectorReadyPreparedCommit> PrepareCommitAsync(
+        Func<ValueTask> prepare,
+        Action commit)
+    {
+        ArgumentNullException.ThrowIfNull(prepare);
+        ArgumentNullException.ThrowIfNull(commit);
+        await prepare().ConfigureAwait(false);
+        return new CollectorReadyPreparedCommit(() =>
+        {
+            commit();
+            return true;
+        });
+    }
+}
+
+internal sealed class CollectorReadyPreparedCommit(
+    Func<bool> tryCommit,
+    IDisposable? resource = null) : IDisposable
+{
+    private readonly Func<bool> _tryCommit = tryCommit ?? throw new ArgumentNullException(nameof(tryCommit));
+    private IDisposable? _resource = resource;
+
+    internal bool TryCommit() => _tryCommit();
+    public void Dispose() => Interlocked.Exchange(ref _resource, null)?.Dispose();
 }
 
 internal sealed record CollectorActivationTerminalResult(
@@ -232,7 +266,7 @@ internal sealed class CollectorActivationLifetime
     private readonly CancellationTokenSource _stopRequested = new();
     private readonly TaskCompletionSource<CollectorActivationTerminalResult> _terminal = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
-    private Task<CollectorReadyOutcome>? _readyPublication;
+    private TaskCompletionSource<CollectorReadyOutcome>? _readyPublication;
     private CollectorActivationStopIntent? _winningIntent;
     private DateTimeOffset _deadline;
     private int _released;
@@ -263,26 +297,26 @@ internal sealed class CollectorActivationLifetime
         CancellationToken waitCancellation = default)
     {
         ArgumentNullException.ThrowIfNull(publication);
-        Task<CollectorReadyOutcome>? ready;
-        TaskCompletionSource<CollectorReadyOutcome>? owner = null;
+        TaskCompletionSource<CollectorReadyOutcome>? ready;
+        var ownsPreparation = false;
         lock (_gate)
         {
             if (_winningIntent is not null)
                 return ValueTask.FromResult(CollectorReadyOutcome.Stopping);
             if (_readyPublication is null)
             {
-                owner = new TaskCompletionSource<CollectorReadyOutcome>(
+                _readyPublication = new TaskCompletionSource<CollectorReadyOutcome>(
                     TaskCreationOptions.RunContinuationsAsynchronously);
-                _readyPublication = owner.Task;
+                ownsPreparation = true;
             }
             ready = _readyPublication;
         }
 
-        if (owner is not null)
-            _ = CompleteReadyPublicationAsync(publication, owner);
+        if (ownsPreparation)
+            _ = CompleteReadyPublicationAsync(publication, ready);
         return waitCancellation.CanBeCanceled
-            ? new ValueTask<CollectorReadyOutcome>(ready.WaitAsync(waitCancellation))
-            : new ValueTask<CollectorReadyOutcome>(ready);
+            ? new ValueTask<CollectorReadyOutcome>(ready.Task.WaitAsync(waitCancellation))
+            : new ValueTask<CollectorReadyOutcome>(ready.Task);
     }
 
     public ValueTask<CollectorActivationTerminalResult> RequestStopAsync(
@@ -303,24 +337,54 @@ internal sealed class CollectorActivationLifetime
         }
 
         if (ownsTransaction)
+        {
+            Observe(_stopRequested.CancelAsync());
             _ = CompleteStopTransactionAsync();
+        }
         return waitCancellation.CanBeCanceled
             ? new ValueTask<CollectorActivationTerminalResult>(Terminal.WaitAsync(waitCancellation))
             : new ValueTask<CollectorActivationTerminalResult>(Terminal);
     }
 
-    private static async Task CompleteReadyPublicationAsync(
+    private async Task CompleteReadyPublicationAsync(
         CollectorReadyPublication publication,
         TaskCompletionSource<CollectorReadyOutcome> completion)
     {
+        var readyLinearized = false;
         try
         {
-            await publication.PublishAsync().ConfigureAwait(false);
-            completion.SetResult(CollectorReadyOutcome.Published);
+            while (true)
+            {
+                CollectorReadyOutcome? outcome = null;
+                using (var prepared = await publication.PrepareAsync().ConfigureAwait(false))
+                {
+                    lock (_gate)
+                    {
+                        if (_winningIntent is not null)
+                            outcome = CollectorReadyOutcome.Stopping;
+                        else if (prepared.TryCommit())
+                        {
+                            readyLinearized = true;
+                            outcome = CollectorReadyOutcome.Published;
+                        }
+                    }
+                }
+                if (outcome is not null)
+                {
+                    completion.TrySetResult(outcome.Value);
+                    return;
+                }
+            }
         }
         catch (Exception exception)
         {
-            completion.SetException(exception);
+            lock (_gate)
+            {
+                if (!readyLinearized && _winningIntent is not null)
+                    completion.TrySetResult(CollectorReadyOutcome.Stopping);
+                else
+                    completion.TrySetException(exception);
+            }
         }
     }
 
@@ -328,20 +392,6 @@ internal sealed class CollectorActivationLifetime
     {
         var intent = _winningIntent!;
         var deadline = _deadline;
-        var ready = _readyPublication;
-        if (ready is not null)
-        {
-            try
-            {
-                await ready.ConfigureAwait(false);
-            }
-            catch
-            {
-                // Ready publication reports its own protocol error. Stop still owns fencing and release.
-            }
-        }
-
-        Observe(Task.Run(async () => await _stopRequested.CancelAsync().ConfigureAwait(false)));
         var remaining = deadline - _timeProvider.GetUtcNow();
         using var deadlineCancellation = new CancellationTokenSource(
             remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero,
@@ -355,11 +405,13 @@ internal sealed class CollectorActivationLifetime
         var attempts = 0;
         var deadlineExceeded = false;
         while (attempts < _driver.CooperativeStopAttempts &&
-               (attempts == 0 || !deadlineCancellation.IsCancellationRequested))
+               !IsDeadlineReached(deadline, deadlineCancellation.Token))
         {
             attempts++;
             var attempt = InvokeStopAsync(intent, deadline, deadlineCancellation.Token);
-            if (!ReferenceEquals(await Task.WhenAny(attempt, deadlineTask).ConfigureAwait(false), attempt))
+            var completed = await Task.WhenAny(attempt, deadlineTask).ConfigureAwait(false);
+            if (!ReferenceEquals(completed, attempt) ||
+                IsDeadlineReached(deadline, deadlineCancellation.Token))
             {
                 deadlineExceeded = true;
                 Observe(attempt);
@@ -367,7 +419,13 @@ internal sealed class CollectorActivationLifetime
             }
             try
             {
-                driverResult = await attempt.ConfigureAwait(false);
+                var candidate = await attempt.ConfigureAwait(false);
+                if (IsDeadlineReached(deadline, deadlineCancellation.Token))
+                {
+                    deadlineExceeded = true;
+                    break;
+                }
+                driverResult = candidate;
                 stopError = null;
                 break;
             }
@@ -380,11 +438,11 @@ internal sealed class CollectorActivationLifetime
         if (driverResult is null)
         {
             driverResult = new CollectorActivationDriverStopResult(
-                deadlineExceeded || deadlineCancellation.IsCancellationRequested
+                deadlineExceeded || IsDeadlineReached(deadline, deadlineCancellation.Token)
                     ? DeadlineExceeded()
                     : StopFailed(stopError),
                 _driver.ProjectFailedStop(
-                    deadlineExceeded || deadlineCancellation.IsCancellationRequested
+                    deadlineExceeded || IsDeadlineReached(deadline, deadlineCancellation.Token)
                         ? CollectorDrainReason.DeadlineExceeded
                         : CollectorDrainReason.StopFailed));
         }
@@ -434,6 +492,9 @@ internal sealed class CollectorActivationLifetime
         CancellationToken.None,
         TaskCreationOptions.LongRunning,
         TaskScheduler.Default).Unwrap();
+
+    private bool IsDeadlineReached(DateTimeOffset deadline, CancellationToken deadlineCancellation) =>
+        deadlineCancellation.IsCancellationRequested || _timeProvider.GetUtcNow() >= deadline;
 
     private static CollectorActivationDrainOutcome DeadlineExceeded() => new(
         null,
