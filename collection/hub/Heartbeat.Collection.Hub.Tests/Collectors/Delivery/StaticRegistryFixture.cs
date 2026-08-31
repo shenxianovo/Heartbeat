@@ -118,9 +118,17 @@ internal sealed class StaticRegistryFixture : IDisposable
     /// Publishes bytes that are not a loadable Collector Package while keeping the index honest
     /// about them. Length and SHA-256 still pass, so only the Package loader can reject this.
     /// </summary>
-    public void PublishCorruptPackage()
+    public void PublishCorruptPackage() =>
+        PublishArtifact(Encoding.ASCII.GetBytes("PK\u0003\u0004 this is not a real archive"));
+
+    /// <summary>
+    /// Publishes exactly <paramref name="content" /> as the artifact and republishes an index that
+    /// is honest about its length and SHA-256, so integrity checks pass and only what the bytes
+    /// contain can still be rejected.
+    /// </summary>
+    public void PublishArtifact(byte[] content)
     {
-        File.WriteAllBytes(ArtifactPath, Encoding.ASCII.GetBytes("PK\u0003\u0004 this is not a real archive"));
+        File.WriteAllBytes(ArtifactPath, content);
         RepublishIndex();
     }
 

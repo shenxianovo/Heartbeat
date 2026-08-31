@@ -35,6 +35,12 @@ internal sealed class StaticRegistryFixtureServer : IDisposable
     /// <summary>Absolute request path to <c>Location</c> value; the server answers those paths with 302.</summary>
     public ConcurrentDictionary<string, string> Redirects { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// How many requests each absolute path received. Installation tests use it to prove that a
+    /// repeated install does not download again and that a failure is not retried behind the caller.
+    /// </summary>
+    public ConcurrentDictionary<string, int> RequestCounts { get; } = new(StringComparer.Ordinal);
+
     public static StaticRegistryFixtureServer Start(string rootDirectory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
@@ -108,6 +114,7 @@ internal sealed class StaticRegistryFixtureServer : IDisposable
     private void Respond(HttpListenerContext context)
     {
         var path = context.Request.Url!.AbsolutePath;
+        RequestCounts.AddOrUpdate(path, 1, (_, count) => count + 1);
         if (Redirects.TryGetValue(path, out var location))
         {
             context.Response.StatusCode = (int)HttpStatusCode.Found;
