@@ -142,7 +142,7 @@ _Avoid_: 把当前运行事实反写成用户意图
 _Avoid_: Installed State、Runtime State
 
 **Collector Runtime State（采集器运行状态）**:
-Collector Runtime 对当前 Collector Activation 的阶段、健康结果与失败原因的观察事实。运行状态可随重试和宿主变化而改变，不是用户配置。
+Collector Runtime 对当前 Collector Activation 的阶段、健康结果与失败原因的观察事实。运行状态可随重试和宿主变化而改变，不是用户配置。它同时是该 Instance 交付事实的唯一持久化归属：Last-Known-Good、最近一次读到的 Registry current 及其时间、已安装候选、Approved Collector Package Candidate 与最后一次检查失败都记在这里，管理面的 Current 只是它的投影，不是第二份账本。
 _Avoid_: Desired State、Active（后者只回答某 Source 最近是否有流量）
 
 **Artifact Delivery（制品交付）**:
@@ -167,6 +167,19 @@ _Avoid_: release manifest、channel 指针、把 index 当成 Package 身份或�
 **Collector Update Offer（采集器更新候选）**:
 Runtime 已验证并解析出的某个 Collector Instance 的精确更新候选，绑定 PackageId、Version、内容 hash 与宿主兼容结果；只有 owner 明确批准该精确候选后才可开始该 Instance 的激活尝试。
 _Avoid_: latest、opaque workflow token、未验证的 Registry 响应、把发现或下载等同于批准和更新成功
+
+**Approved Collector Package Candidate（已批准采集器包候选）**:
+owner 对某个 Collector Instance 明确批准的一个精确候选：PackageId、Version 与 artifact SHA-256 三者逐字段
+匹配，且批准时它仍是本机真实的 Collector Installation。批准不解析 latest，也不要求它仍是 Registry current：
+已下载验证并安装的候选在 Registry 前进后依然可批准。批准只是取用许可，不是 Ready，也不改写 Desired State、
+Activation 或 Last-Known-Good。它随 Collector Runtime State 持久化，重启后仍是同一个已批准 ref。
+_Avoid_: latest/channel 批准、opaque offer token 或可重放的审批工作流、把批准当作更新成功
+
+**Manual Collector Update Check（手动采集器更新检查）**:
+owner 触发的一次性检查：读一次 Collector Registry Index、下载并按长度与 SHA-256 验证一次、安装一次。它不
+调度、不重试、不轮询；失败写入结构化最后错误（reason + 说明 + 时间）并保留既有 Installation、已批准候选与
+Last-Known-Good，下一次尝试只由人再次触发。
+_Avoid_: 后台 timer/自动检查、失败自动退避重试、把检查或下载等同于批准或 Ready
 
 **Execution Driver（执行驱动器）**:
 Collector Runtime 协调 Collector Activation 的方式，可以是进程内、托管进程或外部宿主；它不表示 Runtime 一定持有对应制品。

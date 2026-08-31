@@ -106,10 +106,11 @@ signing key。
       （2026-08-31：本地 dry-run 已通过并自校验，见 issue 02；真实 tag 与上传是 issue 07 的人工门禁。）
 - [ ] `/collector-registry/v1/packages/vrchat/current.json` 经真实域名可读，length/hash 与 artifact 一致。
 - [ ] Headless 手动 CheckNow、版本目录 Installation、authenticated exact-ref approval 与真实 Ready 通过。
-      （2026-08-31：版本目录 Installation 与完成标记已实现并测试，见 issue 03；CheckNow / approval 是
-      issue 04，真实 Ready 是 issue 05，Headless 接线尚未发生。）
+      （2026-08-31：版本目录 Installation 与完成标记见 issue 03；Headless authenticated 手动 CheckNow 与
+      exact-ref approval 已接线并测试，见 issue 04；真实 Ready 是 issue 05，真实域名 smoke 是 issue 07。）
 - [ ] 错 hash、损坏 Package、incompatible handshake 与 never-ready candidate 都保留旧 LKG 并显示最后错误。
-      （2026-08-31：错 hash 与损坏 Package 在 delivery seam 已有稳定 reason 与结构化最后错误，见
-      issue 03；「显示」与持久化属于 issue 04，handshake / never-ready 属于 issue 05。）
+      （2026-08-31：错 hash 与损坏 Package 的结构化最后错误已持久化在 Collector Runtime State 并由管理面
+      Current 展示，旧 LKG 与既有 Installation 不受影响，见 issue 04；handshake / never-ready 属于
+      issue 05。）
 - [ ] 真实服务器完成一次端到端 smoke，tracker 记录证据；Browser、签名、自动检查与 Dashboard UI 不作为
   完成条件。
