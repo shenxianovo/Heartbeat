@@ -10,6 +10,7 @@ public sealed class CollectorProtocolClient(
     ICollectorProtocolBinding binding,
     TimeProvider? timeProvider = null) : IAsyncDisposable
 {
+    private readonly ICollectorProtocolDrainHandoffObserver? _drainHandoffObserver;
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     private readonly SemaphoreSlim _deliveryGate = new(1, 1);
     private readonly SemaphoreSlim _flushSignal = new(0, 1);
@@ -19,8 +20,20 @@ public sealed class CollectorProtocolClient(
     private CollectorActivation? _activation;
     private Task? _backgroundFlush;
     private volatile bool _admissionOpen = true;
+    private volatile bool _backgroundFlushHandedOffToDrain;
     private volatile bool _persistenceFailed;
     private int _activePersistenceRetries;
+
+    internal CollectorProtocolClient(
+        CollectorClientDefinition definition,
+        ICollectorProtocolBinding binding,
+        TimeProvider? timeProvider,
+        ICollectorProtocolDrainHandoffObserver drainHandoffObserver)
+        : this(definition, binding, timeProvider)
+    {
+        _drainHandoffObserver = drainHandoffObserver
+            ?? throw new ArgumentNullException(nameof(drainHandoffObserver));
+    }
 
     public async Task<CollectorDrainExecutionResult> RunAsync(
         ICollectorProtocolApplication application,
@@ -95,7 +108,9 @@ public sealed class CollectorProtocolClient(
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             deadlineTimer.Token);
+        _backgroundFlushHandedOffToDrain = true;
         _deliveryCommitFence.Fence();
+        _drainHandoffObserver?.DeliveryFenceAdvanced();
         using var deadlineFence = deadline.Token.Register(
             FenceAdmission);
         var reason = CollectorProtocolDrainReason.Drained;
@@ -332,9 +347,16 @@ public sealed class CollectorProtocolClient(
                 await FlushAsync(cancellationToken).ConfigureAwait(false);
             }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (
+            cancellationToken.IsCancellationRequested ||
+            _backgroundFlushHandedOffToDrain)
         {
-            // Drain owns the final bounded flush after stopping application ingress.
+            // Once drain starts, its final bounded flush owns delivery. An old background
+            // epoch can observe the handoff before application cancellation reaches this token.
+        }
+        finally
+        {
+            _drainHandoffObserver?.BackgroundFlushStopped();
         }
     }
 
@@ -663,6 +685,12 @@ public sealed class CollectorProtocolClient(
             _flushSignal.Dispose();
         }
     }
+}
+
+internal interface ICollectorProtocolDrainHandoffObserver
+{
+    void DeliveryFenceAdvanced();
+    void BackgroundFlushStopped();
 }
 
 internal sealed class CollectorProtocolPersistenceException(string message, Exception innerException)

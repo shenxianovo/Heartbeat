@@ -127,3 +127,30 @@ reliability gate 的本轮前置条件关闭。
 外推为 power-loss、跨平台 directory-entry/fsync durability 或 dead-letter 双文件事务原子性。VRChat
 checkpoint v1、Protocol schema v1 point Gap / 缺失 DeliveryOrder、Runtime v2 空 GapId 的读取兼容分支
 继续受 `docs/architecture/compatibility-debt.md` 的 inventory、迁移、rollback/离线窗口退出条件约束。
+
+### 2026-08-31 — background delivery handoff 竞态重开
+
+新的确定性协调回归推翻上一轮 `done`：drain 已推进 client delivery epoch、但 application cancellation
+任务尚未调度时，旧 background Fact/Gap ACK 恢复会把 handoff 的取消误记为 `flush_cancelled`；随后
+final flush 虽清空 durable outbox，logical reason 仍不收敛。新增 Fact/Gap 两 case 在修复前稳定为
+0/2，精确结果是 pending facts/gaps 均为 0、completion `completed`、reason `flush_cancelled`。
+本轮完整验证与 lifecycle closeout 完成前，Registry reliability gate 重新关闭。
+
+### 2026-08-31 — background delivery handoff final lifecycle closeout
+
+Client 现在在推进 delivery epoch 前先发布 background→drain handoff marker；handoff 后旧 background
+delivery 的取消只结束旧 pump ownership，停止 ingress 后的有界 final flush 仍独立决定真实 logical
+outcome。没有放宽 `IsFullyDrained`，也没有按 pending 0 泛化覆盖 deadline、stop、persistence 或
+completion failure。Fact/Gap 确定性协调回归在旧 catch 下精确为 0/2（pending 0/0、completion
+`completed`、reason `flush_cancelled`），修复后为 2/2，并重复 40/40；原 deadline restart replay
+重复 30/30。
+
+本轮最终门禁：solution build 0 warnings / 0 errors；Protocol 28/28；Browser 78/78 且 production build
+成功；collector contract、IDE1006 style 与 diff check 通过；真实 cross-process crash/drain/restart
+10/10；Hub/System/Protocol terminal/deadline 压力分别 60/60、80/80、40/40；solution 项目并行执行按
+12 个项目 summary 从零计数，连续三轮均为 991/991。独立 Spec 与 Standards 复审均为 P1/P2/P3 0。
+
+本轮没有修改采集、摄入、投影或持久化 mutation，Local Data Smoke 不适用。可靠性声明仍只覆盖当前
+OS/filesystem 下已验证的进程 crash/restart、Protocol replay 与 logical drain；不外推 power-loss、
+跨平台 directory-entry/fsync durability 或 dead-letter 双文件事务原子性。既有兼容读取继续受
+`docs/architecture/compatibility-debt.md` 的 inventory、迁移与 rollback/离线窗口退出条件约束。

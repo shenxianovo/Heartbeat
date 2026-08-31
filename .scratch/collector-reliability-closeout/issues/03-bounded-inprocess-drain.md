@@ -258,3 +258,43 @@ Starting Collector、cooperative stop、deadline cleanup、Protocol 初始 outbo
 连续 10/10；完整 solution 连续三轮 989/989。Spec P1/P2/P3 为 0，Standards P1/P2 为 0。本 issue
 恢复 `done`。声明仍限于当前 OS/filesystem 的进程边界；不承诺断电 durability、跨平台目录项持久性或
 dead-letter 双文件 replacement 的事务原子性。
+
+### 2026-08-31 — background delivery handoff 竞态重开
+
+完整 solution 并行负载暴露最后一个调度竞态：`RunAsync` 先推进 client delivery epoch，再异步调度
+application lifetime cancellation。旧 background ACK 若在两者之间恢复，会因 epoch superseded 抛出
+尚不属于 application token cancellation 的异常；background task 因而 fault，final flush 成功后仍保留
+`flush_cancelled`。确定性回归不使用 sleep：同步阻塞 `StartAsync` 的调用返回，通过 internal observer
+依次确认 epoch fence 已建立、旧 background 已消费 superseded ACK，再证明 application cancellation
+仍未发生后放行 Start。Fact 与 Gap 两个 case 修复前均得到 pending 0/0、completion `completed`、
+reason `flush_cancelled`，合计 0/2。
+
+#### 第三轮 reopened acceptance
+
+- [x] Fact 与 Gap 的确定性 handoff 回归 red→green，final flush 成功时只把旧 background ownership
+  交接收敛为 `drained`。
+- [x] cooperative、deadline、late ACK、terminal durable fence、stop/persistence/completion failure 保持
+  既有 truthful outcome，不以 pending 0 掩盖非 durable 或未知 tail。
+- [x] Protocol、solution 三轮并行、Browser、contract/style/diff 与必要的 cross-process/deadline stress
+  从本轮修复重新取得可判定证据。
+
+### 2026-08-31 — 第三轮 final lifecycle closeout
+
+修复在 client delivery epoch fence 前发布 background→drain handoff marker；旧 Fact/Gap delivery 若在
+application token cancellation 前观察到 superseded epoch，其取消只终止旧 background pump，由停止
+ingress 后的有界 final flush 继续交付并决定 logical outcome。internal observer 只为测试建立
+`old delivery entered → fence advanced → ACK consumed/background stopped → token 尚未取消 → release Start`
+的确定顺序，不进入公开协议或生产 Binding。旧 catch 下 Fact/Gap 精确 red 0/2，结果均为 pending 0/0、
+completion `completed`、reason `flush_cancelled`；修复后 2/2，并重复 40/40。原 deadline restart replay
+重复 30/30，Protocol 完整套件 28/28。
+
+最终证据：`dotnet build Heartbeat.slnx --no-restore --configuration Debug` 为 0 warnings / 0 errors；
+Browser 78/78 且 production build 成功；collector contract、IDE1006 style 与 diff check 通过；真实
+cross-process crash/drain/restart 10/10；Hub/System/Protocol terminal/deadline 压力分别 60/60、80/80、
+40/40；`dotnet test Heartbeat.slnx --no-restore --no-build --configuration Debug` 在项目并行执行下按
+12 个项目 summary 从零计数，连续三轮均为 991/991。独立 Spec 与 Standards 复审均为 P1/P2/P3 0。
+
+本轮不改变采集、摄入、投影或持久化 mutation，Local Data Smoke 不适用。可靠性边界仍限于当前
+OS/filesystem 的进程 crash/restart、Protocol replay 与 logical drain；不承诺 power-loss、跨平台
+directory-entry/fsync durability 或 dead-letter 双文件 replacement 的事务原子性。Protocol schema v1
+point Gap / 缺失 DeliveryOrder 等兼容读取继续受 compatibility debt ledger 的明确退出条件约束。
