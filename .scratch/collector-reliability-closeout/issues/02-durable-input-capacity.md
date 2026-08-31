@@ -1,6 +1,6 @@
 # 02 — durable InputEvent 满容量不再静默丢失
 
-Status: needs-triage
+Status: done
 
 Owner: Collection / System Input + Protocol
 
@@ -193,3 +193,12 @@ fence 发布；预先 fence 的两条 red 为 0/2，malformed-tail 另以 temp f
 再从独立 native callback thread 提交后续 InputEvent，仍要求 2 秒内返回且无异常。它不再修改正在使用的
 authoritative path，且直接验证“后台 fsync/commit 阻塞不得反向阻塞平台 callback”。新夹具隔离 20/20；
 完整 solution 连续三轮需从零重新计数，完成前 issue 保持 `needs-triage`。
+
+### 2026-08-31 — 第二轮 final lifecycle closeout
+
+ingress torn-tail repair 已收窄到可证明边界并统一走 fenced COW publication；完整未知字段/错误类型记录
+保留且 fail，中间损坏仍拒绝，修复后 append+restart 继续成立。native callback 测试改为在真实 commit
+seam 协调后独立 20/20，避免夹具自身的同名 file/directory TOCTOU，同时仍证明平台 callback 不同步等待
+fsync。System 压力 80/80，完整 solution 从零重新计数后连续三轮 989/989；Spec P1/P2/P3 为 0，
+Standards P1/P2 为 0。本 issue 恢复 `done`。power-loss 与跨平台 directory-entry durability 仍不在本轮
+证据范围内。

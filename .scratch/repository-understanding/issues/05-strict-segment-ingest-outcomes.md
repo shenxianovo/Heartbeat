@@ -1,6 +1,6 @@
 # 05 — 让 Segment strict ingest 返回可判定结果
 
-Status: needs-triage
+Status: done
 
 Owner: Analytics / Ingest
 
@@ -95,3 +95,10 @@ direct application-service 与 Controller delegation 测试先因 contract 没�
 AppIdentity/ActivitySegment 投影之前；Controller 删除本地 count 判断，只把 application outcome 映射为
 400。定向 2/2、完整 `StrictIngestProtocolTests` 27/27。最终完整门禁与双轴复审前 issue 保持
 `needs-triage`。
+
+### 2026-08-31 — 第二轮 final lifecycle closeout
+
+空 batch 现由 application contract 在 transaction、Device/AppIdentity/ActivitySegment 副作用前拒绝，
+Controller 只映射结果；direct service 与 HTTP 回归 2/2，完整 strict ingest suite 27/27，Server suite
+454/454。完整 solution 连续三轮 989/989；Spec P1/P2/P3 为 0，Standards P1/P2 为 0。本 issue
+恢复 `done`，既有 atomic ingest 与 single-now unit-of-work 语义保持关闭。

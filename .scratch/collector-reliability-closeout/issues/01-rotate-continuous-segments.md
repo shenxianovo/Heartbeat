@@ -1,6 +1,6 @@
 # 01 — 在摄入边界前旋转连续 Segment
 
-Status: needs-triage
+Status: done
 
 Owner: Collection / System + VRChat
 
@@ -170,3 +170,11 @@ rollover deferred handoff 尚未完成，因此 issue 继续保持 `needs-triage
 queue 真正排空才释放，因此不能越过更早 deferred observation，也不在状态锁内执行磁盘 I/O 或阻塞
 平台 callback。协调与既有 rollover/stop/multi-transition 定向 4/4，完整 System suite 76/76。最终
 完整门禁与双轴复审前 issue 保持 `needs-triage`。
+
+### 2026-08-31 — 第二轮 final lifecycle closeout
+
+VRChat equal-time/future-mtime recovery 与 System ordered deferred handoff 均已关闭，未回退 atomic
+Event/Gap、native callback 非阻塞、rotation durable continuation 或 clock-at-observation 语义。最终
+VRChat suite 15/15；System 压力 80/80；真实跨进程 smoke 10/10；完整 solution 连续三轮 989/989。
+固定点双轴复审 Spec P1/P2/P3 为 0，Standards P1/P2 为 0。本 issue 恢复 `done`；VRChat v1 reader
+仍按 compatibility ledger 的 inventory 归零、成功 v2 Stage 与 rollback/离线窗口证据退出。

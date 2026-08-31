@@ -1,6 +1,6 @@
 # Collector 数据可靠性收口
 
-Status: needs-triage
+Status: done
 
 ## Problem
 
@@ -104,3 +104,26 @@ ingress tail repair；outbox corruption recovery 保留原 authoritative 证据�
 replacement 成功。确定性 red/green 覆盖 Initialize/Stop 迟返、prepared outbox fence、corrupt recovery
 中间 fence、两种 ingress repair 与 cooperative stop。相关完整套件为 Hub 222/222、System 78/78、
 Protocol 26/26；最终门禁与双轴复审前 PRD 继续保持 `needs-triage`。
+
+### 2026-08-31 — 第二轮 final lifecycle closeout
+
+六项重开问题均以稳定 red 回归锁定后修复：VRChat clock rollback 不再伪造空 Gap；ingress 只修复可证明
+为 torn/un-terminated 的末条；空 batch 在 application contract、任何实体副作用前拒绝；System rollover
+通过单一有序 handoff 防止新 callback 超车；Starting Collector 与 Protocol 初始 outbox/repair 从资源暴露
+起受同一 Hub-owned terminal fence 约束；非 timeout transcript 使用独立 30 秒测试预算而不改变生产超时。
+
+最终门禁在测试夹具 TOCTOU 修复后从零重新计数：`dotnet build Heartbeat.slnx --no-restore
+--configuration Debug` 为 0 warnings / 0 errors；Browser 78/78 且 production build 成功；collector contract
+check 通过；真实 Protocol cross-process crash/drain/restart 连续 10/10；Hub/System/Protocol 定向压力分别
+60/60、80/80、40/40，native callback 协调夹具 20/20；`dotnet test Heartbeat.slnx --no-restore
+--no-build --configuration Debug` 在项目并行执行下连续三轮 989/989；`git diff --check` 通过。
+
+固定点 `8d0c63a4e7f48e0b126eba05eca460ce404c646f` 的独立双轴复审结论：Spec 无 finding，P1/P2/P3
+均为 0；Standards 无 hard violation，P1/P2 为 0，保留两项不阻塞 P3 judgement call（terminal fence
+命名与多 bool test double）。四张 required issue 均恢复 `done`，本 PRD 亦恢复 `done`，Registry
+reliability gate 的本轮前置条件关闭。
+
+可靠性声明仍只覆盖当前 OS/filesystem 下已验证的进程 crash/restart、协议 replay 与 logical drain；不
+外推为 power-loss、跨平台 directory-entry/fsync durability 或 dead-letter 双文件事务原子性。VRChat
+checkpoint v1、Protocol schema v1 point Gap / 缺失 DeliveryOrder、Runtime v2 空 GapId 的读取兼容分支
+继续受 `docs/architecture/compatibility-debt.md` 的 inventory、迁移、rollback/离线窗口退出条件约束。

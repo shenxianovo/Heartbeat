@@ -1,6 +1,6 @@
 # 03 — 让 InProcess drain 受 deadline 约束
 
-Status: needs-triage
+Status: done
 
 Owner: Collection / Collector Protocol
 
@@ -249,3 +249,12 @@ red 证据分别为 Starting late publication 1/1、Protocol 初始 outbox 拒�
 0/1、corrupt recovery 中间 fence 0/1、两种 ingress repair fence 0/2、cooperative stop 后 publication
 0/1；修复后 Hub 222/222、System 78/78、Protocol 26/26。完整 solution 三轮、真实跨进程 smoke 与最终
 双轴复审尚未完成，因此 issue 继续保持 `needs-triage`。
+
+### 2026-08-31 — 第二轮 final lifecycle closeout
+
+Starting Collector、cooperative stop、deadline cleanup、Protocol 初始 outbox 与相邻 corrupt/repair 路径
+现均在 ownership/writer release 前关闭同一 Hub-owned session fence。Hub/System/Protocol 完整套件分别
+222/222、78/78、26/26；定向压力分别 60/60、80/80、40/40；真实 cross-process crash/drain/restart
+连续 10/10；完整 solution 连续三轮 989/989。Spec P1/P2/P3 为 0，Standards P1/P2 为 0。本 issue
+恢复 `done`。声明仍限于当前 OS/filesystem 的进程边界；不承诺断电 durability、跨平台目录项持久性或
+dead-letter 双文件 replacement 的事务原子性。
