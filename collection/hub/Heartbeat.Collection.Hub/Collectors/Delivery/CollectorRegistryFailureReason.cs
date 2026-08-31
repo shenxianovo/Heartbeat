@@ -92,5 +92,17 @@ public enum CollectorRegistryFailureReason
     InstallationMarkerMismatch,
 
     /// <summary>Local storage refused the installation: an I/O error, no space, or a permission error.</summary>
-    InstallationStorageFailed
+    InstallationStorageFailed,
+
+    /// <summary>
+    /// This Hub has no Official Collector Package Registry configured, so a manual check has nowhere
+    /// to read from. It is a deployment gap, not a Registry failure.
+    /// </summary>
+    RegistryNotConfigured,
+
+    /// <summary>
+    /// The exact candidate names a Collector Package other than the one this Collector Instance is
+    /// permanently bound to, so approving it would approve something this Instance can never run.
+    /// </summary>
+    CollectorInstancePackageMismatch
 }

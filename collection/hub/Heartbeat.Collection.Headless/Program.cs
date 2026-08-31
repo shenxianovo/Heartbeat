@@ -22,6 +22,10 @@ try
     builder.Services.AddSingleton(options);
     builder.Services.AddSingleton<HeadlessFleetManager>();
     builder.Services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<HeadlessFleetManager>());
+    // The Hub Runtime the update surface reads is the one the fleet already owns, so the API cannot
+    // observe or write a second copy of the Collector Instance's state.
+    builder.Services.AddSingleton(provider =>
+        provider.GetRequiredService<HeadlessFleetManager>().PackageUpdates);
     builder.Services
         .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(authentication =>
@@ -60,20 +64,7 @@ try
     app.UseAuthentication();
     app.UseAuthorization();
 
-    var management = app.MapGroup("/hub/api/v1").RequireAuthorization();
-    management.MapGet("/subjects", (HeadlessFleetManager fleet) => Results.Ok(fleet.Snapshot()));
-    management.MapPost(
-        "/collector-instances/{collectorInstanceId:guid}/authorization/{interactionId:guid}",
-        async (Guid collectorInstanceId, Guid interactionId, AuthorizationResponse request, HeadlessFleetManager fleet, CancellationToken cancellationToken) =>
-        {
-            try
-            {
-                await fleet.SubmitAuthorizationAsync(collectorInstanceId, interactionId, request.Values, cancellationToken);
-                return Results.Accepted();
-            }
-            catch (KeyNotFoundException) { return Results.NotFound(); }
-            catch (InvalidOperationException exception) { return Results.Conflict(new { error = exception.Message }); }
-        });
+    app.MapHeadlessManagementApi();
 
     await app.RunAsync();
 }
@@ -81,5 +72,3 @@ finally
 {
     await Log.CloseAndFlushAsync();
 }
-
-public sealed record AuthorizationResponse(IReadOnlyDictionary<string, string> Values);

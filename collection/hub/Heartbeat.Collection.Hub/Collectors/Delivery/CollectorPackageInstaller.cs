@@ -44,6 +44,13 @@ public sealed class CollectorPackageInstaller
     }
 
     /// <summary>
+    /// The Registry this installer reads through. Callers that need the current index before
+    /// deciding what to install share this one client instead of constructing a second reader with
+    /// its own boundary rules.
+    /// </summary>
+    public StaticCollectorRegistryClient Registry => _registry;
+
+    /// <summary>
     /// The last failure recorded for <paramref name="packageId" />, or <c>null</c> when the most
     /// recent attempt succeeded. It is in-memory state about attempts, not a second lifecycle
     /// authority; nothing reads it to decide what is installed.

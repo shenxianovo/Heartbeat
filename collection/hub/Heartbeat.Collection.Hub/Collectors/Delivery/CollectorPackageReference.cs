@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Heartbeat.Collection.Hub.Collectors.Packages;
 
@@ -45,6 +46,7 @@ public sealed record CollectorPackageReference(string PackageId, string Version,
         return CollectorRegistryResult<CollectorPackageReference>.Success(this);
     }
 
+    [JsonIgnore]
     public bool IsWellFormed => Validated().IsSuccess;
 
     public override string ToString() => $"{PackageId}@{Version} ({ArtifactSha256})";

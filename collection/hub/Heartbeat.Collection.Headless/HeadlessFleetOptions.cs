@@ -11,6 +11,15 @@ public sealed class HeadlessFleetOptions
     public required string DataDirectory { get; init; }
     public int UploadIntervalSeconds { get; init; } = 60;
     public string ListenUrl { get; init; } = "http://0.0.0.0:8080";
+
+    /// <summary>
+    /// Base URI of the Official Collector Package Registry this Hub reads on a manual check, or
+    /// <c>null</c> when no Registry is configured. Leaving it out is a supported deployment: the
+    /// update surface then reports <c>RegistryNotConfigured</c> for a check while approval of an
+    /// already installed candidate keeps working.
+    /// </summary>
+    public string? RegistryBaseUri { get; init; }
+
     public required HeadlessManagementOptions Management { get; init; }
     public required IReadOnlyList<HeadlessManagedInstanceOptions> Instances { get; init; }
 
@@ -54,6 +63,10 @@ public sealed class HeadlessFleetOptions
         if (string.IsNullOrWhiteSpace(DataDirectory)) throw new InvalidOperationException("dataDirectory is required.");
         if (UploadIntervalSeconds <= 0) throw new InvalidOperationException("uploadIntervalSeconds must be positive.");
         if (!Uri.TryCreate(ListenUrl, UriKind.Absolute, out _)) throw new InvalidOperationException("listenUrl must be absolute.");
+        if (RegistryBaseUri is not null &&
+            (!Uri.TryCreate(RegistryBaseUri, UriKind.Absolute, out var registry) ||
+             (registry.Scheme != Uri.UriSchemeHttp && registry.Scheme != Uri.UriSchemeHttps)))
+            throw new InvalidOperationException("registryBaseUri must be an absolute http or https URI.");
         ArgumentNullException.ThrowIfNull(Management);
         Management.Validate();
         if (Instances is null || Instances.Count == 0) throw new InvalidOperationException("instances must not be empty.");
@@ -72,6 +85,7 @@ public sealed class HeadlessFleetOptions
             DataDirectory = dataDirectory,
             UploadIntervalSeconds = UploadIntervalSeconds,
             ListenUrl = ListenUrl,
+            RegistryBaseUri = RegistryBaseUri,
             Management = Management,
             Instances = instances
         };

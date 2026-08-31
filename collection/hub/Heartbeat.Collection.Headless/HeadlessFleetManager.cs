@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Heartbeat.Collection.Hub.Auth;
+using Heartbeat.Collection.Hub.Collectors.Delivery;
 using Heartbeat.Collection.Hub.Collectors.Packages;
 using Heartbeat.Collection.Hub.Collectors.Runtime;
 using Heartbeat.Collection.Hub.Configuration;
@@ -37,6 +38,7 @@ public sealed class HeadlessFleetManager(
     private readonly List<IDisposable> _ownedDisposables = [];
     private CollectorRuntime? _runtime;
     private HeadlessInstancePipelines? _pipelines;
+    private CollectorPackageUpdateService? _packageUpdates;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -60,6 +62,13 @@ public sealed class HeadlessFleetManager(
             }
         }
     }
+
+    /// <summary>
+    /// The owner-facing Collector Package update surface for this fleet, over the same Hub Runtime
+    /// and the same state directory the fleet already owns.
+    /// </summary>
+    public CollectorPackageUpdateService PackageUpdates =>
+        _packageUpdates ?? throw new InvalidOperationException("Hub Runtime is not initialized.");
 
     public IReadOnlyList<HeadlessSubjectStatusResponse> Snapshot()
     {
@@ -160,6 +169,18 @@ public sealed class HeadlessFleetManager(
             pipelines,
             secretStore: new EncryptedFileCollectorSecretStore(
                 Path.Combine(options.DataDirectory, "collector-secrets")));
+
+        var installations = new CollectorInstallationStore(options.DataDirectory);
+        CollectorPackageInstaller? installer = null;
+        if (options.RegistryBaseUri is { } registryBaseUri)
+        {
+            var registryHttp = new HttpClient();
+            _ownedDisposables.Add(registryHttp);
+            installer = new CollectorPackageInstaller(
+                new StaticCollectorRegistryClient(registryHttp, new Uri(registryBaseUri, UriKind.Absolute)),
+                installations);
+        }
+        _packageUpdates = new CollectorPackageUpdateService(_runtime, installations, installer);
 
         var claimedInstanceIds = mappings.Values.ToHashSet();
         foreach (var configured in options.Instances)

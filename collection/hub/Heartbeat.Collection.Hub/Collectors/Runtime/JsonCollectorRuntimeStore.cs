@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Heartbeat.Collection.Hub.Collectors.Delivery;
 using Heartbeat.Collection.Hub.Collectors.Packages;
 using Heartbeat.Collection.Hub.Collectors.Protocol;
 
@@ -9,7 +10,7 @@ namespace Heartbeat.Collection.Hub.Collectors.Runtime;
 
 internal sealed class JsonCollectorRuntimeStore : IDisposable
 {
-    private const int CurrentSchemaVersion = 2;
+    internal const int CurrentSchemaVersion = 3;
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -91,6 +92,12 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
                         MoveLegacyProperty(lastKnownGood, "configSchemaVersion", "configVersion");
                 }
             }
+            root["schemaVersion"] = CurrentSchemaVersion;
+        }
+        else if (schemaVersion == 2)
+        {
+            // v3 only adds the optional per-Instance Collector Package update record, so a v2
+            // document is already a valid v3 document.
             root["schemaVersion"] = CurrentSchemaVersion;
         }
         return root.Deserialize<CollectorRuntimeState>(SerializerOptions)
@@ -235,6 +242,11 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
                  lastKnownGood.ConfigVersion <= 0))
                 throw new JsonException("Collector Runtime state contains an invalid Collector Instance.");
         }
+        foreach (var instance in state.Instances)
+        {
+            if (instance.PackageUpdate is { } packageUpdate)
+                ValidatePackageUpdate(instance, packageUpdate);
+        }
         foreach (var stream in state.Streams)
         {
             if (stream.StreamId == Guid.Empty || stream.CollectorInstanceId == Guid.Empty ||
@@ -360,6 +372,44 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
             throw new JsonException("Collector Runtime state contains a Gap for an unknown Fact Stream.");
     }
 
+    /// <summary>
+    /// A persisted candidate has to stay a candidate for this Collector Instance's Package: the
+    /// Instance is permanently bound to its PackageId, so a record naming another Package would be
+    /// an approval for something this Instance can never run.
+    /// </summary>
+    private static void ValidatePackageUpdate(
+        CollectorInstanceState instance,
+        CollectorPackageUpdateStateRecord update)
+    {
+        foreach (var candidate in new[]
+                 {
+                     update.InstalledCandidate,
+                     update.ApprovedCandidate,
+                     update.RegistryCurrent
+                 })
+        {
+            if (candidate is null)
+                continue;
+            if (candidate.PackageId != instance.PackageId ||
+                !new CollectorPackageReference(
+                    candidate.PackageId,
+                    candidate.Version,
+                    candidate.ArtifactSha256).IsWellFormed)
+                throw new JsonException(
+                    "Collector Runtime state contains an invalid Collector Package candidate.");
+        }
+        if (update.RegistryCurrent is null != update.RegistryCheckedAt is null)
+            throw new JsonException(
+                "Collector Runtime state must record a Registry read time with the Registry candidate.");
+        if (update.RegistryCheckedAt is { Offset: var checkedOffset } && checkedOffset != TimeSpan.Zero)
+            throw new JsonException("Collector Runtime state Registry read time must be UTC.");
+        if (update.LastFailure is { } failure &&
+            (!Enum.IsDefined(failure.Reason) || string.IsNullOrWhiteSpace(failure.Message) ||
+             failure.OccurredAt.Offset != TimeSpan.Zero))
+            throw new JsonException(
+                "Collector Runtime state contains an invalid Collector Package update failure.");
+    }
+
     private static bool IsSha256(string? value) =>
         value is not null && value.Length == 71 && value.StartsWith("sha256:", StringComparison.Ordinal) &&
         value[7..].All(char.IsAsciiHexDigitLower);
@@ -379,7 +429,7 @@ public sealed class CollectorRuntimeStateException(string message, Exception? in
 
 internal sealed class CollectorRuntimeState
 {
-    public int SchemaVersion { get; init; } = 2;
+    public int SchemaVersion { get; init; } = JsonCollectorRuntimeStore.CurrentSchemaVersion;
     public List<CollectorInstanceState> Instances { get; init; } = [];
     public List<FactStreamState> Streams { get; init; } = [];
     public List<CommittedFactState> Facts { get; init; } = [];
@@ -513,6 +563,37 @@ internal sealed record CollectorInstanceState
     public int ConfigVersion { get; init; }
     public JsonElement Config { get; init; }
     public LastKnownGoodCollectorPackage? LastKnownGoodPackage { get; init; }
+    public CollectorPackageUpdateStateRecord? PackageUpdate { get; init; }
+}
+
+/// <summary>
+/// The single persisted record behind the owner-facing update management surface: what the Registry
+/// last advertised, what is actually installed, what the owner approved, and why the last manual
+/// check failed. It lives on the Collector Instance next to
+/// <see cref="CollectorInstanceState.LastKnownGoodPackage" /> on purpose — approval and
+/// Last-Known-Good are the same lifecycle, and a second store would be a second authority.
+/// </summary>
+internal sealed record CollectorPackageUpdateStateRecord
+{
+    public CollectorPackageReferenceRecord? InstalledCandidate { get; init; }
+    public CollectorPackageReferenceRecord? ApprovedCandidate { get; init; }
+    public CollectorPackageReferenceRecord? RegistryCurrent { get; init; }
+    public DateTimeOffset? RegistryCheckedAt { get; init; }
+    public CollectorPackageUpdateFailureRecord? LastFailure { get; init; }
+}
+
+internal sealed record CollectorPackageReferenceRecord
+{
+    public string PackageId { get; init; } = string.Empty;
+    public string Version { get; init; } = string.Empty;
+    public string ArtifactSha256 { get; init; } = string.Empty;
+}
+
+internal sealed record CollectorPackageUpdateFailureRecord
+{
+    public CollectorRegistryFailureReason Reason { get; init; }
+    public string Message { get; init; } = string.Empty;
+    public DateTimeOffset OccurredAt { get; init; }
 }
 
 internal sealed class FactStreamState
