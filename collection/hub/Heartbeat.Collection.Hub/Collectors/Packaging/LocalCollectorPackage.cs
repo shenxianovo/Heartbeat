@@ -806,7 +806,14 @@ public sealed class LocalCollectorPackage
         }
     }
 
-    private static bool IsValidSemVer(string value)
+    /// <summary>
+    /// Package identity string validity lives here, next to the Manifest that owns identity, so the
+    /// Registry index reader validates PackageId and Version against the same rule instead of
+    /// growing a second authority.
+    /// </summary>
+    internal static bool IsValidPackageId(string value) => PackageIdPattern.IsMatch(value);
+
+    internal static bool IsValidSemVer(string value)
     {
         if (!SemVerPattern.IsMatch(value))
             return false;
