@@ -9,7 +9,8 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  portable:
+    name: Portable contracts and tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -44,8 +45,54 @@ jobs:
           dotnet tool restore
           dotnet restore Heartbeat.slnx
 
-      - name: Verify producer → Runtime schema validation → projector behavior
-        run: dotnet test Heartbeat.slnx --no-restore
+      - name: Verify portable .NET behavior
+        run: |
+          dotnet test shared/Heartbeat.Core.Tests/Heartbeat.Core.Tests.csproj -c Release --no-restore
+          dotnet test collection/protocol/Heartbeat.Collection.CollectorProtocol.Tests/Heartbeat.Collection.CollectorProtocol.Tests.csproj -c Release --no-restore
+          dotnet test collection/collectors/Heartbeat.Collector.Reference.ManagedProcess.Tests/Heartbeat.Collector.Reference.ManagedProcess.Tests.csproj -c Release --no-restore
+          dotnet test collection/collectors/Heartbeat.Collector.VRChat.Tests/Heartbeat.Collector.VRChat.Tests.csproj -c Release --no-restore
+          dotnet test collection/hub/Heartbeat.Collection.Headless.Tests/Heartbeat.Collection.Headless.Tests.csproj -c Release --no-restore
+          dotnet test collection/hub/Heartbeat.Collection.Hub.Tests/Heartbeat.Collection.Hub.Tests.csproj -c Release --no-restore
+          dotnet test collection/desktop/Heartbeat.Collector.System.Tests/Heartbeat.Collector.System.Tests.csproj -c Release --no-restore
+          dotnet test collection/desktop/Heartbeat.Desktop.UI.Tests/Heartbeat.Desktop.UI.Tests.csproj -c Release --no-restore
+          dotnet test collection/desktop/Heartbeat.Desktop.Updater.Velopack.Tests/Heartbeat.Desktop.Updater.Velopack.Tests.csproj -c Release --no-restore
+          dotnet test server/Heartbeat.Server.Tests/Heartbeat.Server.Tests.csproj -c Release --no-restore
+
+  macos:
+    name: macOS desktop tests
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Verify macOS platform head
+        run: dotnet test collection/desktop/Heartbeat.Desktop.Mac.Tests/Heartbeat.Desktop.Mac.Tests.csproj -c Release
+
+  windows:
+    name: Windows desktop tests
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Verify Windows platform head
+        run: dotnet test collection/desktop/Heartbeat.Desktop.Windows.Tests/Heartbeat.Desktop.Windows.Tests.csproj -c Release
 
   frontend:
     runs-on: ubuntu-latest

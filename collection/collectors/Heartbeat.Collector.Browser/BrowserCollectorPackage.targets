@@ -3,11 +3,12 @@
     <BrowserCollectorPackageStageDirectory>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\$(BaseIntermediateOutputPath)$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\CollectorPackage\Browser'))</BrowserCollectorPackageStageDirectory>
     <BrowserCollectorPackageDestination Condition="'$(BrowserCollectorPackageDestination)' == ''">CollectorPackages/Browser</BrowserCollectorPackageDestination>
     <HeartbeatRepositoryRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\..\'))</HeartbeatRepositoryRoot>
+    <CollectorPackageTestPlatformArgument Condition="'$(CollectorPackageIncludeCurrentTestPlatform)' == 'true'"> --include-current-test-platform</CollectorPackageTestPlatformArgument>
   </PropertyGroup>
 
   <Target Name="StageBrowserCollectorPackage" BeforeTargets="Build">
     <Exec WorkingDirectory="$(HeartbeatRepositoryRoot)"
-          Command="node scripts/collector-contracts.mjs stage browser &quot;$(BrowserCollectorPackageStageDirectory)&quot;" />
+          Command="node scripts/collector-contracts.mjs stage browser &quot;$(BrowserCollectorPackageStageDirectory)&quot;$(CollectorPackageTestPlatformArgument)" />
   </Target>
 
   <Target Name="CopyBrowserCollectorPackage" AfterTargets="Build" DependsOnTargets="StageBrowserCollectorPackage">

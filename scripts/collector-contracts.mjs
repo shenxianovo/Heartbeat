@@ -210,7 +210,30 @@ function stageBrowserArtifact(destination, manifest) {
   artifact.contentHash = artifactHash
 }
 
-function stagePackage(name, destination) {
+function currentPlatform() {
+  const operatingSystem = {
+    win32: 'windows',
+    darwin: 'macos',
+    linux: 'linux',
+  }[process.platform]
+  const architecture = {
+    x64: 'x64',
+    arm64: 'arm64',
+  }[process.arch]
+  if (!operatingSystem || !architecture)
+    throw new Error(`unsupported staging platform ${process.platform}/${process.arch}`)
+  return { operatingSystem, architecture }
+}
+
+function includeCurrentTestPlatform(manifest) {
+  const { operatingSystem, architecture } = currentPlatform()
+  for (const artifact of manifest.artifacts) {
+    if (!artifact.selector.os.includes(operatingSystem)) artifact.selector.os.push(operatingSystem)
+    if (!artifact.selector.arch.includes(architecture)) artifact.selector.arch.push(architecture)
+  }
+}
+
+function stagePackage(name, destination, includeTestPlatform = false) {
   const source = packageSources[name]
   if (!source) throw new Error(`unknown package '${name}'`)
   const output = resolve(destination)
@@ -218,6 +241,7 @@ function stagePackage(name, destination) {
   mkdirSync(output, { recursive: true })
   copyPackageSource(source, output)
   const manifest = readJson(join(source, 'collector-manifest.template.json'))
+  if (includeTestPlatform) includeCurrentTestPlatform(manifest)
   if (name === 'browser') stageBrowserArtifact(output, manifest)
   const contracts = factContracts()
   const byId = new Map(contracts.map(contract => [contract.document.schemaId, contract]))
@@ -252,10 +276,11 @@ try {
     const baseIndex = args.indexOf('--base-ref')
     if (baseIndex >= 0) checkBaseRef(baseline, args[baseIndex + 1])
     process.stdout.write('Collector Fact Schemas and evolution baseline are consistent.\n')
-  } else if (command === 'stage' && args.length === 2) {
-    stagePackage(args[0], args[1])
+  } else if (command === 'stage' && (args.length === 2 ||
+      args.length === 3 && args[2] === '--include-current-test-platform')) {
+    stagePackage(args[0], args[1], args.length === 3)
   } else {
-    throw new Error('usage: collector-contracts.mjs baseline | check [--base-ref REF] | stage <browser|system|reference-fixture> <output>')
+    throw new Error('usage: collector-contracts.mjs baseline | check [--base-ref REF] | stage <browser|system|reference-fixture> <output> [--include-current-test-platform]')
   }
 } catch (error) {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)

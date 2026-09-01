@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <CollectorPackageIncludeCurrentTestPlatform>true</CollectorPackageIncludeCurrentTestPlatform>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,7 +17,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Heartbeat.Collector.System\Heartbeat.Collector.System.csproj" />
     <ProjectReference Include="..\Heartbeat.Collector.System.CrashReplayHarness\Heartbeat.Collector.System.CrashReplayHarness.csproj"
-                      ReferenceOutputAssembly="false" />
+                      ReferenceOutputAssembly="false"
+                      AdditionalProperties="CollectorPackageIncludeCurrentTestPlatform=true" />
   </ItemGroup>
 
   <ItemGroup>

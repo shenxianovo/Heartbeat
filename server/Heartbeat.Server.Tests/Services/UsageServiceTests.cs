@@ -311,6 +311,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
 
         var existing = SystemItem("VSCode", Now.AddMinutes(-10), Now.AddMinutes(-8));
         await svc.SaveSegmentsAsync(_deviceId, [existing]);
+        var persistedBeforeConflict = await db.ActivitySegments.AsNoTracking().SingleAsync();
         var extension = SystemItem("VSCode", existing.StartTime, Now.AddMinutes(-6));
         extension.Id = existing.Id;
 
@@ -320,7 +321,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         Assert.Equal(SegmentIngestContractViolation.IdentityConflict, exception.Violation);
         var row = Assert.Single(await db.ActivitySegments.AsNoTracking().ToListAsync());
         Assert.Equal(_deviceId, row.DeviceId);
-        Assert.Equal(existing.EndTime, row.EndTime);
+        Assert.Equal(persistedBeforeConflict.EndTime, row.EndTime);
     }
 
     [Fact]

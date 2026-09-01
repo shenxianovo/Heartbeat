@@ -63,7 +63,7 @@ public sealed class BrowserCollectorRuntimeTests : IDisposable
         var package = CopyPackage("unsupported-platform");
         var manifestPath = Path.Combine(package, "collector-manifest.json");
         var manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!;
-        manifest["artifacts"]![0]!["selector"]!["os"] = new JsonArray("linux");
+        manifest["artifacts"]![0]!["selector"]!["os"] = new JsonArray("unsupported");
         File.WriteAllText(manifestPath, manifest.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         var runtime = CreateRuntime();
 
