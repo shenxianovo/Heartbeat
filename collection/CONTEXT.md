@@ -175,6 +175,16 @@ owner 对某个 Collector Instance 明确批准的一个精确候选：PackageId
 Activation 或 Last-Known-Good。它随 Collector Runtime State 持久化，重启后仍是同一个已批准 ref。
 _Avoid_: latest/channel 批准、opaque offer token 或可重放的审批工作流、把批准当作更新成功
 
+**Collector Package Switch（采集器包切换）**:
+owner 明确要求某个 Collector Instance 开始使用其 Approved Collector Package Candidate 的一次尝试，成功条件
+只有一个：候选 Activation 到达 Ready。Ready 之前失败（启动失败、握手或声明不兼容、Ready 超时、被取消）不改写
+任何交付事实——旧 Package 重新激活、Last-Known-Good 保持原样、批准与 Installation 都还在，只写一条结构化最后
+错误等人再次触发；Ready 之后退出是普通运行故障，既不是更新失败也不触发回滚。切换只取用批准时那份逐字段一致
+的精确 Installation，不重读 Registry、不解析 channel。它是 per-Instance 的：共享同一 Installation 的另一个
+Instance 既不被一起晋升，也不被一起记失败。宿主重启后启动的是"已经到达过 Ready 的那份 Package"，因此从未
+Ready 的已批准候选不会靠重启接管，也不会因此出现第二个 Fact Stream writer。
+_Avoid_: 自动切换/自动重试、把批准或安装当作切换、候选稳定窗口、Ready 后回滚、跨 Instance 连带晋升
+
 **Manual Collector Update Check（手动采集器更新检查）**:
 owner 触发的一次性检查：读一次 Collector Registry Index、下载并按长度与 SHA-256 验证一次、安装一次。它不
 调度、不重试、不轮询；失败写入结构化最后错误（reason + 说明 + 时间）并保留既有 Installation、已批准候选与

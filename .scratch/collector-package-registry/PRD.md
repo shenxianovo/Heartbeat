@@ -67,7 +67,8 @@ Desktop / Headless 构建交付。仓库缺少一个能让每个 Collector 独�
 ### Driver-specific success
 
 - VRChat ManagedProcess：精确候选 Activation Ready 后接管并视为更新成功；Ready 前保留旧 LKG，Ready
-  后退出按普通运行故障处理，不新增候选稳定事务。
+  后退出按普通运行故障处理，不新增候选稳定事务。批准与切换是两次 owner 动作；宿主重启只会启动已经到达过
+  Ready 的那份 Package，不会让未 Ready 的已批准候选靠重启接管（issue 05）。
 - ExternalHost Browser 与 Host upgrade compatibility preflight 不属于第一条纵切。
 - 不迁移旧 bundled VRChat Package；它继续作为旧 LKG，第一个 Web release 走普通候选流程。
 
@@ -92,7 +93,7 @@ evidence，并把相关墙钟回归改成确定性测试。Gap dead-letter 双�
 2. [02 — 建立 VRChat 显式 tag release pipeline](issues/02-explicit-collector-release-pipeline.md)
 3. [03 — 实现版本目录安装与完成标记](issues/03-version-directory-installation.md)（依赖 01）
 4. [04 — 暴露精确候选与 owner approval](issues/04-exact-package-approval.md)（依赖 03）
-5. [05 — 接入 VRChat ManagedProcess Ready 切换](issues/05-vrchat-ready-switch.md)（依赖 04）
+5. [05 — 接入 VRChat ManagedProcess Ready 切换](issues/05-vrchat-ready-switch.md)（依赖 04；已 done）
 6. [07 — 部署开发 Registry 并完成 VRChat smoke](issues/07-deploy-and-vrchat-smoke.md)（依赖 01–05 与选定 P2 gate）
 7. [06 — Browser ExternalHost Web 更新](issues/06-browser-external-host-update.md)（MVP 后重新裁决）
 
@@ -107,10 +108,12 @@ signing key。
 - [ ] `/collector-registry/v1/packages/vrchat/current.json` 经真实域名可读，length/hash 与 artifact 一致。
 - [ ] Headless 手动 CheckNow、版本目录 Installation、authenticated exact-ref approval 与真实 Ready 通过。
       （2026-08-31：版本目录 Installation 与完成标记见 issue 03；Headless authenticated 手动 CheckNow 与
-      exact-ref approval 已接线并测试，见 issue 04；真实 Ready 是 issue 05，真实域名 smoke 是 issue 07。）
+      exact-ref approval 已接线并测试，见 issue 04；Ready 切换已接线并由真实 VRChat 子进程测试覆盖，见
+      issue 05——批准之后需要 owner 再调一次 `/package-update/switch`；真实域名 smoke 是 issue 07。）
 - [ ] 错 hash、损坏 Package、incompatible handshake 与 never-ready candidate 都保留旧 LKG 并显示最后错误。
       （2026-08-31：错 hash 与损坏 Package 的结构化最后错误已持久化在 Collector Runtime State 并由管理面
-      Current 展示，旧 LKG 与既有 Installation 不受影响，见 issue 04；handshake / never-ready 属于
-      issue 05。）
+      Current 展示，旧 LKG 与既有 Installation 不受影响，见 issue 04；incompatible handshake、never-ready
+      与启动失败都在候选 Ready 之前失败，旧 Package 重新激活、旧 LKG 不被覆盖，reason 投影为
+      `Incompatible` / `ReadyTimeout` / `StartupFailed`，见 issue 05。真实服务器上的复现仍是 issue 07。）
 - [ ] 真实服务器完成一次端到端 smoke，tracker 记录证据；Browser、签名、自动检查与 Dashboard UI 不作为
   完成条件。

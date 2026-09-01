@@ -23,8 +23,8 @@ Priority: P1 — 域名路由与真实 VRChat 更新需要 owner 操作和观察
   deploy/rollback 不改变 Registry 内容，Registry deploy 也不触碰 `/u/` 页面。
 - [ ] Registry 内容来自服务器独立静态目录，不由 Analytics API 或 frontend image 提供。
 - [ ] VRChat artifact 由显式 tag 产生；index 只在 artifact 已上传可读后更新。
-- [ ] 真实 ManagedProcess smoke：手动检查 → 下载/验证 → authenticated API 批准 → 启动 → Ready；失败候选
-  不破坏旧 LKG。
+- [ ] 真实 ManagedProcess smoke：手动检查 → 下载/验证 → authenticated API 批准 → authenticated API
+  切换（`POST /hub/api/v1/collector-instances/{id}/package-update/switch`）→ Ready；失败候选不破坏旧 LKG。
 - [ ] PackageId、InstanceId、配置、Secret、Fact Stream 与 LKG 保持；不匹配内容走新版本，不猜继承。
 - [ ] 不把旧 bundled Package 登记为 Web Installation；它只作为旧 LKG，第一个 Web release 是普通候选。
 - [ ] Registry 离线、坏 index、错 hash 与候选启动失败均显示可区分结果。
@@ -58,5 +58,8 @@ Priority: P1 — 域名路由与真实 VRChat 更新需要 owner 操作和观察
   完整迁移移出本 issue。
 - 2026-08-31：issue 01 已 done、issue 02 code complete（`ready-for-human`）。上面「Manual gates carried
   over」记录了它们留下的、必须由人执行的部署与 CI 门禁；本 issue 在这些门禁完成前保持 `ready-for-human`。
+- 2026-08-31：issue 05 已 done。批准与"开始使用"是两次 owner 动作：批准之后必须再调一次
+  `POST /hub/api/v1/collector-instances/{id}/package-update/switch`，Ready 才算更新成功；从未 Ready 的
+  已批准候选不会靠重启接管，所以 smoke 时不要用"重启 Hub"代替这一步。
 - 2026-08-31：issue 03 已 done（版本目录安装 + 完成标记，全部由自动化测试覆盖，无新增人工门禁），只给上面
   清单加了一条部署期磁盘/清理注意事项。真实 smoke 仍需 issue 04、05。
