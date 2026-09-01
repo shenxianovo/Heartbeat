@@ -39,6 +39,7 @@ public sealed class HeadlessFleetManager(
     private CollectorRuntime? _runtime;
     private HeadlessInstancePipelines? _pipelines;
     private CollectorPackageUpdateService? _packageUpdates;
+    private CollectorPackageSwitch? _packageSwitch;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -69,6 +70,48 @@ public sealed class HeadlessFleetManager(
     /// </summary>
     public CollectorPackageUpdateService PackageUpdates =>
         _packageUpdates ?? throw new InvalidOperationException("Hub Runtime is not initialized.");
+
+    /// <summary>
+    /// Takes the Approved Collector Package Candidate of one Collector Instance into use, and keeps this
+    /// fleet's view of that Instance pointing at whichever Activation ends up running, so a switch does
+    /// not leave the fleet supervising a stopped Activation.
+    ///
+    /// One call is one attempt. The Hub does not schedule another one, and an Instance this Hub does not
+    /// own is a <see cref="KeyNotFoundException" /> rather than a silent no-op.
+    /// </summary>
+    public async Task<CollectorPackageSwitchResult> SwitchToApprovedPackageAsync(
+        Guid collectorInstanceId,
+        CancellationToken cancellationToken = default)
+    {
+        // The Instance is looked up first, so an Instance this Hub does not run is absent rather than
+        // an internal state complaint, whether or not this Hub has started collecting yet.
+        Entry entry;
+        lock (_gate)
+        {
+            entry = _entries.SingleOrDefault(candidate => candidate.CollectorInstanceId == collectorInstanceId)
+                    ?? throw new KeyNotFoundException(
+                        $"Collector Instance '{collectorInstanceId:D}' is not managed by this Hub.");
+        }
+        var packageSwitch = _packageSwitch
+                            ?? throw new InvalidOperationException("Hub Runtime is not initialized.");
+        var result = await packageSwitch.SwitchToApprovedAsync(
+            collectorInstanceId,
+            new ManagedProcessUpdateOptions
+            {
+                CandidateActivation = ActivationOptions(entry.Options),
+                RollbackActivation = ActivationOptions(entry.Options)
+            },
+            cancellationToken);
+        if (result.Activation is not null)
+        {
+            lock (_gate)
+            {
+                entry.Activation = result.Activation;
+                entry.ActivationTask = ObserveActivationAsync(result.Activation);
+            }
+        }
+        return result;
+    }
 
     public IReadOnlyList<HeadlessSubjectStatusResponse> Snapshot()
     {
@@ -181,6 +224,7 @@ public sealed class HeadlessFleetManager(
                 installations);
         }
         _packageUpdates = new CollectorPackageUpdateService(_runtime, installations, installer);
+        _packageSwitch = new CollectorPackageSwitch(_runtime, installations);
 
         var claimedInstanceIds = mappings.Values.ToHashSet();
         foreach (var configured in options.Instances)
@@ -227,7 +271,12 @@ public sealed class HeadlessFleetManager(
 
             if (registeredPipelineIds.Add(instance.CollectorInstanceId))
                 pipelines.Add(instance.CollectorInstanceId, configured);
-            _entries.Add(new Entry(configured, package, instance.CollectorInstanceId));
+            // The configured Package is what this host delivers; whether the Instance actually starts on
+            // it or on an approved candidate that already reached Ready is not this loop's decision.
+            _entries.Add(new Entry(
+                configured,
+                _packageSwitch.ResolveEffectivePackage(instance.CollectorInstanceId, package),
+                instance.CollectorInstanceId));
         }
     }
 
@@ -238,16 +287,28 @@ public sealed class HeadlessFleetManager(
             var activation = await _runtime!.ActivateManagedProcessAsync(
                 entry.CollectorInstanceId,
                 entry.Package,
-                new ManagedProcessActivationOptions
-                {
-                    StartupTimeout = TimeSpan.FromSeconds(entry.Options.StartupTimeoutSeconds),
-                    DrainGracePeriod = TimeSpan.FromSeconds(entry.Options.DrainGraceSeconds)
-                },
+                ActivationOptions(entry.Options),
                 cancellationToken);
             lock (_gate) entry.Activation = activation;
             await activation.Completion;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch
+        {
+            // CollectorRuntime owns the structured failure state exposed by Snapshot().
+        }
+    }
+
+    private static ManagedProcessActivationOptions ActivationOptions(
+        HeadlessManagedInstanceOptions options) => new()
+        {
+            StartupTimeout = TimeSpan.FromSeconds(options.StartupTimeoutSeconds),
+            DrainGracePeriod = TimeSpan.FromSeconds(options.DrainGraceSeconds)
+        };
+
+    private static async Task ObserveActivationAsync(ManagedProcessCollectorActivation activation)
+    {
+        try { await activation.Completion; }
         catch
         {
             // CollectorRuntime owns the structured failure state exposed by Snapshot().

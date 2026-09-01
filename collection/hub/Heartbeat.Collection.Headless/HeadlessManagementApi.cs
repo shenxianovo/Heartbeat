@@ -16,6 +16,15 @@ public sealed record CollectorPackageApprovalRequest(string? PackageId, string? 
 public sealed record CollectorPackageUpdateRejection(CollectorRegistryFailureReason Reason, string Detail);
 
 /// <summary>
+/// The result of one attempt to take the approved candidate into use: how it ended, plus the resulting
+/// projection of the Collector Instance's update state. The running Activation itself is not part of the
+/// response; the outcome and the projection are what the owner can act on.
+/// </summary>
+public sealed record CollectorPackageSwitchResponse(
+    CollectorPackageSwitchOutcome Outcome,
+    CollectorPackageUpdateStatus Status);
+
+/// <summary>
 /// The Hub's owner-only management API. Every endpoint is mapped into one route group that already
 /// carries <c>RequireAuthorization()</c>, so an endpoint added here is behind the host's existing
 /// owner authentication by construction; no second scheme, token or permission model is introduced
@@ -78,6 +87,28 @@ public static class HeadlessManagementApi
             {
                 try { return Results.Ok(await updates.CheckNowAsync(collectorInstanceId, cancellationToken)); }
                 catch (KeyNotFoundException) { return Results.NotFound(); }
+            });
+
+        // Approval is permission, not a Ready Activation, so taking the approved candidate into use is its
+        // own owner action. One call is one attempt: a refused or rolled-back switch answers with the same
+        // projection carrying the structured last error, and the Hub schedules nothing afterwards.
+        management.MapPost(
+            "/collector-instances/{collectorInstanceId:guid}/package-update/switch",
+            async Task<IResult> (
+                Guid collectorInstanceId,
+                HeadlessFleetManager fleet,
+                CancellationToken cancellationToken) =>
+            {
+                try
+                {
+                    var result = await fleet.SwitchToApprovedPackageAsync(collectorInstanceId, cancellationToken);
+                    return Results.Ok(new CollectorPackageSwitchResponse(result.Outcome, result.Status));
+                }
+                catch (KeyNotFoundException) { return Results.NotFound(); }
+                catch (InvalidOperationException exception)
+                {
+                    return Results.Conflict(new { error = exception.Message });
+                }
             });
 
         management.MapPost(

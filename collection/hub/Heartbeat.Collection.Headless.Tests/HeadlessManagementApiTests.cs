@@ -130,6 +130,9 @@ public sealed class HeadlessManagementApiTests : IAsyncLifetime
         Assert.Contains(
             "/hub/api/v1/collector-instances/{collectorInstanceId:guid}/package-update/approval",
             patterns);
+        Assert.Contains(
+            "/hub/api/v1/collector-instances/{collectorInstanceId:guid}/package-update/switch",
+            patterns);
     }
 
     [Fact]
@@ -144,10 +147,14 @@ public sealed class HeadlessManagementApiTests : IAsyncLifetime
         var approval = await _anonymous.PostAsJsonAsync(
             $"{PackageUpdatePath}/{collectorInstanceId:D}/package-update/approval",
             new CollectorPackageApprovalRequest("com.example.collector", "1.0.0", new string('a', 64)));
+        var switched = await _anonymous.PostAsync(
+            $"{PackageUpdatePath}/{collectorInstanceId:D}/package-update/switch",
+            content: null);
 
         Assert.Equal(HttpStatusCode.Unauthorized, current.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, check.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, approval.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, switched.StatusCode);
     }
 
     /// <summary>
@@ -166,10 +173,16 @@ public sealed class HeadlessManagementApiTests : IAsyncLifetime
         var approval = await _owner.PostAsJsonAsync(
             $"{PackageUpdatePath}/{collectorInstanceId:D}/package-update/approval",
             new CollectorPackageApprovalRequest("com.example.collector", "1.0.0", new string('a', 64)));
+        // Switching is answered by the fleet rather than by the update service, and it draws the same
+        // line: an Instance this Hub does not run is absent, not a failed switch.
+        var switched = await _owner.PostAsync(
+            $"{PackageUpdatePath}/{collectorInstanceId:D}/package-update/switch",
+            content: null);
 
         Assert.Equal(HttpStatusCode.NotFound, current.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, check.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, approval.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, switched.StatusCode);
     }
 
     private sealed class DiscardingSegmentSink : ISegmentSink
