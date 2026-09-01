@@ -27,6 +27,11 @@ namespace Heartbeat.Collection.Headless.Tests;
 /// The host is the real one: the endpoints under test are mapped by the same
 /// <see cref="HeadlessManagementApi.MapHeadlessManagementApi" /> the Headless Hub calls, so an
 /// endpoint accidentally mapped outside the authorized group would fail these tests.
+///
+/// The authentication scheme here is a stand-in that only answers "is this the authenticated Hub owner?",
+/// because the subject of this class is the route group. Who counts as that owner — the <c>sub</c> and
+/// <c>client_id</c> pair the host really demands — is the subject of
+/// <see cref="HeadlessOwnerGateTests" />, which drives the host's own bearer configuration.
 /// </summary>
 public sealed class HeadlessManagementApiTests : IAsyncLifetime
 {
@@ -193,7 +198,8 @@ public sealed class HeadlessManagementApiTests : IAsyncLifetime
     /// <summary>
     /// Stands in for the host's OIDC bearer configuration. It only answers the question the API
     /// itself asks — "is this the authenticated Hub owner?" — so these tests exercise the route
-    /// group's gate without re-testing token validation, which the host configures once.
+    /// group's gate without re-testing token validation. The real cross-owner decision is covered by
+    /// <see cref="HeadlessOwnerGateTests" /> against the host's own configuration.
     /// </summary>
     private sealed class OwnerAuthenticationHandler(
         IOptionsMonitor<AuthenticationSchemeOptions> options,

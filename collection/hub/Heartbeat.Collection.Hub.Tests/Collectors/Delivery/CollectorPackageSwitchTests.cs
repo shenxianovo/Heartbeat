@@ -34,6 +34,12 @@ public sealed class CollectorPackageSwitchTests : IDisposable
     /// </summary>
     private const int ConcurrentAttemptRepeats = 20;
 
+    /// <summary>
+    /// How often the crashed-host case is repeated. The crash lands on an interleaving — a candidate that
+    /// is mid-start — so a single pass would prove very little about it.
+    /// </summary>
+    private const int CrashRepeats = 20;
+
     private const string OtherArtifactSha256 =
         "1111111111111111111111111111111111111111111111111111111111111111";
 
@@ -425,6 +431,69 @@ public sealed class CollectorPackageSwitchTests : IDisposable
     }
 
     /// <summary>
+    /// The host does not always get to shut down. Here it dies while a candidate is starting and has never
+    /// been Ready: no rollback is recorded, no Activation is drained, no Last-Known-Good is written — the
+    /// crash is simply the end of everything the process held.
+    ///
+    /// What comes back is decided by the persisted Collector Runtime State alone, and it says the same
+    /// thing a graceful restart would: the effective Collector Package is the one that reached Ready, so
+    /// the Instance resumes on the Package the host delivers, on its existing Fact Stream, with the owner's
+    /// approval and the Installation still waiting for a switch the owner triggers again. A crash is
+    /// therefore not a second promotion path, and it does not leave a second writer behind.
+    /// </summary>
+    [Fact]
+    public async Task SwitchToApproved_HostCrashesBeforeReady_ConvergesOnTheEffectivePackageWithOneWriter()
+    {
+        var reference = _fixture.Install("1.1.0");
+        for (var attempt = 0; attempt < CrashRepeats; attempt++)
+        {
+            var instanceId = attempt == 0 ? _fixture.InstanceId : _fixture.CreateInstance();
+            var current = await _fixture.StartAsync(instanceId);
+            var streamId = current.Streams["activity"].StreamId;
+            _fixture.Runtime.ApprovePackageCandidate(instanceId, reference);
+            using var abandonedAttempt = new CancellationTokenSource();
+            var switching = _fixture.Switch.SwitchToApprovedAsync(
+                instanceId,
+                FastUpdateOptions("startup_timeout"),
+                abandonedAttempt.Token);
+            await WaitForPhaseAsync(instanceId, CollectorRuntimePhase.Starting);
+            Assert.False(switching.IsCompleted);
+
+            _fixture.CrashHost();
+
+            var resolved = _fixture.Switch.ResolveEffectivePackage(instanceId, _fixture.HostPackage);
+            var status = _fixture.Runtime.GetPackageUpdateStatus(instanceId);
+            // Nothing was recorded on the way down: this is a crash, not the cancelled attempt that gets
+            // to write its own rollback reason.
+            Assert.Null(status.LastFailure);
+            Assert.Null(status.LastKnownGood);
+            Assert.Equal("1.0.0", status.CurrentVersion);
+            // The approval and the Installation outlive the host, so the next switch is still the owner's.
+            Assert.Equal(reference, status.ApprovedCandidate);
+            Assert.True(_fixture.Installations.OpenInstallation(reference).IsSuccess);
+            Assert.Equal(_fixture.HostPackage.PackageDirectory, resolved.PackageDirectory);
+
+            var restarted = await _fixture.Runtime.ActivateManagedProcessAsync(instanceId, resolved, Options());
+
+            Assert.Equal(CollectorRuntimePhase.Ready, restarted.RuntimeState.Phase);
+            Assert.Equal("1.0.0", _fixture.Runtime.GetInstance(instanceId).PackageVersion);
+            // One writer: the restarted host continues the Instance's existing Fact Stream instead of
+            // opening a second one beside the Activation the crash abandoned.
+            Assert.Equal(streamId, restarted.Streams["activity"].StreamId);
+            Assert.NotEqual(current.ActivationId, restarted.ActivationId);
+            await restarted.StopAsync();
+
+            // Cleanup only, and deliberately after every assertion: ending the abandoned attempt and
+            // reaping its host gives the child processes back, and both write into a state directory the
+            // restarted host does not read.
+            await abandonedAttempt.CancelAsync();
+            var abandoned = await Task.WhenAny(switching);
+            _ = abandoned.Exception;
+            _fixture.ReapAbandonedHosts();
+        }
+    }
+
+    /// <summary>
     /// The reason projection is a translation of the Collector Runtime's Activation failure codes, and it
     /// refuses to invent a verdict: anything that is not recognisably a compatibility rejection or a
     /// Ready timeout is reported as a startup failure.
@@ -509,8 +578,10 @@ public sealed class CollectorPackageSwitchTests : IDisposable
             new(2026, 8, 22, 12, 10, 0, TimeSpan.Zero);
 
         private readonly List<ManagedReferenceCollectorPackage> _packages = [];
+        private readonly List<CollectorRuntime> _abandoned = [];
+        private readonly List<string> _abandonedStates = [];
         private readonly ManagedReferenceCollectorPackage _hostPackageCopy;
-        private readonly string _state;
+        private string _state;
         private CollectorRuntime _runtime;
 
         private SwitchFixture(
@@ -531,7 +602,7 @@ public sealed class CollectorPackageSwitchTests : IDisposable
         }
 
         public LocalCollectorPackage HostPackage { get; }
-        public CollectorInstallationStore Installations { get; }
+        public CollectorInstallationStore Installations { get; private set; }
         public CollectorRuntime Runtime => _runtime;
         public CollectorPackageSwitch Switch { get; private set; }
         public Guid InstanceId { get; }
@@ -622,14 +693,51 @@ public sealed class CollectorPackageSwitchTests : IDisposable
             Switch = NewSwitch();
         }
 
+        /// <summary>
+        /// Models host death rather than shutdown: nothing is stopped, drained or disposed, so the only
+        /// thing that survives the crash is what the Collector Runtime State already had on disk at that
+        /// instant. The restarted host therefore opens a copy of the state directory taken right then —
+        /// in a real crash the dying process is also what releases state ownership, and a live Runtime in
+        /// this test process cannot give that lock up without running exactly the graceful shutdown the
+        /// case is about.
+        /// </summary>
+        public void CrashHost()
+        {
+            _abandoned.Add(_runtime);
+            var snapshot = Path.Combine(
+                Path.GetTempPath(),
+                $"heartbeat-package-switch-crash-{Guid.NewGuid():N}");
+            CopyStateAsLeftOnDisk(_state, snapshot);
+            _abandonedStates.Add(_state);
+            _state = snapshot;
+            _runtime = CollectorRuntime.Open(
+                Path.Combine(_state, "collector-runtime.json"),
+                new RecordingSegmentSink());
+            Installations = new CollectorInstallationStore(_state);
+            Switch = NewSwitch();
+        }
+
+        /// <summary>
+        /// Lets go of the child processes an abandoned host left running. This is test-process hygiene,
+        /// not part of any case: a crashed host's state directory is nobody's authority any more, so what
+        /// its shutdown writes there is never read again.
+        /// </summary>
+        public void ReapAbandonedHosts()
+        {
+            foreach (var host in _abandoned)
+                host.Dispose();
+            _abandoned.Clear();
+        }
+
         public void Dispose()
         {
             _runtime.Dispose();
+            ReapAbandonedHosts();
             foreach (var package in _packages)
                 package.Dispose();
             _hostPackageCopy.Dispose();
-            if (Directory.Exists(_state))
-                Directory.Delete(_state, recursive: true);
+            foreach (var directory in _abandonedStates.Append(_state).Where(Directory.Exists))
+                Directory.Delete(directory, recursive: true);
         }
 
         public static void CopyDirectory(string source, string destination)
@@ -641,6 +749,32 @@ public sealed class CollectorPackageSwitchTests : IDisposable
             {
                 var target = Path.Combine(destination, Path.GetRelativePath(source, file));
                 File.Copy(file, target, overwrite: true);
+                if (!OperatingSystem.IsWindows() && Path.GetFileName(file) == ExecutableName)
+                    File.SetUnixFileMode(
+                        target,
+                        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                        UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                        UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+            }
+        }
+
+        /// <summary>
+        /// Copies everything a crashed host leaves behind and nothing it does not: the state document and
+        /// the Collector Installation tree, but neither the ownership lock — which no longer has an owner —
+        /// nor a half-written replacement, which is never a state a reader may see.
+        /// </summary>
+        private static void CopyStateAsLeftOnDisk(string source, string destination)
+        {
+            Directory.CreateDirectory(destination);
+            foreach (var directory in Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories))
+                Directory.CreateDirectory(Path.Combine(destination, Path.GetRelativePath(source, directory)));
+            foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+            {
+                var extension = Path.GetExtension(file);
+                if (extension is ".lock" or ".tmp")
+                    continue;
+                var target = Path.Combine(destination, Path.GetRelativePath(source, file));
+                File.Copy(file, target);
                 if (!OperatingSystem.IsWindows() && Path.GetFileName(file) == ExecutableName)
                     File.SetUnixFileMode(
                         target,
