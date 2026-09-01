@@ -1,1 +1,10 @@
 graphify-out/** linguist-vendored=true
+
+# Collector Package identities hash exact bytes. Keep their authored text canonical across
+# Windows, macOS, and Linux checkouts; generated manifests derive hashes during staging.
+collection/contracts/facts/*.json text eol=lf
+collection/collectors/Heartbeat.Collector.Browser/Package/**/*.json text eol=lf
+collection/collectors/Heartbeat.Collector.Browser/Package/**/*.js text eol=lf
+collection/collectors/Heartbeat.Collector.Browser/Package/**/*.html text eol=lf
+collection/desktop/Heartbeat.Collector.System/Package/**/*.json text eol=lf
+collection/hub/Heartbeat.Collection.Hub.Tests/Fixtures/ReferenceCollectorPackage/**/*.json text eol=lf

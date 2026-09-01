@@ -176,7 +176,7 @@ function listFiles(directory) {
   })
 }
 
-function stageBrowserArtifact(destination, manifest) {
+function stageBrowserArtifact(destination) {
   const extension = join(destination, 'browser-extension')
   if (!existsSync(join(extension, 'background.js')))
     throw new Error('Browser Package payload is missing; run npm run build and sync dist first')
@@ -205,9 +205,30 @@ function stageBrowserArtifact(destination, manifest) {
     join(extension, 'collector-artifact-ref.json'),
     `${JSON.stringify({ artifactHash }, null, 2)}\n`,
   )
-  const artifact = manifest.artifacts.find(item => item.artifactId === 'browser.extension')
-  artifact.size = descriptor.length
-  artifact.contentHash = artifactHash
+}
+
+function populateContentReferences(destination, manifest) {
+  if (manifest.observationDeclaration) {
+    const declaration = readFileSync(join(destination, manifest.observationDeclaration.document))
+    manifest.observationDeclaration.hash = sha256(declaration)
+  }
+  for (const artifact of manifest.artifacts) {
+    const content = readFileSync(join(destination, artifact.entrypoint))
+    artifact.size = content.length
+    artifact.contentHash = sha256(content)
+  }
+}
+
+function validateGeneratedReferencesAreNotPinned() {
+  for (const [name, source] of Object.entries(packageSources)) {
+    const manifest = readJson(join(source, 'collector-manifest.template.json'))
+    if (manifest.observationDeclaration?.hash !== undefined)
+      throw new Error(`${name}: observation declaration hash must be generated during staging`)
+    for (const artifact of manifest.artifacts) {
+      if (artifact.size !== undefined || artifact.contentHash !== undefined)
+        throw new Error(`${name}: Artifact size/hash must be generated during staging`)
+    }
+  }
 }
 
 function currentPlatform() {
@@ -242,7 +263,8 @@ function stagePackage(name, destination, includeTestPlatform = false) {
   copyPackageSource(source, output)
   const manifest = readJson(join(source, 'collector-manifest.template.json'))
   if (includeTestPlatform) includeCurrentTestPlatform(manifest)
-  if (name === 'browser') stageBrowserArtifact(output, manifest)
+  if (name === 'browser') stageBrowserArtifact(output)
+  populateContentReferences(output, manifest)
   const contracts = factContracts()
   const byId = new Map(contracts.map(contract => [contract.document.schemaId, contract]))
   for (const outputDeclaration of manifest.outputs) {
@@ -271,6 +293,7 @@ try {
   if (command === 'baseline') {
     writeFileSync(baselinePath, `${JSON.stringify(baseline, null, 2)}\n`)
   } else if (command === 'check') {
+    validateGeneratedReferencesAreNotPinned()
     compareBaseline(baseline, readJson(baselinePath), 'Fact Schema baseline')
     checkBrowserPayload()
     const baseIndex = args.indexOf('--base-ref')

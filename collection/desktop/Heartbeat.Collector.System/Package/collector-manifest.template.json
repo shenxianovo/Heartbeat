@@ -10,8 +10,7 @@
   },
   "config": { "version": 1, "accepts": [1] },
   "observationDeclaration": {
-    "document": "observation-depth.declaration.json",
-    "hash": "sha256:54d06e302ef2d9a11d42771c015ec10f85ac3938ca7ff6a71c749574220bec5a"
+    "document": "observation-depth.declaration.json"
   },
   "outputs": [
     {
@@ -49,9 +48,7 @@
         "os": ["windows", "macos"],
         "arch": ["x64", "arm64"]
       },
-      "entrypoint": "artifacts/system-collector.artifact.json",
-      "size": 91,
-      "contentHash": "sha256:23c16ebff6f3077c3a91524b4a72e9d38770cf2c0440b61d1d91490b9143c930"
+      "entrypoint": "artifacts/system-collector.artifact.json"
     }
   ]
 }

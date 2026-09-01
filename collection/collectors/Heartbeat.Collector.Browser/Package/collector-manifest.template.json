@@ -9,8 +9,7 @@
   },
   "config": { "version": 1, "accepts": [1] },
   "observationDeclaration": {
-    "document": "observation-depth.declaration.json",
-    "hash": "sha256:d26d98f441c05265a41a5a714993217c1070ab3d631af921b5c03abf262646b1"
+    "document": "observation-depth.declaration.json"
   },
   "outputs": [
     {
