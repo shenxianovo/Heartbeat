@@ -17,7 +17,9 @@ Collector 的内容快照；精确候选由声明版本与 content hash 共同�
 _Avoid_: Plugin Package、把 Collector Package 与 Collector 混称为“插件”
 
 **Collector Runtime（采集器运行时）**:
-管理采集器包的安装事实、Collector 的期望状态与实际激活状态，并协调二者收敛的运行边界。它不等同于 Collector 内部可能使用的细粒度组件运行时。
+宿主无关地管理采集器包的安装事实、Collector Instance 与实际 Activation，并承载统一 Collector Protocol
+和 Execution Driver 的运行边界；Desktop Agent 与 Headless Hub 复用同一 Runtime 语义，通过宿主 adapter
+提供各自的 Subject 投影、上传、管理与平台能力。它不等同于 Collector 内部可能使用的细粒度组件运行时。
 _Avoid_: Plugin Runtime、Package Manager（后者只覆盖制品管理）
 
 **Collector Protocol（采集器协议）**:
@@ -73,7 +75,8 @@ _Avoid_: 在 Collector C# / TypeScript 里复制 schema 字符串、把私有状
 
 **Hub Instance（Hub 实例）**:
 Collector Runtime 的一个持续运行宿主，可以是 Desktop Agent 内嵌 Hub，也可以是服务器上的无头 Hub。Hub Instance 是运维身份而非观测主体；一个无头 Hub 可以托管观测不同账号、身体或其他主体的多个 Collector Instance。
-_Avoid_: Device、Subject、把无头 Hub 按某个 Collector 命名
+Desktop 与 Headless 不形成两套 Runtime 领域模型，差异只通过宿主 adapter 表达。
+_Avoid_: Device、Subject、把无头 Hub 按某个 Collector 命名、Desktop Runtime 与 Headless Runtime
 
 **Hub Management Surface（Hub 管理界面）**:
 由 Hub Instance 自己拥有的用户管理边界，用于需要交互授权的 Collector Instance 设置与恢复。Dashboard 可以提供入口，但 Analytics 不代理第三方账号凭据、授权应答或管理命令。
@@ -125,17 +128,9 @@ _Avoid_: 浏览器前台活动、把 active tab 解释为 OS 前台窗口、按 
 Collector Activation 已完成协议协商并打开所需 Fact Stream，可以承担运行责任；Ready 不要求已经产生第一条 Fact。
 _Avoid_: 进程存活、首次产生数据、Active
 
-**候选稳定窗口（Candidate Stability Period）**:
-ManagedProcess 候选 Activation 到达 Ready 后、被判定为成功更新前的有界观察期；窗口内退出触发该 Collector Instance 的 Last-Known-Good 回滚，窗口结束时候选晋升为该 Instance 新的 Last-Known-Good，之后退出属于普通运行故障。共享同一 Installation 的其他 Instance 不因其中一个 Instance Ready 而被宣称更新成功。开发期 VRChat 纵切不实现该窗口（[ADR-047](../docs/adr/047-lean-development-collector-web-delivery.md)）：候选 Ready 即视为更新成功，Ready 后退出按普通运行故障处理。
-_Avoid_: 把 Ready 等同于已通过稳定观察、无限期自动回滚
-
 **Collector Desired State（采集器期望状态）**:
-用户对 Collector Instance 的发布 channel、版本范围、启用与配置意图；暂时的发现、下载、解析或运行失败不会改写它。
+用户对 Collector Instance 的启用、配置与要运行的精确 Collector Package reference 的意图；暂时的安装或运行失败不会改写它。channel、版本范围与自动解析不属于当前范围。
 _Avoid_: 把当前运行事实反写成用户意图
-
-**Resolved Collector Set（已解析采集器集合）**:
-为实现 Collector Desired State 而选出的精确、完整且兼容的 Collector Package 集合。它描述选择结果，不证明制品已安装或激活成功。
-_Avoid_: Installed State、Runtime State
 
 **Collector Runtime State（采集器运行状态）**:
 Collector Runtime 对当前 Collector Activation 的阶段、健康结果与失败原因的观察事实。运行状态可随重试和宿主变化而改变，不是用户配置。
@@ -150,12 +145,8 @@ Collector Package 随宿主应用一起构建和发布的 Artifact Delivery；Sy
 _Avoid_: 把 System 当作可远程替换的独立 Package、把 BuiltIn 等同于 InProcess
 
 **Official Collector Package Registry（官方采集器包注册源）**:
-发布方为非 BuiltIn 官方 Collector Package 提供的版本目录与制品来源；它提供精确候选的发现和下载事实，不保存用户 Desired State，也不承担 Installation、批准或 Activation。来源认证强度是部署能力，不改变 Registry 的领域身份。
-_Avoid_: Collector Registry（旧 source 级配置账本）、Analytics 控制面、把 channel 指针当作不可变版本
-
-**Collector Update Offer（采集器更新候选）**:
-Runtime 已验证并解析出的某个 Collector Instance 的精确更新候选，绑定 PackageId、Version、内容 hash 与宿主兼容结果；只有 owner 明确批准该精确候选后才可开始该 Instance 的激活尝试。
-_Avoid_: latest、opaque workflow token、未验证的 Registry 响应、把发现或下载等同于批准和更新成功
+发布方为非 BuiltIn 官方 Collector Package 提供的版本目录与制品来源；它只提供精确 Release 的发现和下载事实，不保存用户 Desired State，也不承担 Installation 或 Activation。
+_Avoid_: Collector Registry（旧 source 级配置账本）、Analytics 控制面、Update Offer、审批系统
 
 **Execution Driver（执行驱动器）**:
 Collector Runtime 协调 Collector Activation 的方式，可以是进程内、托管进程或外部宿主；它不表示 Runtime 一定持有对应制品。

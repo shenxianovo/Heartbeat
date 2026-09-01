@@ -1,6 +1,9 @@
 # ADR-045: 非内置 Collector Package 通过签名 Web Registry 独立发布
 
-## Status: Accepted（生产目标保留；开发期 MVP 的 trust、Installation 与 approval 范围由 [ADR-047](./047-lean-development-collector-web-delivery.md) 修订）
+## Status: Superseded by [ADR-048](./048-shared-collector-host-runtime-and-independent-release-units.md)
+
+> 本 ADR 保留为曾考虑的生产级供应链方案。当前接受的目标不包含签名、channel、solver、在线候选批准或
+> 自动回滚；独立发布单元、共享 Host Runtime 与显式精确安装以 ADR-048 为准。
 
 ## Date: 2026-08-30
 

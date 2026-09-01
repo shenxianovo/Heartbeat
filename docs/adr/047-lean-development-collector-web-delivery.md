@@ -7,6 +7,10 @@ status: deprecated
 2026-09-01：本 ADR 对应的实现因范围扩张与 Runtime 生效包多重状态权威而撤回；它不再授权继续实现。
 Collector 独立发布与 Web 托管重新进入需求澄清，在新的 ADR 冻结发布范围和 Runtime 安装边界前不得恢复本方案。
 
+后续目标已由 [ADR-048](./048-shared-collector-host-runtime-and-independent-release-units.md) 冻结：Desktop 与
+Headless 共享 Collector Host Runtime，当前交付只做显式精确 Installation，不恢复本 ADR 的候选批准/LKG
+切换状态机。
+
 开发阶段先证明一个非 BuiltIn Collector 能独立显式发布、从 Web 安装、由 owner 批准并建立真实 Ready Activation，不同时建设生产级软件供应链。第一条纵切只覆盖 VRChat ManagedProcess：Registry 公开读取并依赖现有 HTTPS，不做 Ed25519、密钥轮换、撤回、多 channel、SemVer 求解、离线目录或 cache GC；发布记录仍绑定精确 Version、文件长度和 SHA-256，安装只要求写入独立版本目录、通过安全解压并在内容完整后写完成标记，未完成目录永远不是 Collector Installation。
 
 owner 通过现有认证管理面批准界面上展示的精确 PackageId、Version 与 content hash，不引入 opaque offer、审批审计或重放工作流。新候选只有 Ready 后才能接管，现有 Last-Known-Good 在此之前保持可用。System 继续随 Desktop BuiltIn Delivery，Browser ExternalHost 与生产签名、跨平台矩阵、迁移和上线演练均推迟到 VRChat 纵切证明可用之后重新裁决。

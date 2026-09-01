@@ -1,6 +1,6 @@
 # 04 — 批准精确已安装候选
 
-Status: needs-triage
+Status: wontfix
 
 Owner: Collection / Management
 
@@ -29,3 +29,8 @@ owner authorization，但不引入 opaque token、审批审计或重放工作流
 ## Dependencies
 
 依赖 issue 03；遵循 ADR-043 的 local interactive authorization 边界。
+
+## Comments
+
+- 2026-09-01：ADR-048 将当前范围收敛为显式精确 Installation，不建设 offer/approval 在线更新控制面；
+  本 issue 不再实施。

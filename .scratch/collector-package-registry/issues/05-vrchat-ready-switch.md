@@ -1,6 +1,6 @@
 # 05 — VRChat Ready 后切换
 
-Status: needs-triage
+Status: wontfix
 
 Owner: Collection / ManagedProcess Driver
 
@@ -26,3 +26,8 @@ Priority: P1 — 新候选在真实 Ready 前不得接管，失败也不得破�
 ## Dependencies
 
 依赖 issue 04。开发期 MVP 不引入候选稳定窗口：Ready 即视为更新成功（ADR-047）。
+
+## Comments
+
+- 2026-09-01：ADR-048 不再把新 Package 作为在线 candidate 与旧 LKG 切换；当前只在显式 Installation 后
+  启动精确 Package。本 issue 不再实施。

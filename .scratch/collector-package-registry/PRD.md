@@ -1,115 +1,82 @@
-# Collector Package Registry：独立构建与 Web 交付
+# Collector Host Runtime 与独立 Package 交付
 
 Status: needs-triage
 
-2026-09-01 收缩说明：`3aed076..eb5bd05` 的 Registry、release staging、Installation 与
-Approve/Switch 实现已在完成度复盘后整体撤回。复盘确认原始“Collector 独立构建并托管到 Web”目标被扩张成
-尚无单一状态权威的 Runtime 在线切换；真实 tag workflow、上传、静态部署与 smoke 反而没有完成。本 PRD 及其
-issues 在重新 grill、冻结 spec 并重新出票前都不再是 agent-ready 实现指令。
-
 ## Problem
 
-非内置 Collector 已有 Package / Instance / Activation 与 Execution Driver 语义，但制品仍主要随
-Desktop / Headless 构建交付。仓库缺少一个能让每个 Collector 独立显式发布、让 Runtime 验证和
-下载、并让 owner 对具体 Instance 明确批准的 Web 交付闭环。
+Collector Runtime、Protocol 与三类 Execution Driver 已经存在，但发布单元仍耦合：Desktop 构建携带
+Browser，Headless image 构建携带 VRChat，Backend workflow 同时部署 Headless。非 BuiltIn Collector
+无法只发布自己的 Package，也没有一个被 Desktop 与 Headless 共同使用的 Installation module。
 
-旧 source-level Collector Registry 是配置/声明遗留账本，不能复用为包仓库；现有 AuthService
-只用于证明本地 owner 的批准权限。开发期 MVP 不建立独立制品签名系统。
+2026-09-01 以前的 Registry/Approve/Switch 实现已撤回。旧 issues 01–07 均是历史规格，除非按
+[ADR-048](../../docs/adr/048-shared-collector-host-runtime-and-independent-release-units.md) 重写，否则不能作为
+Agent 实现指令。
 
 ## Outcome
 
-- 第一条纵切让 VRChat 用自己的 tag 独立构建和发布。
-- Runtime 从同域名静态 Registry 发现、下载并按长度与 SHA-256 验证精确候选。
-- owner 通过现有认证管理面批准界面展示的 PackageId、Version 与 content hash；批准不等于 Ready。
-- VRChat ManagedProcess 候选 Ready 后才接管，旧 Last-Known-Good 在此之前保持可用。
-- Browser、生产签名、多平台矩阵、迁移与运维加固在纵切完成后重新裁决。
+- Desktop、Frontend、Analytics Backend、Headless Hub 是独立发布单元。
+- System Collector 使用 BuiltIn Delivery，随 Desktop Release。
+- Browser、VRChat 与未来非 BuiltIn Collector 各自显式构建和发布 Package。
+- Desktop 与 Headless 复用同一个 Collector Host Runtime 与 Collector Package Installation module。
+- 当前只支持显式安装/打开一个精确 Package；Web 下载是后续 Package source adapter。
 
-生产目标见 [ADR-045](../../docs/adr/045-independent-web-delivery-for-collector-packages.md)，开发期缩减见
-[ADR-047](../../docs/adr/047-lean-development-collector-web-delivery.md)。
-跨 feature、feature 内部与各 Execution Driver 的依赖图见
-[Collector 独立交付实现路线图](../../docs/architecture/collector-delivery-implementation-roadmap.md)。
+目标拓扑和完整顺序见
+[Collector Host Runtime 与独立交付目标架构](../../docs/architecture/collector-delivery-implementation-roadmap.md)。
 
 ## Fixed decisions
 
-### Development release and hosting
+- Artifact Delivery 与 Execution Driver 正交；Browser 仍是 ExternalHost，VRChat 是 ManagedProcess，System
+  是 InProcess。
+- 统一 Protocol 指语义一致，不要求 InProcess、stdio 与 loopback HTTP 使用相同 transport。
+- Shared Runtime 拥有 Installation、Instance、Activation、Driver、Protocol 与 Runtime State。
+- Desktop/Headless 保留各自的 Subject 投影、上传、管理入口、UI、平台能力与部署配置 adapter。
+- Package 继续经过现有 manifest/artifact/hash 校验；不新增签名 trust root。
+- 普通 `main` 只验证；Collector 的用户可见 Package 必须由显式 Collector tag 发布。
+- System 不进入 Web Registry，也不形成独立 Update Offer。
 
-- MVP 只允许官方 Package；不做第三方上传、动态 DB/admin API、多 channel 或自动批准。
-- System 使用 BuiltIn Delivery，随 Desktop 发布，不产生 Web offer。
-- 第一条纵切只发布当前 Headless 实际环境可运行的 framework-dependent VRChat zip，由
-  `collector-vrchat/vX.Y.Z` 显式 tag 触发。
-- Registry 为每个 Package 暴露 `/packages/{packageId}/current.json`，绑定 Version、URL、length 与
-  SHA-256；artifact 位于 `/packages/{packageId}/versions/{version}/`。已发布 Version 不可覆盖，修复发
-  新 tag；不实现 channel、SemVer range solver 或完整平台矩阵。
-- Registry 是独立静态部署单元，经反向代理服务于
-  `https://heartbeat.shenxianovo.com/collector-registry/v1/`；不进入 frontend image 或 `/u/` 路由。
-- 普通 `main` 构建只验证，不发布用户可见候选。
-- Registry 使用当前服务器独立静态目录，由反向代理暴露；artifact 先上传，最后替换 `current.json`。
+## First tracer
 
-### Integrity and authorization
+外置本地 VRChat Package，同时建立共享 Installation module：
 
-- Registry 公开读取并依赖现有 HTTPS；MVP 不实现 Ed25519、key id/rotation、withdrawn 或独立 trust root。
-- Registry 记录绑定 artifact length + SHA-256；Package loader 继续验证内部 manifest/artifacts/schema/
-  declarations，解压不得逃逸目标目录。
-- AuthService 只授权“这个 owner 是否能批准这个本地 Instance 的精确候选”，不新增审批系统。
-- `current.json` 不声明 host/protocol compatibility matrix；现有 Package loader 与 Collector Protocol 握手
-  是兼容性的唯一执行门禁。
+1. 把 Browser 当前 bundled import 的安装行为提取到共享 module。
+2. Headless 使用同一个 module 安装宿主挂载的本地 VRChat Package。
+3. 从 Headless Dockerfile 删除 VRChat build/package copy。
+4. 证明只替换 VRChat Package 并重启 Headless，无需重建 Headless image。
 
-### State and interface
-
-- MVP Desired State 只保留 enable/config intent 与当前批准的精确 Package reference；channel 与 SemVer
-  range 推迟。
-- Resolved Set / Installation = exact version + content hash；Installation 使用 content-addressed 路径。
-- 外部管理 interface：`Current`、`CheckNowAsync`、`ApproveAsync(exactPackageRef)`。
-- 内部 delivery seam 负责读取 index、download、length/hash/package validation、独立版本目录和完成标记，
-  不负责 Activation；不实现原子安装 journal、离线目录、cache GC 或全局 solver。
-- 失败不改写 Desired State；未完成安装不发布为 Installation；候选失败不破坏 per-Instance LKG。
-- MVP 不提供“全部批准”、approval audit、opaque token 或 replay workflow。
-- 只有手动 `CheckNowAsync`；不做后台 timer、轮询或通知。第一版只暴露现有 authenticated
-  Hub/Headless management API，不建设 Dashboard 页面。
-- exact Package ref 下载并验证后，即使 Registry current 已指向新版本仍可批准；新版本留到下次手动检查。
-- 下载、校验或启动失败保存最后结构化错误，当前/LKG 不变；不自动重试或静默清除候选。
-
-### Driver-specific success
-
-- VRChat ManagedProcess：精确候选 Activation Ready 后接管并视为更新成功；Ready 前保留旧 LKG，Ready
-  后退出按普通运行故障处理，不新增候选稳定事务。
-- ExternalHost Browser 与 Host upgrade compatibility preflight 不属于第一条纵切。
-- 不迁移旧 bundled VRChat Package；它继续作为旧 LKG，第一个 Web release 走普通候选流程。
-
-## Entry condition
-
-开始改变真实 VRChat Activation 前，先修复 Activation lifetime issue 09 的 termination cause 与 durable
-evidence，并把相关墙钟回归改成确定性测试。Gap dead-letter 双文件崩溃原子性作为开发期已知限制，
-不阻塞 MVP。
+这条 tracer 完成后再分别出票：Headless 独立 deploy、VRChat tag/static publish、Web Package source、
+Browser 独立发布与真实 smoke。
 
 ## Out of scope
 
-- 第三方 Package、签名 trust roots、Registry 写 API。
-- 自动批准、强制更新、远程 kill switch。
-- Desktop / Headless host 自更新与全局 host-upgrade preflight。
-- Analytics + Dashboard 的协调发布原子性；它属于应用发布平面。
-- Browser Web 更新、全平台矩阵、离线 Registry、withdrawn、cache GC、完整迁移与生产运维演练。
-- 为没有现场证据的旧版本、旧 outbox 或旧安装格式承诺兼容。
+- 自动更新、channel、SemVer solver、后台检查与通知；
+- owner approval、offer、候选稳定窗口、LKG 自动切换与热更新；
+- Ed25519、密钥轮换、withdrawn、第三方市场；
+- 安装 journal、断电恢复、自动回滚、cache GC；
+- 为没有现场证据的旧 Package 或 Installation 状态设计迁移。
 
-## Delivery graph
+## Historical issue disposition
 
-1. [01 — 定义最小静态 Registry index](issues/01-static-registry-index.md)
-2. [02 — 建立 VRChat 显式 tag release pipeline](issues/02-explicit-collector-release-pipeline.md)
-3. [03 — 实现版本目录安装与完成标记](issues/03-version-directory-installation.md)（依赖 01）
-4. [04 — 暴露精确候选与 owner approval](issues/04-exact-package-approval.md)（依赖 03）
-5. [05 — 接入 VRChat ManagedProcess Ready 切换](issues/05-vrchat-ready-switch.md)（依赖 04）
-6. [07 — 部署开发 Registry 并完成 VRChat smoke](issues/07-deploy-and-vrchat-smoke.md)（依赖 01–05 与选定 P2 gate）
-7. [06 — Browser ExternalHost Web 更新](issues/06-browser-external-host-update.md)（MVP 后重新裁决）
+| Issue | 状态 | 新路径 |
+|---|---|---|
+| 01 static registry index | needs-triage | Web source 阶段重写 |
+| 02 explicit release pipeline | needs-triage | VRChat tag/static publish 阶段重写 |
+| 03 version-directory installation | needs-triage | 第一条 tracer 按共享 Installation interface 重写 |
+| 04 exact package approval | wontfix | ADR-048 明确不做 approval/offer |
+| 05 VRChat ready switch | wontfix | ADR-048 明确不做 candidate/LKG switch |
+| 06 Browser ExternalHost update | needs-triage | VRChat Web 纵切后按显式 Installation 重写 |
+| 07 deploy and smoke | needs-triage | 独立 release units 落地后重写 |
 
-01、02 可并行。07 保留域名路由与真实 VRChat smoke 的人工门禁；不再等待 Browser 或 production
-signing key。
+## Exit conditions
 
-## MVP exit conditions
+- [ ] Headless 与 Desktop 使用同一个 Package Installation module。
+- [ ] VRChat Package 可独立于 Headless image 构建和替换。
+- [ ] Backend 与 Headless deployment 分离。
+- [ ] VRChat 与 Browser 各自通过显式 tag 发布 Web Package。
+- [ ] System 仍只随 Desktop Release。
+- [ ] 三类 Driver 继续通过统一 Protocol conformance。
+- [ ] 真实 Desktop Browser 与 Headless VRChat smoke 有证据。
 
-- [ ] Activation lifetime issue 09、10 完成：termination cause、durable evidence 与相关墙钟回归可信。
-- [ ] `collector-vrchat/vX.Y.Z` dry-run 与真实 framework-dependent artifact 发布通过。
-- [ ] `/collector-registry/v1/packages/vrchat/current.json` 经真实域名可读，length/hash 与 artifact 一致。
-- [ ] Headless 手动 CheckNow、版本目录 Installation、authenticated exact-ref approval 与真实 Ready 通过。
-- [ ] 错 hash、损坏 Package、incompatible handshake 与 never-ready candidate 都保留旧 LKG 并显示最后错误。
-- [ ] 真实服务器完成一次端到端 smoke，tracker 记录证据；Browser、签名、自动检查与 Dashboard UI 不作为
-  完成条件。
+## Comments
+
+- 2026-09-01：owner 再次确认目标是独立发布单元与共享 Runtime，而不是在线候选更新系统；ADR-048
+  取代 ADR-045/047 的当前实现范围。

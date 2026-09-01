@@ -1,126 +1,160 @@
-# Collector 独立交付实现路线图
+# Collector Host Runtime 与独立交付目标架构
 
-本文把 [ADR-045](../adr/045-independent-web-delivery-for-collector-packages.md) 的实现拆成两个已有
-tracker 的 feature，并固定它们之间与各自内部的依赖顺序：
+本文记录 [ADR-048](../adr/048-shared-collector-host-runtime-and-independent-release-units.md) 的目标拓扑和
+实现顺序。它取代已经撤回的 Registry 候选批准/LKG 切换路线；可靠性地基仍由 ADR-040/046 与现有
+Collector Protocol conformance tests 承担。
 
-- [Collector 数据可靠性收口](../../.scratch/collector-reliability-closeout/PRD.md)
-- [Collector Package Registry](../../.scratch/collector-package-registry/PRD.md)
+## 目标
 
-箭头表示“右侧开始或完成前必须满足左侧条件”，不是要求所有工作串行。没有依赖箭头的节点可以并行。
-Analytics + Dashboard 原子发布、Headless production configuration 是扫描发现的独立应用/运维平面
-风险，不塞进这两个 Collection feature；它们必须在对应平面实际发布前单独 closeout。
+- Desktop 独立构建、发布和下载；System Collector 随 Desktop Release。
+- Frontend、Analytics Backend、Headless Hub 各自构建和部署。
+- Browser、VRChat 与未来非 BuiltIn Collector 各自显式构建为 Collector Package，并经静态 Web 路径
+  独立发布。
+- Desktop 与 Headless 复用同一个宿主无关 Collector Host Runtime；宿主差异只存在于 adapter。
+- 当前只做显式精确 Installation 与启动，不建设自动更新控制面。
 
-> **当前开发路径（2026-08-31）**：ADR-047 已把 Feature B 第一条纵切缩减为 unsigned VRChat
-> ManagedProcess delivery。下面 ADR-045 的生产目标仍保留作 later scope；当前 Agent 只执行“termination
-> truth gate → 最小 index/tag pipeline → 版本目录安装 → exact ref approval → VRChat Ready → 开发域名
-> smoke”，不得自行恢复签名、channel、solver、原子安装 journal、Browser 或全平台矩阵。
-
-```mermaid
-flowchart LR
-    T["修正 termination cause<br/>durable evidence + deterministic tests"]
-    I["per-Package current.json<br/>Version + URL + length + SHA-256"]
-    B["VRChat 显式 tag build<br/>当前真实平台"]
-    D["下载并安装到版本目录<br/>安全解压 + 完成标记"]
-    A["authenticated Headless API<br/>手动 CheckNow + 批准 exact ref"]
-    R["启动 VRChat candidate<br/>真实 Ready"]
-    W["静态目录 + 开发域名 smoke<br/>失败保留旧 LKG"]
-
-    T --> I
-    T --> B
-    I --> D
-    B --> D
-    D --> A --> R --> W
-```
-
-## Feature 之间的实现顺序
-
-Registry contract、release tooling 和 Runtime delivery module 可以在可靠性修复期间开发；任何会改变
-真实用户安装的 migration/rollout 必须等待 P1 reliability gate。System 始终走 Desktop BuiltIn
-Delivery，不等待 Web Registry。
+## 发布拓扑
 
 ```mermaid
 flowchart LR
-    D["设计与账本基线<br/>ADR-045 + PRDs"]
-    R["Feature A<br/>Collector 数据可靠性收口"]
-    C["Feature B1<br/>Registry contract + release tooling"]
-    M["Feature B2<br/>Runtime delivery + owner approval"]
-    X["Feature B3<br/>ManagedProcess / ExternalHost 接入"]
-    G{"P1 reliability gate"}
-    P["Feature B4<br/>真实安装迁移与 Registry 上线"]
-    S["System Collector<br/>继续随 Desktop BuiltIn 发布"]
+    DesktopTag["Desktop tag"] --> DesktopRelease["Desktop Release"]
+    DesktopRelease --> Desktop["Desktop Agent"]
+    DesktopRelease --> System["System Package · BuiltIn"]
 
-    D --> R
-    D --> C
-    C --> M --> X
-    R --> G
-    G --> P
-    X --> P
-    D --> S
+    FrontendTag["Frontend revision"] --> Frontend["Frontend image"]
+    BackendTag["Backend revision"] --> Backend["Analytics image"]
+    HubTag["Hub revision"] --> Headless["Headless Hub image"]
 
-    classDef gate fill:#fff2cc,stroke:#b8860b,color:#3d3200;
-    classDef rollout fill:#d9ead3,stroke:#38761d,color:#183b0b;
-    class G gate;
-    class P rollout;
+    BrowserTag["collector-browser tag"] --> Registry["Static Collector Registry"]
+    VRChatTag["collector-vrchat tag"] --> Registry
+    FutureTag["future Collector tag"] --> Registry
+
+    Registry --> Installation["Collector Package Installation"]
+    Installation --> DesktopRuntime["Collector Host Runtime · Desktop"]
+    Installation --> HeadlessRuntime["Collector Host Runtime · Headless"]
+    System --> DesktopRuntime
 ```
 
-应用与运维平面的发布门禁与上图并行，不阻塞纯 contract/local implementation，但阻塞各自的生产发布：
+发布单元之间不互相重建：Collector 发布不触发 Host 发布，Headless 发布不触发 Backend，Frontend image
+不携带 Registry 文件。相同域名只由反向代理组合访问路径。
+
+## 共享 Runtime 的 seam
+
+现有 `CollectorRuntime` 已由 Desktop 与 Headless 复用；待收敛的是其外层 Host 编排。目标 module 的
+interface 只暴露“安装/打开精确 Package、配置 Instance、启动/停止 Activation、读取 Runtime State”，
+并隐藏 Package 目录、Execution Driver 与协议生命周期细节。
+
+```mermaid
+flowchart TB
+    DesktopHost["Desktop adapters<br/>Machine Subject · native observation · UI · loopback"]
+    HeadlessHost["Headless adapters<br/>multi-Subject · management HTTP · OIDC"]
+
+    DesktopHost --> HostRuntime["Shared Collector Host Runtime"]
+    HeadlessHost --> HostRuntime
+
+    PackageSource["Package source adapters<br/>BuiltIn directory · local artifact · later Web"] --> HostRuntime
+    Projection["Projection/upload adapters<br/>Desktop shared streams · Headless per-Instance streams"] --> HostRuntime
+    Secrets["Secret-store adapters"] --> HostRuntime
+
+    HostRuntime --> InProcess["InProcess Driver"]
+    HostRuntime --> Managed["ManagedProcess Driver"]
+    HostRuntime --> External["ExternalHost Driver"]
+    HostRuntime --> Protocol["Collector Protocol + conformance"]
+```
+
+### Runtime 共同拥有
+
+- Collector Installation、Instance、Activation 与 Runtime State；
+- Package loader 与 Artifact Descriptor 选择；
+- InProcess、ManagedProcess、ExternalHost Driver；
+- Protocol handshake、Ready、Fact/Gap、ACK、drain 与生命周期所有权。
+
+### 宿主 adapter 保留
+
+- Desktop 的平台观察、输入 hook、图标、UI、Machine identity 和浏览器 loopback；
+- Headless 的多 Subject 配置、owner-only management HTTP 与 OIDC；
+- Desktop 的共享 device 上传流与 Headless 的 per-Instance 上传流；
+- 数据路径、部署配置和 Secret 持久化选择。
+
+投影/上传只有在共同 interface 足够小且不需要 `if desktop/headless` 分支时才继续下沉。共享 Runtime 不是
+把两个 composition root 合并，也不是要求两个宿主拥有相同 UI 或 Subject 拓扑。
+
+## Collector 矩阵
+
+| Collector | Package 发布 | Delivery | Driver | 默认宿主 | Runtime 实际拥有的动作 |
+|---|---|---|---|---|---|
+| System | Desktop tag | BuiltIn | InProcess | Desktop | 构造、启动、停止 |
+| Browser | 独立 Collector tag | Web | ExternalHost | Desktop | 安装 Package、接受/拒绝连接、撤销 lease；不启动浏览器 |
+| VRChat | 独立 Collector tag | Web | ManagedProcess | Headless | 安装 Package、启动/终止子进程 |
+| 后续 Collector | 独立 tag 或 BuiltIn | 按 Package 决定 | 按 Artifact Descriptor | Desktop/Headless | 只执行所选 Driver 真正拥有的动作 |
+
+统一 Protocol 是语义统一，不是 transport 统一。三类 Driver 必须继续通过相同 conformance vectors。
+
+## 第一条小功能：外置本地 VRChat Package
+
+第一条 tracer 不接 Web、不做更新状态机，而是让真实 Package 生命周期先脱离 Host image：
+
+1. 提取共享 `Collector Package Installation` module，接收一个本地精确 Package，完成现有
+   manifest/artifact/hash 校验并记录 Installation。
+2. Desktop Browser 当前 bundled import 改用该 module，保持用户行为不变。
+3. Headless 从挂载目录安装并启动 VRChat Package；Headless image 不再构建或携带 VRChat。
+4. Headless 与 VRChat 分别构建后，证明“只替换 VRChat Package + 重启 Headless”无需重建 Hub image。
+
+这条功能有两个真实调用者，形成真实 seam；后续 Web delivery 只新增 Package source adapter：
 
 ```mermaid
 flowchart LR
-    A0["盘点当前应用部署拓扑"] --> A1["Frontend + Analytics 单一 release identity"]
-    A1 --> A2["禁止 mixed-version traffic"]
-    A2 --> A3["整单元 deploy / rollback smoke"]
-    A3 --> AP["应用平面可发布"]
-
-    H0["盘点真实 Headless 配置与 Secret"] --> H1["startup fail-fast validation"]
-    H1 --> H2["production compose / deployment wiring"]
-    H2 --> H3["真实账号 smoke + recovery runbook"]
-    H3 --> HP["Headless 平面可发布"]
+    BuiltInBrowser["现有 bundled Browser directory"] --> Install["Shared Package Installation"]
+    MountedVRChat["Mounted VRChat Package"] --> Install
+    WebPackage["Later: downloaded Web Package"] -.-> Install
+    Install --> Open["Open exact installed Package"]
+    Open --> Runtime["Collector Host Runtime"]
 ```
 
-这两条并行线目前是扫描结论，不冒充已建立的 implementation feature；开始实现时应分别建立 tracker，
-并以真实 deployment state 为输入。
+### 明确不进入第一条 tracer
 
-## Feature A：Collector 数据可靠性收口
+- channel、SemVer solver、后台检查或通知；
+- owner approval、offer、候选稳定窗口、LKG 自动切换；
+- Ed25519、密钥轮换、撤回、第三方市场；
+- 安装 journal、断电恢复、cache GC；
+- Browser 独立 Web 发布和 UI 安装入口。
 
-数据真实性分成两条可并行 lane。Segment lane 先修服务端 truthful outcome，再用相同 strict contract
-验证长时段旋转；Protocol lane 可以同时处理 InputEvent capacity 和有界 drain。四项全部完成后执行
-跨进程 restart/replay smoke，才关闭 gate。
+## 后续实现顺序
 
 ```mermaid
-flowchart TD
-    B["固定当前失败复现与真实 cache fixture"]
-
-    S1["A1 · strict Segment ingest<br/>拒绝整批并返回 400/422"]
-    S2["A2 · 连续 Segment rotation<br/>System + VRChat 在 24h 前切段"]
-    S3["A3 · 长会话 HTTP E2E<br/>合法 chunks + union duration"]
-
-    I1["A4 · durable InputEvent capacity<br/>backpressure 或原子 Stream Gap"]
-    D1["A5 · bounded InProcess drain<br/>deadline 覆盖 Stop + flush"]
-    P1["A6 · Protocol/restart smoke<br/>facts + gaps + truthful remainder"]
-
-    G{"Reliability PRD done"}
-
-    B --> S1 --> S2 --> S3 --> G
-    B --> I1 --> P1 --> G
-    B --> D1 --> P1
-
-    classDef gate fill:#fff2cc,stroke:#b8860b,color:#3d3200;
-    class G gate;
+flowchart LR
+    A["A · 冻结 ADR 与共享 seam"] --> B["B · 本地 Package Installation"]
+    B --> C["C · VRChat 外置 Package<br/>移出 Headless image"]
+    C --> D["D · Headless 独立 deploy workflow"]
+    C --> E["E · VRChat tag + Web static publish"]
+    E --> F["F · Web Package source adapter"]
+    F --> G["G · Browser 独立 Package<br/>移出 Desktop build"]
+    G --> H["H · 真实 Desktop/Headless smoke"]
 ```
 
-对应 tracker：
+- B/C 是下一条实现 ticket：可见结果是 VRChat 与 Headless image 分离，同时建立共享 Installation module。
+- D 只改变部署单元，不依赖 Web Registry，可与 E 并行。
+- E 先发布 artifact，F 才让 Host 下载；普通 `main` 验证不发布用户可见 Package。
+- G 复用已经证明的 Installation/Web seam，只增加 ExternalHost 的真实安装与用户 reload 动作。
 
-1. [strict Segment ingest](../../.scratch/repository-understanding/issues/05-strict-segment-ingest-outcomes.md)
-2. [连续 Segment rotation](../../.scratch/collector-reliability-closeout/issues/01-rotate-continuous-segments.md)
-3. [durable InputEvent capacity](../../.scratch/collector-reliability-closeout/issues/02-durable-input-capacity.md)
-4. [bounded InProcess drain](../../.scratch/collector-reliability-closeout/issues/03-bounded-inprocess-drain.md)
+## 当前差距
 
-其中 A1 → A2 是推荐的 tracer 顺序：先让下游拒绝结果可信，再证明上游永远生成合法 chunk。A4、A5
-不依赖 Segment 代码，可以与 A1/A2 并行。
+- Desktop Release 已独立，但仍同时打入 Browser Package。
+- Frontend workflow 已独立；Backend workflow 仍同时构建和部署 Headless。
+- Headless image 仍构建并携带 VRChat Package。
+- `CollectorRuntime` 与协议已共享；`HeadlessFleetManager`、Browser Installation 和各宿主 projection/upload
+  装配尚未收进共享 Host Runtime interface。
+- 静态 Collector Registry、Collector tag workflow 与 Web Package source 当前均不存在；旧实现已撤回，
+  不能把历史 tracker 的完成状态当成可部署能力。
 
-## Deferred production target
+## 验收边界
 
-签名、channel、完整平台矩阵、Browser ExternalHost、离线目录、cache GC、生产迁移与运维演练只保留在
-[ADR-045](../adr/045-independent-web-delivery-for-collector-packages.md) 作为未来目标，不进入当前 roadmap。
-VRChat MVP 完成后必须重新 grill，不能从旧图直接恢复这些范围。
+目标完成需要同时证明：
+
+- 四个 Host/application release unit 可独立构建和部署；
+- System 只随 Desktop Release；
+- Browser/VRChat 各自 tag 能产生独立 Package；
+- 同一个共享 Installation module 被 Desktop 与 Headless 使用；
+- VRChat Package 更新不重建 Headless，Browser Package 更新不重建 Desktop；
+- 三类 Driver 继续通过统一 Protocol conformance；
+- 真实 Desktop Browser 与 Headless VRChat smoke 成功。
