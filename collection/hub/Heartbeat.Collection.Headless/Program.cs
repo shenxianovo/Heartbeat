@@ -1,4 +1,6 @@
 using Heartbeat.Collection.Headless;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using System.Text.Json.Serialization;
 
@@ -20,11 +22,36 @@ try
     builder.Services.AddSingleton(options);
     builder.Services.AddSingleton<HeadlessFleetManager>();
     builder.Services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<HeadlessFleetManager>());
-    // The Hub Runtime the update surface reads is the one the fleet already owns, so the API cannot
-    // observe or write a second copy of the Collector Instance's state.
-    builder.Services.AddSingleton(provider =>
-        provider.GetRequiredService<HeadlessFleetManager>().PackageUpdates);
-    builder.Services.AddHeadlessOwnerAuthentication(options.Management);
+    builder.Services
+        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(authentication =>
+        {
+            authentication.Authority = options.Management.Authority;
+            authentication.RequireHttpsMetadata = options.Management.RequireHttpsMetadata;
+            authentication.MapInboundClaims = false;
+            authentication.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidateAudience = !string.IsNullOrWhiteSpace(options.Management.Audience),
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+                ValidIssuer = options.Management.Issuer,
+                ValidAudience = options.Management.Audience,
+                ValidTypes = ["at+jwt"],
+                NameClaimType = "preferred_username"
+            };
+            authentication.Events = new JwtBearerEvents
+            {
+                OnTokenValidated = context =>
+                {
+                    var clientId = context.Principal?.FindFirst("client_id")?.Value;
+                    var subject = context.Principal?.FindFirst("sub")?.Value;
+                    if (clientId != options.Management.ClientId || subject != options.Management.OwnerSubject)
+                        context.Fail("Token does not belong to this Hub owner and client.");
+                    return Task.CompletedTask;
+                }
+            };
+        });
     builder.Services.AddAuthorization();
     builder.Services.ConfigureHttpJsonOptions(json =>
         json.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -33,7 +60,20 @@ try
     app.UseAuthentication();
     app.UseAuthorization();
 
-    app.MapHeadlessManagementApi();
+    var management = app.MapGroup("/hub/api/v1").RequireAuthorization();
+    management.MapGet("/subjects", (HeadlessFleetManager fleet) => Results.Ok(fleet.Snapshot()));
+    management.MapPost(
+        "/collector-instances/{collectorInstanceId:guid}/authorization/{interactionId:guid}",
+        async (Guid collectorInstanceId, Guid interactionId, AuthorizationResponse request, HeadlessFleetManager fleet, CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                await fleet.SubmitAuthorizationAsync(collectorInstanceId, interactionId, request.Values, cancellationToken);
+                return Results.Accepted();
+            }
+            catch (KeyNotFoundException) { return Results.NotFound(); }
+            catch (InvalidOperationException exception) { return Results.Conflict(new { error = exception.Message }); }
+        });
 
     await app.RunAsync();
 }
@@ -41,3 +81,5 @@ finally
 {
     await Log.CloseAndFlushAsync();
 }
+
+public sealed record AuthorizationResponse(IReadOnlyDictionary<string, string> Values);

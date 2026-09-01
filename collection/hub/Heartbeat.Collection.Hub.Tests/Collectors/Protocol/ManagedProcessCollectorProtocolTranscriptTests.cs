@@ -159,7 +159,7 @@ public class ManagedProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task PackageUpdate_CandidateReachesReady_PromotesItWithoutObservingAStabilityWindow()
+    public async Task PackageUpdate_CandidateStaysReady_PromotesCandidateToLastKnownGood()
     {
         using var originalCopy = ManagedReferenceCollectorPackage.Create();
         using var candidateCopy = ManagedReferenceCollectorPackage.Create("1.1.0");
@@ -183,10 +183,14 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         var result = await runtime.UpdateManagedProcessAsync(
             instance.CollectorInstanceId,
             candidate,
-            FastUpdateOptions());
+            new ManagedProcessUpdateOptions
+            {
+                StabilityPeriod = TimeSpan.FromMilliseconds(100),
+                CandidateActivation = Options(),
+                RollbackActivation = Options()
+            });
 
         Assert.Equal(ManagedProcessUpdateOutcome.Updated, result.Outcome);
-        Assert.Equal(CollectorRuntimePhase.Ready, result.Activation.RuntimeState.Phase);
         Assert.Equal("1.1.0", runtime.GetInstance(instance.CollectorInstanceId).PackageVersion);
         Assert.Equal(originalStreamId, result.Activation.Streams["activity"].StreamId);
         Assert.NotEqual(originalActivation.ActivationId, result.Activation.ActivationId);
@@ -322,9 +326,10 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         Assert.Equal(originalStreamId, result.Activation.Streams["activity"].StreamId);
         Assert.NotEqual(originalActivationId, result.Activation.ActivationId);
         Assert.Equal("1.0.0", fixture.Runtime.GetInstance(fixture.Instance.CollectorInstanceId).PackageVersion);
-        // A candidate that never reached Ready must not have moved the Last-Known-Good record in either
-        // direction: the Package this Instance was delivered with is still the one it runs.
-        Assert.Null(fixture.Runtime.GetInstance(fixture.Instance.CollectorInstanceId).LastKnownGoodPackage);
+        Assert.Equal(
+            "1.0.0",
+            fixture.Runtime.GetInstance(fixture.Instance.CollectorInstanceId)
+                .LastKnownGoodPackage?.PackageVersion);
         Assert.Contains(
             result.Activation.RuntimeState.Diagnostics ?? [],
             diagnostic => diagnostic.Code == "update_candidate_failed_rolled_back");
@@ -347,30 +352,7 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         Assert.Equal("process_exited", result.CandidateFailure?.Code);
         Assert.Equal(CollectorRuntimePhase.Ready, result.Activation.RuntimeState.Phase);
         Assert.Equal("1.0.0", fixture.Runtime.GetInstance(fixture.Instance.CollectorInstanceId).PackageVersion);
-        Assert.Null(fixture.Runtime.GetInstance(fixture.Instance.CollectorInstanceId).LastKnownGoodPackage);
         Assert.Equal(1, fixture.Runtime.GetInstance(fixture.Instance.CollectorInstanceId).Spec.SpecRevision);
-        await result.Activation.StopAsync();
-    }
-
-    [Fact]
-    public async Task PackageUpdate_CandidateNeverReachesReady_RestartsLastKnownGoodWithReadyTimeout()
-    {
-        using var fixture = ManagedUpdateFixture.Create();
-        var originalStreamId = fixture.Current.Streams["activity"].StreamId;
-        using var candidateCopy = ManagedReferenceCollectorPackage.Create("1.1.0");
-        var candidate = LocalCollectorPackage.Load(candidateCopy.Path);
-
-        var result = await fixture.Runtime.UpdateManagedProcessAsync(
-            fixture.Instance.CollectorInstanceId,
-            candidate,
-            NeverReadyUpdateOptions());
-
-        Assert.Equal(ManagedProcessUpdateOutcome.RolledBack, result.Outcome);
-        Assert.Equal("activation_start_timeout", result.CandidateFailure?.Code);
-        Assert.Equal(CollectorRuntimePhase.Ready, result.Activation.RuntimeState.Phase);
-        Assert.Equal(originalStreamId, result.Activation.Streams["activity"].StreamId);
-        Assert.Equal("1.0.0", fixture.Runtime.GetInstance(fixture.Instance.CollectorInstanceId).PackageVersion);
-        Assert.Null(fixture.Runtime.GetInstance(fixture.Instance.CollectorInstanceId).LastKnownGoodPackage);
         await result.Activation.StopAsync();
     }
 
@@ -406,13 +388,8 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         await result.Activation.StopAsync();
     }
 
-    /// <summary>
-    /// A candidate that exits right after Ready has already taken over, so ADR-047 makes it a successful
-    /// update followed by an ordinary run failure. The Instance keeps the candidate as its effective
-    /// Package and Last-Known-Good, supervision reports the exit, and no rollback is attempted.
-    /// </summary>
     [Fact]
-    public async Task PackageUpdate_CandidateExitsAfterReady_StaysUpdatedAndLeavesTheExitToSupervision()
+    public async Task PackageUpdate_CandidateExitsDuringStabilityPeriod_RollsBackWithoutStoppingOtherInstance()
     {
         using var first = ManagedUpdateFixture.Create();
         using var secondPackageCopy = ManagedReferenceCollectorPackage.Create();
@@ -434,32 +411,14 @@ public class ManagedProcessCollectorProtocolTranscriptTests
             candidate,
             FastUpdateOptions("exit_after_ready"));
 
-        Assert.Equal(ManagedProcessUpdateOutcome.Updated, result.Outcome);
-        Assert.Null(result.CandidateFailure);
-        var updated = first.Runtime.GetInstance(first.Instance.CollectorInstanceId);
-        Assert.Equal("1.1.0", updated.PackageVersion);
-        Assert.Equal("1.1.0", updated.LastKnownGoodPackage?.PackageVersion);
-        await WaitForPhaseAsync(
-            first.Runtime,
-            first.Instance.CollectorInstanceId,
-            CollectorRuntimePhase.Failed);
-        var state = first.Runtime.GetManagedProcessRuntimeState(first.Instance.CollectorInstanceId);
-        Assert.Equal("process_exited", state.Failure?.Code);
-        // The run failure is not an update failure: nothing rolled the promotion back.
-        var afterExit = first.Runtime.GetInstance(first.Instance.CollectorInstanceId);
-        Assert.Equal("1.1.0", afterExit.PackageVersion);
-        Assert.Equal("1.1.0", afterExit.LastKnownGoodPackage?.PackageVersion);
+        Assert.Equal(ManagedProcessUpdateOutcome.RolledBack, result.Outcome);
+        Assert.Equal("process_exited", result.CandidateFailure?.Code);
         Assert.Equal(CollectorActivationState.Ready, secondActivation.State);
         Assert.False(secondActivation.Completion.IsCompleted);
-        Assert.Equal("1.0.0", first.Runtime.GetInstance(secondInstance.CollectorInstanceId).PackageVersion);
+        await result.Activation.StopAsync();
         await secondActivation.StopAsync();
     }
 
-    /// <summary>
-    /// The pre-Ready fallback itself can fail. When the Package that was effective before the attempt is
-    /// gone, the Hub reports both failures and leaves the Instance visibly not collecting rather than
-    /// pretending either half succeeded.
-    /// </summary>
     [Fact]
     public async Task PackageUpdate_LastKnownGoodArtifactMissing_ReportsCandidateAndRollbackFailures()
     {
@@ -1032,23 +991,8 @@ public class ManagedProcessCollectorProtocolTranscriptTests
 
     private static ManagedProcessUpdateOptions FastUpdateOptions(string? candidateBehavior = null) => new()
     {
+        StabilityPeriod = TimeSpan.FromMilliseconds(100),
         CandidateActivation = Options(candidateBehavior),
-        RollbackActivation = Options()
-    };
-
-    private static ManagedProcessUpdateOptions NeverReadyUpdateOptions() => new()
-    {
-        CandidateActivation = new ManagedProcessActivationOptions
-        {
-            // The candidate never sends activation.hello, so the startup budget is the only thing that can
-            // end the attempt: a small budget makes the timeout the test's subject, not a race with it.
-            StartupTimeout = TimeSpan.FromMilliseconds(250),
-            DrainGracePeriod = TimeSpan.FromSeconds(2),
-            EnvironmentVariables = new Dictionary<string, string>
-            {
-                ["HEARTBEAT_REFERENCE_BEHAVIOR"] = "startup_timeout"
-            }
-        },
         RollbackActivation = Options()
     };
 

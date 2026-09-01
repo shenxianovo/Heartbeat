@@ -76,17 +76,9 @@ public sealed class ManagedProcessActivationOptions
     }
 }
 
-/// <summary>
-/// How a ManagedProcess Collector Package update ended. There is no third, provisional outcome:
-/// Ready is the whole success condition, so an update is either the candidate holding the Fact Stream
-/// writer lease or the Last-Known-Good running again.
-/// </summary>
 public enum ManagedProcessUpdateOutcome
 {
-    /// <summary>The candidate reached Ready and is now this Collector Instance's Last-Known-Good.</summary>
     Updated,
-
-    /// <summary>The candidate failed before Ready; the Last-Known-Good Package was reactivated.</summary>
     RolledBack
 }
 
@@ -95,21 +87,15 @@ public sealed record ManagedProcessUpdateResult(
     ManagedProcessCollectorActivation Activation,
     CollectorRuntimeFailure? CandidateFailure = null);
 
-/// <summary>
-/// The two Activations an update may need: the candidate, and the Last-Known-Good it falls back to
-/// when the candidate never reaches Ready. There is deliberately no candidate stability period here
-/// (<see href="../../../../docs/adr/047-lean-development-collector-web-delivery.md">ADR-047</see>):
-/// an observation window would need a second, provisional notion of "current Package" that only the
-/// Runtime could see, and the exit it is supposed to catch is indistinguishable from any other run
-/// failure once the candidate owns the writer lease.
-/// </summary>
 public sealed class ManagedProcessUpdateOptions
 {
+    public TimeSpan StabilityPeriod { get; init; } = TimeSpan.FromSeconds(30);
     public ManagedProcessActivationOptions CandidateActivation { get; init; } = new();
     public ManagedProcessActivationOptions RollbackActivation { get; init; } = new();
 
     internal void Validate()
     {
+        CollectorRuntimeTimeout.Validate(StabilityPeriod, nameof(StabilityPeriod));
         ArgumentNullException.ThrowIfNull(CandidateActivation);
         ArgumentNullException.ThrowIfNull(RollbackActivation);
         CandidateActivation.Validate();
@@ -205,25 +191,6 @@ public sealed partial class CollectorRuntime
             new ManagedProcessUpdateOptions(),
             cancellationToken);
 
-    /// <summary>
-    /// Switches one ManagedProcess Collector Instance onto <paramref name="candidate" />, with Ready as
-    /// the single success condition: the candidate reaching Ready <em>is</em> the update, and it is only
-    /// then that the Instance's effective Collector Package and Last-Known-Good move.
-    ///
-    /// Nothing durable changes before that. The previous Last-Known-Good is not rewritten on the way
-    /// in, so a candidate that dies during startup, fails the handshake or never reaches Ready leaves
-    /// the Instance with exactly the delivery facts it had, and this method reactivates the previous
-    /// Package so the Instance keeps collecting. That fallback is not a retry: the candidate is not
-    /// started again, and choosing to try again is the owner's next explicit act.
-    ///
-    /// After Ready the candidate is an ordinary running Activation. Its later exit is a run failure for
-    /// supervision to report, never a failed update and never a rollback, because by then it is the
-    /// Last-Known-Good and there is nothing older to fall back to that the owner did not already replace.
-    ///
-    /// At most one Activation of this Collector Instance is a Fact Stream writer at any moment. The
-    /// writer lease moves in one direction only — the current Activation stops, then the candidate
-    /// starts — so a candidate can never write alongside the Activation it replaces.
-    /// </summary>
     public async ValueTask<ManagedProcessUpdateResult> UpdateManagedProcessAsync(
         Guid collectorInstanceId,
         LocalCollectorPackage candidate,
@@ -239,7 +206,7 @@ public sealed partial class CollectorRuntime
         LocalCollectorPackage previousPackage;
         VerifiedCollectorArtifact candidateArtifact;
         VerifiedCollectorArtifact previousArtifact;
-        int configVersion;
+        LastKnownGoodCollectorPackage previousInstallation;
         lock (_gate)
         {
             ThrowIfDisposed();
@@ -260,7 +227,12 @@ public sealed partial class CollectorRuntime
                     "package_mismatch",
                     "The current ManagedProcess Activation does not match the resolved Collector Package.");
             previousArtifact = ResolveManagedProcessArtifact(previousPackage);
-            configVersion = instance.ConfigVersion;
+            previousInstallation = new LastKnownGoodCollectorPackage(
+                previousPackage.Manifest.Version,
+                previousPackage.PackageContentHash,
+                previousArtifact.ArtifactId,
+                previousArtifact.ContentHash,
+                instance.ConfigVersion);
             if (!_managedProcessUpdates.Add(collectorInstanceId))
                 throw ActivationError(
                     "stream_writer_conflict",
@@ -269,11 +241,12 @@ public sealed partial class CollectorRuntime
 
         try
         {
+            PersistLastKnownGood(collectorInstanceId, previousInstallation);
             _ = await currentActivation.RequestStopAsync(
                 new CollectorActivationStopIntent(CollectorActivationStopCause.UpdateRequested),
                 CancellationToken.None);
             ManagedProcessCollectorActivation? candidateActivation = null;
-            CollectorRuntimeFailure candidateFailure;
+            CollectorRuntimeFailure? candidateFailure = null;
             try
             {
                 candidateActivation = await ActivateManagedProcessAsync(
@@ -281,21 +254,36 @@ public sealed partial class CollectorRuntime
                     candidate,
                     options.CandidateActivation,
                     cancellationToken);
+                using var stabilityCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                var stabilityElapsed = Task.Delay(options.StabilityPeriod, stabilityCancellation.Token);
+                var completed = await Task.WhenAny(candidateActivation.Completion, stabilityElapsed);
+                if (completed == stabilityElapsed)
+                {
+                    await stabilityElapsed;
+                    if (!candidateActivation.Completion.IsCompleted)
+                    {
+                        PersistLastKnownGood(
+                            collectorInstanceId,
+                            new LastKnownGoodCollectorPackage(
+                                candidate.Manifest.Version,
+                                candidate.PackageContentHash,
+                                candidateArtifact.ArtifactId,
+                                candidateArtifact.ContentHash,
+                                previousInstallation.ConfigVersion));
+                        return new ManagedProcessUpdateResult(
+                            ManagedProcessUpdateOutcome.Updated,
+                            candidateActivation);
+                    }
+                }
 
-                // Ready already committed the candidate as this Instance's effective Collector
-                // Package, so recording it as Last-Known-Good is what makes the two agree and is the
-                // first and only durable write this update performs.
-                PersistLastKnownGood(
-                    collectorInstanceId,
-                    new LastKnownGoodCollectorPackage(
-                        candidate.Manifest.Version,
-                        candidate.PackageContentHash,
-                        candidateArtifact.ArtifactId,
-                        candidateArtifact.ContentHash,
-                        configVersion));
-                return new ManagedProcessUpdateResult(
-                    ManagedProcessUpdateOutcome.Updated,
-                    candidateActivation);
+                stabilityCancellation.Cancel();
+                _ = await candidateActivation.RequestStopAsync(
+                    new CollectorActivationStopIntent(CollectorActivationStopCause.UpdateRequested),
+                    CancellationToken.None);
+                candidateFailure = candidateActivation.RuntimeState.Failure ?? new CollectorRuntimeFailure(
+                    "process_exited",
+                    "Candidate ManagedProcess exited during its stability period.",
+                    candidateActivation.Client.ExitCode);
             }
             catch (Exception exception) when (exception is not ManagedProcessUpdateException)
             {
@@ -313,7 +301,7 @@ public sealed partial class CollectorRuntime
                 previousPackage,
                 previousArtifact,
                 options.RollbackActivation,
-                candidateFailure);
+                candidateFailure!);
         }
         finally
         {
@@ -578,11 +566,6 @@ public sealed partial class CollectorRuntime
         _managedProcessPhaseWaiters.RemoveAll(waiter => waiter.TryComplete(collectorInstanceId, state.Phase));
     }
 
-    /// <summary>
-    /// The pre-Ready fallback, and nothing else. It exists so a candidate that failed before taking
-    /// over cannot leave the Collector Instance dark: the Package that was effective before the attempt
-    /// is activated again and keeps collecting. It is never reached once a candidate has been Ready.
-    /// </summary>
     private async ValueTask<ManagedProcessUpdateResult> RollBackManagedProcessAsync(
         Guid collectorInstanceId,
         LocalCollectorPackage previousPackage,

@@ -83,10 +83,6 @@ _Avoid_: Analytics Collector Control Plane、要求用户通过服务器终端�
 本机完整持有某一精确 Collector Package 的事实；部分下载或未完成目录不是 Installation。安装不表示 Collector 已启用、已获授权、能够激活或正在运行，多个 Collector Instance 可以共享同一份已安装内容。
 _Avoid_: Download、Staging、Registration、Active
 
-**Installation Completion Marker（安装完成标记）**:
-安装目录内声明该目录已完整持有某一精确 Collector Package 的记录；它是 Installation 的必要条件而非充分条件，标记缺失、指向别的精确候选或与目录内容不再一致时，该目录都不是 Installation。它只描述本机安装完整性，不表示批准、Ready、Last-Known-Good 或任何运行意图。
-_Avoid_: Install Journal、Lock File、把标记当作批准或 Ready 记录、用它保存 Desired State
-
 **Collector Instance（采集器实例）**:
 一个稳定、已配置的 Collector 身份；更换其 Collector Package 版本或重新激活时，实例身份保持不变，同样不会因为长期离线而自动删除。同一采集器包可以对应多个实例。browser Collector 在同一 Machine Subject 上按 App 分 Instance：Chrome、Edge 等 App 各有独立启用意图与运行状态，但共享一份 Collector Installation；同一 App 的浏览器 Profile 不是独立 Instance。首次发现新的 browser App Instance 默认启用，删除身份与配置只能是显式用户操作。
 _Avoid_: 用 Source、进程 ID 或包版本充当实例身份
@@ -142,7 +138,7 @@ _Avoid_: 把当前运行事实反写成用户意图
 _Avoid_: Installed State、Runtime State
 
 **Collector Runtime State（采集器运行状态）**:
-Collector Runtime 对当前 Collector Activation 的阶段、健康结果与失败原因的观察事实。运行状态可随重试和宿主变化而改变，不是用户配置。它同时是该 Instance 交付事实的唯一持久化归属：Last-Known-Good、最近一次读到的 Registry current 及其时间、已安装候选、Approved Collector Package Candidate 与最后一次检查失败都记在这里，管理面的 Current 只是它的投影，不是第二份账本。
+Collector Runtime 对当前 Collector Activation 的阶段、健康结果与失败原因的观察事实。运行状态可随重试和宿主变化而改变，不是用户配置。
 _Avoid_: Desired State、Active（后者只回答某 Source 最近是否有流量）
 
 **Artifact Delivery（制品交付）**:
@@ -157,39 +153,9 @@ _Avoid_: 把 System 当作可远程替换的独立 Package、把 BuiltIn 等同�
 发布方为非 BuiltIn 官方 Collector Package 提供的版本目录与制品来源；它提供精确候选的发现和下载事实，不保存用户 Desired State，也不承担 Installation、批准或 Activation。来源认证强度是部署能力，不改变 Registry 的领域身份。
 _Avoid_: Collector Registry（旧 source 级配置账本）、Analytics 控制面、把 channel 指针当作不可变版本
 
-**Collector Registry Index（采集器注册源索引）**:
-Official Collector Package Registry 中某个 Package 的 `current.json`：schema version、PackageId、Version 与
-唯一 artifact 的 URL、字节长度、SHA-256。它只回答“当前精确候选在哪、应当是哪些字节”，不重述 Package 身份
-（那是 Collector Package manifest 的权威），也不携带 channel、签名、兼容矩阵或发布时间。artifact URL 必须与
-Registry base URI 同 origin 且落在该 Package 该 Version 的目录内，redirect 同样受这条边界约束。
-_Avoid_: release manifest、channel 指针、把 index 当成 Package 身份或兼容性来源
-
 **Collector Update Offer（采集器更新候选）**:
-Runtime 已验证并解析出的某个 Collector Instance 的精确更新候选，绑定 PackageId、Version 与内容 hash；只有 owner 明确批准该精确候选后才可开始该 Instance 的激活尝试。兼容性不在 Offer 里预判：现有 Package loader 与 Collector Protocol 握手是兼容性的唯一执行门禁（ADR-047），由它们在 Ready 路径上裁决，因此候选投影里没有兼容结果字段。
-_Avoid_: latest、opaque workflow token、未验证的 Registry 响应、把发现或下载等同于批准和更新成功、把宿主兼容结果当成 Offer 的字段或批准的前置判定
-
-**Approved Collector Package Candidate（已批准采集器包候选）**:
-owner 对某个 Collector Instance 明确批准的一个精确候选：PackageId、Version 与 artifact SHA-256 三者逐字段
-匹配，且批准时它仍是本机真实的 Collector Installation。批准不解析 latest，也不要求它仍是 Registry current：
-已下载验证并安装的候选在 Registry 前进后依然可批准。批准只是取用许可，不是 Ready，也不改写 Desired State、
-Activation 或 Last-Known-Good。它随 Collector Runtime State 持久化，重启后仍是同一个已批准 ref。
-_Avoid_: latest/channel 批准、opaque offer token 或可重放的审批工作流、把批准当作更新成功
-
-**Collector Package Switch（采集器包切换）**:
-owner 明确要求某个 Collector Instance 开始使用其 Approved Collector Package Candidate 的一次尝试，成功条件
-只有一个：候选 Activation 到达 Ready。Ready 之前失败（启动失败、握手或声明不兼容、Ready 超时、被取消）不改写
-任何交付事实——旧 Package 重新激活、Last-Known-Good 保持原样、批准与 Installation 都还在，只写一条结构化最后
-错误等人再次触发；Ready 之后退出是普通运行故障，既不是更新失败也不触发回滚。切换只取用批准时那份逐字段一致
-的精确 Installation，不重读 Registry、不解析 channel。它是 per-Instance 的：共享同一 Installation 的另一个
-Instance 既不被一起晋升，也不被一起记失败。宿主重启后启动的是"已经到达过 Ready 的那份 Package"，因此从未
-Ready 的已批准候选不会靠重启接管，也不会因此出现第二个 Fact Stream writer。
-_Avoid_: 自动切换/自动重试、把批准或安装当作切换、候选稳定窗口、Ready 后回滚、跨 Instance 连带晋升
-
-**Manual Collector Update Check（手动采集器更新检查）**:
-owner 触发的一次性检查：读一次 Collector Registry Index、下载并按长度与 SHA-256 验证一次、安装一次。它不
-调度、不重试、不轮询；失败写入结构化最后错误（reason + 说明 + 时间）并保留既有 Installation、已批准候选与
-Last-Known-Good，下一次尝试只由人再次触发。
-_Avoid_: 后台 timer/自动检查、失败自动退避重试、把检查或下载等同于批准或 Ready
+Runtime 已验证并解析出的某个 Collector Instance 的精确更新候选，绑定 PackageId、Version、内容 hash 与宿主兼容结果；只有 owner 明确批准该精确候选后才可开始该 Instance 的激活尝试。
+_Avoid_: latest、opaque workflow token、未验证的 Registry 响应、把发现或下载等同于批准和更新成功
 
 **Execution Driver（执行驱动器）**:
 Collector Runtime 协调 Collector Activation 的方式，可以是进程内、托管进程或外部宿主；它不表示 Runtime 一定持有对应制品。

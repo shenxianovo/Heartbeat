@@ -148,7 +148,6 @@ internal static class RawReferenceProtocolProbe
         "startup_timeout",
         "malformed",
         "exit_before_hello",
-        "exit_nonzero_before_hello",
         "invalid_capability_type",
         "uppercase_uuid",
         "unknown_hello_field"
@@ -165,13 +164,6 @@ internal static class RawReferenceProtocolProbe
         }
         if (behavior == "exit_before_hello")
             return;
-        if (behavior == "exit_nonzero_before_hello")
-        {
-            // A Collector that cannot run in this environment at all: it fails immediately and reports a
-            // non-zero exit code, which is the closest a real ManagedProcess artifact gets to "unusable".
-            Environment.Exit(3);
-            return;
-        }
         if (behavior == "malformed")
         {
             await output.WriteLineAsync("{not-json");

@@ -1,15 +1,8 @@
 name: Deploy Backend
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'server/**'
-      - 'shared/**'
-      - 'collection/hub/**'
-      - 'collection/collectors/Heartbeat.Collector.VRChat/**'
-      - 'compose.yml'
-      - '.github/workflows/deploy-backend.yml'
+  # Production stays manual while the breaking Local Calendar Window contract and the new
+  # Headless service still require one coordinated, same-revision maintenance-window cutover.
   workflow_dispatch:
 
 env:

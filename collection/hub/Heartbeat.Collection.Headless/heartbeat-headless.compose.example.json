@@ -3,7 +3,6 @@
   "dataDirectory": "/data",
   "uploadIntervalSeconds": 60,
   "listenUrl": "http://0.0.0.0:8080",
-  "registryBaseUri": "https://registry.example/collector-registry/v1/",
   "management": {
     "ownerSubject": "replace-with-owner-oidc-sub",
     "authority": "https://auth.shenxianovo.com",

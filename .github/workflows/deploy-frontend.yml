@@ -1,11 +1,8 @@
 name: Deploy Frontend
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'frontend/**'
-      - 'shared/calendar-window-golden-scenarios.json'
+  # Production stays manual while Frontend and Analytics must replace the Local Calendar Window
+  # contract together. PR/main verification lives in collector-contracts.yml.
   workflow_dispatch:
 
 env:

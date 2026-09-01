@@ -23,7 +23,6 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Heartbeat.Collection.Hub.Tests" />
     <InternalsVisibleTo Include="Heartbeat.Collector.System" />
-    <InternalsVisibleTo Include="Heartbeat.Collection.CollectorRelease" />
   </ItemGroup>
 
 </Project>

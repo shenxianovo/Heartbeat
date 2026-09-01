@@ -28,9 +28,6 @@
     <Project Path="collection/collectors/Heartbeat.Collector.VRChat.Tests/Heartbeat.Collector.VRChat.Tests.csproj" />
     <Project Path="collection/collectors/Heartbeat.Collector.VRChat/Heartbeat.Collector.VRChat.csproj" />
   </Folder>
-  <Folder Name="/collection/tools/">
-    <Project Path="collection/tools/Heartbeat.Collection.CollectorRelease/Heartbeat.Collection.CollectorRelease.csproj" />
-  </Folder>
   <Folder Name="/server/">
     <Project Path="server/Heartbeat.Server.Tests/Heartbeat.Server.Tests.csproj" />
     <Project Path="server/Heartbeat.Server/Heartbeat.Server.csproj" />

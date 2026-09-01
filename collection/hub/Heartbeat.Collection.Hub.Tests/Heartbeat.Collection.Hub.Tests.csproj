@@ -16,7 +16,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Heartbeat.Collection.Hub\Heartbeat.Collection.Hub.csproj" />
-    <ProjectReference Include="..\..\tools\Heartbeat.Collection.CollectorRelease\Heartbeat.Collection.CollectorRelease.csproj" />
     <ProjectReference Include="..\..\collectors\Heartbeat.Collector.Reference.ManagedProcess\Heartbeat.Collector.Reference.ManagedProcess.csproj"
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\collectors\Heartbeat.Collector.VRChat\Heartbeat.Collector.VRChat.csproj"
