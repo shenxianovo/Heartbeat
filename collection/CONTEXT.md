@@ -165,8 +165,8 @@ Registry base URI 同 origin 且落在该 Package 该 Version 的目录内，red
 _Avoid_: release manifest、channel 指针、把 index 当成 Package 身份或兼容性来源
 
 **Collector Update Offer（采集器更新候选）**:
-Runtime 已验证并解析出的某个 Collector Instance 的精确更新候选，绑定 PackageId、Version、内容 hash 与宿主兼容结果；只有 owner 明确批准该精确候选后才可开始该 Instance 的激活尝试。
-_Avoid_: latest、opaque workflow token、未验证的 Registry 响应、把发现或下载等同于批准和更新成功
+Runtime 已验证并解析出的某个 Collector Instance 的精确更新候选，绑定 PackageId、Version 与内容 hash；只有 owner 明确批准该精确候选后才可开始该 Instance 的激活尝试。兼容性不在 Offer 里预判：现有 Package loader 与 Collector Protocol 握手是兼容性的唯一执行门禁（ADR-047），由它们在 Ready 路径上裁决，因此候选投影里没有兼容结果字段。
+_Avoid_: latest、opaque workflow token、未验证的 Registry 响应、把发现或下载等同于批准和更新成功、把宿主兼容结果当成 Offer 的字段或批准的前置判定
 
 **Approved Collector Package Candidate（已批准采集器包候选）**:
 owner 对某个 Collector Instance 明确批准的一个精确候选：PackageId、Version 与 artifact SHA-256 三者逐字段

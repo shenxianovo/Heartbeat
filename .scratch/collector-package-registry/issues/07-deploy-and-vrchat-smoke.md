@@ -63,3 +63,17 @@ Priority: P1 — 域名路由与真实 VRChat 更新需要 owner 操作和观察
   已批准候选不会靠重启接管，所以 smoke 时不要用"重启 Hub"代替这一步。
 - 2026-08-31：issue 03 已 done（版本目录安装 + 完成标记，全部由自动化测试覆盖，无新增人工门禁），只给上面
   清单加了一条部署期磁盘/清理注意事项。真实 smoke 仍需 issue 04、05。
+
+### 2026-09-01 — 双轴复审收口
+
+- 例子配置里的真实域名已换回占位符（见 issue 02 同日记录），所以「选定真实 registry base URI」这条人工门禁
+  重新是唯一的域名来源，仓库里没有第二处写着真实生产域名的 Registry base URI。
+- smoke 的动作数已在 ADR-047 与 PRD 里写明：管理面共四个 owner 动作（Current、手动 CheckNow、Approve exact
+  ref、显式 Switch）。批准不隐含接管，Switch 才启动候选，也不能用「重启 Hub」代替——这条已在上面的
+  Acceptance 与 Comments 里，本次只是与 ADR/PRD 对齐。
+- PRD 的 MVP exit condition 路径已由 `packages/vrchat/current.json` 改成真实 PackageId
+  `packages/heartbeat.collector.vrchat/current.json`（P3）；全库已无 `packages/vrchat/` 的残留写法，只剩上面
+  「不是 `packages/vrchat/…`」这一处刻意的反面提醒。
+- Status 保持 `ready-for-human`：本 issue 的 Acceptance 与「Manual gates carried over」全部需要 owner 在真实
+  服务器上执行，agent 不代做。issue 04 已 `done`，其真实域名端到端 smoke 由本 issue 的
+  「真实 ManagedProcess smoke」那一条承接。

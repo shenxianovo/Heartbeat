@@ -22,7 +22,7 @@ flowchart LR
     B["VRChat 显式 tag build<br/>当前真实平台"]
     D["下载并安装到版本目录<br/>安全解压 + 完成标记"]
     A["authenticated Headless API<br/>手动 CheckNow + 批准 exact ref"]
-    R["启动 VRChat candidate<br/>真实 Ready"]
+    R["显式 switch 启动 VRChat candidate<br/>真实 Ready"]
     W["静态目录 + 开发域名 smoke<br/>失败保留旧 LKG"]
 
     T --> I

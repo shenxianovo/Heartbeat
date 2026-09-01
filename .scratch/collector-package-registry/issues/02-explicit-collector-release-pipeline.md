@@ -91,3 +91,15 @@ URL、length 与 SHA-256 并发布到静态 Web 目录。普通 main CI 只做 d
 
 - 2026-08-31：本 issue 是 code complete，但真实 tag、真实上传与 CI 接线是人工门禁，因此状态是
   `ready-for-human` 而不是 `done`（见 `docs/agents/issue-tracker.md`）。
+
+### 2026-09-01 — 双轴复审收口
+
+- **P2「仓库里硬编码了真实域名」已清**：`collection/hub/Heartbeat.Collection.Headless/heartbeat-headless.compose.example.json`
+  的 `registryBaseUri` 曾是 `https://shenxianovo.com/collector-registry/v1/`（既违反本 issue 的「仓库里不硬编码
+  真实生产域名」，也与 PRD 写的 `heartbeat.shenxianovo.com` 不一致）。已改回与发布工具默认值一致的占位符
+  `https://registry.example/collector-registry/v1/`；真实 base URI 仍是 issue 07 的人工门禁，由 owner 在部署时
+  决定并作为 `--registry-base-uri` 传入。
+- `registryBaseUri` 未配置时手动 CheckNow 返回 `RegistryNotConfigured` 是**期望默认**，本轮未改：没有 Registry
+  的 Hub 不该假装有一个，已安装候选照样可以批准。
+- Status 保持 `ready-for-human`：本 issue 的人工门禁没有变——真实 `collector-vrchat/vX.Y.Z` tag 的推送与首个
+  artifact 上传、上传顺序、以及是否给 tag 接 CI，全部记在 issue 07 的清单里。
