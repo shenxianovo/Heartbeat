@@ -5,6 +5,9 @@ Status: ready-for-human
 剩余的全部是人工门禁，没有 agent 可承接的实现范围（见 issue 07）：真实 `collector-vrchat/vX.Y.Z` tag 的发布、
 真实域名/独立静态目录部署与反向代理映射、服务器上的 VRChat 端到端 smoke。
 
+例外：issue 08 是起点 `e78d0cf` 就存在的既有债务（`node scripts/collector-contracts.mjs check` 为红，Browser 打包
+产物与源不同步），它是 agent 可承接的，且直接阻塞 issue 02 的「发 tag 前 contracts 为绿」门禁。
+
 ## Problem
 
 非内置 Collector 已有 Package / Instance / Activation 与 Execution Driver 语义，但制品仍主要随
@@ -103,6 +106,7 @@ evidence，并把相关墙钟回归改成确定性测试。Gap dead-letter 双�
 5. [05 — 接入 VRChat ManagedProcess Ready 切换](issues/05-vrchat-ready-switch.md)（依赖 04；已 done）
 6. [07 — 部署开发 Registry 并完成 VRChat smoke](issues/07-deploy-and-vrchat-smoke.md)（依赖 01–05 与选定 P2 gate）
 7. [06 — Browser ExternalHost Web 更新](issues/06-browser-external-host-update.md)（MVP 后重新裁决）
+8. [08 — contracts check 起点即为红](issues/08-browser-contract-check-red-at-baseline.md)（既有债务；阻塞 02 的发布门禁）
 
 01、02 可并行。07 保留域名路由与真实 VRChat smoke 的人工门禁；不再等待 Browser 或 production
 signing key。
@@ -127,6 +131,9 @@ signing key。
       `Incompatible` / `ReadyTimeout` / `StartupFailed`，见 issue 05。真实服务器上的复现仍是 issue 07。）
 - [ ] 真实服务器完成一次端到端 smoke，tracker 记录证据；Browser、签名、自动检查与 Dashboard UI 不作为
   完成条件。
+- [ ] `node scripts/collector-contracts.mjs check` 为绿。（2026-09-01：起点 `e78d0cf` 即为红，Browser 打包产物与
+      源不同步，不是纵切改动引入；登记为 [issue 08](issues/08-browser-contract-check-red-at-baseline.md)，它直接
+      挡住 issue 02 的「发 tag 前 contracts 为绿」人工门禁。）
 
 ## Comments
 
@@ -147,9 +154,13 @@ signing key。
 - **复审疑点收口**：`collection/CONTEXT.md` 的 Collector Update Offer 条目删掉了「绑定宿主兼容结果」——兼容性
   不在 Offer 里预判，由 Package loader 与 Collector Protocol 握手在 Ready 路径上裁决；`registryBaseUri` 未配置
   时返回 `RegistryNotConfigured` 保持不变。
+- **新登记 issue 08（起点即红的 contracts check）**：`node scripts/collector-contracts.mjs check` 在起点 `e78d0cf`
+  就报 `Browser source and packaged extension differ`，本轮未触碰 Browser（`git diff --stat e78d0cf..HEAD --
+  collection/collectors/Heartbeat.Collector.Browser` 无输出）。这条红挡住 issue 02 的发布门禁，故落成独立 issue，
+  不在本次 docs 变更里修产物。
 - **issue 状态一览**：01 `done`、02 `ready-for-human`（真实 tag/上传/CI 接线）、03 `done`、04 `done`（本次由
   `ready-for-human` 收口）、05 `done`、06 `needs-triage`（MVP 后重新裁决）、07 `ready-for-human`（部署与真实
-  smoke）。
+  smoke）、08 `ready-for-agent`（起点即红的 contracts check）。
 - 验证：`git diff --check` 无输出；`dotnet build Heartbeat.slnx --no-restore -c Debug` → 0 Warning / 0 Error；
   `dotnet test Heartbeat.slnx --no-build` → 1223 passed / 0 failed（基线 1219 + 新增 4：跨 owner 门禁 3 条 +
   宿主崩溃 1 条）。

@@ -70,6 +70,13 @@ Registry URL、SemVer 求解、文件布局或下载事务。内部深模块以
 `PrepareAsync(requirements)` / `OpenInstalledAsync(packageRef)` 拥有 Registry refresh、兼容解析、
 下载、验证、content-addressed 安装、原子提交与离线回退；Artifact Delivery 不直接承担 Activation。
 
+> 2026-09-01 偏差注记（不修改上述原始决策，仅避免从本文读起的人误判当前实现）：开发期纵切实际暴露的是
+> **四个** owner 动作——`Current`、`CheckNowAsync`、`ApproveAsync(exactPackageRef)` 与显式
+> `SwitchToApprovedAsync`；本段的“只暴露三个动作”约束由
+> [ADR-047](./047-lean-development-collector-web-delivery.md) 在开发期纵切范围内显式偏离。理由是批准不隐含
+> 接管：把切换折进 `ApproveAsync` 会让批准隐含接管，既违反“Ready 前保留旧 LKG”，也违反“失败后等待人工
+> 再次触发、不自动重试”。生产阶段是否收敛回三动作，由后续 ADR 重新裁决。
+
 批准与 Last-Known-Good 都是 per-Instance：
 
 - ManagedProcess 候选只有到达 Ready 并通过候选稳定窗口才晋升为该 Instance 的

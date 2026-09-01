@@ -6,7 +6,7 @@ status: accepted
 
 开发阶段先证明一个非 BuiltIn Collector 能独立显式发布、从 Web 安装、由 owner 批准并建立真实 Ready Activation，不同时建设生产级软件供应链。第一条纵切只覆盖 VRChat ManagedProcess：Registry 公开读取并依赖现有 HTTPS，不做 Ed25519、密钥轮换、撤回、多 channel、SemVer 求解、离线目录或 cache GC；发布记录仍绑定精确 Version、文件长度和 SHA-256，安装只要求写入独立版本目录、通过安全解压并在内容完整后写完成标记，未完成目录永远不是 Collector Installation。
 
-owner 通过现有认证管理面批准界面上展示的精确 PackageId、Version 与 content hash，不引入 opaque offer、审批审计或重放工作流。新候选只有 Ready 后才能接管，现有 Last-Known-Good 在此之前保持可用。管理面因此共四个 owner 动作：读 Current、手动 CheckNow、Approve exact ref、显式 Switch。批准不隐含接管，Switch 才触发候选启动：把切换折进 Approve 会让批准隐含接管，既违反“Ready 前保留旧 LKG”，也违反“失败后等待人工再次触发、不自动重试”。System 继续随 Desktop BuiltIn Delivery，Browser ExternalHost 与生产签名、跨平台矩阵、迁移和上线演练均推迟到 VRChat 纵切证明可用之后重新裁决。
+owner 通过现有认证管理面批准界面上展示的精确 PackageId、Version 与 content hash，不引入 opaque offer、审批审计或重放工作流。新候选只有 Ready 后才能接管，现有 Last-Known-Good 在此之前保持可用。管理面因此共四个 owner 动作：读 Current、手动 CheckNow、Approve exact ref、显式 Switch。批准不隐含接管，Switch 才触发候选启动：把切换折进 Approve 会让批准隐含接管，既违反“Ready 前保留旧 LKG”，也违反“失败后等待人工再次触发、不自动重试”。本条在开发期纵切范围内**显式偏离** [ADR-045](./045-independent-web-delivery-for-collector-packages.md) §4 的“外部管理 interface 只暴露 `Current`、`CheckNowAsync` 与 `ApproveAsync(offerId)`”三动作约束：三动作只有在 Approve 同时承担接管时才够用，而那正是本 ADR 拒绝的语义，因此第四个显式 Switch 是保住上述两条不变量的代价，而不是接口膨胀。ADR-045 §4 已加对应偏差注记；生产阶段是否收敛回三动作留待后续 ADR 重新裁决。System 继续随 Desktop BuiltIn Delivery，Browser ExternalHost 与生产签名、跨平台矩阵、迁移和上线演练均推迟到 VRChat 纵切证明可用之后重新裁决。
 
 这个缩减接受开发期 Registry 不能独立证明发布者身份，也不承诺断电级原子安装；它不允许跳过长度/hash、路径边界、完成标记、显式批准或真实 Ready，因为这些属于 Package 身份和运行正确性，而非可选的供应链加固。
 

@@ -101,5 +101,10 @@ URL、length 与 SHA-256 并发布到静态 Web 目录。普通 main CI 只做 d
   决定并作为 `--registry-base-uri` 传入。
 - `registryBaseUri` 未配置时手动 CheckNow 返回 `RegistryNotConfigured` 是**期望默认**，本轮未改：没有 Registry
   的 Hub 不该假装有一个，已安装候选照样可以批准。
+- **被 issue 08 阻塞**：上面记的「发 tag 前先确认 contracts 检查为绿」当前不满足——
+  `node scripts/collector-contracts.mjs check` 在本轮起点 `e78d0cf` 就报
+  `Browser source and packaged extension differ`，不是纵切改动引入。这条债务登记为
+  [issue 08](./08-browser-contract-check-red-at-baseline.md)；在它转绿之前，真实
+  `collector-vrchat/vX.Y.Z` tag 不应推送。
 - Status 保持 `ready-for-human`：本 issue 的人工门禁没有变——真实 `collector-vrchat/vX.Y.Z` tag 的推送与首个
   artifact 上传、上传顺序、以及是否给 tag 接 CI，全部记在 issue 07 的清单里。
