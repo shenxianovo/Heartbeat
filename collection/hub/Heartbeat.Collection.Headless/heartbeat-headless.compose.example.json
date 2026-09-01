@@ -14,7 +14,7 @@
   "instances": [
     {
       "instanceKey": "vrchat-main",
-      "packageDirectory": "/app/vrchat-package",
+      "packageDirectory": "/package-source/vrchat",
       "subjectId": "0198d5df-5df3-70a1-937d-68a7d64623e2",
       "subjectKind": "Account",
       "subjectName": "VRChat",

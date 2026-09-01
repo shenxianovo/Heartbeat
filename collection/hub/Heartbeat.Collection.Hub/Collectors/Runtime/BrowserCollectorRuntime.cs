@@ -1,6 +1,5 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Heartbeat.Collection.Hub.Collectors.Packages;
@@ -59,7 +58,7 @@ public sealed class BrowserCollectorRuntime
     private readonly CollectorRuntime _runtime;
     private readonly BrowserExternalHostBindingOptions _options;
     private readonly SubjectReference _subject;
-    private readonly string _installRoot;
+    private readonly CollectorPackageInstallations _installations;
     private readonly string _statePath;
     private BrowserRuntimeState _state;
     private BrowserCollectorRuntimeStatus _runtimeStatus;
@@ -82,7 +81,8 @@ public sealed class BrowserCollectorRuntime
         _runtime = runtime;
         _options = options;
         _subject = new SubjectReference(subjectId, SubjectKind.Machine);
-        _installRoot = Path.Combine(Path.GetFullPath(options.DataDirectory), "collector-packages");
+        _installations = new CollectorPackageInstallations(
+            Path.Combine(Path.GetFullPath(options.DataDirectory), "collector-packages"));
         _statePath = Path.Combine(Path.GetFullPath(options.DataDirectory), "browser-package-state.json");
         _state = LoadState();
         var installationValidationError = ValidatePersistedState();
@@ -115,51 +115,25 @@ public sealed class BrowserCollectorRuntime
         var sourcePackage = LocalCollectorPackage.Load(packageDirectory);
         ValidateBrowserPackage(sourcePackage);
         var sourceSideloadRelativePath = ResolveSideloadRelativePath(sourcePackage);
-        var treeHash = ComputeTreeHash(sourcePackage.PackageDirectory);
-        var installDirectory = Path.Combine(
-            _installRoot,
-            BrowserPackageId,
-            sourcePackage.Manifest.Version,
-            sourcePackage.PackageContentHash["sha256:".Length..]);
 
-        if (!Directory.Exists(installDirectory))
-        {
-            var parent = Path.GetDirectoryName(installDirectory)!;
-            Directory.CreateDirectory(parent);
-            var staging = Path.Combine(parent, $".staging-{Guid.NewGuid():N}");
-            try
-            {
-                CopyTree(sourcePackage.PackageDirectory, staging);
-                var staged = LocalCollectorPackage.Load(staging);
-                ValidateBrowserPackage(staged);
-                if (staged.PackageContentHash != sourcePackage.PackageContentHash ||
-                    ComputeTreeHash(staging) != treeHash)
-                    throw new PackageValidationException("Staged browser Collector Package content changed during import.");
-                _ = ResolveSideloadRelativePath(staged);
-                Directory.Move(staging, installDirectory);
-            }
-            finally
-            {
-                if (Directory.Exists(staging))
-                    Directory.Delete(staging, recursive: true);
-            }
-        }
-
-        var installed = LocalCollectorPackage.Load(installDirectory);
+        // 复制、tree hash 校验、目录布局与失败清理归共享 Installation module；这里只补 browser 专属
+        // 契约：已安装副本仍必须解析出同一个 sideload 目录。
+        var installation = _installations.Install(sourcePackage.PackageDirectory);
+        var installed = installation.Package;
         ValidateBrowserPackage(installed);
-        if (installed.PackageContentHash != sourcePackage.PackageContentHash ||
-            ComputeTreeHash(installDirectory) != treeHash)
-            throw new PackageValidationException("Existing installed browser Collector Package does not match the imported content.");
+        if (ResolveSideloadRelativePath(installed) != sourceSideloadRelativePath)
+            throw new PackageValidationException(
+                "Installed browser Collector Package resolves a different sideload directory.");
 
         BrowserCollectorRuntimeSnapshot snapshot;
         lock (_gate)
         {
             var nextInstallation = new PackageInstallationState
             {
-                Version = installed.Manifest.Version,
-                PackageContentHash = installed.PackageContentHash,
-                TreeContentHash = treeHash,
-                InstallDirectory = installDirectory,
+                Version = installation.Reference.Version,
+                PackageContentHash = installation.Reference.PackageContentHash,
+                TreeContentHash = installation.TreeContentHash,
+                InstallDirectory = installation.Directory,
                 SideloadRelativePath = sourceSideloadRelativePath
             };
             var previousKnownGood = _state.PreviousKnownGood;
@@ -224,12 +198,11 @@ public sealed class BrowserCollectorRuntime
     {
         lock (_gate)
         {
-            foreach (var installDirectory in EnumerateInstalledPackageDirectoriesLocked())
+            foreach (var installation in _installations.List(BrowserPackageId))
             {
-                LocalCollectorPackage package;
+                var package = installation.Package;
                 try
                 {
-                    package = LocalCollectorPackage.Load(installDirectory);
                     ValidateBrowserPackage(package);
                 }
                 catch (PackageValidationException)
@@ -338,10 +311,12 @@ public sealed class BrowserCollectorRuntime
 
         try
         {
-            var package = LoadCurrentPackageLocked();
+            _ = LoadCurrentPackageLocked();
             return BuildInstalledSnapshotLocked();
         }
-        catch (PackageValidationException exception)
+        // 安装副本与登记事实不一致（CollectorRuntimeStateException），以及安装副本自身校验失败
+        // （PackageValidationException），都只降级为 Degraded：Installation 坏掉不该把 host 打崩。
+        catch (Exception exception) when (exception is PackageValidationException or CollectorRuntimeStateException)
         {
             _runtimeStatus = BrowserCollectorRuntimeStatus.Degraded;
             _runtimeStatusDetail = $"Installed Package content validation failed: {exception.Message}";
@@ -397,12 +372,7 @@ public sealed class BrowserCollectorRuntime
     {
         if (_state.Current is null)
             throw new InvalidOperationException("No browser Collector Package is installed.");
-        var package = LocalCollectorPackage.Load(_state.Current.InstallDirectory);
-        if (package.PackageContentHash != _state.Current.PackageContentHash ||
-            ComputeTreeHash(_state.Current.InstallDirectory) != _state.Current.TreeContentHash)
-            throw new PackageValidationException("Installed browser Collector Package content no longer matches its installation fact.");
-        ValidateBrowserPackage(package);
-        return package;
+        return LoadAndVerifyInstallation(_state.Current);
     }
 
     private static bool ReadDesiredEnabled(CollectorInstance instance) =>
@@ -412,16 +382,6 @@ public sealed class BrowserCollectorRuntime
         _runtime.FindInstances(BrowserPackageId, _subject)
             .Where(instance => instance.InstanceKey is not null)
             .ToArray();
-
-    private IEnumerable<string> EnumerateInstalledPackageDirectoriesLocked()
-    {
-        var packageRoot = Path.Combine(_installRoot, BrowserPackageId);
-        if (!Directory.Exists(packageRoot))
-            yield break;
-        foreach (var versionDirectory in Directory.EnumerateDirectories(packageRoot))
-        foreach (var hashDirectory in Directory.EnumerateDirectories(versionDirectory))
-            yield return hashDirectory;
-    }
 
     internal static string NormalizeAppHint(string appHint)
     {
@@ -529,7 +489,7 @@ public sealed class BrowserCollectorRuntime
 
         var actualPayloadFiles = Directory.EnumerateFiles(sideloadDirectory, "*", SearchOption.AllDirectories)
             .Select(path => Path.GetRelativePath(package.PackageDirectory, path).Replace(Path.DirectorySeparatorChar, '/'))
-            .Where(path => !IsIgnorableMetadataFile(path))
+            .Where(path => !CollectorPackageInstallations.IsIgnorableMetadataFile(path))
             .Where(path => path != $"{sideloadRelativePath}/collector-artifact-ref.json")
             .ToHashSet(StringComparer.Ordinal);
         if (!actualPayloadFiles.SetEquals(declaredFiles))
@@ -596,10 +556,23 @@ public sealed class BrowserCollectorRuntime
 
     private LocalCollectorPackage LoadAndVerifyInstallation(PackageInstallationState installation)
     {
-        var package = LocalCollectorPackage.Load(installation.InstallDirectory);
-        if (package.PackageContentHash != installation.PackageContentHash ||
-            ComputeTreeHash(installation.InstallDirectory) != installation.TreeContentHash)
+        CollectorPackageInstallation opened;
+        try
+        {
+            opened = _installations.Open(new CollectorPackageReference(
+                BrowserPackageId,
+                installation.Version,
+                installation.PackageContentHash));
+        }
+        catch (PackageValidationException exception)
+        {
+            throw new CollectorRuntimeStateException(
+                "Installed browser Package content does not match persisted state.", exception);
+        }
+        if (opened.TreeContentHash != installation.TreeContentHash ||
+            !string.Equals(opened.Directory, installation.InstallDirectory, StringComparison.Ordinal))
             throw new CollectorRuntimeStateException("Installed browser Package content does not match persisted state.");
+        var package = opened.Package;
         ValidateBrowserPackage(package);
         _ = ResolveSideloadRelativePath(package);
         return package;
@@ -618,71 +591,6 @@ public sealed class BrowserCollectorRuntime
         {
             if (File.Exists(temporary))
                 File.Delete(temporary);
-        }
-    }
-
-    private static void CopyTree(string source, string destination)
-    {
-        var sourceRoot = new DirectoryInfo(source);
-        if (sourceRoot.LinkTarget is not null)
-            throw new PackageValidationException("Browser Collector Package root must not be a symbolic link.");
-        Directory.CreateDirectory(destination);
-        CopyDirectory(sourceRoot, destination);
-    }
-
-    private static void CopyDirectory(DirectoryInfo source, string destination)
-    {
-        foreach (var entry in source.EnumerateFileSystemInfos())
-        {
-            if (entry.LinkTarget is not null || (entry.Attributes & FileAttributes.ReparsePoint) != 0)
-                throw new PackageValidationException("Browser Collector Package must not contain symbolic links.");
-            var target = Path.Combine(destination, entry.Name);
-            if (entry is DirectoryInfo directory)
-            {
-                Directory.CreateDirectory(target);
-                CopyDirectory(directory, target);
-            }
-            else if (entry is FileInfo file)
-            {
-                if (IsIgnorableMetadataFile(file.Name))
-                    continue;
-                file.CopyTo(target);
-            }
-        }
-    }
-
-    private static string ComputeTreeHash(string root)
-    {
-        EnsureTreeHasNoLinks(new DirectoryInfo(root));
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        foreach (var path in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
-                     .Where(path => !IsIgnorableMetadataFile(path))
-                     .OrderBy(path => Path.GetRelativePath(root, path), StringComparer.Ordinal))
-        {
-            var relative = Path.GetRelativePath(root, path).Replace(Path.DirectorySeparatorChar, '/');
-            var name = Encoding.UTF8.GetBytes(relative);
-            hash.AppendData(BitConverter.GetBytes(name.Length));
-            hash.AppendData(name);
-            var content = File.ReadAllBytes(path);
-            hash.AppendData(BitConverter.GetBytes(content.LongLength));
-            hash.AppendData(content);
-        }
-        return "sha256:" + Convert.ToHexStringLower(hash.GetHashAndReset());
-    }
-
-    private static bool IsIgnorableMetadataFile(string path) =>
-        string.Equals(Path.GetFileName(path), ".DS_Store", StringComparison.Ordinal);
-
-    private static void EnsureTreeHasNoLinks(DirectoryInfo directory)
-    {
-        if (directory.LinkTarget is not null || (directory.Attributes & FileAttributes.ReparsePoint) != 0)
-            throw new PackageValidationException("Browser Collector Package must not contain symbolic links.");
-        foreach (var entry in directory.EnumerateFileSystemInfos())
-        {
-            if (entry.LinkTarget is not null || (entry.Attributes & FileAttributes.ReparsePoint) != 0)
-                throw new PackageValidationException("Browser Collector Package must not contain symbolic links.");
-            if (entry is DirectoryInfo child)
-                EnsureTreeHasNoLinks(child);
         }
     }
 

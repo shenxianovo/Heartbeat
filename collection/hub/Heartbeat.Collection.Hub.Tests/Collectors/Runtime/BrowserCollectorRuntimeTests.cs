@@ -46,6 +46,27 @@ public sealed class BrowserCollectorRuntimeTests : IDisposable
     }
 
     [Fact]
+    public void EnsureBundledPackageInstalled_PublishesTheSharedInstallationOfThisDataDirectory()
+    {
+        var runtime = CreateRuntime();
+
+        var snapshot = runtime.EnsureBundledPackageInstalled();
+
+        var installations = new CollectorPackageInstallations(Path.Combine(_root, "collector-packages"));
+        var installation = installations.Open(new CollectorPackageReference(
+            BrowserCollectorRuntime.BrowserPackageId,
+            snapshot.PackageVersion!,
+            snapshot.PackageContentHash!));
+
+        Assert.Equal(snapshot.InstallDirectory, installation.Directory);
+        Assert.Equal(BrowserCollectorRuntime.BrowserPackageId, installation.Package.Manifest.PackageId);
+        Assert.Equal(snapshot.PackageContentHash, installation.Package.PackageContentHash);
+        Assert.Equal(
+            snapshot.InstallDirectory,
+            Assert.Single(installations.List(BrowserCollectorRuntime.BrowserPackageId)).Directory);
+    }
+
+    [Fact]
     public void Import_RejectsUndeclaredExecutablePayloadChangeAndLeavesNoInstallationFact()
     {
         var package = CopyPackage("corrupt");

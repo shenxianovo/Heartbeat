@@ -12,7 +12,18 @@
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
     <ProjectReference Include="..\Heartbeat.Collection.Headless\Heartbeat.Collection.Headless.csproj" />
+    <ProjectReference Include="..\..\collectors\Heartbeat.Collector.Reference.ManagedProcess\Heartbeat.Collector.Reference.ManagedProcess.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
+
+  <Target Name="CopyManagedReferenceCollector" AfterTargets="Build">
+    <ItemGroup>
+      <ManagedReferenceCollectorFiles Include="..\..\collectors\Heartbeat.Collector.Reference.ManagedProcess\bin\$(Configuration)\net10.0\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ManagedReferenceCollectorFiles)"
+          DestinationFiles="@(ManagedReferenceCollectorFiles->'$(OutDir)Fixtures/ManagedReferenceCollector/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 
   <ItemGroup>
     <Using Include="Xunit" />

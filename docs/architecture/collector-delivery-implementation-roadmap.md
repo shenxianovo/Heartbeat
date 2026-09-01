@@ -132,7 +132,8 @@ flowchart LR
     G --> H["H · 真实 Desktop/Headless smoke"]
 ```
 
-- B/C 是下一条实现 ticket：可见结果是 VRChat 与 Headless image 分离，同时建立共享 Installation module。
+- B/C 已落地：共享 Installation module 建立，VRChat Package 与 Headless image 分开构建，Headless
+  从只读挂载目录安装后再启动；后续 D 起尚未开始。
 - D 只改变部署单元，不依赖 Web Registry，可与 E 并行。
 - E 先发布 artifact，F 才让 Host 下载；普通 `main` 验证不发布用户可见 Package。
 - G 复用已经证明的 Installation/Web seam，只增加 ExternalHost 的真实安装与用户 reload 动作。
@@ -141,11 +142,15 @@ flowchart LR
 
 - Desktop Release 已独立，但仍同时打入 Browser Package。
 - Frontend workflow 已独立；Backend workflow 仍同时构建和部署 Headless。
-- Headless image 仍构建并携带 VRChat Package。
-- `CollectorRuntime` 与协议已共享；`HeadlessFleetManager`、Browser Installation 和各宿主 projection/upload
-  装配尚未收进共享 Host Runtime interface。
+- Headless image 已不再构建或携带 VRChat Package：Package 由 `scripts/build-vrchat-package.sh`
+  单独构建到宿主目录，compose 以只读方式挂到 `/package-source`，Headless 安装后再运行。构建仍
+  只能在本机手工执行，没有 Collector tag workflow，也没有可下载的发布产物。
+- 共享 `CollectorPackageInstallations` 已就位，Desktop 的 Browser bundled import 与 Headless 的
+  VRChat 启动都走它；`HeadlessFleetManager` 的 Fleet 编排和各宿主 projection/upload 装配仍未收进
+  共享 Host Runtime interface。
 - 静态 Collector Registry、Collector tag workflow 与 Web Package source 当前均不存在；旧实现已撤回，
   不能把历史 tracker 的完成状态当成可部署能力。
+- Headless 独立 deploy workflow 与真实服务器上的「只替换 Package + 重启」smoke 都还没有承接人。
 
 ## 验收边界
 

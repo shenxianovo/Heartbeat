@@ -12,6 +12,7 @@ Copy-Item .env.local.example .env.local
 New-Item -ItemType Directory -Force .local
 Copy-Item collection/hub/Heartbeat.Collection.Headless/heartbeat-headless.compose.example.json `
   .local/heartbeat-headless.json
+./scripts/build-vrchat-package.ps1
 ```
 
 macOS/Linux：
@@ -21,9 +22,16 @@ cp .env.local.example .env.local
 mkdir -p .local
 cp collection/hub/Heartbeat.Collection.Headless/heartbeat-headless.compose.example.json \
   .local/heartbeat-headless.json
+./scripts/build-vrchat-package.sh
 ```
 
 填写 `.env.local` 与 `.local/heartbeat-headless.json` 中的 API key、owner `sub` 和 Subject ID。
+
+无头 Hub 的镜像里不带 Collector Package。`build-vrchat-package` 把 VRChat Package 构建到
+`.local/collector-packages/vrchat`，compose 再把 `.local/collector-packages` 只读挂到容器的
+`/package-source`；Hub 启动时把它安装到自己的数据目录后运行，所以来源目录只读就够。换 Package
+只需重跑这个脚本再重启 headless，不用重建 Hub 镜像。细节见
+[Headless README](../collection/hub/Heartbeat.Collection.Headless/README.md)。
 
 ## 2. 启动
 

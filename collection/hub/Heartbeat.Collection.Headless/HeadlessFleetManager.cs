@@ -162,9 +162,13 @@ public sealed class HeadlessFleetManager(
                 Path.Combine(options.DataDirectory, "collector-secrets")));
 
         var claimedInstanceIds = mappings.Values.ToHashSet();
+        // 配置里的 packageDirectory 是宿主挂载的 Package 来源，只读。运行永远发生在 Installation 上，
+        // 所以先安装再打开，来源目录不充当运行时可变目录。
+        var installations = new CollectorPackageInstallations(
+            Path.Combine(options.DataDirectory, "collector-packages"));
         foreach (var configured in options.Instances)
         {
-            var package = LocalCollectorPackage.Load(configured.PackageDirectory);
+            var package = installations.Install(configured.PackageDirectory).Package;
             CollectorInstance instance;
             if (mappings.TryGetValue(configured.InstanceKey, out var mappedId))
             {

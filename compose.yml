@@ -63,6 +63,12 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      - type: bind
+        source: ${HEADLESS_PACKAGE_SOURCE_PATH:-./.local/collector-packages}
+        target: /package-source
+        read_only: true
+        bind:
+          create_host_path: false
       - headless-data:/data
     networks:
       - backend
