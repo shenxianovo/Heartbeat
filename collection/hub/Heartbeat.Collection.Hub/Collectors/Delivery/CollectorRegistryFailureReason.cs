@@ -104,5 +104,28 @@ public enum CollectorRegistryFailureReason
     /// The exact candidate names a Collector Package other than the one this Collector Instance is
     /// permanently bound to, so approving it would approve something this Instance can never run.
     /// </summary>
-    CollectorInstancePackageMismatch
+    CollectorInstancePackageMismatch,
+
+    /// <summary>
+    /// The approved candidate was started but did not reach Ready inside the Activation's startup
+    /// budget. It is deliberately distinct from <see cref="StartupFailed" />: the process was
+    /// accepted by the operating system and simply never took over.
+    /// </summary>
+    ReadyTimeout,
+
+    /// <summary>
+    /// The approved candidate's process could not be started at all, or it exited before Ready. It is
+    /// also the fallback for any other reason a switch attempt ended before Ready; the accompanying
+    /// detail keeps the Runtime's own failure code.
+    /// </summary>
+    StartupFailed,
+
+    /// <summary>
+    /// The approved candidate ran but the Collector Protocol handshake or its declarations left no
+    /// common ground with this Hub: no shared protocol major or capability version, a ConfigVersion it
+    /// does not accept, an undeclared output, a Package identity that does not match, or a malformed
+    /// protocol message. The Package loader and the handshake stay the only compatibility gate, so
+    /// this reason reports their verdict instead of duplicating it.
+    /// </summary>
+    Incompatible
 }

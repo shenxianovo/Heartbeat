@@ -77,6 +77,41 @@ public sealed partial class CollectorRuntime
     }
 
     /// <summary>
+    /// Records the outcome of exactly one attempt to take the Approved Collector Package Candidate
+    /// into use. It writes the last error and nothing else: the approved candidate, the installed
+    /// candidate and the Registry observation are left exactly as they were, because a switch that
+    /// failed before Ready neither un-approves the candidate nor makes the Installation go away.
+    ///
+    /// Passing <c>null</c> clears the last error, which only happens when a candidate really reached
+    /// Ready — the one event that makes asking the owner to act again pointless.
+    ///
+    /// Promotion itself is not written here. The effective Package and Last-Known-Good are committed
+    /// by the Activation path at Ready, so this method can never claim an update succeeded.
+    /// </summary>
+    public CollectorPackageUpdateStatus RecordPackageSwitchOutcome(
+        Guid collectorInstanceId,
+        CollectorPackageUpdateFailure? failure)
+    {
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            var instance = RequireInstanceStateLocked(collectorInstanceId);
+            var current = instance.PackageUpdate ?? new CollectorPackageUpdateStateRecord();
+            return PersistPackageUpdateLocked(instance, current with
+            {
+                LastFailure = failure is null
+                    ? null
+                    : new CollectorPackageUpdateFailureRecord
+                    {
+                        Reason = failure.Reason,
+                        Message = failure.Message,
+                        OccurredAt = failure.OccurredAt.ToUniversalTime()
+                    }
+            });
+        }
+    }
+
+    /// <summary>
     /// Records the owner's approval of one exact Collector Package reference. Whether that reference
     /// really is a Collector Installation is decided before this call by the installation store's
     /// admission function; this only persists the decision, and it neither promotes the candidate
