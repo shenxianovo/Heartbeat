@@ -91,6 +91,13 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Verify Browser Collector package payload on Windows
+        shell: bash
+        run: |
+          npm ci --prefix collection/collectors/Heartbeat.Collector.Browser
+          npm run build --prefix collection/collectors/Heartbeat.Collector.Browser
+          node scripts/collector-contracts.mjs check
+
       - name: Verify Windows platform head
         run: dotnet test collection/desktop/Heartbeat.Desktop.Windows.Tests/Heartbeat.Desktop.Windows.Tests.csproj -c Release
 
