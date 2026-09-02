@@ -5,12 +5,20 @@
 ## Language
 
 **Agent**:
-桌面采集宿主：承载 Collector Runtime、system Collector、Browser ExternalHost binding、集面读模型以及统一缓存/上传。它不再提供通用 source 级 loopback segment ingress。
+桌面采集宿主：承载 Collector Runtime、system Collector、通用 ExternalHost loopback 监听、集面读模型以及统一缓存/上传。它不再提供通用 source 级 loopback segment ingress，也不认识任何具名可选 Collector（ADR-049）。
 _Avoid_: Service, Worker（这些是 Agent 内部的实现层）
 
 **Collector（采集器）**:
 一个观测特定应用内活动并通过 Collector Protocol 向 Runtime 发布 Fact 的组件（browser 扩展、VRChat 账号采集器等）。system 采集器内置于 Desktop，同样经 Runtime 汇入，特例性仅剩两点：进程内 binding、不可停用。非内置采集器代码位于 `collection/collectors/`。
 _Avoid_: 插件/Plugin（口语别名，UI 与文档统一用"采集器"；ADR-017 等历史文档中的 plugin 即此概念）
+
+**Host Composition（宿主组合）**:
+宿主（Desktop platform head 或 Headless host）在组合根注册的服务集合。它只允许出现通用领域概念：Collector Package Installation、Collector Runtime、Collector Instance / Activation、Execution Driver、Collector Protocol、通用 ExternalHost handler seam 与 App Hint resolver seam，加上唯一写死的 System BuiltIn。宿主 UI、主题、启动 smoke 与宿主测试同受这条边界约束。
+_Avoid_: 在宿主里为某个具体 Collector 建 binding 扩展、状态类型、默认安装目录或 UI 卡片
+
+**Named Optional Collector（具名可选 Collector）**:
+除 System 以外、按名字可识别且不必存在的 Collector（browser、vrchat 等）。它不进入 Host composition：宿主不持有它的 binding、runtime、状态模型、安装目录、平台知识或 UI 条目，只通过通用 seam 接受它。"宿主允许它缺席"不等于已解耦——只要宿主代码里还写着它的名字，它仍是宿主特化（ADR-049）。
+_Avoid_: Optional Plugin、把"缺席时降级"当成解耦完成
 
 **Collector Package（采集器包）**:
 Collector 的内容快照；精确候选由声明版本与 content hash 共同确定。正式发布物不可变；当前本地官方 Package 在发布安装 seam 建立前允许同一声明版本换内容。它不表示已经安装、配置或运行。
@@ -87,11 +95,11 @@ _Avoid_: Analytics Collector Control Plane、要求用户通过服务器终端�
 _Avoid_: Download、Staging、Registration、Active
 
 **Collector Instance（采集器实例）**:
-一个稳定、已配置的 Collector 身份；更换其 Collector Package 版本或重新激活时，实例身份保持不变，同样不会因为长期离线而自动删除。同一采集器包可以对应多个实例。browser Collector 在同一 Machine Subject 上按 App 分 Instance：Chrome、Edge 等 App 各有独立启用意图与运行状态，但共享一份 Collector Installation；同一 App 的浏览器 Profile 不是独立 Instance。首次发现新的 browser App Instance 默认启用，删除身份与配置只能是显式用户操作。
+一个稳定、已配置的 Collector 身份；更换其 Collector Package 版本或重新激活时，实例身份保持不变，同样不会因为长期离线而自动删除。同一采集器包可以对应多个实例。ExternalHost Collector 可以在同一 Machine Subject 上按 App 分 Instance（如 Chrome、Edge 各有独立启用意图与运行状态，共享一份 Collector Installation，同一 App 的多个 Profile 不是独立 Instance）；这套按 App 发现与默认启用的规则属于对应 Collector 的 adapter，不由宿主写死，当前宿主内没有这样的 adapter（ADR-049）。删除身份与配置只能是显式用户操作。
 _Avoid_: 用 Source、进程 ID 或包版本充当实例身份
 
 **Collector Instance Key（采集器实例键）**:
-Hub 为需要幂等发现的 Collector Instance 分配的不透明、不可变稳定槽位；它在同一 `PackageId + Subject` 内唯一，不替代 CollectorInstanceId。browser adapter 以 App 形成 Instance Key，使同一 App 重连时回到原 Instance，而不是把 App 身份塞进可变配置。
+Hub 为需要幂等发现的 Collector Instance 分配的不透明、不可变稳定槽位；它在同一 `PackageId + Subject` 内唯一，不替代 CollectorInstanceId。ExternalHost adapter 可以用 App 形成 Instance Key，使同一 App 重连时回到原 Instance，而不是把 App 身份塞进可变配置。
 _Avoid_: 第二个 CollectorInstanceId、Instance Config、把 Source 当作 Instance Key
 
 **Collector Activation（采集器激活）**:
@@ -153,8 +161,8 @@ Collector Runtime 协调 Collector Activation 的方式，可以是进程内、�
 _Avoid_: Lifecycle Driver（未区分制品交付）、假定 Hub 能直接停止所有 Collector
 
 **App Hint（应用提示）**:
-ExternalHost Collector 上报的平台无关产品 slug（如 `edge`）。browser adapter 用非空、稳定的 App Hint 选择对应 Collector Instance，并由平台 adapter 尝试解析为本机可观测的 AppIdentity（Windows 进程或 macOS bundle）；暂时无法解析的稳定 slug 仍形成独立 App Instance 并保留事实，只显示身份未解析，不按名字猜成其他 App。缺失或不稳定的 App Hint 无法形成 Instance 身份，拒绝 Activation。`AppHint` 是 binding/Stream 维度，不进入 canonical Fact payload 或 Analytics 事实；Browser 本地 outbox 可为迁移恢复暂存它。
-_Avoid_: 让 Collector 写 `win:`/`mac:` 身份；把 App Hint 当作 App Key 或 AppIdentity
+ExternalHost Collector 上报的平台无关产品 slug（如 `edge`）。对应 Collector 的 adapter 用非空、稳定的 App Hint 选择 Collector Instance；宿主只提供 `ICollectorAppHintResolver` seam 用于把 slug 解析为本机可观测的 AppIdentity（Windows 进程或 macOS bundle），默认实现 `NullCollectorAppHintResolver` 不解析——具体产品的进程名与 bundle id 知识随对应 Collector 一起离开宿主（ADR-049）。暂时无法解析的稳定 slug 仍形成独立 App Instance 并保留事实，只显示身份未解析，不按名字猜成其他 App。缺失或不稳定的 App Hint 无法形成 Instance 身份，拒绝 Activation。`AppHint` 是 binding/Stream 维度，不进入 canonical Fact payload 或 Analytics 事实；Browser 本地 outbox 可为迁移恢复暂存它。
+_Avoid_: 让 Collector 写 `win:`/`mac:` 身份；把 App Hint 当作 App Key 或 AppIdentity；把某个产品的进程名/bundle id 写进宿主
 
 **Upload Stream（上传流）**:
 泛化的出网流（ADR-020/022）：绑定一个出网源（IUploadSource），drain 一轮 = 先重传离线缓存，再取 fresh 出网——送达，或落离线缓存，否则自动重注入源（重注入不回滚更新的快照）。"批次不蒸发"是流自持的不变量。compact 为按流策略（segments 出网前压缩快照，input-events 不压缩）。segments 与 input-events 各一实例。
@@ -201,8 +209,8 @@ _Avoid_: 用一个 bool 同时表示用户开关、权限与实际可用性
 **采集器页（Collector page）**:
 共享桌面 UI 中管理采集器的页面，并容纳采集器设置。可管理性**分级**：system 采集器不可停用，前台应用采集作为无开关的固定基线，其他可选观测深度作为独立采集能力管理；外部采集器按 Collector Instance 展示启用意图与由运行事实推导的用户状态。每项能力的开关、实际状态、权限恢复动作与说明都归属该 Collector 条目，不另建脱离所有者的全局“采集能力”区块。窗口活动采集是一个用户能力，不把 focused-window 切换与原始标题拆成两个开关。
 
-browser Collector 只占一个主卡；Chrome、Edge 等 App 作为子项分别展示添加入口、启用意图与“尚未连接 / 等待启动 / 正在采集 / 需要修复”状态，主卡可提供批量启停快捷操作。App Instance 不重复呈现为多份 Package，Profile/Host 也不成为主 UI 管理项；Package、Activation、External Host Identity、目录和协议错误只在高级诊断中展示。
-_Avoid_: 采集器栏、Collector panel
+browser Collector 当前不出现在采集器页：宿主没有它的接入路径，UI 也没有它的卡片、侧载引导或诊断区（ADR-049）。经 loopback 汇入的外部采集器只按通用形态展示——由运行事实驱动出条目、启用意图与状态；Package、Activation、External Host Identity、目录和协议错误只在高级诊断中展示。将来某个 ExternalHost Collector 按 App 分 Instance 时，主卡与 App 子项的呈现规则随该 Collector 的 adapter 一起回来，不预先在宿主 UI 里为它留位置。
+_Avoid_: 采集器栏、Collector panel、为某个具体 Collector 在宿主 UI 写死卡片
 
 **Setup**:
 Velopack 生成的安装器（Setup.exe），用户首次安装时下载运行。
@@ -225,7 +233,7 @@ _Avoid_: Upgrade, Patch; Pending Update（旧名，混淆了"发现"与"已下�
 - `Heartbeat.Collector.System` 消费 App 激活、focused-window 切换、同窗标题变化与 away 等语义观察，产出 system ActivitySegment；平台 adapter 不把原生回调形状泄漏进状态机
 - `Heartbeat.Desktop.Updater.Velopack` 统一承载 Windows/macOS 的 Velopack Update 生命周期（检查、下载、重试、ReadyToApply 门控与调度应用），并作为供应商依赖防火墙；platform head 只选择 Release channel，并在 updater 成功启动后停止 Agent、退出当前进程
 - `Heartbeat.Desktop.Windows` 组合 Win32 观察、MachineGuid、图标、自启动、共享 Avalonia UI、托盘与 Velopack Update
-- `Heartbeat.Desktop.Mac` 组合 NSWorkspace App/硬 away 观察、IOPlatformUUID、bundle 图标、App Hint、共享 Avalonia UI、菜单栏 accessory 生命周期与逐用户 login start
+- `Heartbeat.Desktop.Mac` 组合 NSWorkspace App/硬 away 观察、IOPlatformUUID、bundle 图标、共享 Avalonia UI、菜单栏 accessory 生命周期与逐用户 login start
 - `Heartbeat.Desktop.UI` 是共享 Avalonia presentation module；ViewModel 只依赖 platform-head seam，可在不创建原生窗口时测试
 
 ## Flagged ambiguities

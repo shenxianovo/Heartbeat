@@ -52,6 +52,8 @@ Instance Desired State 使用单调 SpecRevision；Activation 报告已经应用
 
 ### 5. 实现收敛：Browser 多 App/Host 与旧 loopback 退役
 
+> 2026-09-02 revision note：本节的宿主侧实现已由 [ADR-049](./049-named-optional-collectors-outside-host-composition.md) 修订。"browser 只使用 binding 专属 discovery 与 Collector Protocol v1"这一句不再成立于宿主：Hub 内的 Browser 专属 `CollectorRuntime`、protocol handler 与 `/v1/collector-protocol/browser` discovery 路由已删除，只保留通用 ExternalHost handler seam 与默认 404 实现；browser 的 App Instance、AppHint 解析与 sideload 引导也不再由宿主持有。本节其余协议语义（Package/Instance/Activation、`appHint + externalHostIdentity` 维度、Fact Schema 权威位置）不变。
+
 - browser 的一份 Package Installation 可在同一 Machine Subject 下形成多个按 App Key 稳定寻址的 Collector Instance；Chrome、Edge 等各自持有 Desired/Runtime/LKG 状态。
 - 每个扩展 profile/install 持久化独立 External Host Identity。同一 Host 重连只替换自己的 Activation；同一 App 的其他 Host 和其他 App Instance 可并行。
 - ExternalHost Stream 由 `appHint + externalHostIdentity` 形成 identifying dimensions。
@@ -78,4 +80,5 @@ Instance Desired State 使用单调 SpecRevision；Activation 报告已经应用
 - [ADR-026](./026-collector-registry-deactivation.md) — 现有启用意图与 Hub 准入
 - [ADR-032](./032-device-as-observed-subject.md) — 无头 Hub 与 VRChat 原始设计，本 ADR 修订其进程边界
 - [ADR-037](./037-collection-project-boundaries.md) — Collection 可执行与程序集边界
+- [ADR-049](./049-named-optional-collectors-outside-host-composition.md) — 具名可选 Collector 不进入 Host composition，修订本 ADR §5 的宿主侧实现
 - [系统架构与协议](../architecture/system-overview.md) — 当前 JSON 契约地图、Transport Binding 与校验链

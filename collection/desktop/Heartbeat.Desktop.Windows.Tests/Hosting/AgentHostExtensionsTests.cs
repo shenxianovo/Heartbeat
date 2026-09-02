@@ -1,5 +1,4 @@
 using Heartbeat.Desktop.Windows.Configuration;
-using Heartbeat.Desktop.Windows.Collectors;
 using Heartbeat.Desktop.Windows.Hosting;
 using Heartbeat.Collector.System.Collection;
 using Heartbeat.Collector.System.Input;
@@ -26,8 +25,8 @@ public class AgentHostExtensionsTests : IDisposable
 {
     private readonly string _tempConfig = Path.Combine(Path.GetTempPath(), $"heartbeat-cfg-{Guid.NewGuid()}.json");
     private readonly string _tempRuntime = Path.Combine(Path.GetTempPath(), $"heartbeat-runtime-{Guid.NewGuid():N}");
-    // Browser Runtime 的 state 落在 ConfigManager 的 DataDirectory 里；配置文件直接放在临时目录根下
-    // 会让 state 在所有测试与历史运行之间共享，所以需要单独一个隔离的数据目录。
+    // 宿主的本机数据树跟着 ConfigManager 的 DataDirectory 走；配置文件直接放在临时目录根下
+    // 会让状态在所有测试与历史运行之间共享，所以需要单独一个隔离的数据目录。
     private readonly string _tempData = Path.Combine(Path.GetTempPath(), $"heartbeat-data-{Guid.NewGuid():N}");
 
     public void Dispose()
@@ -48,8 +47,10 @@ public class AgentHostExtensionsTests : IDisposable
         using var provider = services.BuildServiceProvider();
         var hosted = provider.GetServices<IHostedService>().ToList();
 
-        Assert.IsType<WindowsCollectorAppHintResolver>(
-            provider.GetRequiredService<ICollectorAppHintResolver>());
+        // 平台 head 不再注入任何具体 Collector 的 AppHint 知识（Chrome/Edge 进程名随 Browser 一起走了）。
+        Assert.Equal(
+            CollectorAppHintResolutionKind.Unknown,
+            provider.GetRequiredService<ICollectorAppHintResolver>().Resolve("anything").Kind);
 
         var monitorIndex = hosted.FindIndex(h => h is SystemCollectorHostedService);
         var inputIndex = hosted.FindIndex(h => h is Heartbeat.Desktop.Windows.Services.InputEventCollector);
@@ -92,30 +93,35 @@ public class AgentHostExtensionsTests : IDisposable
     }
 
     /// <summary>
-    /// Browser 是可选的 ExternalHost Collector，独立发布：Desktop 产物里根本没有它的 Package。
-    /// 组合根必须照常建立，Browser 只报未安装（ADR-048）。
+    /// 宿主组合里只允许出现通用概念和唯一写死的 System BuiltIn：
+    /// 具名可选 Collector（Browser 之类）不进入 composition，缺席就是缺席（ADR-049）。
     /// </summary>
     [Fact]
-    public void Composition_BuildsWithoutTheOptionalBrowserCollectorPackage()
+    public void Composition_KnowsNoNamedOptionalCollector()
     {
         Directory.CreateDirectory(_tempData);
         var services = new ServiceCollection();
-        services.AddHeartbeatAgent(
-            new ConfigManager(Path.Combine(_tempData, "config.json")),
-            // Desktop 不打包 Browser：显式指向一个不存在的侧载落点，钉住"可选 Collector 缺席"。
-            browserPackageSourceDirectory: Path.Combine(_tempData, "CollectorPackages", "Browser"));
+        services.AddHeartbeatAgent(new ConfigManager(Path.Combine(_tempData, "config.json")));
         services.AddSingleton<IDeviceIdentity>(new FakeDeviceIdentity());
         services.AddSingleton(new SystemCollectorBindingOptions(_tempRuntime));
 
+        Assert.DoesNotContain(
+            services,
+            descriptor => NamesANamedOptionalCollector(descriptor.ServiceType)
+                || NamesANamedOptionalCollector(descriptor.ImplementationType));
+
         using var provider = services.BuildServiceProvider();
 
-        var browser = provider.GetRequiredService<BrowserCollectorRuntime>();
-        Assert.False(browser.Current.IsInstalled);
-        Assert.Equal(BrowserCollectorRuntimeStatus.Waiting, browser.Current.RuntimeStatus);
-        Assert.Null(browser.Current.SideloadDirectory);
-        Assert.IsType<BrowserExternalHostProtocolHandler>(
-            provider.GetRequiredService<IExternalHostProtocolHttpHandler>());
+        // ExternalHost 的 loopback 传输留着，但默认 handler 谁都不认识。
+        Assert.Equal(
+            "NullExternalHostProtocolHttpHandler",
+            provider.GetRequiredService<IExternalHostProtocolHttpHandler>().GetType().Name);
     }
+
+    private static bool NamesANamedOptionalCollector(Type? type) =>
+        type?.FullName is { } name && (
+            name.Contains("Browser", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("VRChat", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// System 是 BuiltIn Delivery：它必须随 Desktop 一起出现在产物里，缺失即为损坏安装。

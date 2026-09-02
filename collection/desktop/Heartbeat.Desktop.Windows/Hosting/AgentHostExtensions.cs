@@ -1,5 +1,4 @@
 using Heartbeat.Desktop.Windows.Configuration;
-using Heartbeat.Desktop.Windows.Collectors;
 using Heartbeat.Desktop.Windows.Services;
 using Heartbeat.Desktop.Windows.Utils;
 using Heartbeat.Core;
@@ -33,11 +32,13 @@ namespace Heartbeat.Desktop.Windows.Hosting
         public static IServiceCollection AddHeartbeatAgent(
             this IServiceCollection services,
             ConfigManager? configManager = null,
-            SingleInstanceGuard? guard = null,
-            string? browserPackageSourceDirectory = null)
+            SingleInstanceGuard? guard = null)
         {
-            browserPackageSourceDirectory ??=
-                Path.Combine(AppContext.BaseDirectory, "CollectorPackages", "Browser");
+            // 宿主的本机数据全部落在同一个数据目录下。调用方注入 ConfigManager 即可把整棵树重定向到
+            // 隔离目录，打包产物的启动 smoke 靠这一点做到不读写真实用户数据。
+            var dataDirectory = configManager?.DataDirectory ?? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Heartbeat");
             // 纯 .NET hub 运行时；无头 host 可独立调用同一入口，不会带入 desktop/UI。
             services.AddHeartbeatHub();
 
@@ -60,13 +61,11 @@ namespace Heartbeat.Desktop.Windows.Hosting
             services.AddSingleton<HubConfigurationAdapter>();
             services.AddSingleton<IHubConfiguration>(sp => sp.GetRequiredService<HubConfigurationAdapter>());
             services.AddSingleton<ICollectorRegistry>(sp => sp.GetRequiredService<HubConfigurationAdapter>());
-            services.AddSingleton<ICollectorAppHintResolver, WindowsCollectorAppHintResolver>();
 
             // 本地缓存（JsonFileCache 直接充当 ICache<T> 生产 adapter，ADR-020）
             services.AddSingleton<ICache<InputEventItem>>(sp =>
             {
-                var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                var cachePath = Path.Combine(localAppData, "Heartbeat", "input-events-cache.json");
+                var cachePath = Path.Combine(dataDirectory, "input-events-cache.json");
                 return new JsonFileCache<InputEventItem>(
                     cachePath,
                     // Replay the current v2 retry file verbatim while the durable projection owns
@@ -78,8 +77,7 @@ namespace Heartbeat.Desktop.Windows.Hosting
 
             services.AddSingleton<ICache<ActivitySegmentItem>>(sp =>
             {
-                var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                var cachePath = Path.Combine(localAppData, "Heartbeat", "segments-cache.json");
+                var cachePath = Path.Combine(dataDirectory, "segments-cache.json");
                 return new JsonFileCache<ActivitySegmentItem>(
                     cachePath,
                     maxItems: 20_000,
@@ -109,10 +107,7 @@ namespace Heartbeat.Desktop.Windows.Hosting
             services.AddSingleton(sp => new InputEventBuffer(
                 sp.GetRequiredService<IClock>(),
                 publisher: sp.GetRequiredService<ISystemInputEventPublisher>(),
-                durableProjectionPath: Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "Heartbeat",
-                    "input-event-facts-buffer.json"),
+                durableProjectionPath: Path.Combine(dataDirectory, "input-event-facts-buffer.json"),
                 statusRegistry: sp.GetRequiredService<UploadStatusRegistry>()));
             services.AddSingleton<IUploadSource<InputEventItem>>(sp => sp.GetRequiredService<InputEventBuffer>());
             // 上传流（ADR-020/022）：绑定源 + 出网 + 缓存；行为差异只剩注入的 compact 策略
@@ -125,10 +120,8 @@ namespace Heartbeat.Desktop.Windows.Hosting
                     batch => api.UploadSegmentsAsync(new SegmentUploadRequest { Segments = batch }),
                     sp.GetRequiredService<ICache<ActivitySegmentItem>>(),
                     SnapshotCompaction.KeepLatest,
-                    new JsonDeadLetterStore<ActivitySegmentItem>(Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                        "Heartbeat",
-                        "segments-dead-letter.json")),
+                    new JsonDeadLetterStore<ActivitySegmentItem>(
+                        Path.Combine(dataDirectory, "segments-dead-letter.json")),
                     sp.GetRequiredService<UploadStatusRegistry>(),
                     sp.GetRequiredService<ClientCompatibilityStatus>());
             });
@@ -140,10 +133,8 @@ namespace Heartbeat.Desktop.Windows.Hosting
                     sp.GetRequiredService<IUploadSource<InputEventItem>>(),
                     batch => api.UploadInputEventsAsync(new InputEventUploadRequest { Events = batch }),
                     sp.GetRequiredService<ICache<InputEventItem>>(),
-                    deadLetterStore: new JsonDeadLetterStore<InputEventItem>(Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                        "Heartbeat",
-                        "input-events-dead-letter.json")),
+                    deadLetterStore: new JsonDeadLetterStore<InputEventItem>(
+                        Path.Combine(dataDirectory, "input-events-dead-letter.json")),
                     statusRegistry: sp.GetRequiredService<UploadStatusRegistry>(),
                     compatibilityStatus: sp.GetRequiredService<ClientCompatibilityStatus>());
             });
@@ -157,18 +148,10 @@ namespace Heartbeat.Desktop.Windows.Hosting
             // 注意：IDisposable 的托管服务只通过 AddHostedService 注册一次。此前 AppMonitorService /
             // InputEventCollector 另有 AddSingleton 注册，容器把同一实例捕获进 disposables 两次，
             // host.Dispose() 双重 Dispose → 对已释放 CTS 调 Cancel 抛异常 → 退出流程中断、端口不释放。
-            // Browser 是独立发布的可选 Collector：Desktop 不打包它，这个目录默认不存在，只作为手工
-            // 侧载落点。目录缺失或内容损坏都只让 Browser 报未安装/Degraded，不影响 host 启动（ADR-048）。
-            services.AddBrowserExternalHostBinding(new BrowserExternalHostBindingOptions(
-                browserPackageSourceDirectory)
-            {
-                DataDirectory = configManager?.DataDirectory ?? Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Heartbeat")
-            });
-            services.AddSystemCollectorInProcessBinding(new SystemCollectorBindingOptions(
-                Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "Heartbeat")));
+            // System 是唯一写死进宿主的 BuiltIn Collector；其余 Collector 是独立发布单元，不进入
+            // 宿主组合（ADR-049）。
+            services.AddSystemCollectorInProcessBinding(
+                new SystemCollectorBindingOptions(dataDirectory));
             // Input hook starts only after the system Activation has opened its Event Stream and
             // stops before that Activation drains.
             services.AddHostedService<InputEventCollector>();

@@ -6,8 +6,15 @@ Status: needs-triage
 
 Collector Runtime、Protocol 与三类 Execution Driver 已经存在。第一条 tracer 已把 VRChat 移出 Headless
 image，并建立 Desktop/Headless 共享的 Installation module；Backend workflow 也已停止顺带部署 Headless。
-当前仍缺 Headless 独立 deploy、服务器 Package provision、Collector tag/Web 发布以及 Browser 独立交付，
-因此各发布单元尚未全部形成可部署闭环。
+宿主组合已按 [ADR-049](../../docs/adr/049-named-optional-collectors-outside-host-composition.md) 收敛：Desktop
+与通用 Hub Runtime 只组合通用 seam 加 System BuiltIn，不认识任何具名可选 Collector。
+当前仍缺 Headless 独立 deploy、服务器 Package provision、Collector tag/Web 发布，以及通用 ExternalHost 的
+安装/连接能力，因此各发布单元尚未全部形成可部署闭环。
+
+Browser 现在的状态是"有独立发布单元、无宿主接入能力"：它不进 Desktop 构建与产物，扩展代码、Package
+构建 target 与 npm 测试留在 `collection/collectors/Heartbeat.Collector.Browser` 并由 `collector-contracts.yml`
+验证；但宿主里没有 Browser runtime、protocol handler、安装目录或 UI 条目，`/v1/collector-protocol/browser`
+也不存在，因此手工侧载不再能让它连上宿主。通用 ExternalHost 安装/连接是后续 issue。
 
 2026-09-01 以前的 Registry/Approve/Switch 实现已撤回。旧 issues 01–07 均是历史规格，除非按
 [ADR-048](../../docs/adr/048-shared-collector-host-runtime-and-independent-release-units.md) 重写，否则不能作为
@@ -28,6 +35,8 @@ Agent 实现指令。
 
 - Artifact Delivery 与 Execution Driver 正交；Browser 仍是 ExternalHost，VRChat 是 ManagedProcess，System
   是 InProcess。
+- 具名可选 Collector 不进入 Host composition（ADR-049）：宿主里唯一可以按名字出现的 Collector 是 System
+  BuiltIn，其余 Collector 只通过通用 seam 接入，宿主 UI、主题与 startup smoke 同受此边界约束。
 - 统一 Protocol 指语义一致，不要求 InProcess、stdio 与 loopback HTTP 使用相同 transport。
 - Shared Runtime 拥有 Installation、Instance、Activation、Driver、Protocol 与 Runtime State。
 - Desktop/Headless 保留各自的 Subject 投影、上传、管理入口、UI、平台能力与部署配置 adapter。
@@ -76,6 +85,10 @@ Browser 独立发布与真实 smoke。
 - [x] System 仍只随 Desktop Release（publish target + Desktop Release 产物断言，issue 08）。
 - [x] 宿主启动不依赖可选 Collector：Desktop 构建与产物不含 Browser，Headless 可零 Instance 启动且单
       Instance 失败被隔离（issue 08）。
+- [x] 宿主不认识具名可选 Collector：Desktop 与通用 Hub Runtime 只组合通用 seam + System BuiltIn，
+      Browser 专属 runtime / protocol handler / 安装目录 / UI 条目全部删除（issue 09）。
+- [ ] 通用 ExternalHost 安装/连接能力存在，Browser 由此重新获得宿主接入路径（issue 09 已知残留）。
+- [ ] 宿主 segment 投影由 Package 声明驱动，不再硬编码具名 schema id 列表（issue 09 已知残留）。
 - [ ] 三类 Driver 继续通过统一 Protocol conformance。
 - [ ] 真实 Desktop Browser 与 Headless VRChat smoke 有证据。
 
@@ -94,3 +107,17 @@ Instance 失败隔离在管理面快照里。
 **Web Delivery 一步都没做**：Browser 与 VRChat 仍没有独立 tag workflow，没有可下载的 Package，也没有 Web
 Package source adapter。所以 Browser 现在的唯一安装方式是手工侧载——这不是终态，是「解耦已完成、发布尚未
 开始」的中间状态，对应 issue 02/07 待重写。
+
+### 2026-09-02 — issue 09 落地：宿主不再认识具名可选 Collector
+
+上一条对 issue 08 的判断需要更正：那一轮只做到「Browser 缺席时降级」，宿主仍持有 Browser runtime、
+protocol handler、安装目录、平台 AppHint 知识与 UI 卡片，所以「解耦已完成」当时并不成立。
+[issue 09](issues/09-named-optional-collectors-out-of-host-composition.md) 才把它做完：Desktop 与通用 Hub
+Runtime 只组合通用 seam（Collector Package Installation / Runtime / Instance / Activation / Driver /
+Protocol）加 System BuiltIn，决策记在
+[ADR-049](../../docs/adr/049-named-optional-collectors-outside-host-composition.md)。
+
+代价是 Browser 在本阶段没有宿主接入能力：`/v1/collector-protocol/browser` 不再存在，手工侧载也连不上，
+Browser 从 Desktop UI 消失，`heartbeat.browser.active-tab-segment` 不再被宿主投影识别。Browser 的独立
+Package 构建与契约验证保留。通用 ExternalHost 安装/连接、以及声明驱动的 segment 投影是 issue 09 记录的
+已知残留。

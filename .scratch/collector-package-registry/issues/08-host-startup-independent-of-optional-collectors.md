@@ -2,6 +2,18 @@
 
 Status: ready-for-human
 
+> 2026-09-02 更正：本 issue 只做到「Browser 缺席时降级」，不是宿主与 Browser 解耦。那一轮之后宿主仍然
+> 认识 Browser——Hub 里有 Browser 专属 `CollectorRuntime` 与 protocol handler，Desktop 组合根有
+> `browserPackageSourceDirectory` 与 `AddBrowserExternalHostBinding`，两个平台各有 Chrome/Edge 的 AppHint
+> 知识，UI 里有 Browser 卡片，startup smoke 还要解析 Browser 状态。下文按当时实现原样保留为历史记录。
+>
+> 宿主解耦由 [issue 09](./09-named-optional-collectors-out-of-host-composition.md) 完成（决策见
+> [ADR-049](../../../docs/adr/049-named-optional-collectors-outside-host-composition.md)），它 supersede 本
+> issue。以下四项验收在当前代码里已不再适用，因为它们描述的 Browser 专属路径整体删除了：Browser package
+> source 缺失/损坏只降级、未安装时 `hello` 返回 `package_not_installed`、UI 显示「未安装采集器包」、
+> smoke 报告里的 Browser `Degraded` 证据。本 issue 未执行的 Desktop Release 门禁由 issue 09 一并承接，
+> 本 issue 不再单独推进。
+
 Owner: Collection / Host Runtime
 
 Priority: P1 — ADR-048 的发布单元边界靠它才成立：Desktop 不该因为 Browser 而构建失败或启动失败。
@@ -62,3 +74,15 @@ Priority: P1 — ADR-048 的发布单元边界靠它才成立：Desktop 不该�
 `Composition_BuildsWithoutTheOptionalBrowserCollectorPackage` 第一次跑就被上一轮遗留的安装状态污染成
 `IsInstalled == true`。已给该测试单独一个数据目录。**同一目录下的其他用例仍在共享临时目录根**，只是它们
 不断言 Browser 状态，所以看不出来。
+
+### 2026-09-02 — 被 issue 09 supersede
+
+本 issue 的完成标准写成了「宿主与 Browser 解耦」，实际只做到「Browser 缺席时降级」：宿主仍持有 Browser
+专属 runtime、protocol handler、安装目录默认值、平台 AppHint 知识与 UI 卡片，因此「解耦」这个说法当时
+不成立。
+
+[issue 09](./09-named-optional-collectors-out-of-host-composition.md) 把宿主组合收敛到通用 seam + System
+BuiltIn，删除上述宿主特化，并按 [ADR-049](../../../docs/adr/049-named-optional-collectors-outside-host-composition.md)
+记录决策与代价。上一条注释里的污染源 `browser-package-state.json` 随 Browser runtime 一起消失；宿主本机
+数据树现在挂在可注入的数据目录上，startup smoke 默认落在临时的一次性目录。同一测试目录下其他用例是否
+仍共享临时目录根，本轮未核查。

@@ -307,7 +307,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void RebuildCollectors(DesktopStateSnapshot snapshot)
     {
-        var wanted = new List<string> { ActivitySources.System, ActivitySources.Browser };
+        var wanted = new List<string> { ActivitySources.System };
         wanted.AddRange(snapshot.Collectors.Keys
             .Where(key => !wanted.Contains(key, StringComparer.OrdinalIgnoreCase))
             .OrderBy(key => key, StringComparer.OrdinalIgnoreCase));
@@ -332,10 +332,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     isSystem ? null : _desktopState.SetCollectorEnabled,
                     isSystem ? _desktopState.SetSystemCapabilityEnabled : null,
                     isSystem ? _desktopState.RecoverSystemCapability : null,
-                    isSystem ? _desktopState.RevealSystemCapabilityApplication : null,
-                    source == ActivitySources.Browser ? _desktopState.OpenBrowserCollectorSetup : null,
-                    source == ActivitySources.Browser ? _window.CopyTextToClipboard : null,
-                    source == ActivitySources.Browser ? _desktopState.SetBrowserCollectorAppEnabled : null);
+                    isSystem ? _desktopState.RevealSystemCapabilityApplication : null);
                 Collectors.Insert(Math.Min(index, Collectors.Count), item);
             }
 
@@ -343,9 +340,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 item.SetSystemCapabilities(snapshot.Capabilities);
             }
-            if (source == ActivitySources.Browser && snapshot.BrowserCollector is { } browserRuntime)
-                item.UpdateBrowserRuntime(browserRuntime);
-            else if (snapshot.Collectors.TryGetValue(source, out var registration))
+            if (snapshot.Collectors.TryGetValue(source, out var registration))
                 item.SetEnabledSilently(registration.Enabled);
         }
 

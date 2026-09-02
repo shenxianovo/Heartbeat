@@ -5,7 +5,7 @@ Desktop 与 Headless 共用的纯 .NET Collector Runtime。它负责 Package、I
 
 ## 目录
 
-- `Hosting/HubServiceCollectionExtensions.cs`：`AddHeartbeatHub` 与 Browser binding 组合入口。
+- `Hosting/HubServiceCollectionExtensions.cs`：`AddHeartbeatHub` 组合入口，只注册通用运行时。
 - `Collectors/Packaging/`：Package、manifest、schema 与 artifact 验证。
 - `Collectors/Runtime/`、`Collectors/Protocol/`：运行状态、Execution Driver 与 Hub 侧协议。
 - `Segments/`：当前 Segment sink；Fact projector 位于对应 Runtime 模块。

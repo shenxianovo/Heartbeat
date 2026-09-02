@@ -44,8 +44,7 @@ public sealed class WindowsDesktopRuntime : IWindowController, IAsyncDisposable
             host.Services.GetRequiredService<ICollectionStatus>(),
             host.Services.GetRequiredService<IAutoStartService>(),
             host.Services.GetRequiredService<IClientCompatibilityStatus>(),
-            host.Services.GetRequiredService<IUploadStatus>(),
-            host.Services.GetRequiredService<BrowserCollectorRuntime>());
+            host.Services.GetRequiredService<IUploadStatus>());
         var channel = RuntimeInformation.ProcessArchitecture == Architecture.Arm64
             ? "win-arm64"
             : "win-x64";

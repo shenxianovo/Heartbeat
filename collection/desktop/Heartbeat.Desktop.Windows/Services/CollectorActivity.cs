@@ -12,7 +12,7 @@ namespace Heartbeat.Desktop.Windows.Services
         /// <summary>窗口 = 此系数 × flushPeriodMs。3 容"一次丢失 flush + 一次 backoff 重试"。</summary>
         public const int WindowMultiplier = 3;
 
-        /// <summary>采集器未报 flushPeriodMs 时的回落窗口（browser flush=30s 时 3× 即此值）。</summary>
+        /// <summary>采集器未报 flushPeriodMs 时的回落窗口（flush=30s 时 3× 即此值）。</summary>
         public static readonly TimeSpan DefaultWindow = TimeSpan.FromSeconds(90);
 
         public static TimeSpan Window(CollectorEntry? entry)

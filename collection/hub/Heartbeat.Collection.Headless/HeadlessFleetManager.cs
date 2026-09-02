@@ -15,8 +15,9 @@ public sealed record HeadlessSubjectStatusResponse(
     string SubjectName,
     string SubjectKind,
     Guid? CollectorInstanceId,
-    string PackageVersion,
-    string PackageContentHash,
+    // Instance 没建起来时这两项是"不存在"，不是"空字符串"。
+    string? PackageVersion,
+    string? PackageContentHash,
     string Phase,
     CollectorAuthorizationChallenge? Authorization,
     HeadlessCurrentSubjectActivity? CurrentActivity,
@@ -38,16 +39,33 @@ public sealed class HeadlessFleetManager(
     private readonly object _gate = new();
     private readonly List<Entry> _entries = [];
     private readonly CancellationTokenSource _activationCancellation = new();
+    private readonly TaskCompletionSource _initialized =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly List<IDisposable> _ownedDisposables = [];
     private CollectorRuntime? _runtime;
     private HeadlessInstancePipelines? _pipelines;
 
+    /// <summary>
+    /// Initialize 走完（管理面快照可读、该激活的都已排上）后完成。
+    /// 测试靠它取代"睡一小会儿再看"，Initialize 抛错时它带着同一个异常完成。
+    /// </summary>
+    public Task Initialized => _initialized.Task;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        Initialize();
-        // 只激活真正建起 Instance 的配置项；装不上的那些已经以 Failed 状态留在队列里。
-        foreach (var entry in _entries.Where(entry => entry.IsReady))
-            entry.ActivationTask = ActivateAsync(entry, _activationCancellation.Token);
+        try
+        {
+            Initialize();
+            // 只激活真正建起 Instance 的配置项；装不上的那些已经以 Failed 状态留在队列里。
+            foreach (var entry in _entries.Where(entry => entry.IsReady))
+                entry.ActivationTask = ActivateAsync(entry, _activationCancellation.Token);
+        }
+        catch (Exception exception)
+        {
+            _initialized.TrySetException(exception);
+            throw;
+        }
+        _initialized.TrySetResult();
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
             stoppingToken,
@@ -79,8 +97,8 @@ public sealed class HeadlessFleetManager(
                         entry.Options.SubjectName,
                         entry.Options.SubjectKind.ToString(),
                         null,
-                        string.Empty,
-                        string.Empty,
+                        null,
+                        null,
                         "Failed",
                         null,
                         null,
@@ -98,7 +116,10 @@ public sealed class HeadlessFleetManager(
                     instance?.PackageContentHash ?? entry.Package!.PackageContentHash,
                     runtime?.Phase.ToString() ?? "Starting",
                     runtime?.AuthorizationChallenge,
-                    _pipelines?.CurrentActivity(collectorInstanceId));
+                    _pipelines?.CurrentActivity(collectorInstanceId),
+                    // Instance 建起来了但 Activation 失败时，原因归 CollectorRuntime 所有，
+                    // 管理面直接透出它的结构化 Failure，不再自己编一句话。
+                    DescribeFailure(runtime?.Failure));
             }).ToArray();
         }
     }
@@ -170,12 +191,27 @@ public sealed class HeadlessFleetManager(
         _pipelines = pipelines;
         var registeredPipelineIds = new HashSet<Guid>();
 
+        // 恢复既有 mapping 也要逐 Instance 隔离：一条恢复失败只废掉它自己，
+        // 不能在 Initialize 里抛出去把整个 Hub 拖下水（ADR-048）。
+        var restoreFailures = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var configured in options.Instances)
         {
             if (!mappings.TryGetValue(configured.InstanceKey, out var instanceId))
                 continue;
-            pipelines.Add(instanceId, configured);
-            registeredPipelineIds.Add(instanceId);
+            try
+            {
+                pipelines.Add(instanceId, configured);
+                registeredPipelineIds.Add(instanceId);
+            }
+            catch (Exception exception) when (exception
+                is InvalidOperationException
+                or ArgumentException
+                or JsonException
+                or IOException
+                or UnauthorizedAccessException)
+            {
+                restoreFailures[configured.InstanceKey] = exception.Message;
+            }
         }
 
         _runtime = CollectorRuntime.Open(
@@ -191,6 +227,11 @@ public sealed class HeadlessFleetManager(
             Path.Combine(options.DataDirectory, "collector-packages"));
         foreach (var configured in options.Instances)
         {
+            if (restoreFailures.TryGetValue(configured.InstanceKey, out var restoreFailure))
+            {
+                _entries.Add(Entry.Failed(configured, restoreFailure));
+                continue;
+            }
             try
             {
                 _entries.Add(PrepareEntry(
@@ -287,6 +328,13 @@ public sealed class HeadlessFleetManager(
             // CollectorRuntime owns the structured failure state exposed by Snapshot().
         }
     }
+
+    private static string? DescribeFailure(CollectorRuntimeFailure? failure) =>
+        failure is null
+            ? null
+            : failure.ProcessExitCode is { } exitCode
+                ? $"{failure.Code}: {failure.Message} (exit code {exitCode})"
+                : $"{failure.Code}: {failure.Message}";
 
     private CollectorRuntimeSnapshot? RuntimeState(Guid collectorInstanceId)
     {

@@ -5,8 +5,6 @@ using Heartbeat.Collection.Hub.Upload;
 using Heartbeat.Collection.Hub.Auth;
 using Heartbeat.Collection.Hub.Collectors;
 using Heartbeat.Collection.Hub.Collectors.Protocol;
-using Heartbeat.Collection.Hub.Collectors.Packages;
-using Heartbeat.Collection.Hub.Collectors.Runtime;
 using Heartbeat.Collection.Hub.Ingest;
 using Heartbeat.Collection.Hub.Http;
 using Heartbeat.Collection.Hub.Runtime;
@@ -20,6 +18,9 @@ namespace Heartbeat.Collection.Hub.Hosting;
 /// <summary>
 /// 可被桌面 Agent 或无头 host 复用的 hub 运行时组合入口。这里只注册进程内运行时状态；
 /// HTTP transport、凭证、缓存路径与托管 worker 由各 composition root 提供。
+///
+/// 组合只认通用领域概念：具名可选 Collector 不进入宿主组合，宿主不带它们的 binding、状态或
+/// 安装目录知识（ADR-049）。
 /// </summary>
 public static class HubServiceCollectionExtensions
 {
@@ -51,34 +52,6 @@ public static class HubServiceCollectionExtensions
         services.AddHostedService<UploadWorker>();
         services.AddHostedService<StatusUploadWorker>();
         services.AddHostedService<ExternalHostProtocolWorker>();
-        return services;
-    }
-
-    /// <summary>
-    /// 注册可选的 Browser ExternalHost binding。Browser 独立发布，宿主里"没有 Package source"、
-    /// "source 目录不存在"、"没有 Installation"都是合法状态：binding 与 Runtime 状态照常建立，
-    /// 装不上只体现为未安装或 Degraded，不会打断宿主组合（ADR-048）。
-    /// </summary>
-    public static IServiceCollection AddBrowserExternalHostBinding(
-        this IServiceCollection services,
-        BrowserExternalHostBindingOptions options)
-    {
-        ArgumentNullException.ThrowIfNull(options);
-        services.AddSingleton(options);
-        services.AddSingleton(provider =>
-        {
-            var runtime = new BrowserCollectorRuntime(
-                provider.GetRequiredService<CollectorRuntime>(),
-                provider.GetRequiredService<IDeviceIdentity>(),
-                options);
-            // 只有 host 真的随身带了一份 source 才会装；这一步不允许抛。
-            runtime.EnsureBundledPackageInstalled();
-            return runtime;
-        });
-        services.AddSingleton<BrowserExternalHostProtocolHandler>();
-        services.Replace(ServiceDescriptor.Singleton<IExternalHostProtocolHttpHandler>(provider =>
-            provider.GetRequiredService<BrowserExternalHostProtocolHandler>()));
-        services.AddHostedService<ExternalHostLeaseMonitor>();
         return services;
     }
 }

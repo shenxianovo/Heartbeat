@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Heartbeat.Desktop.Mac.Configuration;
 using Heartbeat.Desktop.Mac.Hosting;
 using Heartbeat.Desktop.UI.Diagnostics;
 using Heartbeat.Desktop.UI.Logging;
@@ -18,11 +19,11 @@ public static class Program
     {
         VelopackApp.Build().Run();
 
-        var logFeed = new RingBufferSink(200);
-        ConfigureLogging(logFeed);
-        RegisterUnhandledExceptionLogging();
-
         var smokeRequested = DesktopStartupSmoke.TryGetRequest(args, out var smoke);
+        var logFeed = new RingBufferSink(200);
+        // smoke 连日志都写进隔离目录，真实用户数据目录一个字节都不碰。
+        ConfigureLogging(logFeed, smokeRequested ? smoke.DataDirectory : null);
+        RegisterUnhandledExceptionLogging();
         using var guard = new MacSingleInstanceGuard();
         if (!guard.IsFirstInstance)
         {
@@ -37,11 +38,12 @@ public static class Program
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSerilog();
         builder.Services.AddSingleton<IMacLoginStart, LaunchAgentLoginStart>();
-        builder.Services.AddHeartbeatMacAgent();
+        builder.Services.AddHeartbeatMacAgent(
+            smokeRequested ? new MacAgentPaths(smoke.DataDirectory) : null);
         builder.Services.AddSingleton<MacDesktopState>();
         using var host = builder.Build();
 
-        // 发布产物的启动 smoke：只起停 host，不拉起 UI（ADR-048 不变量 4 的门禁）。
+        // 发布产物的启动 smoke：只起停 host，不拉起 UI，也不认识任何具名可选 Collector。
         if (smokeRequested)
         {
             Environment.ExitCode = DesktopStartupSmoke.Run(host, smoke);
@@ -70,11 +72,13 @@ public static class Program
     public static AppBuilder BuildAvaloniaApp() =>
         AppBuilder.Configure<App>().UsePlatformDetect();
 
-    private static void ConfigureLogging(RingBufferSink sink)
+    private static void ConfigureLogging(RingBufferSink sink, string? dataDirectory = null)
     {
         var logDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Heartbeat", "logs");
+            dataDirectory ?? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Heartbeat"),
+            "logs");
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
             .MinimumLevel.Override("System.Net.Http", Serilog.Events.LogEventLevel.Warning)

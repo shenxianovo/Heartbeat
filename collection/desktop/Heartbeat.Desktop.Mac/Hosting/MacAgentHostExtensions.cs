@@ -1,4 +1,3 @@
-using Heartbeat.Desktop.Mac.Collectors;
 using Heartbeat.Desktop.Mac.Configuration;
 using Heartbeat.Desktop.Mac.Identity;
 using Heartbeat.Desktop.Mac.Icons;
@@ -30,19 +29,17 @@ public static class MacAgentHostExtensions
 {
     public static IServiceCollection AddHeartbeatMacAgent(
         this IServiceCollection services,
-        MacAgentPaths? paths = null,
-        string? browserPackageSourceDirectory = null)
+        MacAgentPaths? paths = null)
     {
+        // 宿主的本机数据全部落在 paths.DataDirectory 下。调用方传入隔离 paths 即可让整棵树离开真实
+        // 用户目录，打包产物的启动 smoke 靠这一点做到不读写真实用户数据。
         paths ??= MacAgentPaths.Default;
-        browserPackageSourceDirectory ??=
-            Path.Combine(AppContext.BaseDirectory, "CollectorPackages", "Browser");
         services.AddSingleton(paths);
         services.AddHeartbeatHub();
 
         services.TryAddSingleton<MacConfigManager>();
         services.TryAddSingleton<IMacCommandRunner, MacCommandRunner>();
         services.TryAddSingleton<IMacApplicationLocator, MacApplicationLocator>();
-        services.TryAddSingleton<IMacBrowserSetupLauncher, MacBrowserSetupLauncher>();
         services.TryAddSingleton<IMacPlatformUuid, IoregPlatformUuid>();
         services.TryAddSingleton(sp => new MacMachineIdentity(sp.GetRequiredService<IMacPlatformUuid>()));
         services.TryAddSingleton<IMacWorkspaceNative, CocoaWorkspaceNative>();
@@ -62,7 +59,6 @@ public static class MacAgentHostExtensions
             new MacHubConfiguration(sp.GetRequiredService<MacConfigManager>()).Initialize());
         services.TryAddSingleton<IHubConfiguration>(sp => sp.GetRequiredService<MacHubConfiguration>());
         services.TryAddSingleton<ICollectorRegistry>(sp => sp.GetRequiredService<MacHubConfiguration>());
-        services.Replace(ServiceDescriptor.Singleton<ICollectorAppHintResolver, MacCollectorAppHintResolver>());
 
         services.TryAddSingleton<MacDesktopSettings>(sp =>
             new MacDesktopSettings(sp.GetRequiredService<MacConfigManager>()).Initialize());
@@ -131,13 +127,8 @@ public static class MacAgentHostExtensions
 
         // AddHeartbeatHub registers workers first. The system Binding stops after input monitoring
         // and before UploadWorker so no Event arrives after drain and its terminal Segment is uploaded.
-        // Browser 是独立发布的可选 Collector：Desktop 不打包它，这个目录默认不存在，只作为手工侧载
-        // 落点。目录缺失或内容损坏都只让 Browser 报未安装/Degraded，不影响 host 启动（ADR-048）。
-        services.AddBrowserExternalHostBinding(new BrowserExternalHostBindingOptions(
-            browserPackageSourceDirectory)
-        {
-            DataDirectory = paths.DataDirectory
-        });
+        // System 是唯一写死进宿主的 BuiltIn Collector；其余 Collector 是独立发布单元，不进入宿主
+        // 组合（ADR-049）。
         services.AddSystemCollectorInProcessBinding(new SystemCollectorBindingOptions(
             paths.DataDirectory));
         // Input monitoring starts after the system Activation opens its Event Stream and stops

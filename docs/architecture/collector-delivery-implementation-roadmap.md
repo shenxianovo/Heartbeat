@@ -2,7 +2,9 @@
 
 本文记录 [ADR-048](../adr/048-shared-collector-host-runtime-and-independent-release-units.md) 的目标拓扑和
 实现顺序。它取代已经撤回的 Registry 候选批准/LKG 切换路线；可靠性地基仍由 ADR-040/046 与现有
-Collector Protocol conformance tests 承担。
+Collector Protocol conformance tests 承担。宿主组合边界以
+[ADR-049](../adr/049-named-optional-collectors-outside-host-composition.md) 为准：具名可选 Collector 不进入
+Host composition，宿主只组合通用 seam 加上 System BuiltIn。
 
 ## 目标
 
@@ -71,7 +73,7 @@ flowchart TB
 
 ### 宿主 adapter 保留
 
-- Desktop 的平台观察、输入 hook、图标、UI、Machine identity 和浏览器 loopback；
+- Desktop 的平台观察、输入 hook、图标、UI、Machine identity 和通用 ExternalHost loopback 监听；
 - Headless 的多 Subject 配置、owner-only management HTTP 与 OIDC；
 - Desktop 的共享 device 上传流与 Headless 的 per-Instance 上传流；
 - 数据路径、部署配置和 Secret 持久化选择。
@@ -89,6 +91,10 @@ flowchart TB
 | 后续 Collector | 独立 tag 或 BuiltIn | 按 Package 决定 | 按 Artifact Descriptor | Desktop/Headless | 只执行所选 Driver 真正拥有的动作 |
 
 统一 Protocol 是语义统一，不是 transport 统一。三类 Driver 必须继续通过相同 conformance vectors。
+
+上表是目标态。Browser 一行的"默认宿主 = Desktop"当前不成立：ADR-049 之后宿主不再持有 Browser
+runtime、protocol handler、安装目录或 UI 条目，通用 ExternalHost 的安装与连接能力尚未实现，因此 Desktop
+没有任何 Browser 接入路径。
 
 ## 第一条小功能：外置本地 VRChat Package
 
@@ -110,6 +116,10 @@ flowchart LR
     Install --> Open["Open exact installed Package"]
     Open --> Runtime["Collector Host Runtime"]
 ```
+
+2026-09-02 更新：这条 tracer 的两个调用者只剩一个。Desktop 的 Browser bundled import 已随宿主解耦删除
+（ADR-049），`CollectorPackageInstallations` 目前只有 Headless 的 VRChat 启动在用；Desktop 侧的 Installation
+调用者要等通用 ExternalHost 安装入口才会回来。
 
 ### 明确不进入第一条 tracer
 
@@ -136,9 +146,11 @@ flowchart LR
   从只读挂载目录安装后再启动；后续 D 起尚未开始。
 - D 只改变部署单元，不依赖 Web Registry，可与 E 并行。
 - E 先发布 artifact，F 才让 Host 下载；普通 `main` 验证不发布用户可见 Package。
-- G 已完成宿主侧的一半：Desktop 构建与产物不再包含 Browser，Browser 缺席只降级。剩下的一半（Collector
-  tag、可下载 Package、UI 安装入口）依赖 E/F，仍未开始，所以 Browser 目前只能手工侧载。
-- G 复用已经证明的 Installation/Web seam，只增加 ExternalHost 的真实安装与用户 reload 动作。
+- G 已完成宿主侧的全部：Desktop 构建与产物不含 Browser，宿主也不再认识 Browser——Hub 与两个平台 head
+  没有它的 runtime、protocol handler、安装目录、平台知识或 UI 条目（ADR-049）。剩下的是通用 ExternalHost
+  的安装与连接能力，加上 Collector tag 与可下载 Package（依赖 E/F）；在这两者到位前 Browser 没有任何宿主
+  接入路径。
+- G 复用已经证明的 Installation/Web seam，只增加通用 ExternalHost 的真实安装与用户 reload 动作。
 
 ## 当前差距
 
@@ -146,18 +158,26 @@ flowchart LR
   Browser 的 package target，Desktop Release 也不再安装 node、构建 Browser 或跑 Collector contracts
   （Browser 的构建与契约验证留在 `collector-contracts.yml`）。System 作为 BuiltIn 由 publish target 进入
   `dotnet publish` 产物，Desktop Release 另有产物断言（System 在、Browser 不在）与打包后的 startup smoke。
-- Browser 现在只能手工侧载到宿主的 `CollectorPackages/Browser`：该目录默认不存在，缺失、损坏或
-  installation ledger 损坏都只让 Browser 报 NotInstalled/Degraded，不影响 Desktop 启动；未安装时的
-  ExternalHost `hello` 返回 `package_not_installed`，只拒绝该次连接。
+- Browser 目前是"有独立发布单元、无宿主接入能力"：它的扩展代码、Package 构建 target 与 npm 测试留在
+  `collection/collectors/Heartbeat.Collector.Browser`，并继续由 `collector-contracts.yml` 验证，但宿主里没有
+  任何 Browser 接入路径——Browser 专属 runtime 与 protocol handler 已删除，`/v1/collector-protocol/browser`
+  不再存在（默认 ExternalHost handler 一律 404），`CollectorPackages/Browser` 默认路径与 UI 卡片也随之删除。
+  手工侧载不再能让它连上宿主。通用 ExternalHost 安装/连接是后续 issue（issue 09 的已知残留之一）。
+- 宿主 segment 投影仍硬编码一张具名 schema id 表（`ActivitySegmentFactProjector.Supports`，含
+  `heartbeat.vrchat.presence-segment`）；`heartbeat.browser.active-tab-segment` 已从表中移除，Browser segment
+  因此不再被宿主识别。投影应当由 Package 声明驱动，这项未做。
 - Headless Hub 可以零 Collector Instance 启动；单个配置项的 Package 缺失、损坏或初始化失败被隔离成管理面
-  快照里的 `Failed` + `StatusDetail`，不再终止整个 Hub。
+  快照里的 `Failed` + `StatusDetail`，不再终止整个 Hub。已有 mapping 的恢复过程同样逐 Instance 隔离；
+  `StatusDetail` 来自真实 `CollectorRuntimeFailure`（code / message / exit code）；Instance 没建起来时
+  `PackageVersion` 与 `PackageContentHash` 是 `null`；`Initialized` readiness signal 让零 Instance 场景不再靠
+  固定睡眠等待。
 - Frontend 与 Backend workflow 已独立；Backend workflow 不再构建、推送或重启 Headless。
 - Headless image 已不再构建或携带 VRChat Package：Package 由 `scripts/build-vrchat-package.sh`
   单独构建到宿主目录，compose 以只读方式挂到 `/package-source`，Headless 安装后再运行。构建仍
   只能在本机手工执行，没有 Collector tag workflow，也没有可下载的发布产物。
-- 共享 `CollectorPackageInstallations` 已就位，Desktop 的 Browser bundled import 与 Headless 的
-  VRChat 启动都走它；`HeadlessFleetManager` 的 Fleet 编排和各宿主 projection/upload 装配仍未收进
-  共享 Host Runtime interface。
+- 共享 `CollectorPackageInstallations` 已就位，但当前只剩 Headless 的 VRChat 启动一个调用者：Desktop 侧的
+  Browser bundled import 已随宿主解耦删除，Desktop 要等通用 ExternalHost 安装入口才会重新成为调用者。
+  `HeadlessFleetManager` 的 Fleet 编排和各宿主 projection/upload 装配仍未收进共享 Host Runtime interface。
 - 静态 Collector Registry、Collector tag workflow 与 Web Package source 当前均不存在；旧实现已撤回，
   不能把历史 tracker 的完成状态当成可部署能力。
 - Headless 独立 deploy workflow 仍不存在；服务器也尚未 provision 外置 Package 来源，因此 Backend deploy
@@ -169,6 +189,7 @@ flowchart LR
 目标完成需要同时证明：
 
 - 四个 Host/application release unit 可独立构建和部署；
+- 宿主组合只含通用 seam 与 System BuiltIn，任何具名可选 Collector 的增删都不改宿主代码、UI 或 smoke；
 - System 只随 Desktop Release；
 - Browser/VRChat 各自 tag 能产生独立 Package；
 - 同一个共享 Installation module 被 Desktop 与 Headless 使用；

@@ -1,5 +1,4 @@
 using Heartbeat.Desktop.Mac.Configuration;
-using Heartbeat.Desktop.Mac.Collectors;
 using Heartbeat.Desktop.Mac.Hosting;
 using Heartbeat.Desktop.Mac.Identity;
 using Heartbeat.Desktop.Mac.Observations;
@@ -29,8 +28,10 @@ public sealed class MacAgentHostExtensionsTests : IDisposable
         var services = BuildServices();
         using var provider = services.BuildServiceProvider();
 
-        Assert.IsType<MacCollectorAppHintResolver>(
-            provider.GetRequiredService<ICollectorAppHintResolver>());
+        // 平台 head 不再注入任何具体 Collector 的 AppHint 知识（Chrome/Edge 进程名随 Browser 一起走了）。
+        Assert.Equal(
+            CollectorAppHintResolutionKind.Unknown,
+            provider.GetRequiredService<ICollectorAppHintResolver>().Resolve("anything").Kind);
         Assert.IsType<MacDesktopObservationSource>(
             provider.GetRequiredService<IDesktopObservationSource>());
 
@@ -87,22 +88,23 @@ public sealed class MacAgentHostExtensionsTests : IDisposable
     }
 
     /// <summary>
-    /// Browser 是可选的 ExternalHost Collector，独立发布：Desktop 产物里根本没有它的 Package。
-    /// 整个 host 组合必须照常建立并起停，Browser 只报未安装（ADR-048）。
+    /// 宿主组合里只允许出现通用概念和唯一写死的 System BuiltIn：
+    /// 具名可选 Collector（Browser 之类）不进入 composition，缺席就是缺席（ADR-049）。
     /// </summary>
     [Fact]
-    public async Task Composition_StartsAndStopsWithoutTheOptionalBrowserCollectorPackage()
+    public async Task Composition_KnowsNoNamedOptionalCollector_AndStillStartsAndStops()
     {
         var services = BuildServices();
-        using var provider = services.BuildServiceProvider();
-        Assert.False(Directory.Exists(Path.Combine(_root, "CollectorPackages", "Browser")));
+        Assert.DoesNotContain(
+            services,
+            descriptor => NamesANamedOptionalCollector(descriptor.ServiceType)
+                || NamesANamedOptionalCollector(descriptor.ImplementationType));
 
-        var browser = provider.GetRequiredService<BrowserCollectorRuntime>();
-        Assert.False(browser.Current.IsInstalled);
-        Assert.Equal(BrowserCollectorRuntimeStatus.Waiting, browser.Current.RuntimeStatus);
-        Assert.Null(browser.Current.SideloadDirectory);
-        Assert.IsType<BrowserExternalHostProtocolHandler>(
-            provider.GetRequiredService<IExternalHostProtocolHttpHandler>());
+        using var provider = services.BuildServiceProvider();
+        // ExternalHost 的 loopback 传输留着，但默认 handler 谁都不认识。
+        Assert.Equal(
+            "NullExternalHostProtocolHttpHandler",
+            provider.GetRequiredService<IExternalHostProtocolHttpHandler>().GetType().Name);
 
         var hosted = provider.GetServices<IHostedService>().ToList();
         foreach (var service in hosted)
@@ -110,6 +112,11 @@ public sealed class MacAgentHostExtensionsTests : IDisposable
         foreach (var service in Enumerable.Reverse(hosted))
             await service.StopAsync(CancellationToken.None);
     }
+
+    private static bool NamesANamedOptionalCollector(Type? type) =>
+        type?.FullName is { } name && (
+            name.Contains("Browser", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("VRChat", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// System 是 BuiltIn Delivery：它必须随 Desktop 一起出现在产物里，缺失即为损坏安装。
@@ -148,10 +155,7 @@ public sealed class MacAgentHostExtensionsTests : IDisposable
         services.AddSingleton<IMacInputMonitoringNative, FakeInputMonitoringNative>();
         services.AddSingleton<IMacPlatformUuid>(new StubPlatformUuid(
             "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"));
-        services.AddHeartbeatMacAgent(
-            new MacAgentPaths(_root),
-            // Desktop 不打包 Browser：测试宿主显式指向一个不存在的侧载落点，钉住"可选 Collector 缺席"。
-            browserPackageSourceDirectory: Path.Combine(_root, "CollectorPackages", "Browser"));
+        services.AddHeartbeatMacAgent(new MacAgentPaths(_root));
         return services;
     }
 

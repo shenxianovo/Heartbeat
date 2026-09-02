@@ -7,8 +7,9 @@ using System.Net;
 namespace Heartbeat.Collection.Hub.Ingest
 {
     /// <summary>
-    /// Browser ExternalHost Collector Protocol 的 loopback HTTP server。仅负责监听器生命周期；
-    /// 路由、协议协商与 Fact 交付由 binding handler 拥有。
+    /// ExternalHost Collector Protocol 的 loopback HTTP server。仅负责监听器生命周期；路由、协议
+    /// 协商与 Fact 交付由注册进来的 binding handler 拥有。当前宿主没有注册任何 binding handler，
+    /// 默认 adapter 一律 404——通用 ExternalHost 接入能力留待后续 issue（ADR-049）。
     /// </summary>
     public class ExternalHostProtocolWorker(
         IExternalHostProtocolHttpHandler handler,
@@ -16,7 +17,7 @@ namespace Heartbeat.Collection.Hub.Ingest
     {
         /// <summary>
         /// 端口浮动范围：基准端口被占时向上顺延试绑的端口数。
-        /// Browser binding 按同一范围探测专属 discovery endpoint，两侧约定一致。
+        /// ExternalHost 侧按同一范围探测 discovery endpoint，两侧约定一致。
         /// </summary>
         public const int PortRange = 10;
 

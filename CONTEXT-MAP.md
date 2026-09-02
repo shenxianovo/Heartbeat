@@ -17,7 +17,7 @@ Heartbeat 是一个以桌面活动为核心的个人数字活动档案与回放�
 
 | Context | Directory | Responsibility |
 |---------|-----------|----------------|
-| Collection | `collection/` | 监听前台窗口切换与各应用内活动，生成使用记录，上传至服务端。`hub/` 是可复用的 Collector Runtime，**多实例星形直连 Analytics、不嵌套**（ADR-032）；`desktop/` 是桌面实例（含 system Collector 与 Browser ExternalHost binding）；`collectors/` 存放 Browser、VRChat 等独立 Collector；`contracts/facts/` 是 Fact Schema 唯一权威来源。server 旁的无头 host 以一个 Runtime 托管多个账号级 Instance，不携带桌面概念。 |
+| Collection | `collection/` | 监听前台窗口切换与各应用内活动，生成使用记录，上传至服务端。`hub/` 是可复用的 Collector Runtime，**多实例星形直连 Analytics、不嵌套**（ADR-032）；`desktop/` 是桌面实例（含 system Collector 与通用 ExternalHost loopback 监听，不认识任何具名可选 Collector，ADR-049）；`collectors/` 存放 Browser、VRChat 等独立 Collector；`contracts/facts/` 是 Fact Schema 唯一权威来源。server 旁的无头 host 以一个 Runtime 托管多个账号级 Instance，不携带桌面概念。 |
 | Analytics | `server/` | 严格接收版本化事实快照，持久化活动数据，生成报表与叙事知识投影 |
 | Dashboard | `frontend/` | 可视化使用数据 |
 

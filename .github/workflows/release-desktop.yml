@@ -55,9 +55,10 @@ jobs:
       - name: Verify Windows publish delivery contract
         shell: bash
         run: |
-          # System 是 BuiltIn，必须随 Desktop 发布；Browser 独立发布，不得出现在 Desktop 产物里（ADR-048）。
+          # System 是唯一随 Desktop 发布的 BuiltIn Collector。可选 Collector 都是独立发布单元，
+          # 宿主产物里不允许出现除 System 以外的任何 Collector Package（ADR-048/ADR-049）。
           test -f publish/CollectorPackages/System/collector-manifest.json
-          test ! -e publish/CollectorPackages/Browser
+          test "$(ls publish/CollectorPackages)" = "System"
 
       - name: Install Velopack CLI
         run: dotnet tool install -g vpk --version ${{ env.VELOPACK_VERSION }}
@@ -109,13 +110,17 @@ jobs:
           New-Item -ItemType Directory -Path $verifyDir | Out-Null
           Expand-Archive -Path "releases/Heartbeat-$channel-Portable.zip" -DestinationPath $verifyDir
 
-          # System 是 BuiltIn，必须随 Desktop 发布；Browser 独立发布，不得出现在 Desktop 产物里（ADR-048）。
+          # System 是唯一随 Desktop 发布的 BuiltIn Collector；除它以外不允许有任何 Collector Package
+          # 出现在打包产物里（ADR-048/ADR-049）。
           $manifest = Get-ChildItem $verifyDir -Recurse -File -Filter collector-manifest.json |
             Where-Object { $_.FullName -match 'CollectorPackages[\\/]System' }
           if (-not $manifest) { throw 'System Collector package is missing from the packaged artifact' }
-          $browser = Get-ChildItem $verifyDir -Recurse -Directory -Filter Browser |
-            Where-Object { $_.FullName -match 'CollectorPackages' }
-          if ($browser) { throw 'Browser Collector package must not ship inside the Desktop artifact' }
+          foreach ($root in Get-ChildItem $verifyDir -Recurse -Directory -Filter CollectorPackages) {
+            $unexpected = Get-ChildItem $root.FullName -Directory | Where-Object { $_.Name -ne 'System' }
+            if ($unexpected) {
+              throw "Desktop artifact must ship no Collector Package other than System: $($unexpected.Name -join ', ')"
+            }
+          }
 
           $executable = Get-ChildItem $verifyDir -Recurse -File -Filter Heartbeat.Desktop.Windows.exe |
             Select-Object -First 1
@@ -125,7 +130,7 @@ jobs:
             exit 0
           }
 
-          # 打包产物在没有 Browser Collector 的情况下必须能走完 Host.StartAsync 并干净停止。
+          # 打包产物只带 System，必须能走完 Host.StartAsync 并干净停止。
           $report = Join-Path $env:RUNNER_TEMP 'startup-smoke.json'
           $process = Start-Process -FilePath $executable.FullName `
             -ArgumentList "--verify-startup=$report" -PassThru -Wait
@@ -185,9 +190,10 @@ jobs:
 
       - name: Verify macOS publish delivery contract
         run: |
-          # System 是 BuiltIn，必须随 Desktop 发布；Browser 独立发布，不得出现在 Desktop 产物里（ADR-048）。
+          # System 是唯一随 Desktop 发布的 BuiltIn Collector。可选 Collector 都是独立发布单元，
+          # 宿主产物里不允许出现除 System 以外的任何 Collector Package（ADR-048/ADR-049）。
           test -f publish-macos/CollectorPackages/System/collector-manifest.json
-          test ! -e publish-macos/CollectorPackages/Browser
+          test "$(ls publish-macos/CollectorPackages)" = "System"
 
       - name: Install Velopack CLI
         run: dotnet tool install -g vpk --version ${{ env.VELOPACK_VERSION }}
@@ -267,11 +273,11 @@ jobs:
           grep -q 'id="com.shenxianovo.heartbeat"' "$VERIFY_DIR/pkg/Distribution"
           grep -q 'Heartbeat-.*-osx-arm64-stable-full.nupkg' releases-macos/releases.osx-arm64-stable.json
 
-          # System 随包发布，Browser 不随包发布（ADR-048）。
+          # System 随包发布；除 System 以外不允许有任何 Collector Package（ADR-048/ADR-049）。
           test -f "$APP_PATH/Contents/MacOS/CollectorPackages/System/collector-manifest.json"
-          test ! -e "$APP_PATH/Contents/MacOS/CollectorPackages/Browser"
+          test "$(ls "$APP_PATH/Contents/MacOS/CollectorPackages")" = "System"
 
-      - name: Smoke the packaged macOS app without the optional Browser Collector
+      - name: Smoke the packaged macOS host
         shell: bash
         run: |
           APP_EXECUTABLE="$RUNNER_TEMP/heartbeat-release-verification/app/Heartbeat.app/Contents/MacOS/Heartbeat.Desktop.Mac"

@@ -24,8 +24,9 @@ public sealed record CollectorPackageReference(string PackageId, string Version,
 ///
 /// 目录布局、staging 复制、tree hash 校验与失败清理都由本类独占：调用方只看到「精确引用 →
 /// 已安装 Package」。Installation 事实的唯一权威是文件系统本身——目录只在内容通过校验后才被
-/// rename 到最终路径，因此不存在额外的安装状态账本需要与之对账。宿主专属校验（例如 browser
-/// 的 sideload descriptor）留在各自 adapter，本类只认 Collector Package 通用契约。
+/// rename 到最终路径，因此不存在额外的安装状态账本需要与之对账。Collector 专属校验（例如某个
+/// ExternalHost Collector 的 sideload descriptor）属于该 Collector 自己的 adapter，本类只认
+/// Collector Package 通用契约。
 /// </summary>
 public sealed class CollectorPackageInstallations
 {

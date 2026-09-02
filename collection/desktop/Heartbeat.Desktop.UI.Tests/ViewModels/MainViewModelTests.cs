@@ -36,11 +36,11 @@ public sealed class MainViewModelTests
             {
                 Collectors = new Dictionary<string, CollectorRegistrationState>
                 {
-                    ["browser"] = new(true, 30_000)
+                    ["vrchat"] = new(true, 30_000)
                 },
                 SourceLastSeen = new Dictionary<string, DateTimeOffset>
                 {
-                    ["browser"] = now.AddSeconds(-80)
+                    ["vrchat"] = now.AddSeconds(-80)
                 }
             }
         };
@@ -52,69 +52,13 @@ public sealed class MainViewModelTests
         Assert.True(system.IsActive);
         Assert.False(system.CanToggle);
 
-        var browser = Assert.Single(viewModel.Collectors, item => item.Source == "browser");
-        Assert.True(browser.IsActive);
-        Assert.True(browser.CanToggle);
-        Assert.True(browser.Enabled);
+        var plugin = Assert.Single(viewModel.Collectors, item => item.Source == "vrchat");
+        Assert.True(plugin.IsActive);
+        Assert.True(plugin.CanToggle);
+        Assert.True(plugin.Enabled);
 
-        browser.Enabled = false;
-        Assert.Equal(("browser", false), state.LastCollectorValue);
-    }
-
-    [Fact]
-    public void BrowserCollector_PresentsOneUserStatusAndOpensSetupFromBrowserIcons()
-    {
-        var state = new FakeDesktopState
-        {
-            Current = DesktopStateSnapshot.Empty with
-            {
-                BrowserCollector = new BrowserCollectorState(
-                    true,
-                    "0.2.0",
-                    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                    "/data/packages/browser/0.2.0",
-                    "/data/packages/browser/0.2.0/browser-extension",
-                    true,
-                    ExternalHostRuntimeStatus.Degraded,
-                    "浏览器仍在运行旧版本；请重新加载。",
-                    true,
-                    "0.1.0",
-                    [
-                        new BrowserCollectorAppState(
-                            "chrome", true, ExternalHostRuntimeStatus.Ready, "ready", "0.2.0"),
-                        new BrowserCollectorAppState(
-                            "edge", false, ExternalHostRuntimeStatus.Waiting, "disabled", "0.1.0"),
-                    ])
-            }
-        };
-        var window = new FakeWindowController();
-        using var viewModel = TestViewModel.Create(state, window: window);
-
-        var browser = Assert.Single(viewModel.Collectors, item => item.Source == "browser");
-        Assert.True(browser.IsPackageInstalled);
-        Assert.Equal("0.2.0", browser.PackageVersion);
-        Assert.Equal("需要修复", browser.BrowserStatusText);
-        Assert.True(browser.IsBrowserDegraded);
-        Assert.Contains("重新加载", browser.RuntimeStatusDetail);
-        Assert.Equal("/data/packages/browser/0.2.0/browser-extension", browser.SideloadDirectory);
-        Assert.Equal("0.1.0", browser.PreviousKnownGoodVersion);
-        Assert.True(browser.ReloadRequired);
-        Assert.Equal(2, browser.BrowserApps.Count);
-        var edge = Assert.Single(browser.BrowserApps, app => app.AppHint == "edge");
-        Assert.False(edge.Enabled);
-        edge.Enabled = true;
-        Assert.Equal(("edge", true), state.LastBrowserAppValue);
-
-        browser.OpenBrowserSetupCommand.Execute(BrowserKind.Edge);
-
-        Assert.Equal(BrowserKind.Edge, state.LastBrowserSetup);
-        Assert.Equal("/data/packages/browser/0.2.0/browser-extension", window.ClipboardText);
-        Assert.True(browser.IsBrowserSetupVisible);
-        Assert.Equal("在 Edge 中完成连接", browser.BrowserSetupTitle);
-
-        browser.Enabled = false;
-        Assert.Equal(("browser", false), state.LastCollectorValue);
-        Assert.Equal("已停用", browser.BrowserStatusText);
+        plugin.Enabled = false;
+        Assert.Equal(("vrchat", false), state.LastCollectorValue);
     }
 
     [Fact]

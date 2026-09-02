@@ -29,6 +29,11 @@ Execution Driver，但宿主外层仍未收敛：Desktop 构建时同时打入 S
 
 ### 2. Desktop 与 Headless 共享一个宿主无关的 Collector Host Runtime module
 
+> 2026-09-02 revision note：本节宿主 adapter 清单里 Desktop 的"ExternalHost loopback"已由
+> [ADR-049](./049-named-optional-collectors-outside-host-composition.md) 修订为通用能力：Desktop 只提供
+> 通用 loopback 监听与默认 404 handler seam，不再持有浏览器专属 binding、AppHint 解析或安装目录。
+> 共享 module 的语义边界与"宿主只提供 adapter"的结论不变。
+
 共享 module 在 `Heartbeat.Collection.Hub` 内拥有以下语义：
 
 - 精确 Collector Installation 的本地目录与打开规则；
@@ -47,6 +52,12 @@ Desktop 与 Headless 只提供宿主 adapter：
 才继续下沉，不能为了“共用”把两种真实拓扑塞进大量条件分支。
 
 ### 3. Artifact Delivery 与 Execution Driver 保持正交
+
+> 2026-09-02 revision note：下表的"默认 Hub Instance"对 Browser 是目标态，不是当前事实。
+> [ADR-049](./049-named-optional-collectors-outside-host-composition.md) 已把具名可选 Collector 从 Host
+> composition 移出，Desktop 目前没有任何 Browser 接入路径，因此本节"Browser 代码仍由浏览器承载并连接
+> Desktop"在通用 ExternalHost 安装/连接能力落地前不成立。Delivery 与 Driver 两条轴正交、以及 Runtime 不
+> 假装能启动浏览器扩展的结论不变。
 
 | Collector | Artifact Delivery | Execution Driver | 默认 Hub Instance |
 |---|---|---|---|
@@ -94,5 +105,6 @@ source adapter，不改变 Runtime 或 Execution Driver interface。
 ## References
 
 - [ADR-040](./040-collector-runtime-and-protocol-foundation.md) — 统一 Runtime、Protocol 与 Driver
+- [ADR-049](./049-named-optional-collectors-outside-host-composition.md) — 具名可选 Collector 不进入 Host composition，修订本 ADR §2/§3 的宿主 binding 表述
 - [Collector Host 与独立交付路线图](../architecture/collector-delivery-implementation-roadmap.md)
 - [`collection/CONTEXT.md`](../../collection/CONTEXT.md) — Collection 领域词汇

@@ -5,8 +5,10 @@ using Microsoft.Extensions.Hosting;
 namespace Heartbeat.Collection.Headless.Tests;
 
 /// <summary>
-/// Headless Hub 是独立发布单元：它必须能在零 Collector Instance 下启动；某个配置项的 Package 缺失或
-/// 损坏时，只有那一个 Instance 失效，其余 Instance、管理面与 Hub 进程都继续跑（ADR-048）。
+/// Headless Hub 是独立发布单元：它必须能在零 Collector Instance 下启动；某个配置项的 Package 缺失、损坏
+/// 或它的 projection pipeline 恢复失败时，只有那一个 Instance 失效，其余 Instance、管理面与 Hub 进程都继续
+/// 跑（ADR-048/ADR-049）。管理面只报告真实事实：没建起 Instance 就没有 Package 版本，Activation 失败的原因
+/// 归 CollectorRuntime 所有。
 /// </summary>
 public sealed class HeadlessStartupIsolationTests : IDisposable
 {
@@ -19,8 +21,7 @@ public sealed class HeadlessStartupIsolationTests : IDisposable
     {
         using var manager = new HeadlessFleetManager(Fleet(Path.Combine(_root, "data")));
 
-        await ((IHostedService)manager).StartAsync(CancellationToken.None);
-        await SettleAsync(manager);
+        await StartAsync(manager);
 
         Assert.Empty(manager.Snapshot());
         Assert.False(manager.ExecuteTask?.IsFaulted);
@@ -48,6 +49,109 @@ public sealed class HeadlessStartupIsolationTests : IDisposable
         await AssertOnlyTheBrokenInstanceFailsAsync(healthy, corrupt);
     }
 
+    [Fact]
+    public async Task Restart_WithOneUnrestorableInstancePipeline_KeepsTheOtherInstanceRunning()
+    {
+        var first = await CreateSourcePackageAsync("first-source");
+        var second = await CreateSourcePackageAsync("second-source");
+        var data = Path.Combine(_root, "data");
+        var instances = new[]
+        {
+            Instance("first", first, "0198d5eb-fc31-7d7b-8bf0-c2d009ec8125"),
+            Instance("second", second, "0198d5eb-fc31-7d7b-8bf0-c2d009ec8126")
+        };
+
+        // 先跑一轮，让两条 Instance 都有 mapping 与 Installation：第二轮走的才是「恢复既有 mapping」这条路径。
+        Guid brokenInstanceId;
+        using (var initial = new HeadlessFleetManager(Fleet(data, instances)))
+        {
+            await StartAsync(initial);
+            await WaitForReadyAsync(initial, "Managed first");
+            brokenInstanceId = (await WaitForReadyAsync(initial, "Managed second")).CollectorInstanceId!.Value;
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            await initial.StopAsync(timeout.Token);
+        }
+
+        // 让第二条 Instance 的 projection pipeline 恢复失败：它的目录位置被一个文件占住。
+        var pipelineDirectory = Path.Combine(data, "instances", brokenInstanceId.ToString("D"));
+        Directory.Delete(pipelineDirectory, recursive: true);
+        await File.WriteAllTextAsync(pipelineDirectory, "not a directory");
+
+        using var restarted = new HeadlessFleetManager(Fleet(data, instances));
+        await StartAsync(restarted);
+        try
+        {
+            var healthy = await WaitForReadyAsync(restarted, "Managed first");
+            Assert.NotNull(healthy.CollectorInstanceId);
+
+            var broken = Assert.Single(
+                restarted.Snapshot(),
+                status => status.SubjectName == "Managed second");
+            Assert.Equal(CollectorRuntimePhase.Failed.ToString(), broken.Phase);
+            Assert.Null(broken.CollectorInstanceId);
+            Assert.False(string.IsNullOrWhiteSpace(broken.StatusDetail));
+        }
+        finally
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            await restarted.StopAsync(timeout.Token);
+        }
+    }
+
+    [Fact]
+    public async Task Restart_WhenTheInstalledCollectorCannotBeExecuted_ReportsTheRuntimeFailure()
+    {
+        // 去掉可执行位是 POSIX 语义，Windows 上没有等价的最小改动。
+        if (OperatingSystem.IsWindows())
+            return;
+
+        var source = await CreateSourcePackageAsync("exec-source");
+        var data = Path.Combine(_root, "data");
+        var instances = new[] { Instance("only", source, "0198d5eb-fc31-7d7b-8bf0-c2d009ec8127") };
+
+        using (var initial = new HeadlessFleetManager(Fleet(data, instances)))
+        {
+            await StartAsync(initial);
+            await WaitForReadyAsync(initial, "Managed only");
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            await initial.StopAsync(timeout.Token);
+        }
+
+        // Installation 的 tree hash 只覆盖内容、不覆盖 unix mode：去掉可执行位不会让 Package 校验失败，
+        // 但 Activation 会真的起不来，于是管理面必须透出 Runtime 自己的结构化 Failure。
+        var executable = Directory
+            .EnumerateFiles(
+                Path.Combine(data, "collector-packages"),
+                "Heartbeat.Collector.Reference.ManagedProcess",
+                SearchOption.AllDirectories)
+            .Single();
+        File.SetUnixFileMode(
+            executable,
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+
+        using var restarted = new HeadlessFleetManager(Fleet(data, instances));
+        await StartAsync(restarted);
+        try
+        {
+            var failed = await WaitForStatusAsync(
+                restarted,
+                "Managed only",
+                status => !string.IsNullOrWhiteSpace(status.StatusDetail));
+
+            // Instance 身份建起来了，所以这条原因只可能来自 CollectorRuntime 的 Failure，
+            // 不是宿主为「没建起来」编的话术。
+            Assert.NotNull(failed.CollectorInstanceId);
+            Assert.NotNull(failed.PackageVersion);
+            Assert.NotNull(failed.PackageContentHash);
+            Assert.Contains(": ", failed.StatusDetail!, StringComparison.Ordinal);
+        }
+        finally
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            await restarted.StopAsync(timeout.Token);
+        }
+    }
+
     private async Task AssertOnlyTheBrokenInstanceFailsAsync(string healthySource, string brokenSource)
     {
         using var manager = new HeadlessFleetManager(Fleet(
@@ -55,11 +159,12 @@ public sealed class HeadlessStartupIsolationTests : IDisposable
             Instance("healthy", healthySource, "0198d5eb-fc31-7d7b-8bf0-c2d009ec8123"),
             Instance("broken", brokenSource, "0198d5eb-fc31-7d7b-8bf0-c2d009ec8124")));
 
-        await ((IHostedService)manager).StartAsync(CancellationToken.None);
+        await StartAsync(manager);
         try
         {
             var ready = await WaitForReadyAsync(manager, "Managed healthy");
             Assert.NotNull(ready.CollectorInstanceId);
+            Assert.NotNull(ready.PackageVersion);
             Assert.Null(ready.StatusDetail);
 
             // 坏掉的配置项仍出现在管理面上，带原因，且没有占用任何 Instance 身份。
@@ -69,6 +174,9 @@ public sealed class HeadlessStartupIsolationTests : IDisposable
             Assert.Equal(CollectorRuntimePhase.Failed.ToString(), broken.Phase);
             Assert.Null(broken.CollectorInstanceId);
             Assert.False(string.IsNullOrWhiteSpace(broken.StatusDetail));
+            // 没建起 Instance 就是"不存在"，不是空字符串。
+            Assert.Null(broken.PackageVersion);
+            Assert.Null(broken.PackageContentHash);
         }
         finally
         {
@@ -77,44 +185,44 @@ public sealed class HeadlessStartupIsolationTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// BackgroundService 不保证 ExecuteAsync（其中包含 Initialize）在 StartAsync 返回前跑完，
+    /// 所以等 Hub 自己的 readiness signal，而不是睡固定时长。
+    /// </summary>
+    private static async Task StartAsync(HeadlessFleetManager manager)
+    {
+        await ((IHostedService)manager).StartAsync(CancellationToken.None);
+        await manager.Initialized.WaitAsync(TimeSpan.FromSeconds(60));
+    }
+
     private static async Task<HeadlessSubjectStatusResponse> WaitForReadyAsync(
         HeadlessFleetManager manager,
-        string subjectName)
+        string subjectName) =>
+        await WaitForStatusAsync(
+            manager,
+            subjectName,
+            status =>
+            {
+                Assert.NotEqual(CollectorRuntimePhase.Failed.ToString(), status.Phase);
+                return status.Phase == CollectorRuntimePhase.Ready.ToString();
+            });
+
+    private static async Task<HeadlessSubjectStatusResponse> WaitForStatusAsync(
+        HeadlessFleetManager manager,
+        string subjectName,
+        Func<HeadlessSubjectStatusResponse, bool> satisfied)
     {
-        // BackgroundService 不保证 ExecuteAsync（其中包含 Initialize）在 StartAsync 返回前跑完。
+        // Activation 本身是异步的：readiness signal 只说明 Initialize 跑完了。
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         while (true)
         {
             if (manager.ExecuteTask is { IsFaulted: true } faulted)
                 await faulted;
             var status = manager.Snapshot().FirstOrDefault(item => item.SubjectName == subjectName);
-            if (status is not null)
-            {
-                Assert.NotEqual(CollectorRuntimePhase.Failed.ToString(), status.Phase);
-                if (status.Phase == CollectorRuntimePhase.Ready.ToString())
-                    return status;
-            }
+            if (status is not null && satisfied(status))
+                return status;
             await Task.Delay(20, timeout.Token);
         }
-    }
-
-    /// <summary>
-    /// 等到 ExecuteAsync 至少跑过 Initialize：零 Instance 的 Hub 没有任何可轮询的状态变化。
-    /// </summary>
-    private static async Task SettleAsync(HeadlessFleetManager manager)
-    {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        while (!timeout.IsCancellationRequested)
-        {
-            if (manager.ExecuteTask is { IsFaulted: true } faulted)
-                await faulted;
-            if (manager.ExecuteTask is not null)
-                break;
-            await Task.Delay(20, timeout.Token);
-        }
-        await Task.Delay(100, CancellationToken.None);
-        if (manager.ExecuteTask is { IsFaulted: true } settled)
-            await settled;
     }
 
     private static HeadlessManagedInstanceOptions Instance(

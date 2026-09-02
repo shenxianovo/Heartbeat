@@ -6,39 +6,6 @@ namespace Heartbeat.Desktop.UI.Presentation;
 
 public sealed record CollectorRegistrationState(bool Enabled, int? FlushPeriodMs);
 
-public enum ExternalHostRuntimeStatus
-{
-    Waiting,
-    Ready,
-    Degraded
-}
-
-public enum BrowserKind
-{
-    Chrome,
-    Edge
-}
-
-public sealed record BrowserCollectorState(
-    bool IsInstalled,
-    string? PackageVersion,
-    string? PackageContentHash,
-    string? InstallDirectory,
-    string? SideloadDirectory,
-    bool DesiredEnabled,
-    ExternalHostRuntimeStatus RuntimeStatus,
-    string RuntimeStatusDetail,
-    bool ReloadRequired,
-    string? PreviousKnownGoodVersion,
-    IReadOnlyList<BrowserCollectorAppState>? Apps = null);
-
-public sealed record BrowserCollectorAppState(
-    string AppHint,
-    bool DesiredEnabled,
-    ExternalHostRuntimeStatus RuntimeStatus,
-    string RuntimeStatusDetail,
-    string PackageVersion);
-
 public enum DesktopThemeMode
 {
     System,
@@ -114,8 +81,7 @@ public sealed record DesktopStateSnapshot(
     IReadOnlyDictionary<string, DateTimeOffset> SourceLastSeen,
     ClientCompatibilitySnapshot Compatibility,
     IReadOnlyDictionary<string, UploadStreamStatus> UploadStreams,
-    DesktopCapabilitySnapshot Capabilities,
-    BrowserCollectorState? BrowserCollector = null)
+    DesktopCapabilitySnapshot Capabilities)
 {
     public static DesktopStateSnapshot Empty { get; } = new(
         null,
@@ -141,8 +107,6 @@ public interface IDesktopState
     void SaveSettings(DesktopSettingsInput settings);
     void SetLoginStartEnabled(bool enabled);
     void SetCollectorEnabled(string source, bool enabled);
-    void SetBrowserCollectorAppEnabled(string appHint, bool enabled) { }
-    void OpenBrowserCollectorSetup(BrowserKind browser);
     void SetSystemCapabilityEnabled(SystemCapability capability, bool enabled);
     void RecoverSystemCapability(SystemCapability capability);
     void RevealSystemCapabilityApplication(SystemCapability capability);

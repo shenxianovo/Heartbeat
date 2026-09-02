@@ -19,11 +19,11 @@ public static class Program
     {
         VelopackApp.Build().Run();
 
-        var logSink = new RingBufferSink(200);
-        ConfigureLogging(logSink);
-        RegisterUnhandledExceptionLogging();
-
         var smokeRequested = DesktopStartupSmoke.TryGetRequest(args, out var smoke);
+        var logSink = new RingBufferSink(200);
+        // smoke 连日志都写进隔离目录，真实用户数据目录一个字节都不碰。
+        ConfigureLogging(logSink, smokeRequested ? smoke.DataDirectory : null);
+        RegisterUnhandledExceptionLogging();
         using var guard = new SingleInstanceGuard();
         if (!guard.IsFirstInstance)
         {
@@ -37,13 +37,15 @@ public static class Program
             return;
         }
 
-        var config = new ConfigManager();
+        var config = smokeRequested
+            ? new ConfigManager(Path.Combine(smoke.DataDirectory, "config.json"))
+            : new ConfigManager();
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSerilog();
         builder.Services.AddHeartbeatAgent(config, guard);
         using var host = builder.Build();
 
-        // 发布产物的启动 smoke：只起停 host，不拉起 UI（ADR-048 不变量 4 的门禁）。
+        // 发布产物的启动 smoke：只起停 host，不拉起 UI，也不认识任何具名可选 Collector。
         if (smokeRequested)
         {
             Environment.ExitCode = DesktopStartupSmoke.Run(host, smoke);
@@ -70,11 +72,12 @@ public static class Program
         AppBuilder.Configure<App>()
             .UsePlatformDetect();
 
-    private static void ConfigureLogging(RingBufferSink sink)
+    private static void ConfigureLogging(RingBufferSink sink, string? dataDirectory = null)
     {
         var logDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Heartbeat",
+            dataDirectory ?? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Heartbeat"),
             "logs");
 
         Log.Logger = new LoggerConfiguration()

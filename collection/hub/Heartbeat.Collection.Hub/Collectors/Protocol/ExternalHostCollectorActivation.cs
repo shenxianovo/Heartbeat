@@ -6,7 +6,7 @@ namespace Heartbeat.Collection.Hub.Collectors.Protocol;
 
 /// <summary>
 /// A Runtime-owned protocol session for code executed by an external host. Stopping this object
-/// only releases protocol resources; it never claims that the browser or its extension process
+/// only releases protocol resources; it never claims that the external host, or the code it runs,
 /// was terminated.
 /// </summary>
 public sealed class ExternalHostCollectorActivation

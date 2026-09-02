@@ -28,7 +28,6 @@ internal sealed class ActivitySegmentFactProjector(ICollectorAppHintResolver? ap
         schemaMajor == 1 && schemaId is
             "heartbeat.reference.segment" or
             "heartbeat.system.foreground-segment" or
-            "heartbeat.browser.active-tab-segment" or
             "heartbeat.vrchat.presence-segment";
 
     public Guid ProjectedId(Guid streamId, Guid factId)
@@ -56,20 +55,16 @@ internal sealed class ActivitySegmentFactProjector(ICollectorAppHintResolver? ap
             identityKey.ValueKind != JsonValueKind.String)
             return false;
 
-        var isBrowser = stream.SchemaId == "heartbeat.browser.active-tab-segment";
-        var appIdentityKey = isBrowser &&
-                             stream.Dimensions.TryGetValue("appHint", out var appHint) &&
+        // 宿主 adapter 能把 stream 上的 appHint 解析成 App Identity 时用它，否则退回 Fact 自报的
+        // appIdentityKey。判定只看通用 stream dimension，不认任何具体 Collector 的 schema。
+        var appIdentityKey = stream.Dimensions.TryGetValue("appHint", out var appHint) &&
                              appHintResolver?.Resolve(appHint) is
                              { Kind: CollectorAppHintResolutionKind.Resolved } resolution
             ? resolution.AppIdentityKey
             : StringProperty(payload, "appIdentityKey");
-        JsonElement? attributes = isBrowser &&
-                         payload.TryGetProperty("attributes", out var browserAttributes) &&
-                         browserAttributes.ValueKind == JsonValueKind.Object
-            ? browserAttributes.Clone()
-            : stream.SchemaId == "heartbeat.system.foreground-segment"
-                ? null
-                : payload.Clone();
+        JsonElement? attributes = stream.SchemaId == "heartbeat.system.foreground-segment"
+            ? null
+            : payload.Clone();
 
         item = new ActivitySegmentItem
         {
