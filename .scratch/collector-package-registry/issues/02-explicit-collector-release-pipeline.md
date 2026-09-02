@@ -49,11 +49,14 @@ Analytics 独立发版，并给后续 Web Package source adapter 一个真实制
       同版本异字节拒绝覆盖。
 - [x] workflow 在发布后经公网回读 zip 与 `release.json`，与 runner 上的构建结果逐字节比较。
 - [x] 普通 Collector Contracts CI 会运行 VRChat.Tests，其中 release assembler 的本地 dry-run 覆盖确定性、
-      metadata 与 Package/tag 版本冲突。
+      metadata 与 Package/tag 版本冲突；VRChat release 本身不构建或校验 Browser，跨 Collector 契约继续由
+      独立的 `collector-contracts.yml` 负责。
 - [x] System、Browser、current pointer、Runtime 下载/安装、签名、channel、撤回、回滚与多平台矩阵不进入本
       issue。
-- [ ] owner 在生产服务器完成 Caddy 静态路由与目录权限的一次性配置，确认服务器为 x86_64，并推送首个
-      `collector-vrchat/vX.Y.Z` tag；真实 workflow 与公网回读全绿。
+- [x] owner 已在生产服务器配置 Caddy 静态路由；不存在的 Registry 路径经公网返回空 404，没有回落到
+      Dashboard。
+- [ ] owner 确认服务器为 x86_64，把修复后的 `collector-vrchat/v0.2.0` tag 重新推送；真实 workflow、服务器
+      publish 与公网逐字节回读全绿。
 
 ## Verification
 
@@ -70,9 +73,10 @@ entrypoint 保留 executable bit。全仓 Release build 为 0 warning / 0 error�
 **1038 passed / 0 failed**；`actionlint`、ShellCheck、YAML parse、`bash -n`、IDE1006 格式门禁与
 `git diff --check` 通过。
 
-生产 tag 尚未推送，因此服务器 staging、不可变冲突路径、Caddy 公网回读均是 human gate，不宣称已验证。
-首个正式 tag 建议使用 `collector-vrchat/v0.2.0`，避免把当前本地 0.1.0 Installation 的不同内容误认成同一
-Web Release。
+首次 `collector-vrchat/v0.2.0` 运行在 VRChat.Tests 之后被错误加入的 repository-wide
+`collector-contracts.mjs check` 拦住：该命令需要先构建 Browser `dist`，与本 Release 单元无关，且尚未进入
+Docker build 或 publish。现已从专属 release workflow 删除 Node/Browser 契约门禁；服务器 staging、不可变
+冲突路径与 Caddy 公网回读仍未执行，不宣称已验证。
 
 ## Non-goals
 
@@ -97,3 +101,10 @@ pointer；不得提前恢复 ADR-045/047 已撤回的 approval/LKG 状态机。
 旧 issue 同时要求 mutable index、发布工具、Runtime reader 与完整本地 Registry fixture，实际上把 artifact
 发布和发现/下载混成了一个 feature。本轮只落不可变精确 Release：它已经能独立下载，也为下一条 Web source
 adapter 提供真实输入；没有 current pointer 就没有第二份“当前版本”权威。
+
+### 2026-09-02 — 首次 tag 暴露跨发布单元门禁
+
+run `33629213290` 的 VRChat.Tests 21/21 通过，但 release job 随后调用 repository-wide
+`collector-contracts.mjs check`；它因 Browser `dist` 未构建而失败。修复不是在 VRChat release 里补 Browser
+build，而是删除这条跨 Collector 依赖。Fact Schema evolution 与 Browser payload 一致性仍由
+`collector-contracts.yml` 在 PR/main 上独立验证。
