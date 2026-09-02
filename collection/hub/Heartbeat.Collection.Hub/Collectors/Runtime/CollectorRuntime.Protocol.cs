@@ -27,7 +27,9 @@ public sealed partial class CollectorRuntime
     private readonly Dictionary<Guid, InProcessCollectorActivation> _activations = [];
     private readonly Dictionary<Guid, PendingActivationCommit> _pendingActivationCommits = [];
     private readonly Dictionary<string, FactSchemaDocument> _factSchemasByHash = new(StringComparer.Ordinal);
-    private readonly IReadOnlyList<ISegmentFactProjector> _segmentProjectors;
+    // Collector Protocol v1 has one executable Segment shape: ActivitySegment. Package-owned
+    // schemas refine that payload, while this projector enforces the common projection fields.
+    private readonly ActivitySegmentFactProjector _segmentProjector;
     private readonly IReadOnlyList<IEventFactProjector> _eventProjectors;
     private readonly Dictionary<Guid, Guid> _streamWriters = [];
     private readonly HashSet<Guid> _startingInstances = [];
@@ -743,7 +745,7 @@ public sealed partial class CollectorRuntime
             return Rejected(
                 index,
                 "fact_schema_invalid",
-                "Fact Schema has no compatible projection adapter for the existing Hub buffer.");
+                "Fact payload is not compatible with the negotiated Hub projection shape.");
         if (stream.FactKind == FactKind.Segment &&
             _segmentSink is not IDurableSegmentProjectionSink and not ISubjectSegmentProjectionSink)
             return Rejected(
@@ -888,13 +890,11 @@ public sealed partial class CollectorRuntime
         return stream.FactKind switch
         {
             FactKind.Segment =>
-                ResolveSegmentProjector(stream.SchemaId, stream.SchemaMajor) is { } segmentProjector &&
-                segmentProjector.TryProject(
+                _segmentProjector.TryProject(
                     stream,
                     fact.FactId,
                     fact.Time.Start!.Value,
                     fact.Time.End!.Value,
-                    fact.Time.IsFinal == true,
                     fact.Payload,
                     out _),
             FactKind.Event =>
@@ -935,7 +935,7 @@ public sealed partial class CollectorRuntime
                 ?? throw ActivationError("output_not_declared", $"Output '{binding.OutputId}' is not declared by the Package.");
             var hasProjector = output.FactKind switch
             {
-                FactKind.Segment => ResolveSegmentProjector(output.Schema.Id, output.Schema.Major) is not null,
+                FactKind.Segment => true,
                 FactKind.Event => ResolveEventProjector(output.Schema.Id, output.Schema.Major) is not null,
                 _ => false
             };
@@ -1527,16 +1527,6 @@ public sealed partial class CollectorRuntime
 
     private void ProjectSegment(FactStreamState stream, CommittedFactState fact, bool isReplay)
     {
-        var projector = ResolveSegmentProjector(stream.SchemaId, stream.SchemaMajor);
-        if (projector is null)
-        {
-            Log.Error(
-                "已持久接收 Collector Segment Fact {FactId}，但 schema {SchemaId}/{SchemaMajor} 无投影 adapter",
-                fact.FactId,
-                stream.SchemaId,
-                stream.SchemaMajor);
-            return;
-        }
         if (fact.RecordState == FactRecordState.Retracted)
         {
             if (_segmentSink is ISubjectSegmentProjectionSink subjectSink)
@@ -1545,7 +1535,7 @@ public sealed partial class CollectorRuntime
                 {
                     subjectSink.RetractDurable(
                         ContextForStream(stream),
-                        projector.ProjectedId(stream.StreamId, fact.FactId),
+                        _segmentProjector.ProjectedId(stream.StreamId, fact.FactId),
                         fact.Revision);
                 }
                 catch (Exception exception)
@@ -1561,7 +1551,7 @@ public sealed partial class CollectorRuntime
                 try
                 {
                     durableSink.RetractDurable(
-                        projector.ProjectedId(stream.StreamId, fact.FactId),
+                        _segmentProjector.ProjectedId(stream.StreamId, fact.FactId),
                         fact.Revision);
                 }
                 catch (Exception exception)
@@ -1575,12 +1565,11 @@ public sealed partial class CollectorRuntime
             return;
         }
         if (fact.Payload is not { } payload ||
-            !projector.TryProject(
+            !_segmentProjector.TryProject(
                 stream,
                 fact.FactId,
                 fact.Start,
                 fact.End,
-                fact.IsFinal,
                 payload,
                 out var item))
         {
@@ -1694,9 +1683,6 @@ public sealed partial class CollectorRuntime
                 source);
         }
     }
-
-    private ISegmentFactProjector? ResolveSegmentProjector(string schemaId, int schemaMajor) =>
-        _segmentProjectors.SingleOrDefault(projector => projector.Supports(schemaId, schemaMajor));
 
     private IEventFactProjector? ResolveEventProjector(string schemaId, int schemaMajor) =>
         _eventProjectors.SingleOrDefault(projector => projector.Supports(schemaId, schemaMajor));

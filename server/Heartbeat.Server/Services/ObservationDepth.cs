@@ -200,8 +200,8 @@ namespace Heartbeat.Server.Services
     }
 
     /// <summary>
-    /// 迁移种子声明（ADR-030 §4）：切换日行为零断层的 bootstrap 数据，与各采集器 v1 声明
-    /// 逐字节一致（采集器上线上报后幂等收敛）。运行时生效表以 DB 为准，此处仅供种子与纯函数测试。
+    /// 内置 Collector 的 bootstrap 声明。System 是唯一随 Host composition 交付的
+    /// BuiltIn Collector（ADR-049 §2）；其他 Collector 必须通过运行时注册通道上报声明。
     /// </summary>
     public static class SeedDeclarations
     {
@@ -216,18 +216,7 @@ namespace Heartbeat.Server.Services
             ]
         };
 
-        public static CollectorDeclarationDto Browser { get; } = new()
-        {
-            Source = ActivitySources.Browser,
-            Version = 1,
-            Layers =
-            [
-                new() { Readings = [new() { Name = "url", From = DepthSlots.IdentityKey, Label = "网址" }] },
-                new() { Readings = [new() { Name = "tab_title", From = DepthSlots.Title, Label = "标签页" }] },
-            ]
-        };
-
-        public static IReadOnlyList<CollectorDeclarationDto> All { get; } = [System, Browser];
+        public static IReadOnlyList<CollectorDeclarationDto> All { get; } = [System];
 
         /// <summary>
         /// 启动种子（AddCollectorDeclarations 迁移的 C# 护航，与 KnowledgeIdentityBackfill 同理）：

@@ -87,14 +87,21 @@ public class DesktopStartupSmokeTests
     /// 自己开的隔离目录跑完要收干净；调用方指定的目录一律不动。
     /// </summary>
     [Fact]
-    public void Run_CleansUpOnlyTheDataDirectoryItOwns()
+    public void Lifecycle_CleansOwnedDataOnlyAfterHostDisposal()
     {
-        using var owned = new FakeHost();
+        var owned = new FakeHost();
         var ownedRequest = new DesktopStartupSmoke.Request();
         Directory.CreateDirectory(ownedRequest.DataDirectory);
         File.WriteAllText(Path.Combine(ownedRequest.DataDirectory, "config.json"), "{}");
 
-        Assert.Equal(0, DesktopStartupSmoke.Run(owned, ownedRequest, output: new StringWriter()));
+        using (DesktopStartupSmoke.BeginLifecycle(ownedRequest))
+        {
+            using (owned)
+                Assert.Equal(0, DesktopStartupSmoke.Run(owned, ownedRequest, output: new StringWriter()));
+
+            Assert.True(owned.Disposed);
+            Assert.True(Directory.Exists(ownedRequest.DataDirectory));
+        }
         Assert.False(Directory.Exists(ownedRequest.DataDirectory));
 
         var borrowedDirectory = Path.Combine(Path.GetTempPath(), $"heartbeat-smoke-{Guid.NewGuid():N}");
@@ -105,7 +112,8 @@ public class DesktopStartupSmokeTests
             var borrowedRequest = new DesktopStartupSmoke.Request(
                 DataDirectoryOverride: borrowedDirectory);
 
-            Assert.Equal(0, DesktopStartupSmoke.Run(borrowed, borrowedRequest, output: new StringWriter()));
+            using (DesktopStartupSmoke.BeginLifecycle(borrowedRequest))
+                Assert.Equal(0, DesktopStartupSmoke.Run(borrowed, borrowedRequest, output: new StringWriter()));
             Assert.True(Directory.Exists(borrowedDirectory));
         }
         finally
@@ -173,13 +181,20 @@ public class DesktopStartupSmokeTests
     public void Inconclusive_ReportsAFailureInsteadOfAQuietSuccess()
     {
         var output = new StringWriter();
+        var request = new DesktopStartupSmoke.Request();
+        Directory.CreateDirectory(request.DataDirectory);
 
-        var exitCode = DesktopStartupSmoke.Inconclusive(
-            new DesktopStartupSmoke.Request(), "another instance", output);
+        int exitCode;
+        using (DesktopStartupSmoke.BeginLifecycle(request))
+        {
+            exitCode = DesktopStartupSmoke.Inconclusive(request, "another instance", output);
+            Assert.True(Directory.Exists(request.DataDirectory));
+        }
 
         Assert.Equal(1, exitCode);
         Assert.Contains("startup-smoke inconclusive", output.ToString());
         Assert.Contains("another instance", output.ToString());
+        Assert.False(Directory.Exists(request.DataDirectory));
     }
 
     private sealed class FakeHost : IHost
@@ -204,6 +219,7 @@ public class DesktopStartupSmokeTests
 
         public bool Started { get; private set; }
         public bool Stopped { get; private set; }
+        public bool Disposed { get; private set; }
         public Exception? StartFailure { get; init; }
         public TimeSpan StartDelay { get; init; } = TimeSpan.Zero;
         public IServiceProvider Services { get; }
@@ -225,6 +241,9 @@ public class DesktopStartupSmokeTests
 
         public void Dispose()
         {
+            if (Disposed)
+                return;
+            Disposed = true;
             _systemRuntime?.Dispose();
             if (Directory.Exists(_runtimeRoot))
                 Directory.Delete(_runtimeRoot, recursive: true);

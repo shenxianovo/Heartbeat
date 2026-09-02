@@ -7,8 +7,8 @@ namespace Heartbeat.Collection.Headless.Tests;
 /// <summary>
 /// Headless Hub 是独立发布单元：它必须能在零 Collector Instance 下启动；某个配置项的 Package 缺失、损坏
 /// 或它的 projection pipeline 恢复失败时，只有那一个 Instance 失效，其余 Instance、管理面与 Hub 进程都继续
-/// 跑（ADR-048/ADR-049）。管理面只报告真实事实：没建起 Instance 就没有 Package 版本，Activation 失败的原因
-/// 归 CollectorRuntime 所有。
+/// 跑（ADR-048/ADR-049）。管理面只报告真实事实：Runtime 中仍存在的 Instance 保留身份与 Package
+/// 元数据，只有 Instance 确实不存在时才报 null；Activation 失败的原因归 CollectorRuntime 所有。
 /// </summary>
 public sealed class HeadlessStartupIsolationTests : IDisposable
 {
@@ -88,7 +88,9 @@ public sealed class HeadlessStartupIsolationTests : IDisposable
                 restarted.Snapshot(),
                 status => status.SubjectName == "Managed second");
             Assert.Equal(CollectorRuntimePhase.Failed.ToString(), broken.Phase);
-            Assert.Null(broken.CollectorInstanceId);
+            Assert.Equal(brokenInstanceId, broken.CollectorInstanceId);
+            Assert.NotNull(broken.PackageVersion);
+            Assert.NotNull(broken.PackageContentHash);
             Assert.False(string.IsNullOrWhiteSpace(broken.StatusDetail));
         }
         finally

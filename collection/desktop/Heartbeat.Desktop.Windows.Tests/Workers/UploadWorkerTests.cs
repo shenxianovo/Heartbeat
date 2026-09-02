@@ -125,7 +125,7 @@ public class UploadWorkerTests : IDisposable
             hubConfig,
             recording,
             new DeclarationUplinkService(api, hubConfig),
-            new WindowsHubRuntimeHooks(icons)), segSource, inputSource, icons, inputCache, recording);
+            new WindowsHubRuntimeHooks(icons, cm)), segSource, inputSource, icons, inputCache, recording);
     }
 
     private static ActivitySegmentItem Segment(string? appIdentityKey)

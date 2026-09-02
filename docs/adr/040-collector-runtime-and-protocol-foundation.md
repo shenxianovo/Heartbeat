@@ -42,6 +42,12 @@ Event 的 Stream Gap，不能先删除/拒绝 Event、再写另一份 Gap ledger
 
 基础协议按 Major 协商；Fact、配置和生命周期能力独立版本化；Package SemVer 不参与 wire negotiation。Manifest 静态声明允许产生的 Source、FactKind、schema、SubjectKind 与 identifying dimensions，Activation 只能把声明绑定为具体 Fact Stream。
 
+> 2026-09-02 projection closeout：`facts.segment/v1` 的可执行投影形状统一为
+> `ActivitySegment`。Package 自有 schema id / schema major 只细化 payload，由 Package JSON Schema 先验证；
+> Hub 再按通用基础形状要求非空 `identityKey`，不按具名 Collector schema 白名单选择 projector。未来若出现
+> 非 `ActivitySegment` 的 Segment，必须升级 capability major 或引入新的通用 projection 声明，不能静默复用
+> `facts.segment/v1`。
+
 Instance Desired State 使用单调 SpecRevision；Activation 报告已经应用的 Revision，不能动态应用时由 Runtime 重建 Activation。Collector → Hub 的 Fact 交付采用至少一次与幂等收敛：Collector 在 ACK 前负责保留，Hub 取得持久化责任后才 ACK，重复由 Fact 身份处理。批大小、背压、Stream Gap 和本地存储形态属于协议规范与实现细节，不再单独立 ADR。
 
 ### 4. 本期明确不扩张到完整插件生态

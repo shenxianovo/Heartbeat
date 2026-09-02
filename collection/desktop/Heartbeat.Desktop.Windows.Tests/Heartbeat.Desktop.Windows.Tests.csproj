@@ -22,7 +22,7 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
-  <!-- Desktop 测试宿主刻意不带 Browser Package：Browser 缺失是被测的合法状态。 -->
+  <!-- Desktop 测试宿主只带 System BuiltIn Package；具名可选采集器不进入宿主组合。 -->
   <Import Project="..\Heartbeat.Collector.System\SystemCollectorPackage.targets" />
 
 </Project>

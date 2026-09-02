@@ -193,7 +193,6 @@
               <DataTemplate>
                 <Grid Margin="0,0,0,4">
                   <controls:SettingsExpander IsExpanded="{Binding IsExpanded, Mode=TwoWay}"
-                                             IsVisible="{Binding IsSystem}"
                                              Header="{Binding Source}"
                                              Description="{Binding Summary}"
                                              ItemsSource="{Binding Capabilities}">
@@ -206,14 +205,7 @@
                       </Border>
                     </controls:SettingsExpander.HeaderIcon>
                     <controls:SettingsExpander.ActionContent>
-                      <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                        <TextBlock Text="内置" FontSize="10" Classes="subtle" VerticalAlignment="Center" />
-                        <Border Width="7" Height="7" CornerRadius="4"
-                                Background="{DynamicResource HeartbeatSuccessBrush}"
-                                IsVisible="{Binding IsActive}" VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding ActivityText}" FontSize="10" Classes="muted"
-                                   VerticalAlignment="Center" />
-                      </StackPanel>
+                      <TextBlock Text="内置" FontSize="10" Classes="subtle" VerticalAlignment="Center" />
                     </controls:SettingsExpander.ActionContent>
                     <controls:SettingsExpander.ItemTemplate>
                       <DataTemplate>
@@ -258,33 +250,6 @@
                     </controls:SettingsExpander.ItemTemplate>
                   </controls:SettingsExpander>
 
-                  <controls:SettingsCard IsVisible="{Binding IsExternal}"
-                                         Header="{Binding Source}">
-                    <controls:SettingsCard.HeaderIcon>
-                      <Border Width="38" Height="38" CornerRadius="10"
-                              Background="{DynamicResource HeartbeatPrimarySoftBrush}">
-                        <LucideIcon Kind="Radio" Size="19" StrokeWidth="1.7"
-                                    Foreground="{DynamicResource HeartbeatPrimaryBrush}"
-                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
-                      </Border>
-                    </controls:SettingsCard.HeaderIcon>
-                    <controls:SettingsCard.Description>
-                      <TextBlock Text="{Binding Description}" TextWrapping="Wrap" />
-                    </controls:SettingsCard.Description>
-                    <controls:SettingsCard.ActionContent>
-                      <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <Border Width="7" Height="7" CornerRadius="4"
-                                Background="{DynamicResource HeartbeatSuccessBrush}"
-                                IsVisible="{Binding IsActive}" />
-                        <Border Width="7" Height="7" CornerRadius="4"
-                                Background="{DynamicResource HeartbeatSubtleBrush}"
-                                IsVisible="{Binding IsInactive}" />
-                        <TextBlock Text="{Binding ActivityText}" FontSize="10" Classes="muted"
-                                   VerticalAlignment="Center" />
-                        <ToggleSwitch IsChecked="{Binding Enabled}" />
-                      </StackPanel>
-                    </controls:SettingsCard.ActionContent>
-                  </controls:SettingsCard>
                 </Grid>
               </DataTemplate>
             </ItemsControl.ItemTemplate>

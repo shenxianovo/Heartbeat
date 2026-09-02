@@ -8,7 +8,7 @@ namespace Heartbeat.Desktop.UI.Diagnostics;
 /// <summary>
 /// 打包产物的启动 smoke：证明 Desktop 宿主能走完 <see cref="IHost.StartAsync"/> 并干净停止。
 /// 它只认识宿主自身，不解析也不断言任何具名可选 Collector 的状态；
-/// 调用方负责传入隔离的数据目录，避免 smoke 碰到真实用户数据。
+/// Request 提供隔离数据目录，Lifecycle 在宿主与日志都释放后清理自建目录。
 /// 只给 release 流水线用——它不拉起任何 UI，跑完就退出，并把结果写成一行 JSON 便于日志留痕。
 /// </summary>
 public static class DesktopStartupSmoke
@@ -29,6 +29,33 @@ public static class DesktopStartupSmoke
 
         /// <summary>目录是 smoke 自己开的，跑完就该删掉；调用方指定的目录一律不动。</summary>
         public bool OwnsDataDirectory { get; } = string.IsNullOrWhiteSpace(DataDirectoryOverride);
+    }
+
+    /// <summary>
+    /// Owns only the one-shot data directory. Platform heads create this before composing the host and
+    /// dispose it after host disposal and log flushing, when no Windows file handle can still pin the tree.
+    /// </summary>
+    public sealed class Lifecycle : IDisposable
+    {
+        private readonly Request _request;
+        private bool _disposed;
+
+        internal Lifecycle(Request request) => _request = request;
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+            if (_request.OwnsDataDirectory)
+                TryDeleteDirectory(_request.DataDirectory);
+        }
+    }
+
+    public static Lifecycle BeginLifecycle(Request request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return new Lifecycle(request);
     }
 
     public static bool TryGetRequest(IEnumerable<string>? arguments, out Request request)
@@ -83,7 +110,7 @@ public static class DesktopStartupSmoke
         return 1;
     }
 
-    /// <returns>进程退出码：0 表示宿主起停成功。</returns>
+    /// <returns>进程退出码：0 表示宿主起停成功。宿主释放与数据目录清理由外层 Lifecycle 排序。</returns>
     public static int Run(
         IHost host,
         Request request,
@@ -119,12 +146,6 @@ public static class DesktopStartupSmoke
         {
             report["failure"] = $"{exception.GetType().Name}: {exception.Message}";
         }
-        finally
-        {
-            if (request.OwnsDataDirectory)
-                TryDeleteDirectory(request.DataDirectory);
-        }
-
         var succeeded = report["failure"] is null;
         var json = JsonSerializer.Serialize(report);
         (output ?? Console.Out).WriteLine($"startup-smoke {(succeeded ? "ok" : "failed")} {json}");

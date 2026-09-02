@@ -120,13 +120,15 @@ public sealed class WindowsDeviceIdentity(
         : config.Current.DeviceName;
 }
 
-public sealed class WindowsHubRuntimeHooks(IIconUploadService icons) : IHubRuntimeHooks
+public sealed class WindowsHubRuntimeHooks(
+    IIconUploadService icons,
+    ConfigManager config) : IHubRuntimeHooks
 {
+    internal string LegacyCachePath => Path.Combine(config.DataDirectory, "cache.json");
+
     public void OnStarting()
     {
-        var legacyPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Heartbeat", "cache.json");
+        var legacyPath = LegacyCachePath;
         if (File.Exists(legacyPath))
             Serilog.Log.Information("检测到已退役的 usage 离线缓存 {Path}（ADR-020），文件保留但不再读取", legacyPath);
     }

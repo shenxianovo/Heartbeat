@@ -21,50 +21,62 @@ public static class Program
 
         var smokeRequested = DesktopStartupSmoke.TryGetRequest(args, out var smoke);
         var logSink = new RingBufferSink(200);
-        // smoke 连日志都写进隔离目录，真实用户数据目录一个字节都不碰。
-        ConfigureLogging(logSink, smokeRequested ? smoke.DataDirectory : null);
-        RegisterUnhandledExceptionLogging();
-        using var guard = new SingleInstanceGuard();
-        if (!guard.IsFirstInstance)
-        {
-            Log.Warning("Heartbeat 已在运行中，当前实例退出");
-            if (smokeRequested)
-                Environment.ExitCode = DesktopStartupSmoke.Inconclusive(
-                    smoke, "another instance already holds the single-instance guard");
-            else
-                WindowsMessageBox.ShowAlreadyRunning();
-            Log.CloseAndFlush();
-            return;
-        }
-
-        var config = smokeRequested
-            ? new ConfigManager(Path.Combine(smoke.DataDirectory, "config.json"))
-            : new ConfigManager();
-        var builder = Host.CreateApplicationBuilder();
-        builder.Services.AddSerilog();
-        builder.Services.AddHeartbeatAgent(config, guard);
-        using var host = builder.Build();
-
-        // 发布产物的启动 smoke：只起停 host，不拉起 UI，也不认识任何具名可选 Collector。
-        if (smokeRequested)
-        {
-            Environment.ExitCode = DesktopStartupSmoke.Run(host, smoke);
-            Log.CloseAndFlush();
-            return;
-        }
-
-        host.StartAsync().GetAwaiter().GetResult();
-        var runtime = new WindowsDesktopRuntime(host, guard, config, logSink);
-        App.Runtime = runtime;
-
+        var smokeLifecycle = smokeRequested ? DesktopStartupSmoke.BeginLifecycle(smoke) : null;
         try
         {
-            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
+            // smoke 连日志都写进隔离目录，真实用户数据目录一个字节都不碰。
+            ConfigureLogging(logSink, smokeRequested ? smoke.DataDirectory : null);
+            RegisterUnhandledExceptionLogging();
+            using var guard = new SingleInstanceGuard();
+            if (!guard.IsFirstInstance)
+            {
+                Log.Warning("Heartbeat 已在运行中，当前实例退出");
+                if (smokeRequested)
+                    Environment.ExitCode = DesktopStartupSmoke.Inconclusive(
+                        smoke, "another instance already holds the single-instance guard");
+                else
+                    WindowsMessageBox.ShowAlreadyRunning();
+                return;
+            }
+
+            var config = smokeRequested
+                ? new ConfigManager(Path.Combine(smoke.DataDirectory, "config.json"))
+                : new ConfigManager();
+            var builder = Host.CreateApplicationBuilder();
+            builder.Services.AddSerilog();
+            builder.Services.AddHeartbeatAgent(config, guard);
+            using var host = builder.Build();
+
+            // 发布产物的启动 smoke：只起停 host，不拉起 UI，也不认识任何具名可选 Collector。
+            if (smokeRequested)
+            {
+                Environment.ExitCode = DesktopStartupSmoke.Run(host, smoke);
+                return;
+            }
+
+            host.StartAsync().GetAwaiter().GetResult();
+            var runtime = new WindowsDesktopRuntime(host, guard, config, logSink);
+            App.Runtime = runtime;
+
+            try
+            {
+                BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
+            }
+            finally
+            {
+                runtime.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            }
         }
         finally
         {
-            runtime.DisposeAsync().AsTask().GetAwaiter().GetResult();
-            Log.CloseAndFlush();
+            try
+            {
+                Log.CloseAndFlush();
+            }
+            finally
+            {
+                smokeLifecycle?.Dispose();
+            }
         }
     }
 

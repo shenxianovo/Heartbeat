@@ -6,30 +6,8 @@ using Heartbeat.Collection.Hub.Ingest;
 
 namespace Heartbeat.Collection.Hub.Collectors.Runtime;
 
-internal interface ISegmentFactProjector
+internal sealed class ActivitySegmentFactProjector(ICollectorAppHintResolver? appHintResolver)
 {
-    bool Supports(string schemaId, int schemaMajor);
-
-    Guid ProjectedId(Guid streamId, Guid factId);
-
-    bool TryProject(
-        FactStreamState stream,
-        Guid factId,
-        DateTimeOffset start,
-        DateTimeOffset end,
-        bool isFinal,
-        JsonElement payload,
-        out ActivitySegmentItem? item);
-}
-
-internal sealed class ActivitySegmentFactProjector(ICollectorAppHintResolver? appHintResolver) : ISegmentFactProjector
-{
-    public bool Supports(string schemaId, int schemaMajor) =>
-        schemaMajor == 1 && schemaId is
-            "heartbeat.reference.segment" or
-            "heartbeat.system.foreground-segment" or
-            "heartbeat.vrchat.presence-segment";
-
     public Guid ProjectedId(Guid streamId, Guid factId)
     {
         var identity = Encoding.ASCII.GetBytes($"{streamId:D}/{factId:D}");
@@ -45,14 +23,15 @@ internal sealed class ActivitySegmentFactProjector(ICollectorAppHintResolver? ap
         Guid factId,
         DateTimeOffset start,
         DateTimeOffset end,
-        bool isFinal,
         JsonElement payload,
         out ActivitySegmentItem? item)
     {
         item = null;
         if (payload.ValueKind != JsonValueKind.Object ||
             !payload.TryGetProperty("identityKey", out var identityKey) ||
-            identityKey.ValueKind != JsonValueKind.String)
+            identityKey.ValueKind != JsonValueKind.String ||
+            identityKey.GetString() is not { } projectedIdentityKey ||
+            string.IsNullOrWhiteSpace(projectedIdentityKey))
             return false;
 
         // 宿主 adapter 能把 stream 上的 appHint 解析成 App Identity 时用它，否则退回 Fact 自报的
@@ -70,7 +49,7 @@ internal sealed class ActivitySegmentFactProjector(ICollectorAppHintResolver? ap
         {
             Id = ProjectedId(stream.StreamId, factId),
             Source = stream.Source,
-            IdentityKey = identityKey.GetString()!,
+            IdentityKey = projectedIdentityKey,
             Title = StringProperty(payload, "title"),
             AppIdentityKey = appIdentityKey,
             AppDisplayName = StringProperty(payload, "appDisplayName"),

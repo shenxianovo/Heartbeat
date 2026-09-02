@@ -29,11 +29,9 @@ internal sealed class FakeDesktopState : IDesktopState
     public DesktopSettingsInput? LastSettings { get; private set; }
     public bool? LastLoginStartValue { get; private set; }
     public DesktopThemeMode? LastThemeMode { get; private set; }
-    public (string Source, bool Enabled)? LastCollectorValue { get; private set; }
     public event Action<DesktopStateSnapshot>? Changed;
 
     public void SaveSettings(DesktopSettingsInput settings) => LastSettings = settings;
-    public void SetCollectorEnabled(string source, bool enabled) => LastCollectorValue = (source, enabled);
     public void SetSystemCapabilityEnabled(SystemCapability capability, bool enabled) =>
         LastSystemCapabilityValue = (capability, enabled);
     public void RecoverSystemCapability(SystemCapability capability) =>
@@ -80,14 +78,7 @@ internal sealed class FakeWindowController : IWindowController
 
 internal sealed class ManualPresentationScheduler : IPresentationScheduler
 {
-    public DateTimeOffset UtcNow { get; set; } = DateTimeOffset.UtcNow;
     public void Post(Action action) => action();
-    public IDisposable SchedulePeriodic(TimeSpan interval, Action action) => new NoopDisposable();
-
-    private sealed class NoopDisposable : IDisposable
-    {
-        public void Dispose() { }
-    }
 }
 
 internal sealed class FakeLogFeed : ILogFeed

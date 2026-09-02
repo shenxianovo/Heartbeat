@@ -68,15 +68,6 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
         Publish();
     }
 
-    public void SetCollectorEnabled(string source, bool enabled)
-    {
-        _config.Update(config =>
-        {
-            if (config.Collectors.TryGetValue(source, out var collector))
-                collector.Enabled = enabled;
-        });
-    }
-
     public void SetSystemCapabilityEnabled(SystemCapability capability, bool enabled)
     {
         switch (capability)
@@ -136,11 +127,6 @@ public sealed class MacDesktopState : IDesktopState, IDisposable
                 config.UploadIntervalMinutes,
                 ParseThemeMode(config.ThemeMode)),
             _loginStart.IsEnabled,
-            config.Collectors.ToDictionary(
-                pair => pair.Key,
-                pair => new CollectorRegistrationState(pair.Value.Enabled, pair.Value.FlushPeriodMs),
-                StringComparer.OrdinalIgnoreCase),
-            new Dictionary<string, DateTimeOffset>(_collection.SourceLastSeen, StringComparer.OrdinalIgnoreCase),
             _compatibility.Current,
             _uploads.Snapshot,
             BuildCapabilities(config));

@@ -207,9 +207,9 @@ _Avoid_: 用一个 bool 同时表示用户开关、权限与实际可用性
 用户把某个 Collector Instance 的 Desired State 设为 `enabled=false`；Collector Runtime 负责停止或拒绝该 Instance 的 Activation，并保留 Installation、Instance 身份与配置。ExternalHost 的停用只约束对应 Instance，不以 Source 级全局开关代替；主卡上的“全部启用/停用”只是对多个 Instance 执行批量变更，不形成另一份 Desired State。
 
 **采集器页（Collector page）**:
-共享桌面 UI 中管理采集器的页面，并容纳采集器设置。可管理性**分级**：system 采集器不可停用，前台应用采集作为无开关的固定基线，其他可选观测深度作为独立采集能力管理；外部采集器按 Collector Instance 展示启用意图与由运行事实推导的用户状态。每项能力的开关、实际状态、权限恢复动作与说明都归属该 Collector 条目，不另建脱离所有者的全局“采集能力”区块。窗口活动采集是一个用户能力，不把 focused-window 切换与原始标题拆成两个开关。
+共享桌面 UI 中管理采集器的页面，并容纳采集器设置。当前实现只显示 System BuiltIn：system 采集器不可停用，前台应用采集作为无开关的固定基线，其他可选观测深度作为独立采集能力管理。每项能力的开关、实际状态、权限恢复动作与说明都归属 System 条目，不另建脱离所有者的全局“采集能力”区块。窗口活动采集是一个用户能力，不把 focused-window 切换与原始标题拆成两个开关。
 
-browser Collector 当前不出现在采集器页：宿主没有它的接入路径，UI 也没有它的卡片、侧载引导或诊断区（ADR-049）。经 loopback 汇入的外部采集器只按通用形态展示——由运行事实驱动出条目、启用意图与状态；Package、Activation、External Host Identity、目录和协议错误只在高级诊断中展示。将来某个 ExternalHost Collector 按 App 分 Instance 时，主卡与 App 子项的呈现规则随该 Collector 的 adapter 一起回来，不预先在宿主 UI 里为它留位置。
+通用 ExternalHost / Instance UI 尚未实现；Browser 当前也没有宿主接入路径、卡片、侧载引导或诊断区（ADR-049）。未来若增加外部 Collector 管理 UI，必须由真实 Installation / Instance / Runtime State 驱动条目和状态；Package、Activation、External Host Identity、目录与协议错误可进入高级诊断。某个 ExternalHost Collector 按 App 分 Instance 时，主卡与 App 子项的呈现规则随该 Collector 的 adapter 一起回来，不预先在宿主 UI 里为它留位置。
 _Avoid_: 采集器栏、Collector panel、为某个具体 Collector 在宿主 UI 写死卡片
 
 **Setup**:

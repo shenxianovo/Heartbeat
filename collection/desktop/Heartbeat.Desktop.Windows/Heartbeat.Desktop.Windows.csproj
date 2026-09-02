@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <AvaloniaResource Include="..\assets\heartbeat.ico" Link="heartbeat.ico" />
+    <InternalsVisibleTo Include="Heartbeat.Desktop.Windows.Tests" />
   </ItemGroup>
 
   <ItemGroup>

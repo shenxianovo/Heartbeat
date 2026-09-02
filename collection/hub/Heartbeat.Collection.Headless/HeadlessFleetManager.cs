@@ -15,13 +15,13 @@ public sealed record HeadlessSubjectStatusResponse(
     string SubjectName,
     string SubjectKind,
     Guid? CollectorInstanceId,
-    // Instance 没建起来时这两项是"不存在"，不是"空字符串"。
+    // Runtime 中没有 Instance 时这两项是"不存在"，不是"空字符串"。
     string? PackageVersion,
     string? PackageContentHash,
     string Phase,
     CollectorAuthorizationChallenge? Authorization,
     HeadlessCurrentSubjectActivity? CurrentActivity,
-    // 该配置项没能建立 Instance 时的原因。Phase 为 Failed 时非空，其余情况为 null。
+    // 该配置项未能就绪的原因。Phase 为 Failed 时非空，其余情况为 null。
     string? StatusDetail = null);
 
 /// <summary>
@@ -49,7 +49,7 @@ public sealed class HeadlessFleetManager(
     /// Initialize 走完（管理面快照可读、该激活的都已排上）后完成。
     /// 测试靠它取代"睡一小会儿再看"，Initialize 抛错时它带着同一个异常完成。
     /// </summary>
-    public Task Initialized => _initialized.Task;
+    internal Task Initialized => _initialized.Task;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -90,19 +90,24 @@ public sealed class HeadlessFleetManager(
         {
             return _entries.Select(entry =>
             {
-                // 没建起 Instance 的配置项也要能被看见，并带上原因，否则运维只知道"少了一个"。
+                // 未就绪的配置项也要能被看见，并带上原因，否则运维只知道"少了一个"。
                 if (!entry.IsReady)
+                {
+                    var knownInstance = entry.CollectorInstanceId is { } knownInstanceId
+                        ? RuntimeInstance(knownInstanceId)
+                        : null;
                     return new HeadlessSubjectStatusResponse(
                         entry.Options.SubjectId,
                         entry.Options.SubjectName,
                         entry.Options.SubjectKind.ToString(),
-                        null,
-                        null,
-                        null,
+                        knownInstance?.CollectorInstanceId,
+                        knownInstance?.PackageVersion,
+                        knownInstance?.PackageContentHash,
                         "Failed",
                         null,
                         null,
                         entry.Failure);
+                }
 
                 var collectorInstanceId = entry.CollectorInstanceId!.Value;
                 var runtime = RuntimeState(collectorInstanceId);
@@ -229,7 +234,7 @@ public sealed class HeadlessFleetManager(
         {
             if (restoreFailures.TryGetValue(configured.InstanceKey, out var restoreFailure))
             {
-                _entries.Add(Entry.Failed(configured, restoreFailure));
+                _entries.Add(Entry.Failed(configured, restoreFailure, mappings[configured.InstanceKey]));
                 continue;
             }
             try
@@ -248,7 +253,10 @@ public sealed class HeadlessFleetManager(
                 or IOException
                 or UnauthorizedAccessException)
             {
-                _entries.Add(Entry.Failed(configured, exception.Message));
+                _entries.Add(Entry.Failed(
+                    configured,
+                    exception.Message,
+                    mappings.TryGetValue(configured.InstanceKey, out var mappedId) ? mappedId : null));
             }
         }
     }
@@ -403,8 +411,8 @@ public sealed class HeadlessFleetManager(
     private sealed record InstanceMapState(int SchemaVersion, Dictionary<string, Guid> Mappings);
 
     /// <summary>
-    /// 一个受管配置项。Package 装不上或 Instance 初始化失败时，它以 <see cref="Failure"/> 的形式留在
-    /// 队列里被管理面看见，而不是让整个 Hub 起不来（ADR-048）。
+    /// 一个受管配置项。Package 安装、Instance 初始化或 projection pipeline 恢复失败时，
+    /// 它以 <see cref="Failure"/> 留在队列里被管理面看见，而不是让整个 Hub 起不来（ADR-048）。
     /// </summary>
     private sealed class Entry(HeadlessManagedInstanceOptions options)
     {
@@ -424,8 +432,15 @@ public sealed class HeadlessFleetManager(
                 CollectorInstanceId = collectorInstanceId
             };
 
-        public static Entry Failed(HeadlessManagedInstanceOptions options, string reason) =>
-            new(options) { Failure = reason };
+        public static Entry Failed(
+            HeadlessManagedInstanceOptions options,
+            string reason,
+            Guid? collectorInstanceId = null) =>
+            new(options)
+            {
+                CollectorInstanceId = collectorInstanceId,
+                Failure = reason
+            };
 
         public bool IsReady => Package is not null && CollectorInstanceId is not null;
     }

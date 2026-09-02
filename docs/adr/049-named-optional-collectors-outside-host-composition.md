@@ -1,6 +1,6 @@
 # ADR-049: 具名可选 Collector 不进入 Host composition
 
-## Status: Accepted（amends [ADR-040](./040-collector-runtime-and-protocol-foundation.md) §5 的 browser binding 专属 runtime/protocol handler，以及 [ADR-048](./048-shared-collector-host-runtime-and-independent-release-units.md) §2/§3 中宿主 adapter 持有浏览器 loopback binding 的表述）
+## Status: Accepted（amends [ADR-030](./030-collector-depth-declaration.md) §4 的 Browser 启动种子、[ADR-040](./040-collector-runtime-and-protocol-foundation.md) §3/§5 的 segment projector 与 browser binding，以及 [ADR-048](./048-shared-collector-host-runtime-and-independent-release-units.md) §2/§3 中宿主 adapter 持有浏览器 loopback binding 的表述）
 
 ## Date: 2026-09-02
 
@@ -43,8 +43,8 @@ Desktop 与通用 Hub Runtime 不再认识任何具体 Collector 的名字。宿
 ### 3. 宿主侧的 Browser 特化整体删除
 
 Hub 删除 `BrowserCollectorRuntime`、`BrowserExternalHostProtocolHandler`、`ExternalHostLeaseMonitor`、
-`CollectorSegmentUploadRequest` 与 `AddBrowserExternalHostBinding`；`SegmentFactProjector` 不再支持
-`heartbeat.browser.active-tab-segment`，也不再解析 Browser 专属 attributes，只保留通用 `appHint` 维度解析；
+`CollectorSegmentUploadRequest` 与 `AddBrowserExternalHostBinding`；segment projector 不再按 schema id / major
+列出 Browser、VRChat 或测试 Collector，只保留通用 `appHint` 维度解析；
 `ExternalHostCollectorActivation`、`CollectorPackageInstallations` 与 Hub `README.md` 的措辞改为通用
 ExternalHost。
 
@@ -54,9 +54,9 @@ Desktop 删除 `WindowsBrowserSetupLauncher`、`MacBrowserSetupLauncher` 与两�
 平台 AppHint resolver 注册，并把本机数据树统一挂到可注入的数据目录（Windows 走
 `ConfigManager.DataDirectory`，Mac 走 `MacAgentPaths.DataDirectory`）。共享 presentation 删除
 `ExternalHostRuntimeStatus`、`BrowserKind`、`BrowserCollectorState`、`BrowserCollectorAppState`、快照上的
-`BrowserCollector` 属性与 `IDesktopState` 的两个 Browser 方法；`CollectorItemViewModel` 只认两种形态——
-System（按采集能力展开）与经 loopback 汇入的外部采集器；`MainWindow.axaml` 的 Browser 卡片与主题里 5 条
-`browser-*` 样式删除。
+`BrowserCollector` 属性与 `IDesktopState` 的两个 Browser 方法。通用 ExternalHost / Instance UI 尚未存在时，
+Desktop presentation 只显示 System（按采集能力展开），不再把历史 source 级 Collector Registry 猜成外部
+Collector 卡片；`MainWindow.axaml` 的外部卡片分支与主题里的 Browser 样式删除。
 
 ### 4. 启动 smoke 只证明宿主自身
 
@@ -74,30 +74,44 @@ mapping 的恢复过程也逐 Instance 隔离，失败的那条变成管理面 `
 `PackageVersion` 与 `PackageContentHash` 是 `null`（"不存在"）而不是空字符串；新增 `Initialized` readiness
 signal，零 Instance 场景不再靠固定睡眠等待。
 
-### 6. 本阶段不做的事
+### 6. `facts.segment/v1` 是一个通用投影形状
 
-不实现通用 ExternalHost 的安装入口、discovery 与握手 adapter，也不实现声明驱动的 segment 投影。两者是
-后续 issue，不在本决策内用临时分支顶替。
+`FactKind.Segment` 在协商后的 `facts.segment/v1` 下统一投影为 `ActivitySegment`，不再按 Package 的 schema id
+或 schema major 选择具名 adapter。Package JSON Schema 先验证自己的 payload；通用 projector 再要求非空
+`identityKey` 并读取共同字段。schema id / major 属于 Collector Package，不是 Host composition 知识。
+
+未来若需要表达不是 `ActivitySegment` 的 Segment，必须升级 capability major 或增加一个由 Package 声明的
+通用 projection kind；不得重新在 Hub 建具名 schema 白名单。协议测试使用 Reference Package 验证通用行为，
+VRChat 的真实 ManagedProcess E2E 归 VRChat Collector 测试拥有，Hub 测试不构建 Browser 或 VRChat 产品。
+
+### 7. Analytics 只替 System BuiltIn 声明
+
+Analytics 启动只预插 System 的 Observation Depth 声明。非 BuiltIn Collector 的声明必须经运行时上报并走
+已有通用 DB 生效路径；旧数据库中已经存在的 Browser 声明继续作为真实历史数据读取，不做具名删除迁移。
+
+### 8. 本阶段不做的事
+
+不实现通用 ExternalHost 的安装入口、discovery 与握手 adapter；该能力是后续 issue，不在本决策内用临时
+分支顶替。
 
 ## Consequences
 
 - ✅ 具名可选 Collector 的增删不再触碰宿主：Hub、两个平台 head、共享 UI、主题与 startup smoke 都不含
   Collector 名字。
 - ✅ 宿主只有一处 Collector 写死点（System BuiltIn），"缺席分支"从多处降级逻辑变成"根本不组合"。
+- ✅ Segment 由 Package 声明的 `FactKind` 与 `facts.segment/v1` 能力驱动通用投影；新增兼容 Collector schema
+  不改 Hub，Analytics 也不替非 BuiltIn Collector 声明观测深度。
 - ✅ startup smoke 成为宿主通用断言，并且不再依赖也不再污染真实用户数据目录。
 - ✅ Headless 管理面的失败原因与包版本反映真实运行事实，单个 Instance 的失败不再影响 Hub 启动。
 - ⚠️ Browser 在本阶段没有宿主接入能力：Desktop 不能安装、发现或连接它，UI 里也看不到它。
 - ⚠️ `/v1/collector-protocol/browser` 不再存在；默认 ExternalHost handler 一律返回 404，直到通用接入能力
   落地。
-- ⚠️ `heartbeat.browser.active-tab-segment` 不再被宿主投影识别；即使外部宿主设法送达该 schema 的 Fact，
-  宿主也不会投影它。
+- ⚠️ Browser 当前仍没有连接宿主的路径；其兼容 `facts.segment/v1` 的 Fact 在通用 ExternalHost 接入完成后可
+  直接走通用投影，无需给 Hub 增加 Browser schema 分支。
 - ⚠️ Browser Collector 自身的扩展代码、Package 构建脚本与独立 npm 测试保留，并继续由
   `collector-contracts.yml` 验证，但没有任何宿主调用者，也不进 Desktop Release。
 - ⚠️ `CollectorPackageInstallations` 当前只剩 Headless 一个调用者；Desktop 侧的 Installation 调用者要等通用
   ExternalHost 安装入口才会回来。
-- ⚠️ `ActivitySegmentFactProjector.Supports` 仍硬编码列举具名 schema id（含
-  `heartbeat.vrchat.presence-segment`），这与本决策同向但未完成：投影应当由 Package 声明驱动，而不是宿主
-  写死一张表。
 
 ## Amends
 
@@ -105,6 +119,10 @@ signal，零 Instance 场景不再靠固定睡眠等待。
   discovery 与 Collector Protocol v1"不再成立于宿主侧。binding 专属 discovery 路由、Browser 专属
   `CollectorRuntime` 与 protocol handler 已删除；Hub 只保留通用 ExternalHost handler seam 与默认 404 实现。
   ExternalHost Stream 由 `appHint + externalHostIdentity` 形成 identifying dimensions 的协议语义不变。
+- **[ADR-040](./040-collector-runtime-and-protocol-foundation.md) §3**：segment projector 不再按 schema id / major
+  注册 adapter；`facts.segment/v1` 的共同投影形状由 FactKind 与 Package schema 两阶段验证。
+- **[ADR-030](./030-collector-depth-declaration.md) §4**：切换期预插 Browser v1 的做法结束；Analytics 只为
+  System BuiltIn 提供启动种子，其他 Collector 运行时上报声明。
 - **[ADR-048](./048-shared-collector-host-runtime-and-independent-release-units.md) §2/§3**：宿主 adapter 清单
   里的"ExternalHost loopback"不再是浏览器专属 binding；§3 表格中 Browser 一行的"默认 Hub Instance =
   Desktop"是目标态而不是当前事实——当前 Desktop 没有任何 Browser 接入路径。"Browser 代码仍由浏览器承载
@@ -119,7 +137,7 @@ signal，零 Instance 场景不再靠固定睡眠等待。
 - [`collection/CONTEXT.md`](../../collection/CONTEXT.md) — Collection 领域词汇
 - [`collection/hub/Heartbeat.Collection.Hub/Hosting/HubServiceCollectionExtensions.cs`](../../collection/hub/Heartbeat.Collection.Hub/Hosting/HubServiceCollectionExtensions.cs) — 只组合通用运行时的入口
 - [`collection/hub/Heartbeat.Collection.Hub/Ingest/ExternalHostProtocolWorker.cs`](../../collection/hub/Heartbeat.Collection.Hub/Ingest/ExternalHostProtocolWorker.cs) — 通用 loopback 监听器与默认 404 adapter
-- [`collection/hub/Heartbeat.Collection.Hub/Collectors/Runtime/SegmentFactProjector.cs`](../../collection/hub/Heartbeat.Collection.Hub/Collectors/Runtime/SegmentFactProjector.cs) — 通用 `appHint` 投影与仍待声明驱动的 schema 表
+- [`collection/hub/Heartbeat.Collection.Hub/Collectors/Runtime/SegmentFactProjector.cs`](../../collection/hub/Heartbeat.Collection.Hub/Collectors/Runtime/SegmentFactProjector.cs) — `facts.segment/v1` 的通用 ActivitySegment 投影
 - [`collection/desktop/Heartbeat.Desktop.Windows/Hosting/AgentHostExtensions.cs`](../../collection/desktop/Heartbeat.Desktop.Windows/Hosting/AgentHostExtensions.cs) — Windows 组合根
 - [`collection/desktop/Heartbeat.Desktop.Mac/Hosting/MacAgentHostExtensions.cs`](../../collection/desktop/Heartbeat.Desktop.Mac/Hosting/MacAgentHostExtensions.cs) — macOS 组合根
 - [`collection/desktop/Heartbeat.Desktop.UI/Diagnostics/DesktopStartupSmoke.cs`](../../collection/desktop/Heartbeat.Desktop.UI/Diagnostics/DesktopStartupSmoke.cs) — 宿主通用 startup smoke

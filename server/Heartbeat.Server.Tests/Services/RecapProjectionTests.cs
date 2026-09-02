@@ -2,6 +2,7 @@ using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Collectors;
 using Heartbeat.Core.DTOs.Knowledge;
 using Heartbeat.Server.Services;
+using Heartbeat.Server.Tests.Fixtures;
 
 namespace Heartbeat.Server.Tests.Services;
 
@@ -11,6 +12,8 @@ public class RecapProjectionTests
     private static readonly DateRange Window = new(
         new DateTime(2026, 7, 12, 0, 0, 0, DateTimeKind.Utc),
         new DateTime(2026, 7, 13, 0, 0, 0, DateTimeKind.Utc));
+    private static readonly DepthTables Tables =
+        CollectorDeclarationTestData.With(CollectorDeclarationTestData.BrowserV1());
 
     private static RecapSegmentInput Sys(string app, string? title, DateTimeOffset start, DateTimeOffset end, string device = "Main PC")
         => new(device, ActivitySources.System, $"{app}|{title}", app, title, start, end);
@@ -19,7 +22,7 @@ public class RecapProjectionTests
         => new(device, "browser", url, "chrome", title, start, end);
 
     private static RecapProjectionResult Project(params RecapSegmentInput[] segments)
-        => RecapProjection.Project(segments, Window, TimeSpan.Zero);
+        => RecapProjection.Project(segments, Window, TimeSpan.Zero, depthTables: Tables);
 
     private static MatcherDto AppMatcher(string app) => new()
     {
@@ -101,7 +104,7 @@ public class RecapProjectionTests
                 new("Main PC", ActivitySources.System, "code.exe|x", "code.exe", "x", Day.AddHours(9), Day.AddHours(11)),
                 Browser("https://huasheng.com/dashboard", "花生看板", Day.AddHours(9), Day.AddHours(10)),
             ],
-            Window, TimeSpan.Zero, known);
+            Window, TimeSpan.Zero, known, depthTables: Tables);
 
         Assert.Contains("已知脉络", result.Digest);
         Assert.Contains("HyperFrames：我在搞的 AI 动效框架", result.Digest);
@@ -251,7 +254,7 @@ public class RecapProjectionTests
             segments.Add(Browser($"example.com/page-{i}", null,
                 Day.AddHours(9), Day.AddHours(9).AddMinutes(32 - i)));
 
-        var result = RecapProjection.Project(segments, Window, TimeSpan.Zero);
+        var result = RecapProjection.Project(segments, Window, TimeSpan.Zero, depthTables: Tables);
 
         Assert.Contains("example.com/page-0", result.Digest); // 时长最长者保留
         Assert.DoesNotContain("example.com/page-31", result.Digest);

@@ -1,12 +1,13 @@
 using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Collectors;
 using Heartbeat.Server.Services;
+using Heartbeat.Server.Tests.Fixtures;
 
 namespace Heartbeat.Server.Tests.Services;
 
 /// <summary>
 /// 声明驱动的观测深度（ADR-030）：校验 / 槽位取值 / 生效规则的纯函数面。
-/// 种子声明的解释结果 = 各采集器 v1 契约（切换日行为零断层的基准）。
+/// BuiltIn 种子与测试显式提供的 Collector 声明共用同一解释路径。
 /// </summary>
 public class ObservationDepthTests
 {
@@ -40,9 +41,10 @@ public class ObservationDepthTests
     }
 
     [Fact]
-    public void Seed_Browser_UrlThenTabTitle()
+    public void DeclaredCollector_UrlThenTabTitle()
     {
-        var readings = DepthTables.Seeds.ReadingsFor(
+        var tables = CollectorDeclarationTestData.With(CollectorDeclarationTestData.BrowserV1());
+        var readings = tables.ReadingsFor(
             ActivitySources.Browser, "chrome", "花生看板", "huasheng.com/dashboard");
 
         // tab_title 挂 L2(ADR-030 §5):url 下的标题分布是"下一深度分解"的定义本身。
@@ -120,7 +122,8 @@ public class ObservationDepthTests
     [Fact]
     public void DescribeForPrompt_RendersDeclaredVocabulary()
     {
-        var vocab = DepthTables.Seeds.DescribeForPrompt();
+        var tables = CollectorDeclarationTestData.With(CollectorDeclarationTestData.BrowserV1());
+        var vocab = tables.DescribeForPrompt();
 
         Assert.Contains("browser：\"url\"（网址） → \"tab_title\"（标签页）", vocab);
         Assert.Contains("system：\"app\"（应用） → \"title\"（窗口标题）", vocab);
@@ -148,6 +151,8 @@ public class ObservationDepthTests
     [Fact]
     public void Validate_SeedDeclarations_AreValid()
     {
+        Assert.Collection(SeedDeclarations.All,
+            declaration => Assert.Equal(ActivitySources.System, declaration.Source));
         Assert.All(SeedDeclarations.All, d => Assert.Null(DeclarationValidator.Validate(d)));
     }
 

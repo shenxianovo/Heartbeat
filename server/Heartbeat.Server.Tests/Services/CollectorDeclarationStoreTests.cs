@@ -7,12 +7,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Heartbeat.Server.Tests.Services;
 
-/// <summary>声明表（ADR-030 §4）：生效 = 种子地板 + DB 按 max(Version) 覆盖；启动种子幂等。</summary>
+/// <summary>声明表（ADR-030 §4）：生效 = BuiltIn 种子 + DB 的运行时声明；启动种子幂等。</summary>
 [Collection("postgres")]
 public class CollectorDeclarationStoreTests(PostgresContainerFixture fixture) : PostgresTestBase(fixture)
 {
     [Fact]
-    public async Task EffectiveTables_SeedFloor_DbOverridesByVersion()
+    public async Task EffectiveTables_BuiltInSeedAndReportedDeclaration()
     {
         using var db = CreateDbContext();
         var v2 = new CollectorDeclarationDto
@@ -33,11 +33,16 @@ public class CollectorDeclarationStoreTests(PostgresContainerFixture fixture) : 
             ReportedAt = DateTimeOffset.UtcNow,
         });
         await db.SaveChangesAsync();
+        await SeedDeclarations.SeedAsync(db);
+
+        Assert.Equal(
+            ["browser", "system"],
+            await db.CollectorDeclarations.OrderBy(d => d.Source).Select(d => d.Source).ToArrayAsync());
 
         var tables = await new DigestAssembler(db).LoadDepthTablesAsync();
 
-        Assert.Equal(2, tables.For("browser")!.Version); // DB 覆盖种子
-        Assert.Equal(1, tables.For("system")!.Version);  // 种子地板兜底(干净库不失明)
+        Assert.Equal(2, tables.For("browser")!.Version); // 非内置 Collector 只由 DB 声明生效
+        Assert.Equal(1, tables.For("system")!.Version);  // BuiltIn 种子地板兜底
         Assert.Equal([new DepthReading(1, "site", "example.com"), new DepthReading(2, "url", "blog.example.com/p")],
             tables.ReadingsFor("browser", null, null, "blog.example.com/p", """{"site":"example.com"}"""));
     }
@@ -51,8 +56,8 @@ public class CollectorDeclarationStoreTests(PostgresContainerFixture fixture) : 
         await SeedDeclarations.SeedAsync(db);
 
         var rows = await db.CollectorDeclarations.OrderBy(d => d.Source).ToListAsync();
-        Assert.Equal(2, rows.Count);
-        Assert.Equal(["browser", "system"], rows.Select(r => r.Source).ToArray());
+        var row = Assert.Single(rows);
+        Assert.Equal("system", row.Source);
         Assert.All(rows, r => Assert.Equal(1, r.Version));
     }
 }

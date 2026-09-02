@@ -13,32 +13,15 @@ flowchart LR
     HUB["Collection Hub\nCollector Runtime"]
     PROJ["Fact validation + projectors\nsegment / input event"]
     CACHE["Upload streams + local cache"]
-    LOOP["Browser ExternalHost binding\n127.0.0.1 port range"]
+    LOOP["ExternalHost listener seam\nNull handler → 404"]
 
     UI -->|"typed calls · desired state"| HUB
     OS -->|"typed observations\nenqueue-only callbacks"| SYS
     SYS -->|"background delivery pump\nCollector Protocol v1 · typed in-process"| HUB
-    LOOP -->|"Collector Protocol v1 adapter"| HUB
+    LOOP -->|"no adapter installed"| HUB
     HUB -->|"validated Facts"| PROJ
     PROJ --> CACHE
   end
-
-  subgraph Browser["Browser App · Chrome / Edge / compatible Chromium"]
-    EXT["One sideload Package path"]
-    APP1["App Instance: chrome"]
-    APP2["App Instance: edge"]
-    H1["External Host: profile/install A"]
-    H2["External Host: profile/install B"]
-
-    EXT --> APP1
-    EXT --> APP2
-    APP1 --> H1
-    APP1 --> H2
-  end
-
-  H1 -->|"loopback HTTP + JSON\nheartbeat.collector/1"| LOOP
-  H2 -->|"loopback HTTP + JSON\nheartbeat.collector/1"| LOOP
-  APP2 -->|"loopback HTTP + JSON\nheartbeat.collector/1"| LOOP
 
   subgraph Headless["Headless Collection Host"]
     WEB["Vue management UI + nginx"]
@@ -61,37 +44,37 @@ flowchart LR
   ANALYTICS -->|"EF Core / PostgreSQL protocol"| DB[(PostgreSQL)]
 ```
 
-Browser discovery 只认 `GET /v1/collector-protocol/browser`；握手与后续消息走同一路径下的 HTTP JSON。旧的 `POST /v1/segments`、`GET /v1/hub` 和 source 级配置/声明入口已经退役。`SegmentIngestService` 仍是 Runtime projector 的内部 segment sink，不是外部协议。
+当前通用 ExternalHost listener 默认由 `NullExternalHostProtocolHttpHandler` 返回 404；Browser 专属 discovery
+路由已经删除，直到通用安装/连接 adapter 落地。旧的 `POST /v1/segments`、`GET /v1/hub` 和 source 级
+配置/声明入口已经退役。`SegmentIngestService` 仍是 Runtime projector 的内部 segment sink，不是外部协议。
 
 Desktop 的平台观察回调不执行协议 I/O：system Collector 先把 Segment / Event 放入 ingress queue，再由后台 delivery pump 持久化并发送。Collector Protocol Client 不捕获宿主 `SynchronizationContext`，因此 Hub 背压不会阻塞 Avalonia UI、macOS LaunchServices 回调或 Windows hook/message-loop 线程。
 
-## Browser 身份与替换范围
+## ExternalHost 身份语义（协议模型，当前未接入 Desktop）
 
 ```mermaid
 flowchart TD
-  P["Browser Collector Package Installation\n共享 sideload 路径"]
-  C["Collector Instance\nInstanceKey = chrome"]
-  E["Collector Instance\nInstanceKey = edge"]
-  CA["Host A · stable externalHostIdentity"]
-  CB["Host B · stable externalHostIdentity"]
-  EA["Edge Host · stable externalHostIdentity"]
+  P["ExternalHost Collector Package Installation"]
+  C["Collector Instance"]
+  CA["External Host A\nstable externalHostIdentity"]
+  CB["External Host B\nstable externalHostIdentity"]
   A1["Activation A1"]
   A2["Activation A2"]
   B1["Activation B1"]
   ES["Independent Fact Streams\nappHint + externalHostIdentity dimensions"]
 
   P --> C
-  P --> E
   C --> CA --> A1
   CA -. "same Host reconnect replaces only A1" .-> A2
   C --> CB --> B1
-  E --> EA
   A2 --> ES
   B1 --> ES
-  EA --> ES
 ```
 
-`externalHostIdentity` 由扩展生成并保存在 `chrome.storage.local`。清除扩展数据或重装会产生新 Host；旧 Host 只作为历史身份保留。未知但稳定的 `appHint` 会形成未解析 App Instance 并保留事实，缺失或不稳定的值会拒绝 Activation。
+`CollectorRuntime` 已实现上述通用身份与替换语义，但 Desktop 当前没有 ExternalHost 安装、discovery 或握手
+adapter，因此没有实际连接者。未来 adapter 应让外部宿主生成并持久化 `externalHostIdentity`；清除其数据或
+重装会产生新 Host，旧 Host 只作为历史身份保留。未知但稳定的 `appHint` 可形成未解析 App Instance 并保留
+事实，缺失或不稳定的值会拒绝 Activation。
 
 ## Fact Schema 的单一来源与校验链
 

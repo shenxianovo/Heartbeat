@@ -130,7 +130,7 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         _instanceDataRoot = instanceDataRoot;
         _options = options;
         _state = state;
-        _segmentProjectors = [new ActivitySegmentFactProjector(appHintResolver)];
+        _segmentProjector = new ActivitySegmentFactProjector(appHintResolver);
         _eventProjectors = [new InputEventFactProjector()];
     }
 

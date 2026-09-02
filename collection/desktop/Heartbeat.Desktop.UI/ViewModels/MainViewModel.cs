@@ -24,7 +24,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IWindowController _window;
     private readonly IPresentationScheduler _scheduler;
     private readonly ILogFeed _logs;
-    private readonly IDisposable _activityRefresh;
     private DesktopSettingsSnapshot? _lastSettings;
     private bool? _lastLoginStart;
     private bool _suppressLoginStart;
@@ -167,9 +166,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _desktopState.Changed += HandleStateChanged;
         _updates.Changed += HandleUpdateChanged;
         _logs.Changed += HandleLogsChanged;
-        _activityRefresh = scheduler.SchedulePeriodic(
-            TimeSpan.FromSeconds(5),
-            () => scheduler.Post(() => RefreshCollectorActivity(_desktopState.Current)));
 
         _allLogs.AddRange(_logs.GetAll());
         RebuildLogText();
@@ -307,71 +303,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void RebuildCollectors(DesktopStateSnapshot snapshot)
     {
-        var wanted = new List<string> { ActivitySources.System };
-        wanted.AddRange(snapshot.Collectors.Keys
-            .Where(key => !wanted.Contains(key, StringComparer.OrdinalIgnoreCase))
-            .OrderBy(key => key, StringComparer.OrdinalIgnoreCase));
-
-        for (var index = Collectors.Count - 1; index >= 0; index--)
+        var system = Collectors.FirstOrDefault();
+        if (system is null)
         {
-            if (!wanted.Contains(Collectors[index].Source, StringComparer.OrdinalIgnoreCase))
-                Collectors.RemoveAt(index);
+            system = new CollectorItemViewModel(
+                ActivitySources.System,
+                _desktopState.SetSystemCapabilityEnabled,
+                _desktopState.RecoverSystemCapability,
+                _desktopState.RevealSystemCapabilityApplication);
+            Collectors.Add(system);
         }
-
-        for (var index = 0; index < wanted.Count; index++)
-        {
-            var source = wanted[index];
-            var item = Collectors.FirstOrDefault(existing =>
-                string.Equals(existing.Source, source, StringComparison.OrdinalIgnoreCase));
-            if (item == null)
-            {
-                var isSystem = string.Equals(source, ActivitySources.System, StringComparison.OrdinalIgnoreCase);
-                item = new CollectorItemViewModel(
-                    source,
-                    isSystem,
-                    isSystem ? null : _desktopState.SetCollectorEnabled,
-                    isSystem ? _desktopState.SetSystemCapabilityEnabled : null,
-                    isSystem ? _desktopState.RecoverSystemCapability : null,
-                    isSystem ? _desktopState.RevealSystemCapabilityApplication : null);
-                Collectors.Insert(Math.Min(index, Collectors.Count), item);
-            }
-
-            if (item.IsSystem)
-            {
-                item.SetSystemCapabilities(snapshot.Capabilities);
-            }
-            if (snapshot.Collectors.TryGetValue(source, out var registration))
-                item.SetEnabledSilently(registration.Enabled);
-        }
-
-        RefreshCollectorActivity(snapshot);
-    }
-
-    private void RefreshCollectorActivity(DesktopStateSnapshot snapshot)
-    {
-        var now = _scheduler.UtcNow;
-        foreach (var item in Collectors)
-        {
-            if (item.IsSystem)
-            {
-                item.IsActive = true;
-                continue;
-            }
-            snapshot.Collectors.TryGetValue(item.Source, out var registration);
-            DateTimeOffset? lastSeen = snapshot.SourceLastSeen.TryGetValue(item.Source, out var seen)
-                ? seen
-                : null;
-            item.IsActive = IsCollectorActive(lastSeen, registration?.FlushPeriodMs, now);
-        }
-    }
-
-    private static bool IsCollectorActive(DateTimeOffset? lastSeen, int? flushPeriodMs, DateTimeOffset now)
-    {
-        if (lastSeen is not { } seen) return false;
-        var window = flushPeriodMs is > 0
-            ? TimeSpan.FromMilliseconds((long)flushPeriodMs.Value * 3)
-            : TimeSpan.FromSeconds(90);
-        return now - seen < window;
+        system.SetSystemCapabilities(snapshot.Capabilities);
     }
 
     private static string? FormatActivity(CurrentActivity? activity)
@@ -527,7 +469,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _desktopState.Changed -= HandleStateChanged;
         _updates.Changed -= HandleUpdateChanged;
         _logs.Changed -= HandleLogsChanged;
-        _activityRefresh.Dispose();
         GC.SuppressFinalize(this);
     }
 }

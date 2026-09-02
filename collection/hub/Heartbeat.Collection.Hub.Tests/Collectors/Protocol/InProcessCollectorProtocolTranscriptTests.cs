@@ -1946,7 +1946,64 @@ public class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task StreamsOpen_SegmentSchemaWithoutRegisteredProjectionAdapter_IsRejectedBeforeReady()
+    public async Task Publish_GenericSegmentSchemaIdentityInsideActivitySegmentShape_IsProjected()
+    {
+        using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
+        var schemaPath = Path.Combine(
+            packageCopy.Path,
+            "schemas",
+            "reference-segment.schema.json");
+        var schema = JsonNode.Parse(File.ReadAllText(schemaPath))!.AsObject();
+        schema["schemaId"] = "heartbeat.alternate.segment";
+        schema["schemaMajor"] = 7;
+        File.WriteAllText(schemaPath, schema.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        packageCopy.UpdateSchemaHash(schemaPath);
+        var manifest = packageCopy.ReadManifest();
+        manifest["outputs"]![0]!["schema"]!["id"] = "heartbeat.alternate.segment";
+        manifest["outputs"]![0]!["schema"]!["major"] = 7;
+        packageCopy.WriteManifest(manifest);
+        var package = LocalCollectorPackage.Load(packageCopy.Path);
+        using var directory = TemporaryDirectory.Create();
+        var sink = new RecordingSegmentSink();
+        using var runtime = CollectorRuntime.Open(
+            Path.Combine(directory.Path, "collector-runtime.json"),
+            sink);
+        using var config = JsonDocument.Parse("{}");
+        var instance = runtime.CreateInstance(
+            package,
+            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
+        await using var activation = await runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            package,
+            new ReferenceInProcessCollector());
+        var fact = CreateFact(activation.Streams["activity"].Descriptor.StreamId);
+
+        var outcome = await activation.Streams["activity"].PublishAsync(
+            Guid.CreateVersion7(),
+            [fact]);
+
+        Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(outcome.Results).Status);
+        Assert.Equal("reference|work", Assert.Single(sink.Segments).IdentityKey);
+
+        // Package schema 的 minLength 接受纯空白；通用 ActivitySegment shape 必须与
+        // Analytics 的 identity 契约一致，在 Hub 持久接收前明确拒绝。
+        using var whitespacePayload = JsonDocument.Parse("""{"identityKey":" ","title":"Alternate work"}""");
+        var whitespaceFact = CreateFact(activation.Streams["activity"].Descriptor.StreamId) with
+        {
+            Payload = whitespacePayload.RootElement.Clone()
+        };
+        var rejected = await activation.Streams["activity"].PublishAsync(
+            Guid.CreateVersion7(),
+            [whitespaceFact]);
+        var rejectedResult = Assert.Single(rejected.Results);
+        Assert.Equal(FactDeliveryStatus.Rejected, rejectedResult.Status);
+        Assert.Equal("fact_schema_invalid", rejectedResult.Error!.Code);
+        Assert.False(rejectedResult.Error.Retryable);
+    }
+
+    [Fact]
+    public async Task Publish_GenericSegmentSchemaOutsideActivitySegmentShape_IsRejected()
     {
         using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
         var schemaPath = Path.Combine(
@@ -1975,16 +2032,26 @@ public class InProcessCollectorProtocolTranscriptTests
             new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
             new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
         var collector = new ReferenceInProcessCollector();
+        await using var activation = await runtime.ActivateInProcessAsync(
+            instance.CollectorInstanceId,
+            package,
+            collector);
+        using var incompatiblePayload = JsonDocument.Parse(
+            """{"activityKey":"alternate|work","title":"Alternate work"}""");
+        var fact = CreateFact(activation.Streams["activity"].Descriptor.StreamId) with
+        {
+            Payload = incompatiblePayload.RootElement.Clone()
+        };
 
-        var error = await Assert.ThrowsAsync<CollectorActivationException>(async () =>
-            await runtime.ActivateInProcessAsync(
-                instance.CollectorInstanceId,
-                package,
-                collector));
+        var outcome = await activation.Streams["activity"].PublishAsync(
+            Guid.CreateVersion7(),
+            [fact]);
 
-        Assert.Equal("output_not_declared", error.Error.Code);
-        Assert.Contains("projection adapter", error.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(1, collector.StopCalls);
+        var result = Assert.Single(outcome.Results);
+        Assert.Equal(FactDeliveryStatus.Rejected, result.Status);
+        Assert.Equal("fact_schema_invalid", result.Error!.Code);
+        Assert.Contains("projection shape", result.Error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False(result.Error.Retryable);
     }
 
     [Fact]

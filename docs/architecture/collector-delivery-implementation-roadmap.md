@@ -163,15 +163,17 @@ flowchart LR
   任何 Browser 接入路径——Browser 专属 runtime 与 protocol handler 已删除，`/v1/collector-protocol/browser`
   不再存在（默认 ExternalHost handler 一律 404），`CollectorPackages/Browser` 默认路径与 UI 卡片也随之删除。
   手工侧载不再能让它连上宿主。通用 ExternalHost 安装/连接是后续 issue（issue 09 的已知残留之一）。
-- 宿主 segment 投影仍硬编码一张具名 schema id 表（`ActivitySegmentFactProjector.Supports`，含
-  `heartbeat.vrchat.presence-segment`）；`heartbeat.browser.active-tab-segment` 已从表中移除，Browser segment
-  因此不再被宿主识别。投影应当由 Package 声明驱动，这项未做。
+- `facts.segment/v1` 已统一走 ActivitySegment 投影：Package 自有 JSON Schema 先验证 payload，通用 projector
+  再要求共同 `identityKey`，Hub 不再按 schema id / major 列出 Browser、VRChat 或测试 Collector。Hub.Tests
+  也不再构建 Browser 或引用 VRChat 产品；VRChat ManagedProcess E2E 由 Collector 自身测试拥有。
 - Headless Hub 可以零 Collector Instance 启动；单个配置项的 Package 缺失、损坏或初始化失败被隔离成管理面
   快照里的 `Failed` + `StatusDetail`，不再终止整个 Hub。已有 mapping 的恢复过程同样逐 Instance 隔离；
   `StatusDetail` 来自真实 `CollectorRuntimeFailure`（code / message / exit code）；Instance 没建起来时
   `PackageVersion` 与 `PackageContentHash` 是 `null`；`Initialized` readiness signal 让零 Instance 场景不再靠
   固定睡眠等待。
 - Frontend 与 Backend workflow 已独立；Backend workflow 不再构建、推送或重启 Headless。
+- Analytics 启动只预插 System BuiltIn 的 Observation Depth 声明；非 BuiltIn Collector 通过运行时上报，
+  已有数据库声明继续由通用生效路径读取。
 - Headless image 已不再构建或携带 VRChat Package：Package 由 `scripts/build-vrchat-package.sh`
   单独构建到宿主目录，compose 以只读方式挂到 `/package-source`，Headless 安装后再运行。构建仍
   只能在本机手工执行，没有 Collector tag workflow，也没有可下载的发布产物。

@@ -1,6 +1,6 @@
 # 08 — 宿主启动不依赖可选 Collector
 
-Status: ready-for-human
+Status: wontfix
 
 > 2026-09-02 更正：本 issue 只做到「Browser 缺席时降级」，不是宿主与 Browser 解耦。那一轮之后宿主仍然
 > 认识 Browser——Hub 里有 Browser 专属 `CollectorRuntime` 与 protocol handler，Desktop 组合根有

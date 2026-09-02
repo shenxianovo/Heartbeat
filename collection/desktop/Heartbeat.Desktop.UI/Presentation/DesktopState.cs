@@ -4,8 +4,6 @@ using Heartbeat.Collection.Hub.Upload;
 
 namespace Heartbeat.Desktop.UI.Presentation;
 
-public sealed record CollectorRegistrationState(bool Enabled, int? FlushPeriodMs);
-
 public enum DesktopThemeMode
 {
     System,
@@ -77,8 +75,6 @@ public sealed record DesktopStateSnapshot(
     CurrentActivity? CurrentActivity,
     DesktopSettingsSnapshot Settings,
     bool LoginStartEnabled,
-    IReadOnlyDictionary<string, CollectorRegistrationState> Collectors,
-    IReadOnlyDictionary<string, DateTimeOffset> SourceLastSeen,
     ClientCompatibilitySnapshot Compatibility,
     IReadOnlyDictionary<string, UploadStreamStatus> UploadStreams,
     DesktopCapabilitySnapshot Capabilities)
@@ -87,8 +83,6 @@ public sealed record DesktopStateSnapshot(
         null,
         DesktopSettingsSnapshot.Default,
         false,
-        new Dictionary<string, CollectorRegistrationState>(),
-        new Dictionary<string, DateTimeOffset>(),
         new ClientCompatibilitySnapshot(false),
         new Dictionary<string, UploadStreamStatus>(),
         DesktopCapabilitySnapshot.WindowsFull);
@@ -106,7 +100,6 @@ public interface IDesktopState
 
     void SaveSettings(DesktopSettingsInput settings);
     void SetLoginStartEnabled(bool enabled);
-    void SetCollectorEnabled(string source, bool enabled);
     void SetSystemCapabilityEnabled(SystemCapability capability, bool enabled);
     void RecoverSystemCapability(SystemCapability capability);
     void RevealSystemCapabilityApplication(SystemCapability capability);

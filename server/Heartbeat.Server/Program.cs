@@ -162,7 +162,8 @@ using (var scope = app.Services.CreateScope())
     // AppIdentity expand 后，system/app 的权威 Matcher 值统一到产品 App.Key；
     // 只重写能唯一解析到既有产品的旧表示，不做启发式产品合并。
     await AppKnowledgeBackfill.RunAsync(db);
-    // AddCollectorDeclarations 的种子半边（同理走 C#）：system/browser v1 幂等补插（ADR-030 §4）。
+    // 补插唯一随 Host composition 交付的 System BuiltIn Collector 声明。
+    // 其他 Collector 通过运行时注册通道上报，不由 Analytics 代为声明。
     await SeedDeclarations.SeedAsync(db);
     // 在开始接收请求前验证并记录内置 App Catalog。票 02 在同一启动边界加入映射协调。
     var catalogStartup = scope.ServiceProvider.GetRequiredService<AppCatalogStartupService>();

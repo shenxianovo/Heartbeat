@@ -1,6 +1,7 @@
 using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Knowledge;
 using Heartbeat.Server.Services;
+using Heartbeat.Server.Tests.Fixtures;
 
 namespace Heartbeat.Server.Tests.Services;
 
@@ -33,7 +34,8 @@ public class MatcherEvalTests
     [Fact]
     public void Prefix_And_Contains()
     {
-        var readings = DepthTables.Seeds.ReadingsFor(
+        var tables = CollectorDeclarationTestData.With(CollectorDeclarationTestData.BrowserV1());
+        var readings = tables.ReadingsFor(
             ActivitySources.Browser, null, "花生看板", "https://huasheng.com/dashboard");
 
         Assert.True(MatcherEval.Hits(ActivitySources.Browser, readings,

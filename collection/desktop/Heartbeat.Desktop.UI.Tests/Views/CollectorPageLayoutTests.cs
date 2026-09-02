@@ -27,7 +27,7 @@ public sealed class CollectorPageLayoutTests
         {
             using var viewModel = ViewModels.TestViewModel.Create();
             viewModel.NavigateCommand.Execute("Collectors");
-            var system = Assert.Single(viewModel.Collectors, item => item.IsSystem);
+            var system = Assert.Single(viewModel.Collectors);
             var window = new MainWindow(viewModel)
             {
                 Width = 900,

@@ -88,7 +88,8 @@ Browser 独立发布与真实 smoke。
 - [x] 宿主不认识具名可选 Collector：Desktop 与通用 Hub Runtime 只组合通用 seam + System BuiltIn，
       Browser 专属 runtime / protocol handler / 安装目录 / UI 条目全部删除（issue 09）。
 - [ ] 通用 ExternalHost 安装/连接能力存在，Browser 由此重新获得宿主接入路径（issue 09 已知残留）。
-- [ ] 宿主 segment 投影由 Package 声明驱动，不再硬编码具名 schema id 列表（issue 09 已知残留）。
+- [x] `facts.segment/v1` 由 Package `FactKind` 与 schema 驱动通用 ActivitySegment 投影，宿主不再硬编码
+      具名 schema id 列表（issue 09）。
 - [ ] 三类 Driver 继续通过统一 Protocol conformance。
 - [ ] 真实 Desktop Browser 与 Headless VRChat smoke 有证据。
 
@@ -118,6 +119,6 @@ Protocol）加 System BuiltIn，决策记在
 [ADR-049](../../docs/adr/049-named-optional-collectors-outside-host-composition.md)。
 
 代价是 Browser 在本阶段没有宿主接入能力：`/v1/collector-protocol/browser` 不再存在，手工侧载也连不上，
-Browser 从 Desktop UI 消失，`heartbeat.browser.active-tab-segment` 不再被宿主投影识别。Browser 的独立
-Package 构建与契约验证保留。通用 ExternalHost 安装/连接、以及声明驱动的 segment 投影是 issue 09 记录的
-已知残留。
+Browser 从 Desktop UI 消失。Browser 的独立 Package 构建与契约验证保留；它恢复连接后可直接使用
+`facts.segment/v1` 通用投影，不需要 Hub 增加 Browser schema 分支。剩余缺口只有通用 ExternalHost
+安装/连接能力与独立 Web Delivery。

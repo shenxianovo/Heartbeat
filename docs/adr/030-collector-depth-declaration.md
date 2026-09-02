@@ -8,6 +8,11 @@
 
 > 2026-08-28 implementation note: collector 自报的 declaration HTTP 动词已退役；System 与 Browser 都从各自 Collector Package 的 `observation-depth.declaration.json` 注册经验证声明，再由 Hub 上行 Analytics。以下 loopback 方案保留为历史背景。
 
+> 2026-09-02 closeout note：Analytics 启动时只预插随 Host composition 交付的 System BuiltIn 声明；
+> Browser、VRChat 与未来非 BuiltIn Collector 必须经现有运行时声明通道上报。已有数据库里的历史 Browser
+> 声明继续作为真实已存数据读取，不做按名字删除的兼容迁移。下文“预插 system + browser”保留为原始迁移决策，
+> 当前实现由 ADR-049 修订。
+
 ## Context
 
 ADR-029 §2 宣告"每个采集器在自身契约里声明一张有序观测深度表……新采集器带自己的

@@ -27,38 +27,13 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public void CollectorPanel_PresentsSystemAsReadOnlyAndDerivesPluginActivityFromFlushPeriod()
+    public void CollectorPage_ShowsOnlyTheSystemBuiltIn()
     {
-        var now = new DateTimeOffset(2026, 8, 12, 1, 0, 0, TimeSpan.Zero);
-        var state = new FakeDesktopState
-        {
-            Current = DesktopStateSnapshot.Empty with
-            {
-                Collectors = new Dictionary<string, CollectorRegistrationState>
-                {
-                    ["vrchat"] = new(true, 30_000)
-                },
-                SourceLastSeen = new Dictionary<string, DateTimeOffset>
-                {
-                    ["vrchat"] = now.AddSeconds(-80)
-                }
-            }
-        };
-        var scheduler = new ManualPresentationScheduler { UtcNow = now };
+        using var viewModel = TestViewModel.Create();
 
-        using var viewModel = TestViewModel.Create(state, scheduler: scheduler);
-
-        var system = Assert.Single(viewModel.Collectors, item => item.Source == "system");
-        Assert.True(system.IsActive);
-        Assert.False(system.CanToggle);
-
-        var plugin = Assert.Single(viewModel.Collectors, item => item.Source == "vrchat");
-        Assert.True(plugin.IsActive);
-        Assert.True(plugin.CanToggle);
-        Assert.True(plugin.Enabled);
-
-        plugin.Enabled = false;
-        Assert.Equal(("vrchat", false), state.LastCollectorValue);
+        var system = Assert.Single(viewModel.Collectors);
+        Assert.Equal("system", system.Source);
+        Assert.Equal(4, system.Capabilities.Count);
     }
 
     [Fact]
@@ -80,7 +55,7 @@ public sealed class MainViewModelTests
 
         using var viewModel = TestViewModel.Create(state);
 
-        var system = Assert.Single(viewModel.Collectors, item => item.IsSystem);
+        var system = Assert.Single(viewModel.Collectors);
         Assert.False(system.IsExpanded);
         Assert.Collection(
             system.Capabilities,
@@ -125,7 +100,7 @@ public sealed class MainViewModelTests
         };
         using var viewModel = TestViewModel.Create(state);
 
-        var system = Assert.Single(viewModel.Collectors, item => item.IsSystem);
+        var system = Assert.Single(viewModel.Collectors);
         var capability = Assert.Single(
             system.Capabilities,
             item => item.Id == SystemCapability.WindowActivity);
@@ -317,7 +292,7 @@ public sealed class MainViewModelTests
 
         using var viewModel = TestViewModel.Create(state);
 
-        var system = Assert.Single(viewModel.Collectors, item => item.IsSystem);
+        var system = Assert.Single(viewModel.Collectors);
         var foreground = Assert.Single(system.Capabilities, item => item.Id == SystemCapability.ForegroundApp);
         var recording = Assert.Single(system.Capabilities, item => item.Id == SystemCapability.InputEventRecording);
         Assert.False(foreground.HasToggle);
@@ -343,7 +318,7 @@ public sealed class MainViewModelTests
         var state = new FakeDesktopState { Current = initial };
         using var viewModel = TestViewModel.Create(state);
 
-        var system = Assert.Single(viewModel.Collectors, item => item.IsSystem);
+        var system = Assert.Single(viewModel.Collectors);
         var windowActivity = Assert.Single(
             system.Capabilities,
             item => item.Id == SystemCapability.WindowActivity);

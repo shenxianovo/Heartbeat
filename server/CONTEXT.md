@@ -68,7 +68,7 @@ _Avoid_: RecapNote（过于 UI 化）、ActivityCluster（未经确认）、Stra
 _Avoid_: Strand Matcher（命中后果不同）、自动提升规则、后台分类器
 
 **Observation Depth（观测深度）**:
-每个采集器在自身实现里声明、**运行时经注册通道上报**的有序观测读数表，浅 → 深（ADR-030）：声明 = {source, 契约版本, layers:[{readings:[{name, from, label}]}]}；读数命名与人话标签归采集器主权（name 在 source 内唯一），`from` 只指运输槽位（appName / title / identityKey / attributes.*，新读数一律走 attributes.*）——服务端是按槽取值的无关层，不认识 app / url / site 这些词。生效表 = 每 source 取 max(版本)；未声明 source 走通用回落（L1 identity / L2 title）；读时取值，历史 segments 被新声明自动覆盖。现行表——system：进程/App → 窗口标题；browser：站点(site, eTLD+1) → URL → 标签页标题；vscode 规划：仓库根 → 文件路径。**单读数值空间内部的层级（域后缀 / 路径前缀）默认归谓词轴；digest 粗档证据需要时由采集器提拔为独立读数层**（版本+1，服务端零改动）。**同时是隐私敏感度轴**——与 ADR-017"采集能力分层可拆"是同一张表。digest 的身份维度按它长成**深度树**：节点 = (读数值, 并集时长)，子节点 = 下一深度分解，缺读数段挂最深可用读数；渲染 = 确定性预算剪枝（展开门槛、子数封顶、尾部折叠）。
+每个采集器在自身实现里声明、**运行时经注册通道上报**的有序观测读数表，浅 → 深（ADR-030）：声明 = {source, 契约版本, layers:[{readings:[{name, from, label}]}]}；读数命名与人话标签归采集器主权（name 在 source 内唯一），`from` 只指运输槽位（appName / title / identityKey / attributes.*，新读数一律走 attributes.*）——服务端是按槽取值的无关层，不认识 app / url / site 这些词。生效表 = 每 source 取 max(版本)；未声明 source 走通用回落（L1 identity / L2 title）；读时取值，历史 segments 被新声明自动覆盖。Analytics 启动只为 System BuiltIn 预插声明，非 BuiltIn Collector 必须运行时上报。现行表——system：进程/App → 窗口标题；browser：站点(site, eTLD+1) → URL → 标签页标题；vscode 规划：仓库根 → 文件路径。**单读数值空间内部的层级（域后缀 / 路径前缀）默认归谓词轴；digest 粗档证据需要时由采集器提拔为独立读数层**（版本+1，服务端零改动）。**同时是隐私敏感度轴**——与 ADR-017"采集能力分层可拆"是同一张表。digest 的身份维度按它长成**深度树**：节点 = (读数值, 并集时长)，子节点 = 下一深度分解，缺读数段挂最深可用读数；渲染 = 确定性预算剪枝（展开门槛、子数封顶、尾部折叠）。
 _Avoid_: 粒度（粗细是谓词维度，不是深度）；在知识层写死采集器字段名或读数词汇（server 侧不得出现 per-source 分支——ADR-030 前的"镜像"写法已退役）
 
 **Matcher（匹配子）**:

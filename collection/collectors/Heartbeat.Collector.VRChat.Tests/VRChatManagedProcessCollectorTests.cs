@@ -6,7 +6,7 @@ using Heartbeat.Collection.Hub.Ingest;
 using Heartbeat.Collection.Hub.Segments;
 using Heartbeat.Core.DTOs.Segments;
 
-namespace Heartbeat.Collection.Hub.Tests.Collectors.Protocol;
+namespace Heartbeat.Collector.VRChat.Tests;
 
 public sealed class VRChatManagedProcessCollectorTests : IDisposable
 {
@@ -115,7 +115,7 @@ public sealed class VRChatManagedProcessCollectorTests : IDisposable
 
     private static async Task CreatePackageAsync(string packageDirectory)
     {
-        var source = Path.Combine(AppContext.BaseDirectory, "Fixtures", "ManagedVRChatCollector");
+        var source = AppContext.BaseDirectory;
         var executable = Path.Combine(
             source,
             OperatingSystem.IsWindows() ? "Heartbeat.Collector.VRChat.exe" : "Heartbeat.Collector.VRChat");
