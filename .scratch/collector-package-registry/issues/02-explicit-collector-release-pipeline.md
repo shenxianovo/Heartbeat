@@ -1,6 +1,6 @@
 # 02 — VRChat Collector 显式 tag 与不可变 Web Release
 
-Status: ready-for-human
+Status: done
 
 Owner: Build / Release
 
@@ -55,8 +55,8 @@ Analytics 独立发版，并给后续 Web Package source adapter 一个真实制
       issue。
 - [x] owner 已在生产服务器配置 Caddy 静态路由；不存在的 Registry 路径经公网返回空 404，没有回落到
       Dashboard。
-- [ ] owner 确认服务器为 x86_64，把修复后的 `collector-vrchat/v0.2.0` tag 重新推送；真实 workflow、服务器
-      publish 与公网逐字节回读全绿。
+- [x] 修复后的 `collector-vrchat/v0.2.0` tag 已重新推送；真实 workflow、服务器 publish 与公网逐字节
+      回读全绿。Headless 执行主机的 CPU 架构属于后续安装/运行 smoke，不是静态发布事实。
 
 ## Verification
 
@@ -76,7 +76,11 @@ entrypoint 保留 executable bit。全仓 Release build 为 0 warning / 0 error�
 首次 `collector-vrchat/v0.2.0` 运行在 VRChat.Tests 之后被错误加入的 repository-wide
 `collector-contracts.mjs check` 拦住：该命令需要先构建 Browser `dist`，与本 Release 单元无关，且尚未进入
 Docker build 或 publish。现已从专属 release workflow 删除 Node/Browser 契约门禁；服务器 staging、不可变
-冲突路径与 Caddy 公网回读仍未执行，不宣称已验证。
+冲突路径与 Caddy 公网回读当时仍未执行。
+
+修复后的 run `33629577645` 在 commit `b00a6cd` 上完成 build 与 publish。公网 `release.json` 声明
+`heartbeat.collector.vrchat` 0.2.0、`linux-x64`、artifact 长度 `1311885` 与 SHA-256
+`41108dcaf079c82ccd000a961ec971fe98d1e0c70e4b0922e758bd1f23442471`；独立下载的 zip 与两项声明一致。
 
 ## Non-goals
 
@@ -108,3 +112,8 @@ run `33629213290` 的 VRChat.Tests 21/21 通过，但 release job 随后调用 r
 `collector-contracts.mjs check`；它因 Browser `dist` 未构建而失败。修复不是在 VRChat release 里补 Browser
 build，而是删除这条跨 Collector 依赖。Fact Schema evolution 与 Browser payload 一致性仍由
 `collector-contracts.yml` 在 PR/main 上独立验证。
+
+### 2026-09-02 — v0.2.0 真实发布完成
+
+run `33629577645` 全绿，Caddy 精确 Version 路径可公网读取；runner 的发布后逐字节回读和本地独立下载复核
+均通过。issue 02 的静态发布纵切完成。Host 从 Web 下载、安装并运行该 Package 仍是后续 feature。

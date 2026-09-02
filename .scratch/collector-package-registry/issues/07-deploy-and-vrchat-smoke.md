@@ -5,6 +5,8 @@ Status: needs-triage
 > 2026-09-02：本 issue 仍是 ADR-045/047 时代的 approval/LKG 规格，不能执行。issue 02 已重写并承接
 > 「显式 tag → 不可变精确 Web Release → Caddy 公网回读」；本 issue 后续只应重写 Headless 独立 deploy、
 > Web Package source 安装与真实 VRChat smoke，不得恢复 CheckNow/Approve/LKG 状态机。
+> VRChat 0.2.0 静态 Release 已完成；Headless 执行主机架构确认（当前 artifact 为 linux-x64）应在重写后的
+> 安装/运行 smoke 中验证，不回填到已完成的静态发布 issue。
 
 Owner: Release / Operator
 

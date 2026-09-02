@@ -8,9 +8,9 @@ Collector Runtime、Protocol 与三类 Execution Driver 已经存在。第一条
 image，并建立 Desktop/Headless 共享的 Installation module；Backend workflow 也已停止顺带部署 Headless。
 宿主组合已按 [ADR-049](../../docs/adr/049-named-optional-collectors-outside-host-composition.md) 收敛：Desktop
 与通用 Hub Runtime 只组合通用 seam 加 System BuiltIn，不认识任何具名可选 Collector。
-VRChat 的显式 tag 与不可变 Web Release workflow 已完成代码实现，但生产 Caddy 路由和首个 tag 仍是
-`ready-for-human`；当前仍缺 Headless 独立 deploy、服务器 Package provision、Host Web Package source 与
-通用 ExternalHost 的安装/连接能力，因此各发布单元尚未全部形成可部署闭环。
+VRChat 的显式 tag 与不可变 Web Release 已完成真实发布，0.2.0 可从生产 Caddy 的精确 Version 路径读取；
+当前仍缺 Headless 独立 deploy、Host Web Package source 与通用 ExternalHost 的安装/连接能力，因此各发布
+单元尚未全部形成可部署闭环。
 
 Browser 现在的状态是"有独立发布单元、无宿主接入能力"：它不进 Desktop 构建与产物，扩展代码、Package
 构建 target 与 npm 测试留在 `collection/collectors/Heartbeat.Collector.Browser` 并由 `collector-contracts.yml`
@@ -69,7 +69,7 @@ Browser 独立发布与真实 smoke。
 | Issue | 状态 | 新路径 |
 |---|---|---|
 | 01 static registry index | needs-triage | Web source 阶段重写 |
-| 02 explicit release pipeline | ready-for-human | workflow 已实现；待 Caddy 配置与首个真实 tag |
+| 02 explicit release pipeline | done | VRChat 0.2.0 已经专属 tag 发布并经公网逐字节复核 |
 | 03 shared local installation | ready-for-human | PowerShell CLI 安全/真实构建待跨平台验证 |
 | 04 exact package approval | wontfix | ADR-048 明确不做 approval/offer |
 | 05 VRChat ready switch | wontfix | ADR-048 明确不做 candidate/LKG switch |
