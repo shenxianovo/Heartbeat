@@ -122,12 +122,18 @@ System Collector 保持 BuiltIn Delivery，不进入这个流程。
 - `docker compose -f compose.yml config` 与
   `docker compose -f compose.local.yml --env-file .env.local.example config` 均通过（前者仅报告未注入 secrets 的
   预期 warning）。
+- `./scripts/start-local.sh` 完整起栈通过；过程中发现 Backend Docker build 未复制
+  `collection/contracts/segment-rotation-policy.json`，补齐该明确 build input 后 Backend、Frontend、Headless 与
+  Postgres 均正常运行。Headless 从 `/package-source/vrchat` 安装到
+  `/data/collector-packages/heartbeat.collector.vrchat/0.1.0/f2b09b...`，VRChat 子进程从该 Installation 启动；
+  owner 完成真实 VRChat 登录后，Dashboard 登录管理显示 `Ready/已登录`，Runtime 持久化的
+  `PackageContentHash` 与 Installation 目录 hash 一致。匿名管理请求返回预期 `401`。
 - `git diff --check` 通过；新增 C# 文件均为 `0644`。
 
 本轮未验证（明确不宣称）：
 
 - 主机没有 `pwsh`，未执行 `build-vrchat-package.ps1` / `start-local.ps1`。
-- 未执行 `docker compose up`，未做真实服务器 Package provision 或 Package 替换 + Headless 重启 smoke。
+- 未做真实服务器 Package provision 或 Package 替换 + Headless 重启 smoke。
 - 未重跑 Desktop Windows/Mac tests；Browser compatibility 由 Hub 内现有 Browser package/state tests 覆盖。
 
 ## Dependencies

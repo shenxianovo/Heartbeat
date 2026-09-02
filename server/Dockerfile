@@ -11,6 +11,7 @@ RUN dotnet restore server/Heartbeat.Server/Heartbeat.Server.csproj
 
 # Build + publish
 COPY shared/ shared/
+COPY collection/contracts/segment-rotation-policy.json collection/contracts/
 COPY server/Heartbeat.Server/ server/Heartbeat.Server/
 RUN dotnet publish server/Heartbeat.Server/Heartbeat.Server.csproj \
     -c Release -o /app/publish --no-restore /p:UseAppHost=false
