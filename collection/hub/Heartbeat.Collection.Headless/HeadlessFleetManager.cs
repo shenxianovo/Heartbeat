@@ -15,6 +15,8 @@ public sealed record HeadlessSubjectStatusResponse(
     string SubjectName,
     string SubjectKind,
     Guid? CollectorInstanceId,
+    string PackageVersion,
+    string PackageContentHash,
     string Phase,
     CollectorAuthorizationChallenge? Authorization,
     HeadlessCurrentSubjectActivity? CurrentActivity);
@@ -68,11 +70,14 @@ public sealed class HeadlessFleetManager(
             return _entries.Select(entry =>
             {
                 var runtime = RuntimeState(entry.CollectorInstanceId);
+                var instance = RuntimeInstance(entry.CollectorInstanceId);
                 return new HeadlessSubjectStatusResponse(
                     entry.Options.SubjectId,
                     entry.Options.SubjectName,
                     entry.Options.SubjectKind.ToString(),
                     entry.CollectorInstanceId,
+                    instance?.PackageVersion ?? entry.Package.Manifest.Version,
+                    instance?.PackageContentHash ?? entry.Package.PackageContentHash,
                     runtime?.Phase.ToString() ?? "Starting",
                     runtime?.AuthorizationChallenge,
                     _pipelines?.CurrentActivity(entry.CollectorInstanceId));
@@ -241,6 +246,13 @@ public sealed class HeadlessFleetManager(
     {
         if (_runtime is null) return null;
         try { return _runtime.GetManagedProcessRuntimeState(collectorInstanceId); }
+        catch (KeyNotFoundException) { return null; }
+    }
+
+    private CollectorInstance? RuntimeInstance(Guid collectorInstanceId)
+    {
+        if (_runtime is null) return null;
+        try { return _runtime.GetInstance(collectorInstanceId); }
         catch (KeyNotFoundException) { return null; }
     }
 

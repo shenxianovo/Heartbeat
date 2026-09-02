@@ -145,6 +145,35 @@ public sealed class CollectorPackageInstallationsTests : IDisposable
     }
 
     [Fact]
+    public void List_PackageIdTraversalCannotReadAnInstallationOutsideRoot()
+    {
+        using var source = ManagedReferenceCollectorPackage.Create();
+        var outside = new CollectorPackageInstallations(Path.Combine(_root, "outside"));
+        var external = outside.Install(source.Path);
+        var installations = new CollectorPackageInstallations(InstallRoot);
+
+        Assert.Throws<ArgumentException>(() => installations.List(
+            Path.Combine("..", "outside", external.Reference.PackageId)));
+    }
+
+    [Fact]
+    public void List_PackageRootSymlinkOutsideRoot_IsNotFollowed()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+        using var source = ManagedReferenceCollectorPackage.Create();
+        var outside = new CollectorPackageInstallations(Path.Combine(_root, "outside"));
+        var external = outside.Install(source.Path);
+        Directory.CreateDirectory(InstallRoot);
+        Directory.CreateSymbolicLink(
+            Path.Combine(InstallRoot, external.Reference.PackageId),
+            Path.Combine(outside.Root, external.Reference.PackageId));
+        var installations = new CollectorPackageInstallations(InstallRoot);
+
+        Assert.Empty(installations.List(external.Reference.PackageId));
+    }
+
+    [Fact]
     public void TryOpen_ReferenceThatWasNeverInstalled_ReturnsFalseWithoutInstallation()
     {
         var installations = new CollectorPackageInstallations(InstallRoot);

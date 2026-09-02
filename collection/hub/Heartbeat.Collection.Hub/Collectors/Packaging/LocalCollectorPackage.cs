@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Buffers.Binary;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -191,8 +192,11 @@ public sealed class LocalCollectorPackage
     public IReadOnlyList<FactSchemaDocument> FactSchemas { get; }
     public VerifiedObservationDeclaration? ObservationDeclaration { get; }
     /// <summary>
-    /// SHA-256 of the exact UTF-8 Manifest bytes. Because the Manifest fixes every Artifact and
-    /// Fact Schema hash, this fingerprints the verified local package; it is not a trust proof.
+    /// Exact Package identity. Existing non-ManagedProcess Packages retain the SHA-256 of the
+    /// Manifest bytes because their executable Artifact descriptors already transitively fix their
+    /// payload. A ManagedProcess Package additionally fingerprints every staged file: its apphost
+    /// loads adjacent DLL/runtime files that the Manifest's entrypoint hash alone cannot cover.
+    /// This is a content identity, not a trust proof.
     /// </summary>
     public string PackageContentHash { get; }
 
@@ -228,7 +232,61 @@ public sealed class LocalCollectorPackage
             artifacts,
             schemas,
             declaration,
-            "sha256:" + Convert.ToHexStringLower(SHA256.HashData(manifestBytes)));
+            ComputePackageContentHash(root, manifestBytes, manifest));
+    }
+
+    private static string ComputePackageContentHash(
+        string root,
+        byte[] manifestBytes,
+        CollectorPackageManifest manifest)
+    {
+        if (!manifest.Artifacts.Any(artifact => artifact.Driver == "managedProcess"))
+            return "sha256:" + Convert.ToHexStringLower(SHA256.HashData(manifestBytes));
+
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        Span<byte> length = stackalloc byte[sizeof(long)];
+        foreach (var file in EnumeratePackageFiles(root))
+        {
+            var relative = Path.GetRelativePath(root, file.FullName)
+                .Replace(Path.DirectorySeparatorChar, '/');
+            var name = Encoding.UTF8.GetBytes(relative);
+            BinaryPrimitives.WriteInt64LittleEndian(length, name.LongLength);
+            hash.AppendData(length);
+            hash.AppendData(name);
+            BinaryPrimitives.WriteInt64LittleEndian(length, file.Length);
+            hash.AppendData(length);
+            hash.AppendData(File.ReadAllBytes(file.FullName));
+        }
+        return "sha256:" + Convert.ToHexStringLower(hash.GetHashAndReset());
+    }
+
+    private static IReadOnlyList<FileInfo> EnumeratePackageFiles(string root)
+    {
+        var files = new List<FileInfo>();
+        Visit(new DirectoryInfo(root));
+        return files
+            .OrderBy(file => Path.GetRelativePath(root, file.FullName), StringComparer.Ordinal)
+            .ToArray();
+
+        void Visit(DirectoryInfo directory)
+        {
+            if (directory.LinkTarget is not null ||
+                (directory.Attributes & FileAttributes.ReparsePoint) != 0)
+                throw new PackageValidationException(
+                    "ManagedProcess Collector Package must not contain symbolic links.");
+            foreach (var entry in directory.EnumerateFileSystemInfos())
+            {
+                if (entry.LinkTarget is not null ||
+                    (entry.Attributes & FileAttributes.ReparsePoint) != 0)
+                    throw new PackageValidationException(
+                        "ManagedProcess Collector Package must not contain symbolic links.");
+                if (entry is DirectoryInfo child)
+                    Visit(child);
+                else if (entry is FileInfo file &&
+                         !string.Equals(file.Name, ".DS_Store", StringComparison.Ordinal))
+                    files.Add(file);
+            }
+        }
     }
 
     private static CollectorPackageManifest ParseManifest(byte[] bytes)

@@ -104,6 +104,8 @@ public sealed class CollectorPackageInstallations
     /// </summary>
     public IReadOnlyList<CollectorPackageInstallation> List(string? packageId = null)
     {
+        if (packageId is not null && !IsPackageId(packageId))
+            throw new ArgumentException("Collector PackageId is invalid.", nameof(packageId));
         lock (_gate)
         {
             if (!Directory.Exists(Root))
@@ -116,18 +118,24 @@ public sealed class CollectorPackageInstallations
                     : Enumerable.Empty<string>();
             foreach (var packageRoot in packageRoots)
             {
+                if (IsLink(packageRoot))
+                    continue;
                 var id = Path.GetFileName(packageRoot);
                 if (IsStaging(id))
                     continue;
                 foreach (var versionDirectory in Directory.EnumerateDirectories(packageRoot)
                              .OrderBy(path => path, StringComparer.Ordinal))
                 {
+                    if (IsLink(versionDirectory))
+                        continue;
                     var version = Path.GetFileName(versionDirectory);
                     if (IsStaging(version))
                         continue;
                     foreach (var hashDirectory in Directory.EnumerateDirectories(versionDirectory)
                                  .OrderBy(path => path, StringComparer.Ordinal))
                     {
+                        if (IsLink(hashDirectory))
+                            continue;
                         var hex = Path.GetFileName(hashDirectory);
                         if (IsStaging(hex))
                             continue;
@@ -216,6 +224,38 @@ public sealed class CollectorPackageInstallations
 
     private static bool IsStaging(string name) =>
         name.StartsWith(StagingPrefix, StringComparison.Ordinal);
+
+    private static bool IsLink(string path)
+    {
+        var directory = new DirectoryInfo(path);
+        return directory.LinkTarget is not null ||
+               (directory.Attributes & FileAttributes.ReparsePoint) != 0;
+    }
+
+    private static bool IsPackageId(string value)
+    {
+        if (value.Length == 0 || !char.IsAsciiLetterLower(value[0]))
+            return false;
+        var segmentStart = true;
+        foreach (var character in value)
+        {
+            if (segmentStart)
+            {
+                if (!char.IsAsciiLetterLower(character) && !char.IsAsciiDigit(character))
+                    return false;
+                segmentStart = false;
+                continue;
+            }
+            if (character is '.' or '-')
+            {
+                segmentStart = true;
+                continue;
+            }
+            if (!char.IsAsciiLetterLower(character) && !char.IsAsciiDigit(character))
+                return false;
+        }
+        return !segmentStart;
+    }
 
     private static void CopyTree(string source, string destination)
     {

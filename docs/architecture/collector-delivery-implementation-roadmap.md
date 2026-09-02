@@ -141,7 +141,7 @@ flowchart LR
 ## 当前差距
 
 - Desktop Release 已独立，但仍同时打入 Browser Package。
-- Frontend workflow 已独立；Backend workflow 仍同时构建和部署 Headless。
+- Frontend 与 Backend workflow 已独立；Backend workflow 不再构建、推送或重启 Headless。
 - Headless image 已不再构建或携带 VRChat Package：Package 由 `scripts/build-vrchat-package.sh`
   单独构建到宿主目录，compose 以只读方式挂到 `/package-source`，Headless 安装后再运行。构建仍
   只能在本机手工执行，没有 Collector tag workflow，也没有可下载的发布产物。
@@ -150,7 +150,9 @@ flowchart LR
   共享 Host Runtime interface。
 - 静态 Collector Registry、Collector tag workflow 与 Web Package source 当前均不存在；旧实现已撤回，
   不能把历史 tracker 的完成状态当成可部署能力。
-- Headless 独立 deploy workflow 与真实服务器上的「只替换 Package + 重启」smoke 都还没有承接人。
+- Headless 独立 deploy workflow 仍不存在；服务器也尚未 provision 外置 Package 来源，因此 Backend deploy
+  已停止顺带重启 Headless，避免在缺少 Package 时静默失败。真实服务器上的「只替换 Package + 重启」
+  smoke 同样还没有承接人。
 
 ## 验收边界
 

@@ -119,6 +119,51 @@ public sealed class HeadlessPackageInstallationTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task Restart_AfterMountedPackageReplacementWithoutHostRebuild_ActivatesNewExactPackageWithSameInstanceIdentity()
+    {
+        var source = await CreateSourcePackageAsync("replaceable-source");
+        var dataDirectory = Path.Combine(_root, "data");
+        var firstPackage = LocalCollectorPackage.Load(source);
+
+        Guid collectorInstanceId;
+        using (var manager = new HeadlessFleetManager(Fleet(dataDirectory, source)))
+        {
+            try
+            {
+                var ready = await StartAndWaitForInstanceAsync(manager);
+                collectorInstanceId = ready.CollectorInstanceId!.Value;
+                Assert.Equal(firstPackage.PackageContentHash, ready.PackageContentHash);
+            }
+            finally
+            {
+                await StopAsync(manager);
+            }
+        }
+
+        Directory.Delete(source, recursive: true);
+        source = await CreateSourcePackageAsync("replaceable-source");
+        File.WriteAllText(Path.Combine(source, "package-revision.txt"), "package-b");
+        var secondPackage = LocalCollectorPackage.Load(source);
+        Assert.NotEqual(firstPackage.PackageContentHash, secondPackage.PackageContentHash);
+
+        using var restarted = new HeadlessFleetManager(Fleet(dataDirectory, source));
+        try
+        {
+            var ready = await StartAndWaitForInstanceAsync(restarted);
+            Assert.Equal(collectorInstanceId, ready.CollectorInstanceId);
+            Assert.Equal(CollectorRuntimePhase.Ready.ToString(), ready.Phase);
+            Assert.Equal(secondPackage.Manifest.Version, ready.PackageVersion);
+            Assert.Equal(secondPackage.PackageContentHash, ready.PackageContentHash);
+            Assert.Equal(2, new CollectorPackageInstallations(
+                Path.Combine(dataDirectory, "collector-packages")).List(secondPackage.Manifest.PackageId).Count);
+        }
+        finally
+        {
+            await StopAsync(restarted);
+        }
+    }
+
     private HeadlessFleetOptions Fleet(string dataDirectory, string packageDirectory) => new()
     {
         ApiKey = "test-key",
@@ -151,15 +196,20 @@ public sealed class HeadlessPackageInstallationTests : IDisposable
         HeadlessFleetManager manager)
     {
         await ((IHostedService)manager).StartAsync(CancellationToken.None);
-        // BackgroundService 不保证 ExecuteAsync（其中包含 Initialize）在 StartAsync 返回前跑完，
-        // 所以这里等 Instance 事实出现；初始化失败会以 ExecuteTask 的原样异常呈现，而不是超时。
+        // BackgroundService 不保证 ExecuteAsync（其中包含 Initialize）在 StartAsync 返回前跑完。
+        // 只有 Ready 才证明 ManagedProcess 完成协商并打开 streams；Instance 出现不代表激活成功。
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         while (true)
         {
             if (manager.ExecuteTask is { IsFaulted: true } faulted)
                 await faulted;
             if (manager.Snapshot() is { Count: > 0 } snapshot)
-                return Assert.Single(snapshot);
+            {
+                var status = Assert.Single(snapshot);
+                Assert.NotEqual(CollectorRuntimePhase.Failed.ToString(), status.Phase);
+                if (status.Phase == CollectorRuntimePhase.Ready.ToString())
+                    return status;
+            }
             await Task.Delay(20, timeout.Token);
         }
     }

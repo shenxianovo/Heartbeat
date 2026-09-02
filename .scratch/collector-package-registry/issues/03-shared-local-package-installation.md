@@ -1,6 +1,6 @@
 # 03 — 共享本地 Collector Package Installation
 
-Status: done
+Status: ready-for-human
 
 Owner: Collection / Collector Host Runtime
 
@@ -29,7 +29,8 @@ System Collector 保持 BuiltIn Delivery，不进入这个流程。
 - candidate/LKG 自动切换、热更新、自动回滚（issue 04/05，已 wontfix）；
 - Ed25519 签名与密钥轮换；
 - 安装 journal、断电恢复、cache GC；
-- Headless/Backend deploy workflow 拆分（issue 07 之后的 ticket）。
+- Headless 独立 deploy workflow（issue 07 之后的 ticket）；Backend workflow 只停止顺带构建、推送和重启
+  尚未 provision 外置 Package 的 Headless，不在本 issue 内补建新 workflow。
 
 ## Acceptance
 
@@ -51,6 +52,18 @@ System Collector 保持 BuiltIn Delivery，不进入这个流程。
 - [x] Headless Dockerfile 不再 restore/publish VRChat，也不再 COPY Package 目录。
 - [x] 存在明确、可重复的本地命令或脚本单独构建 VRChat Collector Package。
 - [x] compose 与示例配置以只读 mount 提供宿主 Package 根目录；`.env.example` 与 Headless README 同步。
+- [x] ManagedProcess 的精确 Package reference 覆盖运行所需的完整 staged file tree；同 apphost/版本、不同
+      code-bearing DLL 得到不同 reference，同时 Browser 的 manifest-hash identity 与既有 state/layout 保持兼容。
+- [x] Headless 的公开 `IHostedService`/`Snapshot` 行为证明 Package A 达到 Ready 后，在同一数据目录替换为
+      Package B 并重启，会保留 `CollectorInstanceId`、以 B 的精确 reference 再次达到 Ready。
+- [x] `CollectorPackageInstallations.List(packageId)` 拒绝路径穿越，且不跟随 Installation root 内指向外部的
+      PackageId symlink。
+- [x] Bash/PowerShell Package build 先输出到临时 sibling，只替换带 ownership marker 的目的目录；`/`、
+      repository root/ancestor、symlink/reparse point 与非空未托管目录都被拒绝。
+- [ ] 在安装了 PowerShell 7.2+ 的主机上执行 `build-vrchat-package.ps1` 的危险目的目录负例与真实构建；
+      当前主机没有 `pwsh`，只能完成 Bash CLI 行为测试和两份脚本的对称代码审查。
+- [x] Backend deploy 不再构建、推送或重启 Headless；Headless 独立 deploy 与服务器 Package provision gap
+      在 roadmap 中保持显式未完成。
 
 ## Verification
 
@@ -84,6 +97,38 @@ System Collector 保持 BuiltIn Delivery，不进入这个流程。
 - `scripts/build-vrchat-package.ps1` 与 `scripts/start-local.ps1`：本机无 `pwsh`，只做人工比对。
 - 没有执行 `docker compose up`，所以「Headless 真从 `/package-source` 安装并拉起 VRChat」的端到端未跑。
 - 真实服务器上的 Package 替换 + 重启 smoke 未做，仍是 issue 07 的人工门禁。
+
+### 2026-09-02 修复验证（本机 macOS arm64，Docker Desktop）
+
+- 严格纵切 red/green：
+  - VRChat builder regression 首次失败：同 apphost/版本、不同 DLL 的 `PackageContentHash` 相同；修复后通过。
+  - Installation public `List` regression 首次 **2 failed**：`..` 读取 root 外 Installation、PackageId symlink
+    跟随到 root 外；修复后 **2 passed**。
+  - Headless A→B public behavior 首次因 Snapshot 不暴露精确 Package reference 编译失败；补齐公开状态后通过，
+    且所有 Headless installation tests 改为只在 `Phase == Ready` 时成功，`Failed` 会立即使测试失败。
+  - Bash CLI regression 首次失败并显示非空未托管目录的 sentinel 已被删除；修复后通过。
+- `dotnet test collection/hub/Heartbeat.Collection.Hub.Tests/Heartbeat.Collection.Hub.Tests.csproj -c Release`
+  → **267 passed / 0 failed**。
+- `dotnet test collection/hub/Heartbeat.Collection.Headless.Tests/Heartbeat.Collection.Headless.Tests.csproj -c Release`
+  → **10 passed / 0 failed**。
+- `dotnet test collection/collectors/Heartbeat.Collector.VRChat.Tests/Heartbeat.Collector.VRChat.Tests.csproj -c Release`
+  → **18 passed / 0 failed**。
+- `node scripts/collector-contracts.mjs check` →
+  `Collector Fact Schemas and evolution baseline are consistent.`
+- `./scripts/build-vrchat-package.sh --output <temporary sibling>/vrchat` 真实 Docker 构建成功；对同一带 ownership
+  marker 的输出再次执行也成功。
+- `docker build -f collection/hub/Heartbeat.Collection.Headless/Dockerfile ...` 成功；运行镜像检查确认既没有
+  `/app/vrchat-package`，也没有 `/package-source`。
+- `docker compose -f compose.yml config` 与
+  `docker compose -f compose.local.yml --env-file .env.local.example config` 均通过（前者仅报告未注入 secrets 的
+  预期 warning）。
+- `git diff --check` 通过；新增 C# 文件均为 `0644`。
+
+本轮未验证（明确不宣称）：
+
+- 主机没有 `pwsh`，未执行 `build-vrchat-package.ps1` / `start-local.ps1`。
+- 未执行 `docker compose up`，未做真实服务器 Package provision 或 Package 替换 + Headless 重启 smoke。
+- 未重跑 Desktop Windows/Mac tests；Browser compatibility 由 Hub 内现有 Browser package/state tests 覆盖。
 
 ## Dependencies
 

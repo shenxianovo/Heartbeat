@@ -4,9 +4,10 @@ Status: needs-triage
 
 ## Problem
 
-Collector Runtime、Protocol 与三类 Execution Driver 已经存在，但发布单元仍耦合：Desktop 构建携带
-Browser，Headless image 构建携带 VRChat，Backend workflow 同时部署 Headless。非 BuiltIn Collector
-无法只发布自己的 Package，也没有一个被 Desktop 与 Headless 共同使用的 Installation module。
+Collector Runtime、Protocol 与三类 Execution Driver 已经存在。第一条 tracer 已把 VRChat 移出 Headless
+image，并建立 Desktop/Headless 共享的 Installation module；Backend workflow 也已停止顺带部署 Headless。
+当前仍缺 Headless 独立 deploy、服务器 Package provision、Collector tag/Web 发布以及 Browser 独立交付，
+因此各发布单元尚未全部形成可部署闭环。
 
 2026-09-01 以前的 Registry/Approve/Switch 实现已撤回。旧 issues 01–07 均是历史规格，除非按
 [ADR-048](../../docs/adr/048-shared-collector-host-runtime-and-independent-release-units.md) 重写，否则不能作为
@@ -60,7 +61,7 @@ Browser 独立发布与真实 smoke。
 |---|---|---|
 | 01 static registry index | needs-triage | Web source 阶段重写 |
 | 02 explicit release pipeline | needs-triage | VRChat tag/static publish 阶段重写 |
-| 03 version-directory installation | needs-triage | 第一条 tracer 按共享 Installation interface 重写 |
+| 03 shared local installation | ready-for-human | PowerShell CLI 安全/真实构建待跨平台验证 |
 | 04 exact package approval | wontfix | ADR-048 明确不做 approval/offer |
 | 05 VRChat ready switch | wontfix | ADR-048 明确不做 candidate/LKG switch |
 | 06 Browser ExternalHost update | needs-triage | VRChat Web 纵切后按显式 Installation 重写 |

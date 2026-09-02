@@ -24,8 +24,8 @@ presence Segment，不是 VRChat 官方集成。
 ./scripts/build-vrchat-package.ps1
 ```
 
-两个脚本都会先清空输出目录，再用 BuildKit 在 linux 容器里 publish 并跑
-`--create-package`，最后 `--output type=local` 把 Package 导到宿主。必须走容器：manifest 里的
+两个脚本都会先在输出目录的临时 sibling 中用 BuildKit publish 并跑 `--create-package`，验证成功后才替换
+带工具 ownership marker 的旧输出；已有的非空未托管目录会被拒绝。必须走容器：manifest 里的
 artifact selector 取的是构建进程的 OS/arch，在 macOS/Windows 上直接构建会得到 Headless 容器
 选不中的 artifact。
 
