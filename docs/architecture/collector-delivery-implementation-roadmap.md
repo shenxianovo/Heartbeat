@@ -143,9 +143,11 @@ flowchart LR
 ```
 
 - B/C 已落地：共享 Installation module 建立，VRChat Package 与 Headless image 分开构建，Headless
-  从只读挂载目录安装后再启动；后续 D 起尚未开始。
+  从只读挂载目录安装后再启动。
 - D 只改变部署单元，不依赖 Web Registry，可与 E 并行。
-- E 先发布 artifact，F 才让 Host 下载；普通 `main` 验证不发布用户可见 Package。
+- E 的代码已完成：专属 tag workflow 生成确定性 zip 与不可变 `release.json`，向同域静态目录追加精确
+  Version；生产 Caddy 配置与首个真实 tag 仍是 human gate。F 才让 Host 下载；普通 `main` 验证不发布
+  用户可见 Package。
 - G 已完成宿主侧的全部：Desktop 构建与产物不含 Browser，宿主也不再认识 Browser——Hub 与两个平台 head
   没有它的 runtime、protocol handler、安装目录、平台知识或 UI 条目（ADR-049）。剩下的是通用 ExternalHost
   的安装与连接能力，加上 Collector tag 与可下载 Package（依赖 E/F）；在这两者到位前 Browser 没有任何宿主
@@ -175,13 +177,14 @@ flowchart LR
 - Analytics 启动只预插 System BuiltIn 的 Observation Depth 声明；非 BuiltIn Collector 通过运行时上报，
   已有数据库声明继续由通用生效路径读取。
 - Headless image 已不再构建或携带 VRChat Package：Package 由 `scripts/build-vrchat-package.sh`
-  单独构建到宿主目录，compose 以只读方式挂到 `/package-source`，Headless 安装后再运行。构建仍
-  只能在本机手工执行，没有 Collector tag workflow，也没有可下载的发布产物。
+  单独构建到宿主目录，compose 以只读方式挂到 `/package-source`，Headless 安装后再运行。VRChat 专属
+  tag workflow 与不可变 Web Release 已实现；生产静态路由和首个真实发布尚未执行，Headless 也还不会
+  从 Web 下载。
 - 共享 `CollectorPackageInstallations` 已就位，但当前只剩 Headless 的 VRChat 启动一个调用者：Desktop 侧的
   Browser bundled import 已随宿主解耦删除，Desktop 要等通用 ExternalHost 安装入口才会重新成为调用者。
   `HeadlessFleetManager` 的 Fleet 编排和各宿主 projection/upload 装配仍未收进共享 Host Runtime interface。
-- 静态 Collector Registry、Collector tag workflow 与 Web Package source 当前均不存在；旧实现已撤回，
-  不能把历史 tracker 的完成状态当成可部署能力。
+- 静态 Collector Registry 的精确 Version 布局与 VRChat tag workflow 已实现，但生产 Caddy 路由尚未配置；
+  current pointer 与 Host Web Package source 不存在。旧 approval/LKG 实现已撤回，不能恢复为当前能力。
 - Headless 独立 deploy workflow 仍不存在；服务器也尚未 provision 外置 Package 来源，因此 Backend deploy
   已停止顺带重启 Headless，避免在缺少 Package 时静默失败。真实服务器上的「只替换 Package + 重启」
   smoke 同样还没有承接人。

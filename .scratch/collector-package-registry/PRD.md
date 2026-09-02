@@ -8,17 +8,17 @@ Collector Runtime、Protocol 与三类 Execution Driver 已经存在。第一条
 image，并建立 Desktop/Headless 共享的 Installation module；Backend workflow 也已停止顺带部署 Headless。
 宿主组合已按 [ADR-049](../../docs/adr/049-named-optional-collectors-outside-host-composition.md) 收敛：Desktop
 与通用 Hub Runtime 只组合通用 seam 加 System BuiltIn，不认识任何具名可选 Collector。
-当前仍缺 Headless 独立 deploy、服务器 Package provision、Collector tag/Web 发布，以及通用 ExternalHost 的
-安装/连接能力，因此各发布单元尚未全部形成可部署闭环。
+VRChat 的显式 tag 与不可变 Web Release workflow 已完成代码实现，但生产 Caddy 路由和首个 tag 仍是
+`ready-for-human`；当前仍缺 Headless 独立 deploy、服务器 Package provision、Host Web Package source 与
+通用 ExternalHost 的安装/连接能力，因此各发布单元尚未全部形成可部署闭环。
 
 Browser 现在的状态是"有独立发布单元、无宿主接入能力"：它不进 Desktop 构建与产物，扩展代码、Package
 构建 target 与 npm 测试留在 `collection/collectors/Heartbeat.Collector.Browser` 并由 `collector-contracts.yml`
 验证；但宿主里没有 Browser runtime、protocol handler、安装目录或 UI 条目，`/v1/collector-protocol/browser`
 也不存在，因此手工侧载不再能让它连上宿主。通用 ExternalHost 安装/连接是后续 issue。
 
-2026-09-01 以前的 Registry/Approve/Switch 实现已撤回。旧 issues 01–07 均是历史规格，除非按
-[ADR-048](../../docs/adr/048-shared-collector-host-runtime-and-independent-release-units.md) 重写，否则不能作为
-Agent 实现指令。
+2026-09-01 以前的 Registry/Approve/Switch 实现已撤回。issue 02 已按 ADR-048 重写；issues 01、06、07
+仍是历史规格，重写前不能作为 Agent 实现指令。
 
 ## Outcome
 
@@ -69,7 +69,7 @@ Browser 独立发布与真实 smoke。
 | Issue | 状态 | 新路径 |
 |---|---|---|
 | 01 static registry index | needs-triage | Web source 阶段重写 |
-| 02 explicit release pipeline | needs-triage | VRChat tag/static publish 阶段重写 |
+| 02 explicit release pipeline | ready-for-human | workflow 已实现；待 Caddy 配置与首个真实 tag |
 | 03 shared local installation | ready-for-human | PowerShell CLI 安全/真实构建待跨平台验证 |
 | 04 exact package approval | wontfix | ADR-048 明确不做 approval/offer |
 | 05 VRChat ready switch | wontfix | ADR-048 明确不做 candidate/LKG switch |
@@ -122,3 +122,10 @@ Protocol）加 System BuiltIn，决策记在
 Browser 从 Desktop UI 消失。Browser 的独立 Package 构建与契约验证保留；它恢复连接后可直接使用
 `facts.segment/v1` 通用投影，不需要 Hub 增加 Browser schema 分支。剩余缺口只有通用 ExternalHost
 安装/连接能力与独立 Web Delivery。
+
+### 2026-09-02 — issue 02 代码完成：VRChat 精确 Web Release
+
+VRChat 现在有独立的 `collector-vrchat/vX.Y.Z` tag workflow：固定构建 `linux-x64` Package，生成确定性 zip
+与不可变 `release.json`，再向服务器静态目录追加精确 Version，并从公网逐字节回读。它不创建 current
+pointer，也不触碰 Desktop、Headless、Frontend 或 Analytics。issue 保持 `ready-for-human`：生产 Caddy
+静态路由、服务器 x86_64 确认和首个真实 tag 尚未执行。

@@ -21,6 +21,8 @@ public sealed class VRChatPackageBuilderTests : IDisposable
 
         var first = LocalCollectorPackage.Load(firstDirectory);
         var second = LocalCollectorPackage.Load(secondDirectory);
+        Assert.Equal("heartbeat.collector.vrchat", first.Manifest.PackageId);
+        Assert.Equal("0.1.0", first.Manifest.Version);
         Assert.Equal(first.Manifest.Version, second.Manifest.Version);
         Assert.Equal(
             Assert.Single(first.Artifacts).ContentHash,

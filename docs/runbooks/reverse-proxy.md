@@ -44,11 +44,20 @@ HTTP 连接的路径（ADR-023 / ADR-042），每次它出问题都要重新推�
 
 ```caddyfile
 heartbeat.shenxianovo.com {
+    # Collector Registry 是独立静态发布单元，不进入 Frontend image。release workflow
+    # 只在这棵目录下增加不可变的 Package Version。
+    handle_path /collector-registry/* {
+        root * /srv/heartbeat/collector-registry
+        file_server
+    }
+
     # SSE（Recap 流式生成，ADR-042）必须逐块下发。现代 Caddy 对 text/event-stream
     # 已按流处理，-1 是显式声明，也是给未来的自己看的：
     # 【不要在这个 site 块里加 encode / gzip】——压缩模块会攒住 SSE。
-    reverse_proxy localhost:8081 {
-        flush_interval -1
+    handle {
+        reverse_proxy localhost:8081 {
+            flush_interval -1
+        }
     }
 }
 auth.shenxianovo.com {
@@ -57,6 +66,19 @@ auth.shenxianovo.com {
 ```
 
 改完 `caddy reload`（或 `systemctl reload caddy`）。
+
+Collector release workflow 复用 Backend/Frontend deploy 已有的 `SERVER_HOST`、`SERVER_USER`、
+`SERVER_SSH_KEY`，不需要新建服务器用户。该用户已经能写 `/srv/heartbeat`；workflow 会自行创建
+`/srv/heartbeat/collector-registry/v1`，目录和文件使用 Caddy 可读的权限。
+
+Caddy 路由生效后、首个 Release 发布前验证没有回落到 Dashboard：
+
+```bash
+test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  https://heartbeat.shenxianovo.com/collector-registry/v1/packages/not-published)" = 404
+# 必须是 404，不能返回 Dashboard 的 index.html
+```
+它只追加精确 Version；同版本异内容会 fail closed。
 
 ## 排障
 

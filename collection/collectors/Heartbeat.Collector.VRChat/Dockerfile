@@ -7,9 +7,10 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY . .
+ARG COLLECTOR_VERSION=0.1.0
 RUN dotnet restore collection/collectors/Heartbeat.Collector.VRChat/Heartbeat.Collector.VRChat.csproj \
     && dotnet publish collection/collectors/Heartbeat.Collector.VRChat/Heartbeat.Collector.VRChat.csproj \
-        -c Release --no-restore -o /out/vrchat \
+        -c Release --no-restore -p:Version="$COLLECTOR_VERSION" -o /out/vrchat \
     && /out/vrchat/Heartbeat.Collector.VRChat --create-package /out/vrchat-package
 
 # 只承载 Package 内容，供 `--output type=local` 导出到宿主目录。

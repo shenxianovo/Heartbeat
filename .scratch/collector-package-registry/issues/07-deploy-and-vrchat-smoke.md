@@ -2,6 +2,10 @@
 
 Status: needs-triage
 
+> 2026-09-02：本 issue 仍是 ADR-045/047 时代的 approval/LKG 规格，不能执行。issue 02 已重写并承接
+> 「显式 tag → 不可变精确 Web Release → Caddy 公网回读」；本 issue 后续只应重写 Headless 独立 deploy、
+> Web Package source 安装与真实 VRChat smoke，不得恢复 CheckNow/Approve/LKG 状态机。
+
 Owner: Release / Operator
 
 Priority: P1 — 域名路由与真实 VRChat 更新需要 owner 操作和观察。

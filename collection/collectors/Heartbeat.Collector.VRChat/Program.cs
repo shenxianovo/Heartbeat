@@ -14,7 +14,7 @@ IVRChatApiFactory apiFactory = Environment.GetEnvironmentVariable("HEARTBEAT_VRC
             : 0)
     : new VRChatApiFactory(
         "Heartbeat.Collector.VRChat",
-        "0.1.0",
+        VRChatCollectorMetadata.Version,
         Environment.GetEnvironmentVariable("HEARTBEAT_VRCHAT_CONTACT") ?? string.Empty);
 var definition = new CollectorClientDefinition(
     "vrchat.managed",

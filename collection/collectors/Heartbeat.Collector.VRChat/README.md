@@ -29,6 +29,35 @@ presence Segment，不是 VRChat 官方集成。
 artifact selector 取的是构建进程的 OS/arch，在 macOS/Windows 上直接构建会得到 Headless 容器
 选不中的 artifact。
 
+## 独立发布
+
+VRChat 使用专属的稳定版本 tag：
+
+```text
+collector-vrchat/vX.Y.Z
+```
+
+[`release-collector-vrchat.yml`](../../../.github/workflows/release-collector-vrchat.yml) 在 `linux/amd64` 容器内
+用 tag 版本构建 Package，再生成一个可重复的 zip 和不可变 `release.json`。它们发布到：
+
+```text
+https://heartbeat.shenxianovo.com/collector-registry/v1/
+  packages/heartbeat.collector.vrchat/versions/X.Y.Z/
+```
+
+普通 `main`/PR 不发布；共享 CI 通过 VRChat.Tests 对 release assembler 做 dry-run。服务器上已经存在相同
+Version 时，只有字节完全一致才允许把 workflow rerun 当成幂等，否则发布失败。这里没有 current pointer、
+自动安装、更新 channel、签名或回滚；它们不属于这条显式发布纵切。
+
+本地已有 Package 时，可只生成待发布文件而不上传：
+
+```bash
+./scripts/package-vrchat-release.sh \
+  --package .local/collector-packages/vrchat \
+  --version 0.1.0 \
+  --output /tmp/vrchat-release
+```
+
 ## 验证与当前交付
 
 ```bash
@@ -36,6 +65,7 @@ dotnet test collection/collectors/Heartbeat.Collector.VRChat.Tests
 ```
 
 Package 是独立于 Headless 镜像的制品：宿主上构建好后，由 Headless 以只读方式挂载、安装再运行；
-换 Package 不需要重建 Hub 镜像。Web 托管与下载尚未实现，目前只能本地构建或手工拷贝。运行宿主见
+换 Package 不需要重建 Hub 镜像。显式 tag 的 Web 发布入口已实现；Host 的 Web 下载 adapter 尚未实现，
+当前运行仍使用本地构建或手工拷贝。运行宿主见
 [Headless README](../../hub/Heartbeat.Collection.Headless/README.md)，授权边界见
 [ADR-043](../../../docs/adr/043-hub-local-interactive-collector-authorization.md)。

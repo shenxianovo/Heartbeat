@@ -42,8 +42,8 @@ internal static class VRChatPackageBuilder
         var manifest = new
         {
             manifestVersion = 1,
-            packageId = "heartbeat.collector.vrchat",
-            version = "0.1.0",
+            packageId = VRChatCollectorMetadata.PackageId,
+            version = VRChatCollectorMetadata.Version,
             protocolMajors = new[] { 1 },
             supportedCapabilities = new Dictionary<string, int[]>
             {

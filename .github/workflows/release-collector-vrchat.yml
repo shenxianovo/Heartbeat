@@ -1,0 +1,208 @@
+name: Collector Release · VRChat
+run-name: VRChat Collector Release · ${{ github.ref_name }}
+
+on:
+  push:
+    tags: ['collector-vrchat/v*']
+
+concurrency:
+  group: collector-vrchat-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  NODE_VERSION: '24'
+  PACKAGE_ID: heartbeat.collector.vrchat
+  REGISTRY_BASE_URL: https://heartbeat.shenxianovo.com/collector-registry/v1
+
+jobs:
+  build:
+    name: Build immutable linux-x64 Package release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      artifact_name: ${{ steps.release.outputs.artifact_name }}
+    steps:
+      - name: Checkout the tagged commit
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Validate the dedicated Collector tag
+        id: version
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ "$GITHUB_REF_NAME" =~ ^collector-vrchat/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            version="${GITHUB_REF_NAME#collector-vrchat/v}"
+          else
+            echo "Expected collector-vrchat/vX.Y.Z, got: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Verify Collector behavior and shared contracts
+        run: |
+          dotnet test collection/collectors/Heartbeat.Collector.VRChat.Tests/Heartbeat.Collector.VRChat.Tests.csproj \
+            -c Release
+          node scripts/collector-contracts.mjs check
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the tagged VRChat Collector Package
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker buildx build \
+            --platform linux/amd64 \
+            --file collection/collectors/Heartbeat.Collector.VRChat/Dockerfile \
+            --target package \
+            --build-arg "COLLECTOR_VERSION=${{ steps.version.outputs.version }}" \
+            --output type=local,dest=collector-package \
+            .
+
+      - name: Assemble the immutable Web release
+        id: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          version='${{ steps.version.outputs.version }}'
+          ./scripts/package-vrchat-release.sh \
+            --package collector-package \
+            --version "$version" \
+            --output release-output \
+            --base-url "$REGISTRY_BASE_URL"
+
+          artifact_name="$PACKAGE_ID-$version-linux-x64.zip"
+          test -f "release-output/$artifact_name"
+          test -f release-output/release.json
+          test "$(jq -r .packageId release-output/release.json)" = "$PACKAGE_ID"
+          test "$(jq -r .version release-output/release.json)" = "$version"
+          test "$(jq -r .artifact.fileName release-output/release.json)" = "$artifact_name"
+
+          mkdir extracted
+          unzip -q "release-output/$artifact_name" -d extracted
+          test -f extracted/collector-manifest.json
+          test -x extracted/Heartbeat.Collector.VRChat
+          test "$(jq -r .version extracted/collector-manifest.json)" = "$version"
+          test "$(jq -r .packageId extracted/collector-manifest.json)" = "$PACKAGE_ID"
+          test "$(jq -r '.artifacts | length' extracted/collector-manifest.json)" = 1
+          test "$(jq -r '.artifacts[0].selector.driver' extracted/collector-manifest.json)" = managedProcess
+          test "$(jq -r '.artifacts[0].selector.os | join(",")' extracted/collector-manifest.json)" = linux
+          test "$(jq -r '.artifacts[0].selector.arch | join(",")' extracted/collector-manifest.json)" = x64
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+
+      - name: Retain the exact release files for diagnosis
+        uses: actions/upload-artifact@v7
+        with:
+          name: collector-vrchat-${{ steps.version.outputs.version }}-linux-x64
+          path: release-output/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  publish:
+    name: Publish immutable static files
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download the exact release files
+        uses: actions/download-artifact@v8
+        with:
+          name: collector-vrchat-${{ needs.build.outputs.version }}-linux-x64
+          path: release-output
+
+      - name: Prepare isolated server staging
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -eu
+            staging='/tmp/heartbeat-collector-release-${{ github.run_id }}-${{ github.run_attempt }}'
+            rm -rf -- "$staging"
+            mkdir -p -- "$staging"
+
+      - name: Upload to isolated server staging
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: release-output
+          target: /tmp/heartbeat-collector-release-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Install the immutable version directory
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -eu
+            package_id='${{ env.PACKAGE_ID }}'
+            version='${{ needs.build.outputs.version }}'
+            artifact='${{ needs.build.outputs.artifact_name }}'
+            staging='/tmp/heartbeat-collector-release-${{ github.run_id }}-${{ github.run_attempt }}'
+            source="$staging/release-output"
+            registry='/srv/heartbeat/collector-registry/v1'
+            versions="$registry/packages/$package_id/versions"
+            target="$versions/$version"
+            pending="$versions/.$version.staging-${{ github.run_id }}-${{ github.run_attempt }}"
+
+            test -f "$source/$artifact"
+            test -f "$source/release.json"
+            install -d -m 0755 -- "$versions"
+
+            if [ -d "$target" ]; then
+              if cmp -s "$source/$artifact" "$target/$artifact" && \
+                 cmp -s "$source/release.json" "$target/release.json"; then
+                echo "Exact release already exists; treating rerun as idempotent."
+                rm -rf -- "$staging"
+                exit 0
+              fi
+              echo "Refusing to overwrite $package_id $version with different bytes." >&2
+              exit 1
+            fi
+
+            rm -rf -- "$pending"
+            mkdir -- "$pending"
+            install -m 0644 "$source/$artifact" "$pending/$artifact"
+            install -m 0644 "$source/release.json" "$pending/release.json"
+            mv -- "$pending" "$target"
+            rm -rf -- "$staging"
+
+      - name: Verify the public exact release bytes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          version='${{ needs.build.outputs.version }}'
+          artifact='${{ needs.build.outputs.artifact_name }}'
+          url="$REGISTRY_BASE_URL/packages/$PACKAGE_ID/versions/$version"
+          curl --fail --silent --show-error --location \
+            --retry 12 --retry-delay 5 \
+            "$url/$artifact?release-run=$GITHUB_RUN_ID" \
+            --output "$RUNNER_TEMP/$artifact"
+          curl --fail --silent --show-error --location \
+            --retry 12 --retry-delay 5 \
+            "$url/release.json?release-run=$GITHUB_RUN_ID" \
+            --output "$RUNNER_TEMP/release.json"
+          cmp release-output/$artifact "$RUNNER_TEMP/$artifact"
+          cmp release-output/release.json "$RUNNER_TEMP/release.json"

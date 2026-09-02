@@ -156,6 +156,12 @@ _Avoid_: 把 System 当作可远程替换的独立 Package、把 BuiltIn 等同�
 发布方为非 BuiltIn 官方 Collector Package 提供的版本目录与制品来源；它只提供精确 Release 的发现和下载事实，不保存用户 Desired State，也不承担 Installation 或 Activation。
 _Avoid_: Collector Registry（旧 source 级配置账本）、Analytics 控制面、Update Offer、审批系统
 
+**Collector Package Release（采集器包发布）**:
+某个非 BuiltIn Collector 通过自己的显式 tag 产生并在 Web 静态目录公开的不可变精确版本。Release metadata
+绑定 PackageId、Version、目标平台、artifact URL、字节长度与 SHA-256；它不表示“当前版本”，也不表示 Host
+已下载、安装或激活。当前第一条真实纵切是 VRChat `linux-x64`。
+_Avoid_: Desktop Release、Update Offer、把 release.json 当作 mutable current pointer
+
 **Execution Driver（执行驱动器）**:
 Collector Runtime 协调 Collector Activation 的方式，可以是进程内、托管进程或外部宿主；它不表示 Runtime 一定持有对应制品。
 _Avoid_: Lifecycle Driver（未区分制品交付）、假定 Hub 能直接停止所有 Collector
