@@ -36,19 +36,6 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: collection/collectors/Heartbeat.Collector.Browser/package-lock.json
-
-      - name: Verify Browser Collector package payload and contracts
-        shell: bash
-        run: |
-          npm ci --prefix collection/collectors/Heartbeat.Collector.Browser
-          npm run build --prefix collection/collectors/Heartbeat.Collector.Browser
-          node scripts/collector-contracts.mjs check
-
       - name: Resolve package version
         id: version
         shell: bash
@@ -64,6 +51,13 @@ jobs:
             --self-contained `
             -p:Version=${{ steps.version.outputs.version }} `
             -o publish
+
+      - name: Verify Windows publish delivery contract
+        shell: bash
+        run: |
+          # System 是 BuiltIn，必须随 Desktop 发布；Browser 独立发布，不得出现在 Desktop 产物里（ADR-048）。
+          test -f publish/CollectorPackages/System/collector-manifest.json
+          test ! -e publish/CollectorPackages/Browser
 
       - name: Install Velopack CLI
         run: dotnet tool install -g vpk --version ${{ env.VELOPACK_VERSION }}
@@ -106,6 +100,40 @@ jobs:
           test -f "releases/Heartbeat-$CHANNEL-Portable.zip"
           test -f "releases/Heartbeat-$CHANNEL-Setup.exe"
 
+      - name: Verify packaged Windows artifact and smoke the host
+        shell: pwsh
+        run: |
+          $channel = '${{ matrix.rid }}'
+          $verifyDir = Join-Path $env:RUNNER_TEMP 'heartbeat-artifact-verification'
+          if (Test-Path $verifyDir) { Remove-Item $verifyDir -Recurse -Force }
+          New-Item -ItemType Directory -Path $verifyDir | Out-Null
+          Expand-Archive -Path "releases/Heartbeat-$channel-Portable.zip" -DestinationPath $verifyDir
+
+          # System 是 BuiltIn，必须随 Desktop 发布；Browser 独立发布，不得出现在 Desktop 产物里（ADR-048）。
+          $manifest = Get-ChildItem $verifyDir -Recurse -File -Filter collector-manifest.json |
+            Where-Object { $_.FullName -match 'CollectorPackages[\\/]System' }
+          if (-not $manifest) { throw 'System Collector package is missing from the packaged artifact' }
+          $browser = Get-ChildItem $verifyDir -Recurse -Directory -Filter Browser |
+            Where-Object { $_.FullName -match 'CollectorPackages' }
+          if ($browser) { throw 'Browser Collector package must not ship inside the Desktop artifact' }
+
+          $executable = Get-ChildItem $verifyDir -Recurse -File -Filter Heartbeat.Desktop.Windows.exe |
+            Select-Object -First 1
+          if (-not $executable) { throw 'packaged executable not found' }
+          if ($channel -ne 'win-x64') {
+            Write-Host "Skipping startup smoke: $channel binaries cannot run on this runner."
+            exit 0
+          }
+
+          # 打包产物在没有 Browser Collector 的情况下必须能走完 Host.StartAsync 并干净停止。
+          $report = Join-Path $env:RUNNER_TEMP 'startup-smoke.json'
+          $process = Start-Process -FilePath $executable.FullName `
+            -ArgumentList "--verify-startup=$report" -PassThru -Wait
+          if ($process.ExitCode -ne 0) {
+            throw "packaged host failed to start (exit $($process.ExitCode))"
+          }
+          Get-Content $report
+
       - name: Upload Windows release artifact
         uses: actions/upload-artifact@v7
         with:
@@ -136,18 +164,6 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: collection/collectors/Heartbeat.Collector.Browser/package-lock.json
-
-      - name: Verify Browser Collector package payload and contracts
-        run: |
-          npm ci --prefix collection/collectors/Heartbeat.Collector.Browser
-          npm run build --prefix collection/collectors/Heartbeat.Collector.Browser
-          node scripts/collector-contracts.mjs check
-
       - name: Resolve package version
         id: version
         shell: bash
@@ -166,6 +182,12 @@ jobs:
             --self-contained \
             -p:Version=${{ steps.version.outputs.version }} \
             -o publish-macos
+
+      - name: Verify macOS publish delivery contract
+        run: |
+          # System 是 BuiltIn，必须随 Desktop 发布；Browser 独立发布，不得出现在 Desktop 产物里（ADR-048）。
+          test -f publish-macos/CollectorPackages/System/collector-manifest.json
+          test ! -e publish-macos/CollectorPackages/Browser
 
       - name: Install Velopack CLI
         run: dotnet tool install -g vpk --version ${{ env.VELOPACK_VERSION }}
@@ -244,6 +266,18 @@ jobs:
           grep -q 'enable_localSystem="false"' "$VERIFY_DIR/pkg/Distribution"
           grep -q 'id="com.shenxianovo.heartbeat"' "$VERIFY_DIR/pkg/Distribution"
           grep -q 'Heartbeat-.*-osx-arm64-stable-full.nupkg' releases-macos/releases.osx-arm64-stable.json
+
+          # System 随包发布，Browser 不随包发布（ADR-048）。
+          test -f "$APP_PATH/Contents/MacOS/CollectorPackages/System/collector-manifest.json"
+          test ! -e "$APP_PATH/Contents/MacOS/CollectorPackages/Browser"
+
+      - name: Smoke the packaged macOS app without the optional Browser Collector
+        shell: bash
+        run: |
+          APP_EXECUTABLE="$RUNNER_TEMP/heartbeat-release-verification/app/Heartbeat.app/Contents/MacOS/Heartbeat.Desktop.Mac"
+          REPORT="$RUNNER_TEMP/startup-smoke.json"
+          "$APP_EXECUTABLE" "--verify-startup=$REPORT"
+          cat "$REPORT"
 
       - name: Upload macOS release artifact
         uses: actions/upload-artifact@v7

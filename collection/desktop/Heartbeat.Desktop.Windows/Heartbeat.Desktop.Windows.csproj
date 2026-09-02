@@ -34,7 +34,7 @@
     <ProjectReference Include="..\..\..\shared\Heartbeat.Core\Heartbeat.Core.csproj" />
   </ItemGroup>
 
-  <Import Project="..\..\collectors\Heartbeat.Collector.Browser\BrowserCollectorPackage.targets" />
+  <!-- Browser 是可选的 ExternalHost Collector，独立发布；不随 Desktop 构建或打包（ADR-048）。 -->
   <Import Project="..\Heartbeat.Collector.System\SystemCollectorPackage.targets" />
 
 </Project>

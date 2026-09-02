@@ -56,6 +56,36 @@ public sealed class HeadlessFleetManagerTests : IDisposable
         Assert.Equal(SubjectKind.Person, fleet.Instances[1].SubjectKind);
     }
 
+    /// <summary>
+    /// 零 Collector Instance 是合法部署形态：整段 instances 省略或写成空数组都能通过校验（ADR-048）。
+    /// </summary>
+    [Theory]
+    [InlineData("\"instances\": [],")]
+    [InlineData("")]
+    public void FleetConfiguration_AcceptsZeroInstances(string instancesFragment)
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "heartbeat-headless.json");
+        File.WriteAllText(path, $$"""
+        {
+          "apiKey": "test-key",
+          "dataDirectory": "data",
+          {{instancesFragment}}
+          "management": {
+            "ownerSubject": "owner-1",
+            "authority": "https://auth.example.test",
+            "issuer": "https://auth.example.test/",
+            "clientId": "heartbeat-web"
+          }
+        }
+        """);
+
+        var fleet = HeadlessFleetOptions.Load(path);
+        fleet.Validate();
+
+        Assert.Empty(fleet.Instances);
+    }
+
     [Fact]
     public void FleetConfiguration_RejectsInstanceKeysThatDifferOnlyByCase()
     {

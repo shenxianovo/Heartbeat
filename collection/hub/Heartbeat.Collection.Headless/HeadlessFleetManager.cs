@@ -19,7 +19,9 @@ public sealed record HeadlessSubjectStatusResponse(
     string PackageContentHash,
     string Phase,
     CollectorAuthorizationChallenge? Authorization,
-    HeadlessCurrentSubjectActivity? CurrentActivity);
+    HeadlessCurrentSubjectActivity? CurrentActivity,
+    // 该配置项没能建立 Instance 时的原因。Phase 为 Failed 时非空，其余情况为 null。
+    string? StatusDetail = null);
 
 /// <summary>
 /// One Hub Runtime hosting every configured Collector Instance. Subject-aware projection routes
@@ -43,7 +45,8 @@ public sealed class HeadlessFleetManager(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         Initialize();
-        foreach (var entry in _entries)
+        // 只激活真正建起 Instance 的配置项；装不上的那些已经以 Failed 状态留在队列里。
+        foreach (var entry in _entries.Where(entry => entry.IsReady))
             entry.ActivationTask = ActivateAsync(entry, _activationCancellation.Token);
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
@@ -69,18 +72,33 @@ public sealed class HeadlessFleetManager(
         {
             return _entries.Select(entry =>
             {
-                var runtime = RuntimeState(entry.CollectorInstanceId);
-                var instance = RuntimeInstance(entry.CollectorInstanceId);
+                // 没建起 Instance 的配置项也要能被看见，并带上原因，否则运维只知道"少了一个"。
+                if (!entry.IsReady)
+                    return new HeadlessSubjectStatusResponse(
+                        entry.Options.SubjectId,
+                        entry.Options.SubjectName,
+                        entry.Options.SubjectKind.ToString(),
+                        null,
+                        string.Empty,
+                        string.Empty,
+                        "Failed",
+                        null,
+                        null,
+                        entry.Failure);
+
+                var collectorInstanceId = entry.CollectorInstanceId!.Value;
+                var runtime = RuntimeState(collectorInstanceId);
+                var instance = RuntimeInstance(collectorInstanceId);
                 return new HeadlessSubjectStatusResponse(
                     entry.Options.SubjectId,
                     entry.Options.SubjectName,
                     entry.Options.SubjectKind.ToString(),
-                    entry.CollectorInstanceId,
-                    instance?.PackageVersion ?? entry.Package.Manifest.Version,
-                    instance?.PackageContentHash ?? entry.Package.PackageContentHash,
+                    collectorInstanceId,
+                    instance?.PackageVersion ?? entry.Package!.Manifest.Version,
+                    instance?.PackageContentHash ?? entry.Package!.PackageContentHash,
                     runtime?.Phase.ToString() ?? "Starting",
                     runtime?.AuthorizationChallenge,
-                    _pipelines?.CurrentActivity(entry.CollectorInstanceId));
+                    _pipelines?.CurrentActivity(collectorInstanceId));
             }).ToArray();
         }
     }
@@ -173,50 +191,78 @@ public sealed class HeadlessFleetManager(
             Path.Combine(options.DataDirectory, "collector-packages"));
         foreach (var configured in options.Instances)
         {
-            var package = installations.Install(configured.PackageDirectory).Package;
-            CollectorInstance instance;
-            if (mappings.TryGetValue(configured.InstanceKey, out var mappedId))
+            try
             {
-                instance = _runtime.GetInstance(mappedId);
-                if (instance.PackageId != package.Manifest.PackageId ||
-                    instance.Subject != new SubjectReference(configured.SubjectId, configured.SubjectKind))
-                    throw new InvalidOperationException(
-                        $"Configured Instance key '{configured.InstanceKey}' changed its Package or Subject identity.");
-                if (instance.Spec.ConfigVersion != configured.ConfigVersion ||
-                    !JsonElement.DeepEquals(instance.Spec.Config, configured.Config))
-                    instance = _runtime.UpdateInstanceSpec(
-                        instance.CollectorInstanceId,
-                        configured.ConfigVersion,
-                        configured.Config);
+                _entries.Add(PrepareEntry(
+                    configured, installations, mappings, claimedInstanceIds, pipelines, registeredPipelineIds));
             }
-            else
+            // 一个配置项的 Package 缺失、损坏，或它的 Instance 身份对不上，只废掉这一个配置项：
+            // 其余 Instance、管理面与 Hub 进程都不受影响（ADR-048）。
+            catch (Exception exception) when (exception
+                is PackageValidationException
+                or CollectorRuntimeStateException
+                or InvalidOperationException
+                or KeyNotFoundException
+                or JsonException
+                or IOException
+                or UnauthorizedAccessException)
             {
-                var subject = new SubjectReference(configured.SubjectId, configured.SubjectKind);
-                var recoverable = _runtime.FindInstances(package.Manifest.PackageId, subject)
-                    .Where(candidate => !claimedInstanceIds.Contains(candidate.CollectorInstanceId))
-                    .Where(candidate =>
-                        candidate.Spec.ConfigVersion == configured.ConfigVersion &&
-                        JsonElement.DeepEquals(candidate.Spec.Config, configured.Config))
-                    .ToArray();
-                instance = recoverable.Length switch
-                {
-                    0 => _runtime.CreateInstance(
-                        package,
-                        subject,
-                        new CollectorInstanceSpec(1, configured.ConfigVersion, configured.Config.Clone())),
-                    1 => recoverable[0],
-                    _ => throw new InvalidOperationException(
-                        $"Instance key '{configured.InstanceKey}' has multiple unmapped Runtime candidates.")
-                };
-                mappings[configured.InstanceKey] = instance.CollectorInstanceId;
-                claimedInstanceIds.Add(instance.CollectorInstanceId);
-                SaveInstanceMappings(mappings);
+                _entries.Add(Entry.Failed(configured, exception.Message));
             }
-
-            if (registeredPipelineIds.Add(instance.CollectorInstanceId))
-                pipelines.Add(instance.CollectorInstanceId, configured);
-            _entries.Add(new Entry(configured, package, instance.CollectorInstanceId));
         }
+    }
+
+    private Entry PrepareEntry(
+        HeadlessManagedInstanceOptions configured,
+        CollectorPackageInstallations installations,
+        Dictionary<string, Guid> mappings,
+        HashSet<Guid> claimedInstanceIds,
+        HeadlessInstancePipelines pipelines,
+        HashSet<Guid> registeredPipelineIds)
+    {
+        var package = installations.Install(configured.PackageDirectory).Package;
+        CollectorInstance instance;
+        if (mappings.TryGetValue(configured.InstanceKey, out var mappedId))
+        {
+            instance = _runtime!.GetInstance(mappedId);
+            if (instance.PackageId != package.Manifest.PackageId ||
+                instance.Subject != new SubjectReference(configured.SubjectId, configured.SubjectKind))
+                throw new InvalidOperationException(
+                    $"Configured Instance key '{configured.InstanceKey}' changed its Package or Subject identity.");
+            if (instance.Spec.ConfigVersion != configured.ConfigVersion ||
+                !JsonElement.DeepEquals(instance.Spec.Config, configured.Config))
+                instance = _runtime.UpdateInstanceSpec(
+                    instance.CollectorInstanceId,
+                    configured.ConfigVersion,
+                    configured.Config);
+        }
+        else
+        {
+            var subject = new SubjectReference(configured.SubjectId, configured.SubjectKind);
+            var recoverable = _runtime!.FindInstances(package.Manifest.PackageId, subject)
+                .Where(candidate => !claimedInstanceIds.Contains(candidate.CollectorInstanceId))
+                .Where(candidate =>
+                    candidate.Spec.ConfigVersion == configured.ConfigVersion &&
+                    JsonElement.DeepEquals(candidate.Spec.Config, configured.Config))
+                .ToArray();
+            instance = recoverable.Length switch
+            {
+                0 => _runtime.CreateInstance(
+                    package,
+                    subject,
+                    new CollectorInstanceSpec(1, configured.ConfigVersion, configured.Config.Clone())),
+                1 => recoverable[0],
+                _ => throw new InvalidOperationException(
+                    $"Instance key '{configured.InstanceKey}' has multiple unmapped Runtime candidates.")
+            };
+            mappings[configured.InstanceKey] = instance.CollectorInstanceId;
+            claimedInstanceIds.Add(instance.CollectorInstanceId);
+            SaveInstanceMappings(mappings);
+        }
+
+        if (registeredPipelineIds.Add(instance.CollectorInstanceId))
+            pipelines.Add(instance.CollectorInstanceId, configured);
+        return Entry.Ready(configured, package, instance.CollectorInstanceId);
     }
 
     private async Task ActivateAsync(Entry entry, CancellationToken cancellationToken)
@@ -224,8 +270,8 @@ public sealed class HeadlessFleetManager(
         try
         {
             var activation = await _runtime!.ActivateManagedProcessAsync(
-                entry.CollectorInstanceId,
-                entry.Package,
+                entry.CollectorInstanceId!.Value,
+                entry.Package!,
                 new ManagedProcessActivationOptions
                 {
                     StartupTimeout = TimeSpan.FromSeconds(entry.Options.StartupTimeoutSeconds),
@@ -308,16 +354,32 @@ public sealed class HeadlessFleetManager(
 
     private sealed record InstanceMapState(int SchemaVersion, Dictionary<string, Guid> Mappings);
 
-    private sealed class Entry(
-        HeadlessManagedInstanceOptions options,
-        LocalCollectorPackage package,
-        Guid collectorInstanceId)
+    /// <summary>
+    /// 一个受管配置项。Package 装不上或 Instance 初始化失败时，它以 <see cref="Failure"/> 的形式留在
+    /// 队列里被管理面看见，而不是让整个 Hub 起不来（ADR-048）。
+    /// </summary>
+    private sealed class Entry(HeadlessManagedInstanceOptions options)
     {
         public HeadlessManagedInstanceOptions Options { get; } = options;
-        public LocalCollectorPackage Package { get; } = package;
-        public Guid CollectorInstanceId { get; } = collectorInstanceId;
+        public LocalCollectorPackage? Package { get; init; }
+        public Guid? CollectorInstanceId { get; init; }
+        public string? Failure { get; init; }
         public Task? ActivationTask { get; set; }
         public ManagedProcessCollectorActivation? Activation { get; set; }
+
+        public static Entry Ready(
+            HeadlessManagedInstanceOptions options,
+            LocalCollectorPackage package,
+            Guid collectorInstanceId) => new(options)
+            {
+                Package = package,
+                CollectorInstanceId = collectorInstanceId
+            };
+
+        public static Entry Failed(HeadlessManagedInstanceOptions options, string reason) =>
+            new(options) { Failure = reason };
+
+        public bool IsReady => Package is not null && CollectorInstanceId is not null;
     }
 
     private sealed class FleetHubConfiguration(HeadlessFleetOptions options) : IHubConfiguration

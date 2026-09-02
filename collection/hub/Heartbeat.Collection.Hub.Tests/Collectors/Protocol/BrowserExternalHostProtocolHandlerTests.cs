@@ -38,7 +38,7 @@ public sealed class BrowserExternalHostProtocolHandlerTests : IDisposable
             DataDirectory = _root
         };
         _browserRuntime = new BrowserCollectorRuntime(_runtime, new Device(), options);
-        _browserRuntime.Import(options.PackageDirectory);
+        _browserRuntime.Import(options.PackageDirectory!);
         _handler = new BrowserExternalHostProtocolHandler(
             _runtime,
             _registry,

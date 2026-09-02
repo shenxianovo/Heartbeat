@@ -33,8 +33,11 @@ namespace Heartbeat.Desktop.Windows.Hosting
         public static IServiceCollection AddHeartbeatAgent(
             this IServiceCollection services,
             ConfigManager? configManager = null,
-            SingleInstanceGuard? guard = null)
+            SingleInstanceGuard? guard = null,
+            string? browserPackageSourceDirectory = null)
         {
+            browserPackageSourceDirectory ??=
+                Path.Combine(AppContext.BaseDirectory, "CollectorPackages", "Browser");
             // 纯 .NET hub 运行时；无头 host 可独立调用同一入口，不会带入 desktop/UI。
             services.AddHeartbeatHub();
 
@@ -154,8 +157,10 @@ namespace Heartbeat.Desktop.Windows.Hosting
             // 注意：IDisposable 的托管服务只通过 AddHostedService 注册一次。此前 AppMonitorService /
             // InputEventCollector 另有 AddSingleton 注册，容器把同一实例捕获进 disposables 两次，
             // host.Dispose() 双重 Dispose → 对已释放 CTS 调 Cancel 抛异常 → 退出流程中断、端口不释放。
+            // Browser 是独立发布的可选 Collector：Desktop 不打包它，这个目录默认不存在，只作为手工
+            // 侧载落点。目录缺失或内容损坏都只让 Browser 报未安装/Degraded，不影响 host 启动（ADR-048）。
             services.AddBrowserExternalHostBinding(new BrowserExternalHostBindingOptions(
-                Path.Combine(AppContext.BaseDirectory, "CollectorPackages", "Browser"))
+                browserPackageSourceDirectory)
             {
                 DataDirectory = configManager?.DataDirectory ?? Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Heartbeat")

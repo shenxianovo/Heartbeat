@@ -73,7 +73,9 @@ Browser 独立发布与真实 smoke。
 - [ ] VRChat Package 可独立于 Headless image 构建和替换。
 - [ ] Backend 与 Headless deployment 分离。
 - [ ] VRChat 与 Browser 各自通过显式 tag 发布 Web Package。
-- [ ] System 仍只随 Desktop Release。
+- [x] System 仍只随 Desktop Release（publish target + Desktop Release 产物断言，issue 08）。
+- [x] 宿主启动不依赖可选 Collector：Desktop 构建与产物不含 Browser，Headless 可零 Instance 启动且单
+      Instance 失败被隔离（issue 08）。
 - [ ] 三类 Driver 继续通过统一 Protocol conformance。
 - [ ] 真实 Desktop Browser 与 Headless VRChat smoke 有证据。
 
@@ -81,3 +83,14 @@ Browser 独立发布与真实 smoke。
 
 - 2026-09-01：owner 再次确认目标是独立发布单元与共享 Runtime，而不是在线候选更新系统；ADR-048
   取代 ADR-045/047 的当前实现范围。
+
+### 2026-09-02 — issue 08 落地：宿主启动不依赖可选 Collector
+
+[issue 08](issues/08-host-startup-independent-of-optional-collectors.md) 已实现（`ready-for-human`，剩下的是
+真实 tag 才能执行的 release 门禁）。它把 Desktop 与 Browser 在**构建期**解开：Desktop 不再构建、不再打包
+Browser，Browser 缺失/损坏只降级；System 改由 publish target 随产物走；Headless 允许零 Instance 并把单
+Instance 失败隔离在管理面快照里。
+
+**Web Delivery 一步都没做**：Browser 与 VRChat 仍没有独立 tag workflow，没有可下载的 Package，也没有 Web
+Package source adapter。所以 Browser 现在的唯一安装方式是手工侧载——这不是终态，是「解耦已完成、发布尚未
+开始」的中间状态，对应 issue 02/07 待重写。

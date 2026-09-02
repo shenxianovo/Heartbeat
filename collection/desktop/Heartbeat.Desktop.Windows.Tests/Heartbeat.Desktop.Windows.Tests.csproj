@@ -22,7 +22,7 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
-  <Import Project="..\..\collectors\Heartbeat.Collector.Browser\BrowserCollectorPackage.targets" />
+  <!-- Desktop 测试宿主刻意不带 Browser Package：Browser 缺失是被测的合法状态。 -->
   <Import Project="..\Heartbeat.Collector.System\SystemCollectorPackage.targets" />
 
 </Project>

@@ -84,8 +84,19 @@ public sealed class BrowserCollectorRuntime
         _installations = new CollectorPackageInstallations(
             Path.Combine(Path.GetFullPath(options.DataDirectory), "collector-packages"));
         _statePath = Path.Combine(Path.GetFullPath(options.DataDirectory), "browser-package-state.json");
-        _state = LoadState();
-        var installationValidationError = ValidatePersistedState();
+        // Browser 是可选 Collector：本地安装账本读不出来或 schema 不认，只能让 Browser 自己 Degraded，
+        // 绝不能把宿主组合打断（ADR-048）。坏账本保持原样不覆写，等 owner 显式重新安装。
+        string? installationValidationError;
+        try
+        {
+            _state = LoadState();
+            installationValidationError = ValidatePersistedState();
+        }
+        catch (CollectorRuntimeStateException exception)
+        {
+            _state = new BrowserRuntimeState();
+            installationValidationError = $"本地 Package 安装状态不可用：{exception.Message}";
+        }
         _runtimeStatus = installationValidationError is null
             ? BrowserCollectorRuntimeStatus.Waiting
             : BrowserCollectorRuntimeStatus.Degraded;
@@ -106,8 +117,34 @@ public sealed class BrowserCollectorRuntime
     public event Action<BrowserCollectorRuntimeSnapshot>? Changed;
     internal event Action<string, bool>? AppDesiredEnabledChanged;
 
-    public BrowserCollectorRuntimeSnapshot EnsureBundledPackageInstalled() =>
-        Import(_options.PackageDirectory);
+    /// <summary>
+    /// 若宿主随身带了一份本地 Package source，就把它安装成运行用 Installation。Browser 独立发布，
+    /// 所以"没有配置 source"、"source 目录不存在"、"source 目录内容损坏"都是合法状态：宿主分别保持
+    /// 未安装或 Degraded，不抛异常（ADR-048）。
+    /// </summary>
+    public BrowserCollectorRuntimeSnapshot EnsureBundledPackageInstalled()
+    {
+        var source = _options.PackageDirectory;
+        if (string.IsNullOrWhiteSpace(source) || !Directory.Exists(source))
+            return Current;
+        try
+        {
+            return Import(source);
+        }
+        catch (Exception exception) when (exception
+            is PackageValidationException
+            or CollectorRuntimeStateException
+            or IOException
+            or UnauthorizedAccessException)
+        {
+            lock (_gate)
+            {
+                _runtimeStatus = BrowserCollectorRuntimeStatus.Degraded;
+                _runtimeStatusDetail = $"随宿主分发的 Package source 不可用：{exception.Message}";
+                return BuildSnapshotLocked();
+            }
+        }
+    }
 
     public BrowserCollectorRuntimeSnapshot Import(string packageDirectory)
     {
@@ -300,11 +337,17 @@ public sealed class BrowserCollectorRuntime
 
     private BrowserCollectorRuntimeSnapshot BuildSnapshotLocked()
     {
+        // 未安装同样可以是 Degraded：安装账本坏掉或随宿主的 source 装不上时，要把原因带给 owner，
+        // 而不是让 UI 看起来像"从来没装过"。
         if (_state.Current is null)
             return new BrowserCollectorRuntimeSnapshot(
                 false, null, null, null, null, true,
-                BrowserCollectorRuntimeStatus.Waiting,
-                "尚未导入 browser Collector Package。",
+                _runtimeStatus == BrowserCollectorRuntimeStatus.Degraded
+                    ? BrowserCollectorRuntimeStatus.Degraded
+                    : BrowserCollectorRuntimeStatus.Waiting,
+                _runtimeStatus == BrowserCollectorRuntimeStatus.Degraded
+                    ? _runtimeStatusDetail
+                    : "尚未导入 browser Collector Package。",
                 false,
                 null,
                 []);

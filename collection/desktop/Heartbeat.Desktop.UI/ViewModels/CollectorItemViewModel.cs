@@ -89,7 +89,7 @@ public partial class CollectorItemViewModel : ObservableObject
 
     public ExternalHostRuntimeStatus? RuntimeStatus { get; private set; }
     public string BrowserStatusText => !IsPackageInstalled
-        ? "尚未连接浏览器"
+        ? "未安装采集器包"
         : !Enabled
             ? "已停用"
             : RuntimeStatus switch
@@ -98,9 +98,11 @@ public partial class CollectorItemViewModel : ObservableObject
                 ExternalHostRuntimeStatus.Degraded => "需要修复",
                 _ => "等待浏览器启动"
             };
-    public string BrowserStatusDetail => RuntimeStatus == ExternalHostRuntimeStatus.Degraded
-        ? RuntimeStatusDetail
-        : "采集每个浏览器窗口当前打开的标签页";
+    public string BrowserStatusDetail => !IsPackageInstalled
+        ? "浏览器采集器独立发布，需要单独安装采集器包后才能连接"
+        : RuntimeStatus == ExternalHostRuntimeStatus.Degraded
+            ? RuntimeStatusDetail
+            : "采集每个浏览器窗口当前打开的标签页";
     public bool IsBrowserReady => Enabled && RuntimeStatus == ExternalHostRuntimeStatus.Ready;
     public bool IsBrowserDegraded => Enabled && RuntimeStatus == ExternalHostRuntimeStatus.Degraded;
     public bool IsBrowserWaiting => !IsBrowserReady && !IsBrowserDegraded;

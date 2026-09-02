@@ -136,11 +136,21 @@ flowchart LR
   从只读挂载目录安装后再启动；后续 D 起尚未开始。
 - D 只改变部署单元，不依赖 Web Registry，可与 E 并行。
 - E 先发布 artifact，F 才让 Host 下载；普通 `main` 验证不发布用户可见 Package。
+- G 已完成宿主侧的一半：Desktop 构建与产物不再包含 Browser，Browser 缺席只降级。剩下的一半（Collector
+  tag、可下载 Package、UI 安装入口）依赖 E/F，仍未开始，所以 Browser 目前只能手工侧载。
 - G 复用已经证明的 Installation/Web seam，只增加 ExternalHost 的真实安装与用户 reload 动作。
 
 ## 当前差距
 
-- Desktop Release 已独立，但仍同时打入 Browser Package。
+- Desktop Release 已独立，且不再构建或携带 Browser Package：两个 Desktop head 与其测试项目都不再 import
+  Browser 的 package target，Desktop Release 也不再安装 node、构建 Browser 或跑 Collector contracts
+  （Browser 的构建与契约验证留在 `collector-contracts.yml`）。System 作为 BuiltIn 由 publish target 进入
+  `dotnet publish` 产物，Desktop Release 另有产物断言（System 在、Browser 不在）与打包后的 startup smoke。
+- Browser 现在只能手工侧载到宿主的 `CollectorPackages/Browser`：该目录默认不存在，缺失、损坏或
+  installation ledger 损坏都只让 Browser 报 NotInstalled/Degraded，不影响 Desktop 启动；未安装时的
+  ExternalHost `hello` 返回 `package_not_installed`，只拒绝该次连接。
+- Headless Hub 可以零 Collector Instance 启动；单个配置项的 Package 缺失、损坏或初始化失败被隔离成管理面
+  快照里的 `Failed` + `StatusDetail`，不再终止整个 Hub。
 - Frontend 与 Backend workflow 已独立；Backend workflow 不再构建、推送或重启 Headless。
 - Headless image 已不再构建或携带 VRChat Package：Package 由 `scripts/build-vrchat-package.sh`
   单独构建到宿主目录，compose 以只读方式挂到 `/package-source`，Headless 安装后再运行。构建仍

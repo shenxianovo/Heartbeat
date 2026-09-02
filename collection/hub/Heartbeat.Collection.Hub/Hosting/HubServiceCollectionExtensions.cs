@@ -54,6 +54,11 @@ public static class HubServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    /// 注册可选的 Browser ExternalHost binding。Browser 独立发布，宿主里"没有 Package source"、
+    /// "source 目录不存在"、"没有 Installation"都是合法状态：binding 与 Runtime 状态照常建立，
+    /// 装不上只体现为未安装或 Degraded，不会打断宿主组合（ADR-048）。
+    /// </summary>
     public static IServiceCollection AddBrowserExternalHostBinding(
         this IServiceCollection services,
         BrowserExternalHostBindingOptions options)
@@ -66,6 +71,7 @@ public static class HubServiceCollectionExtensions
                 provider.GetRequiredService<CollectorRuntime>(),
                 provider.GetRequiredService<IDeviceIdentity>(),
                 options);
+            // 只有 host 真的随身带了一份 source 才会装；这一步不允许抛。
             runtime.EnsureBundledPackageInstalled();
             return runtime;
         });

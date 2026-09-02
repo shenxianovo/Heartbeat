@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Heartbeat.Desktop.Mac.Hosting;
+using Heartbeat.Desktop.UI.Diagnostics;
 using Heartbeat.Desktop.UI.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -21,10 +22,14 @@ public static class Program
         ConfigureLogging(logFeed);
         RegisterUnhandledExceptionLogging();
 
+        var smokeRequested = DesktopStartupSmoke.TryGetRequest(args, out var smoke);
         using var guard = new MacSingleInstanceGuard();
         if (!guard.IsFirstInstance)
         {
             Log.Warning("Heartbeat 已在运行中，当前实例退出");
+            if (smokeRequested)
+                Environment.ExitCode = DesktopStartupSmoke.Inconclusive(
+                    smoke, "another instance already holds the single-instance guard");
             Log.CloseAndFlush();
             return;
         }
@@ -35,6 +40,14 @@ public static class Program
         builder.Services.AddHeartbeatMacAgent();
         builder.Services.AddSingleton<MacDesktopState>();
         using var host = builder.Build();
+
+        // 发布产物的启动 smoke：只起停 host，不拉起 UI（ADR-048 不变量 4 的门禁）。
+        if (smokeRequested)
+        {
+            Environment.ExitCode = DesktopStartupSmoke.Run(host, smoke);
+            Log.CloseAndFlush();
+            return;
+        }
 
         host.StartAsync().GetAwaiter().GetResult();
         var runtime = new MacDesktopRuntime(

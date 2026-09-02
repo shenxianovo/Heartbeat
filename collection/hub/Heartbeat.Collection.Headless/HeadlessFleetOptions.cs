@@ -12,7 +12,10 @@ public sealed class HeadlessFleetOptions
     public int UploadIntervalSeconds { get; init; } = 60;
     public string ListenUrl { get; init; } = "http://0.0.0.0:8080";
     public required HeadlessManagementOptions Management { get; init; }
-    public required IReadOnlyList<HeadlessManagedInstanceOptions> Instances { get; init; }
+    /// <summary>
+    /// 受管 Collector Instance 列表。允许为空或整段省略：零 Instance 的 Hub 是合法部署形态。
+    /// </summary>
+    public IReadOnlyList<HeadlessManagedInstanceOptions> Instances { get; init; } = [];
 
     public static HeadlessFleetOptions Load(string path)
     {
@@ -56,7 +59,9 @@ public sealed class HeadlessFleetOptions
         if (!Uri.TryCreate(ListenUrl, UriKind.Absolute, out _)) throw new InvalidOperationException("listenUrl must be absolute.");
         ArgumentNullException.ThrowIfNull(Management);
         Management.Validate();
-        if (Instances is null || Instances.Count == 0) throw new InvalidOperationException("instances must not be empty.");
+        // Headless Hub 是独立发布单元：它必须能在零 Collector Instance 下启动，管理面照常可用。
+        // 有没有 Collector 由部署配置决定，不是 Hub 能不能跑起来的前提（ADR-048）。
+        ArgumentNullException.ThrowIfNull(Instances);
         foreach (var instance in Instances) instance.Validate();
         var duplicate = Instances.GroupBy(instance => instance.InstanceKey, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(group => group.Count() > 1);

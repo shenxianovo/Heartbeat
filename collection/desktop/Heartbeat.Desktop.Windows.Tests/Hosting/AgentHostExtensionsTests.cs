@@ -4,6 +4,8 @@ using Heartbeat.Desktop.Windows.Hosting;
 using Heartbeat.Collector.System.Collection;
 using Heartbeat.Collector.System.Input;
 using Heartbeat.Collector.System.Observations;
+using Heartbeat.Collection.Hub.Collectors.Protocol;
+using Heartbeat.Collection.Hub.Collectors.Runtime;
 using Heartbeat.Collection.Hub.Configuration;
 using Heartbeat.Collection.Hub.Presence;
 using Heartbeat.Collection.Hub.Runtime;
@@ -24,11 +26,15 @@ public class AgentHostExtensionsTests : IDisposable
 {
     private readonly string _tempConfig = Path.Combine(Path.GetTempPath(), $"heartbeat-cfg-{Guid.NewGuid()}.json");
     private readonly string _tempRuntime = Path.Combine(Path.GetTempPath(), $"heartbeat-runtime-{Guid.NewGuid():N}");
+    // Browser Runtime 的 state 落在 ConfigManager 的 DataDirectory 里；配置文件直接放在临时目录根下
+    // 会让 state 在所有测试与历史运行之间共享，所以需要单独一个隔离的数据目录。
+    private readonly string _tempData = Path.Combine(Path.GetTempPath(), $"heartbeat-data-{Guid.NewGuid():N}");
 
     public void Dispose()
     {
         if (File.Exists(_tempConfig)) File.Delete(_tempConfig);
         if (Directory.Exists(_tempRuntime)) Directory.Delete(_tempRuntime, recursive: true);
+        if (Directory.Exists(_tempData)) Directory.Delete(_tempData, recursive: true);
     }
 
     [Fact]
@@ -83,6 +89,42 @@ public class AgentHostExtensionsTests : IDisposable
         Assert.Equal("win:code", status.CurrentActivity!.AppIdentityKey);
         await WaitUntilAsync(() => status.SourceLastSeen.ContainsKey("system"));
         await binding.StopAsync(CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Browser 是可选的 ExternalHost Collector，独立发布：Desktop 产物里根本没有它的 Package。
+    /// 组合根必须照常建立，Browser 只报未安装（ADR-048）。
+    /// </summary>
+    [Fact]
+    public void Composition_BuildsWithoutTheOptionalBrowserCollectorPackage()
+    {
+        Directory.CreateDirectory(_tempData);
+        var services = new ServiceCollection();
+        services.AddHeartbeatAgent(
+            new ConfigManager(Path.Combine(_tempData, "config.json")),
+            // Desktop 不打包 Browser：显式指向一个不存在的侧载落点，钉住"可选 Collector 缺席"。
+            browserPackageSourceDirectory: Path.Combine(_tempData, "CollectorPackages", "Browser"));
+        services.AddSingleton<IDeviceIdentity>(new FakeDeviceIdentity());
+        services.AddSingleton(new SystemCollectorBindingOptions(_tempRuntime));
+
+        using var provider = services.BuildServiceProvider();
+
+        var browser = provider.GetRequiredService<BrowserCollectorRuntime>();
+        Assert.False(browser.Current.IsInstalled);
+        Assert.Equal(BrowserCollectorRuntimeStatus.Waiting, browser.Current.RuntimeStatus);
+        Assert.Null(browser.Current.SideloadDirectory);
+        Assert.IsType<BrowserExternalHostProtocolHandler>(
+            provider.GetRequiredService<IExternalHostProtocolHttpHandler>());
+    }
+
+    /// <summary>
+    /// System 是 BuiltIn Delivery：它必须随 Desktop 一起出现在产物里，缺失即为损坏安装。
+    /// </summary>
+    [Fact]
+    public void SystemCollectorPackage_ShipsWithTheDesktopHost()
+    {
+        Assert.True(File.Exists(Path.Combine(
+            SystemCollectorPackage.Path, "collector-manifest.json")));
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition)

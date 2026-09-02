@@ -30,9 +30,12 @@ public static class MacAgentHostExtensions
 {
     public static IServiceCollection AddHeartbeatMacAgent(
         this IServiceCollection services,
-        MacAgentPaths? paths = null)
+        MacAgentPaths? paths = null,
+        string? browserPackageSourceDirectory = null)
     {
         paths ??= MacAgentPaths.Default;
+        browserPackageSourceDirectory ??=
+            Path.Combine(AppContext.BaseDirectory, "CollectorPackages", "Browser");
         services.AddSingleton(paths);
         services.AddHeartbeatHub();
 
@@ -128,8 +131,10 @@ public static class MacAgentHostExtensions
 
         // AddHeartbeatHub registers workers first. The system Binding stops after input monitoring
         // and before UploadWorker so no Event arrives after drain and its terminal Segment is uploaded.
+        // Browser 是独立发布的可选 Collector：Desktop 不打包它，这个目录默认不存在，只作为手工侧载
+        // 落点。目录缺失或内容损坏都只让 Browser 报未安装/Degraded，不影响 host 启动（ADR-048）。
         services.AddBrowserExternalHostBinding(new BrowserExternalHostBindingOptions(
-            Path.Combine(AppContext.BaseDirectory, "CollectorPackages", "Browser"))
+            browserPackageSourceDirectory)
         {
             DataDirectory = paths.DataDirectory
         });

@@ -20,4 +20,21 @@
           DestinationFiles="@(SystemCollectorPackageFiles->'$(OutDir)$(SystemCollectorPackageDestination)/%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
   </Target>
+
+  <!--
+    System 是 BuiltIn Delivery：它必须出现在 `dotnet publish -o <dir>` 的产物里，而不只是 build 的 OutDir。
+    发布语义由项目契约承担，不靠 release workflow 手工 copy（ADR-048）。
+  -->
+  <Target Name="PublishSystemCollectorPackage"
+          DependsOnTargets="StageSystemCollectorPackage"
+          BeforeTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <SystemCollectorPackagePublishFiles Include="$(SystemCollectorPackageStageDirectory)/**/*" />
+      <ResolvedFileToPublish Include="@(SystemCollectorPackagePublishFiles)">
+        <RelativePath>$(SystemCollectorPackageDestination)/%(RecursiveDir)%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
 </Project>

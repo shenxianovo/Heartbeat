@@ -7,14 +7,18 @@ using Heartbeat.Core;
 
 namespace Heartbeat.Collection.Hub.Collectors.Protocol;
 
+/// <param name="PackageDirectory">
+/// 可选的本地 Package source 目录。Browser 独立发布，宿主可以完全没有 source（<c>null</c>）或
+/// 指向一个尚不存在的目录；两者都是合法状态，只表示当前没有可安装的候选（ADR-048）。
+/// </param>
 public sealed record BrowserExternalHostBindingOptions(
-    string PackageDirectory,
+    string? PackageDirectory,
     TimeSpan LeaseDuration,
     int FlushPeriodMilliseconds = 30_000)
 {
     public string DataDirectory { get; init; } = string.Empty;
 
-    public BrowserExternalHostBindingOptions(string packageDirectory)
+    public BrowserExternalHostBindingOptions(string? packageDirectory)
         : this(packageDirectory, TimeSpan.FromSeconds(45)) { }
 }
 
@@ -227,10 +231,16 @@ public sealed class BrowserExternalHostProtocolHandler : IExternalHostProtocolHt
         }
         catch (PackageValidationException)
         {
-            return HelloRejected(
-                message.MessageId,
-                Error("package_mismatch", "ExternalHost Artifact does not match an installed browser Package."),
-                400);
+            // Browser 是可选 Collector：拒绝只作用于这一条连接，宿主与其他 binding 不受影响。
+            return _browserRuntime.Current.IsInstalled
+                ? HelloRejected(
+                    message.MessageId,
+                    Error("package_mismatch", "ExternalHost Artifact does not match an installed browser Package."),
+                    400)
+                : HelloRejected(
+                    message.MessageId,
+                    Error("package_not_installed", "No browser Collector Package is installed on this host."),
+                    400);
         }
         var validationError = ValidateHello(request, package);
         if (validationError is not null)

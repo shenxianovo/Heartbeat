@@ -7,6 +7,8 @@ using Heartbeat.Desktop.Mac.Native;
 using Heartbeat.Desktop.Mac.Input;
 using Heartbeat.Collector.System.Collection;
 using Heartbeat.Collector.System.Observations;
+using Heartbeat.Collection.Hub.Collectors.Protocol;
+using Heartbeat.Collection.Hub.Collectors.Runtime;
 using Heartbeat.Collection.Hub.Configuration;
 using Heartbeat.Collection.Hub.Ingest;
 using Heartbeat.Collection.Hub.Presence;
@@ -84,6 +86,41 @@ public sealed class MacAgentHostExtensionsTests : IDisposable
         await binding.StopAsync(CancellationToken.None);
     }
 
+    /// <summary>
+    /// Browser 是可选的 ExternalHost Collector，独立发布：Desktop 产物里根本没有它的 Package。
+    /// 整个 host 组合必须照常建立并起停，Browser 只报未安装（ADR-048）。
+    /// </summary>
+    [Fact]
+    public async Task Composition_StartsAndStopsWithoutTheOptionalBrowserCollectorPackage()
+    {
+        var services = BuildServices();
+        using var provider = services.BuildServiceProvider();
+        Assert.False(Directory.Exists(Path.Combine(_root, "CollectorPackages", "Browser")));
+
+        var browser = provider.GetRequiredService<BrowserCollectorRuntime>();
+        Assert.False(browser.Current.IsInstalled);
+        Assert.Equal(BrowserCollectorRuntimeStatus.Waiting, browser.Current.RuntimeStatus);
+        Assert.Null(browser.Current.SideloadDirectory);
+        Assert.IsType<BrowserExternalHostProtocolHandler>(
+            provider.GetRequiredService<IExternalHostProtocolHttpHandler>());
+
+        var hosted = provider.GetServices<IHostedService>().ToList();
+        foreach (var service in hosted)
+            await service.StartAsync(CancellationToken.None);
+        foreach (var service in Enumerable.Reverse(hosted))
+            await service.StopAsync(CancellationToken.None);
+    }
+
+    /// <summary>
+    /// System 是 BuiltIn Delivery：它必须随 Desktop 一起出现在产物里，缺失即为损坏安装。
+    /// </summary>
+    [Fact]
+    public void SystemCollectorPackage_ShipsWithTheDesktopHost()
+    {
+        Assert.True(File.Exists(Path.Combine(
+            SystemCollectorPackage.Path, "collector-manifest.json")));
+    }
+
     [Fact]
     public void FirstLaunch_DisablesInputRecording_AndUsesVersionedPlatformCaches()
     {
@@ -111,7 +148,10 @@ public sealed class MacAgentHostExtensionsTests : IDisposable
         services.AddSingleton<IMacInputMonitoringNative, FakeInputMonitoringNative>();
         services.AddSingleton<IMacPlatformUuid>(new StubPlatformUuid(
             "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"));
-        services.AddHeartbeatMacAgent(new MacAgentPaths(_root));
+        services.AddHeartbeatMacAgent(
+            new MacAgentPaths(_root),
+            // Desktop 不打包 Browser：测试宿主显式指向一个不存在的侧载落点，钉住"可选 Collector 缺席"。
+            browserPackageSourceDirectory: Path.Combine(_root, "CollectorPackages", "Browser"));
         return services;
     }
 
