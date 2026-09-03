@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 
 const props = defineProps<{ collector: ManagedCollectorStatus }>()
-const emit = defineEmits<{ changed: [] }>()
+const emit = defineEmits<{ changed: [packageId: string] }>()
 const values = reactive<Record<string, string>>({})
 const error = ref('')
 const busy = ref(false)
@@ -51,7 +51,7 @@ async function install() {
   error.value = ''
   try {
     await installManagedCollector(props.collector.packageId)
-    emit('changed')
+    emit('changed', props.collector.packageId)
   } catch {
     error.value = '安装失败，请稍后重试或检查 Hub 日志'
   } finally {
@@ -66,7 +66,7 @@ async function uninstall() {
   error.value = ''
   try {
     await uninstallManagedCollector(props.collector.packageId)
-    emit('changed')
+    emit('changed', props.collector.packageId)
   } catch {
     error.value = '卸载失败，请稍后重试或检查 Hub 日志'
   } finally {
@@ -80,7 +80,7 @@ async function retry() {
   error.value = ''
   try {
     await retryManagedCollector(props.collector.packageId)
-    emit('changed')
+    emit('changed', props.collector.packageId)
   } catch {
     error.value = '重试失败，请检查 Hub 日志'
   } finally {
@@ -101,7 +101,7 @@ async function submitAuthorization() {
       { ...values },
     )
     submitted.value = true
-    emit('changed')
+    emit('changed', props.collector.packageId)
   } catch {
     error.value = '提交失败，请确认信息后重试'
   } finally {
