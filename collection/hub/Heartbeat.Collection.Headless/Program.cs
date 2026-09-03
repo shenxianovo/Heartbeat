@@ -61,7 +61,58 @@ try
     app.UseAuthorization();
 
     var management = app.MapGroup("/hub/api/v1").RequireAuthorization();
-    management.MapGet("/subjects", (HeadlessFleetManager fleet) => Results.Ok(fleet.Snapshot()));
+    management.MapGet(
+        "/collectors",
+        async (HeadlessFleetManager fleet, CancellationToken cancellationToken) =>
+        {
+            try { return Results.Ok(await fleet.BrowseAsync(cancellationToken)); }
+            catch (HttpRequestException exception)
+            {
+                return Results.Problem(exception.Message, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        });
+    management.MapPost(
+        "/collectors/{packageId}/installation",
+        async (string packageId, HeadlessFleetManager fleet, CancellationToken cancellationToken) =>
+        {
+            try { return Results.Ok(await fleet.InstallAsync(packageId, cancellationToken)); }
+            catch (KeyNotFoundException) { return Results.NotFound(); }
+            catch (Exception exception) when (exception is
+                HttpRequestException or
+                Heartbeat.Collection.Hub.Collectors.Packages.PackageValidationException)
+            {
+                return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway);
+            }
+            catch (InvalidOperationException exception)
+            {
+                return Results.Conflict(new { error = exception.Message });
+            }
+        });
+    management.MapDelete(
+        "/collectors/{packageId}/installation",
+        async (string packageId, HeadlessFleetManager fleet, CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                await fleet.UninstallAsync(packageId, cancellationToken);
+                return Results.NoContent();
+            }
+            catch (InvalidOperationException exception)
+            {
+                return Results.Conflict(new { error = exception.Message });
+            }
+        });
+    management.MapPost(
+        "/collectors/{packageId}/activation",
+        async (string packageId, HeadlessFleetManager fleet, CancellationToken cancellationToken) =>
+        {
+            try { return Results.Ok(await fleet.RetryActivationAsync(packageId, cancellationToken)); }
+            catch (KeyNotFoundException) { return Results.NotFound(); }
+            catch (InvalidOperationException exception)
+            {
+                return Results.Conflict(new { error = exception.Message });
+            }
+        });
     management.MapPost(
         "/collector-instances/{collectorInstanceId:guid}/authorization/{interactionId:guid}",
         async (Guid collectorInstanceId, Guid interactionId, AuthorizationResponse request, HeadlessFleetManager fleet, CancellationToken cancellationToken) =>

@@ -52,6 +52,23 @@ public sealed class EncryptedFileCollectorSecretStoreTests : IDisposable
         Assert.Equal("legacy-secret", await store.ReadAsync(collectorInstanceId, "session"));
     }
 
+    [Fact]
+    public async Task DeleteInstance_RemovesEverySecretInOnlyThatNamespace()
+    {
+        var store = new EncryptedFileCollectorSecretStore(_directory);
+        var removed = Guid.CreateVersion7();
+        var retained = Guid.CreateVersion7();
+        await store.WriteAsync(removed, "one", "first");
+        await store.WriteAsync(removed, "two", "second");
+        await store.WriteAsync(retained, "one", "retained");
+
+        await store.DeleteInstanceAsync(removed);
+
+        Assert.Null(await store.ReadAsync(removed, "one"));
+        Assert.Null(await store.ReadAsync(removed, "two"));
+        Assert.Equal("retained", await store.ReadAsync(retained, "one"));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_directory))

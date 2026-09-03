@@ -3,6 +3,7 @@
   "dataDirectory": "/data",
   "uploadIntervalSeconds": 60,
   "listenUrl": "http://0.0.0.0:8080",
+  "collectorRegistryUrl": "https://heartbeat.shenxianovo.com/collector-registry/v1/",
   "management": {
     "ownerSubject": "replace-with-owner-oidc-sub",
     "authority": "https://auth.shenxianovo.com",
@@ -10,18 +11,5 @@
     "clientId": "heartbeat-web",
     "audience": null,
     "requireHttpsMetadata": true
-  },
-  "instances": [
-    {
-      "instanceKey": "vrchat-main",
-      "packageDirectory": "/package-source/vrchat",
-      "subjectId": "0198d5df-5df3-70a1-937d-68a7d64623e2",
-      "subjectKind": "Account",
-      "subjectName": "VRChat",
-      "configVersion": 1,
-      "config": { "pollIntervalSeconds": 60 },
-      "startupTimeoutSeconds": 30,
-      "drainGraceSeconds": 10
-    }
-  ]
+  }
 }

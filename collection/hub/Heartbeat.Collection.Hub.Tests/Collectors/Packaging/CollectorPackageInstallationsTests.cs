@@ -68,6 +68,20 @@ public sealed class CollectorPackageInstallationsTests : IDisposable
     }
 
     [Fact]
+    public void Uninstall_ExactReference_RemovesInstallationAndEmptyParents()
+    {
+        using var source = ManagedReferenceCollectorPackage.Create();
+        var installations = new CollectorPackageInstallations(InstallRoot);
+        var installed = installations.Install(source.Path);
+
+        installations.Uninstall(installed.Reference);
+
+        Assert.False(Directory.Exists(installed.Directory));
+        Assert.Empty(installations.List());
+        Assert.False(Directory.Exists(Path.Combine(InstallRoot, installed.Reference.PackageId)));
+    }
+
+    [Fact]
     public void Install_TamperedManifest_LeavesNeitherInstallationNorStagingBehind()
     {
         using var source = ManagedReferenceCollectorPackage.Create();

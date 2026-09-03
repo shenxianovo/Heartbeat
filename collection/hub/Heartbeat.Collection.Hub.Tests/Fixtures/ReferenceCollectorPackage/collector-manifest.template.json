@@ -8,6 +8,15 @@
     "diagnostics.stream-gap": [1]
   },
   "config": { "version": 1, "accepts": [1] },
+  "presentation": {
+    "displayName": "Reference Collector",
+    "summary": "A generic package used to prove host-independent Collector lifecycle behavior."
+  },
+  "defaultInstance": {
+    "subjectKind": "machine",
+    "configVersion": 1,
+    "config": {}
+  },
   "outputs": [
     {
       "outputId": "activity",

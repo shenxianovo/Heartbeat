@@ -265,6 +265,37 @@ public class CollectorRuntimeInstanceTests
         Assert.IsType<JsonException>(error.InnerException);
     }
 
+    [Fact]
+    public async Task RemoveInstance_DeletesDurableIdentitySecretsAndInstanceData()
+    {
+        using var stateDirectory = TemporaryDirectory.Create();
+        var statePath = Path.Combine(stateDirectory.Path, "collector-runtime.json");
+        var secrets = new EncryptedFileCollectorSecretStore(Path.Combine(stateDirectory.Path, "secrets"));
+        var package = LocalCollectorPackage.Load(ReferencePackagePath);
+        Guid instanceId;
+        using (var runtime = CollectorRuntime.Open(statePath, new RecordingSegmentSink(), secretStore: secrets))
+        {
+            instanceId = runtime.CreateInstance(
+                package,
+                new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+                new CollectorInstanceSpec(1, 1, JsonSerializer.SerializeToElement(new { })),
+                "default").CollectorInstanceId;
+            await secrets.WriteAsync(instanceId, "one", "secret");
+            var instanceData = Path.Combine(stateDirectory.Path, "collector-data", instanceId.ToString("N"));
+            Directory.CreateDirectory(instanceData);
+            await File.WriteAllTextAsync(Path.Combine(instanceData, "owned.txt"), "owned");
+
+            await runtime.RemoveInstanceAsync(instanceId);
+
+            Assert.Empty(runtime.ListInstances());
+            Assert.Null(await secrets.ReadAsync(instanceId, "one"));
+            Assert.False(Directory.Exists(instanceData));
+        }
+
+        using var reopened = CollectorRuntime.Open(statePath, new RecordingSegmentSink());
+        Assert.Empty(reopened.ListInstances());
+    }
+
     private sealed class RecordingSegmentSink : ISegmentSink
     {
         public List<ActivitySegmentItem> Segments { get; } = [];

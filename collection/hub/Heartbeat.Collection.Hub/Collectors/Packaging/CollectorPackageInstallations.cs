@@ -156,6 +156,27 @@ public sealed class CollectorPackageInstallations
         }
     }
 
+    /// <summary>删除一个精确 Installation。调用方必须先保证没有 Instance 仍引用它。</summary>
+    public void Uninstall(CollectorPackageReference reference)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+        var installDirectory = DirectoryFor(reference);
+        lock (_gate)
+        {
+            if (!Directory.Exists(installDirectory))
+                return;
+            Directory.Delete(installDirectory, recursive: true);
+            DeleteIfEmpty(Path.GetDirectoryName(installDirectory)!);
+            DeleteIfEmpty(Path.GetDirectoryName(Path.GetDirectoryName(installDirectory)!)!);
+        }
+    }
+
+    private static void DeleteIfEmpty(string directory)
+    {
+        if (Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any())
+            Directory.Delete(directory);
+    }
+
     private void CopyIntoPlace(
         string sourceDirectory,
         string installDirectory,

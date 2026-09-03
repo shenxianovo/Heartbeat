@@ -114,12 +114,16 @@ export interface CollectorAuthorizationChallenge {
   fields: CollectorAuthorizationField[]
 }
 
-export interface ManagedSubjectStatus {
-  subjectId: string
-  subjectName: string
-  subjectKind: 'Account' | 'Machine' | 'Person'
+export interface ManagedCollectorStatus {
+  packageId: string
+  displayName: string
+  summary: string
+  latestVersion?: string | null
+  isInstalled: boolean
+  installedVersion?: string | null
   collectorInstanceId?: string | null
   phase: string
+  statusDetail?: string | null
   authorization?: CollectorAuthorizationChallenge | null
   currentActivity?: {
     title?: string | null
@@ -130,13 +134,37 @@ export interface ManagedSubjectStatus {
   } | null
 }
 
-export async function fetchManagedSubjectStatuses(): Promise<ManagedSubjectStatus[]> {
-  const response = await authHttp.fetch('/hub/api/v1/subjects')
-  if (!response.ok) throw new ApiException('Hub subject status request failed.', response.status, await response.text(), {}, null)
-  return await response.json() as ManagedSubjectStatus[]
+export async function fetchManagedCollectors(): Promise<ManagedCollectorStatus[]> {
+  const response = await authHttp.fetch('/hub/api/v1/collectors')
+  if (!response.ok) throw new ApiException('Hub Collector catalog request failed.', response.status, await response.text(), {}, null)
+  return await response.json() as ManagedCollectorStatus[]
 }
 
-export async function submitManagedSubjectAuthorization(
+export async function installManagedCollector(packageId: string): Promise<void> {
+  const response = await authHttp.fetch(
+    `/hub/api/v1/collectors/${encodeURIComponent(packageId)}/installation`,
+    { method: 'POST' },
+  )
+  if (!response.ok) throw new ApiException('Hub Collector installation failed.', response.status, await response.text(), {}, null)
+}
+
+export async function uninstallManagedCollector(packageId: string): Promise<void> {
+  const response = await authHttp.fetch(
+    `/hub/api/v1/collectors/${encodeURIComponent(packageId)}/installation`,
+    { method: 'DELETE' },
+  )
+  if (!response.ok) throw new ApiException('Hub Collector uninstall failed.', response.status, await response.text(), {}, null)
+}
+
+export async function retryManagedCollector(packageId: string): Promise<void> {
+  const response = await authHttp.fetch(
+    `/hub/api/v1/collectors/${encodeURIComponent(packageId)}/activation`,
+    { method: 'POST' },
+  )
+  if (!response.ok) throw new ApiException('Hub Collector activation retry failed.', response.status, await response.text(), {}, null)
+}
+
+export async function submitCollectorAuthorization(
   collectorInstanceId: string,
   interactionId: string,
   values: Record<string, string>,
@@ -435,7 +463,7 @@ function readableErrorBody(e: unknown): string | null {
 // ===== Strand 知识层（ADR-028/029/031）=====
 // owner-only：确认写知识 + 发问/整理烧 LLM token，无 public 版。
 // questions/propose 都携带同一个完整 day envelope；问题响应的 WindowKey 是提交凭据，
-// Browser refresh correlation identity 不参与 transport 或持久化身份。
+// 页面刷新 correlation identity 不参与 transport 或持久化身份。
 // 已有 Strand 一律按 UUIDv7 定位（ADR-031）——按名收敛的旧 bindStrand 已退役。
 
 export type { IMatcherDto, IMatcherStepDto, IStrandResponse, ICreateStrandRequest, IUpdateStrandRequest, IMoveStrandRequest, IEndStrandRequest, IKnowledgeErrorResponse } from './client'

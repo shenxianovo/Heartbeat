@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useHeartbeat } from '../composables/useHeartbeat'
 import { authStore } from '../stores/auth'
 import ActivityTimeline from './ActivityTimeline.vue'
@@ -19,7 +19,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import DatePicker from './DatePicker.vue'
-import { fetchManagedSubjectStatuses, type ManagedSubjectStatus } from '../api/index'
 import type { CalendarWindowEnvelope } from '../calendar/localCalendarWindow'
 
 const props = defineProps<{ username: string }>()
@@ -86,8 +85,6 @@ interface SelectedAppDetail {
 }
 
 const selectedApp = ref<SelectedAppDetail | null>(null)
-const managedSubjects = ref<ManagedSubjectStatus[]>([])
-let subjectPoll: ReturnType<typeof setInterval> | null = null
 
 function openAppDetail(app: SelectedAppDetail['app']) {
   selectedApp.value = { app, dayWindow: calendarContext.value.day }
@@ -106,26 +103,6 @@ watch(() => calendarContext.value.day, (current) => {
   }
 })
 
-async function refreshManagedSubjects() {
-  if (!isOwnProfile.value) {
-    managedSubjects.value = []
-    return
-  }
-  try {
-    managedSubjects.value = await fetchManagedSubjectStatuses()
-  } catch {
-    // Hub may be offline or not exposed on this deployment. Analytics remains usable.
-    managedSubjects.value = []
-  }
-}
-
-onMounted(() => {
-  void refreshManagedSubjects()
-  subjectPoll = setInterval(() => void refreshManagedSubjects(), 5_000)
-})
-onUnmounted(() => {
-  if (subjectPoll) clearInterval(subjectPoll)
-})
 </script>
 
 <template>
@@ -242,7 +219,6 @@ onUnmounted(() => {
             :currentAppKey="currentAppKey"
             :presences="onlinePresences"
             :isAllDevices="isAllDevices"
-            :managedSubjects="managedSubjects"
           />
 
           <!-- owner 可生成/重生成；公开访客只读已有缓存，不触发 LLM。 -->

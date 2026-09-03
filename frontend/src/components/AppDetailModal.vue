@@ -80,7 +80,7 @@ const viewBounds = computed(() => {
   return end > start ? { start, end } : null
 })
 
-// system 主轨在前，插件轨按副本分 lane（browser: attributes.windowId）
+// system 主轨在前，插件轨按通用 attributes.laneKey 分 lane。
 const tracks = computed<Track[]>(() => {
   const vb = viewBounds.value
   if (!vb) return []

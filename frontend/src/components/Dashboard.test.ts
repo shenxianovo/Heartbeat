@@ -44,7 +44,6 @@ vi.mock('../stores/auth', () => ({
 
 vi.mock('../api/index', () => ({
   fetchAdminAppCatalog: vi.fn(async () => ({ products: [] })),
-  fetchManagedSubjectStatuses: vi.fn(async () => []),
   fetchMe: vi.fn(async () => ({ isAdmin: false })),
   fetchPublicApps: vi.fn(async () => []),
   fetchPublicDevices: vi.fn(async () => []),

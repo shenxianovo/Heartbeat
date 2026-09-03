@@ -58,6 +58,17 @@ internal static class VRChatPackageBuilder
                 version = 1,
                 accepts = new[] { 1 }
             },
+            presentation = new
+            {
+                displayName = "VRChat",
+                summary = "Collects the signed-in account's VRChat presence as Heartbeat activity."
+            },
+            defaultInstance = new
+            {
+                subjectKind = "account",
+                configVersion = 1,
+                config = new { }
+            },
             outputs = new[]
             {
                 new

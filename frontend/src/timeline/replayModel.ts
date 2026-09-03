@@ -11,7 +11,7 @@ export interface ReplaySeg {
   source: string
   /** tooltip 主体（时间前缀由模型拼接）。 */
   label: string
-  /** 副本身份（如 browser 窗口 windowId）：有则稳定泳道，无则装箱兜底。 */
+  /** 通用副本身份：有则稳定泳道，无则装箱兜底。 */
   laneKey?: string
 }
 

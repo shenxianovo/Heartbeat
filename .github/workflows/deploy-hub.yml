@@ -1,11 +1,10 @@
-name: Deploy Backend
+name: Deploy Hub
 
 on:
-  # Production deployment is explicit and independent from Frontend, Hub, and Collectors.
   workflow_dispatch:
 
 env:
-  IMAGE: ghcr.io/shenxianovo/heartbeat-backend
+  IMAGE: ghcr.io/shenxianovo/heartbeat-headless
 
 jobs:
   build:
@@ -20,8 +19,11 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Test
-        run: dotnet test server/Heartbeat.Server.Tests/Heartbeat.Server.Tests.csproj --configuration Release
+      - name: Test shared Collector runtime
+        run: dotnet test collection/hub/Heartbeat.Collection.Hub.Tests/Heartbeat.Collection.Hub.Tests.csproj --configuration Release
+
+      - name: Test Headless Hub adapter
+        run: dotnet test collection/hub/Heartbeat.Collection.Headless.Tests/Heartbeat.Collection.Headless.Tests.csproj --configuration Release
 
       - uses: docker/setup-buildx-action@v3
 
@@ -36,7 +38,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: server/Dockerfile
+          file: collection/hub/Heartbeat.Collection.Headless/Dockerfile
           push: true
           tags: |
             ${{ env.IMAGE }}:latest
@@ -47,11 +49,10 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    concurrency: deploy-backend-production
+    concurrency: deploy-hub-production
     steps:
       - uses: actions/checkout@v4
 
-      # compose.yml 的事实源是仓库；服务器副本每次部署前同步，不再手动维护
       - name: Sync compose.yml to server
         uses: appleboy/scp-action@v1
         with:
@@ -61,7 +62,7 @@ jobs:
           source: compose.yml
           target: /srv/heartbeat
 
-      - name: Pull and restart backend container
+      - name: Pull and restart only the Hub container
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -70,22 +71,6 @@ jobs:
           script: |
             set -eu
             cd /srv/heartbeat
-            docker compose pull backend
-            docker compose up -d backend
-
-            for attempt in $(seq 1 30); do
-              if curl --fail --silent --show-error --max-time 5 \
-                https://heartbeat.shenxianovo.com/health >/dev/null; then
-                docker compose ps backend
-                exit 0
-              fi
-
-              if ! docker compose ps --status running backend | grep -q heartbeat-backend; then
-                break
-              fi
-              sleep 2
-            done
-
-            docker compose ps --all backend
-            docker compose logs --no-color --tail=200 backend
-            exit 1
+            docker compose pull headless
+            docker compose up -d --no-deps headless
+            docker compose ps headless

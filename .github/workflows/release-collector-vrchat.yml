@@ -85,9 +85,13 @@ jobs:
           artifact_name="$PACKAGE_ID-$version-linux-x64.zip"
           test -f "release-output/$artifact_name"
           test -f release-output/release.json
+          test -f release-output/catalog-entry.json
           test "$(jq -r .packageId release-output/release.json)" = "$PACKAGE_ID"
           test "$(jq -r .version release-output/release.json)" = "$version"
           test "$(jq -r .artifact.fileName release-output/release.json)" = "$artifact_name"
+          test "$(jq -r .packageId release-output/catalog-entry.json)" = "$PACKAGE_ID"
+          test "$(jq -r '.latest | length' release-output/catalog-entry.json)" = 1
+          test "$(jq -r '.latest[0].version' release-output/catalog-entry.json)" = "$version"
 
           mkdir extracted
           unzip -q "release-output/$artifact_name" -d extracted
@@ -158,18 +162,18 @@ jobs:
             source="$staging/release-output"
             registry='/srv/heartbeat/collector-registry/v1'
             versions="$registry/packages/$package_id/versions"
-            target="$versions/$version"
-            pending="$versions/.$version.staging-${{ github.run_id }}-${{ github.run_attempt }}"
+            version_root="$versions/$version"
+            target="$version_root/linux-x64"
+            pending="$version_root/.linux-x64.staging-${{ github.run_id }}-${{ github.run_attempt }}"
 
             test -f "$source/$artifact"
             test -f "$source/release.json"
-            install -d -m 0755 -- "$versions"
+            install -d -m 0755 -- "$version_root"
 
             if [ -d "$target" ]; then
               if cmp -s "$source/$artifact" "$target/$artifact" && \
                  cmp -s "$source/release.json" "$target/release.json"; then
                 echo "Exact release already exists; treating rerun as idempotent."
-                rm -rf -- "$staging"
                 exit 0
               fi
               echo "Refusing to overwrite $package_id $version with different bytes." >&2
@@ -181,7 +185,6 @@ jobs:
             install -m 0644 "$source/$artifact" "$pending/$artifact"
             install -m 0644 "$source/release.json" "$pending/release.json"
             mv -- "$pending" "$target"
-            rm -rf -- "$staging"
 
       - name: Verify the public exact release bytes
         shell: bash
@@ -189,7 +192,7 @@ jobs:
           set -Eeuo pipefail
           version='${{ needs.build.outputs.version }}'
           artifact='${{ needs.build.outputs.artifact_name }}'
-          url="$REGISTRY_BASE_URL/packages/$PACKAGE_ID/versions/$version"
+          url="$REGISTRY_BASE_URL/packages/$PACKAGE_ID/versions/$version/linux-x64"
           curl --fail --silent --show-error --location \
             --retry 12 --retry-delay 5 \
             "$url/$artifact?release-run=$GITHUB_RUN_ID" \
@@ -200,3 +203,134 @@ jobs:
             --output "$RUNNER_TEMP/release.json"
           cmp release-output/$artifact "$RUNNER_TEMP/$artifact"
           cmp release-output/release.json "$RUNNER_TEMP/release.json"
+
+      - name: Advance the generic Catalog after the exact release is public
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -eu
+            package_id='${{ env.PACKAGE_ID }}'
+            version='${{ needs.build.outputs.version }}'
+            staging='/tmp/heartbeat-collector-release-${{ github.run_id }}-${{ github.run_attempt }}'
+            entry="$staging/release-output/catalog-entry.json"
+            registry='/srv/heartbeat/collector-registry/v1'
+            catalog="$registry/catalog.json"
+            lock="$registry/.catalog.lock"
+
+            command -v jq >/dev/null 2>&1
+            command -v flock >/dev/null 2>&1
+            test -f "$entry"
+            test "$(jq -r .packageId "$entry")" = "$package_id"
+            test "$(jq -r '.latest | length' "$entry")" = 1
+            test "$(jq -r '.latest[0].version' "$entry")" = "$version"
+            target_os=$(jq -r '.latest[0].target.os' "$entry")
+            target_arch=$(jq -r '.latest[0].target.arch' "$entry")
+            install -d -m 0755 -- "$registry"
+
+            (
+              flock -x 9
+              current=''
+              existing=''
+              if [ -f "$catalog" ]; then
+                jq -e '
+                  .schemaVersion == 1 and
+                  (.packages | type == "array") and
+                  ([.packages[].packageId] | length == (unique | length)) and
+                  all(.packages[];
+                    (.latest | type == "array") and
+                    ([.latest[] | "\(.target.os)/\(.target.arch)"] | length == (unique | length)))
+                ' "$catalog" >/dev/null
+                existing=$(jq -c --arg id "$package_id" \
+                  '.packages[] | select(.packageId == $id)' "$catalog")
+                current=$(jq -r --arg id "$package_id" --arg os "$target_os" --arg arch "$target_arch" \
+                  '.packages[] | select(.packageId == $id) | .latest[] |
+                   select(.target.os == $os and .target.arch == $arch) | .version' "$catalog")
+              fi
+
+              if [ -n "$current" ] && [ "$current" != "$version" ] && \
+                 [ "$(printf '%s\n%s\n' "$current" "$version" | sort -V | tail -n 1)" = "$current" ]; then
+                echo "Catalog already points at newer $package_id $current; leaving it unchanged."
+                exit 0
+              fi
+
+              if [ "$current" = "$version" ]; then
+                if jq -e --argjson expected "$(cat "$entry")" --arg id "$package_id" \
+                     --arg os "$target_os" --arg arch "$target_arch" '
+                       .packages[] | select(.packageId == $id) as $actual |
+                       $actual.displayName == $expected.displayName and
+                       $actual.summary == $expected.summary and
+                       ($actual.latest[] | select(.target.os == $os and .target.arch == $arch)) == $expected.latest[0]
+                     ' "$catalog" >/dev/null; then
+                  echo "Catalog entry already exists; treating rerun as idempotent."
+                  exit 0
+                fi
+                echo "Refusing to replace $package_id $target_os/$target_arch $version Catalog metadata with different bytes." >&2
+                exit 1
+              fi
+
+              incoming=$(cat "$entry")
+              if [ -n "$existing" ]; then
+                if ! jq -e --argjson existing "$existing" --argjson incoming "$incoming" \
+                     '$existing.displayName == $incoming.displayName and
+                      $existing.summary == $incoming.summary' >/dev/null; then
+                  echo "Refusing to change shared Catalog presentation while other targets may exist." >&2
+                  exit 1
+                fi
+                merged=$(jq -n --argjson existing "$existing" --argjson incoming "$incoming" \
+                  --arg os "$target_os" --arg arch "$target_arch" '
+                    $existing | .latest = (
+                      [.latest[] | select(.target.os != $os or .target.arch != $arch)] +
+                      $incoming.latest |
+                      sort_by(.target.os, .target.arch)
+                    )
+                  ')
+              else
+                merged=$incoming
+              fi
+
+              temporary="$registry/.catalog.json.${{ github.run_id }}-${{ github.run_attempt }}"
+              if [ -f "$catalog" ]; then
+                jq --arg id "$package_id" --argjson merged "$merged" \
+                  '.packages = ([.packages[] | select(.packageId != $id)] + [$merged] | sort_by(.packageId))' \
+                  "$catalog" > "$temporary"
+              else
+                jq -n --argjson entry "$merged" \
+                  '{schemaVersion: 1, packages: [$entry]}' > "$temporary"
+              fi
+              chmod 0644 "$temporary"
+              mv -- "$temporary" "$catalog"
+            ) 9>"$lock"
+
+      - name: Verify the public Catalog and clean server staging
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          version='${{ needs.build.outputs.version }}'
+          curl --fail --silent --show-error --location \
+            --retry 12 --retry-delay 5 \
+            "$REGISTRY_BASE_URL/catalog.json?release-run=$GITHUB_RUN_ID" \
+            --output "$RUNNER_TEMP/catalog.json"
+          jq -e --arg id "$PACKAGE_ID" --arg version "$version" \
+            --arg os linux --arg arch x64 \
+            '.schemaVersion == 1 and
+             ([.packages[] | select(.packageId == $id)] | length) == 1 and
+             ((.packages[] | select(.packageId == $id) | .latest[] |
+               select(.target.os == $os and .target.arch == $arch) | .version) as $current |
+               ($current == $version or
+                ([ $current, $version ] | sort_by(split(".") | map(tonumber)) | last) == $current))' \
+            "$RUNNER_TEMP/catalog.json" >/dev/null
+
+      - name: Remove isolated server staging
+        if: always()
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -eu
+            staging='/tmp/heartbeat-collector-release-${{ github.run_id }}-${{ github.run_attempt }}'
+            rm -rf -- "$staging"

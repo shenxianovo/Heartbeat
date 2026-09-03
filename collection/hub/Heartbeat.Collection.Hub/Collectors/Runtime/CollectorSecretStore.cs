@@ -22,6 +22,10 @@ public interface ICollectorSecretStore
         Guid collectorInstanceId,
         string key,
         CancellationToken cancellationToken = default);
+
+    ValueTask DeleteInstanceAsync(
+        Guid collectorInstanceId,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class EncryptedFileCollectorSecretStore : ICollectorSecretStore
@@ -129,6 +133,29 @@ public sealed class EncryptedFileCollectorSecretStore : ICollectorSecretStore
         {
             var path = SecretPath(collectorInstanceId, key);
             if (File.Exists(path))
+                File.Delete(path);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async ValueTask DeleteInstanceAsync(
+        Guid collectorInstanceId,
+        CancellationToken cancellationToken = default)
+    {
+        if (collectorInstanceId == Guid.Empty)
+            throw new ArgumentException("Collector Instance ID must not be empty.", nameof(collectorInstanceId));
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (!Directory.Exists(_directory))
+                return;
+            foreach (var path in Directory.EnumerateFiles(
+                         _directory,
+                         $"{collectorInstanceId:N}-*.secret.json",
+                         SearchOption.TopDirectoryOnly))
                 File.Delete(path);
         }
         finally

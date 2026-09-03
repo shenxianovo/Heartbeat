@@ -40,26 +40,11 @@ export function urlOf(attributes?: string): string | undefined {
   return typeof url === 'string' ? url : undefined
 }
 
-/**
- * 按 source 的 laneKey 提取器注册表（titleFormatters 同款模式）：
- * 副本身份写在 Attributes 的哪个字段由各采集器自定，展示层在此登记。
- * 未登记的 source 返回 undefined → 回放泳道走装箱兜底。
- */
-const LANE_KEY_EXTRACTORS: Record<string, (attrs: Record<string, unknown>) => string | undefined> = {
-  // browser：每窗口各记其 active tab，windowId 进 Attributes（collection/collectors/Heartbeat.Collector.Browser/src/fold.ts）。
-  // 注意 windowId 是浏览器会话内递增的，跨重启可能复用——同 lane 顺序排开，可读性无损。
-  browser: a =>
-    typeof a.windowId === 'number' || typeof a.windowId === 'string'
-      ? String(a.windowId)
-      : undefined,
-}
-
 export function laneKeyOf(source: string | undefined, attributes?: string): string | undefined {
   if (!source) return undefined
-  const extract = LANE_KEY_EXTRACTORS[source.toLowerCase()]
-  if (!extract) return undefined
   const attrs = parseAttrs(attributes)
-  return attrs ? extract(attrs) : undefined
+  const laneKey = attrs?.laneKey
+  return typeof laneKey === 'number' || typeof laneKey === 'string' ? String(laneKey) : undefined
 }
 
 function boundedSpan(start: number, end: number, window?: Interval): Interval | null {

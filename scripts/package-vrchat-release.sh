@@ -10,7 +10,8 @@ usage() {
 Usage: ./scripts/package-vrchat-release.sh --package PATH --version X.Y.Z --output PATH [options]
 
 Create the immutable Web release files for one already-built linux-x64 VRChat Collector Package.
-The output contains the Package zip and release.json. It does not upload or install anything.
+The output contains the Package zip, release.json, and this release's Catalog entry. It does not
+upload or install anything.
 
 Required:
   --package PATH   Collector Package directory containing collector-manifest.json
@@ -130,6 +131,11 @@ if ! jq -e \
       .manifestVersion == 1 and
       .packageId == $packageId and
       .version == $version and
+      (.presentation.displayName | type == "string" and length > 0) and
+      (.presentation.summary | type == "string" and length > 0) and
+      (.defaultInstance.subjectKind | type == "string" and length > 0) and
+      (.defaultInstance.configVersion | type == "number") and
+      (.defaultInstance.config | type == "object") and
       ([.artifacts[] |
         select(
           .selector.driver == "managedProcess" and
@@ -137,7 +143,7 @@ if ! jq -e \
           (.selector.arch | index("x64")) != null
         )] | length) == 1
     ' "$manifest_path" >/dev/null; then
-    echo "Package manifest must identify $package_id $version with one linux-x64 ManagedProcess artifact." >&2
+    echo "Package manifest must identify $package_id $version, describe its presentation/default Instance, and contain one linux-x64 ManagedProcess artifact." >&2
     exit 1
 fi
 
@@ -170,7 +176,8 @@ else
     artifact_sha256=$(shasum -a 256 "$artifact_path" | awk '{print $1}')
 fi
 artifact_length=$(wc -c < "$artifact_path" | tr -d '[:space:]')
-artifact_url="$base_url/packages/$package_id/versions/$version/$artifact_name"
+target_name='linux-x64'
+artifact_url="$base_url/packages/$package_id/versions/$version/$target_name/$artifact_name"
 
 jq -n \
     --arg packageId "$package_id" \
@@ -191,5 +198,23 @@ jq -n \
         sha256: $sha256
       }
     }' > "$output_directory/release.json"
+
+release_url="$base_url/packages/$package_id/versions/$version/$target_name/release.json"
+jq -n \
+    --arg packageId "$package_id" \
+    --arg displayName "$(jq -r '.presentation.displayName' "$manifest_path")" \
+    --arg summary "$(jq -r '.presentation.summary' "$manifest_path")" \
+    --arg version "$version" \
+    --arg releaseUrl "$release_url" \
+    '{
+      packageId: $packageId,
+      displayName: $displayName,
+      summary: $summary,
+      latest: [{
+          version: $version,
+          target: { os: "linux", arch: "x64" },
+          releaseUrl: $releaseUrl
+      }]
+    }' > "$output_directory/catalog-entry.json"
 
 echo "VRChat Collector release ready: $output_directory"

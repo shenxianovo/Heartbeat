@@ -125,5 +125,4 @@ mv -- "$staging_directory" "$output_directory"
 staging_directory=''
 
 echo "VRChat Collector Package ready: $output_directory"
-echo "Point the headless Hub at its parent directory as a read-only Package source"
-echo "(HEADLESS_PACKAGE_SOURCE_PATH), and keep packageDirectory at /package-source/vrchat."
+echo "Use package-vrchat-release.sh or the dedicated tag workflow to publish it to the Registry."

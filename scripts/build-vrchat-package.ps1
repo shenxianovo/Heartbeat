@@ -111,5 +111,4 @@ finally {
 }
 
 Write-Host "VRChat Collector Package ready: $Output"
-Write-Host 'Point the headless Hub at its parent directory as a read-only Package source'
-Write-Host '(HEADLESS_PACKAGE_SOURCE_PATH), and keep packageDirectory at /package-source/vrchat.'
+Write-Host 'Use package-vrchat-release.sh or the dedicated tag workflow to publish it to the Registry.'

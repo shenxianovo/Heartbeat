@@ -30,8 +30,8 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
-      path: '/settings/logins',
-      component: () => import('../views/LoginManagementView.vue'),
+      path: '/settings/hub',
+      component: () => import('../views/HubManagementView.vue'),
       meta: { requiresAuth: true },
     },
     {

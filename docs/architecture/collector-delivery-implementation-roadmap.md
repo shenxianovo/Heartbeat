@@ -142,11 +142,11 @@ flowchart LR
     G --> H["H · 真实 Desktop/Headless smoke"]
 ```
 
-- B/C 已落地：共享 Installation module 建立，VRChat Package 与 Headless image 分开构建，Headless
-  从只读挂载目录安装后再启动。
-- D 只改变部署单元，不依赖 Web Registry，可与 E 并行。
+- B/C 已落地并被 F 取代来源适配：共享 Installation module 建立，VRChat Package 与 Headless image
+  分开构建；Headless 不再读手工挂载来源，只从 Registry 获取新安装。
+- D 已落地：`deploy-hub.yml` 只测试、构建、推送和重启 Hub，不触发 Backend/Frontend/Collector。
 - E 已完成：专属 tag workflow 生成确定性 zip 与不可变 `release.json`，向同域静态目录追加精确 Version；
-  VRChat 0.2.0 已真实发布并经公网逐字节复核。F 按 ADR-050 增加 Registry Catalog 与一键安装 Marketplace；
+  VRChat 0.2.0 已真实发布并经公网逐字节复核。F 已按 ADR-050 增加 Registry Catalog 与一键安装 Marketplace；
   普通 `main` 验证不发布用户可见 Package。
 - G 已完成宿主侧的全部：Desktop 构建与产物不含 Browser，宿主也不再认识 Browser——Hub 与两个平台 head
   没有它的 runtime、protocol handler、安装目录、平台知识或 UI 条目（ADR-049）。剩下的是通用 ExternalHost
@@ -168,26 +168,17 @@ flowchart LR
 - `facts.segment/v1` 已统一走 ActivitySegment 投影：Package 自有 JSON Schema 先验证 payload，通用 projector
   再要求共同 `identityKey`，Hub 不再按 schema id / major 列出 Browser、VRChat 或测试 Collector。Hub.Tests
   也不再构建 Browser 或引用 VRChat 产品；VRChat ManagedProcess E2E 由 Collector 自身测试拥有。
-- Headless Hub 可以零 Collector Instance 启动；单个配置项的 Package 缺失、损坏或初始化失败被隔离成管理面
-  快照里的 `Failed` + `StatusDetail`，不再终止整个 Hub。已有 mapping 的恢复过程同样逐 Instance 隔离；
-  `StatusDetail` 来自真实 `CollectorRuntimeFailure`（code / message / exit code）；Instance 没建起来时
-  `PackageVersion` 与 `PackageContentHash` 是 `null`；`Initialized` readiness signal 让零 Instance 场景不再靠
-  固定睡眠等待。
+- Headless bootstrap 只含基础设施配置；手写 `instances`、`packageDirectory` 与
+  `headless-instance-map.json` 已直接移除。Runtime state 是 Instance 唯一权威，重启按精确 Installation
+  离线恢复；管理面只透出 Runtime 的真实阶段、授权挑战与失败。
 - Frontend 与 Backend workflow 已独立；Backend workflow 不再构建、推送或重启 Headless。
 - Analytics 启动只预插 System BuiltIn 的 Observation Depth 声明；非 BuiltIn Collector 通过运行时上报，
   已有数据库声明继续由通用生效路径读取。
-- Headless image 已不再构建或携带 VRChat Package：Package 由 `scripts/build-vrchat-package.sh`
-  单独构建到宿主目录，compose 以只读方式挂到 `/package-source`，Headless 安装后再运行。VRChat 专属
-  tag workflow 与不可变 Web Release 已实现，0.2.0 已真实发布；Headless 还不会从 Web 下载。
-- 共享 `CollectorPackageInstallations` 已就位，但当前只剩 Headless 的 VRChat 启动一个调用者：Desktop 侧的
-  Browser bundled import 已随宿主解耦删除，Desktop 要等通用 ExternalHost 安装入口才会重新成为调用者。
-  `HeadlessFleetManager` 的 Fleet 编排和各宿主 projection/upload 装配仍未收进共享 Host Runtime interface。
-- 静态 Collector Registry 的精确 Version 布局、生产 Caddy 路由与 VRChat tag workflow 已落地；0.2.0 已
-  公网可读。Catalog Latest 与 Host Marketplace 正在按 ADR-050 实现：Latest 只用于首次发现，不能成为已安装
-  或运行版本权威。旧 approval/LKG 实现已撤回，不能恢复为当前能力。
-- Headless 独立 deploy workflow 仍不存在；服务器也尚未 provision 外置 Package 来源，因此 Backend deploy
-  已停止顺带重启 Headless，避免在缺少 Package 时静默失败。真实服务器上的「只替换 Package + 重启」
-  smoke 同样还没有承接人。
+- Headless image 不构建或携带可选 Package，也不挂载具名 Package 来源。共享 Marketplace 从 Catalog 获取
+  精确 release，统一校验 metadata/length/hash/zip/Package 后交给 `CollectorPackageInstallations`；公开 interface
+  不含任何具名 Collector，可由未来 Desktop 直接复用。
+- 静态 Registry 的精确 Version、按 Host target 独立的 Catalog Latest 与 Collector tag 更新链已落地；Latest 只用于首次发现，Runtime
+  保存的精确 Package identity 才是重启权威。尚缺新 VRChat tag 的真实 Catalog 发布和生产端到端 smoke。
 
 ## 验收边界
 

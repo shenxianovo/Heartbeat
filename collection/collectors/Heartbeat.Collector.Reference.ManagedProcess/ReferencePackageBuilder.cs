@@ -58,6 +58,17 @@ internal static class ReferencePackageBuilder
                 version = 1,
                 accepts = new[] { 1 }
             },
+            presentation = new
+            {
+                displayName = "Reference Managed Collector",
+                summary = "A generic ManagedProcess Collector used for host lifecycle tests."
+            },
+            defaultInstance = new
+            {
+                subjectKind = "account",
+                configVersion = 1,
+                config = new { }
+            },
             outputs = new[]
             {
                 new

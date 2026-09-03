@@ -36,26 +36,6 @@ if (-not (Test-Path -LiteralPath $EnvFile -PathType Leaf)) {
 
 $null = Get-Command docker -CommandType Application -ErrorAction Stop
 
-# Headless 镜像不再携带 Collector Package，本地栈只读挂载宿主上已构建好的 Package。
-$packageSource = $env:HEADLESS_PACKAGE_SOURCE_PATH
-if ([string]::IsNullOrWhiteSpace($packageSource)) {
-    $match = Select-String -LiteralPath $EnvFile -Pattern '^\s*HEADLESS_PACKAGE_SOURCE_PATH\s*=\s*(.*)$' |
-        Select-Object -Last 1
-    if ($match) {
-        $packageSource = $match.Matches[0].Groups[1].Value.Trim()
-    }
-}
-if ([string]::IsNullOrWhiteSpace($packageSource)) {
-    $packageSource = './.local/collector-packages'
-}
-if (-not [IO.Path]::IsPathRooted($packageSource)) {
-    $packageSource = Join-Path $repositoryRoot $packageSource
-}
-$packageManifest = Join-Path ([IO.Path]::GetFullPath($packageSource)) 'vrchat/collector-manifest.json'
-if (-not (Test-Path -LiteralPath $packageManifest -PathType Leaf)) {
-    throw "VRChat Collector Package not found: $packageManifest. Build it first: ./scripts/build-vrchat-package.ps1"
-}
-
 $composeArguments = @('compose', '--file', $ComposeFile, '--env-file', $EnvFile)
 
 Write-Host '[1/2] Building and starting the local stack...'

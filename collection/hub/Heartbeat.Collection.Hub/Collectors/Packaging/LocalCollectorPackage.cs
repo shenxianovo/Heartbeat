@@ -32,7 +32,18 @@ public sealed record CollectorPackageManifest(
     IReadOnlyDictionary<string, IReadOnlyList<int>> SupportedCapabilities,
     CollectorConfigManifest Config,
     IReadOnlyList<CollectorOutputTemplate> Outputs,
-    IReadOnlyList<CollectorArtifactManifest> Artifacts);
+    IReadOnlyList<CollectorArtifactManifest> Artifacts,
+    CollectorPackagePresentation? Presentation,
+    CollectorDefaultInstanceBlueprint? DefaultInstance);
+
+public sealed record CollectorPackagePresentation(
+    string DisplayName,
+    string Summary);
+
+public sealed record CollectorDefaultInstanceBlueprint(
+    string SubjectKind,
+    int ConfigVersion,
+    JsonElement Config);
 
 public sealed record CollectorConfigManifest(
     int Version,
@@ -296,7 +307,7 @@ public sealed class LocalCollectorPackage
         RequireObject(
             root,
             "Collector Package manifest",
-            ["manifestVersion", "packageId", "version", "protocolMajors", "supportedCapabilities", "config", "outputs", "artifacts", "observationDeclaration"],
+            ["manifestVersion", "packageId", "version", "protocolMajors", "supportedCapabilities", "config", "outputs", "artifacts", "observationDeclaration", "presentation", "defaultInstance"],
             ["manifestVersion", "packageId", "version", "protocolMajors", "supportedCapabilities", "config", "outputs", "artifacts"]);
 
         var manifestVersion = ReadPositiveInt(root, "manifestVersion", "Collector Package manifest");
@@ -316,6 +327,8 @@ public sealed class LocalCollectorPackage
         var config = ReadConfig(root);
         var outputs = ReadOutputs(root.GetProperty("outputs"));
         var artifacts = ReadArtifacts(root.GetProperty("artifacts"));
+        var presentation = ReadPresentation(root);
+        var defaultInstance = ReadDefaultInstance(root, config, outputs);
 
         var ambiguousSchema = outputs
             .GroupBy(output => (output.Schema.Id, output.Schema.Major, output.Schema.Revision))
@@ -355,7 +368,60 @@ public sealed class LocalCollectorPackage
             capabilities,
             config,
             outputs,
-            artifacts);
+            artifacts,
+            presentation,
+            defaultInstance);
+    }
+
+    private static CollectorPackagePresentation? ReadPresentation(JsonElement root)
+    {
+        if (!root.TryGetProperty("presentation", out var presentation))
+            return null;
+        RequireObject(
+            presentation,
+            "Collector Package presentation",
+            ["displayName", "summary"],
+            ["displayName", "summary"]);
+        var displayName = ReadNonEmptyString(presentation, "displayName", "Collector Package presentation");
+        var summary = ReadNonEmptyString(presentation, "summary", "Collector Package presentation");
+        if (displayName.Length > 80)
+            throw new PackageValidationException("Collector Package presentation.displayName must not exceed 80 characters.");
+        if (summary.Length > 240)
+            throw new PackageValidationException("Collector Package presentation.summary must not exceed 240 characters.");
+        return new CollectorPackagePresentation(displayName, summary);
+    }
+
+    private static CollectorDefaultInstanceBlueprint? ReadDefaultInstance(
+        JsonElement root,
+        CollectorConfigManifest configManifest,
+        IReadOnlyList<CollectorOutputTemplate> outputs)
+    {
+        if (!root.TryGetProperty("defaultInstance", out var defaultInstance))
+            return null;
+        RequireObject(
+            defaultInstance,
+            "Collector Package defaultInstance",
+            ["subjectKind", "configVersion", "config"],
+            ["subjectKind", "configVersion", "config"]);
+        var subjectKind = ReadNonEmptyString(
+            defaultInstance,
+            "subjectKind",
+            "Collector Package defaultInstance");
+        if (!SupportedSubjectKinds.Contains(subjectKind) ||
+            !outputs.Any(output => output.SubjectKinds.Contains(subjectKind, StringComparer.Ordinal)))
+            throw new PackageValidationException(
+                "Collector Package defaultInstance.subjectKind must be produced by one of the Package outputs.");
+        var configVersion = ReadPositiveInt(
+            defaultInstance,
+            "configVersion",
+            "Collector Package defaultInstance");
+        if (!configManifest.AcceptedVersions.Contains(configVersion))
+            throw new PackageValidationException(
+                "Collector Package defaultInstance.configVersion must be accepted by config.accepts.");
+        var config = defaultInstance.GetProperty("config");
+        if (config.ValueKind != JsonValueKind.Object)
+            throw new PackageValidationException("Collector Package defaultInstance.config must be an object.");
+        return new CollectorDefaultInstanceBlueprint(subjectKind, configVersion, config.Clone());
     }
 
     private static CollectorConfigManifest ReadConfig(JsonElement root)

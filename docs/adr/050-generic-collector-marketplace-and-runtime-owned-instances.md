@@ -13,7 +13,10 @@ VRChat 会破坏刚建立的宿主解耦。
 
 ## Decision
 
-Official Collector Package Registry 增加通用 Catalog，只列出全部托管 Collector 当前最新版的精确 Release。
+Official Collector Package Registry 增加通用 Catalog，只列出全部托管 Collector 在各 Host target 上当前最新版的
+精确 Release；同一 Package 的 `latest` 是按 OS/architecture 唯一的集合，不能让 Linux、macOS、Windows
+条目互相覆盖。精确 Release 也使用 `versions/<version>/<os>-<arch>/` 目录，允许同一个 Package version
+为多个 Host target 发布不同 metadata 与 artifact。
 Catalog Latest 只属于 Web 发现，不表示任何 Host 的 Desired State、Installation 或 Runtime State。每个
 Collector 的独立 release workflow 只更新自己的 Catalog entry；Registry 可以认识 Collector，Host 不可以。
 
@@ -37,6 +40,7 @@ Hub 重启只从精确 Installation 恢复，不访问 Web。手写 `instances`�
 - ✅ 用户只看到 Catalog 条目和“安装”，不接触 URL、GUID 或 JSON config。
 - ✅ Web Latest、Installation、Instance 与 Activation 各自只有一个权威，Latest 不反写运行事实。
 - ✅ 同一共享 Marketplace module 可由 Headless 与未来 Desktop 调用。
+- ✅ Catalog 的 latest 按 target 独立选择，未来 Desktop target 不需要改变 Host API 或覆盖 Headless release。
 - ⚠️ Registry 获得一个有意为之的 mutable Catalog Latest；它只用于首次发现，本轮不承诺更新已安装 Package。
 - ⚠️ 旧 Headless 配置不再启动，owner 需要备份后清理旧 data/config 并通过管理页重新安装、登录。
 

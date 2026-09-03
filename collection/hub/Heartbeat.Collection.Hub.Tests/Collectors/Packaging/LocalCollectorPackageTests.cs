@@ -23,6 +23,10 @@ public class LocalCollectorPackageTests
         Assert.Equal("1.0.0", package.Manifest.Version);
         Assert.Equal(1, package.Manifest.Config.Version);
         Assert.Equal([1], package.Manifest.Config.AcceptedVersions);
+        Assert.Equal("Reference Collector", package.Manifest.Presentation?.DisplayName);
+        Assert.Equal("machine", package.Manifest.DefaultInstance?.SubjectKind);
+        Assert.Equal(1, package.Manifest.DefaultInstance?.ConfigVersion);
+        Assert.Equal(JsonValueKind.Object, package.Manifest.DefaultInstance?.Config.ValueKind);
         Assert.Equal("reference.inprocess", Assert.Single(package.Artifacts).ArtifactId);
         var schema = Assert.Single(package.FactSchemas);
         Assert.Equal("heartbeat.reference.segment", schema.SchemaId);
@@ -120,6 +124,34 @@ public class LocalCollectorPackageTests
             LocalCollectorPackage.Load(packageCopy.Path));
 
         Assert.Contains("subjectKind", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Load_DefaultInstanceUsesUnproducedSubjectKind_RejectsPackage()
+    {
+        using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
+        var manifest = packageCopy.ReadManifest();
+        manifest["defaultInstance"]!["subjectKind"] = "account";
+        packageCopy.WriteManifest(manifest);
+
+        var error = Assert.Throws<PackageValidationException>(() =>
+            LocalCollectorPackage.Load(packageCopy.Path));
+
+        Assert.Contains("defaultInstance.subjectKind", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Load_DefaultInstanceConfigVersionIsNotAccepted_RejectsPackage()
+    {
+        using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
+        var manifest = packageCopy.ReadManifest();
+        manifest["defaultInstance"]!["configVersion"] = 2;
+        packageCopy.WriteManifest(manifest);
+
+        var error = Assert.Throws<PackageValidationException>(() =>
+            LocalCollectorPackage.Load(packageCopy.Path));
+
+        Assert.Contains("defaultInstance.configVersion", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

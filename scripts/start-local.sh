@@ -56,20 +56,6 @@ docker info >/dev/null 2>&1 || {
     exit 1
 }
 
-# Headless 镜像不再携带 Collector Package，本地栈只读挂载宿主上已构建好的 Package。
-package_source=${HEADLESS_PACKAGE_SOURCE_PATH:-}
-[[ -n "$package_source" ]] ||
-    package_source=$(sed -n 's/^[[:space:]]*HEADLESS_PACKAGE_SOURCE_PATH[[:space:]]*=[[:space:]]*//p' \
-        "$env_file" | tail -n 1)
-package_source=${package_source:-./.local/collector-packages}
-[[ "$package_source" = /* ]] || package_source="$repository_root/${package_source#./}"
-package_manifest="$package_source/vrchat/collector-manifest.json"
-[[ -f "$package_manifest" ]] || {
-    echo "VRChat Collector Package not found: $package_manifest" >&2
-    echo 'Build it first: ./scripts/build-vrchat-package.sh' >&2
-    exit 1
-}
-
 compose=(docker compose --file "$compose_file" --env-file "$env_file")
 
 echo '[1/2] Building and starting the local stack...'

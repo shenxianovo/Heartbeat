@@ -1,6 +1,3 @@
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Heartbeat.Collection.Hub.Auth;
 using Heartbeat.Collection.Hub.Collectors.Packages;
 using Heartbeat.Collection.Hub.Collectors.Runtime;
@@ -10,66 +7,73 @@ using Microsoft.Extensions.Hosting;
 
 namespace Heartbeat.Collection.Headless;
 
-public sealed record HeadlessSubjectStatusResponse(
-    Guid SubjectId,
-    string SubjectName,
-    string SubjectKind,
+public sealed record HeadlessCollectorStatusResponse(
+    string PackageId,
+    string DisplayName,
+    string Summary,
+    string? LatestVersion,
+    bool IsInstalled,
+    string? InstalledVersion,
     Guid? CollectorInstanceId,
-    // Runtime 中没有 Instance 时这两项是"不存在"，不是"空字符串"。
-    string? PackageVersion,
-    string? PackageContentHash,
     string Phase,
     CollectorAuthorizationChallenge? Authorization,
     HeadlessCurrentSubjectActivity? CurrentActivity,
-    // 该配置项未能就绪的原因。Phase 为 Failed 时非空，其余情况为 null。
     string? StatusDetail = null);
 
 /// <summary>
-/// One Hub Runtime hosting every configured Collector Instance. Subject-aware projection routes
-/// legacy Analytics uploads into per-Instance identity pipelines without splitting the Hub itself.
+/// Generic Hub Host adapter. CollectorRuntime is the only durable Instance authority; this class
+/// restores exact installed Packages, exposes Catalog-driven lifecycle operations, and owns only
+/// transient activation/pipeline handles.
 /// </summary>
-public sealed class HeadlessFleetManager(
-    HeadlessFleetOptions options) : BackgroundService
+public sealed class HeadlessFleetManager(HeadlessFleetOptions options) : BackgroundService
 {
-    private static readonly JsonSerializerOptions StateJsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
-        WriteIndented = true
-    };
     private readonly object _gate = new();
-    private readonly List<Entry> _entries = [];
-    private readonly CancellationTokenSource _activationCancellation = new();
+    private readonly Dictionary<string, Entry> _entries = new(StringComparer.Ordinal);
+    private readonly SemaphoreSlim _operations = new(1, 1);
+    private readonly CancellationTokenSource _shutdown = new();
     private readonly TaskCompletionSource _initialized =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly List<IDisposable> _ownedDisposables = [];
     private CollectorRuntime? _runtime;
     private HeadlessInstancePipelines? _pipelines;
+    private CollectorPackageInstallations? _installations;
+    private ICollectorPackageMarketplace? _marketplace;
 
-    /// <summary>
-    /// Initialize 走完（管理面快照可读、该激活的都已排上）后完成。
-    /// 测试靠它取代"睡一小会儿再看"，Initialize 抛错时它带着同一个异常完成。
-    /// </summary>
     internal Task Initialized => _initialized.Task;
+    internal Func<CollectorPackageInstallations, ICollectorPackageMarketplace>? MarketplaceFactory { get; init; }
+
+    internal IReadOnlyList<HeadlessCollectorStatusResponse> InstalledSnapshot()
+    {
+        lock (_gate)
+            return _entries.Values
+                .Select(entry => ToResponse(
+                    entry,
+                    entry.Instance.PackageId,
+                    entry.DisplayName,
+                    entry.Summary,
+                    latestVersion: null))
+                .OrderBy(entry => entry.DisplayName, StringComparer.Ordinal)
+                .ToArray();
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
         {
             Initialize();
-            // 只激活真正建起 Instance 的配置项；装不上的那些已经以 Failed 状态留在队列里。
-            foreach (var entry in _entries.Where(entry => entry.IsReady))
-                entry.ActivationTask = ActivateAsync(entry, _activationCancellation.Token);
+            Entry[] entries;
+            lock (_gate) entries = _entries.Values.Where(entry => entry.Package is not null).ToArray();
+            foreach (var entry in entries)
+                StartActivation(entry);
+            _initialized.TrySetResult();
         }
         catch (Exception exception)
         {
             _initialized.TrySetException(exception);
             throw;
         }
-        _initialized.TrySetResult();
 
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
-            stoppingToken,
-            _activationCancellation.Token);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, _shutdown.Token);
         while (!linked.IsCancellationRequested)
         {
             try
@@ -84,48 +88,168 @@ public sealed class HeadlessFleetManager(
         }
     }
 
-    public IReadOnlyList<HeadlessSubjectStatusResponse> Snapshot()
+    public async ValueTask<IReadOnlyList<HeadlessCollectorStatusResponse>> BrowseAsync(
+        CancellationToken cancellationToken = default)
     {
-        lock (_gate)
-        {
-            return _entries.Select(entry =>
-            {
-                // 未就绪的配置项也要能被看见，并带上原因，否则运维只知道"少了一个"。
-                if (!entry.IsReady)
-                {
-                    var knownInstance = entry.CollectorInstanceId is { } knownInstanceId
-                        ? RuntimeInstance(knownInstanceId)
-                        : null;
-                    return new HeadlessSubjectStatusResponse(
-                        entry.Options.SubjectId,
-                        entry.Options.SubjectName,
-                        entry.Options.SubjectKind.ToString(),
-                        knownInstance?.CollectorInstanceId,
-                        knownInstance?.PackageVersion,
-                        knownInstance?.PackageContentHash,
-                        "Failed",
-                        null,
-                        null,
-                        entry.Failure);
-                }
+        await _initialized.Task.WaitAsync(cancellationToken);
+        var catalog = await _marketplace!.BrowseAsync(cancellationToken);
+        Dictionary<string, Entry> entries;
+        lock (_gate) entries = new Dictionary<string, Entry>(_entries, StringComparer.Ordinal);
+        var result = catalog.Select(item => ToResponse(
+                entries.GetValueOrDefault(item.PackageId),
+                item.PackageId,
+                item.DisplayName,
+                item.Summary,
+                item.Version))
+            .ToList();
+        foreach (var entry in entries.Values.Where(entry =>
+                     catalog.All(item => item.PackageId != entry.Instance.PackageId)))
+            result.Add(ToResponse(
+                entry,
+                entry.Instance.PackageId,
+                entry.DisplayName,
+                entry.Summary,
+                latestVersion: null));
+        return result.OrderBy(item => item.DisplayName, StringComparer.Ordinal).ToArray();
+    }
 
-                var collectorInstanceId = entry.CollectorInstanceId!.Value;
-                var runtime = RuntimeState(collectorInstanceId);
-                var instance = RuntimeInstance(collectorInstanceId);
-                return new HeadlessSubjectStatusResponse(
-                    entry.Options.SubjectId,
-                    entry.Options.SubjectName,
-                    entry.Options.SubjectKind.ToString(),
-                    collectorInstanceId,
-                    instance?.PackageVersion ?? entry.Package!.Manifest.Version,
-                    instance?.PackageContentHash ?? entry.Package!.PackageContentHash,
-                    runtime?.Phase.ToString() ?? "Starting",
-                    runtime?.AuthorizationChallenge,
-                    _pipelines?.CurrentActivity(collectorInstanceId),
-                    // Instance 建起来了但 Activation 失败时，原因归 CollectorRuntime 所有，
-                    // 管理面直接透出它的结构化 Failure，不再自己编一句话。
-                    DescribeFailure(runtime?.Failure));
-            }).ToArray();
+    public async ValueTask<HeadlessCollectorStatusResponse> InstallAsync(
+        string packageId,
+        CancellationToken cancellationToken = default)
+    {
+        await _initialized.Task.WaitAsync(cancellationToken);
+        await _operations.WaitAsync(cancellationToken);
+        try
+        {
+            lock (_gate)
+            {
+                if (_entries.TryGetValue(packageId, out var existing))
+                    return ToResponse(
+                        existing,
+                        packageId,
+                        existing.DisplayName,
+                        existing.Summary,
+                        existing.Instance.PackageVersion);
+            }
+
+            var installation = await _marketplace!.InstallLatestAsync(packageId, cancellationToken);
+            var package = installation.Package;
+            var presentation = package.Manifest.Presentation
+                               ?? throw new PackageValidationException(
+                                   "Marketplace Package does not declare presentation.");
+            var blueprint = package.Manifest.DefaultInstance
+                            ?? throw new PackageValidationException(
+                                "Marketplace Package does not declare defaultInstance.");
+            var subject = new SubjectReference(Guid.CreateVersion7(), ParseSubjectKind(blueprint.SubjectKind));
+            CollectorInstance? instance = null;
+            try
+            {
+                instance = _runtime!.CreateInstance(
+                    package,
+                    subject,
+                    new CollectorInstanceSpec(1, blueprint.ConfigVersion, blueprint.Config.Clone()),
+                    "default");
+                _pipelines!.Add(instance.CollectorInstanceId, instance.Subject, presentation.DisplayName);
+                var entry = new Entry(instance, package, presentation.DisplayName, presentation.Summary);
+                lock (_gate) _entries.Add(packageId, entry);
+                StartActivation(entry);
+                return ToResponse(
+                    entry,
+                    packageId,
+                    presentation.DisplayName,
+                    presentation.Summary,
+                    package.Manifest.Version);
+            }
+            catch
+            {
+                if (instance is not null)
+                {
+                    await _runtime!.RemoveInstanceAsync(instance.CollectorInstanceId, CancellationToken.None);
+                    await _pipelines!.RemoveAsync(instance.CollectorInstanceId);
+                }
+                if (_runtime!.ListInstances().All(candidate =>
+                        candidate.PackageId != installation.Reference.PackageId ||
+                        candidate.PackageVersion != installation.Reference.Version ||
+                        candidate.PackageContentHash != installation.Reference.PackageContentHash))
+                    _installations!.Uninstall(installation.Reference);
+                throw;
+            }
+        }
+        finally
+        {
+            _operations.Release();
+        }
+    }
+
+    public async ValueTask UninstallAsync(
+        string packageId,
+        CancellationToken cancellationToken = default)
+    {
+        await _initialized.Task.WaitAsync(cancellationToken);
+        await _operations.WaitAsync(cancellationToken);
+        try
+        {
+            Entry entry;
+            lock (_gate)
+            {
+                if (!_entries.TryGetValue(packageId, out entry!))
+                    return;
+            }
+
+            await StopEntryActivationAsync(entry, cancellationToken);
+            await _pipelines!.RemoveAsync(entry.Instance.CollectorInstanceId);
+            if (_runtime!.ListInstances().Any(instance =>
+                    instance.CollectorInstanceId == entry.Instance.CollectorInstanceId))
+                await _runtime.RemoveInstanceAsync(entry.Instance.CollectorInstanceId, cancellationToken);
+            var reference = new CollectorPackageReference(
+                entry.Instance.PackageId,
+                entry.Instance.PackageVersion,
+                entry.Instance.PackageContentHash);
+            if (_runtime.ListInstances().All(candidate =>
+                    candidate.PackageId != reference.PackageId ||
+                    candidate.PackageVersion != reference.Version ||
+                    candidate.PackageContentHash != reference.PackageContentHash))
+                _installations!.Uninstall(reference);
+            lock (_gate) _entries.Remove(packageId);
+            entry.Dispose();
+        }
+        finally
+        {
+            _operations.Release();
+        }
+    }
+
+    public async ValueTask<HeadlessCollectorStatusResponse> RetryActivationAsync(
+        string packageId,
+        CancellationToken cancellationToken = default)
+    {
+        await _initialized.Task.WaitAsync(cancellationToken);
+        await _operations.WaitAsync(cancellationToken);
+        try
+        {
+            Entry entry;
+            lock (_gate)
+            {
+                entry = _entries.GetValueOrDefault(packageId)
+                        ?? throw new KeyNotFoundException($"Collector Package '{packageId}' is not installed.");
+                if (entry.Package is null)
+                    throw new InvalidOperationException("The exact Collector Package Installation is unavailable.");
+                if (entry.ActivationTask is { IsCompleted: false })
+                    throw new InvalidOperationException("Collector activation is already in progress.");
+                entry.Activation = null;
+                entry.ActivationTask = null;
+                StartActivation(entry);
+            }
+            return ToResponse(
+                entry,
+                entry.Instance.PackageId,
+                entry.DisplayName,
+                entry.Summary,
+                entry.Instance.PackageVersion);
+        }
+        finally
+        {
+            _operations.Release();
         }
     }
 
@@ -135,46 +259,38 @@ public sealed class HeadlessFleetManager(
         IReadOnlyDictionary<string, string> values,
         CancellationToken cancellationToken)
     {
-        var runtime = _runtime ?? throw new InvalidOperationException("Hub Runtime is not initialized.");
-        lock (_gate)
-        {
-            if (_entries.All(entry => entry.CollectorInstanceId != collectorInstanceId))
-                throw new KeyNotFoundException(
-                    $"Collector Instance '{collectorInstanceId:D}' is not managed by this Hub.");
-        }
+        await _initialized.Task.WaitAsync(cancellationToken);
+        var runtime = _runtime!;
+        if (runtime.ListInstances().All(instance => instance.CollectorInstanceId != collectorInstanceId))
+            throw new KeyNotFoundException(
+                $"Collector Instance '{collectorInstanceId:D}' is not managed by this Hub.");
         var state = runtime.GetManagedProcessRuntimeState(collectorInstanceId);
         if (state.AuthorizationChallenge?.InteractionId != interactionId)
             throw new InvalidOperationException("Authorization interaction is no longer current.");
         await runtime.SubmitManagedProcessAuthorizationAsync(
-            collectorInstanceId,
-            interactionId,
-            values,
-            cancellationToken);
+            collectorInstanceId, interactionId, values, cancellationToken);
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        _activationCancellation.Cancel();
+        _shutdown.Cancel();
         Entry[] entries;
-        lock (_gate) entries = _entries.ToArray();
+        lock (_gate) entries = _entries.Values.ToArray();
         foreach (var entry in entries)
-        {
-            if (entry.Activation is not null)
-                await entry.Activation.StopAsync(cancellationToken);
-            else if (entry.ActivationTask is not null)
-            {
-                try { await entry.ActivationTask.WaitAsync(cancellationToken); }
-                catch (OperationCanceledException) { }
-                catch { }
-            }
-        }
+            await StopEntryActivationAsync(entry, cancellationToken);
         await DrainPipelinesAsync();
         await base.StopAsync(cancellationToken);
     }
 
     public override void Dispose()
     {
-        _activationCancellation.Dispose();
+        _shutdown.Dispose();
+        _operations.Dispose();
+        lock (_gate)
+        {
+            foreach (var entry in _entries.Values) entry.Dispose();
+            _entries.Clear();
+        }
         _runtime?.Dispose();
         _pipelines?.Dispose();
         foreach (var disposable in _ownedDisposables) disposable.Dispose();
@@ -189,152 +305,146 @@ public sealed class HeadlessFleetManager(
         var authHttp = new HttpClient();
         _ownedDisposables.Add(authHttp);
         var tokens = new TokenManager(configuration, new AuthServiceClient(authHttp));
-        var mappings = LoadInstanceMappings();
         var pipelines = new HeadlessInstancePipelines(
             options.DataDirectory,
             new HeadlessAnalyticsSegmentUploadAdapter(tokens));
         _pipelines = pipelines;
-        var registeredPipelineIds = new HashSet<Guid>();
-
-        // 恢复既有 mapping 也要逐 Instance 隔离：一条恢复失败只废掉它自己，
-        // 不能在 Initialize 里抛出去把整个 Hub 拖下水（ADR-048）。
-        var restoreFailures = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var configured in options.Instances)
-        {
-            if (!mappings.TryGetValue(configured.InstanceKey, out var instanceId))
-                continue;
-            try
-            {
-                pipelines.Add(instanceId, configured);
-                registeredPipelineIds.Add(instanceId);
-            }
-            catch (Exception exception) when (exception
-                is InvalidOperationException
-                or ArgumentException
-                or JsonException
-                or IOException
-                or UnauthorizedAccessException)
-            {
-                restoreFailures[configured.InstanceKey] = exception.Message;
-            }
-        }
-
         _runtime = CollectorRuntime.Open(
             Path.Combine(options.DataDirectory, "collector-runtime.json"),
             pipelines,
             secretStore: new EncryptedFileCollectorSecretStore(
                 Path.Combine(options.DataDirectory, "collector-secrets")));
-
-        var claimedInstanceIds = mappings.Values.ToHashSet();
-        // 配置里的 packageDirectory 是宿主挂载的 Package 来源，只读。运行永远发生在 Installation 上，
-        // 所以先安装再打开，来源目录不充当运行时可变目录。
-        var installations = new CollectorPackageInstallations(
+        _installations = new CollectorPackageInstallations(
             Path.Combine(options.DataDirectory, "collector-packages"));
-        foreach (var configured in options.Instances)
+        var packageHttp = new HttpClient();
+        _ownedDisposables.Add(packageHttp);
+        _marketplace = MarketplaceFactory?.Invoke(_installations) ??
+            new CollectorPackageMarketplace(
+                packageHttp,
+                new Uri(options.CollectorRegistryUrl, UriKind.Absolute),
+                new CollectorMarketplaceTarget("linux", RuntimeArchitecture()),
+                _installations);
+
+        foreach (var instance in _runtime.ListInstances())
         {
-            if (restoreFailures.TryGetValue(configured.InstanceKey, out var restoreFailure))
-            {
-                _entries.Add(Entry.Failed(configured, restoreFailure, mappings[configured.InstanceKey]));
-                continue;
-            }
+            if (_entries.ContainsKey(instance.PackageId))
+                throw new CollectorRuntimeStateException(
+                    $"Headless Hub supports one installed Instance per Package; '{instance.PackageId}' has more than one.");
+            var reference = new CollectorPackageReference(
+                instance.PackageId, instance.PackageVersion, instance.PackageContentHash);
             try
             {
-                _entries.Add(PrepareEntry(
-                    configured, installations, mappings, claimedInstanceIds, pipelines, registeredPipelineIds));
+                var package = _installations.Open(reference).Package;
+                var displayName = package.Manifest.Presentation?.DisplayName ?? instance.PackageId;
+                var summary = package.Manifest.Presentation?.Summary ?? "Installed Collector Package";
+                pipelines.Add(instance.CollectorInstanceId, instance.Subject, displayName);
+                _entries.Add(instance.PackageId, new Entry(instance, package, displayName, summary));
             }
-            // 一个配置项的 Package 缺失、损坏，或它的 Instance 身份对不上，只废掉这一个配置项：
-            // 其余 Instance、管理面与 Hub 进程都不受影响（ADR-048）。
-            catch (Exception exception) when (exception
-                is PackageValidationException
-                or CollectorRuntimeStateException
-                or InvalidOperationException
-                or KeyNotFoundException
-                or JsonException
-                or IOException
-                or UnauthorizedAccessException)
+            catch (Exception exception) when (exception is PackageValidationException or IOException)
             {
-                _entries.Add(Entry.Failed(
-                    configured,
-                    exception.Message,
-                    mappings.TryGetValue(configured.InstanceKey, out var mappedId) ? mappedId : null));
+                _entries.Add(instance.PackageId, new Entry(
+                    instance,
+                    package: null,
+                    instance.PackageId,
+                    "Installed Collector Package",
+                    exception.Message));
             }
         }
     }
 
-    private Entry PrepareEntry(
-        HeadlessManagedInstanceOptions configured,
-        CollectorPackageInstallations installations,
-        Dictionary<string, Guid> mappings,
-        HashSet<Guid> claimedInstanceIds,
-        HeadlessInstancePipelines pipelines,
-        HashSet<Guid> registeredPipelineIds)
+    private void StartActivation(Entry entry)
     {
-        var package = installations.Install(configured.PackageDirectory).Package;
-        CollectorInstance instance;
-        if (mappings.TryGetValue(configured.InstanceKey, out var mappedId))
+        lock (_gate)
         {
-            instance = _runtime!.GetInstance(mappedId);
-            if (instance.PackageId != package.Manifest.PackageId ||
-                instance.Subject != new SubjectReference(configured.SubjectId, configured.SubjectKind))
-                throw new InvalidOperationException(
-                    $"Configured Instance key '{configured.InstanceKey}' changed its Package or Subject identity.");
-            if (instance.Spec.ConfigVersion != configured.ConfigVersion ||
-                !JsonElement.DeepEquals(instance.Spec.Config, configured.Config))
-                instance = _runtime.UpdateInstanceSpec(
-                    instance.CollectorInstanceId,
-                    configured.ConfigVersion,
-                    configured.Config);
+            if (entry.ActivationTask is { IsCompleted: false })
+                return;
+            var startupCompletion = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            entry.StartupCompletion = startupCompletion;
+            entry.ActivationTask = ActivateAsync(entry, startupCompletion);
         }
-        else
-        {
-            var subject = new SubjectReference(configured.SubjectId, configured.SubjectKind);
-            var recoverable = _runtime!.FindInstances(package.Manifest.PackageId, subject)
-                .Where(candidate => !claimedInstanceIds.Contains(candidate.CollectorInstanceId))
-                .Where(candidate =>
-                    candidate.Spec.ConfigVersion == configured.ConfigVersion &&
-                    JsonElement.DeepEquals(candidate.Spec.Config, configured.Config))
-                .ToArray();
-            instance = recoverable.Length switch
-            {
-                0 => _runtime.CreateInstance(
-                    package,
-                    subject,
-                    new CollectorInstanceSpec(1, configured.ConfigVersion, configured.Config.Clone())),
-                1 => recoverable[0],
-                _ => throw new InvalidOperationException(
-                    $"Instance key '{configured.InstanceKey}' has multiple unmapped Runtime candidates.")
-            };
-            mappings[configured.InstanceKey] = instance.CollectorInstanceId;
-            claimedInstanceIds.Add(instance.CollectorInstanceId);
-            SaveInstanceMappings(mappings);
-        }
-
-        if (registeredPipelineIds.Add(instance.CollectorInstanceId))
-            pipelines.Add(instance.CollectorInstanceId, configured);
-        return Entry.Ready(configured, package, instance.CollectorInstanceId);
     }
 
-    private async Task ActivateAsync(Entry entry, CancellationToken cancellationToken)
+    private async Task ActivateAsync(Entry entry, TaskCompletionSource startupCompletion)
     {
         try
         {
             var activation = await _runtime!.ActivateManagedProcessAsync(
-                entry.CollectorInstanceId!.Value,
+                entry.Instance.CollectorInstanceId,
                 entry.Package!,
                 new ManagedProcessActivationOptions
                 {
-                    StartupTimeout = TimeSpan.FromSeconds(entry.Options.StartupTimeoutSeconds),
-                    DrainGracePeriod = TimeSpan.FromSeconds(entry.Options.DrainGraceSeconds)
+                    StartupTimeout = TimeSpan.FromSeconds(options.CollectorStartupTimeoutSeconds),
+                    DrainGracePeriod = TimeSpan.FromSeconds(options.CollectorDrainGraceSeconds)
                 },
-                cancellationToken);
+                entry.ActivationCancellation.Token);
             lock (_gate) entry.Activation = activation;
+            startupCompletion.TrySetResult();
             await activation.Completion;
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (entry.ActivationCancellation.IsCancellationRequested) { }
         catch
         {
-            // CollectorRuntime owns the structured failure state exposed by Snapshot().
+            // CollectorRuntime owns the structured failure exposed below.
         }
+        finally
+        {
+            startupCompletion.TrySetResult();
+        }
+    }
+
+    private async Task StopEntryActivationAsync(Entry entry, CancellationToken cancellationToken)
+    {
+        entry.ActivationCancellation.Cancel();
+        Task? startup;
+        lock (_gate) startup = entry.StartupCompletion?.Task;
+        if (startup is not null)
+            await startup.WaitAsync(cancellationToken);
+
+        ManagedProcessCollectorActivation? activation;
+        Task? activationTask;
+        lock (_gate)
+        {
+            activation = entry.Activation;
+            activationTask = entry.ActivationTask;
+        }
+        if (activation is not null)
+            await activation.StopAsync(cancellationToken);
+        if (activationTask is null)
+            return;
+        try
+        {
+            await activationTask.WaitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
+        catch when (!cancellationToken.IsCancellationRequested) { }
+    }
+
+    private HeadlessCollectorStatusResponse ToResponse(
+        Entry? entry,
+        string packageId,
+        string displayName,
+        string summary,
+        string? latestVersion)
+    {
+        if (entry is null)
+            return new HeadlessCollectorStatusResponse(
+                packageId, displayName, summary, latestVersion, false, null, null, "NotInstalled", null, null);
+        CollectorRuntimeSnapshot? runtime = null;
+        try { runtime = _runtime!.GetManagedProcessRuntimeState(entry.Instance.CollectorInstanceId); }
+        catch (KeyNotFoundException) { }
+        return new HeadlessCollectorStatusResponse(
+            packageId,
+            displayName,
+            summary,
+            latestVersion,
+            true,
+            entry.Instance.PackageVersion,
+            entry.Instance.CollectorInstanceId,
+            entry.Failure is null ? runtime?.Phase.ToString() ?? "Starting" : "Failed",
+            runtime?.AuthorizationChallenge,
+            entry.Failure is null ? _pipelines?.CurrentActivity(entry.Instance.CollectorInstanceId) : null,
+            entry.Failure ?? DescribeFailure(runtime?.Failure));
     }
 
     private static string? DescribeFailure(CollectorRuntimeFailure? failure) =>
@@ -344,19 +454,20 @@ public sealed class HeadlessFleetManager(
                 ? $"{failure.Code}: {failure.Message} (exit code {exitCode})"
                 : $"{failure.Code}: {failure.Message}";
 
-    private CollectorRuntimeSnapshot? RuntimeState(Guid collectorInstanceId)
+    private static SubjectKind ParseSubjectKind(string value) => value switch
     {
-        if (_runtime is null) return null;
-        try { return _runtime.GetManagedProcessRuntimeState(collectorInstanceId); }
-        catch (KeyNotFoundException) { return null; }
-    }
+        "machine" => SubjectKind.Machine,
+        "account" => SubjectKind.Account,
+        "person" => SubjectKind.Person,
+        _ => throw new PackageValidationException($"Unknown default Instance subject kind '{value}'.")
+    };
 
-    private CollectorInstance? RuntimeInstance(Guid collectorInstanceId)
+    private static string RuntimeArchitecture() => System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture switch
     {
-        if (_runtime is null) return null;
-        try { return _runtime.GetInstance(collectorInstanceId); }
-        catch (KeyNotFoundException) { return null; }
-    }
+        System.Runtime.InteropServices.Architecture.X64 => "x64",
+        System.Runtime.InteropServices.Architecture.Arm64 => "arm64",
+        _ => throw new PlatformNotSupportedException("Headless Collector marketplace supports x64 and arm64.")
+    };
 
     private async Task DrainPipelinesAsync()
     {
@@ -364,85 +475,23 @@ public sealed class HeadlessFleetManager(
             await _pipelines.DrainAllAsync();
     }
 
-    private Dictionary<string, Guid> LoadInstanceMappings()
+    private sealed class Entry(
+        CollectorInstance instance,
+        LocalCollectorPackage? package,
+        string displayName,
+        string summary,
+        string? failure = null) : IDisposable
     {
-        var path = InstanceMapPath;
-        if (!File.Exists(path)) return new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
-        var mappings = DeserializeInstanceMappings(File.ReadAllText(path), out var legacy);
-        if (legacy)
-            SaveInstanceMappings(mappings);
-        return mappings;
-    }
-
-    internal static Dictionary<string, Guid> DeserializeInstanceMappings(string json, out bool legacy)
-    {
-        using var document = JsonDocument.Parse(json);
-        if (document.RootElement.ValueKind != JsonValueKind.Object)
-            throw new JsonException("Headless Instance mapping must be a JSON object.");
-        if (!document.RootElement.TryGetProperty("schemaVersion", out _))
-        {
-            var legacyMappings = document.RootElement.Deserialize<Dictionary<string, Guid>>(StateJsonOptions)
-                                 ?? throw new JsonException("Headless Instance mapping is empty.");
-            legacy = true;
-            return new Dictionary<string, Guid>(legacyMappings, StringComparer.OrdinalIgnoreCase);
-        }
-        var state = document.RootElement.Deserialize<InstanceMapState>(StateJsonOptions)
-                    ?? throw new JsonException("Headless Instance mapping is empty.");
-        if (state.SchemaVersion != 1 || state.Mappings is null)
-            throw new JsonException($"Unsupported Headless Instance mapping schemaVersion {state.SchemaVersion}.");
-        legacy = false;
-        return new Dictionary<string, Guid>(state.Mappings, StringComparer.OrdinalIgnoreCase);
-    }
-
-    private void SaveInstanceMappings(IReadOnlyDictionary<string, Guid> mappings)
-    {
-        var temporary = InstanceMapPath + $".{Guid.NewGuid():N}.tmp";
-        File.WriteAllText(
-            temporary,
-            JsonSerializer.Serialize(
-                new InstanceMapState(1, new Dictionary<string, Guid>(mappings)),
-                StateJsonOptions),
-            new UTF8Encoding(false));
-        File.Move(temporary, InstanceMapPath, overwrite: true);
-    }
-
-    private string InstanceMapPath => Path.Combine(options.DataDirectory, "headless-instance-map.json");
-
-    private sealed record InstanceMapState(int SchemaVersion, Dictionary<string, Guid> Mappings);
-
-    /// <summary>
-    /// 一个受管配置项。Package 安装、Instance 初始化或 projection pipeline 恢复失败时，
-    /// 它以 <see cref="Failure"/> 留在队列里被管理面看见，而不是让整个 Hub 起不来（ADR-048）。
-    /// </summary>
-    private sealed class Entry(HeadlessManagedInstanceOptions options)
-    {
-        public HeadlessManagedInstanceOptions Options { get; } = options;
-        public LocalCollectorPackage? Package { get; init; }
-        public Guid? CollectorInstanceId { get; init; }
-        public string? Failure { get; init; }
+        public CollectorInstance Instance { get; } = instance;
+        public LocalCollectorPackage? Package { get; } = package;
+        public string DisplayName { get; } = displayName;
+        public string Summary { get; } = summary;
+        public string? Failure { get; } = failure;
+        public CancellationTokenSource ActivationCancellation { get; } = new();
+        public TaskCompletionSource? StartupCompletion { get; set; }
         public Task? ActivationTask { get; set; }
         public ManagedProcessCollectorActivation? Activation { get; set; }
-
-        public static Entry Ready(
-            HeadlessManagedInstanceOptions options,
-            LocalCollectorPackage package,
-            Guid collectorInstanceId) => new(options)
-            {
-                Package = package,
-                CollectorInstanceId = collectorInstanceId
-            };
-
-        public static Entry Failed(
-            HeadlessManagedInstanceOptions options,
-            string reason,
-            Guid? collectorInstanceId = null) =>
-            new(options)
-            {
-                CollectorInstanceId = collectorInstanceId,
-                Failure = reason
-            };
-
-        public bool IsReady => Package is not null && CollectorInstanceId is not null;
+        public void Dispose() => ActivationCancellation.Dispose();
     }
 
     private sealed class FleetHubConfiguration(HeadlessFleetOptions options) : IHubConfiguration

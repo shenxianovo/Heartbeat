@@ -6,9 +6,7 @@
 #   - backend 跑 Development 环境：额外暴露 /openapi/v1.json（可 regen 前端 client）
 #   - 鉴权走真实 Auth 平台（路径甲）：AuthService__* 从 .env.local 读，指向线上 auth
 #   - 前端映射到 127.0.0.1:8080，真机 Agent 把 ApiBaseUrl 指到这里即可闭环
-#   - 无头 Hub 是默认服务，随本地栈启动并托管 VRChat ManagedProcess Collector
-#   - VRChat Collector Package 不在 image 里：宿主的 .local/collector-packages 以只读方式挂到
-#     /package-source，起栈前先跑 scripts/build-vrchat-package.sh
+#   - 无头 Hub 是默认服务；可选 Collector 从 Hub 管理页按 Catalog 独立安装
 #
 # 用法见 README「本地端到端验证」。
 # 先 `cp .env.local.example .env.local` 并填入真实 Auth 值。
@@ -62,9 +60,6 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    depends_on:
-      - backend
-      - headless
     ports:
       - "127.0.0.1:8080:8080"
     networks:
@@ -74,23 +69,12 @@ services:
     build:
       context: .
       dockerfile: collection/hub/Heartbeat.Collection.Headless/Dockerfile
-    depends_on:
-      - backend
     environment:
       HEARTBEAT_API_BASE_URL: http://backend:8080
-      HEARTBEAT_VRCHAT_MOCK: ${HEARTBEAT_VRCHAT_MOCK:-0}
     volumes:
       - type: bind
         source: ${HEADLESS_CONFIG_PATH:-./.local/heartbeat-headless.json}
         target: /app/heartbeat-headless.json
-        read_only: true
-        bind:
-          create_host_path: false
-      # Collector Package 来源目录，只读。image 里不再带 Package，先跑
-      # scripts/build-vrchat-package.sh 把它构建出来。
-      - type: bind
-        source: ${HEADLESS_PACKAGE_SOURCE_PATH:-./.local/collector-packages}
-        target: /package-source
         read_only: true
         bind:
           create_host_path: false

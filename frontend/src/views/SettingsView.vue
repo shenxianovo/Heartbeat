@@ -65,13 +65,13 @@ async function toggleVisibility() {
 
       <section class="row">
         <div class="row-text">
-          <div class="row-title">登录管理</div>
+          <div class="row-title">Hub 管理</div>
           <div class="row-desc">
-            登录 VRChat 等由无头 Hub 托管的账号，并查看已登录但暂无状态的账号。
+            安装由 Hub 托管的 Collector、查看运行状态，并完成它们请求的授权。
           </div>
         </div>
         <Button variant="glassPrimary" size="sm" as-child>
-          <router-link to="/settings/logins">管理</router-link>
+          <router-link to="/settings/hub">管理</router-link>
         </Button>
       </section>
 

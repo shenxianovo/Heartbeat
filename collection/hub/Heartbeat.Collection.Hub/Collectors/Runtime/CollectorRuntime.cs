@@ -230,6 +230,69 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         }
     }
 
+    public IReadOnlyList<CollectorInstance> ListInstances()
+    {
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            return _state.Instances.Select(ToPublic).ToArray();
+        }
+    }
+
+    /// <summary>
+    /// Stops the current ManagedProcess activation, removes the durable Instance and all of its
+    /// Fact state, then deletes its secret namespace and per-Instance data directory.
+    /// </summary>
+    public async ValueTask RemoveInstanceAsync(
+        Guid collectorInstanceId,
+        CancellationToken cancellationToken = default)
+    {
+        ManagedProcessCollectorActivation? activation;
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            _ = GetInstanceStateLocked(collectorInstanceId);
+            if (_managedProcessUpdates.Contains(collectorInstanceId))
+                throw new InvalidOperationException(
+                    "Collector Instance cannot be removed during a ManagedProcess update.");
+            if (_startingInstances.Contains(collectorInstanceId))
+                throw new InvalidOperationException(
+                    "Collector Instance cannot be removed while an Activation is starting.");
+            activation = _managedProcessActivations.Values.SingleOrDefault(
+                candidate => candidate.CollectorInstanceId == collectorInstanceId);
+            if (activation is null && HasProtocolActivationLocked(collectorInstanceId))
+                throw new InvalidOperationException(
+                    "Collector Instance has an active non-ManagedProcess Activation.");
+        }
+
+        if (activation is not null)
+            await activation.StopAsync(cancellationToken);
+
+        if (_secretStore is not null)
+            await _secretStore.DeleteInstanceAsync(collectorInstanceId, cancellationToken);
+        var dataDirectory = Path.Combine(_instanceDataRoot, collectorInstanceId.ToString("N"));
+        if (Directory.Exists(dataDirectory))
+            Directory.Delete(dataDirectory, recursive: true);
+
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            if (_startingInstances.Contains(collectorInstanceId) ||
+                HasProtocolActivationLocked(collectorInstanceId))
+                throw new InvalidOperationException("Collector Instance still has an active Activation.");
+            var next = _state.WithoutInstance(collectorInstanceId);
+            _store.Save(next);
+            _state = next;
+            _managedProcessStates.Remove(collectorInstanceId);
+            _managedProcessClients.Remove(collectorInstanceId);
+        }
+    }
+
+    private bool HasProtocolActivationLocked(Guid collectorInstanceId) =>
+        _activations.Values.Any(activation =>
+            activation.Streams.Values.Any(stream =>
+                stream.Descriptor.CollectorInstanceId == collectorInstanceId));
+
     public IReadOnlyList<CollectorInstance> FindInstances(
         string packageId,
         SubjectReference subject)

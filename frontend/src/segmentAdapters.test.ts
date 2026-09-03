@@ -18,14 +18,14 @@ describe('urlOf', () => {
 })
 
 describe('laneKeyOf', () => {
-  it('browser：windowId → 稳定 laneKey', () => {
-    expect(laneKeyOf('browser', '{"url":"https://a.com","windowId":3}')).toBe('3')
+  it('任意 source 的通用 laneKey → 稳定泳道', () => {
+    expect(laneKeyOf('reference', '{"laneKey":3}')).toBe('3')
   })
 
-  it('未登记的 source / 无 windowId → undefined（装箱兜底）', () => {
+  it('无通用 laneKey → undefined（装箱兜底）', () => {
     expect(laneKeyOf('vscode', '{"file":"a.ts"}')).toBeUndefined()
-    expect(laneKeyOf('browser', '{"url":"https://a.com"}')).toBeUndefined()
-    expect(laneKeyOf(undefined, '{"windowId":1}')).toBeUndefined()
+    expect(laneKeyOf('reference', '{"url":"https://a.com"}')).toBeUndefined()
+    expect(laneKeyOf(undefined, '{"laneKey":1}')).toBeUndefined()
   })
 })
 
@@ -34,10 +34,10 @@ describe('toReplaySegs', () => {
     const segs = toReplaySegs(
       [{ appName: 'msedge', title: 'GitHub', startTime: base, endTime: later }],
       [{
-        source: 'browser',
+        source: 'reference',
         identityKey: 'https://github.com/',
         title: 'GitHub',
-        attributes: '{"url":"https://github.com/pulls","windowId":7}',
+        attributes: '{"url":"https://github.com/pulls","laneKey":7}',
         startTime: base,
         endTime: later,
       }],
@@ -47,7 +47,7 @@ describe('toReplaySegs', () => {
     expect(segs[0].laneKey).toBeUndefined()
     expect(segs[1].laneKey).toBe('7')
     expect(segs[1].label).toContain('GitHub')
-    expect(segs[1].label).toContain('windowId')
+    expect(segs[1].label).toContain('laneKey')
   })
 
   it('缺时间/缺 source 的记录跳过', () => {

@@ -41,9 +41,6 @@ services:
   frontend:
     image: ghcr.io/shenxianovo/heartbeat-frontend:latest
     restart: unless-stopped
-    depends_on:
-      - backend
-      - headless
     ports:
       - "127.0.0.1:8081:8080"
     networks:
@@ -52,20 +49,12 @@ services:
   headless:
     image: ghcr.io/shenxianovo/heartbeat-headless:latest
     restart: unless-stopped
-    depends_on:
-      - backend
     environment:
       HEARTBEAT_API_BASE_URL: http://backend:8080
     volumes:
       - type: bind
         source: ${HEADLESS_CONFIG_PATH:-./.local/heartbeat-headless.json}
         target: /app/heartbeat-headless.json
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ${HEADLESS_PACKAGE_SOURCE_PATH:-./.local/collector-packages}
-        target: /package-source
         read_only: true
         bind:
           create_host_path: false

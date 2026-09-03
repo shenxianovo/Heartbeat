@@ -1,4 +1,5 @@
 using Heartbeat.Collection.Hub.Auth;
+using Heartbeat.Collection.Hub.Collectors.Runtime;
 using Heartbeat.Collection.Hub.Configuration;
 using Heartbeat.Collection.Hub.Http;
 using Heartbeat.Collection.Hub.Runtime;
@@ -15,8 +16,11 @@ internal interface IHeadlessSegmentUpload : IDisposable
 {
     Task<ApiResult> SendAsync(
         Guid collectorInstanceId,
-        HeadlessManagedInstanceOptions instance,
+        SubjectReference subject,
+        string displayName,
         List<ActivitySegmentItem> batch);
+
+    void Remove(Guid collectorInstanceId);
 }
 
 /// <summary>
@@ -33,11 +37,20 @@ internal sealed class HeadlessInstancePipelines(
     private readonly object _gate = new();
     private readonly Dictionary<Guid, Pipeline> _pipelines = [];
 
-    public void Add(Guid collectorInstanceId, HeadlessManagedInstanceOptions instance)
+    public void Add(Guid collectorInstanceId, SubjectReference subject, string displayName)
     {
-        ArgumentNullException.ThrowIfNull(instance);
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+        lock (_gate)
+        {
+            if (_pipelines.TryGetValue(collectorInstanceId, out var existing))
+            {
+                existing.Configure(subject, displayName);
+                return;
+            }
+        }
         var directory = Path.Combine(dataDirectory, "instances", collectorInstanceId.ToString("D"));
         Directory.CreateDirectory(directory);
+        var registration = new PipelineRegistration(subject, displayName);
         var ingest = new SegmentIngestService(new SystemClock());
         var cache = new JsonFileCache<ActivitySegmentItem>(
             Path.Combine(directory, "segments-cache.json"),
@@ -45,16 +58,20 @@ internal sealed class HeadlessInstancePipelines(
             HeartbeatCacheFormats.SegmentVersion2(),
             HeartbeatCacheFormats.SegmentMigrations());
         var upload = new UploadStream<ActivitySegmentItem>(
-            $"段/{instance.InstanceKey}",
+            $"段/{collectorInstanceId:D}",
             ingest,
-            batch => segmentUpload.SendAsync(collectorInstanceId, instance, batch),
+            batch => segmentUpload.SendAsync(
+                collectorInstanceId,
+                registration.Subject,
+                registration.DisplayName,
+                batch),
             cache,
             SnapshotCompaction.KeepLatest,
             new JsonDeadLetterStore<ActivitySegmentItem>(
                 Path.Combine(directory, "segments-dead-letter.json")),
             new UploadStatusRegistry(),
             new ClientCompatibilityStatus());
-        var pipeline = new Pipeline(ingest, cache, upload);
+        var pipeline = new Pipeline(directory, registration, ingest, cache, upload);
         lock (_gate)
         {
             if (!_pipelines.TryAdd(collectorInstanceId, pipeline))
@@ -64,6 +81,21 @@ internal sealed class HeadlessInstancePipelines(
                     $"Collector Instance '{collectorInstanceId:D}' already has a projection pipeline.");
             }
         }
+    }
+
+    public async Task RemoveAsync(Guid collectorInstanceId)
+    {
+        Pipeline pipeline;
+        lock (_gate)
+        {
+            if (!_pipelines.Remove(collectorInstanceId, out pipeline!))
+                return;
+        }
+        await pipeline.DrainAsync().ConfigureAwait(false);
+        pipeline.Dispose();
+        segmentUpload.Remove(collectorInstanceId);
+        if (Directory.Exists(pipeline.Directory))
+            Directory.Delete(pipeline.Directory, recursive: true);
     }
 
     public HeadlessCurrentSubjectActivity? CurrentActivity(Guid collectorInstanceId) =>
@@ -84,18 +116,18 @@ internal sealed class HeadlessInstancePipelines(
         CollectorProjectionContext context,
         ActivitySegmentItem snapshot,
         long revision,
-        bool isFinal) => Required(context.CollectorInstanceId).Upsert(snapshot, revision, isFinal);
+        bool isFinal) => Required(context).Upsert(snapshot, revision, isFinal);
 
     public void ReplayDurable(
         CollectorProjectionContext context,
         ActivitySegmentItem snapshot,
         long revision,
-        bool isFinal) => Required(context.CollectorInstanceId).Replay(snapshot, revision, isFinal);
+        bool isFinal) => Required(context).Replay(snapshot, revision, isFinal);
 
     public void RetractDurable(
         CollectorProjectionContext context,
         Guid segmentId,
-        long revision) => Required(context.CollectorInstanceId).Retract(segmentId, revision);
+        long revision) => Required(context).Retract(segmentId, revision);
 
     public void Dispose()
     {
@@ -119,7 +151,39 @@ internal sealed class HeadlessInstancePipelines(
                     $"Collector Instance '{collectorInstanceId:D}' has no projection pipeline.");
     }
 
+    private Pipeline Required(CollectorProjectionContext context)
+    {
+        lock (_gate)
+        {
+            if (_pipelines.TryGetValue(context.CollectorInstanceId, out var pipeline))
+                return pipeline;
+        }
+        Add(context.CollectorInstanceId, context.Subject, $"Collector {context.CollectorInstanceId:D}");
+        return Required(context.CollectorInstanceId);
+    }
+
+    private sealed class PipelineRegistration(SubjectReference subject, string displayName)
+    {
+        private readonly object _gate = new();
+        private SubjectReference _subject = subject;
+        private string _displayName = displayName;
+
+        public SubjectReference Subject { get { lock (_gate) return _subject; } }
+        public string DisplayName { get { lock (_gate) return _displayName; } }
+
+        public void Configure(SubjectReference nextSubject, string nextDisplayName)
+        {
+            lock (_gate)
+            {
+                _subject = nextSubject;
+                _displayName = nextDisplayName;
+            }
+        }
+    }
+
     private sealed class Pipeline(
+        string directory,
+        PipelineRegistration registration,
         SegmentIngestService ingest,
         JsonFileCache<ActivitySegmentItem> cache,
         UploadStream<ActivitySegmentItem> upload) : IDisposable
@@ -127,6 +191,11 @@ internal sealed class HeadlessInstancePipelines(
         private readonly object _gate = new();
         private HeadlessCurrentSubjectActivity? _current;
         private Guid? _currentSegmentId;
+
+        public string Directory { get; } = directory;
+
+        public void Configure(SubjectReference subject, string displayName) =>
+            registration.Configure(subject, displayName);
 
         public HeadlessCurrentSubjectActivity? CurrentActivity
         {
@@ -196,7 +265,8 @@ internal sealed class HeadlessAnalyticsSegmentUploadAdapter(TokenManager tokens)
 
     public Task<ApiResult> SendAsync(
         Guid collectorInstanceId,
-        HeadlessManagedInstanceOptions instance,
+        SubjectReference subject,
+        string displayName,
         List<ActivitySegmentItem> batch)
     {
         HttpClient http;
@@ -205,8 +275,8 @@ internal sealed class HeadlessAnalyticsSegmentUploadAdapter(TokenManager tokens)
             if (!_clients.TryGetValue(collectorInstanceId, out http!))
             {
                 var identity = new FixedSubjectIdentity(
-                    $"subject:{instance.SubjectKind.ToString().ToLowerInvariant()}:{instance.SubjectId:D}",
-                    instance.SubjectName);
+                    $"subject:{subject.Kind.ToString().ToLowerInvariant()}:{subject.SubjectId:D}",
+                    displayName);
                 var handler = new BearerTokenHandler(tokens, identity)
                 {
                     InnerHandler = new HttpClientHandler()
@@ -217,6 +287,16 @@ internal sealed class HeadlessAnalyticsSegmentUploadAdapter(TokenManager tokens)
         }
         return new HeartbeatApiClient(http)
             .UploadSegmentsAsync(new SegmentUploadRequest { Segments = batch });
+    }
+
+    public void Remove(Guid collectorInstanceId)
+    {
+        HttpClient? client;
+        lock (_gate)
+        {
+            _clients.Remove(collectorInstanceId, out client);
+        }
+        client?.Dispose();
     }
 
     public void Dispose()

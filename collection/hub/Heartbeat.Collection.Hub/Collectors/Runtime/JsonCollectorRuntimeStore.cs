@@ -396,6 +396,24 @@ internal sealed class CollectorRuntimeState
         ActivationAttemptTombstones = [.. ActivationAttemptTombstones]
     };
 
+    public CollectorRuntimeState WithoutInstance(Guid collectorInstanceId)
+    {
+        var streamIds = Streams
+            .Where(stream => stream.CollectorInstanceId == collectorInstanceId)
+            .Select(stream => stream.StreamId)
+            .ToHashSet();
+        return new CollectorRuntimeState
+        {
+            SchemaVersion = SchemaVersion,
+            Instances = [.. Instances.Where(instance => instance.CollectorInstanceId != collectorInstanceId)],
+            Streams = [.. Streams.Where(stream => stream.CollectorInstanceId != collectorInstanceId)],
+            Facts = [.. Facts.Where(fact => !streamIds.Contains(fact.StreamId))],
+            Gaps = [.. Gaps.Where(gap => !streamIds.Contains(gap.StreamId))],
+            ActivationAttemptTombstones = [.. ActivationAttemptTombstones.Where(
+                attempt => attempt.CollectorInstanceId != collectorInstanceId)]
+        };
+    }
+
     public CollectorRuntimeState WithInstanceAndStreams(
         CollectorInstanceState instance,
         IEnumerable<FactStreamState> streams)

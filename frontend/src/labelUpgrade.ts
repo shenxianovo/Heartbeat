@@ -59,7 +59,7 @@ function bestMatch(seg: SystemSeg, plugins: PluginSeg[]): PluginSeg | null {
 /**
  * 升级并聚合某 App 的标题明细。
  * @param systemSegs 该 App 的 system 段
- * @param pluginSegs 同 App 同时间窗的插件段（source='browser' 等）
+ * @param pluginSegs 同 App 同时间窗的 Collector 段
  * @param fallback 无匹配时的窗口标题格式化器
  */
 export function upgradeBreakdown(

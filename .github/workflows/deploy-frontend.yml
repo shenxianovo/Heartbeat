@@ -1,8 +1,7 @@
 name: Deploy Frontend
 
 on:
-  # Production stays manual while Frontend and Analytics must replace the Local Calendar Window
-  # contract together. PR/main verification lives in collector-contracts.yml.
+  # Production deployment is explicit and independent from Backend, Hub, and Collectors.
   workflow_dispatch:
 
 env:
@@ -60,6 +59,17 @@ jobs:
     runs-on: ubuntu-latest
     concurrency: deploy-frontend-production
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync compose.yml to server
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: compose.yml
+          target: /srv/heartbeat
+
       - name: Pull and restart frontend container
         uses: appleboy/ssh-action@v1
         with:
@@ -67,7 +77,8 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
+            set -eu
             cd /srv/heartbeat
             docker compose pull frontend
-            docker compose up -d frontend
+            docker compose up -d --no-deps frontend
             docker compose ps frontend

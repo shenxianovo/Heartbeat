@@ -43,8 +43,19 @@ public sealed class VRChatPackageReleaseTests : IDisposable
             "sha256:" + Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(firstArtifact))),
             artifact.GetProperty("sha256").GetString());
         Assert.Equal(
-            $"https://heartbeat.shenxianovo.com/collector-registry/v1/packages/heartbeat.collector.vrchat/versions/1.2.3/{artifactName}",
+            $"https://heartbeat.shenxianovo.com/collector-registry/v1/packages/heartbeat.collector.vrchat/versions/1.2.3/linux-x64/{artifactName}",
             artifact.GetProperty("url").GetString());
+
+        using var catalogEntry = JsonDocument.Parse(
+            File.ReadAllText(Path.Combine(first, "catalog-entry.json")));
+        var entry = catalogEntry.RootElement;
+        Assert.Equal("heartbeat.collector.vrchat", entry.GetProperty("packageId").GetString());
+        Assert.Equal("VRChat", entry.GetProperty("displayName").GetString());
+        var latest = Assert.Single(entry.GetProperty("latest").EnumerateArray());
+        Assert.Equal("1.2.3", latest.GetProperty("version").GetString());
+        Assert.Equal(
+            "https://heartbeat.shenxianovo.com/collector-registry/v1/packages/heartbeat.collector.vrchat/versions/1.2.3/linux-x64/release.json",
+            latest.GetProperty("releaseUrl").GetString());
 
         using var archive = ZipFile.OpenRead(firstArtifact);
         Assert.Contains(archive.Entries, entry => entry.FullName == "collector-manifest.json");
@@ -85,6 +96,15 @@ public sealed class VRChatPackageReleaseTests : IDisposable
                 "manifestVersion": 1,
                 "packageId": "heartbeat.collector.vrchat",
                 "version": "{{version}}",
+                "presentation": {
+                  "displayName": "VRChat",
+                  "summary": "Collects VRChat presence."
+                },
+                "defaultInstance": {
+                  "subjectKind": "account",
+                  "configVersion": 1,
+                  "config": {}
+                },
                 "artifacts": [
                   {
                     "artifactId": "vrchat.managed",

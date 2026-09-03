@@ -25,8 +25,8 @@ describe('SettingsView administrator navigation', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('登录管理')
-    expect(wrapper.get('a[href="/settings/logins"]').text()).toContain('管理')
+    expect(wrapper.text()).toContain('Hub 管理')
+    expect(wrapper.get('a[href="/settings/hub"]').text()).toContain('管理')
     expect(wrapper.text()).toContain('App Catalog')
     expect(wrapper.get('a[href="/u/alice"]').text()).toContain('返回看板')
     expect(wrapper.get('a[href="/settings/app-catalog"]').classes()).toContain('glass-control')
@@ -40,7 +40,7 @@ describe('SettingsView administrator navigation', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('登录管理')
+    expect(wrapper.text()).toContain('Hub 管理')
     expect(wrapper.text()).not.toContain('App Catalog')
   })
 })

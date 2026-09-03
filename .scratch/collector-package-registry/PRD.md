@@ -9,9 +9,10 @@ image，并建立 Desktop/Headless 共享的 Installation module；Backend workf
 宿主组合已按 [ADR-049](../../docs/adr/049-named-optional-collectors-outside-host-composition.md) 收敛：Desktop
 与通用 Hub Runtime 只组合通用 seam 加 System BuiltIn，不认识任何具名可选 Collector。
 VRChat 的显式 tag 与不可变 Web Release 已完成真实发布，0.2.0 可从生产 Caddy 的精确 Version 路径读取；
-当前开始按 [ADR-050](../../docs/adr/050-generic-collector-marketplace-and-runtime-owned-instances.md) 实现通用
+当前已按 [ADR-050](../../docs/adr/050-generic-collector-marketplace-and-runtime-owned-instances.md) 实现通用
 Collector Marketplace：Registry Catalog 展示全部托管 Collector 的最新版，用户一键安装，Package 声明默认
-Instance，Runtime 成为动态 Instance 唯一权威。Headless 独立 deploy 与通用 ExternalHost 连接仍是后续缺口。
+Instance，Runtime 成为动态 Instance 唯一权威。Headless 独立 deploy 已落地；新的 VRChat Catalog 发布、
+生产 smoke 与通用 ExternalHost 连接仍是后续缺口。
 
 Browser 现在的状态是"有独立发布单元、无宿主接入能力"：它不进 Desktop 构建与产物，扩展代码、Package
 构建 target 与 npm 测试留在 `collection/collectors/Heartbeat.Collector.Browser` 并由 `collector-contracts.yml`
@@ -70,7 +71,7 @@ Browser 独立发布与真实 smoke。
 
 | Issue | 状态 | 新路径 |
 |---|---|---|
-| 01 static registry index | ready-for-agent | 已重写为通用 Catalog + Marketplace + Runtime-owned Instance 纵切 |
+| 01 static registry index | ready-for-human | 通用 Catalog + Marketplace + Runtime-owned Instance 已实现，等待真实发布 smoke |
 | 02 explicit release pipeline | done | VRChat 0.2.0 已经专属 tag 发布并经公网逐字节复核 |
 | 03 shared local installation | ready-for-human | PowerShell CLI 安全/真实构建待跨平台验证 |
 | 04 exact package approval | wontfix | ADR-048 明确不做 approval/offer |
@@ -82,7 +83,7 @@ Browser 独立发布与真实 smoke。
 
 - [ ] Headless 与 Desktop 使用同一个 Package Installation module。
 - [ ] VRChat Package 可独立于 Headless image 构建和替换。
-- [ ] Backend 与 Headless deployment 分离。
+- [x] Backend 与 Headless deployment 分离（`deploy-hub.yml` 只部署 Headless Hub）。
 - [ ] VRChat 与 Browser 各自通过显式 tag 发布 Web Package。
 - [x] System 仍只随 Desktop Release（publish target + Desktop Release 产物断言，issue 08）。
 - [x] 宿主启动不依赖可选 Collector：Desktop 构建与产物不含 Browser，Headless 可零 Instance 启动且单
