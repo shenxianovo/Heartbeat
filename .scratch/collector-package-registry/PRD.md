@@ -9,15 +9,16 @@ image，并建立 Desktop/Headless 共享的 Installation module；Backend workf
 宿主组合已按 [ADR-049](../../docs/adr/049-named-optional-collectors-outside-host-composition.md) 收敛：Desktop
 与通用 Hub Runtime 只组合通用 seam 加 System BuiltIn，不认识任何具名可选 Collector。
 VRChat 的显式 tag 与不可变 Web Release 已完成真实发布，0.2.0 可从生产 Caddy 的精确 Version 路径读取；
-当前仍缺 Headless 独立 deploy、Host Web Package source 与通用 ExternalHost 的安装/连接能力，因此各发布
-单元尚未全部形成可部署闭环。
+当前开始按 [ADR-050](../../docs/adr/050-generic-collector-marketplace-and-runtime-owned-instances.md) 实现通用
+Collector Marketplace：Registry Catalog 展示全部托管 Collector 的最新版，用户一键安装，Package 声明默认
+Instance，Runtime 成为动态 Instance 唯一权威。Headless 独立 deploy 与通用 ExternalHost 连接仍是后续缺口。
 
 Browser 现在的状态是"有独立发布单元、无宿主接入能力"：它不进 Desktop 构建与产物，扩展代码、Package
 构建 target 与 npm 测试留在 `collection/collectors/Heartbeat.Collector.Browser` 并由 `collector-contracts.yml`
 验证；但宿主里没有 Browser runtime、protocol handler、安装目录或 UI 条目，`/v1/collector-protocol/browser`
 也不存在，因此手工侧载不再能让它连上宿主。通用 ExternalHost 安装/连接是后续 issue。
 
-2026-09-01 以前的 Registry/Approve/Switch 实现已撤回。issue 02 已按 ADR-048 重写；issues 01、06、07
+2026-09-01 以前的 Registry/Approve/Switch 实现已撤回。issues 01/02 已按 ADR-048/050 重写；issues 06/07
 仍是历史规格，重写前不能作为 Agent 实现指令。
 
 ## Outcome
@@ -26,7 +27,8 @@ Browser 现在的状态是"有独立发布单元、无宿主接入能力"：它�
 - System Collector 使用 BuiltIn Delivery，随 Desktop Release。
 - Browser、VRChat 与未来非 BuiltIn Collector 各自显式构建和发布 Package。
 - Desktop 与 Headless 复用同一个 Collector Host Runtime 与 Collector Package Installation module。
-- 当前只支持显式安装/打开一个精确 Package；Web 下载是后续 Package source adapter。
+- Registry Catalog 只发现各 Collector 最新 Release；Host 一键安装后仍以精确 Installation/Instance 为权威。
+- 用户不管理 Release URL、SubjectId、InstanceKey 或 JSON config；默认 Instance 由 Package Blueprint 声明。
 
 目标拓扑和完整顺序见
 [Collector Host Runtime 与独立交付目标架构](../../docs/architecture/collector-delivery-implementation-roadmap.md)。
@@ -68,7 +70,7 @@ Browser 独立发布与真实 smoke。
 
 | Issue | 状态 | 新路径 |
 |---|---|---|
-| 01 static registry index | needs-triage | Web source 阶段重写 |
+| 01 static registry index | ready-for-agent | 已重写为通用 Catalog + Marketplace + Runtime-owned Instance 纵切 |
 | 02 explicit release pipeline | done | VRChat 0.2.0 已经专属 tag 发布并经公网逐字节复核 |
 | 03 shared local installation | ready-for-human | PowerShell CLI 安全/真实构建待跨平台验证 |
 | 04 exact package approval | wontfix | ADR-048 明确不做 approval/offer |

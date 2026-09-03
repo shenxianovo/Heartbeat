@@ -153,8 +153,24 @@ Collector Package 随宿主应用一起构建和发布的 Artifact Delivery；Sy
 _Avoid_: 把 System 当作可远程替换的独立 Package、把 BuiltIn 等同于 InProcess
 
 **Official Collector Package Registry（官方采集器包注册源）**:
-发布方为非 BuiltIn 官方 Collector Package 提供的版本目录与制品来源；它只提供精确 Release 的发现和下载事实，不保存用户 Desired State，也不承担 Installation 或 Activation。
+发布方为非 BuiltIn 官方 Collector Package 提供的 Catalog、版本目录与制品来源；Catalog Latest 只表示 Registry
+当前推荐下载的精确 Release，不保存某个 Host 的 Desired State，也不承担 Installation 或 Activation。
 _Avoid_: Collector Registry（旧 source 级配置账本）、Analytics 控制面、Update Offer、审批系统
+
+**Collector Catalog（采集器目录）**:
+Official Collector Package Registry 公开的可安装 Collector 清单，每个条目包含展示信息和当前最新版的精确
+Release；它是 Web 发现事实，不是某个 Host 的已安装清单或运行配置。
+_Avoid_: Installed Collectors、Runtime State、把 Catalog Latest 叫作当前运行版本
+
+**Default Instance Blueprint（默认实例蓝图）**:
+Collector Package 对“一键安装后创建哪种默认 Instance”的通用声明，包含 SubjectKind、configVersion 与默认
+config；它属于 Package，不包含某个用户的 InstanceId、SubjectId、Secret 或运行状态。
+_Avoid_: Headless Instance JSON、Hub 内的 PackageId 分支、用户填写内部 Instance 参数
+
+**Collector Marketplace（采集器市场）**:
+Host 用于浏览官方 Catalog，并把一个 Catalog Latest 安装成精确 Installation 与默认 Instance 的通用交互；
+它不允许任意 URL 安装，也不负责已安装 Package 的版本更新。
+_Avoid_: Update Manager、Package URL 输入框、具名 Collector 安装器
 
 **Collector Package Release（采集器包发布）**:
 某个非 BuiltIn Collector 通过自己的显式 tag 产生并在 Web 静态目录公开的不可变精确版本。Release metadata

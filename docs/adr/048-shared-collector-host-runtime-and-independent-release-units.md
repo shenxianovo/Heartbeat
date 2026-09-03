@@ -106,5 +106,6 @@ source adapter，不改变 Runtime 或 Execution Driver interface。
 
 - [ADR-040](./040-collector-runtime-and-protocol-foundation.md) — 统一 Runtime、Protocol 与 Driver
 - [ADR-049](./049-named-optional-collectors-outside-host-composition.md) — 具名可选 Collector 不进入 Host composition，修订本 ADR §2/§3 的宿主 binding 表述
+- [ADR-050](./050-generic-collector-marketplace-and-runtime-owned-instances.md) — Catalog 一键安装与 Runtime-owned 动态 Instance
 - [Collector Host 与独立交付路线图](../architecture/collector-delivery-implementation-roadmap.md)
 - [`collection/CONTEXT.md`](../../collection/CONTEXT.md) — Collection 领域词汇
