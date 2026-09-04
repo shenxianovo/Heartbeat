@@ -1,4 +1,4 @@
-name: Deploy Frontend
+name: Deploy Dashboard
 
 on:
   # Production deployment is explicit and independent from Backend, Hub, and Collectors.
@@ -8,29 +8,30 @@ env:
   IMAGE: ghcr.io/shenxianovo/heartbeat-frontend
 
 jobs:
-  build:
+  image:
+    name: Build Dashboard image
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install dependencies
+      - name: Install Dashboard dependencies
         run: npm ci
         working-directory: frontend
 
-      - name: Type check
+      - name: Type-check Dashboard
         run: npm run typecheck
         working-directory: frontend
 
-      - name: Test
+      - name: Run Dashboard tests
         run: npm test
         working-directory: frontend
 
@@ -43,7 +44,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build and push Dashboard image
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
@@ -55,11 +56,12 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy:
-    needs: build
+    name: Deploy Dashboard
+    needs: image
     runs-on: ubuntu-latest
     concurrency: deploy-frontend-production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Sync compose.yml to server
         uses: appleboy/scp-action@v1
@@ -70,7 +72,7 @@ jobs:
           source: compose.yml
           target: /srv/heartbeat
 
-      - name: Pull and restart frontend container
+      - name: Deploy Dashboard container
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SERVER_HOST }}

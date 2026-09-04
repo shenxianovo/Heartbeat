@@ -51,6 +51,10 @@ done
 }
 command -v docker >/dev/null 2>&1 || { echo 'docker is required.' >&2; exit 1; }
 command -v curl >/dev/null 2>&1 || { echo 'curl is required.' >&2; exit 1; }
+docker compose version >/dev/null 2>&1 || {
+    echo 'Docker Compose v2 is required (the "docker compose" command).' >&2
+    exit 1
+}
 docker info >/dev/null 2>&1 || {
     echo 'Docker is not ready. Start Docker Desktop and wait for the engine to finish starting.' >&2
     exit 1
@@ -58,30 +62,37 @@ docker info >/dev/null 2>&1 || {
 
 compose=(docker compose --file "$compose_file" --env-file "$env_file")
 
-echo '[1/2] Building and starting the local stack...'
+echo '[1/3] Validating the local stack configuration...'
+"${compose[@]}" config --quiet
+
+echo '[2/3] Building and starting the local stack...'
 "${compose[@]}" up --build --detach
 
-echo '[2/2] Waiting for http://localhost:8080...'
-ready=false
+echo '[3/3] Waiting for Analytics and the Headless Hub...'
+analytics_ready=false
+hub_ready=false
+analytics_status=000
+hub_status=000
 for ((attempt = 1; attempt <= 60; attempt++)); do
-    status_code=$(curl --silent --output /dev/null --max-time 2 --write-out '%{http_code}' \
-        http://127.0.0.1:8080/ || true)
-    if [[ "$status_code" =~ ^[234][0-9][0-9]$ ]]; then
-        ready=true
-        break
+    if [[ "$analytics_ready" != true ]]; then
+        analytics_status=$(curl --silent --output /dev/null --max-time 2 --write-out '%{http_code}' \
+            http://127.0.0.1:8080/health || true)
+        [[ "$analytics_status" == 200 ]] && analytics_ready=true
     fi
+
+    if [[ "$hub_ready" != true ]]; then
+        hub_status=$(curl --silent --output /dev/null --max-time 2 --write-out '%{http_code}' \
+            http://127.0.0.1:8080/hub/api/v1/collectors || true)
+        [[ "$hub_status" == 401 || "$hub_status" == 403 ]] && hub_ready=true
+    fi
+
+    [[ "$analytics_ready" == true && "$hub_ready" == true ]] && break
     sleep 1
 done
 
-if [[ "$ready" != true ]]; then
-    echo 'http://localhost:8080 did not become ready within 60 seconds.' >&2
+if [[ "$analytics_ready" != true || "$hub_ready" != true ]]; then
+    echo "The local stack did not become ready within 60 seconds (Analytics: $analytics_status, Headless Hub: $hub_status)." >&2
     echo "Check: docker compose --file '$compose_file' --env-file '$env_file' logs" >&2
-    exit 1
-fi
-
-if ! "${compose[@]}" ps --status running --services headless | grep -qx 'headless'; then
-    echo 'The headless Hub did not remain running.' >&2
-    echo "Check: docker compose --file '$compose_file' --env-file '$env_file' logs headless" >&2
     exit 1
 fi
 

@@ -38,32 +38,56 @@ $null = Get-Command docker -CommandType Application -ErrorAction Stop
 
 $composeArguments = @('compose', '--file', $ComposeFile, '--env-file', $EnvFile)
 
-Write-Host '[1/2] Building and starting the local stack...'
+& docker compose version *> $null
+if ($LASTEXITCODE -ne 0) {
+    throw 'Docker Compose v2 is required (the "docker compose" command).'
+}
+& docker info *> $null
+if ($LASTEXITCODE -ne 0) {
+    throw 'Docker is not ready. Start Docker Desktop and wait for the engine to finish starting.'
+}
+
+Write-Host '[1/3] Validating the local stack configuration...'
+& docker @composeArguments config --quiet
+if ($LASTEXITCODE -ne 0) {
+    throw "docker compose config failed with exit code $LASTEXITCODE."
+}
+
+Write-Host '[2/3] Building and starting the local stack...'
 & docker @composeArguments up --build --detach
 if ($LASTEXITCODE -ne 0) {
     throw "docker compose up failed with exit code $LASTEXITCODE."
 }
 
-Write-Host '[2/2] Waiting for http://localhost:8080...'
-$ready = $false
+Write-Host '[3/3] Waiting for Analytics and the Headless Hub...'
+$analyticsReady = $false
+$hubReady = $false
+$analyticsStatus = 0
+$hubStatus = 0
 for ($attempt = 1; $attempt -le 60; $attempt++) {
-    try {
-        $response = Invoke-WebRequest -Uri 'http://127.0.0.1:8080/' -TimeoutSec 2 -SkipHttpErrorCheck
-        if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) {
-            $ready = $true
-            break
+    if (-not $analyticsReady) {
+        try {
+            $response = Invoke-WebRequest -Uri 'http://127.0.0.1:8080/health' -TimeoutSec 2 -SkipHttpErrorCheck
+            $analyticsStatus = $response.StatusCode
+            $analyticsReady = $analyticsStatus -eq 200
         }
+        catch { $analyticsStatus = 0 }
     }
-    catch {}
+
+    if (-not $hubReady) {
+        try {
+            $response = Invoke-WebRequest -Uri 'http://127.0.0.1:8080/hub/api/v1/collectors' -TimeoutSec 2 -SkipHttpErrorCheck
+            $hubStatus = $response.StatusCode
+            $hubReady = $hubStatus -in 401, 403
+        }
+        catch { $hubStatus = 0 }
+    }
+
+    if ($analyticsReady -and $hubReady) { break }
     Start-Sleep -Seconds 1
 }
-if (-not $ready) {
-    throw 'http://localhost:8080 did not become ready within 60 seconds. Check: docker compose -f compose.local.yml --env-file .env.local logs'
-}
-
-$runningServices = @(& docker @composeArguments ps --status running --services headless)
-if ($LASTEXITCODE -ne 0 -or $runningServices -notcontains 'headless') {
-    throw 'The headless Hub did not remain running. Check: docker compose -f compose.local.yml --env-file .env.local logs headless'
+if (-not $analyticsReady -or -not $hubReady) {
+    throw "The local stack did not become ready within 60 seconds (Analytics: $analyticsStatus, Headless Hub: $hubStatus). Check: docker compose --file '$ComposeFile' --env-file '$EnvFile' logs"
 }
 
 Write-Host "Local stack ready: http://localhost:8080"

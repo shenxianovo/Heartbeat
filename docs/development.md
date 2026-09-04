@@ -12,7 +12,6 @@ Copy-Item .env.local.example .env.local
 New-Item -ItemType Directory -Force .local
 Copy-Item collection/hub/Heartbeat.Collection.Headless/heartbeat-headless.compose.example.json `
   .local/heartbeat-headless.json
-./scripts/build-vrchat-package.ps1
 ```
 
 macOS/Linux：

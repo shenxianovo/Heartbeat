@@ -1,4 +1,4 @@
-name: Collector Contracts
+name: CI
 
 on:
   pull_request:
@@ -8,9 +8,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  portable:
-    name: Portable contracts and tests
+  collection:
+    name: Collection · Shared Kernel
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -24,14 +28,14 @@ jobs:
           cache: npm
           cache-dependency-path: collection/collectors/Heartbeat.Collector.Browser/package-lock.json
 
-      - name: Build and test Browser Collector
+      - name: Verify Browser Collector
         working-directory: collection/collectors/Heartbeat.Collector.Browser
         run: |
           npm ci
           npm test
           npm run build
 
-      - name: Verify Fact Schema evolution and generated Browser payload
+      - name: Verify Collector Fact contracts
         env:
           CONTRACT_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: node scripts/collector-contracts.mjs check --base-ref "$CONTRACT_BASE_REF"
@@ -40,26 +44,36 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Restore .NET tools and dependencies
-        run: |
-          dotnet tool restore
-          dotnet restore Heartbeat.slnx
+      - name: Restore Collection test dependencies
+        run: dotnet restore Heartbeat.Collection.Tests.slnf
 
-      - name: Verify portable .NET behavior
-        run: |
-          dotnet test shared/Heartbeat.Core.Tests/Heartbeat.Core.Tests.csproj -c Release --no-restore
-          dotnet test collection/protocol/Heartbeat.Collection.CollectorProtocol.Tests/Heartbeat.Collection.CollectorProtocol.Tests.csproj -c Release --no-restore
-          dotnet test collection/collectors/Heartbeat.Collector.Reference.ManagedProcess.Tests/Heartbeat.Collector.Reference.ManagedProcess.Tests.csproj -c Release --no-restore
-          dotnet test collection/collectors/Heartbeat.Collector.VRChat.Tests/Heartbeat.Collector.VRChat.Tests.csproj -c Release --no-restore
-          dotnet test collection/hub/Heartbeat.Collection.Headless.Tests/Heartbeat.Collection.Headless.Tests.csproj -c Release --no-restore
-          dotnet test collection/hub/Heartbeat.Collection.Hub.Tests/Heartbeat.Collection.Hub.Tests.csproj -c Release --no-restore
-          dotnet test collection/desktop/Heartbeat.Collector.System.Tests/Heartbeat.Collector.System.Tests.csproj -c Release --no-restore
-          dotnet test collection/desktop/Heartbeat.Desktop.UI.Tests/Heartbeat.Desktop.UI.Tests.csproj -c Release --no-restore
-          dotnet test collection/desktop/Heartbeat.Desktop.Updater.Velopack.Tests/Heartbeat.Desktop.Updater.Velopack.Tests.csproj -c Release --no-restore
-          dotnet test server/Heartbeat.Server.Tests/Heartbeat.Server.Tests.csproj -c Release --no-restore
+      - name: Build Collection tests
+        run: dotnet build Heartbeat.Collection.Tests.slnf -c Release --no-restore
 
-  macos:
-    name: macOS desktop tests
+      - name: Run Collection and Shared Kernel tests
+        run: dotnet test Heartbeat.Collection.Tests.slnf -c Release --no-build --no-restore
+
+  analytics:
+    name: Analytics
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # Server test builds stage the System Collector Package through a Node script.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Run Analytics integration tests
+        run: dotnet test server/Heartbeat.Server.Tests/Heartbeat.Server.Tests.csproj -c Release
+
+  desktop_macos:
+    name: Desktop · macOS
     runs-on: macos-15
     timeout-minutes: 15
     steps:
@@ -73,11 +87,11 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Verify macOS platform head
+      - name: Run macOS platform tests
         run: dotnet test collection/desktop/Heartbeat.Desktop.Mac.Tests/Heartbeat.Desktop.Mac.Tests.csproj -c Release
 
-  windows:
-    name: Windows desktop tests
+  desktop_windows:
+    name: Desktop · Windows
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
@@ -91,17 +105,18 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Verify Browser Collector package payload on Windows
+      - name: Verify Browser Collector package on Windows
         shell: bash
         run: |
           npm ci --prefix collection/collectors/Heartbeat.Collector.Browser
           npm run build --prefix collection/collectors/Heartbeat.Collector.Browser
           node scripts/collector-contracts.mjs check
 
-      - name: Verify Windows platform head
+      - name: Run Windows platform tests
         run: dotnet test collection/desktop/Heartbeat.Desktop.Windows.Tests/Heartbeat.Desktop.Windows.Tests.csproj -c Release
 
-  frontend:
+  dashboard:
+    name: Dashboard
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -113,13 +128,10 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install Frontend dependencies
+      - name: Install Dashboard dependencies
         working-directory: frontend
         run: npm ci
 
-      - name: Verify Frontend types, behavior and production build
+      - name: Verify Dashboard
         working-directory: frontend
-        run: |
-          npm run typecheck
-          npm test
-          npm run build
+        run: npm run verify

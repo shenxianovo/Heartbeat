@@ -1,0 +1,16 @@
+{
+  "solution": {
+    "path": "Heartbeat.slnx",
+    "projects": [
+      "collection/collectors/Heartbeat.Collector.Reference.ManagedProcess.Tests/Heartbeat.Collector.Reference.ManagedProcess.Tests.csproj",
+      "collection/collectors/Heartbeat.Collector.VRChat.Tests/Heartbeat.Collector.VRChat.Tests.csproj",
+      "collection/desktop/Heartbeat.Collector.System.Tests/Heartbeat.Collector.System.Tests.csproj",
+      "collection/desktop/Heartbeat.Desktop.UI.Tests/Heartbeat.Desktop.UI.Tests.csproj",
+      "collection/desktop/Heartbeat.Desktop.Updater.Velopack.Tests/Heartbeat.Desktop.Updater.Velopack.Tests.csproj",
+      "collection/hub/Heartbeat.Collection.Headless.Tests/Heartbeat.Collection.Headless.Tests.csproj",
+      "collection/hub/Heartbeat.Collection.Hub.Tests/Heartbeat.Collection.Hub.Tests.csproj",
+      "collection/protocol/Heartbeat.Collection.CollectorProtocol.Tests/Heartbeat.Collection.CollectorProtocol.Tests.csproj",
+      "shared/Heartbeat.Core.Tests/Heartbeat.Core.Tests.csproj"
+    ]
+  }
+}

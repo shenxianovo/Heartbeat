@@ -7,8 +7,8 @@
     "dev": "vite",
     "dev:mock": "vite --mode mock",
     "typecheck": "vue-tsc -b",
-    "typecheck:app": "vue-tsc --noEmit -p tsconfig.build.json",
-    "build": "npm run typecheck:app && vite build",
+    "build": "vite build",
+    "verify": "npm run typecheck && npm test && npm run build",
     "test": "vitest run",
     "preview": "vite preview"
   },

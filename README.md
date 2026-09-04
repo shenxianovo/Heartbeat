@@ -86,9 +86,10 @@ Heartbeat
 ```
 
 精确 .NET 项目与相邻测试项目以 [`Heartbeat.slnx`](./Heartbeat.slnx) 为准，npm 项目以各自
-`package.json` 为准；上图只维护生产目录责任。当前 Browser Package 随 Desktop release；VRChat
-Package 已从 Headless image 中移出，由 [`scripts/build-vrchat-package.sh`](./scripts/build-vrchat-package.sh)
-单独构建到宿主目录，再以只读方式挂给 Headless 安装并运行。Package 的 Web 托管与下载尚未实现。
+`package.json` 为准；上图只维护生产目录责任。CI 的 Collection 测试集合由
+[`Heartbeat.Collection.Tests.slnf`](./Heartbeat.Collection.Tests.slnf) 从主 solution 筛选；新增 Collection
+或 Shared Kernel 测试项目时需要同时加入主 solution 和该 filter。Browser Package 不进入 Desktop
+release；VRChat Package 已从 Headless image 中移出，并通过独立 Collector tag 构建、发布。
 
 ## Documentation
 

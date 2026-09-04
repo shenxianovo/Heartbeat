@@ -52,5 +52,5 @@ Get-Help ./scripts/refresh-local-data.ps1 -Detailed
 
 ## 恢复到空数据库
 
-按 [Development Guide](../development.md#5-停止或重置) 停止本地栈并删除
+按 [Development Guide](../development.md#4-停止) 停止本地栈并删除
 `.local/postgres-data`。下次启动时，后端会创建空数据库并应用全部迁移。

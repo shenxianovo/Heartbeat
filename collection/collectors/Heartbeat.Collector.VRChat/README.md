@@ -13,7 +13,10 @@ presence Segment，不是 VRChat 官方集成。
 - `VRChatPackageBuilder.cs`：manifest、schema 与 artifact staging。
 - `Dockerfile`：把 Package 构建到宿主目录的入口（构建上下文是仓库根）。
 
-## 构建 Collector Package
+## 本地导出 Collector Package（按需）
+
+日常启动本地栈不需要先执行这些脚本；Headless Hub 会从 Registry 安装已发布 Package。只有修改
+VRChat Collector 的打包逻辑、希望在打 tag 前检查 Linux Package 内容时，才需要本地导出：
 
 ```bash
 ./scripts/build-vrchat-package.sh              # 默认输出 .local/collector-packages/vrchat
@@ -64,8 +67,8 @@ Version 时，只有字节完全一致才允许把 workflow rerun 当成幂等�
 dotnet test collection/collectors/Heartbeat.Collector.VRChat.Tests
 ```
 
-Package 是独立于 Headless 镜像的制品：宿主上构建好后，由 Headless 以只读方式挂载、安装再运行；
-换 Package 不需要重建 Hub 镜像。显式 tag 的 Web 发布入口已实现；Host 的 Web 下载 adapter 尚未实现，
-当前运行仍使用本地构建或手工拷贝。运行宿主见
+Package 是独立于 Headless 镜像的制品：专属 tag 工作流把它发布到 Registry，Headless 再按 Catalog
+下载、校验、安装和运行；换 Package 不需要重建 Hub 镜像。本地构建脚本只用于发版前检查，不参与
+日常本地栈启动。运行宿主见
 [Headless README](../../hub/Heartbeat.Collection.Headless/README.md)，授权边界见
 [ADR-043](../../../docs/adr/043-hub-local-interactive-collector-authorization.md)。

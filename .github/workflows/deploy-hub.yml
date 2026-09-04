@@ -1,4 +1,4 @@
-name: Deploy Hub
+name: Deploy Headless Hub
 
 on:
   workflow_dispatch:
@@ -7,15 +7,16 @@ env:
   IMAGE: ghcr.io/shenxianovo/heartbeat-headless
 
 jobs:
-  build:
+  image:
+    name: Build Headless Hub image
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
@@ -34,7 +35,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build and push Headless Hub image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -47,11 +48,12 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy:
-    needs: build
+    name: Deploy Headless Hub
+    needs: image
     runs-on: ubuntu-latest
     concurrency: deploy-hub-production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Sync compose.yml to server
         uses: appleboy/scp-action@v1
@@ -62,7 +64,7 @@ jobs:
           source: compose.yml
           target: /srv/heartbeat
 
-      - name: Pull and restart only the Hub container
+      - name: Deploy Headless Hub container
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SERVER_HOST }}
