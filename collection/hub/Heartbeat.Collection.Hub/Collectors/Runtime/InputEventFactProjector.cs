@@ -22,6 +22,15 @@ public interface IInputEventFactSink
     }
 }
 
+/// <summary>
+/// Reconciles a complete startup replay with the durable InputEvent projection in one batch.
+/// Implementations must preserve Fact IDs and leave every accepted item durable before returning.
+/// </summary>
+public interface IInputEventFactReplaySink
+{
+    void Replay(IReadOnlyList<InputEventItem> items);
+}
+
 public interface ICollectorProjectionCommitFence : ICollectorDurableCommitFence
 {
 }

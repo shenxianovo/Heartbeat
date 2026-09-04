@@ -281,14 +281,14 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
     }
 
     [Fact]
-    public async Task CommittedEvent_IsReplayedAfterHubRestart_AndRetryDoesNotDuplicateProjection()
+    public async Task CommittedEvents_AreReplayedAsOneBatchAfterHubRestart_AndRetryDoesNotDuplicateProjection()
     {
         Directory.CreateDirectory(_root);
         var statePath = Path.Combine(_root, "collector-runtime.json");
         var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
-        var factId = Guid.CreateVersion7();
+        var factIds = Enumerable.Range(0, 3).Select(_ => Guid.CreateVersion7()).ToArray();
         Guid instanceId;
-        FactSubmission fact;
+        FactSubmission[] facts;
 
         var firstClock = new FakeClock();
         var firstSegmentSink = new SegmentIngestService(firstClock);
@@ -310,17 +310,17 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
                 package,
                 NewCollector(firstProtocol, firstClock, firstSegmentSink));
             var stream = firstActivation.Streams[SystemInProcessCollector.InputEventBindingId];
-            fact = InputFact(stream.Descriptor, factId);
+            facts = factIds.Select(factId => InputFact(stream.Descriptor, factId)).ToArray();
 
-            var committed = await stream.PublishAsync(Guid.CreateVersion7(), [fact]);
+            var committed = await stream.PublishAsync(Guid.CreateVersion7(), facts);
 
-            Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(committed.Results).Status);
-            Assert.Single(firstInputSink.Items);
+            Assert.All(committed.Results, result => Assert.Equal(FactDeliveryStatus.Committed, result.Status));
+            Assert.Equal(factIds, firstInputSink.Items.Select(item => item.Id));
         }
 
         var recoveredClock = new FakeClock();
         var recoveredSegmentSink = new SegmentIngestService(recoveredClock);
-        var recoveredInputSink = new CapturingInputEventSink();
+        var recoveredInputSink = new CapturingReplayInputEventSink();
         await using var recoveredRuntime = CollectorRuntime.Open(
             statePath,
             recoveredSegmentSink,
@@ -332,11 +332,11 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             NewCollector(recoveredProtocol, recoveredClock, recoveredSegmentSink));
 
         var replay = await recoveredActivation.Streams[SystemInProcessCollector.InputEventBindingId]
-            .PublishAsync(Guid.CreateVersion7(), [fact]);
+            .PublishAsync(Guid.CreateVersion7(), [facts[0]]);
 
         Assert.Equal(FactDeliveryStatus.Duplicate, Assert.Single(replay.Results).Status);
-        Assert.Single(recoveredInputSink.Items);
-        Assert.Equal(factId, recoveredInputSink.Items[0].Id);
+        Assert.Equal(1, recoveredInputSink.ReplayCalls);
+        Assert.Equal(factIds, recoveredInputSink.Items.Select(item => item.Id));
     }
 
     [Fact]
@@ -1194,6 +1194,31 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
                 return false;
             Items.Add(item);
             return true;
+        }
+    }
+
+    private sealed class CapturingReplayInputEventSink :
+        IInputEventFactSink,
+        IInputEventFactReplaySink
+    {
+        public List<InputEventItem> Items { get; } = [];
+        public int ReplayCalls { get; private set; }
+
+        public bool TryAccept(
+            InputEventItem item,
+            bool isReplay,
+            ICollectorProjectionCommitFence commitFence)
+        {
+            if (commitFence.IsFenced)
+                return false;
+            Items.Add(item);
+            return true;
+        }
+
+        public void Replay(IReadOnlyList<InputEventItem> items)
+        {
+            ReplayCalls++;
+            Items.AddRange(items);
         }
     }
 

@@ -25,7 +25,10 @@ namespace Heartbeat.Collector.System.Input
     /// - durable projection 是待上传 InputEvent 的唯一容量 owner；满容量返回可判定 backpressure
     /// - 为每个事件生成 UUIDv7
     /// </summary>
-    public sealed class InputEventBuffer : IDurableUploadSource<InputEventItem>, IInputEventFactSink
+    public sealed class InputEventBuffer :
+        IDurableUploadSource<InputEventItem>,
+        IInputEventFactSink,
+        IInputEventFactReplaySink
     {
         public const int WheelDelta = 120;
         public const string StatusStreamName = "输入事件 durable projection";
@@ -210,6 +213,50 @@ namespace Heartbeat.Collector.System.Input
             InputEventItem item,
             bool isReplay,
             ICollectorProjectionCommitFence commitFence) => TryEnqueueItem(item, commitFence);
+
+        void IInputEventFactReplaySink.Replay(IReadOnlyList<InputEventItem> items)
+        {
+            ArgumentNullException.ThrowIfNull(items);
+            if (items.Count == 0)
+                return;
+
+            lock (_durableGate)
+            {
+                var retained = _durableProjectionCache?.Load() ?? _queue.ToList();
+                var retainedIds = retained.Select(item => item.Id).ToHashSet();
+                var initialCount = retained.Count;
+                var rejected = false;
+
+                foreach (var item in items)
+                {
+                    if (retainedIds.Contains(item.Id))
+                        continue;
+                    if (retained.Count >= _capacity)
+                    {
+                        rejected = true;
+                        continue;
+                    }
+                    retainedIds.Add(item.Id);
+                    retained.Add(item);
+                }
+
+                if (retained.Count != initialCount)
+                {
+                    if (_durableProjectionCache is not null)
+                        _durableProjectionCache.Replace(retained);
+                    else
+                    {
+                        foreach (var item in retained.Skip(initialCount))
+                            _queue.Enqueue(item);
+                    }
+                }
+                Volatile.Write(ref _count, retained.Count);
+                UpdateStatus(retained.Count);
+
+                if (rejected)
+                    throw new InputEventCapacityExceededException(_capacity, retained.Count);
+            }
+        }
 
         private void Enqueue(InputEventType type, short code)
         {

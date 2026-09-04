@@ -7,6 +7,7 @@ using System.Text.Json;
 using Heartbeat.Collection.Hub.Collectors.Packages;
 using Heartbeat.Collection.Hub.Collectors.Protocol;
 using Heartbeat.Collection.Hub.Segments;
+using Heartbeat.Core.DTOs.Input;
 using Serilog;
 
 namespace Heartbeat.Collection.Hub.Collectors.Runtime;
@@ -1503,11 +1504,35 @@ public sealed partial class CollectorRuntime
     {
         lock (_gate)
         {
+            var replaySink = _inputEventSink as IInputEventFactReplaySink;
+            List<InputEventItem>? replayEvents = replaySink is null ? null : [];
             foreach (var fact in _state.Facts)
             {
                 var stream = _state.Streams.SingleOrDefault(candidate => candidate.StreamId == fact.StreamId);
-                if (stream is not null)
-                    ProjectFact(stream, fact, isReplay: true);
+                if (stream is null)
+                    continue;
+                if (stream.FactKind == FactKind.Event && replayEvents is not null)
+                {
+                    if (TryCreateInputEventProjection(stream, fact, out var item))
+                        replayEvents.Add(item!);
+                    continue;
+                }
+                ProjectFact(stream, fact, isReplay: true);
+            }
+
+            if (replayEvents is { Count: > 0 })
+            {
+                try
+                {
+                    replaySink!.Replay(replayEvents);
+                }
+                catch (Exception exception)
+                {
+                    Log.Error(
+                        exception,
+                        "已持久接收 {Count} 条 Collector Event Fact，批量投影到 InputEvent 上传缓冲失败；重启时将重放",
+                        replayEvents.Count);
+                }
             }
         }
     }
@@ -1624,17 +1649,8 @@ public sealed partial class CollectorRuntime
         bool isReplay,
         ICollectorProjectionCommitFence? commitFence = null)
     {
-        if (fact.RecordState != FactRecordState.Present ||
-            fact.OccurredAt is not { } occurredAt ||
-            fact.Payload is not { } payload ||
-            ResolveEventProjector(stream.SchemaId, stream.SchemaMajor) is not { } projector ||
-            !projector.TryProject(fact.FactId, occurredAt, payload, out var item))
-        {
-            Log.Error(
-                "已持久接收 Collector Event Fact {FactId}，但其 payload 无法由 schema adapter 投影",
-                fact.FactId);
+        if (!TryCreateInputEventProjection(stream, fact, out var item))
             return false;
-        }
         if (_inputEventSink is null)
         {
             Log.Error(
@@ -1657,6 +1673,25 @@ public sealed partial class CollectorRuntime
                 fact.FactId);
             return false;
         }
+    }
+
+    private bool TryCreateInputEventProjection(
+        FactStreamState stream,
+        CommittedFactState fact,
+        out InputEventItem? item)
+    {
+        item = null;
+        if (fact.RecordState == FactRecordState.Present &&
+            fact.OccurredAt is { } occurredAt &&
+            fact.Payload is { } payload &&
+            ResolveEventProjector(stream.SchemaId, stream.SchemaMajor) is { } projector &&
+            projector.TryProject(fact.FactId, occurredAt, payload, out item))
+            return true;
+
+        Log.Error(
+            "已持久接收 Collector Event Fact {FactId}，但其 payload 无法由 schema adapter 投影",
+            fact.FactId);
+        return false;
     }
 
     private void MarkAcknowledgedLiveTraffic(

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Heartbeat.Collector.System.Input;
 using Heartbeat.Collection.Hub.Collectors.Runtime;
 using Heartbeat.Collection.Hub.Time;
@@ -240,6 +241,42 @@ public class InputEventBufferTests
             ((IDurableUploadSource<InputEventItem>)restarted).CompleteDrain(drained, []);
             var completed = new InputEventBuffer(new FakeClock(), durableProjectionPath: path);
             Assert.Empty(((IUploadSource<InputEventItem>)completed).Drain());
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void DurableProjection_ReplaysLargeFactBatchWithinStartupBudget()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-input-buffer-{Guid.NewGuid():N}");
+        var path = Path.Combine(root, "input-event-facts-buffer.json");
+        var items = Enumerable.Range(0, 20_000).Select(index => new InputEventItem
+        {
+            Id = Guid.CreateVersion7(),
+            EventType = InputEventType.KeyDown,
+            CodeSet = InputCodeSets.HeartbeatKeyPositionV1,
+            Code = (short)InputKeyPosition.KeyA,
+            Timestamp = DateTimeOffset.UnixEpoch.AddTicks(index)
+        }).ToArray();
+        try
+        {
+            var buffer = new InputEventBuffer(new FakeClock(), durableProjectionPath: path);
+
+            var stopwatch = Stopwatch.StartNew();
+            ((IInputEventFactReplaySink)buffer).Replay(items);
+            stopwatch.Stop();
+
+            Assert.True(
+                stopwatch.Elapsed < TimeSpan.FromSeconds(5),
+                $"20,000 durable InputEvent Facts took {stopwatch.Elapsed} to replay.");
+            var restarted = new InputEventBuffer(new FakeClock(), durableProjectionPath: path);
+            var retained = restarted.DrainAll();
+            Assert.Equal(items.Select(item => item.Id), retained.Select(item => item.Id));
+            Assert.Equal(items.Length, retained.Select(item => item.Id).Distinct().Count());
         }
         finally
         {
