@@ -48,4 +48,5 @@ Hub 重启只从精确 Installation 恢复，不访问 Web。手写 `instances`�
 
 - [ADR-048](./048-shared-collector-host-runtime-and-independent-release-units.md)
 - [ADR-049](./049-named-optional-collectors-outside-host-composition.md)
+- [ADR-051](./051-generic-external-host-identity-and-browser-delivery.md) — Desktop 调用者与 ExternalHost 默认 Instance 语义
 - [Collector Marketplace issue](../../.scratch/collector-package-registry/issues/01-static-registry-index.md)

@@ -5,6 +5,9 @@
 Collector Protocol conformance tests 承担。宿主组合边界以
 [ADR-049](../adr/049-named-optional-collectors-outside-host-composition.md) 为准：具名可选 Collector 不进入
 Host composition，宿主只组合通用 seam 加上 System BuiltIn。
+通用 ExternalHost 的身份与并发模型以
+[ADR-051](../adr/051-generic-external-host-identity-and-browser-delivery.md) 为准：一个 Browser Instance 承载
+多个 External Host，Collector 直接提供 `appIdentityKey`，Host 不解析 App Hint。
 
 ## 目标
 
@@ -14,6 +17,7 @@ Host composition，宿主只组合通用 seam 加上 System BuiltIn。
   独立发布。
 - Desktop 与 Headless 复用同一个宿主无关 Collector Host Runtime；宿主差异只存在于 adapter。
 - 当前只做显式精确 Installation 与启动，不建设自动更新控制面。
+- 当前自用版本不建设 Package 人工加载说明、打开目录按钮或脚本执行器；Browser 扩展由操作者自行加载。
 
 ## 发布拓扑
 
@@ -129,7 +133,7 @@ flowchart LR
 - 安装 journal、断电恢复、cache GC；
 - Browser 独立 Web 发布和 UI 安装入口。
 
-## 后续实现顺序
+## 已完成的地基顺序
 
 ```mermaid
 flowchart LR
@@ -146,13 +150,72 @@ flowchart LR
   分开构建；Headless 不再读手工挂载来源，只从 Registry 获取新安装。
 - D 已落地：`deploy-hub.yml` 只测试、构建、推送和重启 Hub，不触发 Backend/Frontend/Collector。
 - E 已完成：专属 tag workflow 生成确定性 zip 与不可变 `release.json`，向同域静态目录追加精确 Version；
-  VRChat 0.2.0 已真实发布并经公网逐字节复核。F 已按 ADR-050 增加 Registry Catalog 与一键安装 Marketplace；
+  VRChat 0.2.1 已真实发布、进入 Catalog 并完成生产 Marketplace smoke。F 已按 ADR-050 增加 Registry Catalog 与一键安装 Marketplace；
   普通 `main` 验证不发布用户可见 Package。
 - G 已完成宿主侧的全部：Desktop 构建与产物不含 Browser，宿主也不再认识 Browser——Hub 与两个平台 head
   没有它的 runtime、protocol handler、安装目录、平台知识或 UI 条目（ADR-049）。剩下的是通用 ExternalHost
   的安装与连接能力，加上 Collector tag 与可下载 Package（依赖 E/F）；在这两者到位前 Browser 没有任何宿主
   接入路径。
-- G 复用已经证明的 Installation/Web seam，只增加通用 ExternalHost 的真实安装与用户 reload 动作。
+- G 的剩余部分复用已经证明的 Installation/Web seam，不恢复 Browser 专属 binding。
+
+## 下一阶段实现顺序
+
+```mermaid
+flowchart LR
+    A["06 · 通用 ExternalHost<br/>身份与生命周期"] --> B["10 · Desktop Marketplace<br/>通用原生管理"]
+    B --> C["07 · Browser Package<br/>独立 Release 与 smoke"]
+```
+
+顺序不能颠倒：Browser 不能先用专属 handler 抢跑；Desktop UI 也不能自行复制一套 Package 下载或 Runtime
+状态。每一步都先用 Reference Collector 证明通用 interface，再由 Browser 成为真实调用者。
+
+### Feature 06：通用 ExternalHost Runtime
+
+```mermaid
+flowchart LR
+    Contract["冻结 generic hello<br/>exact Package/Artifact<br/>host identity + app identity"] --> Resolve["从 Installation + Runtime<br/>解析默认 Instance"]
+    Resolve --> Ownership["identity 级 lease<br/>不同 Host 并行"]
+    Ownership --> Streams["按 appIdentityKey + host identity<br/>打开独立 Stream"]
+    Streams --> Status["Waiting / Ready count / Conflict<br/>通用状态"]
+    Status --> Remove["撤销全部 Host Activation<br/>再删除 Instance + Installation"]
+    Remove --> Conformance["Reference ExternalHost<br/>并发、重连、重启、卸载测试"]
+```
+
+这一步同时删除 `ICollectorAppHintResolver`：ExternalHost Collector 直接提供稳定 `appIdentityKey`，通用
+Segment 投影只消费该 dimension。现有 Instance 级 writer 冲突必须被 identity/Stream 级所有权取代，而不是
+在外面增加重试。
+
+### Feature 10：Desktop 通用 Marketplace
+
+```mermaid
+flowchart LR
+    Browse["按 Desktop target 浏览 Catalog"] --> Install["点击安装"]
+    Install --> Shared["共享 Marketplace<br/>下载、验证、Installation"]
+    Shared --> Instance["按 Blueprint 创建<br/>一个 Machine Instance"]
+    Instance --> Waiting["等待连接"]
+    Waiting --> Running["运行中 · N 个连接"]
+    Running --> Uninstall["二次确认 → 通用卸载"]
+```
+
+Windows/macOS 共享同一 presentation 行为；platform head 只提供 target、Machine Subject 与本机 adapter。
+System 不进入 Marketplace，Package 不提供人工加载说明，主 UI 不显示随机 External Host Identity。
+
+### Feature 07：Browser 独立 Package 与真实纵切
+
+```mermaid
+flowchart LR
+    Collector["Browser 自己识别 Chrome/Edge<br/>生成 appIdentityKey"] --> Protocol["generic ExternalHost hello<br/>持久 host identity"]
+    Protocol --> Package["Machine Blueprint<br/>identity dimensions"]
+    Package --> Tag["collector-browser/vX.Y.Z"]
+    Tag --> Build["只构建一份确定性 Package"]
+    Build --> Targets["登记 win/macOS<br/>x64/arm64 四个 target"]
+    Targets --> Install["Desktop Marketplace 安装"]
+    Install --> Manual["操作者手工 Load unpacked"]
+    Manual --> Smoke["多 Host、重连、事实上传、卸载 smoke"]
+```
+
+首版只承诺 Chrome 与 Edge。Browser tag 不构建或发布 Desktop；Desktop tag 也不构建或携带 Browser。
+本阶段没有 Package 更新或自动 extension reload，新版本需要先卸载再安装。
 
 ## 当前差距
 
@@ -160,7 +223,7 @@ flowchart LR
   Browser 的 package target，Desktop Release 也不再安装 node、构建 Browser 或跑 Collector contracts
   （Browser 的构建与契约验证留在 `collector-contracts.yml`）。System 作为 BuiltIn 由 publish target 进入
   `dotnet publish` 产物，Desktop Release 另有产物断言（System 在、Browser 不在）与打包后的 startup smoke。
-- Browser 目前是"有独立发布单元、无宿主接入能力"：它的扩展代码、Package 构建 target 与 npm 测试留在
+- Browser 目前是“代码已与 Desktop 解耦、但还没有 Web Release 或宿主接入能力”：它的扩展代码、Package 构建 target 与 npm 测试留在
   `collection/collectors/Heartbeat.Collector.Browser`，并继续由 `collector-contracts.yml` 验证，但宿主里没有
   任何 Browser 接入路径——Browser 专属 runtime 与 protocol handler 已删除，`/v1/collector-protocol/browser`
   不再存在（默认 ExternalHost handler 一律 404），`CollectorPackages/Browser` 默认路径与 UI 卡片也随之删除。
@@ -177,8 +240,9 @@ flowchart LR
 - Headless image 不构建或携带可选 Package，也不挂载具名 Package 来源。共享 Marketplace 从 Catalog 获取
   精确 release，统一校验 metadata/length/hash/zip/Package 后交给 `CollectorPackageInstallations`；公开 interface
   不含任何具名 Collector，可由未来 Desktop 直接复用。
-- 静态 Registry 的精确 Version、按 Host target 独立的 Catalog Latest 与 Collector tag 更新链已落地；Latest 只用于首次发现，Runtime
-  保存的精确 Package identity 才是重启权威。尚缺新 VRChat tag 的真实 Catalog 发布和生产端到端 smoke。
+- 静态 Registry 的精确 Version、按 Host target 独立的 Catalog Latest 与 Collector tag 更新链已落地；Latest
+  只用于首次发现，Runtime 保存的精确 Package identity 才是重启权威。VRChat 0.2.1 Catalog 与生产端到端
+  smoke 已完成，下一条真实发布纵切是 Browser。
 
 ## 验收边界
 
@@ -189,6 +253,6 @@ flowchart LR
 - System 只随 Desktop Release；
 - Browser/VRChat 各自 tag 能产生独立 Package；
 - 同一个共享 Installation module 被 Desktop 与 Headless 使用；
-- VRChat Package 更新不重建 Headless，Browser Package 更新不重建 Desktop；
+- VRChat Package 发布/安装不重建 Headless，Browser Package 发布/安装不重建 Desktop；
 - 三类 Driver 继续通过统一 Protocol conformance；
 - 真实 Desktop Browser 与 Headless VRChat smoke 成功。

@@ -1,6 +1,6 @@
 # 01 — 通用 Collector Catalog 与一键安装管理
 
-Status: ready-for-human
+Status: done
 
 Owner: Collection / Package Delivery
 
@@ -39,9 +39,9 @@ Priority: P1 — 让用户从通用 Hub 管理页安装第一份 Web Collector�
 
 ## Acceptance
 
-- [ ] `/collector-registry/v1/catalog.json` 使用 schema v1，按 PackageId 唯一列出托管 Collector，并为每项提供
+- [x] `/collector-registry/v1/catalog.json` 使用 schema v1，按 PackageId 唯一列出托管 Collector，并为每项提供
       display name、summary，以及按 target 唯一的 latest version 与精确 `releaseUrl`。
-- [ ] VRChat 独立 tag workflow 在精确 Release 公网可读后更新自己的 Catalog entry；普通 main/PR 不发布，
+- [x] VRChat 独立 tag workflow 在精确 Release 公网可读后更新自己的 Catalog entry；普通 main/PR 不发布，
       较旧 tag rerun 不把 latest 回退。
 - [x] Package loader 校验 presentation 与 Default Instance Blueprint；Blueprint 的 configVersion 必须被 Package
       接受，subjectKind 必须被至少一个输出声明支持。
@@ -58,7 +58,7 @@ Priority: P1 — 让用户从通用 Hub 管理页安装第一份 Web Collector�
       `VRChat|Browser` 具名逻辑（Collector 自身、Registry 数据和测试 fixture 除外）。
 - [x] 前端用户只需点击“安装”；登录字段完全来自通用 Authorization Challenge；卸载需要二次确认。
 - [x] Reference Package/fixture 证明同一 Host 路径可安装、激活、恢复和卸载非 VRChat Collector。
-- [ ] 本机全量测试、Docker/静态 Registry fixture、真实 VRChat 新版本发布，以及生产安装→登录→重启恢复→
+- [x] 本机全量测试、Docker/静态 Registry fixture、真实 VRChat 新版本发布，以及生产安装→登录→重启恢复→
       卸载 smoke 的证据记录完成。
 
 ## Non-goals
@@ -116,3 +116,11 @@ Desktop 的 macOS/Windows Release 覆盖当前 Headless linux Release；精确 R
 Human gate：必须发布一个新的 VRChat tag（旧 0.2.0 不可变且不含新 manifest 元数据），确认公网
 `catalog.json` 更新，然后更新服务器的 infrastructure-only Headless 配置，部署 Hub/Frontend，完成
 安装 → 授权 → 重启离线恢复 → 卸载 smoke。完成前不标 `done`。
+
+### 2026-09-04 — Human gate 完成
+
+- `collector-vrchat/v0.2.1` 已发布；公网 `catalog.json` 当前把 `heartbeat.collector.vrchat/linux-x64` 指向
+  `0.2.1`，精确 `release.json` 与 artifact metadata 可读。
+- Owner 确认生产安装、授权、重启恢复与卸载 smoke 已完成。
+- 本 issue 的 Catalog + Marketplace 纵切完成；Desktop 调用者和 ExternalHost 接入分别由 issue 10/06
+  承接，不反向扩张本 issue。

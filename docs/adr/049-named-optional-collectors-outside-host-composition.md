@@ -20,6 +20,10 @@ head、共享 UI、主题样式与宿主测试；"Browser 不存在"这条分支
 
 ## Decision
 
+> 2026-09-04 revision note：[ADR-051](./051-generic-external-host-identity-and-browser-delivery.md) 已选定
+> 通用 ExternalHost 的真实接入模型。下文作为 2026-09-02 解耦工作的原始记录保留；其中
+> `ICollectorAppHintResolver`、`appHint` 维度与默认 404 只描述当时的过渡状态，不再是目标 interface。
+
 ### 1. Host composition 只组合通用 seam
 
 Desktop 与通用 Hub Runtime 不再认识任何具体 Collector 的名字。宿主组合的允许内容只有通用领域概念：
@@ -119,6 +123,10 @@ Analytics 启动只预插 System 的 Observation Depth 声明。非 BuiltIn Coll
   discovery 与 Collector Protocol v1"不再成立于宿主侧。binding 专属 discovery 路由、Browser 专属
   `CollectorRuntime` 与 protocol handler 已删除；Hub 只保留通用 ExternalHost handler seam 与默认 404 实现。
   ExternalHost Stream 由 `appHint + externalHostIdentity` 形成 identifying dimensions 的协议语义不变。
+
+> 2026-09-04：[ADR-051](./051-generic-external-host-identity-and-browser-delivery.md) 再次修订上一条：
+> ExternalHost Stream 改由 Collector 直接提供的 `appIdentityKey + externalHostIdentity` 识别，AppHint
+> resolver seam 退役。
 - **[ADR-040](./040-collector-runtime-and-protocol-foundation.md) §3**：segment projector 不再按 schema id / major
   注册 adapter；`facts.segment/v1` 的共同投影形状由 FactKind 与 Package schema 两阶段验证。
 - **[ADR-030](./030-collector-depth-declaration.md) §4**：切换期预插 Browser v1 的做法结束；Analytics 只为

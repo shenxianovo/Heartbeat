@@ -79,7 +79,8 @@ Desktop Release 门禁。决策见
 
 1. **通用 ExternalHost 安装/连接能力缺失**。默认 handler 一律 404，宿主没有安装入口、discovery 与握手
    adapter，因此 Browser 没有任何宿主接入路径：手工侧载也连不上，UI 里看不到它，
-   Browser 的扩展代码、Package 构建脚本与 npm 测试保留并继续由 `collector-contracts.yml` 验证。
+   Browser 的扩展代码、Package 构建脚本与 npm 测试保留并继续由 `collector-contracts.yml` 验证。后续实现已
+   由 [issue 06](./06-browser-external-host-update.md) 按 ADR-051 重写，不得恢复 Browser 专属 binding。
 2. **Windows 最终包的运行时验证在 macOS 开发机上做不了**：Windows 打包产物的 `--verify-startup`、
    Portable zip 目录层级与 vpk 后的路径只能在真实 tag / Windows 环境上跑，本轮标记为未验证。
 

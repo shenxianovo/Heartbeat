@@ -1,6 +1,6 @@
 # Collector Host Runtime 与独立 Package 交付
 
-Status: needs-triage
+Status: ready-for-agent
 
 ## Problem
 
@@ -8,19 +8,21 @@ Collector Runtime、Protocol 与三类 Execution Driver 已经存在。第一条
 image，并建立 Desktop/Headless 共享的 Installation module；Backend workflow 也已停止顺带部署 Headless。
 宿主组合已按 [ADR-049](../../docs/adr/049-named-optional-collectors-outside-host-composition.md) 收敛：Desktop
 与通用 Hub Runtime 只组合通用 seam 加 System BuiltIn，不认识任何具名可选 Collector。
-VRChat 的显式 tag 与不可变 Web Release 已完成真实发布，0.2.0 可从生产 Caddy 的精确 Version 路径读取；
+VRChat 的显式 tag 与不可变 Web Release 已完成真实发布，0.2.1 可从生产 Caddy 的精确 Version 路径读取；
 当前已按 [ADR-050](../../docs/adr/050-generic-collector-marketplace-and-runtime-owned-instances.md) 实现通用
 Collector Marketplace：Registry Catalog 展示全部托管 Collector 的最新版，用户一键安装，Package 声明默认
-Instance，Runtime 成为动态 Instance 唯一权威。Headless 独立 deploy 已落地；新的 VRChat Catalog 发布、
-生产 smoke 与通用 ExternalHost 连接仍是后续缺口。
+Instance，Runtime 成为动态 Instance 唯一权威。Headless 独立 deploy、VRChat Catalog 发布与生产
+安装/授权/恢复/卸载 smoke 均已完成；当前主缺口是通用 ExternalHost、Desktop Marketplace 调用者与
+Browser 独立 Release。
 
-Browser 现在的状态是"有独立发布单元、无宿主接入能力"：它不进 Desktop 构建与产物，扩展代码、Package
+Browser 现在的状态是“代码与 Desktop 解耦、但尚未形成 Web Release 和宿主接入”：它不进 Desktop 构建与产物，扩展代码、Package
 构建 target 与 npm 测试留在 `collection/collectors/Heartbeat.Collector.Browser` 并由 `collector-contracts.yml`
 验证；但宿主里没有 Browser runtime、protocol handler、安装目录或 UI 条目，`/v1/collector-protocol/browser`
 也不存在，因此手工侧载不再能让它连上宿主。通用 ExternalHost 安装/连接是后续 issue。
 
-2026-09-01 以前的 Registry/Approve/Switch 实现已撤回。issues 01/02 已按 ADR-048/050 重写；issues 06/07
-仍是历史规格，重写前不能作为 Agent 实现指令。
+2026-09-01 以前的 Registry/Approve/Switch 实现已撤回。issues 01/02 已按 ADR-048/050 完成；issues 06/07
+已按 [ADR-051](../../docs/adr/051-generic-external-host-identity-and-browser-delivery.md) 重写，issue 10 承接
+Desktop Marketplace。
 
 ## Outcome
 
@@ -46,6 +48,10 @@ Browser 现在的状态是"有独立发布单元、无宿主接入能力"：它�
 - Package 继续经过现有 manifest/artifact/hash 校验；不新增签名 trust root。
 - 普通 `main` 只验证；Collector 的用户可见 Package 必须由显式 Collector tag 发布。
 - System 不进入 Web Registry，也不形成独立 Update Offer。
+- Browser 一次安装只创建一个 Machine-scoped Instance；浏览器/Profile 以 External Host Identity 形成并行
+  Activation 与独立 Stream，不按 App 创建 Instance。
+- ExternalHost Collector 直接提供稳定 `appIdentityKey`；Host 不解析 `appHint`，也不认识具体应用产品。
+- 当前不定义 Package 人工加载/移除说明，不提供打开目录或执行 Package 命令的通用能力。
 
 ## First tracer
 
@@ -71,18 +77,19 @@ Browser 独立发布与真实 smoke。
 
 | Issue | 状态 | 新路径 |
 |---|---|---|
-| 01 static registry index | ready-for-human | 通用 Catalog + Marketplace + Runtime-owned Instance 已实现，等待真实发布 smoke |
-| 02 explicit release pipeline | done | VRChat 0.2.0 已经专属 tag 发布并经公网逐字节复核 |
+| 01 static registry index | done | VRChat 0.2.1 Catalog 与生产安装/授权/恢复/卸载 smoke 已完成 |
+| 02 explicit release pipeline | done | VRChat 独立 tag 与不可变 Web Release 已完成 |
 | 03 shared local installation | ready-for-human | PowerShell CLI 安全/真实构建待跨平台验证 |
 | 04 exact package approval | wontfix | ADR-048 明确不做 approval/offer |
 | 05 VRChat ready switch | wontfix | ADR-048 明确不做 candidate/LKG switch |
-| 06 Browser ExternalHost update | needs-triage | VRChat Web 纵切后按显式 Installation 重写 |
-| 07 deploy and smoke | needs-triage | 独立 release units 落地后重写 |
+| 06 generic ExternalHost | ready-for-agent | 通用 route、身份级 Activation/Stream ownership 与卸载 |
+| 07 Browser release and smoke | ready-for-agent | Browser Collector 自身、四 target Release 与真实 smoke |
+| 10 Desktop Marketplace | ready-for-agent | Desktop 原生通用安装/状态/卸载界面 |
 
 ## Exit conditions
 
 - [ ] Headless 与 Desktop 使用同一个 Package Installation module。
-- [ ] VRChat Package 可独立于 Headless image 构建和替换。
+- [x] VRChat Package 可独立于 Headless image 构建和替换。
 - [x] Backend 与 Headless deployment 分离（`deploy-hub.yml` 只部署 Headless Hub）。
 - [ ] VRChat 与 Browser 各自通过显式 tag 发布 Web Package。
 - [x] System 仍只随 Desktop Release（publish target + Desktop Release 产物断言，issue 08）。
@@ -94,7 +101,8 @@ Browser 独立发布与真实 smoke。
 - [x] `facts.segment/v1` 由 Package `FactKind` 与 schema 驱动通用 ActivitySegment 投影，宿主不再硬编码
       具名 schema id 列表（issue 09）。
 - [ ] 三类 Driver 继续通过统一 Protocol conformance。
-- [ ] 真实 Desktop Browser 与 Headless VRChat smoke 有证据。
+- [x] 真实 Headless VRChat Marketplace smoke 有证据。
+- [ ] 真实 Desktop Browser smoke 有证据。
 
 ## Comments
 
@@ -132,3 +140,11 @@ VRChat 现在有独立的 `collector-vrchat/vX.Y.Z` tag workflow：固定构建 
 与不可变 `release.json`，再向服务器静态目录追加精确 Version，并从公网逐字节回读。它不创建 current
 pointer，也不触碰 Desktop、Headless、Frontend 或 Analytics。issue 保持 `ready-for-human`：生产 Caddy
 静态路由、服务器 x86_64 确认和首个真实 tag 尚未执行。
+
+### 2026-09-04 — ExternalHost grill closeout
+
+Owner 确认 [ADR-051](../../docs/adr/051-generic-external-host-identity-and-browser-delivery.md)：Browser 使用一个
+Machine-scoped Instance，多个浏览器/Profile 以 External Host Identity 并行；Collector 直接上报稳定
+`appIdentityKey`，Host 不解释 App Hint。同 identity 重连只替换自身旧 Activation，改变 App identity 则拒绝；
+无连接是“等待连接”而不是失败。当前只做首次安装与完整卸载，不做更新/LKG，也删除了此前讨论的
+`manualSetup`/打开目录 UI。实现顺序固定为 issue 06 → issue 10 → issue 07。

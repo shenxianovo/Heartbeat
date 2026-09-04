@@ -1,5 +1,9 @@
 # 03 — 共享本地 Collector Package Installation
 
+> 2026-09-04：本 issue 记录的是共享 Installation 的历史 tracer。其手工 Package source、Browser bundled
+> import 与旧 issue 07 部署门禁均已被 ADR-049/050 及 Marketplace 纵切取代；当前 ExternalHost/Browser
+> 后续分别以重写后的 issue 06/10/07 为准。下文保留当时证据，不作为当前实现范围。
+
 Status: ready-for-human
 
 Owner: Collection / Collector Host Runtime

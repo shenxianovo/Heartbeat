@@ -50,7 +50,7 @@ flowchart LR
 
 Desktop 的平台观察回调不执行协议 I/O：system Collector 先把 Segment / Event 放入 ingress queue，再由后台 delivery pump 持久化并发送。Collector Protocol Client 不捕获宿主 `SynchronizationContext`，因此 Hub 背压不会阻塞 Avalonia UI、macOS LaunchServices 回调或 Windows hook/message-loop 线程。
 
-## ExternalHost 身份语义（协议模型，当前未接入 Desktop）
+## ExternalHost 目标身份语义（当前未接入 Desktop）
 
 ```mermaid
 flowchart TD
@@ -61,7 +61,7 @@ flowchart TD
   A1["Activation A1"]
   A2["Activation A2"]
   B1["Activation B1"]
-  ES["Independent Fact Streams\nappHint + externalHostIdentity dimensions"]
+  ES["Independent Fact Streams\nappIdentityKey + externalHostIdentity dimensions"]
 
   P --> C
   C --> CA --> A1
@@ -71,10 +71,11 @@ flowchart TD
   B1 --> ES
 ```
 
-`CollectorRuntime` 已实现上述通用身份与替换语义，但 Desktop 当前没有 ExternalHost 安装、discovery 或握手
-adapter，因此没有实际连接者。未来 adapter 应让外部宿主生成并持久化 `externalHostIdentity`；清除其数据或
-重装会产生新 Host，旧 Host 只作为历史身份保留。未知但稳定的 `appHint` 可形成未解析 App Instance 并保留
-事实，缺失或不稳定的值会拒绝 Activation。
+`CollectorRuntime` 已有 ExternalHost Activation 与 Stream 基础机制，但当前仍以整个 Instance 阻止并行
+writer，Desktop 也没有 ExternalHost 安装、discovery 或握手 adapter，因此没有实际连接者。issue 06 将把
+所有权缩小到 External Host Identity，并让外部宿主生成和持久化 `externalHostIdentity`；清除其数据或
+重装会产生新 Host，旧 Host 只作为历史身份保留。Collector 直接提供稳定 `appIdentityKey`；Backend 暂时
+不认识该 Key 时仍保留真实身份，Collector 无法可靠识别宿主 App 时不开始 Activation。
 
 ## Fact Schema 的单一来源与校验链
 

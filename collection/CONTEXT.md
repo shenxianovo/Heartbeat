@@ -13,7 +13,7 @@ _Avoid_: Service, Worker（这些是 Agent 内部的实现层）
 _Avoid_: 插件/Plugin（口语别名，UI 与文档统一用"采集器"；ADR-017 等历史文档中的 plugin 即此概念）
 
 **Host Composition（宿主组合）**:
-宿主（Desktop platform head 或 Headless host）在组合根注册的服务集合。它只允许出现通用领域概念：Collector Package Installation、Collector Runtime、Collector Instance / Activation、Execution Driver、Collector Protocol、通用 ExternalHost handler seam 与 App Hint resolver seam，加上唯一写死的 System BuiltIn。宿主 UI、主题、启动 smoke 与宿主测试同受这条边界约束。
+宿主（Desktop platform head 或 Headless host）在组合根注册的服务集合。它只允许出现通用领域概念：Collector Package Installation、Collector Runtime、Collector Instance / Activation、Execution Driver、Collector Protocol 与通用 ExternalHost handler seam，加上唯一写死的 System BuiltIn。宿主 UI、主题、启动 smoke 与宿主测试同受这条边界约束。
 _Avoid_: 在宿主里为某个具体 Collector 建 binding 扩展、状态类型、默认安装目录或 UI 卡片
 
 **Named Optional Collector（具名可选 Collector）**:
@@ -95,15 +95,15 @@ _Avoid_: Analytics Collector Control Plane、要求用户通过服务器终端�
 _Avoid_: Download、Staging、Registration、Active
 
 **Collector Instance（采集器实例）**:
-一个稳定、已配置的 Collector 身份；更换其 Collector Package 版本或重新激活时，实例身份保持不变，同样不会因为长期离线而自动删除。同一采集器包可以对应多个实例。ExternalHost Collector 可以在同一 Machine Subject 上按 App 分 Instance（如 Chrome、Edge 各有独立启用意图与运行状态，共享一份 Collector Installation，同一 App 的多个 Profile 不是独立 Instance）；这套按 App 发现与默认启用的规则属于对应 Collector 的 adapter，不由宿主写死，当前宿主内没有这样的 adapter（ADR-049）。删除身份与配置只能是显式用户操作。
+一个稳定、已配置的 Collector 身份；更换其 Collector Package 版本或重新激活时，实例身份保持不变，同样不会因为长期离线而自动删除。同一采集器包可以对应多个实例，但 App 或 Profile 只有在确实拥有独立启用、配置或卸载意图时才形成 Instance。Browser 的一次 Marketplace 安装只创建一个 Machine-scoped Instance；兼容浏览器和 Profile 是这个 Instance 下的 External Host，不形成额外 Instance（ADR-051）。删除身份与配置只能是显式用户操作。
 _Avoid_: 用 Source、进程 ID 或包版本充当实例身份
 
 **Collector Instance Key（采集器实例键）**:
-Hub 为需要幂等发现的 Collector Instance 分配的不透明、不可变稳定槽位；它在同一 `PackageId + Subject` 内唯一，不替代 CollectorInstanceId。ExternalHost adapter 可以用 App 形成 Instance Key，使同一 App 重连时回到原 Instance，而不是把 App 身份塞进可变配置。
+Hub 为需要幂等发现的 Collector Instance 分配的不透明、不可变稳定槽位；它在同一 `PackageId + Subject` 内唯一，不替代 CollectorInstanceId。App 和 External Host Identity 不充当 Instance Key；它们属于 Instance 下的实际运行与 Stream 身份。
 _Avoid_: 第二个 CollectorInstanceId、Instance Config、把 Source 当作 Instance Key
 
 **Collector Activation（采集器激活）**:
-Collector Instance 的一次协议会话和实际运行身份；重启、重连、成功或失败都不改写 Instance 身份。ExternalHost Instance 可以同时拥有多个 Activation，各自代表一份独立运行的外部宿主；同一 External Host Identity 的新 Activation 只接替该 Host 的旧会话，不影响同 App 的其他 Host 或其他 App Instance。
+Collector Instance 的一次协议会话和实际运行身份；重启、重连、成功或失败都不改写 Instance 身份。ExternalHost Instance 可以同时拥有多个 Activation，各自代表一份独立运行的外部宿主；同一 External Host Identity 的新 Activation 只接替该 Host 的旧会话，不影响同 Instance 下的其他 Host。
 _Avoid_: Run（含义过泛）、Active（后者是按 Source 流量推断的既有状态）
 
 **Collector Activation Lifetime（采集器激活生命周期）**:
@@ -125,8 +125,12 @@ _Avoid_: Hub 内置第三方登录流程、把登录设为 Dashboard 的强制�
 _Avoid_: Instance Config、Runtime State、在 Package 目录保存 cookie
 
 **External Host Identity（外部宿主身份）**:
-ExternalHost Collector 中一份独立宿主安装的内部稳定身份，例如某个浏览器 Profile 中加载的扩展；它由宿主首次运行时生成并本地持久化，区分并发 Activation，并使同一 App Instance 下的各 Host 拥有独立 Fact Stream、writer 与重传连续性。宿主数据被清理或重装后产生新的 External Host Identity 与 Stream，不根据 Profile 名、路径或进程猜回旧身份；旧 Stream 只变为不活跃。它不形成独立 Collector Instance、启用意图或主 UI 管理项。
+ExternalHost Collector 中一份独立宿主安装的内部稳定身份，例如某个浏览器 Profile 中加载的扩展；它由外部宿主首次运行时生成并本地持久化，区分并发 Activation，并使同一 Collector Instance 下的各 Host 拥有独立 Fact Stream、writer 与重传连续性。宿主数据被清理或重装后产生新的 External Host Identity 与 Stream，不根据 Profile 名、路径或进程猜回旧身份；旧 Stream 只变为不活跃。它不形成独立 Collector Instance、启用意图或主 UI 管理项。
 _Avoid_: Collector Instance、Browser Profile 设置、把外部宿主身份暴露为用户必须管理的采集器
+
+**Waiting for External Host（等待外部宿主）**:
+ExternalHost Collector 的 Installation 与 Desired Instance 已存在，但当前没有连接中的 External Host Activation。它是 Instance 层的如实等待状态，不是 Activation 的启动阶段或运行故障；管理界面简写为“等待连接”。
+_Avoid_: Starting、Failed、Not Installed
 
 **Browser Window Activity（浏览器窗口活动）**:
 browser Collector 对每个浏览器窗口当前所选 active tab 的如实观察，不判断该窗口或浏览器是否处于操作系统前台。多个窗口、浏览器或 Profile 的活动可以合法重叠；它们是对应 App 的内部细节，不是可求和的用户注意力或使用时长。
@@ -182,9 +186,9 @@ _Avoid_: Desktop Release、Update Offer、把 release.json 当作 mutable curren
 Collector Runtime 协调 Collector Activation 的方式，可以是进程内、托管进程或外部宿主；它不表示 Runtime 一定持有对应制品。
 _Avoid_: Lifecycle Driver（未区分制品交付）、假定 Hub 能直接停止所有 Collector
 
-**App Hint（应用提示）**:
-ExternalHost Collector 上报的平台无关产品 slug（如 `edge`）。对应 Collector 的 adapter 用非空、稳定的 App Hint 选择 Collector Instance；宿主只提供 `ICollectorAppHintResolver` seam 用于把 slug 解析为本机可观测的 AppIdentity（Windows 进程或 macOS bundle），默认实现 `NullCollectorAppHintResolver` 不解析——具体产品的进程名与 bundle id 知识随对应 Collector 一起离开宿主（ADR-049）。暂时无法解析的稳定 slug 仍形成独立 App Instance 并保留事实，只显示身份未解析，不按名字猜成其他 App。缺失或不稳定的 App Hint 无法形成 Instance 身份，拒绝 Activation。`AppHint` 是 binding/Stream 维度，不进入 canonical Fact payload 或 Analytics 事实；Browser 本地 outbox 可为迁移恢复暂存它。
-_Avoid_: 让 Collector 写 `win:`/`mac:` 身份；把 App Hint 当作 App Key 或 AppIdentity；把某个产品的进程名/bundle id 写进宿主
+**External Host App Identity（外部宿主应用身份）**:
+ExternalHost Collector 对承载自身的应用所作的稳定平台身份声明，以 `AppIdentityKey` 表达。Collector 自己拥有识别知识并随 `hello` 和 Stream dimension 直接提供该值；Host 不把产品 slug 转译成平台身份。它与 External Host Identity 一起确定 Stream 身份，但不形成 Collector Instance。Backend 暂时不认识某个 Key 时仍保留真实值，不阻断事实。
+_Avoid_: App Hint、Host 侧产品映射、用显示名称或进程名代替稳定 AppIdentityKey
 
 **Upload Stream（上传流）**:
 泛化的出网流（ADR-020/022）：绑定一个出网源（IUploadSource），drain 一轮 = 先重传离线缓存，再取 fresh 出网——送达，或落离线缓存，否则自动重注入源（重注入不回滚更新的快照）。"批次不蒸发"是流自持的不变量。compact 为按流策略（segments 出网前压缩快照，input-events 不压缩）。segments 与 input-events 各一实例。
@@ -231,7 +235,7 @@ _Avoid_: 用一个 bool 同时表示用户开关、权限与实际可用性
 **采集器页（Collector page）**:
 共享桌面 UI 中管理采集器的页面，并容纳采集器设置。当前实现只显示 System BuiltIn：system 采集器不可停用，前台应用采集作为无开关的固定基线，其他可选观测深度作为独立采集能力管理。每项能力的开关、实际状态、权限恢复动作与说明都归属 System 条目，不另建脱离所有者的全局“采集能力”区块。窗口活动采集是一个用户能力，不把 focused-window 切换与原始标题拆成两个开关。
 
-通用 ExternalHost / Instance UI 尚未实现；Browser 当前也没有宿主接入路径、卡片、侧载引导或诊断区（ADR-049）。未来若增加外部 Collector 管理 UI，必须由真实 Installation / Instance / Runtime State 驱动条目和状态；Package、Activation、External Host Identity、目录与协议错误可进入高级诊断。某个 ExternalHost Collector 按 App 分 Instance 时，主卡与 App 子项的呈现规则随该 Collector 的 adapter 一起回来，不预先在宿主 UI 里为它留位置。
+通用 ExternalHost / Instance UI 尚未实现；Browser 当前也没有宿主接入路径或卡片（ADR-049）。未来的外部 Collector 管理 UI 由 Catalog、Installation、Instance 与 Runtime State 驱动通用条目：主卡只显示安装事实、“等待连接”、“运行中 · N 个连接”或简短错误，Activation、External Host Identity 与协议错误只进入高级诊断。Host 不提供 Package 人工加载说明、打开目录或具名 App 子项（ADR-051）。
 _Avoid_: 采集器栏、Collector panel、为某个具体 Collector 在宿主 UI 写死卡片
 
 **Setup**:
