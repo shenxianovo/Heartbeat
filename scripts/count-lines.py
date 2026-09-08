@@ -213,9 +213,10 @@ def count_effective_lines(path: Path, language: str) -> int:
     return effective_lines
 
 
-def collect(root: Path) -> tuple[dict[str, Counts], int]:
+def collect(root: Path) -> tuple[dict[str, Counts], int, dict[str, list[str]]]:
     results: dict[str, Counts] = defaultdict(Counts)
     unsupported_files = 0
+    unsupported_by_extension: dict[str, list[str]] = defaultdict(list)
 
     for path in included_files(root):
         if not path.is_file():
@@ -224,6 +225,8 @@ def collect(root: Path) -> tuple[dict[str, Counts], int]:
         language = LANGUAGES.get(path.suffix.lower())
         if language is None:
             unsupported_files += 1
+            extension = path.suffix.lower() if path.suffix else "[no_ext]"
+            unsupported_by_extension[extension].append(str(path.relative_to(root)))
             continue
 
         lines = count_effective_lines(path, language)
@@ -235,10 +238,15 @@ def collect(root: Path) -> tuple[dict[str, Counts], int]:
             counts.production_lines += lines
             counts.production_files += 1
 
-    return dict(results), unsupported_files
+    return dict(results), unsupported_files, unsupported_by_extension
 
 
-def as_json(root: Path, results: dict[str, Counts], unsupported_files: int) -> str:
+def as_json(
+    root: Path,
+    results: dict[str, Counts],
+    unsupported_files: int,
+    unsupported_by_extension: dict[str, list[str]],
+) -> str:
     languages = {}
     totals = Counts()
 
@@ -275,11 +283,22 @@ def as_json(root: Path, results: dict[str, Counts], unsupported_files: int) -> s
             },
         },
         "unsupported_files": unsupported_files,
+        "unsupported_files_by_extension": {
+            ext: {
+                "count": len(paths),
+                "files": sorted(paths),
+            }
+            for ext, paths in sorted(unsupported_by_extension.items())
+        },
     }
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
-def as_table(results: dict[str, Counts], unsupported_files: int) -> str:
+def as_table(
+    results: dict[str, Counts],
+    unsupported_files: int,
+    unsupported_by_extension: dict[str, list[str]],
+) -> str:
     headers = ("Language", "Production", "Test", "Total", "Files")
     rows: list[tuple[str, str, str, str, str]] = []
     totals = Counts()
@@ -337,18 +356,30 @@ def as_table(results: dict[str, Counts], unsupported_files: int) -> str:
         output.append(
             f"\nSkipped {unsupported_files:,} files with unsupported extensions."
         )
+        for extension in sorted(unsupported_by_extension):
+            files = sorted(unsupported_by_extension[extension])
+            output.append(f"\n{extension}: {len(files)} file(s)")
+            for item in files:
+                output.append(f"  - {item}")
     return "\n".join(output)
 
 
 def main() -> int:
     args = parse_args()
     root = repository_root(args.root.resolve())
-    results, unsupported_files = collect(root)
+    results, unsupported_files, unsupported_by_extension = collect(root)
 
     if args.json:
-        print(as_json(root, results, unsupported_files))
+        print(
+            as_json(
+                root,
+                results,
+                unsupported_files,
+                unsupported_by_extension,
+            )
+        )
     else:
-        print(as_table(results, unsupported_files))
+        print(as_table(results, unsupported_files, unsupported_by_extension))
     return 0
 
 

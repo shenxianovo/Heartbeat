@@ -9,17 +9,60 @@ Builds and starts compose.local.yml. The backend auto-migrates the database on s
 so this works both with an empty database and one seeded by refresh-local-data.ps1.
 
 Prerequisites: Docker Desktop running, .env.local exists (copy from .env.local.example).
+Use -Desktop to also run the native development Desktop in the foreground, or -DesktopOnly
+to use an existing local stack without invoking Docker. Desktop uses this checkout's
+.local/desktop Profile and http://localhost:8080, and opens its settings window.
+Exit it from its menu; Compose stays running.
 #>
 [CmdletBinding()]
 param(
     [string] $ComposeFile,
-    [string] $EnvFile
+    [string] $EnvFile,
+    [switch] $Desktop,
+    [switch] $DesktopOnly
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$desktopProject = $null
+if ($Desktop -or $DesktopOnly) {
+    if ($IsWindows) {
+        $desktopProject = Join-Path $repositoryRoot 'collection/desktop/Heartbeat.Desktop.Windows/Heartbeat.Desktop.Windows.csproj'
+    }
+    elseif ($IsMacOS) {
+        $desktopProject = Join-Path $repositoryRoot 'collection/desktop/Heartbeat.Desktop.Mac/Heartbeat.Desktop.Mac.csproj'
+    }
+    else {
+        throw 'Desktop requires Windows or macOS.'
+    }
+    $null = Get-Command dotnet -CommandType Application -ErrorAction Stop
+}
+
+function Start-DevelopmentDesktop {
+    $dataDirectory = Join-Path $repositoryRoot '.local/desktop'
+    Write-Host "Starting development Desktop: $dataDirectory -> http://localhost:8080"
+    Write-Host 'Exit Desktop from its menu to stop it; Compose services remain running.'
+    $previousApiBaseUrl = $env:HEARTBEAT_API_BASE_URL
+    $previousShowSettings = $env:HEARTBEAT_SHOW_SETTINGS_ON_START
+    try {
+        $env:HEARTBEAT_API_BASE_URL = 'http://localhost:8080'
+        $env:HEARTBEAT_SHOW_SETTINGS_ON_START = '1'
+        & dotnet run --project $desktopProject -- --data-directory $dataDirectory
+        $desktopExitCode = $LASTEXITCODE
+    }
+    finally {
+        $env:HEARTBEAT_API_BASE_URL = $previousApiBaseUrl
+        $env:HEARTBEAT_SHOW_SETTINGS_ON_START = $previousShowSettings
+    }
+    exit $desktopExitCode
+}
+
+if ($DesktopOnly) {
+    Start-DevelopmentDesktop
+}
+
 if ([string]::IsNullOrWhiteSpace($ComposeFile)) {
     $ComposeFile = Join-Path $repositoryRoot 'compose.local.yml'
 }
@@ -91,3 +134,6 @@ if (-not $analyticsReady -or -not $hubReady) {
 }
 
 Write-Host "Local stack ready: http://localhost:8080"
+if ($Desktop) {
+    Start-DevelopmentDesktop
+}

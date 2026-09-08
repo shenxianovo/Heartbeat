@@ -10,21 +10,26 @@ dotnet run --project tools/Heartbeat.Verification -- run desktop-main
 需要 .NET 10、正在运行的 Docker，以及已填写的 `.local/heartbeat-headless.json`；配置准备见
 [开发指南](../../docs/development.md)。不需要先启动本地开发栈。
 
-命令只读取该配置的 `apiKey` 和 `management`，不会使用其中的数据目录、端口、上传周期或安装
-状态。API key 必须属于 `management.ownerSubject`。Auth 继续使用线上服务，用户名仅在临时
+配置仍须满足 Headless 的完整文件结构（包括必填的 `dataDirectory`）；运行只沿用 `apiKey` 和
+`management`，不会使用原数据目录、端口、上传周期或安装状态。API key 必须属于
+`management.ownerSubject`。Auth 继续使用线上服务，用户名仅在临时
 数据库中供给为本次运行的 private owner 别名，不修改线上账号。
 
 ## 执行内容
 
-1. 为本次运行创建目录，构建当前源码的 Analytics、Headless 和 Reference Collector。
+1. 为本次运行创建目录，构建或选择 Analytics、所选宿主和 Reference Collector 制品。
 2. 启动独立 PostgreSQL 容器及真实 Analytics 进程，由 Analytics 正常执行 migration。
-3. 用正式 Installation/Runtime 模块准备已安装 Reference 和 Account Instance，供给本地 owner；
+3. 用正式 Installation/Runtime 模块准备已安装 Reference 和对应 Subject 的 Instance，供给本地 owner；
    确认数据库与查询 API 均没有待测 Segment。
-4. 启动真实 Headless，由它恢复并启动 Reference 子进程。Collector Protocol、缓存、上传与
+4. 启动所选真实宿主，由它恢复并启动 Reference 子进程。Collector Protocol、缓存、上传与
    Analytics JWT 校验使用正常运行路径。
 5. 查询正式 Segment API，核对唯一记录的 Source、IdentityKey、标题、起止和时长；额外核对
    持久化 Device 的 owner 与 Subject 映射。原始 FactId 与投影后的 Segment Id 分别理解。
 6. 保存证据并回收本次进程、容器、数据库与私密配置。
+
+`headless-main` 使用 Headless 与 Account Subject；`desktop-main` 使用原生 Desktop 与真实 Machine
+Subject，额外检查 UI ready、安装能力关闭及正常退出。两者均断言 Reference 的固定 Segment，
+尚不验证真实 System 窗口/输入操作或 Dashboard 展示。Desktop 环境要求见下方。
 
 ## 参数与结果
 
@@ -63,10 +68,7 @@ Desktop 场景还单独检查正常退出码为 0；这不替代安装更新的�
 
 ## 扩展与维护
 
-`VerificationCommand` 负责阶段顺序和最终结果；`VerificationLane` 负责本次资源；
-`MainPathScenario` 负责前置数据与断言；`RunReport` 负责证据。新增服务组合沿用资源和报告，
-新增检查独立表达自己的预期。当前提供 `headless-main` 和 `desktop-main`；Registry
-下载安装、Dashboard 与服务内部检查仍不计入当前覆盖范围。
+实现责任与覆盖边界统一见[主链路自动验收设计](../../docs/architecture/automated-verification-design.md)。
 
 POSIX 服务由独立 session 的监督进程持有，服务提前退出后仍可回收其遗留子进程；父验证命令
 的 stdin 管道关闭也会触发服务组停止。Windows 使用进程树终止；目前真实验收证据来自 macOS，
@@ -79,7 +81,6 @@ dotnet test tools/Heartbeat.Verification.Tests
 ```
 
 它们随 solution 的 `dotnet test` 执行。真实泳道单独按需调用，后续 CI 可以复用同一命令。
-设计边界见[主链路自动验收设计](../../docs/architecture/automated-verification-design.md)。
 
 ## Desktop 和已有制品
 
@@ -114,8 +115,9 @@ dotnet .local/verification-runner/Heartbeat.Verification.dll run headless-main \
 服务项目验证制品选择，停在缺失 Reference 制品的明确阻塞，避免单元回归访问线上 Auth。
 
 `--artifact` 可重复，服务名为 `analytics`、`headless`、`desktop`、`reference`；只接受本场景
-使用的服务。PATH 指向可执行文件/DLL，Desktop 也接受 `.app`。报告记录原路径、版本和整个
-所在制品目录的 SHA-256；请提供独立且稳定的制品目录。Windows 传 `.exe`，macOS 传 `.app`
+使用的服务。PATH 指向可执行文件/DLL，Desktop 也接受 `.app`。报告记录解析后的入口绝对路径、
+版本和整个制品目录的 SHA-256；`.app` 的入口在 `Contents/MacOS/`，hash 覆盖整个 `.app`。
+请提供独立且稳定的制品目录。Windows 传 `.exe`，macOS 传 `.app`
 或 apphost。旧制品若不支持 Profile 和真实身份报告，会在准备阶段失败，不能把它当作通过。
 验收不会安装或替换日常客户端，Setup、vA→vB 更新及真实权限仍单独验收。
 

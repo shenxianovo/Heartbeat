@@ -47,6 +47,19 @@ Get-Help ./scripts/refresh-local-data.ps1 -Detailed
 ./scripts/refresh-local-data.sh --help
 ```
 
+macOS/Linux 脚本下载时显示已接收 MiB、平均速度和耗时。快照由远端 `pg_dump` 实时压缩，
+下载前不知道总大小，因此不显示百分比或预计剩余时间；SSH 密码仍在终端交互输入。
+
+`refresh-local-data.sh` 会暂停本地写入服务，在同一个 PostgreSQL 实例中从 `template0`
+创建唯一命名的 `heartbeat_refresh_*` 临时库。恢复与 migration 兼容性检查完成后，
+在同一事务内把原库改名为 `heartbeat_before_refresh_*`、临时库改名为 `heartbeat`。
+后端 `/health` 成功并重新启动原先运行的服务后，才删除旧库；整个流程不移动数据库目录。
+
+中途失败或收到 Ctrl+C 时，尝试还原旧库名称并重新启动原先运行的服务。
+若回滚失败，会打印需要检查的数据库名称；处理前应保持应用停机。强制杀进程或断电无法
+触发回滚，可在本地 PostgreSQL 的 `pg_database` 中找到暂存库与旧库。它们包含私密数据，
+应在确认恢复后清理。PowerShell 脚本暂未增加进度和暂存库切换。
+
 完成标准：脚本成功完成 migration 兼容性检查，本地栈重新启动，且
 <http://localhost:8080> 能读取恢复后的历史数据。
 

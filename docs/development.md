@@ -42,21 +42,55 @@ macOS/Linux：
 ./scripts/start-local.sh
 ```
 
-打开 <http://localhost:8080>。需要桌面采集时另启 Agent：
+打开 <http://localhost:8080>。需要一起启动本地开发 Desktop 时使用：
 
 Windows：
 
 ```powershell
-$env:HEARTBEAT_API_BASE_URL = "http://localhost:8080"
-dotnet run --project collection/desktop/Heartbeat.Desktop.Windows
+./scripts/start-local.ps1 -Desktop
 ```
 
 macOS：
 
 ```bash
-export HEARTBEAT_API_BASE_URL=http://localhost:8080
-dotnet run --project collection/desktop/Heartbeat.Desktop.Mac/Heartbeat.Desktop.Mac.csproj
+./scripts/start-local.sh --desktop
 ```
+
+开发栈已经运行，只启动或重启客户端：macOS 使用 `./scripts/start-local.sh --desktop-only`，
+Windows 使用 `./scripts/start-local.ps1 -DesktopOnly`。此入口不调用 Docker，也不要求 `.env.local`。
+Linux 目前只支持开发栈，没有原生 Desktop。
+
+这两个选项都从源码运行客户端并自动打开设置窗口，固定连接 `http://localhost:8080`，使用当前 checkout 的
+`.local/desktop` 作为持久 Desktop Profile；不受调用时的工作目录或已有 API 地址环境变量影响。
+首次使用需要在开发客户端中配置 API key，鉴权仍走线上 Auth；配置、Collector、缓存与日志保留在
+该目录。独立 Profile 可以与日常客户端并行运行，不接管安装版的自启动或更新。
+它仍对应本机 Machine，不会创建虚拟设备。
+
+同一 checkout 的开发客户端只能运行一个。再次启动若提示 `The Desktop data directory is already in use.`，
+先从已有开发客户端菜单退出，再重启；不要删除锁文件。直接使用 `dotnet run` 时也必须显式隔离目录，例如：
+
+```bash
+HEARTBEAT_API_BASE_URL=http://localhost:8080 \
+  dotnet run --project collection/desktop/Heartbeat.Desktop.Mac/Heartbeat.Desktop.Mac.csproj \
+  -- --data-directory "$PWD/.local/desktop"
+```
+
+上面的手动命令需在仓库根目录执行；macOS 默认只驻留菜单栏，点击顶部 Heartbeat 图标打开窗口，
+或加环境变量 `HEARTBEAT_SHOW_SETTINGS_ON_START=1` 在启动时打开。仅设置 API 地址不会隔离 Profile，省略 `--data-directory`
+会使用日常客户端的默认目录。ExternalHost loopback 监听沿用客户端的端口范围探测；开发 Profile
+中的可选 Collector 需要单独安装和连接。
+
+若 token 交换持续超时，可以先对比 IPv4/IPv6 连通性：
+
+```bash
+curl -4 --connect-timeout 5 --max-time 12 -o /dev/null -w '%{http_code}\n' https://auth.shenxianovo.com/.well-known/openid-configuration
+curl -6 --connect-timeout 5 --max-time 12 -o /dev/null -w '%{http_code}\n' https://auth.shenxianovo.com/.well-known/openid-configuration
+```
+
+若只有 IPv6 连接超时，可先退出开发 Desktop，再临时用
+`DOTNET_SYSTEM_NET_DISABLEIPV6=1 ./scripts/start-local.sh --desktop-only` 绕行 IPv4。
+此变量只影响该次启动的进程，不修改系统网络配置，也不作为脚本默认值；网络路径恢复后去掉它。
+Auth 与本地 Analytics 地址是两个独立配置，连接本地 Analytics 仍需访问线上 Auth。
 
 Browser Collector 见其 [README](../collection/collectors/Heartbeat.Collector.Browser/README.md)。
 
@@ -85,7 +119,7 @@ dotnet run --project tools/Heartbeat.Verification -- run desktop-main
 ```
 
 命令读取 `.local/heartbeat-headless.json` 的 API key 与管理身份配置，Auth 使用线上服务；自动构建
-并启动 Reference Collector、Headless、Analytics 与独立 PostgreSQL，核对指定 Segment 到达后清理。
+并启动 Reference Collector、所选 Headless/Desktop 宿主、Analytics 与独立 PostgreSQL，核对指定 Segment 到达后清理。
 每次使用新的数据目录和数据库，报告与日志保留在 `.local/verification/<run-id>/`。它不要求先运行
 `start-local`，也不使用或清空现有开发栈数据。参数、断链演练和扩展方式见
 [验证命令说明](../tools/Heartbeat.Verification/README.md)。
@@ -97,6 +131,8 @@ docker compose -f compose.local.yml --env-file .env.local down
 ```
 
 本地数据库位于 `.local/postgres-data`；`down/up` 不会清空它。
+开发 Desktop 在启动它的终端前台运行，从客户端菜单退出；关闭 Compose 不会关闭 Desktop，
+退出 Desktop 也不会停止 Compose。下次启动会继续使用原来的 `.local/desktop`。
 
 ## 按需阅读
 

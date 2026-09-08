@@ -16,7 +16,8 @@ if (args.Length == 0 || args.Contains("--help") || args.Contains("-h"))
           dotnet .local/verification-runner/Heartbeat.Verification.dll run <headless-main|desktop-main> [options]
 
           --config PATH             Existing Headless config (default: .local/heartbeat-headless.json).
-                                    Only apiKey and management settings are read; its data is never used.
+                                    Requires the full config structure, including dataDirectory.
+                                    Only apiKey and management are reused; the configured data directory is never used.
           --artifact SERVICE=PATH   Use existing analytics/headless/desktop/reference binary (Desktop also accepts .app).
                                     Skips that service's publish. Use the prepared runner to avoid source builds.
                                     Report includes version and tree hash; omitted services are published from source.
