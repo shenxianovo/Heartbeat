@@ -46,6 +46,79 @@ public class RecapProjectionTests
         ]
     };
 
+    [Theory]
+    [InlineData(0, 10, 5, 15, 15)]
+    [InlineData(0, 10, 0, 10, 10)]
+    [InlineData(0, 15, 5, 10, 15)]
+    [InlineData(0, 10, 0, 15, 15)]
+    [InlineData(0, 10, 10, 15, 15)]
+    [InlineData(0, 10, 15, 20, 15)]
+    public void PluginSegments_OverlappingSameReading_CountTimeOnce(
+        int firstStart, int firstEnd, int secondStart, int secondEnd, int expectedMinutes)
+    {
+        RecapSegmentInput[] segments =
+        [
+            Browser("example.com/page", "Page", Day.AddHours(10).AddMinutes(firstStart), Day.AddHours(10).AddMinutes(firstEnd)),
+            Browser("example.com/page", "Page", Day.AddHours(10).AddMinutes(secondStart), Day.AddHours(10).AddMinutes(secondEnd)),
+        ];
+        var result = Project(segments);
+
+        Assert.Contains($"example.com/page — 合计 {expectedMinutes}分，2 次｜其中: Page {expectedMinutes}分", result.Digest);
+        Assert.Equal(result.Digest, Project(segments.Reverse().ToArray()).Digest);
+    }
+
+    [Fact]
+    public void PluginSegments_OverlappingReadings_UnionEachDepthWithoutCombiningSiblingPaths()
+    {
+        var tables = CollectorDeclarationTestData.With(CollectorDeclarationTestData.Create("browser", 2,
+            CollectorDeclarationTestData.Layer("site", "attributes.site"),
+            CollectorDeclarationTestData.Layer("url", DepthSlots.IdentityKey),
+            CollectorDeclarationTestData.Layer("tab_title", DepthSlots.Title)));
+        RecapSegmentInput[] segments =
+        [
+            Browser("example.com/a", "Page", Day.AddHours(10), Day.AddHours(10).AddMinutes(10)),
+            Browser("example.com/a", "Page", Day.AddHours(10).AddMinutes(5), Day.AddHours(10).AddMinutes(15)),
+            Browser("example.com/b", "Page", Day.AddHours(10).AddMinutes(10), Day.AddHours(10).AddMinutes(20)),
+        ];
+
+        var result = RecapProjection.Project(
+            segments.Select(s => s with { AttributesJson = """{"site":"example.com"}""" }).ToArray(),
+            Window, TimeSpan.Zero, depthTables: tables);
+
+        Assert.Contains("example.com — 合计 20分，3 次", result.Digest);
+        Assert.Contains("example.com/a 15分｜其中: Page 15分", result.Digest);
+        Assert.Contains("example.com/b 10分｜其中: Page 10分", result.Digest);
+    }
+
+    [Fact]
+    public void PluginSegments_FoldedTail_UsesUnionAcrossHiddenReadings()
+    {
+        var segments = Enumerable.Range(0, 4)
+            .Select(i => Browser("example.com", $"Long {i}", Day.AddHours(10), Day.AddHours(10).AddMinutes(20)))
+            .Concat([
+                Browser("example.com", "Short A", Day.AddHours(10), Day.AddHours(10).AddMinutes(10)),
+                Browser("example.com", "Short B", Day.AddHours(10).AddMinutes(5), Day.AddHours(10).AddMinutes(15)),
+            ]).ToArray();
+
+        var result = Project(segments);
+
+        Assert.Contains("example.com — 合计 20分，6 次", result.Digest);
+        Assert.Contains("其他 2 个 15分", result.Digest);
+    }
+
+    [Fact]
+    public void PluginSegments_UnionRespectsWindowGapsAndPointVisits()
+    {
+        var result = Project(
+            Browser("example.com", "Page", Day.AddMinutes(-10), Day.AddMinutes(10)),
+            Browser("example.com", "Page", Day, Day.AddMinutes(5)),
+            Browser("example.com", "Page", Day.AddHours(12), Day.AddHours(12)),
+            Browser("example.com", "Page", Day.AddDays(1).AddMinutes(-10), Day.AddDays(1).AddMinutes(10)));
+
+        Assert.Contains("example.com — 合计 20分，4 次｜其中: Page 20分", result.Digest);
+        Assert.Equal(Window.UtcEnd, result.SegmentWatermarkUtc);
+    }
+
     [Fact]
     public void EmptyDay_IsEmpty_WatermarkAtWindowStart()
     {

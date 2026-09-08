@@ -1,6 +1,6 @@
 # 01: 观测深度 —— digest 长成深度树
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -22,7 +22,7 @@ Status: ready-for-agent
 ## Acceptance criteria
 
 - [x] 读数提取纯函数单测:system 两层、browser L1 双读数、缺失字段回退
-- [ ] 深度树分解单测:去重聚合、并集时长不双计、展开门槛、子数封顶、尾部折叠
+- [x] 深度树分解单测:去重聚合、并集时长不双计、展开门槛、子数封顶、尾部折叠
 - [x] 近 14 天高频注释渲染单测
 - [x] 旧标题抽样路径删除,RecapProjectionTests 全部迁移到树断言,服务端套件绿
 
@@ -34,3 +34,9 @@ Status: ready-for-agent
 
 - 2026-07-20 落地:`DepthReadings.For` 纯函数(system 两层、browser L1 双读数、未知源兜底);`RecapProjection` 块内挂 L2 分解(去重+并集时长,展开门槛 600s、封顶 4 条、尾折"其他 N 个"),`MaxTitlesPerBlock` 抽样删除;`recurringReadings` 注释参数(渲染在投影,service 接线留 issue 03 发问 prompt 需要时)。测试 +12(DepthReadingsTests 6 + RecapProjectionTests 深度树 6),套件 117/117 绿。
 - 2026-08-29 清理审计：读数提取已由 ADR-030 演进为声明驱动，旧 browser L1 双读数形状由当前分层声明取代；高频注释、剪枝与旧抽样路径删除均有现行测试。唯一未完成项是重叠区间并集：`RecapProjection.Insert` 直接累加节点秒数，同一读数值的重叠 plugin 段会重复计时；现有 `Breakdown_ExpandedBlock_DistinctTitlesWithUnionDurations` 未覆盖重叠输入。
+- 2026-09-08 closeout：与 collector-depth-declaration issue 02 的同一计时缺陷一起修复。
+  深度节点保留裁剪后的段并按时间并集计算时长，折叠尾部也按隐藏节点的区间并集汇总；访问次数仍为段数。
+  最小重叠用例先失败（两段各 10 分钟、重叠 5 分钟应为 15 分钟），扩展后的 9 个用例修复前 7 失败、2 通过，
+  修复后投影测试 34/34 通过，覆盖重复、包含、相邻、空隙、输入倒序、多层路径、尾部折叠、跨窗裁剪和点事件。
+  `dotnet test server/Heartbeat.Server.Tests/Heartbeat.Server.Tests.csproj --no-restore --verbosity minimal`
+  → 481 passed / 0 failed / 0 skipped。既有其余验收证据沿用上次审计；本次不改变原始事实、Report 或 LLM 调用契约。

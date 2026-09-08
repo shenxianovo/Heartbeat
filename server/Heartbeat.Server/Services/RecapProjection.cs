@@ -203,9 +203,25 @@ namespace Heartbeat.Server.Services
         /// </summary>
         private sealed class DepthNode
         {
-            public double Seconds;
-            public int Visits;
+            public List<ClippedSegment> Segments { get; } = [];
+            public double Seconds => UnionSeconds(Segments);
+            public int Visits => Segments.Count;
             public Dictionary<string, DepthNode> Children { get; } = [];
+        }
+
+        private static double UnionSeconds(IEnumerable<ClippedSegment> segments)
+        {
+            var seconds = 0d;
+            DateTimeOffset? coveredEnd = null;
+            foreach (var segment in segments.OrderBy(s => s.Start))
+            {
+                var start = coveredEnd is { } end && end > segment.Start ? end : segment.Start;
+                if (segment.End > start)
+                    seconds += (segment.End - start).TotalSeconds;
+                if (coveredEnd == null || segment.End > coveredEnd)
+                    coveredEnd = segment.End;
+            }
+            return seconds;
         }
 
         /// <summary>把段插进深度树：按声明层序取每层首读数（分解轴）的值为路径。</summary>
@@ -221,8 +237,7 @@ namespace Heartbeat.Server.Services
                 if (!level.TryGetValue(r.Value, out var next))
                     level[r.Value] = next = new DepthNode();
                 node = next;
-                node.Seconds += c.Seconds;
-                node.Visits += 1;
+                node.Segments.Add(c);
                 level = node.Children;
             }
         }
@@ -360,7 +375,7 @@ namespace Heartbeat.Server.Services
             if (ordered.Count > cap)
             {
                 var rest = ordered.Skip(cap).ToList();
-                shown.Add($"其他 {rest.Count} 个 {FormatDuration(rest.Sum(t => t.Value.Seconds))}");
+                shown.Add($"其他 {rest.Count} 个 {FormatDuration(UnionSeconds(rest.SelectMany(t => t.Value.Segments)))}");
             }
             return $"｜其中: {string.Join(" · ", shown)}";
         }
