@@ -143,7 +143,7 @@ public class AppMergeService(AppDbContext db, TimeProvider? clock = null)
 
         var impactedOwners = (await db.ActivitySegments
                 .Where(x => x.AppId == source.Id || x.AppIdentity != null && x.AppIdentity.AppId == source.Id)
-                .Select(x => x.Device.OwnerId)
+                .Select(x => x.OwnerId)
                 .Distinct()
                 .ToListAsync(cancellationToken))
             .Concat(currentDevices.Select(x => x.OwnerId))

@@ -31,6 +31,7 @@ public sealed class DailyReportHttpTests(PostgresContainerFixture fixture) : Pos
         await db.SaveChangesAsync();
         db.ActivitySegments.Add(new ActivitySegment
         {
+            OwnerId = device.OwnerId,
             Id = Guid.CreateVersion7(),
             DeviceId = device.Id,
             Source = ActivitySources.System,

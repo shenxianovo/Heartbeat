@@ -36,15 +36,25 @@ namespace Heartbeat.Server.Migrations
                     b.Property<string>("Attributes")
                         .HasColumnType("jsonb");
 
-                    b.Property<long>("DeviceId")
+                    b.Property<long?>("DeviceId")
                         .HasColumnType("bigint");
 
                     b.Property<DateTimeOffset>("EndTime")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("FactKey")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("IdentityKey")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("OwnerId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Payload")
+                        .HasColumnType("jsonb");
 
                     b.Property<string>("Source")
                         .IsRequired()
@@ -64,6 +74,9 @@ namespace Heartbeat.Server.Migrations
                     b.HasIndex("AppIdentityId");
 
                     b.HasIndex("DeviceId");
+
+                    b.HasIndex("FactKey")
+                        .IsUnique();
 
                     b.HasIndex("StartTime");
 
@@ -498,6 +511,135 @@ namespace Heartbeat.Server.Migrations
                     b.ToTable("Episodes");
                 });
 
+            modelBuilder.Entity("Heartbeat.Server.Entities.FactGap", b =>
+                {
+                    b.Property<string>("OwnerId")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("StreamId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("GapId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("End")
+                        .HasColumnType("bigint");
+
+                    b.Property<int?>("EstimatedFactsLost")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<long>("Start")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("OwnerId", "StreamId", "GapId");
+
+                    b.ToTable("FactGaps");
+                });
+
+            modelBuilder.Entity("Heartbeat.Server.Entities.FactSchemaRecord", b =>
+                {
+                    b.Property<string>("OwnerId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SchemaId")
+                        .HasColumnType("text");
+
+                    b.Property<int>("SchemaMajor")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DocumentJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("OwnerId", "SchemaId", "SchemaMajor", "Revision");
+
+                    b.ToTable("FactSchemas");
+                });
+
+            modelBuilder.Entity("Heartbeat.Server.Entities.FactStream", b =>
+                {
+                    b.Property<string>("OwnerId")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("StreamId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CollectorInstanceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Dimensions")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("FactKind")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("OutputId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SchemaId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("SchemaMajor")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("SubjectId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("OwnerId", "StreamId");
+
+                    b.HasIndex("OwnerId", "SubjectId");
+
+                    b.ToTable("FactStreams");
+                });
+
+            modelBuilder.Entity("Heartbeat.Server.Entities.FactSubjectRecord", b =>
+                {
+                    b.Property<string>("OwnerId")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("SubjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long?>("DeviceId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("DisplayName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("OwnerId", "SubjectId");
+
+                    b.HasIndex("DeviceId");
+
+                    b.ToTable("FactSubjects");
+                });
+
             modelBuilder.Entity("Heartbeat.Server.Entities.InputEvent", b =>
                 {
                     b.Property<Guid>("Id")
@@ -517,10 +659,16 @@ namespace Heartbeat.Server.Migrations
                     b.Property<short>("EventType")
                         .HasColumnType("smallint");
 
+                    b.Property<Guid?>("FactKey")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTimeOffset>("Timestamp")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("FactKey")
+                        .IsUnique();
 
                     b.HasIndex("DeviceId", "Timestamp");
 
@@ -554,6 +702,79 @@ namespace Heartbeat.Server.Migrations
                         .IsUnique();
 
                     b.ToTable("MutedMatchers");
+                });
+
+            modelBuilder.Entity("Heartbeat.Server.Entities.ObservedFact", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<long?>("End")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("FactId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool?>("IsFinal")
+                        .HasColumnType("boolean");
+
+                    b.Property<long?>("LegacyDeviceId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("LegacyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("LegacyKind")
+                        .HasColumnType("text");
+
+                    b.Property<string>("LegacyRecord")
+                        .HasColumnType("jsonb");
+
+                    b.Property<long?>("ObservedAt")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("OccurredAt")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("OwnerId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Payload")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("RecordState")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("SchemaRevision")
+                        .HasColumnType("integer");
+
+                    b.Property<long?>("Start")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("StreamId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId", "StreamId", "FactId")
+                        .IsUnique();
+
+                    b.HasIndex("OwnerId", "LegacyDeviceId", "LegacyKind", "LegacyId");
+
+                    b.ToTable("Facts");
                 });
 
             modelBuilder.Entity("Heartbeat.Server.Entities.Recap", b =>
@@ -779,15 +1000,20 @@ namespace Heartbeat.Server.Migrations
 
                     b.HasOne("Heartbeat.Server.Entities.Device", "Device")
                         .WithMany()
-                        .HasForeignKey("DeviceId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("DeviceId");
+
+                    b.HasOne("Heartbeat.Server.Entities.ObservedFact", "Fact")
+                        .WithMany()
+                        .HasForeignKey("FactKey")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("App");
 
                     b.Navigation("AppIdentity");
 
                     b.Navigation("Device");
+
+                    b.Navigation("Fact");
                 });
 
             modelBuilder.Entity("Heartbeat.Server.Entities.AppCatalogOverride", b =>
@@ -850,6 +1076,38 @@ namespace Heartbeat.Server.Migrations
                     b.Navigation("RelatedStrand");
                 });
 
+            modelBuilder.Entity("Heartbeat.Server.Entities.FactGap", b =>
+                {
+                    b.HasOne("Heartbeat.Server.Entities.FactStream", "Stream")
+                        .WithMany()
+                        .HasForeignKey("OwnerId", "StreamId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Stream");
+                });
+
+            modelBuilder.Entity("Heartbeat.Server.Entities.FactStream", b =>
+                {
+                    b.HasOne("Heartbeat.Server.Entities.FactSubjectRecord", "Subject")
+                        .WithMany()
+                        .HasForeignKey("OwnerId", "SubjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Subject");
+                });
+
+            modelBuilder.Entity("Heartbeat.Server.Entities.FactSubjectRecord", b =>
+                {
+                    b.HasOne("Heartbeat.Server.Entities.Device", "Device")
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Device");
+                });
+
             modelBuilder.Entity("Heartbeat.Server.Entities.InputEvent", b =>
                 {
                     b.HasOne("Heartbeat.Server.Entities.Device", "Device")
@@ -858,7 +1116,25 @@ namespace Heartbeat.Server.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Heartbeat.Server.Entities.ObservedFact", "Fact")
+                        .WithMany()
+                        .HasForeignKey("FactKey")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Device");
+
+                    b.Navigation("Fact");
+                });
+
+            modelBuilder.Entity("Heartbeat.Server.Entities.ObservedFact", b =>
+                {
+                    b.HasOne("Heartbeat.Server.Entities.FactStream", "Stream")
+                        .WithMany()
+                        .HasForeignKey("OwnerId", "StreamId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Stream");
                 });
 
             modelBuilder.Entity("Heartbeat.Server.Entities.RecurrenceProbe", b =>

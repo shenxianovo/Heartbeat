@@ -1,0 +1,151 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using Heartbeat.Collection.Hub.Collectors.Protocol;
+using Heartbeat.Collection.Hub.Collectors.Packages;
+using Heartbeat.Collection.Hub.Upload;
+using Heartbeat.Core.DTOs.Facts;
+using Serilog;
+
+namespace Heartbeat.Collection.Hub.Collectors.Runtime;
+
+public sealed partial class CollectorRuntime
+{
+    public DeliveryRemainder FactUploadRemainder
+    {
+        get
+        {
+            lock (_gate)
+                return new DeliveryRemainder(
+                    _options.EnableFactUpload
+                        ? _state.Facts.Count(fact => fact.DeliveredContentHash != fact.ContentHash) +
+                          _state.Gaps.Count(gap => !gap.Delivered)
+                        : 0,
+                    0);
+        }
+    }
+
+    /// <summary>Returns a bounded snapshot without releasing durable ownership.</summary>
+    public List<FactUploadItem> ReadPendingFacts()
+    {
+        lock (_gate)
+        {
+            if (!_options.EnableFactUpload) return [];
+            var streams = _state.Streams.ToDictionary(stream => stream.StreamId);
+            var items = new List<FactUploadItem>();
+            // Reserve room for Gaps so a continuous Event stream cannot starve loss reports.
+            foreach (var gap in _state.Gaps.Where(gap => !gap.Delivered).Take(Math.Max(1, _options.MaxFactsPerBatch / 4)))
+                items.Add(new FactUploadItem(UploadStreamDefinition(streams[gap.StreamId]), null,
+                    UploadGap(gap), GapContentHash(gap)));
+            foreach (var fact in _state.Facts.Where(fact => fact.DeliveredContentHash != fact.ContentHash)
+                         .Take(_options.MaxFactsPerBatch - items.Count))
+                items.Add(UploadFact(streams[fact.StreamId], fact));
+            return items;
+        }
+    }
+
+    /// <summary>A late response must never acknowledge a newer local Revision.</summary>
+    public void ConfirmUploadedFacts(IReadOnlyList<FactUploadItem> items)
+    {
+        lock (_gate)
+        {
+            var facts = items.Where(item => item.Fact is not null)
+                .Select(item => (item.Fact!.StreamId, item.Fact.FactId, item.Fact.Revision, item.ContentHash))
+                .ToHashSet();
+            var gaps = items.Where(item => item.Gap is not null)
+                .Select(item => (item.Gap!.StreamId, item.Gap.GapId, item.ContentHash)).ToHashSet();
+            var next = new CollectorRuntimeState
+            {
+                SchemaVersion = _state.SchemaVersion,
+                Instances = [.. _state.Instances], Streams = [.. _state.Streams],
+                ActivationAttemptTombstones = [.. _state.ActivationAttemptTombstones],
+                Facts = _state.Facts.Select(fact => facts.Contains((fact.StreamId, fact.FactId, fact.Revision, fact.ContentHash))
+                    ? fact.ConfirmDelivery() : fact).ToList(),
+                Gaps = _state.Gaps.Select(gap => gaps.Contains((gap.StreamId, gap.GapId, GapContentHash(gap)))
+                    ? gap.ConfirmDelivery() : gap).ToList()
+            };
+            _store.Save(next);
+            _state = next;
+        }
+    }
+
+    private bool HasPendingFactsLocked(Guid instanceId)
+    {
+        var streams = _state.Streams.Where(stream => stream.CollectorInstanceId == instanceId)
+            .Select(stream => stream.StreamId).ToHashSet();
+        return _state.Facts.Any(fact => streams.Contains(fact.StreamId) && fact.DeliveredContentHash != fact.ContentHash) ||
+               _state.Gaps.Any(gap => streams.Contains(gap.StreamId) && !gap.Delivered);
+    }
+
+    private bool CanEvictDeliveredFact(CommittedFactState fact)
+    {
+        if (fact.DeliveredContentHash != fact.ContentHash) return false;
+        var stream = _state.Streams.Single(candidate => candidate.StreamId == fact.StreamId);
+        if (stream.FactKind == FactKind.Segment)
+            return fact.IsFinal || fact.RecordState == FactRecordState.Retracted;
+        var schema = _factSchemasByHash[stream.SchemaCatalog[fact.SchemaRevision]];
+        return fact.RecordState == FactRecordState.Retracted ||
+               schema.EvolutionMode == FactEvolutionMode.ImmutableEvent && !schema.AllowRetraction;
+    }
+
+    private void EnsureUploadGapIdentities()
+    {
+        if (!_options.EnableFactUpload || _state.Gaps.All(gap => gap.GapId != Guid.Empty)) return;
+        var next = _state;
+        foreach (var gap in _state.Gaps.Where(gap => gap.GapId == Guid.Empty))
+            next = next.WithBoundGapIdentity(gap, Guid.CreateVersion7(), awaitingLegacyIdentity: true);
+        // Identity allocation is durable before any upload, so a lost HTTP ACK repeats the same GapId.
+        _store.Save(next);
+        _state = next;
+    }
+
+    private void ObserveCommittedFact(FactStreamState stream, CommittedFactState fact)
+    {
+        if (_segmentSink is not ICollectorFactObserver observer) return;
+        try { observer.Observe(UploadFact(stream, fact)); }
+        catch (Exception exception)
+        {
+            Log.Warning(exception, "Collector host read model failed; durable Fact {FactId} remains accepted", fact.FactId);
+        }
+    }
+
+    private static FactUploadItem UploadFact(FactStreamState stream, CommittedFactState fact) => new(
+        UploadStreamDefinition(stream),
+        new FactSnapshot
+        {
+            StreamId = fact.StreamId, FactId = fact.FactId, Revision = fact.Revision,
+            SchemaRevision = fact.SchemaRevision, RecordState = fact.RecordState == FactRecordState.Present ? "present" : "retracted",
+            ObservedAt = fact.ObservedAt,
+            Start = stream.FactKind == FactKind.Segment ? fact.Start : null,
+            End = stream.FactKind == FactKind.Segment ? fact.End : null,
+            IsFinal = stream.FactKind == FactKind.Segment ? fact.IsFinal : null,
+            OccurredAt = fact.OccurredAt, Payload = fact.Payload?.Clone()
+        }, null, fact.ContentHash);
+
+    private static FactStreamDefinition UploadStreamDefinition(FactStreamState stream) => new()
+    {
+        StreamId = stream.StreamId, CollectorInstanceId = stream.CollectorInstanceId,
+        Subject = new FactSubject
+        {
+            SubjectId = stream.SubjectId, Kind = stream.SubjectKind.ToString().ToLowerInvariant(),
+            HardwareId = stream.SubjectKind == SubjectKind.Machine ? stream.SubjectId.ToString("D") : null
+        },
+        OutputId = stream.OutputId, Source = stream.Source, FactKind = stream.FactKind.ToString().ToLowerInvariant(),
+        SchemaId = stream.SchemaId, SchemaMajor = stream.SchemaMajor,
+        Dimensions = new Dictionary<string, string>(stream.Dimensions, StringComparer.Ordinal),
+        Schemas = stream.SchemaCatalog.OrderBy(pair => pair.Key).Select(pair => new FactSchemaDefinition
+        {
+            Revision = pair.Key, ContentHash = pair.Value,
+            DocumentJson = Encoding.UTF8.GetString(stream.SchemaDocuments[pair.Key])
+        }).ToList()
+    };
+
+    private static FactGapSnapshot UploadGap(CommittedGapState gap) => new()
+    {
+        StreamId = gap.StreamId, GapId = gap.GapId, Start = gap.Start, End = gap.End,
+        Reason = gap.Reason, EstimatedFactsLost = gap.EstimatedFactsLost
+    };
+
+    private static string GapContentHash(CommittedGapState gap) =>
+        "sha256:" + Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(UploadGap(gap))));
+}

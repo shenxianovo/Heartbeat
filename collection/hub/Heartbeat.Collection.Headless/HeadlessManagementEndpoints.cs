@@ -1,4 +1,6 @@
 using Heartbeat.Collection.Hub.Collectors.Packages;
+using Heartbeat.Collection.Hub.Upload;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text.Json.Serialization;
@@ -49,6 +51,12 @@ public static class HeadlessManagementEndpoints
     public static void MapHeadlessManagement(this IEndpointRouteBuilder endpoints)
     {
         var management = endpoints.MapGroup("/hub/api/v1").RequireAuthorization();
+        management.MapGet("/uploads", ([FromServices] UploadStream<FactUploadItem> facts,
+            [FromServices] UploadStatusRegistry status) => Results.Ok(new
+        {
+            Streams = status.Snapshot,
+            facts.Remainder
+        }));
         management.MapGet("/collectors", async (HeadlessCollectorReadModel fleet, CancellationToken cancellationToken) =>
         {
             try { return Results.Ok(await fleet.BrowseAsync(cancellationToken)); }

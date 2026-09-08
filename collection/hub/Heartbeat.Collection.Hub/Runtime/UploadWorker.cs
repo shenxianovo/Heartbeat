@@ -18,14 +18,16 @@ namespace Heartbeat.Collection.Hub.Runtime
         IHubConfiguration configuration,
         IInputEventRecordingPolicy inputRecording,
         DeclarationUplinkService declarationUplink,
-        IHubRuntimeHooks hooks) : PeriodicUploadWorker(() => configuration.Current.UploadInterval), IHostShutdownEvidence
+        IHubRuntimeHooks hooks,
+        UploadStream<FactUploadItem>? factStream = null) : PeriodicUploadWorker(() => configuration.Current.UploadInterval), IHostShutdownEvidence
     {
         public UploadDrainResult<ActivitySegmentItem>? SegmentDrain => segmentStream.LastDrain;
         public UploadDrainResult<InputEventItem>? InputDrain => inputRecording.Enabled ? inputStream.LastDrain : null;
 
         private bool _stopped;
         public DeliveryRemainder ShutdownRemainder => _stopped
-            ? segmentStream.Remainder + inputStream.Remainder : DeliveryRemainder.Unknown;
+            ? segmentStream.Remainder + inputStream.Remainder +
+              (factStream?.Remainder ?? new DeliveryRemainder(0, 0)) : DeliveryRemainder.Unknown;
 
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
@@ -56,9 +58,17 @@ namespace Heartbeat.Collection.Hub.Runtime
                 Log.Warning(ex, "采集器声明上行异常");
             }
 
-            if (inputRecording.Enabled)
+            // Historical pending input remains a delivery responsibility even if new recording is disabled.
+            if (inputRecording.Enabled || factStream is not null)
                 await inputStream.DrainAsync(cancellationToken);
             var segments = await segmentStream.DrainAsync(cancellationToken);
+
+            if (factStream is not null)
+            {
+                var facts = await factStream.DrainAsync(cancellationToken);
+                if (!cancellationToken.IsCancellationRequested)
+                    await hooks.SegmentsDrainedAsync(FactUploadReadModel.Segments(facts.Items), cancellationToken);
+            }
 
             if (!cancellationToken.IsCancellationRequested)
                 await hooks.SegmentsDrainedAsync(segments.Items, cancellationToken);

@@ -120,6 +120,35 @@ public class ObservationDepthTests
     }
 
     [Fact]
+    public void CanonicalFactPayload_DrivesDeclaredReadingsAndPreservesLegacyMatcherSlots()
+    {
+        const string payload = """{"identityKey":"https://example.com/docs","title":"Example Docs","attributes":{"site":"example.com","url":"https://example.com/docs?q=original#section"}}""";
+        var tables = new DepthTables([new CollectorDeclarationDto
+        {
+            Source = "browser",
+            Version = 3,
+            Layers =
+            [
+                new() { Readings = [new() { Name = "site", From = "attributes.site" }] },
+                new() { Readings = [new() { Name = "url", From = "payload.attributes.url" }] },
+                new() { Readings = [new() { Name = "tab_title", From = "payload.title" }] },
+            ]
+        }]);
+
+        var readings = tables.ReadingsFor("browser", null, "old title", "page",
+            """{"site":"wrong.example","url":"https://wrong.example"}""", payload);
+
+        Assert.Equal(new DepthReading[]
+        {
+            new(1, "site", "example.com"),
+            new(2, "url", "https://example.com/docs?q=original#section"),
+            new(3, "tab_title", "Example Docs")
+        }, readings);
+        Assert.Null(DepthSlots.Resolve("payload.attributes.missing", null, null, "page",
+            """{"missing":"stale"}""", payload));
+    }
+
+    [Fact]
     public void DescribeForPrompt_RendersDeclaredVocabulary()
     {
         var tables = CollectorDeclarationTestData.With(CollectorDeclarationTestData.BrowserV1());

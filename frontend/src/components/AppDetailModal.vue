@@ -81,21 +81,30 @@ const viewBounds = computed(() => {
   return end > start ? { start, end } : null
 })
 
-// 单设备和多设备使用同一套分组、轨道渲染；只有多组时显示设备名。
-const deviceGroups = computed(() => {
+// Machine 使用既有 Device 身份；Account/Person 用真正的 Subject，不能合进“设备 0”。
+const subjectGroups = computed(() => {
   const vb = viewBounds.value
   if (!vb) return []
-  const ids = new Set([...systemSegments.value, ...pluginSegments.value].map(s => s.deviceId ?? 0))
-  const grouped = props.deviceId === 0 && ids.size > 1
-  return (grouped ? [...ids].sort((a, b) => a - b) : [props.deviceId]).map(id => ({
-    deviceId: id,
-    deviceName: props.devices.find(d => d.id === id)?.name ?? `设备 ${id}`,
-    tracks: buildTracks(toReplaySegs(
-      grouped ? systemSegments.value.filter(s => (s.deviceId ?? 0) === id) : systemSegments.value,
-      grouped ? pluginSegments.value.filter(s => (s.deviceId ?? 0) === id) : pluginSegments.value,
-      dayBounds.value,
-    ), vb, dayWindow.value.timeZone),
-  })).filter(g => g.tracks.length)
+  type SubjectRow = { deviceId?: number | null; subjectId?: string; subjectName?: string; subjectKind?: string }
+  const keyOf = (row: SubjectRow) => row.deviceId != null
+    ? `machine:${row.deviceId}`
+    : `subject:${row.subjectId ?? 'unknown'}`
+  const rows = [...systemSegments.value, ...pluginSegments.value] as SubjectRow[]
+  const keys = [...new Set(rows.map(keyOf))].sort()
+  return keys.map(key => {
+    const row = rows.find(item => keyOf(item) === key)!
+    const name = row.deviceId != null
+      ? props.devices.find(d => d.id === row.deviceId)?.name ?? row.subjectName ?? `设备 ${row.deviceId}`
+      : row.subjectName ?? (row.subjectKind === 'account' ? '账号' : row.subjectKind === 'person' ? '个人' : '主体')
+    return {
+      key, name, showName: keys.length > 1 || row.deviceId == null,
+      tracks: buildTracks(toReplaySegs(
+        systemSegments.value.filter(item => keyOf(item) === key),
+        pluginSegments.value.filter(item => keyOf(item) === key),
+        dayBounds.value,
+      ), vb, dayWindow.value.timeZone),
+    }
+  }).filter(group => group.tracks.length)
 })
 
 // ── 标题明细（ADR-019 标签升级）──
@@ -152,7 +161,7 @@ const returnFocus = document.activeElement as HTMLElement | null
           <!-- 多轨回放 -->
           <section>
             <h3 class="mb-2 text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">回放</h3>
-            <div v-if="deviceGroups.length && viewBounds" class="overflow-hidden rounded-md border border-border bg-secondary">
+            <div v-if="subjectGroups.length && viewBounds" class="overflow-hidden rounded-md border border-border bg-secondary">
               <!-- 刻度行 -->
               <div class="flex h-6 border-b border-border bg-muted">
                 <div class="w-[80px] shrink-0 border-r border-border"></div>
@@ -166,10 +175,10 @@ const returnFocus = document.activeElement as HTMLElement | null
                 </div>
               </div>
               <!-- 设备分组回放:聚合视图下同一 App 在多台设备并行时,设备为最外层分组 -->
-              <div v-for="g in deviceGroups" :key="g.deviceId">
-                  <div v-if="deviceGroups.length > 1" class="flex h-6 items-center border-b border-border bg-muted/95 px-2">
+              <div v-for="g in subjectGroups" :key="g.key">
+                  <div v-if="g.showName" class="flex h-6 items-center border-b border-border bg-muted/95 px-2">
                     <span class="truncate text-[0.7rem] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                      {{ g.deviceName }}
+                      {{ g.name }}
                     </span>
                   </div>
                   <div

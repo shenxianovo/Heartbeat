@@ -42,6 +42,7 @@ public class AppCatalogReconcilerTests(PostgresContainerFixture fixture) : Postg
         await db.SaveChangesAsync();
         var segment = new ActivitySegment
         {
+            OwnerId = device.OwnerId,
             Id = Guid.CreateVersion7(), DeviceId = device.Id, Source = ActivitySources.System,
             IdentityKey = "chrome", AppId = provisional.Id, AppIdentityId = mac.Id,
             StartTime = Now.AddMinutes(-1), EndTime = Now
@@ -241,12 +242,14 @@ public class AppCatalogReconcilerTests(PostgresContainerFixture fixture) : Postg
         await db.SaveChangesAsync();
         var observed = new ActivitySegment
         {
+            OwnerId = device.OwnerId,
             Id = Guid.CreateVersion7(), DeviceId = device.Id, Source = ActivitySources.System,
             IdentityKey = "tool-window", AppId = source.Id, AppIdentityId = identity.Id,
             StartTime = Now.AddMinutes(-3), EndTime = Now.AddMinutes(-2)
         };
         var legacy = new ActivitySegment
         {
+            OwnerId = device.OwnerId,
             Id = Guid.CreateVersion7(), DeviceId = device.Id, Source = ActivitySources.System,
             IdentityKey = "legacy-tool", AppId = source.Id,
             StartTime = Now.AddMinutes(-2), EndTime = Now.AddMinutes(-1)

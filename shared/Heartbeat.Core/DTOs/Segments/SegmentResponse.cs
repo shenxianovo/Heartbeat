@@ -7,8 +7,8 @@ namespace Heartbeat.Core.DTOs.Segments
     {
         public Guid Id { get; set; }
 
-        /// <summary>段所属设备。聚合查询（不传 deviceId）时前端据此分设备泳道。</summary>
-        public long DeviceId { get; set; }
+        /// <summary>Machine 的设备维度；Account/Person 为空，聚合查询按 Subject 分组。</summary>
+        public long? DeviceId { get; set; }
 
         public string Source { get; set; } = string.Empty;
 
@@ -38,7 +38,19 @@ namespace Heartbeat.Core.DTOs.Segments
 
         public int DurationSeconds { get; set; }
 
-        /// <summary>各 source 自由结构的原始 JSON 文本,由消费方(前端渲染器/LLM)自行解析。</summary>
-        public string? Attributes { get; set; }
+        /// <summary>原生 Fact payload，包含 Collector 声明的结构化 attributes。</summary>
+        public Dictionary<string, object?>? Payload { get; set; }
+
+        public Guid? StreamId { get; set; }
+        public Guid? FactId { get; set; }
+        public long? Revision { get; set; }
+        public string? SchemaId { get; set; }
+        public int? SchemaMajor { get; set; }
+        public int? SchemaRevision { get; set; }
+        /// <summary>native 或 legacy-import；历史导入不表示恢复了原协议身份。</summary>
+        public string? Origin { get; set; }
+        public Guid? SubjectId { get; set; }
+        public string? SubjectKind { get; set; }
+        public string? SubjectName { get; set; }
     }
 }

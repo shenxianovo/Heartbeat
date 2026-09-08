@@ -12,7 +12,7 @@ using Heartbeat.Core.DTOs.Segments;
 
 namespace Heartbeat.Collection.Hub.Tests.Collectors.Protocol;
 
-public class InProcessCollectorProtocolTranscriptTests
+public partial class InProcessCollectorProtocolTranscriptTests
 {
     private static string ReferencePackagePath => Path.Combine(
         AppContext.BaseDirectory,

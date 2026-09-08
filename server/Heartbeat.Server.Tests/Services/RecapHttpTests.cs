@@ -36,6 +36,7 @@ public sealed class RecapHttpTests(PostgresContainerFixture fixture) : PostgresT
         await db.SaveChangesAsync();
         db.ActivitySegments.Add(new ActivitySegment
         {
+            OwnerId = device.OwnerId,
             Id = Guid.CreateVersion7(),
             DeviceId = device.Id,
             Source = ActivitySources.System,

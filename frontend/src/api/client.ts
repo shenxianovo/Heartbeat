@@ -62,7 +62,7 @@ export class Client {
     }
 
     /**
-     * @param limit (optional) 
+     * @param limit (optional)
      * @return OK
      */
     getAdminAppCatalogAudit(limit: number | undefined): Promise<AppCatalogAdminAuditListResponse> {
@@ -740,8 +740,8 @@ export class Client {
     }
 
     /**
-     * @param date (optional) 
-     * @param strandId (optional) 
+     * @param date (optional)
+     * @param strandId (optional)
      * @return OK
      */
     getEpisodes(date: Date | undefined, strandId: string | undefined): Promise<EpisodeResponse[]> {
@@ -907,7 +907,7 @@ export class Client {
     }
 
     /**
-     * @param expectedVersion (optional) 
+     * @param expectedVersion (optional)
      * @return No Content
      */
     deleteEpisode(id: string, expectedVersion: number | undefined): Promise<void> {
@@ -1224,6 +1224,43 @@ export class Client {
     /**
      * @return OK
      */
+    uploadFacts(body: FactUploadRequest): Promise<void> {
+        let url_ = this.baseUrl + "/api/v1/facts";
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processUploadFacts(_response);
+        });
+    }
+
+    protected processUploadFacts(response: Response): Promise<void> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            return;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<void>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
     uploadInputEvents(body: InputEventUploadRequest): Promise<void> {
         let url_ = this.baseUrl + "/api/v1/input-events";
         url_ = url_.replace(/[?&]$/, "");
@@ -1259,9 +1296,9 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional) 
-     * @param start (optional) 
-     * @param end (optional) 
+     * @param deviceId (optional)
+     * @param start (optional)
+     * @param end (optional)
      * @return OK
      */
     getInputCounts(deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<InputCountsResponse> {
@@ -2065,7 +2102,7 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional) 
+     * @param deviceId (optional)
      * @return OK
      */
     getUserDailyReport(username: string, deviceId: number | undefined, version: number, kind: string, localDate: string, timeZone: string, start: Date, endExclusive: Date): Promise<DailyReportResponse> {
@@ -2141,7 +2178,7 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional) 
+     * @param deviceId (optional)
      * @return OK
      */
     getUserWeeklyReport(username: string, deviceId: number | undefined, version: number, kind: string, localDate: string, timeZone: string, start: Date, endExclusive: Date): Promise<WeeklyReportResponse> {
@@ -2288,9 +2325,9 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional) 
-     * @param start (optional) 
-     * @param end (optional) 
+     * @param deviceId (optional)
+     * @param start (optional)
+     * @param end (optional)
      * @return OK
      */
     getUserUsage(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<AppUsageResponse[]> {
@@ -2350,11 +2387,11 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional) 
-     * @param source (optional) 
-     * @param appId (optional) 
-     * @param start (optional) 
-     * @param end (optional) 
+     * @param deviceId (optional)
+     * @param source (optional)
+     * @param appId (optional)
+     * @param start (optional)
+     * @param end (optional)
      * @return OK
      */
     getUserSegments(username: string, deviceId: number | undefined, source: string | undefined, appId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<SegmentResponse[]> {
@@ -2606,9 +2643,9 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional) 
-     * @param start (optional) 
-     * @param end (optional) 
+     * @param deviceId (optional)
+     * @param start (optional)
+     * @param end (optional)
      * @return OK
      */
     getUserKeyFrequency(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<KeyFrequencyResponse> {
@@ -2729,7 +2766,7 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional) 
+     * @param deviceId (optional)
      * @return OK
      */
     getDailyReport(deviceId: number | undefined, version: number, kind: string, localDate: string, timeZone: string, start: Date, endExclusive: Date): Promise<DailyReportResponse> {
@@ -2802,7 +2839,7 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional) 
+     * @param deviceId (optional)
      * @return OK
      */
     getWeeklyReport(deviceId: number | undefined, version: number, kind: string, localDate: string, timeZone: string, start: Date, endExclusive: Date): Promise<WeeklyReportResponse> {
@@ -2912,9 +2949,9 @@ export class Client {
     }
 
     /**
-     * @param deviceId (optional) 
-     * @param start (optional) 
-     * @param end (optional) 
+     * @param deviceId (optional)
+     * @param start (optional)
+     * @param end (optional)
      * @return OK
      */
     getUsage(deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<AppUsageResponse[]> {
@@ -6491,6 +6528,462 @@ export interface IEvidenceObservationDto {
     [key: string]: any;
 }
 
+export class FactGapSnapshot implements IFactGapSnapshot {
+    streamId?: string;
+    gapId?: string;
+    start?: Date;
+    end?: Date;
+    reason?: string;
+    estimatedFactsLost?: number | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IFactGapSnapshot) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.streamId = _data["streamId"];
+            this.gapId = _data["gapId"];
+            this.start = _data["start"] ? new Date(_data["start"].toString()) : undefined as any;
+            this.end = _data["end"] ? new Date(_data["end"].toString()) : undefined as any;
+            this.reason = _data["reason"];
+            this.estimatedFactsLost = _data["estimatedFactsLost"];
+        }
+    }
+
+    static fromJS(data: any): FactGapSnapshot {
+        data = typeof data === 'object' ? data : {};
+        let result = new FactGapSnapshot();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["streamId"] = this.streamId;
+        data["gapId"] = this.gapId;
+        data["start"] = this.start ? this.start.toISOString() : undefined as any;
+        data["end"] = this.end ? this.end.toISOString() : undefined as any;
+        data["reason"] = this.reason;
+        data["estimatedFactsLost"] = this.estimatedFactsLost;
+        return data;
+    }
+}
+
+export interface IFactGapSnapshot {
+    streamId?: string;
+    gapId?: string;
+    start?: Date;
+    end?: Date;
+    reason?: string;
+    estimatedFactsLost?: number | undefined;
+
+    [key: string]: any;
+}
+
+export class FactSchemaDefinition implements IFactSchemaDefinition {
+    revision?: number;
+    contentHash?: string;
+    documentJson?: string;
+
+    [key: string]: any;
+
+    constructor(data?: IFactSchemaDefinition) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.revision = _data["revision"];
+            this.contentHash = _data["contentHash"];
+            this.documentJson = _data["documentJson"];
+        }
+    }
+
+    static fromJS(data: any): FactSchemaDefinition {
+        data = typeof data === 'object' ? data : {};
+        let result = new FactSchemaDefinition();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["revision"] = this.revision;
+        data["contentHash"] = this.contentHash;
+        data["documentJson"] = this.documentJson;
+        return data;
+    }
+}
+
+export interface IFactSchemaDefinition {
+    revision?: number;
+    contentHash?: string;
+    documentJson?: string;
+
+    [key: string]: any;
+}
+
+export class FactSnapshot implements IFactSnapshot {
+    streamId?: string;
+    factId?: string;
+    revision?: number;
+    schemaRevision?: number;
+    recordState?: string;
+    observedAt?: Date | undefined;
+    start?: Date | undefined;
+    end?: Date | undefined;
+    occurredAt?: Date | undefined;
+    isFinal?: boolean | undefined;
+    payload?: JsonElement | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IFactSnapshot) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.streamId = _data["streamId"];
+            this.factId = _data["factId"];
+            this.revision = _data["revision"];
+            this.schemaRevision = _data["schemaRevision"];
+            this.recordState = _data["recordState"];
+            this.observedAt = _data["observedAt"] ? new Date(_data["observedAt"].toString()) : undefined as any;
+            this.start = _data["start"] ? new Date(_data["start"].toString()) : undefined as any;
+            this.end = _data["end"] ? new Date(_data["end"].toString()) : undefined as any;
+            this.occurredAt = _data["occurredAt"] ? new Date(_data["occurredAt"].toString()) : undefined as any;
+            this.isFinal = _data["isFinal"];
+            this.payload = _data["payload"] ? JsonElement.fromJS(_data["payload"]) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): FactSnapshot {
+        data = typeof data === 'object' ? data : {};
+        let result = new FactSnapshot();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["streamId"] = this.streamId;
+        data["factId"] = this.factId;
+        data["revision"] = this.revision;
+        data["schemaRevision"] = this.schemaRevision;
+        data["recordState"] = this.recordState;
+        data["observedAt"] = this.observedAt ? this.observedAt.toISOString() : undefined as any;
+        data["start"] = this.start ? this.start.toISOString() : undefined as any;
+        data["end"] = this.end ? this.end.toISOString() : undefined as any;
+        data["occurredAt"] = this.occurredAt ? this.occurredAt.toISOString() : undefined as any;
+        data["isFinal"] = this.isFinal;
+        data["payload"] = this.payload ? this.payload.toJSON() : undefined as any;
+        return data;
+    }
+}
+
+export interface IFactSnapshot {
+    streamId?: string;
+    factId?: string;
+    revision?: number;
+    schemaRevision?: number;
+    recordState?: string;
+    observedAt?: Date | undefined;
+    start?: Date | undefined;
+    end?: Date | undefined;
+    occurredAt?: Date | undefined;
+    isFinal?: boolean | undefined;
+    payload?: JsonElement | undefined;
+
+    [key: string]: any;
+}
+
+export class FactStreamDefinition implements IFactStreamDefinition {
+    streamId?: string;
+    collectorInstanceId?: string;
+    subject?: FactSubject;
+    outputId?: string;
+    source?: string;
+    factKind?: string;
+    schemaId?: string;
+    schemaMajor?: number;
+    dimensions?: { [key: string]: string; };
+    schemas?: FactSchemaDefinition[];
+
+    [key: string]: any;
+
+    constructor(data?: IFactStreamDefinition) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.streamId = _data["streamId"];
+            this.collectorInstanceId = _data["collectorInstanceId"];
+            this.subject = _data["subject"] ? FactSubject.fromJS(_data["subject"]) : undefined as any;
+            this.outputId = _data["outputId"];
+            this.source = _data["source"];
+            this.factKind = _data["factKind"];
+            this.schemaId = _data["schemaId"];
+            this.schemaMajor = _data["schemaMajor"];
+            if (_data["dimensions"]) {
+                this.dimensions = {} as any;
+                for (let key in _data["dimensions"]) {
+                    if (_data["dimensions"].hasOwnProperty(key))
+                        (this.dimensions as any)![key] = _data["dimensions"][key];
+                }
+            }
+            if (Array.isArray(_data["schemas"])) {
+                this.schemas = [] as any;
+                for (let item of _data["schemas"])
+                    this.schemas!.push(FactSchemaDefinition.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): FactStreamDefinition {
+        data = typeof data === 'object' ? data : {};
+        let result = new FactStreamDefinition();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["streamId"] = this.streamId;
+        data["collectorInstanceId"] = this.collectorInstanceId;
+        data["subject"] = this.subject ? this.subject.toJSON() : undefined as any;
+        data["outputId"] = this.outputId;
+        data["source"] = this.source;
+        data["factKind"] = this.factKind;
+        data["schemaId"] = this.schemaId;
+        data["schemaMajor"] = this.schemaMajor;
+        if (this.dimensions) {
+            data["dimensions"] = {};
+            for (let key in this.dimensions) {
+                if (this.dimensions.hasOwnProperty(key))
+                    (data["dimensions"] as any)[key] = (this.dimensions as any)[key];
+            }
+        }
+        if (Array.isArray(this.schemas)) {
+            data["schemas"] = [];
+            for (let item of this.schemas)
+                data["schemas"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface IFactStreamDefinition {
+    streamId?: string;
+    collectorInstanceId?: string;
+    subject?: FactSubject;
+    outputId?: string;
+    source?: string;
+    factKind?: string;
+    schemaId?: string;
+    schemaMajor?: number;
+    dimensions?: { [key: string]: string; };
+    schemas?: FactSchemaDefinition[];
+
+    [key: string]: any;
+}
+
+export class FactSubject implements IFactSubject {
+    subjectId?: string;
+    kind?: string;
+    hardwareId?: string | undefined;
+    displayName?: string | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IFactSubject) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.subjectId = _data["subjectId"];
+            this.kind = _data["kind"];
+            this.hardwareId = _data["hardwareId"];
+            this.displayName = _data["displayName"];
+        }
+    }
+
+    static fromJS(data: any): FactSubject {
+        data = typeof data === 'object' ? data : {};
+        let result = new FactSubject();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["subjectId"] = this.subjectId;
+        data["kind"] = this.kind;
+        data["hardwareId"] = this.hardwareId;
+        data["displayName"] = this.displayName;
+        return data;
+    }
+}
+
+export interface IFactSubject {
+    subjectId?: string;
+    kind?: string;
+    hardwareId?: string | undefined;
+    displayName?: string | undefined;
+
+    [key: string]: any;
+}
+
+export class FactUploadRequest implements IFactUploadRequest {
+    streams?: FactStreamDefinition[];
+    facts?: FactSnapshot[];
+    gaps?: FactGapSnapshot[];
+
+    [key: string]: any;
+
+    constructor(data?: IFactUploadRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            if (Array.isArray(_data["streams"])) {
+                this.streams = [] as any;
+                for (let item of _data["streams"])
+                    this.streams!.push(FactStreamDefinition.fromJS(item));
+            }
+            if (Array.isArray(_data["facts"])) {
+                this.facts = [] as any;
+                for (let item of _data["facts"])
+                    this.facts!.push(FactSnapshot.fromJS(item));
+            }
+            if (Array.isArray(_data["gaps"])) {
+                this.gaps = [] as any;
+                for (let item of _data["gaps"])
+                    this.gaps!.push(FactGapSnapshot.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): FactUploadRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new FactUploadRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        if (Array.isArray(this.streams)) {
+            data["streams"] = [];
+            for (let item of this.streams)
+                data["streams"].push(item ? item.toJSON() : undefined as any);
+        }
+        if (Array.isArray(this.facts)) {
+            data["facts"] = [];
+            for (let item of this.facts)
+                data["facts"].push(item ? item.toJSON() : undefined as any);
+        }
+        if (Array.isArray(this.gaps)) {
+            data["gaps"] = [];
+            for (let item of this.gaps)
+                data["gaps"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface IFactUploadRequest {
+    streams?: FactStreamDefinition[];
+    facts?: FactSnapshot[];
+    gaps?: FactGapSnapshot[];
+
+    [key: string]: any;
+}
+
 export class IconUploadRequest implements IIconUploadRequest {
     appIdentityKey?: string | undefined;
     appDisplayName?: string | undefined;
@@ -8225,7 +8718,7 @@ export interface IResolveProbeRequest {
 
 export class SegmentResponse implements ISegmentResponse {
     id?: string;
-    deviceId?: number;
+    deviceId?: number | undefined;
     source?: string;
     identityKey?: string;
     appId?: number | undefined;
@@ -8238,7 +8731,17 @@ export class SegmentResponse implements ISegmentResponse {
     startTime?: Date;
     endTime?: Date;
     durationSeconds?: number;
-    attributes?: string | undefined;
+    payload?: any | undefined;
+    streamId?: string | undefined;
+    factId?: string | undefined;
+    revision?: number | undefined;
+    schemaId?: string | undefined;
+    schemaMajor?: number | undefined;
+    schemaRevision?: number | undefined;
+    origin?: string | undefined;
+    subjectId?: string | undefined;
+    subjectKind?: string | undefined;
+    subjectName?: string | undefined;
 
     [key: string]: any;
 
@@ -8271,7 +8774,17 @@ export class SegmentResponse implements ISegmentResponse {
             this.startTime = _data["startTime"] ? new Date(_data["startTime"].toString()) : undefined as any;
             this.endTime = _data["endTime"] ? new Date(_data["endTime"].toString()) : undefined as any;
             this.durationSeconds = _data["durationSeconds"];
-            this.attributes = _data["attributes"];
+            this.payload = _data["payload"];
+            this.streamId = _data["streamId"];
+            this.factId = _data["factId"];
+            this.revision = _data["revision"];
+            this.schemaId = _data["schemaId"];
+            this.schemaMajor = _data["schemaMajor"];
+            this.schemaRevision = _data["schemaRevision"];
+            this.origin = _data["origin"];
+            this.subjectId = _data["subjectId"];
+            this.subjectKind = _data["subjectKind"];
+            this.subjectName = _data["subjectName"];
         }
     }
 
@@ -8302,14 +8815,24 @@ export class SegmentResponse implements ISegmentResponse {
         data["startTime"] = this.startTime ? this.startTime.toISOString() : undefined as any;
         data["endTime"] = this.endTime ? this.endTime.toISOString() : undefined as any;
         data["durationSeconds"] = this.durationSeconds;
-        data["attributes"] = this.attributes;
+        data["payload"] = this.payload;
+        data["streamId"] = this.streamId;
+        data["factId"] = this.factId;
+        data["revision"] = this.revision;
+        data["schemaId"] = this.schemaId;
+        data["schemaMajor"] = this.schemaMajor;
+        data["schemaRevision"] = this.schemaRevision;
+        data["origin"] = this.origin;
+        data["subjectId"] = this.subjectId;
+        data["subjectKind"] = this.subjectKind;
+        data["subjectName"] = this.subjectName;
         return data;
     }
 }
 
 export interface ISegmentResponse {
     id?: string;
-    deviceId?: number;
+    deviceId?: number | undefined;
     source?: string;
     identityKey?: string;
     appId?: number | undefined;
@@ -8322,7 +8845,17 @@ export interface ISegmentResponse {
     startTime?: Date;
     endTime?: Date;
     durationSeconds?: number;
-    attributes?: string | undefined;
+    payload?: any | undefined;
+    streamId?: string | undefined;
+    factId?: string | undefined;
+    revision?: number | undefined;
+    schemaId?: string | undefined;
+    schemaMajor?: number | undefined;
+    schemaRevision?: number | undefined;
+    origin?: string | undefined;
+    subjectId?: string | undefined;
+    subjectKind?: string | undefined;
+    subjectName?: string | undefined;
 
     [key: string]: any;
 }
@@ -9000,7 +9533,7 @@ export interface IWeeklyReportResponse {
 }
 
 function formatDate(d: Date) {
-    return d.getFullYear() + '-' + 
+    return d.getFullYear() + '-' +
         (d.getMonth() < 9 ? ('0' + (d.getMonth()+1)) : (d.getMonth()+1)) + '-' +
         (d.getDate() < 10 ? ('0' + d.getDate()) : d.getDate());
 }

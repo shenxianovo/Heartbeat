@@ -118,7 +118,7 @@ namespace Heartbeat.Server.Services
         public Task<bool> HasSegmentsAsync(
             string ownerId, DateTimeOffset windowStart, DateTimeOffset windowEnd, CancellationToken ct = default)
             => db.ActivitySegments
-                .Where(x => x.Device.OwnerId == ownerId)
+                .Where(x => x.OwnerId == ownerId)
                 .Where(x => x.EndTime > windowStart && x.StartTime < windowEnd)
                 .AnyAsync(ct);
 
@@ -127,7 +127,7 @@ namespace Heartbeat.Server.Services
             string ownerId, DateTimeOffset windowStart, DateTimeOffset windowEnd, CancellationToken ct = default)
         {
             var latestEnd = await db.ActivitySegments
-                .Where(x => x.Device.OwnerId == ownerId)
+                .Where(x => x.OwnerId == ownerId)
                 .Where(x => x.EndTime > windowStart && x.StartTime < windowEnd)
                 .MaxAsync(x => (DateTimeOffset?)x.EndTime, ct) ?? windowStart;
             return latestEnd > windowEnd ? windowEnd : latestEnd;
@@ -192,11 +192,13 @@ namespace Heartbeat.Server.Services
         {
             // 与投影同一套窗口规则：区间重叠，零长度点事件按落点归窗。
             return await db.ActivitySegments
-                .Where(x => x.Device.OwnerId == ownerId)
+                .Where(x => x.OwnerId == ownerId)
                 .Where(x => x.EndTime > windowStart && x.StartTime < windowEnd
                             || x.StartTime == x.EndTime && x.StartTime >= windowStart && x.StartTime < windowEnd)
                 .Select(x => new RecapSegmentInput(
-                    x.Device.DeviceName,
+                    x.Device != null ? x.Device.DeviceName
+                        : x.Fact != null ? x.Fact.Stream.Subject.DisplayName ?? x.Fact.Stream.SubjectId.ToString()
+                        : "未知主体",
                     x.Source,
                     x.IdentityKey,
                     x.AppIdentityId != null
@@ -205,7 +207,8 @@ namespace Heartbeat.Server.Services
                     x.Title,
                     x.StartTime,
                     x.EndTime,
-                    x.Attributes))
+                    x.Attributes,
+                    x.Payload))
                 .ToListAsync(ct);
         }
 
@@ -260,7 +263,7 @@ namespace Heartbeat.Server.Services
         {
             var from = windowStart.AddDays(-RecurringLookbackDays);
             var rows = await db.ActivitySegments
-                .Where(x => x.Device.OwnerId == ownerId)
+                .Where(x => x.OwnerId == ownerId)
                 .Where(x => x.EndTime > from && x.StartTime < windowStart)
                 .Select(x => new
                 {
@@ -271,6 +274,7 @@ namespace Heartbeat.Server.Services
                     x.IdentityKey,
                     x.Title,
                     x.Attributes,
+                    x.Payload,
                     x.StartTime
                 })
                 .ToListAsync(ct);
@@ -278,7 +282,7 @@ namespace Heartbeat.Server.Services
             return rows
                 .Select(r =>
                 {
-                    var readings = depthTables.ReadingsFor(r.Source, r.AppName, r.Title, r.IdentityKey, r.Attributes);
+                    var readings = depthTables.ReadingsFor(r.Source, r.AppName, r.Title, r.IdentityKey, r.Attributes, r.Payload);
                     var root = readings.Count > 0 && readings[0].Layer == 1 ? readings[0].Value : null;
                     return (Label: root, Day: r.StartTime.UtcDateTime.Date);
                 })

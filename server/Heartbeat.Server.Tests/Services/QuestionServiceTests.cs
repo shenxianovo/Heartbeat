@@ -73,6 +73,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
 
     private ActivitySegment Segment(DateTimeOffset start, DateTimeOffset end, long? appId = null, string identity = "sometool|") => new()
     {
+        OwnerId = "user-1",
         Id = Guid.CreateVersion7(),
         DeviceId = _deviceId,
         Source = ActivitySources.System,

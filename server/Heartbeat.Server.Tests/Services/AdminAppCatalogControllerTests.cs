@@ -32,6 +32,7 @@ public sealed class AdminAppCatalogControllerTests(PostgresContainerFixture fixt
         db.AddRange(chrome, unknown, chromeIdentity, unknownIdentity, device);
         db.ActivitySegments.Add(new ActivitySegment
         {
+            OwnerId = device.OwnerId,
             Id = Guid.CreateVersion7(), Device = device, Source = "system",
             IdentityKey = "win:chrome|docs", AppIdentity = chromeIdentity,
             StartTime = new DateTimeOffset(2026, 8, 14, 7, 0, 0, TimeSpan.Zero),

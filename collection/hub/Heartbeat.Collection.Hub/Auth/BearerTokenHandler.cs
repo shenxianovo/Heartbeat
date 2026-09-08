@@ -10,7 +10,7 @@ namespace Heartbeat.Collection.Hub.Auth
     /// </summary>
     public class BearerTokenHandler(
         IAccessTokenProvider tokenProvider,
-        IDeviceIdentity deviceIdentity) : DelegatingHandler
+        IDeviceIdentity? deviceIdentity = null) : DelegatingHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
@@ -27,10 +27,13 @@ namespace Heartbeat.Collection.Hub.Auth
             }
 
             // Inject X-Hardware-Id header
-            request.Headers.TryAddWithoutValidation("X-Hardware-Id", deviceIdentity.HardwareId);
+            if (deviceIdentity is not null)
+            {
+                request.Headers.TryAddWithoutValidation("X-Hardware-Id", deviceIdentity.HardwareId);
 
             // Inject X-Device-Name header (URL-encoded to support non-ASCII chars)
-            request.Headers.TryAddWithoutValidation("X-Device-Name", Uri.EscapeDataString(deviceIdentity.DeviceName));
+                request.Headers.TryAddWithoutValidation("X-Device-Name", Uri.EscapeDataString(deviceIdentity.DeviceName));
+            }
 
             var response = await base.SendAsync(request, cancellationToken);
 

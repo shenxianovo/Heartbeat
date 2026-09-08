@@ -1,6 +1,9 @@
 # 01: 浏览器扩展端到端走通（tracer bullet）
 
-Status: ready-for-agent
+Status: ready-for-human
+
+> 2026-09-08：下文保留原始 tracer 规格；当前上报走通用 Collector Protocol（ADR-051），旧 `/v1/segments`
+> 和 AppName/appHint 形状已退役。剩余为跨多次上报稳定续段、宿主离线后恢复补传的真实 E2E 验收。
 
 ## Parent
 
@@ -33,6 +36,8 @@ Status: ready-for-agent
 
 ## Comments
 
+- 2026-09-08：Browser 当前 96 项自动测试及构建通过，但没有补做本 issue 两项未勾选的真实链路验收，
+  状态修正为 `ready-for-human`。URL 身份规则由 issue 02 完成，标题明细 URL 展示由 issue 03 完成。
 - 2026-07-05: 01-A 落地于 575a380（骨架 + 折叠 + 上报），01-B 落地于 bda86cf（选项页 + 退避）。相对原文的两处实现决策：(1) 快照机制按 ADR-018 稳定 Id upsert 而非 close-and-reopen；(2) 发现服务端 MaxDuration=24h 校验会静默丢弃超长快照，fold 增加 23h 自动轮换。
 
 ## Blocked by

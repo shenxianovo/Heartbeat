@@ -44,6 +44,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
 
     private ActivitySegment SystemSegment(long appId, string appName, DateTimeOffset start, DateTimeOffset end, string? title = null) => new()
     {
+        OwnerId = "user-1",
         Id = Guid.CreateVersion7(),
         DeviceId = _deviceId,
         Source = ActivitySources.System,
@@ -358,6 +359,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         db.ActivitySegments.Add(SystemSegment(app.Id, "msedge", t0, t0.AddMinutes(5)));
         db.ActivitySegments.Add(new ActivitySegment
         {
+            OwnerId = "user-1",
             Id = Guid.CreateVersion7(),
             DeviceId = _deviceId,
             Source = "browser",
@@ -365,10 +367,12 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
             AppId = app.Id,
             StartTime = t0,
             EndTime = t0.AddMinutes(2),
-            Attributes = """{"url":"https://example.com"}"""
+            Attributes = """{"url":"https://example.com"}""",
+            Payload = """{"identityKey":"https://example.com","attributes":{"url":"https://example.com"}}"""
         });
         db.ActivitySegments.Add(new ActivitySegment
         {
+            OwnerId = "user-1",
             Id = Guid.CreateVersion7(),
             DeviceId = _deviceId,
             Source = "vscode",
@@ -387,7 +391,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         var browser = await svc.GetSegmentsAsync("user-1", null, "browser", null, null, null);
         var seg = Assert.Single(browser);
         Assert.Equal("msedge", seg.AppName);
-        Assert.Contains("example.com", seg.Attributes);
+        Assert.Equal("https://example.com", ((JsonElement)seg.Payload!["attributes"]!).GetProperty("url").GetString());
 
         // appId 过滤:vscode 段无 AppId,不命中
         var byApp = await svc.GetSegmentsAsync("user-1", null, null, app.Id, null, null);
@@ -412,6 +416,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         db.ActivitySegments.Add(SystemSegment(app.Id, "vscode", t0, t0.AddHours(3)));
         db.ActivitySegments.Add(new ActivitySegment
         {
+            OwnerId = "user-1",
             Id = Guid.CreateVersion7(),
             DeviceId = _deviceId,
             Source = "vscode",
@@ -453,6 +458,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
             SystemSegment(app.Id, "vscode", end, end.AddMinutes(10)),
             new ActivitySegment
             {
+                OwnerId = "user-1",
                 Id = Guid.CreateVersion7(),
                 DeviceId = _deviceId,
                 Source = "browser",
@@ -462,6 +468,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
             },
             new ActivitySegment
             {
+                OwnerId = "user-1",
                 Id = Guid.CreateVersion7(),
                 DeviceId = _deviceId,
                 Source = "browser",

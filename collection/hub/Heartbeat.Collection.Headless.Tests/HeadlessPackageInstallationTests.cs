@@ -192,6 +192,7 @@ public sealed class HeadlessPackageInstallationTests : IDisposable
         foreach (var (method, path) in new[]
         {
             (HttpMethod.Get, "collectors"),
+            (HttpMethod.Get, "uploads"),
             (HttpMethod.Get, "operations"),
             (HttpMethod.Get, $"operations/{id:D}"),
             (HttpMethod.Post, $"operations/{id:D}/cancellation"),

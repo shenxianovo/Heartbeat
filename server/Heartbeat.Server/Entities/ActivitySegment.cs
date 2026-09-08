@@ -1,20 +1,27 @@
 namespace Heartbeat.Server.Entities
 {
     /// <summary>
-    /// 一段有界的活动记录，由某个采集器（Source）观测并折叠产出。详见 ADR-017。
+    /// Segment Fact 面向活动查询的读投影，由 Fact Store 同事务维护（ADR-054）。
     /// AppUsage 的泛化形态：系统采集器的段即 Source = 'system'。
     /// </summary>
     public class ActivitySegment
     {
-        /// <summary>UUIDv7，由采集端生成，兼作主键与去重键（幂等重传）。</summary>
+        /// <summary>稳定的查询行身份；历史导入保留旧 Id，原生事实使用其存储键。原生去重以 Owner/Stream/FactId/Revision 为准。</summary>
         public Guid Id { get; set; }
 
-        public long DeviceId { get; set; }
+        public string OwnerId { get; set; } = string.Empty;
+
+        public long? DeviceId { get; set; }
+
+        public Guid? FactKey { get; set; }
+        public ObservedFact? Fact { get; set; }
+        /// <summary>Complete schema-owned Fact payload, without the historical transport wrapper.</summary>
+        public string? Payload { get; set; }
 
         /// <summary>观测者维度：'system' / 'browser' / 'vscode' / …。统计只消费 'system'（互斥轨）。</summary>
         public string Source { get; set; } = string.Empty;
 
-        /// <summary>采集器声明的"同一个活动"判据，跨批次续接用。system = 规范化 App+Title。</summary>
+        /// <summary>采集器声明的活动分组判据；不替代 FactId 或 Revision。</summary>
         public string IdentityKey { get; set; } = string.Empty;
 
         /// <summary>
@@ -31,10 +38,10 @@ namespace Heartbeat.Server.Entities
         public DateTimeOffset StartTime { get; set; }
         public DateTimeOffset EndTime { get; set; }
 
-        /// <summary>各 Source 自由结构（jsonb）：{url, domain} / {file, project} / …。不参与续接。</summary>
+        /// <summary>历史导入与旧 Matcher 槽位的兼容读字段，派生自 Payload.attributes；不再承载完整 Fact。</summary>
         public string? Attributes { get; set; }
 
-        public Device Device { get; set; } = null!;
+        public Device? Device { get; set; }
         public App? App { get; set; }
         public AppIdentity? AppIdentity { get; set; }
     }

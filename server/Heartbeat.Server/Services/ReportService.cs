@@ -75,8 +75,8 @@ namespace Heartbeat.Server.Services
             // 区间重叠 + 裁剪（ADR-018 §4）：跨窗段（如跨午夜的 away/长会话）只把
             // 落在本窗口内的部分计入，既不漏也不双计。
             var query = _db.ActivitySegments
-                .Where(x => x.Device.OwnerId == ownerId)
-                .Where(x => x.Source == ActivitySources.System)
+                .Where(x => x.OwnerId == ownerId)
+                .Where(x => x.Source == ActivitySources.System && x.DeviceId != null)
                 .Where(x => x.EndTime > windowStart && x.StartTime < windowEnd);
 
             if (deviceId.HasValue)

@@ -5,12 +5,20 @@
 ## Language
 
 **Ingest（摄入）**:
-统一摄入例程（ADR-018）：校验 → App 关联 → 按 Id 快照 upsert。摄入可交换、可重入——乱序重传与批内同 Id 快照收敛到同一行。上传入口收敛为 `/segments` 单条（ADR-020）：system 段由 Agent 客户端算好 IdentityKey 经同一入口上传；`POST /usage` 及其映射层已退役，`GET /usage` 仅存查询投影。
-整批 strict ingest 的 contract validation、Device 解析、AppIdentity/ActivitySegment 投影与 commit 由 `ISegmentIngestApplicationService` 作为一个 unit-of-work 边界拥有；HTTP Controller 只提取协议字段并映射可判定结果。
-_Avoid_: Merge、续接（ADR-001 的服务端合并已被 ADR-018 快照 upsert 取代；CanMerge 一词只存在于历史 ADR 中）
+Analytics 原子接收 Subject、Stream、schema、Fact 快照与 Gap（ADR-054）。Owner 取自认证身份；
+事实与读投影同事务更新。旧段与输入上传仅作为升级前缓存的历史导入入口，不直接写读投影。
+_Avoid_: 把 ActivitySegment 或 InputEvent 继续当作独立写入权威、从标题或时间猜测事实身份
 
-**Snapshot Upsert（快照 upsert）**:
-Id 即活动身份：已有行则单调生长（EndTime 取 max、attributes 后写胜），新 Id 插入。采集端对同一活动多次上报的是同一 Id 的更大快照，不是新段。
+**Fact Revision（事实修订）**:
+同一 Owner、Stream、FactId 的完整快照序列；同 Revision 相同内容幂等、不同内容冲突，低 Revision
+不覆盖高 Revision。Segment 合法纠正可以缩短结束时间，撤回移除有效读投影但保留事实身份；
+修订必须遵守家族和 schema 的演进规则。
+_Avoid_: 用 EndTime 取 max 代替 Revision、用数据到达顺序解释事实演进
+
+**Legacy Import（历史导入）**:
+在原生 Fact 边界之前落盘的活动或输入记录，保留原始档案并显式标记来源。未曾保存的 Stream、
+修订与 schema 不能冒充已恢复的 Collector 信息；只有确定性旧身份及归属匹配才能关联原生重放。
+_Avoid_: 按相近标题、URL 或时间模糊合并历史
 
 **Report（报表）**:
 对某 Owner 某时间窗的聚合视图（daily / weekly）。只消费 system 段——互斥轨，时长可求和；插件段只进回放，不进统计（ADR-017 §4 统计边界）。跨窗段做区间重叠 + 裁剪：只计落在窗口内的部分，不漏不双计（ADR-018 §4）。

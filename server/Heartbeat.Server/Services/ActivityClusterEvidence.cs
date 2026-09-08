@@ -36,7 +36,7 @@ namespace Heartbeat.Server.Services
                             || s.StartTime == s.EndTime && s.StartTime >= windowStart && s.StartTime < windowEnd)
                 .Select(s =>
                 {
-                    var readings = depthTables.ReadingsFor(s.Source, s.AppName, s.Title, s.IdentityKey, s.AttributesJson);
+                    var readings = depthTables.ReadingsFor(s.Source, s.AppName, s.Title, s.IdentityKey, s.AttributesJson, s.PayloadJson);
                     return new Row(
                         s,
                         s.StartTime < windowStart ? windowStart : s.StartTime,

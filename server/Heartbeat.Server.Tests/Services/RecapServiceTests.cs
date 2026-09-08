@@ -129,6 +129,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
 
     private ActivitySegment SystemSegment(DateTimeOffset start, DateTimeOffset end) => new()
     {
+        OwnerId = "user-1",
         Id = Guid.CreateVersion7(),
         DeviceId = _deviceId,
         Source = ActivitySources.System,
@@ -489,6 +490,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         await db.SaveChangesAsync();
         db.ActivitySegments.Add(new ActivitySegment
         {
+            OwnerId = otherDevice.OwnerId,
             Id = Guid.CreateVersion7(),
             DeviceId = otherDevice.Id,
             Source = ActivitySources.System,

@@ -81,6 +81,7 @@ public class KnowledgeProposalServiceTests(PostgresContainerFixture fixture) : P
 
     private ActivitySegment Segment(DateTimeOffset start, DateTimeOffset end) => new()
     {
+        OwnerId = "user-1",
         Id = Guid.CreateVersion7(),
         DeviceId = _deviceId,
         Source = ActivitySources.System,

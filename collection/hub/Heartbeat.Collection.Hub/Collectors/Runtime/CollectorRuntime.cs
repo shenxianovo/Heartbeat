@@ -53,6 +53,11 @@ public sealed record CollectorInstance(
 
 public sealed class CollectorRuntimeOptions
 {
+    /// <summary>
+    /// Production hosts upload the committed Fact journal directly. False retains the old
+    /// projection adapter contract for embedded callers while their harnesses are migrated.
+    /// </summary>
+    public bool EnableFactUpload { get; init; }
     public Func<Guid> IdGenerator { get; init; } = Guid.CreateVersion7;
     public int MaxFactsPerBatch { get; init; } = 500;
     public int MaxBatchBytes { get; init; } = 1_048_576;
@@ -164,6 +169,7 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
                 secretStore,
                 Path.Combine(Path.GetDirectoryName(Path.GetFullPath(stateFilePath))!, "collector-data"));
             runtime.RestorePersistedFactSchemas();
+            runtime.EnsureUploadGapIdentities();
             runtime.ReplayCommittedFacts();
             return runtime;
         }
@@ -308,6 +314,13 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
             await StopExternalHostActivationsForInstanceAsync(
                 collectorInstanceId,
                 ExternalHostActivationStopReason.DesiredDisabled);
+
+            lock (_gate)
+            {
+                if (_options.EnableFactUpload && HasPendingFactsLocked(collectorInstanceId))
+                    throw new InvalidOperationException(
+                        "Collector Facts or Stream Gaps remain undelivered. Reconnect Analytics and retry removal after upload completes.");
+            }
 
             if (afterActivationsStopped is not null)
                 await afterActivationsStopped(cancellationToken);

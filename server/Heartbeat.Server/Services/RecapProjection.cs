@@ -16,7 +16,8 @@ namespace Heartbeat.Server.Services
         string? Title,
         DateTimeOffset StartTime,
         DateTimeOffset EndTime,
-        string? AttributesJson = null);
+        string? AttributesJson = null,
+        string? PayloadJson = null);
 
     public class RecapProjectionResult
     {
@@ -107,12 +108,12 @@ namespace Heartbeat.Server.Services
                 .OrderBy(g => g.Key, StringComparer.Ordinal)
                 .ToList();
 
-            sb.AppendLine($"设备：{string.Join("、", deviceGroups.Select(g => g.Key))}");
+            sb.AppendLine($"主体：{string.Join("、", deviceGroups.Select(g => g.Key))}");
 
             foreach (var device in deviceGroups)
             {
                 sb.AppendLine();
-                sb.AppendLine($"## 设备「{device.Key}」");
+                sb.AppendLine($"## 主体「{device.Key}」");
                 AppendSystemTrack(sb, device.ToList(), windowEnd, displayOffset, displayZone, depthTables);
                 AppendPluginTracks(sb, device.ToList(), depthTables);
             }
@@ -151,7 +152,7 @@ namespace Heartbeat.Server.Services
                 .Where(s => s.EndTime > windowStart && s.StartTime < windowEnd
                             || s.StartTime == s.EndTime && s.StartTime >= windowStart && s.StartTime < windowEnd)
                 .Select(s => new SourceObservation(s.Source, depthTables.ReadingsFor(
-                    s.Source, s.AppName, s.Title, s.IdentityKey, s.AttributesJson)))
+                    s.Source, s.AppName, s.Title, s.IdentityKey, s.AttributesJson, s.PayloadJson)))
                 .ToList();
             var date = civilDate ?? DateOnly.FromDateTime(windowStart.ToOffset(displayOffset).Date);
             return KnowledgeProjection.Resolve(date, strands, episodes, observations);
@@ -271,7 +272,7 @@ namespace Heartbeat.Server.Services
                 {
                     var readings = depthTables.ReadingsFor(
                         c.Segment.Source, c.Segment.AppName, c.Segment.Title, c.Segment.IdentityKey,
-                        c.Segment.AttributesJson);
+                        c.Segment.AttributesJson, c.Segment.PayloadJson);
                     // 根轴缺值的展示回落在轨渲染层（解释器不造假值）：段不从时间轴消失。
                     var root = readings.Count > 0 && readings[0].Layer == 1
                         ? readings[0].Value
@@ -337,7 +338,7 @@ namespace Heartbeat.Server.Services
                 foreach (var c in source)
                 {
                     var readings = depthTables.ReadingsFor(
-                        c.Segment.Source, c.Segment.AppName, c.Segment.Title, c.Segment.IdentityKey, c.Segment.AttributesJson);
+                        c.Segment.Source, c.Segment.AppName, c.Segment.Title, c.Segment.IdentityKey, c.Segment.AttributesJson, c.Segment.PayloadJson);
                     Insert(roots, readings, c);
                 }
 

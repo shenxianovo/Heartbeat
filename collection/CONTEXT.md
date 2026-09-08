@@ -57,10 +57,12 @@ _Avoid_: 在原生回调或 UI 线程同步等待 Fact 发布
 Collector 对某个 Fact Stream 已知丢失范围的持久事实；稳定 UUIDv7 GapId 是幂等身份，协议 messageId 只标识一次传输尝试。时间使用非空半开区间，同一范围可以有多个不同 GapId，不能仅按 range/reason 去重而吞掉独立丢失。
 _Avoid_: 用 messageId 充当 Gap 身份、把相同时间范围自动视为同一丢失、ACK 前删除本地 Gap
 
-**Durable InputEvent Projection（持久输入事件投影）**:
-Hub 已提交 Event Fact 后、Analytics InputEvent 上传确认前的持久责任窗口；`InputEventBuffer` 是该窗口唯一容量 owner。满容量返回 backpressure 并保留原 FactId，底层 JSON 文件只做原子持久化、不自行裁剪。
-出网每轮只交付有界批次，413 由 Upload Stream 继续拆批；Analytics 确认送达后先从 pending 投影移除、再把稳定 FactId 写入有界 Delivery Receipt，Runtime 重启回放时据此跳过已送达 Event。收据写失败或被裁剪最多造成服务端幂等去重的重复上行，不能导致未送达 Event 被跳过。
-_Avoid_: 在 JsonFileCache 与投影层分别封顶、把 count clamp 当成成功、满容量丢 oldest 却不报告 Gap
+**Durable Fact Upload（持久事实上传）**:
+Hub 接收 Fact/Gap 后到 Analytics 确认前的保管责任。Collector ACK 表示 Runtime 已持久保存，
+不表示 Analytics 已收到；上传确认只覆盖本批相应版本，不能移除并发到达的新修订。未确认记录
+遇到容量限制应施加背压，不能静默驱逐；有待传记录的 Instance 不能直接删除。
+原有 InputEventBuffer 与 Segment 缓存仅排空升级前历史，不接收生产新 Fact 的持久回投。
+_Avoid_: 用 HTTP 已发送代表已送达、让两个队列分别拥有同一新 Fact 的持久保管
 
 **Collector Protocol Conformance Suite（采集器协议一致性套件）**:
 跨语言共享的可执行协议行为语料，固定生命周期、ACK、重试、Gap 与 drain 结果；各语言实现通过同一组向量证明其 Binding 没有改变协议语义。它不是 wire-message schema，也不是完整请求/响应 transcript。
@@ -210,7 +212,7 @@ _Avoid_: App Hint、Host 侧产品映射、用显示名称或进程名代替稳�
 _Avoid_: 用 Stop 成功、上传状态或内存重注入推断数据安全
 
 **Upload Stream（上传流）**:
-泛化的出网流（ADR-020/022）：通过 IUploadSource 保留读取快照，发送后只确认 Analytics 接收或已隔离的项。源拥有缓存、容量及当前交付余量；读取与发送失败不转移保管责任，确认不得移除更高 Revision。400/422 定位坏记录，413 拆小批次，426 暂停出网。Segment 源合并历史与实时快照，InputEvent 持久投影与历史重试文件通过同一接口接入；segments 与 input-events 各一条流。
+泛化的出网流（ADR-020/022）：通过 IUploadSource 保留读取快照，发送后只确认 Analytics 接收或已隔离的项。源拥有缓存、容量及当前交付余量；读取与发送失败不转移保管责任，确认不得移除更高 Revision。400/422 定位坏记录，413 拆小批次，426 暂停出网。原生 Fact 源由 Runtime 提供持久快照及精确确认；旧 segments/input-events 流只排空升级前缓存。
 _Avoid_: UploadService（退役的三份同构模板）、Upload Channel（ADR-022 前的旧名，彼时退回项由调用方重注入）
 
 **Segment Rotation Boundary（段轮换边界）**:
@@ -286,7 +288,7 @@ _Avoid_: 用上传成功率表示退出安全、用清理异常推断数据丢�
 - **Agent** 在应用生命周期内持续运行，**Update** 需重启应用才能生效
 - `Heartbeat.Collection.Hub` 提供纯 .NET 的 hub 运行时（loopback ingest、Collector Registry/declaration、认证客户端、段缓冲、Current Activity、Upload Stream、presence 与缓存 seam），可由桌面或无头 host 组合，不依赖桌面采集、UI、平台 API 或发布供应商
 - `Heartbeat.Collection.Headless` 是带 owner-only 管理 API 的无头 Web host：一个 Collector Runtime 从本地配置托管多个 ManagedProcess Collector Instance；深 `HeadlessInstancePipelines` module 按 Instance 吸收投影、当前状态、Analytics 上传身份、缓存与终态 drain，Fleet 不接触这些实现；服务器 Machine 身份不进入 Fact 归属
-- `Heartbeat.Collector.System` 消费 App 激活、focused-window 切换、同窗标题变化与 away 等语义观察，产出 system ActivitySegment；平台 adapter 不把原生回调形状泄漏进状态机
+- `Heartbeat.Collector.System` 消费 App 激活、focused-window 切换、同窗标题变化与 away 等语义观察，产出 system Segment Fact；平台 adapter 不把原生回调形状泄漏进状态机
 - `Heartbeat.Desktop.Updater.Velopack` 统一承载 Windows/macOS 的 Velopack Update 生命周期（检查、下载、重试、ReadyToApply 门控与调度应用），并作为供应商依赖防火墙；platform head 只选择 Release channel；共享应用退出 owner 在停止、收集保管证据和清理完成后调度 updater，再执行原生退出；未知数据记录风险，不阻止既定最终动作
 - `Heartbeat.Desktop.Windows` 组合 Win32 观察、MachineGuid、图标、自启动、共享 Avalonia UI、托盘与 Velopack Update
 - `Heartbeat.Desktop.Mac` 组合 NSWorkspace App/硬 away 观察、IOPlatformUUID、bundle 图标、共享 Avalonia UI、菜单栏 accessory 生命周期与逐用户 login start

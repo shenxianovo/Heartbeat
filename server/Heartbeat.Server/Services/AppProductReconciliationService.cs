@@ -173,10 +173,10 @@ public sealed class AppProductReconciliationService(AppDbContext db)
         var knowledge = await RewriteKnowledgeAsync(aliases, target.Key, cancellationToken);
         var impactedOwners = await db.ActivitySegments
             .Where(x => x.AppIdentityId != null && movedIdentityIds.Contains(x.AppIdentityId.Value))
-            .Select(x => x.Device.OwnerId)
+            .Select(x => x.OwnerId)
             .Distinct()
             .ToListAsync(cancellationToken);
-        impactedOwners.AddRange(legacySegments.Select(x => x.Device.OwnerId));
+        impactedOwners.AddRange(legacySegments.Select(x => x.OwnerId));
         impactedOwners.AddRange(currentDevices.Select(x => x.OwnerId));
         impactedOwners.AddRange(knowledge.ImpactedOwners);
         var ownerSet = impactedOwners.ToHashSet(StringComparer.Ordinal);

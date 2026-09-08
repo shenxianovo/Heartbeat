@@ -11,8 +11,8 @@ flowchart LR
     OS["OS adapters\nforeground / input / power"]
     SYS["System Collector\nInProcess driver"]
     HUB["Collection Hub\nCollector Runtime"]
-    PROJ["Fact validation + projectors\nsegment / input event"]
-    CACHE["Upload streams + local cache"]
+    PROJ["Fact validation + durable Runtime custody"]
+    CACHE["Native Fact upload + exact confirmation\nlegacy caches drain only"]
     LOOP["ExternalHost listener seam\ngeneric binding handler"]
 
     UI -->|"typed calls · desired state"| HUB
@@ -28,8 +28,8 @@ flowchart LR
     API["Management API"]
     FLEET["CollectorMarketplaceHost\nshared Runtime ownership"]
     CHILD["ManagedProcess Collector\nReference / VRChat"]
-    PIPE["HeadlessInstancePipelines\nprojection + status + upload lifecycle"]
-    HCACHE["Per-Subject upload streams + cache"]
+    PIPE["Runtime Fact custody + subject status"]
+    HCACHE["Native Fact upload\nlegacy per-instance caches drain only"]
 
     WEB -->|"HTTPS REST polling\nOIDC/JWT"| API
     API -->|"typed commands / status"| FLEET
@@ -48,9 +48,16 @@ flowchart LR
 `ExternalHostCollectorProtocolHandler` 承载，route 是 `/v1/collector-protocol/external-host`；两个 Desktop head
 都已接入，没有接入这个 binding 的宿主（如 Headless）保留 `NullExternalHostProtocolHttpHandler` 一律 404。
 Browser 专属 discovery 路由仍然不存在，也不会再有：这条 route 不认识任何具名 Collector。旧的
-`POST /v1/segments`、`GET /v1/hub` 和 source 级配置/声明入口已经退役。`SegmentIngestService` 仍是 Runtime projector 的内部 segment sink，不是外部协议。
+`POST /v1/segments`、`GET /v1/hub` 和 source 级配置/声明入口已经退役。`SegmentIngestService` 仅保留旧缓存排空与旧嵌入式 projection seam，不是新 Fact 的出网权威。
 
 Desktop 的平台观察回调不执行协议 I/O：system Collector 先把 Segment / Event 放入 ingress queue，再由后台 delivery pump 持久化并发送。Collector Protocol Client 不捕获宿主 `SynchronizationContext`，因此 Hub 背压不会阻塞 Avalonia UI、macOS LaunchServices 回调或 Windows hook/message-loop 线程。
+
+## Analytics Fact 边界
+
+`POST /api/v1/facts` 原子接收自包含 Stream/schema 定义、Fact 快照与 Gap。Runtime 保留未确认数据，
+成功响应仅确认相应版本。Analytics 持久化原生 Subject/Stream/Fact，并同事务维护活动与输入读投影；
+Dashboard 获取结构化 Payload 与来源元数据。历史记录按 LegacyImport 导入且保留原始档案，
+旧 segment/input 入口只排空升级前缓存。详见 [ADR-054](../adr/054-native-analytics-fact-ingest.md)。
 
 ## ExternalHost 身份语义
 

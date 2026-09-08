@@ -55,6 +55,7 @@ public class AppConsumerTests(PostgresContainerFixture fixture) : PostgresTestBa
         await db.SaveChangesAsync();
         db.ActivitySegments.Add(new ActivitySegment
         {
+            OwnerId = device.OwnerId,
             Id = Guid.CreateVersion7(), DeviceId = device.Id, Source = "system", IdentityKey = "code|",
             AppId = app.Id, AppIdentityId = identity.Id,
             StartTime = DateTimeOffset.UtcNow.AddMinutes(-1), EndTime = DateTimeOffset.UtcNow

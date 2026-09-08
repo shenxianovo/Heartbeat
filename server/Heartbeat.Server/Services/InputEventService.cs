@@ -12,40 +12,11 @@ namespace Heartbeat.Server.Services
         /// <summary>
         /// 批量保存输入事件。基于 Id (UUIDv7) 去重，重复上传幂等。
         /// </summary>
-        public async Task SaveAsync(long deviceId, InputEventUploadRequest request)
-        {
-            InputEventIngestContract.Validate(request.Events);
+        public Task IngestAsync(string ownerId, string hardwareId, string? deviceName, InputEventUploadRequest request) =>
+            new FactStore(_db).ImportInputEventsAsync(ownerId, hardwareId, deviceName, request);
 
-            // 批内按 Id 去重
-            var items = request.Events
-                .GroupBy(e => e.Id)
-                .Select(g => g.First())
-                .ToList();
-
-            if (items.Count == 0) return;
-
-            // 过滤掉库中已存在的 Id（幂等：重传整批不会重复插入）
-            var ids = items.Select(e => e.Id).ToList();
-            var existing = await _db.InputEvents
-                .Where(e => ids.Contains(e.Id))
-                .Select(e => e.Id)
-                .ToHashSetAsync();
-
-            var toInsert = items
-                .Where(e => !existing.Contains(e.Id))
-                .Select(e => new InputEvent
-                {
-                    Id = e.Id,
-                    DeviceId = deviceId,
-                    EventType = e.EventType,
-                    CodeSet = e.CodeSet,
-                    Code = e.Code,
-                    Timestamp = e.Timestamp
-                });
-
-            _db.InputEvents.AddRange(toInsert);
-            await _db.SaveChangesAsync();
-        }
+        public Task SaveAsync(long deviceId, InputEventUploadRequest request) =>
+            new FactStore(_db).ImportInputEventsAsync(deviceId, request);
 
         /// <summary>
         /// 统计某时间段内的键盘/鼠标操作计数。按 (EventType, Code) 分组后映射到响应字段。

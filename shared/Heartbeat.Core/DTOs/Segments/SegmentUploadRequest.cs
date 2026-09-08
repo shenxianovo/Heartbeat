@@ -4,9 +4,8 @@ using System.Text.Json.Serialization;
 namespace Heartbeat.Core.DTOs.Segments
 {
     /// <summary>
-    /// Collection → Analytics 的严格段上传形状（ADR-017/020/035）。system 段由内置
-    /// Collector 产出；外部 Collector 的 loopback AppHint 先由 hub 平台 adapter 解析为
-    /// AppIdentityKey，再与 system 段经同一出网批次上传。
+    /// 升级前本地段缓存的历史导入形状（ADR-054）；新生产事实使用 FactUploadRequest。
+    /// 原有 strict 字段约束继续有效，adapter 仅排空真实遗留缓存。
     /// </summary>
     public class SegmentUploadRequest
     {

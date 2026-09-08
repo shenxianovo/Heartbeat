@@ -73,20 +73,26 @@ namespace Heartbeat.Server.Services
             || from != null && from.StartsWith(PayloadAttributesPrefix, StringComparison.Ordinal)
                             && from.Length > PayloadAttributesPrefix.Length;
 
-        public static string? Resolve(string from, string? appName, string? title, string identityKey, string? attributesJson)
+        public static string? Resolve(string from, string? appName, string? title, string identityKey, string? attributesJson, string? payloadJson = null)
         {
-            if (from == AppName) return appName;
+            // App is an Analytics product projection, not a Collector display-name hint.
+            if (from is AppName or PayloadPrefix + AppName) return appName;
             if (from == Title) return title;
             if (from == IdentityKey) return identityKey;
+            if (payloadJson != null)
+            {
+                if (from.StartsWith(PayloadPrefix, StringComparison.Ordinal))
+                    return ResolveAttributePath(payloadJson, from[PayloadPrefix.Length..]);
+                if (from.StartsWith(AttributesPrefix, StringComparison.Ordinal))
+                    return ResolveAttributePath(payloadJson, from);
+            }
+            // Pure legacy projection inputs remain useful to callers that already extracted attributes.
             if (from.StartsWith(AttributesPrefix, StringComparison.Ordinal))
                 return ResolveAttributePath(attributesJson, from[AttributesPrefix.Length..]);
-            if (from == PayloadPrefix + AppName) return appName;
             if (from == PayloadPrefix + Title) return title;
             if (from == PayloadPrefix + IdentityKey) return identityKey;
             if (from.StartsWith(PayloadAttributesPrefix, StringComparison.Ordinal))
-                return ResolveAttributePath(
-                    attributesJson,
-                    from[PayloadAttributesPrefix.Length..]);
+                return ResolveAttributePath(attributesJson, from[PayloadAttributesPrefix.Length..]);
             return null;
         }
 
@@ -174,7 +180,7 @@ namespace Heartbeat.Server.Services
         }
 
         public IReadOnlyList<DepthReading> ReadingsFor(
-            string source, string? appName, string? title, string identityKey, string? attributesJson = null)
+            string source, string? appName, string? title, string identityKey, string? attributesJson = null, string? payloadJson = null)
         {
             var table = For(source);
             var readings = new List<DepthReading>(2);
@@ -190,7 +196,7 @@ namespace Heartbeat.Server.Services
             {
                 foreach (var decl in table.Layers[i].Readings)
                 {
-                    var value = DepthSlots.Resolve(decl.From, appName, title, identityKey, attributesJson);
+                    var value = DepthSlots.Resolve(decl.From, appName, title, identityKey, attributesJson, payloadJson);
                     if (!string.IsNullOrWhiteSpace(value))
                         readings.Add(new(i + 1, decl.Name, value));
                 }

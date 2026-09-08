@@ -9,7 +9,7 @@ namespace Heartbeat.Collection.Hub.Collectors.Runtime;
 
 internal sealed class JsonCollectorRuntimeStore : IDisposable
 {
-    private const int CurrentSchemaVersion = 2;
+    private const int CurrentSchemaVersion = 3;
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -55,8 +55,16 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
 
         try
         {
-            var state = Deserialize(File.ReadAllBytes(_filePath));
+            var bytes = File.ReadAllBytes(_filePath);
+            var state = Deserialize(bytes);
             Validate(state);
+            using var original = JsonDocument.Parse(bytes);
+            var originalVersion = original.RootElement.GetProperty("schemaVersion").GetInt32();
+            if (originalVersion < CurrentSchemaVersion)
+            {
+                var backup = _filePath + $".v{originalVersion}.bak";
+                if (!File.Exists(backup)) File.Copy(_filePath, backup);
+            }
             return state;
         }
         catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException)
@@ -93,6 +101,8 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
             }
             root["schemaVersion"] = CurrentSchemaVersion;
         }
+        if (schemaVersion == 2)
+            root["schemaVersion"] = CurrentSchemaVersion;
         return root.Deserialize<CollectorRuntimeState>(SerializerOptions)
                ?? throw new JsonException("Collector Runtime state is null.");
     }
@@ -297,6 +307,7 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
             if (fact.StreamId == Guid.Empty || !IsUuidV7(fact.FactId) || fact.SchemaRevision <= 0 ||
                 fact.Revision is <= 0 or > 9_007_199_254_740_991 || !Enum.IsDefined(fact.RecordState) ||
                 !IsSha256(fact.ContentHash) || stream is null ||
+                fact.DeliveredContentHash is { } deliveredHash && !IsSha256(deliveredHash) ||
                 fact.ObservedAt is { Offset: var offset } && offset != TimeSpan.Zero ||
                 fact.RecordState == FactRecordState.Present && fact.Payload is null ||
                 fact.RecordState == FactRecordState.Retracted && fact.Payload is not null)
@@ -348,10 +359,17 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
         var identifiedGaps = state.Gaps.Where(gap => gap.GapId != Guid.Empty).ToArray();
         if (identifiedGaps.Select(gap => (gap.StreamId, gap.GapId)).Distinct().Count() != identifiedGaps.Length)
             throw new JsonException("Collector Runtime state contains duplicate Stream Gaps.");
+        var gapIdentities = state.Gaps.SelectMany(gap => gap.LegacyGapIdAlias is { } alias
+            ? new[] { (gap.StreamId, gap.GapId), (gap.StreamId, alias) }
+            : new[] { (gap.StreamId, gap.GapId) }).Where(identity => identity.Item2 != Guid.Empty).ToArray();
+        if (gapIdentities.Distinct().Count() != gapIdentities.Length)
+            throw new JsonException("Collector Runtime state contains duplicate Stream Gap aliases.");
         foreach (var gap in state.Gaps)
         {
             if (gap.StreamId == Guid.Empty ||
                 gap.GapId != Guid.Empty && !IsUuidV7(gap.GapId) ||
+                gap.LegacyGapIdAlias is { } alias && !IsUuidV7(alias) ||
+                gap.AwaitingLegacyGapIdentity && gap.LegacyGapIdAlias is not null ||
                 gap.End <= gap.Start || string.IsNullOrWhiteSpace(gap.Reason) ||
                 gap.EstimatedFactsLost is <= 0)
                 throw new JsonException("Collector Runtime state contains an invalid Stream Gap.");
@@ -379,7 +397,7 @@ public sealed class CollectorRuntimeStateException(string message, Exception? in
 
 internal sealed class CollectorRuntimeState
 {
-    public int SchemaVersion { get; init; } = 2;
+    public int SchemaVersion { get; init; } = 3;
     public List<CollectorInstanceState> Instances { get; init; } = [];
     public List<FactStreamState> Streams { get; init; } = [];
     public List<CommittedFactState> Facts { get; init; } = [];
@@ -476,17 +494,18 @@ internal sealed class CollectorRuntimeState
             ActivationAttemptTombstones = [.. ActivationAttemptTombstones]
         };
 
-    public CollectorRuntimeState WithGap(CommittedGapState gap) => new()
+    public CollectorRuntimeState WithGap(CommittedGapState gap, CommittedGapState? evicted = null) => new()
     {
         SchemaVersion = SchemaVersion,
         Instances = [.. Instances],
         Streams = [.. Streams],
         Facts = [.. Facts],
-        Gaps = [.. Gaps, gap],
+        Gaps = [.. Gaps.Where(existing => !ReferenceEquals(existing, evicted)), gap],
         ActivationAttemptTombstones = [.. ActivationAttemptTombstones]
     };
 
-    public CollectorRuntimeState WithBoundGapIdentity(CommittedGapState gap, Guid gapId) => new()
+    public CollectorRuntimeState WithBoundGapIdentity(CommittedGapState gap, Guid gapId,
+        bool awaitingLegacyIdentity = false) => new()
     {
         SchemaVersion = SchemaVersion,
         Instances = [.. Instances],
@@ -500,11 +519,20 @@ internal sealed class CollectorRuntimeState
                     Start = existing.Start,
                     End = existing.End,
                     Reason = existing.Reason,
-                    EstimatedFactsLost = existing.EstimatedFactsLost
+                    EstimatedFactsLost = existing.EstimatedFactsLost,
+                    Delivered = existing.Delivered,
+                    AwaitingLegacyGapIdentity = awaitingLegacyIdentity
                 }
                 : existing)
             .ToList(),
         ActivationAttemptTombstones = [.. ActivationAttemptTombstones]
+    };
+
+    public CollectorRuntimeState WithLegacyGapAlias(CommittedGapState gap, Guid alias) => new()
+    {
+        SchemaVersion = SchemaVersion, Instances = [.. Instances], Streams = [.. Streams], Facts = [.. Facts],
+        ActivationAttemptTombstones = [.. ActivationAttemptTombstones],
+        Gaps = Gaps.Select(existing => ReferenceEquals(existing, gap) ? existing.BindLegacyAlias(alias) : existing).ToList()
     };
 
     public CollectorRuntimeState WithActivationAttemptTombstone(ActivationAttemptTombstoneState attempt) => new()
@@ -565,6 +593,15 @@ internal sealed class CommittedFactState
     public DateTimeOffset? OccurredAt { get; init; }
     public JsonElement? Payload { get; init; }
     public string ContentHash { get; init; } = string.Empty;
+    public string? DeliveredContentHash { get; init; }
+
+    public CommittedFactState ConfirmDelivery() => new()
+    {
+        StreamId = StreamId, FactId = FactId, SchemaRevision = SchemaRevision, Revision = Revision,
+        RecordState = RecordState, ObservedAt = ObservedAt, Start = Start, End = End,
+        IsFinal = IsFinal, OccurredAt = OccurredAt, Payload = Payload, ContentHash = ContentHash,
+        DeliveredContentHash = ContentHash
+    };
 }
 
 internal sealed class CommittedGapState
@@ -575,6 +612,23 @@ internal sealed class CommittedGapState
     public DateTimeOffset End { get; init; }
     public string Reason { get; init; } = string.Empty;
     public int? EstimatedFactsLost { get; init; }
+    public bool Delivered { get; init; }
+    public bool AwaitingLegacyGapIdentity { get; init; }
+    public Guid? LegacyGapIdAlias { get; init; }
+
+    public CommittedGapState ConfirmDelivery() => new()
+    {
+        StreamId = StreamId, GapId = GapId, Start = Start, End = End,
+        Reason = Reason, EstimatedFactsLost = EstimatedFactsLost, Delivered = true,
+        AwaitingLegacyGapIdentity = AwaitingLegacyGapIdentity, LegacyGapIdAlias = LegacyGapIdAlias
+    };
+
+    public CommittedGapState BindLegacyAlias(Guid alias) => new()
+    {
+        StreamId = StreamId, GapId = GapId, Start = Start, End = End, Reason = Reason,
+        EstimatedFactsLost = EstimatedFactsLost, Delivered = Delivered,
+        LegacyGapIdAlias = alias == GapId ? null : alias
+    };
 }
 
 internal sealed class ActivationAttemptTombstoneState

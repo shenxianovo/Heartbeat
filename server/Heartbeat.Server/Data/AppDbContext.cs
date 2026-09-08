@@ -1,10 +1,20 @@
 ﻿using Heartbeat.Server.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace Heartbeat.Server.Data
 {
     public class AppDbContext : DbContext
     {
+        // Fact times are authoritative 100ns UTC ticks; PostgreSQL timestamps are read projections only.
+        private static readonly ValueConverter<DateTimeOffset, long> FactTimestamp = new(
+            value => value.UtcTicks, value => new DateTimeOffset(value, TimeSpan.Zero));
+
+        public DbSet<ObservedFact> Facts => Set<ObservedFact>();
+        public DbSet<FactSubjectRecord> FactSubjects => Set<FactSubjectRecord>();
+        public DbSet<FactStream> FactStreams => Set<FactStream>();
+        public DbSet<FactSchemaRecord> FactSchemas => Set<FactSchemaRecord>();
+        public DbSet<FactGap> FactGaps => Set<FactGap>();
         public DbSet<User> Users => Set<User>();
         public DbSet<Device> Devices => Set<Device>();
         public DbSet<App> Apps => Set<App>();
@@ -30,6 +40,42 @@ namespace Heartbeat.Server.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+            modelBuilder.Entity<FactSubjectRecord>(entity =>
+            {
+                entity.HasKey(e => new { e.OwnerId, e.SubjectId });
+                entity.HasOne(e => e.Device).WithMany().HasForeignKey(e => e.DeviceId).OnDelete(DeleteBehavior.Restrict);
+            });
+            modelBuilder.Entity<FactStream>(entity =>
+            {
+                entity.HasKey(e => new { e.OwnerId, e.StreamId });
+                entity.Property(e => e.Dimensions).HasColumnType("jsonb");
+                entity.HasOne(e => e.Subject).WithMany().HasForeignKey(e => new { e.OwnerId, e.SubjectId }).OnDelete(DeleteBehavior.Restrict);
+            });
+            modelBuilder.Entity<FactSchemaRecord>(entity =>
+            {
+                entity.HasKey(e => new { e.OwnerId, e.SchemaId, e.SchemaMajor, e.Revision });
+            });
+            modelBuilder.Entity<ObservedFact>(entity =>
+            {
+                entity.Property(e => e.Start).HasConversion(FactTimestamp);
+                entity.Property(e => e.End).HasConversion(FactTimestamp);
+                entity.Property(e => e.OccurredAt).HasConversion(FactTimestamp);
+                entity.Property(e => e.ObservedAt).HasConversion(FactTimestamp);
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).ValueGeneratedNever();
+                entity.Property(e => e.Payload).HasColumnType("jsonb");
+                entity.Property(e => e.LegacyRecord).HasColumnType("jsonb");
+                entity.HasIndex(e => new { e.OwnerId, e.StreamId, e.FactId }).IsUnique();
+                entity.HasIndex(e => new { e.OwnerId, e.LegacyDeviceId, e.LegacyKind, e.LegacyId });
+                entity.HasOne(e => e.Stream).WithMany().HasForeignKey(e => new { e.OwnerId, e.StreamId }).OnDelete(DeleteBehavior.Restrict);
+            });
+            modelBuilder.Entity<FactGap>(entity =>
+            {
+                entity.Property(e => e.Start).HasConversion(FactTimestamp);
+                entity.Property(e => e.End).HasConversion(FactTimestamp);
+                entity.HasKey(e => new { e.OwnerId, e.StreamId, e.GapId });
+                entity.HasOne(e => e.Stream).WithMany().HasForeignKey(e => new { e.OwnerId, e.StreamId }).OnDelete(DeleteBehavior.Restrict);
+            });
 
             modelBuilder.Entity<User>(entity =>
             {
@@ -86,6 +132,9 @@ namespace Heartbeat.Server.Data
                 entity.Property(e => e.Source).HasMaxLength(64);
 
                 entity.Property(e => e.Attributes).HasColumnType("jsonb");
+                entity.Property(e => e.Payload).HasColumnType("jsonb");
+                entity.HasOne(e => e.Fact).WithMany().HasForeignKey(e => e.FactKey).OnDelete(DeleteBehavior.Restrict);
+                entity.HasIndex(e => e.FactKey).IsUnique();
 
                 entity.HasOne(e => e.Device)
                     .WithMany()
@@ -193,6 +242,9 @@ namespace Heartbeat.Server.Data
                 entity.HasOne(e => e.Device)
                     .WithMany()
                     .HasForeignKey(e => e.DeviceId);
+
+                entity.HasOne(e => e.Fact).WithMany().HasForeignKey(e => e.FactKey).OnDelete(DeleteBehavior.Restrict);
+                entity.HasIndex(e => e.FactKey).IsUnique();
 
                 // 计数查询走 (DeviceId, Timestamp)。
                 entity.HasIndex(e => new { e.DeviceId, e.Timestamp });

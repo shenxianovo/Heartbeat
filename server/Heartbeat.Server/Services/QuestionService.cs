@@ -215,11 +215,13 @@ namespace Heartbeat.Server.Services
             string ownerId, DateTimeOffset windowStart, DateTimeOffset windowEnd, CancellationToken ct)
         {
             return await db.ActivitySegments
-                .Where(x => x.Device.OwnerId == ownerId)
+                .Where(x => x.OwnerId == ownerId)
                 .Where(x => x.EndTime > windowStart && x.StartTime < windowEnd
                             || x.StartTime == x.EndTime && x.StartTime >= windowStart && x.StartTime < windowEnd)
                 .Select(x => new RecapSegmentInput(
-                    x.Device.DeviceName,
+                    x.Device != null ? x.Device.DeviceName
+                        : x.Fact != null ? x.Fact.Stream.Subject.DisplayName ?? x.Fact.Stream.SubjectId.ToString()
+                        : "未知主体",
                     x.Source,
                     x.IdentityKey,
                     x.AppIdentityId != null
@@ -228,7 +230,8 @@ namespace Heartbeat.Server.Services
                     x.Title,
                     x.StartTime,
                     x.EndTime,
-                    x.Attributes))
+                    x.Attributes,
+                    x.Payload))
                 .ToListAsync(ct);
         }
     }

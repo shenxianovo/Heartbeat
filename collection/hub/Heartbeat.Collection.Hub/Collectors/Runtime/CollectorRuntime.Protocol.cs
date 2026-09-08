@@ -540,7 +540,8 @@ public sealed partial class CollectorRuntime
                         "Activation does not hold this Fact Stream writer lease.");
 
                 if (_state.Gaps.FirstOrDefault(existing =>
-                        existing.StreamId == streamId && existing.GapId == gap.GapId) is { } existing)
+                        existing.StreamId == streamId &&
+                        (existing.GapId == gap.GapId || existing.LegacyGapIdAlias == gap.GapId)) is { } existing)
                 {
                     return existing.Start == gap.Start && existing.End == gap.End &&
                            existing.Reason == gap.Reason &&
@@ -556,19 +557,24 @@ public sealed partial class CollectorRuntime
                 // Runtime state schema v2 wrote committed Gaps without GapId. Bind an exact lost-ACK
                 // replay once; removal follows the state inventory/window in compatibility-debt.md.
                 if (_state.Gaps.FirstOrDefault(existing =>
-                        existing.GapId == Guid.Empty &&
+                        (existing.GapId == Guid.Empty || existing.AwaitingLegacyGapIdentity) &&
                         existing.StreamId == streamId && existing.Start == gap.Start &&
                         existing.End == gap.End && existing.Reason == gap.Reason &&
                         existing.EstimatedFactsLost == gap.EstimatedFactsLost) is { } currentFormatGap)
                 {
-                    next = baseState.WithBoundGapIdentity(currentFormatGap, gap.GapId);
+                    next = currentFormatGap.GapId == Guid.Empty
+                        ? baseState.WithBoundGapIdentity(currentFormatGap, gap.GapId)
+                        : baseState.WithLegacyGapAlias(currentFormatGap, gap.GapId);
                     outcome = new GapDeliveryOutcome(streamId, GapDeliveryStatus.Duplicate);
                     fencedMessage = "Hub drain deadline fenced the Stream Gap identity commit.";
                 }
                 else
                 {
-                    if (_state.Gaps.Count >= _options.MaxDurableFacts)
+                    if (_state.Gaps.Count(item => !_options.EnableFactUpload || !item.Delivered) >= _options.MaxDurableFacts)
                         return GapRetry(streamId, "Hub durable Gap inbox is applying backpressure.");
+                    // Keep the finite migrated alias cohort: forgetting an original GapId would
+                    // turn a later lost-ACK replay into a second Analytics loss report. Only
+                    // ordinary delivered Gaps participate in the bounded replay window.
                     next = baseState.WithGap(new CommittedGapState
                         {
                             StreamId = streamId,
@@ -577,7 +583,10 @@ public sealed partial class CollectorRuntime
                             End = gap.End,
                             Reason = gap.Reason,
                             EstimatedFactsLost = gap.EstimatedFactsLost
-                        });
+                        }, _options.EnableFactUpload && _state.Gaps.Count(existing =>
+                                !existing.AwaitingLegacyGapIdentity && existing.LegacyGapIdAlias is null) >= _options.MaxDurableFacts
+                            ? _state.Gaps.FirstOrDefault(existing => existing.Delivered &&
+                                !existing.AwaitingLegacyGapIdentity && existing.LegacyGapIdAlias is null) : null);
                     outcome = new GapDeliveryOutcome(streamId, GapDeliveryStatus.Committed);
                     fencedMessage = "Hub drain deadline fenced the Stream Gap commit.";
                 }
@@ -639,7 +648,7 @@ public sealed partial class CollectorRuntime
                 return immediate;
         }
 
-        if (prepared.Stream.FactKind == FactKind.Event &&
+        if (!_options.EnableFactUpload && prepared.Stream.FactKind == FactKind.Event &&
             !ProjectEvent(prepared.Stream, prepared.Committed, isReplay: false, deliveryFence))
             return Retry(index, "Hub durable Event projection is applying backpressure.");
 
@@ -693,7 +702,9 @@ public sealed partial class CollectorRuntime
             break;
         }
 
-        if (prepared.Stream.FactKind != FactKind.Event)
+        if (_options.EnableFactUpload)
+            ObserveCommittedFact(prepared.Stream, prepared.Committed);
+        else if (prepared.Stream.FactKind != FactKind.Event)
             ProjectFact(prepared.Stream, prepared.Committed, isReplay: false);
         return new FactDeliveryOutcome(index, FactDeliveryStatus.Committed);
     }
@@ -743,18 +754,18 @@ public sealed partial class CollectorRuntime
         };
         if (validationError is not null)
             return Rejected(index, "fact_schema_invalid", validationError);
-        if (!CanProject(stream, fact))
+        if (!_options.EnableFactUpload && !CanProject(stream, fact))
             return Rejected(
                 index,
                 "fact_schema_invalid",
                 "Fact payload is not compatible with the negotiated Hub projection shape.");
-        if (stream.FactKind == FactKind.Segment &&
+        if (!_options.EnableFactUpload && stream.FactKind == FactKind.Segment &&
             _segmentSink is not IDurableSegmentProjectionSink and not ISubjectSegmentProjectionSink)
             return Rejected(
                 index,
                 "fact_schema_invalid",
                 "The configured Segment projection cannot preserve durable Fact revisions.");
-        if (stream.FactKind == FactKind.Event && _inputEventSink is null)
+        if (!_options.EnableFactUpload && stream.FactKind == FactKind.Event && _inputEventSink is null)
             return Rejected(
                 index,
                 "fact_schema_invalid",
@@ -786,11 +797,22 @@ public sealed partial class CollectorRuntime
             var sameKindFacts = _state.Facts
                 .Where(existing => sameKindStreamIds.Contains(existing.StreamId))
                 .ToArray();
+            if (_options.EnableFactUpload && sameKindFacts.Count(existing =>
+                    existing.DeliveredContentHash != existing.ContentHash) >= _options.MaxDurableFacts)
+                return Retry(index, "Hub pending Fact upload journal is applying backpressure.");
             if (sameKindFacts.Length >= _options.MaxDurableFacts)
             {
-                if (stream.FactKind != FactKind.Event)
+                if (!_options.EnableFactUpload && stream.FactKind != FactKind.Event)
                     return Retry(index, "Hub durable Fact inbox is applying backpressure.");
-                evictedEvent = sameKindFacts[0];
+                if (_options.EnableFactUpload)
+                {
+                    evictedEvent = sameKindFacts.FirstOrDefault(existing =>
+                        CanEvictDeliveredFact(existing));
+                    if (evictedEvent is null)
+                        return Retry(index, "Hub active Fact replay window is applying backpressure.");
+                }
+                else if (stream.FactKind == FactKind.Event)
+                    evictedEvent = sameKindFacts[0];
             }
         }
 
@@ -809,9 +831,9 @@ public sealed partial class CollectorRuntime
             Payload = fact.RecordState == FactRecordState.Present ? fact.Payload.Clone() : null,
             ContentHash = contentHash
         };
-        // Immutable Events use the durable inbox as a bounded replay/deduplication window. Their
-        // projected InputEvent IDs remain stable downstream, so advancing this window keeps a raw
-        // production stream flowing without weakening ACK-loss idempotency for retained entries.
+        // Native terminal Facts use a bounded replay window after delivery. Analytics retains
+        // authoritative revision guards after pruning; the protocol ACK promises durable custody.
+        // Mutable/unretracted Events retain their first-observation state for later revisions.
         prepared = new PreparedFactCommit(stream, committed, evictedEvent);
         return null;
     }
@@ -938,7 +960,7 @@ public sealed partial class CollectorRuntime
             var hasProjector = output.FactKind switch
             {
                 FactKind.Segment => true,
-                FactKind.Event => ResolveEventProjector(output.Schema.Id, output.Schema.Major) is not null,
+                FactKind.Event => _options.EnableFactUpload || ResolveEventProjector(output.Schema.Id, output.Schema.Major) is not null,
                 _ => false
             };
             if (!hasProjector)
@@ -1203,7 +1225,7 @@ public sealed partial class CollectorRuntime
                      _ => string.Empty
                  }).Append("diagnostics.stream-gap"))
         {
-            if (capability == "facts.event" && _inputEventSink is null ||
+            if (capability == "facts.event" && !_options.EnableFactUpload && _inputEventSink is null ||
                 !HubProtocolCapabilities.TryGetValue(capability, out var hubVersions) ||
                 !package.Manifest.SupportedCapabilities.TryGetValue(capability, out var packageVersions) ||
                 !support.Capabilities.TryGetValue(capability, out var collectorVersions) ||
@@ -1505,6 +1527,12 @@ public sealed partial class CollectorRuntime
     {
         lock (_gate)
         {
+            if (_options.EnableFactUpload)
+            {
+                foreach (var fact in _state.Facts)
+                    ObserveCommittedFact(_state.Streams.Single(stream => stream.StreamId == fact.StreamId), fact);
+                return;
+            }
             var replaySink = _inputEventSink as IInputEventFactReplaySink;
             List<InputEventItem>? replayEvents = replaySink is null ? null : [];
             foreach (var fact in _state.Facts)

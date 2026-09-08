@@ -42,8 +42,14 @@ namespace Heartbeat.Server.Controllers
             if (string.IsNullOrWhiteSpace(hardwareId))
                 return BadRequest($"Missing {DeviceService.HardwareIdHeader} header.");
 
-            var device = await _deviceService.ResolveByHardwareIdAsync(userId, hardwareId, deviceName);
-            await _inputEventService.SaveAsync(device.Id, request);
+            try
+            {
+                await _inputEventService.IngestAsync(userId, hardwareId, deviceName, request);
+            }
+            catch (FactIngestException ex)
+            {
+                return ex.IsConflict ? Conflict(ex.Message) : UnprocessableEntity(ex.Message);
+            }
             return Ok();
         }
 

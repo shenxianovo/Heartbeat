@@ -62,6 +62,7 @@ public class AppMergeServiceTests(PostgresContainerFixture fixture) : PostgresTe
 
         db.ActivitySegments.Add(new ActivitySegment
         {
+            OwnerId = device.OwnerId,
             Id = Guid.CreateVersion7(), DeviceId = device.Id, Source = ActivitySources.System,
             IdentityKey = "code|", AppId = source.Id, AppIdentityId = win.Id,
             StartTime = DateTimeOffset.UtcNow.AddMinutes(-1), EndTime = DateTimeOffset.UtcNow
@@ -292,12 +293,14 @@ public class AppMergeServiceTests(PostgresContainerFixture fixture) : PostgresTe
         db.ActivitySegments.AddRange(
             new ActivitySegment
             {
+                OwnerId = device.OwnerId,
                 Id = Guid.CreateVersion7(), DeviceId = device.Id, Source = ActivitySources.System,
                 IdentityKey = "win", AppId = source.Id, AppIdentityId = win.Id,
                 StartTime = DateTimeOffset.UtcNow.AddMinutes(-2), EndTime = DateTimeOffset.UtcNow.AddMinutes(-1)
             },
             new ActivitySegment
             {
+                OwnerId = device.OwnerId,
                 Id = Guid.CreateVersion7(), DeviceId = device.Id, Source = ActivitySources.System,
                 IdentityKey = "mac", AppId = target.Id, AppIdentityId = mac.Id,
                 StartTime = DateTimeOffset.UtcNow.AddMinutes(-1), EndTime = DateTimeOffset.UtcNow

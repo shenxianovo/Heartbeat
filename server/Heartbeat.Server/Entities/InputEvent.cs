@@ -12,6 +12,9 @@ namespace Heartbeat.Server.Entities
 
         public long DeviceId { get; set; }
 
+        public Guid? FactKey { get; set; }
+        public ObservedFact? Fact { get; set; }
+
         public InputEventType EventType { get; set; }
 
         /// <summary>Code 的原始解释版本；历史记录不会被投影结果回写。</summary>

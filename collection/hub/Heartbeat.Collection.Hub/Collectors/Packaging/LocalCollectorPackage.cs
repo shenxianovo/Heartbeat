@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Json.Schema;
+using Heartbeat.Core.Facts;
 
 namespace Heartbeat.Collection.Hub.Collectors.Packages;
 
@@ -637,277 +638,27 @@ public sealed class LocalCollectorPackage
         FactSchemaReference reference,
         FactKind expectedFactKind)
     {
-        using var document = ParseJson(bytes, $"Fact Schema Document '{reference.Id}'");
-        var schema = document.RootElement;
-        RejectDuplicateObjectKeys(schema, $"Fact Schema Document '{reference.Id}'");
-        RequireObject(
-            schema,
-            $"Fact Schema Document '{reference.Id}'",
-            ["documentVersion", "schemaId", "schemaMajor", "schemaRevision", "factKind", "evolution", "payloadSchemaDialect", "payloadSchema"],
-            ["documentVersion", "schemaId", "schemaMajor", "schemaRevision", "factKind", "evolution", "payloadSchemaDialect", "payloadSchema"]);
-
-        var dialect = ReadNonEmptyString(schema, "payloadSchemaDialect", $"Fact Schema Document '{reference.Id}'");
-        if (dialect != "https://json-schema.org/draft/2020-12/schema")
-            throw new PackageValidationException(
-                $"Fact Schema Document '{reference.Id}' must use JSON Schema Draft 2020-12.");
-        if (ReadPositiveInt(schema, "documentVersion", $"Fact Schema Document '{reference.Id}'") != 1)
-            throw new PackageValidationException($"Fact Schema Document '{reference.Id}' has an unsupported documentVersion.");
-
-        var schemaId = ReadNonEmptyString(schema, "schemaId", $"Fact Schema Document '{reference.Id}'");
-        var major = ReadPositiveInt(schema, "schemaMajor", $"Fact Schema Document '{reference.Id}'");
-        var revision = ReadPositiveInt(schema, "schemaRevision", $"Fact Schema Document '{reference.Id}'");
-        var factKind = ParseFactKind(ReadNonEmptyString(schema, "factKind", $"Fact Schema Document '{reference.Id}'"));
-        if (schemaId != reference.Id || major != reference.Major || revision != reference.Revision || factKind != expectedFactKind)
-            throw new PackageValidationException(
-                $"Fact Schema Document '{reference.Id}' identity or FactKind does not match its Manifest reference.");
-
-        var evolution = schema.GetProperty("evolution");
-        RequireObject(
-            evolution,
-            $"Fact Schema Document '{reference.Id}' evolution",
-            ["mode", "allowRetraction", "mutablePayloadPaths"],
-            ["mode", "allowRetraction"]);
-        var mode = ParseEvolutionMode(ReadNonEmptyString(evolution, "mode", $"Fact Schema Document '{reference.Id}' evolution"));
-        if (!EvolutionMatches(factKind, mode))
-            throw new PackageValidationException(
-                $"Fact Schema Document '{reference.Id}' uses evolution mode '{mode}' for FactKind '{factKind}'.");
-        if (!evolution.GetProperty("allowRetraction").TryGetBoolean(out var allowRetraction))
-            throw new PackageValidationException(
-                $"Fact Schema Document '{reference.Id}' evolution.allowRetraction must be boolean.");
-        if (factKind == FactKind.Segment && !allowRetraction)
-            throw new PackageValidationException(
-                $"Fact Schema Document '{reference.Id}' must allow Segment retraction in v1.");
-
-        IReadOnlyList<string> mutablePayloadPaths = [];
-        if (mode == FactEvolutionMode.MutableEvent)
-        {
-            if (!evolution.TryGetProperty("mutablePayloadPaths", out _))
-                throw new PackageValidationException(
-                    $"Fact Schema Document '{reference.Id}' mutableEvent evolution requires mutablePayloadPaths.");
-            mutablePayloadPaths = ReadStringArray(
-                evolution,
-                "mutablePayloadPaths",
-                $"Fact Schema Document '{reference.Id}' evolution");
-            if (mutablePayloadPaths.Any(path => !IsJsonPointer(path)))
-                throw new PackageValidationException(
-                    $"Fact Schema Document '{reference.Id}' mutablePayloadPaths must contain JSON Pointers.");
-        }
-        else if (evolution.TryGetProperty("mutablePayloadPaths", out _))
-        {
-            throw new PackageValidationException(
-                $"Fact Schema Document '{reference.Id}' only permits mutablePayloadPaths for mutableEvent evolution.");
-        }
-
-        var payloadSchema = schema.GetProperty("payloadSchema");
-        if (payloadSchema.ValueKind is not (JsonValueKind.Object or JsonValueKind.True or JsonValueKind.False))
-            throw new PackageValidationException(
-                $"Fact Schema Document '{reference.Id}' payloadSchema must be a JSON Schema object or boolean.");
-
-        ValidateSchemaReferences(payloadSchema, payloadSchema, reference.Id, dialect);
-        JsonSchema payloadValidator;
         try
         {
-            payloadValidator = JsonSchema.FromText(
-                payloadSchema.GetRawText(),
+            var schema = FactSchemaContract.Parse(bytes, reference.Id, reference.Major, reference.Revision,
+                expectedFactKind.ToString().ToLowerInvariant());
+            var validator = JsonSchema.FromText(schema.PayloadSchema.GetRawText(),
                 new BuildOptions { Dialect = Dialect.Draft202012 });
+            return new FactSchemaDocument(schema.SchemaId, schema.SchemaMajor, schema.SchemaRevision,
+                expectedFactKind, ParseEvolutionMode(schema.EvolutionMode), schema.AllowRetraction,
+                schema.MutablePayloadPaths, schema.PayloadSchema, validator, reference.Hash,
+                ImmutableArray.CreateRange(bytes));
         }
-        catch (Exception exception) when (exception is
-            JsonException or JsonSchemaException or InvalidOperationException or ArgumentException)
+        catch (FactSchemaException exception)
+        {
+            throw new PackageValidationException(exception.Message, exception);
+        }
+        catch (Exception exception) when (exception is JsonException or
+            JsonSchemaException or InvalidOperationException or ArgumentException)
         {
             throw new PackageValidationException(
-                $"Fact Schema Document '{reference.Id}' payloadSchema is not valid JSON Schema Draft 2020-12.",
-                exception);
+                $"Fact Schema Document '{reference.Id}' payloadSchema is not valid JSON Schema Draft 2020-12.", exception);
         }
-
-        return new FactSchemaDocument(
-            schemaId,
-            major,
-            revision,
-            factKind,
-            mode,
-            allowRetraction,
-            mutablePayloadPaths,
-            payloadSchema.Clone(),
-            payloadValidator,
-            reference.Hash,
-            ImmutableArray.CreateRange(bytes));
-    }
-
-    private static void ValidateSchemaReferences(
-        JsonElement resourceRoot,
-        JsonElement schema,
-        string schemaId,
-        string dialect)
-    {
-        if (schema.ValueKind != JsonValueKind.Object)
-            return;
-
-        if (schema.TryGetProperty("$id", out _))
-            resourceRoot = schema;
-
-        foreach (var property in schema.EnumerateObject())
-        {
-            if (property.Name is "$ref" or "$dynamicRef")
-            {
-                if (property.Value.ValueKind != JsonValueKind.String)
-                    throw new PackageValidationException(
-                        $"Fact Schema Document '{schemaId}' payloadSchema {property.Name} must be a string.");
-                var reference = property.Value.GetString()!;
-                if (!reference.StartsWith('#'))
-                    throw new PackageValidationException(
-                        $"Fact Schema Document '{schemaId}' payloadSchema must be self-contained; external references are not allowed.");
-                if (!LocalSchemaReferenceResolves(resourceRoot, reference))
-                    throw new PackageValidationException(
-                        $"Fact Schema Document '{schemaId}' payloadSchema local reference '{reference}' cannot be resolved.");
-            }
-            if (property.Name == "$schema" &&
-                (property.Value.ValueKind != JsonValueKind.String || property.Value.GetString() != dialect))
-                throw new PackageValidationException(
-                    $"Fact Schema Document '{schemaId}' payloadSchema $schema must match payloadSchemaDialect.");
-        }
-
-        foreach (var subschema in EnumerateSubschemas(schema))
-            ValidateSchemaReferences(resourceRoot, subschema, schemaId, dialect);
-    }
-
-    private static IEnumerable<JsonElement> EnumerateSubschemas(JsonElement schema)
-    {
-        foreach (var property in schema.EnumerateObject())
-        {
-            if (property.Name is
-                "additionalItems" or
-                "additionalProperties" or
-                "contains" or
-                "contentSchema" or
-                "else" or
-                "if" or
-                "items" or
-                "not" or
-                "propertyNames" or
-                "then" or
-                "unevaluatedItems" or
-                "unevaluatedProperties")
-            {
-                if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.True or JsonValueKind.False)
-                    yield return property.Value;
-                continue;
-            }
-
-            if (property.Name is "allOf" or "anyOf" or "oneOf" or "prefixItems")
-            {
-                if (property.Value.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var child in property.Value.EnumerateArray())
-                        yield return child;
-                }
-                continue;
-            }
-
-            if (property.Name is "$defs" or "definitions" or "dependentSchemas" or "patternProperties" or "properties")
-            {
-                if (property.Value.ValueKind == JsonValueKind.Object)
-                {
-                    foreach (var child in property.Value.EnumerateObject())
-                        yield return child.Value;
-                }
-                continue;
-            }
-
-            if (property.Name == "dependencies" && property.Value.ValueKind == JsonValueKind.Object)
-            {
-                foreach (var child in property.Value.EnumerateObject())
-                {
-                    if (child.Value.ValueKind is JsonValueKind.Object or JsonValueKind.True or JsonValueKind.False)
-                        yield return child.Value;
-                }
-            }
-        }
-    }
-
-    private static bool LocalSchemaReferenceResolves(JsonElement root, string reference)
-    {
-        string fragment;
-        try
-        {
-            fragment = Uri.UnescapeDataString(reference[1..]);
-        }
-        catch (UriFormatException)
-        {
-            return false;
-        }
-
-        if (fragment.Length == 0)
-            return true;
-        if (fragment[0] != '/')
-            return ContainsSchemaAnchor(root, fragment);
-
-        var current = root;
-        foreach (var encodedToken in fragment[1..].Split('/'))
-        {
-            if (!TryDecodeJsonPointerToken(encodedToken, out var token))
-                return false;
-            if (current.ValueKind == JsonValueKind.Object)
-            {
-                if (!current.TryGetProperty(token, out current))
-                    return false;
-            }
-            else if (current.ValueKind == JsonValueKind.Array)
-            {
-                if (!int.TryParse(token, NumberStyles.None, CultureInfo.InvariantCulture, out var index) ||
-                    index < 0 || index >= current.GetArrayLength())
-                    return false;
-                current = current[index];
-            }
-            else
-            {
-                return false;
-            }
-        }
-        return current.ValueKind is JsonValueKind.Object or JsonValueKind.True or JsonValueKind.False;
-    }
-
-    private static bool ContainsSchemaAnchor(JsonElement schema, string anchor)
-    {
-        if (schema.ValueKind != JsonValueKind.Object)
-            return false;
-
-        foreach (var property in schema.EnumerateObject())
-        {
-            if (property.Name is "$anchor" or "$dynamicAnchor" &&
-                property.Value.ValueKind == JsonValueKind.String &&
-                property.Value.GetString() == anchor)
-                return true;
-        }
-
-        foreach (var subschema in EnumerateSubschemas(schema))
-        {
-            if (subschema.ValueKind == JsonValueKind.Object && subschema.TryGetProperty("$id", out _))
-                continue;
-            if (ContainsSchemaAnchor(subschema, anchor))
-                return true;
-        }
-        return false;
-    }
-
-    private static bool TryDecodeJsonPointerToken(string encoded, out string token)
-    {
-        var builder = new StringBuilder(encoded.Length);
-        for (var index = 0; index < encoded.Length; index++)
-        {
-            if (encoded[index] != '~')
-            {
-                builder.Append(encoded[index]);
-                continue;
-            }
-            if (++index >= encoded.Length || encoded[index] is not ('0' or '1'))
-            {
-                token = string.Empty;
-                return false;
-            }
-            builder.Append(encoded[index] == '0' ? '~' : '/');
-        }
-        token = builder.ToString();
-        return true;
     }
 
     private static void RejectDuplicateObjectKeys(JsonElement element, string context)
@@ -945,28 +696,6 @@ public sealed class LocalCollectorPackage
             identifier.Length == 1 || identifier[0] != '0' ||
             identifier.Any(character => !char.IsAsciiDigit(character)));
     }
-
-    private static bool IsJsonPointer(string value)
-    {
-        if (!value.StartsWith('/'))
-            return false;
-        for (var index = 1; index < value.Length; index++)
-        {
-            if (value[index] != '~')
-                continue;
-            if (++index >= value.Length || value[index] is not ('0' or '1'))
-                return false;
-        }
-        return true;
-    }
-
-    private static bool EvolutionMatches(FactKind factKind, FactEvolutionMode mode) => factKind switch
-    {
-        FactKind.Segment => mode == FactEvolutionMode.SegmentSnapshot,
-        FactKind.Event => mode is FactEvolutionMode.ImmutableEvent or FactEvolutionMode.MutableEvent,
-        FactKind.Measurement => mode == FactEvolutionMode.MeasurementCorrection,
-        _ => false
-    };
 
     private static FactKind ParseFactKind(string value) => value switch
     {

@@ -341,9 +341,9 @@ public class RecapProjectionTests
             Sys("vscode", null, Day.AddHours(9), Day.AddHours(10), device: "Desktop"),
             Sys("chrome", null, Day.AddHours(9).AddMinutes(30), Day.AddHours(10), device: "Laptop"));
 
-        Assert.Contains("## 设备「Desktop」", result.Digest);
-        Assert.Contains("## 设备「Laptop」", result.Digest);
-        Assert.Contains("设备：Desktop、Laptop", result.Digest);
+        Assert.Contains("## 主体「Desktop」", result.Digest);
+        Assert.Contains("## 主体「Laptop」", result.Digest);
+        Assert.Contains("主体：Desktop、Laptop", result.Digest);
     }
 
     [Fact]

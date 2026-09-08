@@ -2,6 +2,7 @@ using Heartbeat.Core.DTOs.Apps;
 using Heartbeat.Core.DTOs.Devices;
 using Heartbeat.Core.DTOs.Input;
 using Heartbeat.Core.DTOs.Segments;
+using Heartbeat.Core.DTOs.Facts;
 using Heartbeat.Core;
 using Heartbeat.Collection.Hub.Http;
 using System.Net.Http.Json;
@@ -18,6 +19,9 @@ namespace Heartbeat.Collection.Hub.Http
 
         public async Task<ApiResult> UploadInputEventsAsync(InputEventUploadRequest dto, CancellationToken ct = default)
             => await PostAsync(Url("input-events"), dto, "输入事件上传", ct);
+
+        public async Task<ApiResult> UploadFactsAsync(FactUploadRequest dto, CancellationToken ct = default)
+            => await PostAsync(Url("facts"), dto, "事实上传", ct);
 
         public async Task<ApiResult> SendHeartbeatAsync(DeviceStatusRequest dto, CancellationToken ct = default)
             => await PostAsync(Url("devices/heartbeat"), dto, "状态上传", ct);

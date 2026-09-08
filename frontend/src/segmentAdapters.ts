@@ -6,10 +6,12 @@ import type { ReplaySeg } from './timeline/replayModel'
 import { intersectInterval, type Interval } from './timeline/timelineModel'
 
 export interface SegmentLike {
+  streamId?: string
+  origin?: string
   source?: string
   identityKey?: string
   title?: string
-  attributes?: string
+  payload?: Record<string, unknown>
   startTime?: Date
   endTime?: Date
 }
@@ -23,28 +25,27 @@ export interface UsageSegLike {
   endTime?: Date
 }
 
-/** attributes 是各 source 自由结构的原始 JSON 串；解析失败一律返回 undefined。 */
-function parseAttrs(attributes?: string): Record<string, unknown> | undefined {
-  if (!attributes) return undefined
-  try {
-    const a: unknown = JSON.parse(attributes)
-    return typeof a === 'object' && a !== null ? (a as Record<string, unknown>) : undefined
-  } catch {
-    return undefined
-  }
+/** Fact payload 是结构化对象；历史数据在 Analytics 迁移时归一为相同形状。 */
+function attributesOf(payload?: Record<string, unknown>): Record<string, unknown> | undefined {
+  const attributes = payload?.attributes
+  return attributes && typeof attributes === 'object' && !Array.isArray(attributes)
+    ? attributes as Record<string, unknown>
+    : undefined
 }
 
-/** 取 attributes.url 作副标签。 */
-export function urlOf(attributes?: string): string | undefined {
-  const url = parseAttrs(attributes)?.url
+export function urlOf(payload?: Record<string, unknown>): string | undefined {
+  const url = attributesOf(payload)?.url
   return typeof url === 'string' ? url : undefined
 }
 
-export function laneKeyOf(source: string | undefined, attributes?: string): string | undefined {
+export function laneKeyOf(source: string | undefined, payload?: Record<string, unknown>, streamId?: string): string | undefined {
   if (!source) return undefined
-  const attrs = parseAttrs(attributes)
-  const laneKey = attrs?.laneKey
-  return typeof laneKey === 'number' || typeof laneKey === 'string' ? String(laneKey) : undefined
+  const attributes = attributesOf(payload)
+  const laneKey = source === 'browser' ? attributes?.windowId : attributes?.laneKey
+  if (typeof laneKey !== 'number' && typeof laneKey !== 'string') return undefined
+  // Browser window IDs are local to an External Host. Legacy imports cannot recover that host.
+  if (source === 'browser') return streamId ? `${streamId}:${laneKey}` : undefined
+  return streamId ? `${streamId}:${laneKey}` : String(laneKey)
 }
 
 function boundedSpan(start: number, end: number, window?: Interval): Interval | null {
@@ -65,7 +66,7 @@ export function toPluginSegs(segments: SegmentLike[], window?: Interval): Plugin
         ...span,
         identityKey: s.identityKey,
         title: s.title ?? undefined,
-        url: urlOf(s.attributes),
+        url: urlOf(s.payload),
       }] : []
     })
 }
@@ -106,12 +107,12 @@ export function toReplaySegs(
     if (!s.startTime || !s.endTime || !s.source) continue
     const span = boundedSpan(s.startTime.getTime(), s.endTime.getTime(), window)
     if (!span) continue
-    // attributes 原始 JSON 直接进 tooltip（v1 行为保持）
+    // 回放呈现标题与原始 URL，Fact 信封和运输元数据不进入产品 tooltip。
     out.push({
       ...span,
       source: s.source,
-      label: [s.title ?? s.identityKey, s.attributes].filter(Boolean).join('  '),
-      laneKey: laneKeyOf(s.source, s.attributes),
+      label: [s.title ?? s.identityKey, urlOf(s.payload)].filter(Boolean).join('  '),
+      laneKey: laneKeyOf(s.source, s.payload, s.origin === 'legacy-import' ? undefined : s.streamId),
     })
   }
   return out

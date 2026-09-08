@@ -47,6 +47,37 @@ const nextContext = detailContext(nextDay, 'refresh-2')
 describe('AppDetailModal Local Calendar Window adapter', () => {
   beforeEach(() => vi.clearAllMocks())
 
+  it.each(['native', 'legacy-import'])('shows the browser page URL from %s Fact history in title details', async origin => {
+    const url = 'https://example.com/page?q=original#section'
+    const attributes = { url, site: 'example.com', domain: 'example.com', windowId: 1 }
+    const identityKey = 'https://example.com/page'
+    const title = 'Example page'
+    vi.mocked(fetchPublicSegments).mockResolvedValueOnce([{
+      deviceId: 7, appId: 7, source: 'browser', identityKey, title,
+      origin, payload: { identityKey, title, attributes },
+      startTime: new Date('2026-03-08T06:00:00Z'),
+      endTime: new Date('2026-03-08T07:00:00Z'),
+    }] as never[])
+    const wrapper = shallowMount(AppDetailModal, {
+      props: {
+        username: 'alice', deviceId: 7, calendarContext: springContext,
+        app: { appId: 7, appName: 'Google Chrome', totalSeconds: 3600 },
+        usageData: [{
+          deviceId: 7, appId: 7, appKey: 'chrome', title: 'Example page - Google Chrome',
+          startTime: new Date('2026-03-08T06:00:00Z'), endTime: new Date('2026-03-08T07:00:00Z'),
+        }] as never[],
+        devices: [], isProvisional: false,
+      },
+      global: { renderStubDefaultSlot: true, stubs: { Teleport: true, AppIcon: true } },
+    })
+    await flushPromises()
+
+    const details = wrapper.findAll('section')[1]!
+    expect(details.text()).toContain(title)
+    expect(details.text()).toContain(url)
+    wrapper.unmount()
+  })
+
   it('queries Segments with the captured day endpoints and changes only device scope', async () => {
     const wrapper = shallowMount(AppDetailModal, {
       props: {
@@ -239,6 +270,30 @@ it('keeps concurrent device tracks separate when using the shared replay templat
   const replay = wrapper.findAll('section')[0]
   expect(replay.text()).toContain('Laptop')
   expect(replay.text()).toContain('Desktop')
+  expect(replay.findAll('[title]').length).toBe(2)
+  wrapper.unmount()
+})
+
+it('keeps account Subjects separate without inventing device identities', async () => {
+  vi.mocked(fetchPublicSegments).mockResolvedValueOnce(['Alice account', 'Second account'].map((subjectName, i) => ({
+    subjectId: `account-${i}`, subjectKind: 'account', subjectName,
+    source: 'vrchat.account', identityKey: `world-${i}`, title: `World ${i}`,
+    payload: { identityKey: `world-${i}`, title: `World ${i}`, attributes: {} },
+    startTime: new Date('2026-03-08T06:00:00Z'), endTime: new Date('2026-03-08T07:00:00Z'),
+  })) as never[])
+  const wrapper = shallowMount(AppDetailModal, {
+    props: {
+      username: 'alice', deviceId: 0, calendarContext: springContext,
+      app: { appId: 7, appName: 'VRChat', totalSeconds: 0 }, isProvisional: false,
+      devices: [], usageData: [],
+    },
+    global: { renderStubDefaultSlot: true, stubs: { AppIcon: true } },
+  })
+  await flushPromises()
+  const replay = wrapper.findAll('section')[0]!
+  expect(replay.text()).toContain('Alice account')
+  expect(replay.text()).toContain('Second account')
+  expect(replay.text()).not.toContain('设备 0')
   expect(replay.findAll('[title]').length).toBe(2)
   wrapper.unmount()
 })

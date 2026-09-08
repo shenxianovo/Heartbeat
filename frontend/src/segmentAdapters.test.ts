@@ -1,31 +1,42 @@
 import { describe, it, expect } from 'vitest'
+import { buildTracks } from './timeline/replayModel'
 import { urlOf, laneKeyOf, toReplaySegs, toPluginSegs, toSystemSegs } from './segmentAdapters'
 
 const base = new Date(2026, 0, 15, 10, 0, 0)
 const later = new Date(base.getTime() + 60_000)
 
 describe('urlOf', () => {
-  it('取合法 attributes.url', () => {
-    expect(urlOf('{"url":"https://a.com/x","domain":"a.com"}')).toBe('https://a.com/x')
+  it('从结构化 Fact payload 读取完整原始 URL', () => {
+    expect(urlOf({
+      identityKey: 'https://a.com/x', title: 'Page', url: 'https://wrong.example/',
+      attributes: { url: 'https://a.com/x?q=original#section' },
+    })).toBe('https://a.com/x?q=original#section')
   })
 
-  it('畸形 JSON / 缺失 / 非字符串一律 undefined', () => {
-    expect(urlOf('not json')).toBeUndefined()
+  it.each([null, [], 'bad', { url: 42 }, {}])('无有效 URL 时不伪造网址：%j', attributes => {
+    expect(urlOf({ identityKey: 'page', attributes })).toBeUndefined()
+  })
+
+  it('缺失 payload 不产生 URL，也不接受旧的顶层属性形状', () => {
     expect(urlOf(undefined)).toBeUndefined()
-    expect(urlOf('{"url":42}')).toBeUndefined()
-    expect(urlOf('"just a string"')).toBeUndefined()
+    expect(urlOf({ url: 'https://wrong.example/' })).toBeUndefined()
   })
 })
 
 describe('laneKeyOf', () => {
-  it('任意 source 的通用 laneKey → 稳定泳道', () => {
-    expect(laneKeyOf('reference', '{"laneKey":3}')).toBe('3')
+  it('浏览器使用 schema 声明的 windowId，包含编号 0', () => {
+    expect(laneKeyOf('browser', { attributes: { windowId: 3 } }, 'stream')).toBe('stream:3')
+    expect(laneKeyOf('browser', { attributes: { windowId: 0 } }, 'stream')).toBe('stream:0')
   })
 
-  it('无通用 laneKey → undefined（装箱兜底）', () => {
-    expect(laneKeyOf('vscode', '{"file":"a.ts"}')).toBeUndefined()
-    expect(laneKeyOf('reference', '{"url":"https://a.com"}')).toBeUndefined()
-    expect(laneKeyOf(undefined, '{"laneKey":1}')).toBeUndefined()
+  it('其他 source 的通用 laneKey → 稳定泳道', () => {
+    expect(laneKeyOf('reference', { attributes: { laneKey: 3 } })).toBe('3')
+  })
+
+  it('缺少合法副本身份时装箱兜底', () => {
+    expect(laneKeyOf('browser', { attributes: { windowId: {} } })).toBeUndefined()
+    expect(laneKeyOf('vscode', { attributes: { file: 'a.ts' } })).toBeUndefined()
+    expect(laneKeyOf(undefined, { attributes: { laneKey: 1 } })).toBeUndefined()
   })
 })
 
@@ -37,7 +48,7 @@ describe('toReplaySegs', () => {
         source: 'reference',
         identityKey: 'https://github.com/',
         title: 'GitHub',
-        attributes: '{"url":"https://github.com/pulls","laneKey":7}',
+        payload: { attributes: { url: 'https://github.com/pulls', laneKey: 7 } },
         startTime: base,
         endTime: later,
       }],
@@ -47,7 +58,18 @@ describe('toReplaySegs', () => {
     expect(segs[0].laneKey).toBeUndefined()
     expect(segs[1].laneKey).toBe('7')
     expect(segs[1].label).toContain('GitHub')
-    expect(segs[1].label).toContain('laneKey')
+    expect(segs[1].label).toContain('https://github.com/pulls')
+    expect(segs[1].label).not.toContain('laneKey')
+  })
+
+  it.each(['native', 'legacy-import', 'missing'])('不同 Browser Stream 的相同窗口编号不会互相遮挡（来源：%s）', origin => {
+    const rows = ['profile-a', 'profile-b'].map(streamId => ({
+      source: 'browser', origin, streamId: origin === 'missing' ? undefined : origin === 'legacy-import' ? 'legacy-stream' : streamId,
+      payload: { attributes: { windowId: 1 } }, startTime: base, endTime: later,
+    }))
+    const tracks = buildTracks(toReplaySegs([], rows), { start: +base, end: +later }, 'UTC')
+    expect(tracks[0].lanes).toHaveLength(2)
+    expect(tracks[0].lanes.every(lane => lane.bars.length === 1)).toBe(true)
   })
 
   it('缺时间/缺 source 的记录跳过', () => {
@@ -73,11 +95,11 @@ describe('toSystemSegs', () => {
 })
 
 describe('toPluginSegs', () => {
-  it('url 从 attributes 解出，供 labelUpgrade 作副标签', () => {
+  it('url 从 Fact payload 读取，供 labelUpgrade 作副标签', () => {
     const plugins = toPluginSegs([{
       source: 'browser',
       identityKey: 'https://a.com/',
-      attributes: '{"url":"https://a.com/deep?q=1"}',
+      payload: { attributes: { url: 'https://a.com/deep?q=1' } },
       startTime: base,
       endTime: later,
     }])

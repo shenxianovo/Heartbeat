@@ -6,6 +6,8 @@ using Heartbeat.Collection.Hub.Configuration;
 using Heartbeat.Collection.Hub.Hosting;
 using Heartbeat.Collection.Hub.Runtime;
 using Heartbeat.Collection.Hub.Segments;
+using Heartbeat.Collection.Hub.Http;
+using Heartbeat.Collection.Hub.Upload;
 
 namespace Heartbeat.Collection.Headless;
 
@@ -20,10 +22,15 @@ public static class HeadlessHostServiceCollectionExtensions
             .CreateClient("HeadlessAuthentication"));
         services.AddSingleton(provider => new TokenManager(
             new FleetHubConfiguration(options), new AuthServiceClient(provider.GetRequiredService<HttpClient>())));
+        services.AddHttpClient<HeartbeatApiClient>().AddHttpMessageHandler(provider =>
+            new BearerTokenHandler(provider.GetRequiredService<TokenManager>()));
+        services.AddSingleton<UploadStatusRegistry>();
+        services.AddSingleton<ClientCompatibilityStatus>();
         // Register the disposable pipeline once. Adapters borrow it through its sink registration.
         services.AddSingleton<ISegmentSink>(provider => new HeadlessInstancePipelines(
             options.DataDirectory,
             new HeadlessAnalyticsSegmentUploadAdapter(provider.GetRequiredService<TokenManager>())));
+        services.AddSingleton<ICollectorFactSubjectNames>(provider => new HeadlessSubjectNames(Pipelines(provider)));
         services.AddSingleton<ICollectorMarketplaceHostAdapter>(provider =>
             new HeadlessMarketplaceHostAdapter(Pipelines(provider)));
         services.AddSingleton(new CollectorPackageInstallations(Path.Combine(options.DataDirectory, "collector-packages")));
@@ -39,12 +46,18 @@ public static class HeadlessHostServiceCollectionExtensions
         });
         services.AddSingleton(provider => new HeadlessCollectorReadModel(
             provider.GetRequiredService<ICollectorMarketplace>(), Pipelines(provider)));
-        services.AddHostedService(provider => new HeadlessUploadWorker(options, Pipelines(provider)));
+        services.AddHostedService(provider => new HeadlessUploadWorker(options, Pipelines(provider),
+            provider.GetRequiredService<UploadStream<FactUploadItem>>()));
         return services;
     }
 
     private static HeadlessInstancePipelines Pipelines(IServiceProvider provider) =>
         (HeadlessInstancePipelines)provider.GetRequiredService<ISegmentSink>();
+
+    private sealed class HeadlessSubjectNames(HeadlessInstancePipelines pipelines) : ICollectorFactSubjectNames
+    {
+        public string? DisplayName(Guid collectorInstanceId) => pipelines.SubjectDisplayName(collectorInstanceId);
+    }
 
     private static CollectorMarketplaceTarget CurrentTarget() => new(
         OperatingSystem.IsWindows() ? "windows" : OperatingSystem.IsMacOS() ? "macos" :
@@ -82,10 +95,14 @@ public static class HeadlessHostServiceCollectionExtensions
         public event Action? Changed { add { } remove { } }
     }
 
-    private sealed class HeadlessUploadWorker(HeadlessFleetOptions options, HeadlessInstancePipelines pipelines)
+    private sealed class HeadlessUploadWorker(HeadlessFleetOptions options, HeadlessInstancePipelines pipelines,
+        UploadStream<FactUploadItem> facts)
         : PeriodicUploadWorker(() => TimeSpan.FromSeconds(options.UploadIntervalSeconds))
     {
-        public override Task DrainOnceAsync(CancellationToken cancellationToken = default) =>
-            pipelines.DrainAllAsync(cancellationToken);
+        public override async Task DrainOnceAsync(CancellationToken cancellationToken = default)
+        {
+            await pipelines.DrainAllAsync(cancellationToken);
+            await facts.DrainAsync(cancellationToken);
+        }
     }
 }

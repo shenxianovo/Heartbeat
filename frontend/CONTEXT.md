@@ -25,7 +25,11 @@ ADR-019 §2：渲染 system 段时若存在同 App 的重叠插件段，标签�
 已知局限：段选择按时间重叠占比，多浏览器窗口时后台窗口的插件段也是候选，可能升级成未在看的页面——窗口↔前台消歧未建（需要窗口身份与 system 标题的匹配）。
 
 **Lane（泳道）**:
-回放展开态里同一 Source 轨内的副本细分：有副本身份的段按身份分稳定泳道（browser 用 `attributes.windowId`），无身份的段贪心装箱兜底（interval packing）。副本身份是采集器侧的 Attributes 约定，展示层经按 source 的提取器注册表读取（`segmentAdapters.laneKeyOf`，Title Formatter 同款模式）。system 前台互斥，恒为单 lane。浏览器 windowId 跨重启可能复用，同 lane 顺序排开，可读性无损。
+回放展开态里同一 Source 轨内的副本细分：有副本身份的段按身份分稳定泳道（browser 用 `payload.attributes.windowId`），无身份的段贪心装箱兜底（interval packing）。副本身份是采集器 Fact Payload 的 schema 约定，展示层经按 source 的提取器注册表读取（`segmentAdapters.laneKeyOf`，Title Formatter 同款模式）。system 前台互斥，恒为单 lane。浏览器 windowId 跨重启可能复用，同 lane 顺序排开，可读性无损。
+
+**Fact Payload（事实内容）**:
+Analytics 返回的结构化观测内容；Dashboard 按 Source/schema 读取网址、窗口身份等展示字段。
+历史形状由 Analytics 导入时适配，Dashboard 不从 Attributes 字符串猜测多种包装层。
 
 **Title Formatter（标题归一化）**:
 ADR-016 的展示层无损归一化：per-app formatter 把原始窗口标题洗成友好显示（去应用名后缀、去 tab 计数后缀、spinner 归并等）。是 Label Upgrade 缺席时的兜底层。

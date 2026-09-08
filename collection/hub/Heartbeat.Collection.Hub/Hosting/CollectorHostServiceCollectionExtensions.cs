@@ -4,6 +4,8 @@ using Heartbeat.Collection.Hub.Collectors.Runtime;
 using Heartbeat.Collection.Hub.Configuration;
 using Heartbeat.Collection.Hub.Ingest;
 using Heartbeat.Collection.Hub.Segments;
+using Heartbeat.Collection.Hub.Http;
+using Heartbeat.Collection.Hub.Upload;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -33,10 +35,20 @@ public static class CollectorHostServiceCollectionExtensions
             return CollectorRuntime.Open(
                 Path.Combine(storage.DataDirectory, "collector-runtime.json"),
                 provider.GetRequiredService<ISegmentSink>(),
+                options: new CollectorRuntimeOptions { EnableFactUpload = true },
                 inputEventSink: provider.GetService<IInputEventFactSink>(),
                 secretStore: new EncryptedFileCollectorSecretStore(
                     Path.Combine(storage.DataDirectory, "collector-secrets")));
         });
+        services.TryAddSingleton(provider => new UploadStream<FactUploadItem>(
+            "事实",
+            [new RuntimeFactUploadSource(provider.GetRequiredService<CollectorRuntime>(),
+                provider.GetService<IDeviceIdentity>(), provider.GetService<ICollectorFactSubjectNames>())],
+            (batch, ct) => provider.GetRequiredService<HeartbeatApiClient>()
+                .UploadFactsAsync(FactUploadItem.Request(batch), ct),
+            new JsonDeadLetterStore<FactUploadItem>(Path.Combine(options.DataDirectory, "facts-dead-letter.json")),
+            provider.GetService<UploadStatusRegistry>(),
+            provider.GetService<ClientCompatibilityStatus>()));
         return services;
     }
 

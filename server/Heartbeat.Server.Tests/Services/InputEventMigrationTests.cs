@@ -91,7 +91,7 @@ public sealed class InputEventMigrationTests(PostgresContainerFixture fixture) :
                 """);
 
             db.Database.SetCommandTimeout(TimeSpan.FromSeconds(1));
-            await db.Database.MigrateAsync();
+            await db.GetService<IMigrator>().MigrateAsync("20260811054743_AddInputEventCodeSet");
         }
     }
 }

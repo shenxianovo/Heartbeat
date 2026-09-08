@@ -123,6 +123,7 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
 
     private ActivitySegment Segment(DateTimeOffset start, DateTimeOffset end) => new()
     {
+        OwnerId = "user-1",
         Id = Guid.CreateVersion7(),
         DeviceId = _deviceId,
         Source = ActivitySources.System,

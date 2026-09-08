@@ -17,6 +17,7 @@ builder.Services.AddDbContext<AppDbContext>(o =>
     o.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
 );
 
+builder.Services.AddScoped<FactStore>();
 builder.Services.AddScoped<UsageService>();
 builder.Services.AddScoped<ISegmentIngestApplicationService, SegmentIngestApplicationService>();
 builder.Services.AddScoped<ReportService>();

@@ -38,6 +38,7 @@ public sealed class AskingHttpTests(PostgresContainerFixture fixture) : Postgres
         await db.SaveChangesAsync();
         db.ActivitySegments.Add(new ActivitySegment
         {
+            OwnerId = device.OwnerId,
             Id = Guid.CreateVersion7(),
             DeviceId = device.Id,
             Source = ActivitySources.System,

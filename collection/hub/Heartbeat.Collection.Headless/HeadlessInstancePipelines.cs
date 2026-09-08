@@ -32,6 +32,7 @@ internal sealed class HeadlessInstancePipelines(
     IHeadlessSegmentUpload segmentUpload) :
     ISegmentSink,
     ISubjectSegmentProjectionSink,
+    ICollectorFactObserver,
     IDisposable
 {
     private readonly object _gate = new();
@@ -111,6 +112,12 @@ internal sealed class HeadlessInstancePipelines(
     public HeadlessCurrentSubjectActivity? CurrentActivity(Guid collectorInstanceId) =>
         Required(collectorInstanceId).CurrentActivity;
 
+    public string? SubjectDisplayName(Guid collectorInstanceId)
+    {
+        lock (_gate)
+            return _pipelines.TryGetValue(collectorInstanceId, out var pipeline) ? pipeline.DisplayName : null;
+    }
+
     public async Task DrainAllAsync(CancellationToken cancellationToken = default)
     {
         // Joining local custody is mandatory even after the network budget expires.
@@ -127,6 +134,18 @@ internal sealed class HeadlessInstancePipelines(
 
     public void Push(List<ActivitySegmentItem> snapshots) =>
         throw new NotSupportedException("Multi-Subject projection requires Collector Instance context.");
+
+    public void Observe(FactUploadItem item)
+    {
+        if (item.Stream.FactKind != "segment" || item.Fact is not { } fact) return;
+        var subject = new SubjectReference(item.Stream.Subject.SubjectId,
+            Enum.Parse<SubjectKind>(item.Stream.Subject.Kind, ignoreCase: true));
+        var pipeline = Required(new CollectorProjectionContext(item.Stream.CollectorInstanceId, subject));
+        if (FactUploadReadModel.Segment(item) is { } segment)
+            pipeline.ObserveFact(segment, fact.IsFinal == true);
+        else if (fact.RecordState == "retracted")
+            pipeline.ClearCurrentFact(fact.StreamId, fact.FactId);
+    }
 
     public void UpsertDurable(
         CollectorProjectionContext context,
@@ -212,6 +231,7 @@ internal sealed class HeadlessInstancePipelines(
         private Guid? _currentSegmentId;
 
         public string Directory { get; } = directory;
+        public string DisplayName => registration.DisplayName;
 
         public void Configure(SubjectReference subject, string displayName) =>
             registration.Configure(subject, displayName);
@@ -240,6 +260,20 @@ internal sealed class HeadlessInstancePipelines(
             {
                 if (_currentSegmentId != segmentId)
                     return;
+                _current = null;
+                _currentSegmentId = null;
+            }
+        }
+
+        public void ObserveFact(ActivitySegmentItem item, bool isFinal) => Observe(item, isFinal);
+
+        public void ClearCurrentFact(Guid streamId, Guid factId)
+        {
+            // IDs in the host read model retain the previous deterministic projection identity.
+            var currentId = FactUploadReadModel.SegmentId(streamId, factId);
+            lock (_gate)
+            {
+                if (_currentSegmentId != currentId) return;
                 _current = null;
                 _currentSegmentId = null;
             }

@@ -108,7 +108,8 @@ public sealed class UploadStream<T>
                     DeadLetterPath = _deadLetterStore?.Location
                 });
             else if (!hasRetry)
-                RecoverTransientStatus(UploadStreamState.CacheWriteFailed, UploadStreamState.DeadLetterWriteFailed);
+                RecoverTransientStatus(UploadStreamState.CacheWriteFailed, UploadStreamState.DeadLetterWriteFailed,
+                    UploadStreamState.Backlog, UploadStreamState.Backpressure);
             else
                 RecoverTransientStatus(UploadStreamState.CacheWriteFailed);
         }
@@ -145,7 +146,7 @@ public sealed class UploadStream<T>
             return BatchResult<T>.Pause(items);
         }
 
-        if (response.StatusCode is 400 or 422)
+        if (response.StatusCode is 400 or 409 or 422)
         {
             if (items.Count == 1)
                 return DeadLetterOrRetry(items[0], response);

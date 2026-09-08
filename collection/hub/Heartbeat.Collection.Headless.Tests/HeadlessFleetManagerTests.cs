@@ -3,6 +3,8 @@ using Heartbeat.Collection.Hub.Collectors.Runtime;
 using Heartbeat.Collection.Hub.Http;
 using Heartbeat.Collection.Hub.Segments;
 using Heartbeat.Core.DTOs.Segments;
+using Heartbeat.Core.DTOs.Facts;
+using Heartbeat.Collection.Hub.Upload;
 
 namespace Heartbeat.Collection.Headless.Tests;
 
@@ -10,6 +12,34 @@ public sealed class HeadlessFleetManagerTests : IDisposable
 {
     private readonly string _directory = Path.Combine(
         Path.GetTempPath(), $"heartbeat-headless-composition-{Guid.NewGuid():N}");
+
+    [Fact]
+    public async Task NativeFactObservationUpdatesCurrentActivityWithoutWritingLegacyUploadQueue()
+    {
+        var upload = new RecordingSegmentUpload();
+        using var pipelines = new HeadlessInstancePipelines(_directory, upload);
+        var stream = new FactStreamDefinition
+        {
+            StreamId = Guid.CreateVersion7(), CollectorInstanceId = Guid.CreateVersion7(), Source = "reference",
+            FactKind = "segment", Subject = new FactSubject { SubjectId = Guid.CreateVersion7(), Kind = "account" }
+        };
+        var fact = new FactSnapshot
+        {
+            StreamId = stream.StreamId, FactId = Guid.CreateVersion7(), Revision = 1,
+            Start = DateTimeOffset.UtcNow.AddMinutes(-1), End = DateTimeOffset.UtcNow,
+            IsFinal = false, Payload = JsonSerializer.SerializeToElement(new { identityKey = "account:online", title = "Online" })
+        };
+        pipelines.Observe(new FactUploadItem(stream, fact, null, "unused"));
+
+        await pipelines.DrainAllAsync();
+
+        Assert.Equal("Online", pipelines.CurrentActivity(stream.CollectorInstanceId)!.Title);
+        Assert.Empty(upload.Sent);
+        fact.RecordState = "retracted";
+        fact.Payload = null;
+        pipelines.Observe(new FactUploadItem(stream, fact, null, "unused"));
+        Assert.Null(pipelines.CurrentActivity(stream.CollectorInstanceId));
+    }
 
     [Fact]
     public void FleetConfiguration_ContainsInfrastructureOnly()

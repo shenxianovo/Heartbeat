@@ -26,6 +26,7 @@ public class ReportServiceTests(PostgresContainerFixture fixture) : PostgresTest
 
     private ActivitySegment SystemSegment(DateTimeOffset start, DateTimeOffset end) => new()
     {
+        OwnerId = "user-1",
         Id = Guid.CreateVersion7(),
         DeviceId = _deviceId,
         Source = ActivitySources.System,
@@ -139,6 +140,7 @@ public class ReportServiceTests(PostgresContainerFixture fixture) : PostgresTest
         db.ActivitySegments.Add(SystemSegment(start, start.AddHours(1)));
         db.ActivitySegments.Add(new ActivitySegment
         {
+            OwnerId = secondDevice.OwnerId,
             Id = Guid.CreateVersion7(),
             DeviceId = secondDevice.Id,
             Source = ActivitySources.System,
@@ -218,6 +220,7 @@ public class ReportServiceTests(PostgresContainerFixture fixture) : PostgresTest
         db.ActivitySegments.Add(SystemSegment(start, start.AddHours(1)));
         db.ActivitySegments.Add(new ActivitySegment
         {
+            OwnerId = secondDevice.OwnerId,
             Id = Guid.CreateVersion7(),
             DeviceId = secondDevice.Id,
             Source = ActivitySources.System,

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Apps;
 using Heartbeat.Core.DTOs.Segments;
@@ -9,19 +10,14 @@ namespace Heartbeat.Server.Services
 {
     public class UsageService(
         AppDbContext db,
-        AppIdentityService? appIdentityService = null,
-        ILogger<UsageService>? logger = null,
         TimeProvider? timeProvider = null)
     {
         private readonly AppDbContext _db = db;
-        private readonly AppIdentityService _appIdentityService = appIdentityService ?? new AppIdentityService(db);
         private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
         /// <summary>
-        /// 统一摄入例程（ADR-018）：校验 → App 关联 → 按 Id 快照 upsert。
-        /// 唯一上传入口 /segments（ADR-020）：system 段与插件段同形，IdentityKey 由采集端计算。
-        /// Id 即活动身份：已有行则扩展边界（EndTime 取 max、attributes 后写胜），新 Id 插入。
-        /// 快照单调生长，摄入可交换可重入——乱序重传、批内多快照同 Id 均收敛到同一行。
+        /// 升级前段缓存的严格历史导入入口；Fact Store 负责原始档案和同事务读投影。
+        /// 新 Collector 数据使用原生 Fact 摄入，不通过此处的旧快照生长规则。
         /// </summary>
         public async Task SaveSegmentsAsync(long deviceId, List<ActivitySegmentItem> segments)
         {
@@ -29,104 +25,8 @@ namespace Heartbeat.Server.Services
             await SaveValidatedSegmentsAsync(deviceId, segments);
         }
 
-        internal async Task SaveValidatedSegmentsAsync(
-            long deviceId,
-            List<ActivitySegmentItem> segments)
-        {
-            var ordered = segments.OrderBy(s => s.StartTime).ToList();
-
-            // 快照 upsert：一次批量取回本批涉及的已有行，新插入的行也进字典，
-            // 让批内后续同 Id 快照走扩展路径（枢纽攒批场景）。
-            var ids = ordered.Select(s => s.Id).Distinct().ToList();
-            var rows = await _db.ActivitySegments
-                .Where(x => ids.Contains(x.Id))
-                .ToDictionaryAsync(x => x.Id);
-
-            foreach (var group in ordered.GroupBy(s => s.Id))
-            {
-                var expectedDeviceId = deviceId;
-                var expectedSource = group.First().Source;
-                var expectedIdentityKey = group.First().IdentityKey;
-                if (rows.TryGetValue(group.Key, out var existing))
-                {
-                    expectedDeviceId = existing.DeviceId;
-                    expectedSource = existing.Source;
-                    expectedIdentityKey = existing.IdentityKey;
-                }
-
-                if (expectedDeviceId == deviceId
-                    && group.All(item =>
-                        string.Equals(expectedSource, item.Source, StringComparison.Ordinal)
-                        && string.Equals(expectedIdentityKey, item.IdentityKey, StringComparison.Ordinal)))
-                {
-                    continue;
-                }
-
-                logger?.LogWarning(
-                    "段 {Id} 身份不匹配，整批拒收: 预期 ({DeviceId}, {Source}, {Key})",
-                    group.Key, expectedDeviceId, expectedSource, expectedIdentityKey);
-                throw new SegmentIngestContractException(
-                    SegmentIngestContractViolation.IdentityConflict,
-                    $"Segment {group.Key} conflicts with its existing device, source, or identity key.");
-            }
-
-            // 只为新事实解析身份；被 identity guard 拒绝的旧 Id 不得制造 provisional App。
-            var identityByItem = new Dictionary<ActivitySegmentItem, AppIdentity?>();
-            foreach (var item in ordered.Where(x => !rows.ContainsKey(x.Id)))
-            {
-                var key = ResolveIdentityKey(item);
-                if (key == null)
-                {
-                    identityByItem[item] = null;
-                    continue;
-                }
-
-                identityByItem[item] = await _appIdentityService.ResolveAsync(key, item.AppDisplayName);
-            }
-
-            foreach (var s in ordered)
-            {
-                if (rows.TryGetValue(s.Id, out var row))
-                {
-                    // 后写胜只对"最新快照"生效：乱序到达的旧快照不得回退 Title/Attributes。
-                    var isNewest = s.EndTime >= row.EndTime;
-                    if (s.StartTime < row.StartTime) row.StartTime = s.StartTime;
-                    if (s.EndTime > row.EndTime) row.EndTime = s.EndTime;
-                    if (isNewest)
-                    {
-                        if (s.Title != null) row.Title = s.Title;
-                        if (s.Attributes.HasValue) row.Attributes = s.Attributes.Value.GetRawText();
-                    }
-                }
-                else
-                {
-                    identityByItem.TryGetValue(s, out var appIdentity);
-                    var entity = new ActivitySegment
-                    {
-                        Id = s.Id,
-                        DeviceId = deviceId,
-                        Source = s.Source,
-                        IdentityKey = s.IdentityKey,
-                        AppIdentityId = appIdentity?.Id,
-                        // expand 双写：旧消费者仍读 AppId；产品语义的权威路径是 AppIdentity.AppId。
-                        AppId = appIdentity?.AppId,
-                        Title = s.Title,
-                        StartTime = s.StartTime,
-                        EndTime = s.EndTime,
-                        Attributes = s.Attributes?.GetRawText()
-                    };
-                    _db.ActivitySegments.Add(entity);
-                    rows[s.Id] = entity;
-                }
-            }
-
-            await _db.SaveChangesAsync();
-        }
-
-        private static string? ResolveIdentityKey(ActivitySegmentItem item)
-        {
-            return string.IsNullOrWhiteSpace(item.AppIdentityKey) ? null : item.AppIdentityKey;
-        }
+        internal Task SaveValidatedSegmentsAsync(long deviceId, List<ActivitySegmentItem> segments) =>
+            new FactStore(_db, _timeProvider).ImportSegmentsAsync(deviceId, segments, validated: true);
 
         /// <summary>
         /// 插件段查询（ADR-017 §4）：回放多轨用。默认返回全部非 system source
@@ -137,7 +37,7 @@ namespace Heartbeat.Server.Services
             DateTimeOffset? start, DateTimeOffset? end)
         {
             var query = _db.ActivitySegments
-                .Where(x => x.Device.OwnerId == ownerId)
+                .Where(x => x.OwnerId == ownerId)
                 .AsQueryable();
 
             query = string.IsNullOrWhiteSpace(source)
@@ -186,7 +86,18 @@ namespace Heartbeat.Server.Services
                     EndTime = x.EndTime,
                     // 时长是派生量（ADR-018）：不落盘，投影现算
                     DurationSeconds = (int)(x.EndTime - x.StartTime).TotalSeconds,
-                    Attributes = x.Attributes
+                    Payload = ParsePayload(x.Payload),
+                    StreamId = x.Fact != null ? x.Fact.StreamId : null,
+                    FactId = x.Fact != null ? x.Fact.FactId : null,
+                    Revision = x.Fact != null ? x.Fact.Revision : null,
+                    SchemaId = x.Fact != null ? x.Fact.Stream.SchemaId : null,
+                    SchemaMajor = x.Fact != null ? x.Fact.Stream.SchemaMajor : null,
+                    SchemaRevision = x.Fact != null ? x.Fact.SchemaRevision : null,
+                    Origin = x.Fact != null ? x.Fact.Origin : null,
+                    SubjectId = x.Fact != null ? x.Fact.Stream.SubjectId : null,
+                    SubjectKind = x.Fact != null ? x.Fact.Stream.Subject.Kind : null,
+                    SubjectName = x.Device != null ? x.Device.DeviceName
+                        : x.Fact != null ? x.Fact.Stream.Subject.DisplayName : null
                 })
                 .ToListAsync();
         }
@@ -194,8 +105,8 @@ namespace Heartbeat.Server.Services
         public async Task<List<AppUsageResponse>> GetUsageAsync(string ownerId, long? deviceId, DateTimeOffset? start, DateTimeOffset? end)
         {
             var query = _db.ActivitySegments
-                .Where(x => x.Device.OwnerId == ownerId)
-                .Where(x => x.Source == ActivitySources.System)
+                .Where(x => x.OwnerId == ownerId)
+                .Where(x => x.Source == ActivitySources.System && x.DeviceId != null)
                 .AsQueryable();
 
             if (deviceId.HasValue)
@@ -215,7 +126,7 @@ namespace Heartbeat.Server.Services
                 .Select(x => new AppUsageResponse
                 {
                     Id = x.Id,
-                    DeviceId = x.DeviceId,
+                    DeviceId = x.DeviceId!.Value,
                     AppId = (x.AppIdentityId != null ? x.AppIdentity!.AppId : x.AppId)!.Value,
                     AppKey = x.AppIdentityId != null ? x.AppIdentity!.App.Key : x.App!.Key,
                     AppDisplayName = x.AppIdentityId != null
@@ -233,5 +144,8 @@ namespace Heartbeat.Server.Services
                 })
                 .ToListAsync();
         }
+        private static Dictionary<string, object?>? ParsePayload(string? payload)
+            => payload == null ? null : JsonSerializer.Deserialize<Dictionary<string, object?>>(payload);
+
     }
 }
