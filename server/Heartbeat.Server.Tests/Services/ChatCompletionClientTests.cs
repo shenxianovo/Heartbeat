@@ -202,6 +202,67 @@ public class ChatCompletionClientTests
             () => DrainAsync(CreateClient(handler).CompleteStreamAsync("s", "u", cts.Token)));
     }
 
+    // ---- 非流式失败契约：未配置不出网，上游错误不能伪装成成功 ----
+
+    [Theory]
+    [InlineData("", "sk-test", "test-model")]
+    [InlineData("https://llm.test/v1", "   ", "test-model")]
+    [InlineData("https://llm.test/v1", "sk-test", "")]
+    public async Task CompleteAsync_IncompleteConfiguration_FailsWithoutSendingRequest(
+        string baseUrl, string apiKey, string model)
+    {
+        var requests = 0;
+        var handler = new CapturingHandler((_, _) =>
+        {
+            requests++;
+            return Task.FromResult(JsonResponse(ContentBody));
+        });
+        using var http = new HttpClient(handler);
+        var client = new ChatCompletionClient(http, Options.Create(new RecapOptions
+        {
+            BaseUrl = baseUrl,
+            ApiKey = apiKey,
+            Model = model,
+        }));
+
+        var ex = await Assert.ThrowsAsync<ChatCompletionException>(() => client.CompleteAsync("s", "u"));
+
+        Assert.Contains("未配置", ex.Message);
+        Assert.Equal(0, requests);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest)]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    [InlineData(HttpStatusCode.BadGateway)]
+    public async Task CompleteAsync_UpstreamError_ReportsStatusEvenWithParseableContent(HttpStatusCode status)
+    {
+        // 即便错误响应体碰巧含有可解析的 choices，也必须以 HTTP 失败为准。
+        var handler = new CapturingHandler((_, _) => Task.FromResult(
+            new HttpResponseMessage(status) { Content = new StringContent(ContentBody, Encoding.UTF8, "application/json") }));
+
+        var ex = await Assert.ThrowsAsync<ChatCompletionException>(
+            () => CreateClient(handler).CompleteAsync("s", "u"));
+
+        Assert.Contains($"上游返回 {(int)status}", ex.Message);
+        Assert.Contains(ContentBody, ex.Message);
+    }
+
+    [Theory]
+    [InlineData("not-json")]
+    [InlineData("""{"choices":[]}""")]
+    [InlineData("""{"choices":[{"message":{"content":"   "}}]}""")]
+    public async Task CompleteAsync_UnusableResponse_FailsInsteadOfReturningEmptyContent(string body)
+    {
+        var handler = new CapturingHandler((_, _) => Task.FromResult(JsonResponse(body)));
+
+        var ex = await Assert.ThrowsAsync<ChatCompletionException>(
+            () => CreateClient(handler).CompleteAsync("s", "u"));
+
+        Assert.Contains("响应无法解析", ex.Message);
+    }
+
     // ---- Q4：时限交给 CTS，HttpClient.Timeout 不再掐流 ----
 
     [Fact]

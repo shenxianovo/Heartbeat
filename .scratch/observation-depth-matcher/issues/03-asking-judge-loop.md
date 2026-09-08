@@ -1,6 +1,6 @@
 # 03: 发问判官 —— 单调用判官 + 旧管线拆除 + LLM 传输合流
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -28,7 +28,7 @@ Status: ready-for-agent
 ## Acceptance criteria
 
 - [x] QuestionProjection / TriageGenerator / TriageDecisions 全部删除,无引用残留
-- [ ] ChatCompletionClient 单测(unconfigured/HTTP 错/解析错收敛);两个 generator 的 prompt 构建与解析纯函数有单测
+- [x] ChatCompletionClient 单测(unconfigured/HTTP 错/解析错收敛);两个 generator 的 prompt 构建与解析纯函数有单测
 - [x] FakeAskingGenerator 驱动的 QuestionService 测试:缓存命中不重调、水位过期重调、失败不写缓存、裁决后 diff 过滤、封顶 3
 - [x] 发问 prompt 含 digest 前缀 + 裁决日志 + 注释(快照断言)
 - [x] 套件绿
@@ -41,3 +41,9 @@ Status: ready-for-agent
 
 - 2026-07-20 落地(拆除大半已随 issue 02 提前完成):ChatCompletionClient 合流传输(URL/Bearer/choices 提取/异常收敛/unconfigured,ExtractContent 纯函数);RecapGenerator 退成 prompt 模板 + 客户端调用;OpenAiCompatibleAskingGenerator(判官 system prompt + BuildUserPrompt digest 前置共享前缀 + Parse 宽容解析纯函数,失败返 null);DigestAssembler 取数装配(叙事/发问吃字节相同 digest,含近 14 天高频注释 ≥8/14 天、few-shot 裁决日志 MatcherRender 行、已裁决集);QuestionService 重写(缓存按天+水位同构 recap、失败不写、读时对已裁决 Matcher 确定性 diff、封顶 3);DailyQuestionSet 实体 + AddDailyQuestionCache 迁移;GET questions 端点重建。测试 +20(AskingGeneratorTests 11 纯函数 + QuestionServiceTests 7 + RecapServiceTests 适配),套件 122/122 绿。
 - 2026-08-29 清理审计：功能实现与服务端 440 项测试均通过，但未找到 `ChatCompletionClient.CompleteAsync` 对“未配置”和非 2xx 响应的直接单测；解析与 generator 纯函数已有覆盖。按验收要求保留 `ready-for-agent`，补齐两条传输错误分支测试后方可 closeout。
+- 2026-09-08 closeout：补齐 `CompleteAsync` 真实调用入口的 10 个用例：BaseUrl/ApiKey/Model 任一不完整时
+  抛 `ChatCompletionException` 且 HTTP 请求次数为零；400/401/429/502 即使带可解析 choices 也必须失败，
+  错误保留状态码和响应上下文；无效 JSON、空 choices、空白正文统一报告解析失败。
+  现行生产代码通过这些测试，无需修改传输行为；既有 prompt/解析/取消/超时测试一并回归。
+  `dotnet test server/Heartbeat.Server.Tests/Heartbeat.Server.Tests.csproj --no-restore --verbosity minimal`
+  → 481 passed / 0 failed / 0 skipped。所有验收完成。
