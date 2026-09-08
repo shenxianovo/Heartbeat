@@ -25,6 +25,33 @@ function activated(windowId: number, url: string, at: number, title = 'page') {
 }
 
 describe('applyEvent', () => {
+  it('YouTube 切换视频封口旧段并保留各自原始 URL', () => {
+    const deps = makeDeps()
+    const firstUrl = 'https://www.youtube.com/watch?v=aaa&utm_source=x#t=10'
+    const secondUrl = 'https://www.youtube.com/watch?v=bbb&utm_source=y'
+    let r = applyEvent(emptyState(), activated(1, firstUrl, T0, 'Video A'), deps)
+    r = applyEvent(r.state, activated(1, secondUrl, T0 + 5000, 'Video B'), deps)
+
+    expect(r.out).toHaveLength(1)
+    expect(r.out[0]).toMatchObject({
+      id: 'id-1', identityKey: 'https://www.youtube.com/watch?v=aaa', title: 'Video A',
+      isFinal: true, attributes: { url: firstUrl },
+    })
+    expect(flush(r.state, T0 + 10_000, deps).out[0]).toMatchObject({
+      id: 'id-2', identityKey: 'https://www.youtube.com/watch?v=bbb', title: 'Video B',
+      attributes: { url: secondUrl },
+    })
+  })
+
+  it('同一视频仅追踪参数和锚点变化继续原段', () => {
+    const deps = makeDeps()
+    let r = applyEvent(emptyState(), activated(1, 'https://www.youtube.com/watch?v=aaa&utm_source=x', T0), deps)
+    r = applyEvent(r.state, activated(1, 'https://www.youtube.com/watch?t=30&v=aaa#details', T0 + 1000), deps)
+
+    expect(r.out).toHaveLength(0)
+    expect(r.state.open[1]).toMatchObject({ id: 'id-1', identityKey: 'https://www.youtube.com/watch?v=aaa' })
+  })
+
   it('首个激活开启活动，不立即产出快照', () => {
     const deps = makeDeps()
     const { state, out } = applyEvent(emptyState(), activated(1, 'https://a.com/x', T0), deps)

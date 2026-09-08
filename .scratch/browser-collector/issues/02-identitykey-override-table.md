@@ -1,6 +1,6 @@
 # 02: IdentityKey 规范化覆写表
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -16,11 +16,21 @@ Status: ready-for-agent
 
 ## Acceptance criteria
 
-- [ ] `youtube.com/watch?v=a` 与 `?v=b` 是两个不同 IdentityKey（不再过度合并）
-- [ ] 同一 URL 带不同 `utm_*` / fragment 仍为同一 IdentityKey
-- [ ] 覆写表新增一个域名规则无需改折叠逻辑代码
-- [ ] 规范化函数单元测试覆盖：默认掐参、覆写保留、大小写/尾斜杠等边界
+- [x] `youtube.com/watch?v=a` 与 `?v=b` 是两个不同 IdentityKey（不再过度合并）
+- [x] 同一 URL 带不同 `utm_*` / fragment 仍为同一 IdentityKey
+- [x] 覆写表新增一个域名规则无需改折叠逻辑代码
+- [x] 规范化函数单元测试覆盖：默认掐参、覆写保留、大小写/尾斜杠等边界
 
 ## Blocked by
 
 (无；基础 Browser Collector 已由现行 Collector Protocol 实现。)
+
+## Comments
+
+- 2026-09-08：`normalize.ts` 增加 hosts/path/params 规则表，YouTube 根域、www、m 的 `/watch`
+  保留 `v`；路径与参数名/值大小写保持，host 与尾斜杠沿用原规范化，原始 URL 不变。
+  规则只匹配显式域名和路径，不扩大到相似域名；重复参数保留，参数顺序由规则决定。
+  原测试把不同视频合并固化为“已知限制”，现改为正确行为断言，并补切段、噪声变化不切段及原始 URL 保留测试。
+  `npm test -- tests/normalize.test.ts tests/fold.test.ts` 修复前 8 failed / 30 passed；
+  修复后 Browser 目录 `npm test && npm run build` → 96 passed，TypeScript 与 Vite 构建通过。
+  `fold.ts` 无需修改，历史已存段不重写；新规则随后续 Browser Package 发布生效。本次未 commit 或发布。

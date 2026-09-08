@@ -60,6 +60,9 @@ function snapshotOf(a, endMs, deps2, isFinal) {
     attributes: { url: a.url, domain: deps2.domainOf(a.url), site: deps2.siteOf(a.url), windowId: a.windowId }
   };
 }
+const identityQueryRules = [
+  { hosts: ["youtube.com", "www.youtube.com", "m.youtube.com"], path: "/watch", params: ["v"] }
+];
 function identityKeyOf(rawUrl) {
   let u;
   try {
@@ -71,7 +74,12 @@ function identityKeyOf(rawUrl) {
     return u.href.split("#")[0].split("?")[0];
   }
   const path = u.pathname !== "/" && u.pathname.endsWith("/") ? u.pathname.slice(0, -1) : u.pathname;
-  return u.origin + path;
+  const rule = identityQueryRules.find((r) => r.hosts.includes(u.hostname) && r.path === path);
+  const query = new URLSearchParams();
+  for (const name of rule?.params ?? []) {
+    for (const value of u.searchParams.getAll(name)) query.append(name, value);
+  }
+  return u.origin + path + (query.size ? `?${query}` : "");
 }
 function domainOf(rawUrl) {
   try {

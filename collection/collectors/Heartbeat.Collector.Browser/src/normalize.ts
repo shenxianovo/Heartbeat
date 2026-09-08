@@ -1,6 +1,12 @@
-// IdentityKey 规范化：origin + pathname，掐掉 query/fragment（utm、时间戳、锚点是假碎片主源）。
+// IdentityKey 规范化：origin + pathname，默认掐掉 query/fragment，仅保留规则声明的身份参数。
 // 完整原始 URL 始终随段存入 Attributes——判据可有损，原始数据无损（ADR-012 原则）。
-// per-domain 覆写表（"query 即身份"的站点，如 youtube.com/watch 需保留 v）见 issue 02，本片不含。
+const identityQueryRules: ReadonlyArray<{
+  hosts: readonly string[]
+  path: string
+  params: readonly string[]
+}> = [
+  { hosts: ['youtube.com', 'www.youtube.com', 'm.youtube.com'], path: '/watch', params: ['v'] },
+]
 
 /** 规范化 URL 为续接判据。非法 URL 原样返回（判据退化但不丢数据）。 */
 export function identityKeyOf(rawUrl: string): string {
@@ -22,8 +28,14 @@ export function identityKeyOf(rawUrl: string): string {
       ? u.pathname.slice(0, -1)
       : u.pathname
 
-  // URL.origin 已做 host 小写化与默认端口剔除。
-  return u.origin + path
+  const rule = identityQueryRules.find(r => r.hosts.includes(u.hostname) && r.path === path)
+  const query = new URLSearchParams()
+  for (const name of rule?.params ?? []) {
+    for (const value of u.searchParams.getAll(name)) query.append(name, value)
+  }
+
+  // URL.origin 已做 host 小写化与默认端口剔除；参数按规则顺序序列化。
+  return u.origin + path + (query.size ? `?${query}` : '')
 }
 
 /** 提取 hostname 供 Attributes.domain（回放按域名聚合用）。 */

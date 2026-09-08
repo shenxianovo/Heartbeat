@@ -27,10 +27,39 @@ describe('identityKeyOf', () => {
     expect(identityKeyOf('https://a.com/')).toBe('https://a.com/')
   })
 
-  it('本片已知限制：youtube watch 的 v 参数被掐掉（覆写表见 issue 02）', () => {
+  it('YouTube watch 的 v 参数区分不同视频', () => {
     const a = identityKeyOf('https://www.youtube.com/watch?v=aaa')
     const b = identityKeyOf('https://www.youtube.com/watch?v=bbb')
-    expect(a).toBe(b) // issue 02 落地后此断言应反转
+    expect(a).toBe('https://www.youtube.com/watch?v=aaa')
+    expect(b).toBe('https://www.youtube.com/watch?v=bbb')
+  })
+
+  it.each(['youtube.com', 'www.youtube.com', 'm.youtube.com'])('保留 %s 视频身份，忽略追踪参数、播放位置与锚点', host => {
+    expect(identityKeyOf(`https://${host}/watch?utm_source=x&t=30&v=AbC_123#details`))
+      .toBe(`https://${host}/watch?v=AbC_123`)
+  })
+
+  it('规则匹配沿用 host 和尾斜杠规范化，视频 ID 大小写保留', () => {
+    expect(identityKeyOf('HTTPS://WWW.YouTube.COM:443/watch/?v=AbC')).toBe('https://www.youtube.com/watch?v=AbC')
+    expect(identityKeyOf('https://www.youtube.com/watch?v=abc')).not.toBe(identityKeyOf('https://www.youtube.com/watch?v=AbC'))
+  })
+
+  it.each([
+    'https://notyoutube.com/watch?v=a',
+    'https://youtube.com.example.org/watch?v=a',
+    'https://www.youtube.com/results?v=a',
+    'https://www.youtube.com/Watch?v=a',
+  ])('覆写只匹配指定域名与路径：%s', url => {
+    expect(identityKeyOf(url)).toBe(url.split('?')[0])
+  })
+
+  it('缺少保留参数不添加 query，参数名大小写不混淆', () => {
+    expect(identityKeyOf('https://www.youtube.com/watch?V=a&utm_source=x')).toBe('https://www.youtube.com/watch')
+  })
+
+  it('保留参数值经 URL 编解码规范化，重复值不丢失', () => {
+    expect(identityKeyOf('https://www.youtube.com/watch?v=%41bc&v=Def&utm_source=x'))
+      .toBe('https://www.youtube.com/watch?v=Abc&v=Def')
   })
 
   it('自定义 scheme（origin 为 null）退化为掐 query/fragment 的原串', () => {
