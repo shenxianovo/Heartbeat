@@ -136,6 +136,9 @@ docker compose -f compose.local.yml --env-file .env.local down
 
 ## 按需阅读
 
+- 查询各发布单元最近成功的 Actions 记录：`python3 scripts/release-status.py`，需要已登录的
+  GitHub CLI；加 `--json` 输出完整 SHA、run URL 与最近尝试状态。记录表示 workflow 发布／部署
+  成功，不证明当前容器 digest 或用户安装版本；现有 Compose 部署仍拉取 `latest`。
 - **需要真实历史数据**：使用[本地数据刷新 runbook](runbooks/refresh-local-data.md)。
 - **验证历史数据与新客户端写入**：使用 [Local Data Smoke](runbooks/local-data-smoke.md)。
 - **修改、发布或诊断 App Catalog**：使用 [App Catalog runbook](runbooks/app-catalog.md)。
