@@ -22,11 +22,6 @@ public sealed class ReferencePackageBuilderTests : IDisposable
             : "Heartbeat.Collector.Reference.ManagedProcess";
         File.WriteAllText(Path.Combine(source, executableName), "reference executable");
         File.WriteAllText(Path.Combine(source, "Heartbeat.Collector.Reference.ManagedProcess.dll"), "reference assembly");
-        var contractDirectory = Path.Combine(source, "contracts", "facts");
-        Directory.CreateDirectory(contractDirectory);
-        File.Copy(
-            Path.Combine(AppContext.BaseDirectory, "contracts", "facts", "reference-segment.schema.json"),
-            Path.Combine(contractDirectory, "reference-segment.schema.json"));
 
         ReferencePackageBuilder.Create(source, package, subjectKind);
 
@@ -37,7 +32,6 @@ public sealed class ReferencePackageBuilderTests : IDisposable
         Assert.Equal(subjectKind, manifest["outputs"]![0]!["subjectKinds"]![0]!.GetValue<string>());
         Assert.Equal(subjectKind, File.ReadAllText(Path.Combine(package, "reference-subject-kind.txt")));
         Assert.Equal(subjectKind, manifest["defaultInstance"]!["subjectKind"]!.GetValue<string>());
-        Assert.True(File.Exists(Path.Combine(package, "schemas", "reference-segment.schema.json")));
     }
 
     public void Dispose()

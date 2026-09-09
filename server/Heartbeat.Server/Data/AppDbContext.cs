@@ -13,7 +13,6 @@ namespace Heartbeat.Server.Data
         public DbSet<ObservedFact> Facts => Set<ObservedFact>();
         public DbSet<FactSubjectRecord> FactSubjects => Set<FactSubjectRecord>();
         public DbSet<FactStream> FactStreams => Set<FactStream>();
-        public DbSet<FactSchemaRecord> FactSchemas => Set<FactSchemaRecord>();
         public DbSet<FactGap> FactGaps => Set<FactGap>();
         public DbSet<User> Users => Set<User>();
         public DbSet<Device> Devices => Set<Device>();
@@ -50,10 +49,6 @@ namespace Heartbeat.Server.Data
                 entity.HasKey(e => new { e.OwnerId, e.StreamId });
                 entity.Property(e => e.Dimensions).HasColumnType("jsonb");
                 entity.HasOne(e => e.Subject).WithMany().HasForeignKey(e => new { e.OwnerId, e.SubjectId }).OnDelete(DeleteBehavior.Restrict);
-            });
-            modelBuilder.Entity<FactSchemaRecord>(entity =>
-            {
-                entity.HasKey(e => new { e.OwnerId, e.SchemaId, e.SchemaMajor, e.Revision });
             });
             modelBuilder.Entity<ObservedFact>(entity =>
             {

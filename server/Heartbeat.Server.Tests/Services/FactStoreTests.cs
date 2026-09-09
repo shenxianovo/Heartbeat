@@ -49,7 +49,7 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
         batch.Facts[0].Payload = JsonDocument.Parse("""{"attributes":{"number":1.0},"title":"Page","identityKey":"https://example.com"}""").RootElement;
         await store.IngestAsync("owner", batch);
         Assert.Single(await db.Facts.ToListAsync());
-        batch.Facts.Insert(0, new FactSnapshot { StreamId = batch.Streams[0].StreamId, FactId = Guid.CreateVersion7(), Revision = 1, SchemaRevision = 1, Start = Start, End = Start.AddSeconds(2), IsFinal = false, Payload = Payload() });
+        batch.Facts.Insert(0, new FactSnapshot { StreamId = batch.Streams[0].StreamId, FactId = Guid.CreateVersion7(), Revision = 1, Start = Start, End = Start.AddSeconds(2), IsFinal = false, Payload = Payload() });
         batch.Facts[1].Payload = JsonSerializer.SerializeToElement(new { identityKey = "https://changed.example", title = "Changed", attributes = new { } });
         var error = await Assert.ThrowsAsync<FactIngestException>(() => store.IngestAsync("owner", batch));
         Assert.True(error.IsConflict);
@@ -123,33 +123,30 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
     }
 
     [Fact]
-    public async Task OwnerScopedStreamsAndSchemas_CannotRewriteAnotherOwnersFacts()
+    public async Task OwnerScopedStreams_CannotRewriteAnotherOwnersFacts()
     {
         await using var db = CreateDbContext();
         var batch = SegmentBatch();
         var store = new FactStore(db);
         await store.IngestAsync("owner", batch);
-        var changedSchema = batch.Streams[0].Schemas[0].DocumentJson.Replace("\"title\":", "\"optionalTitle\":");
-        batch.Streams[0].Schemas[0].DocumentJson = changedSchema;
-        batch.Streams[0].Schemas[0].ContentHash = Hash(changedSchema);
+        batch.Facts[0].Payload = JsonSerializer.SerializeToElement(new { identityKey = "other-owner" });
         await store.IngestAsync("other", batch);
         Assert.Equal(2, await db.Facts.CountAsync());
-        Assert.Equal(2, await db.FactSchemas.CountAsync());
         await Assert.ThrowsAsync<FactIngestException>(() => store.IngestAsync("owner", batch));
         Assert.Equal(2, await db.Facts.CountAsync());
     }
 
     [Fact]
-    public async Task InvalidSchemaHashOrPayload_RejectsBeforeAnyDeviceAppOrFactSideEffects()
+    public async Task InvalidEnvelopeOrJson_RejectsBeforeAnyDeviceAppOrFactSideEffects()
     {
         await using var db = CreateDbContext();
         var batch = SegmentBatch();
         var store = new FactStore(db);
-        batch.Streams[0].Schemas[0].ContentHash = "sha256:bad";
+        batch.Facts[0].Revision = 0;
         await Assert.ThrowsAsync<FactIngestException>(() => store.IngestAsync("owner", batch));
         Assert.Empty(await db.Devices.ToListAsync());
-        batch.Streams[0].Schemas[0].ContentHash = Hash(batch.Streams[0].Schemas[0].DocumentJson);
-        batch.Facts[0].Payload = JsonSerializer.SerializeToElement(new { title = "missing identity" });
+        batch.Facts[0].Revision = 1;
+        batch.Facts[0].Payload = JsonDocument.Parse("{\"duplicate\":1,\"duplicate\":2}").RootElement;
         await Assert.ThrowsAsync<FactIngestException>(() => store.IngestAsync("owner", batch));
         Assert.Empty(await db.Facts.ToListAsync());
         Assert.Empty(await db.Apps.ToListAsync());
@@ -172,7 +169,7 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
     }
 
     [Fact]
-    public async Task ImmutableInputEvent_ImportedRawCodeIsPreservedAndNativeReplayCountsOnce()
+    public async Task InputEvent_ImportedRawCodeIsPreservedAndNativeReplayCountsOnce()
     {
         await using var db = CreateDbContext();
         var batch = EventBatch();
@@ -188,7 +185,8 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
         Assert.Equal(InputCodeSets.WindowsVirtualKeyV1, (await db.InputEvents.SingleAsync()).CodeSet);
         Assert.NotNull((await db.Facts.SingleAsync()).LegacyRecord);
         batch.Facts[0].Revision = 2;
-        await Assert.ThrowsAsync<FactIngestException>(() => store.IngestAsync("owner", batch));
+        await store.IngestAsync("owner", batch);
+        Assert.Equal(2, (await db.Facts.SingleAsync()).Revision);
     }
 
     [Fact]
@@ -291,57 +289,39 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
         }
     }
 
-    [Fact]
-    public async Task SchemaFormattingChange_IsCompatibleButSemanticChangeStillConflicts()
-    {
-        var batch = SegmentBatch();
-        await using (var db = CreateDbContext())
-            await new FactStore(db).IngestAsync("owner", batch);
-        var schema = batch.Streams[0].Schemas[0];
-        schema.DocumentJson += "\n";
-        schema.ContentHash = Hash(schema.DocumentJson);
-        await using (var db = CreateDbContext())
-        {
-            await new FactStore(db).IngestAsync("owner", batch);
-            Assert.Single(await db.Facts.ToListAsync());
-            Assert.Single(await db.FactSchemas.ToListAsync());
-        }
-        schema.DocumentJson = schema.DocumentJson.Replace("\"required\":[\"identityKey\"]", "\"required\":[\"identityKey\",\"title\"]");
-        schema.ContentHash = Hash(schema.DocumentJson);
-        await using (var db = CreateDbContext())
-            Assert.True((await Assert.ThrowsAsync<FactIngestException>(() => new FactStore(db).IngestAsync("owner", batch))).IsConflict);
-    }
-
     [Theory]
-    [InlineData("{\"$defs\":{\"text\":{\"$anchor\":\"text\",\"type\":\"string\"}},\"type\":\"object\",\"properties\":{\"identityKey\":{\"$ref\":\"#text\"}}}")]
-    [InlineData("{\"type\":\"object\",\"default\":{\"$ref\":\"literal data\"},\"examples\":[{\"$ref\":42}],\"properties\":{\"identityKey\":{\"type\":\"string\"}}}")]
-    [InlineData("{\"type\":\"object\",\"properties\":{\"attributes\":{\"$id\":\"https://schema.example/local\",\"$defs\":{\"text\":{\"type\":\"string\"}},\"properties\":{\"url\":{\"$ref\":\"#/$defs/text\"}}}}}")]
-    public async Task CollectorSchemaReferences_AcceptLocalScopesAndIgnoreAnnotationData(string payloadSchema)
+    [InlineData("[1,2,3]")]
+    [InlineData("\"unstructured observation\"")]
+    [InlineData("{\"eventType\":\"keyDown\",\"codeSet\":\"heartbeat-key-position-v1\",\"code\":\"future encoding\"}")]
+    [InlineData("{\"eventType\":\"keyDown\",\"codeSet\":\"future-input\",\"code\":1}")]
+    public async Task EventPayloadWithoutInputVocabulary_IsSavedAndRemovesStaleInputProjection(string json)
     {
-        var batch = SegmentBatch();
-        var definition = batch.Streams[0].Schemas[0];
-        var document = System.Text.Json.Nodes.JsonNode.Parse(definition.DocumentJson)!;
-        document["payloadSchema"] = System.Text.Json.Nodes.JsonNode.Parse(payloadSchema);
-        definition.DocumentJson = document.ToJsonString();
-        definition.ContentHash = Hash(definition.DocumentJson);
+        var batch = EventBatch();
         await using var db = CreateDbContext();
-        await new FactStore(db).IngestAsync("owner", batch);
-        Assert.Single(await db.Facts.ToListAsync());
+        var store = new FactStore(db);
+        await store.IngestAsync("owner", batch);
+        Assert.Single(await db.InputEvents.ToListAsync());
+        batch.Facts[0].Revision = 2;
+        batch.Facts[0].Payload = JsonDocument.Parse(json).RootElement.Clone();
+        await store.IngestAsync("owner", batch);
+        db.ChangeTracker.Clear();
+        await store.IngestAsync("owner", batch);
+        Assert.Empty(await db.InputEvents.ToListAsync());
+        var saved = await db.Facts.SingleAsync();
+        Assert.Equal(2, saved.Revision);
+        Assert.True(JsonElement.DeepEquals(batch.Facts[0].Payload!.Value, JsonDocument.Parse(saved.Payload!).RootElement));
     }
 
     private static JsonElement Payload() => JsonSerializer.SerializeToElement(new { identityKey = "https://example.com", title = "Page", attributes = new { url = "https://example.com/?original=1" } });
-    private static string Hash(string text) => "sha256:" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
 
     internal static FactUploadRequest SegmentBatch(string subjectKind = "machine")
     {
         var stream = new FactStreamDefinition
         {
             StreamId = Guid.NewGuid(), CollectorInstanceId = Guid.NewGuid(), Subject = new FactSubject { SubjectId = Guid.NewGuid(), Kind = subjectKind, HardwareId = subjectKind == "machine" ? "hardware" : null, DisplayName = "Observed subject" },
-            OutputId = "activity", Source = "browser", FactKind = "segment", SchemaId = "test.browser", SchemaMajor = 1
+            OutputId = "activity", Source = "browser", FactKind = "segment"
         };
-        var schema = """{"documentVersion":1,"schemaId":"test.browser","schemaMajor":1,"schemaRevision":1,"factKind":"segment","evolution":{"mode":"segmentSnapshot"},"payloadSchemaDialect":"https://json-schema.org/draft/2020-12/schema","payloadSchema":{"type":"object","required":["identityKey"],"properties":{"identityKey":{"type":"string"},"title":{"type":"string"}}}}""";
-        stream.Schemas.Add(new FactSchemaDefinition { Revision = 1, DocumentJson = schema, ContentHash = Hash(schema) });
-        return new FactUploadRequest { Streams = [stream], Facts = [new FactSnapshot { StreamId = stream.StreamId, FactId = Guid.CreateVersion7(), Revision = 1, SchemaRevision = 1, Start = Start, End = Start.AddMinutes(10), IsFinal = false, Payload = Payload() }] };
+        return new FactUploadRequest { Streams = [stream], Facts = [new FactSnapshot { StreamId = stream.StreamId, FactId = Guid.CreateVersion7(), Revision = 1, Start = Start, End = Start.AddMinutes(10), IsFinal = false, Payload = Payload() }] };
     }
 
     private static FactUploadRequest EventBatch()
@@ -350,9 +330,6 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
         var stream = batch.Streams[0];
         stream.Source = "system";
         stream.FactKind = "event";
-        stream.SchemaId = "heartbeat.input";
-        var schema = """{"documentVersion":1,"schemaId":"heartbeat.input","schemaMajor":1,"schemaRevision":1,"factKind":"event","evolution":{"mode":"immutableEvent"},"payloadSchemaDialect":"https://json-schema.org/draft/2020-12/schema","payloadSchema":{"type":"object","required":["eventType","codeSet","code"]}}""";
-        stream.Schemas = [new FactSchemaDefinition { Revision = 1, DocumentJson = schema, ContentHash = Hash(schema) }];
         var fact = batch.Facts[0];
         fact.Start = fact.End = null;
         fact.IsFinal = null;

@@ -17,7 +17,7 @@ node scripts/collector-contracts.mjs stage browser .local/browser-package --vers
 python3 scripts/package-browser-release.py --package .local/browser-package --version 0.1.0 --output .local/browser-release
 ```
 
-build 同步更新已跟踪的 `Package/browser-extension/`。stage 生成 observation/schema/artifact hash 与
+build 同步更新已跟踪的 `Package/browser-extension/`。stage 生成 observation/artifact hash 与
 `collector-artifact-ref.json` 的精确 Package/Artifact 身份；引用文件由最终 manifest 派生，不进入 artifact
 payload hash，避免循环依赖。它不是授权凭据，Host 按自己的 Installation 逐字段核验。
 

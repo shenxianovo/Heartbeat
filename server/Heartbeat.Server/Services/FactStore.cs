@@ -21,25 +21,21 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
             throw new FactIngestException("Invalid Fact batch.");
         var now = _time.GetUtcNow();
         var definitions = new Dictionary<Guid, FactStreamDefinition>();
-        var schemas = new Dictionary<(Guid, int), ValidatedFactSchema>();
         foreach (var stream in request.Streams)
         {
             if (stream is null || stream.StreamId == Guid.Empty || stream.CollectorInstanceId == Guid.Empty ||
                 stream.Subject is null || stream.Subject.SubjectId == Guid.Empty || stream.Subject.Kind is not ("machine" or "account" or "person") ||
                 stream.Subject.Kind != "machine" && stream.Subject.HardwareId is not null ||
                 string.IsNullOrWhiteSpace(stream.Source) || stream.Source.Length > 64 || string.IsNullOrWhiteSpace(stream.OutputId) ||
-                string.IsNullOrWhiteSpace(stream.SchemaId) || stream.SchemaMajor <= 0 || stream.FactKind is not ("segment" or "event") ||
-                stream.Schemas is null || stream.Dimensions is null || stream.Dimensions.Any(p => string.IsNullOrWhiteSpace(p.Key) || p.Value is null) || !definitions.TryAdd(stream.StreamId, stream))
+                stream.FactKind is not ("segment" or "event") ||
+                stream.Dimensions is null || stream.Dimensions.Any(p => string.IsNullOrWhiteSpace(p.Key) || p.Value is null) || !definitions.TryAdd(stream.StreamId, stream))
                 throw new FactIngestException("Invalid or duplicate Fact Stream definition.");
-            foreach (var schema in stream.Schemas)
-                if (schema is null || !schemas.TryAdd((stream.StreamId, schema.Revision), FactIngestContract.Schema(stream, schema)))
-                    throw new FactIngestException("Duplicate Fact Schema revision.");
         }
         foreach (var fact in request.Facts)
         {
-            if (fact is null || !definitions.TryGetValue(fact.StreamId, out var definition) || !schemas.TryGetValue((fact.StreamId, fact.SchemaRevision), out var schema))
-                throw new FactIngestException("Every Fact must include its Stream and exact Schema document.");
-            FactIngestContract.Snapshot(fact, definition.FactKind, schema, now);
+            if (fact is null || !definitions.TryGetValue(fact.StreamId, out var definition))
+                throw new FactIngestException("Every Fact must include its Stream definition.");
+            FactIngestContract.Snapshot(fact, definition.FactKind, now);
         }
         foreach (var gap in request.Gaps)
             if (gap is null || gap.GapId == Guid.Empty || gap.GapId.Version != 7 || !definitions.ContainsKey(gap.StreamId) || gap.Start.Offset != TimeSpan.Zero ||
@@ -52,7 +48,7 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
             foreach (var definition in definitions.Values)
                 streams.Add(definition.StreamId, await RegisterStream(ownerId, definition, ct));
             foreach (var fact in request.Facts)
-                await Apply(streams[fact.StreamId], fact, schemas[(fact.StreamId, fact.SchemaRevision)], ct);
+                await Apply(streams[fact.StreamId], fact, ct);
             foreach (var gap in request.Gaps)
             {
                 var existing = await db.FactGaps.FindAsync([ownerId, gap.StreamId, gap.GapId], ct);
@@ -75,7 +71,6 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         try
         {
             // One owner lock makes legacy takeover, batches, and App resolution serializable together.
-            // Schema identities are Owner-scoped as uploaded documents are not deployment-global authority.
             await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({"fact-owner:" + ownerId}, 0))", ct);
             await action();
             if (transaction is not null) await transaction.CommitAsync(ct);
@@ -120,7 +115,7 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         if (stream is not null)
         {
             if (stream.SubjectId != subject.SubjectId || stream.CollectorInstanceId != definition.CollectorInstanceId || stream.OutputId != definition.OutputId ||
-                stream.Source != definition.Source || stream.FactKind != definition.FactKind || stream.SchemaId != definition.SchemaId || stream.SchemaMajor != definition.SchemaMajor ||
+                stream.Source != definition.Source || stream.FactKind != definition.FactKind ||
                 !JsonElement.DeepEquals(JsonDocument.Parse(stream.Dimensions).RootElement, JsonDocument.Parse(dimensions).RootElement))
                 throw new FactIngestException("Fact Stream identity changed.", true);
             stream.Subject = subject;
@@ -128,42 +123,28 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         else
         {
             stream = new FactStream { OwnerId = ownerId, StreamId = definition.StreamId, SubjectId = subject.SubjectId, CollectorInstanceId = definition.CollectorInstanceId,
-                OutputId = definition.OutputId, Source = definition.Source, FactKind = definition.FactKind, SchemaId = definition.SchemaId, SchemaMajor = definition.SchemaMajor,
+                OutputId = definition.OutputId, Source = definition.Source, FactKind = definition.FactKind,
                 Dimensions = dimensions, Subject = subject };
             db.FactStreams.Add(stream);
-        }
-        foreach (var schema in definition.Schemas.OrderBy(s => s.Revision))
-        {
-            var existing = await db.FactSchemas.FindAsync([ownerId, definition.SchemaId, definition.SchemaMajor, schema.Revision], ct);
-            if (existing is not null && existing.ContentHash != schema.ContentHash &&
-                !JsonElement.DeepEquals(JsonDocument.Parse(existing.DocumentJson).RootElement,
-                    JsonDocument.Parse(schema.DocumentJson).RootElement))
-                throw new FactIngestException("Published Fact Schema revision changed content.", true);
-            if (existing is null)
-                db.FactSchemas.Add(new FactSchemaRecord { OwnerId = ownerId, SchemaId = definition.SchemaId, SchemaMajor = definition.SchemaMajor, Revision = schema.Revision, ContentHash = schema.ContentHash, DocumentJson = schema.DocumentJson });
         }
         await db.SaveChangesAsync(ct);
         return stream;
     }
 
-    private async Task Apply(FactStream stream, FactSnapshot snapshot, ValidatedFactSchema schema, CancellationToken ct)
+    private async Task Apply(FactStream stream, FactSnapshot snapshot, CancellationToken ct)
     {
         var fact = await db.Facts.SingleOrDefaultAsync(f => f.OwnerId == stream.OwnerId && f.StreamId == stream.StreamId && f.FactId == snapshot.FactId, ct);
-        var hash = FactIngestContract.SnapshotHash(snapshot);
         if (fact is not null)
         {
             if (snapshot.Revision < fact.Revision) return;
             if (snapshot.Revision == fact.Revision)
             {
-                if (hash != fact.ContentHash) throw new FactIngestException("The same Fact Revision has different content.", true);
+                if (!SameContent(fact, snapshot)) throw new FactIngestException("The same Fact Revision has different content.", true);
                 return;
             }
             if (stream.FactKind == "segment" && (fact.Start != snapshot.Start || fact.IsFinal == true && snapshot.IsFinal != true) ||
                 stream.FactKind == "event" && fact.OccurredAt != snapshot.OccurredAt)
-                throw new FactIngestException("Fact Revision violates its evolution rules.", true);
-            if (stream.FactKind == "event" &&
-                (schema.EvolutionMode != "mutableEvent" || !FactIngestContract.HasOnlyMutableChanges(fact.Payload!, snapshot.Payload!.Value.GetRawText(), schema)))
-                throw new FactIngestException("Event Revision changes immutable content.", true);
+                throw new FactIngestException("Fact Revision cannot change its start/occurrence or reopen a final Segment.", true);
         }
         else
         {
@@ -179,17 +160,22 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         fact.LegacyKind ??= stream.FactKind;
         fact.LegacyDeviceId ??= stream.Subject.DeviceId;
         fact.Revision = snapshot.Revision;
-        fact.SchemaRevision = snapshot.SchemaRevision;
         fact.ObservedAt = snapshot.ObservedAt;
         fact.Start = snapshot.Start;
         fact.End = snapshot.End;
         fact.IsFinal = snapshot.IsFinal;
         fact.OccurredAt = snapshot.OccurredAt;
         fact.Payload = snapshot.Payload?.GetRawText();
-        fact.ContentHash = hash;
         await Project(fact, ct);
         await db.SaveChangesAsync(ct);
     }
+
+    private static bool SameContent(ObservedFact fact, FactSnapshot snapshot) =>
+        fact.Start == snapshot.Start &&
+        fact.End == snapshot.End &&
+        fact.OccurredAt == snapshot.OccurredAt &&
+        fact.IsFinal == snapshot.IsFinal &&
+        JsonElement.DeepEquals(JsonDocument.Parse(fact.Payload!).RootElement, snapshot.Payload!.Value);
 
     private async Task<ObservedFact?> FindLegacy(FactStream stream, FactSnapshot snapshot, CancellationToken ct)
     {
@@ -231,7 +217,7 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
             var appKey = String(dimensions, "appIdentityKey") ?? String(payload, "appIdentityKey");
             AppIdentity? app;
             try { app = appKey is null ? null : await new AppIdentityService(db).ResolveAsync(appKey, String(payload, "appDisplayName")); }
-            catch (ArgumentException ex) { throw new FactIngestException(ex.Message); }
+            catch (ArgumentException) { app = null; }
             if (segment is null)
             {
                 segment = new ActivitySegment { Id = fact.Id, FactKey = fact.Id };
@@ -248,13 +234,31 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
             segment.StartTime = fact.Start!.Value;
             segment.EndTime = fact.End!.Value;
             segment.Payload = fact.Payload;
-            segment.Attributes = payload.TryGetProperty("attributes", out var attributes) ? attributes.GetRawText() : null;
+            segment.Attributes = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("attributes", out var attributes) ? attributes.GetRawText() : null;
         }
-        else if (stream.SchemaId == "heartbeat.input" && stream.SchemaMajor == 1 && stream.Subject.DeviceId is { } deviceId)
+        else if (stream.Subject.DeviceId is { } deviceId)
         {
-            var item = new InputEventItem { Id = fact.FactId, Timestamp = fact.OccurredAt!.Value, CodeSet = String(payload, "codeSet") ?? "", Code = payload.GetProperty("code").GetInt16(),
-                EventType = String(payload, "eventType") switch { "keyDown" => InputEventType.KeyDown, "mouseButton" => InputEventType.MouseButton, "mouseScroll" => InputEventType.MouseScroll, _ => throw new FactIngestException("Unknown input event type.") } };
-            InputEventIngestContract.Validate([item]);
+            var eventType = String(payload, "eventType") switch
+            {
+                "keyDown" => InputEventType.KeyDown,
+                "mouseButton" => InputEventType.MouseButton,
+                "mouseScroll" => InputEventType.MouseScroll,
+                _ => (InputEventType?)null
+            };
+            if (eventType is null || String(payload, "codeSet") is not { } codeSet ||
+                !payload.TryGetProperty("code", out var codeValue) || codeValue.ValueKind != JsonValueKind.Number || !codeValue.TryGetInt16(out var code))
+            {
+                if (input is not null) db.InputEvents.Remove(input);
+                return;
+            }
+            var item = new InputEventItem { Id = fact.FactId, Timestamp = fact.OccurredAt!.Value,
+                CodeSet = codeSet, Code = code, EventType = eventType.Value };
+            try { InputEventIngestContract.Validate([item]); }
+            catch (ArgumentException)
+            {
+                if (input is not null) db.InputEvents.Remove(input);
+                return;
+            }
             if (input is null)
             {
                 input = new InputEvent { Id = fact.Id, FactKey = fact.Id };

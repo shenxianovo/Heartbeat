@@ -444,7 +444,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task Publish_LowerRevisionWithStaleInvalidPayload_ReturnsSupersededBeforeSchemaValidation()
+    public async Task Publish_LowerRevisionWithStaleInvalidPayload_ReturnsSupersededBeforeContentValidation()
     {
         await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
         var stream = fixture.Activation.Streams["activity"];
@@ -484,14 +484,6 @@ public partial class InProcessCollectorProtocolTranscriptTests
     public async Task Publish_SameRevisionZeroAndTinyNonzeroNumber_AreConflictingContent()
     {
         using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
-        var schemaPath = Path.Combine(
-            packageCopy.Path,
-            "schemas",
-            "reference-segment.schema.json");
-        var schema = JsonNode.Parse(File.ReadAllText(schemaPath))!.AsObject();
-        schema["payloadSchema"]!["properties"]!["value"] = new JsonObject { ["type"] = "number" };
-        File.WriteAllText(schemaPath, schema.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        packageCopy.UpdateSchemaHash(schemaPath);
         var package = LocalCollectorPackage.Load(packageCopy.Path);
         using var directory = TemporaryDirectory.Create();
         using var runtime = CollectorRuntime.Open(
@@ -937,51 +929,6 @@ public partial class InProcessCollectorProtocolTranscriptTests
         Assert.Equal(subject, projected.Context.Subject);
         Assert.False(projected.IsFinal);
         Assert.Equal("Reference work", projected.Item.Title);
-    }
-
-    [Fact]
-    public async Task RuntimeReopen_TamperedDurableFactPayloadFailsClosed()
-    {
-        await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
-        var stream = fixture.Activation.Streams["activity"];
-        await stream.PublishAsync(
-            Guid.CreateVersion7(),
-            [CreateFact(stream.Descriptor.StreamId)]);
-        await fixture.Activation.StopAsync();
-        fixture.Runtime.Dispose();
-        var state = JsonNode.Parse(File.ReadAllText(fixture.StatePath))!.AsObject();
-        state["facts"]![0]!["payload"]!["title"] = "tampered after durable ACK";
-        File.WriteAllText(
-            fixture.StatePath,
-            state.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-
-        var error = Assert.Throws<CollectorRuntimeStateException>(() =>
-            CollectorRuntime.Open(fixture.StatePath, new RecordingSegmentSink()));
-
-        Assert.Contains("Unable to load", error.Message, StringComparison.Ordinal);
-        Assert.Contains("content hash", error.InnerException!.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public async Task RuntimeReopen_NullDurableHashFailsWithStateException()
-    {
-        await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
-        var stream = fixture.Activation.Streams["activity"];
-        await stream.PublishAsync(
-            Guid.CreateVersion7(),
-            [CreateFact(stream.Descriptor.StreamId)]);
-        await fixture.Activation.StopAsync();
-        fixture.Runtime.Dispose();
-        var state = JsonNode.Parse(File.ReadAllText(fixture.StatePath))!.AsObject();
-        state["facts"]![0]!["contentHash"] = null;
-        File.WriteAllText(
-            fixture.StatePath,
-            state.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-
-        var error = Assert.Throws<CollectorRuntimeStateException>(() =>
-            CollectorRuntime.Open(fixture.StatePath, new RecordingSegmentSink()));
-
-        Assert.IsType<JsonException>(error.InnerException);
     }
 
     [Fact]
@@ -1888,93 +1835,10 @@ public partial class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task Publish_OlderCataloguedSchemaRevisionSurvivesRestartAndReturnsDuplicate()
+    public async Task Publish_SegmentPayloadInsideActivitySegmentShape_IsProjected()
     {
         using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
-        var currentSchemaPath = Path.Combine(
-            packageCopy.Path,
-            "schemas",
-            "reference-segment.schema.json");
-        var revisionOnePath = Path.Combine(
-            packageCopy.Path,
-            "schemas",
-            "reference-segment-v1.schema.json");
-        var revisionOneBytes = File.ReadAllBytes(currentSchemaPath);
-        File.WriteAllBytes(revisionOnePath, revisionOneBytes);
-        var currentSchema = JsonNode.Parse(revisionOneBytes)!.AsObject();
-        currentSchema["schemaRevision"] = 2;
-        File.WriteAllText(
-            currentSchemaPath,
-            currentSchema.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        var revisionOneHash = Sha256(revisionOneBytes);
-        var revisionTwoHash = Sha256(File.ReadAllBytes(currentSchemaPath));
         var manifest = packageCopy.ReadManifest();
-        var outputs = manifest["outputs"]!.AsArray();
-        var currentOutput = outputs[0]!.AsObject();
-        currentOutput["schema"]!["revision"] = 2;
-        currentOutput["schema"]!["hash"] = revisionTwoHash;
-        var catalogOutput = currentOutput.DeepClone().AsObject();
-        catalogOutput["outputId"] = "activity-schema-v1";
-        catalogOutput["schema"]!["revision"] = 1;
-        catalogOutput["schema"]!["document"] = "schemas/reference-segment-v1.schema.json";
-        catalogOutput["schema"]!["hash"] = revisionOneHash;
-        outputs.Add(catalogOutput);
-        packageCopy.WriteManifest(manifest);
-        var package = LocalCollectorPackage.Load(packageCopy.Path);
-        var bindings = new[]
-        {
-            new OutputBinding("activity", "activity", new Dictionary<string, string>()),
-            new OutputBinding("schema-v1", "activity-schema-v1", new Dictionary<string, string>())
-        };
-        using var directory = TemporaryDirectory.Create();
-        var statePath = Path.Combine(directory.Path, "collector-runtime.json");
-        var sink = new RecordingSegmentSink();
-        var runtime = CollectorRuntime.Open(statePath, sink);
-        using var config = JsonDocument.Parse("{}");
-        var instance = runtime.CreateInstance(
-            package,
-            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
-            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
-        var activation = await runtime.ActivateInProcessAsync(
-            instance.CollectorInstanceId,
-            package,
-            new ReferenceInProcessCollector(bindings: bindings));
-        var stream = activation.Streams["activity"];
-        Assert.Equal(2, stream.Descriptor.Schema.Revision);
-        var oldOutboxFact = CreateFact(stream.Descriptor.StreamId, schemaRevision: 1);
-
-        var committed = await stream.PublishAsync(Guid.CreateVersion7(), [oldOutboxFact]);
-        Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(committed.Results).Status);
-        await activation.StopAsync();
-        runtime.Dispose();
-
-        using var reopened = CollectorRuntime.Open(statePath, new RecordingSegmentSink());
-        await using var recovered = await reopened.ActivateInProcessAsync(
-            instance.CollectorInstanceId,
-            package,
-            new ReferenceInProcessCollector(bindings: bindings));
-        var duplicate = await recovered.Streams["activity"].PublishAsync(
-            Guid.CreateVersion7(),
-            [oldOutboxFact]);
-        Assert.Equal(FactDeliveryStatus.Duplicate, Assert.Single(duplicate.Results).Status);
-    }
-
-    [Fact]
-    public async Task Publish_GenericSegmentSchemaIdentityInsideActivitySegmentShape_IsProjected()
-    {
-        using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
-        var schemaPath = Path.Combine(
-            packageCopy.Path,
-            "schemas",
-            "reference-segment.schema.json");
-        var schema = JsonNode.Parse(File.ReadAllText(schemaPath))!.AsObject();
-        schema["schemaId"] = "heartbeat.alternate.segment";
-        schema["schemaMajor"] = 7;
-        File.WriteAllText(schemaPath, schema.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        packageCopy.UpdateSchemaHash(schemaPath);
-        var manifest = packageCopy.ReadManifest();
-        manifest["outputs"]![0]!["schema"]!["id"] = "heartbeat.alternate.segment";
-        manifest["outputs"]![0]!["schema"]!["major"] = 7;
         packageCopy.WriteManifest(manifest);
         var package = LocalCollectorPackage.Load(packageCopy.Path);
         using var directory = TemporaryDirectory.Create();
@@ -2000,7 +1864,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
         Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(outcome.Results).Status);
         Assert.Equal("reference|work", Assert.Single(sink.Segments).IdentityKey);
 
-        // Package schema 的 minLength 接受纯空白；通用 ActivitySegment shape 必须与
+        // ActivitySegment 的投影形状必须与
         // Analytics 的 identity 契约一致，在 Hub 持久接收前明确拒绝。
         using var whitespacePayload = JsonDocument.Parse("""{"identityKey":" ","title":"Alternate work"}""");
         var whitespaceFact = CreateFact(activation.Streams["activity"].Descriptor.StreamId) with
@@ -2012,28 +1876,15 @@ public partial class InProcessCollectorProtocolTranscriptTests
             [whitespaceFact]);
         var rejectedResult = Assert.Single(rejected.Results);
         Assert.Equal(FactDeliveryStatus.Rejected, rejectedResult.Status);
-        Assert.Equal("fact_schema_invalid", rejectedResult.Error!.Code);
+        Assert.Equal("fact_invalid", rejectedResult.Error!.Code);
         Assert.False(rejectedResult.Error.Retryable);
     }
 
     [Fact]
-    public async Task Publish_GenericSegmentSchemaOutsideActivitySegmentShape_IsRejected()
+    public async Task Publish_SegmentPayloadOutsideActivitySegmentShape_IsRejected()
     {
         using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
-        var schemaPath = Path.Combine(
-            packageCopy.Path,
-            "schemas",
-            "reference-segment.schema.json");
-        var schema = JsonNode.Parse(File.ReadAllText(schemaPath))!.AsObject();
-        schema["schemaId"] = "heartbeat.alternate.segment";
-        schema["payloadSchema"]!["required"] = new JsonArray("activityKey", "title");
-        schema["payloadSchema"]!["properties"]!.AsObject().Remove("identityKey");
-        schema["payloadSchema"]!["properties"]!["activityKey"] =
-            new JsonObject { ["type"] = "string", ["minLength"] = 1 };
-        File.WriteAllText(schemaPath, schema.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        packageCopy.UpdateSchemaHash(schemaPath);
         var manifest = packageCopy.ReadManifest();
-        manifest["outputs"]![0]!["schema"]!["id"] = "heartbeat.alternate.segment";
         packageCopy.WriteManifest(manifest);
         var package = LocalCollectorPackage.Load(packageCopy.Path);
         using var directory = TemporaryDirectory.Create();
@@ -2063,7 +1914,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
 
         var result = Assert.Single(outcome.Results);
         Assert.Equal(FactDeliveryStatus.Rejected, result.Status);
-        Assert.Equal("fact_schema_invalid", result.Error!.Code);
+        Assert.Equal("fact_invalid", result.Error!.Code);
         Assert.Contains("projection shape", result.Error.Message, StringComparison.OrdinalIgnoreCase);
         Assert.False(result.Error.Retryable);
     }
@@ -2158,7 +2009,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task PackageUpdate_CompatibleRevisionReusesInstanceAndStreamAndAdvancesSchema()
+    public async Task PackageUpdate_ReusesInstanceAndStream()
     {
         using var directory = TemporaryDirectory.Create();
         var statePath = Path.Combine(directory.Path, "collector-runtime.json");
@@ -2178,8 +2029,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
         var originalStreamId = originalActivation.Streams["activity"].Descriptor.StreamId;
         var oldOutboxFact = CreateFact(
             originalStreamId,
-            factId: Guid.CreateVersion7(),
-            schemaRevision: 1);
+            factId: Guid.CreateVersion7());
         await originalActivation.StopAsync();
 
         var updatedActivation = await runtime.ActivateInProcessAsync(
@@ -2189,21 +2039,16 @@ public partial class InProcessCollectorProtocolTranscriptTests
         var updatedStream = updatedActivation.Streams["activity"];
         var acknowledgement = await updatedStream.PublishAsync(
             Guid.CreateVersion7(),
-            [CreateFact(updatedStream.Descriptor.StreamId, schemaRevision: 2)]);
+            [CreateFact(updatedStream.Descriptor.StreamId)]);
 
         Assert.Equal(instance.CollectorInstanceId, updatedStream.Descriptor.CollectorInstanceId);
         Assert.Equal(originalStreamId, updatedStream.Descriptor.StreamId);
-        Assert.Equal(2, updatedStream.Descriptor.Schema.Revision);
-        Assert.Equal(updated.Manifest.Outputs[0].Schema.Hash, updatedStream.Descriptor.Schema.Hash);
         Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(acknowledgement.Results).Status);
         var resolved = runtime.GetInstance(instance.CollectorInstanceId);
         Assert.Equal("1.1.0", resolved.PackageVersion);
         Assert.Equal(updated.PackageContentHash, resolved.PackageContentHash);
         var durableState = JsonNode.Parse(File.ReadAllText(statePath))!.AsObject();
         var durableStream = Assert.Single(durableState["streams"]!.AsArray());
-        var schemaCatalog = durableStream!["schemaCatalog"]!.AsObject();
-        Assert.Equal(original.Manifest.Outputs[0].Schema.Hash, schemaCatalog["1"]!.GetValue<string>());
-        Assert.Equal(updated.Manifest.Outputs[0].Schema.Hash, schemaCatalog["2"]!.GetValue<string>());
 
         await updatedActivation.StopAsync();
         runtime.Dispose();
@@ -2214,7 +2059,6 @@ public partial class InProcessCollectorProtocolTranscriptTests
             updated,
             new ReferenceInProcessCollector());
         Assert.Equal(originalStreamId, recovered.Streams["activity"].Descriptor.StreamId);
-        Assert.Equal(2, recovered.Streams["activity"].Descriptor.Schema.Revision);
         var oldOutboxAcknowledgement = await recovered.Streams["activity"].PublishAsync(
             Guid.CreateVersion7(),
             [oldOutboxFact]);
@@ -2260,7 +2104,6 @@ public partial class InProcessCollectorProtocolTranscriptTests
             original,
             new ReferenceInProcessCollector());
         Assert.Equal(originalStreamId, replacement.Streams["activity"].Descriptor.StreamId);
-        Assert.Equal(1, replacement.Streams["activity"].Descriptor.Schema.Revision);
     }
 
     [Fact]
@@ -2421,146 +2264,6 @@ public partial class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task PackageUpdate_SchemaFormattingOnly_IsAcceptedForSameRevision()
-    {
-        using var directory = TemporaryDirectory.Create();
-        var original = LocalCollectorPackage.Load(ReferencePackagePath);
-        using var reformattedCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
-        var schemaPath = Path.Combine(
-            reformattedCopy.Path,
-            "schemas",
-            "reference-segment.schema.json");
-        var schema = JsonNode.Parse(File.ReadAllText(schemaPath))!.AsObject();
-        var documentVersion = schema["documentVersion"]!.DeepClone();
-        schema.Remove("documentVersion");
-        schema["documentVersion"] = documentVersion;
-        File.WriteAllText(schemaPath, schema.ToJsonString());
-        reformattedCopy.UpdateSchemaHash(schemaPath);
-        var reformatted = LocalCollectorPackage.Load(reformattedCopy.Path);
-        Assert.Equal(original.Manifest.Version, reformatted.Manifest.Version);
-        Assert.NotEqual(
-            original.Manifest.Outputs[0].Schema.Hash,
-            reformatted.Manifest.Outputs[0].Schema.Hash);
-        using var runtime = CollectorRuntime.Open(
-            Path.Combine(directory.Path, "collector-runtime.json"),
-            new RecordingSegmentSink());
-        using var config = JsonDocument.Parse("{}");
-        var instance = runtime.CreateInstance(
-            original,
-            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
-            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
-        var originalActivation = await runtime.ActivateInProcessAsync(
-            instance.CollectorInstanceId,
-            original,
-            new ReferenceInProcessCollector());
-        await originalActivation.StopAsync();
-
-        await using var reformattedActivation = await runtime.ActivateInProcessAsync(
-            instance.CollectorInstanceId,
-            reformatted,
-            new ReferenceInProcessCollector());
-
-        Assert.Equal(
-            reformatted.Manifest.Outputs[0].Schema.Hash,
-            reformattedActivation.Streams["activity"].Descriptor.Schema.Hash);
-    }
-
-    [Fact]
-    public async Task PackageActivation_SchemaFormattingOnly_IsAcceptedAcrossInstances()
-    {
-        using var directory = TemporaryDirectory.Create();
-        var original = LocalCollectorPackage.Load(ReferencePackagePath);
-        using var reformattedCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
-        var schemaPath = Path.Combine(
-            reformattedCopy.Path,
-            "schemas",
-            "reference-segment.schema.json");
-        var schema = JsonNode.Parse(File.ReadAllText(schemaPath))!.AsObject();
-        var documentVersion = schema["documentVersion"]!.DeepClone();
-        schema.Remove("documentVersion");
-        schema["documentVersion"] = documentVersion;
-        File.WriteAllText(schemaPath, schema.ToJsonString());
-        reformattedCopy.UpdateSchemaHash(schemaPath);
-        var reformatted = LocalCollectorPackage.Load(reformattedCopy.Path);
-        using var runtime = CollectorRuntime.Open(
-            Path.Combine(directory.Path, "collector-runtime.json"),
-            new RecordingSegmentSink());
-        using var config = JsonDocument.Parse("{}");
-        var firstInstance = runtime.CreateInstance(
-            original,
-            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
-            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
-        var secondInstance = runtime.CreateInstance(
-            reformatted,
-            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
-            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
-
-        await using var firstActivation = await runtime.ActivateInProcessAsync(
-            firstInstance.CollectorInstanceId,
-            original,
-            new ReferenceInProcessCollector());
-        await using var secondActivation = await runtime.ActivateInProcessAsync(
-            secondInstance.CollectorInstanceId,
-            reformatted,
-            new ReferenceInProcessCollector());
-
-        Assert.NotEqual(
-            firstActivation.Streams["activity"].Descriptor.Schema.Hash,
-            secondActivation.Streams["activity"].Descriptor.Schema.Hash);
-    }
-
-    [Fact]
-    public async Task PackageUpdate_SchemaIdentityHashConflictIsRejectedEvenWhenOutputCreatesNewStream()
-    {
-        using var directory = TemporaryDirectory.Create();
-        var original = LocalCollectorPackage.Load(ReferencePackagePath);
-        using var conflictingCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
-        var schemaPath = Path.Combine(
-            conflictingCopy.Path,
-            "schemas",
-            "reference-segment.schema.json");
-        var schema = JsonNode.Parse(File.ReadAllText(schemaPath))!.AsObject();
-        schema["payloadSchema"]!["title"] = "Conflicting bytes under revision one";
-        File.WriteAllText(
-            schemaPath,
-            schema.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        var conflictingManifest = conflictingCopy.ReadManifest();
-        conflictingManifest["version"] = "1.1.0";
-        conflictingManifest["outputs"]![0]!["outputId"] = "activity-v2";
-        conflictingManifest["outputs"]![0]!["schema"]!["hash"] =
-            Sha256(File.ReadAllBytes(schemaPath));
-        conflictingCopy.WriteManifest(conflictingManifest);
-        var conflicting = LocalCollectorPackage.Load(conflictingCopy.Path);
-        using var runtime = CollectorRuntime.Open(
-            Path.Combine(directory.Path, "collector-runtime.json"),
-            new RecordingSegmentSink());
-        using var config = JsonDocument.Parse("{}");
-        var instance = runtime.CreateInstance(
-            original,
-            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
-            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
-        var originalActivation = await runtime.ActivateInProcessAsync(
-            instance.CollectorInstanceId,
-            original,
-            new ReferenceInProcessCollector());
-        await originalActivation.StopAsync();
-
-        var error = await Assert.ThrowsAsync<CollectorActivationException>(async () =>
-            await runtime.ActivateInProcessAsync(
-                instance.CollectorInstanceId,
-                conflicting,
-                new ReferenceInProcessCollector(bindings:
-                [
-                    new OutputBinding(
-                        "activity",
-                        "activity-v2",
-                        new Dictionary<string, string>())
-                ])));
-
-        Assert.Equal("package_mismatch", error.Error.Code);
-    }
-
-    [Fact]
     public async Task Activation_MultipleArtifactsMatchCurrentInProcessTarget_RejectsAmbiguousPackage()
     {
         using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
@@ -2589,26 +2292,6 @@ public partial class InProcessCollectorProtocolTranscriptTests
 
         Assert.Equal("package_mismatch", error.Error.Code);
         Assert.Contains("exactly one", error.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public async Task Publish_PayloadViolatesFactSchema_IsPermanentlyRejected()
-    {
-        await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
-        var stream = fixture.Activation.Streams["activity"];
-        using var payload = JsonDocument.Parse("""{"identityKey":"reference|work"}""");
-        var invalid = CreateFact(stream.Descriptor.StreamId) with
-        {
-            Payload = payload.RootElement.Clone()
-        };
-
-        var acknowledgement = await stream.PublishAsync(Guid.CreateVersion7(), [invalid]);
-
-        var result = Assert.Single(acknowledgement.Results);
-        Assert.Equal(FactDeliveryStatus.Rejected, result.Status);
-        Assert.Equal("fact_schema_invalid", result.Error!.Code);
-        Assert.False(result.Error.Retryable);
-        Assert.Empty(fixture.Sink.Segments);
     }
 
     [Fact]
@@ -2658,7 +2341,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task Publish_IntegerOutsideJsonSafeRange_IsMessageRejectedBeforeSchemaEvaluation()
+    public async Task Publish_IntegerOutsideJsonSafeRange_IsMessageRejectedBeforeCommit()
     {
         await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
         var stream = fixture.Activation.Streams["activity"];
@@ -2690,7 +2373,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
 
         var result = Assert.Single(acknowledgement.Results);
         Assert.Equal(FactDeliveryStatus.Rejected, result.Status);
-        Assert.Equal("fact_schema_invalid", result.Error!.Code);
+        Assert.Equal("fact_invalid", result.Error!.Code);
     }
 
     [Fact]
@@ -2751,15 +2434,13 @@ public partial class InProcessCollectorProtocolTranscriptTests
         DateTimeOffset? observedAt = null,
         DateTimeOffset? start = null,
         bool isFinal = false,
-        DateTimeOffset? end = null,
-        int schemaRevision = 1)
+        DateTimeOffset? end = null)
     {
         var segmentStart = start ?? new DateTimeOffset(2026, 8, 22, 9, 0, 0, TimeSpan.Zero);
         using var payload = JsonDocument.Parse(
             $$"""{"identityKey":"{{identityKey}}","title":"{{title}}"}""");
         return new FactSubmission(
             streamId,
-            schemaRevision,
             factId ?? Guid.Parse("0198d5eb-fc31-7d7b-8bf0-c2d009ec8999"),
             revision,
             observedAt ?? new DateTimeOffset(2026, 8, 22, 9, 5, 0, TimeSpan.Zero),
@@ -2774,19 +2455,8 @@ public partial class InProcessCollectorProtocolTranscriptTests
         ReferenceCollectorPackageCopy packageCopy,
         string version)
     {
-        var schemaPath = Path.Combine(
-            packageCopy.Path,
-            "schemas",
-            "reference-segment.schema.json");
-        var schema = JsonNode.Parse(File.ReadAllText(schemaPath))!.AsObject();
-        schema["schemaRevision"] = 2;
-        File.WriteAllText(
-            schemaPath,
-            schema.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         var manifest = packageCopy.ReadManifest();
         manifest["version"] = version;
-        manifest["outputs"]![0]!["schema"]!["revision"] = 2;
-        manifest["outputs"]![0]!["schema"]!["hash"] = Sha256(File.ReadAllBytes(schemaPath));
         packageCopy.WriteManifest(manifest);
         return LocalCollectorPackage.Load(packageCopy.Path);
     }
@@ -2974,7 +2644,6 @@ public partial class InProcessCollectorProtocolTranscriptTests
                 """{"identityKey":"reference|work","title":"Reference work"}""");
             var fact = new FactSubmission(
                 stream.Descriptor.StreamId,
-                1,
                 Guid.Parse("0198d5eb-fc31-7d7b-8bf0-c2d009ec8999"),
                 1,
                 new DateTimeOffset(2026, 8, 22, 9, 5, 0, TimeSpan.Zero),

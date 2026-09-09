@@ -104,7 +104,7 @@ public sealed class CollectorPackageInstallationsTests : IDisposable
         using var source = ManagedReferenceCollectorPackage.Create();
         var installations = new CollectorPackageInstallations(InstallRoot);
         using var broken = ReferenceCollectorPackageCopy.Create(source.Path);
-        File.Delete(Path.Combine(broken.Path, "schemas", "reference-segment.schema.json"));
+        File.Delete(Path.Combine(broken.Path, "collector-manifest.json"));
 
         Assert.Throws<PackageValidationException>(() => installations.Install(broken.Path));
 

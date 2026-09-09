@@ -10,7 +10,7 @@ migration，不实施分表、时间存储、Id/FactId 或历史 Revision 的独
 
 ## Context
 
-Collector Protocol 已有 Subject、Stream、FactId、Revision、schema 语义，但 Hub 上传前仍把
+Collector Protocol 已有 Subject、Stream、FactId、Revision 语义，但 Hub 上传前仍把
 Segment 投影成 ActivitySegment、Event 投影成 InputEvent。Analytics 因而无法识别修订与
 Stream；完整 payload 被放进旧 Attributes 后，Dashboard 还需要猜测 JSON 包装层才能显示网址。
 这使 ADR-041 的事实语义在采集与分析之间丢失，也让 Account 继续借用 Device。
@@ -20,14 +20,13 @@ Revision 不能从标题、时间或 URL 推测恢复。
 
 ## Decision
 
-Collection → Analytics 使用自包含的原生 Fact 批次。每批携带用到的 Subject、Stream、schema
-定义，以及 Segment/Event 快照与 Gap；schema 运输原始文本以保留原始字节 hash。Owner 只取自
+Collection → Analytics 使用自包含的原生 Fact 批次。每批携带用到的 Subject、Stream
+定义，以及 Segment/Event 快照与 Gap。Owner 只取自
 认证身份。Machine 可以关联 Device，Account/Person 独立存在，不制造硬件归因。
 
 Analytics 以 Owner + StreamId + FactId 识别事实，原子接收整个批次。同一 Revision 的相同内容
-幂等，内容不同冲突，低 Revision 不覆盖高 Revision；高 Revision 必须满足所属 schema 的家族
-演进约束。Segment 的合法纠正同时更新有效读投影，不能再用 EndTime 取 max 代替修订。
-Event 默认不可变；声明 mutableEvent 的 schema 只允许指定 payload 路径修订。Measurement 继续等待真实 Collector，不在本次预建。
+幂等，内容不同冲突，低 Revision 不覆盖高 Revision；高 Revision 保持 Segment 起点、Event 发生时间和 Segment 终态。Segment 的合法纠正同时更新有效读投影，不能再用 EndTime 取 max 代替修订。
+Segment/Event 的 Payload 均允许正常修订，不登记可变路径。Measurement 继续等待真实 Collector，不在本次预建。
 
 Fact 是写入权威。ActivitySegment/InputEvent 保留为同一事务内维护的查询投影，使现有报表、
 Matcher、Recap 与回放保留成熟的 SQL 查询入口。Dashboard 接收结构化 Payload 及 Fact/Subject
@@ -38,8 +37,9 @@ Matcher、Recap 与回放保留成熟的 SQL 查询入口。Dashboard 接收结�
 仅 LegacyImport InputEvent 接管按旧 Npgsql 的微秒编码核对时间，因为旧库已丢失更细精度；
 接管后原生时间与后续修订仍严格、无损比较。
 
-Package 与 Analytics 共用 Shared Kernel 的 FactSchemaContract，统一文档、演进和本地引用约束。
-每次运输仍验证原始字节 hash；已登记的同版本 Schema 按 JSON 语义比较，合法排版变化不改版本。
+2026-09-09 按 owner 决策删除 Fact Schema 注册、运输、版本锁定与演进校验，详见 ADR-041 修订。
+Fact 不保存内容哈希；同版本幂等直接比较已保存的事实时间、终态和 JSON 内容（忽略 ObservedAt）。
+Payload 的新增字段无需改包格式声明；报表不适用的事实仍完整入库，不制造替代规则注册表。
 
 Hub 已提交的 Runtime 状态承担原生上传的持久保管；Analytics 成功后只确认本批相应版本。
 上传期间到达的新修订继续待传。未确认的事实与 Gap 不因容量驱逐或卸载 Instance 被删除。
@@ -58,7 +58,7 @@ Hub 已提交的 Runtime 状态承担原生上传的持久保管；Analytics 成
 
 ## Consequences
 
-- Fact 的身份、schema 与修订可以贯穿采集、持久化和查询。
+- Fact 的身份与修订可以贯穿采集、持久化和查询。
 - 历史记录可追溯，迁移与重放不会依赖模糊推断；旧版本丢弃的元数据无法凭空补回。
 - 读投影保留查询效率，但必须与 Fact 同事务更新，新增写路径不能绕开 Fact Store。
 - 上线需先备份并演练现有数据库、旧缓存与 Runtime 状态；代码与自动验证完成不等同于生产迁移完成。

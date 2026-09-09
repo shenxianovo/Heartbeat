@@ -18,10 +18,7 @@ public sealed class FactStreamDefinition
     public string OutputId { get; set; } = string.Empty;
     public string Source { get; set; } = string.Empty;
     public string FactKind { get; set; } = string.Empty;
-    public string SchemaId { get; set; } = string.Empty;
-    public int SchemaMajor { get; set; }
     public Dictionary<string, string> Dimensions { get; set; } = [];
-    public List<FactSchemaDefinition> Schemas { get; set; } = [];
 }
 
 public sealed class FactSubject
@@ -32,22 +29,12 @@ public sealed class FactSubject
     public string? DisplayName { get; set; }
 }
 
-public sealed class FactSchemaDefinition
-{
-    public int Revision { get; set; }
-    public string ContentHash { get; set; } = string.Empty;
-
-    /// <summary>Original UTF-8 document text; its exact bytes define ContentHash.</summary>
-    public string DocumentJson { get; set; } = string.Empty;
-}
-
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 public sealed class FactSnapshot
 {
     public Guid StreamId { get; set; }
     public Guid FactId { get; set; }
     public long Revision { get; set; }
-    public int SchemaRevision { get; set; }
     public DateTimeOffset? ObservedAt { get; set; }
     public DateTimeOffset? Start { get; set; }
     public DateTimeOffset? End { get; set; }

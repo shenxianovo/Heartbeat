@@ -258,7 +258,6 @@ public sealed class CollectorProtocolClientTests
         var start = new DateTimeOffset(2026, 8, 30, 10, 0, 0, TimeSpan.Zero);
         var facts = Enumerable.Range(0, 3).Select(index => new CollectorFact(
             "activity",
-            1,
             Guid.CreateVersion7(),
             1,
             null,
@@ -307,7 +306,6 @@ public sealed class CollectorProtocolClientTests
         {
             CollectorProtocolOutbox.Open(root, 16, Definition().Outputs, now).Enqueue(new CollectorFact(
                 "activity",
-                1,
                 Guid.CreateVersion7(),
                 1,
                 null,
@@ -360,7 +358,6 @@ public sealed class CollectorProtocolClientTests
         {
             CollectorProtocolOutbox.Open(root, 16, Definition().Outputs, now).Enqueue(new CollectorFact(
                 "activity",
-                1,
                 Guid.CreateVersion7(),
                 1,
                 null,
@@ -397,13 +394,13 @@ public sealed class CollectorProtocolClientTests
         Directory.CreateDirectory(root);
         var start = new DateTimeOffset(2026, 8, 30, 10, 0, 0, TimeSpan.Zero);
         var first = new CollectorFact(
-            "activity", 1, Guid.CreateVersion7(), 1, null,
+            "activity", Guid.CreateVersion7(), 1, null,
             new CollectorEventFactTime(start),
             JsonSerializer.SerializeToElement(new { code = 1 }));
         var gap = new CollectorStreamGap(
             Guid.CreateVersion7(), "activity", start.AddSeconds(1), start.AddSeconds(2), "fixture", 1);
         var second = new CollectorFact(
-            "activity", 1, Guid.CreateVersion7(), 1, null,
+            "activity", Guid.CreateVersion7(), 1, null,
             new CollectorEventFactTime(start.AddSeconds(3)),
             JsonSerializer.SerializeToElement(new { code = 2 }));
         try
@@ -457,7 +454,6 @@ public sealed class CollectorProtocolClientTests
             {
                 outbox.Enqueue(new CollectorFact(
                     "activity",
-                    1,
                     factId,
                     revision,
                     null,
@@ -499,7 +495,6 @@ public sealed class CollectorProtocolClientTests
             var outbox = CollectorProtocolOutbox.Open(root, 1, Definition().Outputs, occurredAt);
             outbox.Enqueue(new CollectorFact(
                 "activity",
-                1,
                 Guid.CreateVersion7(),
                 1,
                 null,
@@ -507,7 +502,6 @@ public sealed class CollectorProtocolClientTests
                 JsonSerializer.SerializeToElement(new { code = 1 })));
             outbox.Enqueue(new CollectorFact(
                 "activity",
-                1,
                 Guid.CreateVersion7(),
                 1,
                 null,
@@ -535,7 +529,6 @@ public sealed class CollectorProtocolClientTests
             var outbox = CollectorProtocolOutbox.Open(root, 1, Definition().Outputs, occurredAt);
             var facts = Enumerable.Range(0, 2).Select(index => new CollectorFact(
                 "activity",
-                1,
                 Guid.CreateVersion7(),
                 1,
                 null,
@@ -619,7 +612,6 @@ public sealed class CollectorProtocolClientTests
             DateTimeOffset.UtcNow);
         outbox.Enqueue(new CollectorFact(
             "activity",
-            1,
             PublishingApplication.FactId,
             1,
             null,
@@ -674,7 +666,6 @@ public sealed class CollectorProtocolClientTests
         CollectorProtocolOutbox.Open(root, 16, Definition().Outputs, DateTimeOffset.UtcNow).Enqueue(
             new CollectorFact(
                 "activity",
-                1,
                 PublishingApplication.FactId,
                 1,
                 null,
@@ -819,7 +810,6 @@ public sealed class CollectorProtocolClientTests
             await Assert.ThrowsAsync<CollectorAdmissionClosedException>(() => drain.PublishAsync(
                 new CollectorFact(
                     "activity",
-                    1,
                     Guid.CreateVersion7(),
                     1,
                     null,
@@ -1045,7 +1035,6 @@ public sealed class CollectorProtocolClientTests
         Directory.CreateDirectory(root);
         var fact = new CollectorFact(
             "activity",
-            1,
             PublishingApplication.FactId,
             1,
             null,
@@ -1276,7 +1265,6 @@ public sealed class CollectorProtocolClientTests
         public ValueTask StartAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
             activation.PublishAsync(new CollectorFact(
                 "activity",
-                1,
                 FactId,
                 1,
                 null,
@@ -1390,7 +1378,6 @@ public sealed class CollectorProtocolClientTests
             {
                 await drain.PublishAsync(new CollectorFact(
                     "activity",
-                    1,
                     Guid.CreateVersion7(),
                     1,
                     null,
@@ -1464,7 +1451,6 @@ public sealed class CollectorProtocolClientTests
                 {
                     activation.PublishAsync(new CollectorFact(
                         "activity",
-                        1,
                         Guid.CreateVersion7(),
                         1,
                         null,
@@ -1512,7 +1498,6 @@ public sealed class CollectorProtocolClientTests
             {
                 return activation.PublishAsync(new CollectorFact(
                     "activity",
-                    1,
                     Guid.CreateVersion7(),
                     1,
                     null,
@@ -1586,7 +1571,6 @@ public sealed class CollectorProtocolClientTests
             {
                 return drain.PublishAsync(new CollectorFact(
                     "activity",
-                    1,
                     Guid.CreateVersion7(),
                     1,
                     null,
@@ -1614,7 +1598,6 @@ public sealed class CollectorProtocolClientTests
         public override ValueTask StopAsync(CollectorDrainContext drain, CancellationToken cancellationToken) =>
             drain.PublishAsync(new CollectorFact(
                 "activity",
-                1,
                 PublishingApplication.FactId,
                 1,
                 null,
@@ -1671,8 +1654,7 @@ public sealed class CollectorProtocolClientTests
             {
                 ["activity"] = new(
                     "activity", Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "account",
-                    "activity", "reference.account", "segment", "heartbeat.reference.segment", 1, 1,
-                    "sha256:test", new Dictionary<string, string>())
+                    "activity", "reference.account", "segment", new Dictionary<string, string>())
             });
 
         public ValueTask ReadyAsync(long appliedSpecRevision, CancellationToken cancellationToken) =>
@@ -1788,8 +1770,7 @@ public sealed class CollectorProtocolClientTests
             {
                 ["activity"] = new(
                     "activity", Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "account",
-                    "activity", "reference.account", "segment", "heartbeat.reference.segment", 1, 1,
-                    "sha256:test", new Dictionary<string, string>())
+                    "activity", "reference.account", "segment", new Dictionary<string, string>())
             });
 
         public ValueTask ReadyAsync(long appliedSpecRevision, CancellationToken cancellationToken) =>
@@ -2008,8 +1989,7 @@ public sealed class CollectorProtocolClientTests
                 {
                     ["activity"] = new(
                         "activity", Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "account",
-                        "activity", "reference.account", "segment", "heartbeat.reference.segment", 1, 1,
-                        "sha256:test", new Dictionary<string, string>())
+                        "activity", "reference.account", "segment", new Dictionary<string, string>())
                 });
 
         public ValueTask ReadyAsync(long appliedSpecRevision, CancellationToken cancellationToken) =>

@@ -42,11 +42,6 @@ public sealed class VRChatPackageBuilderTests : IDisposable
             : "Heartbeat.Collector.VRChat";
         File.WriteAllBytes(Path.Combine(source, executableName), [0x10, 0x20, 0x30]);
         File.WriteAllBytes(Path.Combine(source, "Heartbeat.Collector.VRChat.dll"), codeBytes);
-        var contracts = Path.Combine(source, "contracts", "facts");
-        Directory.CreateDirectory(contracts);
-        File.Copy(
-            Path.Combine(AppContext.BaseDirectory, "contracts", "facts", "vrchat-presence-segment.schema.json"),
-            Path.Combine(contracts, "vrchat-presence-segment.schema.json"));
         return source;
     }
 

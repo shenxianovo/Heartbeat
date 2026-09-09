@@ -116,7 +116,6 @@ internal sealed class ReferenceFactCollector(string? behavior, TextWriter rawOut
         }
         await activation.PublishAsync(new CollectorFact(
             "activity",
-            1,
             Guid.Parse("0198d5eb-fc31-7d7b-8bf0-c2d009ec8999"),
             1,
             DateTimeOffset.Parse("2026-08-22T12:05:00Z"),

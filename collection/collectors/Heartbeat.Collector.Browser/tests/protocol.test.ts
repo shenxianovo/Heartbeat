@@ -311,7 +311,7 @@ describe('browser Collector Protocol outbox', () => {
       sentMessageId = wire.messageId
       return protocolResponse('facts.ack', {
         results: [
-          { index: 0, status: 'rejected', error: { code: 'fact_schema_invalid' } },
+          { index: 0, status: 'rejected', error: { code: 'fact_invalid' } },
           { index: 1, status: 'retry', retryAfterMs: 4_000, error: { code: 'hub_backpressure' } },
         ],
       }, ACTIVATION_ID, wire.messageId)

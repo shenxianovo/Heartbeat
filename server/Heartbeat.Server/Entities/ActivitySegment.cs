@@ -15,7 +15,7 @@ namespace Heartbeat.Server.Entities
 
         public Guid? FactKey { get; set; }
         public ObservedFact? Fact { get; set; }
-        /// <summary>Complete schema-owned Fact payload, without the historical transport wrapper.</summary>
+        /// <summary>Complete Collector Fact payload, without the historical transport wrapper.</summary>
         public string? Payload { get; set; }
 
         /// <summary>观测者维度：'system' / 'browser' / 'vscode' / …。统计只消费 'system'（互斥轨）。</summary>

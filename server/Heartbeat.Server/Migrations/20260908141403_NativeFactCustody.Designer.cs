@@ -543,32 +543,6 @@ namespace Heartbeat.Server.Migrations
                     b.ToTable("FactGaps");
                 });
 
-            modelBuilder.Entity("Heartbeat.Server.Entities.FactSchemaRecord", b =>
-                {
-                    b.Property<string>("OwnerId")
-                        .HasColumnType("text");
-
-                    b.Property<string>("SchemaId")
-                        .HasColumnType("text");
-
-                    b.Property<int>("SchemaMajor")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("Revision")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("ContentHash")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("DocumentJson")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("OwnerId", "SchemaId", "SchemaMajor", "Revision");
-
-                    b.ToTable("FactSchemas");
-                });
 
             modelBuilder.Entity("Heartbeat.Server.Entities.FactStream", b =>
                 {
@@ -597,12 +571,7 @@ namespace Heartbeat.Server.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("SchemaId")
-                        .IsRequired()
-                        .HasColumnType("text");
 
-                    b.Property<int>("SchemaMajor")
-                        .HasColumnType("integer");
 
                     b.Property<string>("Source")
                         .IsRequired()
@@ -712,9 +681,6 @@ namespace Heartbeat.Server.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("ContentHash")
-                        .IsRequired()
-                        .HasColumnType("text");
 
                     b.Property<long?>("End")
                         .HasColumnType("bigint");
@@ -757,8 +723,6 @@ namespace Heartbeat.Server.Migrations
                     b.Property<long>("Revision")
                         .HasColumnType("bigint");
 
-                    b.Property<int>("SchemaRevision")
-                        .HasColumnType("integer");
 
                     b.Property<long?>("Start")
                         .HasColumnType("bigint");

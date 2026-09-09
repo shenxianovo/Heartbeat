@@ -488,7 +488,6 @@ public sealed class StdioCollectorProtocolBinding : ICollectorProtocolBinding
     private static object WireFact(BoundCollectorFact fact) => new
     {
         streamId = fact.StreamId,
-        schemaRevision = fact.SchemaRevision,
         factId = fact.FactId,
         revision = fact.Revision,
         observedAt = fact.ObservedAt is null ? null : Timestamp(fact.ObservedAt.Value),
@@ -538,7 +537,6 @@ public sealed class StdioCollectorProtocolBinding : ICollectorProtocolBinding
         var bindingId = ReadString(item, "bindingId");
         var stream = RequireObject(item, "stream");
         var subject = RequireObject(stream, "subject");
-        var schema = RequireObject(stream, "schema");
         var dimensions = RequireObject(stream, "dimensions").EnumerateObject().ToDictionary(
             property => property.Name,
             property => property.Value.GetString()
@@ -553,10 +551,6 @@ public sealed class StdioCollectorProtocolBinding : ICollectorProtocolBinding
             ReadString(stream, "outputId"),
             ReadString(stream, "source"),
             ReadString(stream, "factKind"),
-            ReadString(schema, "id"),
-            ReadPositiveInt(schema, "major"),
-            ReadPositiveInt(schema, "revision"),
-            ReadString(schema, "hash"),
             dimensions);
     }
 

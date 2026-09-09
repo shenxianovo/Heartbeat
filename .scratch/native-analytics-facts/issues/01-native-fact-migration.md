@@ -84,3 +84,8 @@ Status: ready-for-human
   或 Revision 起点的独立设计。含旧字段的 Runtime/outbox 明确拒绝且保留文件，没有新增转换器；
   现场持久状态核对与无损切换仍由部署 owner 承接，禁止删状态绕过拒绝。
   本次删除功能及自动验证完成；原生升级 issue/PRD 仍为 ready-for-human。
+
+## 2026-09-09 后续修订
+
+本文前述 FactSchemaContract/Schema 测试证据属于初始实现；格式治理由 [issue 02](02-remove-fact-schema.md) 退役。
+生产迁移与现场升级门禁仍由部署 owner 承接，本次不更改原项目数据库。

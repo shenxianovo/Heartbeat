@@ -43,7 +43,6 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
                 Assert.Equal("input-events", input.OutputId);
                 Assert.Equal("system", input.Source);
                 Assert.Equal(FactKind.Event, input.FactKind);
-                Assert.Equal("heartbeat.input", input.Schema.Id);
             });
     }
 
@@ -146,11 +145,9 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         Assert.Equal("foreground", stream.OutputId);
         Assert.Equal("system", stream.Source);
         Assert.Equal(FactKind.Segment, stream.FactKind);
-        Assert.Equal("heartbeat.system.foreground-segment", stream.Schema.Id);
         var inputStream = activation.Streams[SystemInProcessCollector.InputEventBindingId].Descriptor;
         Assert.Equal("input-events", inputStream.OutputId);
         Assert.Equal(FactKind.Event, inputStream.FactKind);
-        Assert.Equal("heartbeat.input", inputStream.Schema.Id);
 
         clock.Advance(TimeSpan.FromSeconds(30));
         monitor.PushCurrentSnapshot();
@@ -219,7 +216,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
     }
 
     [Fact]
-    public async Task EventReplay_IsIdempotent_AndHigherPresentRevisionIsRejected()
+    public async Task EventReplay_IsIdempotent_AndHigherRevisionIsCommitted()
     {
         Directory.CreateDirectory(_root);
         var clock = new FakeClock();
@@ -252,7 +249,6 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         var factId = Guid.CreateVersion7();
         var fact = new FactSubmission(
             stream.Descriptor.StreamId,
-            stream.Descriptor.Schema.Revision,
             factId,
             Revision: 1,
             ObservedAt: null,
@@ -272,11 +268,9 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
 
         Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(first.Results).Status);
         Assert.Equal(FactDeliveryStatus.Duplicate, Assert.Single(replay.Results).Status);
-        var rejected = Assert.Single(higher.Results);
-        Assert.Equal(FactDeliveryStatus.Rejected, rejected.Status);
-        Assert.Equal("fact_schema_invalid", rejected.Error?.Code);
-        var projected = Assert.Single(inputSink.Items);
-        Assert.Equal(factId, projected.Id);
+        Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(higher.Results).Status);
+        Assert.Equal(2, inputSink.Items.Count);
+        Assert.All(inputSink.Items, projected => Assert.Equal(factId, projected.Id));
     }
 
     [Fact]
@@ -903,7 +897,6 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
 
     private static FactSubmission InputFact(FactStreamDescriptor descriptor, Guid factId) => new(
         descriptor.StreamId,
-        descriptor.Schema.Revision,
         factId,
         Revision: 1,
         ObservedAt: null,

@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -250,41 +249,10 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
             if (stream.StreamId == Guid.Empty || stream.CollectorInstanceId == Guid.Empty ||
                 stream.SubjectId == Guid.Empty || !Enum.IsDefined(stream.SubjectKind) ||
                 !Enum.IsDefined(stream.FactKind) || string.IsNullOrWhiteSpace(stream.OutputId) ||
-                string.IsNullOrWhiteSpace(stream.Source) || string.IsNullOrWhiteSpace(stream.SchemaId) ||
-                stream.SchemaMajor <= 0 || stream.SchemaRevision <= 0 ||
-                !IsSha256(stream.SchemaHash) || stream.SchemaCatalog is null ||
-                stream.SchemaCatalog.Count == 0 ||
-                stream.SchemaCatalog.Any(pair => pair.Key <= 0 || !IsSha256(pair.Value)) ||
-                stream.SchemaDocuments is null ||
-                stream.SchemaDocuments.Count != stream.SchemaCatalog.Count ||
-                stream.SchemaDocuments.Any(pair =>
-                    pair.Key <= 0 || pair.Value is null ||
-                    !stream.SchemaCatalog.TryGetValue(pair.Key, out var expectedHash) ||
-                    !IsSha256Of(pair.Value, expectedHash)) ||
-                !stream.SchemaCatalog.TryGetValue(stream.SchemaRevision, out var currentSchemaHash) ||
-                currentSchemaHash != stream.SchemaHash || stream.Dimensions is null ||
+                string.IsNullOrWhiteSpace(stream.Source) || stream.Dimensions is null ||
                 stream.Dimensions.Any(pair => string.IsNullOrWhiteSpace(pair.Key) || pair.Value is null))
                 throw new JsonException("Collector Runtime state contains an invalid Fact Stream.");
         }
-        var conflictingSchemaIdentity = state.Streams
-            .SelectMany(stream => stream.SchemaCatalog.Select(pair => new
-            {
-                stream.SchemaId,
-                stream.SchemaMajor,
-                SchemaRevision = pair.Key,
-                Hash = pair.Value,
-                Document = stream.SchemaDocuments[pair.Key]
-            }))
-            .GroupBy(item => (item.SchemaId, item.SchemaMajor, item.SchemaRevision))
-            .FirstOrDefault(group =>
-            {
-                var first = group.First();
-                return group.Skip(1).Any(item =>
-                    item.Hash != first.Hash &&
-                    !FactSchemaContent.SemanticallyEquals(item.Document, first.Document));
-            });
-        if (conflictingSchemaIdentity is not null)
-            throw new JsonException("Collector Runtime state contains conflicting Fact Schema meanings.");
         if (state.Streams.Any(stream => state.Instances.All(
                 instance => instance.CollectorInstanceId != stream.CollectorInstanceId)))
             throw new JsonException("Collector Runtime state contains a Fact Stream for an unknown Collector Instance.");
@@ -304,10 +272,9 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
         foreach (var fact in state.Facts)
         {
             var stream = state.Streams.SingleOrDefault(candidate => candidate.StreamId == fact.StreamId);
-            if (fact.StreamId == Guid.Empty || !IsUuidV7(fact.FactId) || fact.SchemaRevision <= 0 ||
+            if (fact.StreamId == Guid.Empty || !IsUuidV7(fact.FactId) ||
                 fact.Revision is <= 0 or > 9_007_199_254_740_991 ||
-                !IsSha256(fact.ContentHash) || stream is null ||
-                fact.DeliveredContentHash is { } deliveredHash && !IsSha256(deliveredHash) ||
+                stream is null ||
                 fact.ObservedAt is { Offset: var offset } && offset != TimeSpan.Zero ||
                 fact.Payload is null)
                 throw new JsonException("Collector Runtime state contains an invalid committed Fact.");
@@ -328,32 +295,9 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
             if (payload.ValueKind != JsonValueKind.Undefined &&
                 FactCanonicalization.ValidateProtocolJson(payload) is not null)
                 throw new JsonException("Collector Runtime state contains non-canonical Fact payload JSON.");
-            string contentHash;
-            try
-            {
-                contentHash = FactCanonicalization.ContentHash(new FactSubmission(
-                    fact.StreamId,
-                    fact.SchemaRevision,
-                    fact.FactId,
-                    fact.Revision,
-                    fact.ObservedAt,
-                    time,
-                    payload));
-            }
-            catch (Exception exception) when (exception is
-                InvalidOperationException or FormatException or OverflowException)
-            {
-                throw new JsonException("Collector Runtime state contains a non-canonical committed Fact.", exception);
-            }
-            if (contentHash != fact.ContentHash)
-                throw new JsonException("Collector Runtime state committed Fact content hash does not match its content.");
         }
         if (state.Facts.Any(fact => state.Streams.All(stream => stream.StreamId != fact.StreamId)))
             throw new JsonException("Collector Runtime state contains a Fact for an unknown Fact Stream.");
-        if (state.Facts.Any(fact => state.Streams.All(stream =>
-                stream.StreamId != fact.StreamId ||
-                !stream.SchemaCatalog.ContainsKey(fact.SchemaRevision))))
-            throw new JsonException("Collector Runtime state contains a Fact with a mismatched Stream schema.");
         var identifiedGaps = state.Gaps.Where(gap => gap.GapId != Guid.Empty).ToArray();
         if (identifiedGaps.Select(gap => (gap.StreamId, gap.GapId)).Distinct().Count() != identifiedGaps.Length)
             throw new JsonException("Collector Runtime state contains duplicate Stream Gaps.");
@@ -379,9 +323,6 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
     private static bool IsSha256(string? value) =>
         value is not null && value.Length == 71 && value.StartsWith("sha256:", StringComparison.Ordinal) &&
         value[7..].All(char.IsAsciiHexDigitLower);
-
-    private static bool IsSha256Of(byte[] content, string expected) =>
-        "sha256:" + Convert.ToHexStringLower(SHA256.HashData(content)) == expected;
 
     private static bool IsUuidV7(Guid value)
     {
@@ -471,8 +412,6 @@ internal sealed class CollectorRuntimeState
         left.OutputId == right.OutputId &&
         left.Source == right.Source &&
         left.FactKind == right.FactKind &&
-        left.SchemaId == right.SchemaId &&
-        left.SchemaMajor == right.SchemaMajor &&
         left.Dimensions.Count == right.Dimensions.Count &&
         left.Dimensions.All(pair =>
             right.Dimensions.TryGetValue(pair.Key, out var value) && value == pair.Value);
@@ -568,12 +507,6 @@ internal sealed class FactStreamState
     public string OutputId { get; init; } = string.Empty;
     public string Source { get; init; } = string.Empty;
     public FactKind FactKind { get; init; }
-    public string SchemaId { get; init; } = string.Empty;
-    public int SchemaMajor { get; init; }
-    public int SchemaRevision { get; init; }
-    public string SchemaHash { get; init; } = string.Empty;
-    public Dictionary<int, string> SchemaCatalog { get; init; } = [];
-    public Dictionary<int, byte[]> SchemaDocuments { get; init; } = [];
     public Dictionary<string, string> Dimensions { get; init; } = new(StringComparer.Ordinal);
 }
 
@@ -581,7 +514,6 @@ internal sealed class CommittedFactState
 {
     public Guid StreamId { get; init; }
     public Guid FactId { get; init; }
-    public int SchemaRevision { get; init; }
     public long Revision { get; init; }
     public DateTimeOffset? ObservedAt { get; init; }
     public DateTimeOffset Start { get; init; }
@@ -589,15 +521,14 @@ internal sealed class CommittedFactState
     public bool IsFinal { get; init; }
     public DateTimeOffset? OccurredAt { get; init; }
     public JsonElement? Payload { get; init; }
-    public string ContentHash { get; init; } = string.Empty;
-    public string? DeliveredContentHash { get; init; }
+    public bool Delivered { get; init; }
 
     public CommittedFactState ConfirmDelivery() => new()
     {
-        StreamId = StreamId, FactId = FactId, SchemaRevision = SchemaRevision, Revision = Revision,
+        StreamId = StreamId, FactId = FactId, Revision = Revision,
         ObservedAt = ObservedAt, Start = Start, End = End,
-        IsFinal = IsFinal, OccurredAt = OccurredAt, Payload = Payload, ContentHash = ContentHash,
-        DeliveredContentHash = ContentHash
+        IsFinal = IsFinal, OccurredAt = OccurredAt, Payload = Payload,
+        Delivered = true
     };
 }
 

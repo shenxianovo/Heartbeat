@@ -791,7 +791,6 @@ public sealed class CollectorProtocolClient(
 
     private static BoundCollectorFact Bind(CollectorFact fact, CollectorClientStream stream) => new(
         stream.StreamId,
-        fact.SchemaRevision > 0 ? fact.SchemaRevision : stream.SchemaRevision,
         fact.FactId,
         fact.Revision,
         fact.ObservedAt,

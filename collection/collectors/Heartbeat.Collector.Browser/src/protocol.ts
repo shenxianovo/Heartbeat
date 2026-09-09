@@ -144,7 +144,6 @@ export function toProtocolFact(snapshot: SegmentSnapshot, streamId: string) {
   if (!isUuidV7(snapshot.id)) return null
   return {
     streamId,
-    schemaRevision: 1,
     factId: snapshot.id,
     revision: snapshotRevision(snapshot),
     observedAt: null,

@@ -27,11 +27,9 @@ public sealed partial class CollectorRuntime
 
     private readonly Dictionary<Guid, InProcessCollectorActivation> _activations = [];
     private readonly Dictionary<Guid, PendingActivationCommit> _pendingActivationCommits = [];
-    private readonly Dictionary<string, FactSchemaDocument> _factSchemasByHash = new(StringComparer.Ordinal);
-    // Collector Protocol v1 has one executable Segment shape: ActivitySegment. Package-owned
-    // schemas refine that payload, while this projector enforces the common projection fields.
+    // Legacy activity/input projections read only the fields their consumers understand.
     private readonly ActivitySegmentFactProjector _segmentProjector;
-    private readonly IReadOnlyList<IEventFactProjector> _eventProjectors;
+    private readonly InputEventFactProjector _inputEventProjector = new();
     private readonly Dictionary<Guid, Guid> _streamWriters = [];
     private readonly HashSet<Guid> _startingInstances = [];
     private readonly Dictionary<Guid, CollectorActivationLifetime> _activationLifetimes = [];
@@ -509,8 +507,7 @@ public sealed partial class CollectorRuntime
                     }
                     _state = next;
                     _pendingActivationCommits.Remove(activation.ActivationId);
-                    foreach (var schema in activation.Package.FactSchemas)
-                        _factSchemasByHash[schema.ContentHash] = schema;
+
                     foreach (var stream in activation.Streams.Values)
                         _streamWriters[stream.Descriptor.StreamId] = activation.ActivationId;
                 });
@@ -728,55 +725,46 @@ public sealed partial class CollectorRuntime
 
         var stream = _state.Streams.SingleOrDefault(candidate => candidate.StreamId == fact.StreamId);
         if (stream is null)
-            return Rejected(index, "fact_schema_invalid", "Fact Stream does not exist.");
+            return Rejected(index, "fact_invalid", "Fact Stream does not exist.");
 
         var envelopeError = ValidateFactEnvelope(fact);
         if (envelopeError is not null)
-            return Rejected(index, "fact_schema_invalid", envelopeError);
+            return Rejected(index, "fact_invalid", envelopeError);
         var current = _state.Facts.SingleOrDefault(existing =>
             existing.StreamId == fact.StreamId && existing.FactId == fact.FactId);
         if (current is not null && fact.Revision < current.Revision)
             return new FactDeliveryOutcome(index, FactDeliveryStatus.Superseded);
 
-        if (!stream.SchemaCatalog.TryGetValue(fact.SchemaRevision, out var expectedSchemaHash) ||
-            !_factSchemasByHash.TryGetValue(expectedSchemaHash, out var schema) ||
-            schema.SchemaId != stream.SchemaId ||
-            schema.SchemaMajor != stream.SchemaMajor ||
-            schema.SchemaRevision != fact.SchemaRevision ||
-            schema.FactKind != stream.FactKind)
-            return Rejected(index, "fact_schema_invalid", "Fact Schema revision is not available for this Stream.");
-
         var validationError = stream.FactKind switch
         {
-            FactKind.Segment => ValidateSegmentContent(fact, schema),
-            FactKind.Event => ValidateEventContent(fact, schema, current),
+            FactKind.Segment => ValidateSegmentContent(fact),
+            FactKind.Event => ValidateEventContent(fact, current),
             _ => "FactKind is not supported by this Collector Runtime slice."
         };
         if (validationError is not null)
-            return Rejected(index, "fact_schema_invalid", validationError);
+            return Rejected(index, "fact_invalid", validationError);
         if (!_options.EnableFactUpload && !CanProject(stream, fact))
             return Rejected(
                 index,
-                "fact_schema_invalid",
+                "fact_invalid",
                 "Fact payload is not compatible with the negotiated Hub projection shape.");
         if (!_options.EnableFactUpload && stream.FactKind == FactKind.Segment &&
             _segmentSink is not IDurableSegmentProjectionSink and not ISubjectSegmentProjectionSink)
             return Rejected(
                 index,
-                "fact_schema_invalid",
+                "fact_invalid",
                 "The configured Segment projection cannot preserve durable Fact revisions.");
         if (!_options.EnableFactUpload && stream.FactKind == FactKind.Event && _inputEventSink is null)
             return Rejected(
                 index,
-                "fact_schema_invalid",
+                "fact_invalid",
                 "The configured Event projection cannot preserve the existing InputEvent upload path.");
 
-        var contentHash = FactCanonicalization.ContentHash(fact);
         if (current is not null)
         {
             if (fact.Revision == current.Revision)
             {
-                return current.ContentHash == contentHash
+                return SameContent(current, fact)
                     ? new FactDeliveryOutcome(index, FactDeliveryStatus.Duplicate)
                     : Rejected(index, "fact_revision_conflict", "The same Fact Revision has different canonical content.");
             }
@@ -784,7 +772,7 @@ public sealed partial class CollectorRuntime
             if (stream.FactKind == FactKind.Segment &&
                 (current.Start != fact.Time.Start ||
                  current.IsFinal && fact.Time.IsFinal != true))
-                return Rejected(index, "fact_schema_invalid", "Segment Revision violates its evolution rules.");
+                return Rejected(index, "fact_invalid", "Segment Revision cannot change its start or reopen a final Segment.");
         }
         CommittedFactState? evictedEvent = null;
         if (current is null)
@@ -797,7 +785,7 @@ public sealed partial class CollectorRuntime
                 .Where(existing => sameKindStreamIds.Contains(existing.StreamId))
                 .ToArray();
             if (_options.EnableFactUpload && sameKindFacts.Count(existing =>
-                    existing.DeliveredContentHash != existing.ContentHash) >= _options.MaxDurableFacts)
+                    !existing.Delivered) >= _options.MaxDurableFacts)
                 return Retry(index, "Hub pending Fact upload journal is applying backpressure.");
             if (sameKindFacts.Length >= _options.MaxDurableFacts)
             {
@@ -819,22 +807,25 @@ public sealed partial class CollectorRuntime
         {
             StreamId = fact.StreamId,
             FactId = fact.FactId,
-            SchemaRevision = fact.SchemaRevision,
             Revision = fact.Revision,
             ObservedAt = fact.ObservedAt,
             Start = fact.Time.Start ?? default,
             End = fact.Time.End ?? default,
             IsFinal = fact.Time.IsFinal ?? false,
             OccurredAt = fact.Time.OccurredAt,
-            Payload = fact.Payload.Clone(),
-            ContentHash = contentHash
+            Payload = fact.Payload.Clone()
         };
         // Native terminal Facts use a bounded replay window after delivery. Analytics retains
         // authoritative revision guards after pruning; the protocol ACK promises durable custody.
-        // Mutable Events retain their first-observation state for later revisions.
+        // Analytics keeps revision guards when the bounded local replay window is pruned.
         prepared = new PreparedFactCommit(stream, committed, evictedEvent);
         return null;
     }
+
+    private static bool SameContent(CommittedFactState current, FactSubmission fact) =>
+        current.Start == (fact.Time.Start ?? default) && current.End == (fact.Time.End ?? default) &&
+        current.IsFinal == (fact.Time.IsFinal ?? false) && current.OccurredAt == fact.Time.OccurredAt &&
+        current.Payload is { } payload && JsonElement.DeepEquals(payload, fact.Payload);
 
     private sealed record PreparedFactCommit(
         FactStreamState Stream,
@@ -843,7 +834,7 @@ public sealed partial class CollectorRuntime
 
     private static string? ValidateFactEnvelope(FactSubmission fact)
     {
-        if (fact.StreamId == Guid.Empty || !IsUuidV7(fact.FactId) || fact.SchemaRevision <= 0 ||
+        if (fact.StreamId == Guid.Empty || !IsUuidV7(fact.FactId) ||
             fact.Revision is <= 0 or > MaxSafeJsonInteger)
             return "Fact identity and revisions must be UUIDv7, positive, and JSON-safe.";
         if (fact.ObservedAt is { Offset: var offset } && offset != TimeSpan.Zero)
@@ -851,7 +842,7 @@ public sealed partial class CollectorRuntime
         return null;
     }
 
-    private static string? ValidateSegmentContent(FactSubmission fact, FactSchemaDocument schema)
+    private static string? ValidateSegmentContent(FactSubmission fact)
     {
         if (fact.Time.Start is not { } start || fact.Time.End is not { } end ||
             fact.Time.IsFinal is null || fact.Time.OccurredAt is not null)
@@ -860,14 +851,13 @@ public sealed partial class CollectorRuntime
             return "Segment times must be UTC.";
         if (end < start)
             return "Segment end must not precede start.";
-        if (fact.Payload.ValueKind == System.Text.Json.JsonValueKind.Undefined || !schema.IsPayloadValid(fact.Payload))
-            return "Fact payload does not satisfy its Fact Schema Document.";
+        if (FactCanonicalization.ValidateProtocolJson(fact.Payload) is not null)
+            return "Fact payload must be valid JSON.";
         return null;
     }
 
     private static string? ValidateEventContent(
         FactSubmission fact,
-        FactSchemaDocument schema,
         CommittedFactState? current)
     {
         if (fact.Time.OccurredAt is not { } occurredAt ||
@@ -875,15 +865,10 @@ public sealed partial class CollectorRuntime
             return "Event time must contain exactly occurredAt.";
         if (occurredAt.Offset != TimeSpan.Zero)
             return "Event occurredAt must be UTC.";
-        if (current is null && fact.Revision != 1)
-            return "An Event must first be submitted at Revision 1.";
-        if (fact.Payload.ValueKind == JsonValueKind.Undefined || !schema.IsPayloadValid(fact.Payload))
-            return "Fact payload does not satisfy its Fact Schema Document.";
+        if (FactCanonicalization.ValidateProtocolJson(fact.Payload) is not null)
+            return "Fact payload must be valid JSON.";
         if (current is not null && current.OccurredAt != occurredAt)
             return "Event Revision cannot change occurredAt.";
-        if (current is not null && fact.Revision > current.Revision &&
-            schema.EvolutionMode != FactEvolutionMode.MutableEvent)
-            return "Immutable Event Fact Schema does not allow a higher Revision.";
         return null;
     }
 
@@ -900,8 +885,7 @@ public sealed partial class CollectorRuntime
                     fact.Payload,
                     out _),
             FactKind.Event =>
-                ResolveEventProjector(stream.SchemaId, stream.SchemaMajor) is { } eventProjector &&
-                eventProjector.TryProject(
+                _inputEventProjector.TryProject(
                     fact.FactId,
                     fact.Time.OccurredAt!.Value,
                     fact.Payload,
@@ -938,14 +922,13 @@ public sealed partial class CollectorRuntime
             var hasProjector = output.FactKind switch
             {
                 FactKind.Segment => true,
-                FactKind.Event => _options.EnableFactUpload || ResolveEventProjector(output.Schema.Id, output.Schema.Major) is not null,
+                FactKind.Event => true,
                 _ => false
             };
             if (!hasProjector)
                 throw ActivationError(
                     "output_not_declared",
-                    $"Output '{binding.OutputId}' has no registered Fact projection adapter for " +
-                    $"schema '{output.Schema.Id}/{output.Schema.Major}'.");
+                    $"Output '{binding.OutputId}' has no Fact projection adapter.");
             if (!output.SubjectKinds.Contains(SubjectKindName(instance.Subject.Kind), StringComparer.Ordinal))
                 throw ActivationError("output_not_declared", $"Output '{binding.OutputId}' does not support this SubjectKind.");
             if (binding.Dimensions.Keys.Any(key => !output.DimensionKeys.Contains(key, StringComparer.Ordinal)))
@@ -960,7 +943,6 @@ public sealed partial class CollectorRuntime
         }
         if (package.Manifest.Outputs.Any(output => normalized.All(item => item.Output.OutputId != output.OutputId)))
             throw ActivationError("output_not_declared", "Collector did not open every declared Output before Ready.");
-        ValidatePackageSchemaIdentities(package);
 
         var opened = new List<OpenedBinding>();
         var planned = new Dictionary<Guid, FactStreamState>();
@@ -978,7 +960,6 @@ public sealed partial class CollectorRuntime
                              item.Dimensions));
             if (stream is null)
             {
-                var packageSchemas = PackageSchemas(package, item.Output).ToArray();
                 var streamId = NextUniqueId(
                     id => _state.Streams.Any(existing => existing.StreamId == id) ||
                           planned.ContainsKey(id) ||
@@ -994,24 +975,10 @@ public sealed partial class CollectorRuntime
                     OutputId = item.Output.OutputId,
                     Source = item.Output.Source,
                     FactKind = item.Output.FactKind,
-                    SchemaId = item.Output.Schema.Id,
-                    SchemaMajor = item.Output.Schema.Major,
-                    SchemaRevision = item.Output.Schema.Revision,
-                    SchemaHash = item.Output.Schema.Hash,
-                    SchemaCatalog = packageSchemas.ToDictionary(
-                        schema => schema.SchemaRevision,
-                        schema => schema.ContentHash),
-                    SchemaDocuments = packageSchemas.ToDictionary(
-                        schema => schema.SchemaRevision,
-                        schema => schema.Content.ToArray()),
                     Dimensions = item.Dimensions
                 };
             }
-            else if (!planned.TryGetValue(stream.StreamId, out var alreadyPlanned))
-            {
-                stream = ResolveStreamForPackage(stream, package, item.Output);
-            }
-            else
+            else if (planned.TryGetValue(stream.StreamId, out var alreadyPlanned))
             {
                 stream = alreadyPlanned;
             }
@@ -1033,74 +1000,6 @@ public sealed partial class CollectorRuntime
             new PendingActivationCommit(resolvedInstance, planned.Values.ToArray()));
     }
 
-    private static FactStreamState ResolveStreamForPackage(
-        FactStreamState stream,
-        LocalCollectorPackage package,
-        CollectorOutputTemplate output)
-    {
-        var schemaCatalog = new Dictionary<int, string>(stream.SchemaCatalog);
-        var schemaDocuments = stream.SchemaDocuments.ToDictionary(
-            pair => pair.Key,
-            pair => pair.Value.ToArray());
-        foreach (var schema in PackageSchemas(package, output))
-        {
-            if (schemaCatalog.TryGetValue(schema.SchemaRevision, out var existingHash) &&
-                existingHash != schema.ContentHash &&
-                (!schemaDocuments.TryGetValue(schema.SchemaRevision, out var existingDocument) ||
-                 !FactSchemaContent.SemanticallyEquals(existingDocument, schema.Content.Span)))
-                throw ActivationError(
-                    "package_mismatch",
-                    $"Fact Schema '{output.Schema.Id}/{output.Schema.Major}/{schema.SchemaRevision}' changed meaning across Package versions.");
-            schemaCatalog[schema.SchemaRevision] = schema.ContentHash;
-            schemaDocuments[schema.SchemaRevision] = schema.Content.ToArray();
-        }
-        return new FactStreamState
-        {
-            StreamId = stream.StreamId,
-            CollectorInstanceId = stream.CollectorInstanceId,
-            SubjectId = stream.SubjectId,
-            SubjectKind = stream.SubjectKind,
-            OutputId = stream.OutputId,
-            Source = stream.Source,
-            FactKind = stream.FactKind,
-            SchemaId = stream.SchemaId,
-            SchemaMajor = stream.SchemaMajor,
-            SchemaRevision = output.Schema.Revision,
-            SchemaHash = output.Schema.Hash,
-            SchemaCatalog = schemaCatalog,
-            SchemaDocuments = schemaDocuments,
-            Dimensions = new Dictionary<string, string>(stream.Dimensions, StringComparer.Ordinal)
-        };
-    }
-
-    private static IEnumerable<FactSchemaDocument> PackageSchemas(
-        LocalCollectorPackage package,
-        CollectorOutputTemplate output) =>
-        package.FactSchemas
-            .Where(schema =>
-                schema.SchemaId == output.Schema.Id &&
-                schema.SchemaMajor == output.Schema.Major &&
-                schema.FactKind == output.FactKind);
-
-    private void ValidatePackageSchemaIdentities(LocalCollectorPackage package)
-    {
-        var existingStreams = _state.Streams.Concat(
-            _pendingActivationCommits.Values.SelectMany(commit => commit.Streams));
-        foreach (var schema in package.FactSchemas)
-        {
-            if (existingStreams.Any(stream =>
-                    stream.SchemaId == schema.SchemaId &&
-                    stream.SchemaMajor == schema.SchemaMajor &&
-                    stream.SchemaCatalog.TryGetValue(schema.SchemaRevision, out var existingHash) &&
-                    existingHash != schema.ContentHash &&
-                    (!stream.SchemaDocuments.TryGetValue(schema.SchemaRevision, out var existingDocument) ||
-                     !FactSchemaContent.SemanticallyEquals(existingDocument, schema.Content.Span))))
-                throw ActivationError(
-                    "package_mismatch",
-                    $"Fact Schema '{schema.SchemaId}/{schema.SchemaMajor}/{schema.SchemaRevision}' changed meaning across Package versions.");
-        }
-    }
-
     private static bool StreamIdentityEquals(
         FactStreamState stream,
         CollectorInstance instance,
@@ -1112,8 +1011,6 @@ public sealed partial class CollectorRuntime
         stream.OutputId == output.OutputId &&
         stream.Source == output.Source &&
         stream.FactKind == output.FactKind &&
-        stream.SchemaId == output.Schema.Id &&
-        stream.SchemaMajor == output.Schema.Major &&
         stream.Dimensions.Count == dimensions.Count &&
         stream.Dimensions.All(pair => dimensions.TryGetValue(pair.Key, out var value) && value == pair.Value);
 
@@ -1124,11 +1021,6 @@ public sealed partial class CollectorRuntime
         stream.OutputId,
         stream.Source,
         stream.FactKind,
-        new FactStreamSchemaReference(
-            stream.SchemaId,
-            stream.SchemaMajor,
-            stream.SchemaRevision,
-            stream.SchemaHash),
         stream.Dimensions.ToImmutableDictionary(StringComparer.Ordinal));
 
     private CollectorInstanceState GetInstanceStateLocked(Guid collectorInstanceId)
@@ -1463,44 +1355,6 @@ public sealed partial class CollectorRuntime
         }
     }
 
-    private void RestorePersistedFactSchemas()
-    {
-        try
-        {
-            foreach (var stream in _state.Streams)
-            {
-                foreach (var pair in stream.SchemaDocuments)
-                {
-                    var contentHash = stream.SchemaCatalog[pair.Key];
-                    if (_factSchemasByHash.TryGetValue(contentHash, out var cached))
-                    {
-                        if (cached.SchemaId != stream.SchemaId ||
-                            cached.SchemaMajor != stream.SchemaMajor ||
-                            cached.SchemaRevision != pair.Key ||
-                            cached.FactKind != stream.FactKind)
-                            throw new PackageValidationException(
-                                $"Durable Fact Schema hash '{contentHash}' is bound to conflicting identities.");
-                        continue;
-                    }
-                    var restored = LocalCollectorPackage.RestoreFactSchema(
-                        pair.Value,
-                        stream.SchemaId,
-                        stream.SchemaMajor,
-                        pair.Key,
-                        stream.FactKind,
-                        contentHash);
-                    _factSchemasByHash.Add(contentHash, restored);
-                }
-            }
-        }
-        catch (PackageValidationException exception)
-        {
-            throw new CollectorRuntimeStateException(
-                "Collector Runtime state contains an invalid durable Fact Schema snapshot.",
-                exception);
-        }
-    }
-
     private void ReplayCommittedFacts()
     {
         lock (_gate)
@@ -1569,7 +1423,7 @@ public sealed partial class CollectorRuntime
                 out var item))
         {
             Log.Error(
-                "已持久接收 Collector Segment Fact {FactId}，但其 payload 无法由 schema adapter 投影",
+                "已持久接收 Collector Segment Fact {FactId}，但其 payload 无法由 业务投影 投影",
                 fact.FactId);
             return;
         }
@@ -1653,12 +1507,11 @@ public sealed partial class CollectorRuntime
         item = null;
         if (fact.OccurredAt is { } occurredAt &&
             fact.Payload is { } payload &&
-            ResolveEventProjector(stream.SchemaId, stream.SchemaMajor) is { } projector &&
-            projector.TryProject(fact.FactId, occurredAt, payload, out item))
+            _inputEventProjector.TryProject(fact.FactId, occurredAt, payload, out item))
             return true;
 
         Log.Error(
-            "已持久接收 Collector Event Fact {FactId}，但其 payload 无法由 schema adapter 投影",
+            "已持久接收 Collector Event Fact {FactId}，但其 payload 无法由 业务投影 投影",
             fact.FactId);
         return false;
     }
@@ -1688,8 +1541,6 @@ public sealed partial class CollectorRuntime
         }
     }
 
-    private IEventFactProjector? ResolveEventProjector(string schemaId, int schemaMajor) =>
-        _eventProjectors.SingleOrDefault(projector => projector.Supports(schemaId, schemaMajor));
 
     private sealed record OpenedBinding(string BindingId, FactStreamState Stream);
     private sealed record StreamOpenPlan(

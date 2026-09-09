@@ -1,7 +1,4 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
-using Heartbeat.Core.DTOs.Facts;
 using Heartbeat.Core.Facts;
 
 namespace Heartbeat.Core.Tests;
@@ -33,22 +30,4 @@ public class FactJsonTests
         Assert.NotNull(FactJson.Validate(document.RootElement));
     }
 
-    [Fact]
-    public void TransportPreservesTheExactSchemaDocumentBytes()
-    {
-        const string document = "{\r\n  \"title\": \"网页观测\", \"payloadSchema\": {}\r\n}\n";
-        var bytes = Encoding.UTF8.GetBytes(document);
-        var definition = new FactSchemaDefinition
-        {
-            Revision = 1,
-            ContentHash = "sha256:" + Convert.ToHexStringLower(SHA256.HashData(bytes)),
-            DocumentJson = document
-        };
-        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
-
-        var received = JsonSerializer.Deserialize<FactSchemaDefinition>(JsonSerializer.Serialize(definition, options), options)!;
-
-        Assert.Equal(bytes, Encoding.UTF8.GetBytes(received.DocumentJson));
-        Assert.Equal(received.ContentHash, "sha256:" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(received.DocumentJson))));
-    }
 }

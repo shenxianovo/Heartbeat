@@ -14,7 +14,7 @@ namespace Heartbeat.Collection.Hub.Tests.Collectors.Protocol;
 public partial class InProcessCollectorProtocolTranscriptTests
 {
     [Fact]
-    public async Task NativeUpload_RestartRetainsRawFactAndSchemaWithoutLegacyProjection()
+    public async Task NativeUpload_RestartRetainsRawFactWithoutLegacyProjection()
     {
         await using var fixture = await ActivatedRuntimeFixture.CreateAsync(new CollectorRuntimeOptions { EnableFactUpload = true });
         var stream = fixture.Activation.Streams["activity"];
@@ -30,9 +30,6 @@ public partial class InProcessCollectorProtocolTranscriptTests
         var item = Assert.Single(restarted.ReadPendingFacts());
         Assert.Equal(fact.FactId, item.Fact!.FactId);
         Assert.True(JsonElement.DeepEquals(fact.Payload, item.Fact.Payload!.Value));
-        Assert.NotEmpty(item.Stream.Schemas);
-        Assert.Equal(item.Stream.Schemas[0].ContentHash,
-            Sha256(System.Text.Encoding.UTF8.GetBytes(item.Stream.Schemas[0].DocumentJson)));
         restarted.ConfirmUploadedFacts([item]);
         Assert.Empty(restarted.ReadPendingFacts());
         restarted.Dispose();
@@ -200,17 +197,11 @@ public partial class InProcessCollectorProtocolTranscriptTests
     public async Task NativeUpload_GenericEventRequiresNoInputProjectionAndCannotEvictPendingData()
     {
         using var copy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
-        var schemaPath = Path.Combine(copy.Path, "schemas", "reference-segment.schema.json");
-        var schema = JsonNode.Parse(File.ReadAllText(schemaPath))!;
-        schema["factKind"] = "event";
-        schema["evolution"] = new JsonObject { ["mode"] = "immutableEvent" };
-        File.WriteAllText(schemaPath, schema.ToJsonString());
         var manifest = copy.ReadManifest();
         manifest["supportedCapabilities"]!.AsObject().Remove("facts.segment");
         manifest["supportedCapabilities"]!["facts.event"] = new JsonArray(1);
         manifest["outputs"]![0]!["factKind"] = "event";
         copy.WriteManifest(manifest);
-        copy.UpdateSchemaHash(schemaPath);
         var package = LocalCollectorPackage.Load(copy.Path);
         using var directory = TemporaryDirectory.Create();
         using var runtime = CollectorRuntime.Open(Path.Combine(directory.Path, "runtime.json"), new RecordingSegmentSink(),

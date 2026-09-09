@@ -144,10 +144,10 @@ internal sealed class CollectorActivationSession
             }
 
             long logicalMessageSize;
-            string requestHash;
+            string requestContent;
             try
             {
-                requestHash = FactCanonicalization.PublishRequestHash(snapshot);
+                requestContent = FactCanonicalization.PublishRequestContent(snapshot);
                 logicalMessageSize = FactCanonicalization.PublishLogicalMessageSize(
                     ActivationId,
                     messageId,
@@ -162,7 +162,7 @@ internal sealed class CollectorActivationSession
                     "facts.publish contains a value that cannot be canonically represented."));
             }
 
-            if (!RegisterAttempt(messageId, "facts.publish", requestHash))
+            if (!RegisterAttempt(messageId, "facts.publish", requestContent))
                 return ValueTask.FromResult(MessageRejected(
                     "protocol_invalid_message",
                     "The same messageId was reused for another protocol request."));
@@ -176,7 +176,7 @@ internal sealed class CollectorActivationSession
                     $"facts.publish exceeds the negotiated {_limits.MaxBatchBytes}-byte logical message limit."));
             if (_publishReplays.TryGetValue(messageId, out var replay))
             {
-                if (replay.RequestHash != requestHash)
+                if (replay.RequestContent != requestContent)
                     return ValueTask.FromResult(MessageRejected(
                         "protocol_invalid_message",
                         "The same messageId was reused with different facts.publish content."));
@@ -190,7 +190,7 @@ internal sealed class CollectorActivationSession
                 var rejected = MessageRejected(
                     "batch_limit_exceeded",
                     "facts.publish contains an unexpected StreamId or duplicate (StreamId, FactId).");
-                _publishReplays.Add(messageId, new PublishReplay(requestHash, rejected, null));
+                _publishReplays.Add(messageId, new PublishReplay(requestContent, rejected, null));
                 return ValueTask.FromResult(rejected);
             }
 
@@ -199,7 +199,7 @@ internal sealed class CollectorActivationSession
                 var acknowledgement = _commitFacts(streamId, snapshot);
                 ThrowIfDeliveryFencedAfterDeadline();
                 if (!acknowledgement.Results.Any(result => result.Status == FactDeliveryStatus.Retry))
-                    _publishReplays.Add(messageId, new PublishReplay(requestHash, acknowledgement, null));
+                    _publishReplays.Add(messageId, new PublishReplay(requestContent, acknowledgement, null));
                 return ValueTask.FromResult(acknowledgement);
             }
             catch (OperationCanceledException) when (IsDeliveryFencedAfterDeadline())
@@ -210,7 +210,7 @@ internal sealed class CollectorActivationSession
             {
                 _publishReplays.Add(
                     messageId,
-                    new PublishReplay(requestHash, null, ExceptionDispatchInfo.Capture(exception)));
+                    new PublishReplay(requestContent, null, ExceptionDispatchInfo.Capture(exception)));
                 throw;
             }
         }
@@ -335,7 +335,7 @@ internal sealed class CollectorActivationSession
     private bool RegisterAttempt(Guid messageId, string messageType, string requestHash)
     {
         if (_messageAttempts.TryGetValue(messageId, out var existing))
-            return existing.MessageType == messageType && existing.RequestHash == requestHash;
+            return existing.MessageType == messageType && existing.RequestIdentity == requestHash;
         _messageAttempts.Add(messageId, new MessageAttemptIdentity(messageType, requestHash));
         return true;
     }
@@ -370,9 +370,9 @@ internal sealed class CollectorActivationSession
             System.Text.Encoding.UTF8.GetBytes(canonical)));
     }
 
-    private sealed record MessageAttemptIdentity(string MessageType, string RequestHash);
+    private sealed record MessageAttemptIdentity(string MessageType, string RequestIdentity);
     private sealed record PublishReplay(
-        string RequestHash,
+        string RequestContent,
         FactBatchAcknowledgement? Outcome,
         ExceptionDispatchInfo? Error);
     private sealed record GapReplay(string RequestHash, GapDeliveryOutcome Outcome);

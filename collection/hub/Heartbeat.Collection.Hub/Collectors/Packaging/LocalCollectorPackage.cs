@@ -5,8 +5,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Json.Schema;
-using Heartbeat.Core.Facts;
 
 namespace Heartbeat.Collection.Hub.Collectors.Packages;
 
@@ -15,14 +13,6 @@ public enum FactKind
     Segment,
     Event,
     Measurement
-}
-
-public enum FactEvolutionMode
-{
-    SegmentSnapshot,
-    ImmutableEvent,
-    MutableEvent,
-    MeasurementCorrection
 }
 
 public sealed record CollectorPackageManifest(
@@ -54,16 +44,8 @@ public sealed record CollectorOutputTemplate(
     string OutputId,
     string Source,
     FactKind FactKind,
-    FactSchemaReference Schema,
     IReadOnlyList<string> SubjectKinds,
     IReadOnlyList<string> DimensionKeys);
-
-public sealed record FactSchemaReference(
-    string Id,
-    int Major,
-    int Revision,
-    string Document,
-    string Hash);
 
 public sealed record CollectorArtifactManifest(
     string ArtifactId,
@@ -102,66 +84,10 @@ public sealed class VerifiedCollectorArtifact
     public ReadOnlyMemory<byte> Content => _content.ToArray();
 }
 
-public sealed class FactSchemaDocument
-{
-    private readonly ImmutableArray<byte> _content;
-
-    internal FactSchemaDocument(
-        string schemaId,
-        int schemaMajor,
-        int schemaRevision,
-        FactKind factKind,
-        FactEvolutionMode evolutionMode,
-        IReadOnlyList<string> mutablePayloadPaths,
-        JsonElement payloadSchema,
-        JsonSchema payloadValidator,
-        string contentHash,
-        ImmutableArray<byte> content)
-    {
-        SchemaId = schemaId;
-        SchemaMajor = schemaMajor;
-        SchemaRevision = schemaRevision;
-        FactKind = factKind;
-        EvolutionMode = evolutionMode;
-        MutablePayloadPaths = mutablePayloadPaths;
-        PayloadSchema = payloadSchema;
-        PayloadValidator = payloadValidator;
-        ContentHash = contentHash;
-        _content = content;
-    }
-
-    public string SchemaId { get; }
-    public int SchemaMajor { get; }
-    public int SchemaRevision { get; }
-    public FactKind FactKind { get; }
-    public FactEvolutionMode EvolutionMode { get; }
-    public IReadOnlyList<string> MutablePayloadPaths { get; }
-    public JsonElement PayloadSchema { get; }
-    public string ContentHash { get; }
-    public ReadOnlyMemory<byte> Content => _content.ToArray();
-    internal JsonSchema PayloadValidator { get; }
-
-    public bool IsPayloadValid(JsonElement payload)
-    {
-        try
-        {
-            return PayloadValidator.Evaluate(payload).IsValid;
-        }
-        catch (Exception exception) when (exception is
-            RefResolutionException or JsonSchemaException or InvalidOperationException or NotSupportedException)
-        {
-            return false;
-        }
-    }
-}
-
 public sealed class PackageValidationException(string message, Exception? innerException = null)
     : Exception(message, innerException);
 
-/// <summary>
-/// Reads a local Collector Package into an immutable, verified memory snapshot. No caller can
-/// observe later changes to the package directory through the returned value.
-/// </summary>
+/// <summary>Reads a local Package into an immutable, verified memory snapshot.</summary>
 public sealed class LocalCollectorPackage
 {
     private sealed record ObservationDeclarationReference(string Document, string Hash);
@@ -183,14 +109,12 @@ public sealed class LocalCollectorPackage
         string packageDirectory,
         CollectorPackageManifest manifest,
         IReadOnlyList<VerifiedCollectorArtifact> artifacts,
-        IReadOnlyList<FactSchemaDocument> factSchemas,
         VerifiedObservationDeclaration? observationDeclaration,
         string packageContentHash)
     {
         PackageDirectory = packageDirectory;
         Manifest = manifest;
         Artifacts = artifacts.ToImmutableArray();
-        FactSchemas = factSchemas.ToImmutableArray();
         ObservationDeclaration = observationDeclaration;
         PackageContentHash = packageContentHash;
     }
@@ -198,7 +122,6 @@ public sealed class LocalCollectorPackage
     public CollectorPackageManifest Manifest { get; }
     public string PackageDirectory { get; }
     public IReadOnlyList<VerifiedCollectorArtifact> Artifacts { get; }
-    public IReadOnlyList<FactSchemaDocument> FactSchemas { get; }
     public VerifiedObservationDeclaration? ObservationDeclaration { get; }
     /// <summary>
     /// Exact Package identity. Existing non-ManagedProcess Packages retain the SHA-256 of the
@@ -226,11 +149,6 @@ public sealed class LocalCollectorPackage
         var artifacts = manifest.Artifacts
             .Select(artifact => VerifyArtifact(root, artifact))
             .ToArray();
-        var schemas = manifest.Outputs
-            .Select(output => VerifyFactSchema(root, output))
-            .GroupBy(schema => (schema.SchemaId, schema.SchemaMajor, schema.SchemaRevision))
-            .Select(group => group.First())
-            .ToArray();
         var declaration = declarationReference is null
             ? null
             : VerifyObservationDeclaration(root, declarationReference, manifest);
@@ -239,7 +157,6 @@ public sealed class LocalCollectorPackage
             root,
             manifest,
             artifacts,
-            schemas,
             declaration,
             ComputePackageContentHash(root, manifestBytes, manifest));
     }
@@ -327,18 +244,6 @@ public sealed class LocalCollectorPackage
         var artifacts = ReadArtifacts(root.GetProperty("artifacts"));
         var presentation = ReadPresentation(root);
         var defaultInstance = ReadDefaultInstance(root, config, outputs);
-
-        var ambiguousSchema = outputs
-            .GroupBy(output => (output.Schema.Id, output.Schema.Major, output.Schema.Revision))
-            .FirstOrDefault(group => group
-                .Select(output => (output.Schema.Document, output.Schema.Hash))
-                .Distinct()
-                .Skip(1)
-                .Any());
-        if (ambiguousSchema is not null)
-            throw new PackageValidationException(
-                $"Fact schema identity '{ambiguousSchema.Key.Id}/{ambiguousSchema.Key.Major}/{ambiguousSchema.Key.Revision}' " +
-                "must resolve to exactly one document and content hash.");
 
         if (!capabilities.TryGetValue("diagnostics.stream-gap", out var gapVersions) || !gapVersions.Contains(1))
             throw new PackageValidationException(
@@ -505,8 +410,8 @@ public sealed class LocalCollectorPackage
             RequireObject(
                 item,
                 "output",
-                ["outputId", "source", "factKind", "schema", "subjectKinds", "dimensionKeys"],
-                ["outputId", "source", "factKind", "schema", "subjectKinds", "dimensionKeys"]);
+                ["outputId", "source", "factKind", "subjectKinds", "dimensionKeys"],
+                ["outputId", "source", "factKind", "subjectKinds", "dimensionKeys"]);
             var outputId = ReadNonEmptyString(item, "outputId", "output");
             if (!outputIds.Add(outputId))
                 throw new PackageValidationException($"Duplicate outputId '{outputId}'.");
@@ -516,7 +421,6 @@ public sealed class LocalCollectorPackage
             if (factKind == FactKind.Measurement)
                 throw new PackageValidationException(
                     $"Output '{outputId}' uses FactKind '{factKind}', but this runtime slice does not yet support Measurement outputs.");
-            var schema = ReadSchemaReference(item.GetProperty("schema"), outputId);
             var subjectKinds = ReadStringArray(item, "subjectKinds", $"output '{outputId}'");
             if (subjectKinds.Distinct(StringComparer.Ordinal).Count() != subjectKinds.Count ||
                 subjectKinds.Any(kind => !SupportedSubjectKinds.Contains(kind)))
@@ -530,26 +434,10 @@ public sealed class LocalCollectorPackage
                 outputId,
                 source,
                 factKind,
-                schema,
                 subjectKinds,
                 dimensionKeys));
         }
         return outputs.ToImmutableArray();
-    }
-
-    private static FactSchemaReference ReadSchemaReference(JsonElement element, string outputId)
-    {
-        RequireObject(
-            element,
-            $"output '{outputId}' schema",
-            ["id", "major", "revision", "document", "hash"],
-            ["id", "major", "revision", "document", "hash"]);
-        return new FactSchemaReference(
-            ReadNonEmptyString(element, "id", $"output '{outputId}' schema"),
-            ReadPositiveInt(element, "major", $"output '{outputId}' schema"),
-            ReadPositiveInt(element, "revision", $"output '{outputId}' schema"),
-            ReadNonEmptyString(element, "document", $"output '{outputId}' schema"),
-            ReadSha256(element, "hash", $"output '{outputId}' schema"));
     }
 
     private static IReadOnlyList<CollectorArtifactManifest> ReadArtifacts(JsonElement element)
@@ -598,66 +486,6 @@ public sealed class LocalCollectorPackage
             ImmutableArray.CreateRange(content));
     }
 
-    private static FactSchemaDocument VerifyFactSchema(string root, CollectorOutputTemplate output)
-    {
-        var reference = output.Schema;
-        var path = ResolvePackageFile(root, reference.Document, $"schema '{reference.Id}'");
-        var bytes = ReadStrictUtf8File(path, $"Fact Schema Document '{reference.Id}'");
-        VerifyHash(bytes, reference.Hash, $"Fact Schema Document '{reference.Id}'");
-        return ParseFactSchema(bytes, reference, output.FactKind);
-    }
-
-    internal static FactSchemaDocument RestoreFactSchema(
-        ReadOnlyMemory<byte> content,
-        string schemaId,
-        int schemaMajor,
-        int schemaRevision,
-        FactKind factKind,
-        string contentHash)
-    {
-        var bytes = content.ToArray();
-        var description = $"Durable Fact Schema Document '{schemaId}/{schemaMajor}/{schemaRevision}'";
-        ValidateStrictUtf8(bytes, description);
-        VerifyHash(bytes, contentHash, description);
-        return ParseFactSchema(
-            bytes,
-            new FactSchemaReference(
-                schemaId,
-                schemaMajor,
-                schemaRevision,
-                "durable-schema-snapshot.json",
-                contentHash),
-            factKind);
-    }
-
-    private static FactSchemaDocument ParseFactSchema(
-        byte[] bytes,
-        FactSchemaReference reference,
-        FactKind expectedFactKind)
-    {
-        try
-        {
-            var schema = FactSchemaContract.Parse(bytes, reference.Id, reference.Major, reference.Revision,
-                expectedFactKind.ToString().ToLowerInvariant());
-            var validator = JsonSchema.FromText(schema.PayloadSchema.GetRawText(),
-                new BuildOptions { Dialect = Dialect.Draft202012 });
-            return new FactSchemaDocument(schema.SchemaId, schema.SchemaMajor, schema.SchemaRevision,
-                expectedFactKind, ParseEvolutionMode(schema.EvolutionMode),
-                schema.MutablePayloadPaths, schema.PayloadSchema, validator, reference.Hash,
-                ImmutableArray.CreateRange(bytes));
-        }
-        catch (FactSchemaException exception)
-        {
-            throw new PackageValidationException(exception.Message, exception);
-        }
-        catch (Exception exception) when (exception is JsonException or
-            JsonSchemaException or InvalidOperationException or ArgumentException)
-        {
-            throw new PackageValidationException(
-                $"Fact Schema Document '{reference.Id}' payloadSchema is not valid JSON Schema Draft 2020-12.", exception);
-        }
-    }
-
     private static void RejectDuplicateObjectKeys(JsonElement element, string context)
     {
         if (element.ValueKind == JsonValueKind.Object)
@@ -700,15 +528,6 @@ public sealed class LocalCollectorPackage
         "event" => FactKind.Event,
         "measurement" => FactKind.Measurement,
         _ => throw new PackageValidationException($"Unknown FactKind '{value}'.")
-    };
-
-    private static FactEvolutionMode ParseEvolutionMode(string value) => value switch
-    {
-        "segmentSnapshot" => FactEvolutionMode.SegmentSnapshot,
-        "immutableEvent" => FactEvolutionMode.ImmutableEvent,
-        "mutableEvent" => FactEvolutionMode.MutableEvent,
-        "measurementCorrection" => FactEvolutionMode.MeasurementCorrection,
-        _ => throw new PackageValidationException($"Unknown Fact evolution mode '{value}'.")
     };
 
     private static string ResolvePackageFile(string root, string relativePath, string description)
@@ -904,24 +723,5 @@ public sealed class LocalCollectorPackage
     {
         if (element.ValueKind != JsonValueKind.Array || element.GetArrayLength() == 0)
             throw new PackageValidationException($"{context} must be a non-empty array.");
-    }
-}
-
-internal static class JsonElementBooleanExtensions
-{
-    public static bool TryGetBoolean(this JsonElement element, out bool value)
-    {
-        if (element.ValueKind == JsonValueKind.True)
-        {
-            value = true;
-            return true;
-        }
-        if (element.ValueKind == JsonValueKind.False)
-        {
-            value = false;
-            return true;
-        }
-        value = default;
-        return false;
     }
 }

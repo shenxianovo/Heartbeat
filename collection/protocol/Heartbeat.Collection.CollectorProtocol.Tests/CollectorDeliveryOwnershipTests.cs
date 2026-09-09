@@ -53,7 +53,6 @@ public sealed class CollectorDeliveryOwnershipTests
             {
                 outbox.Enqueue(new CollectorFact(
                     "activity",
-                    1,
                     Guid.CreateVersion7(),
                     1,
                     now,

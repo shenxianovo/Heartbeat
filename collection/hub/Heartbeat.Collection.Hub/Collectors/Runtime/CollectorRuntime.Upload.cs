@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using Heartbeat.Collection.Hub.Collectors.Protocol;
 using Heartbeat.Collection.Hub.Collectors.Packages;
@@ -18,7 +16,7 @@ public sealed partial class CollectorRuntime
             lock (_gate)
                 return new DeliveryRemainder(
                     _options.EnableFactUpload
-                        ? _state.Facts.Count(fact => fact.DeliveredContentHash != fact.ContentHash) +
+                        ? _state.Facts.Count(fact => !fact.Delivered) +
                           _state.Gaps.Count(gap => !gap.Delivered)
                         : 0,
                     0);
@@ -36,8 +34,8 @@ public sealed partial class CollectorRuntime
             // Reserve room for Gaps so a continuous Event stream cannot starve loss reports.
             foreach (var gap in _state.Gaps.Where(gap => !gap.Delivered).Take(Math.Max(1, _options.MaxFactsPerBatch / 4)))
                 items.Add(new FactUploadItem(UploadStreamDefinition(streams[gap.StreamId]), null,
-                    UploadGap(gap), GapContentHash(gap)));
-            foreach (var fact in _state.Facts.Where(fact => fact.DeliveredContentHash != fact.ContentHash)
+                    UploadGap(gap)));
+            foreach (var fact in _state.Facts.Where(fact => !fact.Delivered)
                          .Take(_options.MaxFactsPerBatch - items.Count))
                 items.Add(UploadFact(streams[fact.StreamId], fact));
             return items;
@@ -50,18 +48,22 @@ public sealed partial class CollectorRuntime
         lock (_gate)
         {
             var facts = items.Where(item => item.Fact is not null)
-                .Select(item => (item.Fact!.StreamId, item.Fact.FactId, item.Fact.Revision, item.ContentHash))
-                .ToHashSet();
+                .Select(item => item.Fact!)
+                .ToLookup(item => (item.StreamId, item.FactId, item.Revision));
             var gaps = items.Where(item => item.Gap is not null)
-                .Select(item => (item.Gap!.StreamId, item.Gap.GapId, item.ContentHash)).ToHashSet();
+                .Select(item => item.Gap!).ToLookup(item => (item.StreamId, item.GapId));
             var next = new CollectorRuntimeState
             {
                 SchemaVersion = _state.SchemaVersion,
                 Instances = [.. _state.Instances], Streams = [.. _state.Streams],
                 ActivationAttemptTombstones = [.. _state.ActivationAttemptTombstones],
-                Facts = _state.Facts.Select(fact => facts.Contains((fact.StreamId, fact.FactId, fact.Revision, fact.ContentHash))
+                Facts = _state.Facts.Select(fact => facts[(fact.StreamId, fact.FactId, fact.Revision)].Any(item =>
+                    item.Start == (fact.OccurredAt is null ? fact.Start : null) && item.End == (fact.OccurredAt is null ? fact.End : null) &&
+                    item.OccurredAt == fact.OccurredAt && item.IsFinal == (fact.OccurredAt is null ? fact.IsFinal : null) &&
+                    item.Payload is { } payload && fact.Payload is { } saved && JsonElement.DeepEquals(payload, saved))
                     ? fact.ConfirmDelivery() : fact).ToList(),
-                Gaps = _state.Gaps.Select(gap => gaps.Contains((gap.StreamId, gap.GapId, GapContentHash(gap)))
+                Gaps = _state.Gaps.Select(gap => gaps[(gap.StreamId, gap.GapId)].Any(item => item.Start == gap.Start &&
+                    item.End == gap.End && item.Reason == gap.Reason && item.EstimatedFactsLost == gap.EstimatedFactsLost)
                     ? gap.ConfirmDelivery() : gap).ToList()
             };
             _store.Save(next);
@@ -73,18 +75,17 @@ public sealed partial class CollectorRuntime
     {
         var streams = _state.Streams.Where(stream => stream.CollectorInstanceId == instanceId)
             .Select(stream => stream.StreamId).ToHashSet();
-        return _state.Facts.Any(fact => streams.Contains(fact.StreamId) && fact.DeliveredContentHash != fact.ContentHash) ||
+        return _state.Facts.Any(fact => streams.Contains(fact.StreamId) && !fact.Delivered) ||
                _state.Gaps.Any(gap => streams.Contains(gap.StreamId) && !gap.Delivered);
     }
 
     private bool CanEvictDeliveredFact(CommittedFactState fact)
     {
-        if (fact.DeliveredContentHash != fact.ContentHash) return false;
+        if (!fact.Delivered) return false;
         var stream = _state.Streams.Single(candidate => candidate.StreamId == fact.StreamId);
         if (stream.FactKind == FactKind.Segment)
             return fact.IsFinal;
-        var schema = _factSchemasByHash[stream.SchemaCatalog[fact.SchemaRevision]];
-        return schema.EvolutionMode == FactEvolutionMode.ImmutableEvent;
+        return true;
     }
 
     private void EnsureUploadGapIdentities()
@@ -113,13 +114,12 @@ public sealed partial class CollectorRuntime
         new FactSnapshot
         {
             StreamId = fact.StreamId, FactId = fact.FactId, Revision = fact.Revision,
-            SchemaRevision = fact.SchemaRevision,
             ObservedAt = fact.ObservedAt,
             Start = stream.FactKind == FactKind.Segment ? fact.Start : null,
             End = stream.FactKind == FactKind.Segment ? fact.End : null,
             IsFinal = stream.FactKind == FactKind.Segment ? fact.IsFinal : null,
             OccurredAt = fact.OccurredAt, Payload = fact.Payload?.Clone()
-        }, null, fact.ContentHash);
+        }, null);
 
     private static FactStreamDefinition UploadStreamDefinition(FactStreamState stream) => new()
     {
@@ -130,13 +130,7 @@ public sealed partial class CollectorRuntime
             HardwareId = stream.SubjectKind == SubjectKind.Machine ? stream.SubjectId.ToString("D") : null
         },
         OutputId = stream.OutputId, Source = stream.Source, FactKind = stream.FactKind.ToString().ToLowerInvariant(),
-        SchemaId = stream.SchemaId, SchemaMajor = stream.SchemaMajor,
         Dimensions = new Dictionary<string, string>(stream.Dimensions, StringComparer.Ordinal),
-        Schemas = stream.SchemaCatalog.OrderBy(pair => pair.Key).Select(pair => new FactSchemaDefinition
-        {
-            Revision = pair.Key, ContentHash = pair.Value,
-            DocumentJson = Encoding.UTF8.GetString(stream.SchemaDocuments[pair.Key])
-        }).ToList()
     };
 
     private static FactGapSnapshot UploadGap(CommittedGapState gap) => new()
@@ -145,6 +139,4 @@ public sealed partial class CollectorRuntime
         Reason = gap.Reason, EstimatedFactsLost = gap.EstimatedFactsLost
     };
 
-    private static string GapContentHash(CommittedGapState gap) =>
-        "sha256:" + Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(UploadGap(gap))));
 }

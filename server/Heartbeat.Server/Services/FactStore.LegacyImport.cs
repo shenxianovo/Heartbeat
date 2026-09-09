@@ -28,7 +28,7 @@ public sealed partial class FactStore
                 var payload = LegacySegmentPayload(row.IdentityKey, row.Title, row.Attributes);
                 if (fact is null)
                 {
-                    fact = new ObservedFact { Id = Guid.CreateVersion7(), OwnerId = device.OwnerId, StreamId = stream.StreamId, FactId = row.Id, Revision = 0, SchemaRevision = 0,
+                    fact = new ObservedFact { Id = Guid.CreateVersion7(), OwnerId = device.OwnerId, StreamId = stream.StreamId, FactId = row.Id, Revision = 0,
                         Origin = "legacy-import", LegacyId = row.Id, LegacyDeviceId = device.Id, LegacyKind = "segment", LegacyRecord = archive, Stream = stream };
                     db.Facts.Add(fact);
                 }
@@ -36,7 +36,6 @@ public sealed partial class FactStore
                 fact.End = row.EndTime;
                 fact.Payload = payload;
                 fact.LegacyRecord ??= archive;
-                fact.ContentHash = FactIngestContract.Hash(payload);
                 row.FactKey = fact.Id;
                 row.Fact = fact;
                 row.OwnerId = device.OwnerId;
@@ -76,9 +75,9 @@ public sealed partial class FactStore
                 if (row.FactKey is not null) continue;
                 var stream = await LegacyStream(device, "system", "event");
                 var payload = JsonSerializer.Serialize(new { eventType = EventName(row.EventType), codeSet = row.CodeSet, code = row.Code });
-                var fact = new ObservedFact { Id = Guid.CreateVersion7(), OwnerId = device.OwnerId, StreamId = stream.StreamId, FactId = row.Id, Revision = 0, SchemaRevision = 0,
+                var fact = new ObservedFact { Id = Guid.CreateVersion7(), OwnerId = device.OwnerId, StreamId = stream.StreamId, FactId = row.Id, Revision = 0,
                     Origin = "legacy-import", LegacyId = row.Id, LegacyDeviceId = device.Id, LegacyKind = "event", OccurredAt = row.Timestamp, Payload = payload,
-                    ContentHash = FactIngestContract.Hash(payload), Stream = stream,
+                    Stream = stream,
                     LegacyRecord = JsonSerializer.Serialize(new { row.Id, row.DeviceId, row.EventType, row.CodeSet, row.Code, row.Timestamp }) };
                 db.Facts.Add(fact);
                 row.FactKey = fact.Id;
@@ -252,8 +251,7 @@ public sealed partial class FactStore
         var stream = await db.FactStreams.FindAsync(device.OwnerId, streamId);
         if (stream is null)
         {
-            stream = new FactStream { OwnerId = device.OwnerId, StreamId = streamId, SubjectId = subjectId, Subject = subject, OutputId = "legacy-import", Source = source, FactKind = kind,
-                SchemaId = "heartbeat.legacy." + kind, SchemaMajor = 1, Origin = "legacy-import" };
+            stream = new FactStream { OwnerId = device.OwnerId, StreamId = streamId, SubjectId = subjectId, Subject = subject, OutputId = "legacy-import", Source = source, FactKind = kind, Origin = "legacy-import" };
             db.FactStreams.Add(stream);
         }
         return stream;

@@ -29,7 +29,7 @@ public sealed class HeadlessFleetManagerTests : IDisposable
             Start = DateTimeOffset.UtcNow.AddMinutes(-1), End = DateTimeOffset.UtcNow,
             IsFinal = false, Payload = JsonSerializer.SerializeToElement(new { identityKey = "account:online", title = "Online" })
         };
-        pipelines.Observe(new FactUploadItem(stream, fact, null, "unused"));
+        pipelines.Observe(new FactUploadItem(stream, fact, null));
 
         await pipelines.DrainAllAsync();
 
@@ -37,7 +37,7 @@ public sealed class HeadlessFleetManagerTests : IDisposable
         Assert.Empty(upload.Sent);
         fact.Revision = 2;
         fact.IsFinal = true;
-        pipelines.Observe(new FactUploadItem(stream, fact, null, "unused"));
+        pipelines.Observe(new FactUploadItem(stream, fact, null));
         Assert.Null(pipelines.CurrentActivity(stream.CollectorInstanceId));
     }
 

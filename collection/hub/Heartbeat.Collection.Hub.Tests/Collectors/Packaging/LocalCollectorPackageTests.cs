@@ -28,28 +28,6 @@ public class LocalCollectorPackageTests
         Assert.Equal(1, package.Manifest.DefaultInstance?.ConfigVersion);
         Assert.Equal(JsonValueKind.Object, package.Manifest.DefaultInstance?.Config.ValueKind);
         Assert.Equal("reference.inprocess", Assert.Single(package.Artifacts).ArtifactId);
-        var schema = Assert.Single(package.FactSchemas);
-        Assert.Equal("heartbeat.reference.segment", schema.SchemaId);
-        Assert.Equal(FactKind.Segment, schema.FactKind);
-    }
-
-    [Fact]
-    public void Load_FactPayloadSchemaIsInvalid_RejectsPackage()
-    {
-        using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
-        var schemaPath = Path.Combine(
-            packageCopy.Path,
-            "schemas",
-            "reference-segment.schema.json");
-        var schema = JsonNode.Parse(File.ReadAllText(schemaPath))!.AsObject();
-        schema["payloadSchema"]!["type"] = "not-a-json-schema-type";
-        File.WriteAllText(schemaPath, schema.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        packageCopy.UpdateSchemaHash(schemaPath);
-
-        var error = Assert.Throws<PackageValidationException>(() =>
-            LocalCollectorPackage.Load(packageCopy.Path));
-
-        Assert.Contains("payloadSchema", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -155,20 +133,6 @@ public class LocalCollectorPackageTests
     }
 
     [Fact]
-    public void Load_SchemaPathEscapesPackageRoot_RejectsBeforeReading()
-    {
-        using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
-        var manifest = packageCopy.ReadManifest();
-        manifest["outputs"]![0]!["schema"]!["document"] = "../outside.schema.json";
-        packageCopy.WriteManifest(manifest);
-
-        var error = Assert.Throws<PackageValidationException>(() =>
-            LocalCollectorPackage.Load(packageCopy.Path));
-
-        Assert.Contains("escapes", error.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
     public void Load_DiskChangesAfterVerification_DoNotMutatePackageSnapshot()
     {
         using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
@@ -226,189 +190,9 @@ public class LocalCollectorPackageTests
     }
 
     [Fact]
-    public void Load_FactSchemaWhitespaceChangesExactHashInput_RejectsPackage()
-    {
-        using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
-        var schemaPath = Path.Combine(
-            packageCopy.Path,
-            "schemas",
-            "reference-segment.schema.json");
-        File.AppendAllText(schemaPath, "\n");
-
-        var error = Assert.Throws<PackageValidationException>(() =>
-            LocalCollectorPackage.Load(packageCopy.Path));
-
-        Assert.Contains("content hash", error.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void Load_FactKindEvolutionModeDoesNotMatch_RejectsPackage()
-    {
-        using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
-        var schemaPath = Path.Combine(
-            packageCopy.Path,
-            "schemas",
-            "reference-segment.schema.json");
-        var schema = JsonNode.Parse(File.ReadAllText(schemaPath))!.AsObject();
-        schema["evolution"]!["mode"] = "immutableEvent";
-        File.WriteAllText(schemaPath, schema.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        packageCopy.UpdateSchemaHash(schemaPath);
-
-        var error = Assert.Throws<PackageValidationException>(() =>
-            LocalCollectorPackage.Load(packageCopy.Path));
-
-        Assert.Contains("evolution mode", error.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void Load_SameSchemaIdentityReferencesDifferentDocuments_RejectsAmbiguity()
-    {
-        using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
-        var originalSchemaPath = Path.Combine(
-            packageCopy.Path,
-            "schemas",
-            "reference-segment.schema.json");
-        var secondSchemaPath = Path.Combine(
-            packageCopy.Path,
-            "schemas",
-            "reference-segment-copy.schema.json");
-        File.Copy(originalSchemaPath, secondSchemaPath);
-        File.AppendAllText(secondSchemaPath, "\n");
-
-        var manifest = packageCopy.ReadManifest();
-        var duplicateOutput = manifest["outputs"]![0]!.DeepClone().AsObject();
-        duplicateOutput["outputId"] = "activity-copy";
-        duplicateOutput["schema"]!["document"] = "schemas/reference-segment-copy.schema.json";
-        duplicateOutput["schema"]!["hash"] =
-            "sha256:" + Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(secondSchemaPath)));
-        manifest["outputs"]!.AsArray().Add(duplicateOutput);
-        packageCopy.WriteManifest(manifest);
-
-        var error = Assert.Throws<PackageValidationException>(() =>
-            LocalCollectorPackage.Load(packageCopy.Path));
-
-        Assert.Contains("schema identity", error.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void Load_PayloadSchemaHasExternalDynamicReference_RejectsPackage()
-    {
-        using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
-        var schemaPath = Path.Combine(
-            packageCopy.Path,
-            "schemas",
-            "reference-segment.schema.json");
-        var schema = JsonNode.Parse(File.ReadAllText(schemaPath))!.AsObject();
-        schema["payloadSchema"]!["$dynamicRef"] = "https://schemas.example.invalid/base";
-        File.WriteAllText(schemaPath, schema.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        packageCopy.UpdateSchemaHash(schemaPath);
-
-        var error = Assert.Throws<PackageValidationException>(() =>
-            LocalCollectorPackage.Load(packageCopy.Path));
-
-        Assert.Contains("external", error.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void Load_PayloadSchemaHasUnresolvedLocalReference_RejectsPackage()
-    {
-        using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
-        var schemaPath = Path.Combine(
-            packageCopy.Path,
-            "schemas",
-            "reference-segment.schema.json");
-        var schema = JsonNode.Parse(File.ReadAllText(schemaPath))!.AsObject();
-        schema["payloadSchema"] = new JsonObject
-        {
-            ["$ref"] = "#/$defs/missing"
-        };
-        File.WriteAllText(schemaPath, schema.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        packageCopy.UpdateSchemaHash(schemaPath);
-
-        var error = Assert.Throws<PackageValidationException>(() =>
-            LocalCollectorPackage.Load(packageCopy.Path));
-
-        Assert.Contains("local reference", error.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void Load_SelfContainedReferenceInsideEmbeddedResource_IsAcceptedAndExecutable()
-    {
-        using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
-        var schemaPath = Path.Combine(
-            packageCopy.Path,
-            "schemas",
-            "reference-segment.schema.json");
-        var schema = JsonNode.Parse(File.ReadAllText(schemaPath))!.AsObject();
-        schema["payloadSchema"] = new JsonObject
-        {
-            ["$defs"] = new JsonObject
-            {
-                ["scoped"] = new JsonObject
-                {
-                    ["$id"] = "urn:heartbeat:test:scoped-payload",
-                    ["$defs"] = new JsonObject
-                    {
-                        ["payload"] = new JsonObject { ["type"] = "object" }
-                    },
-                    ["$ref"] = "#/$defs/payload"
-                }
-            },
-            ["$ref"] = "#/$defs/scoped"
-        };
-        File.WriteAllText(schemaPath, schema.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        packageCopy.UpdateSchemaHash(schemaPath);
-
-        var package = LocalCollectorPackage.Load(packageCopy.Path);
-        using var payload = JsonDocument.Parse("{}");
-
-        Assert.True(Assert.Single(package.FactSchemas).IsPayloadValid(payload.RootElement));
-    }
-
-    [Fact]
-    public void Load_AnchorInsideDifferentEmbeddedResource_DoesNotResolveFromRoot()
-    {
-        using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
-        var schemaPath = Path.Combine(
-            packageCopy.Path,
-            "schemas",
-            "reference-segment.schema.json");
-        var schema = JsonNode.Parse(File.ReadAllText(schemaPath))!.AsObject();
-        schema["payloadSchema"] = new JsonObject
-        {
-            ["$defs"] = new JsonObject
-            {
-                ["child"] = new JsonObject
-                {
-                    ["$id"] = "child",
-                    ["$anchor"] = "nestedOnly",
-                    ["type"] = "object"
-                }
-            },
-            ["$ref"] = "#nestedOnly"
-        };
-        File.WriteAllText(schemaPath, schema.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        packageCopy.UpdateSchemaHash(schemaPath);
-
-        var error = Assert.Throws<PackageValidationException>(() =>
-            LocalCollectorPackage.Load(packageCopy.Path));
-
-        Assert.Contains("local reference", error.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
     public void Load_MeasurementWithoutDescriptor_IsRejectedAsUnsupportedByRuntimeSlice()
     {
         using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
-        var schemaPath = Path.Combine(
-            packageCopy.Path,
-            "schemas",
-            "reference-segment.schema.json");
-        var schema = JsonNode.Parse(File.ReadAllText(schemaPath))!.AsObject();
-        schema["factKind"] = "measurement";
-        schema["evolution"]!["mode"] = "measurementCorrection";
-        File.WriteAllText(schemaPath, schema.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        packageCopy.UpdateSchemaHash(schemaPath);
         var manifest = packageCopy.ReadManifest();
         manifest["outputs"]![0]!["factKind"] = "measurement";
         manifest["supportedCapabilities"]!.AsObject().Remove("facts.segment");

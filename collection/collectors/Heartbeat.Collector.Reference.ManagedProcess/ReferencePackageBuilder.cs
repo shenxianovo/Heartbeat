@@ -36,13 +36,6 @@ internal static class ReferencePackageBuilder
 
         File.WriteAllText(Path.Combine(root, "reference-subject-kind.txt"), subjectKind);
 
-        var schemaDirectory = Path.Combine(root, "schemas");
-        Directory.CreateDirectory(schemaDirectory);
-        var schemaPath = Path.Combine(schemaDirectory, "reference-segment.schema.json");
-        File.Copy(
-            Path.Combine(sourceRoot, "contracts", "facts", "reference-segment.schema.json"),
-            schemaPath,
-            overwrite: true);
         var manifest = new
         {
             manifestVersion = 1,
@@ -79,14 +72,6 @@ internal static class ReferencePackageBuilder
                     outputId = "activity",
                     source = "reference.account",
                     factKind = "segment",
-                    schema = new
-                    {
-                        id = "heartbeat.reference.segment",
-                        major = 2,
-                        revision = 1,
-                        document = "schemas/reference-segment.schema.json",
-                        hash = Hash(File.ReadAllBytes(schemaPath))
-                    },
                     subjectKinds = new[] { subjectKind },
                     dimensionKeys = Array.Empty<string>()
                 }

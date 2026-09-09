@@ -73,8 +73,8 @@ Collector 在同一个绝对 deadline 内停止观测、把 ingress tail 先交�
 _Avoid_: 把未送达的 `activation.drained` 当成 completion 成功、用 pending=0 掩盖 non-durable/unknown tail、让 deadline 后的旧 Activation 继续写入
 
 **Observation Declaration（观测声明）**:
-Collector Package 携带的独立 JSON 声明，描述 Source 的有序观测深度、读数槽位和展示标签。Package loader 先验证其路径、hash、Source 与版本，再由 Hub 原文上行；它不属于 Fact payload，也不从 Fact Schema 或 Output Template 推导。
-_Avoid_: Fact Schema、Output Template、运行时自报 declaration
+Collector Package 携带的独立 JSON 声明，描述 Source 的有序观测深度、读数槽位和展示标签。Package loader 先验证其路径、hash、Source 与版本，再由 Hub 原文上行；它不属于 Fact payload，也不从 Fact Payload 或 Output Template 推导。
+_Avoid_: Fact Payload、Output Template、运行时自报 declaration
 
 **Artifact Descriptor（制品描述符）**:
 Collector Package 中描述一个可验证执行制品的 `*.artifact.json`。它固定入口与内容；Browser ExternalHost 描述符还枚举整个 sideload payload 的路径、大小与 hash。它的内容 hash 由最终 manifest 引用。
@@ -85,12 +85,8 @@ Collector Protocol 在某种执行边界上的承载方式；不同 Binding 不�
 _Avoid_: 为每种执行方式发明不同协议
 
 **Output Template（输出模板）**:
-Collector Package 对一类可实例化 Fact Stream 的静态声明，限定其 Source、FactKind、schema、SubjectKind 与 identifying dimensions。
-_Avoid_: 运行时任意注册 schema、把每个动态 dimension value 写成新清单项
-
-**Fact Schema（事实模式）**:
-可执行事实 payload 的版本化约束。唯一权威文件位于 `collection/contracts/facts/`；Package 内 schema 与最终 manifest 是 build staging 产物。Package 使用原始字节 hash 做完整性校验；baseline 与 Runtime 以解析后的 JSON 含义判断同一 `(SchemaId, Major, Revision)` 是否变化。当前 Collector Protocol v1 只执行 Segment 与 Event。
-_Avoid_: 在 Collector C# / TypeScript 里复制 schema 字符串、把私有状态文件的 `schemaVersion` 混入 Fact Schema 版本体系
+Collector Package 对一类可实例化 Fact Stream 的静态声明，限定其 Source、FactKind、SubjectKind 与 identifying dimensions。
+_Avoid_: 把每个动态 dimension value 写成新清单项
 
 **Hub Instance（Hub 实例）**:
 Collector Runtime 的一个持续运行宿主，可以是 Desktop Agent 内嵌 Hub，也可以是服务器上的无头 Hub。Hub Instance 是运维身份而非观测主体；一个无头 Hub 可以托管观测不同账号、身体或其他主体的多个 Collector Instance。

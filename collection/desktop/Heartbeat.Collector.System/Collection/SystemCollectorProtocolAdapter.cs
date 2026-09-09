@@ -367,7 +367,6 @@ public sealed class SystemCollectorProtocolAdapter :
 
     private static CollectorFact ToFact(ForegroundSegmentSnapshot snapshot) => new(
         SystemInProcessCollector.ForegroundBindingId,
-        0,
         snapshot.FactId,
         snapshot.Revision,
         null,
@@ -382,7 +381,6 @@ public sealed class SystemCollectorProtocolAdapter :
 
     private static CollectorFact ToFact(InputEventItem item) => new(
         SystemInProcessCollector.InputEventBindingId,
-        0,
         item.Id,
         1,
         null,

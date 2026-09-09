@@ -2,13 +2,26 @@
   "manifestVersion": 1,
   "packageId": "heartbeat.collector.system",
   "version": "1.1.1",
-  "protocolMajors": [1],
+  "protocolMajors": [
+    1
+  ],
   "supportedCapabilities": {
-    "facts.segment": [1],
-    "facts.event": [1],
-    "diagnostics.stream-gap": [1]
+    "facts.segment": [
+      1
+    ],
+    "facts.event": [
+      1
+    ],
+    "diagnostics.stream-gap": [
+      1
+    ]
   },
-  "config": { "version": 1, "accepts": [1] },
+  "config": {
+    "version": 1,
+    "accepts": [
+      1
+    ]
+  },
   "observationDeclaration": {
     "document": "observation-depth.declaration.json"
   },
@@ -17,26 +30,18 @@
       "outputId": "foreground",
       "source": "system",
       "factKind": "segment",
-      "schema": {
-        "id": "heartbeat.system.foreground-segment",
-        "major": 2,
-        "revision": 1,
-        "document": "schemas/system-foreground-segment.schema.json"
-      },
-      "subjectKinds": ["machine"],
+      "subjectKinds": [
+        "machine"
+      ],
       "dimensionKeys": []
     },
     {
       "outputId": "input-events",
       "source": "system",
       "factKind": "event",
-      "schema": {
-        "id": "heartbeat.input",
-        "major": 2,
-        "revision": 1,
-        "document": "schemas/system-input-event.schema.json"
-      },
-      "subjectKinds": ["machine"],
+      "subjectKinds": [
+        "machine"
+      ],
       "dimensionKeys": []
     }
   ],
@@ -45,8 +50,14 @@
       "artifactId": "system.inprocess",
       "selector": {
         "driver": "inProcess",
-        "os": ["windows", "macos"],
-        "arch": ["x64", "arm64"]
+        "os": [
+          "windows",
+          "macos"
+        ],
+        "arch": [
+          "x64",
+          "arm64"
+        ]
       },
       "entrypoint": "artifacts/system-collector.artifact.json"
     }

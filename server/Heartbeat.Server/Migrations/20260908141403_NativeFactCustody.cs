@@ -48,21 +48,6 @@ namespace Heartbeat.Server.Migrations
                 type: "jsonb",
                 nullable: true);
 
-            migrationBuilder.CreateTable(
-                name: "FactSchemas",
-                columns: table => new
-                {
-                    OwnerId = table.Column<string>(type: "text", nullable: false),
-                    SchemaId = table.Column<string>(type: "text", nullable: false),
-                    SchemaMajor = table.Column<int>(type: "integer", nullable: false),
-                    Revision = table.Column<int>(type: "integer", nullable: false),
-                    ContentHash = table.Column<string>(type: "text", nullable: false),
-                    DocumentJson = table.Column<string>(type: "text", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_FactSchemas", x => new { x.OwnerId, x.SchemaId, x.SchemaMajor, x.Revision });
-                });
 
             migrationBuilder.CreateTable(
                 name: "FactSubjects",
@@ -96,8 +81,6 @@ namespace Heartbeat.Server.Migrations
                     OutputId = table.Column<string>(type: "text", nullable: false),
                     Source = table.Column<string>(type: "text", nullable: false),
                     FactKind = table.Column<string>(type: "text", nullable: false),
-                    SchemaId = table.Column<string>(type: "text", nullable: false),
-                    SchemaMajor = table.Column<int>(type: "integer", nullable: false),
                     Dimensions = table.Column<string>(type: "jsonb", nullable: false),
                     Origin = table.Column<string>(type: "text", nullable: false)
                 },
@@ -144,7 +127,6 @@ namespace Heartbeat.Server.Migrations
                     StreamId = table.Column<Guid>(type: "uuid", nullable: false),
                     FactId = table.Column<Guid>(type: "uuid", nullable: false),
                     Revision = table.Column<long>(type: "bigint", nullable: false),
-                    SchemaRevision = table.Column<int>(type: "integer", nullable: false),
                     Origin = table.Column<string>(type: "text", nullable: false),
                     ObservedAt = table.Column<long>(type: "bigint", nullable: true),
                     Start = table.Column<long>(type: "bigint", nullable: true),
@@ -152,7 +134,6 @@ namespace Heartbeat.Server.Migrations
                     OccurredAt = table.Column<long>(type: "bigint", nullable: true),
                     IsFinal = table.Column<bool>(type: "boolean", nullable: true),
                     Payload = table.Column<string>(type: "jsonb", nullable: true),
-                    ContentHash = table.Column<string>(type: "text", nullable: false),
                     LegacyRecord = table.Column<string>(type: "jsonb", nullable: true),
                     LegacyId = table.Column<Guid>(type: "uuid", nullable: true),
                     LegacyDeviceId = table.Column<long>(type: "bigint", nullable: true),
@@ -236,24 +217,24 @@ namespace Heartbeat.Server.Migrations
                 FROM "Devices" d
                 ON CONFLICT DO NOTHING;
 
-                INSERT INTO "FactStreams" ("OwnerId", "StreamId", "SubjectId", "CollectorInstanceId", "OutputId", "Source", "FactKind", "SchemaId", "SchemaMajor", "Dimensions", "Origin")
+                INSERT INTO "FactStreams" ("OwnerId", "StreamId", "SubjectId", "CollectorInstanceId", "OutputId", "Source", "FactKind", "Dimensions", "Origin")
                 SELECT DISTINCT d."OwnerId", md5('legacy-stream:' || d."OwnerId" || ':' || d."Id" || ':' || s."Source" || ':segment')::uuid,
                   CASE WHEN d."HardwareId" ~ '^subject:(account|person):[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' THEN split_part(d."HardwareId", ':', 3)::uuid
                        ELSE md5('legacy-subject:' || d."OwnerId" || ':' || d."Id")::uuid END,
-                  NULL::uuid, 'legacy-import', s."Source", 'segment', 'heartbeat.legacy.segment', 1, '{}'::jsonb, 'legacy-import'
+                  NULL::uuid, 'legacy-import', s."Source", 'segment', '{}'::jsonb, 'legacy-import'
                 FROM "ActivitySegments" s JOIN "Devices" d ON d."Id" = s."DeviceId";
 
-                INSERT INTO "FactStreams" ("OwnerId", "StreamId", "SubjectId", "CollectorInstanceId", "OutputId", "Source", "FactKind", "SchemaId", "SchemaMajor", "Dimensions", "Origin")
+                INSERT INTO "FactStreams" ("OwnerId", "StreamId", "SubjectId", "CollectorInstanceId", "OutputId", "Source", "FactKind", "Dimensions", "Origin")
                 SELECT DISTINCT d."OwnerId", md5('legacy-stream:' || d."OwnerId" || ':' || d."Id" || ':system:event')::uuid,
                   CASE WHEN d."HardwareId" ~ '^subject:(account|person):[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' THEN split_part(d."HardwareId", ':', 3)::uuid
                        ELSE md5('legacy-subject:' || d."OwnerId" || ':' || d."Id")::uuid END,
-                  NULL::uuid, 'legacy-import', 'system', 'event', 'heartbeat.legacy.event', 1, '{}'::jsonb, 'legacy-import'
+                  NULL::uuid, 'legacy-import', 'system', 'event', '{}'::jsonb, 'legacy-import'
                 FROM "InputEvents" e JOIN "Devices" d ON d."Id" = e."DeviceId";
 
-                INSERT INTO "Facts" ("Id", "OwnerId", "StreamId", "FactId", "Revision", "SchemaRevision", "Origin", "Start", "End", "Payload", "ContentHash", "LegacyRecord", "LegacyId", "LegacyDeviceId", "LegacyKind")
+                INSERT INTO "Facts" ("Id", "OwnerId", "StreamId", "FactId", "Revision", "Origin", "Start", "End", "Payload", "LegacyRecord", "LegacyId", "LegacyDeviceId", "LegacyKind")
                 SELECT md5('legacy-fact:segment:' || s."Id")::uuid, d."OwnerId",
                   md5('legacy-stream:' || d."OwnerId" || ':' || d."Id" || ':' || s."Source" || ':segment')::uuid,
-                  s."Id", 0, 0, 'legacy-import', (extract(epoch FROM s."StartTime") * 10000000)::bigint + 621355968000000000,
+                  s."Id", 0, 'legacy-import', (extract(epoch FROM s."StartTime") * 10000000)::bigint + 621355968000000000,
                   (extract(epoch FROM s."EndTime") * 10000000)::bigint + 621355968000000000,
                   CASE WHEN jsonb_typeof(s."Attributes") = 'object'
                              AND s."Attributes"->>'identityKey' = s."IdentityKey"
@@ -261,14 +242,14 @@ namespace Heartbeat.Server.Migrations
                              AND jsonb_typeof(s."Attributes"->'attributes') = 'object'
                        THEN s."Attributes"
                        ELSE jsonb_build_object('identityKey', s."IdentityKey", 'title', s."Title", 'attributes', s."Attributes") END,
-                  '', to_jsonb(s) - 'FactKey' - 'Payload' - 'OwnerId', s."Id", s."DeviceId", 'segment'
+                  to_jsonb(s) - 'FactKey' - 'Payload' - 'OwnerId', s."Id", s."DeviceId", 'segment'
                 FROM "ActivitySegments" s JOIN "Devices" d ON d."Id" = s."DeviceId";
 
-                INSERT INTO "Facts" ("Id", "OwnerId", "StreamId", "FactId", "Revision", "SchemaRevision", "Origin", "OccurredAt", "Payload", "ContentHash", "LegacyRecord", "LegacyId", "LegacyDeviceId", "LegacyKind")
+                INSERT INTO "Facts" ("Id", "OwnerId", "StreamId", "FactId", "Revision", "Origin", "OccurredAt", "Payload", "LegacyRecord", "LegacyId", "LegacyDeviceId", "LegacyKind")
                 SELECT md5('legacy-fact:event:' || e."Id")::uuid, d."OwnerId", md5('legacy-stream:' || d."OwnerId" || ':' || d."Id" || ':system:event')::uuid,
-                  e."Id", 0, 0, 'legacy-import', (extract(epoch FROM e."Timestamp") * 10000000)::bigint + 621355968000000000,
+                  e."Id", 0, 'legacy-import', (extract(epoch FROM e."Timestamp") * 10000000)::bigint + 621355968000000000,
                   jsonb_build_object('eventType', CASE e."EventType" WHEN 1 THEN 'keyDown' WHEN 2 THEN 'mouseButton' WHEN 3 THEN 'mouseScroll' END, 'codeSet', e."CodeSet", 'code', e."Code"),
-                  '', to_jsonb(e) - 'FactKey', e."Id", e."DeviceId", 'event'
+                  to_jsonb(e) - 'FactKey', e."Id", e."DeviceId", 'event'
                 FROM "InputEvents" e JOIN "Devices" d ON d."Id" = e."DeviceId";
 
                 UPDATE "ActivitySegments" s SET "FactKey" = f."Id", "OwnerId" = f."OwnerId", "Payload" = f."Payload", "Attributes" = f."Payload"->'attributes', "DeviceId" = subject."DeviceId"
@@ -320,8 +301,6 @@ namespace Heartbeat.Server.Migrations
             migrationBuilder.DropTable(
                 name: "Facts");
 
-            migrationBuilder.DropTable(
-                name: "FactSchemas");
 
             migrationBuilder.DropTable(
                 name: "FactStreams");

@@ -39,10 +39,8 @@ jobs:
           npm run build
           npm test
 
-      - name: Verify Collector Fact contracts
-        env:
-          CONTRACT_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-        run: node scripts/collector-contracts.mjs check --base-ref "$CONTRACT_BASE_REF"
+      - name: Verify Collector Package content
+        run: node scripts/collector-contracts.mjs check
 
       - name: Restore Collection test dependencies
         run: dotnet restore Heartbeat.Collection.Tests.slnf

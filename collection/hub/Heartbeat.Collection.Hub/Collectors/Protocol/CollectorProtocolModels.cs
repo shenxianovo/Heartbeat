@@ -190,12 +190,6 @@ public enum ActivationDeliveryCapability
     Complete
 }
 
-public sealed record FactStreamSchemaReference(
-    string Id,
-    int Major,
-    int Revision,
-    string Hash);
-
 public sealed record FactStreamDescriptor(
     Guid StreamId,
     Guid CollectorInstanceId,
@@ -203,7 +197,6 @@ public sealed record FactStreamDescriptor(
     string OutputId,
     string Source,
     FactKind FactKind,
-    FactStreamSchemaReference Schema,
     IReadOnlyDictionary<string, string> Dimensions);
 
 public record FactTime
@@ -234,7 +227,6 @@ public sealed record EventFactTime : FactTime
 
 public sealed record FactSubmission(
     Guid StreamId,
-    int SchemaRevision,
     Guid FactId,
     long Revision,
     DateTimeOffset? ObservedAt,

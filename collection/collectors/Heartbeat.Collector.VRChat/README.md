@@ -10,7 +10,7 @@ presence Segment，不是 VRChat 官方集成。
 - `VRChatApi.cs`：真实 API 与离线 mock adapter。
 - `PresenceStateMachine.cs`：presence Segment 的 FactId/Revision 状态机。
 - `VRChatPresenceCheckpoint.cs`：跨重启恢复与 Gap。
-- `VRChatPackageBuilder.cs`：manifest、schema 与 artifact staging。
+- `VRChatPackageBuilder.cs`：manifest 与 artifact staging。
 - `Dockerfile`：把 Package 构建到宿主目录的入口（构建上下文是仓库根）。
 
 ## 本地导出 Collector Package（按需）

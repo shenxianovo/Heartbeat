@@ -141,7 +141,6 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         _options = options;
         _state = state;
         _segmentProjector = new ActivitySegmentFactProjector();
-        _eventProjectors = [new InputEventFactProjector()];
     }
 
     public static CollectorRuntime Open(
@@ -168,7 +167,6 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
                 inputEventSink,
                 secretStore,
                 Path.Combine(Path.GetDirectoryName(Path.GetFullPath(stateFilePath))!, "collector-data"));
-            runtime.RestorePersistedFactSchemas();
             runtime.EnsureUploadGapIdentities();
             runtime.ReplayCommittedFacts();
             return runtime;

@@ -44,19 +44,6 @@ internal sealed class ManagedReferenceCollectorPackage : IDisposable
                 UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
         }
 
-        var schemaDirectory = System.IO.Path.Combine(path, "schemas");
-        Directory.CreateDirectory(schemaDirectory);
-        var schemaPath = System.IO.Path.Combine(schemaDirectory, "reference-segment.schema.json");
-        File.Copy(
-            System.IO.Path.Combine(
-                AppContext.BaseDirectory,
-                "Fixtures",
-                "ReferenceCollectorPackage",
-                "schemas",
-                "reference-segment.schema.json"),
-            schemaPath,
-            overwrite: true);
-
         var manifest = new
         {
             manifestVersion = 1,
@@ -93,14 +80,6 @@ internal sealed class ManagedReferenceCollectorPackage : IDisposable
                     outputId = "activity",
                     source = "reference.account",
                     factKind = "segment",
-                    schema = new
-                    {
-                        id = "heartbeat.reference.segment",
-                        major = 2,
-                        revision = 1,
-                        document = "schemas/reference-segment.schema.json",
-                        hash = Hash(File.ReadAllBytes(schemaPath))
-                    },
                     subjectKinds = new[] { "account" },
                     dimensionKeys = Array.Empty<string>()
                 }

@@ -10,16 +10,20 @@ Status: ready-for-human
 2026-09-09：owner 要求按最小事实模型删除 Fact 撤回；代码、必要回归与文档已完成。
 Fact 身份及正常修订继续保留；分表、时间列、Id/FactId 与 Revision 起点的独立设计不在此次范围。
 
+2026-09-09：owner 另行要求删除 Fact Schema 格式治理与 Fact 内容哈希，实施与证据见
+[02 — 删除 Fact 格式治理](issues/02-remove-fact-schema.md)。分表设计仍独立承接。
+
 ## 范围
 
 Collector → Hub 已有 Fact Protocol。将 Hub → Analytics 的事实上传、持久化及 Dashboard 读模型
-改为保留 Subject、Stream、schema、Revision 与完整 Payload；ActivitySegment/InputEvent 仅作读投影。
+改为保留 Subject、Stream、Revision 与完整 Payload；ActivitySegment/InputEvent 仅作读投影。
 旧数据库、Runtime 状态与上传缓存均保留可恢复来源；确定性关联历史，避免升级重放重复计时。
 Measurement、生产部署和实际用户数据库改写不在本轮实施范围。
 
 ## 实施
 
 - [01 — 原生摄入、持久保管与历史迁移](issues/01-native-fact-migration.md)
+- [02 — 删除 Fact 格式治理](issues/02-remove-fact-schema.md)
 
 ## 验证
 
@@ -37,3 +41,6 @@ Measurement、生产部署和实际用户数据库改写不在本轮实施范围
 
 [ADR-054](../../docs/adr/054-native-analytics-fact-ingest.md)；
 [升级与核对步骤](../../docs/runbooks/native-analytics-facts.md)
+
+2026-09-09 格式治理删除完成：13 个 .NET 项目 1238 项通过，新增消费者边界用例后 Fact 定向 41 项通过；
+Browser 96、Frontend 274 项与构建通过。详见 issue 02；生产升级门禁保持 ready-for-human。

@@ -41,7 +41,7 @@ internal sealed class ActivitySegmentFactProjector
             !string.IsNullOrWhiteSpace(dimensionAppIdentityKey)
                 ? dimensionAppIdentityKey
                 : StringProperty(payload, "appIdentityKey");
-        JsonElement? attributes = stream.SchemaId == "heartbeat.system.foreground-segment"
+        JsonElement? attributes = stream.Source == "system"
             ? null
             : payload.Clone();
 

@@ -61,7 +61,6 @@ public sealed class ExternalHostCollectorProtocolTranscriptTests
         using var payload = JsonDocument.Parse("""{"identityKey":"reference|work","title":"Work"}""");
         var fact = new FactSubmission(
             stream.StreamId,
-            1,
             Guid.CreateVersion7(),
             1,
             null,
@@ -123,7 +122,6 @@ public sealed class ExternalHostCollectorProtocolTranscriptTests
                 Guid.CreateVersion7(),
                 [new FactSubmission(
                     stream.StreamId,
-                    1,
                     Guid.CreateVersion7(),
                     1,
                     null,

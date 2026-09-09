@@ -13,7 +13,7 @@ namespace Heartbeat.Collection.Hub.Segments
     }
 
     /// <summary>
-    /// Projection seam for Collector Facts that already passed their versioned schema and were
+    /// Projection seam for Collector Facts that have valid envelopes and were
     /// durably accepted. Unlike transient legacy ingest, replayed/offline Facts must not be
     /// discarded by a wall-clock freshness filter.
     /// </summary>

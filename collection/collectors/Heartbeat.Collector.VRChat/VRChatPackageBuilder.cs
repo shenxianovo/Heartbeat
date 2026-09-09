@@ -32,13 +32,6 @@ internal static class VRChatPackageBuilder
             throw new InvalidOperationException(
                 "Run --create-package through the built apphost executable, not `dotnet <dll>`. ");
 
-        var schemaDirectory = Path.Combine(root, "schemas");
-        Directory.CreateDirectory(schemaDirectory);
-        var schemaPath = Path.Combine(schemaDirectory, "vrchat-presence-segment.schema.json");
-        File.Copy(
-            Path.Combine(sourceRoot, "contracts", "facts", "vrchat-presence-segment.schema.json"),
-            schemaPath,
-            overwrite: true);
         var manifest = new
         {
             manifestVersion = 1,
@@ -76,14 +69,6 @@ internal static class VRChatPackageBuilder
                     outputId = "presence",
                     source = "vrchat.account",
                     factKind = "segment",
-                    schema = new
-                    {
-                        id = "heartbeat.vrchat.presence-segment",
-                        major = 2,
-                        revision = 1,
-                        document = "schemas/vrchat-presence-segment.schema.json",
-                        hash = Hash(File.ReadAllBytes(schemaPath))
-                    },
                     subjectKinds = new[] { "account" },
                     dimensionKeys = Array.Empty<string>()
                 }

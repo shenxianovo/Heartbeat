@@ -6596,67 +6596,10 @@ export interface IFactGapSnapshot {
     [key: string]: any;
 }
 
-export class FactSchemaDefinition implements IFactSchemaDefinition {
-    revision?: number;
-    contentHash?: string;
-    documentJson?: string;
-
-    [key: string]: any;
-
-    constructor(data?: IFactSchemaDefinition) {
-        if (data) {
-            for (var property in data) {
-                if (data.hasOwnProperty(property))
-                    (this as any)[property] = (data as any)[property];
-            }
-        }
-    }
-
-    init(_data?: any) {
-        if (_data) {
-            for (var property in _data) {
-                if (_data.hasOwnProperty(property))
-                    this[property] = _data[property];
-            }
-            this.revision = _data["revision"];
-            this.contentHash = _data["contentHash"];
-            this.documentJson = _data["documentJson"];
-        }
-    }
-
-    static fromJS(data: any): FactSchemaDefinition {
-        data = typeof data === 'object' ? data : {};
-        let result = new FactSchemaDefinition();
-        result.init(data);
-        return result;
-    }
-
-    toJSON(data?: any) {
-        data = typeof data === 'object' ? data : {};
-        for (var property in this) {
-            if (this.hasOwnProperty(property))
-                data[property] = this[property];
-        }
-        data["revision"] = this.revision;
-        data["contentHash"] = this.contentHash;
-        data["documentJson"] = this.documentJson;
-        return data;
-    }
-}
-
-export interface IFactSchemaDefinition {
-    revision?: number;
-    contentHash?: string;
-    documentJson?: string;
-
-    [key: string]: any;
-}
-
 export class FactSnapshot implements IFactSnapshot {
     streamId?: string;
     factId?: string;
     revision?: number;
-    schemaRevision?: number;
     observedAt?: Date | undefined;
     start?: Date | undefined;
     end?: Date | undefined;
@@ -6684,7 +6627,6 @@ export class FactSnapshot implements IFactSnapshot {
             this.streamId = _data["streamId"];
             this.factId = _data["factId"];
             this.revision = _data["revision"];
-            this.schemaRevision = _data["schemaRevision"];
             this.observedAt = _data["observedAt"] ? new Date(_data["observedAt"].toString()) : undefined as any;
             this.start = _data["start"] ? new Date(_data["start"].toString()) : undefined as any;
             this.end = _data["end"] ? new Date(_data["end"].toString()) : undefined as any;
@@ -6710,7 +6652,6 @@ export class FactSnapshot implements IFactSnapshot {
         data["streamId"] = this.streamId;
         data["factId"] = this.factId;
         data["revision"] = this.revision;
-        data["schemaRevision"] = this.schemaRevision;
         data["observedAt"] = this.observedAt ? this.observedAt.toISOString() : undefined as any;
         data["start"] = this.start ? this.start.toISOString() : undefined as any;
         data["end"] = this.end ? this.end.toISOString() : undefined as any;
@@ -6725,7 +6666,6 @@ export interface IFactSnapshot {
     streamId?: string;
     factId?: string;
     revision?: number;
-    schemaRevision?: number;
     observedAt?: Date | undefined;
     start?: Date | undefined;
     end?: Date | undefined;
@@ -6743,10 +6683,7 @@ export class FactStreamDefinition implements IFactStreamDefinition {
     outputId?: string;
     source?: string;
     factKind?: string;
-    schemaId?: string;
-    schemaMajor?: number;
     dimensions?: { [key: string]: string; };
-    schemas?: FactSchemaDefinition[];
 
     [key: string]: any;
 
@@ -6771,19 +6708,12 @@ export class FactStreamDefinition implements IFactStreamDefinition {
             this.outputId = _data["outputId"];
             this.source = _data["source"];
             this.factKind = _data["factKind"];
-            this.schemaId = _data["schemaId"];
-            this.schemaMajor = _data["schemaMajor"];
             if (_data["dimensions"]) {
                 this.dimensions = {} as any;
                 for (let key in _data["dimensions"]) {
                     if (_data["dimensions"].hasOwnProperty(key))
                         (this.dimensions as any)![key] = _data["dimensions"][key];
                 }
-            }
-            if (Array.isArray(_data["schemas"])) {
-                this.schemas = [] as any;
-                for (let item of _data["schemas"])
-                    this.schemas!.push(FactSchemaDefinition.fromJS(item));
             }
         }
     }
@@ -6807,19 +6737,12 @@ export class FactStreamDefinition implements IFactStreamDefinition {
         data["outputId"] = this.outputId;
         data["source"] = this.source;
         data["factKind"] = this.factKind;
-        data["schemaId"] = this.schemaId;
-        data["schemaMajor"] = this.schemaMajor;
         if (this.dimensions) {
             data["dimensions"] = {};
             for (let key in this.dimensions) {
                 if (this.dimensions.hasOwnProperty(key))
                     (data["dimensions"] as any)[key] = (this.dimensions as any)[key];
             }
-        }
-        if (Array.isArray(this.schemas)) {
-            data["schemas"] = [];
-            for (let item of this.schemas)
-                data["schemas"].push(item ? item.toJSON() : undefined as any);
         }
         return data;
     }
@@ -6832,10 +6755,7 @@ export interface IFactStreamDefinition {
     outputId?: string;
     source?: string;
     factKind?: string;
-    schemaId?: string;
-    schemaMajor?: number;
     dimensions?: { [key: string]: string; };
-    schemas?: FactSchemaDefinition[];
 
     [key: string]: any;
 }
@@ -8731,9 +8651,6 @@ export class SegmentResponse implements ISegmentResponse {
     streamId?: string | undefined;
     factId?: string | undefined;
     revision?: number | undefined;
-    schemaId?: string | undefined;
-    schemaMajor?: number | undefined;
-    schemaRevision?: number | undefined;
     origin?: string | undefined;
     subjectId?: string | undefined;
     subjectKind?: string | undefined;
@@ -8774,9 +8691,6 @@ export class SegmentResponse implements ISegmentResponse {
             this.streamId = _data["streamId"];
             this.factId = _data["factId"];
             this.revision = _data["revision"];
-            this.schemaId = _data["schemaId"];
-            this.schemaMajor = _data["schemaMajor"];
-            this.schemaRevision = _data["schemaRevision"];
             this.origin = _data["origin"];
             this.subjectId = _data["subjectId"];
             this.subjectKind = _data["subjectKind"];
@@ -8815,9 +8729,6 @@ export class SegmentResponse implements ISegmentResponse {
         data["streamId"] = this.streamId;
         data["factId"] = this.factId;
         data["revision"] = this.revision;
-        data["schemaId"] = this.schemaId;
-        data["schemaMajor"] = this.schemaMajor;
-        data["schemaRevision"] = this.schemaRevision;
         data["origin"] = this.origin;
         data["subjectId"] = this.subjectId;
         data["subjectKind"] = this.subjectKind;
@@ -8845,9 +8756,6 @@ export interface ISegmentResponse {
     streamId?: string | undefined;
     factId?: string | undefined;
     revision?: number | undefined;
-    schemaId?: string | undefined;
-    schemaMajor?: number | undefined;
-    schemaRevision?: number | undefined;
     origin?: string | undefined;
     subjectId?: string | undefined;
     subjectKind?: string | undefined;

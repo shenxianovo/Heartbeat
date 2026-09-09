@@ -1,8 +1,5 @@
-using System.Text;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using Heartbeat.Core.DTOs.Facts;
-using Heartbeat.Core.Facts;
 
 namespace Heartbeat.Core.Tests;
 
@@ -17,7 +14,7 @@ public sealed class FactEnvelopeTests
     {
         var fact = new FactSnapshot
         {
-            StreamId = Guid.CreateVersion7(), FactId = Guid.CreateVersion7(), Revision = 2, SchemaRevision = 1,
+            StreamId = Guid.CreateVersion7(), FactId = Guid.CreateVersion7(), Revision = 2,
             Start = kind == "segment" ? DateTimeOffset.UnixEpoch : null,
             End = kind == "segment" ? DateTimeOffset.UnixEpoch.AddSeconds(1) : null,
             IsFinal = kind == "segment" ? true : null,
@@ -34,20 +31,4 @@ public sealed class FactEnvelopeTests
         Assert.Contains("recordState", error.Message);
     }
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void Schema_RetiredRetractionSwitchIsRejected(bool allowRetraction)
-    {
-        var schema = JsonNode.Parse("""
-            {"documentVersion":1,"schemaId":"test.segment","schemaMajor":2,"schemaRevision":1,
-             "factKind":"segment","evolution":{"mode":"segmentSnapshot"},
-             "payloadSchemaDialect":"https://json-schema.org/draft/2020-12/schema","payloadSchema":true}
-            """)!;
-        schema["evolution"]!["allowRetraction"] = allowRetraction;
-
-        var error = Assert.Throws<FactSchemaException>(() => FactSchemaContract.Parse(
-            Encoding.UTF8.GetBytes(schema.ToJsonString()), "test.segment", 2, 1, "segment"));
-        Assert.Contains("allowRetraction", error.Message);
-    }
 }

@@ -48,21 +48,8 @@ internal sealed class UnfencedCollectorProjectionCommitFence : ICollectorProject
     }
 }
 
-internal interface IEventFactProjector
+internal sealed class InputEventFactProjector
 {
-    bool Supports(string schemaId, int schemaMajor);
-
-    bool TryProject(
-        Guid factId,
-        DateTimeOffset occurredAt,
-        JsonElement payload,
-        out InputEventItem? item);
-}
-
-internal sealed class InputEventFactProjector : IEventFactProjector
-{
-    public bool Supports(string schemaId, int schemaMajor) =>
-        schemaId == "heartbeat.input" && schemaMajor == 2;
 
     public bool TryProject(
         Guid factId,
@@ -79,7 +66,7 @@ internal sealed class InputEventFactProjector : IEventFactProjector
             codeSetValue.ValueKind != JsonValueKind.String ||
             string.IsNullOrWhiteSpace(codeSetValue.GetString()) ||
             !payload.TryGetProperty("code", out var codeValue) ||
-            !codeValue.TryGetInt16(out var code))
+            codeValue.ValueKind != JsonValueKind.Number || !codeValue.TryGetInt16(out var code))
             return false;
 
         item = new InputEventItem

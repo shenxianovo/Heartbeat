@@ -58,7 +58,7 @@ Instance Desired State 使用单调 SpecRevision；Activation 报告已经应用
 
 ### 5. 实现收敛：Browser 多 App/Host 与旧 loopback 退役
 
-> 2026-09-02 revision note：本节的宿主侧实现已由 [ADR-049](./049-named-optional-collectors-outside-host-composition.md) 修订。"browser 只使用 binding 专属 discovery 与 Collector Protocol v1"这一句不再成立于宿主：Hub 内的 Browser 专属 `CollectorRuntime`、protocol handler 与 `/v1/collector-protocol/browser` discovery 路由已删除，只保留通用 ExternalHost handler seam 与默认 404 实现；browser 的 App Instance、AppHint 解析与 sideload 引导也不再由宿主持有。本节其余协议语义（Package/Instance/Activation、`appHint + externalHostIdentity` 维度、Fact Schema 权威位置）不变。
+> 2026-09-02 revision note：本节的宿主侧实现已由 [ADR-049](./049-named-optional-collectors-outside-host-composition.md) 修订。"browser 只使用 binding 专属 discovery 与 Collector Protocol v1"这一句不再成立于宿主：Hub 内的 Browser 专属 `CollectorRuntime`、protocol handler 与 `/v1/collector-protocol/browser` discovery 路由已删除，只保留通用 ExternalHost handler seam 与默认 404 实现；browser 的 App Instance、AppHint 解析与 sideload 引导也不再由宿主持有。本节其余协议语义（Package/Instance/Activation、`appHint + externalHostIdentity` 维度）不变。
 >
 > 2026-09-04 revision note：[ADR-051](./051-generic-external-host-identity-and-browser-delivery.md) 进一步
 > 修订本节的身份模型：Browser 一次安装只创建一个 Machine-scoped Instance；浏览器/Profile 以 External
@@ -69,9 +69,9 @@ Instance Desired State 使用单调 SpecRevision；Activation 报告已经应用
 - 每个扩展 profile/install 持久化独立 External Host Identity。同一 Host 重连只替换自己的 Activation；同一 App 的其他 Host 和其他 App Instance 可并行。
 - ExternalHost Stream 由 `appHint + externalHostIdentity` 形成 identifying dimensions。
 - browser 只使用 binding 专属 discovery 与 Collector Protocol v1。`POST /v1/segments`、`GET /v1/hub`、source 级 config/declaration 入口及 fallback 已退役。
-- Fact Schema 权威文件集中在 `collection/contracts/facts/`，Package schema 与最终 manifest 由 staging 工具生成并受演进基线约束。
+- 2026-09-09 按 ADR-041 修订删除 Fact Schema 文件、注册与版本基线；Payload 由 Collector 按业务需要扩展。
 - Package 内的 observation declaration 与 Artifact descriptor 是独立 JSON 契约；跨语言协议行为由 `collection/protocol/conformance/` 的行为语料锁定，wire message shape 由协议/Runtime 代码严格校验。
-- Package 的原始文件 hash 只负责内容完整性；Fact Schema 跨版本演进比较解析后的 JSON 含义，排版变化不要求升 revision。同版本的新 Package content hash 可作为新候选走 Ready/LKG/回退流程。
+- Package 的原始文件 hash 只负责内容完整性。同版本的新 Package content hash 可作为新候选走 Ready/LKG/回退流程。
 
 ## Consequences
 

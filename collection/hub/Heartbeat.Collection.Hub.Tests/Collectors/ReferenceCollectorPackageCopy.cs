@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -29,14 +28,6 @@ internal sealed class ReferenceCollectorPackageCopy : IDisposable
     public void WriteManifest(JsonObject manifest) => File.WriteAllText(
         System.IO.Path.Combine(Path, "collector-manifest.json"),
         manifest.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-
-    public void UpdateSchemaHash(string schemaPath)
-    {
-        var manifest = ReadManifest();
-        var hash = "sha256:" + Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(schemaPath)));
-        manifest["outputs"]![0]!["schema"]!["hash"] = hash;
-        WriteManifest(manifest);
-    }
 
     public void Dispose() => Directory.Delete(Path, recursive: true);
 }

@@ -5,13 +5,13 @@
 
 ## 严格切换边界（2026-09-09）
 
-Fact 撤回已删除；旧 `recordState`（包括 `present`）和 schema 的 `allowRetraction` 均不属于
+Fact 撤回与 Fact Schema 格式治理已删除，旧撤回字段、格式版本/文档与事实摘要均不属于
 新契约。新 Collector/Package、Hub 与 Analytics 必须一起切换，不能把混用版本的拒绝视作成功上传。
 含旧字段的 Runtime committed Fact 或 Collector outbox 会明确拒绝加载并保留原文件；
 本次没有添加历史 journal 转换器。部署 owner 必须先核对实际安装的持久状态与未确认记录，
 如存在该形状则保持旧版本保管数据，另行验证无损切换后再升级；不能删除状态文件绕过拒绝。
 当前 NativeFactCustody 尚未部署，测试仅修改其建表定义；已经应用旧草案 migration 的临时库
-不作为升级支持对象。真实快照仍停在 AskingWindowIdentity，本轮没有启动、迁移或修改该库。
+不作为升级支持对象；不能对已应用草案的库仅覆盖迁移文件。真实快照仍停在 AskingWindowIdentity，本轮没有启动、迁移或修改该库。
 
 ## 升级顺序
 
@@ -21,7 +21,7 @@ Fact 撤回已删除；旧 `recordState`（包括 `present`）和 schema 的 `al
    应用 migration；启动新版服务就是执行升级，不能把连接真实库的启动当作无副作用预览。
 3. Analytics 与 Dashboard 同次升级：新的活动 API 返回结构化 Payload，旧版 Dashboard 的
    Attributes 字符串读取不再适用。旧段/输入上传端点继续排空现有缓存。
-4. 升级 Desktop/Headless。新生产数据走 `/api/v1/facts`，旧缓存继续排空；仅不含上述旧 Fact/schema 字段的
+4. 升级 Desktop/Headless。新生产数据走 `/api/v1/facts`，旧缓存继续排空；仅不含上述退役字段的
    Runtime state v1/v2 支持现有升级路径，并保留对应 `.v1.bak`/`.v2.bak`。核对原有设备名称和历史未被大小写不同的 UUID 拆开。
 5. 让同一段活动跨多次上传、断网、重启和恢复连接，确认 FactId 不变、Revision 正常收敛、
    没有重复计时。分别检查 Browser 完整 URL、输入计数和 Headless Account 的 Subject 名称。

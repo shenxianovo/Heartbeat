@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Security.Cryptography;
 using System.Text.Json;
 using Heartbeat.Core.Facts;
 
@@ -9,26 +8,7 @@ internal static class FactCanonicalization
 {
     public static string? ValidateProtocolJson(JsonElement element) => FactJson.Validate(element);
 
-    public static string ContentHash(FactSubmission fact)
-    {
-        using var buffer = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(buffer))
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("schemaRevision", fact.SchemaRevision);
-            writer.WritePropertyName("time");
-            WriteFactTime(
-                writer,
-                fact.Time,
-                value => value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
-            writer.WritePropertyName("payload");
-            WriteCanonical(writer, fact.Payload);
-            writer.WriteEndObject();
-        }
-        return "sha256:" + Convert.ToHexStringLower(SHA256.HashData(buffer.ToArray()));
-    }
-
-    public static string PublishRequestHash(IReadOnlyList<FactSubmission> facts)
+    public static string PublishRequestContent(IReadOnlyList<FactSubmission> facts)
     {
         using var buffer = new MemoryStream();
         using (var writer = new Utf8JsonWriter(buffer))
@@ -38,7 +18,6 @@ internal static class FactCanonicalization
             {
                 writer.WriteStartObject();
                 writer.WriteString("streamId", fact.StreamId);
-                writer.WriteNumber("schemaRevision", fact.SchemaRevision);
                 writer.WriteString("factId", fact.FactId);
                 writer.WriteNumber("revision", fact.Revision);
                 if (fact.ObservedAt is { } observedAt)
@@ -61,7 +40,7 @@ internal static class FactCanonicalization
             }
             writer.WriteEndArray();
         }
-        return "sha256:" + Convert.ToHexStringLower(SHA256.HashData(buffer.ToArray()));
+        return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
     }
 
     public static long PublishLogicalMessageSize(
@@ -85,7 +64,6 @@ internal static class FactCanonicalization
             {
                 writer.WriteStartObject();
                 writer.WriteString("streamId", fact.StreamId);
-                writer.WriteNumber("schemaRevision", fact.SchemaRevision);
                 writer.WriteString("factId", fact.FactId);
                 writer.WriteNumber("revision", fact.Revision);
                 if (fact.ObservedAt is { } observedAt)

@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto'
-import { execFileSync } from 'node:child_process'
 import {
   cpSync,
   existsSync,
@@ -15,10 +14,6 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const factsDirectory = join(root, 'collection/contracts/facts')
-const baselineFileName = 'fact-schema-evolution-baseline.json'
-const baselinePath = join(factsDirectory, baselineFileName)
-
 const packageSources = {
   browser: join(root, 'collection/collectors/Heartbeat.Collector.Browser/Package'),
   system: join(root, 'collection/desktop/Heartbeat.Collector.System/Package'),
@@ -29,119 +24,8 @@ function sha256(content) {
   return `sha256:${createHash('sha256').update(content).digest('hex')}`
 }
 
-function normalizeJson(value) {
-  if (Array.isArray(value)) return value.map(normalizeJson)
-  if (value !== null && typeof value === 'object')
-    return Object.fromEntries(Object.keys(value).sort().map(key => [key, normalizeJson(value[key])]))
-  return value
-}
-
-function semanticJsonHash(value) {
-  return sha256(Buffer.from(JSON.stringify(normalizeJson(value))))
-}
-
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'))
-}
-
-function factContracts() {
-  return readdirSync(factsDirectory)
-    .filter(name => name.endsWith('.schema.json'))
-    .sort()
-    .map(name => {
-      const path = join(factsDirectory, name)
-      const bytes = readFileSync(path)
-      const document = JSON.parse(bytes)
-      return {
-        name,
-        path,
-        bytes,
-        document,
-        contentHash: sha256(bytes),
-        evolutionHash: semanticJsonHash(document),
-      }
-    })
-}
-
-function validateContracts(contracts) {
-  const identities = new Set()
-  for (const contract of contracts) {
-    const value = contract.document
-    for (const field of ['schemaId', 'schemaMajor', 'schemaRevision', 'factKind', 'payloadSchema']) {
-      if (value[field] === undefined) throw new Error(`${contract.name}: missing ${field}`)
-    }
-    if (!['segment', 'event'].includes(value.factKind))
-      throw new Error(`${contract.name}: executable Collector Protocol v1 supports only segment/event`)
-    const identity = `${value.schemaId}@${value.schemaMajor}.${value.schemaRevision}`
-    if (identities.has(identity)) throw new Error(`duplicate Fact Schema identity ${identity}`)
-    identities.add(identity)
-  }
-  if (contracts.length !== 5) throw new Error(`expected exactly 5 authoritative Fact Schemas, found ${contracts.length}`)
-}
-
-function baselineFor(contracts) {
-  return {
-    formatVersion: 2,
-    contracts: contracts.map(contract => ({
-      schemaId: contract.document.schemaId,
-      schemaMajor: contract.document.schemaMajor,
-      schemaRevision: contract.document.schemaRevision,
-      hash: contract.evolutionHash,
-      document: contract.name,
-    })),
-  }
-}
-
-function compareBaseline(expected, actual, label) {
-  const expectedText = `${JSON.stringify(expected, null, 2)}\n`
-  const actualText = `${JSON.stringify(actual, null, 2)}\n`
-  if (expectedText !== actualText)
-    throw new Error(`${label} is stale; run: node scripts/collector-contracts.mjs baseline`)
-}
-
-function checkBaseRef(current, baseRef) {
-  let oldText
-  try {
-    try {
-      oldText = execFileSync(
-        'git',
-        ['show', `${baseRef}:collection/contracts/facts/${baselineFileName}`],
-        { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
-      )
-    } catch {
-      // Compatibility for review bases created before the baseline filename migration. Remove this
-      // fallback once every supported CI base contains fact-schema-evolution-baseline.json;
-      // `check --base-ref <base>` is the verification gate.
-      oldText = execFileSync(
-        'git',
-        ['show', `${baseRef}:collection/contracts/facts/baseline.json`],
-        { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
-      )
-    }
-  } catch {
-    process.stdout.write(`Contract baseline does not exist at ${baseRef}; treating this branch as the initial baseline.\n`)
-    return
-  }
-  const old = JSON.parse(oldText)
-  if (![1, 2].includes(old.formatVersion))
-    throw new Error(`unsupported Fact Schema baseline format ${old.formatVersion} at ${baseRef}`)
-  const currentByIdentity = new Map(current.contracts.map(item => [
-    `${item.schemaId}@${item.schemaMajor}.${item.schemaRevision}`,
-    item,
-  ]))
-  for (const previous of old.contracts) {
-    const identity = `${previous.schemaId}@${previous.schemaMajor}.${previous.schemaRevision}`
-    const candidate = currentByIdentity.get(identity)
-    const previousHash = old.formatVersion === 2
-      ? previous.hash
-      : semanticJsonHash(JSON.parse(execFileSync(
-        'git',
-        ['show', `${baseRef}:collection/contracts/facts/${previous.document}`],
-        { cwd: root, encoding: 'utf8' },
-      )))
-    if (candidate && candidate.hash !== previousHash)
-      throw new Error(`${identity} changed meaning without changing schemaMajor/schemaRevision`)
-  }
 }
 
 function checkBrowserPayload() {
@@ -163,8 +47,7 @@ function copyPackageSource(source, destination) {
     filter: path => {
       const name = relative(source, path).replaceAll('\\', '/')
       return name !== 'collector-manifest.json' &&
-        name !== 'collector-manifest.template.json' &&
-        name !== 'schemas' && !name.startsWith('schemas/')
+        name !== 'collector-manifest.template.json'
     },
   })
 }
@@ -268,22 +151,6 @@ function stagePackage(name, destination, includeTestPlatform = false, version) {
     stageBrowserArtifact(output)
   }
   populateContentReferences(output, manifest)
-  const contracts = factContracts()
-  const byId = new Map(contracts.map(contract => [contract.document.schemaId, contract]))
-  for (const outputDeclaration of manifest.outputs) {
-    const contract = byId.get(outputDeclaration.schema.id)
-    if (!contract) throw new Error(`${name}: unknown schema ${outputDeclaration.schema.id}`)
-    const schema = outputDeclaration.schema
-    if (schema.major !== contract.document.schemaMajor || schema.revision !== contract.document.schemaRevision)
-      throw new Error(`${name}: manifest identity does not match ${contract.name}`)
-    const expectedDocument = `schemas/${contract.name}`
-    if (schema.document !== expectedDocument)
-      throw new Error(`${name}: schema ${schema.id} must retain authoritative basename ${expectedDocument}`)
-    const target = join(output, schema.document)
-    mkdirSync(dirname(target), { recursive: true })
-    writeFileSync(target, contract.bytes)
-    schema.hash = contract.contentHash
-  }
   const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`)
   writeFileSync(join(output, 'collector-manifest.json'), manifestBytes)
   if (name === 'browser') {
@@ -302,18 +169,10 @@ function stagePackage(name, destination, includeTestPlatform = false, version) {
 
 const [command, ...args] = process.argv.slice(2)
 try {
-  const contracts = factContracts()
-  validateContracts(contracts)
-  const baseline = baselineFor(contracts)
-  if (command === 'baseline') {
-    writeFileSync(baselinePath, `${JSON.stringify(baseline, null, 2)}\n`)
-  } else if (command === 'check') {
+  if (command === 'check') {
     validateGeneratedReferencesAreNotPinned()
-    compareBaseline(baseline, readJson(baselinePath), 'Fact Schema baseline')
     checkBrowserPayload()
-    const baseIndex = args.indexOf('--base-ref')
-    if (baseIndex >= 0) checkBaseRef(baseline, args[baseIndex + 1])
-    process.stdout.write('Collector Fact Schemas and evolution baseline are consistent.\n')
+    process.stdout.write('Collector Package content references are consistent.\n')
   } else if (command === 'stage' && args.length >= 2) {
     let includeTestPlatform = false
     let version
@@ -328,7 +187,7 @@ try {
     }
     stagePackage(args[0], args[1], includeTestPlatform, version)
   } else {
-    throw new Error('usage: collector-contracts.mjs baseline | check [--base-ref REF] | stage <browser|system|reference-fixture> <output> [--include-current-test-platform] [--version X.Y.Z (browser only)]')
+    throw new Error('usage: collector-contracts.mjs check | stage <browser|system|reference-fixture> <output> [--include-current-test-platform] [--version X.Y.Z (browser only)]')
   }
 } catch (error) {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)

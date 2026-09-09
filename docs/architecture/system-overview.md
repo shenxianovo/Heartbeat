@@ -95,42 +95,20 @@ identity 仍然不能静默改绑到另一个 App Key。Collector 直接提供�
 `externalHost` Artifact 都 fail closed，被拒绝的连接不留下任何持久状态。安装存在但当前没有连接时，管理事实是
 `WaitingForExternalHost`，不是 Activation 启动失败。
 
-## Fact Schema 的单一来源与校验链
+## Fact 内容与交付
 
-```mermaid
-flowchart LR
-  AUTH["collection/contracts/facts\n5 authoritative schemas"]
-  TOOL["scripts/collector-contracts.mjs"]
-  TEMPLATE["Package manifest templates"]
-  STAGE["obj/.../CollectorPackage\ngenerated schemas + final manifest"]
-  PRODUCER["Collector producer"]
-  RUNTIME["Collector Runtime\nmanifest/schema/hash validation"]
-  PROJECTOR["Segment / Event projector"]
-  BASE["fact-schema-evolution-baseline.json\nidentity + major + revision + hash"]
-  CI["Collector Contracts CI"]
-
-  AUTH --> TOOL
-  TEMPLATE --> TOOL
-  TOOL --> STAGE
-  AUTH --> BASE
-  PRODUCER -->|"Fact"| RUNTIME
-  STAGE --> RUNTIME
-  RUNTIME --> PROJECTOR
-  BASE --> CI
-  AUTH --> CI
-  PRODUCER -->|"behavior tests"| CI
-```
-
-当前可执行协议只有 `segment` 与 `event`；`measurement` 保留在领域词汇中，但尚未进入 Collector Protocol v1。Package 用原始文件 hash 验证完整性；相同 `(schemaId, schemaMajor, schemaRevision)` 的 JSON 含义一旦进入基线就不可改变，纯排版变化不算演进。兼容演进增加 revision，破坏性演进增加 major。
+Collector → Runtime → Analytics 传递完整 JSON Payload 和 Fact 身份、Revision、家族时间。
+Runtime 持久保存后 ACK；Analytics 原子接受后只确认该批相应修订。
+同版本直接比较已保存内容，低版本不能覆盖高版本。消费者按实际字段生成报表/回放投影，
+缺失或不适用内容不阻断合法 Fact 保管。没有 Payload 格式注册、Schema 版本或演进基线。
+Package 仍验证文件路径、大小和完整性哈希；这些检查不决定 Payload 形状。
 
 ## 跨实现 JSON 契约地图
 
 | 文件或命名模式 | 谁读取 | 职责与权威边界 |
 | --- | --- | --- |
-| `collection/contracts/facts/*.schema.json` | staging、Runtime、producer/projector tests | Fact payload 与事实演进规则的唯一权威来源；文件名保留 Collector + 事实含义 |
-| `fact-schema-evolution-baseline.json` | contract check / CI | 只锁定 schema identity 与规范化语义 hash，不是 Runtime 消息 |
-| `collector-manifest.template.json` | Package staging | 源码中的静态 Package 清单；staging 补齐 schema hash、Artifact hash/size 后生成 `collector-manifest.json` |
-| `observation-depth.declaration.json` | Package loader、Hub declaration uplink | 独立的观测深度/读数声明；不是 Fact Schema，也不从 schema 推导 |
+| `collector-manifest.template.json` | Package staging | 源码中的静态 Package 清单；staging 补齐 Artifact hash/size 后生成 `collector-manifest.json` |
+| `observation-depth.declaration.json` | Package loader、Hub declaration uplink | 独立的观测深度/读数声明；不是 Fact Payload，也不从 Payload 推导 |
 | `*.artifact.json` | Package loader、Execution Driver | 描述一个可验证 Artifact。Browser 描述完整 sideload 文件集；InProcess fixture 描述其入口内容 |
 | `collector-artifact-ref.json` | Browser 扩展、Browser Runtime | sideload payload 指回已验证 Artifact descriptor hash 的最小引用，不是 Package manifest |
 | `collector-protocol-conformance.json` | .NET 与 TypeScript 协议测试 | 生命周期、ACK、重试、Gap 与 drain 的跨语言行为向量；不是 wire-message schema，也不是完整 transcript |

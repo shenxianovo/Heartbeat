@@ -45,10 +45,6 @@ public sealed record CollectorClientStream(
     string OutputId,
     string Source,
     string FactKind,
-    string SchemaId,
-    int SchemaMajor,
-    int SchemaRevision,
-    string SchemaHash,
     IReadOnlyDictionary<string, string> Dimensions);
 
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
@@ -66,7 +62,6 @@ public sealed record CollectorEventFactTime(
 
 public sealed record CollectorFact(
     string BindingId,
-    int SchemaRevision,
     Guid FactId,
     long Revision,
     DateTimeOffset? ObservedAt,
@@ -75,7 +70,6 @@ public sealed record CollectorFact(
 
 public sealed record BoundCollectorFact(
     Guid StreamId,
-    int SchemaRevision,
     Guid FactId,
     long Revision,
     DateTimeOffset? ObservedAt,

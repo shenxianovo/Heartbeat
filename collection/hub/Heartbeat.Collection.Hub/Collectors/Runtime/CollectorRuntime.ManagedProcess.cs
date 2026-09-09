@@ -1847,7 +1847,6 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
         outputId = descriptor.OutputId,
         source = descriptor.Source,
         factKind = EnumName(descriptor.FactKind),
-        schema = new { id = descriptor.Schema.Id, major = descriptor.Schema.Major, revision = descriptor.Schema.Revision, hash = descriptor.Schema.Hash },
         dimensions = descriptor.Dimensions
     };
 
@@ -1856,7 +1855,6 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
         RequireExactProperties(
             fact,
             "streamId",
-            "schemaRevision",
             "factId",
             "revision",
             "observedAt",
@@ -1878,7 +1876,7 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
                 ReadBoolean(time, "isFinal"));
         }
         return new FactSubmission(
-            ReadGuid(fact, "streamId"), ReadPositiveInt(fact, "schemaRevision"), ReadUuidV7(fact, "factId"),
+            ReadGuid(fact, "streamId"), ReadUuidV7(fact, "factId"),
             ReadPositiveLong(fact, "revision"),
             fact.TryGetProperty("observedAt", out _) ? ReadUtcTimestamp(fact, "observedAt") : null,
             factTime,

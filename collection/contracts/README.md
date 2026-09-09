@@ -1,29 +1,19 @@
-# Collector Fact Contracts
+# Collection 共享约定
 
-`facts/` 是 Collector Fact Schema 的唯一权威来源。Package 内的 schema 副本和最终 `collector-manifest.json` 都由 `scripts/collector-contracts.mjs stage ...` 在 `obj/` 或发布 staging 目录生成，不提交生成副本。
+Fact Payload 是 Collector 产生的可扩展 JSON。无需 Schema 文档、注册、版本号、可变路径或演进基线。
+协议保留 Subject/Stream 归属、FactId、正数 Revision、合法家族、基本 JSON 与时间检查、尺寸上限。
+同版本重试直接比较已保存内容，低 Revision 不覆盖高 Revision；新增字段可随 Collector 正常发布。
 
-## 文件职责
+Segment 起点、Event 发生时间保持稳定，final Segment 不能重开。Payload 正常修订不限定路径。
+实际活动/输入消费者只读取所需字段，缺失或不适用内容仍作为完整 Fact 保管。
 
-| 文件 | 约束的事实 |
-| --- | --- |
-| `browser-active-tab-segment.schema.json` | Browser 当前标签页区间的 `identityKey`、`title` 与站点/URL attributes |
-| `system-foreground-segment.schema.json` | System 前台应用区间的应用身份、显示名与窗口标题 |
-| `system-input-event.schema.json` | System 不可变输入事件的类型、code set 与 code |
-| `vrchat-presence-segment.schema.json` | VRChat 在线区间的 world / instance 与展示字段 |
-| `reference-segment.schema.json` | 跨进程 reference Collector 使用的最小测试事实 |
-| `fact-schema-evolution-baseline.json` | 锁定上述 schema 的 identity、revision 与规范化语义 hash，防止同版本静默改义 |
-
-`.schema.json` 只约束 Fact payload 与该事实族的演进规则，不约束 Collector Protocol 的消息信封。Package staging 必须保留权威 schema 的完整 basename，例如 `schemas/system-input-event.schema.json`；这样 manifest 引用可以直接追溯到唯一源文件。
-
-当前五个 schema 使用 Major 2；Fact 必须携带 payload，不再声明 `recordState` 或
-`evolution.allowRetraction`。Collector、Hub 与 Analytics 同步切换；旧字段明确拒绝。
-Segment 的稳定身份、递增快照修订与 finality、Event 的 immutable/mutable 规则保持不变。
-
-常用检查：
+`segment-rotation-policy.json` 仍是跨 Collector 的活动轮转约定。
+Package manifest 模板由 staging 补齐 Artifact 大小与文件完整性哈希；这些检查与 Fact 内容无关。
 
 ```bash
 npm run build --prefix collection/collectors/Heartbeat.Collector.Browser
-node scripts/collector-contracts.mjs check --base-ref origin/main
+node scripts/collector-contracts.mjs check
 ```
 
-Package manifest 使用 schema 文件的原始字节 hash 校验 staging 完整性；演进 baseline 使用规范化 JSON hash，因此缩进、空白和对象字段顺序不会伪装成契约变化。同一 `(schemaId, schemaMajor, schemaRevision)` 不允许改变 JSON 含义。兼容变更增加 `schemaRevision`；破坏性变更增加 `schemaMajor`，并同步修改引用它的 manifest template 与 producer/projector 行为测试。
+参见 [ADR-041](../../docs/adr/041-unified-observation-fact-model.md) 与
+[ADR-054](../../docs/adr/054-native-analytics-fact-ingest.md)。

@@ -468,36 +468,12 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
             manifest["artifacts"]![0]!["selector"]!["driver"] = driver;
             if (factKind == "event")
             {
-                var schemaPath = Path.Combine(copy.Path, "schemas", "reference-segment.schema.json");
-                File.WriteAllText(schemaPath, """
-                    {
-                      "documentVersion": 1,
-                      "schemaId": "heartbeat.input",
-                      "schemaMajor": 2,
-                      "schemaRevision": 1,
-                      "factKind": "event",
-                      "evolution": { "mode": "immutableEvent" },
-                      "payloadSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
-                      "payloadSchema": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": ["eventType", "codeSet", "code"],
-                        "properties": {
-                          "eventType": { "enum": ["keyDown", "mouseButton", "mouseScroll"] },
-                          "codeSet": { "const": "heartbeat-key-position-v1" },
-                          "code": { "type": "integer", "minimum": -32768, "maximum": 32767 }
-                        }
-                      }
-                    }
-                    """);
                 var capabilities = manifest["supportedCapabilities"]!.AsObject();
                 capabilities.Remove("facts.segment");
                 capabilities["facts.event"] = new JsonArray(1);
                 var output = manifest["outputs"]![0]!;
                 output["factKind"] = "event";
-                output["schema"]!["id"] = "heartbeat.input";
                 copy.WriteManifest(manifest);
-                copy.UpdateSchemaHash(schemaPath);
                 manifest = copy.ReadManifest();
             }
             copy.WriteManifest(manifest);
@@ -679,7 +655,6 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
                         new
                         {
                             streamId = session.StreamId,
-                            schemaRevision = 1,
                             factId = Guid.CreateVersion7(),
                             revision = 1L,
                             time = new

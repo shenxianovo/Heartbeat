@@ -253,7 +253,6 @@ internal sealed class VRChatManagedCollector(
 
     internal static CollectorFact ToFact(VRChatPresenceFact fact) => new(
         "presence",
-        1,
         fact.FactId,
         fact.Revision,
         fact.End,

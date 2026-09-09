@@ -6,8 +6,7 @@ namespace Heartbeat.Collection.Hub.Upload;
 public sealed record FactUploadItem(
     FactStreamDefinition Stream,
     FactSnapshot? Fact,
-    FactGapSnapshot? Gap,
-    string ContentHash)
+    FactGapSnapshot? Gap)
 {
     public static FactUploadRequest Request(IReadOnlyList<FactUploadItem> items) => new()
     {

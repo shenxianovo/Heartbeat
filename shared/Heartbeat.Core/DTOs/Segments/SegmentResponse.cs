@@ -44,9 +44,6 @@ namespace Heartbeat.Core.DTOs.Segments
         public Guid? StreamId { get; set; }
         public Guid? FactId { get; set; }
         public long? Revision { get; set; }
-        public string? SchemaId { get; set; }
-        public int? SchemaMajor { get; set; }
-        public int? SchemaRevision { get; set; }
         /// <summary>native 或 legacy-import；历史导入不表示恢复了原协议身份。</summary>
         public string? Origin { get; set; }
         public Guid? SubjectId { get; set; }

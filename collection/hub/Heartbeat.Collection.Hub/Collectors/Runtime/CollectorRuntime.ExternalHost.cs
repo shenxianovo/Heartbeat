@@ -324,8 +324,7 @@ public sealed partial class CollectorRuntime
                             retryable: true);
                     }
                     _state = next;
-                    foreach (var schema in activation.Package.FactSchemas)
-                        _factSchemasByHash[schema.ContentHash] = schema;
+
                     foreach (var stream in activation.Streams.Values)
                         _streamWriters[stream.StreamId] = activation.ActivationId;
                     _pendingActivationCommits.Remove(activation.ActivationId);

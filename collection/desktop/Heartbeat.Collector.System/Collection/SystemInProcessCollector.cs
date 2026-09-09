@@ -353,15 +353,10 @@ public sealed class SystemInProcessCollector(
         descriptor.OutputId,
         descriptor.Source,
         descriptor.FactKind.ToString().ToLowerInvariant(),
-        descriptor.Schema.Id,
-        descriptor.Schema.Major,
-        descriptor.Schema.Revision,
-        descriptor.Schema.Hash,
         descriptor.Dimensions);
 
     private static FactSubmission ToHubFact(BoundCollectorFact fact) => new(
         fact.StreamId,
-        fact.SchemaRevision,
         fact.FactId,
         fact.Revision,
         fact.ObservedAt,

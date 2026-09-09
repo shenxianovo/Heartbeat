@@ -1,3 +1,10 @@
+using Heartbeat.Collection.Hub.Collectors.Packages;
+using Heartbeat.Collection.Hub.Collectors.Protocol;
+using Heartbeat.Collection.Hub.Collectors.Runtime;
+using Heartbeat.Collection.Hub.Segments;
+using Heartbeat.Collection.Hub.Upload;
+using Heartbeat.Collector.System.Collection;
+using Heartbeat.Core.DTOs.Segments;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
@@ -54,7 +61,7 @@ public sealed class FactHttpTests(PostgresContainerFixture fixture) : PostgresTe
         }
         batch.Facts.Insert(0, new FactSnapshot
         {
-            StreamId = batch.Streams[0].StreamId, FactId = Guid.CreateVersion7(), Revision = 1, SchemaRevision = 1,
+            StreamId = batch.Streams[0].StreamId, FactId = Guid.CreateVersion7(), Revision = 1,
             Start = batch.Facts[0].Start, End = batch.Facts[0].End, IsFinal = false, Payload = batch.Facts[0].Payload
         });
         batch.Facts[1].Payload = JsonSerializer.SerializeToElement(new { identityKey = "different", title = "Changed" });
@@ -64,7 +71,6 @@ public sealed class FactHttpTests(PostgresContainerFixture fixture) : PostgresTe
         {
             Assert.Single(await db.Facts.ToListAsync());
             Assert.Single(await db.ActivitySegments.ToListAsync());
-            Assert.Equal(batch.Streams[0].Schemas[0].DocumentJson, (await db.FactSchemas.SingleAsync()).DocumentJson);
         }
     }
 
@@ -98,6 +104,110 @@ public sealed class FactHttpTests(PostgresContainerFixture fixture) : PostgresTe
         await using var verify = CreateDbContext();
         Assert.Equal(1, (await verify.Facts.SingleAsync()).Revision);
         Assert.Equal(batch.Facts[0].End, (await verify.ActivitySegments.SingleAsync()).EndTime);
+    }
+
+    [Theory]
+    [InlineData("segment")]
+    [InlineData("event")]
+    public async Task CollectorToAnalytics_UnknownPayloadSurvivesRestartRevisionReplayAndOwnerIsolation(string kind)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"heartbeat-fact-http-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
+            var path = Path.Combine(directory, "runtime.json");
+            var options = new CollectorRuntimeOptions { EnableFactUpload = true };
+            var sink = new UnusedProjection();
+            Guid instanceId;
+            FactSubmission original;
+            using (var runtime = CollectorRuntime.Open(path, sink, options))
+            {
+                var instance = runtime.CreateInstance(package,
+                    new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
+                    new CollectorInstanceSpec(1, 1, JsonSerializer.SerializeToElement(new { })));
+                instanceId = instance.CollectorInstanceId;
+                await using var activation = await runtime.ActivateInProcessAsync(instanceId, package, new PayloadCollector(package));
+                var stream = activation.Streams[kind == "segment" ? "foreground" : "input-events"];
+                var start = DateTimeOffset.UtcNow.AddMinutes(-2);
+                original = new FactSubmission(stream.Descriptor.StreamId, Guid.CreateVersion7(), 1, null,
+                    kind == "segment" ? new SegmentFactTime(start, start.AddMinutes(1), false) : new EventFactTime(start),
+                    JsonSerializer.SerializeToElement(new { arbitrary = new { addedByCollector = new[] { 1, 2 } } }));
+                Assert.Equal(FactDeliveryStatus.Committed,
+                    Assert.Single((await stream.PublishAsync(Guid.CreateVersion7(), [original])).Results).Status);
+            }
+
+            await using var application = CreateApplication();
+            using var http = application.CreateClient();
+            http.DefaultRequestHeaders.Add(HeartbeatProtocol.VersionHeader, HeartbeatProtocol.RequiredVersion);
+            http.DefaultRequestHeaders.Add("X-Test-Owner", "owner");
+            using var restarted = CollectorRuntime.Open(path, sink, options);
+            await using var resumed = await restarted.ActivateInProcessAsync(instanceId, package, new PayloadCollector(package));
+            var writer = resumed.Streams[kind == "segment" ? "foreground" : "input-events"];
+            var first = restarted.ReadPendingFacts();
+            using var accepted = await http.PostAsJsonAsync("/api/v1/facts", FactUploadItem.Request(first));
+            Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+            var corrected = original with { Revision = 2, Payload = JsonSerializer.SerializeToElement(new { newField = "no registration", values = new[] { true, false } }) };
+            Assert.Equal(FactDeliveryStatus.Committed,
+                Assert.Single((await writer.PublishAsync(Guid.CreateVersion7(), [corrected])).Results).Status);
+            restarted.ConfirmUploadedFacts(first);
+            var latest = restarted.ReadPendingFacts();
+            Assert.Equal(2, Assert.Single(latest).Fact!.Revision);
+            using var revised = await http.PostAsJsonAsync("/api/v1/facts", FactUploadItem.Request(latest));
+            Assert.Equal(HttpStatusCode.OK, revised.StatusCode);
+            using var replay = await http.PostAsJsonAsync("/api/v1/facts", FactUploadItem.Request(latest));
+            Assert.Equal(HttpStatusCode.OK, replay.StatusCode);
+            using var stale = await http.PostAsJsonAsync("/api/v1/facts", FactUploadItem.Request(first));
+            Assert.Equal(HttpStatusCode.OK, stale.StatusCode);
+            Assert.Equal(FactDeliveryStatus.Duplicate,
+                Assert.Single((await writer.PublishAsync(Guid.CreateVersion7(), [corrected])).Results).Status);
+            Assert.Equal(FactDeliveryStatus.Superseded,
+                Assert.Single((await writer.PublishAsync(Guid.CreateVersion7(), [original])).Results).Status);
+            Assert.Equal(FactDeliveryStatus.Rejected,
+                Assert.Single((await writer.PublishAsync(Guid.CreateVersion7(), [corrected with { Payload = original.Payload }])).Results).Status);
+            restarted.ConfirmUploadedFacts(latest);
+            Assert.Empty(restarted.ReadPendingFacts());
+
+            // Valid unknown content remains in custody even though no existing report can interpret it.
+            await using var db = CreateDbContext();
+            var saved = await db.Facts.SingleAsync();
+            Assert.Equal(2, saved.Revision);
+            Assert.True(JsonElement.DeepEquals(corrected.Payload, JsonDocument.Parse(saved.Payload!).RootElement));
+            Assert.Empty(await db.ActivitySegments.ToListAsync());
+            Assert.Empty(await db.InputEvents.ToListAsync());
+            Assert.DoesNotContain("contentHash", File.ReadAllText(path).Split("\"facts\":")[1].Split("\"gaps\":")[0]);
+            var conflict = FactUploadItem.Request(latest);
+            conflict.Facts[0].Payload = original.Payload;
+            using var rejected = await http.PostAsJsonAsync("/api/v1/facts", conflict);
+            Assert.Equal(HttpStatusCode.Conflict, rejected.StatusCode);
+            http.DefaultRequestHeaders.Remove("X-Test-Owner");
+            http.DefaultRequestHeaders.Add("X-Test-Owner", "other");
+            using var other = await http.PostAsJsonAsync("/api/v1/facts", conflict);
+            Assert.Equal(HttpStatusCode.OK, other.StatusCode);
+            db.ChangeTracker.Clear();
+            Assert.Equal(2, await db.Facts.CountAsync());
+            Assert.True(JsonElement.DeepEquals(corrected.Payload,
+                JsonDocument.Parse((await db.Facts.SingleAsync(f => f.OwnerId == "owner")).Payload!).RootElement));
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    private sealed class UnusedProjection : ISegmentSink
+    {
+        public void Push(List<ActivitySegmentItem> snapshots) => throw new InvalidOperationException("Native upload owns custody.");
+    }
+
+    private sealed class PayloadCollector(LocalCollectorPackage package) : IInProcessCollector
+    {
+        public string ArtifactId => package.Manifest.Artifacts[0].ArtifactId;
+        public ProtocolSupport ProtocolSupport => new([1], package.Manifest.SupportedCapabilities);
+        public ValueTask<InProcessCollectorInitialization> InitializeAsync(CollectorInitialization initialization, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new InProcessCollectorInitialization(initialization.Spec.SpecRevision,
+                package.Manifest.Outputs.Select(output => new OutputBinding(output.OutputId, output.OutputId, new Dictionary<string, string>())).ToArray()));
+        public async ValueTask OnStreamsOpenedAsync(InProcessCollectorStreamsOpened opened, CancellationToken cancellationToken) =>
+            await opened.ReadyAsync(cancellationToken);
+        public ValueTask<InProcessCollectorDrainResult> StopAsync(DateTimeOffset deadline, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new InProcessCollectorDrainResult(new InProcessCollectorLogicalDrainResult(0, 0)));
     }
 
     private WebApplicationFactory<FactController> CreateApplication() =>
