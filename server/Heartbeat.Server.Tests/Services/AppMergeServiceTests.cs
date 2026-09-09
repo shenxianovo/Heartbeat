@@ -60,7 +60,7 @@ public class AppMergeServiceTests(PostgresContainerFixture fixture) : PostgresTe
         db.AddRange(device, strand, episode);
         await db.SaveChangesAsync();
 
-        db.ActivitySegments.Add(new ActivitySegment
+        db.SeedSegments(new ActivitySegment
         {
             OwnerId = device.OwnerId,
             Id = Guid.CreateVersion7(), DeviceId = device.Id, Source = ActivitySources.System,
@@ -290,7 +290,7 @@ public class AppMergeServiceTests(PostgresContainerFixture fixture) : PostgresTe
         db.AddRange(device, strand, episode);
         await db.SaveChangesAsync();
 
-        db.ActivitySegments.AddRange(
+        db.SeedSegments(
             new ActivitySegment
             {
                 OwnerId = device.OwnerId,

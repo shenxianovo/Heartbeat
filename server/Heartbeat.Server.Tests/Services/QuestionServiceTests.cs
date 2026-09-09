@@ -108,7 +108,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
     public async Task SameLocalDateInDifferentTimeZonesUsesDistinctQuestionCaches()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(Segment(
+        db.SeedSegments(Segment(
             DateTimeOffset.Parse("2026-03-08T05:00:00Z"),
             DateTimeOffset.Parse("2026-03-08T06:00:00Z")));
         await db.SaveChangesAsync();
@@ -142,7 +142,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
     public async Task PastDay_GeneratesOnce_SecondReadHitsCache()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
+        db.SeedSegments(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
         await db.SaveChangesAsync();
 
         var fake = new FakeAsking { Result = [Candidate("sometool")] };
@@ -166,9 +166,9 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
         using var db = CreateDbContext();
         var other = await EnsureAppAsync(db, "chrome");
         // 命中段 14:00–16:00；同时段并行的 chrome 是旁证；时段外的 chrome 不进证据卡
-        db.ActivitySegments.Add(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
-        db.ActivitySegments.Add(Segment(PastDay.AddHours(14), PastDay.AddHours(15), other.Id, "chrome|"));
-        db.ActivitySegments.Add(Segment(PastDay.AddHours(20), PastDay.AddHours(21), other.Id, "chrome|"));
+        db.SeedSegments(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
+        db.SeedSegments(Segment(PastDay.AddHours(14), PastDay.AddHours(15), other.Id, "chrome|"));
+        db.SeedSegments(Segment(PastDay.AddHours(20), PastDay.AddHours(21), other.Id, "chrome|"));
         await db.SaveChangesAsync();
 
         var fake = new FakeAsking { Result = [Candidate("sometool")] };
@@ -193,7 +193,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
     public async Task Candidate_WithNoMatchingEvidence_Dropped()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
+        db.SeedSegments(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
         await db.SaveChangesAsync();
 
         // 判官编造了当日不存在的活动：物化零命中，问题整个丢弃
@@ -224,7 +224,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
     public async Task JudgeFailure_NoCacheWrite_NextReadRetries()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
+        db.SeedSegments(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
         await db.SaveChangesAsync();
 
         var fake = new FakeAsking { Result = null };
@@ -244,11 +244,11 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
     public async Task JudgeOutput_CappedAtThree()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
+        db.SeedSegments(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
         foreach (var i in Enumerable.Range(0, 5))
         {
             var app = await EnsureAppAsync(db, $"tool-{i}");
-            db.ActivitySegments.Add(Segment(PastDay.AddHours(10 + i), PastDay.AddHours(10.5 + i), app.Id, $"tool-{i}|"));
+            db.SeedSegments(Segment(PastDay.AddHours(10 + i), PastDay.AddHours(10.5 + i), app.Id, $"tool-{i}|"));
         }
         await db.SaveChangesAsync();
 
@@ -272,8 +272,8 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
         using var db = CreateDbContext();
         var toolA = await EnsureAppAsync(db, "tool-a");
         var toolB = await EnsureAppAsync(db, "tool-b");
-        db.ActivitySegments.Add(Segment(PastDay.AddHours(14), PastDay.AddHours(16), toolA.Id, "tool-a|"));
-        db.ActivitySegments.Add(Segment(PastDay.AddHours(16), PastDay.AddHours(18), toolB.Id, "tool-b|"));
+        db.SeedSegments(Segment(PastDay.AddHours(14), PastDay.AddHours(16), toolA.Id, "tool-a|"));
+        db.SeedSegments(Segment(PastDay.AddHours(16), PastDay.AddHours(18), toolB.Id, "tool-b|"));
         await db.SaveChangesAsync();
 
         var fake = new FakeAsking { Result = [Candidate("tool-a"), Candidate("tool-b")] };
@@ -300,7 +300,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
     public async Task LegacyFixedOffsetRowIsPreservedAndCannotSatisfyANewWindowKey()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
+        db.SeedSegments(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
         // ADR-044 前的 fixed-offset row：没有可可靠回填的 IANA timezone / end / WindowKey。
         db.DailyQuestionSets.Add(new DailyQuestionSet
         {
@@ -335,7 +335,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
     {
         var day = new DateTimeOffset(2026, 7, 12, 0, 0, 0, TimeSpan.Zero);
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(Segment(day.AddHours(9), day.AddHours(10)));
+        db.SeedSegments(Segment(day.AddHours(9), day.AddHours(10)));
         await db.SaveChangesAsync();
 
         var fake = new FakeAsking { Result = [Candidate("sometool")] };
@@ -345,7 +345,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
         Assert.Equal(1, fake.Calls);
 
         // 水位 10:00，新段推进到 11:30 → 落后 1.5h 过阈值，重新发问
-        db.ActivitySegments.Add(Segment(day.AddHours(10), day.AddHours(11.5)));
+        db.SeedSegments(Segment(day.AddHours(10), day.AddHours(11.5)));
         await db.SaveChangesAsync();
 
         await svc.GetDailyQuestionsAsync("user-1", UtcDay(day));
@@ -359,7 +359,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
     public async Task Owners_AreIsolated()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
+        db.SeedSegments(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
         await db.SaveChangesAsync();
 
         var fake = new FakeAsking { Result = [Candidate("sometool")] };
@@ -376,7 +376,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
     public async Task ActiveProbeHit_YieldsRecurrenceQuestion_Deterministically()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
+        db.SeedSegments(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
         await db.SaveChangesAsync();
 
         // 用户此前确认过一个 Episode + Probe（谓词命中今天的 sometool）
@@ -415,7 +415,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
     public async Task ClusterQuestion_SamePredicateAsActiveProbe_YieldsToRecurrence()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
+        db.SeedSegments(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
         await db.SaveChangesAsync();
 
         var episodes = new EpisodeService(db, new KnowledgeService(db));
@@ -443,7 +443,7 @@ public class QuestionServiceTests(PostgresContainerFixture fixture) : PostgresTe
     public async Task FindQuestion_ReturnsServedCard_RejectsForeignId()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
+        db.SeedSegments(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
         await db.SaveChangesAsync();
 
         var fake = new FakeAsking { Result = [Candidate("sometool")] };

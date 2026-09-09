@@ -143,15 +143,9 @@ public sealed class AppProductReconciliationService(AppDbContext db)
         var removableSources = drainedSources
             .Where(x => preserveSourceAppKeys?.Contains(x.Key) != true)
             .ToList();
-        var drainedSourceIds = drainedSources.Select(x => x.Id).ToArray();
-
-        var legacySegments = await db.ActivitySegments
-            .Include(x => x.Device)
-            .Where(x =>
-                x.AppIdentityId != null && movedIdentityIds.Contains(x.AppIdentityId.Value) ||
-                x.AppIdentityId == null && x.AppId != null && drainedSourceIds.Contains(x.AppId.Value))
-            .ToListAsync(cancellationToken);
-        foreach (var segment in legacySegments) segment.App = target;
+        var segments = db.ActivitySegments
+            .Where(x => x.AppIdentityId != null && movedIdentityIds.Contains(x.AppIdentityId.Value));
+        var segmentCount = await segments.CountAsync(cancellationToken);
 
         var iconResult = await ReconcileIconsAsync(target, drainedSources, cancellationToken);
         var aliases = drainedSources
@@ -171,12 +165,10 @@ public sealed class AppProductReconciliationService(AppDbContext db)
             cancellationToken);
 
         var knowledge = await RewriteKnowledgeAsync(aliases, target.Key, cancellationToken);
-        var impactedOwners = await db.ActivitySegments
-            .Where(x => x.AppIdentityId != null && movedIdentityIds.Contains(x.AppIdentityId.Value))
+        var impactedOwners = await segments
             .Select(x => x.OwnerId)
             .Distinct()
             .ToListAsync(cancellationToken);
-        impactedOwners.AddRange(legacySegments.Select(x => x.OwnerId));
         impactedOwners.AddRange(currentDevices.Select(x => x.OwnerId));
         impactedOwners.AddRange(knowledge.ImpactedOwners);
         var ownerSet = impactedOwners.ToHashSet(StringComparer.Ordinal);
@@ -190,7 +182,7 @@ public sealed class AppProductReconciliationService(AppDbContext db)
             target.Id,
             target.Key,
             normalizedKeys,
-            legacySegments.Count,
+            segmentCount,
             currentDevices.Count,
             removableSources.Count,
             iconResult.Changes,

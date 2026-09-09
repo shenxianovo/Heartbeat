@@ -356,8 +356,8 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         await db.SaveChangesAsync();
 
         var t0 = Now.AddMinutes(-10);
-        db.ActivitySegments.Add(SystemSegment(app.Id, "msedge", t0, t0.AddMinutes(5)));
-        db.ActivitySegments.Add(new ActivitySegment
+        db.SeedSegments(SystemSegment(app.Id, "msedge", t0, t0.AddMinutes(5)));
+        db.SeedSegments(new ActivitySegment
         {
             OwnerId = "user-1",
             Id = Guid.CreateVersion7(),
@@ -368,9 +368,9 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
             StartTime = t0,
             EndTime = t0.AddMinutes(2),
             Attributes = """{"url":"https://example.com"}""",
-            Payload = """{"identityKey":"https://example.com","attributes":{"url":"https://example.com"}}"""
+            Payload = """{"activityKey":"https://example.com","attributes":{"url":"https://example.com"}}"""
         });
-        db.ActivitySegments.Add(new ActivitySegment
+        db.SeedSegments(new ActivitySegment
         {
             OwnerId = "user-1",
             Id = Guid.CreateVersion7(),
@@ -413,8 +413,8 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
 
         // 3 小时长段（快照生长的产物），起点在查询窗口之前（ADR-018 §4）
         var t0 = Now.AddHours(-4);
-        db.ActivitySegments.Add(SystemSegment(app.Id, "vscode", t0, t0.AddHours(3)));
-        db.ActivitySegments.Add(new ActivitySegment
+        db.SeedSegments(SystemSegment(app.Id, "vscode", t0, t0.AddHours(3)));
+        db.SeedSegments(new ActivitySegment
         {
             OwnerId = "user-1",
             Id = Guid.CreateVersion7(),
@@ -451,7 +451,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
 
         var start = Now.AddHours(-3);
         var end = start.AddHours(1);
-        db.ActivitySegments.AddRange(
+        db.SeedSegments(
             SystemSegment(app.Id, "vscode", start.AddMinutes(-10), start),
             SystemSegment(app.Id, "vscode", start.AddMinutes(-10), start.AddMinutes(10)),
             SystemSegment(app.Id, "vscode", end.AddMinutes(-10), end.AddMinutes(10)),
@@ -753,7 +753,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         await svc.SaveSegmentsAsync(_deviceId, [Item("win:code", start.AddMinutes(1))]);
         await svc.SaveSegmentsAsync(_deviceId, [Item("mac:com.microsoft.vscode", start.AddMinutes(2))]);
 
-        var row = await db.ActivitySegments.Include(x => x.AppIdentity).SingleAsync();
+        var row = await db.ActivitySegments.SingleAsync();
         Assert.Equal("win:code", row.AppIdentity!.Key);
         Assert.Equal(start.AddMinutes(2), row.EndTime);
         Assert.Single(db.AppIdentities);

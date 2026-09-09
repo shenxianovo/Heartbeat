@@ -41,7 +41,8 @@ Package 通过 Output Template 声明可产生的 FactKind、Source、SubjectKin
 
 Stream 元数据持有 Subject、Collector Instance、Source、FactKind、Measurement descriptor（若适用）与 identifying dimensions。逐条 Fact 只携带 StreamId、Collector 生成的 UUIDv7 FactId、单调 Revision、该家族的事实时间、可选 ObservedAt 与JSON payload；Hub 把 ReceivedAt 与 ActivationId 记录在独立 ingest metadata 中，不改写 wire Fact。ActivationId 只作为本次 writer 的 provenance，不进入 Stream 身份。
 
-协议按 `StreamId + FactId + Revision` 幂等收敛。Segment 起点、Event 发生时间不变，final Segment 不能重开；
+协议按 `StreamId + FactId + Revision` 幂等收敛。Segment 起点、Event 发生时间不变；Collection/Runtime
+负责 final Segment 不能重开，Analytics 按 ADR-055 只校验其持久保管的时间与 Payload，不存终态；
 Payload 的新增字段或修订不需要登记、版本基线或通用演进规则。消费者按业务字段判断能否投影，
 不适用的事实仍完整保管。Fact 不携带 `recordState`；旧撤回输入仍明确拒绝。
 

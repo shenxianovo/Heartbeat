@@ -61,15 +61,20 @@ public sealed class FactHttpTests(PostgresContainerFixture fixture) : PostgresTe
         }
         batch.Facts.Insert(0, new FactSnapshot
         {
-            StreamId = batch.Streams[0].StreamId, FactId = Guid.CreateVersion7(), Revision = 1,
-            Start = batch.Facts[0].Start, End = batch.Facts[0].End, IsFinal = false, Payload = batch.Facts[0].Payload
+            StreamId = batch.Streams[0].StreamId,
+            FactId = Guid.CreateVersion7(),
+            Revision = 1,
+            Start = batch.Facts[0].Start,
+            End = batch.Facts[0].End,
+            IsFinal = false,
+            Payload = batch.Facts[0].Payload
         });
         batch.Facts[1].Payload = JsonSerializer.SerializeToElement(new { identityKey = "different", title = "Changed" });
         using (var conflict = await client.PostAsJsonAsync("/api/v1/facts", batch))
             Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
         await using (var db = CreateDbContext())
         {
-            Assert.Single(await db.Facts.ToListAsync());
+            Assert.Single(await db.Segments.ToListAsync());
             Assert.Single(await db.ActivitySegments.ToListAsync());
         }
     }
@@ -102,7 +107,7 @@ public sealed class FactHttpTests(PostgresContainerFixture fixture) : PostgresTe
         Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
         Assert.Contains("recordState", await rejected.Content.ReadAsStringAsync());
         await using var verify = CreateDbContext();
-        Assert.Equal(1, (await verify.Facts.SingleAsync()).Revision);
+        Assert.Equal(1, (await verify.Segments.SingleAsync()).Revision);
         Assert.Equal(batch.Facts[0].End, (await verify.ActivitySegments.SingleAsync()).EndTime);
     }
 
@@ -170,9 +175,9 @@ public sealed class FactHttpTests(PostgresContainerFixture fixture) : PostgresTe
 
             // Valid unknown content remains in custody even though no existing report can interpret it.
             await using var db = CreateDbContext();
-            var saved = await db.Facts.SingleAsync();
+            IFactRecord saved = kind == "segment" ? await db.Segments.SingleAsync() : await db.Events.SingleAsync();
             Assert.Equal(2, saved.Revision);
-            Assert.True(JsonElement.DeepEquals(corrected.Payload, JsonDocument.Parse(saved.Payload!).RootElement));
+            Assert.True(JsonElement.DeepEquals(corrected.Payload, saved.Payload.RootElement));
             Assert.Empty(await db.ActivitySegments.ToListAsync());
             Assert.Empty(await db.InputEvents.ToListAsync());
             Assert.DoesNotContain("contentHash", File.ReadAllText(path).Split("\"facts\":")[1].Split("\"gaps\":")[0]);
@@ -185,9 +190,9 @@ public sealed class FactHttpTests(PostgresContainerFixture fixture) : PostgresTe
             using var other = await http.PostAsJsonAsync("/api/v1/facts", conflict);
             Assert.Equal(HttpStatusCode.OK, other.StatusCode);
             db.ChangeTracker.Clear();
-            Assert.Equal(2, await db.Facts.CountAsync());
-            Assert.True(JsonElement.DeepEquals(corrected.Payload,
-                JsonDocument.Parse((await db.Facts.SingleAsync(f => f.OwnerId == "owner")).Payload!).RootElement));
+            Assert.Equal(2, await db.Segments.CountAsync() + await db.Events.CountAsync());
+            IFactRecord ownerFact = kind == "segment" ? await db.Segments.SingleAsync(f => f.OwnerId == "owner") : await db.Events.SingleAsync(f => f.OwnerId == "owner");
+            Assert.True(JsonElement.DeepEquals(corrected.Payload, ownerFact.Payload.RootElement));
         }
         finally { Directory.Delete(directory, recursive: true); }
     }

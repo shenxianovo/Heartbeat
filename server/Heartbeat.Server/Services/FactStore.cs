@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Heartbeat.Server.Services;
 
-/// <summary>Owns canonical Fact custody and its rebuildable activity/input projections in one transaction.</summary>
+/// <summary>Atomically owns the latest Segment/Event snapshots and their Subject/Stream identities.</summary>
 public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvider = null)
 {
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
@@ -122,9 +122,18 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         }
         else
         {
-            stream = new FactStream { OwnerId = ownerId, StreamId = definition.StreamId, SubjectId = subject.SubjectId, CollectorInstanceId = definition.CollectorInstanceId,
-                OutputId = definition.OutputId, Source = definition.Source, FactKind = definition.FactKind,
-                Dimensions = dimensions, Subject = subject };
+            stream = new FactStream
+            {
+                OwnerId = ownerId,
+                StreamId = definition.StreamId,
+                SubjectId = subject.SubjectId,
+                CollectorInstanceId = definition.CollectorInstanceId,
+                OutputId = definition.OutputId,
+                Source = definition.Source,
+                FactKind = definition.FactKind,
+                Dimensions = dimensions,
+                Subject = subject
+            };
             db.FactStreams.Add(stream);
         }
         await db.SaveChangesAsync(ct);
@@ -133,144 +142,108 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
 
     private async Task Apply(FactStream stream, FactSnapshot snapshot, CancellationToken ct)
     {
-        var fact = await db.Facts.SingleOrDefaultAsync(f => f.OwnerId == stream.OwnerId && f.StreamId == stream.StreamId && f.FactId == snapshot.FactId, ct);
+        var payload = StoredPayload(snapshot.Payload!.Value, stream.FactKind);
+        var start = NormalizeTime(snapshot.Start);
+        var end = NormalizeTime(snapshot.End);
+        var at = NormalizeTime(snapshot.OccurredAt);
+        IFactRecord? fact = stream.FactKind == "segment"
+            ? await db.Segments.SingleOrDefaultAsync(f => f.OwnerId == stream.OwnerId && f.StreamId == stream.StreamId && f.FactId == snapshot.FactId, ct)
+            : await db.Events.SingleOrDefaultAsync(f => f.OwnerId == stream.OwnerId && f.StreamId == stream.StreamId && f.FactId == snapshot.FactId, ct);
         if (fact is not null)
         {
             if (snapshot.Revision < fact.Revision) return;
+            var sameTimes = fact is Segment segment
+                ? segment.StartTime == start && segment.EndTime == end
+                : ((Event)fact).Timestamp == at;
             if (snapshot.Revision == fact.Revision)
             {
-                if (!SameContent(fact, snapshot)) throw new FactIngestException("The same Fact Revision has different content.", true);
+                if (!sameTimes || !JsonElement.DeepEquals(fact.Payload.RootElement, payload.RootElement))
+                    throw new FactIngestException("The same Fact Revision has different content.", true);
                 return;
             }
-            if (stream.FactKind == "segment" && (fact.Start != snapshot.Start || fact.IsFinal == true && snapshot.IsFinal != true) ||
-                stream.FactKind == "event" && fact.OccurredAt != snapshot.OccurredAt)
-                throw new FactIngestException("Fact Revision cannot change its start/occurrence or reopen a final Segment.", true);
+            if (fact is Segment oldSegment ? oldSegment.StartTime != start : ((Event)fact).Timestamp != at)
+                throw new FactIngestException("Fact Revision cannot change its start/occurrence.", true);
         }
         else
         {
-            fact = await FindLegacy(stream, snapshot, ct) ?? new ObservedFact { Id = Guid.CreateVersion7(), OwnerId = stream.OwnerId };
-            if (db.Entry(fact).State == EntityState.Detached) db.Facts.Add(fact);
+            fact = await FindLegacy(stream, snapshot, payload, ct);
+            if (fact is null)
+            {
+                if (stream.FactKind == "segment")
+                {
+                    var segment = new Segment { Id = Guid.CreateVersion7(), OwnerId = stream.OwnerId };
+                    db.Segments.Add(segment);
+                    fact = segment;
+                }
+                else
+                {
+                    var item = new Event { Id = Guid.CreateVersion7(), OwnerId = stream.OwnerId };
+                    db.Events.Add(item);
+                    fact = item;
+                }
+            }
         }
         fact.StreamId = stream.StreamId;
-        fact.FactId = snapshot.FactId;
         fact.Stream = stream;
-        fact.Origin = "native";
-        // Lineage exists even if native delivery wins the upgrade race.
-        fact.LegacyId ??= stream.FactKind == "segment" ? FactIngestContract.ProjectedSegmentId(stream.StreamId, snapshot.FactId) : snapshot.FactId;
-        fact.LegacyKind ??= stream.FactKind;
-        fact.LegacyDeviceId ??= stream.Subject.DeviceId;
+        fact.FactId = snapshot.FactId;
+        fact.Source = stream.Source;
         fact.Revision = snapshot.Revision;
-        fact.ObservedAt = snapshot.ObservedAt;
-        fact.Start = snapshot.Start;
-        fact.End = snapshot.End;
-        fact.IsFinal = snapshot.IsFinal;
-        fact.OccurredAt = snapshot.OccurredAt;
-        fact.Payload = snapshot.Payload?.GetRawText();
-        await Project(fact, ct);
+        fact.Payload = payload;
+        fact.AppIdentityId = await ResolveApp(stream, payload.RootElement, ct);
+        if (fact is Segment savedSegment)
+        {
+            savedSegment.StartTime = start!.Value;
+            savedSegment.EndTime = end!.Value;
+        }
+        else ((Event)fact).Timestamp = at!.Value;
         await db.SaveChangesAsync(ct);
     }
 
-    private static bool SameContent(ObservedFact fact, FactSnapshot snapshot) =>
-        fact.Start == snapshot.Start &&
-        fact.End == snapshot.End &&
-        fact.OccurredAt == snapshot.OccurredAt &&
-        fact.IsFinal == snapshot.IsFinal &&
-        JsonElement.DeepEquals(JsonDocument.Parse(fact.Payload!).RootElement, snapshot.Payload!.Value);
+    private async Task<long?> ResolveApp(FactStream stream, JsonElement payload, CancellationToken ct)
+    {
+        var dimensions = JsonDocument.Parse(stream.Dimensions).RootElement;
+        var key = String(dimensions, "appIdentityKey") ?? String(payload, "appIdentityKey");
+        if (key is null) return null;
+        try { return (await new AppIdentityService(db).ResolveAsync(key, String(payload, "appDisplayName"))).Id; }
+        catch (ArgumentException) { return null; }
+    }
 
-    private async Task<ObservedFact?> FindLegacy(FactStream stream, FactSnapshot snapshot, CancellationToken ct)
+    private async Task<IFactRecord?> FindLegacy(FactStream stream, FactSnapshot snapshot, JsonDocument payload, CancellationToken ct)
     {
         var legacyId = stream.FactKind == "segment" ? FactIngestContract.ProjectedSegmentId(stream.StreamId, snapshot.FactId) : snapshot.FactId;
-        var candidates = await db.Facts.Include(f => f.Stream).ThenInclude(s => s.Subject)
-            .Where(f => f.OwnerId == stream.OwnerId && f.Origin == "legacy-import" && f.LegacyId == legacyId && f.LegacyKind == stream.FactKind).ToListAsync(ct);
-        var fact = candidates.SingleOrDefault(f =>
-            stream.Subject.DeviceId is { } deviceId ? f.LegacyDeviceId == deviceId : f.Stream.SubjectId == stream.SubjectId);
+        IFactRecord? fact = stream.FactKind == "segment"
+            ? await db.Segments.Include(f => f.Stream).ThenInclude(s => s.Subject)
+                .SingleOrDefaultAsync(f => f.Id == legacyId && f.OwnerId == stream.OwnerId && f.Stream.Origin == "legacy-import", ct)
+            : await db.Events.Include(f => f.Stream).ThenInclude(s => s.Subject)
+                .SingleOrDefaultAsync(f => f.Id == legacyId && f.OwnerId == stream.OwnerId && f.Stream.Origin == "legacy-import", ct);
         if (fact is null) return null;
-        if (fact.Stream.Source != stream.Source || fact.Stream.Subject.Kind != stream.Subject.Kind)
+        if (!SameSubject(fact.Stream.Subject, stream.Subject) || fact.Source != stream.Source)
             throw new FactIngestException("Legacy Fact belongs to a different Subject or Source.", true);
-        if (stream.FactKind == "event" && (LegacyTimestamp(fact.OccurredAt) != LegacyTimestamp(snapshot.OccurredAt) || snapshot.Payload is not { } payload ||
-            !JsonElement.DeepEquals(JsonDocument.Parse(fact.Payload!).RootElement, payload)))
+        if (fact is Event input && (input.Timestamp != NormalizeTime(snapshot.OccurredAt) ||
+            !JsonElement.DeepEquals(input.Payload.RootElement, payload.RootElement)))
             throw new FactIngestException("Legacy InputEvent identity has incompatible content.", true);
         return fact;
     }
 
-    // Only legacy takeover uses the old Npgsql microsecond encoding (epoch 2000-01-01).
-    // This also preserves its truncation direction for pre-2000 timestamps. Native comparisons stay exact.
-    private static long? LegacyTimestamp(DateTimeOffset? value) => value is { } time
-        ? (time.UtcTicks - 630822816000000000L) / TimeSpan.TicksPerMicrosecond : null;
+    private static bool SameSubject(FactSubjectRecord first, FactSubjectRecord second) =>
+        first.OwnerId == second.OwnerId && first.Kind == second.Kind &&
+        (first.Kind == "machine" ? first.DeviceId == second.DeviceId : first.SubjectId == second.SubjectId);
 
-    private async Task Project(ObservedFact fact, CancellationToken ct)
+    // Match Npgsql's integer truncation relative to its 2000-01-01 epoch, including earlier dates.
+    internal static DateTimeOffset? NormalizeTime(DateTimeOffset? value) => value is { } time
+        ? new DateTimeOffset(630822816000000000L + (time.UtcTicks - 630822816000000000L) / 10 * 10, TimeSpan.Zero) : null;
+
+    internal static JsonDocument StoredPayload(JsonElement payload, string kind)
     {
-        var stream = fact.Stream;
-        var segment = await db.ActivitySegments.SingleOrDefaultAsync(s => s.FactKey == fact.Id, ct);
-        var input = await db.InputEvents.SingleOrDefaultAsync(e => e.FactKey == fact.Id, ct);
-        var payload = JsonDocument.Parse(fact.Payload!).RootElement;
-        if (stream.FactKind == "segment")
-        {
-            var identityKey = String(payload, "identityKey");
-            // A valid Segment without the activity vocabulary is still a canonical Fact.
-            if (identityKey is null)
-            {
-                if (segment is not null) db.ActivitySegments.Remove(segment);
-                return;
-            }
-            var dimensions = JsonDocument.Parse(stream.Dimensions).RootElement;
-            var appKey = String(dimensions, "appIdentityKey") ?? String(payload, "appIdentityKey");
-            AppIdentity? app;
-            try { app = appKey is null ? null : await new AppIdentityService(db).ResolveAsync(appKey, String(payload, "appDisplayName")); }
-            catch (ArgumentException) { app = null; }
-            if (segment is null)
-            {
-                segment = new ActivitySegment { Id = fact.Id, FactKey = fact.Id };
-                db.ActivitySegments.Add(segment);
-            }
-            segment.Fact = fact;
-            segment.OwnerId = stream.OwnerId;
-            segment.DeviceId = stream.Subject.DeviceId;
-            segment.Source = stream.Source;
-            segment.IdentityKey = identityKey;
-            segment.Title = String(payload, "title");
-            segment.AppIdentityId = app?.Id;
-            segment.AppId = app?.AppId;
-            segment.StartTime = fact.Start!.Value;
-            segment.EndTime = fact.End!.Value;
-            segment.Payload = fact.Payload;
-            segment.Attributes = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("attributes", out var attributes) ? attributes.GetRawText() : null;
-        }
-        else if (stream.Subject.DeviceId is { } deviceId)
-        {
-            var eventType = String(payload, "eventType") switch
-            {
-                "keyDown" => InputEventType.KeyDown,
-                "mouseButton" => InputEventType.MouseButton,
-                "mouseScroll" => InputEventType.MouseScroll,
-                _ => (InputEventType?)null
-            };
-            if (eventType is null || String(payload, "codeSet") is not { } codeSet ||
-                !payload.TryGetProperty("code", out var codeValue) || codeValue.ValueKind != JsonValueKind.Number || !codeValue.TryGetInt16(out var code))
-            {
-                if (input is not null) db.InputEvents.Remove(input);
-                return;
-            }
-            var item = new InputEventItem { Id = fact.FactId, Timestamp = fact.OccurredAt!.Value,
-                CodeSet = codeSet, Code = code, EventType = eventType.Value };
-            try { InputEventIngestContract.Validate([item]); }
-            catch (ArgumentException)
-            {
-                if (input is not null) db.InputEvents.Remove(input);
-                return;
-            }
-            if (input is null)
-            {
-                input = new InputEvent { Id = fact.Id, FactKey = fact.Id };
-                db.InputEvents.Add(input);
-            }
-            input.Fact = fact;
-            input.DeviceId = deviceId;
-            input.EventType = item.EventType;
-            input.CodeSet = item.CodeSet;
-            input.Code = item.Code;
-            input.Timestamp = item.Timestamp;
-        }
+        if (kind != "segment" || String(payload, "identityKey") is not { } identityKey)
+            return JsonDocument.Parse(payload.GetRawText());
+        var node = System.Text.Json.Nodes.JsonNode.Parse(payload.GetRawText())!.AsObject();
+        if (node.TryGetPropertyValue("activityKey", out var activityKey) &&
+            (activityKey is not System.Text.Json.Nodes.JsonValue value || !value.TryGetValue<string>(out var text) || text != identityKey))
+            throw new FactIngestException("Activity identityKey conflicts with activityKey.");
+        node.Remove("identityKey");
+        node["activityKey"] = identityKey;
+        return JsonDocument.Parse(node.ToJsonString());
     }
 
     internal static string? String(JsonElement payload, string property) => payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;

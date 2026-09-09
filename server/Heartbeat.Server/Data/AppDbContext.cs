@@ -4,13 +4,14 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace Heartbeat.Server.Data
 {
-    public class AppDbContext : DbContext
+    public partial class AppDbContext : DbContext
     {
-        // Fact times are authoritative 100ns UTC ticks; PostgreSQL timestamps are read projections only.
+        // Gaps retain their existing tick precision; Segment/Event use PostgreSQL timestamps.
         private static readonly ValueConverter<DateTimeOffset, long> FactTimestamp = new(
             value => value.UtcTicks, value => new DateTimeOffset(value, TimeSpan.Zero));
 
-        public DbSet<ObservedFact> Facts => Set<ObservedFact>();
+        public DbSet<Segment> Segments => Set<Segment>();
+        public DbSet<Event> Events => Set<Event>();
         public DbSet<FactSubjectRecord> FactSubjects => Set<FactSubjectRecord>();
         public DbSet<FactStream> FactStreams => Set<FactStream>();
         public DbSet<FactGap> FactGaps => Set<FactGap>();
@@ -18,13 +19,11 @@ namespace Heartbeat.Server.Data
         public DbSet<Device> Devices => Set<Device>();
         public DbSet<App> Apps => Set<App>();
         public DbSet<AppIdentity> AppIdentities => Set<AppIdentity>();
-        public DbSet<ActivitySegment> ActivitySegments => Set<ActivitySegment>();
         public DbSet<AppIcon> AppIcons => Set<AppIcon>();
         public DbSet<AppMergeReceipt> AppMergeReceipts => Set<AppMergeReceipt>();
         public DbSet<AppCatalogState> AppCatalogStates => Set<AppCatalogState>();
         public DbSet<AppCatalogAudit> AppCatalogAudits => Set<AppCatalogAudit>();
         public DbSet<AppCatalogOverride> AppCatalogOverrides => Set<AppCatalogOverride>();
-        public DbSet<InputEvent> InputEvents => Set<InputEvent>();
         public DbSet<Recap> Recaps => Set<Recap>();
         public DbSet<Strand> Strands => Set<Strand>();
         public DbSet<StrandMatcher> StrandMatchers => Set<StrandMatcher>();
@@ -36,33 +35,43 @@ namespace Heartbeat.Server.Data
 
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
+        private static void ConfigureFact<T>(ModelBuilder modelBuilder, string table) where T : class, IFactRecord
+        {
+            modelBuilder.Entity<T>(entity =>
+            {
+                entity.ToTable(table, t => t.HasCheckConstraint($"CK_{table}_Revision", "\"Revision\" >= 1"));
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).ValueGeneratedNever();
+                entity.Property(e => e.Source).HasMaxLength(64);
+                entity.Property(e => e.Payload).HasColumnType("jsonb").IsRequired();
+                entity.HasIndex(e => new { e.OwnerId, e.StreamId, e.FactId }).IsUnique();
+                entity.HasOne(e => e.Stream).WithMany().HasForeignKey(e => new { e.OwnerId, e.StreamId }).OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne<AppIdentity>("AppIdentity").WithMany().HasForeignKey(e => e.AppIdentityId).OnDelete(DeleteBehavior.Restrict);
+                entity.HasIndex(e => e.AppIdentityId);
+            });
+        }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+            modelBuilder.HasDbFunction(typeof(AppDbContext).GetMethod(nameof(JsonText))!)
+                .HasTranslation(args => new Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlUnaryExpression(
+                    System.Linq.Expressions.ExpressionType.Convert, args[0], typeof(string),
+                    new Microsoft.EntityFrameworkCore.Storage.StringTypeMapping("text", System.Data.DbType.String)));
+            modelBuilder.HasDbFunction(typeof(AppDbContext).GetMethod(nameof(JsonAttribute))!)
+                .HasName("jsonb_extract_path").IsBuiltIn().HasStoreType("jsonb");
             modelBuilder.Entity<FactSubjectRecord>(entity =>
             {
+                entity.ToTable("Subjects");
                 entity.HasKey(e => new { e.OwnerId, e.SubjectId });
                 entity.HasOne(e => e.Device).WithMany().HasForeignKey(e => e.DeviceId).OnDelete(DeleteBehavior.Restrict);
             });
             modelBuilder.Entity<FactStream>(entity =>
             {
+                entity.ToTable("Streams");
                 entity.HasKey(e => new { e.OwnerId, e.StreamId });
                 entity.Property(e => e.Dimensions).HasColumnType("jsonb");
                 entity.HasOne(e => e.Subject).WithMany().HasForeignKey(e => new { e.OwnerId, e.SubjectId }).OnDelete(DeleteBehavior.Restrict);
-            });
-            modelBuilder.Entity<ObservedFact>(entity =>
-            {
-                entity.Property(e => e.Start).HasConversion(FactTimestamp);
-                entity.Property(e => e.End).HasConversion(FactTimestamp);
-                entity.Property(e => e.OccurredAt).HasConversion(FactTimestamp);
-                entity.Property(e => e.ObservedAt).HasConversion(FactTimestamp);
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.Id).ValueGeneratedNever();
-                entity.Property(e => e.Payload).HasColumnType("jsonb");
-                entity.Property(e => e.LegacyRecord).HasColumnType("jsonb");
-                entity.HasIndex(e => new { e.OwnerId, e.StreamId, e.FactId }).IsUnique();
-                entity.HasIndex(e => new { e.OwnerId, e.LegacyDeviceId, e.LegacyKind, e.LegacyId });
-                entity.HasOne(e => e.Stream).WithMany().HasForeignKey(e => new { e.OwnerId, e.StreamId }).OnDelete(DeleteBehavior.Restrict);
             });
             modelBuilder.Entity<FactGap>(entity =>
             {
@@ -118,40 +127,12 @@ namespace Heartbeat.Server.Data
                     .OnDelete(DeleteBehavior.Restrict);
             });
 
-            modelBuilder.Entity<ActivitySegment>(entity =>
-            {
-                // Id 为采集端生成的 UUIDv7，兼作去重键（幂等重传，ADR-017）。
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.Id).ValueGeneratedNever();
-
-                entity.Property(e => e.Source).HasMaxLength(64);
-
-                entity.Property(e => e.Attributes).HasColumnType("jsonb");
-                entity.Property(e => e.Payload).HasColumnType("jsonb");
-                entity.HasOne(e => e.Fact).WithMany().HasForeignKey(e => e.FactKey).OnDelete(DeleteBehavior.Restrict);
-                entity.HasIndex(e => e.FactKey).IsUnique();
-
-                entity.HasOne(e => e.Device)
-                    .WithMany()
-                    .HasForeignKey(e => e.DeviceId);
-
-                entity.HasOne(e => e.App)
-                    .WithMany()
-                    .HasForeignKey(e => e.AppId);
-
-                entity.HasOne(e => e.AppIdentity)
-                    .WithMany()
-                    .HasForeignKey(e => e.AppIdentityId)
-                    .OnDelete(DeleteBehavior.Restrict);
-
-                entity.HasIndex(e => e.DeviceId);
-                entity.HasIndex(e => e.AppIdentityId);
-                entity.HasIndex(e => e.StartTime);
-
-                // 复合索引：ADR-017 的续接查询已随 ADR-018 退役（摄入走 PK upsert）；
-                // 保留用于回放/查询按 (Source, IdentityKey) 过滤分组。
-                entity.HasIndex(e => new { e.DeviceId, e.Source, e.IdentityKey, e.EndTime });
-            });
+            ConfigureFact<Segment>(modelBuilder, "Segments");
+            ConfigureFact<Event>(modelBuilder, "Events");
+            modelBuilder.Entity<Segment>().HasIndex(e => new { e.OwnerId, e.Source, e.StartTime });
+            modelBuilder.Entity<Segment>().HasIndex(e => new { e.OwnerId, e.FactId });
+            modelBuilder.Entity<Event>().HasIndex(e => new { e.OwnerId, e.Timestamp });
+            modelBuilder.Entity<Event>().HasIndex(e => new { e.OwnerId, e.FactId });
 
             modelBuilder.Entity<AppIcon>(entity =>
             {
@@ -222,28 +203,6 @@ namespace Heartbeat.Server.Data
                     $"\"Status\" <> '{AppCatalogOverrideStatuses.Active}' OR \"TargetAppId\" IS NOT NULL"));
             });
 
-            modelBuilder.Entity<InputEvent>(entity =>
-            {
-                // Id 为客户端生成的 UUIDv7，兼作去重键（上传幂等）。
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.Id).ValueGeneratedNever();
-
-                // 枚举以 short 落库。
-                entity.Property(e => e.EventType)
-                    .HasConversion<short>();
-                entity.Property(e => e.CodeSet)
-                    .HasMaxLength(64);
-
-                entity.HasOne(e => e.Device)
-                    .WithMany()
-                    .HasForeignKey(e => e.DeviceId);
-
-                entity.HasOne(e => e.Fact).WithMany().HasForeignKey(e => e.FactKey).OnDelete(DeleteBehavior.Restrict);
-                entity.HasIndex(e => e.FactKey).IsUnique();
-
-                // 计数查询走 (DeviceId, Timestamp)。
-                entity.HasIndex(e => new { e.DeviceId, e.Timestamp });
-            });
             modelBuilder.Entity<Recap>(entity =>
             {
                 entity.HasKey(e => e.Id);

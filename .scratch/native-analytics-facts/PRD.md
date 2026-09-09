@@ -2,7 +2,20 @@
 
 Status: ready-for-agent
 
-## 用户决策
+## 当前进度（2026-09-09，迁移替换完成，资源演练待做）
+
+已核对当前代码与既有快照取证，完成 [旧字段映射与身份衔接](migration-mapping.md)。
+用户再次强调第一性原理与奥卡姆剃刀：优先演进旧表、复用现有身份，不预建额外关联表或状态。
+Owner 随后授权替换。未部署的 NativeFactCustody、Designer 和 ModelSnapshot 已同步替换，
+旧表原地演进为 Segments / Events，保留原 Id；没有中间通用 Facts、永久整行档案或新别名表。
+实体、摄入与 SQL 查询已接通，IsFinal 由 Collection/Runtime 负责。独立测试验证唯一待执行
+迁移、表 OID 不变、10 / 9 列、时间类型、历史/重放/查询与失败回滚。
+最终 13 个 .NET 项目 1259 项、Frontend 274 项、Browser 96 项通过；构建、命名、契约与 EF
+模型一致性检查通过。详细证据见 issue 01。仅操作独立测试库，未访问原快照数据库或部署。
+下一步仍是完整备份副本的数据 diff、1C1G 演练及部署预算/备份策略验收；整体不是 done。
+以下按时间保留的记录不代表当前分表方案已经完成生产验收。
+
+## 用户决策与历史记录
 
 2026-09-08：Analytics 改为原生 Fact；无损迁移，保留历史记录；初次实现不 Commit。
 同日 review 后 owner 授权修复发现的问题并提交，Measurement 与生产部署仍不在本轮范围。

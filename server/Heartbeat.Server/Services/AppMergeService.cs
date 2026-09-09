@@ -90,9 +90,9 @@ public class AppMergeService(AppDbContext db, TimeProvider? clock = null)
             .Where(x => x.AppId == source.Id)
             .OrderBy(x => x.Key)
             .ToListAsync(cancellationToken);
-        var legacySegments = await db.ActivitySegments
+        var segmentCount = await db.ActivitySegments
             .Where(x => x.AppId == source.Id)
-            .ToListAsync(cancellationToken);
+            .CountAsync(cancellationToken);
         var currentDevices = await db.Devices
             .Where(x => x.CurrentAppIdentity != null && x.CurrentAppIdentity.AppId == source.Id)
             .ToListAsync(cancellationToken);
@@ -188,7 +188,6 @@ public class AppMergeService(AppDbContext db, TimeProvider? clock = null)
             Source = source,
             Target = target,
             Identities = identities,
-            LegacySegments = legacySegments,
             CurrentDevices = currentDevices,
             Icons = icons,
             QuestionCaches = questionCaches,
@@ -204,7 +203,7 @@ public class AppMergeService(AppDbContext db, TimeProvider? clock = null)
                 Source = ToInfo(source),
                 Target = ToInfo(target),
                 AppIdentityKeys = identities.Select(x => x.Key).ToList(),
-                LegacySegmentsRebound = legacySegments.Count,
+                LegacySegmentsRebound = segmentCount,
                 CurrentDevicesAffected = currentDevices.Count,
                 Icons = iconImpacts,
                 Knowledge = new AppMergeKnowledgeImpact
@@ -238,7 +237,6 @@ public class AppMergeService(AppDbContext db, TimeProvider? clock = null)
         // 显式管理员归并即完成产品分类；即使目标原本也是一对一 provisional，也不再是未知产品。
         plan.Target.IsProvisional = false;
         foreach (var identity in plan.Identities) identity.AppId = plan.Target.Id;
-        foreach (var segment in plan.LegacySegments) segment.AppId = plan.Target.Id;
         foreach (var device in plan.CurrentDevices) device.CurrentApp = plan.Target.DisplayName;
 
         foreach (var ownerIcons in plan.Icons.GroupBy(x => x.OwnerId))
@@ -394,23 +392,23 @@ public class AppMergeService(AppDbContext db, TimeProvider? clock = null)
         string category,
         Guid rowId,
         KnowledgeChange<T> change) => new()
-    {
-        Category = category,
-        RowId = rowId,
-        BeforeStepsJson = change.OldJson,
-        AfterStepsJson = change.NewJson
-    };
+        {
+            Category = category,
+            RowId = rowId,
+            BeforeStepsJson = change.OldJson,
+            AfterStepsJson = change.NewJson
+        };
 
     private static AppMergeKnowledgeDeduplication ToDeduplication<T>(
         string category,
         KnowledgeDeduplication<T> deduplication,
         Func<T, string?> statusOf) => new()
-    {
-        Category = category,
-        KeptRowId = RowId(deduplication.Kept),
-        RemovedRowIds = deduplication.Removed.Select(RowId).ToList(),
-        KeptStatus = statusOf(deduplication.Kept)
-    };
+        {
+            Category = category,
+            KeptRowId = RowId(deduplication.Kept),
+            RemovedRowIds = deduplication.Removed.Select(RowId).ToList(),
+            KeptStatus = statusOf(deduplication.Kept)
+        };
 
     private static Guid RowId<T>(T row) => row switch
     {
@@ -425,7 +423,6 @@ public class AppMergeService(AppDbContext db, TimeProvider? clock = null)
         public required App Source { get; init; }
         public required App Target { get; init; }
         public required List<AppIdentity> Identities { get; init; }
-        public required List<ActivitySegment> LegacySegments { get; init; }
         public required List<Device> CurrentDevices { get; init; }
         public required List<AppIcon> Icons { get; init; }
         public required List<DailyQuestionSet> QuestionCaches { get; init; }

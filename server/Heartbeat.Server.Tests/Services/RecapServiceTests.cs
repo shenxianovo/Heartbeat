@@ -225,7 +225,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     {
         using var db = CreateDbContext();
         var window = DayWindow(PastDay);
-        db.ActivitySegments.Add(SystemSegment(window.Start.AddHours(9), window.Start.AddHours(11)));
+        db.SeedSegments(SystemSegment(window.Start.AddHours(9), window.Start.AddHours(11)));
         db.Recaps.Add(new Recap
         {
             OwnerId = "user-1",
@@ -272,7 +272,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     {
         using var db = CreateDbContext();
         var window = DayWindow(localDate, timeZone, start, endExclusive);
-        db.ActivitySegments.Add(SystemSegment(window.Start.AddHours(-1), window.EndExclusive.AddHours(1)));
+        db.SeedSegments(SystemSegment(window.Start.AddHours(-1), window.EndExclusive.AddHours(1)));
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator();
@@ -293,7 +293,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
             "America/New_York",
             "2026-03-08T05:00:00Z",
             "2026-03-09T04:00:00Z");
-        db.ActivitySegments.Add(SystemSegment(
+        db.SeedSegments(SystemSegment(
             DateTimeOffset.Parse("2026-03-08T13:00:00Z"),
             DateTimeOffset.Parse("2026-03-08T14:00:00Z")));
         await db.SaveChangesAsync();
@@ -326,7 +326,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task NeverGenerated_NonEmptyDay_ReadsAsNotGenerated_NoLlmCall()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator();
@@ -345,7 +345,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task Generated_ThenRead_ServedFromCache()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator();
@@ -368,7 +368,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task Regenerate_OverwritesCache_NotASecondRow()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator();
@@ -386,7 +386,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task Today_FreshWatermark_NotSegmentStale()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(FixedDay.AddHours(8), FixedDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(FixedDay.AddHours(8), FixedDay.AddHours(11)));
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator();
@@ -403,7 +403,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task Today_StaleWatermark_HintsOnly_DoesNotRegenerate()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(FixedDay.AddHours(8), FixedDay.AddHours(9)));
+        db.SeedSegments(SystemSegment(FixedDay.AddHours(8), FixedDay.AddHours(9)));
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator();
@@ -411,7 +411,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         await GenerateAsync(svc, FixedNoon); // 水位 = 09:00
 
         // 新段到达：最新段尾 11:30 距缓存水位 09:00 有 2.5h > 1h 阈值
-        db.ActivitySegments.Add(SystemSegment(FixedDay.AddHours(10.5), FixedDay.AddHours(11.5)));
+        db.SeedSegments(SystemSegment(FixedDay.AddHours(10.5), FixedDay.AddHours(11.5)));
         await db.SaveChangesAsync();
 
         var result = await svc.GetDailyRecapAsync("user-1", DayWindow(FixedNoon));
@@ -426,7 +426,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task HistoricalDay_CacheHit_NeverSegmentStale_KnowledgeStaleStillComputed()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         var strand = HittingStrand();
         db.Strands.Add(strand);
         await db.SaveChangesAsync();
@@ -436,7 +436,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         await GenerateAsync(svc, PastDay);
 
         // 迟到的段落进已结束的窗口：段层面永不过期，判脏只剩知识那把尺。
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(20), PastDay.AddHours(22)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(20), PastDay.AddHours(22)));
         strand.Gloss = "改名后的项目";
         await db.SaveChangesAsync();
 
@@ -451,7 +451,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task CachedOnly_MissingRecap_ReturnsNullWithoutGeneration()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator();
@@ -467,7 +467,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task CachedOnly_ExistingRecap_ReturnsItWithoutRegeneration()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator();
@@ -488,7 +488,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         var otherDevice = new Device { OwnerId = "user-2", HardwareId = "hw-2", DeviceName = "Other PC" };
         db.Devices.Add(otherDevice);
         await db.SaveChangesAsync();
-        db.ActivitySegments.Add(new ActivitySegment
+        db.SeedSegments(new ActivitySegment
         {
             OwnerId = otherDevice.OwnerId,
             Id = Guid.CreateVersion7(),
@@ -516,7 +516,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task Generate_ThreeChunks_DeltasThenDone_CachesJoinedNarrative()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator { Chunks = ["第一段。", "第二段。", "第三段。"] };
@@ -534,7 +534,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task Generate_FailsBeforeFirstChunk_ErrorEvent_CacheUntouched()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator();
@@ -557,7 +557,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task Generate_FailsAfterSecondChunk_ErrorEvent_CacheUntouched()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator();
@@ -581,7 +581,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task Generate_ConsumerBreaksMidStream_NothingCached()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator { Chunks = ["一", "二", "三"] };
@@ -605,7 +605,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task Generate_CompletedThenRequestCancelled_StillPersists()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator { Chunks = ["钱", "花完了"] };
@@ -672,7 +672,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task HistoricalRead_RelevantKnowledgeChanged_StaleHintWithoutLlm()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         var strand = HittingStrand();
         db.Strands.Add(strand);
         await db.SaveChangesAsync();
@@ -697,7 +697,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task HistoricalRead_UnrelatedKnowledgeChange_NotStale()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator();
@@ -738,7 +738,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     {
         using var db = CreateDbContext();
         var window = DayWindow(PastDay);
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         db.Recaps.Add(new Recap
         {
             OwnerId = "user-1",
@@ -770,7 +770,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task Regenerate_WritesNewHash_ClearsStale()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         var strand = HittingStrand();
         db.Strands.Add(strand);
         await db.SaveChangesAsync();
@@ -794,7 +794,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task RegenerateFailure_KeepsLastGoodNarrativeAndHash()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator();
@@ -817,7 +817,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task RecurrenceProbe_NeverEntersProjection_NoStale()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         var episode = new Episode
         {
             Id = Guid.CreateVersion7(),
@@ -858,7 +858,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task DayEpisode_EntersDigest_AndChangesHash()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator();
@@ -888,7 +888,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task Today_SegmentStaleHint_IndependentOfKnowledge()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(FixedDay.AddHours(8), FixedDay.AddHours(9)));
+        db.SeedSegments(SystemSegment(FixedDay.AddHours(8), FixedDay.AddHours(9)));
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator();
@@ -896,7 +896,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         await GenerateAsync(svc, FixedNoon);
 
         // 段水位落后与知识判脏是两把独立的尺，且现在形状一致：都只提示。
-        db.ActivitySegments.Add(SystemSegment(FixedDay.AddHours(10.5), FixedDay.AddHours(11.5)));
+        db.SeedSegments(SystemSegment(FixedDay.AddHours(10.5), FixedDay.AddHours(11.5)));
         await db.SaveChangesAsync();
 
         var result = await svc.GetDailyRecapAsync("user-1", DayWindow(FixedNoon));
@@ -910,7 +910,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task PublicRead_CacheOnly_NeverStaleHint_NoKnowledgeAccess()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         var strand = HittingStrand();
         db.Strands.Add(strand);
         await db.SaveChangesAsync();
@@ -939,7 +939,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         // 本次线上 bug 的回归测试：8/7 的 digest 让思考期长达 175s，那段时间每秒好几帧，但
         // delta.content 全是空串。旧的"首个正文 token 判死线"因此把一条活得很好的流判成超时。
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         await db.SaveChangesAsync();
 
         // 每块间隔 80ms < 静默线 250ms，但思考总时长 400ms > 静默线：只有"整段思考"超线，
@@ -977,7 +977,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task Generate_UpstreamTotallySilent_SilenceError_NothingCached()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator { SilentForever = true };
@@ -998,7 +998,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task Generate_ThinksForeverWithoutContent_OverallTimeoutError_NothingCached()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         await db.SaveChangesAsync();
 
         // 帧一直来（静默线永远不到期），但整段上限必须兜住：思考也是钱，不能无限思考。
@@ -1021,7 +1021,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task Generate_ReasoningChunks_EmitThinkingEvents_NeverEnterNarrative()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator
@@ -1051,7 +1051,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task Generate_ClientDisconnect_BeatsBothTimeouts_NoErrorEvent_NothingCached()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         await db.SaveChangesAsync();
 
         var fake = new GatedCancellationGenerator();
@@ -1091,7 +1091,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task Generate_Timeout_WaitsForUpstreamCleanupBeforeDisposing(bool silenceTimeout)
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         await db.SaveChangesAsync();
         var fake = new GatedCancellationGenerator();
         var deadline = TimeSpan.FromMilliseconds(1);
@@ -1141,7 +1141,7 @@ public class RecapServiceTests(PostgresContainerFixture fixture) : PostgresTestB
     public async Task Generate_WhileWaitingForChunks_KeepsPinging()
     {
         using var db = CreateDbContext();
-        db.ActivitySegments.Add(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
+        db.SeedSegments(SystemSegment(PastDay.AddHours(9), PastDay.AddHours(11)));
         await db.SaveChangesAsync();
 
         var fake = new FakeGenerator { SilentForever = true };

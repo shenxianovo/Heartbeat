@@ -48,12 +48,12 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
         batch.Facts[0].ObservedAt = Start.AddSeconds(1);
         batch.Facts[0].Payload = JsonDocument.Parse("""{"attributes":{"number":1.0},"title":"Page","identityKey":"https://example.com"}""").RootElement;
         await store.IngestAsync("owner", batch);
-        Assert.Single(await db.Facts.ToListAsync());
+        Assert.Single(await db.Segments.ToListAsync());
         batch.Facts.Insert(0, new FactSnapshot { StreamId = batch.Streams[0].StreamId, FactId = Guid.CreateVersion7(), Revision = 1, Start = Start, End = Start.AddSeconds(2), IsFinal = false, Payload = Payload() });
         batch.Facts[1].Payload = JsonSerializer.SerializeToElement(new { identityKey = "https://changed.example", title = "Changed", attributes = new { } });
         var error = await Assert.ThrowsAsync<FactIngestException>(() => store.IngestAsync("owner", batch));
         Assert.True(error.IsConflict);
-        Assert.Single(await db.Facts.ToListAsync());
+        Assert.Single(await db.Segments.ToListAsync());
         Assert.Single(await db.ActivitySegments.ToListAsync());
     }
 
@@ -93,14 +93,12 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
         var legacy = LegacySegment(batch);
         var store = new FactStore(db);
         await store.ImportSegmentsAsync(device.Id, [legacy]);
-        var oldKey = (await db.Facts.SingleAsync()).Id;
-        var archive = (await db.Facts.SingleAsync()).LegacyRecord;
+        var oldKey = (await db.Segments.SingleAsync()).Id;
         batch.Facts[0].Revision = 9;
         batch.Facts[0].End = Start.AddMinutes(1);
         await store.IngestAsync("owner", batch);
         Assert.Single(await db.Devices.ToListAsync());
-        Assert.Equal(oldKey, (await db.Facts.SingleAsync()).Id);
-        Assert.Equal(archive, (await db.Facts.SingleAsync()).LegacyRecord);
+        Assert.Equal(oldKey, (await db.Segments.SingleAsync()).Id);
         await store.ImportSegmentsAsync(device.Id, [legacy]);
         Assert.Equal(Start.AddMinutes(1), (await db.ActivitySegments.SingleAsync()).EndTime);
     }
@@ -119,7 +117,7 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
         await store.IngestAsync("owner", batch);
         await store.ImportSegmentsAsync(deviceId, [legacy]);
         Assert.Equal(Start.AddSeconds(1), (await db.ActivitySegments.SingleAsync()).EndTime);
-        Assert.Equal(2, (await db.Facts.SingleAsync()).Revision);
+        Assert.Equal(2, (await db.Segments.SingleAsync()).Revision);
     }
 
     [Fact]
@@ -131,9 +129,9 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
         await store.IngestAsync("owner", batch);
         batch.Facts[0].Payload = JsonSerializer.SerializeToElement(new { identityKey = "other-owner" });
         await store.IngestAsync("other", batch);
-        Assert.Equal(2, await db.Facts.CountAsync());
+        Assert.Equal(2, await db.Segments.CountAsync());
         await Assert.ThrowsAsync<FactIngestException>(() => store.IngestAsync("owner", batch));
-        Assert.Equal(2, await db.Facts.CountAsync());
+        Assert.Equal(2, await db.Segments.CountAsync());
     }
 
     [Fact]
@@ -148,7 +146,7 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
         batch.Facts[0].Revision = 1;
         batch.Facts[0].Payload = JsonDocument.Parse("{\"duplicate\":1,\"duplicate\":2}").RootElement;
         await Assert.ThrowsAsync<FactIngestException>(() => store.IngestAsync("owner", batch));
-        Assert.Empty(await db.Facts.ToListAsync());
+        Assert.Empty(await db.Segments.ToListAsync());
         Assert.Empty(await db.Apps.ToListAsync());
         Assert.Empty(await db.FactSubjects.ToListAsync());
     }
@@ -183,10 +181,10 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
         await store.ImportInputEventsAsync(device.Id, new InputEventUploadRequest { Events = [item] });
         Assert.Equal(1, (await new InputEventService(db).GetCountsAsync("owner", null, null, null)).KeyboardTotal);
         Assert.Equal(InputCodeSets.WindowsVirtualKeyV1, (await db.InputEvents.SingleAsync()).CodeSet);
-        Assert.NotNull((await db.Facts.SingleAsync()).LegacyRecord);
+        Assert.Equal(item.Id, (await db.Events.SingleAsync()).Id);
         batch.Facts[0].Revision = 2;
         await store.IngestAsync("owner", batch);
-        Assert.Equal(2, (await db.Facts.SingleAsync()).Revision);
+        Assert.Equal(2, (await db.Events.SingleAsync()).Revision);
     }
 
     [Fact]
@@ -202,7 +200,7 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
         var third = EventBatch();
         third.Facts[0].FactId = first.Facts[0].FactId;
         await store.IngestAsync("owner", third);
-        Assert.Equal(3, await db.Facts.CountAsync());
+        Assert.Equal(3, await db.Events.CountAsync());
         Assert.Equal(3, (await new InputEventService(db).GetCountsAsync("owner", null, null, null)).KeyboardTotal);
     }
 
@@ -216,12 +214,12 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
         await store.ImportInputEventsAsync("owner", "first-device", "First", request);
         await Assert.ThrowsAsync<FactIngestException>(() => store.ImportInputEventsAsync("other", "other-device", "Other", request));
         Assert.Equal("owner", (await db.Devices.SingleAsync()).OwnerId);
-        Assert.Equal("owner", (await db.Facts.SingleAsync()).OwnerId);
+        Assert.Equal("owner", (await db.Events.SingleAsync()).OwnerId);
         Assert.Single(await db.InputEvents.ToListAsync());
     }
 
     [Fact]
-    public async Task NativeTimes_SurviveDatabaseRoundTripsWithoutChangingRevisionOrGapIdentity()
+    public async Task NativeTimes_UseMicrosecondsAcrossRoundTrips_WhileGapsRetainTicks()
     {
         var batch = SegmentBatch();
         var snapshot = batch.Facts[0];
@@ -230,17 +228,19 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
         snapshot.ObservedAt = snapshot.Start.Value.AddTicks(3);
         batch.Gaps.Add(new FactGapSnapshot
         {
-            StreamId = snapshot.StreamId, GapId = Guid.CreateVersion7(),
-            Start = snapshot.Start.Value, End = snapshot.Start.Value.AddTicks(1), Reason = "lost"
+            StreamId = snapshot.StreamId,
+            GapId = Guid.CreateVersion7(),
+            Start = snapshot.Start.Value,
+            End = snapshot.Start.Value.AddTicks(1),
+            Reason = "lost"
         });
         await using (var db = CreateDbContext())
             await new FactStore(db).IngestAsync("owner", batch);
         await using (var db = CreateDbContext())
         {
-            var fact = await db.Facts.SingleAsync();
-            Assert.Equal(snapshot.Start, fact.Start);
-            Assert.Equal(snapshot.End, fact.End);
-            Assert.Equal(snapshot.ObservedAt, fact.ObservedAt);
+            var fact = await db.Segments.SingleAsync();
+            Assert.Equal(snapshot.Start!.Value.AddTicks(-1), fact.StartTime);
+            Assert.Equal(snapshot.End!.Value.AddTicks(-9), fact.EndTime);
             var gap = await db.FactGaps.SingleAsync();
             Assert.Equal(batch.Gaps[0].Start, gap.Start);
             Assert.Equal(batch.Gaps[0].End, gap.End);
@@ -252,19 +252,19 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
             await new FactStore(db).IngestAsync("owner", batch);
         await using (var db = CreateDbContext())
         {
-            Assert.Equal(2, (await db.Facts.SingleAsync()).Revision);
+            Assert.Equal(2, (await db.Segments.SingleAsync()).Revision);
             Assert.Single(await db.FactGaps.ToListAsync());
         }
-        // Native identity cannot be changed even within the same PostgreSQL microsecond.
+        // A change beyond the stored microsecond still changes native identity.
         snapshot.Revision = 3;
-        snapshot.Start = snapshot.Start.Value.AddTicks(1);
+        snapshot.Start = snapshot.Start.Value.AddTicks(10);
         await using (var db = CreateDbContext())
             Assert.True((await Assert.ThrowsAsync<FactIngestException>(() =>
                 new FactStore(db).IngestAsync("owner", batch))).IsConflict);
     }
 
     [Fact]
-    public async Task LegacyInputReplay_UsesHistoricalPrecisionThenPreservesNativeTicks()
+    public async Task LegacyInputReplay_UsesTheSameDatabasePrecisionAsNative()
     {
         var batch = EventBatch();
         var snapshot = batch.Facts[0];
@@ -280,10 +280,9 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
             await new FactStore(db).IngestAsync("owner", batch);
         await using (var db = CreateDbContext())
         {
-            var fact = await db.Facts.SingleAsync();
-            Assert.Equal("native", fact.Origin);
-            Assert.Equal(originalTime, fact.OccurredAt);
-            Assert.NotNull(fact.LegacyRecord);
+            var fact = await db.Events.SingleAsync();
+            Assert.Equal("native", (await db.FactStreams.SingleAsync(s => s.StreamId == fact.StreamId)).Origin);
+            Assert.Equal(originalTime.AddTicks(-1), fact.Timestamp);
             Assert.Single(await db.InputEvents.ToListAsync());
             await new FactStore(db).IngestAsync("owner", batch);
         }
@@ -291,6 +290,10 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
 
     [Theory]
     [InlineData("[1,2,3]")]
+    [InlineData("null")]
+    [InlineData("{\"eventType\":\"keyDown\",\"codeSet\":\"windows-vk-v1\",\"code\":9007199254740991}")]
+    [InlineData("{\"eventType\":\"keyDown\",\"codeSet\":\"windows-vk-v1\",\"code\":true}")]
+    [InlineData("{\"eventType\":\"mouseButton\",\"codeSet\":\"windows-vk-v1\",\"code\":-32769}")]
     [InlineData("\"unstructured observation\"")]
     [InlineData("{\"eventType\":\"keyDown\",\"codeSet\":\"heartbeat-key-position-v1\",\"code\":\"future encoding\"}")]
     [InlineData("{\"eventType\":\"keyDown\",\"codeSet\":\"future-input\",\"code\":1}")]
@@ -307,19 +310,122 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
         db.ChangeTracker.Clear();
         await store.IngestAsync("owner", batch);
         Assert.Empty(await db.InputEvents.ToListAsync());
-        var saved = await db.Facts.SingleAsync();
+        var saved = await db.Events.SingleAsync();
         Assert.Equal(2, saved.Revision);
-        Assert.True(JsonElement.DeepEquals(batch.Facts[0].Payload!.Value, JsonDocument.Parse(saved.Payload!).RootElement));
+        Assert.True(JsonElement.DeepEquals(batch.Facts[0].Payload!.Value, saved.Payload.RootElement));
     }
 
     private static JsonElement Payload() => JsonSerializer.SerializeToElement(new { identityKey = "https://example.com", title = "Page", attributes = new { url = "https://example.com/?original=1" } });
+
+    [Fact]
+    public async Task LegacyUpdateWithoutAttributes_PreservesUnknownTopLevelPayloadMembers()
+    {
+        await using var db = CreateDbContext();
+        var batch = SegmentBatch();
+        batch.Facts[0].Payload = JsonSerializer.SerializeToElement(new
+        {
+            identityKey = "https://example.com",
+            title = "Page",
+            extra = new { original = true },
+            attributes = new { url = "https://example.com/?original=1" }
+        });
+        var legacy = LegacySegment(batch);
+        var device = new Device { OwnerId = "owner", HardwareId = "hardware", DeviceName = "PC" };
+        db.Devices.Add(device);
+        await db.SaveChangesAsync();
+        var store = new FactStore(db);
+        await store.ImportSegmentsAsync(device.Id, [legacy]);
+        legacy.Attributes = null;
+        legacy.EndTime = legacy.EndTime.AddMinutes(1);
+        await store.ImportSegmentsAsync(device.Id, [legacy]);
+        var row = await db.Segments.SingleAsync();
+        Assert.True(row.Payload.RootElement.GetProperty("extra").GetProperty("original").GetBoolean());
+        Assert.Equal(2, row.Revision);
+        // A synthetic import revision must not outrank the first native snapshot.
+        await store.IngestAsync("owner", batch);
+        Assert.Equal(1, row.Revision);
+        Assert.Equal(batch.Facts[0].FactId, row.FactId);
+        Assert.Single(await db.Segments.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ActivityKeyRenameConflict_RollsBackBeforeKeepingAnyFact()
+    {
+        await using var db = CreateDbContext();
+        var batch = SegmentBatch();
+        batch.Facts[0].Payload = JsonSerializer.SerializeToElement(new { identityKey = "old", activityKey = "different" });
+        await Assert.ThrowsAsync<FactIngestException>(() => new FactStore(db).IngestAsync("owner", batch));
+        Assert.Empty(await db.Segments.ToListAsync());
+        Assert.Empty(await db.FactStreams.ToListAsync());
+        Assert.Empty(await db.Devices.ToListAsync());
+    }
+
+    [Fact]
+    public async Task SystemSegmentWithoutApp_IsKeptWithoutInventingAnApplication()
+    {
+        await using var db = CreateDbContext();
+        var batch = SegmentBatch();
+        batch.Streams[0].Source = "system";
+        await new FactStore(db).IngestAsync("owner", batch);
+        Assert.Single(await db.Segments.ToListAsync());
+        Assert.Empty(await new UsageService(db).GetUsageAsync("owner", null, null, null));
+        Assert.Empty(await new AppService(db).GetAppsForUserAsync("owner"));
+    }
+
+    [Theory]
+    [InlineData("segment")]
+    [InlineData("event")]
+    public async Task LegacyEndpoint_CannotUseANativeDatabaseRowIdAsAnImportIdentity(string kind)
+    {
+        await using var db = CreateDbContext();
+        var batch = kind == "segment" ? SegmentBatch() : EventBatch();
+        var store = new FactStore(db);
+        await store.IngestAsync("owner", batch);
+        var deviceId = (await db.Devices.SingleAsync()).Id;
+        IFactRecord fact = kind == "segment" ? await db.Segments.SingleAsync() : await db.Events.SingleAsync();
+        if (kind == "segment")
+        {
+            var old = LegacySegment(batch);
+            old.Id = fact.Id;
+            old.EndTime = old.EndTime.AddHours(1);
+            await Assert.ThrowsAsync<FactIngestException>(() => store.ImportSegmentsAsync(deviceId, [old]));
+            Assert.Equal(batch.Facts[0].End, (await db.Segments.SingleAsync()).EndTime);
+        }
+        else
+        {
+            var request = new InputEventUploadRequest { Events = [new InputEventItem
+            {
+                Id = fact.Id, Timestamp = Start, EventType = InputEventType.KeyDown,
+                CodeSet = InputCodeSets.WindowsVirtualKeyV1, Code = 65
+            }] };
+            await Assert.ThrowsAsync<FactIngestException>(() => store.ImportInputEventsAsync(deviceId, request));
+            Assert.Single(await db.Events.ToListAsync());
+        }
+    }
+
+    [Fact]
+    public async Task Pre2000Event_ReplayUsesTheDatabaseMicrosecondEncoding()
+    {
+        var batch = EventBatch();
+        batch.Facts[0].OccurredAt = new DateTimeOffset(1999, 12, 31, 23, 59, 59, TimeSpan.Zero).AddTicks(9);
+        await using (var db = CreateDbContext()) await new FactStore(db).IngestAsync("owner", batch);
+        await using (var db = CreateDbContext())
+        {
+            await new FactStore(db).IngestAsync("owner", batch);
+            Assert.Equal(batch.Facts[0].OccurredAt!.Value.AddTicks(1), (await db.Events.SingleAsync()).Timestamp);
+        }
+    }
 
     internal static FactUploadRequest SegmentBatch(string subjectKind = "machine")
     {
         var stream = new FactStreamDefinition
         {
-            StreamId = Guid.NewGuid(), CollectorInstanceId = Guid.NewGuid(), Subject = new FactSubject { SubjectId = Guid.NewGuid(), Kind = subjectKind, HardwareId = subjectKind == "machine" ? "hardware" : null, DisplayName = "Observed subject" },
-            OutputId = "activity", Source = "browser", FactKind = "segment"
+            StreamId = Guid.NewGuid(),
+            CollectorInstanceId = Guid.NewGuid(),
+            Subject = new FactSubject { SubjectId = Guid.NewGuid(), Kind = subjectKind, HardwareId = subjectKind == "machine" ? "hardware" : null, DisplayName = "Observed subject" },
+            OutputId = "activity",
+            Source = "browser",
+            FactKind = "segment"
         };
         return new FactUploadRequest { Streams = [stream], Facts = [new FactSnapshot { StreamId = stream.StreamId, FactId = Guid.CreateVersion7(), Revision = 1, Start = Start, End = Start.AddMinutes(10), IsFinal = false, Payload = Payload() }] };
     }

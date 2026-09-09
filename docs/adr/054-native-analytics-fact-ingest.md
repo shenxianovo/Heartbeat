@@ -2,9 +2,10 @@
 
 ## Status: Accepted
 
-2026-09-09：物理存储布局正在由 [ADR-055](055-fact-storage-by-family.md) 重新设计。
-Owner 已确认按家族分表；本文的通用 `Facts`、完整查询投影与永久整行档案描述保留为原方案记录，
-不能作为新方案已完成或可部署的依据。原生协议及事实语义仍有效。
+2026-09-09：下文通用 Facts、完整查询投影、永久整行档案、Segment/Event 的 100ns 存储及
+服务端终态校验已由 [ADR-055](055-fact-storage-by-family.md) 替代。当前代码直接保存家族事实，
+活动/输入结果在查询时生成；终态归 Collection/Runtime，Analytics 只比较已保存时间和 Payload。
+下文保留原方案记录，不作为现行迁移执行步骤；实际部署与资源演练仍未完成。
 
 ## Date: 2026-09-08
 

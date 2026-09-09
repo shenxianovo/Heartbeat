@@ -54,10 +54,13 @@ Desktop 的平台观察回调不执行协议 I/O：system Collector 先把 Segme
 
 ## Analytics Fact 边界
 
-`POST /api/v1/facts` 原子接收自包含 Stream/schema 定义、Fact 快照与 Gap。Runtime 保留未确认数据，
-成功响应仅确认相应版本。Analytics 持久化原生 Subject/Stream/Fact，并同事务维护活动与输入读投影；
-Dashboard 获取结构化 Payload 与来源元数据。历史记录按 LegacyImport 导入且保留原始档案，
-旧 segment/input 入口只排空升级前缓存。详见 [ADR-054](../adr/054-native-analytics-fact-ingest.md)。
+`POST /api/v1/facts` 原子接收自包含 Subject/Stream 定义、Fact 快照与 Gap。Runtime 保留未确认数据，
+成功响应仅确认相应版本。Analytics 将最新事实直接保存到 Segments / Events，每条只有一份 Payload；
+ActivitySegment / InputEvent 是查询时由 SQL 生成的业务结果，不再单独持久化。
+Dashboard 获取结构化 Payload 与来源元数据。旧表原地迁入家族表，旧缓存通过确定性身份关联，
+不保留永久整行档案；旧 segment/input 入口只排空升级前缓存。Segment/Event 使用数据库微秒精度，
+Collection/Runtime 保管终态，Analytics 不存 IsFinal；Gap 保留原有 tick 精度。
+详见 [ADR-055](../adr/055-fact-storage-by-family.md)。
 
 ## ExternalHost 身份语义
 

@@ -45,7 +45,7 @@ public class ReportServiceTests(PostgresContainerFixture fixture) : PostgresTest
         var collector = SystemSegment(day.AddHours(9), day.AddHours(10));
         collector.Source = "reference.optional";
         collector.IdentityKey = "reference:activity";
-        db.ActivitySegments.AddRange(system, collector);
+        db.SeedSegments(system, collector);
         await db.SaveChangesAsync();
 
         var service = new ReportService(db);
@@ -66,8 +66,8 @@ public class ReportServiceTests(PostgresContainerFixture fixture) : PostgresTest
         // 跨午夜段（ADR-018 后长段不再被 flush 截断，跨窗成为常态，如整夜 away）
         var day1 = new DateTimeOffset(2025, 6, 15, 0, 0, 0, TimeSpan.Zero);
         var day2 = day1.AddDays(1);
-        db.ActivitySegments.Add(SystemSegment(day1.AddHours(23), day2.AddHours(1))); // 23:00–次日 01:00
-        db.ActivitySegments.Add(SystemSegment(day2.AddHours(10), day2.AddHours(11)));
+        db.SeedSegments(SystemSegment(day1.AddHours(23), day2.AddHours(1))); // 23:00–次日 01:00
+        db.SeedSegments(SystemSegment(day2.AddHours(10), day2.AddHours(11)));
         await db.SaveChangesAsync();
 
         var report1 = (await svc.GetDailyReportAsync("user-1", null, DayWindow(day1, day2))).Report!;
@@ -88,8 +88,8 @@ public class ReportServiceTests(PostgresContainerFixture fixture) : PostgresTest
 
         var day = new DateTimeOffset(2025, 6, 15, 0, 0, 0, TimeSpan.Zero);
         // 恰好在窗口边界结束/开始的段：半开窗口 [day, day+1)，零重叠不计
-        db.ActivitySegments.Add(SystemSegment(day.AddHours(-2), day));
-        db.ActivitySegments.Add(SystemSegment(day.AddDays(1), day.AddDays(1).AddHours(2)));
+        db.SeedSegments(SystemSegment(day.AddHours(-2), day));
+        db.SeedSegments(SystemSegment(day.AddDays(1), day.AddDays(1).AddHours(2)));
         await db.SaveChangesAsync();
 
         var report = (await svc.GetDailyReportAsync(
@@ -107,7 +107,7 @@ public class ReportServiceTests(PostgresContainerFixture fixture) : PostgresTest
         using var db = CreateDbContext();
         var start = DateTimeOffset.Parse(startText);
         var end = DateTimeOffset.Parse(endText);
-        db.ActivitySegments.AddRange(
+        db.SeedSegments(
             SystemSegment(start.AddHours(-1), start.AddHours(1)),
             SystemSegment(end.AddHours(-1), end.AddHours(1)),
             SystemSegment(start.AddHours(-2), start),
@@ -137,8 +137,8 @@ public class ReportServiceTests(PostgresContainerFixture fixture) : PostgresTest
 
         var start = DateTimeOffset.Parse("2026-03-08T05:00:00Z");
         var end = DateTimeOffset.Parse("2026-03-09T04:00:00Z");
-        db.ActivitySegments.Add(SystemSegment(start, start.AddHours(1)));
-        db.ActivitySegments.Add(new ActivitySegment
+        db.SeedSegments(SystemSegment(start, start.AddHours(1)));
+        db.SeedSegments(new ActivitySegment
         {
             OwnerId = secondDevice.OwnerId,
             Id = Guid.CreateVersion7(),
@@ -187,7 +187,7 @@ public class ReportServiceTests(PostgresContainerFixture fixture) : PostgresTest
         using var db = CreateDbContext();
         var start = DateTimeOffset.Parse(startText);
         var end = DateTimeOffset.Parse(endText);
-        db.ActivitySegments.AddRange(
+        db.SeedSegments(
             SystemSegment(start.AddHours(-1), start.AddHours(1)),
             SystemSegment(end.AddHours(-1), end.AddHours(1)),
             SystemSegment(start.AddHours(-2), start),
@@ -217,8 +217,8 @@ public class ReportServiceTests(PostgresContainerFixture fixture) : PostgresTest
 
         var start = DateTimeOffset.Parse("2026-10-26T04:00:00Z");
         var end = DateTimeOffset.Parse("2026-11-02T05:00:00Z");
-        db.ActivitySegments.Add(SystemSegment(start, start.AddHours(1)));
-        db.ActivitySegments.Add(new ActivitySegment
+        db.SeedSegments(SystemSegment(start, start.AddHours(1)));
+        db.SeedSegments(new ActivitySegment
         {
             OwnerId = secondDevice.OwnerId,
             Id = Guid.CreateVersion7(),

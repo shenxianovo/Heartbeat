@@ -34,7 +34,7 @@ public sealed class RecapHttpTests(PostgresContainerFixture fixture) : PostgresT
         var app = new App { Name = "VSCode" };
         db.AddRange(device, app);
         await db.SaveChangesAsync();
-        db.ActivitySegments.Add(new ActivitySegment
+        db.SeedSegments(new ActivitySegment
         {
             OwnerId = device.OwnerId,
             Id = Guid.CreateVersion7(),

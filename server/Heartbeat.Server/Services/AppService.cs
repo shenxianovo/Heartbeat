@@ -16,7 +16,7 @@ namespace Heartbeat.Server.Services
             // 只看 system 段：App 列表 = 该用户前台用过的应用。插件段的 AppId 是关联提示，不定义"用过"。
             return await _db.ActivitySegments
                 .Where(u => u.OwnerId == ownerId)
-                .Where(u => u.Source == ActivitySources.System && u.DeviceId != null)
+                .Where(u => u.Source == ActivitySources.System && u.DeviceId != null && u.AppIdentityId != null)
                 .Select(u => new
                 {
                     Id = u.AppIdentityId != null ? u.AppIdentity!.AppId : u.AppId!.Value,

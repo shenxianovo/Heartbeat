@@ -1,26 +1,19 @@
+using System.Text.Json;
+
 namespace Heartbeat.Server.Entities;
 
-/// <summary>Analytics owns the latest complete snapshot; legacy activity/input rows are derived projections.</summary>
-public sealed class ObservedFact
+/// <summary>Shared update contract; each concrete family owns its EF mapping and time fields.</summary>
+public interface IFactRecord
 {
-    public Guid Id { get; set; }
-    public string OwnerId { get; set; } = string.Empty;
-    public Guid StreamId { get; set; }
-    public Guid FactId { get; set; }
-    public long Revision { get; set; }
-    public string Origin { get; set; } = "native";
-    public DateTimeOffset? ObservedAt { get; set; }
-    public DateTimeOffset? Start { get; set; }
-    public DateTimeOffset? End { get; set; }
-    public DateTimeOffset? OccurredAt { get; set; }
-    public bool? IsFinal { get; set; }
-    public string? Payload { get; set; }
-    /// <summary>Exact historical projected row, retained even when a native Fact takes over its identity.</summary>
-    public string? LegacyRecord { get; set; }
-    public Guid? LegacyId { get; set; }
-    public long? LegacyDeviceId { get; set; }
-    public string? LegacyKind { get; set; }
-    public FactStream Stream { get; set; } = null!;
+    Guid Id { get; set; }
+    string OwnerId { get; set; }
+    Guid StreamId { get; set; }
+    Guid FactId { get; set; }
+    long Revision { get; set; }
+    string Source { get; set; }
+    long? AppIdentityId { get; set; }
+    JsonDocument Payload { get; set; }
+    FactStream Stream { get; set; }
 }
 
 public sealed class FactSubjectRecord

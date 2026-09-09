@@ -3,17 +3,15 @@ using Heartbeat.Core.DTOs.Input;
 namespace Heartbeat.Server.Entities
 {
     /// <summary>
-    /// 原始输入事件（一行一个键盘按下/鼠标操作）。详见 ADR-012。
+    /// Event 面向输入统计的 SQL 结果，不单独持久化。详见 ADR-012/055。
     /// </summary>
     public class InputEvent
     {
-        /// <summary>UUIDv7，由 Agent 生成，兼作主键与去重键。</summary>
+        /// <summary>家族事实的数据库行 Id；原生去重由 Owner/Stream/FactId 负责。</summary>
         public Guid Id { get; set; }
 
         public long DeviceId { get; set; }
 
-        public Guid? FactKey { get; set; }
-        public ObservedFact? Fact { get; set; }
 
         public InputEventType EventType { get; set; }
 
@@ -23,7 +21,7 @@ namespace Heartbeat.Server.Entities
         /// <summary>键盘=CodeSet 中的键位置；鼠标按钮=1左/2右/3中；滚轮=1上/2下。</summary>
         public short Code { get; set; }
 
-        /// <summary>事件发生时刻（毫秒精度，算速度的权威时间源）。</summary>
+        /// <summary>事件发生时刻（数据库微秒精度）。</summary>
         public DateTimeOffset Timestamp { get; set; }
 
         public Device Device { get; set; } = null!;

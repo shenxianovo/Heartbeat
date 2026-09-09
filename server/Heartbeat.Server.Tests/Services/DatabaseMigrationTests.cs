@@ -13,14 +13,13 @@ namespace Heartbeat.Server.Tests.Services;
 [Collection("postgres")]
 public sealed class DatabaseMigrationTests(PostgresContainerFixture fixture) : PostgresTestBase(fixture)
 {
+    protected override string InitialMigration => "20260829100458_AskingWindowIdentity";
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task StartupBudgetAppliesToMigrationAndRestoresRequestTimeout(bool fail)
     {
-        await using (var previous = CreateDbContext())
-            await previous.GetService<IMigrator>().MigrateAsync("20260829100458_AskingWindowIdentity");
-
         var probe = new MigrationProbe(fail);
         await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
             .UseNpgsql(TestConnectionString, options => options.CommandTimeout(1))

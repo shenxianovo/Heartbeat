@@ -53,7 +53,7 @@ public class AppConsumerTests(PostgresContainerFixture fixture) : PostgresTestBa
         var device = new Device { OwnerId = "owner", HardwareId = "hw", DeviceName = "PC" };
         db.AddRange(app, identity, device);
         await db.SaveChangesAsync();
-        db.ActivitySegments.Add(new ActivitySegment
+        db.SeedSegments(new ActivitySegment
         {
             OwnerId = device.OwnerId,
             Id = Guid.CreateVersion7(), DeviceId = device.Id, Source = "system", IdentityKey = "code|",

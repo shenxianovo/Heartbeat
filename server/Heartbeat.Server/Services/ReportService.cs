@@ -76,7 +76,7 @@ namespace Heartbeat.Server.Services
             // 落在本窗口内的部分计入，既不漏也不双计。
             var query = _db.ActivitySegments
                 .Where(x => x.OwnerId == ownerId)
-                .Where(x => x.Source == ActivitySources.System && x.DeviceId != null)
+                .Where(x => x.Source == ActivitySources.System && x.DeviceId != null && x.AppIdentityId != null)
                 .Where(x => x.EndTime > windowStart && x.StartTime < windowEnd);
 
             if (deviceId.HasValue)

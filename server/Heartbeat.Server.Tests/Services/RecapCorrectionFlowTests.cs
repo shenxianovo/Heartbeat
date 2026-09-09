@@ -157,7 +157,7 @@ public class RecapCorrectionFlowTests(PostgresContainerFixture fixture) : Postgr
     private async Task SeedSegmentsAsync(AppDbContext db, params DateTimeOffset[] days)
     {
         foreach (var day in days)
-            db.ActivitySegments.Add(Segment(day.AddHours(14), day.AddHours(16)));
+            db.SeedSegments(Segment(day.AddHours(14), day.AddHours(16)));
         await db.SaveChangesAsync();
     }
 

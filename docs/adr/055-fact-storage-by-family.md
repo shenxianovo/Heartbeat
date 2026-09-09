@@ -1,9 +1,9 @@
 # ADR-055: 按 Fact 家族持久化
 
-## Status: Proposed
+## Status: Accepted（核心家族模型）
 
-2026-09-09：Owner 已确认下方核心 Fact 模型，本轮先收敛到两张事实表；其他关联存储细节后续讨论，
-本文不是分表实现或部署已完成的声明。
+2026-09-09：Owner 已确认核心 Fact 模型并授权替换迁移。当前已实现两张家族表、摄入与 SQL 查询，
+替换未部署的 NativeFactCustody；其他关联存储字段继续沿用既有实现。本声明不代表真实资源演练或部署完成。
 
 统一 Fact 的摄入、身份与正常修订语义，不要求统一物理表。Segment、Event 按家族持久化，
 公共元数据和验证规则继续共享；优先演进已有数据结构，避免把全部历史复制进通用 `Facts`
@@ -108,13 +108,26 @@ flowchart LR
 迁移身份衔接、App 映射结果的回归、详细约束/索引、完整历史数据 diff 与受限资源演练在后续实施中处理，
 不能因旧代码已有字段就自动加入上述核心模型。旧提案的样例不作为当前目标验收依据。
 
-撤回与 Fact Schema 删除均已由独立任务完成并整合；核心模型在本文确定不代表分表迁移已经实现或运行。
+撤回与 Fact Schema 删除已整合；分表迁移已在独立测试库运行，真实备份的受限资源演练和部署仍待完成。
 
 旧的完整存储提案已按 Owner 要求删除，避免未确认字段继续影响设计。
 后续其他存储细节再继续逐项审阅；最终迁移映射和真实数据 diff 以本轮核心模型为基础整理。
 
+## 实施中的责任衔接（2026-09-09）
+
+终态由 Collection/Runtime 持久保管并校验；Analytics 保留协议字段的基本合法性检查，
+不保存 IsFinal，不进行跨请求的终态不可重开检查，也不将其纳入同 Revision 内容比较。
+这是不增加终态字段的明确结果，替代 ADR-054 的服务端终态承诺；Segment 起点和 Event
+发生时间仍固定，所有正常修订规则按数据库微秒精度执行。Gap 的 tick 精度保持原样。
+
+旧表原地改名与转换，历史行 Id 保留；不创建别名表或逐条历史档案。活动 Payload 的已知
+identityKey 在持久化/比较前统一为 activityKey，旧 Runtime 快照保持原样。
+Down 拒绝有损逆转换，恢复采用升级前完整备份并保管新增事实。
+具体映射、重放与兼容退出边界见下方实施记录。
+
 ## References
 
+- [第一步：旧字段映射与身份衔接](../../.scratch/native-analytics-facts/migration-mapping.md) — 实施建议与验收边界，不扩展已确认核心字段。
 - [ADR-054](054-native-analytics-fact-ingest.md)
 - [实施跟踪](../../.scratch/native-analytics-facts/PRD.md)
 - [最近成功的 Analytics 部署](https://github.com/shenxianovo/Heartbeat/actions/runs/34182998353)

@@ -124,7 +124,7 @@ public class KnowledgeProposalServiceTests(PostgresContainerFixture fixture) : P
     {
         using var db = CreateDbContext();
         var (proposals, questions, proposer, _) = CreateServices(db);
-        db.ActivitySegments.Add(Segment(
+        db.SeedSegments(Segment(
             DateTimeOffset.Parse("2026-03-08T05:00:00Z"),
             DateTimeOffset.Parse("2026-03-08T06:00:00Z")));
         await db.SaveChangesAsync();
@@ -147,7 +147,7 @@ public class KnowledgeProposalServiceTests(PostgresContainerFixture fixture) : P
 
     private async Task<Guid> ServeQuestionAsync(AppDbContext db, QuestionService questions)
     {
-        db.ActivitySegments.Add(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
+        db.SeedSegments(Segment(PastDay.AddHours(14), PastDay.AddHours(16)));
         await db.SaveChangesAsync();
         return (await questions.GetDailyQuestionsAsync("user-1", UtcDay(PastDay))).Questions.Single().Id;
     }

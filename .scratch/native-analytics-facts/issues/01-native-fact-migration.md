@@ -3,17 +3,20 @@
 Status: ready-for-agent
 
 2026-09-09：Owner 已通过逐项讨论确认 [ADR-055](../../../docs/adr/055-fact-storage-by-family.md)
-中的核心 Fact 模型，并授权 agent 开始实施。下方旧版验证记录保留；分表实现和对应回归尚未完成。
+中的核心 Fact 模型，并授权 agent 替换迁移。分表实现与自动回归已完成；完整备份副本、
+受限资源与现场升级验收仍未完成。下方旧版验证记录保留，最新证据见 Comments。
 
 ## 验收
 
+- [x] 第一阶段：核对旧字段完整映射、历史身份衔接及必要行为边界，见 [映射文档](../migration-mapping.md)。
+- [x] 第二阶段：替换未部署迁移与 EF 模型，接通家族摄入和 SQL 查询；独立旧库 fixture 验证单次迁移、原表 OID 不变、10 / 9 列和历史身份保留。
 - [x] Analytics 原子接收 Subject/Stream/Fact/Gap；Owner 来自认证身份。
 - [x] 同修订幂等与冲突、低修订忽略、高修订纠正、旧撤回消息明确拒绝和 Event 发生时间不变均有自动验证。
-- [ ] 按家族分表无损迁移历史，依最终保留语义核对数据；旧 Runtime 重放无重复计时，旧缓存不会覆盖原生纠正。
+- [ ] 在完整备份副本中按家族分表无损迁移历史，依最终保留语义核对数据；旧 Runtime 重放无重复计时，旧缓存不会覆盖原生纠正。
 - [x] Hub 原生持久上传，精确确认版本；断网、重启、容量与 Instance 移除不丢未确认记录。
 - [x] Machine/Account/Person 身份与查询隔离正确；Account 不伪装成 Device。
 - [x] Dashboard 结构化 Payload 正确展示历史/新 Browser URL，Recap depth 正确读取嵌套字段。
-- [ ] 分表方案的 .NET 与前端相关回归通过；契约和文档同步。
+- [x] 分表方案的 .NET 与前端相关回归通过；契约和文档同步。
 - [ ] 线上克隆在受限 CPU/内存下完成迁移、全量历史核对、重启与空间预算验证。
 - [ ] 部署 owner 完成真实数据库备份迁移演练和已安装 Windows/macOS/Headless 升级 smoke。
 
@@ -142,3 +145,44 @@ backend/frontend/headless 均为停止状态，迁移历史停于 AskingWindowId
 
 本文前述 FactSchemaContract/Schema 测试证据属于初始实现；格式治理由 [issue 02](02-remove-fact-schema.md) 退役。
 生产迁移与现场升级门禁仍由部署 owner 承接，本次不更改原项目数据库。
+
+## Comments
+
+2026-09-09：本次完成第一步映射。读取当前实体、摄入/导入、Hub projector 与旧迁移测试，
+并核对本地保存的 before-schema/profile 取证文件；未连接数据库。逐项覆盖旧 ActivitySegments
+10 列和 InputEvents 6 列，目标仍为 ADR-055 的 10 / 9 列。
+下一步优先用最小用例验证历史与原生的双向到达、首次接管 Revision=1 和跨 Owner/Stream；
+不因删除 LegacyRecord 就预建替代档案、别名表或新状态机。
+IsFinal 不落库与旧服务端终态检查不能同时原样保留，已单列责任调整建议；分表编码和回归尚未开始。
+已标明旧 runbook 的通用表 SQL/Down 验证已被新方案替代，修正兼容台账中永久整行档案的过期承诺。
+本轮只验证文档字段覆盖、链接与 diff 格式，不沿用旧测试通过数作为新方案验收。
+
+2026-09-09：Owner 授权开始替换，第二阶段完成。
+
+- `NativeFactCustody` 沿用未部署编号，直接改造旧表；已部署的前序 migrations 未修改。
+  删除 ObservedFact/LegacyRecord/持久化双投影，Segment/Event 各自只存一份 JSON。
+  ActivitySegment/InputEvent 为组合 SQL 查询结果，测试通过专用 fixture 构造家族记录。
+- 复用确定性旧身份：保留迁移行 Id，接管后切到原生身份；原生先到时同样识别迟到缓存。
+  Segment 候选按 UUID 身份编码的已知前缀范围缩小后再完整核对，无标题/活动时间猜测或别名表。
+  两表的 Owner/FactId 普通索引支撑身份查找；实际大数据查询成本留给资源演练验收。
+- Collection/Runtime 继续保管终态；Analytics 不保存 IsFinal，只按数据库微秒精度比较家族时间
+  与 Payload。Gap 保留 tick 精度，包含 1 tick 缺口的回归通过。ADR 已同步责任变化。
+- 升级 fixture 初始失败：旧布局没有 Segments/Events；替换后测试额外确认唯一待执行迁移、
+  PostgreSQL 表 OID 保持、全部列/时间类型、历史未知内容与 CodeSet、首次原生 Revision=1
+  接管、旧缓存晚到不 regrow、冲突回滚保留旧表。Down 改为明确拒绝有损逆转换，恢复使用备份。
+- 新失败用例修复：旧缓存仅更新时间/标题时保留 Payload 未知顶层成员；SQL 与运行时必须
+  按同样的 JSON 类型识别旧包装；无应用证据的 system Segment 完整保管但不进入应用统计。
+  未为这些路径新增状态表或放宽身份规则。最后两个失败用例进一步确保旧接口不能把原生
+  数据库行 Id 冒充旧上传身份，从而绕过接管规则改写原生记录；修复后全量回归通过。
+  应用归并也已删除逐条改写旧 AppId 的逻辑。
+- 最终验证：`dotnet build Heartbeat.slnx --no-restore --verbosity quiet` 0 warnings/errors；
+  IDE1006 命名检查通过；`dotnet test Heartbeat.slnx --no-build --no-restore` 13 个项目
+  1259 passed / 0 failed / 0 skipped（Server 524、Hub 310）。Frontend verify 274 项与构建、
+  Browser 96 项与构建通过；Collector contracts check、EF has-pending-model-changes（无差异）通过。
+  契约检查首次发现本地 Browser dist 与已跟踪 Package 不一致，按既有 build 流程重新生成后通过，
+  未产生 Browser 源码或 Package 的提交差异。日志与汇总在
+  `.local/verification/fact-family-replacement/final/`。
+- Friction closeout：runbook 已替换旧 Facts/LegacyRecord SQL 和过时 Down 说明；兼容台账记录
+  档案退役及旧缓存退出门槛；EF 设计时工厂不执行应用启动或读取部署凭据。构建产物与原库隔离。
+  原始快照数据库未连接、未启动、未迁移；未提交或部署。完整数据 diff、1C1G/磁盘/停服预算、
+  两份成功备份保留与真实安装 smoke 仍未验收，issue/PRD 保持 ready-for-agent。

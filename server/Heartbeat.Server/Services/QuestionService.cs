@@ -220,7 +220,7 @@ namespace Heartbeat.Server.Services
                             || x.StartTime == x.EndTime && x.StartTime >= windowStart && x.StartTime < windowEnd)
                 .Select(x => new RecapSegmentInput(
                     x.Device != null ? x.Device.DeviceName
-                        : x.Fact != null ? x.Fact.Stream.Subject.DisplayName ?? x.Fact.Stream.SubjectId.ToString()
+                        : x.Stream != null ? x.Stream.Subject.DisplayName ?? x.Stream.SubjectId.ToString()
                         : "未知主体",
                     x.Source,
                     x.IdentityKey,

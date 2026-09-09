@@ -13,9 +13,10 @@ namespace Heartbeat.Server.Tests.Services;
 public sealed class FactMigrationTests(PostgresContainerFixture fixture) : PostgresTestBase(fixture)
 {
     private const string Previous = "20260829100458_AskingWindowIdentity";
+    protected override string InitialMigration => Previous;
 
     [Fact]
-    public async Task ExistingRows_MigrateLosslessly_ReplayClaimsSameFact_AndLegacyArchiveSurvives()
+    public async Task ExistingRows_KeepTheirIdsPayloadAndSubjects_AndNativeReplayTakesOverOnce()
     {
         var batch = FactStoreTests.SegmentBatch();
         var legacy = FactStoreTests.LegacySegment(batch);
@@ -28,7 +29,6 @@ public sealed class FactMigrationTests(PostgresContainerFixture fixture) : Postg
         var raw = legacy.Attributes!.Value.GetRawText();
         await using (var db = CreateDbContext())
         {
-            await db.GetService<IMigrator>().MigrateAsync(Previous);
             await db.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO "Devices" ("Id", "OwnerId", "HardwareId", "DeviceName") VALUES (701, 'owner', 'hardware', 'Old PC'), (702, 'owner', {"subject:account:" + subjectId}, 'Account');
                 INSERT INTO "ActivitySegments" ("Id", "DeviceId", "Source", "IdentityKey", "Title", "StartTime", "EndTime", "Attributes")
@@ -40,65 +40,89 @@ public sealed class FactMigrationTests(PostgresContainerFixture fixture) : Postg
                 """);
             await db.Database.MigrateAsync();
         }
-        Guid factKey;
-        string archive;
         await using (var db = CreateDbContext())
         {
-            Assert.Equal(4, await db.Facts.CountAsync());
-            var row = await db.ActivitySegments.SingleAsync(s => s.Id == oldId);
-            factKey = row.FactKey!.Value;
-            var fact = await db.Facts.SingleAsync(f => f.Id == factKey);
-            archive = fact.LegacyRecord!;
-            Assert.Equal("legacy-import", fact.Origin);
-            Assert.Equal(0, fact.Revision);
-            Assert.Null(fact.IsFinal);
-            Assert.True(JsonElement.DeepEquals(JsonDocument.Parse(raw).RootElement, JsonDocument.Parse(archive).RootElement.GetProperty("Attributes")));
-            Assert.Equal("https://example.com/?original=1", JsonDocument.Parse(row.Payload!).RootElement.GetProperty("attributes").GetProperty("url").GetString());
-            var other = await db.ActivitySegments.SingleAsync(s => s.Id == otherId);
-            Assert.True(JsonElement.DeepEquals(JsonDocument.Parse(rawOther).RootElement, JsonDocument.Parse(other.Payload!).RootElement.GetProperty("attributes")));
-            var account = await db.ActivitySegments.Include(s => s.Fact).ThenInclude(f => f!.Stream).ThenInclude(s => s.Subject).SingleAsync(s => s.Id == accountId);
-            Assert.Null(account.DeviceId);
-            Assert.Equal(subjectId, account.Fact!.Stream.SubjectId);
-            Assert.Equal("account", account.Fact.Stream.Subject.Kind);
-            Assert.Equal((short)65, (await db.InputEvents.SingleAsync()).Code);
+            Assert.Equal(3, await db.Segments.CountAsync());
+            Assert.Single(await db.Events.ToListAsync());
+            var fact = await db.Segments.SingleAsync(s => s.Id == oldId);
+            Assert.Equal(oldId, fact.FactId);
+            Assert.Equal(1, fact.Revision);
+            Assert.Equal("https://example.com", fact.Payload.RootElement.GetProperty("activityKey").GetString());
+            Assert.False(fact.Payload.RootElement.TryGetProperty("identityKey", out _));
+            Assert.Equal("https://example.com/?original=1", fact.Payload.RootElement.GetProperty("attributes").GetProperty("url").GetString());
+            var other = await db.Segments.SingleAsync(s => s.Id == otherId);
+            Assert.True(JsonElement.DeepEquals(JsonDocument.Parse(rawOther).RootElement, other.Payload.RootElement.GetProperty("attributes")));
+            var account = await db.Segments.Include(s => s.Stream).ThenInclude(s => s.Subject).SingleAsync(s => s.Id == accountId);
+            Assert.Null(account.Stream.Subject.DeviceId);
+            Assert.Equal(subjectId, account.Stream.SubjectId);
+            Assert.Equal("account", account.Stream.Subject.Kind);
+            var input = await db.Events.SingleAsync();
+            Assert.Equal(inputId, input.Id);
+            Assert.Equal(inputId, input.FactId);
+            Assert.Equal("windows-vk-v1", input.Payload.RootElement.GetProperty("codeSet").GetString());
+            Assert.Equal(65, input.Payload.RootElement.GetProperty("code").GetInt32());
             await new FactStore(db).ImportSegmentsAsync(702, [new ActivitySegmentItem
             {
                 Id = accountId, Source = "vrchat", IdentityKey = "account", Title = "Account", StartTime = legacy.StartTime, EndTime = legacy.EndTime
             }]);
-            Assert.Null((await db.ActivitySegments.SingleAsync(s => s.Id == accountId)).DeviceId);
             await new FactStore(db).ImportSegmentsAsync(701, [legacy]);
-            Assert.Equal(archive, (await db.Facts.SingleAsync(f => f.Id == factKey)).LegacyRecord);
         }
         await using (var db = CreateDbContext())
         {
+            // Initial native Revision=1 must take over the synthetic legacy Revision=1.
+            batch.Facts[0].End = batch.Facts[0].Start!.Value.AddMinutes(1);
             await new FactStore(db).IngestAsync("owner", batch);
-            Assert.Equal(4, await db.Facts.CountAsync());
-            var fact = await db.Facts.SingleAsync(f => f.Id == factKey);
-            Assert.Equal("native", fact.Origin);
+            await new FactStore(db).ImportSegmentsAsync(701, [legacy]);
+            Assert.Equal(3, await db.Segments.CountAsync());
+            var fact = await db.Segments.SingleAsync(f => f.Id == oldId);
             Assert.Equal(batch.Facts[0].FactId, fact.FactId);
-            Assert.Equal(archive, fact.LegacyRecord);
+            Assert.Equal(batch.Streams[0].StreamId, fact.StreamId);
+            Assert.Equal(batch.Facts[0].End, fact.EndTime);
             await Assert.ThrowsAsync<PostgresException>(() => db.GetService<IMigrator>().MigrateAsync(Previous));
-            Assert.Equal(4, await db.Facts.CountAsync());
+            Assert.Equal(3, await db.Segments.CountAsync());
         }
     }
 
     [Fact]
-    public async Task LegacyOnlyMigration_CanRoundTripWithoutLosingOriginalWrappedAttributes()
+    public async Task ConflictingActivityKey_AbortsUpgradeAndLeavesOldRowsIntact()
     {
-        var legacy = FactStoreTests.LegacySegment(FactStoreTests.SegmentBatch());
-        var raw = legacy.Attributes!.Value.GetRawText();
         await using var db = CreateDbContext();
-        await db.GetService<IMigrator>().MigrateAsync(Previous);
-        await db.Database.ExecuteSqlInterpolatedAsync($"""
-            INSERT INTO "Devices" ("Id", "OwnerId", "HardwareId", "DeviceName") VALUES (701, 'owner', 'hardware', 'Old PC');
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO "Devices" ("Id", "OwnerId", "HardwareId", "DeviceName") VALUES (701, 'owner', 'hardware', 'PC');
             INSERT INTO "ActivitySegments" ("Id", "DeviceId", "Source", "IdentityKey", "Title", "StartTime", "EndTime", "Attributes")
-            VALUES ({legacy.Id}, 701, 'browser', {legacy.IdentityKey}, {legacy.Title}, {legacy.StartTime}, {legacy.EndTime}, {raw}::jsonb);
+            VALUES ('01990000-0000-7000-8000-000000000001', 701, 'browser', 'a', 'Title', '2026-09-01Z', '2026-09-02Z',
+                 '{{"identityKey":"a","activityKey":"b","title":"Title","attributes":{{}}}}'::jsonb);
+            """);
+        var error = await Assert.ThrowsAsync<PostgresException>(() => db.Database.MigrateAsync());
+        Assert.Contains("conflicts", error.MessageText);
+        Assert.Equal(1, await db.Database.SqlQueryRaw<int>("SELECT count(*)::int AS \"Value\" FROM \"ActivitySegments\"").SingleAsync());
+        Assert.Equal(Previous, (await db.Database.GetAppliedMigrationsAsync()).Last());
+    }
+
+    [Theory]
+    [InlineData("7", null, "{\"identityKey\":7,\"title\":null,\"attributes\":{}}")]
+    [InlineData("7", "42", "{\"identityKey\":\"7\",\"title\":42,\"attributes\":{}}")]
+    [InlineData("7", null, "{\"identityKey\":\"7\",\"attributes\":{},\"unknown\":[1,2]}")]
+    [InlineData("7", "Title", "[1,2,3]")]
+    public async Task MigrationAndCacheImport_InterpretHistoricalJsonIdentically(string key, string? title, string attributes)
+    {
+        await using var db = CreateDbContext();
+        var oldId = Guid.CreateVersion7();
+        var at = new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero);
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "Devices" ("Id", "OwnerId", "HardwareId", "DeviceName") VALUES (701, 'owner', 'hardware', 'PC');
+            INSERT INTO "ActivitySegments" ("Id", "DeviceId", "Source", "IdentityKey", "Title", "StartTime", "EndTime", "Attributes")
+            VALUES ({oldId}, 701, 'browser', {key}, {title}, {at}, {at.AddMinutes(1)}, {attributes}::jsonb);
             """);
         await db.Database.MigrateAsync();
-        await db.GetService<IMigrator>().MigrateAsync(Previous);
-        var restored = await db.Database.SqlQueryRaw<string>("SELECT \"Attributes\"::text AS \"Value\" FROM \"ActivitySegments\"").SingleAsync();
-        Assert.True(JsonElement.DeepEquals(JsonDocument.Parse(raw).RootElement, JsonDocument.Parse(restored).RootElement));
-        await db.Database.MigrateAsync();
-        Assert.Single(await db.Facts.ToListAsync());
+        var newId = Guid.CreateVersion7();
+        await new FactStore(db).ImportSegmentsAsync(701, [new ActivitySegmentItem
+        {
+            Id = newId, Source = "browser", IdentityKey = key, Title = title,
+            StartTime = at, EndTime = at.AddMinutes(1), Attributes = JsonDocument.Parse(attributes).RootElement
+        }]);
+        var migrated = await db.Segments.SingleAsync(s => s.Id == oldId);
+        var imported = await db.Segments.SingleAsync(s => s.Id == newId);
+        Assert.True(JsonElement.DeepEquals(migrated.Payload.RootElement, imported.Payload.RootElement));
     }
 }

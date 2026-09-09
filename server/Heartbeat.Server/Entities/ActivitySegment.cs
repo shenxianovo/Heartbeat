@@ -1,7 +1,7 @@
 namespace Heartbeat.Server.Entities
 {
     /// <summary>
-    /// Segment Fact 面向活动查询的读投影，由 Fact Store 同事务维护（ADR-054）。
+    /// Segment 面向活动查询的 SQL 结果，不是数据库实体，也不单独持久化。
     /// AppUsage 的泛化形态：系统采集器的段即 Source = 'system'。
     /// </summary>
     public class ActivitySegment
@@ -13,8 +13,10 @@ namespace Heartbeat.Server.Entities
 
         public long? DeviceId { get; set; }
 
-        public Guid? FactKey { get; set; }
-        public ObservedFact? Fact { get; set; }
+        public Guid StreamId { get; set; }
+        public Guid FactId { get; set; }
+        public long Revision { get; set; }
+        public FactStream Stream { get; set; } = null!;
         /// <summary>Complete Collector Fact payload, without the historical transport wrapper.</summary>
         public string? Payload { get; set; }
 
@@ -24,10 +26,7 @@ namespace Heartbeat.Server.Entities
         /// <summary>采集器声明的活动分组判据；不替代 FactId 或 Revision。</summary>
         public string IdentityKey { get; set; } = string.Empty;
 
-        /// <summary>
-        /// expand 阶段保留的旧产品 FK。新事实同时写 AppIdentityId，产品读取必须经
-        /// AppIdentity → App；Ticket 05 strict 收缩旧摄入契约后再评估删除此列。
-        /// </summary>
+        /// <summary>经 AppIdentity → App 查询得到的产品 Id，不是独立存储的外键。</summary>
         public long? AppId { get; set; }
 
         /// <summary>平台观测身份。system 段必填；插件段可选。</summary>

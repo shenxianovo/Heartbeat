@@ -47,7 +47,7 @@ public class AppCatalogReconcilerTests(PostgresContainerFixture fixture) : Postg
             IdentityKey = "chrome", AppId = provisional.Id, AppIdentityId = mac.Id,
             StartTime = Now.AddMinutes(-1), EndTime = Now
         };
-        db.ActivitySegments.Add(segment);
+        db.SeedSegments(segment);
         await db.SaveChangesAsync();
         var establishedId = formal.Id;
 
@@ -254,7 +254,8 @@ public class AppCatalogReconcilerTests(PostgresContainerFixture fixture) : Postg
             IdentityKey = "legacy-tool", AppId = source.Id,
             StartTime = Now.AddMinutes(-2), EndTime = Now.AddMinutes(-1)
         };
-        db.AddRange(observed, legacy, new AppIcon
+        db.SeedSegments(observed, legacy);
+        db.Add(new AppIcon
         {
             OwnerId = "owner", App = source, IconData = [1, 2, 3], UpdatedAt = Now
         });

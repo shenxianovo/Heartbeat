@@ -10,19 +10,23 @@
   Profile 与 Headless/Runtime 状态分别完成当前版本迁移，并保留 fixture/backup 验证后，才删除
   对应迁移代码。
 - Analytics 的目标边界是原生 **Subject + Fact/Stream ingest**。ADR-054 已把旧上传回投限定为
-  升级期导入；ActivitySegment/InputEvent 由 Fact Store 同事务维护为查询投影，不再拥有事实写权。
+  升级期导入；ADR-055 进一步改为 Segment/Event 家族直接持久化，活动/输入是查询时生成的业务结果。
 - AppIdentity 双写与 response alias 计划删除；门槛是实际客户端矩阵、FK 回填与 orphan/引用审计，
   不能用“旧上传已收到 426”替代读兼容证据。
 - Package/Installation/Instance identity、版本与 Desired State 归 Collector Runtime；旧 source
   registry 最终只保留明确需要的 observation declaration seam，Enabled/准入消费者迁完后删除。
 - 严格上行协议当前保持单版本 lockstep；支持窗口同样由实际安装升级与缓存迁移演练决定。
 
+2026-09-09 更新：ADR-055 已取消永久整行 LegacyRecord，改为家族事实保留一份完整 Payload。
+当前代码已替换未部署迁移并直接保存家族事实，真实受限资源演练与实际安装切换仍待验收。
+分表字段映射及身份衔接见 [实施第一步](../../.scratch/native-analytics-facts/migration-mapping.md)。
+
 | 边界 | 当前兼容对象 | 主要证据 | 移除门槛 | 移除验证 |
 | --- | --- | --- | --- | --- |
-| Analytics 历史 Subject 导入 | 升级前 Headless Account/Person 以 `subject:<kind>:<uuid>` 保存的 Device 及其历史引用 | ADR-054、`FactStore.LegacyImport.cs`、`NativeFactCustody` migration | 原生 Fact Subject 已成为写入边界；所有真实数据库及旧缓存完成迁移并审计后，移除运行时旧导入 adapter；迁移与原始档案保留 | Account/Machine migration fixture、旧 InputEvent 仅按历史微秒精度接管（原生时间保留 tick）、原生重放无重复、Owner/Subject 查询隔离、真实备份演练 |
+| Analytics 历史 Subject 导入 | 升级前 Headless Account/Person 以 `subject:<kind>:<uuid>` 保存的 Device 及其历史引用 | ADR-054/055、`FactStore.LegacyImport.cs`、`NativeFactCustody` migration | 所有真实数据库及旧缓存完成迁移并审计后，移除运行时旧导入 adapter；保留历史事实及旧基线迁移，不要求永久复制旧整行 | Account/Machine migration fixture、微秒时间接管、原生重放无重复、Owner/Subject 查询隔离、真实备份演练；分表通过前不宣告完成 |
 | 升级前 segment/input 上传缓存与投影 harness | 现存 `segments-cache.json`、InputEventBuffer/重试文件及旧嵌入式 Runtime protocol test harness；生产新 Fact 使用 Runtime durable upload | ADR-054、`CollectorRuntime.Upload.cs`、`RuntimeFactUploadSource.cs`、旧 `UploadStream` composition | 所有已安装 Desktop/Headless 原生上传 smoke 完成，旧缓存 pending 为零且备份/回滚窗口明确；protocol fixtures 迁至 native custody 后移除 `EnableFactUpload=false` 与旧 projector seam；Analytics 旧端点同时退出 | 旧缓存+原生重放交错、精确确认、断网重启、纠正后迟到旧缓存不覆盖、实际安装矩阵 |
-| Analytics 历史 Fact 来源档案 | 迁移前 ActivitySegment/InputEvent 不含 Stream/Revision 的原始记录；LegacyImport 明确记录不可恢复的元数据 | `ObservedFact.LegacyRecord`、`FactStore.LegacyImport.cs`、ADR-054 | 原始档案属于用户历史保留要求，不按兼容窗口自动删除；旧导入写入口仅在实际缓存归零后移除 | 迁移前后行数、时间范围、URL/原始属性与输入计数逐项核对；确定性关联原生事实后档案仍保留 |
-| AppIdentity expand 双写与 DTO 别名 | `ActivitySegment.AppId`、`Device.CurrentApp`、`AppName`/DisplayName 兼容属性 | `server/Heartbeat.Server/Entities/ActivitySegment.cs`、`Device.cs`、`shared/Heartbeat.Core/DTOs/` | 所有受支持客户端只消费 AppIdentity/App Key 路径；存量 FK 与查询完成审计和回填 | 数据库 orphan/引用审计、旧客户端 426 演练、新客户端 API/UI 回归 |
+| Analytics 历史 Fact 来源档案（实现已退役） | 旧整行 LegacyRecord 已删除；迁移与正常修订只保留一份 Payload | ADR-055、`FactMigrationTests`、`FactStoreTests`、迁移映射 | 旧导入入口及确定性身份查找继续服务实际未排空缓存；安装盘点、缓存归零与回滚窗口明确后退出，历史事实不删除 | 自动 fixture 覆盖 JSON 映射、原始编码、双向到达和新修订保护；完整备份副本 diff/资源与恢复演练仍待完成 |
+| AppIdentity expand 双写与 DTO 别名 | 事实表 AppId 双写已删除；仍有 `Device.CurrentApp` 与 DTO 的 `AppName`/DisplayName 兼容属性 | `server/Heartbeat.Server/Entities/ActivitySegment.cs`、`Device.cs`、`shared/Heartbeat.Core/DTOs/` | 所有受支持客户端只消费 AppIdentity/App Key 路径；存量 FK 与查询完成审计和回填 | 数据库 orphan/引用审计、旧客户端 426 演练、新客户端 API/UI 回归 |
 | Agent 本地上传缓存迁移 | 无版本旧数组、旧 AppName、旧 input code 形状 | `HeartbeatCacheFormats.cs`、`JsonCacheMigration.cs` | 最低受支持 Agent 版本已经写出当前 schema，且长期离线缓存保留策略已裁决 | 真实旧缓存原子迁移、失败保留备份、重启不重复上传、dead-letter 可见 |
 | Collector Runtime/Headless 状态迁移 | `helloAttempts`、`configSchemaVersion`、旧 Instance mapping、无版本 secret envelope | `JsonCollectorRuntimeStore.cs`、`HeadlessFleetOptions.cs`、`EncryptedFileCollectorSecretStoreTests.cs` | 已发布版本与可能存在的本地文件清单明确；所有仍保留的数据已迁移或有恢复方案 | 每个旧 fixture 加载、原子改写、冲突字段拒绝、LKG/Secret 恢复 |
 | Browser `chrome.storage` 迁移 | 旧 pending segment、policy/config key 与 `appName` 字段 | `collection/collectors/Heartbeat.Collector.Browser/src/delivery-chrome.ts` | 明确扩展最低支持版本和最长离线升级窗口；确认旧 storage 不再需要直升当前版 | Chrome storage fixture、Service Worker 重启、outbox/FactId 保留、无旧 transport fallback |

@@ -16,7 +16,7 @@ namespace Heartbeat.Server.Services
         private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
         /// <summary>
-        /// 升级前段缓存的严格历史导入入口；Fact Store 负责原始档案和同事务读投影。
+        /// 升级前段缓存的严格历史导入入口；Fact Store 直接保存家族事实。
         /// 新 Collector 数据使用原生 Fact 摄入，不通过此处的旧快照生长规则。
         /// </summary>
         public async Task SaveSegmentsAsync(long deviceId, List<ActivitySegmentItem> segments)
@@ -87,14 +87,14 @@ namespace Heartbeat.Server.Services
                     // 时长是派生量（ADR-018）：不落盘，投影现算
                     DurationSeconds = (int)(x.EndTime - x.StartTime).TotalSeconds,
                     Payload = ParsePayload(x.Payload),
-                    StreamId = x.Fact != null ? x.Fact.StreamId : null,
-                    FactId = x.Fact != null ? x.Fact.FactId : null,
-                    Revision = x.Fact != null ? x.Fact.Revision : null,
-                    Origin = x.Fact != null ? x.Fact.Origin : null,
-                    SubjectId = x.Fact != null ? x.Fact.Stream.SubjectId : null,
-                    SubjectKind = x.Fact != null ? x.Fact.Stream.Subject.Kind : null,
+                    StreamId = x.StreamId,
+                    FactId = x.FactId,
+                    Revision = x.Revision,
+                    Origin = x.Stream.Origin,
+                    SubjectId = x.Stream.SubjectId,
+                    SubjectKind = x.Stream.Subject.Kind,
                     SubjectName = x.Device != null ? x.Device.DeviceName
-                        : x.Fact != null ? x.Fact.Stream.Subject.DisplayName : null
+                        : x.Stream.Subject.DisplayName
                 })
                 .ToListAsync();
         }
@@ -103,7 +103,7 @@ namespace Heartbeat.Server.Services
         {
             var query = _db.ActivitySegments
                 .Where(x => x.OwnerId == ownerId)
-                .Where(x => x.Source == ActivitySources.System && x.DeviceId != null)
+                .Where(x => x.Source == ActivitySources.System && x.DeviceId != null && x.AppIdentityId != null)
                 .AsQueryable();
 
             if (deviceId.HasValue)

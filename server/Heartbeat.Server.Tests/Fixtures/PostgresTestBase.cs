@@ -1,5 +1,7 @@
 using Heartbeat.Server.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
 using Xunit;
 
@@ -16,6 +18,7 @@ public abstract class PostgresTestBase : IAsyncLifetime
     private string _testConnectionString = string.Empty;
 
     protected string TestConnectionString => _testConnectionString;
+    protected virtual string? InitialMigration => null;
 
     protected PostgresTestBase(PostgresContainerFixture fixture)
     {
@@ -40,7 +43,7 @@ public abstract class PostgresTestBase : IAsyncLifetime
 
         // 应用真实 migrations，顺带验证迁移在真库上可用
         await using var db = CreateDbContext();
-        await db.Database.MigrateAsync();
+        await db.GetService<IMigrator>().MigrateAsync(InitialMigration);
 
         await SeedAsync(db);
     }

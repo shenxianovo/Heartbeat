@@ -1,213 +1,126 @@
-﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Heartbeat.Server.Migrations
+namespace Heartbeat.Server.Migrations;
+
+/// <summary>Unreleased replacement: evolve old rows directly into family storage (ADR-055).</summary>
+public partial class NativeFactCustody : Migration
 {
-    /// <inheritdoc />
-    public partial class NativeFactCustody : Migration
+    protected override void Up(MigrationBuilder migrationBuilder)
     {
-        /// <inheritdoc />
-        protected override void Up(MigrationBuilder migrationBuilder)
-        {
-            migrationBuilder.DropForeignKey(
-                name: "FK_ActivitySegments_Devices_DeviceId",
-                table: "ActivitySegments");
+        migrationBuilder.CreateTable(
+            name: "Subjects",
+            columns: table => new
+            {
+                OwnerId = table.Column<string>(type: "text", nullable: false),
+                SubjectId = table.Column<Guid>(type: "uuid", nullable: false),
+                Kind = table.Column<string>(type: "text", nullable: false),
+                DeviceId = table.Column<long>(type: "bigint", nullable: true),
+                DisplayName = table.Column<string>(type: "text", nullable: true)
+            },
+            constraints: table =>
+            {
+                table.PrimaryKey("PK_Subjects", x => new { x.OwnerId, x.SubjectId });
+                table.ForeignKey(
+                    name: "FK_Subjects_Devices_DeviceId",
+                    column: x => x.DeviceId,
+                    principalTable: "Devices",
+                    principalColumn: "Id",
+                    onDelete: ReferentialAction.Restrict);
+            });
 
-            migrationBuilder.AddColumn<Guid>(
-                name: "FactKey",
-                table: "InputEvents",
-                type: "uuid",
-                nullable: true);
+        migrationBuilder.CreateTable(
+            name: "Streams",
+            columns: table => new
+            {
+                OwnerId = table.Column<string>(type: "text", nullable: false),
+                StreamId = table.Column<Guid>(type: "uuid", nullable: false),
+                SubjectId = table.Column<Guid>(type: "uuid", nullable: false),
+                CollectorInstanceId = table.Column<Guid>(type: "uuid", nullable: true),
+                OutputId = table.Column<string>(type: "text", nullable: false),
+                Source = table.Column<string>(type: "text", nullable: false),
+                FactKind = table.Column<string>(type: "text", nullable: false),
+                Dimensions = table.Column<string>(type: "jsonb", nullable: false),
+                Origin = table.Column<string>(type: "text", nullable: false)
+            },
+            constraints: table =>
+            {
+                table.PrimaryKey("PK_Streams", x => new { x.OwnerId, x.StreamId });
+                table.ForeignKey(
+                    name: "FK_Streams_Subjects_OwnerId_SubjectId",
+                    columns: x => new { x.OwnerId, x.SubjectId },
+                    principalTable: "Subjects",
+                    principalColumns: new[] { "OwnerId", "SubjectId" },
+                    onDelete: ReferentialAction.Restrict);
+            });
 
-            migrationBuilder.AlterColumn<long>(
-                name: "DeviceId",
-                table: "ActivitySegments",
-                type: "bigint",
-                nullable: true,
-                oldClrType: typeof(long),
-                oldType: "bigint");
+        migrationBuilder.CreateTable(
+            name: "FactGaps",
+            columns: table => new
+            {
+                OwnerId = table.Column<string>(type: "text", nullable: false),
+                StreamId = table.Column<Guid>(type: "uuid", nullable: false),
+                GapId = table.Column<Guid>(type: "uuid", nullable: false),
+                Start = table.Column<long>(type: "bigint", nullable: false),
+                End = table.Column<long>(type: "bigint", nullable: false),
+                Reason = table.Column<string>(type: "text", nullable: false),
+                EstimatedFactsLost = table.Column<int>(type: "integer", nullable: true)
+            },
+            constraints: table =>
+            {
+                table.PrimaryKey("PK_FactGaps", x => new { x.OwnerId, x.StreamId, x.GapId });
+                table.ForeignKey(
+                    name: "FK_FactGaps_Streams_OwnerId_StreamId",
+                    columns: x => new { x.OwnerId, x.StreamId },
+                    principalTable: "Streams",
+                    principalColumns: new[] { "OwnerId", "StreamId" },
+                    onDelete: ReferentialAction.Restrict);
+            });
 
-            migrationBuilder.AddColumn<Guid>(
-                name: "FactKey",
-                table: "ActivitySegments",
-                type: "uuid",
-                nullable: true);
-
-            migrationBuilder.AddColumn<string>(
-                name: "OwnerId",
-                table: "ActivitySegments",
-                type: "text",
-                nullable: false,
-                defaultValue: "");
-
-            migrationBuilder.AddColumn<string>(
-                name: "Payload",
-                table: "ActivitySegments",
-                type: "jsonb",
-                nullable: true);
-
-
-            migrationBuilder.CreateTable(
-                name: "FactSubjects",
-                columns: table => new
-                {
-                    OwnerId = table.Column<string>(type: "text", nullable: false),
-                    SubjectId = table.Column<Guid>(type: "uuid", nullable: false),
-                    Kind = table.Column<string>(type: "text", nullable: false),
-                    DeviceId = table.Column<long>(type: "bigint", nullable: true),
-                    DisplayName = table.Column<string>(type: "text", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_FactSubjects", x => new { x.OwnerId, x.SubjectId });
-                    table.ForeignKey(
-                        name: "FK_FactSubjects_Devices_DeviceId",
-                        column: x => x.DeviceId,
-                        principalTable: "Devices",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "FactStreams",
-                columns: table => new
-                {
-                    OwnerId = table.Column<string>(type: "text", nullable: false),
-                    StreamId = table.Column<Guid>(type: "uuid", nullable: false),
-                    SubjectId = table.Column<Guid>(type: "uuid", nullable: false),
-                    CollectorInstanceId = table.Column<Guid>(type: "uuid", nullable: true),
-                    OutputId = table.Column<string>(type: "text", nullable: false),
-                    Source = table.Column<string>(type: "text", nullable: false),
-                    FactKind = table.Column<string>(type: "text", nullable: false),
-                    Dimensions = table.Column<string>(type: "jsonb", nullable: false),
-                    Origin = table.Column<string>(type: "text", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_FactStreams", x => new { x.OwnerId, x.StreamId });
-                    table.ForeignKey(
-                        name: "FK_FactStreams_FactSubjects_OwnerId_SubjectId",
-                        columns: x => new { x.OwnerId, x.SubjectId },
-                        principalTable: "FactSubjects",
-                        principalColumns: new[] { "OwnerId", "SubjectId" },
-                        onDelete: ReferentialAction.Restrict);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "FactGaps",
-                columns: table => new
-                {
-                    OwnerId = table.Column<string>(type: "text", nullable: false),
-                    StreamId = table.Column<Guid>(type: "uuid", nullable: false),
-                    GapId = table.Column<Guid>(type: "uuid", nullable: false),
-                    Start = table.Column<long>(type: "bigint", nullable: false),
-                    End = table.Column<long>(type: "bigint", nullable: false),
-                    Reason = table.Column<string>(type: "text", nullable: false),
-                    EstimatedFactsLost = table.Column<int>(type: "integer", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_FactGaps", x => new { x.OwnerId, x.StreamId, x.GapId });
-                    table.ForeignKey(
-                        name: "FK_FactGaps_FactStreams_OwnerId_StreamId",
-                        columns: x => new { x.OwnerId, x.StreamId },
-                        principalTable: "FactStreams",
-                        principalColumns: new[] { "OwnerId", "StreamId" },
-                        onDelete: ReferentialAction.Restrict);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "Facts",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    OwnerId = table.Column<string>(type: "text", nullable: false),
-                    StreamId = table.Column<Guid>(type: "uuid", nullable: false),
-                    FactId = table.Column<Guid>(type: "uuid", nullable: false),
-                    Revision = table.Column<long>(type: "bigint", nullable: false),
-                    Origin = table.Column<string>(type: "text", nullable: false),
-                    ObservedAt = table.Column<long>(type: "bigint", nullable: true),
-                    Start = table.Column<long>(type: "bigint", nullable: true),
-                    End = table.Column<long>(type: "bigint", nullable: true),
-                    OccurredAt = table.Column<long>(type: "bigint", nullable: true),
-                    IsFinal = table.Column<bool>(type: "boolean", nullable: true),
-                    Payload = table.Column<string>(type: "jsonb", nullable: true),
-                    LegacyRecord = table.Column<string>(type: "jsonb", nullable: true),
-                    LegacyId = table.Column<Guid>(type: "uuid", nullable: true),
-                    LegacyDeviceId = table.Column<long>(type: "bigint", nullable: true),
-                    LegacyKind = table.Column<string>(type: "text", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_Facts", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_Facts_FactStreams_OwnerId_StreamId",
-                        columns: x => new { x.OwnerId, x.StreamId },
-                        principalTable: "FactStreams",
-                        principalColumns: new[] { "OwnerId", "StreamId" },
-                        onDelete: ReferentialAction.Restrict);
-                });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_InputEvents_FactKey",
-                table: "InputEvents",
-                column: "FactKey",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_ActivitySegments_FactKey",
-                table: "ActivitySegments",
-                column: "FactKey",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Facts_OwnerId_LegacyDeviceId_LegacyKind_LegacyId",
-                table: "Facts",
-                columns: new[] { "OwnerId", "LegacyDeviceId", "LegacyKind", "LegacyId" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Facts_OwnerId_StreamId_FactId",
-                table: "Facts",
-                columns: new[] { "OwnerId", "StreamId", "FactId" },
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_FactStreams_OwnerId_SubjectId",
-                table: "FactStreams",
-                columns: new[] { "OwnerId", "SubjectId" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_FactSubjects_DeviceId",
-                table: "FactSubjects",
-                column: "DeviceId");
-
-            migrationBuilder.AddForeignKey(
-                name: "FK_ActivitySegments_Devices_DeviceId",
-                table: "ActivitySegments",
-                column: "DeviceId",
-                principalTable: "Devices",
-                principalColumn: "Id");
-
-            migrationBuilder.AddForeignKey(
-                name: "FK_ActivitySegments_Facts_FactKey",
-                table: "ActivitySegments",
-                column: "FactKey",
-                principalTable: "Facts",
-                principalColumn: "Id",
-                onDelete: ReferentialAction.Restrict);
-
-            migrationBuilder.AddForeignKey(
-                name: "FK_InputEvents_Facts_FactKey",
-                table: "InputEvents",
-                column: "FactKey",
-                principalTable: "Facts",
-                principalColumn: "Id",
-                onDelete: ReferentialAction.Restrict);
-            migrationBuilder.Sql("""
-                -- Existing table rows are migration evidence, not invented original Collector provenance.
-                INSERT INTO "FactSubjects" ("OwnerId", "SubjectId", "Kind", "DeviceId", "DisplayName")
+        migrationBuilder.Sql("""
+                DO $migration$
+                BEGIN
+                  IF EXISTS (SELECT 1 FROM "ActivitySegments" WHERE "AppId" IS NOT NULL AND "AppIdentityId" IS NULL) THEN
+                    RAISE EXCEPTION 'ActivitySegment has an App without AppIdentity; resolve the mapping before migration';
+                  END IF;
+                  IF EXISTS (SELECT 1 FROM "InputEvents" WHERE "EventType" NOT IN (1, 2, 3)) THEN
+                    RAISE EXCEPTION 'InputEvent has an unknown EventType';
+                  END IF;
+                  IF EXISTS (SELECT 1 FROM "ActivitySegments" s
+                    WHERE jsonb_typeof(s."Attributes") = 'object'
+                      AND jsonb_typeof(s."Attributes"->'identityKey') = 'string'
+                      AND s."Attributes"->>'identityKey' = s."IdentityKey"
+                      AND (jsonb_typeof(s."Attributes"->'title') IS NULL OR jsonb_typeof(s."Attributes"->'title') IN ('string', 'null'))
+                      AND (s."Attributes"->>'title') IS NOT DISTINCT FROM s."Title"
+                      AND jsonb_typeof(s."Attributes"->'attributes') = 'object'
+                      AND s."Attributes" ? 'activityKey'
+                      AND s."Attributes"->'activityKey' IS DISTINCT FROM to_jsonb(s."IdentityKey")) THEN
+                    RAISE EXCEPTION 'Historical activityKey conflicts with identityKey';
+                  END IF;
+                END $migration$;
+                ALTER TABLE "ActivitySegments" RENAME TO "Segments";
+                ALTER TABLE "InputEvents" RENAME TO "Events";
+                ALTER TABLE "Segments" RENAME CONSTRAINT "PK_ActivitySegments" TO "PK_Segments";
+                ALTER TABLE "Events" RENAME CONSTRAINT "PK_InputEvents" TO "PK_Events";
+                ALTER TABLE "Segments" RENAME CONSTRAINT "FK_ActivitySegments_AppIdentities_AppIdentityId" TO "FK_Segments_AppIdentities_AppIdentityId";
+                ALTER INDEX "IX_ActivitySegments_AppIdentityId" RENAME TO "IX_Segments_AppIdentityId";
+                DROP INDEX "IX_ActivitySegments_StartTime";
+                ALTER TABLE "Segments"
+                  ADD COLUMN "OwnerId" text,
+                  ADD COLUMN "StreamId" uuid,
+                  ADD COLUMN "FactId" uuid,
+                  ADD COLUMN "Revision" bigint NOT NULL DEFAULT 1,
+                  ADD COLUMN "Payload" jsonb;
+                ALTER TABLE "Events"
+                  ADD COLUMN "OwnerId" text,
+                  ADD COLUMN "StreamId" uuid,
+                  ADD COLUMN "FactId" uuid,
+                  ADD COLUMN "Revision" bigint NOT NULL DEFAULT 1,
+                  ADD COLUMN "Source" varchar(64) NOT NULL DEFAULT 'system',
+                  ADD COLUMN "AppIdentityId" bigint,
+                  ADD COLUMN "Payload" jsonb;
+                INSERT INTO "Subjects" ("OwnerId", "SubjectId", "Kind", "DeviceId", "DisplayName")
                 SELECT DISTINCT d."OwnerId",
                   CASE WHEN d."HardwareId" ~ '^subject:(account|person):[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' THEN split_part(d."HardwareId", ':', 3)::uuid
                        ELSE md5('legacy-subject:' || d."OwnerId" || ':' || d."Id")::uuid END,
@@ -217,138 +130,117 @@ namespace Heartbeat.Server.Migrations
                 FROM "Devices" d
                 ON CONFLICT DO NOTHING;
 
-                INSERT INTO "FactStreams" ("OwnerId", "StreamId", "SubjectId", "CollectorInstanceId", "OutputId", "Source", "FactKind", "Dimensions", "Origin")
+                INSERT INTO "Streams" ("OwnerId", "StreamId", "SubjectId", "CollectorInstanceId", "OutputId", "Source", "FactKind", "Dimensions", "Origin")
                 SELECT DISTINCT d."OwnerId", md5('legacy-stream:' || d."OwnerId" || ':' || d."Id" || ':' || s."Source" || ':segment')::uuid,
                   CASE WHEN d."HardwareId" ~ '^subject:(account|person):[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' THEN split_part(d."HardwareId", ':', 3)::uuid
                        ELSE md5('legacy-subject:' || d."OwnerId" || ':' || d."Id")::uuid END,
                   NULL::uuid, 'legacy-import', s."Source", 'segment', '{}'::jsonb, 'legacy-import'
-                FROM "ActivitySegments" s JOIN "Devices" d ON d."Id" = s."DeviceId";
+                FROM (SELECT DISTINCT "DeviceId", "Source" FROM "Segments") s JOIN "Devices" d ON d."Id" = s."DeviceId";
 
-                INSERT INTO "FactStreams" ("OwnerId", "StreamId", "SubjectId", "CollectorInstanceId", "OutputId", "Source", "FactKind", "Dimensions", "Origin")
+                INSERT INTO "Streams" ("OwnerId", "StreamId", "SubjectId", "CollectorInstanceId", "OutputId", "Source", "FactKind", "Dimensions", "Origin")
                 SELECT DISTINCT d."OwnerId", md5('legacy-stream:' || d."OwnerId" || ':' || d."Id" || ':system:event')::uuid,
                   CASE WHEN d."HardwareId" ~ '^subject:(account|person):[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' THEN split_part(d."HardwareId", ':', 3)::uuid
                        ELSE md5('legacy-subject:' || d."OwnerId" || ':' || d."Id")::uuid END,
                   NULL::uuid, 'legacy-import', 'system', 'event', '{}'::jsonb, 'legacy-import'
-                FROM "InputEvents" e JOIN "Devices" d ON d."Id" = e."DeviceId";
+                FROM (SELECT DISTINCT "DeviceId" FROM "Events") e JOIN "Devices" d ON d."Id" = e."DeviceId";
 
-                INSERT INTO "Facts" ("Id", "OwnerId", "StreamId", "FactId", "Revision", "Origin", "Start", "End", "Payload", "LegacyRecord", "LegacyId", "LegacyDeviceId", "LegacyKind")
-                SELECT md5('legacy-fact:segment:' || s."Id")::uuid, d."OwnerId",
-                  md5('legacy-stream:' || d."OwnerId" || ':' || d."Id" || ':' || s."Source" || ':segment')::uuid,
-                  s."Id", 0, 'legacy-import', (extract(epoch FROM s."StartTime") * 10000000)::bigint + 621355968000000000,
-                  (extract(epoch FROM s."EndTime") * 10000000)::bigint + 621355968000000000,
-                  CASE WHEN jsonb_typeof(s."Attributes") = 'object'
-                             AND s."Attributes"->>'identityKey' = s."IdentityKey"
-                             AND (s."Attributes"->>'title') IS NOT DISTINCT FROM s."Title"
+                UPDATE "Segments" s SET
+                  "OwnerId" = d."OwnerId",
+                  "StreamId" = md5('legacy-stream:' || d."OwnerId" || ':' || d."Id" || ':' || s."Source" || ':segment')::uuid,
+                  "FactId" = s."Id",
+                  "Payload" = CASE WHEN jsonb_typeof(s."Attributes") = 'object'
+                             AND jsonb_typeof(s."Attributes"->'identityKey') = 'string'
+                      AND s."Attributes"->>'identityKey' = s."IdentityKey"
+                             AND (jsonb_typeof(s."Attributes"->'title') IS NULL OR jsonb_typeof(s."Attributes"->'title') IN ('string', 'null'))
+                      AND (s."Attributes"->>'title') IS NOT DISTINCT FROM s."Title"
                              AND jsonb_typeof(s."Attributes"->'attributes') = 'object'
-                       THEN s."Attributes"
-                       ELSE jsonb_build_object('identityKey', s."IdentityKey", 'title', s."Title", 'attributes', s."Attributes") END,
-                  to_jsonb(s) - 'FactKey' - 'Payload' - 'OwnerId', s."Id", s."DeviceId", 'segment'
-                FROM "ActivitySegments" s JOIN "Devices" d ON d."Id" = s."DeviceId";
+                       THEN (s."Attributes" - 'identityKey') || jsonb_build_object('activityKey', s."IdentityKey")
+                       ELSE jsonb_build_object('activityKey', s."IdentityKey", 'title', s."Title", 'attributes', s."Attributes") END
+                FROM "Devices" d WHERE d."Id" = s."DeviceId";
+                UPDATE "Events" e SET
+                  "OwnerId" = d."OwnerId",
+                  "StreamId" = md5('legacy-stream:' || d."OwnerId" || ':' || d."Id" || ':system:event')::uuid,
+                  "FactId" = e."Id",
+                  "Payload" = jsonb_build_object('eventType', CASE e."EventType" WHEN 1 THEN 'keyDown' WHEN 2 THEN 'mouseButton' WHEN 3 THEN 'mouseScroll' END,
+                    'codeSet', e."CodeSet", 'code', e."Code")
+                FROM "Devices" d WHERE d."Id" = e."DeviceId";
 
-                INSERT INTO "Facts" ("Id", "OwnerId", "StreamId", "FactId", "Revision", "Origin", "OccurredAt", "Payload", "LegacyRecord", "LegacyId", "LegacyDeviceId", "LegacyKind")
-                SELECT md5('legacy-fact:event:' || e."Id")::uuid, d."OwnerId", md5('legacy-stream:' || d."OwnerId" || ':' || d."Id" || ':system:event')::uuid,
-                  e."Id", 0, 'legacy-import', (extract(epoch FROM e."Timestamp") * 10000000)::bigint + 621355968000000000,
-                  jsonb_build_object('eventType', CASE e."EventType" WHEN 1 THEN 'keyDown' WHEN 2 THEN 'mouseButton' WHEN 3 THEN 'mouseScroll' END, 'codeSet', e."CodeSet", 'code', e."Code"),
-                  to_jsonb(e) - 'FactKey', e."Id", e."DeviceId", 'event'
-                FROM "InputEvents" e JOIN "Devices" d ON d."Id" = e."DeviceId";
-
-                UPDATE "ActivitySegments" s SET "FactKey" = f."Id", "OwnerId" = f."OwnerId", "Payload" = f."Payload", "Attributes" = f."Payload"->'attributes', "DeviceId" = subject."DeviceId"
-                FROM "Facts" f JOIN "FactStreams" stream ON stream."OwnerId" = f."OwnerId" AND stream."StreamId" = f."StreamId"
-                JOIN "FactSubjects" subject ON subject."OwnerId" = stream."OwnerId" AND subject."SubjectId" = stream."SubjectId"
-                WHERE f."LegacyKind" = 'segment' AND f."LegacyId" = s."Id";
-                UPDATE "InputEvents" e SET "FactKey" = f."Id" FROM "Facts" f WHERE f."LegacyKind" = 'event' AND f."LegacyId" = e."Id";
-
-                DO $migration$
-                BEGIN
-                  IF (SELECT count(*) FROM "ActivitySegments") <> (SELECT count(*) FROM "Facts" WHERE "LegacyKind" = 'segment')
-                     OR (SELECT count(*) FROM "InputEvents") <> (SELECT count(*) FROM "Facts" WHERE "LegacyKind" = 'event') THEN
-                    RAISE EXCEPTION 'Native Fact migration did not preserve every historical row';
-                  END IF;
-                END $migration$;
+                -- Owner/Stream FKs and NOT NULL validate that every old row acquired an identity.
+                -- Dropped columns also remove their obsolete indexes/FKs; no full-row archive is retained.
+                ALTER TABLE "Segments"
+                  ALTER COLUMN "OwnerId" SET NOT NULL,
+                  ALTER COLUMN "StreamId" SET NOT NULL,
+                  ALTER COLUMN "FactId" SET NOT NULL,
+                  ALTER COLUMN "Payload" SET NOT NULL,
+                  ALTER COLUMN "Revision" DROP DEFAULT,
+                  DROP COLUMN "DeviceId", DROP COLUMN "AppId", DROP COLUMN "IdentityKey",
+                  DROP COLUMN "Title", DROP COLUMN "Attributes",
+                  ADD CONSTRAINT "CK_Segments_Revision" CHECK ("Revision" >= 1),
+                  ADD CONSTRAINT "FK_Segments_Streams_OwnerId_StreamId" FOREIGN KEY ("OwnerId", "StreamId") REFERENCES "Streams" ("OwnerId", "StreamId") ON DELETE RESTRICT;
+                ALTER TABLE "Events"
+                  ALTER COLUMN "OwnerId" SET NOT NULL,
+                  ALTER COLUMN "StreamId" SET NOT NULL,
+                  ALTER COLUMN "FactId" SET NOT NULL,
+                  ALTER COLUMN "Payload" SET NOT NULL,
+                  ALTER COLUMN "Revision" DROP DEFAULT,
+                  ALTER COLUMN "Source" DROP DEFAULT,
+                  DROP COLUMN "DeviceId", DROP COLUMN "EventType", DROP COLUMN "CodeSet", DROP COLUMN "Code",
+                  ADD CONSTRAINT "CK_Events_Revision" CHECK ("Revision" >= 1),
+                  ADD CONSTRAINT "FK_Events_AppIdentities_AppIdentityId" FOREIGN KEY ("AppIdentityId") REFERENCES "AppIdentities" ("Id") ON DELETE RESTRICT,
+                  ADD CONSTRAINT "FK_Events_Streams_OwnerId_StreamId" FOREIGN KEY ("OwnerId", "StreamId") REFERENCES "Streams" ("OwnerId", "StreamId") ON DELETE RESTRICT;
                 """);
-        }
 
-        /// <inheritdoc />
-        protected override void Down(MigrationBuilder migrationBuilder)
-        {
-            migrationBuilder.Sql("""
-                DO $migration$
-                BEGIN
-                  IF EXISTS (SELECT 1 FROM "Facts" WHERE "Origin" = 'native') OR EXISTS (SELECT 1 FROM "FactGaps") THEN
-                    RAISE EXCEPTION 'Cannot downgrade native Fact custody without losing data; restore the pre-upgrade backup instead';
-                  END IF;
-                END $migration$;
-                UPDATE "ActivitySegments" s SET
-                  "DeviceId" = f."LegacyDeviceId",
-                  "Attributes" = CASE WHEN f."LegacyRecord"->'Attributes' = 'null'::jsonb THEN NULL ELSE f."LegacyRecord"->'Attributes' END
-                FROM "Facts" f WHERE s."FactKey" = f."Id" AND f."LegacyRecord" IS NOT NULL;
-                """);
-            migrationBuilder.DropForeignKey(
-                name: "FK_ActivitySegments_Devices_DeviceId",
-                table: "ActivitySegments");
+        migrationBuilder.CreateIndex(
+            name: "IX_Events_AppIdentityId",
+            table: "Events",
+            column: "AppIdentityId");
 
-            migrationBuilder.DropForeignKey(
-                name: "FK_ActivitySegments_Facts_FactKey",
-                table: "ActivitySegments");
+        migrationBuilder.CreateIndex(
+            name: "IX_Events_OwnerId_FactId",
+            table: "Events",
+            columns: new[] { "OwnerId", "FactId" });
 
-            migrationBuilder.DropForeignKey(
-                name: "FK_InputEvents_Facts_FactKey",
-                table: "InputEvents");
+        migrationBuilder.CreateIndex(
+            name: "IX_Events_OwnerId_StreamId_FactId",
+            table: "Events",
+            columns: new[] { "OwnerId", "StreamId", "FactId" },
+            unique: true);
 
-            migrationBuilder.DropTable(
-                name: "FactGaps");
+        migrationBuilder.CreateIndex(
+            name: "IX_Events_OwnerId_Timestamp",
+            table: "Events",
+            columns: new[] { "OwnerId", "Timestamp" });
 
-            migrationBuilder.DropTable(
-                name: "Facts");
+        migrationBuilder.CreateIndex(
+            name: "IX_Segments_OwnerId_FactId",
+            table: "Segments",
+            columns: new[] { "OwnerId", "FactId" });
 
+        migrationBuilder.CreateIndex(
+            name: "IX_Segments_OwnerId_Source_StartTime",
+            table: "Segments",
+            columns: new[] { "OwnerId", "Source", "StartTime" });
 
-            migrationBuilder.DropTable(
-                name: "FactStreams");
+        migrationBuilder.CreateIndex(
+            name: "IX_Segments_OwnerId_StreamId_FactId",
+            table: "Segments",
+            columns: new[] { "OwnerId", "StreamId", "FactId" },
+            unique: true);
 
-            migrationBuilder.DropTable(
-                name: "FactSubjects");
+        migrationBuilder.CreateIndex(
+            name: "IX_Streams_OwnerId_SubjectId",
+            table: "Streams",
+            columns: new[] { "OwnerId", "SubjectId" });
 
-            migrationBuilder.DropIndex(
-                name: "IX_InputEvents_FactKey",
-                table: "InputEvents");
-
-            migrationBuilder.DropIndex(
-                name: "IX_ActivitySegments_FactKey",
-                table: "ActivitySegments");
-
-            migrationBuilder.DropColumn(
-                name: "FactKey",
-                table: "InputEvents");
-
-            migrationBuilder.DropColumn(
-                name: "FactKey",
-                table: "ActivitySegments");
-
-            migrationBuilder.DropColumn(
-                name: "OwnerId",
-                table: "ActivitySegments");
-
-            migrationBuilder.DropColumn(
-                name: "Payload",
-                table: "ActivitySegments");
-
-            migrationBuilder.AlterColumn<long>(
-                name: "DeviceId",
-                table: "ActivitySegments",
-                type: "bigint",
-                nullable: false,
-                defaultValue: 0L,
-                oldClrType: typeof(long),
-                oldType: "bigint",
-                oldNullable: true);
-
-            migrationBuilder.AddForeignKey(
-                name: "FK_ActivitySegments_Devices_DeviceId",
-                table: "ActivitySegments",
-                column: "DeviceId",
-                principalTable: "Devices",
-                principalColumn: "Id",
-                onDelete: ReferentialAction.Cascade);
-        }
+        migrationBuilder.CreateIndex(
+            name: "IX_Subjects_DeviceId",
+            table: "Subjects",
+            column: "DeviceId");
     }
+
+    protected override void Down(MigrationBuilder migrationBuilder) => migrationBuilder.Sql("""
+        DO $migration$ BEGIN
+          RAISE EXCEPTION 'Fact family migration cannot reconstruct discarded physical columns; restore the pre-upgrade backup and retain new facts';
+        END $migration$;
+        """);
 }
