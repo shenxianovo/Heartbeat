@@ -78,6 +78,7 @@ public partial class NativeFactCustody : Migration
                     onDelete: ReferentialAction.Restrict);
             });
 
+        // Separate commands expose phase timings while retaining EF's migration transaction.
         migrationBuilder.Sql("""
                 DO $migration$
                 BEGIN
@@ -99,6 +100,9 @@ public partial class NativeFactCustody : Migration
                     RAISE EXCEPTION 'Historical activityKey conflicts with identityKey';
                   END IF;
                 END $migration$;
+                """);
+
+        migrationBuilder.Sql("""
                 ALTER TABLE "ActivitySegments" RENAME TO "Segments";
                 ALTER TABLE "InputEvents" RENAME TO "Events";
                 ALTER TABLE "Segments" RENAME CONSTRAINT "PK_ActivitySegments" TO "PK_Segments";
@@ -120,6 +124,9 @@ public partial class NativeFactCustody : Migration
                   ADD COLUMN "Source" varchar(64) NOT NULL DEFAULT 'system',
                   ADD COLUMN "AppIdentityId" bigint,
                   ADD COLUMN "Payload" jsonb;
+                """);
+
+        migrationBuilder.Sql("""
                 INSERT INTO "Subjects" ("OwnerId", "SubjectId", "Kind", "DeviceId", "DisplayName")
                 SELECT DISTINCT d."OwnerId",
                   CASE WHEN d."HardwareId" ~ '^subject:(account|person):[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' THEN split_part(d."HardwareId", ':', 3)::uuid
@@ -143,7 +150,9 @@ public partial class NativeFactCustody : Migration
                        ELSE md5('legacy-subject:' || d."OwnerId" || ':' || d."Id")::uuid END,
                   NULL::uuid, 'legacy-import', 'system', 'event', '{}'::jsonb, 'legacy-import'
                 FROM (SELECT DISTINCT "DeviceId" FROM "Events") e JOIN "Devices" d ON d."Id" = e."DeviceId";
+                """);
 
+        migrationBuilder.Sql("""
                 UPDATE "Segments" s SET
                   "OwnerId" = d."OwnerId",
                   "StreamId" = md5('legacy-stream:' || d."OwnerId" || ':' || d."Id" || ':' || s."Source" || ':segment')::uuid,
@@ -157,6 +166,9 @@ public partial class NativeFactCustody : Migration
                        THEN (s."Attributes" - 'identityKey') || jsonb_build_object('activityKey', s."IdentityKey")
                        ELSE jsonb_build_object('activityKey', s."IdentityKey", 'title', s."Title", 'attributes', s."Attributes") END
                 FROM "Devices" d WHERE d."Id" = s."DeviceId";
+                """);
+
+        migrationBuilder.Sql("""
                 UPDATE "Events" e SET
                   "OwnerId" = d."OwnerId",
                   "StreamId" = md5('legacy-stream:' || d."OwnerId" || ':' || d."Id" || ':system:event')::uuid,
@@ -164,7 +176,9 @@ public partial class NativeFactCustody : Migration
                   "Payload" = jsonb_build_object('eventType', CASE e."EventType" WHEN 1 THEN 'keyDown' WHEN 2 THEN 'mouseButton' WHEN 3 THEN 'mouseScroll' END,
                     'codeSet', e."CodeSet", 'code', e."Code")
                 FROM "Devices" d WHERE d."Id" = e."DeviceId";
+                """);
 
+        migrationBuilder.Sql("""
                 -- Owner/Stream FKs and NOT NULL validate that every old row acquired an identity.
                 -- Dropped columns also remove their obsolete indexes/FKs; no full-row archive is retained.
                 ALTER TABLE "Segments"
@@ -189,6 +203,10 @@ public partial class NativeFactCustody : Migration
                   ADD CONSTRAINT "FK_Events_AppIdentities_AppIdentityId" FOREIGN KEY ("AppIdentityId") REFERENCES "AppIdentities" ("Id") ON DELETE RESTRICT,
                   ADD CONSTRAINT "FK_Events_Streams_OwnerId_StreamId" FOREIGN KEY ("OwnerId", "StreamId") REFERENCES "Streams" ("OwnerId", "StreamId") ON DELETE RESTRICT;
                 """);
+
+        // Parallel index construction OOMs on the full historical Events table at
+        // 512 MiB / 0.75 CPU. Serial construction fits; keep this migration-local.
+        migrationBuilder.Sql("SET LOCAL max_parallel_maintenance_workers = 0;");
 
         migrationBuilder.CreateIndex(
             name: "IX_Events_AppIdentityId",

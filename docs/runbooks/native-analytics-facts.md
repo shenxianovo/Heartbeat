@@ -10,21 +10,52 @@
 原地改为 Segments/Events，保留行 Id，不创建通用 Facts，也不永久复制 LegacyRecord。
 同一个迁移编号只执行新的实现；以前已应用旧草案的实验库必须从独立备份重建。
 
-自动测试使用 Testcontainers 的独立随机端口数据库。实际线上克隆的完整数据 diff、
-1C1G 资源/空间演练、10 分钟整体停服预算、备份保留和真实安装切换仍待验收，生产发布未执行。
-下面是新布局的核对步骤，不代表部署脚本和资源预算已经通过验收。
+自动测试使用 Testcontainers 的独立随机端口数据库。2026-09-09 独立完整快照演练已通过：
+220,146 / 1,891,698 行及重启后逐行零差异；受限数据库/Analytics 中备份至健康 48.337 秒，
+重启至健康 5.534 秒。证据见 issue 01 和 `.local/verification/fact-family-rehearsal/run-05/report.json`。
+实际 1C1G 整机/磁盘预算、部署整体停服预算、备份保留和真实安装切换仍待验收，生产发布未执行。
 
 ## 严格切换边界（2026-09-09）
 
 Fact 撤回与 Fact Schema 格式治理已删除，旧撤回字段、格式版本/文档与事实摘要均不属于
-新契约。新 Collector/Package、Hub 与 Analytics 必须一起切换，不能把混用版本的拒绝视作成功上传。
+新契约。新原生 Fact 上传链路的 Collector/Package、Hub 与 Analytics 需要使用匹配契约，
+不能把混用版本的拒绝视作成功上传。已发布 Desktop/Hub 仍走保留兼容的 segments/input-events
+上传端点，因此可以先单独部署 Analytics，无需同时升级 Headless 或修改其 Runtime JSON。
 含旧字段的 Runtime committed Fact 或 Collector outbox 会明确拒绝加载并保留原文件；
 本次没有添加历史 journal 转换器。部署 owner 必须先核对实际安装的持久状态与未确认记录，
 如存在该形状则保持旧版本保管数据，另行验证无损切换后再升级；不能删除状态文件绕过拒绝。
 当前 NativeFactCustody 尚未部署，已替换为原地分表迁移；已经应用旧草案 migration 的临时库
-不作为升级支持对象；不能对已应用草案的库仅覆盖迁移文件。真实快照仍停在 AskingWindowIdentity，本轮没有启动、迁移或修改该库。
+不作为升级支持对象；不能对已应用草案的库仅覆盖迁移文件。来源快照仍停在 AskingWindowIdentity，
+独立演练阶段仅做只读 pg_dump；随后 Owner 运行 StartLocal，已启动并迁移本地栈。
 
 ## 独立副本演练
+
+先构建候选镜像，再将旧布局的完整 custom-format `pg_dump` 交给可重复入口：
+
+```sh
+docker build -f server/Dockerfile -t heartbeat-fact-rehearsal .
+python3 scripts/rehearse-fact-migration.py \
+  --backup /absolute/path/to/before.dump \
+  --image heartbeat-fact-rehearsal \
+  --output .local/verification/fact-family-rehearsal/run-01
+```
+
+输出目录必须不存在。脚本仅从备份恢复独立 PostgreSQL，不读取 `.env.local`，不连接来源库；
+网络为 Docker internal，不接入真实 Auth 或 Collector。数据库限制 0.75 CPU / 512 MiB，
+Analytics 限制 0.25 CPU / 256 MiB，均禁用额外 swap。剩余 256 MiB 只是 1 GiB 预算中的预留，
+不能据此声称已验证实际宿主机、Frontend 和 Collector 的总内存。
+
+脚本以真实应用启动执行迁移。按 Id 游标每批 10,000 行，先取有界记录再关联和序列化，
+比较总行数也必须等于来源表计数。对全部行进行精确比较，覆盖 Payload、Owner、Subject、
+Stream、应用归属、时间和输入编码，另比较活动/输入聚合与重启后的全部行。
+不为核对改变 JIT 或查询并行配置。迁移内部仅用 `SET LOCAL` 关闭本次建索引的并行工作者；
+长 SQL 按六个阶段分别执行，仍受 EF 同一个事务保护，中后段失败会整体回滚。
+报告只有汇总；备份、完整行导出及可能含私有内容的日志保存在忽略的输出目录，不提交。
+完成或失败后清理本次创建的容器、卷和网络，保留备份及报告用于复核。
+
+600 秒计时包括受限容器中的升级前备份、备份目录校验、候选启动迁移至 `/health` 成功。
+镜像准备、初次恢复和核对发生在计时外。这是隔离环境的停写模拟，不能代替真实部署的停写、
+备份保留、路由切换及 Collector 暂存/恢复验收。
 
 1. 保存升级前 PostgreSQL 完整备份与各 Desktop/Headless 的 Runtime、旧缓存和 dead-letter。
    在独立数据库恢复；记录迁移历史、旧表行数、时间范围、应用映射、Owner/Subject 和输入计数。

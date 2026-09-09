@@ -46,3 +46,11 @@ Schema 验证结论已标记被本项替代。PRD 仍为 ready-for-human：生�
 分支 `codex/remove-fact-schema`，基于 `e82193c`（已删除 Fact 撤回）。不改原工作区、不部署、不推送、
 不触发 CI；仅独立 Testcontainers 数据库，原项目线上快照未启动或访问。按家族分表和其他逐项
 存储决定继续由原任务承接，整合时应保留其未提交 ADR-055 与脚本决定。
+
+## Comments
+
+2026-09-09 整合后按当前 CI 入口重新验证：Collection/Shared Kernel 593、Analytics 525、
+macOS 82、Browser 96、Dashboard 274 项测试通过；Browser/Dashboard 构建及 Package 引用检查通过。
+发现 VRChat Dockerfile 仍 COPY 已删除的 Schema 文件，确认源文件不存在后删除该指令；
+实际 Docker Package 构建及导出通过。未新增测试脚本。Windows runner 与远端 GitHub CI 尚未运行；
+本地 Node 为 26.7.0，CI 配置为 24，本地结果不替代远端完整 CI。

@@ -14,7 +14,6 @@ COPY shared/Heartbeat.Core/Heartbeat.Core.csproj shared/Heartbeat.Core/
 COPY collection/protocol/Heartbeat.Collection.CollectorProtocol/Heartbeat.Collection.CollectorProtocol.csproj collection/protocol/Heartbeat.Collection.CollectorProtocol/
 COPY collection/collectors/Heartbeat.Collector.VRChat/Heartbeat.Collector.VRChat.csproj collection/collectors/Heartbeat.Collector.VRChat/
 COPY collection/contracts/segment-rotation-policy.json collection/contracts/
-COPY collection/contracts/facts/vrchat-presence-segment.schema.json collection/contracts/facts/
 RUN --mount=type=cache,id=heartbeat-nuget,target=/root/.nuget/packages,sharing=locked \
     dotnet restore collection/collectors/Heartbeat.Collector.VRChat/Heartbeat.Collector.VRChat.csproj
 

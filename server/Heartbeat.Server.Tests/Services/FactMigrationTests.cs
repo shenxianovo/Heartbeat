@@ -125,4 +125,37 @@ public sealed class FactMigrationTests(PostgresContainerFixture fixture) : Postg
         var imported = await db.Segments.SingleAsync(s => s.Id == newId);
         Assert.True(JsonElement.DeepEquals(migrated.Payload.RootElement, imported.Payload.RootElement));
     }
+
+    [Fact]
+    public async Task LateConstraintFailure_RollsBackAllMigrationCommands()
+    {
+        await using var db = CreateDbContext();
+        // Simulate an inconsistent old backup. It passes the preflight, then fails
+        // OwnerId validation only after both family conversion commands have run.
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "InputEvents" DROP CONSTRAINT "FK_InputEvents_Devices_DeviceId";
+            INSERT INTO "Devices" ("Id", "OwnerId", "HardwareId", "DeviceName")
+            VALUES (701, 'owner', 'hardware', 'PC');
+            INSERT INTO "ActivitySegments" ("Id", "DeviceId", "Source", "IdentityKey", "Title", "StartTime", "EndTime")
+            VALUES ('01990000-0000-7000-8000-000000000001', 701, 'browser', 'a', 'Title', '2026-09-01Z', '2026-09-02Z');
+            INSERT INTO "InputEvents" ("Id", "DeviceId", "EventType", "CodeSet", "Code", "Timestamp")
+            VALUES ('01990000-0000-7000-8000-000000000002', 999, 1, 'windows-vk-v1', 65, '2026-09-01Z');
+            """);
+        const string oldRowsSql = """
+            SELECT to_jsonb(s)::text AS "Value" FROM "ActivitySegments" s
+            UNION ALL SELECT to_jsonb(e)::text FROM "InputEvents" e
+            """;
+        var before = await db.Database.SqlQueryRaw<string>(oldRowsSql).ToListAsync();
+
+        var error = await Assert.ThrowsAsync<PostgresException>(() => db.Database.MigrateAsync());
+
+        Assert.Equal(PostgresErrorCodes.NotNullViolation, error.SqlState);
+        Assert.Equal("OwnerId", error.ColumnName);
+        Assert.Equal(before, await db.Database.SqlQueryRaw<string>(oldRowsSql).ToListAsync());
+        Assert.Equal(Previous, (await db.Database.GetAppliedMigrationsAsync()).Last());
+        Assert.Equal(0, await db.Database.SqlQueryRaw<int>("""
+            SELECT count(*)::int AS "Value" FROM information_schema.tables
+            WHERE table_schema='public' AND table_name IN ('Subjects', 'Streams', 'Segments', 'Events', 'FactGaps')
+            """).SingleAsync());
+    }
 }

@@ -1,10 +1,12 @@
 # 原生 Fact 摄入、持久保管与历史迁移
 
-Status: ready-for-agent
+Status: ready-for-human
 
 2026-09-09：Owner 已通过逐项讨论确认 [ADR-055](../../../docs/adr/055-fact-storage-by-family.md)
-中的核心 Fact 模型，并授权 agent 替换迁移。分表实现与自动回归已完成；完整备份副本、
-受限资源与现场升级验收仍未完成。下方旧版验证记录保留，最新证据见 Comments。
+中的核心 Fact 模型，并授权 agent 替换迁移、提交及继续副本演练。分表实现、完整副本逐行核对、
+受限数据库/Analytics 启动与重启已通过；实际整机/磁盘、部署流程和现场升级仍待验收。
+下方旧版验证记录保留，最新证据见 Comments。Owner 已报告生产备份完成，并授权提交后自行先部署
+Analytics；本地 CI 对应检查中 Analytics 525 项通过。当前提交包含演练修复及脚本，生产结果待 Owner 验收。
 
 ## 验收
 
@@ -12,12 +14,14 @@ Status: ready-for-agent
 - [x] 第二阶段：替换未部署迁移与 EF 模型，接通家族摄入和 SQL 查询；独立旧库 fixture 验证单次迁移、原表 OID 不变、10 / 9 列和历史身份保留。
 - [x] Analytics 原子接收 Subject/Stream/Fact/Gap；Owner 来自认证身份。
 - [x] 同修订幂等与冲突、低修订忽略、高修订纠正、旧撤回消息明确拒绝和 Event 发生时间不变均有自动验证。
-- [ ] 在完整备份副本中按家族分表无损迁移历史，依最终保留语义核对数据；旧 Runtime 重放无重复计时，旧缓存不会覆盖原生纠正。
+- [x] 在完整备份副本中按家族分表迁移历史，依最终保留语义逐行核对数据与重启后的数据。
+- [ ] 实际安装的旧 Runtime / 旧缓存升级重放验收；自动 fixture 已覆盖无重复计时与不覆盖原生纠正。
 - [x] Hub 原生持久上传，精确确认版本；断网、重启、容量与 Instance 移除不丢未确认记录。
 - [x] Machine/Account/Person 身份与查询隔离正确；Account 不伪装成 Device。
 - [x] Dashboard 结构化 Payload 正确展示历史/新 Browser URL，Recap depth 正确读取嵌套字段。
 - [x] 分表方案的 .NET 与前端相关回归通过；契约和文档同步。
-- [ ] 线上克隆在受限 CPU/内存下完成迁移、全量历史核对、重启与空间预算验证。
+- [x] 线上克隆在受限数据库/Analytics CPU、内存下完成迁移、全量历史核对、重启并记录空间占用。
+- [ ] 实际 1C1G 整机与磁盘余量、10 分钟部署整体停服预算、最近两份成功备份与未解决失败备份保留策略验收。
 - [ ] 部署 owner 完成真实数据库备份迁移演练和已安装 Windows/macOS/Headless 升级 smoke。
 
 ## 验证记录
@@ -186,3 +190,38 @@ IsFinal 不落库与旧服务端终态检查不能同时原样保留，已单列
   档案退役及旧缓存退出门槛；EF 设计时工厂不执行应用启动或读取部署凭据。构建产物与原库隔离。
   原始快照数据库未连接、未启动、未迁移；未提交或部署。完整数据 diff、1C1G/磁盘/停服预算、
   两份成功备份保留与真实安装 smoke 仍未验收，issue/PRD 保持 ready-for-agent。
+
+2026-09-09：Owner 要求先提交、继续下一阶段，并将长 `migrationBuilder.Sql` 拆开。
+
+- 已提交替换为 `ae30045`（`refactor(facts): store segments and events directly`）。依 ask-matt
+  阶段边界规则继续同一任务；下一阶段直接使用已有映射与验收约束。
+- 原本地快照仅执行只读 pg_dump，完整备份 61,185,274 bytes，SHA-256
+  `801e5503799f78e7ff6fdc1d67953dd52ae67652948f3187fb30f52e75c2af90`。
+  来源库没有迁移，应用保持停止；恢复与升级均在新建的 internal 网络容器中执行。
+- 缩小后的迁移仍在 Events 唯一索引处触发 512 MiB OOM，纯数据库复现也失败。
+  建索引前 PG 内存上下文约 4 MiB、触发器队列 8 KiB，未见历史更新持续积压。
+  单变量关闭并行建索引后迁移通过，因此只保留迁移内
+  `SET LOCAL max_parallel_maintenance_workers = 0`，不修改全局配置。
+- 长 SQL 拆为预检、改表、身份回填、Segment 转换、Event 转换、约束收尾六个命令，
+  EF 仍用同一事务；新增晚期约束失败用例，确认两类转换完成后失败也恢复全部旧表/旧行。
+  迁移相关 8 项测试通过；此前串行索引修复的 Server 全套 524 项通过，EF 模型无差异。
+- 迁移通过后，最初核对脚本的一次全历史关联/排序读取另有 OOM；关闭查询并行、降低建索引
+  内存和 JIT 对照均没有完成全量核对。Owner 提醒回到迁移范围后，撤下这些无效尝试。
+  正式入口改为 Id 游标每批 10,000 行，先限制行数再关联/序列化；比较总行数必须等于来源
+  计数，仍逐条检查全部内容。未保留 JIT、排序内存或查询并行配置改动。
+- 最终入口为 `scripts/rehearse-fact-migration.py`；完整证据在
+  `.local/verification/fact-family-rehearsal/run-05/`（`report.json`、启动日志、私有逐行导出）。
+  候选镜像为 `heartbeat-fact-rehearsal:split-sql`，image id
+  `sha256:2e319298d8750df7ffb999a9cf8014c725441e2dc75d024264e8c3f71d464375`；构建复用缓存的 .NET 10 SDK，具体 Dockerfile/build 日志
+  保存在同级本地目录。运行平台 linux/arm64；没有把 Docker CPU 配额等同于真实服务器性能。
+- **结果：通过。** PostgreSQL 0.75 CPU / 512 MiB、Analytics 0.25 CPU / 256 MiB，禁用额外
+  swap。迁移 37.4 秒；受限备份 4.569 秒，备份至健康共 48.337 秒；重启至健康 5.534 秒。
+  220,146 条 Segment、1,891,698 条 Event，以及 5,143 / 6,746 条聚合结果均零差异；
+  重启后再逐条核对全部事实，仍零差异。表 OID 保留、10 / 9 列、无 Facts，迁移日志仅应用一次。
+- 数据库从 382,482,111 增至 1,637,381,823 bytes；迁移 WAL 增量 2,238,203,400 bytes。
+  就绪/重启探测期间 PostgreSQL 目录采样最大约 2.653 GiB（含 WAL，非全过程磁盘硬峰值）；
+  DB working set 采样最大约 457.41 MiB，Analytics cgroup 内存峰值约 74.24 MiB；最终无 OOM。
+  原地 UPDATE 仍有死元组/索引/临时文件成本，不能按旧库大小直接安排磁盘；尚未做空间回收或生产磁盘验收。
+- Friction closeout：入口能明确失败/成功，所有记录都核对且保留私有证据；没有永久档案或全局
+  调参补丁。runbook/映射/PRD 同步。此轮拆分、局部资源修复与演练脚本尚未提交，未部署。
+  实际整机/磁盘预算、部署停写/备份保留流程和真实客户端升级仍由后续阶段承接，保持 ready-for-agent。
