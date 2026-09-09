@@ -39,6 +39,22 @@ namespace Heartbeat.Server.Controllers
             return currentUser.GetUserIdOrNull() == user.Id ? user : null;
         }
 
+        [HttpGet("experience")]
+        [EndpointName("getUserExperience")]
+        public async Task<ActionResult<ExperiencePage>> GetExperience(
+            string username,
+            [FromQuery] LocalCalendarWindowEnvelope window,
+            [FromQuery] Guid? after,
+            [FromServices] ExperienceService experience,
+            CancellationToken ct)
+        {
+            var user = await ResolveVisibleAsync(username);
+            if (user == null) return NotFound();
+            var validation = LocalCalendarWindowValidator.ResolveDay(window);
+            if (validation.Error != null) return BadRequest(validation.Error);
+            return await experience.ReadAsync(user.Id, validation.Window!, after, ct);
+        }
+
         [HttpGet("devices")]
         [EndpointName("getUserDevices")]
         public async Task<ActionResult<List<DeviceInfoResponse>>> GetDevices(string username)

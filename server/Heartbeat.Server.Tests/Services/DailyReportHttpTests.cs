@@ -152,6 +152,26 @@ public sealed class DailyReportHttpTests(PostgresContainerFixture fixture) : Pos
         }
     }
 
+    [Fact]
+    public async Task Experience_UsesDayEnvelopeAndExistingVisibilityGate()
+    {
+        await using var app = CreateApplication();
+        using var client = app.CreateClient();
+        var publicRead = await client.GetAsync("/api/v1/users/alice/experience?" + WindowQuery());
+        publicRead.EnsureSuccessStatusCode();
+        using var payload = JsonDocument.Parse(await publicRead.Content.ReadAsStringAsync());
+        Assert.Single(payload.RootElement.GetProperty("items").EnumerateArray());
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync("/api/v1/users/alice/experience?date=2026-03-08")).StatusCode);
+        await using (var db = CreateDbContext())
+        {
+            (await db.Users.SingleAsync()).IsPublic = false;
+            await db.SaveChangesAsync();
+        }
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/v1/users/alice/experience?" + WindowQuery())).StatusCode);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+        (await client.GetAsync("/api/v1/users/alice/experience?" + WindowQuery())).EnsureSuccessStatusCode();
+    }
+
     private WebApplicationFactory<ReportController> CreateApplication() =>
         new WebApplicationFactory<ReportController>().WithWebHostBuilder(builder =>
         {
@@ -186,6 +206,8 @@ public sealed class DailyReportHttpTests(PostgresContainerFixture fixture) : Pos
     {
         protected override Task<AuthenticateResult> HandleAuthenticateAsync()
         {
+            if (!Request.Headers.ContainsKey("Authorization"))
+                return Task.FromResult(AuthenticateResult.NoResult());
             Claim[] claims =
             [
                 new("sub", "user-1"),

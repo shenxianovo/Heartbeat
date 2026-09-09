@@ -11,6 +11,7 @@ import {
 import { authStore } from '../stores/auth'
 import { createSseFrameParser, type SseFrame } from './sse'
 import type { CalendarWindowEnvelope } from '../calendar/localCalendarWindow'
+import type { ExperienceSegment } from '../experience/factViews'
 
 // ===== Error model =====
 // 取数失败的归一形态。让取数策略层能区分"出错"(network/http/parse)与"没数据"(空数组)。
@@ -308,6 +309,17 @@ export async function fetchAppIcon(username: string, appId: number): Promise<Blo
 }
 
 // ===== Recap（ADR-023，读写按动词拆分随 ADR-042，窗口身份随 ADR-044）=====
+
+export async function fetchExperiencePage(
+  username: string, window: CalendarWindowEnvelope<'day'>, after: string | null, signal: AbortSignal,
+): Promise<{ items: ExperienceSegment[]; nextCursor: string | null }> {
+  const query = calendarWindowSearchParams(window)
+  if (after) query.set('after', after)
+  const response = await authHttp.fetch(`${API_BASE}/users/${encodeURIComponent(username)}/experience?${query}`, { signal })
+  if (!response.ok) throw new Error(response.status === 404
+    ? '此用户不存在，或你没有查看权限。' : `当天经历加载失败（${response.status}），请重试。`)
+  return response.json()
+}
 
 function calendarWindowSearchParams(window: CalendarWindowEnvelope<'day'>): URLSearchParams {
   return new URLSearchParams({

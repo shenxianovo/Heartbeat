@@ -22,7 +22,14 @@ PostgreSQL 512 MiB / 0.75 CPU、Analytics 256 MiB / 0.25 CPU 下，迁移 37.4 �
 
 Owner 随后运行 StartLocal，Analytics/Headless 和开发版 Desktop 已启动；按 Owner 要求仅备份并
 手工修改本地旧 Runtime JSON，不增加升级兼容代码。Owner 已报告生产数据库备份完成，计划先
-单独部署 Analytics；已发布 Desktop/Hub 的旧上传端点仍兼容，生产部署结果由 Owner 验收。
+单独部署 Analytics；已发布 Desktop/Hub 的旧上传端点仍兼容。
+
+线上实际结果：部署 run 34325214843（c2fb3a2）的测试和镜像构建通过；健康检查提前退出，
+容器继续迁移并于 2026-09-09 08:02:24 UTC 完成，耗时 767.3 秒，超过原定 10 分钟预算。
+重启日志确认数据库已是最新，无重复迁移。随后 App Catalog 初始化历史 Segment 计数超时导致
+重启，服务最终恢复；公开周报 AggregateAsync 也出现读取超时，Owner 后续报告查询已恢复。
+恢复不等于根因已解决：启动重复历史查询、部署等待逻辑及线上查询性能仍未收敛。
+数据模型与线上迁移已落地；下一阶段讨论数据投影与展示时保留上述未完成项，不重开存储设计。
 
 ## 用户决策与历史记录
 

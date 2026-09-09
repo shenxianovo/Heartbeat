@@ -19,6 +19,7 @@ builder.Services.AddDbContext<AppDbContext>(o =>
 
 builder.Services.AddScoped<FactStore>();
 builder.Services.AddScoped<UsageService>();
+builder.Services.AddScoped<ExperienceService>();
 builder.Services.AddScoped<ISegmentIngestApplicationService, SegmentIngestApplicationService>();
 builder.Services.AddScoped<ReportService>();
 builder.Services.AddScoped<DeviceService>();

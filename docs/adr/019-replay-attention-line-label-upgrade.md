@@ -6,6 +6,14 @@
 
 (pending implementation)
 
+## 2026-09-09：新活动视图的适用边界
+
+Owner 为“当天经历”确认独立路由 `/u/:username/experience`，采用 Subject 泳道，
+与原 Dashboard 并存。本 ADR 的单一注意力线与标签升级继续描述原页面；新页面不以
+重叠程度择一替换 System 标签，而是并列展示同 Subject、同 AppIdentity 且时间重叠的
+Browser 候选。Account 等独立观测直接可见，短 Segment 保留身份和边界，通过缩放、
+平移与逐条详情阅读，不合并事实。具体范围见[当天经历 PRD](../../.scratch/daily-experience-projection/PRD.md)。
+
 ## Context
 
 ADR-017 §4 将回放描述为 "multi-track overlay (one track per source, plugin tracks nested under their AppId's track)"。落到真实数据上，按 Source 分轨有两处歧义：

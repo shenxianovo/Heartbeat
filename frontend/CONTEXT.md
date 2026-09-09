@@ -28,8 +28,27 @@ ADR-019 §2：渲染 system 段时若存在同 App 的重叠插件段，标签�
 回放展开态里同一 Source 轨内的副本细分：有副本身份的段按身份分稳定泳道（browser 用 `payload.attributes.windowId`），无身份的段贪心装箱兜底（interval packing）。副本身份是采集器 Fact Payload 的 schema 约定，展示层经按 source 的提取器注册表读取（`segmentAdapters.laneKeyOf`，Title Formatter 同款模式）。system 前台互斥，恒为单 lane。浏览器 windowId 跨重启可能复用，同 lane 顺序排开，可读性无损。
 
 **Fact Payload（事实内容）**:
-Analytics 返回的结构化观测内容；Dashboard 按 Source/schema 读取网址、窗口身份等展示字段。
+Analytics 返回的结构化观测内容；Dashboard 按来源与观测语义读取网址、窗口身份等展示字段。
 历史形状由 Analytics 导入时适配，Dashboard 不从 Attributes 字符串猜测多种包装层。
+
+**Fact View（事实视图）**:
+对一组观测事实的一种呈现方式；同一份事实可以采用不同视图，不同观测内容可以采用专用视图。
+视图不改变原始事实的身份、时间边界和内容，也不构成新的观测事实。
+_Avoid_: 把一种视图固定为 Fact 唯一表示、为展示方便合并原始记录
+
+**Activity View（活动视图）**:
+对所选时间范围内活动的历史回顾；该范围内有活动的 Subject 可见，与其当前在线状态无关。
+“当天经历”是与原 Dashboard 并存的 Activity View，以 Subject 泳道与逐条记录回顾当日 Segment。
+_Avoid_: 用当前在线状态过滤历史活动、把没有活动记录等同于当前离线
+
+**Activity Swimlanes（活动泳道）**:
+在同一时间坐标下按 Subject 并列显示活动；上方全天总览的选区决定下方可见时间范围。
+Browser 可作为 Machine 的补充观察展开，Account 的独立活动直接排列；缩放改变可见范围，
+不改变原始 Segment 的身份或边界。
+
+**Related Observation（相关观察）**:
+对同一 Subject、同一应用且时间重叠的补充观察，例如 Browser 对 System 前台活动的页面细节。
+相关性不等于确定的前台归因，多条候选可以并存，不能仅凭重叠断言用户正在看其中某一页面。
 
 **Title Formatter（标题归一化）**:
 ADR-016 的展示层无损归一化：per-app formatter 把原始窗口标题洗成友好显示（去应用名后缀、去 tab 计数后缀、spinner 归并等）。是 Label Upgrade 缺席时的兜底层。

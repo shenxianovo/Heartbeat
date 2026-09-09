@@ -6,14 +6,16 @@
 
 ## 当前实现与剩余验收
 
-未部署的 `20260908141403_NativeFactCustody` 已直接替换：旧 ActivitySegments/InputEvents
+`20260908141403_NativeFactCustody` 在部署前已直接替换：旧 ActivitySegments/InputEvents
 原地改为 Segments/Events，保留行 Id，不创建通用 Facts，也不永久复制 LegacyRecord。
 同一个迁移编号只执行新的实现；以前已应用旧草案的实验库必须从独立备份重建。
 
 自动测试使用 Testcontainers 的独立随机端口数据库。2026-09-09 独立完整快照演练已通过：
 220,146 / 1,891,698 行及重启后逐行零差异；受限数据库/Analytics 中备份至健康 48.337 秒，
 重启至健康 5.534 秒。证据见 issue 01 和 `.local/verification/fact-family-rehearsal/run-05/report.json`。
-实际 1C1G 整机/磁盘预算、部署整体停服预算、备份保留和真实安装切换仍待验收，生产发布未执行。
+生产 c2fb3a2 已于 2026-09-09 完成该迁移（767.3 秒），重启确认无待执行迁移，Owner 已报告
+服务与查询恢复。实际耗时超过原定 10 分钟预算；部署健康等待提前失败、App Catalog 启动查询
+超时及周报查询超时均已出现，性能根因未确认。备份保留和真实 Collector 安装切换仍待验收。
 
 ## 严格切换边界（2026-09-09）
 
@@ -24,7 +26,7 @@ Fact 撤回与 Fact Schema 格式治理已删除，旧撤回字段、格式版�
 含旧字段的 Runtime committed Fact 或 Collector outbox 会明确拒绝加载并保留原文件；
 本次没有添加历史 journal 转换器。部署 owner 必须先核对实际安装的持久状态与未确认记录，
 如存在该形状则保持旧版本保管数据，另行验证无损切换后再升级；不能删除状态文件绕过拒绝。
-当前 NativeFactCustody 尚未部署，已替换为原地分表迁移；已经应用旧草案 migration 的临时库
+当前 NativeFactCustody 的原地分表实现已部署，后续不能再覆盖修改该迁移；已经应用旧草案 migration 的临时库
 不作为升级支持对象；不能对已应用草案的库仅覆盖迁移文件。来源快照仍停在 AskingWindowIdentity，
 独立演练阶段仅做只读 pg_dump；随后 Owner 运行 StartLocal，已启动并迁移本地栈。
 

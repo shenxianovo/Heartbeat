@@ -17,8 +17,10 @@ export function useTimelineDrag(
   viewEnd: Ref<number>,
   timelineEl: Ref<HTMLElement | null>,
   dayBounds: Ref<Interval>,
+  options: { trackRect?: () => DOMRect | undefined; minRangeMs?: number } = {},
 ) {
   // --- State ---
+  const didDrag = ref(false)
   const isDraggingTimeline = ref(false)
   const isDraggingMinimap = ref(false)
 
@@ -61,13 +63,14 @@ export function useTimelineDrag(
       e.preventDefault()
       const zoomFactor = e.deltaY > 0 ? 1.2 : 0.8
       const cw = timelineEl.value?.clientWidth || 800
-      const pivotPercent = e.offsetX / cw
+      const track = options.trackRect?.()
+      const pivotPercent = Math.max(0, Math.min(1, track ? (e.clientX - track.left) / Math.max(1, track.width) : e.offsetX / cw))
       const pivotTime = viewStart.value + range * pivotPercent
 
       let newStart = pivotTime - (pivotTime - viewStart.value) * zoomFactor
       let newEnd = pivotTime + (viewEnd.value - pivotTime) * zoomFactor
 
-      const minRange = 5 * 60 * 1000
+      const minRange = options.minRangeMs ?? 5 * 60 * 1000
       const maxRange = dayEnd - dayStart
 
       if (newEnd - newStart < minRange) {
@@ -79,8 +82,7 @@ export function useTimelineDrag(
         newEnd = dayEnd
       }
 
-      viewStart.value = Math.max(dayStart, newStart)
-      viewEnd.value = Math.min(dayEnd, newEnd)
+      applyViewUpdate(newStart, newEnd)
 
     } else if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
       e.preventDefault()
@@ -91,6 +93,8 @@ export function useTimelineDrag(
 
   // --- Main Timeline Drag ---
   const timelinePointerDown = (e: PointerEvent) => {
+    didDrag.value = false
+    if ('button' in e && (e.button !== 0 || e.shiftKey)) return
     const target = ('touches' in e
       ? document.elementFromPoint(getClientX(e), getClientY(e))
       : e.target) as HTMLElement | null
@@ -119,6 +123,7 @@ export function useTimelineDrag(
       const dy = Math.abs(getClientY(e) - tlDragStartY)
       if (dx + dy < 5) return
       directionLocked = dx >= dy ? 'h' : 'v'
+      didDrag.value = true
     }
 
     // Vertical: scroll rows
@@ -139,7 +144,7 @@ export function useTimelineDrag(
     if (rafId) cancelAnimationFrame(rafId)
     rafId = requestAnimationFrame(() => {
       const deltaX = clientX - tlDragStartX
-      const trackWidth = (timelineEl.value?.clientWidth || 800) - 120
+      const trackWidth = Math.max(1, options.trackRect?.()?.width ?? ((timelineEl.value?.clientWidth || 800) - 120))
       const range = tlDragViewEnd - tlDragViewStart
       const timeDelta = -(deltaX / trackWidth) * range
       applyViewUpdate(tlDragViewStart + timeDelta, tlDragViewEnd + timeDelta)
@@ -181,7 +186,7 @@ export function useTimelineDrag(
       const { dayStart, dayEnd } = getDayBounds()
       const dayRange = dayEnd - dayStart
       const timeDelta = (deltaX / minimapWidth) * dayRange
-      const minRange = 5 * 60 * 1000
+      const minRange = options.minRangeMs ?? 5 * 60 * 1000
 
       if (mmDragType === 'center') {
         applyViewUpdate(mmDragViewStart + timeDelta, mmDragViewEnd + timeDelta)
@@ -216,6 +221,7 @@ export function useTimelineDrag(
   })
 
   return {
+    didDrag,
     isDraggingTimeline,
     isDraggingMinimap,
     handleWheel,

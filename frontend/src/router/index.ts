@@ -40,6 +40,10 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/u/:username/experience',
+      component: () => import('../views/ExperienceView.vue'),
+    },
+    {
       path: '/u/:username',
       component: () => import('../views/ProfileView.vue'),
     },

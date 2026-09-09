@@ -115,6 +115,7 @@ watch(() => calendarContext.value.day, (current) => {
       </div>
 
       <div class="flex flex-wrap items-center gap-2 max-[640px]:w-full">
+        <RouterLink :to="`/u/${encodeURIComponent(username)}/experience`" class="glass-control px-3 py-1.5 text-[0.8rem] text-primary no-underline">当天经历</RouterLink>
         <Select v-model="selectedDeviceStr">
           <SelectTrigger class="glass-control h-auto min-w-[8rem] border-glass-border px-3 py-1.5 text-sm shadow-sm max-[640px]:flex-1">
             <SelectValue placeholder="选择设备" />
