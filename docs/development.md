@@ -42,6 +42,9 @@ macOS/Linux：
 ./scripts/start-local.sh
 ```
 
+`start-local` 使用现有本地数据库，不拉取线上数据；后端启动时会自动执行待应用迁移。
+需要检查线上原始快照时，先按[数据刷新步骤](runbooks/refresh-local-data.md)恢复，检查完成后再启动。
+
 打开 <http://localhost:8080>。需要一起启动本地开发 Desktop 时使用：
 
 Windows：

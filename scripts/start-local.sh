@@ -7,12 +7,15 @@ usage() {
 Usage: ./scripts/start-local.sh [options]
 
 Build and start the local end-to-end stack (Postgres + backend + frontend + headless Hub).
+Uses the existing local database; never downloads or restores server data.
+The backend applies pending database migrations on startup.
 
 Options:
   --desktop           Also run the macOS development Desktop in the foreground
   --desktop-only      Only run Desktop against the existing local stack (no Docker required)
   --compose-file PATH  Compose file (default: compose.local.yml)
   --env-file PATH      Environment file (default: .env.local)
+  --wait-timeout SEC   Startup/migration wait budget (default: 1800 seconds)
   -h, --help           Show this help
 
 Desktop opens its settings window, using http://localhost:8080 and this checkout's .local/desktop Profile.
@@ -26,6 +29,7 @@ compose_file="$repository_root/compose.local.yml"
 env_file="$repository_root/.env.local"
 desktop=false
 desktop_only=false
+wait_timeout=1800
 
 while (($# > 0)); do
     case "$1" in
@@ -46,6 +50,11 @@ while (($# > 0)); do
         --env-file)
             [[ $# -ge 2 ]] || { echo 'Missing value for --env-file.' >&2; exit 2; }
             env_file=$2
+            shift 2
+            ;;
+        --wait-timeout)
+            [[ $# -ge 2 && "$2" =~ ^[1-9][0-9]*$ ]] || { echo 'A positive --wait-timeout is required.' >&2; exit 2; }
+            wait_timeout=$2
             shift 2
             ;;
         -h|--help)
@@ -102,36 +111,12 @@ compose=(docker compose --file "$compose_file" --env-file "$env_file")
 echo '[1/3] Validating the local stack configuration...'
 "${compose[@]}" config --quiet
 
-echo '[2/3] Building and starting the local stack...'
+echo '[2/3] Building and starting the local stack (backend applies pending database migrations)...'
 "${compose[@]}" up --build --detach
 
 echo '[3/3] Waiting for Analytics and the Headless Hub...'
-analytics_ready=false
-hub_ready=false
-analytics_status=000
-hub_status=000
-for ((attempt = 1; attempt <= 60; attempt++)); do
-    if [[ "$analytics_ready" != true ]]; then
-        analytics_status=$(curl --silent --output /dev/null --max-time 2 --write-out '%{http_code}' \
-            http://127.0.0.1:8080/health || true)
-        [[ "$analytics_status" == 200 ]] && analytics_ready=true
-    fi
-
-    if [[ "$hub_ready" != true ]]; then
-        hub_status=$(curl --silent --output /dev/null --max-time 2 --write-out '%{http_code}' \
-            http://127.0.0.1:8080/hub/api/v1/collectors || true)
-        [[ "$hub_status" == 401 || "$hub_status" == 403 ]] && hub_ready=true
-    fi
-
-    [[ "$analytics_ready" == true && "$hub_ready" == true ]] && break
-    sleep 1
-done
-
-if [[ "$analytics_ready" != true || "$hub_ready" != true ]]; then
-    echo "The local stack did not become ready within 60 seconds (Analytics: $analytics_status, Headless Hub: $hub_status)." >&2
-    echo "Check: docker compose --file '$compose_file' --env-file '$env_file' logs" >&2
-    exit 1
-fi
+bash "$script_directory/wait-for-stack.sh" --compose-file "$compose_file" --env-file "$env_file" \
+    --timeout-seconds "$wait_timeout" --hub-url http://127.0.0.1:8080/hub/api/v1/collectors
 
 echo 'Local stack ready: http://localhost:8080'
 if [[ "$desktop" == true ]]; then

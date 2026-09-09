@@ -24,6 +24,9 @@ jobs:
       - name: Run Analytics integration tests
         run: dotnet test server/Heartbeat.Server.Tests/Heartbeat.Server.Tests.csproj --configuration Release
 
+      - name: Verify local startup and refresh scripts
+        run: python3 -m unittest discover -s scripts/tests
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR

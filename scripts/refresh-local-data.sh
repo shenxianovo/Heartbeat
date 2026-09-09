@@ -8,6 +8,8 @@ Usage: ./scripts/refresh-local-data.sh [options]
 
 Replace the local E2E PostgreSQL database with a transaction-consistent server snapshot.
 The server is read only; only the local Compose PostgreSQL database is replaced.
+Application services remain stopped. No application migrations are applied.
+Run start-local.sh separately when ready to start the stack and apply pending migrations.
 
 Options:
   --ssh-destination HOST       SSH destination, for example user@example.com
@@ -155,7 +157,7 @@ if [[ -n "$identity_file" ]]; then
     identity_file=$(resolve_file "$identity_file" 'SSH identity file')
 fi
 
-for command_name in docker ssh curl mktemp; do
+for command_name in docker ssh mktemp; do
     command -v "$command_name" >/dev/null 2>&1 || {
         echo "$command_name is required." >&2
         exit 1
@@ -180,7 +182,6 @@ if [[ "$force" != true ]]; then
 fi
 
 dump_path=$(mktemp "${TMPDIR:-/tmp}/heartbeat-server.XXXXXX")
-local_migrations_path=$(mktemp "${TMPDIR:-/tmp}/heartbeat-migrations.XXXXXX")
 container_dump_path='/tmp/heartbeat-server.dump'
 dump_copied_to_container=false
 progress_pid=''
@@ -191,7 +192,6 @@ backup_database="heartbeat_before_refresh_$refresh_suffix"
 replacement_started=false
 promotion_attempted=false
 refresh_completed=false
-previous_services=()
 
 print_download_progress() {
     local elapsed=$((SECONDS - download_started_at))
@@ -230,10 +230,7 @@ rollback_database() {
         fi
     fi
     local_sql "DROP DATABASE IF EXISTS $staging_database WITH (FORCE)" || return 1
-    if ((${#previous_services[@]} > 0)); then
-        "${compose[@]}" up --detach "${previous_services[@]}" || return 1
-    fi
-    echo 'Previous local database restored.' >&2
+    echo 'Previous local database restored. Application services remain stopped.' >&2
 }
 
 cleanup() {
@@ -248,7 +245,6 @@ cleanup() {
         rollback_database || echo "Automatic rollback did not complete. Keep the stack stopped and inspect databases heartbeat, $backup_database and $staging_database." >&2
         ((exit_code != 0)) || exit_code=1
     fi
-    rm -f -- "$local_migrations_path"
     if [[ "$keep_dump" == true ]]; then
         if [[ -f "$dump_path" ]]; then
             echo "WARNING: Sensitive server dump retained at: $dump_path" >&2
@@ -272,7 +268,7 @@ if [[ -n "$identity_file" ]]; then
     ssh_arguments+=(-i "$identity_file")
 fi
 
-echo '[1/6] Streaming a transaction-consistent server snapshot over SSH...'
+echo '[1/5] Streaming a transaction-consistent server snapshot over SSH...'
 echo '      Live compressed stream: total size is unknown until pg_dump finishes.' >&2
 download_started_at=$SECONDS
 (
@@ -302,21 +298,20 @@ fi
 size_mib=$(du -m "$dump_path" | awk '{print $1}')
 echo "      Downloaded ${size_mib} MiB."
 
-echo '[2/6] Stopping writers and preparing an isolated restore database...'
-running_services=$("${compose[@]}" ps --services --status running)
+echo '[2/5] Stopping writers and preparing an isolated restore database...'
+existing_services=$("${compose[@]}" ps --all --services)
 services_to_stop=()
 while IFS= read -r service; do
     if [[ -n "$service" ]]; then
-        previous_services+=("$service")
         [[ "$service" == db ]] || services_to_stop+=("$service")
     fi
-done <<<"$running_services"
+done <<<"$existing_services"
 replacement_started=true
 if ((${#services_to_stop[@]} > 0)); then
     "${compose[@]}" stop "${services_to_stop[@]}"
 fi
 # Keep the PostgreSQL data directory and its bind mount stable throughout the refresh.
-"${compose[@]}" up --detach db
+"${compose[@]}" up --detach --no-deps db
 
 ready=false
 consecutive_successes=0
@@ -337,7 +332,7 @@ done
     exit 1
 }
 
-echo '[3/6] Restoring the snapshot into an empty staging database...'
+echo '[3/5] Restoring the snapshot into an empty staging database...'
 "${compose[@]}" exec -T db createdb --username=heartbeat --template=template0 "$staging_database"
 "${compose[@]}" cp "$dump_path" "db:$container_dump_path"
 dump_copied_to_container=true
@@ -345,12 +340,7 @@ dump_copied_to_container=true
     --username=heartbeat --dbname="$staging_database" --single-transaction --exit-on-error \
     --no-owner --no-privileges "$container_dump_path"
 
-echo '[4/6] Checking that the checkout understands the server schema...'
-migration_directory="$repository_root/server/Heartbeat.Server/Migrations"
-find "$migration_directory" -maxdepth 1 -type f -name '*.cs' \
-    ! -name '*.Designer.cs' -exec basename {} .cs \; \
-    | awk '/^[0-9]{14}_.+/' | sort -u >"$local_migrations_path"
-
+echo '[4/5] Reading the restored snapshot migration history (without applying migrations)...'
 server_migrations=$("${compose[@]}" exec -T db psql --tuples-only --no-align \
     --username=heartbeat --dbname="$staging_database" --no-psqlrc --set=ON_ERROR_STOP=1 \
     --command 'SELECT "MigrationId" FROM "__EFMigrationsHistory" ORDER BY "MigrationId";') || {
@@ -358,52 +348,18 @@ server_migrations=$("${compose[@]}" exec -T db psql --tuples-only --no-align \
     exit 1
 }
 
-unknown_migrations=''
-while IFS= read -r migration; do
-    [[ -n "$migration" ]] || continue
-    if ! grep -Fqx -- "$migration" "$local_migrations_path"; then
-        if [[ -n "$unknown_migrations" ]]; then
-            unknown_migrations+=", $migration"
-        else
-            unknown_migrations=$migration
-        fi
-    fi
-done <<<"$server_migrations"
+echo '      Snapshot migrations:'
+printf '%s\n' "$server_migrations"
 
-if [[ -n "$unknown_migrations" ]]; then
-    echo "The server database is newer than this checkout. Update the checkout before starting it. Unknown migrations: $unknown_migrations" >&2
-    exit 1
-fi
-
-echo '[5/6] Promoting the restored database and starting the local backend and frontend...'
-# Both renames commit together. Keep the original database until the new stack is healthy.
+echo '[5/5] Promoting the restored database; application services remain stopped...'
+# Both renames commit together. Keep the original database until promotion succeeds.
 promotion_attempted=true
 local_sql "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname IN ('heartbeat', '$staging_database') AND pid <> pg_backend_pid()" >/dev/null
 local_sql "BEGIN; ALTER DATABASE heartbeat RENAME TO $backup_database; ALTER DATABASE $staging_database RENAME TO heartbeat; COMMIT;"
-"${compose[@]}" up --detach --build backend frontend
-
-echo '[6/6] Waiting for Analytics through the local frontend...'
-web_ready=false
-for ((attempt = 1; attempt <= 60; attempt++)); do
-    status_code=$(curl --silent --output /dev/null --max-time 2 --write-out '%{http_code}' \
-        http://127.0.0.1:8080/health || true)
-    if [[ "$status_code" == 200 ]]; then
-        web_ready=true
-        break
-    fi
-    sleep 1
-done
-[[ "$web_ready" == true ]] || {
-    echo 'Analytics did not become ready through http://127.0.0.1:8080/health within 60 seconds.' >&2
-    exit 1
-}
-
-# Resume other previously running services only after Analytics is ready.
-if ((${#services_to_stop[@]} > 0)); then
-    "${compose[@]}" up --detach "${services_to_stop[@]}"
-fi
 refresh_completed=true
 if ! local_sql "DROP DATABASE $backup_database WITH (FORCE)"; then
     echo "Refresh succeeded, but the sensitive previous database could not be removed: $backup_database" >&2
 fi
-echo 'Local data refresh completed: http://localhost:8080'
+echo 'Local database refresh completed. No application migrations were applied.'
+echo 'Only PostgreSQL is running; backend, frontend and Headless Hub remain stopped.'
+echo 'Inspect this snapshot before running start-local.sh; starting the backend applies pending migrations.'

@@ -1,19 +1,72 @@
 # 原生 Fact 摄入、持久保管与历史迁移
 
-Status: ready-for-human
+Status: ready-for-agent
+
+2026-09-09：Owner 已通过逐项讨论确认 [ADR-055](../../../docs/adr/055-fact-storage-by-family.md)
+中的核心 Fact 模型，并授权 agent 开始实施。下方旧版验证记录保留；分表实现和对应回归尚未完成。
 
 ## 验收
 
-- [x] Analytics 原子接收 Subject/Stream/schema/Fact/Gap；Owner 来自认证身份。
-- [x] 同修订幂等与冲突、低修订忽略、高修订纠正、旧撤回消息明确拒绝和 Event 不可变均有自动验证。
-- [x] 历史 ActivitySegment/InputEvent 保留原始档案并导入，新契约 Runtime 重放无重复计时；旧缓存不会覆盖原生纠正。
+- [x] Analytics 原子接收 Subject/Stream/Fact/Gap；Owner 来自认证身份。
+- [x] 同修订幂等与冲突、低修订忽略、高修订纠正、旧撤回消息明确拒绝和 Event 发生时间不变均有自动验证。
+- [ ] 按家族分表无损迁移历史，依最终保留语义核对数据；旧 Runtime 重放无重复计时，旧缓存不会覆盖原生纠正。
 - [x] Hub 原生持久上传，精确确认版本；断网、重启、容量与 Instance 移除不丢未确认记录。
 - [x] Machine/Account/Person 身份与查询隔离正确；Account 不伪装成 Device。
 - [x] Dashboard 结构化 Payload 正确展示历史/新 Browser URL，Recap depth 正确读取嵌套字段。
-- [x] 全量 .NET 与前端相关回归通过；契约和文档同步。
+- [ ] 分表方案的 .NET 与前端相关回归通过；契约和文档同步。
+- [ ] 线上克隆在受限 CPU/内存下完成迁移、全量历史核对、重启与空间预算验证。
 - [ ] 部署 owner 完成真实数据库备份迁移演练和已安装 Windows/macOS/Headless 升级 smoke。
 
 ## 验证记录
+
+2026-09-09 实施准备与未提交改动审查（基准 e82193c）：
+
+- Standards/Spec 两轴均确认旧部署草稿偏离已定要求：停服后备份无整体时限，健康等待 1800 秒；
+  成功备份无两份保留策略。该草稿与依赖 Facts.LegacyRecord 的旧演练脚本已移至
+  `.local/verification/fact-model-implementation-prep/retired-drafts/`，连同旧迁移/部署 diff 留存，
+  不再作为可执行发布或分表验收入口。恢复原部署接线，CI 仅增加真实保留的本地脚本回归。
+- 撤下未提交的通用 Facts 迁移性能修改，避免与独立 Schema 删除任务产生无意义冲突。
+  保留刷新/启动职责分离、就绪诊断、迁移专用命令超时与请求超时恢复；后者仍不是
+  10 分钟生产停服总预算，部署预算与备份保留必须在分表演练后另行实现和验收。
+- 迁移超时测试改为依据 EF CommandSource.Migrations 注入真实慢语句，取消对 FactSchemas 表名的依赖，
+  以便 Schema 删除后仍验证相同能力。
+- 原始快照只读核对：38 条 App 映射差异分别是 mphelper/MPHelper 31 条、Updater/updater 3 条、
+  GaomonTablet/GAOMONTablet 3 条、uninstall/Uninstall 1 条。ExpandAppIdentity 迁移已按标准化名称
+  生成唯一身份并选择最小旧 AppId，ActivitySegments 保留的旧 AppId 尚未同步；当前 Report/Usage
+  优先读取 AppIdentity.AppId。快照中 AppId 非空但 AppIdentityId 为空的记录为 0。
+  因此新模型沿用 AppIdentity 路径，不会改变这些记录当前查询所用的应用归属。
+  明细在 `.local/verification/fact-model-implementation-prep/app-mapping-audit.json`。
+- `dotnet tool restore`、解决方案构建（0 warnings/errors）、IDE1006 命名检查通过。
+  本地脚本回归 6 passed；DatabaseMigrationTests + FactMigrationTests 在独立 Testcontainers 中 4 passed。
+  PowerShell 无本机运行验证，生产流程和新分表迁移尚未验收；原始快照仍停留 AskingWindowIdentity，
+  220146/1891698 行，未启动原项目应用、未迁移、未部署。
+- Schema 独立任务已完成：原提交 feb85bb 已以 ff3a152 整合到 `codex/fact-family-storage`。
+  恢复实施准备改动时解决了四份文档冲突，代码无冲突；整合后的构建、命名检查、本地脚本 6 项、
+  DatabaseMigrationTests + FactMigrationTests 4 项均通过。用户已授权开始核心 Fact 实现。
+
+2026-09-09 数据取证入口修正：原 `refresh-local-data` 恢复后启动当前 checkout 后端，
+日志证实自动执行 `20260908141403_NativeFactCustody`，成功那次耗时 69.0 秒。因此该次
+同步完成后的本地库不是原始线上基线；早先样例库也包含本地新客户端写入，不能冒充纯线上数据。
+现已将 Bash/PowerShell 刷新入口改为只恢复数据库、打印迁移历史、保持应用停止；
+Bash 恢复失败回滚也不再启动应用。`start-local` 独立启动，明确提示后端将应用待执行迁移。
+`python3 -m unittest discover -s scripts/tests`：6 passed（命令替身回归）；Bash 语法与
+`git diff --check` 通过。PowerShell 已同步修改并审阅，本机无 pwsh，未运行验证。
+等待 Owner 重新同步后只读核对；未重新刷新真实数据库，分表迁移与受限资源验收仍未完成。
+
+2026-09-09 09:56（Asia/Shanghai）Owner 已用修改后的脚本重新同步，只读核对完成：
+backend/frontend/headless 均为停止状态，迁移历史停于 AskingWindowIdentity，无 Facts/FactStreams。
+原始快照 220,146 条活动、1,891,698 条输入，382,777,023 bytes（约 365 MiB）；
+全库列定义与之前基线一致。975 条完整 Attributes 包装、38 条 AppId/AppIdentity 映射差异、
+17 条 vrchat.account 活动；无缺失 Owner、倒置活动区间或越界 EventType。
+两条设计样例从本次快照重新读取，与旧样例逐字段一致，完整字段 diff 已用本次数据重新生成。
+证据在 `.local/verification/fact-family-production-snapshot/`；这些查询未写数据库，也未启动应用。
+此次仅完成设计基线核对，分表实现、迁移耗时与 1C1G 资源验收仍待后续执行。
+
+后续逐项审阅：Owner 要求删除旧的完整存储提案，避免预设字段继续影响核心 Fact 模型。
+已删除该提案并清理引用，已确认决定统一记录于 ADR-055；事实内容哈希明确不存储。
+前述原始快照取证仍有效，旧提案的迁移后样例不再作为目标验收依据。当前仍处于设计审阅。
+
+以下是此前通用 Facts 实现的历史验证，不代表当前分表方案完成：
 
 实现及自动验证完成；owner 已授权 review 修复后提交，未修改真实用户数据库。剩余真实备份/安装升级门禁由部署 owner 承接，
 按 [升级核对步骤](../../../docs/runbooks/native-analytics-facts.md) 记录现场证据后才能置 done。

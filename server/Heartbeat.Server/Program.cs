@@ -156,7 +156,8 @@ if (app.Environment.IsDevelopment())
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();
+    await DatabaseMigration.ApplyAsync(db, app.Logger,
+        builder.Configuration.GetValue("DatabaseMigration:CommandTimeoutSeconds", 900));
     // NormalizeMatcherIdentity 迁移的 C# 半边：StepsJson canonical 字节只有
     // System.Text.Json 能产（见 KnowledgeIdentityBackfill 注释）。幂等，干净库空转。
     await KnowledgeIdentityBackfill.RunAsync(db);

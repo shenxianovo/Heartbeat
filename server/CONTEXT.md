@@ -5,18 +5,18 @@
 ## Language
 
 **Ingest（摄入）**:
-Analytics 原子接收 Subject、Stream、Fact 快照与 Gap（ADR-054）。Owner 取自认证身份；
-事实与读投影同事务更新。旧段与输入上传仅作为升级前缓存的历史导入入口，不直接写读投影。
-_Avoid_: 把 ActivitySegment 或 InputEvent 继续当作独立写入权威、从标题或时间猜测事实身份
+Analytics 原子接收 Subject、Stream、Fact 快照与 Gap，Owner 取自认证身份，
+所有家族共同遵守身份、修订和确认规则。旧上传仅用于导入升级前缓存，不形成另一套事实语义。
+_Avoid_: 从标题或时间猜测事实身份、让活动或输入绕开统一的摄入规则
 
 **Fact Revision（事实修订）**:
 同一 Owner、Stream、FactId 的完整快照序列；同 Revision 相同内容幂等、不同内容冲突，低 Revision
-不覆盖高 Revision。Segment 合法纠正可以缩短结束时间；Fact 不支持撤回，旧撤回消息明确拒绝；
-更高 Revision 替换 Payload；Segment 起点、Event 发生时间保持不变，final Segment 不能重开。
+不覆盖高 Revision。Segment 合法纠正可以缩短结束时间；更高 Revision 替换内容，Segment 起点与 Event 发生时间保持稳定。
+修订表达对同一事实内容的更新，当前领域不包含采集器撤回整条事实的能力。
 _Avoid_: 用 EndTime 取 max 代替 Revision、用数据到达顺序解释事实演进
 
 **Legacy Import（历史导入）**:
-在原生 Fact 边界之前落盘的活动或输入记录，保留原始档案并显式标记来源。未曾保存的 Stream、
+在原生 Fact 边界之前落盘的活动或输入记录，保留历史信息并显式标记来源。未曾保存的 Stream、
 修订不能冒充已恢复的 Collector 信息；只有确定性旧身份及归属匹配才能关联原生重放。
 _Avoid_: 按相近标题、URL 或时间模糊合并历史
 

@@ -7,7 +7,9 @@ Replaces the local E2E PostgreSQL database with a transaction-consistent server 
 .DESCRIPTION
 Runs pg_dump inside the server's database container over SSH, downloads the custom-format
 stream without exposing PostgreSQL, recreates the project-local database directory, restores
-the dump, checks EF migration compatibility, and starts the local stack.
+the dump, and prints its EF migration history without applying migrations.
+Only PostgreSQL is started. Application services remain stopped. Run start-local.ps1
+separately when ready to start the stack and apply pending migrations.
 
 The dump contains private activity data. It is deleted by default after the restore.
 #>
@@ -198,7 +200,7 @@ $remoteCommand = @(
 ) -join ' '
 
 try {
-    Write-Host '[1/6] Streaming a transaction-consistent server snapshot over SSH...'
+    Write-Host '[1/4] Streaming a transaction-consistent server snapshot over SSH...'
     Export-RemoteDatabase -Destination $dumpPath -RemoteCommand $remoteCommand -SshCommand $sshCommand
 
     $header = [byte[]]::new(5)
@@ -216,13 +218,13 @@ try {
     $sizeMiB = [Math]::Round((Get-Item -LiteralPath $dumpPath).Length / 1MB, 1)
     Write-Host "      Downloaded $sizeMiB MiB."
 
-    Write-Host '[2/6] Recreating the project-local database directory...'
+    Write-Host '[2/4] Recreating the project-local database directory...'
     Invoke-Docker -Arguments ($composeArguments + @('down', '--remove-orphans'))
     if (Test-Path -LiteralPath $localDatabaseDirectory) {
         Remove-Item -LiteralPath $localDatabaseDirectory -Recurse -Force
     }
     $null = New-Item -ItemType Directory -Path $localDatabaseDirectory -Force
-    Invoke-Docker -Arguments ($composeArguments + @('up', '--detach', 'db'))
+    Invoke-Docker -Arguments ($composeArguments + @('up', '--detach', '--no-deps', 'db'))
 
     $ready = $false
     $consecutiveSuccesses = 0
@@ -243,7 +245,7 @@ try {
         throw 'The local PostgreSQL container did not become ready within 60 seconds.'
     }
 
-    Write-Host '[3/6] Restoring the snapshot into local PostgreSQL...'
+    Write-Host '[3/4] Restoring the snapshot into local PostgreSQL...'
     Invoke-Docker -Arguments ($composeArguments + @('cp', $dumpPath, "db:$containerDumpPath"))
     $dumpCopiedToContainer = $true
     Invoke-Docker -Arguments ($composeArguments + @(
@@ -253,14 +255,7 @@ try {
         $containerDumpPath
     ))
 
-    Write-Host '[4/6] Checking that the checkout understands the server schema...'
-    $migrationDirectory = Join-Path $repositoryRoot 'server\Heartbeat.Server\Migrations'
-    $localMigrations = @(
-        Get-ChildItem -LiteralPath $migrationDirectory -File -Filter '*.cs' |
-            Where-Object { $_.Name -notlike '*.Designer.cs' -and $_.BaseName -match '^\d{14}_.+' } |
-            ForEach-Object BaseName
-    )
-
+    Write-Host '[4/4] Reading the restored snapshot migration history (without applying migrations)...'
     $serverMigrations = @(
         & docker @composeArguments exec -T db psql --tuples-only --no-align --username=heartbeat --dbname=heartbeat `
             --command 'SELECT "MigrationId" FROM "__EFMigrationsHistory" ORDER BY "MigrationId";'
@@ -269,34 +264,12 @@ try {
         throw 'Could not read __EFMigrationsHistory from the restored database.'
     }
     $serverMigrations = @($serverMigrations | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-    $unknownMigrations = @($serverMigrations | Where-Object { $_ -notin $localMigrations })
-    if ($unknownMigrations.Count -gt 0) {
-        throw "The server database is newer than this checkout. Update the checkout before starting it. Unknown migrations: $($unknownMigrations -join ', ')"
-    }
+    Write-Host '      Snapshot migrations:'
+    $serverMigrations | ForEach-Object { Write-Host $_ }
+    Write-Host 'Local database refresh completed. No application migrations were applied.'
+    Write-Host 'Only PostgreSQL is running; backend, frontend and Headless Hub remain stopped.'
+    Write-Host 'Inspect this snapshot before running start-local.ps1; starting the backend applies pending migrations.'
 
-    Write-Host '[5/6] Building and starting the local backend and frontend...'
-    Invoke-Docker -Arguments ($composeArguments + @('up', '--detach', '--build', 'backend', 'frontend'))
-
-    Write-Host '[6/6] Waiting for the local frontend...'
-    $webReady = $false
-    for ($attempt = 1; $attempt -le 60; $attempt++) {
-        try {
-            $response = Invoke-WebRequest -Uri 'http://127.0.0.1:8080/' -TimeoutSec 2 -SkipHttpErrorCheck
-            if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) {
-                $webReady = $true
-                break
-            }
-        }
-        catch {
-            # The service may still be starting; retry below.
-        }
-        Start-Sleep -Seconds 1
-    }
-    if (-not $webReady) {
-        throw 'The stack was started, but http://127.0.0.1:8080 did not become ready within 60 seconds.'
-    }
-
-    Write-Host 'Local data refresh completed: http://localhost:8080'
 }
 finally {
     if ($dumpCopiedToContainer) {
