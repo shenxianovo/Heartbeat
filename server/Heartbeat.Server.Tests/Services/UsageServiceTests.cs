@@ -27,7 +27,13 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         _deviceId = device.Id;
     }
 
-    private static DateTimeOffset Now => DateTimeOffset.UtcNow;
+    // Always exercise sub-microsecond input, independent of the host clock's precision.
+    private static DateTimeOffset Now => new(
+        DateTimeOffset.UtcNow.Ticks / TimeSpan.TicksPerMicrosecond * TimeSpan.TicksPerMicrosecond + 7,
+        TimeSpan.Zero);
+
+    private static DateTimeOffset AtMicrosecondPrecision(DateTimeOffset time) =>
+        time.AddTicks(-(time.Ticks % TimeSpan.TicksPerMicrosecond));
 
     /// <summary>system 段上传项（ADR-020）：IdentityKey 由采集端计算。</summary>
     private static ActivitySegmentItem SystemItem(string app, DateTimeOffset start, DateTimeOffset end, string? title = null) => new()
@@ -144,7 +150,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         await svc.SaveSegmentsAsync(_deviceId, [older]);
 
         var row = db.ActivitySegments.Single();
-        Assert.Equal(t0.AddMinutes(5), row.EndTime);
+        Assert.Equal(AtMicrosecondPrecision(t0.AddMinutes(5)), row.EndTime);
     }
 
     [Fact]
@@ -197,8 +203,8 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         await svc.SaveSegmentsAsync(_deviceId, [Snapshot(t0, t0.AddMinutes(5), """{"url":"https://example.com/page","scroll":42}""")]);
 
         var grown = db.ActivitySegments.Single();
-        Assert.Equal(t0, grown.StartTime);
-        Assert.Equal(t0.AddMinutes(5), grown.EndTime);
+        Assert.Equal(AtMicrosecondPrecision(t0), grown.StartTime);
+        Assert.Equal(AtMicrosecondPrecision(t0.AddMinutes(5)), grown.EndTime);
         Assert.Contains("scroll", grown.Attributes);
     }
 
@@ -223,7 +229,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         await svc.SaveSegmentsAsync(_deviceId, [Snapshot(t0.AddSeconds(30)), Snapshot(t0.AddSeconds(60)), Snapshot(t0.AddSeconds(90))]);
 
         var row = db.ActivitySegments.Single();
-        Assert.Equal(t0.AddSeconds(90), row.EndTime);
+        Assert.Equal(AtMicrosecondPrecision(t0.AddSeconds(90)), row.EndTime);
     }
 
     [Fact]
@@ -259,7 +265,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         Assert.Equal(ActivitySources.System, row.Source);
         Assert.NotNull(row.AppId); // AppIdentityKey 建立了 App 关联
         Assert.NotNull(row.AppIdentityId); // expand 阶段同时保存平台观测身份
-        Assert.Equal(start.AddMinutes(30), row.EndTime); // 同 Id 快照生长
+        Assert.Equal(AtMicrosecondPrecision(start.AddMinutes(30)), row.EndTime); // 同 Id 快照生长
 
         var report = (await new ReportService(db).GetDailyReportAsync(
             "user-1", null, LocalCalendarWindowTestData.UtcDay(start))).Report!;
@@ -293,7 +299,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
         Assert.Equal(SegmentIngestContractViolation.IdentityConflict, exception.Violation);
         var row = db.ActivitySegments.Single();
         Assert.Equal("browser", row.Source);
-        Assert.Equal(t0.AddMinutes(2), row.EndTime);
+        Assert.Equal(AtMicrosecondPrecision(t0.AddMinutes(2)), row.EndTime);
     }
 
     [Fact]
@@ -755,7 +761,7 @@ public class UsageServiceTests(PostgresContainerFixture fixture) : PostgresTestB
 
         var row = await db.ActivitySegments.SingleAsync();
         Assert.Equal("win:code", row.AppIdentity!.Key);
-        Assert.Equal(start.AddMinutes(2), row.EndTime);
+        Assert.Equal(AtMicrosecondPrecision(start.AddMinutes(2)), row.EndTime);
         Assert.Single(db.AppIdentities);
     }
 }
