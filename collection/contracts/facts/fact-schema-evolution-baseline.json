@@ -3,37 +3,37 @@
   "contracts": [
     {
       "schemaId": "heartbeat.browser.active-tab-segment",
-      "schemaMajor": 1,
+      "schemaMajor": 2,
       "schemaRevision": 1,
-      "hash": "sha256:8a2411741a20bf9b06d3ccdbb277125efdf8ee21349f4e416f317173d5121dd2",
+      "hash": "sha256:546dbcf90585fbd3040070af776038d61cb2d27c2e0a4bfaec2965609dd90fdb",
       "document": "browser-active-tab-segment.schema.json"
     },
     {
       "schemaId": "heartbeat.reference.segment",
-      "schemaMajor": 1,
+      "schemaMajor": 2,
       "schemaRevision": 1,
-      "hash": "sha256:bc677ecdb5da032c7b2e52c4d123b96f03f83cfeef2e1bf917e5d3a1e58ab3cb",
+      "hash": "sha256:64612c9507bc96b090abf9021fe618bb05c71164f0bb77b20322ab6e2fddd869",
       "document": "reference-segment.schema.json"
     },
     {
       "schemaId": "heartbeat.system.foreground-segment",
-      "schemaMajor": 1,
+      "schemaMajor": 2,
       "schemaRevision": 1,
-      "hash": "sha256:5acfa2a67a49716a1f92f36562dfc2d0087d20237a7a86547aee5ea5cd4072d4",
+      "hash": "sha256:06ae7b401a44e2d0f7dcac361d991b27f1ceec6c530789a3fc6205a3cb0dd993",
       "document": "system-foreground-segment.schema.json"
     },
     {
       "schemaId": "heartbeat.input",
-      "schemaMajor": 1,
+      "schemaMajor": 2,
       "schemaRevision": 1,
-      "hash": "sha256:e719d97a70ec9b9176105bbb8c5648ef6c929a217c3b3d21a42a53e7ac29f024",
+      "hash": "sha256:befa0622d2c70150cc566c2eb7b00cd75eaee340f642b2a448e861d895618af2",
       "document": "system-input-event.schema.json"
     },
     {
       "schemaId": "heartbeat.vrchat.presence-segment",
-      "schemaMajor": 1,
+      "schemaMajor": 2,
       "schemaRevision": 1,
-      "hash": "sha256:93ceb0250dc8abaa7709250d8a6dcfb972c3931f0ebe22704f6433439295d4e2",
+      "hash": "sha256:fe9515e7917a4e2dac4dbc009035c9b0de17cb212e56451d0182c7abcbea432a",
       "document": "vrchat-presence-segment.schema.json"
     }
   ]

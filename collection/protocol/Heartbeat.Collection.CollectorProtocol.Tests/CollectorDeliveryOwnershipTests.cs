@@ -57,7 +57,6 @@ public sealed class CollectorDeliveryOwnershipTests
                     Guid.CreateVersion7(),
                     1,
                     now,
-                    CollectorFactRecordState.Present,
                     new CollectorEventFactTime(now),
                     System.Text.Json.JsonSerializer.SerializeToElement(new { identityKey = "owner|fact" })));
             }

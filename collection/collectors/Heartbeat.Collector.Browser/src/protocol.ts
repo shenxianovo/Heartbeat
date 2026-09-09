@@ -148,7 +148,6 @@ export function toProtocolFact(snapshot: SegmentSnapshot, streamId: string) {
     factId: snapshot.id,
     revision: snapshotRevision(snapshot),
     observedAt: null,
-    recordState: 'present',
     time: {
       start: snapshot.startTime,
       end: snapshot.endTime,

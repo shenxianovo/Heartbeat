@@ -24,7 +24,7 @@
       "factKind": "segment",
       "schema": {
         "id": "heartbeat.reference.segment",
-        "major": 1,
+        "major": 2,
         "revision": 1,
         "document": "schemas/reference-segment.schema.json"
       },

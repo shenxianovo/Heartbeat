@@ -5,8 +5,8 @@ Status: ready-for-human
 ## 验收
 
 - [x] Analytics 原子接收 Subject/Stream/schema/Fact/Gap；Owner 来自认证身份。
-- [x] 同修订幂等与冲突、低修订忽略、高修订纠正/撤回和 Event 不可变均有自动验证。
-- [x] 历史 ActivitySegment/InputEvent 保留原始档案并导入，旧 Runtime 重放无重复计时；旧缓存不会复活撤回。
+- [x] 同修订幂等与冲突、低修订忽略、高修订纠正、旧撤回消息明确拒绝和 Event 不可变均有自动验证。
+- [x] 历史 ActivitySegment/InputEvent 保留原始档案并导入，新契约 Runtime 重放无重复计时；旧缓存不会覆盖原生纠正。
 - [x] Hub 原生持久上传，精确确认版本；断网、重启、容量与 Instance 移除不丢未确认记录。
 - [x] Machine/Account/Person 身份与查询隔离正确；Account 不伪装成 Device。
 - [x] Dashboard 结构化 Payload 正确展示历史/新 Browser URL，Recap depth 正确读取嵌套字段。
@@ -28,7 +28,7 @@ Status: ready-for-human
 - 新增 `FactStoreTests`、`FactMigrationTests` 与 `FactHttpTests`：覆盖真正旧 PostgreSQL 数据迁移、
   原始档案与未知属性、输入 CodeSet/Code、历史接管、旧缓存晚到、跨 Owner 同 identity、
   Account/Person 查询、schema/hash、HTTP 401/200/409 与整批回滚。
-- Hub native tests 覆盖断网容量/重启、精确 revision/hash 确认、撤回、Gap 身份/alias 迁移、
+- Hub native tests 覆盖断网容量/重启、精确 revision/hash 确认、纠正、Gap 身份/alias 迁移、
   待传阻止删除、409 持久隔离、硬件 UUID 大小写与 backlog 状态。
 - 前端 `npm run verify`：40 files / 271 tests、typecheck、build 通过；NSwag 客户端重新生成。
 - `node scripts/collector-contracts.mjs check`、`git diff --check` 与本轮新增文档链接检查通过。
@@ -62,3 +62,25 @@ Status: ready-for-human
 - `node scripts/collector-contracts.mjs check`、`git diff --check` 通过。原生 migration 为尚未发布的新 migration，
   直接修正其建表与历史导入；真实旧 PostgreSQL Up/Down roundtrip fixture 通过，无真实库变更。
 - 本轮代码完成；真实备份迁移、已安装 Desktop/Headless 升级与线上到达证据仍未执行，维持 ready-for-human。
+
+## 删除 Fact 撤回（2026-09-09）
+
+- 按 owner 决策移除 Fact RecordState、撤回枚举、Schema 开关、墓碑及投影撤回接口。
+  正式 System/Browser/VRChat 仅产生普通快照；保留身份、正常修订、finality、乱序保护、
+  同版本幂等/冲突及 Event 家族规则。五个 schema 提升至 Major 2，客户端与 Package 引用同步。
+- 替换撤回专属测试；迟到确认与旧缓存交错改用更高 Revision 缩短区间验证。
+  Hub wire 与 Analytics HTTP 均覆盖旧撤回有无 payload 的明确拒绝和原事实不变；
+  Shared Kernel 覆盖 Segment/Event 反序列化拒绝以及旧 Schema 开关拒绝。
+- `dotnet build Heartbeat.slnx --no-restore`：0 warnings / 0 errors；命名检查通过。
+- `dotnet test Heartbeat.slnx --no-build --no-restore`：13 个项目 / 1257 passed，0 failed / skipped。
+  Server 503、Hub 326、Core 45、Protocol 42、System 89、Mac 82、Windows 38、UI 62、
+  Updater 11、Headless 14、VRChat 21、Reference 2、Verification 22。
+  此后追加的 HTTP 拒绝测试通过 `--filter FullyQualifiedName~FactHttpTests`：3 passed。
+- 前端 typecheck / 274 tests / build、Browser 96 tests / build、schema `check --base-ref HEAD`
+  及 `git diff --check` 通过。Hub 首轮旧 fixture major 不匹配已修正，最终全量通过。
+- PostgreSQL 验证使用 Testcontainers 随机容器/端口和独立 test 数据库；未启动原栈，
+  未碰原 `.local/postgres-data`、线上快照、原工作区，也未部署、推送或触发 GitHub CI。
+- Friction closeout：更新 ADR-041/054、glossary、契约和升级文档；不实现分表、时间列、Id/FactId
+  或 Revision 起点的独立设计。含旧字段的 Runtime/outbox 明确拒绝且保留文件，没有新增转换器；
+  现场持久状态核对与无损切换仍由部署 owner 承接，禁止删状态绕过拒绝。
+  本次删除功能及自动验证完成；原生升级 issue/PRD 仍为 ready-for-human。

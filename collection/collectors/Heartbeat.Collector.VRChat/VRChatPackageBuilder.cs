@@ -79,7 +79,7 @@ internal static class VRChatPackageBuilder
                     schema = new
                     {
                         id = "heartbeat.vrchat.presence-segment",
-                        major = 1,
+                        major = 2,
                         revision = 1,
                         document = "schemas/vrchat-presence-segment.schema.json",
                         hash = Hash(File.ReadAllBytes(schemaPath))

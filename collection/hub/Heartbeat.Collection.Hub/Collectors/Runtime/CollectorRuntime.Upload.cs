@@ -82,10 +82,9 @@ public sealed partial class CollectorRuntime
         if (fact.DeliveredContentHash != fact.ContentHash) return false;
         var stream = _state.Streams.Single(candidate => candidate.StreamId == fact.StreamId);
         if (stream.FactKind == FactKind.Segment)
-            return fact.IsFinal || fact.RecordState == FactRecordState.Retracted;
+            return fact.IsFinal;
         var schema = _factSchemasByHash[stream.SchemaCatalog[fact.SchemaRevision]];
-        return fact.RecordState == FactRecordState.Retracted ||
-               schema.EvolutionMode == FactEvolutionMode.ImmutableEvent && !schema.AllowRetraction;
+        return schema.EvolutionMode == FactEvolutionMode.ImmutableEvent;
     }
 
     private void EnsureUploadGapIdentities()
@@ -114,7 +113,7 @@ public sealed partial class CollectorRuntime
         new FactSnapshot
         {
             StreamId = fact.StreamId, FactId = fact.FactId, Revision = fact.Revision,
-            SchemaRevision = fact.SchemaRevision, RecordState = fact.RecordState == FactRecordState.Present ? "present" : "retracted",
+            SchemaRevision = fact.SchemaRevision,
             ObservedAt = fact.ObservedAt,
             Start = stream.FactKind == FactKind.Segment ? fact.Start : null,
             End = stream.FactKind == FactKind.Segment ? fact.End : null,

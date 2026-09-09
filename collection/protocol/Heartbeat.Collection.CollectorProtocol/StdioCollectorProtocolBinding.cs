@@ -492,7 +492,6 @@ public sealed class StdioCollectorProtocolBinding : ICollectorProtocolBinding
         factId = fact.FactId,
         revision = fact.Revision,
         observedAt = fact.ObservedAt is null ? null : Timestamp(fact.ObservedAt.Value),
-        recordState = fact.RecordState == CollectorFactRecordState.Present ? "present" : "retracted",
         time = fact.Time switch
         {
             CollectorSegmentFactTime segment => (object)new
@@ -504,7 +503,7 @@ public sealed class StdioCollectorProtocolBinding : ICollectorProtocolBinding
             CollectorEventFactTime occurrence => new { occurredAt = Timestamp(occurrence.OccurredAt) },
             _ => throw new InvalidOperationException("Unknown Collector Fact time shape.")
         },
-        payload = fact.RecordState == CollectorFactRecordState.Present ? fact.Payload : (JsonElement?)null
+        payload = fact.Payload
     };
 
     private static CollectorFactDeliveryOutcome ReadFactOutcome(JsonElement result)

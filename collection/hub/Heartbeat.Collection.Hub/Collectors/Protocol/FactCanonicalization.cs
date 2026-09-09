@@ -16,22 +16,13 @@ internal static class FactCanonicalization
         {
             writer.WriteStartObject();
             writer.WriteNumber("schemaRevision", fact.SchemaRevision);
-            writer.WriteString("recordState", fact.RecordState switch
-            {
-                FactRecordState.Present => "present",
-                FactRecordState.Retracted => "retracted",
-                _ => throw new InvalidOperationException("Unknown Fact record state cannot be canonicalized.")
-            });
             writer.WritePropertyName("time");
             WriteFactTime(
                 writer,
                 fact.Time,
                 value => value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
-            if (fact.RecordState == FactRecordState.Present)
-            {
-                writer.WritePropertyName("payload");
-                WriteCanonical(writer, fact.Payload);
-            }
+            writer.WritePropertyName("payload");
+            WriteCanonical(writer, fact.Payload);
             writer.WriteEndObject();
         }
         return "sha256:" + Convert.ToHexStringLower(SHA256.HashData(buffer.ToArray()));
@@ -54,7 +45,6 @@ internal static class FactCanonicalization
                     writer.WriteString("observedAt", observedAt.ToString("O", CultureInfo.InvariantCulture));
                 else
                     writer.WriteNull("observedAt");
-                writer.WriteNumber("recordState", (int)fact.RecordState);
                 writer.WritePropertyName("time");
                 WriteFactTime(
                     writer,
@@ -100,19 +90,10 @@ internal static class FactCanonicalization
                 writer.WriteNumber("revision", fact.Revision);
                 if (fact.ObservedAt is { } observedAt)
                     writer.WriteString("observedAt", FormatProtocolTimestamp(observedAt));
-                writer.WriteString("recordState", fact.RecordState switch
-                {
-                    FactRecordState.Present => "present",
-                    FactRecordState.Retracted => "retracted",
-                    _ => throw new InvalidOperationException("Unknown Fact record state cannot be canonicalized.")
-                });
                 writer.WritePropertyName("time");
                 WriteFactTime(writer, fact.Time, FormatProtocolTimestamp);
-                if (fact.RecordState == FactRecordState.Present)
-                {
-                    writer.WritePropertyName("payload");
-                    WriteCanonical(writer, fact.Payload);
-                }
+                writer.WritePropertyName("payload");
+                WriteCanonical(writer, fact.Payload);
                 writer.WriteEndObject();
             }
             writer.WriteEndArray();

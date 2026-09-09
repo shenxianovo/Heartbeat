@@ -1057,7 +1057,6 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         public void Push(List<Heartbeat.Core.DTOs.Segments.ActivitySegmentItem> snapshots) { }
         public void UpsertDurable(Heartbeat.Core.DTOs.Segments.ActivitySegmentItem snapshot, long revision) { }
         public void ReplayDurable(Heartbeat.Core.DTOs.Segments.ActivitySegmentItem snapshot, long revision) { }
-        public void RetractDurable(Guid segmentId, long revision) { }
     }
 
     private sealed class DisconnectOnDrainWriter(TextWriter inner) : TextWriter

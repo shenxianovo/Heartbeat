@@ -6657,7 +6657,6 @@ export class FactSnapshot implements IFactSnapshot {
     factId?: string;
     revision?: number;
     schemaRevision?: number;
-    recordState?: string;
     observedAt?: Date | undefined;
     start?: Date | undefined;
     end?: Date | undefined;
@@ -6686,7 +6685,6 @@ export class FactSnapshot implements IFactSnapshot {
             this.factId = _data["factId"];
             this.revision = _data["revision"];
             this.schemaRevision = _data["schemaRevision"];
-            this.recordState = _data["recordState"];
             this.observedAt = _data["observedAt"] ? new Date(_data["observedAt"].toString()) : undefined as any;
             this.start = _data["start"] ? new Date(_data["start"].toString()) : undefined as any;
             this.end = _data["end"] ? new Date(_data["end"].toString()) : undefined as any;
@@ -6713,7 +6711,6 @@ export class FactSnapshot implements IFactSnapshot {
         data["factId"] = this.factId;
         data["revision"] = this.revision;
         data["schemaRevision"] = this.schemaRevision;
-        data["recordState"] = this.recordState;
         data["observedAt"] = this.observedAt ? this.observedAt.toISOString() : undefined as any;
         data["start"] = this.start ? this.start.toISOString() : undefined as any;
         data["end"] = this.end ? this.end.toISOString() : undefined as any;
@@ -6729,7 +6726,6 @@ export interface IFactSnapshot {
     factId?: string;
     revision?: number;
     schemaRevision?: number;
-    recordState?: string;
     observedAt?: Date | undefined;
     start?: Date | undefined;
     end?: Date | undefined;

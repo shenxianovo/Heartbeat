@@ -123,8 +123,6 @@ internal sealed class CollectorActivationSession
                     "protocol_invalid_message",
                     "facts.publish messageId must be a UUIDv7."));
             if (snapshot.Any(fact => fact is null || fact.Time is null ||
-                                     !Enum.IsDefined(fact.RecordState) ||
-                                     fact.RecordState == FactRecordState.Present &&
                                      fact.Payload.ValueKind == JsonValueKind.Undefined))
             {
                 RegisterAttempt(messageId, "facts.publish", "invalid:fact-shape");

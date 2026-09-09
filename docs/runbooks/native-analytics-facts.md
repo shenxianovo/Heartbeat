@@ -3,6 +3,16 @@
 对应 [ADR-054](../adr/054-native-analytics-fact-ingest.md)；执行与验收由部署 owner 承接，
 证据记入 [迁移 issue](../../.scratch/native-analytics-facts/issues/01-native-fact-migration.md)。
 
+## 严格切换边界（2026-09-09）
+
+Fact 撤回已删除；旧 `recordState`（包括 `present`）和 schema 的 `allowRetraction` 均不属于
+新契约。新 Collector/Package、Hub 与 Analytics 必须一起切换，不能把混用版本的拒绝视作成功上传。
+含旧字段的 Runtime committed Fact 或 Collector outbox 会明确拒绝加载并保留原文件；
+本次没有添加历史 journal 转换器。部署 owner 必须先核对实际安装的持久状态与未确认记录，
+如存在该形状则保持旧版本保管数据，另行验证无损切换后再升级；不能删除状态文件绕过拒绝。
+当前 NativeFactCustody 尚未部署，测试仅修改其建表定义；已经应用旧草案 migration 的临时库
+不作为升级支持对象。真实快照仍停在 AskingWindowIdentity，本轮没有启动、迁移或修改该库。
+
 ## 升级顺序
 
 1. 保存当前 PostgreSQL 完整备份及各 Desktop/Headless 的 Runtime、旧上传缓存和 dead-letter。
@@ -11,8 +21,8 @@
    应用 migration；启动新版服务就是执行升级，不能把连接真实库的启动当作无副作用预览。
 3. Analytics 与 Dashboard 同次升级：新的活动 API 返回结构化 Payload，旧版 Dashboard 的
    Attributes 字符串读取不再适用。旧段/输入上传端点继续排空现有缓存。
-4. 升级 Desktop/Headless。新生产数据走 `/api/v1/facts`，旧缓存继续排空；Runtime state v1/v2
-   升级会保留对应 `.v1.bak`/`.v2.bak`。核对原有设备名称和历史未被大小写不同的 UUID 拆开。
+4. 升级 Desktop/Headless。新生产数据走 `/api/v1/facts`，旧缓存继续排空；仅不含上述旧 Fact/schema 字段的
+   Runtime state v1/v2 支持现有升级路径，并保留对应 `.v1.bak`/`.v2.bak`。核对原有设备名称和历史未被大小写不同的 UUID 拆开。
 5. 让同一段活动跨多次上传、断网、重启和恢复连接，确认 FactId 不变、Revision 正常收敛、
    没有重复计时。分别检查 Browser 完整 URL、输入计数和 Headless Account 的 Subject 名称。
 6. Desktop 上传状态及 Headless owner-only `GET /hub/api/v1/uploads` 应能区分 backlog、
@@ -53,8 +63,8 @@ GROUP BY s."Source";
 
 只有 LegacyImport、尚无原生 Fact/Gap 的数据库支持当前 migration 的 Down→Up roundtrip；
 Down 会还原原始 Attributes 和历史 Device 引用。接收过原生 Fact/Gap 后，Down 明确拒绝，避免
-删除旧表无法表示的修订、撤回或独立 Subject。此时保留升级后的数据库与 Collector 缓存，
+删除旧表无法表示的修订或独立 Subject。此时保留升级后的数据库与 Collector 缓存，
 优先向前修复；如需恢复升级前备份，必须同时安排新增事实的保管和重放，不能直接覆盖并丢弃新增历史。
 
-自动验证覆盖真实 PostgreSQL migration fixture、旧缓存/原生重放交错、幂等/冲突/撤回、
+自动验证覆盖真实 PostgreSQL migration fixture、旧缓存/原生重放交错、幂等/冲突/纠正及旧撤回拒绝、
 Owner/Subject 隔离以及 Runtime 的重启和精确确认；它不替代实际安装与真实备份的升级证据。

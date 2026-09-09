@@ -131,18 +131,6 @@ public class SegmentIngestServiceTests
         Assert.Equal(t0.AddMinutes(3), single.EndTime);
     }
 
-    [Fact]
-    public void Confirm_RetractedSnapshotDoesNotResurrect()
-    {
-        var source = new SegmentIngestService(new FakeClock());
-        var segment = Segment();
-        source.Accept([segment]);
-        var batch = source.ReadBatch();
-        source.Retract(segment.Id);
-        source.Confirm(batch);
-        Assert.Empty(source.ReadBatch());
-    }
-
     // ---- 集面读模型（ADR-021） ----
 
     [Fact]

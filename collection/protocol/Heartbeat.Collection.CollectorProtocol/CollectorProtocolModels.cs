@@ -51,12 +51,6 @@ public sealed record CollectorClientStream(
     string SchemaHash,
     IReadOnlyDictionary<string, string> Dimensions);
 
-public enum CollectorFactRecordState
-{
-    Present,
-    Retracted
-}
-
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
 [JsonDerivedType(typeof(CollectorSegmentFactTime), "segment")]
 [JsonDerivedType(typeof(CollectorEventFactTime), "event")]
@@ -76,7 +70,6 @@ public sealed record CollectorFact(
     Guid FactId,
     long Revision,
     DateTimeOffset? ObservedAt,
-    CollectorFactRecordState RecordState,
     CollectorFactTime Time,
     JsonElement Payload);
 
@@ -86,7 +79,6 @@ public sealed record BoundCollectorFact(
     Guid FactId,
     long Revision,
     DateTimeOffset? ObservedAt,
-    CollectorFactRecordState RecordState,
     CollectorFactTime Time,
     JsonElement Payload);
 

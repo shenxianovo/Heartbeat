@@ -203,7 +203,6 @@ function toProtocolFact(snapshot, streamId) {
     factId: snapshot.id,
     revision: snapshotRevision(snapshot),
     observedAt: null,
-    recordState: "present",
     time: {
       start: snapshot.startTime,
       end: snapshot.endTime,

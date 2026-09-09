@@ -18,6 +18,30 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
 {
     private const string SecondHostIdentity = "external-host-b";
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Publish_OldRetractionIsRejectedWithoutChangingCommittedFact(bool includePayload)
+    {
+        await using var fixture = await HandlerFixture.CreateAsync();
+        var session = await fixture.ReadyAsync(HandlerFixture.DefaultHostIdentity, "app.one");
+        var factId = Guid.CreateVersion7();
+        Assert.Equal(200, (await fixture.TryPublishAsync(session, "work", fact => fact["factId"] = factId)).StatusCode);
+        var original = Assert.Single(fixture.Sink.ReadBatch());
+
+        var response = await fixture.TryPublishAsync(session, "work", fact =>
+        {
+            fact["factId"] = factId;
+            fact["revision"] = 2;
+            fact["recordState"] = "retracted";
+            if (!includePayload) fact.Remove("payload");
+        });
+
+        Assert.Equal(400, response.StatusCode);
+        Assert.Equal("protocol_invalid_message", ErrorCode(response));
+        Assert.Same(original, Assert.Single(fixture.Sink.ReadBatch()));
+    }
+
     [Fact]
     public async Task Discovery_AnnouncesGenericBindingWithoutNamingAnyProduct()
     {
@@ -449,10 +473,10 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
                     {
                       "documentVersion": 1,
                       "schemaId": "heartbeat.input",
-                      "schemaMajor": 1,
+                      "schemaMajor": 2,
                       "schemaRevision": 1,
                       "factKind": "event",
-                      "evolution": { "mode": "immutableEvent", "allowRetraction": false },
+                      "evolution": { "mode": "immutableEvent" },
                       "payloadSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
                       "payloadSchema": {
                         "type": "object",
@@ -638,10 +662,10 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
             Assert.Equal(200, response.StatusCode);
         }
 
-        public async Task<ProtocolHttpResponse> TryPublishAsync(ReadySession session, string identityKey)
+        public async Task<ProtocolHttpResponse> TryPublishAsync(ReadySession session, string identityKey, Action<JsonObject>? mutateFact = null)
         {
             var now = DateTimeOffset.UtcNow;
-            return await PostAsync($"{session.ActivationId}/facts", new
+            var request = JsonSerializer.SerializeToNode(new
             {
                 protocol = "heartbeat.collector/1",
                 type = "facts.publish",
@@ -658,7 +682,6 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
                             schemaRevision = 1,
                             factId = Guid.CreateVersion7(),
                             revision = 1L,
-                            recordState = "present",
                             time = new
                             {
                                 start = now.AddMinutes(-1),
@@ -669,7 +692,9 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
                         }
                     }
                 }
-            });
+            })!.AsObject();
+            mutateFact?.Invoke(request["body"]!["facts"]![0]!.AsObject());
+            return await PostAsync($"{session.ActivationId}/facts", request);
         }
 
         public async ValueTask DisposeAsync()

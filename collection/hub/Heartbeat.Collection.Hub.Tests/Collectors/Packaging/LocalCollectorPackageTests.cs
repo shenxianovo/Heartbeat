@@ -407,7 +407,6 @@ public class LocalCollectorPackageTests
         var schema = JsonNode.Parse(File.ReadAllText(schemaPath))!.AsObject();
         schema["factKind"] = "measurement";
         schema["evolution"]!["mode"] = "measurementCorrection";
-        schema["evolution"]!["allowRetraction"] = false;
         File.WriteAllText(schemaPath, schema.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         packageCopy.UpdateSchemaHash(schemaPath);
         var manifest = packageCopy.ReadManifest();

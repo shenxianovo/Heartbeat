@@ -41,13 +41,13 @@ public sealed class FactSchemaDefinition
     public string DocumentJson { get; set; } = string.Empty;
 }
 
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 public sealed class FactSnapshot
 {
     public Guid StreamId { get; set; }
     public Guid FactId { get; set; }
     public long Revision { get; set; }
     public int SchemaRevision { get; set; }
-    public string RecordState { get; set; } = "present";
     public DateTimeOffset? ObservedAt { get; set; }
     public DateTimeOffset? Start { get; set; }
     public DateTimeOffset? End { get; set; }

@@ -62,7 +62,7 @@ internal interface IEventFactProjector
 internal sealed class InputEventFactProjector : IEventFactProjector
 {
     public bool Supports(string schemaId, int schemaMajor) =>
-        schemaId == "heartbeat.input" && schemaMajor == 1;
+        schemaId == "heartbeat.input" && schemaMajor == 2;
 
     public bool TryProject(
         Guid factId,

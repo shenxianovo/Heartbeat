@@ -156,7 +156,6 @@ public sealed class VRChatManagedProcessCollectorTests : IDisposable
 
         public void UpsertDurable(ActivitySegmentItem snapshot, long revision) => Push([snapshot]);
         public void ReplayDurable(ActivitySegmentItem snapshot, long revision) => Push([snapshot]);
-        public void RetractDurable(Guid segmentId, long revision) { }
 
         public async Task<ActivitySegmentItem> WaitForAsync(Func<ActivitySegmentItem, bool> predicate)
         {

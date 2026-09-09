@@ -145,7 +145,6 @@ namespace Heartbeat.Server.Migrations
                     FactId = table.Column<Guid>(type: "uuid", nullable: false),
                     Revision = table.Column<long>(type: "bigint", nullable: false),
                     SchemaRevision = table.Column<int>(type: "integer", nullable: false),
-                    RecordState = table.Column<string>(type: "text", nullable: false),
                     Origin = table.Column<string>(type: "text", nullable: false),
                     ObservedAt = table.Column<long>(type: "bigint", nullable: true),
                     Start = table.Column<long>(type: "bigint", nullable: true),
@@ -251,10 +250,10 @@ namespace Heartbeat.Server.Migrations
                   NULL::uuid, 'legacy-import', 'system', 'event', 'heartbeat.legacy.event', 1, '{}'::jsonb, 'legacy-import'
                 FROM "InputEvents" e JOIN "Devices" d ON d."Id" = e."DeviceId";
 
-                INSERT INTO "Facts" ("Id", "OwnerId", "StreamId", "FactId", "Revision", "SchemaRevision", "RecordState", "Origin", "Start", "End", "Payload", "ContentHash", "LegacyRecord", "LegacyId", "LegacyDeviceId", "LegacyKind")
+                INSERT INTO "Facts" ("Id", "OwnerId", "StreamId", "FactId", "Revision", "SchemaRevision", "Origin", "Start", "End", "Payload", "ContentHash", "LegacyRecord", "LegacyId", "LegacyDeviceId", "LegacyKind")
                 SELECT md5('legacy-fact:segment:' || s."Id")::uuid, d."OwnerId",
                   md5('legacy-stream:' || d."OwnerId" || ':' || d."Id" || ':' || s."Source" || ':segment')::uuid,
-                  s."Id", 0, 0, 'present', 'legacy-import', (extract(epoch FROM s."StartTime") * 10000000)::bigint + 621355968000000000,
+                  s."Id", 0, 0, 'legacy-import', (extract(epoch FROM s."StartTime") * 10000000)::bigint + 621355968000000000,
                   (extract(epoch FROM s."EndTime") * 10000000)::bigint + 621355968000000000,
                   CASE WHEN jsonb_typeof(s."Attributes") = 'object'
                              AND s."Attributes"->>'identityKey' = s."IdentityKey"
@@ -265,9 +264,9 @@ namespace Heartbeat.Server.Migrations
                   '', to_jsonb(s) - 'FactKey' - 'Payload' - 'OwnerId', s."Id", s."DeviceId", 'segment'
                 FROM "ActivitySegments" s JOIN "Devices" d ON d."Id" = s."DeviceId";
 
-                INSERT INTO "Facts" ("Id", "OwnerId", "StreamId", "FactId", "Revision", "SchemaRevision", "RecordState", "Origin", "OccurredAt", "Payload", "ContentHash", "LegacyRecord", "LegacyId", "LegacyDeviceId", "LegacyKind")
+                INSERT INTO "Facts" ("Id", "OwnerId", "StreamId", "FactId", "Revision", "SchemaRevision", "Origin", "OccurredAt", "Payload", "ContentHash", "LegacyRecord", "LegacyId", "LegacyDeviceId", "LegacyKind")
                 SELECT md5('legacy-fact:event:' || e."Id")::uuid, d."OwnerId", md5('legacy-stream:' || d."OwnerId" || ':' || d."Id" || ':system:event')::uuid,
-                  e."Id", 0, 0, 'present', 'legacy-import', (extract(epoch FROM e."Timestamp") * 10000000)::bigint + 621355968000000000,
+                  e."Id", 0, 0, 'legacy-import', (extract(epoch FROM e."Timestamp") * 10000000)::bigint + 621355968000000000,
                   jsonb_build_object('eventType', CASE e."EventType" WHEN 1 THEN 'keyDown' WHEN 2 THEN 'mouseButton' WHEN 3 THEN 'mouseScroll' END, 'codeSet', e."CodeSet", 'code', e."Code"),
                   '', to_jsonb(e) - 'FactKey', e."Id", e."DeviceId", 'event'
                 FROM "InputEvents" e JOIN "Devices" d ON d."Id" = e."DeviceId";

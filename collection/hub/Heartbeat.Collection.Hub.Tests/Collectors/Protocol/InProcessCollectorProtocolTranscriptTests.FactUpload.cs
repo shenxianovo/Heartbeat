@@ -42,22 +42,22 @@ public partial class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task NativeUpload_LateConfirmationCannotConsumeNewRevisionOrRetraction()
+    public async Task NativeUpload_LateConfirmationCannotConsumeNewRevision()
     {
         await using var fixture = await ActivatedRuntimeFixture.CreateAsync(new CollectorRuntimeOptions { EnableFactUpload = true });
         var stream = fixture.Activation.Streams["activity"];
         var original = CreateFact(stream.Descriptor.StreamId);
         await stream.PublishAsync(Guid.CreateVersion7(), [original]);
         var firstBatch = fixture.Runtime.ReadPendingFacts();
-        await stream.PublishAsync(Guid.CreateVersion7(), [original with { Revision = 2, RecordState = FactRecordState.Retracted, Payload = default }]);
+        await stream.PublishAsync(Guid.CreateVersion7(), [original with { Revision = 2, Time = new SegmentFactTime(original.Time.Start!.Value, original.Time.Start.Value.AddSeconds(1), false) }]);
 
         fixture.Runtime.ConfirmUploadedFacts(firstBatch);
 
-        var retracted = Assert.Single(fixture.Runtime.ReadPendingFacts());
-        Assert.Equal(2, retracted.Fact!.Revision);
-        Assert.Equal("retracted", retracted.Fact.RecordState);
-        Assert.Null(retracted.Fact.Payload);
-        fixture.Runtime.ConfirmUploadedFacts([retracted]);
+        var updated = Assert.Single(fixture.Runtime.ReadPendingFacts());
+        Assert.Equal(2, updated.Fact!.Revision);
+        Assert.Equal(original.Time.Start.Value.AddSeconds(1), updated.Fact.End);
+        Assert.True(JsonElement.DeepEquals(original.Payload, updated.Fact.Payload!.Value));
+        fixture.Runtime.ConfirmUploadedFacts([updated]);
         Assert.True(fixture.Runtime.FactUploadRemainder.IsEmpty);
     }
 
@@ -203,7 +203,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
         var schemaPath = Path.Combine(copy.Path, "schemas", "reference-segment.schema.json");
         var schema = JsonNode.Parse(File.ReadAllText(schemaPath))!;
         schema["factKind"] = "event";
-        schema["evolution"] = new JsonObject { ["mode"] = "immutableEvent", ["allowRetraction"] = false };
+        schema["evolution"] = new JsonObject { ["mode"] = "immutableEvent" };
         File.WriteAllText(schemaPath, schema.ToJsonString());
         var manifest = copy.ReadManifest();
         manifest["supportedCapabilities"]!.AsObject().Remove("facts.segment");

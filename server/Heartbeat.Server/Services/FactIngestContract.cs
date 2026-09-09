@@ -16,7 +16,6 @@ public sealed class FactIngestException(string message, bool conflict = false) :
 internal sealed record ValidatedFactSchema(FactSchemaContract Definition, JsonSchema PayloadValidator)
 {
     public string EvolutionMode => Definition.EvolutionMode;
-    public bool AllowRetraction => Definition.AllowRetraction;
 }
 
 internal static class FactIngestContract
@@ -32,7 +31,7 @@ internal static class FactIngestContract
 
     internal static string SnapshotHash(FactSnapshot fact) => Hash(Canonical(JsonSerializer.SerializeToElement(new
     {
-        fact.SchemaRevision, fact.RecordState, fact.Start, fact.End, fact.OccurredAt, fact.IsFinal, fact.Payload
+        fact.SchemaRevision, fact.Start, fact.End, fact.OccurredAt, fact.IsFinal, fact.Payload
     })));
 
     internal static ValidatedFactSchema Schema(FactStreamDefinition stream, FactSchemaDefinition schema)
@@ -53,8 +52,7 @@ internal static class FactIngestContract
 
     internal static void Snapshot(FactSnapshot fact, string kind, ValidatedFactSchema schema, DateTimeOffset now)
     {
-        if (fact.StreamId == Guid.Empty || fact.FactId == Guid.Empty || fact.FactId.Version != 7 || fact.Revision is <= 0 or > 9_007_199_254_740_991 || fact.SchemaRevision <= 0 ||
-            fact.RecordState is not ("present" or "retracted"))
+        if (fact.StreamId == Guid.Empty || fact.FactId == Guid.Empty || fact.FactId.Version != 7 || fact.Revision is <= 0 or > 9_007_199_254_740_991 || fact.SchemaRevision <= 0)
             throw new FactIngestException("Invalid Fact envelope.");
         if (fact.ObservedAt is { } observed && (observed.Offset != TimeSpan.Zero || observed > now.AddMinutes(5)))
             throw new FactIngestException("Invalid Fact observedAt.");
@@ -67,23 +65,15 @@ internal static class FactIngestContract
         else if (fact.OccurredAt is not { } at || fact.Start is not null || fact.End is not null || fact.IsFinal is not null ||
             at.Offset != TimeSpan.Zero || at > now.AddMinutes(5))
             throw new FactIngestException("Event requires only a valid UTC occurredAt time.");
-        if (fact.RecordState == "retracted")
+        if (fact.Payload is not { } payload) throw new FactIngestException("Fact requires payload.");
+        _ = Canonical(payload);
+        try
         {
-            if (!schema.AllowRetraction || fact.Revision <= 1 || fact.Payload is not null)
-                throw new FactIngestException("Fact Schema does not allow this retraction.");
+            if (!schema.PayloadValidator.Evaluate(payload).IsValid)
+                throw new FactIngestException("Fact payload does not satisfy its schema.");
         }
-        else
-        {
-            if (fact.Payload is not { } payload) throw new FactIngestException("Present Fact requires payload.");
-            _ = Canonical(payload);
-            try
-            {
-                if (!schema.PayloadValidator.Evaluate(payload).IsValid)
-                    throw new FactIngestException("Fact payload does not satisfy its schema.");
-            }
-            catch (Exception ex) when (ex is RefResolutionException or JsonSchemaException or InvalidOperationException or NotSupportedException)
-            { throw new FactIngestException("Fact payload validation failed: " + ex.Message); }
-        }
+        catch (Exception ex) when (ex is RefResolutionException or JsonSchemaException or InvalidOperationException or NotSupportedException)
+        { throw new FactIngestException("Fact payload validation failed: " + ex.Message); }
     }
 
     internal static bool HasOnlyMutableChanges(string before, string after, ValidatedFactSchema schema)

@@ -120,7 +120,6 @@ internal sealed class ReferenceFactCollector(string? behavior, TextWriter rawOut
             Guid.Parse("0198d5eb-fc31-7d7b-8bf0-c2d009ec8999"),
             1,
             DateTimeOffset.Parse("2026-08-22T12:05:00Z"),
-            CollectorFactRecordState.Present,
             new CollectorSegmentFactTime(
                 DateTimeOffset.Parse("2026-08-22T12:00:00Z"),
                 DateTimeOffset.Parse("2026-08-22T12:05:00Z"),

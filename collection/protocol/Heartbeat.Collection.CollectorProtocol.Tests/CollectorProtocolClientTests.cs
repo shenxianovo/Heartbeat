@@ -262,7 +262,6 @@ public sealed class CollectorProtocolClientTests
             Guid.CreateVersion7(),
             1,
             null,
-            CollectorFactRecordState.Present,
             new CollectorEventFactTime(start.AddSeconds(index)),
             JsonSerializer.SerializeToElement(new { code = index }))).ToArray();
         try
@@ -312,7 +311,6 @@ public sealed class CollectorProtocolClientTests
                 Guid.CreateVersion7(),
                 1,
                 null,
-                CollectorFactRecordState.Present,
                 new CollectorEventFactTime(now),
                 JsonSerializer.SerializeToElement(new { identityKey = "reference|fenced" })));
             var authoritativeBeforeActivation = File.ReadAllText(path);
@@ -366,7 +364,6 @@ public sealed class CollectorProtocolClientTests
                 Guid.CreateVersion7(),
                 1,
                 null,
-                CollectorFactRecordState.Present,
                 new CollectorEventFactTime(now),
                 JsonSerializer.SerializeToElement(new { identityKey = "reference|binding-fenced" })));
             var authoritativeBeforeActivation = File.ReadAllText(path);
@@ -400,13 +397,13 @@ public sealed class CollectorProtocolClientTests
         Directory.CreateDirectory(root);
         var start = new DateTimeOffset(2026, 8, 30, 10, 0, 0, TimeSpan.Zero);
         var first = new CollectorFact(
-            "activity", 1, Guid.CreateVersion7(), 1, null, CollectorFactRecordState.Present,
+            "activity", 1, Guid.CreateVersion7(), 1, null,
             new CollectorEventFactTime(start),
             JsonSerializer.SerializeToElement(new { code = 1 }));
         var gap = new CollectorStreamGap(
             Guid.CreateVersion7(), "activity", start.AddSeconds(1), start.AddSeconds(2), "fixture", 1);
         var second = new CollectorFact(
-            "activity", 1, Guid.CreateVersion7(), 1, null, CollectorFactRecordState.Present,
+            "activity", 1, Guid.CreateVersion7(), 1, null,
             new CollectorEventFactTime(start.AddSeconds(3)),
             JsonSerializer.SerializeToElement(new { code = 2 }));
         try
@@ -464,7 +461,6 @@ public sealed class CollectorProtocolClientTests
                     factId,
                     revision,
                     null,
-                    CollectorFactRecordState.Present,
                     new CollectorSegmentFactTime(start, start.AddMinutes(revision), IsFinal: false),
                     JsonSerializer.SerializeToElement(new { content })));
             }
@@ -507,7 +503,6 @@ public sealed class CollectorProtocolClientTests
                 Guid.CreateVersion7(),
                 1,
                 null,
-                CollectorFactRecordState.Present,
                 new CollectorSegmentFactTime(occurredAt, occurredAt, IsFinal: false),
                 JsonSerializer.SerializeToElement(new { code = 1 })));
             outbox.Enqueue(new CollectorFact(
@@ -516,7 +511,6 @@ public sealed class CollectorProtocolClientTests
                 Guid.CreateVersion7(),
                 1,
                 null,
-                CollectorFactRecordState.Present,
                 new CollectorEventFactTime(occurredAt.AddMinutes(1)),
                 JsonSerializer.SerializeToElement(new { code = 2 })));
 
@@ -545,7 +539,6 @@ public sealed class CollectorProtocolClientTests
                 Guid.CreateVersion7(),
                 1,
                 null,
-                CollectorFactRecordState.Present,
                 new CollectorEventFactTime(occurredAt.AddSeconds(index)),
                 JsonSerializer.SerializeToElement(new { code = index }))).ToArray();
             foreach (var fact in facts)
@@ -630,7 +623,6 @@ public sealed class CollectorProtocolClientTests
             PublishingApplication.FactId,
             1,
             null,
-            CollectorFactRecordState.Present,
             new CollectorEventFactTime(DateTimeOffset.UtcNow),
             JsonSerializer.SerializeToElement(new { identityKey = "reference|online" })));
         var binding = new SuspendedPublishBinding(root);
@@ -686,7 +678,6 @@ public sealed class CollectorProtocolClientTests
                 PublishingApplication.FactId,
                 1,
                 null,
-                CollectorFactRecordState.Present,
                 new CollectorEventFactTime(DateTimeOffset.UtcNow),
                 JsonSerializer.SerializeToElement(new { identityKey = "reference|late-ack" })));
         var binding = new SuspendedPublishBinding(root, ignoreCancellation: true);
@@ -832,7 +823,6 @@ public sealed class CollectorProtocolClientTests
                     Guid.CreateVersion7(),
                     1,
                     null,
-                    CollectorFactRecordState.Present,
                     new CollectorEventFactTime(DateTimeOffset.UtcNow),
                     JsonSerializer.SerializeToElement(new { identityKey = "reference|completed-fact" })),
                 CancellationToken.None).AsTask());
@@ -1059,7 +1049,6 @@ public sealed class CollectorProtocolClientTests
             PublishingApplication.FactId,
             1,
             null,
-            CollectorFactRecordState.Present,
             new CollectorEventFactTime(DateTimeOffset.UtcNow),
             JsonSerializer.SerializeToElement(new { identityKey = "reference|restart" }));
         CollectorProtocolOutbox.Open(root, 16, Definition().Outputs, DateTimeOffset.UtcNow).Enqueue(fact);
@@ -1291,7 +1280,6 @@ public sealed class CollectorProtocolClientTests
                 FactId,
                 1,
                 null,
-                CollectorFactRecordState.Present,
                 new CollectorSegmentFactTime(DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(1), false),
                 JsonSerializer.SerializeToElement(new { identityKey = "reference|online", title = "Online" })),
                 cancellationToken);
@@ -1337,7 +1325,6 @@ public sealed class CollectorProtocolClientTests
                 Reported?.Invoke();
         }
     }
-
 
     private sealed class IdleApplication : ICollectorProtocolApplication
     {
@@ -1407,7 +1394,6 @@ public sealed class CollectorProtocolClientTests
                     Guid.CreateVersion7(),
                     1,
                     null,
-                    CollectorFactRecordState.Present,
                     new CollectorEventFactTime(DateTimeOffset.UtcNow),
                     JsonSerializer.SerializeToElement(new { identityKey = "reference|late-caller-fact" })),
                     CancellationToken.None);
@@ -1482,7 +1468,6 @@ public sealed class CollectorProtocolClientTests
                         Guid.CreateVersion7(),
                         1,
                         null,
-                        CollectorFactRecordState.Present,
                         new CollectorEventFactTime(DateTimeOffset.UtcNow),
                         JsonSerializer.SerializeToElement(new { identityKey = "reference|late-cancel" })),
                         CancellationToken.None).AsTask().GetAwaiter().GetResult();
@@ -1531,7 +1516,6 @@ public sealed class CollectorProtocolClientTests
                     Guid.CreateVersion7(),
                     1,
                     null,
-                    CollectorFactRecordState.Present,
                     new CollectorEventFactTime(DateTimeOffset.UtcNow),
                     JsonSerializer.SerializeToElement(new { identityKey = "reference|late-start" })),
                     CancellationToken.None);
@@ -1606,7 +1590,6 @@ public sealed class CollectorProtocolClientTests
                     Guid.CreateVersion7(),
                     1,
                     null,
-                    CollectorFactRecordState.Present,
                     new CollectorEventFactTime(DateTimeOffset.UtcNow),
                     JsonSerializer.SerializeToElement(new { identityKey = "reference|late-stop" })),
                     CancellationToken.None);
@@ -1635,7 +1618,6 @@ public sealed class CollectorProtocolClientTests
                 PublishingApplication.FactId,
                 1,
                 null,
-                CollectorFactRecordState.Present,
                 new CollectorEventFactTime(DateTimeOffset.UtcNow),
                 JsonSerializer.SerializeToElement(new { identityKey = "reference|persistence" })),
                 cancellationToken);

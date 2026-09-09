@@ -305,12 +305,11 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
         {
             var stream = state.Streams.SingleOrDefault(candidate => candidate.StreamId == fact.StreamId);
             if (fact.StreamId == Guid.Empty || !IsUuidV7(fact.FactId) || fact.SchemaRevision <= 0 ||
-                fact.Revision is <= 0 or > 9_007_199_254_740_991 || !Enum.IsDefined(fact.RecordState) ||
+                fact.Revision is <= 0 or > 9_007_199_254_740_991 ||
                 !IsSha256(fact.ContentHash) || stream is null ||
                 fact.DeliveredContentHash is { } deliveredHash && !IsSha256(deliveredHash) ||
                 fact.ObservedAt is { Offset: var offset } && offset != TimeSpan.Zero ||
-                fact.RecordState == FactRecordState.Present && fact.Payload is null ||
-                fact.RecordState == FactRecordState.Retracted && fact.Payload is not null)
+                fact.Payload is null)
                 throw new JsonException("Collector Runtime state contains an invalid committed Fact.");
             FactTime time = stream.FactKind switch
             {
@@ -338,7 +337,6 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
                     fact.FactId,
                     fact.Revision,
                     fact.ObservedAt,
-                    fact.RecordState,
                     time,
                     payload));
             }
@@ -585,7 +583,6 @@ internal sealed class CommittedFactState
     public Guid FactId { get; init; }
     public int SchemaRevision { get; init; }
     public long Revision { get; init; }
-    public FactRecordState RecordState { get; init; }
     public DateTimeOffset? ObservedAt { get; init; }
     public DateTimeOffset Start { get; init; }
     public DateTimeOffset End { get; init; }
@@ -598,7 +595,7 @@ internal sealed class CommittedFactState
     public CommittedFactState ConfirmDelivery() => new()
     {
         StreamId = StreamId, FactId = FactId, SchemaRevision = SchemaRevision, Revision = Revision,
-        RecordState = RecordState, ObservedAt = ObservedAt, Start = Start, End = End,
+        ObservedAt = ObservedAt, Start = Start, End = End,
         IsFinal = IsFinal, OccurredAt = OccurredAt, Payload = Payload, ContentHash = ContentHash,
         DeliveredContentHash = ContentHash
     };

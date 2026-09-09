@@ -4,10 +4,14 @@
 
 ## Date: 2026-09-08
 
+2026-09-09：遵循 ADR-041 修订，删除 Fact 撤回；摄入只接受完整 payload 快照，存储不再有
+RecordState 或墓碑。本次直接修正尚未部署的 NativeFactCustody migration，不改写已部署历史
+migration，不实施分表、时间存储、Id/FactId 或历史 Revision 的独立设计调整。
+
 ## Context
 
-Collector Protocol 已有 Subject、Stream、FactId、Revision、schema 与撤回语义，但 Hub 上传前仍把
-Segment 投影成 ActivitySegment、Event 投影成 InputEvent。Analytics 因而无法识别修订、撤回与
+Collector Protocol 已有 Subject、Stream、FactId、Revision、schema 语义，但 Hub 上传前仍把
+Segment 投影成 ActivitySegment、Event 投影成 InputEvent。Analytics 因而无法识别修订与
 Stream；完整 payload 被放进旧 Attributes 后，Dashboard 还需要猜测 JSON 包装层才能显示网址。
 这使 ADR-041 的事实语义在采集与分析之间丢失，也让 Account 继续借用 Device。
 
@@ -22,7 +26,7 @@ Collection → Analytics 使用自包含的原生 Fact 批次。每批携带用�
 
 Analytics 以 Owner + StreamId + FactId 识别事实，原子接收整个批次。同一 Revision 的相同内容
 幂等，内容不同冲突，低 Revision 不覆盖高 Revision；高 Revision 必须满足所属 schema 的家族
-演进约束。Segment 的合法纠正与撤回同时更新有效读投影，不能再用 EndTime 取 max 代替修订。
+演进约束。Segment 的合法纠正同时更新有效读投影，不能再用 EndTime 取 max 代替修订。
 Event 默认不可变；声明 mutableEvent 的 schema 只允许指定 payload 路径修订。Measurement 继续等待真实 Collector，不在本次预建。
 
 Fact 是写入权威。ActivitySegment/InputEvent 保留为同一事务内维护的查询投影，使现有报表、
@@ -46,7 +50,7 @@ Hub 已提交的 Runtime 状态承担原生上传的持久保管；Analytics 成
 历史表逐行导入明确标记的 LegacyImport Fact，保留原始记录档案及原有查询身份。旧数据缺失的
 修订来源不伪装成 Collector 元数据。对于升级后 Runtime 重放，只有旧 projector 的确定性 Id
 及 Owner/Subject/Source 等身份完全匹配，才建立原生事实与历史导入的关联；不按相近时间或标题
-去重。关联后迟到的旧缓存不能覆盖原生修订或复活已撤回事实。
+去重。关联后迟到的旧缓存不能覆盖原生修订。
 
 旧 `/segments` 与 `/input-events` 路径在升级期只作为 LegacyImport adapter，不再直接写投影。
 这修订 ADR-020 的唯一段上传入口，并为 ADR-035 的严格单版本切换增加有明确服务对象的缓存
@@ -54,7 +58,7 @@ Hub 已提交的 Runtime 状态承担原生上传的持久保管；Analytics 成
 
 ## Consequences
 
-- Fact 的身份、schema、修订与撤回可以贯穿采集、持久化和查询。
+- Fact 的身份、schema 与修订可以贯穿采集、持久化和查询。
 - 历史记录可追溯，迁移与重放不会依赖模糊推断；旧版本丢弃的元数据无法凭空补回。
 - 读投影保留查询效率，但必须与 Fact 同事务更新，新增写路径不能绕开 Fact Store。
 - 上线需先备份并演练现有数据库、旧缓存与 Runtime 状态；代码与自动验证完成不等同于生产迁移完成。

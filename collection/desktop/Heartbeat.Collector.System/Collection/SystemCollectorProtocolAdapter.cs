@@ -371,7 +371,6 @@ public sealed class SystemCollectorProtocolAdapter :
         snapshot.FactId,
         snapshot.Revision,
         null,
-        CollectorFactRecordState.Present,
         new CollectorSegmentFactTime(snapshot.Start, snapshot.End, snapshot.IsFinal),
         JsonSerializer.SerializeToElement(new
         {
@@ -387,7 +386,6 @@ public sealed class SystemCollectorProtocolAdapter :
         item.Id,
         1,
         null,
-        CollectorFactRecordState.Present,
         new CollectorEventFactTime(item.Timestamp),
         JsonSerializer.SerializeToElement(new
         {

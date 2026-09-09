@@ -16,12 +16,11 @@ namespace Heartbeat.Collection.Hub.Segments
     /// 同时维护集面读模型（ADR-021）：Current Activity + per-Source last-seen，
     /// 与缓冲分离，不随 drain 清空。
     /// </summary>
-    public class SegmentIngestService : ISegmentSink, ISegmentRetractionSink, IDurableSegmentProjectionSink, ICollectorTrafficSink, IUploadSource<ActivitySegmentItem>, ICurrentActivitySink, ICollectionStatus
+    public class SegmentIngestService : ISegmentSink, IDurableSegmentProjectionSink, ICollectorTrafficSink, IUploadSource<ActivitySegmentItem>, ICurrentActivitySink, ICollectionStatus
     {
         private readonly object _lock = new();
         private readonly Dictionary<Guid, ActivitySegmentItem> _segments = [];
-        private readonly HashSet<Guid> _retractedSegmentIds = [];
-        private readonly Dictionary<Guid, DurableProjectionWatermark> _durableWatermarks = [];
+        private readonly Dictionary<Guid, long> _durableWatermarks = [];
         private readonly IClock _clock;
         private readonly ICache<ActivitySegmentItem>? _cache;
         private List<ActivitySegmentItem> _persisted = [];
@@ -89,33 +88,6 @@ namespace Heartbeat.Collection.Hub.Segments
 
         public void ReplayDurable(ActivitySegmentItem snapshot, long revision) =>
             BufferDurable(snapshot, revision);
-
-        public void RetractDurable(Guid segmentId, long revision)
-        {
-            if (segmentId == Guid.Empty)
-                throw new ArgumentException("Durable Segment projection ID must not be empty.", nameof(segmentId));
-            if (revision <= 0)
-                throw new ArgumentOutOfRangeException(nameof(revision));
-
-            lock (_lock)
-            {
-                if (_durableWatermarks.TryGetValue(segmentId, out var current) &&
-                    current.Revision > revision)
-                    return;
-                _durableWatermarks[segmentId] = new DurableProjectionWatermark(revision, Retracted: true);
-                _retractedSegmentIds.Add(segmentId);
-                _segments.Remove(segmentId);
-            }
-        }
-
-        public void Retract(Guid segmentId)
-        {
-            lock (_lock)
-            {
-                _retractedSegmentIds.Add(segmentId);
-                _segments.Remove(segmentId);
-            }
-        }
 
         public void MarkSourceActive(string source)
         {
@@ -214,8 +186,7 @@ namespace Heartbeat.Collection.Hub.Segments
             {
                 foreach (var snapshot in snapshots)
                 {
-                    if (_retractedSegmentIds.Contains(snapshot.Id) ||
-                        _durableWatermarks.ContainsKey(snapshot.Id))
+                    if (_durableWatermarks.ContainsKey(snapshot.Id))
                         continue;
                     _segments[snapshot.Id] = snapshot;
                     accepted.Add(snapshot);
@@ -235,13 +206,10 @@ namespace Heartbeat.Collection.Hub.Segments
             lock (_lock)
             {
                 if (_durableWatermarks.TryGetValue(snapshot.Id, out var current) &&
-                    (current.Revision > revision || current.Retracted))
-                    return;
-                if (_retractedSegmentIds.Contains(snapshot.Id) &&
-                    !_durableWatermarks.ContainsKey(snapshot.Id))
+                    current > revision)
                     return;
 
-                _durableWatermarks[snapshot.Id] = new DurableProjectionWatermark(revision, Retracted: false);
+                _durableWatermarks[snapshot.Id] = revision;
                 _segments[snapshot.Id] = snapshot;
             }
         }
@@ -260,6 +228,5 @@ namespace Heartbeat.Collection.Hub.Segments
             }
         }
 
-        private sealed record DurableProjectionWatermark(long Revision, bool Retracted);
     }
 }

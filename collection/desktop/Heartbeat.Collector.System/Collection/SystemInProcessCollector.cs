@@ -365,9 +365,6 @@ public sealed class SystemInProcessCollector(
         fact.FactId,
         fact.Revision,
         fact.ObservedAt,
-        fact.RecordState == CollectorFactRecordState.Present
-            ? FactRecordState.Present
-            : FactRecordState.Retracted,
         fact.Time switch
         {
             CollectorSegmentFactTime segment => new SegmentFactTime(

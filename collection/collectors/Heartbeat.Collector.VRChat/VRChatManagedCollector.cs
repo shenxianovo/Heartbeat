@@ -257,7 +257,6 @@ internal sealed class VRChatManagedCollector(
         fact.FactId,
         fact.Revision,
         fact.End,
-        CollectorFactRecordState.Present,
         new CollectorSegmentFactTime(fact.Start, fact.End, fact.IsFinal),
         JsonSerializer.SerializeToElement(new
         {

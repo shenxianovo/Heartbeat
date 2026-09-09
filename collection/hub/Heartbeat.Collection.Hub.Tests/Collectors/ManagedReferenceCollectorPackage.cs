@@ -96,7 +96,7 @@ internal sealed class ManagedReferenceCollectorPackage : IDisposable
                     schema = new
                     {
                         id = "heartbeat.reference.segment",
-                        major = 1,
+                        major = 2,
                         revision = 1,
                         document = "schemas/reference-segment.schema.json",
                         hash = Hash(File.ReadAllBytes(schemaPath))

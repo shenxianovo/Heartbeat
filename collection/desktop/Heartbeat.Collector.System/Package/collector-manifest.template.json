@@ -19,7 +19,7 @@
       "factKind": "segment",
       "schema": {
         "id": "heartbeat.system.foreground-segment",
-        "major": 1,
+        "major": 2,
         "revision": 1,
         "document": "schemas/system-foreground-segment.schema.json"
       },
@@ -32,7 +32,7 @@
       "factKind": "event",
       "schema": {
         "id": "heartbeat.input",
-        "major": 1,
+        "major": 2,
         "revision": 1,
         "document": "schemas/system-input-event.schema.json"
       },

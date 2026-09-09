@@ -256,7 +256,6 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             factId,
             Revision: 1,
             ObservedAt: null,
-            FactRecordState.Present,
             new EventFactTime(DateTimeOffset.UnixEpoch),
             JsonSerializer.SerializeToElement(new
             {
@@ -908,7 +907,6 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         factId,
         Revision: 1,
         ObservedAt: null,
-        FactRecordState.Present,
         new EventFactTime(DateTimeOffset.UnixEpoch),
         JsonSerializer.SerializeToElement(new
         {

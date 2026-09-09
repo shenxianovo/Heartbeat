@@ -375,31 +375,6 @@ public partial class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task Publish_SameRetractionMessageIdWithNewPayload_IsMessageRejected()
-    {
-        await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
-        var stream = fixture.Activation.Streams["activity"];
-        var present = CreateFact(stream.Descriptor.StreamId);
-        await stream.PublishAsync(Guid.CreateVersion7(), [present]);
-        var messageId = Guid.CreateVersion7();
-        var retraction = present with
-        {
-            Revision = 2,
-            RecordState = FactRecordState.Retracted,
-            Payload = default
-        };
-        await stream.PublishAsync(messageId, [retraction]);
-        using var payload = JsonDocument.Parse("{}");
-
-        var rejected = await stream.PublishAsync(
-            messageId,
-            [retraction with { Payload = payload.RootElement.Clone() }]);
-
-        Assert.True(rejected.IsMessageRejected);
-        Assert.Equal("protocol_invalid_message", rejected.MessageError!.Code);
-    }
-
-    [Fact]
     public async Task MessageId_ReusedAcrossPublishAndGap_IsRejectedAcrossMessageTypes()
     {
         await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
@@ -834,7 +809,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task Projection_AcknowledgedDuplicateSupersededAndRetractionStampLiveTraffic()
+    public async Task Projection_AcknowledgedDuplicateAndSupersededStampLiveTraffic()
     {
         using var directory = TemporaryDirectory.Create();
         var package = LocalCollectorPackage.Load(ReferencePackagePath);
@@ -880,16 +855,6 @@ public partial class InProcessCollectorProtocolTranscriptTests
         Assert.Equal(FactDeliveryStatus.Superseded, Assert.Single(superseded.Results).Status);
         Assert.Equal(clock.UtcNow, sink.SourceLastSeen["reference"]);
 
-        clock.UtcNow = clock.UtcNow.AddMinutes(1);
-        var retracted = current with
-        {
-            Revision = 4,
-            RecordState = FactRecordState.Retracted,
-            Payload = default
-        };
-        var retraction = await stream.PublishAsync(Guid.CreateVersion7(), [retracted]);
-        Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(retraction.Results).Status);
-        Assert.Equal(clock.UtcNow, sink.SourceLastSeen["reference"]);
     }
 
     [Fact]
@@ -2729,90 +2694,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task Publish_FinalSegmentRetractionCannotReturnToOpenInHigherRevision()
-    {
-        await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
-        var stream = fixture.Activation.Streams["activity"];
-        var final = CreateFact(stream.Descriptor.StreamId, revision: 1, isFinal: true);
-        var reopenedRetraction = CreateFact(
-            stream.Descriptor.StreamId,
-            revision: 2,
-            isFinal: false) with
-        {
-            RecordState = FactRecordState.Retracted,
-            Payload = default
-        };
-
-        await stream.PublishAsync(Guid.CreateVersion7(), [final]);
-        var acknowledgement = await stream.PublishAsync(
-            Guid.CreateVersion7(),
-            [reopenedRetraction]);
-
-        var result = Assert.Single(acknowledgement.Results);
-        Assert.Equal(FactDeliveryStatus.Rejected, result.Status);
-        Assert.Equal("fact_schema_invalid", result.Error!.Code);
-    }
-
-    [Fact]
-    public async Task Publish_RetractedFactWithPayload_IsPermanentlyRejected()
-    {
-        await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
-        var stream = fixture.Activation.Streams["activity"];
-        var retractedWithPayload = CreateFact(stream.Descriptor.StreamId) with
-        {
-            RecordState = FactRecordState.Retracted
-        };
-
-        var acknowledgement = await stream.PublishAsync(
-            Guid.CreateVersion7(),
-            [retractedWithPayload]);
-
-        var result = Assert.Single(acknowledgement.Results);
-        Assert.Equal(FactDeliveryStatus.Rejected, result.Status);
-        Assert.Equal("fact_schema_invalid", result.Error!.Code);
-        Assert.Empty(fixture.Sink.Segments);
-    }
-
-    [Fact]
-    public async Task Publish_RevisionOneRetractionWithoutPriorFact_IsRejected()
-    {
-        await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
-        var stream = fixture.Activation.Streams["activity"];
-        var retraction = CreateFact(stream.Descriptor.StreamId) with
-        {
-            RecordState = FactRecordState.Retracted,
-            Payload = default
-        };
-
-        var acknowledgement = await stream.PublishAsync(Guid.CreateVersion7(), [retraction]);
-
-        var result = Assert.Single(acknowledgement.Results);
-        Assert.Equal(FactDeliveryStatus.Rejected, result.Status);
-        Assert.Equal("fact_schema_invalid", result.Error!.Code);
-        Assert.Empty(fixture.Sink.Segments);
-    }
-
-    [Fact]
-    public async Task Publish_HigherRetractionRemovesSnapshotFromExistingHubBuffer()
-    {
-        await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
-        var stream = fixture.Activation.Streams["activity"];
-        var present = CreateFact(stream.Descriptor.StreamId);
-        await stream.PublishAsync(Guid.CreateVersion7(), [present]);
-        var retracted = CreateFact(stream.Descriptor.StreamId, revision: 2) with
-        {
-            RecordState = FactRecordState.Retracted,
-            Payload = default
-        };
-
-        var acknowledgement = await stream.PublishAsync(Guid.CreateVersion7(), [retracted]);
-
-        Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(acknowledgement.Results).Status);
-        Assert.Empty(fixture.Sink.Segments);
-    }
-
-    [Fact]
-    public async Task Projection_SameFactIdInTwoStreamsRemainsIndependentIncludingRetraction()
+    public async Task Projection_SameFactIdInTwoStreamsRemainsIndependent()
     {
         using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
         var manifest = packageCopy.ReadManifest();
@@ -2857,15 +2739,6 @@ public partial class InProcessCollectorProtocolTranscriptTests
         Assert.Equal(2, projected.Select(segment => segment.Id).Distinct().Count());
         Assert.All(projected, segment => Assert.Equal('7', segment.Id.ToString("D")[14]));
 
-        var retraction = first with
-        {
-            Revision = 2,
-            RecordState = FactRecordState.Retracted,
-            Payload = default
-        };
-        await activation.Streams["first"].PublishAsync(Guid.CreateVersion7(), [retraction]);
-
-        Assert.Equal("Second stream", Assert.Single(sink.ReadBatch()).Title);
         await activation.DisposeAsync();
     }
 
@@ -2890,7 +2763,6 @@ public partial class InProcessCollectorProtocolTranscriptTests
             factId ?? Guid.Parse("0198d5eb-fc31-7d7b-8bf0-c2d009ec8999"),
             revision,
             observedAt ?? new DateTimeOffset(2026, 8, 22, 9, 5, 0, TimeSpan.Zero),
-            FactRecordState.Present,
             new SegmentFactTime(segmentStart, end ?? segmentStart.AddMinutes(5 + revision), isFinal),
             payload.RootElement.Clone());
     }
@@ -3106,7 +2978,6 @@ public partial class InProcessCollectorProtocolTranscriptTests
                 Guid.Parse("0198d5eb-fc31-7d7b-8bf0-c2d009ec8999"),
                 1,
                 new DateTimeOffset(2026, 8, 22, 9, 5, 0, TimeSpan.Zero),
-                FactRecordState.Present,
                 new SegmentFactTime(start, start.AddMinutes(5), false),
                 payload.RootElement.Clone());
             InitialAcknowledgement = await stream.PublishAsync(
@@ -3289,24 +3160,21 @@ public partial class InProcessCollectorProtocolTranscriptTests
         }
     }
 
-    private sealed class RecordingSegmentSink : ISegmentSink, ISegmentRetractionSink, IDurableSegmentProjectionSink
+    private sealed class RecordingSegmentSink : ISegmentSink, IDurableSegmentProjectionSink
     {
         public List<ActivitySegmentItem> Segments { get; } = [];
 
         public void Push(List<ActivitySegmentItem> snapshots) => Segments.AddRange(snapshots);
 
-        public void Retract(Guid segmentId) => Segments.RemoveAll(segment => segment.Id == segmentId);
-
         public void UpsertDurable(ActivitySegmentItem snapshot, long revision)
         {
-            Retract(snapshot.Id);
+            Segments.RemoveAll(segment => segment.Id == snapshot.Id);
             Segments.Add(snapshot);
         }
 
         public void ReplayDurable(ActivitySegmentItem snapshot, long revision) =>
             UpsertDurable(snapshot, revision);
 
-        public void RetractDurable(Guid segmentId, long revision) => Retract(segmentId);
     }
 
     private sealed class RecordingSubjectSegmentSink : ISegmentSink, ISubjectSegmentProjectionSink
@@ -3328,10 +3196,6 @@ public partial class InProcessCollectorProtocolTranscriptTests
             long revision,
             bool isFinal) => Items.Add((context, snapshot, isFinal));
 
-        public void RetractDurable(
-            CollectorProjectionContext context,
-            Guid segmentId,
-            long revision) { }
     }
 
     private sealed class FixedClock(DateTimeOffset utcNow) : IClock

@@ -1,10 +1,10 @@
 {
   "documentVersion": 1,
   "schemaId": "heartbeat.input",
-  "schemaMajor": 1,
+  "schemaMajor": 2,
   "schemaRevision": 1,
   "factKind": "event",
-  "evolution": { "mode": "immutableEvent", "allowRetraction": false },
+  "evolution": { "mode": "immutableEvent" },
   "payloadSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "payloadSchema": {
     "type": "object",

@@ -65,7 +65,6 @@ public sealed class ExternalHostCollectorProtocolTranscriptTests
             Guid.CreateVersion7(),
             1,
             null,
-            FactRecordState.Present,
             new SegmentFactTime(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow, false),
             payload.RootElement.Clone());
 
@@ -128,7 +127,6 @@ public sealed class ExternalHostCollectorProtocolTranscriptTests
                     Guid.CreateVersion7(),
                     1,
                     null,
-                    FactRecordState.Present,
                     new SegmentFactTime(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow, false),
                     payload.RootElement.Clone())]));
     }

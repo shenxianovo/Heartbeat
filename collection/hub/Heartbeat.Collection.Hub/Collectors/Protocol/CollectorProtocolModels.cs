@@ -206,12 +206,6 @@ public sealed record FactStreamDescriptor(
     FactStreamSchemaReference Schema,
     IReadOnlyDictionary<string, string> Dimensions);
 
-public enum FactRecordState
-{
-    Present,
-    Retracted
-}
-
 public record FactTime
 {
     public DateTimeOffset? Start { get; init; }
@@ -244,7 +238,6 @@ public sealed record FactSubmission(
     Guid FactId,
     long Revision,
     DateTimeOffset? ObservedAt,
-    FactRecordState RecordState,
     FactTime Time,
     JsonElement Payload);
 

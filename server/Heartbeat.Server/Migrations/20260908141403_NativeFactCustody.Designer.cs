@@ -754,10 +754,6 @@ namespace Heartbeat.Server.Migrations
                     b.Property<string>("Payload")
                         .HasColumnType("jsonb");
 
-                    b.Property<string>("RecordState")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<long>("Revision")
                         .HasColumnType("bigint");
 

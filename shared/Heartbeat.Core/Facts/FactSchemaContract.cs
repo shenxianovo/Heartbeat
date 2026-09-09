@@ -11,7 +11,7 @@ public sealed class FactSchemaException(string message, Exception? innerExceptio
 /// <summary>One executable document contract for Package admission and Analytics ingest.</summary>
 public sealed record FactSchemaContract(
     string SchemaId, int SchemaMajor, int SchemaRevision, string FactKind,
-    string EvolutionMode, bool AllowRetraction, IReadOnlyList<string> MutablePayloadPaths,
+    string EvolutionMode, IReadOnlyList<string> MutablePayloadPaths,
     JsonElement PayloadSchema)
 {
     public static FactSchemaContract Parse(ReadOnlyMemory<byte> content, string expectedId,
@@ -59,20 +59,12 @@ public sealed record FactSchemaContract(
         RequireObject(
             evolution,
             $"Fact Schema Document '{expectedId}' evolution",
-            ["mode", "allowRetraction", "mutablePayloadPaths"],
-            ["mode", "allowRetraction"]);
+            ["mode", "mutablePayloadPaths"],
+            ["mode"]);
         var mode = ReadNonEmptyString(evolution, "mode", $"Fact Schema Document '{expectedId}' evolution");
         if (!EvolutionMatches(factKind, mode))
             throw new FactSchemaException(
                 $"Fact Schema Document '{expectedId}' uses evolution mode '{mode}' for FactKind '{factKind}'.");
-        if (evolution.GetProperty("allowRetraction").ValueKind is not (JsonValueKind.True or JsonValueKind.False))
-            throw new FactSchemaException(
-                $"Fact Schema Document '{expectedId}' evolution.allowRetraction must be boolean.");
-        var allowRetraction = evolution.GetProperty("allowRetraction").GetBoolean();
-        if (factKind == "segment" && !allowRetraction)
-            throw new FactSchemaException(
-                $"Fact Schema Document '{expectedId}' must allow Segment retraction in v1.");
-
         IReadOnlyList<string> mutablePayloadPaths = [];
         if (mode == "mutableEvent")
         {
@@ -99,7 +91,7 @@ public sealed record FactSchemaContract(
                 $"Fact Schema Document '{expectedId}' payloadSchema must be a JSON Schema object or boolean.");
 
         ValidateSchemaReferences(payloadSchema, payloadSchema, expectedId, dialect);
-        return new(schemaId, major, revision, factKind, mode, allowRetraction, mutablePayloadPaths, payloadSchema.Clone());
+        return new(schemaId, major, revision, factKind, mode, mutablePayloadPaths, payloadSchema.Clone());
     }
 
     private static void ValidateSchemaReferences(

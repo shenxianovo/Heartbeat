@@ -143,8 +143,6 @@ internal sealed class HeadlessInstancePipelines(
         var pipeline = Required(new CollectorProjectionContext(item.Stream.CollectorInstanceId, subject));
         if (FactUploadReadModel.Segment(item) is { } segment)
             pipeline.ObserveFact(segment, fact.IsFinal == true);
-        else if (fact.RecordState == "retracted")
-            pipeline.ClearCurrentFact(fact.StreamId, fact.FactId);
     }
 
     public void UpsertDurable(
@@ -158,11 +156,6 @@ internal sealed class HeadlessInstancePipelines(
         ActivitySegmentItem snapshot,
         long revision,
         bool isFinal) => Required(context).Replay(snapshot, revision, isFinal);
-
-    public void RetractDurable(
-        CollectorProjectionContext context,
-        Guid segmentId,
-        long revision) => Required(context).Retract(segmentId, revision);
 
     public void Dispose()
     {
@@ -253,31 +246,7 @@ internal sealed class HeadlessInstancePipelines(
             Observe(item, isFinal);
         }
 
-        public void Retract(Guid segmentId, long revision)
-        {
-            ingest.RetractDurable(segmentId, revision);
-            lock (_gate)
-            {
-                if (_currentSegmentId != segmentId)
-                    return;
-                _current = null;
-                _currentSegmentId = null;
-            }
-        }
-
         public void ObserveFact(ActivitySegmentItem item, bool isFinal) => Observe(item, isFinal);
-
-        public void ClearCurrentFact(Guid streamId, Guid factId)
-        {
-            // IDs in the host read model retain the previous deterministic projection identity.
-            var currentId = FactUploadReadModel.SegmentId(streamId, factId);
-            lock (_gate)
-            {
-                if (_currentSegmentId != currentId) return;
-                _current = null;
-                _currentSegmentId = null;
-            }
-        }
 
         public UploadDrainResult<ActivitySegmentItem>? LastDrain => upload.LastDrain;
         public Task<UploadDrainResult<ActivitySegmentItem>> DrainAsync(CancellationToken cancellationToken) =>

@@ -9,7 +9,6 @@ public sealed class ObservedFact
     public Guid FactId { get; set; }
     public long Revision { get; set; }
     public int SchemaRevision { get; set; }
-    public string RecordState { get; set; } = "present";
     public string Origin { get; set; } = "native";
     public DateTimeOffset? ObservedAt { get; set; }
     public DateTimeOffset? Start { get; set; }

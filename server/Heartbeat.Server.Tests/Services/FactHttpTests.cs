@@ -68,6 +68,38 @@ public sealed class FactHttpTests(PostgresContainerFixture fixture) : PostgresTe
         }
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task NativeHttpBoundary_RejectsOldRetractionWithoutChangingStoredFact(bool includePayload)
+    {
+        await using (var db = CreateDbContext())
+        {
+            db.Users.Add(new User { Id = "owner", Username = "alice" });
+            await db.SaveChangesAsync();
+        }
+        await using var application = CreateApplication();
+        using var client = application.CreateClient();
+        client.DefaultRequestHeaders.Add(HeartbeatProtocol.VersionHeader, HeartbeatProtocol.RequiredVersion);
+        client.DefaultRequestHeaders.Add("X-Test-Owner", "owner");
+        var batch = FactStoreTests.SegmentBatch();
+        using var accepted = await client.PostAsJsonAsync("/api/v1/facts", batch);
+        Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+        var request = JsonSerializer.SerializeToNode(batch, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var fact = request["facts"]![0]!.AsObject();
+        fact["recordState"] = "retracted";
+        fact["revision"] = 2;
+        if (!includePayload) fact.Remove("payload");
+
+        using var rejected = await client.PostAsJsonAsync("/api/v1/facts", request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        Assert.Contains("recordState", await rejected.Content.ReadAsStringAsync());
+        await using var verify = CreateDbContext();
+        Assert.Equal(1, (await verify.Facts.SingleAsync()).Revision);
+        Assert.Equal(batch.Facts[0].End, (await verify.ActivitySegments.SingleAsync()).EndTime);
+    }
+
     private WebApplicationFactory<FactController> CreateApplication() =>
         new WebApplicationFactory<FactController>().WithWebHostBuilder(builder =>
         {

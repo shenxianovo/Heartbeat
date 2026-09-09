@@ -112,7 +112,6 @@ public sealed class FactSchemaDocument
         int schemaRevision,
         FactKind factKind,
         FactEvolutionMode evolutionMode,
-        bool allowRetraction,
         IReadOnlyList<string> mutablePayloadPaths,
         JsonElement payloadSchema,
         JsonSchema payloadValidator,
@@ -124,7 +123,6 @@ public sealed class FactSchemaDocument
         SchemaRevision = schemaRevision;
         FactKind = factKind;
         EvolutionMode = evolutionMode;
-        AllowRetraction = allowRetraction;
         MutablePayloadPaths = mutablePayloadPaths;
         PayloadSchema = payloadSchema;
         PayloadValidator = payloadValidator;
@@ -137,7 +135,6 @@ public sealed class FactSchemaDocument
     public int SchemaRevision { get; }
     public FactKind FactKind { get; }
     public FactEvolutionMode EvolutionMode { get; }
-    public bool AllowRetraction { get; }
     public IReadOnlyList<string> MutablePayloadPaths { get; }
     public JsonElement PayloadSchema { get; }
     public string ContentHash { get; }
@@ -645,7 +642,7 @@ public sealed class LocalCollectorPackage
             var validator = JsonSchema.FromText(schema.PayloadSchema.GetRawText(),
                 new BuildOptions { Dialect = Dialect.Draft202012 });
             return new FactSchemaDocument(schema.SchemaId, schema.SchemaMajor, schema.SchemaRevision,
-                expectedFactKind, ParseEvolutionMode(schema.EvolutionMode), schema.AllowRetraction,
+                expectedFactKind, ParseEvolutionMode(schema.EvolutionMode),
                 schema.MutablePayloadPaths, schema.PayloadSchema, validator, reference.Hash,
                 ImmutableArray.CreateRange(bytes));
         }

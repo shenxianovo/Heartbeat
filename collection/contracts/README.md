@@ -15,6 +15,10 @@
 
 `.schema.json` 只约束 Fact payload 与该事实族的演进规则，不约束 Collector Protocol 的消息信封。Package staging 必须保留权威 schema 的完整 basename，例如 `schemas/system-input-event.schema.json`；这样 manifest 引用可以直接追溯到唯一源文件。
 
+当前五个 schema 使用 Major 2；Fact 必须携带 payload，不再声明 `recordState` 或
+`evolution.allowRetraction`。Collector、Hub 与 Analytics 同步切换；旧字段明确拒绝。
+Segment 的稳定身份、递增快照修订与 finality、Event 的 immutable/mutable 规则保持不变。
+
 常用检查：
 
 ```bash

@@ -13,15 +13,6 @@ namespace Heartbeat.Collection.Hub.Segments
     }
 
     /// <summary>
-    /// Optional projection capability used by the Collector Fact runtime when a durable Segment
-    /// revision retracts a snapshot that may still be present in the legacy Hub buffer.
-    /// </summary>
-    public interface ISegmentRetractionSink
-    {
-        void Retract(Guid segmentId);
-    }
-
-    /// <summary>
     /// Projection seam for Collector Facts that already passed their versioned schema and were
     /// durably accepted. Unlike transient legacy ingest, replayed/offline Facts must not be
     /// discarded by a wall-clock freshness filter.
@@ -33,9 +24,6 @@ namespace Heartbeat.Collection.Hub.Segments
 
         /// <summary>Restores a durable Fact without making historical replay look like live traffic.</summary>
         void ReplayDurable(ActivitySegmentItem snapshot, long revision);
-
-        /// <summary>Applies a durable tombstone at the supplied Fact revision.</summary>
-        void RetractDurable(Guid segmentId, long revision);
     }
 
     /// <summary>
@@ -59,8 +47,6 @@ namespace Heartbeat.Collection.Hub.Segments
             ActivitySegmentItem snapshot,
             long revision,
             bool isFinal);
-
-        void RetractDurable(CollectorProjectionContext context, Guid segmentId, long revision);
     }
 
     /// <summary>

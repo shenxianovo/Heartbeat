@@ -35,8 +35,8 @@ public sealed class HeadlessFleetManagerTests : IDisposable
 
         Assert.Equal("Online", pipelines.CurrentActivity(stream.CollectorInstanceId)!.Title);
         Assert.Empty(upload.Sent);
-        fact.RecordState = "retracted";
-        fact.Payload = null;
+        fact.Revision = 2;
+        fact.IsFinal = true;
         pipelines.Observe(new FactUploadItem(stream, fact, null, "unused"));
         Assert.Null(pipelines.CurrentActivity(stream.CollectorInstanceId));
     }

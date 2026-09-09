@@ -783,7 +783,6 @@ public sealed partial class CollectorRuntime
 
             if (stream.FactKind == FactKind.Segment &&
                 (current.Start != fact.Time.Start ||
-                 current.RecordState == FactRecordState.Retracted && fact.RecordState == FactRecordState.Present ||
                  current.IsFinal && fact.Time.IsFinal != true))
                 return Rejected(index, "fact_schema_invalid", "Segment Revision violates its evolution rules.");
         }
@@ -822,18 +821,17 @@ public sealed partial class CollectorRuntime
             FactId = fact.FactId,
             SchemaRevision = fact.SchemaRevision,
             Revision = fact.Revision,
-            RecordState = fact.RecordState,
             ObservedAt = fact.ObservedAt,
             Start = fact.Time.Start ?? default,
             End = fact.Time.End ?? default,
             IsFinal = fact.Time.IsFinal ?? false,
             OccurredAt = fact.Time.OccurredAt,
-            Payload = fact.RecordState == FactRecordState.Present ? fact.Payload.Clone() : null,
+            Payload = fact.Payload.Clone(),
             ContentHash = contentHash
         };
         // Native terminal Facts use a bounded replay window after delivery. Analytics retains
         // authoritative revision guards after pruning; the protocol ACK promises durable custody.
-        // Mutable/unretracted Events retain their first-observation state for later revisions.
+        // Mutable Events retain their first-observation state for later revisions.
         prepared = new PreparedFactCommit(stream, committed, evictedEvent);
         return null;
     }
@@ -848,8 +846,6 @@ public sealed partial class CollectorRuntime
         if (fact.StreamId == Guid.Empty || !IsUuidV7(fact.FactId) || fact.SchemaRevision <= 0 ||
             fact.Revision is <= 0 or > MaxSafeJsonInteger)
             return "Fact identity and revisions must be UUIDv7, positive, and JSON-safe.";
-        if (!Enum.IsDefined(fact.RecordState))
-            return "Fact recordState is not defined by Collector Protocol v1.";
         if (fact.ObservedAt is { Offset: var offset } && offset != TimeSpan.Zero)
             return "Fact observedAt must be UTC.";
         return null;
@@ -864,14 +860,6 @@ public sealed partial class CollectorRuntime
             return "Segment times must be UTC.";
         if (end < start)
             return "Segment end must not precede start.";
-        if (fact.RecordState == FactRecordState.Retracted)
-        {
-            if (fact.Revision == 1)
-                return "Retracted Fact must use a Revision higher than 1.";
-            if (fact.Payload.ValueKind != System.Text.Json.JsonValueKind.Undefined)
-                return "Retracted Fact must omit payload.";
-            return schema.AllowRetraction ? null : "Fact Schema does not allow retraction.";
-        }
         if (fact.Payload.ValueKind == System.Text.Json.JsonValueKind.Undefined || !schema.IsPayloadValid(fact.Payload))
             return "Fact payload does not satisfy its Fact Schema Document.";
         return null;
@@ -889,28 +877,18 @@ public sealed partial class CollectorRuntime
             return "Event occurredAt must be UTC.";
         if (current is null && fact.Revision != 1)
             return "An Event must first be submitted at Revision 1.";
-        if (fact.RecordState == FactRecordState.Retracted)
-        {
-            if (fact.Revision == 1)
-                return "Retracted Fact must use a Revision higher than 1.";
-            if (fact.Payload.ValueKind != JsonValueKind.Undefined)
-                return "Retracted Fact must omit payload.";
-            return schema.AllowRetraction ? null : "Fact Schema does not allow retraction.";
-        }
         if (fact.Payload.ValueKind == JsonValueKind.Undefined || !schema.IsPayloadValid(fact.Payload))
             return "Fact payload does not satisfy its Fact Schema Document.";
         if (current is not null && current.OccurredAt != occurredAt)
             return "Event Revision cannot change occurredAt.";
         if (current is not null && fact.Revision > current.Revision &&
             schema.EvolutionMode != FactEvolutionMode.MutableEvent)
-            return "Immutable Event Fact Schema does not allow a higher present Revision.";
+            return "Immutable Event Fact Schema does not allow a higher Revision.";
         return null;
     }
 
     private bool CanProject(FactStreamState stream, FactSubmission fact)
     {
-        if (fact.RecordState == FactRecordState.Retracted)
-            return stream.FactKind == FactKind.Segment;
         return stream.FactKind switch
         {
             FactKind.Segment =>
@@ -1581,43 +1559,6 @@ public sealed partial class CollectorRuntime
 
     private void ProjectSegment(FactStreamState stream, CommittedFactState fact, bool isReplay)
     {
-        if (fact.RecordState == FactRecordState.Retracted)
-        {
-            if (_segmentSink is ISubjectSegmentProjectionSink subjectSink)
-            {
-                try
-                {
-                    subjectSink.RetractDurable(
-                        ContextForStream(stream),
-                        _segmentProjector.ProjectedId(stream.StreamId, fact.FactId),
-                        fact.Revision);
-                }
-                catch (Exception exception)
-                {
-                    Log.Error(
-                        exception,
-                        "已持久接收 Collector Segment 撤回 {FactId}，从 Subject 缓冲移除失败；重启时将重放",
-                        fact.FactId);
-                }
-            }
-            else if (_segmentSink is IDurableSegmentProjectionSink durableSink)
-            {
-                try
-                {
-                    durableSink.RetractDurable(
-                        _segmentProjector.ProjectedId(stream.StreamId, fact.FactId),
-                        fact.Revision);
-                }
-                catch (Exception exception)
-                {
-                    Log.Error(
-                        exception,
-                        "已持久接收 Collector Segment 撤回 {FactId}，从 Hub 缓冲移除失败；重启时将重放",
-                        fact.FactId);
-                }
-            }
-            return;
-        }
         if (fact.Payload is not { } payload ||
             !_segmentProjector.TryProject(
                 stream,
@@ -1710,8 +1651,7 @@ public sealed partial class CollectorRuntime
         out InputEventItem? item)
     {
         item = null;
-        if (fact.RecordState == FactRecordState.Present &&
-            fact.OccurredAt is { } occurredAt &&
+        if (fact.OccurredAt is { } occurredAt &&
             fact.Payload is { } payload &&
             ResolveEventProjector(stream.SchemaId, stream.SchemaMajor) is { } projector &&
             projector.TryProject(fact.FactId, occurredAt, payload, out item))

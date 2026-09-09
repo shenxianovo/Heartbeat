@@ -15,7 +15,7 @@ public static class FactUploadReadModel
 
     public static ActivitySegmentItem? Segment(FactUploadItem item)
     {
-        if (item.Stream.FactKind != "segment" || item.Fact is not { RecordState: "present", Payload: { } payload } fact ||
+        if (item.Stream.FactKind != "segment" || item.Fact is not { Payload: { } payload } fact ||
             fact.Start is not { } start || fact.End is not { } end || payload.ValueKind != JsonValueKind.Object)
             return null;
         return new ActivitySegmentItem

@@ -1,10 +1,10 @@
 {
   "documentVersion": 1,
   "schemaId": "heartbeat.vrchat.presence-segment",
-  "schemaMajor": 1,
+  "schemaMajor": 2,
   "schemaRevision": 1,
   "factKind": "segment",
-  "evolution": { "mode": "segmentSnapshot", "allowRetraction": true },
+  "evolution": { "mode": "segmentSnapshot" },
   "payloadSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "payloadSchema": {
     "type": "object",

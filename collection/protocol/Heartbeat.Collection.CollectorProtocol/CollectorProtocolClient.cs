@@ -795,7 +795,6 @@ public sealed class CollectorProtocolClient(
         fact.FactId,
         fact.Revision,
         fact.ObservedAt,
-        fact.RecordState,
         fact.Time,
         fact.Payload.Clone());
 

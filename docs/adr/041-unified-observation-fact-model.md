@@ -4,6 +4,11 @@
 
 ## Date: 2026-08-22
 
+2026-09-09 修订：按 owner 决策删除 Fact 撤回。System、Browser、VRChat 正式采集器没有主动
+产生撤回的业务路径；为假想删除保留状态、墓碑和防复活分支不符合最小事实模型。
+Fact 始终是有 payload 的快照，保留身份、正常修订、乱序保护及同版本幂等/冲突规则。
+此决定仅涉及采集事实，不改变其他领域的删除或 Package 版本撤回。
+
 ## Context
 
 现有主路径以 ActivitySegment 表示桌面活动，InputEvent 另走事件管道；VRChat 账号状态、心率和微信步数等未来来源既不一定由被观测设备本机采集，也不能都自然表达成活动区间。ADR-032 曾临时把 Device 放宽为“观测主体”，并把 Segment / Event / Sample 记作绿场方向，但这会让账号、身体和运行无头 Hub 的服务器继续借用机器语义，也没有给统一 Collector Protocol 一个稳定的输出契约。
@@ -20,7 +25,7 @@ Device 回到 Machine Subject。VRChat 账号使用 Account Subject，心率等�
 
 ### 2. 领域模型区分三类 Fact，协议按真实需求落地
 
-- **Segment**：具有起止时间的区间事实；持续中的区间以同一 FactId、递增 Revision 的完整快照表达增长、纠正或撤回。
+- **Segment**：具有起止时间的区间事实；持续中的区间以同一 FactId、递增 Revision 的完整快照表达增长或纠正。
 - **Event**：发生在一个时刻的离散事实；默认不可变，同一 FactId 的相同内容是幂等重放，不同内容是冲突。
 - **Measurement**：数值状态或时间窗口内的数值总体；至少区分 Gauge、Sum 与 Histogram，并保留 unit、temporality、monotonic、reset 与 missing 等必要语义，不能退化为“时间戳 + 数字”。
 
@@ -32,7 +37,9 @@ Package 通过 Output Template 声明可产生的 FactKind、Source、schema、S
 
 Stream 元数据持有 Subject、Collector Instance、Source、FactKind、schema、Measurement descriptor（若适用）与 identifying dimensions。逐条 Fact 只携带 StreamId、实际 SchemaRevision、Collector 生成的 UUIDv7 FactId、单调 Revision、该家族的事实时间、可选 ObservedAt 与类型化 payload；Hub 把 ReceivedAt 与 ActivationId 记录在独立 ingest metadata 中，不改写 wire Fact。ActivationId 只作为本次 writer 的 provenance，不进入 Stream 身份。
 
-Fact Schema 使用 SchemaId + SchemaMajor 表示语义兼容线，以 SchemaRevision + SchemaHash 锁定同一 Major 内的兼容扩展。破坏性变化必须提高 Major 并创建新 Stream。协议按 `StreamId + FactId + Revision` 幂等收敛，但 Segment、Event 与 Measurement 各自决定高 Revision 是否合法以及如何解释。
+Fact Schema 使用 SchemaId + SchemaMajor 表示语义兼容线，以 SchemaRevision + SchemaHash 锁定同一 Major 内的兼容扩展。破坏性变化必须提高 Major 并创建新 Stream。Fact 不携带 `recordState`，Schema 不提供 `allowRetraction`；旧字段在输入边界明确拒绝，不能被忽略后作为普通事实写入。五个内置 schema 提升到 Major 2，Package 与 Collector 同步更新，不保留撤回兼容线。
+
+协议按 `StreamId + FactId + Revision` 幂等收敛，但 Segment、Event 与 Measurement 各自决定高 Revision 是否合法以及如何解释。
 
 ## Consequences
 

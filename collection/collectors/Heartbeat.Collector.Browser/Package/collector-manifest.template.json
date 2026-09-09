@@ -29,7 +29,7 @@
       "factKind": "segment",
       "schema": {
         "id": "heartbeat.browser.active-tab-segment",
-        "major": 1,
+        "major": 2,
         "revision": 1,
         "document": "schemas/browser-active-tab-segment.schema.json"
       },

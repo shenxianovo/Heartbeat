@@ -11,7 +11,7 @@ _Avoid_: 把 ActivitySegment 或 InputEvent 继续当作独立写入权威、从
 
 **Fact Revision（事实修订）**:
 同一 Owner、Stream、FactId 的完整快照序列；同 Revision 相同内容幂等、不同内容冲突，低 Revision
-不覆盖高 Revision。Segment 合法纠正可以缩短结束时间，撤回移除有效读投影但保留事实身份；
+不覆盖高 Revision。Segment 合法纠正可以缩短结束时间；Fact 不支持撤回，旧撤回消息明确拒绝；
 修订必须遵守家族和 schema 的演进规则。
 _Avoid_: 用 EndTime 取 max 代替 Revision、用数据到达顺序解释事实演进
 

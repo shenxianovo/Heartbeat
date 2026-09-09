@@ -17,7 +17,7 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
     private static readonly DateTimeOffset Start = new(2026, 9, 1, 1, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public async Task CompleteSnapshots_ConvergeWithoutRegrowingCorrections_AndRetractionHidesProjection()
+    public async Task CompleteSnapshots_ConvergeWithoutRegrowingCorrections()
     {
         await using var db = CreateDbContext();
         var batch = SegmentBatch();
@@ -35,16 +35,6 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
         Assert.Equal(Start.AddMinutes(2), row.EndTime);
         Assert.Equal("Corrected", row.Title);
         Assert.Equal(2, row.Revision);
-        batch.Facts[0].Revision = 3;
-        batch.Facts[0].RecordState = "retracted";
-        batch.Facts[0].Payload = null;
-        await store.IngestAsync("owner", batch);
-        Assert.Empty(await new UsageService(db).GetSegmentsAsync("owner", null, null, null, null, null));
-        Assert.Equal("retracted", (await db.Facts.SingleAsync()).RecordState);
-        batch.Facts[0].Revision = 4;
-        batch.Facts[0].RecordState = "present";
-        batch.Facts[0].Payload = Payload();
-        await Assert.ThrowsAsync<FactIngestException>(() => store.IngestAsync("owner", batch));
     }
 
     [Fact]
@@ -91,7 +81,7 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
     }
 
     [Fact]
-    public async Task NativeReplay_TakesOverImportedSegment_WithUppercaseHardwareId_AndLateLegacyCannotRegrowOrResurrect()
+    public async Task NativeReplay_TakesOverImportedSegment_WithUppercaseHardwareId_AndLateLegacyCannotRegrow()
     {
         await using var db = CreateDbContext();
         var batch = SegmentBatch();
@@ -113,17 +103,10 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
         Assert.Equal(archive, (await db.Facts.SingleAsync()).LegacyRecord);
         await store.ImportSegmentsAsync(device.Id, [legacy]);
         Assert.Equal(Start.AddMinutes(1), (await db.ActivitySegments.SingleAsync()).EndTime);
-        batch.Facts[0].Revision = 10;
-        batch.Facts[0].RecordState = "retracted";
-        batch.Facts[0].Payload = null;
-        await store.IngestAsync("owner", batch);
-        await store.ImportSegmentsAsync(device.Id, [legacy]);
-        Assert.Empty(await db.ActivitySegments.ToListAsync());
-        Assert.Single(await db.Facts.ToListAsync());
     }
 
     [Fact]
-    public async Task NativeFirst_RetractionThenOldCacheDoesNotResurrectEvenWithoutImportedHistory()
+    public async Task NativeFirst_CorrectionThenOldCacheDoesNotRegrowEvenWithoutImportedHistory()
     {
         await using var db = CreateDbContext();
         var batch = SegmentBatch();
@@ -132,12 +115,11 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
         await store.IngestAsync("owner", batch);
         var deviceId = (await db.Devices.SingleAsync()).Id;
         batch.Facts[0].Revision = 2;
-        batch.Facts[0].RecordState = "retracted";
-        batch.Facts[0].Payload = null;
+        batch.Facts[0].End = Start.AddSeconds(1);
         await store.IngestAsync("owner", batch);
         await store.ImportSegmentsAsync(deviceId, [legacy]);
-        Assert.Empty(await db.ActivitySegments.ToListAsync());
-        Assert.Equal("retracted", (await db.Facts.SingleAsync()).RecordState);
+        Assert.Equal(Start.AddSeconds(1), (await db.ActivitySegments.SingleAsync()).EndTime);
+        Assert.Equal(2, (await db.Facts.SingleAsync()).Revision);
     }
 
     [Fact]
@@ -357,7 +339,7 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
             StreamId = Guid.NewGuid(), CollectorInstanceId = Guid.NewGuid(), Subject = new FactSubject { SubjectId = Guid.NewGuid(), Kind = subjectKind, HardwareId = subjectKind == "machine" ? "hardware" : null, DisplayName = "Observed subject" },
             OutputId = "activity", Source = "browser", FactKind = "segment", SchemaId = "test.browser", SchemaMajor = 1
         };
-        var schema = """{"documentVersion":1,"schemaId":"test.browser","schemaMajor":1,"schemaRevision":1,"factKind":"segment","evolution":{"mode":"segmentSnapshot","allowRetraction":true},"payloadSchemaDialect":"https://json-schema.org/draft/2020-12/schema","payloadSchema":{"type":"object","required":["identityKey"],"properties":{"identityKey":{"type":"string"},"title":{"type":"string"}}}}""";
+        var schema = """{"documentVersion":1,"schemaId":"test.browser","schemaMajor":1,"schemaRevision":1,"factKind":"segment","evolution":{"mode":"segmentSnapshot"},"payloadSchemaDialect":"https://json-schema.org/draft/2020-12/schema","payloadSchema":{"type":"object","required":["identityKey"],"properties":{"identityKey":{"type":"string"},"title":{"type":"string"}}}}""";
         stream.Schemas.Add(new FactSchemaDefinition { Revision = 1, DocumentJson = schema, ContentHash = Hash(schema) });
         return new FactUploadRequest { Streams = [stream], Facts = [new FactSnapshot { StreamId = stream.StreamId, FactId = Guid.CreateVersion7(), Revision = 1, SchemaRevision = 1, Start = Start, End = Start.AddMinutes(10), IsFinal = false, Payload = Payload() }] };
     }
@@ -369,7 +351,7 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
         stream.Source = "system";
         stream.FactKind = "event";
         stream.SchemaId = "heartbeat.input";
-        var schema = """{"documentVersion":1,"schemaId":"heartbeat.input","schemaMajor":1,"schemaRevision":1,"factKind":"event","evolution":{"mode":"immutableEvent","allowRetraction":false},"payloadSchemaDialect":"https://json-schema.org/draft/2020-12/schema","payloadSchema":{"type":"object","required":["eventType","codeSet","code"]}}""";
+        var schema = """{"documentVersion":1,"schemaId":"heartbeat.input","schemaMajor":1,"schemaRevision":1,"factKind":"event","evolution":{"mode":"immutableEvent"},"payloadSchemaDialect":"https://json-schema.org/draft/2020-12/schema","payloadSchema":{"type":"object","required":["eventType","codeSet","code"]}}""";
         stream.Schemas = [new FactSchemaDefinition { Revision = 1, DocumentJson = schema, ContentHash = Hash(schema) }];
         var fact = batch.Facts[0];
         fact.Start = fact.End = null;

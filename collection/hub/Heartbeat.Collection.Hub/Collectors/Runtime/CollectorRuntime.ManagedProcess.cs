@@ -1860,15 +1860,8 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
             "factId",
             "revision",
             "observedAt",
-            "recordState",
             "time",
             "payload");
-        var recordState = ReadString(fact, "recordState") switch
-        {
-            "present" => FactRecordState.Present,
-            "retracted" => FactRecordState.Retracted,
-            var value => throw new ManagedProcessProtocolException($"Unknown Fact recordState '{value}'.")
-        };
         var time = RequireObject(fact, "time");
         FactTime factTime;
         if (time.TryGetProperty("occurredAt", out _))
@@ -1888,9 +1881,8 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
             ReadGuid(fact, "streamId"), ReadPositiveInt(fact, "schemaRevision"), ReadUuidV7(fact, "factId"),
             ReadPositiveLong(fact, "revision"),
             fact.TryGetProperty("observedAt", out _) ? ReadUtcTimestamp(fact, "observedAt") : null,
-            recordState,
             factTime,
-            recordState == FactRecordState.Present ? fact.GetProperty("payload").Clone() : default);
+            fact.GetProperty("payload").Clone());
     }
 
     private static IReadOnlyDictionary<string, IReadOnlyList<int>> ReadCapabilities(JsonElement parent, string name) =>

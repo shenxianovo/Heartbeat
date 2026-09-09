@@ -158,11 +158,10 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
                 if (hash != fact.ContentHash) throw new FactIngestException("The same Fact Revision has different content.", true);
                 return;
             }
-            if (fact.RecordState == "retracted" && snapshot.RecordState == "present" ||
-                stream.FactKind == "segment" && (fact.Start != snapshot.Start || fact.IsFinal == true && snapshot.IsFinal != true) ||
+            if (stream.FactKind == "segment" && (fact.Start != snapshot.Start || fact.IsFinal == true && snapshot.IsFinal != true) ||
                 stream.FactKind == "event" && fact.OccurredAt != snapshot.OccurredAt)
                 throw new FactIngestException("Fact Revision violates its evolution rules.", true);
-            if (stream.FactKind == "event" && snapshot.RecordState == "present" &&
+            if (stream.FactKind == "event" &&
                 (schema.EvolutionMode != "mutableEvent" || !FactIngestContract.HasOnlyMutableChanges(fact.Payload!, snapshot.Payload!.Value.GetRawText(), schema)))
                 throw new FactIngestException("Event Revision changes immutable content.", true);
         }
@@ -175,13 +174,12 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         fact.FactId = snapshot.FactId;
         fact.Stream = stream;
         fact.Origin = "native";
-        // Lineage exists even if native delivery wins the upgrade race, and survives a tombstone.
+        // Lineage exists even if native delivery wins the upgrade race.
         fact.LegacyId ??= stream.FactKind == "segment" ? FactIngestContract.ProjectedSegmentId(stream.StreamId, snapshot.FactId) : snapshot.FactId;
         fact.LegacyKind ??= stream.FactKind;
         fact.LegacyDeviceId ??= stream.Subject.DeviceId;
         fact.Revision = snapshot.Revision;
         fact.SchemaRevision = snapshot.SchemaRevision;
-        fact.RecordState = snapshot.RecordState;
         fact.ObservedAt = snapshot.ObservedAt;
         fact.Start = snapshot.Start;
         fact.End = snapshot.End;
@@ -219,12 +217,6 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         var stream = fact.Stream;
         var segment = await db.ActivitySegments.SingleOrDefaultAsync(s => s.FactKey == fact.Id, ct);
         var input = await db.InputEvents.SingleOrDefaultAsync(e => e.FactKey == fact.Id, ct);
-        if (fact.RecordState == "retracted")
-        {
-            if (segment is not null) db.ActivitySegments.Remove(segment);
-            if (input is not null) db.InputEvents.Remove(input);
-            return;
-        }
         var payload = JsonDocument.Parse(fact.Payload!).RootElement;
         if (stream.FactKind == "segment")
         {
