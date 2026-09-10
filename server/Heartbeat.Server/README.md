@@ -18,5 +18,9 @@ dotnet test server/Heartbeat.Server.Tests
 ```
 
 数据库测试使用 Testcontainers，需要 Docker。本项目构建为 `heartbeat-backend` 容器镜像。
+生产部署由 CI 独立执行 `dotnet Heartbeat.Server.dll --migrate`，成功后才启动 HTTP；
+`--check-database` 和普通生产启动只检查版本，Development 仍自动迁移。
+迁移 SQL 超时默认 0（无限等待），可用 `DatabaseMigration__CommandTimeoutSeconds` 设置有限秒数；
+不改变普通请求超时。停写、备份和恢复见 [迁移 Runbook](../../docs/runbooks/analytics-database-migration.md)。
 领域语义见 [Server Context](../CONTEXT.md)，API 见 [API 导读](../../docs/api.md)，数据库见
 [数据库导读](../../docs/db.md)。

@@ -5,7 +5,24 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
-var builder = WebApplication.CreateBuilder(args);
+var databaseCommand = args.Length == 1 && args[0] is "--migrate" or "--check-database";
+var builder = WebApplication.CreateBuilder(databaseCommand ? [] : args);
+
+// Deployment commands need only the database configuration: no HTTP host, auth, or catalog startup.
+if (databaseCommand)
+{
+    using var logs = LoggerFactory.Create(logging => logging.AddSimpleConsole()
+        .AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning));
+    await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+        .UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
+        .UseLoggerFactory(logs).Options);
+    if (args[0] == "--migrate")
+        await DatabaseMigration.ApplyAsync(db, logs.CreateLogger("DatabaseMigration"),
+            builder.Configuration.GetValue("DatabaseMigration:CommandTimeoutSeconds", 0));
+    else
+        await DatabaseMigration.VerifyAsync(db);
+    return;
+}
 
 var catalogPath = Path.Combine(
     builder.Environment.ContentRootPath, "AppCatalog", "app-catalog.json");
@@ -153,18 +170,15 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-// 全环境启动时自动应用迁移（见 ADR-013，取代 ADR-007）
+// Production migrations belong to the deployment CI; local Development remains automatic (ADR-058).
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await DatabaseMigration.ApplyAsync(db, app.Logger,
-        builder.Configuration.GetValue("DatabaseMigration:CommandTimeoutSeconds", 900));
-    // NormalizeMatcherIdentity 迁移的 C# 半边：StepsJson canonical 字节只有
-    // System.Text.Json 能产（见 KnowledgeIdentityBackfill 注释）。幂等，干净库空转。
-    await KnowledgeIdentityBackfill.RunAsync(db);
-    // AppIdentity expand 后，system/app 的权威 Matcher 值统一到产品 App.Key；
-    // 只重写能唯一解析到既有产品的旧表示，不做启发式产品合并。
-    await AppKnowledgeBackfill.RunAsync(db);
+    if (app.Environment.IsDevelopment())
+        await DatabaseMigration.ApplyAsync(db, app.Logger,
+            builder.Configuration.GetValue("DatabaseMigration:CommandTimeoutSeconds", 0));
+    else
+        await DatabaseMigration.VerifyAsync(db);
     // 补插唯一随 Host composition 交付的 System BuiltIn Collector 声明。
     // 其他 Collector 通过运行时注册通道上报，不由 Analytics 代为声明。
     await SeedDeclarations.SeedAsync(db);

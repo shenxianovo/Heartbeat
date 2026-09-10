@@ -32,13 +32,16 @@ Fact 撤回与 Fact Schema 格式治理已删除，旧撤回字段、格式版�
 
 ## 独立副本演练
 
-先构建候选镜像，再将旧布局的完整 custom-format `pg_dump` 交给可重复入口：
+以下是 **NativeFactCustody 历史阶段**的演练入口：脚本固定检查家族列数及旧基线，必须使用该
+阶段的历史镜像，不能把当前含 ObservationTargets/BrowserApplicationContexts 的 checkout
+直接代入。当前发布已改为 [CI 独立迁移](analytics-database-migration.md)，新归属的完整副本
+演练由 [任务 05](../../.scratch/observation-identity-targets/issues/05-cutover-and-cleanup.md) 承接。
+将旧布局的完整 custom-format `pg_dump` 与已构建的历史镜像交给入口：
 
 ```sh
-docker build -f server/Dockerfile -t heartbeat-fact-rehearsal .
 python3 scripts/rehearse-fact-migration.py \
   --backup /absolute/path/to/before.dump \
-  --image heartbeat-fact-rehearsal \
+  --image heartbeat-native-fact-historical-image \
   --output .local/verification/fact-family-rehearsal/run-01
 ```
 
@@ -47,7 +50,7 @@ python3 scripts/rehearse-fact-migration.py \
 Analytics 限制 0.25 CPU / 256 MiB，均禁用额外 swap。剩余 256 MiB 只是 1 GiB 预算中的预留，
 不能据此声称已验证实际宿主机、Frontend 和 Collector 的总内存。
 
-脚本以真实应用启动执行迁移。按 Id 游标每批 10,000 行，先取有界记录再关联和序列化，
+历史脚本以当时的真实应用启动执行迁移。按 Id 游标每批 10,000 行，先取有界记录再关联和序列化，
 比较总行数也必须等于来源表计数。对全部行进行精确比较，覆盖 Payload、Owner、Subject、
 Stream、应用归属、时间和输入编码，另比较活动/输入聚合与重启后的全部行。
 不为核对改变 JIT 或查询并行配置。迁移内部仅用 `SET LOCAL` 关闭本次建索引的并行工作者；
@@ -63,12 +66,13 @@ Stream、应用归属、时间和输入编码，另比较活动/输入聚合与�
    在独立数据库恢复；记录迁移历史、旧表行数、时间范围、应用映射、Owner/Subject 和输入计数。
    保留最近两份成功升级前备份，以及尚未解决的失败升级备份；成功核对后才清理更旧成功备份。
 2. 核对副本停留 AskingWindowIdentity、唯一待执行迁移是 NativeFactCustody，再执行升级。
-   Analytics 启动仍自动应用 migration，不能把连接真实库的启动用作预览。
+   该历史镜像的 Analytics 启动会自动应用 migration，不能把连接真实库的启动用作预览。
    EF 设计时工厂仅用于不启动应用的模型/SQL 生成；不会自动读取真实数据库连接配置。
 3. 在接入新 Collector 前，按映射逐条比较历史 Id、Source、归属、时间、应用、活动分组、标题、
    Payload/未知字段、输入 Code/CodeSet，并比较查询结果。只核对总行数不算无损迁移通过。
 4. 核对数据库、WAL、临时文件及内存峰值、迁移到健康可用的总耗时和重启；原地 UPDATE 仍有
-   数据页与索引成本。当前 900 秒 SQL 命令超时不能替代 10 分钟整体停服预算。
+   数据页与索引成本。当时的 900 秒 SQL 命令超时不能替代历史 10 分钟整体停服预算；
+   当前等待策略以 ADR-058 为准，不修改已记录的历史演练结果。
 5. 在副本验证同一事实多次上传、断网/重启、原生纠正和迟到旧缓存。分别核对 Browser URL、
    输入计数与 Account 归属，确认无重复事实且未确认版本仍由 Runtime 保管。
 

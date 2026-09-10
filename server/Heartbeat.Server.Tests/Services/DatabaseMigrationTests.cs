@@ -15,6 +15,18 @@ public sealed class DatabaseMigrationTests(PostgresContainerFixture fixture) : P
 {
     protected override string InitialMigration => "20260829100458_AskingWindowIdentity";
 
+    [Fact]
+    public async Task DefaultMigrationBudgetIsUnlimitedAndRestoresRequestTimeout()
+    {
+        var probe = new MigrationProbe(false);
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql(TestConnectionString, options => options.CommandTimeout(1))
+            .AddInterceptors(probe).Options);
+        await DatabaseMigration.ApplyAsync(db, NullLogger.Instance);
+        Assert.Equal(0, probe.Timeout);
+        Assert.Equal(1, db.Database.GetCommandTimeout());
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

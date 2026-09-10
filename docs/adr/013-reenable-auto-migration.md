@@ -1,6 +1,6 @@
 # ADR-013: Re-enable Auto-Migration in All Environments
 
-## Status: Accepted
+## Status: Superseded by [ADR-058](058-ci-database-migration.md)
 
 ## Date: 2026-06-29
 

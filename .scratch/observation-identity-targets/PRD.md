@@ -84,6 +84,10 @@ Heartbeat 独立维护使用者关联及其适用范围；补充关联后，本�
 
 ### 事实身份与迁移
 
+- 发布编排采用 [ADR-058](../../docs/adr/058-ci-database-migration.md)：同一部署 CI 在停写和备份后
+  独立执行候选镜像的 EF migration 与 C# 回填，成功后才启动新 Analytics；生产重启只检查版本。
+  任务 05 按[迁移 Runbook](../../docs/runbooks/analytics-database-migration.md)演练此入口。
+  1C1G 下迁移 SQL 无限等待、外围 CI 保留长时间上限；不再沿用十分钟停写门禁，记录实际耗时。
 - 本轮解除 Stream 的业务归属职责，不修改已部署的 Fact 身份规则。保留现有 Owner、Stream、FactId 的身份组合及正常 Revision 语义；Stream 可以作为内部身份/交付信息存在，不能成为新业务查询的归属入口。
 - Observer 身份、Target 归属与 Fact 唯一身份是三个不同问题。禁止把 StreamId 全局重命名为 ObserverId，禁止按相同 Target 归并事实。
 - 追加数据库迁移，保留已有家族表及唯一 Payload；不修改已上线迁移，不复制完整事实到第二套表。

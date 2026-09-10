@@ -9,7 +9,7 @@ namespace Heartbeat.Server.Services
     /// MatcherNormalizer，落成全小写 canonical 形；归一后撞身份的行保最早（Id 序）。
     /// 必须在 C# 做——canonical 字节由 System.Text.Json 的转义（非 ASCII → \uXXXX 大写十六进制）
     /// 与属性声明序决定，SQL 无法复现；用真 Normalizer/Codec 是唯一零漂移路径。
-    /// 启动时随迁移之后调用：干净库一次空转即返回，成本 = 读一遍策展层小表。
+    /// 由数据库迁移入口在 EF 迁移之后调用：干净库一次空转即返回，成本 = 读一遍策展层小表。
     /// </summary>
     public static class KnowledgeIdentityBackfill
     {

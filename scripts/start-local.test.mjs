@@ -100,6 +100,19 @@ test('readiness rejects redirect responses, times out, and never probes non-loop
   assert.deepEqual(remote.requests, [])
 })
 
+test('readiness rejects OOM and restart loops even when HTTP responds', async () => {
+  for (const state of [
+    { State: { Status: 'running', OOMKilled: true, ExitCode: 137 }, RestartCount: 0 },
+    { State: { Status: 'restarting', OOMKilled: false, ExitCode: 1 }, RestartCount: 3 }
+  ]) {
+    const h = harness(), run = h.io.run
+    h.io.run = async (...args) => args[1][0] === 'inspect'
+      ? { code: 0, stdout: JSON.stringify(state) } : run(...args)
+    await assert.rejects(start(plan(['--backend']), h.io), /backend failed/)
+    assert.deepEqual(h.requests, [])
+  }
+})
+
 
 test('Windows console interrupts never become forced kill; Browser uses a portable stop message', () => {
   const signals = [], messages = []

@@ -17,7 +17,7 @@ services:
       - backend
 
   backend:
-    image: ghcr.io/shenxianovo/heartbeat-backend:latest
+    image: ${BACKEND_IMAGE:-ghcr.io/shenxianovo/heartbeat-backend:latest}
     restart: unless-stopped
     depends_on:
       db:
