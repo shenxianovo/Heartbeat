@@ -296,6 +296,18 @@ public sealed class FactHttpTests(PostgresContainerFixture fixture) : PostgresTe
                     { activityKey = "code/main.cs", appIdentityKey = "win:code", appDisplayName = "Code", title = "main.cs" }), row.GetProperty("payload")));
                 }
             }
+            var dayStart = new DateTimeOffset(start.UtcDateTime.Date, TimeSpan.Zero);
+            var query = $"version=1&kind=day&localDate={dayStart:yyyy-MM-dd}&timeZone=Etc%2FUTC&start={Uri.EscapeDataString(dayStart.ToString("O"))}&endExclusive={Uri.EscapeDataString(dayStart.AddDays(1).ToString("O"))}";
+            using var experience = JsonDocument.Parse(await http.GetStringAsync("/api/v1/users/alice/experience?" + query));
+            var experienceRow = Assert.Single(experience.RootElement.GetProperty("items").EnumerateArray(), row => row.GetProperty("factId").GetGuid() == segmentId);
+            Assert.Equal(instanceId, experienceRow.GetProperty("observerId").GetGuid());
+            Assert.Equal("device", experienceRow.GetProperty("targetKind").GetString());
+            Assert.Equal(deviceId, experienceRow.GetProperty("targetId").GetInt64());
+            Assert.False(experienceRow.TryGetProperty("subjectId", out _));
+            using var activity = JsonDocument.Parse(await http.GetStringAsync($"/api/v1/users/alice/segments?source=system&deviceId={deviceId}"));
+            var activityRow = Assert.Single(activity.RootElement.EnumerateArray(), row => row.GetProperty("factId").GetGuid() == segmentId);
+            Assert.Equal(deviceId, activityRow.GetProperty("targetId").GetInt64());
+            Assert.False(activityRow.TryGetProperty("subjectId", out _));
             using var replay = await http.PostAsJsonAsync("/api/v1/facts", upload);
             Assert.Equal(HttpStatusCode.OK, replay.StatusCode);
             restarted.ConfirmUploadedFacts(pending);

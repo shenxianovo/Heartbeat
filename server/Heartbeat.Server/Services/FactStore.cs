@@ -95,12 +95,8 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
             {
                 if (string.IsNullOrWhiteSpace(definition.Subject.HardwareId))
                     throw new FactIngestException("A new Machine Subject requires its hardware identity.");
-                if (Guid.TryParse(definition.Subject.HardwareId, out var hardwareGuid))
-                {
-                    var devices = await db.Devices.Where(d => d.OwnerId == ownerId).ToListAsync(ct);
-                    device = devices.SingleOrDefault(d => Guid.TryParse(d.HardwareId, out var existingGuid) && existingGuid == hardwareGuid);
-                }
-                device ??= await new DeviceService(db).ResolveByHardwareIdAsync(ownerId, definition.Subject.HardwareId, definition.Subject.DisplayName);
+                device = await new DeviceService(db).ResolveFactReferenceAsync(ownerId,
+                    definition.Subject.HardwareId, definition.Subject.DisplayName, ct);
             }
             subject = new FactSubjectRecord { OwnerId = ownerId, SubjectId = definition.Subject.SubjectId, Kind = definition.Subject.Kind, DeviceId = device?.Id, DisplayName = definition.Subject.DisplayName };
             db.FactSubjects.Add(subject);
@@ -108,7 +104,7 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         else if (definition.Subject.HardwareId is { } hardwareId)
         {
             var device = await db.Devices.FindAsync([subject.DeviceId], ct);
-            if (device?.HardwareId != hardwareId && !(Guid.TryParse(device?.HardwareId, out var oldGuid) && Guid.TryParse(hardwareId, out var newGuid) && oldGuid == newGuid)) throw new FactIngestException("Subject hardware identity cannot change.", true);
+            if (!DeviceService.SameHardwareIdentity(device?.HardwareId, hardwareId)) throw new FactIngestException("Subject hardware identity cannot change.", true);
         }
         var dimensions = FactIngestContract.Canonical(JsonSerializer.SerializeToElement(definition.Dimensions));
         var stream = await db.FactStreams.FindAsync([ownerId, definition.StreamId], ct);
@@ -218,13 +214,7 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         if (snapshot.Target is not { Kind: "device" } target || string.IsNullOrWhiteSpace(target.Reference) || target.Reference.Length > 256)
             throw new FactIngestException("A Fact requires a supported Target reference.");
         var reference = Guid.TryParse(target.Reference, out var hardware) ? hardware.ToString("D") : target.Reference;
-        Device? device = null;
-        if (Guid.TryParse(reference, out hardware))
-        {
-            var devices = await db.Devices.Where(d => d.OwnerId == stream.OwnerId).ToListAsync(ct);
-            device = devices.SingleOrDefault(d => Guid.TryParse(d.HardwareId, out var id) && id == hardware);
-        }
-        device ??= await new DeviceService(db).ResolveByHardwareIdAsync(stream.OwnerId, reference, null);
+        var device = await new DeviceService(db).ResolveFactReferenceAsync(stream.OwnerId, reference, null, ct);
         return (snapshot.ObserverId, "device", device.Id);
     }
 

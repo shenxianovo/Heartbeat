@@ -66,6 +66,7 @@ namespace Heartbeat.Server.Services
                 .Select(x => new SegmentResponse
                 {
                     ObserverId = x.ObserverId, TargetKind = x.TargetKind, TargetId = x.TargetId,
+                    TargetName = x.TargetKind == "device" && x.Device != null ? x.Device.DeviceName : null,
                     Id = x.Id,
                     DeviceId = x.DeviceId,
                     Source = x.Source,
@@ -92,9 +93,9 @@ namespace Heartbeat.Server.Services
                     FactId = x.FactId,
                     Revision = x.Revision,
                     Origin = x.Stream.Origin,
-                    SubjectId = x.Stream.SubjectId,
-                    SubjectKind = x.Stream.Subject.Kind,
-                    SubjectName = x.Device != null ? x.Device.DeviceName
+                    LegacySubjectId = x.TargetKind == null ? x.Stream.SubjectId : null,
+                    LegacySubjectKind = x.TargetKind == null ? x.Stream.Subject.Kind : null,
+                    LegacySubjectName = x.TargetKind != null ? null : x.Device != null ? x.Device.DeviceName
                         : x.Stream.Subject.DisplayName
                 })
                 .ToListAsync();

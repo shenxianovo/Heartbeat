@@ -37,17 +37,19 @@ Analytics 返回的结构化观测内容；Dashboard 按来源与观测语义读
 _Avoid_: 把一种视图固定为 Fact 唯一表示、为展示方便合并原始记录
 
 **Activity View（活动视图）**:
-对所选时间范围内活动的历史回顾；该范围内有活动的 Subject 可见，与其当前在线状态无关。
-“当天经历”是与原 Dashboard 并存的 Activity View，以 Subject 泳道与逐条记录回顾当日 Segment。
+对所选时间范围内活动的历史回顾；该范围内有活动的 Target 可见，与其当前在线状态无关。
+“当天经历”是与原 Dashboard 并存的 Activity View，以 Target 泳道与逐条记录回顾当日 Segment。
+尚未迁移的观察暂保留其已知设备或旧主体的历史归属。
 _Avoid_: 用当前在线状态过滤历史活动、把没有活动记录等同于当前离线
 
 **Activity Swimlanes（活动泳道）**:
-在同一时间坐标下按 Subject 并列显示活动；上方全天总览的选区决定下方可见时间范围。
-Browser 可作为 Machine 的补充观察展开，Account 的独立活动直接排列；缩放改变可见范围，
-不改变原始 Segment 的身份或边界。
+在同一时间坐标下按 Target 并列显示活动；上方全天总览的选区决定下方可见时间范围。
+System 的 Target 是设备；尚未迁移的 Browser 可按已知设备作为补充观察展开，账号的独立活动直接排列。
+同一 Target 下不同 Observer 的事实各自保留；缩放不改变原始 Segment 的身份或边界。
 
 **Related Observation（相关观察）**:
-对同一 Subject、同一应用且时间重叠的补充观察，例如 Browser 对 System 前台活动的页面细节。
+对同一设备、同一应用且时间重叠的补充观察，例如 Browser 对 System 前台活动的页面细节。
+System 使用设备 Target；尚未迁移的 Browser 使用其已知设备归属。
 相关性不等于确定的前台归因，多条候选可以并存，不能仅凭重叠断言用户正在看其中某一页面。
 
 **Title Formatter（标题归一化）**:

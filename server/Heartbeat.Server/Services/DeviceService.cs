@@ -66,6 +66,22 @@ namespace Heartbeat.Server.Services
                 .FirstOrDefaultAsync();
         }
 
+        /// <summary>Fact references retain legacy hardware text while UUID spellings identify one device.</summary>
+        internal async Task<Device> ResolveFactReferenceAsync(string ownerId, string reference,
+            string? displayName, CancellationToken ct)
+        {
+            if (Guid.TryParse(reference, out _))
+            {
+                var devices = await _db.Devices.Where(d => d.OwnerId == ownerId).ToListAsync(ct);
+                var existing = devices.SingleOrDefault(d => SameHardwareIdentity(d.HardwareId, reference));
+                if (existing is not null) return existing;
+            }
+            return await ResolveByHardwareIdAsync(ownerId, reference, displayName);
+        }
+
+        internal static bool SameHardwareIdentity(string? first, string second) => first == second ||
+            Guid.TryParse(first, out var firstId) && Guid.TryParse(second, out var secondId) && firstId == secondId;
+
         public async Task<Device> ResolveByHardwareIdAsync(string ownerId, string hardwareId, string? deviceName = null)
         {
             var device = await _db.Devices

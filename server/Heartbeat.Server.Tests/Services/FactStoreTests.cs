@@ -69,9 +69,9 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
         var usage = new UsageService(db);
         var row = Assert.Single(await usage.GetSegmentsAsync("owner", null, null, null, null, null));
         Assert.Null(row.DeviceId);
-        Assert.Equal(batch.Streams[0].Subject.SubjectId, row.SubjectId);
-        Assert.Equal(kind, row.SubjectKind);
-        Assert.Equal("Observed subject", row.SubjectName);
+        Assert.Equal(batch.Streams[0].Subject.SubjectId, row.LegacySubjectId);
+        Assert.Equal(kind, row.LegacySubjectKind);
+        Assert.Equal("Observed subject", row.LegacySubjectName);
         Assert.Equal(batch.Streams[0].StreamId, row.StreamId);
         Assert.Equal(batch.Facts[0].FactId, row.FactId);
         Assert.Equal(1, row.Revision);

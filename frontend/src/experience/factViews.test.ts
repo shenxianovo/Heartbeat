@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clampRange, groupApplications, groupSubjects, presentFact, relatedBrowser, zoomRange, type ExperienceSegment } from './factViews'
+import { clampRange, groupApplications, groupTargets, presentFact, relatedBrowser, zoomRange, type ExperienceSegment } from './factViews'
 
 export function fact(overrides: Partial<ExperienceSegment> = {}): ExperienceSegment {
   return { id: 'one', streamId: 'stream', factId: 'fact', revision: 1, subjectId: 'machine',
@@ -9,9 +9,21 @@ export function fact(overrides: Partial<ExperienceSegment> = {}): ExperienceSegm
 describe('Fact Views', () => {
   it('preserves every short fact and only groups subjects with overlapping activity', () => {
     const a = fact(), b = fact({ id: 'two' }), c = fact({ id: 'outside', subjectId: 'account', startTime: '2026-09-09T02:00:00Z', endTime: '2026-09-09T03:00:00Z' })
-    const groups = groupSubjects([a, b, c], { start: Date.parse(a.startTime), end: Date.parse(a.endTime) })
+    const groups = groupTargets([a, b, c], { start: Date.parse(a.startTime), end: Date.parse(a.endTime) })
     expect(groups).toHaveLength(1)
     expect(groups[0].facts).toEqual([a, b])
+  })
+  it('groups System by direct device Target and correlates legacy Browser on that device', () => {
+    const system = fact({ observerId: 'observer-one', targetKind: 'device', targetId: 42, targetName: 'Desktop',
+      deviceId: 42, subjectId: undefined, subjectKind: undefined, subjectName: undefined })
+    const independent = fact({ ...system, id: 'independent', observerId: 'observer-two' })
+    const browser = fact({ id: 'browser', source: 'browser', deviceId: 42, subjectId: 'old-machine' })
+    const wrongDevice = fact({ id: 'wrong-device', source: 'browser', deviceId: 43 })
+    const groups = groupTargets([system, independent, browser, wrongDevice],
+      { start: Date.parse(system.startTime), end: Date.parse(system.endTime) })
+    expect(groups.find(g => g.id === 'device:42')).toMatchObject({ name: 'Desktop', kind: 'device', facts: [system, independent, browser] })
+    expect(groupApplications([system, independent])).toHaveLength(1)
+    expect(relatedBrowser(system, [browser, wrongDevice])).toEqual([browser])
   })
   it('expands applications within devices without joining adjacent facts or confusing product names', () => {
     const a = fact(), b = fact({ id: 'adjacent', startTime: a.endTime, endTime: '2026-09-09T01:00:02Z', appIdentityId: 2 })
@@ -34,7 +46,7 @@ describe('Fact Views', () => {
   })
   it('keeps zero-length snapshots at the start of the visible window', () => {
     const point = fact({ endTime: '2026-09-09T01:00:00Z' })
-    expect(groupSubjects([point], { start: Date.parse(point.startTime), end: Date.parse(point.startTime) + 1000 })).toHaveLength(1)
+    expect(groupTargets([point], { start: Date.parse(point.startTime), end: Date.parse(point.startTime) + 1000 })).toHaveLength(1)
   })
   it('renders app-less worlds and unknown JSON without inventing field meaning or unsafe links', () => {
     expect(presentFact(fact({ appKey: 'away' })).title).toBe('离开')

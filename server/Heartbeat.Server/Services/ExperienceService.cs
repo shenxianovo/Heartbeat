@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Heartbeat.Server.Calendar;
 using Heartbeat.Server.Data;
 using Microsoft.EntityFrameworkCore;
@@ -7,7 +8,10 @@ namespace Heartbeat.Server.Services;
 
 public sealed record ExperienceSegment(
     Guid Id, Guid StreamId, Guid FactId, long Revision,
-    Guid SubjectId, string SubjectKind, string? SubjectName,
+    Guid? ObserverId, string? TargetKind, long? TargetId, string? TargetName, long? DeviceId,
+    [property: JsonPropertyName("subjectId"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? LegacySubjectId,
+    [property: JsonPropertyName("subjectKind"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? LegacySubjectKind,
+    [property: JsonPropertyName("subjectName"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? LegacySubjectName,
     string Source, long? AppId, long? AppIdentityId, string? AppName, string? AppKey,
     DateTimeOffset StartTime, DateTimeOffset EndTime, JsonElement Payload);
 
@@ -29,8 +33,13 @@ public sealed class ExperienceService(AppDbContext db)
         var rows = await query.OrderBy(s => s.Id).Select(s => new
         {
             s.Id, s.StreamId, s.FactId, s.Revision,
-            s.Stream.SubjectId, SubjectKind = s.Stream.Subject.Kind,
-            SubjectName = s.Stream.Subject.DisplayName ??
+            s.ObserverId, s.TargetKind, s.TargetId,
+            TargetName = s.TargetKind == "device" ? db.Devices.Where(d => d.OwnerId == s.OwnerId && d.Id == s.TargetId)
+                .Select(d => d.DeviceName).FirstOrDefault() : null,
+            DeviceId = s.TargetKind == "device" ? s.TargetId : s.TargetKind == null ? s.Stream.Subject.DeviceId : null,
+            LegacySubjectId = s.TargetKind == null ? (Guid?)s.Stream.SubjectId : null,
+            LegacySubjectKind = s.TargetKind == null ? s.Stream.Subject.Kind : null,
+            LegacySubjectName = s.TargetKind != null ? null : s.Stream.Subject.DisplayName ??
                 (s.Stream.Subject.Device == null ? null : s.Stream.Subject.Device.DeviceName),
             s.Source, s.AppIdentityId,
             AppId = s.AppIdentity == null ? (long?)null : s.AppIdentity.AppId,
@@ -40,7 +49,8 @@ public sealed class ExperienceService(AppDbContext db)
         }).Take(PageSize + 1).ToListAsync(ct);
         var hasMore = rows.Count > PageSize;
         var items = rows.Take(PageSize).Select(s => new ExperienceSegment(
-            s.Id, s.StreamId, s.FactId, s.Revision, s.SubjectId, s.SubjectKind, s.SubjectName,
+            s.Id, s.StreamId, s.FactId, s.Revision, s.ObserverId, s.TargetKind, s.TargetId, s.TargetName, s.DeviceId,
+            s.LegacySubjectId, s.LegacySubjectKind, s.LegacySubjectName,
             s.Source, s.AppId, s.AppIdentityId, s.AppName, s.AppKey, s.StartTime, s.EndTime, s.Payload.RootElement.Clone())).ToList();
         foreach (var row in rows) row.Payload.Dispose();
         return new ExperiencePage(items, hasMore ? items[^1].Id : null);

@@ -2055,6 +2055,199 @@ export class Client {
     }
 
     /**
+     * @param deviceId (optional)
+     * @param start (optional)
+     * @param end (optional)
+     * @return OK
+     */
+    getUserSegmentFacts(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<FactResponse[]> {
+        let url_ = this.baseUrl + "/api/v1/users/{username}/facts/segments?";
+        if (username === undefined || username === null)
+            throw new globalThis.Error("The parameter 'username' must be defined.");
+        url_ = url_.replace("{username}", encodeURIComponent("" + username));
+        if (deviceId === null)
+            throw new globalThis.Error("The parameter 'deviceId' cannot be null.");
+        else if (deviceId !== undefined)
+            url_ += "deviceId=" + encodeURIComponent("" + deviceId) + "&";
+        if (start === null)
+            throw new globalThis.Error("The parameter 'start' cannot be null.");
+        else if (start !== undefined)
+            url_ += "start=" + encodeURIComponent(start ? "" + start.toISOString() : "") + "&";
+        if (end === null)
+            throw new globalThis.Error("The parameter 'end' cannot be null.");
+        else if (end !== undefined)
+            url_ += "end=" + encodeURIComponent(end ? "" + end.toISOString() : "") + "&";
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processGetUserSegmentFacts(_response);
+        });
+    }
+
+    protected processGetUserSegmentFacts(response: Response): Promise<FactResponse[]> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            if (Array.isArray(resultData200)) {
+                result200 = [] as any;
+                for (let item of resultData200)
+                    result200!.push(FactResponse.fromJS(item));
+            }
+            else {
+                result200 = null as any;
+            }
+            return result200;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<FactResponse[]>(null as any);
+    }
+
+    /**
+     * @param deviceId (optional)
+     * @param start (optional)
+     * @param end (optional)
+     * @return OK
+     */
+    getUserEventFacts(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<FactResponse[]> {
+        let url_ = this.baseUrl + "/api/v1/users/{username}/facts/events?";
+        if (username === undefined || username === null)
+            throw new globalThis.Error("The parameter 'username' must be defined.");
+        url_ = url_.replace("{username}", encodeURIComponent("" + username));
+        if (deviceId === null)
+            throw new globalThis.Error("The parameter 'deviceId' cannot be null.");
+        else if (deviceId !== undefined)
+            url_ += "deviceId=" + encodeURIComponent("" + deviceId) + "&";
+        if (start === null)
+            throw new globalThis.Error("The parameter 'start' cannot be null.");
+        else if (start !== undefined)
+            url_ += "start=" + encodeURIComponent(start ? "" + start.toISOString() : "") + "&";
+        if (end === null)
+            throw new globalThis.Error("The parameter 'end' cannot be null.");
+        else if (end !== undefined)
+            url_ += "end=" + encodeURIComponent(end ? "" + end.toISOString() : "") + "&";
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processGetUserEventFacts(_response);
+        });
+    }
+
+    protected processGetUserEventFacts(response: Response): Promise<FactResponse[]> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            if (Array.isArray(resultData200)) {
+                result200 = [] as any;
+                for (let item of resultData200)
+                    result200!.push(FactResponse.fromJS(item));
+            }
+            else {
+                result200 = null as any;
+            }
+            return result200;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<FactResponse[]>(null as any);
+    }
+
+    /**
+     * @param after (optional)
+     * @return OK
+     */
+    getUserExperience(username: string, version: number, kind: string, localDate: string, timeZone: string, start: Date, endExclusive: Date, after: string | undefined): Promise<ExperiencePage> {
+        let url_ = this.baseUrl + "/api/v1/users/{username}/experience?";
+        if (username === undefined || username === null)
+            throw new globalThis.Error("The parameter 'username' must be defined.");
+        url_ = url_.replace("{username}", encodeURIComponent("" + username));
+        if (version === undefined || version === null)
+            throw new globalThis.Error("The parameter 'version' must be defined and cannot be null.");
+        else
+            url_ += "Version=" + encodeURIComponent("" + version) + "&";
+        if (kind === undefined || kind === null)
+            throw new globalThis.Error("The parameter 'kind' must be defined and cannot be null.");
+        else
+            url_ += "Kind=" + encodeURIComponent("" + kind) + "&";
+        if (localDate === undefined || localDate === null)
+            throw new globalThis.Error("The parameter 'localDate' must be defined and cannot be null.");
+        else
+            url_ += "LocalDate=" + encodeURIComponent("" + localDate) + "&";
+        if (timeZone === undefined || timeZone === null)
+            throw new globalThis.Error("The parameter 'timeZone' must be defined and cannot be null.");
+        else
+            url_ += "TimeZone=" + encodeURIComponent("" + timeZone) + "&";
+        if (start === undefined || start === null)
+            throw new globalThis.Error("The parameter 'start' must be defined and cannot be null.");
+        else
+            url_ += "Start=" + encodeURIComponent(start ? "" + start.toISOString() : "") + "&";
+        if (endExclusive === undefined || endExclusive === null)
+            throw new globalThis.Error("The parameter 'endExclusive' must be defined and cannot be null.");
+        else
+            url_ += "EndExclusive=" + encodeURIComponent(endExclusive ? "" + endExclusive.toISOString() : "") + "&";
+        if (after === null)
+            throw new globalThis.Error("The parameter 'after' cannot be null.");
+        else if (after !== undefined)
+            url_ += "after=" + encodeURIComponent("" + after) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processGetUserExperience(_response);
+        });
+    }
+
+    protected processGetUserExperience(response: Response): Promise<ExperiencePage> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = ExperiencePage.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<ExperiencePage>(null as any);
+    }
+
+    /**
      * @return OK
      */
     getUserDevices(username: string): Promise<DeviceInfoResponse[]> {
@@ -6528,6 +6721,196 @@ export interface IEvidenceObservationDto {
     [key: string]: any;
 }
 
+export class ExperiencePage implements IExperiencePage {
+    items!: ExperienceSegment[];
+    nextCursor!: string | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IExperiencePage) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+        if (!data) {
+            this.items = [];
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            if (Array.isArray(_data["items"])) {
+                this.items = [] as any;
+                for (let item of _data["items"])
+                    this.items!.push(ExperienceSegment.fromJS(item));
+            }
+            this.nextCursor = _data["nextCursor"];
+        }
+    }
+
+    static fromJS(data: any): ExperiencePage {
+        data = typeof data === 'object' ? data : {};
+        let result = new ExperiencePage();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        if (Array.isArray(this.items)) {
+            data["items"] = [];
+            for (let item of this.items)
+                data["items"].push(item ? item.toJSON() : undefined as any);
+        }
+        data["nextCursor"] = this.nextCursor;
+        return data;
+    }
+}
+
+export interface IExperiencePage {
+    items: ExperienceSegment[];
+    nextCursor: string | undefined;
+
+    [key: string]: any;
+}
+
+export class ExperienceSegment implements IExperienceSegment {
+    id!: string;
+    streamId!: string;
+    factId!: string;
+    revision!: number;
+    observerId!: string | undefined;
+    targetKind!: string | undefined;
+    targetId!: number | undefined;
+    targetName!: string | undefined;
+    deviceId!: number | undefined;
+    subjectId!: string | undefined;
+    subjectKind!: string | undefined;
+    subjectName!: string | undefined;
+    source!: string;
+    appId!: number | undefined;
+    appIdentityId!: number | undefined;
+    appName!: string | undefined;
+    appKey!: string | undefined;
+    startTime!: Date;
+    endTime!: Date;
+    payload!: JsonElement;
+
+    [key: string]: any;
+
+    constructor(data?: IExperienceSegment) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+        if (!data) {
+            this.payload = new JsonElement();
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.id = _data["id"];
+            this.streamId = _data["streamId"];
+            this.factId = _data["factId"];
+            this.revision = _data["revision"];
+            this.observerId = _data["observerId"];
+            this.targetKind = _data["targetKind"];
+            this.targetId = _data["targetId"];
+            this.targetName = _data["targetName"];
+            this.deviceId = _data["deviceId"];
+            this.subjectId = _data["subjectId"];
+            this.subjectKind = _data["subjectKind"];
+            this.subjectName = _data["subjectName"];
+            this.source = _data["source"];
+            this.appId = _data["appId"];
+            this.appIdentityId = _data["appIdentityId"];
+            this.appName = _data["appName"];
+            this.appKey = _data["appKey"];
+            this.startTime = _data["startTime"] ? new Date(_data["startTime"].toString()) : undefined as any;
+            this.endTime = _data["endTime"] ? new Date(_data["endTime"].toString()) : undefined as any;
+            this.payload = _data["payload"] ? JsonElement.fromJS(_data["payload"]) : new JsonElement();
+        }
+    }
+
+    static fromJS(data: any): ExperienceSegment {
+        data = typeof data === 'object' ? data : {};
+        let result = new ExperienceSegment();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["id"] = this.id;
+        data["streamId"] = this.streamId;
+        data["factId"] = this.factId;
+        data["revision"] = this.revision;
+        data["observerId"] = this.observerId;
+        data["targetKind"] = this.targetKind;
+        data["targetId"] = this.targetId;
+        data["targetName"] = this.targetName;
+        data["deviceId"] = this.deviceId;
+        data["subjectId"] = this.subjectId;
+        data["subjectKind"] = this.subjectKind;
+        data["subjectName"] = this.subjectName;
+        data["source"] = this.source;
+        data["appId"] = this.appId;
+        data["appIdentityId"] = this.appIdentityId;
+        data["appName"] = this.appName;
+        data["appKey"] = this.appKey;
+        data["startTime"] = this.startTime ? this.startTime.toISOString() : undefined as any;
+        data["endTime"] = this.endTime ? this.endTime.toISOString() : undefined as any;
+        data["payload"] = this.payload ? this.payload.toJSON() : undefined as any;
+        return data;
+    }
+}
+
+export interface IExperienceSegment {
+    id: string;
+    streamId: string;
+    factId: string;
+    revision: number;
+    observerId: string | undefined;
+    targetKind: string | undefined;
+    targetId: number | undefined;
+    targetName: string | undefined;
+    deviceId: number | undefined;
+    subjectId: string | undefined;
+    subjectKind: string | undefined;
+    subjectName: string | undefined;
+    source: string;
+    appId: number | undefined;
+    appIdentityId: number | undefined;
+    appName: string | undefined;
+    appKey: string | undefined;
+    startTime: Date;
+    endTime: Date;
+    payload: JsonElement;
+
+    [key: string]: any;
+}
+
 export class FactGapSnapshot implements IFactGapSnapshot {
     streamId?: string;
     gapId?: string;
@@ -6596,20 +6979,23 @@ export interface IFactGapSnapshot {
     [key: string]: any;
 }
 
-export class FactSnapshot implements IFactSnapshot {
+export class FactResponse implements IFactResponse {
+    id?: string;
     streamId?: string;
     factId?: string;
     revision?: number;
-    observedAt?: Date | undefined;
+    observerId?: string | undefined;
+    targetKind?: string | undefined;
+    targetId?: number | undefined;
+    source?: string;
     start?: Date | undefined;
     end?: Date | undefined;
     occurredAt?: Date | undefined;
-    isFinal?: boolean | undefined;
-    payload?: JsonElement | undefined;
+    payload?: JsonElement;
 
     [key: string]: any;
 
-    constructor(data?: IFactSnapshot) {
+    constructor(data?: IFactResponse) {
         if (data) {
             for (var property in data) {
                 if (data.hasOwnProperty(property))
@@ -6624,9 +7010,96 @@ export class FactSnapshot implements IFactSnapshot {
                 if (_data.hasOwnProperty(property))
                     this[property] = _data[property];
             }
+            this.id = _data["id"];
             this.streamId = _data["streamId"];
             this.factId = _data["factId"];
             this.revision = _data["revision"];
+            this.observerId = _data["observerId"];
+            this.targetKind = _data["targetKind"];
+            this.targetId = _data["targetId"];
+            this.source = _data["source"];
+            this.start = _data["start"] ? new Date(_data["start"].toString()) : undefined as any;
+            this.end = _data["end"] ? new Date(_data["end"].toString()) : undefined as any;
+            this.occurredAt = _data["occurredAt"] ? new Date(_data["occurredAt"].toString()) : undefined as any;
+            this.payload = _data["payload"] ? JsonElement.fromJS(_data["payload"]) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): FactResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new FactResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["id"] = this.id;
+        data["streamId"] = this.streamId;
+        data["factId"] = this.factId;
+        data["revision"] = this.revision;
+        data["observerId"] = this.observerId;
+        data["targetKind"] = this.targetKind;
+        data["targetId"] = this.targetId;
+        data["source"] = this.source;
+        data["start"] = this.start ? this.start.toISOString() : undefined as any;
+        data["end"] = this.end ? this.end.toISOString() : undefined as any;
+        data["occurredAt"] = this.occurredAt ? this.occurredAt.toISOString() : undefined as any;
+        data["payload"] = this.payload ? this.payload.toJSON() : undefined as any;
+        return data;
+    }
+}
+
+export interface IFactResponse {
+    id?: string;
+    streamId?: string;
+    factId?: string;
+    revision?: number;
+    observerId?: string | undefined;
+    targetKind?: string | undefined;
+    targetId?: number | undefined;
+    source?: string;
+    start?: Date | undefined;
+    end?: Date | undefined;
+    occurredAt?: Date | undefined;
+    payload?: JsonElement;
+
+    [key: string]: any;
+}
+
+export class FactSnapshot implements IFactSnapshot {
+    streamId?: string;
+    factId?: string;
+    revision?: number;
+    observerId?: string | undefined;
+    target?: FactTarget | undefined;
+    observedAt?: Date | undefined;
+    start?: Date | undefined;
+    end?: Date | undefined;
+    occurredAt?: Date | undefined;
+    isFinal?: boolean | undefined;
+    payload?: JsonElement | undefined;
+
+    constructor(data?: IFactSnapshot) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            this.streamId = _data["streamId"];
+            this.factId = _data["factId"];
+            this.revision = _data["revision"];
+            this.observerId = _data["observerId"];
+            this.target = _data["target"] ? FactTarget.fromJS(_data["target"]) : undefined as any;
             this.observedAt = _data["observedAt"] ? new Date(_data["observedAt"].toString()) : undefined as any;
             this.start = _data["start"] ? new Date(_data["start"].toString()) : undefined as any;
             this.end = _data["end"] ? new Date(_data["end"].toString()) : undefined as any;
@@ -6645,13 +7118,11 @@ export class FactSnapshot implements IFactSnapshot {
 
     toJSON(data?: any) {
         data = typeof data === 'object' ? data : {};
-        for (var property in this) {
-            if (this.hasOwnProperty(property))
-                data[property] = this[property];
-        }
         data["streamId"] = this.streamId;
         data["factId"] = this.factId;
         data["revision"] = this.revision;
+        data["observerId"] = this.observerId;
+        data["target"] = this.target ? this.target.toJSON() : undefined as any;
         data["observedAt"] = this.observedAt ? this.observedAt.toISOString() : undefined as any;
         data["start"] = this.start ? this.start.toISOString() : undefined as any;
         data["end"] = this.end ? this.end.toISOString() : undefined as any;
@@ -6666,14 +7137,14 @@ export interface IFactSnapshot {
     streamId?: string;
     factId?: string;
     revision?: number;
+    observerId?: string | undefined;
+    target?: FactTarget | undefined;
     observedAt?: Date | undefined;
     start?: Date | undefined;
     end?: Date | undefined;
     occurredAt?: Date | undefined;
     isFinal?: boolean | undefined;
     payload?: JsonElement | undefined;
-
-    [key: string]: any;
 }
 
 export class FactStreamDefinition implements IFactStreamDefinition {
@@ -6818,6 +7289,46 @@ export interface IFactSubject {
     displayName?: string | undefined;
 
     [key: string]: any;
+}
+
+export class FactTarget implements IFactTarget {
+    kind!: string;
+    reference!: string;
+
+    constructor(data?: IFactTarget) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            this.kind = _data["kind"];
+            this.reference = _data["reference"];
+        }
+    }
+
+    static fromJS(data: any): FactTarget {
+        data = typeof data === 'object' ? data : {};
+        let result = new FactTarget();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        data["kind"] = this.kind;
+        data["reference"] = this.reference;
+        return data;
+    }
+}
+
+export interface IFactTarget {
+    kind: string;
+    reference: string;
 }
 
 export class FactUploadRequest implements IFactUploadRequest {
@@ -8634,6 +9145,10 @@ export interface IResolveProbeRequest {
 
 export class SegmentResponse implements ISegmentResponse {
     id?: string;
+    observerId?: string | undefined;
+    targetKind?: string | undefined;
+    targetId?: number | undefined;
+    targetName?: string | undefined;
     deviceId?: number | undefined;
     source?: string;
     identityKey?: string;
@@ -8674,6 +9189,10 @@ export class SegmentResponse implements ISegmentResponse {
                     this[property] = _data[property];
             }
             this.id = _data["id"];
+            this.observerId = _data["observerId"];
+            this.targetKind = _data["targetKind"];
+            this.targetId = _data["targetId"];
+            this.targetName = _data["targetName"];
             this.deviceId = _data["deviceId"];
             this.source = _data["source"];
             this.identityKey = _data["identityKey"];
@@ -8712,6 +9231,10 @@ export class SegmentResponse implements ISegmentResponse {
                 data[property] = this[property];
         }
         data["id"] = this.id;
+        data["observerId"] = this.observerId;
+        data["targetKind"] = this.targetKind;
+        data["targetId"] = this.targetId;
+        data["targetName"] = this.targetName;
         data["deviceId"] = this.deviceId;
         data["source"] = this.source;
         data["identityKey"] = this.identityKey;
@@ -8739,6 +9262,10 @@ export class SegmentResponse implements ISegmentResponse {
 
 export interface ISegmentResponse {
     id?: string;
+    observerId?: string | undefined;
+    targetKind?: string | undefined;
+    targetId?: number | undefined;
+    targetName?: string | undefined;
     deviceId?: number | undefined;
     source?: string;
     identityKey?: string;

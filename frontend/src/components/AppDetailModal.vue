@@ -81,21 +81,22 @@ const viewBounds = computed(() => {
   return end > start ? { start, end } : null
 })
 
-// Machine 使用既有 Device 身份；Account/Person 用真正的 Subject，不能合进“设备 0”。
-const subjectGroups = computed(() => {
+// System 使用直接 Target；旧 Browser/VRChat 暂用已知 Device 或 Subject 身份。
+const targetGroups = computed(() => {
   const vb = viewBounds.value
   if (!vb) return []
-  type SubjectRow = { deviceId?: number | null; subjectId?: string; subjectName?: string; subjectKind?: string }
-  const keyOf = (row: SubjectRow) => row.deviceId != null
-    ? `machine:${row.deviceId}`
+  type TargetRow = { targetKind?: string | null; targetId?: number | null; targetName?: string | null; deviceId?: number | null; subjectId?: string | null; subjectName?: string | null; subjectKind?: string | null }
+  const keyOf = (row: TargetRow) => row.targetKind != null && row.targetId != null
+    ? `${row.targetKind}:${row.targetId}`
+    : row.deviceId != null ? `device:${row.deviceId}`
     : `subject:${row.subjectId ?? 'unknown'}`
-  const rows = [...systemSegments.value, ...pluginSegments.value] as SubjectRow[]
+  const rows = [...systemSegments.value, ...pluginSegments.value] as TargetRow[]
   const keys = [...new Set(rows.map(keyOf))].sort()
   return keys.map(key => {
     const row = rows.find(item => keyOf(item) === key)!
-    const name = row.deviceId != null
+    const name = row.targetName ?? (row.deviceId != null
       ? props.devices.find(d => d.id === row.deviceId)?.name ?? row.subjectName ?? `设备 ${row.deviceId}`
-      : row.subjectName ?? (row.subjectKind === 'account' ? '账号' : row.subjectKind === 'person' ? '个人' : '主体')
+      : row.subjectName ?? (row.subjectKind === 'account' ? '账号' : row.subjectKind === 'person' ? '个人' : '对象'))
     return {
       key, name, showName: keys.length > 1 || row.deviceId == null,
       tracks: buildTracks(toReplaySegs(
@@ -161,7 +162,7 @@ const returnFocus = document.activeElement as HTMLElement | null
           <!-- 多轨回放 -->
           <section>
             <h3 class="mb-2 text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">回放</h3>
-            <div v-if="subjectGroups.length && viewBounds" class="overflow-hidden rounded-md border border-border bg-secondary">
+            <div v-if="targetGroups.length && viewBounds" class="overflow-hidden rounded-md border border-border bg-secondary">
               <!-- 刻度行 -->
               <div class="flex h-6 border-b border-border bg-muted">
                 <div class="w-[80px] shrink-0 border-r border-border"></div>
@@ -175,7 +176,7 @@ const returnFocus = document.activeElement as HTMLElement | null
                 </div>
               </div>
               <!-- 设备分组回放:聚合视图下同一 App 在多台设备并行时,设备为最外层分组 -->
-              <div v-for="g in subjectGroups" :key="g.key">
+              <div v-for="g in targetGroups" :key="g.key">
                   <div v-if="g.showName" class="flex h-6 items-center border-b border-border bg-muted/95 px-2">
                     <span class="truncate text-[0.7rem] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                       {{ g.name }}

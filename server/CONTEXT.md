@@ -5,8 +5,9 @@
 ## Language
 
 **Ingest（摄入）**:
-Analytics 原子接收 Subject、Stream、Fact 快照与 Gap，Owner 取自认证身份，
-所有家族共同遵守身份、修订和确认规则。旧上传仅用于导入升级前缓存，不形成另一套事实语义。
+Analytics 原子接收携带 Observer 与 Target 的 Fact 快照及交付所需的 Stream、Gap，Owner 取自认证身份，
+所有家族共同遵守身份、修订和确认规则。旧 Subject 归属及旧上传只服务分批迁移中的数据与缓存，
+不形成另一套事实语义。
 _Avoid_: 从标题或时间猜测事实身份、让活动或输入绕开统一的摄入规则
 
 **Fact Revision（事实修订）**:
@@ -39,9 +40,10 @@ _Avoid_: 直接改 AppIdentity.AppId 充当覆盖、把 merge receipt 当作当�
 JWT `sub` 出现在部署环境白名单中的用户，可以管理影响所有 Owner 的 App Catalog 映射。Auth 平台负责让部署者取得不可变 `sub`；Heartbeat 只判断当前用户是否为部署管理员，不允许从产品 UI 授予或撤销该权限。
 _Avoid_: 用可变 username 授权、把普通 Owner 自动视为部署管理员、在 App Catalog 页面管理管理员权限
 
-**Owner / Subject**:
-Owner 是事实的数据主人；Subject 是 Collector 如实观察的对象，可以是 Machine、Account 或 Person。Device 只指 Machine Subject；账号、身体和运行无头 Hub 的服务器都不能为了复用设备维度而冒充事实主体（ADR-041，词条详见 shared/CONTEXT.md）。
-_Avoid_: 把 Hub Instance 当 Subject、把 Account 或 Person 称为 Device、用事实主体记录猜测的硬件归因
+**Owner / Target**:
+Owner 是事实的数据主人；Target 是每条 Fact 唯一的长期业务归属，System 事实直接归属于设备。
+Subject 是未迁移数据沿用的旧归属概念，不能替代新事实的 Observer、直接 FOI 与 Target（词条详见 shared/CONTEXT.md）。
+_Avoid_: 把 Hub Instance 当 Target、把账号或身体称为 Device、用运行采集器的机器猜测事实归属
 
 **User Provisioning（用户供给）**:
 懒建，由**本人首次带 JWT 的请求**触发：upsert User 行（`Id = sub`，`Username = preferred_username`，默认 private）。匿名按用户名读取只查本地 Users 表，查不到即 404——不回源 Auth 平台、不建行（防爬虫刷空行 + 用户名枚举）。**sub-first 规则**：带 JWT 请求一律用 `sub` 定位 User 行，Username 只是可刷新的显示缓存 + 匿名查询入口。username 可变（AuthService 改名立即释放旧名，GitHub 模式）：供给回写含**驱逐**——同名异 sub 的 stale 行被改为 `~{sub}` 占位（`~` 不在上游字符集，永不撞真名），被驱逐者下次带 JWT 请求自愈。设计定于 2026-07-17（ADR-027）。

@@ -62,7 +62,12 @@ Collector 保管待发缓存、迁移后重放并核对事实；失败用升级�
 新增公开查询 `GET /api/v1/users/{username}/facts/segments` 与 `/facts/events`，支持 `deviceId/start/end`，
 使用原有用户可见性门。返回行 Id、StreamId、FactId、Revision、ObserverId、TargetKind/TargetId、
 Source、家族时间和完整 Payload（最多 10,000 行）。窗口对 Segment 使用重叠范围，对 Event 使用半开区间。
-现有活动接口也返回新增身份字段。已迁移行的设备过滤直接使用 Target；Report 保持仅统计明确的 System 活动。
+现有活动接口和当天经历接口也返回 ObserverId、TargetKind、TargetId、TargetName；System 已有明确 Target
+的响应不再输出 subjectId/subjectKind/subjectName。C# 的旧字段明确命名为 LegacySubjectId/Kind/Name，
+仅为尚未迁移数据保留原 JSON 名称。DeviceId 是设备维度投影，不是独立的第二个 Target。
+Dashboard 使用 groupTargets、targetFilter 和直接 Target 归组、筛选、标注；兼容旧 Browser 时通过
+已知 DeviceId 关联到同一设备，不给 Browser 伪造持久 Target。不同 Observer 的原始事实不会合并。
+OpenAPI 客户端已重新生成。已迁移行的设备过滤直接使用 Target；Report 保持仅统计明确的 System 活动。
 Browser/VRChat 尚未迁移的 null Target 行暂经原 Subject 路径查询，未知内容仍可经家族 API 读取。
 
 任务 05 必须逐项关闭以下消费者与适配，不能仅删除 nullable 或改名：
@@ -73,7 +78,12 @@ Browser/VRChat 尚未迁移的 null Target 行暂经原 Subject 路径查询，�
 | FactStore 无字段输入补齐 | 改造前第一方 `/facts` 上传、未迁移 Browser/VRChat | 三个 Collector 新写入已显式携带有效归属，旧客户端退出，缓存处理证据齐备 |
 | LegacyImport | 更早 ActivitySegment/InputEvent 缓存 | 旧缓存排空或已有可执行升级路径；旧新入口收敛到同一家族事实，无第二份 Payload |
 | null Target 查询回退 | 未映射 Browser/账号/其他历史 | 各批有依据数据完成回填，未知历史也能直接查询，再移除 Stream→Subject 业务归属回退 |
+| 查询 DTO 的 legacy subject JSON 别名、Dashboard 的旧设备回退 | 尚未迁移 Browser/VRChat 与历史查询结果 | 对应数据和消费者迁移后随任务 05 移除；验证新 System 响应无 subject 字段，跨来源设备展示和公开查询仍成立 |
 | 数据 smoke 的 Subject 回退 | 已部署家族基线和逐批升级数据库 | 目标切换完成，脚本也直接检查 Target；不因 schema 变化让验收入口失效 |
 
 System 真实窗口/输入刺激、系统权限及 Windows 现场验收与自动 HTTP、迁移、协议测试分别记录在任务 01；
 宿主启动成功只证明组合和起停，不能宣称已覆盖真实观测。
+
+本次按用户确认，System 范围内语义已变化的字段和消费变量使用新名。CollectorInstanceId、StreamId
+仍分别表示 Runtime 实例与交付流，不因新增 Observer/Target 改名；旧初始化协议的 Subject 仍服务
+未迁移实例元数据，由适配边界读出设备引用，退出条件同任务 05。

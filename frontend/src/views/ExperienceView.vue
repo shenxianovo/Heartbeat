@@ -7,7 +7,7 @@ import { fetchExperiencePage } from '../api'
 import { resolveCalendarContext } from '../calendar/localCalendarWindow'
 import ActivitySwimlanes from '../experience/ActivitySwimlanes.vue'
 import FactCard from '../experience/FactCard.vue'
-import { clampRange, groupSubjects, overlaps, rangeOf, relatedBrowser,
+import { clampRange, groupTargets, factTarget, overlaps, rangeOf, relatedBrowser,
   type ExperienceSegment, type TimeRange } from '../experience/factViews'
 
 const route = useRoute()
@@ -21,7 +21,7 @@ const facts = shallowRef<ExperienceSegment[]>([])
 const loading = ref(false)
 const error = ref('')
 const selected = ref<ExperienceSegment | null>(null)
-const subjectFilter = ref('')
+const targetFilter = ref('')
 const page = ref(0)
 const relatedLimit = ref(4)
 let controller: AbortController | undefined
@@ -56,27 +56,27 @@ async function refresh() {
   }
 }
 watch([date, username], () => {
-  viewEstablished = false; facts.value = []; range.value = initialRange(); subjectFilter.value = ''; void refresh()
+  viewEstablished = false; facts.value = []; range.value = initialRange(); targetFilter.value = ''; void refresh()
 }, { immediate: true })
 onUnmounted(() => controller?.abort())
 
-const allSubjects = computed(() => groupSubjects(facts.value, bounds.value))
+const allTargets = computed(() => groupTargets(facts.value, bounds.value))
 const related = computed(() => selected.value ? relatedBrowser(selected.value, facts.value) : [])
 const visibleFacts = computed(() => facts.value.filter(f => overlaps(rangeOf(f), range.value) &&
-  (!subjectFilter.value || f.subjectId === subjectFilter.value))
+  (!targetFilter.value || factTarget(f).id === targetFilter.value))
   .sort((a, b) => Date.parse(a.startTime) - Date.parse(b.startTime) || a.id.localeCompare(b.id)))
 const pageCount = computed(() => Math.ceil(visibleFacts.value.length / 8))
 const pageFacts = computed(() => visibleFacts.value.slice(page.value * 8, page.value * 8 + 8))
-watch([range, subjectFilter], () => {
+watch([range, targetFilter], () => {
   page.value = 0
   if (selected.value && (!overlaps(rangeOf(selected.value), range.value) ||
-    (subjectFilter.value && selected.value.subjectId !== subjectFilter.value))) selected.value = null
+    (targetFilter.value && factTarget(selected.value).id !== targetFilter.value))) selected.value = null
 }, { deep: true })
 watch(selected, () => { relatedLimit.value = 4 })
 
 function setRange(value: TimeRange) { viewEstablished = true; range.value = clampRange(value, bounds.value) }
 function choose(fact: ExperienceSegment) {
-  if (subjectFilter.value && subjectFilter.value !== fact.subjectId) subjectFilter.value = ''
+  if (targetFilter.value && targetFilter.value !== factTarget(fact).id) targetFilter.value = ''
   selected.value = fact
   const index = visibleFacts.value.findIndex(f => f.id === fact.id)
   if (index >= 0) page.value = Math.floor(index / 8)
@@ -122,10 +122,10 @@ function focusFact(fact: ExperienceSegment) {
       </div>
       <div class="section-heading">
         <div><h2>记录 <span class="record-count">{{ visibleFacts.length }}</span></h2><p v-if="loading || error" class="hint">结果尚不完整</p></div>
-        <select v-model="subjectFilter" aria-label="筛选主体" class="control"><option value="">全部主体</option><option v-for="subject in allSubjects" :key="subject.id" :value="subject.id">{{ subject.name }}</option></select>
+        <select v-model="targetFilter" aria-label="筛选对象" class="control"><option value="">全部对象</option><option v-for="target in allTargets" :key="target.id" :value="target.id">{{ target.name }}</option></select>
       </div>
-      <div class="card-grid"><div v-for="fact in pageFacts" :key="fact.id"><p class="record-subject">{{ fact.subjectName || fact.subjectId }} · {{ fact.source }}</p><FactCard :fact="fact" :selected="selected?.id === fact.id" :time-zone="calendar.day.timeZone" @select="choose" @focus="focusFact" /></div></div>
-      <p v-if="!visibleFacts.length" class="hint">所选主体在这个范围内没有记录。</p>
+      <div class="card-grid"><div v-for="fact in pageFacts" :key="fact.id"><p class="record-target">{{ factTarget(fact).name }} · {{ fact.source }}</p><FactCard :fact="fact" :selected="selected?.id === fact.id" :time-zone="calendar.day.timeZone" @select="choose" @focus="focusFact" /></div></div>
+      <p v-if="!visibleFacts.length" class="hint">所选对象在这个范围内没有记录。</p>
       <nav v-if="pageCount > 1" class="pagination" aria-label="记录分页"><button class="control" :disabled="page === 0" @click="page--">上一页</button><span>{{ page + 1 }} / {{ pageCount }}</span><button class="control" :disabled="page + 1 >= pageCount" @click="page++">下一页</button></nav>
     </section>
     <footer>{{ calendar.day.timeZone }}</footer>
@@ -152,7 +152,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--primary); 
 .empty { padding: 65px 12px; text-align: center; color: var(--muted-foreground); display: grid; justify-items: center; gap: 15px; }.empty small { font-size: .8rem; }
 .records-section { margin-top: 34px; }.section-heading { justify-content: space-between; margin-bottom: 18px; }h2 { font-size: 1.05rem; font-weight: 600; }h3 { font-size: .85rem; margin: 22px 0 0; }h3 span { color: var(--muted-foreground); }
 .selection { border-radius: 16px; padding: 22px; margin-bottom: 30px; }.selection > .control { margin-top: 12px; }
-.card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }.record-subject { margin: 0 0 7px 2px; color: var(--muted-foreground); font-size: .7rem; }
+.card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }.record-target { margin: 0 0 7px 2px; color: var(--muted-foreground); font-size: .7rem; }
 .pagination { display: flex; align-items: center; justify-content: center; gap: 20px; margin-top: 25px; font-size: .8rem; }
 footer { display: flex; gap: 12px; justify-content: space-between; flex-wrap: wrap; color: var(--muted-foreground); font-size: .65rem; margin-top: 35px; }
 @media (max-width: 680px) { .experience { padding: 24px 12px 90px; }.experience-header { align-items: start; flex-direction: column; gap: 20px; padding-right: 32px; }h1 { font-size: 1.65rem; }.experience-panel { padding: 15px; }.card-grid { grid-template-columns: 1fr; }.selection { padding: 14px; }.hint { font-size: .7rem; } }

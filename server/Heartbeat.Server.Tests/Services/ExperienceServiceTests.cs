@@ -29,8 +29,8 @@ public sealed class ExperienceServiceTests(PostgresContainerFixture fixture) : P
         await new FactStore(db).IngestAsync("owner", batch);
         var service = new ExperienceService(db);
         var row = Assert.Single((await service.ReadAsync("owner", Window, null)).Items);
-        Assert.Equal("account", row.SubjectKind);
-        Assert.Equal(batch.Streams[0].Subject.SubjectId, row.SubjectId);
+        Assert.Equal("account", row.LegacySubjectKind);
+        Assert.Equal(batch.Streams[0].Subject.SubjectId, row.LegacySubjectId);
         Assert.Null(row.AppIdentityId);
         Assert.Equal(Start.AddHours(-1), row.StartTime);
         Assert.Equal(3, row.Payload.GetProperty("arbitrary").GetArrayLength());
