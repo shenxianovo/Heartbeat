@@ -229,6 +229,15 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         if (snapshot.ObserverId is null || snapshot.ObserverId == Guid.Empty || snapshot.Target is null)
             throw new FactIngestException("A Fact requires a valid Observer and Target.");
         var target = snapshot.Target;
+        if (target.Kind == "person")
+        {
+            PersonReference reference;
+            try { reference = PersonReference.Parse(target.Reference); }
+            catch (ArgumentException ex) { throw new FactIngestException(ex.Message); }
+            var person = await db.Persons.SingleOrDefaultAsync(p => p.OwnerId == stream.OwnerId && p.Reference == reference.Id, ct);
+            if (person is null) throw new FactIngestException("Person Target must exist within its Owner.");
+            return (snapshot.ObserverId, "person", person.Id, appIdentityId);
+        }
         if (target.Kind == "account")
         {
             ServiceAccountReference reference;

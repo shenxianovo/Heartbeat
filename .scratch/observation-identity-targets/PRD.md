@@ -185,3 +185,14 @@ HTTP 查询已完成自动验证；任务 01 保持 ready-for-human，等待真�
 两项 macOS 退出测试超时，隔离的实施前基线也复现该波动，详见 03；前端 290 项、Browser 111 项通过。任务 03 保持 ready-for-human，等待真实账号授权及 presence 验收；
 01 的真实 System/Windows gate 不变，02 已完成。04/05 仍待实施及切换，整个 PRD 不标 done。
 方案和兼容退出见 [VRChat 实施记录](../../docs/architecture/vrchat-account-observation.md)。
+
+
+2026-09-10（任务 04 实施）：本人独立身份、设备/账号明确使用者关联及其半开时间范围、
+个人 Target 摄入和引用保护、跨四类 Target 的本人查询与设置交互已完成，04 标记 done。
+补录/纠正/移除仅改变查询；原始 Segment 与有效交集分别返回，重叠去重且保留不连续覆盖。
+自动验证、真实 Chrome 与隔离服务交互 smoke、Standards/Spec 复审均已记录在
+[Ticket 04](issues/04-person-associations.md) 与[实施说明](../../docs/architecture/person-observation-associations.md)。
+首次全套 .NET 1317/1318，一项既有 macOS 退出超时；review 修复后复跑 1320/1320，
+不据此关闭 macOS 波动。前端 294 项、Browser 111 项通过。
+本 PRD 保持 ready-for-agent，05 承接生产副本演练、兼容退出及切换；01 的真实 System/Windows、
+03 的真实 VRChat 账号验收仍为 ready-for-human，整个 PRD 不标 done，未部署生产。

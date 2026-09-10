@@ -65,6 +65,16 @@ async function toggleVisibility() {
 
       <section class="row">
         <div class="row-text">
+          <div class="row-title">本人关联与事实</div>
+          <div class="row-desc">确认设备或账号的使用时间，按本人回看已有观测。</div>
+        </div>
+        <Button variant="glassPrimary" size="sm" as-child>
+          <router-link to="/settings/person">管理与回看</router-link>
+        </Button>
+      </section>
+
+      <section class="row">
+        <div class="row-text">
           <div class="row-title">Hub 管理</div>
           <div class="row-desc">
             安装由 Hub 托管的 Collector、查看运行状态，并完成它们请求的授权。

@@ -45,6 +45,14 @@ Owner 是事实的数据主人；Target 是每条 Fact 唯一的长期业务归�
 Subject 是未迁移数据沿用的旧归属概念，不能替代新事实的 Observer、直接 FOI 与 Target（词条详见 shared/CONTEXT.md）。
 _Avoid_: 把 Hub Instance 当 Target、把账号或身体称为 Device、用运行采集器的机器猜测事实归属
 
+**Person（本人）**:
+经明确建立、可被 Facts 直接描述的本人身份；认证 User 负责访问，Owner 表示数据所有权，二者均不自动构成本人的观测或使用证据。
+_Avoid_: 用登录账号作个人 Target、从设备所有权推断本人全部历史
+
+**使用者关联**:
+对某设备或服务账号由本人使用的明确确认，具有适用时间；应用上下文沿其所属设备参与本人查询。补录、纠正及移除只改变事实视图，不修订原 Facts。
+_Avoid_: 用当前在线状态、采集宿主或当前登录推断历史使用者、把多个不连续适用区间扩大为连续覆盖
+
 **User Provisioning（用户供给）**:
 懒建，由**本人首次带 JWT 的请求**触发：upsert User 行（`Id = sub`，`Username = preferred_username`，默认 private）。匿名按用户名读取只查本地 Users 表，查不到即 404——不回源 Auth 平台、不建行（防爬虫刷空行 + 用户名枚举）。**sub-first 规则**：带 JWT 请求一律用 `sub` 定位 User 行，Username 只是可刷新的显示缓存 + 匿名查询入口。username 可变（AuthService 改名立即释放旧名，GitHub 模式）：供给回写含**驱逐**——同名异 sub 的 stale 行被改为 `~{sub}` 占位（`~` 不在上游字符集，永不撞真名），被驱逐者下次带 JWT 请求自愈。设计定于 2026-07-17（ADR-027）。
 _Avoid_: 注册/Registration（Heartbeat 无注册概念，账号归 Auth 平台；显式注册流程留给未来隐私条款同意场景）

@@ -856,6 +856,11 @@ public sealed partial class CollectorRuntime
 
     private static bool ValidTarget(Heartbeat.Core.DTOs.Facts.FactTarget target)
     {
+        if (target.Kind == "person")
+        {
+            try { _ = Heartbeat.Core.DTOs.Facts.PersonReference.Parse(target.Reference); return true; }
+            catch (ArgumentException) { return false; }
+        }
         if (target.Kind == "account")
         {
             try { _ = Heartbeat.Core.DTOs.Facts.ServiceAccountReference.Parse(target.Reference); return true; }

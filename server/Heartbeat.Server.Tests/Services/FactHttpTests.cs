@@ -28,7 +28,7 @@ using Microsoft.Extensions.Options;
 namespace Heartbeat.Server.Tests.Services;
 
 [Collection("postgres")]
-public sealed class FactHttpTests(PostgresContainerFixture fixture) : PostgresTestBase(fixture)
+public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : PostgresTestBase(fixture)
 {
     [Fact]
     public async Task LegacyAccountHttpImport_IsImmediatelyQueryable_AndNativeTakeoverKeepsItsRow()

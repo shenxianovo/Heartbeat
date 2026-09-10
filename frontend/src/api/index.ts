@@ -74,7 +74,7 @@ const BASE_URL = ''
 const API_BASE = '/api/v1'
 
 // ===== Auth-aware fetch wrapper =====
-const authHttp = {
+export const authHttp = {
   async fetch(url: RequestInfo, init?: RequestInit): Promise<Response> {
     const token = authStore.token.value
     if (token) {

@@ -1,0 +1,9 @@
+{
+  "scope": "Real Chrome UI, isolated Analytics/PostgreSQL, pre-existing fixtures; no live collectors",
+  "createAndBackdatedFourTargetView": true,
+  "correctionAndEffectiveCoverage": true,
+  "removalRefreshesHistory": true,
+  "originalFactsUnchanged": true,
+  "filterInteraction": true,
+  "completedAt": "2026-09-10T15:03:02.946Z"
+}

@@ -2055,6 +2055,315 @@ export class Client {
     }
 
     /**
+     * @return OK
+     */
+    getMyPersonSettings(): Promise<PersonSettingsResponse> {
+        let url_ = this.baseUrl + "/api/v1/me/person";
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processGetMyPersonSettings(_response);
+        });
+    }
+
+    protected processGetMyPersonSettings(response: Response): Promise<PersonSettingsResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = PersonSettingsResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<PersonSettingsResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    establishMyPerson(): Promise<PersonResponse> {
+        let url_ = this.baseUrl + "/api/v1/me/person";
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "PUT",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processEstablishMyPerson(_response);
+        });
+    }
+
+    protected processEstablishMyPerson(response: Response): Promise<PersonResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = PersonResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<PersonResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    createMyPersonAssociation(body: PersonAssociationRequest): Promise<PersonAssociationResponse> {
+        let url_ = this.baseUrl + "/api/v1/me/person/associations";
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processCreateMyPersonAssociation(_response);
+        });
+    }
+
+    protected processCreateMyPersonAssociation(response: Response): Promise<PersonAssociationResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = PersonAssociationResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<PersonAssociationResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    correctMyPersonAssociation(id: number, body: PersonAssociationRequest): Promise<PersonAssociationResponse> {
+        let url_ = this.baseUrl + "/api/v1/me/person/associations/{id}";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processCorrectMyPersonAssociation(_response);
+        });
+    }
+
+    protected processCorrectMyPersonAssociation(response: Response): Promise<PersonAssociationResponse> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = PersonAssociationResponse.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<PersonAssociationResponse>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
+    removeMyPersonAssociation(id: number): Promise<void> {
+        let url_ = this.baseUrl + "/api/v1/me/person/associations/{id}";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "DELETE",
+            headers: {
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processRemoveMyPersonAssociation(_response);
+        });
+    }
+
+    protected processRemoveMyPersonAssociation(response: Response): Promise<void> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            return;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<void>(null as any);
+    }
+
+    /**
+     * @param start (optional)
+     * @param end (optional)
+     * @param offset (optional)
+     * @param limit (optional)
+     * @return OK
+     */
+    getMyPersonSegments(start: Date | undefined, end: Date | undefined, offset: number | undefined, limit: number | undefined): Promise<PersonFactPage> {
+        let url_ = this.baseUrl + "/api/v1/me/person/facts/segments?";
+        if (start === null)
+            throw new globalThis.Error("The parameter 'start' cannot be null.");
+        else if (start !== undefined)
+            url_ += "start=" + encodeURIComponent(start ? "" + start.toISOString() : "") + "&";
+        if (end === null)
+            throw new globalThis.Error("The parameter 'end' cannot be null.");
+        else if (end !== undefined)
+            url_ += "end=" + encodeURIComponent(end ? "" + end.toISOString() : "") + "&";
+        if (offset === null)
+            throw new globalThis.Error("The parameter 'offset' cannot be null.");
+        else if (offset !== undefined)
+            url_ += "offset=" + encodeURIComponent("" + offset) + "&";
+        if (limit === null)
+            throw new globalThis.Error("The parameter 'limit' cannot be null.");
+        else if (limit !== undefined)
+            url_ += "limit=" + encodeURIComponent("" + limit) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processGetMyPersonSegments(_response);
+        });
+    }
+
+    protected processGetMyPersonSegments(response: Response): Promise<PersonFactPage> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = PersonFactPage.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<PersonFactPage>(null as any);
+    }
+
+    /**
+     * @param start (optional)
+     * @param end (optional)
+     * @param offset (optional)
+     * @param limit (optional)
+     * @return OK
+     */
+    getMyPersonEvents(start: Date | undefined, end: Date | undefined, offset: number | undefined, limit: number | undefined): Promise<PersonFactPage> {
+        let url_ = this.baseUrl + "/api/v1/me/person/facts/events?";
+        if (start === null)
+            throw new globalThis.Error("The parameter 'start' cannot be null.");
+        else if (start !== undefined)
+            url_ += "start=" + encodeURIComponent(start ? "" + start.toISOString() : "") + "&";
+        if (end === null)
+            throw new globalThis.Error("The parameter 'end' cannot be null.");
+        else if (end !== undefined)
+            url_ += "end=" + encodeURIComponent(end ? "" + end.toISOString() : "") + "&";
+        if (offset === null)
+            throw new globalThis.Error("The parameter 'offset' cannot be null.");
+        else if (offset !== undefined)
+            url_ += "offset=" + encodeURIComponent("" + offset) + "&";
+        if (limit === null)
+            throw new globalThis.Error("The parameter 'limit' cannot be null.");
+        else if (limit !== undefined)
+            url_ += "limit=" + encodeURIComponent("" + limit) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processGetMyPersonEvents(_response);
+        });
+    }
+
+    protected processGetMyPersonEvents(response: Response): Promise<PersonFactPage> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = PersonFactPage.fromJS(resultData200);
+            return result200;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<PersonFactPage>(null as any);
+    }
+
+    /**
      * @param deviceId (optional)
      * @param start (optional)
      * @param end (optional)
@@ -6413,6 +6722,58 @@ export interface IDeviceStatusResponse {
     [key: string]: any;
 }
 
+export class EffectiveInterval implements IEffectiveInterval {
+    start!: Date;
+    end!: Date;
+
+    [key: string]: any;
+
+    constructor(data?: IEffectiveInterval) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.start = _data["start"] ? new Date(_data["start"].toString()) : undefined as any;
+            this.end = _data["end"] ? new Date(_data["end"].toString()) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): EffectiveInterval {
+        data = typeof data === 'object' ? data : {};
+        let result = new EffectiveInterval();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["start"] = this.start ? this.start.toISOString() : undefined as any;
+        data["end"] = this.end ? this.end.toISOString() : undefined as any;
+        return data;
+    }
+}
+
+export interface IEffectiveInterval {
+    start: Date;
+    end: Date;
+
+    [key: string]: any;
+}
+
 export class EndStrandOpDto implements IEndStrandOpDto {
     strandId?: string;
     expectedVersion?: number;
@@ -8547,6 +8908,502 @@ export interface IOperationResultResponse {
     episode?: EpisodeResponse | undefined;
     probe?: ProbeResponse | undefined;
     promotion?: PromoteEpisodeResponse | undefined;
+
+    [key: string]: any;
+}
+
+export class PersonAssociationRequest implements IPersonAssociationRequest {
+    deviceId!: number | undefined;
+    accountId!: number | undefined;
+    start!: Date | undefined;
+    end!: Date | undefined;
+
+    constructor(data?: IPersonAssociationRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            this.deviceId = _data["deviceId"];
+            this.accountId = _data["accountId"];
+            this.start = _data["start"] ? new Date(_data["start"].toString()) : undefined as any;
+            this.end = _data["end"] ? new Date(_data["end"].toString()) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): PersonAssociationRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new PersonAssociationRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        data["deviceId"] = this.deviceId;
+        data["accountId"] = this.accountId;
+        data["start"] = this.start ? this.start.toISOString() : undefined as any;
+        data["end"] = this.end ? this.end.toISOString() : undefined as any;
+        return data;
+    }
+}
+
+export interface IPersonAssociationRequest {
+    deviceId: number | undefined;
+    accountId: number | undefined;
+    start: Date | undefined;
+    end: Date | undefined;
+}
+
+export class PersonAssociationResponse implements IPersonAssociationResponse {
+    id!: number;
+    deviceId!: number | undefined;
+    accountId!: number | undefined;
+    start!: Date | undefined;
+    end!: Date | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IPersonAssociationResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.id = _data["id"];
+            this.deviceId = _data["deviceId"];
+            this.accountId = _data["accountId"];
+            this.start = _data["start"] ? new Date(_data["start"].toString()) : undefined as any;
+            this.end = _data["end"] ? new Date(_data["end"].toString()) : undefined as any;
+        }
+    }
+
+    static fromJS(data: any): PersonAssociationResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new PersonAssociationResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["id"] = this.id;
+        data["deviceId"] = this.deviceId;
+        data["accountId"] = this.accountId;
+        data["start"] = this.start ? this.start.toISOString() : undefined as any;
+        data["end"] = this.end ? this.end.toISOString() : undefined as any;
+        return data;
+    }
+}
+
+export interface IPersonAssociationResponse {
+    id: number;
+    deviceId: number | undefined;
+    accountId: number | undefined;
+    start: Date | undefined;
+    end: Date | undefined;
+
+    [key: string]: any;
+}
+
+export class PersonFactItem implements IPersonFactItem {
+    fact!: FactResponse;
+    effectiveIntervals!: EffectiveInterval[];
+    effectiveSeconds!: number | undefined;
+    targetName!: string;
+
+    [key: string]: any;
+
+    constructor(data?: IPersonFactItem) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+        if (!data) {
+            this.fact = new FactResponse();
+            this.effectiveIntervals = [];
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.fact = _data["fact"] ? FactResponse.fromJS(_data["fact"]) : new FactResponse();
+            if (Array.isArray(_data["effectiveIntervals"])) {
+                this.effectiveIntervals = [] as any;
+                for (let item of _data["effectiveIntervals"])
+                    this.effectiveIntervals!.push(EffectiveInterval.fromJS(item));
+            }
+            this.effectiveSeconds = _data["effectiveSeconds"];
+            this.targetName = _data["targetName"];
+        }
+    }
+
+    static fromJS(data: any): PersonFactItem {
+        data = typeof data === 'object' ? data : {};
+        let result = new PersonFactItem();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["fact"] = this.fact ? this.fact.toJSON() : undefined as any;
+        if (Array.isArray(this.effectiveIntervals)) {
+            data["effectiveIntervals"] = [];
+            for (let item of this.effectiveIntervals)
+                data["effectiveIntervals"].push(item ? item.toJSON() : undefined as any);
+        }
+        data["effectiveSeconds"] = this.effectiveSeconds;
+        data["targetName"] = this.targetName;
+        return data;
+    }
+}
+
+export interface IPersonFactItem {
+    fact: FactResponse;
+    effectiveIntervals: EffectiveInterval[];
+    effectiveSeconds: number | undefined;
+    targetName: string;
+
+    [key: string]: any;
+}
+
+export class PersonFactPage implements IPersonFactPage {
+    items!: PersonFactItem[];
+    totalCount!: number;
+    sources!: PersonSourceCount[];
+
+    [key: string]: any;
+
+    constructor(data?: IPersonFactPage) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+        if (!data) {
+            this.items = [];
+            this.sources = [];
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            if (Array.isArray(_data["items"])) {
+                this.items = [] as any;
+                for (let item of _data["items"])
+                    this.items!.push(PersonFactItem.fromJS(item));
+            }
+            this.totalCount = _data["totalCount"];
+            if (Array.isArray(_data["sources"])) {
+                this.sources = [] as any;
+                for (let item of _data["sources"])
+                    this.sources!.push(PersonSourceCount.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): PersonFactPage {
+        data = typeof data === 'object' ? data : {};
+        let result = new PersonFactPage();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        if (Array.isArray(this.items)) {
+            data["items"] = [];
+            for (let item of this.items)
+                data["items"].push(item ? item.toJSON() : undefined as any);
+        }
+        data["totalCount"] = this.totalCount;
+        if (Array.isArray(this.sources)) {
+            data["sources"] = [];
+            for (let item of this.sources)
+                data["sources"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface IPersonFactPage {
+    items: PersonFactItem[];
+    totalCount: number;
+    sources: PersonSourceCount[];
+
+    [key: string]: any;
+}
+
+export class PersonResponse implements IPersonResponse {
+    id!: number;
+    reference!: string;
+
+    [key: string]: any;
+
+    constructor(data?: IPersonResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.id = _data["id"];
+            this.reference = _data["reference"];
+        }
+    }
+
+    static fromJS(data: any): PersonResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new PersonResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["id"] = this.id;
+        data["reference"] = this.reference;
+        return data;
+    }
+}
+
+export interface IPersonResponse {
+    id: number;
+    reference: string;
+
+    [key: string]: any;
+}
+
+export class PersonSettingsResponse implements IPersonSettingsResponse {
+    person!: PersonResponse | undefined;
+    targets!: PersonTargetOption[];
+    associations!: PersonAssociationResponse[];
+
+    [key: string]: any;
+
+    constructor(data?: IPersonSettingsResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+        if (!data) {
+            this.targets = [];
+            this.associations = [];
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.person = _data["person"] ? PersonResponse.fromJS(_data["person"]) : undefined as any;
+            if (Array.isArray(_data["targets"])) {
+                this.targets = [] as any;
+                for (let item of _data["targets"])
+                    this.targets!.push(PersonTargetOption.fromJS(item));
+            }
+            if (Array.isArray(_data["associations"])) {
+                this.associations = [] as any;
+                for (let item of _data["associations"])
+                    this.associations!.push(PersonAssociationResponse.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): PersonSettingsResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new PersonSettingsResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["person"] = this.person ? this.person.toJSON() : undefined as any;
+        if (Array.isArray(this.targets)) {
+            data["targets"] = [];
+            for (let item of this.targets)
+                data["targets"].push(item ? item.toJSON() : undefined as any);
+        }
+        if (Array.isArray(this.associations)) {
+            data["associations"] = [];
+            for (let item of this.associations)
+                data["associations"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface IPersonSettingsResponse {
+    person: PersonResponse | undefined;
+    targets: PersonTargetOption[];
+    associations: PersonAssociationResponse[];
+
+    [key: string]: any;
+}
+
+export class PersonSourceCount implements IPersonSourceCount {
+    source!: string;
+    count!: number;
+
+    [key: string]: any;
+
+    constructor(data?: IPersonSourceCount) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.source = _data["source"];
+            this.count = _data["count"];
+        }
+    }
+
+    static fromJS(data: any): PersonSourceCount {
+        data = typeof data === 'object' ? data : {};
+        let result = new PersonSourceCount();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["source"] = this.source;
+        data["count"] = this.count;
+        return data;
+    }
+}
+
+export interface IPersonSourceCount {
+    source: string;
+    count: number;
+
+    [key: string]: any;
+}
+
+export class PersonTargetOption implements IPersonTargetOption {
+    kind!: string;
+    id!: number;
+    name!: string;
+
+    [key: string]: any;
+
+    constructor(data?: IPersonTargetOption) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.kind = _data["kind"];
+            this.id = _data["id"];
+            this.name = _data["name"];
+        }
+    }
+
+    static fromJS(data: any): PersonTargetOption {
+        data = typeof data === 'object' ? data : {};
+        let result = new PersonTargetOption();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["kind"] = this.kind;
+        data["id"] = this.id;
+        data["name"] = this.name;
+        return data;
+    }
+}
+
+export interface IPersonTargetOption {
+    kind: string;
+    id: number;
+    name: string;
 
     [key: string]: any;
 }
