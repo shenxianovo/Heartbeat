@@ -93,6 +93,7 @@ release；VRChat Package 已从 Headless image 中移出，并通过独立 Colle
 
 ## Documentation
 
+- [文档导航与状态](./docs/README.md) — 当前契约、待定设计、操作入口和历史证据
 - [Development Guide](./docs/development.md) — 启动本地栈、运行 Agent、验证与测试
 - [系统架构与协议图](./docs/architecture/system-overview.md) — 当前模块、身份层级、Transport Binding 与 schema 校验链
 - [兼容债务账本](./docs/architecture/compatibility-debt.md) — 当前仍服务的旧数据/客户端、退出门槛与验证

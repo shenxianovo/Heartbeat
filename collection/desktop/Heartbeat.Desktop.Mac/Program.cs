@@ -1,3 +1,4 @@
+using Heartbeat.Collection.Hub.Collectors.Protocol;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -33,6 +34,7 @@ public static class Program
                     ? DesktopStartupSmoke.Inconclusive(smoke!, "data directory already in use") : 3;
                 return;
             }
+            var profileBinding = bootstrap.PrepareDevelopmentBinding();
             ConfigureLogging(logFeed, bootstrap.DataDirectory);
             RegisterUnhandledExceptionLogging();
             var builder = Host.CreateApplicationBuilder();
@@ -44,7 +46,12 @@ public static class Program
                 "osx-arm64-stable", () => new LaunchAgentLoginStart(new Heartbeat.Desktop.Mac.Native.MacCommandRunner()));
             builder.Services.AddSingleton(installation);
             builder.Services.AddSingleton(installation.LoginStart);
+            if (profileBinding is not null)
+                builder.Services.AddSingleton(new ExternalHostProtocolBindingOptions { ProfileBinding = profileBinding });
             var host = builder.Build();
+            try { DesktopDevelopment.PreparePackage(bootstrap, host.Services); }
+            catch { host.Dispose(); throw; }
+            if (bootstrap.DevelopmentPrepareOnly) { host.Dispose(); return; }
 
             // 发布产物的启动 smoke：只起停 host，不拉起 UI，也不认识任何具名可选 Collector。
             if (smokeRequested)

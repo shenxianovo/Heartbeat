@@ -1,3 +1,8 @@
+using System.Net;
+using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Text.Json;
+using Heartbeat.Collection.Hub.Collectors.Protocol;
 using Heartbeat.Desktop.UI.Diagnostics;
 
 namespace Heartbeat.Desktop.UI.Hosting;
@@ -11,6 +16,9 @@ public sealed class DesktopBootstrap : IDisposable
     private readonly string _defaultDirectory;
 
     public string DataDirectory { get; }
+    public bool IsDevelopment { get; }
+    public bool DevelopmentPrepareOnly { get; }
+    public string? DevelopmentPackageDirectory { get; }
     public DesktopStartupSmoke.Request? Smoke { get; }
     public bool AllowsInstallationBinding { get; }
     /// <summary>Determined after acquiring the directory lock, using the filesystem itself.</summary>
@@ -19,14 +27,26 @@ public sealed class DesktopBootstrap : IDisposable
     public DesktopBootstrap(string[] args, string defaultDirectory)
     {
         if (DesktopStartupSmoke.TryGetRequest(args, out var smoke)) Smoke = smoke;
+        DevelopmentPrepareOnly = args.Contains("--development-prepare-only", StringComparer.Ordinal);
+        IsDevelopment = args.Contains("--development", StringComparer.Ordinal);
         string? explicitDirectory = null;
+        string? packageDirectory = null;
         for (var i = 0; i < args.Length; i++)
         {
-            if (args[i].StartsWith("--data-directory=", StringComparison.Ordinal))
+            if (args[i] == "--development-package")
+            {
+                if (packageDirectory is not null || ++i >= args.Length || string.IsNullOrWhiteSpace(args[i]) || args[i].StartsWith("--"))
+                    throw new ArgumentException("--development-package requires one Package directory.");
+                packageDirectory = Path.GetFullPath(args[i]);
+            }
+            else if (args[i].StartsWith("--data-directory=", StringComparison.Ordinal))
                 SetDirectory(args[i]["--data-directory=".Length..]);
             else if (args[i] == "--data-directory")
                 SetDirectory(++i < args.Length ? args[i] : "");
         }
+        if ((IsDevelopment && (explicitDirectory is null || Smoke is not null)) || ((packageDirectory is not null || DevelopmentPrepareOnly) && !IsDevelopment))
+            throw new ArgumentException("Development requires --development and an explicit independent --data-directory.");
+        DevelopmentPackageDirectory = packageDirectory;
         if (Smoke is not null && explicitDirectory is not null)
             throw new ArgumentException("Use either --data-directory or --verify-startup-data-directory.");
         DataDirectory = ResolveDirectory(explicitDirectory ?? Smoke?.DataDirectory ?? defaultDirectory);
@@ -40,6 +60,32 @@ public sealed class DesktopBootstrap : IDisposable
                 throw new ArgumentException("--data-directory requires exactly one nonempty path.");
             explicitDirectory = value;
         }
+    }
+
+    /// <summary>Called under the Profile lock before configuring any Host services.</summary>
+    public ExternalHostProfileBinding? PrepareDevelopmentBinding()
+    {
+        if (!IsDevelopment) return null;
+        if (_ownership is null || UsesDefaultDirectory)
+            throw new InvalidOperationException("Development requires ownership of an independent Desktop Profile.");
+        var path = Path.Combine(DataDirectory, ExternalHostProfileBinding.FileName);
+        if (File.Exists(path)) return ExternalHostProfileBinding.Read(DataDirectory);
+        // Reserve a non-production-range endpoint once. Later occupation fails closed; never scan/fall back.
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var binding = new ExternalHostProfileBinding(Guid.NewGuid().ToString("N"),
+            Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32)), port);
+        var temporary = path + ".tmp";
+        var options = new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write, Share = FileShare.None };
+        if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        using (var stream = new FileStream(temporary, options))
+        {
+            JsonSerializer.Serialize(stream, binding, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            stream.Flush(true);
+        }
+        File.Move(temporary, path);
+        return binding;
     }
 
     public bool TryAcquire(string legacyMutexName)

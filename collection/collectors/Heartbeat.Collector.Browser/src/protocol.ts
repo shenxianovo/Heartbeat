@@ -1,7 +1,7 @@
 import type { SegmentSnapshot } from './fold'
 import { uuidv7 } from './ids'
 
-const ROUTE = '/v1/collector-protocol/external-host'
+import { protocolFetch } from './connection'
 
 interface BrowserPackageReference {
   packageId: string
@@ -182,7 +182,7 @@ export async function openBrowserProtocolSession(
   applySpec?: (spec: { enabled: boolean; flushPeriodMilliseconds: number }) => Promise<void>,
 ): Promise<BrowserProtocolSession | 'disabled' | 'rejected' | null> {
   try {
-    const hello = await fetch(`http://127.0.0.1:${port}${ROUTE}/hello`, {
+    const hello = await protocolFetch(port, '/hello', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(message(
@@ -215,8 +215,8 @@ export async function openBrowserProtocolSession(
       acceptedMessage.body.selectedCapabilities?.['diagnostics.stream-gap'] !== 1)
       return 'rejected'
     const accepted = acceptedMessage.body
-    const initialize = await fetch(
-      `http://127.0.0.1:${port}${ROUTE}/${accepted.activationId}/initialize`,
+    const initialize = await protocolFetch(
+      port, `/${accepted.activationId}/initialize`,
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
     )
     if (!initialize.ok) return 'rejected'
@@ -237,8 +237,8 @@ export async function openBrowserProtocolSession(
       return 'rejected'
     await applySpec?.({ enabled: true, flushPeriodMilliseconds })
 
-    const initializedAck = await fetch(
-      `http://127.0.0.1:${port}${ROUTE}/${accepted.activationId}/initialized`,
+    const initializedAck = await protocolFetch(
+      port, `/${accepted.activationId}/initialized`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -254,8 +254,8 @@ export async function openBrowserProtocolSession(
     )
     if (!initializedAck.ok) return 'rejected'
 
-    const streams = await fetch(
-      `http://127.0.0.1:${port}${ROUTE}/${accepted.activationId}/streams`,
+    const streams = await protocolFetch(
+      port, `/${accepted.activationId}/streams`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -283,8 +283,8 @@ export async function openBrowserProtocolSession(
     const stream = opened.streams.tabs
     if (!stream?.streamId) return 'rejected'
 
-    const ready = await fetch(
-      `http://127.0.0.1:${port}${ROUTE}/${accepted.activationId}/ready`,
+    const ready = await protocolFetch(
+      port, `/${accepted.activationId}/ready`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -328,8 +328,8 @@ export async function renewBrowserProtocolSession(
   session: BrowserProtocolSession,
 ): Promise<BrowserProtocolSession | null> {
   try {
-    const response = await fetch(
-      `http://127.0.0.1:${session.port}${ROUTE}/${session.activationId}/renew`,
+    const response = await protocolFetch(
+      session.port, `/${session.activationId}/renew`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -373,8 +373,8 @@ export async function publishBrowserFacts(
   const attempt = reusableAttempt ?? { activationId: session.activationId, messageId: uuidv7(), snapshots: batch }
   await persistAttempt?.(attempt)
   try {
-    const response = await fetch(
-      `http://127.0.0.1:${session.port}${ROUTE}/${session.activationId}/facts`,
+    const response = await protocolFetch(
+      session.port, `/${session.activationId}/facts`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -506,8 +506,8 @@ export async function reportBrowserGap(
     : { ...gap, activationId: session.activationId, messageId: uuidv7() }
   await persistAttempt?.(attempt)
   try {
-    const response = await fetch(
-      `http://127.0.0.1:${session.port}${ROUTE}/${session.activationId}/gap`,
+    const response = await protocolFetch(
+      session.port, `/${session.activationId}/gap`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

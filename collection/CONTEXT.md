@@ -12,6 +12,11 @@ _Avoid_: Service, Worker（这些是 Agent 内部的实现层）
 一次 Desktop 使用所依托的持久数据集合，包含配置、Collector Instance、Secret、缓存与日志。同一 Profile 只有一个运行者；它不表示新的 Machine，也不等于一次验收的运行标识。
 _Avoid_: 测试用户、虚拟设备、runId
 
+**ExternalHost Profile Binding（外部宿主连接绑定）**:
+ExternalHost 与一个确定 Desktop Profile 的连接关系；目标暂时离线不会让采集器改连其他 Profile。
+它随 Profile 持续存在，不等于外部宿主自身身份、一次 Activation、Machine Subject 或采集器制品身份。
+_Avoid_: 开发环境标签、端口、External Host Identity
+
 **Desktop Installation Binding（安装绑定）**:
 Desktop 运行者对当前真实安装的自启动注册和更新目标所持有的管理能力。独立 Profile 不因使用已安装的执行文件而获得该能力。
 _Avoid_: Release 模式、测试模式

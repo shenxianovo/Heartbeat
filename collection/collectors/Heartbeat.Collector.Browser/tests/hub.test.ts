@@ -20,9 +20,17 @@ function installFetchMock(ports: Record<number, PortBehavior>) {
   return calls
 }
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs() })
 
 describe('Browser binding discovery', () => {
+  it('never discovers a production Desktop when a development binding is missing', async () => {
+    vi.stubEnv('MODE', 'development')
+    vi.stubGlobal('chrome', { runtime: { getURL: (path: string) => `chrome-extension://dev/${path}` } })
+    const calls = installFetchMock({ [BASE]: { kind: 'binding' } })
+    await expect(discoverHub(BASE)).resolves.toBe(null)
+    expect(calls.filter(url => url.startsWith('http://'))).toEqual([])
+  })
+
   it('accepts only the binding-specific endpoint and a common protocol major', async () => {
     const calls = installFetchMock({ [BASE]: { kind: 'binding' } })
     await expect(probeHub(BASE)).resolves.toBe(true)

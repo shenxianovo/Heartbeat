@@ -1,3 +1,4 @@
+using Heartbeat.Collection.Hub.Collectors.Protocol;
 using Avalonia;
 using Avalonia.Controls;
 using Heartbeat.Desktop.Windows.Configuration;
@@ -35,6 +36,7 @@ public static class Program
                 if (!smokeRequested && bootstrap.AllowsInstallationBinding) WindowsMessageBox.ShowAlreadyRunning();
                 return;
             }
+            var profileBinding = bootstrap.PrepareDevelopmentBinding();
             ConfigureLogging(logSink, bootstrap.DataDirectory);
             RegisterUnhandledExceptionLogging();
             var config = new ConfigManager(Path.Combine(bootstrap.DataDirectory, "config.json"));
@@ -45,7 +47,12 @@ public static class Program
                 RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "win-arm64" : "win-x64", () => new Heartbeat.Desktop.Windows.Services.RegistryAutoStartService());
             builder.Services.AddSingleton(installation);
             builder.Services.AddSingleton(installation.LoginStart);
+            if (profileBinding is not null)
+                builder.Services.AddSingleton(new ExternalHostProtocolBindingOptions { ProfileBinding = profileBinding });
             var host = builder.Build();
+            try { DesktopDevelopment.PreparePackage(bootstrap, host.Services); }
+            catch { host.Dispose(); throw; }
+            if (bootstrap.DevelopmentPrepareOnly) { host.Dispose(); return; }
 
             // 发布产物的启动 smoke：只起停 host，不拉起 UI，也不认识任何具名可选 Collector。
             if (smokeRequested)

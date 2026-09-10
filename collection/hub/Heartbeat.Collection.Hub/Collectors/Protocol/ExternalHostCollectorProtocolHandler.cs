@@ -12,6 +12,7 @@ namespace Heartbeat.Collection.Hub.Collectors.Protocol;
 public sealed record ExternalHostProtocolBindingOptions
 {
     public TimeSpan LeaseDuration { get; init; } = TimeSpan.FromSeconds(45);
+    public ExternalHostProfileBinding? ProfileBinding { get; init; }
 }
 
 /// <summary>
@@ -60,6 +61,7 @@ public sealed class ExternalHostCollectorProtocolHandler : IExternalHostProtocol
         _declarations = declarations;
         _installations = installations;
         _subject = subject;
+        options.ProfileBinding?.Validate();
         _options = options;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
@@ -70,6 +72,13 @@ public sealed class ExternalHostCollectorProtocolHandler : IExternalHostProtocol
         Stream body,
         CancellationToken cancellationToken = default)
     {
+        if (_options.ProfileBinding is { } binding)
+        {
+            var prefix = binding.RoutePrefix;
+            if (path != prefix && (path is null || !path.StartsWith(prefix + "/", StringComparison.Ordinal)))
+                return new ProtocolHttpResponse(404, "not found", false);
+            path = RoutePrefix + path[prefix.Length..];
+        }
         if (path is null || !path.StartsWith(RoutePrefix, StringComparison.Ordinal))
             return null;
         await ExpireLeasesAsync();
@@ -99,7 +108,12 @@ public sealed class ExternalHostCollectorProtocolHandler : IExternalHostProtocol
         try
         {
             if (httpMethod == "GET" && path == RoutePrefix)
-                return Json(200, new { binding = "external-host", protocolMajors = new[] { 1 } });
+                return Json(200, new { binding = "external-host", protocolMajors = new[] { 1 },
+                    profileId = _options.ProfileBinding?.ProfileId,
+                    instances = _options.ProfileBinding is null ? null : _runtime.ListInstances()
+                        .Where(instance => instance.InstanceKey == CollectorRuntime.DefaultInstanceKey)
+                        .Select(instance => new { instance.PackageId, instance.PackageVersion, instance.PackageContentHash,
+                            status = _runtime.DescribeExternalHostInstance(instance.CollectorInstanceId) }).ToArray() });
             if (httpMethod == "POST" && path == $"{RoutePrefix}/hello")
                 return await HandleHelloAsync(await ReadRequest<HelloRequest>(
                     "heartbeat.collector.bootstrap/1",

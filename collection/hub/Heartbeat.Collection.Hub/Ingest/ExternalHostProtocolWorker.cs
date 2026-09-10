@@ -16,7 +16,8 @@ namespace Heartbeat.Collection.Hub.Ingest
     /// </summary>
     public class ExternalHostProtocolWorker(
         IExternalHostProtocolHttpHandler handler,
-        IHubConfiguration configuration) : BackgroundService, IHostShutdownEvidence
+        IHubConfiguration configuration,
+        ExternalHostProtocolBindingOptions? bindingOptions = null) : BackgroundService, IHostShutdownEvidence
     {
         // Only our listener/in-flight handler belongs to this process; external outboxes do not.
         private bool _stopped;
@@ -39,7 +40,9 @@ namespace Heartbeat.Collection.Hub.Ingest
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            var basePort = configuration.Current.IngestPort;
+            var profile = bindingOptions?.ProfileBinding;
+            var basePort = profile?.Port ?? configuration.Current.IngestPort;
+            var portRange = profile is null ? PortRange : 1;
             if (basePort <= 0)
             {
                 Log.Information("本地 ingest 枢纽未启用（ingestPort = {Port}）", basePort);
@@ -48,12 +51,12 @@ namespace Heartbeat.Collection.Hub.Ingest
 
             while (!stoppingToken.IsCancellationRequested)
             {
-                using var listener = TryStartListener(basePort, out var port);
+                using var listener = TryStartListener(basePort, portRange, out var port);
                 if (listener == null)
                 {
                     Log.Warning(
                         "本地 ingest 枢纽启动失败（端口 {BasePort}–{EndPort} 均被占用），{Retry} 秒后重试",
-                        basePort, basePort + PortRange - 1, RetryInterval.TotalSeconds);
+                        basePort, basePort + portRange - 1, RetryInterval.TotalSeconds);
                     try
                     {
                         await Task.Delay(RetryInterval, stoppingToken);
@@ -73,9 +76,9 @@ namespace Heartbeat.Collection.Hub.Ingest
         }
 
         /// <summary>从基准端口起顺延试绑 <see cref="PortRange"/> 个端口，全占返回 null。</summary>
-        private static HttpListener? TryStartListener(int basePort, out int boundPort)
+        private static HttpListener? TryStartListener(int basePort, int portRange, out int boundPort)
         {
-            for (var port = basePort; port < basePort + PortRange && port <= 65535; port++)
+            for (var port = basePort; port < basePort + portRange && port <= 65535; port++)
             {
                 var listener = new HttpListener();
                 // loopback 限定：非本机流量到不了这个前缀。

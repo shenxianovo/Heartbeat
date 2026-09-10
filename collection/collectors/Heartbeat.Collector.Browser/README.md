@@ -3,6 +3,13 @@
 Chrome/Edge MV3 ExternalHost Collector。它观察各窗口的活动标签页，通过通用 loopback Collector Protocol
 把 Segment Fact 交给 Desktop；不持有服务端凭据或地址。System 仍由 Desktop 单独内置。
 
+开发迭代使用仓库根目录的 `./scripts/start-local.sh --collector browser`（macOS）或
+`./scripts/start-local.ps1 --collector browser`（PowerShell）；需要三件套时加 `--stack`，Edge 加 `--browser-app edge`。
+入口内部调用 Node 编排构建和源码监听，
+通过具体 Desktop Profile 的绑定连接；更新保留身份、配置和 outbox，扩展手动 Reload。
+首次加载与独立目录步骤见 [开发指南](../../../docs/development.md#browser-开发与更新)。
+普通生产构建仍按端口发现，不应拿它冒充开发扩展。
+
 ## 构建与验证
 
 需要 Node.js 24、.NET SDK 10 和 Python 3。Browser 的测试拥有一个独立 .NET TestHost，用真实
@@ -39,13 +46,11 @@ Installation 的 `browser-extension/` 手工 Load unpacked；Desktop 不代替�
 Stream。未 ACK 的 Facts/Stream Gaps 留在本地 durable outbox。
 
 完整卸载撤销全部 lease；仍加载的扩展重连得到 `package_not_installed`，不会重建已删除的 Instance。
-本阶段没有 Store 分发、自动扩展 reload 或 Package 更新；新版本需先卸载再安装。
+生产 Marketplace 没有 Store 分发、自动扩展 reload 或 Package 更新；其新版本需先卸载再安装。
+独立开发 Profile 的启动前更新见 [ADR-057](../../../docs/adr/057-development-external-host-profile-binding.md)。
 
-**Browser 0.1.0 与 Desktop v4.2.0 已于 2026-09-07 独立发布。** Browser 四 target 的公网 metadata、
-artifact 长度/SHA-256 与精确 Package 引用已回读验证，Catalog 保留了既有 VRChat 条目。
-Desktop 安装包和 Portable 见 [v4.2.0 Release](https://github.com/shenxianovo/Heartbeat/releases/tag/v4.2.0)。
-Windows x64/macOS ARM64 packaged-host 启动检查已在发布 CI 通过；实际 Chrome/Edge 加载、采集、Backend
-到达与完整卸载仍待实机验收，见 [issue 07](../../../.scratch/collector-package-registry/issues/07-deploy-and-vrchat-smoke.md)。
+发布记录及 Chrome/Edge 加载、采集、Backend 到达与卸载的剩余实机验收统一见
+[issue 07](../../../.scratch/collector-package-registry/issues/07-deploy-and-vrchat-smoke.md)。
 
 术语见 [Collection Context](../../CONTEXT.md)，行为契约见
 [Conformance Suite](../../protocol/conformance/README.md)，Fact payload 见 [Contracts](../../contracts/README.md)。

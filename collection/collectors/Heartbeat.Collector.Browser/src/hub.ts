@@ -1,3 +1,4 @@
+import { bindingRoute, isDevelopment, loadDevelopmentBinding } from './connection'
 // Browser ExternalHost binding 的 loopback 发现与 Collector Protocol adapter。
 
 import type { BrowserHubAdapter, BrowserProtocolDeliveryRequest } from './delivery'
@@ -11,12 +12,16 @@ const PROBE_TIMEOUT_MS = 1500
 /** 只认通用 ExternalHost 发现端点，避免把别的 loopback 服务当成 Hub。 */
 export async function probeHub(port: number): Promise<boolean> {
   try {
-    const res = await fetch(`http://127.0.0.1:${port}/v1/collector-protocol/external-host`, {
+    const binding = isDevelopment() ? await loadDevelopmentBinding() : undefined
+    if (binding && port !== binding.port) return false
+    const route = binding ? bindingRoute(binding) : '/v1/collector-protocol/external-host'
+    const res = await fetch(`http://127.0.0.1:${port}${route}`, {
+      redirect: 'error',
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     })
     if (!res.ok) return false
-    const body = (await res.json()) as { binding?: unknown; protocolMajors?: unknown }
-    return body.binding === 'external-host' &&
+    const body = (await res.json()) as { binding?: unknown; protocolMajors?: unknown; profileId?: unknown }
+    return (!binding || body.profileId === binding.profileId) && body.binding === 'external-host' &&
       Array.isArray(body.protocolMajors) && body.protocolMajors.includes(1)
   } catch {
     return false
@@ -28,6 +33,12 @@ export async function probeHub(port: number): Promise<boolean> {
  * hub 端口被占时顺延到下一个，所以低编号优先即"hub 实际所在"。
  */
 export async function discoverHub(basePort: number): Promise<number | null> {
+  if (isDevelopment()) {
+    try {
+      const binding = await loadDevelopmentBinding()
+      return await probeHub(binding.port) ? binding.port : null
+    } catch { return null }
+  }
   const ports = Array.from({ length: PORT_RANGE }, (_, i) => basePort + i).filter(
     (p) => p <= 65535,
   )
@@ -41,6 +52,7 @@ export async function findCompatibleHub(
   basePort: number,
   targetPort: number,
 ): Promise<number | null> {
+  if (isDevelopment()) return discoverHub(basePort)
   if (await probeHub(targetPort)) return targetPort
   return discoverHub(basePort)
 }

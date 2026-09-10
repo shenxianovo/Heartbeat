@@ -18,6 +18,59 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
 {
     private const string SecondHostIdentity = "external-host-b";
 
+    [Fact]
+    public async Task DevelopmentPackagePreparation_PreservesInstanceConfigAndStreamsAcrossRestart()
+    {
+        await using var fixture = await HandlerFixture.CreateAsync();
+        var session = await fixture.ReadyAsync();
+        var before = Assert.Single(fixture.Runtime.ListInstances());
+        Assert.Throws<InvalidOperationException>(() =>
+            fixture.Runtime.PrepareExternalHostPackage(fixture.Package, fixture.Subject));
+        await fixture.RestartHostAsync();
+        using var copy = ReferenceCollectorPackageCopy.Create(fixture.Package.PackageDirectory);
+        var manifest = copy.ReadManifest();
+        manifest["version"] = "0.1.99";
+        copy.WriteManifest(manifest);
+        var candidate = fixture.Installations.Install(copy.Path).Package;
+        var updated = fixture.Runtime.PrepareExternalHostPackage(candidate, fixture.Subject);
+        Assert.Equal(before.CollectorInstanceId, updated.CollectorInstanceId);
+        Assert.Equal(before.Spec.Config.GetRawText(), updated.Spec.Config.GetRawText());
+        Assert.Equal(before.Spec.SpecRevision, updated.Spec.SpecRevision);
+        Assert.Equal("0.1.99", updated.PackageVersion);
+        await fixture.RestartHostAsync();
+        Assert.Equal(updated.PackageContentHash, Assert.Single(fixture.Runtime.ListInstances()).PackageContentHash);
+        fixture.Package = candidate;
+        var reconnected = await fixture.ReadyAsync();
+        Assert.Equal(session.StreamId, reconnected.StreamId);
+    }
+
+
+    [Fact]
+    public async Task ProfileBinding_RejectsLegacyAndOtherProfilesForEveryOperation()
+    {
+        await using var fixture = await HandlerFixture.CreateAsync();
+        var binding = new ExternalHostProfileBinding(Guid.NewGuid().ToString("N"), new string('a', 64), 32101);
+        using var handler = new ExternalHostCollectorProtocolHandler(fixture.Runtime,
+            new RecordingDeclarationStore(), fixture.Installations, () => fixture.Subject,
+            new ExternalHostProtocolBindingOptions { ProfileBinding = binding });
+        foreach (var suffix in new[] { "", "/hello", "/session/facts", "/session/gap", "/session/renew" })
+        foreach (var prefix in new[] { ExternalHostCollectorProtocolHandler.RoutePrefix,
+                     binding.RoutePrefix.Replace(new string('a', 64), new string('b', 64)),
+                     binding.RoutePrefix.Replace(binding.ProfileId, Guid.NewGuid().ToString("N")) })
+            Assert.Equal(404, (await handler.HandleAsync("POST", prefix + suffix, Stream.Null))!.StatusCode);
+        var discovery = await handler.HandleAsync("GET", binding.RoutePrefix, Stream.Null);
+        Assert.Equal(200, discovery!.StatusCode);
+        Assert.Equal(binding.ProfileId, JsonNode.Parse(discovery.Body)!["profileId"]!.GetValue<string>());
+        var selected = JsonNode.Parse(discovery.Body)!["instances"]![0]!;
+        Assert.Equal(fixture.Package.PackageContentHash, selected["packageContentHash"]!.GetValue<string>());
+        Assert.Equal(0, selected["status"]!["connectedExternalHosts"]!.GetValue<int>());
+        await fixture.ReadyAsync();
+        var ready = await handler.HandleAsync("GET", binding.RoutePrefix, Stream.Null);
+        Assert.Equal(1, JsonNode.Parse(ready!.Body)!["instances"]![0]!["status"]!["connectedExternalHosts"]!.GetValue<int>());
+        Assert.Empty(fixture.Sink.ReadBatch());
+    }
+
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -449,7 +502,7 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
         public ExternalHostCollectorProtocolHandler Handler { get; private set; }
         public CollectorPackageInstallations Installations { get; }
         public CollectorPackageReference Reference { get; }
-        public LocalCollectorPackage Package { get; }
+        public LocalCollectorPackage Package { get; set; }
         public SegmentIngestService Sink { get; }
         public SubjectReference Subject { get; } =
             new(Guid.CreateVersion7(), SubjectKind.Machine);

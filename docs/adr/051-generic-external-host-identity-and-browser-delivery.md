@@ -2,6 +2,10 @@
 
 ## Status: Accepted
 
+2026-09-10：[ADR-057](057-development-external-host-profile-binding.md) 为独立开发 Profile 增加通用连接绑定，
+并允许保留身份的本地启动前包选择。下文“不支持更新/需卸载再安装”的范围现限定于生产 Marketplace，
+不再用于开发迭代；不恢复候选/LKG 或生产自动更新。
+
 ## Date: 2026-09-04
 
 ## Context

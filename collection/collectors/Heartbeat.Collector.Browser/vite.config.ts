@@ -1,9 +1,11 @@
 import { defineConfig } from 'vitest/config'
 import { copyFileSync, cpSync, rmSync } from 'node:fs'
 
+const outputDirectory = process.env.HEARTBEAT_BROWSER_BUILD_DIR ?? 'dist'
+
 export default defineConfig({
   build: {
-    outDir: 'dist',
+    outDir: outputDirectory,
     emptyOutDir: true,
     target: 'es2022',
     minify: false,
@@ -16,7 +18,8 @@ export default defineConfig({
     {
       name: 'copy-manifest',
       closeBundle() {
-        copyFileSync('manifest.json', 'dist/manifest.json')
+        copyFileSync('manifest.json', `${outputDirectory}/manifest.json`)
+        if (process.env.HEARTBEAT_BROWSER_BUILD_DIR) return
         rmSync('Package/browser-extension', { recursive: true, force: true })
         cpSync('dist', 'Package/browser-extension', { recursive: true })
       },

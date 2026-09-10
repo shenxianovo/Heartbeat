@@ -1,4 +1,24 @@
 import { l as loadConfig } from "./assets/config-CudPlTIo.js";
+const isDevelopment = () => false;
+async function loadDevelopmentBinding() {
+  const response = await fetch(chrome.runtime.getURL("desktop-binding.json"), { cache: "no-store" });
+  if (!response.ok) throw new Error("Development Desktop binding is unavailable");
+  const binding = await response.json();
+  if (!/^[a-f0-9]{32}$/.test(binding.profileId) || !/^[a-f0-9]{64}$/.test(binding.token) || !Number.isInteger(binding.port) || binding.port < 1024 || binding.port > 65535)
+    throw new Error("Development Desktop binding is invalid");
+  throw new Error("Development extension updated; Reload before reconnecting");
+}
+function bindingRoute(binding) {
+  return `/v1/collector-bindings/${binding.profileId}/${binding.token}`;
+}
+async function protocolFetch(port, suffix, init) {
+  let route = "/v1/collector-protocol/external-host";
+  return fetch(`http://127.0.0.1:${port}${route}${suffix}`, {
+    ...init,
+    redirect: "error",
+    signal: init.signal ?? AbortSignal.timeout(1e4)
+  });
+}
 const rotateAfterMilliseconds = 828e5;
 const rotationPolicy = {
   rotateAfterMilliseconds
@@ -173,7 +193,6 @@ function detectBrowserAppIdentity(signals) {
   if (signals.platform === "mac") return browser === "chrome" ? "mac:com.google.chrome" : "mac:com.microsoft.edgemac";
   return void 0;
 }
-const ROUTE = "/v1/collector-protocol/external-host";
 async function browserPackageReference() {
   const response = await fetch(chrome.runtime.getURL("collector-artifact-ref.json"));
   if (!response.ok) throw new Error("Browser Package metadata is unavailable");
@@ -221,7 +240,7 @@ function acknowledgedSnapshotIds(snapshots, acknowledgement) {
 }
 async function openBrowserProtocolSession(port, appIdentityKey, externalHostIdentity, attempt, applySpec) {
   try {
-    const hello = await fetch(`http://127.0.0.1:${port}${ROUTE}/hello`, {
+    const hello = await protocolFetch(port, "/hello", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(message(
@@ -252,8 +271,9 @@ async function openBrowserProtocolSession(port, appIdentityKey, externalHostIden
     ) || !isUuidV7(acceptedMessage.body.activationId) || acceptedMessage.body.selectedProtocolMajor !== 1 || acceptedMessage.body.selectedCapabilities?.["facts.segment"] !== 1 || acceptedMessage.body.selectedCapabilities?.["diagnostics.stream-gap"] !== 1)
       return "rejected";
     const accepted = acceptedMessage.body;
-    const initialize = await fetch(
-      `http://127.0.0.1:${port}${ROUTE}/${accepted.activationId}/initialize`,
+    const initialize = await protocolFetch(
+      port,
+      `/${accepted.activationId}/initialize`,
       { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
     );
     if (!initialize.ok) return "rejected";
@@ -272,8 +292,9 @@ async function openBrowserProtocolSession(port, appIdentityKey, externalHostIden
     if (positiveInteger(initialized.limits?.maxFactsPerBatch) === void 0 || positiveInteger(initialized.limits?.maxBatchBytes) === void 0)
       return "rejected";
     await applySpec?.({ enabled: true, flushPeriodMilliseconds });
-    const initializedAck = await fetch(
-      `http://127.0.0.1:${port}${ROUTE}/${accepted.activationId}/initialized`,
+    const initializedAck = await protocolFetch(
+      port,
+      `/${accepted.activationId}/initialized`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -288,8 +309,9 @@ async function openBrowserProtocolSession(port, appIdentityKey, externalHostIden
       }
     );
     if (!initializedAck.ok) return "rejected";
-    const streams = await fetch(
-      `http://127.0.0.1:${port}${ROUTE}/${accepted.activationId}/streams`,
+    const streams = await protocolFetch(
+      port,
+      `/${accepted.activationId}/streams`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -317,8 +339,9 @@ async function openBrowserProtocolSession(port, appIdentityKey, externalHostIden
     const opened = openedMessage.body;
     const stream = opened.streams.tabs;
     if (!stream?.streamId) return "rejected";
-    const ready = await fetch(
-      `http://127.0.0.1:${port}${ROUTE}/${accepted.activationId}/ready`,
+    const ready = await protocolFetch(
+      port,
+      `/${accepted.activationId}/ready`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -360,8 +383,9 @@ async function openBrowserProtocolSession(port, appIdentityKey, externalHostIden
 }
 async function renewBrowserProtocolSession(session) {
   try {
-    const response = await fetch(
-      `http://127.0.0.1:${session.port}${ROUTE}/${session.activationId}/renew`,
+    const response = await protocolFetch(
+      session.port,
+      `/${session.activationId}/renew`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -395,8 +419,9 @@ async function publishBrowserFacts(session, snapshots, previousAttempt, persistA
   const attempt = reusableAttempt ?? { activationId: session.activationId, messageId: uuidv7(), snapshots: batch };
   await persistAttempt?.(attempt);
   try {
-    const response = await fetch(
-      `http://127.0.0.1:${session.port}${ROUTE}/${session.activationId}/facts`,
+    const response = await protocolFetch(
+      session.port,
+      `/${session.activationId}/facts`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -500,8 +525,9 @@ async function reportBrowserGap(session, gap, persistAttempt) {
   const attempt = gap.activationId === session.activationId && gap.messageId !== void 0 ? gap : { ...gap, activationId: session.activationId, messageId: uuidv7() };
   await persistAttempt?.(attempt);
   try {
-    const response = await fetch(
-      `http://127.0.0.1:${session.port}${ROUTE}/${session.activationId}/gap`,
+    const response = await protocolFetch(
+      session.port,
+      `/${session.activationId}/gap`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -598,12 +624,16 @@ const PORT_RANGE = 10;
 const PROBE_TIMEOUT_MS = 1500;
 async function probeHub(port) {
   try {
-    const res = await fetch(`http://127.0.0.1:${port}/v1/collector-protocol/external-host`, {
+    const binding = isDevelopment() ? await loadDevelopmentBinding() : void 0;
+    if (binding && port !== binding.port) ;
+    const route = binding ? bindingRoute(binding) : "/v1/collector-protocol/external-host";
+    const res = await fetch(`http://127.0.0.1:${port}${route}`, {
+      redirect: "error",
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS)
     });
     if (!res.ok) return false;
     const body = await res.json();
-    return body.binding === "external-host" && Array.isArray(body.protocolMajors) && body.protocolMajors.includes(1);
+    return (!binding || body.profileId === binding.profileId) && body.binding === "external-host" && Array.isArray(body.protocolMajors) && body.protocolMajors.includes(1);
   } catch {
     return false;
   }

@@ -39,6 +39,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    ports:
+      - "127.0.0.1:18080:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=heartbeat;Username=heartbeat;Password=devlocal"
@@ -71,6 +73,8 @@ services:
       dockerfile: collection/hub/Heartbeat.Collection.Headless/Dockerfile
     environment:
       HEARTBEAT_API_BASE_URL: http://backend:8080
+    ports:
+      - "127.0.0.1:18081:8080"
     volumes:
       - type: bind
         source: ${HEADLESS_CONFIG_PATH:-./.local/heartbeat-headless.json}

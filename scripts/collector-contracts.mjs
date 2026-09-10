@@ -133,7 +133,7 @@ function includeCurrentTestPlatform(manifest) {
   }
 }
 
-function stagePackage(name, destination, includeTestPlatform = false, version) {
+function stagePackage(name, destination, includeTestPlatform = false, version, browserExtension) {
   const source = packageSources[name]
   if (!source) throw new Error(`unknown package '${name}'`)
   const output = resolve(destination)
@@ -144,6 +144,10 @@ function stagePackage(name, destination, includeTestPlatform = false, version) {
   if (includeTestPlatform) includeCurrentTestPlatform(manifest)
   if (version !== undefined) manifest.version = version
   if (name === 'browser') {
+    if (browserExtension) {
+      rmSync(join(output, 'browser-extension'), { recursive: true, force: true })
+      cpSync(resolve(browserExtension), join(output, 'browser-extension'), { recursive: true })
+    }
     const extensionManifestPath = join(output, 'browser-extension/manifest.json')
     const extensionManifest = readJson(extensionManifestPath)
     extensionManifest.version = manifest.version
@@ -176,8 +180,10 @@ try {
   } else if (command === 'stage' && args.length >= 2) {
     let includeTestPlatform = false
     let version
+    let browserExtension
     for (let index = 2; index < args.length; index++) {
       if (args[index] === '--include-current-test-platform') includeTestPlatform = true
+      else if (args[index] === '--browser-extension' && args[0] === 'browser' && args[index + 1]) browserExtension = args[++index]
       else if (args[index] === '--version' && args[0] === 'browser' && version === undefined) {
         version = args[++index]
         if (!/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(version ?? '') ||
@@ -185,9 +191,9 @@ try {
           throw new Error('Browser version must be stable X.Y.Z, each part <= 65535, and nonzero')
       } else throw new Error(`unsupported stage option ${args[index]}`)
     }
-    stagePackage(args[0], args[1], includeTestPlatform, version)
+    stagePackage(args[0], args[1], includeTestPlatform, version, browserExtension)
   } else {
-    throw new Error('usage: collector-contracts.mjs check | stage <browser|system|reference-fixture> <output> [--include-current-test-platform] [--version X.Y.Z (browser only)]')
+    throw new Error('usage: collector-contracts.mjs check | stage <browser|system|reference-fixture> <output> [--include-current-test-platform] [--version X.Y.Z (browser only)] [--browser-extension PATH (browser only)]')
   }
 } catch (error) {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)

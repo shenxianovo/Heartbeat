@@ -5,7 +5,7 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "lib": ["ES2022", "DOM"],
-    "types": ["chrome", "node"],
+    "types": ["chrome", "node", "vite/client"],
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,

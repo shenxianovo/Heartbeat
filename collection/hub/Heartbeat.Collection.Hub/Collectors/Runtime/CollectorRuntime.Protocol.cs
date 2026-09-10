@@ -198,6 +198,7 @@ public sealed partial class CollectorRuntime
                         activation),
                     _options.TimeProvider,
                     drainBudget ?? _options.InProcessDrainGracePeriod);
+                _preparationClosed = true;
                 _activationLifetimes.Add(activationId, lifetime);
                 lifetimeCreated?.Invoke(lifetime);
             }

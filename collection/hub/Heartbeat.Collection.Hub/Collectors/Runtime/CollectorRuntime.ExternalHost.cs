@@ -143,6 +143,7 @@ public sealed partial class CollectorRuntime
                 () => CompleteExternalHostActivationLifetime(activationId),
                 _options.TimeProvider,
                 _options.InProcessDrainGracePeriod);
+            _preparationClosed = true;
             _activationLifetimes.Add(activationId, lifetime);
             _pendingExternalHostActivations.Add(
                 activationId,

@@ -39,9 +39,11 @@ import { l as loadConfig, s as saveConfig, D as DEFAULT_CONFIG } from "./assets/
 const portInput = document.getElementById("port");
 const saveButton = document.getElementById("save");
 const status = document.getElementById("status");
-void loadConfig().then((c) => {
-  portInput.value = String(c.port);
-});
+{
+  void loadConfig().then((c) => {
+    portInput.value = String(c.port);
+  });
+}
 saveButton.addEventListener("click", () => {
   const port = Number(portInput.value);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {

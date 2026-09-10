@@ -8,6 +8,7 @@ using Heartbeat.Collection.Hub.Time;
 // Collector-owned cross-language fixture. Production hosts never reference this executable.
 var package = LocalCollectorPackage.Load(args[0]);
 var dataDirectory = args[1];
+var profileBinding = args.Length > 2 ? ExternalHostProfileBinding.Read(args[2]) : null;
 var installations = new CollectorPackageInstallations(Path.Combine(dataDirectory, "packages"));
 installations.Install(package.PackageDirectory);
 var subject = new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine);
@@ -21,7 +22,7 @@ var instance = runtime.CreateInstance(package, subject,
 var handler = OpenHandler();
 var builder = WebApplication.CreateBuilder(Array.Empty<string>());
 builder.Logging.ClearProviders();
-builder.WebHost.UseUrls("http://127.0.0.1:0");
+builder.WebHost.UseUrls($"http://127.0.0.1:{profileBinding?.Port ?? 0}");
 await using var app = builder.Build();
 app.MapGet("/test/status", () =>
 {
@@ -69,7 +70,8 @@ await handler.DisposeAsync();
 await runtime.DisposeAsync();
 
 CollectorRuntime OpenRuntime() => CollectorRuntime.Open(Path.Combine(dataDirectory, "runtime.json"), sink);
-ExternalHostCollectorProtocolHandler OpenHandler() => new(runtime, new Declarations(), installations, () => subject);
+ExternalHostCollectorProtocolHandler OpenHandler() => new(runtime, new Declarations(), installations, () => subject,
+    new ExternalHostProtocolBindingOptions { ProfileBinding = profileBinding });
 
 sealed class Declarations : ICollectorDeclarationStore
 {
