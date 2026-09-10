@@ -7,7 +7,7 @@ FOI 可以是临时对象：Browser 用窗口号维护并行活动，关闭后�
 用户最新反馈指出：承认对象和关系的业务语义，不等于需要统一登记全部可观测对象。
 下文关于三表方案的确认记录是讨论历史，不再是当前实施基线；共享上下文也不必关联统一 Objects 表。
 领域决定见 [ADR-056](../adr/056-observation-objects-and-contexts.md)；[存储候选](observation-storage-design.md)
-保留字段推演和代码核对证据，代码及数据库未修改。
+保留字段推演和代码核对证据；该存储候选未实施，数据库未修改。
 
 ## 当前工作：运行模型验证
 
@@ -16,14 +16,19 @@ SystemActivityModel 判定本机桌面的活动转场，AppMonitorService 负责
 对象身份由当前采集路径的设备绑定提供，不新增对象登记、协议字段或数据库实体。
 自动验证与后续真机观察分别记录。以下 Browser 原型作为前置演练保留。
 
-第二步已将 Browser 的单窗口活动判定提取为 `window-activity.ts`，现有 fold 继续管理 Segment，
+第二步已将 Browser 的单窗口活动判定提取为 `window-activity.ts`，由 fold 将活动变化映射为 Segment，
 保留单份会话状态和原协议输出。106 项测试通过；本地开发栈已确认新包连接、双窗口并行及页面切换，
 用户已完成关闭/重开窗口的真机验收，详见 [Browser 实施记录](../../.scratch/observation-model-refactor/issues/02-browser-window-activity.md)。
+
+随后已接入 Browser 内部的最小 Segment SDK，由它管理事实身份、起点、快照、轮转与会话状态恢复；
+fold 继续编排业务变化，交付与协议保持现状。108 项测试及构建通过，详见
+[SDK 实施记录](../../.scratch/collector-segment-sdk/PRD.md)。这不表示完整跨 Collector SDK 已完成。
+目前已完成的是 System、Browser 的运行模型改造；VRChat 账号活动和本人步数尚未按新模型验证。
 
 Browser 现有 `FoldState.open[windowId]` 已承担按临时窗口维护活动的职责，无需额外创建通用 FOI 类或登记服务。
 2026-09-10 以现有 `fold.ts` 制作独立原型，纯逻辑演练验证双窗口并行、同窗口页面切换、关闭后另开窗口。
 演练观察到关闭窗口移除运行状态，但最终 SegmentSnapshot 已输出；再次打开同页使用新的活动身份。
-输出仍为现有 Browser 形状，未改主程序、SDK、协议或数据库。
+该原型输出仍为现有 Browser 形状，当时未改主程序、SDK、协议或数据库。
 
 原型与证据保存在 `codex/observation-runtime-prototype` 分支，入口见
 [运行模型原型记录](../../.scratch/observation-runtime-prototype/PRD.md)。此验证只覆盖 Browser 的运行语义，
@@ -36,7 +41,8 @@ Browser 现有 `FoldState.open[windowId]` 已承担按临时窗口维护活动�
 - 观测模型独立于 Facts 的存储模型推导。Subject 是旧术语；不以它的类型、归属粒度或一实例一 Subject 限制新模型。
 - Stream 属于后续交付与组织设计，Payload 是事实内部的内容承载；两者不与观测对象作为同层概念竞争。
 - 用户明确允许“先破后立”，本轮不再优先寻找兼容旧 Subject 的表示方案。
-- 继续保留 Segment、Event、Measurement 三类 Facts 的基础方向；SDK 与协议设计暂停。本轮没有修改实现或数据库。
+- 继续保留 Segment、Event、Measurement 三类 Facts 的基础方向；模型讨论时曾暂停 SDK 与协议设计。
+  随后已完成上述运行模型改造及 Browser 最小 Segment SDK；协议与数据库未改。
 - 用户随后确认下文最小观测模型，进入对象引用与关系设计。对象、观测内容、观测者、来源、结果、时间是语义角色，不直接对应表或必填协议字段。
 - 用户确认对象引用以作用域与对象标识辨认对象、用具体业务关系关联对象，并允许一条事实的结果引用其他对象；进入观测模型与 Facts 的连接设计。
 - 用户确认每条 Fact 应能还原直接对象、观测内容、观测者及必要来源，并由家族表达时间与结果；进入具体存储关系设计。这不等于预先确认新增上下文表。
@@ -391,7 +397,7 @@ SDK 后续可以用自己的交付组织，但传输连接或批次不再决定�
 
 现有 glossary 的 Subject、ADR-041 的“一实例一 Subject”、ADR-055 的 Stream → Subject
 是旧实现与已记录决策的描述。本轮按用户要求重开观测归属设计，不将这些关系作为新概念模型的前提。
-替代方向已由 ADR-056 记录，字段与映射已整理，但尚未修改运行中的实现或执行迁移。
+替代方向已由 ADR-056 记录；System、Browser 已拆分运行时观测职责，但旧存储关系尚未替换或迁移。
 
 对象引用、业务关系与 Fact 所需观测上下文的业务模型保留。
 对旧三表候选已做过以下准备，但它们不构成继续建设统一对象库的理由：
@@ -400,7 +406,7 @@ SDK 后续可以用自己的交付组织，但传输连接或批次不再决定�
 2. 给出旧 Subjects/Streams/家族事实到新关系的映射，处理 Browser 窗口身份与事实身份作用域，并同步替代的 ADR 条款。
 
 以 System、Browser、VRChat 的完整记录检验映射；微信步数用于检验模型表达能力，仍不预建 Measurement 表。
-下一步优先运行与验证 Collector 的观测过程；结合实际输出与查询，判断哪些信息需要保存。
-统一对象登记、关系表、上下文外键替换及迁移暂停，SDK/协议不在本轮改动。
+后续继续用真实 Collector 的观测过程检验模型；结合实际输出与查询，判断哪些信息需要保存。
+统一对象登记、关系表、上下文外键替换及迁移仍暂停；SDK 仅完成上述 Browser 最小模块，协议改造后置。
 
-参考：[FOI 标准研究](feature-of-interest-research.md)、[SDK 讨论（暂停）](collector-sdk-design.md)。
+参考：[FOI 标准研究](feature-of-interest-research.md)、[SDK 讨论与当前实施范围](collector-sdk-design.md)。

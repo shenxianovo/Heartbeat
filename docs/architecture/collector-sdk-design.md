@@ -2,18 +2,27 @@
 
 本文件记录 2026-09-09 起逐项确认的设计，不代表当前实现已经完成，也不作为整套协议重写的授权。
 
-## 当前状态：暂停 SDK 与协议设计
+## 当前状态：Browser 最小 Segment SDK 已实现，协议改造后置
 
 2026-09-10：观测模型保留，统一 Objects/ObjectRelations 存储方案退回待评估；
 [存储候选](observation-storage-design.md)已暂停作为实施基线。后续 SDK 以直接对象及观测语义为输入，
 不预设每个对象都需要统一登记；本文件旧 Subject/Stream 示例不再限制新接口。
-当前仍未实施 SDK 或协议变更。
+System 与 Browser 观测模型验收后，用户已授权提炼 Browser 的最小 Segment SDK。
+当前实现位于 Browser 的 `src/sdk/segments.ts`：startSegment、update、observe、end 及会话检查点恢复。
+Browser 只提供活动读数和观测时间，不再生成 Id、计算起点或轮转；修订编码、Stream、ACK、重试
+沿用当前 delivery/protocol 模块，未改协议或 Facts 存储。这一步尚不是独立发布的跨 Collector SDK。
+
+验证：108 项 Browser 测试通过，本地自动 Reload 后恢复精确包连接、双窗口快照增长和已有记录上传确认。
+完整开发 Reload 实测重新开始活动，不作为同一 Fact 续接的证据；保存状态的恢复由回归测试覆盖。
+详情见 [最小 Segment SDK 实施记录](../../.scratch/collector-segment-sdk/PRD.md)。
+
+以下保留此前讨论过程，其中“暂停”是当时阶段的决定；当前只推进上述最小范围。
 
 后续已确认：直接观测对象的业务模型独立推导，用户允许先破后立，不再用旧 Subject 的类型与归属约束候选设计。下文依赖旧 Subject/Stream 的具体解释保留为讨论历史，待模型确定后重审；SDK 管理交付的目标不变。
 
 用户要求先参考传感器领域的 Feature of Interest，厘清观测模型，再继续 SDK。
 以下已讨论的开发体验保留为历史决定，但不据此推进接口、Stream 划分、协议或持久化改造。
-先以设备活动、具体浏览器窗口、VRChat 账号活动和本人步数检验对象、属性、结果、时间及观测来源的含义。
+设备活动、具体浏览器窗口已完成运行模型改造；VRChat 账号活动和本人步数继续作为后续使用场景。
 已有 Facts 存储保持不动；若概念模型暴露其表达限制，明确列出差距后讨论，不静默增加字段或沿用未经确认的假设。
 
 模型阶段按以下顺序推进：先核对标准概念，再为每个真实场景写清“哪个对象的什么属性，在什么时间得到什么结果、依据什么观测”，随后处理对象身份与关联，最后对照现有 Subject/AppIdentity/Stream/Facts 的映射与差距。
@@ -77,7 +86,7 @@ FactStream 继续承担 Facts 模型中的归属关系，由 SDK 管理；Collec
 ## 相关文档
 
 - [Feature of Interest 标准研究](feature-of-interest-research.md) — 标准定义、适用边界及本项目场景推演。
-- [设备、账号与本人数据的观测模型建议](collector-observation-model-proposal.md) — 用户暂停访谈后请求的完整建议与现状差距，尚未作为已确认设计。
+- [设备、账号与本人数据的观测模型建议](collector-observation-model-proposal.md) — 观测业务模型已确认，统一对象存储部分保留为已暂停的历史候选。
 - [Collection 术语](../../collection/CONTEXT.md)
 - [ADR-017：轻薄采集器与本地 Hub 的初始目标](../adr/017-activity-segment-pluggable-collectors.md)
 - [ADR-040：现有 Collector Runtime 与协议决定](../adr/040-collector-runtime-and-protocol-foundation.md)

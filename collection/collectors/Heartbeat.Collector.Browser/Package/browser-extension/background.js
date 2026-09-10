@@ -23,10 +23,6 @@ async function protocolFetch(port, suffix, init) {
     signal: init.signal ?? AbortSignal.timeout(1e4)
   });
 }
-const rotateAfterMilliseconds = 828e5;
-const rotationPolicy = {
-  rotateAfterMilliseconds
-};
 function observeWindow(current, observation, identityKeyOf2) {
   if (observation.kind === "windowClosed") return { kind: "closed" };
   const activity = {
@@ -36,60 +32,6 @@ function observeWindow(current, observation, identityKeyOf2) {
     title: observation.title
   };
   return { kind: current?.identityKey === activity.identityKey ? "updated" : "started", activity };
-}
-const ROTATE_AFTER_MS = rotationPolicy.rotateAfterMilliseconds;
-function emptyState() {
-  return { open: {} };
-}
-function applyEvent(state, ev, deps2) {
-  const cur = state.open[ev.windowId];
-  const change = observeWindow(cur, ev, deps2.identityKeyOf);
-  if (change.kind === "closed") {
-    if (!cur) return { state, out: [] };
-    const open = { ...state.open };
-    delete open[ev.windowId];
-    return { state: { open }, out: [snapshotOf(cur, ev.at, deps2, true)] };
-  }
-  if (change.kind === "updated" && cur) {
-    const open = { ...state.open, [ev.windowId]: { ...cur, ...change.activity } };
-    return { state: { open }, out: [] };
-  }
-  const out = cur ? [snapshotOf(cur, ev.at, deps2, true)] : [];
-  const next = {
-    ...change.activity,
-    id: deps2.newId(),
-    startTime: ev.at
-  };
-  return { state: { open: { ...state.open, [ev.windowId]: next } }, out };
-}
-function flush(state, now, deps2) {
-  const out = [];
-  let open = state.open;
-  let copied = false;
-  for (const [wid, a] of Object.entries(state.open)) {
-    const isFinal = now - a.startTime >= ROTATE_AFTER_MS;
-    out.push(snapshotOf(a, now, deps2, isFinal));
-    if (isFinal) {
-      if (!copied) {
-        open = { ...open };
-        copied = true;
-      }
-      open[Number(wid)] = { ...a, id: deps2.newId(), startTime: now };
-    }
-  }
-  return { state: copied ? { open } : state, out };
-}
-function snapshotOf(a, endMs, deps2, isFinal) {
-  return {
-    id: a.id,
-    source: "browser",
-    identityKey: a.identityKey,
-    title: a.title,
-    startTime: new Date(a.startTime).toISOString(),
-    endTime: new Date(Math.max(endMs, a.startTime)).toISOString(),
-    isFinal,
-    attributes: { url: a.url, domain: deps2.domainOf(a.url), site: deps2.siteOf(a.url), windowId: a.windowId }
-  };
 }
 const identityQueryRules = [
   { hosts: ["youtube.com", "www.youtube.com", "m.youtube.com"], path: "/watch", params: ["v"] }
@@ -171,6 +113,55 @@ function siteOf(rawUrl) {
   if (labels.length >= 3 && MULTI_PART_SUFFIXES.has(lastTwo)) return labels.slice(-3).join(".");
   return lastTwo;
 }
+function browserPayloadOf(activity) {
+  return {
+    identityKey: activity.identityKey,
+    title: activity.title,
+    attributes: {
+      url: activity.url,
+      domain: domainOf(activity.url),
+      site: siteOf(activity.url),
+      windowId: activity.windowId
+    }
+  };
+}
+function emptyState() {
+  return { open: {} };
+}
+function applyEvent(state, ev, deps2) {
+  const cur = state.open[ev.windowId];
+  const change = observeWindow(cur, ev, deps2.identityKeyOf);
+  if (change.kind === "closed") {
+    if (!cur) return { state, out: [] };
+    const open = { ...state.open };
+    delete open[ev.windowId];
+    return { state: { open }, out: [deps2.segments.restore(cur).end(ev.at)] };
+  }
+  if (change.kind === "updated" && cur) {
+    const open = { ...state.open, [ev.windowId]: deps2.segments.restore(cur).update(change.activity).state };
+    return { state: { open }, out: [] };
+  }
+  const out = cur ? [deps2.segments.restore(cur).end(ev.at)] : [];
+  const next = deps2.segments.startSegment({ start: ev.at, payload: change.activity }).state;
+  return { state: { open: { ...state.open, [ev.windowId]: next } }, out };
+}
+function flush(state, observedUntil, deps2) {
+  const out = [];
+  let open = state.open;
+  for (const [wid, activity] of Object.entries(state.open)) {
+    const segment = deps2.segments.restore(activity);
+    out.push(...segment.observe(observedUntil));
+    if (segment.state !== activity) {
+      if (open === state.open) open = { ...open };
+      open[Number(wid)] = segment.state;
+    }
+  }
+  return { state: open === state.open ? state : { open }, out };
+}
+const rotateAfterMilliseconds = 828e5;
+const rotationPolicy = {
+  rotateAfterMilliseconds
+};
 function uuidv7(nowMs = Date.now()) {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
@@ -185,6 +176,43 @@ function uuidv7(nowMs = Date.now()) {
   bytes[8] = bytes[8] & 63 | 128;
   const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+const ROTATE_AFTER_MS = rotationPolicy.rotateAfterMilliseconds;
+function createSegmentSdk(options) {
+  const newId = options.newId ?? uuidv7;
+  function snapshot(state, end, isFinal) {
+    return {
+      ...options.payloadOf(state),
+      id: state.id,
+      source: options.source,
+      startTime: new Date(state.startTime).toISOString(),
+      endTime: new Date(Math.max(end, state.startTime)).toISOString(),
+      isFinal
+    };
+  }
+  function restore(state) {
+    const segment = {
+      get state() {
+        return state;
+      },
+      update(payload) {
+        state = { ...payload, id: state.id, startTime: state.startTime };
+        return segment;
+      },
+      observe(observedUntil) {
+        const rotate = observedUntil - state.startTime >= ROTATE_AFTER_MS;
+        const out = [snapshot(state, observedUntil, rotate)];
+        if (rotate) state = { ...state, id: newId(), startTime: observedUntil };
+        return out;
+      },
+      end: (end) => snapshot(state, end, true)
+    };
+    return segment;
+  }
+  function startSegment({ start, payload }) {
+    return restore({ ...payload, id: newId(), startTime: start });
+  }
+  return { startSegment, restore };
 }
 function detectBrowserAppIdentity(signals) {
   if (signals.hasBraveApi) return void 0;
@@ -1110,10 +1138,8 @@ const STATE_KEY = "foldState";
 const ALARM_NAME = "heartbeat-flush";
 const DEVELOPMENT_ALARM = "heartbeat-development-update";
 const deps = {
-  newId: uuidv7,
-  identityKeyOf,
-  domainOf,
-  siteOf
+  segments: createSegmentSdk({ source: "browser", payloadOf: browserPayloadOf }),
+  identityKeyOf
 };
 const delivery = createChromeBrowserDelivery();
 let chain = Promise.resolve();

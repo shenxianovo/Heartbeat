@@ -1,20 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyEvent,
+  browserPayloadOf,
   emptyState,
   flush,
-  ROTATE_AFTER_MS,
   type FoldDeps,
 } from '../src/fold'
-import { identityKeyOf, domainOf, siteOf } from '../src/normalize'
+import { identityKeyOf } from '../src/normalize'
+import { createSegmentSdk, ROTATE_AFTER_MS } from '../src/sdk/segments'
 
 function makeDeps(): FoldDeps {
   let n = 0
   return {
-    newId: () => `id-${++n}`,
+    segments: createSegmentSdk({ source: 'browser', payloadOf: browserPayloadOf, newId: () => `id-${++n}` }),
     identityKeyOf,
-    domainOf,
-    siteOf,
   }
 }
 

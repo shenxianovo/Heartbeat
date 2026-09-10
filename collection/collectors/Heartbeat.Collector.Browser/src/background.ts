@@ -6,14 +6,15 @@
 
 import {
   applyEvent,
+  browserPayloadOf,
   emptyState,
   flush,
   type FoldDeps,
   type FoldEvent,
   type FoldState,
 } from './fold'
-import { domainOf, identityKeyOf, siteOf } from './normalize'
-import { uuidv7 } from './ids'
+import { identityKeyOf } from './normalize'
+import { createSegmentSdk } from './sdk/segments'
 import { createChromeBrowserDelivery } from './delivery-chrome'
 import type { BrowserCollectionPolicy } from './delivery'
 import { isDevelopment, reloadDevelopmentExtensionIfUpdated } from './connection'
@@ -23,10 +24,8 @@ const ALARM_NAME = 'heartbeat-flush'
 const DEVELOPMENT_ALARM = 'heartbeat-development-update'
 
 const deps: FoldDeps = {
-  newId: uuidv7,
+  segments: createSegmentSdk({ source: 'browser', payloadOf: browserPayloadOf }),
   identityKeyOf,
-  domainOf,
-  siteOf,
 }
 
 const delivery = createChromeBrowserDelivery()

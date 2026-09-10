@@ -6,49 +6,46 @@
 //   服务端按 Id upsert 收敛（ADR-018），跨上报周期不碎裂。
 // - 单段生长逼近服务端 MaxDuration（24h）时轮换新 Id，防快照被校验丢弃。
 
-import rotationPolicy from '../../../contracts/segment-rotation-policy.json'
 import { observeWindow, type WindowActivity, type WindowObservation } from './window-activity'
+import { domainOf, siteOf } from './normalize'
+import type { SegmentSdk, SegmentState, SegmentSnapshot as SdkSnapshot } from './sdk/segments'
 
-export interface OpenActivity extends WindowActivity {
-  id: string
-  startTime: number // epoch ms
-}
+export type OpenActivity = SegmentState<WindowActivity>
 
 /** 可 JSON 序列化的全量状态（存 chrome.storage.session，SW 重启不丢）。 */
 export interface FoldState {
   open: Record<number, OpenActivity>
 }
 
-/** 上报形状，字段与 SegmentUploadRequest.ActivitySegmentItem 对齐（hub 反序列化大小写不敏感）。 */
-export interface SegmentSnapshot {
-  id: string
-  source: 'browser'
+/** Browser 只定义事实内容，SDK 补齐身份及时间。 */
+export interface BrowserPayload {
   identityKey: string
   title: string
-  startTime: string // ISO 8601
-  endTime: string
-  /** true 表示 Collector 已确认 Segment 结束；旧缓存缺席时按 false 提升。 */
-  isFinal: boolean
   attributes: { url: string; domain: string; site: string; windowId: number }
 }
 
+export type SegmentSnapshot = SdkSnapshot<BrowserPayload, 'browser'>
 export type FoldEvent = WindowObservation & { at: number }
 
 export interface FoldDeps {
-  newId: () => string
+  segments: SegmentSdk<WindowActivity, BrowserPayload, 'browser'>
   identityKeyOf: (url: string) => string
-  domainOf: (url: string) => string
-  /** 可注册域（深度表 v2 的 site 读数,ADR-030 §5）;空串 = 读数缺席。 */
-  siteOf: (url: string) => string
+}
+
+export function browserPayloadOf(activity: WindowActivity): BrowserPayload {
+  return {
+    identityKey: activity.identityKey,
+    title: activity.title,
+    attributes: {
+      url: activity.url, domain: domainOf(activity.url), site: siteOf(activity.url), windowId: activity.windowId,
+    },
+  }
 }
 
 export interface FoldResult {
   state: FoldState
   out: SegmentSnapshot[]
 }
-
-/** 轮换阈值：低于服务端 MaxDuration（24h），留出上报周期与时钟偏差余量。 */
-export const ROTATE_AFTER_MS = rotationPolicy.rotateAfterMilliseconds
 
 export function emptyState(): FoldState {
   return { open: {} }
@@ -62,57 +59,33 @@ export function applyEvent(state: FoldState, ev: FoldEvent, deps: FoldDeps): Fol
     if (!cur) return { state, out: [] }
     const open = { ...state.open }
     delete open[ev.windowId]
-    return { state: { open }, out: [snapshotOf(cur, ev.at, deps, true)] }
+    return { state: { open }, out: [deps.segments.restore(cur).end(ev.at)] }
   }
 
   // 活动连续时保留 Fact 身份与起点，最新读数随下一次快照上行。
   if (change.kind === 'updated' && cur) {
-    const open = { ...state.open, [ev.windowId]: { ...cur, ...change.activity } }
+    const open = { ...state.open, [ev.windowId]: deps.segments.restore(cur).update(change.activity).state }
     return { state: { open }, out: [] }
   }
 
-  const out = cur ? [snapshotOf(cur, ev.at, deps, true)] : []
-  const next: OpenActivity = {
-    ...change.activity,
-    id: deps.newId(),
-    startTime: ev.at,
-  }
+  const out = cur ? [deps.segments.restore(cur).end(ev.at)] : []
+  const next = deps.segments.startSegment({ start: ev.at, payload: change.activity }).state
   return { state: { open: { ...state.open, [ev.windowId]: next } }, out }
 }
 
-/**
- * 周期快照：为每个进行中的活动发出 EndTime=now 的快照（Id 稳定，服务端 upsert 扩展边界）。
- * 超长活动就地轮换：旧段以最终快照封口，同一活动换新 Id 从 now 续记。
- */
-export function flush(state: FoldState, now: number, deps: FoldDeps): FoldResult {
+/** Browser 的事件订阅仍在观察这些窗口；将已观测时刻交给各自的 Segment。 */
+export function flush(state: FoldState, observedUntil: number, deps: FoldDeps): FoldResult {
   const out: SegmentSnapshot[] = []
   let open = state.open
-  let copied = false
 
-  for (const [wid, a] of Object.entries(state.open)) {
-    const isFinal = now - a.startTime >= ROTATE_AFTER_MS
-    out.push(snapshotOf(a, now, deps, isFinal))
-    if (isFinal) {
-      if (!copied) {
-        open = { ...open }
-        copied = true
-      }
-      open[Number(wid)] = { ...a, id: deps.newId(), startTime: now }
+  for (const [wid, activity] of Object.entries(state.open)) {
+    const segment = deps.segments.restore(activity)
+    out.push(...segment.observe(observedUntil))
+    if (segment.state !== activity) {
+      if (open === state.open) open = { ...open }
+      open[Number(wid)] = segment.state
     }
   }
 
-  return { state: copied ? { open } : state, out }
-}
-
-function snapshotOf(a: OpenActivity, endMs: number, deps: FoldDeps, isFinal: boolean): SegmentSnapshot {
-  return {
-    id: a.id,
-    source: 'browser',
-    identityKey: a.identityKey,
-    title: a.title,
-    startTime: new Date(a.startTime).toISOString(),
-    endTime: new Date(Math.max(endMs, a.startTime)).toISOString(),
-    isFinal,
-    attributes: { url: a.url, domain: deps.domainOf(a.url), site: deps.siteOf(a.url), windowId: a.windowId },
-  }
+  return { state: open === state.open ? state : { open }, out }
 }

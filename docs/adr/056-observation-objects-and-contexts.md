@@ -14,7 +14,8 @@ System 将桌面活动转场规则提取为独立运行模型，再由现有服�
 
 Browser 随后将单窗口页面活动判定提取到 `window-activity.ts`，由现有 `fold.ts` 转换为 Segment。
 并行窗口仍共用原有会话状态 `open[windowId]`，不为了分开观测与 Fact 职责而复制两份运行状态；
-保留字段形状以直接续接 Service Worker / 开发 Reload 前的活动。实机验证范围见
+保留字段形状以恢复仍存在的 Service Worker 会话状态；完整开发 Reload 不承诺延续 FactId。
+实机验证范围见
 [观测模型改造](../../.scratch/observation-model-refactor/PRD.md)。
 
 Facts 继续按 Segment、Event、Measurement 的时间语义组织。输出时保存解释与使用结果所需的
@@ -31,5 +32,7 @@ Facts 继续按 Segment、Event、Measurement 的时间语义组织。输出时�
 不能把语义变化当作纯命名重构。Measurement 仍等待真实来源。
 
 [字段及迁移候选](../architecture/observation-storage-design.md)保留已完成的代码核对，已暂停作为实施基线。
-已上线分表迁移不能替换、旧 Browser 缺少完整窗口身份等证据仍需尊重；SDK/协议设计继续后置。
+已上线分表迁移不能替换、旧 Browser 缺少完整窗口身份等证据仍需尊重。
+System/Browser 观测模型验收后，用户授权从 Browser 提炼最小 Segment SDK；业务观测模型与 Facts
+布局保持原意，协议改造及跨语言公共 SDK 仍后置。实现范围见 [SDK 讨论](../architecture/collector-sdk-design.md)。
 历史决策及运行中的旧模型保留其版本语义。
