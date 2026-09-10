@@ -35,7 +35,9 @@ public sealed partial class FactStore
                 var end = NormalizeTime(item.EndTime)!.Value;
                 if (row is null)
                 {
-                    var app = string.IsNullOrWhiteSpace(item.AppIdentityKey) ? null :
+                    var account = item.Source == "vrchat.account" && stream.Subject.Kind == "account"
+                        ? await new ServiceAccountService(db).ResolveAsync(device.OwnerId, null, stream.SubjectId, CancellationToken.None) : null;
+                    var app = account is not null || string.IsNullOrWhiteSpace(item.AppIdentityKey) ? null :
                         await new AppIdentityService(db).ResolveAsync(item.AppIdentityKey, item.AppDisplayName);
                     var applicationContext = item.Source == "browser" && app is not null
                         ? await new ApplicationContextService(db).ResolveAsync(device.OwnerId, device.Id, app.AppId) : null;
@@ -48,8 +50,8 @@ public sealed partial class FactStore
                         FactId = item.Id,
                         Revision = 1,
                         Source = item.Source,
-                        TargetKind = applicationContext is not null ? "application-context" : item.Source is "system" or "browser" ? "device" : null,
-                        TargetId = applicationContext?.Id ?? (item.Source is "system" or "browser" ? device.Id : null),
+                        TargetKind = account is not null ? "account" : applicationContext is not null ? "application-context" : item.Source is "system" or "browser" ? "device" : null,
+                        TargetId = account?.Id ?? applicationContext?.Id ?? (item.Source is "system" or "browser" ? device.Id : null),
                         AppIdentityId = app?.Id,
                         StartTime = start,
                         EndTime = end,

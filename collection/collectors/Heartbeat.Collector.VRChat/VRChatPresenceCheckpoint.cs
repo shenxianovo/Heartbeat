@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace Heartbeat.Collector.VRChat;
@@ -46,10 +47,19 @@ internal sealed class VRChatPresenceCheckpoint
             return new VRChatPresenceCheckpoint(fullPath, null, [], [], null);
         try
         {
-            var envelope = JsonSerializer.Deserialize<CheckpointEnvelope>(
-                File.ReadAllText(fullPath, Encoding.UTF8),
-                JsonOptions) ?? throw new JsonException("VRChat presence checkpoint is empty.");
-            if (envelope.SchemaVersion is not (1 or 2) || envelope.Active is { IsFinal: true })
+            if (JsonNode.Parse(File.ReadAllText(fullPath, Encoding.UTF8)) is not JsonObject root ||
+                root["SchemaVersion"] is not JsonValue versionValue || !versionValue.TryGetValue<int>(out var version))
+                throw new JsonException("Invalid checkpoint envelope.");
+            if (version is 1 or 2)
+            {
+                if (!File.Exists(fullPath + $".v{version}.bak")) File.Copy(fullPath, fullPath + $".v{version}.bak");
+                var snapshots = new List<JsonNode?> { root["Active"] };
+                if (root["PendingFacts"] is JsonArray pending) snapshots.AddRange(pending);
+                foreach (var node in snapshots.OfType<JsonObject>())
+                    if (node.Remove("IdentityKey", out var oldKey)) node["ActivityKey"] = oldKey;
+            }
+            var envelope = root.Deserialize<CheckpointEnvelope>(JsonOptions) ?? throw new JsonException("VRChat presence checkpoint is empty.");
+            if (envelope.SchemaVersion is not (1 or 2 or 3) || envelope.Active is { IsFinal: true })
                 throw new JsonException("VRChat presence checkpoint is invalid.");
             if (envelope.SchemaVersion == 1
                 && ((envelope.PendingFacts?.Count ?? 0) != 0 || (envelope.PendingGaps?.Count ?? 0) != 0))
@@ -161,7 +171,7 @@ internal sealed class VRChatPresenceCheckpoint
         File.WriteAllText(
             temporary,
             JsonSerializer.Serialize(
-                new CheckpointEnvelope(2, Active, PendingFacts, PendingGaps),
+                new CheckpointEnvelope(3, Active, PendingFacts, PendingGaps),
                 JsonOptions),
             new UTF8Encoding(false));
         try

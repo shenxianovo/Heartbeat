@@ -209,6 +209,11 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
     {
         if (snapshot.ObserverId is null && snapshot.Target is null)
         {
+            if (stream.Source == "vrchat.account" && stream.Subject.Kind == "account")
+            {
+                var account = await new ServiceAccountService(db).ResolveAsync(stream.OwnerId, null, stream.SubjectId, ct);
+                return (stream.Origin == "native" ? stream.CollectorInstanceId : null, "account", account.Id, null);
+            }
             if (stream.Subject.Kind != "machine" || stream.Subject.DeviceId is not { } deviceId)
                 return (null, null, null, appIdentityId);
             if (stream.Source == "system")
@@ -224,6 +229,16 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         if (snapshot.ObserverId is null || snapshot.ObserverId == Guid.Empty || snapshot.Target is null)
             throw new FactIngestException("A Fact requires a valid Observer and Target.");
         var target = snapshot.Target;
+        if (target.Kind == "account")
+        {
+            ServiceAccountReference reference;
+            try { reference = ServiceAccountReference.Parse(target.Reference); }
+            catch (ArgumentException ex) { throw new FactIngestException(ex.Message); }
+            if (appIdentityId is not null)
+                throw new FactIngestException("Account facts cannot claim a machine platform App identity.");
+            var account = await new ServiceAccountService(db).ResolveAsync(stream.OwnerId, reference, stream.SubjectId, ct);
+            return (snapshot.ObserverId, "account", account.Id, null);
+        }
         if (target.Kind == "application-context")
         {
             ApplicationContextReference reference;

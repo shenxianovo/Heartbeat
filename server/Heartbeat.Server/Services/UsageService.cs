@@ -49,7 +49,7 @@ namespace Heartbeat.Server.Services
 
             if (appId.HasValue)
                 query = query.Where(x =>
-                    (x.AppIdentityId != null ? x.AppIdentity!.AppId : x.AppId) == appId.Value);
+                    (x.TargetKind != "account" && x.AppIdentityId != null ? x.AppIdentity!.AppId : x.AppId) == appId.Value);
 
             // 区间重叠语义（ADR-018 §4）：跨窗长段在其覆盖的每个窗口都可见。
             // 下界用 >= 而非 >：零长度点事件恰落在窗口起点时不丢
@@ -66,19 +66,19 @@ namespace Heartbeat.Server.Services
                 .Select(x => new SegmentResponse
                 {
                     ObserverId = x.ObserverId, TargetKind = x.TargetKind, TargetId = x.TargetId,
-                    TargetName = x.TargetKind == "application-context" && x.App != null && x.Device != null ? x.Device.DeviceName + " / " + x.App.DisplayName : x.TargetKind == "device" && x.Device != null ? x.Device.DeviceName : null,
+                    TargetName = x.TargetName ?? (x.TargetKind == "application-context" && x.App != null && x.Device != null ? x.Device.DeviceName + " / " + x.App.DisplayName : x.TargetKind == "device" && x.Device != null ? x.Device.DeviceName : null),
                     Id = x.Id,
                     DeviceId = x.DeviceId,
                     Source = x.Source,
                     IdentityKey = x.IdentityKey,
-                    AppId = x.AppIdentityId != null ? x.AppIdentity!.AppId : x.AppId,
-                    AppKey = x.AppIdentityId != null
+                    AppId = x.TargetKind != "account" && x.AppIdentityId != null ? x.AppIdentity!.AppId : x.AppId,
+                    AppKey = x.TargetKind != "account" && x.AppIdentityId != null
                         ? x.AppIdentity!.App.Key
                         : x.App != null ? x.App.Key : null,
-                    AppDisplayName = x.AppIdentityId != null
+                    AppDisplayName = x.TargetKind != "account" && x.AppIdentityId != null
                         ? x.AppIdentity!.App.DisplayName
                         : x.App != null ? x.App.DisplayName : null,
-                    AppName = x.AppIdentityId != null
+                    AppName = x.TargetKind != "account" && x.AppIdentityId != null
                         ? x.AppIdentity!.App.DisplayName
                         : x.App != null ? x.App.DisplayName : null,
                     AppIdentityId = x.AppIdentityId,

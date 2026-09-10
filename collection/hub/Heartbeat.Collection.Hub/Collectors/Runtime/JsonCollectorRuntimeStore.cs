@@ -9,7 +9,7 @@ namespace Heartbeat.Collection.Hub.Collectors.Runtime;
 
 internal sealed class JsonCollectorRuntimeStore : IDisposable
 {
-    private const int CurrentSchemaVersion = 5;
+    private const int CurrentSchemaVersion = 6;
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -144,6 +144,18 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
                     if (fact["payload"] is { } payload)
                         fact["payload"] = JsonNode.Parse(Heartbeat.Core.Facts.ActivityFactPayload.Normalize(JsonSerializer.SerializeToElement(payload)).GetRawText());
                 }
+            }
+        }
+        if (schemaVersion is >= 1 and <= 5)
+        {
+            root["schemaVersion"] = CurrentSchemaVersion;
+            if (root["streams"] is JsonArray streams && root["facts"] is JsonArray facts)
+            {
+                var segments = streams.OfType<JsonObject>().Where(s => s["factKind"]?.GetValue<string>() == "segment")
+                    .Select(s => s["streamId"]!.GetValue<string>()).ToHashSet();
+                foreach (var fact in facts.OfType<JsonObject>())
+                    if (segments.Contains(fact["streamId"]!.GetValue<string>()) && fact["payload"] is { } payload)
+                        fact["payload"] = JsonNode.Parse(Heartbeat.Core.Facts.ActivityFactPayload.Normalize(JsonSerializer.SerializeToElement(payload)).GetRawText());
             }
         }
         return root.Deserialize<CollectorRuntimeState>(SerializerOptions)
@@ -380,7 +392,7 @@ public sealed class CollectorRuntimeStateException(string message, Exception? in
 
 internal sealed class CollectorRuntimeState
 {
-    public int SchemaVersion { get; init; } = 5;
+    public int SchemaVersion { get; init; } = 6;
     public List<CollectorInstanceState> Instances { get; init; } = [];
     public List<FactStreamState> Streams { get; init; } = [];
     public List<CommittedFactState> Facts { get; init; } = [];

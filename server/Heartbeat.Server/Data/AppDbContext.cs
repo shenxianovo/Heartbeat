@@ -17,6 +17,8 @@ namespace Heartbeat.Server.Data
         public DbSet<FactGap> FactGaps => Set<FactGap>();
         public DbSet<User> Users => Set<User>();
         public DbSet<Device> Devices => Set<Device>();
+        public DbSet<ServiceAccount> ServiceAccounts => Set<ServiceAccount>();
+        public DbSet<ServiceProduct> ServiceProducts => Set<ServiceProduct>();
         public DbSet<ApplicationContextRecord> ApplicationContexts => Set<ApplicationContextRecord>();
         public DbSet<App> Apps => Set<App>();
         public DbSet<AppIdentity> AppIdentities => Set<AppIdentity>();
@@ -105,6 +107,23 @@ namespace Heartbeat.Server.Data
                     .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasIndex(e => e.CurrentAppIdentityId);
+            });
+
+            modelBuilder.Entity<ServiceProduct>(entity =>
+            {
+                entity.HasKey(e => e.ServiceKey);
+                entity.Property(e => e.ServiceKey).HasMaxLength(64);
+                entity.HasOne(e => e.App).WithMany().HasForeignKey(e => e.AppId).OnDelete(DeleteBehavior.Restrict);
+            });
+            modelBuilder.Entity<ServiceAccount>(entity =>
+            {
+                entity.ToTable("ServiceAccounts", table => table.HasCheckConstraint("CK_ServiceAccounts_Identity",
+                    "(\"ServiceAccountId\" IS NOT NULL AND \"LegacySubjectId\" IS NULL) OR (\"ServiceAccountId\" IS NULL AND \"LegacySubjectId\" IS NOT NULL)"));
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.ServiceAccountId).HasMaxLength(256);
+                entity.HasIndex(e => new { e.OwnerId, e.ServiceKey, e.ServiceAccountId }).IsUnique();
+                entity.HasIndex(e => new { e.OwnerId, e.ServiceKey, e.LegacySubjectId }).IsUnique();
+                entity.HasOne(e => e.Service).WithMany().HasForeignKey(e => e.ServiceKey).OnDelete(DeleteBehavior.Restrict);
             });
 
             modelBuilder.Entity<ApplicationContextRecord>(entity =>

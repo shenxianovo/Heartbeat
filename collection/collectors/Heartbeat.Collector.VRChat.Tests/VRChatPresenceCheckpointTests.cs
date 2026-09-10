@@ -10,6 +10,45 @@ public sealed class VRChatPresenceCheckpointTests : IDisposable
         Path.GetTempPath(),
         $"heartbeat-vrchat-presence-{Guid.NewGuid():N}");
 
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("{\"SchemaVersion\":\"2\",\"Active\":null}")]
+    public void MalformedCheckpointEnvelopeIsQuarantined(string json)
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "presence.json");
+        File.WriteAllText(path, json);
+        var recovered = VRChatPresenceCheckpoint.Open(path, DateTimeOffset.UtcNow.AddMinutes(1));
+        Assert.Null(recovered.Active);
+        Assert.Single(Directory.EnumerateFiles(_directory, "presence.json.corrupt-*"));
+    }
+
+    [Fact]
+    public void V2PendingSnapshotReplaysWithoutAssigningCurrentAccount_AndKeepsOriginalBackup()
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "presence.json");
+        var start = new DateTimeOffset(2026, 8, 27, 10, 0, 0, TimeSpan.Zero);
+        var active = Fact(start);
+        var legacy = JsonSerializer.Serialize(new { SchemaVersion = 2, Active = active, PendingFacts = new[] { active }, PendingGaps = Array.Empty<object>() })
+            .Replace("ActivityKey", "IdentityKey");
+        File.WriteAllText(path, legacy);
+        var checkpoint = VRChatPresenceCheckpoint.Open(path, start.AddMinutes(3));
+        var pending = Assert.Single(checkpoint.PendingFacts);
+        Assert.Equal(active.FactId, pending.FactId);
+        Assert.Equal(active.Revision, pending.Revision);
+        Assert.Equal(active.Start, pending.Start);
+        Assert.Equal(active.End, pending.End);
+        Assert.Null(pending.ObservedAccountId);
+        var published = VRChatManagedCollector.ToFact(pending, Guid.NewGuid());
+        Assert.Null(published.Target);
+        Assert.Null(published.ObserverId);
+        Assert.Equal(active.ActivityKey, published.Payload.GetProperty("activityKey").GetString());
+        checkpoint.Acknowledge(pending);
+        Assert.Equal(legacy, File.ReadAllText(path + ".v2.bak"));
+        Assert.Equal(active, VRChatPresenceCheckpoint.Open(path, start.AddMinutes(4)).Active);
+    }
+
     [Fact]
     public void RestartRestoresTheActiveDomainSnapshot()
     {
@@ -98,7 +137,7 @@ public sealed class VRChatPresenceCheckpointTests : IDisposable
         ]);
         var machine = new PresenceStateMachine(ids.Dequeue);
         var checkpoint = VRChatPresenceCheckpoint.Open(path, start);
-        var presence = new VRChatPresence("wrld_alpha", "Alpha", "instance:one");
+        var presence = new VRChatPresence("wrld_alpha", "Alpha", "instance:one", "usr_11111111-1111-4111-8111-111111111111");
         var opened = Assert.Single(machine.Observe(presence, start));
         checkpoint.Stage([opened]);
         checkpoint.Acknowledge(opened);
@@ -129,7 +168,7 @@ public sealed class VRChatPresenceCheckpointTests : IDisposable
     }
 
     [Fact]
-    public void CurrentV1CheckpointLoadsWithoutShrinkingAndRewritesAtomicallyAsV2()
+    public void CurrentV1CheckpointLoadsWithoutShrinkingAndRewritesAtomicallyAsV3()
     {
         Directory.CreateDirectory(_directory);
         var path = Path.Combine(_directory, "presence.json");
@@ -151,7 +190,7 @@ public sealed class VRChatPresenceCheckpointTests : IDisposable
         var finalized = active with { Revision = active.Revision + 1, IsFinal = true };
         checkpoint.Stage([finalized]);
         using var rewritten = JsonDocument.Parse(File.ReadAllText(path));
-        Assert.Equal(2, rewritten.RootElement.GetProperty("SchemaVersion").GetInt32());
+        Assert.Equal(3, rewritten.RootElement.GetProperty("SchemaVersion").GetInt32());
         Assert.Equal(active.End, checkpoint.PendingFacts[0].End);
     }
 

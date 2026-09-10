@@ -25,13 +25,17 @@ public partial class AppDbContext
             context != null ? (long?)context.DeviceId : s.TargetKind == null ? s.Stream.Subject.DeviceId : null }
             equals new { d.OwnerId, Id = (long?)d.Id } into devices
         from device in devices.DefaultIfEmpty()
-        join a in Apps on (context != null ? (long?)context.AppId : s.AppIdentity != null ? s.AppIdentity!.AppId : null)
+        join sa in ServiceAccounts on new { s.OwnerId, Id = s.TargetKind == "account" ? s.TargetId : null }
+            equals new { sa.OwnerId, Id = (long?)sa.Id } into accounts
+        from account in accounts.DefaultIfEmpty()
+        join a in Apps on (account != null ? (long?)account.Service.AppId : context != null ? (long?)context.AppId : s.AppIdentity != null ? s.AppIdentity!.AppId : null)
             equals (long?)a.Id into apps
         from app in apps.DefaultIfEmpty()
         select new ActivitySegment
         {
             Id = s.Id,
             ObserverId = s.ObserverId, TargetKind = s.TargetKind, TargetId = s.TargetId,
+            TargetName = account != null ? account.ServiceAccountId ?? "历史账号（身份未知）" : null,
             OwnerId = s.OwnerId,
             StreamId = s.StreamId,
             FactId = s.FactId,

@@ -138,10 +138,12 @@ public sealed class AppProductReconciliationService(AppDbContext db)
             .Select(x => x.TargetAppId!.Value)
             .Distinct()
             .ToListAsync(cancellationToken);
+        var serviceAppIds = await db.ServiceProducts.Where(s => allSourceIds.Contains(s.AppId))
+            .Select(s => s.AppId).ToListAsync(cancellationToken);
         var drainedSources = sourceApps
             .Where(x => x.Id != 0)
             .Where(x => !remainingCounts.ContainsKey(x.Id))
-            .Where(x => !protectedTargetIds.Contains(x.Id))
+            .Where(x => !protectedTargetIds.Contains(x.Id) && !serviceAppIds.Contains(x.Id))
             .ToList();
         var removableSources = drainedSources
             .Where(x => preserveSourceAppKeys?.Contains(x.Key) != true)
@@ -209,6 +211,14 @@ public sealed class AppProductReconciliationService(AppDbContext db)
         var candidates = identities.Select(x => x.App).DistinctBy(x => x.Id).ToList();
         var byCanonicalKey = await db.Apps.SingleOrDefaultAsync(x => x.Key == product.Key, cancellationToken);
         if (byCanonicalKey is not null && !byCanonicalKey.IsProvisional) return byCanonicalKey;
+
+        // A platform mapping correction cannot implicitly rename a separately service-linked product.
+        var candidateIds = candidates.Select(a => a.Id).ToArray();
+        var serviceAppIds = await db.ServiceProducts.Where(s => candidateIds.Contains(s.AppId))
+            .Select(s => s.AppId).ToListAsync(cancellationToken);
+        candidates.RemoveAll(a => serviceAppIds.Contains(a.Id) && a.Key != product.Key);
+        if (candidates.Count == 0)
+            return byCanonicalKey ?? new App { Key = product.Key, DisplayName = product.DisplayName };
 
         var formal = candidates.Where(x => !x.IsProvisional).OrderBy(x => x.Id).ToList();
         if (formal.Count == 1) return formal[0];

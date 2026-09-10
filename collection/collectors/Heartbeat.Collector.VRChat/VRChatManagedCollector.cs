@@ -222,7 +222,7 @@ internal sealed class VRChatManagedCollector(
         while (_checkpoint!.PendingFacts.Count != 0)
         {
             var fact = _checkpoint.PendingFacts[0];
-            await _activation!.PublishAsync(ToFact(fact), cancellationToken);
+            await _activation!.PublishAsync(ToFact(fact, _activation!.Initialization.CollectorInstanceId), cancellationToken);
             _checkpoint.Acknowledge(fact);
         }
         while (_checkpoint.PendingGaps.Count != 0)
@@ -240,7 +240,7 @@ internal sealed class VRChatManagedCollector(
         while (_checkpoint!.PendingFacts.Count != 0)
         {
             var fact = _checkpoint.PendingFacts[0];
-            await drain.PublishAsync(ToFact(fact), cancellationToken);
+            await drain.PublishAsync(ToFact(fact, _activation!.Initialization.CollectorInstanceId), cancellationToken);
             _checkpoint.Acknowledge(fact);
         }
         while (_checkpoint.PendingGaps.Count != 0)
@@ -251,7 +251,7 @@ internal sealed class VRChatManagedCollector(
         }
     }
 
-    internal static CollectorFact ToFact(VRChatPresenceFact fact) => new(
+    internal static CollectorFact ToFact(VRChatPresenceFact fact, Guid? observerId = null) => new(
         "presence",
         fact.FactId,
         fact.Revision,
@@ -259,13 +259,15 @@ internal sealed class VRChatManagedCollector(
         new CollectorSegmentFactTime(fact.Start, fact.End, fact.IsFinal),
         JsonSerializer.SerializeToElement(new
         {
-            identityKey = fact.IdentityKey,
+            activityKey = fact.ActivityKey,
             title = fact.Title,
             appDisplayName = "VRChat",
             worldId = fact.WorldId,
             worldName = fact.WorldName,
             instanceId = fact.InstanceId
-        }, PayloadJsonOptions));
+        }, PayloadJsonOptions),
+        ObserverId: fact.ObservedAccountId is null ? null : observerId ?? throw new ArgumentException("Observed presence requires Observer identity."),
+        Target: fact.ObservedAccountId is null ? null : new Heartbeat.Core.DTOs.Facts.ServiceAccountReference("vrchat", fact.ObservedAccountId).ToTarget());
 
     private static CollectorStreamGap ToGap(VRChatPresenceRecoveryGap gap) => new(
         gap.GapId,

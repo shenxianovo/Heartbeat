@@ -2059,9 +2059,10 @@ export class Client {
      * @param start (optional)
      * @param end (optional)
      * @param appId (optional)
+     * @param accountId (optional)
      * @return OK
      */
-    getUserSegmentFacts(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined, appId: number | undefined): Promise<FactResponse[]> {
+    getUserSegmentFacts(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined, appId: number | undefined, accountId: number | undefined): Promise<FactResponse[]> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/facts/segments?";
         if (username === undefined || username === null)
             throw new globalThis.Error("The parameter 'username' must be defined.");
@@ -2082,6 +2083,10 @@ export class Client {
             throw new globalThis.Error("The parameter 'appId' cannot be null.");
         else if (appId !== undefined)
             url_ += "appId=" + encodeURIComponent("" + appId) + "&";
+        if (accountId === null)
+            throw new globalThis.Error("The parameter 'accountId' cannot be null.");
+        else if (accountId !== undefined)
+            url_ += "accountId=" + encodeURIComponent("" + accountId) + "&";
         url_ = url_.replace(/[?&]$/, "");
 
         let options_: RequestInit = {
@@ -2126,9 +2131,10 @@ export class Client {
      * @param start (optional)
      * @param end (optional)
      * @param appId (optional)
+     * @param accountId (optional)
      * @return OK
      */
-    getUserEventFacts(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined, appId: number | undefined): Promise<FactResponse[]> {
+    getUserEventFacts(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined, appId: number | undefined, accountId: number | undefined): Promise<FactResponse[]> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/facts/events?";
         if (username === undefined || username === null)
             throw new globalThis.Error("The parameter 'username' must be defined.");
@@ -2149,6 +2155,10 @@ export class Client {
             throw new globalThis.Error("The parameter 'appId' cannot be null.");
         else if (appId !== undefined)
             url_ += "appId=" + encodeURIComponent("" + appId) + "&";
+        if (accountId === null)
+            throw new globalThis.Error("The parameter 'accountId' cannot be null.");
+        else if (accountId !== undefined)
+            url_ += "accountId=" + encodeURIComponent("" + accountId) + "&";
         url_ = url_.replace(/[?&]$/, "");
 
         let options_: RequestInit = {

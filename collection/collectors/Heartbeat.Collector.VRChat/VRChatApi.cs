@@ -131,7 +131,7 @@ internal sealed class VRChatApiFactory(
                 worldId is "offline" or "private" ||
                 string.IsNullOrWhiteSpace(instanceId))
                 return null;
-            return new VRChatPresence(worldId, null, instanceId);
+            return new VRChatPresence(worldId, null, instanceId, user.Id);
         }
 
         public async Task<string?> GetWorldNameAsync(string worldId, CancellationToken cancellationToken)
@@ -246,7 +246,7 @@ internal sealed class MockVRChatApiFactory(int transientPresenceFailures = 0) : 
             if (Interlocked.Decrement(ref _owner._remainingTransientPresenceFailures) >= 0)
                 throw new VRChatTransientException("Mock transient presence failure.");
             return Task.FromResult<VRChatPresence?>(
-                new VRChatPresence("wrld_mock", null, "instance:mock"));
+                new VRChatPresence("wrld_mock", null, "instance:mock", "usr_11111111-1111-4111-8111-111111111111"));
         }
 
         public Task<string?> GetWorldNameAsync(string worldId, CancellationToken cancellationToken) =>

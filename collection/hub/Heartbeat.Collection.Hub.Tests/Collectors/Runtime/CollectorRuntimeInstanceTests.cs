@@ -74,7 +74,7 @@ public class CollectorRuntimeInstanceTests
                 .CollectorInstanceId;
         }
         var legacyJson = File.ReadAllText(statePath)
-            .Replace("\"schemaVersion\": 5", "\"schemaVersion\": 1", StringComparison.Ordinal)
+            .Replace("\"schemaVersion\": 6", "\"schemaVersion\": 1", StringComparison.Ordinal)
             .Replace("\"configVersion\"", "\"configSchemaVersion\"", StringComparison.Ordinal)
             .Replace("\"activationAttemptTombstones\"", "\"helloAttempts\"", StringComparison.Ordinal);
         File.WriteAllText(statePath, legacyJson);
@@ -89,7 +89,7 @@ public class CollectorRuntimeInstanceTests
         }
 
         var canonicalJson = File.ReadAllText(statePath);
-        Assert.Contains("\"schemaVersion\": 5", canonicalJson, StringComparison.Ordinal);
+        Assert.Contains("\"schemaVersion\": 6", canonicalJson, StringComparison.Ordinal);
         Assert.Contains("\"configVersion\"", canonicalJson, StringComparison.Ordinal);
         Assert.Contains("\"activationAttemptTombstones\"", canonicalJson, StringComparison.Ordinal);
         Assert.DoesNotContain("\"configSchemaVersion\"", canonicalJson, StringComparison.Ordinal);

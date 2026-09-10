@@ -179,3 +179,9 @@ HTTP 查询已完成自动验证；任务 01 保持 ready-for-human，等待真�
 真实结果不扩大为人工可见窗口、独立多 Profile、Windows/Edge 或 System 输入验收。
 01 继续保持 ready-for-human；03/04 待实施，05 承接生产副本演练与旧路径退出。
 本 PRD 仍为 ready-for-agent，保留上述具体真实门禁，不标 done；DataSource 仍不纳入。
+
+2026-09-10（任务 03 实施）：VRChat 账号 Target、服务/App 关联、唯一性与 Owner/引用保护、
+历史未知账号回填、检查点及 Runtime 缓存重放和账号查询已完成自动验证。最终 .NET 1,303 / 1,305 项通过，
+两项 macOS 退出测试超时，隔离的实施前基线也复现该波动，详见 03；前端 290 项、Browser 111 项通过。任务 03 保持 ready-for-human，等待真实账号授权及 presence 验收；
+01 的真实 System/Windows gate 不变，02 已完成。04/05 仍待实施及切换，整个 PRD 不标 done。
+方案和兼容退出见 [VRChat 实施记录](../../docs/architecture/vrchat-account-observation.md)。

@@ -31,6 +31,216 @@ namespace Heartbeat.Server.Tests.Services;
 public sealed class FactHttpTests(PostgresContainerFixture fixture) : PostgresTestBase(fixture)
 {
     [Fact]
+    public async Task LegacyAccountHttpImport_IsImmediatelyQueryable_AndNativeTakeoverKeepsItsRow()
+    {
+        await using (var db = CreateDbContext())
+        {
+            db.Users.Add(new User { Id = "owner", Username = "alice" });
+            await db.SaveChangesAsync();
+        }
+        await using var app = CreateApplication();
+        using var http = app.CreateClient();
+        http.DefaultRequestHeaders.Add(HeartbeatProtocol.VersionHeader, HeartbeatProtocol.RequiredVersion);
+        http.DefaultRequestHeaders.Add("X-Test-Owner", "owner");
+        var native = ServiceAccountTests.Batch();
+        native.Facts[0].ObserverId = null; native.Facts[0].Target = null;
+        native.Facts[0].Payload = JsonSerializer.SerializeToElement(new { identityKey = "world|instance", title = "World", attributes = new { worldId = "world", instanceId = "instance" } });
+        var old = FactStoreTests.LegacySegment(native);
+        old.Source = "vrchat.account";
+        old.IdentityKey = "world|instance";
+        old.Title = "World";
+        old.StartTime = native.Facts[0].Start!.Value;
+        old.EndTime = native.Facts[0].End!.Value;
+        old.AppIdentityKey = null;
+        http.DefaultRequestHeaders.Add("X-Hardware-Id", $"subject:account:{native.Streams[0].Subject.SubjectId:D}");
+        var upload = new SegmentUploadRequest { Segments = [old] };
+        using var imported = await http.PostAsJsonAsync("/api/v1/segments", upload);
+        Assert.True(imported.IsSuccessStatusCode, await imported.Content.ReadAsStringAsync());
+        var before = Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>("/api/v1/users/alice/facts/segments"))!);
+        Assert.Equal("account", before.TargetKind);
+        Assert.Null(before.DeviceId);
+        Assert.Null(before.ObserverId);
+        Assert.NotNull(before.AppId);
+        Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?accountId={before.TargetId}&appId={before.AppId}"))!);
+        using var retry = await http.PostAsJsonAsync("/api/v1/segments", upload);
+        Assert.True(retry.IsSuccessStatusCode, await retry.Content.ReadAsStringAsync());
+        using var takeover = await http.PostAsJsonAsync("/api/v1/facts", native);
+        Assert.True(takeover.IsSuccessStatusCode, await takeover.Content.ReadAsStringAsync());
+        using var late = await http.PostAsJsonAsync("/api/v1/segments", upload);
+        Assert.True(late.IsSuccessStatusCode, await late.Content.ReadAsStringAsync());
+        var after = Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?accountId={before.TargetId}"))!);
+        Assert.Equal(before.Id, after.Id);
+        Assert.Equal(native.Facts[0].FactId, after.FactId);
+        Assert.Equal(native.Streams[0].CollectorInstanceId, after.ObserverId);
+    }
+
+    [Fact]
+    public async Task VRChatManagedSession_PublishesAccountThroughRuntimeHttpAndOfflineHistory_ThenReplaysAfterRestart()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"heartbeat-vrchat-http-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var packageDirectory = Path.Combine(directory, "package");
+            using (var build = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "dotnet", UseShellExecute = false,
+                ArgumentList = { Path.Combine(AppContext.BaseDirectory, "Heartbeat.Collector.VRChat.dll"), "--create-package", packageDirectory }
+            })!)
+            {
+                await build.WaitForExitAsync();
+                Assert.Equal(0, build.ExitCode);
+            }
+            var package = LocalCollectorPackage.Load(packageDirectory);
+            var path = Path.Combine(directory, "runtime.json");
+            var options = new CollectorRuntimeOptions { EnableFactUpload = true };
+            var secrets = new EncryptedFileCollectorSecretStore(Path.Combine(directory, "secrets"));
+            var processOptions = new ManagedProcessActivationOptions
+            {
+                StartupTimeout = TimeSpan.FromSeconds(15), DrainGracePeriod = TimeSpan.FromSeconds(5),
+                EnvironmentVariables = new Dictionary<string, string> { ["HEARTBEAT_VRCHAT_MOCK"] = "1" }
+            };
+            Guid observer;
+            List<FactUploadItem> pending;
+            using (var runtime = CollectorRuntime.Open(path, new UnusedProjection(), options, secretStore: secrets))
+            {
+                observer = runtime.CreateInstance(package, new SubjectReference(Guid.NewGuid(), SubjectKind.Account),
+                    new CollectorInstanceSpec(1, 1, JsonSerializer.SerializeToElement(new { pollIntervalSeconds = 1 }))).CollectorInstanceId;
+                var activating = runtime.ActivateManagedProcessAsync(observer, package, processOptions).AsTask();
+                async Task Answer(CollectorAuthorizationChallengeKind kind, Dictionary<string, string> values)
+                {
+                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                    while (runtime.GetManagedProcessRuntimeState(observer).AuthorizationChallenge is not { Kind: var found } || found != kind)
+                        await Task.Delay(20, timeout.Token);
+                    var challenge = runtime.GetManagedProcessRuntimeState(observer).AuthorizationChallenge!;
+                    await runtime.SubmitManagedProcessAuthorizationAsync(observer, challenge.InteractionId, values);
+                }
+                await Answer(CollectorAuthorizationChallengeKind.Credentials, new() { ["username"] = "test-user", ["password"] = "test-password" });
+                await Answer(CollectorAuthorizationChallengeKind.VerificationCode, new() { ["code"] = "123456" });
+                var activation = await activating.WaitAsync(TimeSpan.FromSeconds(15));
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                while (runtime.ReadPendingFacts().Count == 0) await Task.Delay(20, timeout.Token);
+                await activation.StopAsync();
+                pending = runtime.ReadPendingFacts();
+            }
+            await using (var db = CreateDbContext())
+            {
+                db.Users.Add(new User { Id = "owner", Username = "alice" });
+                await db.SaveChangesAsync();
+            }
+            await using var app = CreateApplication();
+            using var http = app.CreateClient();
+            http.DefaultRequestHeaders.Add(HeartbeatProtocol.VersionHeader, HeartbeatProtocol.RequiredVersion);
+            http.DefaultRequestHeaders.Add("X-Test-Owner", "owner");
+            using var uploaded = await http.PostAsJsonAsync("/api/v1/facts", FactUploadItem.Request(pending));
+            Assert.True(uploaded.IsSuccessStatusCode, await uploaded.Content.ReadAsStringAsync());
+            var before = Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>("/api/v1/users/alice/facts/segments"))!);
+            Assert.Equal(observer, before.ObserverId);
+            Assert.Equal("account", before.TargetKind);
+            Assert.Null(before.DeviceId);
+            Assert.NotNull(before.AppId);
+            var activity = Assert.Single((await http.GetFromJsonAsync<JsonElement>($"/api/v1/users/alice/segments?appId={before.AppId}")).EnumerateArray());
+            Assert.Equal("usr_11111111-1111-4111-8111-111111111111", activity.GetProperty("targetName").GetString());
+            Assert.Equal("VRChat", activity.GetProperty("appDisplayName").GetString());
+            using var restarted = CollectorRuntime.Open(path, new UnusedProjection(), options, secretStore: secrets);
+            using var replay = await http.PostAsJsonAsync("/api/v1/facts", FactUploadItem.Request(restarted.ReadPendingFacts()));
+            Assert.True(replay.IsSuccessStatusCode, await replay.Content.ReadAsStringAsync());
+            restarted.ConfirmUploadedFacts(restarted.ReadPendingFacts());
+            Assert.Empty(restarted.ReadPendingFacts());
+            var resumed = await restarted.ActivateManagedProcessAsync(observer, package, processOptions).AsTask().WaitAsync(TimeSpan.FromSeconds(15));
+            using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
+                while (restarted.ReadPendingFacts().Count == 0) await Task.Delay(20, timeout.Token);
+            await resumed.StopAsync();
+            using var newUpload = await http.PostAsJsonAsync("/api/v1/facts", FactUploadItem.Request(restarted.ReadPendingFacts()));
+            Assert.True(newUpload.IsSuccessStatusCode, await newUpload.Content.ReadAsStringAsync());
+            var after = (await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?accountId={before.TargetId}"))!;
+            Assert.Equal(2, after.Count);
+            Assert.Contains(after, f => f.Id == before.Id && f.Revision == before.Revision);
+            Assert.All(after, f => { Assert.Equal(observer, f.ObserverId); Assert.Equal(before.TargetId, f.TargetId); Assert.Null(f.DeviceId); });
+            Assert.DoesNotContain("mock-auth", File.ReadAllText(path));
+            Assert.DoesNotContain("test-password", JsonSerializer.Serialize(after));
+            // Replay the pre-target representation in an isolated owner: no current login evidence
+            // is available to this old cache, so it must remain an unknown historical account.
+            var legacyBatch = FactUploadItem.Request(restarted.ReadPendingFacts());
+            foreach (var fact in legacyBatch.Facts)
+            {
+                fact.ObserverId = null; fact.Target = null;
+                fact.Payload = JsonDocument.Parse(fact.Payload!.Value.GetRawText().Replace("activityKey", "identityKey")).RootElement;
+            }
+            await using (var db = CreateDbContext())
+            {
+                db.Users.Add(new User { Id = "legacy-owner", Username = "legacy" });
+                await db.SaveChangesAsync();
+            }
+            http.DefaultRequestHeaders.Remove("X-Test-Owner");
+            http.DefaultRequestHeaders.Add("X-Test-Owner", "legacy-owner");
+            using var legacyPosted = await http.PostAsJsonAsync("/api/v1/facts", legacyBatch);
+            Assert.True(legacyPosted.IsSuccessStatusCode, await legacyPosted.Content.ReadAsStringAsync());
+            var legacyBefore = Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>("/api/v1/users/legacy/facts/segments"))!);
+            restarted.Dispose();
+            var cache = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+            cache["schemaVersion"] = 5;
+            foreach (var fact in cache["facts"]!.AsArray())
+            {
+                fact!.AsObject().Remove("observerId"); fact.AsObject().Remove("target");
+                fact["payload"] = System.Text.Json.Nodes.JsonNode.Parse(fact["payload"]!.ToJsonString().Replace("activityKey", "identityKey"));
+            }
+            File.WriteAllText(path, cache.ToJsonString());
+            using var upgraded = CollectorRuntime.Open(path, new UnusedProjection(), options, secretStore: secrets);
+            Assert.True(File.Exists(path + ".v5.bak"));
+            using var oldReplay = await http.PostAsJsonAsync("/api/v1/facts", FactUploadItem.Request(upgraded.ReadPendingFacts()));
+            Assert.True(oldReplay.IsSuccessStatusCode, await oldReplay.Content.ReadAsStringAsync());
+            var legacyAfter = Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/legacy/facts/segments?accountId={legacyBefore.TargetId}"))!);
+            Assert.Equal(legacyBefore.Id, legacyAfter.Id);
+            Assert.Equal(legacyBefore.Revision, legacyAfter.Revision);
+            Assert.Equal(legacyBefore.TargetId, legacyAfter.TargetId);
+            Assert.Null(legacyAfter.DeviceId);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public async Task AccountTargets_AreOwnerScopedQueryableAndIndependentOfHostAndObserver()
+    {
+        await using (var db = CreateDbContext())
+        {
+            db.Users.Add(new User { Id = "owner", Username = "alice" });
+            await db.SaveChangesAsync();
+        }
+        await using var app = CreateApplication();
+        using var http = app.CreateClient();
+        http.DefaultRequestHeaders.Add(HeartbeatProtocol.VersionHeader, HeartbeatProtocol.RequiredVersion);
+        http.DefaultRequestHeaders.Add("X-Test-Owner", "owner");
+        var batch = FactStoreTests.SegmentBatch();
+        batch.Streams[0].Source = "vrchat.account";
+        batch.Streams[0].Subject.Kind = "account";
+        batch.Streams[0].Subject.HardwareId = null;
+        batch.Streams[0].Dimensions = new Dictionary<string, string>();
+        var fact = batch.Facts[0];
+        fact.ObserverId = batch.Streams[0].CollectorInstanceId;
+        fact.Target = new FactTarget("account", "[\"vrchat\",\"usr_11111111-1111-4111-8111-111111111111\"]");
+        fact.Payload = JsonSerializer.SerializeToElement(new { activityKey = "world|instance", title = "World" });
+        using var posted = await http.PostAsJsonAsync("/api/v1/facts", batch);
+        Assert.True(posted.IsSuccessStatusCode, await posted.Content.ReadAsStringAsync());
+        var row = Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>("/api/v1/users/alice/facts/segments"))!);
+        Assert.Equal("account", row.TargetKind);
+        Assert.Null(row.DeviceId);
+        Assert.NotNull(row.AppId);
+        Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?accountId={row.TargetId}&appId={row.AppId}"))!);
+        Assert.Empty((await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?accountId={row.TargetId + 1}"))!);
+        batch.Streams[0].StreamId = Guid.NewGuid();
+        batch.Streams[0].CollectorInstanceId = Guid.NewGuid();
+        fact.StreamId = batch.Streams[0].StreamId;
+        fact.ObserverId = batch.Streams[0].CollectorInstanceId;
+        using var second = await http.PostAsJsonAsync("/api/v1/facts", batch);
+        Assert.True(second.IsSuccessStatusCode, await second.Content.ReadAsStringAsync());
+        var rows = (await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?accountId={row.TargetId}"))!;
+        Assert.Equal(2, rows.Count);
+        Assert.Equal(2, rows.Select(f => f.ObserverId).Distinct().Count());
+        Assert.Single(rows.Select(f => f.TargetId).Distinct());
+    }
+
+    [Fact]
     public async Task BrowserRuntime_V4CacheUpgradeAndNativePublish_ReachHttpQueriesWithStableInstallationAttribution()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"heartbeat-browser-fact-http-{Guid.NewGuid():N}");

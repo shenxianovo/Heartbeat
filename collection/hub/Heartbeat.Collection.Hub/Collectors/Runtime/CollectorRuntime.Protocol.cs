@@ -740,11 +740,12 @@ public sealed partial class CollectorRuntime
                 var target = Heartbeat.Core.Facts.BrowserFactAttribution.Target(stream.SubjectId.ToString("D"), stream.Dimensions.GetValueOrDefault("appIdentityKey"));
                 if (observer is not null && target is not null) fact = fact with { ObserverId = observer, Target = target };
             }
-            if (fact.Payload is { } payload)
-            {
-                try { fact = fact with { Payload = Heartbeat.Core.Facts.ActivityFactPayload.Normalize(payload) }; }
-                catch (ArgumentException ex) { return Rejected(index, "fact_invalid", ex.Message); }
-            }
+        }
+        // Same historical activity spelling boundary as Analytics; no optional Collector dispatch.
+        if (fact.Time is SegmentFactTime && fact.Payload is { } payload)
+        {
+            try { fact = fact with { Payload = Heartbeat.Core.Facts.ActivityFactPayload.Normalize(payload) }; }
+            catch (ArgumentException ex) { return Rejected(index, "fact_invalid", ex.Message); }
         }
         var envelopeError = ValidateFactEnvelope(fact);
         if (envelopeError is not null)
@@ -855,6 +856,11 @@ public sealed partial class CollectorRuntime
 
     private static bool ValidTarget(Heartbeat.Core.DTOs.Facts.FactTarget target)
     {
+        if (target.Kind == "account")
+        {
+            try { _ = Heartbeat.Core.DTOs.Facts.ServiceAccountReference.Parse(target.Reference); return true; }
+            catch (ArgumentException) { return false; }
+        }
         if (target.Kind == "device") return !string.IsNullOrWhiteSpace(target.Reference) && target.Reference.Length <= 256;
         if (target.Kind != "application-context" || string.IsNullOrWhiteSpace(target.Reference) || target.Reference.Length > 8192) return false;
         try { _ = Heartbeat.Core.DTOs.Facts.ApplicationContextReference.Parse(target.Reference); return true; }

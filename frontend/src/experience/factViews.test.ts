@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clampRange, groupApplications, groupTargets, presentFact, relatedBrowser, zoomRange, type ExperienceSegment } from './factViews'
+import { clampRange, groupApplications, groupTargets, rangeOf, presentFact, relatedBrowser, zoomRange, type ExperienceSegment } from './factViews'
 
 export function fact(overrides: Partial<ExperienceSegment> = {}): ExperienceSegment {
   return { id: 'one', streamId: 'stream', factId: 'fact', revision: 1, subjectId: 'machine',
@@ -15,6 +15,17 @@ it('relates Browser application contexts to System by device and App while prese
 })
 
 describe('Fact Views', () => {
+  it('keeps independent account observations in their account lane without adding device attention', () => {
+    const account = fact({ id: 'one', source: 'vrchat.account', observerId: 'observer-one',
+      targetKind: 'account', targetId: 71, targetName: 'usr_account', deviceId: null,
+      appId: 9, appName: 'VRChat', appKey: 'vrchat', appIdentityId: null })
+    const second = { ...account, id: 'two', observerId: 'observer-two' }
+    const groups = groupTargets([account, second], rangeOf(account))
+    expect(groups).toHaveLength(1)
+    expect(groups[0]).toMatchObject({ id: 'account:71', name: 'usr_account', kind: 'account', facts: [account, second] })
+    expect(groupApplications([account, second])).toEqual([])
+    expect(relatedBrowser(account, [second])).toEqual([])
+  })
   it('preserves every short fact and only groups subjects with overlapping activity', () => {
     const a = fact(), b = fact({ id: 'two' }), c = fact({ id: 'outside', subjectId: 'account', startTime: '2026-09-09T02:00:00Z', endTime: '2026-09-09T03:00:00Z' })
     const groups = groupTargets([a, b, c], { start: Date.parse(a.startTime), end: Date.parse(a.endTime) })

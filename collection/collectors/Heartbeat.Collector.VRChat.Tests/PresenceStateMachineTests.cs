@@ -5,6 +5,32 @@ namespace Heartbeat.Collector.VRChat.Tests;
 
 public sealed class PresenceStateMachineTests
 {
+    [Theory]
+    [InlineData(null)]
+    [InlineData("Display Name")]
+    [InlineData("11111111-1111-4111-8111-111111111111")]
+    public void NewObservationsRequireServiceAccountIdentity(string? account)
+    {
+        var machine = new PresenceStateMachine();
+        Assert.Throws<ArgumentException>(() => machine.Observe(new VRChatPresence("world", "World", "instance", account), DateTimeOffset.UtcNow));
+        Assert.Empty(machine.Stop(DateTimeOffset.UtcNow));
+    }
+
+    [Fact]
+    public void AccountSwitchInSameWorldStartsIndependentFact()
+    {
+        var machine = new PresenceStateMachine();
+        var start = DateTimeOffset.UtcNow;
+        var first = Assert.Single(machine.Observe(new VRChatPresence("world", "World", "instance", "usr_11111111-1111-4111-8111-111111111111"), start));
+        var switched = machine.Observe(new VRChatPresence("world", "Renamed", "instance", "usr_22222222-2222-4222-8222-222222222222"), start.AddMinutes(1));
+        Assert.Equal(2, switched.Count);
+        Assert.Equal(first.FactId, switched[0].FactId);
+        Assert.True(switched[0].IsFinal);
+        Assert.Equal(first.ObservedAccountId, switched[0].ObservedAccountId);
+        Assert.NotEqual(first.FactId, switched[1].FactId);
+        Assert.Equal("usr_22222222-2222-4222-8222-222222222222", switched[1].ObservedAccountId);
+    }
+
     [Fact]
     public void SameInstanceExtendsStableFactAndSwitchFinalizesBeforeOpeningTheNext()
     {
@@ -17,13 +43,13 @@ public sealed class PresenceStateMachineTests
         var start = new DateTimeOffset(2026, 8, 27, 10, 0, 0, TimeSpan.Zero);
 
         var opened = Assert.Single(machine.Observe(
-            new VRChatPresence("wrld_alpha", "Alpha", "instance:one"),
+            new VRChatPresence("wrld_alpha", "Alpha", "instance:one", "usr_11111111-1111-4111-8111-111111111111"),
             start));
         var extended = Assert.Single(machine.Observe(
-            new VRChatPresence("wrld_alpha", "Alpha", "instance:one"),
+            new VRChatPresence("wrld_alpha", "Alpha", "instance:one", "usr_11111111-1111-4111-8111-111111111111"),
             start.AddMinutes(1)));
         var switched = machine.Observe(
-            new VRChatPresence("wrld_alpha", "Alpha", "instance:two"),
+            new VRChatPresence("wrld_alpha", "Alpha", "instance:two", "usr_11111111-1111-4111-8111-111111111111"),
             start.AddMinutes(2));
 
         Assert.Equal(opened.FactId, extended.FactId);
@@ -47,7 +73,7 @@ public sealed class PresenceStateMachineTests
     {
         var machine = new PresenceStateMachine(() => Guid.CreateVersion7());
         var start = new DateTimeOffset(2026, 8, 27, 10, 0, 0, TimeSpan.Zero);
-        machine.Observe(new VRChatPresence("wrld_alpha", "Alpha", "instance:one"), start);
+        machine.Observe(new VRChatPresence("wrld_alpha", "Alpha", "instance:one", "usr_11111111-1111-4111-8111-111111111111"), start);
 
         var offline = Assert.Single(machine.Observe(null, start.AddMinutes(1)));
 
@@ -65,7 +91,7 @@ public sealed class PresenceStateMachineTests
         ]);
         var machine = new PresenceStateMachine(ids.Dequeue);
         var start = new DateTimeOffset(2026, 8, 27, 10, 0, 0, TimeSpan.Zero);
-        var presence = new VRChatPresence("wrld_alpha", "Alpha", "instance:one");
+        var presence = new VRChatPresence("wrld_alpha", "Alpha", "instance:one", "usr_11111111-1111-4111-8111-111111111111");
         var opened = Assert.Single(machine.Observe(presence, start));
 
         var rotated = machine.Observe(presence, start + SegmentRotationPolicy.RotateAfter);
@@ -80,7 +106,7 @@ public sealed class PresenceStateMachineTests
         Assert.False(rotated[1].IsFinal);
         Assert.Equal(rotated[0].End, rotated[1].Start);
         Assert.Equal(rotated[1].Start, rotated[1].End);
-        Assert.Equal(opened.IdentityKey, rotated[1].IdentityKey);
+        Assert.Equal(opened.ActivityKey, rotated[1].ActivityKey);
     }
 
     [Fact]
@@ -94,7 +120,7 @@ public sealed class PresenceStateMachineTests
         ]);
         var machine = new PresenceStateMachine(ids.Dequeue);
         var start = new DateTimeOffset(2026, 8, 27, 10, 0, 0, TimeSpan.Zero);
-        var presence = new VRChatPresence("wrld_alpha", "Alpha", "instance:one");
+        var presence = new VRChatPresence("wrld_alpha", "Alpha", "instance:one", "usr_11111111-1111-4111-8111-111111111111");
         machine.Observe(presence, start);
         var elapsed = SegmentRotationPolicy.RotateAfter * 2 + TimeSpan.FromMinutes(5);
 
@@ -123,10 +149,10 @@ public sealed class PresenceStateMachineTests
         ]);
         var machine = new PresenceStateMachine(ids.Dequeue);
         var start = new DateTimeOffset(2026, 8, 27, 10, 0, 0, TimeSpan.Zero);
-        machine.Observe(new VRChatPresence("wrld_alpha", "Alpha", "instance:one"), start);
+        machine.Observe(new VRChatPresence("wrld_alpha", "Alpha", "instance:one", "usr_11111111-1111-4111-8111-111111111111"), start);
 
         var switched = machine.Observe(
-            new VRChatPresence("wrld_beta", "Beta", "instance:two"),
+            new VRChatPresence("wrld_beta", "Beta", "instance:two", "usr_11111111-1111-4111-8111-111111111111"),
             start + SegmentRotationPolicy.RotateAfter);
 
         Assert.Equal(2, switched.Count);
@@ -150,7 +176,7 @@ public sealed class PresenceStateMachineTests
         ]);
         var machine = new PresenceStateMachine(ids.Dequeue);
         var start = new DateTimeOffset(2026, 8, 27, 10, 0, 0, TimeSpan.Zero);
-        machine.Observe(new VRChatPresence("wrld_alpha", "Alpha", "instance:one"), start);
+        machine.Observe(new VRChatPresence("wrld_alpha", "Alpha", "instance:one", "usr_11111111-1111-4111-8111-111111111111"), start);
         var elapsed = SegmentRotationPolicy.RotateAfter + TimeSpan.FromMinutes(5);
 
         var stopped = machine.Stop(start + elapsed);

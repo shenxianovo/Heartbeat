@@ -18,7 +18,10 @@ public partial class InProcessCollectorProtocolTranscriptTests
     {
         await using var fixture = await ActivatedRuntimeFixture.CreateAsync(new CollectorRuntimeOptions { EnableFactUpload = true });
         var stream = fixture.Activation.Streams["activity"];
-        var fact = CreateFact(stream.Descriptor.StreamId);
+        var fact = CreateFact(stream.Descriptor.StreamId) with
+        {
+            Payload = JsonSerializer.SerializeToElement(new { activityKey = "reference|work", title = "Reference work", extra = new[] { 7, 9 } })
+        };
         var ack = await stream.PublishAsync(Guid.CreateVersion7(), [fact]);
         Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(ack.Results).Status);
         Assert.Empty(fixture.Sink.Segments);
@@ -43,7 +46,10 @@ public partial class InProcessCollectorProtocolTranscriptTests
     {
         await using var fixture = await ActivatedRuntimeFixture.CreateAsync(new CollectorRuntimeOptions { EnableFactUpload = true });
         var stream = fixture.Activation.Streams["activity"];
-        var original = CreateFact(stream.Descriptor.StreamId);
+        var original = CreateFact(stream.Descriptor.StreamId) with
+        {
+            Payload = JsonSerializer.SerializeToElement(new { activityKey = "reference|work", title = "Reference work", extra = new[] { 7, 9 } })
+        };
         await stream.PublishAsync(Guid.CreateVersion7(), [original]);
         var firstBatch = fixture.Runtime.ReadPendingFacts();
         await stream.PublishAsync(Guid.CreateVersion7(), [original with { Revision = 2, Time = new SegmentFactTime(original.Time.Start!.Value, original.Time.Start.Value.AddSeconds(1), false) }]);

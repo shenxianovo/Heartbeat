@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../collection/collectors/Heartbeat.Collector.VRChat/Heartbeat.Collector.VRChat.csproj" />
     <ProjectReference Include="..\Heartbeat.Server\Heartbeat.Server.csproj" />
     <ProjectReference Include="..\..\collection\hub\Heartbeat.Collection.Hub\Heartbeat.Collection.Hub.csproj" />
     <ProjectReference Include="..\..\collection\desktop\Heartbeat.Collector.System\Heartbeat.Collector.System.csproj" />
