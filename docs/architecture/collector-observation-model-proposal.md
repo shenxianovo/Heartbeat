@@ -16,6 +16,10 @@ SystemActivityModel 判定本机桌面的活动转场，AppMonitorService 负责
 对象身份由当前采集路径的设备绑定提供，不新增对象登记、协议字段或数据库实体。
 自动验证与后续真机观察分别记录。以下 Browser 原型作为前置演练保留。
 
+第二步已将 Browser 的单窗口活动判定提取为 `window-activity.ts`，现有 fold 继续管理 Segment，
+保留单份会话状态和原协议输出。106 项测试通过；本地开发栈已确认新包连接、双窗口并行及页面切换，
+用户已完成关闭/重开窗口的真机验收，详见 [Browser 实施记录](../../.scratch/observation-model-refactor/issues/02-browser-window-activity.md)。
+
 Browser 现有 `FoldState.open[windowId]` 已承担按临时窗口维护活动的职责，无需额外创建通用 FOI 类或登记服务。
 2026-09-10 以现有 `fold.ts` 制作独立原型，纯逻辑演练验证双窗口并行、同窗口页面切换、关闭后另开窗口。
 演练观察到关闭窗口移除运行状态，但最终 SegmentSnapshot 已输出；再次打开同页使用新的活动身份。

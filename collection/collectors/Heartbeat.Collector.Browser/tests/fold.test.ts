@@ -115,6 +115,29 @@ describe('applyEvent', () => {
     const r = applyEvent(emptyState(), { kind: 'windowClosed', windowId: 9, at: T0 }, deps)
     expect(r.out).toHaveLength(0)
   })
+
+  it('会话恢复后关闭一个窗口只结束该活动，重用窗口号也不续接旧事实', () => {
+    const deps = makeDeps()
+    const url = 'https://example.com/docs'
+    let r = applyEvent(emptyState(), activated(17, url, T0), deps)
+    r = applyEvent(r.state, activated(23, url, T0 + 1000), deps)
+    const first = flush(r.state, T0 + 30_000, deps)
+    // 现有 chrome.storage.session 的形状直接恢复，不需要迁移或第二份对象登记。
+    const restored = JSON.parse(JSON.stringify(first.state))
+    const closed = applyEvent(restored, { kind: 'windowClosed', windowId: 17, at: T0 + 40_000 }, deps)
+    expect(Object.keys(closed.state.open)).toEqual(['23'])
+    expect(closed.out).toMatchObject([{ id: 'id-1', isFinal: true, attributes: { windowId: 17 } }])
+
+    const reopened = applyEvent(closed.state, activated(17, url, T0 + 50_000), deps)
+    const next = flush(reopened.state, T0 + 60_000, deps)
+    expect(next.out.find(s => s.attributes.windowId === 17)).toMatchObject({
+      id: 'id-3', startTime: new Date(T0 + 50_000).toISOString(), isFinal: false,
+    })
+    expect(next.out.find(s => s.attributes.windowId === 23)).toMatchObject({
+      id: 'id-2', startTime: new Date(T0 + 1000).toISOString(), isFinal: false,
+    })
+    expect(restored).toEqual(first.state) // 旧会话快照未被运行操作修改。
+  })
 })
 
 describe('flush（ADR-018 稳定 Id 快照）', () => {

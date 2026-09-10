@@ -27,30 +27,37 @@ const rotateAfterMilliseconds = 828e5;
 const rotationPolicy = {
   rotateAfterMilliseconds
 };
+function observeWindow(current, observation, identityKeyOf2) {
+  if (observation.kind === "windowClosed") return { kind: "closed" };
+  const activity = {
+    windowId: observation.windowId,
+    identityKey: identityKeyOf2(observation.url),
+    url: observation.url,
+    title: observation.title
+  };
+  return { kind: current?.identityKey === activity.identityKey ? "updated" : "started", activity };
+}
 const ROTATE_AFTER_MS = rotationPolicy.rotateAfterMilliseconds;
 function emptyState() {
   return { open: {} };
 }
 function applyEvent(state, ev, deps2) {
   const cur = state.open[ev.windowId];
-  if (ev.kind === "windowClosed") {
+  const change = observeWindow(cur, ev, deps2.identityKeyOf);
+  if (change.kind === "closed") {
     if (!cur) return { state, out: [] };
     const open = { ...state.open };
     delete open[ev.windowId];
     return { state: { open }, out: [snapshotOf(cur, ev.at, deps2, true)] };
   }
-  const key = deps2.identityKeyOf(ev.url);
-  if (cur && cur.identityKey === key) {
-    const open = { ...state.open, [ev.windowId]: { ...cur, url: ev.url, title: ev.title } };
+  if (change.kind === "updated" && cur) {
+    const open = { ...state.open, [ev.windowId]: { ...cur, ...change.activity } };
     return { state: { open }, out: [] };
   }
   const out = cur ? [snapshotOf(cur, ev.at, deps2, true)] : [];
   const next = {
+    ...change.activity,
     id: deps2.newId(),
-    identityKey: key,
-    url: ev.url,
-    title: ev.title,
-    windowId: ev.windowId,
     startTime: ev.at
   };
   return { state: { open: { ...state.open, [ev.windowId]: next } }, out };

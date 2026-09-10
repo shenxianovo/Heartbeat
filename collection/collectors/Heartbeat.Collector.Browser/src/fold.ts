@@ -1,4 +1,4 @@
-// 折叠状态机（ADR-017 §3：collectors fold）——纯函数，事件进、快照出，无 chrome API 依赖。
+// 将窗口活动变化转换为 Segment 快照；观测规则由 window-activity 判定，无 chrome API 依赖。
 //
 // - 每个窗口各记其 active tab（忠实记录，不判操作系统前台；双时间线公理，ADR-017）。
 //   多窗口时多段并存合法，windowId 进 Attributes 区分。
@@ -7,13 +7,10 @@
 // - 单段生长逼近服务端 MaxDuration（24h）时轮换新 Id，防快照被校验丢弃。
 
 import rotationPolicy from '../../../contracts/segment-rotation-policy.json'
+import { observeWindow, type WindowActivity, type WindowObservation } from './window-activity'
 
-export interface OpenActivity {
+export interface OpenActivity extends WindowActivity {
   id: string
-  identityKey: string
-  url: string
-  title: string
-  windowId: number
   startTime: number // epoch ms
 }
 
@@ -35,9 +32,7 @@ export interface SegmentSnapshot {
   attributes: { url: string; domain: string; site: string; windowId: number }
 }
 
-export type FoldEvent =
-  | { kind: 'activated'; windowId: number; url: string; title: string; at: number }
-  | { kind: 'windowClosed'; windowId: number; at: number }
+export type FoldEvent = WindowObservation & { at: number }
 
 export interface FoldDeps {
   newId: () => string
@@ -61,30 +56,25 @@ export function emptyState(): FoldState {
 
 export function applyEvent(state: FoldState, ev: FoldEvent, deps: FoldDeps): FoldResult {
   const cur = state.open[ev.windowId]
+  const change = observeWindow(cur, ev, deps.identityKeyOf)
 
-  if (ev.kind === 'windowClosed') {
+  if (change.kind === 'closed') {
     if (!cur) return { state, out: [] }
     const open = { ...state.open }
     delete open[ev.windowId]
     return { state: { open }, out: [snapshotOf(cur, ev.at, deps, true)] }
   }
 
-  const key = deps.identityKeyOf(ev.url)
-
-  // 同一活动（query/fragment 变化、标题变化）：不切段，只更新展示字段，
-  // 最新 title/url 随下一次快照上行（服务端后写胜，ADR-018）。
-  if (cur && cur.identityKey === key) {
-    const open = { ...state.open, [ev.windowId]: { ...cur, url: ev.url, title: ev.title } }
+  // 活动连续时保留 Fact 身份与起点，最新读数随下一次快照上行。
+  if (change.kind === 'updated' && cur) {
+    const open = { ...state.open, [ev.windowId]: { ...cur, ...change.activity } }
     return { state: { open }, out: [] }
   }
 
   const out = cur ? [snapshotOf(cur, ev.at, deps, true)] : []
   const next: OpenActivity = {
+    ...change.activity,
     id: deps.newId(),
-    identityKey: key,
-    url: ev.url,
-    title: ev.title,
-    windowId: ev.windowId,
     startTime: ev.at,
   }
   return { state: { open: { ...state.open, [ev.windowId]: next } }, out }

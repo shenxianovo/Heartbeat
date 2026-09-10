@@ -12,6 +12,11 @@ Status: Accepted（观测模型）；统一 Objects / ObjectRelations 的存储�
 System 将桌面活动转场规则提取为独立运行模型，再由现有服务映射为 Segment；
 同一个本机桌面的前台、标题与 away 是活动读数，不需要另建对象登记。
 
+Browser 随后将单窗口页面活动判定提取到 `window-activity.ts`，由现有 `fold.ts` 转换为 Segment。
+并行窗口仍共用原有会话状态 `open[windowId]`，不为了分开观测与 Fact 职责而复制两份运行状态；
+保留字段形状以直接续接 Service Worker / 开发 Reload 前的活动。实机验证范围见
+[观测模型改造](../../.scratch/observation-model-refactor/PRD.md)。
+
 Facts 继续按 Segment、Event、Measurement 的时间语义组织。输出时保存解释与使用结果所需的
 观测内容和上下文；不据此强制全量持久化运行时模型。观测语义独立于传输连接、批次、Package 与 SDK 的组织方式。
 不增加逐次 Observation 结果表或通用 Facts 内容副本。

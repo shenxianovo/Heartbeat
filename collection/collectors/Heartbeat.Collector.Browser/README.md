@@ -11,6 +11,18 @@ Chrome/Edge MV3 ExternalHost Collector。它观察各窗口的活动标签页，
 首次加载与独立目录步骤见 [开发指南](../../../docs/development.md#browser-开发与更新)。
 普通生产构建仍按端口发现，不应拿它冒充开发扩展。
 
+## 观测模型
+
+`window-activity.ts` 判定一个窗口内的页面活动：规范化 URL 相同则更新读数，变化则开始新活动，
+窗口关闭则结束观测。`fold.ts` 把这些变化转换为原有 Segment 快照，负责 Fact 身份、起点和超长段轮转；
+`background.ts` 负责 Chrome 回调、会话状态、对账及交付接线。
+
+窗口是浏览器会话内的临时观测对象，URL/标题是读数。并行状态仍只保留在 `FoldState.open[windowId]`，
+不增加对象登记或第二份窗口表；关闭后移除运行状态，已输出的 Fact 保留。会话状态的字段形状不变，
+Service Worker 重启及开发 Reload 可以直接续接现有活动。快照与协议输出保持原样。
+
+验证重点是两个窗口同时记录、关闭其一不影响另一个、重新打开产生新 Fact，以及同页更新延续旧 Fact。
+
 ## 构建与验证
 
 需要 Node.js 24、.NET SDK 10 和 Python 3。Browser 的测试拥有一个独立 .NET TestHost，用真实
