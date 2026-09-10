@@ -2,6 +2,12 @@
 
 ## Status: Accepted（核心家族模型）
 
+2026-09-10 更新：仓库实施记录已确认下述分表迁移上线，后续必须追加迁移，不能再替换 NativeFactCustody。
+[ADR-056](056-observation-objects-and-contexts.md) 已确认直接观测对象的业务模型，重开本 ADR 的
+Stream → Subject 归属设计；统一对象登记及通用关系表退回待评估，家族表、时间、单份 Payload 与正常修订决定保持。
+新关系尚未实现；旧字段与身份衔接核对见[存储候选](../architecture/observation-storage-design.md)，不作为当前实施基线。
+下文按当时阶段保留的“未部署”描述不代表当前发布状态。
+
 2026-09-09：Owner 已确认核心 Fact 模型并授权替换迁移。当前已实现两张家族表、摄入与 SQL 查询，
 替换未部署的 NativeFactCustody；其他关联存储字段继续沿用既有实现。本声明不代表真实资源演练或部署完成。
 

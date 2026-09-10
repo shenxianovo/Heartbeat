@@ -46,6 +46,10 @@ _Avoid_: 把当前 loopback HTTP 路由集合当成完整协议
 Collector 侧持有协议会话与未确认交付责任的参与者；它统一承担 Activation 生命周期、消息关联、ACK/重试、Stream Gap、授权、Collector Secret 与 drain，使 Collector 只需表达观测事实。
 _Avoid_: 每个 Collector 自行拼装协议状态机、把 Client 与某一种 Transport Binding 混称
 
+**Collector SDK（采集器开发工具包）**:
+Collector 作者将对观测对象的观测表达为 Fact 的公共开发接口，承担事实身份、修订与协议交付的机械工作；Collector 负责观测来源及事实的业务含义。
+_Avoid_: 要求每个 Collector 作者自行维护 FactId、Revision 或连接重试流程
+
 **Collector Ingress Queue（采集器入口队列）**:
 隔离观测回调与 Collector Protocol 交付背压的 Collector 内部边界。平台 UI、窗口事件和输入 hook 只入队；后台 delivery pump 才能等待持久化、ACK 或重试。
 回调返回只承诺进入进程内易失队列，不承诺 durable acceptance；System InputEvent 的后台容量判定必须

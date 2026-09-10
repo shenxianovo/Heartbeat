@@ -41,10 +41,10 @@ Two layers, strictly separated. The agent handles **volume** (never content); th
 ### 1. Collection agent — click gating (content-agnostic)
 
 - A lightweight shared signal `IInputActivitySignal` exposes `LastClickTicks` (monotonic). The mouse-click path (`WM_LBUTTONDOWN/RBUTTONDOWN/MBUTTONDOWN`, which already covers touchpad taps) updates it. Scroll and keyboard do **not**.
-- In `AppMonitorService`, when a foreground change is **App change** → always split (as today). When it is **Title-only change** (same App) → split **only if** a click occurred within the gate window `X` before the event; otherwise update the tracked current title in place **without** starting a new segment.
+- In `SystemActivityModel`, when a foreground change is **App change** → always split (as today). When it is **Title-only change** (same App) → split **only if** a click occurred within the gate window `X` before the event; otherwise update the tracked current title in place **without** starting a new segment. `AppMonitorService` maps these transitions to Fact snapshots.
 - **Gate window `X = 1s`** (first cut, tunable). Rationale: a click almost always *precedes* the title change (click → navigation → title updates), but the gap varies (slow page loads). 1s covers the common gap without crediting stale clicks.
 - **Lossless**: gating decides *whether to open a new segment*, never alters a title. Stored segments always carry the original, complete title.
-- The tracked title is always updated to the latest value even when not splitting, so if the segment is later closed (app switch / flush) it records the most recent real title.
+- The tracked title is updated even when not splitting, so repeated callbacks can be recognized. The accepted activity keeps its starting title for subsequent snapshots and close; suppressed titles do not replace it. This records the behavior already covered by `SameWindowTitleNoise_WithoutInteraction_DoesNotSplit`; the observation-model refactor preserves it.
 - 跨平台窗口事件 seam 区分 **AppIdentity 激活**、**focused-window 切换**与**同窗标题变化**。前两者属于明确转场，始终切段；只有同窗标题变化需要点击门控。
 - macOS 已获 Accessibility、未获 Input Monitoring 时，仍记录 focused-window 切换及其标题，但忽略无法点击门控的同窗标题变化；权限不足不阻塞 App-only 采集。
 

@@ -10,9 +10,9 @@ using Serilog;
 namespace Heartbeat.Collector.System.Collection;
 
 /// <summary>
-/// 内置 system Collector 的平台无关状态机。它只消费语义桌面观察，折叠为
-/// foreground Segment Fact 完整快照与 Current Activity 转场；原生 API、窗口句柄和平台生命周期
-/// 均留在 adapter 与 platform head（ADR-020/021/033）。
+/// 将 SystemActivityModel 的业务转场映射为 foreground Segment Fact 和 Current Activity。
+/// 此处管理 Fact 身份、修订、定时快照与交付顺序；观测规则留在运行模型中，
+/// 原生 API 与平台生命周期留在 adapter 与 platform head（ADR-020/021/033）。
 /// </summary>
 public sealed class AppMonitorService(
     IClock clock,
@@ -29,20 +29,12 @@ public sealed class AppMonitorService(
     private readonly object _lock = new();
     private readonly TimeProvider _snapshotTimeProvider = snapshotTimeProvider ?? TimeProvider.System;
     private bool _isStopping;
-    private string? _currentApp;
-    private string? _currentAppDisplayName;
-    private string? _currentTitle;
-    private string? _segmentTitle;
+    private readonly SystemActivityModel _activity = new();
     private Guid _currentId;
     private long _currentRevision;
     private DateTimeOffset _currentStart;
     private bool _currentIsRotationContinuation;
 
-    private bool _isAway;
-    private Guid _awayId;
-    private long _awayRevision;
-    private DateTimeOffset _awayStart;
-    private bool _awayIsRotationContinuation;
     private readonly OrderedDeferredHandoff<TimedDesktopObservation> _durableStageHandoff = new();
     private volatile string[] _awayProcessNames = [];
 
@@ -58,20 +50,17 @@ public sealed class AppMonitorService(
         observations.Observation += OnObservation;
 
         var initial = observations.CurrentActivity;
-        var initialApp = Normalize(initial.AppIdentityKey);
         var startedAt = clock.UtcNow;
         publisher.RecoverInterruptedSegment(startedAt);
         lock (_lock)
-            _isStopping = false;
-        if (initialApp != null)
         {
-            lock (_lock)
-            {
-                StartSegment(initialApp, initial.AppDisplayName, initial.Title, startedAt);
-                Log.Information("初始前台应用: {App}", initialApp);
-            }
+            _isStopping = false;
+            _activity.Start(initial, _awayProcessNames);
+            StartSegment(startedAt);
+            if (_activity.Current.AppIdentityKey is { } app)
+                Log.Information("初始前台应用: {App}", app);
         }
-        activitySink.Report(ToCurrentActivity(initialApp, initial.AppDisplayName));
+        activitySink.Report(ToCurrentActivity(_activity.Current));
 
         observations.Start();
 
@@ -133,7 +122,6 @@ public sealed class AppMonitorService(
     private void PushCurrentSnapshot(bool isFinal)
     {
         IReadOnlyList<ForegroundSegmentSnapshot> snapshots;
-        bool plannedAway;
         Guid id;
         long revision;
         DateTimeOffset start;
@@ -145,34 +133,20 @@ public sealed class AppMonitorService(
             if (!_durableStageHandoff.TryBegin())
                 return;
             var now = clock.UtcNow;
-            plannedAway = _isAway;
-            id = plannedAway ? _awayId : _currentId;
-            revision = plannedAway ? _awayRevision : _currentRevision;
-            start = plannedAway ? _awayStart : _currentStart;
-            continuation = plannedAway
-                ? _awayIsRotationContinuation
-                : _currentIsRotationContinuation;
-            snapshots = plannedAway
-                ? BuildSegmentsThrough(
-                    ref id,
-                    ref revision,
-                    AppIdentityKeys.Away,
-                    "离开",
-                    null,
-                    ref start,
-                    ref continuation,
-                    now,
-                    isFinal)
-                : BuildSegmentsThrough(
-                    ref id,
-                    ref revision,
-                    _currentApp,
-                    _currentAppDisplayName,
-                    _segmentTitle,
-                    ref start,
-                    ref continuation,
-                    now,
-                    isFinal);
+            id = _currentId;
+            revision = _currentRevision;
+            start = _currentStart;
+            continuation = _currentIsRotationContinuation;
+            snapshots = BuildSegmentsThrough(
+                ref id,
+                ref revision,
+                _activity.Current.AppIdentityKey,
+                _activity.Current.AppDisplayName,
+                _activity.Current.Title,
+                ref start,
+                ref continuation,
+                now,
+                isFinal);
         }
 
         try
@@ -180,20 +154,10 @@ public sealed class AppMonitorService(
             publisher.StageDurableBatch(snapshots);
             lock (_lock)
             {
-                if (plannedAway)
-                {
-                    _awayId = id;
-                    _awayRevision = revision;
-                    _awayStart = start;
-                    _awayIsRotationContinuation = continuation;
-                }
-                else
-                {
-                    _currentId = id;
-                    _currentRevision = revision;
-                    _currentStart = start;
-                    _currentIsRotationContinuation = continuation;
-                }
+                _currentId = id;
+                _currentRevision = revision;
+                _currentStart = start;
+                _currentIsRotationContinuation = continuation;
             }
         }
         finally
@@ -214,134 +178,30 @@ public sealed class AppMonitorService(
         DateTimeOffset? observedAt,
         bool isDeferredReplay)
     {
-        switch (observation.Kind)
-        {
-            case DesktopObservationKind.EnteredAway:
-                EnterAway(observation, observedAt, isDeferredReplay);
-                break;
-            case DesktopObservationKind.ExitedAway:
-                ExitAway(observation, observedAt, isDeferredReplay);
-                break;
-            case DesktopObservationKind.AppActivated:
-            case DesktopObservationKind.FocusedWindowChanged:
-            case DesktopObservationKind.TitleChanged:
-                ObserveActivity(observation, observedAt, isDeferredReplay);
-                break;
-        }
-    }
-
-    private void ObserveActivity(
-        DesktopObservation observation,
-        DateTimeOffset? observedAt,
-        bool isDeferredReplay)
-    {
-        var newApp = Normalize(observation.Activity.AppIdentityKey);
-        var newAppDisplayName = observation.Activity.AppDisplayName;
-        var newTitle = observation.Activity.Title;
-        IReadOnlyList<ForegroundSegmentSnapshot> closed = [];
-        var reportActivity = false;
-
+        IReadOnlyList<ForegroundSegmentSnapshot> closed;
+        DesktopActivity current;
         lock (_lock)
         {
-            if ((!isDeferredReplay && DeferObservationDuringDurableStage(observation)) || _isAway)
+            if (!isDeferredReplay && DeferObservationDuringDurableStage(observation))
                 return;
             var now = observedAt ?? clock.UtcNow;
+            var previous = _activity.Current;
+            if (!_activity.Observe(
+                    observation,
+                    inputActivity.ClickedWithin(TitleGateWindow),
+                    settings.SplitFocusedWindowChangesUnconditionally,
+                    _awayProcessNames))
+                return;
 
-            var appSame = string.Equals(_currentApp, newApp, StringComparison.OrdinalIgnoreCase);
-            var titleSame = string.Equals(_currentTitle, newTitle, StringComparison.Ordinal);
-
-            var usesLegacyWindowsFocusPolicy =
-                observation.Kind == DesktopObservationKind.FocusedWindowChanged
-                && !settings.SplitFocusedWindowChangesUnconditionally
-                && appSame;
-
-            if (observation.Kind == DesktopObservationKind.TitleChanged || usesLegacyWindowsFocusPolicy)
-            {
-                if (appSame && titleSame)
-                    return;
-
-                // 只有同一 focused window 的标题变化需要 Interaction Signal 门控。
-                if (appSame && !inputActivity.ClickedWithin(TitleGateWindow))
-                {
-                    _currentTitle = newTitle;
-                    return;
-                }
-            }
-
-            // 最终跨平台语义下 App 激活与 focused-window 切换必切段；Windows 本票通过
-            // settings 的兼容策略保持旧输出，后续切换协议/语义时可独立翻转。
-            closed = CloseCurrentSegment(now);
-            StartSegment(newApp, newAppDisplayName, newTitle, now);
-            reportActivity = true;
-
-            if (newApp != null)
-                Log.Debug("桌面转场 {Kind}: {App} / {Title}", observation.Kind, newApp, newTitle);
+            closed = CloseCurrentSegment(previous, now);
+            StartSegment(now);
+            current = _activity.Current;
+            Log.Debug("桌面转场 {Kind}: {App} / {Title}",
+                observation.Kind, current.AppIdentityKey, current.Title);
         }
 
         publisher.PublishBatch(closed);
-        if (reportActivity)
-            activitySink.Report(ToCurrentActivity(newApp, newAppDisplayName));
-    }
-
-    private void EnterAway(
-        DesktopObservation observation,
-        DateTimeOffset? observedAt,
-        bool isDeferredReplay)
-    {
-        IReadOnlyList<ForegroundSegmentSnapshot> closed;
-        lock (_lock)
-        {
-            if ((!isDeferredReplay && DeferObservationDuringDurableStage(observation)) || _isAway) return;
-            var now = observedAt ?? clock.UtcNow;
-
-            closed = CloseCurrentSegment(now);
-            _isAway = true;
-            _awayId = Guid.CreateVersion7();
-            _awayRevision = 0;
-            _awayStart = now;
-            _awayIsRotationContinuation = false;
-            _currentApp = null;
-            _currentAppDisplayName = null;
-            _currentTitle = null;
-            _segmentTitle = null;
-            _currentStart = default;
-            Log.Information("进入 away，封口当前应用段");
-        }
-
-        publisher.PublishBatch(closed);
-        activitySink.Report(new CurrentActivity(AppIdentityKeys.Away, "离开"));
-    }
-
-    private void ExitAway(
-        DesktopObservation observation,
-        DateTimeOffset? observedAt,
-        bool isDeferredReplay)
-    {
-        var resumed = observation.Activity;
-        var resumedApp = Normalize(resumed.AppIdentityKey);
-        IReadOnlyList<ForegroundSegmentSnapshot> awayFinal;
-        lock (_lock)
-        {
-            if ((!isDeferredReplay && DeferObservationDuringDurableStage(observation)) || !_isAway) return;
-            var now = observedAt ?? clock.UtcNow;
-
-            awayFinal = BuildSegmentsThrough(
-                ref _awayId,
-                ref _awayRevision,
-                AppIdentityKeys.Away,
-                "离开",
-                null,
-                ref _awayStart,
-                ref _awayIsRotationContinuation,
-                now,
-                isFinal: true);
-            _isAway = false;
-            StartSegment(resumedApp, resumed.AppDisplayName, resumed.Title, now);
-            Log.Information("退出 away，恢复前台: {App}", resumedApp ?? "(无)");
-        }
-
-        publisher.PublishBatch(awayFinal);
-        activitySink.Report(ToCurrentActivity(resumedApp, resumed.AppDisplayName));
+        activitySink.Report(ToCurrentActivity(current));
     }
 
     private bool DeferObservationDuringDurableStage(DesktopObservation observation)
@@ -356,25 +216,22 @@ public sealed class AppMonitorService(
         DesktopObservation Observation,
         DateTimeOffset ObservedAt);
 
-    private void StartSegment(string? app, string? appDisplayName, string? title, DateTimeOffset now)
+    private void StartSegment(DateTimeOffset now)
     {
         _currentId = Guid.CreateVersion7();
         _currentRevision = 0;
-        _currentApp = app;
-        _currentAppDisplayName = appDisplayName;
-        _currentTitle = title;
-        _segmentTitle = title;
         _currentStart = now;
         _currentIsRotationContinuation = false;
     }
 
-    private IReadOnlyList<ForegroundSegmentSnapshot> CloseCurrentSegment(DateTimeOffset now)
+    private IReadOnlyList<ForegroundSegmentSnapshot> CloseCurrentSegment(
+        DesktopActivity activity, DateTimeOffset now)
         => BuildSegmentsThrough(
             ref _currentId,
             ref _currentRevision,
-            _currentApp,
-            _currentAppDisplayName,
-            _segmentTitle,
+            activity.AppIdentityKey,
+            activity.AppDisplayName,
+            activity.Title,
             ref _currentStart,
             ref _currentIsRotationContinuation,
             now,
@@ -470,23 +327,10 @@ public sealed class AppMonitorService(
     private void OnAwayProcessNamesChanged(IReadOnlyList<string> names)
         => _awayProcessNames = [.. names];
 
-    private string? Normalize(string? appIdentityKey)
-    {
-        if (string.IsNullOrEmpty(appIdentityKey)) return appIdentityKey;
-
-        foreach (var name in _awayProcessNames)
-        {
-            if (string.Equals(
-                    appIdentityKey,
-                    AppIdentityKeys.FromLegacyWindowsAppName(name),
-                    StringComparison.OrdinalIgnoreCase))
-                return AppIdentityKeys.Away;
-        }
-        return AppIdentityKeys.Normalize(appIdentityKey);
-    }
-
-    private static CurrentActivity? ToCurrentActivity(string? appIdentityKey, string? appDisplayName)
-        => appIdentityKey == null ? null : new CurrentActivity(appIdentityKey, appDisplayName);
+    private static CurrentActivity? ToCurrentActivity(DesktopActivity activity)
+        => activity.AppIdentityKey == null
+            ? null
+            : new CurrentActivity(activity.AppIdentityKey, activity.AppDisplayName);
 
     public void Dispose()
     {
