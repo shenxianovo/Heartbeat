@@ -13,8 +13,10 @@ node scripts/smoke-local-data.mjs check
 ```
 
 检查覆盖时间范围、必填身份、外键完整性、未来时间、按 Source 的聚合计数，以及 system 重叠、
-语义重复和 App 双写不一致等质量信号。完成标准是命令退出码为 0；数据集可以没有 InputEvent，
-但已有记录不能违反硬不变量。质量信号会进入基线，后续客户端运行不能让它们恶化。
+语义重复等质量信号。完成标准是命令退出码为 0；数据集可以没有 InputEvent，
+但已有记录不能违反硬不变量。脚本读取当前 Segments/Events 家族表，从 Payload 投影活动和输入词汇；
+已迁移行检查 Target 的设备归属及 Owner，旧家族基线暂保留 Subject 回退。System 重叠按 Observer 分轨，
+独立 Observer 的相同设备观测不被误报为单轨重叠。质量信号会进入基线，后续客户端运行不能让它们恶化。
 
 ## 2. 记录客户端运行前的基线
 

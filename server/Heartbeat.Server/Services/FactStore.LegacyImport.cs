@@ -46,6 +46,8 @@ public sealed partial class FactStore
                         FactId = item.Id,
                         Revision = 1,
                         Source = item.Source,
+                        TargetKind = item.Source == "system" && stream.Subject.Kind == "machine" ? "device" : null,
+                        TargetId = item.Source == "system" && stream.Subject.Kind == "machine" ? device.Id : null,
                         AppIdentityId = app?.Id,
                         StartTime = start,
                         EndTime = end,
@@ -121,6 +123,8 @@ public sealed partial class FactStore
                     FactId = item.Id,
                     Revision = 1,
                     Source = "system",
+                    TargetKind = stream.Subject.Kind == "machine" ? "device" : null,
+                    TargetId = stream.Subject.Kind == "machine" ? device.Id : null,
                     Timestamp = NormalizeTime(item.Timestamp)!.Value,
                     Payload = JsonDocument.Parse(JsonSerializer.Serialize(new { eventType = EventName(item.EventType), codeSet = item.CodeSet, code = item.Code }))
                 });

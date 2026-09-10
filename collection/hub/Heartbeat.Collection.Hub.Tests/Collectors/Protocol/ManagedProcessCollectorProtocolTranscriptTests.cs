@@ -27,6 +27,38 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         "ReferenceCollectorPackage");
 
     [Fact]
+    public async Task ManagedPublisher_PreservesExplicitObserverAndTargetThroughStdioAndDurableUpload()
+    {
+        using var packageCopy = ManagedReferenceCollectorPackage.Create();
+        var package = LocalCollectorPackage.Load(packageCopy.Path);
+        using var directory = TemporaryDirectory.Create();
+        var sink = new SegmentIngestService(new TestClock(DateTimeOffset.UtcNow));
+        var path = Path.Combine(directory.Path, "runtime.json");
+        using var runtime = CollectorRuntime.Open(path, sink, new CollectorRuntimeOptions { EnableFactUpload = true });
+        var instance = runtime.CreateInstance(package, new SubjectReference(Guid.NewGuid(), SubjectKind.Account),
+            new CollectorInstanceSpec(1, 1, JsonSerializer.SerializeToElement(new { })));
+        var activation = await runtime.ActivateManagedProcessAsync(instance.CollectorInstanceId, package, Options("observation_target"));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (runtime.ReadPendingFacts().Count == 0) await Task.Delay(10, timeout.Token);
+        await activation.StopAsync();
+        runtime.Dispose();
+        using var restarted = CollectorRuntime.Open(path, sink, new CollectorRuntimeOptions { EnableFactUpload = true });
+        var item = Assert.Single(restarted.ReadPendingFacts());
+        Assert.Equal(instance.CollectorInstanceId, item.Fact!.ObserverId);
+        Assert.Equal(new Heartbeat.Core.DTOs.Facts.FactTarget("device", "0198d5df-5df3-70a1-937d-68a7d64623e2"), item.Fact.Target);
+        var correct = restarted.ReadPendingFacts();
+        item.Fact.Target = new Heartbeat.Core.DTOs.Facts.FactTarget("device", "another-device");
+        restarted.ConfirmUploadedFacts([item]);
+        Assert.Single(restarted.ReadPendingFacts());
+        item.Fact.Target = correct[0].Fact!.Target;
+        item.Fact.ObserverId = Guid.NewGuid();
+        restarted.ConfirmUploadedFacts([item]);
+        Assert.Single(restarted.ReadPendingFacts());
+        restarted.ConfirmUploadedFacts(correct);
+        Assert.Empty(restarted.ReadPendingFacts());
+    }
+
+    [Fact]
     public async Task ActivateManagedProcessRejectsUnschedulablePositiveDrainBudgetBeforeStartingProcess()
     {
         using var fixture = ManagedRuntimeFixture.Create();

@@ -502,6 +502,8 @@ public sealed class StdioCollectorProtocolBinding : ICollectorProtocolBinding
             CollectorEventFactTime occurrence => new { occurredAt = Timestamp(occurrence.OccurredAt) },
             _ => throw new InvalidOperationException("Unknown Collector Fact time shape.")
         },
+        observerId = fact.ObserverId,
+        target = fact.Target,
         payload = fact.Payload
     };
 

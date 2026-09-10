@@ -8,6 +8,9 @@ namespace Heartbeat.Server.Entities
     {
         /// <summary>稳定的查询行身份；历史导入保留旧 Id，原生事实使用其存储键。原生去重以 Owner/Stream/FactId/Revision 为准。</summary>
         public Guid Id { get; set; }
+        public Guid? ObserverId { get; set; }
+        public string? TargetKind { get; set; }
+        public long? TargetId { get; set; }
 
         public string OwnerId { get; set; } = string.Empty;
 

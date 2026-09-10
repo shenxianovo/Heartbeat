@@ -48,6 +48,8 @@ namespace Heartbeat.Server.Data
                 entity.HasOne(e => e.Stream).WithMany().HasForeignKey(e => new { e.OwnerId, e.StreamId }).OnDelete(DeleteBehavior.Restrict);
                 entity.HasOne<AppIdentity>("AppIdentity").WithMany().HasForeignKey(e => e.AppIdentityId).OnDelete(DeleteBehavior.Restrict);
                 entity.HasIndex(e => e.AppIdentityId);
+                entity.Property(e => e.TargetKind).HasMaxLength(32);
+                entity.HasIndex(e => new { e.OwnerId, e.TargetKind, e.TargetId });
             });
         }
 

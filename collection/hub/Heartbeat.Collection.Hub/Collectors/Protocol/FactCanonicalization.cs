@@ -20,6 +20,15 @@ internal static class FactCanonicalization
                 writer.WriteString("streamId", fact.StreamId);
                 writer.WriteString("factId", fact.FactId);
                 writer.WriteNumber("revision", fact.Revision);
+                if (fact.ObserverId is { } observer) writer.WriteString("observerId", observer);
+                if (fact.Target is { } target)
+                {
+                    writer.WritePropertyName("target");
+                    writer.WriteStartObject();
+                    writer.WriteString("kind", target.Kind);
+                    writer.WriteString("reference", target.Reference);
+                    writer.WriteEndObject();
+                }
                 if (fact.ObservedAt is { } observedAt)
                     writer.WriteString("observedAt", observedAt.ToString("O", CultureInfo.InvariantCulture));
                 else
@@ -66,6 +75,15 @@ internal static class FactCanonicalization
                 writer.WriteString("streamId", fact.StreamId);
                 writer.WriteString("factId", fact.FactId);
                 writer.WriteNumber("revision", fact.Revision);
+                if (fact.ObserverId is { } observer) writer.WriteString("observerId", observer);
+                if (fact.Target is { } target)
+                {
+                    writer.WritePropertyName("target");
+                    writer.WriteStartObject();
+                    writer.WriteString("kind", target.Kind);
+                    writer.WriteString("reference", target.Reference);
+                    writer.WriteEndObject();
+                }
                 if (fact.ObservedAt is { } observedAt)
                     writer.WriteString("observedAt", FormatProtocolTimestamp(observedAt));
                 writer.WritePropertyName("time");

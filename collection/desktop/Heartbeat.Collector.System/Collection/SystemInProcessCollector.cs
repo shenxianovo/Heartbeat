@@ -369,7 +369,7 @@ public sealed class SystemInProcessCollector(
             CollectorEventFactTime occurrence => new EventFactTime(occurrence.OccurredAt),
             _ => throw new InvalidOperationException("Unknown Collector Fact time shape.")
         },
-        fact.Payload.Clone());
+        fact.Payload.Clone(), fact.ObserverId, fact.Target);
 
     private static ClientError? ToClientError(HubError? error) => error is null
         ? null

@@ -1858,6 +1858,8 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
             "factId",
             "revision",
             "observedAt",
+            "observerId",
+            "target",
             "time",
             "payload");
         var time = RequireObject(fact, "time");
@@ -1880,7 +1882,10 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
             ReadPositiveLong(fact, "revision"),
             fact.TryGetProperty("observedAt", out _) ? ReadUtcTimestamp(fact, "observedAt") : null,
             factTime,
-            fact.GetProperty("payload").Clone());
+            fact.GetProperty("payload").Clone(),
+            fact.TryGetProperty("observerId", out var observer) && observer.ValueKind != JsonValueKind.Null ? observer.GetGuid() : null,
+            fact.TryGetProperty("target", out var target) && target.ValueKind != JsonValueKind.Null
+                ? JsonSerializer.Deserialize<Heartbeat.Core.DTOs.Facts.FactTarget>(target, new JsonSerializerOptions(JsonSerializerDefaults.Web)) : null);
     }
 
     private static IReadOnlyDictionary<string, IReadOnlyList<int>> ReadCapabilities(JsonElement parent, string name) =>

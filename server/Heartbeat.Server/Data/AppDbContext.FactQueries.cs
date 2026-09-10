@@ -20,6 +20,7 @@ public partial class AppDbContext
         .Select(s => new ActivitySegment
         {
             Id = s.Id,
+            ObserverId = s.ObserverId, TargetKind = s.TargetKind, TargetId = s.TargetId,
             OwnerId = s.OwnerId,
             StreamId = s.StreamId,
             FactId = s.FactId,
@@ -28,8 +29,8 @@ public partial class AppDbContext
             Source = s.Source,
             StartTime = s.StartTime,
             EndTime = s.EndTime,
-            DeviceId = s.Stream.Subject.DeviceId,
-            Device = s.Stream.Subject.Device,
+            DeviceId = s.TargetKind == "device" ? s.TargetId : s.TargetKind == null ? s.Stream.Subject.DeviceId : null,
+            Device = s.TargetKind == "device" ? Devices.FirstOrDefault(d => d.Id == s.TargetId && d.OwnerId == s.OwnerId) : s.TargetKind == null ? s.Stream.Subject.Device : null,
             AppIdentityId = s.AppIdentityId,
             AppIdentity = s.AppIdentity,
             AppId = s.AppIdentity != null ? s.AppIdentity.AppId : null,
@@ -43,7 +44,7 @@ public partial class AppDbContext
 
     /// <summary>Only recognized input vocabulary participates in input counts. Other Events remain stored.</summary>
     public IQueryable<InputEvent> InputEvents => Events
-        .Where(e => e.Stream.Subject.DeviceId != null)
+        .Where(e => e.TargetKind == "device" && e.TargetId != null || e.TargetKind == null && e.Stream.Subject.DeviceId != null)
         .Select(e => new
         {
             Event = e,
@@ -62,8 +63,8 @@ public partial class AppDbContext
         .Select(x => new InputEvent
         {
             Id = x.Event.Id,
-            DeviceId = x.Event.Stream.Subject.DeviceId!.Value,
-            Device = x.Event.Stream.Subject.Device!,
+            DeviceId = x.Event.TargetKind == "device" ? x.Event.TargetId!.Value : x.Event.Stream.Subject.DeviceId!.Value,
+            Device = x.Event.TargetKind == "device" ? Devices.First(d => d.Id == x.Event.TargetId && d.OwnerId == x.Event.OwnerId) : x.Event.Stream.Subject.Device!,
             Timestamp = x.Event.Timestamp,
             CodeSet = x.CodeSet!,
             Code = (short)x.Code!.Value,

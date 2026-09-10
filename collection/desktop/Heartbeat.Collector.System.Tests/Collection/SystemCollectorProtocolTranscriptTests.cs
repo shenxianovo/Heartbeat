@@ -83,6 +83,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         await using var runtime = CollectorRuntime.Open(
             statePath,
             segmentSink,
+            new CollectorRuntimeOptions { EnableFactUpload = true },
             inputEventSink: inputSink);
         var protocol = new SystemCollectorProtocolAdapter();
         await using var activation = await runtime.ActivateInProcessAsync(
@@ -93,6 +94,13 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         Assert.Equal(instanceId, runtime.GetInstance(instanceId).CollectorInstanceId);
         Assert.Equal("1.1.1", runtime.GetInstance(instanceId).PackageVersion);
         Assert.Equal(2, activation.Streams.Count);
+        var inputId = Guid.CreateVersion7();
+        protocol.Publish(new InputEventItem { Id = inputId, Timestamp = clock.UtcNow,
+            EventType = InputEventType.MouseButton, CodeSet = InputCodeSets.HeartbeatKeyPositionV1, Code = 1 });
+        await WaitUntilAsync(() => runtime.ReadPendingFacts().Any(item => item.Fact?.FactId == inputId));
+        var fact = Assert.Single(runtime.ReadPendingFacts(), item => item.Fact?.FactId == inputId).Fact!;
+        Assert.Equal(instanceId, fact.ObserverId);
+        Assert.Equal(subject.SubjectId.ToString("D"), fact.Target!.Reference);
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Heartbeat.Core.DTOs.Facts;
 using System.Threading.Channels;
 using Heartbeat.Collection.CollectorProtocol;
 using Heartbeat.Collection.Hub.Collectors.Protocol;
@@ -365,7 +366,7 @@ public sealed class SystemCollectorProtocolAdapter :
         return false;
     }
 
-    private static CollectorFact ToFact(ForegroundSegmentSnapshot snapshot) => new(
+    private CollectorFact ToFact(ForegroundSegmentSnapshot snapshot) => new(
         SystemInProcessCollector.ForegroundBindingId,
         snapshot.FactId,
         snapshot.Revision,
@@ -377,9 +378,9 @@ public sealed class SystemCollectorProtocolAdapter :
             appIdentityKey = snapshot.AppIdentityKey,
             appDisplayName = snapshot.AppDisplayName,
             title = snapshot.Title
-        }));
+        }), _activation!.Initialization.CollectorInstanceId, DeviceTarget);
 
-    private static CollectorFact ToFact(InputEventItem item) => new(
+    private CollectorFact ToFact(InputEventItem item) => new(
         SystemInProcessCollector.InputEventBindingId,
         item.Id,
         1,
@@ -390,7 +391,9 @@ public sealed class SystemCollectorProtocolAdapter :
             eventType = EventTypeName(item.EventType),
             codeSet = item.CodeSet,
             code = item.Code
-        }));
+        }), _activation!.Initialization.CollectorInstanceId, DeviceTarget);
+
+    private FactTarget DeviceTarget => new("device", _activation!.Initialization.SubjectId.ToString("D"));
 
     private static string EventTypeName(InputEventType eventType) => eventType switch
     {

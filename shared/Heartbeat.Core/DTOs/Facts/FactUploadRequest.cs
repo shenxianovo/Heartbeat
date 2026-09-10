@@ -35,6 +35,8 @@ public sealed class FactSnapshot
     public Guid StreamId { get; set; }
     public Guid FactId { get; set; }
     public long Revision { get; set; }
+    public Guid? ObserverId { get; set; }
+    public FactTarget? Target { get; set; }
     public DateTimeOffset? ObservedAt { get; set; }
     public DateTimeOffset? Start { get; set; }
     public DateTimeOffset? End { get; set; }

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Heartbeat.Core.DTOs.Facts;
 using System.Text.Json.Serialization;
 
 namespace Heartbeat.Collection.CollectorProtocol;
@@ -66,7 +67,9 @@ public sealed record CollectorFact(
     long Revision,
     DateTimeOffset? ObservedAt,
     CollectorFactTime Time,
-    JsonElement Payload);
+    JsonElement Payload,
+    Guid? ObserverId = null,
+    FactTarget? Target = null);
 
 public sealed record BoundCollectorFact(
     Guid StreamId,
@@ -74,7 +77,9 @@ public sealed record BoundCollectorFact(
     long Revision,
     DateTimeOffset? ObservedAt,
     CollectorFactTime Time,
-    JsonElement Payload);
+    JsonElement Payload,
+    Guid? ObserverId = null,
+    FactTarget? Target = null);
 
 public enum CollectorFactDeliveryStatus
 {

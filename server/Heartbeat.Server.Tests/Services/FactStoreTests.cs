@@ -416,6 +416,55 @@ public sealed class FactStoreTests(PostgresContainerFixture fixture) : PostgresT
         }
     }
 
+    [Theory]
+    [InlineData("segment")]
+    [InlineData("event")]
+    public async Task DirectTargets_KeepIndependentObserversAndRevisionGuards_WithoutStreamAttribution(string kind)
+    {
+        await using var db = CreateDbContext();
+        var store = new FactStore(db);
+        var batch = kind == "segment" ? SegmentBatch() : EventBatch();
+        var snapshot = batch.Facts[0];
+        snapshot.ObserverId = batch.Streams[0].CollectorInstanceId;
+        snapshot.Target = new FactTarget("device", "second-device");
+        await store.IngestAsync("owner", batch);
+        var target = await db.Devices.SingleAsync(d => d.HardwareId == "second-device");
+        var oldDevice = await db.Devices.SingleAsync(d => d.HardwareId == "hardware");
+        async Task<List<FactResponse>> Read(string owner, long device) => kind == "segment"
+            ? await store.ReadSegmentsAsync(owner, device, null, null) : await store.ReadEventsAsync(owner, device, null, null);
+        var original = Assert.Single(await Read("owner", target.Id));
+        Assert.Empty(await Read("owner", oldDevice.Id));
+        Assert.Empty(await Read("other", target.Id));
+        var observer = snapshot.ObserverId;
+        snapshot.ObserverId = Guid.NewGuid();
+        Assert.True((await Assert.ThrowsAsync<FactIngestException>(() => store.IngestAsync("owner", batch))).IsConflict);
+        snapshot.ObserverId = observer;
+        snapshot.Target = new FactTarget("device", "hardware");
+        Assert.True((await Assert.ThrowsAsync<FactIngestException>(() => store.IngestAsync("owner", batch))).IsConflict);
+        snapshot.Revision = 2;
+        await store.IngestAsync("owner", batch);
+        Assert.Empty(await Read("owner", target.Id));
+        Assert.Equal(original.Id, Assert.Single(await Read("owner", oldDevice.Id)).Id);
+        snapshot.Revision = 1;
+        snapshot.Target = new FactTarget("device", "second-device");
+        await store.IngestAsync("owner", batch);
+        Assert.Equal(2, Assert.Single(await Read("owner", oldDevice.Id)).Revision);
+        snapshot.Revision = 2;
+        snapshot.ObserverId = null;
+        await Assert.ThrowsAsync<FactIngestException>(() => store.IngestAsync("owner", batch));
+        snapshot.ObserverId = observer;
+        snapshot.Target = new FactTarget("device", "hardware");
+        var secondStream = kind == "segment" ? SegmentBatch() : EventBatch();
+        secondStream.Facts[0].FactId = snapshot.FactId;
+        secondStream.Facts[0].ObserverId = secondStream.Streams[0].CollectorInstanceId;
+        secondStream.Facts[0].Target = snapshot.Target;
+        await store.IngestAsync("owner", secondStream);
+        var rows = await Read("owner", oldDevice.Id);
+        Assert.Equal(2, rows.Count);
+        Assert.Equal(2, rows.Select(r => r.ObserverId).Distinct().Count());
+        Assert.Equal(2, rows.Select(r => r.Id).Distinct().Count());
+    }
+
     internal static FactUploadRequest SegmentBatch(string subjectKind = "machine")
     {
         var stream = new FactStreamDefinition

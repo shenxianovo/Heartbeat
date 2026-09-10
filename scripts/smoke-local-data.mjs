@@ -65,7 +65,25 @@ for (const [label, path] of [['Compose file', composeFile], ['Environment file',
   }
 }
 
+// to_jsonb reads the additive Target columns on both the deployed family baseline and the new schema.
+// Remove the Subject fallback with observation-identity-targets task 05.
 const sql = String.raw`
+WITH "ActivitySegments" AS (
+  SELECT s.*, s."Payload"->>'activityKey' AS "IdentityKey",
+    to_jsonb(s)->>'ObserverId' AS "Observer",
+    CASE WHEN to_jsonb(s)->>'TargetKind' = 'device' THEN (to_jsonb(s)->>'TargetId')::bigint
+         WHEN to_jsonb(s)->>'TargetKind' IS NULL THEN subject."DeviceId" END AS "DeviceId"
+  FROM "Segments" s JOIN "Streams" stream ON stream."OwnerId" = s."OwnerId" AND stream."StreamId" = s."StreamId"
+  JOIN "Subjects" subject ON subject."OwnerId" = stream."OwnerId" AND subject."SubjectId" = stream."SubjectId"
+  WHERE jsonb_typeof(s."Payload"->'activityKey') = 'string' AND btrim(s."Payload"->>'activityKey') <> ''
+), "InputEvents" AS (
+  SELECT e.*, e."Payload"->>'codeSet' AS "CodeSet",
+    CASE WHEN to_jsonb(e)->>'TargetKind' = 'device' THEN (to_jsonb(e)->>'TargetId')::bigint
+         WHEN to_jsonb(e)->>'TargetKind' IS NULL THEN subject."DeviceId" END AS "DeviceId"
+  FROM "Events" e JOIN "Streams" stream ON stream."OwnerId" = e."OwnerId" AND stream."StreamId" = e."StreamId"
+  JOIN "Subjects" subject ON subject."OwnerId" = stream."OwnerId" AND subject."SubjectId" = stream."SubjectId"
+  WHERE e."Payload"->>'eventType' IN ('keyDown', 'mouseButton', 'mouseScroll')
+)
 SELECT json_build_object(
   'capturedAtUtc', to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
   'users', (SELECT count(*) FROM "Users"),
@@ -82,31 +100,34 @@ SELECT json_build_object(
   'qualitySignals', json_build_object(
     'exactDuplicateSemanticRows', (SELECT coalesce(sum(total - 1), 0) FROM (
       SELECT count(*) AS total FROM "ActivitySegments"
-      GROUP BY "DeviceId", "Source", "IdentityKey", "StartTime", "EndTime"
+      GROUP BY "OwnerId", "DeviceId", "Observer", "Source", "IdentityKey", "StartTime", "EndTime"
       HAVING count(*) > 1
     ) duplicate_groups),
     'systemOverlapRows', (SELECT count(*) FROM (
       SELECT "StartTime", max("EndTime") OVER (
-        PARTITION BY "DeviceId" ORDER BY "StartTime", "EndTime", "Id"
+        PARTITION BY "OwnerId", "DeviceId", "Observer" ORDER BY "StartTime", "EndTime", "Id"
         ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
       ) AS previous_max_end
       FROM "ActivitySegments" WHERE "Source" = 'system'
     ) ordered_system WHERE "StartTime" < previous_max_end),
-    'appForeignKeyMismatch', (SELECT count(*) FROM "ActivitySegments" s
-      JOIN "AppIdentities" i ON i."Id" = s."AppIdentityId"
-      WHERE s."AppId" IS NOT NULL AND s."AppId" <> i."AppId"),
     'segmentsOver24Hours', (SELECT count(*) FROM "ActivitySegments"
       WHERE "EndTime" - "StartTime" > interval '24 hours')
   ),
   'violations', json_build_object(
+    'orphanTarget', (SELECT count(*) FROM (
+      SELECT "OwnerId", to_jsonb(s)->>'TargetKind' AS kind, (to_jsonb(s)->>'TargetId')::bigint AS id FROM "Segments" s
+      UNION ALL
+      SELECT "OwnerId", to_jsonb(e)->>'TargetKind', (to_jsonb(e)->>'TargetId')::bigint FROM "Events" e
+    ) targets LEFT JOIN "Devices" d ON d."Id" = targets.id AND d."OwnerId" = targets."OwnerId"
+      WHERE targets.kind = 'device' AND d."Id" IS NULL),
     'invalidSegmentRanges', (SELECT count(*) FROM "ActivitySegments" WHERE "EndTime" < "StartTime"),
     'blankSegmentSource', (SELECT count(*) FROM "ActivitySegments" WHERE btrim("Source") = ''),
     'blankSegmentIdentity', (SELECT count(*) FROM "ActivitySegments" WHERE btrim("IdentityKey") = ''),
     'systemWithoutAppIdentity', (SELECT count(*) FROM "ActivitySegments" WHERE "Source" = 'system' AND "AppIdentityId" IS NULL),
     'inputWithoutCodeSet', (SELECT count(*) FROM "InputEvents" WHERE btrim("CodeSet") = ''),
     'unknownInputCodeSet', (SELECT count(*) FROM "InputEvents" WHERE "CodeSet" NOT IN ('heartbeat-key-position-v1', 'windows-vk-v1')),
-    'orphanSegmentDevice', (SELECT count(*) FROM "ActivitySegments" s LEFT JOIN "Devices" d ON d."Id" = s."DeviceId" WHERE d."Id" IS NULL),
-    'orphanInputDevice', (SELECT count(*) FROM "InputEvents" i LEFT JOIN "Devices" d ON d."Id" = i."DeviceId" WHERE d."Id" IS NULL),
+    'orphanSegmentDevice', (SELECT count(*) FROM "ActivitySegments" s LEFT JOIN "Devices" d ON d."Id" = s."DeviceId" WHERE s."DeviceId" IS NOT NULL AND (d."Id" IS NULL OR d."OwnerId" <> s."OwnerId")),
+    'orphanInputDevice', (SELECT count(*) FROM "InputEvents" i LEFT JOIN "Devices" d ON d."Id" = i."DeviceId" WHERE i."DeviceId" IS NOT NULL AND (d."Id" IS NULL OR d."OwnerId" <> i."OwnerId")),
     'orphanAppIdentity', (SELECT count(*) FROM "ActivitySegments" s LEFT JOIN "AppIdentities" a ON a."Id" = s."AppIdentityId" WHERE s."AppIdentityId" IS NOT NULL AND a."Id" IS NULL),
     'futureSegments', (SELECT count(*) FROM "ActivitySegments" WHERE "EndTime" > now() + interval '5 minutes'),
     'futureInputs', (SELECT count(*) FROM "InputEvents" WHERE "Timestamp" > now() + interval '5 minutes'),

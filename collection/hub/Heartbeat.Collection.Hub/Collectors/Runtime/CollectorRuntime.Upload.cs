@@ -58,6 +58,7 @@ public sealed partial class CollectorRuntime
                 Instances = [.. _state.Instances], Streams = [.. _state.Streams],
                 ActivationAttemptTombstones = [.. _state.ActivationAttemptTombstones],
                 Facts = _state.Facts.Select(fact => facts[(fact.StreamId, fact.FactId, fact.Revision)].Any(item =>
+                    item.ObserverId == fact.ObserverId && item.Target == fact.Target &&
                     item.Start == (fact.OccurredAt is null ? fact.Start : null) && item.End == (fact.OccurredAt is null ? fact.End : null) &&
                     item.OccurredAt == fact.OccurredAt && item.IsFinal == (fact.OccurredAt is null ? fact.IsFinal : null) &&
                     item.Payload is { } payload && fact.Payload is { } saved && JsonElement.DeepEquals(payload, saved))
@@ -114,6 +115,7 @@ public sealed partial class CollectorRuntime
         new FactSnapshot
         {
             StreamId = fact.StreamId, FactId = fact.FactId, Revision = fact.Revision,
+            ObserverId = fact.ObserverId, Target = fact.Target,
             ObservedAt = fact.ObservedAt,
             Start = stream.FactKind == FactKind.Segment ? fact.Start : null,
             End = stream.FactKind == FactKind.Segment ? fact.End : null,

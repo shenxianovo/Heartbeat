@@ -728,6 +728,10 @@ public sealed partial class CollectorRuntime
         if (stream is null)
             return Rejected(index, "fact_invalid", "Fact Stream does not exist.");
 
+        // Pre-attribution System outboxes still replay their original envelope (task 05).
+        if (fact.ObserverId is null && fact.Target is null && stream.Source == "system" && stream.SubjectKind == SubjectKind.Machine)
+            fact = fact with { ObserverId = stream.CollectorInstanceId,
+                Target = new Heartbeat.Core.DTOs.Facts.FactTarget("device", stream.SubjectId.ToString("D")) };
         var envelopeError = ValidateFactEnvelope(fact);
         if (envelopeError is not null)
             return Rejected(index, "fact_invalid", envelopeError);
@@ -809,6 +813,7 @@ public sealed partial class CollectorRuntime
             StreamId = fact.StreamId,
             FactId = fact.FactId,
             Revision = fact.Revision,
+            ObserverId = fact.ObserverId, Target = fact.Target,
             ObservedAt = fact.ObservedAt,
             Start = fact.Time.Start ?? default,
             End = fact.Time.End ?? default,
@@ -824,6 +829,7 @@ public sealed partial class CollectorRuntime
     }
 
     private static bool SameContent(CommittedFactState current, FactSubmission fact) =>
+        current.ObserverId == fact.ObserverId && current.Target == fact.Target &&
         current.Start == (fact.Time.Start ?? default) && current.End == (fact.Time.End ?? default) &&
         current.IsFinal == (fact.Time.IsFinal ?? false) && current.OccurredAt == fact.Time.OccurredAt &&
         current.Payload is { } payload && JsonElement.DeepEquals(payload, fact.Payload);
@@ -838,6 +844,9 @@ public sealed partial class CollectorRuntime
         if (fact.StreamId == Guid.Empty || !IsUuidV7(fact.FactId) ||
             fact.Revision is <= 0 or > MaxSafeJsonInteger)
             return "Fact identity and revisions must be UUIDv7, positive, and JSON-safe.";
+        if ((fact.ObserverId is null) != (fact.Target is null) || fact.ObserverId == Guid.Empty ||
+            fact.Target is { } target && (target.Kind != "device" || string.IsNullOrWhiteSpace(target.Reference) || target.Reference.Length > 256))
+            return "Fact requires a valid Observer and Target together.";
         if (fact.ObservedAt is { Offset: var offset } && offset != TimeSpan.Zero)
             return "Fact observedAt must be UTC.";
         return null;

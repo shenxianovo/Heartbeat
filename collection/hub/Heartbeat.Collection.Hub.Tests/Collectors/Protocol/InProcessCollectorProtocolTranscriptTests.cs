@@ -332,6 +332,26 @@ public partial class InProcessCollectorProtocolTranscriptTests
         Assert.Single(fixture.Sink.Segments);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Publish_AttributionConflictsParticipateInMessageAndRevisionIdentity(bool changeObserver)
+    {
+        await using var fixture = await ActivatedRuntimeFixture.CreateAsync(new CollectorRuntimeOptions { EnableFactUpload = true });
+        var stream = fixture.Activation.Streams["activity"];
+        var fact = CreateFact(stream.Descriptor.StreamId) with { ObserverId = Guid.NewGuid(),
+            Target = new Heartbeat.Core.DTOs.Facts.FactTarget("device", "device-a") };
+        var messageId = Guid.CreateVersion7();
+        Assert.Equal(FactDeliveryStatus.Committed, Assert.Single((await stream.PublishAsync(messageId, [fact])).Results).Status);
+        var changed = changeObserver ? fact with { ObserverId = Guid.NewGuid() }
+            : fact with { Target = new Heartbeat.Core.DTOs.Facts.FactTarget("device", "device-b") };
+        Assert.True((await stream.PublishAsync(messageId, [changed])).IsMessageRejected);
+        Assert.Equal(FactDeliveryStatus.Rejected, Assert.Single((await stream.PublishAsync(Guid.CreateVersion7(), [changed])).Results).Status);
+        var another = fact with { FactId = Guid.CreateVersion7(), Target = new Heartbeat.Core.DTOs.Facts.FactTarget("device", "device-b") };
+        Assert.Equal(FactDeliveryStatus.Committed, Assert.Single((await stream.PublishAsync(Guid.CreateVersion7(), [another])).Results).Status);
+        Assert.Equal(2, fixture.Runtime.ReadPendingFacts().Count);
+    }
+
     [Fact]
     public async Task Publish_SameMessageIdWithDifferentContent_IsMessageRejected()
     {

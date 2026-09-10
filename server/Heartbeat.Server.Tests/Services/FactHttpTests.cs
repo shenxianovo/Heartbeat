@@ -142,6 +142,15 @@ public sealed class FactHttpTests(PostgresContainerFixture fixture) : PostgresTe
                     Assert.Single((await stream.PublishAsync(Guid.CreateVersion7(), [original])).Results).Status);
             }
 
+            // Replay the exact pre-attribution v3 shape, including its original durable fact identity.
+            var oldCache = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+            oldCache["schemaVersion"] = 3;
+            foreach (var fact in oldCache["facts"]!.AsArray())
+            {
+                fact!.AsObject().Remove("observerId");
+                fact.AsObject().Remove("target");
+            }
+            File.WriteAllText(path, oldCache.ToJsonString());
             await using var application = CreateApplication();
             using var http = application.CreateClient();
             http.DefaultRequestHeaders.Add(HeartbeatProtocol.VersionHeader, HeartbeatProtocol.RequiredVersion);
@@ -150,6 +159,9 @@ public sealed class FactHttpTests(PostgresContainerFixture fixture) : PostgresTe
             await using var resumed = await restarted.ActivateInProcessAsync(instanceId, package, new PayloadCollector(package));
             var writer = resumed.Streams[kind == "segment" ? "foreground" : "input-events"];
             var first = restarted.ReadPendingFacts();
+            Assert.Equal(instanceId, Assert.Single(first).Fact!.ObserverId);
+            Assert.Equal(new FactTarget("device", first[0].Stream.Subject.HardwareId!), first[0].Fact!.Target);
+            Assert.True(File.Exists(path + ".v3.bak"));
             using var accepted = await http.PostAsJsonAsync("/api/v1/facts", FactUploadItem.Request(first));
             Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
             var corrected = original with { Revision = 2, Payload = JsonSerializer.SerializeToElement(new { newField = "no registration", values = new[] { true, false } }) };
@@ -195,6 +207,153 @@ public sealed class FactHttpTests(PostgresContainerFixture fixture) : PostgresTe
             Assert.True(JsonElement.DeepEquals(corrected.Payload, ownerFact.Payload.RootElement));
         }
         finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
+    public async Task SystemPublisher_RestartAndResume_PreservesObserverAndDeviceForBothFamilies()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"heartbeat-system-http-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
+            var path = Path.Combine(directory, "runtime.json");
+            var subject = new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine);
+            var options = new CollectorRuntimeOptions { EnableFactUpload = true };
+            Guid instanceId;
+            var inputId = Guid.CreateVersion7();
+            var segmentId = Guid.CreateVersion7();
+            var start = DateTimeOffset.FromUnixTimeMilliseconds(DateTimeOffset.UtcNow.AddMinutes(-2).ToUnixTimeMilliseconds());
+            using (var runtime = CollectorRuntime.Open(path, new UnusedProjection(), options))
+            {
+                instanceId = runtime.CreateInstance(package, subject,
+                    new CollectorInstanceSpec(1, 1, JsonSerializer.SerializeToElement(new { }))).CollectorInstanceId;
+                var publisher = new SystemCollectorProtocolAdapter();
+                var clock = new Heartbeat.Collection.Hub.Time.SystemClock();
+                var sink = new SegmentIngestService(clock);
+                using var monitor = new AppMonitorService(clock, new DesktopSource(), new InputSignal(), publisher, sink, new DesktopSettings());
+                using var collector = new SystemInProcessCollector(publisher, monitor);
+                await using var activation = await runtime.ActivateInProcessAsync(instanceId, package, collector);
+                publisher.Publish(new ForegroundSegmentSnapshot(segmentId, 1, "code/main.cs", "win:code", "Code", "main.cs", start, start.AddMinutes(1), true));
+                publisher.Publish(new Heartbeat.Core.DTOs.Input.InputEventItem
+                {
+                    Id = inputId, Timestamp = start, EventType = Heartbeat.Core.DTOs.Input.InputEventType.MouseButton,
+                    CodeSet = Heartbeat.Core.DTOs.Input.InputCodeSets.HeartbeatKeyPositionV1, Code = 1
+                });
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                while (runtime.ReadPendingFacts().Count < 2) await Task.Delay(10, timeout.Token);
+            }
+            using var restarted = CollectorRuntime.Open(path, new UnusedProjection(), options);
+            var pending = restarted.ReadPendingFacts();
+            var upload = FactUploadItem.Request(pending);
+            var wire = JsonSerializer.SerializeToElement(upload, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            foreach (var fact in wire.GetProperty("facts").EnumerateArray())
+            {
+                Assert.Equal(instanceId, fact.GetProperty("observerId").GetGuid());
+                Assert.Equal("device", fact.GetProperty("target").GetProperty("kind").GetString());
+                Assert.Equal(subject.SubjectId.ToString("D"), fact.GetProperty("target").GetProperty("reference").GetString());
+            }
+            await using (var db = CreateDbContext())
+            {
+                db.Users.Add(new User { Id = "owner", Username = "alice" });
+                await db.SaveChangesAsync();
+            }
+            await using var application = CreateApplication();
+            using var http = application.CreateClient();
+            http.DefaultRequestHeaders.Add(HeartbeatProtocol.VersionHeader, HeartbeatProtocol.RequiredVersion);
+            http.DefaultRequestHeaders.Add("X-Test-Owner", "owner");
+            using var accepted = await http.PostAsJsonAsync("/api/v1/facts", upload);
+            Assert.True(accepted.IsSuccessStatusCode, await accepted.Content.ReadAsStringAsync());
+            using var devices = JsonDocument.Parse(await http.GetStringAsync("/api/v1/users/alice/devices"));
+            var deviceId = Assert.Single(devices.RootElement.EnumerateArray()).GetProperty("id").GetInt64();
+            foreach (var kind in new[] { "segments", "events" })
+            {
+                using var read = await http.GetAsync($"/api/v1/users/alice/facts/{kind}?deviceId={deviceId}");
+                Assert.True(read.StatusCode == HttpStatusCode.OK, await read.Content.ReadAsStringAsync());
+                using var document = JsonDocument.Parse(await read.Content.ReadAsStringAsync());
+                var rows = document.RootElement.EnumerateArray().ToArray();
+                Assert.NotEmpty(rows);
+                Assert.All(rows, row =>
+                {
+                    Assert.Equal(instanceId, row.GetProperty("observerId").GetGuid());
+                    Assert.Equal("device", row.GetProperty("targetKind").GetString());
+                    Assert.Equal(deviceId, row.GetProperty("targetId").GetInt64());
+                });
+                if (kind == "events")
+                {
+                    var row = Assert.Single(rows);
+                    Assert.Equal(inputId, row.GetProperty("factId").GetGuid());
+                    Assert.Equal(start, row.GetProperty("occurredAt").GetDateTimeOffset());
+                    Assert.True(JsonElement.DeepEquals(JsonSerializer.SerializeToElement(new
+                    { eventType = "mouseButton", codeSet = "heartbeat-key-position-v1", code = 1 }), row.GetProperty("payload")));
+                }
+                else
+                {
+                    var row = Assert.Single(rows, row => row.GetProperty("factId").GetGuid() == segmentId);
+                    Assert.Equal(start, row.GetProperty("start").GetDateTimeOffset());
+                    Assert.Equal(start.AddMinutes(1), row.GetProperty("end").GetDateTimeOffset());
+                    Assert.True(JsonElement.DeepEquals(JsonSerializer.SerializeToElement(new
+                    { activityKey = "code/main.cs", appIdentityKey = "win:code", appDisplayName = "Code", title = "main.cs" }), row.GetProperty("payload")));
+                }
+            }
+            using var replay = await http.PostAsJsonAsync("/api/v1/facts", upload);
+            Assert.Equal(HttpStatusCode.OK, replay.StatusCode);
+            restarted.ConfirmUploadedFacts(pending);
+            Assert.Empty(restarted.ReadPendingFacts());
+            // Stopping/resuming uses the persisted instance; another instance on this same device is independent.
+            var independent = restarted.CreateInstance(package, subject,
+                new CollectorInstanceSpec(1, 1, JsonSerializer.SerializeToElement(new { })));
+            foreach (var observer in new[] { instanceId, independent.CollectorInstanceId })
+            {
+                var publisher = new SystemCollectorProtocolAdapter();
+                var clock = new Heartbeat.Collection.Hub.Time.SystemClock();
+                var sink = new SegmentIngestService(clock);
+                using var monitor = new AppMonitorService(clock, new DesktopSource(), new InputSignal(), publisher, sink, new DesktopSettings());
+                using var collector = new SystemInProcessCollector(publisher, monitor);
+                await using var activation = await restarted.ActivateInProcessAsync(observer, package, collector);
+                var eventId = Guid.CreateVersion7();
+                publisher.Publish(new Heartbeat.Core.DTOs.Input.InputEventItem
+                {
+                    Id = eventId, Timestamp = start, EventType = Heartbeat.Core.DTOs.Input.InputEventType.MouseButton,
+                    CodeSet = Heartbeat.Core.DTOs.Input.InputCodeSets.HeartbeatKeyPositionV1, Code = 2
+                });
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                while (!restarted.ReadPendingFacts().Any(item => item.Fact?.FactId == eventId)) await Task.Delay(10, timeout.Token);
+                var pendingEvent = Assert.Single(restarted.ReadPendingFacts(), item => item.Fact?.FactId == eventId);
+                Assert.Equal(observer, pendingEvent.Fact!.ObserverId);
+            }
+            using var resumedUpload = await http.PostAsJsonAsync("/api/v1/facts", FactUploadItem.Request(restarted.ReadPendingFacts()));
+            Assert.True(resumedUpload.IsSuccessStatusCode, await resumedUpload.Content.ReadAsStringAsync());
+            using var events = JsonDocument.Parse(await http.GetStringAsync($"/api/v1/users/alice/facts/events?deviceId={deviceId}"));
+            var eventRows = events.RootElement.EnumerateArray().ToArray();
+            Assert.Equal(3, eventRows.Length);
+            Assert.Equal(2, eventRows.Count(row => row.GetProperty("observerId").GetGuid() == instanceId));
+            Assert.Single(eventRows, row => row.GetProperty("observerId").GetGuid() == independent.CollectorInstanceId);
+            http.DefaultRequestHeaders.Remove("X-Test-Owner");
+            http.DefaultRequestHeaders.Add("X-Test-Owner", "other");
+            using var hidden = await http.GetAsync($"/api/v1/users/alice/facts/events?deviceId={deviceId}");
+            Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    private sealed class DesktopSource : Heartbeat.Collector.System.Observations.IDesktopObservationSource
+    {
+        public event Action<Heartbeat.Collector.System.Observations.DesktopObservation>? Observation { add { } remove { } }
+        public Heartbeat.Collector.System.Observations.DesktopActivity CurrentActivity => Heartbeat.Collector.System.Observations.DesktopActivity.None;
+        public void Start() { }
+        public void Stop() { }
+    }
+    private sealed class InputSignal : Heartbeat.Collector.System.Input.IInputActivitySignal
+    {
+        public void MarkClick() { }
+        public bool ClickedWithin(TimeSpan window) => false;
+    }
+    private sealed class DesktopSettings : Heartbeat.Collector.System.Configuration.IDesktopSettings
+    {
+        public IReadOnlyList<string> AwayProcessNames => [];
+        public bool SplitFocusedWindowChangesUnconditionally => true;
+        public event Action<IReadOnlyList<string>>? AwayProcessNamesChanged { add { } remove { } }
     }
 
     private sealed class UnusedProjection : ISegmentSink

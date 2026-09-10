@@ -127,7 +127,10 @@ internal sealed class ReferenceFactCollector(string? behavior, TextWriter rawOut
             {
                 identityKey = "reference.account|online",
                 title = "Reference account online"
-            })), cancellationToken);
+            }),
+            behavior == "observation_target" ? activation.Initialization.CollectorInstanceId : null,
+            behavior == "observation_target"
+                ? new Heartbeat.Core.DTOs.Facts.FactTarget("device", "0198d5df-5df3-70a1-937d-68a7d64623e2") : null), cancellationToken);
     }
 
     public async ValueTask StopAsync(

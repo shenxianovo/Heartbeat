@@ -10,6 +10,9 @@ public interface IFactRecord
     Guid StreamId { get; set; }
     Guid FactId { get; set; }
     long Revision { get; set; }
+    Guid? ObserverId { get; set; }
+    string? TargetKind { get; set; }
+    long? TargetId { get; set; }
     string Source { get; set; }
     long? AppIdentityId { get; set; }
     JsonDocument Payload { get; set; }

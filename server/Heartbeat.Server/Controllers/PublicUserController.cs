@@ -39,6 +39,28 @@ namespace Heartbeat.Server.Controllers
             return currentUser.GetUserIdOrNull() == user.Id ? user : null;
         }
 
+        [HttpGet("facts/segments")]
+        [EndpointName("getUserSegmentFacts")]
+        public async Task<ActionResult<List<Heartbeat.Core.DTOs.Facts.FactResponse>>> GetSegmentFacts(
+            string username, [FromQuery] long? deviceId, [FromQuery] DateTimeOffset? start,
+            [FromQuery] DateTimeOffset? end, [FromServices] FactStore facts, CancellationToken ct)
+        {
+            var user = await ResolveVisibleAsync(username);
+            if (user == null) return NotFound();
+            return await facts.ReadSegmentsAsync(user.Id, deviceId, start, end, ct);
+        }
+
+        [HttpGet("facts/events")]
+        [EndpointName("getUserEventFacts")]
+        public async Task<ActionResult<List<Heartbeat.Core.DTOs.Facts.FactResponse>>> GetEventFacts(
+            string username, [FromQuery] long? deviceId, [FromQuery] DateTimeOffset? start,
+            [FromQuery] DateTimeOffset? end, [FromServices] FactStore facts, CancellationToken ct)
+        {
+            var user = await ResolveVisibleAsync(username);
+            if (user == null) return NotFound();
+            return await facts.ReadEventsAsync(user.Id, deviceId, start, end, ct);
+        }
+
         [HttpGet("experience")]
         [EndpointName("getUserExperience")]
         public async Task<ActionResult<ExperiencePage>> GetExperience(

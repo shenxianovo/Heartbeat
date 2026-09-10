@@ -24,3 +24,6 @@ dotnet test collection/protocol/Heartbeat.Collection.CollectorProtocol.Tests
 本库不独立部署，随使用它的 Collector 交付。术语见
 [Collection Context](../../CONTEXT.md)，决策见 [ADR-040](../../../docs/adr/040-collector-runtime-and-protocol-foundation.md)，
 跨语言行为见 [Conformance Suite](../conformance/README.md)。
+
+Fact 的 ObserverId 与 Target 在 typed/InProcess/stdio/outbox 中原样传递；兼容消费者与退出门槛见
+[System Observer/Target 实施记录](../../../docs/architecture/system-observation-targets.md)。

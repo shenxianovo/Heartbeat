@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Heartbeat.Core.DTOs.Facts;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Heartbeat.Collection.Hub.Collectors.Packages;
@@ -8,7 +9,7 @@ namespace Heartbeat.Collection.Hub.Collectors.Runtime;
 
 internal sealed class JsonCollectorRuntimeStore : IDisposable
 {
-    private const int CurrentSchemaVersion = 3;
+    private const int CurrentSchemaVersion = 4;
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -63,6 +64,7 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
             {
                 var backup = _filePath + $".v{originalVersion}.bak";
                 if (!File.Exists(backup)) File.Copy(_filePath, backup);
+                Save(state);
             }
             return state;
         }
@@ -102,6 +104,23 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
         }
         if (schemaVersion == 2)
             root["schemaVersion"] = CurrentSchemaVersion;
+        if (schemaVersion is >= 1 and <= 3)
+        {
+            root["schemaVersion"] = CurrentSchemaVersion;
+            if (root["streams"] is JsonArray streams && root["facts"] is JsonArray facts)
+            {
+                var system = streams.OfType<JsonObject>().Where(stream =>
+                    stream["source"]?.GetValue<string>() == "system" && stream["subjectKind"]?.GetValue<string>() == "machine")
+                    .ToDictionary(stream => stream["streamId"]!.GetValue<string>());
+                foreach (var fact in facts.OfType<JsonObject>())
+                    if (fact["observerId"] is null && fact["target"] is null &&
+                        system.TryGetValue(fact["streamId"]!.GetValue<string>(), out var stream))
+                    {
+                        fact["observerId"] = stream["collectorInstanceId"]!.DeepClone();
+                        fact["target"] = new JsonObject { ["kind"] = "device", ["reference"] = stream["subjectId"]!.DeepClone() };
+                    }
+            }
+        }
         return root.Deserialize<CollectorRuntimeState>(SerializerOptions)
                ?? throw new JsonException("Collector Runtime state is null.");
     }
@@ -336,7 +355,7 @@ public sealed class CollectorRuntimeStateException(string message, Exception? in
 
 internal sealed class CollectorRuntimeState
 {
-    public int SchemaVersion { get; init; } = 3;
+    public int SchemaVersion { get; init; } = 4;
     public List<CollectorInstanceState> Instances { get; init; } = [];
     public List<FactStreamState> Streams { get; init; } = [];
     public List<CommittedFactState> Facts { get; init; } = [];
@@ -515,6 +534,8 @@ internal sealed class CommittedFactState
     public Guid StreamId { get; init; }
     public Guid FactId { get; init; }
     public long Revision { get; init; }
+    public Guid? ObserverId { get; init; }
+    public FactTarget? Target { get; init; }
     public DateTimeOffset? ObservedAt { get; init; }
     public DateTimeOffset Start { get; init; }
     public DateTimeOffset End { get; init; }
@@ -526,6 +547,7 @@ internal sealed class CommittedFactState
     public CommittedFactState ConfirmDelivery() => new()
     {
         StreamId = StreamId, FactId = FactId, Revision = Revision,
+        ObserverId = ObserverId, Target = Target,
         ObservedAt = ObservedAt, Start = Start, End = End,
         IsFinal = IsFinal, OccurredAt = OccurredAt, Payload = Payload,
         Delivered = true

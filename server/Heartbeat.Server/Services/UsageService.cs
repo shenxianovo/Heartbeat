@@ -65,6 +65,7 @@ namespace Heartbeat.Server.Services
                 .Take(10000)
                 .Select(x => new SegmentResponse
                 {
+                    ObserverId = x.ObserverId, TargetKind = x.TargetKind, TargetId = x.TargetId,
                     Id = x.Id,
                     DeviceId = x.DeviceId,
                     Source = x.Source,

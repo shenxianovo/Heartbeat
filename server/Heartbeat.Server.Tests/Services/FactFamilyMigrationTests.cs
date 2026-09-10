@@ -1,5 +1,7 @@
 using Heartbeat.Server.Tests.Fixtures;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Heartbeat.Server.Tests.Services;
 
@@ -16,8 +18,8 @@ public sealed class FactFamilyMigrationTests(PostgresContainerFixture fixture) :
             SELECT oid::bigint AS "Value" FROM pg_class
             WHERE relname IN ('ActivitySegments', 'InputEvents') AND relkind = 'r' ORDER BY oid
             """).ToListAsync();
-        Assert.Equal(["20260908141403_NativeFactCustody"], await db.Database.GetPendingMigrationsAsync());
-        await db.Database.MigrateAsync();
+        Assert.Contains("20260908141403_NativeFactCustody", await db.Database.GetPendingMigrationsAsync());
+        await db.GetService<IMigrator>().MigrateAsync("20260908141403_NativeFactCustody");
         var familyTables = await db.Database.SqlQueryRaw<long>("""
             SELECT oid::bigint AS "Value" FROM pg_class
             WHERE relname IN ('Segments', 'Events') AND relkind = 'r' ORDER BY oid

@@ -6,6 +6,9 @@ namespace Heartbeat.Core.DTOs.Segments
     public class SegmentResponse
     {
         public Guid Id { get; set; }
+        public Guid? ObserverId { get; set; }
+        public string? TargetKind { get; set; }
+        public long? TargetId { get; set; }
 
         /// <summary>Machine 的设备维度；Account/Person 为空，聚合查询按 Subject 分组。</summary>
         public long? DeviceId { get; set; }

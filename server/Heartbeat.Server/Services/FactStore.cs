@@ -142,6 +142,7 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
 
     private async Task Apply(FactStream stream, FactSnapshot snapshot, CancellationToken ct)
     {
+        var attribution = await ResolveAttribution(stream, snapshot, ct);
         var payload = StoredPayload(snapshot.Payload!.Value, stream.FactKind);
         var start = NormalizeTime(snapshot.Start);
         var end = NormalizeTime(snapshot.End);
@@ -157,7 +158,8 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
                 : ((Event)fact).Timestamp == at;
             if (snapshot.Revision == fact.Revision)
             {
-                if (!sameTimes || !JsonElement.DeepEquals(fact.Payload.RootElement, payload.RootElement))
+                if (!sameTimes || fact.ObserverId != attribution.ObserverId || fact.TargetKind != attribution.Kind || fact.TargetId != attribution.Id ||
+                    !JsonElement.DeepEquals(fact.Payload.RootElement, payload.RootElement))
                     throw new FactIngestException("The same Fact Revision has different content.", true);
                 return;
             }
@@ -187,6 +189,9 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         fact.Stream = stream;
         fact.FactId = snapshot.FactId;
         fact.Source = stream.Source;
+        fact.ObserverId = attribution.ObserverId;
+        fact.TargetKind = attribution.Kind;
+        fact.TargetId = attribution.Id;
         fact.Revision = snapshot.Revision;
         fact.Payload = payload;
         fact.AppIdentityId = await ResolveApp(stream, payload.RootElement, ct);
@@ -197,6 +202,30 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         }
         else ((Event)fact).Timestamp = at!.Value;
         await db.SaveChangesAsync(ct);
+    }
+
+    // Compatibility for pre-attribution first-party snapshots; removed with task 05.
+    // Only System has enough evidence for this first migration. Never invent a historical Observer.
+    private async Task<(Guid? ObserverId, string? Kind, long? Id)> ResolveAttribution(
+        FactStream stream, FactSnapshot snapshot, CancellationToken ct)
+    {
+        if (snapshot.ObserverId is null && snapshot.Target is null)
+            return stream.Source == "system" && stream.Subject.Kind == "machine" && stream.Subject.DeviceId is { } deviceId
+                ? (stream.Origin == "native" ? stream.CollectorInstanceId : null, "device", deviceId)
+                : (null, null, null);
+        if (snapshot.ObserverId is null || snapshot.ObserverId == Guid.Empty)
+            throw new FactIngestException("A Fact requires a valid Observer.");
+        if (snapshot.Target is not { Kind: "device" } target || string.IsNullOrWhiteSpace(target.Reference) || target.Reference.Length > 256)
+            throw new FactIngestException("A Fact requires a supported Target reference.");
+        var reference = Guid.TryParse(target.Reference, out var hardware) ? hardware.ToString("D") : target.Reference;
+        Device? device = null;
+        if (Guid.TryParse(reference, out hardware))
+        {
+            var devices = await db.Devices.Where(d => d.OwnerId == stream.OwnerId).ToListAsync(ct);
+            device = devices.SingleOrDefault(d => Guid.TryParse(d.HardwareId, out var id) && id == hardware);
+        }
+        device ??= await new DeviceService(db).ResolveByHardwareIdAsync(stream.OwnerId, reference, null);
+        return (snapshot.ObserverId, "device", device.Id);
     }
 
     private async Task<long?> ResolveApp(FactStream stream, JsonElement payload, CancellationToken ct)

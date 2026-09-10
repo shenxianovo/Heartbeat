@@ -795,7 +795,7 @@ public sealed class CollectorProtocolClient(
         fact.Revision,
         fact.ObservedAt,
         fact.Time,
-        fact.Payload.Clone());
+        fact.Payload.Clone(), fact.ObserverId, fact.Target);
 
     public async ValueTask DisposeAsync()
     {

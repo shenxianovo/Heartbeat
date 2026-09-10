@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Text.Json;
+using Heartbeat.Core.DTOs.Facts;
 using Heartbeat.Collection.Hub.Collectors.Packages;
 using Heartbeat.Collection.Hub.Collectors.Runtime;
 
@@ -231,7 +232,9 @@ public sealed record FactSubmission(
     long Revision,
     DateTimeOffset? ObservedAt,
     FactTime Time,
-    JsonElement Payload);
+    JsonElement Payload,
+    Guid? ObserverId = null,
+    FactTarget? Target = null);
 
 public enum FactDeliveryStatus
 {
