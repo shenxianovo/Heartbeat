@@ -1,11 +1,15 @@
 import { l as loadConfig } from "./assets/config-CudPlTIo.js";
 const isDevelopment = () => false;
-async function loadDevelopmentBinding() {
+async function readDevelopmentBinding() {
   const response = await fetch(chrome.runtime.getURL("desktop-binding.json"), { cache: "no-store" });
   if (!response.ok) throw new Error("Development Desktop binding is unavailable");
   const binding = await response.json();
-  if (!/^[a-f0-9]{32}$/.test(binding.profileId) || !/^[a-f0-9]{64}$/.test(binding.token) || !Number.isInteger(binding.port) || binding.port < 1024 || binding.port > 65535)
+  if (!/^[a-f0-9]{32}$/.test(binding.profileId) || !/^[a-f0-9]{64}$/.test(binding.token) || !Number.isInteger(binding.port) || binding.port < 1024 || binding.port > 65535 || typeof binding.buildId !== "string" || !binding.buildId)
     throw new Error("Development Desktop binding is invalid");
+  return binding;
+}
+async function loadDevelopmentBinding() {
+  await readDevelopmentBinding();
   throw new Error("Development extension updated; Reload before reconnecting");
 }
 function bindingRoute(binding) {
@@ -707,6 +711,13 @@ function createBrowserDelivery(dependencies) {
       });
     }
   }
+  async function checkpointImplementation(snapshots) {
+    if (snapshots.length === 0) return;
+    const durable = await dependencies.store.loadDurable();
+    const { queue, overflow } = enqueueBounded(durable.queue, snapshots);
+    if (overflow.length > 0) throw new Error("Outbox capacity prevents a complete activity checkpoint");
+    await dependencies.store.saveDurable({ ...durable, queue });
+  }
   async function deliveryCycleImplementation() {
     let session = await dependencies.store.loadSession();
     let currentPolicy = (await dependencies.store.loadDurable()).policy;
@@ -815,6 +826,7 @@ function createBrowserDelivery(dependencies) {
   return {
     policy,
     enqueue: (snapshots) => serialized2(() => enqueueImplementation(snapshots)),
+    checkpoint: (snapshots) => serialized2(() => checkpointImplementation(snapshots)),
     deliveryCycle: () => serialized2(deliveryCycleImplementation)
   };
 }
@@ -1089,6 +1101,7 @@ function isRecord(value) {
 }
 const STATE_KEY = "foldState";
 const ALARM_NAME = "heartbeat-flush";
+const DEVELOPMENT_ALARM = "heartbeat-development-update";
 const deps = {
   newId: uuidv7,
   identityKeyOf,
@@ -1119,14 +1132,18 @@ async function handleEvent(ev) {
 }
 async function flushAndUpload() {
   const before = await delivery.policy();
-  if (before.enabled) {
-    const state = await loadState();
-    const { state: next, out } = flush(state, Date.now(), deps);
-    if (next !== state) await saveState(next);
-    await delivery.enqueue(out);
-  }
+  if (before.enabled) await persistActivity();
   const after = await delivery.deliveryCycle();
   await applyDeliveryPolicy(before, after);
+}
+async function persistActivity() {
+  const state = await loadState();
+  const { state: next, out } = flush(state, Date.now(), deps);
+  if (next !== state) await saveState(next);
+  await delivery.enqueue(out);
+}
+async function reloadDevelopmentUpdate() {
+  return false;
 }
 async function applyDeliveryPolicy(before, after) {
   chrome.alarms.create(ALARM_NAME, {
@@ -1172,7 +1189,10 @@ chrome.windows.onRemoved.addListener((windowId) => {
   void serialized(() => handleEvent({ kind: "windowClosed", windowId, at: Date.now() }));
 });
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === ALARM_NAME) void serialized(flushAndUpload);
+  if (alarm.name === DEVELOPMENT_ALARM && isDevelopment()) ;
+  if (alarm.name === ALARM_NAME) void serialized(async () => {
+    if (!await reloadDevelopmentUpdate()) await flushAndUpload();
+  });
 });
 void serialized(async () => {
   const current = await delivery.policy();

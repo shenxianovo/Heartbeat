@@ -10,11 +10,11 @@ const status = document.getElementById('status') as HTMLDivElement
 if (isDevelopment()) {
   portInput.disabled = true
   saveButton.hidden = true
-  document.querySelector('.hint')!.textContent = '开发扩展只连接此工作区的 Desktop；更新后请 Reload，不要卸载。'
+  document.querySelector('.hint')!.textContent = '开发扩展只连接此工作区的 Desktop；构建更新后约 30 秒自动 Reload，请勿卸载。'
   void loadDevelopmentBinding().then(binding => {
     portInput.value = String(binding.port)
     status.textContent = `开发 Profile：${binding.profileId}`
-  }).catch(() => { status.textContent = '开发绑定不可用或扩展已更新，请运行开发命令后 Reload。' })
+  }).catch(() => { status.textContent = '开发绑定不可用或正在等待自动 Reload；持续等待时，请检查开发命令并手动 Reload 一次。' })
 } else {
   void loadConfig().then(c => { portInput.value = String(c.port) })
 }

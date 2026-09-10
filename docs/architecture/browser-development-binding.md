@@ -15,7 +15,7 @@ Windows/Edge 和 Analytics 真实到达仍待验收，不能从协议测试推�
   生产 handler 不接受开发路由。开发 discovery 还提供精确 Instance 包引用及真实 Ready 连接数。
 - 开发扩展由构建模式固定，不接受通过 options/storage 切成生产模式。缺少绑定、错误 Profile、旧端口、
   不兼容路由及 HTTP 重定向均不能回退生产；本地 storage 固定首次绑定的 Profile，防止带着 outbox 改连。
-- 文件更新后，旧 Service Worker 的构建标识与本地连接文件不符时停止交付，等待 Reload；
+- 文件更新后，旧 Service Worker 的构建标识与本地连接文件不符时停止交付，等待 Reload（开发扩展自动检测新构建）；
   不能让旧已加载代码使用新文件的 Package 引用冒充新制品。
 
 保证是不向错误 Profile 建立采集会话或交付事实；端口被其他进程复用后，一次失败的 TCP 探测仍可能
@@ -33,7 +33,10 @@ Windows/Edge 和 Analytics 真实到达仍待验收，不能从协议测试推�
 Instance、配置、Stream、Secret 和未确认交付继续由原 Runtime 拥有；旧不可变 Installation 不覆写。
 扩展使用固定输出目录与公开 manifest key 保持身份，目录交换中断后先恢复并检查旧绑定。
 `--browser-app chrome|edge` 提供各自固定的独立浏览器数据目录；浏览器数据不随命令退出删除。
-首次 Load unpacked，之后手动 Reload，避免卸载重装清除身份和未确认记录。
+首次 Load unpacked；已有旧开发扩展手动 Reload 一次后，后续更新自动检测并 Reload，
+避免卸载重装清除身份和未确认记录。开发闹钟约 30 秒检查一次本地构建标识，只接受已固定的同一
+Profile，在串行事件队列中先持久化当前活动，再调用官方 `chrome.runtime.reload()`；持久化失败
+不 Reload，同一个构建只自动尝试一次，避免失败循环。生产扩展不注册此闹钟。
 
 扩展连接凭据只加入本地加载目录，不写入公开 Package；开发构建标识与绑定文件相互校验。
 工具打印精确包版本/hash，持续区分 Desktop 离线、包不匹配、等待扩展和至少一个连接 Ready。
@@ -59,3 +62,9 @@ Ready 不等于 Analytics 已接收事实。首次使用的开发 Profile 仍需
   不由本轮关闭。
 
 Chrome 开发身份使用公开 manifest key 的依据见 [Chrome 文档](https://developer.chrome.com/docs/extensions/reference/manifest/key)。
+
+自动重载采用 [Chrome runtime.reload](https://developer.chrome.com/docs/extensions/reference/api/runtime)；
+开发闹钟遵循 [MV3 Service Worker 生命周期](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle)。
+
+2026-09-10 自动 Reload 实机验证：真实 Chrome 在换包后约 26 秒自行重载，身份/storage 保留且新包重连；
+报告在 `.local/browser-verification/chrome-auto-reload-report.json`，状态见 [issue 02](../../.scratch/browser-development/issues/02-automatic-reload.md)。

@@ -318,6 +318,22 @@ describe('BrowserDelivery interface', () => {
     expect(interruptedStore.durable.pendingGaps[0].estimatedFactsLost).toBe(1)
   })
 
+  it('requires complete durable snapshots at a restart checkpoint, with no Gap fallback', async () => {
+    const store = new MemoryStore()
+    const hub = new MemoryHub()
+    const module = delivery(store, hub)
+    store.failDurableWrites = 1
+    await expect(module.checkpoint([snapshot()])).rejects.toThrow('simulated storage interruption')
+    expect(store.durable.queue).toEqual({})
+    expect(store.durable.pendingGaps).toEqual([])
+    await module.checkpoint([snapshot()])
+    expect(Object.keys(store.durable.queue)).toHaveLength(1)
+    const full = Array.from({ length: 5001 }, (_, index) => snapshot(index + 1))
+    await expect(module.checkpoint(full)).rejects.toThrow('capacity')
+    expect(Object.keys(store.durable.queue)).toHaveLength(1)
+    expect(store.durable.pendingGaps).toEqual([])
+  })
+
   it('reports the oldest Gap before Facts and removes only its explicit ACK', async () => {
     const store = new MemoryStore()
     const hub = new MemoryHub()

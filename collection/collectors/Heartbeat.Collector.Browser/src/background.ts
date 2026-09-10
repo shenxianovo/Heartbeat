@@ -16,9 +16,11 @@ import { domainOf, identityKeyOf, siteOf } from './normalize'
 import { uuidv7 } from './ids'
 import { createChromeBrowserDelivery } from './delivery-chrome'
 import type { BrowserCollectionPolicy } from './delivery'
+import { isDevelopment, reloadDevelopmentExtensionIfUpdated } from './connection'
 
 const STATE_KEY = 'foldState'
 const ALARM_NAME = 'heartbeat-flush'
+const DEVELOPMENT_ALARM = 'heartbeat-development-update'
 
 const deps: FoldDeps = {
   newId: uuidv7,
@@ -62,14 +64,33 @@ async function handleEvent(ev: FoldEvent): Promise<void> {
 
 async function flushAndUpload(): Promise<void> {
   const before = await delivery.policy()
-  if (before.enabled) {
-    const state = await loadState()
-    const { state: next, out } = flush(state, Date.now(), deps)
-    if (next !== state) await saveState(next)
-    await delivery.enqueue(out)
-  }
+  if (before.enabled) await persistActivity()
   const after = await delivery.deliveryCycle()
   await applyDeliveryPolicy(before, after)
+}
+
+async function persistActivity(): Promise<void> {
+  const state = await loadState()
+  const { state: next, out } = flush(state, Date.now(), deps)
+  if (next !== state) await saveState(next)
+  await delivery.enqueue(out)
+}
+
+async function reloadDevelopmentUpdate(): Promise<boolean> {
+  if (!isDevelopment()) return false
+  try {
+    return await reloadDevelopmentExtensionIfUpdated(async () => {
+      if (!(await delivery.policy()).enabled) return
+      const state = await loadState()
+      const { state: next, out } = flush(state, Date.now(), deps)
+      // Normal enqueue may record a Gap after a failed write; a planned Reload must preserve the actual facts.
+      await delivery.checkpoint(out)
+      if (next !== state) await saveState(next)
+    })
+  } catch (error) {
+    console.warn('Development update postponed; local state retained. Manual Reload may be needed.', error)
+    return false
+  }
 }
 
 async function applyDeliveryPolicy(
@@ -134,15 +155,24 @@ chrome.windows.onRemoved.addListener((windowId) => {
 })
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === ALARM_NAME) void serialized(flushAndUpload)
+  if (alarm.name === DEVELOPMENT_ALARM && isDevelopment()) void serialized(reloadDevelopmentUpdate)
+  if (alarm.name === ALARM_NAME) void serialized(async () => {
+    if (!(await reloadDevelopmentUpdate())) await flushAndUpload()
+  })
 })
 
 // 每次 SW 唤醒都执行（幂等）：按持久 policy 恢复闹钟与 fold 状态，再对账。
 void serialized(async () => {
+  if (isDevelopment()) {
+    // Alarms wake suspended MV3 workers, including when collection itself is disabled.
+    chrome.alarms.create(DEVELOPMENT_ALARM, { periodInMinutes: 0.5 })
+    if (await reloadDevelopmentUpdate()) return
+  }
   const current = await delivery.policy()
   chrome.alarms.create(ALARM_NAME, {
     periodInMinutes: current.flushPeriodMilliseconds / 60_000,
   })
   if (!current.enabled) await saveState(emptyState())
   else await reconcile()
+  if (isDevelopment()) await flushAndUpload()
 })

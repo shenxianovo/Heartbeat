@@ -21,7 +21,10 @@ ADR-053 隔离了 Desktop 数据目录和安装管理能力，但 Browser 仍按
 - 开发更新先完整构建/校验本地候选，再正常停止本次命令拥有的开发 Desktop。持有 Profile 锁后，
   复用不可变 Installation 和 Runtime 的启动前准备入口，保留原 Instance/config/Stream/交付状态，
   只选择精确 Package 引用。Runtime 一旦开始过 Activation，就拒绝此准备操作。
-- 完成准备后更新固定扩展目录，再启动开发 Desktop；首版由操作者 Reload 扩展，不使用卸载重装。
+- 完成准备后更新固定扩展目录，再启动开发 Desktop。开发扩展约 30 秒检查一次本地构建标识，
+  只对已固定的同一 Profile，在串行事件队列中将当前活动持久化后调用官方 runtime.reload。
+  持久化失败不 Reload，每个构建最多自动尝试一次。生产扩展不启用；已有旧开发扩展需手动 Reload
+  一次以加载此能力，不使用卸载重装。
   不要求 Desktop 和扩展跨进程同时切换；中间不匹配时离线等待。
 - 本地连接文件与公开制品分开，凭据不进入公开 Package、源码或日志；扩展使用固定公开 key 保持
   开发身份。不同 Profile 的待传数据不自动迁移，恢复目录交换现场也必须检查原绑定。

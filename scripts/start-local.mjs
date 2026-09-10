@@ -33,7 +33,8 @@ Options:
 
 Only selected projects and required dependencies are started. Unselected instances stay as they are.
 Desktop uses .local/desktop and ${developmentApiBaseUrl}; it can buffer while Analytics is offline.
-Browser: Load unpacked once, then Reload after updates. Ctrl+C stops the owned Desktop.
+Browser: Load unpacked once; updates auto-reload (about 30s). Older extensions need one manual Reload.
+Ctrl+C stops the owned Desktop.
 Node.js is an internal dependency of both entrypoints. Compose services remain running on exit.`
 
 export function createPlan(args, context = {}) {

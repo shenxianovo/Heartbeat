@@ -27,6 +27,8 @@ export interface BrowserCollectionPolicy {
 export interface BrowserDelivery {
   policy(): Promise<BrowserCollectionPolicy>
   enqueue(snapshots: SegmentSnapshot[]): Promise<void>
+  /** Resolves only when every snapshot is durable; never substitutes a Gap before a planned restart. */
+  checkpoint(snapshots: SegmentSnapshot[]): Promise<void>
   deliveryCycle(): Promise<BrowserCollectionPolicy>
 }
 
@@ -119,6 +121,14 @@ export function createBrowserDelivery(dependencies: BrowserDeliveryDependencies)
         pendingGaps: appendBufferGap(durable.pendingGaps, snapshots),
       })
     }
+  }
+
+  async function checkpointImplementation(snapshots: SegmentSnapshot[]): Promise<void> {
+    if (snapshots.length === 0) return
+    const durable = await dependencies.store.loadDurable()
+    const { queue, overflow } = enqueueBounded(durable.queue, snapshots)
+    if (overflow.length > 0) throw new Error('Outbox capacity prevents a complete activity checkpoint')
+    await dependencies.store.saveDurable({ ...durable, queue })
   }
 
   async function deliveryCycleImplementation(): Promise<BrowserCollectionPolicy> {
@@ -241,6 +251,7 @@ export function createBrowserDelivery(dependencies: BrowserDeliveryDependencies)
   return {
     policy,
     enqueue: (snapshots) => serialized(() => enqueueImplementation(snapshots)),
+    checkpoint: (snapshots) => serialized(() => checkpointImplementation(snapshots)),
     deliveryCycle: () => serialized(deliveryCycleImplementation),
   }
 }

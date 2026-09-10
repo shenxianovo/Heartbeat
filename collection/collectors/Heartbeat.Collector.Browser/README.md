@@ -6,7 +6,8 @@ Chrome/Edge MV3 ExternalHost Collector。它观察各窗口的活动标签页，
 开发迭代使用仓库根目录的 `./scripts/start-local.sh --collector browser`（macOS）或
 `./scripts/start-local.ps1 --collector browser`（PowerShell）；需要三件套时加 `--stack`，Edge 加 `--browser-app edge`。
 入口内部调用 Node 编排构建和源码监听，
-通过具体 Desktop Profile 的绑定连接；更新保留身份、配置和 outbox，扩展手动 Reload。
+通过具体 Desktop Profile 的绑定连接；更新保留身份、配置和 outbox，开发扩展约 30 秒内检测新构建并自动 Reload。
+已有旧版扩展需要先手动 Reload 一次，让自动更新逻辑生效。
 首次加载与独立目录步骤见 [开发指南](../../../docs/development.md#browser-开发与更新)。
 普通生产构建仍按端口发现，不应拿它冒充开发扩展。
 

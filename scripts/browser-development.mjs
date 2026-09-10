@@ -67,7 +67,7 @@ async function main() {
     args.splice(profileIndex, 2)
   }
   if (args.includes('--help')) {
-    console.log('Usage: node scripts/browser-development.mjs [--watch] [--prepare-only] [--profile PATH] [--browser chrome|edge]\nBuilds an isolated extension and starts this checkout\'s development Desktop.\n--watch rebuilds Browser changes, gracefully restarts the owned Desktop, then asks for extension Reload.\n--prepare-only installs locally without starting collection or connecting to Analytics.')
+    console.log('Usage: node scripts/browser-development.mjs [--watch] [--prepare-only] [--profile PATH] [--browser chrome|edge]\nBuilds an isolated extension and starts this checkout\'s development Desktop.\n--watch rebuilds Browser changes, gracefully restarts the owned Desktop, then the development extension detects the build and reloads itself.\n--prepare-only installs locally without starting collection or connecting to Analytics.')
     return
   }
   if (args.some(arg => !['--watch', '--prepare-only'].includes(arg)) || (args.includes('--watch') && args.includes('--prepare-only')))
@@ -99,7 +99,7 @@ async function main() {
             item.packageId === reference.packageId && item.packageContentHash === reference.packageContentHash)
           state = !instance ? 'Desktop online; expected Package is not selected'
             : instance.status.connectedExternalHosts > 0 ? 'Ready: extension connected to the expected Profile and Package'
-            : 'Desktop ready; waiting for extension Load unpacked / Reload'
+            : 'Desktop ready; waiting for extension Load unpacked / automatic Reload (about 30s)'
         }
       } catch { /* Offline is an explicit state, never a discovery fallback. */ }
       finally { checking = false }
@@ -201,7 +201,7 @@ async function main() {
           const reference = JSON.parse(readFileSync(join(output, 'collector-artifact-ref.json'), 'utf8'))
           console.log(`Prepared ${reference.packageId} ${reference.packageVersion} ${reference.packageContentHash}`)
           if (args.includes('--prepare-only')) console.log('Prepared only: Desktop collection was not started.')
-          console.log(`Development extension: ${output}\nDesktop Profile: ${binding.profileId}\nUse a separate Chrome/Edge profile. Load unpacked once; Reload this extension after each successful update.\nIdentity, configuration and pending data are retained. Never remove/reinstall to update.`)
+          console.log(`Development extension: ${output}\nDesktop Profile: ${binding.profileId}\nUse a separate Chrome/Edge profile. Load unpacked once. Development updates reload automatically (about 30s). Older extensions need one manual Reload to enable this.\nIdentity, configuration and pending data are retained. Never remove/reinstall to update.`)
           last = observed
         } catch (error) {
           if (!args.includes('--watch') || !desktop) throw error

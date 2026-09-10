@@ -10,3 +10,5 @@ Status: ready-for-human
 实施和证据统一见 [issue 01](issues/01-profile-binding-and-update.md)。旧 Browser 正式发布的实机验收 gate 不由本轮自动关闭。
 
 实现、自动验证及 macOS/Chrome 实机验证完成。剩余 gate：在 Windows/Edge 上复验，以及配置独立 Analytics 验收库后验证真实活动到达；由具备对应环境/账号的维护者承接。
+
+自动 Reload 已由 [issue 02](issues/02-automatic-reload.md) 完成；已有旧开发扩展手动 Reload 一次后，后续构建自动检测更新。

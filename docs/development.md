@@ -128,8 +128,12 @@ sh / pwsh 是统一启动入口，内部复用 Node 的参数解析、启动与�
 
 命令复用此 checkout 的 `.local/desktop`，固定连接本地 Analytics，打开独立浏览器用户数据目录。
 首次在打开的扩展页启用开发者模式，Load unpacked 选择命令打印的 `.local/browser-development/extension`。
-之后源码变更会自动构建、正常停止本次命令拥有的 Desktop、选择新精确包并重启；扩展点击 Reload 即可。
-更新保留 Instance、配置、扩展身份和未上传数据；不要卸载重装。旧代码未 Reload 时离线等待，不宣称新包身份。
+之后源码变更会自动构建、正常停止本次命令拥有的 Desktop、选择新精确包并重启；
+开发扩展通过约 30 秒一次的闹钟检查本地构建标识，先持久化当前活动，再自动 Reload 并重连。
+已安装旧版开发扩展时，需手动 Reload 一次让自动更新逻辑生效；以后启动或构建更新无需重复点击。
+更新保留 Instance、配置、扩展身份和未上传数据；不要卸载重装。旧代码在自动 Reload 完成前离线等待，不宣称新包身份。
+扩展被禁用、Profile 不匹配或持久化失败时不会强行 Reload；同一个新构建只自动尝试一次，避免重载循环。
+生产扩展不注册开发更新闹钟，也不执行自动 Reload。
 
 命令打印精确包版本/hash，并区分 Desktop 离线、等待扩展和 Ready。Ready 只证明扩展协议连接，
 不证明 Analytics 已收到事实。首次仍需为开发 Desktop 配置 API key。默认 Profile 被其他运行者占用时
