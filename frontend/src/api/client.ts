@@ -2058,9 +2058,10 @@ export class Client {
      * @param deviceId (optional)
      * @param start (optional)
      * @param end (optional)
+     * @param appId (optional)
      * @return OK
      */
-    getUserSegmentFacts(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<FactResponse[]> {
+    getUserSegmentFacts(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined, appId: number | undefined): Promise<FactResponse[]> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/facts/segments?";
         if (username === undefined || username === null)
             throw new globalThis.Error("The parameter 'username' must be defined.");
@@ -2077,6 +2078,10 @@ export class Client {
             throw new globalThis.Error("The parameter 'end' cannot be null.");
         else if (end !== undefined)
             url_ += "end=" + encodeURIComponent(end ? "" + end.toISOString() : "") + "&";
+        if (appId === null)
+            throw new globalThis.Error("The parameter 'appId' cannot be null.");
+        else if (appId !== undefined)
+            url_ += "appId=" + encodeURIComponent("" + appId) + "&";
         url_ = url_.replace(/[?&]$/, "");
 
         let options_: RequestInit = {
@@ -2120,9 +2125,10 @@ export class Client {
      * @param deviceId (optional)
      * @param start (optional)
      * @param end (optional)
+     * @param appId (optional)
      * @return OK
      */
-    getUserEventFacts(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined): Promise<FactResponse[]> {
+    getUserEventFacts(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined, appId: number | undefined): Promise<FactResponse[]> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/facts/events?";
         if (username === undefined || username === null)
             throw new globalThis.Error("The parameter 'username' must be defined.");
@@ -2139,6 +2145,10 @@ export class Client {
             throw new globalThis.Error("The parameter 'end' cannot be null.");
         else if (end !== undefined)
             url_ += "end=" + encodeURIComponent(end ? "" + end.toISOString() : "") + "&";
+        if (appId === null)
+            throw new globalThis.Error("The parameter 'appId' cannot be null.");
+        else if (appId !== undefined)
+            url_ += "appId=" + encodeURIComponent("" + appId) + "&";
         url_ = url_.replace(/[?&]$/, "");
 
         let options_: RequestInit = {
@@ -6987,6 +6997,8 @@ export class FactResponse implements IFactResponse {
     observerId?: string | undefined;
     targetKind?: string | undefined;
     targetId?: number | undefined;
+    deviceId?: number | undefined;
+    appId?: number | undefined;
     source?: string;
     start?: Date | undefined;
     end?: Date | undefined;
@@ -7017,6 +7029,8 @@ export class FactResponse implements IFactResponse {
             this.observerId = _data["observerId"];
             this.targetKind = _data["targetKind"];
             this.targetId = _data["targetId"];
+            this.deviceId = _data["deviceId"];
+            this.appId = _data["appId"];
             this.source = _data["source"];
             this.start = _data["start"] ? new Date(_data["start"].toString()) : undefined as any;
             this.end = _data["end"] ? new Date(_data["end"].toString()) : undefined as any;
@@ -7045,6 +7059,8 @@ export class FactResponse implements IFactResponse {
         data["observerId"] = this.observerId;
         data["targetKind"] = this.targetKind;
         data["targetId"] = this.targetId;
+        data["deviceId"] = this.deviceId;
+        data["appId"] = this.appId;
         data["source"] = this.source;
         data["start"] = this.start ? this.start.toISOString() : undefined as any;
         data["end"] = this.end ? this.end.toISOString() : undefined as any;
@@ -7062,6 +7078,8 @@ export interface IFactResponse {
     observerId?: string | undefined;
     targetKind?: string | undefined;
     targetId?: number | undefined;
+    deviceId?: number | undefined;
+    appId?: number | undefined;
     source?: string;
     start?: Date | undefined;
     end?: Date | undefined;

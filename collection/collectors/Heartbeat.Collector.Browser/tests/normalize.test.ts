@@ -1,47 +1,47 @@
 import { describe, expect, it } from 'vitest'
-import { identityKeyOf, domainOf, siteOf } from '../src/normalize'
+import { activityKeyOf, domainOf, siteOf } from '../src/normalize'
 
-describe('identityKeyOf', () => {
+describe('activityKeyOf', () => {
   it('掐掉 query 与 fragment', () => {
-    expect(identityKeyOf('https://github.com/foo/bar?tab=readme#install')).toBe(
+    expect(activityKeyOf('https://github.com/foo/bar?tab=readme#install')).toBe(
       'https://github.com/foo/bar',
     )
   })
 
   it('utm 等追踪参数不产生新身份', () => {
-    const a = identityKeyOf('https://example.com/post/1?utm_source=x&utm_medium=y')
-    const b = identityKeyOf('https://example.com/post/1')
+    const a = activityKeyOf('https://example.com/post/1?utm_source=x&utm_medium=y')
+    const b = activityKeyOf('https://example.com/post/1')
     expect(a).toBe(b)
   })
 
   it('host 小写化、默认端口剔除（URL.origin 行为），path 大小写保留', () => {
-    expect(identityKeyOf('HTTPS://GitHub.COM:443/Foo')).toBe('https://github.com/Foo')
+    expect(activityKeyOf('HTTPS://GitHub.COM:443/Foo')).toBe('https://github.com/Foo')
   })
 
   it('非默认端口保留', () => {
-    expect(identityKeyOf('http://localhost:5173/app')).toBe('http://localhost:5173/app')
+    expect(activityKeyOf('http://localhost:5173/app')).toBe('http://localhost:5173/app')
   })
 
   it('尾斜杠归一，根路径保留', () => {
-    expect(identityKeyOf('https://a.com/docs/')).toBe('https://a.com/docs')
-    expect(identityKeyOf('https://a.com/')).toBe('https://a.com/')
+    expect(activityKeyOf('https://a.com/docs/')).toBe('https://a.com/docs')
+    expect(activityKeyOf('https://a.com/')).toBe('https://a.com/')
   })
 
   it('YouTube watch 的 v 参数区分不同视频', () => {
-    const a = identityKeyOf('https://www.youtube.com/watch?v=aaa')
-    const b = identityKeyOf('https://www.youtube.com/watch?v=bbb')
+    const a = activityKeyOf('https://www.youtube.com/watch?v=aaa')
+    const b = activityKeyOf('https://www.youtube.com/watch?v=bbb')
     expect(a).toBe('https://www.youtube.com/watch?v=aaa')
     expect(b).toBe('https://www.youtube.com/watch?v=bbb')
   })
 
   it.each(['youtube.com', 'www.youtube.com', 'm.youtube.com'])('保留 %s 视频身份，忽略追踪参数、播放位置与锚点', host => {
-    expect(identityKeyOf(`https://${host}/watch?utm_source=x&t=30&v=AbC_123#details`))
+    expect(activityKeyOf(`https://${host}/watch?utm_source=x&t=30&v=AbC_123#details`))
       .toBe(`https://${host}/watch?v=AbC_123`)
   })
 
   it('规则匹配沿用 host 和尾斜杠规范化，视频 ID 大小写保留', () => {
-    expect(identityKeyOf('HTTPS://WWW.YouTube.COM:443/watch/?v=AbC')).toBe('https://www.youtube.com/watch?v=AbC')
-    expect(identityKeyOf('https://www.youtube.com/watch?v=abc')).not.toBe(identityKeyOf('https://www.youtube.com/watch?v=AbC'))
+    expect(activityKeyOf('HTTPS://WWW.YouTube.COM:443/watch/?v=AbC')).toBe('https://www.youtube.com/watch?v=AbC')
+    expect(activityKeyOf('https://www.youtube.com/watch?v=abc')).not.toBe(activityKeyOf('https://www.youtube.com/watch?v=AbC'))
   })
 
   it.each([
@@ -50,24 +50,24 @@ describe('identityKeyOf', () => {
     'https://www.youtube.com/results?v=a',
     'https://www.youtube.com/Watch?v=a',
   ])('覆写只匹配指定域名与路径：%s', url => {
-    expect(identityKeyOf(url)).toBe(url.split('?')[0])
+    expect(activityKeyOf(url)).toBe(url.split('?')[0])
   })
 
   it('缺少保留参数不添加 query，参数名大小写不混淆', () => {
-    expect(identityKeyOf('https://www.youtube.com/watch?V=a&utm_source=x')).toBe('https://www.youtube.com/watch')
+    expect(activityKeyOf('https://www.youtube.com/watch?V=a&utm_source=x')).toBe('https://www.youtube.com/watch')
   })
 
   it('保留参数值经 URL 编解码规范化，重复值不丢失', () => {
-    expect(identityKeyOf('https://www.youtube.com/watch?v=%41bc&v=Def&utm_source=x'))
+    expect(activityKeyOf('https://www.youtube.com/watch?v=%41bc&v=Def&utm_source=x'))
       .toBe('https://www.youtube.com/watch?v=Abc&v=Def')
   })
 
   it('自定义 scheme（origin 为 null）退化为掐 query/fragment 的原串', () => {
-    expect(identityKeyOf('edge://newtab/?param=1')).toBe('edge://newtab/')
+    expect(activityKeyOf('edge://newtab/?param=1')).toBe('edge://newtab/')
   })
 
   it('非法 URL 原样返回', () => {
-    expect(identityKeyOf('not a url')).toBe('not a url')
+    expect(activityKeyOf('not a url')).toBe('not a url')
   })
 })
 

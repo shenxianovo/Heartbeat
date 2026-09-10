@@ -31,6 +31,126 @@ namespace Heartbeat.Server.Tests.Services;
 public sealed class FactHttpTests(PostgresContainerFixture fixture) : PostgresTestBase(fixture)
 {
     [Fact]
+    public async Task BrowserRuntime_V4CacheUpgradeAndNativePublish_ReachHttpQueriesWithStableInstallationAttribution()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"heartbeat-browser-fact-http-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var package = LocalCollectorPackage.Load(Path.Combine(AppContext.BaseDirectory, "CollectorPackages", "Browser"));
+            var path = Path.Combine(directory, "runtime.json");
+            var options = new CollectorRuntimeOptions { EnableFactUpload = true };
+            var device = Guid.NewGuid();
+            var observer = Guid.NewGuid();
+            Guid instanceId;
+            FactSubmission original;
+            async Task<ExternalHostCollectorActivation> Activate(CollectorRuntime runtime, Guid instance)
+            {
+                var initialization = runtime.BeginExternalHostActivation(instance, package, "browser.extension",
+                    package.Artifacts.Single().ContentHash, new ProtocolSupport([1], new Dictionary<string, IReadOnlyList<int>>
+                    { ["facts.segment"] = [1], ["diagnostics.stream-gap"] = [1] }), observer.ToString("D"), "mac:com.google.chrome", Guid.CreateVersion7());
+                return await runtime.ReadyExternalHostActivationAsync(initialization.ActivationId, 1,
+                    [new OutputBinding("tabs", "activeTab", new Dictionary<string, string>())]);
+            }
+            using (var runtime = CollectorRuntime.Open(path, new UnusedProjection(), options))
+            {
+                instanceId = runtime.CreateInstance(package, new SubjectReference(device, SubjectKind.Machine),
+                    new CollectorInstanceSpec(1, 1, JsonSerializer.SerializeToElement(new { enabled = true, flushPeriodMs = 30000 }))).CollectorInstanceId;
+                var activation = await Activate(runtime, instanceId);
+                var streamId = activation.Streams["tabs"].StreamId;
+                var start = DateTimeOffset.UtcNow.AddMinutes(-2);
+                original = new FactSubmission(streamId, Guid.CreateVersion7(), 1, null,
+                    new SegmentFactTime(start, start.AddMinutes(1), true),
+                    JsonSerializer.SerializeToElement(new { identityKey = "https://browser.example", attributes = new { windowId = 12 } }));
+                Assert.Equal(FactDeliveryStatus.Committed, Assert.Single((await activation.PublishAsync(streamId, Guid.CreateVersion7(), [original])).Results).Status);
+            }
+            var cache = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+            cache["schemaVersion"] = 4;
+            foreach (var fact in cache["facts"]!.AsArray())
+            {
+                fact!.AsObject().Remove("observerId"); fact.AsObject().Remove("target");
+                fact["payload"] = System.Text.Json.Nodes.JsonNode.Parse(original.Payload.GetRawText());
+            }
+            File.WriteAllText(path, cache.ToJsonString());
+            using var restarted = CollectorRuntime.Open(path, new UnusedProjection(), options);
+            Assert.True(File.Exists(path + ".v4.bak"));
+            var activationAfterRestart = await Activate(restarted, instanceId);
+            var newSnapshot = original with { ObserverId = observer,
+                Target = new ApplicationContextReference(device.ToString("D"), "mac:com.google.chrome").ToTarget(),
+                Payload = JsonSerializer.SerializeToElement(new { activityKey = "https://browser.example", attributes = new { windowId = 12 } }) };
+            Assert.Equal(FactDeliveryStatus.Duplicate, Assert.Single((await activationAfterRestart.PublishAsync(original.StreamId, Guid.CreateVersion7(), [newSnapshot])).Results).Status);
+            var pending = restarted.ReadPendingFacts();
+            var upload = FactUploadItem.Request(pending);
+            await using (var db = CreateDbContext())
+            {
+                db.Users.Add(new User { Id = "owner", Username = "alice" });
+                await db.SaveChangesAsync();
+            }
+            await using var app = CreateApplication();
+            using var http = app.CreateClient();
+            http.DefaultRequestHeaders.Add(HeartbeatProtocol.VersionHeader, HeartbeatProtocol.RequiredVersion);
+            http.DefaultRequestHeaders.Add("X-Test-Owner", "owner");
+            using var response = await http.PostAsJsonAsync("/api/v1/facts", upload);
+            Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+            var row = Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>("/api/v1/users/alice/facts/segments"))!);
+            Assert.Equal(observer, row.ObserverId);
+            Assert.Equal("application-context", row.TargetKind);
+            Assert.Equal(original.FactId, row.FactId);
+            Assert.Equal(12, row.Payload.GetProperty("attributes").GetProperty("windowId").GetInt32());
+            Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?deviceId={row.DeviceId}&appId={row.AppId}"))!);
+            restarted.ConfirmUploadedFacts(pending);
+            Assert.Empty(restarted.ReadPendingFacts());
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public async Task BrowserWindows_KeepIndependentFactsInOneApplicationContext_AndReplayOldSnapshots()
+    {
+        await using (var db = CreateDbContext())
+        {
+            db.Users.Add(new User { Id = "owner", Username = "alice" });
+            await db.SaveChangesAsync();
+        }
+        await using var application = CreateApplication();
+        using var client = application.CreateClient();
+        client.DefaultRequestHeaders.Add(HeartbeatProtocol.VersionHeader, HeartbeatProtocol.RequiredVersion);
+        client.DefaultRequestHeaders.Add("X-Test-Owner", "owner");
+        var batch = FactStoreTests.SegmentBatch();
+        var observer = Guid.NewGuid();
+        batch.Streams[0].Dimensions = new Dictionary<string, string>
+        {
+            ["appIdentityKey"] = "mac:com.google.chrome", ["externalHostIdentity"] = observer.ToString("D")
+        };
+        var first = batch.Facts[0];
+        first.ObserverId = observer;
+        first.Target = new FactTarget("application-context", "[\"hardware\",\"mac:com.google.chrome\"]");
+        first.Payload = JsonSerializer.SerializeToElement(new { activityKey = "https://example.com", attributes = new { windowId = 11 } });
+        batch.Facts.Add(new FactSnapshot
+        {
+            StreamId = first.StreamId, FactId = Guid.CreateVersion7(), Revision = 1, Start = first.Start,
+            End = first.End, IsFinal = true, ObserverId = observer, Target = first.Target,
+            Payload = JsonSerializer.SerializeToElement(new { activityKey = "https://example.org", attributes = new { windowId = 22 } })
+        });
+        using var uploaded = await client.PostAsJsonAsync("/api/v1/facts", batch);
+        Assert.True(uploaded.IsSuccessStatusCode, await uploaded.Content.ReadAsStringAsync());
+        var activity = (await client.GetFromJsonAsync<JsonElement>("/api/v1/users/alice/segments")).EnumerateArray().ToArray();
+        Assert.Equal(2, activity.Length);
+        var deviceId = activity[0].GetProperty("deviceId").GetInt64();
+        var rows = (await client.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?deviceId={deviceId}"))!;
+        Assert.Equal(2, rows.Count);
+        Assert.All(rows, row => { Assert.Equal(observer, row.ObserverId); Assert.Equal("application-context", row.TargetKind); });
+        Assert.Single(rows.Select(row => row.TargetId).Distinct());
+        Assert.Equal(new[] { 11, 22 }, rows.Select(row => row.Payload.GetProperty("attributes").GetProperty("windowId").GetInt32()).Order().ToArray());
+        foreach (var fact in batch.Facts) { fact.ObserverId = null; fact.Target = null; }
+        using var replay = await client.PostAsJsonAsync("/api/v1/facts", batch);
+        Assert.True(replay.IsSuccessStatusCode, await replay.Content.ReadAsStringAsync());
+        var after = (await client.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?deviceId={deviceId}"))!;
+        Assert.Equal(rows.Select(row => row.Id).Order(), after.Select(row => row.Id).Order());
+        Assert.All(activity, row => Assert.False(row.TryGetProperty("subjectId", out _)));
+    }
+
+    [Fact]
     public async Task NativeHttpBoundary_RequiresOwnerAndPreservesRawDocumentAndUrl_ConflictsAreAtomic()
     {
         await using (var db = CreateDbContext())

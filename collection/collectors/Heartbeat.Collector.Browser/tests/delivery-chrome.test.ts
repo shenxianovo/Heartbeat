@@ -57,6 +57,16 @@ const legacySnapshot = {
 
 afterEach(() => vi.unstubAllGlobals())
 
+it('restores attribution and upgrades the old activity key without changing snapshot identity', async () => {
+  const attributed = { ...legacySnapshot, observerId: '6a8259d1-5f6a-4b83-b6ba-87017886319e',
+    target: { kind: 'application-context', reference: '["hardware","win:msedge"]' } }
+  installChrome({ pendingSegments: { [attributed.id]: attributed } })
+  const restored = await new ChromeBrowserDeliveryStore().loadDurable()
+  expect(restored.queue[attributed.id]).toMatchObject({ id: attributed.id,
+    observerId: attributed.observerId, target: attributed.target, activityKey: legacySnapshot.identityKey })
+  expect(restored.queue[attributed.id]).not.toHaveProperty('identityKey')
+})
+
 describe('ChromeBrowserDeliveryStore adapter contract', () => {
   it('starts a new worker Activation while retaining durable Facts and Profile identity', async () => {
     installChrome()
@@ -69,7 +79,7 @@ describe('ChromeBrowserDeliveryStore adapter contract', () => {
       },
     })
     const durable = await first.loadDurable()
-    durable.queue[legacySnapshot.id] = { ...legacySnapshot, isFinal: true }
+    durable.queue[legacySnapshot.id] = { ...legacySnapshot, activityKey: legacySnapshot.identityKey, isFinal: true }
     await first.saveDurable(durable)
     const restarted = new ChromeBrowserDeliveryStore()
     expect((await restarted.loadSession()).activationAttempt).toBeUndefined()
@@ -146,7 +156,7 @@ describe('ChromeBrowserDeliveryStore adapter contract', () => {
       publishAttempt: {
         activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
         messageId: '0198d5eb-fc31-7d7b-8bf0-000000000010',
-        snapshots: [{ ...legacySnapshot, isFinal: false } as SegmentSnapshot],
+        snapshots: [{ ...legacySnapshot, activityKey: legacySnapshot.identityKey, isFinal: false } as SegmentSnapshot],
       },
     }
     await store.saveSession(state)

@@ -9,7 +9,7 @@ const identityQueryRules: ReadonlyArray<{
 ]
 
 /** 规范化 URL 为续接判据。非法 URL 原样返回（判据退化但不丢数据）。 */
-export function identityKeyOf(rawUrl: string): string {
+export function activityKeyOf(rawUrl: string): string {
   let u: URL
   try {
     u = new URL(rawUrl)

@@ -9,7 +9,7 @@ namespace Heartbeat.Collection.Hub.Collectors.Runtime;
 
 internal sealed class JsonCollectorRuntimeStore : IDisposable
 {
-    private const int CurrentSchemaVersion = 4;
+    private const int CurrentSchemaVersion = 5;
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -119,6 +119,31 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
                         fact["observerId"] = stream["collectorInstanceId"]!.DeepClone();
                         fact["target"] = new JsonObject { ["kind"] = "device", ["reference"] = stream["subjectId"]!.DeepClone() };
                     }
+            }
+        }
+        if (schemaVersion is >= 1 and <= 4)
+        {
+            root["schemaVersion"] = CurrentSchemaVersion;
+            if (root["streams"] is JsonArray streams && root["facts"] is JsonArray facts)
+            {
+                var browser = streams.OfType<JsonObject>().Where(stream => stream["source"]?.GetValue<string>() == "browser")
+                    .ToDictionary(stream => stream["streamId"]!.GetValue<string>());
+                foreach (var fact in facts.OfType<JsonObject>())
+                {
+                    if (!browser.TryGetValue(fact["streamId"]!.GetValue<string>(), out var stream)) continue;
+                    if (fact["observerId"] is null && fact["target"] is null && stream["subjectKind"]?.GetValue<string>() == "machine")
+                    {
+                        var observer = Heartbeat.Core.Facts.BrowserFactAttribution.Observer(stream["dimensions"]?["externalHostIdentity"]?.GetValue<string>());
+                        var target = Heartbeat.Core.Facts.BrowserFactAttribution.Target(stream["subjectId"]!.GetValue<string>(), stream["dimensions"]?["appIdentityKey"]?.GetValue<string>());
+                        if (observer is not null && target is not null)
+                        {
+                            fact["observerId"] = observer.Value.ToString("D");
+                            fact["target"] = JsonSerializer.SerializeToNode(target, SerializerOptions);
+                        }
+                    }
+                    if (fact["payload"] is { } payload)
+                        fact["payload"] = JsonNode.Parse(Heartbeat.Core.Facts.ActivityFactPayload.Normalize(JsonSerializer.SerializeToElement(payload)).GetRawText());
+                }
             }
         }
         return root.Deserialize<CollectorRuntimeState>(SerializerOptions)
@@ -355,7 +380,7 @@ public sealed class CollectorRuntimeStateException(string message, Exception? in
 
 internal sealed class CollectorRuntimeState
 {
-    public int SchemaVersion { get; init; } = 4;
+    public int SchemaVersion { get; init; } = 5;
     public List<CollectorInstanceState> Instances { get; init; } = [];
     public List<FactStreamState> Streams { get; init; } = [];
     public List<CommittedFactState> Facts { get; init; } = [];

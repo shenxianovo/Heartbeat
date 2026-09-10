@@ -41,7 +41,7 @@ JWT `sub` 出现在部署环境白名单中的用户，可以管理影响所有 
 _Avoid_: 用可变 username 授权、把普通 Owner 自动视为部署管理员、在 App Catalog 页面管理管理员权限
 
 **Owner / Target**:
-Owner 是事实的数据主人；Target 是每条 Fact 唯一的长期业务归属，System 事实直接归属于设备。
+Owner 是事实的数据主人；Target 是每条 Fact 唯一的长期业务归属，System 事实直接归属于设备；Browser 事实归属于同 Owner 下由设备与 App 产品唯一辨认的应用上下文。
 Subject 是未迁移数据沿用的旧归属概念，不能替代新事实的 Observer、直接 FOI 与 Target（词条详见 shared/CONTEXT.md）。
 _Avoid_: 把 Hub Instance 当 Target、把账号或身体称为 Device、用运行采集器的机器猜测事实归属
 
@@ -102,3 +102,8 @@ SegmentValidationPolicy 是 Collection 与 Analytics 共用的纯段完整性判
 缺失核心身份等畸形数据，不修复输入。Analytics strict ingest 对任一不合法项返回整批 `422`，且不创建
 ActivitySegment 或 provisional App；既有 Segment Id 的 Device / Source / IdentityKey 冲突同样整批拒绝。
 合法 duplicate、乱序 snapshot 与批内同 Id 单调扩展仍按 Snapshot Upsert 幂等收敛。
+
+Browser 应用上下文不含 Profile 或窗口身份；窗口细节留在 Fact Payload。
+Observer 使用持久扩展安装 UUID，与可服务多个安装的 Runtime Instance 区分。
+ApplicationContexts 及产品纠错、离线引用和兼容退出见
+[Browser 实施记录](../docs/architecture/browser-observation-targets.md)。

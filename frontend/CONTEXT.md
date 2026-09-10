@@ -44,12 +44,12 @@ _Avoid_: 用当前在线状态过滤历史活动、把没有活动记录等同�
 
 **Activity Swimlanes（活动泳道）**:
 在同一时间坐标下按 Target 并列显示活动；上方全天总览的选区决定下方可见时间范围。
-System 的 Target 是设备；尚未迁移的 Browser 可按已知设备作为补充观察展开，账号的独立活动直接排列。
+System 的 Target 是设备；Browser 的应用上下文按设备与 App 产品作为相关观察解释，账号的独立活动直接排列。
 同一 Target 下不同 Observer 的事实各自保留；缩放不改变原始 Segment 的身份或边界。
 
 **Related Observation（相关观察）**:
 对同一设备、同一应用且时间重叠的补充观察，例如 Browser 对 System 前台活动的页面细节。
-System 使用设备 Target；尚未迁移的 Browser 使用其已知设备归属。
+System 使用设备 Target；Browser 使用应用上下文 Target，通过其 DeviceId 与 AppId 和 System 关联。
 相关性不等于确定的前台归因，多条候选可以并存，不能仅凭重叠断言用户正在看其中某一页面。
 
 **Title Formatter（标题归一化）**:

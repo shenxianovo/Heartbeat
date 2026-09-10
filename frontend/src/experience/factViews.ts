@@ -82,9 +82,16 @@ export function overlaps(a: TimeRange, b: TimeRange): boolean {
     : a.start < b.end && a.end > b.start
 }
 export function relatedBrowser(fact: ExperienceSegment, facts: ExperienceSegment[]): ExperienceSegment[] {
-  if (fact.source !== 'system' || fact.appIdentityId == null) return []
-  return facts.filter(other => other.source === 'browser' && factTarget(other).id === factTarget(fact).id &&
-    other.appIdentityId === fact.appIdentityId && overlaps(rangeOf(fact), rangeOf(other)))
+  if (fact.source !== 'system') return []
+  return facts.filter(other => {
+    if (other.source !== 'browser' || !overlaps(rangeOf(fact), rangeOf(other))) return false
+    if (fact.deviceId != null && other.deviceId != null)
+      return other.deviceId === fact.deviceId && (fact.appId != null && other.appId != null
+        ? other.appId === fact.appId : fact.appIdentityId != null && other.appIdentityId === fact.appIdentityId)
+    // Pre-Target query responses only; task 05 removes this together with legacy Subject JSON.
+    return fact.targetKind == null && other.targetKind == null && fact.appIdentityId != null &&
+      factTarget(other).id === factTarget(fact).id && other.appIdentityId === fact.appIdentityId
+  })
 }
 export function clampRange(range: TimeRange, bounds: TimeRange): TimeRange {
   const span = Math.min(bounds.end - bounds.start, Math.max(1000, range.end - range.start))

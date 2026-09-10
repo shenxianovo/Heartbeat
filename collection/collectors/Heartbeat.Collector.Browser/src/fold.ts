@@ -19,22 +19,28 @@ export interface FoldState {
 
 /** Browser 只定义事实内容，SDK 补齐身份及时间。 */
 export interface BrowserPayload {
-  identityKey: string
+  activityKey: string
   title: string
   attributes: { url: string; domain: string; site: string; windowId: number }
 }
 
-export type SegmentSnapshot = SdkSnapshot<BrowserPayload, 'browser'>
+export interface BrowserAttribution {
+  observerId: string
+  target: { kind: 'application-context'; reference: string }
+}
+
+// Attribution is bound by delivery; window observation and Segment SDK stay transport independent.
+export type SegmentSnapshot = SdkSnapshot<BrowserPayload, 'browser'> & Partial<BrowserAttribution>
 export type FoldEvent = WindowObservation & { at: number }
 
 export interface FoldDeps {
   segments: SegmentSdk<WindowActivity, BrowserPayload, 'browser'>
-  identityKeyOf: (url: string) => string
+  activityKeyOf: (url: string) => string
 }
 
 export function browserPayloadOf(activity: WindowActivity): BrowserPayload {
   return {
-    identityKey: activity.identityKey,
+    activityKey: activity.activityKey,
     title: activity.title,
     attributes: {
       url: activity.url, domain: domainOf(activity.url), site: siteOf(activity.url), windowId: activity.windowId,
@@ -53,7 +59,7 @@ export function emptyState(): FoldState {
 
 export function applyEvent(state: FoldState, ev: FoldEvent, deps: FoldDeps): FoldResult {
   const cur = state.open[ev.windowId]
-  const change = observeWindow(cur, ev, deps.identityKeyOf)
+  const change = observeWindow(cur, ev, deps.activityKeyOf)
 
   if (change.kind === 'closed') {
     if (!cur) return { state, out: [] }

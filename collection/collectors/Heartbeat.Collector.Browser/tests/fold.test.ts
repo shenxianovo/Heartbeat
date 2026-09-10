@@ -6,14 +6,14 @@ import {
   flush,
   type FoldDeps,
 } from '../src/fold'
-import { identityKeyOf } from '../src/normalize'
+import { activityKeyOf } from '../src/normalize'
 import { createSegmentSdk, ROTATE_AFTER_MS } from '../src/sdk/segments'
 
 function makeDeps(): FoldDeps {
   let n = 0
   return {
     segments: createSegmentSdk({ source: 'browser', payloadOf: browserPayloadOf, newId: () => `id-${++n}` }),
-    identityKeyOf,
+    activityKeyOf,
   }
 }
 
@@ -33,11 +33,11 @@ describe('applyEvent', () => {
 
     expect(r.out).toHaveLength(1)
     expect(r.out[0]).toMatchObject({
-      id: 'id-1', identityKey: 'https://www.youtube.com/watch?v=aaa', title: 'Video A',
+      id: 'id-1', activityKey: 'https://www.youtube.com/watch?v=aaa', title: 'Video A',
       isFinal: true, attributes: { url: firstUrl },
     })
     expect(flush(r.state, T0 + 10_000, deps).out[0]).toMatchObject({
-      id: 'id-2', identityKey: 'https://www.youtube.com/watch?v=bbb', title: 'Video B',
+      id: 'id-2', activityKey: 'https://www.youtube.com/watch?v=bbb', title: 'Video B',
       attributes: { url: secondUrl },
     })
   })
@@ -48,17 +48,17 @@ describe('applyEvent', () => {
     r = applyEvent(r.state, activated(1, 'https://www.youtube.com/watch?t=30&v=aaa#details', T0 + 1000), deps)
 
     expect(r.out).toHaveLength(0)
-    expect(r.state.open[1]).toMatchObject({ id: 'id-1', identityKey: 'https://www.youtube.com/watch?v=aaa' })
+    expect(r.state.open[1]).toMatchObject({ id: 'id-1', activityKey: 'https://www.youtube.com/watch?v=aaa' })
   })
 
   it('首个激活开启活动，不立即产出快照', () => {
     const deps = makeDeps()
     const { state, out } = applyEvent(emptyState(), activated(1, 'https://a.com/x', T0), deps)
     expect(out).toHaveLength(0)
-    expect(state.open[1]).toMatchObject({ id: 'id-1', identityKey: 'https://a.com/x', startTime: T0 })
+    expect(state.open[1]).toMatchObject({ id: 'id-1', activityKey: 'https://a.com/x', startTime: T0 })
   })
 
-  it('同一 identityKey（query 变化/标题变化）不切段，只更新展示字段', () => {
+  it('同一 activityKey（query 变化/标题变化）不切段，只更新展示字段', () => {
     const deps = makeDeps()
     let r = applyEvent(emptyState(), activated(1, 'https://a.com/x?utm=1', T0, 'old'), deps)
     r = applyEvent(r.state, activated(1, 'https://a.com/x?utm=2', T0 + 1000, 'new'), deps)
@@ -68,7 +68,7 @@ describe('applyEvent', () => {
     expect(r.state.open[1].url).toBe('https://a.com/x?utm=2')
   })
 
-  it('identityKey 变化：封口旧段、开启新段（新 Id）', () => {
+  it('activityKey 变化：封口旧段、开启新段（新 Id）', () => {
     const deps = makeDeps()
     let r = applyEvent(emptyState(), activated(1, 'https://a.com/x', T0), deps)
     r = applyEvent(r.state, activated(1, 'https://b.com/y', T0 + 5000), deps)
@@ -77,12 +77,12 @@ describe('applyEvent', () => {
     expect(r.out[0]).toMatchObject({
       id: 'id-1',
       source: 'browser',
-      identityKey: 'https://a.com/x',
+      activityKey: 'https://a.com/x',
         startTime: new Date(T0).toISOString(),
       endTime: new Date(T0 + 5000).toISOString(),
       isFinal: true,
     })
-    expect(r.state.open[1]).toMatchObject({ id: 'id-2', identityKey: 'https://b.com/y' })
+    expect(r.state.open[1]).toMatchObject({ id: 'id-2', activityKey: 'https://b.com/y' })
   })
 
   it('多窗口各自持有活动，互不干扰（windowId 进 attributes）', () => {
@@ -95,8 +95,8 @@ describe('applyEvent', () => {
     const flushed = flush(r.state, T0 + 60_000, deps)
     expect(flushed.out).toHaveLength(2)
     const byWindow = new Map(flushed.out.map((s) => [s.attributes.windowId, s]))
-    expect(byWindow.get(1)?.identityKey).toBe('https://a.com/x')
-    expect(byWindow.get(2)?.identityKey).toBe('https://b.com/y')
+    expect(byWindow.get(1)?.activityKey).toBe('https://a.com/x')
+    expect(byWindow.get(2)?.activityKey).toBe('https://b.com/y')
   })
 
   it('窗口关闭封口该窗口的活动', () => {
@@ -178,7 +178,7 @@ describe('flush（ADR-018 稳定 Id 快照）', () => {
     expect(snapshot).not.toHaveProperty('appHint')
     expect(snapshot).toMatchObject({
       source: 'browser',
-      identityKey: 'https://a.com/x',
+      activityKey: 'https://a.com/x',
       title: 'page',
     })
   })
@@ -206,7 +206,7 @@ describe('flush（ADR-018 稳定 Id 快照）', () => {
     const rotated = f.state.open[1]
     expect(rotated.id).toBe('id-2') // 新 Id 从 now 续记
     expect(rotated.startTime).toBe(rotateAt)
-    expect(rotated.identityKey).toBe('https://a.com/x') // 活动身份不变
+    expect(rotated.activityKey).toBe('https://a.com/x') // 活动身份不变
 
     // 轮换后的下一次 flush 用新 Id
     const f2 = flush(f.state, rotateAt + 30_000, deps)

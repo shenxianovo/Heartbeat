@@ -1,7 +1,7 @@
-import type { SegmentSnapshot } from './fold'
+import type { BrowserAttribution, SegmentSnapshot } from './fold'
 import { uuidv7 } from './ids'
 import {
-  snapshotRevision,
+  snapshotRevision, bindAttribution, sameSnapshot,
   type BrowserActivationAttempt,
   type BrowserPendingGap,
   type BrowserProtocolSession,
@@ -34,6 +34,7 @@ export interface BrowserDelivery {
 
 /** @internal Chrome 与内存 storage adapter 共享的模块私有状态。 */
 export interface BrowserDeliveryDurableState {
+  attribution?: BrowserAttribution
   queue: Record<string, SegmentSnapshot>
   pendingGaps: BrowserPendingGap[]
   deadLetters: SegmentSnapshot[]
@@ -68,6 +69,7 @@ export interface BrowserProtocolDeliveryRequest {
   persistActivationAttempt(attempt: BrowserActivationAttempt): Promise<void>
   persistPublishAttempt(attempt: BrowserPublishAttempt): Promise<void>
   applySpec(spec: BrowserCollectionPolicy): Promise<void>
+  applyAttribution(attribution: BrowserAttribution): Promise<void>
   pendingGap?: BrowserPendingGap
   persistGapAttempt(gap: BrowserPendingGap): Promise<void>
 }
@@ -106,7 +108,7 @@ export function createBrowserDelivery(dependencies: BrowserDeliveryDependencies)
   async function enqueueImplementation(snapshots: SegmentSnapshot[]): Promise<void> {
     if (snapshots.length === 0) return
     const durable = await dependencies.store.loadDurable()
-    const { queue, overflow } = enqueueBounded(durable.queue, snapshots)
+    const { queue, overflow } = enqueueBounded(durable.queue, snapshots.map(snapshot => bindAttribution(snapshot, durable.attribution)))
     const next = {
       ...durable,
       queue,
@@ -126,7 +128,7 @@ export function createBrowserDelivery(dependencies: BrowserDeliveryDependencies)
   async function checkpointImplementation(snapshots: SegmentSnapshot[]): Promise<void> {
     if (snapshots.length === 0) return
     const durable = await dependencies.store.loadDurable()
-    const { queue, overflow } = enqueueBounded(durable.queue, snapshots)
+    const { queue, overflow } = enqueueBounded(durable.queue, snapshots.map(snapshot => bindAttribution(snapshot, durable.attribution)))
     if (overflow.length > 0) throw new Error('Outbox capacity prevents a complete activity checkpoint')
     await dependencies.store.saveDurable({ ...durable, queue })
   }
@@ -175,6 +177,11 @@ export function createBrowserDelivery(dependencies: BrowserDeliveryDependencies)
       applySpec: async (spec) => {
         currentPolicy = spec
         await persistPolicy(dependencies.store, currentPolicy)
+      },
+      applyAttribution: async (attribution) => {
+        const latest = await dependencies.store.loadDurable()
+        await dependencies.store.saveDurable({ ...latest, attribution,
+          queue: Object.fromEntries(Object.entries(latest.queue).map(([id, snapshot]) => [id, bindAttribution(snapshot, attribution)])) })
       },
       pendingGap: reportedGap,
       persistGapAttempt: async (attempt) => {
@@ -299,6 +306,8 @@ async function convergeProtocolAcknowledgement(
   const rejected: SegmentSnapshot[] = []
   for (const [id, snapshot] of Object.entries(queue)) {
     const revision = snapshotRevision(snapshot)
+    const sent = result.settledSnapshots?.find(item => item.id === id)
+    if (result.settledSnapshots !== undefined && (sent === undefined || !sameSnapshot(sent, snapshot))) continue
     if (result.rejectedRevisions[id] === revision) {
       rejected.push(snapshot)
       delete queue[id]
@@ -357,7 +366,7 @@ function relevantPublishAttempt(
   if (attempt === undefined) return undefined
   return attempt.snapshots.some((snapshot) =>
     queue[snapshot.id] !== undefined &&
-    snapshotRevision(queue[snapshot.id]) === snapshotRevision(snapshot),
+    sameSnapshot(queue[snapshot.id], snapshot),
   ) ? attempt : undefined
 }
 

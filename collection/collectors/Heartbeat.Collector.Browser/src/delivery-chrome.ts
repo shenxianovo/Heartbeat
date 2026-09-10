@@ -20,6 +20,7 @@ import type {
   BrowserPublishAttempt,
 } from './protocol'
 
+const ATTRIBUTION_KEY = 'browserFactAttribution'
 const QUEUE_KEY = 'pendingSegments'
 const BACKOFF_KEY = 'backoff'
 const HUB_PORT_KEY = 'hubPort'
@@ -33,7 +34,9 @@ const DESIRED_ENABLED_KEY = 'browserCollectorDesiredEnabled'
 const DELIVERY_POLICY_KEY = 'browserCollectorDeliveryPolicy'
 const EXTERNAL_HOST_IDENTITY_KEY = 'browserCollectorExternalHostIdentity'
 
-type PersistedSegmentSnapshot = Omit<SegmentSnapshot, 'isFinal'> & {
+type PersistedSegmentSnapshot = Omit<SegmentSnapshot, 'isFinal' | 'activityKey'> & {
+  activityKey?: string
+  identityKey?: string
   appName?: unknown
   isFinal?: boolean
 }
@@ -46,7 +49,7 @@ export class ChromeBrowserDeliveryStore implements BrowserDeliveryStore {
   async loadDurable(): Promise<BrowserDeliveryDurableState> {
     const [local, transient] = await Promise.all([
       chrome.storage.local.get([
-        QUEUE_KEY,
+        QUEUE_KEY, ATTRIBUTION_KEY,
         PENDING_GAP_KEY,
         DEAD_LETTER_KEY,
         DELIVERY_POLICY_KEY,
@@ -69,6 +72,7 @@ export class ChromeBrowserDeliveryStore implements BrowserDeliveryStore {
     }
     return {
       queue: normalizeQueuedSnapshots(rawQueue),
+      attribution: local[ATTRIBUTION_KEY] as BrowserDeliveryDurableState['attribution'],
       pendingGaps: pendingGaps.value,
       deadLetters: Array.isArray(local[DEAD_LETTER_KEY])
         ? local[DEAD_LETTER_KEY] as SegmentSnapshot[]
@@ -80,6 +84,7 @@ export class ChromeBrowserDeliveryStore implements BrowserDeliveryStore {
   async saveDurable(state: BrowserDeliveryDurableState): Promise<void> {
     await chrome.storage.local.set({
       [QUEUE_KEY]: state.queue,
+      ...(state.attribution === undefined ? {} : { [ATTRIBUTION_KEY]: state.attribution }),
       [PENDING_GAP_KEY]: state.pendingGaps,
       [DEAD_LETTER_KEY]: state.deadLetters,
       [DELIVERY_POLICY_KEY]: state.policy,
@@ -189,7 +194,9 @@ function normalizeQueuedSnapshots(
     Object.entries(stored).map(([id, snapshot]) => [id, {
       id: snapshot.id,
       source: snapshot.source,
-      identityKey: snapshot.identityKey,
+      activityKey: snapshot.activityKey ?? snapshot.identityKey!,
+      ...(snapshot.observerId === undefined ? {} : { observerId: snapshot.observerId }),
+      ...(snapshot.target === undefined ? {} : { target: snapshot.target }),
       title: snapshot.title,
       startTime: snapshot.startTime,
       endTime: snapshot.endTime,

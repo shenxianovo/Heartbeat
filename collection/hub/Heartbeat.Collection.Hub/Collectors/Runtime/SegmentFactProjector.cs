@@ -26,12 +26,11 @@ internal sealed class ActivitySegmentFactProjector
         out ActivitySegmentItem? item)
     {
         item = null;
-        if (payload.ValueKind != JsonValueKind.Object ||
-            !payload.TryGetProperty("identityKey", out var identityKey) ||
-            identityKey.ValueKind != JsonValueKind.String ||
-            identityKey.GetString() is not { } projectedIdentityKey ||
-            string.IsNullOrWhiteSpace(projectedIdentityKey))
-            return false;
+        if (payload.ValueKind != JsonValueKind.Object) return false;
+        // Current Browser uses activityKey. Older first-party projections keep their wire spelling
+        // and original Payload until the task 05 consumer/cache gate closes.
+        var activityKey = StringProperty(payload, "activityKey") ?? StringProperty(payload, "identityKey");
+        if (string.IsNullOrWhiteSpace(activityKey)) return false;
 
         // Stream 上的通用 appIdentityKey dimension 是 App 身份的权威来源；宿主不解析任何具体
         // Collector 的产品词汇。没有该 dimension 的 Stream（例如 System Collector 自己的输出）退回
@@ -49,7 +48,7 @@ internal sealed class ActivitySegmentFactProjector
         {
             Id = ProjectedId(stream.StreamId, factId),
             Source = stream.Source,
-            IdentityKey = projectedIdentityKey,
+            IdentityKey = activityKey,
             Title = StringProperty(payload, "title"),
             AppIdentityKey = appIdentityKey,
             AppDisplayName = StringProperty(payload, "appDisplayName"),

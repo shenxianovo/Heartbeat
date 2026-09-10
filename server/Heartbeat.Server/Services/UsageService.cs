@@ -66,7 +66,7 @@ namespace Heartbeat.Server.Services
                 .Select(x => new SegmentResponse
                 {
                     ObserverId = x.ObserverId, TargetKind = x.TargetKind, TargetId = x.TargetId,
-                    TargetName = x.TargetKind == "device" && x.Device != null ? x.Device.DeviceName : null,
+                    TargetName = x.TargetKind == "application-context" && x.App != null && x.Device != null ? x.Device.DeviceName + " / " + x.App.DisplayName : x.TargetKind == "device" && x.Device != null ? x.Device.DeviceName : null,
                     Id = x.Id,
                     DeviceId = x.DeviceId,
                     Source = x.Source,

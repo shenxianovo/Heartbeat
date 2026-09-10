@@ -13,7 +13,7 @@ import {
   type FoldEvent,
   type FoldState,
 } from './fold'
-import { identityKeyOf } from './normalize'
+import { activityKeyOf } from './normalize'
 import { createSegmentSdk } from './sdk/segments'
 import { createChromeBrowserDelivery } from './delivery-chrome'
 import type { BrowserCollectionPolicy } from './delivery'
@@ -25,7 +25,7 @@ const DEVELOPMENT_ALARM = 'heartbeat-development-update'
 
 const deps: FoldDeps = {
   segments: createSegmentSdk({ source: 'browser', payloadOf: browserPayloadOf }),
-  identityKeyOf,
+  activityKeyOf,
 }
 
 const delivery = createChromeBrowserDelivery()
@@ -44,7 +44,16 @@ function serialized<T>(fn: () => Promise<T>): Promise<T> {
 
 async function loadState(): Promise<FoldState> {
   const got = await chrome.storage.session.get(STATE_KEY)
-  return (got[STATE_KEY] as FoldState | undefined) ?? emptyState()
+  const state = (got[STATE_KEY] as FoldState | undefined) ?? emptyState()
+  // Existing MV3 session state from the pre-Target release. Remove with task 05's cache gate.
+  for (const activity of Object.values(state.open)) {
+    const payload = activity as typeof activity & { identityKey?: string }
+    if (payload.activityKey === undefined && payload.identityKey !== undefined) {
+      payload.activityKey = payload.identityKey
+      delete payload.identityKey
+    }
+  }
+  return state
 }
 
 async function saveState(state: FoldState): Promise<void> {
@@ -111,7 +120,7 @@ async function applyDeliveryPolicy(
 
 /**
  * SW 唤醒对账：以"当前各窗口的 active tab"为真源重放一次。
- * 幂等——同 identityKey 不产生边界；已消失窗口的活动就地封口。
+ * 幂等——同 activityKey 不产生边界；已消失窗口的活动就地封口。
  */
 async function reconcile(): Promise<void> {
   if (!(await delivery.policy()).enabled) return

@@ -17,6 +17,7 @@ namespace Heartbeat.Server.Data
         public DbSet<FactGap> FactGaps => Set<FactGap>();
         public DbSet<User> Users => Set<User>();
         public DbSet<Device> Devices => Set<Device>();
+        public DbSet<ApplicationContextRecord> ApplicationContexts => Set<ApplicationContextRecord>();
         public DbSet<App> Apps => Set<App>();
         public DbSet<AppIdentity> AppIdentities => Set<AppIdentity>();
         public DbSet<AppIcon> AppIcons => Set<AppIcon>();
@@ -104,6 +105,16 @@ namespace Heartbeat.Server.Data
                     .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasIndex(e => e.CurrentAppIdentityId);
+            });
+
+            modelBuilder.Entity<ApplicationContextRecord>(entity =>
+            {
+                entity.ToTable("ApplicationContexts");
+                entity.HasKey(e => e.Id);
+                entity.HasIndex(e => new { e.OwnerId, e.DeviceId, e.AppId }).IsUnique();
+                entity.HasOne(e => e.Device).WithMany().HasForeignKey(e => new { e.OwnerId, e.DeviceId })
+                    .HasPrincipalKey(e => new { e.OwnerId, e.Id }).OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(e => e.App).WithMany().HasForeignKey(e => e.AppId).OnDelete(DeleteBehavior.Restrict);
             });
 
             modelBuilder.Entity<App>(entity =>

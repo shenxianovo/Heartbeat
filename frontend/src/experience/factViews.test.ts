@@ -6,6 +6,14 @@ export function fact(overrides: Partial<ExperienceSegment> = {}): ExperienceSegm
     subjectKind: 'machine', subjectName: 'Mac', source: 'system', appId: 1, appIdentityId: 1, appName: 'Browser', appKey: 'browser',
     startTime: '2026-09-09T01:00:00Z', endTime: '2026-09-09T01:00:01Z', payload: {}, ...overrides }
 }
+it('relates Browser application contexts to System by device and App while preserving separate Target lanes', () => {
+  const system = fact({ source: 'system', deviceId: 42, appId: 9, appIdentityId: 11, targetKind: 'device', targetId: 42 })
+  const browser = fact({ source: 'browser', deviceId: 42, appId: 9, appIdentityId: 12, targetKind: 'application-context', targetId: 81 })
+  const unrelated = { ...browser, id: 'other', deviceId: 43 }
+  expect(relatedBrowser(system, [browser, unrelated])).toEqual([browser])
+  expect(groupTargets([system, browser], { start: Date.parse(system.startTime), end: Date.parse(system.endTime) })).toHaveLength(2)
+})
+
 describe('Fact Views', () => {
   it('preserves every short fact and only groups subjects with overlapping activity', () => {
     const a = fact(), b = fact({ id: 'two' }), c = fact({ id: 'outside', subjectId: 'account', startTime: '2026-09-09T02:00:00Z', endTime: '2026-09-09T03:00:00Z' })

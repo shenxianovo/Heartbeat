@@ -87,3 +87,7 @@ System 真实窗口/输入刺激、系统权限及 Windows 现场验收与自动
 本次按用户确认，System 范围内语义已变化的字段和消费变量使用新名。CollectorInstanceId、StreamId
 仍分别表示 Runtime 实例与交付流，不因新增 Observer/Target 改名；旧初始化协议的 Subject 仍服务
 未迁移实例元数据，由适配边界读出设备引用，退出条件同任务 05。
+
+2026-09-10（02 接续）：[Browser 实施记录](browser-observation-targets.md) 扩充 application-context
+引用、应用上下文表与查询；Runtime 当前写格式升至 v5。本文上方 v4/device-only 描述为 01 交付
+时的批次边界。01 的真实 System 门禁仍未关闭。

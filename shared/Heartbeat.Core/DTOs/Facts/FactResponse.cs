@@ -12,6 +12,8 @@ public sealed class FactResponse
     public Guid? ObserverId { get; set; }
     public string? TargetKind { get; set; }
     public long? TargetId { get; set; }
+    public long? DeviceId { get; set; }
+    public long? AppId { get; set; }
     public string Source { get; set; } = string.Empty;
     public DateTimeOffset? Start { get; set; }
     public DateTimeOffset? End { get; set; }

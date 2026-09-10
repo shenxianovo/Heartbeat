@@ -72,6 +72,7 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         {
             // One owner lock makes legacy takeover, batches, and App resolution serializable together.
             await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({"fact-owner:" + ownerId}, 0))", ct);
+            await AppCatalogLock.AcquireAsync(db, ct);
             await action();
             if (transaction is not null) await transaction.CommitAsync(ct);
         }
@@ -138,7 +139,6 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
 
     private async Task Apply(FactStream stream, FactSnapshot snapshot, CancellationToken ct)
     {
-        var attribution = await ResolveAttribution(stream, snapshot, ct);
         var payload = StoredPayload(snapshot.Payload!.Value, stream.FactKind);
         var start = NormalizeTime(snapshot.Start);
         var end = NormalizeTime(snapshot.End);
@@ -146,9 +146,12 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         IFactRecord? fact = stream.FactKind == "segment"
             ? await db.Segments.SingleOrDefaultAsync(f => f.OwnerId == stream.OwnerId && f.StreamId == stream.StreamId && f.FactId == snapshot.FactId, ct)
             : await db.Events.SingleOrDefaultAsync(f => f.OwnerId == stream.OwnerId && f.StreamId == stream.StreamId && f.FactId == snapshot.FactId, ct);
+        if (fact is not null && snapshot.Revision < fact.Revision) return;
+        var appIdentityId = await ResolveApp(stream, payload.RootElement, ct)
+            ?? (snapshot.ObserverId is null && snapshot.Target is null ? fact?.AppIdentityId : null);
+        var attribution = await ResolveAttribution(stream, snapshot, appIdentityId, ct);
         if (fact is not null)
         {
-            if (snapshot.Revision < fact.Revision) return;
             var sameTimes = fact is Segment segment
                 ? segment.StartTime == start && segment.EndTime == end
                 : ((Event)fact).Timestamp == at;
@@ -190,7 +193,7 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         fact.TargetId = attribution.Id;
         fact.Revision = snapshot.Revision;
         fact.Payload = payload;
-        fact.AppIdentityId = await ResolveApp(stream, payload.RootElement, ct);
+        fact.AppIdentityId = attribution.AppIdentityId;
         if (fact is Segment savedSegment)
         {
             savedSegment.StartTime = start!.Value;
@@ -200,22 +203,43 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         await db.SaveChangesAsync(ct);
     }
 
-    // Compatibility for pre-attribution first-party snapshots; removed with task 05.
-    // Only System has enough evidence for this first migration. Never invent a historical Observer.
-    private async Task<(Guid? ObserverId, string? Kind, long? Id)> ResolveAttribution(
-        FactStream stream, FactSnapshot snapshot, CancellationToken ct)
+    // Pre-target first-party protocol/cache adapter. Exit evidence is owned by task 05.
+    private async Task<(Guid? ObserverId, string? Kind, long? Id, long? AppIdentityId)> ResolveAttribution(
+        FactStream stream, FactSnapshot snapshot, long? appIdentityId, CancellationToken ct)
     {
         if (snapshot.ObserverId is null && snapshot.Target is null)
-            return stream.Source == "system" && stream.Subject.Kind == "machine" && stream.Subject.DeviceId is { } deviceId
-                ? (stream.Origin == "native" ? stream.CollectorInstanceId : null, "device", deviceId)
-                : (null, null, null);
-        if (snapshot.ObserverId is null || snapshot.ObserverId == Guid.Empty)
-            throw new FactIngestException("A Fact requires a valid Observer.");
-        if (snapshot.Target is not { Kind: "device" } target || string.IsNullOrWhiteSpace(target.Reference) || target.Reference.Length > 256)
+        {
+            if (stream.Subject.Kind != "machine" || stream.Subject.DeviceId is not { } deviceId)
+                return (null, null, null, appIdentityId);
+            if (stream.Source == "system")
+                return (stream.Origin == "native" ? stream.CollectorInstanceId : null, "device", deviceId, appIdentityId);
+            if (stream.Source != "browser") return (null, null, null, appIdentityId);
+            using var dimensions = JsonDocument.Parse(stream.Dimensions);
+            Guid? observer = stream.Origin == "native" ? Heartbeat.Core.Facts.BrowserFactAttribution.Observer(String(dimensions.RootElement, "externalHostIdentity")) : null;
+            if (appIdentityId is not { } identityId) return (observer, "device", deviceId, null);
+            var appId = await db.AppIdentities.Where(a => a.Id == identityId).Select(a => a.AppId).SingleAsync(ct);
+            var context = await new ApplicationContextService(db).ResolveAsync(stream.OwnerId, deviceId, appId, ct);
+            return (observer, "application-context", context.Id, appIdentityId);
+        }
+        if (snapshot.ObserverId is null || snapshot.ObserverId == Guid.Empty || snapshot.Target is null)
+            throw new FactIngestException("A Fact requires a valid Observer and Target.");
+        var target = snapshot.Target;
+        if (target.Kind == "application-context")
+        {
+            ApplicationContextReference reference;
+            try { reference = ApplicationContextReference.Parse(target.Reference); }
+            catch (ArgumentException ex) { throw new FactIngestException(ex.Message); }
+            var identity = await new AppIdentityService(db).ResolveAsync(reference.AppIdentityKey, cancellationToken: ct);
+            if (appIdentityId is not null && appIdentityId != identity.Id)
+                throw new FactIngestException("Application context conflicts with the Fact's platform App identity.");
+            var device = await new DeviceService(db).ResolveFactReferenceAsync(stream.OwnerId, reference.DeviceReference, null, ct);
+            var context = await new ApplicationContextService(db).ResolveAsync(stream.OwnerId, device.Id, identity.AppId, ct);
+            return (snapshot.ObserverId, target.Kind, context.Id, identity.Id);
+        }
+        if (target.Kind != "device" || string.IsNullOrWhiteSpace(target.Reference) || target.Reference.Length > 256)
             throw new FactIngestException("A Fact requires a supported Target reference.");
-        var reference = Guid.TryParse(target.Reference, out var hardware) ? hardware.ToString("D") : target.Reference;
-        var device = await new DeviceService(db).ResolveFactReferenceAsync(stream.OwnerId, reference, null, ct);
-        return (snapshot.ObserverId, "device", device.Id);
+        var targetDevice = await new DeviceService(db).ResolveFactReferenceAsync(stream.OwnerId, target.Reference, null, ct);
+        return (snapshot.ObserverId, "device", targetDevice.Id, appIdentityId);
     }
 
     private async Task<long?> ResolveApp(FactStream stream, JsonElement payload, CancellationToken ct)
@@ -254,15 +278,8 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
 
     internal static JsonDocument StoredPayload(JsonElement payload, string kind)
     {
-        if (kind != "segment" || String(payload, "identityKey") is not { } identityKey)
-            return JsonDocument.Parse(payload.GetRawText());
-        var node = System.Text.Json.Nodes.JsonNode.Parse(payload.GetRawText())!.AsObject();
-        if (node.TryGetPropertyValue("activityKey", out var activityKey) &&
-            (activityKey is not System.Text.Json.Nodes.JsonValue value || !value.TryGetValue<string>(out var text) || text != identityKey))
-            throw new FactIngestException("Activity identityKey conflicts with activityKey.");
-        node.Remove("identityKey");
-        node["activityKey"] = identityKey;
-        return JsonDocument.Parse(node.ToJsonString());
+        try { return JsonDocument.Parse((kind == "segment" ? Heartbeat.Core.Facts.ActivityFactPayload.Normalize(payload) : payload).GetRawText()); }
+        catch (ArgumentException ex) { throw new FactIngestException(ex.Message); }
     }
 
     internal static string? String(JsonElement payload, string property) => payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;

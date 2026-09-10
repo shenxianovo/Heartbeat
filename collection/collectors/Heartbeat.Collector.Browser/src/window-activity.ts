@@ -1,7 +1,7 @@
 /** 当前浏览器会话中的一个窗口是观测对象；URL、标题与活动判据是它的读数。 */
 export interface WindowActivity {
   windowId: number
-  identityKey: string
+  activityKey: string
   url: string
   title: string
 }
@@ -21,15 +21,15 @@ type WindowActivityChange =
 export function observeWindow(
   current: WindowActivity | undefined,
   observation: WindowObservation,
-  identityKeyOf: (url: string) => string,
+  activityKeyOf: (url: string) => string,
 ): WindowActivityChange {
   if (observation.kind === 'windowClosed') return { kind: 'closed' }
   const activity: WindowActivity = {
     windowId: observation.windowId,
-    identityKey: identityKeyOf(observation.url),
+    activityKey: activityKeyOf(observation.url),
     url: observation.url,
     title: observation.title,
   }
   // 同一页面的标题、追踪参数等变化只更新读数；页面判据变化才开始另一项活动。
-  return { kind: current?.identityKey === activity.identityKey ? 'updated' : 'started', activity }
+  return { kind: current?.activityKey === activity.activityKey ? 'updated' : 'started', activity }
 }

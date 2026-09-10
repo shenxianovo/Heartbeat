@@ -54,6 +54,9 @@ public class AppMergeService(AppDbContext db, TimeProvider? clock = null)
         }
 
         var plan = await BuildPlanAsync(sourceKey, targetKey, cancellationToken);
+        var contexts = new ApplicationContextService(db);
+        await contexts.RebindAsync(plan.Identities.Select(i => i.Id).ToArray(), plan.Target.Id, cancellationToken);
+        await contexts.RemoveUnreferencedAsync([plan.Source.Id], cancellationToken);
         Apply(plan);
         plan.Response.DryRun = false;
         plan.Response.Committed = true;

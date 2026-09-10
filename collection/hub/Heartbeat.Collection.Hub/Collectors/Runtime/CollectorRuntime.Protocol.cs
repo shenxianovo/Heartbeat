@@ -732,6 +732,20 @@ public sealed partial class CollectorRuntime
         if (fact.ObserverId is null && fact.Target is null && stream.Source == "system" && stream.SubjectKind == SubjectKind.Machine)
             fact = fact with { ObserverId = stream.CollectorInstanceId,
                 Target = new Heartbeat.Core.DTOs.Facts.FactTarget("device", stream.SubjectId.ToString("D")) };
+        if (stream.Source == "browser")
+        {
+            if (fact.ObserverId is null && fact.Target is null && stream.SubjectKind == SubjectKind.Machine)
+            {
+                var observer = Heartbeat.Core.Facts.BrowserFactAttribution.Observer(stream.Dimensions.GetValueOrDefault("externalHostIdentity"));
+                var target = Heartbeat.Core.Facts.BrowserFactAttribution.Target(stream.SubjectId.ToString("D"), stream.Dimensions.GetValueOrDefault("appIdentityKey"));
+                if (observer is not null && target is not null) fact = fact with { ObserverId = observer, Target = target };
+            }
+            if (fact.Payload is { } payload)
+            {
+                try { fact = fact with { Payload = Heartbeat.Core.Facts.ActivityFactPayload.Normalize(payload) }; }
+                catch (ArgumentException ex) { return Rejected(index, "fact_invalid", ex.Message); }
+            }
+        }
         var envelopeError = ValidateFactEnvelope(fact);
         if (envelopeError is not null)
             return Rejected(index, "fact_invalid", envelopeError);
@@ -839,13 +853,21 @@ public sealed partial class CollectorRuntime
         CommittedFactState Committed,
         CommittedFactState? EvictedEvent);
 
+    private static bool ValidTarget(Heartbeat.Core.DTOs.Facts.FactTarget target)
+    {
+        if (target.Kind == "device") return !string.IsNullOrWhiteSpace(target.Reference) && target.Reference.Length <= 256;
+        if (target.Kind != "application-context" || string.IsNullOrWhiteSpace(target.Reference) || target.Reference.Length > 8192) return false;
+        try { _ = Heartbeat.Core.DTOs.Facts.ApplicationContextReference.Parse(target.Reference); return true; }
+        catch (ArgumentException) { return false; }
+    }
+
     private static string? ValidateFactEnvelope(FactSubmission fact)
     {
         if (fact.StreamId == Guid.Empty || !IsUuidV7(fact.FactId) ||
             fact.Revision is <= 0 or > MaxSafeJsonInteger)
             return "Fact identity and revisions must be UUIDv7, positive, and JSON-safe.";
         if ((fact.ObserverId is null) != (fact.Target is null) || fact.ObserverId == Guid.Empty ||
-            fact.Target is { } target && (target.Kind != "device" || string.IsNullOrWhiteSpace(target.Reference) || target.Reference.Length > 256))
+            fact.Target is { } target && (!ValidTarget(target)))
             return "Fact requires a valid Observer and Target together.";
         if (fact.ObservedAt is { Offset: var offset } && offset != TimeSpan.Zero)
             return "Fact observedAt must be UTC.";

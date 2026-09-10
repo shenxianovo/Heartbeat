@@ -56,7 +56,7 @@ afterAll(async () => {
 async function connect(identity: string, app: string, previous?: BrowserProtocolSession) {
   const start = new Date(Date.now() - 60_000).toISOString()
   return uploadWithBrowserProtocol(port, app, identity, [{
-    id: uuidv7(), source: 'browser', identityKey: 'https://example.com/docs', title: 'Docs',
+    id: uuidv7(), source: 'browser', activityKey: 'https://example.com/docs', title: 'Docs',
     startTime: start, endTime: new Date().toISOString(), isFinal: true,
     attributes: { url: 'https://example.com/docs', domain: 'example.com', site: 'example.com', windowId: 1 },
   }], previous)
@@ -64,7 +64,7 @@ async function connect(identity: string, app: string, previous?: BrowserProtocol
 
 it('connects the actual Browser client to the generic Host and projects its App/URL identities', async () => {
   expect(await probeHub(port)).toBe(true)
-  const result = await connect('profile-a', 'win:chrome')
+  const result = await connect('6a8259d1-5f6a-4b83-b6ba-870178863191', 'win:chrome')
   expect(result.kind).toBe('acked')
   if (result.kind !== 'acked') throw new Error(JSON.stringify(result))
   firstSession = result.session
@@ -76,16 +76,16 @@ it('connects the actual Browser client to the generic Host and projects its App/
 })
 
 it('isolates Profiles, reconnects only the same identity, and preserves Streams across Host restart', async () => {
-  const second = await connect('profile-b', 'win:msedge')
+  const second = await connect('6a8259d1-5f6a-4b83-b6ba-870178863192', 'win:msedge')
   expect(second.kind).toBe('acked')
   if (second.kind !== 'acked') throw new Error(JSON.stringify(second))
-  const reconnect = await connect('profile-a', 'win:chrome')
+  const reconnect = await connect('6a8259d1-5f6a-4b83-b6ba-870178863191', 'win:chrome')
   expect(reconnect.kind).toBe('acked')
   if (reconnect.kind !== 'acked') throw new Error(JSON.stringify(reconnect))
   expect(reconnect.session.activationId).not.toBe(firstSession.activationId)
   expect(reconnect.session.streamId).toBe(firstSession.streamId)
   expect(second.session.streamId).not.toBe(firstSession.streamId)
-  const otherStillRunning = await connect('profile-b', 'win:msedge', second.session)
+  const otherStillRunning = await connect('6a8259d1-5f6a-4b83-b6ba-870178863192', 'win:msedge', second.session)
   expect(otherStillRunning.kind).toBe('acked')
   if (otherStillRunning.kind === 'acked') expect(otherStillRunning.session.activationId).toBe(second.session.activationId)
   const state = await (await nativeFetch(`http://127.0.0.1:${port}/test/status`)).json()
@@ -93,28 +93,28 @@ it('isolates Profiles, reconnects only the same identity, and preserves Streams 
   expect(state.status.connectedExternalHosts).toBe(2)
 
   await nativeFetch(`http://127.0.0.1:${port}/test/restart`, { method: 'POST' })
-  const restored = await connect('profile-a', 'win:chrome')
+  const restored = await connect('6a8259d1-5f6a-4b83-b6ba-870178863191', 'win:chrome')
   expect(restored.kind).toBe('acked')
   if (restored.kind !== 'acked') throw new Error(JSON.stringify(restored))
   expect(restored.session.streamId).toBe(firstSession.streamId)
   firstSession = restored.session
-  expect((await connect('profile-a', 'win:msedge')).kind).toBe('unavailable')
-  expect((await connect('profile-a', 'win:chrome', firstSession)).kind).toBe('acked')
+  expect((await connect('6a8259d1-5f6a-4b83-b6ba-870178863191', 'win:msedge')).kind).toBe('unavailable')
+  expect((await connect('6a8259d1-5f6a-4b83-b6ba-870178863191', 'win:chrome', firstSession)).kind).toBe('acked')
 })
 
 it('rejects an exact Package mismatch without disturbing a healthy Activation', async () => {
   const correct = reference
   reference = { ...reference, packageContentHash: `sha256:${'0'.repeat(64)}` }
-  expect((await connect('profile-c', 'win:chrome')).kind).toBe('unavailable')
+  expect((await connect('6a8259d1-5f6a-4b83-b6ba-870178863193', 'win:chrome')).kind).toBe('unavailable')
   reference = correct
-  const result = await connect('profile-a', 'win:chrome', firstSession)
+  const result = await connect('6a8259d1-5f6a-4b83-b6ba-870178863191', 'win:chrome', firstSession)
   expect(result.kind).toBe('acked')
   if (result.kind === 'acked') expect(result.session.activationId).toBe(firstSession.activationId)
 })
 
 it('retries a lost Fact ACK idempotently and commits a durable Stream Gap through the real binding', async () => {
   const item = {
-    id: uuidv7(), source: 'browser' as const, identityKey: 'https://example.com/retry', title: 'Retry',
+    id: uuidv7(), source: 'browser' as const, activityKey: 'https://example.com/retry', title: 'Retry',
     startTime: new Date(Date.now() - 60_000).toISOString(), endTime: new Date().toISOString(), isFinal: true,
     attributes: { url: 'https://example.com/retry', domain: 'example.com', site: 'example.com', windowId: 1 },
   }
@@ -139,11 +139,11 @@ it('revokes all leases on removal and rejects reconnect without recreating the I
     String(input).startsWith('chrome-extension://')
       ? Promise.resolve(Response.json(reference)) : nativeFetch(input, init))
   expect((await nativeFetch(`http://127.0.0.1:${port}/test/remove`, { method: 'POST' })).ok).toBe(true)
-  expect((await connect('profile-a', 'win:chrome', firstSession)).kind).toBe('unavailable')
+  expect((await connect('6a8259d1-5f6a-4b83-b6ba-870178863191', 'win:chrome', firstSession)).kind).toBe('unavailable')
   const response = await nativeFetch(`http://127.0.0.1:${port}/v1/collector-protocol/external-host/hello`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ protocol: 'heartbeat.collector.bootstrap/1', type: 'activation.hello', messageId: uuidv7(), body: {
-      ...reference, externalHostIdentity: 'profile-a', appIdentityKey: 'win:chrome',
+      ...reference, externalHostIdentity: '6a8259d1-5f6a-4b83-b6ba-870178863191', appIdentityKey: 'win:chrome',
       protocolMajors: [1], supportedCapabilities: { 'facts.segment': [1], 'diagnostics.stream-gap': [1] },
     } }),
   })

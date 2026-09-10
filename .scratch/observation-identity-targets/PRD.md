@@ -166,3 +166,12 @@ HTTP 查询已完成自动验证；任务 01 保持 ready-for-human，等待真�
 不能将本批正确性问题推迟到 05。05 承接整体迁移演练和旧归属路径清理。
 用户在概述核心模型时再次提到 DataSource；此处记录该表述，不将其视为修改已确认设计的授权，
 当前规格仍按“DataSource 暂不纳入”实施，若需纳入须先确认设计变更。
+
+2026-09-10（任务 02 实施）：Browser 扩展安装 Observer、设备/App 应用上下文、增量迁移、
+引用完整性、产品合并/纠错、设备/App 查询及旧缓存/快照重放已完成，任务 02 标记 done。
+自动验证为 .NET 1,284 项、Browser 111 项、前端 289 项全部通过，并完成真实 Chrome headless
+双窗口→macOS Desktop→独立 Analytics 的查询与离线重启补传验收，以及 Standards/Spec review。
+实现及兼容退出依据见 [Browser 实施记录](../../docs/architecture/browser-observation-targets.md)。
+真实结果不扩大为人工可见窗口、独立多 Profile、Windows/Edge 或 System 输入验收。
+01 继续保持 ready-for-human；03/04 待实施，05 承接生产副本演练与旧路径退出。
+本 PRD 仍为 ready-for-agent，保留上述具体真实门禁，不标 done；DataSource 仍不纳入。

@@ -26,7 +26,9 @@ function protocolFetch(handler: (input: RequestInfo | URL, init?: RequestInit) =
 const snapshot = (id = '0198d5eb-fc31-7d7b-8bf0-c2d009ec8999'): SegmentSnapshot => ({
   id,
   source: 'browser',
-  identityKey: 'https://example.com/docs',
+  observerId: '6a8259d1-5f6a-4b83-b6ba-87017886319e',
+  target: { kind: 'application-context', reference: '["02a8259d-5f6a-4b83-b6ba-87017886319e","win:msedge"]' },
+  activityKey: 'https://example.com/docs',
   title: 'Docs',
   startTime: '2026-08-25T08:00:00.000Z',
   endTime: '2026-08-25T08:01:00.000Z',
@@ -50,14 +52,14 @@ const protocolResponse = (
   messageId: '0198d5e8-30cc-743c-a3d6-ac61956f26b5',
   ...(activationId === undefined ? {} : { activationId }),
   ...(replyTo === undefined ? {} : { replyTo }),
-  body,
+  body: type === 'activation.initialize' ? { instance: { subject: { subjectId: '02a8259d-5f6a-4b83-b6ba-87017886319e', kind: 'machine' } }, ...body } : body,
 })
 
 describe('browser Collector Protocol outbox', () => {
   it('canonical Fact excludes App identity while preserving typed browser payload', () => {
     const fact = toProtocolFact(snapshot(), '0198d5e2-e0d4-7b30-9da7-342ee261bf62')!
     expect(fact.payload).toEqual({
-      identityKey: 'https://example.com/docs',
+      activityKey: 'https://example.com/docs',
       title: 'Docs',
       attributes: { url: 'https://example.com/docs?q=1', domain: 'example.com', site: 'example.com', windowId: 7 },
     })
@@ -80,7 +82,7 @@ describe('browser Collector Protocol outbox', () => {
     await expect(uploadWithBrowserProtocol(
       24820,
       'win:msedge',
-      'host-a',
+      '6a8259d1-5f6a-4b83-b6ba-87017886319e',
       [snapshot('legacy-id')],
     )).resolves.toEqual({
       kind: 'unavailable',
@@ -121,7 +123,7 @@ describe('browser Collector Protocol outbox', () => {
     const result = await uploadWithBrowserProtocol(
       24820,
       'win:msedge',
-      'host-a',
+      '6a8259d1-5f6a-4b83-b6ba-87017886319e',
       [snapshot()],
       undefined,
       undefined,
@@ -141,7 +143,7 @@ describe('browser Collector Protocol outbox', () => {
     expect((calls[0].body as { body: object }).body).toMatchObject({
         ...packageReference,
       appIdentityKey: 'win:msedge',
-      externalHostIdentity: 'host-a',
+      externalHostIdentity: '6a8259d1-5f6a-4b83-b6ba-87017886319e',
     })
     expect((calls[5].body as { body: { facts: { payload: object }[] } }).body.facts[0].payload).not.toHaveProperty('appHint')
   })
@@ -170,7 +172,7 @@ describe('browser Collector Protocol outbox', () => {
       }, ACTIVATION_ID, request.messageId)
     }))
 
-    const result = await uploadWithBrowserProtocol(24820, 'win:msedge', 'host-a', [])
+    const result = await uploadWithBrowserProtocol(24820, 'win:msedge', '6a8259d1-5f6a-4b83-b6ba-87017886319e', [])
 
     expect(result.kind).toBe('acked')
     if (result.kind === 'acked') expect(result.acknowledgedIds).toEqual([])
@@ -206,6 +208,7 @@ describe('browser Collector Protocol outbox', () => {
     }))
     const session: BrowserProtocolSession = {
       port: 24820,
+      attribution: { observerId: snapshot().observerId!, target: snapshot().target! },
       activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
       leaseToken: 'lease',
       streamId: '0198d5e2-e0d4-7b30-9da7-342ee261bf62',
@@ -248,6 +251,7 @@ describe('browser Collector Protocol outbox', () => {
     }))
     const currentSession: BrowserProtocolSession = {
       port: 24820,
+      attribution: { observerId: snapshot().observerId!, target: snapshot().target! },
       activationId: ACTIVATION_ID,
       leaseToken: 'lease',
       streamId: STREAM_ID,
@@ -286,6 +290,7 @@ describe('browser Collector Protocol outbox', () => {
     }))
     const session: BrowserProtocolSession = {
       port: 24820,
+      attribution: { observerId: snapshot().observerId!, target: snapshot().target! },
       activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
       leaseToken: 'lease',
       streamId: '0198d5e2-e0d4-7b30-9da7-342ee261bf62',
@@ -318,6 +323,7 @@ describe('browser Collector Protocol outbox', () => {
     }))
     const session: BrowserProtocolSession = {
       port: 24820,
+      attribution: { observerId: snapshot().observerId!, target: snapshot().target! },
       activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
       leaseToken: 'lease',
       streamId: '0198d5e2-e0d4-7b30-9da7-342ee261bf62',
@@ -350,6 +356,7 @@ describe('browser Collector Protocol outbox', () => {
     )))
     const session: BrowserProtocolSession = {
       port: 24820,
+      attribution: { observerId: snapshot().observerId!, target: snapshot().target! },
       activationId: ACTIVATION_ID,
       leaseToken: 'lease',
       streamId: STREAM_ID,
@@ -378,6 +385,7 @@ describe('browser Collector Protocol outbox', () => {
     }))
     const session: BrowserProtocolSession = {
       port: 24820,
+      attribution: { observerId: snapshot().observerId!, target: snapshot().target! },
       activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
       leaseToken: 'lease',
       streamId: '0198d5e2-e0d4-7b30-9da7-342ee261bf62',

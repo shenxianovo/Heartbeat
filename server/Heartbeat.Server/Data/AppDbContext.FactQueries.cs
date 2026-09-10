@@ -14,10 +14,21 @@ public partial class AppDbContext
     private static readonly int[] PhysicalKeys = Enum.GetValues<InputKeyPosition>().Select(x => (int)x).ToArray();
 
     /// <summary>Activity vocabulary projected in SQL from the single stored Segment payload.</summary>
-    public IQueryable<ActivitySegment> ActivitySegments => Segments
-        .Where(s => EF.Functions.JsonTypeof(s.Payload.RootElement.GetProperty("activityKey")) == "string" &&
-            s.Payload.RootElement.GetProperty("activityKey").GetString()!.Trim() != "")
-        .Select(s => new ActivitySegment
+    public IQueryable<ActivitySegment> ActivitySegments =>
+        from s in Segments
+        where EF.Functions.JsonTypeof(s.Payload.RootElement.GetProperty("activityKey")) == "string" &&
+            s.Payload.RootElement.GetProperty("activityKey").GetString()!.Trim() != ""
+        join c in ApplicationContexts on new { s.OwnerId, Id = s.TargetKind == "application-context" ? s.TargetId : null }
+            equals new { c.OwnerId, Id = (long?)c.Id } into contexts
+        from context in contexts.DefaultIfEmpty()
+        join d in Devices on new { s.OwnerId, Id = s.TargetKind == "device" ? s.TargetId :
+            context != null ? (long?)context.DeviceId : s.TargetKind == null ? s.Stream.Subject.DeviceId : null }
+            equals new { d.OwnerId, Id = (long?)d.Id } into devices
+        from device in devices.DefaultIfEmpty()
+        join a in Apps on (context != null ? (long?)context.AppId : s.AppIdentity != null ? s.AppIdentity!.AppId : null)
+            equals (long?)a.Id into apps
+        from app in apps.DefaultIfEmpty()
+        select new ActivitySegment
         {
             Id = s.Id,
             ObserverId = s.ObserverId, TargetKind = s.TargetKind, TargetId = s.TargetId,
@@ -29,31 +40,35 @@ public partial class AppDbContext
             Source = s.Source,
             StartTime = s.StartTime,
             EndTime = s.EndTime,
-            DeviceId = s.TargetKind == "device" ? s.TargetId : s.TargetKind == null ? s.Stream.Subject.DeviceId : null,
-            Device = s.TargetKind == "device" ? Devices.FirstOrDefault(d => d.Id == s.TargetId && d.OwnerId == s.OwnerId) : s.TargetKind == null ? s.Stream.Subject.Device : null,
+            DeviceId = device != null ? (long?)device.Id : null,
+            Device = device,
             AppIdentityId = s.AppIdentityId,
             AppIdentity = s.AppIdentity,
-            AppId = s.AppIdentity != null ? s.AppIdentity.AppId : null,
-            App = s.AppIdentity != null ? s.AppIdentity.App : null,
+            AppId = app != null ? (long?)app.Id : null,
+            App = app,
             IdentityKey = s.Payload.RootElement.GetProperty("activityKey").GetString()!,
             Title = EF.Functions.JsonTypeof(s.Payload.RootElement.GetProperty("title")) == "string"
                 ? s.Payload.RootElement.GetProperty("title").GetString() : null,
             Attributes = JsonAttribute(s.Payload, "attributes"),
             Payload = JsonText(s.Payload)
-        });
+        };
 
     /// <summary>Only recognized input vocabulary participates in input counts. Other Events remain stored.</summary>
     public IQueryable<InputEvent> InputEvents => Events
-        .Where(e => e.TargetKind == "device" && e.TargetId != null || e.TargetKind == null && e.Stream.Subject.DeviceId != null)
+        .SelectMany(e => Devices.Where(d => d.OwnerId == e.OwnerId &&
+            (e.TargetKind == "device" && e.TargetId == d.Id ||
+             e.TargetKind == "application-context" && ApplicationContexts.Any(c => c.OwnerId == e.OwnerId && c.Id == e.TargetId && c.DeviceId == d.Id) ||
+             e.TargetKind == null && e.Stream.Subject.DeviceId == d.Id)), (e, device) => new { Event = e, Device = device })
         .Select(e => new
         {
-            Event = e,
-            Type = e.Payload.RootElement.GetProperty("eventType").GetString(),
-            CodeSet = e.Payload.RootElement.GetProperty("codeSet").GetString(),
+            Event = e.Event,
+            e.Device,
+            Type = e.Event.Payload.RootElement.GetProperty("eventType").GetString(),
+            CodeSet = e.Event.Payload.RootElement.GetProperty("codeSet").GetString(),
             // CASE protects casts even when PostgreSQL reorders filtering of arbitrary JSON.
-            Code = EF.Functions.JsonTypeof(e.Payload.RootElement.GetProperty("code")) == "number" &&
-                Regex.IsMatch(e.Payload.RootElement.GetProperty("code").GetString()!, "^-?[0-9]{1,5}$")
-                ? (int?)e.Payload.RootElement.GetProperty("code").GetInt32() : null
+            Code = EF.Functions.JsonTypeof(e.Event.Payload.RootElement.GetProperty("code")) == "number" &&
+                Regex.IsMatch(e.Event.Payload.RootElement.GetProperty("code").GetString()!, "^-?[0-9]{1,5}$")
+                ? (int?)e.Event.Payload.RootElement.GetProperty("code").GetInt32() : null
         })
         .Where(x => x.Code >= short.MinValue && x.Code <= short.MaxValue &&
             (x.CodeSet == InputCodeSets.WindowsVirtualKeyV1 || x.CodeSet == InputCodeSets.HeartbeatKeyPositionV1) &&
@@ -63,8 +78,8 @@ public partial class AppDbContext
         .Select(x => new InputEvent
         {
             Id = x.Event.Id,
-            DeviceId = x.Event.TargetKind == "device" ? x.Event.TargetId!.Value : x.Event.Stream.Subject.DeviceId!.Value,
-            Device = x.Event.TargetKind == "device" ? Devices.First(d => d.Id == x.Event.TargetId && d.OwnerId == x.Event.OwnerId) : x.Event.Stream.Subject.Device!,
+            DeviceId = x.Device.Id,
+            Device = x.Device,
             Timestamp = x.Event.Timestamp,
             CodeSet = x.CodeSet!,
             Code = (short)x.Code!.Value,

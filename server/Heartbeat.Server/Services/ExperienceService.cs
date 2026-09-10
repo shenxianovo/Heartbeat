@@ -35,16 +35,16 @@ public sealed class ExperienceService(AppDbContext db)
             s.Id, s.StreamId, s.FactId, s.Revision,
             s.ObserverId, s.TargetKind, s.TargetId,
             TargetName = s.TargetKind == "device" ? db.Devices.Where(d => d.OwnerId == s.OwnerId && d.Id == s.TargetId)
-                .Select(d => d.DeviceName).FirstOrDefault() : null,
-            DeviceId = s.TargetKind == "device" ? s.TargetId : s.TargetKind == null ? s.Stream.Subject.DeviceId : null,
+                .Select(d => d.DeviceName).FirstOrDefault() : s.TargetKind == "application-context" ? db.ApplicationContexts.Where(c => c.OwnerId == s.OwnerId && c.Id == s.TargetId).Select(c => c.Device.DeviceName + " / " + c.App.DisplayName).FirstOrDefault() : null,
+            DeviceId = s.TargetKind == "device" ? s.TargetId : s.TargetKind == "application-context" ? db.ApplicationContexts.Where(c => c.OwnerId == s.OwnerId && c.Id == s.TargetId).Select(c => (long?)c.DeviceId).FirstOrDefault() : s.TargetKind == null ? s.Stream.Subject.DeviceId : null,
             LegacySubjectId = s.TargetKind == null ? (Guid?)s.Stream.SubjectId : null,
             LegacySubjectKind = s.TargetKind == null ? s.Stream.Subject.Kind : null,
             LegacySubjectName = s.TargetKind != null ? null : s.Stream.Subject.DisplayName ??
                 (s.Stream.Subject.Device == null ? null : s.Stream.Subject.Device.DeviceName),
             s.Source, s.AppIdentityId,
-            AppId = s.AppIdentity == null ? (long?)null : s.AppIdentity.AppId,
-            AppName = s.AppIdentity == null ? null : s.AppIdentity.App.DisplayName,
-            AppKey = s.AppIdentity == null ? null : s.AppIdentity.App.Key,
+            AppId = s.TargetKind == "application-context" ? db.ApplicationContexts.Where(c => c.OwnerId == s.OwnerId && c.Id == s.TargetId).Select(c => (long?)c.AppId).FirstOrDefault() : s.AppIdentity == null ? (long?)null : s.AppIdentity.AppId,
+            AppName = s.TargetKind == "application-context" ? db.ApplicationContexts.Where(c => c.OwnerId == s.OwnerId && c.Id == s.TargetId).Select(c => c.App.DisplayName).FirstOrDefault() : s.AppIdentity == null ? null : s.AppIdentity.App.DisplayName,
+            AppKey = s.TargetKind == "application-context" ? db.ApplicationContexts.Where(c => c.OwnerId == s.OwnerId && c.Id == s.TargetId).Select(c => c.App.Key).FirstOrDefault() : s.AppIdentity == null ? null : s.AppIdentity.App.Key,
             s.StartTime, s.EndTime, s.Payload,
         }).Take(PageSize + 1).ToListAsync(ct);
         var hasMore = rows.Count > PageSize;

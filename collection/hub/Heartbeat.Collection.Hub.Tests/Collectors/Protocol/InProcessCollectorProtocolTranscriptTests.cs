@@ -1922,7 +1922,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
             package,
             collector);
         using var incompatiblePayload = JsonDocument.Parse(
-            """{"activityKey":"alternate|work","title":"Alternate work"}""");
+            """{"unrecognizedActivity":"alternate|work","title":"Alternate work"}""");
         var fact = CreateFact(activation.Streams["activity"].Descriptor.StreamId) with
         {
             Payload = incompatiblePayload.RootElement.Clone()

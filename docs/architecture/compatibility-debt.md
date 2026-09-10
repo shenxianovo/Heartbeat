@@ -43,6 +43,8 @@
 | 历史 source 级 Collector Registry | 旧配置、声明缓存与 source 级读模型 | `collection/hub/Heartbeat.Collection.Hub/Collectors/ICollectorRegistry.cs`、`collection/CONTEXT.md` | Package/Instance/Runtime State 与声明 seam 覆盖所有实际消费者，UI/准入不再读取 Registry 身份 | 依赖搜索为零或只剩明确声明 seam；browser/system/状态 UI 回归 |
 | 严格上行协议切换 | 旧 Agent 收到 426，新 Agent 迁移缓存后重传 | `RequireHeartbeatProtocolAttribute.cs`、`SegmentIngestContract.cs`、`UploadStream.cs` | 完成真实旧客户端升级演练，并明确协议版本支持/弃用窗口 | server-first 演练、426 UI、缓存容量、迁移后幂等重传与坏记录隔离 |
 
+| Browser Observer/应用上下文切换 | 改造前第一方 Browser、Runtime v1–v4、扩展 local/session 快照、旧 HTTP/投影形状 | [Browser 实施记录](browser-observation-targets.md)，Ticket 02 | Ticket 05：旧版本退出、缓存盘点及重放完成、可映射历史回填、未知历史可直接查询，离线/回滚窗口明确 | 保留 BrowserRuntime v4→v5/HTTP、Browser 历史家族迁移、安装 UUID、App 纠错重放、完整 ACK 与旧 key fixture；记录生产副本演练及移除 commit |
+
 ## 维护规则
 
 - 新增兼容分支时在同一改动中补一行，或者链接到已有行。

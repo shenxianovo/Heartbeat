@@ -32,7 +32,7 @@ const corpus = JSON.parse(readFileSync(corpusPath, 'utf8')) as {
 const snapshot: SegmentSnapshot = {
   id: '0198d5eb-fc31-7d7b-8bf0-c2d009ec8999',
   source: 'browser',
-  identityKey: 'https://example.com/docs',
+  activityKey: 'https://example.com/docs',
   title: 'Docs',
   startTime: '2026-08-25T08:00:00.000Z',
   endTime: '2026-08-25T08:01:00.000Z',
@@ -41,6 +41,8 @@ const snapshot: SegmentSnapshot = {
 }
 
 const session: BrowserProtocolSession = {
+  attribution: { observerId: '6a8259d1-5f6a-4b83-b6ba-87017886319e',
+    target: { kind: 'application-context', reference: '["hardware","win:msedge"]' } },
   port: 24820,
   activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
   leaseToken: 'lease',

@@ -26,7 +26,7 @@ function snapshot(index = 1, end = '2026-08-25T08:01:00.000Z'): SegmentSnapshot 
   return {
     id: `0198d5eb-fc31-7d7b-8bf0-${index.toString(16).padStart(12, '0')}`,
     source: 'browser',
-    identityKey: `https://example.com/${index}`,
+    activityKey: `https://example.com/${index}`,
     title: `Page ${index}`,
     startTime: '2026-08-25T08:00:00.000Z',
     endTime: end,
@@ -135,6 +135,41 @@ async function acknowledged(
     session: session(),
   }
 }
+
+it('keeps a same-revision queued snapshot when the ACK describes another Observer or Target', async () => {
+  const store = new MemoryStore(), hub = new MemoryHub(), module = delivery(store, hub)
+  const item = { ...snapshot(), observerId: '6a8259d1-5f6a-4b83-b6ba-87017886319e',
+    target: { kind: 'application-context' as const, reference: '["device-a","win:msedge"]' } }
+  await module.enqueue([item])
+  hub.onProtocol = async request => ({ ...await acknowledged(request),
+    settledSnapshots: [{ ...item, target: { ...item.target, reference: '["device-b","win:msedge"]' } }],
+  } as ProtocolUploadResult)
+  await module.deliveryCycle()
+  expect(store.durable.queue[item.id]).toEqual(item)
+  hub.onProtocol = async request => ({ ...await acknowledged(request), settledSnapshots: [item] } as ProtocolUploadResult)
+  await module.deliveryCycle()
+  expect(store.durable.queue).toEqual({})
+})
+
+it('persists the first device binding before publication and reuses it for later offline snapshots', async () => {
+  const store = new MemoryStore(), hub = new MemoryHub(), module = delivery(store, hub)
+  const attribution = { observerId: '6a8259d1-5f6a-4b83-b6ba-87017886319e',
+    target: { kind: 'application-context' as const, reference: '["device-a","win:msedge"]' } }
+  const old = snapshot()
+  await module.enqueue([old])
+  hub.onProtocol = async request => {
+    await request.applyAttribution(attribution)
+    expect(store.durable.queue[old.id]).toMatchObject(attribution)
+    return { kind: 'unavailable' }
+  }
+  await module.deliveryCycle()
+  store.restartBrowser()
+  hub.compatiblePort = null
+  const offline = snapshot(2)
+  await delivery(store, hub).enqueue([offline])
+  expect(store.durable.queue[offline.id]).toMatchObject({ ...offline, ...attribution })
+  expect(store.durable.queue[old.id].id).toBe(old.id)
+})
 
 describe('BrowserDelivery interface', () => {
   it('keeps pending Facts without opening an Activation when App identity is unknown', async () => {

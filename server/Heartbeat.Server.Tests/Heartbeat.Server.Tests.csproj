@@ -34,4 +34,6 @@
 
   <Import Project="..\..\collection\desktop\Heartbeat.Collector.System\SystemCollectorPackage.targets" />
 
+  <Import Project="../../collection/collectors/Heartbeat.Collector.Browser/BrowserCollectorPackage.targets" />
+
 </Project>

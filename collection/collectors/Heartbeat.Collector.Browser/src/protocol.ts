@@ -1,4 +1,4 @@
-import type { SegmentSnapshot } from './fold'
+import type { BrowserAttribution, SegmentSnapshot } from './fold'
 import { uuidv7 } from './ids'
 
 import { protocolFetch } from './connection'
@@ -26,6 +26,7 @@ async function browserPackageReference(): Promise<BrowserPackageReference> {
 }
 
 export interface BrowserProtocolSession {
+  attribution?: BrowserAttribution
   port: number
   activationId: string
   leaseToken: string
@@ -72,6 +73,7 @@ const DEFAULT_LIMITS: ProtocolLimits = {
 export type ProtocolUploadResult =
   | {
       kind: 'acked'
+      settledSnapshots?: SegmentSnapshot[]
       acknowledgedIds: string[]
       acknowledgedRevisions: Record<string, number>
       rejectedRevisions: Record<string, number>
@@ -96,6 +98,9 @@ interface HelloResponse {
 }
 
 interface InitializeResponse {
+  // Pre-Target initialization protocol; only this adapter reads the legacy Subject.
+  instance: { subject: { subjectId: string; kind: string } }
+
   spec: {
     revision: number
     config: { value: { enabled?: boolean; flushPeriodMs?: number } }
@@ -146,6 +151,8 @@ export function toProtocolFact(snapshot: SegmentSnapshot, streamId: string) {
     streamId,
     factId: snapshot.id,
     revision: snapshotRevision(snapshot),
+    observerId: snapshot.observerId,
+    target: snapshot.target,
     observedAt: null,
     time: {
       start: snapshot.startTime,
@@ -153,7 +160,7 @@ export function toProtocolFact(snapshot: SegmentSnapshot, streamId: string) {
       isFinal: snapshot.isFinal,
     },
     payload: {
-      identityKey: snapshot.identityKey,
+      activityKey: snapshot.activityKey,
       title: snapshot.title,
       attributes: snapshot.attributes,
     },
@@ -229,6 +236,10 @@ export async function openBrowserProtocolSession(
       undefined,
     )) return 'rejected'
     const initialized = initializeMessage.body
+    const deviceReference = initialized.instance?.subject?.subjectId
+    if (initialized.instance?.subject?.kind !== 'machine' || !isUuid(deviceReference) || !isUuid(externalHostIdentity)) return 'rejected'
+    const attribution: BrowserAttribution = { observerId: externalHostIdentity.toLowerCase(),
+      target: { kind: 'application-context', reference: JSON.stringify([deviceReference.toLowerCase(), appIdentityKey]) } }
     if (initialized.spec.config.value.enabled === false) return 'disabled'
     const flushPeriodMilliseconds = positiveInteger(initialized.spec.config.value.flushPeriodMs)
     if (flushPeriodMilliseconds === undefined || flushPeriodMilliseconds < 30_000) return 'rejected'
@@ -318,6 +329,7 @@ export async function openBrowserProtocolSession(
       expiresAt: readyAcknowledgement.lease.expiresAt,
       limits: normalizeLimits(initialized.limits),
       flushPeriodMilliseconds,
+      attribution,
     }
   } catch {
     return null
@@ -357,7 +369,9 @@ export async function publishBrowserFacts(
   const reusableAttempt = previousAttempt?.activationId === session.activationId
     ? previousAttempt
     : undefined
-  const batch = reusableAttempt?.snapshots ?? takeBatchWithinByteLimit(snapshots, session, maxFacts)
+  const bound = snapshots.map(snapshot => bindAttribution(snapshot, session.attribution))
+  if (bound.some(snapshot => !snapshot.observerId || !snapshot.target)) return { kind: 'unavailable' }
+  const batch = reusableAttempt?.snapshots ?? takeBatchWithinByteLimit(bound, session, maxFacts)
   if (snapshots.length > 0 && batch.length === 0) return { kind: 'unavailable' }
   const facts = batch.map((snapshot) => toProtocolFact(snapshot, session.streamId))
   if (facts.some((fact) => fact === null)) return { kind: 'unavailable', session }
@@ -419,6 +433,7 @@ export async function publishBrowserFacts(
     return {
       kind: 'acked',
       acknowledgedIds,
+      settledSnapshots: batch,
       acknowledgedRevisions: Object.fromEntries(
         acknowledgedIds.map((id) => [
           id,
@@ -451,10 +466,11 @@ export async function uploadWithBrowserProtocol(
   applySpec?: (spec: { enabled: boolean; flushPeriodMilliseconds: number }) => Promise<void>,
   pendingGap?: BrowserPendingGap,
   persistGapAttempt?: (gap: BrowserPendingGap) => Promise<void>,
+  applyAttribution?: (attribution: BrowserAttribution) => Promise<void>,
 ): Promise<ProtocolUploadResult> {
   if (!appIdentityKey || !externalHostIdentity) return { kind: 'unavailable' }
   if (snapshots.some((snapshot) => !isUuidV7(snapshot.id))) return { kind: 'unavailable' }
-  const renewed = previousSession?.port === port
+  const renewed = previousSession?.port === port && previousSession.attribution !== undefined
     ? await renewBrowserProtocolSession(previousSession)
     : null
   const activationAttempt = previousActivationAttempt ?? {
@@ -474,6 +490,8 @@ export async function uploadWithBrowserProtocol(
   if (session === 'disabled') return { kind: 'disabled' }
   if (session === 'rejected') return { kind: 'unavailable' }
   if (session === null) return { kind: 'unavailable', activationAttempt }
+  if (session.attribution === undefined) return { kind: 'unavailable' }
+  await applyAttribution?.(session.attribution)
   let gapAcknowledged = false
   if (pendingGap !== undefined) {
     const gapResult = await reportBrowserGap(session, pendingGap, persistGapAttempt)
@@ -634,4 +652,22 @@ function message<T>(
     ...(replyTo === undefined ? {} : { replyTo }),
     body,
   }
+}
+
+function isUuid(value: unknown): value is string {
+  return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value) &&
+    value !== '00000000-0000-0000-0000-000000000000'
+}
+
+export function bindAttribution(snapshot: SegmentSnapshot, attribution?: BrowserAttribution): SegmentSnapshot {
+  if (snapshot.observerId !== undefined || snapshot.target !== undefined || attribution === undefined) return snapshot
+  return { ...snapshot, ...attribution }
+}
+
+export function sameSnapshot(left: SegmentSnapshot, right: SegmentSnapshot): boolean {
+  return left.id === right.id && left.startTime === right.startTime && left.endTime === right.endTime &&
+    left.isFinal === right.isFinal && left.activityKey === right.activityKey && left.title === right.title &&
+    left.observerId === right.observerId && left.target?.kind === right.target?.kind && left.target?.reference === right.target?.reference &&
+    left.attributes.url === right.attributes.url && left.attributes.domain === right.attributes.domain &&
+    left.attributes.site === right.attributes.site && left.attributes.windowId === right.attributes.windowId
 }
