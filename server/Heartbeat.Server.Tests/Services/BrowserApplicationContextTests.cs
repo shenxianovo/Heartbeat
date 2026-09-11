@@ -70,7 +70,7 @@ public sealed class BrowserApplicationContextTests(PostgresContainerFixture fixt
         await store.IngestAsync("other", first);
         Assert.Empty(await store.ReadSegmentsAsync("other", context.DeviceId, null, null));
         var invalid = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => db.Database.ExecuteSqlInterpolatedAsync(
-            $"UPDATE \"Segments\" SET \"TargetId\" = {context.Id} WHERE \"OwnerId\" = 'other'"));
+            $"UPDATE \"Facts\" SET \"TargetId\" = {context.Id} WHERE \"OwnerId\" = 'other'"));
         Assert.Equal("23503", invalid.SqlState);
         var referenced = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => db.Database.ExecuteSqlInterpolatedAsync(
             $"DELETE FROM \"ApplicationContexts\" WHERE \"Id\" = {context.Id}"));

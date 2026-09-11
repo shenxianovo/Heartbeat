@@ -7354,6 +7354,8 @@ export class FactResponse implements IFactResponse {
     factId?: string;
     revision?: number;
     observerId?: string | undefined;
+    foiId?: string | undefined;
+    aspect?: string | undefined;
     targetKind?: string | undefined;
     targetId?: number | undefined;
     deviceId?: number | undefined;
@@ -7386,6 +7388,8 @@ export class FactResponse implements IFactResponse {
             this.factId = _data["factId"];
             this.revision = _data["revision"];
             this.observerId = _data["observerId"];
+            this.foiId = _data["foiId"];
+            this.aspect = _data["aspect"];
             this.targetKind = _data["targetKind"];
             this.targetId = _data["targetId"];
             this.deviceId = _data["deviceId"];
@@ -7416,6 +7420,8 @@ export class FactResponse implements IFactResponse {
         data["factId"] = this.factId;
         data["revision"] = this.revision;
         data["observerId"] = this.observerId;
+        data["foiId"] = this.foiId;
+        data["aspect"] = this.aspect;
         data["targetKind"] = this.targetKind;
         data["targetId"] = this.targetId;
         data["deviceId"] = this.deviceId;
@@ -7435,6 +7441,8 @@ export interface IFactResponse {
     factId?: string;
     revision?: number;
     observerId?: string | undefined;
+    foiId?: string | undefined;
+    aspect?: string | undefined;
     targetKind?: string | undefined;
     targetId?: number | undefined;
     deviceId?: number | undefined;

@@ -20,23 +20,19 @@ public sealed class ApplicationContextService(AppDbContext db)
     /// <summary>Only facts supported by moved platform identities follow an identity correction.</summary>
     public async Task RebindAsync(long[] identityIds, long targetAppId, CancellationToken ct = default)
     {
-        foreach (var table in new[] { "Segments", "Events" })
-        {
-            // Table names are fixed above; all data values remain parameters.
-            var sql = $$"""
-                INSERT INTO "ApplicationContexts" ("OwnerId", "DeviceId", "AppId")
-                SELECT DISTINCT c."OwnerId", c."DeviceId", {0}
-                FROM "{{table}}" f JOIN "ApplicationContexts" c ON c."Id" = f."TargetId" AND c."OwnerId" = f."OwnerId"
-                WHERE f."TargetKind" = 'application-context' AND f."AppIdentityId" = ANY({1})
-                ON CONFLICT ("OwnerId", "DeviceId", "AppId") DO NOTHING;
-                UPDATE "{{table}}" f SET "TargetId" = target."Id"
-                FROM "ApplicationContexts" old, "ApplicationContexts" target
-                WHERE f."TargetKind" = 'application-context' AND f."AppIdentityId" = ANY({1})
-                  AND old."Id" = f."TargetId" AND old."OwnerId" = f."OwnerId"
-                  AND target."OwnerId" = old."OwnerId" AND target."DeviceId" = old."DeviceId" AND target."AppId" = {0};
-                """;
-            await db.Database.ExecuteSqlRawAsync(sql, [targetAppId, identityIds], ct);
-        }
+        const string sql = """
+            INSERT INTO "ApplicationContexts" ("OwnerId", "DeviceId", "AppId")
+            SELECT DISTINCT c."OwnerId", c."DeviceId", {0}
+            FROM "Facts" f JOIN "ApplicationContexts" c ON c."Id" = f."TargetId" AND c."OwnerId" = f."OwnerId"
+            WHERE f."TargetKind" = 'application-context' AND f."AppIdentityId" = ANY({1})
+            ON CONFLICT ("OwnerId", "DeviceId", "AppId") DO NOTHING;
+            UPDATE "Facts" f SET "TargetId" = target."Id"
+            FROM "ApplicationContexts" old, "ApplicationContexts" target
+            WHERE f."TargetKind" = 'application-context' AND f."AppIdentityId" = ANY({1})
+              AND old."Id" = f."TargetId" AND old."OwnerId" = f."OwnerId"
+              AND target."OwnerId" = old."OwnerId" AND target."DeviceId" = old."DeviceId" AND target."AppId" = {0};
+            """;
+        await db.Database.ExecuteSqlRawAsync(sql, [targetAppId, identityIds], ct);
         // SQL changed only Target references. Avoid stale tracked facts overwriting them later.
         foreach (var entry in db.ChangeTracker.Entries<IFactRecord>().Where(e =>
                      e.Entity.AppIdentityId is { } id && identityIds.Contains(id)).ToList())

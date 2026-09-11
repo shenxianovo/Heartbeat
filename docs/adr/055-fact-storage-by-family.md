@@ -2,6 +2,10 @@
 
 ## Status: Accepted（核心家族模型）
 
+2026-09-11：[ADR-059](059-observation-storage-five-tables.md) 替代本文的家族物理分表目标，
+新目标为单份 Facts 与 Objects/Collectors/Relations/RelationMembers。三个 Fact 家族的语义保留。
+下文是历史决策及现行实现依据，不代表新目标已实施；已发布迁移仍不得改写。
+
 2026-09-10 更新：仓库实施记录已确认下述分表迁移上线，后续必须追加迁移，不能再替换 NativeFactCustody。
 [ADR-056](056-observation-objects-and-contexts.md) 已确认直接观测对象的业务模型，重开本 ADR 的
 Stream → Subject 归属设计；统一对象登记及通用关系表退回待评估，家族表、时间、单份 Payload 与正常修订决定保持。

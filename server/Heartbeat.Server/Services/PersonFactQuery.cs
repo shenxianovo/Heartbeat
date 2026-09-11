@@ -16,27 +16,22 @@ public sealed class PersonFactQuery(AppDbContext db)
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
         var person = await db.Persons.SingleOrDefaultAsync(p => p.OwnerId == owner, ct);
         if (person is null) return new PersonFactPage([], 0, []);
-        var associations = db.PersonAssociations.Where(a => a.OwnerId == owner && a.PersonId == person.Id);
+        var associations = ConfirmedUsage(owner, person.Id);
         var query = db.Segments.Where(f => f.OwnerId == owner && f.StartTime < f.EndTime &&
             (start == null || f.EndTime > start) && (end == null || f.StartTime < end) &&
-            (f.TargetKind == "person" && f.TargetId == person.Id || associations.Any(a =>
-                (f.TargetKind == "device" && a.DeviceId == f.TargetId ||
-                 f.TargetKind == "account" && a.AccountId == f.TargetId ||
-                 f.TargetKind == "application-context" && db.ApplicationContexts.Any(c => c.OwnerId == owner && c.Id == f.TargetId && c.DeviceId == a.DeviceId)) &&
+            db.FactAttributions.Any(at => at.Id == f.Id && (at.PersonId == person.Id || associations.Any(a =>
+                (a.DeviceId != null && a.DeviceId == at.DeviceId || a.AccountId != null && a.AccountId == at.AccountId) &&
                 (a.Start == null || a.Start < f.EndTime && (end == null || a.Start < end)) &&
-                (a.End == null || a.End > f.StartTime && (start == null || a.End > start)))));
+                (a.End == null || a.End > f.StartTime && (start == null || a.End > start))))));
         var count = await query.CountAsync(ct);
         var sources = await query.GroupBy(f => f.Source).OrderBy(g => g.Key).Select(g => new PersonSourceCount(g.Key, g.Count())).ToListAsync(ct);
         var facts = await query.OrderByDescending(f => f.StartTime).ThenBy(f => f.Id).Skip(offset).Take(limit)
             .Select(f => new FactResponse
             {
                 Id = f.Id, StreamId = f.StreamId, FactId = f.FactId, Revision = f.Revision,
-                ObserverId = f.ObserverId, TargetKind = f.TargetKind, TargetId = f.TargetId, Source = f.Source,
-                AppId = f.TargetKind == "account" ? db.ServiceAccounts.Where(a => a.OwnerId == owner && a.Id == f.TargetId).Select(a => (long?)a.Service.AppId).FirstOrDefault()
-                    : f.TargetKind == "application-context" ? db.ApplicationContexts.Where(c => c.OwnerId == owner && c.Id == f.TargetId).Select(c => (long?)c.AppId).FirstOrDefault()
-                    : f.AppIdentity != null ? f.AppIdentity.AppId : null,
-                DeviceId = f.TargetKind == "device" ? f.TargetId : f.TargetKind == "application-context"
-                    ? db.ApplicationContexts.Where(c => c.OwnerId == owner && c.Id == f.TargetId).Select(c => (long?)c.DeviceId).FirstOrDefault() : null,
+                ObserverId = f.ObserverId, FoiId = f.FoiId, Aspect = f.Aspect, TargetKind = f.TargetKind, TargetId = f.TargetId, Source = f.Source,
+                AppId = db.FactAttributions.Where(a => a.Id == f.Id).Select(a => a.AppId).FirstOrDefault(),
+                DeviceId = db.FactAttributions.Where(a => a.Id == f.Id).Select(a => a.DeviceId).FirstOrDefault(),
                 Start = f.StartTime, End = f.EndTime, Payload = ReadPayload(f.Payload)
             }).ToListAsync(ct);
         var deviceIds = facts.Where(f => f.DeviceId != null).Select(f => f.DeviceId!.Value).Distinct().ToArray();
@@ -68,32 +63,41 @@ public sealed class PersonFactQuery(AppDbContext db)
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
         var person = await db.Persons.SingleOrDefaultAsync(p => p.OwnerId == owner, ct);
         if (person is null) return new PersonFactPage([], 0, []);
-        var associations = db.PersonAssociations.Where(a => a.OwnerId == owner && a.PersonId == person.Id);
+        var associations = ConfirmedUsage(owner, person.Id);
         var query = db.Events.Where(f => f.OwnerId == owner &&
             (start == null || f.Timestamp >= start) && (end == null || f.Timestamp < end) &&
-            (f.TargetKind == "person" && f.TargetId == person.Id || associations.Any(a =>
-                (f.TargetKind == "device" && a.DeviceId == f.TargetId ||
-                 f.TargetKind == "account" && a.AccountId == f.TargetId ||
-                 f.TargetKind == "application-context" && db.ApplicationContexts.Any(c => c.OwnerId == owner && c.Id == f.TargetId && c.DeviceId == a.DeviceId)) &&
-                (a.Start == null || a.Start <= f.Timestamp) && (a.End == null || a.End > f.Timestamp))));
+            db.FactAttributions.Any(at => at.Id == f.Id && (at.PersonId == person.Id || associations.Any(a =>
+                (a.DeviceId != null && a.DeviceId == at.DeviceId || a.AccountId != null && a.AccountId == at.AccountId) &&
+                (a.Start == null || a.Start <= f.Timestamp) && (a.End == null || a.End > f.Timestamp)))));
         var count = await query.CountAsync(ct);
         var sources = await query.GroupBy(f => f.Source).OrderBy(g => g.Key).Select(g => new PersonSourceCount(g.Key, g.Count())).ToListAsync(ct);
         var facts = await query.OrderByDescending(f => f.Timestamp).ThenBy(f => f.Id).Skip(offset).Take(limit)
             .Select(f => new FactResponse
             {
                 Id = f.Id, StreamId = f.StreamId, FactId = f.FactId, Revision = f.Revision,
-                ObserverId = f.ObserverId, TargetKind = f.TargetKind, TargetId = f.TargetId, Source = f.Source,
-                AppId = f.TargetKind == "account" ? db.ServiceAccounts.Where(a => a.OwnerId == owner && a.Id == f.TargetId).Select(a => (long?)a.Service.AppId).FirstOrDefault()
-                    : f.TargetKind == "application-context" ? db.ApplicationContexts.Where(c => c.OwnerId == owner && c.Id == f.TargetId).Select(c => (long?)c.AppId).FirstOrDefault()
-                    : f.AppIdentity != null ? f.AppIdentity.AppId : null,
-                DeviceId = f.TargetKind == "device" ? f.TargetId : f.TargetKind == "application-context"
-                    ? db.ApplicationContexts.Where(c => c.OwnerId == owner && c.Id == f.TargetId).Select(c => (long?)c.DeviceId).FirstOrDefault() : null,
+                ObserverId = f.ObserverId, FoiId = f.FoiId, Aspect = f.Aspect, TargetKind = f.TargetKind, TargetId = f.TargetId, Source = f.Source,
+                AppId = db.FactAttributions.Where(a => a.Id == f.Id).Select(a => a.AppId).FirstOrDefault(),
+                DeviceId = db.FactAttributions.Where(a => a.Id == f.Id).Select(a => a.DeviceId).FirstOrDefault(),
                 OccurredAt = f.Timestamp, Payload = ReadPayload(f.Payload)
             }).ToListAsync(ct);
         var names = await TargetNames(owner, facts, ct);
         await transaction.CommitAsync(ct);
         return new PersonFactPage(facts.Select(f => new PersonFactItem(f, [], null, names[(f.TargetKind!, f.TargetId!.Value)])).ToArray(), count, sources);
     }
+
+    private IQueryable<Heartbeat.Server.Entities.PersonAssociation> ConfirmedUsage(string owner, long personId) =>
+        db.Relations.Where(r => r.OwnerId == owner && r.Kind == "used-by" && r.Members.Any(m => m.Role == "person" &&
+            db.Persons.Any(p => p.Id == personId && p.OwnerId == owner && EF.Property<Guid?>(p, "ObjectId") == m.ObjectId)))
+        .Select(r => new Heartbeat.Server.Entities.PersonAssociation
+        {
+            OwnerId = owner, PersonId = personId, Start = r.ValidFrom, End = r.ValidTo,
+            DeviceId = (from m in r.Members
+                        join d in db.Devices on (Guid?)m.ObjectId equals EF.Property<Guid?>(d, "ObjectId")
+                        where m.Role == "device" select (long?)d.Id).FirstOrDefault(),
+            AccountId = (from m in r.Members
+                         join a in db.ServiceAccounts on (Guid?)m.ObjectId equals EF.Property<Guid?>(a, "ObjectId")
+                         where m.Role == "account" select (long?)a.Id).FirstOrDefault()
+        });
 
     private async Task<Dictionary<(string Kind, long Id), string>> TargetNames(string owner, List<FactResponse> facts, CancellationToken ct)
     {

@@ -18,18 +18,12 @@ public partial class AppDbContext
         from s in Segments
         where EF.Functions.JsonTypeof(s.Payload.RootElement.GetProperty("activityKey")) == "string" &&
             s.Payload.RootElement.GetProperty("activityKey").GetString()!.Trim() != ""
-        join c in ApplicationContexts on new { s.OwnerId, Id = s.TargetKind == "application-context" ? s.TargetId : null }
-            equals new { c.OwnerId, Id = (long?)c.Id } into contexts
-        from context in contexts.DefaultIfEmpty()
-        join d in Devices on new { s.OwnerId, Id = s.TargetKind == "device" ? s.TargetId :
-            context != null ? (long?)context.DeviceId : null }
-            equals new { d.OwnerId, Id = (long?)d.Id } into devices
+        join attribution in FactAttributions on s.Id equals attribution.Id
+        join d in Devices on attribution.DeviceId equals (long?)d.Id into devices
         from device in devices.DefaultIfEmpty()
-        join sa in ServiceAccounts on new { s.OwnerId, Id = s.TargetKind == "account" ? s.TargetId : null }
-            equals new { sa.OwnerId, Id = (long?)sa.Id } into accounts
+        join sa in ServiceAccounts on attribution.AccountId equals (long?)sa.Id into accounts
         from account in accounts.DefaultIfEmpty()
-        join a in Apps on (account != null ? (long?)account.Service.AppId : context != null ? (long?)context.AppId : s.AppIdentity != null ? s.AppIdentity!.AppId : null)
-            equals (long?)a.Id into apps
+        join a in Apps on attribution.AppId equals (long?)a.Id into apps
         from app in apps.DefaultIfEmpty()
         select new ActivitySegment
         {
@@ -59,9 +53,8 @@ public partial class AppDbContext
 
     /// <summary>Only recognized input vocabulary participates in input counts. Other Events remain stored.</summary>
     public IQueryable<InputEvent> InputEvents => Events
-        .SelectMany(e => Devices.Where(d => d.OwnerId == e.OwnerId &&
-            (e.TargetKind == "device" && e.TargetId == d.Id ||
-             e.TargetKind == "application-context" && ApplicationContexts.Any(c => c.OwnerId == e.OwnerId && c.Id == e.TargetId && c.DeviceId == d.Id))), (e, device) => new { Event = e, Device = device })
+        .Join(FactAttributions, e => e.Id, a => a.Id, (e, a) => new { Event = e, Attribution = a })
+        .Join(Devices, e => e.Attribution.DeviceId, d => (long?)d.Id, (e, device) => new { e.Event, Device = device })
         .Select(e => new
         {
             Event = e.Event,

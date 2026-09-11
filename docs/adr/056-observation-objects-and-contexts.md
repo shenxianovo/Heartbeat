@@ -1,6 +1,23 @@
 # ADR-056：直接观测对象与 Collector 运行模型
 
-Status: Accepted（观测模型）；统一 Objects / ObjectRelations 的存储方案重新评估，尚未实现。
+Status: 部分被 [ADR-059](059-observation-storage-five-tables.md) 替代（2026-09-11）。
+
+当前模型以 [Observations 与 Facts](../architecture/observations-model.md) 为准。
+用户已确认五表目标，不再要求额外 Target 或应用上下文实体，Objects 统一保存当前四类 FOI 身份。
+本文下方的 Target/应用上下文及不统一登记对象选择作为历史记录保留。
+五表存储及追加迁移代码已完成，业务库尚未迁移；实施范围见 ADR-059 及其迁移说明。
+
+以下为 ADR-056 当时收口的历史模型，已被上述新基线取代：
+
+- Observer 观察 FOI，产生 Facts；Observer 是跨重启保持身份的具体观测者。
+- Facts 保留 Segment、Event、Measurement 家族，承担 Aspect、结果和适用时间的语义。
+- 每条 Fact 只有一个长期归属 Target；窗口等临时 FOI 的 Facts 可归属于其应用上下文，保留解释原观测所需的细节。
+- 应用上下文由设备与 App 产品辨认，跨应用启动保持，同设备同 App 的 Profile 不另分上下文。
+- 设备、账号、本人先按业务分别组织；使用者关联在 Facts 外维护，可按确认的适用范围关联已有事实。
+- DataSource 暂不纳入当前设计；不将旧五列方案、统一对象库或共享观测上下文作为实施要求。
+
+以上替代讨论过程中的未落地候选；具体字段、引用编码、事实身份作用域及迁移尚未实施。
+以下保留运行模型改造的背景和取舍。
 
 2026-09-10。设备、窗口、服务账号和本人分别可以是事实直接描述的对象；采集器宿主不决定
 事实归属。对象用作用域内标识辨认，以明确业务关系关联，不建立统一 Subject 父子树。

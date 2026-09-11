@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rehearse ADR-058 on an existing family backup, without connecting to its source.
+"""Rehearse the ADR-059 store via ADR-058 on an existing family backup, without connecting to its source.
 
 Private rows, dumps and logs stay in a new --output directory. Docker/Python 3.11+
 required. This is a constrained container rehearsal, not a production deployment
@@ -16,13 +16,20 @@ import time
 import uuid
 
 BASELINE = '20260908141403_NativeFactCustody'
-TARGET = '20260911004949_CompleteHistoricalTargets'
+TARGET = '20260911025354_ObservationObjects'
+
+
+def family_source(family, migrated):
+    if not migrated:
+        return '"Segments"' if family == 'segments' else '"Events"'
+    kind = 'segment' if family == 'segments' else 'event'
+    return f'''(SELECT f.*, f."Result" AS "Payload", f."CollectorId" AS "ObserverId",
+        f."StartTime" AS "Timestamp" FROM "Facts" f WHERE f."Kind"='{kind}')'''
 
 
 def row_query(family, attribution=False, migrated=False, after=None):
-    table = 'Segments' if family == 'segments' else 'Events'
     predicate = f'''WHERE "Id" > '{uuid.UUID(after)}'::uuid''' if after else ''
-    page = f'''(SELECT * FROM "{table}" {predicate} ORDER BY "Id" LIMIT 10000) f'''
+    page = f'''(SELECT * FROM {family_source(family, migrated)} {predicate} ORDER BY "Id" LIMIT 10000) f'''
     if not attribution:
         times = 'f."StartTime", f."EndTime"' if family == 'segments' else 'f."Timestamp"'
         return f'''SELECT jsonb_build_array(f."Id", f."OwnerId", f."StreamId", f."FactId",
@@ -65,12 +72,12 @@ def aggregate_query(migrated):
         SELECT 'system' AS family, f."OwnerId" AS owner, {device} AS device, i."AppId" AS app,
             date_trunc('day', f."StartTime") AS day, NULL::text AS code, count(*) AS count,
             sum(extract(epoch FROM(f."EndTime"-f."StartTime"))) AS seconds
-        FROM "Segments" f {joins} LEFT JOIN "AppIdentities" i ON i."Id"=f."AppIdentityId"
+        FROM {family_source("segments", migrated)} f {joins} LEFT JOIN "AppIdentities" i ON i."Id"=f."AppIdentityId"
         WHERE f."Source"='system' GROUP BY 1,2,3,4,5,6
         UNION ALL
         SELECT 'input', f."OwnerId", {device}, NULL::bigint, date_trunc('day', f."Timestamp"),
             jsonb_build_array(f."Payload"->'eventType', f."Payload"->'codeSet', f."Payload"->'code')::text,
-            count(*), NULL::numeric FROM "Events" f {joins} WHERE f."Source"='system' GROUP BY 1,2,3,4,5,6
+            count(*), NULL::numeric FROM {family_source("events", migrated)} f {joins} WHERE f."Source"='system' GROUP BY 1,2,3,4,5,6
         ) q ORDER BY to_jsonb(q)::text'''
 
 
@@ -195,7 +202,7 @@ def main():
             for metadata in ([False, True] if attribution else [False]):
                 suffix = '-targets' if metadata else ''
                 actual = args.output / f'{family}{suffix}-{stage}.rows'
-                export_rows(family, actual, metadata, True)
+                export_rows(family, actual, metadata, stage != 'restored')
                 result = compare(args.output/f'{family}{suffix}-before.rows', actual)
                 if result['rows'] != report['counts'][family]:
                     raise RuntimeError('Incomplete family export')
@@ -256,14 +263,29 @@ def main():
         report['simulatedStopToHealthySeconds'] = round(time.monotonic()-stopped, 3)
         report['after'] = storage()
         report['migrationWalBytes'] = int(sql(f"SELECT pg_wal_lsn_diff('{report['after']['lsn']}', '{report['before']['lsn']}')"))
-        if report['tableOidsBefore'] != sql('''SELECT '"Segments"'::regclass::oid, '"Events"'::regclass::oid'''):
-            raise RuntimeError('Family tables were replaced')
+        if report['tableOidsBefore'].split('|')[0] != sql('''SELECT '"Facts"'::regclass::oid'''):
+            raise RuntimeError('Segments was not evolved in place')
+        if sql("SELECT count(*) FROM pg_class WHERE relname IN ('Segments','Events') AND relkind='r'") != '0':
+            raise RuntimeError('Additional physical fact stores remain')
+        report['objectViolations'] = json.loads(sql('''SELECT json_build_object(
+            'foi', (SELECT count(*) FROM "Facts" f LEFT JOIN LATERAL heartbeat_fact_objects(f."OwnerId",f."TargetKind",f."TargetId",f."AppIdentityId") o ON true WHERE f."FoiId" IS DISTINCT FROM o.foi),
+            'relations', (SELECT count(*) FROM "Relations" r LEFT JOIN "Facts" f ON f."OwnerId"=r."OwnerId" AND f."Id"=r."FactId"
+                LEFT JOIN LATERAL heartbeat_fact_objects(f."OwnerId",f."TargetKind",f."TargetId",f."AppIdentityId") o ON true
+                WHERE r."Kind"='observed-on' AND (f."Id" IS NULL OR r."ValidFrom" IS DISTINCT FROM f."StartTime"
+                  OR r."ValidTo" IS DISTINCT FROM coalesce(f."EndTime", f."StartTime")
+                  OR (SELECT count(*) FROM "RelationMembers" m WHERE m."RelationId"=r."Id") <> 2
+                  OR NOT EXISTS (SELECT 1 FROM "RelationMembers" m WHERE m."RelationId"=r."Id" AND m."Role"='device' AND m."ObjectId"=o.device)
+                  OR NOT EXISTS (SELECT 1 FROM "RelationMembers" m WHERE m."RelationId"=r."Id" AND m."Role"='app' AND m."ObjectId"=o.app))),
+            'missingRelations', (SELECT count(*) FROM "Facts" f CROSS JOIN LATERAL heartbeat_fact_objects(f."OwnerId",f."TargetKind",f."TargetId",f."AppIdentityId") o
+                WHERE o.device IS NOT NULL AND o.app IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "Relations" r WHERE r."OwnerId"=f."OwnerId" AND r."FactId"=f."Id" AND r."Kind"='observed-on')))
+            '''))
+        if any(report['objectViolations'].values()):
+            raise RuntimeError('Object or exact-fact relation conversion is incomplete')
         print('Comparing every row and direct attribution after Production startup...', flush=True)
         verify_rows('upgraded', True)
         export(aggregate_query(True), args.output/'queries-after.rows')
         report['comparisons']['queries'] = compare(args.output/'queries-before.rows', args.output/'queries-after.rows')
-        report['targetCounts'] = json.loads(sql('''SELECT json_agg(q) FROM (SELECT 'segments' AS family,"TargetKind" AS kind,count(*) AS count FROM "Segments" GROUP BY 2
-            UNION ALL SELECT 'events',"TargetKind",count(*) FROM "Events" GROUP BY 2) q'''))
+        report['objectCounts'] = json.loads(sql('SELECT json_object_agg("Kind", total) FROM (SELECT "Kind", count(*) AS total FROM "Objects" GROUP BY "Kind") q'))
         capture('docker', 'stop', name)
         command('retry', '--migrate', True)
         verify_rows('retry', True)

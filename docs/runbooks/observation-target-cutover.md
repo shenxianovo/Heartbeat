@@ -1,4 +1,7 @@
-# Observer / Target 升级与恢复演练
+# Observations 存储升级与恢复演练
+
+2026-09-11：脚本候选目标已更新为 `20260911025354_ObservationObjects`（五表），完整副本演练仍暂停；
+本次未复用旧候选的成功记录作为五表验收。
 
 当前切换入口遵循 [ADR-058](../adr/058-ci-database-migration.md) 和
 [Analytics CI 迁移 runbook](analytics-database-migration.md)。本文件补充任务 05 的完整数据、
@@ -11,10 +14,10 @@
 退出时清理它们。原始备份、逐行内容和日志包含私有数据，只保存在忽略的 `.local/`。
 
 ```sh
-docker build -f server/Dockerfile -t heartbeat-observation-cutover:05 .
+docker build -f server/Dockerfile -t heartbeat-observation-cutover:five-tables .
 python3 scripts/rehearse-observation-cutover.py \
   --backup .local/observation-cutover-05/production-refreshed.dump \
-  --image heartbeat-observation-cutover:05 \
+  --image heartbeat-observation-cutover:five-tables \
   --baseline-image heartbeat-local-backend:latest \
   --output .local/observation-cutover-05/run-NN
 ```
@@ -32,6 +35,7 @@ SQL timeout=0，外围默认 21,000 秒，可显式调整；不存在十分钟�
 完整重建隔离库 → 启动指定的原版本镜像并核对健康 → 对照原始家族内容、查询与 migration 历史。
 
 逐行比较覆盖 Id、Owner、Stream、FactId、Revision、Source、AppIdentityId、家族时间、Payload。
+Segments 原地改为 Facts，Events 搬入后退役；脚本核对 OID、统一表行数、FOI 和精确关系完整性。
 另按基线保存的证据构造每行预期归属，比较迁移后的直接 Observer/Target（目标业务 ID 解析为
 设备/App/历史账号身份后对照）。比较行数还必须等于来源 count，不能以两个空导出宣称成功。
 查询对照包含逐日/设备/App 的 System 数量与时长、逐日/设备/输入编码数量；完整 API/本人关系

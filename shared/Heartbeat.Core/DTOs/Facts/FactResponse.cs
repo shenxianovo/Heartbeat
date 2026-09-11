@@ -10,6 +10,8 @@ public sealed class FactResponse
     public Guid FactId { get; set; }
     public long Revision { get; set; }
     public Guid? ObserverId { get; set; }
+    public Guid? FoiId { get; set; }
+    public string? Aspect { get; set; }
     public string? TargetKind { get; set; }
     public long? TargetId { get; set; }
     public long? DeviceId { get; set; }

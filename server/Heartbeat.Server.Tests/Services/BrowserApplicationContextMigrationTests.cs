@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using System.Text.Json;
 using Heartbeat.Core.DTOs.Facts;
 using Heartbeat.Server.Services;
@@ -53,9 +55,10 @@ public sealed class BrowserApplicationContextMigrationTests(PostgresContainerFix
                        ({unknownId}, 'owner', {legacyStream}, {unknownId}, 1, 'browser', NULL, {fact.OccurredAt}, {payload}::jsonb);
                 """);
         var tableIds = await db.Database.SqlQueryRaw<long>("""SELECT oid::bigint AS "Value" FROM pg_class WHERE relname IN ('Segments','Events') AND relkind='r' ORDER BY oid""").ToListAsync();
-        await db.Database.MigrateAsync();
-        await db.Database.MigrateAsync();
+        await db.GetService<IMigrator>().MigrateAsync("20260911004949_CompleteHistoricalTargets");
+        await db.GetService<IMigrator>().MigrateAsync("20260911004949_CompleteHistoricalTargets");
         Assert.Equal(tableIds, await db.Database.SqlQueryRaw<long>("""SELECT oid::bigint AS "Value" FROM pg_class WHERE relname IN ('Segments','Events') AND relkind='r' ORDER BY oid""").ToListAsync());
+        await db.Database.MigrateAsync();
         var store = new FactStore(db);
         async Task<List<FactResponse>> Read() => kind == "segment"
             ? await store.ReadSegmentsAsync("owner", 701, null, null) : await store.ReadEventsAsync("owner", 701, null, null);

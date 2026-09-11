@@ -6,7 +6,7 @@
 
 **Ingest（摄入）**:
 Analytics 原子接收携带 Observer 与 Target 的 Fact 快照及交付所需的 Stream、Gap，Owner 取自认证身份，
-所有家族共同遵守身份、修订和确认规则。旧 Subject 归属及旧上传只服务分批迁移中的数据与缓存，
+同一事务转换到 Collectors、Objects、Facts、Relations、RelationMembers；所有家族共同遵守身份、修订和确认规则。旧 Subject 归属及旧上传服务现有数据与缓存，
 不形成另一套事实语义。
 _Avoid_: 从标题或时间猜测事实身份、让活动或输入绕开统一的摄入规则
 
@@ -40,9 +40,11 @@ _Avoid_: 直接改 AppIdentity.AppId 充当覆盖、把 merge receipt 当作当�
 JWT `sub` 出现在部署环境白名单中的用户，可以管理影响所有 Owner 的 App Catalog 映射。Auth 平台负责让部署者取得不可变 `sub`；Heartbeat 只判断当前用户是否为部署管理员，不允许从产品 UI 授予或撤销该权限。
 _Avoid_: 用可变 username 授权、把普通 Owner 自动视为部署管理员、在 App Catalog 页面管理管理员权限
 
-**Owner / Target**:
-Owner 是事实的数据主人；Target 是每条 Fact 唯一的长期业务归属，System 事实直接归属于设备；Browser 事实归属于同 Owner 下由设备与 App 产品唯一辨认的应用上下文。
-Subject 保留传输身份、旧缓存接管和管理语义；业务归属直接由 Target 表达，未知历史保持未知（词条详见 shared/CONTEXT.md）。
+**Owner / FOI**:
+Owner 是事实的数据主人；FOI 是 Fact 主要描述的 Object。System 事实指向机器，Browser 事实指向 App 产品；
+设备归属通过引用准确 Fact 的 observed-on 关系保留。账号与个人是独立 Object。
+Observer/Target 是当前上传转换契约；Subject 保留传输身份、旧缓存接管和管理语义。未知历史保持未知，
+转换和退出条件见 [五表迁移](../docs/architecture/observation-storage-migration.md)。
 _Avoid_: 把 Hub Instance 当 Target、把账号或身体称为 Device、用运行采集器的机器猜测事实归属
 
 **Person（本人）**:

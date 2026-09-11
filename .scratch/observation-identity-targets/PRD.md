@@ -2,6 +2,13 @@
 
 Status: ready-for-human
 
+> 2026-09-11 设计接续：用户确认新的 [五表存储目标](../../docs/architecture/observation-storage-minimal.md)
+> 与 [ADR-059](../../docs/adr/059-observation-storage-five-tables.md)，替代本 PRD 对后续存储的
+> Target/应用上下文、家族分表和不统一登记对象的要求。本 PRD 保留上一轮实施范围、验收与未完成门禁；
+> 不作为五表迁移的实施规格，不据新设计改标 done，也不恢复已暂停的演练。下一步先设计旧→新映射。
+> 旧→新[迁移实施](../../docs/architecture/observation-storage-migration.md)已完成代码与隔离自动验证；
+> 后续由[五表实施 PRD](../observation-storage/PRD.md)承接，实际副本/资源和原有实机门禁保持未完成。
+
 ## Project Background
 
 Heartbeat 仍在持续演进。用户在 2026-09-10 说明，项目已达到约 100k 有效代码行的规模

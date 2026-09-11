@@ -32,7 +32,9 @@ public sealed class DatabaseCommandTests(PostgresContainerFixture fixture) : Pos
         Assert.Equal(1, check.Code);
         Assert.Equal(before, await db.Database.GetAppliedMigrationsAsync());
 
-        db.Apps.Add(new App { Key = "editor-product", DisplayName = "Editor" });
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO "Apps" ("Key", "DisplayName", "IsProvisional") VALUES ('editor-product', 'Editor', false);
+            """);
         db.MutedMatchers.Add(new MutedMatcher
         {
             Id = Guid.NewGuid(), OwnerId = "owner", Source = "system", CreatedAt = DateTimeOffset.UtcNow,

@@ -1,0 +1,47 @@
+[
+  {
+    "label": "System 桌面活动",
+    "Id": "00000000-0000-0000-0000-0000000003e9",
+    "family": "segment"
+  },
+  {
+    "label": "System 键盘事件",
+    "Id": "00000000-0000-0000-0000-0000000003ea",
+    "family": "event"
+  },
+  {
+    "label": "Browser / Mac1",
+    "Id": "00000000-0000-0000-0000-0000000003eb",
+    "family": "segment"
+  },
+  {
+    "label": "Browser / Windows1",
+    "Id": "00000000-0000-0000-0000-0000000003ec",
+    "family": "segment"
+  },
+  {
+    "label": "VRChat 已知账号",
+    "Id": "00000000-0000-0000-0000-0000000003ed",
+    "family": "segment"
+  },
+  {
+    "label": "VRChat 未知账号/Collector",
+    "Id": "00000000-0000-0000-0000-0000000003ee",
+    "family": "segment"
+  },
+  {
+    "label": "Person 自定义事件",
+    "Id": "00000000-0000-0000-0000-0000000003ef",
+    "family": "event"
+  },
+  {
+    "label": "未知对象和内容",
+    "Id": "00000000-0000-0000-0000-0000000003f0",
+    "family": "event"
+  },
+  {
+    "label": "System 无 App 的状态",
+    "Id": "00000000-0000-0000-0000-0000000003f1",
+    "family": "segment"
+  }
+]

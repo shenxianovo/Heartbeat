@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using System.Text.Json;
 using Heartbeat.Server.Services;
 using Heartbeat.Server.Tests.Fixtures;
@@ -46,9 +48,10 @@ public sealed class ServiceAccountMigrationTests(PostgresContainerFixture fixtur
                   ({legacyRowId}, 'owner', {legacyStreamId}, {legacyRowId}, 1, 'vrchat.account', {fact.OccurredAt}, {payload}::jsonb);
                 """);
         var oid = await db.Database.SqlQueryRaw<long>("""SELECT oid::bigint AS "Value" FROM pg_class WHERE relname IN ('Segments','Events') AND relkind='r' ORDER BY oid""").ToListAsync();
-        await db.Database.MigrateAsync();
-        await db.Database.MigrateAsync();
+        await db.GetService<IMigrator>().MigrateAsync("20260911004949_CompleteHistoricalTargets");
+        await db.GetService<IMigrator>().MigrateAsync("20260911004949_CompleteHistoricalTargets");
         Assert.Equal(oid, await db.Database.SqlQueryRaw<long>("""SELECT oid::bigint AS "Value" FROM pg_class WHERE relname IN ('Segments','Events') AND relkind='r' ORDER BY oid""").ToListAsync());
+        await db.Database.MigrateAsync();
         var account = Assert.Single(await db.ServiceAccounts.ToListAsync());
         Assert.Null(account.ServiceAccountId);
         Assert.Equal(stream.Subject.SubjectId, account.LegacySubjectId);

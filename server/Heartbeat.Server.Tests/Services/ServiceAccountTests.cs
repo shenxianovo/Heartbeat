@@ -76,11 +76,11 @@ public sealed class ServiceAccountTests(PostgresContainerFixture fixture) : Post
         Assert.Empty(await store.ReadSegmentsAsync("other", null, null, null, accountId: before.TargetId));
         async Task Reject(FormattableString sql, string code) => Assert.Equal(code,
             (await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlInterpolatedAsync(sql))).SqlState);
-        await Reject($"UPDATE \"Segments\" SET \"TargetId\" = {before.TargetId} WHERE \"OwnerId\" = 'other'", "23503");
+        await Reject($"UPDATE \"Facts\" SET \"TargetId\" = {before.TargetId} WHERE \"OwnerId\" = 'other'", "23503");
         await Reject($"DELETE FROM \"ServiceAccounts\" WHERE \"Id\" = {before.TargetId}", "23503");
         await Reject($"UPDATE \"ServiceAccounts\" SET \"OwnerId\" = 'other' WHERE \"Id\" = {before.TargetId}", "23514");
         await Reject($"UPDATE \"ServiceAccounts\" SET \"ServiceAccountId\" = 'usr_changed' WHERE \"Id\" = {before.TargetId}", "23514");
-        await Reject($"UPDATE \"Segments\" SET \"TargetId\" = 987654 WHERE \"OwnerId\" = 'owner'", "23503");
+        await Reject($"UPDATE \"Facts\" SET \"TargetId\" = 987654 WHERE \"OwnerId\" = 'owner'", "23503");
         var account = await db.ServiceAccounts.AsNoTracking().SingleAsync(a => a.Id == before.TargetId);
         db.ServiceAccounts.Add(new ServiceAccount { OwnerId = account.OwnerId, ServiceKey = account.ServiceKey, ServiceAccountId = account.ServiceAccountId });
         await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());

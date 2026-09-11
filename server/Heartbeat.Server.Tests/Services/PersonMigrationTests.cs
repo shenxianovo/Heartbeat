@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using System.Text.Json;
 using Heartbeat.Core.DTOs.Facts;
 using Heartbeat.Server.Entities;
@@ -17,21 +19,41 @@ public sealed class PersonMigrationTests(PostgresContainerFixture fixture) : Pos
     public async Task UpgradePreservesBothFamilyTablesAndAllSavedValues_AndCreatesNoUsageEvidence()
     {
         await using var db = CreateDbContext();
-        var store = new FactStore(db);
+        // Seed the historical SQL contract, independently of today's mapped entities and writer.
+        var accountSubject = Guid.NewGuid();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "Devices" ("Id", "OwnerId", "HardwareId", "DeviceName") VALUES (71, 'owner', 'history', 'Mac');
+            INSERT INTO "Apps" ("Id", "Key", "DisplayName", "IsProvisional") VALUES (71, 'chrome', 'Chrome', false), (72, 'vrchat', 'VRChat', false);
+            INSERT INTO "AppIdentities" ("Id", "Key", "AppId") VALUES (71, 'mac:com.google.chrome', 71);
+            INSERT INTO "ApplicationContexts" ("Id", "OwnerId", "DeviceId", "AppId") VALUES (71, 'owner', 71, 71);
+            INSERT INTO "ServiceProducts" ("ServiceKey", "AppId") VALUES ('vrchat', 72);
+            INSERT INTO "ServiceAccounts" ("Id", "OwnerId", "ServiceKey", "ServiceAccountId", "LegacySubjectId")
+              VALUES (71, 'owner', 'vrchat', 'usr_11111111-1111-4111-8111-111111111111', NULL), (72, 'owner', 'vrchat', NULL, {accountSubject});
+            """);
         foreach (var kind in new[] { "device", "application-context", "account", "unknown-account" })
             foreach (var family in new[] { "segment", "event" })
             {
-                var batch = kind.Contains("account", StringComparison.Ordinal) ? ServiceAccountTests.Batch() : FactStoreTests.SegmentBatch();
-                var fact = batch.Facts[0];
-                if (kind == "unknown-account") { fact.ObserverId = null; fact.Target = null; }
-                if (kind is "device" or "application-context")
-                {
-                    fact.ObserverId = batch.Streams[0].CollectorInstanceId;
-                    fact.Target = kind == "device" ? new FactTarget("device", "history") : new ApplicationContextReference("history", "mac:com.google.chrome").ToTarget();
-                }
-                batch.Streams[0].FactKind = family;
-                if (family == "event") { fact.OccurredAt = fact.Start; fact.Start = fact.End = null; fact.IsFinal = null; }
-                await store.IngestAsync("owner", batch);
+                var id = Guid.NewGuid();
+                var subject = Guid.NewGuid();
+                var stream = Guid.NewGuid();
+                var targetKind = kind.Contains("account", StringComparison.Ordinal) ? "account" : kind;
+                var source = targetKind == "account" ? "vrchat.account" : kind == "application-context" ? "browser" : "system";
+                Guid? observer = kind == "unknown-account" ? null : Guid.NewGuid();
+                await db.Database.ExecuteSqlInterpolatedAsync($"""
+                    INSERT INTO "Subjects" ("OwnerId", "SubjectId", "Kind", "DeviceId") VALUES ('owner', {subject}, 'machine', 71);
+                    INSERT INTO "Streams" ("OwnerId", "StreamId", "SubjectId", "CollectorInstanceId", "OutputId", "Source", "FactKind", "Dimensions", "Origin")
+                    VALUES ('owner', {stream}, {subject}, {observer}, 'output', {source}, {family}, {"{}"}::jsonb, 'native');
+                    """);
+                var table = family == "segment" ? "Segments" : "Events";
+                var times = family == "segment" ? "\"StartTime\", \"EndTime\"" : "\"Timestamp\"";
+                var values = family == "segment" ? "'2026-09-01T00:00:00Z', '2026-09-01T00:01:00Z'" : "'2026-09-01T00:00:00Z'";
+                var sql = $$"""
+                    INSERT INTO "{{table}}" ("Id", "OwnerId", "StreamId", "FactId", "Revision", "ObserverId", "Source", "TargetKind", "TargetId", "Payload", {{times}})
+                    VALUES ({0}, 'owner', {1}, {0}, 3, {2}, {3}, {4}, {5}, {6}::jsonb, {{values}})
+                    """;
+                await db.Database.ExecuteSqlRawAsync(sql, id, stream,
+                    new NpgsqlParameter { NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Uuid, Value = (object?)observer ?? DBNull.Value }, source, targetKind,
+                    kind == "unknown-account" ? 72L : 71L, "{\"activityKey\":\"kept\",\"extra\":[1,2]}");
             }
         const string snapshot = """
             SELECT 'segment:' || to_jsonb(s)::text AS "Value" FROM "Segments" s
@@ -41,10 +63,30 @@ public sealed class PersonMigrationTests(PostgresContainerFixture fixture) : Pos
         Assert.Equal(8, before.Count);
         const string tables = """SELECT oid::bigint AS "Value" FROM pg_class WHERE relname IN ('Segments','Events') AND relkind = 'r' ORDER BY oid""";
         var oids = await db.Database.SqlQueryRaw<long>(tables).ToListAsync();
-        await db.Database.MigrateAsync();
-        await db.Database.MigrateAsync();
+        await db.GetService<IMigrator>().MigrateAsync("20260910142956_PersonAssociations");
+        await db.GetService<IMigrator>().MigrateAsync("20260910142956_PersonAssociations");
         Assert.Equal(oids, await db.Database.SqlQueryRaw<long>(tables).ToListAsync());
         Assert.Equal(before, await db.Database.SqlQueryRaw<string>(snapshot).ToListAsync());
+        await db.GetService<IMigrator>().MigrateAsync("20260911004949_CompleteHistoricalTargets");
+        const string normalizedBefore = """
+            SELECT (to_jsonb(s) - 'Payload' - 'ObserverId' || jsonb_build_object('Kind', 'segment', 'Result', s."Payload", 'CollectorId', s."ObserverId"))::text AS "Value" FROM "Segments" s
+            UNION ALL SELECT (to_jsonb(e) - 'Payload' - 'ObserverId' - 'Timestamp' || jsonb_build_object('Kind', 'event', 'Result', e."Payload", 'CollectorId', e."ObserverId", 'StartTime', e."Timestamp", 'EndTime', NULL))::text AS "Value" FROM "Events" e
+            ORDER BY "Value"
+            """;
+        var factsBefore = await db.Database.SqlQueryRaw<string>(normalizedBefore).ToListAsync();
+        await db.Database.MigrateAsync();
+        await db.Database.MigrateAsync();
+        var factsAfter = await db.Database.SqlQueryRaw<string>("""
+            SELECT (to_jsonb(f) - 'FoiId' - 'Aspect')::text AS "Value" FROM "Facts" f ORDER BY "Value"
+            """).ToListAsync();
+        Assert.Equal(factsBefore, factsAfter);
+        Assert.Equal(2, await db.Facts.CountAsync(f => f.ObserverId == null));
+        var unknownAccount = await db.Objects.SingleAsync(o => o.Kind == "account" && o.Key == accountSubject.ToString());
+        Assert.Equal("vrchat", unknownAccount.Scope);
+        Assert.Null(unknownAccount.Name);
+        Assert.All(await db.Facts.ToListAsync(), f => Assert.NotNull(f.FoiId));
+        Assert.Equal(8, await db.Facts.CountAsync());
+        Assert.Empty(await db.Relations.Where(r => r.Kind == "used-by").ToListAsync());
         Assert.Empty(await db.Persons.ToListAsync());
         Assert.Empty(await db.PersonAssociations.ToListAsync());
         Assert.False(db.Database.HasPendingModelChanges());
@@ -71,7 +113,7 @@ public sealed class PersonMigrationTests(PostgresContainerFixture fixture) : Pos
         fact.Payload = JsonSerializer.SerializeToElement(new { explicitPerson = true });
         if (family == "event") { fact.OccurredAt = fact.Start; fact.Start = fact.End = null; fact.IsFinal = null; }
         await new FactStore(db).IngestAsync("owner", batch);
-        var table = family == "segment" ? "Segments" : "Events";
+        var table = "Facts";
         async Task Reject(string sql, string state, params object[] args)
         {
             var error = await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlRawAsync(sql, args));

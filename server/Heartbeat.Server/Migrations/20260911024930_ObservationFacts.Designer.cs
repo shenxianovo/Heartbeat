@@ -4,6 +4,7 @@ using System.Text.Json;
 using Heartbeat.Server.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Heartbeat.Server.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260911024930_ObservationFacts")]
+    partial class ObservationFacts
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -44,16 +47,9 @@ namespace Heartbeat.Server.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
-                    b.Property<Guid?>("ObjectId")
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("uuid");
-
                     b.HasKey("Id");
 
                     b.HasIndex("Key")
-                        .IsUnique();
-
-                    b.HasIndex("ObjectId")
                         .IsUnique();
 
                     b.ToTable("Apps");
@@ -426,10 +422,6 @@ namespace Heartbeat.Server.Migrations
                     b.Property<DateTimeOffset>("LastSeen")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid?>("ObjectId")
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("uuid");
-
                     b.Property<string>("OwnerId")
                         .IsRequired()
                         .HasColumnType("text");
@@ -437,9 +429,6 @@ namespace Heartbeat.Server.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CurrentAppIdentityId");
-
-                    b.HasIndex("ObjectId")
-                        .IsUnique();
 
                     b.HasIndex("OwnerId", "HardwareId")
                         .IsUnique();
@@ -528,15 +517,7 @@ namespace Heartbeat.Server.Migrations
                     b.Property<long?>("AppIdentityId")
                         .HasColumnType("bigint");
 
-                    b.Property<string>("Aspect")
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("text");
-
                     b.Property<Guid>("FactId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("FoiId")
-                        .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("uuid");
 
                     b.Property<string>("Kind")
@@ -579,13 +560,7 @@ namespace Heartbeat.Server.Migrations
 
                     b.HasIndex("AppIdentityId");
 
-                    b.HasIndex("FoiId");
-
                     b.HasIndex("OwnerId", "FactId");
-
-                    b.HasIndex("OwnerId", "FoiId");
-
-                    b.HasIndex("OwnerId", "ObserverId");
 
                     b.HasIndex("OwnerId", "StreamId");
 
@@ -701,121 +676,6 @@ namespace Heartbeat.Server.Migrations
                     b.ToTable("MutedMatchers");
                 });
 
-            modelBuilder.Entity("Heartbeat.Server.Entities.ObjectRelation", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasDefaultValueSql("gen_random_uuid()");
-
-                    b.Property<long?>("AssociationId")
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("bigint")
-                        .HasComputedColumnSql("(\"Evidence\"->>'associationId')::bigint", true);
-
-                    b.Property<JsonDocument>("Evidence")
-                        .IsRequired()
-                        .HasColumnType("jsonb");
-
-                    b.Property<Guid?>("FactId")
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("uuid")
-                        .HasComputedColumnSql("(\"Evidence\"->>'factId')::uuid", true);
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("OwnerId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTimeOffset?>("ValidFrom")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset?>("ValidTo")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OwnerId", "AssociationId");
-
-                    b.HasIndex("OwnerId", "FactId");
-
-                    b.HasIndex("OwnerId", "Kind", "AssociationId")
-                        .IsUnique()
-                        .HasFilter("\"AssociationId\" IS NOT NULL");
-
-                    b.HasIndex("OwnerId", "Kind", "FactId")
-                        .IsUnique()
-                        .HasFilter("\"FactId\" IS NOT NULL");
-
-                    b.ToTable("Relations", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_Relations_Time", "(\"ValidFrom\" IS NULL OR isfinite(\"ValidFrom\")) AND (\"ValidTo\" IS NULL OR isfinite(\"ValidTo\")) AND (\"ValidFrom\" IS NULL OR \"ValidTo\" IS NULL OR \"ValidFrom\" <= \"ValidTo\")");
-                        });
-                });
-
-            modelBuilder.Entity("Heartbeat.Server.Entities.ObservationCollector", b =>
-                {
-                    b.Property<string>("OwnerId")
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Kind")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Name")
-                        .HasColumnType("text");
-
-                    b.HasKey("OwnerId", "Id");
-
-                    b.ToTable("Collectors", (string)null);
-                });
-
-            modelBuilder.Entity("Heartbeat.Server.Entities.ObservationObject", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasDefaultValueSql("gen_random_uuid()");
-
-                    b.Property<string>("Key")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Name")
-                        .HasColumnType("text");
-
-                    b.Property<string>("OwnerId")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Scope")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Kind", "Scope", "Key")
-                        .IsUnique()
-                        .HasFilter("\"OwnerId\" IS NULL");
-
-                    b.HasIndex("OwnerId", "Kind", "Scope", "Key")
-                        .IsUnique()
-                        .HasFilter("\"OwnerId\" IS NOT NULL");
-
-                    b.ToTable("Objects", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_Objects_KindOwner", "(\"Kind\" = 'app' AND \"OwnerId\" IS NULL) OR (\"Kind\" IN ('machine','account','person') AND \"OwnerId\" IS NOT NULL)");
-                        });
-                });
-
             modelBuilder.Entity("Heartbeat.Server.Entities.Person", b =>
                 {
                     b.Property<long>("Id")
@@ -823,10 +683,6 @@ namespace Heartbeat.Server.Migrations
                         .HasColumnType("bigint");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<Guid?>("ObjectId")
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("uuid");
 
                     b.Property<string>("OwnerId")
                         .IsRequired()
@@ -836,9 +692,6 @@ namespace Heartbeat.Server.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("ObjectId")
-                        .IsUnique();
 
                     b.HasIndex("OwnerId")
                         .IsUnique();
@@ -1003,24 +856,6 @@ namespace Heartbeat.Server.Migrations
                     b.ToTable("RecurrenceProbes");
                 });
 
-            modelBuilder.Entity("Heartbeat.Server.Entities.RelationMember", b =>
-                {
-                    b.Property<Guid>("RelationId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Role")
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("ObjectId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("RelationId", "Role", "ObjectId");
-
-                    b.HasIndex("ObjectId", "Role");
-
-                    b.ToTable("RelationMembers", (string)null);
-                });
-
             modelBuilder.Entity("Heartbeat.Server.Entities.ServiceAccount", b =>
                 {
                     b.Property<long>("Id")
@@ -1030,10 +865,6 @@ namespace Heartbeat.Server.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
                     b.Property<Guid?>("LegacySubjectId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("ObjectId")
-                        .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("uuid");
 
                     b.Property<string>("OwnerId")
@@ -1049,9 +880,6 @@ namespace Heartbeat.Server.Migrations
                         .HasColumnType("character varying(64)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("ObjectId")
-                        .IsUnique();
 
                     b.HasIndex("ServiceKey");
 
@@ -1227,14 +1055,6 @@ namespace Heartbeat.Server.Migrations
                     b.HasDiscriminator().HasValue("segment");
                 });
 
-            modelBuilder.Entity("Heartbeat.Server.Entities.App", b =>
-                {
-                    b.HasOne("Heartbeat.Server.Entities.ObservationObject", null)
-                        .WithMany()
-                        .HasForeignKey("ObjectId")
-                        .OnDelete(DeleteBehavior.Restrict);
-                });
-
             modelBuilder.Entity("Heartbeat.Server.Entities.AppCatalogOverride", b =>
                 {
                     b.HasOne("Heartbeat.Server.Entities.AppIdentity", "AppIdentity")
@@ -1302,11 +1122,6 @@ namespace Heartbeat.Server.Migrations
                         .HasForeignKey("CurrentAppIdentityId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("Heartbeat.Server.Entities.ObservationObject", null)
-                        .WithMany()
-                        .HasForeignKey("ObjectId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.Navigation("CurrentAppIdentity");
                 });
 
@@ -1336,16 +1151,6 @@ namespace Heartbeat.Server.Migrations
                     b.HasOne("Heartbeat.Server.Entities.AppIdentity", "AppIdentity")
                         .WithMany()
                         .HasForeignKey("AppIdentityId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Heartbeat.Server.Entities.ObservationObject", null)
-                        .WithMany()
-                        .HasForeignKey("FoiId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Heartbeat.Server.Entities.ObservationCollector", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId", "ObserverId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Heartbeat.Server.Entities.FactStream", "Stream")
@@ -1380,28 +1185,8 @@ namespace Heartbeat.Server.Migrations
                     b.Navigation("Device");
                 });
 
-            modelBuilder.Entity("Heartbeat.Server.Entities.ObjectRelation", b =>
-                {
-                    b.HasOne("Heartbeat.Server.Entities.PersonAssociation", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId", "AssociationId")
-                        .HasPrincipalKey("OwnerId", "Id")
-                        .OnDelete(DeleteBehavior.Cascade);
-
-                    b.HasOne("Heartbeat.Server.Entities.FactRecord", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId", "FactId")
-                        .HasPrincipalKey("OwnerId", "Id")
-                        .OnDelete(DeleteBehavior.Restrict);
-                });
-
             modelBuilder.Entity("Heartbeat.Server.Entities.Person", b =>
                 {
-                    b.HasOne("Heartbeat.Server.Entities.ObservationObject", null)
-                        .WithMany()
-                        .HasForeignKey("ObjectId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("Heartbeat.Server.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("OwnerId")
@@ -1442,32 +1227,8 @@ namespace Heartbeat.Server.Migrations
                     b.Navigation("Episode");
                 });
 
-            modelBuilder.Entity("Heartbeat.Server.Entities.RelationMember", b =>
-                {
-                    b.HasOne("Heartbeat.Server.Entities.ObservationObject", "Object")
-                        .WithMany()
-                        .HasForeignKey("ObjectId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Heartbeat.Server.Entities.ObjectRelation", "Relation")
-                        .WithMany("Members")
-                        .HasForeignKey("RelationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Object");
-
-                    b.Navigation("Relation");
-                });
-
             modelBuilder.Entity("Heartbeat.Server.Entities.ServiceAccount", b =>
                 {
-                    b.HasOne("Heartbeat.Server.Entities.ObservationObject", null)
-                        .WithMany()
-                        .HasForeignKey("ObjectId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("Heartbeat.Server.Entities.ServiceProduct", "Service")
                         .WithMany()
                         .HasForeignKey("ServiceKey")
@@ -1517,11 +1278,6 @@ namespace Heartbeat.Server.Migrations
             modelBuilder.Entity("Heartbeat.Server.Entities.Episode", b =>
                 {
                     b.Navigation("Probes");
-                });
-
-            modelBuilder.Entity("Heartbeat.Server.Entities.ObjectRelation", b =>
-                {
-                    b.Navigation("Members");
                 });
 
             modelBuilder.Entity("Heartbeat.Server.Entities.Strand", b =>

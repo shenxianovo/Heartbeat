@@ -12,6 +12,7 @@ namespace Heartbeat.Server.Data
 
         public DbSet<Segment> Segments => Set<Segment>();
         public DbSet<Event> Events => Set<Event>();
+        public DbSet<FactRecord> Facts => Set<FactRecord>();
         public DbSet<FactSubjectRecord> FactSubjects => Set<FactSubjectRecord>();
         public DbSet<FactStream> FactStreams => Set<FactStream>();
         public DbSet<FactGap> FactGaps => Set<FactGap>();
@@ -40,16 +41,23 @@ namespace Heartbeat.Server.Data
 
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
-        private static void ConfigureFact<T>(ModelBuilder modelBuilder, string table) where T : class, IFactRecord
+        private static void ConfigureFacts(ModelBuilder modelBuilder)
         {
-            modelBuilder.Entity<T>(entity =>
+            modelBuilder.Entity<FactRecord>(entity =>
             {
-                entity.ToTable(table, t => t.HasCheckConstraint($"CK_{table}_Revision", "\"Revision\" >= 1"));
+                entity.ToTable("Facts", t =>
+                {
+                    t.HasCheckConstraint("CK_Facts_Revision", "\"Revision\" >= 1");
+                    t.HasCheckConstraint("CK_Facts_Time", "\"StartTime\" IS NOT NULL AND isfinite(\"StartTime\") AND ((\"Kind\" = 'event' AND \"EndTime\" IS NULL) OR (\"Kind\" = 'segment' AND \"EndTime\" IS NOT NULL AND isfinite(\"EndTime\") AND \"EndTime\" >= \"StartTime\"))");
+                });
+                entity.HasDiscriminator(e => e.Kind).HasValue<Segment>("segment").HasValue<Event>("event");
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Id).ValueGeneratedNever();
                 entity.Property(e => e.Source).HasMaxLength(64);
-                entity.Property(e => e.Payload).HasColumnType("jsonb").IsRequired();
-                entity.HasIndex(e => new { e.OwnerId, e.StreamId, e.FactId }).IsUnique();
+                entity.Property(e => e.Payload).HasColumnName("Result").HasColumnType("jsonb").IsRequired();
+                entity.Property(e => e.ObserverId).HasColumnName("CollectorId");
+                entity.HasIndex(e => new { e.OwnerId, e.Kind, e.StreamId, e.FactId }).IsUnique();
+                entity.HasIndex(e => new { e.OwnerId, e.FactId });
                 entity.HasOne(e => e.Stream).WithMany().HasForeignKey(e => new { e.OwnerId, e.StreamId }).OnDelete(DeleteBehavior.Restrict);
                 entity.HasOne<AppIdentity>("AppIdentity").WithMany().HasForeignKey(e => e.AppIdentityId).OnDelete(DeleteBehavior.Restrict);
                 entity.HasIndex(e => e.AppIdentityId);
@@ -186,12 +194,12 @@ namespace Heartbeat.Server.Data
                     .OnDelete(DeleteBehavior.Restrict);
             });
 
-            ConfigureFact<Segment>(modelBuilder, "Segments");
-            ConfigureFact<Event>(modelBuilder, "Events");
+            ConfigureFacts(modelBuilder);
+            ConfigureObservations(modelBuilder);
+            modelBuilder.Entity<Segment>().Property(e => e.StartTime).HasColumnName("StartTime");
+            modelBuilder.Entity<Event>().Property(e => e.Timestamp).HasColumnName("StartTime");
             modelBuilder.Entity<Segment>().HasIndex(e => new { e.OwnerId, e.Source, e.StartTime });
-            modelBuilder.Entity<Segment>().HasIndex(e => new { e.OwnerId, e.FactId });
             modelBuilder.Entity<Event>().HasIndex(e => new { e.OwnerId, e.Timestamp });
-            modelBuilder.Entity<Event>().HasIndex(e => new { e.OwnerId, e.FactId });
 
             modelBuilder.Entity<AppIcon>(entity =>
             {

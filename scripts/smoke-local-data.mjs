@@ -65,23 +65,22 @@ for (const [label, path] of [['Compose file', composeFile], ['Environment file',
   }
 }
 
-// Current queries require the migrated Observer/Target schema.
+// Read the single fact store; a device relation must reference the exact fact.
 const sql = String.raw`
-WITH "ActivitySegments" AS (
-  SELECT s.*, s."Payload"->>'activityKey' AS "IdentityKey",
-    s."ObserverId" AS "Observer",
-    CASE WHEN s."TargetKind" = 'device' THEN s."TargetId"
-         WHEN s."TargetKind" = 'application-context' THEN context."DeviceId" END AS "DeviceId"
-  FROM "Segments" s LEFT JOIN "ApplicationContexts" context ON s."TargetKind" = 'application-context'
-    AND context."OwnerId" = s."OwnerId" AND context."Id" = s."TargetId"
-  WHERE jsonb_typeof(s."Payload"->'activityKey') = 'string' AND btrim(s."Payload"->>'activityKey') <> ''
+WITH "AttributedFacts" AS (
+  SELECT f.*, f."Result" AS "Payload", f."CollectorId" AS "Observer",
+    coalesce(d."Id", (
+      SELECT device."Id" FROM "Relations" r JOIN "RelationMembers" m ON m."RelationId" = r."Id" AND m."Role" = 'device'
+      JOIN "Devices" device ON device."ObjectId" = m."ObjectId"
+      WHERE r."OwnerId" = f."OwnerId" AND r."FactId" = f."Id" AND r."Kind" = 'observed-on'
+    )) AS "DeviceId"
+  FROM "Facts" f LEFT JOIN "Devices" d ON d."ObjectId" = f."FoiId" AND d."OwnerId" = f."OwnerId"
+), "ActivitySegments" AS (
+  SELECT f.*, f."Result"->>'activityKey' AS "IdentityKey" FROM "AttributedFacts" f
+  WHERE f."Kind" = 'segment' AND jsonb_typeof(f."Result"->'activityKey') = 'string' AND btrim(f."Result"->>'activityKey') <> ''
 ), "InputEvents" AS (
-  SELECT e.*, e."Payload"->>'codeSet' AS "CodeSet",
-    CASE WHEN e."TargetKind" = 'device' THEN e."TargetId"
-         WHEN e."TargetKind" = 'application-context' THEN context."DeviceId" END AS "DeviceId"
-  FROM "Events" e LEFT JOIN "ApplicationContexts" context ON e."TargetKind" = 'application-context'
-    AND context."OwnerId" = e."OwnerId" AND context."Id" = e."TargetId"
-  WHERE e."Payload"->>'eventType' IN ('keyDown', 'mouseButton', 'mouseScroll')
+  SELECT f.*, f."StartTime" AS "Timestamp", f."Result"->>'codeSet' AS "CodeSet" FROM "AttributedFacts" f
+  WHERE f."Kind" = 'event' AND f."Result"->>'eventType' IN ('keyDown', 'mouseButton', 'mouseScroll')
 )
 SELECT json_build_object(
   'capturedAtUtc', to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
@@ -113,12 +112,8 @@ SELECT json_build_object(
       WHERE "EndTime" - "StartTime" > interval '24 hours')
   ),
   'violations', json_build_object(
-    'orphanTarget', (SELECT count(*) FROM (
-      SELECT "OwnerId", to_jsonb(s)->>'TargetKind' AS kind, (to_jsonb(s)->>'TargetId')::bigint AS id FROM "Segments" s
-      UNION ALL
-      SELECT "OwnerId", to_jsonb(e)->>'TargetKind', (to_jsonb(e)->>'TargetId')::bigint FROM "Events" e
-    ) targets LEFT JOIN "Devices" d ON d."Id" = targets.id AND d."OwnerId" = targets."OwnerId"
-      WHERE targets.kind = 'device' AND d."Id" IS NULL),
+    'orphanFoi', (SELECT count(*) FROM "Facts" f LEFT JOIN "Objects" o ON o."Id" = f."FoiId"
+      WHERE f."FoiId" IS NOT NULL AND (o."Id" IS NULL OR (o."OwnerId" IS NOT NULL AND o."OwnerId" <> f."OwnerId"))),
     'invalidSegmentRanges', (SELECT count(*) FROM "ActivitySegments" WHERE "EndTime" < "StartTime"),
     'blankSegmentSource', (SELECT count(*) FROM "ActivitySegments" WHERE btrim("Source") = ''),
     'blankSegmentIdentity', (SELECT count(*) FROM "ActivitySegments" WHERE btrim("IdentityKey") = ''),
