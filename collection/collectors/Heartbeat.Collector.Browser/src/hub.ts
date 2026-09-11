@@ -78,6 +78,8 @@ export class LoopbackBrowserHubAdapter implements BrowserHubAdapter {
       request.pendingGap,
       request.persistGapAttempt,
       request.applyAttribution,
+      request.recoveryFactIds,
+      request.applyRecoveredFacts,
     )
   }
 }

@@ -114,7 +114,7 @@ describe('browser Collector Protocol outbox', () => {
       if (url.endsWith('/hello')) return protocolResponse('activation.accepted', {
         activationId: ACTIVATION_ID,
         selectedProtocolMajor: 1,
-        selectedCapabilities: { 'facts.observation': 1, 'facts.aspect': 1, 'facts.segment': 1, 'diagnostics.stream-gap': 1 },
+        selectedCapabilities: { 'facts.observation': 2, 'facts.aspect': 1, 'facts.segment': 1, 'diagnostics.stream-gap': 1 },
       }, undefined, request.messageId)
       if (url.endsWith('/initialize')) return protocolResponse('activation.initialize', {
         spec: { revision: 3, config: { value: { enabled: true, flushPeriodMs: 30_000 } } },
@@ -174,7 +174,7 @@ describe('browser Collector Protocol outbox', () => {
       if (url.endsWith('/hello')) return protocolResponse('activation.accepted', {
         activationId: ACTIVATION_ID,
         selectedProtocolMajor: 1,
-        selectedCapabilities: { 'facts.observation': 1, 'facts.aspect': 1, 'facts.segment': 1, 'diagnostics.stream-gap': 1 },
+        selectedCapabilities: { 'facts.observation': 2, 'facts.aspect': 1, 'facts.segment': 1, 'diagnostics.stream-gap': 1 },
       }, undefined, request.messageId)
       if (url.endsWith('/initialize')) return protocolResponse('activation.initialize', {
         spec: { revision: 3, config: { value: { enabled: true, flushPeriodMs: 30_000 } } },
@@ -426,4 +426,27 @@ describe('browser Collector Protocol outbox', () => {
     expect(request.body?.gap?.gapId).toMatch(/^[0-9a-f-]{36}$/)
     expect(request.body?.gap?.reason).toBe('buffer_overflow')
   })
+})
+
+it('publishes a native observation without a legacy stream and uses the persisted revision', () => {
+  const item = { ...snapshot(), kind: 'segment' as const, revision: 7 }
+  const fact = toProtocolFact(item, STREAM_ID)!
+  expect(fact).toMatchObject({ kind: 'segment', source: 'browser', revision: 7, factId: item.id, collectorId: item.collectorId, aspect: 'selected-page' })
+  expect(fact).not.toHaveProperty('streamId')
+  expect(toProtocolFact(snapshot(), STREAM_ID)).toMatchObject({ streamId: STREAM_ID, revision: Date.parse(snapshot().endTime) })
+})
+
+it('preserves future Result members and compares them when confirming a snapshot', () => {
+  const item = { ...snapshot(), result: { activityKey: 'https://example.com/docs', title: 'Docs', attributes: snapshot().attributes, future: { samples: [1, null, { opaque: 'kept' }] } } }
+  expect(toProtocolFact(item, STREAM_ID)?.payload).toEqual(item.result)
+})
+
+it('never derives a native revision from its end time', () => {
+  expect(toProtocolFact({ ...snapshot(), kind: 'segment' }, STREAM_ID)).toBeNull()
+  expect(toProtocolFact({ ...snapshot(), kind: 'segment', revision: 0 }, STREAM_ID)).toBeNull()
+})
+
+it('keeps unknown flat legacy Result fields when sending the persisted Browser snapshot', () => {
+  const saved = { ...snapshot(), futureResult: { precise: '1.234', values: [null, true, 7] } }
+  expect(toProtocolFact(saved, STREAM_ID)?.payload).toMatchObject({ futureResult: saved.futureResult })
 })

@@ -56,7 +56,7 @@ afterAll(async () => {
 async function connect(identity: string, app: string, previous?: BrowserProtocolSession) {
   const start = new Date(Date.now() - 60_000).toISOString()
   return uploadWithBrowserProtocol(port, app, identity, [{
-    id: uuidv7(), source: 'browser', activityKey: 'https://example.com/docs', title: 'Docs',
+    id: uuidv7(), kind: 'segment', revision: 1, source: 'browser', activityKey: 'https://example.com/docs', title: 'Docs',
     startTime: start, endTime: new Date().toISOString(), isFinal: true,
     attributes: { url: 'https://example.com/docs', domain: 'example.com', site: 'example.com', windowId: 1 },
   }], previous)
@@ -72,7 +72,7 @@ it('connects the actual Browser client to the generic Host and projects its App/
   const state = await (await nativeFetch(`http://127.0.0.1:${port}/test/status`)).json()
   expect(state.instances).toBe(1)
   expect(state.status.connectedExternalHosts).toBe(1)
-  expect(state.facts).toMatchObject([{ source: 'browser', appIdentityKey: 'win:chrome', identityKey: 'https://example.com/docs' }])
+  expect(state.facts).toMatchObject([{ stream: null, fact: null, observation: { source: 'browser', foi: { kind: 'app', key: 'win:chrome' }, result: { activityKey: 'https://example.com/docs' } } }])
 })
 
 it('isolates Profiles, reconnects only the same identity, and preserves Streams across Host restart', async () => {
@@ -114,7 +114,7 @@ it('rejects an exact Package mismatch without disturbing a healthy Activation', 
 
 it('retries a lost Fact ACK idempotently and commits a durable Stream Gap through the real binding', async () => {
   const item = {
-    id: uuidv7(), source: 'browser' as const, activityKey: 'https://example.com/retry', title: 'Retry',
+    id: uuidv7(), kind: 'segment' as const, revision: 1, source: 'browser' as const, activityKey: 'https://example.com/retry', title: 'Retry',
     startTime: new Date(Date.now() - 60_000).toISOString(), endTime: new Date().toISOString(), isFinal: true,
     attributes: { url: 'https://example.com/retry', domain: 'example.com', site: 'example.com', windowId: 1 },
   }
@@ -138,6 +138,8 @@ it('revokes all leases on removal and rejects reconnect without recreating the I
   vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) =>
     String(input).startsWith('chrome-extension://')
       ? Promise.resolve(Response.json(reference)) : nativeFetch(input, init))
+  // The test consumer confirms the actual pending Fact/Gap snapshots before removing their custodian.
+  await nativeFetch(`http://127.0.0.1:${port}/test/status`)
   expect((await nativeFetch(`http://127.0.0.1:${port}/test/remove`, { method: 'POST' })).ok).toBe(true)
   expect((await connect('6a8259d1-5f6a-4b83-b6ba-870178863191', 'win:chrome', firstSession)).kind).toBe('unavailable')
   const response = await nativeFetch(`http://127.0.0.1:${port}/v1/collector-protocol/external-host/hello`, {

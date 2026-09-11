@@ -422,3 +422,55 @@ describe('BrowserDelivery interface', () => {
     expect(hub.protocolCalls).toHaveLength(1)
   })
 })
+
+it('retains recoverable conflicting revisions instead of replacing a queued snapshot', async () => {
+  const store = new MemoryStore(), hub = new MemoryHub(), module = delivery(store, hub)
+  const first = { ...snapshot(), kind: 'segment' as const, revision: 2 }
+  await module.checkpoint([first])
+  const conflicting = { ...first, title: 'conflicting content' }
+  await expect(module.checkpoint([conflicting])).rejects.toThrow('Conflicting')
+  expect(store.durable.queue[first.id]).toEqual(first)
+  expect(store.durable.deadLetters).toContainEqual(conflicting)
+  await module.checkpoint([{ ...first, revision: 1, title: 'stale' }])
+  expect(store.durable.queue[first.id]).toEqual(first)
+})
+
+it('recovers an ACKed legacy fold from the exact full snapshot and closes only its known interval', async () => {
+  const store = new MemoryStore(), hub = new MemoryHub(), module = delivery(store, hub)
+  const known = { ...snapshot(), revision: 1787644860000, observedAt: '2026-08-25T08:01:00.000Z',
+    result: { activityKey: snapshot().activityKey, title: 'historical', attributes: snapshot().attributes, future: { evidence: 'retained' } } }
+  store.durable.foldState = { open: { 7: { id: known.id, startTime: Date.parse(known.startTime), windowId: 7, activityKey: known.activityKey,
+    url: known.attributes.url, title: 'unpublished reading', recoveryRequired: true } } }
+  hub.onProtocol = async request => {
+    expect(request.recoveryFactIds).toEqual([known.id])
+    await request.applyRecoveredFacts?.([known])
+    return { kind: 'unavailable' }
+  }
+  await module.deliveryCycle()
+  expect(store.durable.foldState?.open).toEqual({})
+  expect(store.durable.queue[known.id]).toEqual({ ...known, revision: 1787644860001, isFinal: true })
+})
+
+it('does not accept recovery evidence for another window despite matching the fact id and start', async () => {
+  const store = new MemoryStore(), hub = new MemoryHub(), module = delivery(store, hub)
+  const known = snapshot()
+  store.durable.foldState = { open: { 7: { id: known.id, startTime: Date.parse(known.startTime), windowId: 7, activityKey: known.activityKey,
+    url: known.attributes.url, title: 'saved', recoveryRequired: true } } }
+  hub.onProtocol = async request => {
+    await request.applyRecoveredFacts?.([{ ...known, attributes: { ...known.attributes, windowId: 9 } }])
+    return { kind: 'unavailable' }
+  }
+  await module.deliveryCycle()
+  expect(store.durable.foldState?.open[7].recoveryRequired).toBe(true)
+  expect(store.durable.queue).toEqual({})
+})
+
+it('a normal ACK never discards unresolved conflict or migrated dead-letter evidence above the old diagnostic cap', async () => {
+  const store = new MemoryStore(), hub = new MemoryHub(), module = delivery(store, hub)
+  const evidence = Array.from({ length: 101 }, (_, index) => snapshot(index + 10))
+  store.durable.deadLetters = evidence
+  await module.enqueue([snapshot()])
+  await module.deliveryCycle()
+  expect(store.durable.queue).toEqual({})
+  expect(store.durable.deadLetters).toEqual(evidence)
+})

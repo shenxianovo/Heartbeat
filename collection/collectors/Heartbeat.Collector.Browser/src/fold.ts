@@ -32,7 +32,7 @@ export interface BrowserAttribution {
 }
 
 // Attribution is bound by delivery; window observation and Segment SDK stay transport independent.
-export type SegmentSnapshot = SdkSnapshot<BrowserPayload, 'browser'> & Partial<BrowserAttribution>
+export type SegmentSnapshot = SdkSnapshot<BrowserPayload, 'browser'> & Partial<BrowserAttribution> & { result?: BrowserPayload & Record<string, unknown>; streamId?: string; aspect?: string | null; observedAt?: string | null }
 export type FoldEvent = WindowObservation & { at: number }
 
 export interface FoldDeps {
@@ -40,14 +40,19 @@ export interface FoldDeps {
   activityKeyOf: (url: string) => string
 }
 
-export function browserPayloadOf(activity: WindowActivity): BrowserPayload {
-  return {
+export function browserPayloadOf(activity: WindowActivity): BrowserPayload & { result?: BrowserPayload & Record<string, unknown> } {
+  const previous = (activity as OpenActivity).lastSnapshot as SegmentSnapshot | undefined
+  const payload = {
     activityKey: activity.activityKey,
     title: activity.title,
     attributes: {
+      ...previous?.attributes,
       url: activity.url, domain: domainOf(activity.url), site: siteOf(activity.url), windowId: activity.windowId,
     },
   }
+  return { ...payload, ...(previous?.result === undefined ? {} : {
+    result: { ...previous.result, ...payload, attributes: { ...previous.result.attributes, ...payload.attributes } },
+  }) }
 }
 
 export interface FoldResult {

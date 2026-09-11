@@ -15,12 +15,13 @@ Chrome/Edge MV3 ExternalHost Collector。它观察各窗口的活动标签页，
 
 `window-activity.ts` 判定一个窗口内的页面活动：规范化 URL 相同则更新读数，变化则开始新活动，
 窗口关闭则结束观测。`fold.ts` 将变化映射为 `sdk/segments.ts` 的 Segment 操作，SDK 管理身份、起点和超长段轮转；
-`background.ts` 负责 Chrome 回调、会话状态、对账及交付接线。
+`background.ts` 负责 Chrome 回调、持久检查点、对账及交付接线。
 
-窗口是浏览器会话内的临时观测对象，URL/标题是读数。并行状态仍只保留在 `FoldState.open[windowId]`，
-不增加对象登记或第二份窗口表；关闭后移除运行状态，已输出的 Fact 保留。会话状态的字段形状不变，
-仍存在的 Service Worker 会话状态可以直接恢复；完整开发 Reload 的实测会新开活动，
-此前的活动快照由既有 checkpoint 保存，不能把 Reload 与会话恢复等同。快照与协议输出保持原样。
+FOI 是 App 产品；窗口只是并行活动的会话分组，URL/标题是读数。并行状态仍只保留在 `FoldState.open[windowId]`，
+不增加对象登记或第二份窗口表；关闭后移除运行状态，已输出的 Fact 保留。fold 与待发快照写入
+同一个持久 journal，快照内容变化使用单调 Revision；Service Worker 重启延续同一事实。
+整个浏览器重启时按最后已知快照收尾，当前窗口从当前观测重开，避免扩张停机区间。
+旧 key 迁移、已 ACK 高水位恢复与真实 Profile 安装验收见 [Browser 缓存兼容](cache-compatibility.md)。
 
 验证重点是两个窗口同时记录、关闭其一不影响另一个、重新打开产生新 Fact，以及同页更新延续旧 Fact。
 

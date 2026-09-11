@@ -2,10 +2,12 @@ import rotationPolicy from '../../../../contracts/segment-rotation-policy.json'
 import { uuidv7 } from '../ids'
 
 /** SDK 的会话检查点；保留 Browser 已有的平铺格式，调用方只负责保存和恢复。 */
-export type SegmentState<T> = T & { readonly id: string; readonly startTime: number }
+export type SegmentState<T> = T & { readonly id: string; readonly startTime: number; kind?: 'segment'; revision?: number; lastSnapshot?: unknown; recoveryRequired?: true }
 
 export type SegmentSnapshot<P, S extends string = string> = P & {
   id: string
+  kind?: 'segment'
+  revision?: number
   source: S
   startTime: string
   endTime: string
@@ -37,9 +39,13 @@ export function createSegmentSdk<T, P, S extends string>(options: {
   const newId = options.newId ?? uuidv7
 
   function snapshot(state: SegmentState<T>, end: number, isFinal: boolean): SegmentSnapshot<P, S> {
+    const { id: _id, startTime: _start, kind: _kind, revision: _revision, lastSnapshot: _last, recoveryRequired: _recovery, ...payload } = options.payloadOf(state) as P & Partial<SegmentState<T>>
+    const { revision: _previousRevision, ...previous } = state.lastSnapshot as SegmentSnapshot<P, S> ?? {} as SegmentSnapshot<P, S>
     return {
-      ...options.payloadOf(state),
+      ...previous,
+      ...payload as P,
       id: state.id,
+      ...(state.kind === undefined ? {} : { kind: state.kind }),
       source: options.source,
       startTime: new Date(state.startTime).toISOString(),
       endTime: new Date(Math.max(end, state.startTime)).toISOString(),
@@ -48,25 +54,39 @@ export function createSegmentSdk<T, P, S extends string>(options: {
   }
 
   function restore(state: SegmentState<T>): Segment<T, P, S> {
+    function publish(end: number, isFinal: boolean): SegmentSnapshot<P, S> {
+      const content = snapshot(state, end, isFinal)
+      const last = state.lastSnapshot as SegmentSnapshot<P, S> | undefined
+      const { revision: _revision, ...previousContent } = last ?? {} as SegmentSnapshot<P, S>
+      if (last && JSON.stringify(previousContent) === JSON.stringify(content)) return last
+      // Historical sessions keep their old identity and endTime high-water mark. Migration
+      // supplies the last published snapshot; only a new observation advances its revision.
+      const highWater = state.revision ?? (last?.revision ?? (last ? Date.parse(last.endTime) : 0))
+      const revision = highWater > 0 ? highWater + 1 : state.kind ? 1 : Math.max(1, Date.parse(content.endTime))
+      if (!Number.isSafeInteger(revision)) throw new Error('Segment Revision exhausted; preserve checkpoint')
+      const next = { ...content, revision }
+      state = { ...state, revision, lastSnapshot: next }
+      return next
+    }
     const segment: Segment<T, P, S> = {
       get state() { return state },
       update(payload) {
-        state = { ...payload, id: state.id, startTime: state.startTime }
+        state = { ...state, ...payload, id: state.id, startTime: state.startTime }
         return segment
       },
       observe(observedUntil) {
         const rotate = observedUntil - state.startTime >= ROTATE_AFTER_MS
-        const out = [snapshot(state, observedUntil, rotate)]
-        if (rotate) state = { ...state, id: newId(), startTime: observedUntil }
+        const out = [publish(observedUntil, rotate)]
+        if (rotate) state = { ...state, id: newId(), startTime: observedUntil, kind: 'segment', revision: 0, lastSnapshot: undefined }
         return out
       },
-      end: end => snapshot(state, end, true),
+      end: end => publish(end, true),
     }
     return segment
   }
 
   function startSegment({ start, payload }: { start: number; payload: T }): Segment<T, P, S> {
-    return restore({ ...payload, id: newId(), startTime: start })
+    return restore({ ...payload, id: newId(), startTime: start, kind: 'segment', revision: 0 })
   }
 
   return { startSegment, restore }

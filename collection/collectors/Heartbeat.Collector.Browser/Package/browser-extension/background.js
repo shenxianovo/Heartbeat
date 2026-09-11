@@ -12,6 +12,9 @@ async function loadDevelopmentBinding() {
   await readDevelopmentBinding();
   throw new Error("Development extension updated; Reload before reconnecting");
 }
+async function reloadDevelopmentExtensionIfUpdated(persistActivity2) {
+  return false;
+}
 function bindingRoute(binding) {
   return `/v1/collector-bindings/${binding.profileId}/${binding.token}`;
 }
@@ -114,16 +117,21 @@ function siteOf(rawUrl) {
   return lastTwo;
 }
 function browserPayloadOf(activity) {
-  return {
+  const previous = activity.lastSnapshot;
+  const payload = {
     activityKey: activity.activityKey,
     title: activity.title,
     attributes: {
+      ...previous?.attributes,
       url: activity.url,
       domain: domainOf(activity.url),
       site: siteOf(activity.url),
       windowId: activity.windowId
     }
   };
+  return { ...payload, ...previous?.result === void 0 ? {} : {
+    result: { ...previous.result, ...payload, attributes: { ...previous.result.attributes, ...payload.attributes } }
+  } };
 }
 function emptyState() {
   return { open: {} };
@@ -181,9 +189,13 @@ const ROTATE_AFTER_MS = rotationPolicy.rotateAfterMilliseconds;
 function createSegmentSdk(options) {
   const newId = options.newId ?? uuidv7;
   function snapshot(state, end, isFinal) {
+    const { id: _id, startTime: _start, kind: _kind, revision: _revision, lastSnapshot: _last, recoveryRequired: _recovery, ...payload } = options.payloadOf(state);
+    const { revision: _previousRevision, ...previous } = state.lastSnapshot ?? {};
     return {
-      ...options.payloadOf(state),
+      ...previous,
+      ...payload,
       id: state.id,
+      ...state.kind === void 0 ? {} : { kind: state.kind },
       source: options.source,
       startTime: new Date(state.startTime).toISOString(),
       endTime: new Date(Math.max(end, state.startTime)).toISOString(),
@@ -191,26 +203,38 @@ function createSegmentSdk(options) {
     };
   }
   function restore(state) {
+    function publish(end, isFinal) {
+      const content = snapshot(state, end, isFinal);
+      const last = state.lastSnapshot;
+      const { revision: _revision, ...previousContent } = last ?? {};
+      if (last && JSON.stringify(previousContent) === JSON.stringify(content)) return last;
+      const highWater = state.revision ?? (last?.revision ?? (last ? Date.parse(last.endTime) : 0));
+      const revision = highWater > 0 ? highWater + 1 : state.kind ? 1 : Math.max(1, Date.parse(content.endTime));
+      if (!Number.isSafeInteger(revision)) throw new Error("Segment Revision exhausted; preserve checkpoint");
+      const next = { ...content, revision };
+      state = { ...state, revision, lastSnapshot: next };
+      return next;
+    }
     const segment = {
       get state() {
         return state;
       },
       update(payload) {
-        state = { ...payload, id: state.id, startTime: state.startTime };
+        state = { ...state, ...payload, id: state.id, startTime: state.startTime };
         return segment;
       },
       observe(observedUntil) {
         const rotate = observedUntil - state.startTime >= ROTATE_AFTER_MS;
-        const out = [snapshot(state, observedUntil, rotate)];
-        if (rotate) state = { ...state, id: newId(), startTime: observedUntil };
+        const out = [publish(observedUntil, rotate)];
+        if (rotate) state = { ...state, id: newId(), startTime: observedUntil, kind: "segment", revision: 0, lastSnapshot: void 0 };
         return out;
       },
-      end: (end) => snapshot(state, end, true)
+      end: (end) => publish(end, true)
     };
     return segment;
   }
   function startSegment({ start, payload }) {
-    return restore({ ...payload, id: newId(), startTime: start });
+    return restore({ ...payload, id: newId(), startTime: start, kind: "segment", revision: 0 });
   }
   return { startSegment, restore };
 }
@@ -250,30 +274,43 @@ function isUuidV7(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 function snapshotRevision(snapshot) {
-  const revision = Date.parse(snapshot.endTime);
+  const revision = snapshot.revision ?? Date.parse(snapshot.endTime);
   return Number.isSafeInteger(revision) && revision > 0 ? revision : 1;
 }
 function toProtocolFact(snapshot, streamId) {
-  if (!isUuidV7(snapshot.id)) return null;
+  if (!isUuidV7(snapshot.id) || snapshot.kind !== void 0 && (!Number.isSafeInteger(snapshot.revision) || snapshot.revision <= 0)) return null;
+  const {
+    id: _id,
+    source: _source,
+    startTime: _start,
+    endTime: _end,
+    isFinal: _final,
+    kind: _kind,
+    revision: _revision,
+    collectorId: _collector,
+    foi: _foi,
+    relations: _relations,
+    streamId: _stream,
+    observedAt: _observed,
+    aspect: _aspect,
+    result,
+    ...flatResult
+  } = snapshot;
   return {
-    streamId,
+    ...snapshot.kind === void 0 ? { streamId: snapshot.streamId ?? streamId } : { kind: snapshot.kind, source: snapshot.source },
     factId: snapshot.id,
     revision: snapshotRevision(snapshot),
-    aspect: "selected-page",
+    aspect: snapshot.aspect === void 0 ? "selected-page" : snapshot.aspect,
     collectorId: snapshot.collectorId,
     foi: snapshot.foi,
     relations: snapshot.relations,
-    observedAt: null,
+    observedAt: snapshot.observedAt ?? null,
     time: {
       start: snapshot.startTime,
       end: snapshot.endTime,
       isFinal: snapshot.isFinal
     },
-    payload: {
-      activityKey: snapshot.activityKey,
-      title: snapshot.title,
-      attributes: snapshot.attributes
-    }
+    payload: result ?? flatResult
   };
 }
 function acknowledgedSnapshotIds(snapshots, acknowledgement) {
@@ -295,7 +332,7 @@ async function openBrowserProtocolSession(port, appIdentityKey, externalHostIden
           ...await browserPackageReference(),
           protocolMajors: [1],
           supportedCapabilities: {
-            "facts.observation": [1],
+            "facts.observation": [2],
             "facts.aspect": [1],
             "facts.segment": [1],
             "diagnostics.stream-gap": [1]
@@ -313,7 +350,7 @@ async function openBrowserProtocolSession(port, appIdentityKey, externalHostIden
       "activation.accepted",
       void 0,
       attempt.helloMessageId
-    ) || !isUuidV7(acceptedMessage.body.activationId) || acceptedMessage.body.selectedProtocolMajor !== 1 || acceptedMessage.body.selectedCapabilities?.["facts.observation"] !== 1 || acceptedMessage.body.selectedCapabilities?.["facts.aspect"] !== 1 || acceptedMessage.body.selectedCapabilities?.["facts.segment"] !== 1 || acceptedMessage.body.selectedCapabilities?.["diagnostics.stream-gap"] !== 1)
+    ) || !isUuidV7(acceptedMessage.body.activationId) || acceptedMessage.body.selectedProtocolMajor !== 1 || acceptedMessage.body.selectedCapabilities?.["facts.observation"] !== 2 || acceptedMessage.body.selectedCapabilities?.["facts.aspect"] !== 1 || acceptedMessage.body.selectedCapabilities?.["facts.segment"] !== 1 || acceptedMessage.body.selectedCapabilities?.["diagnostics.stream-gap"] !== 1)
       return "rejected";
     const accepted = acceptedMessage.body;
     const initialize = await protocolFetch(
@@ -533,7 +570,7 @@ async function publishBrowserFacts(session, snapshots, previousAttempt, persistA
     return { kind: "unavailable", publishAttempt: attempt, session };
   }
 }
-async function uploadWithBrowserProtocol(port, appIdentityKey, externalHostIdentity, snapshots, previousSession, previousActivationAttempt, previousPublishAttempt, persistActivationAttempt, persistPublishAttempt, applySpec, pendingGap, persistGapAttempt, applyAttribution) {
+async function uploadWithBrowserProtocol(port, appIdentityKey, externalHostIdentity, snapshots, previousSession, previousActivationAttempt, previousPublishAttempt, persistActivationAttempt, persistPublishAttempt, applySpec, pendingGap, persistGapAttempt, applyAttribution, recoveryFactIds, applyRecoveredFacts) {
   if (!appIdentityKey || !externalHostIdentity) return { kind: "unavailable" };
   if (snapshots.some((snapshot) => !isUuidV7(snapshot.id))) return { kind: "unavailable" };
   const renewed = previousSession?.port === port && previousSession.attribution !== void 0 ? await renewBrowserProtocolSession(previousSession) : null;
@@ -556,6 +593,10 @@ async function uploadWithBrowserProtocol(port, appIdentityKey, externalHostIdent
   if (session === null) return { kind: "unavailable", activationAttempt };
   if (session.attribution === void 0) return { kind: "unavailable" };
   await applyAttribution?.(session.attribution);
+  if (recoveryFactIds?.length && applyRecoveredFacts) {
+    const recovered = await recoverBrowserFacts(session, recoveryFactIds);
+    if (recovered !== null) await applyRecoveredFacts(recovered);
+  }
   let gapAcknowledged = false;
   if (pendingGap !== void 0) {
     const gapResult = await reportBrowserGap(session, pendingGap, persistGapAttempt);
@@ -703,7 +744,53 @@ function bindAttribution(snapshot, attribution) {
   return { ...snapshot, ...attribution };
 }
 function sameSnapshot(left, right) {
-  return left.id === right.id && left.startTime === right.startTime && left.endTime === right.endTime && left.isFinal === right.isFinal && left.activityKey === right.activityKey && left.title === right.title && left.collectorId === right.collectorId && JSON.stringify(left.foi) === JSON.stringify(right.foi) && JSON.stringify(left.relations) === JSON.stringify(right.relations) && left.attributes.url === right.attributes.url && left.attributes.domain === right.attributes.domain && left.attributes.site === right.attributes.site && left.attributes.windowId === right.attributes.windowId;
+  return canonicalJson(left) === canonicalJson(right);
+}
+function canonicalJson(value) {
+  return JSON.stringify(value, (_key, item) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map((key) => [key, item[key]])) : item);
+}
+async function recoverBrowserFacts(session, factIds) {
+  const requested = factIds.slice(0, session.limits.maxFactsPerBatch);
+  const messageId = uuidv7();
+  try {
+    const response = await protocolFetch(session.port, `/${session.activationId}/recover`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(message(
+        "heartbeat.collector/1",
+        "facts.recover",
+        messageId,
+        session.activationId,
+        { leaseToken: session.leaseToken, streamId: session.streamId, factIds: requested }
+      ))
+    });
+    if (!response.ok) return null;
+    const reply = await response.json();
+    if (!isCorrelatedResponse(reply, "heartbeat.collector/1", "facts.recovered", session.activationId, messageId) || !Array.isArray(reply.body.facts) || !Array.isArray(reply.body.missing)) return null;
+    const received = [...reply.body.facts.map((fact) => fact?.factId), ...reply.body.missing];
+    if (received.length !== requested.length || new Set(received).size !== requested.length || received.some((id) => !requested.includes(id))) return null;
+    const snapshots = [];
+    for (const fact of reply.body.facts) {
+      if (!fact || fact.kind != null || fact.streamId !== session.streamId || !Number.isSafeInteger(fact.revision) || fact.revision <= 0 || !fact.time || !Number.isFinite(Date.parse(fact.time.start)) || !Number.isFinite(Date.parse(fact.time.end)) || typeof fact.time.isFinal !== "boolean" || !fact.payload || typeof fact.payload.activityKey !== "string" || typeof fact.payload.title !== "string" || !fact.payload.attributes || !Number.isInteger(fact.payload.attributes.windowId)) return null;
+      snapshots.push({
+        ...fact.payload,
+        result: fact.payload,
+        id: fact.factId,
+        source: "browser",
+        streamId: fact.streamId,
+        revision: fact.revision,
+        startTime: fact.time.start,
+        endTime: fact.time.end,
+        isFinal: fact.time.isFinal,
+        observedAt: fact.observedAt,
+        aspect: fact.aspect,
+        ...readAttribution(fact)
+      });
+    }
+    return snapshots;
+  } catch {
+    return null;
+  }
 }
 const PORT_RANGE = 10;
 const PROBE_TIMEOUT_MS = 1500;
@@ -753,11 +840,12 @@ class LoopbackBrowserHubAdapter {
       request.applySpec,
       request.pendingGap,
       request.persistGapAttempt,
-      request.applyAttribution
+      request.applyAttribution,
+      request.recoveryFactIds,
+      request.applyRecoveredFacts
     );
   }
 }
-const DEFAULT_FLUSH_PERIOD_MS = 3e4;
 const BACKOFF_BASE_MS = 3e4;
 const BACKOFF_MAX_MS = 10 * 6e4;
 const MAX_QUEUED = 5e3;
@@ -774,10 +862,20 @@ function createBrowserDelivery(dependencies) {
   async function policy() {
     return (await dependencies.store.loadDurable()).policy;
   }
+  async function prepareQueue(durable, snapshots) {
+    try {
+      return enqueueBounded(durable.queue, snapshots.map((snapshot) => bindAttribution(snapshot, durable.attribution)));
+    } catch (error) {
+      if (error instanceof SnapshotConflictError && !durable.deadLetters.some((item) => sameSnapshot(item, error.snapshot))) {
+        await dependencies.store.saveDurable({ ...durable, deadLetters: [...durable.deadLetters, error.snapshot] });
+      }
+      throw error;
+    }
+  }
   async function enqueueImplementation(snapshots) {
     if (snapshots.length === 0) return;
     const durable = await dependencies.store.loadDurable();
-    const { queue, overflow } = enqueueBounded(durable.queue, snapshots.map((snapshot) => bindAttribution(snapshot, durable.attribution)));
+    const { queue, overflow } = await prepareQueue(durable, snapshots);
     const next = {
       ...durable,
       queue,
@@ -793,12 +891,12 @@ function createBrowserDelivery(dependencies) {
       });
     }
   }
-  async function checkpointImplementation(snapshots) {
-    if (snapshots.length === 0) return;
+  async function checkpointImplementation(snapshots, foldState) {
+    if (snapshots.length === 0 && foldState === void 0) return;
     const durable = await dependencies.store.loadDurable();
-    const { queue, overflow } = enqueueBounded(durable.queue, snapshots.map((snapshot) => bindAttribution(snapshot, durable.attribution)));
+    const { queue, overflow } = await prepareQueue(durable, snapshots);
     if (overflow.length > 0) throw new Error("Outbox capacity prevents a complete activity checkpoint");
-    await dependencies.store.saveDurable({ ...durable, queue });
+    await dependencies.store.saveDurable({ ...durable, queue, ...foldState === void 0 ? {} : { foldState } });
   }
   async function deliveryCycleImplementation() {
     let session = await dependencies.store.loadSession();
@@ -827,6 +925,24 @@ function createBrowserDelivery(dependencies) {
       appIdentityKey,
       externalHostIdentity: await dependencies.loadExternalHostIdentity(),
       snapshots,
+      recoveryFactIds: Object.values(durable.foldState?.open ?? {}).filter((activity) => activity.recoveryRequired).map((activity) => activity.id),
+      applyRecoveredFacts: async (recovered) => {
+        const latest = await dependencies.store.loadDurable();
+        const open = { ...latest.foldState?.open };
+        const finals = [];
+        for (const snapshot of recovered) {
+          const entry = Object.entries(open).find(([, activity]) => activity.recoveryRequired && activity.id === snapshot.id);
+          if (!entry) continue;
+          if (Date.parse(snapshot.startTime) !== entry[1].startTime || snapshot.attributes.windowId !== Number(entry[0])) continue;
+          const final = snapshot.isFinal ? snapshot : { ...snapshot, isFinal: true, revision: snapshotRevision(snapshot) + 1 };
+          if (!Number.isSafeInteger(final.revision)) throw new Error("Recovered Revision exhausted; preserve checkpoint");
+          finals.push(final);
+          delete open[Number(entry[0])];
+        }
+        const { queue, overflow } = enqueueBounded(latest.queue, finals);
+        if (overflow.length) throw new Error("Outbox capacity prevents recovery checkpoint");
+        await dependencies.store.saveDurable({ ...latest, queue, foldState: { open } });
+      },
       previousSession: session.protocolSession,
       previousActivationAttempt: session.activationAttempt,
       previousPublishAttempt: relevantPublishAttempt(session.publishAttempt, durable.queue),
@@ -916,15 +1032,27 @@ function createBrowserDelivery(dependencies) {
   return {
     policy,
     enqueue: (snapshots) => serialized2(() => enqueueImplementation(snapshots)),
-    checkpoint: (snapshots) => serialized2(() => checkpointImplementation(snapshots)),
+    checkpoint: (snapshots, foldState) => serialized2(() => checkpointImplementation(snapshots, foldState)),
     deliveryCycle: () => serialized2(deliveryCycleImplementation)
   };
+}
+class SnapshotConflictError extends Error {
+  constructor(snapshot) {
+    super(`Conflicting cached revision for Fact ${snapshot.id}; preserve checkpoint`);
+    this.snapshot = snapshot;
+  }
 }
 function enqueueBounded(current, snapshots) {
   const queue = { ...current };
   const overflow = [];
   let queuedCount = Object.keys(queue).length;
   for (const snapshot of snapshots) {
+    const previous = queue[snapshot.id];
+    if (previous !== void 0) {
+      if (snapshotRevision(snapshot) < snapshotRevision(previous)) continue;
+      if (snapshotRevision(snapshot) === snapshotRevision(previous) && !sameSnapshot(snapshot, previous))
+        throw new SnapshotConflictError(snapshot);
+    }
     if (queue[snapshot.id] === void 0 && queuedCount >= MAX_QUEUED) {
       overflow.push(snapshot);
       continue;
@@ -944,8 +1072,8 @@ function appendBufferGap(gaps, snapshots) {
     estimatedFactsLost: snapshots.length
   }];
 }
-async function convergeProtocolAcknowledgement(store, result, acknowledgedGap, warn) {
-  const durable = await store.loadDurable();
+async function convergeProtocolAcknowledgement(store2, result, acknowledgedGap, warn) {
+  const durable = await store2.loadDurable();
   const queue = { ...durable.queue };
   const rejected = [];
   for (const [id, snapshot] of Object.entries(queue)) {
@@ -962,16 +1090,16 @@ async function convergeProtocolAcknowledgement(store, result, acknowledgedGap, w
   if (rejected.length > 0) {
     warn(`[heartbeat] ${rejected.length} 条 Fact 被 Hub 永久拒绝，已移入诊断 dead-letter`);
   }
-  await store.saveDurable({
+  await store2.saveDurable({
     ...durable,
     queue,
     pendingGaps: acknowledgedGap === void 0 ? durable.pendingGaps : removeGap(durable.pendingGaps, acknowledgedGap),
-    deadLetters: [...durable.deadLetters, ...rejected].slice(-100)
+    deadLetters: [...durable.deadLetters, ...rejected]
   });
 }
-async function removeAcknowledgedGap(store, acknowledged) {
-  const durable = await store.loadDurable();
-  await store.saveDurable({
+async function removeAcknowledgedGap(store2, acknowledged) {
+  const durable = await store2.loadDurable();
+  await store2.saveDurable({
     ...durable,
     pendingGaps: removeGap(durable.pendingGaps, acknowledged)
   });
@@ -1006,15 +1134,9 @@ function failWithBackoff(session, now) {
 const defaultBrowserDeliverySession = () => ({
   backoff: noBackoff()
 });
-const emptyBrowserDeliveryDurableState = () => ({
-  queue: {},
-  pendingGaps: [],
-  deadLetters: [],
-  policy: { enabled: true, flushPeriodMilliseconds: DEFAULT_FLUSH_PERIOD_MS }
-});
-async function persistPolicy(store, policy) {
-  const durable = await store.loadDurable();
-  await store.saveDurable({ ...durable, policy });
+async function persistPolicy(store2, policy) {
+  const durable = await store2.loadDurable();
+  await store2.saveDurable({ ...durable, policy });
 }
 const ATTRIBUTION_KEY = "browserObservation";
 const PREVIOUS_ATTRIBUTION_KEY = "browserFactAttribution";
@@ -1032,63 +1154,74 @@ const PENDING_GAP_KEY = "browserCollectorPendingGap";
 const DESIRED_ENABLED_KEY = "browserCollectorDesiredEnabled";
 const DELIVERY_POLICY_KEY = "browserCollectorDeliveryPolicy";
 const EXTERNAL_HOST_IDENTITY_KEY = "browserCollectorExternalHostIdentity";
+const JOURNAL_KEY = "browserObservationJournal";
+const BACKUP_KEY = "browserObservationPreJournalBackup";
+const FOLD_KEY = "foldState";
+const JOURNAL_VERSION = 5;
+const ROLLBACK_FENCE = { unsupportedBrowserObservationJournalVersion: null };
+const LEGACY_LOCAL_KEYS = [
+  QUEUE_KEY,
+  ATTRIBUTION_KEY,
+  PREVIOUS_QUEUE_KEY,
+  PREVIOUS_ATTRIBUTION_KEY,
+  PREVIOUS_DEAD_LETTER_KEY,
+  PENDING_GAP_KEY,
+  DEAD_LETTER_KEY,
+  DELIVERY_POLICY_KEY
+];
+const LEGACY_SESSION_KEYS = [DESIRED_ENABLED_KEY, FLUSH_PERIOD_KEY, FOLD_KEY, PROTOCOL_PUBLISH_ATTEMPT_KEY];
 class ChromeBrowserDeliveryStore {
   sessionStarted = false;
   async loadDurable() {
     const [local, transient] = await Promise.all([
-      chrome.storage.local.get([
-        QUEUE_KEY,
-        ATTRIBUTION_KEY,
-        PREVIOUS_QUEUE_KEY,
-        PREVIOUS_ATTRIBUTION_KEY,
-        PREVIOUS_DEAD_LETTER_KEY,
-        PENDING_GAP_KEY,
-        DEAD_LETTER_KEY,
-        DELIVERY_POLICY_KEY
-      ]),
-      chrome.storage.session.get([DESIRED_ENABLED_KEY, FLUSH_PERIOD_KEY])
+      chrome.storage.local.get([JOURNAL_KEY, BACKUP_KEY, ...LEGACY_LOCAL_KEYS]),
+      chrome.storage.session.get(LEGACY_SESSION_KEYS)
     ]);
-    const defaults = emptyBrowserDeliveryDurableState();
-    const queue = mergeQueuedSnapshots(local[PREVIOUS_QUEUE_KEY], local[QUEUE_KEY]);
-    const rawGaps = local[PENDING_GAP_KEY];
-    const policy = normalizePolicy(
-      local[DELIVERY_POLICY_KEY],
-      transient[DESIRED_ENABLED_KEY],
-      transient[FLUSH_PERIOD_KEY]
-    );
-    const pendingGaps = normalizePendingGaps(rawGaps);
-    if (pendingGaps.migrated) {
-      await chrome.storage.local.set({ [PENDING_GAP_KEY]: pendingGaps.value });
+    const journal = local[JOURNAL_KEY];
+    if (journal !== void 0) {
+      if (!isRecord(journal) || journal.schemaVersion !== JOURNAL_VERSION || !isRecord(journal.state))
+        throw new Error("Unsupported Browser observation journal; preserve local storage");
+      if (!isRollbackFence(local[PREVIOUS_QUEUE_KEY]) || !isRollbackFence(local[QUEUE_KEY]))
+        throw new Error("Conflicting cached revision or obsolete Browser writer; preserve both queues");
+      return journal.state;
     }
+    const queue = mergeQueuedSnapshots(local[PREVIOUS_QUEUE_KEY], local[QUEUE_KEY]);
+    const deadLetters = [local[PREVIOUS_DEAD_LETTER_KEY], local[DEAD_LETTER_KEY]].flatMap((raw) => {
+      if (raw === void 0) return [];
+      if (!Array.isArray(raw)) throw new Error("Invalid Browser dead-letter storage; preserve original keys");
+      return raw.map((snapshot) => normalizeSnapshot(snapshot));
+    });
+    const attempt = transient[PROTOCOL_PUBLISH_ATTEMPT_KEY];
+    const foldState = restoreFold(transient[FOLD_KEY], [
+      ...Object.values(queue),
+      ...(attempt?.snapshots ?? []).map((snapshot) => normalizeSnapshot(snapshot)),
+      ...deadLetters
+    ]);
     const state = {
       queue,
+      deadLetters,
+      foldState,
       attribution: readAttribution(local[ATTRIBUTION_KEY] ?? local[PREVIOUS_ATTRIBUTION_KEY]),
-      pendingGaps: pendingGaps.value,
-      deadLetters: Object.values(normalizeQueuedSnapshots(Object.fromEntries(
-        [
-          ...Array.isArray(local[PREVIOUS_DEAD_LETTER_KEY]) ? local[PREVIOUS_DEAD_LETTER_KEY] : [],
-          ...Array.isArray(local[DEAD_LETTER_KEY]) ? local[DEAD_LETTER_KEY] : defaults.deadLetters
-        ].map((fact) => [fact.id, fact])
-      ))),
-      policy
+      pendingGaps: normalizePendingGaps(local[PENDING_GAP_KEY]).value,
+      policy: normalizePolicy(local[DELIVERY_POLICY_KEY], transient[DESIRED_ENABLED_KEY], transient[FLUSH_PERIOD_KEY])
     };
-    if ([PREVIOUS_QUEUE_KEY, PREVIOUS_ATTRIBUTION_KEY, PREVIOUS_DEAD_LETTER_KEY].some((key) => local[key] !== void 0)) {
-      await this.saveDurable(state);
-      await chrome.storage.local.remove([PREVIOUS_QUEUE_KEY, PREVIOUS_ATTRIBUTION_KEY, PREVIOUS_DEAD_LETTER_KEY]);
-    }
+    await this.writeJournal(state, local[BACKUP_KEY] === void 0 ? { local, session: transient } : void 0);
     return state;
   }
   async saveDurable(state) {
+    await this.writeJournal(state);
+  }
+  async writeJournal(state, backup) {
     await chrome.storage.local.set({
-      [QUEUE_KEY]: state.queue,
-      ...state.attribution === void 0 ? {} : { [ATTRIBUTION_KEY]: state.attribution },
-      [PENDING_GAP_KEY]: state.pendingGaps,
-      [DEAD_LETTER_KEY]: state.deadLetters,
-      [DELIVERY_POLICY_KEY]: state.policy
+      [JOURNAL_KEY]: { schemaVersion: JOURNAL_VERSION, state },
+      [QUEUE_KEY]: ROLLBACK_FENCE,
+      [PREVIOUS_QUEUE_KEY]: ROLLBACK_FENCE,
+      ...backup === void 0 ? {} : { [BACKUP_KEY]: backup }
     });
   }
   async loadSession() {
     if (!this.sessionStarted) {
+      await this.loadDurable();
       await chrome.storage.session.remove([
         PROTOCOL_SESSION_KEY,
         PROTOCOL_ACTIVATION_ATTEMPT_KEY,
@@ -1142,9 +1275,9 @@ function normalizePendingGaps(raw) {
   });
   return { value, migrated };
 }
-function createChromeBrowserDelivery() {
+function createChromeBrowserDelivery(store2 = new ChromeBrowserDeliveryStore()) {
   return createBrowserDelivery({
-    store: new ChromeBrowserDeliveryStore(),
+    store: store2,
     hub: new LoopbackBrowserHubAdapter(),
     loadAppIdentityKey: async () => {
       const nav = navigator;
@@ -1163,12 +1296,18 @@ function createChromeBrowserDelivery() {
 async function loadExternalHostIdentity() {
   const stored = await chrome.storage.local.get(EXTERNAL_HOST_IDENTITY_KEY);
   const existing = stored[EXTERNAL_HOST_IDENTITY_KEY];
-  if (typeof existing === "string" && existing.length > 0) return existing;
+  if (existing !== void 0) {
+    if (typeof existing !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(existing) || existing === "00000000-0000-0000-0000-000000000000")
+      throw new Error("Invalid persisted Browser installation identity; preserve storage for recovery");
+    return existing;
+  }
   const created = crypto.randomUUID();
   await chrome.storage.local.set({ [EXTERNAL_HOST_IDENTITY_KEY]: created });
   return created;
 }
 function mergeQueuedSnapshots(previous, current) {
+  if ([previous, current].some((value) => value !== void 0 && !isRecord(value)))
+    throw new Error("Unsupported Browser queue storage; preserve original keys");
   const merged = normalizeQueuedSnapshots(isRecord(previous) ? previous : {});
   const incoming = normalizeQueuedSnapshots(isRecord(current) ? current : {});
   for (const [id, fact] of Object.entries(incoming)) {
@@ -1183,19 +1322,39 @@ function mergeQueuedSnapshots(previous, current) {
   return merged;
 }
 function normalizeQueuedSnapshots(stored) {
-  return Object.fromEntries(
-    Object.entries(stored).map(([id, snapshot]) => [id, {
-      id: snapshot.id,
-      source: snapshot.source,
-      activityKey: snapshot.activityKey ?? snapshot.identityKey,
-      ...readAttribution(snapshot),
-      title: snapshot.title,
-      startTime: snapshot.startTime,
-      endTime: snapshot.endTime,
-      isFinal: snapshot.isFinal === true,
-      attributes: snapshot.attributes
-    }])
-  );
+  return Object.fromEntries(Object.entries(stored).map(([id, snapshot]) => [id, normalizeSnapshot(snapshot)]));
+}
+function normalizeSnapshot(snapshot) {
+  if (!isRecord(snapshot) || typeof snapshot.id !== "string")
+    throw new Error("Unsupported Browser snapshot storage; preserve original keys");
+  const { identityKey, appHint: _appHint, appName: _appName, observerId: _observerId, target: _target, ...rest } = snapshot;
+  return {
+    ...rest,
+    ...readAttribution(snapshot),
+    activityKey: snapshot.activityKey ?? identityKey,
+    isFinal: snapshot.isFinal === true
+  };
+}
+function restoreFold(raw, snapshots) {
+  if (raw === void 0) return emptyState();
+  if (!isRecord(raw) || !isRecord(raw.open)) throw new Error("Invalid Browser fold storage; preserve original keys");
+  const state = raw;
+  const open = {};
+  for (const [windowId, activity] of Object.entries(state.open)) {
+    const { identityKey, ...rest } = activity;
+    const recovered = snapshots.filter((snapshot) => snapshot.id === activity.id).sort((left, right) => snapshotRevision(right) - snapshotRevision(left))[0];
+    open[Number(windowId)] = {
+      ...rest,
+      activityKey: activity.activityKey ?? identityKey,
+      ...activity.revision !== void 0 ? {} : recovered === void 0 ? {
+        recoveryRequired: true
+      } : {
+        revision: snapshotRevision(recovered),
+        lastSnapshot: recovered
+      }
+    };
+  }
+  return { open };
 }
 function normalizePolicy(durable, legacyEnabled, legacyFlushPeriod) {
   if (isRecord(durable)) {
@@ -1226,14 +1385,19 @@ function positivePort(value) {
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-const STATE_KEY = "foldState";
+function isRollbackFence(value) {
+  return isRecord(value) && Object.keys(value).length === 1 && value.unsupportedBrowserObservationJournalVersion === null;
+}
+const SESSION_MARKER_KEY = "browserObservationSessionStarted";
 const ALARM_NAME = "heartbeat-flush";
 const DEVELOPMENT_ALARM = "heartbeat-development-update";
 const deps = {
   segments: createSegmentSdk({ source: "browser", payloadOf: browserPayloadOf }),
   activityKeyOf
 };
-const delivery = createChromeBrowserDelivery();
+const store = new ChromeBrowserDeliveryStore();
+const delivery = createChromeBrowserDelivery(store);
+let browserSessionReady = false;
 let chain = Promise.resolve();
 function serialized(fn) {
   const next = chain.then(fn, fn);
@@ -1242,50 +1406,100 @@ function serialized(fn) {
   return next;
 }
 async function loadState() {
-  const got = await chrome.storage.session.get(STATE_KEY);
-  const state = got[STATE_KEY] ?? emptyState();
-  for (const activity of Object.values(state.open)) {
-    const payload = activity;
-    if (payload.activityKey === void 0 && payload.identityKey !== void 0) {
-      payload.activityKey = payload.identityKey;
-      delete payload.identityKey;
-    }
-  }
-  return state;
+  return (await store.loadDurable()).foldState ?? emptyState();
 }
-async function saveState(state) {
-  await chrome.storage.session.set({ [STATE_KEY]: state });
+async function finishKnownActivity(knownState) {
+  const state = knownState ?? await loadState();
+  const open = { ...state.open };
+  const final = [];
+  for (const [windowId, activity] of Object.entries(open)) {
+    if (activity.recoveryRequired) continue;
+    const last = activity.lastSnapshot;
+    if (last !== void 0) {
+      final.push(last.isFinal ? last : { ...last, isFinal: true, revision: snapshotRevision(last) + 1 });
+    } else if (activity.kind === "segment") {
+      final.push(deps.segments.restore(activity).end(activity.startTime));
+    } else {
+      open[Number(windowId)] = { ...activity, recoveryRequired: true };
+      continue;
+    }
+    delete open[Number(windowId)];
+  }
+  await delivery.checkpoint(final, { open });
+}
+async function resumeBrowserSession() {
+  const session = await chrome.storage.session.get([SESSION_MARKER_KEY, "foldState"]);
+  const state = await loadState();
+  if (session[SESSION_MARKER_KEY] !== true && session.foldState === void 0) {
+    await finishKnownActivity(state);
+  }
+  await chrome.storage.session.set({ [SESSION_MARKER_KEY]: true });
+  await chrome.storage.session.remove("foldState");
+  browserSessionReady = true;
+}
+async function tryResumeBrowserSession() {
+  if (browserSessionReady) return true;
+  try {
+    await resumeBrowserSession();
+  } catch (error) {
+    console.warn("[heartbeat] Browser recovery checkpoint retained for retry", error);
+  }
+  return browserSessionReady;
+}
+function flushRecoverable(state, at) {
+  const waiting = Object.fromEntries(Object.entries(state.open).filter(([, activity]) => activity.recoveryRequired));
+  const ready = Object.fromEntries(Object.entries(state.open).filter(([, activity]) => !activity.recoveryRequired));
+  const result = flush({ open: ready }, at, deps);
+  return { ...result, state: { open: { ...waiting, ...result.state.open } } };
 }
 async function handleEvent(ev) {
-  if (!(await delivery.policy()).enabled) return;
+  if (!browserSessionReady || !(await delivery.policy()).enabled) return;
   const state = await loadState();
+  if (state.open[ev.windowId]?.recoveryRequired) return;
   const { state: next, out } = applyEvent(state, ev, deps);
-  if (next !== state) await saveState(next);
-  await delivery.enqueue(out);
+  await delivery.checkpoint(out, next);
 }
 async function flushAndUpload() {
   const before = await delivery.policy();
-  if (before.enabled) await persistActivity();
+  if (before.enabled && await tryResumeBrowserSession()) {
+    try {
+      await persistActivity();
+    } catch (error) {
+      console.warn("[heartbeat] Activity checkpoint retained for retry", error);
+    }
+  }
   const after = await delivery.deliveryCycle();
+  if (!await tryResumeBrowserSession()) return;
   await applyDeliveryPolicy(before, after);
+  if (after.enabled) await reconcile();
 }
 async function persistActivity() {
   const state = await loadState();
-  const { state: next, out } = flush(state, Date.now(), deps);
-  if (next !== state) await saveState(next);
-  await delivery.enqueue(out);
+  const { state: next, out } = flushRecoverable(state, Date.now());
+  await delivery.checkpoint(out, next);
 }
 async function reloadDevelopmentUpdate() {
-  return false;
+  if (!browserSessionReady || true) return false;
+  try {
+    return await reloadDevelopmentExtensionIfUpdated(async () => {
+      if (!(await delivery.policy()).enabled) return;
+      const state = await loadState();
+      const { state: next, out } = flushRecoverable(state, Date.now());
+      await delivery.checkpoint(out, next);
+    });
+  } catch (error) {
+    console.warn("Development update postponed; local state retained. Manual Reload may be needed.", error);
+    return false;
+  }
 }
 async function applyDeliveryPolicy(before, after) {
   chrome.alarms.create(ALARM_NAME, {
     periodInMinutes: after.flushPeriodMilliseconds / 6e4
   });
   if (!after.enabled) {
-    await saveState(emptyState());
+    await finishKnownActivity();
   } else if (!before.enabled) {
-    await saveState(emptyState());
+    await finishKnownActivity();
     await reconcile();
   }
 }
@@ -1328,10 +1542,15 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   });
 });
 void serialized(async () => {
+  await tryResumeBrowserSession();
   const current = await delivery.policy();
   chrome.alarms.create(ALARM_NAME, {
     periodInMinutes: current.flushPeriodMilliseconds / 6e4
   });
-  if (!current.enabled) await saveState(emptyState());
+  if (!browserSessionReady) {
+    await delivery.deliveryCycle();
+    if (!await tryResumeBrowserSession()) return;
+  }
+  if (!(await delivery.policy()).enabled) await finishKnownActivity();
   else await reconcile();
 });

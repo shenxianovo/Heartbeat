@@ -139,6 +139,8 @@ public sealed class ExternalHostCollectorProtocolHandler : IExternalHostProtocol
                     await ReadRequest<PublishRequest>(
                         "heartbeat.collector/1", "facts.publish", "facts.rejected", activationId),
                     cancellationToken),
+                "recover" => HandleRecovery(activationId, await ReadRequest<RecoveryRequest>(
+                    "heartbeat.collector/1", "facts.recover", "facts.recoveryRejected", activationId)),
                 "gap" => await HandleGapAsync(
                     activationId,
                     await ReadRequest<GapRequest>(
@@ -572,6 +574,17 @@ public sealed class ExternalHostCollectorProtocolHandler : IExternalHostProtocol
             activationId,
             message.MessageId,
             new { results = acknowledgement.Results });
+    }
+
+    private ProtocolHttpResponse HandleRecovery(Guid activationId, ProtocolMessage<RecoveryRequest> message)
+    {
+        var request = message.Body;
+        if (!TryGetActiveLease(activationId, request.LeaseToken, out var session) ||
+            session.ExpiresAt <= _timeProvider.GetUtcNow())
+            return Rejected(409, "facts.recoveryRejected", activationId, message.MessageId,
+                Error("activation_stopping", "ExternalHost lease is not active."));
+        var recovered = _runtime.RecoverExternalHostFacts(activationId, request.StreamId, request.FactIds);
+        return ProtocolResponse(200, "facts.recovered", activationId, message.MessageId, recovered);
     }
 
     private async ValueTask<ProtocolHttpResponse> HandleGapAsync(
@@ -1018,6 +1031,11 @@ public sealed class ExternalHostCollectorProtocolHandler : IExternalHostProtocol
         string LeaseToken,
         Guid StreamId,
         StreamGapReport Gap);
+
+    public sealed record RecoveryRequest(
+        string LeaseToken,
+        Guid StreamId,
+        IReadOnlyList<Guid> FactIds);
 
     public sealed record DrainedRequest(
         string LeaseToken,

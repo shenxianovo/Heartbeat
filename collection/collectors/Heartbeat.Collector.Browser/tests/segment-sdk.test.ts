@@ -42,3 +42,26 @@ it('独立 Segment 互不干扰，轮转只替换该对象的检查点，旧检�
   expect(second.state).toBe(secondCheckpoint)
   expect(second.observe(at)[0]).toMatchObject({ id: secondCheckpoint.id, isFinal: false })
 })
+
+it('persists monotonic revisions across restart, equal-end edits, shortening and finalization', () => {
+  const segments = sdk()
+  const segment = segments.startSegment({ start, payload: { label: 'first' } })
+  const [first] = segment.observe(start + 30_000)
+  expect(first).toMatchObject({ kind: 'segment', revision: 1 })
+  const restored = segments.restore(JSON.parse(JSON.stringify(segment.state)))
+  expect(restored.observe(start + 30_000)[0]).toEqual(first)
+  restored.update({ label: 'changed' })
+  expect(restored.observe(start + 30_000)[0]).toMatchObject({ id: first.id, revision: 2, label: 'changed' })
+  expect(restored.observe(start + 20_000)[0]).toMatchObject({ id: first.id, revision: 3, endTime: new Date(start + 20_000).toISOString() })
+  expect(restored.end(start + 20_000)).toMatchObject({ id: first.id, revision: 4, isFinal: true })
+  expect(restored.end(start + 20_000)).toMatchObject({ revision: 4 })
+})
+
+it('does not advance a recovered legacy snapshot merely because attribution was persisted', () => {
+  const segments = sdk()
+  const last = { id: 'legacy', source: 'test', label: 'first', startTime: new Date(start).toISOString(), endTime: new Date(start + 30_000).toISOString(), isFinal: false,
+    collectorId: '6a8259d1-5f6a-4b83-b6ba-87017886319e' }
+  const restored = segments.restore({ label: 'first', id: 'legacy', startTime: start, revision: start + 30_000, lastSnapshot: last })
+  expect(restored.observe(start + 30_000)[0]).toEqual(last)
+  expect(restored.end(start + 30_000)).toMatchObject({ id: 'legacy', revision: start + 30_001, isFinal: true })
+})

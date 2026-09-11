@@ -1,8 +1,8 @@
 // Service worker：chrome 事件 → 折叠纯函数 → 队列 → 周期上报 loopback hub。
 //
-// MV3 SW 随时可能被杀：折叠状态存 chrome.storage.session（浏览器会话内跨 SW 重启存活，
-// 浏览器退出即清——进行中活动的快照已生长到最后一次 flush，行自然封口，损失 ≤ 一个上报周期）。
-// 待传队列存 chrome.storage.local（跨浏览器重启存活，Agent 未运行时不丢数据）。
+// Fold checkpoints and outbox snapshots share one durable journal; no window-close or revision
+// can commit independently of its delivery responsibility. Session state only distinguishes a
+// suspended worker from a complete browser restart.
 
 import {
   applyEvent,
@@ -12,14 +12,16 @@ import {
   type FoldDeps,
   type FoldEvent,
   type FoldState,
+  type SegmentSnapshot,
 } from './fold'
 import { activityKeyOf } from './normalize'
 import { createSegmentSdk } from './sdk/segments'
-import { createChromeBrowserDelivery } from './delivery-chrome'
+import { ChromeBrowserDeliveryStore, createChromeBrowserDelivery } from './delivery-chrome'
+import { snapshotRevision } from './protocol'
 import type { BrowserCollectionPolicy } from './delivery'
 import { isDevelopment, reloadDevelopmentExtensionIfUpdated } from './connection'
 
-const STATE_KEY = 'foldState'
+const SESSION_MARKER_KEY = 'browserObservationSessionStarted'
 const ALARM_NAME = 'heartbeat-flush'
 const DEVELOPMENT_ALARM = 'heartbeat-development-update'
 
@@ -28,7 +30,9 @@ const deps: FoldDeps = {
   activityKeyOf,
 }
 
-const delivery = createChromeBrowserDelivery()
+const store = new ChromeBrowserDeliveryStore()
+const delivery = createChromeBrowserDelivery(store)
+let browserSessionReady = false
 
 // ---- 串行化：storage 读改写不可交错（事件处理与 flush 共享折叠状态）。----
 
@@ -43,57 +47,97 @@ function serialized<T>(fn: () => Promise<T>): Promise<T> {
 // ---- 折叠状态（交付持久化由 BrowserDelivery 拥有）----
 
 async function loadState(): Promise<FoldState> {
-  const got = await chrome.storage.session.get(STATE_KEY)
-  const state = (got[STATE_KEY] as FoldState | undefined) ?? emptyState()
-  // Existing MV3 session state from the pre-Target release. Remove with task 05's cache gate.
-  for (const activity of Object.values(state.open)) {
-    const payload = activity as typeof activity & { identityKey?: string }
-    if (payload.activityKey === undefined && payload.identityKey !== undefined) {
-      payload.activityKey = payload.identityKey
-      delete payload.identityKey
-    }
-  }
-  return state
+  return (await store.loadDurable()).foldState ?? emptyState()
 }
 
-async function saveState(state: FoldState): Promise<void> {
-  await chrome.storage.session.set({ [STATE_KEY]: state })
+async function finishKnownActivity(knownState?: FoldState): Promise<void> {
+  const state = knownState ?? await loadState()
+  const open = { ...state.open }
+  const final: SegmentSnapshot[] = []
+  for (const [windowId, activity] of Object.entries(open)) {
+    if (activity.recoveryRequired) continue
+    const last = activity.lastSnapshot as SegmentSnapshot | undefined
+    if (last !== undefined) {
+      final.push(last.isFinal ? last : { ...last, isFinal: true, revision: snapshotRevision(last) + 1 })
+    } else if (activity.kind === 'segment') {
+      // We know the start observation, but cannot invent an observed end across a browser stop.
+      final.push(deps.segments.restore(activity).end(activity.startTime))
+    } else {
+      open[Number(windowId)] = { ...activity, recoveryRequired: true }
+      continue
+    }
+    delete open[Number(windowId)]
+  }
+  await delivery.checkpoint(final, { open })
+}
+
+async function resumeBrowserSession(): Promise<void> {
+  const session = await chrome.storage.session.get([SESSION_MARKER_KEY, 'foldState'])
+  const state = await loadState()
+  if (session[SESSION_MARKER_KEY] !== true && session.foldState === undefined) {
+    // A full browser restart cannot establish observations during the stopped interval.
+    await finishKnownActivity(state)
+  }
+  await chrome.storage.session.set({ [SESSION_MARKER_KEY]: true })
+  // The legacy fold remains in the immutable migration backup, never as a second live authority.
+  await chrome.storage.session.remove('foldState')
+  browserSessionReady = true
+}
+
+async function tryResumeBrowserSession(): Promise<boolean> {
+  if (browserSessionReady) return true
+  try { await resumeBrowserSession() }
+  catch (error) { console.warn('[heartbeat] Browser recovery checkpoint retained for retry', error) }
+  return browserSessionReady
+}
+
+function flushRecoverable(state: FoldState, at: number) {
+  const waiting = Object.fromEntries(Object.entries(state.open).filter(([, activity]) => activity.recoveryRequired))
+  const ready = Object.fromEntries(Object.entries(state.open).filter(([, activity]) => !activity.recoveryRequired))
+  const result = flush({ open: ready }, at, deps)
+  return { ...result, state: { open: { ...waiting, ...result.state.open } } }
 }
 
 // ---- 事件处理 ----
 
 async function handleEvent(ev: FoldEvent): Promise<void> {
-  if (!(await delivery.policy()).enabled) return
+  if (!browserSessionReady || !(await delivery.policy()).enabled) return
   const state = await loadState()
+  if (state.open[ev.windowId]?.recoveryRequired) return
   const { state: next, out } = applyEvent(state, ev, deps)
-  if (next !== state) await saveState(next)
-  await delivery.enqueue(out)
+  await delivery.checkpoint(out, next)
 }
 
 async function flushAndUpload(): Promise<void> {
   const before = await delivery.policy()
-  if (before.enabled) await persistActivity()
+  if (before.enabled && await tryResumeBrowserSession()) {
+    try { await persistActivity() }
+    catch (error) {
+      // The previous fold/outbox checkpoint still owns responsibility. Existing pending facts
+      // must be allowed to drain before the next cycle retries this observation.
+      console.warn('[heartbeat] Activity checkpoint retained for retry', error)
+    }
+  }
   const after = await delivery.deliveryCycle()
+  if (!await tryResumeBrowserSession()) return
   await applyDeliveryPolicy(before, after)
+  if (after.enabled) await reconcile()
 }
 
 async function persistActivity(): Promise<void> {
   const state = await loadState()
-  const { state: next, out } = flush(state, Date.now(), deps)
-  if (next !== state) await saveState(next)
-  await delivery.enqueue(out)
+  const { state: next, out } = flushRecoverable(state, Date.now())
+  await delivery.checkpoint(out, next)
 }
 
 async function reloadDevelopmentUpdate(): Promise<boolean> {
-  if (!isDevelopment()) return false
+  if (!browserSessionReady || !isDevelopment()) return false
   try {
     return await reloadDevelopmentExtensionIfUpdated(async () => {
       if (!(await delivery.policy()).enabled) return
       const state = await loadState()
-      const { state: next, out } = flush(state, Date.now(), deps)
-      // Normal enqueue may record a Gap after a failed write; a planned Reload must preserve the actual facts.
-      await delivery.checkpoint(out)
-      if (next !== state) await saveState(next)
+      const { state: next, out } = flushRecoverable(state, Date.now())
+      await delivery.checkpoint(out, next)
     })
   } catch (error) {
     console.warn('Development update postponed; local state retained. Manual Reload may be needed.', error)
@@ -110,10 +154,10 @@ async function applyDeliveryPolicy(
   })
   if (!after.enabled) {
     // 已知停用跨浏览器重启保留；fold state 必须同时封死，outbox 则继续保留。
-    await saveState(emptyState())
+    await finishKnownActivity()
   } else if (!before.enabled) {
     // 重新启用从当前 tab 新开活动，不把停用区间补进旧 Segment。
-    await saveState(emptyState())
+    await finishKnownActivity()
     await reconcile()
   }
 }
@@ -171,6 +215,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 // 每次 SW 唤醒都执行（幂等）：按持久 policy 恢复闹钟与 fold 状态，再对账。
 void serialized(async () => {
+  await tryResumeBrowserSession()
   if (isDevelopment()) {
     // Alarms wake suspended MV3 workers, including when collection itself is disabled.
     chrome.alarms.create(DEVELOPMENT_ALARM, { periodInMinutes: 0.5 })
@@ -180,7 +225,12 @@ void serialized(async () => {
   chrome.alarms.create(ALARM_NAME, {
     periodInMinutes: current.flushPeriodMilliseconds / 60_000,
   })
-  if (!current.enabled) await saveState(emptyState())
+  if (!browserSessionReady) {
+    // A full queue or temporary storage failure must not prevent installing the retry alarm.
+    await delivery.deliveryCycle()
+    if (!await tryResumeBrowserSession()) return
+  }
+  if (!(await delivery.policy()).enabled) await finishKnownActivity()
   else await reconcile()
   if (isDevelopment()) await flushAndUpload()
 })

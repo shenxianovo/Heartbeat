@@ -1,24 +1,26 @@
-import { emptyState, type FoldState, type SegmentSnapshot } from './fold'
-import { uuidv7 } from './ids'
-import { detectBrowserAppIdentity } from './app-identity'
-import { loadConfig } from './config'
-import { LoopbackBrowserHubAdapter } from './hub'
+// Historical loader from e6564fc, unchanged except import paths. Never edit to match current storage.
+import type { SegmentSnapshot } from '../../../src/fold'
+import { uuidv7 } from '../../../src/ids'
+import { detectBrowserAppIdentity } from '../../../src/app-identity'
+import { loadConfig } from '../../../src/config'
+import { LoopbackBrowserHubAdapter } from '../../../src/hub'
 import {
   createBrowserDelivery,
   defaultBrowserDeliverySession,
+  emptyBrowserDeliveryDurableState,
   type BrowserCollectionPolicy,
   type BrowserDelivery,
   type BrowserDeliveryDurableState,
   type BrowserDeliverySessionState,
   type BrowserDeliveryStore,
-} from './delivery'
-import { bindAttribution, readAttribution, sameSnapshot, snapshotRevision } from './protocol'
+} from '../../../src/delivery'
+import { bindAttribution, readAttribution, sameSnapshot, snapshotRevision } from '../../../src/protocol'
 import type {
   BrowserActivationAttempt,
   BrowserPendingGap,
   BrowserProtocolSession,
   BrowserPublishAttempt,
-} from './protocol'
+} from '../../../src/protocol'
 
 const ATTRIBUTION_KEY = 'browserObservation'
 const PREVIOUS_ATTRIBUTION_KEY = 'browserFactAttribution'
@@ -36,25 +38,11 @@ const PENDING_GAP_KEY = 'browserCollectorPendingGap'
 const DESIRED_ENABLED_KEY = 'browserCollectorDesiredEnabled'
 const DELIVERY_POLICY_KEY = 'browserCollectorDeliveryPolicy'
 const EXTERNAL_HOST_IDENTITY_KEY = 'browserCollectorExternalHostIdentity'
-const JOURNAL_KEY = 'browserObservationJournal'
-const BACKUP_KEY = 'browserObservationPreJournalBackup'
-const FOLD_KEY = 'foldState'
-const JOURNAL_VERSION = 5
-// The pre-journal loader has no version check. A null snapshot makes its actual decoder fail
-// before it can publish or overwrite data; see the fixed historical-loader regression fixture.
-const ROLLBACK_FENCE = { unsupportedBrowserObservationJournalVersion: null }
-const LEGACY_LOCAL_KEYS = [QUEUE_KEY, ATTRIBUTION_KEY, PREVIOUS_QUEUE_KEY, PREVIOUS_ATTRIBUTION_KEY,
-  PREVIOUS_DEAD_LETTER_KEY, PENDING_GAP_KEY, DEAD_LETTER_KEY, DELIVERY_POLICY_KEY]
-const LEGACY_SESSION_KEYS = [DESIRED_ENABLED_KEY, FLUSH_PERIOD_KEY, FOLD_KEY, PROTOCOL_PUBLISH_ATTEMPT_KEY]
-
 
 type PersistedSegmentSnapshot = Omit<SegmentSnapshot, 'isFinal' | 'activityKey'> & {
   activityKey?: string
   identityKey?: string
-  appHint?: unknown
   appName?: unknown
-  observerId?: unknown
-  target?: unknown
   isFinal?: boolean
 }
 
@@ -65,50 +53,50 @@ export class ChromeBrowserDeliveryStore implements BrowserDeliveryStore {
 
   async loadDurable(): Promise<BrowserDeliveryDurableState> {
     const [local, transient] = await Promise.all([
-      chrome.storage.local.get([JOURNAL_KEY, BACKUP_KEY, ...LEGACY_LOCAL_KEYS]),
-      chrome.storage.session.get(LEGACY_SESSION_KEYS),
+      chrome.storage.local.get([
+        QUEUE_KEY, ATTRIBUTION_KEY, PREVIOUS_QUEUE_KEY, PREVIOUS_ATTRIBUTION_KEY, PREVIOUS_DEAD_LETTER_KEY,
+        PENDING_GAP_KEY,
+        DEAD_LETTER_KEY,
+        DELIVERY_POLICY_KEY,
+      ]),
+      chrome.storage.session.get([DESIRED_ENABLED_KEY, FLUSH_PERIOD_KEY]),
     ])
-    const journal = local[JOURNAL_KEY]
-    if (journal !== undefined) {
-      if (!isRecord(journal) || journal.schemaVersion !== JOURNAL_VERSION || !isRecord(journal.state))
-        throw new Error('Unsupported Browser observation journal; preserve local storage')
-      // An obsolete writer must not silently add another authoritative queue after migration.
-      if (!isRollbackFence(local[PREVIOUS_QUEUE_KEY]) || !isRollbackFence(local[QUEUE_KEY]))
-        throw new Error('Conflicting cached revision or obsolete Browser writer; preserve both queues')
-      return journal.state as unknown as BrowserDeliveryDurableState
-    }
+    const defaults = emptyBrowserDeliveryDurableState()
     const queue = mergeQueuedSnapshots(local[PREVIOUS_QUEUE_KEY], local[QUEUE_KEY])
-    const deadLetters = [local[PREVIOUS_DEAD_LETTER_KEY], local[DEAD_LETTER_KEY]].flatMap(raw => {
-      if (raw === undefined) return []
-      if (!Array.isArray(raw)) throw new Error('Invalid Browser dead-letter storage; preserve original keys')
-      // Multiple snapshots with the same identity are diagnostic evidence, not a map to overwrite.
-      return raw.map(snapshot => normalizeSnapshot(snapshot as PersistedSegmentSnapshot))
-    })
-    const attempt = transient[PROTOCOL_PUBLISH_ATTEMPT_KEY] as BrowserPublishAttempt | undefined
-    const foldState = restoreFold(transient[FOLD_KEY], [...Object.values(queue),
-      ...(attempt?.snapshots ?? []).map(snapshot => normalizeSnapshot(snapshot)), ...deadLetters])
-    const state: BrowserDeliveryDurableState = {
-      queue, deadLetters, foldState,
-      attribution: readAttribution(local[ATTRIBUTION_KEY] ?? local[PREVIOUS_ATTRIBUTION_KEY]),
-      pendingGaps: normalizePendingGaps(local[PENDING_GAP_KEY]).value,
-      policy: normalizePolicy(local[DELIVERY_POLICY_KEY], transient[DESIRED_ENABLED_KEY], transient[FLUSH_PERIOD_KEY]),
+    const rawGaps = local[PENDING_GAP_KEY]
+    const policy = normalizePolicy(
+      local[DELIVERY_POLICY_KEY],
+      transient[DESIRED_ENABLED_KEY],
+      transient[FLUSH_PERIOD_KEY],
+    )
+    const pendingGaps = normalizePendingGaps(rawGaps)
+    if (pendingGaps.migrated) {
+      await chrome.storage.local.set({ [PENDING_GAP_KEY]: pendingGaps.value })
     }
-    // Backup, complete journal and rollback fence are published by one local storage mutation.
-    // If it fails, both old storage areas remain exactly as they were and retry reads the same IDs.
-    await this.writeJournal(state, local[BACKUP_KEY] === undefined ? { local, session: transient } : undefined)
+    const state: BrowserDeliveryDurableState = {
+      queue,
+      attribution: readAttribution(local[ATTRIBUTION_KEY] ?? local[PREVIOUS_ATTRIBUTION_KEY]),
+      pendingGaps: pendingGaps.value,
+      deadLetters: Object.values(normalizeQueuedSnapshots(Object.fromEntries(
+        [...(Array.isArray(local[PREVIOUS_DEAD_LETTER_KEY]) ? local[PREVIOUS_DEAD_LETTER_KEY] as PersistedSegmentSnapshot[] : []),
+          ...(Array.isArray(local[DEAD_LETTER_KEY]) ? local[DEAD_LETTER_KEY] as PersistedSegmentSnapshot[] : defaults.deadLetters)]
+          .map(fact => [fact.id, fact])))),
+      policy,
+    }
+    if ([PREVIOUS_QUEUE_KEY, PREVIOUS_ATTRIBUTION_KEY, PREVIOUS_DEAD_LETTER_KEY].some(key => local[key] !== undefined)) {
+      await this.saveDurable(state)
+      await chrome.storage.local.remove([PREVIOUS_QUEUE_KEY, PREVIOUS_ATTRIBUTION_KEY, PREVIOUS_DEAD_LETTER_KEY])
+    }
     return state
   }
 
   async saveDurable(state: BrowserDeliveryDurableState): Promise<void> {
-    await this.writeJournal(state)
-  }
-
-  private async writeJournal(state: BrowserDeliveryDurableState, backup?: unknown): Promise<void> {
     await chrome.storage.local.set({
-      [JOURNAL_KEY]: { schemaVersion: JOURNAL_VERSION, state },
-      [QUEUE_KEY]: ROLLBACK_FENCE,
-      [PREVIOUS_QUEUE_KEY]: ROLLBACK_FENCE,
-      ...(backup === undefined ? {} : { [BACKUP_KEY]: backup }),
+      [QUEUE_KEY]: state.queue,
+      ...(state.attribution === undefined ? {} : { [ATTRIBUTION_KEY]: state.attribution }),
+      [PENDING_GAP_KEY]: state.pendingGaps,
+      [DEAD_LETTER_KEY]: state.deadLetters,
+      [DELIVERY_POLICY_KEY]: state.policy,
     })
   }
 
@@ -116,8 +104,6 @@ export class ChromeBrowserDeliveryStore implements BrowserDeliveryStore {
     if (!this.sessionStarted) {
       // A Service Worker owns one run. Unacknowledged Facts/Gaps remain in durable storage,
       // but the next worker negotiates a fresh Activation for the same External Host identity.
-      // Capture the old publish attempt before its revision high-water evidence is removed.
-      await this.loadDurable()
       await chrome.storage.session.remove([
         PROTOCOL_SESSION_KEY, PROTOCOL_ACTIVATION_ATTEMPT_KEY, PROTOCOL_PUBLISH_ATTEMPT_KEY,
       ])
@@ -179,9 +165,9 @@ function normalizePendingGaps(raw: unknown): { value: BrowserPendingGap[]; migra
   return { value, migrated }
 }
 
-export function createChromeBrowserDelivery(store = new ChromeBrowserDeliveryStore()): BrowserDelivery {
+export function createChromeBrowserDelivery(): BrowserDelivery {
   return createBrowserDelivery({
-    store,
+    store: new ChromeBrowserDeliveryStore(),
     hub: new LoopbackBrowserHubAdapter(),
     loadAppIdentityKey: async () => {
       const nav = navigator as Navigator & {
@@ -204,20 +190,13 @@ export function createChromeBrowserDelivery(store = new ChromeBrowserDeliverySto
 export async function loadExternalHostIdentity(): Promise<string> {
   const stored = await chrome.storage.local.get(EXTERNAL_HOST_IDENTITY_KEY)
   const existing = stored[EXTERNAL_HOST_IDENTITY_KEY]
-  if (existing !== undefined) {
-    if (typeof existing !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(existing) ||
-        existing === '00000000-0000-0000-0000-000000000000')
-      throw new Error('Invalid persisted Browser installation identity; preserve storage for recovery')
-    return existing
-  }
+  if (typeof existing === 'string' && existing.length > 0) return existing
   const created = crypto.randomUUID()
   await chrome.storage.local.set({ [EXTERNAL_HOST_IDENTITY_KEY]: created })
   return created
 }
 
 function mergeQueuedSnapshots(previous: unknown, current: unknown): Record<string, SegmentSnapshot> {
-  if ([previous, current].some(value => value !== undefined && !isRecord(value)))
-    throw new Error('Unsupported Browser queue storage; preserve original keys')
   const merged = normalizeQueuedSnapshots(isRecord(previous) ? previous as Record<string, PersistedSegmentSnapshot> : {})
   const incoming = normalizeQueuedSnapshots(isRecord(current) ? current as Record<string, PersistedSegmentSnapshot> : {})
   for (const [id, fact] of Object.entries(incoming)) {
@@ -235,36 +214,19 @@ function mergeQueuedSnapshots(previous: unknown, current: unknown): Record<strin
 function normalizeQueuedSnapshots(
   stored: Record<string, PersistedSegmentSnapshot>,
 ): Record<string, SegmentSnapshot> {
-  return Object.fromEntries(Object.entries(stored).map(([id, snapshot]) => [id, normalizeSnapshot(snapshot)]))
-}
-
-function normalizeSnapshot(snapshot: PersistedSegmentSnapshot): SegmentSnapshot {
-  if (!isRecord(snapshot) || typeof snapshot.id !== 'string')
-    throw new Error('Unsupported Browser snapshot storage; preserve original keys')
-  // Remove only the retired envelope vocabulary. Unknown result properties remain intact.
-  const { identityKey, appHint: _appHint, appName: _appName, observerId: _observerId, target: _target, ...rest } = snapshot
-  return { ...rest, ...readAttribution(snapshot),
-    activityKey: snapshot.activityKey ?? identityKey!, isFinal: snapshot.isFinal === true } as SegmentSnapshot
-}
-
-function restoreFold(raw: unknown, snapshots: SegmentSnapshot[]): FoldState {
-  if (raw === undefined) return emptyState()
-  if (!isRecord(raw) || !isRecord(raw.open)) throw new Error('Invalid Browser fold storage; preserve original keys')
-  const state = raw as unknown as FoldState
-  const open: FoldState['open'] = {}
-  for (const [windowId, activity] of Object.entries(state.open)) {
-    const { identityKey, ...rest } = activity as typeof activity & { identityKey?: string }
-    const recovered = snapshots.filter(snapshot => snapshot.id === activity.id)
-      .sort((left, right) => snapshotRevision(right) - snapshotRevision(left))[0]
-    open[Number(windowId)] = { ...rest, activityKey: activity.activityKey ?? identityKey!,
-      ...(activity.revision !== undefined ? {} : recovered === undefined ? {
-        recoveryRequired: true as const,
-      } : {
-        revision: snapshotRevision(recovered), lastSnapshot: recovered,
-      }),
-    }
-  }
-  return { open }
+  return Object.fromEntries(
+    Object.entries(stored).map(([id, snapshot]) => [id, {
+      id: snapshot.id,
+      source: snapshot.source,
+      activityKey: snapshot.activityKey ?? snapshot.identityKey!,
+      ...readAttribution(snapshot),
+      title: snapshot.title,
+      startTime: snapshot.startTime,
+      endTime: snapshot.endTime,
+      isFinal: snapshot.isFinal === true,
+      attributes: snapshot.attributes,
+    }]),
+  )
 }
 
 function normalizePolicy(
@@ -306,8 +268,4 @@ function positivePort(value: unknown): number | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function isRollbackFence(value: unknown): boolean {
-  return isRecord(value) && Object.keys(value).length === 1 && value.unsupportedBrowserObservationJournalVersion === null
 }

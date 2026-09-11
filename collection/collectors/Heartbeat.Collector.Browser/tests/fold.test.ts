@@ -214,3 +214,17 @@ describe('flush（ADR-018 稳定 Id 快照）', () => {
     expect(f2.out[0].isFinal).toBe(false)
   })
 })
+
+it('keeps unknown saved Result members through actual fold continuation and updates its known readings', () => {
+  const deps = makeDeps()
+  const started = applyEvent(emptyState(), activated(7, 'https://example.com/docs', T0), deps)
+  const first = flush(started.state, T0 + 30_000, deps)
+  const saved = { ...first.out[0], attributes: { ...first.out[0].attributes, futureAttribute: [1, 'kept'] },
+    result: { ...browserPayloadOf(first.state.open[7]), future: { retained: true } } }
+  const state = { open: { 7: { ...first.state.open[7], lastSnapshot: saved } } }
+  const updated = applyEvent(state, activated(7, 'https://example.com/docs', T0 + 30_000, 'New title'), deps)
+  const [next] = flush(updated.state, T0 + 30_000, deps).out
+  expect(next.result).toMatchObject({ title: 'New title', future: { retained: true } })
+  expect(next.attributes).toMatchObject({ futureAttribute: [1, 'kept'] })
+  expect(next.revision).toBe(2)
+})

@@ -103,7 +103,7 @@ describe('ChromeBrowserDeliveryStore adapter contract', () => {
   })
 
   it('recovers the existing Chrome layout without leaking legacy fields', async () => {
-    const { localArea } = installChrome({
+    installChrome({
       pendingSegments: { [legacySnapshot.id]: legacySnapshot },
       browserCollectorPendingGap: {
         start: legacySnapshot.startTime,
@@ -126,7 +126,7 @@ describe('ChromeBrowserDeliveryStore adapter contract', () => {
     expect(recovered).toMatchObject({ isFinal: false })
     expect(durable.pendingGaps).toHaveLength(1)
     expect(durable.pendingGaps[0].gapId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7/)
-    expect((localArea.values.browserCollectorPendingGap as Array<{ gapId: string }>)[0].gapId)
+    expect((await new ChromeBrowserDeliveryStore().loadDurable()).pendingGaps[0].gapId)
       .toBe(durable.pendingGaps[0].gapId)
     expect(durable.policy).toEqual({ enabled: false, flushPeriodMilliseconds: 60_000 })
     await expect(store.loadSession()).resolves.toMatchObject({
@@ -179,7 +179,7 @@ it('merges pre-object and native queues by revision and retains both on conflict
   const restored = await new ChromeBrowserDeliveryStore().loadDurable()
   expect(restored.queue[old.id]?.endTime).toBe('2026-08-25T08:02:00.000Z')
   expect(restored.pendingGaps).toEqual([])
-  expect(localArea.values.pendingSegments).toBeUndefined()
+  expect(localArea.values.pendingSegments).toEqual({ unsupportedBrowserObservationJournalVersion: null })
   localArea.values.pendingSegments = { [old.id]: { ...old, endTime: restored.queue[old.id]!.endTime, title: 'conflicting content' } }
   const before = structuredClone(localArea.values)
   await expect(new ChromeBrowserDeliveryStore().loadDurable()).rejects.toThrow('Conflicting cached revision')
@@ -189,3 +189,11 @@ it('merges pre-object and native queues by revision and retains both on conflict
   await expect(new ChromeBrowserDeliveryStore().loadDurable()).rejects.toThrow('disk unavailable')
   expect(localArea.values.pendingSegments).toEqual({ [old.id]: old })
 })
+
+it.each(['', 'not-a-uuid', '00000000-0000-0000-0000-000000000000'])(
+  'preserves and rejects an invalid stored installation Observer (%s)', async value => {
+    const { localArea } = installChrome({ browserCollectorExternalHostIdentity: value })
+    await expect(loadExternalHostIdentity()).rejects.toThrow('identity')
+    expect(localArea.values.browserCollectorExternalHostIdentity).toBe(value)
+  },
+)

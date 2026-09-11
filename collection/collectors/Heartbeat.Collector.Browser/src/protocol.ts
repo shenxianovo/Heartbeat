@@ -141,31 +141,31 @@ export function isUuidV7(value: string): boolean {
 }
 
 export function snapshotRevision(snapshot: SegmentSnapshot): number {
-  const revision = Date.parse(snapshot.endTime)
+  const revision = snapshot.revision ?? Date.parse(snapshot.endTime)
   return Number.isSafeInteger(revision) && revision > 0 ? revision : 1
 }
 
 export function toProtocolFact(snapshot: SegmentSnapshot, streamId: string) {
-  if (!isUuidV7(snapshot.id)) return null
+  if (!isUuidV7(snapshot.id) || (snapshot.kind !== undefined &&
+      (!Number.isSafeInteger(snapshot.revision) || snapshot.revision! <= 0))) return null
+  const { id: _id, source: _source, startTime: _start, endTime: _end, isFinal: _final,
+    kind: _kind, revision: _revision, collectorId: _collector, foi: _foi, relations: _relations,
+    streamId: _stream, observedAt: _observed, aspect: _aspect, result, ...flatResult } = snapshot
   return {
-    streamId,
+    ...(snapshot.kind === undefined ? { streamId: snapshot.streamId ?? streamId } : { kind: snapshot.kind, source: snapshot.source }),
     factId: snapshot.id,
     revision: snapshotRevision(snapshot),
-    aspect: 'selected-page',
+    aspect: snapshot.aspect === undefined ? 'selected-page' : snapshot.aspect,
     collectorId: snapshot.collectorId,
     foi: snapshot.foi,
     relations: snapshot.relations,
-    observedAt: null,
+    observedAt: snapshot.observedAt ?? null,
     time: {
       start: snapshot.startTime,
       end: snapshot.endTime,
       isFinal: snapshot.isFinal,
     },
-    payload: {
-      activityKey: snapshot.activityKey,
-      title: snapshot.title,
-      attributes: snapshot.attributes,
-    },
+    payload: result ?? flatResult,
   }
 }
 
@@ -203,7 +203,7 @@ export async function openBrowserProtocolSession(
         ...await browserPackageReference(),
         protocolMajors: [1],
         supportedCapabilities: {
-          'facts.observation': [1],
+          'facts.observation': [2],
           'facts.aspect': [1],
           'facts.segment': [1],
           'diagnostics.stream-gap': [1],
@@ -222,7 +222,7 @@ export async function openBrowserProtocolSession(
       attempt.helloMessageId,
     ) || !isUuidV7(acceptedMessage.body.activationId) ||
       acceptedMessage.body.selectedProtocolMajor !== 1 ||
-      acceptedMessage.body.selectedCapabilities?.['facts.observation'] !== 1 ||
+      acceptedMessage.body.selectedCapabilities?.['facts.observation'] !== 2 ||
       acceptedMessage.body.selectedCapabilities?.['facts.aspect'] !== 1 ||
       acceptedMessage.body.selectedCapabilities?.['facts.segment'] !== 1 ||
       acceptedMessage.body.selectedCapabilities?.['diagnostics.stream-gap'] !== 1)
@@ -472,6 +472,8 @@ export async function uploadWithBrowserProtocol(
   pendingGap?: BrowserPendingGap,
   persistGapAttempt?: (gap: BrowserPendingGap) => Promise<void>,
   applyAttribution?: (attribution: BrowserAttribution) => Promise<void>,
+  recoveryFactIds?: string[],
+  applyRecoveredFacts?: (snapshots: SegmentSnapshot[]) => Promise<void>,
 ): Promise<ProtocolUploadResult> {
   if (!appIdentityKey || !externalHostIdentity) return { kind: 'unavailable' }
   if (snapshots.some((snapshot) => !isUuidV7(snapshot.id))) return { kind: 'unavailable' }
@@ -497,6 +499,12 @@ export async function uploadWithBrowserProtocol(
   if (session === null) return { kind: 'unavailable', activationAttempt }
   if (session.attribution === undefined) return { kind: 'unavailable' }
   await applyAttribution?.(session.attribution)
+  if (recoveryFactIds?.length && applyRecoveredFacts) {
+    // Recovery is independent of unrelated new observations; missing/offline evidence retains
+    // the old fold while the normal outbox may continue delivering other windows.
+    const recovered = await recoverBrowserFacts(session, recoveryFactIds)
+    if (recovered !== null) await applyRecoveredFacts(recovered)
+  }
   let gapAcknowledged = false
   if (pendingGap !== undefined) {
     const gapResult = await reportBrowserGap(session, pendingGap, persistGapAttempt)
@@ -694,10 +702,42 @@ export function bindAttribution(snapshot: SegmentSnapshot, attribution?: Browser
 }
 
 export function sameSnapshot(left: SegmentSnapshot, right: SegmentSnapshot): boolean {
-  return left.id === right.id && left.startTime === right.startTime && left.endTime === right.endTime &&
-    left.isFinal === right.isFinal && left.activityKey === right.activityKey && left.title === right.title &&
-    left.collectorId === right.collectorId && JSON.stringify(left.foi) === JSON.stringify(right.foi) &&
-    JSON.stringify(left.relations) === JSON.stringify(right.relations) &&
-    left.attributes.url === right.attributes.url && left.attributes.domain === right.attributes.domain &&
-    left.attributes.site === right.attributes.site && left.attributes.windowId === right.attributes.windowId
+  return canonicalJson(left) === canonicalJson(right)
+}
+
+/** Object member order is immaterial; every saved result and envelope member participates in ACK. */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
+    ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item)
+}
+
+/** Read exact legacy delivery identities under this Activation's writer lease. Never ACKs. */
+export async function recoverBrowserFacts(session: BrowserProtocolSession, factIds: string[]): Promise<SegmentSnapshot[] | null> {
+  const requested = factIds.slice(0, session.limits.maxFactsPerBatch)
+  const messageId = uuidv7()
+  try {
+    const response = await protocolFetch(session.port, `/${session.activationId}/recover`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(message('heartbeat.collector/1', 'facts.recover', messageId, session.activationId,
+        { leaseToken: session.leaseToken, streamId: session.streamId, factIds: requested })),
+    })
+    if (!response.ok) return null
+    const reply = await response.json() as ProtocolMessage<{ facts: (NonNullable<ReturnType<typeof toProtocolFact>> & { kind?: string | null; streamId: string })[]; missing: string[] }>
+    if (!isCorrelatedResponse(reply, 'heartbeat.collector/1', 'facts.recovered', session.activationId, messageId) ||
+        !Array.isArray(reply.body.facts) || !Array.isArray(reply.body.missing)) return null
+    const received = [...reply.body.facts.map(fact => fact?.factId), ...reply.body.missing]
+    if (received.length !== requested.length || new Set(received).size !== requested.length ||
+        received.some(id => !requested.includes(id!))) return null
+    const snapshots: SegmentSnapshot[] = []
+    for (const fact of reply.body.facts) {
+      if (!fact || fact.kind != null || fact.streamId !== session.streamId || !Number.isSafeInteger(fact.revision) || fact.revision <= 0 ||
+          !fact.time || !Number.isFinite(Date.parse(fact.time.start)) || !Number.isFinite(Date.parse(fact.time.end)) ||
+          typeof fact.time.isFinal !== 'boolean' || !fact.payload || typeof fact.payload.activityKey !== 'string' ||
+          typeof fact.payload.title !== 'string' || !fact.payload.attributes || !Number.isInteger(fact.payload.attributes.windowId)) return null
+      snapshots.push({ ...fact.payload, result: fact.payload, id: fact.factId, source: 'browser', streamId: fact.streamId,
+        revision: fact.revision, startTime: fact.time.start, endTime: fact.time.end, isFinal: fact.time.isFinal,
+        observedAt: fact.observedAt, aspect: fact.aspect, ...readAttribution(fact) })
+    }
+    return snapshots
+  } catch { return null }
 }

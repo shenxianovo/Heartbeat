@@ -11,12 +11,16 @@ var dataDirectory = args[1];
 var profileBinding = args.Length > 2 ? ExternalHostProfileBinding.Read(args[2]) : null;
 var installations = new CollectorPackageInstallations(Path.Combine(dataDirectory, "packages"));
 installations.Install(package.PackageDirectory);
-var subject = new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine);
+var subjectPath = Path.Combine(dataDirectory, "subject-id.txt");
+Directory.CreateDirectory(dataDirectory);
+var subjectId = File.Exists(subjectPath) ? Guid.Parse(File.ReadAllText(subjectPath)) : Guid.CreateVersion7();
+File.WriteAllText(subjectPath, subjectId.ToString("D"));
+var subject = new SubjectReference(subjectId, SubjectKind.Machine);
 var sink = new SegmentIngestService(new SystemClock());
 var runtime = OpenRuntime();
 var blueprint = package.Manifest.DefaultInstance
                 ?? throw new InvalidOperationException("Package must declare defaultInstance.");
-var instance = runtime.CreateInstance(package, subject,
+var instance = runtime.ListInstances().SingleOrDefault() ?? runtime.CreateInstance(package, subject,
     new CollectorInstanceSpec(1, blueprint.ConfigVersion, blueprint.Config.Clone()),
     CollectorRuntime.DefaultInstanceKey);
 var handler = OpenHandler();
@@ -26,8 +30,8 @@ builder.WebHost.UseUrls($"http://127.0.0.1:{profileBinding?.Port ?? 0}");
 await using var app = builder.Build();
 app.MapGet("/test/status", () =>
 {
-    var facts = sink.ReadBatch();
-    sink.Confirm(facts);
+    var facts = runtime.ReadPendingFacts();
+    runtime.ConfirmUploadedFacts(facts);
     return Results.Json(new
     {
         instances = runtime.ListInstances().Count,
@@ -35,6 +39,7 @@ app.MapGet("/test/status", () =>
         facts
     });
 });
+app.MapGet("/test/pending", () => Results.Json(new { instanceId = instance.CollectorInstanceId, facts = runtime.ReadPendingFacts() }));
 app.MapPost("/test/restart", async () =>
 {
     await handler.DisposeAsync();
