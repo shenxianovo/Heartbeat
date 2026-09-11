@@ -11,7 +11,7 @@ Analytics 原子接收携带 Collector、FOI、Relations 与 Aspect 的 Fact 快
 _Avoid_: 从标题或时间猜测事实身份、让活动或输入绕开统一的摄入规则
 
 **Fact Revision（事实修订）**:
-同一 Owner、Stream、FactId 的完整快照序列；同 Revision 相同内容幂等、不同内容冲突，低 Revision
+同一 Fact 的完整快照序列，其 Observer、FOI、Kind、Aspect 固定；同 Revision 相同内容幂等、不同内容冲突，低 Revision
 不覆盖高 Revision。Segment 合法纠正可以缩短结束时间；更高 Revision 替换内容，Segment 起点与 Event 发生时间保持稳定。
 修订表达对同一事实内容的更新，当前领域不包含采集器撤回整条事实的能力。
 _Avoid_: 用 EndTime 取 max 代替 Revision、用数据到达顺序解释事实演进

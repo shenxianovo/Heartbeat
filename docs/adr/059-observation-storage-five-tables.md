@@ -29,3 +29,8 @@ Collector 解释原始输入，存储保管 Fact，Analytics 按 Aspect 契约�
 2026-09-11 端到端收敛：原生协议直接传 Collector/FOI/Relations；ApplicationContexts、PersonAssociations
 及旧反推触发器退役，本人关联直接维护 Relations，查询与 Dashboard 使用 Object UUID。
 旧 HTTP/缓存只在边界转换，Runtime 退休无生产消费者的旧投影模式。详见[收敛 PRD](../../.scratch/observation-convergence/PRD.md)。
+
+2026-09-11 后续审查：上述字段与查询贯通尚未解除 FactStore 和持久化模型对旧 Stream/Subject
+的强制依赖，旧输入解释也仍在写入核心。用户明确本轮完成标准为 Observations 新模型在存储、
+Runtime 及所有相关代码中完整落地，包括生产、保管、交付和消费路径；新增独立服务端入口仅是
+中间步骤。沿用既有历史保全及生产演练范围，当前尚未完成。范围见[模型基线](../architecture/observations-model.md#本轮范围)。

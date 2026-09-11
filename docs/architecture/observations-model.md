@@ -1,6 +1,6 @@
 # Observations 与 Facts：当前模型基线
 
-状态：2026-09-11，用户重新确认核心模型与五表存储目标；服务端存储及追加迁移已实现，业务库未迁移。DataSource 暂不纳入。
+状态：2026-09-11，用户重新确认核心模型与五表存储目标；已有五表实现，但新事实仍依赖旧交付模型，端到端解耦尚未完成。业务库未迁移。DataSource 暂不纳入。
 本文件汇总已确认的基础框架；术语见 [Shared Kernel](../../shared/CONTEXT.md)，
 当前决策见 [ADR-059](../adr/059-observation-storage-five-tables.md)，
 字段见[最小存储方案](observation-storage-minimal.md)。ADR-056 保留此前决策及实施背景。
@@ -36,6 +36,14 @@ App 是跨设备产品；设备信息在有依据时通过明确关系表达，�
 只有账号观测时，保存账号 Fact；没有设备/App 运行证据，就不建立运行关系。
 账号属于某服务不证明其运行设备，Collector 的宿主也不自动成为被观测设备。
 
+用户确认同一 Fact 的 Observer、FOI、Kind、Aspect 在生命周期内固定；实际改变其中任一项时
+产生新的 Fact Id。正常修订可以更新 Result、Segment 的结束时间及有依据的关系，
+但保持 Segment 起点和 Event 发生时刻。App 产品目录身份解析与维护沿用既有独立规则，
+不视为采集器更换实际观测对象。
+
+用户确认保留 Revision，表示同一 Fact 的快照版本。Segment 持续增长即会产生新版本，
+低版本重放不能覆盖高版本，旧快照的 ACK 不能确认仍待交付的新快照；未变化的 Event 可保持版本 1。
+
 ```mermaid
 flowchart LR
     O[Collector / Observer] -->|产生| F[Fact]
@@ -56,12 +64,23 @@ flowchart LR
 
 目标核心表为 Collectors、Objects、Facts、Relations、RelationMembers。
 DataSource 和计算口径暂不展开；Measurement 的具体数值业务约束待真实需求明确。
-当前代码的 Segment/Event 已从第一方 Collector、SDK、Runtime、HTTP 贯通到五表与 Dashboard：
-原生输入直接携带 Collector/FOI/Relations，查询按 Object UUID 和准确关系运行。
-旧缓存和 HTTP 在入口转换；应用上下文实体与本人关联旧表已由对象/关系替代。
+当前代码的 Segment/Event 已从第一方 Collector、SDK、Runtime、HTTP 传递 Collector/FOI/Relations，
+查询按 Object UUID 和准确关系运行；应用上下文实体与本人关联旧表已由对象/关系替代。
+但 FactStore 仍强制要求 Stream/Subject，按旧复合键识别事实，并在写入核心解释旧输入。
+因此字段贯通不代表 Observations 已成为独立的写入契约。
+
+用户确认：本轮以 Observations 新模型在存储、Runtime 及所有相关代码中完整落地为完成标准。
+范围覆盖第一方 Collector、SDK、协议、缓存、HTTP、持久化、查询、分析、Dashboard 与相关测试；
+只新增服务端入口或完成部分层次不算解决根因。旧数据与旧缓存按既有保全规则转换，不能成为
+新事实主路径对旧模型的持续依赖。
+
+用户明确采集器填错 FOI 不属于业务场景，本轮不据此设计更换观测对象的纠错机制。
+这不改变已有 App 产品目录身份解析与纠错规则。其余事实修订边界不由该回答隐含扩展。
+
 业务库尚未迁移，暂停的完整副本资源/恢复演练未恢复。
 此前方案保留在[历史讨论](collector-observation-model-proposal.md)、ADR-055/056 及
 [上一轮切换记录](observation-target-cutover.md)；与五表目标冲突的选择以 ADR-059 为准。
 
 显式 Aspect 已从第一方 Collector 贯通到存储、分析及 Dashboard；具体契约、旧缓存升级与协议切换见
 [Fact 的观测语义边界](observation-semantics.md)。
+本轮已核实的实现差异与编码验收见[实施交接](observations-implementation-handoff.md)。

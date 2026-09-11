@@ -33,7 +33,7 @@
 | AppIdentity | 平台或系统可直接观测到的应用身份，通过全局唯一 `Key` 显式映射到一个 App，映射是所有 Owner 共享的产品事实：Windows 为 `win:<小写进程名、不含 .exe>`，macOS 为 `mac:<小写 bundle-id>`（缺失时退回小写可执行文件身份），跨平台合成状态使用 `sys:<name>`。未知身份不按名字猜测合并，先建立一对一 provisional App；归并是事务化服务端领域操作，不允许靠直接改单列绕过相关知识与图标处理。 |
 | AppUsage | 一段某个 App 处于前台的时间记录（StartTime → EndTime）。system 采集器忠实上报观测到的 AppIdentity，包括 `win:explorer`（桌面）、`win:lockapp`（锁屏）与合成身份 `sys:away`；ActivitySegment 保存 AppIdentityId，Analytics 经 AppIdentity → App 聚合统计。存储上由 Fact 的 `desktop-activity` Aspect 形成 ActivitySegment 查询投影；`AppUsageItem` 上传 DTO 已随 ADR-020 退役，本词仅指前台活动这一语义，不再对应独立数据形状。 |
 | ActivitySegment | 描述某个被观测活动的 Segment，携带 Source、活动身份及适用的 App 关联；它是 Segment 的一种活动语义，不能代指所有区间事实。Report 按 `desktop-activity` 选择前台轨，其他活动 Aspect 可进入 Replay；Source 不决定分析含义。 |
-| Fact | Collector 对一个 FOI 作出的时间事实，包含 Aspect、Result、Time，属于 Segment、Event 或 Measurement。配置、命令、Collector Desired State、Package 和叙事知识不是 Fact；当前不提供撤回。_Avoid_: 因同一 FOI 而合并独立事实。 |
+| Fact | Collector 对一个 FOI 作出的时间事实，包含 Aspect、Result、Time，属于 Segment、Event 或 Measurement；同一事实的 Observer、FOI、Kind、Aspect 固定，实际改变时产生新事实。配置、命令、Collector Desired State、Package 和叙事知识不是 Fact；当前不提供撤回。_Avoid_: 因同一 FOI 而合并独立事实。 |
 | Segment | 带稳定身份与起止时间的区间事实；合法修订保持身份不变，可以延长区间，也可以纠正结束时间。ActivitySegment 是其中具有活动查询语义的事实。 |
 | Event | 发生在一个时刻、没有持续时长的离散事实，InputEvent 是其中的键盘或鼠标事件。_Avoid_: 把 Event 等同于 InputEvent、用零长度 Segment 代替所有事件。 |
 | Measurement | 对数值状态或一段时间窗内数值总体的观测，适用于心率、步数与分布等时间序列。Gauge、Sum、Histogram 等成员拥有不同的时间窗、累计、重置与缺失语义，不能退化成统一的“时间戳 + 数字”，也不用 Segment 或 Event 的身份规则强行解释。_Avoid_: Sample（暗示瞬时标量）、Metric Point（基础设施术语，不作产品领域名）。 |
