@@ -30,7 +30,6 @@ public sealed class ObjectRelation
     public JsonDocument Evidence { get; set; } = null!;
     // Derived from Evidence, so indexing and real foreign keys do not create a second authority.
     public Guid? FactId { get; set; }
-    public long? AssociationId { get; set; }
     public List<RelationMember> Members { get; set; } = [];
 }
 

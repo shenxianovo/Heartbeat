@@ -37,12 +37,12 @@ public class SegmentIngestServiceTests
         var ingest = new SegmentIngestService(new FakeClock());
         IUploadSource<ActivitySegmentItem> source = ingest;
         var original = Segment();
-        ingest.UpsertDurable(original, 1);
+        ingest.Push([original]);
         var batch = source.ReadBatch();
         Assert.Equal(original.Id, Assert.Single(source.ReadBatch()).Id);
         var corrected = Segment(end: original.EndTime.AddSeconds(-10));
         corrected.Id = original.Id;
-        ingest.UpsertDurable(corrected, 2);
+        ingest.Push([corrected]);
         source.Confirm(batch);
         Assert.Same(corrected, Assert.Single(source.ReadBatch()));
         source.Confirm([corrected]);

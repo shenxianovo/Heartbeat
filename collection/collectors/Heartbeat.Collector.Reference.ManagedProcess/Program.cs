@@ -25,7 +25,9 @@ if (RawReferenceProtocolProbe.Handles(behavior))
 
 var capabilities = new Dictionary<string, IReadOnlyList<int>>(StringComparer.Ordinal)
 {
-    ["facts.segment"] = [1],
+    ["facts.observation"] = [1],
+                ["facts.aspect"] = [1],
+                ["facts.segment"] = [1],
     ["auth.interactive"] = [1],
     ["secrets.instance"] = [1],
     ["diagnostics.stream-gap"] = [1]
@@ -130,7 +132,8 @@ internal sealed class ReferenceFactCollector(string? behavior, TextWriter rawOut
             }),
             behavior == "observation_target" ? activation.Initialization.CollectorInstanceId : null,
             behavior == "observation_target"
-                ? new Heartbeat.Core.DTOs.Facts.FactTarget("device", "0198d5df-5df3-70a1-937d-68a7d64623e2") : null), cancellationToken);
+                ? new Heartbeat.Core.DTOs.Facts.ObservationObjectReference("machine", "heartbeat.device", "0198d5df-5df3-70a1-937d-68a7d64623e2") : null,
+            Relations: behavior == "observation_target" ? [] : null), cancellationToken);
     }
 
     public async ValueTask StopAsync(
@@ -189,6 +192,8 @@ internal static class RawReferenceProtocolProbe
             ? new Dictionary<string, object> { ["facts.segment"] = 1 }
             : new Dictionary<string, int[]>
             {
+                ["facts.observation"] = [1],
+                ["facts.aspect"] = [1],
                 ["facts.segment"] = [1],
                 ["diagnostics.stream-gap"] = [1]
             };

@@ -17,12 +17,10 @@ namespace Heartbeat.Server.Data
         public DbSet<FactStream> FactStreams => Set<FactStream>();
         public DbSet<FactGap> FactGaps => Set<FactGap>();
         public DbSet<Person> Persons => Set<Person>();
-        public DbSet<PersonAssociation> PersonAssociations => Set<PersonAssociation>();
         public DbSet<User> Users => Set<User>();
         public DbSet<Device> Devices => Set<Device>();
         public DbSet<ServiceAccount> ServiceAccounts => Set<ServiceAccount>();
         public DbSet<ServiceProduct> ServiceProducts => Set<ServiceProduct>();
-        public DbSet<ApplicationContextRecord> ApplicationContexts => Set<ApplicationContextRecord>();
         public DbSet<App> Apps => Set<App>();
         public DbSet<AppIdentity> AppIdentities => Set<AppIdentity>();
         public DbSet<AppIcon> AppIcons => Set<AppIcon>();
@@ -126,23 +124,7 @@ namespace Heartbeat.Server.Data
                 entity.HasIndex(e => e.Reference).IsUnique();
                 entity.HasOne<User>().WithMany().HasForeignKey(e => e.OwnerId).OnDelete(DeleteBehavior.Restrict);
             });
-            modelBuilder.Entity<PersonAssociation>(entity =>
-            {
-                entity.ToTable("PersonAssociations", table =>
-                {
-                    table.HasCheckConstraint("CK_PersonAssociations_Target", "(\"DeviceId\" IS NULL) <> (\"AccountId\" IS NULL)");
-                    table.HasCheckConstraint("CK_PersonAssociations_Interval", "(\"Start\" IS NULL OR isfinite(\"Start\")) AND (\"End\" IS NULL OR isfinite(\"End\")) AND (\"Start\" IS NULL OR \"End\" IS NULL OR \"Start\" < \"End\")");
-                });
-                entity.HasKey(e => e.Id);
-                entity.HasOne<Person>().WithMany().HasForeignKey(e => new { e.OwnerId, e.PersonId })
-                    .HasPrincipalKey(e => new { e.OwnerId, e.Id }).OnDelete(DeleteBehavior.Restrict);
-                entity.HasOne<Device>().WithMany().HasForeignKey(e => new { e.OwnerId, e.DeviceId })
-                    .HasPrincipalKey(e => new { e.OwnerId, e.Id }).OnDelete(DeleteBehavior.Restrict);
-                entity.HasOne<ServiceAccount>().WithMany().HasForeignKey(e => new { e.OwnerId, e.AccountId })
-                    .HasPrincipalKey(e => new { e.OwnerId, e.Id }).OnDelete(DeleteBehavior.Restrict);
-                entity.HasIndex(e => new { e.OwnerId, e.DeviceId, e.Start, e.End });
-                entity.HasIndex(e => new { e.OwnerId, e.AccountId, e.Start, e.End });
-            });
+
 
             modelBuilder.Entity<ServiceProduct>(entity =>
             {
@@ -161,15 +143,7 @@ namespace Heartbeat.Server.Data
                 entity.HasOne(e => e.Service).WithMany().HasForeignKey(e => e.ServiceKey).OnDelete(DeleteBehavior.Restrict);
             });
 
-            modelBuilder.Entity<ApplicationContextRecord>(entity =>
-            {
-                entity.ToTable("ApplicationContexts");
-                entity.HasKey(e => e.Id);
-                entity.HasIndex(e => new { e.OwnerId, e.DeviceId, e.AppId }).IsUnique();
-                entity.HasOne(e => e.Device).WithMany().HasForeignKey(e => new { e.OwnerId, e.DeviceId })
-                    .HasPrincipalKey(e => new { e.OwnerId, e.Id }).OnDelete(DeleteBehavior.Restrict);
-                entity.HasOne(e => e.App).WithMany().HasForeignKey(e => e.AppId).OnDelete(DeleteBehavior.Restrict);
-            });
+
 
             modelBuilder.Entity<App>(entity =>
             {

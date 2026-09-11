@@ -1,3 +1,4 @@
+import { browserAttribution } from '../src/protocol'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -41,8 +42,7 @@ const snapshot: SegmentSnapshot = {
 }
 
 const session: BrowserProtocolSession = {
-  attribution: { observerId: '6a8259d1-5f6a-4b83-b6ba-87017886319e',
-    target: { kind: 'application-context', reference: '["hardware","win:msedge"]' } },
+  attribution: browserAttribution('6a8259d1-5f6a-4b83-b6ba-87017886319e', 'hardware', 'win:msedge'),
   port: 24820,
   activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
   leaseToken: 'lease',

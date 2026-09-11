@@ -59,13 +59,13 @@ public sealed class VRChatManagedProcessCollectorTests : IDisposable
             verification.InteractionId,
             new Dictionary<string, string> { ["code"] = "123456" });
         var activation = await activationTask.WaitAsync(TimeSpan.FromSeconds(10));
-        var segment = await sink.WaitForAsync(
-            item => item.Source == "vrchat.account" && item.Attributes?
+        var segment = await WaitForAsync(runtime,
+            item => item.Stream.Source == "vrchat.account" && item.Fact!.Payload!.Value
                 .GetProperty("instanceId").GetString() == "instance:mock");
 
-        Assert.Equal("wrld_mock|instance:mock", segment.IdentityKey);
-        Assert.Equal("Mock World", segment.Title);
-        Assert.Equal("instance:mock", segment.Attributes!.Value.GetProperty("instanceId").GetString());
+        Assert.Equal("wrld_mock|instance:mock", segment.Fact!.Payload!.Value.GetProperty("activityKey").GetString());
+        Assert.Equal("Mock World", segment.Fact!.Payload!.Value.GetProperty("title").GetString());
+        Assert.Equal("instance:mock", segment.Fact!.Payload!.Value.GetProperty("instanceId").GetString());
         await activation.StopAsync();
 
         var resumed = await runtime.ActivateManagedProcessAsync(
@@ -143,32 +143,19 @@ public sealed class VRChatManagedProcessCollectorTests : IDisposable
             Directory.Delete(_directory, recursive: true);
     }
 
-    private sealed class RecordingSegmentSink : ISegmentSink, IDurableSegmentProjectionSink
+    private sealed class RecordingSegmentSink : ISegmentSink
     {
-        private readonly object _gate = new();
-        private readonly List<ActivitySegmentItem> _items = [];
+        public void Push(List<ActivitySegmentItem> snapshots) { }
+    }
 
-        public void Push(List<ActivitySegmentItem> snapshots)
+    private static async Task<Heartbeat.Collection.Hub.Upload.FactUploadItem> WaitForAsync(
+        CollectorRuntime runtime, Func<Heartbeat.Collection.Hub.Upload.FactUploadItem, bool> predicate)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (true)
         {
-            lock (_gate)
-                _items.AddRange(snapshots);
-        }
-
-        public void UpsertDurable(ActivitySegmentItem snapshot, long revision) => Push([snapshot]);
-        public void ReplayDurable(ActivitySegmentItem snapshot, long revision) => Push([snapshot]);
-
-        public async Task<ActivitySegmentItem> WaitForAsync(Func<ActivitySegmentItem, bool> predicate)
-        {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            while (true)
-            {
-                lock (_gate)
-                {
-                    if (_items.LastOrDefault(predicate) is { } item)
-                        return item;
-                }
-                await Task.Delay(20, timeout.Token);
-            }
+            if (runtime.ReadPendingFacts().LastOrDefault(predicate) is { } item) return item;
+            await Task.Delay(20, timeout.Token);
         }
     }
 }

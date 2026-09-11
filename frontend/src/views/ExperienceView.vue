@@ -7,7 +7,7 @@ import { fetchExperiencePage } from '../api'
 import { resolveCalendarContext } from '../calendar/localCalendarWindow'
 import ActivitySwimlanes from '../experience/ActivitySwimlanes.vue'
 import FactCard from '../experience/FactCard.vue'
-import { clampRange, groupTargets, factTarget, overlaps, rangeOf, relatedBrowser,
+import { clampRange, groupObjects, factObject, overlaps, rangeOf, relatedPages,
   type ExperienceSegment, type TimeRange } from '../experience/factViews'
 
 const route = useRoute()
@@ -60,23 +60,23 @@ watch([date, username], () => {
 }, { immediate: true })
 onUnmounted(() => controller?.abort())
 
-const allTargets = computed(() => groupTargets(facts.value, bounds.value))
-const related = computed(() => selected.value ? relatedBrowser(selected.value, facts.value) : [])
+const allTargets = computed(() => groupObjects(facts.value, bounds.value))
+const related = computed(() => selected.value ? relatedPages(selected.value, facts.value) : [])
 const visibleFacts = computed(() => facts.value.filter(f => overlaps(rangeOf(f), range.value) &&
-  (!targetFilter.value || factTarget(f).id === targetFilter.value))
+  (!targetFilter.value || factObject(f).id === targetFilter.value))
   .sort((a, b) => Date.parse(a.startTime) - Date.parse(b.startTime) || a.id.localeCompare(b.id)))
 const pageCount = computed(() => Math.ceil(visibleFacts.value.length / 8))
 const pageFacts = computed(() => visibleFacts.value.slice(page.value * 8, page.value * 8 + 8))
 watch([range, targetFilter], () => {
   page.value = 0
   if (selected.value && (!overlaps(rangeOf(selected.value), range.value) ||
-    (targetFilter.value && factTarget(selected.value).id !== targetFilter.value))) selected.value = null
+    (targetFilter.value && factObject(selected.value).id !== targetFilter.value))) selected.value = null
 }, { deep: true })
 watch(selected, () => { relatedLimit.value = 4 })
 
 function setRange(value: TimeRange) { viewEstablished = true; range.value = clampRange(value, bounds.value) }
 function choose(fact: ExperienceSegment) {
-  if (targetFilter.value && targetFilter.value !== factTarget(fact).id) targetFilter.value = ''
+  if (targetFilter.value && targetFilter.value !== factObject(fact).id) targetFilter.value = ''
   selected.value = fact
   const index = visibleFacts.value.findIndex(f => f.id === fact.id)
   if (index >= 0) page.value = Math.floor(index / 8)
@@ -124,7 +124,7 @@ function focusFact(fact: ExperienceSegment) {
         <div><h2>记录 <span class="record-count">{{ visibleFacts.length }}</span></h2><p v-if="loading || error" class="hint">结果尚不完整</p></div>
         <select v-model="targetFilter" aria-label="筛选对象" class="control"><option value="">全部对象</option><option v-for="target in allTargets" :key="target.id" :value="target.id">{{ target.name }}</option></select>
       </div>
-      <div class="card-grid"><div v-for="fact in pageFacts" :key="fact.id"><p class="record-target">{{ factTarget(fact).name }} · {{ fact.source }}</p><FactCard :fact="fact" :selected="selected?.id === fact.id" :time-zone="calendar.day.timeZone" @select="choose" @focus="focusFact" /></div></div>
+      <div class="card-grid"><div v-for="fact in pageFacts" :key="fact.id"><p class="record-target">{{ factObject(fact).name }} · {{ fact.source }}</p><FactCard :fact="fact" :selected="selected?.id === fact.id" :time-zone="calendar.day.timeZone" @select="choose" @focus="focusFact" /></div></div>
       <p v-if="!visibleFacts.length" class="hint">所选对象在这个范围内没有记录。</p>
       <nav v-if="pageCount > 1" class="pagination" aria-label="记录分页"><button class="control" :disabled="page === 0" @click="page--">上一页</button><span>{{ page + 1 }} / {{ pageCount }}</span><button class="control" :disabled="page + 1 >= pageCount" @click="page++">下一页</button></nav>
     </section>

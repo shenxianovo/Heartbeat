@@ -1,3 +1,4 @@
+import { browserAttribution } from '../src/protocol'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SegmentSnapshot } from '../src/fold'
 import { ChromeBrowserDeliveryStore, loadExternalHostIdentity } from '../src/delivery-chrome'
@@ -63,7 +64,7 @@ it('restores attribution and upgrades the old activity key without changing snap
   installChrome({ pendingSegments: { [attributed.id]: attributed } })
   const restored = await new ChromeBrowserDeliveryStore().loadDurable()
   expect(restored.queue[attributed.id]).toMatchObject({ id: attributed.id,
-    observerId: attributed.observerId, target: attributed.target, activityKey: legacySnapshot.identityKey })
+    ...browserAttribution(attributed.observerId, "hardware", "win:msedge"), activityKey: legacySnapshot.identityKey })
   expect(restored.queue[attributed.id]).not.toHaveProperty('identityKey')
 })
 
@@ -165,4 +166,26 @@ describe('ChromeBrowserDeliveryStore adapter contract', () => {
     await store.saveSession(defaultBrowserDeliverySession())
     await expect(store.loadSession()).resolves.toEqual(defaultBrowserDeliverySession())
   })
+})
+
+
+it('merges pre-object and native queues by revision and retains both on conflict or failed persistence', async () => {
+  const identity = browserAttribution('6a8259d1-5f6a-4b83-b6ba-87017886319e', 'hardware', 'win:msedge')
+  const old = { ...legacySnapshot, observerId: identity.collectorId,
+    target: { kind: 'application-context', reference: '["hardware","win:msedge"]' } }
+  const current = { ...legacySnapshot, activityKey: legacySnapshot.identityKey, isFinal: false, ...identity }
+  const { localArea } = installChrome({ pendingSegments: { [old.id]: old },
+    pendingObservationFacts: { [old.id]: { ...current, endTime: '2026-08-25T08:02:00.000Z' } } })
+  const restored = await new ChromeBrowserDeliveryStore().loadDurable()
+  expect(restored.queue[old.id]?.endTime).toBe('2026-08-25T08:02:00.000Z')
+  expect(restored.pendingGaps).toEqual([])
+  expect(localArea.values.pendingSegments).toBeUndefined()
+  localArea.values.pendingSegments = { [old.id]: { ...old, endTime: restored.queue[old.id]!.endTime, title: 'conflicting content' } }
+  const before = structuredClone(localArea.values)
+  await expect(new ChromeBrowserDeliveryStore().loadDurable()).rejects.toThrow('Conflicting cached revision')
+  expect(localArea.values).toEqual(before)
+  localArea.values = { pendingSegments: { [old.id]: old } }
+  vi.spyOn(localArea, 'set').mockRejectedValueOnce(new Error('disk unavailable'))
+  await expect(new ChromeBrowserDeliveryStore().loadDurable()).rejects.toThrow('disk unavailable')
+  expect(localArea.values.pendingSegments).toEqual({ [old.id]: old })
 })

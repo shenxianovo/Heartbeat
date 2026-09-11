@@ -16,7 +16,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
     [Fact]
     public async Task NativeUpload_RestartRetainsRawFactWithoutLegacyProjection()
     {
-        await using var fixture = await ActivatedRuntimeFixture.CreateAsync(new CollectorRuntimeOptions { EnableFactUpload = true });
+        await using var fixture = await ActivatedRuntimeFixture.CreateAsync(new CollectorRuntimeOptions { });
         var stream = fixture.Activation.Streams["activity"];
         var fact = CreateFact(stream.Descriptor.StreamId) with
         {
@@ -29,7 +29,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
         fixture.Runtime.Dispose();
 
         using var restarted = CollectorRuntime.Open(fixture.StatePath, fixture.Sink,
-            new CollectorRuntimeOptions { EnableFactUpload = true });
+            new CollectorRuntimeOptions { });
         var item = Assert.Single(restarted.ReadPendingFacts());
         Assert.Equal(fact.FactId, item.Fact!.FactId);
         Assert.True(JsonElement.DeepEquals(fact.Payload, item.Fact.Payload!.Value));
@@ -37,14 +37,14 @@ public partial class InProcessCollectorProtocolTranscriptTests
         Assert.Empty(restarted.ReadPendingFacts());
         restarted.Dispose();
         using var confirmedRestart = CollectorRuntime.Open(fixture.StatePath, fixture.Sink,
-            new CollectorRuntimeOptions { EnableFactUpload = true });
+            new CollectorRuntimeOptions { });
         Assert.Empty(confirmedRestart.ReadPendingFacts());
     }
 
     [Fact]
     public async Task NativeUpload_LateConfirmationCannotConsumeNewRevision()
     {
-        await using var fixture = await ActivatedRuntimeFixture.CreateAsync(new CollectorRuntimeOptions { EnableFactUpload = true });
+        await using var fixture = await ActivatedRuntimeFixture.CreateAsync(new CollectorRuntimeOptions { });
         var stream = fixture.Activation.Streams["activity"];
         var original = CreateFact(stream.Descriptor.StreamId) with
         {
@@ -69,7 +69,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
     {
         await using var fixture = await ActivatedRuntimeFixture.CreateAsync(new CollectorRuntimeOptions
         {
-            EnableFactUpload = true, MaxDurableFacts = 1
+            MaxDurableFacts = 1
         });
         var stream = fixture.Activation.Streams["activity"];
         var first = CreateFact(stream.Descriptor.StreamId, isFinal: true);
@@ -90,7 +90,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
     [Fact]
     public async Task NativeUpload_GapBlocksRemovalUntilDurablyConfirmed()
     {
-        await using var fixture = await ActivatedRuntimeFixture.CreateAsync(new CollectorRuntimeOptions { EnableFactUpload = true });
+        await using var fixture = await ActivatedRuntimeFixture.CreateAsync(new CollectorRuntimeOptions { });
         var stream = fixture.Activation.Streams["activity"];
         var start = DateTimeOffset.UtcNow.AddMinutes(-1);
         var gap = new StreamGapReport(Guid.CreateVersion7(), start, start.AddSeconds(5), "outbox_overflow", 3);
@@ -110,7 +110,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
     [Fact]
     public async Task NativeUpload_ConflictIsDurablyQuarantinedAndDoesNotBlockOtherFacts()
     {
-        await using var fixture = await ActivatedRuntimeFixture.CreateAsync(new CollectorRuntimeOptions { EnableFactUpload = true });
+        await using var fixture = await ActivatedRuntimeFixture.CreateAsync(new CollectorRuntimeOptions { });
         var stream = fixture.Activation.Streams["activity"];
         var conflict = CreateFact(stream.Descriptor.StreamId, isFinal: true);
         var good = CreateFact(stream.Descriptor.StreamId, factId: Guid.CreateVersion7(), isFinal: true);
@@ -137,7 +137,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
     [Fact]
     public async Task NativeUpload_MachineTransportPreservesExistingHardwareIdentityCasingAndName()
     {
-        await using var fixture = await ActivatedRuntimeFixture.CreateAsync(new CollectorRuntimeOptions { EnableFactUpload = true });
+        await using var fixture = await ActivatedRuntimeFixture.CreateAsync(new CollectorRuntimeOptions { });
         var stream = fixture.Activation.Streams["activity"];
         await stream.PublishAsync(Guid.CreateVersion7(), [CreateFact(stream.Descriptor.StreamId)]);
         var identity = new UploadMachineIdentity(fixture.Instance.Subject.SubjectId.ToString("D").ToUpperInvariant(), "我的 Mac");
@@ -153,7 +153,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
     [Fact]
     public async Task NativeUpload_OfflineBacklogIsVisibleAndClearsAfterDelivery()
     {
-        await using var fixture = await ActivatedRuntimeFixture.CreateAsync(new CollectorRuntimeOptions { EnableFactUpload = true });
+        await using var fixture = await ActivatedRuntimeFixture.CreateAsync(new CollectorRuntimeOptions { });
         var stream = fixture.Activation.Streams["activity"];
         await stream.PublishAsync(Guid.CreateVersion7(), [CreateFact(stream.Descriptor.StreamId)]);
         var online = false;
@@ -186,7 +186,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
         File.WriteAllText(fixture.StatePath, legacy.ToJsonString());
         Guid allocatedId;
         using (var native = CollectorRuntime.Open(fixture.StatePath, fixture.Sink,
-                   new CollectorRuntimeOptions { EnableFactUpload = true, MaxDurableFacts = 1 }))
+                   new CollectorRuntimeOptions { MaxDurableFacts = 1 }))
         {
             var item = Assert.Single(native.ReadPendingFacts());
             allocatedId = item.Gap!.GapId;
@@ -195,7 +195,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
             Assert.True(File.Exists(fixture.StatePath + ".v2.bak"));
         }
         using var restarted = CollectorRuntime.Open(fixture.StatePath, fixture.Sink,
-            new CollectorRuntimeOptions { EnableFactUpload = true });
+            new CollectorRuntimeOptions { });
         Assert.Equal(allocatedId, Assert.Single(restarted.ReadPendingFacts()).Gap!.GapId);
     }
 
@@ -211,7 +211,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
         var package = LocalCollectorPackage.Load(copy.Path);
         using var directory = TemporaryDirectory.Create();
         using var runtime = CollectorRuntime.Open(Path.Combine(directory.Path, "runtime.json"), new RecordingSegmentSink(),
-            new CollectorRuntimeOptions { EnableFactUpload = true, MaxDurableFacts = 1 });
+            new CollectorRuntimeOptions { MaxDurableFacts = 1 });
         var instance = runtime.CreateInstance(package, new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
             new CollectorInstanceSpec(1, 1, JsonSerializer.SerializeToElement(new { })));
         await using var activation = await runtime.ActivateInProcessAsync(instance.CollectorInstanceId, package,
@@ -250,7 +250,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
         legacy["gaps"]![0]!.AsObject().Remove("gapId");
         File.WriteAllText(fixture.StatePath, legacy.ToJsonString());
         using (var native = CollectorRuntime.Open(fixture.StatePath, fixture.Sink,
-                   new CollectorRuntimeOptions { EnableFactUpload = true, MaxDurableFacts = 1 }))
+                   new CollectorRuntimeOptions { MaxDurableFacts = 1 }))
         {
             native.ConfirmUploadedFacts(native.ReadPendingFacts());
             await using var activation = await native.ActivateInProcessAsync(fixture.Instance.CollectorInstanceId,
@@ -268,7 +268,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
             native.ConfirmUploadedFacts(native.ReadPendingFacts());
         }
         using var restarted = CollectorRuntime.Open(fixture.StatePath, fixture.Sink,
-            new CollectorRuntimeOptions { EnableFactUpload = true });
+            new CollectorRuntimeOptions { });
         await using var resumed = await restarted.ActivateInProcessAsync(fixture.Instance.CollectorInstanceId,
             fixture.Package, new ReferenceInProcessCollector());
         Assert.Equal(GapDeliveryStatus.Duplicate,

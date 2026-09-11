@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SegmentSnapshot } from '../src/fold'
 import {
+  browserAttribution,
   acknowledgedSnapshotIds,
   publishBrowserFacts,
   reportBrowserGap,
@@ -26,8 +27,7 @@ function protocolFetch(handler: (input: RequestInfo | URL, init?: RequestInit) =
 const snapshot = (id = '0198d5eb-fc31-7d7b-8bf0-c2d009ec8999'): SegmentSnapshot => ({
   id,
   source: 'browser',
-  observerId: '6a8259d1-5f6a-4b83-b6ba-87017886319e',
-  target: { kind: 'application-context', reference: '["02a8259d-5f6a-4b83-b6ba-87017886319e","win:msedge"]' },
+  ...browserAttribution('6a8259d1-5f6a-4b83-b6ba-87017886319e', '02a8259d-5f6a-4b83-b6ba-87017886319e', 'win:msedge'),
   activityKey: 'https://example.com/docs',
   title: 'Docs',
   startTime: '2026-08-25T08:00:00.000Z',
@@ -114,7 +114,7 @@ describe('browser Collector Protocol outbox', () => {
       if (url.endsWith('/hello')) return protocolResponse('activation.accepted', {
         activationId: ACTIVATION_ID,
         selectedProtocolMajor: 1,
-        selectedCapabilities: { 'facts.aspect': 1, 'facts.segment': 1, 'diagnostics.stream-gap': 1 },
+        selectedCapabilities: { 'facts.observation': 1, 'facts.aspect': 1, 'facts.segment': 1, 'diagnostics.stream-gap': 1 },
       }, undefined, request.messageId)
       if (url.endsWith('/initialize')) return protocolResponse('activation.initialize', {
         spec: { revision: 3, config: { value: { enabled: true, flushPeriodMs: 30_000 } } },
@@ -174,7 +174,7 @@ describe('browser Collector Protocol outbox', () => {
       if (url.endsWith('/hello')) return protocolResponse('activation.accepted', {
         activationId: ACTIVATION_ID,
         selectedProtocolMajor: 1,
-        selectedCapabilities: { 'facts.aspect': 1, 'facts.segment': 1, 'diagnostics.stream-gap': 1 },
+        selectedCapabilities: { 'facts.observation': 1, 'facts.aspect': 1, 'facts.segment': 1, 'diagnostics.stream-gap': 1 },
       }, undefined, request.messageId)
       if (url.endsWith('/initialize')) return protocolResponse('activation.initialize', {
         spec: { revision: 3, config: { value: { enabled: true, flushPeriodMs: 30_000 } } },
@@ -225,7 +225,7 @@ describe('browser Collector Protocol outbox', () => {
     }))
     const session: BrowserProtocolSession = {
       port: 24820,
-      attribution: { observerId: snapshot().observerId!, target: snapshot().target! },
+      attribution: browserAttribution('6a8259d1-5f6a-4b83-b6ba-87017886319e', '02a8259d-5f6a-4b83-b6ba-87017886319e', 'win:msedge'),
       activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
       leaseToken: 'lease',
       streamId: '0198d5e2-e0d4-7b30-9da7-342ee261bf62',
@@ -268,7 +268,7 @@ describe('browser Collector Protocol outbox', () => {
     }))
     const currentSession: BrowserProtocolSession = {
       port: 24820,
-      attribution: { observerId: snapshot().observerId!, target: snapshot().target! },
+      attribution: browserAttribution('6a8259d1-5f6a-4b83-b6ba-87017886319e', '02a8259d-5f6a-4b83-b6ba-87017886319e', 'win:msedge'),
       activationId: ACTIVATION_ID,
       leaseToken: 'lease',
       streamId: STREAM_ID,
@@ -307,13 +307,13 @@ describe('browser Collector Protocol outbox', () => {
     }))
     const session: BrowserProtocolSession = {
       port: 24820,
-      attribution: { observerId: snapshot().observerId!, target: snapshot().target! },
+      attribution: browserAttribution('6a8259d1-5f6a-4b83-b6ba-87017886319e', '02a8259d-5f6a-4b83-b6ba-87017886319e', 'win:msedge'),
       activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
       leaseToken: 'lease',
       streamId: '0198d5e2-e0d4-7b30-9da7-342ee261bf62',
       specRevision: 3,
       expiresAt: '2026-08-25T08:01:00Z',
-      limits: { maxFactsPerBatch: 2, maxBatchBytes: 900 },
+      limits: { maxFactsPerBatch: 2, maxBatchBytes: 1300 },
       flushPeriodMilliseconds: 30_000,
     }
     const oversized = { ...snapshot(), title: '你'.repeat(500) }
@@ -340,7 +340,7 @@ describe('browser Collector Protocol outbox', () => {
     }))
     const session: BrowserProtocolSession = {
       port: 24820,
-      attribution: { observerId: snapshot().observerId!, target: snapshot().target! },
+      attribution: browserAttribution('6a8259d1-5f6a-4b83-b6ba-87017886319e', '02a8259d-5f6a-4b83-b6ba-87017886319e', 'win:msedge'),
       activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
       leaseToken: 'lease',
       streamId: '0198d5e2-e0d4-7b30-9da7-342ee261bf62',
@@ -373,7 +373,7 @@ describe('browser Collector Protocol outbox', () => {
     )))
     const session: BrowserProtocolSession = {
       port: 24820,
-      attribution: { observerId: snapshot().observerId!, target: snapshot().target! },
+      attribution: browserAttribution('6a8259d1-5f6a-4b83-b6ba-87017886319e', '02a8259d-5f6a-4b83-b6ba-87017886319e', 'win:msedge'),
       activationId: ACTIVATION_ID,
       leaseToken: 'lease',
       streamId: STREAM_ID,
@@ -402,7 +402,7 @@ describe('browser Collector Protocol outbox', () => {
     }))
     const session: BrowserProtocolSession = {
       port: 24820,
-      attribution: { observerId: snapshot().observerId!, target: snapshot().target! },
+      attribution: browserAttribution('6a8259d1-5f6a-4b83-b6ba-87017886319e', '02a8259d-5f6a-4b83-b6ba-87017886319e', 'win:msedge'),
       activationId: '0198d5e8-30cb-7d54-bab1-250087147e4c',
       leaseToken: 'lease',
       streamId: '0198d5e2-e0d4-7b30-9da7-342ee261bf62',

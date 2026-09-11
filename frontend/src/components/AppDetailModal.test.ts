@@ -261,7 +261,7 @@ it('keeps concurrent device tracks separate when using the shared replay templat
       username: 'alice', deviceId: 0, calendarContext: springContext,
       app: { appId: 7, appName: 'Code', totalSeconds: 7200 }, isProvisional: false,
       devices: [{ id: 1, name: 'Laptop' }, { id: 2, name: 'Desktop' }] as never[],
-      usageData: [1, 2].map(deviceId => ({ deviceId, appId: 7, appName: 'Code', title: `Work ${deviceId}`,
+      usageData: [1, 2].map(deviceId => ({ deviceId, foi: { id: `machine-${deviceId}`, kind: 'machine', scope: 'heartbeat.device', key: `machine-${deviceId}`, name: deviceId === 1 ? 'Laptop' : 'Desktop' }, appId: 7, appName: 'Code', title: `Work ${deviceId}`,
         startTime: new Date('2026-03-08T06:00:00Z'), endTime: new Date('2026-03-08T07:00:00Z') })) as never[],
     },
     global: { renderStubDefaultSlot: true, stubs: { AppIcon: true } },
@@ -274,9 +274,9 @@ it('keeps concurrent device tracks separate when using the shared replay templat
   wrapper.unmount()
 })
 
-it('keeps account Targets separate without inventing device identities', async () => {
-  vi.mocked(fetchPublicSegments).mockResolvedValueOnce(['Alice account', 'Second account'].map((targetName, i) => ({
-    targetId: i + 1, targetKind: 'account', targetName,
+it('keeps account objects separate without inventing device identities', async () => {
+  vi.mocked(fetchPublicSegments).mockResolvedValueOnce(['Alice account', 'Second account'].map((name, i) => ({
+    foi: { id: `account-${i}`, kind: 'account', scope: 'vrchat', key: `account-${i}`, name },
     source: 'vrchat.account', identityKey: `world-${i}`, title: `World ${i}`,
     payload: { identityKey: `world-${i}`, title: `World ${i}`, attributes: {} },
     startTime: new Date('2026-03-08T06:00:00Z'), endTime: new Date('2026-03-08T07:00:00Z'),

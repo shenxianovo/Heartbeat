@@ -13,23 +13,23 @@ namespace Heartbeat.Server.Tests.Services;
 public sealed class BrowserApplicationContextTests(PostgresContainerFixture fixture) : PostgresTestBase(fixture)
 {
     [Fact]
-    public async Task MergeAndIdentityCorrection_MaintainContextReferencesWithoutMergingFacts_AndOfflineReplayConverges()
+    public async Task MergeAndIdentityCorrection_MaintainObjectReferencesWithoutMergingFacts_AndOfflineReplayConverges()
     {
         await using var db = CreateDbContext();
         var store = new FactStore(db);
-        var first = Batch("mac:com.test.first");
-        var second = Batch("mac:com.test.second");
+        var first = NativeBatch("mac:com.test.first");
+        var second = NativeBatch("mac:com.test.second");
         await store.IngestAsync("owner", first);
         await store.IngestAsync("owner", second);
         var before = await store.ReadSegmentsAsync("owner", null, null, null);
-        Assert.Equal(2, before.Select(f => f.TargetId).Distinct().Count());
+        Assert.Equal(2, before.Select(f => f.FoiId).Distinct().Count());
         var products = await db.AppIdentities.Include(i => i.App).ToDictionaryAsync(i => i.Key, i => i.App);
         var merge = new AppMergeService(db);
         await merge.MergeAsync(new AppMergeRequest { SourceAppKey = products["mac:com.test.first"].Key, TargetAppKey = products["mac:com.test.second"].Key, DryRun = false });
         db.ChangeTracker.Clear();
         var merged = await store.ReadSegmentsAsync("owner", null, null, null);
         Assert.Equal(2, merged.Count);
-        Assert.Single(merged.Select(f => f.TargetId).Distinct());
+        Assert.Single(merged.Select(f => f.FoiId).Distinct());
         await store.IngestAsync("owner", first);
         await store.IngestAsync("owner", second);
         var catalog = new AppCatalogRuntimeSnapshot(AppCatalogLoader.Parse("""{"schemaVersion":1,"catalogVersion":1,"products":[]}"""));
@@ -38,12 +38,9 @@ public sealed class BrowserApplicationContextTests(PostgresContainerFixture fixt
         await overrides.SetAsync("mac:com.test.first", "corrected-browser", "Corrected browser", "admin");
         db.ChangeTracker.Clear();
         var corrected = await store.ReadSegmentsAsync("owner", null, null, null);
-        Assert.Equal(2, corrected.Select(f => f.TargetId).Distinct().Count());
-        Assert.Equal(merged.Single(f => f.FactId == second.Facts[0].FactId).TargetId,
-            corrected.Single(f => f.FactId == second.Facts[0].FactId).TargetId);
-        await store.IngestAsync("owner", first);
-        first.Facts[0].ObserverId = null;
-        first.Facts[0].Target = null;
+        Assert.Equal(2, corrected.Select(f => f.FoiId).Distinct().Count());
+        Assert.Equal(merged.Single(f => f.FactId == second.Facts[0].FactId).FoiId,
+            corrected.Single(f => f.FactId == second.Facts[0].FactId).FoiId);
         await store.IngestAsync("owner", first);
         Assert.Equal(before.Select(f => f.Id).Order(), corrected.Select(f => f.Id).Order());
         Assert.All(corrected, row => Assert.Equal(1, row.Revision));
@@ -51,38 +48,45 @@ public sealed class BrowserApplicationContextTests(PostgresContainerFixture fixt
     }
 
     [Fact]
-    public async Task ContextUniquenessAndOwnership_AreEnforcedAtStorageBoundary_AndDeviceAppQueriesRemainIsolated()
+    public async Task ProductMergePreservesNativeFactsWithoutPlatformIdentity_AndOldProductReplay()
     {
-        var first = Batch("mac:com.test.browser");
-        var second = Batch("mac:com.test.browser");
-        await Task.WhenAll(new[] { first, second }.Select(async batch =>
-        {
-            await using var concurrent = CreateDbContext();
-            await new FactStore(concurrent).IngestAsync("owner", batch);
-        }));
         await using var db = CreateDbContext();
+        var batch = NativeBatch("mac:unused");
+        var fact = batch.Facts[0];
+        fact.Foi = new ObservationObjectReference("app", ObservationObjectScopes.App, "old-browser");
+        fact.Relations![0].Members[0] = new FactRelationMember("app", fact.Foi);
         var store = new FactStore(db);
-        var contexts = await db.ApplicationContexts.ToListAsync();
-        var context = Assert.Single(contexts);
-        var rows = await store.ReadSegmentsAsync("owner", context.DeviceId, null, null, appId: context.AppId);
-        Assert.Equal(2, rows.Count);
-        Assert.Equal(2, rows.Select(f => f.ObserverId).Distinct().Count());
-        await store.IngestAsync("other", first);
-        Assert.Empty(await store.ReadSegmentsAsync("other", context.DeviceId, null, null));
-        var invalid = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => db.Database.ExecuteSqlInterpolatedAsync(
-            $"UPDATE \"Facts\" SET \"TargetId\" = {context.Id} WHERE \"OwnerId\" = 'other'"));
-        Assert.Equal("23503", invalid.SqlState);
-        var referenced = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => db.Database.ExecuteSqlInterpolatedAsync(
-            $"DELETE FROM \"ApplicationContexts\" WHERE \"Id\" = {context.Id}"));
-        Assert.Equal("23503", referenced.SqlState);
-        var duplicate = new ApplicationContextRecord { OwnerId = "owner", DeviceId = context.DeviceId, AppId = context.AppId };
-        db.ApplicationContexts.Add(duplicate);
-        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
-        db.ChangeTracker.Clear();
-        first.Facts[0].ObserverId = Guid.NewGuid();
-        var conflict = await Assert.ThrowsAsync<FactIngestException>(() => store.IngestAsync("owner", first));
-        Assert.True(conflict.IsConflict);
-        Assert.Equal(2, (await store.ReadSegmentsAsync("owner", context.DeviceId, null, null)).Count);
+        await store.IngestAsync("owner", batch);
+        var before = Assert.Single(await store.ReadSegmentsAsync("owner", null, null, null));
+        Assert.Null((await db.Facts.SingleAsync()).AppIdentityId);
+        db.Apps.Add(new App { Key = "browser", DisplayName = "Browser" });
+        await db.SaveChangesAsync();
+        await new AppMergeService(db).MergeAsync(new AppMergeRequest
+            { SourceAppKey = "old-browser", TargetAppKey = "browser", DryRun = false });
+        var after = Assert.Single(await store.ReadSegmentsAsync("owner", null, null, null));
+        Assert.NotEqual(before.FoiId, after.FoiId);
+        await store.IngestAsync("owner", batch);
+        Assert.Equal(before.Id, after.Id);
+        Assert.Equal(before.Revision, after.Revision);
+        Assert.True(JsonElement.DeepEquals(before.Payload, after.Payload));
+        Assert.Equal(after.FoiId, await db.RelationMembers.Where(m => m.Role == "app").Select(m => (Guid?)m.ObjectId).SingleAsync());
+    }
+
+    private static FactUploadRequest NativeBatch(string appIdentity)
+    {
+        var batch = Batch(appIdentity);
+        var fact = batch.Facts[0];
+        var app = new ObservationObjectReference("app", ObservationObjectScopes.AppIdentity, appIdentity);
+        fact.CollectorId = fact.ObserverId;
+        fact.ObserverId = null;
+        fact.Target = null;
+        fact.Foi = app;
+        fact.Aspect = "selected-page";
+        fact.Payload = JsonSerializer.SerializeToElement(new { activityKey = "https://example.com", title = "Page" });
+        fact.Relations = [new FactRelationSnapshot("observed-on", [
+            new FactRelationMember("app", app),
+            new FactRelationMember("device", new ObservationObjectReference("machine", ObservationObjectScopes.Machine, "hardware"))])];
+        return batch;
     }
 
     internal static FactUploadRequest Batch(string appIdentityKey, string hardware = "hardware")

@@ -16,11 +16,10 @@ namespace Heartbeat.Collection.Hub.Segments
     /// 同时维护集面读模型（ADR-021）：Current Activity + per-Source last-seen，
     /// 与缓冲分离，不随 drain 清空。
     /// </summary>
-    public class SegmentIngestService : ISegmentSink, IDurableSegmentProjectionSink, ICollectorTrafficSink, IUploadSource<ActivitySegmentItem>, ICurrentActivitySink, ICollectionStatus
+    public class SegmentIngestService : ISegmentSink, ICollectorTrafficSink, IUploadSource<ActivitySegmentItem>, ICurrentActivitySink, ICollectionStatus
     {
         private readonly object _lock = new();
         private readonly Dictionary<Guid, ActivitySegmentItem> _segments = [];
-        private readonly Dictionary<Guid, long> _durableWatermarks = [];
         private readonly IClock _clock;
         private readonly ICache<ActivitySegmentItem>? _cache;
         private List<ActivitySegmentItem> _persisted = [];
@@ -77,17 +76,6 @@ namespace Heartbeat.Collection.Hub.Segments
 
         /// <summary>ISegmentSink adapter（ADR-020）：内置采集器进程内推送，与 Accept 同一缓冲。</summary>
         public void Push(List<ActivitySegmentItem> snapshots) => Accept(snapshots);
-
-        /// <summary>
-        /// Durable Collector Facts have already passed their declared schema and protocol time
-        /// rules. Preserve offline/replayed facts and their revision ordering without
-        /// revalidating them against the current wall clock.
-        /// </summary>
-        public void UpsertDurable(ActivitySegmentItem snapshot, long revision) =>
-            BufferDurable(snapshot, revision);
-
-        public void ReplayDurable(ActivitySegmentItem snapshot, long revision) =>
-            BufferDurable(snapshot, revision);
 
         public void MarkSourceActive(string source)
         {
@@ -165,8 +153,7 @@ namespace Heartbeat.Collection.Hub.Segments
                     if (StorageStatus.State == UploadStreamState.CacheMigrationFailed) return DeliveryRemainder.Unknown;
                     var persisted = _persisted.ToHashSet(ReferenceEqualityComparer.Instance);
                     var pending = _segments.Values.Where(item => !persisted.Contains(item)).ToList();
-                    var durable = pending.Count(item => _durableWatermarks.ContainsKey(item.Id));
-                    return new(_persisted.Count + durable, pending.Count - durable);
+                    return new(_persisted.Count, pending.Count);
                 }
             }
         }
@@ -186,32 +173,11 @@ namespace Heartbeat.Collection.Hub.Segments
             {
                 foreach (var snapshot in snapshots)
                 {
-                    if (_durableWatermarks.ContainsKey(snapshot.Id))
-                        continue;
                     _segments[snapshot.Id] = snapshot;
                     accepted.Add(snapshot);
                 }
             }
             return accepted;
-        }
-
-        private void BufferDurable(ActivitySegmentItem snapshot, long revision)
-        {
-            ArgumentNullException.ThrowIfNull(snapshot);
-            if (snapshot.Id == Guid.Empty)
-                throw new ArgumentException("Durable Segment projection ID must not be empty.", nameof(snapshot));
-            if (revision <= 0)
-                throw new ArgumentOutOfRangeException(nameof(revision));
-
-            lock (_lock)
-            {
-                if (_durableWatermarks.TryGetValue(snapshot.Id, out var current) &&
-                    current > revision)
-                    return;
-
-                _durableWatermarks[snapshot.Id] = revision;
-                _segments[snapshot.Id] = snapshot;
-            }
         }
 
         private void StampSourceLastSeen(List<ActivitySegmentItem> accepted) =>

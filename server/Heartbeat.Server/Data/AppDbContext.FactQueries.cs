@@ -22,18 +22,17 @@ public partial class AppDbContext
             EF.Functions.JsonTypeof(s.Payload.RootElement.GetProperty("activityKey")) == "string" &&
             s.Payload.RootElement.GetProperty("activityKey").GetString()!.Trim() != ""
         join attribution in FactAttributions on s.Id equals attribution.Id
+        join o in Objects on s.FoiId equals (Guid?)o.Id into fois
+        from foi in fois.DefaultIfEmpty()
         join d in Devices on attribution.DeviceId equals (long?)d.Id into devices
         from device in devices.DefaultIfEmpty()
-        join sa in ServiceAccounts on attribution.AccountId equals (long?)sa.Id into accounts
-        from account in accounts.DefaultIfEmpty()
         join a in Apps on attribution.AppId equals (long?)a.Id into apps
         from app in apps.DefaultIfEmpty()
         select new ActivitySegment
         {
             Id = s.Id,
             Aspect = s.Aspect,
-            ObserverId = s.ObserverId, TargetKind = s.TargetKind, TargetId = s.TargetId,
-            TargetName = account != null ? account.ServiceAccountId ?? "历史账号（身份未知）" : null,
+            ObserverId = s.ObserverId, FoiId = s.FoiId, Foi = foi,
             OwnerId = s.OwnerId,
             StreamId = s.StreamId,
             FactId = s.FactId,

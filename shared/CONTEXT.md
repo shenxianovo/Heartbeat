@@ -1,13 +1,13 @@
 # Shared Kernel — CONTEXT
 
 2026-09-11：当前领域目标见 [Observations 与 Facts](../docs/architecture/observations-model.md)。
-五表存储及[显式 Aspect 语义边界](../docs/architecture/observation-semantics.md)已实现，业务库未迁移；下文 Target、应用上下文和传输术语继续解释上传转换及历史资料。
+五表存储及[显式 Aspect 语义边界](../docs/architecture/observation-semantics.md)已实现，业务库未迁移；原生链路直接使用 Collector/FOI/Relations；下文 Target、应用上下文只解释旧输入及历史资料。
 
 ## Conventions
 
 - **时间存储**：所有时间字段在数据库中以 UTC+0 存储。Dashboard 的“今天”/“本周”由 Browser 按当前 IANA civil timezone 解析为版本化 Local Calendar Window envelope，Analytics 用独立 TZDB 严格重算验证后才查询事实；通用 Instant Window 仍直接传 UTC 起止。
 - **认证架构**：依赖外部自建 Auth 平台（支持邮箱/Google/GitHub 登录）。Collection（Agent）持有 Auth 平台签发的 ApiKey，运行时经 `TokenManager` 在 Auth 平台换取短期 session JWT，上传请求携带 `Authorization: Bearer {JWT}`；Dashboard（前端）通过 OIDC 授权码 + PKCE 登录获取 access token。服务端同时接受 OIDC access token 与 Agent session JWT 两种 Bearer 凭证。
-- **数据隔离**：Owner 是事实数据的所有权边界；观测归属与对象关系不改变所有权。当前运行代码仍使用 Observer/Target；新目标的引用与查询同样必须保持 Owner 隔离。
+- **数据隔离**：Owner 是事实数据的所有权边界；观测归属与对象关系不改变所有权。对象引用、关系与查询共同保持 Owner 隔离。
 
 ## Glossary
 
@@ -15,7 +15,7 @@
 |------|-----------|
 | Observations（观测模型） | 以 Observer、FOI 描述事实产生的观测关系：Observer 观察 FOI，产生 Facts。Aspect、结果及适用时间由 Facts 表达；该模型独立于传输与存储布局。 |
 | FeatureOfInterest / FOI（观测对象） | Collector 直接描述其状态、属性或事件的对象；当前范围为机器、App 产品、服务账号和个人。对象可以独立存在，不以设备/App 运行关系齐全为前提。_Avoid_: 把采集宿主自动当作 FOI、要求先组合设备与 App 才能描述应用。 |
-| Target（既有术语） | 上一轮设计及当前上传转换中的事实归属对象；应用上下文也可作为该归属。新模型直接描述 FOI，不再要求额外 Target；该术语继续解释上传转换与历史资料。 |
+| Target（既有术语） | 上一轮设计及旧输入转换中的事实归属对象；应用上下文也可作为该归属。新模型直接描述 FOI，不再要求额外 Target；该术语继续解释上传转换与历史资料。 |
 | 对象引用 | 由标识作用域及对象标识解释的对象身份，可用于直接观测对象、结果或来源中的对象。作用域说明标识在哪里有效，不表示统一的父对象或采集器归属。_Avoid_: 用显示名、活动分组或 FactId 代替对象身份。 |
 | 对象关系 | 对象之间具有明确业务含义的联系，有参与对象及其角色、已确认的适用范围和依据；可由两个或更多对象共同参与，例如某台机器上的应用使用某账号。关系缺失不阻止保存事实。_Avoid_: 由关联推断未经观测的事实、将时间未知当作无限有效。 |
 | 使用者关联 | 对账号等对象与其使用者之间关系的明确确认，具有已确认的适用范围；可后补，用于汇集该范围内已有的相关事实，不改变事实的直接观测对象与来源。_Avoid_: 仅凭相同 Owner 推定使用者、把关联建立时间当成其生效时间。 |

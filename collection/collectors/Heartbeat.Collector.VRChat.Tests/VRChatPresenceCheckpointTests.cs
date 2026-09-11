@@ -41,8 +41,8 @@ public sealed class VRChatPresenceCheckpointTests : IDisposable
         Assert.Equal(active.End, pending.End);
         Assert.Null(pending.ObservedAccountId);
         var published = VRChatManagedCollector.ToFact(pending, Guid.NewGuid());
-        Assert.Null(published.Target);
-        Assert.Null(published.ObserverId);
+        Assert.Null(published.Foi);
+        Assert.Null(published.CollectorId);
         Assert.Equal(active.ActivityKey, published.Payload.GetProperty("activityKey").GetString());
         checkpoint.Acknowledge(pending);
         Assert.Equal(legacy, File.ReadAllText(path + ".v2.bak"));

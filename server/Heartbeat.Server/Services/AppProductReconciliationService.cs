@@ -115,7 +115,7 @@ public sealed class AppProductReconciliationService(AppDbContext db)
         var movedIdentityIds = identities.Select(x => x.Id).ToArray();
         // Persist the target first so new products also have an offline-reference resolution destination.
         await db.SaveChangesAsync(cancellationToken);
-        await new ApplicationContextService(db).RebindAsync(movedIdentityIds, target.Id, cancellationToken);
+        await new AppObservationService(db).RebindAsync(movedIdentityIds, target.Id, cancellationToken);
         foreach (var identity in identities) identity.App = target;
 
         var currentDevices = await db.Devices
@@ -181,7 +181,6 @@ public sealed class AppProductReconciliationService(AppDbContext db)
             ? []
             : await db.DailyQuestionSets.Where(x => ownerSet.Contains(x.OwnerId)).ToListAsync(cancellationToken);
         db.DailyQuestionSets.RemoveRange(caches);
-        await new ApplicationContextService(db).RemoveUnreferencedAsync(removableSources.Select(a => a.Id).ToArray(), cancellationToken);
         db.Apps.RemoveRange(removableSources);
 
         return new(

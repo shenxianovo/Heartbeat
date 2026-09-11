@@ -77,7 +77,7 @@ namespace Heartbeat.Server.Services
             // 落在本窗口内的部分计入，既不漏也不双计。
             var query = _db.ActivitySegments
                 .Where(x => x.OwnerId == ownerId)
-                .Where(x => x.Aspect == FactAspects.DesktopActivity && x.DeviceId != null && x.AppIdentityId != null)
+                .Where(x => x.Aspect == FactAspects.DesktopActivity && x.DeviceId != null && x.AppId != null)
                 .Where(x => x.EndTime > windowStart && x.StartTime < windowEnd);
 
             if (deviceId.HasValue)
@@ -86,13 +86,9 @@ namespace Heartbeat.Server.Services
             return await query
                 .GroupBy(x => new
                 {
-                    AppId = x.AppIdentityId != null ? x.AppIdentity!.AppId : x.AppId,
-                    AppKey = x.AppIdentityId != null
-                        ? x.AppIdentity!.App.Key
-                        : x.App!.Key,
-                    AppName = x.AppIdentityId != null
-                        ? x.AppIdentity!.App.DisplayName
-                        : x.App!.DisplayName
+                    AppId = x.AppId,
+                    AppKey = x.App!.Key,
+                    AppName = x.App!.DisplayName
                 })
                 .Select(g => new AppDurationItem
                 {

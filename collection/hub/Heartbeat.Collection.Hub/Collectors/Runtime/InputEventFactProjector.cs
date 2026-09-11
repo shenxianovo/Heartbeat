@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Heartbeat.Collection.Hub.Collectors.Protocol;
 using Heartbeat.Core.DTOs.Input;
 
@@ -46,45 +45,4 @@ internal sealed class UnfencedCollectorProjectionCommitFence : ICollectorProject
         File.Move(preparedPath, authoritativePath, overwrite: true);
         return true;
     }
-}
-
-internal sealed class InputEventFactProjector
-{
-
-    public bool TryProject(
-        Guid factId,
-        DateTimeOffset occurredAt,
-        JsonElement payload,
-        out InputEventItem? item)
-    {
-        item = null;
-        if (payload.ValueKind != JsonValueKind.Object ||
-            !payload.TryGetProperty("eventType", out var eventTypeValue) ||
-            eventTypeValue.ValueKind != JsonValueKind.String ||
-            EventType(eventTypeValue.GetString()) is not { } eventType ||
-            !payload.TryGetProperty("codeSet", out var codeSetValue) ||
-            codeSetValue.ValueKind != JsonValueKind.String ||
-            string.IsNullOrWhiteSpace(codeSetValue.GetString()) ||
-            !payload.TryGetProperty("code", out var codeValue) ||
-            codeValue.ValueKind != JsonValueKind.Number || !codeValue.TryGetInt16(out var code))
-            return false;
-
-        item = new InputEventItem
-        {
-            Id = factId,
-            EventType = eventType,
-            CodeSet = codeSetValue.GetString()!,
-            Code = code,
-            Timestamp = occurredAt
-        };
-        return true;
-    }
-
-    private static InputEventType? EventType(string? value) => value switch
-    {
-        "keyDown" => InputEventType.KeyDown,
-        "mouseButton" => InputEventType.MouseButton,
-        "mouseScroll" => InputEventType.MouseScroll,
-        _ => null
-    };
 }

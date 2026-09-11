@@ -17,9 +17,9 @@ public class UploadWorkerShutdownTests
     public async Task Stop_BoundsFinalNetworkAttempt_AndStillPersistsTheOtherStream()
     {
         var cache = new Cache<ActivitySegmentItem>();
-        var source = new Heartbeat.Collection.Hub.Segments.SegmentIngestService(new Heartbeat.Collection.Hub.Time.SystemClock(), cache);
+        var source = new CachedUploadSource<ActivitySegmentItem>(cache);
         var tail = new ActivitySegmentItem { Id = Guid.CreateVersion7() };
-        source.UpsertDurable(tail, 1);
+        cache.Add([tail]);
         var segmentRequests = 0;
         var segments = new UploadStream<ActivitySegmentItem>("段", [source], (_, _) =>
         {
@@ -59,10 +59,10 @@ public class UploadWorkerShutdownTests
         var cancelled = false;
         var requests = 0;
         var cache = new Cache<ActivitySegmentItem>();
-        var source = new Heartbeat.Collection.Hub.Segments.SegmentIngestService(new Heartbeat.Collection.Hub.Time.SystemClock(), cache);
+        var source = new CachedUploadSource<ActivitySegmentItem>(cache);
         var first = new ActivitySegmentItem { Id = Guid.CreateVersion7() };
         var tail = new ActivitySegmentItem { Id = Guid.CreateVersion7() };
-        source.UpsertDurable(first, 1);
+        cache.Add([first]);
         var segments = new UploadStream<ActivitySegmentItem>("段", [source], async (_, ct) =>
         {
             Interlocked.Increment(ref requests);
@@ -81,7 +81,7 @@ public class UploadWorkerShutdownTests
 
         await worker.StartAsync(CancellationToken.None);
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
-        source.UpsertDurable(tail, 1);
+        cache.Add([tail]);
         await worker.StopAsync(new CancellationToken(canceled: true)).WaitAsync(TimeSpan.FromSeconds(3));
 
         Assert.True(cancelled);
@@ -99,13 +99,13 @@ public class UploadWorkerShutdownTests
         using var http = new HttpClient(handler);
         var api = new HeartbeatApiClient(http);
         var cache = new Cache<ActivitySegmentItem>();
-        var source = new Heartbeat.Collection.Hub.Segments.SegmentIngestService(new Heartbeat.Collection.Hub.Time.SystemClock(), cache);
+        var source = new CachedUploadSource<ActivitySegmentItem>(cache);
         foreach (var item in Enumerable.Range(0, 16).Select(_ => new ActivitySegmentItem
         {
             Id = Guid.CreateVersion7(), Source = "system", IdentityKey = "mac:test",
             AppIdentityKey = "mac:test", StartTime = DateTimeOffset.UtcNow.AddDays(-3),
             EndTime = DateTimeOffset.UtcNow.AddDays(-3).AddMinutes(1)
-        })) source.UpsertDurable(item, 1);
+        })) cache.Add([item]);
         var segments = new UploadStream<ActivitySegmentItem>("段", [source],
             (batch, ct) => api.UploadSegmentsAsync(new SegmentUploadRequest { Segments = batch }, ct));
         var inputs = new UploadStream<InputEventItem>("输入", [],

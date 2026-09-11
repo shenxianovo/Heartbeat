@@ -2,15 +2,8 @@ import { authHttp } from './index'
 
 import type { IPersonAssociationResponse, IPersonFactPage, IPersonSettingsResponse } from './client'
 
-// Generated DTOs remain authoritative. This transport keeps JSON ISO text because NSwag's
-// Date conversion discards microseconds. Exclude class methods and extensibility indexers.
-type JsonWire<T> = T extends Date ? string
-  : T extends undefined ? null
-  : T extends Array<infer Item> ? JsonWire<Item>[]
-  : T extends object ? {
-    [Key in keyof T as string extends Key ? never : number extends Key ? never
-      : T[Key] extends (...args: never[]) => unknown ? never : Key]: JsonWire<T[Key]>
-  } : T
+import type { JsonWire } from './wire'
+
 export type PersonAssociation = JsonWire<IPersonAssociationResponse>
 export type PersonSettings = JsonWire<IPersonSettingsResponse>
 export type PersonFactPage = JsonWire<IPersonFactPage>
@@ -24,10 +17,10 @@ async function request(path: string, method = 'GET', body?: unknown): Promise<Re
 }
 export async function fetchPersonSettings(): Promise<PersonSettings> { return (await request('')).json() }
 export async function establishPerson(): Promise<void> { await request('', 'PUT') }
-export async function savePersonAssociation(id: number | null, value: Omit<PersonAssociation, 'id'>): Promise<void> {
+export async function savePersonAssociation(id: string | null, value: Omit<PersonAssociation, 'id'>): Promise<void> {
   await request('/associations' + (id === null ? '' : '/' + id), id === null ? 'POST' : 'PUT', value)
 }
-export async function removePersonAssociation(id: number): Promise<void> { await request('/associations/' + id, 'DELETE') }
+export async function removePersonAssociation(id: string): Promise<void> { await request('/associations/' + id, 'DELETE') }
 export async function fetchPersonFacts(family: string, start: string | null, end: string | null, offset: number): Promise<PersonFactPage> {
   const params = new URLSearchParams({ offset: String(offset), limit: '20' })
   if (start) params.set('start', start)

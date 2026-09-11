@@ -1,3 +1,4 @@
+import { browserAttribution } from '../src/protocol'
 import { describe, expect, it } from 'vitest'
 import type { SegmentSnapshot } from '../src/fold'
 import {
@@ -138,11 +139,10 @@ async function acknowledged(
 
 it('keeps a same-revision queued snapshot when the ACK describes another Observer or Target', async () => {
   const store = new MemoryStore(), hub = new MemoryHub(), module = delivery(store, hub)
-  const item = { ...snapshot(), observerId: '6a8259d1-5f6a-4b83-b6ba-87017886319e',
-    target: { kind: 'application-context' as const, reference: '["device-a","win:msedge"]' } }
+  const item = { ...snapshot(), ...browserAttribution('6a8259d1-5f6a-4b83-b6ba-87017886319e', 'device-a', 'win:msedge') }
   await module.enqueue([item])
   hub.onProtocol = async request => ({ ...await acknowledged(request),
-    settledSnapshots: [{ ...item, target: { ...item.target, reference: '["device-b","win:msedge"]' } }],
+    settledSnapshots: [{ ...item, ...browserAttribution(item.collectorId, 'device-b', 'win:msedge') }],
   } as ProtocolUploadResult)
   await module.deliveryCycle()
   expect(store.durable.queue[item.id]).toEqual(item)
@@ -153,8 +153,7 @@ it('keeps a same-revision queued snapshot when the ACK describes another Observe
 
 it('persists the first device binding before publication and reuses it for later offline snapshots', async () => {
   const store = new MemoryStore(), hub = new MemoryHub(), module = delivery(store, hub)
-  const attribution = { observerId: '6a8259d1-5f6a-4b83-b6ba-87017886319e',
-    target: { kind: 'application-context' as const, reference: '["device-a","win:msedge"]' } }
+  const attribution = browserAttribution('6a8259d1-5f6a-4b83-b6ba-87017886319e', 'device-a', 'win:msedge')
   const old = snapshot()
   await module.enqueue([old])
   hub.onProtocol = async request => {

@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Heartbeat.Core.DTOs.Input;
+using Heartbeat.Core.DTOs.Facts;
+using Heartbeat.Core.Facts;
 using Heartbeat.Core.DTOs.Segments;
 using Heartbeat.Server.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -39,8 +41,6 @@ public sealed partial class FactStore
                         ? await new ServiceAccountService(db).ResolveAsync(device.OwnerId, null, stream.SubjectId, CancellationToken.None) : null;
                     var app = account is not null || string.IsNullOrWhiteSpace(item.AppIdentityKey) ? null :
                         await new AppIdentityService(db).ResolveAsync(item.AppIdentityKey, item.AppDisplayName);
-                    var applicationContext = item.Source == "browser" && app is not null
-                        ? await new ApplicationContextService(db).ResolveAsync(device.OwnerId, device.Id, app.AppId) : null;
                     row = new Segment
                     {
                         Id = item.Id,
@@ -50,8 +50,6 @@ public sealed partial class FactStore
                         FactId = item.Id,
                         Revision = 1,
                         Source = item.Source,
-                        TargetKind = account is not null ? "account" : applicationContext is not null ? "application-context" : stream.Subject.Kind == "machine" ? "device" : null,
-                        TargetId = account?.Id ?? applicationContext?.Id ?? (stream.Subject.Kind == "machine" ? device.Id : null),
                         AppIdentityId = app?.Id,
                         StartTime = start,
                         EndTime = end,
@@ -85,7 +83,16 @@ public sealed partial class FactStore
                         row.Payload = payload;
                     }
                 }
+                row.Aspect = FactAspectCompatibility.Infer(row.Source, "segment", row.Payload.RootElement);
+                var observation = await ResolveLegacyObservation(stream, new FactSnapshot(), row.Payload.RootElement,
+                    row.Aspect, CancellationToken.None, row.AppIdentityId);
+                row.ObserverId = observation.CollectorId;
+                row.FoiId = observation.FoiId;
+                row.TargetKind = null;
+                row.TargetId = null;
+                row.AppIdentityId = observation.AppIdentityId;
                 await db.SaveChangesAsync();
+                await WriteRelations(row, observation.Relations, CancellationToken.None);
             }
         });
     }
@@ -127,8 +134,8 @@ public sealed partial class FactStore
                     FactId = item.Id,
                     Revision = 1,
                     Source = "system",
-                    TargetKind = stream.Subject.Kind == "machine" ? "device" : null,
-                    TargetId = stream.Subject.Kind == "machine" ? device.Id : null,
+                    FoiId = stream.Subject.Kind == "machine" ? await ObjectId(device, CancellationToken.None) : null,
+                    Aspect = FactAspects.Input,
                     Timestamp = NormalizeTime(item.Timestamp)!.Value,
                     Payload = JsonDocument.Parse(JsonSerializer.Serialize(new { eventType = EventName(item.EventType), codeSet = item.CodeSet, code = item.Code }))
                 });

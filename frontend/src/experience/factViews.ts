@@ -1,3 +1,5 @@
+import type { IObjectSummary, IRelationResponse } from '../api/client'
+import type { JsonWire } from '../api/wire'
 import { isAwayApp } from '../appLabels'
 
 export interface ExperienceSegment {
@@ -5,10 +7,9 @@ export interface ExperienceSegment {
   streamId: string
   factId: string
   revision: number
-  observerId?: string | null
-  targetKind?: string | null
-  targetId?: number | null
-  targetName?: string | null
+  collectorId?: string | null
+  foi?: JsonWire<IObjectSummary> | null
+  relations?: JsonWire<IRelationResponse>[]
   deviceId?: number | null
   source: string
   aspect?: string | null
@@ -78,15 +79,18 @@ export function overlaps(a: TimeRange, b: TimeRange): boolean {
     : b.start === b.end ? b.start >= a.start && b.start < a.end
     : a.start < b.end && a.end > b.start
 }
-export function relatedBrowser(fact: ExperienceSegment, facts: ExperienceSegment[]): ExperienceSegment[] {
+export function relatedObject(fact: Pick<ExperienceSegment, 'foi' | 'relations'>, role: string) {
+  const kind = role === 'device' ? 'machine' : role
+  return fact.foi?.kind === kind ? fact.foi : fact.relations
+    ?.filter(r => r.kind === 'observed-on' || r.kind === 'application-account-use')
+    .flatMap(r => r.members).find(m => m.role === role)?.object
+}
+export function relatedPages(fact: ExperienceSegment, facts: ExperienceSegment[]): ExperienceSegment[] {
   if (fact.aspect !== 'desktop-activity') return []
-  return facts.filter(other => {
-    if (other.aspect !== 'selected-page' || !overlaps(rangeOf(fact), rangeOf(other))) return false
-    if (fact.deviceId != null && other.deviceId != null)
-      return other.deviceId === fact.deviceId && (fact.appId != null && other.appId != null
-        ? other.appId === fact.appId : fact.appIdentityId != null && other.appIdentityId === fact.appIdentityId)
-    return false
-  })
+  const machine = relatedObject(fact, 'device'), app = relatedObject(fact, 'app')
+  if (!machine || !app) return []
+  return facts.filter(other => other.aspect === 'selected-page' && overlaps(rangeOf(fact), rangeOf(other)) &&
+    relatedObject(other, 'device')?.id === machine.id && relatedObject(other, 'app')?.id === app.id)
 }
 export function clampRange(range: TimeRange, bounds: TimeRange): TimeRange {
   const span = Math.min(bounds.end - bounds.start, Math.max(1000, range.end - range.start))
@@ -99,40 +103,38 @@ export function zoomRange(range: TimeRange, bounds: TimeRange, factor: number, p
   return clampRange({ start: time - span * pivot, end: time + span * (1 - pivot) }, bounds)
 }
 
-/** Unknown history stays unknown; a delivery stream is only a lane discriminator. */
-export function factTarget(fact: ExperienceSegment) {
-  if (fact.targetKind != null && fact.targetId != null)
-    return { id: `${fact.targetKind}:${fact.targetId}`, kind: fact.targetKind,
-      name: fact.targetName || `${fact.targetKind} ${fact.targetId}` }
-  return { id: `unknown:${fact.streamId}`, kind: 'unknown', name: '未知对象' }
+/** A stream can distinguish unknown history in the view; it never becomes an Object. */
+export function factObject(fact: Pick<ExperienceSegment, 'foi' | 'streamId'>) {
+  return fact.foi ? { id: fact.foi.id, kind: fact.foi.kind, name: fact.foi.name || fact.foi.key }
+    : { id: `unknown:${fact.streamId}`, kind: 'unknown', name: '未知对象' }
 }
 
-export function groupTargets(facts: ExperienceSegment[], range: TimeRange) {
+export function groupObjects(facts: ExperienceSegment[], range: TimeRange) {
   const groups = new Map<string, { id: string; name: string; kind: string; facts: ExperienceSegment[] }>()
   for (const fact of facts) {
     if (!overlaps(rangeOf(fact), range)) continue
-    const target = factTarget(fact)
-    let group = groups.get(target.id)
+    const object = factObject(fact)
+    let group = groups.get(object.id)
     if (!group) {
-      group = { ...target, facts: [] }
-      groups.set(target.id, group)
+      group = { ...object, facts: [] }
+      groups.set(object.id, group)
     }
     group.facts.push(fact)
   }
   return [...groups.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name))
 }
 
-/** Groups raw System facts into application rows within each Target, without coalescing intervals. */
+/** Group foreground facts by their confirmed App object; preserve each original interval. */
 export function groupApplications(facts: ExperienceSegment[]) {
   const groups = new Map<string, { id: string; appId: number | null; name: string; facts: ExperienceSegment[] }>()
   for (const fact of facts) {
     if (fact.aspect !== 'desktop-activity') continue
-    const identity = fact.appId != null ? `app:${fact.appId}` : fact.appIdentityId != null
-      ? `identity:${fact.appIdentityId}` : `stream:${fact.streamId}`
-    const id = `${factTarget(fact).id}/${identity}`
+    const app = relatedObject(fact, 'app')
+    const identity = app?.id ?? `unknown:${fact.streamId}`
+    const id = `${factObject(fact).id}/${identity}`
     let group = groups.get(id)
     if (!group) {
-      group = { id, appId: fact.appId, name: isAwayApp(fact.appKey, fact.appName) ? '离开' : fact.appName || '前台活动', facts: [] }
+      group = { id, appId: fact.appId, name: isAwayApp(fact.appKey, fact.appName) ? '离开' : app?.name || app?.key || '前台活动', facts: [] }
       groups.set(id, group)
     }
     group.facts.push(fact)

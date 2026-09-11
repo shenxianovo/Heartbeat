@@ -12,6 +12,7 @@ public interface IFactRecord
     long Revision { get; set; }
     string? Aspect { get; set; }
     Guid? ObserverId { get; set; }
+    Guid? FoiId { get; set; }
     string? TargetKind { get; set; }
     long? TargetId { get; set; }
     string Source { get; set; }

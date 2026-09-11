@@ -21,15 +21,11 @@ internal static class FactCanonicalization
                 writer.WriteString("factId", fact.FactId);
                 writer.WriteNumber("revision", fact.Revision);
                 if (fact.Aspect is { } aspect) writer.WriteString("aspect", aspect);
-                if (fact.ObserverId is { } observer) writer.WriteString("observerId", observer);
-                if (fact.Target is { } target)
-                {
-                    writer.WritePropertyName("target");
-                    writer.WriteStartObject();
-                    writer.WriteString("kind", target.Kind);
-                    writer.WriteString("reference", target.Reference);
-                    writer.WriteEndObject();
-                }
+                if (fact.CollectorId is { } collector) writer.WriteString("collectorId", collector);
+                writer.WritePropertyName("foi");
+                JsonSerializer.Serialize(writer, fact.Foi, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                writer.WritePropertyName("relations");
+                JsonSerializer.Serialize(writer, fact.Relations, new JsonSerializerOptions(JsonSerializerDefaults.Web));
                 if (fact.ObservedAt is { } observedAt)
                     writer.WriteString("observedAt", observedAt.ToString("O", CultureInfo.InvariantCulture));
                 else
@@ -77,15 +73,11 @@ internal static class FactCanonicalization
                 writer.WriteString("factId", fact.FactId);
                 writer.WriteNumber("revision", fact.Revision);
                 if (fact.Aspect is { } aspect) writer.WriteString("aspect", aspect);
-                if (fact.ObserverId is { } observer) writer.WriteString("observerId", observer);
-                if (fact.Target is { } target)
-                {
-                    writer.WritePropertyName("target");
-                    writer.WriteStartObject();
-                    writer.WriteString("kind", target.Kind);
-                    writer.WriteString("reference", target.Reference);
-                    writer.WriteEndObject();
-                }
+                if (fact.CollectorId is { } collector) writer.WriteString("collectorId", collector);
+                writer.WritePropertyName("foi");
+                JsonSerializer.Serialize(writer, fact.Foi, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                writer.WritePropertyName("relations");
+                JsonSerializer.Serialize(writer, fact.Relations, new JsonSerializerOptions(JsonSerializerDefaults.Web));
                 if (fact.ObservedAt is { } observedAt)
                     writer.WriteString("observedAt", FormatProtocolTimestamp(observedAt));
                 writer.WritePropertyName("time");

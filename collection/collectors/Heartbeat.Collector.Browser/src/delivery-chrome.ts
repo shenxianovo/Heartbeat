@@ -13,6 +13,7 @@ import {
   type BrowserDeliverySessionState,
   type BrowserDeliveryStore,
 } from './delivery'
+import { bindAttribution, readAttribution, sameSnapshot, snapshotRevision } from './protocol'
 import type {
   BrowserActivationAttempt,
   BrowserPendingGap,
@@ -20,15 +21,18 @@ import type {
   BrowserPublishAttempt,
 } from './protocol'
 
-const ATTRIBUTION_KEY = 'browserFactAttribution'
-const QUEUE_KEY = 'pendingSegments'
+const ATTRIBUTION_KEY = 'browserObservation'
+const PREVIOUS_ATTRIBUTION_KEY = 'browserFactAttribution'
+const QUEUE_KEY = 'pendingObservationFacts'
+const PREVIOUS_QUEUE_KEY = 'pendingSegments'
 const BACKOFF_KEY = 'backoff'
 const HUB_PORT_KEY = 'hubPort'
 const PROTOCOL_SESSION_KEY = 'collectorProtocolSession'
 const PROTOCOL_ACTIVATION_ATTEMPT_KEY = 'collectorProtocolActivationAttempt'
 const PROTOCOL_PUBLISH_ATTEMPT_KEY = 'collectorProtocolPublishAttempt'
 const FLUSH_PERIOD_KEY = 'browserCollectorFlushPeriodMs'
-const DEAD_LETTER_KEY = 'browserCollectorDeadLetters'
+const DEAD_LETTER_KEY = 'browserObservationDeadLetters'
+const PREVIOUS_DEAD_LETTER_KEY = 'browserCollectorDeadLetters'
 const PENDING_GAP_KEY = 'browserCollectorPendingGap'
 const DESIRED_ENABLED_KEY = 'browserCollectorDesiredEnabled'
 const DELIVERY_POLICY_KEY = 'browserCollectorDeliveryPolicy'
@@ -49,7 +53,7 @@ export class ChromeBrowserDeliveryStore implements BrowserDeliveryStore {
   async loadDurable(): Promise<BrowserDeliveryDurableState> {
     const [local, transient] = await Promise.all([
       chrome.storage.local.get([
-        QUEUE_KEY, ATTRIBUTION_KEY,
+        QUEUE_KEY, ATTRIBUTION_KEY, PREVIOUS_QUEUE_KEY, PREVIOUS_ATTRIBUTION_KEY, PREVIOUS_DEAD_LETTER_KEY,
         PENDING_GAP_KEY,
         DEAD_LETTER_KEY,
         DELIVERY_POLICY_KEY,
@@ -57,9 +61,7 @@ export class ChromeBrowserDeliveryStore implements BrowserDeliveryStore {
       chrome.storage.session.get([DESIRED_ENABLED_KEY, FLUSH_PERIOD_KEY]),
     ])
     const defaults = emptyBrowserDeliveryDurableState()
-    const rawQueue = isRecord(local[QUEUE_KEY])
-      ? local[QUEUE_KEY] as Record<string, PersistedSegmentSnapshot>
-      : {}
+    const queue = mergeQueuedSnapshots(local[PREVIOUS_QUEUE_KEY], local[QUEUE_KEY])
     const rawGaps = local[PENDING_GAP_KEY]
     const policy = normalizePolicy(
       local[DELIVERY_POLICY_KEY],
@@ -70,15 +72,21 @@ export class ChromeBrowserDeliveryStore implements BrowserDeliveryStore {
     if (pendingGaps.migrated) {
       await chrome.storage.local.set({ [PENDING_GAP_KEY]: pendingGaps.value })
     }
-    return {
-      queue: normalizeQueuedSnapshots(rawQueue),
-      attribution: local[ATTRIBUTION_KEY] as BrowserDeliveryDurableState['attribution'],
+    const state: BrowserDeliveryDurableState = {
+      queue,
+      attribution: readAttribution(local[ATTRIBUTION_KEY] ?? local[PREVIOUS_ATTRIBUTION_KEY]),
       pendingGaps: pendingGaps.value,
-      deadLetters: Array.isArray(local[DEAD_LETTER_KEY])
-        ? local[DEAD_LETTER_KEY] as SegmentSnapshot[]
-        : defaults.deadLetters,
+      deadLetters: Object.values(normalizeQueuedSnapshots(Object.fromEntries(
+        [...(Array.isArray(local[PREVIOUS_DEAD_LETTER_KEY]) ? local[PREVIOUS_DEAD_LETTER_KEY] as PersistedSegmentSnapshot[] : []),
+          ...(Array.isArray(local[DEAD_LETTER_KEY]) ? local[DEAD_LETTER_KEY] as PersistedSegmentSnapshot[] : defaults.deadLetters)]
+          .map(fact => [fact.id, fact])))),
       policy,
     }
+    if ([PREVIOUS_QUEUE_KEY, PREVIOUS_ATTRIBUTION_KEY, PREVIOUS_DEAD_LETTER_KEY].some(key => local[key] !== undefined)) {
+      await this.saveDurable(state)
+      await chrome.storage.local.remove([PREVIOUS_QUEUE_KEY, PREVIOUS_ATTRIBUTION_KEY, PREVIOUS_DEAD_LETTER_KEY])
+    }
+    return state
   }
 
   async saveDurable(state: BrowserDeliveryDurableState): Promise<void> {
@@ -187,6 +195,21 @@ export async function loadExternalHostIdentity(): Promise<string> {
   return created
 }
 
+function mergeQueuedSnapshots(previous: unknown, current: unknown): Record<string, SegmentSnapshot> {
+  const merged = normalizeQueuedSnapshots(isRecord(previous) ? previous as Record<string, PersistedSegmentSnapshot> : {})
+  const incoming = normalizeQueuedSnapshots(isRecord(current) ? current as Record<string, PersistedSegmentSnapshot> : {})
+  for (const [id, fact] of Object.entries(incoming)) {
+    const old = merged[id]
+    if (!old || snapshotRevision(fact) > snapshotRevision(old)) merged[id] = fact
+    else if (snapshotRevision(fact) === snapshotRevision(old)) {
+      if (!sameSnapshot(bindAttribution(old, readAttribution(fact)), bindAttribution(fact, readAttribution(old))))
+        throw new Error(`Conflicting cached revision for Fact ${id}; preserve both queues`)
+      merged[id] = fact
+    }
+  }
+  return merged
+}
+
 function normalizeQueuedSnapshots(
   stored: Record<string, PersistedSegmentSnapshot>,
 ): Record<string, SegmentSnapshot> {
@@ -195,8 +218,7 @@ function normalizeQueuedSnapshots(
       id: snapshot.id,
       source: snapshot.source,
       activityKey: snapshot.activityKey ?? snapshot.identityKey!,
-      ...(snapshot.observerId === undefined ? {} : { observerId: snapshot.observerId }),
-      ...(snapshot.target === undefined ? {} : { target: snapshot.target }),
+      ...readAttribution(snapshot),
       title: snapshot.title,
       startTime: snapshot.startTime,
       endTime: snapshot.endTime,

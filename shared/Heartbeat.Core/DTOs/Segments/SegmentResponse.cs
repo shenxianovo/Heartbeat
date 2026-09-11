@@ -1,17 +1,13 @@
+using Heartbeat.Core.DTOs.Facts;
+
 namespace Heartbeat.Core.DTOs.Segments
 {
     /// <summary>
     /// 插件采集器段的查询响应（ADR-017）。回放多轨渲染用,不参与统计。
     /// </summary>
-    public class SegmentResponse
+    public class SegmentResponse : ObservationResponse
     {
-        public Guid Id { get; set; }
-        public Guid? ObserverId { get; set; }
-        public string? TargetKind { get; set; }
-        public long? TargetId { get; set; }
-        public string? TargetName { get; set; }
-
-        /// <summary>Target 对应的设备维度；未知归属保持为空。</summary>
+        /// <summary>由 FOI 或精确关系得到的设备资料维度；未知保持为空。</summary>
         public long? DeviceId { get; set; }
 
         public string? Aspect { get; set; }

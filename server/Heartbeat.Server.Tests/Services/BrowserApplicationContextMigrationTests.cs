@@ -64,11 +64,11 @@ public sealed class BrowserApplicationContextMigrationTests(PostgresContainerFix
             ? await store.ReadSegmentsAsync("owner", 701, null, null) : await store.ReadEventsAsync("owner", 701, null, null);
         var before = await Read();
         var mapped = Assert.Single(before, row => row.Id == rowId);
-        Assert.Equal("application-context", mapped.TargetKind);
+        Assert.Equal("app", (await db.Objects.SingleAsync(o => o.Id == mapped.FoiId)).Kind);
         Assert.Equal(801, mapped.AppId);
         Assert.Equal(fact.ObserverId, mapped.ObserverId);
         var unknown = Assert.Single(before, row => row.Id == unknownId);
-        Assert.Equal("device", unknown.TargetKind);
+        Assert.Equal("machine", (await db.Objects.SingleAsync(o => o.Id == unknown.FoiId)).Kind);
         Assert.Null(unknown.ObserverId);
         Assert.Null(unknown.AppId);
         await store.IngestAsync("owner", batch);

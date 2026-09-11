@@ -56,10 +56,10 @@ flowchart LR
 
 目标核心表为 Collectors、Objects、Facts、Relations、RelationMembers。
 DataSource 和计算口径暂不展开；Measurement 的具体数值业务约束待真实需求明确。
-当前数据库统一为五表核心；现有 Segment/Event 上传保留 Observer/Target 转换入口和必要资料映射。业务库尚未迁移。
-旧→新身份、内容、对象与关系映射，以及 Owner 隔离、缓存重放和恢复方案是下一步迁移设计的工作。
-本轮没有修改运行代码、协议或数据库，也未恢复已暂停的演练。
-
+当前代码的 Segment/Event 已从第一方 Collector、SDK、Runtime、HTTP 贯通到五表与 Dashboard：
+原生输入直接携带 Collector/FOI/Relations，查询按 Object UUID 和准确关系运行。
+旧缓存和 HTTP 在入口转换；应用上下文实体与本人关联旧表已由对象/关系替代。
+业务库尚未迁移，暂停的完整副本资源/恢复演练未恢复。
 此前方案保留在[历史讨论](collector-observation-model-proposal.md)、ADR-055/056 及
 [上一轮切换记录](observation-target-cutover.md)；与五表目标冲突的选择以 ADR-059 为准。
 

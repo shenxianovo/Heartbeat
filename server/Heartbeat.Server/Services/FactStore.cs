@@ -149,9 +149,8 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
             ? await db.Segments.SingleOrDefaultAsync(f => f.OwnerId == stream.OwnerId && f.StreamId == stream.StreamId && f.FactId == snapshot.FactId, ct)
             : await db.Events.SingleOrDefaultAsync(f => f.OwnerId == stream.OwnerId && f.StreamId == stream.StreamId && f.FactId == snapshot.FactId, ct);
         if (fact is not null && snapshot.Revision < fact.Revision) return;
-        var appIdentityId = await ResolveApp(stream, payload.RootElement, aspect, ct)
-            ?? (snapshot.ObserverId is null && snapshot.Target is null ? fact?.AppIdentityId : null);
-        var attribution = await ResolveAttribution(stream, snapshot, appIdentityId, ct);
+        var observation = await ResolveObservation(stream, snapshot, payload.RootElement, aspect, ct,
+            snapshot.ObserverId is null && snapshot.Target is null ? fact?.AppIdentityId : null);
         if (fact is not null)
         {
             var sameTimes = fact is Segment segment
@@ -159,7 +158,8 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
                 : ((Event)fact).Timestamp == at;
             if (snapshot.Revision == fact.Revision)
             {
-                if (!sameTimes || fact.Aspect != aspect || fact.ObserverId != attribution.ObserverId || fact.TargetKind != attribution.Kind || fact.TargetId != attribution.Id ||
+                if (!sameTimes || fact.Aspect != aspect || fact.ObserverId != observation.CollectorId || fact.FoiId != observation.FoiId ||
+                    !await SameRelations(fact.Id, observation.Relations, ct) ||
                     !JsonElement.DeepEquals(fact.Payload.RootElement, payload.RootElement))
                     throw new FactIngestException("The same Fact Revision has different content.", true);
                 return;
@@ -191,12 +191,13 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         fact.FactId = snapshot.FactId;
         fact.Source = stream.Source;
         fact.Aspect = aspect;
-        fact.ObserverId = attribution.ObserverId;
-        fact.TargetKind = attribution.Kind;
-        fact.TargetId = attribution.Id;
+        fact.ObserverId = observation.CollectorId;
+        fact.FoiId = observation.FoiId;
+        fact.TargetKind = null;
+        fact.TargetId = null;
         fact.Revision = snapshot.Revision;
         fact.Payload = payload;
-        fact.AppIdentityId = attribution.AppIdentityId;
+        fact.AppIdentityId = observation.AppIdentityId;
         if (fact is Segment savedSegment)
         {
             savedSegment.StartTime = start!.Value;
@@ -204,69 +205,7 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         }
         else ((Event)fact).Timestamp = at!.Value;
         await db.SaveChangesAsync(ct);
-    }
-
-    // Pre-target first-party protocol/cache adapter. Exit evidence is owned by task 05.
-    private async Task<(Guid? ObserverId, string? Kind, long? Id, long? AppIdentityId)> ResolveAttribution(
-        FactStream stream, FactSnapshot snapshot, long? appIdentityId, CancellationToken ct)
-    {
-        if (snapshot.ObserverId is null && snapshot.Target is null)
-        {
-            if (stream.Source == "vrchat.account" && stream.Subject.Kind == "account")
-            {
-                var account = await new ServiceAccountService(db).ResolveAsync(stream.OwnerId, null, stream.SubjectId, ct);
-                return (stream.Origin == "native" ? stream.CollectorInstanceId : null, "account", account.Id, null);
-            }
-            if (stream.Subject.Kind != "machine" || stream.Subject.DeviceId is not { } deviceId)
-                return (null, null, null, appIdentityId);
-            if (stream.Source == "system")
-                return (stream.Origin == "native" ? stream.CollectorInstanceId : null, "device", deviceId, appIdentityId);
-            if (stream.Source != "browser") return (null, "device", deviceId, appIdentityId);
-            using var dimensions = JsonDocument.Parse(stream.Dimensions);
-            Guid? observer = stream.Origin == "native" ? Heartbeat.Core.Facts.BrowserFactAttribution.Observer(String(dimensions.RootElement, "externalHostIdentity")) : null;
-            if (appIdentityId is not { } identityId) return (observer, "device", deviceId, null);
-            var appId = await db.AppIdentities.Where(a => a.Id == identityId).Select(a => a.AppId).SingleAsync(ct);
-            var context = await new ApplicationContextService(db).ResolveAsync(stream.OwnerId, deviceId, appId, ct);
-            return (observer, "application-context", context.Id, appIdentityId);
-        }
-        if (snapshot.ObserverId is null || snapshot.ObserverId == Guid.Empty || snapshot.Target is null)
-            throw new FactIngestException("A Fact requires a valid Observer and Target.");
-        var target = snapshot.Target;
-        if (target.Kind == "person")
-        {
-            PersonReference reference;
-            try { reference = PersonReference.Parse(target.Reference); }
-            catch (ArgumentException ex) { throw new FactIngestException(ex.Message); }
-            var person = await db.Persons.SingleOrDefaultAsync(p => p.OwnerId == stream.OwnerId && p.Reference == reference.Id, ct);
-            if (person is null) throw new FactIngestException("Person Target must exist within its Owner.");
-            return (snapshot.ObserverId, "person", person.Id, appIdentityId);
-        }
-        if (target.Kind == "account")
-        {
-            ServiceAccountReference reference;
-            try { reference = ServiceAccountReference.Parse(target.Reference); }
-            catch (ArgumentException ex) { throw new FactIngestException(ex.Message); }
-            if (appIdentityId is not null)
-                throw new FactIngestException("Account facts cannot claim a machine platform App identity.");
-            var account = await new ServiceAccountService(db).ResolveAsync(stream.OwnerId, reference, stream.SubjectId, ct);
-            return (snapshot.ObserverId, "account", account.Id, null);
-        }
-        if (target.Kind == "application-context")
-        {
-            ApplicationContextReference reference;
-            try { reference = ApplicationContextReference.Parse(target.Reference); }
-            catch (ArgumentException ex) { throw new FactIngestException(ex.Message); }
-            var identity = await new AppIdentityService(db).ResolveAsync(reference.AppIdentityKey, cancellationToken: ct);
-            if (appIdentityId is not null && appIdentityId != identity.Id)
-                throw new FactIngestException("Application context conflicts with the Fact's platform App identity.");
-            var device = await new DeviceService(db).ResolveFactReferenceAsync(stream.OwnerId, reference.DeviceReference, null, ct);
-            var context = await new ApplicationContextService(db).ResolveAsync(stream.OwnerId, device.Id, identity.AppId, ct);
-            return (snapshot.ObserverId, target.Kind, context.Id, identity.Id);
-        }
-        if (target.Kind != "device" || string.IsNullOrWhiteSpace(target.Reference) || target.Reference.Length > 256)
-            throw new FactIngestException("A Fact requires a supported Target reference.");
-        var targetDevice = await new DeviceService(db).ResolveFactReferenceAsync(stream.OwnerId, target.Reference, null, ct);
-        return (snapshot.ObserverId, "device", targetDevice.Id, appIdentityId);
+        await WriteRelations(fact, observation.Relations, ct);
     }
 
     private async Task<long?> ResolveApp(FactStream stream, JsonElement payload, string? aspect, CancellationToken ct)

@@ -6,6 +6,7 @@
     1
   ],
   "supportedCapabilities": {
+    "facts.observation": [1],
     "facts.aspect": [1],
     "facts.segment": [
       1

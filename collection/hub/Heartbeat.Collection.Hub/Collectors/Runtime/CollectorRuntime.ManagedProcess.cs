@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Heartbeat.Collection.Hub.Collectors.Packages;
 using Heartbeat.Collection.Hub.Collectors.Protocol;
@@ -464,11 +465,12 @@ public sealed partial class CollectorRuntime
                 if (document.RootElement.ValueKind == JsonValueKind.Object &&
                     document.RootElement.TryGetProperty("SchemaVersion", out var version) &&
                     version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var schemaVersion) &&
-                    (schemaVersion > 2 || schemaVersion == 2 &&
+                    (schemaVersion > 3 || schemaVersion == 3 &&
+                        (!package.Manifest.SupportedCapabilities.TryGetValue("facts.observation", out var observations) || !observations.Contains(1)) || schemaVersion == 2 &&
                         (!package.Manifest.SupportedCapabilities.TryGetValue("facts.aspect", out var aspects) ||
                          !aspects.Contains(1))))
                     throw ActivationError("collector_cache_incompatible",
-                        $"Collector Package cannot read '{name}' schemaVersion {schemaVersion}. Preserve this data directory and start a compatible Package with facts.aspect v1 support.");
+                        $"Collector Package cannot read '{name}' schemaVersion {schemaVersion}. Preserve this data directory and start a compatible Package with the required observation capability.");
             }
             catch (JsonException)
             {
@@ -1882,15 +1884,19 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
 
     private static FactSubmission ReadFact(JsonElement fact)
     {
+        var node = JsonNode.Parse(fact.GetRawText())!.AsObject();
+        Heartbeat.Core.Facts.ObservationCompatibility.ReadOldEnvelope(node, true);
+        fact = JsonSerializer.SerializeToElement(node);
         RequireExactProperties(
             fact,
             "streamId",
             "factId",
             "revision",
             "observedAt",
-            "observerId",
+            "collectorId",
             "aspect",
-            "target",
+            "foi",
+            "relations",
             "time",
             "payload");
         var time = RequireObject(fact, "time");
@@ -1914,10 +1920,12 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
             fact.TryGetProperty("observedAt", out _) ? ReadUtcTimestamp(fact, "observedAt") : null,
             factTime,
             fact.GetProperty("payload").Clone(),
-            fact.TryGetProperty("observerId", out var observer) && observer.ValueKind != JsonValueKind.Null ? observer.GetGuid() : null,
-            fact.TryGetProperty("target", out var target) && target.ValueKind != JsonValueKind.Null
-                ? JsonSerializer.Deserialize<Heartbeat.Core.DTOs.Facts.FactTarget>(target, new JsonSerializerOptions(JsonSerializerDefaults.Web)) : null,
-            fact.TryGetProperty("aspect", out var aspect) && aspect.ValueKind != JsonValueKind.Null ? aspect.GetString() : null);
+            fact.TryGetProperty("collectorId", out var collector) && collector.ValueKind != JsonValueKind.Null ? collector.GetGuid() : null,
+            fact.TryGetProperty("foi", out var foi) && foi.ValueKind != JsonValueKind.Null
+                ? JsonSerializer.Deserialize<Heartbeat.Core.DTOs.Facts.ObservationObjectReference>(foi, new JsonSerializerOptions(JsonSerializerDefaults.Web)) : null,
+            fact.TryGetProperty("aspect", out var aspect) && aspect.ValueKind != JsonValueKind.Null ? aspect.GetString() : null,
+            fact.TryGetProperty("relations", out var relations) && relations.ValueKind != JsonValueKind.Null
+                ? JsonSerializer.Deserialize<List<Heartbeat.Core.DTOs.Facts.FactRelationSnapshot>>(relations, new JsonSerializerOptions(JsonSerializerDefaults.Web)) : null);
     }
 
     private static IReadOnlyDictionary<string, IReadOnlyList<int>> ReadCapabilities(JsonElement parent, string name) =>

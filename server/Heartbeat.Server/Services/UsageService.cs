@@ -1,10 +1,8 @@
 using Heartbeat.Core.Facts;
 using System.Text.Json;
-using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Apps;
 using Heartbeat.Core.DTOs.Segments;
 using Heartbeat.Server.Data;
-using Heartbeat.Server.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace Heartbeat.Server.Services
@@ -30,8 +28,7 @@ namespace Heartbeat.Server.Services
             new FactStore(_db, _timeProvider).ImportSegmentsAsync(deviceId, segments, validated: true);
 
         /// <summary>
-        /// 插件段查询（ADR-017 §4）：回放多轨用。默认返回全部非 system source
-        /// （system 轨走 GetUsageAsync，两者互补不重叠）；source 指定时只查该轨。
+        /// 默认返回前台活动以外的活动契约；显式 Source 仅筛选来源。
         /// </summary>
         public async Task<List<SegmentResponse>> GetSegmentsAsync(
             string ownerId, long? deviceId, string? source, long? appId,
@@ -49,8 +46,7 @@ namespace Heartbeat.Server.Services
                 query = query.Where(x => x.DeviceId == deviceId.Value);
 
             if (appId.HasValue)
-                query = query.Where(x =>
-                    (x.TargetKind != "account" && x.AppIdentityId != null ? x.AppIdentity!.AppId : x.AppId) == appId.Value);
+                query = query.Where(x => x.AppId == appId.Value);
 
             // 区间重叠语义（ADR-018 §4）：跨窗长段在其覆盖的每个窗口都可见。
             // 下界用 >= 而非 >：零长度点事件恰落在窗口起点时不丢
@@ -61,28 +57,21 @@ namespace Heartbeat.Server.Services
             if (end.HasValue)
                 query = query.Where(x => x.StartTime < end.Value);
 
-            return await query
+            var result = query
                 .OrderByDescending(x => x.StartTime)
                 .Take(10000)
                 .Select(x => new SegmentResponse
                 {
-                    ObserverId = x.ObserverId, TargetKind = x.TargetKind, TargetId = x.TargetId,
-                    TargetName = x.TargetName ?? (x.TargetKind == "application-context" && x.App != null && x.Device != null ? x.Device.DeviceName + " / " + x.App.DisplayName : x.TargetKind == "device" && x.Device != null ? x.Device.DeviceName : null),
+                    CollectorId = x.ObserverId, FoiId = x.FoiId,
                     Id = x.Id,
                     Aspect = x.Aspect,
                     DeviceId = x.DeviceId,
                     Source = x.Source,
                     IdentityKey = x.IdentityKey,
-                    AppId = x.TargetKind != "account" && x.AppIdentityId != null ? x.AppIdentity!.AppId : x.AppId,
-                    AppKey = x.TargetKind != "account" && x.AppIdentityId != null
-                        ? x.AppIdentity!.App.Key
-                        : x.App != null ? x.App.Key : null,
-                    AppDisplayName = x.TargetKind != "account" && x.AppIdentityId != null
-                        ? x.AppIdentity!.App.DisplayName
-                        : x.App != null ? x.App.DisplayName : null,
-                    AppName = x.TargetKind != "account" && x.AppIdentityId != null
-                        ? x.AppIdentity!.App.DisplayName
-                        : x.App != null ? x.App.DisplayName : null,
+                    AppId = x.AppId,
+                    AppKey = x.App != null ? x.App.Key : null,
+                    AppDisplayName = x.App != null ? x.App.DisplayName : null,
+                    AppName = x.App != null ? x.App.DisplayName : null,
                     AppIdentityId = x.AppIdentityId,
                     AppIdentityKey = x.AppIdentity != null ? x.AppIdentity.Key : null,
                     Title = x.Title,
@@ -95,15 +84,15 @@ namespace Heartbeat.Server.Services
                     FactId = x.FactId,
                     Revision = x.Revision,
                     Origin = x.Stream.Origin
-                })
-                .ToListAsync();
+                });
+            return await new ObservationQuery(_db).Read(ownerId, result);
         }
 
         public async Task<List<AppUsageResponse>> GetUsageAsync(string ownerId, long? deviceId, DateTimeOffset? start, DateTimeOffset? end)
         {
             var query = _db.ActivitySegments
                 .Where(x => x.OwnerId == ownerId)
-                .Where(x => x.Aspect == FactAspects.DesktopActivity && x.DeviceId != null && x.AppIdentityId != null)
+                .Where(x => x.Aspect == FactAspects.DesktopActivity && x.DeviceId != null && x.AppId != null)
                 .AsQueryable();
 
             if (deviceId.HasValue)
@@ -117,31 +106,27 @@ namespace Heartbeat.Server.Services
             if (end.HasValue)
                 query = query.Where(x => x.StartTime < end.Value);
 
-            return await query
+            var result = query
                 .OrderByDescending(x => x.StartTime)
                 .Take(10000)
                 .Select(x => new AppUsageResponse
                 {
-                    Id = x.Id,
+                    Id = x.Id, CollectorId = x.ObserverId, FoiId = x.FoiId,
                     Aspect = x.Aspect,
                     DeviceId = x.DeviceId!.Value,
                     Source = x.Source,
-                    AppId = (x.AppIdentityId != null ? x.AppIdentity!.AppId : x.AppId)!.Value,
-                    AppKey = x.AppIdentityId != null ? x.AppIdentity!.App.Key : x.App!.Key,
-                    AppDisplayName = x.AppIdentityId != null
-                        ? x.AppIdentity!.App.DisplayName
-                        : x.App!.DisplayName,
-                    AppName = x.AppIdentityId != null
-                        ? x.AppIdentity!.App.DisplayName
-                        : x.App!.DisplayName,
+                    AppId = x.AppId!.Value,
+                    AppKey = x.App!.Key,
+                    AppDisplayName = x.App!.DisplayName,
+                    AppName = x.App!.DisplayName,
                     AppIdentityId = x.AppIdentityId,
                     AppIdentityKey = x.AppIdentity != null ? x.AppIdentity.Key : null,
                     Title = x.Title,
                     StartTime = x.StartTime,
                     EndTime = x.EndTime,
                     DurationSeconds = (int)(x.EndTime - x.StartTime).TotalSeconds
-                })
-                .ToListAsync();
+                });
+            return await new ObservationQuery(_db).Read(ownerId, result);
         }
         private static Dictionary<string, object?>? ParsePayload(string? payload)
             => payload == null ? null : JsonSerializer.Deserialize<Dictionary<string, object?>>(payload);

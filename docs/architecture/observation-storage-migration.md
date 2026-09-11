@@ -156,7 +156,7 @@ JSON 本身不提供外键，应在事务入口及数据库保护中落实，不
 从 Fact 生成的关系随其 Revision 在同一事务中更新：更高版本缩短区间，关系也随之缩短；
 重试不得反复插入新关系。关系身份按“同一 Fact + 关系用途”确定或持久映射，不能按参与对象归并
 来自不同 Facts 的证据。人工关系有独立身份与依据，不随 Collector 更新而被覆盖。
-数据库由 Evidence 生成 FactId/AssociationId 索引列并建立 Owner 复合外键；不是第二份权威证据。
+数据库由 Evidence 生成 FactId 索引列并建立 Owner 复合外键；人工关系直接使用自身 UUID，不再依赖旧 AssociationId。
 成员种类、Owner 与基数在提交前验证，禁止移动成员归属，成员写入更新关系行以串行化并发修改。
 
 ## 5. 既有资料与查询消费者
@@ -178,15 +178,14 @@ JSON 本身不提供外键，应在事务入口及数据库保护中落实，不
 | --- | --- | --- |
 | Facts 旧写入键、旧 FactStore/LegacyImport 转换 | 旧 `/facts`、segments/input 导入及尚在缓存中的旧身份事实 | 全部旧安装升级、进行中事实终结、缓存与备份恢复窗口退出；证明双向到达顺序只保管一个事实，旧 API 引用完成迁移 |
 | Streams / Subjects / FactGaps | Gap、ACK、旧身份接管、运行管理 | 业务归属不用它们；交付/管理仍有消费者就保留，删除必须另有同等保管路径，不以五表数量为清理理由 |
-| Runtime JSON 读取器与完整快照 ACK | 当前 v7、仍支持的 v1–v6 历史缓存 | 保留备份与 Delivered、原 FactId/Revision/时间/Gap；验证转换后新旧 ACK 都只确认准确的已发送内容 |
+| Runtime JSON 读取器与完整快照 ACK | 当前 v8、仍支持的 v1–v7 历史缓存 | 保留备份与 Delivered、原 FactId/Revision/时间/Gap；验证转换后新旧 ACK 都只确认准确的已发送内容 |
 | Browser pendingSegments/foldState/安装身份 | 多窗口、Service Worker 重启、离线待发与初始化绑定 | 原窗口 Fact 不按 App 合并；有设备依据才绑定，旧队列排空且升级/重放已验证后退出旧 reader |
 | VRChat checkpoint v1/v2/v3 | active、pending Facts/Gaps，含旧未知账号 | 保留旧事实终结与新账号分离；不以当前账号补旧快照；真实安装升级与恢复窗口结束后才退出 |
 | Source/AppIdentityId 与资料映射 | 未知历史解释、App 产品纠错、查询与重放 | 属于仍需保存的证据；迁往有同等表达力的固定位置并完成消费者切换前不能删除 |
 
-当前 HTTP 接受旧形状，Runtime ACK 比较 Observer/Target/时间/Payload 等完整字段。
-建议先在 Analytics 兼容入口转换到新存储，旧 outbox 保持原已发送请求及确认规则；
-随后为新原生发布增加明确的协议版本/形状，不能让未知字段被旧端默默丢掉。
-同批 Facts 与派生关系原子提交，成功后才可 ACK；失败保持原请求可重试。
+当前 HTTP v5 的原生 Fact 包含 Collector/FOI/Relations；旧形状只在兼容入口转换。
+Runtime v8 与 SDK v3 读取并迁移旧缓存，ACK 比较包括对象、关系、Aspect、时间及完整 Result。
+同批 Facts 与关系原子提交，成功后才可 ACK；失败保持原请求可重试。
 
 ## 7. 物理搬迁与验收顺序
 
@@ -238,21 +237,21 @@ Objects 的稳定 UUID 保存在现有资料的唯一 ObjectId 外键中。事�
 System 使用 machine FOI，Browser 有明确应用上下文时使用 app FOI，VRChat 使用 account FOI；
 已有 AppIdentity 证据继续支持产品筛选和纠错，设备未知时仍为空。
 
-现有 `/facts`、导入、管理入口继续接受原形状；数据库在同一事务中转换为 FOI/Aspect/关系，
-现有查询从 Facts、Objects 与精确绑定的 Relations 读取。DTO 新增 FoiId/Aspect，原字段保持可读。
-`Segments`/`Events` 是 EF 对同一 Facts 表的 Kind 投影，不是双写的物理事实表。
-本轮支持现有 Segment/Event 生产者；Measurement 的业务输入、独立原生 FOI 发布协议及对象管理 API
-尚无已确认采集需求，不提前实现。新入口落地时替换转换入口，不能让其在当前触发器下被旧字段覆盖。
+追加 `20260911060000_DirectObservations` 删除 ApplicationContexts、PersonAssociations、旧关系反推触发器，
+保留迁移后的 Objects/Relations 及历史 Evidence；显式 FOI/Aspect 不再受旧列覆盖。
+新 `/facts` 直接保存 Collector/FOI/Relations；旧 HTTP/缓存先转换再进入同一写入路径。
+本人关联直接使用 Relations UUID 与成员 Object UUID；DTO 返回完整对象和事实绑定关系。
+`Segments`/`Events` 只是 EF 对同一 Facts 表的 Kind 投影；Measurement 暂无业务生产者。
 
-Source、AppIdentity、Stream/FactId、原 Target 与辅助资料保留各自现有消费者；退出条件见第 6 节。
+Source、AppIdentity、Stream/FactId 保留来源、产品纠错与交付职责；历史 Target 列仅保留原始迁移依据，
+新写入不再填充。完整 App 合并移动对象引用，平台身份纠错只移动具有对应证据的事实。
 没有新增 legacy-* 类型、作用域或迁移 Gap，也没有改变时长计算口径。
 
 验证及剩余门禁见[实施 PRD](../../.scratch/observation-storage/PRD.md)。
 演练脚本已适配五表候选，保留从 NativeFactCustody 完整备份升级与原版本恢复的流程；
 仅验证了脚本和隔离测试 SQL，尚未恢复完整副本演练。真实资源与生产验收不能由自动测试替代。
 
-### 显式 Aspect 后续
+### 当前传输边界
 
-后续追加 `20260911043115_ExplicitFactAspects`，候选演练脚本目标已同步。
-新版 Collector 明确给出 Aspect，兼容入口仍解释旧数据；[语义边界](observation-semantics.md)列明
-HTTP v4、Runtime v7、SDK v2 和启动回退保护。本节不改变上述尚未执行的业务库/资源验收状态。
+候选已包含 `ExplicitFactAspects` 与 `DirectObservations`；[语义边界](observation-semantics.md)
+记录 HTTP v5、Runtime v8、SDK v3 和旧包启动保护。业务库/资源验收仍由原存储 PRD 承接。

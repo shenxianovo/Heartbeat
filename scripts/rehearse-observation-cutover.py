@@ -16,7 +16,7 @@ import time
 import uuid
 
 BASELINE = '20260908141403_NativeFactCustody'
-TARGET = '20260911043115_ExplicitFactAspects'
+TARGET = '20260911060000_DirectObservations'
 
 
 def family_source(family, migrated):
@@ -35,12 +35,11 @@ def row_query(family, attribution=False, migrated=False, after=None):
         return f'''SELECT jsonb_build_array(f."Id", f."OwnerId", f."StreamId", f."FactId",
             f."Revision", f."Source", f."AppIdentityId", {times}, f."Payload") FROM {page} ORDER BY f."Id"'''
     if migrated:
-        return f'''SELECT jsonb_build_array(f."Id", f."ObserverId", f."TargetKind",
-            CASE WHEN f."TargetKind"='device' THEN f."TargetId" ELSE c."DeviceId" END,
-            c."AppId", a."ServiceKey", a."ServiceAccountId", a."LegacySubjectId")
-            FROM {page}
-            LEFT JOIN "ApplicationContexts" c ON f."TargetKind"='application-context' AND c."OwnerId"=f."OwnerId" AND c."Id"=f."TargetId"
-            LEFT JOIN "ServiceAccounts" a ON f."TargetKind"='account' AND a."OwnerId"=f."OwnerId" AND a."Id"=f."TargetId"
+        return f'''SELECT jsonb_build_array(f."Id", f."ObserverId", o."Kind",
+            coalesce(d."Id", observed.device), app."Id", a."ServiceKey", a."ServiceAccountId", a."LegacySubjectId")
+            FROM {page} {object_joins()}
+            LEFT JOIN "Apps" app ON app."ObjectId"=o."Id"
+            LEFT JOIN "ServiceAccounts" a ON a."ObjectId"=o."Id" AND a."OwnerId"=f."OwnerId"
             ORDER BY f."Id"'''
     # Evidence from the deployed baseline, independent of the new Target row IDs.
     browser = '''f."Source"='browser' AND u."Kind"='machine' AND u."DeviceId" IS NOT NULL AND i."AppId" IS NOT NULL'''
@@ -52,8 +51,8 @@ def row_query(family, attribution=False, migrated=False, after=None):
                 ~ '^[0-9a-fA-F]{{8}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{12}}$'
                 THEN nullif((s."Dimensions"->>'externalHostIdentity')::uuid, '00000000-0000-0000-0000-000000000000'::uuid)
             END END,
-        CASE WHEN {account} THEN 'account' WHEN {browser} THEN 'application-context'
-            WHEN u."Kind"='machine' AND u."DeviceId" IS NOT NULL THEN 'device' END,
+        CASE WHEN {account} THEN 'account' WHEN {browser} THEN 'app'
+            WHEN u."Kind"='machine' AND u."DeviceId" IS NOT NULL THEN 'machine' END,
         CASE WHEN u."Kind"='machine' THEN u."DeviceId" END,
         CASE WHEN {browser} THEN i."AppId" END,
         CASE WHEN {account} THEN 'vrchat' END, NULL,
@@ -63,9 +62,18 @@ def row_query(family, attribution=False, migrated=False, after=None):
         LEFT JOIN "AppIdentities" i ON i."Id"=f."AppIdentityId" ORDER BY f."Id"'''
 
 
+def object_joins():
+    return '''LEFT JOIN "Objects" o ON o."Id"=f."FoiId" AND (o."OwnerId"=f."OwnerId" OR o."OwnerId" IS NULL)
+        LEFT JOIN "Devices" d ON d."ObjectId"=o."Id" AND d."OwnerId"=f."OwnerId"
+        LEFT JOIN LATERAL (SELECT device."Id" AS device FROM "Relations" r
+            JOIN "RelationMembers" m ON m."RelationId"=r."Id" AND m."Role"='device'
+            JOIN "Devices" device ON device."ObjectId"=m."ObjectId" AND device."OwnerId"=r."OwnerId"
+            WHERE r."OwnerId"=f."OwnerId" AND r."FactId"=f."Id" AND r."Kind"='observed-on') observed ON true'''
+
+
 def aggregate_query(migrated):
-    device = '''CASE WHEN f."TargetKind"='device' THEN f."TargetId" WHEN f."TargetKind"='application-context' THEN c."DeviceId" END''' if migrated else 'u."DeviceId"'
-    joins = '''LEFT JOIN "ApplicationContexts" c ON f."TargetKind"='application-context' AND c."OwnerId"=f."OwnerId" AND c."Id"=f."TargetId"''' if migrated else '''JOIN "Streams" s ON s."OwnerId"=f."OwnerId" AND s."StreamId"=f."StreamId"
+    device = 'coalesce(d."Id", observed.device)' if migrated else 'u."DeviceId"'
+    joins = object_joins() if migrated else '''JOIN "Streams" s ON s."OwnerId"=f."OwnerId" AND s."StreamId"=f."StreamId"
         JOIN "Subjects" u ON u."OwnerId"=s."OwnerId" AND u."SubjectId"=s."SubjectId"'''
     # System Report and input counts retain their meanings; other Sources are not attention.
     return f'''SELECT to_jsonb(q) FROM (
@@ -79,6 +87,28 @@ def aggregate_query(migrated):
             jsonb_build_array(f."Payload"->'eventType', f."Payload"->'codeSet', f."Payload"->'code')::text,
             count(*), NULL::numeric FROM {family_source("events", migrated)} f {joins} WHERE f."Source"='system' GROUP BY 1,2,3,4,5,6
         ) q ORDER BY to_jsonb(q)::text'''
+
+
+def object_violations_query():
+    return '''SELECT json_build_object(
+        'foi', (SELECT count(*) FROM "Facts" f LEFT JOIN "Objects" o ON o."Id"=f."FoiId"
+            WHERE f."FoiId" IS NOT NULL AND (o."Id" IS NULL OR (o."OwnerId" IS NOT NULL AND o."OwnerId"<>f."OwnerId"))),
+        'relations', (SELECT count(*) FROM "Relations" r LEFT JOIN "Facts" f ON f."OwnerId"=r."OwnerId" AND f."Id"=r."FactId"
+            WHERE r."Kind"='observed-on' AND (f."Id" IS NULL OR r."ValidFrom" IS DISTINCT FROM f."StartTime"
+                OR r."ValidTo" IS DISTINCT FROM coalesce(f."EndTime",f."StartTime")
+                OR (SELECT count(*) FROM "RelationMembers" m WHERE m."RelationId"=r."Id")<>2
+                OR (f."FoiId" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "RelationMembers" m WHERE m."RelationId"=r."Id" AND m."ObjectId"=f."FoiId"))
+                OR (f."AppIdentityId" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "RelationMembers" m
+                    JOIN "AppIdentities" i ON i."Id"=f."AppIdentityId" JOIN "Apps" a ON a."Id"=i."AppId"
+                    WHERE m."RelationId"=r."Id" AND m."Role"='app' AND m."ObjectId"=a."ObjectId"))
+                OR NOT EXISTS (SELECT 1 FROM "RelationMembers" m JOIN "Objects" o ON o."Id"=m."ObjectId"
+                    WHERE m."RelationId"=r."Id" AND m."Role"='device' AND o."Kind"='machine' AND o."OwnerId"=r."OwnerId")
+                OR NOT EXISTS (SELECT 1 FROM "RelationMembers" m JOIN "Objects" o ON o."Id"=m."ObjectId"
+                    WHERE m."RelationId"=r."Id" AND m."Role"='app' AND o."Kind"='app' AND o."OwnerId" IS NULL))),
+        'missingRelations', (SELECT count(*) FROM "Facts" f JOIN "Objects" o ON o."Id"=f."FoiId"
+            JOIN "AppIdentities" i ON i."Id"=f."AppIdentityId"
+            WHERE o."Kind" IN ('machine','app') AND NOT EXISTS (SELECT 1 FROM "Relations" r
+                WHERE r."OwnerId"=f."OwnerId" AND r."FactId"=f."Id" AND r."Kind"='observed-on')))'''
 
 
 def compare(left, right):
@@ -267,18 +297,7 @@ def main():
             raise RuntimeError('Segments was not evolved in place')
         if sql("SELECT count(*) FROM pg_class WHERE relname IN ('Segments','Events') AND relkind='r'") != '0':
             raise RuntimeError('Additional physical fact stores remain')
-        report['objectViolations'] = json.loads(sql('''SELECT json_build_object(
-            'foi', (SELECT count(*) FROM "Facts" f LEFT JOIN LATERAL heartbeat_fact_objects(f."OwnerId",f."TargetKind",f."TargetId",f."AppIdentityId") o ON true WHERE f."FoiId" IS DISTINCT FROM o.foi),
-            'relations', (SELECT count(*) FROM "Relations" r LEFT JOIN "Facts" f ON f."OwnerId"=r."OwnerId" AND f."Id"=r."FactId"
-                LEFT JOIN LATERAL heartbeat_fact_objects(f."OwnerId",f."TargetKind",f."TargetId",f."AppIdentityId") o ON true
-                WHERE r."Kind"='observed-on' AND (f."Id" IS NULL OR r."ValidFrom" IS DISTINCT FROM f."StartTime"
-                  OR r."ValidTo" IS DISTINCT FROM coalesce(f."EndTime", f."StartTime")
-                  OR (SELECT count(*) FROM "RelationMembers" m WHERE m."RelationId"=r."Id") <> 2
-                  OR NOT EXISTS (SELECT 1 FROM "RelationMembers" m WHERE m."RelationId"=r."Id" AND m."Role"='device' AND m."ObjectId"=o.device)
-                  OR NOT EXISTS (SELECT 1 FROM "RelationMembers" m WHERE m."RelationId"=r."Id" AND m."Role"='app' AND m."ObjectId"=o.app))),
-            'missingRelations', (SELECT count(*) FROM "Facts" f CROSS JOIN LATERAL heartbeat_fact_objects(f."OwnerId",f."TargetKind",f."TargetId",f."AppIdentityId") o
-                WHERE o.device IS NOT NULL AND o.app IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "Relations" r WHERE r."OwnerId"=f."OwnerId" AND r."FactId"=f."Id" AND r."Kind"='observed-on')))
-            '''))
+        report['objectViolations'] = json.loads(sql(object_violations_query()))
         if any(report['objectViolations'].values()):
             raise RuntimeError('Object or exact-fact relation conversion is incomplete')
         print('Comparing every row and direct attribution after Production startup...', flush=True)

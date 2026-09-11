@@ -35,8 +35,6 @@ public static class CollectorHostServiceCollectionExtensions
             return CollectorRuntime.Open(
                 Path.Combine(storage.DataDirectory, "collector-runtime.json"),
                 provider.GetRequiredService<ISegmentSink>(),
-                options: new CollectorRuntimeOptions { EnableFactUpload = true },
-                inputEventSink: provider.GetService<IInputEventFactSink>(),
                 secretStore: new EncryptedFileCollectorSecretStore(
                     Path.Combine(storage.DataDirectory, "collector-secrets")));
         });

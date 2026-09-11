@@ -274,10 +274,10 @@ public class UploadStreamTests : IDisposable
         var source = new SegmentIngestService(new SystemClock(), cache);
         var original = Segment(endSec: 120);
         var corrected = Segment(original.Id, endSec: 30);
-        source.UpsertDurable(original, 1);
+        source.Push([original]);
         var stream = new UploadStream<ActivitySegmentItem>("segments", [source], (_, _) =>
         {
-            source.UpsertDurable(corrected, 2);
+            source.Push([corrected]);
             return Task.FromResult(ApiResult.Ok);
         });
         var result = await stream.DrainAsync();

@@ -305,10 +305,10 @@ _Avoid_: 用上传成功率表示退出安全、用清理异常推断数据丢�
 - "插件" 曾与 **Collector** 混用（口语、UI、ADR-017 中的 "plugin"）— 已统一：唯一规范术语是 **Collector（采集器）**，UI 栏与文档一律用"采集器"。
 
 Browser 的 Observer 是持久扩展安装 UUID，窗口仅区分并行页面观测；delivery 为 Facts 保存设备与平台
-AppIdentityKey 的应用上下文引用。窗口模型与 Segment SDK 使用 activityKey，不负责业务资料登记。
-Runtime JSON 当前写 v7（见[语义边界](../docs/architecture/observation-semantics.md)），Browser 的旧 v1–v4/扩展快照兼容边界和退出见
+App 的明确对象关系。窗口模型与 Segment SDK 使用 activityKey，不负责业务资料登记。
+Runtime JSON 当前写 v8（见[语义边界](../docs/architecture/observation-semantics.md)），Browser 的旧 v1–v4/扩展快照兼容边界和退出见
 [Browser 实施记录](../docs/architecture/browser-observation-targets.md)。
 
-Collector 显式产生 Fact.Aspect；SDK 与 Runtime 保管该字段，不为新事实推断含义。当前第一方生产者为
+Collector 显式产生 Fact 的 CollectorId、FOI、Relations 和 Aspect；SDK 与 Runtime 保管完整快照，不为新事实推断含义。当前第一方生产者为
 System 的 `desktop-activity/input`、Browser 的 `selected-page`、VRChat 的 `account-location`。
 能力协商、旧缓存迁移与回退边界见[实施记录](../docs/architecture/observation-semantics.md)。

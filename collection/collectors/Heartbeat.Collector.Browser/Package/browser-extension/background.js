@@ -260,8 +260,9 @@ function toProtocolFact(snapshot, streamId) {
     factId: snapshot.id,
     revision: snapshotRevision(snapshot),
     aspect: "selected-page",
-    observerId: snapshot.observerId,
-    target: snapshot.target,
+    collectorId: snapshot.collectorId,
+    foi: snapshot.foi,
+    relations: snapshot.relations,
     observedAt: null,
     time: {
       start: snapshot.startTime,
@@ -294,6 +295,7 @@ async function openBrowserProtocolSession(port, appIdentityKey, externalHostIden
           ...await browserPackageReference(),
           protocolMajors: [1],
           supportedCapabilities: {
+            "facts.observation": [1],
             "facts.aspect": [1],
             "facts.segment": [1],
             "diagnostics.stream-gap": [1]
@@ -311,7 +313,7 @@ async function openBrowserProtocolSession(port, appIdentityKey, externalHostIden
       "activation.accepted",
       void 0,
       attempt.helloMessageId
-    ) || !isUuidV7(acceptedMessage.body.activationId) || acceptedMessage.body.selectedProtocolMajor !== 1 || acceptedMessage.body.selectedCapabilities?.["facts.aspect"] !== 1 || acceptedMessage.body.selectedCapabilities?.["facts.segment"] !== 1 || acceptedMessage.body.selectedCapabilities?.["diagnostics.stream-gap"] !== 1)
+    ) || !isUuidV7(acceptedMessage.body.activationId) || acceptedMessage.body.selectedProtocolMajor !== 1 || acceptedMessage.body.selectedCapabilities?.["facts.observation"] !== 1 || acceptedMessage.body.selectedCapabilities?.["facts.aspect"] !== 1 || acceptedMessage.body.selectedCapabilities?.["facts.segment"] !== 1 || acceptedMessage.body.selectedCapabilities?.["diagnostics.stream-gap"] !== 1)
       return "rejected";
     const accepted = acceptedMessage.body;
     const initialize = await protocolFetch(
@@ -331,10 +333,7 @@ async function openBrowserProtocolSession(port, appIdentityKey, externalHostIden
     const initialized = initializeMessage.body;
     const deviceReference = initialized.instance?.subject?.subjectId;
     if (initialized.instance?.subject?.kind !== "machine" || !isUuid(deviceReference) || !isUuid(externalHostIdentity)) return "rejected";
-    const attribution = {
-      observerId: externalHostIdentity.toLowerCase(),
-      target: { kind: "application-context", reference: JSON.stringify([deviceReference.toLowerCase(), appIdentityKey]) }
-    };
+    const attribution = browserAttribution(externalHostIdentity.toLowerCase(), deviceReference.toLowerCase(), appIdentityKey);
     if (initialized.spec.config.value.enabled === false) return "disabled";
     const flushPeriodMilliseconds = positiveInteger(initialized.spec.config.value.flushPeriodMs);
     if (flushPeriodMilliseconds === void 0 || flushPeriodMilliseconds < 3e4) return "rejected";
@@ -454,7 +453,7 @@ async function publishBrowserFacts(session, snapshots, previousAttempt, persistA
   const maxFacts = Math.max(1, Math.min(limits.maxFactsPerBatch, 500));
   const reusableAttempt = previousAttempt?.activationId === session.activationId ? previousAttempt : void 0;
   const bound = snapshots.map((snapshot) => bindAttribution(snapshot, session.attribution));
-  if (bound.some((snapshot) => !snapshot.observerId || !snapshot.target)) return { kind: "unavailable" };
+  if (bound.some((snapshot) => !snapshot.collectorId || !snapshot.foi || !snapshot.relations)) return { kind: "unavailable" };
   const batch = reusableAttempt?.snapshots ?? takeBatchWithinByteLimit(bound, session, maxFacts);
   if (snapshots.length > 0 && batch.length === 0) return { kind: "unavailable" };
   const facts = batch.map((snapshot) => toProtocolFact(snapshot, session.streamId));
@@ -678,12 +677,33 @@ function message(protocol, type, messageId, activationId, body, replyTo) {
 function isUuid(value) {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value) && value !== "00000000-0000-0000-0000-000000000000";
 }
+function browserAttribution(collectorId, machineKey, appIdentityKey) {
+  const foi = { kind: "app", scope: "heartbeat.app-identity", key: appIdentityKey };
+  return { collectorId, foi, relations: [{ kind: "observed-on", members: [
+    { role: "device", object: { kind: "machine", scope: "heartbeat.device", key: machineKey } },
+    { role: "app", object: foi }
+  ] }] };
+}
+function readAttribution(value) {
+  if (!value || typeof value !== "object") return void 0;
+  const saved = value;
+  if (saved.collectorId !== void 0 || saved.foi !== void 0 || saved.relations !== void 0)
+    return { collectorId: saved.collectorId, foi: saved.foi, relations: saved.relations };
+  const target = saved.target;
+  if (saved.observerId === void 0 && target === void 0) return void 0;
+  if (typeof saved.observerId !== "string" || target?.kind !== "application-context" || typeof target.reference !== "string")
+    throw new Error("Incomplete historical Browser attribution; preserve the cached snapshot");
+  const pair = JSON.parse(target.reference);
+  if (!Array.isArray(pair) || pair.length !== 2 || pair.some((item) => typeof item !== "string" || !item))
+    throw new Error("Invalid historical Browser attribution; preserve the cached snapshot");
+  return browserAttribution(saved.observerId, pair[0], pair[1]);
+}
 function bindAttribution(snapshot, attribution) {
-  if (snapshot.observerId !== void 0 || snapshot.target !== void 0 || attribution === void 0) return snapshot;
+  if (snapshot.collectorId !== void 0 || snapshot.foi !== void 0 || snapshot.relations !== void 0 || attribution === void 0) return snapshot;
   return { ...snapshot, ...attribution };
 }
 function sameSnapshot(left, right) {
-  return left.id === right.id && left.startTime === right.startTime && left.endTime === right.endTime && left.isFinal === right.isFinal && left.activityKey === right.activityKey && left.title === right.title && left.observerId === right.observerId && left.target?.kind === right.target?.kind && left.target?.reference === right.target?.reference && left.attributes.url === right.attributes.url && left.attributes.domain === right.attributes.domain && left.attributes.site === right.attributes.site && left.attributes.windowId === right.attributes.windowId;
+  return left.id === right.id && left.startTime === right.startTime && left.endTime === right.endTime && left.isFinal === right.isFinal && left.activityKey === right.activityKey && left.title === right.title && left.collectorId === right.collectorId && JSON.stringify(left.foi) === JSON.stringify(right.foi) && JSON.stringify(left.relations) === JSON.stringify(right.relations) && left.attributes.url === right.attributes.url && left.attributes.domain === right.attributes.domain && left.attributes.site === right.attributes.site && left.attributes.windowId === right.attributes.windowId;
 }
 const PORT_RANGE = 10;
 const PROBE_TIMEOUT_MS = 1500;
@@ -996,15 +1016,18 @@ async function persistPolicy(store, policy) {
   const durable = await store.loadDurable();
   await store.saveDurable({ ...durable, policy });
 }
-const ATTRIBUTION_KEY = "browserFactAttribution";
-const QUEUE_KEY = "pendingSegments";
+const ATTRIBUTION_KEY = "browserObservation";
+const PREVIOUS_ATTRIBUTION_KEY = "browserFactAttribution";
+const QUEUE_KEY = "pendingObservationFacts";
+const PREVIOUS_QUEUE_KEY = "pendingSegments";
 const BACKOFF_KEY = "backoff";
 const HUB_PORT_KEY = "hubPort";
 const PROTOCOL_SESSION_KEY = "collectorProtocolSession";
 const PROTOCOL_ACTIVATION_ATTEMPT_KEY = "collectorProtocolActivationAttempt";
 const PROTOCOL_PUBLISH_ATTEMPT_KEY = "collectorProtocolPublishAttempt";
 const FLUSH_PERIOD_KEY = "browserCollectorFlushPeriodMs";
-const DEAD_LETTER_KEY = "browserCollectorDeadLetters";
+const DEAD_LETTER_KEY = "browserObservationDeadLetters";
+const PREVIOUS_DEAD_LETTER_KEY = "browserCollectorDeadLetters";
 const PENDING_GAP_KEY = "browserCollectorPendingGap";
 const DESIRED_ENABLED_KEY = "browserCollectorDesiredEnabled";
 const DELIVERY_POLICY_KEY = "browserCollectorDeliveryPolicy";
@@ -1016,6 +1039,9 @@ class ChromeBrowserDeliveryStore {
       chrome.storage.local.get([
         QUEUE_KEY,
         ATTRIBUTION_KEY,
+        PREVIOUS_QUEUE_KEY,
+        PREVIOUS_ATTRIBUTION_KEY,
+        PREVIOUS_DEAD_LETTER_KEY,
         PENDING_GAP_KEY,
         DEAD_LETTER_KEY,
         DELIVERY_POLICY_KEY
@@ -1023,7 +1049,7 @@ class ChromeBrowserDeliveryStore {
       chrome.storage.session.get([DESIRED_ENABLED_KEY, FLUSH_PERIOD_KEY])
     ]);
     const defaults = emptyBrowserDeliveryDurableState();
-    const rawQueue = isRecord(local[QUEUE_KEY]) ? local[QUEUE_KEY] : {};
+    const queue = mergeQueuedSnapshots(local[PREVIOUS_QUEUE_KEY], local[QUEUE_KEY]);
     const rawGaps = local[PENDING_GAP_KEY];
     const policy = normalizePolicy(
       local[DELIVERY_POLICY_KEY],
@@ -1034,13 +1060,23 @@ class ChromeBrowserDeliveryStore {
     if (pendingGaps.migrated) {
       await chrome.storage.local.set({ [PENDING_GAP_KEY]: pendingGaps.value });
     }
-    return {
-      queue: normalizeQueuedSnapshots(rawQueue),
-      attribution: local[ATTRIBUTION_KEY],
+    const state = {
+      queue,
+      attribution: readAttribution(local[ATTRIBUTION_KEY] ?? local[PREVIOUS_ATTRIBUTION_KEY]),
       pendingGaps: pendingGaps.value,
-      deadLetters: Array.isArray(local[DEAD_LETTER_KEY]) ? local[DEAD_LETTER_KEY] : defaults.deadLetters,
+      deadLetters: Object.values(normalizeQueuedSnapshots(Object.fromEntries(
+        [
+          ...Array.isArray(local[PREVIOUS_DEAD_LETTER_KEY]) ? local[PREVIOUS_DEAD_LETTER_KEY] : [],
+          ...Array.isArray(local[DEAD_LETTER_KEY]) ? local[DEAD_LETTER_KEY] : defaults.deadLetters
+        ].map((fact) => [fact.id, fact])
+      ))),
       policy
     };
+    if ([PREVIOUS_QUEUE_KEY, PREVIOUS_ATTRIBUTION_KEY, PREVIOUS_DEAD_LETTER_KEY].some((key) => local[key] !== void 0)) {
+      await this.saveDurable(state);
+      await chrome.storage.local.remove([PREVIOUS_QUEUE_KEY, PREVIOUS_ATTRIBUTION_KEY, PREVIOUS_DEAD_LETTER_KEY]);
+    }
+    return state;
   }
   async saveDurable(state) {
     await chrome.storage.local.set({
@@ -1132,14 +1168,27 @@ async function loadExternalHostIdentity() {
   await chrome.storage.local.set({ [EXTERNAL_HOST_IDENTITY_KEY]: created });
   return created;
 }
+function mergeQueuedSnapshots(previous, current) {
+  const merged = normalizeQueuedSnapshots(isRecord(previous) ? previous : {});
+  const incoming = normalizeQueuedSnapshots(isRecord(current) ? current : {});
+  for (const [id, fact] of Object.entries(incoming)) {
+    const old = merged[id];
+    if (!old || snapshotRevision(fact) > snapshotRevision(old)) merged[id] = fact;
+    else if (snapshotRevision(fact) === snapshotRevision(old)) {
+      if (!sameSnapshot(bindAttribution(old, readAttribution(fact)), bindAttribution(fact, readAttribution(old))))
+        throw new Error(`Conflicting cached revision for Fact ${id}; preserve both queues`);
+      merged[id] = fact;
+    }
+  }
+  return merged;
+}
 function normalizeQueuedSnapshots(stored) {
   return Object.fromEntries(
     Object.entries(stored).map(([id, snapshot]) => [id, {
       id: snapshot.id,
       source: snapshot.source,
       activityKey: snapshot.activityKey ?? snapshot.identityKey,
-      ...snapshot.observerId === void 0 ? {} : { observerId: snapshot.observerId },
-      ...snapshot.target === void 0 ? {} : { target: snapshot.target },
+      ...readAttribution(snapshot),
       title: snapshot.title,
       startTime: snapshot.startTime,
       endTime: snapshot.endTime,

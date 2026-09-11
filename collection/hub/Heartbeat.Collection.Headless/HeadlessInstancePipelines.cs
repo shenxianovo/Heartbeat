@@ -31,7 +31,6 @@ internal sealed class HeadlessInstancePipelines(
     string dataDirectory,
     IHeadlessSegmentUpload segmentUpload) :
     ISegmentSink,
-    ISubjectSegmentProjectionSink,
     ICollectorFactObserver,
     IDisposable
 {
@@ -140,22 +139,10 @@ internal sealed class HeadlessInstancePipelines(
         if (item.Stream.FactKind != "segment" || item.Fact is not { } fact) return;
         var subject = new SubjectReference(item.Stream.Subject.SubjectId,
             Enum.Parse<SubjectKind>(item.Stream.Subject.Kind, ignoreCase: true));
-        var pipeline = Required(new CollectorProjectionContext(item.Stream.CollectorInstanceId, subject));
+        var pipeline = Required(item.Stream.CollectorInstanceId, subject);
         if (FactUploadReadModel.Segment(item) is { } segment)
             pipeline.ObserveFact(segment, fact.IsFinal == true);
     }
-
-    public void UpsertDurable(
-        CollectorProjectionContext context,
-        ActivitySegmentItem snapshot,
-        long revision,
-        bool isFinal) => Required(context).Upsert(snapshot, revision, isFinal);
-
-    public void ReplayDurable(
-        CollectorProjectionContext context,
-        ActivitySegmentItem snapshot,
-        long revision,
-        bool isFinal) => Required(context).Replay(snapshot, revision, isFinal);
 
     public void Dispose()
     {
@@ -182,15 +169,15 @@ internal sealed class HeadlessInstancePipelines(
                     $"Collector Instance '{collectorInstanceId:D}' has no projection pipeline.");
     }
 
-    private Pipeline Required(CollectorProjectionContext context)
+    private Pipeline Required(Guid collectorInstanceId, SubjectReference subject)
     {
         lock (_gate)
         {
-            if (_pipelines.TryGetValue(context.CollectorInstanceId, out var pipeline))
+            if (_pipelines.TryGetValue(collectorInstanceId, out var pipeline))
                 return pipeline;
         }
-        Add(context.CollectorInstanceId, context.Subject, $"Collector {context.CollectorInstanceId:D}");
-        return Required(context.CollectorInstanceId);
+        Add(collectorInstanceId, subject, $"Collector {collectorInstanceId:D}");
+        return Required(collectorInstanceId);
     }
 
     private sealed class PipelineRegistration(SubjectReference subject, string displayName)
@@ -232,18 +219,6 @@ internal sealed class HeadlessInstancePipelines(
         public HeadlessCurrentSubjectActivity? CurrentActivity
         {
             get { lock (_gate) return _current; }
-        }
-
-        public void Upsert(ActivitySegmentItem item, long revision, bool isFinal)
-        {
-            ingest.UpsertDurable(item, revision);
-            Observe(item, isFinal);
-        }
-
-        public void Replay(ActivitySegmentItem item, long revision, bool isFinal)
-        {
-            ingest.ReplayDurable(item, revision);
-            Observe(item, isFinal);
         }
 
         public void ObserveFact(ActivitySegmentItem item, bool isFinal) => Observe(item, isFinal);

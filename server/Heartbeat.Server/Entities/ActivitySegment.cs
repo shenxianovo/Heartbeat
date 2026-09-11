@@ -2,7 +2,6 @@ namespace Heartbeat.Server.Entities
 {
     /// <summary>
     /// Segment 面向活动查询的 SQL 结果，不是数据库实体，也不单独持久化。
-    /// AppUsage 的泛化形态：系统采集器的段即 Source = 'system'。
     /// </summary>
     public class ActivitySegment
     {
@@ -10,9 +9,9 @@ namespace Heartbeat.Server.Entities
         public Guid Id { get; set; }
         public string? Aspect { get; set; }
         public Guid? ObserverId { get; set; }
-        public string? TargetName { get; set; }
-        public string? TargetKind { get; set; }
-        public long? TargetId { get; set; }
+        public Guid? FoiId { get; set; }
+        public ObservationObject? Foi { get; set; }
+
 
         public string OwnerId { get; set; } = string.Empty;
 
@@ -25,16 +24,15 @@ namespace Heartbeat.Server.Entities
         /// <summary>Complete Collector Fact payload, without the historical transport wrapper.</summary>
         public string? Payload { get; set; }
 
-        /// <summary>观测者维度：'system' / 'browser' / 'vscode' / …。统计只消费 'system'（互斥轨）。</summary>
         public string Source { get; set; } = string.Empty;
 
         /// <summary>采集器声明的活动分组判据；不替代 FactId 或 Revision。</summary>
         public string IdentityKey { get; set; } = string.Empty;
 
-        /// <summary>经 AppIdentity → App 查询得到的产品 Id，不是独立存储的外键。</summary>
+        /// <summary>从对象图查询得到的产品资料 Id。</summary>
         public long? AppId { get; set; }
 
-        /// <summary>平台观测身份。system 段必填；插件段可选。</summary>
+        /// <summary>采集时明确提供的平台身份，可空。</summary>
         public long? AppIdentityId { get; set; }
 
         public string? Title { get; set; }

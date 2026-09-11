@@ -9,7 +9,7 @@ namespace Heartbeat.Collection.Hub.Collectors.Runtime;
 
 internal sealed class JsonCollectorRuntimeStore : IDisposable
 {
-    private const int CurrentSchemaVersion = 7;
+    private const int CurrentSchemaVersion = 8;
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -104,70 +104,44 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
         }
         if (schemaVersion == 2)
             root["schemaVersion"] = CurrentSchemaVersion;
-        if (schemaVersion is >= 1 and <= 3)
-        {
-            root["schemaVersion"] = CurrentSchemaVersion;
-            if (root["streams"] is JsonArray streams && root["facts"] is JsonArray facts)
-            {
-                var system = streams.OfType<JsonObject>().Where(stream =>
-                    stream["source"]?.GetValue<string>() == "system" && stream["subjectKind"]?.GetValue<string>() == "machine")
-                    .ToDictionary(stream => stream["streamId"]!.GetValue<string>());
-                foreach (var fact in facts.OfType<JsonObject>())
-                    if (fact["observerId"] is null && fact["target"] is null &&
-                        system.TryGetValue(fact["streamId"]!.GetValue<string>(), out var stream))
-                    {
-                        fact["observerId"] = stream["collectorInstanceId"]!.DeepClone();
-                        fact["target"] = new JsonObject { ["kind"] = "device", ["reference"] = stream["subjectId"]!.DeepClone() };
-                    }
-            }
-        }
-        if (schemaVersion is >= 1 and <= 4)
-        {
-            root["schemaVersion"] = CurrentSchemaVersion;
-            if (root["streams"] is JsonArray streams && root["facts"] is JsonArray facts)
-            {
-                var browser = streams.OfType<JsonObject>().Where(stream => stream["source"]?.GetValue<string>() == "browser")
-                    .ToDictionary(stream => stream["streamId"]!.GetValue<string>());
-                foreach (var fact in facts.OfType<JsonObject>())
-                {
-                    if (!browser.TryGetValue(fact["streamId"]!.GetValue<string>(), out var stream)) continue;
-                    if (fact["observerId"] is null && fact["target"] is null && stream["subjectKind"]?.GetValue<string>() == "machine")
-                    {
-                        var observer = Heartbeat.Core.Facts.BrowserFactAttribution.Observer(stream["dimensions"]?["externalHostIdentity"]?.GetValue<string>());
-                        var target = Heartbeat.Core.Facts.BrowserFactAttribution.Target(stream["subjectId"]!.GetValue<string>(), stream["dimensions"]?["appIdentityKey"]?.GetValue<string>());
-                        if (observer is not null && target is not null)
-                        {
-                            fact["observerId"] = observer.Value.ToString("D");
-                            fact["target"] = JsonSerializer.SerializeToNode(target, SerializerOptions);
-                        }
-                    }
-                    if (fact["payload"] is { } payload)
-                        fact["payload"] = JsonNode.Parse(Heartbeat.Core.Facts.ActivityFactPayload.Normalize(JsonSerializer.SerializeToElement(payload)).GetRawText());
-                }
-            }
-        }
-        if (schemaVersion is >= 1 and <= 5)
-        {
-            root["schemaVersion"] = CurrentSchemaVersion;
-            if (root["streams"] is JsonArray streams && root["facts"] is JsonArray facts)
-            {
-                var segments = streams.OfType<JsonObject>().Where(s => s["factKind"]?.GetValue<string>() == "segment")
-                    .Select(s => s["streamId"]!.GetValue<string>()).ToHashSet();
-                foreach (var fact in facts.OfType<JsonObject>())
-                    if (segments.Contains(fact["streamId"]!.GetValue<string>()) && fact["payload"] is { } payload)
-                        fact["payload"] = JsonNode.Parse(Heartbeat.Core.Facts.ActivityFactPayload.Normalize(JsonSerializer.SerializeToElement(payload)).GetRawText());
-            }
-        }
-        if (schemaVersion is >= 1 and <= 6)
+        if (schemaVersion is >= 1 and <= 7)
         {
             root["schemaVersion"] = CurrentSchemaVersion;
             if (root["streams"] is JsonArray streams && root["facts"] is JsonArray facts)
             {
                 var byId = streams.OfType<JsonObject>().ToDictionary(s => s["streamId"]!.GetValue<string>());
                 foreach (var fact in facts.OfType<JsonObject>())
-                    if (fact["aspect"] is null && fact["payload"] is { } payload && byId.TryGetValue(fact["streamId"]!.GetValue<string>(), out var stream))
-                        fact["aspect"] = Heartbeat.Core.Facts.FactAspectCompatibility.Infer(
-                            stream["source"]!.GetValue<string>(), stream["factKind"]!.GetValue<string>(), JsonSerializer.SerializeToElement(payload));
+                {
+                    var stream = byId[fact["streamId"]!.GetValue<string>()];
+                    var source = stream["source"]!.GetValue<string>();
+                    var kind = stream["factKind"]!.GetValue<string>();
+                    var dimensions = stream["dimensions"]?.Deserialize<Dictionary<string, string>>() ?? [];
+                    var payload = JsonSerializer.SerializeToElement(fact["payload"]);
+                    if (schemaVersion <= 5 && kind == "segment")
+                    {
+                        payload = Heartbeat.Core.Facts.ActivityFactPayload.Normalize(payload);
+                        fact["payload"] = JsonNode.Parse(payload.GetRawText());
+                    }
+                    if (schemaVersion <= 6 && fact["aspect"] is null)
+                        fact["aspect"] = Heartbeat.Core.Facts.FactAspectCompatibility.Infer(source, kind, payload);
+                    Heartbeat.Core.Facts.ObservationCompatibility.ReadOldEnvelope(fact, true, dimensions);
+                    if (fact["relations"] is not null) continue;
+                    // Only versions that predate attribution may recover its already documented evidence.
+                    // Later null fields are historical unknowns, not invitations to invent identities.
+                    var machine = stream["subjectKind"]!.GetValue<string>() == "machine";
+                    var recover = source == "vrchat.account" && stream["subjectKind"]!.GetValue<string>() == "account" || machine && (schemaVersion <= 3 && source == "system" ||
+                        schemaVersion <= 4 && source == "browser" &&
+                        Heartbeat.Core.Facts.BrowserFactAttribution.Observer(dimensions.GetValueOrDefault("externalHostIdentity")) is not null);
+                    if (recover)
+                    {
+                        var old = Heartbeat.Core.Facts.ObservationCompatibility.FromStream(source, stream["subjectKind"]!.GetValue<string>(),
+                            stream["subjectId"]!.GetValue<string>(), Guid.Parse(stream["collectorInstanceId"]!.GetValue<string>()), payload, dimensions);
+                        fact["collectorId"] = JsonSerializer.SerializeToNode(old.CollectorId, SerializerOptions);
+                        fact["foi"] = JsonSerializer.SerializeToNode(old.Foi, SerializerOptions);
+                        fact["relations"] = JsonSerializer.SerializeToNode(old.Relations, SerializerOptions);
+                    }
+                    else fact["relations"] = new JsonArray();
+                }
             }
         }
         return root.Deserialize<CollectorRuntimeState>(SerializerOptions)
@@ -404,7 +378,7 @@ public sealed class CollectorRuntimeStateException(string message, Exception? in
 
 internal sealed class CollectorRuntimeState
 {
-    public int SchemaVersion { get; init; } = 7;
+    public int SchemaVersion { get; init; } = 8;
     public List<CollectorInstanceState> Instances { get; init; } = [];
     public List<FactStreamState> Streams { get; init; } = [];
     public List<CommittedFactState> Facts { get; init; } = [];
@@ -584,8 +558,9 @@ internal sealed class CommittedFactState
     public Guid FactId { get; init; }
     public long Revision { get; init; }
     public string? Aspect { get; init; }
-    public Guid? ObserverId { get; init; }
-    public FactTarget? Target { get; init; }
+    public Guid? CollectorId { get; init; }
+    public ObservationObjectReference? Foi { get; init; }
+    public List<FactRelationSnapshot> Relations { get; init; } = [];
     public DateTimeOffset? ObservedAt { get; init; }
     public DateTimeOffset Start { get; init; }
     public DateTimeOffset End { get; init; }
@@ -597,7 +572,7 @@ internal sealed class CommittedFactState
     public CommittedFactState ConfirmDelivery() => new()
     {
         StreamId = StreamId, FactId = FactId, Revision = Revision,
-        ObserverId = ObserverId, Target = Target, Aspect = Aspect,
+        CollectorId = CollectorId, Foi = Foi, Aspect = Aspect, Relations = Heartbeat.Core.Facts.ObservationContent.Copy(Relations),
         ObservedAt = ObservedAt, Start = Start, End = End,
         IsFinal = IsFinal, OccurredAt = OccurredAt, Payload = Payload,
         Delivered = true

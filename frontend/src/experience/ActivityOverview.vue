@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { groupTargets, presentFact, rangeOf, type ExperienceSegment, type TimeRange } from './factViews'
+import { groupObjects, presentFact, rangeOf, type ExperienceSegment, type TimeRange } from './factViews'
 import { dragOverview, type OverviewDrag } from './overviewRange'
 import { niceTicks } from '../timeline/timeScale'
 
@@ -10,7 +10,7 @@ const track = ref<HTMLElement | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
 let observer: ResizeObserver | undefined
 let drag: { mode: OverviewDrag; range: TimeRange; anchor: number; x: number; moved: boolean } | null = null
-const groups = computed(() => groupTargets(props.facts, props.bounds))
+const groups = computed(() => groupObjects(props.facts, props.bounds))
 const height = computed(() => Math.max(36, groups.value.length * 10 + 12))
 const percent = (time: number) => (time - props.bounds.start) / (props.bounds.end - props.bounds.start) * 100
 const left = computed(() => percent(props.range.start))

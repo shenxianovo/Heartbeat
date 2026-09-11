@@ -36,6 +36,10 @@ public sealed class FactSnapshot
     public Guid FactId { get; set; }
     public long Revision { get; set; }
     public string? Aspect { get; set; }
+    public Guid? CollectorId { get; set; }
+    public ObservationObjectReference? Foi { get; set; }
+    // Null denotes a pre-FOI request; current producers explicitly send an empty list when no relation is known.
+    public List<FactRelationSnapshot>? Relations { get; set; }
     public Guid? ObserverId { get; set; }
     public FactTarget? Target { get; set; }
     public DateTimeOffset? ObservedAt { get; set; }

@@ -30,8 +30,8 @@ public sealed class AppCatalogAdminQueryService(
             .ToListAsync(cancellationToken);
         var usageRows = await db.ActivitySegments
             .AsNoTracking()
-            .Where(x => x.Aspect == FactAspects.DesktopActivity && x.DeviceId != null && x.AppIdentityId != null)
-            .GroupBy(x => x.AppIdentity!.AppId)
+            .Where(x => x.Aspect == FactAspects.DesktopActivity && x.DeviceId != null && x.AppId != null)
+            .GroupBy(x => x.AppId!.Value)
             .Select(group => new
             {
                 AppId = group.Key,

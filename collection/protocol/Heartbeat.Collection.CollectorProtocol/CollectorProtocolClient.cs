@@ -444,6 +444,8 @@ public sealed class CollectorProtocolClient(
         {
             _deliveryGate.Release();
         }
+        if (fact.Relations is not null && !_activation!.Initialization.SelectedCapabilities.ContainsKey("facts.observation"))
+            throw new InvalidOperationException("Hub did not negotiate facts.observation; Fact remains in the outbox.");
         if (fact.Aspect is not null && !_activation!.Initialization.SelectedCapabilities.ContainsKey("facts.aspect"))
             throw new InvalidOperationException("Hub did not negotiate facts.aspect; Fact remains in the outbox.");
         var acknowledgement = await binding.PublishAsync(
@@ -797,7 +799,7 @@ public sealed class CollectorProtocolClient(
         fact.Revision,
         fact.ObservedAt,
         fact.Time,
-        fact.Payload.Clone(), fact.ObserverId, fact.Target, fact.Aspect);
+        fact.Payload.Clone(), fact.CollectorId, fact.Foi, fact.Aspect, fact.Relations is null ? null : Heartbeat.Core.Facts.ObservationContent.Copy(fact.Relations));
 
     public async ValueTask DisposeAsync()
     {

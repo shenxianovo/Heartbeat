@@ -25,3 +25,7 @@ Facts 以 Kind 区分 Event、Measurement、Segment，共享单份结果存储�
 2026-09-11 后续：用户确认继续完成[显式 Aspect 与消费语义解耦](../architecture/observation-semantics.md)。
 Collector 解释原始输入，存储保管 Fact，Analytics 按 Aspect 契约分析，Dashboard 按 Aspect 选择视图。
 这替代 ADR-017/018 将活动分析种类绑定 Source 的实现规则；ADR-030 的 Source 深度声明/Matcher 身份继续有效。
+
+2026-09-11 端到端收敛：原生协议直接传 Collector/FOI/Relations；ApplicationContexts、PersonAssociations
+及旧反推触发器退役，本人关联直接维护 Relations，查询与 Dashboard 使用 Object UUID。
+旧 HTTP/缓存只在边界转换，Runtime 退休无生产消费者的旧投影模式。详见[收敛 PRD](../../.scratch/observation-convergence/PRD.md)。

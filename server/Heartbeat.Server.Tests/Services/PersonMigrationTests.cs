@@ -88,7 +88,6 @@ public sealed class PersonMigrationTests(PostgresContainerFixture fixture) : Pos
         Assert.Equal(8, await db.Facts.CountAsync());
         Assert.Empty(await db.Relations.Where(r => r.Kind == "used-by").ToListAsync());
         Assert.Empty(await db.Persons.ToListAsync());
-        Assert.Empty(await db.PersonAssociations.ToListAsync());
         Assert.False(db.Database.HasPendingModelChanges());
         Assert.Equal(0, (await new PersonFactQuery(db).ReadSegments("owner", null, null, 0, 50, default)).TotalCount);
     }
@@ -108,38 +107,26 @@ public sealed class PersonMigrationTests(PostgresContainerFixture fixture) : Pos
         var batch = FactStoreTests.SegmentBatch("person");
         batch.Streams[0].FactKind = family;
         var fact = batch.Facts[0];
-        fact.ObserverId = batch.Streams[0].CollectorInstanceId;
-        fact.Target = new PersonReference(person.Reference).ToTarget();
+        fact.CollectorId = batch.Streams[0].CollectorInstanceId;
+        fact.Aspect = "person-state";
+        fact.Relations = [];
+        fact.Foi = new ObservationObjectReference("person", ObservationObjectScopes.Person, person.Reference.ToString("D"));
         fact.Payload = JsonSerializer.SerializeToElement(new { explicitPerson = true });
         if (family == "event") { fact.OccurredAt = fact.Start; fact.Start = fact.End = null; fact.IsFinal = null; }
         await new FactStore(db).IngestAsync("owner", batch);
-        var table = "Facts";
-        async Task Reject(string sql, string state, params object[] args)
-        {
-            var error = await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlRawAsync(sql, args));
-            Assert.Equal(state, error.SqlState);
-        }
-        await Reject($"UPDATE \"{table}\" SET \"TargetId\" = {{0}}", PostgresErrorCodes.ForeignKeyViolation, other.Id);
-        await Reject($"UPDATE \"{table}\" SET \"TargetId\" = 9223372036854775807", PostgresErrorCodes.ForeignKeyViolation);
-        await Reject("DELETE FROM \"Persons\" WHERE \"Id\" = {0}", PostgresErrorCodes.ForeignKeyViolation, person.Id);
-        await Reject("UPDATE \"Persons\" SET \"Reference\" = {0} WHERE \"Id\" = {1}", PostgresErrorCodes.CheckViolation, Guid.NewGuid(), person.Id);
-        await Reject("UPDATE \"Persons\" SET \"OwnerId\" = 'other' WHERE \"Id\" = {0}", PostgresErrorCodes.CheckViolation, person.Id);
-        var device = new Device { OwnerId = "owner", HardwareId = "owned" };
-        db.Devices.Add(device);
-        var accountBatch = ServiceAccountTests.Batch();
-        await db.SaveChangesAsync();
-        await new FactStore(db).IngestAsync("owner", accountBatch);
-        var account = await db.ServiceAccounts.SingleAsync();
-        const string link = """INSERT INTO "PersonAssociations" ("OwnerId", "PersonId", "DeviceId", "AccountId", "Start", "End") VALUES ({0}, {1}, {2}, {3}, NULL, NULL)""";
-        await Reject(link, PostgresErrorCodes.ForeignKeyViolation, "other", other.Id, device.Id, new NpgsqlParameter { NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Bigint, Value = DBNull.Value });
-        await Reject(link, PostgresErrorCodes.ForeignKeyViolation, "owner", other.Id, device.Id, new NpgsqlParameter { NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Bigint, Value = DBNull.Value });
-        await Reject(link, PostgresErrorCodes.ForeignKeyViolation, "other", other.Id, new NpgsqlParameter { NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Bigint, Value = DBNull.Value }, account.Id);
-        await Reject(link, PostgresErrorCodes.CheckViolation, "owner", person.Id, device.Id, account.Id);
-        await Reject(link, PostgresErrorCodes.CheckViolation, "owner", person.Id, new NpgsqlParameter { NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Bigint, Value = DBNull.Value }, new NpgsqlParameter { NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Bigint, Value = DBNull.Value });
-        await db.Database.ExecuteSqlRawAsync(link, "owner", person.Id, device.Id, new NpgsqlParameter { NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Bigint, Value = DBNull.Value });
-        await Reject("DELETE FROM \"Devices\" WHERE \"Id\" = {0}", PostgresErrorCodes.RestrictViolation, device.Id);
-        await Reject("UPDATE \"PersonAssociations\" SET \"Start\" = '2026-09-01Z', \"End\" = '2026-09-01Z'", PostgresErrorCodes.CheckViolation);
-        await Reject("""UPDATE "PersonAssociations" SET "Start" = '-infinity', "End" = NULL""", PostgresErrorCodes.CheckViolation);
+        var otherObject = db.Entry(other).Property<Guid?>("ObjectId").CurrentValue;
+        var crossOwner = await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE "Facts" SET "FoiId" = {otherObject}
+            """));
+        Assert.Equal(PostgresErrorCodes.ForeignKeyViolation, crossOwner.SqlState);
+        var referenced = await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlInterpolatedAsync($"""
+            DELETE FROM "Persons" WHERE "Id" = {person.Id}
+            """));
+        Assert.Equal(PostgresErrorCodes.ForeignKeyViolation, referenced.SqlState);
+        var identityChange = await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE "Persons" SET "Reference" = {Guid.NewGuid()} WHERE "Id" = {person.Id}
+            """));
+        Assert.Equal(PostgresErrorCodes.CheckViolation, identityChange.SqlState);
     }
     [Theory]
     [InlineData("segment")]
@@ -165,8 +152,10 @@ public sealed class PersonMigrationTests(PostgresContainerFixture fixture) : Pos
             var batch = FactStoreTests.SegmentBatch("person");
             batch.Streams[0].FactKind = family;
             var fact = batch.Facts[0];
-            fact.ObserverId = batch.Streams[0].CollectorInstanceId;
-            fact.Target = new PersonReference(reference).ToTarget();
+            fact.CollectorId = batch.Streams[0].CollectorInstanceId;
+            fact.Aspect = "person-state";
+            fact.Relations = [];
+            fact.Foi = new ObservationObjectReference("person", ObservationObjectScopes.Person, reference.ToString("D"));
             if (family == "event") { fact.OccurredAt = fact.Start; fact.Start = fact.End = null; fact.IsFinal = null; }
             await new FactStore(writer).IngestAsync("owner", batch);
         }
@@ -177,7 +166,7 @@ public sealed class PersonMigrationTests(PostgresContainerFixture fixture) : Pos
         Assert.Equal(reference, (await verify.Persons.SingleAsync()).Reference);
         var store = new FactStore(verify);
         var facts = family == "segment" ? await store.ReadSegmentsAsync("owner", null, null, null) : await store.ReadEventsAsync("owner", null, null, null);
-        Assert.Equal(personId, Assert.Single(facts).TargetId);
+        Assert.Equal(await verify.Persons.Select(p => EF.Property<Guid?>(p, "ObjectId")).SingleAsync(), Assert.Single(facts).FoiId);
     }
 
 }

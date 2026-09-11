@@ -9,6 +9,8 @@ using Heartbeat.Collection.Hub.Collectors.Runtime;
 using Heartbeat.Collection.Hub.Segments;
 using Heartbeat.Collection.Hub.Time;
 using Heartbeat.Core.DTOs.Input;
+using Heartbeat.Core.DTOs.Segments;
+using Heartbeat.Collection.Hub.Upload;
 
 return args switch
 {
@@ -42,10 +44,10 @@ static async Task<int> CrashDuringProtocolReplayAsync(
     Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(statePath))!);
     var clock = new SystemClock();
     var segmentSink = new SegmentIngestService(clock);
-    var inputSink = new CrashBlockingInputSink();
+    var inputSink = new CrashBlockingFactSink();
     var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
     using var config = JsonDocument.Parse("{}");
-    var runtime = CollectorRuntime.Open(statePath, segmentSink, inputEventSink: inputSink);
+    var runtime = CollectorRuntime.Open(statePath, inputSink);
     var instance = runtime.CreateInstance(
         package,
         new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
@@ -67,7 +69,7 @@ static async Task<int> CrashDuringProtocolReplayAsync(
         package,
         Collector(protocol, clock, segmentSink));
     if (!inputSink.Entered.Wait(TimeSpan.FromSeconds(5)))
-        throw new TimeoutException("Real Collector Protocol delivery did not reach the blocking projection sink.");
+        throw new TimeoutException("Real Fact custody did not reach the pre-ACK observation boundary.");
 
     Console.WriteLine($"protocol-blocked-before-crash:{instance.CollectorInstanceId}");
     Console.Out.Flush();
@@ -83,9 +85,8 @@ static async Task<int> RestartAndDrainAsync(
 {
     var clock = new SystemClock();
     var segmentSink = new SegmentIngestService(clock);
-    var inputSink = new CapturingInputSink();
     var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
-    await using var runtime = CollectorRuntime.Open(statePath, segmentSink, inputEventSink: inputSink);
+    await using var runtime = CollectorRuntime.Open(statePath, segmentSink);
     var instance = runtime.GetInstance(instanceId);
     if (instance.PackageId != SystemInProcessCollector.PackageId)
         throw new InvalidDataException("Restart restored the wrong Collector Instance.");
@@ -96,7 +97,7 @@ static async Task<int> RestartAndDrainAsync(
         Collector(protocol, clock, segmentSink));
 
     await WaitUntilAsync(() =>
-        inputSink.Ids.Contains(inputId)
+        RuntimeHasFact(statePath, inputId)
         && RuntimeHasFact(statePath, segmentId)
         && RuntimeHasGap(statePath, "input_ingress_capacity_exceeded")
         && !SystemCollectorIngressStore.Open(IngressPath(statePath, instanceId), 1).HasPending
@@ -126,11 +127,10 @@ static async Task<int> RestartAndVerifyAsync(
 {
     var clock = new SystemClock();
     var segmentSink = new SegmentIngestService(clock);
-    var inputSink = new CapturingInputSink();
     var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
-    await using var runtime = CollectorRuntime.Open(statePath, segmentSink, inputEventSink: inputSink);
+    await using var runtime = CollectorRuntime.Open(statePath, segmentSink);
     if (!RuntimeHasFact(statePath, segmentId) ||
-        !inputSink.Ids.Contains(inputId) ||
+        !RuntimeHasFact(statePath, inputId) ||
         !RuntimeHasGap(statePath, "input_ingress_capacity_exceeded"))
         throw new InvalidDataException("Committed Fact/Gap truth did not survive the second process restart.");
     if (SystemCollectorIngressStore.Open(IngressPath(statePath, instanceId), 1).HasPending ||
@@ -245,45 +245,15 @@ static int Usage()
     return 64;
 }
 
-file sealed class CrashBlockingInputSink : IInputEventFactSink
+file sealed class CrashBlockingFactSink : ISegmentSink, ICollectorFactObserver
 {
     public ManualResetEventSlim Entered { get; } = new();
-
-    public bool TryAccept(
-        InputEventItem item,
-        bool isReplay,
-        ICollectorProjectionCommitFence commitFence)
+    public void Push(List<ActivitySegmentItem> items) { }
+    public void Observe(FactUploadItem item)
     {
+        if (item.Stream.FactKind != "event") return;
         Entered.Set();
         Thread.Sleep(Timeout.Infinite);
-        return false;
-    }
-}
-
-file sealed class CapturingInputSink : IInputEventFactSink
-{
-    private readonly object _gate = new();
-    private readonly HashSet<Guid> _ids = [];
-
-    public IReadOnlySet<Guid> Ids
-    {
-        get
-        {
-            lock (_gate)
-                return _ids.ToHashSet();
-        }
-    }
-
-    public bool TryAccept(
-        InputEventItem item,
-        bool isReplay,
-        ICollectorProjectionCommitFence commitFence)
-    {
-        if (commitFence.IsFenced)
-            return false;
-        lock (_gate)
-            _ids.Add(item.Id);
-        return true;
     }
 }
 

@@ -233,9 +233,10 @@ public sealed record FactSubmission(
     DateTimeOffset? ObservedAt,
     FactTime Time,
     JsonElement Payload,
-    Guid? ObserverId = null,
-    FactTarget? Target = null,
-    string? Aspect = null);
+    Guid? CollectorId = null,
+    ObservationObjectReference? Foi = null,
+    string? Aspect = null,
+    List<FactRelationSnapshot>? Relations = null);
 
 public enum FactDeliveryStatus
 {

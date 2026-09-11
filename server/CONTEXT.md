@@ -5,8 +5,8 @@
 ## Language
 
 **Ingest（摄入）**:
-Analytics 原子接收携带 Observer、Target 与 Aspect 的 Fact 快照及交付所需的 Stream、Gap，Owner 取自认证身份，
-同一事务转换到 Collectors、Objects、Facts、Relations、RelationMembers；所有家族共同遵守身份、修订和确认规则。旧 Subject 归属及旧上传服务现有数据与缓存，
+Analytics 原子接收携带 Collector、FOI、Relations 与 Aspect 的 Fact 快照及交付所需的 Stream、Gap，Owner 取自认证身份，
+同一事务写入 Collectors、Objects、Facts、Relations、RelationMembers；所有家族共同遵守身份、修订和确认规则。旧 Subject 归属及旧上传服务现有数据与缓存，
 不形成另一套事实语义。
 _Avoid_: 从标题或时间猜测事实身份、让活动或输入绕开统一的摄入规则
 
@@ -26,7 +26,7 @@ _Avoid_: 按相近标题、URL 或时间模糊合并历史
 _Avoid_: Statistics, Summary
 
 **App**:
-跨平台应用产品，是统计聚合、Matcher 与详情查询的主维度。稳定 Key 承载知识引用，DisplayName 是可更新文案；可同时安装和运行的发行渠道或产品变体默认是不同 App。摄入时由 AppIdentityKey 解析并让 ActivitySegment 引用 AppIdentity；多个平台身份映射到同一 App，查询经 AppIdentity → App 聚合。已知产品由 App Catalog 确定映射；未知身份先创建一对一 provisional App，不按名称猜测归并。presence 同样接收 AppIdentityKey，并向 Dashboard 投影 App 的 Id/Key/DisplayName。AppIcon 由 Agent 以 AppIdentity 上传提示，每个 Owner/App 保留一份产品图标。
+跨平台应用产品，是统计聚合、Matcher 与详情查询的主维度。稳定 Key 承载知识引用，DisplayName 是可更新文案；可同时安装和运行的发行渠道或产品变体默认是不同 App。摄入时平台身份引用解析为产品 Object；多个平台身份映射到同一 App，查询经 FOI/Relations 聚合，AppIdentity 保留产品纠错证据。已知产品由 App Catalog 确定映射；未知身份先创建一对一 provisional App，不按名称猜测归并。presence 同样接收 AppIdentityKey，并向 Dashboard 投影 App 的 Id/Key/DisplayName。AppIcon 由 Agent 以 AppIdentity 上传提示，每个 Owner/App 保留一份产品图标。
 
 **App Catalog（应用目录）**:
 服务端维护的部署全局产品目录，声明经过真实设备观察或供应商资料确认的已知 App 规范 Key、DisplayName 与一个或多个平台 AppIdentity。单平台稳定产品同样可以进入目录；provisional 表示产品尚未被系统识别，不表示它缺少跨平台版本。已发布 Key 与 identity 映射默认只增不删；错误映射通过显式迁移修正。目录内身份确定映射；目录外身份保留为 provisional App，部署管理员可以显式补充或修正映射。
@@ -43,7 +43,7 @@ _Avoid_: 用可变 username 授权、把普通 Owner 自动视为部署管理员
 **Owner / FOI**:
 Owner 是事实的数据主人；FOI 是 Fact 主要描述的 Object。System 事实指向机器，Browser 事实指向 App 产品；
 设备归属通过引用准确 Fact 的 observed-on 关系保留。账号与个人是独立 Object。
-Observer/Target 是当前上传转换契约；Subject 保留传输身份、旧缓存接管和管理语义。未知历史保持未知，
+Observer/Target 仅为旧输入转换契约；Subject 保留传输身份、旧缓存接管和管理语义。未知历史保持未知，
 转换和退出条件见 [五表迁移](../docs/architecture/observation-storage-migration.md)。
 _Avoid_: 把 Hub Instance 当 Target、把账号或身体称为 Device、用运行采集器的机器猜测事实归属
 
@@ -52,7 +52,7 @@ _Avoid_: 把 Hub Instance 当 Target、把账号或身体称为 Device、用运�
 _Avoid_: 用登录账号作个人 Target、从设备所有权推断本人全部历史
 
 **使用者关联**:
-对某设备或服务账号由本人使用的明确确认，具有适用时间；应用上下文沿其所属设备参与本人查询。补录、纠正及移除只改变事实视图，不修订原 Facts。
+对某设备或服务账号由本人使用的明确确认，具有适用时间；App 事实沿准确绑定的设备/账号关系参与本人查询；确认直接保存在 used-by Relations。补录、纠正及移除只改变事实视图，不修订原 Facts。
 _Avoid_: 用当前在线状态、采集宿主或当前登录推断历史使用者、把多个不连续适用区间扩大为连续覆盖
 
 **User Provisioning（用户供给）**:
@@ -113,10 +113,9 @@ SegmentValidationPolicy 是 Collection 与 Analytics 共用的纯段完整性判
 ActivitySegment 或 provisional App；既有 Segment Id 的 Device / Source / IdentityKey 冲突同样整批拒绝。
 合法 duplicate、乱序 snapshot 与批内同 Id 单调扩展仍按 Snapshot Upsert 幂等收敛。
 
-Browser 应用上下文不含 Profile 或窗口身份；窗口细节留在 Fact Payload。
-Observer 使用持久扩展安装 UUID，与可服务多个安装的 Runtime Instance 区分。
-ApplicationContexts 及产品纠错、离线引用和兼容退出见
-[Browser 实施记录](../docs/architecture/browser-observation-targets.md)。
+Browser 的 FOI 是跨设备 App；窗口细节留在 Fact Result，设备由 observed-on 关系明确给出。
+Collector 使用持久扩展安装 UUID，与可服务多个安装的 Runtime Instance 区分。
+应用上下文旧表已删除；产品纠错与离线兼容见[五表迁移](../docs/architecture/observation-storage-migration.md)。
 
 当前[观测语义边界](../docs/architecture/observation-semantics.md)：存储原样保管显式 Aspect/Result；
 Analytics 按支持的 Aspect 契约查询，不按 Source 猜测字段含义。Source 继续承载深度声明与 Matcher 身份。

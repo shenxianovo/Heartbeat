@@ -1,7 +1,8 @@
 # Observations 存储升级与恢复演练
 
-2026-09-11：脚本候选目标已更新为 `20260911025354_ObservationObjects`（五表），完整副本演练仍暂停；
-本次未复用旧候选的成功记录作为五表验收。
+2026-09-11：脚本候选目标已更新为 `20260911060000_DirectObservations`（直接 FOI/Relations），完整副本演练仍暂停；
+本次未复用旧候选的成功记录作为五表验收。`--check-database` 必须使用同一候选镜像，
+确认最后迁移为上述版本；旧候选的检查成功不能代替新 schema 的检查。
 
 当前切换入口遵循 [ADR-058](../adr/058-ci-database-migration.md) 和
 [Analytics CI 迁移 runbook](analytics-database-migration.md)。本文件补充任务 05 的完整数据、
@@ -36,7 +37,7 @@ SQL timeout=0，外围默认 21,000 秒，可显式调整；不存在十分钟�
 
 逐行比较覆盖 Id、Owner、Stream、FactId、Revision、Source、AppIdentityId、家族时间、Payload。
 Segments 原地改为 Facts，Events 搬入后退役；脚本核对 OID、统一表行数、FOI 和精确关系完整性。
-另按基线保存的证据构造每行预期归属，比较迁移后的直接 Observer/Target（目标业务 ID 解析为
+另按基线保存的证据构造每行预期归属，比较迁移后的 Collector/FOI 与精确 Fact 关系（对象 UUID 解析为
 设备/App/历史账号身份后对照）。比较行数还必须等于来源 count，不能以两个空导出宣称成功。
 查询对照包含逐日/设备/App 的 System 数量与时长、逐日/设备/输入编码数量；完整 API/本人关系
 语义由同版本集成测试覆盖，SQL 聚合不宣称已遍历所有页面。
@@ -56,11 +57,11 @@ Segments 原地改为 Facts，Events 搬入后退役；脚本核对 OID、统一
    → --migrate → --check-database → Production。迁移期间及新版本启动前不能恢复旧 Analytics 写入。
 4. 切换当前 Dashboard，再逐个升级 Runtime/Collector/Browser Profile；先保留现场副本，再允许恢复上传。
    旧 Runtime 自动保留 `.vN.bak`，VRChat 保留 `.v1.bak/.v2.bak`。不要删除 dead-letter 伪造排空。
-5. 核对三个 Collector 新事实都有 Observer/Target。关闭窗口仍能读取旧 Browser Facts；VRChat 重启
-   Observer 保持、账号切换分开，旧未知账号不变成当前登录账号。核对两个 Stream 同 FactId 仍两条。
+5. 核对三个 Collector 新事实都有 Collector/FOI。关闭窗口仍能读取旧 Browser Facts；VRChat 重启
+   Collector 保持、账号切换分开，旧未知账号不变成当前登录账号。核对两个 Stream 同 FactId 仍两条。
 6. 对照升级前后事实身份/数量/时间/Payload/Revision。新事实接入后按备份中的身份集合比较，
-   不能再要求当前总行数等于备份总行数。设备/App/账号/本人查询依据 Target 与明确使用者关联，
-   Browser/VRChat 不计入 System 注意力；历史 null Target 仍可由原始 Fact/Experience 读取。
+   不能再要求当前总行数等于备份总行数。设备/App/账号/本人查询依据 FOI/Relations 与明确使用者关联，
+   Browser/VRChat 不计入 System 注意力；历史未知 FOI 仍可由原始 Fact/Experience 读取。
 7. 记录真实停写开始、迁移结束、健康时间、整机 CPU/内存峰值、磁盘/WAL 峰值和备份留存。
    成功前不得清理升级前副本；沿 CI 规则保留最近两次成功备份和全部未解决失败备份。
 

@@ -17,6 +17,7 @@ public sealed partial class CollectorRuntime
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<int>> HubProtocolCapabilities =
         new Dictionary<string, IReadOnlyList<int>>(StringComparer.Ordinal)
         {
+            ["facts.observation"] = [1],
             ["facts.aspect"] = [1],
             ["facts.segment"] = [1],
             ["facts.event"] = [1],
@@ -29,8 +30,6 @@ public sealed partial class CollectorRuntime
     private readonly Dictionary<Guid, InProcessCollectorActivation> _activations = [];
     private readonly Dictionary<Guid, PendingActivationCommit> _pendingActivationCommits = [];
     // Legacy activity/input projections read only the fields their consumers understand.
-    private readonly ActivitySegmentFactProjector _segmentProjector;
-    private readonly InputEventFactProjector _inputEventProjector = new();
     private readonly Dictionary<Guid, Guid> _streamWriters = [];
     private readonly HashSet<Guid> _startingInstances = [];
     private readonly Dictionary<Guid, CollectorActivationLifetime> _activationLifetimes = [];
@@ -569,7 +568,7 @@ public sealed partial class CollectorRuntime
                 }
                 else
                 {
-                    if (_state.Gaps.Count(item => !_options.EnableFactUpload || !item.Delivered) >= _options.MaxDurableFacts)
+                    if (_state.Gaps.Count(item => !item.Delivered) >= _options.MaxDurableFacts)
                         return GapRetry(streamId, "Hub durable Gap inbox is applying backpressure.");
                     // Keep the finite migrated alias cohort: forgetting an original GapId would
                     // turn a later lost-ACK replay into a second Analytics loss report. Only
@@ -582,7 +581,7 @@ public sealed partial class CollectorRuntime
                             End = gap.End,
                             Reason = gap.Reason,
                             EstimatedFactsLost = gap.EstimatedFactsLost
-                        }, _options.EnableFactUpload && _state.Gaps.Count(existing =>
+                        }, _state.Gaps.Count(existing =>
                                 !existing.AwaitingLegacyGapIdentity && existing.LegacyGapIdAlias is null) >= _options.MaxDurableFacts
                             ? _state.Gaps.FirstOrDefault(existing => existing.Delivered &&
                                 !existing.AwaitingLegacyGapIdentity && existing.LegacyGapIdAlias is null) : null);
@@ -647,10 +646,6 @@ public sealed partial class CollectorRuntime
                 return immediate;
         }
 
-        if (!_options.EnableFactUpload && prepared.Stream.FactKind == FactKind.Event &&
-            !ProjectEvent(prepared.Stream, prepared.Committed, isReplay: false, deliveryFence))
-            return Retry(index, "Hub durable Event projection is applying backpressure.");
-
         while (true)
         {
             CollectorRuntimeState baseState;
@@ -701,10 +696,7 @@ public sealed partial class CollectorRuntime
             break;
         }
 
-        if (_options.EnableFactUpload)
-            ObserveCommittedFact(prepared.Stream, prepared.Committed);
-        else if (prepared.Stream.FactKind != FactKind.Event)
-            ProjectFact(prepared.Stream, prepared.Committed, isReplay: false);
+        ObserveCommittedFact(prepared.Stream, prepared.Committed);
         return new FactDeliveryOutcome(index, FactDeliveryStatus.Committed);
     }
 
@@ -729,18 +721,15 @@ public sealed partial class CollectorRuntime
         if (stream is null)
             return Rejected(index, "fact_invalid", "Fact Stream does not exist.");
 
-        // Pre-attribution System outboxes still replay their original envelope (task 05).
-        if (fact.ObserverId is null && fact.Target is null && stream.Source == "system" && stream.SubjectKind == SubjectKind.Machine)
-            fact = fact with { ObserverId = stream.CollectorInstanceId,
-                Target = new Heartbeat.Core.DTOs.Facts.FactTarget("device", stream.SubjectId.ToString("D")) };
-        if (stream.Source == "browser")
+        // Old unattributed records are converted once before entering native custody.
+        if (fact.Relations is null)
         {
-            if (fact.ObserverId is null && fact.Target is null && stream.SubjectKind == SubjectKind.Machine)
-            {
-                var observer = Heartbeat.Core.Facts.BrowserFactAttribution.Observer(stream.Dimensions.GetValueOrDefault("externalHostIdentity"));
-                var target = Heartbeat.Core.Facts.BrowserFactAttribution.Target(stream.SubjectId.ToString("D"), stream.Dimensions.GetValueOrDefault("appIdentityKey"));
-                if (observer is not null && target is not null) fact = fact with { ObserverId = observer, Target = target };
-            }
+            if (fact.CollectorId is not null || fact.Foi is not null)
+                return Rejected(index, "fact_invalid", "Native observation requires an explicit Relations list.");
+            var old = Heartbeat.Core.Facts.ObservationCompatibility.FromStream(stream.Source,
+                stream.SubjectKind.ToString().ToLowerInvariant(), stream.SubjectId.ToString("D"),
+                stream.CollectorInstanceId, fact.Payload, stream.Dimensions);
+            fact = fact with { CollectorId = old.CollectorId, Foi = old.Foi, Relations = old.Relations };
         }
         // Same historical activity spelling boundary as Analytics; no optional Collector dispatch.
         if (fact.Aspect is null && fact.Time is SegmentFactTime && fact.Payload is { } payload)
@@ -767,26 +756,6 @@ public sealed partial class CollectorRuntime
         };
         if (validationError is not null)
             return Rejected(index, "fact_invalid", validationError);
-        if (!_options.EnableFactUpload && fact.Aspect != Heartbeat.Core.Facts.FactAspectCompatibility.Infer(
-                stream.Source, stream.FactKind.ToString().ToLowerInvariant(), fact.Payload))
-            return Rejected(index, "fact_invalid", "Explicit observation semantics require native Fact upload; the old projection cannot preserve this Aspect.");
-        if (!_options.EnableFactUpload && !CanProject(stream, fact))
-            return Rejected(
-                index,
-                "fact_invalid",
-                "Fact payload is not compatible with the negotiated Hub projection shape.");
-        if (!_options.EnableFactUpload && stream.FactKind == FactKind.Segment &&
-            _segmentSink is not IDurableSegmentProjectionSink and not ISubjectSegmentProjectionSink)
-            return Rejected(
-                index,
-                "fact_invalid",
-                "The configured Segment projection cannot preserve durable Fact revisions.");
-        if (!_options.EnableFactUpload && stream.FactKind == FactKind.Event && _inputEventSink is null)
-            return Rejected(
-                index,
-                "fact_invalid",
-                "The configured Event projection cannot preserve the existing InputEvent upload path.");
-
         if (current is not null)
         {
             if (fact.Revision == current.Revision)
@@ -811,22 +780,14 @@ public sealed partial class CollectorRuntime
             var sameKindFacts = _state.Facts
                 .Where(existing => sameKindStreamIds.Contains(existing.StreamId))
                 .ToArray();
-            if (_options.EnableFactUpload && sameKindFacts.Count(existing =>
+            if (sameKindFacts.Count(existing =>
                     !existing.Delivered) >= _options.MaxDurableFacts)
                 return Retry(index, "Hub pending Fact upload journal is applying backpressure.");
             if (sameKindFacts.Length >= _options.MaxDurableFacts)
             {
-                if (!_options.EnableFactUpload && stream.FactKind != FactKind.Event)
-                    return Retry(index, "Hub durable Fact inbox is applying backpressure.");
-                if (_options.EnableFactUpload)
-                {
-                    evictedEvent = sameKindFacts.FirstOrDefault(existing =>
-                        CanEvictDeliveredFact(existing));
-                    if (evictedEvent is null)
-                        return Retry(index, "Hub active Fact replay window is applying backpressure.");
-                }
-                else if (stream.FactKind == FactKind.Event)
-                    evictedEvent = sameKindFacts[0];
+                evictedEvent = sameKindFacts.FirstOrDefault(CanEvictDeliveredFact);
+                if (evictedEvent is null)
+                    return Retry(index, "Hub active Fact replay window is applying backpressure.");
             }
         }
 
@@ -835,7 +796,8 @@ public sealed partial class CollectorRuntime
             StreamId = fact.StreamId,
             FactId = fact.FactId,
             Revision = fact.Revision,
-            ObserverId = fact.ObserverId, Target = fact.Target, Aspect = fact.Aspect,
+            CollectorId = fact.CollectorId, Foi = fact.Foi, Aspect = fact.Aspect,
+            Relations = Heartbeat.Core.Facts.ObservationContent.Copy(fact.Relations),
             ObservedAt = fact.ObservedAt,
             Start = fact.Time.Start ?? default,
             End = fact.Time.End ?? default,
@@ -851,7 +813,8 @@ public sealed partial class CollectorRuntime
     }
 
     private static bool SameContent(CommittedFactState current, FactSubmission fact) =>
-        current.ObserverId == fact.ObserverId && current.Target == fact.Target && current.Aspect == fact.Aspect &&
+        current.CollectorId == fact.CollectorId && current.Foi == fact.Foi && current.Aspect == fact.Aspect &&
+        Heartbeat.Core.Facts.ObservationContent.Equal(current.Relations, fact.Relations) &&
         current.Start == (fact.Time.Start ?? default) && current.End == (fact.Time.End ?? default) &&
         current.IsFinal == (fact.Time.IsFinal ?? false) && current.OccurredAt == fact.Time.OccurredAt &&
         current.Payload is { } payload && JsonElement.DeepEquals(payload, fact.Payload);
@@ -861,32 +824,13 @@ public sealed partial class CollectorRuntime
         CommittedFactState Committed,
         CommittedFactState? EvictedEvent);
 
-    private static bool ValidTarget(Heartbeat.Core.DTOs.Facts.FactTarget target)
-    {
-        if (target.Kind == "person")
-        {
-            try { _ = Heartbeat.Core.DTOs.Facts.PersonReference.Parse(target.Reference); return true; }
-            catch (ArgumentException) { return false; }
-        }
-        if (target.Kind == "account")
-        {
-            try { _ = Heartbeat.Core.DTOs.Facts.ServiceAccountReference.Parse(target.Reference); return true; }
-            catch (ArgumentException) { return false; }
-        }
-        if (target.Kind == "device") return !string.IsNullOrWhiteSpace(target.Reference) && target.Reference.Length <= 256;
-        if (target.Kind != "application-context" || string.IsNullOrWhiteSpace(target.Reference) || target.Reference.Length > 8192) return false;
-        try { _ = Heartbeat.Core.DTOs.Facts.ApplicationContextReference.Parse(target.Reference); return true; }
-        catch (ArgumentException) { return false; }
-    }
-
     private static string? ValidateFactEnvelope(FactSubmission fact)
     {
         if (fact.StreamId == Guid.Empty || !IsUuidV7(fact.FactId) ||
             fact.Revision is <= 0 or > MaxSafeJsonInteger)
             return "Fact identity and revisions must be UUIDv7, positive, and JSON-safe.";
-        if ((fact.ObserverId is null) != (fact.Target is null) || fact.ObserverId == Guid.Empty ||
-            fact.Target is { } target && (!ValidTarget(target)))
-            return "Fact requires a valid Observer and Target together.";
+        if (!Heartbeat.Core.Facts.ObservationContent.Valid(fact.CollectorId, fact.Foi, fact.Relations))
+            return "Fact requires valid Collector, FOI and Relations.";
         if (!Heartbeat.Core.Facts.FactAspects.IsValid(fact.Aspect)) return "Invalid Fact Aspect.";
         if (fact.ObservedAt is { Offset: var offset } && offset != TimeSpan.Zero)
             return "Fact observedAt must be UTC.";
@@ -921,28 +865,6 @@ public sealed partial class CollectorRuntime
         if (current is not null && current.OccurredAt != occurredAt)
             return "Event Revision cannot change occurredAt.";
         return null;
-    }
-
-    private bool CanProject(FactStreamState stream, FactSubmission fact)
-    {
-        return stream.FactKind switch
-        {
-            FactKind.Segment =>
-                _segmentProjector.TryProject(
-                    stream,
-                    fact.FactId,
-                    fact.Time.Start!.Value,
-                    fact.Time.End!.Value,
-                    fact.Payload,
-                    out _),
-            FactKind.Event =>
-                _inputEventProjector.TryProject(
-                    fact.FactId,
-                    fact.Time.OccurredAt!.Value,
-                    fact.Payload,
-                    out _),
-            _ => false
-        };
     }
 
     private StreamOpenPlan PlanStreams(
@@ -1146,8 +1068,7 @@ public sealed partial class CollectorRuntime
                      _ => string.Empty
                  }).Append("diagnostics.stream-gap"))
         {
-            if (capability == "facts.event" && !_options.EnableFactUpload && _inputEventSink is null ||
-                !HubProtocolCapabilities.TryGetValue(capability, out var hubVersions) ||
+            if (!HubProtocolCapabilities.TryGetValue(capability, out var hubVersions) ||
                 !package.Manifest.SupportedCapabilities.TryGetValue(capability, out var packageVersions) ||
                 !support.Capabilities.TryGetValue(capability, out var collectorVersions) ||
                 !hubVersions.Intersect(packageVersions).Intersect(collectorVersions).Any())
@@ -1409,162 +1330,8 @@ public sealed partial class CollectorRuntime
     private void ReplayCommittedFacts()
     {
         lock (_gate)
-        {
-            if (_options.EnableFactUpload)
-            {
-                foreach (var fact in _state.Facts)
-                    ObserveCommittedFact(_state.Streams.Single(stream => stream.StreamId == fact.StreamId), fact);
-                return;
-            }
-            var replaySink = _inputEventSink as IInputEventFactReplaySink;
-            List<InputEventItem>? replayEvents = replaySink is null ? null : [];
             foreach (var fact in _state.Facts)
-            {
-                var stream = _state.Streams.SingleOrDefault(candidate => candidate.StreamId == fact.StreamId);
-                if (stream is null)
-                    continue;
-                if (stream.FactKind == FactKind.Event && replayEvents is not null)
-                {
-                    if (TryCreateInputEventProjection(stream, fact, out var item))
-                        replayEvents.Add(item!);
-                    continue;
-                }
-                ProjectFact(stream, fact, isReplay: true);
-            }
-
-            if (replayEvents is { Count: > 0 })
-            {
-                try
-                {
-                    replaySink!.Replay(replayEvents);
-                }
-                catch (Exception exception)
-                {
-                    Log.Error(
-                        exception,
-                        "已持久接收 {Count} 条 Collector Event Fact，批量投影到 InputEvent 上传缓冲失败；重启时将重放",
-                        replayEvents.Count);
-                }
-            }
-        }
-    }
-
-    private void ProjectFact(FactStreamState stream, CommittedFactState fact, bool isReplay)
-    {
-        switch (stream.FactKind)
-        {
-            case FactKind.Segment:
-                ProjectSegment(stream, fact, isReplay);
-                break;
-            case FactKind.Event:
-                ProjectEvent(stream, fact, isReplay);
-                break;
-        }
-    }
-
-    private void ProjectSegment(FactStreamState stream, CommittedFactState fact, bool isReplay)
-    {
-        if (fact.Payload is not { } payload ||
-            !_segmentProjector.TryProject(
-                stream,
-                fact.FactId,
-                fact.Start,
-                fact.End,
-                payload,
-                out var item))
-        {
-            Log.Error(
-                "已持久接收 Collector Segment Fact {FactId}，但其 payload 无法由 业务投影 投影",
-                fact.FactId);
-            return;
-        }
-        try
-        {
-            if (_segmentSink is ISubjectSegmentProjectionSink subjectSink)
-            {
-                var context = ContextForStream(stream);
-                if (isReplay)
-                    subjectSink.ReplayDurable(context, item!, fact.Revision, fact.IsFinal);
-                else
-                    subjectSink.UpsertDurable(context, item!, fact.Revision, fact.IsFinal);
-            }
-            else if (_segmentSink is IDurableSegmentProjectionSink durableSink)
-            {
-                if (isReplay)
-                    durableSink.ReplayDurable(item!, fact.Revision);
-                else
-                    durableSink.UpsertDurable(item!, fact.Revision);
-            }
-            else
-                Log.Error(
-                    "已持久接收 Collector Segment Fact {FactId}，但投影 sink 不支持 durable revision",
-                    fact.FactId);
-        }
-        catch (Exception exception)
-        {
-            Log.Error(
-                exception,
-                "已持久接收 Collector Segment Fact {FactId}，投影到 Hub 缓冲失败；重启时将重放",
-                fact.FactId);
-        }
-    }
-
-    private CollectorProjectionContext ContextForStream(FactStreamState stream)
-    {
-        var instance = _state.Instances.Single(candidate =>
-            candidate.CollectorInstanceId == stream.CollectorInstanceId);
-        return new CollectorProjectionContext(
-            stream.CollectorInstanceId,
-            new SubjectReference(instance.SubjectId, instance.SubjectKind));
-    }
-
-    private bool ProjectEvent(
-        FactStreamState stream,
-        CommittedFactState fact,
-        bool isReplay,
-        ICollectorProjectionCommitFence? commitFence = null)
-    {
-        if (!TryCreateInputEventProjection(stream, fact, out var item))
-            return false;
-        if (_inputEventSink is null)
-        {
-            Log.Error(
-                "已持久接收 Collector Event Fact {FactId}，但未配置 InputEvent 投影 sink",
-                fact.FactId);
-            return false;
-        }
-        try
-        {
-            return _inputEventSink.TryAccept(
-                item!,
-                isReplay,
-                commitFence ?? UnfencedCollectorProjectionCommitFence.Instance);
-        }
-        catch (Exception exception)
-        {
-            Log.Error(
-                exception,
-                "已持久接收 Collector Event Fact {FactId}，投影到 InputEvent 上传缓冲失败；重启时将重放",
-                fact.FactId);
-            return false;
-        }
-    }
-
-    private bool TryCreateInputEventProjection(
-        FactStreamState stream,
-        CommittedFactState fact,
-        out InputEventItem? item)
-    {
-        item = null;
-        if (fact.OccurredAt is { } occurredAt &&
-            fact.Payload is { } payload &&
-            _inputEventProjector.TryProject(fact.FactId, occurredAt, payload, out item))
-            return true;
-
-        Log.Error(
-            "已持久接收 Collector Event Fact {FactId}，但其 payload 无法由 业务投影 投影",
-            fact.FactId);
-        return false;
+                ObserveCommittedFact(_state.Streams.Single(stream => stream.StreamId == fact.StreamId), fact);
     }
 
     private void MarkAcknowledgedLiveTraffic(

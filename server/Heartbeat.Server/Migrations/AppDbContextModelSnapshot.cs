@@ -283,34 +283,6 @@ namespace Heartbeat.Server.Migrations
                     b.ToTable("AppMergeReceipts");
                 });
 
-            modelBuilder.Entity("Heartbeat.Server.Entities.ApplicationContextRecord", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<long>("AppId")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("DeviceId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("OwnerId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AppId");
-
-                    b.HasIndex("OwnerId", "DeviceId", "AppId")
-                        .IsUnique();
-
-                    b.ToTable("ApplicationContexts", (string)null);
-                });
-
             modelBuilder.Entity("Heartbeat.Server.Entities.CollectorDeclaration", b =>
                 {
                     b.Property<long>("Id")
@@ -536,7 +508,6 @@ namespace Heartbeat.Server.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<Guid?>("FoiId")
-                        .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("uuid");
 
                     b.Property<string>("Kind")
@@ -708,11 +679,6 @@ namespace Heartbeat.Server.Migrations
                         .HasColumnType("uuid")
                         .HasDefaultValueSql("gen_random_uuid()");
 
-                    b.Property<long?>("AssociationId")
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("bigint")
-                        .HasComputedColumnSql("(\"Evidence\"->>'associationId')::bigint", true);
-
                     b.Property<JsonDocument>("Evidence")
                         .IsRequired()
                         .HasColumnType("jsonb");
@@ -738,13 +704,7 @@ namespace Heartbeat.Server.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OwnerId", "AssociationId");
-
                     b.HasIndex("OwnerId", "FactId");
-
-                    b.HasIndex("OwnerId", "Kind", "AssociationId")
-                        .IsUnique()
-                        .HasFilter("\"AssociationId\" IS NOT NULL");
 
                     b.HasIndex("OwnerId", "Kind", "FactId")
                         .IsUnique()
@@ -752,7 +712,7 @@ namespace Heartbeat.Server.Migrations
 
                     b.ToTable("Relations", null, t =>
                         {
-                            t.HasCheckConstraint("CK_Relations_Time", "(\"ValidFrom\" IS NULL OR isfinite(\"ValidFrom\")) AND (\"ValidTo\" IS NULL OR isfinite(\"ValidTo\")) AND (\"ValidFrom\" IS NULL OR \"ValidTo\" IS NULL OR \"ValidFrom\" <= \"ValidTo\")");
+                            t.HasCheckConstraint("CK_Relations_Time", "(\"ValidFrom\" IS NULL OR isfinite(\"ValidFrom\")) AND (\"ValidTo\" IS NULL OR isfinite(\"ValidTo\")) AND (\"ValidFrom\" IS NULL OR \"ValidTo\" IS NULL OR \"ValidFrom\" <= \"ValidTo\") AND (\"Kind\" <> 'used-by' OR \"ValidFrom\" IS NULL OR \"ValidTo\" IS NULL OR \"ValidFrom\" < \"ValidTo\")");
                         });
                 });
 
@@ -847,49 +807,6 @@ namespace Heartbeat.Server.Migrations
                         .IsUnique();
 
                     b.ToTable("Persons");
-                });
-
-            modelBuilder.Entity("Heartbeat.Server.Entities.PersonAssociation", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<long?>("AccountId")
-                        .HasColumnType("bigint");
-
-                    b.Property<long?>("DeviceId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTimeOffset?>("End")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("OwnerId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<long>("PersonId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTimeOffset?>("Start")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OwnerId", "PersonId");
-
-                    b.HasIndex("OwnerId", "AccountId", "Start", "End");
-
-                    b.HasIndex("OwnerId", "DeviceId", "Start", "End");
-
-                    b.ToTable("PersonAssociations", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_PersonAssociations_Interval", "(\"Start\" IS NULL OR isfinite(\"Start\")) AND (\"End\" IS NULL OR isfinite(\"End\")) AND (\"Start\" IS NULL OR \"End\" IS NULL OR \"Start\" < \"End\")");
-
-                            t.HasCheckConstraint("CK_PersonAssociations_Target", "(\"DeviceId\" IS NULL) <> (\"AccountId\" IS NULL)");
-                        });
                 });
 
             modelBuilder.Entity("Heartbeat.Server.Entities.Recap", b =>
@@ -1278,26 +1195,6 @@ namespace Heartbeat.Server.Migrations
                     b.Navigation("App");
                 });
 
-            modelBuilder.Entity("Heartbeat.Server.Entities.ApplicationContextRecord", b =>
-                {
-                    b.HasOne("Heartbeat.Server.Entities.App", "App")
-                        .WithMany()
-                        .HasForeignKey("AppId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Heartbeat.Server.Entities.Device", "Device")
-                        .WithMany()
-                        .HasForeignKey("OwnerId", "DeviceId")
-                        .HasPrincipalKey("OwnerId", "Id")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("App");
-
-                    b.Navigation("Device");
-                });
-
             modelBuilder.Entity("Heartbeat.Server.Entities.Device", b =>
                 {
                     b.HasOne("Heartbeat.Server.Entities.AppIdentity", "CurrentAppIdentity")
@@ -1385,12 +1282,6 @@ namespace Heartbeat.Server.Migrations
 
             modelBuilder.Entity("Heartbeat.Server.Entities.ObjectRelation", b =>
                 {
-                    b.HasOne("Heartbeat.Server.Entities.PersonAssociation", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId", "AssociationId")
-                        .HasPrincipalKey("OwnerId", "Id")
-                        .OnDelete(DeleteBehavior.Cascade);
-
                     b.HasOne("Heartbeat.Server.Entities.FactRecord", null)
                         .WithMany()
                         .HasForeignKey("OwnerId", "FactId")
@@ -1408,28 +1299,6 @@ namespace Heartbeat.Server.Migrations
                     b.HasOne("Heartbeat.Server.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Heartbeat.Server.Entities.PersonAssociation", b =>
-                {
-                    b.HasOne("Heartbeat.Server.Entities.ServiceAccount", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId", "AccountId")
-                        .HasPrincipalKey("OwnerId", "Id")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Heartbeat.Server.Entities.Device", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId", "DeviceId")
-                        .HasPrincipalKey("OwnerId", "Id")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Heartbeat.Server.Entities.Person", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId", "PersonId")
-                        .HasPrincipalKey("OwnerId", "Id")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

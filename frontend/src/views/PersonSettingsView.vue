@@ -34,9 +34,9 @@ function bound(value: string, original: string | null = null) {
 function display(iso: string | null | undefined, empty = '无限') {
   return iso ? new Date(iso).toLocaleString() : empty
 }
-function targetName(kind: string | null | undefined, id: number | null | undefined) {
-  const name = settings.value?.targets.find(t => t.kind === kind && t.id === id)?.name
-  return name ? `${name} · #${id}` : kind === 'person' ? '本人' : `${kind} · #${id}`
+function objectName(id: string) {
+  const object = settings.value?.objects.find(o => o.id === id)
+  return object?.name || object?.key || '未知对象'
 }
 function details(fact: PersonFactPage['items'][number]['fact']) {
   if (fact.occurredAt) {
@@ -70,7 +70,7 @@ function reset() {
 }
 function edit(link: PersonAssociation) {
   editing.value = link
-  target.value = link.deviceId !== null ? `device:${link.deviceId}` : `account:${link.accountId}`
+  target.value = link.objectId
   lower.value = local(link.start); upper.value = local(link.end)
   allHistory.value = link.start === null && link.end === null
 }
@@ -82,8 +82,7 @@ async function save() {
     const end = bound(upper.value, editing.value?.end)
     // PostgreSQL validates the interval at microsecond precision; Date cannot compare
     // preserved bounds that fall within the same millisecond without losing information.
-    const [kind, id] = target.value.split(':')
-    await savePersonAssociation(editing.value?.id ?? null, { deviceId: kind === 'device' ? Number(id) : null, accountId: kind === 'account' ? Number(id) : null, start, end })
+    await savePersonAssociation(editing.value?.id ?? null, { objectId: target.value, start, end })
     reset()
     await refresh()
   })
@@ -119,7 +118,7 @@ onMounted(() => run(refresh))
         <form aria-label="维护本人关联" @submit.prevent="save">
           <label>设备或账号<select v-model="target" aria-label="关联设备或账号" :disabled="busy" required>
             <option value="" disabled>选择已观测的设备或账号</option>
-            <option v-for="t in settings.targets" :key="`${t.kind}:${t.id}`" :value="`${t.kind}:${t.id}`">{{ t.kind === 'device' ? '设备' : '账号' }} · {{ t.name }} · #{{ t.id }}</option>
+            <option v-for="t in settings.objects" :key="t.id" :value="t.id">{{ t.kind === 'machine' ? '设备' : '账号' }} · {{ t.name || t.key }}</option>
           </select></label>
           <div class="bounds">
             <label>适用起点（包含）<input v-model="lower" aria-label="适用起点" type="datetime-local" step="0.001" :disabled="busy"></label>
@@ -128,20 +127,20 @@ onMounted(() => run(refresh))
           <label v-if="!lower && !upper" class="confirmation"><input v-model="allHistory" type="checkbox" :disabled="busy">我确认该设备或账号的全部历史均适用于本人</label>
           <div class="actions"><Button type="submit" :disabled="busy">{{ editing ? '保存纠正' : '创建关联' }}</Button><Button v-if="editing" type="button" variant="glass" :disabled="busy" @click="reset">取消纠正</Button></div>
         </form>
-        <p v-if="!settings.targets.length" class="hint">尚无可关联的设备或账号；摄入的个人 Target 事实仍可直接回看。</p>
+        <p v-if="!settings.objects.length" class="hint">尚无可关联的设备或账号；摄入的个人对象 事实仍可直接回看。</p>
         <p v-if="!settings.associations.length" class="hint">尚未建立使用者关联。</p>
         <ul class="associations">
           <li v-for="link in settings.associations" :key="link.id">
-            <div><strong>{{ targetName(link.deviceId !== null ? 'device' : 'account', (link.deviceId ?? link.accountId)!) }}</strong>
+            <div><strong>{{ objectName(link.objectId) }}</strong>
               <p :title="`${link.start ?? '无下界'} / ${link.end ?? '无上界'}`">[{{ display(link.start, '无下界') }}, {{ display(link.end, '无上界') }})</p></div>
             <div class="actions"><Button variant="glass" :aria-label="`纠正关联 ${link.id}`" :disabled="busy" @click="edit(link)">纠正</Button>
               <Button variant="glass" :aria-label="`移除关联 ${link.id}`" :disabled="busy" @click="run(async () => { await removePersonAssociation(link.id); reset(); await refresh() })">移除</Button></div>
           </li>
         </ul>
-        <details><summary>个人 Target 引用</summary><code>{{ settings.person.reference }}</code><p class="hint">供明确描述本人的事实使用；采集器不会从登录身份自动推断。</p></details>
+        <details><summary>个人对象 引用</summary><code>{{ settings.person.reference }}</code><p class="hint">供明确描述本人的事实使用；采集器不会从登录身份自动推断。</p></details>
       </section>
       <section>
-        <h2>本人事实</h2><p>包含个人 Target、关联设备及其应用上下文、关联账号在适用期内的事实。</p>
+        <h2>本人事实</h2><p>包含个人对象、关联机器及有证据关联的 App、关联账号在适用期内的事实。</p>
         <form aria-label="按本人筛选" @submit.prevent="filter">
           <label>事实家族<select v-model="family" aria-label="事实家族" :disabled="busy"><option value="segments">Segment · 持续区间</option><option value="events">Event · 发生时刻</option></select></label>
           <div class="bounds"><label>查询起点<input v-model="queryStart" type="datetime-local" step="0.001" :disabled="busy"></label><label>查询终点<input v-model="queryEnd" type="datetime-local" step="0.001" :disabled="busy"></label></div>
@@ -151,7 +150,7 @@ onMounted(() => run(refresh))
         <template v-if="page">
           <p aria-live="polite">{{ page.totalCount }} 条事实 <span v-for="source in page.sources" :key="source.source" class="source-count">{{ source.source }}：{{ source.count }}</span></p>
           <article v-for="item in page.items" :key="item.fact.id ?? undefined" class="fact">
-            <h3>{{ title(item.fact.payload) }}</h3><p class="hint">{{ item.fact.source }} · {{ item.targetName ?? targetName(item.fact.targetKind, item.fact.targetId) }}</p>
+            <h3>{{ title(item.fact.payload) }}</h3><p class="hint">{{ item.fact.source }} · {{ item.fact.foi?.name || item.fact.foi?.key || '未知对象' }}</p>
             <template v-if="item.fact.start">
               <p>原始区间：{{ display(item.fact.start) }} → {{ display(item.fact.end) }}</p>
               <p>有效覆盖：{{ item.effectiveSeconds }} 秒</p>

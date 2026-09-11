@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Heartbeat.Core.Facts;
 using Heartbeat.Server.Data;
 using Heartbeat.Server.Entities;
 
@@ -26,6 +27,9 @@ internal static class FactSeedExtensions
                     db.AppIdentities.Add(appIdentity);
                 }
             }
+            var deviceObjectId = db.Entry(device).Property<Guid?>("ObjectId").CurrentValue!.Value;
+            var app = activity.AppId is { } productId ? db.Apps.Find(productId) : appIdentity?.App;
+            var appObjectId = app is null ? null : db.Entry(app).Property<Guid?>("ObjectId").CurrentValue;
             db.Segments.Add(new Segment
             {
                 Id = activity.Id,
@@ -35,7 +39,14 @@ internal static class FactSeedExtensions
                 FactId = activity.Id,
                 Revision = 1,
                 Source = activity.Source,
-                TargetKind = "device", TargetId = device.Id,
+                FoiId = activity.FoiId ?? appObjectId ?? deviceObjectId,
+                Aspect = activity.Aspect ?? activity.Source switch
+                {
+                    "system" => FactAspects.DesktopActivity,
+                    "browser" => FactAspects.SelectedPage,
+                    "vrchat.account" => FactAspects.AccountLocation,
+                    _ => FactAspects.Activity
+                },
                 AppIdentity = appIdentity,
                 StartTime = activity.StartTime,
                 EndTime = activity.EndTime,
@@ -47,6 +58,19 @@ internal static class FactSeedExtensions
                         attributes = activity.Attributes is { } attributes ? JsonDocument.Parse(attributes).RootElement : (JsonElement?)null
                     }))
             });
+            if (appObjectId is { } appFoi)
+                db.Relations.Add(new ObjectRelation
+                {
+                    Id = Guid.NewGuid(), OwnerId = device.OwnerId, Kind = "observed-on",
+                    FactId = activity.Id,
+                    Evidence = JsonDocument.Parse(JsonSerializer.Serialize(new { factId = activity.Id })),
+                    ValidFrom = activity.StartTime, ValidTo = activity.EndTime,
+                    Members =
+                    [
+                        new() { Role = "app", ObjectId = appFoi },
+                        new() { Role = "device", ObjectId = deviceObjectId }
+                    ]
+                });
         }
     }
 

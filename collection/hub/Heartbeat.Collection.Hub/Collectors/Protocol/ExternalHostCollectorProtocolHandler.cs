@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Heartbeat.Collection.Hub.Collectors.Packages;
 using Heartbeat.Collection.Hub.Collectors.Runtime;
@@ -899,9 +900,15 @@ public sealed class ExternalHostCollectorProtocolHandler : IExternalHostProtocol
                (operation = tail[1]).Length > 0;
     }
 
-    private static async ValueTask<T> DeserializeAsync<T>(Stream body, CancellationToken cancellationToken) =>
-        await JsonSerializer.DeserializeAsync<T>(body, JsonOptions, cancellationToken)
-        ?? throw new JsonException("Protocol request body is required.");
+    private static async ValueTask<T> DeserializeAsync<T>(Stream body, CancellationToken cancellationToken)
+    {
+        var root = await JsonNode.ParseAsync(body, cancellationToken: cancellationToken)
+            ?? throw new JsonException("Empty protocol message.");
+        if (root["body"]?["facts"] is JsonArray facts)
+            foreach (var fact in facts.OfType<JsonObject>())
+                Heartbeat.Core.Facts.ObservationCompatibility.ReadOldEnvelope(fact, true);
+        return root.Deserialize<T>(JsonOptions) ?? throw new JsonException("Empty protocol message.");
+    }
 
     private static ProtocolHttpResponse Json(int statusCode, object body) =>
         new(statusCode, JsonSerializer.Serialize(body, JsonOptions));

@@ -79,12 +79,10 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
 
         var clock = new FakeClock();
         var segmentSink = new SegmentIngestService(clock);
-        var inputSink = new CapturingInputEventSink();
         await using var runtime = CollectorRuntime.Open(
             statePath,
             segmentSink,
-            new CollectorRuntimeOptions { EnableFactUpload = true },
-            inputEventSink: inputSink);
+            new CollectorRuntimeOptions { });
         var protocol = new SystemCollectorProtocolAdapter();
         await using var activation = await runtime.ActivateInProcessAsync(
             instanceId,
@@ -99,8 +97,8 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             EventType = InputEventType.MouseButton, CodeSet = InputCodeSets.HeartbeatKeyPositionV1, Code = 1 });
         await WaitUntilAsync(() => runtime.ReadPendingFacts().Any(item => item.Fact?.FactId == inputId));
         var fact = Assert.Single(runtime.ReadPendingFacts(), item => item.Fact?.FactId == inputId).Fact!;
-        Assert.Equal(instanceId, fact.ObserverId);
-        Assert.Equal(subject.SubjectId.ToString("D"), fact.Target!.Reference);
+        Assert.Equal(instanceId, fact.CollectorId);
+        Assert.Equal(subject.SubjectId.ToString("D"), fact.Foi!.Key);
     }
 
     [Fact]
@@ -126,8 +124,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         using var config = JsonDocument.Parse("{}");
         await using var runtime = CollectorRuntime.Open(
             Path.Combine(_root, "collector-runtime.json"),
-            sink,
-            inputEventSink: new CapturingInputEventSink());
+            sink);
         var instance = runtime.CreateInstance(
             package,
             new SubjectReference(
@@ -159,28 +156,25 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
 
         clock.Advance(TimeSpan.FromSeconds(30));
         monitor.PushCurrentSnapshot();
-        var first = Assert.Single(await WaitForSegmentsAsync(sink));
-        Assert.Equal("system", first.Source);
-        Assert.Equal("win:code", first.AppIdentityKey);
-        Assert.Equal("Code", first.AppDisplayName);
-        Assert.Equal("main.cs", first.Title);
-        Assert.Null(first.AppName);
-        Assert.Null(first.Attributes);
-        Assert.Equal(DateTimeOffset.UnixEpoch, first.StartTime);
-        Assert.Equal(DateTimeOffset.UnixEpoch.AddSeconds(30), first.EndTime);
+        var first = Assert.Single(await WaitForSegmentsAsync(runtime));
+                Assert.Equal("win:code", first.Payload!.Value.GetProperty("appIdentityKey").GetString());
+        Assert.Equal("Code", first.Payload!.Value.GetProperty("appDisplayName").GetString());
+        Assert.Equal("main.cs", first.Payload!.Value.GetProperty("title").GetString());
+        Assert.Equal(DateTimeOffset.UnixEpoch, first.Start);
+        Assert.Equal(DateTimeOffset.UnixEpoch.AddSeconds(30), first.End);
 
         clock.Advance(TimeSpan.FromSeconds(30));
         observations.Activate("win:chrome", "Docs", "Chrome");
-        var grown = Assert.Single(await WaitForSegmentsAsync(sink));
-        Assert.Equal(first.Id, grown.Id);
-        Assert.Equal(first.StartTime, grown.StartTime);
-        Assert.Equal(DateTimeOffset.UnixEpoch.AddSeconds(60), grown.EndTime);
+        var grown = Assert.Single(await WaitForSegmentsAsync(runtime));
+        Assert.Equal(first.FactId, grown.FactId);
+        Assert.Equal(first.Start, grown.Start);
+        Assert.Equal(DateTimeOffset.UnixEpoch.AddSeconds(60), grown.End);
         Assert.Equal("win:chrome", sink.CurrentActivity!.AppIdentityKey);
         Assert.True(sink.SourceLastSeen.ContainsKey("system"));
     }
 
     [Fact]
-    public async Task InputObservation_UsesEventFactAndProjectsToExistingUploadItem()
+    public async Task InputObservation_UsesNativeEventFact()
     {
         Directory.CreateDirectory(_root);
         var clock = new FakeClock();
@@ -199,8 +193,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         using var config = JsonDocument.Parse("{}");
         await using var runtime = CollectorRuntime.Open(
             Path.Combine(_root, "collector-runtime.json"),
-            segmentSink,
-            inputEventSink: inputBuffer);
+            segmentSink);
         var instance = runtime.CreateInstance(
             package,
             new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
@@ -212,14 +205,14 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
 
         clock.Advance(TimeSpan.FromMilliseconds(225));
         Assert.True(inputBuffer.OnKeyDown(InputKeyPosition.KeyA));
-        await WaitUntilAsync(() => inputBuffer.Count == 1);
+        await WaitUntilAsync(() => runtime.ReadPendingFacts().Any(item => item.Stream.FactKind == "event"));
 
-        var projected = Assert.Single(inputBuffer.ReadAll());
-        Assert.Equal(7, int.Parse(projected.Id.ToString("D")[14].ToString()));
-        Assert.Equal(InputEventType.KeyDown, projected.EventType);
-        Assert.Equal(InputCodeSets.HeartbeatKeyPositionV1, projected.CodeSet);
-        Assert.Equal((short)InputKeyPosition.KeyA, projected.Code);
-        Assert.Equal(clock.UtcNow, projected.Timestamp);
+        var projected = Assert.Single(runtime.ReadPendingFacts(), item => item.Stream.FactKind == "event").Fact!;
+        Assert.Equal(7, int.Parse(projected.FactId.ToString("D")[14].ToString()));
+        Assert.Equal("keyDown", projected.Payload!.Value.GetProperty("eventType").GetString());
+        Assert.Equal(InputCodeSets.HeartbeatKeyPositionV1, projected.Payload!.Value.GetProperty("codeSet").GetString());
+        Assert.Equal((short)InputKeyPosition.KeyA, projected.Payload!.Value.GetProperty("code").GetInt16());
+        Assert.Equal(clock.UtcNow, projected.OccurredAt);
         Assert.Equal(2, activation.Streams.Count);
     }
 
@@ -229,7 +222,6 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         Directory.CreateDirectory(_root);
         var clock = new FakeClock();
         var segmentSink = new SegmentIngestService(clock);
-        var inputSink = new CapturingInputEventSink();
         var protocol = new SystemCollectorProtocolAdapter();
         var monitor = new AppMonitorService(
             clock,
@@ -243,8 +235,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         using var config = JsonDocument.Parse("{}");
         await using var runtime = CollectorRuntime.Open(
             Path.Combine(_root, "collector-runtime.json"),
-            segmentSink,
-            inputEventSink: inputSink);
+            segmentSink);
         var instance = runtime.CreateInstance(
             package,
             new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
@@ -277,144 +268,8 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(first.Results).Status);
         Assert.Equal(FactDeliveryStatus.Duplicate, Assert.Single(replay.Results).Status);
         Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(higher.Results).Status);
-        Assert.Equal(2, inputSink.Items.Count);
-        Assert.All(inputSink.Items, projected => Assert.Equal(factId, projected.Id));
-    }
-
-    [Fact]
-    public async Task CommittedEvents_AreReplayedAsOneBatchAfterHubRestart_AndRetryDoesNotDuplicateProjection()
-    {
-        Directory.CreateDirectory(_root);
-        var statePath = Path.Combine(_root, "collector-runtime.json");
-        var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
-        var factIds = Enumerable.Range(0, 3).Select(_ => Guid.CreateVersion7()).ToArray();
-        Guid instanceId;
-        FactSubmission[] facts;
-
-        var firstClock = new FakeClock();
-        var firstSegmentSink = new SegmentIngestService(firstClock);
-        var firstInputSink = new CapturingInputEventSink();
-        await using (var firstRuntime = CollectorRuntime.Open(
-                         statePath,
-                         firstSegmentSink,
-                         inputEventSink: firstInputSink))
-        {
-            using var config = JsonDocument.Parse("{}");
-            var instance = firstRuntime.CreateInstance(
-                package,
-                new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
-                new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
-            instanceId = instance.CollectorInstanceId;
-            var firstProtocol = new SystemCollectorProtocolAdapter();
-            await using var firstActivation = await firstRuntime.ActivateInProcessAsync(
-                instanceId,
-                package,
-                NewCollector(firstProtocol, firstClock, firstSegmentSink));
-            var stream = firstActivation.Streams[SystemInProcessCollector.InputEventBindingId];
-            facts = factIds.Select(factId => InputFact(stream.Descriptor, factId)).ToArray();
-
-            var committed = await stream.PublishAsync(Guid.CreateVersion7(), facts);
-
-            Assert.All(committed.Results, result => Assert.Equal(FactDeliveryStatus.Committed, result.Status));
-            Assert.Equal(factIds, firstInputSink.Items.Select(item => item.Id));
-        }
-
-        var recoveredClock = new FakeClock();
-        var recoveredSegmentSink = new SegmentIngestService(recoveredClock);
-        var recoveredInputSink = new CapturingReplayInputEventSink();
-        await using var recoveredRuntime = CollectorRuntime.Open(
-            statePath,
-            recoveredSegmentSink,
-            inputEventSink: recoveredInputSink);
-        var recoveredProtocol = new SystemCollectorProtocolAdapter();
-        await using var recoveredActivation = await recoveredRuntime.ActivateInProcessAsync(
-            instanceId,
-            package,
-            NewCollector(recoveredProtocol, recoveredClock, recoveredSegmentSink));
-
-        var replay = await recoveredActivation.Streams[SystemInProcessCollector.InputEventBindingId]
-            .PublishAsync(Guid.CreateVersion7(), [facts[0]]);
-
-        Assert.Equal(FactDeliveryStatus.Duplicate, Assert.Single(replay.Results).Status);
-        Assert.Equal(1, recoveredInputSink.ReplayCalls);
-        Assert.Equal(factIds, recoveredInputSink.Items.Select(item => item.Id));
-    }
-
-    [Fact]
-    public async Task InputEvent_DurableProjectionAtCapacity_RetriesSameFactUntilConfirmedSpaceExists()
-    {
-        Directory.CreateDirectory(_root);
-        var clock = new FakeClock();
-        var segmentSink = new SegmentIngestService(clock);
-        var projectionPath = Path.Combine(_root, "input-event-facts-buffer.json");
-        var inputSink = new InputEventBuffer(clock, capacity: 1, durableProjectionPath: projectionPath);
-        var protocol = new SystemCollectorProtocolAdapter();
-        var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
-        using var config = JsonDocument.Parse("{}");
-        await using var runtime = CollectorRuntime.Open(
-            Path.Combine(_root, "collector-runtime.json"),
-            segmentSink,
-            new CollectorRuntimeOptions { MaxDurableFacts = 1 },
-            inputEventSink: inputSink);
-        var instance = runtime.CreateInstance(
-            package,
-            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
-            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
-        await using var activation = await runtime.ActivateInProcessAsync(
-            instance.CollectorInstanceId,
-            package,
-            NewCollector(protocol, clock, segmentSink));
-        var stream = activation.Streams[SystemInProcessCollector.InputEventBindingId];
-
-        var first = await stream.PublishAsync(
-            Guid.CreateVersion7(),
-            [InputFact(stream.Descriptor, Guid.CreateVersion7())]);
-        var secondFact = InputFact(stream.Descriptor, Guid.CreateVersion7());
-        var second = await stream.PublishAsync(Guid.CreateVersion7(), [secondFact]);
-
-        Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(first.Results).Status);
-        Assert.Equal(FactDeliveryStatus.Retry, Assert.Single(second.Results).Status);
-        var drained = ((IUploadSource<InputEventItem>)inputSink).ReadBatch();
-        Assert.Single(drained);
-        ((IUploadSource<InputEventItem>)inputSink).Confirm(drained);
-
-        var retried = await stream.PublishAsync(Guid.CreateVersion7(), [secondFact]);
-
-        Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(retried.Results).Status);
-        Assert.Equal(secondFact.FactId, Assert.Single(inputSink.ReadAll()).Id);
-    }
-
-    [Fact]
-    public async Task InputEvent_DurableProjectionFailure_ReturnsRetryWithoutCommittingReceipt()
-    {
-        Directory.CreateDirectory(_root);
-        var statePath = Path.Combine(_root, "collector-runtime.json");
-        var clock = new FakeClock();
-        var segmentSink = new SegmentIngestService(clock);
-        var protocol = new SystemCollectorProtocolAdapter();
-        var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
-        using var config = JsonDocument.Parse("{}");
-        await using var runtime = CollectorRuntime.Open(
-            statePath,
-            segmentSink,
-            inputEventSink: new ThrowingInputEventSink());
-        var instance = runtime.CreateInstance(
-            package,
-            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
-            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
-        await using var activation = await runtime.ActivateInProcessAsync(
-            instance.CollectorInstanceId,
-            package,
-            NewCollector(protocol, clock, segmentSink));
-        var stream = activation.Streams[SystemInProcessCollector.InputEventBindingId];
-
-        var acknowledgement = await stream.PublishAsync(
-            Guid.CreateVersion7(),
-            [InputFact(stream.Descriptor, Guid.CreateVersion7())]);
-
-        Assert.Equal(FactDeliveryStatus.Retry, Assert.Single(acknowledgement.Results).Status);
-        using var state = JsonDocument.Parse(File.ReadAllText(statePath));
-        Assert.Empty(state.RootElement.GetProperty("facts").EnumerateArray());
+        var saved = Assert.Single(runtime.ReadPendingFacts(), item => item.Fact?.FactId == factId).Fact!;
+        Assert.Equal(2, saved.Revision);
     }
 
     [Fact]
@@ -441,8 +296,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         using var config = JsonDocument.Parse("{}");
         await using var runtime = CollectorRuntime.Open(
             Path.Combine(_root, "collector-runtime.json"),
-            segmentSink,
-            inputEventSink: inputSink);
+            new ObservingFactSink(segmentSink, inputSink.Observe));
         var instance = runtime.CreateInstance(
             package,
             new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
@@ -493,8 +347,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         using var config = JsonDocument.Parse("{}");
         await using var runtime = CollectorRuntime.Open(
             statePath,
-            segmentSink,
-            inputEventSink: inputSink);
+            new ObservingFactSink(segmentSink, inputSink.Observe));
         var instance = runtime.CreateInstance(
             package,
             new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
@@ -537,8 +390,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         using var config = JsonDocument.Parse("{}");
         await using var runtime = CollectorRuntime.Open(
             statePath,
-            segmentSink,
-            inputEventSink: inputSink);
+            new ObservingFactSink(segmentSink, inputSink.Observe));
         var instance = runtime.CreateInstance(
             package,
             new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
@@ -596,8 +448,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         using var config = JsonDocument.Parse("{}");
         await using var runtime = CollectorRuntime.Open(
             statePath,
-            segmentSink,
-            inputEventSink: inputSink);
+            new ObservingFactSink(segmentSink, inputSink.Observe));
         var instance = runtime.CreateInstance(
             package,
             new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
@@ -652,15 +503,13 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         var statePath = Path.Combine(_root, "collector-runtime.json");
         var clock = new FakeClock();
         var segmentSink = new SegmentIngestService(clock);
-        var inputSink = new CapturingInputEventSink();
         var failure = new ControllableCommitFailure();
         var protocol = new SystemCollectorProtocolAdapter(failure.BeforeCommit);
         var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
         using var config = JsonDocument.Parse("{}");
         await using var runtime = CollectorRuntime.Open(
             statePath,
-            segmentSink,
-            inputEventSink: inputSink);
+            segmentSink);
         var instance = runtime.CreateInstance(
             package,
             new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
@@ -677,8 +526,8 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         protocol.Publish(second);
 
         Assert.True(failure.Entered.Wait(TimeSpan.FromSeconds(2)));
-        await WaitUntilAsync(() => inputSink.Items.Count == 2);
-        Assert.Equal([first.Id, second.Id], inputSink.Items.Select(item => item.Id));
+        await WaitUntilAsync(() => runtime.ReadPendingFacts().Count(item => item.Stream.FactKind == "event") == 2);
+        Assert.Equal([first.Id, second.Id], runtime.ReadPendingFacts().Where(item => item.Stream.FactKind == "event").Select(item => item.Fact!.FactId));
     }
 
     [Fact]
@@ -698,8 +547,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             new CollectorRuntimeOptions
             {
                 InProcessDrainGracePeriod = TimeSpan.FromMilliseconds(150)
-            },
-            inputEventSink: new CapturingInputEventSink());
+            });
         var instance = runtime.CreateInstance(
             package,
             new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
@@ -732,12 +580,11 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
 
         var runtime = CollectorRuntime.Open(
             statePath,
-            new SegmentIngestService(clock),
+            new ObservingFactSink(new SegmentIngestService(clock), blockedSink.Observe),
             new CollectorRuntimeOptions
             {
                 InProcessDrainGracePeriod = TimeSpan.FromMilliseconds(200)
-            },
-            inputEventSink: blockedSink);
+            });
         try
         {
             var instance = runtime.CreateInstance(
@@ -794,7 +641,6 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             var durableRemainder = OutboxFactCount(outboxPath);
             Assert.Equal(100, DurableFactIds(statePath, outboxPath, ingressPath).Count);
             await Task.Delay(50);
-            Assert.Equal(0, blockedSink.CommittedAfterRelease);
             Assert.Equal(durableRemainder, OutboxFactCount(outboxPath));
             Assert.Equal(hubStateAfterStop, File.ReadAllText(statePath));
             await replacement.StopAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
@@ -805,11 +651,9 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             await runtime.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
         }
 
-        var replaySink = new CapturingInputEventSink();
         await using (var restarted = CollectorRuntime.Open(
             statePath,
-            new SegmentIngestService(clock),
-            inputEventSink: replaySink))
+            new SegmentIngestService(clock)))
         {
             var protocol = new SystemCollectorProtocolAdapter();
             await using var activation = await restarted.ActivateInProcessAsync(
@@ -963,8 +807,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             new CollectorRuntimeOptions
             {
                 InProcessDrainGracePeriod = TimeSpan.FromMilliseconds(150)
-            },
-            inputEventSink: new CapturingInputEventSink());
+            });
         try
         {
             var instance = runtime.CreateInstance(
@@ -1046,17 +889,12 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             .ToHashSet();
     }
 
-    private static async Task<List<Heartbeat.Core.DTOs.Segments.ActivitySegmentItem>> WaitForSegmentsAsync(
-        SegmentIngestService sink)
+    private static async Task<List<Heartbeat.Core.DTOs.Facts.FactSnapshot>> WaitForSegmentsAsync(CollectorRuntime runtime)
     {
-        List<Heartbeat.Core.DTOs.Segments.ActivitySegmentItem> segments = [];
-        await WaitUntilAsync(() =>
-        {
-            segments = sink.ReadBatch();
-            return segments.Count != 0;
-        });
-        sink.Confirm(segments);
-        return segments;
+        List<FactUploadItem> items = [];
+        await WaitUntilAsync(() => { items = runtime.ReadPendingFacts().Where(item => item.Stream.FactKind == "segment").ToList(); return items.Count != 0; });
+        runtime.ConfirmUploadedFacts(items);
+        return items.Select(item => item.Fact!).ToList();
     }
 
     private static void CopyDirectory(string source, string destination)
@@ -1181,115 +1019,40 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         public void Report(CurrentActivity? activity) { }
     }
 
-    private sealed class CapturingInputEventSink : IInputEventFactSink
+    private sealed class ObservingFactSink(ISegmentSink sink, Action<FactUploadItem> observe) : ISegmentSink, ICollectorFactObserver
     {
-        public List<InputEventItem> Items { get; } = [];
-
-        public bool TryAccept(
-            InputEventItem item,
-            bool isReplay,
-            ICollectorProjectionCommitFence commitFence)
-        {
-            if (commitFence.IsFenced)
-                return false;
-            Items.Add(item);
-            return true;
-        }
+        public void Push(List<Heartbeat.Core.DTOs.Segments.ActivitySegmentItem> snapshots) => sink.Push(snapshots);
+        public void Observe(FactUploadItem item) => observe(item);
     }
 
-    private sealed class CapturingReplayInputEventSink :
-        IInputEventFactSink,
-        IInputEventFactReplaySink
-    {
-        public List<InputEventItem> Items { get; } = [];
-        public int ReplayCalls { get; private set; }
-
-        public bool TryAccept(
-            InputEventItem item,
-            bool isReplay,
-            ICollectorProjectionCommitFence commitFence)
-        {
-            if (commitFence.IsFenced)
-                return false;
-            Items.Add(item);
-            return true;
-        }
-
-        public void Replay(IReadOnlyList<InputEventItem> items)
-        {
-            ReplayCalls++;
-            Items.AddRange(items);
-        }
-    }
-
-    private sealed class ThrowingInputEventSink : IInputEventFactSink
-    {
-        public bool TryAccept(
-            InputEventItem item,
-            bool isReplay,
-            ICollectorProjectionCommitFence commitFence) =>
-            throw new IOException("durable projection unavailable");
-    }
-
-    private sealed class BlockingInputEventSink : IInputEventFactSink
+    private class BlockingInputEventSink
     {
         private readonly ManualResetEventSlim _release = new();
         private int _calls;
-
         public ManualResetEventSlim Entered { get; } = new();
-        public int CommittedAfterRelease { get; private set; }
-
-        public bool TryAccept(
-            InputEventItem item,
-            bool isReplay,
-            ICollectorProjectionCommitFence commitFence)
+        public virtual void Observe(FactUploadItem item)
         {
-            var first = Interlocked.Increment(ref _calls) == 1;
-            if (first)
-            {
-                Entered.Set();
-                _release.Wait(TimeSpan.FromSeconds(5));
-            }
-            if (commitFence.IsFenced)
-                return false;
-            if (first)
-                CommittedAfterRelease++;
-            return true;
+            if (item.Stream.FactKind != "event") return;
+            if (Interlocked.Increment(ref _calls) == 1) { Entered.Set(); _release.Wait(TimeSpan.FromSeconds(5)); }
         }
-
         public void Release() => _release.Set();
     }
 
-    private sealed class GapAwareBlockingInputEventSink(string statePath) : IInputEventFactSink
+    private sealed class GapAwareBlockingInputEventSink(string statePath) : BlockingInputEventSink
     {
-        private readonly ManualResetEventSlim _release = new();
         private int _calls;
-
-        public ManualResetEventSlim Entered { get; } = new();
         public ManualResetEventSlim SecondEntered { get; } = new();
         public bool GapVisibleBeforeSecond { get; private set; }
-
-        public bool TryAccept(
-            InputEventItem item,
-            bool isReplay,
-            ICollectorProjectionCommitFence commitFence)
+        public override void Observe(FactUploadItem item)
         {
-            if (Interlocked.Increment(ref _calls) == 1)
+            if (item.Stream.FactKind != "event") return;
+            base.Observe(item);
+            if (Interlocked.Increment(ref _calls) > 1)
             {
-                Entered.Set();
-                _release.Wait(TimeSpan.FromSeconds(5));
-            }
-            else
-            {
-                GapVisibleBeforeSecond = RuntimeHasGap(
-                    statePath,
-                    "input_ingress_capacity_exceeded");
+                GapVisibleBeforeSecond = RuntimeHasGap(statePath, "input_ingress_capacity_exceeded");
                 SecondEntered.Set();
             }
-            return !commitFence.IsFenced;
         }
-
-        public void Release() => _release.Set();
     }
 
     private sealed class ControlledTimeProvider : TimeProvider

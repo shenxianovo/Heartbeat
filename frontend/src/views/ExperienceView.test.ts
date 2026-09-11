@@ -9,9 +9,14 @@ import type { ExperienceSegment } from '../experience/factViews'
 vi.mock('vue-router', () => ({ useRoute: () => ({ params: { username: 'alice' } }) }))
 vi.mock('../api', () => ({ fetchExperiencePage: vi.fn() }))
 
+const machine = { id: 'machine', kind: 'machine', scope: 'heartbeat.device', key: 'Mac', name: 'Mac' }
+const app = { id: 'app', kind: 'app', scope: 'heartbeat.app', key: 'browser', name: 'Browser' }
 const makeFact = (id: string, start: string, source = 'system'): ExperienceSegment => ({
-  id, factId: id, streamId: 'stream', revision: 1, targetKind: 'device', targetId: 1, deviceId: 1,
-  targetName: 'Mac', source, aspect: source === 'system' ? 'desktop-activity' : source === 'browser' ? 'selected-page' : source, appId: 1, appIdentityId: 1, appName: 'Browser', appKey: 'browser', startTime: start,
+  id, factId: id, streamId: 'stream', revision: 1, deviceId: 1, foi: source === 'browser' ? app : machine,
+  relations: [{ id: `r-${id}`, kind: 'observed-on', validFrom: start, validTo: start,
+    evidence: { factId: id }, members: [{ role: 'device', object: machine }, { role: 'app', object: app }] }],
+  source, aspect: source === 'system' ? 'desktop-activity' : source === 'browser' ? 'selected-page' : source,
+  appId: 1, appIdentityId: 1, appName: 'Browser', appKey: 'browser', startTime: start,
   endTime: new Date(Date.parse(start) + 1000).toISOString(), payload: { title: `record-${id}` },
 })
 function setup() {
@@ -38,8 +43,6 @@ describe('Experience page', () => {
     }))
     const wrapper = setup(); await flushPromises()
     expect(fetchExperiencePage).toHaveBeenCalledTimes(2)
-    expect(wrapper.findAll('.lane')).toHaveLength(1)
-    await wrapper.get('.browser-toggle').trigger('click')
     expect(wrapper.findAll('.lane')).toHaveLength(2)
     await wrapper.findAll('.fact-main').find(button => button.text().includes('record-system'))!.trigger('click')
     expect(wrapper.find('.selection').text()).toContain('相关 Browser 观察 1')

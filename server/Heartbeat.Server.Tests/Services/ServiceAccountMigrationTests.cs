@@ -65,10 +65,10 @@ public sealed class ServiceAccountMigrationTests(PostgresContainerFixture fixtur
         Assert.Equal(2, rows.Count);
         Assert.Equal(stream.CollectorInstanceId, Assert.Single(rows, r => r.Id == rowId).ObserverId);
         Assert.Null(Assert.Single(rows, r => r.Id == legacyRowId).ObserverId);
-        Assert.All(rows, r => { Assert.Null(r.DeviceId); Assert.Equal("account", r.TargetKind); Assert.Equal(1, r.Revision); Assert.True(JsonElement.DeepEquals(JsonDocument.Parse(payload).RootElement, r.Payload)); });
+        Assert.All(rows, r => { Assert.Null(r.DeviceId); Assert.NotNull(r.FoiId); Assert.Equal(1, r.Revision); Assert.True(JsonElement.DeepEquals(JsonDocument.Parse(payload).RootElement, r.Payload)); });
         var current = ServiceAccountTests.Batch();
         await store.IngestAsync("owner", current);
         Assert.Equal(2, await db.ServiceAccounts.CountAsync());
-        Assert.Equal(account.Id, (kind == "segment" ? await store.ReadSegmentsAsync("owner", null, null, null) : await store.ReadEventsAsync("owner", null, null, null)).Single(r => r.Id == rowId).TargetId);
+        Assert.Equal(db.Entry(account).Property<Guid?>("ObjectId").CurrentValue, (kind == "segment" ? await store.ReadSegmentsAsync("owner", null, null, null) : await store.ReadEventsAsync("owner", null, null, null)).Single(r => r.Id == rowId).FoiId);
     }
 }

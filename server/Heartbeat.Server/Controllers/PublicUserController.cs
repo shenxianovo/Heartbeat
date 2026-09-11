@@ -43,22 +43,22 @@ namespace Heartbeat.Server.Controllers
         [EndpointName("getUserSegmentFacts")]
         public async Task<ActionResult<List<Heartbeat.Core.DTOs.Facts.FactResponse>>> GetSegmentFacts(
             string username, [FromQuery] long? deviceId, [FromQuery] DateTimeOffset? start,
-            [FromQuery] DateTimeOffset? end, [FromQuery] long? appId, [FromQuery] long? accountId, [FromServices] FactStore facts, CancellationToken ct)
+            [FromQuery] DateTimeOffset? end, [FromQuery] long? appId, [FromQuery] long? accountId, [FromQuery] Guid? foiId, [FromServices] FactStore facts, CancellationToken ct)
         {
             var user = await ResolveVisibleAsync(username);
             if (user == null) return NotFound();
-            return await facts.ReadSegmentsAsync(user.Id, deviceId, start, end, ct, appId, accountId);
+            return await facts.ReadSegmentsAsync(user.Id, deviceId, start, end, ct, appId, accountId, foiId);
         }
 
         [HttpGet("facts/events")]
         [EndpointName("getUserEventFacts")]
         public async Task<ActionResult<List<Heartbeat.Core.DTOs.Facts.FactResponse>>> GetEventFacts(
             string username, [FromQuery] long? deviceId, [FromQuery] DateTimeOffset? start,
-            [FromQuery] DateTimeOffset? end, [FromQuery] long? appId, [FromQuery] long? accountId, [FromServices] FactStore facts, CancellationToken ct)
+            [FromQuery] DateTimeOffset? end, [FromQuery] long? appId, [FromQuery] long? accountId, [FromQuery] Guid? foiId, [FromServices] FactStore facts, CancellationToken ct)
         {
             var user = await ResolveVisibleAsync(username);
             if (user == null) return NotFound();
-            return await facts.ReadEventsAsync(user.Id, deviceId, start, end, ct, appId, accountId);
+            return await facts.ReadEventsAsync(user.Id, deviceId, start, end, ct, appId, accountId, foiId);
         }
 
         [HttpGet("experience")]

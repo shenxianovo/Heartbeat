@@ -32,8 +32,8 @@ public sealed class ExperienceServiceTests(PostgresContainerFixture fixture) : P
         var row = Assert.Single((await service.ReadAsync("owner", Window, null)).Items);
         Assert.Equal("custom.snapshot", row.Aspect);
         Assert.Equal("custom.observation", row.Source);
-        Assert.Null(row.TargetKind);
-        Assert.Null(row.TargetId);
+        Assert.Null(row.Foi);
+        Assert.Null(row.FoiId);
         Assert.Null(row.AppIdentityId);
         Assert.Equal(Start.AddHours(-1), row.StartTime);
         Assert.Equal(3, row.Payload.GetProperty("arbitrary").GetArrayLength());

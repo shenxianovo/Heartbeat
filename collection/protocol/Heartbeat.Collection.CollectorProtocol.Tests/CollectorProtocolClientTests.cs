@@ -178,6 +178,26 @@ public sealed class CollectorProtocolClientTests
             Assert.True(restarted.Facts[1].Fact.Payload.GetProperty("arbitrary").GetBoolean());
             Assert.Empty(restarted.Gaps);
             Assert.Empty(Directory.GetFiles(root, "*.corrupt-*"));
+            var prior = JsonNode.Parse(File.ReadAllText(path))!;
+            var priorFact = prior["State"]!["Facts"]![0]!["Fact"]!;
+            var observer = Guid.NewGuid();
+            priorFact["ObserverId"] = observer;
+            priorFact["Target"] = JsonSerializer.SerializeToNode(new Heartbeat.Core.DTOs.Facts.FactTarget(
+                "application-context", "[\"machine-a\",\"win:chrome\"]"));
+            var previousBytes = prior.ToJsonString();
+            File.WriteAllText(path, previousBytes);
+            var upgraded = CollectorProtocolOutbox.Open(root, 16, Definition().Outputs, now);
+            upgraded.BeginActivation();
+            Assert.Equal(previousBytes, File.ReadAllText(path + ".v2.bak"));
+            Assert.Equal(3, JsonNode.Parse(File.ReadAllText(path))!["SchemaVersion"]!.GetValue<int>());
+            var migrated = upgraded.Facts[0].Fact;
+            Assert.Equal(fact.FactId, migrated.FactId);
+            Assert.Equal(fact.Revision, migrated.Revision);
+            Assert.Equal(observer, migrated.CollectorId);
+            Assert.Equal("win:chrome", migrated.Foi!.Key);
+            Assert.Equal("machine-a", Assert.Single(migrated.Relations!).Members.Single(m => m.Role == "device").Object.Key);
+            Assert.Empty(upgraded.Gaps);
+
         }
         finally
         {

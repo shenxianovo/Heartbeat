@@ -40,7 +40,7 @@ public sealed class ServiceAccountTests(PostgresContainerFixture fixture) : Post
         }
         var after = Assert.Single(await store.ReadSegmentsAsync("owner", null, null, null));
         Assert.Equal(before.AppId, after.AppId);
-        Assert.Equal(before.TargetId, after.TargetId);
+        Assert.Equal(before.FoiId, after.FoiId);
         Assert.Equal(new byte[] { 1, 2, 3 }, await new AppService(db).GetIconAsync("owner", before.AppId.Value));
         Assert.Equal("vrchat", (await db.Apps.SingleAsync(a => a.Id == before.AppId)).Key);
         Assert.NotEqual(before.AppId, (await db.AppIdentities.SingleAsync()).AppId);
@@ -72,16 +72,16 @@ public sealed class ServiceAccountTests(PostgresContainerFixture fixture) : Post
         await store.IngestAsync("other", batch);
         var before = Assert.Single(await store.ReadSegmentsAsync("owner", null, null, null));
         var other = Assert.Single(await store.ReadSegmentsAsync("other", null, null, null));
-        Assert.NotEqual(before.TargetId, other.TargetId);
-        Assert.Empty(await store.ReadSegmentsAsync("other", null, null, null, accountId: before.TargetId));
+        Assert.NotEqual(before.FoiId, other.FoiId);
+        var ownerAccount = await db.ServiceAccounts.SingleAsync(a => a.OwnerId == "owner");
+        Assert.Empty(await store.ReadSegmentsAsync("other", null, null, null, accountId: ownerAccount.Id));
         async Task Reject(FormattableString sql, string code) => Assert.Equal(code,
             (await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlInterpolatedAsync(sql))).SqlState);
-        await Reject($"UPDATE \"Facts\" SET \"TargetId\" = {before.TargetId} WHERE \"OwnerId\" = 'other'", "23503");
-        await Reject($"DELETE FROM \"ServiceAccounts\" WHERE \"Id\" = {before.TargetId}", "23503");
-        await Reject($"UPDATE \"ServiceAccounts\" SET \"OwnerId\" = 'other' WHERE \"Id\" = {before.TargetId}", "23514");
-        await Reject($"UPDATE \"ServiceAccounts\" SET \"ServiceAccountId\" = 'usr_changed' WHERE \"Id\" = {before.TargetId}", "23514");
-        await Reject($"UPDATE \"Facts\" SET \"TargetId\" = 987654 WHERE \"OwnerId\" = 'owner'", "23503");
-        var account = await db.ServiceAccounts.AsNoTracking().SingleAsync(a => a.Id == before.TargetId);
+        await Reject($"UPDATE \"Facts\" SET \"FoiId\" = {before.FoiId} WHERE \"OwnerId\" = 'other'", "23503");
+        await Reject($"DELETE FROM \"ServiceAccounts\" WHERE \"Id\" = {ownerAccount.Id}", "23503");
+        await Reject($"UPDATE \"ServiceAccounts\" SET \"OwnerId\" = 'other' WHERE \"Id\" = {ownerAccount.Id}", "23514");
+        await Reject($"UPDATE \"ServiceAccounts\" SET \"ServiceAccountId\" = 'usr_changed' WHERE \"Id\" = {ownerAccount.Id}", "23514");
+        var account = await db.ServiceAccounts.AsNoTracking().SingleAsync(a => a.Id == ownerAccount.Id);
         db.ServiceAccounts.Add(new ServiceAccount { OwnerId = account.OwnerId, ServiceKey = account.ServiceKey, ServiceAccountId = account.ServiceAccountId });
         await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
         db.ChangeTracker.Clear();
@@ -92,13 +92,13 @@ public sealed class ServiceAccountTests(PostgresContainerFixture fixture) : Post
         await store.IngestAsync("owner", batch);
         var after = Assert.Single(await store.ReadSegmentsAsync("owner", null, null, null));
         Assert.Equal(before.Id, after.Id);
-        Assert.Equal(before.TargetId, after.TargetId);
+        Assert.Equal(before.FoiId, after.FoiId);
         Assert.NotEqual(before.AppId, after.AppId);
         Assert.Null(after.DeviceId);
         Assert.Empty(await db.AppIdentities.ToListAsync());
         batch.Facts[0].Target = new ServiceAccountReference("vrchat", "usr_22222222-2222-4222-8222-222222222222").ToTarget();
         Assert.True((await Assert.ThrowsAsync<FactIngestException>(() => store.IngestAsync("owner", batch))).IsConflict);
-        Assert.Equal(before.TargetId, Assert.Single(await store.ReadSegmentsAsync("owner", null, null, null)).TargetId);
+        Assert.Equal(before.FoiId, Assert.Single(await store.ReadSegmentsAsync("owner", null, null, null)).FoiId);
     }
 
     internal static FactUploadRequest Batch()

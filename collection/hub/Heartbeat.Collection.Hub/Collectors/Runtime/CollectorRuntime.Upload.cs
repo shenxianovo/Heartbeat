@@ -15,10 +15,7 @@ public sealed partial class CollectorRuntime
         {
             lock (_gate)
                 return new DeliveryRemainder(
-                    _options.EnableFactUpload
-                        ? _state.Facts.Count(fact => !fact.Delivered) +
-                          _state.Gaps.Count(gap => !gap.Delivered)
-                        : 0,
+                    _state.Facts.Count(fact => !fact.Delivered) + _state.Gaps.Count(gap => !gap.Delivered),
                     0);
         }
     }
@@ -28,7 +25,6 @@ public sealed partial class CollectorRuntime
     {
         lock (_gate)
         {
-            if (!_options.EnableFactUpload) return [];
             var streams = _state.Streams.ToDictionary(stream => stream.StreamId);
             var items = new List<FactUploadItem>();
             // Reserve room for Gaps so a continuous Event stream cannot starve loss reports.
@@ -58,7 +54,7 @@ public sealed partial class CollectorRuntime
                 Instances = [.. _state.Instances], Streams = [.. _state.Streams],
                 ActivationAttemptTombstones = [.. _state.ActivationAttemptTombstones],
                 Facts = _state.Facts.Select(fact => facts[(fact.StreamId, fact.FactId, fact.Revision)].Any(item =>
-                    item.ObserverId == fact.ObserverId && item.Target == fact.Target && item.Aspect == fact.Aspect &&
+                    item.CollectorId == fact.CollectorId && item.Foi == fact.Foi && item.Aspect == fact.Aspect && Heartbeat.Core.Facts.ObservationContent.Equal(item.Relations, fact.Relations) &&
                     item.Start == (fact.OccurredAt is null ? fact.Start : null) && item.End == (fact.OccurredAt is null ? fact.End : null) &&
                     item.OccurredAt == fact.OccurredAt && item.IsFinal == (fact.OccurredAt is null ? fact.IsFinal : null) &&
                     item.Payload is { } payload && fact.Payload is { } saved && JsonElement.DeepEquals(payload, saved))
@@ -91,7 +87,7 @@ public sealed partial class CollectorRuntime
 
     private void EnsureUploadGapIdentities()
     {
-        if (!_options.EnableFactUpload || _state.Gaps.All(gap => gap.GapId != Guid.Empty)) return;
+        if (_state.Gaps.All(gap => gap.GapId != Guid.Empty)) return;
         var next = _state;
         foreach (var gap in _state.Gaps.Where(gap => gap.GapId == Guid.Empty))
             next = next.WithBoundGapIdentity(gap, Guid.CreateVersion7(), awaitingLegacyIdentity: true);
@@ -115,7 +111,7 @@ public sealed partial class CollectorRuntime
         new FactSnapshot
         {
             StreamId = fact.StreamId, FactId = fact.FactId, Revision = fact.Revision,
-            ObserverId = fact.ObserverId, Target = fact.Target, Aspect = fact.Aspect,
+            CollectorId = fact.CollectorId, Foi = fact.Foi, Aspect = fact.Aspect, Relations = Heartbeat.Core.Facts.ObservationContent.Copy(fact.Relations),
             ObservedAt = fact.ObservedAt,
             Start = stream.FactKind == FactKind.Segment ? fact.Start : null,
             End = stream.FactKind == FactKind.Segment ? fact.End : null,

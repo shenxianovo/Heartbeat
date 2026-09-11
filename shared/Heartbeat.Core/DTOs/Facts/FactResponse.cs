@@ -2,18 +2,15 @@ using System.Text.Json;
 
 namespace Heartbeat.Core.DTOs.Facts;
 
-/// <summary>Latest family fact; TargetId refers to owner-scoped Analytics business data.</summary>
-public sealed class FactResponse
+/// <summary>Latest fact, its object, and relations evidenced by this exact fact.</summary>
+public sealed class FactResponse : ObservationResponse
 {
-    public Guid Id { get; set; }
     public Guid StreamId { get; set; }
     public Guid FactId { get; set; }
     public long Revision { get; set; }
-    public Guid? ObserverId { get; set; }
-    public Guid? FoiId { get; set; }
     public string? Aspect { get; set; }
-    public string? TargetKind { get; set; }
-    public long? TargetId { get; set; }
+
+
     public long? DeviceId { get; set; }
     public long? AppId { get; set; }
     public string Source { get; set; } = string.Empty;

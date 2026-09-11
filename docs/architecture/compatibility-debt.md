@@ -32,7 +32,7 @@
 | 边界 | 当前兼容对象 | 主要证据 | 移除门槛 | 移除验证 |
 | --- | --- | --- | --- | --- |
 | Analytics 历史 Subject 导入 | 升级前 Headless Account/Person 以 `subject:<kind>:<uuid>` 保存的 Device 及其历史引用 | ADR-054/055、`FactStore.LegacyImport.cs`、`NativeFactCustody` migration | 所有真实数据库及旧缓存完成迁移并审计后，移除运行时旧导入 adapter；保留历史事实及旧基线迁移，不要求永久复制旧整行 | Account/Machine migration fixture、微秒时间接管、原生重放无重复、Owner/Subject 查询隔离、真实备份演练；分表通过前不宣告完成 |
-| 升级前 segment/input 上传缓存与投影 harness | 现存 `segments-cache.json`、InputEventBuffer/重试文件及旧嵌入式 Runtime protocol test harness；生产新 Fact 使用 Runtime durable upload | ADR-054、`CollectorRuntime.Upload.cs`、`RuntimeFactUploadSource.cs`、旧 `UploadStream` composition | 所有已安装 Desktop/Headless 原生上传 smoke 完成，旧缓存 pending 为零且备份/回滚窗口明确；protocol fixtures 迁至 native custody 后移除 `EnableFactUpload=false` 与旧 projector seam；Analytics 旧端点同时退出 | 旧缓存+原生重放交错、精确确认、断网重启、纠正后迟到旧缓存不覆盖、实际安装矩阵 |
+| 升级前 segment/input 上传缓存与投影 harness | 现存 `segments-cache.json`、InputEventBuffer/重试文件及生产新 Fact 统一使用 Runtime durable upload；false 投影模式与专属测试本轮删除 | ADR-054、`CollectorRuntime.Upload.cs`、`RuntimeFactUploadSource.cs`、旧 `UploadStream` composition | 所有已安装 Desktop/Headless 原生上传 smoke 完成，旧缓存 pending 为零且备份/回滚窗口明确；protocol fixtures 已迁至 native custody；Analytics 旧导入端点仍等待真实缓存排空后退出 | 旧缓存+原生重放交错、精确确认、断网重启、纠正后迟到旧缓存不覆盖、实际安装矩阵 |
 | Analytics 历史 Fact 来源档案（实现已退役） | 旧整行 LegacyRecord 已删除；迁移与正常修订只保留一份 Payload | ADR-055、`FactMigrationTests`、`FactStoreTests`、迁移映射 | 旧导入入口及确定性身份查找继续服务实际未排空缓存；安装盘点、缓存归零与回滚窗口明确后退出，历史事实不删除 | 自动 fixture 覆盖 JSON 映射、原始编码、双向到达和新修订保护；完整备份副本 diff/资源与恢复演练仍待完成 |
 | AppIdentity expand 双写与 DTO 别名 | 事实表 AppId 双写已删除；仍有 `Device.CurrentApp` 与 DTO 的 `AppName`/DisplayName 兼容属性 | `server/Heartbeat.Server/Entities/ActivitySegment.cs`、`Device.cs`、`shared/Heartbeat.Core/DTOs/` | 所有受支持客户端只消费 AppIdentity/App Key 路径；存量 FK 与查询完成审计和回填 | 数据库 orphan/引用审计、旧客户端 426 演练、新客户端 API/UI 回归 |
 | Agent 本地上传缓存迁移 | 无版本旧数组、旧 AppName、旧 input code 形状 | `HeartbeatCacheFormats.cs`、`JsonCacheMigration.cs` | 最低受支持 Agent 版本已经写出当前 schema，且长期离线缓存保留策略已裁决 | 真实旧缓存原子迁移、失败保留备份、重启不重复上传、dead-letter 可见 |
@@ -48,8 +48,11 @@
 
 | Browser Observer/应用上下文切换 | 改造前第一方 Browser、Runtime v1–v4、扩展 local/session 快照、旧 HTTP/投影形状 | [Browser 实施记录](browser-observation-targets.md)，Ticket 02 | Ticket 05：旧版本退出、缓存盘点及重放完成、可映射历史回填、未知历史可直接查询，离线/回滚窗口明确 | 保留 BrowserRuntime v4→v5/HTTP、Browser 历史家族迁移、安装 UUID、App 纠错重放、完整 ACK 与旧 key fixture；记录生产副本演练及移除 commit |
 
-| Fact 缺 Aspect 的旧契约 | Runtime v1–v6、SDK v1 旧 Fact/死信、Browser 既有快照、旧 segment/input HTTP 缓存及缺 Aspect 的原生请求；SQL null fallback | `FactAspectCompatibility`、`JsonCollectorRuntimeStore` v7、`ExplicitFactAspects` migration、[实施记录](observation-semantics.md) | Collection/Protocol owner 盘点 Desktop、Headless、Browser Profile 与备份，Analytics owner 盘点导入/原生入口；所有保留缓存成功重放、安装全面显式发布 Aspect、缺值流量归零，并由项目 owner 明确最长离线及回滚恢复窗口并证明已结束。当前尚无现场窗口证据，保留兼容 | 保留每版 fixture，检查原 FactId/Revision/时间/Result/Delivered 与备份；重放不新增 Fact/Gap，显式未知结果不被规范化；移除时追加 SQL migration、移除旧投影及 Infer 调用，跑全链回归并记录盘点、窗口和移除 commit。历史 migrations 不改写 |
-| SDK Aspect 缓存的旧包回退 | outbox/dead-letter 实际含 Aspect 的 v2；无 Aspect 仍为 v1；Runtime 状态 v7 | 启动前检查包 `facts.aspect` v1、未知 envelope 停止加载、cache/ManagedProcess tests | Collection/Protocol owner 证明所有可启动或可回退包理解 v2，旧包退出受支持清单并经过上述离线/恢复窗口；此前不得绕过启动拦截或用 v1 备份替代当前待发记录 | Runtime 重启/手动启动/自动回退同一入口；v2 原文件不变、不产生 outbox_corrupted Gap；新包可读取重放、确认不删更高 Revision |
+| Fact 缺 Aspect 的旧契约 | Runtime v1–v6、SDK v1 旧 Fact/死信、Browser 既有快照、旧 segment/input HTTP 缓存及缺 Aspect 的原生请求；SQL null fallback | `FactAspectCompatibility`、`JsonCollectorRuntimeStore` v8、`ExplicitFactAspects` migration、[实施记录](observation-semantics.md) | Collection/Protocol owner 盘点 Desktop、Headless、Browser Profile 与备份，Analytics owner 盘点导入/原生入口；所有保留缓存成功重放、安装全面显式发布 Aspect、缺值流量归零，并由项目 owner 明确最长离线及回滚恢复窗口并证明已结束。当前尚无现场窗口证据，保留兼容 | 保留每版 fixture，检查原 FactId/Revision/时间/Result/Delivered 与备份；重放不新增 Fact/Gap，显式未知结果不被规范化；移除时追加 SQL migration、移除旧投影及 Infer 调用，跑全链回归并记录盘点、窗口和移除 commit。历史 migrations 不改写 |
+| SDK Aspect 缓存的旧包回退 | outbox/dead-letter 实际含 Aspect 的 v2；无 Aspect 仍为 v1；Runtime 状态 v8 | 启动前检查包 `facts.aspect` v1、未知 envelope 停止加载、cache/ManagedProcess tests | Collection/Protocol owner 证明所有可启动或可回退包理解 v2，旧包退出受支持清单并经过上述离线/恢复窗口；此前不得绕过启动拦截或用 v1 备份替代当前待发记录 | Runtime 重启/手动启动/自动回退同一入口；v2 原文件不变、不产生 outbox_corrupted Gap；新包可读取重放、确认不删更高 Revision |
+
+| Fact 旧 Observer/Target envelope | Runtime v1–v7、SDK v1/v2、Browser 旧 pendingSegments/死信 key、旧 HTTP 请求 | `ObservationCompatibility`、Runtime v8、SDK v3、HTTP v5；原生链路直接用 FOI/Relations | 所有实际安装和备份完成转换、旧形状流量及待发归零，并经过 owner 确认的离线/恢复窗口；未有现场证据前保留 reader | 原 ID/Revision/时间/Result/Delivered 保全，完整 ACK，同修订冲突、双 key 迁移失败保留、旧包拒绝打开新缓存；历史 migrations 不改写 |
+
 
 ## 维护规则
 

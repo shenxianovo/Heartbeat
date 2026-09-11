@@ -65,8 +65,8 @@ public sealed class ObservationTargetMigrationTests(PostgresContainerFixture fix
         var rows = kind == "segment" ? await store.ReadSegmentsAsync("owner", 701, null, null) : await store.ReadEventsAsync("owner", 701, null, null);
         var saved = Assert.Single(rows, r => r.Id == rowId);
         Assert.Equal(source == "system" ? stream.CollectorInstanceId : (Guid?)null, saved.ObserverId);
-        Assert.Equal("device", saved.TargetKind);
-        Assert.Equal(701, saved.TargetId);
+        Assert.Equal("machine", (await db.Objects.SingleAsync(o => o.Id == saved.FoiId)).Kind);
+        Assert.Equal(701, saved.DeviceId);
         Assert.Null(Assert.Single(rows, r => r.Id == unknownId).ObserverId);
         Assert.True(JsonElement.DeepEquals(fact.Payload.Value, saved.Payload));
         await store.IngestAsync("owner", batch); // equivalent pre-attribution snapshot

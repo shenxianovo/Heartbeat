@@ -2172,7 +2172,7 @@ export class Client {
     /**
      * @return OK
      */
-    correctMyPersonAssociation(id: number, body: PersonAssociationRequest): Promise<PersonAssociationResponse> {
+    correctMyPersonAssociation(id: string, body: PersonAssociationRequest): Promise<PersonAssociationResponse> {
         let url_ = this.baseUrl + "/api/v1/me/person/associations/{id}";
         if (id === undefined || id === null)
             throw new globalThis.Error("The parameter 'id' must be defined.");
@@ -2216,7 +2216,7 @@ export class Client {
     /**
      * @return OK
      */
-    removeMyPersonAssociation(id: number): Promise<void> {
+    removeMyPersonAssociation(id: string): Promise<void> {
         let url_ = this.baseUrl + "/api/v1/me/person/associations/{id}";
         if (id === undefined || id === null)
             throw new globalThis.Error("The parameter 'id' must be defined.");
@@ -2369,9 +2369,10 @@ export class Client {
      * @param end (optional)
      * @param appId (optional)
      * @param accountId (optional)
+     * @param foiId (optional)
      * @return OK
      */
-    getUserSegmentFacts(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined, appId: number | undefined, accountId: number | undefined): Promise<FactResponse[]> {
+    getUserSegmentFacts(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined, appId: number | undefined, accountId: number | undefined, foiId: string | undefined): Promise<FactResponse[]> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/facts/segments?";
         if (username === undefined || username === null)
             throw new globalThis.Error("The parameter 'username' must be defined.");
@@ -2396,6 +2397,10 @@ export class Client {
             throw new globalThis.Error("The parameter 'accountId' cannot be null.");
         else if (accountId !== undefined)
             url_ += "accountId=" + encodeURIComponent("" + accountId) + "&";
+        if (foiId === null)
+            throw new globalThis.Error("The parameter 'foiId' cannot be null.");
+        else if (foiId !== undefined)
+            url_ += "foiId=" + encodeURIComponent("" + foiId) + "&";
         url_ = url_.replace(/[?&]$/, "");
 
         let options_: RequestInit = {
@@ -2441,9 +2446,10 @@ export class Client {
      * @param end (optional)
      * @param appId (optional)
      * @param accountId (optional)
+     * @param foiId (optional)
      * @return OK
      */
-    getUserEventFacts(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined, appId: number | undefined, accountId: number | undefined): Promise<FactResponse[]> {
+    getUserEventFacts(username: string, deviceId: number | undefined, start: Date | undefined, end: Date | undefined, appId: number | undefined, accountId: number | undefined, foiId: string | undefined): Promise<FactResponse[]> {
         let url_ = this.baseUrl + "/api/v1/users/{username}/facts/events?";
         if (username === undefined || username === null)
             throw new globalThis.Error("The parameter 'username' must be defined.");
@@ -2468,6 +2474,10 @@ export class Client {
             throw new globalThis.Error("The parameter 'accountId' cannot be null.");
         else if (accountId !== undefined)
             url_ += "accountId=" + encodeURIComponent("" + accountId) + "&";
+        if (foiId === null)
+            throw new globalThis.Error("The parameter 'foiId' cannot be null.");
+        else if (foiId !== undefined)
+            url_ += "foiId=" + encodeURIComponent("" + foiId) + "&";
         url_ = url_.replace(/[?&]$/, "");
 
         let options_: RequestInit = {
@@ -5311,7 +5321,6 @@ export interface IAppMergeResponse {
 }
 
 export class AppUsageResponse implements IAppUsageResponse {
-    id?: string;
     source?: string;
     aspect?: string | undefined;
     deviceId?: number;
@@ -5325,6 +5334,12 @@ export class AppUsageResponse implements IAppUsageResponse {
     startTime?: Date;
     endTime?: Date;
     durationSeconds?: number;
+    id?: string;
+    collectorId?: string | undefined;
+    foiId?: string | undefined;
+    foi?: ObjectSummary | undefined;
+    relations?: RelationResponse[];
+    observerId?: string | undefined;
 
     [key: string]: any;
 
@@ -5343,7 +5358,6 @@ export class AppUsageResponse implements IAppUsageResponse {
                 if (_data.hasOwnProperty(property))
                     this[property] = _data[property];
             }
-            this.id = _data["id"];
             this.source = _data["source"];
             this.aspect = _data["aspect"];
             this.deviceId = _data["deviceId"];
@@ -5357,6 +5371,16 @@ export class AppUsageResponse implements IAppUsageResponse {
             this.startTime = _data["startTime"] ? new Date(_data["startTime"].toString()) : undefined as any;
             this.endTime = _data["endTime"] ? new Date(_data["endTime"].toString()) : undefined as any;
             this.durationSeconds = _data["durationSeconds"];
+            this.id = _data["id"];
+            this.collectorId = _data["collectorId"];
+            this.foiId = _data["foiId"];
+            this.foi = _data["foi"] ? ObjectSummary.fromJS(_data["foi"]) : undefined as any;
+            if (Array.isArray(_data["relations"])) {
+                this.relations = [] as any;
+                for (let item of _data["relations"])
+                    this.relations!.push(RelationResponse.fromJS(item));
+            }
+            this.observerId = _data["observerId"];
         }
     }
 
@@ -5373,7 +5397,6 @@ export class AppUsageResponse implements IAppUsageResponse {
             if (this.hasOwnProperty(property))
                 data[property] = this[property];
         }
-        data["id"] = this.id;
         data["source"] = this.source;
         data["aspect"] = this.aspect;
         data["deviceId"] = this.deviceId;
@@ -5387,12 +5410,21 @@ export class AppUsageResponse implements IAppUsageResponse {
         data["startTime"] = this.startTime ? this.startTime.toISOString() : undefined as any;
         data["endTime"] = this.endTime ? this.endTime.toISOString() : undefined as any;
         data["durationSeconds"] = this.durationSeconds;
+        data["id"] = this.id;
+        data["collectorId"] = this.collectorId;
+        data["foiId"] = this.foiId;
+        data["foi"] = this.foi ? this.foi.toJSON() : undefined as any;
+        if (Array.isArray(this.relations)) {
+            data["relations"] = [];
+            for (let item of this.relations)
+                data["relations"].push(item ? item.toJSON() : undefined as any);
+        }
+        data["observerId"] = this.observerId;
         return data;
     }
 }
 
 export interface IAppUsageResponse {
-    id?: string;
     source?: string;
     aspect?: string | undefined;
     deviceId?: number;
@@ -5406,6 +5438,12 @@ export interface IAppUsageResponse {
     startTime?: Date;
     endTime?: Date;
     durationSeconds?: number;
+    id?: string;
+    collectorId?: string | undefined;
+    foiId?: string | undefined;
+    foi?: ObjectSummary | undefined;
+    relations?: RelationResponse[];
+    observerId?: string | undefined;
 
     [key: string]: any;
 }
@@ -7174,24 +7212,25 @@ export interface IExperiencePage {
 }
 
 export class ExperienceSegment implements IExperienceSegment {
-    id!: string;
-    streamId!: string;
-    factId!: string;
-    revision!: number;
-    observerId!: string | undefined;
-    targetKind!: string | undefined;
-    targetId!: number | undefined;
-    targetName!: string | undefined;
-    deviceId!: number | undefined;
-    source!: string;
-    appId!: number | undefined;
-    appIdentityId!: number | undefined;
-    appName!: string | undefined;
-    appKey!: string | undefined;
-    startTime!: Date;
-    endTime!: Date;
-    payload!: JsonElement;
-    aspect!: string | undefined;
+    streamId?: string;
+    factId?: string;
+    revision?: number;
+    deviceId?: number | undefined;
+    source?: string;
+    appId?: number | undefined;
+    appIdentityId?: number | undefined;
+    appName?: string | undefined;
+    appKey?: string | undefined;
+    aspect?: string | undefined;
+    startTime?: Date;
+    endTime?: Date;
+    payload?: JsonElement;
+    id?: string;
+    collectorId?: string | undefined;
+    foiId?: string | undefined;
+    foi?: ObjectSummary | undefined;
+    relations?: RelationResponse[];
+    observerId?: string | undefined;
 
     [key: string]: any;
 
@@ -7202,9 +7241,6 @@ export class ExperienceSegment implements IExperienceSegment {
                     (this as any)[property] = (data as any)[property];
             }
         }
-        if (!data) {
-            this.payload = new JsonElement();
-        }
     }
 
     init(_data?: any) {
@@ -7213,24 +7249,29 @@ export class ExperienceSegment implements IExperienceSegment {
                 if (_data.hasOwnProperty(property))
                     this[property] = _data[property];
             }
-            this.id = _data["id"];
             this.streamId = _data["streamId"];
             this.factId = _data["factId"];
             this.revision = _data["revision"];
-            this.observerId = _data["observerId"];
-            this.targetKind = _data["targetKind"];
-            this.targetId = _data["targetId"];
-            this.targetName = _data["targetName"];
             this.deviceId = _data["deviceId"];
             this.source = _data["source"];
             this.appId = _data["appId"];
             this.appIdentityId = _data["appIdentityId"];
             this.appName = _data["appName"];
             this.appKey = _data["appKey"];
+            this.aspect = _data["aspect"];
             this.startTime = _data["startTime"] ? new Date(_data["startTime"].toString()) : undefined as any;
             this.endTime = _data["endTime"] ? new Date(_data["endTime"].toString()) : undefined as any;
-            this.payload = _data["payload"] ? JsonElement.fromJS(_data["payload"]) : new JsonElement();
-            this.aspect = _data["aspect"];
+            this.payload = _data["payload"] ? JsonElement.fromJS(_data["payload"]) : undefined as any;
+            this.id = _data["id"];
+            this.collectorId = _data["collectorId"];
+            this.foiId = _data["foiId"];
+            this.foi = _data["foi"] ? ObjectSummary.fromJS(_data["foi"]) : undefined as any;
+            if (Array.isArray(_data["relations"])) {
+                this.relations = [] as any;
+                for (let item of _data["relations"])
+                    this.relations!.push(RelationResponse.fromJS(item));
+            }
+            this.observerId = _data["observerId"];
         }
     }
 
@@ -7247,47 +7288,53 @@ export class ExperienceSegment implements IExperienceSegment {
             if (this.hasOwnProperty(property))
                 data[property] = this[property];
         }
-        data["id"] = this.id;
         data["streamId"] = this.streamId;
         data["factId"] = this.factId;
         data["revision"] = this.revision;
-        data["observerId"] = this.observerId;
-        data["targetKind"] = this.targetKind;
-        data["targetId"] = this.targetId;
-        data["targetName"] = this.targetName;
         data["deviceId"] = this.deviceId;
         data["source"] = this.source;
         data["appId"] = this.appId;
         data["appIdentityId"] = this.appIdentityId;
         data["appName"] = this.appName;
         data["appKey"] = this.appKey;
+        data["aspect"] = this.aspect;
         data["startTime"] = this.startTime ? this.startTime.toISOString() : undefined as any;
         data["endTime"] = this.endTime ? this.endTime.toISOString() : undefined as any;
         data["payload"] = this.payload ? this.payload.toJSON() : undefined as any;
-        data["aspect"] = this.aspect;
+        data["id"] = this.id;
+        data["collectorId"] = this.collectorId;
+        data["foiId"] = this.foiId;
+        data["foi"] = this.foi ? this.foi.toJSON() : undefined as any;
+        if (Array.isArray(this.relations)) {
+            data["relations"] = [];
+            for (let item of this.relations)
+                data["relations"].push(item ? item.toJSON() : undefined as any);
+        }
+        data["observerId"] = this.observerId;
         return data;
     }
 }
 
 export interface IExperienceSegment {
-    id: string;
-    streamId: string;
-    factId: string;
-    revision: number;
-    observerId: string | undefined;
-    targetKind: string | undefined;
-    targetId: number | undefined;
-    targetName: string | undefined;
-    deviceId: number | undefined;
-    source: string;
-    appId: number | undefined;
-    appIdentityId: number | undefined;
-    appName: string | undefined;
-    appKey: string | undefined;
-    startTime: Date;
-    endTime: Date;
-    payload: JsonElement;
-    aspect: string | undefined;
+    streamId?: string;
+    factId?: string;
+    revision?: number;
+    deviceId?: number | undefined;
+    source?: string;
+    appId?: number | undefined;
+    appIdentityId?: number | undefined;
+    appName?: string | undefined;
+    appKey?: string | undefined;
+    aspect?: string | undefined;
+    startTime?: Date;
+    endTime?: Date;
+    payload?: JsonElement;
+    id?: string;
+    collectorId?: string | undefined;
+    foiId?: string | undefined;
+    foi?: ObjectSummary | undefined;
+    relations?: RelationResponse[];
+    observerId?: string | undefined;
 
     [key: string]: any;
 }
@@ -7360,16 +7407,129 @@ export interface IFactGapSnapshot {
     [key: string]: any;
 }
 
+export class FactRelationMember implements IFactRelationMember {
+    role!: string;
+    object!: ObservationObjectReference;
+
+    [key: string]: any;
+
+    constructor(data?: IFactRelationMember) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+        if (!data) {
+            this.object = new ObservationObjectReference();
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.role = _data["role"];
+            this.object = _data["object"] ? ObservationObjectReference.fromJS(_data["object"]) : new ObservationObjectReference();
+        }
+    }
+
+    static fromJS(data: any): FactRelationMember {
+        data = typeof data === 'object' ? data : {};
+        let result = new FactRelationMember();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["role"] = this.role;
+        data["object"] = this.object ? this.object.toJSON() : undefined as any;
+        return data;
+    }
+}
+
+export interface IFactRelationMember {
+    role: string;
+    object: ObservationObjectReference;
+
+    [key: string]: any;
+}
+
+export class FactRelationSnapshot implements IFactRelationSnapshot {
+    kind!: string;
+    members!: FactRelationMember[];
+
+    [key: string]: any;
+
+    constructor(data?: IFactRelationSnapshot) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+        if (!data) {
+            this.members = [];
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.kind = _data["kind"];
+            if (Array.isArray(_data["members"])) {
+                this.members = [] as any;
+                for (let item of _data["members"])
+                    this.members!.push(FactRelationMember.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): FactRelationSnapshot {
+        data = typeof data === 'object' ? data : {};
+        let result = new FactRelationSnapshot();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["kind"] = this.kind;
+        if (Array.isArray(this.members)) {
+            data["members"] = [];
+            for (let item of this.members)
+                data["members"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface IFactRelationSnapshot {
+    kind: string;
+    members: FactRelationMember[];
+
+    [key: string]: any;
+}
+
 export class FactResponse implements IFactResponse {
-    id?: string;
     streamId?: string;
     factId?: string;
     revision?: number;
-    observerId?: string | undefined;
-    foiId?: string | undefined;
     aspect?: string | undefined;
-    targetKind?: string | undefined;
-    targetId?: number | undefined;
     deviceId?: number | undefined;
     appId?: number | undefined;
     source?: string;
@@ -7377,6 +7537,12 @@ export class FactResponse implements IFactResponse {
     end?: Date | undefined;
     occurredAt?: Date | undefined;
     payload?: JsonElement;
+    id?: string;
+    collectorId?: string | undefined;
+    foiId?: string | undefined;
+    foi?: ObjectSummary | undefined;
+    relations?: RelationResponse[];
+    observerId?: string | undefined;
 
     [key: string]: any;
 
@@ -7395,15 +7561,10 @@ export class FactResponse implements IFactResponse {
                 if (_data.hasOwnProperty(property))
                     this[property] = _data[property];
             }
-            this.id = _data["id"];
             this.streamId = _data["streamId"];
             this.factId = _data["factId"];
             this.revision = _data["revision"];
-            this.observerId = _data["observerId"];
-            this.foiId = _data["foiId"];
             this.aspect = _data["aspect"];
-            this.targetKind = _data["targetKind"];
-            this.targetId = _data["targetId"];
             this.deviceId = _data["deviceId"];
             this.appId = _data["appId"];
             this.source = _data["source"];
@@ -7411,6 +7572,16 @@ export class FactResponse implements IFactResponse {
             this.end = _data["end"] ? new Date(_data["end"].toString()) : undefined as any;
             this.occurredAt = _data["occurredAt"] ? new Date(_data["occurredAt"].toString()) : undefined as any;
             this.payload = _data["payload"] ? JsonElement.fromJS(_data["payload"]) : undefined as any;
+            this.id = _data["id"];
+            this.collectorId = _data["collectorId"];
+            this.foiId = _data["foiId"];
+            this.foi = _data["foi"] ? ObjectSummary.fromJS(_data["foi"]) : undefined as any;
+            if (Array.isArray(_data["relations"])) {
+                this.relations = [] as any;
+                for (let item of _data["relations"])
+                    this.relations!.push(RelationResponse.fromJS(item));
+            }
+            this.observerId = _data["observerId"];
         }
     }
 
@@ -7427,15 +7598,10 @@ export class FactResponse implements IFactResponse {
             if (this.hasOwnProperty(property))
                 data[property] = this[property];
         }
-        data["id"] = this.id;
         data["streamId"] = this.streamId;
         data["factId"] = this.factId;
         data["revision"] = this.revision;
-        data["observerId"] = this.observerId;
-        data["foiId"] = this.foiId;
         data["aspect"] = this.aspect;
-        data["targetKind"] = this.targetKind;
-        data["targetId"] = this.targetId;
         data["deviceId"] = this.deviceId;
         data["appId"] = this.appId;
         data["source"] = this.source;
@@ -7443,20 +7609,25 @@ export class FactResponse implements IFactResponse {
         data["end"] = this.end ? this.end.toISOString() : undefined as any;
         data["occurredAt"] = this.occurredAt ? this.occurredAt.toISOString() : undefined as any;
         data["payload"] = this.payload ? this.payload.toJSON() : undefined as any;
+        data["id"] = this.id;
+        data["collectorId"] = this.collectorId;
+        data["foiId"] = this.foiId;
+        data["foi"] = this.foi ? this.foi.toJSON() : undefined as any;
+        if (Array.isArray(this.relations)) {
+            data["relations"] = [];
+            for (let item of this.relations)
+                data["relations"].push(item ? item.toJSON() : undefined as any);
+        }
+        data["observerId"] = this.observerId;
         return data;
     }
 }
 
 export interface IFactResponse {
-    id?: string;
     streamId?: string;
     factId?: string;
     revision?: number;
-    observerId?: string | undefined;
-    foiId?: string | undefined;
     aspect?: string | undefined;
-    targetKind?: string | undefined;
-    targetId?: number | undefined;
     deviceId?: number | undefined;
     appId?: number | undefined;
     source?: string;
@@ -7464,6 +7635,12 @@ export interface IFactResponse {
     end?: Date | undefined;
     occurredAt?: Date | undefined;
     payload?: JsonElement;
+    id?: string;
+    collectorId?: string | undefined;
+    foiId?: string | undefined;
+    foi?: ObjectSummary | undefined;
+    relations?: RelationResponse[];
+    observerId?: string | undefined;
 
     [key: string]: any;
 }
@@ -7473,6 +7650,9 @@ export class FactSnapshot implements IFactSnapshot {
     factId?: string;
     revision?: number;
     aspect?: string | undefined;
+    collectorId?: string | undefined;
+    foi?: ObservationObjectReference | undefined;
+    relations?: FactRelationSnapshot[] | undefined;
     observerId?: string | undefined;
     target?: FactTarget | undefined;
     observedAt?: Date | undefined;
@@ -7497,6 +7677,13 @@ export class FactSnapshot implements IFactSnapshot {
             this.factId = _data["factId"];
             this.revision = _data["revision"];
             this.aspect = _data["aspect"];
+            this.collectorId = _data["collectorId"];
+            this.foi = _data["foi"] ? ObservationObjectReference.fromJS(_data["foi"]) : undefined as any;
+            if (Array.isArray(_data["relations"])) {
+                this.relations = [] as any;
+                for (let item of _data["relations"])
+                    this.relations!.push(FactRelationSnapshot.fromJS(item));
+            }
             this.observerId = _data["observerId"];
             this.target = _data["target"] ? FactTarget.fromJS(_data["target"]) : undefined as any;
             this.observedAt = _data["observedAt"] ? new Date(_data["observedAt"].toString()) : undefined as any;
@@ -7521,6 +7708,13 @@ export class FactSnapshot implements IFactSnapshot {
         data["factId"] = this.factId;
         data["revision"] = this.revision;
         data["aspect"] = this.aspect;
+        data["collectorId"] = this.collectorId;
+        data["foi"] = this.foi ? this.foi.toJSON() : undefined as any;
+        if (Array.isArray(this.relations)) {
+            data["relations"] = [];
+            for (let item of this.relations)
+                data["relations"].push(item ? item.toJSON() : undefined as any);
+        }
         data["observerId"] = this.observerId;
         data["target"] = this.target ? this.target.toJSON() : undefined as any;
         data["observedAt"] = this.observedAt ? this.observedAt.toISOString() : undefined as any;
@@ -7538,6 +7732,9 @@ export interface IFactSnapshot {
     factId?: string;
     revision?: number;
     aspect?: string | undefined;
+    collectorId?: string | undefined;
+    foi?: ObservationObjectReference | undefined;
+    relations?: FactRelationSnapshot[] | undefined;
     observerId?: string | undefined;
     target?: FactTarget | undefined;
     observedAt?: Date | undefined;
@@ -8856,6 +9053,126 @@ export interface IMuteMatcherRequest {
     [key: string]: any;
 }
 
+export class ObjectSummary implements IObjectSummary {
+    id!: string;
+    kind!: string;
+    scope!: string;
+    key!: string;
+    name!: string | undefined;
+
+    [key: string]: any;
+
+    constructor(data?: IObjectSummary) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.id = _data["id"];
+            this.kind = _data["kind"];
+            this.scope = _data["scope"];
+            this.key = _data["key"];
+            this.name = _data["name"];
+        }
+    }
+
+    static fromJS(data: any): ObjectSummary {
+        data = typeof data === 'object' ? data : {};
+        let result = new ObjectSummary();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["id"] = this.id;
+        data["kind"] = this.kind;
+        data["scope"] = this.scope;
+        data["key"] = this.key;
+        data["name"] = this.name;
+        return data;
+    }
+}
+
+export interface IObjectSummary {
+    id: string;
+    kind: string;
+    scope: string;
+    key: string;
+    name: string | undefined;
+
+    [key: string]: any;
+}
+
+export class ObservationObjectReference implements IObservationObjectReference {
+    kind!: string;
+    scope!: string;
+    key!: string;
+
+    [key: string]: any;
+
+    constructor(data?: IObservationObjectReference) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.kind = _data["kind"];
+            this.scope = _data["scope"];
+            this.key = _data["key"];
+        }
+    }
+
+    static fromJS(data: any): ObservationObjectReference {
+        data = typeof data === 'object' ? data : {};
+        let result = new ObservationObjectReference();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["kind"] = this.kind;
+        data["scope"] = this.scope;
+        data["key"] = this.key;
+        return data;
+    }
+}
+
+export interface IObservationObjectReference {
+    kind: string;
+    scope: string;
+    key: string;
+
+    [key: string]: any;
+}
+
 export class OperationResultResponse implements IOperationResultResponse {
     opId?: string;
     type?: string;
@@ -8925,8 +9242,7 @@ export interface IOperationResultResponse {
 }
 
 export class PersonAssociationRequest implements IPersonAssociationRequest {
-    deviceId!: number | undefined;
-    accountId!: number | undefined;
+    objectId!: string;
     start!: Date | undefined;
     end!: Date | undefined;
 
@@ -8941,8 +9257,7 @@ export class PersonAssociationRequest implements IPersonAssociationRequest {
 
     init(_data?: any) {
         if (_data) {
-            this.deviceId = _data["deviceId"];
-            this.accountId = _data["accountId"];
+            this.objectId = _data["objectId"];
             this.start = _data["start"] ? new Date(_data["start"].toString()) : undefined as any;
             this.end = _data["end"] ? new Date(_data["end"].toString()) : undefined as any;
         }
@@ -8957,8 +9272,7 @@ export class PersonAssociationRequest implements IPersonAssociationRequest {
 
     toJSON(data?: any) {
         data = typeof data === 'object' ? data : {};
-        data["deviceId"] = this.deviceId;
-        data["accountId"] = this.accountId;
+        data["objectId"] = this.objectId;
         data["start"] = this.start ? this.start.toISOString() : undefined as any;
         data["end"] = this.end ? this.end.toISOString() : undefined as any;
         return data;
@@ -8966,16 +9280,14 @@ export class PersonAssociationRequest implements IPersonAssociationRequest {
 }
 
 export interface IPersonAssociationRequest {
-    deviceId: number | undefined;
-    accountId: number | undefined;
+    objectId: string;
     start: Date | undefined;
     end: Date | undefined;
 }
 
 export class PersonAssociationResponse implements IPersonAssociationResponse {
-    id!: number;
-    deviceId!: number | undefined;
-    accountId!: number | undefined;
+    id!: string;
+    objectId!: string;
     start!: Date | undefined;
     end!: Date | undefined;
 
@@ -8997,8 +9309,7 @@ export class PersonAssociationResponse implements IPersonAssociationResponse {
                     this[property] = _data[property];
             }
             this.id = _data["id"];
-            this.deviceId = _data["deviceId"];
-            this.accountId = _data["accountId"];
+            this.objectId = _data["objectId"];
             this.start = _data["start"] ? new Date(_data["start"].toString()) : undefined as any;
             this.end = _data["end"] ? new Date(_data["end"].toString()) : undefined as any;
         }
@@ -9018,8 +9329,7 @@ export class PersonAssociationResponse implements IPersonAssociationResponse {
                 data[property] = this[property];
         }
         data["id"] = this.id;
-        data["deviceId"] = this.deviceId;
-        data["accountId"] = this.accountId;
+        data["objectId"] = this.objectId;
         data["start"] = this.start ? this.start.toISOString() : undefined as any;
         data["end"] = this.end ? this.end.toISOString() : undefined as any;
         return data;
@@ -9027,9 +9337,8 @@ export class PersonAssociationResponse implements IPersonAssociationResponse {
 }
 
 export interface IPersonAssociationResponse {
-    id: number;
-    deviceId: number | undefined;
-    accountId: number | undefined;
+    id: string;
+    objectId: string;
     start: Date | undefined;
     end: Date | undefined;
 
@@ -9040,7 +9349,6 @@ export class PersonFactItem implements IPersonFactItem {
     fact!: FactResponse;
     effectiveIntervals!: EffectiveInterval[];
     effectiveSeconds!: number | undefined;
-    targetName!: string;
 
     [key: string]: any;
 
@@ -9070,7 +9378,6 @@ export class PersonFactItem implements IPersonFactItem {
                     this.effectiveIntervals!.push(EffectiveInterval.fromJS(item));
             }
             this.effectiveSeconds = _data["effectiveSeconds"];
-            this.targetName = _data["targetName"];
         }
     }
 
@@ -9094,7 +9401,6 @@ export class PersonFactItem implements IPersonFactItem {
                 data["effectiveIntervals"].push(item ? item.toJSON() : undefined as any);
         }
         data["effectiveSeconds"] = this.effectiveSeconds;
-        data["targetName"] = this.targetName;
         return data;
     }
 }
@@ -9103,7 +9409,6 @@ export interface IPersonFactItem {
     fact: FactResponse;
     effectiveIntervals: EffectiveInterval[];
     effectiveSeconds: number | undefined;
-    targetName: string;
 
     [key: string]: any;
 }
@@ -9185,7 +9490,7 @@ export interface IPersonFactPage {
 }
 
 export class PersonResponse implements IPersonResponse {
-    id!: number;
+    id!: string;
     reference!: string;
 
     [key: string]: any;
@@ -9230,7 +9535,7 @@ export class PersonResponse implements IPersonResponse {
 }
 
 export interface IPersonResponse {
-    id: number;
+    id: string;
     reference: string;
 
     [key: string]: any;
@@ -9238,7 +9543,7 @@ export interface IPersonResponse {
 
 export class PersonSettingsResponse implements IPersonSettingsResponse {
     person!: PersonResponse | undefined;
-    targets!: PersonTargetOption[];
+    objects!: ObjectSummary[];
     associations!: PersonAssociationResponse[];
 
     [key: string]: any;
@@ -9251,7 +9556,7 @@ export class PersonSettingsResponse implements IPersonSettingsResponse {
             }
         }
         if (!data) {
-            this.targets = [];
+            this.objects = [];
             this.associations = [];
         }
     }
@@ -9263,10 +9568,10 @@ export class PersonSettingsResponse implements IPersonSettingsResponse {
                     this[property] = _data[property];
             }
             this.person = _data["person"] ? PersonResponse.fromJS(_data["person"]) : undefined as any;
-            if (Array.isArray(_data["targets"])) {
-                this.targets = [] as any;
-                for (let item of _data["targets"])
-                    this.targets!.push(PersonTargetOption.fromJS(item));
+            if (Array.isArray(_data["objects"])) {
+                this.objects = [] as any;
+                for (let item of _data["objects"])
+                    this.objects!.push(ObjectSummary.fromJS(item));
             }
             if (Array.isArray(_data["associations"])) {
                 this.associations = [] as any;
@@ -9290,10 +9595,10 @@ export class PersonSettingsResponse implements IPersonSettingsResponse {
                 data[property] = this[property];
         }
         data["person"] = this.person ? this.person.toJSON() : undefined as any;
-        if (Array.isArray(this.targets)) {
-            data["targets"] = [];
-            for (let item of this.targets)
-                data["targets"].push(item ? item.toJSON() : undefined as any);
+        if (Array.isArray(this.objects)) {
+            data["objects"] = [];
+            for (let item of this.objects)
+                data["objects"].push(item ? item.toJSON() : undefined as any);
         }
         if (Array.isArray(this.associations)) {
             data["associations"] = [];
@@ -9306,7 +9611,7 @@ export class PersonSettingsResponse implements IPersonSettingsResponse {
 
 export interface IPersonSettingsResponse {
     person: PersonResponse | undefined;
-    targets: PersonTargetOption[];
+    objects: ObjectSummary[];
     associations: PersonAssociationResponse[];
 
     [key: string]: any;
@@ -9360,62 +9665,6 @@ export class PersonSourceCount implements IPersonSourceCount {
 export interface IPersonSourceCount {
     source: string;
     count: number;
-
-    [key: string]: any;
-}
-
-export class PersonTargetOption implements IPersonTargetOption {
-    kind!: string;
-    id!: number;
-    name!: string;
-
-    [key: string]: any;
-
-    constructor(data?: IPersonTargetOption) {
-        if (data) {
-            for (var property in data) {
-                if (data.hasOwnProperty(property))
-                    (this as any)[property] = (data as any)[property];
-            }
-        }
-    }
-
-    init(_data?: any) {
-        if (_data) {
-            for (var property in _data) {
-                if (_data.hasOwnProperty(property))
-                    this[property] = _data[property];
-            }
-            this.kind = _data["kind"];
-            this.id = _data["id"];
-            this.name = _data["name"];
-        }
-    }
-
-    static fromJS(data: any): PersonTargetOption {
-        data = typeof data === 'object' ? data : {};
-        let result = new PersonTargetOption();
-        result.init(data);
-        return result;
-    }
-
-    toJSON(data?: any) {
-        data = typeof data === 'object' ? data : {};
-        for (var property in this) {
-            if (this.hasOwnProperty(property))
-                data[property] = this[property];
-        }
-        data["kind"] = this.kind;
-        data["id"] = this.id;
-        data["name"] = this.name;
-        return data;
-    }
-}
-
-export interface IPersonTargetOption {
-    kind: string;
-    id: number;
-    name: string;
 
     [key: string]: any;
 }
@@ -9940,6 +10189,141 @@ export interface IRelateEpisodeRequest {
     [key: string]: any;
 }
 
+export class RelationMemberResponse implements IRelationMemberResponse {
+    role!: string;
+    object!: ObjectSummary;
+
+    [key: string]: any;
+
+    constructor(data?: IRelationMemberResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+        if (!data) {
+            this.object = new ObjectSummary();
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.role = _data["role"];
+            this.object = _data["object"] ? ObjectSummary.fromJS(_data["object"]) : new ObjectSummary();
+        }
+    }
+
+    static fromJS(data: any): RelationMemberResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new RelationMemberResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["role"] = this.role;
+        data["object"] = this.object ? this.object.toJSON() : undefined as any;
+        return data;
+    }
+}
+
+export interface IRelationMemberResponse {
+    role: string;
+    object: ObjectSummary;
+
+    [key: string]: any;
+}
+
+export class RelationResponse implements IRelationResponse {
+    id!: string;
+    kind!: string;
+    validFrom!: Date | undefined;
+    validTo!: Date | undefined;
+    evidence!: JsonElement;
+    members!: RelationMemberResponse[];
+
+    [key: string]: any;
+
+    constructor(data?: IRelationResponse) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+        if (!data) {
+            this.evidence = new JsonElement();
+            this.members = [];
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.id = _data["id"];
+            this.kind = _data["kind"];
+            this.validFrom = _data["validFrom"] ? new Date(_data["validFrom"].toString()) : undefined as any;
+            this.validTo = _data["validTo"] ? new Date(_data["validTo"].toString()) : undefined as any;
+            this.evidence = _data["evidence"] ? JsonElement.fromJS(_data["evidence"]) : new JsonElement();
+            if (Array.isArray(_data["members"])) {
+                this.members = [] as any;
+                for (let item of _data["members"])
+                    this.members!.push(RelationMemberResponse.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): RelationResponse {
+        data = typeof data === 'object' ? data : {};
+        let result = new RelationResponse();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["id"] = this.id;
+        data["kind"] = this.kind;
+        data["validFrom"] = this.validFrom ? this.validFrom.toISOString() : undefined as any;
+        data["validTo"] = this.validTo ? this.validTo.toISOString() : undefined as any;
+        data["evidence"] = this.evidence ? this.evidence.toJSON() : undefined as any;
+        if (Array.isArray(this.members)) {
+            data["members"] = [];
+            for (let item of this.members)
+                data["members"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface IRelationResponse {
+    id: string;
+    kind: string;
+    validFrom: Date | undefined;
+    validTo: Date | undefined;
+    evidence: JsonElement;
+    members: RelationMemberResponse[];
+
+    [key: string]: any;
+}
+
 export class ResolveProbeOpDto implements IResolveProbeOpDto {
     probeId?: string;
     resolution?: string;
@@ -10041,11 +10425,6 @@ export interface IResolveProbeRequest {
 }
 
 export class SegmentResponse implements ISegmentResponse {
-    id?: string;
-    observerId?: string | undefined;
-    targetKind?: string | undefined;
-    targetId?: number | undefined;
-    targetName?: string | undefined;
     deviceId?: number | undefined;
     aspect?: string | undefined;
     source?: string;
@@ -10065,6 +10444,12 @@ export class SegmentResponse implements ISegmentResponse {
     factId?: string | undefined;
     revision?: number | undefined;
     origin?: string | undefined;
+    id?: string;
+    collectorId?: string | undefined;
+    foiId?: string | undefined;
+    foi?: ObjectSummary | undefined;
+    relations?: RelationResponse[];
+    observerId?: string | undefined;
 
     [key: string]: any;
 
@@ -10083,11 +10468,6 @@ export class SegmentResponse implements ISegmentResponse {
                 if (_data.hasOwnProperty(property))
                     this[property] = _data[property];
             }
-            this.id = _data["id"];
-            this.observerId = _data["observerId"];
-            this.targetKind = _data["targetKind"];
-            this.targetId = _data["targetId"];
-            this.targetName = _data["targetName"];
             this.deviceId = _data["deviceId"];
             this.aspect = _data["aspect"];
             this.source = _data["source"];
@@ -10107,6 +10487,16 @@ export class SegmentResponse implements ISegmentResponse {
             this.factId = _data["factId"];
             this.revision = _data["revision"];
             this.origin = _data["origin"];
+            this.id = _data["id"];
+            this.collectorId = _data["collectorId"];
+            this.foiId = _data["foiId"];
+            this.foi = _data["foi"] ? ObjectSummary.fromJS(_data["foi"]) : undefined as any;
+            if (Array.isArray(_data["relations"])) {
+                this.relations = [] as any;
+                for (let item of _data["relations"])
+                    this.relations!.push(RelationResponse.fromJS(item));
+            }
+            this.observerId = _data["observerId"];
         }
     }
 
@@ -10123,11 +10513,6 @@ export class SegmentResponse implements ISegmentResponse {
             if (this.hasOwnProperty(property))
                 data[property] = this[property];
         }
-        data["id"] = this.id;
-        data["observerId"] = this.observerId;
-        data["targetKind"] = this.targetKind;
-        data["targetId"] = this.targetId;
-        data["targetName"] = this.targetName;
         data["deviceId"] = this.deviceId;
         data["aspect"] = this.aspect;
         data["source"] = this.source;
@@ -10147,16 +10532,21 @@ export class SegmentResponse implements ISegmentResponse {
         data["factId"] = this.factId;
         data["revision"] = this.revision;
         data["origin"] = this.origin;
+        data["id"] = this.id;
+        data["collectorId"] = this.collectorId;
+        data["foiId"] = this.foiId;
+        data["foi"] = this.foi ? this.foi.toJSON() : undefined as any;
+        if (Array.isArray(this.relations)) {
+            data["relations"] = [];
+            for (let item of this.relations)
+                data["relations"].push(item ? item.toJSON() : undefined as any);
+        }
+        data["observerId"] = this.observerId;
         return data;
     }
 }
 
 export interface ISegmentResponse {
-    id?: string;
-    observerId?: string | undefined;
-    targetKind?: string | undefined;
-    targetId?: number | undefined;
-    targetName?: string | undefined;
     deviceId?: number | undefined;
     aspect?: string | undefined;
     source?: string;
@@ -10176,6 +10566,12 @@ export interface ISegmentResponse {
     factId?: string | undefined;
     revision?: number | undefined;
     origin?: string | undefined;
+    id?: string;
+    collectorId?: string | undefined;
+    foiId?: string | undefined;
+    foi?: ObjectSummary | undefined;
+    relations?: RelationResponse[];
+    observerId?: string | undefined;
 
     [key: string]: any;
 }

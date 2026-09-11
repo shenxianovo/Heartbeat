@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Nodes;
 
 namespace Heartbeat.Collection.CollectorProtocol;
 
@@ -408,11 +409,16 @@ internal sealed class CollectorProtocolOutbox
         using var document = JsonDocument.Parse(contents);
         if (document.RootElement.ValueKind == JsonValueKind.Object &&
             document.RootElement.TryGetProperty("SchemaVersion", out var version) &&
-            version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var schemaVersion) && schemaVersion is not (1 or 2))
+            version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var schemaVersion) && schemaVersion is not (1 or 2 or 3))
             throw new NotSupportedException($"{description} schemaVersion {schemaVersion} is not supported; preserve the data directory and use a compatible Collector.");
-        var envelope = JsonSerializer.Deserialize<StateEnvelope<T>>(contents, JsonOptions)
+        var root = JsonNode.Parse(contents)!;
+        if (root["SchemaVersion"]?.GetValue<int>() is 1 or 2 && root["State"] is JsonObject state)
+            foreach (var item in (state["Facts"] ?? state["Entries"])?.AsArray() ?? [])
+                if (item?["Fact"] is JsonObject fact)
+                    Heartbeat.Core.Facts.ObservationCompatibility.ReadOldEnvelope(fact, false);
+        var envelope = root.Deserialize<StateEnvelope<T>>(JsonOptions)
             ?? throw new InvalidDataException($"{description} is empty.");
-        if (envelope.SchemaVersion is not (1 or 2) || envelope.State is null)
+        if (envelope.SchemaVersion is not (1 or 2 or 3) || envelope.State is null)
             throw new InvalidDataException($"{description} has an invalid envelope.");
         return envelope.State;
     }
@@ -496,15 +502,18 @@ internal sealed class CollectorProtocolOutbox
         // Only files that actually retain explicit semantics need v2 and its package rollback guard.
         var schemaVersion = state switch
         {
+            OutboxState outbox when outbox.Facts.Any(item => item.Fact.Relations is not null) => 3,
             OutboxState outbox when outbox.Facts.Any(item => item.Fact.Aspect is not null) => 2,
+            DeadLetterState deadLetters when deadLetters.Entries.Any(item => item.Fact.Relations is not null) => 3,
             DeadLetterState deadLetters when deadLetters.Entries.Any(item => item.Fact.Aspect is not null) => 2,
             _ => 1
         };
-        if (schemaVersion == 2 && File.Exists(path) && !File.Exists(path + ".v1.bak"))
+        if (schemaVersion > 1 && File.Exists(path))
         {
             using var previous = JsonDocument.Parse(File.ReadAllText(path, Encoding.UTF8));
-            if (previous.RootElement.GetProperty("SchemaVersion").GetInt32() == 1)
-                File.Copy(path, path + ".v1.bak");
+            var previousVersion = previous.RootElement.GetProperty("SchemaVersion").GetInt32();
+            if (previousVersion < schemaVersion && !File.Exists(path + $".v{previousVersion}.bak"))
+                File.Copy(path, path + $".v{previousVersion}.bak");
         }
         File.WriteAllText(
             temporary,

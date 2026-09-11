@@ -67,7 +67,7 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
         await fixture.ReadyAsync();
         var ready = await handler.HandleAsync("GET", binding.RoutePrefix, Stream.Null);
         Assert.Equal(1, JsonNode.Parse(ready!.Body)!["instances"]![0]!["status"]!["connectedExternalHosts"]!.GetValue<int>());
-        Assert.Empty(fixture.Sink.ReadBatch());
+        Assert.Empty(fixture.Runtime.ReadPendingFacts());
     }
 
 
@@ -80,7 +80,7 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
         var session = await fixture.ReadyAsync(HandlerFixture.DefaultHostIdentity, "app.one");
         var factId = Guid.CreateVersion7();
         Assert.Equal(200, (await fixture.TryPublishAsync(session, "work", fact => fact["factId"] = factId)).StatusCode);
-        var original = Assert.Single(fixture.Sink.ReadBatch());
+        var original = Assert.Single(fixture.Runtime.ReadPendingFacts());
 
         var response = await fixture.TryPublishAsync(session, "work", fact =>
         {
@@ -92,7 +92,10 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
 
         Assert.Equal(400, response.StatusCode);
         Assert.Equal("protocol_invalid_message", ErrorCode(response));
-        Assert.Same(original, Assert.Single(fixture.Sink.ReadBatch()));
+        var current = Assert.Single(fixture.Runtime.ReadPendingFacts());
+        Assert.Equal(original.Fact!.FactId, current.Fact!.FactId);
+        Assert.Equal(original.Fact.Revision, current.Fact.Revision);
+        Assert.Equal(original.Fact.Payload?.GetRawText(), current.Fact.Payload?.GetRawText());
     }
 
     [Fact]
@@ -236,8 +239,10 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
         await fixture.PublishAsync(second, "two|play");
 
         // Stream 的 identifying dimension 是宿主注入的，因此事实归属不依赖 Collector 自报 payload。
-        var segments = fixture.Sink.ReadBatch();
-        Assert.Equal(2, segments.Count);
+        var facts = fixture.Runtime.ReadPendingFacts();
+        Assert.Equal(2, facts.Count);
+        Assert.Contains(facts, item => item.Stream.StreamId == first.StreamId && item.Stream.Dimensions["appIdentityKey"] == "app.one");
+        Assert.Contains(facts, item => item.Stream.StreamId == second.StreamId && item.Stream.Dimensions["appIdentityKey"] == "app.two");
         var streams = fixture.Runtime.DescribeExternalHostInstance(
             fixture.Runtime.ListInstances().Single().CollectorInstanceId);
         Assert.Equal(2, streams.ConnectedExternalHosts);
@@ -301,12 +306,12 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
         // 旧连接已经不是 writer 了，它的写入必须被拒。
         var stale = await fixture.TryPublishAsync(first, "one|stale");
         Assert.Equal(409, stale.StatusCode);
-        Assert.Empty(fixture.Sink.ReadBatch());
+        Assert.Empty(fixture.Runtime.ReadPendingFacts());
 
         // 被替换的一方交还了 writer lease，接管者能立刻写入；旁人的连接不受影响。
         await fixture.PublishAsync(replacement, "one|after-replacement");
         await fixture.PublishAsync(other, "two|untouched");
-        Assert.Equal(2, fixture.Sink.ReadBatch().Count);
+        Assert.Equal(2, fixture.Runtime.ReadPendingFacts().Count);
     }
 
     [Fact]
@@ -341,7 +346,7 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
         Assert.Equal("external_host_identity_conflict", status.Failure?.Code);
         Assert.Contains(HandlerFixture.DefaultHostIdentity, status.Failure?.Message);
         await fixture.PublishAsync(current, "still-owned");
-        Assert.Single(fixture.Sink.ReadBatch());
+        Assert.Single(fixture.Runtime.ReadPendingFacts());
     }
 
     [Fact]
@@ -381,7 +386,7 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
         // Instance 没了，挂在它上面的 External Host 一个都不剩，两条旧连接也都写不进来了。
         Assert.Equal(409, (await fixture.TryPublishAsync(first, "one|after-uninstall")).StatusCode);
         Assert.Equal(409, (await fixture.TryPublishAsync(second, "two|after-uninstall")).StatusCode);
-        Assert.Empty(fixture.Sink.ReadBatch());
+        Assert.Empty(fixture.Runtime.ReadPendingFacts());
 
         // 卸载成功之后，旧连接重连拿到的是「没装」，不是被悄悄重建的 Instance。
         var response = await fixture.HelloAsync();
@@ -535,8 +540,7 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
 
         private CollectorRuntime OpenRuntime() => CollectorRuntime.Open(
             Path.Combine(_directory.Path, "runtime.json"),
-            Sink,
-            inputEventSink: new AcceptingInputEventSink());
+            Sink);
 
         private ExternalHostCollectorProtocolHandler NewHandler() => new(
             Runtime,

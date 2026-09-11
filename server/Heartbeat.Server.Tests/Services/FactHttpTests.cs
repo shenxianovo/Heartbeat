@@ -11,6 +11,7 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Heartbeat.Core;
+using Heartbeat.Core.Facts;
 using Heartbeat.Core.DTOs.Facts;
 using Heartbeat.Server.Controllers;
 using Heartbeat.Server.Data;
@@ -57,18 +58,18 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
         using var imported = await http.PostAsJsonAsync("/api/v1/segments", upload);
         Assert.True(imported.IsSuccessStatusCode, await imported.Content.ReadAsStringAsync());
         var before = Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>("/api/v1/users/alice/facts/segments"))!);
-        Assert.Equal("account", before.TargetKind);
+        Assert.Equal("account", before.Foi!.Kind);
         Assert.Null(before.DeviceId);
         Assert.Null(before.ObserverId);
         Assert.NotNull(before.AppId);
-        Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?accountId={before.TargetId}&appId={before.AppId}"))!);
+        Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?foiId={before.FoiId}&appId={before.AppId}"))!);
         using var retry = await http.PostAsJsonAsync("/api/v1/segments", upload);
         Assert.True(retry.IsSuccessStatusCode, await retry.Content.ReadAsStringAsync());
         using var takeover = await http.PostAsJsonAsync("/api/v1/facts", native);
         Assert.True(takeover.IsSuccessStatusCode, await takeover.Content.ReadAsStringAsync());
         using var late = await http.PostAsJsonAsync("/api/v1/segments", upload);
         Assert.True(late.IsSuccessStatusCode, await late.Content.ReadAsStringAsync());
-        var after = Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?accountId={before.TargetId}"))!);
+        var after = Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?foiId={before.FoiId}"))!);
         Assert.Equal(before.Id, after.Id);
         Assert.Equal(native.Facts[0].FactId, after.FactId);
         Assert.Equal(native.Streams[0].CollectorInstanceId, after.ObserverId);
@@ -93,7 +94,7 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
             }
             var package = LocalCollectorPackage.Load(packageDirectory);
             var path = Path.Combine(directory, "runtime.json");
-            var options = new CollectorRuntimeOptions { EnableFactUpload = true };
+            var options = new CollectorRuntimeOptions();
             var secrets = new EncryptedFileCollectorSecretStore(Path.Combine(directory, "secrets"));
             var processOptions = new ManagedProcessActivationOptions
             {
@@ -136,11 +137,11 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
             Assert.True(uploaded.IsSuccessStatusCode, await uploaded.Content.ReadAsStringAsync());
             var before = Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>("/api/v1/users/alice/facts/segments"))!);
             Assert.Equal(observer, before.ObserverId);
-            Assert.Equal("account", before.TargetKind);
+            Assert.Equal("account", before.Foi!.Kind);
             Assert.Null(before.DeviceId);
             Assert.NotNull(before.AppId);
             var activity = Assert.Single((await http.GetFromJsonAsync<JsonElement>($"/api/v1/users/alice/segments?appId={before.AppId}")).EnumerateArray());
-            Assert.Equal("usr_11111111-1111-4111-8111-111111111111", activity.GetProperty("targetName").GetString());
+            Assert.Equal("usr_11111111-1111-4111-8111-111111111111", activity.GetProperty("foi").GetProperty("key").GetString());
             Assert.Equal("VRChat", activity.GetProperty("appDisplayName").GetString());
             using var restarted = CollectorRuntime.Open(path, new UnusedProjection(), options, secretStore: secrets);
             using var replay = await http.PostAsJsonAsync("/api/v1/facts", FactUploadItem.Request(restarted.ReadPendingFacts()));
@@ -153,10 +154,10 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
             await resumed.StopAsync();
             using var newUpload = await http.PostAsJsonAsync("/api/v1/facts", FactUploadItem.Request(restarted.ReadPendingFacts()));
             Assert.True(newUpload.IsSuccessStatusCode, await newUpload.Content.ReadAsStringAsync());
-            var after = (await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?accountId={before.TargetId}"))!;
+            var after = (await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?foiId={before.FoiId}"))!;
             Assert.Equal(2, after.Count);
             Assert.Contains(after, f => f.Id == before.Id && f.Revision == before.Revision);
-            Assert.All(after, f => { Assert.Equal(observer, f.ObserverId); Assert.Equal(before.TargetId, f.TargetId); Assert.Null(f.DeviceId); });
+            Assert.All(after, f => { Assert.Equal(observer, f.ObserverId); Assert.Equal(before.FoiId, f.FoiId); Assert.Null(f.DeviceId); });
             Assert.DoesNotContain("mock-auth", File.ReadAllText(path));
             Assert.DoesNotContain("test-password", JsonSerializer.Serialize(after));
             // Replay the pre-target representation in an isolated owner: no current login evidence
@@ -165,6 +166,7 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
             foreach (var fact in legacyBatch.Facts)
             {
                 fact.ObserverId = null; fact.Target = null; fact.Aspect = null;
+                fact.CollectorId = null; fact.Foi = null; fact.Relations = null;
                 fact.Payload = JsonDocument.Parse(fact.Payload!.Value.GetRawText().Replace("activityKey", "identityKey")).RootElement;
             }
             await using (var db = CreateDbContext())
@@ -183,6 +185,7 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
             foreach (var fact in cache["facts"]!.AsArray())
             {
                 fact!.AsObject().Remove("observerId"); fact.AsObject().Remove("target"); fact.AsObject().Remove("aspect");
+                fact.AsObject().Remove("collectorId"); fact.AsObject().Remove("foi"); fact.AsObject().Remove("relations");
                 fact["payload"] = System.Text.Json.Nodes.JsonNode.Parse(fact["payload"]!.ToJsonString().Replace("activityKey", "identityKey"));
             }
             File.WriteAllText(path, cache.ToJsonString());
@@ -190,10 +193,10 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
             Assert.True(File.Exists(path + ".v5.bak"));
             using var oldReplay = await http.PostAsJsonAsync("/api/v1/facts", FactUploadItem.Request(upgraded.ReadPendingFacts()));
             Assert.True(oldReplay.IsSuccessStatusCode, await oldReplay.Content.ReadAsStringAsync());
-            var legacyAfter = Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/legacy/facts/segments?accountId={legacyBefore.TargetId}"))!);
+            var legacyAfter = Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/legacy/facts/segments?foiId={legacyBefore.FoiId}"))!);
             Assert.Equal(legacyBefore.Id, legacyAfter.Id);
             Assert.Equal(legacyBefore.Revision, legacyAfter.Revision);
-            Assert.Equal(legacyBefore.TargetId, legacyAfter.TargetId);
+            Assert.Equal(legacyBefore.FoiId, legacyAfter.FoiId);
             Assert.Null(legacyAfter.DeviceId);
         }
         finally { Directory.Delete(directory, true); }
@@ -223,21 +226,21 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
         using var posted = await http.PostAsJsonAsync("/api/v1/facts", batch);
         Assert.True(posted.IsSuccessStatusCode, await posted.Content.ReadAsStringAsync());
         var row = Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>("/api/v1/users/alice/facts/segments"))!);
-        Assert.Equal("account", row.TargetKind);
+        Assert.Equal("account", row.Foi!.Kind);
         Assert.Null(row.DeviceId);
         Assert.NotNull(row.AppId);
-        Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?accountId={row.TargetId}&appId={row.AppId}"))!);
-        Assert.Empty((await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?accountId={row.TargetId + 1}"))!);
+        Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?foiId={row.FoiId}&appId={row.AppId}"))!);
+        Assert.Empty((await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?foiId={Guid.NewGuid()}"))!);
         batch.Streams[0].StreamId = Guid.NewGuid();
         batch.Streams[0].CollectorInstanceId = Guid.NewGuid();
         fact.StreamId = batch.Streams[0].StreamId;
         fact.ObserverId = batch.Streams[0].CollectorInstanceId;
         using var second = await http.PostAsJsonAsync("/api/v1/facts", batch);
         Assert.True(second.IsSuccessStatusCode, await second.Content.ReadAsStringAsync());
-        var rows = (await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?accountId={row.TargetId}"))!;
+        var rows = (await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?foiId={row.FoiId}"))!;
         Assert.Equal(2, rows.Count);
         Assert.Equal(2, rows.Select(f => f.ObserverId).Distinct().Count());
-        Assert.Single(rows.Select(f => f.TargetId).Distinct());
+        Assert.Single(rows.Select(f => f.FoiId).Distinct());
     }
 
     [Fact]
@@ -249,7 +252,7 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
         {
             var package = LocalCollectorPackage.Load(Path.Combine(AppContext.BaseDirectory, "CollectorPackages", "Browser"));
             var path = Path.Combine(directory, "runtime.json");
-            var options = new CollectorRuntimeOptions { EnableFactUpload = true };
+            var options = new CollectorRuntimeOptions();
             var device = Guid.NewGuid();
             var observer = Guid.NewGuid();
             Guid instanceId;
@@ -279,14 +282,16 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
             foreach (var fact in cache["facts"]!.AsArray())
             {
                 fact!.AsObject().Remove("observerId"); fact.AsObject().Remove("target"); fact.AsObject().Remove("aspect");
+                fact.AsObject().Remove("collectorId"); fact.AsObject().Remove("foi"); fact.AsObject().Remove("relations");
                 fact["payload"] = System.Text.Json.Nodes.JsonNode.Parse(original.Payload.GetRawText());
             }
             File.WriteAllText(path, cache.ToJsonString());
             using var restarted = CollectorRuntime.Open(path, new UnusedProjection(), options);
             Assert.True(File.Exists(path + ".v4.bak"));
             var activationAfterRestart = await Activate(restarted, instanceId);
-            var newSnapshot = original with { ObserverId = observer,
-                Target = new ApplicationContextReference(device.ToString("D"), "mac:com.google.chrome").ToTarget(),
+            var appObject = new ObservationObjectReference("app", ObservationObjectScopes.AppIdentity, "mac:com.google.chrome");
+            var newSnapshot = original with { CollectorId = observer, Foi = appObject,
+                Relations = [ObservationCompatibility.ObservedOn(new("machine", ObservationObjectScopes.Machine, device.ToString("D")), appObject)],
                 Payload = JsonSerializer.SerializeToElement(new { activityKey = "https://browser.example", attributes = new { windowId = 12 } }) };
             Assert.Equal(FactDeliveryStatus.Duplicate, Assert.Single((await activationAfterRestart.PublishAsync(original.StreamId, Guid.CreateVersion7(), [newSnapshot])).Results).Status);
             var pending = restarted.ReadPendingFacts();
@@ -304,7 +309,7 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
             Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
             var row = Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>("/api/v1/users/alice/facts/segments"))!);
             Assert.Equal(observer, row.ObserverId);
-            Assert.Equal("application-context", row.TargetKind);
+            Assert.Equal("app", row.Foi!.Kind);
             Assert.Equal(original.FactId, row.FactId);
             Assert.Equal(12, row.Payload.GetProperty("attributes").GetProperty("windowId").GetInt32());
             Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?deviceId={row.DeviceId}&appId={row.AppId}"))!);
@@ -349,8 +354,8 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
         var deviceId = activity[0].GetProperty("deviceId").GetInt64();
         var rows = (await client.GetFromJsonAsync<List<FactResponse>>($"/api/v1/users/alice/facts/segments?deviceId={deviceId}"))!;
         Assert.Equal(2, rows.Count);
-        Assert.All(rows, row => { Assert.Equal(observer, row.ObserverId); Assert.Equal("application-context", row.TargetKind); });
-        Assert.Single(rows.Select(row => row.TargetId).Distinct());
+        Assert.All(rows, row => { Assert.Equal(observer, row.ObserverId); Assert.Equal("app", row.Foi!.Kind); });
+        Assert.Single(rows.Select(row => row.FoiId).Distinct());
         Assert.Equal(new[] { 11, 22 }, rows.Select(row => row.Payload.GetProperty("attributes").GetProperty("windowId").GetInt32()).Order().ToArray());
         foreach (var fact in batch.Facts) { fact.ObserverId = null; fact.Target = null; }
         using var replay = await client.PostAsJsonAsync("/api/v1/facts", batch);
@@ -452,7 +457,7 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
         {
             var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
             var path = Path.Combine(directory, "runtime.json");
-            var options = new CollectorRuntimeOptions { EnableFactUpload = true };
+            var options = new CollectorRuntimeOptions();
             var sink = new UnusedProjection();
             Guid instanceId;
             FactSubmission original;
@@ -479,6 +484,7 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
             {
                 fact!.AsObject().Remove("observerId");
                 fact.AsObject().Remove("target");
+                fact.AsObject().Remove("collectorId"); fact.AsObject().Remove("foi"); fact.AsObject().Remove("relations");
             }
             File.WriteAllText(path, oldCache.ToJsonString());
             await using var application = CreateApplication();
@@ -489,8 +495,8 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
             await using var resumed = await restarted.ActivateInProcessAsync(instanceId, package, new PayloadCollector(package));
             var writer = resumed.Streams[kind == "segment" ? "foreground" : "input-events"];
             var first = restarted.ReadPendingFacts();
-            Assert.Equal(instanceId, Assert.Single(first).Fact!.ObserverId);
-            Assert.Equal(new FactTarget("device", first[0].Stream.Subject.HardwareId!), first[0].Fact!.Target);
+            Assert.Equal(instanceId, Assert.Single(first).Fact!.CollectorId);
+            Assert.Equal(new ObservationObjectReference("machine", ObservationObjectScopes.Machine, first[0].Stream.Subject.HardwareId!), first[0].Fact!.Foi);
             Assert.True(File.Exists(path + ".v3.bak"));
             using var accepted = await http.PostAsJsonAsync("/api/v1/facts", FactUploadItem.Request(first));
             Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
@@ -549,7 +555,7 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
             var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
             var path = Path.Combine(directory, "runtime.json");
             var subject = new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine);
-            var options = new CollectorRuntimeOptions { EnableFactUpload = true };
+            var options = new CollectorRuntimeOptions();
             Guid instanceId;
             var inputId = Guid.CreateVersion7();
             var segmentId = Guid.CreateVersion7();
@@ -579,9 +585,9 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
             var wire = JsonSerializer.SerializeToElement(upload, new JsonSerializerOptions(JsonSerializerDefaults.Web));
             foreach (var fact in wire.GetProperty("facts").EnumerateArray())
             {
-                Assert.Equal(instanceId, fact.GetProperty("observerId").GetGuid());
-                Assert.Equal("device", fact.GetProperty("target").GetProperty("kind").GetString());
-                Assert.Equal(subject.SubjectId.ToString("D"), fact.GetProperty("target").GetProperty("reference").GetString());
+                Assert.Equal(instanceId, fact.GetProperty("collectorId").GetGuid());
+                Assert.Equal("machine", fact.GetProperty("foi").GetProperty("kind").GetString());
+                Assert.Equal(subject.SubjectId.ToString("D"), fact.GetProperty("foi").GetProperty("key").GetString());
             }
             await using (var db = CreateDbContext())
             {
@@ -605,9 +611,9 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
                 Assert.NotEmpty(rows);
                 Assert.All(rows, row =>
                 {
-                    Assert.Equal(instanceId, row.GetProperty("observerId").GetGuid());
-                    Assert.Equal("device", row.GetProperty("targetKind").GetString());
-                    Assert.Equal(deviceId, row.GetProperty("targetId").GetInt64());
+                    Assert.Equal(instanceId, row.GetProperty("collectorId").GetGuid());
+                    Assert.Equal("machine", row.GetProperty("foi").GetProperty("kind").GetString());
+                    Assert.Equal(deviceId, row.GetProperty("deviceId").GetInt64());
                 });
                 if (kind == "events")
                 {
@@ -630,13 +636,13 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
             var query = $"version=1&kind=day&localDate={dayStart:yyyy-MM-dd}&timeZone=Etc%2FUTC&start={Uri.EscapeDataString(dayStart.ToString("O"))}&endExclusive={Uri.EscapeDataString(dayStart.AddDays(1).ToString("O"))}";
             using var experience = JsonDocument.Parse(await http.GetStringAsync("/api/v1/users/alice/experience?" + query));
             var experienceRow = Assert.Single(experience.RootElement.GetProperty("items").EnumerateArray(), row => row.GetProperty("factId").GetGuid() == segmentId);
-            Assert.Equal(instanceId, experienceRow.GetProperty("observerId").GetGuid());
-            Assert.Equal("device", experienceRow.GetProperty("targetKind").GetString());
-            Assert.Equal(deviceId, experienceRow.GetProperty("targetId").GetInt64());
+            Assert.Equal(instanceId, experienceRow.GetProperty("collectorId").GetGuid());
+            Assert.Equal("machine", experienceRow.GetProperty("foi").GetProperty("kind").GetString());
+            Assert.Equal(deviceId, experienceRow.GetProperty("deviceId").GetInt64());
             Assert.False(experienceRow.TryGetProperty("subjectId", out _));
             using var activity = JsonDocument.Parse(await http.GetStringAsync($"/api/v1/users/alice/segments?source=system&deviceId={deviceId}"));
             var activityRow = Assert.Single(activity.RootElement.EnumerateArray(), row => row.GetProperty("factId").GetGuid() == segmentId);
-            Assert.Equal(deviceId, activityRow.GetProperty("targetId").GetInt64());
+            Assert.Equal(deviceId, activityRow.GetProperty("deviceId").GetInt64());
             Assert.False(activityRow.TryGetProperty("subjectId", out _));
             using var replay = await http.PostAsJsonAsync("/api/v1/facts", upload);
             Assert.Equal(HttpStatusCode.OK, replay.StatusCode);
@@ -662,15 +668,15 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 while (!restarted.ReadPendingFacts().Any(item => item.Fact?.FactId == eventId)) await Task.Delay(10, timeout.Token);
                 var pendingEvent = Assert.Single(restarted.ReadPendingFacts(), item => item.Fact?.FactId == eventId);
-                Assert.Equal(observer, pendingEvent.Fact!.ObserverId);
+                Assert.Equal(observer, pendingEvent.Fact!.CollectorId);
             }
             using var resumedUpload = await http.PostAsJsonAsync("/api/v1/facts", FactUploadItem.Request(restarted.ReadPendingFacts()));
             Assert.True(resumedUpload.IsSuccessStatusCode, await resumedUpload.Content.ReadAsStringAsync());
             using var events = JsonDocument.Parse(await http.GetStringAsync($"/api/v1/users/alice/facts/events?deviceId={deviceId}"));
             var eventRows = events.RootElement.EnumerateArray().ToArray();
             Assert.Equal(3, eventRows.Length);
-            Assert.Equal(2, eventRows.Count(row => row.GetProperty("observerId").GetGuid() == instanceId));
-            Assert.Single(eventRows, row => row.GetProperty("observerId").GetGuid() == independent.CollectorInstanceId);
+            Assert.Equal(2, eventRows.Count(row => row.GetProperty("collectorId").GetGuid() == instanceId));
+            Assert.Single(eventRows, row => row.GetProperty("collectorId").GetGuid() == independent.CollectorInstanceId);
             http.DefaultRequestHeaders.Remove("X-Test-Owner");
             http.DefaultRequestHeaders.Add("X-Test-Owner", "other");
             using var hidden = await http.GetAsync($"/api/v1/users/alice/facts/events?deviceId={deviceId}");
@@ -682,7 +688,7 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
     private sealed class DesktopSource : Heartbeat.Collector.System.Observations.IDesktopObservationSource
     {
         public event Action<Heartbeat.Collector.System.Observations.DesktopObservation>? Observation { add { } remove { } }
-        public Heartbeat.Collector.System.Observations.DesktopActivity CurrentActivity => Heartbeat.Collector.System.Observations.DesktopActivity.None;
+        public Heartbeat.Collector.System.Observations.DesktopActivity CurrentActivity { get; init; } = Heartbeat.Collector.System.Observations.DesktopActivity.None;
         public void Start() { }
         public void Stop() { }
     }
@@ -716,7 +722,7 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
             ValueTask.FromResult(new InProcessCollectorDrainResult(new InProcessCollectorLogicalDrainResult(0, 0)));
     }
 
-    private WebApplicationFactory<FactController> CreateApplication() =>
+    private WebApplicationFactory<FactController> CreateApplication(TimeProvider? clock = null) =>
         new WebApplicationFactory<FactController>().WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Development");
@@ -725,6 +731,7 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
                 services.RemoveAll<AppDbContext>();
                 services.RemoveAll<DbContextOptions<AppDbContext>>();
                 services.AddDbContext<AppDbContext>(options => options.UseNpgsql(TestConnectionString));
+                if (clock is not null) services.AddSingleton(clock);
                 services.AddAuthentication(options =>
                 {
                     options.DefaultAuthenticateScheme = "Test";

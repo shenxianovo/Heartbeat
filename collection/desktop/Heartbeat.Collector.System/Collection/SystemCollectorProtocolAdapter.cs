@@ -378,7 +378,8 @@ public sealed class SystemCollectorProtocolAdapter :
             appIdentityKey = snapshot.AppIdentityKey,
             appDisplayName = snapshot.AppDisplayName,
             title = snapshot.Title
-        }), _activation!.Initialization.CollectorInstanceId, DeviceTarget, Heartbeat.Core.Facts.FactAspects.DesktopActivity);
+        }), _activation!.Initialization.CollectorInstanceId, Machine, Heartbeat.Core.Facts.FactAspects.DesktopActivity,
+            [Heartbeat.Core.Facts.ObservationCompatibility.ObservedOn(Machine, new("app", ObservationObjectScopes.AppIdentity, snapshot.AppIdentityKey))]);
 
     private CollectorFact ToFact(InputEventItem item) => new(
         SystemInProcessCollector.InputEventBindingId,
@@ -391,9 +392,9 @@ public sealed class SystemCollectorProtocolAdapter :
             eventType = EventTypeName(item.EventType),
             codeSet = item.CodeSet,
             code = item.Code
-        }), _activation!.Initialization.CollectorInstanceId, DeviceTarget, Heartbeat.Core.Facts.FactAspects.Input);
+        }), _activation!.Initialization.CollectorInstanceId, Machine, Heartbeat.Core.Facts.FactAspects.Input, []);
 
-    private FactTarget DeviceTarget => new("device", _activation!.Initialization.SubjectId.ToString("D"));
+    private ObservationObjectReference Machine => new("machine", ObservationObjectScopes.Machine, _activation!.Initialization.SubjectId.ToString("D"));
 
     private static string EventTypeName(InputEventType eventType) => eventType switch
     {

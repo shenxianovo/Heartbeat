@@ -25,8 +25,7 @@ public sealed partial class FactHttpTests
         using var uploaded = await http.PostAsJsonAsync("/api/v1/facts", batch);
         Assert.True(uploaded.IsSuccessStatusCode, await uploaded.Content.ReadAsStringAsync());
         var fact = Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>("/api/v1/users/alice/facts/segments"))!);
-        Assert.Null(fact.TargetKind);
-        Assert.Null(fact.TargetId);
+        Assert.Null(fact.FoiId);
         Assert.Null(fact.ObserverId);
         Assert.Null(fact.DeviceId);
         Assert.Equal(batch.Facts[0].FactId, fact.FactId);

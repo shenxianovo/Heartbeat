@@ -1,9 +1,9 @@
+using Heartbeat.Core.DTOs.Facts;
+
 namespace Heartbeat.Core.DTOs.Apps
 {
-    public class AppUsageResponse
+    public class AppUsageResponse : ObservationResponse
     {
-        /// <summary>段 Id（UUIDv7，采集端生成，ADR-017）。</summary>
-        public Guid Id { get; set; }
         public string Source { get; set; } = string.Empty;
         public string? Aspect { get; set; }
         /// <summary>段所属设备。聚合查询（不传 deviceId）时前端据此分设备泳道。</summary>

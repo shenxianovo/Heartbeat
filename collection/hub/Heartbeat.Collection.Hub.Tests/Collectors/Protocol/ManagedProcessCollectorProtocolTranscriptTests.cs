@@ -27,11 +27,17 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         "ReferenceCollectorPackage");
 
     [Theory]
-    [InlineData("collector-protocol-outbox.json")]
-    [InlineData("collector-protocol-dead-letter.json")]
-    public async Task OldPackageCannotOpenAspectCacheAfterRuntimeRestart(string cacheName)
+    [InlineData("collector-protocol-outbox.json", 2)]
+    [InlineData("collector-protocol-dead-letter.json", 3)]
+    [InlineData("collector-protocol-outbox.json", 3)]
+    public async Task OldPackageCannotOpenObservationCacheAfterRuntimeRestart(string cacheName, int version)
     {
         using var packageCopy = ManagedReferenceCollectorPackage.Create();
+        var manifestPath = Path.Combine(packageCopy.Path, "collector-manifest.json");
+        var manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!;
+        manifest["supportedCapabilities"]!.AsObject().Remove("facts.aspect");
+        manifest["supportedCapabilities"]!.AsObject().Remove("facts.observation");
+        File.WriteAllText(manifestPath, manifest.ToJsonString());
         var package = LocalCollectorPackage.Load(packageCopy.Path);
         using var directory = TemporaryDirectory.Create();
         var path = Path.Combine(directory.Path, "runtime.json");
@@ -45,7 +51,7 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         var dataDirectory = Path.Combine(directory.Path, "collector-data", instanceId.ToString("N"));
         Directory.CreateDirectory(dataDirectory);
         var cachePath = Path.Combine(dataDirectory, cacheName);
-        const string contents = """{"SchemaVersion":2,"State":{"Facts":[{"Aspect":"custom.snapshot"}]}}""";
+        var contents = JsonSerializer.Serialize(new { SchemaVersion = version, State = new { Facts = new[] { new { Aspect = "custom.snapshot" } } } });
         File.WriteAllText(cachePath, contents);
         using var restarted = CollectorRuntime.Open(path, sink);
         var error = await Assert.ThrowsAsync<CollectorActivationException>(async () =>
@@ -57,14 +63,14 @@ public class ManagedProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task ManagedPublisher_PreservesExplicitObserverAndTargetThroughStdioAndDurableUpload()
+    public async Task ManagedPublisher_PreservesObservationThroughStdioAndDurableUpload()
     {
         using var packageCopy = ManagedReferenceCollectorPackage.Create();
         var package = LocalCollectorPackage.Load(packageCopy.Path);
         using var directory = TemporaryDirectory.Create();
         var sink = new SegmentIngestService(new TestClock(DateTimeOffset.UtcNow));
         var path = Path.Combine(directory.Path, "runtime.json");
-        using var runtime = CollectorRuntime.Open(path, sink, new CollectorRuntimeOptions { EnableFactUpload = true });
+        using var runtime = CollectorRuntime.Open(path, sink, new CollectorRuntimeOptions { });
         var instance = runtime.CreateInstance(package, new SubjectReference(Guid.NewGuid(), SubjectKind.Account),
             new CollectorInstanceSpec(1, 1, JsonSerializer.SerializeToElement(new { })));
         var activation = await runtime.ActivateManagedProcessAsync(instance.CollectorInstanceId, package, Options("observation_target"));
@@ -72,16 +78,16 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         while (runtime.ReadPendingFacts().Count == 0) await Task.Delay(10, timeout.Token);
         await activation.StopAsync();
         runtime.Dispose();
-        using var restarted = CollectorRuntime.Open(path, sink, new CollectorRuntimeOptions { EnableFactUpload = true });
+        using var restarted = CollectorRuntime.Open(path, sink, new CollectorRuntimeOptions { });
         var item = Assert.Single(restarted.ReadPendingFacts());
-        Assert.Equal(instance.CollectorInstanceId, item.Fact!.ObserverId);
-        Assert.Equal(new Heartbeat.Core.DTOs.Facts.FactTarget("device", "0198d5df-5df3-70a1-937d-68a7d64623e2"), item.Fact.Target);
+        Assert.Equal(instance.CollectorInstanceId, item.Fact!.CollectorId);
+        Assert.Equal(new Heartbeat.Core.DTOs.Facts.ObservationObjectReference("machine", "heartbeat.device", "0198d5df-5df3-70a1-937d-68a7d64623e2"), item.Fact.Foi);
         var correct = restarted.ReadPendingFacts();
-        item.Fact.Target = new Heartbeat.Core.DTOs.Facts.FactTarget("device", "another-device");
+        item.Fact.Foi = new Heartbeat.Core.DTOs.Facts.ObservationObjectReference("machine", "heartbeat.device", "another-device");
         restarted.ConfirmUploadedFacts([item]);
         Assert.Single(restarted.ReadPendingFacts());
-        item.Fact.Target = correct[0].Fact!.Target;
-        item.Fact.ObserverId = Guid.NewGuid();
+        item.Fact.Foi = correct[0].Fact!.Foi;
+        item.Fact.CollectorId = Guid.NewGuid();
         restarted.ConfirmUploadedFacts([item]);
         Assert.Single(restarted.ReadPendingFacts());
         restarted.ConfirmUploadedFacts(correct);
@@ -139,20 +145,10 @@ public class ManagedProcessCollectorProtocolTranscriptTests
             activation.Streams,
             accountSubject,
             "reference.account");
-        var segment = await WaitForSegmentAsync(sink);
-        Assert.Equal("reference.account", segment.Source);
-        Assert.Equal("reference.account|online", segment.IdentityKey);
-        List<ActivitySegmentItem>? uploaded = null;
-        var upload = new UploadStream<ActivitySegmentItem>(
-            "reference account segment",
-            [sink],
-            (batch, _) =>
-            {
-                uploaded = batch;
-                return Task.FromResult(ApiResult.Ok);
-            });
-        await upload.DrainAsync();
-        Assert.Equal("reference.account|online", Assert.Single(uploaded!).IdentityKey);
+        var item = await WaitForSegmentAsync(runtime);
+        Assert.Equal("reference.account", item.Stream.Source);
+        Assert.Equal("reference.account|online", item.Fact!.Payload!.Value.GetProperty("activityKey").GetString());
+        runtime.ConfirmUploadedFacts([item]);
 
         await activation.StopAsync();
 
@@ -1039,13 +1035,13 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         Assert.Equal(1, observed.DrainWrites);
     }
 
-    private static async Task<Heartbeat.Core.DTOs.Segments.ActivitySegmentItem> WaitForSegmentAsync(
-        SegmentIngestService sink)
+    private static async Task<Heartbeat.Collection.Hub.Upload.FactUploadItem> WaitForSegmentAsync(
+        CollectorRuntime runtime)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         while (true)
         {
-            var segments = sink.ReadBatch();
+            var segments = runtime.ReadPendingFacts();
             if (segments.Count != 0)
                 return Assert.Single(segments);
             await Task.Delay(20, timeout.Token);
@@ -1114,11 +1110,9 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         }
     }
 
-    private sealed class RecordingSegmentSink : ISegmentSink, IDurableSegmentProjectionSink
+    private sealed class RecordingSegmentSink : ISegmentSink
     {
         public void Push(List<Heartbeat.Core.DTOs.Segments.ActivitySegmentItem> snapshots) { }
-        public void UpsertDurable(Heartbeat.Core.DTOs.Segments.ActivitySegmentItem snapshot, long revision) { }
-        public void ReplayDurable(Heartbeat.Core.DTOs.Segments.ActivitySegmentItem snapshot, long revision) { }
     }
 
     private sealed class DisconnectOnDrainWriter(TextWriter inner) : TextWriter

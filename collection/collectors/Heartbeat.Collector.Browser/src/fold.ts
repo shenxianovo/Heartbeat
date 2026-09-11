@@ -24,9 +24,11 @@ export interface BrowserPayload {
   attributes: { url: string; domain: string; site: string; windowId: number }
 }
 
+export interface ObservationObject { kind: 'machine' | 'app'; scope: string; key: string }
 export interface BrowserAttribution {
-  observerId: string
-  target: { kind: 'application-context'; reference: string }
+  collectorId: string
+  foi: ObservationObject
+  relations: { kind: string; members: { role: string; object: ObservationObject }[] }[]
 }
 
 // Attribution is bound by delivery; window observation and Segment SDK stay transport independent.

@@ -32,7 +32,7 @@ public partial class AppDbContext
             entity.HasAlternateKey(e => new { e.OwnerId, e.Id });
             entity.HasOne<ObservationCollector>().WithMany().HasForeignKey(e => new { e.OwnerId, e.ObserverId }).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ObservationObject>().WithMany().HasForeignKey(e => e.FoiId).OnDelete(DeleteBehavior.Restrict);
-            entity.Property(e => e.FoiId).ValueGeneratedOnAddOrUpdate();
+            entity.Property(e => e.FoiId).ValueGeneratedNever();
             var aspect = entity.Property(e => e.Aspect).ValueGeneratedOnAddOrUpdate();
             aspect.Metadata.SetBeforeSaveBehavior(Microsoft.EntityFrameworkCore.Metadata.PropertySaveBehavior.Save);
             aspect.Metadata.SetAfterSaveBehavior(Microsoft.EntityFrameworkCore.Metadata.PropertySaveBehavior.Save);
@@ -41,18 +41,14 @@ public partial class AppDbContext
         modelBuilder.Entity<ObjectRelation>(entity =>
         {
             entity.ToTable("Relations", table => table.HasCheckConstraint("CK_Relations_Time",
-                "(\"ValidFrom\" IS NULL OR isfinite(\"ValidFrom\")) AND (\"ValidTo\" IS NULL OR isfinite(\"ValidTo\")) AND (\"ValidFrom\" IS NULL OR \"ValidTo\" IS NULL OR \"ValidFrom\" <= \"ValidTo\")"));
+                "(\"ValidFrom\" IS NULL OR isfinite(\"ValidFrom\")) AND (\"ValidTo\" IS NULL OR isfinite(\"ValidTo\")) AND (\"ValidFrom\" IS NULL OR \"ValidTo\" IS NULL OR \"ValidFrom\" <= \"ValidTo\") AND (\"Kind\" <> 'used-by' OR \"ValidFrom\" IS NULL OR \"ValidTo\" IS NULL OR \"ValidFrom\" < \"ValidTo\")"));
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).HasDefaultValueSql("gen_random_uuid()");
             entity.Property(e => e.Evidence).HasColumnType("jsonb");
             entity.Property(e => e.FactId).HasComputedColumnSql("(\"Evidence\"->>'factId')::uuid", stored: true);
-            entity.Property(e => e.AssociationId).HasComputedColumnSql("(\"Evidence\"->>'associationId')::bigint", stored: true);
             entity.HasOne<FactRecord>().WithMany().HasForeignKey(e => new { e.OwnerId, e.FactId })
                 .HasPrincipalKey(e => new { e.OwnerId, e.Id }).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne<PersonAssociation>().WithMany().HasForeignKey(e => new { e.OwnerId, e.AssociationId })
-                .HasPrincipalKey(e => new { e.OwnerId, e.Id }).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => new { e.OwnerId, e.Kind, e.FactId }).IsUnique().HasFilter("\"FactId\" IS NOT NULL");
-            entity.HasIndex(e => new { e.OwnerId, e.Kind, e.AssociationId }).IsUnique().HasFilter("\"AssociationId\" IS NOT NULL");
         });
         modelBuilder.Entity<RelationMember>(entity =>
         {

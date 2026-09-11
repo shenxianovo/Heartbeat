@@ -69,24 +69,27 @@ try {
   execFileSync('docker', ['exec', container, 'psql', '-U', 'postgres', '-d', 'heartbeat', '-v', 'ON_ERROR_STOP=1', '-c',
     `INSERT INTO "Users" ("Id","Username","LastSeenAt","IsPublic") VALUES (${quote(claims.sub)},${quote(username)},now(),false)`], { stdio: 'pipe' })
   async function request(path, method = 'GET', body) {
-    const response = await fetch(api + path, { method, headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json', 'X-Heartbeat-Protocol-Version': '4' }, body: body === undefined ? undefined : JSON.stringify(body) })
+    const response = await fetch(api + path, { method, headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json', 'X-Heartbeat-Protocol-Version': '5' }, body: body === undefined ? undefined : JSON.stringify(body) })
     assert.ok(response.ok, `API ${method} ${path}: ${response.status}`)
     return response.status === 204 ? null : response.text().then(s => s ? JSON.parse(s) : null)
   }
   const person = await request('/api/v1/me/person', 'PUT')
   function uuid7() { const id = randomUUID().replaceAll('-', ''); const hex = Date.now().toString(16).padStart(12, '0') + '7' + id.slice(13); return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}` }
-  for (const [source, aspect, target, title] of [
-    ['system', 'desktop-activity', { kind: 'device', reference: 'person-smoke-device' }, 'System 历史活动'],
-    ['browser', 'selected-page', { kind: 'application-context', reference: JSON.stringify(['person-smoke-device', 'mac:com.google.chrome']) }, 'Browser 历史页面'],
-    ['vrchat.account', 'account-location', { kind: 'account', reference: JSON.stringify(['vrchat', 'usr_11111111-1111-4111-8111-111111111111']) }, 'VRChat 历史世界'],
-    ['personal.fixture', 'activity', { kind: 'person', reference: person.reference }, '直接个人事实'],
+  const machine = { kind: 'machine', scope: 'heartbeat.device', key: 'person-smoke-device' }
+  const browserApp = { kind: 'app', scope: 'heartbeat.app-identity', key: 'mac:com.google.chrome' }
+  const observedOn = { kind: 'observed-on', members: [{ role: 'device', object: machine }, { role: 'app', object: browserApp }] }
+  for (const [source, aspect, foi, relations, title] of [
+    ['system', 'desktop-activity', machine, [], 'System 历史活动'],
+    ['browser', 'selected-page', browserApp, [observedOn], 'Browser 历史页面'],
+    ['vrchat.account', 'account-location', { kind: 'account', scope: 'vrchat', key: 'usr_11111111-1111-4111-8111-111111111111' }, [], 'VRChat 历史世界'],
+    ['personal.fixture', 'activity', { kind: 'person', scope: 'heartbeat.person', key: person.reference }, [], '直接个人事实'],
   ]) {
-    const streamId = randomUUID(), observerId = randomUUID()
-    await request('/api/v1/facts', 'POST', { streams: [{ streamId, collectorInstanceId: observerId, subject: { subjectId: randomUUID(), kind: 'person' }, outputId: 'activity', source, factKind: 'segment', dimensions: {} }], facts: [{ streamId, factId: uuid7(), revision: 1, observerId, target, aspect, start: '2026-09-01T01:00:00Z', end: '2026-09-01T01:10:00Z', isFinal: true, payload: { activityKey: source, title } }], gaps: [] })
+    const streamId = randomUUID(), collectorId = randomUUID()
+    await request('/api/v1/facts', 'POST', { streams: [{ streamId, collectorInstanceId: collectorId, subject: { subjectId: randomUUID(), kind: 'person' }, outputId: 'activity', source, factKind: 'segment', dimensions: {} }], facts: [{ streamId, factId: uuid7(), revision: 1, collectorId, foi, relations, aspect, start: '2026-09-01T01:00:00Z', end: '2026-09-01T01:10:00Z', isFinal: true, payload: { activityKey: source, title } }], gaps: [] })
   }
   const original = await request(`/api/v1/users/${encodeURIComponent(username)}/facts/segments`)
   const settings = await request('/api/v1/me/person')
-  const device = settings.targets.find(t => t.kind === 'device'), account = settings.targets.find(t => t.kind === 'account')
+  const device = settings.objects.find(t => t.kind === 'machine'), account = settings.objects.find(t => t.kind === 'account')
   const dist = resolve('frontend/dist')
   proxy = createServer(async (req, res) => {
     try {
@@ -127,18 +130,18 @@ try {
   await until(() => evaluate(`document.body.innerText.includes('直接个人事实')`), 'Person view')
   const set = (selector, value) => evaluate(`(() => { const el=document.querySelector(${JSON.stringify(selector)}); el.value=${JSON.stringify(value)}; el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true})); })()`)
   const click = selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`)
-  async function link(kind, id, start, end) {
-    await set('[aria-label="关联设备或账号"]', `${kind}:${id}`)
+  async function link(id, start, end) {
+    await set('[aria-label="关联设备或账号"]', id)
     await set('[aria-label="适用起点"]', start); await set('[aria-label="适用终点"]', end)
     await evaluate(`document.querySelector('form[aria-label="维护本人关联"]').requestSubmit()`)
     await until(() => evaluate(`!document.querySelector('form[aria-label="维护本人关联"] button').disabled && document.querySelector('[aria-label="关联设备或账号"]').value === ''`), 'Create association')
   }
-  await link('device', device.id, '2026-09-01T09:02', '2026-09-01T09:05')
-  await link('account', account.id, '2026-09-01T09:03', '2026-09-01T09:07')
+  await link(device.id, '2026-09-01T09:02', '2026-09-01T09:05')
+  await link(account.id, '2026-09-01T09:03', '2026-09-01T09:07')
   await until(() => evaluate(`document.body.innerText.includes('Browser 历史页面') && document.body.innerText.includes('VRChat 历史世界')`), 'Historical sources visible')
   assert.equal((await request('/api/v1/me/person/facts/segments')).totalCount, 4)
-  report.createAndBackdatedFourTargetView = true
-  const first = (await request('/api/v1/me/person')).associations.find(a => a.deviceId === device.id)
+  report.createAndBackdatedFourObjectView = true
+  const first = (await request('/api/v1/me/person')).associations.find(a => a.objectId === device.id)
   await click(`[aria-label="纠正关联 ${first.id}"]`)
   await set('[aria-label="适用终点"]', '2026-09-01T09:06')
   await evaluate(`document.querySelector('form[aria-label="维护本人关联"]').requestSubmit()`)

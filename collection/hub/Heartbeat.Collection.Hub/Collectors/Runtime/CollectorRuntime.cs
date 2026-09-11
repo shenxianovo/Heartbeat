@@ -57,7 +57,6 @@ public sealed class CollectorRuntimeOptions
     /// Production hosts upload the committed Fact journal directly. False retains the old
     /// projection adapter contract for embedded callers while their harnesses are migrated.
     /// </summary>
-    public bool EnableFactUpload { get; init; }
     public Func<Guid> IdGenerator { get; init; } = Guid.CreateVersion7;
     public int MaxFactsPerBatch { get; init; } = 500;
     public int MaxBatchBytes { get; init; } = 1_048_576;
@@ -114,7 +113,6 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
     private readonly object _gate = new();
     private readonly JsonCollectorRuntimeStore _store;
     private readonly ISegmentSink _segmentSink;
-    private readonly IInputEventFactSink? _inputEventSink;
     private readonly ICollectorSecretStore? _secretStore;
     private readonly string _instanceDataRoot;
     private readonly CollectorRuntimeOptions _options;
@@ -129,25 +127,21 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         ISegmentSink segmentSink,
         CollectorRuntimeOptions options,
         CollectorRuntimeState state,
-        IInputEventFactSink? inputEventSink,
         ICollectorSecretStore? secretStore,
         string instanceDataRoot)
     {
         _store = store;
         _segmentSink = segmentSink;
-        _inputEventSink = inputEventSink;
         _secretStore = secretStore;
         _instanceDataRoot = instanceDataRoot;
         _options = options;
         _state = state;
-        _segmentProjector = new ActivitySegmentFactProjector();
     }
 
     public static CollectorRuntime Open(
         string stateFilePath,
         ISegmentSink segmentSink,
         CollectorRuntimeOptions? options = null,
-        IInputEventFactSink? inputEventSink = null,
         ICollectorSecretStore? secretStore = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(stateFilePath);
@@ -164,7 +158,6 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
                 segmentSink,
                 options,
                 state,
-                inputEventSink,
                 secretStore,
                 Path.Combine(Path.GetDirectoryName(Path.GetFullPath(stateFilePath))!, "collector-data"));
             runtime.EnsureUploadGapIdentities();
@@ -315,7 +308,7 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
 
             lock (_gate)
             {
-                if (_options.EnableFactUpload && HasPendingFactsLocked(collectorInstanceId))
+                if (HasPendingFactsLocked(collectorInstanceId))
                     throw new InvalidOperationException(
                         "Collector Facts or Stream Gaps remain undelivered. Reconnect Analytics and retry removal after upload completes.");
             }

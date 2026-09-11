@@ -302,21 +302,21 @@ try {
   }, 'two Browser windows reach Analytics', 100000);
   const browser = facts.filter(f => f.source === 'browser' && f.payload.activityKey?.startsWith(page +
     '/ticket02-'));
-  assert.equal(new Set(browser.map(f => f.targetId)).size, 1);
+  assert.equal(new Set(browser.map(f => f.foiId)).size, 1);
   assert.equal(new Set(browser.map(f => f.payload.attributes.windowId)).size, 2);
-  assert.ok(browser.every(f => f.observerId && f.targetKind === 'application-context'));
-  const observer = browser[0].observerId,
-    target = browser[0].targetId;
+  assert.ok(browser.every(f => f.collectorId && f.foi?.kind === 'app' && f.relations.some(r => r.kind === 'observed-on')));
+  const observer = browser[0].collectorId,
+    target = browser[0].foiId;
   report.twoWindows = true;
-  report.observerId = observer;
-  report.targetId = target;
+  report.collectorId = observer;
+  report.foiId = target;
   report.deviceId = browser[0].deviceId;
   report.appId = browser[0].appId;
   report.factIds = browser.map(f => f.factId);
   const filtered = await read(factsPath + `?deviceId=${report.deviceId}&appId=${report.appId}`);
   assert.ok(browser.every(b => filtered.some(f => f.id === b.id)));
   report.deviceAndAppQuery = true;
-  console.log('Two actual Chrome windows reached isolated Analytics with one context.');
+  console.log('Two actual Chrome windows reached isolated Analytics with one App FOI.');
   const closedWindowFact = browser.find(f => String(f.payload.attributes.windowId) === String(windows[0]));
   assert.ok(closedWindowFact);
   await evaluate(`chrome.windows.remove(${windows[0]})`);
@@ -328,10 +328,10 @@ try {
   await delay(800);
   await flush();
   const storage = await evaluate(
-    "chrome.storage.local.get(['pendingSegments','browserCollectorExternalHostIdentity'])");
-  const offline = Object.values(storage.pendingSegments).find(f => f.activityKey?.includes(
+    "chrome.storage.local.get(['pendingObservationFacts','browserCollectorExternalHostIdentity'])");
+  const offline = Object.values(storage.pendingObservationFacts).find(f => f.activityKey?.includes(
     '/ticket02-offline'));
-  assert.ok(offline?.target && offline.observerId === observer);
+  assert.ok(offline?.foi && offline.collectorId === observer);
   report.offlineFactId = offline.id;
   ws.close();
   chrome.kill('SIGTERM');
@@ -345,8 +345,8 @@ try {
     const all = await read(factsPath);
     return all.find(f => f.factId === offline.id)
   }, 'offline snapshot after real Chrome/Desktop restart', 100000);
-  assert.equal(recovered.observerId, observer);
-  assert.equal(recovered.targetId, target);
+  assert.equal(recovered.collectorId, observer);
+  assert.equal(recovered.foiId, target);
   report.browserAndDesktopRestart = true;
   report.offlineReplay = true;
   const state = await evaluate("chrome.storage.local.get('browserCollectorExternalHostIdentity')");

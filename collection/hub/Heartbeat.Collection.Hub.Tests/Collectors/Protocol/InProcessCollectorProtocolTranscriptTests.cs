@@ -113,12 +113,9 @@ public partial class InProcessCollectorProtocolTranscriptTests
 
         Assert.False(ack.IsMessageRejected);
         Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(ack.Results).Status);
-        var buffered = Assert.Single(sink.ReadBatch());
-        Assert.NotEqual(Guid.Empty, buffered.Id);
-        Assert.NotEqual(
-            Guid.Parse("0198d5eb-fc31-7d7b-8bf0-c2d009ec8999"),
-            buffered.Id);
-        Assert.Equal("reference|work", buffered.IdentityKey);
+        var buffered = Assert.Single(runtime.ReadPendingFacts()).Fact!;
+        Assert.Equal(Guid.Parse("0198d5eb-fc31-7d7b-8bf0-c2d009ec8999"), buffered.FactId);
+        Assert.Equal("reference|work", buffered.Payload!.Value.GetProperty("activityKey").GetString());
         Assert.True(File.Exists(statePath));
     }
 
@@ -262,12 +259,16 @@ public partial class InProcessCollectorProtocolTranscriptTests
             fixture.Instance.CollectorInstanceId,
             fixture.Package,
             new ReferenceInProcessCollector());
+        var migratedGapId = Assert.Single(reopened.ReadPendingFacts()).Gap!.GapId;
         var retried = await activation.Streams["activity"].ReportGapAsync(Guid.CreateVersion7(), gap);
+        var repeated = await activation.Streams["activity"].ReportGapAsync(Guid.CreateVersion7(), gap);
 
         Assert.Equal(GapDeliveryStatus.Duplicate, retried.Status);
+        Assert.Equal(GapDeliveryStatus.Duplicate, repeated.Status);
         var rebound = JsonNode.Parse(File.ReadAllText(fixture.StatePath))!.AsObject();
         Assert.Single(rebound["gaps"]!.AsArray());
-        Assert.Equal(gap.GapId, rebound["gaps"]![0]!["gapId"]!.GetValue<Guid>());
+        Assert.Equal(migratedGapId, rebound["gaps"]![0]!["gapId"]!.GetValue<Guid>());
+        Assert.Equal(gap.GapId, rebound["gaps"]![0]!["legacyGapIdAlias"]!.GetValue<Guid>());
     }
 
     [Fact]
@@ -329,7 +330,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
 
         Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(first.Results).Status);
         Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(replay.Results).Status);
-        Assert.Single(fixture.Sink.Segments);
+        Assert.Single(fixture.Runtime.ReadPendingFacts().Where(item => item.Fact is not null));
     }
 
     [Theory]
@@ -337,17 +338,17 @@ public partial class InProcessCollectorProtocolTranscriptTests
     [InlineData(false)]
     public async Task Publish_AttributionConflictsParticipateInMessageAndRevisionIdentity(bool changeObserver)
     {
-        await using var fixture = await ActivatedRuntimeFixture.CreateAsync(new CollectorRuntimeOptions { EnableFactUpload = true });
+        await using var fixture = await ActivatedRuntimeFixture.CreateAsync(new CollectorRuntimeOptions { });
         var stream = fixture.Activation.Streams["activity"];
-        var fact = CreateFact(stream.Descriptor.StreamId) with { ObserverId = Guid.NewGuid(),
-            Target = new Heartbeat.Core.DTOs.Facts.FactTarget("device", "device-a") };
+        var fact = CreateFact(stream.Descriptor.StreamId) with { CollectorId = Guid.NewGuid(),
+            Foi = new Heartbeat.Core.DTOs.Facts.ObservationObjectReference("machine", "heartbeat.device", "device-a"), Relations = [] };
         var messageId = Guid.CreateVersion7();
         Assert.Equal(FactDeliveryStatus.Committed, Assert.Single((await stream.PublishAsync(messageId, [fact])).Results).Status);
-        var changed = changeObserver ? fact with { ObserverId = Guid.NewGuid() }
-            : fact with { Target = new Heartbeat.Core.DTOs.Facts.FactTarget("device", "device-b") };
+        var changed = changeObserver ? fact with { CollectorId = Guid.NewGuid() }
+            : fact with { Foi = new Heartbeat.Core.DTOs.Facts.ObservationObjectReference("machine", "heartbeat.device", "device-b") };
         Assert.True((await stream.PublishAsync(messageId, [changed])).IsMessageRejected);
         Assert.Equal(FactDeliveryStatus.Rejected, Assert.Single((await stream.PublishAsync(Guid.CreateVersion7(), [changed])).Results).Status);
-        var another = fact with { FactId = Guid.CreateVersion7(), Target = new Heartbeat.Core.DTOs.Facts.FactTarget("device", "device-b") };
+        var another = fact with { FactId = Guid.CreateVersion7(), Foi = new Heartbeat.Core.DTOs.Facts.ObservationObjectReference("machine", "heartbeat.device", "device-b") };
         Assert.Equal(FactDeliveryStatus.Committed, Assert.Single((await stream.PublishAsync(Guid.CreateVersion7(), [another])).Results).Status);
         Assert.Equal(2, fixture.Runtime.ReadPendingFacts().Count);
     }
@@ -366,7 +367,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
 
         Assert.True(rejected.IsMessageRejected);
         Assert.Equal("protocol_invalid_message", rejected.MessageError!.Code);
-        Assert.Single(fixture.Sink.Segments);
+        Assert.Single(fixture.Runtime.ReadPendingFacts().Where(item => item.Fact is not null));
     }
 
     [Fact]
@@ -426,7 +427,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
 
         Assert.True(rejected.IsMessageRejected);
         Assert.Equal("protocol_invalid_message", rejected.MessageError!.Code);
-        Assert.Empty(fixture.Sink.Segments);
+        Assert.Empty(fixture.Runtime.ReadPendingFacts().Where(item => item.Fact is not null));
     }
 
     [Fact]
@@ -444,7 +445,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
         var result = Assert.Single(duplicate.Results);
         Assert.Equal(FactDeliveryStatus.Duplicate, result.Status);
         Assert.True(result.IsAcknowledged);
-        Assert.Single(fixture.Sink.Segments);
+        Assert.Single(fixture.Runtime.ReadPendingFacts().Where(item => item.Fact is not null));
     }
 
     [Fact]
@@ -550,7 +551,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
         Assert.True(rejected.IsMessageRejected);
         Assert.Equal("batch_limit_exceeded", rejected.MessageError!.Code);
         Assert.Empty(rejected.Results);
-        Assert.Empty(fixture.Sink.Segments);
+        Assert.Empty(fixture.Runtime.ReadPendingFacts().Where(item => item.Fact is not null));
 
         var retry = await stream.PublishAsync(Guid.CreateVersion7(), [revisionOne]);
         Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(retry.Results).Status);
@@ -569,7 +570,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
 
         Assert.True(rejected.IsMessageRejected);
         Assert.Equal("batch_limit_exceeded", rejected.MessageError!.Code);
-        Assert.Empty(fixture.Sink.Segments);
+        Assert.Empty(fixture.Runtime.ReadPendingFacts().Where(item => item.Fact is not null));
         var state = JsonNode.Parse(File.ReadAllText(fixture.StatePath))!.AsObject();
         Assert.Empty(state["facts"]!.AsArray());
     }
@@ -642,7 +643,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
         Assert.True(result.Error.Retryable);
         Assert.Equal(1_000, result.RetryAfterMilliseconds);
         Assert.False(result.IsAcknowledged);
-        Assert.Single(fixture.Sink.Segments);
+        Assert.Single(fixture.Runtime.ReadPendingFacts().Where(item => item.Fact is not null));
     }
 
     [Fact]
@@ -673,7 +674,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
 
         var recovered = await stream.PublishAsync(messageId, [fact]);
         Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(recovered.Results).Status);
-        Assert.Single(fixture.Sink.Segments);
+        Assert.Single(fixture.Runtime.ReadPendingFacts().Where(item => item.Fact is not null));
     }
 
     [Fact]
@@ -736,25 +737,28 @@ public partial class InProcessCollectorProtocolTranscriptTests
         var stream = activation.Streams["activity"];
         var acknowledgement = await stream.PublishAsync(Guid.CreateVersion7(), [CreateFact(stream.Descriptor.StreamId)]);
         Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(acknowledgement.Results).Status);
-        Assert.Equal(new DeliveryRemainder(20_001, 0), source.Remainder);
+        Assert.Equal(new DeliveryRemainder(20_000, 0), source.Remainder);
         await activation.StopAsync();
         runtime.Dispose();
 
-        // The live Fact has not yet been copied to the old cache; startup must merge both owners' history.
+        // The old cache and the native journal retain their own data across restart.
         using var recoveredCache = new Heartbeat.Collection.Hub.Storage.JsonFileCache<ActivitySegmentItem>(cachePath,
             int.MaxValue, Heartbeat.Collection.Hub.Storage.HeartbeatCacheFormats.SegmentVersion2());
         var recovered = new SegmentIngestService(clock, recoveredCache);
         using var reopened = CollectorRuntime.Open(statePath, recovered);
-        Assert.Equal(new DeliveryRemainder(20_001, 0), recovered.Remainder);
+        Assert.Equal(new DeliveryRemainder(20_000, 0), recovered.Remainder);
         var upload = new UploadStream<ActivitySegmentItem>("segments", [recovered],
             (_, _) => Task.FromResult(Heartbeat.Collection.Hub.Http.ApiResult.Ok));
         var first = await upload.DrainAsync();
         Assert.Equal(20_000, first.DeliveredCount);
-        Assert.Equal(new DeliveryRemainder(1, 0), first.Remainder);
-        var last = await upload.DrainAsync();
-        Assert.Equal(1, last.DeliveredCount);
-        Assert.Equal("reference|work", Assert.Single(last.Items).IdentityKey);
-        Assert.True(last.Remainder.IsEmpty);
+        Assert.True(first.Remainder.IsEmpty);
+        Assert.Single(reopened.ReadPendingFacts());
+        var nativeUpload = new UploadStream<FactUploadItem>("facts", [new RuntimeFactUploadSource(reopened)],
+            (_, _) => Task.FromResult(Heartbeat.Collection.Hub.Http.ApiResult.Ok));
+        var native = await nativeUpload.DrainAsync();
+        Assert.Equal(1, native.DeliveredCount);
+        Assert.Equal("reference|work", Assert.Single(native.Items).Fact!.Payload!.Value.GetProperty("activityKey").GetString());
+        Assert.True(native.Remainder.IsEmpty);
     }
 
     [Fact]
@@ -764,7 +768,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
         var firstStream = fixture.Activation.Streams["activity"];
         var fact = CreateFact(firstStream.Descriptor.StreamId);
         await firstStream.PublishAsync(Guid.CreateVersion7(), [fact]);
-        var firstProjectionId = Assert.Single(fixture.Sink.Segments).Id;
+        var firstPending = Assert.Single(fixture.Runtime.ReadPendingFacts()).Fact!;
         await fixture.Activation.StopAsync();
         fixture.Runtime.Dispose();
 
@@ -779,14 +783,14 @@ public partial class InProcessCollectorProtocolTranscriptTests
 
         Assert.Equal(firstStream.Descriptor.StreamId, recoveredStream.Descriptor.StreamId);
         Assert.Equal(FactDeliveryStatus.Duplicate, Assert.Single(acknowledgement.Results).Status);
-        var recoveredProjection = Assert.Single(recoveredSink.Segments);
-        Assert.Equal(firstProjectionId, recoveredProjection.Id);
-        Assert.Equal('7', recoveredProjection.Id.ToString("D")[14]);
+        var recovered = Assert.Single(reopened.ReadPendingFacts());
+        Assert.Equal(firstPending.FactId, recovered.Fact!.FactId);
+        Assert.True(JsonElement.DeepEquals(firstPending.Payload!.Value, recovered.Fact.Payload!.Value));
         await nextActivation.DisposeAsync();
     }
 
     [Fact]
-    public async Task Projection_LiveFactStampsSourceActiveButRuntimeReplayDoesNot()
+    public async Task SourceTraffic_LiveFactStampsActivityButRuntimeReplayDoesNot()
     {
         using var directory = TemporaryDirectory.Create();
         var statePath = Path.Combine(directory.Path, "collector-runtime.json");
@@ -816,12 +820,12 @@ public partial class InProcessCollectorProtocolTranscriptTests
         var replaySink = new SegmentIngestService(clock);
         using var reopened = CollectorRuntime.Open(statePath, replaySink);
 
-        Assert.Single(replaySink.ReadBatch());
+        Assert.Single(reopened.ReadPendingFacts());
         Assert.Empty(replaySink.SourceLastSeen);
     }
 
     [Fact]
-    public async Task Projection_AcknowledgedDuplicateAndSupersededStampLiveTraffic()
+    public async Task SourceTraffic_AcknowledgedDuplicateAndSupersededStampLiveTraffic()
     {
         using var directory = TemporaryDirectory.Create();
         var package = LocalCollectorPackage.Load(ReferencePackagePath);
@@ -844,21 +848,21 @@ public partial class InProcessCollectorProtocolTranscriptTests
         var current = CreateFact(stream.Descriptor.StreamId, revision: 3);
         var committedMessageId = Guid.CreateVersion7();
         await stream.PublishAsync(committedMessageId, [current]);
-        var delivered = sink.ReadBatch();
+        var delivered = runtime.ReadPendingFacts();
         Assert.Single(delivered);
-        sink.Confirm(delivered);
+        runtime.ConfirmUploadedFacts(delivered);
 
         clock.UtcNow = clock.UtcNow.AddMinutes(1);
         var replayed = await stream.PublishAsync(committedMessageId, [current]);
         Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(replayed.Results).Status);
         Assert.Equal(clock.UtcNow, sink.SourceLastSeen["reference"]);
-        Assert.Empty(sink.ReadBatch());
+        Assert.Empty(runtime.ReadPendingFacts());
 
         clock.UtcNow = clock.UtcNow.AddMinutes(1);
         var duplicate = await stream.PublishAsync(Guid.CreateVersion7(), [current]);
         Assert.Equal(FactDeliveryStatus.Duplicate, Assert.Single(duplicate.Results).Status);
         Assert.Equal(clock.UtcNow, sink.SourceLastSeen["reference"]);
-        Assert.Empty(sink.ReadBatch());
+        Assert.Empty(runtime.ReadPendingFacts());
 
         clock.UtcNow = clock.UtcNow.AddMinutes(1);
         var superseded = await stream.PublishAsync(
@@ -867,88 +871,6 @@ public partial class InProcessCollectorProtocolTranscriptTests
         Assert.Equal(FactDeliveryStatus.Superseded, Assert.Single(superseded.Results).Status);
         Assert.Equal(clock.UtcNow, sink.SourceLastSeen["reference"]);
 
-    }
-
-    [Fact]
-    public async Task Projection_ConfirmationDoesNotRemoveHigherRevisionThatShortensSegment()
-    {
-        using var directory = TemporaryDirectory.Create();
-        var package = LocalCollectorPackage.Load(ReferencePackagePath);
-        var sink = new SegmentIngestService(new FixedClock(
-            new DateTimeOffset(2026, 8, 22, 10, 0, 0, TimeSpan.Zero)));
-        using var runtime = CollectorRuntime.Open(
-            Path.Combine(directory.Path, "collector-runtime.json"),
-            sink);
-        using var config = JsonDocument.Parse("{}");
-        var instance = runtime.CreateInstance(
-            package,
-            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
-            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
-        await using var activation = await runtime.ActivateInProcessAsync(
-            instance.CollectorInstanceId,
-            package,
-            new ReferenceInProcessCollector());
-        var stream = activation.Streams["activity"];
-        var start = new DateTimeOffset(2026, 8, 22, 9, 0, 0, TimeSpan.Zero);
-        var factId = Guid.CreateVersion7();
-        await stream.PublishAsync(
-            Guid.CreateVersion7(),
-            [CreateFact(
-                stream.Descriptor.StreamId,
-                factId,
-                revision: 1,
-                title: "Stale long snapshot",
-                start: start,
-                end: start.AddMinutes(20))]);
-        var drained = sink.ReadBatch();
-
-        await stream.PublishAsync(
-            Guid.CreateVersion7(),
-            [CreateFact(
-                stream.Descriptor.StreamId,
-                factId,
-                revision: 2,
-                title: "Corrected short snapshot",
-                start: start,
-                end: start.AddMinutes(10))]);
-        ((IUploadSource<ActivitySegmentItem>)sink).Confirm(drained);
-
-        var projected = Assert.Single(sink.ReadBatch());
-        Assert.Equal("Corrected short snapshot", projected.Title);
-        Assert.Equal(start.AddMinutes(10), projected.EndTime);
-    }
-
-    [Fact]
-    public async Task Publish_SubjectAwareDurableSegmentSink_AcceptsAndProjectsFact()
-    {
-        using var directory = TemporaryDirectory.Create();
-        var package = LocalCollectorPackage.Load(ReferencePackagePath);
-        var sink = new RecordingSubjectSegmentSink();
-        using var runtime = CollectorRuntime.Open(
-            Path.Combine(directory.Path, "collector-runtime.json"),
-            sink);
-        using var config = JsonDocument.Parse("{}");
-        var subject = new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine);
-        var instance = runtime.CreateInstance(
-            package,
-            subject,
-            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
-        await using var activation = await runtime.ActivateInProcessAsync(
-            instance.CollectorInstanceId,
-            package,
-            new ReferenceInProcessCollector());
-        var stream = activation.Streams["activity"];
-
-        var acknowledgement = await stream.PublishAsync(
-            Guid.CreateVersion7(),
-            [CreateFact(stream.Descriptor.StreamId)]);
-
-        Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(acknowledgement.Results).Status);
-        var projected = Assert.Single(sink.Items);
-        Assert.Equal(instance.CollectorInstanceId, projected.Context.CollectorInstanceId);
-        Assert.Equal(subject, projected.Context.Subject);
-        Assert.False(projected.IsFinal);
-        Assert.Equal("Reference work", projected.Item.Title);
     }
 
     [Fact]
@@ -1193,7 +1115,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
         await activation.StopAsync();
 
         Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(collector.StopAcknowledgement!.Results).Status);
-        Assert.Single(sink.Segments);
+        Assert.Single(runtime.ReadPendingFacts());
         await Assert.ThrowsAsync<OperationCanceledException>(async () =>
             await stream.PublishAsync(
                 Guid.CreateVersion7(),
@@ -1380,7 +1302,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
         await runtime.DisposeAsync();
 
         Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(collector.StopAcknowledgement!.Results).Status);
-        Assert.Single(sink.Segments);
+        Assert.Single(runtime.ReadPendingFacts());
         var state = JsonNode.Parse(File.ReadAllText(statePath))!.AsObject();
         Assert.Single(state["facts"]!.AsArray());
     }
@@ -1855,91 +1777,6 @@ public partial class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task Publish_SegmentPayloadInsideActivitySegmentShape_IsProjected()
-    {
-        using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
-        var manifest = packageCopy.ReadManifest();
-        packageCopy.WriteManifest(manifest);
-        var package = LocalCollectorPackage.Load(packageCopy.Path);
-        using var directory = TemporaryDirectory.Create();
-        var sink = new RecordingSegmentSink();
-        using var runtime = CollectorRuntime.Open(
-            Path.Combine(directory.Path, "collector-runtime.json"),
-            sink);
-        using var config = JsonDocument.Parse("{}");
-        var instance = runtime.CreateInstance(
-            package,
-            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
-            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
-        await using var activation = await runtime.ActivateInProcessAsync(
-            instance.CollectorInstanceId,
-            package,
-            new ReferenceInProcessCollector());
-        var fact = CreateFact(activation.Streams["activity"].Descriptor.StreamId);
-
-        var outcome = await activation.Streams["activity"].PublishAsync(
-            Guid.CreateVersion7(),
-            [fact]);
-
-        Assert.Equal(FactDeliveryStatus.Committed, Assert.Single(outcome.Results).Status);
-        Assert.Equal("reference|work", Assert.Single(sink.Segments).IdentityKey);
-
-        // ActivitySegment 的投影形状必须与
-        // Analytics 的 identity 契约一致，在 Hub 持久接收前明确拒绝。
-        using var whitespacePayload = JsonDocument.Parse("""{"identityKey":" ","title":"Alternate work"}""");
-        var whitespaceFact = CreateFact(activation.Streams["activity"].Descriptor.StreamId) with
-        {
-            Payload = whitespacePayload.RootElement.Clone()
-        };
-        var rejected = await activation.Streams["activity"].PublishAsync(
-            Guid.CreateVersion7(),
-            [whitespaceFact]);
-        var rejectedResult = Assert.Single(rejected.Results);
-        Assert.Equal(FactDeliveryStatus.Rejected, rejectedResult.Status);
-        Assert.Equal("fact_invalid", rejectedResult.Error!.Code);
-        Assert.False(rejectedResult.Error.Retryable);
-    }
-
-    [Fact]
-    public async Task Publish_SegmentPayloadOutsideActivitySegmentShape_IsRejected()
-    {
-        using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
-        var manifest = packageCopy.ReadManifest();
-        packageCopy.WriteManifest(manifest);
-        var package = LocalCollectorPackage.Load(packageCopy.Path);
-        using var directory = TemporaryDirectory.Create();
-        using var runtime = CollectorRuntime.Open(
-            Path.Combine(directory.Path, "collector-runtime.json"),
-            new RecordingSegmentSink());
-        using var config = JsonDocument.Parse("{}");
-        var instance = runtime.CreateInstance(
-            package,
-            new SubjectReference(Guid.CreateVersion7(), SubjectKind.Machine),
-            new CollectorInstanceSpec(1, 1, config.RootElement.Clone()));
-        var collector = new ReferenceInProcessCollector();
-        await using var activation = await runtime.ActivateInProcessAsync(
-            instance.CollectorInstanceId,
-            package,
-            collector);
-        using var incompatiblePayload = JsonDocument.Parse(
-            """{"unrecognizedActivity":"alternate|work","title":"Alternate work"}""");
-        var fact = CreateFact(activation.Streams["activity"].Descriptor.StreamId) with
-        {
-            Payload = incompatiblePayload.RootElement.Clone()
-        };
-
-        var outcome = await activation.Streams["activity"].PublishAsync(
-            Guid.CreateVersion7(),
-            [fact]);
-
-        var result = Assert.Single(outcome.Results);
-        Assert.Equal(FactDeliveryStatus.Rejected, result.Status);
-        Assert.Equal("fact_invalid", result.Error!.Code);
-        Assert.Contains("projection shape", result.Error.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.False(result.Error.Retryable);
-    }
-
-    [Fact]
     public async Task StreamsOpen_RejectedAfterInitialize_StopsCollectorOwnedWork()
     {
         using var directory = TemporaryDirectory.Create();
@@ -2330,7 +2167,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
 
         Assert.True(rejected.IsMessageRejected);
         Assert.Equal("protocol_invalid_message", rejected.MessageError!.Code);
-        Assert.Empty(fixture.Sink.Segments);
+        Assert.Empty(fixture.Runtime.ReadPendingFacts().Where(item => item.Fact is not null));
     }
 
     [Fact]
@@ -2357,7 +2194,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
         Assert.True(rejected.IsMessageRejected);
         Assert.Equal("protocol_invalid_message", rejected.MessageError!.Code);
         Assert.Empty(rejected.Results);
-        Assert.Empty(fixture.Sink.Segments);
+        Assert.Empty(fixture.Runtime.ReadPendingFacts().Where(item => item.Fact is not null));
     }
 
     [Fact]
@@ -2377,7 +2214,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
         Assert.True(rejected.IsMessageRejected);
         Assert.Equal("protocol_invalid_message", rejected.MessageError!.Code);
         Assert.Empty(rejected.Results);
-        Assert.Empty(fixture.Sink.Segments);
+        Assert.Empty(fixture.Runtime.ReadPendingFacts().Where(item => item.Fact is not null));
     }
 
     [Fact]
@@ -2397,7 +2234,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
     }
 
     [Fact]
-    public async Task Projection_SameFactIdInTwoStreamsRemainsIndependent()
+    public async Task Custody_SameFactIdInTwoStreamsRemainsIndependent()
     {
         using var packageCopy = ReferenceCollectorPackageCopy.Create(ReferencePackagePath);
         var manifest = packageCopy.ReadManifest();
@@ -2437,10 +2274,10 @@ public partial class InProcessCollectorProtocolTranscriptTests
         await activation.Streams["first"].PublishAsync(Guid.CreateVersion7(), [first]);
         await activation.Streams["second"].PublishAsync(Guid.CreateVersion7(), [second]);
 
-        var projected = sink.ReadBatch();
-        Assert.Equal(2, projected.Count);
-        Assert.Equal(2, projected.Select(segment => segment.Id).Distinct().Count());
-        Assert.All(projected, segment => Assert.Equal('7', segment.Id.ToString("D")[14]));
+        var pending = runtime.ReadPendingFacts();
+        Assert.Equal(2, pending.Count);
+        Assert.Equal(2, pending.Select(item => item.Fact!.StreamId).Distinct().Count());
+        Assert.All(pending, item => Assert.Equal(sharedFactId, item.Fact!.FactId));
 
         await activation.DisposeAsync();
     }
@@ -2849,42 +2686,10 @@ public partial class InProcessCollectorProtocolTranscriptTests
         }
     }
 
-    private sealed class RecordingSegmentSink : ISegmentSink, IDurableSegmentProjectionSink
+    private sealed class RecordingSegmentSink : ISegmentSink
     {
         public List<ActivitySegmentItem> Segments { get; } = [];
-
         public void Push(List<ActivitySegmentItem> snapshots) => Segments.AddRange(snapshots);
-
-        public void UpsertDurable(ActivitySegmentItem snapshot, long revision)
-        {
-            Segments.RemoveAll(segment => segment.Id == snapshot.Id);
-            Segments.Add(snapshot);
-        }
-
-        public void ReplayDurable(ActivitySegmentItem snapshot, long revision) =>
-            UpsertDurable(snapshot, revision);
-
-    }
-
-    private sealed class RecordingSubjectSegmentSink : ISegmentSink, ISubjectSegmentProjectionSink
-    {
-        public List<(CollectorProjectionContext Context, ActivitySegmentItem Item, bool IsFinal)> Items { get; } = [];
-
-        public void Push(List<ActivitySegmentItem> snapshots) =>
-            throw new NotSupportedException("Subject-aware projection requires Collector Instance context.");
-
-        public void UpsertDurable(
-            CollectorProjectionContext context,
-            ActivitySegmentItem snapshot,
-            long revision,
-            bool isFinal) => Items.Add((context, snapshot, isFinal));
-
-        public void ReplayDurable(
-            CollectorProjectionContext context,
-            ActivitySegmentItem snapshot,
-            long revision,
-            bool isFinal) => Items.Add((context, snapshot, isFinal));
-
     }
 
     private sealed class FixedClock(DateTimeOffset utcNow) : IClock

@@ -8,12 +8,21 @@ using System.Text.Json;
 using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Facts;
 using Heartbeat.Server.Entities;
+using Microsoft.EntityFrameworkCore;
 
 namespace Heartbeat.Server.Tests.Services;
 
 public sealed partial class FactHttpTests
 {
     private static readonly DateTimeOffset PersonStart = new(2026, 9, 1, 1, 0, 0, TimeSpan.Zero);
+
+    private async Task SeedPersonOwners(bool includeOther = false)
+    {
+        await using var db = CreateDbContext();
+        db.Users.Add(new User { Id = "owner", Username = "alice" });
+        if (includeOther) db.Users.Add(new User { Id = "other", Username = "bob" });
+        await db.SaveChangesAsync();
+    }
 
     private static async Task<JsonElement> ReadPersonPage(HttpClient http, string query = "", string family = "segments")
     {
@@ -23,14 +32,43 @@ public sealed partial class FactHttpTests
         return JsonDocument.Parse(body).RootElement.Clone();
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ObjectWithoutAccountMetadata_IsReadableDirectlyAndThroughConfirmedTernaryEvidence(bool appObservation)
+    {
+        await SeedPersonOwners();
+        await using var app = CreateApplication();
+        using var http = app.CreateClient();
+        http.DefaultRequestHeaders.Add(HeartbeatProtocol.VersionHeader, HeartbeatProtocol.RequiredVersion);
+        http.DefaultRequestHeaders.Add("X-Test-Owner", "owner");
+        var account = new ObservationObjectReference("account", "social.example", "member-1");
+        var product = new ObservationObjectReference("app", ObservationObjectScopes.App, "social-app");
+        var batch = FactStoreTests.SegmentBatch("account");
+        batch.Facts[0].CollectorId = batch.Streams[0].CollectorInstanceId;
+        batch.Facts[0].Foi = appObservation ? product : account;
+        batch.Facts[0].Aspect = "custom.snapshot";
+        batch.Facts[0].Relations = appObservation ? [new("application-account-use", [new("app", product), new("account", account),
+            new("device", new("machine", ObservationObjectScopes.Machine, "observed-machine"))])] : [];
+        (await http.PostAsJsonAsync("/api/v1/facts", batch)).EnsureSuccessStatusCode();
+        var original = Assert.Single((await http.GetFromJsonAsync<List<FactResponse>>("/api/v1/users/alice/facts/segments"))!);
+        Assert.Equal(appObservation ? "app" : "account", original.Foi!.Kind);
+        Assert.Equal(batch.Facts[0].CollectorId, original.CollectorId);
+        (await http.PutAsJsonAsync("/api/v1/me/person", new { })).EnsureSuccessStatusCode();
+        var settings = await http.GetFromJsonAsync<JsonElement>("/api/v1/me/person");
+        var accountId = settings.GetProperty("objects").EnumerateArray().Single(o => o.GetProperty("kind").GetString() == "account").GetProperty("id").GetGuid();
+        (await http.PostAsJsonAsync("/api/v1/me/person/associations", new { objectId = accountId, start = (DateTimeOffset?)null, end = (DateTimeOffset?)null })).EnsureSuccessStatusCode();
+        var saved = Assert.Single((await ReadPersonPage(http)).GetProperty("items").EnumerateArray()).GetProperty("fact");
+        Assert.Equal(original.Id, saved.GetProperty("id").GetGuid());
+        Assert.Equal(original.FoiId, saved.GetProperty("foiId").GetGuid());
+        await using var verify = CreateDbContext();
+        Assert.Empty(await verify.ServiceAccounts.ToListAsync());
+    }
+
     [Fact]
     public async Task PersonAssociation_BackdatesExistingDeviceFact_WithoutRewritingIt()
     {
-        await using (var db = CreateDbContext())
-        {
-            db.Users.Add(new User { Id = "owner", Username = "alice" });
-            await db.SaveChangesAsync();
-        }
+        await SeedPersonOwners();
         await using var app = CreateApplication();
         using var http = app.CreateClient();
         http.DefaultRequestHeaders.Add(HeartbeatProtocol.VersionHeader, HeartbeatProtocol.RequiredVersion);
@@ -50,7 +88,7 @@ public sealed partial class FactHttpTests
         Assert.Equal(0, empty.GetProperty("totalCount").GetInt32());
         using var linked = await http.PostAsJsonAsync("/api/v1/me/person/associations", new
         {
-            deviceId = original.TargetId, start = PersonStart.AddMinutes(2), end = PersonStart.AddMinutes(5)
+            objectId = original.FoiId, start = PersonStart.AddMinutes(2), end = PersonStart.AddMinutes(5)
         });
         Assert.True(linked.IsSuccessStatusCode, await linked.Content.ReadAsStringAsync());
         var page = await ReadPersonPage(http);
@@ -66,14 +104,9 @@ public sealed partial class FactHttpTests
         Assert.Equal(before, await http.GetStringAsync("/api/v1/users/alice/facts/segments"));
     }
     [Fact]
-    public async Task PersonalTarget_IsExplicitOwnerScopedAndPreservedByReplay()
+    public async Task PersonalObject_IsExplicitOwnerScopedAndPreservedByReplay()
     {
-        await using (var db = CreateDbContext())
-        {
-            db.Users.Add(new User { Id = "owner", Username = "alice" });
-            db.Users.Add(new User { Id = "other", Username = "bob" });
-            await db.SaveChangesAsync();
-        }
+        await SeedPersonOwners(true);
         await using var app = CreateApplication();
         using var http = app.CreateClient();
         http.DefaultRequestHeaders.Add(HeartbeatProtocol.VersionHeader, HeartbeatProtocol.RequiredVersion);
@@ -82,16 +115,18 @@ public sealed partial class FactHttpTests
         var person = await established.Content.ReadFromJsonAsync<JsonElement>();
         var batch = FactStoreTests.SegmentBatch("person");
         batch.Streams[0].Source = "personal.fixture";
-        batch.Facts[0].ObserverId = batch.Streams[0].CollectorInstanceId;
-        batch.Facts[0].Target = new FactTarget("person", person.GetProperty("reference").GetString()!);
+        batch.Facts[0].CollectorId = batch.Streams[0].CollectorInstanceId;
+        batch.Facts[0].Foi = new ObservationObjectReference("person", ObservationObjectScopes.Person, person.GetProperty("reference").GetString()!);
+        batch.Facts[0].Relations = [];
+        batch.Facts[0].Aspect = "personal.note";
         batch.Facts[0].Payload = JsonSerializer.SerializeToElement(new { note = "Explicit personal observation", privateDetail = "preserve" });
         using var uploaded = await http.PostAsJsonAsync("/api/v1/facts", batch);
         Assert.True(uploaded.IsSuccessStatusCode, await uploaded.Content.ReadAsStringAsync());
         var before = await http.GetStringAsync("/api/v1/users/alice/facts/segments");
         var page = await ReadPersonPage(http);
         var item = Assert.Single(page.GetProperty("items").EnumerateArray());
-        Assert.Equal("person", item.GetProperty("fact").GetProperty("targetKind").GetString());
-        Assert.Equal(person.GetProperty("id").GetInt64(), item.GetProperty("fact").GetProperty("targetId").GetInt64());
+        Assert.Equal("person", item.GetProperty("fact").GetProperty("foi").GetProperty("kind").GetString());
+        Assert.Equal(person.GetProperty("id").GetGuid(), item.GetProperty("fact").GetProperty("foiId").GetGuid());
         Assert.Equal(600, item.GetProperty("effectiveSeconds").GetDouble());
         using var replay = await http.PostAsJsonAsync("/api/v1/facts", batch);
         Assert.True(replay.IsSuccessStatusCode, await replay.Content.ReadAsStringAsync());
@@ -107,31 +142,27 @@ public sealed partial class FactHttpTests
     [Fact]
     public async Task PersonHistory_UnionsCoverageAcrossSources_PagesFacts_AndCorrectionAndRemovalOnlyChangeProjection()
     {
-        await using (var db = CreateDbContext())
-        {
-            db.Users.Add(new User { Id = "owner", Username = "alice" });
-            await db.SaveChangesAsync();
-        }
+        await SeedPersonOwners();
         await using var app = CreateApplication();
         using var http = app.CreateClient();
         http.DefaultRequestHeaders.Add(HeartbeatProtocol.VersionHeader, HeartbeatProtocol.RequiredVersion);
         http.DefaultRequestHeaders.Add("X-Test-Owner", "owner");
         using var established = await http.PutAsJsonAsync("/api/v1/me/person", new { });
         var person = await established.Content.ReadFromJsonAsync<JsonElement>();
-        var targets = new[]
-        {
-            new FactTarget("device", "history-device"),
-            new ApplicationContextReference("history-device", "mac:com.google.chrome").ToTarget(),
-            new ServiceAccountReference("vrchat", "usr_11111111-1111-4111-8111-111111111111").ToTarget(),
-            new FactTarget("person", person.GetProperty("reference").GetString()!)
-        };
+        var machine = new ObservationObjectReference("machine", ObservationObjectScopes.Machine, "history-device");
+        var product = new ObservationObjectReference("app", ObservationObjectScopes.AppIdentity, "mac:com.google.chrome");
+        var objects = new[] { machine, product,
+            new ObservationObjectReference("account", "vrchat", "usr_11111111-1111-4111-8111-111111111111"),
+            new ObservationObjectReference("person", ObservationObjectScopes.Person, person.GetProperty("reference").GetString()!) };
         var sources = new[] { "system", "browser", "vrchat.account", "personal.fixture" };
-        for (var n = 0; n < targets.Length; n++)
+        for (var n = 0; n < objects.Length; n++)
         {
             var batch = FactStoreTests.SegmentBatch("person");
             batch.Streams[0].Source = sources[n];
-            batch.Facts[0].ObserverId = batch.Streams[0].CollectorInstanceId;
-            batch.Facts[0].Target = targets[n];
+            batch.Facts[0].CollectorId = batch.Streams[0].CollectorInstanceId;
+            batch.Facts[0].Foi = objects[n];
+            batch.Facts[0].Aspect = "personal.fixture";
+            batch.Facts[0].Relations = n == 1 ? [new FactRelationSnapshot("observed-on", [new("device", machine), new("app", product)])] : [];
             batch.Facts[0].Payload = JsonSerializer.SerializeToElement(new { activityKey = sources[n], title = "Stored before association" });
             using var upload = await http.PostAsJsonAsync("/api/v1/facts", batch);
             Assert.True(upload.IsSuccessStatusCode, await upload.Content.ReadAsStringAsync());
@@ -139,19 +170,19 @@ public sealed partial class FactHttpTests
         var before = await http.GetStringAsync("/api/v1/users/alice/facts/segments");
         var facts = JsonSerializer.Deserialize<List<FactResponse>>(before, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
         Assert.Equal(1, (await ReadPersonPage(http)).GetProperty("totalCount").GetInt32());
-        var deviceId = facts.Single(f => f.TargetKind == "device").TargetId;
-        var accountId = facts.Single(f => f.TargetKind == "account").TargetId;
-        async Task<long> Link(long? device, long? account, int start, int end)
+        var deviceId = facts.Single(f => f.Foi!.Kind == "machine").FoiId!.Value;
+        var accountId = facts.Single(f => f.Foi!.Kind == "account").FoiId!.Value;
+        async Task<Guid> Link(Guid objectId, int start, int end)
         {
             using var response = await http.PostAsJsonAsync("/api/v1/me/person/associations", new
-            { deviceId = device, accountId = account, start = PersonStart.AddMinutes(start), end = PersonStart.AddMinutes(end) });
+            { objectId, start = PersonStart.AddMinutes(start), end = PersonStart.AddMinutes(end) });
             Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
-            return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt64();
+            return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
         }
-        var first = await Link(deviceId, null, 2, 5);
-        var overlap = await Link(deviceId, null, 4, 6);
-        var later = await Link(deviceId, null, 8, 9);
-        var accountLink = await Link(null, accountId, 3, 7);
+        var first = await Link(deviceId, 2, 5);
+        var overlap = await Link(deviceId, 4, 6);
+        var later = await Link(deviceId, 8, 9);
+        var accountLink = await Link(accountId, 3, 7);
         var page = await ReadPersonPage(http, "?limit=2");
         Assert.Equal(4, page.GetProperty("totalCount").GetInt32());
         Assert.Equal(4, page.GetProperty("sources").GetArrayLength());
@@ -159,7 +190,7 @@ public sealed partial class FactHttpTests
         var next = await ReadPersonPage(http, "?limit=2&offset=2");
         var items = page.GetProperty("items").EnumerateArray().Concat(next.GetProperty("items").EnumerateArray()).ToArray();
         Assert.Equal(4, items.Select(item => item.GetProperty("fact").GetProperty("id").GetGuid()).Distinct().Count());
-        Assert.Contains("history-device", items.Single(item => item.GetProperty("fact").GetProperty("source").GetString() == "browser").GetProperty("targetName").GetString());
+        Assert.Equal("app", items.Single(item => item.GetProperty("fact").GetProperty("source").GetString() == "browser").GetProperty("fact").GetProperty("foi").GetProperty("kind").GetString());
         Assert.Equal(facts.Select(f => f.Id), items.Select(item => item.GetProperty("fact").GetProperty("id").GetGuid()));
         foreach (var item in items.Where(item => item.GetProperty("fact").GetProperty("source").GetString() is "system" or "browser"))
         {
@@ -174,7 +205,7 @@ public sealed partial class FactHttpTests
         var gap = await ReadPersonPage(http, "?start=2026-09-01T01:07:00Z&end=2026-09-01T01:08:00Z");
         Assert.Equal(1, gap.GetProperty("totalCount").GetInt32()); // Only the direct personal fact.
         using var corrected = await http.PutAsJsonAsync($"/api/v1/me/person/associations/{first}", new
-        { deviceId, start = PersonStart, end = PersonStart.AddMinutes(1) });
+        { objectId = deviceId, start = PersonStart, end = PersonStart.AddMinutes(1) });
         Assert.True(corrected.IsSuccessStatusCode, await corrected.Content.ReadAsStringAsync());
         foreach (var id in new[] { overlap, later, accountLink })
         {
@@ -183,7 +214,7 @@ public sealed partial class FactHttpTests
         }
         var changed = await ReadPersonPage(http);
         Assert.Equal(3, changed.GetProperty("totalCount").GetInt32());
-        Assert.All(changed.GetProperty("items").EnumerateArray().Where(item => item.GetProperty("fact").GetProperty("targetKind").GetString() != "person"),
+        Assert.All(changed.GetProperty("items").EnumerateArray().Where(item => item.GetProperty("fact").GetProperty("foi").GetProperty("kind").GetString() != "person"),
             item => Assert.Equal(60, item.GetProperty("effectiveSeconds").GetDouble()));
         using var removed = await http.DeleteAsync($"/api/v1/me/person/associations/{first}");
         Assert.True(removed.IsSuccessStatusCode);
@@ -192,17 +223,13 @@ public sealed partial class FactHttpTests
     }
 
     [Theory]
-    [InlineData("device")]
-    [InlineData("application-context")]
+    [InlineData("machine")]
+    [InlineData("app")]
     [InlineData("account")]
     [InlineData("person")]
     public async Task PersonEvents_UseHalfOpenInstantsAndNeverDuplicateOverlappingMatches(string kind)
     {
-        await using (var db = CreateDbContext())
-        {
-            db.Users.Add(new User { Id = "owner", Username = "alice" });
-            await db.SaveChangesAsync();
-        }
+        await SeedPersonOwners();
         await using var app = CreateApplication();
         using var http = app.CreateClient();
         http.DefaultRequestHeaders.Add(HeartbeatProtocol.VersionHeader, HeartbeatProtocol.RequiredVersion);
@@ -210,36 +237,39 @@ public sealed partial class FactHttpTests
         using var established = await http.PutAsJsonAsync("/api/v1/me/person", new { });
         var person = await established.Content.ReadFromJsonAsync<JsonElement>();
         var batch = FactStoreTests.SegmentBatch("person");
-        batch.Streams[0].Source = kind == "account" ? "vrchat.account" : kind == "application-context" ? "browser" : kind == "device" ? "system" : "personal.fixture";
+        batch.Streams[0].Source = kind == "account" ? "vrchat.account" : kind == "app" ? "browser" : kind == "machine" ? "system" : "personal.fixture";
         batch.Streams[0].FactKind = "event";
-        var target = kind switch
+        var machine = new ObservationObjectReference("machine", ObservationObjectScopes.Machine, "event-history");
+        var foi = kind switch
         {
-            "account" => new ServiceAccountReference("vrchat", "usr_11111111-1111-4111-8111-111111111111").ToTarget(),
-            "application-context" => new ApplicationContextReference("event-history", "mac:com.google.chrome").ToTarget(),
-            "person" => new FactTarget("person", person.GetProperty("reference").GetString()!),
-            _ => new FactTarget("device", "event-history")
+            "account" => new ObservationObjectReference("account", "vrchat", "usr_11111111-1111-4111-8111-111111111111"),
+            "app" => new ObservationObjectReference("app", ObservationObjectScopes.AppIdentity, "mac:com.google.chrome"),
+            "person" => new ObservationObjectReference("person", ObservationObjectScopes.Person, person.GetProperty("reference").GetString()!),
+            _ => machine
         };
         batch.Facts = new[] { 1, 2, 4, 5, 6, 8, 9 }.Select(minute => new FactSnapshot
         {
             StreamId = batch.Streams[0].StreamId, FactId = Guid.CreateVersion7(), Revision = 1,
-            ObserverId = batch.Streams[0].CollectorInstanceId, Target = target, OccurredAt = PersonStart.AddMinutes(minute),
+            CollectorId = batch.Streams[0].CollectorInstanceId, Foi = foi, Aspect = "personal.fixture",
+            Relations = kind == "app" ? [new FactRelationSnapshot("observed-on", [new("device", machine), new("app", foi)])] : [],
+            OccurredAt = PersonStart.AddMinutes(minute),
             Payload = JsonSerializer.SerializeToElement(new { minute, evidence = "do not modify" })
         }).ToList();
         using var uploaded = await http.PostAsJsonAsync("/api/v1/facts", batch);
         Assert.True(uploaded.IsSuccessStatusCode, await uploaded.Content.ReadAsStringAsync());
         var before = await http.GetStringAsync("/api/v1/users/alice/facts/events");
         var original = JsonSerializer.Deserialize<List<FactResponse>>(before, new JsonSerializerOptions(JsonSerializerDefaults.Web))!.First();
-        var ids = new List<long>();
+        var ids = new List<Guid>();
         if (kind != "person")
             foreach (var (lower, upper) in new[] { (2, 5), (4, 6), (8, 9) })
             {
                 using var linked = await http.PostAsJsonAsync("/api/v1/me/person/associations", new
                 {
-                    deviceId = original.DeviceId, accountId = kind == "account" ? original.TargetId : null,
+                    objectId = kind == "app" ? original.Relations.Single().Members.Single(m => m.Role == "device").Object.Id : original.FoiId,
                     start = PersonStart.AddMinutes(lower), end = PersonStart.AddMinutes(upper)
                 });
                 Assert.True(linked.IsSuccessStatusCode, await linked.Content.ReadAsStringAsync());
-                ids.Add((await linked.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt64());
+                ids.Add((await linked.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid());
             }
         var page = await ReadPersonPage(http, family: "events");
         var expected = kind == "person" ? new[] { 9, 8, 6, 5, 4, 2, 1 } : new[] { 8, 5, 4, 2 };
@@ -259,14 +289,9 @@ public sealed partial class FactHttpTests
     }
 
     [Fact]
-    public async Task PersonManagement_ListsOfflineAndUnknownTargets_RejectsCrossOwnerAndInvalidRanges()
+    public async Task PersonManagement_ListsOfflineAndUnknownObjects_RejectsCrossOwnerAndInvalidRanges()
     {
-        await using (var db = CreateDbContext())
-        {
-            db.Users.Add(new User { Id = "owner", Username = "alice" });
-            db.Users.Add(new User { Id = "other", Username = "bob" });
-            await db.SaveChangesAsync();
-        }
+        await SeedPersonOwners(true);
         await using var app = CreateApplication();
         using var http = app.CreateClient();
         http.DefaultRequestHeaders.Add(HeartbeatProtocol.VersionHeader, HeartbeatProtocol.RequiredVersion);
@@ -287,29 +312,30 @@ public sealed partial class FactHttpTests
         using var settingsResponse = await http.GetAsync("/api/v1/me/person");
         Assert.True(settingsResponse.IsSuccessStatusCode, await settingsResponse.Content.ReadAsStringAsync());
         var settings = await settingsResponse.Content.ReadFromJsonAsync<JsonElement>();
-        var targets = settings.GetProperty("targets").EnumerateArray().ToArray();
-        var deviceId = targets.Single(t => t.GetProperty("kind").GetString() == "device").GetProperty("id").GetInt64();
+        var targets = settings.GetProperty("objects").EnumerateArray().ToArray();
+        var deviceId = targets.Single(t => t.GetProperty("kind").GetString() == "machine").GetProperty("id").GetGuid();
         var account = targets.Single(t => t.GetProperty("kind").GetString() == "account");
-        Assert.Contains("身份未知", account.GetProperty("name").GetString());
+        Assert.Equal(JsonValueKind.Null, account.GetProperty("name").ValueKind);
+        Assert.False(string.IsNullOrWhiteSpace(account.GetProperty("key").GetString()));
         Assert.Empty(settings.GetProperty("associations").EnumerateArray());
-        using var linked = await http.PostAsJsonAsync("/api/v1/me/person/associations", new { deviceId, start = (DateTimeOffset?)null, end = PersonStart.AddMinutes(5) });
+        using var linked = await http.PostAsJsonAsync("/api/v1/me/person/associations", new { objectId = deviceId, start = (DateTimeOffset?)null, end = PersonStart.AddMinutes(5) });
         Assert.True(linked.IsSuccessStatusCode, await linked.Content.ReadAsStringAsync());
-        var linkId = (await linked.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt64();
+        var linkId = (await linked.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
         Assert.Equal(300, Assert.Single((await ReadPersonPage(http)).GetProperty("items").EnumerateArray()).GetProperty("effectiveSeconds").GetDouble());
-        using var openEnd = await http.PutAsJsonAsync($"/api/v1/me/person/associations/{linkId}", new { deviceId, start = PersonStart.AddMinutes(8), end = (DateTimeOffset?)null });
+        using var openEnd = await http.PutAsJsonAsync($"/api/v1/me/person/associations/{linkId}", new { objectId = deviceId, start = PersonStart.AddMinutes(8), end = (DateTimeOffset?)null });
         openEnd.EnsureSuccessStatusCode();
         Assert.Equal(120, Assert.Single((await ReadPersonPage(http)).GetProperty("items").EnumerateArray()).GetProperty("effectiveSeconds").GetDouble());
-        using var unknownLink = await http.PostAsJsonAsync("/api/v1/me/person/associations", new { accountId = account.GetProperty("id").GetInt64(), start = (DateTimeOffset?)null, end = (DateTimeOffset?)null });
+        using var unknownLink = await http.PostAsJsonAsync("/api/v1/me/person/associations", new { objectId = account.GetProperty("id").GetGuid(), start = (DateTimeOffset?)null, end = (DateTimeOffset?)null });
         unknownLink.EnsureSuccessStatusCode();
         Assert.Equal(2, (await ReadPersonPage(http)).GetProperty("totalCount").GetInt32());
         foreach (var body in new object[]
         {
-            new { deviceId, start = PersonStart, end = PersonStart },
-            new { deviceId, start = PersonStart.AddMinutes(1), end = PersonStart },
-            new { deviceId, accountId = account.GetProperty("id").GetInt64(), start = PersonStart, end = PersonStart.AddMinutes(1) },
-            new { deviceId, start = PersonStart.AddTicks(1), end = PersonStart.AddMinutes(1) },
-            new { deviceId, ownerId = "other", start = PersonStart, end = PersonStart.AddMinutes(1) },
-            new { deviceId }
+            new { objectId = deviceId, start = PersonStart, end = PersonStart },
+            new { objectId = deviceId, start = PersonStart.AddMinutes(1), end = PersonStart },
+            new { objectId = deviceId, accountId = account.GetProperty("id").GetGuid(), start = PersonStart, end = PersonStart.AddMinutes(1) },
+            new { objectId = deviceId, start = PersonStart.AddTicks(1), end = PersonStart.AddMinutes(1) },
+            new { objectId = deviceId, ownerId = "other", start = PersonStart, end = PersonStart.AddMinutes(1) },
+            new { objectId = deviceId }
         })
         {
             using var invalid = await http.PostAsJsonAsync("/api/v1/me/person/associations", body);
@@ -319,10 +345,10 @@ public sealed partial class FactHttpTests
         http.DefaultRequestHeaders.Add("X-Test-Owner", "other");
         (await http.PutAsJsonAsync("/api/v1/me/person", new { })).EnsureSuccessStatusCode();
         var otherSettings = await http.GetFromJsonAsync<JsonElement>("/api/v1/me/person");
-        Assert.Empty(otherSettings.GetProperty("targets").EnumerateArray());
+        Assert.Empty(otherSettings.GetProperty("objects").EnumerateArray());
         Assert.Empty(otherSettings.GetProperty("associations").EnumerateArray());
-        using var crossCreate = await http.PostAsJsonAsync("/api/v1/me/person/associations", new { deviceId, start = PersonStart, end = PersonStart.AddMinutes(1) });
-        using var crossCorrect = await http.PutAsJsonAsync($"/api/v1/me/person/associations/{linkId}", new { deviceId, start = PersonStart, end = PersonStart.AddMinutes(1) });
+        using var crossCreate = await http.PostAsJsonAsync("/api/v1/me/person/associations", new { objectId = deviceId, start = PersonStart, end = PersonStart.AddMinutes(1) });
+        using var crossCorrect = await http.PutAsJsonAsync($"/api/v1/me/person/associations/{linkId}", new { objectId = deviceId, start = PersonStart, end = PersonStart.AddMinutes(1) });
         using var crossRemove = await http.DeleteAsync($"/api/v1/me/person/associations/{linkId}");
         Assert.Equal(System.Net.HttpStatusCode.NotFound, crossCreate.StatusCode);
         Assert.Equal(System.Net.HttpStatusCode.NotFound, crossCorrect.StatusCode);
@@ -337,13 +363,9 @@ public sealed partial class FactHttpTests
     [Theory]
     [InlineData("segment")]
     [InlineData("event")]
-    public async Task PersonalTarget_RuntimeCustodyAndRestartReachThePublicPersonView(string kind)
+    public async Task PersonalObject_RuntimeCustodyAndRestartReachThePublicPersonView(string kind)
     {
-        await using (var db = CreateDbContext())
-        {
-            db.Users.Add(new User { Id = "owner", Username = "alice" });
-            await db.SaveChangesAsync();
-        }
+        await SeedPersonOwners();
         await using var app = CreateApplication();
         using var http = app.CreateClient();
         http.DefaultRequestHeaders.Add(HeartbeatProtocol.VersionHeader, HeartbeatProtocol.RequiredVersion);
@@ -356,7 +378,7 @@ public sealed partial class FactHttpTests
         {
             var package = LocalCollectorPackage.Load(SystemCollectorPackage.Path);
             var path = Path.Combine(directory, "runtime.json");
-            var options = new CollectorRuntimeOptions { EnableFactUpload = true };
+            var options = new CollectorRuntimeOptions();
             Guid observer;
             Guid factId;
             using (var runtime = CollectorRuntime.Open(path, new UnusedProjection(), options))
@@ -369,7 +391,7 @@ public sealed partial class FactHttpTests
                 var fact = new FactSubmission(writer.Descriptor.StreamId, factId, 1, null,
                     kind == "segment" ? new SegmentFactTime(PersonStart, PersonStart.AddMinutes(10), true) : new EventFactTime(PersonStart),
                     JsonSerializer.SerializeToElement(new { note = "An explicitly personal fixture" }),
-                    observer, new FactTarget("person", person.GetProperty("reference").GetString()!));
+                    observer, new ObservationObjectReference("person", ObservationObjectScopes.Person, person.GetProperty("reference").GetString()!), "personal.note", []);
                 Assert.Equal(FactDeliveryStatus.Committed, Assert.Single((await writer.PublishAsync(Guid.CreateVersion7(), [fact])).Results).Status);
             }
             using var restarted = CollectorRuntime.Open(path, new UnusedProjection(), options);
@@ -381,7 +403,7 @@ public sealed partial class FactHttpTests
             var saved = Assert.Single(page.GetProperty("items").EnumerateArray()).GetProperty("fact");
             Assert.Equal(observer, saved.GetProperty("observerId").GetGuid());
             Assert.Equal(factId, saved.GetProperty("factId").GetGuid());
-            Assert.Equal("person", saved.GetProperty("targetKind").GetString());
+            Assert.Equal("person", saved.GetProperty("foi").GetProperty("kind").GetString());
             using var replay = await http.PostAsJsonAsync("/api/v1/facts", FactUploadItem.Request(pending));
             Assert.True(replay.IsSuccessStatusCode);
             restarted.ConfirmUploadedFacts(pending);

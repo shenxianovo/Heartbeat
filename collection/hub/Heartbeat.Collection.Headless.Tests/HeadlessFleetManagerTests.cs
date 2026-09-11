@@ -96,9 +96,8 @@ public sealed class HeadlessFleetManagerTests : IDisposable
         using var pipelines = new HeadlessInstancePipelines(_directory, upload);
         var id = Guid.CreateVersion7();
         var subject = new SubjectReference(Guid.CreateVersion7(), SubjectKind.Account);
+        StorePendingSegment(id);
         pipelines.Add(id, subject, "Account");
-        pipelines.UpsertDurable(new CollectorProjectionContext(id, subject),
-            Segment("pending", DateTimeOffset.UtcNow), 1, false);
 
         await pipelines.DrainAllAsync(new CancellationToken(canceled: true));
 
@@ -132,46 +131,26 @@ public sealed class HeadlessFleetManagerTests : IDisposable
         using var pipelines = new HeadlessInstancePipelines(_directory, upload);
         var id = Guid.CreateVersion7();
         var subject = new SubjectReference(Guid.CreateVersion7(), SubjectKind.Account);
+        StorePendingSegment(id);
         pipelines.Add(id, subject, "Account");
-        pipelines.UpsertDurable(new CollectorProjectionContext(id, subject),
-            Segment("pending", DateTimeOffset.UtcNow), 1, false);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => pipelines.RemoveAsync(id));
 
-        Assert.Equal("pending", pipelines.CurrentActivity(id)?.Title);
         Assert.DoesNotContain(id, upload.Removed);
         upload.Result = ApiResult.Ok;
         await pipelines.RemoveAsync(id);
         Assert.Contains(id, upload.Removed);
     }
 
-    [Fact]
-    public async Task InstancePipelines_IsolateProjectionAndCanDeleteOneInstanceDataSet()
+    private void StorePendingSegment(Guid instanceId)
     {
-        Directory.CreateDirectory(_directory);
-        var upload = new RecordingSegmentUpload();
-        using var pipelines = new HeadlessInstancePipelines(_directory, upload);
-        var firstId = Guid.CreateVersion7();
-        var secondId = Guid.CreateVersion7();
-        var subject = new SubjectReference(Guid.CreateVersion7(), SubjectKind.Account);
-        var secondSubject = new SubjectReference(Guid.CreateVersion7(), SubjectKind.Account);
-        pipelines.Add(firstId, subject, "First");
-        pipelines.Add(secondId, secondSubject, "Second");
-        var projection = (ISubjectSegmentProjectionSink)pipelines;
-        var now = DateTimeOffset.UtcNow;
-        projection.UpsertDurable(new CollectorProjectionContext(firstId, subject), Segment("first", now), 1, false);
-        projection.UpsertDurable(new CollectorProjectionContext(secondId, secondSubject), Segment("second", now), 1, false);
-
-        await pipelines.DrainAllAsync();
-        Assert.Contains(upload.Sent, sent => sent.InstanceId == firstId && sent.Subject == subject && sent.Title == "first");
-        Assert.Contains(upload.Sent, sent => sent.InstanceId == secondId && sent.Subject == secondSubject && sent.Title == "second");
-        Assert.DoesNotContain(upload.Sent, sent => sent.InstanceId == firstId && sent.Subject == secondSubject);
-        await pipelines.RemoveAsync(firstId);
-
-        Assert.False(Directory.Exists(Path.Combine(_directory, "instances", firstId.ToString("D"))));
-        Assert.True(Directory.Exists(Path.Combine(_directory, "instances", secondId.ToString("D"))));
-        Assert.Equal("second", pipelines.CurrentActivity(secondId)?.Title);
-        Assert.Contains(firstId, upload.Removed);
+        var directory = Path.Combine(_directory, "instances", instanceId.ToString("D"));
+        Directory.CreateDirectory(directory);
+        using var cache = new Heartbeat.Collection.Hub.Storage.JsonFileCache<ActivitySegmentItem>(
+            Path.Combine(directory, "segments-cache.json"), int.MaxValue,
+            Heartbeat.Collection.Hub.Storage.HeartbeatCacheFormats.SegmentVersion2(),
+            Heartbeat.Collection.Hub.Storage.HeartbeatCacheFormats.SegmentMigrations());
+        cache.Add([Segment("pending", DateTimeOffset.UtcNow)]);
     }
 
     private static ActivitySegmentItem Segment(string title, DateTimeOffset now) => new()

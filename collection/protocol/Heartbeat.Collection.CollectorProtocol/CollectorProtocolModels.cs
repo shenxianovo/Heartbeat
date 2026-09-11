@@ -68,9 +68,10 @@ public sealed record CollectorFact(
     DateTimeOffset? ObservedAt,
     CollectorFactTime Time,
     JsonElement Payload,
-    Guid? ObserverId = null,
-    FactTarget? Target = null,
-    string? Aspect = null);
+    Guid? CollectorId = null,
+    ObservationObjectReference? Foi = null,
+    string? Aspect = null,
+    List<FactRelationSnapshot>? Relations = null);
 
 public sealed record BoundCollectorFact(
     Guid StreamId,
@@ -79,9 +80,10 @@ public sealed record BoundCollectorFact(
     DateTimeOffset? ObservedAt,
     CollectorFactTime Time,
     JsonElement Payload,
-    Guid? ObserverId = null,
-    FactTarget? Target = null,
-    string? Aspect = null);
+    Guid? CollectorId = null,
+    ObservationObjectReference? Foi = null,
+    string? Aspect = null,
+    List<FactRelationSnapshot>? Relations = null);
 
 public enum CollectorFactDeliveryStatus
 {

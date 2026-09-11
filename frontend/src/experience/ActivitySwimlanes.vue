@@ -7,7 +7,7 @@ import { niceTicks } from '../timeline/timeScale'
 import ActivityOverview from './ActivityOverview.vue'
 import FactLane from './FactLane.vue'
 import FactCard from './FactCard.vue'
-import { groupApplications, groupTargets, hasFactView, type ExperienceSegment, type TimeRange } from './factViews'
+import { groupApplications, groupObjects, hasFactView, type ExperienceSegment, type TimeRange } from './factViews'
 
 const props = defineProps<{
   username: string; facts: ExperienceSegment[]; range: TimeRange; bounds: TimeRange; timeZone: string
@@ -16,7 +16,7 @@ const props = defineProps<{
 const emit = defineEmits<{ range: [range: TimeRange]; select: [fact: ExperienceSegment]; focus: [fact: ExperienceSegment] }>()
 const expandedDevices = ref(new Set<string>())
 const expandedBrowser = ref(new Set<string>())
-const targets = computed(() => groupTargets(props.facts, props.range))
+const targets = computed(() => groupObjects(props.facts, props.range))
 const timeline = ref<HTMLElement | null>(null)
 const axis = ref<HTMLElement | null>(null)
 const trackWidth = ref(700)
@@ -74,10 +74,10 @@ const aspectLabel = (aspect: string) => aspect === 'desktop-activity' ? '前台�
             <template v-if="aspect !== 'selected-page' || !hasDesktop(target.facts) || expandedBrowser.has(target.id)">
               <div class="lane-row" :class="{ 'target-summary': index === 0 }">
                 <div v-if="index === 0" class="target-label row-header">
-                  <button v-if="target.kind === 'device' && hasDesktop(target.facts)" class="target-name device-toggle" :aria-expanded="expandedDevices.has(target.id)" :aria-label="`${expandedDevices.has(target.id) ? '收起' : '展开'} ${target.name} 的应用`" @click="toggle(expandedDevices, target.id)">
+                  <button v-if="target.kind === 'machine' && hasDesktop(target.facts)" class="target-name device-toggle" :aria-expanded="expandedDevices.has(target.id)" :aria-label="`${expandedDevices.has(target.id) ? '收起' : '展开'} ${target.name} 的应用`" @click="toggle(expandedDevices, target.id)">
                     <ChevronRight :size="12" class="chevron" :class="{ open: expandedDevices.has(target.id) }" /><Monitor :size="17" /><strong :title="target.name">{{ target.name }}</strong>
                   </button>
-                  <div v-else class="target-name"><Monitor v-if="target.kind === 'device'" :size="17" /><UserRound v-else :size="17" /><strong :title="target.name">{{ target.name }}</strong></div>
+                  <div v-else class="target-name"><Monitor v-if="target.kind === 'machine'" :size="17" /><UserRound v-else :size="17" /><strong :title="target.name">{{ target.name }}</strong></div>
                   <span>{{ aspectLabel(aspect) }}</span>
                 </div>
                 <div v-else class="lane-label row-header"><Globe v-if="aspect === 'selected-page'" :size="14" />{{ aspectLabel(aspect) }}</div>

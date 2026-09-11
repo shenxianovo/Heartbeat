@@ -75,7 +75,7 @@ public sealed class ExternalHostCollectorProtocolTranscriptTests
         var result = Assert.Single(acknowledgement.Results);
         Assert.Null(result.Error);
         Assert.Equal(FactDeliveryStatus.Committed, result.Status);
-        Assert.Single(sink.ReadBatch());
+        Assert.Single(runtime.ReadPendingFacts());
     }
 
     [Fact]

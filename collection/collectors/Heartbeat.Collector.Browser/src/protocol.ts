@@ -152,8 +152,9 @@ export function toProtocolFact(snapshot: SegmentSnapshot, streamId: string) {
     factId: snapshot.id,
     revision: snapshotRevision(snapshot),
     aspect: 'selected-page',
-    observerId: snapshot.observerId,
-    target: snapshot.target,
+    collectorId: snapshot.collectorId,
+    foi: snapshot.foi,
+    relations: snapshot.relations,
     observedAt: null,
     time: {
       start: snapshot.startTime,
@@ -202,6 +203,7 @@ export async function openBrowserProtocolSession(
         ...await browserPackageReference(),
         protocolMajors: [1],
         supportedCapabilities: {
+          'facts.observation': [1],
           'facts.aspect': [1],
           'facts.segment': [1],
           'diagnostics.stream-gap': [1],
@@ -220,6 +222,7 @@ export async function openBrowserProtocolSession(
       attempt.helloMessageId,
     ) || !isUuidV7(acceptedMessage.body.activationId) ||
       acceptedMessage.body.selectedProtocolMajor !== 1 ||
+      acceptedMessage.body.selectedCapabilities?.['facts.observation'] !== 1 ||
       acceptedMessage.body.selectedCapabilities?.['facts.aspect'] !== 1 ||
       acceptedMessage.body.selectedCapabilities?.['facts.segment'] !== 1 ||
       acceptedMessage.body.selectedCapabilities?.['diagnostics.stream-gap'] !== 1)
@@ -241,8 +244,7 @@ export async function openBrowserProtocolSession(
     const initialized = initializeMessage.body
     const deviceReference = initialized.instance?.subject?.subjectId
     if (initialized.instance?.subject?.kind !== 'machine' || !isUuid(deviceReference) || !isUuid(externalHostIdentity)) return 'rejected'
-    const attribution: BrowserAttribution = { observerId: externalHostIdentity.toLowerCase(),
-      target: { kind: 'application-context', reference: JSON.stringify([deviceReference.toLowerCase(), appIdentityKey]) } }
+    const attribution = browserAttribution(externalHostIdentity.toLowerCase(), deviceReference.toLowerCase(), appIdentityKey)
     if (initialized.spec.config.value.enabled === false) return 'disabled'
     const flushPeriodMilliseconds = positiveInteger(initialized.spec.config.value.flushPeriodMs)
     if (flushPeriodMilliseconds === undefined || flushPeriodMilliseconds < 30_000) return 'rejected'
@@ -373,7 +375,7 @@ export async function publishBrowserFacts(
     ? previousAttempt
     : undefined
   const bound = snapshots.map(snapshot => bindAttribution(snapshot, session.attribution))
-  if (bound.some(snapshot => !snapshot.observerId || !snapshot.target)) return { kind: 'unavailable' }
+  if (bound.some(snapshot => !snapshot.collectorId || !snapshot.foi || !snapshot.relations)) return { kind: 'unavailable' }
   const batch = reusableAttempt?.snapshots ?? takeBatchWithinByteLimit(bound, session, maxFacts)
   if (snapshots.length > 0 && batch.length === 0) return { kind: 'unavailable' }
   const facts = batch.map((snapshot) => toProtocolFact(snapshot, session.streamId))
@@ -662,15 +664,40 @@ function isUuid(value: unknown): value is string {
     value !== '00000000-0000-0000-0000-000000000000'
 }
 
+export function browserAttribution(collectorId: string, machineKey: string, appIdentityKey: string): BrowserAttribution {
+  const foi = { kind: 'app' as const, scope: 'heartbeat.app-identity', key: appIdentityKey }
+  return { collectorId, foi, relations: [{ kind: 'observed-on', members: [
+    { role: 'device', object: { kind: 'machine', scope: 'heartbeat.device', key: machineKey } },
+    { role: 'app', object: foi },
+  ] }] }
+}
+
+/** Only the persisted pre-object format carries Observer/Target. */
+export function readAttribution(value: unknown): BrowserAttribution | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const saved = value as Record<string, unknown>
+  if (saved.collectorId !== undefined || saved.foi !== undefined || saved.relations !== undefined)
+    return { collectorId: saved.collectorId, foi: saved.foi, relations: saved.relations } as BrowserAttribution
+  const target = saved.target as { kind?: string; reference?: string } | undefined
+  if (saved.observerId === undefined && target === undefined) return undefined
+  if (typeof saved.observerId !== 'string' || target?.kind !== 'application-context' || typeof target.reference !== 'string')
+    throw new Error('Incomplete historical Browser attribution; preserve the cached snapshot')
+  const pair: unknown = JSON.parse(target.reference)
+  if (!Array.isArray(pair) || pair.length !== 2 || pair.some(item => typeof item !== 'string' || !item))
+    throw new Error('Invalid historical Browser attribution; preserve the cached snapshot')
+  return browserAttribution(saved.observerId, pair[0], pair[1])
+}
+
 export function bindAttribution(snapshot: SegmentSnapshot, attribution?: BrowserAttribution): SegmentSnapshot {
-  if (snapshot.observerId !== undefined || snapshot.target !== undefined || attribution === undefined) return snapshot
+  if (snapshot.collectorId !== undefined || snapshot.foi !== undefined || snapshot.relations !== undefined || attribution === undefined) return snapshot
   return { ...snapshot, ...attribution }
 }
 
 export function sameSnapshot(left: SegmentSnapshot, right: SegmentSnapshot): boolean {
   return left.id === right.id && left.startTime === right.startTime && left.endTime === right.endTime &&
     left.isFinal === right.isFinal && left.activityKey === right.activityKey && left.title === right.title &&
-    left.observerId === right.observerId && left.target?.kind === right.target?.kind && left.target?.reference === right.target?.reference &&
+    left.collectorId === right.collectorId && JSON.stringify(left.foi) === JSON.stringify(right.foi) &&
+    JSON.stringify(left.relations) === JSON.stringify(right.relations) &&
     left.attributes.url === right.attributes.url && left.attributes.domain === right.attributes.domain &&
     left.attributes.site === right.attributes.site && left.attributes.windowId === right.attributes.windowId
 }

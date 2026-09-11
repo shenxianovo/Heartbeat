@@ -95,7 +95,7 @@ public sealed class ObservationStorageTests(PostgresContainerFixture fixture) : 
         var store = new FactStore(db);
         await store.IngestAsync("owner", BrowserApplicationContextTests.Batch("mac:com.test.chrome", "mac"));
         var appId = await db.Apps.Select(a => a.Id).SingleAsync();
-        await db.Database.ExecuteSqlRawAsync("""UPDATE "Facts" SET "TargetKind" = NULL, "TargetId" = NULL""");
+        await db.Database.ExecuteSqlRawAsync("""DELETE FROM "Relations"; UPDATE "Facts" SET "FoiId" = NULL""");
         var fact = Assert.Single(await store.ReadSegmentsAsync("owner", null, null, null, appId: appId));
         Assert.Equal(appId, fact.AppId);
         Assert.Null(fact.FoiId);

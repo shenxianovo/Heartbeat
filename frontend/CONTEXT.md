@@ -17,11 +17,11 @@ Dashboard 中按 Subject 展示当下状态的区域：Machine 展示 Current Ac
 _Avoid_: Device-only Current App Panel、全屏登录门禁、把 Hub 认证阶段显示成业务活动
 
 **Timeline（时间轴）**:
-按天回放的注意力线（ADR-019 主视图）：单一时间线跟随 system 前台段。simple / detailed 双模式，detailed 可拖拽缩放、看标题明细。
+按天回放的注意力线（ADR-019 主视图）：单一时间线跟随 `desktop-activity` 前台段。simple / detailed 双模式，detailed 可拖拽缩放、看标题明细。
 _Avoid_: Replay 泳道、多轨（那是 ADR-019 的展开态，未建）
 
 **Label Upgrade（标签升级）**:
-ADR-019 §2：渲染 system 段时若存在同 App 的重叠插件段，标签由窗口标题升级为插件语义（URL/页面）。按时间窗口判定，无覆盖的时段（含插件安装前全部历史）fallback 到 Title Formatter。纯展示层，不改数据。
+ADR-019 §2：渲染前台段时若存在同 App 的重叠详情段，标签由窗口标题升级为插件语义（URL/页面）。按时间窗口判定，无覆盖的时段（含插件安装前全部历史）fallback 到 Title Formatter。纯展示层，不改数据。
 已知局限：段选择按时间重叠占比，多浏览器窗口时后台窗口的插件段也是候选，可能升级成未在看的页面——窗口↔前台消歧未建（需要窗口身份与 system 标题的匹配）。
 
 **Lane（泳道）**:
@@ -37,23 +37,22 @@ Analytics 返回的结构化观测内容；Dashboard 按来源与观测语义读
 _Avoid_: 把一种视图固定为 Fact 唯一表示、为展示方便合并原始记录
 
 **本人事实视图**:
-对直接个人 Target 及明确使用者关联适用范围内 Facts 的私有回顾。原始 Segment 区间与有效覆盖分别呈现，不将不同来源的覆盖时长相加解释为注意力。
+对直接个人 FOI 及明确使用者关联适用范围内 Facts 的私有回顾。原始 Segment 区间与有效覆盖分别呈现，不将不同来源的覆盖时长相加解释为注意力。
 _Avoid_: 从 Owner 所有权自动关联历史、为视图裁剪或复制原始事实
 
 **Activity View（活动视图）**:
-对所选时间范围内活动的历史回顾；该范围内有活动的 Target 可见，与其当前在线状态无关。
-“当天经历”是与原 Dashboard 并存的 Activity View，以 Target 泳道与逐条记录回顾当日 Segment。
-尚未迁移的观察暂保留其已知设备或旧主体的历史归属。
+对所选时间范围内活动的历史回顾；该范围内有活动的 Object 可见，与其当前在线状态无关。
+“当天经历”是与原 Dashboard 并存的 Activity View，以 FOI UUID 分组与逐条记录回顾当日 Segment。未知历史保留未知。
 _Avoid_: 用当前在线状态过滤历史活动、把没有活动记录等同于当前离线
 
 **Activity Swimlanes（活动泳道）**:
-在同一时间坐标下按 Target 并列显示活动；上方全天总览的选区决定下方可见时间范围。
-System 的 Target 是设备；Browser 的应用上下文按设备与 App 产品作为相关观察解释，账号的独立活动直接排列。
-同一 Target 下不同 Observer 的事实各自保留；缩放不改变原始 Segment 的身份或边界。
+在同一时间坐标下按 FOI 并列显示活动；上方全天总览的选区决定下方可见时间范围。
+System 的 FOI 是机器；Browser 的 FOI 是跨设备的 App 产品；账号独立排列。
+同一 FOI 下不同 Collector 的事实各自保留；缩放不改变原始 Segment 的身份或边界。
 
 **Related Observation（相关观察）**:
 对同一设备、同一应用且时间重叠的补充观察，例如 Browser 对 System 前台活动的页面细节。
-System 使用设备 Target；Browser 使用应用上下文 Target，通过其 DeviceId 与 AppId 和 System 关联。
+以精确 Fact 关系中的机器和 App 对象 UUID 匹配，不从平台身份、名称或数字资料 ID 推断关系。
 相关性不等于确定的前台归因，多条候选可以并存，不能仅凭重叠断言用户正在看其中某一页面。
 
 **Title Formatter（标题归一化）**:
