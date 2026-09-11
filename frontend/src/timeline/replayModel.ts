@@ -8,7 +8,7 @@ import { intersectInterval, type Interval } from './timelineModel'
 export interface ReplaySeg {
   start: number
   end: number
-  source: string
+  source: string | null
   aspect?: string
   /** tooltip 主体（时间前缀由模型拼接）。 */
   label: string
@@ -29,7 +29,7 @@ export interface Lane {
 }
 
 export interface Track {
-  source: string
+  source: string | null
   aspect?: string
   lanes: Lane[]
 }

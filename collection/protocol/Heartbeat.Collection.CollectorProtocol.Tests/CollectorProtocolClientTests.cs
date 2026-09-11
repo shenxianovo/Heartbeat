@@ -10,6 +10,323 @@ public sealed class CollectorProtocolClientTests
     private static readonly TimeSpan DrainBudget = TimeSpan.FromMilliseconds(100);
 
     [Fact]
+    public async Task NativeFactWithoutSubjectOrStreamSurvivesOfflineRestartAndAcknowledgement()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-native-protocol-{Guid.NewGuid():N}");
+        var definition = new CollectorClientDefinition("native", new Dictionary<string, IReadOnlyList<int>>
+        {
+            ["facts.observation"] = [2]
+        }, null, []);
+        var fact = new CollectorFact("", Guid.CreateVersion7(), 7, null,
+            new CollectorSegmentFactTime(DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(2), true),
+            JsonSerializer.SerializeToElement(new { arbitrary = new[] { "retained", "complete" } }),
+            Guid.CreateVersion7(), new("account", "test", "owner"), "test.state", Kind: "segment");
+        try
+        {
+            var offline = new FakeBinding(root, [], fallbackOutcome: CollectorFactDeliveryStatus.Retry,
+                drainGrace: TimeSpan.FromMilliseconds(30));
+            await using (var first = new CollectorProtocolClient(definition, offline))
+            {
+                var result = await first.RunAsync(new NativePublishingApplication(fact));
+                Assert.Equal(1, result.PendingFacts);
+            }
+            var online = new FakeBinding(root, [], fallbackOutcome: CollectorFactDeliveryStatus.Committed);
+            await using (var restarted = new CollectorProtocolClient(definition, online))
+                Assert.True((await restarted.RunAsync(new IdleApplication())).IsFullyDrained);
+            Assert.NotEmpty(online.PublishedFacts);
+            var delivered = online.PublishedFacts[0];
+            Assert.Equal(Guid.Empty, delivered.StreamId);
+            Assert.Equal(fact.FactId, delivered.FactId);
+            Assert.Equal(7, delivered.Revision);
+            Assert.Equal("segment", delivered.Kind);
+            Assert.Null(delivered.Source);
+            Assert.True(Assert.IsType<CollectorSegmentFactTime>(delivered.Time).IsFinal);
+            Assert.Equal("complete", delivered.Payload.GetProperty("arbitrary")[1].GetString());
+            var afterAck = new FakeBinding(root, [], fallbackOutcome: CollectorFactDeliveryStatus.Committed);
+            await using (var restarted = new CollectorProtocolClient(definition, afterAck))
+                Assert.True((await restarted.RunAsync(new IdleApplication())).IsFullyDrained);
+            Assert.Empty(afterAck.PublishedFacts);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task NativeRevisionConflictsCannotReplaceDurableSnapshot()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-native-revision-{Guid.NewGuid():N}");
+        var definition = new CollectorClientDefinition("native", new Dictionary<string, IReadOnlyList<int>>
+        {
+            ["facts.observation"] = [2], ["facts.aspect"] = [1], ["facts.segment"] = [1]
+        }, null, []);
+        var fact = new CollectorFact("", Guid.CreateVersion7(), 2, null,
+            new CollectorSegmentFactTime(DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(2), false),
+            JsonSerializer.SerializeToElement(new { value = "initial" }),
+            Guid.CreateVersion7(), new("account", "test", "owner"), "test.state", Kind: "segment");
+        try
+        {
+            var binding = new FakeBinding(root, [], fallbackOutcome: CollectorFactDeliveryStatus.Committed);
+            await using var client = new CollectorProtocolClient(definition, binding);
+            var application = new NativeRevisionApplication(fact);
+            Assert.True((await client.RunAsync(application)).IsFullyDrained);
+            Assert.Equal(10, application.Rejections);
+            Assert.NotEmpty(binding.PublishedFacts);
+            Assert.All(binding.PublishedFacts, delivered =>
+            {
+                Assert.Equal(3, delivered.Revision);
+                var time = Assert.IsType<CollectorSegmentFactTime>(delivered.Time);
+                Assert.True(time.IsFinal);
+                Assert.Equal(DateTimeOffset.UnixEpoch.AddMinutes(1), time.End);
+            });
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task NativeOutboxCannotBeAcknowledgedByObservationV1()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-native-version-{Guid.NewGuid():N}");
+        var definition = new CollectorClientDefinition("native", new Dictionary<string, IReadOnlyList<int>>
+        {
+            ["facts.observation"] = [1], ["facts.aspect"] = [1], ["facts.event"] = [1]
+        }, null, []);
+        var fact = new CollectorFact("", Guid.CreateVersion7(), 1, null,
+            new CollectorEventFactTime(DateTimeOffset.UnixEpoch), JsonSerializer.SerializeToElement(new { value = "retained" }),
+            Guid.CreateVersion7(), new("account", "test", "owner"), "test.state", Kind: "event");
+        try
+        {
+            var old = new FakeBinding(root, [], fallbackOutcome: CollectorFactDeliveryStatus.Committed);
+            await using (var client = new CollectorProtocolClient(definition, old))
+                Assert.Equal(1, (await client.RunAsync(new NativePublishingApplication(fact))).PendingFacts);
+            Assert.Empty(old.PublishedFacts);
+            using (var persisted = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "collector-protocol-outbox.json"))))
+                Assert.Equal(4, persisted.RootElement.GetProperty("SchemaVersion").GetInt32());
+            var compatible = new FakeBinding(root, [], fallbackOutcome: CollectorFactDeliveryStatus.Committed);
+            definition = definition with { Capabilities = new Dictionary<string, IReadOnlyList<int>>
+            {
+                ["facts.observation"] = [2], ["facts.aspect"] = [1], ["facts.event"] = [1]
+            }};
+            await using (var client = new CollectorProtocolClient(definition, compatible))
+                Assert.True((await client.RunAsync(new IdleApplication())).IsFullyDrained);
+            Assert.NotEmpty(compatible.PublishedFacts);
+            Assert.All(compatible.PublishedFacts, delivered => Assert.Equal(fact.FactId, delivered.FactId));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task NativeCapacityBackpressureKeepsOriginalFactAcrossRestartWithoutInventedGap()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-native-capacity-{Guid.NewGuid():N}");
+        var definition = new CollectorClientDefinition("native", new Dictionary<string, IReadOnlyList<int>>
+        {
+            ["facts.observation"] = [2], ["facts.aspect"] = [1], ["facts.event"] = [1]
+        }, null, [], OutboxCapacity: 1);
+        var fact = new CollectorFact("", Guid.CreateVersion7(), 1, null,
+            new CollectorEventFactTime(DateTimeOffset.UnixEpoch), JsonSerializer.SerializeToElement(new { value = "first" }),
+            Guid.CreateVersion7(), new("account", "test", "owner"), "test.state", Kind: "event");
+        try
+        {
+            var offline = new FakeBinding(root, [], fallbackOutcome: CollectorFactDeliveryStatus.Retry,
+                drainGrace: TimeSpan.FromMilliseconds(30));
+            await using (var client = new CollectorProtocolClient(definition, offline))
+                Assert.Equal(1, (await client.RunAsync(new CapacityPublishingApplication(fact))).PendingFacts);
+            var online = new FakeBinding(root, [], fallbackOutcome: CollectorFactDeliveryStatus.Committed);
+            await using (var client = new CollectorProtocolClient(definition, online))
+                Assert.True((await client.RunAsync(new IdleApplication())).IsFullyDrained);
+            Assert.NotEmpty(online.PublishedFacts);
+            Assert.All(online.PublishedFacts, delivered => Assert.Equal(fact.FactId, delivered.FactId));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task PublishedSnapshotDoesNotBorrowMutableRelationsFromCallerOrPendingView()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-native-isolation-{Guid.NewGuid():N}");
+        var definition = new CollectorClientDefinition("native", new Dictionary<string, IReadOnlyList<int>>
+        {
+            ["facts.observation"] = [2], ["facts.aspect"] = [1], ["facts.event"] = [1]
+        }, null, []);
+        var fact = new CollectorFact("", Guid.CreateVersion7(), 1, null,
+            new CollectorEventFactTime(DateTimeOffset.UnixEpoch), JsonSerializer.SerializeToElement(new { value = "original" }),
+            Guid.CreateVersion7(), new("account", "test", "owner"), "test.state", Relations: [], Kind: "event");
+        try
+        {
+            var binding = new FakeBinding(root, [], fallbackOutcome: CollectorFactDeliveryStatus.Committed);
+            await using var client = new CollectorProtocolClient(definition, binding);
+            Assert.True((await client.RunAsync(new MutatingCallerApplication(fact))).IsFullyDrained);
+            Assert.NotEmpty(binding.PublishedFacts);
+            Assert.All(binding.PublishedFacts, delivered => Assert.Empty(delivered.Relations!));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    private sealed class MutatingCallerApplication(CollectorFact fact) : ICollectorProtocolApplication
+    {
+        public async ValueTask InitializeAsync(CollectorActivation activation, CancellationToken cancellationToken)
+        {
+            await activation.PublishAsync(fact, cancellationToken);
+            fact.Relations!.Add(null!);
+            Assert.Empty(Assert.Single(activation.PendingFacts).Relations!);
+            Assert.Single(activation.PendingFacts).Relations!.Add(null!);
+            Assert.Empty(Assert.Single(activation.PendingFacts).Relations!);
+        }
+        public ValueTask StartAsync(CollectorActivation activation, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        public ValueTask StopAsync(CollectorDrainContext drain, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
+    [Fact]
+    public async Task ReorderedRelationsAndMembersAreTheSamePublishedRevision()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-native-relations-{Guid.NewGuid():N}");
+        var definition = new CollectorClientDefinition("native", new Dictionary<string, IReadOnlyList<int>>
+        {
+            ["facts.observation"] = [2], ["facts.aspect"] = [1], ["facts.event"] = [1]
+        }, null, []);
+        var machine = new Heartbeat.Core.DTOs.Facts.ObservationObjectReference("machine", "heartbeat.device", "test-machine");
+        var app = new Heartbeat.Core.DTOs.Facts.ObservationObjectReference("app", "heartbeat.app", "test-app");
+        var fact = new CollectorFact("", Guid.CreateVersion7(), 1, null,
+            new CollectorEventFactTime(DateTimeOffset.UnixEpoch), JsonSerializer.SerializeToElement(new { value = "original" }),
+            Guid.CreateVersion7(), machine, "test.state", Relations:
+            [new("observed-on", [new("device", machine), new("app", app)]),
+             new("installed-on", [new("app", app), new("device", machine)])], Kind: "event");
+        try
+        {
+            var binding = new FakeBinding(root, [], fallbackOutcome: CollectorFactDeliveryStatus.Committed);
+            await using var client = new CollectorProtocolClient(definition, binding);
+            Assert.True((await client.RunAsync(new ReorderingRelationsApplication(fact))).IsFullyDrained);
+            Assert.NotEmpty(binding.PublishedFacts);
+            Assert.All(binding.PublishedFacts, delivered => Assert.Equal(1, delivered.Revision));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    private sealed class ReorderingRelationsApplication(CollectorFact fact) : ICollectorProtocolApplication
+    {
+        public async ValueTask InitializeAsync(CollectorActivation activation, CancellationToken cancellationToken)
+        {
+            await activation.PublishAsync(fact, cancellationToken);
+            var reordered = fact with { Relations = fact.Relations!.AsEnumerable().Reverse().Select(
+                relation => relation with { Members = relation.Members.AsEnumerable().Reverse().ToList() }).ToList() };
+            await activation.PublishAsync(reordered, cancellationToken);
+            var members = reordered.Relations![0].Members;
+            var appIndex = members.FindIndex(member => member.Role == "app");
+            members[appIndex] = members[appIndex] with { Object = members[appIndex].Object with { Key = "changed-app" } };
+            await Assert.ThrowsAsync<ArgumentException>(() => activation.PublishAsync(reordered, cancellationToken).AsTask());
+        }
+        public ValueTask StartAsync(CollectorActivation activation, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        public ValueTask StopAsync(CollectorDrainContext drain, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
+    private sealed class CapacityPublishingApplication(CollectorFact fact) : ICollectorProtocolApplication
+    {
+        public async ValueTask InitializeAsync(CollectorActivation activation, CancellationToken cancellationToken)
+        {
+            await activation.PublishAsync(fact, cancellationToken);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => activation.PublishAsync(
+                fact with { FactId = Guid.CreateVersion7() }, cancellationToken).AsTask());
+        }
+        public ValueTask StartAsync(CollectorActivation activation, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        public ValueTask StopAsync(CollectorDrainContext drain, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
+    [Fact]
+    public async Task NativeCacheCannotFillMissingObservationIdentityFromHistoricalFields()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-native-cache-identity-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, "collector-protocol-outbox.json");
+        var definition = new CollectorClientDefinition("native", new Dictionary<string, IReadOnlyList<int>>
+        {
+            ["facts.observation"] = [2]
+        }, null, []);
+        var fact = new CollectorFact("", Guid.CreateVersion7(), 1, null,
+            new CollectorEventFactTime(DateTimeOffset.UnixEpoch), JsonSerializer.SerializeToElement(new { value = "original" }),
+            Aspect: "test.state", Kind: "event");
+        var node = JsonSerializer.SerializeToNode(fact)!.AsObject();
+        node.Remove("CollectorId"); node.Remove("Foi"); node.Remove("Relations");
+        node["ObserverId"] = Guid.CreateVersion7();
+        node["Target"] = JsonSerializer.SerializeToNode(new { Kind = "device", Reference = "historical-machine" });
+        var messageId = Guid.CreateVersion7();
+        var contents = JsonSerializer.Serialize(new
+        {
+            SchemaVersion = 1,
+            State = new { Facts = new[] { new { MessageId = messageId, Fact = node } }, Gaps = Array.Empty<object>(), DeliveryOrder = new[] { messageId } }
+        });
+        File.WriteAllText(path, contents);
+        try
+        {
+            var binding = new FakeBinding(root, [], fallbackOutcome: CollectorFactDeliveryStatus.Committed);
+            await using var client = new CollectorProtocolClient(definition, binding);
+            await Assert.ThrowsAsync<InvalidDataException>(() => client.RunAsync(new IdleApplication()));
+            Assert.Empty(binding.PublishedFacts);
+            Assert.Equal(contents, File.ReadAllText(path));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    private sealed class NativeRevisionApplication(CollectorFact fact) : ICollectorProtocolApplication
+    {
+        public int Rejections { get; private set; }
+        public async ValueTask InitializeAsync(CollectorActivation activation, CancellationToken cancellationToken)
+        {
+            await activation.PublishAsync(fact, cancellationToken);
+            foreach (var invalid in new[]
+            {
+                fact with { Payload = JsonSerializer.SerializeToElement(new { value = "conflict" }) },
+                fact with { Source = "different" },
+                fact with { Time = new CollectorSegmentFactTime(DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(2), true) },
+                fact with { Revision = 3, CollectorId = Guid.CreateVersion7() },
+                fact with { Revision = 3, Foi = new("account", "test", "another") },
+                fact with { Revision = 3, Aspect = "test.changed" },
+                fact with { Revision = 3, Kind = "event", Time = new CollectorEventFactTime(DateTimeOffset.UnixEpoch) },
+                fact with { Revision = 3, Time = new CollectorSegmentFactTime(DateTimeOffset.UnixEpoch.AddSeconds(1), DateTimeOffset.UnixEpoch.AddMinutes(2), false) },
+                fact with { FactId = Guid.CreateVersion7(), CollectorId = null },
+                fact with { FactId = Guid.CreateVersion7(), Foi = null }
+            })
+            {
+                await Assert.ThrowsAsync<ArgumentException>(() => activation.PublishAsync(invalid, cancellationToken).AsTask());
+                Rejections++;
+            }
+            await activation.PublishAsync(fact with { Revision = 1 }, cancellationToken);
+            await activation.PublishAsync(fact, cancellationToken);
+            await activation.PublishAsync(fact with { Revision = 3,
+                Time = new CollectorSegmentFactTime(DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(1), true) }, cancellationToken);
+        }
+        public ValueTask StartAsync(CollectorActivation activation, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        public ValueTask StopAsync(CollectorDrainContext drain, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
+    private sealed class NativePublishingApplication(CollectorFact fact) : ICollectorProtocolApplication
+    {
+        public ValueTask InitializeAsync(CollectorActivation activation, CancellationToken cancellationToken) =>
+            activation.PublishAsync(fact, cancellationToken);
+        public ValueTask StartAsync(CollectorActivation activation, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        public ValueTask StopAsync(CollectorDrainContext drain, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
+    [Fact]
     public void DrainOutcomeCorpusMatchesClientVocabulary()
     {
         using var corpus = JsonDocument.Parse(File.ReadAllText(Path.Combine(
@@ -1710,21 +2027,21 @@ public sealed class CollectorProtocolClientTests
             CancellationToken cancellationToken) => ValueTask.FromResult(new CollectorClientInitialization(
                 Guid.CreateVersion7(),
                 Guid.CreateVersion7(),
-                Guid.CreateVersion7(),
-                "account",
+                definition.RequiredSubjectKind is null ? Guid.Empty : Guid.CreateVersion7(),
+                definition.RequiredSubjectKind ?? string.Empty,
                 1,
                 1,
                 JsonSerializer.SerializeToElement(new { }),
                 500,
                 1_048_576,
                 dataDirectory,
-                definition.Capabilities.ToDictionary(pair => pair.Key, _ => 1)));
+                definition.Capabilities.ToDictionary(pair => pair.Key, pair => pair.Value.Max())));
 
         public ValueTask<IReadOnlyDictionary<string, CollectorClientStream>> OpenStreamsAsync(
             long specRevision,
             IReadOnlyList<CollectorOutputBinding> outputs,
             CancellationToken cancellationToken) => ValueTask.FromResult<IReadOnlyDictionary<string, CollectorClientStream>>(
-            new Dictionary<string, CollectorClientStream>
+            outputs.Count == 0 ? new Dictionary<string, CollectorClientStream>() : new Dictionary<string, CollectorClientStream>
             {
                 ["activity"] = new(
                     "activity", Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "account",

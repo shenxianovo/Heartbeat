@@ -136,7 +136,8 @@ public sealed partial class CollectorRuntime
                 activationId,
                 helloMessageId,
                 package,
-                ActivationDeliveryCapability.Complete);
+                ActivationDeliveryCapability.Complete,
+                SelectedCapabilities(package, support!));
             var lifetime = new CollectorActivationLifetime(
                 new ExternalHostCollectorActivationLifetimeDriver(session),
                 session.FenceDeliveryAfterDeadline,

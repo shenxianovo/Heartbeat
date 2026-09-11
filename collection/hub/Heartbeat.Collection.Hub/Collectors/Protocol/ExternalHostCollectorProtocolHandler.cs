@@ -285,7 +285,7 @@ public sealed class ExternalHostCollectorProtocolHandler : IExternalHostProtocol
         SubjectReference subject;
         try
         {
-            subject = _subject();
+            subject = package.Manifest.Outputs.Count == 0 ? default : _subject();
         }
         catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
         {
@@ -394,7 +394,8 @@ public sealed class ExternalHostCollectorProtocolHandler : IExternalHostProtocol
             instance = new
             {
                 collectorInstanceId = session.Initialization.Instance.CollectorInstanceId,
-                subject = session.Initialization.Instance.Subject
+                subject = session.Initialization.Instance.Subject.SubjectId == Guid.Empty
+                    ? (SubjectReference?)null : session.Initialization.Instance.Subject
             },
             spec = new
             {
@@ -906,7 +907,8 @@ public sealed class ExternalHostCollectorProtocolHandler : IExternalHostProtocol
             ?? throw new JsonException("Empty protocol message.");
         if (root["body"]?["facts"] is JsonArray facts)
             foreach (var fact in facts.OfType<JsonObject>())
-                Heartbeat.Core.Facts.ObservationCompatibility.ReadOldEnvelope(fact, true);
+                if (fact["kind"] is null)
+                    Heartbeat.Core.Facts.ObservationCompatibility.ReadOldEnvelope(fact, true);
         return root.Deserialize<T>(JsonOptions) ?? throw new JsonException("Empty protocol message.");
     }
 

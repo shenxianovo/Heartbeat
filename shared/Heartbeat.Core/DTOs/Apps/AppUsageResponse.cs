@@ -4,7 +4,7 @@ namespace Heartbeat.Core.DTOs.Apps
 {
     public class AppUsageResponse : ObservationResponse
     {
-        public string Source { get; set; } = string.Empty;
+        public string? Source { get; set; }
         public string? Aspect { get; set; }
         /// <summary>段所属设备。聚合查询（不传 deviceId）时前端据此分设备泳道。</summary>
         public long DeviceId { get; set; }

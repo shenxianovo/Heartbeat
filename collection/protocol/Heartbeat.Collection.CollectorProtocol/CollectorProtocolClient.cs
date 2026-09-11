@@ -28,7 +28,7 @@ public sealed class CollectorProtocolClient(
         ArgumentNullException.ThrowIfNull(application);
         ValidateDefinition();
         var initialization = await binding.StartAsync(definition, cancellationToken).ConfigureAwait(false);
-        if (!string.Equals(
+        if (!string.IsNullOrWhiteSpace(definition.RequiredSubjectKind) && !string.Equals(
                 initialization.SubjectKind,
                 definition.RequiredSubjectKind,
                 StringComparison.Ordinal))
@@ -282,7 +282,11 @@ public sealed class CollectorProtocolClient(
     }
 
     internal IReadOnlyList<CollectorFact> PendingFacts =>
-        _outbox?.Facts.Select(item => item.Fact).ToArray() ?? [];
+        _outbox?.Facts.Select(item => item.Fact with
+        {
+            Payload = item.Fact.Payload.Clone(),
+            Relations = item.Fact.Relations is null ? null : Heartbeat.Core.Facts.ObservationContent.Copy(item.Fact.Relations)
+        }).ToArray() ?? [];
 
     internal async ValueTask PublishAsync(CollectorFact fact, CancellationToken cancellationToken)
         => await PublishBatchAsync([fact], cancellationToken).ConfigureAwait(false);
@@ -313,7 +317,8 @@ public sealed class CollectorProtocolClient(
         if (facts.Count == 0)
             return;
         foreach (var fact in facts)
-            EnsureBinding(fact.BindingId);
+            if (fact.Kind is null || !string.IsNullOrEmpty(fact.BindingId))
+                EnsureBinding(fact.BindingId);
         await _deliveryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -438,15 +443,19 @@ public sealed class CollectorProtocolClient(
             pending = _outbox!.FirstFact;
             if (pending is null)
                 return CollectorDeliveryStepResult.Progressed;
-            fact = Bind(pending.Fact, _activation!.Stream(pending.Fact.BindingId));
+            fact = Bind(pending.Fact, pending.Fact.Kind is not null && string.IsNullOrEmpty(pending.Fact.BindingId)
+                ? null : _activation!.Stream(pending.Fact.BindingId));
         }
         finally
         {
             _deliveryGate.Release();
         }
+        if (fact.Kind is not null &&
+            (!_activation!.Initialization.SelectedCapabilities.TryGetValue("facts.observation", out var observationVersion) || observationVersion < 2))
+            throw new InvalidOperationException("Hub did not negotiate facts.observation v2; Fact remains in the outbox.");
         if (fact.Relations is not null && !_activation!.Initialization.SelectedCapabilities.ContainsKey("facts.observation"))
             throw new InvalidOperationException("Hub did not negotiate facts.observation; Fact remains in the outbox.");
-        if (fact.Aspect is not null && !_activation!.Initialization.SelectedCapabilities.ContainsKey("facts.aspect"))
+        if (fact.Kind is null && fact.Aspect is not null && !_activation!.Initialization.SelectedCapabilities.ContainsKey("facts.aspect"))
             throw new InvalidOperationException("Hub did not negotiate facts.aspect; Fact remains in the outbox.");
         var acknowledgement = await binding.PublishAsync(
             pending.MessageId,
@@ -785,21 +794,19 @@ public sealed class CollectorProtocolClient(
     private void ValidateDefinition()
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(definition.ArtifactId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(definition.RequiredSubjectKind);
-        if (definition.Outputs.Count == 0 ||
-            definition.Outputs.Any(output => string.IsNullOrWhiteSpace(output.BindingId) ||
+        if (definition.Outputs.Any(output => string.IsNullOrWhiteSpace(output.BindingId) ||
                                              string.IsNullOrWhiteSpace(output.OutputId)) ||
             definition.Outputs.GroupBy(output => output.BindingId, StringComparer.Ordinal).Any(group => group.Count() != 1))
             throw new ArgumentException("Collector outputs must have unique non-empty binding IDs.");
     }
 
-    private static BoundCollectorFact Bind(CollectorFact fact, CollectorClientStream stream) => new(
-        stream.StreamId,
+    private static BoundCollectorFact Bind(CollectorFact fact, CollectorClientStream? stream) => new(
+        stream?.StreamId ?? Guid.Empty,
         fact.FactId,
         fact.Revision,
         fact.ObservedAt,
         fact.Time,
-        fact.Payload.Clone(), fact.CollectorId, fact.Foi, fact.Aspect, fact.Relations is null ? null : Heartbeat.Core.Facts.ObservationContent.Copy(fact.Relations));
+        fact.Payload.Clone(), fact.CollectorId, fact.Foi, fact.Aspect, fact.Relations is null ? null : Heartbeat.Core.Facts.ObservationContent.Copy(fact.Relations), fact.Kind, fact.Source);
 
     public async ValueTask DisposeAsync()
     {

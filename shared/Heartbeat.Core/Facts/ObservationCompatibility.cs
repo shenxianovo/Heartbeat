@@ -72,8 +72,21 @@ public static class ObservationCompatibility
 
 public static class ObservationContent
 {
-    public static bool Equal(List<FactRelationSnapshot>? first, List<FactRelationSnapshot>? second) =>
-        JsonElement.DeepEquals(JsonSerializer.SerializeToElement(first), JsonSerializer.SerializeToElement(second));
+    public static bool Equal(List<FactRelationSnapshot>? first, List<FactRelationSnapshot>? second)
+    {
+        if (first is null || second is null) return first is null && second is null;
+        // Relation/member order carries no observation meaning; identity and role still do.
+        static string Key(FactRelationSnapshot relation) => JsonSerializer.Serialize(new
+        {
+            relation.Kind,
+            Members = relation.Members.OrderBy(member => member.Role, StringComparer.Ordinal)
+                .ThenBy(member => member.Object.Kind, StringComparer.Ordinal)
+                .ThenBy(member => member.Object.Scope, StringComparer.Ordinal)
+                .ThenBy(member => member.Object.Key, StringComparer.Ordinal)
+        });
+        return first.Select(Key).Order(StringComparer.Ordinal)
+            .SequenceEqual(second.Select(Key).Order(StringComparer.Ordinal), StringComparer.Ordinal);
+    }
 
     public static List<FactRelationSnapshot> Copy(List<FactRelationSnapshot>? relations) =>
         relations?.Select(relation => new FactRelationSnapshot(relation.Kind, [.. relation.Members])).ToList() ?? [];

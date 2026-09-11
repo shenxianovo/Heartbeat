@@ -465,6 +465,57 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
             _entries[source] = new CollectorRegistration(true, null, declarationJson, version);
     }
 
+    [Fact]
+    public async Task NativeExternalHostPublishesWithoutLegacySubjectOrStream()
+    {
+        await using var fixture = await HandlerFixture.CreateAsync(native: true);
+        var session = await fixture.ReadyAsync();
+        Assert.Equal(Guid.Empty, session.StreamId);
+        var instance = Assert.Single(fixture.Runtime.ListInstances());
+        var incomplete = await fixture.TryPublishAsync(session, "incomplete-native", fact =>
+        {
+            fact.Remove("streamId");
+            fact["kind"] = "segment";
+            fact["observerId"] = instance.CollectorInstanceId;
+            fact["target"] = JsonSerializer.SerializeToNode(new { kind = "device", reference = Guid.NewGuid().ToString("D") });
+            fact["aspect"] = "reference.segment";
+        });
+        Assert.Equal(400, incomplete.StatusCode);
+        Assert.Empty(fixture.Runtime.ReadPendingFacts());
+        var otherSession = await fixture.ReadyAsync(SecondHostIdentity);
+        var observers = new[] { Guid.NewGuid(), Guid.NewGuid() };
+        var identities = new[] { Guid.NewGuid(), Guid.NewGuid() };
+        var sessions = new[] { session, otherSession };
+        for (var index = 0; index < sessions.Length; index++)
+        {
+            var response = await fixture.TryPublishAsync(sessions[index], "native", fact =>
+            {
+                fact.Remove("streamId");
+                fact["factId"] = identities[index];
+                fact["kind"] = "segment";
+                fact["collectorId"] = observers[index];
+                fact["foi"] = JsonSerializer.SerializeToNode(new { kind = "account", scope = "reference", key = "test-account" });
+                fact["aspect"] = "reference.segment";
+                fact["relations"] = new JsonArray();
+            });
+            Assert.Equal(200, response.StatusCode);
+            using var acknowledgement = JsonDocument.Parse(response.Body);
+            Assert.Equal("committed", acknowledgement.RootElement.GetProperty("body").GetProperty("results")[0].GetProperty("status").GetString());
+        }
+        await fixture.RestartHostAsync();
+        Assert.Equal(Guid.Empty, fixture.Runtime.GetInstance(instance.CollectorInstanceId).Subject.SubjectId);
+        var pending = fixture.Runtime.ReadPendingFacts();
+        Assert.Equal(identities.Order(), pending.Select(item => item.Observation!.Id).Order());
+        Assert.Equal(observers.Order(), pending.Select(item => item.Observation!.CollectorId).Order());
+        Assert.All(pending, item => { Assert.Null(item.Stream); Assert.True(item.IsFinal); });
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Runtime.RemoveInstanceAsync(instance.CollectorInstanceId).AsTask());
+        fixture.Runtime.ConfirmUploadedFacts([pending[0]]);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Runtime.RemoveInstanceAsync(instance.CollectorInstanceId).AsTask());
+        fixture.Runtime.ConfirmUploadedFacts([pending[1]]);
+        await fixture.Runtime.RemoveInstanceAsync(instance.CollectorInstanceId);
+        Assert.Empty(fixture.Runtime.ReadPendingFacts());
+    }
+
     private sealed class HandlerFixture : IAsyncDisposable
     {
         public const string DefaultHostIdentity = "external-host-a";
@@ -480,6 +531,7 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
         {
             _packageCopy = packageCopy;
             Package = LocalCollectorPackage.Load(packageCopy.Path);
+            if (Package.Manifest.Outputs.Count == 0) Subject = default;
             Installations = new CollectorPackageInstallations(
                 Path.Combine(_directory.Path, "collector-packages"));
             Reference = new CollectorPackageReference(
@@ -516,7 +568,8 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
             bool install = true,
             string driver = "externalHost",
             bool createDefaultInstance = true,
-            string factKind = "segment")
+            string factKind = "segment",
+            bool native = false)
         {
             var copy = ReferenceCollectorPackageCopy.Create(Path.Combine(
                 AppContext.BaseDirectory,
@@ -534,6 +587,13 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
                 copy.WriteManifest(manifest);
                 manifest = copy.ReadManifest();
             }
+            if (native)
+            {
+                manifest["outputs"] = new JsonArray();
+                manifest["supportedCapabilities"]!["facts.observation"] = new JsonArray(1, 2);
+                manifest.AsObject().Remove("observationDeclaration");
+                manifest["defaultInstance"]!.AsObject().Remove("subjectKind");
+            }
             copy.WriteManifest(manifest);
             return Task.FromResult(new HandlerFixture(copy, install, createDefaultInstance));
         }
@@ -546,7 +606,8 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
             Runtime,
             new RecordingDeclarationStore(),
             Installations,
-            () => Subject);
+            () => Subject.SubjectId == Guid.Empty
+                ? throw new InvalidOperationException("Native initialization must not request a host Subject.") : Subject);
 
         /// <summary>重启宿主：进程内状态全部丢弃，只留下磁盘上的 Runtime state 与 Installation。</summary>
         public async Task RestartHostAsync()
@@ -656,7 +717,7 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
                 body = new
                 {
                     specRevision,
-                    bindings = new[]
+                    bindings = Package.Manifest.Outputs.Count == 0 ? [] : new[]
                     {
                         new
                         {
@@ -670,7 +731,7 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
             Assert.Equal(200, streams.StatusCode);
             using var opened = JsonDocument.Parse(streams.Body);
             // streams 是 bindingId -> Stream 的映射，不是数组。
-            var streamId = Guid.Parse(opened.RootElement
+            var streamId = Package.Manifest.Outputs.Count == 0 ? Guid.Empty : Guid.Parse(opened.RootElement
                 .GetProperty("body").GetProperty("streams")
                 .GetProperty("activity").GetProperty("streamId").GetString()!);
 

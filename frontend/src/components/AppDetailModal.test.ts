@@ -34,6 +34,14 @@ const nextDay: CalendarWindowEnvelope<'day'> = Object.freeze({
   endExclusive: '2026-03-10T04:00:00Z',
 })
 
+const observedMachine = { id: 'machine', kind: 'machine', scope: 'heartbeat.device', key: 'machine' }
+const observedApp = { id: 'app', kind: 'app', scope: 'heartbeat.app', key: 'browser' }
+const observationRelations = [{ kind: 'observed-on', members: [
+  { role: 'device', object: observedMachine }, { role: 'app', object: observedApp },
+] }]
+const desktopEvidence = { foi: observedMachine, relations: observationRelations, aspect: 'desktop-activity' }
+const pageEvidence = { foi: observedApp, relations: observationRelations, aspect: 'selected-page' }
+
 function detailContext(
   day: CalendarWindowEnvelope<'day'>,
   correlationIdentity: string,
@@ -53,7 +61,7 @@ describe('AppDetailModal Local Calendar Window adapter', () => {
     const identityKey = 'https://example.com/page'
     const title = 'Example page'
     vi.mocked(fetchPublicSegments).mockResolvedValueOnce([{
-      deviceId: 7, appId: 7, source: 'browser', identityKey, title,
+      ...pageEvidence, deviceId: 7, appId: 7, source: 'browser', identityKey, title,
       origin, payload: { identityKey, title, attributes },
       startTime: new Date('2026-03-08T06:00:00Z'),
       endTime: new Date('2026-03-08T07:00:00Z'),
@@ -63,7 +71,7 @@ describe('AppDetailModal Local Calendar Window adapter', () => {
         username: 'alice', deviceId: 7, calendarContext: springContext,
         app: { appId: 7, appName: 'Google Chrome', totalSeconds: 3600 },
         usageData: [{
-          deviceId: 7, appId: 7, appKey: 'chrome', title: 'Example page - Google Chrome',
+          ...desktopEvidence, deviceId: 7, appId: 7, appKey: 'chrome', title: 'Example page - Google Chrome',
           startTime: new Date('2026-03-08T06:00:00Z'), endTime: new Date('2026-03-08T07:00:00Z'),
         }] as never[],
         devices: [], isProvisional: false,
@@ -196,7 +204,7 @@ describe('AppDetailModal Local Calendar Window adapter', () => {
         calendarContext: springContext,
         app: { appId: 7, appName: 'Code', totalSeconds: 3600 },
         usageData: [{
-          deviceId: 7,
+          ...desktopEvidence, deviceId: 7,
           appId: 7,
           appKey: 'browser',
           appName: 'Browser',
@@ -218,7 +226,7 @@ describe('AppDetailModal Local Calendar Window adapter', () => {
     expect(fetchPublicSegments).toHaveBeenCalledTimes(2)
 
     resolveNew([{
-      source: 'browser',
+      ...pageEvidence, source: 'browser',
       identityKey: 'new-page',
       title: 'New page',
       startTime: new Date('2026-03-08T06:00:00Z'),
@@ -226,7 +234,7 @@ describe('AppDetailModal Local Calendar Window adapter', () => {
     }] as Segments)
     await flushPromises()
     resolveOld([{
-      source: 'browser',
+      ...pageEvidence, source: 'browser',
       identityKey: 'old-page',
       title: 'Old page',
       startTime: new Date('2026-03-08T06:00:00Z'),
@@ -295,5 +303,58 @@ it('keeps account objects separate without inventing device identities', async (
   expect(replay.text()).toContain('Second account')
   expect(replay.text()).not.toContain('设备 0')
   expect(replay.findAll('[title]').length).toBe(2)
+  wrapper.unmount()
+})
+
+
+it('replays streamless observations from two collectors without hiding their unknown source', async () => {
+  vi.mocked(fetchPublicSegments).mockResolvedValueOnce(['collector-a', 'collector-b'].map((collectorId, i) => ({
+    id: `native-${i}`, streamId: null, factId: null, collectorId, source: null, aspect: 'selected-page',
+    foi: { id: 'browser', kind: 'app', scope: 'heartbeat.app', key: 'browser', name: 'Browser' },
+    title: `Independent page ${i}`, payload: { attributes: { windowId: 1, url: `https://example.com/${i}` } },
+    startTime: new Date('2026-03-08T06:00:00Z'), endTime: new Date('2026-03-08T07:00:00Z'),
+  })) as never[])
+  const wrapper = shallowMount(AppDetailModal, {
+    props: { username: 'alice', deviceId: 0, calendarContext: springContext,
+      app: { appId: 7, appName: 'Browser', totalSeconds: 0 }, isProvisional: false, devices: [], usageData: [] },
+    global: { renderStubDefaultSlot: true, stubs: { AppIcon: true } },
+  })
+  await flushPromises()
+  const replay = wrapper.findAll('section')[0]!
+  expect(replay.findAll('[title]')).toHaveLength(2)
+  expect(replay.text()).toContain('未知来源')
+  expect(replay.findAll('[title]').map(bar => bar.attributes('title'))).toEqual([
+    expect.stringContaining('Independent page 0'), expect.stringContaining('Independent page 1'),
+  ])
+  wrapper.unmount()
+})
+
+
+it.each(['account-location', 'unlinked-page', 'other-device'])('does not upgrade foreground labels from %s observations', async kind => {
+  const machine = { id: 'machine-a', kind: 'machine', scope: 'heartbeat.device', key: 'machine-a' }
+  const app = { id: 'browser', kind: 'app', scope: 'heartbeat.app', key: 'browser' }
+  const relations = (device = machine) => [{ kind: 'observed-on', members: [
+    { role: 'device', object: device }, { role: 'app', object: app },
+  ] }]
+  vi.mocked(fetchPublicSegments).mockResolvedValueOnce([{
+    id: 'candidate', collectorId: 'collector', source: null,
+    aspect: kind === 'account-location' ? kind : 'selected-page', foi: app,
+    relations: kind === 'unlinked-page' ? [] : relations(kind === 'other-device' ? { ...machine, id: 'machine-b' } : machine),
+    title: 'Unrelated observation', identityKey: 'unrelated',
+    payload: { attributes: { url: 'https://unrelated.example/' } },
+    startTime: new Date('2026-03-08T06:00:00Z'), endTime: new Date('2026-03-08T07:00:00Z'),
+  }] as never[])
+  const wrapper = shallowMount(AppDetailModal, {
+    props: { username: 'alice', deviceId: 0, calendarContext: springContext,
+      app: { appId: 7, appName: 'Browser', totalSeconds: 3600 }, isProvisional: false, devices: [],
+      usageData: [{ appId: 7, aspect: 'desktop-activity', source: null, foi: machine, relations: relations(),
+        title: 'Actual foreground', startTime: new Date('2026-03-08T06:00:00Z'), endTime: new Date('2026-03-08T07:00:00Z') }] as never[] },
+    global: { renderStubDefaultSlot: true, stubs: { AppIcon: true } },
+  })
+  await flushPromises()
+  const titles = wrapper.findAll('section')[1]!
+  expect(titles.text()).toContain('Actual foreground')
+  expect(titles.text()).not.toContain('Unrelated observation')
+  expect(wrapper.findAll('section')[0]!.findAll('[title]').some(bar => bar.attributes('title')!.includes('Unrelated observation'))).toBe(true)
   wrapper.unmount()
 })

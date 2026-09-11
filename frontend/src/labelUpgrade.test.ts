@@ -4,11 +4,11 @@ import { overlapMs, upgradeBreakdown, type PluginSeg, type SystemSeg } from './l
 const T = 1_000_000_000_000 // 任意基准时刻
 
 function sys(start: number, end: number, title = 'win title'): SystemSeg {
-  return { start: T + start, end: T + end, appName: 'msedge', title }
+  return { contextKey: 'machine/app', start: T + start, end: T + end, appName: 'msedge', title }
 }
 
 function page(start: number, end: number, key: string, title = 'page', url?: string): PluginSeg {
-  return { start: T + start, end: T + end, identityKey: key, title, url: url ?? key }
+  return { contextKey: 'machine/app', start: T + start, end: T + end, identityKey: key, title, url: url ?? key }
 }
 
 /** 直通 fallback：primary = 原始标题。 */

@@ -83,7 +83,7 @@ namespace Heartbeat.Server.Services
                     StreamId = x.StreamId,
                     FactId = x.FactId,
                     Revision = x.Revision,
-                    Origin = x.Stream.Origin
+                    Origin = x.Stream != null ? x.Stream.Origin : null
                 });
             return await new ObservationQuery(_db).Read(ownerId, result);
         }

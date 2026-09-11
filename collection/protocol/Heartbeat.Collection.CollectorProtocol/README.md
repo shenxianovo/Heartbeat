@@ -25,5 +25,19 @@ dotnet test collection/protocol/Heartbeat.Collection.CollectorProtocol.Tests
 [Collection Context](../../CONTEXT.md)，决策见 [ADR-040](../../../docs/adr/040-collector-runtime-and-protocol-foundation.md)，
 跨语言行为见 [Conformance Suite](../conformance/README.md)。
 
-Fact 的 ObserverId 与 Target 在 typed/InProcess/stdio/outbox 中原样传递；兼容消费者与退出门槛见
-[System Observer/Target 实施记录](../../../docs/architecture/system-observation-targets.md)。
+## 独立观测发布
+
+`CollectorFact` / `BoundCollectorFact` 末尾的 `Kind` 显式选择独立观测契约，支持 `segment`、`event`。
+事实填写稳定 `FactId`、`CollectorId`、`Foi`、`Aspect`、单调 `Revision`、家族 `Time`，
+`Payload` 原样承载完整 Result；`Source` 可空，`Relations` 默认空列表。
+`CollectorSegmentFactTime.IsFinal` 仍是本地终态和准确 ACK 的一部分，不能重开已终结的事实。
+
+没有交付分组时，Definition 使用 `RequiredSubjectKind: null`、`Outputs: []`，Fact 使用
+`BindingId: ""`。Binding 收到 `StreamId: Guid.Empty`，stdio 不写 streamId；这不会创建旧 Subject/Stream。
+需要 Gap 的 Collector 仍声明自己的交付 Binding，Fact 的 Kind/FOI/身份不从该分组推断。
+无分组 outbox 满时施加背压，调用方保留未接纳观测以便重试；不会制造无归属 Gap。
+
+原生事实要求协商 `facts.observation: 2`。v1 Hub 无法确认新事实，SDK 保持其待发状态；
+持有独立事实的 outbox/dead-letter 使用 schema 4，旧 SDK 应拒绝未知版本并保留原文件。
+SDK 在发布时复制完整快照，拒绝同版本内容冲突与固定字段变更；低版本不覆盖高版本。
+不传 Kind 的既有绑定调用方式暂时保留，供尚未迁移生产者排空和逐项切换。

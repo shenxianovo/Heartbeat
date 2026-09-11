@@ -37,7 +37,23 @@ var catalogPath = Path.Combine(
     builder.Environment.ContentRootPath, "AppCatalog", "app-catalog.json");
 var builtInCatalog = AppCatalogLoader.LoadFile(catalogPath);
 
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options =>
+{
+    // JsonElement is arbitrary JSON, not an object DTO. Keep primitives and arrays
+    // opaque in generated clients instead of constructing a lossy JsonElement class.
+    options.CreateSchemaReferenceId = type => (Nullable.GetUnderlyingType(type.Type) ?? type.Type) == typeof(System.Text.Json.JsonElement)
+        ? null : Microsoft.AspNetCore.OpenApi.OpenApiOptions.CreateDefaultSchemaReferenceId(type);
+    options.AddSchemaTransformer((schema, context, _) =>
+    {
+        if ((Nullable.GetUnderlyingType(context.JsonTypeInfo.Type) ?? context.JsonTypeInfo.Type) == typeof(System.Text.Json.JsonElement))
+        {
+            schema.Type = null;
+            schema.Properties = null;
+            schema.AdditionalProperties = null;
+        }
+        return Task.CompletedTask;
+    });
+});
 builder.Services.AddControllers();
 builder.Services.AddDbContext<AppDbContext>(o =>
     o.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))

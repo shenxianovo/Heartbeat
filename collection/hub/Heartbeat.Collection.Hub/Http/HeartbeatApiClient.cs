@@ -23,6 +23,21 @@ namespace Heartbeat.Collection.Hub.Http
         public async Task<ApiResult> UploadFactsAsync(FactUploadRequest dto, CancellationToken ct = default)
             => await PostAsync(Url("facts"), dto, "事实上传", ct);
 
+        public async Task<ApiResult> UploadObservationsAsync(ObservationUploadRequest dto, CancellationToken ct = default)
+            => await PostAsync(Url("observations"), dto, "观测上传", ct);
+
+        public async Task<ApiResult> UploadFactsAsync(IReadOnlyList<Heartbeat.Collection.Hub.Upload.FactUploadItem> items, CancellationToken ct = default)
+        {
+            var native = items.Where(item => item.Observation is not null).ToList();
+            if (native.Count > 0)
+            {
+                var result = await UploadObservationsAsync(Heartbeat.Collection.Hub.Upload.FactUploadItem.ObservationRequest(native), ct);
+                if (!result.Success) return result;
+            }
+            var legacy = items.Where(item => item.Observation is null).ToList();
+            return legacy.Count == 0 ? ApiResult.Ok : await UploadFactsAsync(Heartbeat.Collection.Hub.Upload.FactUploadItem.Request(legacy), ct);
+        }
+
         public async Task<ApiResult> SendHeartbeatAsync(DeviceStatusRequest dto, CancellationToken ct = default)
             => await PostAsync(Url("devices/heartbeat"), dto, "状态上传", ct);
 

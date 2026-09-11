@@ -60,3 +60,21 @@
 - 移除兼容代码前先保留对应 fixture；移除后把本行改为已退役记录或在 ADR/issue 中留下结果。
 - “个人部署只有一个用户”可以缩短支持窗口，但仍需根据真实本地文件和已安装客户端裁决，不能
   仅按代码提交日期猜测。
+
+### 独立观测交付（Observations Ticket 02，2026-09-11）
+
+- 当前通用接口以 `Kind != null` 显式选择独立事实，`CollectorFact`、`BoundCollectorFact`、
+  `FactSubmission` 和协议 wire 的 `Payload/payload` 是完整 Result 的兼容名称；不规范化未知原生结果。
+  HTTP `ObservationSnapshot` 只使用 `Result/result`。Runtime journal 的 `Payload` 同样是一份原始结果，
+  没有新旧双写或第二份活动存储；`DeliveryInstanceId` 仅记录 Runtime 本地保管归属，
+  不等同具体 Observer 的 `CollectorId`；本地 `IsFinal/ObservedAt` 用于终态和准确 ACK，不进入 HTTP 事实契约。
+- `Kind == null` 的旧协议输入在 Runtime 明确适配；历史 SDK schema 1–3、Runtime schema 1–8 继续读取，
+  当前原生 outbox/dead-letter 为 schema 4、Runtime 为 schema 9。新缓存必须由理解 `facts.observation: 2`
+  的包处理；InProcess 与 ManagedProcess 初始化/回退前检查缓存，ExternalHost 协商拒绝原生 v1 发布。
+- 兼容消费者仍包括未切换的 System、Browser、VRChat（Tickets 04–06）、离线旧 SDK/outbox、
+  Runtime 和旧 `/api/v1/facts` 缓存。Ticket 03 验证完整旧状态升级/接管矩阵；本项的通用发布示例不代表
+  第一方采集器已迁移。移除门槛：04–06 实际生产入口全切换，03 完成版本/缓存盘点与原身份重放证据，
+  pending 归零，owner 明确并结束最长离线/回退窗口。移除时运行协议三执行方式、缓存重启、Gap、
+  真实 HTTP/原始读取和迟到 ACK 回归；此前保留必要旧读取入口。
+- 无交付 Binding 的原生 SDK outbox 满时背压并保留既有数据，调用方保留尚未接纳的观测以重试。
+  有实际 Binding 的容量丢失继续形成稳定 Gap；分组不决定原生 Fact Id、FOI 或 Kind。

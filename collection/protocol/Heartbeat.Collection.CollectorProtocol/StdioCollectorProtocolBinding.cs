@@ -92,7 +92,7 @@ public sealed class StdioCollectorProtocolBinding : ICollectorProtocolBinding
             var initializeMessageId = ReadGuid(initialize.RootElement, "messageId");
             var initializeBody = RequireObject(initialize.RootElement, "body");
             var instance = RequireObject(initializeBody, "instance");
-            var subject = RequireObject(instance, "subject");
+            var hasSubject = instance.TryGetProperty("subject", out var subject) && subject.ValueKind == JsonValueKind.Object;
             var spec = RequireObject(initializeBody, "spec");
             var config = RequireObject(spec, "config");
             var limits = RequireObject(initializeBody, "limits");
@@ -100,8 +100,8 @@ public sealed class StdioCollectorProtocolBinding : ICollectorProtocolBinding
             var initialization = new CollectorClientInitialization(
                 _activationId,
                 ReadGuid(instance, "collectorInstanceId"),
-                ReadGuid(subject, "subjectId"),
-                ReadString(subject, "kind"),
+                hasSubject ? ReadGuid(subject, "subjectId") : Guid.Empty,
+                hasSubject ? ReadString(subject, "kind") : string.Empty,
                 ReadPositiveLong(spec, "revision"),
                 ReadPositiveInt(config, "version"),
                 config.GetProperty("value").Clone(),
@@ -487,7 +487,9 @@ public sealed class StdioCollectorProtocolBinding : ICollectorProtocolBinding
 
     private static object WireFact(BoundCollectorFact fact) => new
     {
-        streamId = fact.StreamId,
+        streamId = fact.StreamId == Guid.Empty ? (Guid?)null : fact.StreamId,
+        kind = fact.Kind,
+        source = fact.Source,
         factId = fact.FactId,
         revision = fact.Revision,
         observedAt = fact.ObservedAt is null ? null : Timestamp(fact.ObservedAt.Value),

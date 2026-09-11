@@ -39,13 +39,14 @@ function objectName(id: string) {
   return object?.name || object?.key || '未知对象'
 }
 function details(fact: PersonFactPage['items'][number]['fact']) {
-  if (fact.occurredAt) {
-    const { payload: _payload, ...identityAndTime } = fact
-    return identityAndTime
+  if (fact.aspect === 'input') {
+    return Object.fromEntries(Object.entries(fact).filter(([key]) => key !== 'payload' && key !== 'result'))
   }
   return fact
 }
-function title(payload: unknown) {
+function title(fact: PersonFactPage['items'][number]['fact']) {
+  if (!['desktop-activity', 'selected-page', 'account-location', 'activity'].includes(fact.aspect ?? '')) return '观测事实'
+  const payload = fact.payload
   return payload && typeof payload === 'object' && 'title' in payload && typeof payload.title === 'string' ? payload.title : '观测事实'
 }
 async function run(action: () => Promise<void>) {
@@ -148,16 +149,16 @@ onMounted(() => run(refresh))
         </form>
         <p class="hint">各来源的事实可能同时发生。Browser、VRChat 和 System 时长不能相加解释为注意力。</p>
         <template v-if="page">
-          <p aria-live="polite">{{ page.totalCount }} 条事实 <span v-for="source in page.sources" :key="source.source" class="source-count">{{ source.source }}：{{ source.count }}</span></p>
+          <p aria-live="polite">{{ page.totalCount }} 条事实 <span v-for="source in page.sources" :key="source.source ?? ''" class="source-count">{{ source.source ?? '未提供来源' }}：{{ source.count }}</span></p>
           <article v-for="item in page.items" :key="item.fact.id ?? undefined" class="fact">
-            <h3>{{ title(item.fact.payload) }}</h3><p class="hint">{{ item.fact.source }} · {{ item.fact.foi?.name || item.fact.foi?.key || '未知对象' }}</p>
+            <h3>{{ title(item.fact) }}</h3><p class="hint">{{ item.fact.source ?? '未提供来源' }} · {{ item.fact.foi?.name || item.fact.foi?.key || '未知对象' }}</p>
             <template v-if="item.fact.start">
               <p>原始区间：{{ display(item.fact.start) }} → {{ display(item.fact.end) }}</p>
               <p>有效覆盖：{{ item.effectiveSeconds }} 秒</p>
               <ul><li v-for="range in item.effectiveIntervals" :key="range.start" :title="`${range.start} / ${range.end}`">{{ display(range.start) }} → {{ display(range.end) }}</li></ul>
             </template>
             <p v-else>发生时刻：{{ display(item.fact.occurredAt) }}</p>
-            <details><summary>{{ item.fact.occurredAt ? '事实身份与时间' : '原始事实详情' }}</summary><pre>{{ JSON.stringify(details(item.fact), null, 2) }}</pre></details>
+            <details><summary>{{ item.fact.aspect === 'input' ? '事实身份与时间' : '原始事实详情' }}</summary><pre>{{ JSON.stringify(details(item.fact), null, 2) }}</pre></details>
           </article>
           <p v-if="!page.items.length" class="hint">这个范围内没有适用事实。</p>
           <div class="actions"><Button variant="glass" :disabled="busy || offset === 0" @click="run(async () => { offset = Math.max(0, offset - 20); await history() })">上一页</Button>

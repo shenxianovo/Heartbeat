@@ -148,7 +148,7 @@ namespace Heartbeat.Server.Services
         /// <summary>迁移种子对应的进程内副本：DB 不可用路径（纯投影测试）与解释器测试的基准。</summary>
         public static DepthTables Seeds { get; } = new(SeedDeclarations.All);
 
-        public CollectorDeclarationDto? For(string source) => _tables.GetValueOrDefault(source);
+        public CollectorDeclarationDto? For(string? source) => source == null ? null : _tables.GetValueOrDefault(source);
 
         /// <summary>声明 label 词典（读数名 → 展示名），供前端渲染（随 questions 响应下发）。</summary>
         public IReadOnlyDictionary<string, string> Labels()
@@ -180,7 +180,7 @@ namespace Heartbeat.Server.Services
         }
 
         public IReadOnlyList<DepthReading> ReadingsFor(
-            string source, string? appName, string? title, string identityKey, string? attributesJson = null, string? payloadJson = null)
+            string? source, string? appName, string? title, string identityKey, string? attributesJson = null, string? payloadJson = null)
         {
             var table = For(source);
             var readings = new List<DepthReading>(2);

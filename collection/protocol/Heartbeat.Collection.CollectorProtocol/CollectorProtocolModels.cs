@@ -7,7 +7,7 @@ namespace Heartbeat.Collection.CollectorProtocol;
 public sealed record CollectorClientDefinition(
     string ArtifactId,
     IReadOnlyDictionary<string, IReadOnlyList<int>> Capabilities,
-    string RequiredSubjectKind,
+    string? RequiredSubjectKind,
     IReadOnlyList<CollectorOutputBinding> Outputs,
     int OutboxCapacity = 20_000,
     ICollectorClientDiagnostics? Diagnostics = null,
@@ -71,7 +71,9 @@ public sealed record CollectorFact(
     Guid? CollectorId = null,
     ObservationObjectReference? Foi = null,
     string? Aspect = null,
-    List<FactRelationSnapshot>? Relations = null);
+    List<FactRelationSnapshot>? Relations = null,
+    string? Kind = null,
+    string? Source = null);
 
 public sealed record BoundCollectorFact(
     Guid StreamId,
@@ -83,7 +85,9 @@ public sealed record BoundCollectorFact(
     Guid? CollectorId = null,
     ObservationObjectReference? Foi = null,
     string? Aspect = null,
-    List<FactRelationSnapshot>? Relations = null);
+    List<FactRelationSnapshot>? Relations = null,
+    string? Kind = null,
+    string? Source = null);
 
 public enum CollectorFactDeliveryStatus
 {

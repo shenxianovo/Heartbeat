@@ -1,17 +1,19 @@
+import { relatedObject } from '../observationRelations'
+export { relatedObject } from '../observationRelations'
 import type { IObjectSummary, IRelationResponse } from '../api/client'
 import type { JsonWire } from '../api/wire'
 import { isAwayApp } from '../appLabels'
 
 export interface ExperienceSegment {
   id: string
-  streamId: string
-  factId: string
+  streamId?: string | null
+  factId?: string | null
   revision: number
   collectorId?: string | null
   foi?: JsonWire<IObjectSummary> | null
   relations?: JsonWire<IRelationResponse>[]
   deviceId?: number | null
-  source: string
+  source: string | null
   aspect?: string | null
   appId: number | null
   appIdentityId: number | null
@@ -69,7 +71,7 @@ const views: Record<string, FactView> = {
 export function hasFactView(aspect: string | null | undefined): boolean { return aspect != null && Object.prototype.hasOwnProperty.call(views, aspect) }
 export function presentFact(fact: ExperienceSegment): FactPresentation {
   return hasFactView(fact.aspect) ? views[fact.aspect!]!(fact, object(fact.payload))
-    : { title: '原始观察', subtitle: fact.source, color: '#8793a3', fields: [] }
+    : { title: '原始观察', subtitle: fact.source ?? '未知来源', color: '#8793a3', fields: [] }
 }
 export function rangeOf(fact: ExperienceSegment): TimeRange {
   return { start: Date.parse(fact.startTime), end: Date.parse(fact.endTime) }
@@ -78,12 +80,6 @@ export function overlaps(a: TimeRange, b: TimeRange): boolean {
   return a.start === a.end ? a.start >= b.start && a.start < b.end
     : b.start === b.end ? b.start >= a.start && b.start < a.end
     : a.start < b.end && a.end > b.start
-}
-export function relatedObject(fact: Pick<ExperienceSegment, 'foi' | 'relations'>, role: string) {
-  const kind = role === 'device' ? 'machine' : role
-  return fact.foi?.kind === kind ? fact.foi : fact.relations
-    ?.filter(r => r.kind === 'observed-on' || r.kind === 'application-account-use')
-    .flatMap(r => r.members).find(m => m.role === role)?.object
 }
 export function relatedPages(fact: ExperienceSegment, facts: ExperienceSegment[]): ExperienceSegment[] {
   if (fact.aspect !== 'desktop-activity') return []

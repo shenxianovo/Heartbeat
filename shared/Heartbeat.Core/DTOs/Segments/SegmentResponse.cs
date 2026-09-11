@@ -12,7 +12,7 @@ namespace Heartbeat.Core.DTOs.Segments
 
         public string? Aspect { get; set; }
 
-        public string Source { get; set; } = string.Empty;
+        public string? Source { get; set; }
 
         public string IdentityKey { get; set; } = string.Empty;
 

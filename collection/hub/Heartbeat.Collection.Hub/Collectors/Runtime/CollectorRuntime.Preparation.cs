@@ -16,7 +16,9 @@ public sealed partial class CollectorRuntime
         ArgumentNullException.ThrowIfNull(package);
         var blueprint = package.Manifest.DefaultInstance
             ?? throw new PackageValidationException("Development Package requires a default Instance blueprint.");
-        if (!string.Equals(blueprint.SubjectKind, subject.Kind.ToString(), StringComparison.OrdinalIgnoreCase))
+        if (blueprint.SubjectKind.Length == 0)
+            subject = default;
+        else if (!string.Equals(blueprint.SubjectKind, subject.Kind.ToString(), StringComparison.OrdinalIgnoreCase))
             throw new PackageValidationException("Development Package Subject does not match this Host.");
         _ = ResolveProtocolArtifact(package, "externalHost");
         lock (_gate)

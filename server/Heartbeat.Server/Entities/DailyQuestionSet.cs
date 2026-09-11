@@ -8,11 +8,12 @@ namespace Heartbeat.Server.Entities
     public class DailyQuestionSet
     {
         /// <summary>
-        /// 当前 payload 契约版本（ADR-031 §6 两阶段协议）。版本 2 = ActivityCluster 证据卡
+        /// 当前 payload 契约版本（ADR-031 §6 两阶段协议）。版本 3 保留独立观测的空 Source 旁证。
+        /// 版本 2 = ActivityCluster 证据卡
         /// （AskingQuestionResponse 列表）。旧单阶段最终表单（隐式版本 0）读取时视为缓存失效
         /// 重新生成，绝不再被客户端当作可直接提交的知识写入。
         /// </summary>
-        public const int CurrentPayloadVersion = 2;
+        public const int CurrentPayloadVersion = 3;
 
         public long Id { get; set; }
 

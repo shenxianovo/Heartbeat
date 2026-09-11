@@ -106,7 +106,8 @@ public sealed class CollectorInstallationLifecycle(
                                 ?? throw new PackageValidationException(
                                     "Marketplace Package does not declare defaultInstance.");
                 beginCommit?.Invoke();
-                var subject = createSubject(ParseSubjectKind(blueprint.SubjectKind));
+                var subject = blueprint.SubjectKind.Length == 0
+                    ? default : createSubject(ParseSubjectKind(blueprint.SubjectKind));
                 instance = runtime.CreateInstance(
                     package,
                     subject,

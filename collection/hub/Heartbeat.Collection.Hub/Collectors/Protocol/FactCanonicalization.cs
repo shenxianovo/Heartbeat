@@ -17,7 +17,9 @@ internal static class FactCanonicalization
             foreach (var fact in facts)
             {
                 writer.WriteStartObject();
-                writer.WriteString("streamId", fact.StreamId);
+                if (fact.StreamId != Guid.Empty) writer.WriteString("streamId", fact.StreamId);
+                if (fact.Kind is { } kind) writer.WriteString("kind", kind);
+                if (fact.Source is { } source) writer.WriteString("source", source);
                 writer.WriteString("factId", fact.FactId);
                 writer.WriteNumber("revision", fact.Revision);
                 if (fact.Aspect is { } aspect) writer.WriteString("aspect", aspect);
@@ -69,7 +71,9 @@ internal static class FactCanonicalization
             foreach (var fact in facts)
             {
                 writer.WriteStartObject();
-                writer.WriteString("streamId", fact.StreamId);
+                if (fact.StreamId != Guid.Empty) writer.WriteString("streamId", fact.StreamId);
+                if (fact.Kind is { } kind) writer.WriteString("kind", kind);
+                if (fact.Source is { } source) writer.WriteString("source", source);
                 writer.WriteString("factId", fact.FactId);
                 writer.WriteNumber("revision", fact.Revision);
                 if (fact.Aspect is { } aspect) writer.WriteString("aspect", aspect);

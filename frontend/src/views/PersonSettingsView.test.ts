@@ -16,7 +16,7 @@ it('maintains a confirmed association and refreshes the person history after cor
     objects: [{ kind: 'machine', id: 'machine', scope: 'heartbeat.device', key: 'Mac', name: 'Offline Mac' }], associations: [] as import('../api/person').PersonAssociation[] }
   vi.mocked(fetchPersonSettings).mockImplementation(async () => structuredClone(settings))
   vi.mocked(fetchPersonFacts).mockResolvedValue({ totalCount: 1, sources: [{ source: 'system', count: 1 }], items: [{
-    fact: { id: 'f', source: 'system', foi: { id: 'machine', kind: 'machine', scope: 'heartbeat.device', key: 'Mac', name: 'Fixture Object' }, start: '2026-09-01T01:00:00Z', end: '2026-09-01T01:10:00Z', payload: { title: 'Historical work' } },
+    fact: { id: 'f', source: 'system', aspect: 'desktop-activity', foi: { id: 'machine', kind: 'machine', scope: 'heartbeat.device', key: 'Mac', name: 'Fixture Object' }, start: '2026-09-01T01:00:00Z', end: '2026-09-01T01:10:00Z', payload: { title: 'Historical work' } },
     effectiveIntervals: [{ start: '2026-09-01T01:02:00Z', end: '2026-09-01T01:05:00Z' }], effectiveSeconds: 180,
   }] })
   vi.mocked(savePersonAssociation).mockImplementation(async (id, value) => {
@@ -85,7 +85,7 @@ it('establishes self only after an explicit action', async () => {
 it('does not expose an input key sequence in event details', async () => {
   vi.mocked(fetchPersonSettings).mockResolvedValue({ person: null, objects: [], associations: [] })
   vi.mocked(fetchPersonFacts).mockResolvedValue({ totalCount: 1, sources: [{ source: 'system', count: 1 }], items: [{
-    fact: { id: 'event', source: 'system', foi: { id: 'machine', kind: 'machine', scope: 'heartbeat.device', key: 'Mac', name: 'Fixture Object' }, occurredAt: '2026-09-01T01:00:00Z', payload: { eventType: 'keyDown', code: 65, codeSet: 'windows-vk-v1' } },
+    fact: { id: 'event', source: 'system', aspect: 'input', foi: { id: 'machine', kind: 'machine', scope: 'heartbeat.device', key: 'Mac', name: 'Fixture Object' }, occurredAt: '2026-09-01T01:00:00Z', payload: { eventType: 'keyDown', code: 65, codeSet: 'windows-vk-v1' }, ...{ result: { eventType: 'keyDown', code: 65, codeSet: 'windows-vk-v1' } } },
     effectiveIntervals: [], effectiveSeconds: null,
   }] })
   const wrapper = mount(PersonSettingsView, { global: { stubs: { RouterLink: true } } })
@@ -93,4 +93,39 @@ it('does not expose an input key sequence in event details', async () => {
   expect(wrapper.text()).toContain('发生时刻')
   expect(wrapper.text()).not.toContain('keyDown')
   expect(wrapper.text()).not.toContain('windows-vk-v1')
+})
+
+it('shows an independent account fact without source, stream or display profile', async () => {
+  vi.mocked(fetchPersonSettings).mockResolvedValue({ person: null, objects: [], associations: [] })
+  vi.mocked(fetchPersonFacts).mockResolvedValue({ totalCount: 1, sources: JSON.parse('[{"source":null,"count":1}]'), items: [{
+    fact: { id: 'native', ...{ kind: 'segment' }, aspect: 'activity', source: null, streamId: null, factId: null,
+      foi: { id: 'account', kind: 'account', scope: 'example', key: 'account-a', name: null },
+      start: '2026-09-01T01:00:00Z', end: '2026-09-01T01:02:00Z',
+      ...{ result: { title: 'Independent evidence' } }, payload: { title: 'Independent evidence' } },
+    effectiveIntervals: [], effectiveSeconds: 30,
+  }] })
+  const wrapper = mount(PersonSettingsView, { global: { stubs: { RouterLink: true } } })
+  await flushPromises()
+  expect(wrapper.text()).toContain('Independent evidence')
+  expect(wrapper.text()).toContain('account-a')
+  expect(wrapper.get('.source-count').text()).toBe('未提供来源：1')
+  expect(wrapper.get('.fact .hint').text()).toBe('未提供来源 · account-a')
+})
+
+
+it('keeps unknown event results intact without interpreting their title as a known activity', async () => {
+  vi.mocked(fetchPersonSettings).mockResolvedValue({ person: null, objects: [], associations: [] })
+  vi.mocked(fetchPersonFacts).mockResolvedValue({ totalCount: 1, sources: [], items: [{
+    fact: { id: 'unknown-event', aspect: 'future-aspect', occurredAt: '2026-09-01T01:00:00Z',
+      payload: { title: 'Uninterpreted title', future: [1, 2] },
+      ...{ result: { title: 'Uninterpreted title', future: [1, 2] } } },
+    effectiveIntervals: [], effectiveSeconds: null,
+  }] })
+  const wrapper = mount(PersonSettingsView, { global: { stubs: { RouterLink: true } } })
+  await flushPromises()
+  expect(wrapper.get('.fact h3').text()).toBe('观测事实')
+  expect(wrapper.get('.fact summary').text()).toBe('原始事实详情')
+  const details = JSON.parse(wrapper.get('.fact pre').text())
+  expect(details.payload).toEqual({ title: 'Uninterpreted title', future: [1, 2] })
+  expect(details.result).toEqual(details.payload)
 })

@@ -94,6 +94,8 @@ internal sealed class CollectorProtocolOutbox
             }
             catch (Exception exception) when (exception is JsonException or InvalidDataException)
             {
+                if (outputs.Count == 0)
+                    throw new InvalidDataException("Collector outbox cannot be recovered without a known delivery group; preserve the data directory for recovery.", exception);
                 var lastWrite = new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero);
                 var quarantine = path + $".corrupt-{now:yyyyMMddHHmmss}-{Guid.NewGuid():N}";
                 var quarantineTemporary = CopyToTemporary(path, quarantine);
@@ -181,13 +183,16 @@ internal sealed class CollectorProtocolOutbox
         var facts = _state.Facts.ToList();
         var gaps = _state.Gaps.ToList();
         var deliveryOrder = _state.DeliveryOrder.ToList();
-        foreach (var fact in incomingFacts)
+        foreach (var incoming in incomingFacts)
         {
-            ArgumentNullException.ThrowIfNull(fact);
+            ArgumentNullException.ThrowIfNull(incoming);
+            var fact = CollectorFactContent.Capture(incoming);
             var index = facts.FindIndex(item =>
-                item.Fact.BindingId == fact.BindingId && item.Fact.FactId == fact.FactId);
+                item.Fact.FactId == fact.FactId &&
+                (item.Fact.Kind is not null || fact.Kind is not null || item.Fact.BindingId == fact.BindingId));
             if (index >= 0)
             {
+                CollectorFactContent.ValidateRevision(facts[index].Fact, fact);
                 if (facts[index].Fact.Revision < fact.Revision)
                 {
                     var replacement = new PendingCollectorFact(Guid.CreateVersion7(), fact);
@@ -205,6 +210,8 @@ internal sealed class CollectorProtocolOutbox
             while (facts.Count > _capacity)
             {
                 var evicted = facts[0].Fact;
+                if (string.IsNullOrEmpty(evicted.BindingId))
+                    throw new InvalidOperationException("Collector outbox is full; unbound observations require delivery before further admission.");
                 var evictedMessageId = facts[0].MessageId;
                 facts.RemoveAt(0);
                 var (start, end) = FactRange(evicted);
@@ -409,16 +416,16 @@ internal sealed class CollectorProtocolOutbox
         using var document = JsonDocument.Parse(contents);
         if (document.RootElement.ValueKind == JsonValueKind.Object &&
             document.RootElement.TryGetProperty("SchemaVersion", out var version) &&
-            version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var schemaVersion) && schemaVersion is not (1 or 2 or 3))
+            version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var schemaVersion) && schemaVersion is not (1 or 2 or 3 or 4))
             throw new NotSupportedException($"{description} schemaVersion {schemaVersion} is not supported; preserve the data directory and use a compatible Collector.");
         var root = JsonNode.Parse(contents)!;
         if (root["SchemaVersion"]?.GetValue<int>() is 1 or 2 && root["State"] is JsonObject state)
             foreach (var item in (state["Facts"] ?? state["Entries"])?.AsArray() ?? [])
-                if (item?["Fact"] is JsonObject fact)
+                if (item?["Fact"] is JsonObject fact && fact["Kind"] is null)
                     Heartbeat.Core.Facts.ObservationCompatibility.ReadOldEnvelope(fact, false);
         var envelope = root.Deserialize<StateEnvelope<T>>(JsonOptions)
             ?? throw new InvalidDataException($"{description} is empty.");
-        if (envelope.SchemaVersion is not (1 or 2 or 3) || envelope.State is null)
+        if (envelope.SchemaVersion is not (1 or 2 or 3 or 4) || envelope.State is null)
             throw new InvalidDataException($"{description} has an invalid envelope.");
         return envelope.State;
     }
@@ -498,12 +505,14 @@ internal sealed class CollectorProtocolOutbox
             ?? throw new InvalidOperationException("Collector Protocol state path has no directory.");
         Directory.CreateDirectory(directory);
         var temporary = path + $".{Guid.NewGuid():N}.tmp";
-        // Null Aspect is omitted from JSON, so unchanged contracts remain readable by SDK v1.
-        // Only files that actually retain explicit semantics need v2 and its package rollback guard.
+        // Select the oldest schema that can retain every field, so legacy-only callers remain readable
+        // by their SDK while independent observations cannot be consumed by pre-v4 packages.
         var schemaVersion = state switch
         {
+            OutboxState outbox when outbox.Facts.Any(item => item.Fact.Kind is not null || item.Fact.Source is not null) => 4,
             OutboxState outbox when outbox.Facts.Any(item => item.Fact.Relations is not null) => 3,
             OutboxState outbox when outbox.Facts.Any(item => item.Fact.Aspect is not null) => 2,
+            DeadLetterState deadLetters when deadLetters.Entries.Any(item => item.Fact.Kind is not null || item.Fact.Source is not null) => 4,
             DeadLetterState deadLetters when deadLetters.Entries.Any(item => item.Fact.Relations is not null) => 3,
             DeadLetterState deadLetters when deadLetters.Entries.Any(item => item.Fact.Aspect is not null) => 2,
             _ => 1
@@ -555,7 +564,7 @@ internal sealed class CollectorProtocolOutbox
             .Concat(state.Gaps.Select(item => item.MessageId))
             .ToArray();
         if (state.Facts.Any(item => item.MessageId == Guid.Empty || item.Fact.FactId == Guid.Empty ||
-                                    item.Fact.Revision <= 0 || string.IsNullOrWhiteSpace(item.Fact.BindingId)) ||
+                                    item.Fact.Revision <= 0 || item.Fact.Kind is null && string.IsNullOrWhiteSpace(item.Fact.BindingId)) ||
             state.Gaps.Any(item => item.MessageId == Guid.Empty || item.Gap.GapId == Guid.Empty ||
                                    item.Gap.End <= item.Gap.Start || string.IsNullOrWhiteSpace(item.Gap.BindingId)) ||
             messageIds.Length != messageIds.Distinct().Count() ||

@@ -2057,6 +2057,43 @@ export class Client {
     /**
      * @return OK
      */
+    uploadObservations(body: ObservationUploadRequest): Promise<void> {
+        let url_ = this.baseUrl + "/api/v1/observations";
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(body);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processUploadObservations(_response);
+        });
+    }
+
+    protected processUploadObservations(response: Response): Promise<void> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            return;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<void>(null as any);
+    }
+
+    /**
+     * @return OK
+     */
     getMyPersonSettings(): Promise<PersonSettingsResponse> {
         let url_ = this.baseUrl + "/api/v1/me/person";
         url_ = url_.replace(/[?&]$/, "");
@@ -3550,7 +3587,7 @@ export class ActivitySegmentItem implements IActivitySegmentItem {
     title?: string | undefined;
     startTime?: Date;
     endTime?: Date;
-    attributes?: JsonElement | undefined;
+    attributes?: any;
 
     [key: string]: any;
 
@@ -3578,7 +3615,7 @@ export class ActivitySegmentItem implements IActivitySegmentItem {
             this.title = _data["title"];
             this.startTime = _data["startTime"] ? new Date(_data["startTime"].toString()) : undefined as any;
             this.endTime = _data["endTime"] ? new Date(_data["endTime"].toString()) : undefined as any;
-            this.attributes = _data["attributes"] ? JsonElement.fromJS(_data["attributes"]) : undefined as any;
+            this.attributes = _data["attributes"];
         }
     }
 
@@ -3604,7 +3641,7 @@ export class ActivitySegmentItem implements IActivitySegmentItem {
         data["title"] = this.title;
         data["startTime"] = this.startTime ? this.startTime.toISOString() : undefined as any;
         data["endTime"] = this.endTime ? this.endTime.toISOString() : undefined as any;
-        data["attributes"] = this.attributes ? this.attributes.toJSON() : undefined as any;
+        data["attributes"] = this.attributes;
         return data;
     }
 }
@@ -3619,7 +3656,7 @@ export interface IActivitySegmentItem {
     title?: string | undefined;
     startTime?: Date;
     endTime?: Date;
-    attributes?: JsonElement | undefined;
+    attributes?: any;
 
     [key: string]: any;
 }
@@ -5321,7 +5358,7 @@ export interface IAppMergeResponse {
 }
 
 export class AppUsageResponse implements IAppUsageResponse {
-    source?: string;
+    source?: string | undefined;
     aspect?: string | undefined;
     deviceId?: number;
     appId?: number;
@@ -5425,7 +5462,7 @@ export class AppUsageResponse implements IAppUsageResponse {
 }
 
 export interface IAppUsageResponse {
-    source?: string;
+    source?: string | undefined;
     aspect?: string | undefined;
     deviceId?: number;
     appId?: number;
@@ -7085,7 +7122,7 @@ export interface IEpisodeResponse {
 }
 
 export class EvidenceObservationDto implements IEvidenceObservationDto {
-    source?: string;
+    source?: string | undefined;
     value?: string;
     detail?: string | undefined;
     seconds?: number;
@@ -7139,7 +7176,7 @@ export class EvidenceObservationDto implements IEvidenceObservationDto {
 }
 
 export interface IEvidenceObservationDto {
-    source?: string;
+    source?: string | undefined;
     value?: string;
     detail?: string | undefined;
     seconds?: number;
@@ -7212,11 +7249,11 @@ export interface IExperiencePage {
 }
 
 export class ExperienceSegment implements IExperienceSegment {
-    streamId?: string;
-    factId?: string;
+    streamId?: string | undefined;
+    factId?: string | undefined;
     revision?: number;
     deviceId?: number | undefined;
-    source?: string;
+    source?: string | undefined;
     appId?: number | undefined;
     appIdentityId?: number | undefined;
     appName?: string | undefined;
@@ -7224,7 +7261,7 @@ export class ExperienceSegment implements IExperienceSegment {
     aspect?: string | undefined;
     startTime?: Date;
     endTime?: Date;
-    payload?: JsonElement;
+    payload?: any;
     id?: string;
     collectorId?: string | undefined;
     foiId?: string | undefined;
@@ -7261,7 +7298,7 @@ export class ExperienceSegment implements IExperienceSegment {
             this.aspect = _data["aspect"];
             this.startTime = _data["startTime"] ? new Date(_data["startTime"].toString()) : undefined as any;
             this.endTime = _data["endTime"] ? new Date(_data["endTime"].toString()) : undefined as any;
-            this.payload = _data["payload"] ? JsonElement.fromJS(_data["payload"]) : undefined as any;
+            this.payload = _data["payload"];
             this.id = _data["id"];
             this.collectorId = _data["collectorId"];
             this.foiId = _data["foiId"];
@@ -7300,7 +7337,7 @@ export class ExperienceSegment implements IExperienceSegment {
         data["aspect"] = this.aspect;
         data["startTime"] = this.startTime ? this.startTime.toISOString() : undefined as any;
         data["endTime"] = this.endTime ? this.endTime.toISOString() : undefined as any;
-        data["payload"] = this.payload ? this.payload.toJSON() : undefined as any;
+        data["payload"] = this.payload;
         data["id"] = this.id;
         data["collectorId"] = this.collectorId;
         data["foiId"] = this.foiId;
@@ -7316,11 +7353,11 @@ export class ExperienceSegment implements IExperienceSegment {
 }
 
 export interface IExperienceSegment {
-    streamId?: string;
-    factId?: string;
+    streamId?: string | undefined;
+    factId?: string | undefined;
     revision?: number;
     deviceId?: number | undefined;
-    source?: string;
+    source?: string | undefined;
     appId?: number | undefined;
     appIdentityId?: number | undefined;
     appName?: string | undefined;
@@ -7328,7 +7365,7 @@ export interface IExperienceSegment {
     aspect?: string | undefined;
     startTime?: Date;
     endTime?: Date;
-    payload?: JsonElement;
+    payload?: any;
     id?: string;
     collectorId?: string | undefined;
     foiId?: string | undefined;
@@ -7526,17 +7563,19 @@ export interface IFactRelationSnapshot {
 }
 
 export class FactResponse implements IFactResponse {
-    streamId?: string;
-    factId?: string;
+    streamId?: string | undefined;
+    factId?: string | undefined;
     revision?: number;
     aspect?: string | undefined;
     deviceId?: number | undefined;
     appId?: number | undefined;
-    source?: string;
+    source?: string | undefined;
+    kind?: string;
+    result?: any;
     start?: Date | undefined;
     end?: Date | undefined;
     occurredAt?: Date | undefined;
-    payload?: JsonElement;
+    payload?: any;
     id?: string;
     collectorId?: string | undefined;
     foiId?: string | undefined;
@@ -7568,10 +7607,12 @@ export class FactResponse implements IFactResponse {
             this.deviceId = _data["deviceId"];
             this.appId = _data["appId"];
             this.source = _data["source"];
+            this.kind = _data["kind"];
+            this.result = _data["result"];
             this.start = _data["start"] ? new Date(_data["start"].toString()) : undefined as any;
             this.end = _data["end"] ? new Date(_data["end"].toString()) : undefined as any;
             this.occurredAt = _data["occurredAt"] ? new Date(_data["occurredAt"].toString()) : undefined as any;
-            this.payload = _data["payload"] ? JsonElement.fromJS(_data["payload"]) : undefined as any;
+            this.payload = _data["payload"];
             this.id = _data["id"];
             this.collectorId = _data["collectorId"];
             this.foiId = _data["foiId"];
@@ -7605,10 +7646,12 @@ export class FactResponse implements IFactResponse {
         data["deviceId"] = this.deviceId;
         data["appId"] = this.appId;
         data["source"] = this.source;
+        data["kind"] = this.kind;
+        data["result"] = this.result;
         data["start"] = this.start ? this.start.toISOString() : undefined as any;
         data["end"] = this.end ? this.end.toISOString() : undefined as any;
         data["occurredAt"] = this.occurredAt ? this.occurredAt.toISOString() : undefined as any;
-        data["payload"] = this.payload ? this.payload.toJSON() : undefined as any;
+        data["payload"] = this.payload;
         data["id"] = this.id;
         data["collectorId"] = this.collectorId;
         data["foiId"] = this.foiId;
@@ -7624,17 +7667,19 @@ export class FactResponse implements IFactResponse {
 }
 
 export interface IFactResponse {
-    streamId?: string;
-    factId?: string;
+    streamId?: string | undefined;
+    factId?: string | undefined;
     revision?: number;
     aspect?: string | undefined;
     deviceId?: number | undefined;
     appId?: number | undefined;
-    source?: string;
+    source?: string | undefined;
+    kind?: string;
+    result?: any;
     start?: Date | undefined;
     end?: Date | undefined;
     occurredAt?: Date | undefined;
-    payload?: JsonElement;
+    payload?: any;
     id?: string;
     collectorId?: string | undefined;
     foiId?: string | undefined;
@@ -7660,7 +7705,7 @@ export class FactSnapshot implements IFactSnapshot {
     end?: Date | undefined;
     occurredAt?: Date | undefined;
     isFinal?: boolean | undefined;
-    payload?: JsonElement | undefined;
+    payload?: any;
 
     constructor(data?: IFactSnapshot) {
         if (data) {
@@ -7691,7 +7736,7 @@ export class FactSnapshot implements IFactSnapshot {
             this.end = _data["end"] ? new Date(_data["end"].toString()) : undefined as any;
             this.occurredAt = _data["occurredAt"] ? new Date(_data["occurredAt"].toString()) : undefined as any;
             this.isFinal = _data["isFinal"];
-            this.payload = _data["payload"] ? JsonElement.fromJS(_data["payload"]) : undefined as any;
+            this.payload = _data["payload"];
         }
     }
 
@@ -7722,7 +7767,7 @@ export class FactSnapshot implements IFactSnapshot {
         data["end"] = this.end ? this.end.toISOString() : undefined as any;
         data["occurredAt"] = this.occurredAt ? this.occurredAt.toISOString() : undefined as any;
         data["isFinal"] = this.isFinal;
-        data["payload"] = this.payload ? this.payload.toJSON() : undefined as any;
+        data["payload"] = this.payload;
         return data;
     }
 }
@@ -7742,7 +7787,7 @@ export interface IFactSnapshot {
     end?: Date | undefined;
     occurredAt?: Date | undefined;
     isFinal?: boolean | undefined;
-    payload?: JsonElement | undefined;
+    payload?: any;
 }
 
 export class FactStreamDefinition implements IFactStreamDefinition {
@@ -8257,50 +8302,6 @@ export class InputEventUploadRequest implements IInputEventUploadRequest {
 
 export interface IInputEventUploadRequest {
     events?: InputEventItem[];
-
-    [key: string]: any;
-}
-
-export class JsonElement implements IJsonElement {
-
-    [key: string]: any;
-
-    constructor(data?: IJsonElement) {
-        if (data) {
-            for (var property in data) {
-                if (data.hasOwnProperty(property))
-                    (this as any)[property] = (data as any)[property];
-            }
-        }
-    }
-
-    init(_data?: any) {
-        if (_data) {
-            for (var property in _data) {
-                if (_data.hasOwnProperty(property))
-                    this[property] = _data[property];
-            }
-        }
-    }
-
-    static fromJS(data: any): JsonElement {
-        data = typeof data === 'object' ? data : {};
-        let result = new JsonElement();
-        result.init(data);
-        return result;
-    }
-
-    toJSON(data?: any) {
-        data = typeof data === 'object' ? data : {};
-        for (var property in this) {
-            if (this.hasOwnProperty(property))
-                data[property] = this[property];
-        }
-        return data;
-    }
-}
-
-export interface IJsonElement {
 
     [key: string]: any;
 }
@@ -9173,6 +9174,150 @@ export interface IObservationObjectReference {
     [key: string]: any;
 }
 
+export class ObservationSnapshot implements IObservationSnapshot {
+    id?: string;
+    kind?: string;
+    collectorId?: string;
+    foi?: ObservationObjectReference | undefined;
+    aspect?: string | undefined;
+    result?: any;
+    revision?: number;
+    start?: Date | undefined;
+    end?: Date | undefined;
+    occurredAt?: Date | undefined;
+    source?: string | undefined;
+    relations?: FactRelationSnapshot[];
+
+    constructor(data?: IObservationSnapshot) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            this.id = _data["id"];
+            this.kind = _data["kind"];
+            this.collectorId = _data["collectorId"];
+            this.foi = _data["foi"] ? ObservationObjectReference.fromJS(_data["foi"]) : undefined as any;
+            this.aspect = _data["aspect"];
+            this.result = _data["result"];
+            this.revision = _data["revision"];
+            this.start = _data["start"] ? new Date(_data["start"].toString()) : undefined as any;
+            this.end = _data["end"] ? new Date(_data["end"].toString()) : undefined as any;
+            this.occurredAt = _data["occurredAt"] ? new Date(_data["occurredAt"].toString()) : undefined as any;
+            this.source = _data["source"];
+            if (Array.isArray(_data["relations"])) {
+                this.relations = [] as any;
+                for (let item of _data["relations"])
+                    this.relations!.push(FactRelationSnapshot.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): ObservationSnapshot {
+        data = typeof data === 'object' ? data : {};
+        let result = new ObservationSnapshot();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        data["id"] = this.id;
+        data["kind"] = this.kind;
+        data["collectorId"] = this.collectorId;
+        data["foi"] = this.foi ? this.foi.toJSON() : undefined as any;
+        data["aspect"] = this.aspect;
+        data["result"] = this.result;
+        data["revision"] = this.revision;
+        data["start"] = this.start ? this.start.toISOString() : undefined as any;
+        data["end"] = this.end ? this.end.toISOString() : undefined as any;
+        data["occurredAt"] = this.occurredAt ? this.occurredAt.toISOString() : undefined as any;
+        data["source"] = this.source;
+        if (Array.isArray(this.relations)) {
+            data["relations"] = [];
+            for (let item of this.relations)
+                data["relations"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface IObservationSnapshot {
+    id?: string;
+    kind?: string;
+    collectorId?: string;
+    foi?: ObservationObjectReference | undefined;
+    aspect?: string | undefined;
+    result?: any;
+    revision?: number;
+    start?: Date | undefined;
+    end?: Date | undefined;
+    occurredAt?: Date | undefined;
+    source?: string | undefined;
+    relations?: FactRelationSnapshot[];
+}
+
+export class ObservationUploadRequest implements IObservationUploadRequest {
+    facts?: ObservationSnapshot[];
+
+    [key: string]: any;
+
+    constructor(data?: IObservationUploadRequest) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            if (Array.isArray(_data["facts"])) {
+                this.facts = [] as any;
+                for (let item of _data["facts"])
+                    this.facts!.push(ObservationSnapshot.fromJS(item));
+            }
+        }
+    }
+
+    static fromJS(data: any): ObservationUploadRequest {
+        data = typeof data === 'object' ? data : {};
+        let result = new ObservationUploadRequest();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        if (Array.isArray(this.facts)) {
+            data["facts"] = [];
+            for (let item of this.facts)
+                data["facts"].push(item ? item.toJSON() : undefined as any);
+        }
+        return data;
+    }
+}
+
+export interface IObservationUploadRequest {
+    facts?: ObservationSnapshot[];
+
+    [key: string]: any;
+}
+
 export class OperationResultResponse implements IOperationResultResponse {
     opId?: string;
     type?: string;
@@ -9618,7 +9763,7 @@ export interface IPersonSettingsResponse {
 }
 
 export class PersonSourceCount implements IPersonSourceCount {
-    source!: string;
+    source!: string | undefined;
     count!: number;
 
     [key: string]: any;
@@ -9663,7 +9808,7 @@ export class PersonSourceCount implements IPersonSourceCount {
 }
 
 export interface IPersonSourceCount {
-    source: string;
+    source: string | undefined;
     count: number;
 
     [key: string]: any;
@@ -10249,7 +10394,7 @@ export class RelationResponse implements IRelationResponse {
     kind!: string;
     validFrom!: Date | undefined;
     validTo!: Date | undefined;
-    evidence!: JsonElement;
+    evidence!: any;
     members!: RelationMemberResponse[];
 
     [key: string]: any;
@@ -10262,7 +10407,6 @@ export class RelationResponse implements IRelationResponse {
             }
         }
         if (!data) {
-            this.evidence = new JsonElement();
             this.members = [];
         }
     }
@@ -10277,7 +10421,7 @@ export class RelationResponse implements IRelationResponse {
             this.kind = _data["kind"];
             this.validFrom = _data["validFrom"] ? new Date(_data["validFrom"].toString()) : undefined as any;
             this.validTo = _data["validTo"] ? new Date(_data["validTo"].toString()) : undefined as any;
-            this.evidence = _data["evidence"] ? JsonElement.fromJS(_data["evidence"]) : new JsonElement();
+            this.evidence = _data["evidence"];
             if (Array.isArray(_data["members"])) {
                 this.members = [] as any;
                 for (let item of _data["members"])
@@ -10303,7 +10447,7 @@ export class RelationResponse implements IRelationResponse {
         data["kind"] = this.kind;
         data["validFrom"] = this.validFrom ? this.validFrom.toISOString() : undefined as any;
         data["validTo"] = this.validTo ? this.validTo.toISOString() : undefined as any;
-        data["evidence"] = this.evidence ? this.evidence.toJSON() : undefined as any;
+        data["evidence"] = this.evidence;
         if (Array.isArray(this.members)) {
             data["members"] = [];
             for (let item of this.members)
@@ -10318,7 +10462,7 @@ export interface IRelationResponse {
     kind: string;
     validFrom: Date | undefined;
     validTo: Date | undefined;
-    evidence: JsonElement;
+    evidence: any;
     members: RelationMemberResponse[];
 
     [key: string]: any;
@@ -10427,7 +10571,7 @@ export interface IResolveProbeRequest {
 export class SegmentResponse implements ISegmentResponse {
     deviceId?: number | undefined;
     aspect?: string | undefined;
-    source?: string;
+    source?: string | undefined;
     identityKey?: string;
     appId?: number | undefined;
     appKey?: string | undefined;
@@ -10549,7 +10693,7 @@ export class SegmentResponse implements ISegmentResponse {
 export interface ISegmentResponse {
     deviceId?: number | undefined;
     aspect?: string | undefined;
-    source?: string;
+    source?: string | undefined;
     identityKey?: string;
     appId?: number | undefined;
     appKey?: string | undefined;

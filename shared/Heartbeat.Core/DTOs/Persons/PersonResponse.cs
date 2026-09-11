@@ -10,6 +10,6 @@ public sealed record PersonAssociationRequest(Guid ObjectId,
 public sealed record PersonAssociationResponse(Guid Id, Guid ObjectId, DateTimeOffset? Start, DateTimeOffset? End);
 public sealed record EffectiveInterval(DateTimeOffset Start, DateTimeOffset End);
 public sealed record PersonFactItem(FactResponse Fact, IReadOnlyList<EffectiveInterval> EffectiveIntervals, double? EffectiveSeconds);
-public sealed record PersonSourceCount(string Source, int Count);
+public sealed record PersonSourceCount(string? Source, int Count);
 public sealed record PersonFactPage(IReadOnlyList<PersonFactItem> Items, int TotalCount, IReadOnlyList<PersonSourceCount> Sources);
 public sealed record PersonSettingsResponse(PersonResponse? Person, IReadOnlyList<ObjectSummary> Objects, IReadOnlyList<PersonAssociationResponse> Associations);

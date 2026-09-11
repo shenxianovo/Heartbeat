@@ -34,7 +34,7 @@ public sealed class PersonFactQuery(AppDbContext db)
                     orderby f.StartTime descending, f.Id
                     select new FactResponse { Id = f.Id, StreamId = f.StreamId, FactId = f.FactId, Revision = f.Revision, CollectorId = f.ObserverId,
                         FoiId = f.FoiId, Aspect = f.Aspect, Source = f.Source, AppId = at.AppId, DeviceId = at.DeviceId,
-                        Start = f.StartTime, End = f.EndTime, Payload = ObservationQuery.ReadPayload(f.Payload) };
+                        Kind = "segment", Start = f.StartTime, End = f.EndTime, Payload = ObservationQuery.ReadPayload(f.Payload) };
         else
             query = from f in db.Events
                     join at in eligible on f.Id equals at.Id
@@ -44,7 +44,7 @@ public sealed class PersonFactQuery(AppDbContext db)
                     orderby f.Timestamp descending, f.Id
                     select new FactResponse { Id = f.Id, StreamId = f.StreamId, FactId = f.FactId, Revision = f.Revision, CollectorId = f.ObserverId,
                         FoiId = f.FoiId, Aspect = f.Aspect, Source = f.Source, AppId = at.AppId, DeviceId = at.DeviceId,
-                        OccurredAt = f.Timestamp, Payload = ObservationQuery.ReadPayload(f.Payload) };
+                        Kind = "event", OccurredAt = f.Timestamp, Payload = ObservationQuery.ReadPayload(f.Payload) };
         var count = await query.CountAsync(ct);
         var sources = await query.GroupBy(f => f.Source).OrderBy(g => g.Key).Select(g => new PersonSourceCount(g.Key, g.Count())).ToListAsync(ct);
         var facts = await query.Skip(offset).Take(limit).ToListAsync(ct);

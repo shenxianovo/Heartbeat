@@ -15,7 +15,16 @@ public static class FactUploadReadModel
 
     public static ActivitySegmentItem? Segment(FactUploadItem item)
     {
-        if (item.Stream.FactKind != "segment" || item.Fact is not { Payload: { } payload } fact ||
+        if (item.Observation is { Kind: "segment", Result: { ValueKind: JsonValueKind.Object } result, Start: { } begin, End: { } finish } observation &&
+            observation.Aspect is "desktop-activity" or "selected-page" or "account-location" or "activity")
+            return new ActivitySegmentItem
+            {
+                Id = observation.Id, Source = observation.Source ?? string.Empty,
+                IdentityKey = Text(result, "identityKey") ?? observation.Id.ToString("D"),
+                Title = Text(result, "title"), AppIdentityKey = Text(result, "appIdentityKey"),
+                AppDisplayName = Text(result, "appDisplayName"), StartTime = begin, EndTime = finish, Attributes = result.Clone()
+            };
+        if (item.Stream is null || item.Stream.FactKind != "segment" || item.Fact is not { Payload: { } payload } fact ||
             fact.Start is not { } start || fact.End is not { } end || payload.ValueKind != JsonValueKind.Object)
             return null;
         return new ActivitySegmentItem

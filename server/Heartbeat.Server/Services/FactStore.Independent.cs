@@ -41,24 +41,8 @@ public sealed partial class FactStore
 
     private static void ValidateObservation(ObservationSnapshot snapshot, DateTimeOffset now)
     {
-        if (snapshot is null || snapshot.Id == Guid.Empty || snapshot.Kind is not ("segment" or "event") ||
-            snapshot.CollectorId == Guid.Empty || snapshot.Foi is null || snapshot.Aspect is null || !FactAspects.IsValid(snapshot.Aspect) ||
-            snapshot.Revision is <= 0 or > 9_007_199_254_740_991 || snapshot.Relations is null ||
-            snapshot.Source is { } source && (string.IsNullOrWhiteSpace(source) || source.Length > 64 || source != source.Trim()))
-            throw new FactIngestException("Observation requires valid Id, Kind, Collector, FOI, Aspect and Revision.");
-        if (snapshot.Kind == "segment")
-        {
-            if (snapshot.Start is not { } start || snapshot.End is not { } end || snapshot.OccurredAt is not null ||
-                start == DateTimeOffset.MinValue || end == DateTimeOffset.MinValue ||
-                start.Offset != TimeSpan.Zero || end.Offset != TimeSpan.Zero || start > end || end > now.AddMinutes(5))
-                throw new FactIngestException("Segment requires a valid UTC start/end interval.");
-        }
-        else if (snapshot.OccurredAt is not { } at || snapshot.Start is not null || snapshot.End is not null ||
-            at == DateTimeOffset.MinValue || at.Offset != TimeSpan.Zero || at > now.AddMinutes(5))
-            throw new FactIngestException("Event requires a valid UTC occurredAt time.");
-        if (snapshot.Result is not { } result || result.ValueKind == JsonValueKind.Null)
-            throw new FactIngestException("Observation requires Result.");
-        if (FactJson.Validate(result) is { } error) throw new FactIngestException(error);
+        if (ObservationValidation.Validate(snapshot, now) is { } error)
+            throw new FactIngestException(error);
     }
 
     // Both explicit legacy adaptation and independent inputs commit through this single core.

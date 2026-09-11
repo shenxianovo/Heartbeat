@@ -10,11 +10,14 @@ export interface TimeSpan {
 }
 
 export interface SystemSeg extends TimeSpan {
+  /** Exact machine and App object UUID pair from the fact relations. */
+  contextKey?: string
   appName?: string
   title?: string
 }
 
 export interface PluginSeg extends TimeSpan {
+  contextKey?: string
   identityKey?: string
   title?: string
   /** 完整原始 URL（来自 attributes.url），作副标签。 */
@@ -47,6 +50,7 @@ function bestMatch(seg: SystemSeg, plugins: PluginSeg[]): PluginSeg | null {
   let best: PluginSeg | null = null
   let bestOverlap = 0
   for (const p of plugins) {
+    if (!seg.contextKey || seg.contextKey !== p.contextKey) continue
     const o = overlapMs(seg, p)
     if (o > bestOverlap) {
       bestOverlap = o

@@ -13,7 +13,7 @@ namespace Heartbeat.Core.DTOs.Knowledge
     /// <summary>证据卡上的一行跨 Source 观察：来自真实 segment 的可核对信息，不是模型推断。</summary>
     public class EvidenceObservationDto
     {
-        public string Source { get; set; } = string.Empty;
+        public string? Source { get; set; }
 
         /// <summary>该 Source 最浅读数值（应用名 / 站点 / 仓库…）。</summary>
         public string Value { get; set; } = string.Empty;

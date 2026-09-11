@@ -58,6 +58,35 @@ describe('Experience page', () => {
     expect(wrapper.text()).not.toContain('5分钟')
     wrapper.unmount()
   })
+  it('shows native identity, opaque results and precise page relations without old delivery metadata', async () => {
+    const opaque = { title: 'not-a-known-title', nested: [null, false, { extra: '保留字段' }] }
+    vi.mocked(fetchExperiencePage).mockImplementation(async (_user, window) => {
+      const native = (id: string, source: string, override = {}) => ({
+        ...makeFact(id, window.start, source), streamId: null, factId: null, source: null,
+        collectorId: `collector-${id}`, ...override,
+      }) as unknown as ExperienceSegment
+      return { items: [native('desktop', 'system'), native('page-a', 'browser'), native('page-b', 'browser'),
+        native('opaque', 'system', { aspect: 'custom', payload: opaque, relations: [] })], nextCursor: null }
+    })
+    const wrapper = setup(); await flushPromises()
+    const records = wrapper.get('.records-section')
+    const desktop = records.findAll('.fact-card').find(card => card.find('strong').text() === 'record-desktop')!
+    expect(desktop.text()).toContain('desktop / 1')
+    expect(desktop.text()).toContain('collector-desktop')
+    expect(desktop.text()).toContain('desktop-activity')
+    expect(records.text()).toContain('未知来源')
+    expect(records.findAll('strong').some(title => title.text() === 'not-a-known-title')).toBe(false)
+    expect(records.findAll('pre').map(pre => JSON.parse(pre.text()))).toContainEqual(opaque)
+    await desktop.get('.fact-main').trigger('click')
+    expect(wrapper.get('.selection').text()).toContain('相关 Browser 观察 2')
+    await wrapper.get('select[aria-label="筛选对象"]').setValue('app')
+    expect(wrapper.find('.selection').exists()).toBe(false)
+    expect(wrapper.get('.record-count').text()).toBe('2')
+    expect(wrapper.get('.records-section').text()).toContain('record-page-a')
+    expect(wrapper.get('.records-section').text()).toContain('record-page-b')
+    expect(wrapper.get('.records-section').text()).not.toContain('record-desktop')
+    wrapper.unmount()
+  })
   it('initializes history from the earliest fact after paging and preserves an explored window on refresh', async () => {
     vi.mocked(fetchExperiencePage).mockImplementation(async (_user, window, after) => ({
       items: [makeFact(after ? 'early' : 'late', new Date(Date.parse(window.start) + (after ? 3 : 15) * 3600_000).toISOString())],

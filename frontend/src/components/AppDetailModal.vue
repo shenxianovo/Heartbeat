@@ -182,7 +182,7 @@ const returnFocus = document.activeElement as HTMLElement | null
                     class="flex border-b border-border last:border-b-0"
                   >
                     <div class="flex w-[80px] shrink-0 items-center border-r border-border bg-muted px-2">
-                      <span class="truncate font-mono text-[0.7rem] text-muted-foreground">{{ track.source }}</span>
+                      <span class="truncate font-mono text-[0.7rem] text-muted-foreground">{{ track.source ?? '未知来源' }}</span>
                     </div>
                     <div class="flex-1">
                       <div

@@ -11,7 +11,7 @@ namespace Heartbeat.Server.Services
     /// </summary>
     public record RecapSegmentInput(
         string DeviceName,
-        string Source,
+        string? Source,
         string IdentityKey,
         string? AppName,
         string? Title,
@@ -153,7 +153,8 @@ namespace Heartbeat.Server.Services
             var observations = segments
                 .Where(s => s.EndTime > windowStart && s.StartTime < windowEnd
                             || s.StartTime == s.EndTime && s.StartTime >= windowStart && s.StartTime < windowEnd)
-                .Select(s => new SourceObservation(s.Source, depthTables.ReadingsFor(
+                .Where(s => s.Source != null)
+                .Select(s => new SourceObservation(s.Source!, depthTables.ReadingsFor(
                     s.Source, s.AppName, s.Title, s.IdentityKey, s.AttributesJson, s.PayloadJson)))
                 .ToList();
             var date = civilDate ?? DateOnly.FromDateTime(windowStart.ToOffset(displayOffset).Date);
@@ -349,7 +350,7 @@ namespace Heartbeat.Server.Services
                     .ThenByDescending(e => e.Value.Visits)
                     .ToList();
 
-                sb.AppendLine($"语义细节轨 [{source.Key}]（与注意力轨重叠为正常，时长不与上轨相加）：");
+                sb.AppendLine($"语义细节轨 [{source.Key ?? "来源未提供"}]（与注意力轨重叠为正常，时长不与上轨相加）：");
                 foreach (var (value, node) in entries.Take(MaxPluginEntriesPerSource))
                     sb.AppendLine($"- {value} — 合计 {FormatDuration(node.Seconds)}，{node.Visits} 次{FormatBreakdown(node.Children, node.Seconds)}");
                 if (entries.Count > MaxPluginEntriesPerSource)

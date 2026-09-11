@@ -124,7 +124,7 @@ function focusFact(fact: ExperienceSegment) {
         <div><h2>记录 <span class="record-count">{{ visibleFacts.length }}</span></h2><p v-if="loading || error" class="hint">结果尚不完整</p></div>
         <select v-model="targetFilter" aria-label="筛选对象" class="control"><option value="">全部对象</option><option v-for="target in allTargets" :key="target.id" :value="target.id">{{ target.name }}</option></select>
       </div>
-      <div class="card-grid"><div v-for="fact in pageFacts" :key="fact.id"><p class="record-target">{{ factObject(fact).name }} · {{ fact.source }}</p><FactCard :fact="fact" :selected="selected?.id === fact.id" :time-zone="calendar.day.timeZone" @select="choose" @focus="focusFact" /></div></div>
+      <div class="card-grid"><div v-for="fact in pageFacts" :key="fact.id"><p class="record-target">{{ factObject(fact).name }} · {{ fact.source ?? '未知来源' }}</p><FactCard :fact="fact" :selected="selected?.id === fact.id" :time-zone="calendar.day.timeZone" @select="choose" @focus="focusFact" /></div></div>
       <p v-if="!visibleFacts.length" class="hint">所选对象在这个范围内没有记录。</p>
       <nav v-if="pageCount > 1" class="pagination" aria-label="记录分页"><button class="control" :disabled="page === 0" @click="page--">上一页</button><span>{{ page + 1 }} / {{ pageCount }}</span><button class="control" :disabled="page + 1 >= pageCount" @click="page++">下一页</button></nav>
     </section>

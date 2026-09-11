@@ -236,7 +236,18 @@ public sealed record FactSubmission(
     Guid? CollectorId = null,
     ObservationObjectReference? Foi = null,
     string? Aspect = null,
-    List<FactRelationSnapshot>? Relations = null);
+    List<FactRelationSnapshot>? Relations = null,
+    string? Kind = null,
+    string? Source = null)
+{
+    public ObservationSnapshot ToObservation() => new()
+    {
+        Id = FactId, Kind = Kind!, CollectorId = CollectorId ?? Guid.Empty,
+        Foi = Foi, Aspect = Aspect, Result = Payload.Clone(), Revision = Revision,
+        Start = Time.Start, End = Time.End, OccurredAt = Time.OccurredAt,
+        Source = Source, Relations = Relations ?? []
+    };
+}
 
 public enum FactDeliveryStatus
 {

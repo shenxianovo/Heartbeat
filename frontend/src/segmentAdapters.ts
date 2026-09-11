@@ -1,14 +1,22 @@
 // DTO → 模型输入的适配层（ADR-019 家族：labelUpgrade / replayModel 的入口在此归位）。
 // 输入是结构化最小形状，SegmentResponse / AppUsageResponse 结构兼容。
 
+import { relatedObject } from './observationRelations'
 import type { PluginSeg, SystemSeg } from './labelUpgrade'
+import type { IObjectSummary, IRelationResponse } from './api/client'
 import type { ReplaySeg } from './timeline/replayModel'
 import { intersectInterval, type Interval } from './timeline/timelineModel'
 
-export interface SegmentLike {
-  streamId?: string
+interface RelatedObservationLike {
+  foi?: IObjectSummary | null
+  relations?: IRelationResponse[]
+}
+
+export interface SegmentLike extends RelatedObservationLike {
+  streamId?: string | null
+  collectorId?: string | null
   origin?: string
-  source?: string
+  source?: string | null
   aspect?: string
   identityKey?: string
   title?: string
@@ -17,8 +25,8 @@ export interface SegmentLike {
   endTime?: Date
 }
 
-export interface UsageSegLike {
-  source?: string
+export interface UsageSegLike extends RelatedObservationLike {
+  source?: string | null
   aspect?: string
   appKey?: string
   appDisplayName?: string
@@ -41,14 +49,21 @@ export function urlOf(payload?: Record<string, unknown>): string | undefined {
   return typeof url === 'string' ? url : undefined
 }
 
-export function laneKeyOf(aspect: string | undefined, payload?: Record<string, unknown>, streamId?: string): string | undefined {
+export function laneKeyOf(aspect: string | undefined, payload?: Record<string, unknown>, observerKey?: string | null): string | undefined {
   if (!aspect) return undefined
   const attributes = attributesOf(payload)
   const laneKey = aspect === 'selected-page' ? attributes?.windowId : attributes?.laneKey
   if (typeof laneKey !== 'number' && typeof laneKey !== 'string') return undefined
-  // Browser window IDs are local to an External Host. Legacy imports cannot recover that host.
-  if (aspect === 'selected-page') return streamId ? `${streamId}:${laneKey}` : undefined
-  return streamId ? `${streamId}:${laneKey}` : String(laneKey)
+  // Window identities are scoped to the actual Collector; old streams remain a legacy fallback.
+  if (aspect === 'selected-page') return observerKey ? `${observerKey}:${laneKey}` : undefined
+  return observerKey ? `${observerKey}:${laneKey}` : String(laneKey)
+}
+
+/** No device/product metadata or names substitute for the fact's explicit object evidence. */
+function contextKeyOf(fact: RelatedObservationLike): string | undefined {
+  const machine = relatedObject(fact, 'device')?.id
+  const app = relatedObject(fact, 'app')?.id
+  return machine && app ? JSON.stringify([machine, app]) : undefined
 }
 
 function boundedSpan(start: number, end: number, window?: Interval): Interval | null {
@@ -62,11 +77,12 @@ function boundedSpan(start: number, end: number, window?: Interval): Interval | 
 /** labelUpgrade 输入：插件段。 */
 export function toPluginSegs(segments: SegmentLike[], window?: Interval): PluginSeg[] {
   return segments
-    .filter(s => s.startTime && s.endTime)
+    .filter(s => s.aspect === 'selected-page' && s.startTime && s.endTime)
     .flatMap(s => {
       const span = boundedSpan(s.startTime!.getTime(), s.endTime!.getTime(), window)
       return span ? [{
         ...span,
+        contextKey: contextKeyOf(s),
         identityKey: s.identityKey,
         title: s.title ?? undefined,
         url: urlOf(s.payload),
@@ -82,6 +98,7 @@ export function toSystemSegs(usage: UsageSegLike[], window?: Interval): SystemSe
       const span = boundedSpan(u.startTime!.getTime(), u.endTime!.getTime(), window)
       return span ? [{
         ...span,
+        contextKey: contextKeyOf(u),
         // Title Formatter 按稳定产品 Key 路由；DisplayName 只承担呈现。
         appName: u.appKey ?? u.appDisplayName ?? u.appName,
         title: u.title ?? undefined,
@@ -102,22 +119,22 @@ export function toReplaySegs(
     if (!span) continue
     out.push({
       ...span,
-      source: u.source ?? '',
+      source: u.source ?? null,
       aspect: u.aspect,
       label: u.title ?? '',
     })
   }
   for (const s of segments) {
-    if (!s.startTime || !s.endTime || !s.source) continue
+    if (!s.startTime || !s.endTime) continue
     const span = boundedSpan(s.startTime.getTime(), s.endTime.getTime(), window)
     if (!span) continue
     // 回放呈现标题与原始 URL，Fact 信封和运输元数据不进入产品 tooltip。
     out.push({
       ...span,
-      source: s.source,
+      source: s.source ?? null,
       aspect: s.aspect,
       label: [s.title ?? s.identityKey, urlOf(s.payload)].filter(Boolean).join('  '),
-      laneKey: laneKeyOf(s.aspect, s.payload, s.origin === 'legacy-import' ? undefined : s.streamId),
+      laneKey: laneKeyOf(s.aspect, s.payload, s.collectorId ?? (s.origin === 'legacy-import' ? undefined : s.streamId)),
     })
   }
   return out

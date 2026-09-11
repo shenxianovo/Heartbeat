@@ -171,6 +171,12 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         }
     }
 
+    /// <summary>Creates an independent observer. Its default Subject has no legacy identity.</summary>
+    public CollectorInstance CreateInstance(
+        LocalCollectorPackage package,
+        CollectorInstanceSpec spec,
+        string? instanceKey = null) => CreateInstance(package, default, spec, instanceKey);
+
     public CollectorInstance CreateInstance(
         LocalCollectorPackage package,
         SubjectReference subject,
@@ -178,6 +184,9 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         string? instanceKey = null)
     {
         ArgumentNullException.ThrowIfNull(package);
+        if (subject.SubjectId == Guid.Empty &&
+            (!package.Manifest.SupportedCapabilities.TryGetValue("facts.observation", out var observations) || !observations.Contains(2)))
+            throw new ArgumentException("An Instance without a legacy Subject requires facts.observation version 2.", nameof(package));
         ValidateSpec(spec);
         ValidateInstanceKey(instanceKey);
 
@@ -447,7 +456,7 @@ public sealed partial class CollectorRuntime : IDisposable, IAsyncDisposable
         state.PackageId,
         state.PackageVersion,
         state.PackageContentHash,
-        new SubjectReference(state.SubjectId, state.SubjectKind),
+        state.SubjectId == Guid.Empty ? default : new SubjectReference(state.SubjectId, state.SubjectKind),
         new CollectorInstanceSpec(
             state.SpecRevision,
             state.ConfigVersion,

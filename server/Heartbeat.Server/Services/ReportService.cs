@@ -72,7 +72,7 @@ namespace Heartbeat.Server.Services
             DateTimeOffset windowStart = range.UtcStart;
             DateTimeOffset windowEnd = range.UtcEnd;
 
-            // 统计只消费 system source（互斥轨，时长可求和）。插件段只进回放。详见 ADR-017 §4。
+            // 统计只消费 desktop-activity Aspect；其他活动契约只进回放。保留 ADR-017 §4 时长口径。
             // 区间重叠 + 裁剪（ADR-018 §4）：跨窗段（如跨午夜的 away/长会话）只把
             // 落在本窗口内的部分计入，既不漏也不双计。
             var query = _db.ActivitySegments

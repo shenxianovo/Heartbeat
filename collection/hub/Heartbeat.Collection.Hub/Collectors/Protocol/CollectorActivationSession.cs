@@ -36,12 +36,14 @@ internal sealed class CollectorActivationSession
         ActivationDeliveryFence deliveryFence,
         Func<Guid, IReadOnlyList<FactSubmission>, FactBatchAcknowledgement> commitFacts,
         Func<Guid, StreamGapReport, GapDeliveryOutcome> commitGap,
-        Action<Guid, IReadOnlyList<FactDeliveryOutcome>> markAcknowledgedTraffic)
+        Action<Guid, IReadOnlyList<FactDeliveryOutcome>> markAcknowledgedTraffic,
+        IReadOnlyDictionary<string, int>? selectedCapabilities = null)
     {
         ActivationId = activationId;
         HelloMessageId = helloMessageId;
         Package = package;
         _limits = limits;
+        SelectedCapabilities = (selectedCapabilities ?? new Dictionary<string, int>()).ToImmutableDictionary(StringComparer.Ordinal);
         DeliveryCapability = deliveryCapability;
         _deliveryFence = deliveryFence;
         _commitFacts = commitFacts;
@@ -53,6 +55,7 @@ internal sealed class CollectorActivationSession
         _state = CollectorActivationState.Negotiating;
     }
 
+    public IReadOnlyDictionary<string, int> SelectedCapabilities { get; }
     public Guid ActivationId { get; }
     public Guid HelloMessageId { get; }
     public CollectorActivationState State => _deliveryFence.IsFenced
@@ -193,6 +196,11 @@ internal sealed class CollectorActivationSession
                 _publishReplays.Add(messageId, new PublishReplay(requestContent, rejected, null));
                 return ValueTask.FromResult(rejected);
             }
+
+            if (snapshot.Any(fact => fact.Kind is not null) &&
+                (!SelectedCapabilities.TryGetValue("facts.observation", out var observationVersion) || observationVersion != 2))
+                return ValueTask.FromResult(MessageRejected(
+                    "capability_not_negotiated", "Independent observations require facts.observation version 2."));
 
             try
             {

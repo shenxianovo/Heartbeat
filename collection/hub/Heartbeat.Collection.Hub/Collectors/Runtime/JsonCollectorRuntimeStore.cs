@@ -9,7 +9,7 @@ namespace Heartbeat.Collection.Hub.Collectors.Runtime;
 
 internal sealed class JsonCollectorRuntimeStore : IDisposable
 {
-    private const int CurrentSchemaVersion = 8;
+    private const int CurrentSchemaVersion = 9;
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -144,6 +144,7 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
                 }
             }
         }
+        if (schemaVersion == 8) root["schemaVersion"] = CurrentSchemaVersion;
         return root.Deserialize<CollectorRuntimeState>(SerializerOptions)
                ?? throw new JsonException("Collector Runtime state is null.");
     }
@@ -266,11 +267,11 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
         if (state.ActivationAttemptTombstones.Select(attempt => attempt.ActivationId).Distinct().Count() !=
             state.ActivationAttemptTombstones.Count)
             throw new JsonException("Collector Runtime state contains duplicate Collector Activation IDs.");
-        if (state.Facts.Select(fact => (fact.StreamId, fact.FactId)).Distinct().Count() != state.Facts.Count)
+        if (state.Facts.Select(fact => (fact.Kind is null ? fact.StreamId : Guid.Empty, fact.FactId)).Distinct().Count() != state.Facts.Count)
             throw new JsonException("Collector Runtime state contains duplicate committed Fact identities.");
         foreach (var instance in state.Instances)
         {
-            if (instance.CollectorInstanceId == Guid.Empty || instance.SubjectId == Guid.Empty ||
+            if (instance.CollectorInstanceId == Guid.Empty ||
                 !Enum.IsDefined(instance.SubjectKind) ||
                 instance.InstanceKey is { } instanceKey &&
                 (string.IsNullOrWhiteSpace(instanceKey) || instanceKey.Length > 200 || instanceKey != instanceKey.Trim()) ||
@@ -314,6 +315,16 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
         foreach (var fact in state.Facts)
         {
             var stream = state.Streams.SingleOrDefault(candidate => candidate.StreamId == fact.StreamId);
+            if (fact.Kind is not null)
+            {
+                if (fact.CollectorId is null || !state.Instances.Any(instance => instance.CollectorInstanceId == fact.DeliveryInstanceId) ||
+                    Heartbeat.Core.Facts.ObservationValidation.Validate(new FactSubmission(fact.StreamId, fact.FactId, fact.Revision,
+                        fact.ObservedAt, fact.OccurredAt is { } at ? new EventFactTime(at) : new SegmentFactTime(fact.Start, fact.End, fact.IsFinal),
+                        fact.Payload ?? default, fact.CollectorId, fact.Foi, fact.Aspect, fact.Relations, fact.Kind, fact.Source).ToObservation(),
+                        DateTimeOffset.MaxValue.AddMinutes(-5)) is not null)
+                    throw new JsonException("Collector Runtime state contains an invalid independent observation.");
+                continue;
+            }
             if (fact.StreamId == Guid.Empty || !IsUuidV7(fact.FactId) ||
                 fact.Revision is <= 0 or > 9_007_199_254_740_991 ||
                 stream is null ||
@@ -338,7 +349,7 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
                 FactCanonicalization.ValidateProtocolJson(payload) is not null)
                 throw new JsonException("Collector Runtime state contains non-canonical Fact payload JSON.");
         }
-        if (state.Facts.Any(fact => state.Streams.All(stream => stream.StreamId != fact.StreamId)))
+        if (state.Facts.Any(fact => fact.Kind is null && state.Streams.All(stream => stream.StreamId != fact.StreamId)))
             throw new JsonException("Collector Runtime state contains a Fact for an unknown Fact Stream.");
         var identifiedGaps = state.Gaps.Where(gap => gap.GapId != Guid.Empty).ToArray();
         if (identifiedGaps.Select(gap => (gap.StreamId, gap.GapId)).Distinct().Count() != identifiedGaps.Length)
@@ -378,7 +389,7 @@ public sealed class CollectorRuntimeStateException(string message, Exception? in
 
 internal sealed class CollectorRuntimeState
 {
-    public int SchemaVersion { get; init; } = 8;
+    public int SchemaVersion { get; init; } = 9;
     public List<CollectorInstanceState> Instances { get; init; } = [];
     public List<FactStreamState> Streams { get; init; } = [];
     public List<CommittedFactState> Facts { get; init; } = [];
@@ -406,7 +417,7 @@ internal sealed class CollectorRuntimeState
             SchemaVersion = SchemaVersion,
             Instances = [.. Instances.Where(instance => instance.CollectorInstanceId != collectorInstanceId)],
             Streams = [.. Streams.Where(stream => stream.CollectorInstanceId != collectorInstanceId)],
-            Facts = [.. Facts.Where(fact => !streamIds.Contains(fact.StreamId))],
+            Facts = [.. Facts.Where(fact => fact.Kind is null ? !streamIds.Contains(fact.StreamId) : fact.DeliveryInstanceId != collectorInstanceId)],
             Gaps = [.. Gaps.Where(gap => !streamIds.Contains(gap.StreamId))],
             ActivationAttemptTombstones = [.. ActivationAttemptTombstones.Where(
                 attempt => attempt.CollectorInstanceId != collectorInstanceId)]
@@ -466,7 +477,7 @@ internal sealed class CollectorRuntimeState
             Instances = [.. Instances],
             Streams = [.. Streams],
             Facts = [.. Facts.Where(existing =>
-            (existing.StreamId != fact.StreamId || existing.FactId != fact.FactId) &&
+            (existing.FactId != fact.FactId || (fact.Kind is null ? existing.StreamId != fact.StreamId || existing.Kind is not null : existing.Kind is null)) &&
             (evictedFact is null ||
              existing.StreamId != evictedFact.StreamId || existing.FactId != evictedFact.FactId)), fact],
             Gaps = [.. Gaps],
@@ -554,6 +565,9 @@ internal sealed class FactStreamState
 
 internal sealed class CommittedFactState
 {
+    public Guid? DeliveryInstanceId { get; init; }
+    public string? Kind { get; init; }
+    public string? Source { get; init; }
     public Guid StreamId { get; init; }
     public Guid FactId { get; init; }
     public long Revision { get; init; }
@@ -571,7 +585,7 @@ internal sealed class CommittedFactState
 
     public CommittedFactState ConfirmDelivery() => new()
     {
-        StreamId = StreamId, FactId = FactId, Revision = Revision,
+        StreamId = StreamId, FactId = FactId, Revision = Revision, Kind = Kind, Source = Source, DeliveryInstanceId = DeliveryInstanceId,
         CollectorId = CollectorId, Foi = Foi, Aspect = Aspect, Relations = Heartbeat.Core.Facts.ObservationContent.Copy(Relations),
         ObservedAt = ObservedAt, Start = Start, End = End,
         IsFinal = IsFinal, OccurredAt = OccurredAt, Payload = Payload,

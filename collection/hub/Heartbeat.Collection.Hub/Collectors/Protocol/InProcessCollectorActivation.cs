@@ -36,6 +36,13 @@ public sealed class InProcessCollectorActivation : IAsyncDisposable
     internal bool TryCommitAcknowledgement(Action commit) =>
         _session.TryCommitAcknowledgement(commit);
 
+    /// <summary>Publishes independent observations without opening a legacy Stream.</summary>
+    public ValueTask<FactBatchAcknowledgement> PublishAsync(
+        Guid messageId,
+        IReadOnlyList<FactSubmission> facts,
+        CancellationToken cancellationToken = default) =>
+        _session.PublishAsync(Guid.Empty, messageId, facts, cancellationToken);
+
     public async ValueTask StopAsync(CancellationToken cancellationToken = default) =>
         _ = await _lifetime.RequestStopAsync(
             new CollectorActivationStopIntent(CollectorActivationStopCause.Deactivated),

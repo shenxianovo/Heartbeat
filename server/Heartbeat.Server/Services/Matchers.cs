@@ -72,8 +72,8 @@ namespace Heartbeat.Server.Services
     /// </summary>
     public static class MatcherEval
     {
-        public static bool Hits(string source, IReadOnlyList<DepthReading> readings, MatcherDto matcher)
-            => string.Equals(matcher.Source, source, StringComparison.OrdinalIgnoreCase)
+        public static bool Hits(string? source, IReadOnlyList<DepthReading> readings, MatcherDto matcher)
+            => source != null && string.Equals(matcher.Source, source, StringComparison.OrdinalIgnoreCase)
                && matcher.Steps.Count > 0
                && matcher.Steps.All(step => readings.Any(r =>
                    string.Equals(r.Reading, step.Reading, StringComparison.OrdinalIgnoreCase)

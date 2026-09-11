@@ -30,13 +30,18 @@ public class ManagedProcessCollectorProtocolTranscriptTests
     [InlineData("collector-protocol-outbox.json", 2)]
     [InlineData("collector-protocol-dead-letter.json", 3)]
     [InlineData("collector-protocol-outbox.json", 3)]
+    [InlineData("collector-protocol-outbox.json", 4)]
+    [InlineData("collector-protocol-dead-letter.json", 4)]
     public async Task OldPackageCannotOpenObservationCacheAfterRuntimeRestart(string cacheName, int version)
     {
         using var packageCopy = ManagedReferenceCollectorPackage.Create();
         var manifestPath = Path.Combine(packageCopy.Path, "collector-manifest.json");
         var manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!;
         manifest["supportedCapabilities"]!.AsObject().Remove("facts.aspect");
-        manifest["supportedCapabilities"]!.AsObject().Remove("facts.observation");
+        if (version == 4)
+            manifest["supportedCapabilities"]!["facts.observation"] = new JsonArray(1);
+        else
+            manifest["supportedCapabilities"]!.AsObject().Remove("facts.observation");
         File.WriteAllText(manifestPath, manifest.ToJsonString());
         var package = LocalCollectorPackage.Load(packageCopy.Path);
         using var directory = TemporaryDirectory.Create();
@@ -59,6 +64,42 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         Assert.Equal("collector_cache_incompatible", error.Error.Code);
         Assert.Equal(contents, File.ReadAllText(cachePath));
         Assert.Equal([cachePath], Directory.GetFiles(dataDirectory));
+        Assert.Empty(restarted.ReadPendingFacts());
+    }
+
+    [Fact]
+    public async Task ManagedNativePublisherUsesNoSubjectOrStreamAndSurvivesRestart()
+    {
+        using var packageCopy = ManagedReferenceCollectorPackage.Create();
+        var manifestPath = Path.Combine(packageCopy.Path, "collector-manifest.json");
+        var manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!;
+        manifest["outputs"] = new JsonArray();
+        manifest["supportedCapabilities"]!["facts.observation"] = new JsonArray(1, 2);
+        manifest["defaultInstance"]!.AsObject().Remove("subjectKind");
+        File.WriteAllText(manifestPath, manifest.ToJsonString());
+        var package = LocalCollectorPackage.Load(packageCopy.Path);
+        using var directory = TemporaryDirectory.Create();
+        var path = Path.Combine(directory.Path, "runtime.json");
+        var sink = new SegmentIngestService(new TestClock(DateTimeOffset.UtcNow));
+        Guid instanceId;
+        using (var runtime = CollectorRuntime.Open(path, sink))
+        {
+            instanceId = runtime.CreateInstance(package,
+                new CollectorInstanceSpec(1, 1, JsonSerializer.SerializeToElement(new { }))).CollectorInstanceId;
+            var activation = await runtime.ActivateManagedProcessAsync(instanceId, package, Options("native_observation"));
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            while (runtime.ReadPendingFacts().Count == 0) await Task.Delay(10, timeout.Token);
+            await activation.StopAsync();
+        }
+        using var restarted = CollectorRuntime.Open(path, sink);
+        var pending = Assert.Single(restarted.ReadPendingFacts());
+        Assert.Null(pending.Stream);
+        Assert.Equal(instanceId, pending.Observation!.CollectorId);
+        Assert.Equal("event", pending.Observation.Kind);
+        Assert.Equal(Guid.Parse("a218ee10-47de-4b71-a984-d90506604851"), pending.Observation.Id);
+        Assert.Equal(3, pending.Observation.Revision);
+        Assert.Equal("Independent event", pending.Observation.Result!.Value.GetProperty("title").GetString());
+        restarted.ConfirmUploadedFacts([pending]);
         Assert.Empty(restarted.ReadPendingFacts());
     }
 

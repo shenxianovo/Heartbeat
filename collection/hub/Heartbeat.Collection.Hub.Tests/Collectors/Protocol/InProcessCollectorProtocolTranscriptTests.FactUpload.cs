@@ -14,6 +14,17 @@ namespace Heartbeat.Collection.Hub.Tests.Collectors.Protocol;
 public partial class InProcessCollectorProtocolTranscriptTests
 {
     [Fact]
+    public async Task IndependentObservation_RejectsIncompleteNativeFactInsteadOfInferringLegacySemantics()
+    {
+        await using var fixture = await ActivatedRuntimeFixture.CreateAsync();
+        var stream = fixture.Activation.Streams["activity"];
+        var fact = CreateFact(stream.Descriptor.StreamId) with { Kind = "segment" };
+        var ack = await stream.PublishAsync(Guid.CreateVersion7(), [fact]);
+        Assert.True(ack.IsMessageRejected || !Assert.Single(ack.Results).IsAcknowledged);
+        Assert.Empty(fixture.Runtime.ReadPendingFacts());
+    }
+
+    [Fact]
     public async Task NativeUpload_RestartRetainsRawFactWithoutLegacyProjection()
     {
         await using var fixture = await ActivatedRuntimeFixture.CreateAsync(new CollectorRuntimeOptions { });

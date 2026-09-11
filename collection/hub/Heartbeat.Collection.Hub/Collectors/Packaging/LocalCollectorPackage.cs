@@ -241,6 +241,9 @@ public sealed class LocalCollectorPackage
         var capabilities = ReadCapabilities(root.GetProperty("supportedCapabilities"));
         var config = ReadConfig(root);
         var outputs = ReadOutputs(root.GetProperty("outputs"));
+        if (outputs.Count == 0 &&
+            (!capabilities.TryGetValue("facts.observation", out var observationVersions) || !observationVersions.Contains(2)))
+            throw new PackageValidationException("A Package without legacy outputs requires facts.observation version 2.");
         var artifacts = ReadArtifacts(root.GetProperty("artifacts"));
         var presentation = ReadPresentation(root);
         var defaultInstance = ReadDefaultInstance(root, config, outputs);
@@ -305,12 +308,11 @@ public sealed class LocalCollectorPackage
             defaultInstance,
             "Collector Package defaultInstance",
             ["subjectKind", "configVersion", "config"],
-            ["subjectKind", "configVersion", "config"]);
-        var subjectKind = ReadNonEmptyString(
-            defaultInstance,
-            "subjectKind",
-            "Collector Package defaultInstance");
-        if (!SupportedSubjectKinds.Contains(subjectKind) ||
+            ["configVersion", "config"]);
+        var subjectKind = defaultInstance.TryGetProperty("subjectKind", out var subject) && subject.ValueKind != JsonValueKind.Null
+            ? ReadNonEmptyString(defaultInstance, "subjectKind", "Collector Package defaultInstance") : string.Empty;
+        if (subjectKind.Length == 0 ? outputs.Count != 0 :
+            !SupportedSubjectKinds.Contains(subjectKind) ||
             !outputs.Any(output => output.SubjectKinds.Contains(subjectKind, StringComparer.Ordinal)))
             throw new PackageValidationException(
                 "Collector Package defaultInstance.subjectKind must be produced by one of the Package outputs.");
@@ -402,7 +404,8 @@ public sealed class LocalCollectorPackage
 
     private static IReadOnlyList<CollectorOutputTemplate> ReadOutputs(JsonElement element)
     {
-        RequireNonEmptyArray(element, "outputs");
+        if (element.ValueKind != JsonValueKind.Array)
+            throw new PackageValidationException("outputs must be an array.");
         var outputs = new List<CollectorOutputTemplate>();
         var outputIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var item in element.EnumerateArray())

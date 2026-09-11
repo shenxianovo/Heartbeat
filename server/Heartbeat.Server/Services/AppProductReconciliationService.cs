@@ -140,10 +140,19 @@ public sealed class AppProductReconciliationService(AppDbContext db)
             .ToListAsync(cancellationToken);
         var serviceAppIds = await db.ServiceProducts.Where(s => allSourceIds.Contains(s.AppId))
             .Select(s => s.AppId).ToListAsync(cancellationToken);
+        // Rebinding platform identities does not move direct product references without that
+        // evidence. Keep their product (and its knowledge/icon ownership) while Facts still use it.
+        var observedSourceIds = await db.Apps
+            .Where(app => allSourceIds.Contains(app.Id) &&
+                (db.Set<FactRecord>().Any(fact => fact.FoiId == EF.Property<Guid?>(app, "ObjectId")) ||
+                 db.RelationMembers.Any(member => member.ObjectId == EF.Property<Guid?>(app, "ObjectId"))))
+            .Select(app => app.Id)
+            .ToListAsync(cancellationToken);
         var drainedSources = sourceApps
             .Where(x => x.Id != 0)
             .Where(x => !remainingCounts.ContainsKey(x.Id))
             .Where(x => !protectedTargetIds.Contains(x.Id) && !serviceAppIds.Contains(x.Id))
+            .Where(x => !observedSourceIds.Contains(x.Id))
             .ToList();
         var removableSources = drainedSources
             .Where(x => preserveSourceAppKeys?.Contains(x.Key) != true)

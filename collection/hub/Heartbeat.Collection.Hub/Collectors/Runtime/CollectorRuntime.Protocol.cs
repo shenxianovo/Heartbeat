@@ -17,7 +17,7 @@ public sealed partial class CollectorRuntime
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<int>> HubProtocolCapabilities =
         new Dictionary<string, IReadOnlyList<int>>(StringComparer.Ordinal)
         {
-            ["facts.observation"] = [1],
+            ["facts.observation"] = [1, 2],
             ["facts.aspect"] = [1],
             ["facts.segment"] = [1],
             ["facts.event"] = [1],
@@ -175,8 +175,8 @@ public sealed partial class CollectorRuntime
                     HasExternalHostActivationLocked(collectorInstanceId) ||
                     _activations.Values.Any(activation =>
                         activation.State != CollectorActivationState.Stopped &&
-                        activation.Streams.Values.Any(stream =>
-                            stream.Descriptor.CollectorInstanceId == collectorInstanceId)))
+                        _state.ActivationAttemptTombstones.Any(attempt => attempt.ActivationId == activation.ActivationId &&
+                            attempt.CollectorInstanceId == collectorInstanceId)))
                     throw ActivationError(
                         "stream_writer_conflict",
                         "Stop the current Collector Activation before starting its replacement.");
@@ -186,7 +186,7 @@ public sealed partial class CollectorRuntime
                     activationId,
                     helloMessageId,
                     package,
-                    ActivationDeliveryCapability.Complete);
+                    ActivationDeliveryCapability.Complete, SelectedCapabilities(package, protocolSupport!));
                 lifetime = new CollectorActivationLifetime(
                     lifetimeDriver?.Invoke(session) ??
                         new InProcessCollectorActivationLifetimeDriver(collector, session),
@@ -219,6 +219,7 @@ public sealed partial class CollectorRuntime
                     _instanceDataRoot,
                     collectorInstanceId.ToString("N")),
                     session!.DurableCommitFence));
+            ValidateCollectorCacheCompatibility(package, initialization.Resources.DataDirectory!);
             InProcessCollectorInitialization initialized;
             try
             {
@@ -673,7 +674,7 @@ public sealed partial class CollectorRuntime
                 {
                     if (!ReferenceEquals(_state, baseState))
                         continue;
-                    if (!_streamWriters.TryGetValue(fact.StreamId, out var writer) || writer != activationId)
+                    if (!CanPublishFact(activationId, fact))
                         return Rejected(
                             index,
                             "stream_writer_conflict",
@@ -707,7 +708,7 @@ public sealed partial class CollectorRuntime
         out PreparedFactCommit prepared)
     {
         prepared = default!;
-        if (!_streamWriters.TryGetValue(fact.StreamId, out var writer) || writer != activationId)
+        if (!CanPublishFact(activationId, fact))
             return Rejected(index, "stream_writer_conflict", "Activation does not hold this Fact Stream writer lease.");
         var activationState = _activations.TryGetValue(activationId, out var inProcessActivation)
             ? inProcessActivation.State
@@ -718,6 +719,8 @@ public sealed partial class CollectorRuntime
             return Rejected(index, "activation_stopping", "Collector Activation cannot deliver Facts in its current state.");
 
         var stream = _state.Streams.SingleOrDefault(candidate => candidate.StreamId == fact.StreamId);
+        if (fact.Kind is not null)
+            return PrepareObservation(activationId, index, fact, stream, out prepared);
         if (stream is null)
             return Rejected(index, "fact_invalid", "Fact Stream does not exist.");
 
@@ -813,6 +816,7 @@ public sealed partial class CollectorRuntime
     }
 
     private static bool SameContent(CommittedFactState current, FactSubmission fact) =>
+        current.Kind == fact.Kind && current.Source == fact.Source && (fact.Kind is null || current.ObservedAt == fact.ObservedAt) &&
         current.CollectorId == fact.CollectorId && current.Foi == fact.Foi && current.Aspect == fact.Aspect &&
         Heartbeat.Core.Facts.ObservationContent.Equal(current.Relations, fact.Relations) &&
         current.Start == (fact.Time.Start ?? default) && current.End == (fact.Time.End ?? default) &&
@@ -820,7 +824,7 @@ public sealed partial class CollectorRuntime
         current.Payload is { } payload && JsonElement.DeepEquals(payload, fact.Payload);
 
     private sealed record PreparedFactCommit(
-        FactStreamState Stream,
+        FactStreamState? Stream,
         CommittedFactState Committed,
         CommittedFactState? EvictedEvent);
 
@@ -873,7 +877,8 @@ public sealed partial class CollectorRuntime
         LocalCollectorPackage package,
         IReadOnlyList<OutputBinding> bindings)
     {
-        if (bindings is null || bindings.Count == 0)
+        if (bindings is null || bindings.Count == 0 &&
+            !package.Manifest.SupportedCapabilities.GetValueOrDefault("facts.observation", []).Contains(2))
             throw ActivationError("output_not_declared", "Collector must open its declared Fact Streams before Ready.");
         if (bindings.Any(binding => binding is null))
             throw ActivationError("protocol_invalid_message", "streams.open bindings must not contain null.");
@@ -1010,6 +1015,9 @@ public sealed partial class CollectorRuntime
             throw ActivationError(
                 "package_mismatch",
                 "Collector Instance is permanently bound to its PackageId.");
+        if (instance.SubjectId == Guid.Empty &&
+            !package.Manifest.SupportedCapabilities.GetValueOrDefault("facts.observation", []).Contains(2))
+            throw ActivationError("capability_unsupported", "An independent Collector Instance requires facts.observation v2.");
         if (!package.Manifest.Config.AcceptedVersions.Contains(instance.ConfigVersion))
             throw ActivationError(
                 "config_version_unsupported",
@@ -1144,7 +1152,8 @@ public sealed partial class CollectorRuntime
         Guid activationId,
         Guid helloMessageId,
         LocalCollectorPackage package,
-        ActivationDeliveryCapability deliveryCapability)
+        ActivationDeliveryCapability deliveryCapability,
+        IReadOnlyDictionary<string, int>? selectedCapabilities = null)
     {
         var deliveryFence = new ActivationDeliveryFence();
         return new CollectorActivationSession(
@@ -1156,7 +1165,7 @@ public sealed partial class CollectorRuntime
             deliveryFence,
             (streamId, facts) => CommitFacts(activationId, streamId, facts, deliveryFence),
             (streamId, gap) => CommitGap(activationId, streamId, gap, deliveryFence),
-            MarkAcknowledgedLiveTraffic);
+            MarkAcknowledgedLiveTraffic, selectedCapabilities);
     }
 
     private static string SubjectKindName(SubjectKind kind) => kind switch
@@ -1331,7 +1340,7 @@ public sealed partial class CollectorRuntime
     {
         lock (_gate)
             foreach (var fact in _state.Facts)
-                ObserveCommittedFact(_state.Streams.Single(stream => stream.StreamId == fact.StreamId), fact);
+                ObserveCommittedFact(_state.Streams.SingleOrDefault(stream => stream.StreamId == fact.StreamId), fact);
     }
 
     private void MarkAcknowledgedLiveTraffic(

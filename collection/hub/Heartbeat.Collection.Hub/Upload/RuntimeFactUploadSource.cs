@@ -18,10 +18,10 @@ public sealed class RuntimeFactUploadSource(CollectorRuntime runtime, IDeviceIde
     {
         var batch = runtime.ReadPendingFacts();
         if (subjectNames is not null)
-            foreach (var stream in batch.Select(item => item.Stream))
+            foreach (var stream in batch.Select(item => item.Stream).OfType<Heartbeat.Core.DTOs.Facts.FactStreamDefinition>())
                 stream.Subject.DisplayName = subjectNames.DisplayName(stream.CollectorInstanceId);
         if (machine is not null)
-            foreach (var stream in batch.Select(item => item.Stream))
+            foreach (var stream in batch.Select(item => item.Stream).OfType<Heartbeat.Core.DTOs.Facts.FactStreamDefinition>())
                 if (stream.Subject.Kind == "machine" &&
                     string.Equals(stream.Subject.HardwareId, machine.HardwareId, StringComparison.OrdinalIgnoreCase))
                 {

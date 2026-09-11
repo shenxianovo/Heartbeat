@@ -30,8 +30,11 @@ const format = (value: string) => (crossesDate.value ? new Date(value).toLocaleD
             <dd><a v-if="field.href" :href="field.href" target="_blank" rel="noopener noreferrer">{{ field.value }}</a><span v-else>{{ field.value }}</span></dd>
           </template>
           <dt>原始时间</dt><dd>{{ fact.startTime }} → {{ fact.endTime }}</dd>
-          <dt>Fact / Revision</dt><dd>{{ fact.factId }} / {{ fact.revision }}</dd>
-          <dt>Stream</dt><dd>{{ fact.streamId }}</dd>
+          <dt>Fact / Revision</dt><dd>{{ fact.id }} / {{ fact.revision }}</dd>
+          <dt>Collector</dt><dd>{{ fact.collectorId ?? '未知采集器' }}</dd>
+          <dt>Aspect</dt><dd>{{ fact.aspect ?? '未知观测类型' }}</dd>
+          <dt>Source</dt><dd>{{ fact.source ?? '未知来源' }}</dd>
+          <template v-if="fact.streamId"><dt>Stream</dt><dd>{{ fact.streamId }}</dd></template>
         </dl>
         <details class="payload"><summary>Payload JSON</summary><pre>{{ JSON.stringify(fact.payload, null, 2) }}</pre></details>
       </details>

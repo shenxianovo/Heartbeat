@@ -465,7 +465,8 @@ public sealed partial class CollectorRuntime
                 if (document.RootElement.ValueKind == JsonValueKind.Object &&
                     document.RootElement.TryGetProperty("SchemaVersion", out var version) &&
                     version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var schemaVersion) &&
-                    (schemaVersion > 3 || schemaVersion == 3 &&
+                    (schemaVersion > 4 || schemaVersion == 4 &&
+                        (!package.Manifest.SupportedCapabilities.TryGetValue("facts.observation", out var independent) || !independent.Contains(2)) || schemaVersion == 3 &&
                         (!package.Manifest.SupportedCapabilities.TryGetValue("facts.observation", out var observations) || !observations.Contains(1)) || schemaVersion == 2 &&
                         (!package.Manifest.SupportedCapabilities.TryGetValue("facts.aspect", out var aspects) ||
                          !aspects.Contains(1))))
@@ -1169,7 +1170,7 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
                 instance = new
                 {
                     collectorInstanceId = initialization.Instance.CollectorInstanceId,
-                    subject = new
+                    subject = initialization.Instance.Subject.SubjectId == Guid.Empty ? null : new
                     {
                         subjectId = initialization.Instance.Subject.SubjectId,
                         kind = SubjectKindName(initialization.Instance.Subject.Kind)
@@ -1714,10 +1715,11 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
         var facts = RequireArray(body, "facts").EnumerateArray().Select(ReadFact).ToArray();
         var streamIds = facts.Select(fact => fact.StreamId).Distinct().ToArray();
         if (streamIds.Length != 1 || _activation is null ||
-            _activation.Streams.Values.All(stream => stream.Descriptor.StreamId != streamIds[0]))
+            streamIds[0] != Guid.Empty && _activation.Streams.Values.All(stream => stream.Descriptor.StreamId != streamIds[0]))
             throw new ManagedProcessProtocolException("facts.publish references an unopened Stream.");
-        var stream = _activation.Streams.Values.Single(item => item.Descriptor.StreamId == streamIds[0]);
-        var acknowledgement = await stream.PublishAsync(messageId, facts);
+        var acknowledgement = streamIds[0] == Guid.Empty
+            ? await _activation.PublishAsync(messageId, facts)
+            : await _activation.Streams.Values.Single(item => item.Descriptor.StreamId == streamIds[0]).PublishAsync(messageId, facts);
         await WriteAsync(new
         {
             protocol = "heartbeat.collector/1",
@@ -1885,11 +1887,14 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
     private static FactSubmission ReadFact(JsonElement fact)
     {
         var node = JsonNode.Parse(fact.GetRawText())!.AsObject();
-        Heartbeat.Core.Facts.ObservationCompatibility.ReadOldEnvelope(node, true);
+        if (node["kind"] is null)
+            Heartbeat.Core.Facts.ObservationCompatibility.ReadOldEnvelope(node, true);
         fact = JsonSerializer.SerializeToElement(node);
         RequireExactProperties(
             fact,
             "streamId",
+            "kind",
+            "source",
             "factId",
             "revision",
             "observedAt",
@@ -1915,7 +1920,8 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
                 ReadBoolean(time, "isFinal"));
         }
         return new FactSubmission(
-            ReadGuid(fact, "streamId"), ReadUuidV7(fact, "factId"),
+            fact.TryGetProperty("streamId", out var streamId) && streamId.ValueKind != JsonValueKind.Null
+                ? ReadGuid(fact, "streamId") : Guid.Empty, node["kind"] is not null ? ReadGuid(fact, "factId") : ReadUuidV7(fact, "factId"),
             ReadPositiveLong(fact, "revision"),
             fact.TryGetProperty("observedAt", out _) ? ReadUtcTimestamp(fact, "observedAt") : null,
             factTime,
@@ -1925,7 +1931,9 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
                 ? JsonSerializer.Deserialize<Heartbeat.Core.DTOs.Facts.ObservationObjectReference>(foi, new JsonSerializerOptions(JsonSerializerDefaults.Web)) : null,
             fact.TryGetProperty("aspect", out var aspect) && aspect.ValueKind != JsonValueKind.Null ? aspect.GetString() : null,
             fact.TryGetProperty("relations", out var relations) && relations.ValueKind != JsonValueKind.Null
-                ? JsonSerializer.Deserialize<List<Heartbeat.Core.DTOs.Facts.FactRelationSnapshot>>(relations, new JsonSerializerOptions(JsonSerializerDefaults.Web)) : null);
+                ? JsonSerializer.Deserialize<List<Heartbeat.Core.DTOs.Facts.FactRelationSnapshot>>(relations, new JsonSerializerOptions(JsonSerializerDefaults.Web)) : null,
+            fact.TryGetProperty("kind", out var kind) && kind.ValueKind != JsonValueKind.Null ? kind.GetString() : null,
+            fact.TryGetProperty("source", out var source) && source.ValueKind != JsonValueKind.Null ? source.GetString() : null);
     }
 
     private static IReadOnlyDictionary<string, IReadOnlyList<int>> ReadCapabilities(JsonElement parent, string name) =>

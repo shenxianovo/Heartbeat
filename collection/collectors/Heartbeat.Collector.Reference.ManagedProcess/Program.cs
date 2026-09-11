@@ -25,7 +25,7 @@ if (RawReferenceProtocolProbe.Handles(behavior))
 
 var capabilities = new Dictionary<string, IReadOnlyList<int>>(StringComparer.Ordinal)
 {
-    ["facts.observation"] = [1],
+    ["facts.observation"] = behavior == "native_observation" ? [1, 2] : [1],
                 ["facts.aspect"] = [1],
                 ["facts.segment"] = [1],
     ["auth.interactive"] = [1],
@@ -42,8 +42,8 @@ var requiredCapabilities = new HashSet<string>(StringComparer.Ordinal)
 var definition = new CollectorClientDefinition(
     "reference.managed",
     capabilities,
-    subjectKind,
-    [new CollectorOutputBinding(
+    behavior == "native_observation" ? string.Empty : subjectKind,
+    behavior == "native_observation" ? [] : [new CollectorOutputBinding(
         "activity",
         "activity",
         new Dictionary<string, string>(StringComparer.Ordinal))],
@@ -115,6 +115,17 @@ internal sealed class ReferenceFactCollector(string? behavior, TextWriter rawOut
             await rawOutput.WriteLineAsync("[broken");
             await rawOutput.FlushAsync(cancellationToken);
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        }
+        if (behavior == "native_observation")
+        {
+            await activation.PublishAsync(new CollectorFact(
+                string.Empty, Guid.Parse("a218ee10-47de-4b71-a984-d90506604851"), 3, null,
+                new CollectorEventFactTime(DateTimeOffset.Parse("2026-08-22T12:00:00Z")),
+                JsonSerializer.SerializeToElement(new { title = "Independent event", values = new[] { 1, 2 } }),
+                activation.Initialization.CollectorInstanceId,
+                new Heartbeat.Core.DTOs.Facts.ObservationObjectReference("account", "reference", "test-account"),
+                "reference.event", [], "event"), cancellationToken);
+            return;
         }
         await activation.PublishAsync(new CollectorFact(
             "activity",

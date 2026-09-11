@@ -73,12 +73,12 @@ describe('toReplaySegs', () => {
     expect(tracks[0].lanes.every(lane => lane.bars.length === 1)).toBe(true)
   })
 
-  it('缺时间/缺 source 的记录跳过', () => {
+  it('缺时间的记录跳过，未知来源的有效记录仍然可回放', () => {
     const segs = toReplaySegs(
       [{ appName: 'a', startTime: base }],
       [{ identityKey: 'x', startTime: base, endTime: later }],
     )
-    expect(segs).toEqual([])
+    expect(segs).toEqual([expect.objectContaining({ source: null, label: 'x' })])
   })
 })
 

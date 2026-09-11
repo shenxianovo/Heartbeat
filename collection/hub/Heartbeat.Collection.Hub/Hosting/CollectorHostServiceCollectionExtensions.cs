@@ -43,7 +43,7 @@ public static class CollectorHostServiceCollectionExtensions
             [new RuntimeFactUploadSource(provider.GetRequiredService<CollectorRuntime>(),
                 provider.GetService<IDeviceIdentity>(), provider.GetService<ICollectorFactSubjectNames>())],
             (batch, ct) => provider.GetRequiredService<HeartbeatApiClient>()
-                .UploadFactsAsync(FactUploadItem.Request(batch), ct),
+                .UploadFactsAsync(batch, ct),
             new JsonDeadLetterStore<FactUploadItem>(Path.Combine(options.DataDirectory, "facts-dead-letter.json")),
             provider.GetService<UploadStatusRegistry>(),
             provider.GetService<ClientCompatibilityStatus>()));
