@@ -24,7 +24,8 @@ public sealed partial class FactHttpTests
         Directory.CreateDirectory(root);
         try
         {
-            var clock = new SharedClock(DateTimeOffset.UtcNow);
+            // Run the simulated 25-hour observation in the past so the real SDK clock accepts it.
+            var clock = new SharedClock(DateTimeOffset.UtcNow.AddHours(-26));
             await using var application = CreateApplication(clock);
             using var http = application.CreateClient();
             http.DefaultRequestHeaders.Add("X-Test-Owner", "user-1");
@@ -63,7 +64,7 @@ public sealed partial class FactHttpTests
             var upload = new UploadStream<FactUploadItem>(
                 "long system session",
                 [new RuntimeFactUploadSource(runtime)],
-                (batch, ct) => api.UploadFactsAsync(FactUploadItem.Request(batch), ct),
+                (batch, ct) => api.UploadFactsAsync(batch, ct),
                 new JsonDeadLetterStore<FactUploadItem>(
                     Path.Combine(root, "facts-dead-letter.json")));
 

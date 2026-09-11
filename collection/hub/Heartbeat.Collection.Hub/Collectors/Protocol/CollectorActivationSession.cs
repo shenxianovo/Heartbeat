@@ -16,7 +16,7 @@ internal sealed class CollectorActivationSession
     private readonly CollectorProtocolLimits _limits;
     private readonly Func<Guid, IReadOnlyList<FactSubmission>, FactBatchAcknowledgement> _commitFacts;
     private readonly Func<Guid, StreamGapReport, GapDeliveryOutcome> _commitGap;
-    private readonly Action<Guid, IReadOnlyList<FactDeliveryOutcome>> _markAcknowledgedTraffic;
+    private readonly Action<Guid, IReadOnlyList<FactSubmission>, IReadOnlyList<FactDeliveryOutcome>> _markAcknowledgedTraffic;
     private readonly Dictionary<Guid, MessageAttemptIdentity> _messageAttempts = [];
     private readonly Dictionary<Guid, PublishReplay> _publishReplays = [];
     private readonly Dictionary<Guid, GapReplay> _gapReplays = [];
@@ -36,7 +36,7 @@ internal sealed class CollectorActivationSession
         ActivationDeliveryFence deliveryFence,
         Func<Guid, IReadOnlyList<FactSubmission>, FactBatchAcknowledgement> commitFacts,
         Func<Guid, StreamGapReport, GapDeliveryOutcome> commitGap,
-        Action<Guid, IReadOnlyList<FactDeliveryOutcome>> markAcknowledgedTraffic,
+        Action<Guid, IReadOnlyList<FactSubmission>, IReadOnlyList<FactDeliveryOutcome>> markAcknowledgedTraffic,
         IReadOnlyDictionary<string, int>? selectedCapabilities = null)
     {
         ActivationId = activationId;
@@ -184,7 +184,7 @@ internal sealed class CollectorActivationSession
                         "protocol_invalid_message",
                         "The same messageId was reused with different facts.publish content."));
                 replay.Error?.Throw();
-                _markAcknowledgedTraffic(streamId, replay.Outcome!.Results);
+                _markAcknowledgedTraffic(streamId, snapshot, replay.Outcome!.Results);
                 return ValueTask.FromResult(replay.Outcome);
             }
             if (snapshot.Any(fact => fact.StreamId != streamId) ||

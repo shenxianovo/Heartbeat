@@ -30,7 +30,7 @@ public sealed class SystemInProcessCollector(
         "system.inprocess",
         new Dictionary<string, IReadOnlyList<int>>(StringComparer.Ordinal)
         {
-            ["facts.observation"] = [1],
+            ["facts.observation"] = [2],
             ["facts.aspect"] = [1],
             ["facts.segment"] = [1],
             ["facts.event"] = [1],
@@ -70,7 +70,7 @@ public sealed class SystemInProcessCollector(
         [1],
         new Dictionary<string, IReadOnlyList<int>>(StringComparer.Ordinal)
         {
-            ["facts.observation"] = [1],
+            ["facts.observation"] = [2],
             ["facts.aspect"] = [1],
             ["facts.segment"] = [1],
             ["facts.event"] = [1],
@@ -187,11 +187,11 @@ public sealed class SystemInProcessCollector(
             "The system Collector cannot publish before Ready.");
         if (facts.Count == 0 || facts.Select(fact => fact.StreamId).Distinct().Count() != 1)
             throw new ArgumentException("An InProcess publish must target exactly one Stream.", nameof(facts));
-        var stream = activation.Streams.Values.Single(item => item.Descriptor.StreamId == facts[0].StreamId);
-        var acknowledgement = await stream.PublishAsync(
-            messageId,
-            facts.Select(ToHubFact).ToArray(),
-            cancellationToken);
+        var submissions = facts.Select(ToHubFact).ToArray();
+        var acknowledgement = facts[0].StreamId == Guid.Empty
+            ? await activation.PublishAsync(messageId, submissions, cancellationToken)
+            : await activation.Streams.Values.Single(item => item.Descriptor.StreamId == facts[0].StreamId)
+                .PublishAsync(messageId, submissions, cancellationToken);
         return new CollectorFactBatchAcknowledgement(
             acknowledgement.Results.Select(outcome => new CollectorFactDeliveryOutcome(
                 outcome.Index,
@@ -373,7 +373,7 @@ public sealed class SystemInProcessCollector(
             CollectorEventFactTime occurrence => new EventFactTime(occurrence.OccurredAt),
             _ => throw new InvalidOperationException("Unknown Collector Fact time shape.")
         },
-        fact.Payload.Clone(), fact.CollectorId, fact.Foi, fact.Aspect, fact.Relations is null ? null : Heartbeat.Core.Facts.ObservationContent.Copy(fact.Relations));
+        fact.Payload.Clone(), fact.CollectorId, fact.Foi, fact.Aspect, fact.Relations is null ? null : Heartbeat.Core.Facts.ObservationContent.Copy(fact.Relations), fact.Kind, fact.Source);
 
     private static ClientError? ToClientError(HubError? error) => error is null
         ? null

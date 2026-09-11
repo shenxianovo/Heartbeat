@@ -248,7 +248,7 @@ public sealed class AppMonitorService(
         DateTimeOffset end,
         bool isFinal)
     {
-        if (appIdentityKey == null || start == default)
+        if (start == default)
             return [];
 
         var snapshots = new List<ForegroundSegmentSnapshot>();
@@ -304,7 +304,7 @@ public sealed class AppMonitorService(
         bool allowPositiveSubsecond = false,
         bool allowZeroDuration = false)
     {
-        if (appIdentityKey == null || start == default) return null;
+        if (start == default) return null;
         var duration = end - start;
         if (duration < TimeSpan.Zero
             || (duration == TimeSpan.Zero && !allowZeroDuration)
@@ -315,13 +315,14 @@ public sealed class AppMonitorService(
         return new ForegroundSegmentSnapshot(
             id,
             revision,
-            SystemIdentity.Key(appIdentityKey, title),
+            appIdentityKey is null ? null : SystemIdentity.Key(appIdentityKey, title),
             appIdentityKey,
             appDisplayName,
             title,
             start,
             end,
-            isFinal);
+            isFinal,
+            IsObservation: true);
     }
 
     private void OnAwayProcessNamesChanged(IReadOnlyList<string> names)

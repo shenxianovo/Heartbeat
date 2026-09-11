@@ -12,7 +12,8 @@ internal sealed record PendingSystemSegmentIngress(
 internal sealed record PendingSystemInputDelivery(
     Guid EntryId,
     InputEventItem? Item = null,
-    SystemInputIngressGap? Gap = null);
+    SystemInputIngressGap? Gap = null,
+    bool IsObservation = false);
 internal sealed record SystemSegmentIngressGap(
     Guid GapId,
     DateTimeOffset Start,
@@ -65,6 +66,8 @@ internal sealed class SystemCollectorIngressCommitFence : ICollectorDurableCommi
 /// A segment batch and its active checkpoint are one mutation; acknowledgement tombstones retain
 /// the checkpoint and quiescent reset records make old chunks safely reclaimable. Input capacity
 /// likewise stages either each Event or its Gap in one atomic batch mutation.
+/// Historical records have implicit schema 1 and legacy identity; every new mutation writes schema 2,
+/// including reset records, so older strict loaders cannot resume after native state is reclaimed.
 /// </summary>
 internal sealed class SystemCollectorIngressStore
 {
@@ -183,6 +186,8 @@ internal sealed class SystemCollectorIngressStore
                 StoredIngressEntry? entry;
                 using (document)
                     entry = document.RootElement.Deserialize<StoredIngressEntry>(JsonOptions);
+                if (entry is not null && entry.SchemaVersion is not (1 or 2))
+                    throw new NotSupportedException($"System Collector ingress schema {entry.SchemaVersion} is unsupported; the original journal is preserved.");
                 if (entry is null || entry.EntryId == Guid.Empty)
                     throw new InvalidDataException("System Collector ingress entry is invalid.");
                 switch (entry.Kind)
@@ -393,7 +398,7 @@ internal sealed class SystemCollectorIngressStore
                 }
                 else
                 {
-                    staged.Add(new PendingSystemInputDelivery(Guid.CreateVersion7(), Item: copy));
+                    staged.Add(new PendingSystemInputDelivery(Guid.CreateVersion7(), Item: copy, IsObservation: true));
                     acceptedCount++;
                 }
             }
@@ -604,7 +609,7 @@ internal sealed class SystemCollectorIngressStore
         var directory = Path.GetDirectoryName(_path)
             ?? throw new InvalidOperationException("System Collector ingress path has no directory.");
         Directory.CreateDirectory(directory);
-        var line = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(entry, JsonOptions) + "\n");
+        var line = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(entry with { SchemaVersion = 2 }, JsonOptions) + "\n");
         var chunkIndex = _tailChunkLength != 0 && _tailChunkLength + line.Length > TargetJournalChunkBytes
             ? checked(_tailChunkIndex + 1)
             : _tailChunkIndex;
@@ -755,5 +760,6 @@ internal sealed class SystemCollectorIngressStore
         bool MutatesCheckpoint = false,
         ForegroundSegmentSnapshot? Checkpoint = null,
         IReadOnlyList<Guid>? AcknowledgedEntryIds = null,
-        IReadOnlyList<PendingSystemInputDelivery>? InputDeliveries = null);
+        IReadOnlyList<PendingSystemInputDelivery>? InputDeliveries = null,
+        int SchemaVersion = 1);
 }

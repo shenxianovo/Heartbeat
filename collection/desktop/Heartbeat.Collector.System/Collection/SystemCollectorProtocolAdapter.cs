@@ -5,6 +5,8 @@ using Heartbeat.Collection.CollectorProtocol;
 using Heartbeat.Collection.Hub.Collectors.Protocol;
 using Heartbeat.Collection.Hub.Upload;
 using Heartbeat.Core.DTOs.Input;
+using Heartbeat.Core;
+using Heartbeat.Core.Facts;
 using Serilog;
 
 namespace Heartbeat.Collector.System.Collection;
@@ -317,7 +319,7 @@ public sealed class SystemCollectorProtocolAdapter :
                 .ToArray();
             if (acceptedEvents.Length != 0)
             {
-                var facts = acceptedEvents.Select(item => ToFact(item.Item!)).ToArray();
+                var facts = acceptedEvents.Select(ToFact).ToArray();
                 if (_drain is { } drain)
                     await drain.PublishBatchAsync(facts, cancellationToken).ConfigureAwait(false);
                 else
@@ -367,7 +369,7 @@ public sealed class SystemCollectorProtocolAdapter :
     }
 
     private CollectorFact ToFact(ForegroundSegmentSnapshot snapshot) => new(
-        SystemInProcessCollector.ForegroundBindingId,
+        snapshot.IsObservation ? string.Empty : SystemInProcessCollector.ForegroundBindingId,
         snapshot.FactId,
         snapshot.Revision,
         null,
@@ -378,21 +380,32 @@ public sealed class SystemCollectorProtocolAdapter :
             appIdentityKey = snapshot.AppIdentityKey,
             appDisplayName = snapshot.AppDisplayName,
             title = snapshot.Title
-        }), _activation!.Initialization.CollectorInstanceId, Machine, Heartbeat.Core.Facts.FactAspects.DesktopActivity,
-            [Heartbeat.Core.Facts.ObservationCompatibility.ObservedOn(Machine, new("app", ObservationObjectScopes.AppIdentity, snapshot.AppIdentityKey))]);
+        }), _activation!.Initialization.CollectorInstanceId, Machine, FactAspects.DesktopActivity,
+            snapshot.AppIdentityKey is { } app &&
+                (!snapshot.IsObservation || !app.StartsWith(AppIdentityKeys.SyntheticPrefix, StringComparison.Ordinal))
+                ? [ObservationCompatibility.ObservedOn(Machine, new("app", ObservationObjectScopes.AppIdentity, app))]
+                : [],
+            Kind: snapshot.IsObservation ? "segment" : null,
+            Source: snapshot.IsObservation ? "system" : null);
 
-    private CollectorFact ToFact(InputEventItem item) => new(
-        SystemInProcessCollector.InputEventBindingId,
-        item.Id,
-        1,
-        null,
-        new CollectorEventFactTime(item.Timestamp),
-        JsonSerializer.SerializeToElement(new
-        {
-            eventType = EventTypeName(item.EventType),
-            codeSet = item.CodeSet,
-            code = item.Code
-        }), _activation!.Initialization.CollectorInstanceId, Machine, Heartbeat.Core.Facts.FactAspects.Input, []);
+    private CollectorFact ToFact(PendingSystemInputDelivery delivery)
+    {
+        var item = delivery.Item!;
+        return new(
+            delivery.IsObservation ? string.Empty : SystemInProcessCollector.InputEventBindingId,
+            item.Id,
+            1,
+            null,
+            new CollectorEventFactTime(item.Timestamp),
+            JsonSerializer.SerializeToElement(new
+            {
+                eventType = EventTypeName(item.EventType),
+                codeSet = item.CodeSet,
+                code = item.Code
+            }), _activation!.Initialization.CollectorInstanceId, Machine, FactAspects.Input, [],
+            Kind: delivery.IsObservation ? "event" : null,
+            Source: delivery.IsObservation ? "system" : null);
+    }
 
     private ObservationObjectReference Machine => new("machine", ObservationObjectScopes.Machine, _activation!.Initialization.SubjectId.ToString("D"));
 

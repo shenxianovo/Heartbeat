@@ -7,13 +7,14 @@ namespace Heartbeat.Collector.System.Collection;
 public sealed record ForegroundSegmentSnapshot(
     Guid FactId,
     long Revision,
-    string IdentityKey,
-    string AppIdentityKey,
+    string? IdentityKey,
+    string? AppIdentityKey,
     string? AppDisplayName,
     string? Title,
     DateTimeOffset Start,
     DateTimeOffset End,
-    bool IsFinal);
+    bool IsFinal,
+    bool IsObservation = false);
 
 public interface ISystemSegmentPublisher
 {

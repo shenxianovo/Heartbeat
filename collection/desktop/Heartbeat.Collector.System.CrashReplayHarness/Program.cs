@@ -251,7 +251,7 @@ file sealed class CrashBlockingFactSink : ISegmentSink, ICollectorFactObserver
     public void Push(List<ActivitySegmentItem> items) { }
     public void Observe(FactUploadItem item)
     {
-        if (item.Stream.FactKind != "event") return;
+        if ((item.Observation?.Kind ?? item.Stream?.FactKind) != "event") return;
         Entered.Set();
         Thread.Sleep(Timeout.Infinite);
     }

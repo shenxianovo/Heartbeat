@@ -512,7 +512,7 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
             }
             using var restarted = CollectorRuntime.Open(path, new UnusedProjection(), options);
             var pending = restarted.ReadPendingFacts();
-            var upload = FactUploadItem.Request(pending);
+            var upload = FactUploadItem.ObservationRequest(pending);
             var wire = JsonSerializer.SerializeToElement(upload, new JsonSerializerOptions(JsonSerializerDefaults.Web));
             foreach (var fact in wire.GetProperty("facts").EnumerateArray())
             {
@@ -529,8 +529,8 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
             using var http = application.CreateClient();
             http.DefaultRequestHeaders.Add(HeartbeatProtocol.VersionHeader, HeartbeatProtocol.RequiredVersion);
             http.DefaultRequestHeaders.Add("X-Test-Owner", "owner");
-            using var accepted = await http.PostAsJsonAsync("/api/v1/facts", upload);
-            Assert.True(accepted.IsSuccessStatusCode, await accepted.Content.ReadAsStringAsync());
+            var api = new Heartbeat.Collection.Hub.Http.HeartbeatApiClient(http);
+            Assert.True((await api.UploadFactsAsync(pending)).Success);
             using var devices = JsonDocument.Parse(await http.GetStringAsync("/api/v1/users/alice/devices"));
             var deviceId = Assert.Single(devices.RootElement.EnumerateArray()).GetProperty("id").GetInt64();
             foreach (var kind in new[] { "segments", "events" })
@@ -549,7 +549,7 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
                 if (kind == "events")
                 {
                     var row = Assert.Single(rows);
-                    Assert.Equal(inputId, row.GetProperty("factId").GetGuid());
+                    Assert.Equal(inputId, row.GetProperty("id").GetGuid());
                     Assert.Equal(start, row.GetProperty("occurredAt").GetDateTimeOffset());
                     Assert.True(JsonElement.DeepEquals(JsonSerializer.SerializeToElement(new
                     { eventType = "mouseButton", codeSet = "heartbeat-key-position-v1", code = 1 }), row.GetProperty("payload")));
@@ -575,8 +575,7 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
             var activityRow = Assert.Single(activity.RootElement.EnumerateArray(), row => row.GetProperty("factId").GetGuid() == segmentId);
             Assert.Equal(deviceId, activityRow.GetProperty("deviceId").GetInt64());
             Assert.False(activityRow.TryGetProperty("subjectId", out _));
-            using var replay = await http.PostAsJsonAsync("/api/v1/facts", upload);
-            Assert.Equal(HttpStatusCode.OK, replay.StatusCode);
+            Assert.True((await api.UploadFactsAsync(pending)).Success);
             restarted.ConfirmUploadedFacts(pending);
             Assert.Empty(restarted.ReadPendingFacts());
             // Stopping/resuming uses the persisted instance; another instance on this same device is independent.
@@ -597,12 +596,11 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
                     CodeSet = Heartbeat.Core.DTOs.Input.InputCodeSets.HeartbeatKeyPositionV1, Code = 2
                 });
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                while (!restarted.ReadPendingFacts().Any(item => item.Fact?.FactId == eventId)) await Task.Delay(10, timeout.Token);
-                var pendingEvent = Assert.Single(restarted.ReadPendingFacts(), item => item.Fact?.FactId == eventId);
-                Assert.Equal(observer, pendingEvent.Fact!.CollectorId);
+                while (!restarted.ReadPendingFacts().Any(item => item.Observation?.Id == eventId)) await Task.Delay(10, timeout.Token);
+                var pendingEvent = Assert.Single(restarted.ReadPendingFacts(), item => item.Observation?.Id == eventId);
+                Assert.Equal(observer, pendingEvent.Observation!.CollectorId);
             }
-            using var resumedUpload = await http.PostAsJsonAsync("/api/v1/facts", FactUploadItem.Request(restarted.ReadPendingFacts()));
-            Assert.True(resumedUpload.IsSuccessStatusCode, await resumedUpload.Content.ReadAsStringAsync());
+            Assert.True((await api.UploadFactsAsync(restarted.ReadPendingFacts())).Success);
             using var events = JsonDocument.Parse(await http.GetStringAsync($"/api/v1/users/alice/facts/events?deviceId={deviceId}"));
             var eventRows = events.RootElement.EnumerateArray().ToArray();
             Assert.Equal(3, eventRows.Length);

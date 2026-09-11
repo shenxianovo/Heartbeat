@@ -364,7 +364,7 @@ public sealed partial class CollectorRuntime
         var results = new List<FactDeliveryOutcome>(facts.Count);
         for (var index = 0; index < facts.Count; index++)
             results.Add(CommitFact(activationId, index, facts[index], deliveryFence));
-        MarkAcknowledgedLiveTraffic(streamId, results);
+        MarkAcknowledgedLiveTraffic(streamId, facts, results);
         return new FactBatchAcknowledgement(results);
     }
 
@@ -1345,26 +1345,37 @@ public sealed partial class CollectorRuntime
 
     private void MarkAcknowledgedLiveTraffic(
         Guid streamId,
+        IReadOnlyList<FactSubmission> facts,
         IReadOnlyList<FactDeliveryOutcome> outcomes)
     {
-        if (!outcomes.Any(outcome => outcome.IsAcknowledged) ||
-            _segmentSink is not ICollectorTrafficSink trafficSink)
+        if (_segmentSink is not ICollectorTrafficSink trafficSink)
             return;
-        string? source;
+        var sources = new HashSet<string>(StringComparer.Ordinal);
         lock (_gate)
-            source = _state.Streams.SingleOrDefault(candidate => candidate.StreamId == streamId)?.Source;
-        if (source is null)
-            return;
-        try
         {
-            trafficSink.MarkSourceActive(source);
+            foreach (var outcome in outcomes.Where(outcome => outcome.IsAcknowledged))
+            {
+                var fact = facts[outcome.Index];
+                var source = fact.Kind is not null
+                    ? fact.Source
+                    : _state.Streams.SingleOrDefault(candidate => candidate.StreamId == streamId)?.Source;
+                if (!string.IsNullOrWhiteSpace(source))
+                    sources.Add(source);
+            }
         }
-        catch (Exception exception)
+        foreach (var source in sources)
         {
-            Log.Error(
-                exception,
-                "Collector Source {Source} 的实时流量盖戳失败；Fact ACK 与 durable inbox 保持有效",
-                source);
+            try
+            {
+                trafficSink.MarkSourceActive(source);
+            }
+            catch (Exception exception)
+            {
+                Log.Error(
+                    exception,
+                    "Collector Source {Source} 的实时流量盖戳失败；Fact ACK 与 durable inbox 保持有效",
+                    source);
+            }
         }
     }
 

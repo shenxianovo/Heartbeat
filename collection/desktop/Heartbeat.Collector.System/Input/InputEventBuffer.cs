@@ -21,8 +21,8 @@ namespace Heartbeat.Collector.System.Input
     /// 职责：
     /// - 过滤长按自动重复（同一键在 KeyUp 之前的重复 KeyDown 丢弃）
     /// - 滚轮碎 delta 累加归一为整档（±120 = 一档）
-    /// - 生产观察经 system Collector Protocol 发布，Hub 提交后投影回 legacy upload 缓冲
-    /// - durable projection 是待上传 InputEvent 的唯一容量 owner；满容量返回可判定 backpressure
+    /// - 新观察经 System Collector Protocol → Runtime 原生 Fact journal 交付
+    /// - legacy 缓冲仅排空升级前的 InputEvent；新观察容量由 ingress / Runtime 各自保管边界控制
     /// - 为每个事件生成 UUIDv7
     /// </summary>
     public sealed class InputEventBuffer :

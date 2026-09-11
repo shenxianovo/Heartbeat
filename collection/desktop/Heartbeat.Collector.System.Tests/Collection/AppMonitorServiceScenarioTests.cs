@@ -265,6 +265,27 @@ public class AppMonitorServiceScenarioTests
     }
 
     [Fact]
+    public void DesktopWithoutApp_PublishesAndRevisesObservedIntervalBeforeTransition()
+    {
+        var x = Build(null, "Desktop");
+        x.Clock.Advance(TimeSpan.FromSeconds(30));
+        var first = Assert.Single(Flush(x.Service, x.Segments));
+        Assert.Null(first.AppIdentityKey);
+        Assert.Equal("Desktop", first.Title);
+        Assert.Equal(DateTimeOffset.UnixEpoch, first.Start);
+        Assert.Equal(DateTimeOffset.UnixEpoch.AddSeconds(30), first.End);
+        x.Clock.Advance(TimeSpan.FromSeconds(30));
+        x.Observations.Activate("win:code", "main.cs");
+        var final = Assert.Single(x.Segments.Drain());
+        Assert.Equal(first.FactId, final.FactId);
+        Assert.Equal(first.Revision + 1, final.Revision);
+        Assert.True(final.IsFinal);
+        x.Clock.Advance(TimeSpan.FromSeconds(30));
+        var next = Assert.Single(Flush(x.Service, x.Segments));
+        Assert.NotEqual(final.FactId, next.FactId);
+    }
+
+    [Fact]
     public void AppActivation_ClosesPreviousSegment_AndRefreshesCurrentActivity()
     {
         var x = Build("win:code", "main.cs");

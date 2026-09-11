@@ -90,13 +90,13 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             NewCollector(protocol, clock, segmentSink));
 
         Assert.Equal(instanceId, runtime.GetInstance(instanceId).CollectorInstanceId);
-        Assert.Equal("1.1.1", runtime.GetInstance(instanceId).PackageVersion);
+        Assert.Equal("1.2.0", runtime.GetInstance(instanceId).PackageVersion);
         Assert.Equal(2, activation.Streams.Count);
         var inputId = Guid.CreateVersion7();
         protocol.Publish(new InputEventItem { Id = inputId, Timestamp = clock.UtcNow,
             EventType = InputEventType.MouseButton, CodeSet = InputCodeSets.HeartbeatKeyPositionV1, Code = 1 });
-        await WaitUntilAsync(() => runtime.ReadPendingFacts().Any(item => item.Fact?.FactId == inputId));
-        var fact = Assert.Single(runtime.ReadPendingFacts(), item => item.Fact?.FactId == inputId).Fact!;
+        await WaitUntilAsync(() => runtime.ReadPendingFacts().Any(item => item.Observation?.Id == inputId));
+        var fact = Assert.Single(runtime.ReadPendingFacts(), item => item.Observation?.Id == inputId).Observation!;
         Assert.Equal(instanceId, fact.CollectorId);
         Assert.Equal(subject.SubjectId.ToString("D"), fact.Foi!.Key);
     }
@@ -157,16 +157,16 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         clock.Advance(TimeSpan.FromSeconds(30));
         monitor.PushCurrentSnapshot();
         var first = Assert.Single(await WaitForSegmentsAsync(runtime));
-                Assert.Equal("win:code", first.Payload!.Value.GetProperty("appIdentityKey").GetString());
-        Assert.Equal("Code", first.Payload!.Value.GetProperty("appDisplayName").GetString());
-        Assert.Equal("main.cs", first.Payload!.Value.GetProperty("title").GetString());
+        Assert.Equal("win:code", first.Result!.Value.GetProperty("appIdentityKey").GetString());
+        Assert.Equal("Code", first.Result!.Value.GetProperty("appDisplayName").GetString());
+        Assert.Equal("main.cs", first.Result!.Value.GetProperty("title").GetString());
         Assert.Equal(DateTimeOffset.UnixEpoch, first.Start);
         Assert.Equal(DateTimeOffset.UnixEpoch.AddSeconds(30), first.End);
 
         clock.Advance(TimeSpan.FromSeconds(30));
         observations.Activate("win:chrome", "Docs", "Chrome");
         var grown = Assert.Single(await WaitForSegmentsAsync(runtime));
-        Assert.Equal(first.FactId, grown.FactId);
+        Assert.Equal(first.Id, grown.Id);
         Assert.Equal(first.Start, grown.Start);
         Assert.Equal(DateTimeOffset.UnixEpoch.AddSeconds(60), grown.End);
         Assert.Equal("win:chrome", sink.CurrentActivity!.AppIdentityKey);
@@ -205,13 +205,13 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
 
         clock.Advance(TimeSpan.FromMilliseconds(225));
         Assert.True(inputBuffer.OnKeyDown(InputKeyPosition.KeyA));
-        await WaitUntilAsync(() => runtime.ReadPendingFacts().Any(item => item.Stream.FactKind == "event"));
+        await WaitUntilAsync(() => runtime.ReadPendingFacts().Any(item => (item.Observation?.Kind ?? item.Stream?.FactKind) == "event"));
 
-        var projected = Assert.Single(runtime.ReadPendingFacts(), item => item.Stream.FactKind == "event").Fact!;
-        Assert.Equal(7, int.Parse(projected.FactId.ToString("D")[14].ToString()));
-        Assert.Equal("keyDown", projected.Payload!.Value.GetProperty("eventType").GetString());
-        Assert.Equal(InputCodeSets.HeartbeatKeyPositionV1, projected.Payload!.Value.GetProperty("codeSet").GetString());
-        Assert.Equal((short)InputKeyPosition.KeyA, projected.Payload!.Value.GetProperty("code").GetInt16());
+        var projected = Assert.Single(runtime.ReadPendingFacts(), item => item.Observation?.Kind == "event").Observation!;
+        Assert.Equal(7, int.Parse(projected.Id.ToString("D")[14].ToString()));
+        Assert.Equal("keyDown", projected.Result!.Value.GetProperty("eventType").GetString());
+        Assert.Equal(InputCodeSets.HeartbeatKeyPositionV1, projected.Result!.Value.GetProperty("codeSet").GetString());
+        Assert.Equal((short)InputKeyPosition.KeyA, projected.Result!.Value.GetProperty("code").GetInt16());
         Assert.Equal(clock.UtcNow, projected.OccurredAt);
         Assert.Equal(2, activation.Streams.Count);
     }
@@ -526,8 +526,8 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         protocol.Publish(second);
 
         Assert.True(failure.Entered.Wait(TimeSpan.FromSeconds(2)));
-        await WaitUntilAsync(() => runtime.ReadPendingFacts().Count(item => item.Stream.FactKind == "event") == 2);
-        Assert.Equal([first.Id, second.Id], runtime.ReadPendingFacts().Where(item => item.Stream.FactKind == "event").Select(item => item.Fact!.FactId));
+        await WaitUntilAsync(() => runtime.ReadPendingFacts().Count(item => (item.Observation?.Kind ?? item.Stream?.FactKind) == "event") == 2);
+        Assert.Equal([first.Id, second.Id], runtime.ReadPendingFacts().Where(item => (item.Observation?.Kind ?? item.Stream?.FactKind) == "event").Select(item => item.Observation!.Id));
     }
 
     [Fact]
@@ -889,12 +889,12 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
             .ToHashSet();
     }
 
-    private static async Task<List<Heartbeat.Core.DTOs.Facts.FactSnapshot>> WaitForSegmentsAsync(CollectorRuntime runtime)
+    private static async Task<List<Heartbeat.Core.DTOs.Facts.ObservationSnapshot>> WaitForSegmentsAsync(CollectorRuntime runtime)
     {
         List<FactUploadItem> items = [];
-        await WaitUntilAsync(() => { items = runtime.ReadPendingFacts().Where(item => item.Stream.FactKind == "segment").ToList(); return items.Count != 0; });
+        await WaitUntilAsync(() => { items = runtime.ReadPendingFacts().Where(item => (item.Observation?.Kind ?? item.Stream?.FactKind) == "segment").ToList(); return items.Count != 0; });
         runtime.ConfirmUploadedFacts(items);
-        return items.Select(item => item.Fact!).ToList();
+        return items.Select(item => item.Observation!).ToList();
     }
 
     private static void CopyDirectory(string source, string destination)
@@ -1032,7 +1032,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         public ManualResetEventSlim Entered { get; } = new();
         public virtual void Observe(FactUploadItem item)
         {
-            if (item.Stream.FactKind != "event") return;
+            if ((item.Observation?.Kind ?? item.Stream?.FactKind) != "event") return;
             if (Interlocked.Increment(ref _calls) == 1) { Entered.Set(); _release.Wait(TimeSpan.FromSeconds(5)); }
         }
         public void Release() => _release.Set();
@@ -1045,7 +1045,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
         public bool GapVisibleBeforeSecond { get; private set; }
         public override void Observe(FactUploadItem item)
         {
-            if (item.Stream.FactKind != "event") return;
+            if ((item.Observation?.Kind ?? item.Stream?.FactKind) != "event") return;
             base.Observe(item);
             if (Interlocked.Increment(ref _calls) > 1)
             {
