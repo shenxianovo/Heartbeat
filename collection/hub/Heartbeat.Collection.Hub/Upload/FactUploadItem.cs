@@ -1,4 +1,5 @@
 using Heartbeat.Core.DTOs.Facts;
+using Heartbeat.Collection.Hub.Collectors.Runtime;
 
 namespace Heartbeat.Collection.Hub.Upload;
 
@@ -27,5 +28,5 @@ public sealed record FactUploadItem(
 /// <summary>Optional, rebuildable host read model; never takes durable delivery responsibility.</summary>
 public interface ICollectorFactObserver
 {
-    void Observe(FactUploadItem item);
+    void Observe(Guid collectorInstanceId, SubjectReference subject, FactUploadItem item);
 }

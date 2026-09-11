@@ -1578,15 +1578,18 @@ public sealed class CollectorProtocolClientTests
         Directory.CreateDirectory(root);
         var gapId = Guid.Parse("0198d6d7-9f87-76ef-bf84-62bd5991353b");
         var diagnostics = new RecordingDiagnostics();
-        var binding = new NonRetryableGapBinding(root, duringDrain);
+        // This test verifies rejection custody, not wall-clock drain expiry. Keep the protocol
+        // deadline fixed while filesystem work runs; the outer timeout still catches hot loops.
+        var time = new VirtualTimeProvider();
+        var binding = new NonRetryableGapBinding(root, duringDrain, time);
         diagnostics.Reported = binding.RequestDrain;
         var definition = Definition() with { Diagnostics = diagnostics };
-        await using var client = new CollectorProtocolClient(definition, binding);
+        await using var client = new CollectorProtocolClient(definition, binding, time);
 
         try
         {
             var result = await client.RunAsync(new GapPublishingApplication(gapId, duringDrain))
-                .WaitAsync(TimeSpan.FromSeconds(1));
+                .WaitAsync(TimeSpan.FromSeconds(5));
 
             Assert.True(result.IsFullyDrained, result.ToString());
             Assert.Equal(1, binding.ReportCount);
@@ -2128,7 +2131,7 @@ public sealed class CollectorProtocolClientTests
         }
     }
 
-    private sealed class NonRetryableGapBinding(string dataDirectory, bool drainInitially)
+    private sealed class NonRetryableGapBinding(string dataDirectory, bool drainInitially, TimeProvider time)
         : ICollectorProtocolBinding
     {
         private readonly TaskCompletionSource<CollectorDrainRequest> _drain =
@@ -2139,7 +2142,7 @@ public sealed class CollectorProtocolClientTests
 
         public void RequestDrain() => _drain.TrySetResult(new CollectorDrainRequest(
             Guid.CreateVersion7(),
-            DateTimeOffset.UtcNow.AddMilliseconds(100)));
+            time.GetUtcNow().Add(DrainBudget)));
 
         public ValueTask<CollectorClientInitialization> StartAsync(
             CollectorClientDefinition definition,

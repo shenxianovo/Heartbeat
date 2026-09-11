@@ -11,11 +11,14 @@ using Heartbeat.Collection.Hub.Time;
 using Heartbeat.Collection.Hub.Upload;
 using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Facts;
+using Heartbeat.Core.DTOs.Persons;
 using Heartbeat.Server.Entities;
+using Heartbeat.Server.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Heartbeat.Server.Tests.Services;
 
@@ -33,7 +36,8 @@ public sealed partial class FactHttpTests
                 db.Users.Add(new User { Id = "browser-owner", Username = "browser-fixture" });
                 await db.SaveChangesAsync();
             }
-            await using var application = CreateApplication();
+            await using var application = CreateApplication().WithWebHostBuilder(builder => builder.ConfigureServices(services =>
+                services.Configure<AdministrationOptions>(options => options.Subjects = ["browser-owner"])));
             using var http = application.CreateClient();
             http.DefaultRequestHeaders.Add(HeartbeatProtocol.VersionHeader, HeartbeatProtocol.RequiredVersion);
             http.DefaultRequestHeaders.Add("X-Test-Owner", "browser-owner");
@@ -112,10 +116,55 @@ public sealed partial class FactHttpTests
             Assert.All(after, fact => { Assert.Equal(observer, fact.CollectorId); Assert.Equal(original.FoiId, fact.FoiId); });
             var filtered = (await http.GetFromJsonAsync<List<FactResponse>>($"{query}?deviceId={original.DeviceId}&appId={original.AppId}"))!;
             Assert.Equal(after.Select(fact => fact.Id).Order(), filtered.Select(fact => fact.Id).Order());
+
+            // Keep the real multi-window snapshots connected to the public maintenance and
+            // personal views: catalog maintenance must not invalidate device evidence or replay.
+            using var established = await http.PutAsync("/api/v1/me/person", null);
+            established.EnsureSuccessStatusCode();
+            const string personQuery = "/api/v1/me/person/facts/segments";
+            Assert.Empty((await http.GetFromJsonAsync<PersonFactPage>(personQuery))!.Items);
+            var device = Assert.Single(Assert.Single(revised.Relations).Members, member => member.Role == "device").Object;
+            using var linked = await http.PostAsJsonAsync("/api/v1/me/person/associations",
+                new { objectId = device.Id, start = (DateTimeOffset?)null, end = (DateTimeOffset?)null });
+            linked.EnsureSuccessStatusCode();
+            await SetProductOverride(http, "mac:com.google.Chrome", "browser-integrated-corrected");
+            var corrected = (await http.GetFromJsonAsync<List<FactResponse>>(query))!;
+            Assert.All(corrected, fact =>
+            {
+                Assert.Equal("browser-integrated-corrected", fact.Foi!.Key);
+                Assert.NotEqual(original.FoiId, fact.FoiId);
+                Assert.Equal(fact.FoiId, ProductObject(fact).Id);
+                AssertProductFactPreserved(after.Single(prior => prior.Id == fact.Id), fact);
+            });
             await RunBrowserProducer(resumed, installations, subject, package, directory, "replay");
             uploaded = await api.UploadFactsAsync(resumed.ReadPendingFacts());
             Assert.True(uploaded.Success, uploaded.ResponseBody);
-            Assert.Equal(3, (await http.GetFromJsonAsync<List<FactResponse>>(query))!.Count);
+            // Replay the actual latest producer snapshots at the same revision after maintenance,
+            // even if Runtime already confirmed them and has no pending upload left.
+            Assert.True((await api.UploadFactsAsync(pending)).Success);
+            // A delayed original producer snapshot still carries the pre-maintenance platform
+            // reference. Its lower revision cannot undo the corrected product or window result.
+            Assert.True((await api.UploadFactsAsync(first)).Success);
+            var replayed = (await http.GetFromJsonAsync<List<FactResponse>>(query))!;
+            Assert.Equal(3, replayed.Count);
+            Assert.All(replayed, fact =>
+            {
+                var maintained = corrected.Single(prior => prior.Id == fact.Id);
+                Assert.Equal(maintained.FoiId, fact.FoiId);
+                Assert.Equal(maintained.AppId, fact.AppId);
+                AssertProductFactPreserved(maintained, fact);
+            });
+            var personal = (await http.GetFromJsonAsync<PersonFactPage>(personQuery))!;
+            Assert.Equal(replayed.Select(fact => fact.Id).Order(), personal.Items.Select(item => item.Fact.Id).Order());
+            Assert.All(personal.Items, item =>
+            {
+                Assert.Equal("browser-integrated-corrected", item.Fact.Foi!.Key);
+                Assert.Equal(original.DeviceId, item.Fact.DeviceId);
+            });
+            var correctedFilter = (await http.GetFromJsonAsync<List<FactResponse>>(
+                $"{query}?deviceId={original.DeviceId}&appId={replayed[0].AppId}"))!;
+            Assert.Equal(replayed.Select(fact => fact.Id).Order(), correctedFilter.Select(fact => fact.Id).Order());
+            Assert.Empty((await http.GetFromJsonAsync<List<FactResponse>>($"{query}?appId={original.AppId}"))!);
 
             await RunBrowserProducer(resumed, installations, subject, package, directory, "legacy-start");
             var legacy = Assert.Single(resumed.ReadPendingFacts(), item => item.Fact is not null);

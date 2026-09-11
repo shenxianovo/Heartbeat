@@ -15,8 +15,6 @@ public interface ICollectorDeclarationStore
 /// <summary>Legacy source-level registry. New Runtime code must depend on a narrower seam.</summary>
 public interface ICollectorRegistry : ICollectorDeclarationStore
 {
-    CollectorRegistration Touch(string source, int? flushPeriodMs = null);
-    void Discover(IEnumerable<string> sources);
     void StoreDeclaration(string source, string declarationJson, int version);
 
     /// <summary>

@@ -94,7 +94,7 @@ Collector Protocol 在某种执行边界上的承载方式；不同 Binding 不�
 _Avoid_: 为每种执行方式发明不同协议
 
 **Output Template（输出模板）**:
-Collector Package 对一类可实例化 Fact Stream 的静态声明，限定其 Source、FactKind、SubjectKind 与 identifying dimensions。
+Collector Package 对一类可实例化 Fact Stream 的声明，限定该交付分组的来源、家族、Subject 与身份维度。它服务旧事实和明确 Gap，不是新观测完整性的前置条件。
 _Avoid_: 把每个动态 dimension value 写成新清单项
 
 **Hub Instance（Hub 实例）**:
@@ -157,7 +157,7 @@ browser Collector 对每个浏览器窗口当前所选 active tab 的如实观�
 _Avoid_: 浏览器前台活动、把 active tab 解释为 OS 前台窗口、按 Host/Profile 拆成用户事实
 
 **Ready（激活就绪）**:
-Collector Activation 已完成协议协商并打开所需 Fact Stream，可以承担运行责任；Ready 不要求已经产生第一条 Fact。
+Collector Activation 已完成协议协商及其所需的初始化，可以承担运行责任；无交付分组的原生观测也可就绪，Ready 不要求已经产生第一条 Fact。
 _Avoid_: 进程存活、首次产生数据、Active
 
 **Collector Desired State（采集器期望状态）**:
@@ -306,9 +306,10 @@ _Avoid_: 用上传成功率表示退出安全、用清理异常推断数据丢�
 
 Browser 的 Observer 是持久扩展安装 UUID，窗口仅区分并行页面观测；delivery 为 Facts 保存设备与平台
 App 的明确对象关系。窗口模型与 Segment SDK 使用 activityKey，不负责业务资料登记。
-Runtime JSON 当前写 v8（见[语义边界](../docs/architecture/observation-semantics.md)），Browser 的旧 v1–v4/扩展快照兼容边界和退出见
-[Browser 实施记录](../docs/architecture/browser-observation-targets.md)。
+版本、兼容消费者、恢复及退出条件见[通用缓存接管](../docs/architecture/observation-cache-compatibility.md)
+与[Browser 专有台账](collectors/Heartbeat.Collector.Browser/cache-compatibility.md)。
 
-Collector 显式产生 Fact 的 CollectorId、FOI、Relations 和 Aspect；SDK 与 Runtime 保管完整快照，不为新事实推断含义。当前第一方生产者为
+Collector 为新 Fact 明确提供自身身份、家族、观测者、FOI、Aspect、Result、适用时间与修订；
+关系按已知依据提供，可以为空。SDK 与 Runtime 保管完整快照，不借交付分组推断新事实含义。当前第一方生产者为
 System 的 `desktop-activity/input`、Browser 的 `selected-page`、VRChat 的 `account-location`。
 能力协商、旧缓存迁移与回退边界见[实施记录](../docs/architecture/observation-semantics.md)。

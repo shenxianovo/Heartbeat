@@ -5,9 +5,9 @@
 ## Language
 
 **Ingest（摄入）**:
-Analytics 原子接收携带 Collector、FOI、Relations 与 Aspect 的 Fact 快照及交付所需的 Stream、Gap，Owner 取自认证身份，
-同一事务写入 Collectors、Objects、Facts、Relations、RelationMembers；所有家族共同遵守身份、修订和确认规则。旧 Subject 归属及旧上传服务现有数据与缓存，
-不形成另一套事实语义。
+Analytics 原子接收以自身身份、家族、Collector、FOI、Aspect、Result、适用时间和 Revision 表达的观测快照，
+Owner 取自认证身份；关系可为空。新观测不要求旧交付分组。旧事实与 Gap 的交付仍保留真实 Stream，
+历史适配与新观测进入同一事实保管边界，不形成另一套事实语义。
 _Avoid_: 从标题或时间猜测事实身份、让活动或输入绕开统一的摄入规则
 
 **Fact Revision（事实修订）**:
@@ -108,10 +108,10 @@ _Avoid_: 墓碑 / Tombstone / Adjudication（设计期黑话，已弃用）、Hi
 _Avoid_: 分诊 / Triage、从散文自动反推事实、LLM 静默写知识、把结构化提案当用户确认
 
 **Validation Policy**:
-SegmentValidationPolicy 是 Collection 与 Analytics 共用的纯段完整性判定：拒绝未来时间戳、非法区间、
-缺失核心身份等畸形数据，不修复输入。Analytics strict ingest 对任一不合法项返回整批 `422`，且不创建
-ActivitySegment 或 provisional App；既有 Segment Id 的 Device / Source / IdentityKey 冲突同样整批拒绝。
-合法 duplicate、乱序 snapshot 与批内同 Id 单调扩展仍按 Snapshot Upsert 幂等收敛。
+事实的完整性与正常修订边界：新观测必需身份、家族、Collector、FOI、Aspect、Result 与合法家族时间，
+不从旧交付分组补齐；任一不合法项使整批拒绝且不留下部分事实或关系。同一事实的固定属性不能
+借更高版本替换，同版本不同内容明确冲突。历史未知只由明确兼容边界保留，不放宽新观测要求。
+合法重复、乱序与增长或缩短按 Revision 收敛，不能用结束时间取最大值替代修订。
 
 Browser 的 FOI 是跨设备 App；窗口细节留在 Fact Result，设备由 observed-on 关系明确给出。
 Collector 使用持久扩展安装 UUID，与可服务多个安装的 Runtime Instance 区分。

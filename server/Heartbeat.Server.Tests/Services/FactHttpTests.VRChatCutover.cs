@@ -8,6 +8,7 @@ using Heartbeat.Collection.Hub.Collectors.Runtime;
 using Heartbeat.Collection.Hub.Http;
 using Heartbeat.Collection.Hub.Upload;
 using Heartbeat.Core.DTOs.Facts;
+using Heartbeat.Core.DTOs.Persons;
 using Heartbeat.Server.Entities;
 
 namespace Heartbeat.Server.Tests.Services;
@@ -163,6 +164,37 @@ public sealed partial class FactHttpTests
                     Assert.All(byObject, row => Assert.Equal(observer, row.ObserverId));
                 }
                 Assert.Equal(2, rows.Select(row => row.FoiId).Distinct().Count());
+                using var established = await http.PutAsync("/api/v1/me/person", null);
+                established.EnsureSuccessStatusCode();
+                const string personQuery = "/api/v1/me/person/facts/segments";
+                Assert.Empty((await http.GetFromJsonAsync<PersonFactPage>(personQuery))!.Items);
+                var associatedRows = rows.Where(row => row.Foi!.Key == accounts[0]).ToArray();
+                using var linked = await http.PostAsJsonAsync("/api/v1/me/person/associations",
+                    new { objectId = associatedRows[0].FoiId, start = (DateTimeOffset?)null, end = (DateTimeOffset?)null });
+                linked.EnsureSuccessStatusCode();
+                var association = (await linked.Content.ReadFromJsonAsync<PersonAssociationResponse>())!;
+                // Replay the actual managed-process snapshots after manual association. The
+                // other account sharing this Runtime must never acquire personal membership.
+                Assert.True((await api.UploadFactsAsync(original)).Success);
+                Assert.True((await api.UploadFactsAsync(latest)).Success);
+                var personal = (await http.GetFromJsonAsync<PersonFactPage>(personQuery))!;
+                Assert.Equal(associatedRows.Select(row => row.Id).Order(), personal.Items.Select(item => item.Fact.Id).Order());
+                Assert.All(personal.Items, item =>
+                {
+                    Assert.Equal(accounts[0], item.Fact.Foi!.Key);
+                    Assert.Null(item.Fact.DeviceId);
+                    Assert.Empty(item.Fact.Relations);
+                    Assert.True(JsonElement.DeepEquals(
+                        JsonSerializer.SerializeToElement(associatedRows.Single(row => row.Id == item.Fact.Id)),
+                        JsonSerializer.SerializeToElement(item.Fact)));
+                });
+                var replay = await http.GetFromJsonAsync<JsonElement>("/api/v1/users/alice/segments?source=vrchat.account");
+                Assert.Equal(rows.Select(row => row.Id).Order(), replay.EnumerateArray().Select(row => row.GetProperty("id").GetGuid()).Order());
+                Assert.All(replay.EnumerateArray(), row => Assert.Equal(JsonValueKind.Null, row.GetProperty("deviceId").ValueKind));
+                using var unlinked = await http.DeleteAsync($"/api/v1/me/person/associations/{association.Id}");
+                unlinked.EnsureSuccessStatusCode();
+                Assert.Empty((await http.GetFromJsonAsync<PersonFactPage>(personQuery))!.Items);
+                Assert.Equal(4, (await http.GetFromJsonAsync<List<FactResponse>>("/api/v1/users/alice/facts/segments"))!.Count);
                 var finalFact = latest.First(item => item.Observation is not null);
                 restarted.ConfirmUploadedFacts([finalFact with { IsFinal = false }]);
                 Assert.Equal(latest.Count, restarted.ReadPendingFacts().Count);

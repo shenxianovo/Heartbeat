@@ -799,14 +799,6 @@ public sealed class ExternalHostCollectorProtocolHandlerTests
         }
     }
 
-    private sealed class AcceptingInputEventSink : IInputEventFactSink
-    {
-        public bool TryAccept(
-            Heartbeat.Core.DTOs.Input.InputEventItem item,
-            bool isReplay,
-            ICollectorProjectionCommitFence commitFence) => true;
-    }
-
     private sealed class FixedClock : IClock
     {
         public DateTimeOffset UtcNow => DateTimeOffset.UtcNow;

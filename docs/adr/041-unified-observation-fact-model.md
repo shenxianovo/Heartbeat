@@ -4,9 +4,11 @@
 
 ## Date: 2026-08-22
 
-2026-09-10 设计演进：[ADR-056](056-observation-objects-and-contexts.md) 已确认直接观测对象的业务模型，
-重开下文“一实例一 Subject”及 Stream 承担观测归属的设计。统一对象登记与关系表随后被用户质疑过早，
-具体存储仍待评估；当前实现使用本 ADR 的旧结构，Facts 家族语义保持。
+2026-09-11 实施演进：[ADR-059](059-observation-storage-five-tables.md) 及[独立观测契约](../architecture/observations-model.md)
+已替代下文“一实例一 Subject”业务归属及 Stream 决定 Fact 身份/家族的规则。当前新 Fact 独立提供
+Id、Kind、Collector、FOI、Aspect、Result、家族时间和 Revision，唯一 Facts 核心持久保存。
+下文 §1 的管理身份和 §3 的 Stream 信封继续解释旧缓存/进行中事实与 Gap，不能用来要求新观测
+先构造 Subject/Stream。三类家族的语义保留；Measurement 尚无新的业务生产契约。
 
 2026-09-09 修订：按 owner 决策删除 Fact 撤回。System、Browser、VRChat 正式采集器没有主动
 产生撤回的业务路径；为假想删除保留状态、墓碑和防复活分支不符合最小事实模型。

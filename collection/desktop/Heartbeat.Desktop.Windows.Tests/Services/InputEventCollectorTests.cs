@@ -10,6 +10,12 @@ namespace Heartbeat.Desktop.Windows.Tests.Services;
 
 public sealed class InputEventCollectorTests
 {
+    private sealed class RecordingPublisher : ISystemInputEventPublisher
+    {
+        public List<InputEventItem> Items { get; } = [];
+        public void Publish(InputEventItem item) => Items.Add(item);
+    }
+
     private sealed class FakeHook : ILowLevelInputHook
     {
         public event Action<WindowsNativeKeyObservation>? KeyDown;
@@ -70,7 +76,8 @@ public sealed class InputEventCollectorTests
         var hook = new FakeHook();
         var recording = new MutablePolicy(true);
         var status = new InputObservationStatus();
-        var buffer = new InputEventBuffer(new FixedClock());
+        var published = new RecordingPublisher();
+        var buffer = new InputEventBuffer(new FixedClock(), publisher: published);
         using var collector = new InputEventCollector(hook, new FakeSignal(), new MutableInteractionPolicy(false),
             recording, buffer, status);
         await collector.StartAsync(CancellationToken.None);
@@ -79,7 +86,7 @@ public sealed class InputEventCollectorTests
         hook.RaiseMouse(1);
         Assert.False(status.IsAvailable);
         Assert.True(recording.Enabled);
-        Assert.Empty(buffer.ReadAll());
+        Assert.Empty(published.Items);
         Assert.False(hook.Running);
         recording.Set(false);
         await collector.Refresh();
@@ -102,7 +109,7 @@ public sealed class InputEventCollectorTests
         }
         };
         using var collector = new InputEventCollector(hook, new FakeSignal(), new MutableInteractionPolicy(true),
-            new MutablePolicy(false), new InputEventBuffer(new FixedClock()));
+            new MutablePolicy(false), new InputEventBuffer(new FixedClock(), publisher: new RecordingPublisher()));
         var starting = Task.Run(() => collector.StartAsync(CancellationToken.None));
         Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
         var stopping = collector.StopAsync(CancellationToken.None);
@@ -118,7 +125,8 @@ public sealed class InputEventCollectorTests
         var hook = new FakeHook();
         var signal = new FakeSignal();
         var policy = new MutablePolicy(false);
-        var buffer = new InputEventBuffer(new FixedClock());
+        var published = new RecordingPublisher();
+        var buffer = new InputEventBuffer(new FixedClock(), publisher: published);
         using var collector = new InputEventCollector(
             hook,
             signal,
@@ -132,7 +140,7 @@ public sealed class InputEventCollectorTests
         hook.RaiseKeyDown(new WindowsNativeKeyObservation(0x41, 0x1E, false));
 
         Assert.Equal(1, signal.Clicks);
-        Assert.Empty(buffer.ReadAll());
+        Assert.Empty(published.Items);
     }
 
     [Fact]
@@ -140,7 +148,8 @@ public sealed class InputEventCollectorTests
     {
         var hook = new FakeHook();
         var policy = new MutablePolicy(true);
-        var buffer = new InputEventBuffer(new FixedClock());
+        var published = new RecordingPublisher();
+        var buffer = new InputEventBuffer(new FixedClock(), publisher: published);
         using var collector = new InputEventCollector(
             hook,
             new FakeSignal(),
@@ -158,7 +167,7 @@ public sealed class InputEventCollectorTests
         await collector.Refresh();
         hook.RaiseKeyDown(keyA);
 
-        var events = buffer.ReadAll();
+        var events = published.Items;
         Assert.Equal(2, events.Count);
         Assert.All(events, item => Assert.Equal(InputCodeSets.HeartbeatKeyPositionV1, item.CodeSet));
         Assert.All(events, item => Assert.Equal((short)InputKeyPosition.KeyA, item.Code));
@@ -175,7 +184,7 @@ public sealed class InputEventCollectorTests
             new FakeSignal(),
             interaction,
             recording,
-            new InputEventBuffer(new FixedClock()));
+            new InputEventBuffer(new FixedClock(), publisher: new RecordingPublisher()));
 
         await collector.StartAsync(CancellationToken.None);
         Assert.Equal(0, hook.StartCount);

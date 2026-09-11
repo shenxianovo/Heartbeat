@@ -5,6 +5,8 @@ using Heartbeat.Collection.Hub.Collectors.Protocol;
 using Heartbeat.Collection.Hub.Collectors.Runtime;
 using Heartbeat.Collection.Hub.Segments;
 using Heartbeat.Collection.Hub.Time;
+using Heartbeat.Collection.Hub.Upload;
+using Heartbeat.Core.DTOs.Segments;
 
 namespace Heartbeat.Collection.Hub.Tests.Collectors.Protocol;
 
@@ -24,7 +26,8 @@ public partial class InProcessCollectorProtocolTranscriptTests
         var package = LocalCollectorPackage.Load(packageCopy.Path);
         using var directory = TemporaryDirectory.Create();
         var statePath = Path.Combine(directory.Path, "runtime.json");
-        var sink = new SegmentIngestService(new FixedClock(DateTimeOffset.UtcNow));
+        var sink = new NativeManagementObserver();
+        var observerId = Guid.NewGuid();
         Guid instanceId;
         using (var runtime = CollectorRuntime.Open(statePath, sink))
         {
@@ -41,7 +44,7 @@ public partial class InProcessCollectorProtocolTranscriptTests
             Assert.Equal(Guid.Empty, collector.Initialization!.Instance.Subject.SubjectId);
             var fact = new FactSubmission(Guid.Empty, Guid.CreateVersion7(), 1, null,
                 new EventFactTime(DateTimeOffset.Parse("2026-08-22T12:00:00Z")),
-                JsonSerializer.SerializeToElement(new { value = "independent" }), instanceId,
+                JsonSerializer.SerializeToElement(new { value = "independent" }), observerId,
                 new Heartbeat.Core.DTOs.Facts.ObservationObjectReference("account", "reference", "test-account"),
                 "reference.event", [], "event");
             var messageId = Guid.CreateVersion7();
@@ -51,10 +54,26 @@ public partial class InProcessCollectorProtocolTranscriptTests
             Assert.True(conflicting.IsMessageRejected);
             var pending = Assert.Single(runtime.ReadPendingFacts());
             Assert.Null(pending.Stream);
-            Assert.Equal(instanceId, pending.Observation!.CollectorId);
+            Assert.Equal(observerId, pending.Observation!.CollectorId);
+            Assert.Equal(instanceId, sink.LastInstanceId);
+            Assert.Equal(Guid.Empty, sink.LastSubject!.Value.SubjectId);
         }
+        sink.LastInstanceId = Guid.Empty;
         using var restarted = CollectorRuntime.Open(statePath, sink);
+        Assert.Equal(instanceId, sink.LastInstanceId);
         Assert.Equal(Guid.Empty, restarted.GetInstance(instanceId).Subject.SubjectId);
         Assert.Equal("independent", Assert.Single(restarted.ReadPendingFacts()).Observation!.Result!.Value.GetProperty("value").GetString());
+    }
+
+    private sealed class NativeManagementObserver : ISegmentSink, ICollectorFactObserver
+    {
+        public Guid LastInstanceId { get; set; }
+        public SubjectReference? LastSubject { get; private set; }
+        public void Push(List<ActivitySegmentItem> snapshots) => throw new InvalidOperationException("Native custody owns delivery.");
+        public void Observe(Guid collectorInstanceId, SubjectReference subject, FactUploadItem item)
+        {
+            LastInstanceId = collectorInstanceId;
+            LastSubject = subject;
+        }
     }
 }

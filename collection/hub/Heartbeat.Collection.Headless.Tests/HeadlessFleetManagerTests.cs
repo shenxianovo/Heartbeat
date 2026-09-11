@@ -29,7 +29,8 @@ public sealed class HeadlessFleetManagerTests : IDisposable
             Start = DateTimeOffset.UtcNow.AddMinutes(-1), End = DateTimeOffset.UtcNow,
             IsFinal = false, Payload = JsonSerializer.SerializeToElement(new { identityKey = "account:online", title = "Online" })
         };
-        pipelines.Observe(new FactUploadItem(stream, fact, null));
+        pipelines.Observe(stream.CollectorInstanceId, new SubjectReference(stream.Subject.SubjectId, SubjectKind.Account),
+            new FactUploadItem(stream, fact, null));
 
         await pipelines.DrainAllAsync();
 
@@ -37,8 +38,37 @@ public sealed class HeadlessFleetManagerTests : IDisposable
         Assert.Empty(upload.Sent);
         fact.Revision = 2;
         fact.IsFinal = true;
-        pipelines.Observe(new FactUploadItem(stream, fact, null));
+        pipelines.Observe(stream.CollectorInstanceId, new SubjectReference(stream.Subject.SubjectId, SubjectKind.Account),
+            new FactUploadItem(stream, fact, null));
         Assert.Null(pipelines.CurrentActivity(stream.CollectorInstanceId));
+    }
+
+    [Fact]
+    public async Task IndependentObservationUsesDeliveryInstanceForCurrentActivityAndNeverLegacyUpload()
+    {
+        var upload = new RecordingSegmentUpload();
+        using var pipelines = new HeadlessInstancePipelines(_directory, upload);
+        var instance = Guid.NewGuid();
+        var otherInstance = Guid.NewGuid();
+        var subject = new SubjectReference(Guid.NewGuid(), SubjectKind.Account);
+        pipelines.Add(otherInstance, new SubjectReference(Guid.NewGuid(), SubjectKind.Account), "Other account");
+        var fact = new ObservationSnapshot
+        {
+            Id = Guid.NewGuid(), Kind = "segment", CollectorId = Guid.NewGuid(), Revision = 1,
+            Foi = new("account", "example", "account"), Aspect = "account-location",
+            Start = DateTimeOffset.UtcNow.AddMinutes(-1), End = DateTimeOffset.UtcNow,
+            Result = JsonSerializer.SerializeToElement(new { activityKey = "account:online", title = "Online" })
+        };
+        var item = new FactUploadItem(null, null, null, fact, false);
+        pipelines.Observe(instance, subject, item);
+        Assert.Equal("Online", pipelines.CurrentActivity(instance)!.Title);
+        Assert.Equal("account:online", pipelines.CurrentActivity(instance)!.IdentityKey);
+        Assert.Null(pipelines.CurrentActivity(otherInstance));
+        await pipelines.DrainAllAsync();
+        Assert.Empty(upload.Sent);
+        fact.Revision++;
+        pipelines.Observe(instance, subject, item with { IsFinal = true });
+        Assert.Null(pipelines.CurrentActivity(instance));
     }
 
     [Fact]

@@ -53,10 +53,6 @@ public sealed record CollectorInstance(
 
 public sealed class CollectorRuntimeOptions
 {
-    /// <summary>
-    /// Production hosts upload the committed Fact journal directly. False retains the old
-    /// projection adapter contract for embedded callers while their harnesses are migrated.
-    /// </summary>
     public Func<Guid> IdGenerator { get; init; } = Guid.CreateVersion7;
     public int MaxFactsPerBatch { get; init; } = 500;
     public int MaxBatchBytes { get; init; } = 1_048_576;

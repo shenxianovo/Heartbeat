@@ -1,6 +1,8 @@
 # Observations 与 Facts：当前模型基线
 
-状态：2026-09-11，用户重新确认核心模型与五表存储目标；已有五表实现，但新事实仍依赖旧交付模型，端到端解耦尚未完成。业务库未迁移。DataSource 暂不纳入。
+状态：2026-09-11，独立观测存储、通用保管、第一方生产者及查询/分析/Dashboard 的实现已整合。
+本轮最终组合验收由 Ticket 09 承接；System/Browser/VRChat 的真实安装、权限、账号及兼容退出现场
+证据仍由 Tickets 04–06 承接，不能据代码完成宣称全轮验收完成。业务库未迁移。DataSource 暂不纳入。
 本文件汇总已确认的基础框架；术语见 [Shared Kernel](../../shared/CONTEXT.md)，
 当前决策见 [ADR-059](../adr/059-observation-storage-five-tables.md)，
 字段见[最小存储方案](observation-storage-minimal.md)。ADR-056 保留此前决策及实施背景。
@@ -41,7 +43,7 @@ App 是跨设备产品；设备信息在有依据时通过明确关系表达，�
 但保持 Segment 起点和 Event 发生时刻。App 产品目录身份解析与维护沿用既有独立规则，
 不视为采集器更换实际观测对象。
 
-用户确认保留 Revision，表示同一 Fact 的快照版本。Segment 持续增长即会产生新版本，
+用户确认保留 Revision，表示同一 Fact 的快照版本；新内容不以结束时间推导版本。Segment 持续增长即会产生新版本，
 低版本重放不能覆盖高版本，旧快照的 ACK 不能确认仍待交付的新快照；未变化的 Event 可保持版本 1。
 
 ```mermaid
@@ -64,10 +66,15 @@ flowchart LR
 
 目标核心表为 Collectors、Objects、Facts、Relations、RelationMembers。
 DataSource 和计算口径暂不展开；Measurement 的具体数值业务约束待真实需求明确。
-当前代码的 Segment/Event 已从第一方 Collector、SDK、Runtime、HTTP 传递 Collector/FOI/Relations，
-查询按 Object UUID 和准确关系运行；应用上下文实体与本人关联旧表已由对象/关系替代。
-但 FactStore 仍强制要求 Stream/Subject，按旧复合键识别事实，并在写入核心解释旧输入。
-因此字段贯通不代表 Observations 已成为独立的写入契约。
+当前 Segment/Event 从 System、Browser、VRChat 实际生产者经 SDK/协议、Runtime 和 HTTP 传递
+自身 Id、Kind 与完整观测。原生入口不要求 Subject/Stream，保存生产者 Id；完整性校验不借用旧输入
+推断。旧 HTTP、缓存和进行中事实在明确兼容边界保留原身份，适配后汇入同一保存核心和唯一 Facts。
+新旧独立身份碰撞明确拒绝，不能把一个旧 FactId 直接当作历史行 Id。
+
+查询按 Object UUID 和准确 Fact 关系运行；应用上下文实体与本人关联旧表已由对象/关系替代。
+分析和 Dashboard 按 Aspect 解释，Source 可空且如实未知，Result 的未知 JSON 无损保管。
+此前“字段已贯通，但 FactStore 强制旧 Stream/Subject”的诊断是本轮实施起点，见
+[实施交接的历史起点](observations-implementation-handoff.md#历史起点实施前静态诊断)，不再描述当前原生路径。
 
 用户确认：本轮以 Observations 新模型在存储、Runtime 及所有相关代码中完整落地为完成标准。
 范围覆盖第一方 Collector、SDK、协议、缓存、HTTP、持久化、查询、分析、Dashboard 与相关测试；

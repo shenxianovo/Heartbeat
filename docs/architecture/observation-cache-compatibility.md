@@ -93,19 +93,25 @@ VRChat schema 4 checkpoint 的实际写端与启动门禁经托管测试验证�
 当前消费者为 VRChat 专有 checkpoint。退出仍需对应目录已迁移/排空或明确归档、实际 Package
 版本/content hash 清单及 owner 批准的最长离线/回退窗口；本票保留兼容，不声称这些现场条件已满足。
 
-## Tickets 04–06 的交接
+## 第一方专有格式与现场承接
 
-- **04 System**：读取真实安装中的 Segment SDK 恢复状态、Input first-stage 与旧 segment/input JSON，
-  验证进行中桌面活动沿原 FactId/Revision 终结；已 ACK 但进行中的事实在容量压力下仍可继续；前台/标题/
-  away 切换与输入 Gap 使用原始时间。通用入口是 SDK `CollectorFact`、Runtime `ReadPendingFacts` /
-  `ConfirmUploadedFacts`；不得把新观测回投到旧缓存。
-- **05 Browser**：提供扩展安装 UUID、旧 storage key、pending/delivered/dead-letter、开放窗口和重启后
-  仍存在/已关闭窗口的真实快照，验证 UUID、windowId 与并行事实身份。浏览器专有 storage 的 v1–v4 与
-  Service Worker 恢复由该票执行；不要用本文 .NET outbox fixture 代替。原生事实 CollectorId 始终为
-  真实扩展安装 UUID，Runtime InstanceId 只负责接收保管。
-- **06 VRChat**：提供账号级 Package/data-directory、独立账号恢复状态、LastKnownGood Package 与
-  断网期间位置事实；验证两个账号/Instance 的身份与离线修订不互串，旧包回退被通用门禁拒绝时原目录
-  保留，恢复兼容包后继续准确交付。服务账号业务身份不能由 Headless 宿主机器补齐。
+通用 SDK/Runtime 数字版本不代表各 Collector 的专有缓存版本。04–06 的生产者实现和自动验证已
+整合，三票仍待真实安装验收；下表是当前消费者及现场门禁，不是未来才要切换的实现计划。
 
-各票需记录实际安装版本与失败/离线/回退时间窗口。本票的通用 fixture 不宣称这些现场验收完成；
-未运行业务库迁移、完整生产副本、资源演练或真实账号操作。
+| 边界 | 真实消费者与当前行为 | 自动验证 / 现场承接 |
+| --- | --- | --- |
+| System ingress | AppMonitor 的 NDJSON checkpoint、Input first-stage，写 schema2（含排空 reset）。旧记录默认 IsObservation=false，以原 Binding/Stream/FactId、Kind=null 在原 End 正常收尾；新事实为空 Binding、原生 Kind。保留两条真实 Stream 承接旧条目和 Gap | [04](../../.scratch/observation-convergence/issues/04-system-observation-cutover.md) 的生产者 HTTP/重启/容量测试及 `scripts/verify-system-ingress-rollback.py` 实际旧 loader 拒绝、文件集合/SHA-256 保全；owner 按 [System README](../../collection/desktop/Heartbeat.Collector.System/README.md)承接 Windows/macOS 安装、权限和实际回调 |
+| System 其他历史缓存 | 通用 SDK outbox/dead-letter、旧 segment/input JSON 仍可能存在于真实 Desktop Profile；沿原身份排空，不把新 Fact 回投旧缓存。当前 System 不使用独立 .NET Segment SDK 状态文件 | 同 04 的旧 JSON/持久保管回归；owner 逐 Profile 记录原目录、schema、未发/未终结/隔离条目及最老时间 |
+| Browser storage | 新 journal5 原子保存 fold/pending/dead-letter/Gap。旧 keys 的实际四代布局、一次性备份和读取 fence 以 [Browser 专有台账](../../collection/collectors/Heartbeat.Collector.Browser/cache-compatibility.md)为权威；通用 .NET fixture 不覆盖 Chrome storage | [05](../../.scratch/observation-convergence/issues/05-browser-observation-cutover.md) 的 storage/background/真实 ExternalHost→HTTP 与临时 Chrome 进程重启；owner 按专有台账承接真实 Chrome/Edge 原 Profile 升级 |
+| Browser 已 ACK 进行中旧 fold | 扩展旧 keys 可能已无完整快照/版本高水位，Runtime journal 仍保管它。`facts.recover` 在真实 Activation 授权范围内只读精确旧 Stream/FactId；缺失继续保留恢复责任，不猜版本、不离线终结。恢复后按原 Id/版本/完整 Result 收尾和 ACK，当前窗口再开新原生 Fact | 05 的 `BrowserExternalHostRecoveryTests`、真实旧 keys→Runtime恢复→HTTP 保持旧数据库行；退出还需所有受支持 Profile 的旧 fold、Runtime 进行中条目与隔离事实均有归宿 |
+| VRChat 专有 checkpoint | 当前 schema4，旧 v1–v3 的 active/pending/Gap 由真实 loader 接管；旧 Kind=null、presence Binding/Stream 保持，未知账号不以当前账号补齐。新事实明确账号 FOI、空 Relations；保留 presence 流用于旧条目与真实 Gap | [06](../../.scratch/observation-convergence/issues/06-vrchat-observation-cutover.md) 的专有矩阵和真实 ManagedProcess→HTTP；owner / Headless 发布维护者按 [VRChat README](../../collection/collectors/Heartbeat.Collector.VRChat/README.md)承接 linux-x64 安装与真实账号授权/离线/重启 |
+| ManagedProcess 专有要求文件 | 上节 `collector-data-requirements.json` 随 data-directory 保管，要求在新专有状态前提交；SDK 排空仍禁止不兼容包读取。启动、更新候选、LastKnownGood 都经同一通用门禁 | 06 的启动/回退/IO失败恢复测试；owner / 发布维护者记录各账号目录与精确 Package/content hash，不能单删 marker 作为降级方式 |
+
+Browser 的持久扩展安装 UUID 是实际 CollectorId，Runtime InstanceId/DeliveryInstanceId 仅负责
+接收保管；System 的稳定 Instance 是实际 Observer，VRChat 的账号业务身份不能由 Headless 机器补齐。
+
+兼容删除由 owner 与发布维护者在已有 04–06 及 `observation-storage` 发布门禁中承接：记录全量
+实际 Package 版本/content hash、Profile/data-directory schema、未发/未终结/隔离数量和最老时间，
+确认每项数据归宿并跨过批准的最长离线/回退窗口，再用本矩阵、专有矩阵和现场证据共同审议退出。
+停止安装旧程序、当前队列暂空或通用 fixture 通过均不替代这些条件。当前现场清单与窗口未齐，
+继续保留兼容；未运行业务库迁移、完整生产副本、资源演练或真实账号操作。

@@ -76,7 +76,7 @@ internal sealed class HeadlessInstancePipelines(
                 Path.Combine(directory, "segments-dead-letter.json")),
             new UploadStatusRegistry(),
             new ClientCompatibilityStatus());
-        var pipeline = new Pipeline(directory, registration, ingest, cache, upload);
+        var pipeline = new Pipeline(directory, registration, cache, upload);
         lock (_gate)
         {
             if (!_pipelines.TryAdd(collectorInstanceId, pipeline))
@@ -134,14 +134,12 @@ internal sealed class HeadlessInstancePipelines(
     public void Push(List<ActivitySegmentItem> snapshots) =>
         throw new NotSupportedException("Multi-Subject projection requires Collector Instance context.");
 
-    public void Observe(FactUploadItem item)
+    public void Observe(Guid collectorInstanceId, SubjectReference subject, FactUploadItem item)
     {
-        if (item.Stream.FactKind != "segment" || item.Fact is not { } fact) return;
-        var subject = new SubjectReference(item.Stream.Subject.SubjectId,
-            Enum.Parse<SubjectKind>(item.Stream.Subject.Kind, ignoreCase: true));
-        var pipeline = Required(item.Stream.CollectorInstanceId, subject);
-        if (FactUploadReadModel.Segment(item) is { } segment)
-            pipeline.ObserveFact(segment, fact.IsFinal == true);
+        if (FactUploadReadModel.Segment(item) is not { } segment) return;
+        // Management context comes from Runtime custody, independently of Observer and FOI.
+        Required(collectorInstanceId, subject).ObserveFact(segment,
+            item.Observation is not null ? item.IsFinal == true : item.Fact?.IsFinal == true);
     }
 
     public void Dispose()
@@ -202,7 +200,6 @@ internal sealed class HeadlessInstancePipelines(
     private sealed class Pipeline(
         string directory,
         PipelineRegistration registration,
-        SegmentIngestService ingest,
         JsonFileCache<ActivitySegmentItem> cache,
         UploadStream<ActivitySegmentItem> upload) : IDisposable
     {

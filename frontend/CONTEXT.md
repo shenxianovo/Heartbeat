@@ -28,7 +28,8 @@ ADR-019 §2：渲染前台段时若存在同 App 的重叠详情段，标签由�
 回放展开态里同一 Source 与 Aspect 轨内的副本细分：有副本身份的段按身份分稳定泳道（browser 用 `payload.attributes.windowId`），无身份的段贪心装箱兜底（interval packing）。副本身份是采集器 Fact Payload 的 schema 约定，展示层按 Aspect 契约读取（`segmentAdapters.laneKeyOf`，Title Formatter 同款模式）。前台活动按 `desktop-activity` 识别；重叠事实仍各自保留。浏览器 windowId 跨重启可能复用，同 lane 顺序排开，可读性无损。
 
 **Fact Payload（事实内容）**:
-Analytics 返回的结构化观测内容；Dashboard 按来源与观测语义读取网址、窗口身份等展示字段。
+Analytics 返回的观测结果；Dashboard 按 Aspect 契约读取网址、窗口身份等展示字段，
+Source 仅表达实际来源。未知 Aspect 的结果保持原样，不能凭其中偶然出现的字段赋予已知含义。
 历史形状由 Analytics 导入时适配，Dashboard 不从 Attributes 字符串猜测多种包装层。
 
 **Fact View（事实视图）**:

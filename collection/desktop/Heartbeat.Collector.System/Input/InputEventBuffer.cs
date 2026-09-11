@@ -1,6 +1,4 @@
-using System.Collections.Concurrent;
 using Heartbeat.Core.DTOs.Input;
-using Heartbeat.Collection.Hub.Collectors.Runtime;
 using Heartbeat.Collection.Hub.Time;
 using Heartbeat.Collection.Hub.Upload;
 using Heartbeat.Collection.Hub.Storage;
@@ -8,13 +6,6 @@ using Heartbeat.Collector.System.Collection;
 
 namespace Heartbeat.Collector.System.Input
 {
-    public sealed class InputEventCapacityExceededException(int capacity, int count) : Exception(
-        $"Durable InputEvent projection is applying backpressure at {count}/{capacity} events.")
-    {
-        public int Capacity { get; } = capacity;
-        public int Count { get; } = count;
-    }
-
     /// <summary>
     /// 输入事件的归一化与 legacy upload 缓冲（不含平台钩子，便于单测）。详见 ADR-012/041。
     ///
@@ -25,10 +16,7 @@ namespace Heartbeat.Collector.System.Input
     /// - legacy 缓冲仅排空升级前的 InputEvent；新观察容量由 ingress / Runtime 各自保管边界控制
     /// - 为每个事件生成 UUIDv7
     /// </summary>
-    public sealed class InputEventBuffer :
-        IUploadSource<InputEventItem>,
-        IInputEventFactSink,
-        IInputEventFactReplaySink
+    public sealed class InputEventBuffer : IUploadSource<InputEventItem>
     {
         public const int WheelDelta = 120;
         public const int UploadBatchSize = 5_000;
@@ -36,14 +24,13 @@ namespace Heartbeat.Collector.System.Input
 
         private readonly IClock _clock;
         private readonly ISystemInputEventPublisher? _publisher;
-        private readonly int _capacity;
+        private const int DeliveryReceiptCapacity = 100_000;
         private readonly UploadStatusRegistry? _statusRegistry;
         private readonly JsonFileCache<InputEventItem>? _durableProjectionCache;
         private readonly JsonFileCache<Guid>? _deliveryReceiptCache;
         private readonly HashSet<Guid> _deliveredIds = [];
         private readonly object _durableGate = new();
 
-        private readonly ConcurrentQueue<InputEventItem> _queue = new();
         private int _count;
 
         // 按住状态：记录当前处于按下状态的物理键位置，用于过滤自动重复
@@ -56,17 +43,13 @@ namespace Heartbeat.Collector.System.Input
 
         public InputEventBuffer(
             IClock clock,
-            int capacity = 100_000,
             ISystemInputEventPublisher? publisher = null,
             string? durableProjectionPath = null,
             UploadStatusRegistry? statusRegistry = null)
         {
             ArgumentNullException.ThrowIfNull(clock);
-            if (capacity <= 0)
-                throw new ArgumentOutOfRangeException(nameof(capacity));
             _clock = clock;
             _publisher = publisher;
-            _capacity = capacity;
             _statusRegistry = statusRegistry;
             if (!string.IsNullOrWhiteSpace(durableProjectionPath))
             {
@@ -82,7 +65,7 @@ namespace Heartbeat.Collector.System.Input
                     $"{Path.GetFileNameWithoutExtension(durableProjectionPath)}-delivery-receipts.json");
                 var receiptCache = new JsonFileCache<Guid>(
                     receiptPath,
-                    capacity,
+                    DeliveryReceiptCapacity,
                     HeartbeatCacheFormats.InputEventDeliveryReceiptVersion1());
                 if (receiptCache.Status.State == CacheFileState.MigrationFailed)
                 {
@@ -98,15 +81,12 @@ namespace Heartbeat.Collector.System.Input
         }
 
         public int Count => Volatile.Read(ref _count);
-        public int Capacity => _capacity;
-        public bool IsBackpressured => Count >= _capacity;
-        DeliveryRemainder IUploadSource<InputEventItem>.Remainder => _durableProjectionCache is null
-            ? new(0, Count)
-            : new(Count, 0);
+        DeliveryRemainder IUploadSource<InputEventItem>.Remainder => new(Count, 0);
 
         /// <summary>键盘按下。返回是否记录了事件（自动重复会被丢弃）。</summary>
         public bool OnKeyDown(InputKeyPosition position)
         {
+            _ = Publisher;
             var code = (short)position;
             lock (_heldLock)
             {
@@ -139,6 +119,7 @@ namespace Heartbeat.Collector.System.Input
         /// </summary>
         public void OnScroll(int rawDelta)
         {
+            _ = Publisher;
             int notches;
             lock (_scrollLock)
             {
@@ -174,13 +155,13 @@ namespace Heartbeat.Collector.System.Input
         public List<InputEventItem> ReadAll()
         {
             lock (_durableGate)
-                return _durableProjectionCache?.Load() ?? _queue.ToList();
+                return _durableProjectionCache?.Load() ?? [];
         }
 
         public List<InputEventItem> ReadBatch()
         {
             lock (_durableGate)
-                return (_durableProjectionCache?.Load() ?? _queue.ToList()).Take(UploadBatchSize).ToList();
+                return (_durableProjectionCache?.Load() ?? []).Take(UploadBatchSize).ToList();
         }
 
         public void Confirm(IReadOnlyList<InputEventItem> items)
@@ -188,15 +169,10 @@ namespace Heartbeat.Collector.System.Input
             var confirmed = items.Select(item => item.Id).ToHashSet();
             lock (_durableGate)
             {
-                var retained = (_durableProjectionCache?.Load() ?? _queue.ToList())
+                var retained = (_durableProjectionCache?.Load() ?? [])
                     .Where(item => !confirmed.Contains(item.Id)).ToList();
                 if (_durableProjectionCache is not null)
                     _durableProjectionCache.Replace(retained);
-                else
-                {
-                    _queue.Clear();
-                    foreach (var item in retained) _queue.Enqueue(item);
-                }
                 Volatile.Write(ref _count, retained.Count);
                 UpdateStatus(retained.Count);
 
@@ -207,7 +183,7 @@ namespace Heartbeat.Collector.System.Input
                     {
                         var receipts = _deliveryReceiptCache.Load();
                         receipts.AddRange(delivered);
-                        _deliveryReceiptCache.Replace(receipts.TakeLast(_capacity).ToList());
+                        _deliveryReceiptCache.Replace(receipts.TakeLast(DeliveryReceiptCapacity).ToList());
                         _deliveredIds.Clear();
                         _deliveredIds.UnionWith(_deliveryReceiptCache.Load());
                     }
@@ -215,54 +191,8 @@ namespace Heartbeat.Collector.System.Input
             }
         }
 
-        bool IInputEventFactSink.TryAccept(
-            InputEventItem item,
-            bool isReplay,
-            ICollectorProjectionCommitFence commitFence) => TryEnqueueItem(item, isReplay, commitFence);
-
-        void IInputEventFactReplaySink.Replay(IReadOnlyList<InputEventItem> items)
-        {
-            ArgumentNullException.ThrowIfNull(items);
-            if (items.Count == 0)
-                return;
-
-            lock (_durableGate)
-            {
-                var retained = _durableProjectionCache?.Load() ?? _queue.ToList();
-                var retainedIds = retained.Select(item => item.Id).ToHashSet();
-                var initialCount = retained.Count;
-                var rejected = false;
-
-                foreach (var item in items)
-                {
-                    if (retainedIds.Contains(item.Id) || _deliveredIds.Contains(item.Id))
-                        continue;
-                    if (retained.Count >= _capacity)
-                    {
-                        rejected = true;
-                        continue;
-                    }
-                    retainedIds.Add(item.Id);
-                    retained.Add(item);
-                }
-
-                if (retained.Count != initialCount)
-                {
-                    if (_durableProjectionCache is not null)
-                        _durableProjectionCache.Replace(retained);
-                    else
-                    {
-                        foreach (var item in retained.Skip(initialCount))
-                            _queue.Enqueue(item);
-                    }
-                }
-                Volatile.Write(ref _count, retained.Count);
-                UpdateStatus(retained.Count);
-
-                if (rejected)
-                    throw new InputEventCapacityExceededException(_capacity, retained.Count);
-            }
-        }
+        private ISystemInputEventPublisher Publisher => _publisher ?? throw new InvalidOperationException(
+            "New input requires a System Collector publisher; legacy caches only drain existing events.");
 
         private void Enqueue(InputEventType type, short code)
         {
@@ -274,78 +204,7 @@ namespace Heartbeat.Collector.System.Input
                 Code = code,
                 Timestamp = _clock.UtcNow
             };
-            if (_publisher is null)
-                EnqueueItem(item);
-            else
-                _publisher.Publish(item);
-        }
-
-        private void EnqueueItem(InputEventItem item)
-        {
-            if (!TryEnqueueItem(
-                    item,
-                    isReplay: false,
-                    commitFence: UnfencedInputEventCommitFence.Instance))
-                throw new InvalidOperationException("The local InputEvent enqueue was unexpectedly fenced.");
-        }
-
-        private bool TryEnqueueItem(
-            InputEventItem item,
-            bool isReplay,
-            ICollectorProjectionCommitFence commitFence)
-        {
-            ArgumentNullException.ThrowIfNull(commitFence);
-            lock (_durableGate)
-            {
-                if (_durableProjectionCache is not null)
-                {
-                    var retained = _durableProjectionCache.Load();
-                    if (retained.Any(existing => existing.Id == item.Id))
-                        return true;
-                    if (isReplay && _deliveredIds.Contains(item.Id))
-                        return true;
-                    if (retained.Count >= _capacity)
-                    {
-                        UpdateStatus(retained.Count);
-                        throw new InputEventCapacityExceededException(_capacity, retained.Count);
-                    }
-                    retained.Add(item);
-                    using var replacement = _durableProjectionCache.PrepareReplacement(retained);
-                    if (!commitFence.TryPublishFile(
-                            replacement.TemporaryPath,
-                            replacement.DestinationPath))
-                        return false;
-                    _durableProjectionCache.AcceptPublishedReplacement(replacement);
-                    Volatile.Write(ref _count, retained.Count);
-                    UpdateStatus(retained.Count);
-                    return true;
-                }
-
-                if (_count >= _capacity)
-                {
-                    UpdateStatus(_count);
-                    throw new InputEventCapacityExceededException(_capacity, _count);
-                }
-                if (commitFence.IsFenced)
-                    return false;
-                _queue.Enqueue(item);
-                _count++;
-                UpdateStatus(_count);
-                return true;
-            }
-        }
-
-        private sealed class UnfencedInputEventCommitFence : ICollectorProjectionCommitFence
-        {
-            public static UnfencedInputEventCommitFence Instance { get; } = new();
-
-            public bool IsFenced => false;
-
-            public bool TryPublishFile(string preparedPath, string authoritativePath)
-            {
-                File.Move(preparedPath, authoritativePath, overwrite: true);
-                return true;
-            }
+            Publisher.Publish(item);
         }
 
         private void UpdateStatus(int count)
@@ -355,13 +214,9 @@ namespace Heartbeat.Collector.System.Input
             var status = count switch
             {
                 0 => UploadStreamStatus.Ready,
-                _ when count >= _capacity => new UploadStreamStatus(
-                    UploadStreamState.Backpressure,
-                    $"Durable InputEvent backlog reached capacity ({count}/{_capacity}).",
-                    "Allow InputEvent upload to drain or repair its upload path; retained events will retry."),
                 _ => new UploadStreamStatus(
                     UploadStreamState.Backlog,
-                    $"Durable InputEvent backlog: {count}/{_capacity}.")
+                    $"Retained legacy InputEvent backlog: {count}.")
             };
             _statusRegistry.Update(StatusStreamName, status);
         }

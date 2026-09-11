@@ -36,34 +36,6 @@ public sealed class HubConfigurationAdapter : IHubConfiguration, ICollectorRegis
             pair => pair.Key,
             pair => ToRegistration(pair.Value));
 
-    public CollectorRegistration Touch(string source, int? flushPeriodMs = null)
-    {
-        CollectorEntry? result = null;
-        _config.Update(config =>
-        {
-            if (!config.Collectors.TryGetValue(source, out var entry))
-            {
-                entry = new CollectorEntry();
-                config.Collectors[source] = entry;
-            }
-            if (flushPeriodMs is > 0)
-                entry.FlushPeriodMs = flushPeriodMs;
-            result = entry;
-        });
-        return ToRegistration(result!);
-    }
-
-    public void Discover(IEnumerable<string> sources)
-    {
-        var missing = sources.Where(source => !_config.Current.Collectors.ContainsKey(source)).ToList();
-        if (missing.Count == 0) return;
-        _config.Update(config =>
-        {
-            foreach (var source in missing)
-                config.Collectors.TryAdd(source, new CollectorEntry());
-        });
-    }
-
     public void StoreDeclaration(string source, string declarationJson, int version)
     {
         _config.Update(config =>

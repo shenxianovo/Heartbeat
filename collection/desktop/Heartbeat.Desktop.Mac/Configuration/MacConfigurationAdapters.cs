@@ -27,34 +27,6 @@ public sealed class MacHubConfiguration(MacConfigManager config) : IHubConfigura
             pair => ToRegistration(pair.Value),
             StringComparer.OrdinalIgnoreCase);
 
-    public CollectorRegistration Touch(string source, int? flushPeriodMs = null)
-    {
-        MacCollectorEntry? result = null;
-        config.Update(value =>
-        {
-            if (!value.Collectors.TryGetValue(source, out var entry))
-            {
-                entry = new MacCollectorEntry();
-                value.Collectors[source] = entry;
-            }
-            if (flushPeriodMs is > 0)
-                entry.FlushPeriodMs = flushPeriodMs;
-            result = entry;
-        });
-        return ToRegistration(result!);
-    }
-
-    public void Discover(IEnumerable<string> sources)
-    {
-        var missing = sources.Where(source => !config.Current.Collectors.ContainsKey(source)).ToList();
-        if (missing.Count == 0) return;
-        config.Update(value =>
-        {
-            foreach (var source in missing)
-                value.Collectors.TryAdd(source, new MacCollectorEntry());
-        });
-    }
-
     public void StoreDeclaration(string source, string declarationJson, int version)
     {
         config.Update(value =>

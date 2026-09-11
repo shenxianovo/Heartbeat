@@ -30,7 +30,18 @@ Collector 解释原始输入，存储保管 Fact，Analytics 按 Aspect 契约�
 及旧反推触发器退役，本人关联直接维护 Relations，查询与 Dashboard 使用 Object UUID。
 旧 HTTP/缓存只在边界转换，Runtime 退休无生产消费者的旧投影模式。详见[收敛 PRD](../../.scratch/observation-convergence/PRD.md)。
 
-2026-09-11 后续审查：上述字段与查询贯通尚未解除 FactStore 和持久化模型对旧 Stream/Subject
+2026-09-11 实施前审查（历史）：上述字段与查询贯通当时尚未解除 FactStore 和持久化模型对旧 Stream/Subject
 的强制依赖，旧输入解释也仍在写入核心。用户明确本轮完成标准为 Observations 新模型在存储、
 Runtime 及所有相关代码中完整落地，包括生产、保管、交付和消费路径；新增独立服务端入口仅是
-中间步骤。沿用既有历史保全及生产演练范围，当前尚未完成。范围见[模型基线](../architecture/observations-model.md#本轮范围)。
+中间步骤。沿用既有历史保全及生产演练范围。范围见[模型基线](../architecture/observations-model.md#本轮范围)。
+
+2026-09-11 独立契约实施：01–08 已落地原生 `/observations`、SDK/Runtime 及 System、Browser、
+VRChat 实际生产路径。新 Fact 自身持有 Id/Kind/Collector/FOI/Aspect/Result/家族时间/Revision；
+旧 Subject/Stream 不再是创建或保存条件。相同 Fact 的 Collector/FOI/Kind/Aspect 固定，修订可缩短
+结束时间；旧输入只在兼容边界确定性转换后进入唯一 Facts 核心。产品目录沿准确平台引用证据维护
+App 产品归属，不能成为任意替换 FOI 的入口。
+
+代价是继续保管真实旧数据库身份、进行中事实、旧缓存与 Gap，直到现场安装清单、准确 ACK 及
+最长离线/回退窗口满足退出条件。管理 Subject/Stream 不承担新事实语义，DeliveryInstanceId 只表明
+Runtime 保管者。09 收尾修正宿主读模型和无消费者接口，覆盖证据见[09联合验收](../../.scratch/observation-convergence/issues/09-contract-and-integrated-verification.md)。
+04–06 的真实安装/权限/Profile/账号及原存储生产门禁仍未验收；代码实现不代表全轮完成或已部署。

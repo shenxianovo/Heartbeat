@@ -74,7 +74,6 @@ try {
     return response.status === 204 ? null : response.text().then(s => s ? JSON.parse(s) : null)
   }
   const person = await request('/api/v1/me/person', 'PUT')
-  function uuid7() { const id = randomUUID().replaceAll('-', ''); const hex = Date.now().toString(16).padStart(12, '0') + '7' + id.slice(13); return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}` }
   const machine = { kind: 'machine', scope: 'heartbeat.device', key: 'person-smoke-device' }
   const browserApp = { kind: 'app', scope: 'heartbeat.app-identity', key: 'mac:com.google.chrome' }
   const observedOn = { kind: 'observed-on', members: [{ role: 'device', object: machine }, { role: 'app', object: browserApp }] }
@@ -84,10 +83,11 @@ try {
     ['vrchat.account', 'account-location', { kind: 'account', scope: 'vrchat', key: 'usr_11111111-1111-4111-8111-111111111111' }, [], 'VRChat 历史世界'],
     ['personal.fixture', 'activity', { kind: 'person', scope: 'heartbeat.person', key: person.reference }, [], '直接个人事实'],
   ]) {
-    const streamId = randomUUID(), collectorId = randomUUID()
-    await request('/api/v1/facts', 'POST', { streams: [{ streamId, collectorInstanceId: collectorId, subject: { subjectId: randomUUID(), kind: 'person' }, outputId: 'activity', source, factKind: 'segment', dimensions: {} }], facts: [{ streamId, factId: uuid7(), revision: 1, collectorId, foi, relations, aspect, start: '2026-09-01T01:00:00Z', end: '2026-09-01T01:10:00Z', isFinal: true, payload: { activityKey: source, title } }], gaps: [] })
+    await request('/api/v1/observations', 'POST', { facts: [{ id: randomUUID(), kind: 'segment', source, revision: 1, collectorId: randomUUID(), foi, relations, aspect, start: '2026-09-01T01:00:00Z', end: '2026-09-01T01:10:00Z', result: { activityKey: source, title } }] })
   }
   const original = await request(`/api/v1/users/${encodeURIComponent(username)}/facts/segments`)
+  assert.equal(original.length, 4)
+  assert.ok(original.every(fact => fact.streamId === null && fact.factId === null))
   const settings = await request('/api/v1/me/person')
   const device = settings.objects.find(t => t.kind === 'machine'), account = settings.objects.find(t => t.kind === 'account')
   const dist = resolve('frontend/dist')

@@ -1,3 +1,4 @@
+using Heartbeat.Collector.System.Collection;
 using Heartbeat.Collector.System.Input;
 using Heartbeat.Collection.Hub.Time;
 using Heartbeat.Core.DTOs.Input;
@@ -9,6 +10,12 @@ namespace Heartbeat.Desktop.Mac.Tests.Input;
 
 public sealed class MacInputEventCollectorTests : IDisposable
 {
+    private sealed class RecordingPublisher : ISystemInputEventPublisher
+    {
+        public List<InputEventItem> Items { get; } = [];
+        public void Publish(InputEventItem item) => Items.Add(item);
+    }
+
     private readonly string _root = Path.Combine(
         Path.GetTempPath(),
         $"heartbeat-mac-input-{Guid.NewGuid()}");
@@ -26,7 +33,7 @@ public sealed class MacInputEventCollectorTests : IDisposable
             BeforeStop = () => { entered.Set(); Assert.True(release.Wait(TimeSpan.FromSeconds(5))); }
         };
         using var collector = new MacInputEventCollector(config, native, new FakeCommandRunner(),
-            new FakeSignal(), new InputEventBuffer(new FixedClock()));
+            new FakeSignal(), new InputEventBuffer(new FixedClock(), publisher: new RecordingPublisher()));
         await collector.StartAsync(CancellationToken.None);
         var submitting = Task.Run(() => collector.SetInputEventRecordingEnabledFromUser(false));
         Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
@@ -42,7 +49,7 @@ public sealed class MacInputEventCollectorTests : IDisposable
         config.Update(value => value.InputEventRecordingEnabled = true);
         var native = new FakeNative { IsAuthorized = true };
         using var collector = new MacInputEventCollector(config, native, new FakeCommandRunner(),
-            new FakeSignal(), new InputEventBuffer(new FixedClock()));
+            new FakeSignal(), new InputEventBuffer(new FixedClock(), publisher: new RecordingPublisher()));
         await collector.StartAsync(CancellationToken.None);
         native.RaiseFailure(new IOException("event tap failed"));
         await collector.RefreshPermission();
@@ -66,7 +73,7 @@ public sealed class MacInputEventCollectorTests : IDisposable
             native,
             new FakeCommandRunner(),
             new FakeSignal(),
-            new InputEventBuffer(new FixedClock()));
+            new InputEventBuffer(new FixedClock(), publisher: new RecordingPublisher()));
         await collector.StartAsync(CancellationToken.None);
 
         collector.SetInteractionSignalEnabledFromUser(true);
@@ -89,7 +96,7 @@ public sealed class MacInputEventCollectorTests : IDisposable
             native,
             new FakeCommandRunner(),
             new FakeSignal(),
-            new InputEventBuffer(new FixedClock()));
+            new InputEventBuffer(new FixedClock(), publisher: new RecordingPublisher()));
         await collector.StartAsync(CancellationToken.None);
 
         collector.SetInteractionSignalEnabledFromUser(true);
@@ -111,7 +118,8 @@ public sealed class MacInputEventCollectorTests : IDisposable
         });
         var native = new FakeNative { IsAuthorized = true };
         var signal = new FakeSignal();
-        var buffer = new InputEventBuffer(new FixedClock());
+        var published = new RecordingPublisher();
+        var buffer = new InputEventBuffer(new FixedClock(), publisher: published);
         using var collector = new MacInputEventCollector(
             config,
             native,
@@ -126,7 +134,7 @@ public sealed class MacInputEventCollectorTests : IDisposable
 
         Assert.Equal(1, native.StartCount);
         Assert.Equal(1, signal.Clicks);
-        Assert.Empty(buffer.ReadAll());
+        Assert.Empty(published.Items);
     }
 
     [Fact]
@@ -135,7 +143,8 @@ public sealed class MacInputEventCollectorTests : IDisposable
         var config = NewConfig();
         config.Update(value => value.InputEventRecordingEnabled = true);
         var native = new FakeNative { IsAuthorized = true };
-        var buffer = new InputEventBuffer(new FixedClock());
+        var published = new RecordingPublisher();
+        var buffer = new InputEventBuffer(new FixedClock(), publisher: published);
         using var collector = new MacInputEventCollector(
             config,
             native,
@@ -151,7 +160,7 @@ public sealed class MacInputEventCollectorTests : IDisposable
         native.Raise(new MacInputObservation(MacInputObservationKind.MouseButton, 2));
         native.Raise(new MacInputObservation(MacInputObservationKind.Scroll, 240));
 
-        var events = buffer.ReadAll();
+        var events = published.Items;
         Assert.Equal(5, events.Count);
         Assert.Equal(2, events.Count(item =>
             item.EventType == InputEventType.KeyDown &&
@@ -175,7 +184,7 @@ public sealed class MacInputEventCollectorTests : IDisposable
             native,
             new FakeCommandRunner(),
             new FakeSignal(),
-            new InputEventBuffer(new FixedClock()));
+            new InputEventBuffer(new FixedClock(), publisher: new RecordingPublisher()));
         await collector.StartAsync(CancellationToken.None);
         native.IsAuthorized = false;
 
@@ -201,7 +210,7 @@ public sealed class MacInputEventCollectorTests : IDisposable
             BeforeStart = () => { entered.Set(); Assert.True(release.Wait(TimeSpan.FromSeconds(5))); }
         };
         using var collector = new MacInputEventCollector(config, native, new FakeCommandRunner(),
-            new FakeSignal(), new InputEventBuffer(new FixedClock()));
+            new FakeSignal(), new InputEventBuffer(new FixedClock(), publisher: new RecordingPublisher()));
         var starting = Task.Run(() => collector.StartAsync(CancellationToken.None));
         Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
         var stopping = collector.StopAsync(CancellationToken.None);
@@ -228,7 +237,7 @@ public sealed class MacInputEventCollectorTests : IDisposable
         }
         };
         using var collector = new MacInputEventCollector(config, native, new FakeCommandRunner(),
-            new FakeSignal(), new InputEventBuffer(new FixedClock()));
+            new FakeSignal(), new InputEventBuffer(new FixedClock(), publisher: new RecordingPublisher()));
         var starting = Task.Run(() => collector.StartAsync(CancellationToken.None));
         Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
         try
@@ -257,7 +266,8 @@ public sealed class MacInputEventCollectorTests : IDisposable
             entered.Set(); Assert.True(release.Wait(TimeSpan.FromSeconds(5)));
         }
         };
-        var buffer = new InputEventBuffer(new FixedClock());
+        var published = new RecordingPublisher();
+        var buffer = new InputEventBuffer(new FixedClock(), publisher: published);
         using var collector = new MacInputEventCollector(config, native, new FakeCommandRunner(), new FakeSignal(), buffer);
         await collector.StartAsync(CancellationToken.None);
         native.IsAuthorized = false;
@@ -266,7 +276,7 @@ public sealed class MacInputEventCollectorTests : IDisposable
         try
         {
             native.Raise(new MacInputObservation(MacInputObservationKind.KeyDown, 0x00));
-            Assert.Empty(buffer.ReadAll());
+            Assert.Empty(published.Items);
         }
         finally { release.Set(); await refreshing; }
     }
@@ -287,7 +297,7 @@ public sealed class MacInputEventCollectorTests : IDisposable
         }
         };
         using var collector = new MacInputEventCollector(config, native, new FakeCommandRunner(),
-            new FakeSignal(), new InputEventBuffer(new FixedClock()));
+            new FakeSignal(), new InputEventBuffer(new FixedClock(), publisher: new RecordingPublisher()));
         var starting = Task.Run(() => collector.StartAsync(CancellationToken.None));
         Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
         var context = new QueuedContext();

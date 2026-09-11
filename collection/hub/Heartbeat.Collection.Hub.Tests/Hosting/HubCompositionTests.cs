@@ -25,9 +25,6 @@ public class HubCompositionTests
             new Dictionary<string, CollectorRegistration>();
         public string HardwareId => "headless-subject";
         public string DeviceName => "headless-hub";
-        public CollectorRegistration Touch(string source, int? flushPeriodMs = null)
-            => new(true, flushPeriodMs, null, null);
-        public void Discover(IEnumerable<string> sources) { }
         public void StoreDeclaration(string source, string declarationJson, int version) { }
     }
 

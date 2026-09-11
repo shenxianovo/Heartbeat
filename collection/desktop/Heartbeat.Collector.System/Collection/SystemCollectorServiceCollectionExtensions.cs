@@ -1,8 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Heartbeat.Collection.Hub.Ingest;
-using Heartbeat.Collection.Hub.Collectors.Runtime;
-using Heartbeat.Collector.System.Input;
 
 namespace Heartbeat.Collector.System.Collection;
 
@@ -19,8 +16,6 @@ public static class SystemCollectorServiceCollectionExtensions
             provider.GetRequiredService<SystemCollectorProtocolAdapter>());
         services.AddSingleton<ISystemSegmentPublisher>(provider =>
             provider.GetRequiredService<SystemCollectorProtocolAdapter>());
-        services.TryAddSingleton<IInputEventFactSink>(provider =>
-            provider.GetRequiredService<InputEventBuffer>());
         services.AddSingleton<AppMonitorService>();
         services.AddSingleton<SystemInProcessCollector>();
         services.AddHostedService<SystemCollectorHostedService>();

@@ -98,7 +98,7 @@ namespace Heartbeat.Desktop.Windows.Hosting
             services.AddSingleton<IAppIconExtractor, WindowsAppIconExtractor>();
             services.AddSingleton<IconUploadService>();
             services.AddSingleton<IIconUploadService>(sp => sp.GetRequiredService<IconUploadService>());
-            // 输入事件经 system Collector Protocol 回投到同一 legacy upload buffer。
+            // 新输入经 System Collector Protocol 进入 Runtime；旧 input buffer 仅排空历史缓存。
             services.AddSingleton(sp => new InputEventBuffer(
                 sp.GetRequiredService<IClock>(),
                 publisher: sp.GetRequiredService<ISystemInputEventPublisher>(),

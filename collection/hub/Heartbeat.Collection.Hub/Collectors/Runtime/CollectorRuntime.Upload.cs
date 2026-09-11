@@ -105,7 +105,11 @@ public sealed partial class CollectorRuntime
     private void ObserveCommittedFact(FactStreamState? stream, CommittedFactState fact)
     {
         if (_segmentSink is not ICollectorFactObserver observer) return;
-        try { observer.Observe(UploadFact(stream, fact)); }
+        try
+        {
+            var instanceId = fact.Kind is not null ? fact.DeliveryInstanceId!.Value : stream!.CollectorInstanceId;
+            observer.Observe(instanceId, GetInstance(instanceId).Subject, UploadFact(stream, fact));
+        }
         catch (Exception exception)
         {
             Log.Warning(exception, "Collector host read model failed; durable Fact {FactId} remains accepted", fact.FactId);

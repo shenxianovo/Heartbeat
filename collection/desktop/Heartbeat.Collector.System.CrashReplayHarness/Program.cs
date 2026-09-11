@@ -249,7 +249,7 @@ file sealed class CrashBlockingFactSink : ISegmentSink, ICollectorFactObserver
 {
     public ManualResetEventSlim Entered { get; } = new();
     public void Push(List<ActivitySegmentItem> items) { }
-    public void Observe(FactUploadItem item)
+    public void Observe(Guid collectorInstanceId, SubjectReference subject, FactUploadItem item)
     {
         if ((item.Observation?.Kind ?? item.Stream?.FactKind) != "event") return;
         Entered.Set();

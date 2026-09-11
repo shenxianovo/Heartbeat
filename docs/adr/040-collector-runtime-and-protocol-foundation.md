@@ -2,6 +2,14 @@
 
 ## Status: Accepted
 
+2026-09-11 当前说明：[ADR-041](041-unified-observation-fact-model.md)与
+[ADR-059](059-observation-storage-five-tables.md)已收敛独立 Observations。新 Fact 自身提供 Id、Kind、
+Collector、FOI、Aspect、Result、家族时间和 Revision，不要求 Subject/Output/Stream；旧分组仍服务
+历史条目、管理和真实 Gap。本 ADR 的 Package/Instance/Activation、Transport Binding 与保管责任
+继续适用，下述早期强制 Stream、Fact Schema 和 ActivitySegment 投影要求只保留历史背景。
+当前能力与格式见[观测语义](../architecture/observation-semantics.md)和[缓存接管](../architecture/observation-cache-compatibility.md)。
+System/Browser/VRChat 的实现与自动验收已整合，真实安装门禁仍由 Observations04–06承接。
+
 ## Date: 2026-08-22
 
 ## Context
@@ -40,9 +48,12 @@ capacity 判定属于后台 delivery pump：它必须在同一个 journal mutati
 Event 的 Stream Gap，不能先删除/拒绝 Event、再写另一份 Gap ledger。进程在 pump 持久化前终止仍是
 明确的易失 ingress window；不得通过在平台回调中同步 fsync 来把它伪装成 durable responsibility。
 
-基础协议按 Major 协商；Fact、配置和生命周期能力独立版本化；Package SemVer 不参与 wire negotiation。Manifest 静态声明允许产生的 Source、FactKind、schema、SubjectKind 与 identifying dimensions，Activation 只能把声明绑定为具体 Fact Stream。
+基础协议按 Major 协商；Fact、配置和生命周期能力独立版本化；Package SemVer 不参与 wire negotiation。
+历史 Output Template 声明 Source、FactKind、SubjectKind 与 identifying dimensions，Activation 将其绑定为
+实际 Stream；独立原生 Fact 自身携带这些适用语义，可以不声明 Output 或开启 Stream。
+Fact Payload 的 Schema 注册与版本治理已按 ADR-041 退役，不能把制品完整性校验混作 Fact Schema。
 
-> 2026-09-02 projection closeout：`facts.segment/v1` 的可执行投影形状统一为
+> 历史记录（已由 ADR-041/059 替代，不作为当前投影要求）：2026-09-02 projection closeout：`facts.segment/v1` 的可执行投影形状统一为
 > `ActivitySegment`。Package 自有 schema id / schema major 只细化 payload，由 Package JSON Schema 先验证；
 > Hub 再按通用基础形状要求非空 `identityKey`，不按具名 Collector schema 白名单选择 projector。未来若出现
 > 非 `ActivitySegment` 的 Segment，必须升级 capability major 或引入新的通用 projection 声明，不能静默复用

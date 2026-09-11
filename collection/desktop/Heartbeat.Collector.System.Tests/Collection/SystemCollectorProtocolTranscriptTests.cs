@@ -1022,7 +1022,7 @@ public sealed class SystemCollectorProtocolTranscriptTests : IDisposable
     private sealed class ObservingFactSink(ISegmentSink sink, Action<FactUploadItem> observe) : ISegmentSink, ICollectorFactObserver
     {
         public void Push(List<Heartbeat.Core.DTOs.Segments.ActivitySegmentItem> snapshots) => sink.Push(snapshots);
-        public void Observe(FactUploadItem item) => observe(item);
+        public void Observe(Guid collectorInstanceId, SubjectReference subject, FactUploadItem item) => observe(item);
     }
 
     private class BlockingInputEventSink

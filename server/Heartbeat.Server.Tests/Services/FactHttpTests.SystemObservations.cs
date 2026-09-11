@@ -12,6 +12,7 @@ using Heartbeat.Collector.System.Input;
 using Heartbeat.Collector.System.Observations;
 using Heartbeat.Core.DTOs.Facts;
 using Heartbeat.Core.DTOs.Input;
+using Heartbeat.Core.DTOs.Persons;
 using Heartbeat.Server.Entities;
 
 namespace Heartbeat.Server.Tests.Services;
@@ -123,6 +124,71 @@ public sealed partial class FactHttpTests
             Assert.Equal(factId, after.Id);
             Assert.Equal(observer, after.ObserverId);
             Assert.Equal(Assert.Single(final).Observation!.Revision, after.Revision);
+            Assert.NotNull(after.DeviceId);
+            var deviceFacts = (await http.GetFromJsonAsync<List<FactResponse>>(
+                $"/api/v1/users/alice/facts/segments?deviceId={after.DeviceId}&appId={after.AppId}"))!;
+            Assert.Equal(factId, Assert.Single(deviceFacts).Id);
+            var usage = Assert.Single((await http.GetFromJsonAsync<JsonElement>(
+                $"/api/v1/users/alice/usage?deviceId={after.DeviceId}&start=2026-09-10T00:00:00Z&end=2026-09-11T00:00:00Z")).EnumerateArray());
+            Assert.Equal(factId, usage.GetProperty("id").GetGuid());
+            Assert.Equal(15, usage.GetProperty("durationSeconds").GetInt32());
+            const string reportQuery = "/api/v1/users/alice/reports/daily?version=1&kind=day&localDate=2026-09-10&timeZone=Etc%2FUTC&start=2026-09-10T00:00:00Z&endExclusive=2026-09-11T00:00:00Z";
+            foreach (var query in new[] { reportQuery, $"{reportQuery}&deviceId={after.DeviceId}" })
+            {
+                var daily = await http.GetFromJsonAsync<JsonElement>(query);
+                var product = Assert.Single(daily.GetProperty("apps").EnumerateArray());
+                Assert.Equal(after.AppId, product.GetProperty("appId").GetInt64());
+                // Actual AppMonitor revision shortened 20 seconds to 15; neither the delayed
+                // 10-second snapshot nor its duplicate may change the final report total.
+                Assert.Equal(15, product.GetProperty("durationSeconds").GetInt32());
+            }
+
+            // The same product observed on another real System instance shares an App, not
+            // a machine FOI or personal-use association. Both facts feed the same report.
+            using var established = await http.PutAsync("/api/v1/me/person", null);
+            established.EnsureSuccessStatusCode();
+            using var linked = await http.PostAsJsonAsync("/api/v1/me/person/associations",
+                new { objectId = after.FoiId, start = (DateTimeOffset?)null, end = (DateTimeOffset?)null });
+            linked.EnsureSuccessStatusCode();
+            var secondInstance = restarted.CreateInstance(package, new SubjectReference(Guid.NewGuid(), SubjectKind.Machine),
+                new CollectorInstanceSpec(1, 1, JsonSerializer.SerializeToElement(new { })));
+            var secondProtocol = new SystemCollectorProtocolAdapter();
+            var secondSource = new SystemObservationSource(new DesktopActivity(appIdentity, "Visual Studio Code", "other-device.cs"));
+            using var secondMonitor = new AppMonitorService(clock, secondSource, new InputSignal(), secondProtocol,
+                new SegmentIngestService(clock), new DesktopSettings());
+            using var secondCollector = new SystemInProcessCollector(secondProtocol, secondMonitor);
+            await using var secondActivation = await restarted.ActivateInProcessAsync(secondInstance.CollectorInstanceId, package, secondCollector);
+            clock.Advance(TimeSpan.FromSeconds(10));
+            await secondActivation.StopAsync();
+            var secondPending = restarted.ReadPendingFacts();
+            Assert.Single(secondPending);
+            Assert.True((await api.UploadFactsAsync(secondPending)).Success);
+            restarted.ConfirmUploadedFacts(secondPending);
+            var both = (await http.GetFromJsonAsync<List<FactResponse>>("/api/v1/users/alice/facts/segments"))!;
+            Assert.Equal(2, both.Count);
+            var secondFact = Assert.Single(both, fact => fact.Id != factId);
+            Assert.Equal(after.AppId, secondFact.AppId);
+            Assert.NotEqual(after.FoiId, secondFact.FoiId);
+            Assert.NotEqual(after.DeviceId, secondFact.DeviceId);
+            var secondDeviceFacts = (await http.GetFromJsonAsync<List<FactResponse>>(
+                $"/api/v1/users/alice/facts/segments?deviceId={secondFact.DeviceId}&appId={after.AppId}"))!;
+            Assert.Equal(secondFact.Id, Assert.Single(secondDeviceFacts).Id);
+            foreach (var (query, seconds) in new[]
+            {
+                (reportQuery, 25), ($"{reportQuery}&deviceId={after.DeviceId}", 15),
+                ($"{reportQuery}&deviceId={secondFact.DeviceId}", 10)
+            })
+            {
+                var daily = await http.GetFromJsonAsync<JsonElement>(query);
+                var product = Assert.Single(daily.GetProperty("apps").EnumerateArray());
+                Assert.Equal(after.AppId, product.GetProperty("appId").GetInt64());
+                Assert.Equal(seconds, product.GetProperty("durationSeconds").GetInt32());
+            }
+            var personal = (await http.GetFromJsonAsync<PersonFactPage>("/api/v1/me/person/facts/segments"))!;
+            var personalFact = Assert.Single(personal.Items);
+            Assert.Equal(factId, personalFact.Fact.Id);
+            Assert.Equal(15, personalFact.EffectiveSeconds);
+            Assert.Equal(after.DeviceId, personalFact.Fact.DeviceId);
         }
         finally { Directory.Delete(directory, recursive: true); }
     }

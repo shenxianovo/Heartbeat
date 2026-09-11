@@ -20,7 +20,7 @@ public static class FactUploadReadModel
             return new ActivitySegmentItem
             {
                 Id = observation.Id, Source = observation.Source ?? string.Empty,
-                IdentityKey = Text(result, "identityKey") ?? observation.Id.ToString("D"),
+                IdentityKey = Text(result, "activityKey") ?? observation.Id.ToString("D"),
                 Title = Text(result, "title"), AppIdentityKey = Text(result, "appIdentityKey"),
                 AppDisplayName = Text(result, "appDisplayName"), StartTime = begin, EndTime = finish, Attributes = result.Clone()
             };
