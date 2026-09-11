@@ -143,3 +143,25 @@ Friction closeout：旧endTime修订、fold/outbox分写、无已ACK高水位、
 
 审查合计：Standards 1 已关闭、0 未解决；Spec 2 已关闭、0 未解决；两轴均无剩余最高风险项。
 实现完成、自动验证完成，真实安装人工验收尚未完成，保留 `ready-for-human`。
+
+### 2026-09-11 协调合并后补充：测试收尾不得改写 Browser Package
+
+协调在 main 合并04/05/06后发现普通 `npm test` 会把陈旧 dist 复制进跟踪的
+`Package/browser-extension`。本票工作区以 `77afa243` 为增量基线复现并修复，不操作协调工作区：
+Vite `copy-manifest` 插件没有限定命令，Vitest 的收尾也执行 `closeBundle`。
+
+新增 `tests/build-lifecycle.test.ts` 用复制的真实生产 Vite 配置，在临时项目放入陈旧 dist 和不同的
+Package，启动完整 Vitest CLI 并等待进程退出。稳定 RED 精确观察到 Package 从
+`previously-staged-package` 被覆盖为 `stale-dist`，且多写 manifest。为插件加 `apply: 'build'`
+后同一测试 GREEN；随后真实 Vite build 将当前源码与 manifest 正确暂存，整个 Package 与 dist
+逐文件一致。测试不是只断言配置值，也不需要改写本工作区的真实 dist 来模拟故障。
+
+`npm run build`、Browser 全套 **146/146**、contracts 与 `git diff --check` 通过；在本工作区运行
+完整普通 `npm test` 前后对 Package 五个文件做 SHA-256 比较，路径和字节全部不变。
+现有跟踪 Package 无 diff；本补充只有配置、必要回归和本票证据，不靠 git restore 隐藏副作用。
+日志 `/tmp/heartbeat05-build-lifecycle-red.log`、`heartbeat05-build-lifecycle-green.log`、
+`heartbeat05-build-lifecycle-build.log`、`heartbeat05-build-lifecycle-all.log`。修复不变更生产观测
+协议、Runtime 或原人工安装门禁，状态继续 `ready-for-human`。
+
+补充修复的固定增量审查 `77afa243` → `9b3b4c8c2e6377897bf1c77d8fdaf46391a35fa2`：
+Standards 与 Spec 均0发现；Spec 原审查者独立重跑 CLI 生命周期回归1/1通过。

@@ -17,6 +17,7 @@ export default defineConfig({
   plugins: [
     {
       name: 'copy-manifest',
+      apply: 'build',
       closeBundle() {
         copyFileSync('manifest.json', `${outputDirectory}/manifest.json`)
         if (process.env.HEARTBEAT_BROWSER_BUILD_DIR) return
