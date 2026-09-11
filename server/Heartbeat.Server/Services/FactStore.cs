@@ -176,6 +176,24 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         fact.StreamId = stream.StreamId;
         fact.Stream = stream;
         fact.FactId = snapshot.FactId;
+        if (!takeover && fact.Revision > 0)
+        {
+            // Reconcile historical absence only at this explicit adapter. The shared
+            // core compares complete semantics and never grants native inputs this rule.
+            // Atomic rolls back these completions if any other snapshot content conflicts.
+            observation = observation with
+            {
+                CollectorId = observation.CollectorId ?? fact.ObserverId,
+                FoiId = observation.FoiId ?? fact.FoiId
+            };
+            if (observation.FoiId is { } foi && observation.Relations.Any(relation =>
+                    relation.Members.All(member => member.ObjectId != foi)))
+                throw new FactIngestException("Historical relations must include the preserved observed Object.", true);
+            aspect ??= fact.Aspect;
+            fact.ObserverId ??= observation.CollectorId;
+            fact.FoiId ??= observation.FoiId;
+            fact.Aspect ??= aspect;
+        }
         await SaveSnapshot(fact, snapshot.Revision, aspect, stream.Source, payload, observation, start, end, at, ct, takeover);
     }
 

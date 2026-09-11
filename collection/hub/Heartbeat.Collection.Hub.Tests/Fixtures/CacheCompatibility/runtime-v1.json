@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "instances": [
+    {
+      "collectorInstanceId": "01990000-0000-7000-8000-000000000001",
+      "packageId": "fixture.system",
+      "packageVersion": "1.0.0",
+      "packageContentHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "subjectId": "01990000-0000-7000-8000-000000000002",
+      "subjectKind": "machine",
+      "specRevision": 3,
+      "config": {
+        "offline": true
+      },
+      "lastKnownGoodPackage": {
+        "packageVersion": "0.9.0",
+        "packageContentHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "artifactId": "system",
+        "artifactContentHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "configSchemaVersion": 1
+      },
+      "packageFingerprints": {
+        "1.0.0": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "configSchemaVersion": 2
+    }
+  ],
+  "streams": [
+    {
+      "streamId": "01990000-0000-7000-8000-000000000003",
+      "collectorInstanceId": "01990000-0000-7000-8000-000000000001",
+      "subjectId": "01990000-0000-7000-8000-000000000002",
+      "subjectKind": "machine",
+      "outputId": "segment",
+      "source": "system",
+      "factKind": "segment",
+      "dimensions": {},
+      "schemaId": "fixture.schema",
+      "schemaMajor": 1,
+      "schemaRevision": 1,
+      "schemaHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "schemaCatalog": {
+        "1": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "schemaDocuments": {
+        "1": "e30="
+      }
+    },
+    {
+      "streamId": "01990000-0000-7000-8000-000000000004",
+      "collectorInstanceId": "01990000-0000-7000-8000-000000000001",
+      "subjectId": "01990000-0000-7000-8000-000000000002",
+      "subjectKind": "machine",
+      "outputId": "event",
+      "source": "system",
+      "factKind": "event",
+      "dimensions": {},
+      "schemaId": "fixture.schema",
+      "schemaMajor": 1,
+      "schemaRevision": 1,
+      "schemaHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "schemaCatalog": {
+        "1": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "schemaDocuments": {
+        "1": "e30="
+      }
+    }
+  ],
+  "facts": [
+    {
+      "streamId": "01990000-0000-7000-8000-000000000003",
+      "factId": "01990000-0000-7000-8000-000000000005",
+      "revision": 7,
+      "observedAt": "2026-08-28T08:03:00Z",
+      "start": "2026-08-28T08:00:00Z",
+      "end": "2026-08-28T08:02:00Z",
+      "isFinal": false,
+      "payload": {
+        "identityKey": "win:chrome",
+        "extra": {
+          "array": [
+            1,
+            true,
+            null,
+            {
+              "retained": "full"
+            }
+          ]
+        }
+      },
+      "schemaRevision": 1,
+      "recordState": "present",
+      "contentHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "deliveredContentHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "streamId": "01990000-0000-7000-8000-000000000004",
+      "factId": "01990000-0000-7000-8000-000000000005",
+      "revision": 2,
+      "occurredAt": "2026-08-28T08:01:00Z",
+      "payload": {
+        "eventType": 0,
+        "code": 65,
+        "opaque": [
+          false,
+          null,
+          {
+            "n": 1.5
+          }
+        ]
+      },
+      "schemaRevision": 1,
+      "recordState": "present",
+      "contentHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "deliveredContentHash": null
+    }
+  ],
+  "gaps": [
+    {
+      "streamId": "01990000-0000-7000-8000-000000000004",
+      "gapId": "01990000-0000-7000-8000-000000000006",
+      "start": "2026-08-28T07:00:00Z",
+      "end": "2026-08-28T07:01:00Z",
+      "reason": "offline_capacity",
+      "estimatedFactsLost": 2,
+      "delivered": false
+    }
+  ],
+  "helloAttempts": []
+}

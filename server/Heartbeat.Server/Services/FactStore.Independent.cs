@@ -68,10 +68,7 @@ public sealed partial class FactStore
             }
             if (fact is Segment oldSegment ? oldSegment.StartTime != start : ((Event)fact).Timestamp != at)
                 throw new FactIngestException("Fact Revision cannot change its start/occurrence.", true);
-            // Only explicit legacy inputs can deterministically fill historical unknowns.
-            if ((fact.StreamId is null || fact.ObserverId is not null) && fact.ObserverId != observation.CollectorId ||
-                (fact.StreamId is null || fact.FoiId is not null) && fact.FoiId != observation.FoiId ||
-                (fact.StreamId is null || fact.Aspect is not null) && fact.Aspect != aspect)
+            if (fact.ObserverId != observation.CollectorId || fact.FoiId != observation.FoiId || fact.Aspect != aspect)
                 throw new FactIngestException("Fact Revision cannot change Observer, FOI or Aspect.", true);
         }
         await SaveAppReferences(fact, revision, observation, ct);

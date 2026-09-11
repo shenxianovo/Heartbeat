@@ -104,6 +104,33 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
         }
         if (schemaVersion == 2)
             root["schemaVersion"] = CurrentSchemaVersion;
+        if (schemaVersion is 1 or 2)
+        {
+            // These versions also existed before schema governance and content hashes retired.
+            // Remove only their mechanical metadata; retain the complete payload and the exact
+            // delivered-hash comparison used by the old uploader before discarding that hash.
+            foreach (var stream in (root["streams"] as JsonArray ?? []).OfType<JsonObject>())
+                foreach (var field in new[] { "schemaId", "schemaMajor", "schemaRevision", "schemaHash", "schemaCatalog", "schemaDocuments" })
+                    stream.Remove(field);
+            foreach (var fact in (root["facts"] as JsonArray ?? []).OfType<JsonObject>())
+            {
+                if (fact["recordState"] is { } recordState && recordState.GetValue<string>() != "present")
+                    throw new JsonException("Historical retracted Fact requires explicit recovery; it cannot become a present observation.");
+                if (fact.ContainsKey("deliveredContentHash"))
+                {
+                    if (fact.ContainsKey("delivered"))
+                        throw new JsonException("Historical Fact contains conflicting delivery representations.");
+                    fact["delivered"] = fact["contentHash"] is { } contentHash &&
+                        fact["deliveredContentHash"] is { } deliveredHash &&
+                        contentHash.GetValue<string>().Length != 0 &&
+                        contentHash.GetValue<string>() == deliveredHash.GetValue<string>();
+                }
+                fact.Remove("recordState");
+                fact.Remove("schemaRevision");
+                fact.Remove("contentHash");
+                fact.Remove("deliveredContentHash");
+            }
+        }
         if (schemaVersion is >= 1 and <= 7)
         {
             root["schemaVersion"] = CurrentSchemaVersion;

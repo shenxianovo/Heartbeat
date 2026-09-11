@@ -255,3 +255,32 @@ Source、AppIdentity、Stream/FactId 保留来源、产品纠错与交付职责�
 
 候选已包含 `ExplicitFactAspects` 与 `DirectObservations`；[语义边界](observation-semantics.md)
 记录 HTTP v5、Runtime v8、SDK v3 和旧包启动保护。业务库/资源验收仍由原存储 PRD 承接。
+
+## Ticket 03：历史重放与通用验证边界（2026-09-11）
+
+`/api/v1/facts` 是明确的旧输入适配入口：完整 Owner/Kind/Stream/FactId 找到原行后，
+转换旧 Payload/Observer/Target，再进入与 `/api/v1/observations` 相同的快照保存核心。
+进行中及待发旧事实保留这个四元对应，不把客户端 FactId 当成新原生 Id。
+旧 import 合成的 Revision 不表示生产者版本；确定性原生接管后由生产者 Revision 排序，
+后续旧 import 只能命中原 claim，不能重新扩张已经修订缩短的区间。
+
+缺失的历史 Observer、FOI、Aspect 可由同一旧事实后来恢复的明确输入补全；补全本身不增加
+Revision。更早表示再次重放时保留已经可靠补全的值。已知值不得更换，同版本 Result、
+Source、AppIdentity、时间及关系仍需全等；整批失败会回滚补全。这个规则只在旧适配器运行，
+不能通过省略新原生字段触发。平台产品纠错继续使用既有 AppIdentity 和精确引用凭据规则，
+不能为历史资料猜造 AppReferenceEvidence。
+
+真实隔离 PostgreSQL fixture `LegacyObservationMigrationTests` 从
+`NativeFactCustody` 与 `CompleteHistoricalTargets` 两个实际基线执行全部剩余迁移，
+逐行对照旧身份、家族时间、Revision、完整 JSON、Source、平台证据和 Gap；同时验证
+Browser 安装 UUID 保留、无依据字段保持 null、后期失败整体回滚后可在同库重试。
+已发布迁移没有改写；现有追加链满足验证，不为形式增加无效 schema 变更。
+
+两个独立家族行 Id 相同仍按既有迁移在合表前停止，两行和各自完整旧键原样保留。
+连续重试不会丢行；这不是自动解决冲突的声明。若真实盘点发现这种冲突，必须先明确
+持久改号及引用对应，再沿原发布任务验收，不能用 `ON CONFLICT`、跳过迁移或追加迁移
+绕过尚未成功执行的前置迁移。业务库与暂停的完整副本演练仍未执行。
+
+通用 SDK/Runtime 版本矩阵及 04–06 的安装状态交接见
+[缓存兼容验收](observation-cache-compatibility.md)。旧接口的消费者、最长离线和回退窗口
+仍按[兼容台账](compatibility-debt.md)由实际安装盘点退出，自动 fixture 通过不取消历史读取能力。

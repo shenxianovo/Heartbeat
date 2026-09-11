@@ -22,6 +22,7 @@ internal sealed class CollectorProtocolOutbox
     private OutboxState _state;
     private List<CollectorDeadLetter> _deadLetters;
     private List<CollectorGapDeadLetter> _gapDeadLetters;
+    private int _schemaFloor = 1;
     private bool _dirty;
     private bool _deadLettersDirty;
 
@@ -80,6 +81,8 @@ internal sealed class CollectorProtocolOutbox
             Path.GetDirectoryName(path)!,
             "collector-protocol-gap-dead-letter.json");
         var state = new OutboxState();
+        var readSchemaVersion = 0;
+        var migratedEnvelope = false;
         var migratedCurrentPointGaps = false;
         var migratedDeliveryOrder = false;
         var recoveredCorruptOutbox = false;
@@ -87,13 +90,15 @@ internal sealed class CollectorProtocolOutbox
         {
             try
             {
-                state = ReadEnvelope<OutboxState>(path, "Collector Protocol outbox");
+                state = ReadEnvelope<OutboxState>(path, "Collector Protocol outbox", out migratedEnvelope, out readSchemaVersion);
                 state = MigrateCurrentPointGaps(state, out migratedCurrentPointGaps);
                 state = RestoreLegacyDeliveryOrder(state, out migratedDeliveryOrder);
                 Validate(state);
             }
             catch (Exception exception) when (exception is JsonException or InvalidDataException)
             {
+                if (readSchemaVersion is >= 1 and < 4)
+                    throw new NotSupportedException("Historical Collector outbox could not be migrated or validated; the original file is preserved for recovery.", exception);
                 if (outputs.Count == 0)
                     throw new InvalidDataException("Collector outbox cannot be recovered without a known delivery group; preserve the data directory for recovery.", exception);
                 var lastWrite = new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero);
@@ -125,11 +130,12 @@ internal sealed class CollectorProtocolOutbox
                 recoveredCorruptOutbox = true;
             }
         }
+        var migratedDeadLetters = false;
         var deadLetters = File.Exists(deadLetterPath)
-            ? ReadEnvelope<DeadLetterState>(deadLetterPath, "Collector Protocol dead letter").Entries
+            ? ReadEnvelope<DeadLetterState>(deadLetterPath, "Collector Protocol dead letter", out migratedDeadLetters, out _).Entries
             : [];
         var gapDeadLetters = File.Exists(gapDeadLetterPath)
-            ? ReadEnvelope<GapDeadLetterState>(gapDeadLetterPath, "Collector Protocol Gap dead letter").Entries
+            ? ReadEnvelope<GapDeadLetterState>(gapDeadLetterPath, "Collector Protocol Gap dead letter", out _, out _).Entries
             : [];
         var outbox = new CollectorProtocolOutbox(
             path,
@@ -138,7 +144,11 @@ internal sealed class CollectorProtocolOutbox
             deadLetters,
             gapDeadLetters,
             publishDurableFile);
-        if (migratedCurrentPointGaps || migratedDeliveryOrder || recoveredCorruptOutbox ||
+        if (migratedEnvelope) BackupOriginal(path);
+        if (migratedDeadLetters) BackupOriginal(deadLetterPath);
+        outbox._schemaFloor = migratedEnvelope || migratedDeadLetters ? 4 : 1;
+        outbox._deadLettersDirty = migratedDeadLetters;
+        if (migratedEnvelope || migratedDeadLetters || migratedCurrentPointGaps || migratedDeliveryOrder || recoveredCorruptOutbox ||
             !File.Exists(path) && (state.Facts.Count != 0 || state.Gaps.Count != 0))
             outbox.Save();
         return outbox;
@@ -409,25 +419,49 @@ internal sealed class CollectorProtocolOutbox
         _dirty = false;
     }
 
-    private static T ReadEnvelope<T>(string path, string description) where T : class
+    private static T ReadEnvelope<T>(string path, string description, out bool migrated, out int schemaVersion) where T : class
     {
         var contents = File.ReadAllText(path, Encoding.UTF8);
-        // Check the envelope before deserializing future state: an unfamiliar schema is not corruption.
-        using var document = JsonDocument.Parse(contents);
-        if (document.RootElement.ValueKind == JsonValueKind.Object &&
-            document.RootElement.TryGetProperty("SchemaVersion", out var version) &&
-            version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var schemaVersion) && schemaVersion is not (1 or 2 or 3 or 4))
-            throw new NotSupportedException($"{description} schemaVersion {schemaVersion} is not supported; preserve the data directory and use a compatible Collector.");
+        // Syntactically corrupt bytes retain the existing quarantine policy. A recognized older
+        // envelope that cannot be converted is recoverable history, never an invented loss Gap.
         var root = JsonNode.Parse(contents)!;
-        if (root["SchemaVersion"]?.GetValue<int>() is 1 or 2 && root["State"] is JsonObject state)
-            foreach (var item in (state["Facts"] ?? state["Entries"])?.AsArray() ?? [])
-                if (item?["Fact"] is JsonObject fact && fact["Kind"] is null)
-                    Heartbeat.Core.Facts.ObservationCompatibility.ReadOldEnvelope(fact, false);
-        var envelope = root.Deserialize<StateEnvelope<T>>(JsonOptions)
-            ?? throw new InvalidDataException($"{description} is empty.");
-        if (envelope.SchemaVersion is not (1 or 2 or 3 or 4) || envelope.State is null)
-            throw new InvalidDataException($"{description} has an invalid envelope.");
-        return envelope.State;
+        schemaVersion = root["SchemaVersion"]?.GetValue<int>() ?? 0;
+        if (schemaVersion is not (1 or 2 or 3 or 4))
+            throw new NotSupportedException($"{description} schemaVersion {schemaVersion} is not supported; preserve the data directory and use a compatible Collector.");
+        var original = root.DeepClone();
+        try
+        {
+            if (schemaVersion is 1 or 2 && root["State"] is JsonObject state)
+                foreach (var item in (state["Facts"] ?? state["Entries"])?.AsArray() ?? [])
+                    if (item?["Fact"] is JsonObject fact && fact["Kind"] is null)
+                    {
+                        if (schemaVersion == 1)
+                        {
+                            if (fact["RecordState"] is { } recordState && recordState.GetValue<int>() != 0)
+                                throw new JsonException("Historical retracted Fact requires explicit recovery; it cannot become a present observation.");
+                            fact.Remove("RecordState");
+                            fact.Remove("SchemaRevision");
+                        }
+                        Heartbeat.Core.Facts.ObservationCompatibility.ReadOldEnvelope(fact, false);
+                    }
+            var envelope = root.Deserialize<StateEnvelope<T>>(JsonOptions)
+                ?? throw new InvalidDataException($"{description} is empty.");
+            if (envelope.State is null)
+                throw new InvalidDataException($"{description} has an invalid envelope.");
+            migrated = !JsonNode.DeepEquals(root, original);
+            return envelope.State;
+        }
+        catch (Exception exception) when (schemaVersion < 4 && exception is JsonException or InvalidDataException or ArgumentException or InvalidOperationException)
+        {
+            throw new NotSupportedException($"{description} schemaVersion {schemaVersion} could not be migrated; the original file is preserved for recovery.", exception);
+        }
+    }
+
+    private static void BackupOriginal(string path)
+    {
+        using var previous = JsonDocument.Parse(File.ReadAllText(path, Encoding.UTF8));
+        var backup = path + $".v{previous.RootElement.GetProperty("SchemaVersion").GetInt32()}.bak";
+        if (!File.Exists(backup)) File.Copy(path, backup);
     }
 
     private void SaveEnvelope<T>(string path, T state)
@@ -499,7 +533,7 @@ internal sealed class CollectorProtocolOutbox
         }
     }
 
-    private static string WriteEnvelopeTemporary<T>(string path, T state)
+    private string WriteEnvelopeTemporary<T>(string path, T state)
     {
         var directory = Path.GetDirectoryName(path)
             ?? throw new InvalidOperationException("Collector Protocol state path has no directory.");
@@ -517,10 +551,23 @@ internal sealed class CollectorProtocolOutbox
             DeadLetterState deadLetters when deadLetters.Entries.Any(item => item.Fact.Aspect is not null) => 2,
             _ => 1
         };
-        if (schemaVersion > 1 && File.Exists(path))
+        schemaVersion = Math.Max(schemaVersion, _schemaFloor);
+        if (File.Exists(path))
         {
-            using var previous = JsonDocument.Parse(File.ReadAllText(path, Encoding.UTF8));
-            var previousVersion = previous.RootElement.GetProperty("SchemaVersion").GetInt32();
+            int? previousVersion = null;
+            try
+            {
+                using var previous = JsonDocument.Parse(File.ReadAllText(path, Encoding.UTF8));
+                if (previous.RootElement.ValueKind == JsonValueKind.Object &&
+                    previous.RootElement.TryGetProperty("SchemaVersion", out var version) &&
+                    version.TryGetInt32(out var value))
+                    previousVersion = value;
+            }
+            catch (JsonException)
+            {
+                // Open has already quarantined syntactically corrupt bytes before recovery.
+            }
+            if (previousVersion > schemaVersion) schemaVersion = previousVersion.Value;
             if (previousVersion < schemaVersion && !File.Exists(path + $".v{previousVersion}.bak"))
                 File.Copy(path, path + $".v{previousVersion}.bak");
         }

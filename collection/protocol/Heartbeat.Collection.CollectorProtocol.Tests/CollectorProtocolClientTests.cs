@@ -276,7 +276,7 @@ public sealed class CollectorProtocolClientTests
         {
             var binding = new FakeBinding(root, [], fallbackOutcome: CollectorFactDeliveryStatus.Committed);
             await using var client = new CollectorProtocolClient(definition, binding);
-            await Assert.ThrowsAsync<InvalidDataException>(() => client.RunAsync(new IdleApplication()));
+            await Assert.ThrowsAsync<NotSupportedException>(() => client.RunAsync(new IdleApplication()));
             Assert.Empty(binding.PublishedFacts);
             Assert.Equal(contents, File.ReadAllText(path));
         }
@@ -506,7 +506,7 @@ public sealed class CollectorProtocolClientTests
             var upgraded = CollectorProtocolOutbox.Open(root, 16, Definition().Outputs, now);
             upgraded.BeginActivation();
             Assert.Equal(previousBytes, File.ReadAllText(path + ".v2.bak"));
-            Assert.Equal(3, JsonNode.Parse(File.ReadAllText(path))!["SchemaVersion"]!.GetValue<int>());
+            Assert.Equal(4, JsonNode.Parse(File.ReadAllText(path))!["SchemaVersion"]!.GetValue<int>());
             var migrated = upgraded.Facts[0].Fact;
             Assert.Equal(fact.FactId, migrated.FactId);
             Assert.Equal(fact.Revision, migrated.Revision);

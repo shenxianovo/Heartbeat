@@ -78,3 +78,20 @@
   真实 HTTP/原始读取和迟到 ACK 回归；此前保留必要旧读取入口。
 - 无交付 Binding 的原生 SDK outbox 满时背压并保留既有数据，调用方保留尚未接纳的观测以重试。
   有实际 Binding 的容量丢失继续形成稳定 Gap；分组不决定原生 Fact Id、FOI 或 Kind。
+
+### 历史事实及通用缓存接管（Observations Ticket 03）
+
+- 服务端旧输入只经明确 `/facts` / import 边界恢复语义与完整旧身份；同版本历史未知补全
+  不增加 Revision，不允许改已知固定属性，旧表示重放不抹掉可靠值。原生 `/observations`
+  的必填及不变量不因历史空值放宽。保留消费者包括旧 Runtime journal、旧 SDK outbox、
+  Desktop 活动/输入缓存和第一方进行中事实，直到正常终结及准确 ACK。
+- 支持数据库起点、真实 PostgreSQL 逐行迁移/冲突回滚/重试证据及明确停止条件见
+  [迁移映射](observation-storage-migration.md#ticket-03历史重放与通用验证边界2026-09-11)。
+  现有追加链保持不变；不能以追加 migration 越过前置身份冲突。
+- Runtime 1–8、SDK 1–3 的实际落盘字段与当前 9/4 的验证矩阵，以及 04–06 的专有状态
+  交接见[缓存兼容验收](observation-cache-compatibility.md)。这个矩阵证明读取能力，
+  不是所有真实安装已经升级的证明。旧 SDK 在新版本排空后仍不得消费被降版的状态，
+  转换失败保留原文件和重试依据，不产生虚构 Gap。
+- 删除门槛仍由 Collection/Analytics owner 汇总实际 Desktop、Browser Profile、VRChat、
+  Headless 安装与备份，证明旧形状待发归零，确认并结束最长离线及回退窗口；04–06
+  和原发布/生产副本任务分别承接现场验证。未形成现场证据前保留兼容 reader 和 fixtures。
