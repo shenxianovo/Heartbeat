@@ -10,10 +10,6 @@ export interface ExperienceSegment {
   targetId?: number | null
   targetName?: string | null
   deviceId?: number | null
-  // Legacy aliases for Browser/VRChat until their fact migration (issue 05).
-  subjectId?: string | null
-  subjectKind?: string | null
-  subjectName?: string | null
   source: string
   appId: number | null
   appIdentityId: number | null
@@ -88,9 +84,7 @@ export function relatedBrowser(fact: ExperienceSegment, facts: ExperienceSegment
     if (fact.deviceId != null && other.deviceId != null)
       return other.deviceId === fact.deviceId && (fact.appId != null && other.appId != null
         ? other.appId === fact.appId : fact.appIdentityId != null && other.appIdentityId === fact.appIdentityId)
-    // Pre-Target query responses only; task 05 removes this together with legacy Subject JSON.
-    return fact.targetKind == null && other.targetKind == null && fact.appIdentityId != null &&
-      factTarget(other).id === factTarget(fact).id && other.appIdentityId === fact.appIdentityId
+    return false
   })
 }
 export function clampRange(range: TimeRange, bounds: TimeRange): TimeRange {
@@ -104,15 +98,12 @@ export function zoomRange(range: TimeRange, bounds: TimeRange, factor: number, p
   return clampRange({ start: time - span * pivot, end: time + span * (1 - pivot) }, bounds)
 }
 
-/** Direct Target first; known legacy devices keep Browser alongside System during migration. */
+/** Unknown history stays unknown; a delivery stream is only a lane discriminator. */
 export function factTarget(fact: ExperienceSegment) {
   if (fact.targetKind != null && fact.targetId != null)
     return { id: `${fact.targetKind}:${fact.targetId}`, kind: fact.targetKind,
       name: fact.targetName || `${fact.targetKind} ${fact.targetId}` }
-  if (fact.deviceId != null)
-    return { id: `device:${fact.deviceId}`, kind: 'device', name: fact.subjectName || `设备 ${fact.deviceId}` }
-  return { id: fact.subjectId || `unknown:${fact.streamId}`, kind: fact.subjectKind === 'machine' ? 'device' : fact.subjectKind || 'unknown',
-    name: fact.subjectName || fact.subjectId || '未知对象' }
+  return { id: `unknown:${fact.streamId}`, kind: 'unknown', name: '未知对象' }
 }
 
 export function groupTargets(facts: ExperienceSegment[], range: TimeRange) {

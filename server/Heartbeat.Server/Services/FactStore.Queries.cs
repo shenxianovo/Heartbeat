@@ -12,8 +12,7 @@ public sealed partial class FactStore
         .Where(f => f.OwnerId == ownerId &&
             (accountId == null || f.TargetKind == "account" && f.TargetId == accountId) &&
             (deviceId == null || f.TargetKind == "device" && f.TargetId == deviceId ||
-             f.TargetKind == "application-context" && db.ApplicationContexts.Any(c => c.OwnerId == f.OwnerId && c.Id == f.TargetId && c.DeviceId == deviceId) ||
-             f.TargetKind == null && f.Stream.Subject.DeviceId == deviceId) &&
+             f.TargetKind == "application-context" && db.ApplicationContexts.Any(c => c.OwnerId == f.OwnerId && c.Id == f.TargetId && c.DeviceId == deviceId)) &&
             (appId == null || f.TargetKind == "account" && db.ServiceAccounts.Any(a => a.OwnerId == f.OwnerId && a.Id == f.TargetId && a.Service.AppId == appId) || f.TargetKind == "application-context" && db.ApplicationContexts.Any(c => c.OwnerId == f.OwnerId && c.Id == f.TargetId && c.AppId == appId) ||
              f.TargetKind != "account" && f.TargetKind != "application-context" && f.AppIdentity != null && f.AppIdentity.AppId == appId) &&
             (start == null || f.EndTime >= start) && (end == null || f.StartTime < end))
@@ -23,7 +22,7 @@ public sealed partial class FactStore
             Id = f.Id, StreamId = f.StreamId, FactId = f.FactId, Revision = f.Revision,
             DeviceId = f.TargetKind == "device" ? f.TargetId : f.TargetKind == "application-context"
                 ? db.ApplicationContexts.Where(c => c.OwnerId == f.OwnerId && c.Id == f.TargetId).Select(c => (long?)c.DeviceId).FirstOrDefault()
-                : f.TargetKind == null ? f.Stream.Subject.DeviceId : null,
+                : null,
             AppId = f.TargetKind == "account" ? db.ServiceAccounts.Where(a => a.OwnerId == f.OwnerId && a.Id == f.TargetId).Select(a => (long?)a.Service.AppId).FirstOrDefault() : f.TargetKind == "application-context" ? db.ApplicationContexts.Where(c => c.OwnerId == f.OwnerId && c.Id == f.TargetId).Select(c => (long?)c.AppId).FirstOrDefault()
                 : f.AppIdentity != null ? f.AppIdentity.AppId : null,
             ObserverId = f.ObserverId, TargetKind = f.TargetKind, TargetId = f.TargetId, Source = f.Source,
@@ -35,8 +34,7 @@ public sealed partial class FactStore
         .Where(f => f.OwnerId == ownerId &&
             (accountId == null || f.TargetKind == "account" && f.TargetId == accountId) &&
             (deviceId == null || f.TargetKind == "device" && f.TargetId == deviceId ||
-             f.TargetKind == "application-context" && db.ApplicationContexts.Any(c => c.OwnerId == f.OwnerId && c.Id == f.TargetId && c.DeviceId == deviceId) ||
-             f.TargetKind == null && f.Stream.Subject.DeviceId == deviceId) &&
+             f.TargetKind == "application-context" && db.ApplicationContexts.Any(c => c.OwnerId == f.OwnerId && c.Id == f.TargetId && c.DeviceId == deviceId)) &&
             (appId == null || f.TargetKind == "account" && db.ServiceAccounts.Any(a => a.OwnerId == f.OwnerId && a.Id == f.TargetId && a.Service.AppId == appId) || f.TargetKind == "application-context" && db.ApplicationContexts.Any(c => c.OwnerId == f.OwnerId && c.Id == f.TargetId && c.AppId == appId) ||
              f.TargetKind != "account" && f.TargetKind != "application-context" && f.AppIdentity != null && f.AppIdentity.AppId == appId) &&
             (start == null || f.Timestamp >= start) && (end == null || f.Timestamp < end))
@@ -46,7 +44,7 @@ public sealed partial class FactStore
             Id = f.Id, StreamId = f.StreamId, FactId = f.FactId, Revision = f.Revision,
             DeviceId = f.TargetKind == "device" ? f.TargetId : f.TargetKind == "application-context"
                 ? db.ApplicationContexts.Where(c => c.OwnerId == f.OwnerId && c.Id == f.TargetId).Select(c => (long?)c.DeviceId).FirstOrDefault()
-                : f.TargetKind == null ? f.Stream.Subject.DeviceId : null,
+                : null,
             AppId = f.TargetKind == "account" ? db.ServiceAccounts.Where(a => a.OwnerId == f.OwnerId && a.Id == f.TargetId).Select(a => (long?)a.Service.AppId).FirstOrDefault() : f.TargetKind == "application-context" ? db.ApplicationContexts.Where(c => c.OwnerId == f.OwnerId && c.Id == f.TargetId).Select(c => (long?)c.AppId).FirstOrDefault()
                 : f.AppIdentity != null ? f.AppIdentity.AppId : null,
             ObserverId = f.ObserverId, TargetKind = f.TargetKind, TargetId = f.TargetId, Source = f.Source,

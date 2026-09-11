@@ -30,6 +30,7 @@ public sealed class AdminAppCatalogControllerTests(PostgresContainerFixture fixt
             LastSeen = new DateTimeOffset(2026, 8, 14, 8, 0, 0, TimeSpan.Zero)
         };
         db.AddRange(chrome, unknown, chromeIdentity, unknownIdentity, device);
+        await db.SaveChangesAsync(); // Target uses the persisted Device row ID.
         db.SeedSegments(new ActivitySegment
         {
             OwnerId = device.OwnerId,

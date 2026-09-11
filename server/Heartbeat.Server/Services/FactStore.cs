@@ -218,7 +218,7 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
                 return (null, null, null, appIdentityId);
             if (stream.Source == "system")
                 return (stream.Origin == "native" ? stream.CollectorInstanceId : null, "device", deviceId, appIdentityId);
-            if (stream.Source != "browser") return (null, null, null, appIdentityId);
+            if (stream.Source != "browser") return (null, "device", deviceId, appIdentityId);
             using var dimensions = JsonDocument.Parse(stream.Dimensions);
             Guid? observer = stream.Origin == "native" ? Heartbeat.Core.Facts.BrowserFactAttribution.Observer(String(dimensions.RootElement, "externalHostIdentity")) : null;
             if (appIdentityId is not { } identityId) return (observer, "device", deviceId, null);

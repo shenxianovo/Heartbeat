@@ -92,11 +92,7 @@ namespace Heartbeat.Server.Services
                     StreamId = x.StreamId,
                     FactId = x.FactId,
                     Revision = x.Revision,
-                    Origin = x.Stream.Origin,
-                    LegacySubjectId = x.TargetKind == null ? x.Stream.SubjectId : null,
-                    LegacySubjectKind = x.TargetKind == null ? x.Stream.Subject.Kind : null,
-                    LegacySubjectName = x.TargetKind != null ? null : x.Device != null ? x.Device.DeviceName
-                        : x.Stream.Subject.DisplayName
+                    Origin = x.Stream.Origin
                 })
                 .ToListAsync();
         }

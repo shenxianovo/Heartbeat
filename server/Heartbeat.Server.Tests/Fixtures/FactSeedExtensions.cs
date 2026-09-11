@@ -35,6 +35,7 @@ internal static class FactSeedExtensions
                 FactId = activity.Id,
                 Revision = 1,
                 Source = activity.Source,
+                TargetKind = "device", TargetId = device.Id,
                 AppIdentity = appIdentity,
                 StartTime = activity.StartTime,
                 EndTime = activity.EndTime,

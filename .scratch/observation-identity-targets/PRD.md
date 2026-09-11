@@ -1,6 +1,6 @@
 # 观测身份与事实归属改造
 
-Status: ready-for-agent
+Status: ready-for-human
 
 ## Project Background
 
@@ -196,3 +196,11 @@ HTTP 查询已完成自动验证；任务 01 保持 ready-for-human，等待真�
 不据此关闭 macOS 波动。前端 294 项、Browser 111 项通过。
 本 PRD 保持 ready-for-agent，05 承接生产副本演练、兼容退出及切换；01 的真实 System/Windows、
 03 的真实 VRChat 账号验收仍为 ready-for-human，整个 PRD 不标 done，未部署生产。
+
+
+2026-09-11（任务 05 实施）：直接 Target 业务查询和旧别名清理、剩余已知设备归属的追加回填、
+旧缓存消费者清单与发布失败退出已实现；自动回归和真实 Browser 离线链路通过，详见
+[05](issues/05-cutover-and-cleanup.md)。用户刷新生产副本后重新备份并尝试完整演练；512 MiB
+恢复失败，768 MiB 恢复成功但前后逐行对照/重试/恢复尚未完成。用户要求暂停受限迁移，已停止。
+本 PRD 改为 ready-for-human：05 等待 Owner 恢复演练/资源及实际切换验收，01 的真实 System/
+Windows、03 的真实 VRChat 账号门禁不变；02/04 保持 done。没有生产部署，整个功能不标 done。

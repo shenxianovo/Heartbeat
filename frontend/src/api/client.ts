@@ -7175,9 +7175,6 @@ export class ExperienceSegment implements IExperienceSegment {
     targetId!: number | undefined;
     targetName!: string | undefined;
     deviceId!: number | undefined;
-    subjectId!: string | undefined;
-    subjectKind!: string | undefined;
-    subjectName!: string | undefined;
     source!: string;
     appId!: number | undefined;
     appIdentityId!: number | undefined;
@@ -7216,9 +7213,6 @@ export class ExperienceSegment implements IExperienceSegment {
             this.targetId = _data["targetId"];
             this.targetName = _data["targetName"];
             this.deviceId = _data["deviceId"];
-            this.subjectId = _data["subjectId"];
-            this.subjectKind = _data["subjectKind"];
-            this.subjectName = _data["subjectName"];
             this.source = _data["source"];
             this.appId = _data["appId"];
             this.appIdentityId = _data["appIdentityId"];
@@ -7252,9 +7246,6 @@ export class ExperienceSegment implements IExperienceSegment {
         data["targetId"] = this.targetId;
         data["targetName"] = this.targetName;
         data["deviceId"] = this.deviceId;
-        data["subjectId"] = this.subjectId;
-        data["subjectKind"] = this.subjectKind;
-        data["subjectName"] = this.subjectName;
         data["source"] = this.source;
         data["appId"] = this.appId;
         data["appIdentityId"] = this.appIdentityId;
@@ -7277,9 +7268,6 @@ export interface IExperienceSegment {
     targetId: number | undefined;
     targetName: string | undefined;
     deviceId: number | undefined;
-    subjectId: string | undefined;
-    subjectKind: string | undefined;
-    subjectName: string | undefined;
     source: string;
     appId: number | undefined;
     appIdentityId: number | undefined;
@@ -10052,9 +10040,6 @@ export class SegmentResponse implements ISegmentResponse {
     factId?: string | undefined;
     revision?: number | undefined;
     origin?: string | undefined;
-    subjectId?: string | undefined;
-    subjectKind?: string | undefined;
-    subjectName?: string | undefined;
 
     [key: string]: any;
 
@@ -10096,9 +10081,6 @@ export class SegmentResponse implements ISegmentResponse {
             this.factId = _data["factId"];
             this.revision = _data["revision"];
             this.origin = _data["origin"];
-            this.subjectId = _data["subjectId"];
-            this.subjectKind = _data["subjectKind"];
-            this.subjectName = _data["subjectName"];
         }
     }
 
@@ -10138,9 +10120,6 @@ export class SegmentResponse implements ISegmentResponse {
         data["factId"] = this.factId;
         data["revision"] = this.revision;
         data["origin"] = this.origin;
-        data["subjectId"] = this.subjectId;
-        data["subjectKind"] = this.subjectKind;
-        data["subjectName"] = this.subjectName;
         return data;
     }
 }
@@ -10169,9 +10148,6 @@ export interface ISegmentResponse {
     factId?: string | undefined;
     revision?: number | undefined;
     origin?: string | undefined;
-    subjectId?: string | undefined;
-    subjectKind?: string | undefined;
-    subjectName?: string | undefined;
 
     [key: string]: any;
 }

@@ -2,11 +2,7 @@ using System.Diagnostics;
 using Heartbeat.Server.Controllers;
 using Heartbeat.Server.Entities;
 using Heartbeat.Server.Tests.Fixtures;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Heartbeat.Server.Tests.Services;
 
@@ -20,18 +16,10 @@ public sealed class DatabaseCommandTests(PostgresContainerFixture fixture) : Pos
     {
         await using var db = CreateDbContext();
         var before = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
-        await using var application = new WebApplicationFactory<FactController>().WithWebHostBuilder(builder =>
-        {
-            builder.UseEnvironment("Production");
-            builder.ConfigureServices(services =>
-            {
-                services.RemoveAll<Data.AppDbContext>();
-                services.RemoveAll<DbContextOptions<Data.AppDbContext>>();
-                services.AddDbContext<Data.AppDbContext>(options => options.UseNpgsql(TestConnectionString));
-            });
-        });
-        var error = Assert.ThrowsAny<Exception>(() => application.CreateClient());
-        Assert.Contains("migration", error.ToString(), StringComparison.OrdinalIgnoreCase);
+        var startup = await RunCommand(null);
+        Assert.Equal(1, startup.Code);
+        Assert.Contains("migration", startup.Output, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Now listening", startup.Output);
         Assert.Equal(before, await db.Database.GetAppliedMigrationsAsync());
     }
 
@@ -41,7 +29,7 @@ public sealed class DatabaseCommandTests(PostgresContainerFixture fixture) : Pos
         await using var db = CreateDbContext();
         var before = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
         var check = await RunCommand("--check-database");
-        Assert.NotEqual(0, check.Code);
+        Assert.Equal(1, check.Code);
         Assert.Equal(before, await db.Database.GetAppliedMigrationsAsync());
 
         db.Apps.Add(new App { Key = "editor-product", DisplayName = "Editor" });
@@ -72,13 +60,13 @@ public sealed class DatabaseCommandTests(PostgresContainerFixture fixture) : Pos
             VALUES ('99999999999999_FutureSchema', '10.0.4');
             """);
         check = await RunCommand("--check-database");
-        Assert.NotEqual(0, check.Code);
+        Assert.Equal(1, check.Code);
         Assert.Contains("99999999999999_FutureSchema", check.Output);
         migration = await RunCommand("--migrate");
-        Assert.NotEqual(0, migration.Code);
+        Assert.Equal(1, migration.Code);
     }
 
-    private async Task<(int Code, string Output)> RunCommand(string command)
+    private async Task<(int Code, string Output)> RunCommand(string? command)
     {
         // Empty working directory proves the command does not require App Catalog or auth configuration.
         var directory = Directory.CreateTempSubdirectory("heartbeat-db-command-");
@@ -90,7 +78,13 @@ public sealed class DatabaseCommandTests(PostgresContainerFixture fixture) : Pos
                 RedirectStandardError = true, UseShellExecute = false
             };
             start.ArgumentList.Add(typeof(FactController).Assembly.Location);
-            start.ArgumentList.Add(command);
+            if (command is not null) start.ArgumentList.Add(command);
+            else
+            {
+                start.ArgumentList.Add("--contentRoot");
+                start.ArgumentList.Add(Path.GetDirectoryName(typeof(FactController).Assembly.Location)!);
+                start.Environment["AuthService__Authority"] = "https://auth.invalid";
+            }
             start.Environment["ASPNETCORE_ENVIRONMENT"] = "Production";
             start.Environment["DOTNET_ENVIRONMENT"] = "Production";
             start.Environment["ConnectionStrings__DefaultConnection"] = TestConnectionString;

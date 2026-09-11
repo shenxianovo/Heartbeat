@@ -1,0 +1,65 @@
+{
+  "date": "2026-09-11",
+  "fullDataRehearsalComplete": false,
+  "resourceRehearsal": "paused at owner request",
+  "source": "freshly restored production snapshot in local PostgreSQL; read-only pg_dump",
+  "baseline": "20260908141403_NativeFactCustody",
+  "segments": 223313,
+  "events": 1939969,
+  "backupBytes": 85661732,
+  "backupSha256": "e01e34b2e93beb134818412d7b1dd6cf4e0e0101abc303ee5b7518d3a959f1e1",
+  "runtimeCopyUpgrade": [
+    {
+      "profile": "desktop",
+      "fromVersion": 5,
+      "toVersion": 6,
+      "facts": 1370,
+      "pending": 0
+    },
+    {
+      "profile": "headless",
+      "fromVersion": 3,
+      "toVersion": 6,
+      "facts": 21,
+      "pending": 0
+    }
+  ],
+  "browserSmoke": {
+    "realChromeWindows": 2,
+    "sameContext": true,
+    "closedWindowHistory": true,
+    "browserAndDesktopRestart": true,
+    "offlineReplay": true
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "result": "aggregate SQL type error; fixed, no migration run"
+    },
+    {
+      "attempts": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "result": "512MiB database restore OOM; serial maintenance, separate connections and checkpoints did not make it reliable"
+    },
+    {
+      "attempt": 6,
+      "result": "768MiB restore succeeded; injected migration error logged but process did not exit; interrupted and CLI exit handling fixed"
+    },
+    {
+      "attempt": 7,
+      "result": "fresh snapshot restored at768MiB; owner requested pause during baseline exports; SIGINT cleanup completed"
+    }
+  ],
+  "notVerified": [
+    "complete before/after family row comparison",
+    "final candidate container failure/retry and Production startup",
+    "full pre-upgrade backup recovery to previous image",
+    "whole-host1C1G",
+    "production deployment",
+    "installed Windows/System and VRChat real account gates"
+  ]
+}

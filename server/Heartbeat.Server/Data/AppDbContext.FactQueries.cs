@@ -22,7 +22,7 @@ public partial class AppDbContext
             equals new { c.OwnerId, Id = (long?)c.Id } into contexts
         from context in contexts.DefaultIfEmpty()
         join d in Devices on new { s.OwnerId, Id = s.TargetKind == "device" ? s.TargetId :
-            context != null ? (long?)context.DeviceId : s.TargetKind == null ? s.Stream.Subject.DeviceId : null }
+            context != null ? (long?)context.DeviceId : null }
             equals new { d.OwnerId, Id = (long?)d.Id } into devices
         from device in devices.DefaultIfEmpty()
         join sa in ServiceAccounts on new { s.OwnerId, Id = s.TargetKind == "account" ? s.TargetId : null }
@@ -61,8 +61,7 @@ public partial class AppDbContext
     public IQueryable<InputEvent> InputEvents => Events
         .SelectMany(e => Devices.Where(d => d.OwnerId == e.OwnerId &&
             (e.TargetKind == "device" && e.TargetId == d.Id ||
-             e.TargetKind == "application-context" && ApplicationContexts.Any(c => c.OwnerId == e.OwnerId && c.Id == e.TargetId && c.DeviceId == d.Id) ||
-             e.TargetKind == null && e.Stream.Subject.DeviceId == d.Id)), (e, device) => new { Event = e, Device = device })
+             e.TargetKind == "application-context" && ApplicationContexts.Any(c => c.OwnerId == e.OwnerId && c.Id == e.TargetId && c.DeviceId == d.Id))), (e, device) => new { Event = e, Device = device })
         .Select(e => new
         {
             Event = e.Event,

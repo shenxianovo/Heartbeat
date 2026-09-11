@@ -65,23 +65,22 @@ for (const [label, path] of [['Compose file', composeFile], ['Environment file',
   }
 }
 
-// to_jsonb reads the additive Target columns on both the deployed family baseline and the new schema.
-// Remove the Subject fallback with observation-identity-targets task 05.
+// Current queries require the migrated Observer/Target schema.
 const sql = String.raw`
 WITH "ActivitySegments" AS (
   SELECT s.*, s."Payload"->>'activityKey' AS "IdentityKey",
-    to_jsonb(s)->>'ObserverId' AS "Observer",
-    CASE WHEN to_jsonb(s)->>'TargetKind' = 'device' THEN (to_jsonb(s)->>'TargetId')::bigint
-         WHEN to_jsonb(s)->>'TargetKind' IS NULL THEN subject."DeviceId" END AS "DeviceId"
-  FROM "Segments" s JOIN "Streams" stream ON stream."OwnerId" = s."OwnerId" AND stream."StreamId" = s."StreamId"
-  JOIN "Subjects" subject ON subject."OwnerId" = stream."OwnerId" AND subject."SubjectId" = stream."SubjectId"
+    s."ObserverId" AS "Observer",
+    CASE WHEN s."TargetKind" = 'device' THEN s."TargetId"
+         WHEN s."TargetKind" = 'application-context' THEN context."DeviceId" END AS "DeviceId"
+  FROM "Segments" s LEFT JOIN "ApplicationContexts" context ON s."TargetKind" = 'application-context'
+    AND context."OwnerId" = s."OwnerId" AND context."Id" = s."TargetId"
   WHERE jsonb_typeof(s."Payload"->'activityKey') = 'string' AND btrim(s."Payload"->>'activityKey') <> ''
 ), "InputEvents" AS (
   SELECT e.*, e."Payload"->>'codeSet' AS "CodeSet",
-    CASE WHEN to_jsonb(e)->>'TargetKind' = 'device' THEN (to_jsonb(e)->>'TargetId')::bigint
-         WHEN to_jsonb(e)->>'TargetKind' IS NULL THEN subject."DeviceId" END AS "DeviceId"
-  FROM "Events" e JOIN "Streams" stream ON stream."OwnerId" = e."OwnerId" AND stream."StreamId" = e."StreamId"
-  JOIN "Subjects" subject ON subject."OwnerId" = stream."OwnerId" AND subject."SubjectId" = stream."SubjectId"
+    CASE WHEN e."TargetKind" = 'device' THEN e."TargetId"
+         WHEN e."TargetKind" = 'application-context' THEN context."DeviceId" END AS "DeviceId"
+  FROM "Events" e LEFT JOIN "ApplicationContexts" context ON e."TargetKind" = 'application-context'
+    AND context."OwnerId" = e."OwnerId" AND context."Id" = e."TargetId"
   WHERE e."Payload"->>'eventType' IN ('keyDown', 'mouseButton', 'mouseScroll')
 )
 SELECT json_build_object(

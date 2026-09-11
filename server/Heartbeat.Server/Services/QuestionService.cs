@@ -219,9 +219,7 @@ namespace Heartbeat.Server.Services
                 .Where(x => x.EndTime > windowStart && x.StartTime < windowEnd
                             || x.StartTime == x.EndTime && x.StartTime >= windowStart && x.StartTime < windowEnd)
                 .Select(x => new RecapSegmentInput(
-                    x.Device != null ? x.Device.DeviceName
-                        : x.Stream != null ? x.Stream.Subject.DisplayName ?? x.Stream.SubjectId.ToString()
-                        : "未知主体",
+                    x.TargetName ?? (x.Device != null ? x.Device.DeviceName : x.TargetKind == "person" ? "本人" : "未知对象"),
                     x.Source,
                     x.IdentityKey,
                     x.AppIdentityId != null

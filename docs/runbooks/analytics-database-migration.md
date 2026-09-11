@@ -65,7 +65,9 @@ test -s "$backup_prefix.previous-image"
 docker compose stop backend
 docker compose exec -T db dropdb -U heartbeat --force heartbeat
 docker compose exec -T db createdb -U heartbeat -O heartbeat heartbeat
-docker compose exec -T db pg_restore -U heartbeat -d heartbeat \
+docker compose exec -T \
+  -e 'PGOPTIONS=-c maintenance_work_mem=32MB -c max_parallel_maintenance_workers=0' \
+  db pg_restore -U heartbeat -d heartbeat \
   --no-owner --no-acl --exit-on-error < "$backup_prefix.dump"
 rm -f .analytics-release/ready-image
 export BACKEND_IMAGE=$(cat "$backup_prefix.previous-image")
@@ -92,3 +94,6 @@ docker compose up -d --no-deps backend
 覆盖备份/回填失败、版本不符、遗留迁移容器、OOM/重启及备份保留。
 全 solution 构建、IDE1006 命名检查、actionlint 与 shell 语法检查通过。
 未执行生产部署或全量生产副本演练；任务 05 的这些验收仍未完成。
+
+任务 05 的完整副本、受限恢复、缓存升级和查询切换核对见
+[Observer/Target 切换 runbook](observation-target-cutover.md)。

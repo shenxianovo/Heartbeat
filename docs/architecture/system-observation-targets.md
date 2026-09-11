@@ -53,7 +53,7 @@ Delivered、Gap、FactId、Revision、时间和 Payload 均保留。旧 System o
 只有 native Stream 中已保存的 CollectorInstanceId 才回填 Observer；legacy-import 的 Observer 保持 null。
 不改表 OID、行 Id、FactId、Revision、时间或 Payload，不复制事实。
 
-Down 明确拒绝丢失归属的逆变换。生产切换沿用 ADR-055：升级前完整备份、最多 10 分钟停写/停服、
+Down 明确拒绝丢失归属的逆变换。生产切换沿用 ADR-055：升级前完整备份、按 ADR-058 的独立迁移与长时间外围预算停写/停服、
 Collector 保管待发缓存、迁移后重放并核对事实；失败用升级前备份恢复并保管新增事实。
 本任务不部署，也不以合成迁移 fixture 代替任务 05 的完整生产副本演练。
 
@@ -91,3 +91,6 @@ System 真实窗口/输入刺激、系统权限及 Windows 现场验收与自动
 2026-09-10（02 接续）：[Browser 实施记录](browser-observation-targets.md) 扩充 application-context
 引用、应用上下文表与查询；Runtime 当前写格式升至 v5。本文上方 v4/device-only 描述为 01 交付
 时的批次边界。01 的真实 System 门禁仍未关闭。
+
+2026-09-11（05 接续）：当前查询、已删除路径和仍需保留的离线消费者见
+[切换实施记录](observation-target-cutover.md)。上文各批过渡描述不再作为当前业务查询要求。

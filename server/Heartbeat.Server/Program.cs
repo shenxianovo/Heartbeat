@@ -16,12 +16,21 @@ if (databaseCommand)
     await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
         .UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
         .UseLoggerFactory(logs).Options);
-    if (args[0] == "--migrate")
-        await DatabaseMigration.ApplyAsync(db, logs.CreateLogger("DatabaseMigration"),
-            builder.Configuration.GetValue("DatabaseMigration:CommandTimeoutSeconds", 0));
-    else
-        await DatabaseMigration.VerifyAsync(db);
-    return;
+    var logger = logs.CreateLogger("DatabaseMigration");
+    try
+    {
+        if (args[0] == "--migrate")
+            await DatabaseMigration.ApplyAsync(db, logger,
+                builder.Configuration.GetValue("DatabaseMigration:CommandTimeoutSeconds", 0));
+        else
+            await DatabaseMigration.VerifyAsync(db);
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        logger.LogCritical(ex, "Database command failed; Analytics was not started.");
+        return 1;
+    }
 }
 
 var catalogPath = Path.Combine(
@@ -171,8 +180,9 @@ if (app.Environment.IsDevelopment())
 }
 
 // Production migrations belong to the deployment CI; local Development remains automatic (ADR-058).
-using (var scope = app.Services.CreateScope())
+try
 {
+    using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     if (app.Environment.IsDevelopment())
         await DatabaseMigration.ApplyAsync(db, app.Logger,
@@ -187,6 +197,13 @@ using (var scope = app.Services.CreateScope())
     await catalogStartup.ApplyAsync(builtInCatalog);
 }
 
+catch (Exception ex)
+{
+    app.Logger.LogCritical(ex, "Analytics startup failed; no HTTP listener was started.");
+    await app.DisposeAsync();
+    return 1;
+}
+
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -194,3 +211,4 @@ app.MapControllers();
 app.MapHealthChecks("/health");
 
 app.Run();
+return 0;

@@ -42,7 +42,7 @@ _Avoid_: 用可变 username 授权、把普通 Owner 自动视为部署管理员
 
 **Owner / Target**:
 Owner 是事实的数据主人；Target 是每条 Fact 唯一的长期业务归属，System 事实直接归属于设备；Browser 事实归属于同 Owner 下由设备与 App 产品唯一辨认的应用上下文。
-Subject 是未迁移数据沿用的旧归属概念，不能替代新事实的 Observer、直接 FOI 与 Target（词条详见 shared/CONTEXT.md）。
+Subject 保留传输身份、旧缓存接管和管理语义；业务归属直接由 Target 表达，未知历史保持未知（词条详见 shared/CONTEXT.md）。
 _Avoid_: 把 Hub Instance 当 Target、把账号或身体称为 Device、用运行采集器的机器猜测事实归属
 
 **Person（本人）**:

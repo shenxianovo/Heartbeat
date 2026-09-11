@@ -1,5 +1,3 @@
-using System.Text.Json.Serialization;
-
 namespace Heartbeat.Core.DTOs.Segments
 {
     /// <summary>
@@ -13,7 +11,7 @@ namespace Heartbeat.Core.DTOs.Segments
         public long? TargetId { get; set; }
         public string? TargetName { get; set; }
 
-        /// <summary>Target 对应的设备维度；未迁移数据暂从旧归属投影。</summary>
+        /// <summary>Target 对应的设备维度；未知归属保持为空。</summary>
         public long? DeviceId { get; set; }
 
         public string Source { get; set; } = string.Empty;
@@ -52,12 +50,5 @@ namespace Heartbeat.Core.DTOs.Segments
         public long? Revision { get; set; }
         /// <summary>native 或 legacy-import；历史导入不表示恢复了原协议身份。</summary>
         public string? Origin { get; set; }
-        // Pre-target Browser/VRChat and older clients only; task 05 removes these aliases.
-        [JsonPropertyName("subjectId"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public Guid? LegacySubjectId { get; set; }
-        [JsonPropertyName("subjectKind"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string? LegacySubjectKind { get; set; }
-        [JsonPropertyName("subjectName"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string? LegacySubjectName { get; set; }
     }
 }

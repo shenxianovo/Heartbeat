@@ -4,7 +4,7 @@
 
 - **时间存储**：所有时间字段在数据库中以 UTC+0 存储。Dashboard 的“今天”/“本周”由 Browser 按当前 IANA civil timezone 解析为版本化 Local Calendar Window envelope，Analytics 用独立 TZDB 严格重算验证后才查询事实；通用 Instant Window 仍直接传 UTC 起止。
 - **认证架构**：依赖外部自建 Auth 平台（支持邮箱/Google/GitHub 登录）。Collection（Agent）持有 Auth 平台签发的 ApiKey，运行时经 `TokenManager` 在 Auth 平台换取短期 session JWT，上传请求携带 `Authorization: Bearer {JWT}`；Dashboard（前端）通过 OIDC 授权码 + PKCE 登录获取 access token。服务端同时接受 OIDC access token 与 Agent session JWT 两种 Bearer 凭证。
-- **数据隔离**：多用户模式下，Owner 拥有多个 Subject，用户只能看到属于自己的 Subject 的事实。原生 Fact 上传显式声明 Subject；Machine 关联 Device，Account 与 Person 不借用机器字段。旧缓存导入仍通过 `X-Hardware-Id` 定位历史 Device，所有路径保持同一 OwnerId 隔离不变量。
+- **数据隔离**：Owner 是事实数据的所有权边界；每条 Fact 直接关联 Observer 与唯一 Target。业务查询按直接归属及明确使用者关联解释事实，传输 Subject 不替代 Target；所有路径保持 Owner 隔离。
 
 ## Glossary
 
@@ -19,8 +19,8 @@
 | 数据来源 | 观测结果所依据的信息获取途径，例如浏览器 API、系统回调或微信提供的计步读数。_Avoid_: 把读取上游结果的 Collector 一律当成原始测量者。 |
 | 观测上下文 | 描述观测对象、观测内容、观测者及必要来源的信息。输出 Fact 时保留解释和使用结果所需的部分，不要求将运行时对象及关系全量持久化或重新构造。 |
 | Facts 模型 | 以 Segment、Event、Measurement 三类时间事实表达观测结果的模型；三类事实保留各自的时间及修订语义。_Avoid_: 由观测对象类型直接决定事实家族。 |
-| Subject（既有术语） | 既有模型中属于一个 Owner 的事实主体，至少区分 Machine、Account 与 Person；新的直接观测对象模型不以这些类型及既有归属粒度为限制。_Avoid_: Collector Host、把运行 Collector 的机器当成它所观察的对象。 |
-| Device | Machine 类型的 Subject，即一台被 system/browser 等 Collector 观察的计算设备。账号和身体不是 Device；它们分别使用 Account 或 Person Subject。_Avoid_: 为了复用机器字段而把账号、身体或 Hub 称为 Device。 |
+| Subject（既有术语） | 既有 Machine、Account、Person 传输/管理分组，继续用于流身份、旧缓存接管和管理授权；不再是新事实的业务归属。_Avoid_: 用 Stream → Subject 解释事实 Target、把采集宿主当成被观测对象。 |
+| Device | 一台被观察的计算设备，可作为 System Facts 的 Target，或作为应用上下文所处的设备。账号、本人和采集器宿主不能仅因运行位置被当作 Device。 |
 | App | 用户理解的跨平台应用产品，是 Report、Matcher、Replay 与详情页共同引用的应用身份。`Key` 默认使用稳定、简短的产品 slug（如 `vscode`、`qq`），只在冲突时增加限定词（如 `apple.music`）；`DisplayName` 只负责呈现。一个 App 可由多个 AppIdentity 指向，例如 Windows 与 macOS 的 Visual Studio Code 都归入同一 App。_Avoid_: 把进程名、bundle identifier 或显示名直接当作 App；无冲突时强制添加厂商前缀。 |
 | AppIdentity | 平台或系统可直接观测到的应用身份，通过全局唯一 `Key` 显式映射到一个 App，映射是所有 Owner 共享的产品事实：Windows 为 `win:<小写进程名、不含 .exe>`，macOS 为 `mac:<小写 bundle-id>`（缺失时退回小写可执行文件身份），跨平台合成状态使用 `sys:<name>`。未知身份不按名字猜测合并，先建立一对一 provisional App；归并是事务化服务端领域操作，不允许靠直接改单列绕过相关知识与图标处理。 |
 | AppUsage | 一段某个 App 处于前台的时间记录（StartTime → EndTime）。system 采集器忠实上报观测到的 AppIdentity，包括 `win:explorer`（桌面）、`win:lockapp`（锁屏）与合成身份 `sys:away`；ActivitySegment 保存 AppIdentityId，Analytics 经 AppIdentity → App 聚合统计。存储上已泛化为 ActivitySegment 的 system source（ADR-017/018 已落地）；`AppUsageItem` 上传 DTO 已随 ADR-020 退役，本词仅指"system 段"这一语义，不再对应独立数据形状。 |
@@ -29,10 +29,10 @@
 | Segment | 带稳定身份与起止时间的区间事实；合法修订保持身份不变，可以延长区间，也可以纠正结束时间。ActivitySegment 是其中具有活动查询语义的事实。 |
 | Event | 发生在一个时刻、没有持续时长的离散事实，InputEvent 是其中的键盘或鼠标事件。_Avoid_: 把 Event 等同于 InputEvent、用零长度 Segment 代替所有事件。 |
 | Measurement | 对数值状态或一段时间窗内数值总体的观测，适用于心率、步数与分布等时间序列。Gauge、Sum、Histogram 等成员拥有不同的时间窗、累计、重置与缺失语义，不能退化成统一的“时间戳 + 数字”，也不用 Segment 或 Event 的身份规则强行解释。_Avoid_: Sample（暗示瞬时标量）、Metric Point（基础设施术语，不作产品领域名）。 |
-| Fact Stream | 一个 Collector Instance 面向一个 Subject、按同一 Source 产生同一家族 Fact 的稳定流，可容纳多条事实；Activation 只是当前 writer，不属于 Stream 身份。_Avoid_: 把一条 Segment 或其多次修订称为一个 Fact Stream。 |
+| Fact Stream | Collector 交付同一来源、同一家族 Facts 的稳定流，保留既有 Instance、传输 Subject 与输出维度的身份约束；Activation 只是当前 writer。单条 Fact 的 Observer/Target 独立表达，流不决定业务归属。_Avoid_: 把一条 Segment 或其多次修订称为一个 Fact Stream、按 Target 合并不同流的事实。 |
 | FactId | Collector 为一个事实生成的稳定身份，跨重试、重新分批和修订保持不变。 |
 | Revision | 同一 Fact 内容演进的单调序号；旧 Revision 不能覆盖新 Revision，更高 Revision 替换内容；Segment 起点和 Event 发生时间保持稳定。 |
-| Source | 观测者维度：一条 ActivitySegment 是"谁采集的"（system / browser / vscode / …）。**按观测者命名，不按产品**（ADR-032）：browser 观测几百个产品；同一产品可有多个观测者（规划中的 vrchat.account 云 API / vrchat.client 本机 OSC），因 source 是 ADR-030 声明的主权单位，各自的读数词汇与契约版本独立演化。与 AppId 正交——AppId 说段"关于哪个应用"，Source 说"谁观测到的"；同一时刻同一 App 可有多个 Source 的段合法重叠（对同一事实的独立证据，摄入不去重）。Source 不是 Collector Package、Collector Instance 或 Collector Activation 的身份。system 是唯一观测前台性的 Source，其段互斥、时长可求和。 |
+| Source | 观测来源类型维度：一条 ActivitySegment 是"谁采集的"（system / browser / vscode / …）。**按观测者命名，不按产品**（ADR-032）：browser 观测几百个产品；同一产品可有多个观测者（规划中的 vrchat.account 云 API / vrchat.client 本机 OSC），因 source 是 ADR-030 声明的主权单位，各自的读数词汇与契约版本独立演化。与 AppId 正交——AppId 说段"关于哪个应用"，Source 说"谁观测到的"；同一时刻同一 App 可有多个 Source 的段合法重叠（对同一事实的独立证据，摄入不去重）。Source 不是具体 Observer、Collector Package、Collector Instance 或 Collector Activation 的身份。system 是唯一观测前台性的 Source，其段互斥、时长可求和。 |
 | IdentityKey | 采集器声明的"同一个活动"判据字符串：判据相同 ⇒ 同一活动 ⇒ 同一 Id（快照生长，ADR-018）；旧导入以 (Source, IdentityKey) 做 identity guard，原生事实以 StreamId + FactId + Revision 收敛；回放/查询仍以它分组。browser=规范化 URL（origin+pathname，掐掉 query/fragment；per-domain 覆写表处理"query 即身份"的站点，如 youtube.com/watch 保留 v 参数），完整原始 URL 存 Fact Payload 的 attributes——判据可有损，原始数据无损（ADR-012 原则）。vscode=文件路径，system=AppIdentity+Title（`SystemIdentity.Key`，ADR-020 起由 Agent 客户端计算）。 |
 | AppIcon | App 产品对应的图标二进制数据，每个 Owner、每个 App 一份。Agent 以 AppIdentity 上传提示，Analytics 解析到 App 后保留首个有效图标，避免不同平台身份反复覆盖；后续替换走显式刷新。 |
 | ApiKey | Auth 平台为 Agent 签发的长期凭证，仅用于向 Auth 平台换取短期 session JWT，不随上传请求直接发送。上传时携带的凭证是换得的 Bearer JWT。_Avoid_: 把 ApiKey 说成"上传凭证"（那是 ADR-004 已退役的旧机制）。 |

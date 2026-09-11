@@ -274,9 +274,9 @@ it('keeps concurrent device tracks separate when using the shared replay templat
   wrapper.unmount()
 })
 
-it('keeps account Subjects separate without inventing device identities', async () => {
-  vi.mocked(fetchPublicSegments).mockResolvedValueOnce(['Alice account', 'Second account'].map((subjectName, i) => ({
-    subjectId: `account-${i}`, subjectKind: 'account', subjectName,
+it('keeps account Targets separate without inventing device identities', async () => {
+  vi.mocked(fetchPublicSegments).mockResolvedValueOnce(['Alice account', 'Second account'].map((targetName, i) => ({
+    targetId: i + 1, targetKind: 'account', targetName,
     source: 'vrchat.account', identityKey: `world-${i}`, title: `World ${i}`,
     payload: { identityKey: `world-${i}`, title: `World ${i}`, attributes: {} },
     startTime: new Date('2026-03-08T06:00:00Z'), endTime: new Date('2026-03-08T07:00:00Z'),

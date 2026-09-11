@@ -81,22 +81,22 @@ const viewBounds = computed(() => {
   return end > start ? { start, end } : null
 })
 
-// System 使用直接 Target；旧 Browser/VRChat 暂用已知 Device 或 Subject 身份。
+// 业务归属使用 Target；system usage DTO 的设备维度直接来自设备 Target。
 const targetGroups = computed(() => {
   const vb = viewBounds.value
   if (!vb) return []
-  type TargetRow = { targetKind?: string | null; targetId?: number | null; targetName?: string | null; deviceId?: number | null; subjectId?: string | null; subjectName?: string | null; subjectKind?: string | null }
+  type TargetRow = { targetKind?: string | null; targetId?: number | null; targetName?: string | null; deviceId?: number | null; streamId?: string | null }
   const keyOf = (row: TargetRow) => row.targetKind != null && row.targetId != null
     ? `${row.targetKind}:${row.targetId}`
     : row.deviceId != null ? `device:${row.deviceId}`
-    : `subject:${row.subjectId ?? 'unknown'}`
+    : `unknown:${row.streamId ?? 'unknown'}`
   const rows = [...systemSegments.value, ...pluginSegments.value] as TargetRow[]
   const keys = [...new Set(rows.map(keyOf))].sort()
   return keys.map(key => {
     const row = rows.find(item => keyOf(item) === key)!
     const name = row.targetName ?? (row.deviceId != null
-      ? props.devices.find(d => d.id === row.deviceId)?.name ?? row.subjectName ?? `设备 ${row.deviceId}`
-      : row.subjectName ?? (row.subjectKind === 'account' ? '账号' : row.subjectKind === 'person' ? '个人' : '对象'))
+      ? props.devices.find(d => d.id === row.deviceId)?.name ?? `设备 ${row.deviceId}`
+      : row.targetKind === 'person' ? '本人' : '未知对象')
     return {
       key, name, showName: keys.length > 1 || row.deviceId == null,
       tracks: buildTracks(toReplaySegs(
