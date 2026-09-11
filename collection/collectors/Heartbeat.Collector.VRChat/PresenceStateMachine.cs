@@ -19,11 +19,13 @@ public sealed record VRChatPresenceFact(
     string WorldId,
     string? WorldName,
     string InstanceId,
-    string? ObservedAccountId = null);
+    string? ObservedAccountId = null,
+    bool IsNativeObservation = false,
+    Guid? CollectorId = null);
 
-public sealed class PresenceStateMachine(Func<Guid>? idGenerator = null)
+public sealed class PresenceStateMachine(Func<Guid>? idGenerator = null, Guid? collectorId = null)
 {
-    private readonly PresenceFactPublisher _publisher = new(idGenerator);
+    private readonly PresenceFactPublisher _publisher = new(idGenerator, collectorId ?? Guid.CreateVersion7());
 
     public IReadOnlyList<VRChatPresenceFact> Observe(VRChatPresence? presence, DateTimeOffset observedAt)
     {

@@ -60,12 +60,12 @@ public sealed class VRChatManagedProcessCollectorTests : IDisposable
             new Dictionary<string, string> { ["code"] = "123456" });
         var activation = await activationTask.WaitAsync(TimeSpan.FromSeconds(10));
         var segment = await WaitForAsync(runtime,
-            item => item.Stream.Source == "vrchat.account" && item.Fact!.Payload!.Value
+            item => item.Observation?.Source == "vrchat.account" && item.Observation.Result!.Value
                 .GetProperty("instanceId").GetString() == "instance:mock");
 
-        Assert.Equal("wrld_mock|instance:mock", segment.Fact!.Payload!.Value.GetProperty("activityKey").GetString());
-        Assert.Equal("Mock World", segment.Fact!.Payload!.Value.GetProperty("title").GetString());
-        Assert.Equal("instance:mock", segment.Fact!.Payload!.Value.GetProperty("instanceId").GetString());
+        Assert.Equal("wrld_mock|instance:mock", segment.Observation!.Result!.Value.GetProperty("activityKey").GetString());
+        Assert.Equal("Mock World", segment.Observation!.Result!.Value.GetProperty("title").GetString());
+        Assert.Equal("instance:mock", segment.Observation!.Result!.Value.GetProperty("instanceId").GetString());
         await activation.StopAsync();
 
         var resumed = await runtime.ActivateManagedProcessAsync(

@@ -13,14 +13,14 @@ public sealed class VRChatPresenceCheckpointTests : IDisposable
     [Theory]
     [InlineData("[]")]
     [InlineData("{\"SchemaVersion\":\"2\",\"Active\":null}")]
-    public void MalformedCheckpointEnvelopeIsQuarantined(string json)
+    public void MalformedCheckpointEnvelopeIsRejectedWithoutChangingOriginal(string json)
     {
         Directory.CreateDirectory(_directory);
         var path = Path.Combine(_directory, "presence.json");
         File.WriteAllText(path, json);
-        var recovered = VRChatPresenceCheckpoint.Open(path, DateTimeOffset.UtcNow.AddMinutes(1));
-        Assert.Null(recovered.Active);
-        Assert.Single(Directory.EnumerateFiles(_directory, "presence.json.corrupt-*"));
+        Assert.Throws<InvalidDataException>(() => VRChatPresenceCheckpoint.Open(path, DateTimeOffset.UtcNow.AddMinutes(1)));
+        Assert.Equal(json, File.ReadAllText(path));
+        Assert.Empty(Directory.EnumerateFiles(_directory, "presence.json.corrupt-*"));
     }
 
     [Fact]
@@ -168,7 +168,7 @@ public sealed class VRChatPresenceCheckpointTests : IDisposable
     }
 
     [Fact]
-    public void CurrentV1CheckpointLoadsWithoutShrinkingAndRewritesAtomicallyAsV3()
+    public void CurrentV1CheckpointLoadsWithoutShrinkingAndRewritesAtomicallyAsV4()
     {
         Directory.CreateDirectory(_directory);
         var path = Path.Combine(_directory, "presence.json");
@@ -190,7 +190,7 @@ public sealed class VRChatPresenceCheckpointTests : IDisposable
         var finalized = active with { Revision = active.Revision + 1, IsFinal = true };
         checkpoint.Stage([finalized]);
         using var rewritten = JsonDocument.Parse(File.ReadAllText(path));
-        Assert.Equal(3, rewritten.RootElement.GetProperty("SchemaVersion").GetInt32());
+        Assert.Equal(4, rewritten.RootElement.GetProperty("SchemaVersion").GetInt32());
         Assert.Equal(active.End, checkpoint.PendingFacts[0].End);
     }
 

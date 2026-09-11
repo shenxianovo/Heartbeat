@@ -70,6 +70,29 @@ dotnet test collection/hub/Heartbeat.Collection.Hub.Tests --no-restore --filter 
 已迁移且待发/进行中/隔离记录均有明确归宿，并跨过批准窗口后，才能以本 fixture 矩阵加现场证据确认
 退出。当前未获取该现场清单，未确认窗口长度；因此保留兼容，人工门禁仍在。
 
+## ManagedProcess 专有状态的启动与回退要求（06）
+
+SDK outbox 排空不表示 Collector 专有状态可以降级。写入新版专有状态前，Collector 在同一
+Instance data-directory 原子发布 `collector-data-requirements.json`，例如：
+
+```json
+{"SchemaVersion":1,"RequiredCapabilities":{"facts.observation":2}}
+```
+
+这是持久文件可读性要求，版本值要求候选 Package 明确支持该能力版本，并非“版本号更大即可”。
+写端先验证并保留已有要求，再提交要求文件，最后提交专有状态；任何要求写入失败都不得发布
+新状态。要求成功但状态提交失败可以保守保留要求。要求不因 ACK、排空、重启或回退降低或删除；
+冲突要求、未知信封版本、损坏文件与读取失败均停止并保全，不能当成空要求。
+
+Runtime 在每次 ManagedProcess 启动（含手动启动、更新候选及 LastKnownGood 回退）执行通用检查，
+不识别 VRChat 文件名或业务格式。不兼容时返回 `collector_cache_incompatible`，不启动候选进程。
+VRChat schema 4 checkpoint 的实际写端与启动门禁经托管测试验证；其旧 v1–v3 专有恢复与现场步骤见
+[VRChat README](../../collection/collectors/Heartbeat.Collector.VRChat/README.md)。保留 marker 与整个目录
+一起备份/恢复；不得单删 marker 或自动覆盖新状态以恢复旧包。
+
+当前消费者为 VRChat 专有 checkpoint。退出仍需对应目录已迁移/排空或明确归档、实际 Package
+版本/content hash 清单及 owner 批准的最长离线/回退窗口；本票保留兼容，不声称这些现场条件已满足。
+
 ## Tickets 04–06 的交接
 
 - **04 System**：读取真实安装中的 Segment SDK 恢复状态、Input first-stage 与旧 segment/input JSON，

@@ -27,6 +27,7 @@ internal sealed class VRChatManagedCollector(
         CancellationToken cancellationToken)
     {
         _activation = activation;
+        _presence = new PresenceStateMachine(collectorId: activation.Initialization.CollectorInstanceId);
         var config = activation.Initialization.Config;
         if (config.TryGetProperty("pollIntervalSeconds", out var interval) &&
             interval.TryGetInt32(out var seconds) && seconds > 0)
@@ -252,7 +253,7 @@ internal sealed class VRChatManagedCollector(
     }
 
     internal static CollectorFact ToFact(VRChatPresenceFact fact, Guid? collectorId = null) => new(
-        "presence",
+        fact.IsNativeObservation ? string.Empty : "presence",
         fact.FactId,
         fact.Revision,
         fact.End,
@@ -266,9 +267,13 @@ internal sealed class VRChatManagedCollector(
             worldName = fact.WorldName,
             instanceId = fact.InstanceId
         }, PayloadJsonOptions),
-        CollectorId: fact.ObservedAccountId is null ? null : collectorId ?? throw new ArgumentException("Observed presence requires Observer identity."),
+        CollectorId: fact.IsNativeObservation
+            ? fact.CollectorId ?? throw new ArgumentException("Native presence requires its persisted Observer identity.")
+            : fact.ObservedAccountId is null ? null : collectorId ?? throw new ArgumentException("Observed presence requires Observer identity."),
         Foi: fact.ObservedAccountId is null ? null : new Heartbeat.Core.DTOs.Facts.ObservationObjectReference("account", "vrchat", fact.ObservedAccountId),
-        Aspect: Heartbeat.Core.Facts.FactAspects.AccountLocation, Relations: []);
+        Aspect: Heartbeat.Core.Facts.FactAspects.AccountLocation, Relations: [],
+        Kind: fact.IsNativeObservation ? "segment" : null,
+        Source: fact.IsNativeObservation ? "vrchat.account" : null);
 
     private static CollectorStreamGap ToGap(VRChatPresenceRecoveryGap gap) => new(
         gap.GapId,

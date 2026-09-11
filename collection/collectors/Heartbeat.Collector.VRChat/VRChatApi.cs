@@ -183,9 +183,12 @@ internal sealed class VRChatApiFactory(
 
 internal sealed record CookieRecord(string Name, string Value);
 
-internal sealed class MockVRChatApiFactory(int transientPresenceFailures = 0) : IVRChatApiFactory
+internal sealed class MockVRChatApiFactory(
+    int transientPresenceFailures = 0,
+    string accountId = "usr_11111111-1111-4111-8111-111111111111") : IVRChatApiFactory
 {
     private int _remainingTransientPresenceFailures = transientPresenceFailures;
+    private readonly string _accountId = accountId;
 
     public IVRChatApiSession FromCredentials(string username, string password) =>
         new MockVRChatApiSession(this, hasSession: false, username, password);
@@ -246,7 +249,7 @@ internal sealed class MockVRChatApiFactory(int transientPresenceFailures = 0) : 
             if (Interlocked.Decrement(ref _owner._remainingTransientPresenceFailures) >= 0)
                 throw new VRChatTransientException("Mock transient presence failure.");
             return Task.FromResult<VRChatPresence?>(
-                new VRChatPresence("wrld_mock", null, "instance:mock", "usr_11111111-1111-4111-8111-111111111111"));
+                new VRChatPresence("wrld_mock", null, "instance:mock", _owner._accountId));
         }
 
         public Task<string?> GetWorldNameAsync(string worldId, CancellationToken cancellationToken) =>

@@ -11,7 +11,9 @@ IVRChatApiFactory apiFactory = Environment.GetEnvironmentVariable("HEARTBEAT_VRC
     ? new MockVRChatApiFactory(
         int.TryParse(Environment.GetEnvironmentVariable("HEARTBEAT_VRCHAT_MOCK_TRANSIENT_POLLS"), out var failures)
             ? Math.Max(0, failures)
-            : 0)
+            : 0,
+        Environment.GetEnvironmentVariable("HEARTBEAT_VRCHAT_MOCK_ACCOUNT_ID")
+            ?? "usr_11111111-1111-4111-8111-111111111111")
     : new VRChatApiFactory(
         "Heartbeat.Collector.VRChat",
         VRChatCollectorMetadata.Version,
@@ -20,9 +22,9 @@ var definition = new CollectorClientDefinition(
     "vrchat.managed",
     new Dictionary<string, IReadOnlyList<int>>(StringComparer.Ordinal)
     {
-        ["facts.observation"] = [1],
-            ["facts.aspect"] = [1],
-            ["facts.segment"] = [1],
+        ["facts.observation"] = [2],
+        ["facts.aspect"] = [1],
+        ["facts.segment"] = [1],
         ["auth.interactive"] = [1],
         ["secrets.instance"] = [1],
         ["resources.instance-data"] = [1],

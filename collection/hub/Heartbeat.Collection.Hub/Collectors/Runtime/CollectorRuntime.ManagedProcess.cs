@@ -452,6 +452,7 @@ public sealed partial class CollectorRuntime
 
     private static void ValidateCollectorCacheCompatibility(LocalCollectorPackage package, string dataDirectory)
     {
+        ValidateCollectorDataRequirements(package, dataDirectory);
         // The SDK opens these envelopes before Ready. Check before launching, including automatic
         // rollback, because old SDK binaries mistake an unsupported schema for a corrupt outbox.
         foreach (var name in new[] { "collector-protocol-outbox.json", "collector-protocol-dead-letter.json" })
@@ -477,6 +478,42 @@ public sealed partial class CollectorRuntime
             {
                 // Actual corruption remains the SDK's existing recovery responsibility.
             }
+        }
+    }
+
+    private static void ValidateCollectorDataRequirements(LocalCollectorPackage package, string dataDirectory)
+    {
+        var path = Path.Combine(dataDirectory, "collector-data-requirements.json");
+        if (!File.Exists(path) && !Directory.Exists(path))
+            return;
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                root.EnumerateObject().Count() != 2 ||
+                !root.TryGetProperty("SchemaVersion", out var schema) ||
+                !schema.TryGetInt32(out var version) || version != 1 ||
+                !root.TryGetProperty("RequiredCapabilities", out var requirements) ||
+                requirements.ValueKind != JsonValueKind.Object || !requirements.EnumerateObject().Any())
+                throw new JsonException("Invalid Collector data requirements envelope.");
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var requirement in requirements.EnumerateObject())
+            {
+                if (string.IsNullOrWhiteSpace(requirement.Name) || !names.Add(requirement.Name) ||
+                    requirement.Value.ValueKind != JsonValueKind.Number ||
+                    !requirement.Value.TryGetInt32(out var requiredVersion) || requiredVersion <= 0)
+                    throw new JsonException("Invalid Collector data capability requirement.");
+                if (!package.Manifest.SupportedCapabilities.TryGetValue(requirement.Name, out var supported) ||
+                    !supported.Contains(requiredVersion))
+                    throw ActivationError("collector_cache_incompatible",
+                        $"Collector data requires '{requirement.Name}:{requiredVersion}'. Preserve this data directory and start a compatible Package.");
+            }
+        }
+        catch (Exception error) when (error is JsonException or InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            throw ActivationError("collector_cache_incompatible",
+                "Collector data requirements cannot be read. Preserve this data directory and its requirements file for recovery.");
         }
     }
 

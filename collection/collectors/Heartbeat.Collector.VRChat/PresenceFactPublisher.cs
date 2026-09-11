@@ -3,7 +3,7 @@ using Heartbeat.Core;
 namespace Heartbeat.Collector.VRChat;
 
 // Fact lifecycle mechanics; continuity decisions belong to PresenceStateMachine.
-internal sealed class PresenceFactPublisher(Func<Guid>? idGenerator = null)
+internal sealed class PresenceFactPublisher(Func<Guid>? idGenerator, Guid collectorId)
 {
     private readonly Func<Guid> _idGenerator = idGenerator ?? Guid.CreateVersion7;
     private VRChatPresenceFact? _current;
@@ -154,7 +154,7 @@ internal sealed class PresenceFactPublisher(Func<Guid>? idGenerator = null)
             presence.WorldName ?? presence.WorldId,
             presence.WorldId,
             presence.WorldName,
-            presence.InstanceId, presence.ObservedAccountId);
+            presence.InstanceId, presence.ObservedAccountId, IsNativeObservation: true, CollectorId: collectorId);
     }
 
     private static VRChatPresence ToPresence(VRChatPresenceFact fact) =>
