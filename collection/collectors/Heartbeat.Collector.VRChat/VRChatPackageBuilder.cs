@@ -40,6 +40,7 @@ internal static class VRChatPackageBuilder
             protocolMajors = new[] { 1 },
             supportedCapabilities = new Dictionary<string, int[]>
             {
+                ["facts.aspect"] = [1],
                 ["facts.segment"] = [1],
                 ["auth.interactive"] = [1],
                 ["secrets.instance"] = [1],

@@ -30,6 +30,7 @@ public sealed class SystemInProcessCollector(
         "system.inprocess",
         new Dictionary<string, IReadOnlyList<int>>(StringComparer.Ordinal)
         {
+            ["facts.aspect"] = [1],
             ["facts.segment"] = [1],
             ["facts.event"] = [1],
             ["diagnostics.stream-gap"] = [1]
@@ -68,6 +69,7 @@ public sealed class SystemInProcessCollector(
         [1],
         new Dictionary<string, IReadOnlyList<int>>(StringComparer.Ordinal)
         {
+            ["facts.aspect"] = [1],
             ["facts.segment"] = [1],
             ["facts.event"] = [1],
             ["diagnostics.stream-gap"] = [1]
@@ -369,7 +371,7 @@ public sealed class SystemInProcessCollector(
             CollectorEventFactTime occurrence => new EventFactTime(occurrence.OccurredAt),
             _ => throw new InvalidOperationException("Unknown Collector Fact time shape.")
         },
-        fact.Payload.Clone(), fact.ObserverId, fact.Target);
+        fact.Payload.Clone(), fact.ObserverId, fact.Target, fact.Aspect);
 
     private static ClientError? ToClientError(HubError? error) => error is null
         ? null

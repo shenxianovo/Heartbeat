@@ -1,3 +1,4 @@
+using Heartbeat.Core.Facts;
 using System.Text.Json;
 using Heartbeat.Core;
 using Heartbeat.Core.DTOs.Apps;
@@ -41,7 +42,7 @@ namespace Heartbeat.Server.Services
                 .AsQueryable();
 
             query = string.IsNullOrWhiteSpace(source)
-                ? query.Where(x => x.Source != ActivitySources.System)
+                ? query.Where(x => x.Aspect != FactAspects.DesktopActivity)
                 : query.Where(x => x.Source == source);
 
             if (deviceId.HasValue)
@@ -68,6 +69,7 @@ namespace Heartbeat.Server.Services
                     ObserverId = x.ObserverId, TargetKind = x.TargetKind, TargetId = x.TargetId,
                     TargetName = x.TargetName ?? (x.TargetKind == "application-context" && x.App != null && x.Device != null ? x.Device.DeviceName + " / " + x.App.DisplayName : x.TargetKind == "device" && x.Device != null ? x.Device.DeviceName : null),
                     Id = x.Id,
+                    Aspect = x.Aspect,
                     DeviceId = x.DeviceId,
                     Source = x.Source,
                     IdentityKey = x.IdentityKey,
@@ -101,7 +103,7 @@ namespace Heartbeat.Server.Services
         {
             var query = _db.ActivitySegments
                 .Where(x => x.OwnerId == ownerId)
-                .Where(x => x.Source == ActivitySources.System && x.DeviceId != null && x.AppIdentityId != null)
+                .Where(x => x.Aspect == FactAspects.DesktopActivity && x.DeviceId != null && x.AppIdentityId != null)
                 .AsQueryable();
 
             if (deviceId.HasValue)
@@ -121,7 +123,9 @@ namespace Heartbeat.Server.Services
                 .Select(x => new AppUsageResponse
                 {
                     Id = x.Id,
+                    Aspect = x.Aspect,
                     DeviceId = x.DeviceId!.Value,
+                    Source = x.Source,
                     AppId = (x.AppIdentityId != null ? x.AppIdentity!.AppId : x.AppId)!.Value,
                     AppKey = x.AppIdentityId != null ? x.AppIdentity!.App.Key : x.App!.Key,
                     AppDisplayName = x.AppIdentityId != null

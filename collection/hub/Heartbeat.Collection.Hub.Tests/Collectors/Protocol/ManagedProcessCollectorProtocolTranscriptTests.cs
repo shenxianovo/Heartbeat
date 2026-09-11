@@ -26,6 +26,36 @@ public class ManagedProcessCollectorProtocolTranscriptTests
         "Fixtures",
         "ReferenceCollectorPackage");
 
+    [Theory]
+    [InlineData("collector-protocol-outbox.json")]
+    [InlineData("collector-protocol-dead-letter.json")]
+    public async Task OldPackageCannotOpenAspectCacheAfterRuntimeRestart(string cacheName)
+    {
+        using var packageCopy = ManagedReferenceCollectorPackage.Create();
+        var package = LocalCollectorPackage.Load(packageCopy.Path);
+        using var directory = TemporaryDirectory.Create();
+        var path = Path.Combine(directory.Path, "runtime.json");
+        var sink = new SegmentIngestService(new TestClock(DateTimeOffset.UtcNow));
+        Guid instanceId;
+        using (var runtime = CollectorRuntime.Open(path, sink))
+        {
+            instanceId = runtime.CreateInstance(package, new SubjectReference(Guid.NewGuid(), SubjectKind.Account),
+                new CollectorInstanceSpec(1, 1, JsonSerializer.SerializeToElement(new { }))).CollectorInstanceId;
+        }
+        var dataDirectory = Path.Combine(directory.Path, "collector-data", instanceId.ToString("N"));
+        Directory.CreateDirectory(dataDirectory);
+        var cachePath = Path.Combine(dataDirectory, cacheName);
+        const string contents = """{"SchemaVersion":2,"State":{"Facts":[{"Aspect":"custom.snapshot"}]}}""";
+        File.WriteAllText(cachePath, contents);
+        using var restarted = CollectorRuntime.Open(path, sink);
+        var error = await Assert.ThrowsAsync<CollectorActivationException>(async () =>
+            await restarted.ActivateManagedProcessAsync(instanceId, package));
+        Assert.Equal("collector_cache_incompatible", error.Error.Code);
+        Assert.Equal(contents, File.ReadAllText(cachePath));
+        Assert.Equal([cachePath], Directory.GetFiles(dataDirectory));
+        Assert.Empty(restarted.ReadPendingFacts());
+    }
+
     [Fact]
     public async Task ManagedPublisher_PreservesExplicitObserverAndTargetThroughStdioAndDurableUpload()
     {

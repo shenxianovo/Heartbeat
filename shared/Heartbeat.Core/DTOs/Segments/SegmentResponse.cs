@@ -14,6 +14,8 @@ namespace Heartbeat.Core.DTOs.Segments
         /// <summary>Target 对应的设备维度；未知归属保持为空。</summary>
         public long? DeviceId { get; set; }
 
+        public string? Aspect { get; set; }
+
         public string Source { get; set; } = string.Empty;
 
         public string IdentityKey { get; set; } = string.Empty;

@@ -21,3 +21,7 @@ Facts 以 Kind 区分 Event、Measurement、Segment，共享单份结果存储�
 五表是目标业务核心，并非对现有数据库的直接改名或完整上线 DDL。Owner 隔离、旧事实复合身份、
 历史未知、单份原始内容、缓存重放与发布恢复仍须在迁移设计中明确。已上线迁移不得改写，
 本决定不代表已有数据已迁移，也不授权恢复暂停的资源演练或执行生产部署。
+
+2026-09-11 后续：用户确认继续完成[显式 Aspect 与消费语义解耦](../architecture/observation-semantics.md)。
+Collector 解释原始输入，存储保管 Fact，Analytics 按 Aspect 契约分析，Dashboard 按 Aspect 选择视图。
+这替代 ADR-017/018 将活动分析种类绑定 Source 的实现规则；ADR-030 的 Source 深度声明/Matcher 身份继续有效。

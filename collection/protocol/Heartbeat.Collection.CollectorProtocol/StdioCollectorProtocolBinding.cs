@@ -504,6 +504,7 @@ public sealed class StdioCollectorProtocolBinding : ICollectorProtocolBinding
         },
         observerId = fact.ObserverId,
         target = fact.Target,
+        aspect = fact.Aspect,
         payload = fact.Payload
     };
 

@@ -340,13 +340,15 @@ public sealed partial class CollectorRuntime
         var startupStarted = _options.TimeProvider.GetTimestamp();
         try
         {
+            var dataDirectory = Path.Combine(_instanceDataRoot, collectorInstanceId.ToString("N"));
+            ValidateCollectorCacheCompatibility(package, dataDirectory);
             client = await ManagedProcessProtocolClient.StartAsync(
                 package,
                 artifact,
                 collectorInstanceId,
                 options,
                 _secretStore,
-                Path.Combine(_instanceDataRoot, collectorInstanceId.ToString("N")),
+                dataDirectory,
                 _options.TimeProvider,
                 linkedCancellation.Token);
             var selectedCapabilities = SelectedCapabilities(package, client.ProtocolSupport);
@@ -444,6 +446,34 @@ public sealed partial class CollectorRuntime
                 failure.Code == originalActivationException.Error.Code)
                 throw;
             throw ActivationError(failure.Code, failure.Message, exception, retryable: true);
+        }
+    }
+
+    private static void ValidateCollectorCacheCompatibility(LocalCollectorPackage package, string dataDirectory)
+    {
+        // The SDK opens these envelopes before Ready. Check before launching, including automatic
+        // rollback, because old SDK binaries mistake an unsupported schema for a corrupt outbox.
+        foreach (var name in new[] { "collector-protocol-outbox.json", "collector-protocol-dead-letter.json" })
+        {
+            var path = Path.Combine(dataDirectory, name);
+            if (!File.Exists(path))
+                continue;
+            try
+            {
+                using var document = JsonDocument.Parse(File.ReadAllText(path));
+                if (document.RootElement.ValueKind == JsonValueKind.Object &&
+                    document.RootElement.TryGetProperty("SchemaVersion", out var version) &&
+                    version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var schemaVersion) &&
+                    (schemaVersion > 2 || schemaVersion == 2 &&
+                        (!package.Manifest.SupportedCapabilities.TryGetValue("facts.aspect", out var aspects) ||
+                         !aspects.Contains(1))))
+                    throw ActivationError("collector_cache_incompatible",
+                        $"Collector Package cannot read '{name}' schemaVersion {schemaVersion}. Preserve this data directory and start a compatible Package with facts.aspect v1 support.");
+            }
+            catch (JsonException)
+            {
+                // Actual corruption remains the SDK's existing recovery responsibility.
+            }
         }
     }
 
@@ -1859,6 +1889,7 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
             "revision",
             "observedAt",
             "observerId",
+            "aspect",
             "target",
             "time",
             "payload");
@@ -1885,7 +1916,8 @@ internal sealed class ManagedProcessProtocolClient : IInProcessCollector
             fact.GetProperty("payload").Clone(),
             fact.TryGetProperty("observerId", out var observer) && observer.ValueKind != JsonValueKind.Null ? observer.GetGuid() : null,
             fact.TryGetProperty("target", out var target) && target.ValueKind != JsonValueKind.Null
-                ? JsonSerializer.Deserialize<Heartbeat.Core.DTOs.Facts.FactTarget>(target, new JsonSerializerOptions(JsonSerializerDefaults.Web)) : null);
+                ? JsonSerializer.Deserialize<Heartbeat.Core.DTOs.Facts.FactTarget>(target, new JsonSerializerOptions(JsonSerializerDefaults.Web)) : null,
+            fact.TryGetProperty("aspect", out var aspect) && aspect.ValueKind != JsonValueKind.Null ? aspect.GetString() : null);
     }
 
     private static IReadOnlyDictionary<string, IReadOnlyList<int>> ReadCapabilities(JsonElement parent, string name) =>

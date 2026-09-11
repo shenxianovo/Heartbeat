@@ -267,7 +267,8 @@ internal sealed class VRChatManagedCollector(
             instanceId = fact.InstanceId
         }, PayloadJsonOptions),
         ObserverId: fact.ObservedAccountId is null ? null : observerId ?? throw new ArgumentException("Observed presence requires Observer identity."),
-        Target: fact.ObservedAccountId is null ? null : new Heartbeat.Core.DTOs.Facts.ServiceAccountReference("vrchat", fact.ObservedAccountId).ToTarget());
+        Target: fact.ObservedAccountId is null ? null : new Heartbeat.Core.DTOs.Facts.ServiceAccountReference("vrchat", fact.ObservedAccountId).ToTarget(),
+        Aspect: Heartbeat.Core.Facts.FactAspects.AccountLocation);
 
     private static CollectorStreamGap ToGap(VRChatPresenceRecoveryGap gap) => new(
         gap.GapId,

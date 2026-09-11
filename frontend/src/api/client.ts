@@ -5312,6 +5312,8 @@ export interface IAppMergeResponse {
 
 export class AppUsageResponse implements IAppUsageResponse {
     id?: string;
+    source?: string;
+    aspect?: string | undefined;
     deviceId?: number;
     appId?: number;
     appKey?: string;
@@ -5342,6 +5344,8 @@ export class AppUsageResponse implements IAppUsageResponse {
                     this[property] = _data[property];
             }
             this.id = _data["id"];
+            this.source = _data["source"];
+            this.aspect = _data["aspect"];
             this.deviceId = _data["deviceId"];
             this.appId = _data["appId"];
             this.appKey = _data["appKey"];
@@ -5370,6 +5374,8 @@ export class AppUsageResponse implements IAppUsageResponse {
                 data[property] = this[property];
         }
         data["id"] = this.id;
+        data["source"] = this.source;
+        data["aspect"] = this.aspect;
         data["deviceId"] = this.deviceId;
         data["appId"] = this.appId;
         data["appKey"] = this.appKey;
@@ -5387,6 +5393,8 @@ export class AppUsageResponse implements IAppUsageResponse {
 
 export interface IAppUsageResponse {
     id?: string;
+    source?: string;
+    aspect?: string | undefined;
     deviceId?: number;
     appId?: number;
     appKey?: string;
@@ -7183,6 +7191,7 @@ export class ExperienceSegment implements IExperienceSegment {
     startTime!: Date;
     endTime!: Date;
     payload!: JsonElement;
+    aspect!: string | undefined;
 
     [key: string]: any;
 
@@ -7221,6 +7230,7 @@ export class ExperienceSegment implements IExperienceSegment {
             this.startTime = _data["startTime"] ? new Date(_data["startTime"].toString()) : undefined as any;
             this.endTime = _data["endTime"] ? new Date(_data["endTime"].toString()) : undefined as any;
             this.payload = _data["payload"] ? JsonElement.fromJS(_data["payload"]) : new JsonElement();
+            this.aspect = _data["aspect"];
         }
     }
 
@@ -7254,6 +7264,7 @@ export class ExperienceSegment implements IExperienceSegment {
         data["startTime"] = this.startTime ? this.startTime.toISOString() : undefined as any;
         data["endTime"] = this.endTime ? this.endTime.toISOString() : undefined as any;
         data["payload"] = this.payload ? this.payload.toJSON() : undefined as any;
+        data["aspect"] = this.aspect;
         return data;
     }
 }
@@ -7276,6 +7287,7 @@ export interface IExperienceSegment {
     startTime: Date;
     endTime: Date;
     payload: JsonElement;
+    aspect: string | undefined;
 
     [key: string]: any;
 }
@@ -7460,6 +7472,7 @@ export class FactSnapshot implements IFactSnapshot {
     streamId?: string;
     factId?: string;
     revision?: number;
+    aspect?: string | undefined;
     observerId?: string | undefined;
     target?: FactTarget | undefined;
     observedAt?: Date | undefined;
@@ -7483,6 +7496,7 @@ export class FactSnapshot implements IFactSnapshot {
             this.streamId = _data["streamId"];
             this.factId = _data["factId"];
             this.revision = _data["revision"];
+            this.aspect = _data["aspect"];
             this.observerId = _data["observerId"];
             this.target = _data["target"] ? FactTarget.fromJS(_data["target"]) : undefined as any;
             this.observedAt = _data["observedAt"] ? new Date(_data["observedAt"].toString()) : undefined as any;
@@ -7506,6 +7520,7 @@ export class FactSnapshot implements IFactSnapshot {
         data["streamId"] = this.streamId;
         data["factId"] = this.factId;
         data["revision"] = this.revision;
+        data["aspect"] = this.aspect;
         data["observerId"] = this.observerId;
         data["target"] = this.target ? this.target.toJSON() : undefined as any;
         data["observedAt"] = this.observedAt ? this.observedAt.toISOString() : undefined as any;
@@ -7522,6 +7537,7 @@ export interface IFactSnapshot {
     streamId?: string;
     factId?: string;
     revision?: number;
+    aspect?: string | undefined;
     observerId?: string | undefined;
     target?: FactTarget | undefined;
     observedAt?: Date | undefined;
@@ -10031,6 +10047,7 @@ export class SegmentResponse implements ISegmentResponse {
     targetId?: number | undefined;
     targetName?: string | undefined;
     deviceId?: number | undefined;
+    aspect?: string | undefined;
     source?: string;
     identityKey?: string;
     appId?: number | undefined;
@@ -10072,6 +10089,7 @@ export class SegmentResponse implements ISegmentResponse {
             this.targetId = _data["targetId"];
             this.targetName = _data["targetName"];
             this.deviceId = _data["deviceId"];
+            this.aspect = _data["aspect"];
             this.source = _data["source"];
             this.identityKey = _data["identityKey"];
             this.appId = _data["appId"];
@@ -10111,6 +10129,7 @@ export class SegmentResponse implements ISegmentResponse {
         data["targetId"] = this.targetId;
         data["targetName"] = this.targetName;
         data["deviceId"] = this.deviceId;
+        data["aspect"] = this.aspect;
         data["source"] = this.source;
         data["identityKey"] = this.identityKey;
         data["appId"] = this.appId;
@@ -10139,6 +10158,7 @@ export interface ISegmentResponse {
     targetId?: number | undefined;
     targetName?: string | undefined;
     deviceId?: number | undefined;
+    aspect?: string | undefined;
     source?: string;
     identityKey?: string;
     appId?: number | undefined;

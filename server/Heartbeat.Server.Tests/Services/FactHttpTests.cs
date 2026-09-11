@@ -164,7 +164,7 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
             var legacyBatch = FactUploadItem.Request(restarted.ReadPendingFacts());
             foreach (var fact in legacyBatch.Facts)
             {
-                fact.ObserverId = null; fact.Target = null;
+                fact.ObserverId = null; fact.Target = null; fact.Aspect = null;
                 fact.Payload = JsonDocument.Parse(fact.Payload!.Value.GetRawText().Replace("activityKey", "identityKey")).RootElement;
             }
             await using (var db = CreateDbContext())
@@ -182,7 +182,7 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
             cache["schemaVersion"] = 5;
             foreach (var fact in cache["facts"]!.AsArray())
             {
-                fact!.AsObject().Remove("observerId"); fact.AsObject().Remove("target");
+                fact!.AsObject().Remove("observerId"); fact.AsObject().Remove("target"); fact.AsObject().Remove("aspect");
                 fact["payload"] = System.Text.Json.Nodes.JsonNode.Parse(fact["payload"]!.ToJsonString().Replace("activityKey", "identityKey"));
             }
             File.WriteAllText(path, cache.ToJsonString());
@@ -278,7 +278,7 @@ public sealed partial class FactHttpTests(PostgresContainerFixture fixture) : Po
             cache["schemaVersion"] = 4;
             foreach (var fact in cache["facts"]!.AsArray())
             {
-                fact!.AsObject().Remove("observerId"); fact.AsObject().Remove("target");
+                fact!.AsObject().Remove("observerId"); fact.AsObject().Remove("target"); fact.AsObject().Remove("aspect");
                 fact["payload"] = System.Text.Json.Nodes.JsonNode.Parse(original.Payload.GetRawText());
             }
             File.WriteAllText(path, cache.ToJsonString());

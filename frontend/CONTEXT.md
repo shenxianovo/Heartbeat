@@ -25,7 +25,7 @@ ADR-019 §2：渲染 system 段时若存在同 App 的重叠插件段，标签�
 已知局限：段选择按时间重叠占比，多浏览器窗口时后台窗口的插件段也是候选，可能升级成未在看的页面——窗口↔前台消歧未建（需要窗口身份与 system 标题的匹配）。
 
 **Lane（泳道）**:
-回放展开态里同一 Source 轨内的副本细分：有副本身份的段按身份分稳定泳道（browser 用 `payload.attributes.windowId`），无身份的段贪心装箱兜底（interval packing）。副本身份是采集器 Fact Payload 的 schema 约定，展示层经按 source 的提取器注册表读取（`segmentAdapters.laneKeyOf`，Title Formatter 同款模式）。system 前台互斥，恒为单 lane。浏览器 windowId 跨重启可能复用，同 lane 顺序排开，可读性无损。
+回放展开态里同一 Source 与 Aspect 轨内的副本细分：有副本身份的段按身份分稳定泳道（browser 用 `payload.attributes.windowId`），无身份的段贪心装箱兜底（interval packing）。副本身份是采集器 Fact Payload 的 schema 约定，展示层按 Aspect 契约读取（`segmentAdapters.laneKeyOf`，Title Formatter 同款模式）。前台活动按 `desktop-activity` 识别；重叠事实仍各自保留。浏览器 windowId 跨重启可能复用，同 lane 顺序排开，可读性无损。
 
 **Fact Payload（事实内容）**:
 Analytics 返回的结构化观测内容；Dashboard 按来源与观测语义读取网址、窗口身份等展示字段。
@@ -76,3 +76,6 @@ InputEvent 的可视化：按键频次热力图。只消费聚合频次，不展
 **Mouse Activity（鼠标活动）**:
 InputEvent 的聚合计数：左、右、中键点击和向上、向下滚轮，按所选本地日历窗口与设备统计。
 _Avoid_: 鼠标移动距离、移动轨迹（未采集）
+
+[显式 Aspect 语义边界](../docs/architecture/observation-semantics.md)：Fact View、前台活动分组和页面关联
+按 Aspect 选择；Source 用于来源展示和筛选，不决定结果含义。未知 Aspect 原样展示。

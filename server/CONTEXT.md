@@ -5,7 +5,7 @@
 ## Language
 
 **Ingest（摄入）**:
-Analytics 原子接收携带 Observer 与 Target 的 Fact 快照及交付所需的 Stream、Gap，Owner 取自认证身份，
+Analytics 原子接收携带 Observer、Target 与 Aspect 的 Fact 快照及交付所需的 Stream、Gap，Owner 取自认证身份，
 同一事务转换到 Collectors、Objects、Facts、Relations、RelationMembers；所有家族共同遵守身份、修订和确认规则。旧 Subject 归属及旧上传服务现有数据与缓存，
 不形成另一套事实语义。
 _Avoid_: 从标题或时间猜测事实身份、让活动或输入绕开统一的摄入规则
@@ -22,7 +22,7 @@ _Avoid_: 用 EndTime 取 max 代替 Revision、用数据到达顺序解释事实
 _Avoid_: 按相近标题、URL 或时间模糊合并历史
 
 **Report（报表）**:
-对某 Owner 某时间窗的聚合视图（daily / weekly）。只消费 system 段——互斥轨，时长可求和；插件段只进回放，不进统计（ADR-017 §4 统计边界）。跨窗段做区间重叠 + 裁剪：只计落在窗口内的部分，不漏不双计（ADR-018 §4）。
+对某 Owner 某时间窗的聚合视图（daily / weekly）。按 `desktop-activity` Aspect 选择既有前台活动轨；其他活动 Aspect 只进回放，不进统计（ADR-017 §4 统计边界）。跨窗段做区间重叠 + 裁剪：只计落在窗口内的部分，不漏不双计（ADR-018 §4）。
 _Avoid_: Statistics, Summary
 
 **App**:
@@ -68,7 +68,7 @@ _Avoid_: Public Profile（GitHub 语义是粗聚合展示，这里 public 是全
 _Avoid_: Summary（Report 词条同禁）、日报（汇报工具的词，Recap 是记忆）、把 Recap 正文当事实库
 
 **Recap Projection（Recap 投影）**:
-segments → LLM 输入的确定性压缩（纯函数，可单测）：system 段按设备分轨作注意力骨架（轨内互斥、带时长），插件段按 IdentityKey 聚合作语义细节轨；碎段合并/丢弃只影响投影不动数据。digest 的身份维度按观测深度长成深度树（块内下一深度分解、预算剪枝，ADR-029），叙事与发问两次调用共用同一 digest。未来外部 Agent/MCP 能力暴露的开门处（不预建，ADR-023 §2）。
+segments → LLM 输入的确定性压缩（纯函数，可单测）：`desktop-activity` 段按设备分轨作注意力骨架（轨内互斥、带时长），插件段按 IdentityKey 聚合作语义细节轨；碎段合并/丢弃只影响投影不动数据。digest 的身份维度按观测深度长成深度树（块内下一深度分解、预算剪枝，ADR-029），叙事与发问两次调用共用同一 digest。未来外部 Agent/MCP 能力暴露的开门处（不预建，ADR-023 §2）。
 _Avoid_: 复刻标签升级喂单线（ADR-019 是展示层且有损，被 ADR-023 §3 否决）
 
 **Strand（脉络）**:
@@ -117,3 +117,6 @@ Browser 应用上下文不含 Profile 或窗口身份；窗口细节留在 Fact 
 Observer 使用持久扩展安装 UUID，与可服务多个安装的 Runtime Instance 区分。
 ApplicationContexts 及产品纠错、离线引用和兼容退出见
 [Browser 实施记录](../docs/architecture/browser-observation-targets.md)。
+
+当前[观测语义边界](../docs/architecture/observation-semantics.md)：存储原样保管显式 Aspect/Result；
+Analytics 按支持的 Aspect 契约查询，不按 Source 猜测字段含义。Source 继续承载深度声明与 Matcher 身份。

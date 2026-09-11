@@ -199,6 +199,8 @@ namespace Heartbeat.Server.Data
             modelBuilder.Entity<Segment>().Property(e => e.StartTime).HasColumnName("StartTime");
             modelBuilder.Entity<Event>().Property(e => e.Timestamp).HasColumnName("StartTime");
             modelBuilder.Entity<Segment>().HasIndex(e => new { e.OwnerId, e.Source, e.StartTime });
+            modelBuilder.Entity<Segment>().HasIndex(e => new { e.OwnerId, e.Aspect, e.StartTime })
+                .HasFilter("\"Kind\" = 'segment'");
             modelBuilder.Entity<Event>().HasIndex(e => new { e.OwnerId, e.Timestamp });
 
             modelBuilder.Entity<AppIcon>(entity =>

@@ -184,7 +184,7 @@ const returnFocus = document.activeElement as HTMLElement | null
                   </div>
                   <div
                     v-for="track in g.tracks"
-                    :key="track.source"
+                    :key="JSON.stringify([track.source, track.aspect])"
                     class="flex border-b border-border last:border-b-0"
                   >
                     <div class="flex w-[80px] shrink-0 items-center border-r border-border bg-muted px-2">
@@ -206,7 +206,7 @@ const returnFocus = document.activeElement as HTMLElement | null
                           <div
                             v-else
                             class="absolute top-2 h-5 cursor-pointer rounded-sm opacity-80 hover:z-[2] hover:opacity-100"
-                            :class="track.source === 'system' ? 'bg-primary' : 'bg-accent-3'"
+                            :class="track.aspect === 'desktop-activity' ? 'bg-primary' : 'bg-accent-3'"
                             :style="{ left: bar.left + '%', width: bar.width + '%' }"
                             :title="bar.tooltip"
                           ></div>

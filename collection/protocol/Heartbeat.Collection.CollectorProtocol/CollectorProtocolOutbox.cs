@@ -403,11 +403,17 @@ internal sealed class CollectorProtocolOutbox
 
     private static T ReadEnvelope<T>(string path, string description) where T : class
     {
-        var envelope = JsonSerializer.Deserialize<StateEnvelope<T>>(
-            File.ReadAllText(path, Encoding.UTF8),
-            JsonOptions) ?? throw new InvalidDataException($"{description} is empty.");
-        if (envelope.SchemaVersion != 1 || envelope.State is null)
-            throw new InvalidDataException($"{description} has an unsupported schemaVersion.");
+        var contents = File.ReadAllText(path, Encoding.UTF8);
+        // Check the envelope before deserializing future state: an unfamiliar schema is not corruption.
+        using var document = JsonDocument.Parse(contents);
+        if (document.RootElement.ValueKind == JsonValueKind.Object &&
+            document.RootElement.TryGetProperty("SchemaVersion", out var version) &&
+            version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var schemaVersion) && schemaVersion is not (1 or 2))
+            throw new NotSupportedException($"{description} schemaVersion {schemaVersion} is not supported; preserve the data directory and use a compatible Collector.");
+        var envelope = JsonSerializer.Deserialize<StateEnvelope<T>>(contents, JsonOptions)
+            ?? throw new InvalidDataException($"{description} is empty.");
+        if (envelope.SchemaVersion is not (1 or 2) || envelope.State is null)
+            throw new InvalidDataException($"{description} has an invalid envelope.");
         return envelope.State;
     }
 
@@ -486,9 +492,23 @@ internal sealed class CollectorProtocolOutbox
             ?? throw new InvalidOperationException("Collector Protocol state path has no directory.");
         Directory.CreateDirectory(directory);
         var temporary = path + $".{Guid.NewGuid():N}.tmp";
+        // Null Aspect is omitted from JSON, so unchanged contracts remain readable by SDK v1.
+        // Only files that actually retain explicit semantics need v2 and its package rollback guard.
+        var schemaVersion = state switch
+        {
+            OutboxState outbox when outbox.Facts.Any(item => item.Fact.Aspect is not null) => 2,
+            DeadLetterState deadLetters when deadLetters.Entries.Any(item => item.Fact.Aspect is not null) => 2,
+            _ => 1
+        };
+        if (schemaVersion == 2 && File.Exists(path) && !File.Exists(path + ".v1.bak"))
+        {
+            using var previous = JsonDocument.Parse(File.ReadAllText(path, Encoding.UTF8));
+            if (previous.RootElement.GetProperty("SchemaVersion").GetInt32() == 1)
+                File.Copy(path, path + ".v1.bak");
+        }
         File.WriteAllText(
             temporary,
-            JsonSerializer.Serialize(new StateEnvelope<T>(1, state), JsonOptions),
+            JsonSerializer.Serialize(new StateEnvelope<T>(schemaVersion, state), JsonOptions),
             new UTF8Encoding(false));
         return temporary;
     }

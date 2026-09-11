@@ -25,8 +25,8 @@ describe('urlOf', () => {
 
 describe('laneKeyOf', () => {
   it('浏览器使用 schema 声明的 windowId，包含编号 0', () => {
-    expect(laneKeyOf('browser', { attributes: { windowId: 3 } }, 'stream')).toBe('stream:3')
-    expect(laneKeyOf('browser', { attributes: { windowId: 0 } }, 'stream')).toBe('stream:0')
+    expect(laneKeyOf('selected-page', { attributes: { windowId: 3 } }, 'stream')).toBe('stream:3')
+    expect(laneKeyOf('selected-page', { attributes: { windowId: 0 } }, 'stream')).toBe('stream:0')
   })
 
   it('其他 source 的通用 laneKey → 稳定泳道', () => {
@@ -34,7 +34,7 @@ describe('laneKeyOf', () => {
   })
 
   it('缺少合法副本身份时装箱兜底', () => {
-    expect(laneKeyOf('browser', { attributes: { windowId: {} } })).toBeUndefined()
+    expect(laneKeyOf('selected-page', { attributes: { windowId: {} } })).toBeUndefined()
     expect(laneKeyOf('vscode', { attributes: { file: 'a.ts' } })).toBeUndefined()
     expect(laneKeyOf(undefined, { attributes: { laneKey: 1 } })).toBeUndefined()
   })
@@ -43,9 +43,9 @@ describe('laneKeyOf', () => {
 describe('toReplaySegs', () => {
   it('system 在前带标题 label；插件段带 laneKey', () => {
     const segs = toReplaySegs(
-      [{ appName: 'msedge', title: 'GitHub', startTime: base, endTime: later }],
+      [{ source: 'new.desktop', aspect: 'desktop-activity', appName: 'msedge', title: 'GitHub', startTime: base, endTime: later }],
       [{
-        source: 'reference',
+        source: 'reference', aspect: 'activity',
         identityKey: 'https://github.com/',
         title: 'GitHub',
         payload: { attributes: { url: 'https://github.com/pulls', laneKey: 7 } },
@@ -53,7 +53,8 @@ describe('toReplaySegs', () => {
         endTime: later,
       }],
     )
-    expect(segs[0].source).toBe('system')
+    expect(segs[0].source).toBe('new.desktop')
+    expect(segs[0].aspect).toBe('desktop-activity')
     expect(segs[0].label).toBe('GitHub')
     expect(segs[0].laneKey).toBeUndefined()
     expect(segs[1].laneKey).toBe('7')
@@ -64,7 +65,7 @@ describe('toReplaySegs', () => {
 
   it.each(['native', 'legacy-import', 'missing'])('不同 Browser Stream 的相同窗口编号不会互相遮挡（来源：%s）', origin => {
     const rows = ['profile-a', 'profile-b'].map(streamId => ({
-      source: 'browser', origin, streamId: origin === 'missing' ? undefined : origin === 'legacy-import' ? 'legacy-stream' : streamId,
+      source: 'browser', aspect: 'selected-page', origin, streamId: origin === 'missing' ? undefined : origin === 'legacy-import' ? 'legacy-stream' : streamId,
       payload: { attributes: { windowId: 1 } }, startTime: base, endTime: later,
     }))
     const tracks = buildTracks(toReplaySegs([], rows), { start: +base, end: +later }, 'UTC')
@@ -97,7 +98,7 @@ describe('toSystemSegs', () => {
 describe('toPluginSegs', () => {
   it('url 从 Fact payload 读取，供 labelUpgrade 作副标签', () => {
     const plugins = toPluginSegs([{
-      source: 'browser',
+      source: 'browser', aspect: 'selected-page',
       identityKey: 'https://a.com/',
       payload: { attributes: { url: 'https://a.com/deep?q=1' } },
       startTime: base,
@@ -118,8 +119,8 @@ describe('Local Calendar Window clipping', () => {
       endTime: new Date(start + 30_000),
     }], window)
     const plugins = toPluginSegs([
-      { source: 'browser', startTime: new Date(start), endTime: new Date(start) },
-      { source: 'browser', startTime: new Date(end), endTime: new Date(end) },
+      { source: 'browser', aspect: 'selected-page', startTime: new Date(start), endTime: new Date(start) },
+      { source: 'browser', aspect: 'selected-page', startTime: new Date(end), endTime: new Date(end) },
     ], window)
 
     expect(system[0]).toEqual(expect.objectContaining({ start, end: start + 30_000 }))

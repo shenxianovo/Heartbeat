@@ -89,6 +89,22 @@ describe('browser Collector Protocol outbox', () => {
     })
   })
 
+  it('does not publish or acknowledge pending snapshots when Hub cannot retain Aspect', async () => {
+    const calls: string[] = []
+    vi.stubGlobal('fetch', protocolFetch(async (input, init) => {
+      const url = String(input)
+      calls.push(url.split('/').at(-1)!)
+      const request = JSON.parse(String(init?.body))
+      return protocolResponse('activation.accepted', {
+        activationId: ACTIVATION_ID, selectedProtocolMajor: 1,
+        selectedCapabilities: { 'facts.segment': 1, 'diagnostics.stream-gap': 1 },
+      }, undefined, request.messageId)
+    }))
+    expect(await uploadWithBrowserProtocol(24820, 'win:msedge',
+      '6a8259d1-5f6a-4b83-b6ba-87017886319e', [snapshot()])).toEqual({ kind: 'unavailable' })
+    expect(calls).toEqual(['hello'])
+  })
+
   it('happy path negotiates Spec, opens Stream, and returns per-Fact ACK identities', async () => {
     const calls: { url: string; body: unknown }[] = []
     vi.stubGlobal('fetch', protocolFetch(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -98,7 +114,7 @@ describe('browser Collector Protocol outbox', () => {
       if (url.endsWith('/hello')) return protocolResponse('activation.accepted', {
         activationId: ACTIVATION_ID,
         selectedProtocolMajor: 1,
-        selectedCapabilities: { 'facts.segment': 1, 'diagnostics.stream-gap': 1 },
+        selectedCapabilities: { 'facts.aspect': 1, 'facts.segment': 1, 'diagnostics.stream-gap': 1 },
       }, undefined, request.messageId)
       if (url.endsWith('/initialize')) return protocolResponse('activation.initialize', {
         spec: { revision: 3, config: { value: { enabled: true, flushPeriodMs: 30_000 } } },
@@ -145,6 +161,7 @@ describe('browser Collector Protocol outbox', () => {
       appIdentityKey: 'win:msedge',
       externalHostIdentity: '6a8259d1-5f6a-4b83-b6ba-87017886319e',
     })
+    expect((calls[5].body as { body: { facts: { aspect: string }[] } }).body.facts[0].aspect).toBe('selected-page')
     expect((calls[5].body as { body: { facts: { payload: object }[] } }).body.facts[0].payload).not.toHaveProperty('appHint')
   })
 
@@ -157,7 +174,7 @@ describe('browser Collector Protocol outbox', () => {
       if (url.endsWith('/hello')) return protocolResponse('activation.accepted', {
         activationId: ACTIVATION_ID,
         selectedProtocolMajor: 1,
-        selectedCapabilities: { 'facts.segment': 1, 'diagnostics.stream-gap': 1 },
+        selectedCapabilities: { 'facts.aspect': 1, 'facts.segment': 1, 'diagnostics.stream-gap': 1 },
       }, undefined, request.messageId)
       if (url.endsWith('/initialize')) return protocolResponse('activation.initialize', {
         spec: { revision: 3, config: { value: { enabled: true, flushPeriodMs: 30_000 } } },

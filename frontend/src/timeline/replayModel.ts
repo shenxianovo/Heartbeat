@@ -9,6 +9,7 @@ export interface ReplaySeg {
   start: number
   end: number
   source: string
+  aspect?: string
   /** tooltip 主体（时间前缀由模型拼接）。 */
   label: string
   /** 通用副本身份：有则稳定泳道，无则装箱兜底。 */
@@ -29,6 +30,7 @@ export interface Lane {
 
 export interface Track {
   source: string
+  aspect?: string
   lanes: Lane[]
 }
 
@@ -118,21 +120,21 @@ export function buildTracks(segs: ReplaySeg[], view: Interval, timeZone: string)
   for (const s of segs) {
     const visible = clipToView(s, view)
     if (!visible) continue
-    let arr = bySource.get(visible.source)
+    let arr = bySource.get(JSON.stringify([visible.source, visible.aspect]))
     if (!arr) {
       arr = []
-      bySource.set(visible.source, arr)
+      bySource.set(JSON.stringify([visible.source, visible.aspect]), arr)
     }
     arr.push(visible)
   }
 
   const tracks: Track[] = []
-  for (const [source, group] of bySource) {
+  for (const group of bySource.values()) {
     const lanes = assignLanes(group).map(lane => ({
       key: lane[0].laneKey,
       bars: lane.map(s => toBar(s, view, timeZone)),
     }))
-    tracks.push({ source, lanes })
+    tracks.push({ source: group[0].source, aspect: group[0].aspect, lanes })
   }
   return tracks
 }

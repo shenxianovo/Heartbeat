@@ -1,3 +1,4 @@
+using Heartbeat.Core.Facts;
 using System.Text;
 using Heartbeat.Core;
 using NodaTime;
@@ -17,7 +18,8 @@ namespace Heartbeat.Server.Services
         DateTimeOffset StartTime,
         DateTimeOffset EndTime,
         string? AttributesJson = null,
-        string? PayloadJson = null);
+        string? PayloadJson = null,
+        string? Aspect = null);
 
     public class RecapProjectionResult
     {
@@ -266,7 +268,7 @@ namespace Heartbeat.Server.Services
             DateTimeZone? displayZone, DepthTables depthTables)
         {
             var system = deviceSegments
-                .Where(c => c.Segment.Source == ActivitySources.System)
+                .Where(c => c.Segment.Aspect == FactAspects.DesktopActivity)
                 .OrderBy(c => c.Start)
                 .Select(c =>
                 {
@@ -326,7 +328,7 @@ namespace Heartbeat.Server.Services
             StringBuilder sb, List<ClippedSegment> deviceSegments, DepthTables depthTables)
         {
             var bySource = deviceSegments
-                .Where(c => c.Segment.Source != ActivitySources.System)
+                .Where(c => c.Segment.Aspect != FactAspects.DesktopActivity)
                 .GroupBy(c => c.Segment.Source)
                 .OrderBy(g => g.Key, StringComparer.Ordinal);
 

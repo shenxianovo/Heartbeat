@@ -153,6 +153,60 @@ public sealed class CollectorProtocolClientTests
     }
 
     [Fact]
+    public void AspectCacheMigratesOldPendingFactsWithoutGap()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-aspect-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, "collector-protocol-outbox.json");
+        var now = DateTimeOffset.UtcNow;
+        var fact = new CollectorFact("activity", Guid.CreateVersion7(), 1, null,
+            new CollectorEventFactTime(now), JsonSerializer.SerializeToElement(new { arbitrary = true }));
+        try
+        {
+            var old = CollectorProtocolOutbox.Open(root, 16, Definition().Outputs, now);
+            old.Enqueue(fact);
+            var original = File.ReadAllText(path);
+            Assert.Equal(1, JsonNode.Parse(original)!["SchemaVersion"]!.GetValue<int>());
+            var current = CollectorProtocolOutbox.Open(root, 16, Definition().Outputs, now);
+            current.Enqueue(fact with { FactId = Guid.CreateVersion7(), Aspect = "custom.snapshot" });
+            Assert.Equal(original, File.ReadAllText(path + ".v1.bak"));
+            Assert.Equal(2, JsonNode.Parse(File.ReadAllText(path))!["SchemaVersion"]!.GetValue<int>());
+            var restarted = CollectorProtocolOutbox.Open(root, 16, Definition().Outputs, now);
+            Assert.Equal(2, restarted.Facts.Count);
+            Assert.Null(restarted.Facts[0].Fact.Aspect);
+            Assert.Equal("custom.snapshot", restarted.Facts[1].Fact.Aspect);
+            Assert.True(restarted.Facts[1].Fact.Payload.GetProperty("arbitrary").GetBoolean());
+            Assert.Empty(restarted.Gaps);
+            Assert.Empty(Directory.GetFiles(root, "*.corrupt-*"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void UnsupportedOutboxVersionLeavesEveryFileUntouched()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-version-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, "collector-protocol-outbox.json");
+        const string contents = """{"SchemaVersion":99,"State":{"FuturePendingFacts":[{"Aspect":"future"}]}}""";
+        File.WriteAllText(path, contents);
+        try
+        {
+            Assert.Throws<NotSupportedException>(() => CollectorProtocolOutbox.Open(
+                root, 16, Definition().Outputs, DateTimeOffset.UtcNow));
+            Assert.Equal(contents, File.ReadAllText(path));
+            Assert.Equal([path], Directory.GetFiles(root));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void CorruptOutboxIsQuarantinedAndBecomesOneGapPerDeclaredOutput()
     {
         var root = Path.Combine(Path.GetTempPath(), $"heartbeat-protocol-corrupt-{Guid.NewGuid():N}");

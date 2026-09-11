@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Heartbeat.Core.DTOs.Input;
+using Heartbeat.Core.Facts;
 using Heartbeat.Server.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,7 +17,9 @@ public partial class AppDbContext
     /// <summary>Activity vocabulary projected in SQL from the single stored Segment payload.</summary>
     public IQueryable<ActivitySegment> ActivitySegments =>
         from s in Segments
-        where EF.Functions.JsonTypeof(s.Payload.RootElement.GetProperty("activityKey")) == "string" &&
+        where (s.Aspect == FactAspects.DesktopActivity || s.Aspect == FactAspects.SelectedPage ||
+            s.Aspect == FactAspects.AccountLocation || s.Aspect == FactAspects.Activity) &&
+            EF.Functions.JsonTypeof(s.Payload.RootElement.GetProperty("activityKey")) == "string" &&
             s.Payload.RootElement.GetProperty("activityKey").GetString()!.Trim() != ""
         join attribution in FactAttributions on s.Id equals attribution.Id
         join d in Devices on attribution.DeviceId equals (long?)d.Id into devices
@@ -28,6 +31,7 @@ public partial class AppDbContext
         select new ActivitySegment
         {
             Id = s.Id,
+            Aspect = s.Aspect,
             ObserverId = s.ObserverId, TargetKind = s.TargetKind, TargetId = s.TargetId,
             TargetName = account != null ? account.ServiceAccountId ?? "历史账号（身份未知）" : null,
             OwnerId = s.OwnerId,
@@ -52,7 +56,7 @@ public partial class AppDbContext
         };
 
     /// <summary>Only recognized input vocabulary participates in input counts. Other Events remain stored.</summary>
-    public IQueryable<InputEvent> InputEvents => Events
+    public IQueryable<InputEvent> InputEvents => Events.Where(e => e.Aspect == FactAspects.Input)
         .Join(FactAttributions, e => e.Id, a => a.Id, (e, a) => new { Event = e, Attribution = a })
         .Join(Devices, e => e.Attribution.DeviceId, d => (long?)d.Id, (e, device) => new { e.Event, Device = device })
         .Select(e => new

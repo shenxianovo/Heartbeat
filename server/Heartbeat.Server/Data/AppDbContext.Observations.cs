@@ -33,7 +33,9 @@ public partial class AppDbContext
             entity.HasOne<ObservationCollector>().WithMany().HasForeignKey(e => new { e.OwnerId, e.ObserverId }).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ObservationObject>().WithMany().HasForeignKey(e => e.FoiId).OnDelete(DeleteBehavior.Restrict);
             entity.Property(e => e.FoiId).ValueGeneratedOnAddOrUpdate();
-            entity.Property(e => e.Aspect).ValueGeneratedOnAddOrUpdate();
+            var aspect = entity.Property(e => e.Aspect).ValueGeneratedOnAddOrUpdate();
+            aspect.Metadata.SetBeforeSaveBehavior(Microsoft.EntityFrameworkCore.Metadata.PropertySaveBehavior.Save);
+            aspect.Metadata.SetAfterSaveBehavior(Microsoft.EntityFrameworkCore.Metadata.PropertySaveBehavior.Save);
             entity.HasIndex(e => new { e.OwnerId, e.FoiId });
         });
         modelBuilder.Entity<ObjectRelation>(entity =>

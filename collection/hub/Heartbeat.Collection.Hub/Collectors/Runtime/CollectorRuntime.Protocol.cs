@@ -17,6 +17,7 @@ public sealed partial class CollectorRuntime
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<int>> HubProtocolCapabilities =
         new Dictionary<string, IReadOnlyList<int>>(StringComparer.Ordinal)
         {
+            ["facts.aspect"] = [1],
             ["facts.segment"] = [1],
             ["facts.event"] = [1],
             ["auth.interactive"] = [1],
@@ -742,11 +743,14 @@ public sealed partial class CollectorRuntime
             }
         }
         // Same historical activity spelling boundary as Analytics; no optional Collector dispatch.
-        if (fact.Time is SegmentFactTime && fact.Payload is { } payload)
+        if (fact.Aspect is null && fact.Time is SegmentFactTime && fact.Payload is { } payload)
         {
             try { fact = fact with { Payload = Heartbeat.Core.Facts.ActivityFactPayload.Normalize(payload) }; }
             catch (ArgumentException ex) { return Rejected(index, "fact_invalid", ex.Message); }
         }
+        fact = fact.Aspect is null ? fact with { Aspect = Heartbeat.Core.Facts.FactAspectCompatibility.Infer(
+            stream.Source, stream.FactKind.ToString().ToLowerInvariant(), fact.Payload) } : fact;
+
         var envelopeError = ValidateFactEnvelope(fact);
         if (envelopeError is not null)
             return Rejected(index, "fact_invalid", envelopeError);
@@ -763,6 +767,9 @@ public sealed partial class CollectorRuntime
         };
         if (validationError is not null)
             return Rejected(index, "fact_invalid", validationError);
+        if (!_options.EnableFactUpload && fact.Aspect != Heartbeat.Core.Facts.FactAspectCompatibility.Infer(
+                stream.Source, stream.FactKind.ToString().ToLowerInvariant(), fact.Payload))
+            return Rejected(index, "fact_invalid", "Explicit observation semantics require native Fact upload; the old projection cannot preserve this Aspect.");
         if (!_options.EnableFactUpload && !CanProject(stream, fact))
             return Rejected(
                 index,
@@ -828,7 +835,7 @@ public sealed partial class CollectorRuntime
             StreamId = fact.StreamId,
             FactId = fact.FactId,
             Revision = fact.Revision,
-            ObserverId = fact.ObserverId, Target = fact.Target,
+            ObserverId = fact.ObserverId, Target = fact.Target, Aspect = fact.Aspect,
             ObservedAt = fact.ObservedAt,
             Start = fact.Time.Start ?? default,
             End = fact.Time.End ?? default,
@@ -844,7 +851,7 @@ public sealed partial class CollectorRuntime
     }
 
     private static bool SameContent(CommittedFactState current, FactSubmission fact) =>
-        current.ObserverId == fact.ObserverId && current.Target == fact.Target &&
+        current.ObserverId == fact.ObserverId && current.Target == fact.Target && current.Aspect == fact.Aspect &&
         current.Start == (fact.Time.Start ?? default) && current.End == (fact.Time.End ?? default) &&
         current.IsFinal == (fact.Time.IsFinal ?? false) && current.OccurredAt == fact.Time.OccurredAt &&
         current.Payload is { } payload && JsonElement.DeepEquals(payload, fact.Payload);
@@ -880,6 +887,7 @@ public sealed partial class CollectorRuntime
         if ((fact.ObserverId is null) != (fact.Target is null) || fact.ObserverId == Guid.Empty ||
             fact.Target is { } target && (!ValidTarget(target)))
             return "Fact requires a valid Observer and Target together.";
+        if (!Heartbeat.Core.Facts.FactAspects.IsValid(fact.Aspect)) return "Invalid Fact Aspect.";
         if (fact.ObservedAt is { Offset: var offset } && offset != TimeSpan.Zero)
             return "Fact observedAt must be UTC.";
         return null;

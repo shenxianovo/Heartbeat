@@ -206,7 +206,8 @@ namespace Heartbeat.Server.Services
                     x.StartTime,
                     x.EndTime,
                     x.Attributes,
-                    x.Payload))
+                    x.Payload,
+                    x.Aspect))
                 .ToListAsync(ct);
         }
 

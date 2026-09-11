@@ -113,7 +113,7 @@ function focusFact(fact: ExperienceSegment) {
       <div v-if="selected" class="selection glass-panel">
         <div class="section-heading"><h2>选中的记录</h2><button class="control" @click="selected = null">取消选择</button></div>
         <FactCard :fact="selected" selected :time-zone="calendar.day.timeZone" @select="choose" @focus="focusFact" />
-        <template v-if="selected.source === 'system'">
+        <template v-if="selected.aspect === 'desktop-activity'">
           <h3>相关 Browser 观察 <span>{{ related.length }}</span></h3>
           <p v-if="!related.length" class="hint">暂无相关观察</p>
           <div class="card-grid"><FactCard v-for="fact in related.slice(0, relatedLimit)" :key="fact.id" :fact="fact" :time-zone="calendar.day.timeZone" @select="choose" @focus="focusFact" /></div>

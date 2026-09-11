@@ -20,7 +20,8 @@ var definition = new CollectorClientDefinition(
     "vrchat.managed",
     new Dictionary<string, IReadOnlyList<int>>(StringComparer.Ordinal)
     {
-        ["facts.segment"] = [1],
+        ["facts.aspect"] = [1],
+            ["facts.segment"] = [1],
         ["auth.interactive"] = [1],
         ["secrets.instance"] = [1],
         ["resources.instance-data"] = [1],

@@ -53,13 +53,13 @@ onMounted(() => {
 })
 onUnmounted(() => observer?.disconnect())
 function toggle(set: Set<string>, id: string) { if (set.has(id)) set.delete(id); else set.add(id) }
-function sources(facts: ExperienceSegment[]) {
-  const order = (source: string) => source === 'system' ? 0 : source === 'browser' ? 1 : 2
-  return [...new Set(facts.map(f => f.source))].sort((a, b) => order(a) - order(b) || a.localeCompare(b))
+function aspects(facts: ExperienceSegment[]) {
+  const order = (aspect: string) => aspect === 'desktop-activity' ? 0 : aspect === 'selected-page' ? 1 : 2
+  return [...new Set(facts.map(f => f.aspect ?? ''))].sort((a, b) => order(a) - order(b) || a.localeCompare(b))
 }
-const sourceFacts = (facts: ExperienceSegment[], source: string) => facts.filter(f => f.source === source)
-const hasSystem = (facts: ExperienceSegment[]) => facts.some(f => f.source === 'system')
-const sourceLabel = (source: string) => source === 'system' ? '前台活动' : source === 'browser' ? 'Browser' : source === 'vrchat.account' ? 'VRChat' : source
+const aspectFacts = (facts: ExperienceSegment[], aspect: string) => facts.filter(f => (f.aspect ?? '') === aspect)
+const hasDesktop = (facts: ExperienceSegment[]) => facts.some(f => f.aspect === 'desktop-activity')
+const aspectLabel = (aspect: string) => aspect === 'desktop-activity' ? '前台活动' : aspect === 'selected-page' ? 'Browser' : aspect === 'account-location' ? '账号位置' : aspect || '原始观察'
 </script>
 
 <template>
@@ -70,31 +70,31 @@ const sourceLabel = (source: string) => source === 'system' ? '前台活动' : s
       <div class="timeline-rows">
         <div v-if="!targets.length && facts.length" class="empty-range">这个范围内没有活动</div>
         <section v-for="target in targets" :key="target.id" class="target">
-          <template v-for="(source, index) in sources(target.facts)" :key="source">
-            <template v-if="source !== 'browser' || !hasSystem(target.facts) || expandedBrowser.has(target.id)">
+          <template v-for="(aspect, index) in aspects(target.facts)" :key="aspect">
+            <template v-if="aspect !== 'selected-page' || !hasDesktop(target.facts) || expandedBrowser.has(target.id)">
               <div class="lane-row" :class="{ 'target-summary': index === 0 }">
                 <div v-if="index === 0" class="target-label row-header">
-                  <button v-if="target.kind === 'device' && hasSystem(target.facts)" class="target-name device-toggle" :aria-expanded="expandedDevices.has(target.id)" :aria-label="`${expandedDevices.has(target.id) ? '收起' : '展开'} ${target.name} 的应用`" @click="toggle(expandedDevices, target.id)">
+                  <button v-if="target.kind === 'device' && hasDesktop(target.facts)" class="target-name device-toggle" :aria-expanded="expandedDevices.has(target.id)" :aria-label="`${expandedDevices.has(target.id) ? '收起' : '展开'} ${target.name} 的应用`" @click="toggle(expandedDevices, target.id)">
                     <ChevronRight :size="12" class="chevron" :class="{ open: expandedDevices.has(target.id) }" /><Monitor :size="17" /><strong :title="target.name">{{ target.name }}</strong>
                   </button>
                   <div v-else class="target-name"><Monitor v-if="target.kind === 'device'" :size="17" /><UserRound v-else :size="17" /><strong :title="target.name">{{ target.name }}</strong></div>
-                  <span>{{ sourceLabel(source) }}</span>
+                  <span>{{ aspectLabel(aspect) }}</span>
                 </div>
-                <div v-else class="lane-label row-header"><Globe v-if="source === 'browser'" :size="14" />{{ sourceLabel(source) }}</div>
-                <FactLane :facts="sourceFacts(target.facts, source)" :range="range" :bounds="bounds" :ticks="ticks" :time-zone="timeZone" :selected-id="selectedId" :label="`${target.name} ${source}`" @range="emit('range', $event)" @select="emit('select', $event)" />
+                <div v-else class="lane-label row-header"><Globe v-if="aspect === 'selected-page'" :size="14" />{{ aspectLabel(aspect) }}</div>
+                <FactLane :facts="aspectFacts(target.facts, aspect)" :range="range" :bounds="bounds" :ticks="ticks" :time-zone="timeZone" :selected-id="selectedId" :label="`${target.name} ${aspect}`" @range="emit('range', $event)" @select="emit('select', $event)" />
               </div>
-              <template v-if="source === 'system' && expandedDevices.has(target.id)">
+              <template v-if="aspect === 'desktop-activity' && expandedDevices.has(target.id)">
                 <div v-for="app in groupApplications(target.facts)" :key="app.id" class="lane-row app-row">
                   <div class="app-label row-header" :title="app.name"><span class="app-icon"><AppWindow :size="17" /><AppIcon v-if="app.appId != null" :username="username" :app-id="app.appId" /></span><span>{{ app.name }}</span></div>
                   <FactLane compact :facts="app.facts" :range="range" :bounds="bounds" :ticks="ticks" :time-zone="timeZone" :selected-id="selectedId" :label="`${target.name} · ${app.name}`" @range="emit('range', $event)" @select="emit('select', $event)" />
                 </div>
               </template>
-              <details v-if="!hasFactView(source)" class="unknown-source row-header"><summary>{{ sourceFacts(target.facts, source).length }} 条观察 · Payload 样例</summary>
-                <FactCard v-for="fact in sourceFacts(target.facts, source).slice(0, 3)" :key="fact.id" :fact="fact" :time-zone="timeZone" @select="emit('select', $event)" @focus="emit('focus', $event)" />
+              <details v-if="!hasFactView(aspect)" class="unknown-aspect row-header"><summary>{{ aspectFacts(target.facts, aspect).length }} 条观察 · Payload 样例</summary>
+                <FactCard v-for="fact in aspectFacts(target.facts, aspect).slice(0, 3)" :key="fact.id" :fact="fact" :time-zone="timeZone" @select="emit('select', $event)" @focus="emit('focus', $event)" />
               </details>
             </template>
           </template>
-          <button v-if="target.facts.some(f => f.source === 'browser') && hasSystem(target.facts)" class="browser-toggle row-header" :aria-expanded="expandedBrowser.has(target.id)" @click="toggle(expandedBrowser, target.id)"><span aria-hidden="true">{{ expandedBrowser.has(target.id) ? '⌄' : '›' }}</span> Browser <span>{{ sourceFacts(target.facts, 'browser').length }}</span></button>
+          <button v-if="target.facts.some(f => f.aspect === 'selected-page') && hasDesktop(target.facts)" class="browser-toggle row-header" :aria-expanded="expandedBrowser.has(target.id)" @click="toggle(expandedBrowser, target.id)"><span aria-hidden="true">{{ expandedBrowser.has(target.id) ? '⌄' : '›' }}</span> Browser <span>{{ aspectFacts(target.facts, 'selected-page').length }}</span></button>
         </section>
       </div>
     </div>
@@ -121,7 +121,7 @@ const sourceLabel = (source: string) => source === 'system' ? '前台活动' : s
 .lane-label { display: flex; align-items: center; gap: 7px; padding: 15px 0 0 26px; color: var(--muted-foreground); font-size: .75rem; overflow-wrap: anywhere; }
 .browser-toggle { margin: 5px 0 0 26px; display: flex; gap: 7px; align-items: center; color: var(--muted-foreground); font-size: .7rem; cursor: pointer; }
 button:hover { color: var(--primary); }button:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; }
-.unknown-source { margin: 8px 0 12px calc(var(--label-width) + var(--lane-gap)); font-size: .75rem; color: var(--muted-foreground); }.unknown-source summary { cursor: pointer; }.unknown-source article { margin: 10px 0; }
+.unknown-aspect { margin: 8px 0 12px calc(var(--label-width) + var(--lane-gap)); font-size: .75rem; color: var(--muted-foreground); }.unknown-aspect summary { cursor: pointer; }.unknown-aspect article { margin: 10px 0; }
 .empty-range { padding: 32px 12px; text-align: center; font-size: .8rem; color: var(--muted-foreground); }
-@media (max-width: 680px) { .activity-swimlanes { --label-width: 110px; --lane-gap: 8px; }.target-name { gap: 4px; }.target-name strong { font-size: .75rem; }.axis { font-size: .6rem; }.unknown-source { margin-left: 0; }.target-label > span { margin-left: 23px; }.app-label { padding-left: 12px; gap: 6px; } }
+@media (max-width: 680px) { .activity-swimlanes { --label-width: 110px; --lane-gap: 8px; }.target-name { gap: 4px; }.target-name strong { font-size: .75rem; }.axis { font-size: .6rem; }.unknown-aspect { margin-left: 0; }.target-label > span { margin-left: 23px; }.app-label { padding-left: 12px; gap: 6px; } }
 </style>

@@ -234,7 +234,8 @@ public sealed record FactSubmission(
     FactTime Time,
     JsonElement Payload,
     Guid? ObserverId = null,
-    FactTarget? Target = null);
+    FactTarget? Target = null,
+    string? Aspect = null);
 
 public enum FactDeliveryStatus
 {

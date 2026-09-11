@@ -24,6 +24,7 @@ internal static class FactIngestContract
     {
         if (fact.StreamId == Guid.Empty || fact.FactId == Guid.Empty || fact.FactId.Version != 7 || fact.Revision is <= 0 or > 9_007_199_254_740_991)
             throw new FactIngestException("Invalid Fact envelope.");
+        if (!FactAspects.IsValid(fact.Aspect)) throw new FactIngestException("Invalid Fact Aspect.");
         if (fact.ObservedAt is { } observed && (observed.Offset != TimeSpan.Zero || observed > now.AddMinutes(5)))
             throw new FactIngestException("Invalid Fact observedAt.");
         if (kind == "segment")

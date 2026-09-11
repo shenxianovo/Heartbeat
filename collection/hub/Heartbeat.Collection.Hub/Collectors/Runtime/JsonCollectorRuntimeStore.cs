@@ -9,7 +9,7 @@ namespace Heartbeat.Collection.Hub.Collectors.Runtime;
 
 internal sealed class JsonCollectorRuntimeStore : IDisposable
 {
-    private const int CurrentSchemaVersion = 6;
+    private const int CurrentSchemaVersion = 7;
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -156,6 +156,18 @@ internal sealed class JsonCollectorRuntimeStore : IDisposable
                 foreach (var fact in facts.OfType<JsonObject>())
                     if (segments.Contains(fact["streamId"]!.GetValue<string>()) && fact["payload"] is { } payload)
                         fact["payload"] = JsonNode.Parse(Heartbeat.Core.Facts.ActivityFactPayload.Normalize(JsonSerializer.SerializeToElement(payload)).GetRawText());
+            }
+        }
+        if (schemaVersion is >= 1 and <= 6)
+        {
+            root["schemaVersion"] = CurrentSchemaVersion;
+            if (root["streams"] is JsonArray streams && root["facts"] is JsonArray facts)
+            {
+                var byId = streams.OfType<JsonObject>().ToDictionary(s => s["streamId"]!.GetValue<string>());
+                foreach (var fact in facts.OfType<JsonObject>())
+                    if (fact["aspect"] is null && fact["payload"] is { } payload && byId.TryGetValue(fact["streamId"]!.GetValue<string>(), out var stream))
+                        fact["aspect"] = Heartbeat.Core.Facts.FactAspectCompatibility.Infer(
+                            stream["source"]!.GetValue<string>(), stream["factKind"]!.GetValue<string>(), JsonSerializer.SerializeToElement(payload));
             }
         }
         return root.Deserialize<CollectorRuntimeState>(SerializerOptions)
@@ -392,7 +404,7 @@ public sealed class CollectorRuntimeStateException(string message, Exception? in
 
 internal sealed class CollectorRuntimeState
 {
-    public int SchemaVersion { get; init; } = 6;
+    public int SchemaVersion { get; init; } = 7;
     public List<CollectorInstanceState> Instances { get; init; } = [];
     public List<FactStreamState> Streams { get; init; } = [];
     public List<CommittedFactState> Facts { get; init; } = [];
@@ -571,6 +583,7 @@ internal sealed class CommittedFactState
     public Guid StreamId { get; init; }
     public Guid FactId { get; init; }
     public long Revision { get; init; }
+    public string? Aspect { get; init; }
     public Guid? ObserverId { get; init; }
     public FactTarget? Target { get; init; }
     public DateTimeOffset? ObservedAt { get; init; }
@@ -584,7 +597,7 @@ internal sealed class CommittedFactState
     public CommittedFactState ConfirmDelivery() => new()
     {
         StreamId = StreamId, FactId = FactId, Revision = Revision,
-        ObserverId = ObserverId, Target = Target,
+        ObserverId = ObserverId, Target = Target, Aspect = Aspect,
         ObservedAt = ObservedAt, Start = Start, End = End,
         IsFinal = IsFinal, OccurredAt = OccurredAt, Payload = Payload,
         Delivered = true

@@ -121,7 +121,7 @@ Result 是语义改名，不要求趁迁移重整 JSON。已存 `activityKey` �
 | VRChat 账号位置活动 | account（包括有旧身份依据的未知历史账号） | `account-location`，世界/实例细节原样保留 |
 | 个人 Target 或其他自定义事实 | 有明确直接对象依据时引用；否则 null | 已有 activityKey 的 Segment 使用 `activity`；未能解释的其他结果 Aspect 保留 null，Result 不丢失 |
 
-Aspect 由既有活动/输入形状确定，不建立新旧分类体系。只有 Source、实际 Payload 形状与原发布契约
+历史 Aspect 由既有活动/输入形状确定，不建立新旧分类体系。只有 Source、实际 Payload 形状与原发布契约
 共同支持时才采用具体含义；例如 Source=system 的任意 JSON Event 不能全部宣称是输入事件。
 应用上下文上的自定义 Event 也不能因关联相同就被解释成选中页面。
 对所有已知/未知分支建立映射清单后，才能声明覆盖了全部历史数据。
@@ -178,7 +178,7 @@ JSON 本身不提供外键，应在事务入口及数据库保护中落实，不
 | --- | --- | --- |
 | Facts 旧写入键、旧 FactStore/LegacyImport 转换 | 旧 `/facts`、segments/input 导入及尚在缓存中的旧身份事实 | 全部旧安装升级、进行中事实终结、缓存与备份恢复窗口退出；证明双向到达顺序只保管一个事实，旧 API 引用完成迁移 |
 | Streams / Subjects / FactGaps | Gap、ACK、旧身份接管、运行管理 | 业务归属不用它们；交付/管理仍有消费者就保留，删除必须另有同等保管路径，不以五表数量为清理理由 |
-| Runtime JSON 读取器与完整快照 ACK | 当前 v6、仍支持的 v1–v5 历史缓存 | 保留备份与 Delivered、原 FactId/Revision/时间/Gap；验证转换后新旧 ACK 都只确认准确的已发送内容 |
+| Runtime JSON 读取器与完整快照 ACK | 当前 v7、仍支持的 v1–v6 历史缓存 | 保留备份与 Delivered、原 FactId/Revision/时间/Gap；验证转换后新旧 ACK 都只确认准确的已发送内容 |
 | Browser pendingSegments/foldState/安装身份 | 多窗口、Service Worker 重启、离线待发与初始化绑定 | 原窗口 Fact 不按 App 合并；有设备依据才绑定，旧队列排空且升级/重放已验证后退出旧 reader |
 | VRChat checkpoint v1/v2/v3 | active、pending Facts/Gaps，含旧未知账号 | 保留旧事实终结与新账号分离；不以当前账号补旧快照；真实安装升级与恢复窗口结束后才退出 |
 | Source/AppIdentityId 与资料映射 | 未知历史解释、App 产品纠错、查询与重放 | 属于仍需保存的证据；迁往有同等表达力的固定位置并完成消费者切换前不能删除 |
@@ -250,3 +250,9 @@ Source、AppIdentity、Stream/FactId、原 Target 与辅助资料保留各自现
 验证及剩余门禁见[实施 PRD](../../.scratch/observation-storage/PRD.md)。
 演练脚本已适配五表候选，保留从 NativeFactCustody 完整备份升级与原版本恢复的流程；
 仅验证了脚本和隔离测试 SQL，尚未恢复完整副本演练。真实资源与生产验收不能由自动测试替代。
+
+### 显式 Aspect 后续
+
+后续追加 `20260911043115_ExplicitFactAspects`，候选演练脚本目标已同步。
+新版 Collector 明确给出 Aspect，兼容入口仍解释旧数据；[语义边界](observation-semantics.md)列明
+HTTP v4、Runtime v7、SDK v2 和启动回退保护。本节不改变上述尚未执行的业务库/资源验收状态。

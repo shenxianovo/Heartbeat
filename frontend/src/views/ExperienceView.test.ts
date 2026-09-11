@@ -11,7 +11,7 @@ vi.mock('../api', () => ({ fetchExperiencePage: vi.fn() }))
 
 const makeFact = (id: string, start: string, source = 'system'): ExperienceSegment => ({
   id, factId: id, streamId: 'stream', revision: 1, targetKind: 'device', targetId: 1, deviceId: 1,
-  targetName: 'Mac', source, appId: 1, appIdentityId: 1, appName: 'Browser', appKey: 'browser', startTime: start,
+  targetName: 'Mac', source, aspect: source === 'system' ? 'desktop-activity' : source === 'browser' ? 'selected-page' : source, appId: 1, appIdentityId: 1, appName: 'Browser', appKey: 'browser', startTime: start,
   endTime: new Date(Date.parse(start) + 1000).toISOString(), payload: { title: `record-${id}` },
 })
 function setup() {

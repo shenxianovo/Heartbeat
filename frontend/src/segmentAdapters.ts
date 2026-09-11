@@ -9,6 +9,7 @@ export interface SegmentLike {
   streamId?: string
   origin?: string
   source?: string
+  aspect?: string
   identityKey?: string
   title?: string
   payload?: Record<string, unknown>
@@ -17,6 +18,8 @@ export interface SegmentLike {
 }
 
 export interface UsageSegLike {
+  source?: string
+  aspect?: string
   appKey?: string
   appDisplayName?: string
   appName?: string
@@ -38,13 +41,13 @@ export function urlOf(payload?: Record<string, unknown>): string | undefined {
   return typeof url === 'string' ? url : undefined
 }
 
-export function laneKeyOf(source: string | undefined, payload?: Record<string, unknown>, streamId?: string): string | undefined {
-  if (!source) return undefined
+export function laneKeyOf(aspect: string | undefined, payload?: Record<string, unknown>, streamId?: string): string | undefined {
+  if (!aspect) return undefined
   const attributes = attributesOf(payload)
-  const laneKey = source === 'browser' ? attributes?.windowId : attributes?.laneKey
+  const laneKey = aspect === 'selected-page' ? attributes?.windowId : attributes?.laneKey
   if (typeof laneKey !== 'number' && typeof laneKey !== 'string') return undefined
   // Browser window IDs are local to an External Host. Legacy imports cannot recover that host.
-  if (source === 'browser') return streamId ? `${streamId}:${laneKey}` : undefined
+  if (aspect === 'selected-page') return streamId ? `${streamId}:${laneKey}` : undefined
   return streamId ? `${streamId}:${laneKey}` : String(laneKey)
 }
 
@@ -99,7 +102,8 @@ export function toReplaySegs(
     if (!span) continue
     out.push({
       ...span,
-      source: 'system',
+      source: u.source ?? '',
+      aspect: u.aspect,
       label: u.title ?? '',
     })
   }
@@ -111,8 +115,9 @@ export function toReplaySegs(
     out.push({
       ...span,
       source: s.source,
+      aspect: s.aspect,
       label: [s.title ?? s.identityKey, urlOf(s.payload)].filter(Boolean).join('  '),
-      laneKey: laneKeyOf(s.source, s.payload, s.origin === 'legacy-import' ? undefined : s.streamId),
+      laneKey: laneKeyOf(s.aspect, s.payload, s.origin === 'legacy-import' ? undefined : s.streamId),
     })
   }
   return out

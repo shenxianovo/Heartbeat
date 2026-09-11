@@ -9,7 +9,7 @@ public sealed record ExperienceSegment(
     Guid Id, Guid StreamId, Guid FactId, long Revision,
     Guid? ObserverId, string? TargetKind, long? TargetId, string? TargetName, long? DeviceId,
     string Source, long? AppId, long? AppIdentityId, string? AppName, string? AppKey,
-    DateTimeOffset StartTime, DateTimeOffset EndTime, JsonElement Payload);
+    DateTimeOffset StartTime, DateTimeOffset EndTime, JsonElement Payload, string? Aspect);
 
 public sealed record ExperiencePage(List<ExperienceSegment> Items, Guid? NextCursor);
 
@@ -33,7 +33,7 @@ public sealed class ExperienceService(AppDbContext db)
             TargetName = s.TargetKind == "account" ? db.ServiceAccounts.Where(a => a.OwnerId == s.OwnerId && a.Id == s.TargetId).Select(a => a.ServiceAccountId ?? "历史账号（身份未知）").FirstOrDefault() : s.TargetKind == "device" ? db.Devices.Where(d => d.OwnerId == s.OwnerId && d.Id == s.TargetId)
                 .Select(d => d.DeviceName).FirstOrDefault() : s.TargetKind == "application-context" ? db.ApplicationContexts.Where(c => c.OwnerId == s.OwnerId && c.Id == s.TargetId).Select(c => c.Device.DeviceName + " / " + c.App.DisplayName).FirstOrDefault() : null,
             DeviceId = s.TargetKind == "device" ? s.TargetId : s.TargetKind == "application-context" ? db.ApplicationContexts.Where(c => c.OwnerId == s.OwnerId && c.Id == s.TargetId).Select(c => (long?)c.DeviceId).FirstOrDefault() : null,
-            s.Source, s.AppIdentityId,
+            s.Source, s.Aspect, s.AppIdentityId,
             AppId = s.TargetKind == "account" ? db.ServiceAccounts.Where(a => a.OwnerId == s.OwnerId && a.Id == s.TargetId).Select(a => (long?)a.Service.AppId).FirstOrDefault() : s.TargetKind == "application-context" ? db.ApplicationContexts.Where(c => c.OwnerId == s.OwnerId && c.Id == s.TargetId).Select(c => (long?)c.AppId).FirstOrDefault() : s.AppIdentity == null ? (long?)null : s.AppIdentity.AppId,
             AppName = s.TargetKind == "account" ? db.ServiceAccounts.Where(a => a.OwnerId == s.OwnerId && a.Id == s.TargetId).Select(a => a.Service.App.DisplayName).FirstOrDefault() : s.TargetKind == "application-context" ? db.ApplicationContexts.Where(c => c.OwnerId == s.OwnerId && c.Id == s.TargetId).Select(c => c.App.DisplayName).FirstOrDefault() : s.AppIdentity == null ? null : s.AppIdentity.App.DisplayName,
             AppKey = s.TargetKind == "account" ? db.ServiceAccounts.Where(a => a.OwnerId == s.OwnerId && a.Id == s.TargetId).Select(a => a.Service.App.Key).FirstOrDefault() : s.TargetKind == "application-context" ? db.ApplicationContexts.Where(c => c.OwnerId == s.OwnerId && c.Id == s.TargetId).Select(c => c.App.Key).FirstOrDefault() : s.AppIdentity == null ? null : s.AppIdentity.App.Key,
@@ -42,7 +42,7 @@ public sealed class ExperienceService(AppDbContext db)
         var hasMore = rows.Count > PageSize;
         var items = rows.Take(PageSize).Select(s => new ExperienceSegment(
             s.Id, s.StreamId, s.FactId, s.Revision, s.ObserverId, s.TargetKind, s.TargetId, s.TargetName, s.DeviceId,
-            s.Source, s.AppId, s.AppIdentityId, s.AppName, s.AppKey, s.StartTime, s.EndTime, s.Payload.RootElement.Clone())).ToList();
+            s.Source, s.AppId, s.AppIdentityId, s.AppName, s.AppKey, s.StartTime, s.EndTime, s.Payload.RootElement.Clone(), s.Aspect)).ToList();
         foreach (var row in rows) row.Payload.Dispose();
         return new ExperiencePage(items, hasMore ? items[^1].Id : null);
     }

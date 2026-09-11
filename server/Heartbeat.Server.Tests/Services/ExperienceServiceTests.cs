@@ -23,12 +23,15 @@ public sealed class ExperienceServiceTests(PostgresContainerFixture fixture) : P
         await using var db = CreateDbContext();
         var batch = FactStoreTests.SegmentBatch("account");
         batch.Streams[0].Source = "custom.observation";
+        batch.Facts[0].Aspect = "custom.snapshot";
         batch.Facts[0].Start = Start.AddHours(-1);
         batch.Facts[0].End = Start.AddHours(1);
         batch.Facts[0].Payload = JsonSerializer.SerializeToElement(new { arbitrary = new[] { 1, 2, 3 } });
         await new FactStore(db).IngestAsync("owner", batch);
         var service = new ExperienceService(db);
         var row = Assert.Single((await service.ReadAsync("owner", Window, null)).Items);
+        Assert.Equal("custom.snapshot", row.Aspect);
+        Assert.Equal("custom.observation", row.Source);
         Assert.Null(row.TargetKind);
         Assert.Null(row.TargetId);
         Assert.Null(row.AppIdentityId);

@@ -374,11 +374,11 @@ public sealed class SystemCollectorProtocolAdapter :
         new CollectorSegmentFactTime(snapshot.Start, snapshot.End, snapshot.IsFinal),
         JsonSerializer.SerializeToElement(new
         {
-            identityKey = snapshot.IdentityKey,
+            activityKey = snapshot.IdentityKey,
             appIdentityKey = snapshot.AppIdentityKey,
             appDisplayName = snapshot.AppDisplayName,
             title = snapshot.Title
-        }), _activation!.Initialization.CollectorInstanceId, DeviceTarget);
+        }), _activation!.Initialization.CollectorInstanceId, DeviceTarget, Heartbeat.Core.Facts.FactAspects.DesktopActivity);
 
     private CollectorFact ToFact(InputEventItem item) => new(
         SystemInProcessCollector.InputEventBindingId,
@@ -391,7 +391,7 @@ public sealed class SystemCollectorProtocolAdapter :
             eventType = EventTypeName(item.EventType),
             codeSet = item.CodeSet,
             code = item.Code
-        }), _activation!.Initialization.CollectorInstanceId, DeviceTarget);
+        }), _activation!.Initialization.CollectorInstanceId, DeviceTarget, Heartbeat.Core.Facts.FactAspects.Input);
 
     private FactTarget DeviceTarget => new("device", _activation!.Initialization.SubjectId.ToString("D"));
 

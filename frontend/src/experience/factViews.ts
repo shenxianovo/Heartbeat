@@ -11,6 +11,7 @@ export interface ExperienceSegment {
   targetName?: string | null
   deviceId?: number | null
   source: string
+  aspect?: string | null
   appId: number | null
   appIdentityId: number | null
   appName: string | null
@@ -41,13 +42,13 @@ function safeUrl(value: string): string | undefined {
 type FactView = (fact: ExperienceSegment, payload: Record<string, unknown>) => FactPresentation
 // Developer-authored views share raw facts; collectors do not deliver executable presentation code.
 const views: Record<string, FactView> = {
-  system: (fact, p) => isAwayApp(fact.appKey, fact.appName) ? {
-    title: '离开', subtitle: '系统记录的离开区间', color: '#8893a1', fields: [],
+  'desktop-activity': (fact, p) => isAwayApp(fact.appKey, fact.appName) ? {
+    title: '离开', subtitle: '离开区间', color: '#8893a1', fields: [],
   } : ({
     title: text(p.title) || fact.appName || '前台活动',
-    subtitle: fact.appName || 'System', color: '#388bb5', fields: [],
+    subtitle: fact.appName || '前台活动', color: '#388bb5', fields: [],
   }),
-  browser: (fact, p) => {
+  'selected-page': (fact, p) => {
     const attrs = object(p.attributes)
     const url = text(attrs.url)
     return {
@@ -57,16 +58,16 @@ const views: Record<string, FactView> = {
       fields: url ? [{ label: 'URL', value: url, href: safeUrl(url) }] : [],
     }
   },
-  'vrchat.account': (_fact, p) => ({
-    title: text(p.worldName) || text(p.title) || text(p.worldId) || 'VRChat 观察',
-    subtitle: 'VRChat · 世界停留', color: '#8870ba',
+  'account-location': (fact, p) => ({
+    title: text(p.worldName) || text(p.title) || text(p.worldId) || '账号位置',
+    subtitle: fact.appName ? `${fact.appName} · 账号位置` : '账号位置', color: '#8870ba',
     fields: ['worldId', 'instanceId'].flatMap(key => text(p[key]) ? [{ label: key, value: text(p[key]) }] : []),
   }),
 }
 
-export function hasFactView(source: string): boolean { return Object.prototype.hasOwnProperty.call(views, source) }
+export function hasFactView(aspect: string | null | undefined): boolean { return aspect != null && Object.prototype.hasOwnProperty.call(views, aspect) }
 export function presentFact(fact: ExperienceSegment): FactPresentation {
-  return hasFactView(fact.source) ? views[fact.source]!(fact, object(fact.payload))
+  return hasFactView(fact.aspect) ? views[fact.aspect!]!(fact, object(fact.payload))
     : { title: '原始观察', subtitle: fact.source, color: '#8793a3', fields: [] }
 }
 export function rangeOf(fact: ExperienceSegment): TimeRange {
@@ -78,9 +79,9 @@ export function overlaps(a: TimeRange, b: TimeRange): boolean {
     : a.start < b.end && a.end > b.start
 }
 export function relatedBrowser(fact: ExperienceSegment, facts: ExperienceSegment[]): ExperienceSegment[] {
-  if (fact.source !== 'system') return []
+  if (fact.aspect !== 'desktop-activity') return []
   return facts.filter(other => {
-    if (other.source !== 'browser' || !overlaps(rangeOf(fact), rangeOf(other))) return false
+    if (other.aspect !== 'selected-page' || !overlaps(rangeOf(fact), rangeOf(other))) return false
     if (fact.deviceId != null && other.deviceId != null)
       return other.deviceId === fact.deviceId && (fact.appId != null && other.appId != null
         ? other.appId === fact.appId : fact.appIdentityId != null && other.appIdentityId === fact.appIdentityId)
@@ -125,7 +126,7 @@ export function groupTargets(facts: ExperienceSegment[], range: TimeRange) {
 export function groupApplications(facts: ExperienceSegment[]) {
   const groups = new Map<string, { id: string; appId: number | null; name: string; facts: ExperienceSegment[] }>()
   for (const fact of facts) {
-    if (fact.source !== 'system') continue
+    if (fact.aspect !== 'desktop-activity') continue
     const identity = fact.appId != null ? `app:${fact.appId}` : fact.appIdentityId != null
       ? `identity:${fact.appIdentityId}` : `stream:${fact.streamId}`
     const id = `${factTarget(fact).id}/${identity}`

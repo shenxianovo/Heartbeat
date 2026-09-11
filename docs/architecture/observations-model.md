@@ -62,3 +62,6 @@ DataSource 和计算口径暂不展开；Measurement 的具体数值业务约束
 
 此前方案保留在[历史讨论](collector-observation-model-proposal.md)、ADR-055/056 及
 [上一轮切换记录](observation-target-cutover.md)；与五表目标冲突的选择以 ADR-059 为准。
+
+显式 Aspect 已从第一方 Collector 贯通到存储、分析及 Dashboard；具体契约、旧缓存升级与协议切换见
+[Fact 的观测语义边界](observation-semantics.md)。

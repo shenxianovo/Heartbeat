@@ -20,6 +20,7 @@ internal static class FactCanonicalization
                 writer.WriteString("streamId", fact.StreamId);
                 writer.WriteString("factId", fact.FactId);
                 writer.WriteNumber("revision", fact.Revision);
+                if (fact.Aspect is { } aspect) writer.WriteString("aspect", aspect);
                 if (fact.ObserverId is { } observer) writer.WriteString("observerId", observer);
                 if (fact.Target is { } target)
                 {
@@ -75,6 +76,7 @@ internal static class FactCanonicalization
                 writer.WriteString("streamId", fact.StreamId);
                 writer.WriteString("factId", fact.FactId);
                 writer.WriteNumber("revision", fact.Revision);
+                if (fact.Aspect is { } aspect) writer.WriteString("aspect", aspect);
                 if (fact.ObserverId is { } observer) writer.WriteString("observerId", observer);
                 if (fact.Target is { } target)
                 {

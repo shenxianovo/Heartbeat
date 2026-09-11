@@ -69,20 +69,20 @@ try {
   execFileSync('docker', ['exec', container, 'psql', '-U', 'postgres', '-d', 'heartbeat', '-v', 'ON_ERROR_STOP=1', '-c',
     `INSERT INTO "Users" ("Id","Username","LastSeenAt","IsPublic") VALUES (${quote(claims.sub)},${quote(username)},now(),false)`], { stdio: 'pipe' })
   async function request(path, method = 'GET', body) {
-    const response = await fetch(api + path, { method, headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json', 'X-Heartbeat-Protocol-Version': '3' }, body: body === undefined ? undefined : JSON.stringify(body) })
+    const response = await fetch(api + path, { method, headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json', 'X-Heartbeat-Protocol-Version': '4' }, body: body === undefined ? undefined : JSON.stringify(body) })
     assert.ok(response.ok, `API ${method} ${path}: ${response.status}`)
     return response.status === 204 ? null : response.text().then(s => s ? JSON.parse(s) : null)
   }
   const person = await request('/api/v1/me/person', 'PUT')
   function uuid7() { const id = randomUUID().replaceAll('-', ''); const hex = Date.now().toString(16).padStart(12, '0') + '7' + id.slice(13); return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}` }
-  for (const [source, target, title] of [
-    ['system', { kind: 'device', reference: 'person-smoke-device' }, 'System 历史活动'],
-    ['browser', { kind: 'application-context', reference: JSON.stringify(['person-smoke-device', 'mac:com.google.chrome']) }, 'Browser 历史页面'],
-    ['vrchat.account', { kind: 'account', reference: JSON.stringify(['vrchat', 'usr_11111111-1111-4111-8111-111111111111']) }, 'VRChat 历史世界'],
-    ['personal.fixture', { kind: 'person', reference: person.reference }, '直接个人事实'],
+  for (const [source, aspect, target, title] of [
+    ['system', 'desktop-activity', { kind: 'device', reference: 'person-smoke-device' }, 'System 历史活动'],
+    ['browser', 'selected-page', { kind: 'application-context', reference: JSON.stringify(['person-smoke-device', 'mac:com.google.chrome']) }, 'Browser 历史页面'],
+    ['vrchat.account', 'account-location', { kind: 'account', reference: JSON.stringify(['vrchat', 'usr_11111111-1111-4111-8111-111111111111']) }, 'VRChat 历史世界'],
+    ['personal.fixture', 'activity', { kind: 'person', reference: person.reference }, '直接个人事实'],
   ]) {
     const streamId = randomUUID(), observerId = randomUUID()
-    await request('/api/v1/facts', 'POST', { streams: [{ streamId, collectorInstanceId: observerId, subject: { subjectId: randomUUID(), kind: 'person' }, outputId: 'activity', source, factKind: 'segment', dimensions: {} }], facts: [{ streamId, factId: uuid7(), revision: 1, observerId, target, start: '2026-09-01T01:00:00Z', end: '2026-09-01T01:10:00Z', isFinal: true, payload: { activityKey: source, title } }], gaps: [] })
+    await request('/api/v1/facts', 'POST', { streams: [{ streamId, collectorInstanceId: observerId, subject: { subjectId: randomUUID(), kind: 'person' }, outputId: 'activity', source, factKind: 'segment', dimensions: {} }], facts: [{ streamId, factId: uuid7(), revision: 1, observerId, target, aspect, start: '2026-09-01T01:00:00Z', end: '2026-09-01T01:10:00Z', isFinal: true, payload: { activityKey: source, title } }], gaps: [] })
   }
   const original = await request(`/api/v1/users/${encodeURIComponent(username)}/facts/segments`)
   const settings = await request('/api/v1/me/person')

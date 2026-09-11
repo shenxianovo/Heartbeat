@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Heartbeat.Core.DTOs.Facts;
+using Heartbeat.Core.Facts;
 using Heartbeat.Core.DTOs.Input;
 using Heartbeat.Core.DTOs.Segments;
 using Heartbeat.Server.Data;
@@ -139,7 +140,8 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
 
     private async Task Apply(FactStream stream, FactSnapshot snapshot, CancellationToken ct)
     {
-        var payload = StoredPayload(snapshot.Payload!.Value, stream.FactKind);
+        var payload = snapshot.Aspect is null ? StoredPayload(snapshot.Payload!.Value, stream.FactKind) : JsonDocument.Parse(snapshot.Payload!.Value.GetRawText());
+        var aspect = snapshot.Aspect ?? FactAspectCompatibility.Infer(stream.Source, stream.FactKind, payload.RootElement);
         var start = NormalizeTime(snapshot.Start);
         var end = NormalizeTime(snapshot.End);
         var at = NormalizeTime(snapshot.OccurredAt);
@@ -147,7 +149,7 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
             ? await db.Segments.SingleOrDefaultAsync(f => f.OwnerId == stream.OwnerId && f.StreamId == stream.StreamId && f.FactId == snapshot.FactId, ct)
             : await db.Events.SingleOrDefaultAsync(f => f.OwnerId == stream.OwnerId && f.StreamId == stream.StreamId && f.FactId == snapshot.FactId, ct);
         if (fact is not null && snapshot.Revision < fact.Revision) return;
-        var appIdentityId = await ResolveApp(stream, payload.RootElement, ct)
+        var appIdentityId = await ResolveApp(stream, payload.RootElement, aspect, ct)
             ?? (snapshot.ObserverId is null && snapshot.Target is null ? fact?.AppIdentityId : null);
         var attribution = await ResolveAttribution(stream, snapshot, appIdentityId, ct);
         if (fact is not null)
@@ -157,7 +159,7 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
                 : ((Event)fact).Timestamp == at;
             if (snapshot.Revision == fact.Revision)
             {
-                if (!sameTimes || fact.ObserverId != attribution.ObserverId || fact.TargetKind != attribution.Kind || fact.TargetId != attribution.Id ||
+                if (!sameTimes || fact.Aspect != aspect || fact.ObserverId != attribution.ObserverId || fact.TargetKind != attribution.Kind || fact.TargetId != attribution.Id ||
                     !JsonElement.DeepEquals(fact.Payload.RootElement, payload.RootElement))
                     throw new FactIngestException("The same Fact Revision has different content.", true);
                 return;
@@ -188,6 +190,7 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         fact.Stream = stream;
         fact.FactId = snapshot.FactId;
         fact.Source = stream.Source;
+        fact.Aspect = aspect;
         fact.ObserverId = attribution.ObserverId;
         fact.TargetKind = attribution.Kind;
         fact.TargetId = attribution.Id;
@@ -266,8 +269,9 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         return (snapshot.ObserverId, "device", targetDevice.Id, appIdentityId);
     }
 
-    private async Task<long?> ResolveApp(FactStream stream, JsonElement payload, CancellationToken ct)
+    private async Task<long?> ResolveApp(FactStream stream, JsonElement payload, string? aspect, CancellationToken ct)
     {
+        if (aspect is not (FactAspects.DesktopActivity or FactAspects.SelectedPage or FactAspects.Activity)) return null;
         var dimensions = JsonDocument.Parse(stream.Dimensions).RootElement;
         var key = String(dimensions, "appIdentityKey") ?? String(payload, "appIdentityKey");
         if (key is null) return null;

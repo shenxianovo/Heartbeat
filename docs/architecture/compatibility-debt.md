@@ -9,6 +9,9 @@
 退出条件已在[观测存储实施方案](observation-storage-design.md#旧客户端重放与切换)列明，
 不将计划写成现有兼容代码。实施时再更新本台账对应行。
 
+2026-09-11：五表实现见 [ADR-059](../adr/059-observation-storage-five-tables.md)，显式 Aspect 的传输、缓存和分析边界见
+[Fact 观测语义](observation-semantics.md)。当前业务库及实际安装未在本轮操作。
+
 ## Owner rulings（2026-08-28）
 
 - 兼容支持按**真实安装与落盘状态**退出，不凭提交日期猜窗口：所有 Desktop 安装、Browser
@@ -44,6 +47,9 @@
 | 严格上行协议切换 | 旧 Agent 收到 426，新 Agent 迁移缓存后重传 | `RequireHeartbeatProtocolAttribute.cs`、`SegmentIngestContract.cs`、`UploadStream.cs` | 完成真实旧客户端升级演练，并明确协议版本支持/弃用窗口 | server-first 演练、426 UI、缓存容量、迁移后幂等重传与坏记录隔离 |
 
 | Browser Observer/应用上下文切换 | 改造前第一方 Browser、Runtime v1–v4、扩展 local/session 快照、旧 HTTP/投影形状 | [Browser 实施记录](browser-observation-targets.md)，Ticket 02 | Ticket 05：旧版本退出、缓存盘点及重放完成、可映射历史回填、未知历史可直接查询，离线/回滚窗口明确 | 保留 BrowserRuntime v4→v5/HTTP、Browser 历史家族迁移、安装 UUID、App 纠错重放、完整 ACK 与旧 key fixture；记录生产副本演练及移除 commit |
+
+| Fact 缺 Aspect 的旧契约 | Runtime v1–v6、SDK v1 旧 Fact/死信、Browser 既有快照、旧 segment/input HTTP 缓存及缺 Aspect 的原生请求；SQL null fallback | `FactAspectCompatibility`、`JsonCollectorRuntimeStore` v7、`ExplicitFactAspects` migration、[实施记录](observation-semantics.md) | Collection/Protocol owner 盘点 Desktop、Headless、Browser Profile 与备份，Analytics owner 盘点导入/原生入口；所有保留缓存成功重放、安装全面显式发布 Aspect、缺值流量归零，并由项目 owner 明确最长离线及回滚恢复窗口并证明已结束。当前尚无现场窗口证据，保留兼容 | 保留每版 fixture，检查原 FactId/Revision/时间/Result/Delivered 与备份；重放不新增 Fact/Gap，显式未知结果不被规范化；移除时追加 SQL migration、移除旧投影及 Infer 调用，跑全链回归并记录盘点、窗口和移除 commit。历史 migrations 不改写 |
+| SDK Aspect 缓存的旧包回退 | outbox/dead-letter 实际含 Aspect 的 v2；无 Aspect 仍为 v1；Runtime 状态 v7 | 启动前检查包 `facts.aspect` v1、未知 envelope 停止加载、cache/ManagedProcess tests | Collection/Protocol owner 证明所有可启动或可回退包理解 v2，旧包退出受支持清单并经过上述离线/恢复窗口；此前不得绕过启动拦截或用 v1 备份替代当前待发记录 | Runtime 重启/手动启动/自动回退同一入口；v2 原文件不变、不产生 outbox_corrupted Gap；新包可读取重放、确认不删更高 Revision |
 
 ## 维护规则
 

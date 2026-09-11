@@ -151,6 +151,7 @@ export function toProtocolFact(snapshot: SegmentSnapshot, streamId: string) {
     streamId,
     factId: snapshot.id,
     revision: snapshotRevision(snapshot),
+    aspect: 'selected-page',
     observerId: snapshot.observerId,
     target: snapshot.target,
     observedAt: null,
@@ -201,6 +202,7 @@ export async function openBrowserProtocolSession(
         ...await browserPackageReference(),
         protocolMajors: [1],
         supportedCapabilities: {
+          'facts.aspect': [1],
           'facts.segment': [1],
           'diagnostics.stream-gap': [1],
         },
@@ -218,6 +220,7 @@ export async function openBrowserProtocolSession(
       attempt.helloMessageId,
     ) || !isUuidV7(acceptedMessage.body.activationId) ||
       acceptedMessage.body.selectedProtocolMajor !== 1 ||
+      acceptedMessage.body.selectedCapabilities?.['facts.aspect'] !== 1 ||
       acceptedMessage.body.selectedCapabilities?.['facts.segment'] !== 1 ||
       acceptedMessage.body.selectedCapabilities?.['diagnostics.stream-gap'] !== 1)
       return 'rejected'

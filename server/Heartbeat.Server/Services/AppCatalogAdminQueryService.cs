@@ -1,3 +1,4 @@
+using Heartbeat.Core.Facts;
 using Heartbeat.Core.DTOs.Apps;
 using Heartbeat.Server.AppCatalog;
 using Heartbeat.Server.Data;
@@ -29,7 +30,7 @@ public sealed class AppCatalogAdminQueryService(
             .ToListAsync(cancellationToken);
         var usageRows = await db.ActivitySegments
             .AsNoTracking()
-            .Where(x => x.Source == "system" && x.DeviceId != null && x.AppIdentityId != null)
+            .Where(x => x.Aspect == FactAspects.DesktopActivity && x.DeviceId != null && x.AppIdentityId != null)
             .GroupBy(x => x.AppIdentity!.AppId)
             .Select(group => new
             {

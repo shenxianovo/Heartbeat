@@ -16,10 +16,10 @@ public class RecapProjectionTests
         CollectorDeclarationTestData.With(CollectorDeclarationTestData.BrowserV1());
 
     private static RecapSegmentInput Sys(string app, string? title, DateTimeOffset start, DateTimeOffset end, string device = "Main PC")
-        => new(device, ActivitySources.System, $"{app}|{title}", app, title, start, end);
+        => new(device, ActivitySources.System, $"{app}|{title}", app, title, start, end, Aspect: Heartbeat.Core.Facts.FactAspects.DesktopActivity);
 
     private static RecapSegmentInput Browser(string url, string? title, DateTimeOffset start, DateTimeOffset end, string device = "Main PC")
-        => new(device, "browser", url, "chrome", title, start, end);
+        => new(device, "browser", url, "chrome", title, start, end, Aspect: Heartbeat.Core.Facts.FactAspects.SelectedPage);
 
     private static RecapProjectionResult Project(params RecapSegmentInput[] segments)
         => RecapProjection.Project(segments, Window, TimeSpan.Zero, depthTables: Tables);

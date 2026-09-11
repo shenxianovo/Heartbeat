@@ -259,6 +259,7 @@ function toProtocolFact(snapshot, streamId) {
     streamId,
     factId: snapshot.id,
     revision: snapshotRevision(snapshot),
+    aspect: "selected-page",
     observerId: snapshot.observerId,
     target: snapshot.target,
     observedAt: null,
@@ -293,6 +294,7 @@ async function openBrowserProtocolSession(port, appIdentityKey, externalHostIden
           ...await browserPackageReference(),
           protocolMajors: [1],
           supportedCapabilities: {
+            "facts.aspect": [1],
             "facts.segment": [1],
             "diagnostics.stream-gap": [1]
           },
@@ -309,7 +311,7 @@ async function openBrowserProtocolSession(port, appIdentityKey, externalHostIden
       "activation.accepted",
       void 0,
       attempt.helloMessageId
-    ) || !isUuidV7(acceptedMessage.body.activationId) || acceptedMessage.body.selectedProtocolMajor !== 1 || acceptedMessage.body.selectedCapabilities?.["facts.segment"] !== 1 || acceptedMessage.body.selectedCapabilities?.["diagnostics.stream-gap"] !== 1)
+    ) || !isUuidV7(acceptedMessage.body.activationId) || acceptedMessage.body.selectedProtocolMajor !== 1 || acceptedMessage.body.selectedCapabilities?.["facts.aspect"] !== 1 || acceptedMessage.body.selectedCapabilities?.["facts.segment"] !== 1 || acceptedMessage.body.selectedCapabilities?.["diagnostics.stream-gap"] !== 1)
       return "rejected";
     const accepted = acceptedMessage.body;
     const initialize = await protocolFetch(
