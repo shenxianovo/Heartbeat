@@ -46,6 +46,7 @@ namespace Heartbeat.Server.Data
                 entity.ToTable("Facts", t =>
                 {
                     t.HasCheckConstraint("CK_Facts_Revision", "\"Revision\" >= 1");
+                    t.HasCheckConstraint("CK_Facts_LegacyIdentity", "(\"StreamId\" IS NULL) = (\"FactId\" IS NULL)");
                     t.HasCheckConstraint("CK_Facts_Time", "\"StartTime\" IS NOT NULL AND isfinite(\"StartTime\") AND ((\"Kind\" = 'event' AND \"EndTime\" IS NULL) OR (\"Kind\" = 'segment' AND \"EndTime\" IS NOT NULL AND isfinite(\"EndTime\") AND \"EndTime\" >= \"StartTime\"))");
                 });
                 entity.HasDiscriminator(e => e.Kind).HasValue<Segment>("segment").HasValue<Event>("event");

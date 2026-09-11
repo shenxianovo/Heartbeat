@@ -29,6 +29,7 @@ public partial class AppDbContext
         });
         modelBuilder.Entity<FactRecord>(entity =>
         {
+            entity.Property(e => e.AppReferenceEvidence).HasColumnType("jsonb");
             entity.HasAlternateKey(e => new { e.OwnerId, e.Id });
             entity.HasOne<ObservationCollector>().WithMany().HasForeignKey(e => new { e.OwnerId, e.ObserverId }).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ObservationObject>().WithMany().HasForeignKey(e => e.FoiId).OnDelete(DeleteBehavior.Restrict);

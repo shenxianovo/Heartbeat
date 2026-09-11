@@ -7,18 +7,19 @@ public interface IFactRecord
 {
     Guid Id { get; set; }
     string OwnerId { get; set; }
-    Guid StreamId { get; set; }
-    Guid FactId { get; set; }
+    Guid? StreamId { get; set; }
+    Guid? FactId { get; set; }
     long Revision { get; set; }
     string? Aspect { get; set; }
     Guid? ObserverId { get; set; }
     Guid? FoiId { get; set; }
     string? TargetKind { get; set; }
     long? TargetId { get; set; }
-    string Source { get; set; }
+    string? Source { get; set; }
     long? AppIdentityId { get; set; }
+    JsonDocument? AppReferenceEvidence { get; set; }
     JsonDocument Payload { get; set; }
-    FactStream Stream { get; set; }
+    FactStream? Stream { get; set; }
 }
 
 public sealed class FactSubjectRecord

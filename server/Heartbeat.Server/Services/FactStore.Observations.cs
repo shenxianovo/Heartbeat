@@ -10,21 +10,31 @@ public sealed partial class FactStore
     private sealed record ObjectResolution(Guid Id, long? AppIdentityId = null);
     private sealed record ObservationMember(string Role, Guid ObjectId);
     private sealed record ObservationRelation(string Kind, List<ObservationMember> Members);
-    private sealed record ObservationState(Guid? CollectorId, Guid? FoiId, long? AppIdentityId, List<ObservationRelation> Relations);
+    private sealed record ObservationState(Guid? CollectorId, Guid? FoiId, long? AppIdentityId,
+        List<ObservationRelation> Relations, List<ResolvedAppReference>? AppReferences = null);
 
     private async Task<ObservationState> ResolveObservation(FactStream stream, FactSnapshot snapshot,
-        JsonElement payload, string? aspect, CancellationToken ct, long? oldAppIdentityId = null)
+        JsonElement payload, string? aspect, CancellationToken ct, long? oldAppIdentityId = null, IFactRecord? existingFact = null)
     {
         if (snapshot.Relations is null)
             return await ResolveLegacyObservation(stream, snapshot, payload, aspect, ct, oldAppIdentityId);
         if (snapshot.ObserverId is not null || snapshot.Target is not null)
             throw new FactIngestException("A Fact cannot mix object references with the retired Target envelope.");
-        if (snapshot.CollectorId == Guid.Empty || snapshot.Relations.Count > 8)
+        return await ResolveObservation(stream.OwnerId, snapshot.CollectorId, snapshot.Foi, snapshot.Relations, ct, existingFact);
+    }
+
+    private async Task<ObservationState> ResolveObservation(string owner, Guid? collectorId,
+        ObservationObjectReference? foiReference, List<FactRelationSnapshot> references, CancellationToken ct,
+        IFactRecord? existingFact = null)
+    {
+        if (collectorId == Guid.Empty || references.Count > 8)
             throw new FactIngestException("Invalid observation envelope.");
-        var foi = snapshot.Foi is null ? null : await ResolveObject(stream.OwnerId, snapshot.Foi, ct);
+        var appReferences = new List<ResolvedAppReference>();
+        var foi = foiReference is null ? null : await ResolveObservationReference(owner, foiReference, "foi",
+            existingFact, appReferences, ct);
         var relations = new List<ObservationRelation>();
         long? appIdentityId = foi?.AppIdentityId;
-        foreach (var relation in snapshot.Relations)
+        foreach (var relation in references)
         {
             if (relation is null || relation.Members is null || relations.Any(r => r.Kind == relation.Kind))
                 throw new FactIngestException("Invalid or duplicate Fact relation.");
@@ -42,7 +52,8 @@ public sealed partial class FactStore
             {
                 if (member.Object is null || member.Object.Kind != (member.Role == "device" ? "machine" : member.Role))
                     throw new FactIngestException("Relation role does not match the Object kind.");
-                var resolved = await ResolveObject(stream.OwnerId, member.Object, ct);
+                var resolved = await ResolveObservationReference(owner, member.Object, $"relation:{relation.Kind}:{member.Role}",
+                    existingFact, appReferences, ct);
                 if (resolved.AppIdentityId is { } identity)
                 {
                     if (appIdentityId is not null && appIdentityId != identity)
@@ -58,15 +69,12 @@ public sealed partial class FactStore
                 throw new FactIngestException("One Fact cannot claim conflicting Objects for the same relation role.");
             relations.Add(new(relation.Kind, members));
         }
-        return new(snapshot.CollectorId, foi?.Id, appIdentityId, relations);
+        return new(collectorId, foi?.Id, appIdentityId, relations, appReferences);
     }
 
     private async Task<ObjectResolution> ResolveObject(string owner, ObservationObjectReference reference, CancellationToken ct)
     {
-        if (reference.Kind is not ("machine" or "app" or "account" or "person") ||
-            string.IsNullOrWhiteSpace(reference.Scope) || reference.Scope.Length > 128 || reference.Scope != reference.Scope.Trim() ||
-            string.IsNullOrWhiteSpace(reference.Key) || reference.Key.Length > 1024 || reference.Key != reference.Key.Trim())
-            throw new FactIngestException("Invalid Object reference.");
+        ValidateReferenceShape(reference);
         if (reference.Kind == "machine" && reference.Scope == ObservationObjectScopes.Machine)
         {
             if (reference.Key.Length > 256 || reference.Key.StartsWith("subject:", StringComparison.Ordinal))

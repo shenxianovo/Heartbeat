@@ -29,7 +29,7 @@ public sealed class DirectObservationMigrationTests(PostgresContainerFixture fix
             INSERT INTO "Facts" ("Id", "OwnerId", "Kind", "StreamId", "FactId", "Revision", "Source", "TargetKind", "TargetId", "AppIdentityId", "Result", "StartTime", "EndTime")
               VALUES ({factId}, 'owner', 'segment', {streamId}, {factId}, 3, 'system', 'device', 1, 1, {"{\"activityKey\":\"keep\",\"extra\":[1,2]}"}::jsonb, '2026-09-01Z', '2026-09-01T00:01Z');
             """);
-        const string factSnapshot = """SELECT to_jsonb(f)::text AS "Value" FROM "Facts" f ORDER BY "Id" """;
+        const string factSnapshot = """SELECT (to_jsonb(f) - 'AppReferenceEvidence')::text AS "Value" FROM "Facts" f ORDER BY "Id" """;
         const string relationSnapshot = """SELECT (to_jsonb(r) - 'AssociationId')::text AS "Value" FROM "Relations" r ORDER BY "Id" """;
         const string memberSnapshot = """SELECT to_jsonb(m)::text AS "Value" FROM "RelationMembers" m ORDER BY "RelationId", "Role" """;
         var facts = await db.Database.SqlQueryRaw<string>(factSnapshot).ToListAsync();

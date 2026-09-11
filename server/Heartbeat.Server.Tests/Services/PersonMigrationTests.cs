@@ -77,7 +77,7 @@ public sealed class PersonMigrationTests(PostgresContainerFixture fixture) : Pos
         await db.Database.MigrateAsync();
         await db.Database.MigrateAsync();
         var factsAfter = await db.Database.SqlQueryRaw<string>("""
-            SELECT (to_jsonb(f) - 'FoiId' - 'Aspect')::text AS "Value" FROM "Facts" f ORDER BY "Value"
+            SELECT (to_jsonb(f) - 'FoiId' - 'Aspect' - 'AppReferenceEvidence')::text AS "Value" FROM "Facts" f ORDER BY "Value"
             """).ToListAsync();
         Assert.Equal(factsBefore, factsAfter);
         Assert.Equal(2, await db.Facts.CountAsync(f => f.ObserverId == null));

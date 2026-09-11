@@ -25,9 +25,10 @@ public sealed partial class FactStore
                     if (source != item.Source) throw new FactIngestException("Legacy Segment Source changed.", true);
                     continue;
                 }
-                var row = await db.Segments.Include(s => s.Stream).ThenInclude(s => s.Subject).SingleOrDefaultAsync(s => s.Id == item.Id);
-                if (row is not null && row.Stream.Origin != "legacy-import")
-                    throw new FactIngestException("Native database row identity is not a legacy import identity.", true);
+                var stored = await db.Facts.Include(s => s.Stream).ThenInclude(s => s!.Subject).SingleOrDefaultAsync(s => s.Id == item.Id);
+                if (stored is not null && (stored is not Segment || stored.Stream?.Origin != "legacy-import"))
+                    throw new FactIngestException("Fact identity is unavailable for legacy import.", true);
+                var row = stored as Segment;
                 var stream = await LegacyStream(device, item.Source, "segment");
                 if (row is not null && (row.OwnerId != device.OwnerId || !SameSubject(row.Stream.Subject, stream.Subject) ||
                     row.Source != item.Source || String(row.Payload.RootElement, "activityKey") != item.IdentityKey))
@@ -118,10 +119,10 @@ public sealed partial class FactStore
             foreach (var item in request.Events.DistinctBy(e => e.Id))
             {
                 if (claims.ContainsKey(item.Id)) continue;
-                var existing = await db.Events.Include(e => e.Stream).ThenInclude(s => s.Subject).SingleOrDefaultAsync(e => e.Id == item.Id);
+                var existing = await db.Facts.Include(e => e.Stream).ThenInclude(s => s!.Subject).SingleOrDefaultAsync(e => e.Id == item.Id);
                 if (existing is not null)
                 {
-                    if (existing.Stream.Origin != "legacy-import" || existing.OwnerId != device.OwnerId || !SameSubject(existing.Stream.Subject, stream.Subject))
+                    if (existing is not Event || existing.Stream?.Origin != "legacy-import" || existing.OwnerId != device.OwnerId || !SameSubject(existing.Stream.Subject, stream.Subject))
                         throw new FactIngestException("Legacy input identity belongs to another Subject.", true);
                     continue;
                 }
@@ -160,16 +161,16 @@ public sealed partial class FactStore
             var last = Guid.ParseExact(prefixes[^1] + "ffffffffffffffffffff", "N");
             candidates = (await db.Segments.Where(f => f.OwnerId == device.OwnerId && f.Stream.Origin == "native" &&
                 (f.Stream.Subject.DeviceId == device.Id || account != null && f.Stream.Subject.SubjectId == account) &&
-                f.FactId.CompareTo(first) >= 0 && f.FactId.CompareTo(last) <= 0).ToListAsync()).Cast<IFactRecord>().ToList();
+                f.FactId.HasValue && f.FactId.Value.CompareTo(first) >= 0 && f.FactId.Value.CompareTo(last) <= 0).ToListAsync()).Cast<IFactRecord>().ToList();
         }
         else candidates = (await db.Events.Where(f => f.OwnerId == device.OwnerId && f.Source == "system" && f.Stream.Origin == "native" &&
             (f.Stream.Subject.DeviceId == device.Id || account != null && f.Stream.Subject.SubjectId == account) &&
-            ids.Contains(f.FactId)).ToListAsync()).Cast<IFactRecord>().ToList();
+            f.FactId.HasValue && ids.Contains(f.FactId.Value)).ToListAsync()).Cast<IFactRecord>().ToList();
         var requested = ids.ToHashSet();
         var result = new Dictionary<Guid, string>();
         foreach (var fact in candidates)
         {
-            var id = kind == "segment" ? FactIngestContract.ProjectedSegmentId(fact.StreamId, fact.FactId) : fact.FactId;
+            var id = kind == "segment" ? FactIngestContract.ProjectedSegmentId(fact.StreamId!.Value, fact.FactId!.Value) : fact.FactId!.Value;
             if (!requested.Contains(id)) continue;
             if (!result.TryAdd(id, fact.Source)) throw new FactIngestException("Legacy identity matches multiple native Streams.", true);
         }

@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Heartbeat.Server.Services;
 
-/// <summary>Atomically owns the latest Segment/Event snapshots and their Subject/Stream identities.</summary>
+/// <summary>Atomically owns independent and adapted legacy Segment/Event snapshots.</summary>
 public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvider = null)
 {
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
@@ -149,27 +149,14 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
             ? await db.Segments.SingleOrDefaultAsync(f => f.OwnerId == stream.OwnerId && f.StreamId == stream.StreamId && f.FactId == snapshot.FactId, ct)
             : await db.Events.SingleOrDefaultAsync(f => f.OwnerId == stream.OwnerId && f.StreamId == stream.StreamId && f.FactId == snapshot.FactId, ct);
         if (fact is not null && snapshot.Revision < fact.Revision) return;
+        aspect ??= fact?.Aspect;
         var observation = await ResolveObservation(stream, snapshot, payload.RootElement, aspect, ct,
-            snapshot.ObserverId is null && snapshot.Target is null ? fact?.AppIdentityId : null);
-        if (fact is not null)
-        {
-            var sameTimes = fact is Segment segment
-                ? segment.StartTime == start && segment.EndTime == end
-                : ((Event)fact).Timestamp == at;
-            if (snapshot.Revision == fact.Revision)
-            {
-                if (!sameTimes || fact.Aspect != aspect || fact.ObserverId != observation.CollectorId || fact.FoiId != observation.FoiId ||
-                    !await SameRelations(fact.Id, observation.Relations, ct) ||
-                    !JsonElement.DeepEquals(fact.Payload.RootElement, payload.RootElement))
-                    throw new FactIngestException("The same Fact Revision has different content.", true);
-                return;
-            }
-            if (fact is Segment oldSegment ? oldSegment.StartTime != start : ((Event)fact).Timestamp != at)
-                throw new FactIngestException("Fact Revision cannot change its start/occurrence.", true);
-        }
-        else
+            snapshot.ObserverId is null && snapshot.Target is null ? fact?.AppIdentityId : null, fact);
+        var takeover = false;
+        if (fact is null)
         {
             fact = await FindLegacy(stream, snapshot, payload, ct);
+            takeover = fact is not null;
             if (fact is null)
             {
                 if (stream.FactKind == "segment")
@@ -189,23 +176,7 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
         fact.StreamId = stream.StreamId;
         fact.Stream = stream;
         fact.FactId = snapshot.FactId;
-        fact.Source = stream.Source;
-        fact.Aspect = aspect;
-        fact.ObserverId = observation.CollectorId;
-        fact.FoiId = observation.FoiId;
-        fact.TargetKind = null;
-        fact.TargetId = null;
-        fact.Revision = snapshot.Revision;
-        fact.Payload = payload;
-        fact.AppIdentityId = observation.AppIdentityId;
-        if (fact is Segment savedSegment)
-        {
-            savedSegment.StartTime = start!.Value;
-            savedSegment.EndTime = end!.Value;
-        }
-        else ((Event)fact).Timestamp = at!.Value;
-        await db.SaveChangesAsync(ct);
-        await WriteRelations(fact, observation.Relations, ct);
+        await SaveSnapshot(fact, snapshot.Revision, aspect, stream.Source, payload, observation, start, end, at, ct, takeover);
     }
 
     private async Task<long?> ResolveApp(FactStream stream, JsonElement payload, string? aspect, CancellationToken ct)
@@ -227,7 +198,7 @@ public sealed partial class FactStore(AppDbContext db, TimeProvider? timeProvide
             : await db.Events.Include(f => f.Stream).ThenInclude(s => s.Subject)
                 .SingleOrDefaultAsync(f => f.Id == legacyId && f.OwnerId == stream.OwnerId && f.Stream.Origin == "legacy-import", ct);
         if (fact is null) return null;
-        if (!SameSubject(fact.Stream.Subject, stream.Subject) || fact.Source != stream.Source)
+        if (!SameSubject(fact.Stream!.Subject, stream.Subject) || fact.Source != stream.Source)
             throw new FactIngestException("Legacy Fact belongs to a different Subject or Source.", true);
         if (fact is Event input && (input.Timestamp != NormalizeTime(snapshot.OccurredAt) ||
             !JsonElement.DeepEquals(input.Payload.RootElement, payload.RootElement)))

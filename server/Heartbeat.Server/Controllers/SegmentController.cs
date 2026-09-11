@@ -52,6 +52,10 @@ namespace Heartbeat.Server.Controllers
             {
                 return UnprocessableEntity(ex.Message);
             }
+            catch (FactIngestException ex)
+            {
+                return ex.IsConflict ? Conflict(ex.Message) : UnprocessableEntity(ex.Message);
+            }
             return Ok();
         }
     }

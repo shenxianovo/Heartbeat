@@ -8,11 +8,11 @@ namespace Heartbeat.Server.Services;
 
 public sealed class ExperienceSegment : ObservationResponse
 {
-    public Guid StreamId { get; set; }
-    public Guid FactId { get; set; }
+    public Guid? StreamId { get; set; }
+    public Guid? FactId { get; set; }
     public long Revision { get; set; }
     public long? DeviceId { get; set; }
-    public string Source { get; set; } = string.Empty;
+    public string? Source { get; set; }
     public long? AppId { get; set; }
     public long? AppIdentityId { get; set; }
     public string? AppName { get; set; }

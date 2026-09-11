@@ -19,7 +19,7 @@ public sealed partial class FactStore
          orderby f.StartTime descending, f.Id
          select new FactResponse
          {
-             Id = f.Id, StreamId = f.StreamId, FactId = f.FactId, Revision = f.Revision,
+             Id = f.Id, Kind = f.Kind, StreamId = f.StreamId, FactId = f.FactId, Revision = f.Revision,
              ObserverId = f.ObserverId, FoiId = f.FoiId, Aspect = f.Aspect,
              Source = f.Source,
              DeviceId = attribution.DeviceId, AppId = attribution.AppId,
@@ -40,7 +40,7 @@ public sealed partial class FactStore
          orderby f.Timestamp descending, f.Id
          select new FactResponse
          {
-             Id = f.Id, StreamId = f.StreamId, FactId = f.FactId, Revision = f.Revision,
+             Id = f.Id, Kind = f.Kind, StreamId = f.StreamId, FactId = f.FactId, Revision = f.Revision,
              ObserverId = f.ObserverId, FoiId = f.FoiId, Aspect = f.Aspect,
              Source = f.Source,
              DeviceId = attribution.DeviceId, AppId = attribution.AppId,

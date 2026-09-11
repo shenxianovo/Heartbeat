@@ -5,7 +5,7 @@ namespace Heartbeat.Server.Entities
     /// </summary>
     public class ActivitySegment
     {
-        /// <summary>稳定的查询行身份；历史导入保留旧 Id，原生事实使用其存储键。原生去重以 Owner/Stream/FactId/Revision 为准。</summary>
+        /// <summary>稳定的查询行身份；独立观测保留生产者 Id，旧事实保留已有存储 Id。</summary>
         public Guid Id { get; set; }
         public string? Aspect { get; set; }
         public Guid? ObserverId { get; set; }
@@ -17,14 +17,14 @@ namespace Heartbeat.Server.Entities
 
         public long? DeviceId { get; set; }
 
-        public Guid StreamId { get; set; }
-        public Guid FactId { get; set; }
+        public Guid? StreamId { get; set; }
+        public Guid? FactId { get; set; }
         public long Revision { get; set; }
-        public FactStream Stream { get; set; } = null!;
+        public FactStream? Stream { get; set; }
         /// <summary>Complete Collector Fact payload, without the historical transport wrapper.</summary>
         public string? Payload { get; set; }
 
-        public string Source { get; set; } = string.Empty;
+        public string? Source { get; set; }
 
         /// <summary>采集器声明的活动分组判据；不替代 FactId 或 Revision。</summary>
         public string IdentityKey { get; set; } = string.Empty;

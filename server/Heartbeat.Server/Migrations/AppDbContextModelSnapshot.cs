@@ -500,11 +500,14 @@ namespace Heartbeat.Server.Migrations
                     b.Property<long?>("AppIdentityId")
                         .HasColumnType("bigint");
 
+                    b.Property<JsonDocument>("AppReferenceEvidence")
+                        .HasColumnType("jsonb");
+
                     b.Property<string>("Aspect")
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("text");
 
-                    b.Property<Guid>("FactId")
+                    b.Property<Guid?>("FactId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid?>("FoiId")
@@ -532,11 +535,10 @@ namespace Heartbeat.Server.Migrations
                         .HasColumnType("bigint");
 
                     b.Property<string>("Source")
-                        .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
-                    b.Property<Guid>("StreamId")
+                    b.Property<Guid?>("StreamId")
                         .HasColumnType("uuid");
 
                     b.Property<long?>("TargetId")
@@ -567,6 +569,8 @@ namespace Heartbeat.Server.Migrations
 
                     b.ToTable("Facts", null, t =>
                         {
+                            t.HasCheckConstraint("CK_Facts_LegacyIdentity", "(\"StreamId\" IS NULL) = (\"FactId\" IS NULL)");
+
                             t.HasCheckConstraint("CK_Facts_Revision", "\"Revision\" >= 1");
 
                             t.HasCheckConstraint("CK_Facts_Time", "\"StartTime\" IS NOT NULL AND isfinite(\"StartTime\") AND ((\"Kind\" = 'event' AND \"EndTime\" IS NULL) OR (\"Kind\" = 'segment' AND \"EndTime\" IS NOT NULL AND isfinite(\"EndTime\") AND \"EndTime\" >= \"StartTime\"))");
@@ -1112,6 +1116,8 @@ namespace Heartbeat.Server.Migrations
 
                     b.ToTable(t =>
                         {
+                            t.HasCheckConstraint("CK_Facts_LegacyIdentity", "(\"StreamId\" IS NULL) = (\"FactId\" IS NULL)");
+
                             t.HasCheckConstraint("CK_Facts_Revision", "\"Revision\" >= 1");
 
                             t.HasCheckConstraint("CK_Facts_Time", "\"StartTime\" IS NOT NULL AND isfinite(\"StartTime\") AND ((\"Kind\" = 'event' AND \"EndTime\" IS NULL) OR (\"Kind\" = 'segment' AND \"EndTime\" IS NOT NULL AND isfinite(\"EndTime\") AND \"EndTime\" >= \"StartTime\"))");
@@ -1139,6 +1145,8 @@ namespace Heartbeat.Server.Migrations
 
                     b.ToTable(t =>
                         {
+                            t.HasCheckConstraint("CK_Facts_LegacyIdentity", "(\"StreamId\" IS NULL) = (\"FactId\" IS NULL)");
+
                             t.HasCheckConstraint("CK_Facts_Revision", "\"Revision\" >= 1");
 
                             t.HasCheckConstraint("CK_Facts_Time", "\"StartTime\" IS NOT NULL AND isfinite(\"StartTime\") AND ((\"Kind\" = 'event' AND \"EndTime\" IS NULL) OR (\"Kind\" = 'segment' AND \"EndTime\" IS NOT NULL AND isfinite(\"EndTime\") AND \"EndTime\" >= \"StartTime\"))");
@@ -1251,8 +1259,7 @@ namespace Heartbeat.Server.Migrations
                     b.HasOne("Heartbeat.Server.Entities.FactStream", "Stream")
                         .WithMany()
                         .HasForeignKey("OwnerId", "StreamId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("AppIdentity");
 
