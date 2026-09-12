@@ -10,6 +10,13 @@ internal sealed class PostgresTrackStore(HeartbeatDbContext dbContext) : ITrackS
     private static readonly TimeModeConverter TimeModeConverter = new();
     private static readonly EndModeConverter EndModeConverter = new();
 
+    public Task<Track?> FindAsync(Guid ownerId, Guid trackId, CancellationToken cancellationToken = default) =>
+        (from track in dbContext.Tracks.AsNoTracking()
+         join collector in dbContext.Collectors on track.CollectorId equals collector.Id
+         join timeline in dbContext.Timelines on collector.TimelineId equals timeline.Id
+         where track.Id == trackId && timeline.OwnerId == ownerId
+         select track).SingleOrDefaultAsync(cancellationToken);
+
     public async Task<ResolvedTrack?> ResolveAsync(
         Guid ownerId,
         Track candidate,

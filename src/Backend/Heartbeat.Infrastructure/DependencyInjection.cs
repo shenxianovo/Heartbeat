@@ -23,6 +23,7 @@ public static class DependencyInjection
         services.AddScoped<IContinuousStateStore, PostgresContinuousStateStore>();
         services.AddScoped<ITrackStore, PostgresTrackStore>();
         services.AddScoped<IResolveTrack, ResolveTrack>();
+        services.AddScoped<IUploadRecords, UploadRecords>();
 
         return services;
     }

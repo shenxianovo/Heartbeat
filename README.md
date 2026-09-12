@@ -28,7 +28,7 @@ tests/
 
 ## Collector 接入进度
 
-已认证 Owner 的 Timeline 需要预先存在。当前已支持依次注册 Collector 和获取 Track：
+已认证 Owner 的 Timeline 需要预先存在。当前已支持注册 Collector、获取 Track 和批量上传记录：
 
 1. `POST /api/v1/collectors`，提交 `key`、`target` 和 `displayName`，获得稳定 Collector ID。
 2. `POST /api/v1/collectors/{collectorId}/tracks`，提交协议名称和版本，获得稳定 Track ID：
@@ -39,7 +39,9 @@ tests/
 
 时间模式由服务端确定；重复获取复用同一 Track。[桌面前台应用 v1](docs/protocols/desktop-application-foreground-v1.md) 使用明确的已确认区间，载荷只包含设备标识与平台原生应用标识。
 
-持续状态的内部原子存储入口已实现。批量 Record 上传、重放查询和桌面 Collector 尚未接入。
+取得 Track ID 后，调用 `POST /api/v1/tracks/{trackId}/records`，通过 `records` 数组上传同一 Track 的 1–500 条记录。服务端逐条返回状态及确认时间，客户端必须检查每条结果；没有完整回执时保留原 ID 重试。请求示例、部分成功及重试规则见[批量上传契约](.scratch/record-upload/spec.md)。
+
+批量上传已接入协议校验与持续状态原子存储。重放查询和桌面 Collector 尚未接入。
 
 ## 本地运行
 

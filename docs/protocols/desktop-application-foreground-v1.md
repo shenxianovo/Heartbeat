@@ -1,6 +1,6 @@
 # 桌面前台应用协议 v1
 
-状态：协议定义、载荷校验器及 Track 获取接口已实现；Record 上传和 Collector 待接入。
+状态：协议定义、载荷校验器、Track 获取及批量 Record 上传接口已实现；重放和 Collector 待接入。
 
 ## 含义
 
@@ -52,3 +52,4 @@ Track 不强制区间互斥，也不把新 Record 自动解释为旧 Record 的�
 - [`RecordProtocols`](../../src/Backend/Heartbeat.Domain/Recording/Protocols/RecordProtocols.cs) — 代码注册定义与载荷校验。
 - [`RecordProtocol`](../../src/Backend/Heartbeat.Domain/Recording/Protocols/RecordProtocol.cs) — 协议的固定时间行为及续期能力。
 - [`ADR-0002`](../adr/ADR-0002-monotonic-record-extension.md) — 已确认区间续期规则。
+- [批量上传契约](../../.scratch/record-upload/spec.md) — 上传格式、逐条确认与重试。
