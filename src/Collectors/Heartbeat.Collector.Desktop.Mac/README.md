@@ -3,6 +3,8 @@
 最小 macOS Collector 会注册 `heartbeat.collector.desktop.macos`，获取
 `desktop.application.foreground` v1 Track，并轮询系统前台应用上传已确认区间。
 
+当前 `--target` 同时作为 Collector Target 和协议载荷中的 `device_id`。这只是最小实现的传递方式，不表示设备表或 Device Identity 注册表已经实现；设备关联、断采规则和持久上传队列见[记录模型未决设计](../../../../docs/recording-open-questions.md)。
+
 ## 运行
 
 ```bash

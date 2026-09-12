@@ -2,46 +2,41 @@
 
 Heartbeat 将一个人在数字世界中的异构活动痕迹记录为时间有序的观测轨道。
 
-## 技术栈
+## 文档目录
 
-- .NET 10 / ASP.NET Core
-- Entity Framework Core 10 with Npgsql
-- PostgreSQL 18
-- Docker Compose 本地开发环境
+- [领域语言](CONTEXT.md)：Heartbeat 记录领域的核心术语。
+- [架构决策](docs/adr)：已经接受的关键设计决策，新增 ADR 使用 [仓库模板](docs/adr/ADR-TEMPLATE.md)。
+- [记录存储模型](docs/recording-storage-model.md)：`Timeline -> Collector -> Track -> Record` 四层模型、字段和约束。
+- [记录 HTTP 接口](docs/recording-api.md)：Collector 注册、Track 获取、Record 上传和 Track 级重放查询。
+- [桌面前台应用协议 v1](docs/protocols/desktop-application-foreground-v1.md)：当前已实现的首个 Record 协议。
+- [记录模型持久化说明](src/Backend/Heartbeat.Infrastructure/Persistence/README.md)：EF Core / PostgreSQL 映射约定。
+- [macOS Collector](src/Collectors/Heartbeat.Collector.Desktop.Mac/README.md)：最小桌面 Collector 的运行方式。
+- [未决设计](docs/recording-open-questions.md)：持久队列、断采规则、设备关联等尚未确认的问题。
+- [Agent 规则](AGENTS.md)：协作约束和本仓库的工程规则。
 
-## 目录结构
+## 项目结构
 
 ```text
 src/
-└── Backend/
-    ├── Heartbeat.Api/             # ASP.NET Core 宿主和 HTTP 端点
-    ├── Heartbeat.Application/     # 用例和应用接口
-    ├── Heartbeat.Domain/          # 记录模型和不变量
-    └── Heartbeat.Infrastructure/  # EF Core 和 PostgreSQL 适配器
+├── Backend/
+│   ├── Heartbeat.Api/             # ASP.NET Core 宿主和 HTTP 端点
+│   ├── Heartbeat.Application/     # 用例和应用接口
+│   ├── Heartbeat.Domain/          # 记录模型和不变量
+│   └── Heartbeat.Infrastructure/  # EF Core 和 PostgreSQL 适配器
+└── Collectors/
+    └── Heartbeat.Collector.Desktop.Mac/  # 独立采样和上传的 macOS Collector
 
 tests/
 ```
 
 解决方案和共享 .NET 构建配置放在仓库根目录，供未来同级的 .NET 项目复用。
 
-持久化结构和约定见[记录模型持久化说明](src/Backend/Heartbeat.Infrastructure/Persistence/README.md)。
+## 技术栈
 
-## Collector 接入进度
-
-已认证 Owner 的 Timeline 需要预先存在。当前已支持注册 Collector、获取 Track 和批量上传记录：
-
-1. `POST /api/v1/collectors`，提交 `key`、`target` 和 `displayName`，获得稳定 Collector ID。
-2. `POST /api/v1/collectors/{collectorId}/tracks`，提交协议名称和版本，获得稳定 Track ID：
-
-```json
-{"type":"desktop.application.foreground","version":1}
-```
-
-时间模式由服务端确定；重复获取复用同一 Track。[桌面前台应用 v1](docs/protocols/desktop-application-foreground-v1.md) 使用明确的已确认区间，载荷只包含设备标识与平台原生应用标识。
-
-取得 Track ID 后，调用 `POST /api/v1/tracks/{trackId}/records`，通过 `records` 数组上传同一 Track 的 1–500 条记录。服务端逐条返回状态及确认时间，客户端必须检查每条结果；没有完整回执时保留原 ID 重试。请求示例、部分成功及重试规则见[批量上传契约](.scratch/record-upload/spec.md)。
-
-批量上传已接入协议校验与持续状态原子存储。重放查询和桌面 Collector 尚未接入。
+- .NET 10 / ASP.NET Core
+- Entity Framework Core 10 with Npgsql
+- PostgreSQL 18
+- Docker Compose 本地开发环境
 
 ## 本地运行
 

@@ -1,6 +1,8 @@
 # Issue tracker: Local Markdown
 
-Issues and specs for this repo live as markdown files in `.scratch/`.
+Issues and specs for in-progress work live as markdown files in `.scratch/`.
+
+`.scratch` is temporary scaffolding. When the implementation is complete, delete the scratch files and move durable knowledge into the right long-lived document: `CONTEXT.md` for domain language, `docs/adr/` for accepted decisions, `docs/` for stable contracts and architecture notes, or the relevant package README for operational usage.
 
 ## Conventions
 

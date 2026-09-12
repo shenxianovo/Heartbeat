@@ -4,7 +4,7 @@
 
 本文档记录逐表评审后确认的存储设计。`Timeline`、`Collector`、`Track` 和 `Record` 四张表的结构已经定案。
 
-持续状态的区间续期规则已由 [ADR-0002](adr/ADR-0002-monotonic-record-extension.md) 确认，不增加表字段；内部原子存储和批量 HTTP 上传已实现，相关重放逻辑尚未实现。
+持续状态的区间续期规则已由 [ADR-0002](adr/ADR-0002-monotonic-record-extension.md) 确认，不增加表字段；内部原子存储、批量 HTTP 上传和 Track 级最小重放查询已实现。HTTP 契约见[记录接口文档](recording-api.md)。
 
 ## 关系
 
@@ -174,7 +174,7 @@ created_at timestamptz NOT NULL
 - Collector 必须已存在且属于当前 Owner；缺失和不属于该 Owner 均返回 `404 collector_not_found`。
 - 时间模式来自代码协议，未知协议或版本返回 `400 unsupported_protocol`；已有 Track 时间模式与协议不一致时返回 `409 track_protocol_conflict`，不修改历史 Track。
 - 重复和并发获取保留已有 ID 与创建时间，成功始终返回 `200`。字段使用 HTTP 的 camelCase 格式，包括 `collectorId`、`timeMode`、`endMode` 和 `createdAt`。
-- Track 获取用于 Collector 接入准备，具体契约与验证见 [Track 获取规范](../.scratch/track-resolution/spec.md)。
+- Track 获取用于 Collector 接入准备，具体契约见[记录接口文档](recording-api.md)。
 
 ## Record
 
@@ -219,6 +219,14 @@ value jsonb NOT NULL
 - 初始只增加 `(track_id, started_at, id)` B-tree 索引，用于按 Track 稳定重放。
 - 暂不为 `received_at`、`observed_at` 或 `ended_at` 建索引；出现实际查询需求后再增加。
 
+重放查询：
+
+- `GET /api/v1/tracks/{trackId}/records` 返回当前 Owner 所属 Track 的元信息和 Record 列表。
+- 查询参数可包含 `from`、`to` 和 `limit`。时间窗按 `[from, to)` 处理，`limit` 默认 200，最大 500。
+- 返回顺序固定为 `(started_at, id)`，不跨 Track 聚合，不解释 Payload，不按设备或应用分组。
+- `range + explicit` Record 使用区间交叠进入窗口；没有 `ended_at` 的 Record 使用 `started_at` 进入窗口。
+- 当前查询不计算 `range + next_record` 的派生结束时间；该语义在有实际协议时另行设计。
+
 ## 持续状态的区间续期
 
 以下规则用于持续状态的 `range + explicit` Record，不把所有记录类型都变成可修改的快照。
@@ -228,7 +236,7 @@ value jsonb NOT NULL
 - 同一 Record 的固定字段不一致时拒绝写入。合法续期在数据库中原子合并：`ended_at = max(已有 ended_at, 收到的 ended_at)`。重复、乱序和迟到上传不会使已确认区间缩短。
 - 固定字段校验包括 `track_id`、`started_at`、规范化后的 `observed_at` 和 `value`。`value` 按 PostgreSQL jsonb 值相等判断，对象属性顺序和空白不同不构成内容变化。
 - 不新增 `revision`、`is_final` 或 Record TTL 字段。普通上传不要求服务端永久封存旧 Record；Collector 停止延长旧 Record 即可。
-- Collector 在上传前持久保存 Record ID 和待上传内容；服务端提交后确认。重试复用已有身份，待上传的新进度不能被较旧请求的确认清除。持久队列的具体实现仍待设计。
+- 具备可靠性要求的 Collector 需要在上传前保存 Record ID 和待上传内容；服务端提交后确认。重试复用已有身份，待上传的新进度不能被较旧请求的确认清除。当前最小 macOS Collector 暂用内存缓冲；持久队列的具体实现仍待设计。
 
 TTL 只用于判断是否仍有及时的观测确认。它根据 Collector 的上传间隔设置并留出延迟余量；具体配置位置和算法尚未确定。TTL 到期不修改 `ended_at`，也不阻止后续补传。历史区间只到最后确认的位置，后面的时间显示未知；有效补传可以补回此前未知的区间。收到旧的离线数据本身不证明 Collector 当前仍在正常观测。
 
@@ -238,7 +246,7 @@ Collector 在一段连续采集开始时同时记录系统时间和单调时钟�
 
 内部 [`IContinuousStateStore`](../src/Backend/Heartbeat.Application/Recording/IContinuousStateStore.cs) 与 PostgreSQL 适配器已实现完整区间的首次写入、固定字段冲突检查和原子续期。写入沿 Track、Collector、Timeline 校验 Owner，缺失和不属于该 Owner 的 Track 返回相同结果。该入口仅供协议明确表达持续状态的调用方使用；协议注册、Payload 模式校验与服务端接收时间由上层上传用例负责。续期通过单条 SQL 完成，不回写传入的领域对象。
 
-`POST /api/v1/tracks/{trackId}/records` 已接入该入口，支持同一 Track 的 1–500 条记录。Application 每批读取一次所属 Track 和协议，再逐条校验与写入；当前存储层仍按条复核归属，不包含数据库批量优化。每条独立提交并返回对应输入位置的状态；HTTP 200 不代表所有条目均成功，失败或断连后可以按原 ID 重试。完整契约见[批量上传规范](../.scratch/record-upload/spec.md)。
+`POST /api/v1/tracks/{trackId}/records` 已接入该入口，支持同一 Track 的 1–500 条记录。Application 每批读取一次所属 Track 和协议，再逐条校验与写入；当前存储层仍按条复核归属，不包含数据库批量优化。每条独立提交并返回对应输入位置的状态；HTTP 200 不代表所有条目均成功，失败或断连后可以按原 ID 重试。完整契约见[记录接口文档](recording-api.md)。
 
 ## 跨 Collector 的设备身份
 
@@ -246,9 +254,11 @@ Collector 在一段连续采集开始时同时记录系统时间和单调时钟�
 
 该决定尚未实现，未改变本文四张表的结构。设备标识的生成与恢复、跨 Collector 配对方式、与 Target 的关系以及错误关联的修正方式仍待讨论。
 
-当前先由需要设备信息的具体协议在 `value` 中携带设备标识，不新增设备表或通用关联结构。共享标识的传递与重装后恢复方式，留到桌面和浏览器采集流程中设计。
+当前先由需要设备信息的具体协议在 `value` 中携带设备标识，不新增设备表或通用关联结构。最小 macOS Collector 暂时使用 Target 作为 `desktop.application.foreground` v1 的 `device_id`；这只是当前协议载荷的传递方式，不表示 Device Identity 注册表已经实现。共享标识的传递与重装后恢复方式，留到桌面和浏览器采集流程中设计。
 
 ## 未决设计
+
+完整清单见[记录模型未决设计](recording-open-questions.md)。
 
 - TTL 的具体配置、算法以及与迟到补传的实时状态判断。
 - `range + next_record` 的适用协议和断采规则。

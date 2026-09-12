@@ -1,6 +1,6 @@
 # 桌面前台应用协议 v1
 
-状态：协议定义、载荷校验器、Track 获取及批量 Record 上传接口已实现；重放和 Collector 待接入。
+状态：协议定义、载荷校验器、Track 获取、批量 Record 上传接口及 Track 级重放查询已实现；最小 macOS Collector 已接入，断采规则仍待确认。
 
 ## 含义
 
@@ -32,7 +32,7 @@
 ```
 
 - `value` 必须是对象，且恰好包含 `device_id` 与 `application`。
-- `device_id` 是 Collector 提供的稳定设备标识，为非空字符串。它不要求是操作系统安装标识，也不引用设备表；标识的共享与恢复留到 Collector 实现时处理。
+- `device_id` 是 Collector 提供的稳定设备标识，为非空字符串。它不要求是操作系统安装标识，也不引用设备表；标识的共享与恢复留到 Collector 实现时处理。当前最小 macOS Collector 暂时使用 Target 作为 `device_id`，不表示 Device Identity 注册表已经实现。
 - `application` 必须是对象，且恰好包含 `platform`、`id_kind` 与 `id`，三个字段均为非空字符串。
 - `platform` 与 `id_kind` 说明平台及原生标识种类，示例为 `macos` 与 `bundle_id`。协议只验证结构和非空值，不验证标识是否在真实设备上存在，不维护平台或应用登记表。
 - Collector 负责规范化平台及标识种类；原生 `id` 按平台规则提供。服务端校验不改写载荷、不统一大小写，也不替换为跨平台 Application Identity。
@@ -52,4 +52,4 @@ Track 不强制区间互斥，也不把新 Record 自动解释为旧 Record 的�
 - [`RecordProtocols`](../../src/Backend/Heartbeat.Domain/Recording/Protocols/RecordProtocols.cs) — 代码注册定义与载荷校验。
 - [`RecordProtocol`](../../src/Backend/Heartbeat.Domain/Recording/Protocols/RecordProtocol.cs) — 协议的固定时间行为及续期能力。
 - [`ADR-0002`](../adr/ADR-0002-monotonic-record-extension.md) — 已确认区间续期规则。
-- [批量上传契约](../../.scratch/record-upload/spec.md) — 上传格式、逐条确认与重试。
+- [记录 HTTP 接口](../recording-api.md) — 上传格式、逐条确认、重试和 Track 级读取。
