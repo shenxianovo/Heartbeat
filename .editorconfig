@@ -1,0 +1,9 @@
+root = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+
+[src/Backend/Heartbeat.Infrastructure/Persistence/Migrations/*.cs]
+# EF Core owns generated migration code; keep analyzers strict for handwritten code.
+dotnet_diagnostic.CA1861.severity = none
