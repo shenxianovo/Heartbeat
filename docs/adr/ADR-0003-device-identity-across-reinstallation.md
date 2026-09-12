@@ -4,7 +4,7 @@
 
 ## 日期：2026-09-12
 
-尚未提交 — 确认设备身份跨系统重装保留，并允许手动重新关联；待实现。
+[`3257982`](https://github.com/shenxianovo/heartbeat/commit/32579825f273d91144668c7d192ab8c5460ac31a) — docs(recording): confirm interval and device identity rules
 
 ## 背景
 

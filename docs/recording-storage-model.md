@@ -4,7 +4,7 @@
 
 本文档记录逐表评审后确认的存储设计。`Timeline`、`Collector`、`Track` 和 `Record` 四张表的结构已经定案。
 
-持续状态的区间续期规则已由 [ADR-0002](adr/ADR-0002-monotonic-record-extension.md) 确认，不增加表字段；续期写入和相关重放逻辑尚未实现。
+持续状态的区间续期规则已由 [ADR-0002](adr/ADR-0002-monotonic-record-extension.md) 确认，不增加表字段；内部原子写入与续期存储入口已实现，HTTP 上传和相关重放逻辑尚未实现。
 
 ## 关系
 
@@ -226,6 +226,8 @@ TTL 只用于判断是否仍有及时的观测确认。它根据 Collector 的�
 Collector 在一段连续采集开始时同时记录系统时间和单调时钟读数，后续观测时间以基准时间加单调时钟经过的时长计算，避免每次续期直接使用可能跳变的系统时间。只有实际观测才能延长区间，计时器经过的时长本身不构成持续观测依据。跨重启、失去采集能力等边界不假定连续性。
 
 该规则保证合法区间更新的合并结果，不保证设备的绝对时间准确。初始时间基准错误仍可能导致整段偏移；时钟异常检测、重新建立基准及跨设备对时需在 Collector 时间实现中明确。当前不承诺自动校正已存历史时间，也不借此开放任意区间回写。
+
+内部 [`IContinuousStateStore`](../src/Backend/Heartbeat.Application/Recording/IContinuousStateStore.cs) 与 PostgreSQL 适配器已实现完整区间的首次写入、固定字段冲突检查和原子续期。写入沿 Track、Collector、Timeline 校验 Owner，缺失和不属于该 Owner 的 Track 返回相同结果。该入口仅供协议明确表达持续状态的调用方使用；它不负责协议注册或 Payload 模式校验，也未直接暴露为 HTTP 接口。调用方负责使用服务端时钟提供 `received_at`。续期通过单条 SQL 完成，不回写传入的领域对象。
 
 ## 跨 Collector 的设备身份
 

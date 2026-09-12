@@ -4,7 +4,7 @@
 
 ## 日期：2026-09-12
 
-设计已确认，尚未提交；续期写入与重放待实现。
+[`3257982`](https://github.com/shenxianovo/heartbeat/commit/32579825f273d91144668c7d192ab8c5460ac31a) — docs(recording): confirm interval and device identity rules
 
 ## 背景
 
@@ -36,6 +36,7 @@ Collector 使用系统时间建立基准，使用单调时钟计算连续采集�
 - [ADR-0001](ADR-0001-time-ordered-observation-tracks.md) — 四层记录模型。
 - [存储规范](../recording-storage-model.md) — 完整续期规则和未决事项。
 - [Record.cs](../../src/Backend/Heartbeat.Domain/Recording/Record.cs) — 现有字段与创建校验。
+- [PostgresContinuousStateStore.cs](../../src/Backend/Heartbeat.Infrastructure/Persistence/PostgresContinuousStateStore.cs) — 固定字段检查与原子区间续期。
 - [CRDT 原始论文](https://perso.lip6.fr/Marc.Shapiro/papers/2011/CRDTs_SSS-2011.pdf) — 可交换、幂等且可结合的合并原则；这里仅借用其原则。
 - [AWS 幂等接口实践](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/) — 稳定身份、重试与原子提交。
 - [.NET TimeProvider](https://learn.microsoft.com/en-us/dotnet/standard/datetime/timeprovider-overview) — 系统时间与时间间隔测量的区分。
