@@ -34,6 +34,7 @@ app.UseStatusCodePages();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapCollectorEndpoints();
+app.MapTrackEndpoints();
 
 await app.RunAsync();
 

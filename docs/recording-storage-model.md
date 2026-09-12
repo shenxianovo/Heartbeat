@@ -146,6 +146,7 @@ created_at timestamptz NOT NULL
 - `version` 是该 `type` 的 Payload 格式版本。
 - Payload 解码器由 `(type, version)` 选择，不依赖具体 Collector。
 - 相同 `(type, version)` 的时间模式由应用中的全局类型注册表验证，不增加数据库类型定义表。
+- 当前代码注册表为 [`RecordProtocols`](../src/Backend/Heartbeat.Domain/Recording/Protocols/RecordProtocols.cs)，首个协议是 [`desktop.application.foreground` v1](protocols/desktop-application-foreground-v1.md)。协议同时定义是否允许持续状态续期和 Payload 校验；允许续期不由客户端指定。
 - `time_mode` 表示 Record 占据一个时间点还是一段时间区间，取值为 `point` 或 `range`。
 - `end_mode` 只用于 `range`，取值为 `explicit` 或 `next_record`。
 - `point` 的 `end_mode` 必须为空。
@@ -166,6 +167,14 @@ created_at timestamptz NOT NULL
 - `version` 必须大于零。
 - `time_mode = point` 时，`end_mode` 必须为空。
 - `time_mode = range` 时，`end_mode` 必须为 `explicit` 或 `next_record`。
+
+获取接口：
+
+- `POST /api/v1/collectors/{collectorId}/tracks`，请求只包含 `type` 与 `version`，创建或复用该 Collector 下的唯一 Track。
+- Collector 必须已存在且属于当前 Owner；缺失和不属于该 Owner 均返回 `404 collector_not_found`。
+- 时间模式来自代码协议，未知协议或版本返回 `400 unsupported_protocol`；已有 Track 时间模式与协议不一致时返回 `409 track_protocol_conflict`，不修改历史 Track。
+- 重复和并发获取保留已有 ID 与创建时间，成功始终返回 `200`。字段使用 HTTP 的 camelCase 格式，包括 `collectorId`、`timeMode`、`endMode` 和 `createdAt`。
+- Track 获取用于 Collector 接入准备，具体契约与验证见 [Track 获取规范](../.scratch/track-resolution/spec.md)。
 
 ## Record
 
