@@ -56,7 +56,7 @@ erDiagram
 | 字段 | PostgreSQL 类型 | 可空 | 可修改 | 含义 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 否 | 否 | Heartbeat 自己的身份，由应用生成 UUID v7。 |
-| `owner_id` | `uuid` | 否 | 否 | Auth 提供的、稳定的规范 Person ID。它是外部引用，不是数据库外键。 |
+| `owner_id` | `uuid` | 否 | 否 | Auth 签发令牌中经验证的 UUID `sub`。它是外部引用，不是数据库外键。 |
 | `display_name` | `text` | 否 | 是 | Timeline 自己负责的显示名称。可以使用 Auth 显示名称初始化，但不要求与 Auth 保持同步。 |
 | `created_at` | `timestamptz` | 否 | 否 | Heartbeat 创建 Timeline 的时间，由应用时钟提供。 |
 
@@ -88,9 +88,9 @@ Collector 的稳定地址是：
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 否 | 否 | Heartbeat 自己的身份，由应用生成 UUID v7。 |
 | `timeline_id` | `uuid` | 否 | 否 | 所属 Timeline，是指向 `timelines.id` 的数据库外键。 |
-| `key` | `text` | 否 | 否 | 全局唯一且不包含版本的 Collector manifest ID。 |
-| `target` | `text` | 否 | 否 | 由对应 Collector 定义并规范化的稳定 Target 身份。 |
-| `display_name` | `text` | 否 | 是 | Collector 自己负责的显示名称。 |
+| `key` | `varchar(255)` | 否 | 否 | 全局唯一且不包含版本的 Collector manifest ID。 |
+| `target` | `varchar(255)` | 否 | 否 | 由对应 Collector 定义并规范化的稳定 Target 身份。 |
+| `display_name` | `varchar(255)` | 否 | 是 | Collector 自己负责的显示名称。 |
 | `created_at` | `timestamptz` | 否 | 否 | Heartbeat 注册 Collector 的时间，由应用时钟提供。 |
 
 约束：
@@ -98,13 +98,17 @@ Collector 的稳定地址是：
 - 主键：`id`。
 - 外键：`timeline_id` 指向 `timelines.id`，限制级联删除。
 - 唯一约束：`(timeline_id, key, target)`。
-- `key`、`target` 和 `display_name` 去除首尾空格后不能为空。
+- `key`、`target` 和 `display_name` 去除首尾空格后不能为空，且均不得超过 255 个字符。
 - `key` 是小写、使用点号分段且不包含版本的标识，例如 `heartbeat.collector.desktop.macos`。
 
 生命周期规则：
 
+- 注册 Collector 要求 Timeline 已经存在，不隐式创建 Timeline。
+- 注册按 `(timeline_id, key, target)` 幂等解析：地址尚不存在时创建 Collector，已经存在时返回原 Collector。
+- 重复注册可以更新 `display_name`；并发更新时，以最后成功提交的值为准。
 - `key` 和 `target` 不变时，重启、重新安装、程序升级、凭据轮换或重新连接都复用原 Collector。
 - `timeline_id`、`key` 或 `target` 改变时，创建新的 Collector。
+- Collector 负责提供规范化的 `target`；Heartbeat 不解释其内部格式，只去除首尾空格并按完整字符串精确比较。
 - 本表不表示 Collector 是否已经安装、启用、连接或健康。
 - 安装身份和运行身份与 Target 身份相互独立。
 

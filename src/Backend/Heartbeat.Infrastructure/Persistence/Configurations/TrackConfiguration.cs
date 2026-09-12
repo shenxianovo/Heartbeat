@@ -17,7 +17,7 @@ internal sealed class TrackConfiguration : IEntityTypeConfiguration<Track>
                 table.HasCheckConstraint(
                     "ck_tracks_time_mode",
                     "(time_mode = 'point' AND end_mode IS NULL) OR "
-                    + "(time_mode = 'range' AND end_mode IN ('explicit', 'next_record'))");
+                    + "(time_mode = 'range' AND end_mode IS NOT NULL AND end_mode IN ('explicit', 'next_record'))");
             });
 
         builder.HasKey(x => x.Id);

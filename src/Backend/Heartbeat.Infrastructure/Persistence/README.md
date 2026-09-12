@@ -25,9 +25,9 @@ timelines
 collectors
   id uuid PK
   timeline_id uuid NOT NULL FK
-  key text NOT NULL
-  target text NOT NULL
-  display_name text NOT NULL
+  key varchar(255) NOT NULL
+  target varchar(255) NOT NULL
+  display_name varchar(255) NOT NULL
   created_at timestamptz NOT NULL
   UNIQUE (timeline_id, key, target)
 
@@ -55,7 +55,7 @@ records
 ## 映射约定
 
 - 业务 ID 均由应用生成 UUID v7，EF 使用 `ValueGeneratedNever`。
-- 所有不限定长度的字符串使用 PostgreSQL `text`。
+- Collector 的 `key`、`target` 和 `display_name` 使用 `varchar(255)`；其余不限定长度的字符串使用 PostgreSQL `text`。
 - 所有时间使用 `timestamptz`；领域对象在创建时规范化为 UTC。
 - `time_mode` 保存 `point` 或 `range`。
 - Point 的 `end_mode` 必须为空；Range 的 `end_mode` 保存 `explicit` 或 `next_record`。

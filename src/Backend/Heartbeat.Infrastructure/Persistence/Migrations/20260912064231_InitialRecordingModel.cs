@@ -33,9 +33,9 @@ namespace Heartbeat.Persistence.Migrations
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
                     timeline_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    key = table.Column<string>(type: "text", nullable: false),
-                    target = table.Column<string>(type: "text", nullable: false),
-                    display_name = table.Column<string>(type: "text", nullable: false),
+                    key = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
+                    target = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
+                    display_name = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
@@ -67,7 +67,7 @@ namespace Heartbeat.Persistence.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_tracks", x => x.id);
-                    table.CheckConstraint("ck_tracks_time_mode", "(time_mode = 'point' AND end_mode IS NULL) OR (time_mode = 'range' AND end_mode IN ('explicit', 'next_record'))");
+                    table.CheckConstraint("ck_tracks_time_mode", "(time_mode = 'point' AND end_mode IS NULL) OR (time_mode = 'range' AND end_mode IS NOT NULL AND end_mode IN ('explicit', 'next_record'))");
                     table.CheckConstraint("ck_tracks_type", "btrim(type) <> ''");
                     table.CheckConstraint("ck_tracks_version", "version > 0");
                     table.ForeignKey(

@@ -38,17 +38,20 @@ namespace Heartbeat.Persistence.Migrations
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
                         .HasColumnName("display_name");
 
                     b.Property<string>("Key")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
                         .HasColumnName("key");
 
                     b.Property<string>("Target")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
                         .HasColumnName("target");
 
                     b.Property<Guid>("TimelineId")
@@ -180,7 +183,7 @@ namespace Heartbeat.Persistence.Migrations
 
                     b.ToTable("tracks", null, t =>
                         {
-                            t.HasCheckConstraint("ck_tracks_time_mode", "(time_mode = 'point' AND end_mode IS NULL) OR (time_mode = 'range' AND end_mode IN ('explicit', 'next_record'))");
+                            t.HasCheckConstraint("ck_tracks_time_mode", "(time_mode = 'point' AND end_mode IS NULL) OR (time_mode = 'range' AND end_mode IS NOT NULL AND end_mode IN ('explicit', 'next_record'))");
 
                             t.HasCheckConstraint("ck_tracks_type", "btrim(type) <> ''");
 

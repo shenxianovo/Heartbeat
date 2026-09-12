@@ -36,6 +36,12 @@ services:
     environment:
       ASPNETCORE_HTTP_PORTS: 8080
       ConnectionStrings__Heartbeat: Host=db;Port=5432;Database=heartbeat;Username=heartbeat;Password=heartbeat
+      AuthService__Authority: ${AUTH_AUTHORITY:-https://auth.shenxianovo.com}
+      AuthService__Issuer: ${AUTH_ISSUER:-https://auth.shenxianovo.com}
+      AuthService__Audience: ${AUTH_AUDIENCE:-https://auth.shenxianovo.com}
+      AuthService__OidcIssuer: ${AUTH_OIDC_ISSUER:-https://auth.shenxianovo.com/}
+      AuthService__OidcClientId: ${AUTH_OIDC_CLIENT_ID:-heartbeat-web}
+      AuthService__OidcAudience: ${AUTH_OIDC_AUDIENCE:-}
     ports:
       - "8080:8080"
     depends_on:

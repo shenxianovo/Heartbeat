@@ -20,9 +20,18 @@ internal sealed class CollectorConfiguration : IEntityTypeConfiguration<Collecto
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
         builder.Property(x => x.TimelineId).HasColumnName("timeline_id").IsRequired();
-        builder.Property(x => x.Key).HasColumnName("key").HasColumnType("text").IsRequired();
-        builder.Property(x => x.Target).HasColumnName("target").HasColumnType("text").IsRequired();
-        builder.Property(x => x.DisplayName).HasColumnName("display_name").HasColumnType("text").IsRequired();
+        builder.Property(x => x.Key)
+            .HasColumnName("key")
+            .HasMaxLength(Collector.MaximumTextLength)
+            .IsRequired();
+        builder.Property(x => x.Target)
+            .HasColumnName("target")
+            .HasMaxLength(Collector.MaximumTextLength)
+            .IsRequired();
+        builder.Property(x => x.DisplayName)
+            .HasColumnName("display_name")
+            .HasMaxLength(Collector.MaximumTextLength)
+            .IsRequired();
         builder.Property(x => x.CreatedAt).HasColumnName("created_at").IsRequired();
 
         builder.HasIndex(x => new { x.TimelineId, x.Key, x.Target }).IsUnique();

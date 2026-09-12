@@ -1,3 +1,4 @@
+using Heartbeat.Application.Recording;
 using Heartbeat.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -16,6 +17,9 @@ public static class DependencyInjection
 
         services.AddDbContext<HeartbeatDbContext>(options =>
             options.UseNpgsql(connectionString));
+        services.AddSingleton(TimeProvider.System);
+        services.AddScoped<ICollectorRegistrationStore, PostgresCollectorRegistrationStore>();
+        services.AddScoped<IRegisterCollector, RegisterCollector>();
 
         return services;
     }

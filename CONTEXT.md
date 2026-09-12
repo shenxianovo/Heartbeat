@@ -4,6 +4,10 @@ Heartbeat 保存一个人在数字世界中的异构活动痕迹，以供重放�
 
 ## 领域语言
 
+**Owner**:
+Heartbeat 中一个 Timeline 的数据主体，由 Auth 签发令牌中经验证的 UUID `sub` 唯一标识。
+_避免使用_: User、用户名、账号
+
 **Timeline**:
 一个 Owner 的完整记录空间，其中的记录可以一起重放。设备、会话、项目或时间范围的变化不会产生新的 Timeline。
 _避免使用_: User、人员关系图、会话时间线
@@ -13,7 +17,7 @@ Timeline 中一个 Collector 实现与一个 Target 的稳定绑定。只要 Col
 _避免使用_: Recording Source、Observer、设备、安装实例
 
 **Target**:
-由 Collector 定义的、其主要观测对象的稳定身份。Target 用于标识 Collector 绑定，不是通用实体，也不是 Collector 安装实例。
+由 Collector 定义并规范化的、其主要观测对象的稳定身份。Heartbeat 不解释 Target 的内部格式，只按 Collector 提供的规范形式标识 Collector 绑定；Target 不是通用实体，也不是 Collector 安装实例。
 _避免使用_: Instance、安装标识、实体
 
 **Track**:

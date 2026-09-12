@@ -2,9 +2,21 @@ namespace Heartbeat.Recording;
 
 internal static class TextValue
 {
-    public static string NormalizeRequired(string value, string parameterName)
+    public static string NormalizeRequired(
+        string? value,
+        string parameterName,
+        int? maximumLength = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value, parameterName);
-        return value.Trim();
+        var normalized = value.Trim();
+
+        if (maximumLength is { } limit && normalized.Length > limit)
+        {
+            throw new ArgumentException(
+                $"The value cannot exceed {limit} characters.",
+                parameterName);
+        }
+
+        return normalized;
     }
 }

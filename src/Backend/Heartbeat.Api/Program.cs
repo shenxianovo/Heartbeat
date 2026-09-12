@@ -1,9 +1,15 @@
+using Heartbeat.Api.Authentication;
+using Heartbeat.Api.Endpoints;
 using Heartbeat.Infrastructure;
 using Heartbeat.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddHeartbeatAuthentication(
+    builder.Configuration,
+    builder.Environment);
+builder.Services.AddProblemDetails();
 
 var app = builder.Build();
 
@@ -23,4 +29,12 @@ app.MapGet("/health/ready", async (HeartbeatDbContext dbContext, CancellationTok
         : Results.Json(new { status = "unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
 });
 
+app.UseExceptionHandler();
+app.UseStatusCodePages();
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapCollectorEndpoints();
+
 await app.RunAsync();
+
+public partial class Program;
