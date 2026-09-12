@@ -1,9 +1,0 @@
-<Application xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="Heartbeat.Desktop.Mac.App"
-             RequestedThemeVariant="Default">
-  <Application.Styles>
-    <FluentTheme />
-    <StyleInclude Source="avares://Heartbeat.Desktop.UI/Themes/HeartbeatTheme.axaml" />
-  </Application.Styles>
-</Application>
