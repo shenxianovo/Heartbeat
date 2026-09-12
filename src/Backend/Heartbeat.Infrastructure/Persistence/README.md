@@ -11,7 +11,7 @@ erDiagram
     tracks ||--o{ records : contains
 ```
 
-四张表依次表示一个人的完整记录空间、Collector 实现与 Target 的稳定绑定、固定协议和时间行为的数据轨道，以及一次原子观测。所有外键均使用 `ON DELETE RESTRICT`，删除上层对象前必须显式处理其下层数据。
+四张表依次表示一个人的完整记录空间、Collector 实现与 Target 的稳定绑定、固定协议和时间行为的数据轨道，以及一个时间点或一段已确认持续的观测。所有外键均使用 `ON DELETE RESTRICT`，删除上层对象前必须显式处理其下层数据。
 
 ## 物理结构
 
@@ -63,6 +63,7 @@ records
 - `observed_at` 为空表示 Collector 观察时间等于 `started_at`。
 - Record 的 `value` 保存符合 Track `(type, version)` 协议的规范化 JSON 值。
 - Record 不保存通用 `sequence`、`source_key`、原始 Payload、metadata 或修正链。
+- [ADR-0002](../../../../docs/adr/ADR-0002-monotonic-record-extension.md) 已确认持续状态通过原子 `max(ended_at)` 续期，不新增 `revision`、`is_final` 或 Record TTL 字段。当前表结构可承载该规则，续期写入逻辑尚未实现。
 
 ## Migration
 

@@ -4,6 +4,8 @@
 
 本文档记录逐表评审后确认的存储设计。`Timeline`、`Collector`、`Track` 和 `Record` 四张表的结构已经定案。
 
+持续状态的区间续期规则已由 [ADR-0002](adr/ADR-0002-monotonic-record-extension.md) 确认，不增加表字段；续期写入和相关重放逻辑尚未实现。
+
 ## 关系
 
 ```mermaid
@@ -150,7 +152,8 @@ created_at timestamptz NOT NULL
 - `range + explicit` 的结束时间由本条 Record 明确给出。
 - `range + next_record` 的结束时间由下一条 Record 的开始时间动态推导，不回写前一条 Record，因此迟到或乱序数据可以通过重新排序得到正确结果。
 - 同一个 Collector 的同一个 `type` 和 `version` 只有一条 Track，不增加 `key`、`layer` 或其他分轨字段。多条 Point Record 可以具有相同时间，并在 Payload 中携带各自内容。
-- 最后一条 `range + next_record` Record 的 TTL 属于重放规则。目前尚未确定 TTL 是全局代码常量，还是 `(type, version)` 数据协议的一部分；不在 Record 上保存失效时间。
+- 同一 Track 可以包含多个观测对象；Explicit Range Record 可以重叠，并按各自 Record ID 独立续期。窗口等对象身份由具体协议在 `value` 中表达，展示分组不要求存储分轨。该规则不为 `next_record` 增加按对象推导后继的能力。
+- 桌面焦点等需要确认持续性的状态采集使用 `range + explicit`，按下文规则延长已确认区间，不依赖下一条 Record 跨越观测空白。`range + next_record` 保留，其适用协议和断采规则仍需另行确定。
 - `created_at` 由应用时钟提供。
 - 不保存通用 JSON metadata 或 `updated_at`。
 - Track 的显示名称来自 `(type, version)` 的代码注册定义和本地化资源，不存入 Track。对应程序不可用时，界面回退显示原始 `type`。
@@ -166,7 +169,7 @@ created_at timestamptz NOT NULL
 
 ## Record
 
-一行表示符合所属 Track 数据协议的一次原子观测。Collector 负责把平台数据规范化为 Track 的全局 `(type, version)` 协议；Record 不保存对人的活动解释，也不要求保存平台 API 返回的原始字节。
+一行表示符合所属 Track 数据协议的一份观测记录，可以表达一个时间点或一段已确认持续的观测。Collector 负责把平台数据规范化为 Track 的全局 `(type, version)` 协议；Record 不保存对人的活动解释，也不要求保存平台 API 返回的原始字节。
 
 已经定案的字段：
 
@@ -180,16 +183,16 @@ received_at timestamptz NOT NULL
 value jsonb NOT NULL
 ```
 
-- `id` 由 Collector 在创建 Record 时生成 UUID v7。同一 Record 上传重试时必须复用原 `id`，Heartbeat 以主键冲突识别重复上传。
+- `id` 由 Collector 在创建 Record 时生成 UUID v7。同一 Record 的续期和上传重试必须复用原 `id`；身份相同不代表请求内容必然相同，写入时仍需校验固定字段。
 - `track_id` 是所属 Track 的数据库外键，创建后不可修改；存在 Record 时限制删除 Track。
 - `started_at` 是 Record 在 Timeline 中的时间点或区间开始。
 - `ended_at` 只在 `range + explicit` 中有值；`point` 和 `range + next_record` 中为空。
 - `observed_at` 是 Collector 获得该信息的时间；为空时表示与 `started_at` 相同。
-- `received_at` 是 Heartbeat 接收 Record 的时间，由 Heartbeat 应用时钟生成。
+- `received_at` 是 Heartbeat 接收 Record 的时间，由 Heartbeat 应用时钟生成；续期和重试保留首次成功写入时的值。
 - `value` 保存符合 Track `(type, version)` 协议的规范化 JSON 值。它可以是对象、数组、数字、字符串或其他协议允许的 JSON 值。
-- Record 创建后不可修改。通用模型不提供替代链；发现错误 Record 时，明确删除原 Record，再写入一条具有新 `id` 的正确 Record。需要原子修正时，在同一事务内完成删除和写入。
+- 普通 Record 创建后不可修改。持续状态的 `range + explicit` Record 允许仅延长 `ended_at`，固定身份、起点和观测值；规则见下文。正常续期不提供区间缩短、内容替换或通用修正链。历史纠错与删除需要单独设计，包括防止删除后的旧重传恢复记录；不能仅凭删除和新增处于同一事务，就认为后续重传问题已解决。
 - 不增加通用原始平台 Payload 字段。某种 Record 需要保留来源信息时，由该类型自己的协议把它放入 `value`。
-- 跨平台应用身份不直接写入不可变 Record。Record 使用统一结构保存平台、标识种类和平台原生标识；读取或分析时，再由可更新的应用身份注册表把 Windows 可执行文件、macOS Bundle ID 和 Android Package Name 等解析为同一个 Application Identity。
+- 跨平台应用身份不直接写入 Record 的观测值。Record 使用统一结构保存平台、标识种类和平台原生标识；读取或分析时，再由可更新的应用身份注册表把 Windows 可执行文件、macOS Bundle ID 和 Android Package Name 等解析为同一个 Application Identity。
 - Record 保留 Timeline 时间、Collector 观察时间和 Heartbeat 接收时间三个时间维度。实时采集时，Timeline 时间与观察时间通常相同；历史导入时可以不同；离线上传时接收时间可以更晚。
 - Collector 观察时间使用可空覆盖值。它为空时表示观察时间等于 Timeline 时间，只在二者不同时保存实际值。
 - 不保存通用 `sequence`。默认按 `(track_id, started_at, id)` 获得稳定顺序；某种来源确实需要额外序号时，由自己的协议将序号放入 `value`。
@@ -207,8 +210,36 @@ value jsonb NOT NULL
 - 初始只增加 `(track_id, started_at, id)` B-tree 索引，用于按 Track 稳定重放。
 - 暂不为 `received_at`、`observed_at` 或 `ended_at` 建索引；出现实际查询需求后再增加。
 
+## 持续状态的区间续期
+
+以下规则用于持续状态的 `range + explicit` Record，不把所有记录类型都变成可修改的快照。
+
+- Collector 首次确认状态时创建 Record；状态不变且持续观测时，复用 ID，延长 `ended_at`。Collector 可以在本地合并多次确认，按上传间隔发送最新的完整区间，不必为每次确认新增 Record。
+- 状态变化时创建新的 Record。实际断采、重启或失去采集能力后，无法确认连续性时，也创建新的 Record；值相同不构成连接两段的依据。
+- 同一 Record 的固定字段不一致时拒绝写入。合法续期在数据库中原子合并：`ended_at = max(已有 ended_at, 收到的 ended_at)`。重复、乱序和迟到上传不会使已确认区间缩短。
+- 固定字段校验包括 `track_id`、`started_at`、规范化后的 `observed_at` 和 `value`。`value` 按 PostgreSQL jsonb 值相等判断，对象属性顺序和空白不同不构成内容变化。
+- 不新增 `revision`、`is_final` 或 Record TTL 字段。普通上传不要求服务端永久封存旧 Record；Collector 停止延长旧 Record 即可。
+- Collector 在上传前持久保存 Record ID 和待上传内容；服务端提交后确认。重试复用已有身份，待上传的新进度不能被较旧请求的确认清除。持久队列的具体实现仍待设计。
+
+TTL 只用于判断是否仍有及时的观测确认。它根据 Collector 的上传间隔设置并留出延迟余量；具体配置位置和算法尚未确定。TTL 到期不修改 `ended_at`，也不阻止后续补传。历史区间只到最后确认的位置，后面的时间显示未知；有效补传可以补回此前未知的区间。收到旧的离线数据本身不证明 Collector 当前仍在正常观测。
+
+Collector 在一段连续采集开始时同时记录系统时间和单调时钟读数，后续观测时间以基准时间加单调时钟经过的时长计算，避免每次续期直接使用可能跳变的系统时间。只有实际观测才能延长区间，计时器经过的时长本身不构成持续观测依据。跨重启、失去采集能力等边界不假定连续性。
+
+该规则保证合法区间更新的合并结果，不保证设备的绝对时间准确。初始时间基准错误仍可能导致整段偏移；时钟异常检测、重新建立基准及跨设备对时需在 Collector 时间实现中明确。当前不承诺自动校正已存历史时间，也不借此开放任意区间回写。
+
+## 跨 Collector 的设备身份
+
+[ADR-0003](adr/ADR-0003-device-identity-across-reinstallation.md) 已确认：Device Identity 跨系统重装保留，重装后允许用户手动选择已有设备并重新关联。身份延续不表示观测连续，跨重装仍创建新的持续状态 Record。
+
+该决定尚未实现，未改变本文四张表的结构。设备标识的生成与恢复、跨 Collector 配对方式、与 Target 的关系以及错误关联的修正方式仍待讨论。
+
+当前先由需要设备信息的具体协议在 `value` 中携带设备标识，不新增设备表或通用关联结构。共享标识的传递与重装后恢复方式，留到桌面和浏览器采集流程中设计。
+
 ## 未决设计
 
-- `range + next_record` 最后一条 Record 的 TTL 规则。
+- TTL 的具体配置、算法以及与迟到补传的实时状态判断。
+- `range + next_record` 的适用协议和断采规则。
+- 历史纠错、删除与旧重传的处理。
+- Collector 的时钟异常检测、时间基准重建和持久上传队列。
 - Track 的协议升级和跨 Collector 关联。
-- 桌面 Collector 与浏览器 Collector 共享的 `device_id` 等观测身份应该存在哪里。
+- 桌面 Collector 与浏览器 Collector 如何共享和恢复协议中的设备标识。

@@ -21,7 +21,7 @@ _避免使用_: Recording Source、Observer、设备、安装实例
 _避免使用_: Instance、安装标识、实体
 
 **Track**:
-Timeline 上的一条同类数据轨道，汇集一个 Collector 产生、由同一数据协议解释且具有相同时间行为的 Record。
+Timeline 上的一条同类数据轨道，汇集一个 Collector 产生、由同一数据协议解释且具有相同时间行为的 Record。它可以包含多个观测对象，不要求同一时刻只有一条 Record。
 _避免使用_: Observation Track、消息流、展示分组
 
 **Time Mode**:
@@ -32,9 +32,13 @@ _避免使用_: Temporal Shape、State、Interval
 Range 的结束位置如何得到：由本条 Record 明确给出，或由下一条 Record 的开始位置推导。
 
 **Record**:
-Track 中符合其数据协议的一次原子观测。Record 保存 Collector 规范化后的观测值，不保存对人的活动解释。
+Track 中符合其数据协议的一份观测记录，可以表达一个时间点的观测或一段已确认持续的观测。Record 保存 Collector 规范化后的观测值，不保存对人的活动解释。
 _避免使用_: Observation Record、Fact、Activity、原始传输消息
 
 **Application Identity**:
-把不同平台的应用标识解析为同一个应用的跨平台身份。它是可修正的解析结果，不是不可变 Record 的原始观测值。
+把不同平台的应用标识解析为同一个应用的跨平台身份。它是可修正的解析结果，不是 Record 保存的平台原生标识。
 _避免使用_: 可执行文件名、Bundle ID、Package Name
+
+**Device Identity**:
+Heartbeat 中用于跨 Collector 关联同一台设备的稳定身份，不随系统重装改变。
+_避免使用_: 系统安装标识、Collector 身份、机器名称
