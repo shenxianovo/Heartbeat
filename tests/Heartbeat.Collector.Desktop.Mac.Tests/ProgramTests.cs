@@ -1,52 +1,79 @@
 using System.Net;
+using System.Net.Http.Json;
 using Heartbeat.Collector.Desktop.Mac;
+using Heartbeat.Hub;
 
 namespace Heartbeat.Collector.Desktop.Mac.Tests;
 
 public sealed class ProgramTests
 {
-    [Theory]
-    [InlineData(0, false, 1)]
-    [InlineData(1, false, 1)]
-    [InlineData(0, true, 0)]
-    [InlineData(1, true, 0)]
-    public async Task OnlyUserCancellationExitsSuccessfully(int successfulRequests, bool userCancelled, int expectedExitCode)
+    [Fact]
+    public async Task ProgramStartsBySubmittingARecordDeclarationToHub()
     {
-        using var cancellation = new CancellationTokenSource();
-        using var handler = new CancelRequestHandler(successfulRequests, userCancelled ? cancellation.Cancel : null);
-        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8080") };
-        var client = new HeartbeatRecordingClient(httpClient);
-        var options = new CollectorOptions(httpClient.BaseAddress, "test-token", "device-a", "Test Mac",
+        using var handler = new CaptureHandler();
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:4318") };
+        var options = new CollectorOptions(httpClient.BaseAddress, "local-token", "device-a", "Test Mac",
             TimeSpan.FromSeconds(5), true);
 
-        var exitCode = await Program.RunAsync(options, client, cancellation.Token);
+        var result = await Program.RunAsync(options, new HubSubmissionClient(httpClient), CancellationToken.None,
+            new FixedReader());
 
-        Assert.Equal(expectedExitCode, exitCode);
-        Assert.Equal(successfulRequests + 1, handler.RequestCount);
+        Assert.Equal(0, result);
+        Assert.Equal("/hub/v1/records", handler.Path);
+        Assert.Equal("heartbeat.collector.desktop.macos", handler.Submission!.Collector!.Key);
+        Assert.Equal("desktop.application.foreground", handler.Submission.Track!.Type);
+        Assert.Equal("range", handler.Submission.Track.TimeMode);
+        Assert.Equal("explicit", handler.Submission.Track.EndMode);
     }
 
-    private sealed class CancelRequestHandler(int successfulRequests, Action? cancel) : HttpMessageHandler
+    [Fact]
+    public async Task UnconfirmedCustodyReturnsFailure()
+    {
+        using var handler = new FailureHandler();
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:4318") };
+        var options = new CollectorOptions(httpClient.BaseAddress, "local-token", "device-a", "Test Mac",
+            TimeSpan.FromSeconds(5), true);
+
+        var result = await Program.RunAsync(options, new HubSubmissionClient(httpClient), CancellationToken.None,
+            new FixedReader());
+
+        Assert.Equal(1, result);
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    private sealed class CaptureHandler : HttpMessageHandler
+    {
+        public string? Path { get; private set; }
+        public HubSubmission? Submission { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            Path = request.RequestUri!.AbsolutePath;
+            Submission = await request.Content!.ReadFromJsonAsync<HubSubmission>(token);
+            var record = Assert.Single(Submission!.Records!)!;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new
+                {
+                    results = new[] { new { index = 0, record.Id, status = "accepted", record.EndedAt } },
+                }),
+            };
+        }
+    }
+
+    private sealed class FailureHandler : HttpMessageHandler
     {
         public int RequestCount { get; private set; }
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
-            if (RequestCount++ < successfulRequests)
-            {
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-                {
-                    Content = new StringContent("""{"id":"019e0000-0000-7000-8000-000000000001"}"""),
-                });
-            }
-
-            if (cancel is not null)
-            {
-                cancel();
-                return Task.FromCanceled<HttpResponseMessage>(cancellationToken);
-            }
-
-            return Task.FromException<HttpResponseMessage>(
-                new TaskCanceledException("The HTTP request timed out.", new TimeoutException()));
+            RequestCount++;
+            return Task.FromException<HttpResponseMessage>(new HttpRequestException("Hub unavailable"));
         }
+    }
+
+    private sealed class FixedReader : IForegroundApplicationReader
+    {
+        public ForegroundApplication Read() => new("macos", "bundle_id", "com.apple.finder");
     }
 }

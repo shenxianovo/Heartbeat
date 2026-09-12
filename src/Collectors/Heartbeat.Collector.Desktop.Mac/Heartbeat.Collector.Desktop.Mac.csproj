@@ -7,4 +7,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Heartbeat.Collector.Desktop.Mac.Tests" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Hub/Heartbeat.Hub.Client/Heartbeat.Hub.Client.csproj" />
+  </ItemGroup>
 </Project>

@@ -1,10 +1,30 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Heartbeat.Hub;
+
 namespace Heartbeat.Collector.Desktop.Mac;
 
 public sealed record ForegroundRecord(
     Guid Id,
     DateTimeOffset StartedAt,
     DateTimeOffset EndedAt,
-    ForegroundApplication Application);
+    ForegroundApplication Application)
+{
+    public RecordSnapshot ToSnapshot(string deviceId) => new(
+        Id, StartedAt, EndedAt, null,
+        JsonSerializer.SerializeToElement(new ForegroundRecordValue(
+            deviceId,
+            new ApplicationReference(Application.Platform, Application.IdKind, Application.Id))));
+
+    private sealed record ForegroundRecordValue(
+        [property: JsonPropertyName("device_id")] string DeviceId,
+        [property: JsonPropertyName("application")] ApplicationReference Application);
+
+    private sealed record ApplicationReference(
+        [property: JsonPropertyName("platform")] string Platform,
+        [property: JsonPropertyName("id_kind")] string IdKind,
+        [property: JsonPropertyName("id")] string Id);
+}
 
 public sealed class ForegroundRecordBatcher(TimeProvider timeProvider)
 {

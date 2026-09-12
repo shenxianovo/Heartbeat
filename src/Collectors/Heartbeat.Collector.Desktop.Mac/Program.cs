@@ -1,3 +1,6 @@
+using System.Net.Http.Headers;
+using Heartbeat.Hub;
+
 namespace Heartbeat.Collector.Desktop.Mac;
 
 public static class Program
@@ -24,10 +27,12 @@ public static class Program
         Console.CancelKeyPress += cancelHandler;
         try
         {
-            using var httpClient = HeartbeatRecordingClient.CreateHttpClient(
-                options.ApiBaseUrl,
-                options.AuthToken);
-            var client = new HeartbeatRecordingClient(httpClient);
+            using var httpClient = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
+            {
+                BaseAddress = options.HubBaseUrl,
+            };
+            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", options.HubToken);
+            var client = new HubSubmissionClient(httpClient);
             return await RunAsync(options, client, cancellation.Token);
         }
         catch (Exception exception)
@@ -43,18 +48,14 @@ public static class Program
 
     internal static async Task<int> RunAsync(
         CollectorOptions options,
-        HeartbeatRecordingClient client,
-        CancellationToken cancellationToken)
+        HubSubmissionClient client,
+        CancellationToken cancellationToken,
+        IForegroundApplicationReader? reader = null)
     {
         try
         {
-            var collectorId = await client.RegisterCollectorAsync(options.Target, options.DisplayName, cancellationToken);
-            var trackId = await client.ResolveForegroundTrackAsync(collectorId, cancellationToken);
-            Console.WriteLine($"Collector {collectorId} is writing Track {trackId}.");
-
-            var reader = new MacForegroundApplicationReader();
-            var session = new DesktopCollectorSession(reader, client, TimeProvider.System);
-            await session.RunAsync(trackId, options, cancellationToken);
+            var session = new DesktopCollectorSession(reader ?? new MacForegroundApplicationReader(), client, TimeProvider.System);
+            await session.RunAsync(options, cancellationToken);
 
             return 0;
         }

@@ -32,7 +32,13 @@ public static class TrackEndpoints
         try
         {
             result = await resolveTrack.ExecuteAsync(ownerId,
-                new ResolveTrackCommand(collectorId, request.Type, request.Version), cancellationToken);
+                new ResolveTrackCommand(
+                    collectorId,
+                    request.Type,
+                    request.Version,
+                    ParseTimeMode(request.TimeMode),
+                    ParseEndMode(request.EndMode)),
+                cancellationToken);
         }
         catch (ArgumentException exception)
         {
@@ -45,10 +51,8 @@ public static class TrackEndpoints
             ResolveTrackResult.Resolved resolved => Results.Ok(ToResponse(resolved.Track)),
             ResolveTrackResult.CollectorNotFound => Problem(StatusCodes.Status404NotFound,
                 "collector_not_found", "The collector was not found."),
-            ResolveTrackResult.UnsupportedProtocol => Problem(StatusCodes.Status400BadRequest,
-                "unsupported_protocol", "The record type and version are not supported."),
-            ResolveTrackResult.ProtocolConflict => Problem(StatusCodes.Status409Conflict,
-                "track_protocol_conflict", "The existing track does not match its registered protocol."),
+            ResolveTrackResult.DefinitionConflict => Problem(StatusCodes.Status409Conflict,
+                "track_definition_conflict", "The existing track has a different time definition."),
             _ => throw new InvalidOperationException("Unknown track resolution result."),
         };
     }
@@ -77,8 +81,27 @@ public static class TrackEndpoints
         },
         track.CreatedAt);
 
+    private static TimeMode ParseTimeMode(string? value) => value switch
+    {
+        "point" => TimeMode.Point,
+        "range" => TimeMode.Range,
+        _ => throw new ArgumentException("Time mode must be 'point' or 'range'.", nameof(value)),
+    };
+
+    private static EndMode? ParseEndMode(string? value) => value switch
+    {
+        null => null,
+        "explicit" => EndMode.Explicit,
+        "next_record" => EndMode.NextRecord,
+        _ => throw new ArgumentException("End mode must be 'explicit' or 'next_record'.", nameof(value)),
+    };
+
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-    private sealed record ResolveTrackRequest(string? Type, int Version);
+    private sealed record ResolveTrackRequest(
+        string? Type,
+        int Version,
+        string? TimeMode,
+        string? EndMode);
 
     private sealed record ResolveTrackResponse(
         Guid Id,

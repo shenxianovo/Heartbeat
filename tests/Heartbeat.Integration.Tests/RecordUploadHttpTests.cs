@@ -19,6 +19,43 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
     private static readonly string[] MixedBatchStatuses = ["stored", "conflict", "invalid_record", "invalid_record", "stored"];
 
     [Fact]
+    public async Task UnknownPointTypeCanBeCreatedUploadedAndReplayedWithArbitraryJson()
+    {
+        var ownerId = Guid.NewGuid();
+        await ProvisionTimelineAsync(ownerId);
+        await using var factory = RecordingApiFactory.Create(ConnectionString, new FixedTimeProvider(Now));
+        using var client = factory.CreateClient();
+        var collectorId = await RegisterAsync(client, ownerId);
+        using var resolution = await ResolveAsync(client, ownerId, collectorId,
+            new { type = "custom.sensor.sample", version = 37, timeMode = "point", endMode = (string?)null });
+        resolution.EnsureSuccessStatusCode();
+        using var resolved = JsonDocument.Parse(await resolution.Content.ReadAsStringAsync());
+        var trackId = resolved.RootElement.GetProperty("id").GetGuid();
+        var recordId = Guid.CreateVersion7();
+        var value = new object?[] { "sample", 42, true, null, new { nested = new[] { 1, 2, 3 } } };
+
+        using var uploaded = await UploadAsync(client, ownerId, trackId, new
+        {
+            records = new[] { new { id = recordId, startedAt = StartedAt, value } },
+        });
+        uploaded.EnsureSuccessStatusCode();
+        using var replayed = await GetRecordsAsync(client, ownerId, trackId);
+        replayed.EnsureSuccessStatusCode();
+
+        using var replay = JsonDocument.Parse(await replayed.Content.ReadAsStringAsync());
+        var track = replay.RootElement.GetProperty("track");
+        Assert.Equal("custom.sensor.sample", track.GetProperty("type").GetString());
+        Assert.Equal(37, track.GetProperty("version").GetInt32());
+        Assert.Equal("point", track.GetProperty("timeMode").GetString());
+        Assert.Equal(JsonValueKind.Null, track.GetProperty("endMode").ValueKind);
+        var record = Assert.Single(replay.RootElement.GetProperty("records").EnumerateArray());
+        Assert.Equal(recordId, record.GetProperty("id").GetGuid());
+        Assert.Equal(JsonValueKind.Null, record.GetProperty("endedAt").ValueKind);
+        Assert.Equal(42, record.GetProperty("value")[1].GetInt32());
+        Assert.Equal(3, record.GetProperty("value")[4].GetProperty("nested")[2].GetInt32());
+    }
+
+    [Fact]
     public async Task RegisteredCollectorCanResolveTrackAndUploadBatch()
     {
         var ownerId = Guid.NewGuid();
@@ -131,9 +168,9 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
         await using var failureFactory = factory.WithWebHostBuilder(builder =>
             builder.ConfigureTestServices(services =>
             {
-                var implementation = services.Single(service => service.ServiceType == typeof(IContinuousStateStore)).ImplementationType!;
-                services.Replace(ServiceDescriptor.Scoped<IContinuousStateStore>(provider =>
-                    new FailSecondWriteStore((IContinuousStateStore)ActivatorUtilities.CreateInstance(provider, implementation))));
+                var implementation = services.Single(service => service.ServiceType == typeof(IRecordStore)).ImplementationType!;
+                services.Replace(ServiceDescriptor.Scoped<IRecordStore>(provider =>
+                    new FailSecondWriteStore((IRecordStore)ActivatorUtilities.CreateInstance(provider, implementation))));
             }));
         using var failureClient = failureFactory.CreateClient();
 
@@ -158,8 +195,6 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
     [InlineData("id")]
     [InlineData("end")]
     [InlineData("backwards")]
-    [InlineData("value")]
-    [InlineData("extra_value_field")]
     public async Task InvalidObservationIsRejectedBeforeStorage(string invalidField)
     {
         var ownerId = Guid.NewGuid();
@@ -172,12 +207,7 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
             ["id"] = invalidField == "id" ? Guid.NewGuid() : Guid.CreateVersion7(),
             ["startedAt"] = StartedAt,
             ["endedAt"] = invalidField == "end" ? null : invalidField == "backwards" ? StartedAt.AddSeconds(-1) : Now,
-            ["value"] = invalidField switch
-            {
-                "value" => new { application = "browser" },
-                "extra_value_field" => new { device_id = "device-a", application = new { platform = "macos", id_kind = "bundle_id", id = "app" }, activity = "reading" },
-                _ => Value(),
-            },
+            ["value"] = Value(),
         };
 
         using var response = await UploadAsync(client, ownerId, trackId, new { records = new[] { entry } });
@@ -274,37 +304,6 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
-    [Theory]
-    [InlineData("unknown", TimeMode.Range, EndMode.Explicit, HttpStatusCode.BadRequest, "unsupported_protocol")]
-    [InlineData("desktop.application.foreground", TimeMode.Point, null, HttpStatusCode.Conflict, "track_protocol_conflict")]
-    public async Task StoredTrackMustMatchSupportedProtocol(
-        string type, TimeMode timeMode, EndMode? endMode, HttpStatusCode status, string code)
-    {
-        var ownerId = Guid.NewGuid();
-        await ProvisionTimelineAsync(ownerId);
-        await using var factory = RecordingApiFactory.Create(ConnectionString, new FixedTimeProvider(Now));
-        using var client = factory.CreateClient();
-        var validTrackId = await RegisterAndResolveAsync(client, ownerId);
-        Guid trackId;
-        await using (var db = CreateDbContext())
-        {
-            var valid = await db.Tracks.SingleAsync(track => track.Id == validTrackId);
-            var track = Track.Create(valid.CollectorId, type, 1, timeMode, endMode, Now);
-            db.Tracks.Remove(valid);
-            await db.SaveChangesAsync();
-            db.Tracks.Add(track);
-            await db.SaveChangesAsync();
-            trackId = track.Id;
-        }
-
-        using var response = await UploadAsync(client, ownerId, trackId,
-            new { records = new[] { Entry(Guid.CreateVersion7(), 1) } });
-
-        await AssertProblemAsync(response, status, code);
-        await using var verify = CreateDbContext();
-        Assert.Empty(await verify.Records.ToListAsync());
-    }
-
     private static object Entry(Guid id, int minutes, string application = "com.google.Chrome") => new
     {
         id,
@@ -322,6 +321,16 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
 
     private static async Task<Guid> RegisterAndResolveAsync(HttpClient client, Guid ownerId)
     {
+        var collectorId = await RegisterAsync(client, ownerId);
+        using var resolved = await ResolveAsync(client, ownerId, collectorId,
+            new { type = "desktop.application.foreground", version = 1, timeMode = "range", endMode = "explicit" });
+        resolved.EnsureSuccessStatusCode();
+        using var track = JsonDocument.Parse(await resolved.Content.ReadAsStringAsync());
+        return track.RootElement.GetProperty("id").GetGuid();
+    }
+
+    private static async Task<Guid> RegisterAsync(HttpClient client, Guid ownerId)
+    {
         using var registration = new HttpRequestMessage(HttpMethod.Post, "/api/v1/collectors")
         {
             Content = JsonContent.Create(new { key = "heartbeat.collector.desktop.macos", target = "device-a", displayName = "Mac" }),
@@ -330,16 +339,18 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
         using var registered = await client.SendAsync(registration);
         registered.EnsureSuccessStatusCode();
         using var collector = JsonDocument.Parse(await registered.Content.ReadAsStringAsync());
-        var collectorId = collector.RootElement.GetProperty("id").GetGuid();
-        using var resolution = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/collectors/{collectorId}/tracks")
+        return collector.RootElement.GetProperty("id").GetGuid();
+    }
+
+    private static async Task<HttpResponseMessage> ResolveAsync(
+        HttpClient client, Guid ownerId, Guid collectorId, object body)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/collectors/{collectorId}/tracks")
         {
-            Content = JsonContent.Create(new { type = "desktop.application.foreground", version = 1 }),
+            Content = JsonContent.Create(body),
         };
-        resolution.Headers.Add(RecordingApiFactory.OwnerHeader, ownerId.ToString());
-        using var resolved = await client.SendAsync(resolution);
-        resolved.EnsureSuccessStatusCode();
-        using var track = JsonDocument.Parse(await resolved.Content.ReadAsStringAsync());
-        return track.RootElement.GetProperty("id").GetGuid();
+        request.Headers.Add(RecordingApiFactory.OwnerHeader, ownerId.ToString());
+        return await client.SendAsync(request);
     }
 
     private static Task<HttpResponseMessage> UploadAsync(HttpClient client, Guid ownerId, Guid trackId, object body) =>
@@ -351,6 +362,13 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
         {
             Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
         };
+        request.Headers.Add(RecordingApiFactory.OwnerHeader, ownerId.ToString());
+        return await client.SendAsync(request);
+    }
+
+    private static async Task<HttpResponseMessage> GetRecordsAsync(HttpClient client, Guid ownerId, Guid trackId)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/tracks/{trackId}/records");
         request.Headers.Add(RecordingApiFactory.OwnerHeader, ownerId.ToString());
         return await client.SendAsync(request);
     }
@@ -372,11 +390,11 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
         Assert.Equal(code, json.RootElement.GetProperty("code").GetString());
     }
 
-    private sealed class FailSecondWriteStore(IContinuousStateStore inner) : IContinuousStateStore
+    private sealed class FailSecondWriteStore(IRecordStore inner) : IRecordStore
     {
         private int _writes;
 
-        public Task<ContinuousStateWriteResult> WriteAsync(
+        public Task<RecordWriteResult> WriteAsync(
             Guid ownerId, RecordingRecord record, CancellationToken cancellationToken = default)
         {
             if (++_writes == 2)

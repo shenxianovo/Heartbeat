@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Heartbeat.Recording.Protocols;
 using RecordingRecord = Heartbeat.Recording.Record;
 
 namespace Heartbeat.Application.Recording;
@@ -39,9 +38,6 @@ public abstract record UploadRecordsResult
 
     public sealed record TrackNotFound : UploadRecordsResult;
 
-    public sealed record UnsupportedProtocol : UploadRecordsResult;
-
-    public sealed record ProtocolConflict : UploadRecordsResult;
 }
 
 public interface IUploadRecords
@@ -52,7 +48,7 @@ public interface IUploadRecords
 
 public sealed class UploadRecords(
     ITrackStore tracks,
-    IContinuousStateStore store,
+    IRecordStore store,
     TimeProvider timeProvider) : IUploadRecords
 {
     public const int MaximumBatchSize = 500;
@@ -82,17 +78,6 @@ public sealed class UploadRecords(
             return new UploadRecordsResult.TrackNotFound();
         }
 
-        var protocol = RecordProtocols.Find(track.Type, track.Version);
-        if (protocol is null || !protocol.SupportsExtension)
-        {
-            return new UploadRecordsResult.UnsupportedProtocol();
-        }
-
-        if (track.TimeMode != protocol.TimeMode || track.EndMode != protocol.EndMode)
-        {
-            return new UploadRecordsResult.ProtocolConflict();
-        }
-
         var receivedAt = timeProvider.GetUtcNow();
         var results = new List<RecordUploadResult>(command.Records.Count);
         for (var index = 0; index < command.Records.Count; index++)
@@ -107,7 +92,6 @@ public sealed class UploadRecords(
                     throw new ArgumentException("A record with a start time is required.", nameof(command));
                 }
 
-                protocol.ValidateValue(upload.Value);
                 record = RecordingRecord.Create(upload.Id, track, upload.StartedAt.Value,
                     upload.EndedAt, upload.ObservedAt, receivedAt, upload.Value);
             }
@@ -122,11 +106,11 @@ public sealed class UploadRecords(
             var written = await store.WriteAsync(ownerId, record, cancellationToken);
             results.Add(written switch
             {
-                ContinuousStateWriteResult.Stored stored => new RecordUploadResult(index, record.Id,
+                RecordWriteResult.Stored stored => new RecordUploadResult(index, record.Id,
                     RecordUploadStatus.Stored, stored.EndedAt, stored.ReceivedAt),
-                ContinuousStateWriteResult.Conflict => new RecordUploadResult(index, record.Id, RecordUploadStatus.Conflict),
-                ContinuousStateWriteResult.TrackNotFound => new RecordUploadResult(index, record.Id, RecordUploadStatus.TrackNotFound),
-                _ => throw new InvalidOperationException("Unknown continuous state write result."),
+                RecordWriteResult.Conflict => new RecordUploadResult(index, record.Id, RecordUploadStatus.Conflict),
+                RecordWriteResult.TrackNotFound => new RecordUploadResult(index, record.Id, RecordUploadStatus.TrackNotFound),
+                _ => throw new InvalidOperationException("Unknown record write result."),
             });
         }
 

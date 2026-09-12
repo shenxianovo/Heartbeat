@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Text.Json;
 using Heartbeat.Collector.Desktop.Mac;
+using Heartbeat.Hub;
 
 namespace Heartbeat.Collector.Desktop.Mac.Tests;
 
@@ -50,8 +51,8 @@ public sealed class DesktopCollectorSessionTests
         });
         using var httpClient = CreateClient(handler);
         using var stop = new CancellationTokenSource(TestTimeout);
-        var session = new DesktopCollectorSession(reader, new HeartbeatRecordingClient(httpClient), TimeProvider.System);
-        var run = session.RunAsync(Guid.CreateVersion7(), Options(), stop.Token);
+        var session = new DesktopCollectorSession(reader, new HubSubmissionClient(httpClient), TimeProvider.System);
+        var run = session.RunAsync(Options(), stop.Token);
         try
         {
             await uploadStarted.Task.WaitAsync(TestTimeout);
@@ -105,8 +106,8 @@ public sealed class DesktopCollectorSessionTests
         });
         using var httpClient = CreateClient(handler);
         using var stop = new CancellationTokenSource(TestTimeout);
-        var session = new DesktopCollectorSession(reader, new HeartbeatRecordingClient(httpClient), TimeProvider.System);
-        var run = session.RunAsync(Guid.CreateVersion7(), Options(), stop.Token);
+        var session = new DesktopCollectorSession(reader, new HubSubmissionClient(httpClient), TimeProvider.System);
+        var run = session.RunAsync(Options(), stop.Token);
         try
         {
             await retried.Task.WaitAsync(TimeSpan.FromSeconds(1));
@@ -136,8 +137,8 @@ public sealed class DesktopCollectorSessionTests
         });
         using var httpClient = CreateClient(handler);
         using var stop = new CancellationTokenSource(TestTimeout);
-        var session = new DesktopCollectorSession(reader, new HeartbeatRecordingClient(httpClient), TimeProvider.System);
-        var run = session.RunAsync(Guid.CreateVersion7(), Options() with { Once = true }, stop.Token);
+        var session = new DesktopCollectorSession(reader, new HubSubmissionClient(httpClient), TimeProvider.System);
+        var run = session.RunAsync(Options() with { Once = true }, stop.Token);
         try
         {
             await uploadStarted.Task.WaitAsync(TestTimeout);
@@ -161,10 +162,10 @@ public sealed class DesktopCollectorSessionTests
         using var handler = new UploadHandler((_, _) =>
             Task.FromException<HttpResponseMessage>(new HttpRequestException("Offline")));
         using var httpClient = CreateClient(handler);
-        var session = new DesktopCollectorSession(reader, new HeartbeatRecordingClient(httpClient), TimeProvider.System);
+        var session = new DesktopCollectorSession(reader, new HubSubmissionClient(httpClient), TimeProvider.System);
 
         await Assert.ThrowsAsync<HttpRequestException>(() =>
-            session.RunAsync(Guid.CreateVersion7(), Options() with { Once = true }, CancellationToken.None));
+            session.RunAsync(Options() with { Once = true }, CancellationToken.None));
 
         Assert.Equal(1, reader.ReadCount);
         Assert.Single(handler.Records);
@@ -193,10 +194,10 @@ public sealed class DesktopCollectorSessionTests
         });
         using var httpClient = CreateClient(handler);
         using var stop = new CancellationTokenSource(TestTimeout);
-        var session = new DesktopCollectorSession(reader, new HeartbeatRecordingClient(httpClient), TimeProvider.System);
+        var session = new DesktopCollectorSession(reader, new HubSubmissionClient(httpClient), TimeProvider.System);
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            session.RunAsync(Guid.CreateVersion7(), Options(), stop.Token).WaitAsync(TestTimeout));
+            session.RunAsync(Options(), stop.Token).WaitAsync(TestTimeout));
 
         Assert.Equal("Sampling failed", error.Message);
         Assert.True(uploadStopped.Task.IsCompletedSuccessfully);
@@ -210,9 +211,11 @@ public sealed class DesktopCollectorSessionTests
         BaseAddress = new Uri("http://localhost:8080"),
     };
 
-    private static HttpResponseMessage Stored() => new(HttpStatusCode.OK)
+    private static HttpResponseMessage Stored() => new(HttpStatusCode.NoContent);
+
+    private static HttpResponseMessage Accepted(SentRecord record) => new(HttpStatusCode.OK)
     {
-        Content = new StringContent("""{"results":[{"status":"stored"}]}"""),
+        Content = new StringContent($$"""{"results":[{"index":0,"id":"{{record.Id}}","status":"accepted","endedAt":"{{record.EndedAt:O}}"}]}"""),
     };
 
     private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -245,9 +248,11 @@ public sealed class DesktopCollectorSessionTests
         {
             using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
             var record = body.RootElement.GetProperty("records")[0];
-            Records.Enqueue(new SentRecord(record.GetProperty("id").GetGuid(), record.GetProperty("endedAt").GetDateTimeOffset(),
-                record.GetProperty("value").GetProperty("application").GetProperty("id").GetString()!));
-            return await send(Records.Count, cancellationToken);
+            var sent = new SentRecord(record.GetProperty("id").GetGuid(), record.GetProperty("endedAt").GetDateTimeOffset(),
+                record.GetProperty("value").GetProperty("application").GetProperty("id").GetString()!);
+            Records.Enqueue(sent);
+            var response = await send(Records.Count, cancellationToken);
+            return response.StatusCode == HttpStatusCode.NoContent ? Accepted(sent) : response;
         }
     }
 }

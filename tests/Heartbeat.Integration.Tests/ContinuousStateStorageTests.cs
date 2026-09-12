@@ -10,7 +10,7 @@ using RecordingRecord = Heartbeat.Recording.Record;
 namespace Heartbeat.Integration.Tests;
 
 [Collection(PostgresTestGroup.Name)]
-public sealed class ContinuousStateStorageTests(PostgresFixture fixture) : PostgresTestBase(fixture)
+public sealed class RecordStorageTests(PostgresFixture fixture) : PostgresTestBase(fixture)
 {
     private static readonly DateTimeOffset Now =
         new(2026, 9, 12, 9, 30, 0, TimeSpan.Zero);
@@ -23,7 +23,7 @@ public sealed class ContinuousStateStorageTests(PostgresFixture fixture) : Postg
         var record = CreateRecord(track, Guid.CreateVersion7(), 1);
         await using var services = CreateServices();
 
-        var result = Assert.IsType<ContinuousStateWriteResult.Stored>(
+        var result = Assert.IsType<RecordWriteResult.Stored>(
             await WriteAsync(services, ownerId, record));
 
         Assert.Equal(Now.AddMinutes(1), result.EndedAt);
@@ -49,7 +49,7 @@ public sealed class ContinuousStateStorageTests(PostgresFixture fixture) : Postg
         foreach (var minutes in new[] { 3, 1, 3, 5, 2 })
         {
             var record = CreateRecord(track, id, minutes);
-            var result = Assert.IsType<ContinuousStateWriteResult.Stored>(
+            var result = Assert.IsType<RecordWriteResult.Stored>(
                 await WriteAsync(services, ownerId, record));
             Assert.Equal(Now.AddMinutes(minutes == 5 || minutes == 2 ? 5 : 3), result.EndedAt);
             Assert.Equal(Now.AddMinutes(13), result.ReceivedAt);
@@ -70,7 +70,7 @@ public sealed class ContinuousStateStorageTests(PostgresFixture fixture) : Postg
         var results = await Task.WhenAll(Enumerable.Range(1, 12)
             .Select(minutes => WriteAsync(services, ownerId, CreateRecord(track, id, minutes))));
 
-        Assert.All(results, result => Assert.IsType<ContinuousStateWriteResult.Stored>(result));
+        Assert.All(results, result => Assert.IsType<RecordWriteResult.Stored>(result));
         await using var db = CreateDbContext();
         Assert.Equal(Now.AddMinutes(12), (await db.Records.SingleAsync()).EndedAt);
     }
@@ -90,9 +90,9 @@ public sealed class ContinuousStateStorageTests(PostgresFixture fixture) : Postg
             WriteAsync(services, ownerId, first),
             WriteAsync(services, ownerId, second));
 
-        Assert.Single(results.OfType<ContinuousStateWriteResult.Stored>());
-        Assert.Single(results.OfType<ContinuousStateWriteResult.Conflict>());
-        var winner = results[0] is ContinuousStateWriteResult.Stored ? first : second;
+        Assert.Single(results.OfType<RecordWriteResult.Stored>());
+        Assert.Single(results.OfType<RecordWriteResult.Conflict>());
+        var winner = results[0] is RecordWriteResult.Stored ? first : second;
         await using var db = CreateDbContext();
         var stored = await db.Records.SingleAsync();
         Assert.Equal(winner.EndedAt, stored.EndedAt);
@@ -104,18 +104,29 @@ public sealed class ContinuousStateStorageTests(PostgresFixture fixture) : Postg
     [Theory]
     [InlineData(TimeMode.Point, null)]
     [InlineData(TimeMode.Range, EndMode.NextRecord)]
-    public async Task NonExplicitRecordsCannotUseContinuousStateWriter(TimeMode timeMode, EndMode? endMode)
+    public async Task PointAndNextRecordWritesAreIdempotent(TimeMode timeMode, EndMode? endMode)
     {
         var ownerId = Guid.NewGuid();
         var track = await CreateTrackAsync(ownerId, timeMode, endMode);
-        var record = RecordingRecord.Create(Guid.CreateVersion7(), track, Now, null, null,
-            Now, JsonSerializer.SerializeToElement("state"));
+        var id = Guid.CreateVersion7();
+        var record = RecordingRecord.Create(id, track, Now, null, null,
+            Now, JsonSerializer.SerializeToElement(new { kind = "arbitrary", count = 3 }));
         await using var services = CreateServices();
 
-        await Assert.ThrowsAsync<ArgumentException>(() => WriteAsync(services, ownerId, record));
+        var first = Assert.IsType<RecordWriteResult.Stored>(
+            await WriteAsync(services, ownerId, record));
+        var repeated = RecordingRecord.Create(id, track, Now, null, null,
+            Now.AddHours(1), JsonSerializer.SerializeToElement(new { count = 3, kind = "arbitrary" }));
+        var retry = Assert.IsType<RecordWriteResult.Stored>(
+            await WriteAsync(services, ownerId, repeated));
 
+        Assert.Null(first.EndedAt);
+        Assert.Null(retry.EndedAt);
+        Assert.Equal(Now, retry.ReceivedAt);
         await using var db = CreateDbContext();
-        Assert.Empty(await db.Records.ToListAsync());
+        var stored = await db.Records.SingleAsync();
+        Assert.Null(stored.EndedAt);
+        Assert.Equal(3, stored.Value.GetProperty("count").GetInt32());
     }
 
     [Theory]
@@ -144,7 +155,7 @@ public sealed class ContinuousStateStorageTests(PostgresFixture fixture) : Postg
                 window = "a",
             }));
 
-        Assert.IsType<ContinuousStateWriteResult.Conflict>(
+        Assert.IsType<RecordWriteResult.Conflict>(
             await WriteAsync(services, ownerId, conflicting));
         await using var db = CreateDbContext();
         var stored = await db.Records.SingleAsync();
@@ -168,7 +179,7 @@ public sealed class ContinuousStateStorageTests(PostgresFixture fixture) : Postg
             id, track, Now.ToOffset(TimeSpan.FromHours(8)), Now.AddMinutes(2),
             Now, Now.AddMinutes(20), value.RootElement);
 
-        var result = Assert.IsType<ContinuousStateWriteResult.Stored>(
+        var result = Assert.IsType<RecordWriteResult.Stored>(
             await WriteAsync(services, ownerId, repeated));
 
         Assert.Equal(Now.AddMinutes(2), result.EndedAt);
@@ -183,10 +194,10 @@ public sealed class ContinuousStateStorageTests(PostgresFixture fixture) : Postg
         var id = Guid.CreateVersion7();
         await using var services = CreateServices();
 
-        Assert.IsType<ContinuousStateWriteResult.TrackNotFound>(
+        Assert.IsType<RecordWriteResult.TrackNotFound>(
             await WriteAsync(services, otherOwnerId, CreateRecord(track, id, 1)));
         await WriteAsync(services, ownerId, CreateRecord(track, id, 1));
-        Assert.IsType<ContinuousStateWriteResult.TrackNotFound>(
+        Assert.IsType<RecordWriteResult.TrackNotFound>(
             await WriteAsync(services, otherOwnerId, CreateRecord(track, id, 5)));
 
         await using var db = CreateDbContext();
@@ -204,7 +215,7 @@ public sealed class ContinuousStateStorageTests(PostgresFixture fixture) : Postg
         await using var services = CreateServices();
         await WriteAsync(services, ownerId, CreateRecord(track, id, 1));
 
-        Assert.IsType<ContinuousStateWriteResult.Conflict>(
+        Assert.IsType<RecordWriteResult.Conflict>(
             await WriteAsync(services, otherOwnerId, CreateRecord(otherTrack, id, 5)));
 
         await using var db = CreateDbContext();
@@ -239,7 +250,7 @@ public sealed class ContinuousStateStorageTests(PostgresFixture fixture) : Postg
             TimeMode.Range, EndMode.Explicit, Now);
         await using var services = CreateServices();
 
-        Assert.IsType<ContinuousStateWriteResult.TrackNotFound>(
+        Assert.IsType<RecordWriteResult.TrackNotFound>(
             await WriteAsync(services, Guid.NewGuid(), CreateRecord(track, Guid.CreateVersion7(), 1)));
         await using var db = CreateDbContext();
         Assert.Empty(await db.Records.ToListAsync());
@@ -284,11 +295,11 @@ public sealed class ContinuousStateStorageTests(PostgresFixture fixture) : Postg
         return services.BuildServiceProvider(validateScopes: true);
     }
 
-    private static async Task<ContinuousStateWriteResult> WriteAsync(
+    private static async Task<RecordWriteResult> WriteAsync(
         IServiceProvider services, Guid ownerId, RecordingRecord record)
     {
         await using var scope = services.CreateAsyncScope();
-        return await scope.ServiceProvider.GetRequiredService<IContinuousStateStore>()
+        return await scope.ServiceProvider.GetRequiredService<IRecordStore>()
             .WriteAsync(ownerId, record);
     }
 }

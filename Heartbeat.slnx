@@ -1,4 +1,8 @@
 <Solution>
+  <Project Path="src/Hub/Heartbeat.Hub.Client/Heartbeat.Hub.Client.csproj" />
+  <Project Path="src/Hub/Heartbeat.Hub/Heartbeat.Hub.csproj" />
+  <Project Path="src/Hub/Heartbeat.Hub.Host/Heartbeat.Hub.Host.csproj" />
+  <Project Path="tests/Heartbeat.Hub.Tests/Heartbeat.Hub.Tests.csproj" />
   <Project Path="src/Backend/Heartbeat.Api/Heartbeat.Api.csproj" />
   <Project Path="src/Backend/Heartbeat.Application/Heartbeat.Application.csproj" />
   <Project Path="src/Backend/Heartbeat.Domain/Heartbeat.Domain.csproj" />

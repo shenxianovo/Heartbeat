@@ -3,8 +3,8 @@ using System.Globalization;
 namespace Heartbeat.Collector.Desktop.Mac;
 
 public sealed record CollectorOptions(
-    Uri ApiBaseUrl,
-    string AuthToken,
+    Uri HubBaseUrl,
+    string HubToken,
     string Target,
     string DisplayName,
     TimeSpan Interval,
@@ -13,8 +13,8 @@ public sealed record CollectorOptions(
     public static CollectorOptions Parse(string[] args, IDictionary<string, string?> environment)
     {
         var values = ParseArgs(args);
-        var api = Get(values, environment, "api", "HEARTBEAT_API_BASE_URL");
-        var token = Get(values, environment, "token", "HEARTBEAT_AUTH_TOKEN");
+        var hub = Get(values, environment, "hub", "HEARTBEAT_HUB_URL");
+        var token = Get(values, environment, "hub-token", "HEARTBEAT_HUB_TOKEN");
         var target = Get(values, environment, "target", "HEARTBEAT_COLLECTOR_TARGET");
         var displayName = Get(values, environment, "display-name", "HEARTBEAT_COLLECTOR_DISPLAY_NAME");
         var intervalValue = Get(values, environment, "interval-seconds", "HEARTBEAT_COLLECTOR_INTERVAL_SECONDS");
@@ -22,14 +22,14 @@ public sealed record CollectorOptions(
             ? 5
             : int.Parse(intervalValue, CultureInfo.InvariantCulture);
 
-        if (string.IsNullOrWhiteSpace(api))
+        if (string.IsNullOrWhiteSpace(hub))
         {
-            throw new ArgumentException("Missing --api or HEARTBEAT_API_BASE_URL.");
+            throw new ArgumentException("Missing --hub or HEARTBEAT_HUB_URL.");
         }
 
         if (string.IsNullOrWhiteSpace(token))
         {
-            throw new ArgumentException("Missing --token or HEARTBEAT_AUTH_TOKEN.");
+            throw new ArgumentException("Missing --hub-token or HEARTBEAT_HUB_TOKEN.");
         }
 
         if (string.IsNullOrWhiteSpace(target))
@@ -43,11 +43,14 @@ public sealed record CollectorOptions(
             throw new ArgumentOutOfRangeException(nameof(args), "Interval must be at least 1 second.");
         }
 
-        return new CollectorOptions(
-            new Uri(EnsureTrailingSlash(api.Trim()), UriKind.Absolute),
-            token.Trim(),
-            target.Trim(),
-            displayName.Trim(),
+        var baseUrl = new Uri(EnsureTrailingSlash(hub.Trim()), UriKind.Absolute);
+        if (baseUrl.Scheme is not ("http" or "https") || baseUrl.UserInfo.Length != 0 ||
+            baseUrl.AbsolutePath != "/" || baseUrl.Query.Length != 0 || baseUrl.Fragment.Length != 0)
+        {
+            throw new ArgumentException("The Hub endpoint must be an HTTP(S) origin.");
+        }
+
+        return new CollectorOptions(baseUrl, token.Trim(), target.Trim(), displayName.Trim(),
             TimeSpan.FromSeconds(intervalSeconds),
             values.ContainsKey("once") || IsTruthy(environment.TryGetValue("HEARTBEAT_COLLECTOR_ONCE", out var once) ? once : null));
     }
@@ -55,10 +58,14 @@ public sealed record CollectorOptions(
     private static Dictionary<string, string?> ParseArgs(string[] args)
     {
         var values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "hub", "hub-token", "target", "display-name", "interval-seconds", "once",
+        };
         for (var index = 0; index < args.Length; index++)
         {
             var arg = args[index];
-            if (!arg.StartsWith("--", StringComparison.Ordinal))
+            if (!arg.StartsWith("--", StringComparison.Ordinal) || !allowed.Contains(arg[2..]))
             {
                 throw new ArgumentException($"Unknown argument '{arg}'.");
             }
@@ -81,20 +88,12 @@ public sealed record CollectorOptions(
         return values;
     }
 
-    private static string? Get(
-        Dictionary<string, string?> values,
-        IDictionary<string, string?> environment,
-        string option,
-        string variable)
-        => values.TryGetValue(option, out var value)
+    private static string? Get(Dictionary<string, string?> values, IDictionary<string, string?> environment,
+        string option, string variable) => values.TryGetValue(option, out var value)
             ? value
-            : environment.TryGetValue(variable, out value)
-                ? value
-                : null;
+            : environment.TryGetValue(variable, out value) ? value : null;
 
-    private static string EnsureTrailingSlash(string value) =>
-        value.EndsWith('/') ? value : $"{value}/";
+    private static string EnsureTrailingSlash(string value) => value.EndsWith('/') ? value : $"{value}/";
 
-    private static bool IsTruthy(string? value) =>
-        value?.Trim().ToLowerInvariant() is "1" or "true" or "yes";
+    private static bool IsTruthy(string? value) => value?.Trim().ToLowerInvariant() is "1" or "true" or "yes";
 }

@@ -1,27 +1,31 @@
 using System.Text.Json;
+using Heartbeat.Hub;
 
 namespace Heartbeat.Collector.Desktop.Mac;
 
 internal sealed class DesktopCollectorSession(
     IForegroundApplicationReader reader,
-    HeartbeatRecordingClient client,
+    HubSubmissionClient client,
     TimeProvider timeProvider)
 {
-    public async Task RunAsync(Guid trackId, CollectorOptions options, CancellationToken cancellationToken)
+    private const string CollectorKey = "heartbeat.collector.desktop.macos";
+    private const string TrackType = "desktop.application.foreground";
+
+    public async Task RunAsync(CollectorOptions options, CancellationToken cancellationToken)
     {
         var batcher = new ForegroundRecordBatcher(timeProvider);
         var pending = new PendingForegroundRecords();
         Sample();
         if (options.Once)
         {
-            await UploadPendingAsync(cancellationToken);
+            await SubmitPendingAsync(cancellationToken);
             return;
         }
 
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var sampling = Task.Run(SampleAsync, CancellationToken.None);
-        var uploading = Task.Run(UploadAsync, CancellationToken.None);
-        await Task.WhenAll(sampling, uploading);
+        var submitting = Task.Run(SubmitAsync, CancellationToken.None);
+        await Task.WhenAll(sampling, submitting);
 
         void Sample()
         {
@@ -49,13 +53,13 @@ internal sealed class DesktopCollectorSession(
             }
         }
 
-        async Task UploadAsync()
+        async Task SubmitAsync()
         {
             try
             {
                 while (true)
                 {
-                    await UploadPendingAsync(stop.Token);
+                    await SubmitPendingAsync(stop.Token);
                     await Task.Delay(options.Interval, timeProvider, stop.Token);
                 }
             }
@@ -65,21 +69,24 @@ internal sealed class DesktopCollectorSession(
             }
         }
 
-        async Task UploadPendingAsync(CancellationToken token)
+        async Task SubmitPendingAsync(CancellationToken token)
         {
             foreach (var record in pending.ReadBatch())
             {
                 token.ThrowIfCancellationRequested();
                 try
                 {
-                    await client.UploadAsync(trackId, options.Target, record, token);
+                    await client.SubmitAsync(new HubSubmission(
+                        new CollectorDeclaration(CollectorKey, options.Target, options.DisplayName),
+                        new TrackDeclaration(TrackType, 1, "range", "explicit"),
+                        [record.ToSnapshot(options.Target)]), token);
                     pending.Confirm(record);
                     Console.WriteLine($"{record.EndedAt:O} {record.Application.IdKind}:{record.Application.Id}");
                 }
                 catch (Exception exception) when (!options.Once && !token.IsCancellationRequested &&
-                    exception is HttpRequestException or OperationCanceledException or InvalidOperationException or JsonException)
+                    exception is HttpRequestException or OperationCanceledException or InvalidDataException or JsonException)
                 {
-                    Console.Error.WriteLine($"Upload failed; keeping Record {record.Id} for retry: {exception.Message}");
+                    Console.Error.WriteLine($"Hub submission failed; keeping Record {record.Id} for retry: {exception.Message}");
                 }
             }
         }

@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Heartbeat.Recording;
-using Heartbeat.Recording.Protocols;
 using Microsoft.EntityFrameworkCore;
 
 namespace Heartbeat.Integration.Tests;
@@ -108,12 +107,13 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
     }
 
     [Theory]
-    [InlineData("{\"type\":\"unknown\",\"version\":1}", "unsupported_protocol")]
-    [InlineData("{\"type\":\"desktop.application.foreground\",\"version\":2}", "unsupported_protocol")]
-    [InlineData("{\"type\":\" \",\"version\":1}", "invalid_request")]
-    [InlineData("{\"type\":\"desktop.application.foreground\",\"version\":0}", "invalid_request")]
-    [InlineData("{}", "invalid_request")]
-    public async Task InvalidOrUnsupportedProtocolDoesNotCreateTrack(string body, string code)
+    [InlineData("{\"type\":\" \",\"version\":1,\"timeMode\":\"point\"}")]
+    [InlineData("{\"type\":\"desktop.application.foreground\",\"version\":0,\"timeMode\":\"point\"}")]
+    [InlineData("{\"type\":\"sample\",\"version\":1,\"timeMode\":\"unknown\"}")]
+    [InlineData("{\"type\":\"sample\",\"version\":1,\"timeMode\":\"point\",\"endMode\":\"explicit\"}")]
+    [InlineData("{\"type\":\"sample\",\"version\":1,\"timeMode\":\"range\"}")]
+    [InlineData("{}")]
+    public async Task InvalidTrackDefinitionDoesNotCreateTrack(string body)
     {
         var ownerId = Guid.NewGuid();
         await ProvisionTimelineAsync(ownerId);
@@ -123,16 +123,15 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
 
         using var response = await ResolveAsync(client, ownerId, collectorId, body);
 
-        await AssertProblemAsync(response, HttpStatusCode.BadRequest, code);
+        await AssertProblemAsync(response, HttpStatusCode.BadRequest, "invalid_request");
         await using var db = CreateDbContext();
         Assert.Empty(await db.Tracks.ToListAsync());
     }
 
     [Theory]
-    [InlineData("{\"type\":\"desktop.application.foreground\",\"version\":1,\"timeMode\":\"point\"}")]
-    [InlineData("{\"type\":\"desktop.application.foreground\",\"version\":1,\"id\":\"019e0000-0000-7000-8000-000000000001\"}")]
+    [InlineData("{\"type\":\"desktop.application.foreground\",\"version\":1,\"timeMode\":\"point\",\"id\":\"019e0000-0000-7000-8000-000000000001\"}")]
     [InlineData("{\"type\":")]
-    public async Task CallerCannotSetTrackFieldsOrSendMalformedJson(string body)
+    public async Task ExtraFieldsAndMalformedJsonAreRejected(string body)
     {
         var ownerId = Guid.NewGuid();
         await ProvisionTimelineAsync(ownerId);
@@ -155,7 +154,7 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
         using var client = factory.CreateClient();
 
         using var response = await client.PostAsJsonAsync($"/api/v1/collectors/{Guid.NewGuid()}/tracks",
-            new { type = "desktop.application.foreground", version = 1 });
+            new { type = "desktop.application.foreground", version = 1, timeMode = "range", endMode = "explicit" });
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -168,7 +167,7 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
         await using var factory = RecordingApiFactory.Create(ConnectionString, new FixedTimeProvider(Now));
         using var client = factory.CreateClient();
         var collectorId = await RegisterAsync(client, ownerId);
-        var track = Track.Create(collectorId, RecordProtocols.ForegroundApplication.Type, 1,
+        var track = Track.Create(collectorId, "desktop.application.foreground", 1,
             TimeMode.Point, null, Now.AddDays(-1));
         await using (var db = CreateDbContext())
         {
@@ -178,7 +177,7 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
 
         using var response = await ResolveAsync(client, ownerId, collectorId);
 
-        await AssertProblemAsync(response, HttpStatusCode.Conflict, "track_protocol_conflict");
+        await AssertProblemAsync(response, HttpStatusCode.Conflict, "track_definition_conflict");
         await using var verify = CreateDbContext();
         var stored = await verify.Tracks.SingleAsync();
         Assert.Equal(track.Id, stored.Id);
@@ -202,7 +201,7 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
 
     private static async Task<HttpResponseMessage> ResolveAsync(
         HttpClient client, Guid ownerId, Guid collectorId,
-        string body = "{\"type\":\"desktop.application.foreground\",\"version\":1}")
+        string body = "{\"type\":\"desktop.application.foreground\",\"version\":1,\"timeMode\":\"range\",\"endMode\":\"explicit\"}")
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/collectors/{collectorId}/tracks")
         {

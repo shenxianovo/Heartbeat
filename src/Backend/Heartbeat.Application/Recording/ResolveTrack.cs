@@ -1,9 +1,13 @@
 using Heartbeat.Recording;
-using Heartbeat.Recording.Protocols;
 
 namespace Heartbeat.Application.Recording;
 
-public sealed record ResolveTrackCommand(Guid CollectorId, string? Type, int Version);
+public sealed record ResolveTrackCommand(
+    Guid CollectorId,
+    string? Type,
+    int Version,
+    TimeMode TimeMode,
+    EndMode? EndMode);
 
 public sealed record ResolvedTrack(
     Guid Id,
@@ -24,9 +28,7 @@ public abstract record ResolveTrackResult
 
     public sealed record CollectorNotFound : ResolveTrackResult;
 
-    public sealed record UnsupportedProtocol : ResolveTrackResult;
-
-    public sealed record ProtocolConflict : ResolveTrackResult;
+    public sealed record DefinitionConflict : ResolveTrackResult;
 }
 
 public interface IResolveTrack
@@ -67,23 +69,17 @@ public sealed class ResolveTrack(ITrackStore store, TimeProvider timeProvider) :
 
         ArgumentException.ThrowIfNullOrWhiteSpace(command.Type);
         ArgumentOutOfRangeException.ThrowIfLessThan(command.Version, 1);
-        var protocol = RecordProtocols.Find(command.Type.Trim(), command.Version);
-        if (protocol is null)
-        {
-            return new ResolveTrackResult.UnsupportedProtocol();
-        }
-
-        var candidate = Track.Create(command.CollectorId, protocol.Type, protocol.Version,
-            protocol.TimeMode, protocol.EndMode, timeProvider.GetUtcNow());
+        var candidate = Track.Create(command.CollectorId, command.Type, command.Version,
+            command.TimeMode, command.EndMode, timeProvider.GetUtcNow());
         var track = await store.ResolveAsync(ownerId, candidate, cancellationToken);
         if (track is null)
         {
             return new ResolveTrackResult.CollectorNotFound();
         }
 
-        if (track.TimeMode != protocol.TimeMode || track.EndMode != protocol.EndMode)
+        if (track.TimeMode != candidate.TimeMode || track.EndMode != candidate.EndMode)
         {
-            return new ResolveTrackResult.ProtocolConflict();
+            return new ResolveTrackResult.DefinitionConflict();
         }
 
         return new ResolveTrackResult.Resolved(track);

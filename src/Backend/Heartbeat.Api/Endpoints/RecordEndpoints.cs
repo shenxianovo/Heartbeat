@@ -125,10 +125,6 @@ public static class RecordEndpoints
             }),
             UploadRecordsResult.TrackNotFound => Problem(StatusCodes.Status404NotFound,
                 "track_not_found", "The track was not found."),
-            UploadRecordsResult.UnsupportedProtocol => Problem(StatusCodes.Status400BadRequest,
-                "unsupported_protocol", "The track protocol is not supported for upload."),
-            UploadRecordsResult.ProtocolConflict => Problem(StatusCodes.Status409Conflict,
-                "track_protocol_conflict", "The existing track does not match its registered protocol."),
             _ => throw new InvalidOperationException("Unknown record upload result."),
         };
     }

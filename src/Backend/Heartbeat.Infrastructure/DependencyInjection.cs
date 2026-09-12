@@ -20,7 +20,7 @@ public static class DependencyInjection
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<ICollectorRegistrationStore, PostgresCollectorRegistrationStore>();
         services.AddScoped<IRegisterCollector, RegisterCollector>();
-        services.AddScoped<IContinuousStateStore, PostgresContinuousStateStore>();
+        services.AddScoped<IRecordStore, PostgresRecordStore>();
         services.AddScoped<ITrackStore, PostgresTrackStore>();
         services.AddScoped<IResolveTrack, ResolveTrack>();
         services.AddScoped<IUploadRecords, UploadRecords>();

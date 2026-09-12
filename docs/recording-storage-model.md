@@ -145,8 +145,8 @@ created_at timestamptz NOT NULL
 - `type` 是 Record 数据协议的全局名称。不同平台和不同 Collector 可以产生相同 `type`，例如 Windows、macOS 和 Android Collector 可以共同产生焦点窗口类型。
 - `version` 是该 `type` 的 Payload 格式版本。
 - Payload 解码器由 `(type, version)` 选择，不依赖具体 Collector。
-- 相同 `(type, version)` 的时间模式由应用中的全局类型注册表验证，不增加数据库类型定义表。
-- 当前代码注册表为 [`RecordProtocols`](../src/Backend/Heartbeat.Domain/Recording/Protocols/RecordProtocols.cs)，首个协议是 [`desktop.application.foreground` v1](protocols/desktop-application-foreground-v1.md)。协议同时定义是否允许持续状态续期和 Payload 校验；允许续期不由客户端指定。
+- Heartbeat 后端不维护 `(type, version)` 注册表，也不解释或校验具体 Payload。创建 Track 的调用方同时声明固定的时间定义；生产者与消费者按 `(type, version)` 约定 Payload 语义。
+- [`desktop.application.foreground` v1](protocols/desktop-application-foreground-v1.md) 是当前 Collector 使用的一项协议，但它不限制后端接收其他类型或版本。
 - `time_mode` 表示 Record 占据一个时间点还是一段时间区间，取值为 `point` 或 `range`。
 - `end_mode` 只用于 `range`，取值为 `explicit` 或 `next_record`。
 - `point` 的 `end_mode` 必须为空。
@@ -157,7 +157,7 @@ created_at timestamptz NOT NULL
 - 桌面焦点等需要确认持续性的状态采集使用 `range + explicit`，按下文规则延长已确认区间，不依赖下一条 Record 跨越观测空白。`range + next_record` 保留，其适用协议和断采规则仍需另行确定。
 - `created_at` 由应用时钟提供。
 - 不保存通用 JSON metadata 或 `updated_at`。
-- Track 的显示名称来自 `(type, version)` 的代码注册定义和本地化资源，不存入 Track。对应程序不可用时，界面回退显示原始 `type`。
+- Track 不保存显示名称；界面可以按自己认识的 `(type, version)` 提供本地化名称，否则显示原始 `type`。
 
 约束：
 
@@ -170,11 +170,11 @@ created_at timestamptz NOT NULL
 
 获取接口：
 
-- `POST /api/v1/collectors/{collectorId}/tracks`，请求只包含 `type` 与 `version`，创建或复用该 Collector 下的唯一 Track。
+- `POST /api/v1/collectors/{collectorId}/tracks`，请求包含 `type`、`version`、`timeMode` 与可空 `endMode`，创建或复用该 Collector 下的唯一 Track。
 - Collector 必须已存在且属于当前 Owner；缺失和不属于该 Owner 均返回 `404 collector_not_found`。
-- 时间模式来自代码协议，未知协议或版本返回 `400 unsupported_protocol`；已有 Track 时间模式与协议不一致时返回 `409 track_protocol_conflict`，不修改历史 Track。
+- 未知 `type` 或 `version` 可以创建；已有 Track 的 `timeMode` 或 `endMode` 与请求不一致时返回 `409 track_definition_conflict`，不修改历史 Track。
 - 重复和并发获取保留已有 ID 与创建时间，成功始终返回 `200`。字段使用 HTTP 的 camelCase 格式，包括 `collectorId`、`timeMode`、`endMode` 和 `createdAt`。
-- Track 获取用于 Collector 接入准备，具体契约见[记录接口文档](recording-api.md)。
+- Hub 根据 Collector 提交的逻辑声明获取 Track，并持久保存后端映射；Collector 不依赖后端 Track ID。具体契约见[记录接口文档](recording-api.md)和 [Hub 交付](hub-record-delivery.md)。
 
 ## Record
 
@@ -198,7 +198,7 @@ value jsonb NOT NULL
 - `ended_at` 只在 `range + explicit` 中有值；`point` 和 `range + next_record` 中为空。
 - `observed_at` 是 Collector 获得该信息的时间；为空时表示与 `started_at` 相同。
 - `received_at` 是 Heartbeat 接收 Record 的时间，由 Heartbeat 应用时钟生成；续期和重试保留首次成功写入时的值。
-- `value` 保存符合 Track `(type, version)` 协议的规范化 JSON 值。它可以是对象、数组、数字、字符串或其他协议允许的 JSON 值。
+- `value` 保存任意已定义的 JSON 值，可以是对象、数组、数字、字符串、布尔值或 null。后端不按 Track `(type, version)` 注册、解码或校验具体结构。
 - 普通 Record 创建后不可修改。持续状态的 `range + explicit` Record 允许仅延长 `ended_at`，固定身份、起点和观测值；规则见下文。正常续期不提供区间缩短、内容替换或通用修正链。历史纠错与删除需要单独设计，包括防止删除后的旧重传恢复记录；不能仅凭删除和新增处于同一事务，就认为后续重传问题已解决。
 - 不增加通用原始平台 Payload 字段。某种 Record 需要保留来源信息时，由该类型自己的协议把它放入 `value`。
 - 跨平台应用身份不直接写入 Record 的观测值。Record 使用统一结构保存平台、标识种类和平台原生标识；读取或分析时，再由可更新的应用身份注册表把 Windows 可执行文件、macOS Bundle ID 和 Android Package Name 等解析为同一个 Application Identity。
@@ -236,7 +236,7 @@ value jsonb NOT NULL
 - 同一 Record 的固定字段不一致时拒绝写入。合法续期在数据库中原子合并：`ended_at = max(已有 ended_at, 收到的 ended_at)`。重复、乱序和迟到上传不会使已确认区间缩短。
 - 固定字段校验包括 `track_id`、`started_at`、规范化后的 `observed_at` 和 `value`。`value` 按 PostgreSQL jsonb 值相等判断，对象属性顺序和空白不同不构成内容变化。
 - 不新增 `revision`、`is_final` 或 Record TTL 字段。普通上传不要求服务端永久封存旧 Record；Collector 停止延长旧 Record 即可。
-- 具备可靠性要求的 Collector 需要在上传前保存 Record ID 和待上传内容；服务端提交后确认。重试复用已有身份，待上传的新进度不能被较旧请求的确认清除。当前最小 macOS Collector 暂用内存缓冲；持久队列的具体实现仍待设计。
+- Collector 保留尚未向 Hub 交接的 Record ID 和快照；Hub 在 SQLite 事务提交后确认持久接管，之后独立上传后端。各段重试复用原身份，旧回执不能清除新进度。当前 macOS Collector 的未交接缓冲仍在内存，Hub 接管后的持久队列已实现，见 [Hub 交付](hub-record-delivery.md)。
 
 TTL 只用于判断是否仍有及时的观测确认。它根据 Collector 的上传间隔设置并留出延迟余量；具体配置位置和算法尚未确定。TTL 到期不修改 `ended_at`，也不阻止后续补传。历史区间只到最后确认的位置，后面的时间显示未知；有效补传可以补回此前未知的区间。收到旧的离线数据本身不证明 Collector 当前仍在正常观测。
 
@@ -244,9 +244,9 @@ Collector 在一段连续采集开始时同时记录系统时间和单调时钟�
 
 该规则保证合法区间更新的合并结果，不保证设备的绝对时间准确。初始时间基准错误仍可能导致整段偏移；时钟异常检测、重新建立基准及跨设备对时需在 Collector 时间实现中明确。当前不承诺自动校正已存历史时间，也不借此开放任意区间回写。
 
-内部 [`IContinuousStateStore`](../src/Backend/Heartbeat.Application/Recording/IContinuousStateStore.cs) 与 PostgreSQL 适配器已实现完整区间的首次写入、固定字段冲突检查和原子续期。写入沿 Track、Collector、Timeline 校验 Owner，缺失和不属于该 Owner 的 Track 返回相同结果。该入口仅供协议明确表达持续状态的调用方使用；协议注册、Payload 模式校验与服务端接收时间由上层上传用例负责。续期通过单条 SQL 完成，不回写传入的领域对象。
+通用 [`IRecordStore`](../src/Backend/Heartbeat.Application/Recording/IRecordStore.cs) 与 PostgreSQL 适配器支持三种 Track 时间定义。Point 和 `range + next_record` 以 `ended_at = null` 幂等写入；`range + explicit` 首次写入完整区间，并以单条 SQL 原子执行 `max(ended_at)` 续期。写入沿 Track、Collector、Timeline 校验 Owner，缺失和不属于该 Owner 的 Track 返回相同结果。所有形态都会检查 ID 对应的 `track_id`、`started_at`、规范化后的 `observed_at`、`value` 与结束时间形状，冲突时不修改已有记录；`received_at` 始终保留首次成功写入值。
 
-`POST /api/v1/tracks/{trackId}/records` 已接入该入口，支持同一 Track 的 1–500 条记录。Application 每批读取一次所属 Track 和协议，再逐条校验与写入；当前存储层仍按条复核归属，不包含数据库批量优化。每条独立提交并返回对应输入位置的状态；HTTP 200 不代表所有条目均成功，失败或断连后可以按原 ID 重试。完整契约见[记录接口文档](recording-api.md)。
+`POST /api/v1/tracks/{trackId}/records` 已接入该入口，支持同一 Track 的 1–500 条记录。Application 每批读取一次所属 Track，按公共 ID 与时间规则创建 Record，再逐条写入；当前存储层仍按条复核归属，不包含数据库批量优化。每条独立提交并返回对应输入位置的状态；HTTP 200 不代表所有条目均成功，失败或断连后可以按原 ID 重试。完整契约见[记录接口文档](recording-api.md)。
 
 ## 跨 Collector 的设备身份
 
@@ -263,6 +263,6 @@ Collector 在一段连续采集开始时同时记录系统时间和单调时钟�
 - TTL 的具体配置、算法以及与迟到补传的实时状态判断。
 - `range + next_record` 的适用协议和断采规则。
 - 历史纠错、删除与旧重传的处理。
-- Collector 的时钟异常检测、时间基准重建和持久上传队列。
+- Collector 的时钟异常检测、时间基准重建和未交接数据保护。
 - Track 的协议升级和跨 Collector 关联。
 - 桌面 Collector 与浏览器 Collector 如何共享和恢复协议中的设备标识。

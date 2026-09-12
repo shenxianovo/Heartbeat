@@ -160,7 +160,13 @@ public sealed class RecordReplayHttpTests(PostgresFixture fixture) : PostgresTes
         var collectorId = collector.RootElement.GetProperty("id").GetGuid();
         using var resolution = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/collectors/{collectorId}/tracks")
         {
-            Content = JsonContent.Create(new { type = "desktop.application.foreground", version = 1 }),
+            Content = JsonContent.Create(new
+            {
+                type = "desktop.application.foreground",
+                version = 1,
+                timeMode = "range",
+                endMode = "explicit",
+            }),
         };
         resolution.Headers.Add(RecordingApiFactory.OwnerHeader, ownerId.ToString());
         using var resolved = await client.SendAsync(resolution);
