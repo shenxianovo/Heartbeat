@@ -3,6 +3,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Heartbeat.Api.Authentication;
 using Heartbeat.Application.Recording;
+using Heartbeat.Recording;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Heartbeat.Api.Endpoints;
 
@@ -10,10 +12,68 @@ public static class RecordEndpoints
 {
     public static IEndpointRouteBuilder MapRecordEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        endpoints.MapGet("/api/v1/tracks/{trackId:guid}/records", ReplayAsync)
+            .RequireAuthorization()
+            .WithName("ReplayRecords");
         endpoints.MapPost("/api/v1/tracks/{trackId:guid}/records", UploadAsync)
             .RequireAuthorization()
             .WithName("UploadRecords");
         return endpoints;
+    }
+
+    private static async Task<IResult> ReplayAsync(
+        Guid trackId,
+        [FromQuery(Name = "from")] DateTimeOffset? from,
+        [FromQuery(Name = "to")] DateTimeOffset? to,
+        [FromQuery] int? limit,
+        ClaimsPrincipal principal,
+        IReplayRecords replayRecords,
+        CancellationToken cancellationToken)
+    {
+        if (!OwnerClaims.TryGetOwnerId(principal, out var ownerId))
+        {
+            return Results.Unauthorized();
+        }
+
+        ReplayRecordsResult result;
+        try
+        {
+            result = await replayRecords.ExecuteAsync(ownerId,
+                new ReplayRecordsQuery(trackId, from, to, limit), cancellationToken);
+        }
+        catch (ArgumentException exception)
+        {
+            return Problem(StatusCodes.Status400BadRequest, "invalid_request",
+                "The replay request is invalid.", exception.Message);
+        }
+
+        return result switch
+        {
+            ReplayRecordsResult.Found found => Results.Ok(new
+            {
+                track = new
+                {
+                    found.Replay.Track.Id,
+                    found.Replay.Track.CollectorId,
+                    found.Replay.Track.Type,
+                    found.Replay.Track.Version,
+                    timeMode = ToResponse(found.Replay.Track.TimeMode),
+                    endMode = ToResponse(found.Replay.Track.EndMode),
+                },
+                records = found.Replay.Records.Select(record => new
+                {
+                    record.Id,
+                    record.StartedAt,
+                    record.EndedAt,
+                    record.ObservedAt,
+                    record.ReceivedAt,
+                    record.Value,
+                }),
+            }),
+            ReplayRecordsResult.TrackNotFound => Problem(StatusCodes.Status404NotFound,
+                "track_not_found", "The track was not found."),
+            _ => throw new InvalidOperationException("Unknown record replay result."),
+        };
     }
 
     private static async Task<IResult> UploadAsync(
@@ -76,6 +136,21 @@ public static class RecordEndpoints
     private static IResult Problem(int status, string code, string title, string? detail = null) =>
         Results.Problem(statusCode: status, title: title, detail: detail,
             extensions: new Dictionary<string, object?> { ["code"] = code });
+
+    private static string ToResponse(TimeMode timeMode) => timeMode switch
+    {
+        TimeMode.Point => "point",
+        TimeMode.Range => "range",
+        _ => throw new InvalidOperationException("Unknown track time mode."),
+    };
+
+    private static string? ToResponse(EndMode? endMode) => endMode switch
+    {
+        null => null,
+        EndMode.Explicit => "explicit",
+        EndMode.NextRecord => "next_record",
+        _ => throw new InvalidOperationException("Unknown track end mode."),
+    };
 
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
     private sealed record UploadRecordsRequest(RecordRequest?[]? Records);
