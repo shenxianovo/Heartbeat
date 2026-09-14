@@ -10,10 +10,27 @@ public static class TrackEndpoints
 {
     public static IEndpointRouteBuilder MapTrackEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        endpoints.MapGet("/api/v1/tracks", ListAsync)
+            .RequireAuthorization()
+            .WithName("ListTracks");
         endpoints.MapPost("/api/v1/collectors/{collectorId:guid}/tracks", ResolveAsync)
             .RequireAuthorization()
             .WithName("ResolveTrack");
         return endpoints;
+    }
+
+    private static async Task<IResult> ListAsync(
+        ClaimsPrincipal principal,
+        IListTracks listTracks,
+        CancellationToken cancellationToken)
+    {
+        if (!OwnerClaims.TryGetOwnerId(principal, out var ownerId))
+        {
+            return Results.Unauthorized();
+        }
+
+        var tracks = await listTracks.ExecuteAsync(ownerId, cancellationToken);
+        return Results.Ok(new { tracks = tracks.Select(ToResponse) });
     }
 
     private static async Task<IResult> ResolveAsync(
@@ -81,6 +98,33 @@ public static class TrackEndpoints
         },
         track.CreatedAt);
 
+    private static TrackCatalogResponse ToResponse(ListedTrack track) => new(
+        track.Id,
+        track.CollectorId,
+        track.CollectorKey,
+        track.CollectorTarget,
+        track.CollectorDisplayName,
+        track.Type,
+        track.Version,
+        ToResponse(track.TimeMode),
+        ToResponse(track.EndMode),
+        track.CreatedAt);
+
+    private static string ToResponse(TimeMode timeMode) => timeMode switch
+    {
+        TimeMode.Point => "point",
+        TimeMode.Range => "range",
+        _ => throw new InvalidOperationException("Unknown track time mode."),
+    };
+
+    private static string? ToResponse(EndMode? endMode) => endMode switch
+    {
+        null => null,
+        EndMode.Explicit => "explicit",
+        EndMode.NextRecord => "next_record",
+        _ => throw new InvalidOperationException("Unknown track end mode."),
+    };
+
     private static TimeMode ParseTimeMode(string? value) => value switch
     {
         "point" => TimeMode.Point,
@@ -106,6 +150,18 @@ public static class TrackEndpoints
     private sealed record ResolveTrackResponse(
         Guid Id,
         Guid CollectorId,
+        string Type,
+        int Version,
+        string TimeMode,
+        string? EndMode,
+        DateTimeOffset CreatedAt);
+
+    private sealed record TrackCatalogResponse(
+        Guid Id,
+        Guid CollectorId,
+        string CollectorKey,
+        string CollectorTarget,
+        string CollectorDisplayName,
         string Type,
         int Version,
         string TimeMode,

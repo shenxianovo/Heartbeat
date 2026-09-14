@@ -8,3 +8,9 @@
 **/bin
 **/obj
 TestResults
+**/node_modules
+**/.next
+**/out
+**/coverage
+**/playwright-report
+**/test-results

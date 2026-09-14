@@ -17,6 +17,28 @@ internal sealed class PostgresTrackStore(HeartbeatDbContext dbContext) : ITrackS
          where track.Id == trackId && timeline.OwnerId == ownerId
          select track).SingleOrDefaultAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<ListedTrack>> ListAsync(
+        Guid ownerId,
+        CancellationToken cancellationToken = default) =>
+        await (
+            from track in dbContext.Tracks.AsNoTracking()
+            join collector in dbContext.Collectors.AsNoTracking() on track.CollectorId equals collector.Id
+            join timeline in dbContext.Timelines.AsNoTracking() on collector.TimelineId equals timeline.Id
+            where timeline.OwnerId == ownerId
+            orderby collector.Key, collector.Target, track.Type, track.Version, track.Id
+            select new ListedTrack(
+                track.Id,
+                collector.Id,
+                collector.Key,
+                collector.Target,
+                collector.DisplayName,
+                track.Type,
+                track.Version,
+                track.TimeMode,
+                track.EndMode,
+                track.CreatedAt))
+        .ToListAsync(cancellationToken);
+
     public async Task<ResolvedTrack?> ResolveAsync(
         Guid ownerId,
         Track candidate,

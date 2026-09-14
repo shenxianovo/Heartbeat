@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Security.Claims;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Heartbeat.Api.Authentication;
@@ -26,6 +28,7 @@ public static class RecordEndpoints
         [FromQuery(Name = "from")] DateTimeOffset? from,
         [FromQuery(Name = "to")] DateTimeOffset? to,
         [FromQuery] int? limit,
+        [FromQuery] string? cursor,
         ClaimsPrincipal principal,
         IReplayRecords replayRecords,
         CancellationToken cancellationToken)
@@ -38,8 +41,9 @@ public static class RecordEndpoints
         ReplayRecordsResult result;
         try
         {
+            var parsedCursor = cursor is null ? null : ParseCursor(cursor);
             result = await replayRecords.ExecuteAsync(ownerId,
-                new ReplayRecordsQuery(trackId, from, to, limit), cancellationToken);
+                new ReplayRecordsQuery(trackId, from, to, limit, parsedCursor), cancellationToken);
         }
         catch (ArgumentException exception)
         {
@@ -69,6 +73,9 @@ public static class RecordEndpoints
                     record.ReceivedAt,
                     record.Value,
                 }),
+                nextCursor = found.Replay.NextCursor is null
+                    ? null
+                    : EncodeCursor(found.Replay.NextCursor),
             }),
             ReplayRecordsResult.TrackNotFound => Problem(StatusCodes.Status404NotFound,
                 "track_not_found", "The track was not found."),
@@ -147,6 +154,71 @@ public static class RecordEndpoints
         EndMode.NextRecord => "next_record",
         _ => throw new InvalidOperationException("Unknown track end mode."),
     };
+
+    private static ReplayRecordsCursor ParseCursor(string value)
+    {
+        if (value.Length is < 1 or > 160 || value.Any(character =>
+                !(character is >= 'A' and <= 'Z'
+                    or >= 'a' and <= 'z'
+                    or >= '0' and <= '9'
+                    or '-' or '_')))
+        {
+            throw new ArgumentException("The replay cursor is invalid.", nameof(value));
+        }
+
+        var remainder = value.Length % 4;
+        if (remainder == 1)
+        {
+            throw new ArgumentException("The replay cursor is invalid.", nameof(value));
+        }
+
+        var encoded = value.Replace('-', '+').Replace('_', '/')
+            + remainder switch
+            {
+                0 => string.Empty,
+                2 => "==",
+                3 => "=",
+                _ => throw new InvalidOperationException("Unknown base64url remainder."),
+            };
+
+        string decoded;
+        try
+        {
+            decoded = new UTF8Encoding(false, true).GetString(Convert.FromBase64String(encoded));
+        }
+        catch (Exception exception) when (exception is FormatException or DecoderFallbackException)
+        {
+            throw new ArgumentException("The replay cursor is invalid.", nameof(value));
+        }
+
+        var parts = decoded.Split('\n');
+        if (parts.Length != 2
+            || !DateTimeOffset.TryParseExact(parts[0], "O", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var startedAt)
+            || startedAt.Offset != TimeSpan.Zero
+            || !Guid.TryParseExact(parts[1], "D", out var id)
+            || id == Guid.Empty)
+        {
+            throw new ArgumentException("The replay cursor is invalid.", nameof(value));
+        }
+
+        var cursor = new ReplayRecordsCursor(startedAt, id);
+        if (!string.Equals(value, EncodeCursor(cursor), StringComparison.Ordinal))
+        {
+            throw new ArgumentException("The replay cursor is invalid.", nameof(value));
+        }
+
+        return cursor;
+    }
+
+    private static string EncodeCursor(ReplayRecordsCursor cursor)
+    {
+        var payload = $"{cursor.StartedAt.ToUniversalTime():O}\n{cursor.Id:D}";
+        return Convert.ToBase64String(Encoding.UTF8.GetBytes(payload))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+    }
 
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
     private sealed record UploadRecordsRequest(RecordRequest?[]? Records);

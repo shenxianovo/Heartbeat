@@ -65,6 +65,97 @@ public sealed class RecordReplayHttpTests(PostgresFixture fixture) : PostgresTes
         Assert.Equal(2, records.GetArrayLength());
         Assert.Equal("com.one", ApplicationId(records[0]));
         Assert.Equal("com.two", ApplicationId(records[1]));
+        Assert.False(string.IsNullOrWhiteSpace(json.RootElement.GetProperty("nextCursor").GetString()));
+    }
+
+    [Fact]
+    public async Task CursorPagesAcrossEqualStartTimesWithoutDuplicatesOrOmissions()
+    {
+        var ownerId = Guid.NewGuid();
+        await ProvisionTimelineAsync(ownerId);
+        await using var factory = RecordingApiFactory.Create(ConnectionString, new FixedTimeProvider(Now));
+        using var client = factory.CreateClient();
+        var trackId = await RegisterResolveAndUploadAsync(client, ownerId,
+            Entry(Guid.CreateVersion7(), 5, 6, "com.one"),
+            Entry(Guid.CreateVersion7(), 5, 7, "com.two"),
+            Entry(Guid.CreateVersion7(), 5, 8, "com.three"),
+            Entry(Guid.CreateVersion7(), 5, 9, "com.four"),
+            Entry(Guid.CreateVersion7(), 5, 10, "com.five"));
+
+        using var completeResponse = await ReplayAsync(client, ownerId, trackId);
+        completeResponse.EnsureSuccessStatusCode();
+        using var complete = JsonDocument.Parse(await completeResponse.Content.ReadAsStringAsync());
+        var expectedIds = complete.RootElement.GetProperty("records")
+            .EnumerateArray()
+            .Select(record => record.GetProperty("id").GetGuid())
+            .ToArray();
+
+        var pagedIds = new List<Guid>();
+        string? cursor = null;
+        do
+        {
+            using var pageResponse = await ReplayAsync(client, ownerId, trackId, limit: 2, cursor: cursor);
+            pageResponse.EnsureSuccessStatusCode();
+            using var page = JsonDocument.Parse(await pageResponse.Content.ReadAsStringAsync());
+            pagedIds.AddRange(page.RootElement.GetProperty("records")
+                .EnumerateArray()
+                .Select(record => record.GetProperty("id").GetGuid()));
+            cursor = page.RootElement.GetProperty("nextCursor").GetString();
+        } while (cursor is not null);
+
+        Assert.Equal(expectedIds, pagedIds);
+        Assert.Equal(expectedIds.Length, pagedIds.Distinct().Count());
+    }
+
+    [Theory]
+    [InlineData("not-base64!")]
+    [InlineData("YmFk")]
+    public async Task InvalidCursorIsRejected(string cursor)
+    {
+        var ownerId = Guid.NewGuid();
+        await ProvisionTimelineAsync(ownerId);
+        await using var factory = RecordingApiFactory.Create(ConnectionString, new FixedTimeProvider(Now));
+        using var client = factory.CreateClient();
+        var trackId = await RegisterResolveAndUploadAsync(client, ownerId,
+            Entry(Guid.CreateVersion7(), 1, 2, "com.one"));
+
+        using var response = await ReplayAsync(client, ownerId, trackId, cursor: cursor);
+
+        await AssertProblemAsync(response, HttpStatusCode.BadRequest, "invalid_request");
+    }
+
+    [Fact]
+    public async Task ReplayPreservesArbitraryJsonValue()
+    {
+        var ownerId = Guid.NewGuid();
+        await ProvisionTimelineAsync(ownerId);
+        await using var factory = RecordingApiFactory.Create(ConnectionString, new FixedTimeProvider(Now));
+        using var client = factory.CreateClient();
+        var trackId = await RegisterAndResolveAsync(client, ownerId);
+        using var expected = JsonDocument.Parse("[null,true,42.5,{\"nested\":[\"value\"]}]");
+        using var upload = await UploadAsync(client, ownerId, trackId, new
+        {
+            records = new[]
+            {
+                new
+                {
+                    id = Guid.CreateVersion7(),
+                    startedAt = BaseTime,
+                    endedAt = BaseTime.AddMinutes(1),
+                    value = expected.RootElement,
+                },
+            },
+        });
+        upload.EnsureSuccessStatusCode();
+
+        using var response = await ReplayAsync(client, ownerId, trackId);
+        response.EnsureSuccessStatusCode();
+        using var replay = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+        Assert.True(JsonElement.DeepEquals(
+            expected.RootElement,
+            replay.RootElement.GetProperty("records")[0].GetProperty("value")));
+        Assert.Equal(JsonValueKind.Null, replay.RootElement.GetProperty("nextCursor").ValueKind);
     }
 
     [Fact]
@@ -77,9 +168,15 @@ public sealed class RecordReplayHttpTests(PostgresFixture fixture) : PostgresTes
         await using var factory = RecordingApiFactory.Create(ConnectionString, new FixedTimeProvider(Now));
         using var client = factory.CreateClient();
         var trackId = await RegisterResolveAndUploadAsync(client, ownerId,
-            Entry(Guid.CreateVersion7(), 1, 2, "com.one"));
+            Entry(Guid.CreateVersion7(), 1, 2, "com.one"),
+            Entry(Guid.CreateVersion7(), 2, 3, "com.two"));
 
-        using var foreign = await ReplayAsync(client, otherOwnerId, trackId);
+        using var firstPageResponse = await ReplayAsync(client, ownerId, trackId, limit: 1);
+        firstPageResponse.EnsureSuccessStatusCode();
+        using var firstPage = JsonDocument.Parse(await firstPageResponse.Content.ReadAsStringAsync());
+        var cursor = firstPage.RootElement.GetProperty("nextCursor").GetString();
+
+        using var foreign = await ReplayAsync(client, otherOwnerId, trackId, limit: 1, cursor: cursor);
         using var missing = await ReplayAsync(client, ownerId, Guid.NewGuid());
 
         await AssertProblemAsync(foreign, HttpStatusCode.NotFound, "track_not_found");
@@ -191,14 +288,20 @@ public sealed class RecordReplayHttpTests(PostgresFixture fixture) : PostgresTes
         Guid trackId,
         DateTimeOffset? from = null,
         DateTimeOffset? to = null,
-        int? limit = null)
+        int? limit = null,
+        string? cursor = null)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, ReplayPath(trackId, from, to, limit));
+        using var request = new HttpRequestMessage(HttpMethod.Get, ReplayPath(trackId, from, to, limit, cursor));
         request.Headers.Add(RecordingApiFactory.OwnerHeader, ownerId.ToString());
         return await client.SendAsync(request);
     }
 
-    private static string ReplayPath(Guid trackId, DateTimeOffset? from, DateTimeOffset? to, int? limit)
+    private static string ReplayPath(
+        Guid trackId,
+        DateTimeOffset? from,
+        DateTimeOffset? to,
+        int? limit,
+        string? cursor = null)
     {
         var parameters = new List<string>();
         if (from is not null)
@@ -214,6 +317,11 @@ public sealed class RecordReplayHttpTests(PostgresFixture fixture) : PostgresTes
         if (limit is not null)
         {
             parameters.Add($"limit={limit.Value}");
+        }
+
+        if (cursor is not null)
+        {
+            parameters.Add($"cursor={Uri.EscapeDataString(cursor)}");
         }
 
         return parameters.Count == 0

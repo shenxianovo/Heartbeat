@@ -1,6 +1,6 @@
 # 记录 HTTP 接口
 
-状态：Collector 注册、Track 获取、批量 Record 上传和 Track 级重放查询已实现。
+状态：Collector 注册、Track 获取与目录读取、批量 Record 上传和 Track 级重放查询已实现。
 
 本文档记录长期有效的 HTTP 契约。一次性实现规格完成后不保留在 `.scratch`，必要信息应沉淀到本文、存储规范、协议文档或 ADR。
 
@@ -82,6 +82,35 @@ Owner 从已验证令牌的 `sub` claim 取得，必须是 UUID。客户端不�
 }
 ```
 
+## Track 目录
+
+`GET /api/v1/tracks`
+
+返回当前 Owner 已有的全部 Track 及其 Collector 展示信息。Owner 尚无 Timeline、没有 Collector，或没有 Track 时均返回空数组；读取不会隐式创建任何对象。Track 按 Collector `key`、`target`，再按 Track `type`、`version`、`id` 稳定排序。
+
+响应：
+
+```json
+{
+  "tracks": [
+    {
+      "id": "019e0000-0000-7000-8000-000000000002",
+      "collectorId": "019e0000-0000-7000-8000-000000000001",
+      "collectorKey": "heartbeat.collector.desktop.macos",
+      "collectorTarget": "device-a",
+      "collectorDisplayName": "My Mac",
+      "type": "desktop.application.foreground",
+      "version": 1,
+      "timeMode": "range",
+      "endMode": "explicit",
+      "createdAt": "2026-09-12T10:00:00Z"
+    }
+  ]
+}
+```
+
+未认证或 Owner claim 无效返回 `401`。目录始终按当前 Owner 隔离，不返回其他 Owner 的 Track。
+
 ## 批量 Record 上传
 
 `POST /api/v1/tracks/{trackId}/records`
@@ -157,6 +186,7 @@ Hub 只能用 `stored` 回执确认对应项的上传进度。旧请求回执只
 - `from`：可选 UTC 时刻。
 - `to`：可选 UTC 时刻；同时提供 `from` 和 `to` 时必须满足 `from < to`。
 - `limit`：可选，默认 200，范围 1 到 500。
+- `cursor`：可选，使用上一页响应的 `nextCursor` 原样续读；无效 cursor 返回 `400 invalid_request`。
 
 契约：
 
@@ -164,6 +194,7 @@ Hub 只能用 `stored` 回执确认对应项的上传进度。旧请求回执只
 - 时间窗按 `[from, to)` 处理。
 - 有 `endedAt` 的 Record 使用区间交叠判断；没有 `endedAt` 的 Record 使用 `startedAt` 判断。
 - 返回顺序固定为 `(startedAt, id)`。
+- 分页按 `(startedAt, id)` 做 keyset 续读，即使多条 Record 的 `startedAt` 相同也不会重复或遗漏。每一页都重新验证 Track 属于当前 Owner；cursor 本身不提供授权。客户端续读时应保持同一 `from`、`to` 时间窗。
 - 查询不解释 Payload，不解析 Application Identity，不跨 Track 聚合，不按设备或应用分组。
 - 当前不计算 `range + next_record` 的派生结束时间。
 
@@ -195,6 +226,9 @@ Hub 只能用 `stored` 回执确认对应项的上传进度。旧请求回执只
         }
       }
     }
-  ]
+  ],
+  "nextCursor": null
 }
 ```
+
+存在后续记录时，`nextCursor` 是一个不透明字符串；客户端不得解析或构造。最后一页返回 `null`。

@@ -42,11 +42,26 @@ internal sealed class PostgresRecordReplayStore(HeartbeatDbContext dbContext) : 
             records = records.Where(record => record.StartedAt < to);
         }
 
+        if (query.Cursor is not null)
+        {
+            var cursorStartedAt = query.Cursor.StartedAt;
+            var cursorId = query.Cursor.Id;
+            records = records.Where(record =>
+                record.StartedAt > cursorStartedAt
+                || (record.StartedAt == cursorStartedAt && record.Id.CompareTo(cursorId) > 0));
+        }
+
         var stored = await records
             .OrderBy(record => record.StartedAt)
             .ThenBy(record => record.Id)
-            .Take(query.Limit!.Value)
+            .Take(query.Limit!.Value + 1)
             .ToListAsync(cancellationToken);
+        var hasNextPage = stored.Count > query.Limit.Value;
+        if (hasNextPage)
+        {
+            stored.RemoveAt(stored.Count - 1);
+        }
+
         var replayed = stored
             .Select(record => new ReplayedRecord(
                 record.Id,
@@ -56,7 +71,10 @@ internal sealed class PostgresRecordReplayStore(HeartbeatDbContext dbContext) : 
                 record.ReceivedAt,
                 record.Value.Clone()))
             .ToList();
+        var nextCursor = hasNextPage
+            ? new ReplayRecordsCursor(stored[^1].StartedAt, stored[^1].Id)
+            : null;
 
-        return new RecordReplay(track, replayed);
+        return new RecordReplay(track, replayed, nextCursor);
     }
 }

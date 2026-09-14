@@ -43,6 +43,10 @@ public interface ITrackStore
 {
     Task<Track?> FindAsync(Guid ownerId, Guid trackId, CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<ListedTrack>> ListAsync(
+        Guid ownerId,
+        CancellationToken cancellationToken = default);
+
     Task<ResolvedTrack?> ResolveAsync(
         Guid ownerId,
         Track candidate,

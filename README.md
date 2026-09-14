@@ -17,6 +17,7 @@ Collector 向 Hub 提交逻辑声明与 Record，不持有后端 ID。Hub 持久
 - [记录模型持久化说明](src/Backend/Heartbeat.Infrastructure/Persistence/README.md)：EF Core / PostgreSQL 映射约定。
 - [macOS Collector](src/Collectors/Heartbeat.Collector.Desktop.Mac/README.md)：最小桌面 Collector 的运行方式。
 - [Hub 记录交付](docs/hub-record-delivery.md)：SQLite 持久接管、后台上传、恢复及桌面接入。
+- [Next 前端](src/Frontend/Heartbeat.Web/README.md)：本地运行、登录配置、Record value 展示组件扩展与验证。
 - [未决设计](docs/recording-open-questions.md)：未交接数据、断采规则、设备关联等尚未确认的问题。
 - [Agent 规则](AGENTS.md)：协作约束和本仓库的工程规则。
 
@@ -31,6 +32,8 @@ src/
 │   └── Heartbeat.Infrastructure/  # EF Core 和 PostgreSQL 适配器
 ├── Collectors/
 │   └── Heartbeat.Collector.Desktop.Mac/  # macOS 观测和 Record 生成
+├── Frontend/
+│   └── Heartbeat.Web/                  # Next.js / React 回放与 value 展示组件
 └── Hub/
     ├── Heartbeat.Hub.Client/           # 轻量提交结构与 HTTP 客户端
     ├── Heartbeat.Hub/                  # SQLite 接管、后端映射和上传
@@ -47,10 +50,11 @@ tests/
 - Entity Framework Core 10 with Npgsql
 - PostgreSQL 18
 - Docker Compose 本地开发环境
+- Next.js App Router / React / TypeScript
 
 ## 本地运行
 
-启动完整的本地服务：
+启动本地数据库和后端服务：
 
 ```bash
 ./scripts/dev.sh
@@ -73,3 +77,14 @@ dotnet run --project src/Backend/Heartbeat.Api
 API 监听 ASP.NET Core 输出的地址。数据库就绪状态可通过 `/health/ready` 查询。
 
 容器中的 API 地址为 <http://localhost:8080>。
+
+启动前端（另开终端）：
+
+```bash
+cd src/Frontend/Heartbeat.Web
+npm ci
+cp .env.example .env.local
+npm run dev
+```
+
+访问 <http://localhost:3000>。前端通过 Next 转发 `/api/*` 请求至后端；OIDC 回调地址和环境配置见[前端说明](src/Frontend/Heartbeat.Web/README.md)。

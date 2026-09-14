@@ -1,0 +1,50 @@
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
+import { RecordValue } from "@/components/records/RecordValue";
+
+describe("RecordValue", () => {
+  it("uses the foreground application renderer for its exact type and version", () => {
+    render(
+      <RecordValue
+        type="desktop.application.foreground"
+        version={1}
+        value={{
+          device_id: "mac-studio",
+          application: {
+            platform: "macos",
+            id_kind: "bundle_id",
+            id: "com.apple.finder",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("com.apple.finder")).toBeVisible();
+    expect(screen.getByText("mac-studio")).toBeVisible();
+    expect(screen.getByText(/MACOS · Bundle ID/)).toBeVisible();
+  });
+
+  it("isolates a malformed known value and falls back to escaped JSON", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { container } = render(
+      <RecordValue
+        type="desktop.application.foreground"
+        version={1}
+        value={{ malformed: "observation" }}
+      />,
+    );
+
+    expect(screen.getByText("未提供专用展示")).toBeVisible();
+    expect(container.querySelector("pre")).toHaveTextContent('"malformed": "observation"');
+  });
+
+  it("never executes unknown values as HTML", () => {
+    const value = "<script>window.untrustedExecuted = true</script>";
+    render(<RecordValue type="future.record" version={7} value={value} />);
+
+    expect(screen.getByText(/window\.untrustedExecuted/)).toBeVisible();
+    expect(document.querySelector("script")).toBeNull();
+    expect("untrustedExecuted" in window).toBe(false);
+  });
+});

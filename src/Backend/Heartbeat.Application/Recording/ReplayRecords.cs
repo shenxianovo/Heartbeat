@@ -7,7 +7,10 @@ public sealed record ReplayRecordsQuery(
     Guid TrackId,
     DateTimeOffset? From,
     DateTimeOffset? To,
-    int? Limit);
+    int? Limit,
+    ReplayRecordsCursor? Cursor);
+
+public sealed record ReplayRecordsCursor(DateTimeOffset StartedAt, Guid Id);
 
 public sealed record ReplayedTrack(
     Guid Id,
@@ -25,7 +28,10 @@ public sealed record ReplayedRecord(
     DateTimeOffset ReceivedAt,
     JsonElement Value);
 
-public sealed record RecordReplay(ReplayedTrack Track, IReadOnlyList<ReplayedRecord> Records);
+public sealed record RecordReplay(
+    ReplayedTrack Track,
+    IReadOnlyList<ReplayedRecord> Records,
+    ReplayRecordsCursor? NextCursor);
 
 public abstract record ReplayRecordsResult
 {
@@ -80,6 +86,11 @@ public sealed class ReplayRecords(IRecordReplayStore store) : IReplayRecords
             throw new ArgumentException("The replay window must have a start before its end.", nameof(query));
         }
 
+        if (query.Cursor is { Id: var cursorId } && cursorId == Guid.Empty)
+        {
+            throw new ArgumentException("The replay cursor must identify a record.", nameof(query));
+        }
+
         var limit = query.Limit ?? DefaultLimit;
         if (limit is < 1 or > MaximumLimit)
         {
@@ -91,6 +102,9 @@ public sealed class ReplayRecords(IRecordReplayStore store) : IReplayRecords
             From = query.From?.ToUniversalTime(),
             To = query.To?.ToUniversalTime(),
             Limit = limit,
+            Cursor = query.Cursor is null
+                ? null
+                : query.Cursor with { StartedAt = query.Cursor.StartedAt.ToUniversalTime() },
         };
         var replay = await store.FindAsync(ownerId, normalized, cancellationToken);
 

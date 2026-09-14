@@ -23,6 +23,7 @@ public static class DependencyInjection
         services.AddScoped<IRecordStore, PostgresRecordStore>();
         services.AddScoped<ITrackStore, PostgresTrackStore>();
         services.AddScoped<IResolveTrack, ResolveTrack>();
+        services.AddScoped<IListTracks, ListTracks>();
         services.AddScoped<IUploadRecords, UploadRecords>();
         services.AddScoped<IRecordReplayStore, PostgresRecordReplayStore>();
         services.AddScoped<IReplayRecords, ReplayRecords>();
