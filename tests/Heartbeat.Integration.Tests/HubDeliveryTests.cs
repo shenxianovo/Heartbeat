@@ -13,7 +13,6 @@ public sealed class HubDeliveryTests(PostgresFixture fixture) : PostgresTestBase
     public async Task OfflineFirstSubmissionResolvesAfterRestartAndSurvivesLostBackendReceipt()
     {
         var owner = Guid.NewGuid();
-        await ProvisionTimelineAsync(owner);
         var now = DateTimeOffset.UtcNow.AddTicks(7);
         await using var factory = RecordingApiFactory.Create(ConnectionString, new FixedTimeProvider(now));
         using var replayClient = factory.CreateClient();
@@ -32,11 +31,12 @@ public sealed class HubDeliveryTests(PostgresFixture fixture) : PostgresTestBase
             queue.Accept(submission);
             using (var offline = new HttpClient(new OfflineHandler()))
             {
-                Assert.Single(await new RecordUploader(queue, offline, Token(owner)).UploadOnceAsync());
+                Assert.Single(await new RecordUploader(queue, offline, new FixedTokenProvider(owner)).UploadOnceAsync());
             }
 
             await using (var db = CreateDbContext())
             {
+                Assert.Empty(await db.Timelines.ToListAsync());
                 Assert.Empty(await db.Collectors.ToListAsync());
                 Assert.Empty(await db.Tracks.ToListAsync());
             }
@@ -48,7 +48,7 @@ public sealed class HubDeliveryTests(PostgresFixture fixture) : PostgresTestBase
                 InnerHandler = factory.Server.CreateHandler(),
             };
             using var backend = new HttpClient(handler);
-            Assert.Single(await new RecordUploader(queue, backend, Token(owner)).UploadOnceAsync());
+            Assert.Single(await new RecordUploader(queue, backend, new FixedTokenProvider(owner)).UploadOnceAsync());
             Assert.Equal(new QueueStatus(1, 0), queue.Status());
             var mappedTrack = Assert.Single(queue.TakePending()).Route.BackendTrackId!.Value;
             await using (var db = CreateDbContext())
@@ -58,7 +58,7 @@ public sealed class HubDeliveryTests(PostgresFixture fixture) : PostgresTestBase
 
             queue = new RecordOutbox(path, destination);
             queue.Accept(submission with { Records = [record with { EndedAt = now }] });
-            Assert.Empty(await new RecordUploader(queue, backend, Token(owner)).UploadOnceAsync());
+            Assert.Empty(await new RecordUploader(queue, backend, new FixedTokenProvider(owner)).UploadOnceAsync());
             Assert.Equal(new QueueStatus(0, 0), queue.Status());
             Assert.Equal(1, handler.RegistrationRequests);
             Assert.Equal(1, handler.TrackRequests);
@@ -76,7 +76,7 @@ public sealed class HubDeliveryTests(PostgresFixture fixture) : PostgresTestBase
             {
                 Records = [record with { Value = JsonSerializer.SerializeToElement("conflicting value") }],
             });
-            Assert.Empty(await new RecordUploader(queue, backend, Token(owner)).UploadOnceAsync());
+            Assert.Empty(await new RecordUploader(queue, backend, new FixedTokenProvider(owner)).UploadOnceAsync());
             Assert.Equal(new QueueStatus(0, 1), queue.Status());
             Assert.Equal("conflict", Assert.Single(queue.ReadFailures()).Failure);
         }
@@ -93,7 +93,6 @@ public sealed class HubDeliveryTests(PostgresFixture fixture) : PostgresTestBase
         string timeMode, string? endMode)
     {
         var owner = Guid.NewGuid();
-        await ProvisionTimelineAsync(owner);
         var now = DateTimeOffset.UtcNow;
         await using var factory = RecordingApiFactory.Create(ConnectionString, new FixedTimeProvider(now));
         using var replayClient = factory.CreateClient();
@@ -110,7 +109,7 @@ public sealed class HubDeliveryTests(PostgresFixture fixture) : PostgresTestBase
                 new TrackDeclaration("example.unregistered.data", 1, timeMode, endMode), [record]));
             using var handler = new BackendHandler(owner) { InnerHandler = factory.Server.CreateHandler() };
             using var backend = new HttpClient(handler);
-            Assert.Empty(await new RecordUploader(queue, backend, Token(owner)).UploadOnceAsync());
+            Assert.Empty(await new RecordUploader(queue, backend, new FixedTokenProvider(owner)).UploadOnceAsync());
             Assert.Equal(new QueueStatus(0, 0), queue.Status());
 
             await using var db = CreateDbContext();
@@ -131,6 +130,14 @@ public sealed class HubDeliveryTests(PostgresFixture fixture) : PostgresTestBase
 
     private static string Token(Guid owner) =>
         $"e30.{Convert.ToBase64String(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { sub = owner }))).TrimEnd('=').Replace('+', '-').Replace('/', '_')}.test";
+
+    private sealed class FixedTokenProvider(Guid owner) : IBackendTokenProvider
+    {
+        public ValueTask<BackendAccessToken?> GetTokenAsync(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<BackendAccessToken?>(new(Token(owner), owner, DateTimeOffset.UtcNow.AddHours(1)));
+
+        public void Invalidate() { }
+    }
 
     private sealed class OfflineHandler : HttpMessageHandler
     {

@@ -21,6 +21,12 @@ public sealed class HubCrashTests
         var delivered = new TaskCompletionSource<Guid>(TaskCreationOptions.RunContinuationsAsynchronously);
         var collectorId = Guid.CreateVersion7();
         var trackId = Guid.CreateVersion7();
+        var ownerId = Guid.NewGuid();
+        backend.MapPost("/api/v1/apikeys/exchange", () => Results.Ok(new
+        {
+            accessToken = QueueFixture.TokenFor(ownerId),
+            expiresIn = 3600,
+        }));
         backend.MapPost("/api/v1/collectors", () => Results.Ok(new
         {
             id = collectorId,
@@ -48,7 +54,7 @@ public sealed class HubCrashTests
         await backend.StartAsync();
         using var fixture = new QueueFixture
         {
-            Destination = new DeliveryDestination(new Uri(Assert.Single(backend.Urls)), Guid.NewGuid()),
+            Destination = new DeliveryDestination(new Uri(Assert.Single(backend.Urls)), ownerId),
         };
         var record = QueueFixture.Snapshot();
         fixture.Open().Accept(QueueFixture.Submission(record));
@@ -123,7 +129,8 @@ public sealed class HubCrashTests
         start.Environment["Hub__DatabasePath"] = fixture.DatabasePath;
         start.Environment["Hub__BackendUrl"] = fixture.Destination.BackendUrl.AbsoluteUri;
         start.Environment["Hub__OwnerId"] = fixture.Destination.OwnerId.ToString();
-        start.Environment["Hub__BackendToken"] = fixture.Token;
+        start.Environment["Hub__AuthUrl"] = fixture.Destination.BackendUrl.AbsoluteUri;
+        start.Environment["Hub__ApiKey"] = "test-api-key";
         start.Environment["Hub__AccessToken"] = accessToken;
         start.Environment["Hub__UploadIntervalSeconds"] = "1";
         var process = new Process { StartInfo = start, EnableRaisingEvents = true };

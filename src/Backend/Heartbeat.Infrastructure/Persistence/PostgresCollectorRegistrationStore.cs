@@ -3,6 +3,7 @@ using System.Data.Common;
 using Heartbeat.Application.Recording;
 using Heartbeat.Recording;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Heartbeat.Persistence;
 
@@ -23,11 +24,10 @@ internal sealed class PostgresCollectorRegistrationStore(HeartbeatDbContext dbCo
         RETURNING id, key, target, display_name, created_at;
         """;
 
-    public async Task<RegisteredCollector?> RegisterAsync(
-        Guid ownerId,
+    public async Task<RegisteredCollector> RegisterAsync(
+        Timeline candidateTimeline,
         Guid candidateCollectorId,
         CollectorRegistration registration,
-        DateTimeOffset createdAt,
         CancellationToken cancellationToken = default)
     {
         var connection = dbContext.Database.GetDbConnection();
@@ -40,27 +40,40 @@ internal sealed class PostgresCollectorRegistrationStore(HeartbeatDbContext dbCo
 
         try
         {
+            await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO timelines (id, owner_id, display_name, created_at)
+                VALUES ({candidateTimeline.Id}, {candidateTimeline.OwnerId},
+                        {candidateTimeline.DisplayName}, {candidateTimeline.CreatedAt})
+                ON CONFLICT (owner_id) DO NOTHING;
+                """, cancellationToken);
+
+            // A separate statement sees the winning Timeline after a concurrent insert completes.
             await using var command = connection.CreateCommand();
+            command.Transaction = transaction.GetDbTransaction();
             command.CommandText = RegisterSql;
-            AddParameter(command, "owner_id", ownerId);
+            AddParameter(command, "owner_id", candidateTimeline.OwnerId);
             AddParameter(command, "collector_id", candidateCollectorId);
             AddParameter(command, "key", registration.Key);
             AddParameter(command, "target", registration.Target);
             AddParameter(command, "display_name", registration.DisplayName);
-            AddParameter(command, "created_at", createdAt);
+            AddParameter(command, "created_at", candidateTimeline.CreatedAt);
 
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (!await reader.ReadAsync(cancellationToken))
             {
-                return null;
+                throw new InvalidOperationException("Collector registration returned no result.");
             }
 
-            return new RegisteredCollector(
+            var result = new RegisteredCollector(
                 reader.GetGuid(0),
                 reader.GetString(1),
                 reader.GetString(2),
                 reader.GetString(3),
                 reader.GetFieldValue<DateTimeOffset>(4));
+            await reader.DisposeAsync();
+            await transaction.CommitAsync(cancellationToken);
+            return result;
         }
         finally
         {

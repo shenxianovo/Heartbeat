@@ -3,7 +3,8 @@ namespace Heartbeat.Hub.Host;
 public sealed record HubSettings(
     string DatabasePath,
     DeliveryDestination Destination,
-    string BackendToken,
+    Uri AuthUrl,
+    string ApiKey,
     string AccessToken,
     int MaximumRecords,
     TimeSpan UploadInterval)
@@ -13,10 +14,10 @@ public sealed record HubSettings(
         var section = configuration.GetSection("Hub");
         var destination = new DeliveryDestination(
             new Uri(Required("BackendUrl"), UriKind.Absolute), Guid.Parse(Required("OwnerId")));
-        var backendToken = Required("BackendToken");
-        destination.CheckTokenOwner(backendToken);
+        var authUrl = new Uri(section["AuthUrl"]?.Trim() ?? "https://auth.shenxianovo.com", UriKind.Absolute);
+        var apiKey = Required("ApiKey");
         var accessToken = Required("AccessToken");
-        if (accessToken.Length < 32 || accessToken == backendToken)
+        if (accessToken.Length < 32 || accessToken == apiKey)
         {
             throw new ArgumentException("Hub:AccessToken must be a separate secret of at least 32 characters.");
         }
@@ -29,7 +30,7 @@ public sealed record HubSettings(
             throw new ArgumentOutOfRangeException(nameof(configuration), "Upload interval must be 1 to 3600 seconds.");
         }
 
-        return new HubSettings(Required("DatabasePath"), destination, backendToken, accessToken,
+        return new HubSettings(Required("DatabasePath"), destination, authUrl, apiKey, accessToken,
             capacity, TimeSpan.FromSeconds(seconds));
 
         string Required(string name) => !string.IsNullOrWhiteSpace(section[name])

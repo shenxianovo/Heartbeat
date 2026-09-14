@@ -26,7 +26,7 @@ public static class CollectorEndpoints
             return Results.Unauthorized();
         }
 
-        RegisterCollectorResult result;
+        RegisteredCollector result;
         try
         {
             result = await registerCollector.ExecuteAsync(
@@ -49,24 +49,8 @@ public static class CollectorEndpoints
                 });
         }
 
-        return result switch
-        {
-            RegisterCollectorResult.Registered registered => Results.Ok(
-                new RegisterCollectorResponse(
-                    registered.Collector.Id,
-                    registered.Collector.Key,
-                    registered.Collector.Target,
-                    registered.Collector.DisplayName,
-                    registered.Collector.CreatedAt)),
-            RegisterCollectorResult.TimelineNotProvisioned => Results.Problem(
-                statusCode: StatusCodes.Status409Conflict,
-                title: "The owner does not have a Timeline.",
-                extensions: new Dictionary<string, object?>
-                {
-                    ["code"] = "timeline_not_provisioned",
-                }),
-            _ => throw new InvalidOperationException("Unknown collector registration result."),
-        };
+        return Results.Ok(new RegisterCollectorResponse(
+            result.Id, result.Key, result.Target, result.DisplayName, result.CreatedAt));
     }
 
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]

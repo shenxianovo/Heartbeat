@@ -16,12 +16,12 @@ public sealed class RecordUploaderTests : IDisposable
         using (var offline = new HttpClient(new Handler((_, _) =>
             Task.FromException<HttpResponseMessage>(new HttpRequestException("offline")))))
         {
-            Assert.Single(await new RecordUploader(_fixture.Open(), offline, _fixture.Token).UploadOnceAsync());
+            Assert.Single(await new RecordUploader(_fixture.Open(), offline, Provider(_fixture)).UploadOnceAsync());
         }
 
         using var backend = new MappedHandler((_, _) => Task.FromResult(Receipt(record)));
         using var client = new HttpClient(backend);
-        Assert.Empty(await new RecordUploader(_fixture.Open(), client, _fixture.Token).UploadOnceAsync());
+        Assert.Empty(await new RecordUploader(_fixture.Open(), client, Provider(_fixture)).UploadOnceAsync());
         Assert.Equal(1, backend.RegistrationRequests);
         Assert.Equal(1, backend.TrackRequests);
         Assert.Equal(1, backend.UploadRequests);
@@ -51,13 +51,17 @@ public sealed class RecordUploaderTests : IDisposable
                 {
                     results = body.Records.Select((record, index) => new
                     {
-                        index, record.Id, status = "stored", record.EndedAt, receivedAt = DateTimeOffset.UtcNow,
+                        index,
+                        record.Id,
+                        status = "stored",
+                        record.EndedAt,
+                        receivedAt = DateTimeOffset.UtcNow,
                     }),
                 }),
             };
         });
         using var client = new HttpClient(handler);
-        await new RecordUploader(queue, client, _fixture.Token).UploadOnceAsync();
+        await new RecordUploader(queue, client, Provider(_fixture)).UploadOnceAsync();
         Assert.True(handler.UploadRequests > 1);
         Assert.Equal(new QueueStatus(0, 0), queue.Status());
     }
@@ -71,7 +75,7 @@ public sealed class RecordUploaderTests : IDisposable
         queue.Accept(QueueFixture.Submission(record));
         using var handler = new MappedHandler((_, _) => Task.FromResult(Receipt(original with { Id = record.Id })));
         using var client = new HttpClient(handler);
-        Assert.Empty(await new RecordUploader(queue, client, _fixture.Token).UploadOnceAsync());
+        Assert.Empty(await new RecordUploader(queue, client, Provider(_fixture)).UploadOnceAsync());
         Assert.Equal(new QueueStatus(0, 0), queue.Status());
     }
 
@@ -85,7 +89,7 @@ public sealed class RecordUploaderTests : IDisposable
         using var handler = new MappedHandler((_, _) => Task.FromResult(Receipt(record)));
         using var client = new HttpClient(handler);
 
-        Assert.Empty(await new RecordUploader(queue, client, _fixture.Token).UploadOnceAsync());
+        Assert.Empty(await new RecordUploader(queue, client, Provider(_fixture)).UploadOnceAsync());
         Assert.Equal(new QueueStatus(0, 0), queue.Status());
     }
 
@@ -109,9 +113,9 @@ public sealed class RecordUploaderTests : IDisposable
             return Receipt(record);
         });
         using var client = new HttpClient(handler);
-        Assert.Single(await new RecordUploader(queue, client, _fixture.Token).UploadOnceAsync());
+        Assert.Single(await new RecordUploader(queue, client, Provider(_fixture)).UploadOnceAsync());
         Assert.Equal(1, queue.Status().Pending);
-        Assert.Empty(await new RecordUploader(_fixture.Open(), client, _fixture.Token).UploadOnceAsync());
+        Assert.Empty(await new RecordUploader(_fixture.Open(), client, Provider(_fixture)).UploadOnceAsync());
         Assert.Single(saved);
         Assert.Equal(1, handler.RegistrationRequests);
         Assert.Equal(1, handler.TrackRequests);
@@ -133,7 +137,7 @@ public sealed class RecordUploaderTests : IDisposable
             return Task.FromResult(Receipt(record));
         });
         using var client = new HttpClient(handler);
-        await new RecordUploader(queue, client, _fixture.Token).UploadOnceAsync();
+        await new RecordUploader(queue, client, Provider(_fixture)).UploadOnceAsync();
         Assert.Equal(record.EndedAt!.Value.AddMinutes(1), Assert.Single(queue.TakePending()).Record.EndedAt);
     }
 
@@ -165,7 +169,7 @@ public sealed class RecordUploaderTests : IDisposable
             }),
         }));
         using var client = new HttpClient(handler);
-        Assert.Single(await new RecordUploader(queue, client, _fixture.Token).UploadOnceAsync());
+        Assert.Single(await new RecordUploader(queue, client, Provider(_fixture)).UploadOnceAsync());
         Assert.Equal(new QueueStatus(1, 0), queue.Status());
     }
 
@@ -185,14 +189,17 @@ public sealed class RecordUploaderTests : IDisposable
                 {
                     results = body!.Records.Select((record, index) => new
                     {
-                        index, record.Id, status = index == 1 ? "conflict" : "stored",
-                        record.EndedAt, receivedAt = DateTimeOffset.UtcNow,
+                        index,
+                        record.Id,
+                        status = index == 1 ? "conflict" : "stored",
+                        record.EndedAt,
+                        receivedAt = DateTimeOffset.UtcNow,
                     }).Reverse(),
                 }),
             };
         });
         using var client = new HttpClient(handler);
-        var uploader = new RecordUploader(queue, client, _fixture.Token);
+        var uploader = new RecordUploader(queue, client, Provider(_fixture));
         Assert.Empty(await uploader.UploadOnceAsync());
         Assert.Equal(new QueueStatus(0, 1), _fixture.Open().Status());
         Assert.Equal("conflict", Assert.Single(queue.ReadFailures()).Failure);
@@ -217,16 +224,61 @@ public sealed class RecordUploaderTests : IDisposable
             Content = JsonContent.Create(new { code }),
         }));
         using var client = new HttpClient(handler);
-        await new RecordUploader(queue, client, _fixture.Token).UploadOnceAsync();
+        await new RecordUploader(queue, client, Provider(_fixture)).UploadOnceAsync();
         Assert.Equal(permanent ? new QueueStatus(0, 1) : new QueueStatus(1, 0), queue.Status());
     }
 
     [Fact]
-    public void WrongTokenOwnerIsRejectedBeforeAnyUpload()
+    public async Task ExchangeFailureKeepsRecordsWithoutAnonymousUpload()
     {
-        using var client = new HttpClient();
-        Assert.Throws<ArgumentException>(() =>
-            new RecordUploader(_fixture.Open(), client, QueueFixture.TokenFor(Guid.NewGuid())));
+        var queue = _fixture.Open();
+        queue.Accept(QueueFixture.Submission(QueueFixture.Snapshot()));
+        using var client = new HttpClient(new Handler((_, _) =>
+            throw new Xunit.Sdk.XunitException("Backend must not be contacted without a token.")));
+
+        Assert.Single(await new RecordUploader(queue, client, new StubTokenProvider(null)).UploadOnceAsync());
+        Assert.Equal(new QueueStatus(1, 0), queue.Status());
+    }
+
+    [Fact]
+    public async Task WrongTokenOwnerKeepsRecordsWithoutSendingThem()
+    {
+        var queue = _fixture.Open();
+        queue.Accept(QueueFixture.Submission(QueueFixture.Snapshot()));
+        var wrongOwner = Guid.NewGuid();
+        var token = new BackendAccessToken(QueueFixture.TokenFor(wrongOwner), wrongOwner,
+            DateTimeOffset.UtcNow.AddHours(1));
+        using var client = new HttpClient(new Handler((_, _) =>
+            throw new Xunit.Sdk.XunitException("Backend must not be contacted with a mismatched Owner.")));
+
+        Assert.Single(await new RecordUploader(queue, client, new StubTokenProvider(token)).UploadOnceAsync());
+        Assert.Equal(new QueueStatus(1, 0), queue.Status());
+    }
+
+    [Fact]
+    public async Task UnauthorizedResponseInvalidatesTokenForTheNextAttempt()
+    {
+        var queue = _fixture.Open();
+        var record = QueueFixture.Snapshot();
+        queue.Accept(QueueFixture.Submission(record));
+        var pending = Assert.Single(queue.TakePending());
+        queue.SaveMapping(pending.Route, Guid.NewGuid(), Guid.NewGuid());
+        var provider = new ReplacingTokenProvider(_fixture.Destination.OwnerId);
+        var requests = 0;
+        using var client = new HttpClient(new Handler((request, _) =>
+        {
+            requests++;
+            Assert.Equal($"token-{requests}", request.Headers.Authorization!.Parameter);
+            return Task.FromResult(requests == 1
+                ? new HttpResponseMessage(HttpStatusCode.Unauthorized)
+                : Receipt(record));
+        }));
+        var uploader = new RecordUploader(queue, client, provider);
+
+        Assert.Single(await uploader.UploadOnceAsync());
+        Assert.True(provider.WasInvalidated);
+        Assert.Empty(await uploader.UploadOnceAsync());
+        Assert.Equal(new QueueStatus(0, 0), queue.Status());
     }
 
     private static HttpResponseMessage Receipt(RecordSnapshot record) => new(HttpStatusCode.OK)
@@ -236,6 +288,10 @@ public sealed class RecordUploaderTests : IDisposable
             results = new[] { new { index = 0, record.Id, status = "stored", record.EndedAt, receivedAt = DateTimeOffset.UtcNow } },
         }),
     };
+
+    private static StubTokenProvider Provider(QueueFixture fixture) =>
+        new StubTokenProvider(new BackendAccessToken(
+            fixture.Token, fixture.Destination.OwnerId, DateTimeOffset.UtcNow.AddHours(1)));
 
     private sealed record UploadBatch(IReadOnlyList<RecordSnapshot> Records);
 
@@ -298,6 +354,31 @@ public sealed class RecordUploaderTests : IDisposable
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             send(request, cancellationToken);
+    }
+
+    private sealed class StubTokenProvider(BackendAccessToken? token) : IBackendTokenProvider
+    {
+        public ValueTask<BackendAccessToken?> GetTokenAsync(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(token);
+
+        public void Invalidate() { }
+    }
+
+    private sealed class ReplacingTokenProvider(Guid ownerId) : IBackendTokenProvider
+    {
+        private int _version = 1;
+
+        public bool WasInvalidated { get; private set; }
+
+        public ValueTask<BackendAccessToken?> GetTokenAsync(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<BackendAccessToken?>(new BackendAccessToken(
+                $"token-{_version}", ownerId, DateTimeOffset.UtcNow.AddHours(1)));
+
+        public void Invalidate()
+        {
+            WasInvalidated = true;
+            _version++;
+        }
     }
 
     public void Dispose() => _fixture.Dispose();

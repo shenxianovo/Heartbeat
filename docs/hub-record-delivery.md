@@ -114,18 +114,30 @@ Hub 接管前的记录不受其 SQLite 保护。当前 desktop 的待交接快�
 | `Hub__DatabasePath` | 当前 Hub 的 SQLite 路径 |
 | `Hub__BackendUrl` | 后端 HTTP(S) origin，不包含路径 |
 | `Hub__OwnerId` | Hub 所属 Owner UUID |
-| `Hub__BackendToken` | 该 Owner 的后端 JWT |
+| `Hub__AuthUrl` | Auth HTTP(S) origin，默认 `https://auth.shenxianovo.com` |
+| `Hub__ApiKey` | Auth API key，必填 |
 | `Hub__AccessToken` | 独立本地接入密钥，至少 32 字符 |
 | `Hub__MaximumRecords` | 容量，默认 10000 |
 | `Hub__UploadIntervalSeconds` | 上传间隔，默认 5 秒，范围 1–3600 |
+
+首次使用时，在 [Auth API keys](https://auth.shenxianovo.com/dashboard/api-keys) 创建 API key。用户只需把 API key 写入本地受保护配置；Owner UUID 由 Hub 的一次性检查模式从交换所得 JWT 的 `sub` 得到，不要求手工填写：
+
+```bash
+export Hub__ApiKey="..."
+export Hub__OwnerId="$(dotnet run --project src/Hub/Heartbeat.Hub.Host -- --check-auth | jq -r .ownerId)"
+```
+
+`--check-auth` 只读取 `Hub__AuthUrl` 和 `Hub__ApiKey`，不访问 SQLite，也不启动 Hub HTTP 服务。成功时 stdout 只有一行 `{"ownerId":"UUID"}`；失败时以非零状态退出，并把不含凭据的诊断写到 stderr。本地安装程序应调用这个模式并保存 Owner，而不应自行实现 API key 交换。
+
+完成其余配置后启动 Hub：
 
 ```bash
 dotnet run --project src/Hub/Heartbeat.Hub.Host
 ```
 
-默认监听 `http://127.0.0.1:4318`。所有接口要求 `Authorization: Bearer <Hub__AccessToken>`；Collector 无需后端 JWT。HTTP 客户端不自动跨地址重定向。远端部署需提供受保护的传输路径。
+默认监听 `http://127.0.0.1:4318`。所有接口要求 `Authorization: Bearer <Hub__AccessToken>`；Collector 无需 Auth API key 或后端 JWT。HTTP 客户端不自动跨地址重定向。远端部署需提供受保护的传输路径。
 
-每个 SQLite 文件固定绑定后端 origin 和 Owner，不允许换绑。同 Owner 的后端 JWT 可以更换并重启生效。Hub 检查 JWT sub 只用于防止误路由，不验签；完整认证仍由后端负责。
+每个 SQLite 文件固定绑定后端 origin 和 Owner，不允许换绑。Hub 用 API key 调用 `POST /api/v1/apikeys/exchange` 获取短期 JWT，缓存到过期前并自动重新交换；并发请求共享同一次交换。每次后端请求前都核对 JWT 中的 UUID `sub` 与固定 Owner，401 会清除缓存供下次重取。交换失败、JWT 无效或 Owner 不匹配时不会匿名上传，SQLite 中的记录保持待交付。Hub 对 JWT 的读取只用于有效期和路由保护，不验签；完整认证仍由后端负责。
 
 desktop 接入：
 

@@ -11,12 +11,21 @@ builder.Services.AddHeartbeatAuthentication(
     builder.Environment);
 builder.Services.AddProblemDetails();
 
-var app = builder.Build();
+await using var app = builder.Build();
 
 if (args.Contains("--migrate", StringComparer.OrdinalIgnoreCase))
 {
-    await app.Services.MigrateDatabaseAsync();
-    return;
+    try
+    {
+        await app.Services.MigrateDatabaseAsync();
+        return 0;
+    }
+    catch (Exception exception)
+    {
+        Console.Error.WriteLine($"Database initialization failed ({exception.GetType().Name}). See the database error above.");
+        Console.Error.WriteLine("If the Initial migration changed and local data can be discarded, run ./scripts/dev.sh reset, then start again. Reset deletes all local stack data, including the Hub queue.");
+        return 1;
+    }
 }
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
@@ -38,5 +47,6 @@ app.MapTrackEndpoints();
 app.MapRecordEndpoints();
 
 await app.RunAsync();
+return 0;
 
 public partial class Program;

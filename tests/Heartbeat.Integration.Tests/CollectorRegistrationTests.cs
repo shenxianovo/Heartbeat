@@ -1,5 +1,6 @@
 using Heartbeat.Application.Recording;
 using Heartbeat.Infrastructure;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -26,7 +27,7 @@ public sealed class CollectorRegistrationTests(PostgresFixture fixture) : Postgr
                 "  device-1  ",
                 "  My Mac  "));
 
-        var registered = Assert.IsType<RegisterCollectorResult.Registered>(result).Collector;
+        var registered = result;
         Assert.Equal(7, registered.Id.Version);
         Assert.Equal("heartbeat.collector.desktop.macos", registered.Key);
         Assert.Equal("device-1", registered.Target);
@@ -41,14 +42,14 @@ public sealed class CollectorRegistrationTests(PostgresFixture fixture) : Postgr
         await ProvisionTimelineAsync(ownerId);
         await using var services = CreateServices();
 
-        var first = Registered(await RegisterAsync(
+        var first = await RegisterAsync(
             services,
             ownerId,
-            new RegisterCollectorCommand("heartbeat.collector.desktop.macos", "device-1", "Old name")));
-        var second = Registered(await RegisterAsync(
+            new RegisterCollectorCommand("heartbeat.collector.desktop.macos", "device-1", "Old name"));
+        var second = await RegisterAsync(
             services,
             ownerId,
-            new RegisterCollectorCommand("heartbeat.collector.desktop.macos", "device-1", "New name")));
+            new RegisterCollectorCommand("heartbeat.collector.desktop.macos", "device-1", "New name"));
 
         Assert.Equal(first.Id, second.Id);
         Assert.Equal(first.CreatedAt, second.CreatedAt);
@@ -68,30 +69,35 @@ public sealed class CollectorRegistrationTests(PostgresFixture fixture) : Postgr
             "device-1",
             "My Mac");
 
-        var first = Registered(await RegisterAsync(services, firstOwnerId, command));
-        var second = Registered(await RegisterAsync(services, secondOwnerId, command));
+        var first = await RegisterAsync(services, firstOwnerId, command);
+        var second = await RegisterAsync(services, secondOwnerId, command);
 
         Assert.NotEqual(first.Id, second.Id);
     }
 
     [Fact]
-    public async Task RegistrationReportsWhenOwnerHasNoTimeline()
+    public async Task FirstRegistrationCreatesOwnersTimeline()
     {
         await using var services = CreateServices();
+        var ownerId = Guid.NewGuid();
 
         var result = await RegisterAsync(
             services,
-            Guid.NewGuid(),
+            ownerId,
             new RegisterCollectorCommand("heartbeat.collector.desktop.macos", "device-1", "My Mac"));
 
-        Assert.IsType<RegisterCollectorResult.TimelineNotProvisioned>(result);
+        var registered = result;
+        await using var db = CreateDbContext();
+        var timeline = await db.Timelines.SingleAsync();
+        Assert.Equal(ownerId, timeline.OwnerId);
+        Assert.Equal(Now, timeline.CreatedAt);
+        Assert.Equal(timeline.Id, (await db.Collectors.SingleAsync(x => x.Id == registered.Id)).TimelineId);
     }
 
     [Fact]
     public async Task ConcurrentRegistrationReturnsOneStableCollector()
     {
         var ownerId = Guid.NewGuid();
-        await ProvisionTimelineAsync(ownerId);
         await using var services = CreateServices();
 
         var attempts = await Task.WhenAll(
@@ -104,9 +110,12 @@ public sealed class CollectorRegistrationTests(PostgresFixture fixture) : Postgr
                 ownerId,
                 new RegisterCollectorCommand("heartbeat.collector.desktop.macos", "device-1", "Second name")));
 
-        var first = Registered(attempts[0]);
-        var second = Registered(attempts[1]);
+        var first = attempts[0];
+        var second = attempts[1];
         Assert.Equal(first.Id, second.Id);
+        await using var db = CreateDbContext();
+        Assert.Equal(1, await db.Timelines.CountAsync(x => x.OwnerId == ownerId));
+        Assert.Equal(1, await db.Collectors.CountAsync());
     }
 
     private ServiceProvider CreateServices()
@@ -123,7 +132,7 @@ public sealed class CollectorRegistrationTests(PostgresFixture fixture) : Postgr
         return services.BuildServiceProvider(validateScopes: true);
     }
 
-    private static async Task<RegisterCollectorResult> RegisterAsync(
+    private static async Task<RegisteredCollector> RegisterAsync(
         IServiceProvider services,
         Guid ownerId,
         RegisterCollectorCommand command)
@@ -134,6 +143,4 @@ public sealed class CollectorRegistrationTests(PostgresFixture fixture) : Postgr
             .ExecuteAsync(ownerId, command);
     }
 
-    private static RegisteredCollector Registered(RegisterCollectorResult result) =>
-        Assert.IsType<RegisterCollectorResult.Registered>(result).Collector;
 }

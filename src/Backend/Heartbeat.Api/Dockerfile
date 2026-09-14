@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:10.0.302 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0.302 AS restore
 WORKDIR /src
 
 COPY global.json Directory.Build.props Directory.Packages.props Heartbeat.slnx ./
@@ -8,8 +8,16 @@ COPY src/Backend/Heartbeat.Domain/Heartbeat.Domain.csproj src/Backend/Heartbeat.
 COPY src/Backend/Heartbeat.Infrastructure/Heartbeat.Infrastructure.csproj src/Backend/Heartbeat.Infrastructure/
 RUN dotnet restore src/Backend/Heartbeat.Api/Heartbeat.Api.csproj
 
+FROM restore AS development
 COPY . .
-RUN dotnet publish src/Backend/Heartbeat.Api/Heartbeat.Api.csproj --configuration Release --no-restore --output /app/publish
+ENTRYPOINT ["dotnet", "watch", "--project", "src/Backend/Heartbeat.Api/Heartbeat.Api.csproj", "run", "--no-launch-profile"]
+
+FROM restore AS build
+COPY . .
+RUN dotnet publish src/Backend/Heartbeat.Api/Heartbeat.Api.csproj \
+    --configuration Release \
+    --no-restore \
+    --output /app/publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.10 AS final
 WORKDIR /app

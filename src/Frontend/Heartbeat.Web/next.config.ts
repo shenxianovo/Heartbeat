@@ -6,6 +6,8 @@ function backendUrl(): string {
 }
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ["localhost", "127.0.0.1"],
+  output: "standalone",
   async rewrites() {
     return [
       {

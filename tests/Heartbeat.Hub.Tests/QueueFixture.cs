@@ -34,8 +34,12 @@ public sealed class QueueFixture : IDisposable
     public static HubSubmission Submission(params RecordSnapshot[] records) =>
         new(Collector(), Track(), records);
 
-    public static string TokenFor(Guid owner) =>
-        $"eyJhbGciOiJSUzI1NiJ9.{Convert.ToBase64String(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { sub = owner }))).TrimEnd('=').Replace('+', '-').Replace('/', '_')}.test-signature";
+    public static string TokenFor(Guid owner, DateTimeOffset? expiresAt = null) =>
+        $"eyJhbGciOiJSUzI1NiJ9.{Convert.ToBase64String(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new
+        {
+            sub = owner,
+            exp = (expiresAt ?? DateTimeOffset.UtcNow.AddHours(1)).ToUnixTimeSeconds(),
+        }))).TrimEnd('=').Replace('+', '-').Replace('/', '_')}.test-signature";
 
     public void Dispose()
     {

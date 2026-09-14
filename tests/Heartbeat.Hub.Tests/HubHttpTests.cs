@@ -105,7 +105,8 @@ public sealed class HubHttpTests : IDisposable
                 ["Hub:DatabasePath"] = _fixture.DatabasePath,
                 ["Hub:BackendUrl"] = _fixture.Destination.BackendUrl.AbsoluteUri,
                 ["Hub:OwnerId"] = _fixture.Destination.OwnerId.ToString(),
-                ["Hub:BackendToken"] = _fixture.Token,
+                ["Hub:AuthUrl"] = "https://auth.example/",
+                ["Hub:ApiKey"] = "test-api-key",
                 ["Hub:AccessToken"] = AccessToken,
             }));
             builder.ConfigureTestServices(services => services.RemoveAll<IHostedService>());

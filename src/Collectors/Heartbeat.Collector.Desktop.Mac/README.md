@@ -2,6 +2,8 @@
 
 当前只采集 **macOS 前台应用**，默认每 5 秒采样一次。没有采集键鼠事件、窗口标题、URL 或页面内容。
 
+同一应用的多个窗口不会分开记录；在两次采样之间切换又返回的短暂活动可能漏采。
+
 Collector 负责调用平台接口、判断观测连续性、形成 Record，并把完整记录交给 Hub。后端注册、Track 解析、持久队列和上传由 Hub 负责。
 
 ## 采集内容
@@ -67,3 +69,11 @@ displayName 默认使用 Target；采样间隔至少 1 秒。Hub 地址必须是
 `--once` 成功表示 Hub 已持久接管，不表示后端已上传。交接失败以非零退出码退出。Collector 停止后，独立运行的 Hub 继续上传积压。
 
 尚未交接的数据仍在 Collector 内存中；进程退出可能丢失该部分数据，长时间无法交接可能积累内存。Hub 接管后的数据由 SQLite 保护。相关限制见[未决设计](../../../docs/recording-open-questions.md)。
+
+## 原生采样验证
+
+`NSWorkspace` 的应用状态依赖 macOS 主事件循环刷新。入口保持在原生主线程运行该循环，采样和 HTTP 交接继续独立异步执行；仅调用读取接口并等待 .NET 计时器会让常驻进程一直读到启动时的应用。参见 [Apple 的 NSRunningApplication 线程与事件循环说明](https://developer.apple.com/documentation/appkit/nsrunningapplication)。
+
+运行 `./scripts/dev.sh up desktop` 后，在两个不同应用间切换，每个停留至少 10 秒，终端应出现对应的不同应用标识。回到 Web 点“刷新”，应能看到新的应用 Record；停留在同一应用应延长现有 Record，按 Ctrl+C 应正常退出。`--once` 只验证首次采样，不能代替此常驻切换验证。修改进程入口或事件循环后，需要重启 Collector。
+
+`MacRunLoopTests` 用真实 CoreFoundation 计时器验证异步任务等待期间原生事件仍会执行；区间合并与慢交接由 Collector 单元测试覆盖。

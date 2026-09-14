@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: heartbeat
       POSTGRES_PASSWORD: heartbeat
     ports:
-      - "54329:5432"
+      - "127.0.0.1:54329:5432"
     volumes:
       - heartbeat-postgres:/var/lib/postgresql
     healthcheck:
@@ -21,6 +21,7 @@ services:
     build:
       context: .
       dockerfile: src/Backend/Heartbeat.Api/Dockerfile
+      target: final
     command: ["--migrate"]
     environment:
       ConnectionStrings__Heartbeat: Host=db;Port=5432;Database=heartbeat;Username=heartbeat;Password=heartbeat
@@ -33,20 +34,58 @@ services:
     build:
       context: .
       dockerfile: src/Backend/Heartbeat.Api/Dockerfile
+      target: final
     environment:
       ASPNETCORE_HTTP_PORTS: 8080
       ConnectionStrings__Heartbeat: Host=db;Port=5432;Database=heartbeat;Username=heartbeat;Password=heartbeat
       AuthService__Authority: ${AUTH_AUTHORITY:-https://auth.shenxianovo.com}
-      AuthService__Issuer: ${AUTH_ISSUER:-https://auth.shenxianovo.com}
-      AuthService__Audience: ${AUTH_AUDIENCE:-https://auth.shenxianovo.com}
-      AuthService__OidcIssuer: ${AUTH_OIDC_ISSUER:-https://auth.shenxianovo.com/}
+      AuthService__Issuer: ${AUTH_AUTHORITY:-https://auth.shenxianovo.com}
+      AuthService__Audience: ${AUTH_AUTHORITY:-https://auth.shenxianovo.com}
+      AuthService__OidcIssuer: ${AUTH_AUTHORITY:-https://auth.shenxianovo.com}/
       AuthService__OidcClientId: ${AUTH_OIDC_CLIENT_ID:-heartbeat-web}
       AuthService__OidcAudience: ${AUTH_OIDC_AUDIENCE:-}
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     depends_on:
       migrate:
         condition: service_completed_successfully
 
+  web:
+    build:
+      context: src/Frontend/Heartbeat.Web
+      dockerfile: Dockerfile
+      target: final
+      args:
+        HEARTBEAT_API_URL: http://api:8080
+        NEXT_PUBLIC_OIDC_AUTHORITY: ${AUTH_AUTHORITY:-https://auth.shenxianovo.com}
+        NEXT_PUBLIC_OIDC_CLIENT_ID: ${AUTH_OIDC_CLIENT_ID:-heartbeat-web}
+        NEXT_PUBLIC_OIDC_SCOPE: ${AUTH_OIDC_SCOPE:-openid profile offline_access}
+    environment:
+      HEARTBEAT_API_URL: http://api:8080
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      api:
+        condition: service_started
+
+  hub:
+    build:
+      context: .
+      dockerfile: src/Hub/Heartbeat.Hub.Host/Dockerfile
+      target: final
+    environment:
+      urls: http://0.0.0.0:4318
+      Hub__AuthUrl: ${AUTH_AUTHORITY:-https://auth.shenxianovo.com}
+      Hub__ApiKey: ${HEARTBEAT_API_KEY:-}
+      Hub__OwnerId: ${HEARTBEAT_OWNER_ID:-}
+      Hub__BackendUrl: http://api:8080
+      Hub__DatabasePath: /data/hub.sqlite
+      Hub__AccessToken: ${HEARTBEAT_HUB_TOKEN:-}
+    ports:
+      - "127.0.0.1:4318:4318"
+    volumes:
+      - heartbeat-hub:/data
+
 volumes:
   heartbeat-postgres:
+  heartbeat-hub:

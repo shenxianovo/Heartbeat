@@ -37,7 +37,6 @@ public sealed class CollectorHttpTests(PostgresFixture fixture) : PostgresTestBa
     public async Task InvalidRegistrationReturnsProblemDetails()
     {
         var ownerId = Guid.NewGuid();
-        await ProvisionTimelineAsync(ownerId);
         await using var factory = CreateFactory();
         using var client = factory.CreateClient();
         using var request = RegistrationRequest(ownerId, target: "   ");
@@ -48,6 +47,8 @@ public sealed class CollectorHttpTests(PostgresFixture fixture) : PostgresTestBa
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal(400, json.RootElement.GetProperty("status").GetInt32());
+        await using var db = CreateDbContext();
+        Assert.Equal(0, await db.Timelines.CountAsync());
     }
 
     [Fact]
@@ -113,18 +114,18 @@ public sealed class CollectorHttpTests(PostgresFixture fixture) : PostgresTestBa
     }
 
     [Fact]
-    public async Task OwnerWithoutTimelineReceivesStableConflict()
+    public async Task OwnerWithoutTimelineCanRegisterWithoutProvisioning()
     {
         await using var factory = CreateFactory();
         using var client = factory.CreateClient();
-        using var request = RegistrationRequest(Guid.NewGuid());
+        var ownerId = Guid.NewGuid();
+        using var request = RegistrationRequest(ownerId);
 
         using var response = await client.SendAsync(request);
 
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal("timeline_not_provisioned", json.RootElement.GetProperty("code").GetString());
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await using var db = CreateDbContext();
+        Assert.Equal(ownerId, (await db.Timelines.SingleAsync()).OwnerId);
     }
 
     [Theory]

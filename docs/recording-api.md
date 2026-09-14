@@ -26,7 +26,7 @@ Owner 从已验证令牌的 `sub` claim 取得，必须是 UUID。客户端不�
 }
 ```
 
-- Timeline 必须预先存在；注册 Collector 不隐式创建 Timeline。
+- Owner 首次成功注册 Collector 时，后端自动创建 Timeline。两者在同一事务中提交；重复或并发注册复用同一个 Timeline，保留已有名称。无效或未认证的请求不会创建 Timeline。
 - `(timeline_id, key, target)` 是稳定地址。地址不存在时创建 Collector，已存在时返回原 Collector。
 - 重复注册可以更新 `displayName`；并发更新以最后成功提交的值为准。
 - `key`、`target` 和 `displayName` 去除首尾空格后不能为空，长度不超过 255。
@@ -45,7 +45,7 @@ Owner 从已验证令牌的 `sub` claim 取得，必须是 UUID。客户端不�
 }
 ```
 
-错误：未认证返回 `401`；字段缺失、格式或长度无效返回 `400`；Owner 尚无 Timeline 返回 `409 timeline_not_provisioned`。
+错误：未认证返回 `401`；字段缺失、格式或长度无效返回 `400`。调用方无需预先初始化 Timeline。
 
 ## Track 获取
 

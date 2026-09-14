@@ -4,6 +4,11 @@ using Heartbeat.Hub;
 using Heartbeat.Hub.Host;
 using Microsoft.Data.Sqlite;
 
+if (args.Contains("--check-auth", StringComparer.Ordinal))
+{
+    return await AuthCheck.RunAsync();
+}
+
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(builder.Configuration["urls"] ?? "http://127.0.0.1:4318");
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = RecordOutbox.MaximumBatchBytes);
@@ -18,9 +23,15 @@ builder.Services.AddSingleton(_ => new HttpClient(new HttpClientHandler { AllowA
     Timeout = TimeSpan.FromSeconds(15),
     MaxResponseContentBufferSize = 2_097_152,
 });
+builder.Services.AddSingleton<IBackendTokenProvider>(services =>
+{
+    var settings = services.GetRequiredService<HubSettings>();
+    return new ApiKeyTokenProvider(
+        services.GetRequiredService<HttpClient>(), settings.AuthUrl, settings.ApiKey);
+});
 builder.Services.AddSingleton(services => new RecordUploader(
     services.GetRequiredService<RecordOutbox>(), services.GetRequiredService<HttpClient>(),
-    services.GetRequiredService<HubSettings>().BackendToken));
+    services.GetRequiredService<IBackendTokenProvider>()));
 builder.Services.AddHostedService<UploadWorker>();
 builder.Services.AddProblemDetails();
 builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
@@ -76,6 +87,7 @@ app.MapPost("/hub/v1/records", (HubSubmission submission, RecordOutbox queue) =>
 });
 
 await app.RunAsync();
+return 0;
 
 namespace Heartbeat.Hub.Host
 {

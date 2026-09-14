@@ -5,7 +5,16 @@ namespace Heartbeat.Collector.Desktop.Mac;
 
 public static class Program
 {
-    public static async Task<int> Main(string[] args)
+    public static int Main(string[] args)
+    {
+        // Stay on the native main thread: an async Main would leave AppKit events unprocessed.
+        var operation = MainAsync(args);
+        return OperatingSystem.IsMacOS()
+            ? MacRunLoop.Run(operation)
+            : operation.GetAwaiter().GetResult();
+    }
+
+    private static async Task<int> MainAsync(string[] args)
     {
         CollectorOptions options;
         try

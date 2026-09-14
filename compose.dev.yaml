@@ -1,0 +1,52 @@
+services:
+  api:
+    build:
+      target: development
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      DOTNET_USE_POLLING_FILE_WATCHER: "1"
+    volumes:
+      - .:/src
+    tmpfs:
+      - /src/src/Backend/Heartbeat.Api/bin:exec
+      - /src/src/Backend/Heartbeat.Api/obj:exec
+      - /src/src/Backend/Heartbeat.Application/bin:exec
+      - /src/src/Backend/Heartbeat.Application/obj:exec
+      - /src/src/Backend/Heartbeat.Domain/bin:exec
+      - /src/src/Backend/Heartbeat.Domain/obj:exec
+      - /src/src/Backend/Heartbeat.Infrastructure/bin:exec
+      - /src/src/Backend/Heartbeat.Infrastructure/obj:exec
+
+  web:
+    build:
+      target: development
+    command: ["sh", "-c", "npm ci && exec npm run dev -- --hostname 0.0.0.0"]
+    environment:
+      WATCHPACK_POLLING: "true"
+      HEARTBEAT_API_URL: http://api:8080
+      NEXT_PUBLIC_OIDC_AUTHORITY: ${AUTH_AUTHORITY:-https://auth.shenxianovo.com}
+      NEXT_PUBLIC_OIDC_CLIENT_ID: ${AUTH_OIDC_CLIENT_ID:-heartbeat-web}
+      NEXT_PUBLIC_OIDC_SCOPE: ${AUTH_OIDC_SCOPE:-openid profile offline_access}
+    volumes:
+      - ./src/Frontend/Heartbeat.Web:/app
+      - heartbeat-web-node-modules:/app/node_modules
+      - heartbeat-web-next:/app/.next
+
+  hub:
+    build:
+      target: development
+    environment:
+      DOTNET_USE_POLLING_FILE_WATCHER: "1"
+    volumes:
+      - .:/src
+    tmpfs:
+      - /src/src/Hub/Heartbeat.Hub.Client/bin:exec
+      - /src/src/Hub/Heartbeat.Hub.Client/obj:exec
+      - /src/src/Hub/Heartbeat.Hub/bin:exec
+      - /src/src/Hub/Heartbeat.Hub/obj:exec
+      - /src/src/Hub/Heartbeat.Hub.Host/bin:exec
+      - /src/src/Hub/Heartbeat.Hub.Host/obj:exec
+
+volumes:
+  heartbeat-web-node-modules:
+  heartbeat-web-next:

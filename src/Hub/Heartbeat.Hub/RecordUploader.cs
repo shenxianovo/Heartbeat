@@ -10,14 +10,13 @@ public sealed class RecordUploader
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly RecordOutbox _queue;
     private readonly HttpClient _httpClient;
-    private readonly string _backendToken;
+    private readonly IBackendTokenProvider _tokenProvider;
 
-    public RecordUploader(RecordOutbox queue, HttpClient httpClient, string backendToken)
+    public RecordUploader(RecordOutbox queue, HttpClient httpClient, IBackendTokenProvider tokenProvider)
     {
-        queue.Destination.CheckTokenOwner(backendToken);
         _queue = queue;
         _httpClient = httpClient;
-        _backendToken = backendToken;
+        _tokenProvider = tokenProvider;
     }
 
     public async Task<IReadOnlyList<string>> UploadOnceAsync(CancellationToken cancellationToken = default)
@@ -43,10 +42,10 @@ public sealed class RecordUploader
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
-                    using var request = Request(HttpMethod.Post, $"api/v1/tracks/{trackId}/records");
+                    using var request = await RequestAsync(HttpMethod.Post, $"api/v1/tracks/{trackId}/records", cancellationToken);
                     request.Content = JsonContent.Create(new { records = sent.Select(item => item.Record).ToArray() },
                         options: JsonOptions);
-                    using var response = await _httpClient.SendAsync(request, cancellationToken);
+                    using var response = await SendAsync(request, cancellationToken);
                     if (!response.IsSuccessStatusCode)
                     {
                         var failure = await PermanentFailureAsync(response, cancellationToken);
@@ -79,9 +78,9 @@ public sealed class RecordUploader
             return mapped;
         }
 
-        using var register = Request(HttpMethod.Post, "api/v1/collectors");
+        using var register = await RequestAsync(HttpMethod.Post, "api/v1/collectors", cancellationToken);
         register.Content = JsonContent.Create(route.Collector, options: JsonOptions);
-        using var registrationResponse = await _httpClient.SendAsync(register, cancellationToken);
+        using var registrationResponse = await SendAsync(register, cancellationToken);
         registrationResponse.EnsureSuccessStatusCode();
         var collector = await registrationResponse.Content.ReadFromJsonAsync<CollectorResponse>(JsonOptions, cancellationToken);
         if (collector is null || collector.Id == Guid.Empty || collector.Key != route.Collector.Key ||
@@ -90,9 +89,9 @@ public sealed class RecordUploader
             throw new InvalidDataException("Collector registration returned a mismatched identity.");
         }
 
-        using var resolve = Request(HttpMethod.Post, $"api/v1/collectors/{collector.Id}/tracks");
+        using var resolve = await RequestAsync(HttpMethod.Post, $"api/v1/collectors/{collector.Id}/tracks", cancellationToken);
         resolve.Content = JsonContent.Create(route.Track, options: JsonOptions);
-        using var trackResponse = await _httpClient.SendAsync(resolve, cancellationToken);
+        using var trackResponse = await SendAsync(resolve, cancellationToken);
         trackResponse.EnsureSuccessStatusCode();
         var track = await trackResponse.Content.ReadFromJsonAsync<TrackResponse>(JsonOptions, cancellationToken);
         if (track is null || track.Id == Guid.Empty || track.CollectorId != collector.Id ||
@@ -106,11 +105,35 @@ public sealed class RecordUploader
         return track.Id;
     }
 
-    private HttpRequestMessage Request(HttpMethod method, string path)
+    private async ValueTask<HttpRequestMessage> RequestAsync(
+        HttpMethod method, string path, CancellationToken cancellationToken)
     {
+        var token = await _tokenProvider.GetTokenAsync(cancellationToken);
+        if (token is null)
+        {
+            throw new InvalidDataException("A backend access token is unavailable.");
+        }
+
+        if (token.OwnerId != _queue.Destination.OwnerId)
+        {
+            throw new InvalidDataException("The backend access token belongs to a different Owner.");
+        }
+
         var request = new HttpRequestMessage(method, new Uri(_queue.Destination.BackendUrl, path));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _backendToken);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Value);
         return request;
+    }
+
+    private async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            _tokenProvider.Invalidate();
+        }
+
+        return response;
     }
 
     private static string RouteKey(DeliveryRoute route) => $"local:{route.Id}";

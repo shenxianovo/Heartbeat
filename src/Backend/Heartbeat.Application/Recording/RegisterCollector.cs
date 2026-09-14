@@ -14,20 +14,9 @@ public sealed record RegisteredCollector(
     string DisplayName,
     DateTimeOffset CreatedAt);
 
-public abstract record RegisterCollectorResult
-{
-    private RegisterCollectorResult()
-    {
-    }
-
-    public sealed record Registered(RegisteredCollector Collector) : RegisterCollectorResult;
-
-    public sealed record TimelineNotProvisioned : RegisterCollectorResult;
-}
-
 public interface IRegisterCollector
 {
-    Task<RegisterCollectorResult> ExecuteAsync(
+    Task<RegisteredCollector> ExecuteAsync(
         Guid ownerId,
         RegisterCollectorCommand command,
         CancellationToken cancellationToken = default);
@@ -35,11 +24,10 @@ public interface IRegisterCollector
 
 public interface ICollectorRegistrationStore
 {
-    Task<RegisteredCollector?> RegisterAsync(
-        Guid ownerId,
+    Task<RegisteredCollector> RegisterAsync(
+        Timeline candidateTimeline,
         Guid candidateCollectorId,
         CollectorRegistration registration,
-        DateTimeOffset createdAt,
         CancellationToken cancellationToken = default);
 }
 
@@ -47,7 +35,7 @@ public sealed class RegisterCollector(
     ICollectorRegistrationStore store,
     TimeProvider timeProvider) : IRegisterCollector
 {
-    public async Task<RegisterCollectorResult> ExecuteAsync(
+    public async Task<RegisteredCollector> ExecuteAsync(
         Guid ownerId,
         RegisterCollectorCommand command,
         CancellationToken cancellationToken = default)
@@ -65,15 +53,10 @@ public sealed class RegisterCollector(
             command.DisplayName);
         var createdAt = timeProvider.GetUtcNow().ToUniversalTime();
         var candidateCollectorId = Guid.CreateVersion7(createdAt);
-        var collector = await store.RegisterAsync(
-            ownerId,
+        return await store.RegisterAsync(
+            Timeline.Create(ownerId, "My Timeline", createdAt),
             candidateCollectorId,
             registration,
-            createdAt,
             cancellationToken);
-
-        return collector is null
-            ? new RegisterCollectorResult.TimelineNotProvisioned()
-            : new RegisterCollectorResult.Registered(collector);
     }
 }
