@@ -19,6 +19,7 @@ Collector 向 Hub 提交逻辑声明与 Record，不持有后端 ID。Hub 持久
 - [Hub 记录交付](docs/hub-record-delivery.md)：SQLite 持久接管、后台上传、恢复及桌面接入。
 - [Next 前端](src/Frontend/Heartbeat.Web/README.md)：本地运行、登录配置、Record value 展示组件扩展与验证。
 - [本地开发](docs/development.md)：统一 Docker 启动、热更新、生产镜像验收与首次配置。
+- [工程验证](docs/verification.md)：Git 变更选择、结构质量闸门、可复现场景与证据目录。
 - [未决设计](docs/recording-open-questions.md)：未交接数据、断采规则、设备关联等尚未确认的问题。
 - [Agent 规则](AGENTS.md)：协作约束和本仓库的工程规则。
 
@@ -58,7 +59,7 @@ tests/
 默认在 Docker 中启动 Web、API 和 PostgreSQL；数据库迁移会在 API 启动前执行：
 
 ```bash
-./scripts/dev.sh up
+./scripts/heartbeat-dev env up
 ```
 
 访问 <http://localhost:3000>。Web 通过同源 `/api/*` 转发到 API；宿主端口只绑定回环地址。认证服务需允许 `http://localhost:3000/auth/callback` 回调。
@@ -66,9 +67,9 @@ tests/
 显式选择服务会替换默认组合，并只补足必要依赖：
 
 ```bash
-./scripts/dev.sh up api
-./scripts/dev.sh up hub
-./scripts/dev.sh up desktop
+./scripts/heartbeat-dev env up api
+./scripts/heartbeat-dev env up hub
+./scripts/heartbeat-dev env up desktop
 ```
 
 开发模式在容器中运行 `next dev` 和 `dotnet watch`。macOS Desktop Collector 在宿主前台运行，选择 `desktop` 会自动启动 Hub；Hub 不依赖 API 或数据库，可以离线接管记录。
@@ -82,7 +83,7 @@ tests/
 使用同一服务拓扑构建并运行标准生产镜像：
 
 ```bash
-./scripts/dev.sh up --release
+./scripts/heartbeat-dev env up --release
 ```
 
-日志、状态、按服务停止、数据重置、端口和环境变量见[本地开发说明](docs/development.md)。普通 `up`/`down` 保留 PostgreSQL 与 Hub SQLite 卷；Initial migration 改变时运行 `./scripts/dev.sh reset` 明确清空本地数据。
+日志、状态、按服务停止、数据重置、端口和环境变量见[本地开发说明](docs/development.md)。普通 `up`/`down` 保留 PostgreSQL 与 Hub SQLite 卷；Initial migration 改变时先运行 `./scripts/heartbeat-dev env reset` 查看计划，再加 `--apply` 明确清空本地数据。

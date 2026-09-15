@@ -82,7 +82,7 @@ services:
       Hub__DatabasePath: /data/hub.sqlite
       Hub__AccessToken: ${HEARTBEAT_HUB_TOKEN:-}
     ports:
-      - "127.0.0.1:4318:4318"
+      - "127.0.0.1:${HEARTBEAT_HUB_PORT:-4318}:4318"
     volumes:
       - heartbeat-hub:/data
 

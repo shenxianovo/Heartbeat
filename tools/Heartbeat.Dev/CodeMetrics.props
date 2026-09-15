@@ -1,0 +1,6 @@
+<Project>
+  <ItemGroup>
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)CodeMetricsConfig.txt" />
+    <GlobalAnalyzerConfigFiles Include="$(MSBuildThisFileDirectory)CodeMetrics.globalconfig" />
+  </ItemGroup>
+</Project>

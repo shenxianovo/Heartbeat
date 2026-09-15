@@ -27,3 +27,7 @@ This repo uses the default five canonical triage labels. See `docs/agents/triage
 ### Domain docs
 
 This repo uses a single-context domain doc layout. See `docs/agents/domain.md`.
+
+### Verification
+
+For implementation changes, use the repository verification skill at `.agents/skills/verify-heartbeat/SKILL.md`. It selects checks from a Git base, applies structural quality ratchets, and records scenario evidence without overstating mocked coverage.

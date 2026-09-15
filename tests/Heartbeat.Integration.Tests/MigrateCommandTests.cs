@@ -16,7 +16,7 @@ public sealed class MigrateCommandTests(PostgresFixture fixture) : PostgresTestB
 
         Assert.Equal(1, result.ExitCode);
         Assert.Contains("Database initialization failed", result.StandardError, StringComparison.Ordinal);
-        Assert.Contains("scripts/dev.sh reset", result.StandardError, StringComparison.Ordinal);
+        Assert.Contains("scripts/heartbeat-dev env reset --apply", result.StandardError, StringComparison.Ordinal);
         Assert.DoesNotContain("Unhandled exception", result.StandardError, StringComparison.Ordinal);
     }
 

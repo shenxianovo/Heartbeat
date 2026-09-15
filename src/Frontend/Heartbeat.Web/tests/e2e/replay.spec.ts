@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import path from "node:path";
 
 import {
   desktopTrack,
@@ -7,6 +8,9 @@ import {
   seedSession,
   userStorageKey,
 } from "./fixtures";
+
+const evidencePath = (name: string) =>
+  path.join(process.env.HEARTBEAT_EVIDENCE_DIR ?? "test-results", name);
 
 async function chooseSources(page: Page, names: string[]) {
   await page.getByRole("button", { name: "采集来源", exact: true }).click();
@@ -35,7 +39,7 @@ test("统一时间线自动读取完整区间并可查看原始记录", async ({
   expect(next.searchParams.get("cursor")).toBe("next-page-test-cursor");
   expect(next.searchParams.get("from")).toBe(first.searchParams.get("from"));
   expect(next.searchParams.get("to")).toBe(first.searchParams.get("to"));
-  await page.screenshot({ path: "test-results/replay-desktop.png", fullPage: true });
+  await page.screenshot({ path: evidencePath("replay-desktop.png"), fullPage: true });
 });
 
 test("未知类型安全展示 JSON，窄屏也可查看", async ({ page }) => {
@@ -58,7 +62,7 @@ test("未知类型安全展示 JSON，窄屏也可查看", async ({ page }) => {
   );
   for (let index = 1; index < tickBoxes.length; index++)
     expect(tickBoxes[index - 1]!.right).toBeLessThanOrEqual(tickBoxes[index]!.left);
-  await page.screenshot({ path: "test-results/replay-mobile.png", fullPage: true });
+  await page.screenshot({ path: evidencePath("replay-mobile.png"), fullPage: true });
 });
 
 test("空目录有明确状态", async ({ page }) => {
@@ -117,7 +121,7 @@ test("重叠区间分别可见且可以直接展开", async ({ page }) => {
   expect(a.y + a.height <= b.y || b.y + b.height <= a.y).toBe(true);
   await first.click();
   await expect(page.getByText("所选区间")).toBeVisible();
-  await page.screenshot({ path: "test-results/replay-overlapping.png", fullPage: true });
+  await page.screenshot({ path: evidencePath("replay-overlapping.png"), fullPage: true });
 });
 
 test("来源可以组合选择，空选择不会一直加载", async ({ page }) => {

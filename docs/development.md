@@ -24,7 +24,7 @@ Web、API 和数据库使用默认认证地址，可以在没有 `.env.local` �
 默认启动 Web、API 和 PostgreSQL，数据库迁移会在 API 启动前执行：
 
 ```bash
-./scripts/dev.sh up
+./scripts/heartbeat-dev env up
 ```
 
 `migrate` 是一次性的数据库初始化容器：执行当前 Initial migration 后退出，API 等它成功退出才启动。迁移失败会返回非零退出码并显示错误；可用 `docker compose logs migrate` 查看原因。若旧重写数据库的表结构与当前 Initial 不一致，按下文的 `reset` 说明清空本地状态后重新启动。
@@ -45,10 +45,10 @@ Web、API 和数据库使用默认认证地址，可以在没有 `.env.local` �
 命令末尾可以选择一个或多个服务：
 
 ```bash
-./scripts/dev.sh up api
-./scripts/dev.sh up web hub
-./scripts/dev.sh up hub
-./scripts/dev.sh up desktop
+./scripts/heartbeat-dev env up api
+./scripts/heartbeat-dev env up web hub
+./scripts/heartbeat-dev env up hub
+./scripts/heartbeat-dev env up desktop
 ```
 
 显式选择会替换默认的 `web api db`，脚本只补足必要依赖：
@@ -77,8 +77,8 @@ Desktop Collector 附着到当前终端，按 Ctrl+C 停止。开发模式使用
 使用生产镜像做本地验收：
 
 ```bash
-./scripts/dev.sh up --release
-./scripts/dev.sh up --release hub
+./scripts/heartbeat-dev env up --release
+./scripts/heartbeat-dev env up --release hub
 ```
 
 生产 Web 镜像使用 Next.js standalone 输出；`NEXT_PUBLIC_*` OIDC 配置在镜像构建时写入浏览器资源。开发与 release 模式从同一个 `.env.local` 读取这些值。
@@ -92,10 +92,10 @@ Release 模式要求 Auth 地址使用 HTTPS。本地 HTTP 模拟认证服务只
 `logs`、`status` 和 `down` 接受相同的容器服务选择；显式选择不会影响其他服务：
 
 ```bash
-./scripts/dev.sh logs api
-./scripts/dev.sh status web api db
-./scripts/dev.sh down web
-./scripts/dev.sh down
+./scripts/heartbeat-dev env logs api
+./scripts/heartbeat-dev env status web api db
+./scripts/heartbeat-dev env down web
+./scripts/heartbeat-dev env down
 ```
 
 `down` 停止并移除所选容器，但保留 PostgreSQL、Hub SQLite、Web 依赖和构建缓存卷。Desktop Collector 是宿主前台进程，只能在运行它的终端按 Ctrl+C 停止。
@@ -103,10 +103,11 @@ Release 模式要求 Auth 地址使用 HTTPS。本地 HTTP 模拟认证服务只
 当 Initial migration 改变或需要明确清空所有本地状态时运行：
 
 ```bash
-./scripts/dev.sh reset
+./scripts/heartbeat-dev env reset
+./scripts/heartbeat-dev env reset --apply
 ```
 
-`reset` 会停止整个 Heartbeat Compose 项目，并删除 PostgreSQL、Hub SQLite 和开发缓存卷。普通 `up`、`down` 不删除卷。
+第一条命令只输出将删除的内容；第二条才会停止整个 Heartbeat Compose 项目，并删除 PostgreSQL、Hub SQLite 和开发缓存卷。普通 `up`、`down` 不删除卷。
 
 ## 配置
 
@@ -121,6 +122,7 @@ Release 模式要求 Auth 地址使用 HTTPS。本地 HTTP 模拟认证服务只
 | `HEARTBEAT_API_KEY` | Hub 向 Auth 换取后端 access token | Hub 必填 |
 | `HEARTBEAT_OWNER_ID` | Hub 所属 Owner UUID | Hub 必填；由 setup 验证并写入 |
 | `HEARTBEAT_HUB_TOKEN` | Collector 到 Hub 的本地接入密钥 | Hub 必填；与 API key 分离 |
+| `HEARTBEAT_HUB_PORT` | Hub 的宿主回环端口 | `4318`；隔离场景自动选择临时端口 |
 | `HEARTBEAT_COLLECTOR_TARGET` | Desktop Collector 的稳定 Target | Desktop 必填 |
 | `HEARTBEAT_COLLECTOR_DISPLAY_NAME` | Desktop Collector 展示名称 | 可选 |
 
@@ -130,19 +132,19 @@ Hub 容器内固定使用 `http://api:8080` 作为后端地址，SQLite 固定�
 
 ```bash
 COMPOSE_PROJECT_NAME=heartbeat-smoke \
-  ./scripts/dev.sh up --release --env-file /absolute/path/to/smoke.env
+  ./scripts/heartbeat-dev env up --release --env-file /absolute/path/to/smoke.env
 ```
 
 自定义环境文件必须已经存在；默认 `.env.local` 缺失时才会由脚本创建为空文件。
 
-## 验证启动脚本
+## 验证开发入口
 
-启动脚本的纯命令选择测试不会运行真实容器：
+统一入口自身的命令选择测试不会运行真实容器：
 
 ```bash
-./scripts/dev.test.sh
+dotnet test tests/Heartbeat.Dev.Tests
 ```
 
-完整验收应分别构建开发与 release 镜像，确认 API/Web/Hub 可访问、源码修改会触发 watcher，并运行与改动范围匹配的 .NET、前端和端到端测试。
+`./scripts/heartbeat-dev` 在 Unix/macOS 上使用，Windows 使用 `scripts/heartbeat-dev.cmd`；两者只负责启动同一个 .NET 10 CLI。日常手动启动与 Agent 验证共用这一入口：`env` 管理运行环境，`verify` 选择测试，`quality` 比较结构质量，`scenario` 运行场景，`artifacts` 管理证据。完整命令见[工程验证](verification.md)。
 
 当前开发栈已实测 Hub 在后端离线时接管 macOS Record、后端恢复后写入 PostgreSQL、Web 通过真实 API 展示 Record，以及 Next 与 .NET watcher 热更新。

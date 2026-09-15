@@ -1,0 +1,7 @@
+{
+  "name": "heartbeat-quality-tools",
+  "private": true,
+  "devDependencies": {
+    "jscpd": "5.2.0"
+  }
+}

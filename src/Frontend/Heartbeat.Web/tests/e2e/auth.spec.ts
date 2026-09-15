@@ -9,7 +9,7 @@ import {
   recordingRoutes,
 } from "./fixtures";
 
-test("登录使用 PKCE，并通过回调恢复会话和回放", async ({ page }) => {
+test("登录使用 PKCE，并通过回调恢复会话和回放", async ({ page, baseURL }) => {
   await identityRoutes(page);
   await recordingRoutes(page);
   await page.goto("/");
@@ -51,7 +51,7 @@ test("登录使用 PKCE，并通过回调恢复会话和回放", async ({ page }
     });
   });
   await page.goto(`/auth/callback?code=test-code&state=${encodeURIComponent(state!)}`);
-  await expect(page).toHaveURL("http://127.0.0.1:3107/");
+  await expect(page).toHaveURL(`${baseURL}/`);
   await expect(page.getByTitle("com.apple.finder", { exact: true })).toBeVisible();
 });
 

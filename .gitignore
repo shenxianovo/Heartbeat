@@ -10,6 +10,7 @@ obj/
 .env.*
 !.env.example
 .local/
+.artifacts/
 
 TestResults/
 coverage/

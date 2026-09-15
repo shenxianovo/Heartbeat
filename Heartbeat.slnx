@@ -11,4 +11,6 @@
   <Project Path="tests/Heartbeat.Collector.Desktop.Mac.Tests/Heartbeat.Collector.Desktop.Mac.Tests.csproj" />
   <Project Path="tests/Heartbeat.Domain.Tests/Heartbeat.Domain.Tests.csproj" />
   <Project Path="tests/Heartbeat.Integration.Tests/Heartbeat.Integration.Tests.csproj" />
+  <Project Path="tools/Heartbeat.Dev/Heartbeat.Dev.csproj" />
+  <Project Path="tests/Heartbeat.Dev.Tests/Heartbeat.Dev.Tests.csproj" />
 </Solution>
