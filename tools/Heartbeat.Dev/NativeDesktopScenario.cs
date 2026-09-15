@@ -70,34 +70,55 @@ internal sealed class NativeDesktopScenario(
                 artifacts.Add("collector.log");
             }
             exitCode = collector.ExitCode;
-            return exitCode;
+        }
+        catch (OperationCanceledException)
+        {
+            exitCode = 130;
+            throw;
         }
         finally
         {
-            if (collector is { HasExited: false })
-            {
-                collector.Kill(entireProcessTree: true);
-                await collector.WaitForExitAsync(CancellationToken.None);
-            }
             var keep = exitCode != 0 && options.KeepEnvironmentOnFailure;
-            if (!keep)
+            var removed = false;
+            try
             {
-                commands.Add($"docker compose --project-name {projectName} down --volumes --remove-orphans");
-                await runner.CaptureAsync("docker", [.. compose, "down", "--volumes", "--remove-orphans"], composeEnvironment, CancellationToken.None);
+                if (collector is { HasExited: false })
+                {
+                    collector.Kill(entireProcessTree: true);
+                    await collector.WaitForExitAsync(CancellationToken.None);
+                }
+                if (!keep)
+                {
+                    commands.Add($"docker compose --project-name {projectName} down --volumes --remove-orphans");
+                    var cleanup = await runner.CaptureAsync("docker", [.. compose, "down", "--volumes", "--remove-orphans"], composeEnvironment, CancellationToken.None);
+                    removed = cleanup.ExitCode == 0;
+                    if (!removed && exitCode == 0) exitCode = 1;
+                }
             }
-            await ArtifactStore.WriteManifestAsync(run, new EvidenceManifest(
-                run.Id, "scenario", "native-desktop", started, DateTimeOffset.UtcNow, exitCode,
-                options.IncludeSensitiveEvidence, commands, artifacts,
-                [
-                    "Human interaction is required because macOS input monitoring and accessibility actions are intentionally not automated.",
+            catch (Exception exception)
+            {
+                if (exitCode == 0) exitCode = 1;
+                await output.WriteLineAsync($"Cleanup of {projectName} failed ({exception.GetType().Name}).");
+            }
+            finally
+            {
+                await ArtifactStore.WriteManifestAsync(run, new EvidenceManifest(
+                    run.Id, "scenario", "native-desktop", started, DateTimeOffset.UtcNow, exitCode,
+                    options.IncludeSensitiveEvidence, commands, artifacts,
+                    [
+                        "Human interaction is required because macOS input monitoring and accessibility actions are intentionally not automated.",
                     options.IncludeSensitiveEvidence
                         ? "Collector logs were explicitly retained and may contain user context."
                         : "Only timing, process, and Hub queue metadata were retained; no screen or input content was saved.",
-                    keep ? $"The failed environment was retained as Docker Compose project {projectName}." : "The isolated Docker environment was removed.",
-                ]), CancellationToken.None);
-            collector?.Dispose();
-            await output.WriteLineAsync($"Scenario evidence: {run.Directory}");
+                    keep ? $"The failed environment was retained as Docker Compose project {projectName}."
+                        : removed ? "The isolated Docker environment was removed."
+                        : $"Cleanup was not confirmed for Docker Compose project {projectName}.",
+                    ]), CancellationToken.None);
+                collector?.Dispose();
+                await output.WriteLineAsync($"Scenario evidence: {run.Directory}");
+            }
         }
+        return exitCode;
     }
 
     private static void ValidatePlatform()

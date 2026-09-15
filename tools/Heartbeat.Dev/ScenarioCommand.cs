@@ -40,7 +40,7 @@ internal sealed class ScenarioCommand(
         return RunAutomatedAsync(
             options, "replay-fixture", "npm",
             ["--prefix", web, "run", "test:e2e", "--", "replay.spec.ts"],
-            run => PlaywrightEvidenceEnvironment.Create(run),
+            run => PlaywrightEvidenceEnvironment.Create(run, WebVerificationWorkspace.Environment(repository)),
             ["Browser auth and API responses are mocked; this does not prove the deployed end-to-end chain."],
             cancellationToken);
     }
@@ -67,24 +67,19 @@ internal sealed class ScenarioCommand(
         IReadOnlyList<string> limitations,
         CancellationToken cancellationToken)
     {
-        var run = new ArtifactStore(repository).Create("scenario", name);
-        var started = DateTimeOffset.UtcNow;
-        var arguments = argumentTemplate.Select(value => value == "{artifact}" ? run.Directory : value).ToArray();
-        var command = $"{fileName} {string.Join(' ', arguments.Select(Quote))}";
-        await output.WriteLineAsync($"Scenario evidence: {run.Directory}");
-        var result = await runner.CaptureAsync(fileName, arguments, environment(run), cancellationToken);
-        await File.WriteAllTextAsync(Path.Combine(run.Directory, "command.log"), result.StdOut + result.StdErr, cancellationToken);
-        var artifacts = Directory.EnumerateFileSystemEntries(run.Directory)
-            .Select(Path.GetFileName)
-            .Where(item => item is not null and not "manifest.json")
-            .Select(item => item!)
-            .Order(StringComparer.Ordinal)
-            .ToArray();
-        await ArtifactStore.WriteManifestAsync(run, new EvidenceManifest(
-            run.Id, "scenario", name, started, DateTimeOffset.UtcNow, result.ExitCode,
-            options.IncludeSensitiveEvidence, [command], artifacts, limitations), cancellationToken);
-        if (result.ExitCode != 0) await output.WriteLineAsync(result.StdErr.Length > 0 ? result.StdErr : result.StdOut);
-        return result.ExitCode;
+        return await EvidenceSession.ExecuteAsync(repository, "scenario", name, limitations, async evidence =>
+        {
+            var run = evidence.Run;
+            var arguments = await WebVerificationWorkspace.ArgumentsAsync(repository, run,
+                argumentTemplate.Select(value => value == "{artifact}" ? run.Directory : value).ToArray(), cancellationToken);
+            var command = $"{fileName} {string.Join(' ', arguments.Select(Quote))}";
+            evidence.Commands.Add(command);
+            await output.WriteLineAsync($"Scenario evidence: {run.Directory}");
+            var result = await runner.CaptureAsync(fileName, arguments, environment(run), cancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(run.Directory, "command.log"), result.StdOut + result.StdErr, cancellationToken);
+            if (result.ExitCode != 0) await output.WriteLineAsync(result.StdErr.Length > 0 ? result.StdErr : result.StdOut);
+            return result.ExitCode;
+        }, options.IncludeSensitiveEvidence);
     }
 
     private static string Quote(string value) => value.Contains(' ', StringComparison.Ordinal) ? $"\"{value}\"" : value;

@@ -68,6 +68,7 @@ public sealed class VerificationCommandTests : IDisposable
     public async Task WritesLogsAndManifestUnderVerificationArtifacts()
     {
         Directory.CreateDirectory(_root);
+        Directory.CreateDirectory(Path.Combine(_root, "src", "Frontend", "Heartbeat.Web", "node_modules"));
         var runner = new SuccessfulRunner();
         var output = new StringWriter();
         var command = new VerificationCommand(new RepositoryContext(_root), runner, output);
@@ -81,7 +82,7 @@ public sealed class VerificationCommandTests : IDisposable
         Assert.True(File.Exists(Path.Combine(run.Directory, "web.log")));
         Assert.True(File.Exists(Path.Combine(run.Directory, "browser.log")));
         Assert.Contains("Verification evidence:", output.ToString(), StringComparison.Ordinal);
-        var browser = Assert.Single(runner.Environments, item => item is not null);
+        var browser = Assert.Single(runner.Environments, item => item?.ContainsKey("HEARTBEAT_EVIDENCE_DIR") == true);
         Assert.StartsWith(run.Directory, browser!["HEARTBEAT_EVIDENCE_DIR"], StringComparison.Ordinal);
     }
 

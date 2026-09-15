@@ -14,7 +14,8 @@ internal sealed record EvidenceManifest(
     bool IncludesSensitiveEvidence,
     IReadOnlyList<string> Commands,
     IReadOnlyList<string> Artifacts,
-    IReadOnlyList<string> Limitations);
+    IReadOnlyList<string> Limitations,
+    string? Failure = null);
 
 internal sealed class ArtifactStore(RepositoryContext repository)
 {

@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 
 namespace Heartbeat.Dev;
 
-internal sealed record ComplexityHotspot(string Language, string Path, int Line, string Symbol, int Complexity);
+internal sealed record ComplexityHotspot(string Language, string Path, int Line, string Symbol, int Complexity, int Column = 1);
 
 internal sealed record ComplexityRegression(ComplexityHotspot Current, int? BaseComplexity);
 
@@ -25,7 +25,8 @@ internal sealed record ComplexityQualityReport(
     ErosionMeasurement? CurrentErosion = null,
     double? ErosionDelta = null,
     IReadOnlyList<ComplexityHotspot>? Hotspots = null,
-    IReadOnlyList<ComplexityRegression>? RegressionDetails = null);
+    IReadOnlyList<ComplexityRegression>? RegressionDetails = null,
+    CouplingObservation? Coupling = null);
 
 internal sealed partial class ComplexityDetector(RepositoryContext repository, IProcessRunner runner)
 {
@@ -35,7 +36,6 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
         string baseRef,
         string artifactDirectory,
         ICollection<string> commands,
-        ICollection<string> artifacts,
         CancellationToken cancellationToken)
     {
         var temporaryRoot = OperatingSystem.IsMacOS() ? "/private/tmp" : Path.GetTempPath();
@@ -50,8 +50,8 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
             }
 
             commands.Add($"git worktree add --detach <temporary> {baseRef}");
-            var baseline = await ScanAsync(worktree, restore: true, commands, cancellationToken);
-            var current = await ScanAsync(repository.Root, restore: false, commands, cancellationToken);
+            var baseline = await ScanAsync(worktree, restore: true, artifactDirectory, commands, cancellationToken);
+            var current = await ScanAsync(repository.Root, restore: false, artifactDirectory, commands, cancellationToken);
             if (baseline.Error is not null || current.Error is not null)
             {
                 return Unavailable(baseline.Error ?? current.Error!);
@@ -60,10 +60,12 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
             var regressions = FindRegressions(baseline.Hotspots, current.Hotspots);
             var baselineErosion = CalculateErosion(baseline.Functions);
             var currentErosion = CalculateErosion(current.Functions);
+            var coupling = new CouplingObservation(baseline.Coupling ?? [], current.Coupling ?? []);
             var reportPath = Path.Combine(artifactDirectory, "complexity.json");
             await File.WriteAllTextAsync(reportPath, JsonSerializer.Serialize(new
             {
                 threshold = Threshold,
+                coupling,
                 baseline = baseline.Hotspots,
                 current = current.Hotspots,
                 regressions,
@@ -72,7 +74,6 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
                 erosionDelta = currentErosion.Ratio - baselineErosion.Ratio,
                 currentHighRiskFunctions = current.Functions.Where(item => item.Complexity > Threshold),
             }, JsonOptions.Indented) + Environment.NewLine, cancellationToken);
-            artifacts.Add("complexity.json");
             return new ComplexityQualityReport(
                 true,
                 regressions.Count == 0,
@@ -84,7 +85,8 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
                 currentErosion,
                 currentErosion.Ratio - baselineErosion.Ratio,
                 current.Hotspots,
-                regressions);
+                regressions,
+                coupling);
         }
         finally
         {
@@ -99,10 +101,11 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
     private async Task<ComplexityScan> ScanAsync(
         string root,
         bool restore,
+        string artifactDirectory,
         ICollection<string> commands,
         CancellationToken cancellationToken)
     {
-        var csharp = await ScanCSharpAsync(root, restore, commands, cancellationToken);
+        var csharp = await ScanCSharpAsync(root, restore, artifactDirectory, commands, cancellationToken);
         if (csharp.Error is not null) return csharp;
         var typescript = await ScanTypeScriptAsync(root, commands, cancellationToken);
         return typescript.Error is not null
@@ -110,12 +113,13 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
             : new ComplexityScan(
                 [.. csharp.Hotspots, .. typescript.Hotspots],
                 [.. csharp.Functions, .. typescript.Functions],
-                null);
+                null, csharp.Coupling);
     }
 
     private async Task<ComplexityScan> ScanCSharpAsync(
         string root,
         bool restore,
+        string artifactDirectory,
         ICollection<string> commands,
         CancellationToken cancellationToken)
     {
@@ -127,8 +131,12 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
             $"-p:CustomBeforeMicrosoftCommonProps={repository.Path("tools", "Heartbeat.Dev", "CodeMetrics.props")}",
         };
         if (!restore) arguments.Insert(2, "--no-restore");
-        commands.Add($"dotnet build Heartbeat.slnx{(restore ? string.Empty : " --no-restore")} (CA1502)");
-        var result = await ProcessRunner.CaptureAsync(root, "dotnet", arguments, cancellationToken);
+        commands.Add($"dotnet build Heartbeat.slnx{(restore ? string.Empty : " --no-restore")} (CA1502, CA1506; DOTNET_CLI_UI_LANGUAGE=en-US)");
+        var result = await ProcessRunner.CaptureAsync(root, "dotnet", arguments, cancellationToken,
+            new Dictionary<string, string?> { ["DOTNET_CLI_UI_LANGUAGE"] = "en-US", ["VSLANG"] = "1033" });
+        var buildOutput = result.StdOut + Environment.NewLine + result.StdErr;
+        await File.WriteAllTextAsync(Path.Combine(artifactDirectory, restore ? "baseline-csharp.log" : "current-csharp.log"),
+            buildOutput, cancellationToken);
         if (result.ExitCode != 0)
         {
             return new ComplexityScan([], [],
@@ -136,11 +144,13 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
         }
         try
         {
-            var functions = ParseCSharp(root, result.StdOut + Environment.NewLine + result.StdErr);
+            var functions = ErosionScanner.FromCSharpAnalyzer(root, ParseCSharp(root, buildOutput));
+            if (functions.Count == 0)
+                return new ComplexityScan([], [], "CA1502 produced no production function metrics; check analyzer configuration.");
             return new ComplexityScan(
-                functions.Where(item => item.Complexity > Threshold).ToArray(),
-                ErosionScanner.FromCSharpAnalyzer(root, functions),
-                null);
+                functions.Where(item => item.Complexity > Threshold).Select(item => item.Hotspot).ToArray(),
+                functions,
+                null, CouplingParser.Parse(root, buildOutput));
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -195,13 +205,13 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
             {
                 return new ComplexityScan([], [], $"TypeScript erosion scan failed: {LastUsefulLine(erosion)}");
             }
-            var functions = ParseTypeScript(root, result.StdOut);
+            var functions = ApplyAnalyzerComplexity(ErosionScanner.ParseTypeScriptSpans(erosion.StdOut), ParseTypeScript(root, result.StdOut));
             return new ComplexityScan(
-                functions.Where(item => item.Complexity > Threshold).ToArray(),
-                ApplyAnalyzerComplexity(ErosionScanner.ParseTypeScriptSpans(erosion.StdOut), functions),
+                functions.Where(item => item.Complexity > Threshold).Select(item => item.Hotspot).ToArray(),
+                functions,
                 null);
         }
-        catch (JsonException exception)
+        catch (Exception exception) when (exception is JsonException or InvalidDataException)
         {
             return new ComplexityScan([], [], $"Could not parse TypeScript complexity output: {exception.Message}");
         }
@@ -215,7 +225,8 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
                 "C#", Relative(root, match.Groups["path"].Value),
                 int.Parse(match.Groups["line"].Value, System.Globalization.CultureInfo.InvariantCulture),
                 match.Groups["symbol"].Value,
-                int.Parse(match.Groups["complexity"].Value, System.Globalization.CultureInfo.InvariantCulture)))
+                int.Parse(match.Groups["complexity"].Value, System.Globalization.CultureInfo.InvariantCulture),
+                int.Parse(match.Groups["column"].Value, System.Globalization.CultureInfo.InvariantCulture)))
             .Where(IsProduction)
             .Distinct()
             .OrderBy(hotspot => hotspot.Path, StringComparer.Ordinal)
@@ -229,6 +240,7 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
         foreach (var file in document.RootElement.EnumerateArray())
         {
             var path = Relative(root, file.GetProperty("filePath").GetString()!);
+            if (!SourceCorpus.TryClassify(path, out _, out var role) || role != SourceRole.Production) continue;
             foreach (var message in file.GetProperty("messages").EnumerateArray())
             {
                 if (message.GetProperty("ruleId").GetString() != "complexity") continue;
@@ -239,7 +251,8 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
                 hotspots.Add(new ComplexityHotspot(
                     "TypeScript", path, message.GetProperty("line").GetInt32(),
                     separator < 0 ? text : text[..separator],
-                    int.Parse(match.Groups["complexity"].Value, System.Globalization.CultureInfo.InvariantCulture)));
+                    int.Parse(match.Groups["complexity"].Value, System.Globalization.CultureInfo.InvariantCulture),
+                    message.GetProperty("column").GetInt32()));
             }
         }
         return hotspots.OrderBy(item => item.Path, StringComparer.Ordinal).ThenBy(item => item.Line).ToArray();
@@ -275,17 +288,28 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
         IReadOnlyList<FunctionMetric> functions,
         IReadOnlyList<ComplexityHotspot> hotspots)
     {
-        var analyzerValues = hotspots
-            .GroupBy(item => $"{item.Language}\0{item.Path}\0{item.Line}", StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.Max(item => item.Complexity), StringComparer.Ordinal);
-        return functions.Select(function =>
+        var measured = new Dictionary<FunctionMetric, int>();
+        foreach (var hotspot in hotspots)
         {
-            var key = $"{function.Language}\0{function.Path}\0{function.Line}";
-            return analyzerValues.TryGetValue(key, out var complexity)
-                ? function with { Complexity = complexity }
-                : function;
-        }).ToArray();
+            var kind = hotspot.Symbol.StartsWith("Class field initializer", StringComparison.Ordinal) ? "initializer"
+                : hotspot.Symbol.StartsWith("Class static block", StringComparison.Ordinal) ? "static-block" : "function";
+            var function = functions.Where(item => item.Path == hotspot.Path && item.Kind == kind && Contains(item, hotspot))
+                .OrderBy(item => item.EndLine - item.Line)
+                .ThenBy(item => item.EndColumn - item.Column)
+                .FirstOrDefault();
+            if (function is null || !measured.TryAdd(function, hotspot.Complexity))
+                throw new InvalidDataException($"Cannot uniquely match function at {hotspot.Path}:{hotspot.Line}:{hotspot.Column}.");
+        }
+        if (measured.Count != functions.Count)
+            throw new InvalidDataException("The TypeScript analyzer did not measure every function.");
+        return functions.Select(function => function with { Complexity = measured[function] }).ToArray();
     }
+
+    private static bool Contains(FunctionMetric function, ComplexityHotspot diagnostic) =>
+        function.EndLine == 0
+            ? function.Line == diagnostic.Line && function.Column == diagnostic.Column
+            : (diagnostic.Line > function.Line || diagnostic.Line == function.Line && diagnostic.Column >= function.Column)
+              && (diagnostic.Line < function.EndLine || diagnostic.Line == function.EndLine && diagnostic.Column < function.EndColumn);
 
     private static bool IsProduction(ComplexityHotspot hotspot) =>
         SourceCorpus.TryClassify(hotspot.Path, out _, out var role) && role == SourceRole.Production;
@@ -314,7 +338,7 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
         return errors.Length > 0 ? string.Join(" | ", errors) : LastUsefulLine(result);
     }
 
-    [GeneratedRegex("^(?<path>.+)\\((?<line>\\d+),\\d+\\): warning CA1502: '(?<symbol>[^']+)' has a cyclomatic complexity of '(?<complexity>\\d+)'", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("^(?<path>.+)\\((?<line>\\d+),(?<column>\\d+)\\): warning CA1502: '(?<symbol>[^']+)' has a cyclomatic complexity of '(?<complexity>\\d+)'", RegexOptions.CultureInvariant)]
     private static partial Regex CSharpDiagnostic();
 
     [GeneratedRegex("complexity of (?<complexity>\\d+)", RegexOptions.CultureInvariant)]
@@ -323,5 +347,6 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
     private sealed record ComplexityScan(
         IReadOnlyList<ComplexityHotspot> Hotspots,
         IReadOnlyList<FunctionMetric> Functions,
-        string? Error);
+        string? Error,
+        IReadOnlyList<CouplingHotspot>? Coupling = null);
 }

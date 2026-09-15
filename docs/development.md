@@ -7,7 +7,8 @@ macOS Desktop Collector 必须在宿主机前台运行，以访问系统前台�
 ## 环境要求
 
 - Docker Desktop 与 Docker Compose
-- 仅在运行 Desktop Collector 时需要宿主机安装 .NET SDK 10 和 macOS
+- 宿主机安装 .NET SDK 10（统一 Developer CLI 本身需要）
+- Desktop Collector 另外需要 macOS
 
 Web、API 和数据库使用默认认证地址，可以在没有 `.env.local` 的情况下启动。脚本会创建一个权限为 `0600` 的空文件，以便 Compose 始终显式读取同一个环境文件。
 

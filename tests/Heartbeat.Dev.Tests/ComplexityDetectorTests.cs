@@ -13,7 +13,7 @@ public sealed class ComplexityDetectorTests
         var hotspots = ComplexityDetector.ParseCSharp(root, $"{diagnostic}\n{diagnostic}\n/repo/tests/App.Tests/X.cs(1,1): warning CA1502: 'Test' has a cyclomatic complexity of '20'.");
 
         var hotspot = Assert.Single(hotspots);
-        Assert.Equal(new ComplexityHotspot("C#", "src/App/Worker.cs", 12, "Run", 14), hotspot);
+        Assert.Equal(new ComplexityHotspot("C#", "src/App/Worker.cs", 12, "Run", 14, 8), hotspot);
     }
 
     [Fact]

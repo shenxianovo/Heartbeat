@@ -6,6 +6,9 @@ function backendUrl(): string {
 }
 
 const nextConfig: NextConfig = {
+  turbopack: process.env.HEARTBEAT_VERIFICATION_ROOT
+    ? { root: process.env.HEARTBEAT_VERIFICATION_ROOT }
+    : undefined,
   allowedDevOrigins: ["localhost", "127.0.0.1"],
   output: "standalone",
   async rewrites() {

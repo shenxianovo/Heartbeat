@@ -142,7 +142,7 @@ internal static class VerificationPlanner
         string baseRef,
         CancellationToken cancellationToken)
     {
-        var tracked = await runner.CaptureAsync("git", ["diff", "--name-only", "-z", baseRef, "--"], null, cancellationToken);
+        var tracked = await runner.CaptureAsync("git", ["diff", "--no-renames", "--name-only", "-z", baseRef, "--"], null, cancellationToken);
         if (tracked.ExitCode != 0) throw new CommandUsageException($"Invalid Git base '{baseRef}': {tracked.StdErr.Trim()}");
         var untracked = await runner.CaptureAsync("git", ["ls-files", "--others", "--exclude-standard", "-z"], null, cancellationToken);
         if (untracked.ExitCode != 0) throw new InvalidOperationException(untracked.StdErr.Trim());

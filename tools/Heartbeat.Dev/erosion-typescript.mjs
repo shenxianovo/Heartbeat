@@ -5,14 +5,14 @@ import { pathToFileURL } from "node:url";
 
 const root = path.resolve(process.argv[2]);
 const web = path.join(root, "src", "Frontend", "Heartbeat.Web");
-const require = createRequire(pathToFileURL(path.join(web, "package.json")));
+const require = createRequire(pathToFileURL(path.join(process.argv[3] ?? web, "package.json")));
 const ts = require("typescript");
 
 function files(directory) {
   if (!fs.existsSync(directory)) return [];
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const target = path.join(directory, entry.name);
-    if (entry.isDirectory()) return entry.name === "tests" || entry.name === "__tests__" ? [] : files(target);
+    if (entry.isDirectory()) return ["test", "tests", "__tests__"].includes(entry.name) ? [] : files(target);
     if (!/\.(?:ts|tsx|js|jsx)$/.test(entry.name)) return [];
     if (/\.(?:test|spec)\.[^.]+$/.test(entry.name) || entry.name === "next-env.d.ts") return [];
     return [target];
@@ -24,12 +24,26 @@ function isFunction(node) {
 }
 
 function symbol(node, source) {
-  if (node.name) return node.name.getText(source);
-  const parent = node.parent;
-  if ((ts.isVariableDeclaration(parent) || ts.isPropertyAssignment(parent) || ts.isPropertyDeclaration(parent)) && parent.name) {
-    return parent.name.getText(source);
+  const scopes = [];
+  for (let scope = node; scope && !ts.isSourceFile(scope); scope = scope.parent) {
+    if (scope.name) scopes.unshift(`${ts.SyntaxKind[scope.kind]}:${scope.name.getText(source)}`);
+    else if (isFunction(scope)) {
+      if (scope.parent.name) {
+        scopes.unshift(ts.SyntaxKind[scope.kind]);
+        continue;
+      }
+      let owner = scope.parent;
+      while (owner && !isFunction(owner) && !ts.isSourceFile(owner)) owner = owner.parent;
+      const siblings = [];
+      function collect(candidate) {
+        if (isFunction(candidate)) siblings.push(candidate);
+        else ts.forEachChild(candidate, collect);
+      }
+      ts.forEachChild(owner, collect);
+      scopes.unshift(`${ts.SyntaxKind[scope.kind]}#${siblings.indexOf(scope)}`);
+    }
   }
-  return `anonymous@${source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1}`;
+  return scopes.join("/");
 }
 
 const metrics = [];
@@ -37,18 +51,34 @@ for (const file of files(path.join(web, "src"))) {
   const text = fs.readFileSync(file, "utf8");
   const kind = /\.[jt]sx$/.test(file) ? ts.ScriptKind.TSX : file.endsWith(".js") ? ts.ScriptKind.JS : ts.ScriptKind.TS;
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, kind);
+  function addMetric(node, head, identity, kind = "function") {
+    const start = source.getLineAndCharacterOfPosition(head.getStart(source));
+    const end = source.getLineAndCharacterOfPosition(node.end);
+    const lines = node.getText(source).split(/\r?\n/).filter((line) => line.trim() && !/^\s*(?:\/\/|\/\*|\*)/.test(line)).length;
+    metrics.push({
+      language: file.endsWith(".js") || file.endsWith(".jsx") ? "JavaScript" : "TypeScript",
+      path: path.relative(root, file).split(path.sep).join("/"),
+      line: start.line + 1,
+      column: start.character + 1,
+      endLine: end.line + 1,
+      endColumn: end.character + 1,
+      symbol: identity,
+      complexity: 1,
+      lines,
+      kind,
+    });
+  }
   function visit(node) {
     if (isFunction(node)) {
-      const start = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
-      const lines = node.getText(source).split(/\r?\n/).filter((line) => line.trim() && !/^\s*(?:\/\/|\/\*|\*)/.test(line)).length;
-      metrics.push({
-        language: file.endsWith(".js") || file.endsWith(".jsx") ? "JavaScript" : "TypeScript",
-        path: path.relative(root, file).split(path.sep).join("/"),
-        line: start,
-        symbol: symbol(node, source),
-        complexity: 1,
-        lines,
-      });
+      const head = ts.isPropertyAssignment(node.parent) || ts.isPropertyDeclaration(node.parent) ? node.parent : node;
+      addMetric(node, head, symbol(node, source));
+    }
+    if (ts.isPropertyDeclaration(node) && node.initializer) {
+      addMetric(node.initializer, node.initializer, `${symbol(node, source)}/initializer`, "initializer");
+    }
+    if (ts.isClassStaticBlockDeclaration(node)) {
+      const ordinal = node.parent.members.filter(ts.isClassStaticBlockDeclaration).indexOf(node);
+      addMetric(node, node, `${symbol(node, source)}/static-block#${ordinal}`, "static-block");
     }
     ts.forEachChild(node, visit);
   }

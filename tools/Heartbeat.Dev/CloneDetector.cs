@@ -6,7 +6,6 @@ internal sealed class CloneDetector(RepositoryContext repository, IProcessRunner
         string baseRef,
         string artifactDirectory,
         ICollection<string> commands,
-        ICollection<string> artifacts,
         CancellationToken cancellationToken)
     {
         var toolDirectory = repository.Path("tools", "Heartbeat.Dev", "jscpd");
@@ -38,8 +37,6 @@ internal sealed class CloneDetector(RepositoryContext repository, IProcessRunner
         var result = await runner.CaptureAsync(executable, arguments, null, cancellationToken);
         var logPath = Path.Combine(artifactDirectory, "jscpd.log");
         await File.WriteAllTextAsync(logPath, result.StdOut + result.StdErr, cancellationToken);
-        artifacts.Add("jscpd.log");
-        artifacts.Add("jscpd/");
         var observationDirectory = Path.Combine(artifactDirectory, "jscpd-observation");
         Directory.CreateDirectory(observationDirectory);
         var observationArguments = new[]
@@ -57,8 +54,6 @@ internal sealed class CloneDetector(RepositoryContext repository, IProcessRunner
             Path.Combine(artifactDirectory, "jscpd-observation.log"),
             observation.StdOut + observation.StdErr,
             cancellationToken);
-        artifacts.Add("jscpd-observation.log");
-        artifacts.Add("jscpd-observation/");
         var metrics = ReadMetrics(Path.Combine(reportDirectory, "jscpd-report.json"));
         var passed = result.ExitCode == 0 && observation.ExitCode == 0;
         return new CloneQualityReport(

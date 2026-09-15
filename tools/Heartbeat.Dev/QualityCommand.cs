@@ -45,43 +45,31 @@ internal sealed class QualityCommand(
             return 0;
         }
         var (baseRef, json) = Parse(args);
-        var store = new ArtifactStore(repository);
-        var run = store.Create("quality", "git-delta");
-        var started = DateTimeOffset.UtcNow;
-        var commands = new List<string>();
-        var artifacts = new List<string>();
-        var source = new GitSourceReader(repository, runner);
-        var baseline = await source.ReadRevisionAsync(baseRef, cancellationToken);
-        var current = await source.ReadWorktreeAsync(cancellationToken);
-        var lines = CompareLines(baseline, current);
+        return await EvidenceSession.ExecuteAsync(repository, "quality", "git-delta",
+            ["LOC is a change signal, not a correctness or maintainability verdict."], async evidence =>
+            {
+                var run = evidence.Run;
+                var commands = evidence.Commands;
+                var source = new GitSourceReader(repository, runner);
+                var baseline = await source.ReadRevisionAsync(baseRef, cancellationToken);
+                var current = await source.ReadWorktreeAsync(cancellationToken);
+                var lines = CompareLines(baseline, current);
 
-        var clones = await new CloneDetector(repository, runner)
-            .CompareAsync(baseRef, run.Directory, commands, artifacts, cancellationToken);
-        var complexity = await new ComplexityDetector(repository, runner)
-            .CompareAsync(baseRef, run.Directory, commands, artifacts, cancellationToken);
-        var passed = clones.Passed && complexity.Passed;
-        var report = new QualityReport(baseRef, run.Directory, lines, clones, complexity, passed);
-        var reportPath = Path.Combine(run.Directory, "quality.json");
-        await File.WriteAllTextAsync(
-            reportPath,
-            JsonSerializer.Serialize(report, JsonOptions.Indented) + Environment.NewLine,
-            cancellationToken);
-        artifacts.Add("quality.json");
-        await ArtifactStore.WriteManifestAsync(run, new EvidenceManifest(
-            run.Id,
-            "quality",
-            "git-delta",
-            started,
-            DateTimeOffset.UtcNow,
-            passed ? 0 : 1,
-            false,
-            commands,
-            artifacts,
-            ["LOC is a change signal, not a correctness or maintainability verdict."]), cancellationToken);
-
-        if (json) await output.WriteLineAsync(JsonSerializer.Serialize(report, JsonOptions.Indented));
-        else await WriteHumanAsync(report);
-        return passed ? 0 : 1;
+                var clones = await new CloneDetector(repository, runner)
+                    .CompareAsync(baseRef, run.Directory, commands, cancellationToken);
+                var complexity = await new ComplexityDetector(repository, runner)
+                    .CompareAsync(baseRef, run.Directory, commands, cancellationToken);
+                var passed = clones.Passed && complexity.Passed;
+                var report = new QualityReport(baseRef, run.Directory, lines, clones, complexity, passed);
+                var reportPath = Path.Combine(run.Directory, "quality.json");
+                await File.WriteAllTextAsync(
+                    reportPath,
+                    JsonSerializer.Serialize(report, JsonOptions.Indented) + Environment.NewLine,
+                    cancellationToken);
+                if (json) await output.WriteLineAsync(JsonSerializer.Serialize(report, JsonOptions.Indented));
+                else await WriteHumanAsync(report);
+                return passed ? 0 : 1;
+            });
     }
 
     private async Task WriteHumanAsync(QualityReport report)
@@ -103,6 +91,8 @@ internal sealed class QualityCommand(
               $"  erosion:    {report.Complexity.CurrentErosion!.Ratio:P2} ({report.Complexity.ErosionDelta:+0.00%;-0.00%;0.00%} vs base; " +
               $"{report.Complexity.CurrentErosion.HighRiskFunctions}/{report.Complexity.CurrentErosion.TotalFunctions} high-risk functions)"
             : $"  complexity scan unavailable: {report.Complexity.Reason}");
+        if (report.Complexity.Coupling is { } coupling)
+            await output.WriteLineAsync($"  C# coupling: {coupling.Current.Count} current hotspots, {coupling.Baseline.Count} at base (CA1506, observation only)");
         await output.WriteLineAsync($"  evidence: {report.ArtifactDirectory}");
     }
 
