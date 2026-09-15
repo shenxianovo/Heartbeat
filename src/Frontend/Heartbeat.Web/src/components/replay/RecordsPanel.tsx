@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/Button";
 import type { InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
 
 import { ApiError } from "@/api/client";
@@ -29,9 +30,9 @@ export function RecordsPanel({ query, selectedTrack }: RecordsPanelProps) {
         title="暂时无法显示记录"
         description={errorMessage(query.error)}
         action={
-          <button className="secondary-button" type="button" onClick={() => void query.refetch()}>
+          <Button variant="outline" type="button" onClick={() => void query.refetch()}>
             重试
-          </button>
+          </Button>
         }
       />
     );
@@ -60,14 +61,14 @@ export function RecordsPanel({ query, selectedTrack }: RecordsPanelProps) {
       <RecordList records={records} track={track} />
       {query.hasNextPage ? (
         <div className="load-more">
-          <button
-            className="secondary-button"
+          <Button
+            variant="outline"
             type="button"
             disabled={query.isFetchingNextPage}
             onClick={() => void query.fetchNextPage()}
           >
             {query.isFetchingNextPage ? "正在加载…" : "加载更多记录"}
-          </button>
+          </Button>
         </div>
       ) : (
         <p className="list-end">已经到达这段时间的末尾</p>

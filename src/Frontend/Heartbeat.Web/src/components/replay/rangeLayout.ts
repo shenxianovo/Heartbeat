@@ -1,4 +1,5 @@
 import type { TimelineRecord } from "@/api/types";
+import { overlaps } from "./timeRange";
 
 // Track permits overlapping observations. Place them on distinct rows without
 // changing their time bounds or interpreting their protocol values.
@@ -7,6 +8,13 @@ export function layoutRanges(records: TimelineRecord[], from: number, to: number
   const items = [...records]
     .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt) || a.id.localeCompare(b.id))
     .flatMap((record) => {
+      if (
+        !overlaps(Date.parse(record.startedAt), Date.parse(record.endedAt ?? record.startedAt), {
+          start: from,
+          end: to,
+        })
+      )
+        return [];
       const start = Math.max(from, Date.parse(record.startedAt));
       const end = Math.min(to, Date.parse(record.endedAt ?? record.startedAt));
       if (

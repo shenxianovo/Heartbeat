@@ -33,6 +33,11 @@
   --input: oklch(0.21 0.042 265 / 0.1);
   --ring: oklch(0.65 0.15 235 / 0.6);
 
+  --scrollbar-size: 6px;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: color-mix(in oklch, var(--muted-foreground) 24%, transparent);
+  --scrollbar-thumb-hover: color-mix(in oklch, var(--muted-foreground) 42%, transparent);
+
   --chart-1: oklch(0.65 0.15 235);
   --chart-2: oklch(0.55 0.14 235);
   --chart-3: oklch(0.8 0.1 235);

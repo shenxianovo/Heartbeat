@@ -1,0 +1,275 @@
+/* Button and picker treatments from main's shared glass-control / ui components. */
+.ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  gap: 0.4rem;
+  border: 1px solid transparent;
+  border-radius: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.25;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    box-shadow 0.2s,
+    transform 0.2s,
+    border-color 0.2s;
+}
+.ui-button svg {
+  flex-shrink: 0;
+  pointer-events: none;
+}
+.ui-button-sm {
+  min-height: 32px;
+  padding: 0.4rem 0.75rem;
+}
+.ui-button-default {
+  min-height: 36px;
+  padding: 0.5rem 1rem;
+}
+.ui-button-icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+.ui-button-glass,
+.ui-button-glassPrimary {
+  border-radius: 9999px;
+  border-color: var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  color: var(--foreground);
+  box-shadow: var(--shadow-sm);
+}
+.ui-button-glassPrimary {
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--glass-border));
+  background: color-mix(in srgb, var(--primary) 12%, var(--glass-bg));
+  color: var(--primary);
+}
+.ui-button-glass:hover:not(:disabled),
+.ui-button-glassPrimary:hover:not(:disabled) {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+.ui-button-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.ui-button-primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+.ui-button-outline {
+  border-color: var(--input);
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px #00000005;
+}
+.ui-button-ghost {
+  background: transparent;
+  color: var(--muted-foreground);
+}
+.ui-button-ghost:hover:not(:disabled),
+.ui-button-outline:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--foreground);
+}
+.ui-button:focus-visible {
+  border-color: var(--ring);
+  outline: 3px solid color-mix(in srgb, var(--ring) 50%, transparent);
+  outline-offset: 1px;
+}
+.ui-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+  pointer-events: none;
+  transform: none;
+}
+.ui-popover {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+}
+.popover-trigger {
+  max-width: 100%;
+  min-width: 0;
+}
+.picker-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.date-picker .picker-value {
+  font-family: var(--font-mono);
+}
+.ui-popover-content {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 0.5rem);
+  z-index: 30;
+  width: 17.5rem;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--shadow-md);
+  outline: none;
+}
+.picker-heading {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.7rem 0.8rem 0.4rem;
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+}
+.picker-options {
+  padding: 0.3rem;
+  max-height: 16rem;
+  overflow-y: auto;
+}
+.picker-option {
+  display: flex;
+  align-items: center;
+  position: relative;
+  gap: 0.6rem;
+  padding: 0.55rem 0.6rem;
+  border-radius: 0.3rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.picker-option:hover,
+.picker-option:focus-within {
+  background: var(--accent);
+}
+.picker-option > input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+.picker-option:focus-within {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.picker-check {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 1px solid var(--input);
+  border-radius: 3px;
+}
+.picker-check svg {
+  visibility: hidden;
+  width: 13px;
+  height: 13px;
+}
+.picker-option input:checked + .picker-check {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+}
+.picker-option input:checked + .picker-check svg {
+  visibility: visible;
+}
+.picker-footer {
+  padding: 0.45rem;
+  border-top: 1px solid var(--border);
+}
+.picker-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+.picker-actions > :last-child {
+  margin-left: auto;
+}
+.calendar-panel {
+  padding: 0.75rem;
+}
+.calendar-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  margin-bottom: 0.8rem;
+}
+.calendar-heading strong {
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+.calendar-heading .ui-button-icon {
+  width: 28px;
+  height: 28px;
+}
+.calendar-weekdays,
+.calendar-grid [role="row"] {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+}
+.calendar-weekdays {
+  margin-bottom: 0.35rem;
+  color: var(--muted-foreground);
+  text-align: center;
+  font-size: 0.7rem;
+}
+.calendar-grid [role="row"] {
+  margin-top: 0.15rem;
+}
+.calendar-day {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+.calendar-day:hover:not(:disabled) {
+  background: var(--accent);
+}
+.calendar-day[aria-current="date"] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+  font-weight: 600;
+}
+.calendar-day[aria-pressed="true"] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.calendar-day.outside-month {
+  color: var(--muted-foreground);
+  opacity: 0.5;
+}
+.calendar-day:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.calendar-today {
+  width: 100%;
+  justify-content: start;
+  color: var(--primary);
+}
+.range-picker .ui-popover-content {
+  width: 22rem;
+  padding: 1rem;
+}
+.range-picker .range-fields {
+  grid-template-columns: 1fr;
+}
+.range-picker .range-arrow {
+  display: none;
+}

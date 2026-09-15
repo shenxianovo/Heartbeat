@@ -51,7 +51,11 @@ function labelIdKind(idKind: string): string {
 export function summarizeDesktopApplication(value: unknown): RecordSummary {
   const parsed = parseForegroundApplication(value);
   const label = parsed.displayName ?? parsed.applicationId;
-  return { label, title: parsed.windowTitle ? `${label} · ${parsed.windowTitle}` : label };
+  return {
+    label,
+    title: parsed.windowTitle ? `${label} · ${parsed.windowTitle}` : label,
+    group: { id: JSON.stringify([parsed.platform, parsed.idKind, parsed.applicationId]), label },
+  };
 }
 
 export function DesktopApplicationForegroundV1({ value }: RecordRendererProps) {

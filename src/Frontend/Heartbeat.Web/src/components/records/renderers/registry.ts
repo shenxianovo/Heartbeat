@@ -19,19 +19,23 @@ import type {
 const renderers = new Map<string, RecordPresentation>([
   [
     rendererKey("desktop.application.foreground", 1),
-    { Renderer: DesktopApplicationForegroundV1, summarize: summarizeDesktopApplication },
+    {
+      label: "前台活动",
+      Renderer: DesktopApplicationForegroundV1,
+      summarize: summarizeDesktopApplication,
+    },
   ],
   [
     rendererKey("desktop.system.away", 1),
-    { Renderer: DesktopAwayV1, summarize: summarizeDesktopAway },
+    { label: "离开信号", Renderer: DesktopAwayV1, summarize: summarizeDesktopAway },
   ],
   [
     rendererKey("desktop.input.event", 1),
-    { Renderer: DesktopInputEventV1, summarize: summarizeDesktopInput },
+    { label: "输入密度", Renderer: DesktopInputEventV1, summarize: summarizeDesktopInput },
   ],
   [
     rendererKey("desktop.observation.status", 1),
-    { Renderer: DesktopObservationStatusV1, summarize: summarizeDesktopStatus },
+    { label: "观测状态", Renderer: DesktopObservationStatusV1, summarize: summarizeDesktopStatus },
   ],
 ]);
 
@@ -54,4 +58,8 @@ export function summarizeRecord(
   } catch {
     return { label: fallback };
   }
+}
+
+export function recordTypeLabel(type: string, version: number): string {
+  return renderers.get(rendererKey(type, version))?.label ?? `${type} · v${version}`;
 }

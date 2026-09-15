@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/Button";
 import { useState, type FormEvent } from "react";
 
 import { last24HoursRange, rangeToIso, todayRange, type DateRange } from "@/lib/dates";
@@ -53,19 +54,15 @@ export function DateRangeControls({ value, onApply }: DateRangeControlsProps) {
         </label>
       </div>
       <div className="range-actions">
-        <button className="chip-button" type="button" onClick={() => applyPreset(todayRange())}>
+        <Button variant="ghost" type="button" onClick={() => applyPreset(todayRange())}>
           今天
-        </button>
-        <button
-          className="chip-button"
-          type="button"
-          onClick={() => applyPreset(last24HoursRange())}
-        >
+        </Button>
+        <Button variant="ghost" type="button" onClick={() => applyPreset(last24HoursRange())}>
           最近 24 小时
-        </button>
-        <button className="secondary-button" type="submit">
+        </Button>
+        <Button variant="outline" type="submit">
           应用范围
-        </button>
+        </Button>
       </div>
       {error ? (
         <p className="field-error" role="alert">

@@ -14,27 +14,40 @@ from pathlib import Path
 
 LANGUAGES = {
     ".axaml": "XAML",
+    ".cjs": "JavaScript",
+    ".cts": "TypeScript",
     ".cs": "C#",
     ".csproj": "MSBuild",
     ".css": "CSS",
     ".html": "HTML",
     ".js": "JavaScript",
+    ".jsx": "JavaScript",
     ".json": "JSON",
     ".md": "Markdown",
+    ".mdx": "MDX",
+    ".mjs": "JavaScript",
+    ".mts": "TypeScript",
     ".props": "MSBuild",
     ".ps1": "PowerShell",
     ".py": "Python",
     ".sh": "Shell",
     ".slnx": "XML",
     ".ts": "TypeScript",
+    ".tsx": "TypeScript",
     ".vue": "Vue",
     ".xml": "XML",
     ".yaml": "YAML",
     ".yml": "YAML",
 }
 
+FILE_LANGUAGES = {
+    "Dockerfile": "Dockerfile",
+}
+
 LINE_COMMENTS = {
     "C#": ("//",),
+    "Dockerfile": ("#",),
+    "Dotenv": ("#",),
     "JavaScript": ("//",),
     "PowerShell": ("#",),
     "Python": ("#",),
@@ -50,6 +63,7 @@ BLOCK_COMMENTS = {
     "HTML": (("<!--", "-->"),),
     "JavaScript": (("/*", "*/"),),
     "Markdown": (("<!--", "-->"),),
+    "MDX": (("<!--", "-->"), ("/*", "*/")),
     "MSBuild": (("<!--", "-->"),),
     "PowerShell": (("<#", "#>"),),
     "TypeScript": (("/*", "*/"),),
@@ -138,9 +152,20 @@ def is_test_file(path: Path, root: Path) -> bool:
     return "test" in name_parts[1:-1] or "spec" in name_parts[1:-1]
 
 
+def language_for(path: Path) -> str | None:
+    if path.name.startswith(".env"):
+        return "Dotenv"
+    return FILE_LANGUAGES.get(path.name) or LANGUAGES.get(path.suffix.lower())
+
+
 def first_at(text: str, position: int, candidates: tuple[str, ...]) -> str | None:
-    matches = tuple(token for token in candidates if text.startswith(token, position))
-    return max(matches, key=len) if matches else None
+    match: str | None = None
+    for token in candidates:
+        if text.startswith(token, position) and (
+            match is None or len(token) > len(match)
+        ):
+            match = token
+    return match
 
 
 def count_effective_lines(path: Path, language: str) -> int:
@@ -154,10 +179,17 @@ def count_effective_lines(path: Path, language: str) -> int:
     block_pairs = BLOCK_COMMENTS.get(language, ())
     block_start_tokens = tuple(start for start, _ in block_pairs)
     block_end_by_start = dict(block_pairs)
+    comment_start_tokens = line_tokens + block_start_tokens
     active_block_end: str | None = None
     effective_lines = 0
 
     for line in text.splitlines():
+        if active_block_end is None and not any(
+            token in line for token in comment_start_tokens
+        ):
+            effective_lines += bool(line.strip())
+            continue
+
         position = 0
         has_code = False
         quote: str | None = None
@@ -222,7 +254,7 @@ def collect(root: Path) -> tuple[dict[str, Counts], int, dict[str, list[str]]]:
         if not path.is_file():
             continue
 
-        language = LANGUAGES.get(path.suffix.lower())
+        language = language_for(path)
         if language is None:
             unsupported_files += 1
             extension = path.suffix.lower() if path.suffix else "[no_ext]"

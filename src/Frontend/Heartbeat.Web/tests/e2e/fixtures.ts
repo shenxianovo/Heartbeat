@@ -102,21 +102,30 @@ export async function recordingRoutes(
       return;
     }
     if (url.pathname === `/api/v1/tracks/${customTrack.id}/point-counts`) {
-      const startedAt = new Date(Date.now() - 30 * 60_000).toISOString();
+      const from = Date.parse(url.searchParams.get("from")!);
+      const to = Date.parse(url.searchParams.get("to")!);
+      const bucketSeconds = Number(url.searchParams.get("bucketSeconds"));
+      const at = Date.now() - 30 * 60_000;
+      const index = Math.floor((at - from) / (bucketSeconds * 1000));
       await route.fulfill({
         json: {
           track: customTrack,
-          from: url.searchParams.get("from"),
-          to: url.searchParams.get("to"),
-          bucketSeconds: Number(url.searchParams.get("bucketSeconds")),
-          buckets: [
-            {
-              index: 0,
-              startedAt,
-              endedAt: new Date(Date.parse(startedAt) + 15 * 60_000).toISOString(),
-              count: 1,
-            },
-          ],
+          from: new Date(from).toISOString(),
+          to: new Date(to).toISOString(),
+          bucketSeconds,
+          buckets:
+            at >= from && at < to
+              ? [
+                  {
+                    index,
+                    startedAt: new Date(from + index * bucketSeconds * 1000).toISOString(),
+                    endedAt: new Date(
+                      Math.min(to, from + (index + 1) * bucketSeconds * 1000),
+                    ).toISOString(),
+                    count: 1,
+                  },
+                ]
+              : [],
         },
       });
       return;

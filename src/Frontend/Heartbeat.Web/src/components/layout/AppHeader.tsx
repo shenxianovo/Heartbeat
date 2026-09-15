@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/Button";
 import { useState } from "react";
 import { useAuth } from "react-oidc-context";
 import Link from "next/link";
@@ -37,9 +38,9 @@ export function AppHeader() {
       </Link>
       <div className="account-menu">
         <span className="account-name">{displayName}</span>
-        <button className="quiet-button" type="button" onClick={leave} disabled={leaving}>
+        <Button variant="glass" type="button" onClick={leave} disabled={leaving}>
           {leaving ? "正在退出…" : "退出登录"}
-        </button>
+        </Button>
       </div>
     </header>
   );

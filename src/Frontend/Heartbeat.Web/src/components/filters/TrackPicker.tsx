@@ -1,4 +1,5 @@
 import type { TrackSummary } from "@/api/types";
+import { recordTypeLabel } from "@/components/records/renderers/registry";
 
 interface TrackPickerProps {
   tracks: TrackSummary[];
@@ -7,7 +8,7 @@ interface TrackPickerProps {
 }
 
 export function trackLabel(track: TrackSummary): string {
-  return `${track.type} · v${track.version}`;
+  return recordTypeLabel(track.type, track.version);
 }
 
 export function TrackPicker({ tracks, value, onChange }: TrackPickerProps) {

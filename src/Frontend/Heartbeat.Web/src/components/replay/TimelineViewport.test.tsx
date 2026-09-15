@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { ReplayLane, TimelineRecord, TrackSummary } from "@/api/types";
 import { TimelineViewport } from "@/components/replay/TimelineViewport";
@@ -37,9 +37,11 @@ describe("timeline record geometry and selection", () => {
     render(
       <TimelineViewport
         lanes={[lane([record("short")])]}
-        from={from}
-        to={to}
-        zoom={1}
+        bounds={{ start: Date.parse(from), end: Date.parse(to) }}
+        range={{ start: Date.parse(from), end: Date.parse(to) }}
+        overviewLanes={[]}
+        densityStatus={null}
+        onRange={() => {}}
         onSelectPoints={() => {}}
       />,
     );
@@ -51,9 +53,11 @@ describe("timeline record geometry and selection", () => {
     const view = render(
       <TimelineViewport
         lanes={[lane([record("first")])]}
-        from={from}
-        to={to}
-        zoom={1}
+        bounds={{ start: Date.parse(from), end: Date.parse(to) }}
+        range={{ start: Date.parse(from), end: Date.parse(to) }}
+        overviewLanes={[]}
+        densityStatus={null}
+        onRange={() => {}}
         onSelectPoints={() => {}}
       />,
     );
@@ -62,12 +66,70 @@ describe("timeline record geometry and selection", () => {
     view.rerender(
       <TimelineViewport
         lanes={[lane([record("second")], { ...track, id: "second-track" })]}
-        from={from}
-        to={to}
-        zoom={1}
+        bounds={{ start: Date.parse(from), end: Date.parse(to) }}
+        range={{ start: Date.parse(from), end: Date.parse(to) }}
+        overviewLanes={[]}
+        densityStatus={null}
+        onRange={() => {}}
         onSelectPoints={() => {}}
       />,
     );
     expect(screen.queryByText("所选区间")).not.toBeInTheDocument();
+  });
+});
+
+describe("timeline wheel interaction", () => {
+  it("leaves an unmodified vertical wheel event to the internal scroll container", () => {
+    const onRange = vi.fn();
+    render(
+      <TimelineViewport
+        lanes={[lane([record("short")])]}
+        bounds={{ start: Date.parse(from), end: Date.parse(to) }}
+        range={{ start: Date.parse(from), end: Date.parse(to) }}
+        overviewLanes={[]}
+        densityStatus={null}
+        onRange={onRange}
+        onSelectPoints={() => {}}
+      />,
+    );
+
+    const plot = document.querySelector<HTMLElement>("[data-time-plot]");
+    expect(plot).not.toBeNull();
+    const wheel = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 120 });
+    plot!.dispatchEvent(wheel);
+
+    expect(wheel.defaultPrevented).toBe(false);
+    expect(onRange).not.toHaveBeenCalled();
+  });
+
+  it("zooms and consumes the wheel event while Control or Command is held", () => {
+    const onRange = vi.fn();
+    render(
+      <TimelineViewport
+        lanes={[lane([record("short")])]}
+        bounds={{ start: Date.parse(from), end: Date.parse(to) }}
+        range={{ start: Date.parse(from), end: Date.parse(to) }}
+        overviewLanes={[]}
+        densityStatus={null}
+        onRange={onRange}
+        onSelectPoints={() => {}}
+      />,
+    );
+
+    const plot = document.querySelector<HTMLElement>("[data-time-plot]");
+    expect(plot).not.toBeNull();
+    for (const modifier of [{ ctrlKey: true }, { metaKey: true }]) {
+      const wheel = new WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 50,
+        deltaY: -120,
+        ...modifier,
+      });
+      plot!.dispatchEvent(wheel);
+      expect(wheel.defaultPrevented).toBe(true);
+    }
+
+    expect(onRange).toHaveBeenCalledTimes(2);
   });
 });
