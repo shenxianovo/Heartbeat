@@ -8,6 +8,7 @@ public sealed record CollectorOptions(
     string Target,
     string DisplayName,
     TimeSpan Interval,
+    TimeSpan MaximumConfirmationGap,
     bool Once)
 {
     public static CollectorOptions Parse(string[] args, IDictionary<string, string?> environment)
@@ -21,6 +22,10 @@ public sealed record CollectorOptions(
         var intervalSeconds = string.IsNullOrWhiteSpace(intervalValue)
             ? 5
             : int.Parse(intervalValue, CultureInfo.InvariantCulture);
+        var maximumGapValue = Get(values, environment, "maximum-gap-seconds", "HEARTBEAT_COLLECTOR_MAXIMUM_GAP_SECONDS");
+        var maximumGapSeconds = string.IsNullOrWhiteSpace(maximumGapValue)
+            ? checked(intervalSeconds * 2)
+            : int.Parse(maximumGapValue, CultureInfo.InvariantCulture);
 
         if (string.IsNullOrWhiteSpace(hub))
         {
@@ -42,6 +47,10 @@ public sealed record CollectorOptions(
         {
             throw new ArgumentOutOfRangeException(nameof(args), "Interval must be at least 1 second.");
         }
+        if (maximumGapSeconds <= intervalSeconds)
+        {
+            throw new ArgumentOutOfRangeException(nameof(args), "Maximum confirmation gap must exceed the sampling interval.");
+        }
 
         var baseUrl = new Uri(EnsureTrailingSlash(hub.Trim()), UriKind.Absolute);
         if (baseUrl.Scheme is not ("http" or "https") || baseUrl.UserInfo.Length != 0 ||
@@ -52,6 +61,7 @@ public sealed record CollectorOptions(
 
         return new CollectorOptions(baseUrl, token.Trim(), target.Trim(), displayName.Trim(),
             TimeSpan.FromSeconds(intervalSeconds),
+            TimeSpan.FromSeconds(maximumGapSeconds),
             values.ContainsKey("once") || IsTruthy(environment.TryGetValue("HEARTBEAT_COLLECTOR_ONCE", out var once) ? once : null));
     }
 
@@ -60,7 +70,7 @@ public sealed record CollectorOptions(
         var values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "hub", "hub-token", "target", "display-name", "interval-seconds", "once",
+            "hub", "hub-token", "target", "display-name", "interval-seconds", "maximum-gap-seconds", "once",
         };
         for (var index = 0; index < args.Length; index++)
         {

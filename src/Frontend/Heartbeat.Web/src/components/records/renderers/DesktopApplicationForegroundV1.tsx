@@ -1,10 +1,12 @@
-import type { RecordRendererProps } from "@/components/records/renderers/types";
+import type { RecordRendererProps, RecordSummary } from "@/components/records/renderers/types";
 
 interface ForegroundApplicationValue {
   deviceId: string;
   platform: string;
   idKind: string;
   applicationId: string;
+  displayName: string | null;
+  windowTitle: string | null;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -34,6 +36,9 @@ function parseForegroundApplication(value: unknown): ForegroundApplicationValue 
     platform: application.platform,
     idKind: application.id_kind,
     applicationId: application.id,
+    displayName: nonEmptyString(application.display_name) ? application.display_name : null,
+    windowTitle:
+      isObject(value.window) && nonEmptyString(value.window.title) ? value.window.title : null,
   };
 }
 
@@ -41,6 +46,12 @@ function labelIdKind(idKind: string): string {
   if (idKind === "bundle_id") return "Bundle ID";
   if (idKind === "package_name") return "Package";
   return idKind.replaceAll("_", " ");
+}
+
+export function summarizeDesktopApplication(value: unknown): RecordSummary {
+  const parsed = parseForegroundApplication(value);
+  const label = parsed.displayName ?? parsed.applicationId;
+  return { label, title: parsed.windowTitle ? `${label} · ${parsed.windowTitle}` : label };
 }
 
 export function DesktopApplicationForegroundV1({ value }: RecordRendererProps) {
@@ -52,9 +63,10 @@ export function DesktopApplicationForegroundV1({ value }: RecordRendererProps) {
         {parsed.applicationId.slice(0, 1).toLocaleUpperCase()}
       </div>
       <div className="application-identity">
-        <strong>{parsed.applicationId}</strong>
+        <strong>{parsed.windowTitle ?? parsed.displayName ?? parsed.applicationId}</strong>
         <span>
-          {parsed.platform.toLocaleUpperCase()} · {labelIdKind(parsed.idKind)}
+          {parsed.applicationId} · {parsed.platform.toLocaleUpperCase()} ·{" "}
+          {labelIdKind(parsed.idKind)}
         </span>
       </div>
       <span className="device-chip" title={parsed.deviceId}>

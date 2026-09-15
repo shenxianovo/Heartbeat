@@ -1,4 +1,9 @@
-import type { RecordsQuery, RecordsResponse, TracksResponse } from "@/api/types";
+import type {
+  PointCountsResponse,
+  RecordsQuery,
+  RecordsResponse,
+  TracksResponse,
+} from "@/api/types";
 
 export class ApiError extends Error {
   constructor(
@@ -61,6 +66,40 @@ export function fetchRecords(
 
   return getJson<RecordsResponse>(
     `/api/v1/tracks/${encodeURIComponent(query.trackId)}/records?${params}`,
+    accessToken,
+    signal,
+  );
+}
+
+export async function fetchAllRecords(
+  accessToken: string,
+  query: Omit<RecordsQuery, "cursor" | "limit">,
+  signal?: AbortSignal,
+): Promise<RecordsResponse> {
+  const records: RecordsResponse["records"] = [];
+  let cursor: string | null = null;
+  let track: RecordsResponse["track"] | null = null;
+  do {
+    const page = await fetchRecords(accessToken, { ...query, cursor, limit: 500 }, signal);
+    track = page.track;
+    records.push(...page.records);
+    cursor = page.nextCursor;
+  } while (cursor);
+  if (!track) throw new Error("Record replay returned no Track metadata.");
+  return { track, records, nextCursor: null };
+}
+
+export function fetchPointCounts(
+  accessToken: string,
+  trackId: string,
+  from: string,
+  to: string,
+  bucketSeconds: number,
+  signal?: AbortSignal,
+): Promise<PointCountsResponse> {
+  const params = new URLSearchParams({ from, to, bucketSeconds: String(bucketSeconds) });
+  return getJson<PointCountsResponse>(
+    `/api/v1/tracks/${encodeURIComponent(trackId)}/point-counts?${params}`,
     accessToken,
     signal,
   );

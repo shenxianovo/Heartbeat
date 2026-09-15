@@ -160,6 +160,10 @@ dotnet run --project src/Collectors/Heartbeat.Collector.Desktop.Mac -- \
 dotnet test Heartbeat.slnx --no-restore --verbosity quiet
 ```
 
-2026-09-12 本轮全量回归 172/172 通过，零失败、零跳过：领域 26、desktop 25、Hub 41、PostgreSQL 集成 80。
+2026-09-14 验收修复后全量 .NET 回归 237/237 通过，零失败、零跳过：领域 26、desktop 65、Hub 53、PostgreSQL 集成 93。前端另有 15 项 Vitest 和 9 项 Chromium 端到端测试通过。
 
 2026-09-12 原生 macOS 冒烟使用临时数据库、测试凭据和不可达后端：desktop 未提供后端 ID，`--once` 成功提交实际前台应用记录；强制终止并重启 Hub 后，相同 Record ID 仍在队列，映射保持未解析。临时进程和数据已清理。该验证是进程终止恢复，不是物理断电测试。
+
+2026-09-14 在真实 macOS 上再次以 `--once` 启动恢复后的原生观察源：NSWorkspace、Accessibility 和 Input Monitoring adapter 均完成初始化，权限状态发生变化时独立降级，观察线程随后干净退出。测试使用不可达本地 Hub，因此交接失败是预期结果；没有自动触发锁屏、休眠或权限弹窗。
+
+同日验收修复后，以 1 秒采样间隔常驻运行实际 Collector 8 秒并连接临时真实 Hub：成功接管 1 条持续约 7 秒的应用 Record 和 3 条能力状态 Record，交接无错误，Collector 正常退出。重启 Hub 后 Record 数量、ID 和内容保持一致。测试凭据、SQLite 与日志均已清理；后端和认证地址使用不可达本地端口，不访问正式服务。此项覆盖 Collector 到 Hub 的真实链路，完整平台交互及采集到 Web 的真机验收边界见 [验收记录](validation/system-acceptance.md)。

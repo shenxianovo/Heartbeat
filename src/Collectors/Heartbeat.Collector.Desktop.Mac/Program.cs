@@ -59,11 +59,15 @@ public static class Program
         CollectorOptions options,
         HubSubmissionClient client,
         CancellationToken cancellationToken,
-        IForegroundApplicationReader? reader = null)
+        IMacSystemObservationSource? source = null)
     {
         try
         {
-            var session = new DesktopCollectorSession(reader ?? new MacForegroundApplicationReader(), client, TimeProvider.System);
+            using var ownedSource = source is null ? new MacSystemObservationSource() : null;
+            TimeProvider timeProvider = OperatingSystem.IsMacOS()
+                ? new MacContinuousTimeProvider()
+                : TimeProvider.System;
+            var session = new DesktopCollectorSession(source ?? ownedSource!, client, timeProvider);
             await session.RunAsync(options, cancellationToken);
 
             return 0;

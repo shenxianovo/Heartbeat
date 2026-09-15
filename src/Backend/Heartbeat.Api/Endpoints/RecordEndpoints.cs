@@ -17,10 +17,77 @@ public static class RecordEndpoints
         endpoints.MapGet("/api/v1/tracks/{trackId:guid}/records", ReplayAsync)
             .RequireAuthorization()
             .WithName("ReplayRecords");
+        endpoints.MapGet("/api/v1/tracks/{trackId:guid}/point-counts", CountPointsAsync)
+            .RequireAuthorization()
+            .WithName("CountPointRecords");
         endpoints.MapPost("/api/v1/tracks/{trackId:guid}/records", UploadAsync)
             .RequireAuthorization()
             .WithName("UploadRecords");
         return endpoints;
+    }
+
+    private static async Task<IResult> CountPointsAsync(
+        Guid trackId,
+        [FromQuery(Name = "from")] DateTimeOffset? from,
+        [FromQuery(Name = "to")] DateTimeOffset? to,
+        [FromQuery] int? bucketSeconds,
+        ClaimsPrincipal principal,
+        ICountPointRecords countPointRecords,
+        CancellationToken cancellationToken)
+    {
+        if (!OwnerClaims.TryGetOwnerId(principal, out var ownerId))
+        {
+            return Results.Unauthorized();
+        }
+        if (from is null || to is null || bucketSeconds is null)
+        {
+            return Problem(StatusCodes.Status400BadRequest, "invalid_request",
+                "The point count request is invalid.", "from, to, and bucketSeconds are required.");
+        }
+
+        CountPointRecordsResult result;
+        try
+        {
+            result = await countPointRecords.ExecuteAsync(ownerId,
+                new CountPointRecordsQuery(trackId, from.Value, to.Value, bucketSeconds.Value),
+                cancellationToken);
+        }
+        catch (ArgumentException exception)
+        {
+            return Problem(StatusCodes.Status400BadRequest, "invalid_request",
+                "The point count request is invalid.", exception.Message);
+        }
+
+        return result switch
+        {
+            CountPointRecordsResult.Found found => Results.Ok(new
+            {
+                track = new
+                {
+                    found.Counts.Track.Id,
+                    found.Counts.Track.CollectorId,
+                    found.Counts.Track.Type,
+                    found.Counts.Track.Version,
+                    timeMode = ToResponse(found.Counts.Track.TimeMode),
+                    endMode = ToResponse(found.Counts.Track.EndMode),
+                },
+                found.Counts.From,
+                found.Counts.To,
+                found.Counts.BucketSeconds,
+                buckets = found.Counts.Buckets.Select(bucket => new
+                {
+                    bucket.Index,
+                    bucket.StartedAt,
+                    bucket.EndedAt,
+                    bucket.Count,
+                }),
+            }),
+            CountPointRecordsResult.TrackNotFound => Problem(StatusCodes.Status404NotFound,
+                "track_not_found", "The track was not found."),
+            CountPointRecordsResult.TrackIsNotPoint => Problem(StatusCodes.Status400BadRequest,
+                "track_is_not_point", "Point counts are only available for point Tracks."),
+            _ => throw new InvalidOperationException("Unknown point count result."),
+        };
     }
 
     private static async Task<IResult> ReplayAsync(

@@ -1,29 +1,23 @@
 # Heartbeat macOS Desktop Collector
 
-当前只采集 **macOS 前台应用**，默认每 5 秒采样一次。没有采集键鼠事件、窗口标题、URL 或页面内容。
+Collector 通过 macOS 原生通知和周期确认记录四类事实：
 
-同一应用的多个窗口不会分开记录；在两次采样之间切换又返回的短暂活动可能漏采。
+| Track | 时间定义 | 内容 |
+| --- | --- | --- |
+| `desktop.application.foreground` v1 | `range + explicit` | 前台应用、显示名与窗口标题 |
+| `desktop.system.away` v1 | `range + explicit` | 锁屏、会话失活、显示器休眠与系统休眠 |
+| `desktop.input.event` v1 | `point` | 物理按键按下、鼠标按钮按下和原生滚动增量 |
+| `desktop.observation.status` v1 | `range + explicit` | 各观察能力当时的可用状态 |
 
-Collector 负责调用平台接口、判断观测连续性、形成 Record，并把完整记录交给 Hub。后端注册、Track 解析、持久队列和上传由 Hub 负责。
+输入记录不保存字符或文本。按键使用物理位置码，过滤按住产生的重复 key-down，key-up 只用于解除按住状态而不写 Record；滚动保留原生正负、量级和 line/point 单位，不设置活动阈值。
 
-## 采集内容
+Shift、Control、Option 和 Command 的左右键通过原生 `flagsChanged` 事件及各自物理状态位识别。CapsLock 仅在系统提供 stateless 物理状态位时记录按下，不把开关锁定状态当作物理按下；当前物理位置表未定义 Fn。
 
-数据类型是 `desktop.application.foreground` v1，时间形状为 `range + explicit`。记录中的 value 示例：
+锁屏、会话失活、显示器休眠和系统休眠是互相独立、可以重叠的 Away Signal。任一原因仍存在时应用活动保持断开；全部恢复后创建新的应用 Record。权限缺失或原生观察器故障只降级相应能力，其他 Track 继续采集，并写入观察状态；权限恢复后无需重启进程。
 
-```json
-{
-  "device_id": "device-a",
-  "application": {
-    "platform": "macos",
-    "id_kind": "bundle_id",
-    "id": "com.apple.finder"
-  }
-}
-```
+应用相同且确认间隔未超过 `maximumConfirmationGap` 时复用 Record ID 并延长 `endedAt`。应用、窗口或标题通知会立即产生新的 Record，不需要输入事件确认。明确的 Away Signal、观察失败或超过确认间隔会打断连续性；恢复后即使应用相同也创建新 Record。默认最大确认间隔是采样间隔的两倍，这只是当前实现规则。
 
-当前 Target 同时用作 device_id。应用标识来自 macOS，应用显示名称和跨平台应用身份不写入该值。具体含义见[前台应用数据定义](../../../docs/protocols/desktop-application-foreground-v1.md)；后端不注册或校验这些具体字段。
-
-首次确认创建 UUID v7 Record；应用保持相同并继续观测时，保持 ID 和 value，延长 endedAt。应用变化或读取失败后恢复时创建新 Record。休眠与采样调度空白的识别仍待讨论。
+原生事件在进入 Session 时记录接收时间，事件与周期快照由一个消费者串行投影。采样期间若收到状态变化，丢弃可能过期的快照，先处理事件。时间以进程启动时的 UTC 为基准，加上包含系统休眠的 macOS 单调经过时间，避免改钟或休眠使记录倒退、落后。
 
 ## 接入与运行
 
@@ -37,43 +31,38 @@ dotnet run --project src/Collectors/Heartbeat.Collector.Desktop.Mac -- \
   --display-name "My Mac"
 ```
 
-不需要后端 JWT、Collector ID 或 Track ID。Collector 提交自身的 key/target/displayName、Track 的 type/version/timeMode/endMode 和 Record。Hub 在本地持久接管后，自行完成后端注册与上传，首次接入也允许后端离线。
-
-一次采集并等待 Hub 接管：
-
-```bash
-dotnet run --project src/Collectors/Heartbeat.Collector.Desktop.Mac -- \
-  --hub http://127.0.0.1:4318 \
-  --hub-token "$HEARTBEAT_HUB_TOKEN" \
-  --target "$HEARTBEAT_COLLECTOR_TARGET" \
-  --once
-```
-
 可用配置：
 
-| 参数 | 环境变量 |
-| --- | --- |
-| `--hub` | `HEARTBEAT_HUB_URL` |
-| `--hub-token` | `HEARTBEAT_HUB_TOKEN` |
-| `--target` | `HEARTBEAT_COLLECTOR_TARGET` |
-| `--display-name` | `HEARTBEAT_COLLECTOR_DISPLAY_NAME` |
-| `--interval-seconds` | `HEARTBEAT_COLLECTOR_INTERVAL_SECONDS` |
-| `--once` | `HEARTBEAT_COLLECTOR_ONCE` |
+| 参数 | 环境变量 | 默认值 |
+| --- | --- | --- |
+| `--hub` | `HEARTBEAT_HUB_URL` | 必填 |
+| `--hub-token` | `HEARTBEAT_HUB_TOKEN` | 必填 |
+| `--target` | `HEARTBEAT_COLLECTOR_TARGET` | 必填 |
+| `--display-name` | `HEARTBEAT_COLLECTOR_DISPLAY_NAME` | Target |
+| `--interval-seconds` | `HEARTBEAT_COLLECTOR_INTERVAL_SECONDS` | 5 |
+| `--maximum-gap-seconds` | `HEARTBEAT_COLLECTOR_MAXIMUM_GAP_SECONDS` | interval × 2 |
+| `--once` | `HEARTBEAT_COLLECTOR_ONCE` | false |
 
-displayName 默认使用 Target；采样间隔至少 1 秒。Hub 地址必须是 HTTP(S) origin。
+最大确认间隔必须大于采样间隔。`--once` 只采集当前快照，不验证通知、Away Signal 或输入事件。
 
-## 交接行为
+## 权限
 
-可复用的 `Heartbeat.Hub.Client` 封装 HTTP 提交和回执核对。常驻采样与向 Hub 提交独立运行，慢请求不阻塞采样。同 Record 的待交接快照合并最新进度，旧回执不能清除新进度；失败或不明回执保留原 ID 重试。
+前台应用与 Away Signal 不要求额外授权。窗口标题需要 Accessibility 权限，输入事件需要 Input Monitoring 权限。Collector 不主动弹出授权请求；在系统设置授予权限后，周期能力刷新会自动开始相应观察。
 
-`--once` 成功表示 Hub 已持久接管，不表示后端已上传。交接失败以非零退出码退出。Collector 停止后，独立运行的 Hub 继续上传积压。
+窗口标题能力恢复要求观察器实际附着且属性读取成功。AX 的“不支持该属性”和“当前没有值”允许返回空标题，其他读取错误报告观察失败；发起订阅本身不代表恢复成功。
 
-尚未交接的数据仍在 Collector 内存中；进程退出可能丢失该部分数据，长时间无法交接可能积累内存。Hub 接管后的数据由 SQLite 保护。相关限制见[未决设计](../../../docs/recording-open-questions.md)。
+## Hub 交接
 
-## 原生采样验证
+四条 Track 共用一个内存待交接缓冲区；按 Hub 的 500 条和 1 MiB 限制分批。同一 Record 的新快照覆盖未交接旧快照，但旧请求回执只确认它实际发送的快照。慢请求不阻塞采样，失败或不明回执保留原 ID 重试。
 
-`NSWorkspace` 的应用状态依赖 macOS 主事件循环刷新。入口保持在原生主线程运行该循环，采样和 HTTP 交接继续独立异步执行；仅调用读取接口并等待 .NET 计时器会让常驻进程一直读到启动时的应用。参见 [Apple 的 NSRunningApplication 线程与事件循环说明](https://developer.apple.com/documentation/appkit/nsrunningapplication)。
+缓冲区只在锁内复制待交接快照，分组和按字节计量在锁外完成；每条记录只计量一次，避免高频输入使锁内序列化成本反复增长。
 
-运行 `./scripts/dev.sh up desktop` 后，在两个不同应用间切换，每个停留至少 10 秒，终端应出现对应的不同应用标识。回到 Web 点“刷新”，应能看到新的应用 Record；停留在同一应用应延长现有 Record，按 Ctrl+C 应正常退出。`--once` 只验证首次采样，不能代替此常驻切换验证。修改进程入口或事件循环后，需要重启 Collector。
+Collector 不提供 Hub 之前的持久队列；进程退出会丢失尚未被 Hub 接管的内存数据。Hub 接管后的数据由其本地 SQLite outbox 保护。
 
-`MacRunLoopTests` 用真实 CoreFoundation 计时器验证异步任务等待期间原生事件仍会执行；区间合并与慢交接由 Collector 单元测试覆盖。
+## 手工验证
+
+启动常驻 Collector 后依次验证：切换两个应用；在同一应用切换窗口和标题；锁屏再解锁；允许 Accessibility 与 Input Monitoring 后按键、单击和双向滚动。Web 回放应在一个时间轴显示相应 Track。锁屏和休眠会改变系统状态，不应由自动测试擅自触发。
+
+原生映射、权限降级恢复、重叠 Away Signal、输入重复过滤、共享缓冲和慢交接均有自动测试；`MacRunLoopTests` 验证等待异步工作时主线程仍处理 CoreFoundation 事件。
+
+本轮验收结果与尚未完成的真机步骤见 [system 验收记录](../../../docs/validation/system-acceptance.md)。

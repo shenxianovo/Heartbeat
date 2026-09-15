@@ -418,6 +418,188 @@ a {
   backdrop-filter: blur(var(--glass-blur));
 }
 
+.timeline-filters {
+  grid-template-columns: minmax(12rem, 0.65fr) minmax(28rem, 1.6fr);
+}
+
+.zoom-controls {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 0.45rem;
+}
+
+.zoom-controls > span {
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+  font-weight: 680;
+}
+
+.zoom-controls > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.zoom-controls .secondary-button {
+  min-height: 2.2rem;
+  padding-block: 0.35rem;
+}
+
+.zoom-controls .zoom-active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+
+.timeline-card {
+  margin-top: 2.5rem;
+  padding: 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 3px);
+  background: var(--glass-bg);
+  box-shadow: var(--shadow-md);
+}
+
+.timeline-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 0.8rem 13rem;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+}
+
+.timeline-axis strong {
+  color: var(--foreground);
+  font-weight: 620;
+}
+
+.timeline-scroll {
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.timeline-canvas {
+  min-width: 100%;
+}
+
+.timeline-lane {
+  display: grid;
+  grid-template-columns: 12rem minmax(32rem, 1fr);
+  min-height: 4.2rem;
+  border-top: 1px solid var(--border);
+}
+
+.timeline-lane:last-child {
+  border-bottom: 1px solid var(--border);
+}
+
+.timeline-lane-label {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  gap: 0.25rem;
+  padding-right: 1rem;
+}
+
+.timeline-lane-label strong {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-lane-label span,
+.timeline-empty {
+  color: var(--muted-foreground);
+  font-size: 0.64rem;
+}
+
+.timeline-lane-plot {
+  position: relative;
+  overflow: hidden;
+  background-image: linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 12.5% 100%;
+}
+
+.timeline-range,
+.timeline-density {
+  position: absolute;
+  top: 0.8rem;
+  height: 2.55rem;
+  min-width: 2px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklch, var(--primary) 45%, var(--border));
+  border-radius: 0.28rem;
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+
+.timeline-range:hover,
+.timeline-density:hover {
+  z-index: 2;
+  border-color: var(--primary);
+  box-shadow: var(--shadow-glow);
+}
+
+.timeline-range span {
+  display: block;
+  overflow: hidden;
+  padding: 0 0.4rem;
+  font-size: 0.62rem;
+  line-height: 2.35rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-tone-muted {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.timeline-tone-attention {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--primary-soft),
+    var(--primary-soft) 5px,
+    var(--card) 5px,
+    var(--card) 10px
+  );
+  border-style: dashed;
+}
+
+.timeline-density {
+  top: auto;
+  bottom: 0.65rem;
+  height: 2.8rem;
+  border: 0;
+  border-radius: 0.15rem 0.15rem 0 0;
+  background: var(--chart-2);
+}
+
+.timeline-empty {
+  position: absolute;
+  top: 1.55rem;
+  left: 0.8rem;
+}
+
+.timeline-selection {
+  margin-top: 1.2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.timeline-selection .record-row {
+  grid-template-columns: 6.8rem 1.5rem 1fr;
+}
+
+.point-details {
+  margin-top: 2rem;
+}
+
 .field {
   display: grid;
   min-width: 0;
@@ -691,6 +873,23 @@ a {
   gap: 0.8rem;
 }
 
+.desktop-fact {
+  display: grid;
+  gap: 0.3rem;
+  padding-left: 0.8rem;
+  border-left: 3px solid var(--primary);
+}
+
+.desktop-fact strong {
+  font-family: var(--font-mono);
+  font-size: 0.84rem;
+}
+
+.desktop-fact span {
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+}
+
 .application-glyph {
   display: grid;
   width: 2.2rem;
@@ -820,6 +1019,14 @@ a {
 @media (max-width: 820px) {
   .filter-panel {
     grid-template-columns: 1fr;
+  }
+
+  .zoom-controls {
+    grid-column: auto;
+  }
+
+  .timeline-axis {
+    margin-left: 0;
   }
 
   .workspace {

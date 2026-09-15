@@ -41,3 +41,15 @@ Collector 优先使用 macOS Bundle ID 作为平台原生应用标识；缺失�
 - [`docs/recording-open-questions.md`](../recording-open-questions.md) — 持久队列、断采规则和设备关联的未决问题。
 - [`src/Collectors/Heartbeat.Collector.Desktop.Mac`](../../src/Collectors/Heartbeat.Collector.Desktop.Mac) — macOS Collector 实现。
 - [`docs/adr/ADR-0003-device-identity-across-reinstallation.md`](ADR-0003-device-identity-across-reinstallation.md) — 设备身份恢复边界。
+
+## 演进：2026-09-14（恢复系统观察能力）
+
+Clean Room 已确认完整桌面范围，因此最小轮询实现被一个当前实现替换：NSWorkspace 负责应用激活及锁屏、会话、显示器和系统休眠通知；Accessibility 负责窗口焦点与标题；Input Monitoring 负责非文本物理输入。应用、Away Signal、输入和观察状态分别进入四条 Record Track，共用一个 Collector 内存缓冲和 Hub 批量交接。
+
+应用/窗口/标题通知直接建立新区间，不用点击确认。四类 Away 原因独立计数并可重叠；全部恢复后才重新开始应用 Record。明确离开、能力失败和超过最大确认间隔会断开应用连续性，恢复后即使值相同也使用新 ID。最大间隔可配置，当前默认是采样间隔两倍。
+
+Accessibility 与 Input Monitoring 独立降级；权限缺失或观察器失败写入历史 observation status，其他能力继续工作，权限恢复后进程自行重试。状态 available 不构成完整性承诺。
+
+本演进仍不加入 Hub 前持久队列、容量治理、浏览器 URL、输入文本或设备身份注册。ADR-0006 接受的通用结果更正机制也不在此实现；当前持续 Record 仍只按 ADR-0002 单调续期。
+
+验收修复落实了上述时间与交接边界：原生事件在 Session 接收时取时间，与周期快照串行投影，采样期间若状态变化则丢弃过期快照；UTC 基准使用包含系统休眠的 macOS 单调经过时间推进。内存缓冲仅在锁内复制快照，批量分组与计量在锁外进行。验证证据与真机边界见 [system 验收记录](../validation/system-acceptance.md)。

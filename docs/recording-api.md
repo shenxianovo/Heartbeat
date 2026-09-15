@@ -232,3 +232,42 @@ Hub 只能用 `stored` 回执确认对应项的上传进度。旧请求回执只
 ```
 
 存在后续记录时，`nextCursor` 是一个不透明字符串；客户端不得解析或构造。最后一页返回 `null`。
+
+## Point Record 计数
+
+`GET /api/v1/tracks/{trackId}/point-counts`
+
+必填查询参数：
+
+- `from`、`to`：UTC 时间窗，必须满足 `from < to`，采用 `[from, to)`。
+- `bucketSeconds`：正整数桶宽；桶从本次查询的 `from` 对齐。
+
+服务端最多接受 10,000 个桶，只支持 `timeMode = point`。Range Track 返回 `400 track_is_not_point`；缺失、外部 Owner Track 与不存在 Track 统一返回 `404 track_not_found`。聚合只按 `startedAt` 计数，不读取或解释 Record value。
+
+响应只包含非空桶；调用方可把未返回的桶显示为零：
+
+~~~json
+{
+  "track": {
+    "id": "019e0000-0000-7000-8000-000000000002",
+    "collectorId": "019e0000-0000-7000-8000-000000000001",
+    "type": "desktop.input.event",
+    "version": 1,
+    "timeMode": "point",
+    "endMode": null
+  },
+  "from": "2026-09-12T10:00:00Z",
+  "to": "2026-09-12T11:00:00Z",
+  "bucketSeconds": 60,
+  "buckets": [
+    {
+      "index": 0,
+      "startedAt": "2026-09-12T10:00:00Z",
+      "endedAt": "2026-09-12T10:01:00Z",
+      "count": 17
+    }
+  ]
+}
+~~~
+
+Point 原始详情仍通过上一节 Record 分页接口读取局部窗口；计数响应不替代原始 Record。

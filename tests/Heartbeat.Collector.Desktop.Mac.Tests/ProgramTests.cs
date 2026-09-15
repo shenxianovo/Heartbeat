@@ -13,10 +13,10 @@ public sealed class ProgramTests
         using var handler = new CaptureHandler();
         using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:4318") };
         var options = new CollectorOptions(httpClient.BaseAddress, "local-token", "device-a", "Test Mac",
-            TimeSpan.FromSeconds(5), true);
+            TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10), true);
 
         var result = await Program.RunAsync(options, new HubSubmissionClient(httpClient), CancellationToken.None,
-            new FixedReader());
+            new FixedSource());
 
         Assert.Equal(0, result);
         Assert.Equal("/hub/v1/records", handler.Path);
@@ -32,10 +32,10 @@ public sealed class ProgramTests
         using var handler = new FailureHandler();
         using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:4318") };
         var options = new CollectorOptions(httpClient.BaseAddress, "local-token", "device-a", "Test Mac",
-            TimeSpan.FromSeconds(5), true);
+            TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10), true);
 
         var result = await Program.RunAsync(options, new HubSubmissionClient(httpClient), CancellationToken.None,
-            new FixedReader());
+            new FixedSource());
 
         Assert.Equal(1, result);
         Assert.Equal(1, handler.RequestCount);
@@ -72,8 +72,14 @@ public sealed class ProgramTests
         }
     }
 
-    private sealed class FixedReader : IForegroundApplicationReader
+    private sealed class FixedSource : IMacSystemObservationSource
     {
-        public ForegroundApplication Read() => new("macos", "bundle_id", "com.apple.finder");
+        public event Action<MacSystemObservation>? Observation { add { } remove { } }
+        public MacSystemSnapshot Capture() => new(
+            new DesktopActivitySample(new("macos", "bundle_id", "com.apple.finder"), null), []);
+        public void RefreshCapabilities() { }
+        public void StartObserving() { }
+        public void StopObserving() { }
+        public void Dispose() { }
     }
 }

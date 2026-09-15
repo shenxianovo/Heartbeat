@@ -36,6 +36,14 @@ Track 级查询增加不透明 cursor，并继续按 `(started_at, id)` 在 Post
 - ⚠️ Timeline 级重放和跨 Track 合并仍未实现。
 - ⚠️ `range + next_record` 的派生结束时间尚未通过该查询表达。
 
+## 演进：2026-09-14（统一窗口与 Point 密度）
+
+桌面回放需要在同一窗口对齐多个 Track，Point 输入量又不能通过下载全天所有原始事件来绘制。公共读取边界仍保持 Track scoped：Range Track 由客户端在同一 [from, to) 窗口完整翻页并按时间对齐；Point Track 新增通用计数查询，由服务端按调用方指定的窗口和粒度聚合。计数查询只接受 Point Track，桶从 from 对齐，返回非空桶，且限制最多 10,000 个桶。
+
+聚合层不解析 value，不知道输入、应用或任何具体协议。协议含义留在前端独立 renderer；未知但合法的 Track 仍能用时间位置、计数和原始 JSON 回放。点击 Point 密度桶后，原始详情继续使用既有 Track 级分页接口读取该局部时间窗。
+
+该演进提供了 Timeline 级的用户体验，但没有新增一个负责协议解释或跨 Track 排序的后端 Timeline endpoint。这样既避免大 Point Track 的无界下载，也保持记录内核与具体协议解耦。
+
 ## 参考
 
 - [`CONTEXT.md`](../../CONTEXT.md) — 领域术语。
@@ -43,3 +51,4 @@ Track 级查询增加不透明 cursor，并继续按 `(started_at, id)` 在 Post
 - [`docs/recording-api.md`](../recording-api.md) — HTTP 契约。
 - [`src/Backend/Heartbeat.Application/Recording/ReplayRecords.cs`](../../src/Backend/Heartbeat.Application/Recording/ReplayRecords.cs) — 重放用例与端口。
 - [`src/Backend/Heartbeat.Infrastructure/Persistence/PostgresRecordReplayStore.cs`](../../src/Backend/Heartbeat.Infrastructure/Persistence/PostgresRecordReplayStore.cs) — PostgreSQL 查询 adapter。
+- [`src/Backend/Heartbeat.Application/Recording/CountPointRecords.cs`](../../src/Backend/Heartbeat.Application/Recording/CountPointRecords.cs) — 通用 Point 计数用例。

@@ -30,12 +30,12 @@ export const customTrack = {
   endMode: null,
 };
 
-function record(id: string, value: unknown, point = false) {
-  const startedAt = new Date(Date.now() - 30 * 60_000).toISOString();
+function record(id: string, value: unknown, point = false, minutesAgo = 30) {
+  const startedAt = new Date(Date.now() - minutesAgo * 60_000).toISOString();
   return {
     id,
     startedAt,
-    endedAt: point ? null : new Date(Date.now() - 25 * 60_000).toISOString(),
+    endedAt: point ? null : new Date(Date.now() - (minutesAgo - 5) * 60_000).toISOString(),
     observedAt: null,
     receivedAt: new Date().toISOString(),
     value,
@@ -101,6 +101,26 @@ export async function recordingRoutes(
       await route.fulfill({ json: { tracks: options.empty ? [] : [desktopTrack, customTrack] } });
       return;
     }
+    if (url.pathname === `/api/v1/tracks/${customTrack.id}/point-counts`) {
+      const startedAt = new Date(Date.now() - 30 * 60_000).toISOString();
+      await route.fulfill({
+        json: {
+          track: customTrack,
+          from: url.searchParams.get("from"),
+          to: url.searchParams.get("to"),
+          bucketSeconds: Number(url.searchParams.get("bucketSeconds")),
+          buckets: [
+            {
+              index: 0,
+              startedAt,
+              endedAt: new Date(Date.parse(startedAt) + 15 * 60_000).toISOString(),
+              count: 1,
+            },
+          ],
+        },
+      });
+      return;
+    }
     if (url.pathname === `/api/v1/tracks/${customTrack.id}/records`) {
       await route.fulfill({
         json: {
@@ -123,23 +143,31 @@ export async function recordingRoutes(
         track: desktopTrack,
         records: later
           ? [
-              record("019e0000-0000-7000-8000-000000000022", {
-                device_id: "test-mac",
-                application: {
-                  platform: "macos",
-                  id_kind: "bundle_id",
-                  id: "com.microsoft.VSCode",
+              record(
+                "019e0000-0000-7000-8000-000000000022",
+                {
+                  device_id: "test-mac",
+                  application: {
+                    platform: "macos",
+                    id_kind: "bundle_id",
+                    id: "com.microsoft.VSCode",
+                  },
                 },
-              }),
+                false,
+                10,
+              ),
             ]
           : [
               record("019e0000-0000-7000-8000-000000000020", {
                 device_id: "test-mac",
                 application: { platform: "macos", id_kind: "bundle_id", id: "com.apple.finder" },
               }),
-              record("019e0000-0000-7000-8000-000000000021", {
-                unexpected: "malformed-observation",
-              }),
+              record(
+                "019e0000-0000-7000-8000-000000000021",
+                { unexpected: "malformed-observation" },
+                false,
+                20,
+              ),
             ],
         nextCursor: later ? null : "next-page-test-cursor",
       },

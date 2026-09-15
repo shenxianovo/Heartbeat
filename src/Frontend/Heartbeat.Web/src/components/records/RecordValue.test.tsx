@@ -15,12 +15,15 @@ describe("RecordValue", () => {
             platform: "macos",
             id_kind: "bundle_id",
             id: "com.apple.finder",
+            display_name: "Finder",
           },
+          window: { title: "Downloads" },
         }}
       />,
     );
 
-    expect(screen.getByText("com.apple.finder")).toBeVisible();
+    expect(screen.getByText(/^com\.apple\.finder/)).toBeVisible();
+    expect(screen.getByText("Downloads")).toBeVisible();
     expect(screen.getByText("mac-studio")).toBeVisible();
     expect(screen.getByText(/MACOS · Bundle ID/)).toBeVisible();
   });

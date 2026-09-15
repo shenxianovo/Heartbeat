@@ -226,6 +226,7 @@ value jsonb NOT NULL
 - 返回顺序固定为 `(started_at, id)`，不跨 Track 聚合，不解释 Payload，不按设备或应用分组。
 - `range + explicit` Record 使用区间交叠进入窗口；没有 `ended_at` 的 Record 使用 `started_at` 进入窗口。
 - 当前查询不计算 `range + next_record` 的派生结束时间；该语义在有实际协议时另行设计。
+- Point Track 可以通过 `GET /api/v1/tracks/{trackId}/point-counts` 在指定 `[from, to)` 窗口按查询对齐的固定桶宽计数。查询最多 10,000 个桶，只返回非空桶，不解释 Payload；原始详情仍使用 Record 分页接口。
 
 ## 持续状态的区间续期
 

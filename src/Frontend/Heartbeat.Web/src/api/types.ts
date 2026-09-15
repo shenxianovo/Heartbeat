@@ -49,3 +49,24 @@ export interface RecordsQuery {
   cursor?: string | null;
   limit?: number;
 }
+
+export interface PointCountBucket {
+  index: number;
+  startedAt: string;
+  endedAt: string;
+  count: number;
+}
+
+export interface PointCountsResponse {
+  track: TrackReference;
+  from: string;
+  to: string;
+  bucketSeconds: number;
+  buckets: PointCountBucket[];
+}
+
+export interface ReplayLane {
+  track: TrackSummary;
+  records: TimelineRecord[];
+  counts: PointCountsResponse | null;
+}

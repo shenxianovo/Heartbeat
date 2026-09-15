@@ -27,6 +27,8 @@ public static class DependencyInjection
         services.AddScoped<IUploadRecords, UploadRecords>();
         services.AddScoped<IRecordReplayStore, PostgresRecordReplayStore>();
         services.AddScoped<IReplayRecords, ReplayRecords>();
+        services.AddScoped<IPointRecordCountStore, PostgresPointRecordCountStore>();
+        services.AddScoped<ICountPointRecords, CountPointRecords>();
 
         return services;
     }

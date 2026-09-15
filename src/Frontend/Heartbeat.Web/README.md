@@ -42,8 +42,8 @@ API 数据结构以 [记录 HTTP 接口](../../../docs/recording-api.md) 为准�
 
 ## 添加 Record 展示
 
-1. 在 `src/components/records/renderers/` 新增一个组件，由组件自行检查并收窄 `value`。
-2. 在 `registry.ts` 为准确的 `(type, version)` 增加一条静态注册。
+1. 在 `src/components/records/renderers/` 新增详情组件和概览摘要函数，共用该协议的 `value` 检查与收窄逻辑。
+2. 在 `registry.ts` 为准确的 `(type, version)` 注册 `Renderer` 和 `summarize`。摘要提供主标签、辅助提示及可选视觉状态。
 
 页面和通用 Record 容器不需要修改。未知类型、未知版本或结构不匹配的值会回退到安全的 JSON 展示；每条记录的 renderer 有独立错误边界。
 
@@ -59,4 +59,4 @@ npm run test:e2e
 
 浏览器测试模拟认证服务与 API，验证 PKCE 登录回调和页面交互；实际认证服务的回调配置需要在本地联调时验证。后端真实 PostgreSQL 查询由仓库的 .NET 集成测试覆盖。
 
-当前回放只展示后端返回的 Track 级记录，不计算 `range + next_record` 的派生结束时间。
+当前回放在一个按天窗口中对齐多个 Track，可组合选择来源：Range Track 自动完整翻页，同 Track 的重叠区间分行展示；Point Track 使用服务端计数密度并在点击桶后分页读取局部原始详情。公共时间视口只负责时间几何，协议展示模块统一提供概览和详情；未知类型仍显示时间位置和安全的原始 JSON。切换来源后不会保留已排除记录的旧详情。当前不计算 `range + next_record` 的派生结束时间。

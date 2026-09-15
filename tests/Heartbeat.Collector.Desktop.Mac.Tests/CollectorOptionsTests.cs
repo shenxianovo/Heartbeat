@@ -22,6 +22,7 @@ public sealed class CollectorOptionsTests
         Assert.Equal("device-a", options.Target);
         Assert.Equal("My Mac", options.DisplayName);
         Assert.Equal(TimeSpan.FromSeconds(2), options.Interval);
+        Assert.Equal(TimeSpan.FromSeconds(4), options.MaximumConfirmationGap);
         Assert.True(options.Once);
     }
 
@@ -34,6 +35,7 @@ public sealed class CollectorOptionsTests
             "--target", "device-b",
             "--display-name", "Desk",
             "--interval-seconds", "3",
+            "--maximum-gap-seconds", "9",
             "--once",
         ], new Dictionary<string, string?>
         {
@@ -47,6 +49,7 @@ public sealed class CollectorOptionsTests
         Assert.Equal("device-b", options.Target);
         Assert.Equal("Desk", options.DisplayName);
         Assert.Equal(TimeSpan.FromSeconds(3), options.Interval);
+        Assert.Equal(TimeSpan.FromSeconds(9), options.MaximumConfirmationGap);
         Assert.True(options.Once);
     }
 
@@ -70,5 +73,19 @@ public sealed class CollectorOptionsTests
             ["HEARTBEAT_HUB_URL"] = "http://127.0.0.1:4318",
             ["HEARTBEAT_HUB_TOKEN"] = "local-token",
         }));
+    }
+
+    [Fact]
+    public void MaximumGapMustExceedSamplingInterval()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => CollectorOptions.Parse(
+            [
+                "--hub", "http://127.0.0.1:4318",
+                "--hub-token", "local",
+                "--target", "device-a",
+                "--interval-seconds", "5",
+                "--maximum-gap-seconds", "5",
+            ],
+            new Dictionary<string, string?>()));
     }
 }
