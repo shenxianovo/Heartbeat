@@ -17,15 +17,27 @@ describe("RecordValue", () => {
             id: "com.apple.finder",
             display_name: "Finder",
           },
-          window: { title: "Downloads" },
         }}
       />,
     );
 
     expect(screen.getByText(/^com\.apple\.finder/)).toBeVisible();
-    expect(screen.getByText("Downloads")).toBeVisible();
+    expect(screen.getByText("Finder")).toBeVisible();
     expect(screen.getByText("mac-studio")).toBeVisible();
     expect(screen.getByText(/MACOS · Bundle ID/)).toBeVisible();
+  });
+
+  it("renders the foreground window title as its own record", () => {
+    render(
+      <RecordValue
+        type="desktop.window.foreground"
+        version={1}
+        value={{ device_id: "mac-studio", window: { title: "Downloads" } }}
+      />,
+    );
+
+    expect(screen.getByText("Downloads")).toBeVisible();
+    expect(screen.getByText("mac-studio")).toBeVisible();
   });
 
   it("isolates a malformed known value and falls back to escaped JSON", () => {

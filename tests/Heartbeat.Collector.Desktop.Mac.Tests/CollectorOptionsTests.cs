@@ -22,7 +22,8 @@ public sealed class CollectorOptionsTests
         Assert.Equal("device-a", options.Target);
         Assert.Equal("My Mac", options.DisplayName);
         Assert.Equal(TimeSpan.FromSeconds(2), options.Interval);
-        Assert.Equal(TimeSpan.FromSeconds(4), options.MaximumConfirmationGap);
+        Assert.Equal(TimeSpan.FromSeconds(6), options.MaximumConfirmationGap);
+        Assert.Equal(TimeSpan.FromMilliseconds(1500), options.WindowTitleDwell);
         Assert.True(options.Once);
     }
 
@@ -87,5 +88,48 @@ public sealed class CollectorOptionsTests
                 "--maximum-gap-seconds", "5",
             ],
             new Dictionary<string, string?>()));
+    }
+
+    [Fact]
+    public void WindowTitleDwellIsConfigurableInMilliseconds()
+    {
+        var options = CollectorOptions.Parse([
+            "--hub", "http://localhost:4318",
+            "--hub-token", "arg-token",
+            "--target", "device-b",
+            "--display-name", "Desk",
+            "--window-title-dwell-ms", "800",
+        ], new Dictionary<string, string?>());
+
+        Assert.Equal(TimeSpan.FromMilliseconds(800), options.WindowTitleDwell);
+    }
+
+    [Fact]
+    public void WindowTitleDwellCannotOutlastTheConfirmationGap()
+    {
+        var error = Assert.Throws<ArgumentOutOfRangeException>(() => CollectorOptions.Parse([
+            "--hub", "http://localhost:4318",
+            "--hub-token", "arg-token",
+            "--target", "device-b",
+            "--display-name", "Desk",
+            "--maximum-gap-seconds", "9",
+            "--window-title-dwell-ms", "9000",
+        ], new Dictionary<string, string?>()));
+
+        Assert.Contains("confirmation gap", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WindowTitleDwellRejectsNegativeValues()
+    {
+        var error = Assert.Throws<ArgumentOutOfRangeException>(() => CollectorOptions.Parse([
+            "--hub", "http://localhost:4318",
+            "--hub-token", "arg-token",
+            "--target", "device-b",
+            "--display-name", "Desk",
+            "--window-title-dwell-ms", "-1",
+        ], new Dictionary<string, string?>()));
+
+        Assert.Contains("negative", error.Message, StringComparison.Ordinal);
     }
 }

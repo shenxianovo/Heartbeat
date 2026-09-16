@@ -1,14 +1,8 @@
 namespace Heartbeat.Collector.Desktop.Mac;
 
-public enum ActivityChangeKind
-{
-    Confirmation,
-    ApplicationActivated,
-    FocusedWindowChanged,
-    TitleChanged,
-    Recovery,
-}
-
+/// <summary>
+/// 一次前台读数：当前前台应用，以及它当前的前台窗口标题（读不到时为 null）。
+/// </summary>
 public sealed record DesktopActivitySample(ForegroundApplication Application, string? WindowTitle);
 
 public enum MacAwayReason
@@ -61,7 +55,7 @@ public sealed record CapabilityObservation(
 
 public abstract record MacSystemObservation
 {
-    public sealed record Activity(DesktopActivitySample? Sample, ActivityChangeKind Kind) : MacSystemObservation;
+    public sealed record Activity(DesktopActivitySample? Sample) : MacSystemObservation;
     public sealed record AwayEntered(MacAwayReason Reason) : MacSystemObservation;
     public sealed record AwayExited(MacAwayReason Reason, DesktopActivitySample? CurrentActivity) : MacSystemObservation;
     public sealed record Input(DesktopInputObservation Value) : MacSystemObservation;

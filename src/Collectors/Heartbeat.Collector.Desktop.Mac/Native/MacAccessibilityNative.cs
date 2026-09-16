@@ -265,7 +265,6 @@ public sealed class MacAccessibilityNative : IMacAccessibilityNative, IDisposabl
 
             if (emitObservation)
                 _owner.Publish(this, new MacAccessibilityObservation(
-                    MacAccessibilityObservationKind.FocusedWindowChanged,
                     title,
                     _observedProcessIdentifier));
         }
@@ -321,7 +320,6 @@ public sealed class MacAccessibilityNative : IMacAccessibilityNative, IDisposabl
                         ? null
                         : ReadTitle(instance._focusedWindowElement);
                     instance._owner.Publish(instance, new MacAccessibilityObservation(
-                        MacAccessibilityObservationKind.TitleChanged,
                         title,
                         instance._observedProcessIdentifier));
                 }

@@ -1,4 +1,5 @@
 import type { RecordRendererProps, RecordSummary } from "@/components/records/renderers/types";
+import { isObject, nonEmptyString } from "@/components/records/renderers/values";
 
 interface ForegroundApplicationValue {
   deviceId: string;
@@ -6,15 +7,6 @@ interface ForegroundApplicationValue {
   idKind: string;
   applicationId: string;
   displayName: string | null;
-  windowTitle: string | null;
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function nonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
 }
 
 function parseForegroundApplication(value: unknown): ForegroundApplicationValue {
@@ -37,8 +29,6 @@ function parseForegroundApplication(value: unknown): ForegroundApplicationValue 
     idKind: application.id_kind,
     applicationId: application.id,
     displayName: nonEmptyString(application.display_name) ? application.display_name : null,
-    windowTitle:
-      isObject(value.window) && nonEmptyString(value.window.title) ? value.window.title : null,
   };
 }
 
@@ -53,7 +43,6 @@ export function summarizeDesktopApplication(value: unknown): RecordSummary {
   const label = parsed.displayName ?? parsed.applicationId;
   return {
     label,
-    title: parsed.windowTitle ? `${label} · ${parsed.windowTitle}` : label,
     group: { id: JSON.stringify([parsed.platform, parsed.idKind, parsed.applicationId]), label },
   };
 }
@@ -67,7 +56,7 @@ export function DesktopApplicationForegroundV1({ value }: RecordRendererProps) {
         {parsed.applicationId.slice(0, 1).toLocaleUpperCase()}
       </div>
       <div className="application-identity">
-        <strong>{parsed.windowTitle ?? parsed.displayName ?? parsed.applicationId}</strong>
+        <strong>{parsed.displayName ?? parsed.applicationId}</strong>
         <span>
           {parsed.applicationId} · {parsed.platform.toLocaleUpperCase()} ·{" "}
           {labelIdKind(parsed.idKind)}

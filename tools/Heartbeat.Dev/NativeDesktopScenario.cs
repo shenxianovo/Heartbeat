@@ -53,7 +53,7 @@ internal sealed class NativeDesktopScenario(
                 and use the mouse. Return here and press Enter to finish evidence collection.
                 """);
             await Console.In.ReadLineAsync(cancellationToken);
-            await StopCollectorAsync(collector, TimeSpan.FromSeconds(15), cancellationToken);
+            await ProcessRunner.InterruptAsync(collector, TimeSpan.FromSeconds(15), cancellationToken);
             var nativeCompleted = DateTimeOffset.UtcNow;
             var after = await ReadStatusAsync(hub, dotenv.Get("HEARTBEAT_HUB_TOKEN")!, cancellationToken);
             if (!HasNewQueueEvidence(before, after))
@@ -179,54 +179,20 @@ internal sealed class NativeDesktopScenario(
         List<string> artifacts,
         CancellationToken cancellationToken)
     {
-        var projectDirectory = repository.Path("src", "Collectors", "Heartbeat.Collector.Desktop.Mac");
-        var project = Path.Combine(projectDirectory, "Heartbeat.Collector.Desktop.Mac.csproj");
-        commands.Add("dotnet build src/Collectors/Heartbeat.Collector.Desktop.Mac --no-restore");
-        var result = await runner.CaptureAsync(
-            "dotnet", ["build", project, "--no-restore", "--verbosity", "minimal"], null, cancellationToken);
-        var logPath = Path.Combine(run.Directory, "collector-build.log");
-        await File.WriteAllTextAsync(logPath, result.StdOut + result.StdErr, cancellationToken);
-        artifacts.Add("collector-build.log");
-        if (result.ExitCode != 0)
-            throw new InvalidOperationException($"Collector build failed. See {logPath}.");
-        return Path.Combine(projectDirectory, "bin", "Debug", "net10.0", "Heartbeat.Collector.Desktop.Mac.dll");
+        try
+        {
+            return await CollectorBuild.EnsureAsync(repository, runner, run, commands, cancellationToken);
+        }
+        finally
+        {
+            artifacts.Add(CollectorBuild.LogName);
+        }
     }
 
     private Process StartCollector(string assembly, Uri hub, DotenvFile dotenv)
     {
         var environment = CollectorEnvironment.Create(hub, dotenv);
-        return StartManagedProcess(assembly, repository.Root, environment);
-    }
-
-    internal static Process StartManagedProcess(
-        string assembly,
-        string workingDirectory,
-        IReadOnlyDictionary<string, string?>? environment)
-    {
-        return ProcessRunner.Start(workingDirectory, "dotnet", [assembly], environment, redirectOutput: true);
-    }
-
-    internal static async Task StopCollectorAsync(
-        Process process,
-        TimeSpan timeoutAfter,
-        CancellationToken cancellationToken)
-    {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(timeoutAfter);
-        var signalStart = new ProcessStartInfo("kill");
-        signalStart.ArgumentList.Add("-INT");
-        signalStart.ArgumentList.Add(process.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        using var signal = Process.Start(signalStart);
-        if (signal is not null) await signal.WaitForExitAsync(cancellationToken);
-        try
-        {
-            await process.WaitForExitAsync(timeout.Token);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            process.Kill(entireProcessTree: true);
-            await process.WaitForExitAsync(cancellationToken);
-        }
+        return ProcessRunner.StartManaged(repository.Root, assembly, [], environment);
     }
 
     private static async Task<string> ReadCollectorOutputAsync(Process process) =>

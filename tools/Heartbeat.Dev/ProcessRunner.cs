@@ -100,6 +100,38 @@ internal sealed class ProcessRunner(string workingDirectory) : IProcessRunner
         return process;
     }
 
+    /// 启动一个由 CLI 管理的 .NET 子进程，输出被重定向以便留证。
+    internal static Process StartManaged(
+        string workingDirectory,
+        string assembly,
+        IReadOnlyList<string> arguments,
+        IReadOnlyDictionary<string, string?>? environment) =>
+        Start(workingDirectory, "dotnet", [assembly, .. arguments], environment, redirectOutput: true);
+
+    /// 先发 SIGINT 让子进程自己收尾（写完产物、停掉观测），超时才强杀。
+    internal static async Task InterruptAsync(
+        Process process,
+        TimeSpan timeoutAfter,
+        CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(timeoutAfter);
+        var signalStart = new ProcessStartInfo("kill");
+        signalStart.ArgumentList.Add("-INT");
+        signalStart.ArgumentList.Add(process.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        using var signal = Process.Start(signalStart);
+        if (signal is not null) await signal.WaitForExitAsync(cancellationToken);
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync(cancellationToken);
+        }
+    }
+
     private static void Kill(Process process)
     {
         if (!process.HasExited) process.Kill(entireProcessTree: true);

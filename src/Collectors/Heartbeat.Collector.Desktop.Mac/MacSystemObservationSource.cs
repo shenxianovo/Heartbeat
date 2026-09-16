@@ -166,7 +166,7 @@ internal sealed class MacSystemObservationSource : IMacSystemObservationSource
 
         PublishState(new CapabilityObservation(ObservationCapability.Application, ObservationState.Available));
         return new DesktopActivitySample(
-            new ForegroundApplication("macos", kind, id, application.DisplayName, application.ProcessIdentifier),
+            new ForegroundApplication("macos", kind, id, application.DisplayName),
             string.IsNullOrWhiteSpace(title) ? null : title);
     }
 
@@ -175,11 +175,15 @@ internal sealed class MacSystemObservationSource : IMacSystemObservationSource
         try
         {
             var title = _accessibility.ReadFocusedWindowTitle(application.ProcessIdentifier);
-            // Starting an asynchronous subscription is not proof it attached successfully.
-            // Recovery requires both a usable observer and an actual successful attribute read.
-            PublishState(_accessibility.IsObservingApplication(application.ProcessIdentifier)
-                ? new CapabilityObservation(ObservationCapability.WindowTitle, ObservationState.Available)
-                : new CapabilityObservation(ObservationCapability.WindowTitle, ObservationState.Unavailable, "observer_starting"));
+            // Starting an asynchronous subscription is not proof it attached successfully, so a read
+            // alone cannot claim recovery. While the handshake is still running the capability keeps
+            // its last published state: attaching is no more evidence of failure than of success, and
+            // reporting it as unavailable would announce a fresh outage on every application switch.
+            if (_accessibility.IsObservingApplication(application.ProcessIdentifier))
+            {
+                PublishState(new CapabilityObservation(ObservationCapability.WindowTitle, ObservationState.Available));
+            }
+
             return title;
         }
         catch (Exception exception)
@@ -195,7 +199,7 @@ internal sealed class MacSystemObservationSource : IMacSystemObservationSource
         {
             case MacWorkspaceNotification.ApplicationActivated:
                 Observation?.Invoke(new MacSystemObservation.Activity(
-                    ToActivity(_workspace.FrontmostApplication), ActivityChangeKind.ApplicationActivated));
+                    ToActivity(_workspace.FrontmostApplication)));
                 RefreshCapabilities();
                 break;
             case MacWorkspaceNotification.ScreenLocked:
@@ -243,10 +247,7 @@ internal sealed class MacSystemObservationSource : IMacSystemObservationSource
         {
             activity = activity with { WindowTitle = string.IsNullOrWhiteSpace(observation.Title) ? null : observation.Title };
         }
-        Observation?.Invoke(new MacSystemObservation.Activity(activity,
-            observation.Kind == MacAccessibilityObservationKind.FocusedWindowChanged
-                ? ActivityChangeKind.FocusedWindowChanged
-                : ActivityChangeKind.TitleChanged));
+        Observation?.Invoke(new MacSystemObservation.Activity(activity));
     }
 
     private void OnInputObservation(MacInputObservation observation)

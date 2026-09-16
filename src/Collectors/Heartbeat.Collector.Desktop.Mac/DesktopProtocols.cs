@@ -11,6 +11,8 @@ internal static class DesktopProtocols
 
     public static readonly TrackDeclaration Application = new(
         "desktop.application.foreground", 1, "range", "explicit");
+    public static readonly TrackDeclaration Window = new(
+        "desktop.window.foreground", 1, "range", "explicit");
     public static readonly TrackDeclaration Away = new(
         "desktop.system.away", 1, "range", "explicit");
     public static readonly TrackDeclaration Input = new(
@@ -18,15 +20,17 @@ internal static class DesktopProtocols
     public static readonly TrackDeclaration ObservationStatus = new(
         "desktop.observation.status", 1, "range", "explicit");
 
-    public static JsonElement ApplicationValue(string deviceId, DesktopActivitySample sample) =>
+    public static JsonElement ApplicationValue(string deviceId, ForegroundApplication application) =>
         JsonSerializer.SerializeToElement(new ApplicationRecordValue(
             deviceId,
             new ApplicationValueReference(
-                sample.Application.Platform,
-                sample.Application.IdKind,
-                sample.Application.Id,
-                sample.Application.DisplayName),
-            sample.WindowTitle is null ? null : new WindowValue(sample.WindowTitle)));
+                application.Platform,
+                application.IdKind,
+                application.Id,
+                application.DisplayName)));
+
+    public static JsonElement WindowValue(string deviceId, string title) =>
+        JsonSerializer.SerializeToElement(new WindowRecordValue(deviceId, new WindowValueReference(title)));
 
     public static JsonElement AwayValue(string deviceId, MacAwayReason reason) =>
         JsonSerializer.SerializeToElement(new AwayValueRecord(deviceId, Snake(reason)));
@@ -79,8 +83,7 @@ internal static class DesktopProtocols
 
     private sealed record ApplicationRecordValue(
         [property: JsonPropertyName("device_id")] string DeviceId,
-        [property: JsonPropertyName("application")] ApplicationValueReference Application,
-        [property: JsonPropertyName("window")] WindowValue? Window);
+        [property: JsonPropertyName("application")] ApplicationValueReference Application);
 
     private sealed record ApplicationValueReference(
         [property: JsonPropertyName("platform")] string Platform,
@@ -88,7 +91,12 @@ internal static class DesktopProtocols
         [property: JsonPropertyName("id")] string Id,
         [property: JsonPropertyName("display_name")] string? DisplayName);
 
-    private sealed record WindowValue([property: JsonPropertyName("title")] string Title);
+    private sealed record WindowRecordValue(
+        [property: JsonPropertyName("device_id")] string DeviceId,
+        [property: JsonPropertyName("window")] WindowValueReference Window);
+
+    private sealed record WindowValueReference([property: JsonPropertyName("title")] string Title);
+
     private sealed record AwayValueRecord(
         [property: JsonPropertyName("device_id")] string DeviceId,
         [property: JsonPropertyName("reason")] string Reason);

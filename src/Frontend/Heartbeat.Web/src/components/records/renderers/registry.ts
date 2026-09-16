@@ -10,6 +10,10 @@ import {
   summarizeDesktopInput,
   summarizeDesktopStatus,
 } from "@/components/records/renderers/DesktopSystemV1";
+import {
+  DesktopWindowForegroundV1,
+  summarizeDesktopWindow,
+} from "@/components/records/renderers/DesktopWindowForegroundV1";
 import type {
   RecordPresentation,
   RecordRenderer,
@@ -23,6 +27,14 @@ const renderers = new Map<string, RecordPresentation>([
       label: "前台应用",
       Renderer: DesktopApplicationForegroundV1,
       summarize: summarizeDesktopApplication,
+    },
+  ],
+  [
+    rendererKey("desktop.window.foreground", 1),
+    {
+      label: "前台窗口",
+      Renderer: DesktopWindowForegroundV1,
+      summarize: summarizeDesktopWindow,
     },
   ],
   [

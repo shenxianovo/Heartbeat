@@ -66,6 +66,29 @@ C# 构建诊断固定为英文并保留在 `baseline-csharp.log`、`current-csha
 
 涉及 UI、用户流程、HTTP 展示或性能的改动需要场景证据；纯内部重构不强制截图。真实链路能力可以在后续加入新的 scenario，而不改变现有入口。
 
+## 现场探针
+
+规则里的时间参数（多久算稳定、多久算中断）不能靠猜。探针在宿主机上采一段真实读数，只回答「现在会切出多少条 Record，静置多久能压掉多少」，不改任何行为。
+
+```bash
+./scripts/heartbeat-dev probe window-title --duration-seconds 120
+./scripts/heartbeat-dev probe window-title --duration-seconds 300 --poll-milliseconds 500
+./scripts/heartbeat-dev probe window-title --readings <path> --dwell-seconds 1,1.5,2
+./scripts/heartbeat-dev probe window-title --from-database --since '2026-09-16 13:00' --until '2026-09-18 13:00'
+```
+
+`--readings` 分析已经采好的读数文件，不再观察宿主机。定参数时值得多试几组 `--dwell-seconds`：默认那组只是量级探路，真要下结论得对着实测出来的抖动周期取值。
+
+`window-title` 同时记录两路读数：原生通知送来的与轮询读到的。两路合起来才能分清「标题真的在变」和「通知没送到」。产物落在同一套证据目录：`window-title-readings.json` 是逐条读数，`window-title-churn.json` 是统计与候选静置参数的模拟结果。
+
+探针不连 Hub、不写数据库、不起容器。数据库里存的是投影之后的 Record，已经被当前切分规则改写过，用它评估切分规则等于用结论证明前提。
+
+`--from-database` 是明知这一点之后的退让：拿不到 Accessibility 权限、或者需要好几天而不是一次会话的样本时，它把本地数据库里的前台窗口 Record 导成同一种读数格式，走同一套分析和报告。它答不了「原生通知有没有漏送」，这条限制会写进运行清单。时间戳不带偏移时按本机时区理解，`--until` 缺省到现在；新旧两种数据形态都认（`desktop.window.foreground`，以及拆 Track 之前存在应用 Record 里的 `value.window.title`）。它需要本地栈的数据库在跑：`./scripts/heartbeat-dev env up db`。
+
+默认只保存时间、应用身份、标题长度、标题指纹和相邻标题的形态（共同前缀、共同后缀、是否互为旋转）；滚动字幕与进度条这两种噪声靠形态就能认出来，不需要标题原文。`--include-sensitive-evidence` 才写入标题原文，数据库导出也一样。
+
+探针读标题同样要 Accessibility 权限，而权限属于启动它的那个终端程序。整段读不到标题时，探针不会把它报成「标题很稳定」，而是明确说明读数无效并以非零退出码结束。
+
 ## 证据与清理
 
 ```bash

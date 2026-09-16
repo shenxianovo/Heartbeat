@@ -11,11 +11,11 @@ public sealed class ContinuousObservationClockTests
         var provider = new AdjustableTimeProvider(start);
         var clock = new ContinuousObservationClock(new MacContinuousTimeProvider(provider, provider.ReadNativeNanoseconds));
         var records = new List<(string Type, RecordSnapshot Record)>();
-        var projector = new DesktopRecordProjector("mac", "Mac", TimeSpan.FromSeconds(10),
+        var projector = new DesktopRecordProjector("mac", "Mac", TimeSpan.FromSeconds(10), TimeSpan.Zero,
             (route, record) => records.Add((route.Track.Type!, record)));
         var application = new DesktopActivitySample(
             new ForegroundApplication("macos", "bundle_id", "com.example.App", "Example"), "Document");
-        projector.Apply(new MacSystemObservation.Activity(application, ActivityChangeKind.Confirmation), clock.GetUtcNow());
+        projector.Apply(new MacSystemObservation.Activity(application), clock.GetUtcNow());
         projector.Apply(new MacSystemObservation.AwayEntered(MacAwayReason.SystemSleep), clock.GetUtcNow());
 
         // macOS uptime pauses during sleep while UTC and its continuous clock advance.

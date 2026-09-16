@@ -13,7 +13,7 @@ public sealed class ProgramTests
         using var handler = new CaptureHandler();
         using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:4318") };
         var options = new CollectorOptions(httpClient.BaseAddress, "local-token", "device-a", "Test Mac",
-            TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10), true);
+            TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(1500), true);
 
         var result = await Program.RunAsync(options, new HubSubmissionClient(httpClient), CancellationToken.None,
             new FixedSource());
@@ -32,7 +32,7 @@ public sealed class ProgramTests
         using var handler = new FailureHandler();
         using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:4318") };
         var options = new CollectorOptions(httpClient.BaseAddress, "local-token", "device-a", "Test Mac",
-            TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10), true);
+            TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(1500), true);
 
         var result = await Program.RunAsync(options, new HubSubmissionClient(httpClient), CancellationToken.None,
             new FixedSource());

@@ -206,7 +206,7 @@ public sealed class DesktopCollectorSessionTests
     [Fact]
     public async Task NativeEventsFlowThroughSharedSessionToTheirDeclaredTracks()
     {
-        var source = new ScriptedSource(_ => FirstApp);
+        var source = new ScriptedSource(_ => FirstApp, "Document");
         using var handler = new TrackCaptureHandler();
         using var httpClient = CreateClient(handler);
         using var stop = new CancellationTokenSource(TestTimeout);
@@ -221,6 +221,7 @@ public sealed class DesktopCollectorSessionTests
 
             await handler.DesktopTracksReceived.Task.WaitAsync(TestTimeout);
             Assert.Contains("desktop.application.foreground", handler.TrackTypes);
+            Assert.Contains("desktop.window.foreground", handler.TrackTypes);
             Assert.Contains("desktop.system.away", handler.TrackTypes);
             Assert.Contains("desktop.input.event", handler.TrackTypes);
         }
@@ -261,7 +262,7 @@ public sealed class DesktopCollectorSessionTests
             source.Emit(new MacSystemObservation.Input(
                 new DesktopInputObservation(DesktopInputKind.MouseButtonDown, 1)));
             source.Emit(new MacSystemObservation.Activity(
-                new DesktopActivitySample(NextApp, null), ActivityChangeKind.ApplicationActivated));
+                new DesktopActivitySample(NextApp, null)));
             clock.Seconds = 10;
             release.Set();
             await handler.ReceivedInput.Task.WaitAsync(TestTimeout);
@@ -328,7 +329,8 @@ public sealed class DesktopCollectorSessionTests
     }
 
     private static CollectorOptions Options() => new(new Uri("http://localhost:8080"), "test-token",
-        "device-a", "Test Mac", TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(40), false);
+        "device-a", "Test Mac", TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(40),
+        TimeSpan.Zero, false);
 
     private static HttpClient CreateClient(HttpMessageHandler handler) => new(handler)
     {
@@ -350,7 +352,8 @@ public sealed class DesktopCollectorSessionTests
         }
     }
 
-    private sealed class ScriptedSource(Func<int, ForegroundApplication?> read) : IMacSystemObservationSource
+    private sealed class ScriptedSource(Func<int, ForegroundApplication?> read, string? windowTitle = null)
+        : IMacSystemObservationSource
     {
         public int ReadCount { get; private set; }
 
@@ -360,7 +363,7 @@ public sealed class DesktopCollectorSessionTests
         {
             var application = read(++ReadCount);
             return new MacSystemSnapshot(
-                application is null ? null : new DesktopActivitySample(application, null),
+                application is null ? null : new DesktopActivitySample(application, windowTitle),
                 []);
         }
         public void RefreshCapabilities() { }
@@ -383,6 +386,7 @@ public sealed class DesktopCollectorSessionTests
             var trackType = body.RootElement.GetProperty("track").GetProperty("type").GetString()!;
             _trackTypes.TryAdd(trackType, 0);
             if (_trackTypes.ContainsKey("desktop.application.foreground")
+                && _trackTypes.ContainsKey("desktop.window.foreground")
                 && _trackTypes.ContainsKey("desktop.system.away")
                 && _trackTypes.ContainsKey("desktop.input.event"))
             {

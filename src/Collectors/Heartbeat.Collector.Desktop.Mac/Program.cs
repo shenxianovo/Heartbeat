@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using Heartbeat.Collector.Desktop.Mac.Diagnostics;
 using Heartbeat.Hub;
 
 namespace Heartbeat.Collector.Desktop.Mac;
@@ -16,6 +17,12 @@ public static class Program
 
     private static async Task<int> MainAsync(string[] args)
     {
+        // The probe only observes the system; it must not require a Hub endpoint or credentials.
+        if (WindowTitleProbeOptions.IsRequested(args))
+        {
+            return await RunProbeAsync(args);
+        }
+
         CollectorOptions options;
         try
         {
@@ -27,6 +34,47 @@ public static class Program
             return 2;
         }
 
+        return await WithCancellationAsync(async cancellationToken =>
+        {
+            using var httpClient = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
+            {
+                BaseAddress = options.HubBaseUrl,
+            };
+            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", options.HubToken);
+            var client = new HubSubmissionClient(httpClient);
+            return await RunAsync(options, client, cancellationToken);
+        });
+    }
+
+    private static async Task<int> RunProbeAsync(string[] args)
+    {
+        WindowTitleProbeOptions options;
+        try
+        {
+            options = WindowTitleProbeOptions.Parse(args);
+        }
+        catch (Exception exception) when (exception is ArgumentException or FormatException)
+        {
+            Console.Error.WriteLine(exception.Message);
+            return 2;
+        }
+
+        if (!OperatingSystem.IsMacOS())
+        {
+            Console.Error.WriteLine("The window title probe reads macOS foreground state and requires macOS.");
+            return 2;
+        }
+
+        return await WithCancellationAsync(async cancellationToken =>
+        {
+            using var source = new MacSystemObservationSource();
+            var probe = new WindowTitleProbe(source, new MacContinuousTimeProvider());
+            return await probe.RunAsync(options, Console.Out, cancellationToken);
+        });
+    }
+
+    private static async Task<int> WithCancellationAsync(Func<CancellationToken, Task<int>> run)
+    {
         using var cancellation = new CancellationTokenSource();
         ConsoleCancelEventHandler cancelHandler = (_, eventArgs) =>
         {
@@ -36,13 +84,7 @@ public static class Program
         Console.CancelKeyPress += cancelHandler;
         try
         {
-            using var httpClient = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
-            {
-                BaseAddress = options.HubBaseUrl,
-            };
-            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", options.HubToken);
-            var client = new HubSubmissionClient(httpClient);
-            return await RunAsync(options, client, cancellation.Token);
+            return await run(cancellation.Token);
         }
         catch (Exception exception)
         {

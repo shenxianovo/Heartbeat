@@ -1,10 +1,11 @@
 # Heartbeat macOS Desktop Collector
 
-Collector 通过 macOS 原生通知和周期确认记录四类事实：
+Collector 通过 macOS 原生通知和周期确认记录五类事实：
 
 | Track | 时间定义 | 内容 |
 | --- | --- | --- |
-| `desktop.application.foreground` v1 | `range + explicit` | 前台应用、显示名与窗口标题 |
+| `desktop.application.foreground` v1 | `range + explicit` | 前台应用与显示名 |
+| `desktop.window.foreground` v1 | `range + explicit` | 前台窗口标题 |
 | `desktop.system.away` v1 | `range + explicit` | 锁屏、会话失活、显示器休眠与系统休眠 |
 | `desktop.input.event` v1 | `point` | 物理按键按下、鼠标按钮按下和原生滚动增量 |
 | `desktop.observation.status` v1 | `range + explicit` | 各观察能力当时的可用状态 |
@@ -13,9 +14,11 @@ Collector 通过 macOS 原生通知和周期确认记录四类事实：
 
 Shift、Control、Option 和 Command 的左右键通过原生 `flagsChanged` 事件及各自物理状态位识别。CapsLock 仅在系统提供 stateless 物理状态位时记录按下，不把开关锁定状态当作物理按下；当前物理位置表未定义 Fn。
 
+前台应用与前台窗口是两个观测对象，各自成 Track。同一个应用下换窗口、改标题只切窗口 Record，应用 Record 继续延长；窗口标题读不到只断开窗口 Record，不影响应用区间。这样同一个应用不会被切成多条首尾相接的 Record，展示端也不需要合并相邻块。
+
 锁屏、会话失活、显示器休眠和系统休眠是互相独立、可以重叠的 Away Signal。任一原因仍存在时应用活动保持断开；全部恢复后创建新的应用 Record。权限缺失或原生观察器故障只降级相应能力，其他 Track 继续采集，并写入观察状态；权限恢复后无需重启进程。
 
-应用相同且确认间隔未超过 `maximumConfirmationGap` 时复用 Record ID 并延长 `endedAt`。应用、窗口或标题通知会立即产生新的 Record，不需要输入事件确认。明确的 Away Signal、观察失败或超过确认间隔会打断连续性；恢复后即使应用相同也创建新 Record。默认最大确认间隔是采样间隔的两倍，这只是当前实现规则。
+读数相同且确认间隔未超过 `maximumConfirmationGap` 时复用 Record ID 并延长 `endedAt`。原生通知只是触发重新读数，读到的应用身份没变就不切分应用区间；应用身份不含进程 ID，重启同一个应用不改变身份。明确的 Away Signal、对应能力失败或超过确认间隔会打断连续性；恢复后即使读数相同也创建新 Record。默认最大确认间隔是采样间隔的三倍——一次晚到的 tick 属于正常调度抖动，连续两次缺失确认才判定观察中断，这只是当前实现规则。
 
 原生事件在进入 Session 时记录接收时间，事件与周期快照由一个消费者串行投影。采样期间若收到状态变化，丢弃可能过期的快照，先处理事件。时间以进程启动时的 UTC 为基准，加上包含系统休眠的 macOS 单调经过时间，避免改钟或休眠使记录倒退、落后。
 
@@ -40,24 +43,36 @@ dotnet run --project src/Collectors/Heartbeat.Collector.Desktop.Mac -- \
 | `--target` | `HEARTBEAT_COLLECTOR_TARGET` | 必填 |
 | `--display-name` | `HEARTBEAT_COLLECTOR_DISPLAY_NAME` | Target |
 | `--interval-seconds` | `HEARTBEAT_COLLECTOR_INTERVAL_SECONDS` | 5 |
-| `--maximum-gap-seconds` | `HEARTBEAT_COLLECTOR_MAXIMUM_GAP_SECONDS` | interval × 2 |
+| `--maximum-gap-seconds` | `HEARTBEAT_COLLECTOR_MAXIMUM_GAP_SECONDS` | interval × 3 |
+| `--window-title-dwell-ms` | `HEARTBEAT_COLLECTOR_WINDOW_TITLE_DWELL_MS` | 1500 |
 | `--once` | `HEARTBEAT_COLLECTOR_ONCE` | false |
 
-最大确认间隔必须大于采样间隔。`--once` 只采集当前快照，不验证通知、Away Signal 或输入事件。
+最大确认间隔必须大于采样间隔。窗口标题静置时长必须小于最大确认间隔，否则候选会先被中断清掉、永远等不到转正；设为 0 表示每次标题变化都承认。`--once` 只采集当前快照，不验证通知、Away Signal 或输入事件。
 
 ## 权限
 
-前台应用与 Away Signal 不要求额外授权。窗口标题需要 Accessibility 权限，输入事件需要 Input Monitoring 权限。Collector 不主动弹出授权请求；在系统设置授予权限后，周期能力刷新会自动开始相应观察。
+前台应用与 Away Signal 不要求额外授权。窗口标题需要 Accessibility 权限，输入事件需要 Input Monitoring 权限。窗口标题能力失败只降级 `desktop.window.foreground`，前台应用照常记录。Collector 不主动弹出授权请求；在系统设置授予权限后，周期能力刷新会自动开始相应观察。
 
-窗口标题能力恢复要求观察器实际附着且属性读取成功。AX 的“不支持该属性”和“当前没有值”允许返回空标题，其他读取错误报告观察失败；发起订阅本身不代表恢复成功。
+窗口标题能力恢复要求观察器实际附着且属性读取成功。AX 的“不支持该属性”和“当前没有值”允许返回空标题，其他读取错误报告观察失败；发起订阅本身不代表恢复成功。订阅刚发起、握手还没完成时既不声称可用，也不宣布中断——切换应用时的这段空窗不是能力故障。
 
 ## Hub 交接
 
-四条 Track 共用一个内存待交接缓冲区；按 Hub 的 500 条和 1 MiB 限制分批。同一 Record 的新快照覆盖未交接旧快照，但旧请求回执只确认它实际发送的快照。慢请求不阻塞采样，失败或不明回执保留原 ID 重试。
+五条 Track 共用一个内存待交接缓冲区；按 Hub 的 500 条和 1 MiB 限制分批。同一 Record 的新快照覆盖未交接旧快照，但旧请求回执只确认它实际发送的快照。慢请求不阻塞采样，失败或不明回执保留原 ID 重试。
 
 缓冲区只在锁内复制待交接快照，分组和按字节计量在锁外完成；每条记录只计量一次，避免高频输入使锁内序列化成本反复增长。
 
 Collector 不提供 Hub 之前的持久队列；进程退出会丢失尚未被 Hub 接管的内存数据。Hub 接管后的数据由其本地 SQLite outbox 保护。
+
+## 标题探针
+
+同一个可执行文件带一个只观察的模式，用来量前台窗口标题在真实使用中变化得多快：
+
+```bash
+dotnet bin/Debug/net10.0/Heartbeat.Collector.Desktop.Mac.dll \
+  --probe-window-titles --duration-seconds 120 --output /tmp/readings.json
+```
+
+探针不需要 Hub 地址与凭据，也不产生 Record：它把原生通知与轮询读数按时间原样写进一个 JSON 文件。默认只写标题长度、指纹与相邻标题的形态度量，`--include-titles` 才写标题原文。日常从 `./scripts/heartbeat-dev probe window-title` 使用它，统计与静置参数模拟由那条命令给出，见[工程验证](../../../docs/verification.md)。
 
 ## 手工验证
 

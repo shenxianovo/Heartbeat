@@ -34,14 +34,25 @@ const record: TimelineRecord = {
       id: "com.example.Editor",
       display_name: "Example Editor",
     },
-    window: { title: "Private draft.md" },
   },
 };
 
+const windowTrack: TrackSummary = { ...track, type: "desktop.window.foreground" };
+const windowRecord: TimelineRecord = {
+  ...record,
+  value: { device_id: "device", window: { title: "Private draft.md" } },
+};
+
 describe("application timeline summary", () => {
-  it("uses application identity for the overview and keeps the window title auxiliary", () => {
+  it("names the application by its identity and the window by its title", () => {
     expect(protocolRecordLabel(track, record)).toBe("Example Editor");
-    expect(protocolRecordTitle(track, record)).toBe("Example Editor · Private draft.md");
+    expect(protocolRecordTitle(track, record)).toBe("Example Editor");
+    expect(protocolRecordLabel(windowTrack, windowRecord)).toBe("Private draft.md");
+  });
+
+  it("keeps the window title out of the application lane", () => {
+    expect(protocolRecordSummary(windowTrack, record).label).toBe("时间区间");
+    expect(protocolRecordSummary(windowTrack, windowRecord).group).toBeUndefined();
   });
 
   it("uses safe generic summaries for malformed values and unknown protocols", () => {

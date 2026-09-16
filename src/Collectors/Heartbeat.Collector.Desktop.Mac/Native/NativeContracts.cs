@@ -40,14 +40,7 @@ public interface IMacWorkspaceNative : IDisposable
     void StopNotifications();
 }
 
-public enum MacAccessibilityObservationKind
-{
-    FocusedWindowChanged,
-    TitleChanged,
-}
-
 public readonly record struct MacAccessibilityObservation(
-    MacAccessibilityObservationKind Kind,
     string? Title,
     int ProcessIdentifier = 0);
 

@@ -14,6 +14,7 @@ Collector 向 Hub 提交逻辑声明与 Record，不持有后端 ID。Hub 持久
 - [记录存储模型](docs/recording-storage-model.md)：`Timeline -> Collector -> Track -> Record` 四层模型、字段和约束。
 - [记录 HTTP 接口](docs/recording-api.md)：Collector 注册、Track 获取、Record 上传和 Track 级重放查询。
 - [桌面前台应用协议 v1](docs/protocols/desktop-application-foreground-v1.md)：当前已实现的首个 Record 协议。
+- [桌面前台窗口协议 v1](docs/protocols/desktop-window-foreground-v1.md)：与前台应用分开的窗口标题观测。
 - [记录模型持久化说明](src/Backend/Heartbeat.Infrastructure/Persistence/README.md)：EF Core / PostgreSQL 映射约定。
 - [macOS Collector](src/Collectors/Heartbeat.Collector.Desktop.Mac/README.md)：最小桌面 Collector 的运行方式。
 - [Hub 记录交付](docs/hub-record-delivery.md)：SQLite 持久接管、后台上传、恢复及桌面接入。

@@ -19,11 +19,10 @@ public sealed class NativeDesktopScenarioTests
         var repository = await RepositoryContext.DiscoverAsync(Environment.CurrentDirectory);
         var assembly = repository.Path(
             "tests", "Heartbeat.Dev.Tests", "Fixtures", "SignalAwareProcess", "bin", "Debug", "net10.0", "SignalAwareProcess.dll");
-        using var process = NativeDesktopScenario.StartManagedProcess(assembly, repository.Root, null);
+        using var process = ProcessRunner.StartManaged(repository.Root, assembly, [], null);
         Assert.Equal("ready", await process.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(20)));
 
-        await NativeDesktopScenario.StopCollectorAsync(
-            process, TimeSpan.FromSeconds(2), CancellationToken.None);
+        await ProcessRunner.InterruptAsync(process, TimeSpan.FromSeconds(2), CancellationToken.None);
 
         Assert.Equal(0, process.ExitCode);
     }

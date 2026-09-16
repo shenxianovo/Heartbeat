@@ -25,6 +25,8 @@ internal sealed class DeveloperCli(
                 .RunAsync(remaining, cancellationToken),
             "scenario" => await new ScenarioCommand(repository, runner, output)
                 .RunAsync(remaining, cancellationToken),
+            "probe" => await new ProbeCommand(repository, runner, output)
+                .RunAsync(remaining, cancellationToken),
             "artifacts" => await new ArtifactsCommand(repository, output)
                 .RunAsync(remaining, cancellationToken),
             _ => throw new CommandUsageException($"Unknown command '{args[0]}'."),
@@ -42,6 +44,7 @@ internal static class Help
           verify     Run checks selected from a Git change set
           quality    Compare structural quality with a Git base
           scenario   Run a reproducible verification scenario
+          probe      Measure real host behaviour before choosing a rule parameter
           artifacts  List, prune, or inventory verification evidence
 
         Run heartbeat-dev <command> --help for command-specific usage.

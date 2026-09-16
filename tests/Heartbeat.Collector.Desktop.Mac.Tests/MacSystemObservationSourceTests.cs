@@ -64,8 +64,7 @@ public sealed class MacSystemObservationSourceTests
         workspace.Emit(MacWorkspaceNotification.ScreenLocked);
         workspace.Emit(MacWorkspaceNotification.SystemSleep);
         workspace.Emit(MacWorkspaceNotification.ScreenUnlocked);
-        accessibility.Emit(new(
-            MacAccessibilityObservationKind.TitleChanged, "Renamed", 42));
+        accessibility.Emit(new("Renamed", 42));
 
         Assert.Contains(observed, item => item is MacSystemObservation.AwayEntered
             { Reason: MacAwayReason.ScreenLocked });
@@ -74,7 +73,7 @@ public sealed class MacSystemObservationSourceTests
         Assert.Contains(observed, item => item is MacSystemObservation.AwayExited
             { Reason: MacAwayReason.ScreenLocked });
         Assert.Contains(observed, item => item is MacSystemObservation.Activity
-            { Kind: ActivityChangeKind.TitleChanged, Sample.WindowTitle: "Renamed" });
+            { Sample.WindowTitle: "Renamed" });
     }
 
     [Fact]
@@ -133,7 +132,7 @@ public sealed class MacSystemObservationSourceTests
     }
 
     [Fact]
-    public void SuccessfulTitleReadCannotClaimAnUnattachedObserverIsAvailable()
+    public void TitleObserverHandshakeNeitherClaimsAvailableNorAnnouncesAnOutage()
     {
         var workspace = new FakeWorkspace
         {
@@ -149,12 +148,39 @@ public sealed class MacSystemObservationSourceTests
         using var source = new MacSystemObservationSource(workspace, accessibility, new FakeInput());
         source.StartObserving();
         var starting = source.Capture();
-        Assert.Contains(starting.Capabilities, state => state is
-            { Capability: ObservationCapability.WindowTitle, State: ObservationState.Unavailable });
+        Assert.Equal("Readable even while subscribing", starting.Activity?.WindowTitle);
+        Assert.DoesNotContain(starting.Capabilities, state => state.Capability == ObservationCapability.WindowTitle);
 
         accessibility.ObservationReady = true;
         var recovered = source.Capture();
         Assert.Contains(recovered.Capabilities, state => state is
+            { Capability: ObservationCapability.WindowTitle, State: ObservationState.Available });
+    }
+
+    [Fact]
+    public void SwitchingApplicationsDoesNotReportTheWindowTitleAsLost()
+    {
+        var workspace = new FakeWorkspace
+        {
+            FrontmostApplication = new("com.example.First", null, "First", 42),
+        };
+        var accessibility = new FakeAccessibility
+        {
+            IsAvailable = true,
+            IsProcessTrusted = true,
+            Title = "Document",
+        };
+        using var source = new MacSystemObservationSource(workspace, accessibility, new FakeInput());
+        source.StartObserving();
+        var observed = new List<MacSystemObservation>();
+        source.Observation += observed.Add;
+
+        workspace.FrontmostApplication = new("com.example.Next", null, "Next", 77);
+        workspace.Emit(MacWorkspaceNotification.ApplicationActivated);
+
+        Assert.DoesNotContain(observed, item => item is MacSystemObservation.Capability
+            { Value.Capability: ObservationCapability.WindowTitle, Value.State: not ObservationState.Available });
+        Assert.Contains(source.Capture().Capabilities, state => state is
             { Capability: ObservationCapability.WindowTitle, State: ObservationState.Available });
     }
 
