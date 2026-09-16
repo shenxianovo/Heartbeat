@@ -16,7 +16,7 @@ public sealed class HubSubmissionClient(HttpClient httpClient)
         ArgumentNullException.ThrowIfNull(submission);
         using var response = await httpClient.PostAsJsonAsync(
             "/hub/v1/records", submission, JsonOptions, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await EnsureAcceptedAsync(response, cancellationToken);
 
         var body = await response.Content.ReadFromJsonAsync<HubSubmissionResponse>(JsonOptions, cancellationToken);
         if (body?.Results is null || submission.Records is null || body.Results.Count != submission.Records.Count)
@@ -34,6 +34,22 @@ public sealed class HubSubmissionClient(HttpClient httpClient)
                 throw new InvalidDataException("A Hub receipt does not confirm its submitted Record snapshot.");
             }
         }
+    }
+
+    private static async Task EnsureAcceptedAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        if (response.StatusCode == System.Net.HttpStatusCode.BadRequest &&
+            response.Content.Headers.ContentType?.MediaType == "application/problem+json")
+        {
+            using var problem = await response.Content.ReadFromJsonAsync<JsonDocument>(cancellationToken);
+            if (problem?.RootElement.TryGetProperty("detail", out var detail) == true &&
+                detail.ValueKind == JsonValueKind.String)
+            {
+                throw new HttpRequestException(
+                    $"Hub rejected submission (400): {detail.GetString()}", null, response.StatusCode);
+            }
+        }
+        response.EnsureSuccessStatusCode();
     }
 
     private static bool Confirms(DateTimeOffset? sent, DateTimeOffset? accepted) =>

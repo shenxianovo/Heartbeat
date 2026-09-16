@@ -98,6 +98,27 @@ public sealed class DesktopRecordProjectorTests
     }
 
     [Fact]
+    public void ApplicationSwitchDiscardsPendingTitleFromPreviousWindow()
+    {
+        var staged = new List<(SubmissionRoute Route, RecordSnapshot Record)>();
+        var projector = Create(staged);
+        var other = new DesktopActivitySample(
+            new ForegroundApplication("macos", "bundle_id", "com.example.Other", "Other"), "Inbox");
+
+        projector.Apply(new MacSystemObservation.Activity(App), Start);
+        projector.Apply(new MacSystemObservation.Activity(App with { WindowTitle = "Loading" }),
+            Start.AddSeconds(0.5));
+        projector.Apply(new MacSystemObservation.Activity(other), Start.AddSeconds(1));
+        projector.Confirm(new MacSystemSnapshot(other, []), Start.AddSeconds(2));
+
+        var windows = Latest(staged, WindowTrack);
+        Assert.Equal(2, windows.Length);
+        Assert.All(windows, record => Assert.True(record.EndedAt >= record.StartedAt));
+        Assert.Equal("Inbox", windows[1].Value.GetProperty("window").GetProperty("title").GetString());
+        Assert.Equal(Start.AddSeconds(2), windows[1].EndedAt);
+    }
+
+    [Fact]
     public void TitleThatHeldUntilAnOutageIsStillRecorded()
     {
         var staged = new List<(SubmissionRoute Route, RecordSnapshot Record)>();

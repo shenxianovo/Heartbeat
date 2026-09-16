@@ -82,6 +82,19 @@ public sealed class HubHttpTests : IDisposable
     }
 
     [Fact]
+    public async Task ClientReportsHubValidationDetailForRejectedSubmission()
+    {
+        await using var factory = Factory();
+        using var client = Client(factory);
+        var invalid = QueueFixture.Submission(QueueFixture.Snapshot() with { EndedAt = null });
+
+        var error = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            new HubSubmissionClient(client).SubmitAsync(invalid));
+
+        Assert.Contains("Record end time does not match its Track declaration", error.Message);
+    }
+
+    [Fact]
     public async Task RecordConflictDoesNotAcknowledgeOtherItemsInTheSameLocalBatch()
     {
         await using var factory = Factory();

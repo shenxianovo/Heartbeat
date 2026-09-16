@@ -115,6 +115,7 @@ internal sealed class DesktopRecordProjector(
         if (_window is null || applicationChanged)
         {
             ExtendWindow(at);
+            _pendingTitle = null;
             _window = CurrentRange.Start(at);
             _windowValue = title;
             ExtendWindow(at);
