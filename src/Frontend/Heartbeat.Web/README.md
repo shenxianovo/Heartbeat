@@ -64,7 +64,9 @@ npm run test:e2e
 
 ## 当天经历与活动泳道
 
-展示沿用 main 的「当天经历」交互，在当前 React 前端实现。顶层按 Collector 来源分组，内部展示 Track；前台活动可展开为各应用子泳道。来源分组不等于跨 Collector 设备身份，当前没有旧 Object/Fact 关系或 Browser 关联推断。
+展示沿用 main 的「当天经历」交互，在当前 React 前端实现。顶层按 Collector 来源分组，内部展示 Track；前台应用可展开为各应用子泳道。当前视窗无记录的应用、Track 与 Collector 分组逐级隐藏，展开状态在视窗切换后保留。来源分组不等于跨 Collector 设备身份，当前没有旧 Object/Fact 关系或 Browser 关联推断。
+
+每条 Track 独立展示，不把观测状态等 Track 投影或合并到其他泳道。`desktop.observation.status` 在当前视窗有记录时显示自己的泳道并进入区间记录列表，状态记录可点击查看详情。
 
 时间线视觉采用 main 原有 `ActivityTimeline.vue` 的紧凑布局：灰底标签列与刻度、细活动条、小型全天概览，区间内容通过悬停提示和点击详情查看。筛选栏、日期导航和刷新等操作复用共享 `Button`；`DatePicker` 与 `MultiSelectPicker` 共用 `Popover` 的定位、外部关闭及 Escape 焦点恢复。日历支持方向键、Home/End、PageUp/PageDown 和「今天」。`MultiSelectPicker` 仅接收选项和值，不依赖 Collector 模型。
 

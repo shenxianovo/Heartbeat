@@ -20,7 +20,7 @@ const renderers = new Map<string, RecordPresentation>([
   [
     rendererKey("desktop.application.foreground", 1),
     {
-      label: "前台活动",
+      label: "前台应用",
       Renderer: DesktopApplicationForegroundV1,
       summarize: summarizeDesktopApplication,
     },

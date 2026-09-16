@@ -30,6 +30,12 @@ export const customTrack = {
   endMode: null,
 };
 
+export const statusTrack = {
+  ...desktopTrack,
+  id: "019e0000-0000-7000-8000-000000000003",
+  type: "desktop.observation.status",
+};
+
 function record(id: string, value: unknown, point = false, minutesAgo = 30) {
   const startedAt = new Date(Date.now() - minutesAgo * 60_000).toISOString();
   return {
@@ -98,7 +104,9 @@ export async function recordingRoutes(
       return;
     }
     if (url.pathname === "/api/v1/tracks") {
-      await route.fulfill({ json: { tracks: options.empty ? [] : [desktopTrack, customTrack] } });
+      await route.fulfill({
+        json: { tracks: options.empty ? [] : [desktopTrack, statusTrack, customTrack] },
+      });
       return;
     }
     if (url.pathname === `/api/v1/tracks/${customTrack.id}/point-counts`) {
@@ -139,6 +147,28 @@ export async function recordingRoutes(
               "019e0000-0000-7000-8000-000000000023",
               { note: "<script>window.untrustedExecuted=true</script>", count: 42 },
               true,
+            ),
+          ],
+          nextCursor: null,
+        },
+      });
+      return;
+    }
+    if (url.pathname === `/api/v1/tracks/${statusTrack.id}/records`) {
+      await route.fulfill({
+        json: {
+          track: statusTrack,
+          records: [
+            record(
+              "019e0000-0000-7000-8000-000000000024",
+              {
+                device_id: "test-mac",
+                capability: "application",
+                state: "permission_required",
+                reason: "screen-recording",
+              },
+              false,
+              25,
             ),
           ],
           nextCursor: null,

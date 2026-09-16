@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { ReplayLane, TimelineRecord } from "@/api/types";
 import { trackLabel } from "@/components/filters/TrackPicker";
 import { protocolRecordSummary } from "./protocolSummary";
@@ -23,6 +23,8 @@ interface Props {
   densityStatus: string | null;
   onSelect: (value: RecordSelection) => void;
   onSelectPoints: (value: PointSelection) => void;
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
 }
 
 function RecordPlot({
@@ -102,7 +104,7 @@ function RecordPlot({
       ))}
       {!layout.items.length && !buckets.length ? (
         <span className="timeline-empty">
-          {densityStatus && lane.track.timeMode === "point" ? densityStatus : "此范围没有记录"}
+          {densityStatus && lane.track.timeMode === "point" ? densityStatus : null}
         </span>
       ) : null}
     </div>
@@ -110,11 +112,18 @@ function RecordPlot({
 }
 
 export function TimelineLane(props: Props) {
-  const { lane } = props;
-  const [expanded, setExpanded] = useState(false);
+  const { lane, range, expanded, onExpandedChange } = props;
   const groups = useMemo(() => {
     const result = new Map<string, { id: string; label: string; records: TimelineRecord[] }>();
     for (const record of lane.records) {
+      if (
+        !overlaps(
+          Date.parse(record.startedAt),
+          Date.parse(record.endedAt ?? record.startedAt),
+          range,
+        )
+      )
+        continue;
       const group = protocolRecordSummary(lane.track, record).group;
       if (!group) continue;
       const current = result.get(group.id) ?? { ...group, records: [] };
@@ -122,7 +131,7 @@ export function TimelineLane(props: Props) {
       result.set(group.id, current);
     }
     return [...result.values()].sort((a, b) => a.label.localeCompare(b.label));
-  }, [lane]);
+  }, [lane, range]);
   return (
     <>
       <div className="timeline-lane">
@@ -133,7 +142,7 @@ export function TimelineLane(props: Props) {
               type="button"
               aria-expanded={expanded}
               aria-label={`${expanded ? "收起" : "展开"} ${lane.track.collectorDisplayName} 的应用`}
-              onClick={() => setExpanded(!expanded)}
+              onClick={() => onExpandedChange(!expanded)}
             >
               <span aria-hidden="true">{expanded ? "⌄" : "›"}</span>
               <strong title={trackLabel(lane.track)}>{trackLabel(lane.track)}</strong>

@@ -789,6 +789,13 @@ a {
   color: var(--muted-foreground);
   font-size: 0.65rem;
 }
+.timeline-global-empty {
+  margin: 0;
+  padding: 1.25rem;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  text-align: center;
+}
 .timeline-note {
   margin: 1rem 0 0;
   font-size: 0.68rem;

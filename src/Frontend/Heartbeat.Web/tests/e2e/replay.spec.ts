@@ -206,6 +206,26 @@ test("应用子泳道与记录详情联动，日期切换清理选中记录", as
   await expect(page.getByRole("region", { name: "所选记录详情" })).toHaveCount(0);
 });
 
+test("观测状态与其他 Track 分开展示", async ({ page }) => {
+  await recordingRoutes(page);
+  await page.goto("/");
+
+  const timeline = page.getByRole("region", { name: "活动泳道，方向键平移，加减键缩放" });
+  await expect(timeline.getByText("前台应用", { exact: true })).toBeVisible();
+  await expect(timeline.getByText("观测状态", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "区间记录列表" })).toContainText("观测状态");
+
+  const warning = page.getByRole("button", {
+    name: "应用观测 · 缺少权限 · screen-recording",
+  });
+  await expect(warning).toBeVisible();
+  await warning.click();
+  await expect(page.getByRole("region", { name: "所选记录详情" })).toContainText(
+    "应用观测 · 缺少权限",
+  );
+  await page.screenshot({ path: evidencePath("replay-observation-track.png"), fullPage: true });
+});
+
 test("泳道滚动、平移缩放与键盘范围控制始终保持在日期边界内", async ({ page }) => {
   await recordingRoutes(page);
   await page.goto("/");

@@ -9,11 +9,11 @@ import { RecordCard } from "@/components/records/RecordCard";
 import { ActivityOverview } from "./ActivityOverview";
 import { TimelineLane, type PointSelection, type RecordSelection } from "./TimelineLane";
 import { protocolRecordSummary } from "./protocolSummary";
+import { projectTimeline } from "./timelineProjection";
 import {
   clampRange,
   dragRange,
   formatTime,
-  overlaps,
   timeTicks,
   zoomRange,
   type TimeRange,
@@ -39,6 +39,7 @@ export function TimelineViewport({
   onSelectPoints,
 }: Props) {
   const [selection, setSelection] = useState<RecordSelection | null>(null);
+  const [expandedTracks, setExpandedTracks] = useState<Set<string>>(() => new Set());
   const [paging, setPaging] = useState({ key: "", page: 0 });
   const pageKey = `${range.start}/${range.end}/${lanes.map((lane) => lane.track.id).join(",")}`;
   const page = paging.key === pageKey ? paging.page : 0;
@@ -55,40 +56,11 @@ export function TimelineViewport({
     moved: boolean;
   } | null>(null);
   const suppressClick = useRef(false);
-  const groups = useMemo(() => {
-    const result = new Map<string, { name: string; lanes: ReplayLane[] }>();
-    for (const lane of lanes) {
-      const { collectorId, collectorDisplayName, collectorTarget } = lane.track;
-      const group = result.get(collectorId) ?? {
-        name: collectorDisplayName || collectorTarget,
-        lanes: [],
-      };
-      group.lanes.push(lane);
-      result.set(collectorId, group);
-    }
-    return [...result.entries()];
-  }, [lanes]);
-  const visibleRecords = useMemo(
-    () =>
-      lanes
-        .flatMap((lane) =>
-          lane.records
-            .filter((record) =>
-              overlaps(
-                Date.parse(record.startedAt),
-                Date.parse(record.endedAt ?? record.startedAt),
-                range,
-              ),
-            )
-            .map((record) => ({ track: lane.track, record })),
-        )
-        .sort(
-          (a, b) =>
-            Date.parse(a.record.startedAt) - Date.parse(b.record.startedAt) ||
-            a.record.id.localeCompare(b.record.id),
-        ),
-    [lanes, range],
+  const projection = useMemo(
+    () => projectTimeline(lanes, range, densityStatus),
+    [lanes, range, densityStatus],
   );
+  const { groups, visibleRecords } = projection;
   const selected = visibleRecords.find(
     (item) => item.track.id === selection?.trackId && item.record.id === selection.recordId,
   );
@@ -271,14 +243,14 @@ export function TimelineViewport({
                 ))}
               </div>
             </div>
-            {groups.map(([id, group]) => (
-              <section className="collector-swimlanes" key={id} aria-label={group.name}>
+            {groups.map((group) => (
+              <section className="collector-swimlanes" key={group.id} aria-label={group.name}>
                 <h3 className="collector-heading">
                   <Icon name="monitor" />
                   {group.name}
                   <small>{group.lanes.length} 条轨道</small>
                 </h3>
-                {group.lanes.map((lane) => (
+                {group.lanes.map(({ lane }) => (
                   <TimelineLane
                     key={lane.track.id}
                     lane={lane}
@@ -291,10 +263,20 @@ export function TimelineViewport({
                       setSelection(null);
                       onSelectPoints(value);
                     }}
+                    expanded={expandedTracks.has(lane.track.id)}
+                    onExpandedChange={(expanded) =>
+                      setExpandedTracks((current) => {
+                        const next = new Set(current);
+                        if (expanded) next.add(lane.track.id);
+                        else next.delete(lane.track.id);
+                        return next;
+                      })
+                    }
                   />
                 ))}
               </section>
             ))}
+            {!groups.length ? <p className="timeline-global-empty">这个范围内没有记录。</p> : null}
           </div>
         </div>
         <p className="timeline-note">
