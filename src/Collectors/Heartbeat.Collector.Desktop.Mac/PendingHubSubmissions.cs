@@ -12,6 +12,11 @@ internal sealed record PendingSubmissionBatch(
     public HubSubmission ToSubmission() => new(Route.Collector, Route.Track, Records);
 }
 
+/// <summary>
+/// Hub 接管前的进程内缓冲。这里没有持久暂存，也没有积压上限后的行为，是当前实现有意的边界：
+/// Collector 侧如何保护未交接数据、积压到多少之后怎么办，都还是未决问题，见
+/// docs/recording-open-questions.md 的「Collector 到 Hub 的未交接数据」。要在这里加落盘或丢弃策略，先过那一节。
+/// </summary>
 internal sealed class PendingHubSubmissions
 {
     private const int MaximumBatchSize = 500;

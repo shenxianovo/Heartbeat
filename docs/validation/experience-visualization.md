@@ -19,7 +19,7 @@
 
 ## 验证结果
 
-`npm run verify` 通过：类型检查、ESLint、Prettier、31 项 Vitest 和生产构建。`npm run test:e2e` 验证 15 项 Chromium 用例，覆盖：
+`npm run verify` 通过：类型检查、ESLint、Prettier、Vitest 和生产构建。`npm run test:e2e` 的 Chromium 用例全绿，覆盖：
 
 - 概览拖选和手柄调整同步时间范围，Point 查询携带正确范围及更细粒度，同时不重复读取全天 Range。
 - 应用子泳道展开、记录选择与聚焦、切换日期后清理详情。

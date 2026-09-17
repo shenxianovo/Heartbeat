@@ -74,6 +74,24 @@ dotnet bin/Debug/net10.0/Heartbeat.Collector.Desktop.Mac.dll \
 
 探针不需要 Hub 地址与凭据，也不产生 Record：它把原生通知与轮询读数按时间原样写进一个 JSON 文件。默认只写标题长度、指纹与相邻标题的形态度量，`--include-titles` 才写标题原文。日常从 `./scripts/heartbeat-dev probe window-title` 使用它，统计与静置参数模拟由那条命令给出，见[工程验证](../../../docs/verification.md)。
 
+## 静置阈值的复核
+
+1.5 秒这个默认值是拿实现之前的历史读数定的，那份数据答不了「原生通知有没有漏送」（推导过程见 [ADR-0008](../../../docs/adr/ADR-0008-window-title-must-hold-still.md)）。攒够几天真实运行之后应该复核一次：
+
+```bash
+./scripts/heartbeat-dev probe window-title --from-database \
+  --since '<起>' --until '<止>' --dwell-seconds 1,1.5,2
+```
+
+看四件事：
+
+- spinner 这类循环噪声的停留时长上限有没有超过 1.5 秒。超过就压不住，要放宽。
+- 真实标题变更的停留时长分布有没有下探到 1.5 秒附近。下探了就说明会误吸真实变更，要收紧。
+- 按 1 / 1.5 / 2 秒三档模拟出来的 Record 条数与标题陈旧占比，拐点在哪一档。
+- 抖动是不是仍然集中在少数几个应用上。如果散开了，说明这是普遍形态而不是个别应用的毛病，规则本身要重新想。
+
+**还欠一次原生复核**：探针拿到 Accessibility 权限后跑一次，才能回答通知与轮询各自贡献了多少读数、有没有漏送。数据库口径的读数是投影之后的结果，分不清这两者。
+
 ## 手工验证
 
 启动常驻 Collector 后依次验证：切换两个应用；在同一应用切换窗口和标题；锁屏再解锁；允许 Accessibility 与 Input Monitoring 后按键、单击和双向滚动。Web 回放应在一个时间轴显示相应 Track。锁屏和休眠会改变系统状态，不应由自动测试擅自触发。

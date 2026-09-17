@@ -7,6 +7,8 @@ namespace Heartbeat.Collector.Desktop.Mac;
 
 internal static class DesktopProtocols
 {
+    // 各协议 value 里的 deviceId 由 Collector 配置的 Target 直接传入，不是 CONTEXT.md 定义的 Device Identity。
+    // 跨系统重装保留设备身份是 ADR-0003 的决定，尚未实现，见 docs/recording-open-questions.md 的「设备关联」。
     public const string CollectorKey = "heartbeat.collector.desktop.macos";
 
     public static readonly TrackDeclaration Application = new(

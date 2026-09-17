@@ -148,4 +148,4 @@ dotnet test tests/Heartbeat.Dev.Tests
 
 `./scripts/heartbeat-dev` 在 Unix/macOS 上使用，Windows 使用 `scripts/heartbeat-dev.cmd`；两者只负责启动同一个 .NET 10 CLI。日常手动启动与 Agent 验证共用这一入口：`env` 管理运行环境，`verify` 选择测试，`quality` 比较结构质量，`scenario` 运行场景，`probe` 在宿主机上量真实读数（也能从本地数据库导出同样格式的读数），`artifacts` 管理证据。完整命令见[工程验证](verification.md)。
 
-当前开发栈已实测 Hub 在后端离线时接管 macOS Record、后端恢复后写入 PostgreSQL、Web 通过真实 API 展示 Record，以及 Next 与 .NET watcher 热更新。
+当前开发栈已实测 Hub 在后端离线时接管 macOS Record、后端恢复后写入 PostgreSQL，以及 Next 与 .NET watcher 热更新。「Web 通过真实 API 展示 Record」这一段属于待验证：`.artifacts/verification/` 里没有对应场景的证据，端到端用例走的是 fixture。想认下来就跑一次真实链路并留下证据。

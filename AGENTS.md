@@ -13,7 +13,13 @@ Until the rewrite is complete, this project will not be deployed. All rewrite ch
 
 When a task reveals a design or architecture issue, explain it and confirm the proposed decision with the user before implementing it. Continue independent fixes within already agreed rules while that decision is pending.
 
+Three kinds of decision always need an ADR under `docs/adr/`: which component owns a responsibility, what a protocol means, and where the authority for a piece of data lives. Anything smaller can live in the relevant doc or README.
+
 ## Agent skills
+
+### Closeout
+
+Before finishing a task, run through `docs/agents/closeout.md`. It lists the mistakes this project has actually made, not generic best practice.
 
 ### Issue tracker
 

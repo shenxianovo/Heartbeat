@@ -2,6 +2,11 @@ using System.Text.Json;
 
 namespace Heartbeat.Recording;
 
+/// <summary>
+/// 一份观测结果。Record 只有创建路径，没有修改已存内容或时间的方法：ADR-0006 接受了结果更正的模型语义，
+/// 机制尚未设计，见 docs/recording-open-questions.md 的「历史纠错与删除」。给这个类加 setter 或更新方法
+/// 之前，先看那一条。
+/// </summary>
 public sealed class Record
 {
     private Record()

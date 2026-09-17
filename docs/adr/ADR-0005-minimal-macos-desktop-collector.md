@@ -48,6 +48,8 @@ Clean Room 已确认完整桌面范围，因此最小轮询实现被一个当前
 
 应用/窗口/标题通知直接建立新区间，不用点击确认。四类 Away 原因独立计数并可重叠；全部恢复后才重新开始应用 Record。明确离开、能力失败和超过最大确认间隔会断开应用连续性，恢复后即使值相同也使用新 ID。最大间隔可配置，当前默认是采样间隔两倍。
 
+> 注记（2026-09-17）：实现取值是采样间隔的三倍，见 [`CollectorOptions.cs`](../../src/Collectors/Heartbeat.Collector.Desktop.Mac/CollectorOptions.cs) 的 `maximum-gap-seconds` 默认值，与本决策当时写的两倍不同。原因是两倍之下一次晚到的 tick 就够判成断采，而那属于正常调度抖动；改成三倍后要连续两次缺失确认才判定观察中断。这个放宽由 [`ADR-0007`](ADR-0007-foreground-window-is-its-own-observation.md) 决策第 4 条落地，本决策原文不改。
+
 Accessibility 与 Input Monitoring 独立降级；权限缺失或观察器失败写入历史 observation status，其他能力继续工作，权限恢复后进程自行重试。状态 available 不构成完整性承诺。
 
 本演进仍不加入 Hub 前持久队列、容量治理、浏览器 URL、输入文本或设备身份注册。ADR-0006 接受的通用结果更正机制也不在此实现；当前持续 Record 仍只按 ADR-0002 单调续期。

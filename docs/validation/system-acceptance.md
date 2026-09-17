@@ -8,7 +8,7 @@
 
 本轮恢复 macOS 应用、窗口/标题、四类独立 Away Signal、非文本物理输入与历史能力状态；共用内存缓冲及 Hub 交接；统一时间轴组合来源，查询时对已存 Point Record 分桶，局部原始明细分页读取。未知协议仍可查看时间位置与 JSON。Windows 只盘点，见 [能力对照](system-capability-inventory.md)。
 
-Hub 前允许丢失，不引入持久队列或容量治理。结果更正只接受了 [ADR-0006](../adr/ADR-0006-result-correction-semantics.md) 的模型语义，本轮没有实现修改历史 Record Value 的机制。默认最大应用确认间隔为采样间隔两倍，是可配置的临时规则。
+Hub 前允许丢失，不引入持久队列或容量治理。结果更正只接受了 [ADR-0006](../adr/ADR-0006-result-correction-semantics.md) 的模型语义，本轮没有实现修改历史 Record Value 的机制。默认最大应用确认间隔为采样间隔三倍，是可配置的临时规则；取三倍是为了让连续两次缺失确认才判定观察中断，一次晚到的 tick 算正常调度抖动。
 
 ## Standards
 
@@ -54,11 +54,13 @@ Hub 前允许丢失，不引入持久队列或容量治理。结果更正只接�
 
 | 检查 | 结果 |
 | --- | --- |
-| `dotnet test Heartbeat.slnx --no-restore --verbosity minimal` | 237/237：领域 26、desktop 65、Hub 53、真实 PostgreSQL 集成 93 |
-| Web `npm run verify` | 类型检查、ESLint、Prettier、Vitest 15/15、生产构建通过 |
-| Web `npm run test:e2e` | Chromium 9/9；认证和 API 使用 fixture，不等于真实采集到页面联调 |
+| `dotnet test Heartbeat.slnx --no-restore --verbosity minimal` | 全绿，零失败零跳过；领域、desktop、Hub 与真实 PostgreSQL 集成四层都在内 |
+| Web `npm run verify` | 类型检查、ESLint、Prettier、Vitest、生产构建全部通过 |
+| Web `npm run test:e2e` | Chromium 用例全绿；认证和 API 使用 fixture，不等于真实采集到页面联调 |
 | 真实 macOS Collector → 临时 Hub | 1 秒间隔常驻 8 秒，接管 1 条持续 7.005443 秒的应用 Record、3 条能力状态；未出现交接错误，Collector 退出码 0 |
 | Hub 重启 | 临时 SQLite 中 Record 数量、ID 和内容保持一致；此处是正常进程重启验证 |
+
+各套测试的分层口径与每次运行的实际数量见[工程验证](../verification.md)，这份记录不保存会过期的数量快照。
 
 原生冒烟使用独立 loopback Hub、随机测试 Owner/密钥和临时 SQLite；认证与后端设为不可达本地端口，不访问正式服务。只输出记录数量、区间长度与能力状态，不输出窗口标题；临时进程、日志和数据库均已清理。此次机器报告 application、window_title、input available，这只证明当次观察器状态，不证明输入完整。
 

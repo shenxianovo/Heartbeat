@@ -1,6 +1,6 @@
 # Hub 记录交付
 
-已确认分工：**采集 Collector 做，交付 Hub 做，存储后端做，展示前端做。**
+已确认分工：**采集 Collector 做，交付 Hub 做，存储后端做，展示前端做。** 这个分工为什么这么切、否掉了哪些替代方案，见 [ADR-0009](adr/ADR-0009-delivery-belongs-to-hub.md)。
 
 Collector 形成 Record；Hub 持久接管后独立完成后端注册、Track 解析、上传和重试。首次接入不需要预先获取后端 ID，也不要求后端在线。后端保存公共记录结构和任意 JSON value，具体采集内容由 Collector 定义、由读取和展示模块解释。
 
@@ -160,7 +160,7 @@ dotnet run --project src/Collectors/Heartbeat.Collector.Desktop.Mac -- \
 dotnet test Heartbeat.slnx --no-restore --verbosity quiet
 ```
 
-2026-09-14 验收修复后全量 .NET 回归 237/237 通过，零失败、零跳过：领域 26、desktop 65、Hub 53、PostgreSQL 集成 93。前端另有 15 项 Vitest 和 9 项 Chromium 端到端测试通过。
+2026-09-14 验收修复后跑过一次全量 .NET 回归，零失败、零跳过，领域、desktop、Hub 与真实 PostgreSQL 集成四层都在内；前端的 Vitest 与 Chromium 端到端同样全绿。分层口径和每次运行的实际数量见[工程验证](verification.md)与 `.artifacts/verification/` 下的记录，这里不抄快照数字。
 
 2026-09-12 原生 macOS 冒烟使用临时数据库、测试凭据和不可达后端：desktop 未提供后端 ID，`--once` 成功提交实际前台应用记录；强制终止并重启 Hub 后，相同 Record ID 仍在队列，映射保持未解析。临时进程和数据已清理。该验证是进程终止恢复，不是物理断电测试。
 

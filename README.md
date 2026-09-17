@@ -13,8 +13,11 @@ Collector 向 Hub 提交逻辑声明与 Record，不持有后端 ID。Hub 持久
 - [架构决策](docs/adr)：已经接受的关键设计决策，新增 ADR 使用 [仓库模板](docs/adr/ADR-TEMPLATE.md)。
 - [记录存储模型](docs/recording-storage-model.md)：`Timeline -> Collector -> Track -> Record` 四层模型、字段和约束。
 - [记录 HTTP 接口](docs/recording-api.md)：Collector 注册、Track 获取、Record 上传和 Track 级重放查询。
-- [桌面前台应用协议 v1](docs/protocols/desktop-application-foreground-v1.md)：当前已实现的首个 Record 协议。
+- [桌面前台应用协议 v1](docs/protocols/desktop-application-foreground-v1.md)：前台应用读数的 value 结构与区间断开规则。
 - [桌面前台窗口协议 v1](docs/protocols/desktop-window-foreground-v1.md)：与前台应用分开的窗口标题观测。
+- [桌面离开信号协议 v1](docs/protocols/desktop-system-away-v1.md)：锁屏、会话失活与休眠的独立原因区间。
+- [桌面输入事件协议 v1](docs/protocols/desktop-input-event-v1.md)：非文本物理键鼠事件。
+- [桌面观察状态协议 v1](docs/protocols/desktop-observation-status-v1.md)：各项采集能力的历史可用状态。
 - [记录模型持久化说明](src/Backend/Heartbeat.Infrastructure/Persistence/README.md)：EF Core / PostgreSQL 映射约定。
 - [macOS Collector](src/Collectors/Heartbeat.Collector.Desktop.Mac/README.md)：最小桌面 Collector 的运行方式。
 - [Hub 记录交付](docs/hub-record-delivery.md)：SQLite 持久接管、后台上传、恢复及桌面接入。
@@ -22,7 +25,9 @@ Collector 向 Hub 提交逻辑声明与 Record，不持有后端 ID。Hub 持久
 - [本地开发](docs/development.md)：统一 Docker 启动、热更新、生产镜像验收与首次配置。
 - [工程验证](docs/verification.md)：Git 变更选择、结构质量闸门、可复现场景与证据目录。
 - [未决设计](docs/recording-open-questions.md)：未交接数据、断采规则、设备关联等尚未确认的问题。
+- [验收记录](docs/validation)：[系统验收](docs/validation/system-acceptance.md)、[平台能力对照](docs/validation/system-capability-inventory.md)、[回放体验验收](docs/validation/experience-visualization.md)，含各自的真机验收边界。
 - [Agent 规则](AGENTS.md)：协作约束和本仓库的工程规则。
+- [Agent 协作细则](docs/agents)：[issue 追踪](docs/agents/issue-tracker.md)、[triage 标签](docs/agents/triage-labels.md)、[领域文档布局](docs/agents/domain.md)、[收口检查](docs/agents/closeout.md)。
 
 ## 项目结构
 
