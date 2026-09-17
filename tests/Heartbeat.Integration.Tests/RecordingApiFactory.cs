@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Heartbeat.Persistence;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -18,15 +19,65 @@ internal static class RecordingApiFactory
 {
     public const string OwnerHeader = "X-Test-Owner";
 
+    /// <summary>
+    /// Host with the authentication schemes replaced by a header-driven test handler. Use this for
+    /// endpoint authorization and owner-scoping coverage; it proves nothing about JWT validation.
+    /// </summary>
     public static WebApplicationFactory<Program> Create(string connectionString, TimeProvider timeProvider) =>
+        Create(
+            connectionString,
+            timeProvider,
+            settings: null,
+            configureAuthentication: services => services
+                .AddAuthentication(options =>
+                {
+                    options.DefaultAuthenticateScheme = TestAuthenticationHandler.SchemeName;
+                    options.DefaultChallengeScheme = TestAuthenticationHandler.SchemeName;
+                    options.DefaultScheme = TestAuthenticationHandler.SchemeName;
+                })
+                .AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(
+                    TestAuthenticationHandler.SchemeName,
+                    _ => { }));
+
+    /// <summary>
+    /// Host running its own authentication registration (<c>AddHeartbeatAuthentication</c>) with the
+    /// real JWT validation pipeline. Only the identity provider's discovery document is stubbed, so
+    /// signature, issuer, lifetime, type and audience checks are the production ones.
+    /// </summary>
+    public static WebApplicationFactory<Program> CreateWithRealAuthentication(
+        string connectionString,
+        TimeProvider timeProvider,
+        TestIdentityProvider identityProvider,
+        string? oidcAudience = null) =>
+        Create(
+            connectionString,
+            timeProvider,
+            TestIdentityProvider.Settings(oidcAudience),
+            configureAuthentication: services => services
+                .AddSingleton<IPostConfigureOptions<JwtBearerOptions>>(
+                    new TestIdentityProviderMetadata(identityProvider)));
+
+    private static WebApplicationFactory<Program> Create(
+        string connectionString,
+        TimeProvider timeProvider,
+        IReadOnlyDictionary<string, string?>? settings,
+        Action<IServiceCollection> configureAuthentication) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Testing");
             builder.ConfigureAppConfiguration((_, configuration) =>
-                configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                var values = new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:Heartbeat"] = connectionString,
-                }));
+                };
+                foreach (var setting in settings ?? new Dictionary<string, string?>())
+                {
+                    values[setting.Key] = setting.Value;
+                }
+
+                configuration.AddInMemoryCollection(values);
+            });
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<DbContextOptions<HeartbeatDbContext>>();
@@ -35,15 +86,7 @@ internal static class RecordingApiFactory
                     options.UseNpgsql(connectionString));
                 services.RemoveAll<TimeProvider>();
                 services.AddSingleton<TimeProvider>(timeProvider);
-                services.AddAuthentication(options =>
-                    {
-                        options.DefaultAuthenticateScheme = TestAuthenticationHandler.SchemeName;
-                        options.DefaultChallengeScheme = TestAuthenticationHandler.SchemeName;
-                        options.DefaultScheme = TestAuthenticationHandler.SchemeName;
-                    })
-                    .AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(
-                        TestAuthenticationHandler.SchemeName,
-                        _ => { });
+                configureAuthentication(services);
             });
         });
 
