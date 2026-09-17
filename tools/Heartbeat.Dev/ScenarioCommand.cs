@@ -12,9 +12,12 @@ internal sealed class ScenarioCommand(
             await output.WriteLineAsync("""
                 Usage: heartbeat-dev scenario <replay-fixture|delivery|native-desktop> [options]
 
-                replay-fixture  Browser flow with deterministic mocked auth and API responses
-                delivery        API/database integration tests for record upload and replay
+                replay-fixture  Re-runs the replay browser test against mocked auth and API, keeping evidence
+                delivery        Re-runs the record upload/replay integration tests against PostgreSQL, keeping evidence
                 native-desktop  Guided macOS collector session against an isolated local Hub
+
+                replay-fixture and delivery re-run a subset of the first verification layer;
+                only native-desktop runs processes and a database that no test harness stands in for.
 
                 Options:
                   --include-sensitive-evidence  Persist native logs that may contain user context
@@ -41,7 +44,10 @@ internal sealed class ScenarioCommand(
             options, "replay-fixture", "npm",
             ["--prefix", web, "run", "test:e2e", "--", "replay.spec.ts"],
             run => PlaywrightEvidenceEnvironment.Create(run, WebVerificationWorkspace.Environment(repository)),
-            ["Browser auth and API responses are mocked; this does not prove the deployed end-to-end chain."],
+            [
+                "This re-runs a subset of the existing browser tests and keeps their evidence; it is not an independent scenario.",
+                "Browser auth and API responses are mocked; this does not prove the deployed end-to-end chain.",
+            ],
             cancellationToken);
     }
 
@@ -55,7 +61,10 @@ internal sealed class ScenarioCommand(
                 "--results-directory", "{artifact}", "--verbosity", "minimal",
             ],
             _ => null,
-            ["Exercises API and PostgreSQL integration; it does not run Web, Hub, and Collector as one real chain."],
+            [
+                "This re-runs a subset of the existing integration tests and keeps their evidence; it is not an independent scenario.",
+                "Exercises API and PostgreSQL integration; it does not run Web, Hub, and Collector as one real chain.",
+            ],
             cancellationToken);
 
     private async Task<int> RunAutomatedAsync(
@@ -79,7 +88,7 @@ internal sealed class ScenarioCommand(
             await File.WriteAllTextAsync(Path.Combine(run.Directory, "command.log"), result.StdOut + result.StdErr, cancellationToken);
             if (result.ExitCode != 0) await output.WriteLineAsync(result.StdErr.Length > 0 ? result.StdErr : result.StdOut);
             return result.ExitCode;
-        }, options.IncludeSensitiveEvidence);
+        }, options.IncludeSensitiveEvidence, output);
     }
 
     private static string Quote(string value) => value.Contains(' ', StringComparison.Ordinal) ? $"\"{value}\"" : value;

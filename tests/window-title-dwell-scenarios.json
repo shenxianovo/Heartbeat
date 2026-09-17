@@ -1,0 +1,117 @@
+{
+  "$schema-note": [
+    "Window-title dwell scenarios, shared by two test suites so the probe simulation and the",
+    "production rule cannot drift apart unnoticed:",
+    "  tests/Heartbeat.Collector.Desktop.Mac.Tests/WindowTitleDwellReconciliationTests.cs",
+    "    drives the authoritative rule (src/Collectors/Heartbeat.Collector.Desktop.Mac/",
+    "    DesktopRecordProjector.cs, ObserveWindowTitle / SettlePendingTitle) and asserts",
+    "    productionWindowRecords.",
+    "  tests/Heartbeat.Dev.Tests/WindowTitleDwellReconciliationTests.cs drives the developer-CLI",
+    "    probe simulation (tools/Heartbeat.Dev/WindowTitleChurn.cs, Simulate) and asserts",
+    "    probeWindowRecords.",
+    "Both suites also assert that the two counts differ only where 'divergence' explains why, so a",
+    "difference has to be written down here instead of remembered. Readings default to origin",
+    "'poll'; a null title means the title could not be read.",
+    "windowRecords counts window-track records: the production side counts distinct staged window",
+    "records, the probe side reports DwellOutcome.WindowRecords."
+  ],
+  "scenarios": [
+    {
+      "name": "repeated-readings-are-not-changes",
+      "why": "Polling re-reports the same value; a repeat is not a change on either side.",
+      "dwellSeconds": 1.5,
+      "readings": [
+        { "second": 0, "application": "com.example.App", "title": "Document" },
+        { "second": 2, "application": "com.example.App", "title": "Document" },
+        { "second": 4, "application": "com.example.App", "title": "Document" }
+      ],
+      "probeWindowRecords": 1,
+      "productionWindowRecords": 1,
+      "divergence": null
+    },
+    {
+      "name": "spinner-frames-never-settle",
+      "why": "A three-frame spinner at ~0.96s per frame outlives no dwell window; the title that follows it does.",
+      "dwellSeconds": 1.5,
+      "readings": [
+        { "second": 0, "application": "com.example.Terminal", "title": "frame-a build" },
+        { "second": 0.96, "application": "com.example.Terminal", "title": "frame-b build" },
+        { "second": 1.92, "application": "com.example.Terminal", "title": "frame-c build" },
+        { "second": 2.88, "application": "com.example.Terminal", "title": "frame-a build" },
+        { "second": 3.84, "application": "com.example.Terminal", "title": "frame-b build" },
+        { "second": 4.8, "application": "com.example.Terminal", "title": "frame-c build" },
+        { "second": 6, "application": "com.example.Terminal", "title": "build succeeded" },
+        { "second": 8, "application": "com.example.Terminal", "title": "build succeeded" }
+      ],
+      "probeWindowRecords": 2,
+      "productionWindowRecords": 2,
+      "divergence": null
+    },
+    {
+      "name": "navigation-intermediate-state-is-absorbed",
+      "why": "The address bar shows up first and is overwritten; only the page title settles.",
+      "dwellSeconds": 1.5,
+      "readings": [
+        { "second": 0, "application": "com.example.Browser", "title": "Document" },
+        { "second": 0.3, "application": "com.example.Browser", "title": "https://example.test" },
+        { "second": 0.6, "application": "com.example.Browser", "title": "Report" },
+        { "second": 5, "application": "com.example.Browser", "title": "Report" }
+      ],
+      "probeWindowRecords": 2,
+      "productionWindowRecords": 2,
+      "divergence": null
+    },
+    {
+      "name": "application-switch-needs-no-dwell",
+      "why": "A switch is not noise: the new window's title is accepted however briefly it is held.",
+      "dwellSeconds": 1.5,
+      "readings": [
+        { "second": 0, "application": "com.example.App", "title": "Document" },
+        { "second": 0.2, "application": "com.example.Other", "title": "Inbox" },
+        { "second": 2, "application": "com.example.Other", "title": "Inbox" }
+      ],
+      "probeWindowRecords": 2,
+      "productionWindowRecords": 2,
+      "divergence": null
+    },
+    {
+      "name": "zero-dwell-accepts-every-confirmed-change",
+      "why": "With no dwell every change that a later reading confirms becomes its own record.",
+      "dwellSeconds": 0,
+      "readings": [
+        { "second": 0, "application": "com.example.App", "title": "Document" },
+        { "second": 0.1, "application": "com.example.App", "title": "Other" },
+        { "second": 0.2, "application": "com.example.App", "title": "Third" },
+        { "second": 0.3, "application": "com.example.App", "title": "Third" }
+      ],
+      "probeWindowRecords": 3,
+      "productionWindowRecords": 3,
+      "divergence": null
+    },
+    {
+      "name": "unreadable-title",
+      "why": "A reading with no title: the window observation stops, the foreground application does not.",
+      "dwellSeconds": 1.5,
+      "readings": [
+        { "second": 0, "application": "com.example.App", "title": "Document" },
+        { "second": 1, "application": "com.example.App", "title": null },
+        { "second": 3, "application": "com.example.App", "title": null }
+      ],
+      "probeWindowRecords": 2,
+      "productionWindowRecords": 1,
+      "divergence": "Deliberate: the production rule ends the window record and opens nothing for an unreadable title, while the probe treats 'title unavailable' as one more observed value so the gap is visible in the churn report. Probe dwell counts are therefore an upper bound whenever titles go unreadable; the probe reports titleUnavailableReadings alongside them for that reason."
+    },
+    {
+      "name": "zero-dwell-last-reading-has-nothing-to-confirm-it",
+      "why": "The last reading of a session introduces a new title that no later reading confirms.",
+      "dwellSeconds": 0,
+      "readings": [
+        { "second": 0, "application": "com.example.App", "title": "Document" },
+        { "second": 1, "application": "com.example.App", "title": "Report" }
+      ],
+      "probeWindowRecords": 2,
+      "productionWindowRecords": 1,
+      "divergence": "Deliberate: production settles a pending title on the next reading, so a title introduced by the final reading is not written yet, while the probe measures the trailing hold against the end of the probe and counts it at dwell 0. The difference is bounded by one record at the tail of a session."
+    }
+  ]
+}

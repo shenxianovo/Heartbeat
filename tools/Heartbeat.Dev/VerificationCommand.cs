@@ -50,7 +50,7 @@ internal sealed class VerificationCommand(
                     break;
                 }
                 return exitCode;
-            });
+            }, notes: output);
     }
 
     private IReadOnlyDictionary<string, string?>? EvidenceEnvironment(VerificationStep step, ArtifactRun run)

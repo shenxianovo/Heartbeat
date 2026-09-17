@@ -32,6 +32,45 @@ public sealed class VerificationPlanningTests
         Assert.Equal(["dotnet", "web", "browser"], plan.Steps.Select(step => step.Name));
     }
 
+    /// <summary>
+    /// 契约文档写的是后端与采集端都要遵守的语义。改了它必须跑 .NET 测试，否则「文档改了、实现没改」
+    /// 这类偏差没有任何检查会发现。
+    /// </summary>
+    [Theory]
+    [InlineData("docs/protocols/desktop-collector.md")]
+    [InlineData("docs/recording-api.md")]
+    [InlineData("docs/recording-storage-model.md")]
+    [InlineData("docs/hub-record-delivery.md")]
+    public async Task ContractDocumentsSelectTheDotnetSuite(string path)
+    {
+        var plan = await PlanAsync($"{path}\0");
+
+        Assert.Equal("changed", plan.Mode);
+        Assert.Equal("dotnet", Assert.Single(plan.Steps).Name);
+    }
+
+    /// 验证口径的说明和实现要一起对：改了它就把 CLI 测试跑一遍。
+    [Fact]
+    public async Task TheVerificationDocumentSelectsTheCliSuite()
+    {
+        var plan = await PlanAsync("docs/verification.md\0");
+
+        Assert.Equal("developer-cli", Assert.Single(plan.Steps).Name);
+    }
+
+    /// 其余散文没有可执行的检查，明说没有，而不是假装跑了什么。
+    [Theory]
+    [InlineData("docs/development.md")]
+    [InlineData("README.md")]
+    [InlineData("AGENTS.md")]
+    public async Task ProseStillSelectsNothing(string path)
+    {
+        var plan = await PlanAsync($"{path}\0");
+
+        Assert.Equal("changed", plan.Mode);
+        Assert.Empty(plan.Steps);
+    }
+
     private static Task<VerificationPlan> PlanAsync(string trackedPaths)
     {
         var runner = new StubRunner([

@@ -7,8 +7,15 @@ internal enum SourceRole
     Production,
     Test,
     Tooling,
+
+    /// 构建与环境描述：MSBuild、解决方案、Dockerfile、compose YAML、前端 *.config.*。
+    /// 它们是代码，但不是被度量的产品语料，所以不计入生产 LOC。
+    Build,
     Documentation,
     Generated,
+
+    /// 认得出语言，但不落在任何一个已声明的根下。宁可单列出来让人看见，也不塞进 tooling。
+    Unclassified,
 }
 
 internal sealed record SourceFileMetric(string Path, string Language, SourceRole Role, int Lines);
@@ -21,9 +28,30 @@ internal sealed record SourceSnapshot(string Revision, IReadOnlyList<SourceFileM
             .OrderBy(group => group.Key, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Sum(file => file.Lines), StringComparer.Ordinal));
 
-    public int ProductionLines => Files.Where(file => file.Role == SourceRole.Production).Sum(file => file.Lines);
-    public int TestLines => Files.Where(file => file.Role == SourceRole.Test).Sum(file => file.Lines);
-    public int ToolingLines => Files.Where(file => file.Role == SourceRole.Tooling).Sum(file => file.Lines);
+    public int ProductionLines => Lines(SourceRole.Production);
+    public int ProductionFiles => Files.Count(file => file.Role == SourceRole.Production);
+    public int TestLines => Lines(SourceRole.Test);
+    public int ToolingLines => Lines(SourceRole.Tooling);
+    public int BuildLines => Lines(SourceRole.Build);
+    public int UnclassifiedLines => Lines(SourceRole.Unclassified);
+
+    /// 未归类文件的路径，按目录归并，让「兜底去哪了」在报告里看得见。
+    public IReadOnlyList<string> UnclassifiedPaths => [.. Files
+        .Where(file => file.Role == SourceRole.Unclassified)
+        .Select(file => file.Path)
+        .Order(StringComparer.Ordinal)];
+
+    /// 基点树里代码实际住在哪些顶层目录。选错基点时用它说明「你的源码在这儿，但这里不是生产根」。
+    /// 只报目录：仓库根下的单个文件不是「代码住的地方」，把它们也写成 `x/` 只会让诊断显得像在猜。
+    public IReadOnlyList<string> CodeRoots => [.. Files
+        .Where(file => file.Role is not (SourceRole.Documentation or SourceRole.Generated))
+        .Select(file => file.Path.Split('/'))
+        .Where(segments => segments.Length > 1)
+        .Select(segments => segments[0])
+        .Distinct(StringComparer.Ordinal)
+        .Order(StringComparer.Ordinal)];
+
+    private int Lines(SourceRole role) => Files.Where(file => file.Role == role).Sum(file => file.Lines);
 }
 
 internal static class SourceCorpus
@@ -53,6 +81,15 @@ internal static class SourceCorpus
             [".md"] = "Markdown",
         };
 
+    /// 归类规则是显式的、有顺序的：生成物 → 测试 → 文档 → 构建描述 → 生产根 → 工具根 → 未归类。
+    /// 没有兜底：不在任何一个已声明的根下的文件归 Unclassified，由报告单列，而不是悄悄记进 tooling。
+    private static readonly string[] ProductionRoots = ["src/"];
+
+    private static readonly string[] ToolingRoots =
+        ["tools/", "scripts/", ".agents/", ".config/", ".github/"];
+
+    private static readonly string[] BuildLanguages = ["MSBuild", "XML", "Dockerfile", "YAML"];
+
     public static bool TryClassify(string path, out string language, out SourceRole role)
     {
         var normalized = path.Replace('\\', '/');
@@ -66,30 +103,28 @@ internal static class SourceCorpus
             return false;
         }
 
-        if (IsGenerated(normalized, name))
-        {
-            role = SourceRole.Generated;
-        }
-        else if (IsTest(normalized, name))
-        {
-            role = SourceRole.Test;
-        }
-        else if (language == "Markdown")
-        {
-            role = SourceRole.Documentation;
-        }
-        else if (normalized.StartsWith("src/", StringComparison.Ordinal))
-        {
-            role = SourceRole.Production;
-        }
-        else
-        {
-            role = SourceRole.Tooling;
-        }
+        role = Classify(normalized, name, language);
         return true;
     }
 
-    private static bool IsGenerated(string path, string name) =>
+    private static SourceRole Classify(string path, string name, string language) =>
+        IsGenerated(name) ? SourceRole.Generated
+        : IsTest(path, name) ? SourceRole.Test
+        : language == "Markdown" ? SourceRole.Documentation
+        : IsBuild(name, language) ? SourceRole.Build
+        : StartsWithAny(path, ProductionRoots) ? SourceRole.Production
+        : StartsWithAny(path, ToolingRoots) ? SourceRole.Tooling
+        : SourceRole.Unclassified;
+
+    private static bool StartsWithAny(string path, IReadOnlyList<string> roots) =>
+        roots.Any(root => path.StartsWith(root, StringComparison.Ordinal));
+
+    /// 构建与环境描述不是产品语料：项目文件、解决方案、镜像与 compose、前端工具链配置。
+    private static bool IsBuild(string name, string language) =>
+        BuildLanguages.Contains(language, StringComparer.Ordinal)
+        || name.Contains(".config.", StringComparison.Ordinal);
+
+    private static bool IsGenerated(string name) =>
         name.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase)
         || name.EndsWith("ModelSnapshot.cs", StringComparison.OrdinalIgnoreCase)
         || name is "next-env.d.ts"

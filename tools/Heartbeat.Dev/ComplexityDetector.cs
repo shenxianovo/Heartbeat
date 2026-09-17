@@ -38,64 +38,52 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
         ICollection<string> commands,
         CancellationToken cancellationToken)
     {
-        var temporaryRoot = OperatingSystem.IsMacOS() ? "/private/tmp" : Path.GetTempPath();
-        var worktree = Path.Combine(temporaryRoot, $"heartbeat-quality-{Guid.NewGuid():N}");
-        try
+        var (workspace, error) = await new BaselineWorkspaceCache(repository, runner)
+            .PrepareAsync(baseRef, commands, cancellationToken);
+        if (workspace is null)
         {
-            var added = await runner.CaptureAsync(
-                "git", ["worktree", "add", "--detach", worktree, baseRef], null, cancellationToken);
-            if (added.ExitCode != 0)
-            {
-                return Unavailable($"Could not materialize Git base '{baseRef}': {LastUsefulLine(added)}");
-            }
-
-            commands.Add($"git worktree add --detach <temporary> {baseRef}");
-            var baseline = await ScanAsync(worktree, restore: true, artifactDirectory, commands, cancellationToken);
-            var current = await ScanAsync(repository.Root, restore: false, artifactDirectory, commands, cancellationToken);
-            if (baseline.Error is not null || current.Error is not null)
-            {
-                return Unavailable(baseline.Error ?? current.Error!);
-            }
-
-            var regressions = FindRegressions(baseline.Hotspots, current.Hotspots);
-            var baselineErosion = CalculateErosion(baseline.Functions);
-            var currentErosion = CalculateErosion(current.Functions);
-            var coupling = new CouplingObservation(baseline.Coupling ?? [], current.Coupling ?? []);
-            var reportPath = Path.Combine(artifactDirectory, "complexity.json");
-            await File.WriteAllTextAsync(reportPath, JsonSerializer.Serialize(new
-            {
-                threshold = Threshold,
-                coupling,
-                baseline = baseline.Hotspots,
-                current = current.Hotspots,
-                regressions,
-                baselineErosion,
-                currentErosion,
-                erosionDelta = currentErosion.Ratio - baselineErosion.Ratio,
-                currentHighRiskFunctions = current.Functions.Where(item => item.Complexity > Threshold),
-            }, JsonOptions.Indented) + Environment.NewLine, cancellationToken);
-            return new ComplexityQualityReport(
-                true,
-                regressions.Count == 0,
-                regressions.Count == 0 ? null : "One or more production methods crossed complexity 10 or grew above it.",
-                current.Hotspots.Count,
-                regressions.Count,
-                reportPath,
-                baselineErosion,
-                currentErosion,
-                currentErosion.Ratio - baselineErosion.Ratio,
-                current.Hotspots,
-                regressions,
-                coupling);
+            return Unavailable(error!);
         }
-        finally
+
+        var baseline = await ScanAsync(
+            workspace.Path, workspace.NeedsRestore, artifactDirectory, commands, cancellationToken);
+        var current = await ScanAsync(repository.Root, restore: false, artifactDirectory, commands, cancellationToken);
+        if (baseline.Error is not null || current.Error is not null)
         {
-            if (Directory.Exists(worktree))
-            {
-                await runner.CaptureAsync(
-                    "git", ["worktree", "remove", "--force", worktree], null, CancellationToken.None);
-            }
+            return Unavailable(baseline.Error ?? current.Error!);
         }
+
+        workspace.MarkRestored();
+        var regressions = FindRegressions(baseline.Hotspots, current.Hotspots);
+        var baselineErosion = CalculateErosion(baseline.Functions);
+        var currentErosion = CalculateErosion(current.Functions);
+        var coupling = new CouplingObservation(baseline.Coupling ?? [], current.Coupling ?? []);
+        var reportPath = Path.Combine(artifactDirectory, "complexity.json");
+        await File.WriteAllTextAsync(reportPath, JsonSerializer.Serialize(new
+        {
+            threshold = Threshold,
+            coupling,
+            baseline = baseline.Hotspots,
+            current = current.Hotspots,
+            regressions,
+            baselineErosion,
+            currentErosion,
+            erosionDelta = currentErosion.Ratio - baselineErosion.Ratio,
+            currentHighRiskFunctions = current.Functions.Where(item => item.Complexity > Threshold),
+        }, JsonOptions.Indented) + Environment.NewLine, cancellationToken);
+        return new ComplexityQualityReport(
+            true,
+            regressions.Count == 0,
+            regressions.Count == 0 ? null : "One or more production methods crossed complexity 10 or grew above it.",
+            current.Hotspots.Count,
+            regressions.Count,
+            reportPath,
+            baselineErosion,
+            currentErosion,
+            currentErosion.Ratio - baselineErosion.Ratio,
+            current.Hotspots,
+            regressions,
+            coupling);
     }
 
     private async Task<ComplexityScan> ScanAsync(
@@ -144,9 +132,11 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
         }
         try
         {
-            var functions = ErosionScanner.FromCSharpAnalyzer(root, ParseCSharp(root, buildOutput));
+            var all = ParseAllCSharp(root, buildOutput);
+            var production = all.Where(IsProduction).ToArray();
+            var functions = ErosionScanner.FromCSharpAnalyzer(root, production);
             if (functions.Count == 0)
-                return new ComplexityScan([], [], "CA1502 produced no production function metrics; check analyzer configuration.");
+                return new ComplexityScan([], [], NoProductionMetrics(root, all));
             return new ComplexityScan(
                 functions.Where(item => item.Complexity > Threshold).Select(item => item.Hotspot).ToArray(),
                 functions,
@@ -158,6 +148,28 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
         }
     }
 
+    /// <summary>
+    /// 一棵树里 CA1502 一条生产函数都没量到，最常见的原因不是分析器坏了，而是基点选错了：
+    /// 那棵树的源码不在 `src/` 下。诊断要把「量到了多少个函数、它们住在哪儿」说出来，并给出锚点。
+    /// </summary>
+    internal static string NoProductionMetrics(string root, IReadOnlyList<ComplexityHotspot> all)
+    {
+        if (all.Count == 0)
+        {
+            return "CA1502 produced no function metrics at all; check that the analyzer package is available "
+                + "(tools/Heartbeat.Dev/CodeMetrics.props enables CA1502) and that the build actually compiled C# projects.";
+        }
+
+        var roots = all.Select(hotspot => hotspot.Path.Split('/')[0])
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        return $"CA1502 measured {all.Count} C# functions at '{root}', but none of them classify as production code "
+            + $"(they live under {string.Join(", ", roots.Select(item => item + "/"))}; production code is measured under src/). "
+            + $"This is a wrong-base symptom, not an analyzer problem: pick a base inside the rewrite lineage, "
+            + $"anchor {RewriteLineage.Describe()} — {RewriteLineage.StockCommand()}";
+    }
+
     private async Task<ComplexityScan> ScanTypeScriptAsync(
         string root,
         ICollection<string> commands,
@@ -165,9 +177,13 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
     {
         var web = Path.Combine(root, "src", "Frontend", "Heartbeat.Web");
         if (!Directory.Exists(web)) return new ComplexityScan([], [], null);
-        if (!string.Equals(root, repository.Root, StringComparison.Ordinal))
+        var executable = OperatingSystem.IsWindows()
+            ? Path.Combine(web, "node_modules", ".bin", "eslint.cmd")
+            : Path.Combine(web, "node_modules", ".bin", "eslint");
+        if (!File.Exists(executable) && !string.Equals(root, repository.Root, StringComparison.Ordinal))
         {
-            commands.Add("npm ci --ignore-scripts (temporary Git base)");
+            // 基线树的依赖按 commit 缓存：命中就不再装一遍，这一步以前是跨基点度量最慢也最容易断的地方。
+            commands.Add("npm ci --ignore-scripts (cached Git base)");
             var installed = await ProcessRunner.CaptureAsync(
                 web, "npm", ["ci", "--ignore-scripts"], cancellationToken);
             if (installed.ExitCode != 0)
@@ -175,9 +191,6 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
                 return new ComplexityScan([], [], $"Could not install the baseline TypeScript scanner: {LastUsefulLine(installed)}");
             }
         }
-        var executable = OperatingSystem.IsWindows()
-            ? Path.Combine(web, "node_modules", ".bin", "eslint.cmd")
-            : Path.Combine(web, "node_modules", ".bin", "eslint");
         if (!File.Exists(executable))
         {
             return new ComplexityScan([], [], $"TypeScript complexity scanner is missing. Run npm --prefix {web} ci");
@@ -218,6 +231,10 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
     }
 
     internal static IReadOnlyList<ComplexityHotspot> ParseCSharp(string root, string output) =>
+        [.. ParseAllCSharp(root, output).Where(IsProduction)];
+
+    /// 所有 CA1502 诊断，不按角色过滤：过滤前的数量与路径是判断「基点是不是选错了」的依据。
+    internal static IReadOnlyList<ComplexityHotspot> ParseAllCSharp(string root, string output) =>
         output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
             .Select(line => CSharpDiagnostic().Match(line))
             .Where(match => match.Success)
@@ -227,7 +244,6 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
                 match.Groups["symbol"].Value,
                 int.Parse(match.Groups["complexity"].Value, System.Globalization.CultureInfo.InvariantCulture),
                 int.Parse(match.Groups["column"].Value, System.Globalization.CultureInfo.InvariantCulture)))
-            .Where(IsProduction)
             .Distinct()
             .OrderBy(hotspot => hotspot.Path, StringComparer.Ordinal)
             .ThenBy(hotspot => hotspot.Line)

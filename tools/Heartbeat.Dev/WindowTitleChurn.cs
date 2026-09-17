@@ -48,8 +48,21 @@ internal sealed record WindowTitleChurnReport(
     IReadOnlyList<ApplicationChurn> Applications,
     IReadOnlyList<DwellOutcome> Dwells);
 
+/// <summary>
 /// 把探针读数变成「按现在的规则会切出多少条 Record」和「静置多久能压掉多少」的可比数字。
 /// 这里只做算术，不决定规则：参数由数据决定，而不是先猜一个阈值再找证据。
+/// </summary>
+/// <remarks>
+/// 规则权威是 <c>src/Collectors/Heartbeat.Collector.Desktop.Mac/DesktopRecordProjector.cs</c>
+/// （<c>ObserveWindowTitle</c> / <c>SettlePendingTitle</c>）。这里的 <c>Simulate</c> 是它的一份
+/// 模拟，供选参数用；两边都改才算改完。项目引用方向是 tools → src 不通，所以用一张共享场景表
+/// 对账：<c>tests/window-title-dwell-scenarios.json</c> 每行给出同一串读数在同一静置参数下
+/// 「模拟会留几条 Record」与「生产规则会留几条 Record」，
+/// <c>tests/Heartbeat.Dev.Tests/WindowTitleDwellReconciliationTests.cs</c> 钉住前者，
+/// <c>tests/Heartbeat.Collector.Desktop.Mac.Tests/WindowTitleDwellReconciliationTests.cs</c>
+/// 用真实 projector 钉住后者，任一侧漂移就红。两个数字不一致的行（读不到标题、静置为 0 时的末尾读数）
+/// 必须在表里写清原因，测试会检查这一点——已知差异靠表维持，不靠记忆。
+/// </remarks>
 internal static class WindowTitleChurn
 {
     public static readonly double[] DefaultDwellSeconds = [0.25, 0.5, 1, 2, 5];

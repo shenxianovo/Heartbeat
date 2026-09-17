@@ -65,7 +65,8 @@ internal sealed class ProbeCommand(RepositoryContext repository, IProcessRunner 
         return await EvidenceSession.ExecuteAsync(repository, "probe", "window-title",
             limitations,
             evidence => ObserveAsync(options, evidence, cancellationToken),
-            options.IncludeSensitiveEvidence);
+            options.IncludeSensitiveEvidence,
+            output);
     }
 
     private async Task<int> ObserveAsync(

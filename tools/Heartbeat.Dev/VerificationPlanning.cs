@@ -97,15 +97,26 @@ internal static class VerificationPlanner
             return CheckSelection.Web | (NeedsBrowser(path) ? CheckSelection.Browser : CheckSelection.None);
         if (path.StartsWith("src/", StringComparison.Ordinal)
             || path.StartsWith("tests/Heartbeat.", StringComparison.Ordinal)) return CheckSelection.Dotnet;
+        if (IsContract(path)) return CheckSelection.Dotnet;
         if (path.StartsWith("docs/", StringComparison.Ordinal)
-            || path is "README.md" or "AGENTS.md") return CheckSelection.None;
+            || path is "README.md" or "AGENTS.md" or "CONTEXT.md") return CheckSelection.None;
         return CheckSelection.Unknown;
     }
+
+    /// <summary>
+    /// 契约文档不是散文：协议、录制 API 与存储模型写的是后端与采集端都要遵守的语义。
+    /// 改了它至少要把 .NET 测试跑一遍，否则「文档改了、实现没改」这类偏差没有任何检查会发现。
+    /// </summary>
+    private static bool IsContract(string path) =>
+        path.StartsWith("docs/protocols/", StringComparison.Ordinal)
+        || path is "docs/recording-api.md" or "docs/recording-storage-model.md" or "docs/hub-record-delivery.md";
 
     private static bool IsCli(string path) =>
         path.StartsWith("tools/Heartbeat.Dev/", StringComparison.Ordinal)
         || path.StartsWith("tests/Heartbeat.Dev.Tests/", StringComparison.Ordinal)
-        || path.StartsWith(".agents/skills/verify-heartbeat/", StringComparison.Ordinal);
+        || path.StartsWith(".agents/skills/verify-heartbeat/", StringComparison.Ordinal)
+        // 验证口径的说明与实现必须一起对：改了它就把 CLI 测试跑一遍。
+        || path is "docs/verification.md";
 
     private static bool NeedsBrowser(string path) =>
         path.Contains("/src/app/", StringComparison.Ordinal)

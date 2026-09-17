@@ -116,6 +116,7 @@ internal sealed class NativeDesktopScenario(
                     ]), CancellationToken.None);
                 collector?.Dispose();
                 await output.WriteLineAsync($"Scenario evidence: {run.Directory}");
+                await EvidenceSession.CollectAsync(repository, output);
             }
         }
         return exitCode;
