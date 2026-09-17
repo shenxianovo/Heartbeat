@@ -1,269 +1,118 @@
-# 记录存储模型规范
+# 记录存储模型
 
 状态：已确认
 
-本文档记录逐表评审后确认的存储设计。`Timeline`、`Collector`、`Track` 和 `Record` 四张表的结构已经定案。
-
-持续状态的区间续期规则已由 [ADR-0002](adr/ADR-0002-monotonic-record-extension.md) 确认，不增加表字段；内部原子存储、批量 HTTP 上传和 Track 级最小重放查询已实现。HTTP 契约见[记录接口文档](recording-api.md)。
-
-## 关系
+本文档是 `Timeline -> Collector -> Track -> Record` 持久模型及其不变量的权威来源。HTTP 契约见[记录接口](recording-api.md)。
 
 ```mermaid
 erDiagram
     TIMELINE ||--o{ COLLECTOR : contains
     COLLECTOR ||--o{ TRACK : contains
     TRACK ||--o{ RECORD : contains
-
-    TIMELINE {
-        uuid id PK
-        uuid owner_id UK
-        text display_name
-        timestamptz created_at
-    }
-
-    COLLECTOR {
-        uuid id PK
-        uuid timeline_id FK
-        text key
-        text target
-        text display_name
-        timestamptz created_at
-    }
-
-    TRACK {
-        uuid id PK
-        uuid collector_id FK
-        text type
-        integer version
-        text time_mode
-        text end_mode
-        timestamptz created_at
-    }
-
-    RECORD {
-        uuid id PK
-        uuid track_id FK
-        timestamptz started_at
-        timestamptz ended_at
-        timestamptz observed_at
-        timestamptz received_at
-        jsonb value
-    }
 ```
+
+所有 ID 均为应用生成的 UUID v7。外键使用限制删除，不级联清除下层数据。
 
 ## Timeline
 
-一行表示一个 Owner 的完整记录空间。更换设备、重新安装 Collector、进入新会话、切换项目或跨越时间范围，都不会创建新的 Timeline。
+一行表示一个 Owner 的完整记录空间。设备、安装、会话、项目或时间范围变化都不创建新 Timeline。
 
-| 字段 | PostgreSQL 类型 | 可空 | 可修改 | 含义 |
-| --- | --- | --- | --- | --- |
-| `id` | `uuid` | 否 | 否 | Heartbeat 自己的身份，由应用生成 UUID v7。 |
-| `owner_id` | `uuid` | 否 | 否 | Auth 签发令牌中经验证的 UUID `sub`。它是外部引用，不是数据库外键。 |
-| `display_name` | `text` | 否 | 是 | Timeline 自己负责的显示名称。可以使用 Auth 显示名称初始化，但不要求与 Auth 保持同步。 |
-| `created_at` | `timestamptz` | 否 | 否 | Heartbeat 创建 Timeline 的时间，由应用时钟提供。 |
+| 字段 | 类型 | 约束与含义 |
+| --- | --- | --- |
+| `id` | `uuid` | 主键，不可修改 |
+| `owner_id` | `uuid` | 唯一；来自验签令牌的 UUID `sub`，不是数据库外键 |
+| `display_name` | `text` | 可修改；去除首尾空格后非空 |
+| `created_at` | `timestamptz` | 应用创建时间，不可修改 |
 
-约束：
-
-- 主键：`id`。
-- 唯一约束：`owner_id`；一个 Owner 只有一个 Timeline。
-- `display_name` 去除首尾空格后不能为空。
-- 删除 Timeline 是显式的数据清除操作；子表外键不级联删除。
-
-不保存：
-
-- 第二个通用 `name`。
-- Owner 的用户名、邮箱或登录身份。
-- Timeline 时区。
-- `updated_at`。
+Timeline 不保存 Owner 的用户名、邮箱、时区或 `updated_at`。
 
 ## Collector
 
-一行表示 Timeline 中一个 Collector 实现与一个 Target 的稳定绑定。它不是进程、安装实例、凭据或当前运行配置。
-
-Collector 的稳定地址是：
+一行表示 Collector 实现与 Target 的稳定绑定，地址为：
 
 ```text
 (timeline_id, key, target)
 ```
 
-| 字段 | PostgreSQL 类型 | 可空 | 可修改 | 含义 |
-| --- | --- | --- | --- | --- |
-| `id` | `uuid` | 否 | 否 | Heartbeat 自己的身份，由应用生成 UUID v7。 |
-| `timeline_id` | `uuid` | 否 | 否 | 所属 Timeline，是指向 `timelines.id` 的数据库外键。 |
-| `key` | `varchar(255)` | 否 | 否 | 全局唯一且不包含版本的 Collector manifest ID。 |
-| `target` | `varchar(255)` | 否 | 否 | 由对应 Collector 定义并规范化的稳定 Target 身份。 |
-| `display_name` | `varchar(255)` | 否 | 是 | Collector 自己负责的显示名称。 |
-| `created_at` | `timestamptz` | 否 | 否 | Heartbeat 注册 Collector 的时间，由应用时钟提供。 |
+| 字段 | 类型 | 约束与含义 |
+| --- | --- | --- |
+| `id` | `uuid` | 主键，不可修改 |
+| `timeline_id` | `uuid` | 指向 Timeline，不可修改 |
+| `key` | `varchar(255)` | 小写点号分段、无版本的 manifest ID |
+| `target` | `varchar(255)` | Collector 规范化的稳定 Target |
+| `display_name` | `varchar(255)` | 可修改的展示名 |
+| `created_at` | `timestamptz` | 应用创建时间，不可修改 |
 
-约束：
+`key`、`target` 和 `display_name` 去除首尾空格后非空。注册按稳定地址幂等；重复注册可更新 `display_name`，最后成功提交者生效。重启、重装、升级或凭据轮换不改变地址；地址任一部分变化时创建新 Collector。
 
-- 主键：`id`。
-- 外键：`timeline_id` 指向 `timelines.id`，限制级联删除。
-- 唯一约束：`(timeline_id, key, target)`。
-- `key`、`target` 和 `display_name` 去除首尾空格后不能为空，且均不得超过 255 个字符。
-- `key` 是小写、使用点号分段且不包含版本的标识，例如 `heartbeat.collector.desktop.macos`。
-
-生命周期规则：
-
-- 注册 Collector 要求 Timeline 已经存在，不隐式创建 Timeline。
-- 注册按 `(timeline_id, key, target)` 幂等解析：地址尚不存在时创建 Collector，已经存在时返回原 Collector。
-- 重复注册可以更新 `display_name`；并发更新时，以最后成功提交的值为准。
-- `key` 和 `target` 不变时，重启、重新安装、程序升级、凭据轮换或重新连接都复用原 Collector。
-- `timeline_id`、`key` 或 `target` 改变时，创建新的 Collector。
-- Collector 负责提供规范化的 `target`；Heartbeat 不解释其内部格式，只去除首尾空格并按完整字符串精确比较。
-- 本表不表示 Collector 是否已经安装、启用、连接或健康。
-- 安装身份和运行身份与 Target 身份相互独立。
-
-不保存：
-
-- Collector 配置或凭据。
-- 安装身份。
-- 启用、连接或健康状态。
-- 通用 JSON metadata。
-- `updated_at`。
-
-Payload 不能只根据 Collector 的 `key` 解码。一个 Collector 可以产生多种记录；具体的数据协议由 Track 的 `(type, version)` 标识。
+Heartbeat 不解释 Target 的格式。Collector 不表示安装、进程、凭据、配置、连接或健康状态。
 
 ## Track
 
-一行表示 Timeline 上的一条同类数据轨道。它汇集一个 Collector 产生、由同一数据协议解释且具有相同时间行为的 Record。Track 是多条 Record 的容器和固定协议，不表示某一次具体观测。
+一行表示一个 Collector 产生、由同一协议解释且时间行为相同的一组 Record。
 
-确定结构：
+| 字段 | 类型 | 约束与含义 |
+| --- | --- | --- |
+| `id` | `uuid` | 主键，不可修改 |
+| `collector_id` | `uuid` | 指向 Collector，不可修改 |
+| `type` | `text` | 全局数据协议名 |
+| `version` | `integer` | 正整数 Payload 版本 |
+| `time_mode` | `text` | `point` 或 `range` |
+| `end_mode` | `text` | Point 为空；Range 为 `explicit` 或 `next_record` |
+| `created_at` | `timestamptz` | 应用创建时间，不可修改 |
 
-```text
-id uuid NOT NULL
-collector_id uuid NOT NULL
-type text NOT NULL
-version integer NOT NULL
-time_mode text NOT NULL
-end_mode text NULL
-created_at timestamptz NOT NULL
-```
+唯一约束为 `(collector_id, type, version)`。已有 Track 的时间定义不能修改。
 
-- `id` 是 Heartbeat 自己的身份，由应用生成 UUID v7。
-- `collector_id` 是所属 Collector 的数据库外键，创建后不可修改；存在 Track 时限制删除 Collector。
-- `type` 是 Record 数据协议的全局名称。不同平台和不同 Collector 可以产生相同 `type`，例如 Windows、macOS 和 Android Collector 可以共同产生焦点窗口类型。
-- `version` 是该 `type` 的 Payload 格式版本。
-- Payload 解码器由 `(type, version)` 选择，不依赖具体 Collector。
-- Heartbeat 后端不维护 `(type, version)` 注册表，也不解释或校验具体 Payload。创建 Track 的调用方同时声明固定的时间定义；生产者与消费者按 `(type, version)` 约定 Payload 语义。
-- [`desktop.application.foreground` v1](protocols/desktop-application-foreground-v1.md) 是当前 Collector 使用的一项协议，但它不限制后端接收其他类型或版本。
-- `time_mode` 表示 Record 占据一个时间点还是一段时间区间，取值为 `point` 或 `range`。
-- `end_mode` 只用于 `range`，取值为 `explicit` 或 `next_record`。
-- `point` 的 `end_mode` 必须为空。
-- `range + explicit` 的结束时间由本条 Record 明确给出。
-- `range + next_record` 的结束时间由下一条 Record 的开始时间动态推导，不回写前一条 Record，因此迟到或乱序数据可以通过重新排序得到正确结果。
-- 同一个 Collector 的同一个 `type` 和 `version` 只有一条 Track，不增加 `key`、`layer` 或其他分轨字段。多条 Point Record 可以具有相同时间，并在 Payload 中携带各自内容。
-- 同一 Track 可以包含多个观测对象；Explicit Range Record 可以重叠，并按各自 Record ID 独立续期。窗口等对象身份由具体协议在 `value` 中表达，展示分组不要求存储分轨。该规则不为 `next_record` 增加按对象推导后继的能力。
-- 桌面焦点等需要确认持续性的状态采集使用 `range + explicit`，按下文规则延长已确认区间，不依赖下一条 Record 跨越观测空白。`range + next_record` 保留，其适用协议和断采规则仍需另行确定。
-- `created_at` 由应用时钟提供。
-- 不保存通用 JSON metadata 或 `updated_at`。
-- Track 不保存显示名称；界面可以按自己认识的 `(type, version)` 提供本地化名称，否则显示原始 `type`。
+Payload 解码只依赖 `(type, version)`，不依赖 Collector。后端不维护协议注册表，也不解释或校验具体 Payload。
 
-约束：
-
-- 主键：`id`。
-- 外键：`collector_id` 指向 `collectors.id`，限制级联删除。
-- 唯一约束：`(collector_id, type, version)`。
-- `version` 必须大于零。
-- `time_mode = point` 时，`end_mode` 必须为空。
-- `time_mode = range` 时，`end_mode` 必须为 `explicit` 或 `next_record`。
-
-获取接口：
-
-- `POST /api/v1/collectors/{collectorId}/tracks`，请求包含 `type`、`version`、`timeMode` 与可空 `endMode`，创建或复用该 Collector 下的唯一 Track。
-- Collector 必须已存在且属于当前 Owner；缺失和不属于该 Owner 均返回 `404 collector_not_found`。
-- 未知 `type` 或 `version` 可以创建；已有 Track 的 `timeMode` 或 `endMode` 与请求不一致时返回 `409 track_definition_conflict`，不修改历史 Track。
-- 重复和并发获取保留已有 ID 与创建时间，成功始终返回 `200`。字段使用 HTTP 的 camelCase 格式，包括 `collectorId`、`timeMode`、`endMode` 和 `createdAt`。
-- Hub 根据 Collector 提交的逻辑声明获取 Track，并持久保存后端映射；Collector 不依赖后端 Track ID。具体契约见[记录接口文档](recording-api.md)和 [Hub 交付](hub-record-delivery.md)。
+- `range + explicit` 的结束时间由本条 Record 给出。
+- `range + next_record` 的结束时间由下一条 Record 的开始时间动态推导，不回写前一条 Record。
+- 同一 Track 可以包含多个观测对象和重叠的 Explicit Range。
+- Track 不保存展示名、metadata 或 `updated_at`。
 
 ## Record
 
-一行表示符合所属 Track 数据协议的一份观测记录，可以表达一个时间点或一段已确认持续的观测。Collector 负责把平台数据规范化为 Track 的全局 `(type, version)` 协议；Record 不保存对人的活动解释，也不要求保存平台 API 返回的原始字节。
+一行表示一个时间点或一段已确认持续的观测。
 
-已经定案的字段：
+| 字段 | 类型 | 约束与含义 |
+| --- | --- | --- |
+| `id` | `uuid` | Collector 生成；续期和重试复用 |
+| `track_id` | `uuid` | 指向 Track，不可修改 |
+| `started_at` | `timestamptz` | 时间点或区间开始 |
+| `ended_at` | `timestamptz` | 仅 `range + explicit` 使用，且不早于开始时间 |
+| `observed_at` | `timestamptz` | Collector 获得信息的时间；空表示等于 `started_at` |
+| `received_at` | `timestamptz` | 后端首次成功接收时间 |
+| `value` | `jsonb` | 协议定义的任意 JSON 值 |
 
-```text
-id uuid NOT NULL
-track_id uuid NOT NULL
-started_at timestamptz NOT NULL
-ended_at timestamptz NULL
-observed_at timestamptz NULL
-received_at timestamptz NOT NULL
-value jsonb NOT NULL
-```
+后端按所属 Track 验证 `ended_at` 的形状。Record 不冗余时间模式，也不保存通用 `sequence`、`source_key`、原始 Payload 或 metadata。需要来源信息或上游序号时，由具体协议写入 `value`。
 
-- `id` 由 Collector 在创建 Record 时生成 UUID v7。同一 Record 的续期和上传重试必须复用原 `id`；身份相同不代表请求内容必然相同，写入时仍需校验固定字段。
-- `track_id` 是所属 Track 的数据库外键，创建后不可修改；存在 Record 时限制删除 Track。
-- `started_at` 是 Record 在 Timeline 中的时间点或区间开始。
-- `ended_at` 只在 `range + explicit` 中有值；`point` 和 `range + next_record` 中为空。
-- `observed_at` 是 Collector 获得该信息的时间；为空时表示与 `started_at` 相同。
-- `received_at` 是 Heartbeat 接收 Record 的时间，由 Heartbeat 应用时钟生成；续期和重试保留首次成功写入时的值。
-- `value` 保存任意已定义的 JSON 值，可以是对象、数组、数字、字符串、布尔值或 null。后端不按 Track `(type, version)` 注册、解码或校验具体结构。
-- 普通 Record 创建后不可修改。持续状态的 `range + explicit` Record 允许仅延长 `ended_at`，固定身份、起点和观测值；规则见下文。正常续期不提供区间缩短、内容替换或通用修正链。历史纠错与删除需要单独设计，包括防止删除后的旧重传恢复记录；不能仅凭删除和新增处于同一事务，就认为后续重传问题已解决。
-- 不增加通用原始平台 Payload 字段。某种 Record 需要保留来源信息时，由该类型自己的协议把它放入 `value`。
-- 跨平台应用身份不直接写入 Record 的观测值。Record 使用统一结构保存平台、标识种类和平台原生标识；读取或分析时，再由可更新的应用身份注册表把 Windows 可执行文件、macOS Bundle ID 和 Android Package Name 等解析为同一个 Application Identity。
-- Record 保留 Timeline 时间、Collector 观察时间和 Heartbeat 接收时间三个时间维度。实时采集时，Timeline 时间与观察时间通常相同；历史导入时可以不同；离线上传时接收时间可以更晚。
-- Collector 观察时间使用可空覆盖值。它为空时表示观察时间等于 Timeline 时间，只在二者不同时保存实际值。
-- 不保存通用 `sequence`。默认按 `(track_id, started_at, id)` 获得稳定顺序；某种来源确实需要额外序号时，由自己的协议将序号放入 `value`。
-- 不保存通用 `source_key`。Record 的网络重试通过复用同一个 `id` 实现幂等；少数增量拉取或历史导入 Collector 所需的游标、上游事件去重等状态，属于该 Collector 实现自己的同步机制，不进入通用 Record 模型。
+默认稳定顺序为 `(track_id, started_at, id)`，初始索引也只覆盖这三列。其他索引在出现实际查询需求后增加。
 
-约束：
+平台原生应用标识保存在协议 value 中，跨平台 Application Identity 由读取或分析阶段解析，不改写历史 Record。
 
-- 主键：`id`。
-- 外键：`track_id` 指向 `tracks.id`，限制级联删除。
-- 检查约束：`ended_at IS NULL OR ended_at >= started_at`。
-- `ended_at` 与 Track 时间模式是否一致，由写入代码根据所属 Track 验证，不使用跨表触发器，也不在 Record 中冗余 `time_mode` 或 `end_mode`。
+## 持续区间续期
 
-索引：
+[ADR-0002](adr/ADR-0002-monotonic-record-extension.md) 规定 `range + explicit` 的持续状态按以下规则续期：
 
-- 初始只增加 `(track_id, started_at, id)` B-tree 索引，用于按 Track 稳定重放。
-- 暂不为 `received_at`、`observed_at` 或 `ended_at` 建索引；出现实际查询需求后再增加。
+- 首次确认创建 Record；状态不变且持续确认时复用 ID，只延长 `ended_at`。
+- 状态变化、断采、重启或能力丢失后创建新 Record；值相同不能跨 Observation Gap 连接。
+- 数据库原子执行 `ended_at = max(已有值, 收到值)`。
+- 同一 ID 的 `track_id`、`started_at`、规范化后的 `observed_at`、`value` 和时间形状必须一致。
+- JSON 对象属性顺序和空白差异不构成 value 冲突。
+- 重试和续期保留首次 `received_at`。
 
-重放查询：
+当前普通写入不支持区间缩短、value 替换或通用更正链。[ADR-0006](adr/ADR-0006-result-correction-semantics.md) 已确认未来模型需要支持结果更正，机制仍待设计。
 
-- `GET /api/v1/tracks/{trackId}/records` 返回当前 Owner 所属 Track 的元信息和 Record 列表。
-- 查询参数可包含 `from`、`to` 和 `limit`。时间窗按 `[from, to)` 处理，`limit` 默认 200，最大 500。
-- 返回顺序固定为 `(started_at, id)`，不跨 Track 聚合，不解释 Payload，不按设备或应用分组。
-- `range + explicit` Record 使用区间交叠进入窗口；没有 `ended_at` 的 Record 使用 `started_at` 进入窗口。
-- 当前查询不计算 `range + next_record` 的派生结束时间；该语义在有实际协议时另行设计。
-- Point Track 可以通过 `GET /api/v1/tracks/{trackId}/point-counts` 在指定 `[from, to)` 窗口按查询对齐的固定桶宽计数。查询最多 10,000 个桶，只返回非空桶，不解释 Payload；原始详情仍使用 Record 分页接口。
+TTL 只用于判断是否缺少及时确认，不修改 `ended_at`，也不阻止补传。Collector 使用系统时间建立基准，以单调时钟推进连续区间；只有实际观测才能续期。该规则不校正错误的初始绝对时间。
 
-## 持续状态的区间续期
+Collector 保存尚未交给 Hub 的快照；Hub 在 SQLite 事务提交后接管，再独立上传后端。当前 macOS Collector 的交接前缓冲仍在内存，见 [Hub 交付](hub-record-delivery.md)。
 
-以下规则用于持续状态的 `range + explicit` Record，不把所有记录类型都变成可修改的快照。
+## Device Identity
 
-- Collector 首次确认状态时创建 Record；状态不变且持续观测时，复用 ID，延长 `ended_at`。Collector 可以在本地合并多次确认，按上传间隔发送最新的完整区间，不必为每次确认新增 Record。
-- 状态变化时创建新的 Record。实际断采、重启或失去采集能力后，无法确认连续性时，也创建新的 Record；值相同不构成连接两段的依据。
-- 同一 Record 的固定字段不一致时拒绝写入。合法续期在数据库中原子合并：`ended_at = max(已有 ended_at, 收到的 ended_at)`。重复、乱序和迟到上传不会使已确认区间缩短。
-- 固定字段校验包括 `track_id`、`started_at`、规范化后的 `observed_at` 和 `value`。`value` 按 PostgreSQL jsonb 值相等判断，对象属性顺序和空白不同不构成内容变化。
-- 不新增 `revision`、`is_final` 或 Record TTL 字段。普通上传不要求服务端永久封存旧 Record；Collector 停止延长旧 Record 即可。
-- Collector 保留尚未向 Hub 交接的 Record ID 和快照；Hub 在 SQLite 事务提交后确认持久接管，之后独立上传后端。各段重试复用原身份，旧回执不能清除新进度。当前 macOS Collector 的未交接缓冲仍在内存，Hub 接管后的持久队列已实现，见 [Hub 交付](hub-record-delivery.md)。
+[ADR-0003](adr/ADR-0003-device-identity-across-reinstallation.md) 规定 Device Identity 跨系统重装保留，并允许用户手动重新关联。该决定尚未实现，也不改变当前四张表。
 
-TTL 只用于判断是否仍有及时的观测确认。它根据 Collector 的上传间隔设置并留出延迟余量；具体配置位置和算法尚未确定。TTL 到期不修改 `ended_at`，也不阻止后续补传。历史区间只到最后确认的位置，后面的时间显示未知；有效补传可以补回此前未知的区间。收到旧的离线数据本身不证明 Collector 当前仍在正常观测。
+当前由具体协议在 `value` 中携带设备标识。macOS Collector 暂以 Target 作为 `device_id`，不表示 Device Identity 注册表已经实现。
 
-Collector 在一段连续采集开始时同时记录系统时间和单调时钟读数，后续观测时间以基准时间加单调时钟经过的时长计算，避免每次续期直接使用可能跳变的系统时间。只有实际观测才能延长区间，计时器经过的时长本身不构成持续观测依据。跨重启、失去采集能力等边界不假定连续性。
+## 未决事项
 
-该规则保证合法区间更新的合并结果，不保证设备的绝对时间准确。初始时间基准错误仍可能导致整段偏移；时钟异常检测、重新建立基准及跨设备对时需在 Collector 时间实现中明确。当前不承诺自动校正已存历史时间，也不借此开放任意区间回写。
-
-通用 [`IRecordStore`](../src/Backend/Heartbeat.Application/Recording/IRecordStore.cs) 与 PostgreSQL 适配器支持三种 Track 时间定义。Point 和 `range + next_record` 以 `ended_at = null` 幂等写入；`range + explicit` 首次写入完整区间，并以单条 SQL 原子执行 `max(ended_at)` 续期。写入沿 Track、Collector、Timeline 校验 Owner，缺失和不属于该 Owner 的 Track 返回相同结果。所有形态都会检查 ID 对应的 `track_id`、`started_at`、规范化后的 `observed_at`、`value` 与结束时间形状，冲突时不修改已有记录；`received_at` 始终保留首次成功写入值。
-
-`POST /api/v1/tracks/{trackId}/records` 已接入该入口，支持同一 Track 的 1–500 条记录。Application 每批读取一次所属 Track，按公共 ID 与时间规则创建 Record，再逐条写入；当前存储层仍按条复核归属，不包含数据库批量优化。每条独立提交并返回对应输入位置的状态；HTTP 200 不代表所有条目均成功，失败或断连后可以按原 ID 重试。完整契约见[记录接口文档](recording-api.md)。
-
-## 跨 Collector 的设备身份
-
-[ADR-0003](adr/ADR-0003-device-identity-across-reinstallation.md) 已确认：Device Identity 跨系统重装保留，重装后允许用户手动选择已有设备并重新关联。身份延续不表示观测连续，跨重装仍创建新的持续状态 Record。
-
-该决定尚未实现，未改变本文四张表的结构。设备标识的生成与恢复、跨 Collector 配对方式、与 Target 的关系以及错误关联的修正方式仍待讨论。
-
-当前先由需要设备信息的具体协议在 `value` 中携带设备标识，不新增设备表或通用关联结构。最小 macOS Collector 暂时使用 Target 作为 `desktop.application.foreground` v1 的 `device_id`；这只是当前协议载荷的传递方式，不表示 Device Identity 注册表已经实现。共享标识的传递与重装后恢复方式，留到桌面和浏览器采集流程中设计。
-
-## 未决设计
-
-完整清单见[记录模型未决设计](recording-open-questions.md)。
-
-- TTL 的具体配置、算法以及与迟到补传的实时状态判断。
-- `range + next_record` 的适用协议和断采规则。
-- 历史纠错、删除与旧重传的处理。
-- Collector 的时钟异常检测、时间基准重建和未交接数据保护。
-- Track 的协议升级和跨 Collector 关联。
-- 桌面 Collector 与浏览器 Collector 如何共享和恢复协议中的设备标识。
+TTL、`range + next_record`、结果更正、时钟异常、交接前数据保护和设备关联见[未决设计](recording-open-questions.md)。

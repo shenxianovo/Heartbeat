@@ -16,20 +16,16 @@
 | CapsLock | 存在映射，但原 tap 的 flagsChanged 缺口使映射不能证明实际采到 | 经 Windows 物理键路径 | 仅使用物理 stateless 位；锁存 on/off 本身不证明物理按下；设备实际 flags 仍需真机验证 |
 | 鼠标与滚轮 | 左/右/中键；滚轮转换后累计每 ±120 保存一档事件 | 左/右/中键；垂直滚轮经相同 ±120 累计 | 保存鼠标按钮按下、水平/垂直滚动的原生方向和增量，保留 line/point 单位，不按固定阈值计数 |
 | 权限与故障 | Accessibility、Input Monitoring 独立状态与恢复；标题、交互信号、输入录制独立配置 | hook 可用性和采集配置；不能等同 macOS TCC 权限模型 | 独立退化，终端提示权限缺失；保存历史状态；AX 真正读取失败与正常无值区分，订阅实际附着且读取成功才确认恢复 |
-| 区间与交接 | 共用 System 模型与 AppMonitor，30 秒快照循环；ingress、SDK outbox、Runtime 及旧格式兼容 | 同一共用实现 | 五 Track 共用内存缓冲与 Hub 批量交接；采样间隔与断采阈值都由 [`CollectorOptions.cs`](../../src/Collectors/Heartbeat.Collector.Desktop.Mac/CollectorOptions.cs) 配置，默认 5 秒采样、断采阈值取采样间隔三倍；恢复不跨未知空白续接；Hub 前持久化及完整保留保证不在本轮范围 |
+| 区间与交接 | 共用 System 模型与 AppMonitor，30 秒快照循环；ingress、SDK outbox、Runtime 及旧格式兼容 | 同一共用实现 | 五 Track 共用内存缓冲与 Hub 批量交接；默认 5 秒采样、15 秒断采；恢复不跨未知空白续接；Collector 到 Hub 接管前没有持久保证 |
 
 ## 证据入口
 
-旧代码可用 `git show 86911e75459b0038eeba8aec623d2f3d2890a1f3:<path>` 读取，无需切换工作树：
-
-- `collection/desktop/Heartbeat.Collector.System/README.md`、`Observations/SystemActivityModel.cs`、`Collection/AppMonitorService.cs`、`Input/InputEventBuffer.cs`：共用规则、交付及旧实现的验收边界。
-- `collection/desktop/Heartbeat.Desktop.Mac/Observations/MacDesktopObservationSource.cs`、`MacAccessibilityEvents.cs`，以及 `Input/MacInputEventCollector.cs`、`Native/MacInputNativeEventTranslator.cs`：macOS 平台能力。
-- `collection/desktop/Heartbeat.Desktop.Windows/Utils/WindowsDesktopObservationSource.cs`、`WindowsWindowEventMonitor.cs`、`WindowsPowerMonitor.cs`、`LowLevelInputHook.cs`，以及 `Services/InputEventCollector.cs`：Windows 平台能力。未据显示/挂起信号推断 Windows 已有独立锁屏/会话通知。
+旧代码可用 `git show 86911e75459b0038eeba8aec623d2f3d2890a1f3:<path>` 核对；本表不把旧代码存在解释为行为已验证。
 
 当前代码见 [Collector README](../../src/Collectors/Heartbeat.Collector.Desktop.Mac/README.md)、[系统观察源](../../src/Collectors/Heartbeat.Collector.Desktop.Mac/MacSystemObservationSource.cs)、[原生 adapter](../../src/Collectors/Heartbeat.Collector.Desktop.Mac/Native/)、[Record 投影](../../src/Collectors/Heartbeat.Collector.Desktop.Mac/DesktopRecordProjector.cs)。数据含义见 [application](../protocols/desktop-application-foreground-v1.md)、[window](../protocols/desktop-window-foreground-v1.md)、[away](../protocols/desktop-system-away-v1.md)、[input](../protocols/desktop-input-event-v1.md)、[status](../protocols/desktop-observation-status-v1.md) 协议。
 
 ## 验证边界
 
-本轮本地自动回归全绿，.NET、Vitest 与 Playwright 三套都跑过，分层口径与每次运行的实际数量见[工程验证](../verification.md)；这些结果覆盖可控观察、投影、交接及查询展示，不证明所有平台实际回调或数据完整。另已完成真实 Collector → 临时 Hub 持久接管和正常重启冒烟，结果见 [验收记录](system-acceptance.md)。
+本轮 .NET、Vitest 与 Playwright 自动回归通过，真实 Collector 到临时 Hub 的接管和正常重启冒烟也已完成。证据范围见[系统验收](system-acceptance.md)。
 
 尚需常驻真机核对应用/窗口/标题变化、锁屏和休眠及重叠恢复、左右修饰键与 CapsLock、鼠标和双向滚动，以及权限撤销/授予后的独立退化与恢复，再读回对应时间位置和展示。`--once` 不验证这些行为；模拟事件、时钟与权限 fixture 也不能代替它们。main 自身 README 同样保留了两平台原生权限和真实回调的人工验收边界。

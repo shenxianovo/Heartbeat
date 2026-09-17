@@ -16,7 +16,7 @@
 | `end_mode` | `explicit` |
 | 允许持续状态续期 | 是 |
 
-同一个 Collector 的此协议只有一条 Track。不同 Collector 可以使用相同协议，解码不依赖 Collector key。Collector 向 Hub 提交上表中的时间定义，由 Hub 获取后端 Track。
+同一个 Collector 的此协议只有一条 Track。解码只依赖 `(type, version)`。
 
 ## Record value
 
@@ -33,7 +33,7 @@
 ```
 
 - `value` 是包含 `device_id` 与 `application` 的对象，没有窗口字段。
-- `device_id` 是 Collector 提供的稳定设备标识，为非空字符串。它不要求是操作系统安装标识，也不引用设备表；标识的共享与恢复留到 Collector 实现时处理。当前最小 macOS Collector 暂时使用 Target 作为 `device_id`，不表示 Device Identity 注册表已经实现。
+- `device_id` 是 Collector 提供的非空稳定设备标识，不要求是操作系统安装标识，也不引用设备表。当前 macOS Collector 暂用 Target，不表示 Device Identity 已实现。
 - `application` 包含非空的 `platform`、`id_kind` 与 `id`；可选 `display_name` 是平台提供的展示名。
 - `platform` 与 `id_kind` 说明平台及原生标识种类，示例为 `macos` 与 `bundle_id`。协议要求上述结构和非空值，但不要求标识已在真实设备或应用登记表中存在。
 - Collector 负责规范化平台及标识种类；原生 `id` 按平台规则提供。Heartbeat 后端把 `value` 当作任意 JSON 原样存储，不按本协议校验、改写、统一大小写或替换为跨平台 Application Identity；生产者和消费者负责遵守并解释本协议。
@@ -48,10 +48,7 @@
 
 Track 不强制区间互斥，也不把新 Record 自动解释为旧 Record 的结束。协议负责记录观测，重放按已确认区间显示。
 
-统一时间轴的默认概览以应用 `display_name`（缺失时使用平台原生 `id`）为主，并按平台身份分组；窗口标题在自己的 Track 上展示，不替代应用身份成为主分组。该展示投影不合并或改写原 Record，也不能跨越 Observation Gap。
+## 相关文档
 
-## 实现
-
-- [`IRecordStore`](../../src/Backend/Heartbeat.Application/Recording/IRecordStore.cs) — 按 Track 公共时间定义执行幂等写入与 explicit 区间续期。
 - [`ADR-0002`](../adr/ADR-0002-monotonic-record-extension.md) — 已确认区间续期规则。
 - [记录 HTTP 接口](../recording-api.md) — 上传格式、逐条确认、重试和 Track 级读取。

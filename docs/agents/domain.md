@@ -1,51 +1,13 @@
-# Domain Docs
+# 领域文档
 
-How the engineering skills should consume this repo's domain documentation when exploring the codebase.
+本仓库只有一个领域上下文：
 
-## Before exploring, read these
+- `CONTEXT.md` 定义领域术语；
+- `docs/adr/` 记录已经接受的关键决策；
+- `docs/` 下的专题文档定义稳定契约和操作方式。
 
-- **`CONTEXT.md`** at the repo root, or
-- **`CONTEXT-MAP.md`** at the repo root if it exists - it points at one `CONTEXT.md` per context. Read each one relevant to the topic.
-- **`docs/adr/`** - read ADRs that touch the area you're about to work in. In multi-context repos, also check `src/<context>/docs/adr/` for context-scoped decisions.
+开始工作前读 `CONTEXT.md` 和相关 ADR。文档不存在时继续工作，不要为了补齐形式提前创建。
 
-If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill (reached via `/grill-with-docs` and `/improve-codebase-architecture`) creates them lazily when terms or decisions actually get resolved.
+产出中的概念、issue 标题、测试名和设计说明使用 `CONTEXT.md` 的术语，避免使用其中明确排除的同义词。缺少必要术语时，先判断是否用了错误概念；确有领域缺口再补文档。
 
-## File structure
-
-Single-context repo (most repos):
-
-```text
-/
-├── CONTEXT.md
-├── docs/adr/
-│   ├── 0001-event-sourced-orders.md
-│   └── 0002-postgres-for-write-model.md
-└── src/
-```
-
-Multi-context repo (presence of `CONTEXT-MAP.md` at the root):
-
-```text
-/
-├── CONTEXT-MAP.md
-├── docs/adr/                          <- system-wide decisions
-└── src/
-    ├── ordering/
-    │   ├── CONTEXT.md
-    │   └── docs/adr/                  <- context-specific decisions
-    └── billing/
-        ├── CONTEXT.md
-        └── docs/adr/
-```
-
-## Use the glossary's vocabulary
-
-When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`. Don't drift to synonyms the glossary explicitly avoids.
-
-If the concept you need isn't in the glossary yet, that's a signal - either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
-
-## Flag ADR conflicts
-
-If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
-
-> _Contradicts ADR-0007 (event-sourced orders) - but worth reopening because..._
+如果方案与现有 ADR 冲突，明确指出冲突和重开决策的理由，不要静默覆盖。

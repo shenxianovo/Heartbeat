@@ -40,7 +40,7 @@
 
 标题保持相同且持续确认时使用原 Record ID 续期；结束时间只增长。前台应用切换时即使新应用的标题字符串与旧的相同，也结束旧 Record 并新开一条——那是另一个窗口，不是同一段观测。
 
-标题变化要先站稳一段时间（默认 1.5 秒）才承认，滚动字幕、终端 spinner 与浏览器导航中间态活不过这段时间，不会各自成 Record。三条随之而来的规则：
+标题变化要先站稳一段时间（默认 1.5 秒）才承认，滚动字幕、终端 spinner 与浏览器导航中间态不会各自成为 Record：
 
 - **区间从标题第一次出现算起**，不是从承认那一刻算起。静置只推迟写入，不改区间。
 - **没站稳的标题被前一个区间吸收**，不产生 Record，也不留空洞——所以一段连续的前台时间里不会因为标题抖动出现缝隙。
@@ -52,9 +52,8 @@
 
 标题里可能出现文件名、聊天对象、网页标题这类敏感内容。协议原样保存，隐私取舍留给读侧的可见性与过滤，不在采集端做静默丢弃。
 
-## 实现
+## 相关文档
 
-- [`DesktopRecordProjector`](../../src/Collectors/Heartbeat.Collector.Desktop.Mac/DesktopRecordProjector.cs) — 把桌面观测投影成应用与窗口两条 Track。
 - [`desktop.observation.status` v1](desktop-observation-status-v1.md) — `window_title` 能力的可用性与失败原因。
 - [`ADR-0002`](../adr/ADR-0002-monotonic-record-extension.md) — 已确认区间续期规则。
-- [`ADR-0008`](../adr/ADR-0008-window-title-must-hold-still.md) — 标题要站稳才承认，以及那个 1.5 秒是怎么来的。
+- [`ADR-0008`](../adr/ADR-0008-window-title-must-hold-still.md) — 标题静置规则和默认值依据。

@@ -40,5 +40,3 @@
 按键码表达键盘物理位置，不表达字符；按住产生的重复 key-down 被过滤，key-up 不保存。鼠标按钮采用 1 起始编号。滚动保留平台报告的符号和量级，`unit` 为 `line` 或 `point`；协议不设置“活动”阈值，也不把不同单位换算为共同强度。
 
 输入 Track 只说明观察器收到相应系统事件，不证明所有物理输入都被完整捕获。权限状态和观察器故障应结合 `desktop.observation.status` 判断。
-
-macOS 实现同时监听普通键事件与 `flagsChanged`，用独立物理状态位区分左右 Shift、Control、Option、Command 的按下和释放。CapsLock 的锁定标志不能代表物理按下；只在原生事件提供 stateless 物理位时生成按下记录。当前物理位置表不包含 Fn。

@@ -1,13 +1,12 @@
 # Heartbeat
 
-Heartbeat 将一个人在数字世界中的异构活动痕迹记录为时间有序的观测轨道。
+Heartbeat 把一个人在数字世界中的异构活动痕迹记录为时间有序的观测轨道。
 
-职责分工：**采集 Collector 做，交付 Hub 做，存储后端做，展示前端做。**
-Collector 向 Hub 提交逻辑声明与 Record，不持有后端 ID。Hub 持久接管后负责注册、Track 映射与上传；后端保存公共记录结构和任意 JSON value，具体内容由读取和展示模块解释。
+**Collector 采集，Hub 交付，后端存储，前端展示。** Collector 只向 Hub 提交逻辑声明与 Record；Hub 持久接管后完成后端注册、Track 映射和上传。
 
 当前重写完成前不部署，不保留旧接口、旧数据格式或旧客户端的兼容实现。
 
-## 文档目录
+## 文档
 
 - [领域语言](CONTEXT.md)：Heartbeat 记录领域的核心术语。
 - [架构决策](docs/adr)：已经接受的关键设计决策，新增 ADR 使用 [仓库模板](docs/adr/ADR-TEMPLATE.md)。
@@ -18,59 +17,24 @@ Collector 向 Hub 提交逻辑声明与 Record，不持有后端 ID。Hub 持久
 - [桌面离开信号协议 v1](docs/protocols/desktop-system-away-v1.md)：锁屏、会话失活与休眠的独立原因区间。
 - [桌面输入事件协议 v1](docs/protocols/desktop-input-event-v1.md)：非文本物理键鼠事件。
 - [桌面观察状态协议 v1](docs/protocols/desktop-observation-status-v1.md)：各项采集能力的历史可用状态。
-- [记录模型持久化说明](src/Backend/Heartbeat.Infrastructure/Persistence/README.md)：EF Core / PostgreSQL 映射约定。
+- [持久化实现](src/Backend/Heartbeat.Infrastructure/Persistence/README.md)：EF Core / PostgreSQL 映射约定。
 - [macOS Collector](src/Collectors/Heartbeat.Collector.Desktop.Mac/README.md)：最小桌面 Collector 的运行方式。
 - [Hub 记录交付](docs/hub-record-delivery.md)：SQLite 持久接管、后台上传、恢复及桌面接入。
-- [Next 前端](src/Frontend/Heartbeat.Web/README.md)：本地运行、登录配置、Record value 展示组件扩展与验证。
+- [Web 前端](src/Frontend/Heartbeat.Web/README.md)：本地运行、登录和 Record renderer 扩展。
 - [本地开发](docs/development.md)：统一 Docker 启动、热更新、生产镜像验收与首次配置。
 - [工程验证](docs/verification.md)：Git 变更选择、结构质量闸门、可复现场景与证据目录。
 - [未决设计](docs/recording-open-questions.md)：未交接数据、断采规则、设备关联等尚未确认的问题。
-- [验收记录](docs/validation)：[系统验收](docs/validation/system-acceptance.md)、[平台能力对照](docs/validation/system-capability-inventory.md)、[回放体验验收](docs/validation/experience-visualization.md)，含各自的真机验收边界。
+- [验收记录](docs/validation)：带日期的系统、平台能力和回放体验验收事实。
 - [Agent 规则](AGENTS.md)：协作约束和本仓库的工程规则。
 - [Agent 协作细则](docs/agents)：[issue 追踪](docs/agents/issue-tracker.md)、[triage 标签](docs/agents/triage-labels.md)、[领域文档布局](docs/agents/domain.md)、[收口检查](docs/agents/closeout.md)。
 
-## 项目结构
-
-```text
-src/
-├── Backend/
-│   ├── Heartbeat.Api/             # ASP.NET Core 宿主和 HTTP 端点
-│   ├── Heartbeat.Application/     # 用例和应用接口
-│   ├── Heartbeat.Domain/          # 记录模型和不变量
-│   └── Heartbeat.Infrastructure/  # EF Core 和 PostgreSQL 适配器
-├── Collectors/
-│   └── Heartbeat.Collector.Desktop.Mac/  # macOS 观测和 Record 生成
-├── Frontend/
-│   └── Heartbeat.Web/                  # Next.js / React 回放与 value 展示组件
-└── Hub/
-    ├── Heartbeat.Hub.Client/           # 轻量提交结构与 HTTP 客户端
-    ├── Heartbeat.Hub/                  # SQLite 接管、后端映射和上传
-    └── Heartbeat.Hub.Host/             # HTTP 接收和独立后台上传宿主
-
-tests/
-```
-
-解决方案和共享 .NET 构建配置放在仓库根目录，供未来同级的 .NET 项目复用。
-
-## 技术栈
-
-- .NET 10 / ASP.NET Core
-- Entity Framework Core 10 with Npgsql
-- PostgreSQL 18
-- Docker Compose 本地开发环境
-- Next.js App Router / React / TypeScript
-
 ## 本地运行
-
-默认在 Docker 中启动 Web、API 和 PostgreSQL；数据库迁移会在 API 启动前执行：
 
 ```bash
 ./scripts/heartbeat-dev env up
 ```
 
-访问 <http://localhost:3000>。Web 通过同源 `/api/*` 转发到 API；宿主端口只绑定回环地址。认证服务需允许 `http://localhost:3000/auth/callback` 回调。
-
-显式选择服务会替换默认组合，并只补足必要依赖：
+默认启动 Web、API 和 PostgreSQL，访问 <http://localhost:3000>。也可以显式选择服务：
 
 ```bash
 ./scripts/heartbeat-dev env up api
@@ -78,18 +42,10 @@ tests/
 ./scripts/heartbeat-dev env up desktop
 ```
 
-开发模式在容器中运行 `next dev` 和 `dotnet watch`。macOS Desktop Collector 在宿主前台运行，选择 `desktop` 会自动启动 Hub；Hub 不依赖 API 或数据库，可以离线接管记录。
-
-首次启动 Hub 或 Desktop Collector 前完成配置：
+首次启动 Hub 或 Desktop Collector 前运行：
 
 ```bash
 ./scripts/setup.sh
 ```
 
-使用同一服务拓扑构建并运行标准生产镜像：
-
-```bash
-./scripts/heartbeat-dev env up --release
-```
-
-日志、状态、按服务停止、数据重置、端口和环境变量见[本地开发说明](docs/development.md)。普通 `up`/`down` 保留 PostgreSQL 与 Hub SQLite 卷；Initial migration 改变时先运行 `./scripts/heartbeat-dev env reset` 查看计划，再加 `--apply` 明确清空本地数据。
+服务组合、release 模式、日志、重置和配置见[本地开发](docs/development.md)。

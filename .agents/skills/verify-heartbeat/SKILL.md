@@ -5,14 +5,14 @@ description: Verify Heartbeat implementation changes with the repository Develop
 
 # Verify Heartbeat
 
-Use the repository-owned CLI and report what the evidence proves. Do not replace execution with a prose checklist.
+使用仓库 Developer CLI 执行验证，并只陈述证据实际证明的范围。
 
-1. Record the intended Git comparison base before editing. For ordinary dirty-worktree work, use `HEAD`; for branch work, use the user-provided branch or merge base.
-2. Read the relevant entry in [the Feature Map](references/features/README.md) before choosing a scenario. Follow its links to authoritative domain and protocol docs when behavior is involved.
-3. Preview the selected checks with `./scripts/heartbeat-dev verify changed --base <ref> --plan`, then run the same command without `--plan`.
-4. Run `./scripts/heartbeat-dev quality --base <ref>`. Treat an unavailable analyzer as a failed verification, not a pass.
-5. For UI, user-flow, HTTP presentation, performance, or native-runtime changes, run the matching `scenario`. Do not call fixture-backed browser evidence a real end-to-end test.
-6. Inspect the run's `manifest.json` and the relevant machine-readable report. In the final response, name the checks, result, evidence path, and limitations.
-7. If routes, user entry points, stable selectors, renderers, or scenario commands changed, update the Feature Map in the same change.
+1. 修改前确定 Git 比较基点：普通工作树用 `HEAD`，分支工作用用户指定分支或 merge base。
+2. 从 [Feature Map](references/features/README.md) 找到相关能力，并读取它链接的权威文档。
+3. 先运行 `./scripts/heartbeat-dev verify changed --base <ref> --plan`，确认选择结果后去掉 `--plan` 执行。
+4. 运行 `./scripts/heartbeat-dev quality --base <ref>`；分析器不可用视为失败。
+5. UI、用户流程、HTTP 展示、性能或原生运行时变更，还要运行对应 `scenario`。基于 fixture 的浏览器场景不能称为真实端到端测试。
+6. 检查本次运行的 `manifest.json` 和相关机器可读报告。最终说明检查项、结果、证据路径与限制。
+7. 路由、用户入口、稳定选择器、renderer 或场景命令变化时，同步更新 Feature Map。
 
-The command contract, thresholds, evidence sensitivity rules, and setup commands live in [docs/verification.md](../../../docs/verification.md). Keep this skill short and point there rather than duplicating policy.
+命令契约、阈值、敏感证据规则和环境准备以 [工程验证](../../../docs/verification.md) 为准。

@@ -1,32 +1,23 @@
-# Issue tracker: Local Markdown
+# 本地 Issue
 
-Issues and specs for in-progress work live as markdown files in `.scratch/`.
+进行中的规格和 issue 放在 `.scratch/`。一个功能使用一个目录：
 
-`.scratch` is temporary scaffolding. When the implementation is complete, delete the scratch files and move durable knowledge into the right long-lived document: `CONTEXT.md` for domain language, `docs/adr/` for accepted decisions, `docs/` for stable contracts and architecture notes, or the relevant package README for operational usage.
+```text
+.scratch/<feature-slug>/
+├── spec.md
+└── issues/
+    └── 01-<slug>.md
+```
 
-## Conventions
+- 每个 issue 单独成文件，从 `01` 编号。
+- 文件顶部用 `Status:` 记录 [triage 状态](triage-labels.md)。
+- 讨论记录追加到 `## Comments`。
+- 技能要求“发布 issue”时，在对应功能目录创建文件；要求“读取 ticket”时，读取用户给出的路径或编号。
 
-- One feature per directory: `.scratch/<feature-slug>/`
-- The spec is `.scratch/<feature-slug>/spec.md`
-- Implementation issues are one file per ticket at `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` - never a single combined tickets file
-- Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings)
-- Comments and conversation history append to the bottom of the file under a `## Comments` heading
+需要表达任务依赖时，增加 `.scratch/<effort>/map.md`：
 
-## When a skill says "publish to the issue tracker"
+- 子任务用 `Type: research|prototype|grilling|task` 和 `Status: claimed|resolved`。
+- `Blocked by: NN, NN` 表示依赖；依赖全部 `resolved` 后才可领取。
+- 领取前将状态改为 `claimed`；完成后在 `## Answer` 写结论、改为 `resolved`，并把结论指针补到 `map.md`。
 
-Create a new file under `.scratch/<feature-slug>/` (creating the directory if needed).
-
-## When a skill says "fetch the relevant ticket"
-
-Read the file at the referenced path. The user will normally pass the path or the issue number directly.
-
-## Wayfinding operations
-
-Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
-
-- **Map**: `.scratch/<effort>/map.md` - the Notes / Decisions-so-far / Fog body.
-- **Child ticket**: `.scratch/<effort>/issues/NN-<slug>.md`, numbered from `01`, with the question in the body. A `Type:` line records the ticket type (`research`/`prototype`/`grilling`/`task`); a `Status:` line records `claimed`/`resolved`.
-- **Blocking**: a `Blocked by: NN, NN` line near the top. A ticket is unblocked when every file it lists is `resolved`.
-- **Frontier**: scan `.scratch/<effort>/issues/` for files that are open, unblocked, and unclaimed; first by number wins.
-- **Claim**: set `Status: claimed` and save before any work.
-- **Resolve**: append the answer under an `## Answer` heading, set `Status: resolved`, then append a context pointer (gist + link) to the map's Decisions-so-far in `map.md`.
+`.scratch` 只保存一次性实施材料。任务完成后删除对应目录，把长期知识分别移到 `CONTEXT.md`、`docs/adr/`、稳定契约文档或模块 README。

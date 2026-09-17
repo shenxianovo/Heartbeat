@@ -1,39 +1,30 @@
-# Agent Guidelines
+# Agent 规则
 
-## Rewrite constraints
+## 重写约束
 
-Until the rewrite is complete, this project will not be deployed. All rewrite changes are reversible; existing data, clients, and interfaces carry no compatibility requirements.
+重写完成前不部署，也不兼容旧数据、旧客户端或旧接口。
 
-- Change database schemas directly in the Initial migration and update the model snapshot; do not add incremental migrations for rewrite changes.
-- Change protocol fields and their producers/consumers directly; do not add or bump protocol versions to preserve earlier rewrite behavior.
-- Keep one current implementation, updating its tests and documentation together. Avoid compatibility adapters, migration paths, and version negotiation.
-- CI is deferred until the user requests it. Run appropriate checks locally.
+- 数据库结构直接修改 Initial migration 和 model snapshot，不加增量迁移。
+- 协议字段及其生产者、消费者直接一起修改，不为重写期行为升级版本。
+- 只保留当前实现；同步更新代码、测试和文档，不加兼容层、迁移路径或版本协商。
+- 用户明确要求前不建设 CI；在本地运行适当检查。
 
-## Design decisions
+## 设计决策
 
-When a task reveals a design or architecture issue, explain it and confirm the proposed decision with the user before implementing it. Continue independent fixes within already agreed rules while that decision is pending.
+任务暴露设计或架构问题时，先说明影响并请用户确认，再实施该决策；已确认范围内的独立修改可以继续。
 
-Three kinds of decision always need an ADR under `docs/adr/`: which component owns a responsibility, what a protocol means, and where the authority for a piece of data lives. Anything smaller can live in the relevant doc or README.
+以下决策必须在 `docs/adr/` 留 ADR：
 
-## Agent skills
+- 责任归哪个组件；
+- 协议的语义；
+- 某类数据的权威位置。
 
-### Closeout
+较小决定写入对应契约文档或模块 README。
 
-Before finishing a task, run through `docs/agents/closeout.md`. It lists the mistakes this project has actually made, not generic best practice.
+## 工作约定
 
-### Issue tracker
-
-In-progress issues and specs are tracked as local markdown files under `.scratch/<feature-slug>/`. See `docs/agents/issue-tracker.md`.
-`.scratch` is for one-time implementation references only. After a feature is complete, delete the scratch files and move durable knowledge into `CONTEXT.md`, ADRs, `docs/`, or the relevant package README.
-
-### Triage labels
-
-This repo uses the default five canonical triage labels. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-This repo uses a single-context domain doc layout. See `docs/agents/domain.md`.
-
-### Verification
-
-For implementation changes, use the repository verification skill at `.agents/skills/verify-heartbeat/SKILL.md`. It selects checks from a Git base, applies structural quality ratchets, and records scenario evidence without overstating mocked coverage.
+- 开始领域工作前读 `CONTEXT.md` 和相关 ADR，细则见 [领域文档](docs/agents/domain.md)。
+- 进行中的规格和 issue 放在 `.scratch/<feature-slug>/`，完成后删除；细则见 [本地 issue](docs/agents/issue-tracker.md)。
+- 使用固定的五类 triage 标签，见 [标签映射](docs/agents/triage-labels.md)。
+- 实现变更使用 [verify-heartbeat](.agents/skills/verify-heartbeat/SKILL.md) 选择并执行验证。
+- 结束任务前执行 [收口检查](docs/agents/closeout.md)。

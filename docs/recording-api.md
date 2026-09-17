@@ -1,22 +1,18 @@
 # 记录 HTTP 接口
 
-状态：Collector 注册、Track 获取与目录读取、批量 Record 上传和 Track 级重放查询已实现。
+状态：已实现
 
-本文档记录长期有效的 HTTP 契约。一次性实现规格完成后不保留在 `.scratch`，必要信息应沉淀到本文、存储规范、协议文档或 ADR。
-
-写入侧的调用方是 Hub：Collector 向 [Hub 提交逻辑声明和 Record](hub-record-delivery.md)，由 Hub 注册 Collector、获取 Track 并上传。Collector 不直接调用本文的后端写入接口。
+本文档是后端记录 HTTP 契约的权威来源。持久不变量见[存储模型](recording-storage-model.md)。写入接口由 [Hub](hub-record-delivery.md) 调用，Collector 不直接调用后端。
 
 ## 认证
 
-Owner 从已验证令牌的 `sub` claim 取得，必须是 UUID。客户端不能提交 Owner、Timeline、服务端接收时间或其他服务端字段。
+Owner 来自验签令牌的 UUID `sub`。OIDC access token 与 agent session token 均受支持。缺失或非法 `sub` 返回 `401`。
 
-认证复用双 Bearer 方案：`TokenSelector` 根据 JWT header 的 `typ` 选择 OIDC access token 或 agent session token；选中的 JwtBearer scheme 必须完成验签。缺失或非法 `sub` 返回 `401`。
+客户端不能提交 Owner、Timeline、`receivedAt` 或其他服务端字段。资源不存在和不属于当前 Owner 使用相同的 `404`，避免泄露其他 Owner 的资源。
 
-## Collector 注册
+## 注册 Collector
 
 `POST /api/v1/collectors`
-
-请求：
 
 ```json
 {
@@ -26,14 +22,12 @@ Owner 从已验证令牌的 `sub` claim 取得，必须是 UUID。客户端不�
 }
 ```
 
-- Owner 首次成功注册 Collector 时，后端自动创建 Timeline。两者在同一事务中提交；重复或并发注册复用同一个 Timeline，保留已有名称。无效或未认证的请求不会创建 Timeline。
-- `(timeline_id, key, target)` 是稳定地址。地址不存在时创建 Collector，已存在时返回原 Collector。
-- 重复注册可以更新 `displayName`；并发更新以最后成功提交的值为准。
-- `key`、`target` 和 `displayName` 去除首尾空格后不能为空，长度不超过 255。
-- `key` 使用小写点号分段且不包含版本，例如 `heartbeat.collector.desktop.macos`。
-- 成功始终返回 `200 OK`，不暴露本次是创建还是复用。
-
-响应：
+- 首次成功注册时，后端在同一事务中自动创建 Timeline。
+- `(timeline_id, key, target)` 是稳定地址；重复和并发请求复用原 Collector。
+- 重复注册可以更新 `displayName`，最后成功提交者生效。
+- 三个字符串去除首尾空格后非空，最长 255 个字符。
+- `key` 使用小写点号分段且不含版本。
+- 成功始终返回 `200`，不区分创建和复用。
 
 ```json
 {
@@ -45,13 +39,11 @@ Owner 从已验证令牌的 `sub` claim 取得，必须是 UUID。客户端不�
 }
 ```
 
-错误：未认证返回 `401`；字段缺失、格式或长度无效返回 `400`。调用方无需预先初始化 Timeline。
+字段无效返回 `400`，无有效认证返回 `401`。
 
-## Track 获取
+## 获取 Track
 
 `POST /api/v1/collectors/{collectorId}/tracks`
-
-请求：
 
 ```json
 {
@@ -62,13 +54,15 @@ Owner 从已验证令牌的 `sub` claim 取得，必须是 UUID。客户端不�
 }
 ```
 
-- Collector 必须存在且属于当前 Owner；缺失和不属于该 Owner 均返回 `404 collector_not_found`。
-- 调用方提供 `type`、正整数 `version` 和时间定义。`timeMode` 为 `point` 或 `range`；Point 的 `endMode` 必须为空，Range 的 `endMode` 必须为 `explicit` 或 `next_record`。
-- `(collector_id, type, version)` 是唯一地址。重复和并发获取复用已有 Track。
-- 后端不注册或识别具体 `(type, version)`，未知类型和版本也能创建 Track。
-- 已有 Track 的时间定义与本次请求不一致时返回 `409 track_definition_conflict`，且不改写已有 Track。
+- `version` 必须为正整数。
+- `timeMode` 为 `point` 或 `range`。
+- Point 的 `endMode` 为空；Range 的 `endMode` 为 `explicit` 或 `next_record`。
+- `(collector_id, type, version)` 是唯一地址，重复和并发请求复用原 Track。
+- 后端允许未知 `(type, version)`，不登记或解释 Payload。
+- 已有 Track 的时间定义不同时返回 `409 track_definition_conflict`。
+- Collector 不存在或不属于当前 Owner 时返回 `404 collector_not_found`。
 
-响应：
+成功返回 `200`：
 
 ```json
 {
@@ -86,188 +80,108 @@ Owner 从已验证令牌的 `sub` claim 取得，必须是 UUID。客户端不�
 
 `GET /api/v1/tracks`
 
-返回当前 Owner 已有的全部 Track 及其 Collector 展示信息。Owner 尚无 Timeline、没有 Collector，或没有 Track 时均返回空数组；读取不会隐式创建任何对象。Track 按 Collector `key`、`target`，再按 Track `type`、`version`、`id` 稳定排序。
-
-响应：
+返回当前 Owner 的全部 Track 及 Collector 展示信息：
 
 ```json
 {
-  "tracks": [
-    {
-      "id": "019e0000-0000-7000-8000-000000000002",
-      "collectorId": "019e0000-0000-7000-8000-000000000001",
-      "collectorKey": "heartbeat.collector.desktop.macos",
-      "collectorTarget": "device-a",
-      "collectorDisplayName": "My Mac",
-      "type": "desktop.application.foreground",
-      "version": 1,
-      "timeMode": "range",
-      "endMode": "explicit",
-      "createdAt": "2026-09-12T10:00:00Z"
-    }
-  ]
-}
-```
-
-未认证或 Owner claim 无效返回 `401`。目录始终按当前 Owner 隔离，不返回其他 Owner 的 Track。
-
-## 批量 Record 上传
-
-`POST /api/v1/tracks/{trackId}/records`
-
-请求：
-
-```json
-{
-  "records": [
-    {
-      "id": "019e0000-0000-7000-8000-000000000003",
-      "startedAt": "2026-09-12T10:00:00Z",
-      "endedAt": "2026-09-12T10:01:00Z",
-      "value": {
-        "device_id": "device-a",
-        "application": {
-          "platform": "macos",
-          "id_kind": "bundle_id",
-          "id": "com.google.Chrome"
-        }
-      }
-    }
-  ]
-}
-```
-
-- 一批属于同一个既有 Track，包含 1 到 500 条 Record。
-- 每项只接受 `id`、`startedAt`、`endedAt`、可选 `observedAt` 和 `value`。
-- `id` 必须是 Collector 生成的 UUID v7。同一 Record 的续期和上传重试必须复用原 ID。
-- `observedAt` 省略或为 null 时表示与 `startedAt` 相同。
-- 服务端每批读取一次接收时间，用于该批中新 Record 的 `received_at`；重试与续期保留已存的首次接收时间。
-- `value` 可以是任意已定义的 JSON 值；后端不按 Track 的 `type` 或 `version` 校验其具体结构。
-- Point 与 `range + next_record` 的 `endedAt` 必须为空，重复上传保持原记录；`range + explicit` 必须提供 `endedAt`，并允许同一 Record 单调延长结束时间。
-- Owner 缺失或不属于该 Owner 的 Track 统一返回 `404 track_not_found`。
-- JSON 解析失败、DTO 字段类型错误、未知请求字段、空批次或超过上限，在逐条写入前拒绝整批。
-
-响应：
-
-```json
-{
-  "results": [
-    {
-      "index": 0,
-      "id": "019e0000-0000-7000-8000-000000000003",
-      "status": "stored",
-      "endedAt": "2026-09-12T10:01:00Z",
-      "receivedAt": "2026-09-12T10:01:05Z",
-      "detail": null
-    }
-  ]
-}
-```
-
-逐条状态：
-
-| 状态 | 含义 |
-| --- | --- |
-| `stored` | 写入成功；首次写入、重复上传和续期共用此状态。 |
-| `invalid_record` | ID、时间、Track 时间定义或缺失的 JSON value 无效；未写入。 |
-| `conflict` | 同一个 ID 的 Track、开始时间、观察时间、value 或结束时间形状与已存记录不同；未写入。 |
-| `track_not_found` | 批次读取 Track 后，存储入口已无法找到归属当前 Owner 的 Track。 |
-
-HTTP `200` 不代表全部成功，客户端必须检查每项状态。同一 ID 可以在同一批出现多次，按顺序独立确认。未预期的基础设施失败可能发生在部分条目提交之后，重试必须复用原 Record ID。
-
-Hub 只能用 `stored` 回执确认对应项的上传进度。旧请求回执只确认发送时的快照，不能清除同一 Record 后来产生、尚未确认的新进度。Collector 使用的是 Hub 的 `accepted` 持久接管回执。
-
-## Track 级重放查询
-
-`GET /api/v1/tracks/{trackId}/records`
-
-查询参数：
-
-- `from`：可选 UTC 时刻。
-- `to`：可选 UTC 时刻；同时提供 `from` 和 `to` 时必须满足 `from < to`。
-- `limit`：可选，默认 200，范围 1 到 500。
-- `cursor`：可选，使用上一页响应的 `nextCursor` 原样续读；无效 cursor 返回 `400 invalid_request`。
-
-契约：
-
-- Owner 缺失或不属于该 Owner 的 Track 统一返回 `404 track_not_found`。
-- 时间窗按 `[from, to)` 处理。
-- 有 `endedAt` 的 Record 使用区间交叠判断；没有 `endedAt` 的 Record 使用 `startedAt` 判断。
-- 返回顺序固定为 `(startedAt, id)`。
-- 分页按 `(startedAt, id)` 做 keyset 续读，即使多条 Record 的 `startedAt` 相同也不会重复或遗漏。每一页都重新验证 Track 属于当前 Owner；cursor 本身不提供授权。客户端续读时应保持同一 `from`、`to` 时间窗。
-- 查询不解释 Payload，不解析 Application Identity，不跨 Track 聚合，不按设备或应用分组。
-- 当前不计算 `range + next_record` 的派生结束时间。
-
-响应：
-
-```json
-{
-  "track": {
+  "tracks": [{
     "id": "019e0000-0000-7000-8000-000000000002",
     "collectorId": "019e0000-0000-7000-8000-000000000001",
+    "collectorKey": "heartbeat.collector.desktop.macos",
+    "collectorTarget": "device-a",
+    "collectorDisplayName": "My Mac",
     "type": "desktop.application.foreground",
     "version": 1,
     "timeMode": "range",
-    "endMode": "explicit"
-  },
-  "records": [
-    {
-      "id": "019e0000-0000-7000-8000-000000000003",
-      "startedAt": "2026-09-12T10:00:00Z",
-      "endedAt": "2026-09-12T10:01:00Z",
-      "observedAt": null,
-      "receivedAt": "2026-09-12T10:01:05Z",
-      "value": {
-        "device_id": "device-a",
-        "application": {
-          "platform": "macos",
-          "id_kind": "bundle_id",
-          "id": "com.google.Chrome"
-        }
-      }
-    }
-  ],
-  "nextCursor": null
+    "endMode": "explicit",
+    "createdAt": "2026-09-12T10:00:00Z"
+  }]
 }
 ```
 
-存在后续记录时，`nextCursor` 是一个不透明字符串；客户端不得解析或构造。最后一页返回 `null`。
+无 Timeline 或 Track 时返回空数组，读取不创建对象。排序依次使用 Collector `key`、`target`，再使用 Track `type`、`version`、`id`。
 
-## Point Record 计数
+## 上传 Record
+
+`POST /api/v1/tracks/{trackId}/records`
+
+```json
+{
+  "records": [{
+    "id": "019e0000-0000-7000-8000-000000000003",
+    "startedAt": "2026-09-12T10:00:00Z",
+    "endedAt": "2026-09-12T10:01:00Z",
+    "observedAt": null,
+    "value": {"device_id": "device-a"}
+  }]
+}
+```
+
+- 一批含 1 到 500 条 Record，全部属于路径中的 Track。
+- 每项只接受 `id`、`startedAt`、`endedAt`、`observedAt` 和 `value`。
+- `id` 是 Collector 生成的 UUID v7，续期和重试必须复用。
+- `observedAt` 为空表示等于 `startedAt`。
+- `value` 可以是任意 JSON 值；缺失无效。
+- Point 与 `range + next_record` 的 `endedAt` 为空。
+- `range + explicit` 必须提供 `endedAt`，同一 Record 只允许单调延长。
+- Track 不存在或不属于 Owner 时返回 `404 track_not_found`。
+- JSON、字段、批次大小或未知字段无效时，在写入前以 `400` 拒绝整批。
+
+服务端为每批读取一次接收时间，新 Record 保存该时间；重试和续期保留首次接收时间。
+
+```json
+{
+  "results": [{
+    "index": 0,
+    "id": "019e0000-0000-7000-8000-000000000003",
+    "status": "stored",
+    "endedAt": "2026-09-12T10:01:00Z",
+    "receivedAt": "2026-09-12T10:01:05Z",
+    "detail": null
+  }]
+}
+```
+
+| 状态 | 含义 |
+| --- | --- |
+| `stored` | 首次写入、重复上传或合法续期成功 |
+| `invalid_record` | ID、时间、Track 时间定义或 value 无效 |
+| `conflict` | 同一 ID 的固定字段或结束时间形状与已有记录不同 |
+| `track_not_found` | 写入时 Track 已无法按当前 Owner 找到 |
+
+HTTP `200` 不代表全部成功，调用方必须检查每项。条目按输入顺序独立提交，基础设施失败可能发生在部分成功之后。
+
+Hub 只能用 `stored` 确认上传进度。旧请求回执只确认发送时的快照，不能清除同一 Record 后续产生的进度。
+
+## 查询 Record
+
+`GET /api/v1/tracks/{trackId}/records`
+
+| 参数 | 规则 |
+| --- | --- |
+| `from` | 可选 UTC 下界，包含 |
+| `to` | 可选 UTC 上界，不包含；同时提供时须满足 `from < to` |
+| `limit` | 默认 200，范围 1 到 500 |
+| `cursor` | 原样使用上一页的 `nextCursor`；无效时返回 `400 invalid_request` |
+
+- Track 不存在或不属于当前 Owner 时返回 `404 track_not_found`。
+- 有 `endedAt` 的 Record 按区间交叠进入 `[from, to)`；其他 Record 按 `startedAt`。
+- 结果按 `(startedAt, id)` 排序并做 keyset 分页。
+- 每页重新验证 Owner；cursor 不提供授权。续读时保持同一时间窗。
+- 查询不解释 Payload、解析 Application Identity、跨 Track 聚合或按业务字段分组。
+- 当前不计算 `range + next_record` 的派生结束时间。
+
+响应包含 `track`、`records` 和可空的 `nextCursor`。Record 字段为 `id`、`startedAt`、`endedAt`、`observedAt`、`receivedAt` 和 `value`。`nextCursor` 是不透明字符串，客户端不得解析或构造。
+
+## Point 计数
 
 `GET /api/v1/tracks/{trackId}/point-counts`
 
-必填查询参数：
+必填参数：
 
-- `from`、`to`：UTC 时间窗，必须满足 `from < to`，采用 `[from, to)`。
-- `bucketSeconds`：正整数桶宽；桶从本次查询的 `from` 对齐。
+- `from`、`to`：UTC 半开窗口，`from < to`；
+- `bucketSeconds`：正整数桶宽，桶从 `from` 对齐。
 
-服务端最多接受 10,000 个桶，只支持 `timeMode = point`。Range Track 返回 `400 track_is_not_point`；缺失、外部 Owner Track 与不存在 Track 统一返回 `404 track_not_found`。聚合只按 `startedAt` 计数，不读取或解释 Record value。
+最多 10,000 个桶，只支持 Point Track。Range Track 返回 `400 track_is_not_point`；Track 不存在或不属于 Owner 时返回 `404 track_not_found`。
 
-响应只包含非空桶；调用方可把未返回的桶显示为零：
-
-~~~json
-{
-  "track": {
-    "id": "019e0000-0000-7000-8000-000000000002",
-    "collectorId": "019e0000-0000-7000-8000-000000000001",
-    "type": "desktop.input.event",
-    "version": 1,
-    "timeMode": "point",
-    "endMode": null
-  },
-  "from": "2026-09-12T10:00:00Z",
-  "to": "2026-09-12T11:00:00Z",
-  "bucketSeconds": 60,
-  "buckets": [
-    {
-      "index": 0,
-      "startedAt": "2026-09-12T10:00:00Z",
-      "endedAt": "2026-09-12T10:01:00Z",
-      "count": 17
-    }
-  ]
-}
-~~~
-
-Point 原始详情仍通过上一节 Record 分页接口读取局部窗口；计数响应不替代原始 Record。
+响应包含 Track、窗口、桶宽和非空桶。每个桶返回 `index`、`startedAt`、`endedAt`、`count`。未返回的桶计为零。聚合只按 `startedAt` 计数，不读取 value；原始详情仍通过 Record 分页接口读取。
