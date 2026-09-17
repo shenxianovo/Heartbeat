@@ -1,9 +1,12 @@
 import { useMemo } from "react";
 import type { ReplayLane, TimelineRecord } from "@/api/types";
 import { trackLabel } from "@/components/filters/TrackPicker";
+import { TooltipReading, useTooltip } from "@/components/ui/Tooltip";
 import { protocolRecordSummary } from "./protocolSummary";
 import { layoutRanges } from "./rangeLayout";
-import { overlaps, percent, timeTicks, type TimeRange } from "./timeRange";
+import { DensityCurve } from "./DensityCurve";
+import type { DensityScale } from "./densityScale";
+import { formatTime, overlaps, percent, timeTicks, type TimeRange } from "./timeRange";
 
 export interface PointSelection {
   trackId: string;
@@ -21,10 +24,72 @@ interface Props {
   ticks: ReturnType<typeof timeTicks>;
   selected: RecordSelection | null;
   densityStatus: string | null;
+  /** Shared by every point lane so their curve heights mean the same thing. */
+  densityScale: DensityScale;
   onSelect: (value: RecordSelection) => void;
   onSelectPoints: (value: PointSelection) => void;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
+}
+
+type RangeItem = ReturnType<typeof layoutRanges>["items"][number];
+
+/** One observation drawn as a bar. Hovering reads out its window and protocol summary. */
+function RangeSegment({
+  lane,
+  item,
+  range,
+  selected,
+  onSelect,
+}: {
+  lane: ReplayLane;
+  item: RangeItem;
+  range: TimeRange;
+  selected: RecordSelection | null;
+  onSelect: (value: RecordSelection) => void;
+}) {
+  const tooltip = useTooltip();
+  const summary = protocolRecordSummary(lane.track, item.record);
+  const text = summary.title ?? summary.label;
+  const reading = (
+    <TooltipReading
+      caption={`${formatTime(item.start, true)} – ${formatTime(item.end, true)}`}
+      value={text}
+    />
+  );
+  return (
+    <button
+      type="button"
+      className={`timeline-range timeline-tone-${summary.tone ?? "default"}`}
+      style={{
+        left: `${percent(item.start, range)}%`,
+        width: `${((item.end - item.start) / (range.end - range.start)) * 100}%`,
+        top: `${8 + item.row * 28}px`,
+      }}
+      aria-label={text}
+      aria-pressed={selected?.trackId === lane.track.id && selected.recordId === item.record.id}
+      onPointerMove={(event) => tooltip.show(reading, event)}
+      onPointerLeave={tooltip.hide}
+      onClick={() => onSelect({ trackId: lane.track.id, recordId: item.record.id })}
+    />
+  );
+}
+
+/** A lane name that reads out in full on hover, but only while it is actually clipped. */
+function LaneName({ text }: { text: string }) {
+  const tooltip = useTooltip();
+  return (
+    <strong
+      onPointerMove={(event) => {
+        const element = event.currentTarget;
+        if (element.scrollWidth > element.clientWidth + 1) tooltip.show(text, event);
+        else tooltip.hide();
+      }}
+      onPointerLeave={tooltip.hide}
+    >
+      {text}
+    </strong>
+  );
 }
 
 function RecordPlot({
@@ -34,6 +99,7 @@ function RecordPlot({
   ticks,
   selected,
   densityStatus,
+  densityScale,
   onSelect,
   onSelectPoints,
 }: Props & { records: TimelineRecord[] }) {
@@ -41,11 +107,16 @@ function RecordPlot({
     () => layoutRanges(records, range.start, range.end),
     [records, range.start, range.end],
   );
-  const buckets =
-    lane.counts?.buckets.filter((bucket) =>
+  const hasDensity = Boolean(
+    lane.counts?.buckets.some((bucket) =>
       overlaps(Date.parse(bucket.startedAt), Date.parse(bucket.endedAt), range),
-    ) ?? [];
-  const maximum = buckets.reduce((max, bucket) => Math.max(max, bucket.count), 1);
+    ) ||
+    lane.detailCounts?.some((detail) =>
+      detail.buckets.some((bucket) =>
+        overlaps(Date.parse(bucket.startedAt), Date.parse(bucket.endedAt), range),
+      ),
+    ),
+  );
   return (
     <div
       className="timeline-lane-plot"
@@ -60,49 +131,27 @@ function RecordPlot({
           style={{ left: `${tick.left}%` }}
         />
       ))}
-      {layout.items.map(({ record, row, start, end }) => {
-        const summary = protocolRecordSummary(lane.track, record);
-        return (
-          <button
-            type="button"
-            className={`timeline-range timeline-tone-${summary.tone ?? "default"}`}
-            key={record.id}
-            style={{
-              left: `${percent(start, range)}%`,
-              width: `${((end - start) / (range.end - range.start)) * 100}%`,
-              top: `${8 + row * 28}px`,
-            }}
-            title={summary.title ?? summary.label}
-            aria-label={summary.title ?? summary.label}
-            aria-pressed={selected?.trackId === lane.track.id && selected.recordId === record.id}
-            onClick={() => onSelect({ trackId: lane.track.id, recordId: record.id })}
-          />
-        );
-      })}
-      {buckets.map((bucket) => (
-        <button
-          type="button"
-          className="timeline-density"
-          key={bucket.index}
-          style={{
-            left: `${percent(Date.parse(bucket.startedAt), range)}%`,
-            width: `${percent(Date.parse(bucket.endedAt), range) - percent(Date.parse(bucket.startedAt), range)}%`,
-            height: `${8 + (bucket.count / maximum) * 32}px`,
-            opacity: 0.4 + (bucket.count / maximum) * 0.6,
-          }}
-          title={`${bucket.count} 条记录`}
-          aria-label={`${trackLabel(lane.track)}，${bucket.count} 条记录`}
-          onClick={() =>
-            onSelectPoints({
-              trackId: lane.track.id,
-              from: bucket.startedAt,
-              to: bucket.endedAt,
-              count: bucket.count,
-            })
-          }
+      {layout.items.map((item) => (
+        <RangeSegment
+          key={item.record.id}
+          lane={lane}
+          item={item}
+          range={range}
+          selected={selected}
+          onSelect={onSelect}
         />
       ))}
-      {!layout.items.length && !buckets.length ? (
+      {lane.track.timeMode === "point" ? (
+        <DensityCurve
+          track={lane.track}
+          counts={lane.counts}
+          detailCounts={lane.detailCounts ?? []}
+          range={range}
+          scale={densityScale}
+          onSelect={onSelectPoints}
+        />
+      ) : null}
+      {!layout.items.length && !hasDensity ? (
         <span className="timeline-empty">
           {densityStatus && lane.track.timeMode === "point" ? densityStatus : null}
         </span>
@@ -145,11 +194,11 @@ export function TimelineLane(props: Props) {
               onClick={() => onExpandedChange(!expanded)}
             >
               <span aria-hidden="true">{expanded ? "⌄" : "›"}</span>
-              <strong title={trackLabel(lane.track)}>{trackLabel(lane.track)}</strong>
+              <LaneName text={trackLabel(lane.track)} />
               <small>{groups.length}</small>
             </button>
           ) : (
-            <strong>{trackLabel(lane.track)}</strong>
+            <LaneName text={trackLabel(lane.track)} />
           )}
         </div>
         <RecordPlot {...props} records={lane.records} />
@@ -161,7 +210,7 @@ export function TimelineLane(props: Props) {
                 <span className="application-initial" aria-hidden="true">
                   {group.label.slice(0, 1).toLocaleUpperCase()}
                 </span>
-                <strong>{group.label}</strong>
+                <LaneName text={group.label} />
               </div>
               <RecordPlot {...props} records={group.records} />
             </div>

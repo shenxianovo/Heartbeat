@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useAuth } from "react-oidc-context";
-import { useRecordsQuery, useReplayWindowQuery, useTracksQuery } from "@/api/queries";
+import {
+  usePointDensityTiles,
+  useRecordsQuery,
+  useReplayWindowQuery,
+  useTracksQuery,
+} from "@/api/queries";
 import { Button } from "@/components/ui/Button";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { MultiSelectPicker } from "@/components/ui/MultiSelectPicker";
@@ -15,6 +20,7 @@ import { RecordsPanel } from "./RecordsPanel";
 import { TimelineViewport } from "./TimelineViewport";
 import type { PointSelection } from "./TimelineLane";
 import { clampRange, densityBucketSeconds, type TimeRange } from "./timeRange";
+import { cachedDensityLayers } from "./densityTiles";
 import { LoadingState } from "@/components/status/LoadingState";
 import { QueryState } from "@/components/status/QueryState";
 import { rangeToIso, todayRange, type DateRange } from "@/lib/dates";
@@ -84,37 +90,32 @@ export function ReplayWorkbench() {
     to,
     bounds ? densityBucketSeconds(bounds) : 900,
   );
-  const densityQuery = useReplayWindowQuery(
+  const densityQuery = usePointDensityTiles(
     ownerSubject,
     accessToken,
     pointTracks,
-    zoomed && settled ? new Date(settled.start).toISOString() : "",
-    zoomed && settled ? new Date(settled.end).toISOString() : "",
+    bounds,
+    zoomed && settled ? settled : null,
     settled ? densityBucketSeconds(settled) : 900,
   );
   const densityStatus =
     zoomed && pointTracks.length
-      ? !settledMatches || densityQuery.isPending
-        ? "正在读取密度…"
-        : densityQuery.isError
-          ? "密度读取失败"
+      ? densityQuery.isError
+        ? "密度读取失败"
+        : !settledMatches || densityQuery.isPending
+          ? "正在读取密度…"
           : null
       : null;
   const lanes = useMemo(
     () =>
-      (replayQuery.data ?? []).map((lane) =>
-        lane.track.timeMode !== "point" || !zoomed
-          ? lane
-          : {
-              ...lane,
-              counts:
-                settledMatches && !densityQuery.isError
-                  ? (densityQuery.data?.find((value) => value.track.id === lane.track.id)?.counts ??
-                    null)
-                  : null,
-            },
-      ),
-    [replayQuery.data, zoomed, settledMatches, densityQuery.data, densityQuery.isError],
+      (replayQuery.data ?? []).map((lane) => ({
+        ...lane,
+        detailCounts:
+          lane.track.timeMode === "point" && range
+            ? cachedDensityLayers(densityQuery.layers, lane.track.id, range)
+            : [],
+      })),
+    [replayQuery.data, densityQuery.layers, range],
   );
   const detailTrack = tracks.find((track) => track.id === detail?.trackId) ?? null;
   const detailQuery = useRecordsQuery(
@@ -143,7 +144,7 @@ export function ReplayWorkbench() {
   async function refresh() {
     await tracksQuery.refetch();
     if (tracks.length) await replayQuery.refetch();
-    if (zoomed && pointTracks.length) await densityQuery.refetch();
+    if (pointTracks.length) await densityQuery.invalidate();
     if (detailTrack) await detailQuery.refetch();
   }
   const fetching = tracksQuery.isFetching || replayQuery.isFetching;
@@ -256,7 +257,7 @@ export function ReplayWorkbench() {
               <>
                 {zoomed && settledMatches && densityQuery.isError ? (
                   <div className="density-error" role="alert">
-                    当前范围的密度读取失败。
+                    当前范围的细节读取失败，仍显示已有密度。
                     <Button
                       type="button"
                       variant="ghost"

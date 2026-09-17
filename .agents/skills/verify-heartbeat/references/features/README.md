@@ -15,7 +15,7 @@ This map is an Agent navigation index, not an alternate product specification. R
 - Purpose: authenticate, select Tracks, choose a time window, and inspect stored Record intervals.
 - User entry: Web at `/`, OIDC callback at `/auth/callback`; the replay UI is reached after login.
 - Agent path: `./scripts/heartbeat-dev scenario replay-fixture`.
-- Renderer path: `src/Frontend/Heartbeat.Web/src/components/records/renderers/registry.ts`; current-range lane visibility is projected by `src/components/replay/timelineProjection.ts`.
+- Renderer path: `src/Frontend/Heartbeat.Web/src/components/records/renderers/registry.ts`; Point density curve is drawn by `src/components/replay/DensityCurve.tsx` from day counts and cached detail tiles, and current-range lane visibility is projected by `src/components/replay/timelineProjection.ts`.
 - Evidence: deterministic Chromium screenshots, Playwright JSON, and a per-run Web source workspace under the scenario run directory. Concurrent runs share installed dependencies but isolate Next output and generated TypeScript files.
 - Authority: [Frontend README](../../../../src/Frontend/Heartbeat.Web/README.md), [replay API](../../../../docs/recording-api.md), and [visualization validation](../../../../docs/validation/experience-visualization.md).
 - Pitfall: authentication and API calls are mocked in this scenario; never describe it as real Collector-to-Web E2E.

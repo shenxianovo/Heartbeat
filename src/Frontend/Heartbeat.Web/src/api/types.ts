@@ -69,4 +69,5 @@ export interface ReplayLane {
   track: TrackSummary;
   records: TimelineRecord[];
   counts: PointCountsResponse | null;
+  detailCounts?: PointCountsResponse[];
 }

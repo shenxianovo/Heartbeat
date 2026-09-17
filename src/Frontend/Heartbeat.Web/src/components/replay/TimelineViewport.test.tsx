@@ -79,7 +79,7 @@ describe("timeline record geometry and selection", () => {
         onSelectPoints={() => {}}
       />,
     );
-    const width = parseFloat(screen.getByTitle("时间区间").style.width);
+    const width = parseFloat(screen.getByRole("button", { name: "时间区间" }).style.width);
     expect(width).toBeCloseTo(100 / 86_400, 8);
   });
 
@@ -95,7 +95,7 @@ describe("timeline record geometry and selection", () => {
         onSelectPoints={() => {}}
       />,
     );
-    fireEvent.click(screen.getByTitle("时间区间"));
+    fireEvent.click(screen.getByRole("button", { name: "时间区间" }));
     expect(screen.getByText("所选区间")).toBeInTheDocument();
     view.rerender(
       <TimelineViewport
@@ -197,6 +197,38 @@ describe("timeline presentation projection", () => {
 });
 
 describe("timeline wheel interaction", () => {
+  it("pans with a horizontal trackpad gesture and keeps the time span", () => {
+    const onRange = vi.fn();
+    const bounds = { start: Date.parse(from), end: Date.parse(to) };
+    const range = { start: bounds.start + 3_600_000, end: bounds.start + 13 * 3_600_000 };
+    render(
+      <TimelineViewport
+        lanes={[lane([record("short")])]}
+        bounds={bounds}
+        range={range}
+        overviewLanes={[]}
+        densityStatus={null}
+        onRange={onRange}
+        onSelectPoints={() => {}}
+      />,
+    );
+
+    const plot = document.querySelector<HTMLElement>("[data-time-plot]")!;
+    const wheel = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaX: 100,
+      deltaY: 4,
+    });
+    plot.dispatchEvent(wheel);
+
+    expect(wheel.defaultPrevented).toBe(true);
+    expect(onRange).toHaveBeenCalledWith({
+      start: range.start + (range.end - range.start) * 0.1,
+      end: range.end + (range.end - range.start) * 0.1,
+    });
+  });
+
   it("leaves an unmodified vertical wheel event to the internal scroll container", () => {
     const onRange = vi.fn();
     render(

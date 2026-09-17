@@ -1,7 +1,9 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { fetchAllRecords, fetchPointCounts, fetchRecords, fetchTracks } from "@/api/client";
-import type { ReplayLane, TrackSummary } from "@/api/types";
+import type { PointCountsResponse, ReplayLane, TrackSummary } from "@/api/types";
+import { densityTiles } from "@/components/replay/densityTiles";
+import type { TimeRange } from "@/components/replay/timeRange";
 
 export const queryKeys = {
   tracks: (ownerSubject: string) => ["owner", ownerSubject, "tracks"] as const,
@@ -14,7 +16,54 @@ export const queryKeys = {
     to: string,
     bucketSeconds: number,
   ) => ["owner", ownerSubject, "replay-window", trackIds, from, to, bucketSeconds] as const,
+  densityTiles: (ownerSubject: string, from: string, to: string, trackIds: string[]) =>
+    ["owner", ownerSubject, "density-tiles", from, to, trackIds] as const,
 };
+
+export function usePointDensityTiles(
+  ownerSubject: string,
+  accessToken: string,
+  tracks: TrackSummary[],
+  bounds: TimeRange | null,
+  range: TimeRange | null,
+  bucketSeconds: number,
+) {
+  const client = useQueryClient();
+  const from = bounds ? new Date(bounds.start).toISOString() : "";
+  const to = bounds ? new Date(bounds.end).toISOString() : "";
+  const trackIds = tracks.map((track) => track.id);
+  const prefix = queryKeys.densityTiles(ownerSubject, from, to, trackIds);
+  const tiles = bounds && range ? densityTiles(range, bounds, bucketSeconds) : [];
+  const queries = useQueries({
+    queries: tiles.map((tile) => ({
+      queryKey: [...prefix, bucketSeconds, tile.start, tile.end],
+      queryFn: ({ signal }: { signal: AbortSignal }): Promise<PointCountsResponse[]> =>
+        Promise.all(
+          tracks.map((track) =>
+            fetchPointCounts(
+              accessToken,
+              track.id,
+              new Date(tile.start).toISOString(),
+              new Date(tile.end).toISOString(),
+              bucketSeconds,
+              signal,
+            ),
+          ),
+        ),
+      enabled: Boolean(accessToken && tracks.length && bounds && range),
+      staleTime: Infinity,
+      gcTime: 30 * 60_000,
+    })),
+  });
+  const cached = client.getQueriesData<PointCountsResponse[]>({ queryKey: prefix });
+  return {
+    layers: cached.flatMap(([, data]) => data ?? []),
+    isError: queries.some((query) => query.isError),
+    isPending: queries.some((query) => query.isPending),
+    refetch: () => Promise.all(queries.map((query) => query.refetch())),
+    invalidate: () => client.invalidateQueries({ queryKey: prefix }),
+  };
+}
 
 export function useTracksQuery(ownerSubject: string, accessToken: string) {
   return useQuery({

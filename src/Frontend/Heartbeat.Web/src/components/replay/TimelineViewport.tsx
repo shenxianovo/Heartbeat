@@ -2,12 +2,14 @@
 
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
+import { TooltipLayer } from "@/components/ui/Tooltip";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import type { ReplayLane } from "@/api/types";
 import { trackLabel } from "@/components/filters/TrackPicker";
 import { RecordCard } from "@/components/records/RecordCard";
 import { ActivityOverview } from "./ActivityOverview";
 import { TimelineLane, type PointSelection, type RecordSelection } from "./TimelineLane";
+import { densityScale } from "./densityScale";
 import { protocolRecordSummary } from "./protocolSummary";
 import { projectTimeline } from "./timelineProjection";
 import {
@@ -61,6 +63,15 @@ export function TimelineViewport({
     [lanes, range, densityStatus],
   );
   const { groups, visibleRecords } = projection;
+  // One vertical scale for every point lane in view, so a busy device does not look like a quiet one.
+  const scale = useMemo(
+    () =>
+      densityScale(
+        groups.flatMap((group) => group.lanes.map((item) => item.lane)),
+        range,
+      ),
+    [groups, range],
+  );
   const selected = visibleRecords.find(
     (item) => item.track.id === selection?.trackId && item.record.id === selection.recordId,
   );
@@ -127,7 +138,14 @@ export function TimelineViewport({
     if (!element) return;
     function wheel(event: WheelEvent) {
       const plot = (event.target as HTMLElement).closest<HTMLElement>("[data-time-plot]");
-      if (!plot || (!event.ctrlKey && !event.metaKey)) return;
+      if (!plot) return;
+      if (!event.ctrlKey && !event.metaKey) {
+        if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
+        event.preventDefault();
+        const shift = (event.deltaX / 1000) * (range.end - range.start);
+        onRange(dragRange("move", range, bounds, 0, shift));
+        return;
+      }
       event.preventDefault();
       const rect = plot.getBoundingClientRect();
       const pivot = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
@@ -140,12 +158,12 @@ export function TimelineViewport({
   }, [bounds, range, onRange]);
 
   return (
-    <>
+    <TooltipLayer>
       <section className="timeline-card" aria-label="统一回放时间线">
         <div className="swimlane-toolbar">
           <div>
             <h2>活动泳道</h2>
-            <p>拖动平移 · Ctrl/Command + 滚轮缩放 · Shift 拖选</p>
+            <p>拖动或双指横向滚动平移 · Ctrl/Command + 滚轮缩放 · Shift 拖选</p>
           </div>
           <div className="timeline-tools" aria-label="时间轴缩放">
             <Button
@@ -258,6 +276,7 @@ export function TimelineViewport({
                     ticks={ticks}
                     selected={selected ? selection : null}
                     densityStatus={densityStatus}
+                    densityScale={scale}
                     onSelect={select}
                     onSelectPoints={(value) => {
                       setSelection(null);
@@ -366,6 +385,6 @@ export function TimelineViewport({
           </nav>
         ) : null}
       </section>
-    </>
+    </TooltipLayer>
   );
 }

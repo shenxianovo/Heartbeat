@@ -273,3 +273,32 @@
 .range-picker .range-arrow {
   display: none;
 }
+
+/* Hover tip. One instance lives at the end of the body, so no clipped or blurred
+   container can cut it off, and it never intercepts the pointer it follows. */
+.ui-tooltip {
+  position: fixed;
+  z-index: 60;
+  display: grid;
+  gap: 0.05rem;
+  max-width: min(18rem, calc(100vw - 24px));
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--shadow-md);
+  font-size: 0.7rem;
+  line-height: 1.45;
+  pointer-events: none;
+}
+.ui-tooltip-caption {
+  color: var(--muted-foreground);
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+}
+.ui-tooltip strong {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
