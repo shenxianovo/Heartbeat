@@ -7,10 +7,10 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import type { ReplayLane } from "@/api/types";
 import { trackLabel } from "@/components/filters/TrackPicker";
 import { RecordCard } from "@/components/records/RecordCard";
+import { describeRecord } from "@/components/records/renderers/registry";
 import { ActivityOverview } from "./ActivityOverview";
 import { TimelineLane, type PointSelection, type RecordSelection } from "./TimelineLane";
 import { densityScale } from "./densityScale";
-import { protocolRecordSummary } from "./protocolSummary";
 import { projectTimeline } from "./timelineProjection";
 import {
   clampRange,
@@ -20,6 +20,7 @@ import {
   zoomRange,
   type TimeRange,
 } from "./timeRange";
+import { useFrameRange } from "./useFrameRange";
 
 interface Props {
   lanes: ReplayLane[];
@@ -40,6 +41,7 @@ export function TimelineViewport({
   onRange,
   onSelectPoints,
 }: Props) {
+  const frameRange = useFrameRange(onRange);
   const [selection, setSelection] = useState<RecordSelection | null>(null);
   const [expandedTracks, setExpandedTracks] = useState<Set<string>>(() => new Set());
   const [paging, setPaging] = useState({ key: "", page: 0 });
@@ -103,6 +105,7 @@ export function TimelineViewport({
     if (event.button !== 0) return;
     const plot = (event.target as HTMLElement).closest<HTMLElement>("[data-time-plot]");
     if (!plot) return;
+    frameRange.cancel();
     const rect = plot.getBoundingClientRect();
     suppressClick.current = false;
     drag.current = {
@@ -114,24 +117,32 @@ export function TimelineViewport({
       moved: false,
     };
   }
+  function draggedRange(active: NonNullable<typeof drag.current>, x: number) {
+    const span = active.range.end - active.range.start;
+    const anchor = active.range.start + ((active.x - active.left) / active.width) * span;
+    const delta = ((x - active.x) / active.width) * span;
+    return dragRange(
+      active.brush ? "select" : "move",
+      active.range,
+      bounds,
+      anchor,
+      anchor + (active.brush ? delta : -delta),
+    );
+  }
   function move(event: PointerEvent<HTMLDivElement>) {
     const active = drag.current;
     if (!active) return;
     if (Math.abs(event.clientX - active.x) <= 4 && !active.moved) return;
+    if (!active.moved) event.currentTarget.setPointerCapture(event.pointerId);
     active.moved = true;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const span = active.range.end - active.range.start;
-    const anchor = active.range.start + ((active.x - active.left) / active.width) * span;
-    const delta = ((event.clientX - active.x) / active.width) * span;
-    onRange(
-      dragRange(
-        active.brush ? "select" : "move",
-        active.range,
-        bounds,
-        anchor,
-        anchor + (active.brush ? delta : -delta),
-      ),
-    );
+    frameRange.schedule(draggedRange(active, event.clientX));
+  }
+  function up() {
+    const active = drag.current;
+    suppressClick.current = active?.moved ?? false;
+    if (active?.moved) frameRange.flush();
+    else frameRange.cancel();
+    drag.current = null;
   }
   useEffect(() => {
     const element = timeline.current;
@@ -216,11 +227,9 @@ export function TimelineViewport({
           aria-label="活动泳道，方向键平移，加减键缩放"
           onPointerDown={down}
           onPointerMove={move}
-          onPointerUp={() => {
-            suppressClick.current = drag.current?.moved ?? false;
-            drag.current = null;
-          }}
+          onPointerUp={up}
           onPointerCancel={() => {
+            frameRange.cancel();
             drag.current = null;
             suppressClick.current = false;
           }}
@@ -352,7 +361,7 @@ export function TimelineViewport({
               <span className="experience-record-source">
                 {track.collectorDisplayName} · {trackLabel(track)}
               </span>
-              <strong>{protocolRecordSummary(track, record).label}</strong>
+              <strong>{describeRecord(track, record).label}</strong>
               <time>
                 {formatTime(Date.parse(record.startedAt), true)} —{" "}
                 {record.endedAt ? formatTime(Date.parse(record.endedAt), true) : "结束未知"}

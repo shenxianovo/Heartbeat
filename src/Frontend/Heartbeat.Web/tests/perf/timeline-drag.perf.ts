@@ -44,6 +44,12 @@ interface GestureReading {
   longTaskTotalMs: number;
   longTaskMaxMs: number;
   movedMs: number;
+  continuous?: {
+    events: number;
+    updates: number;
+    p95FrameGapMs: number;
+    maxFrameGapMs: number;
+  };
 }
 
 interface StageReading {
@@ -95,7 +101,8 @@ async function settle(page: Page) {
 /**
  * A cheap picture of where the lanes are drawn, so a gesture can prove whether
  * the window actually travelled. Tick labels are too coarse: a small pan keeps
- * the same round hour at the left edge.
+ * the same round hour at the left edge. Dense lanes have no bar nodes to read,
+ * so their surface reports the window it last drew.
  */
 async function placement(page: Page): Promise<string> {
   return page.evaluate(() => {
@@ -103,9 +110,22 @@ async function placement(page: Page): Promise<string> {
     const edges = [segments.at(0), segments.at(-1)].map((segment) =>
       segment ? `${segment.style.left}|${segment.style.width}` : "-",
     );
+    const surfaces = [...document.querySelectorAll<HTMLElement>(".timeline-range-canvas")].map(
+      (surface) => surface.dataset.range ?? "-",
+    );
     const ruler = document.querySelector(".timeline-ruler")?.textContent ?? "";
-    return `${segments.length}/${edges.join("/")}/${ruler}`;
+    return `${segments.length}/${edges.join("/")}/${surfaces.join(",")}/${ruler}`;
   });
+}
+
+/** Bars on screen, whether they are DOM nodes or drawn on a dense lane's surface. */
+async function segmentCount(page: Page): Promise<number> {
+  return page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>(".timeline-range-canvas")].reduce(
+      (total, surface) => total + Number(surface.dataset.segments ?? 0),
+      document.querySelectorAll(".timeline-range").length,
+    ),
+  );
 }
 
 /**
@@ -165,6 +185,64 @@ async function pan(page: Page, steps = STEPS): Promise<StepReading> {
   return reading;
 }
 
+/** Dispatches a continuous gesture without waiting for idle between moves. */
+async function continuousPan(page: Page) {
+  const plot = page.locator("[data-time-plot]").first();
+  const box = await plot.boundingBox();
+  if (!box) throw new Error("泳道没有可测量的绘图区");
+  const x = Math.round(box.x + box.width * 0.7);
+  const y = Math.round(box.y + box.height / 2);
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  const result = await page.evaluate(
+    async ({ x, y }) => {
+      const target = document.querySelector(".swimlane-timeline");
+      const rangeLabel = document.querySelector('[aria-label="可见时间范围"]');
+      if (!target || !rangeLabel) throw new Error("找不到可见范围");
+      const times: number[] = [];
+      let watching = true;
+      let updates = 0;
+      const observer = new MutationObserver(() => {
+        updates += 1;
+      });
+      observer.observe(rangeLabel, { childList: true, characterData: true, subtree: true });
+      const frame = (at: number) => {
+        times.push(at);
+        if (watching) requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+      for (let step = 1; step <= 40; step += 1) {
+        target.dispatchEvent(
+          new PointerEvent("pointermove", {
+            bubbles: true,
+            pointerId: 1,
+            pointerType: "mouse",
+            isPrimary: true,
+            buttons: 1,
+            clientX: x - step * 8,
+            clientY: y,
+          }),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 8));
+      }
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      watching = false;
+      observer.disconnect();
+      const gaps = times.slice(1).map((at, index) => at - times[index]!);
+      gaps.sort((a, b) => a - b);
+      return {
+        events: 40,
+        updates,
+        p95FrameGapMs: Math.round((gaps[Math.floor(gaps.length * 0.95)] ?? 0) * 10) / 10,
+        maxFrameGapMs: Math.round((gaps.at(-1) ?? 0) * 10) / 10,
+      };
+    },
+    { x, y },
+  );
+  await page.mouse.up();
+  return result;
+}
+
 function summarise(reading: StepReading, segments: number, moved: boolean): GestureReading {
   const steps = [...reading.steps].sort((left, right) => left - right);
   const round = (value: number) => Math.round(value * 10) / 10;
@@ -202,20 +280,21 @@ function stageOf(frame: ProfileNode["callFrame"]): string | null {
   if (/^\((program|idle|root|garbage collector)\)$/.test(name)) return `运行时 ${name}`;
   if (/^(projectTimeline|visibleLane|recordOverlaps|showsDensity)$/.test(name)) return "投影";
   if (name === "layoutRanges") return "区间布局";
+  if (/^(drawRanges|CanvasRanges)$/.test(name)) return "区间绘制";
   if (name === "ActivityOverview") return "概览绘制";
-  if (/^(protocolRecordSummary|summarizeRecord|summarize[A-Z]|parseForeground)/.test(name))
-    return "记录摘要";
+  if (/^(describeRecord|summarize[A-Z]|parseForeground)/.test(name)) return "记录摘要";
   if (/^(DensityCurve|density|smoothCurve|curvePath)/.test(name)) return "密度曲线";
   if (/^(formatTime|percent|timeTicks|overlaps|clampRange|dragRange|zoomRange)$/.test(name))
     return "时间换算";
   if (
-    /^(RangeSegment|RecordPlot|TimelineLane|TimelineViewport|LaneName|RecordsPanel|RecordCard|ReplayWorkbench|Tooltip)/.test(
+    /^(RecordPlot|TimelineLane|TimelineViewport|LaneName|RecordsPanel|RecordCard|ReplayWorkbench|Tooltip)/.test(
       name,
     )
   )
     return "泳道组件";
   if (/timelineProjection/.test(source)) return "投影";
   if (/rangeLayout/.test(source)) return "区间布局";
+  if (/CanvasRanges/.test(source)) return "区间绘制";
   if (/ActivityOverview/.test(source)) return "概览绘制";
   if (/react-dom|react-jsx|\/react\/|scheduler/.test(source)) return "React 渲染";
   return null;
@@ -285,7 +364,7 @@ async function openDay(page: Page, volume: DayVolume, expanded: boolean) {
   await seedSession(page);
   await page.goto("/");
   await expect(page.getByRole("region", { name: /活动泳道/ })).toBeVisible();
-  await expect(page.locator(".timeline-range").first()).toBeVisible();
+  await expect(page.locator(".timeline-range, .timeline-range-canvas").first()).toBeVisible();
   if (expanded) {
     await page.getByRole("button", { name: /^展开 .* 的应用$/ }).click();
     await expect(page.locator(".application-sublane").first()).toBeVisible();
@@ -318,11 +397,14 @@ function measure(name: string, volume: DayVolume, expanded: boolean) {
     for (const gesture of GESTURES) {
       try {
         for (let zoom = 0; zoom < gesture.zoomIns; zoom += 1) await zoomIn(page);
-        const segments = await page.locator(".timeline-range").count();
+        const segments = await segmentCount(page);
         const before = await placement(page);
         const reading = await pan(page);
         const moved = (await placement(page)) !== before;
         gestures[gesture.name] = summarise(reading, segments, moved);
+        if (process.env.HEARTBEAT_PERF_MODE === "production" && gesture.name === "wide-pan") {
+          gestures[gesture.name]!.continuous = await continuousPan(page);
+        }
         if (sampling && gesture.name === PROFILED_GESTURE) {
           const session = await page.context().newCDPSession(page);
           sampled = await profile(session, async () => {

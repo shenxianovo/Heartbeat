@@ -34,10 +34,10 @@ API 数据结构以 [记录 HTTP 接口](../../../docs/recording-api.md) 为准�
 
 ## 添加 Record 展示
 
-1. 在 `src/components/records/renderers/` 新增详情组件和概览摘要，共用协议 `value` 的检查与收窄逻辑。
-2. 在 `registry.ts` 按 `(type, version)` 注册 `label`、`Renderer` 和 `summarize`。需要子泳道时提供稳定的 `group` 身份及显示名。
+1. 在 `registry.ts` 按 `(type, version)` 注册 `label` 和 `summarize`。摘要声明 Record 标签、可选子泳道 `group`、颜色语气 `tone` 和 `hover` 文案；需要专用详情时才提供 `Renderer`，否则使用安全 JSON。
+2. 在 `src/components/records/renderers/` 实现协议值的检查与摘要。专用详情组件复用同一解析规则。
 
-页面和通用 Record 容器不需要修改。未知类型、未知版本或结构不匹配的值会回退到安全的 JSON 展示；每条记录的 renderer 有独立错误边界。
+Track 的 `timeMode` 由通用时间轴映射为 Range 区间条或 Point 密度，协议展示代码不处理裁剪、布局、拖动或命中。页面和通用 Record 容器不需要修改。未知类型、未知版本或结构不匹配的值会回退到安全的 JSON 展示；每条记录的 renderer 有独立错误边界。设计决策见 [ADR-0011](../../../docs/adr/ADR-0011-web-timeline-presentation-ownership.md)。
 
 ## 验证
 
@@ -60,7 +60,7 @@ HEARTBEAT_PERF_MODE=production npm run test:perf
 npm run test:perf
 ```
 
-基准用匿名的确定性数据模拟一天的量（安静一天约 100 条前台应用，忙碌一天 1,376 条前台应用、1,738 条前台窗口、175,492 个输入事件），分别测三种拖动：整天视图下拖不动的 `clamped-pan`、放大一次的 `wide-pan`、放大两次的 `zoomed-pan`，并额外测量展开应用子泳道的情况。生产模式启动与 Docker 镜像相同的 standalone server。每次报告以时间命名，保存在当前前端目录的 `.artifacts/perf/`，命令会打印完整路径；需要指定文件名时可设置 `HEARTBEAT_PERF_REPORT`。报告含每步耗时分位、浏览器长任务和按阶段归因的采样。退出码只说明基准是否完成，不表示速度合格。
+基准用匿名的确定性数据模拟一天的量（安静一天约 100 条前台应用，忙碌一天 1,376 条前台应用、1,738 条前台窗口、175,492 个输入事件），分别测三种拖动：整天视图下拖不动的 `clamped-pan`、放大一次的 `wide-pan`、放大两次的 `zoomed-pan`，并额外测量展开应用子泳道的情况。生产模式启动与 Docker 镜像相同的 standalone server。每次报告以时间命名，保存在当前前端目录的 `.artifacts/perf/`，命令会打印完整路径；需要指定文件名时可设置 `HEARTBEAT_PERF_REPORT`。报告含每步耗时分位、浏览器长任务和按阶段归因的采样；生产模式还记录连续拖动时的范围更新次数与帧间隔。报告里的 `segments` 是屏幕上的区间条数，稠密泳道画在画布上没有节点可数，改由画布自报。逐步测量每次都会等浏览器空闲，不能直接换算为帧率。退出码只说明基准是否完成，不表示速度合格。
 
 两条读数纪律：
 
@@ -71,6 +71,7 @@ npm run test:perf
 
 - 顶层按 Collector 来源分组，每条 Track 独立展示；来源分组不表示 Device Identity。
 - Range Track 完整读取后在浏览器裁剪，重叠区间分行，空白不补齐。
+- 可见区间超过 400 条时，整条泳道画在一张画布上，不再为每条记录建一个 DOM 节点；hover、选择和方向键浏览都落在这张画布上，颜色语气和文案仍来自同一个 renderer registry。密集绘制不画斜纹与边框，行高、行距与命中范围由 `rangeLayout.ts` 一处给出，两种介质共用。
 - Point Track 用服务端计数绘制密度，用户选择局部时间桶后才读取原始详情。
 - 公共时间线只处理时间几何；协议摘要和详情由同一个 renderer registry 提供。
 - 未知协议仍显示时间位置和安全的原始 JSON。

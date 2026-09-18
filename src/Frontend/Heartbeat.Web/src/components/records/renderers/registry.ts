@@ -19,6 +19,7 @@ import type {
   RecordRenderer,
   RecordSummary,
 } from "@/components/records/renderers/types";
+import type { TimelineRecord, TrackSummary } from "@/api/types";
 
 const renderers = new Map<string, RecordPresentation>([
   [
@@ -50,6 +51,7 @@ const renderers = new Map<string, RecordPresentation>([
     { label: "观测状态", Renderer: DesktopObservationStatusV1, summarize: summarizeDesktopStatus },
   ],
 ]);
+const summaries = new WeakMap<TimelineRecord, { key: string; summary: RecordSummary }>();
 
 function rendererKey(type: string, version: number): string {
   return `${type}@${version}`;
@@ -59,17 +61,21 @@ export function findRecordRenderer(type: string, version: number): RecordRendere
   return renderers.get(rendererKey(type, version))?.Renderer ?? null;
 }
 
-export function summarizeRecord(
-  type: string,
-  version: number,
-  value: unknown,
-  fallback: string,
-): RecordSummary {
+export function describeRecord(track: TrackSummary, record: TimelineRecord): RecordSummary {
+  const key = `${track.type}@${track.version}/${track.timeMode}`;
+  const cached = summaries.get(record);
+  if (cached?.key === key) return cached.summary;
+  const fallback = track.timeMode === "point" ? "瞬时记录" : "时间区间";
+  let summary: RecordSummary;
   try {
-    return renderers.get(rendererKey(type, version))?.summarize(value) ?? { label: fallback };
+    summary = renderers.get(rendererKey(track.type, track.version))?.summarize(record.value) ?? {
+      label: fallback,
+    };
   } catch {
-    return { label: fallback };
+    summary = { label: fallback };
   }
+  summaries.set(record, { key, summary });
+  return summary;
 }
 
 export function recordTypeLabel(type: string, version: number): string {

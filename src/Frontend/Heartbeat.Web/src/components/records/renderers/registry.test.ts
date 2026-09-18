@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { TimelineRecord, TrackSummary } from "@/api/types";
-import {
-  protocolRecordLabel,
-  protocolRecordTitle,
-  protocolRecordSummary,
-} from "@/components/replay/protocolSummary";
+import { describeRecord } from "@/components/records/renderers/registry";
 
 const track: TrackSummary = {
   id: "track",
@@ -45,28 +41,27 @@ const windowRecord: TimelineRecord = {
 
 describe("application timeline summary", () => {
   it("names the application by its identity and the window by its title", () => {
-    expect(protocolRecordLabel(track, record)).toBe("Example Editor");
-    expect(protocolRecordTitle(track, record)).toBe("Example Editor");
-    expect(protocolRecordLabel(windowTrack, windowRecord)).toBe("Private draft.md");
+    expect(describeRecord(track, record).label).toBe("Example Editor");
+    expect(describeRecord(windowTrack, windowRecord).label).toBe("Private draft.md");
   });
 
   it("keeps the window title out of the application lane", () => {
-    expect(protocolRecordSummary(windowTrack, record).label).toBe("时间区间");
-    expect(protocolRecordSummary(windowTrack, windowRecord).group).toBeUndefined();
+    expect(describeRecord(windowTrack, record).label).toBe("时间区间");
+    expect(describeRecord(windowTrack, windowRecord).group).toBeUndefined();
   });
 
   it("uses safe generic summaries for malformed values and unknown protocols", () => {
-    expect(protocolRecordLabel(track, { ...record, value: { application: 3 } })).toBe("时间区间");
-    expect(protocolRecordLabel({ ...track, type: "example.custom" }, record)).toBe("时间区间");
+    expect(describeRecord(track, { ...record, value: { application: 3 } }).label).toBe("时间区间");
+    expect(describeRecord({ ...track, type: "example.custom" }, record).label).toBe("时间区间");
     expect(
-      protocolRecordTitle({ ...track, timeMode: "point", type: "example.custom" }, record),
+      describeRecord({ ...track, timeMode: "point", type: "example.custom" }, record).label,
     ).toBe("瞬时记录");
   });
 });
 
 it("groups applications by platform identity rather than their display name", () => {
-  const first = protocolRecordSummary(track, record).group;
-  const second = protocolRecordSummary(track, {
+  const first = describeRecord(track, record).group;
+  const second = describeRecord(track, {
     ...record,
     value: {
       ...(record.value as object),
@@ -81,5 +76,5 @@ it("groups applications by platform identity rather than their display name", ()
   }).group;
   expect(first?.label).toBe(second?.label);
   expect(first?.id).not.toBe(second?.id);
-  expect(protocolRecordSummary(track, { ...record, value: null }).group).toBeUndefined();
+  expect(describeRecord(track, { ...record, value: null }).group).toBeUndefined();
 });

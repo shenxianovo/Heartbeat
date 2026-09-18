@@ -1,8 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ReplayLane, TimelineRecord, TrackSummary } from "@/api/types";
+import type { TimeRange } from "@/components/replay/timeRange";
 import { TimelineViewport } from "@/components/replay/TimelineViewport";
+import { ActivityOverview } from "@/components/replay/ActivityOverview";
 
 const from = "2026-09-14T00:00:00Z";
 const to = "2026-09-15T00:00:00Z";
@@ -30,6 +32,31 @@ function record(id: string): TimelineRecord {
 }
 function lane(records: TimelineRecord[], currentTrack = track): ReplayLane {
   return { track: currentTrack, records, counts: null };
+}
+
+const day = { start: Date.parse(from), end: Date.parse(to) };
+
+/** The viewport with everything a test does not care about already filled in. */
+function viewport(props: {
+  lanes: ReplayLane[];
+  range?: TimeRange;
+  onRange?: (range: TimeRange) => void;
+}) {
+  return (
+    <TimelineViewport
+      lanes={props.lanes}
+      bounds={day}
+      range={props.range ?? day}
+      overviewLanes={[]}
+      densityStatus={null}
+      onRange={props.onRange ?? (() => {})}
+      onSelectPoints={() => {}}
+    />
+  );
+}
+
+function renderViewport(props: Parameters<typeof viewport>[0]) {
+  return render(viewport(props));
 }
 
 const foregroundTrack: TrackSummary = {
@@ -194,6 +221,22 @@ describe("timeline presentation projection", () => {
     expect(screen.getByText("观测状态", { selector: ".timeline-lane-label strong" })).toBeVisible();
     expect(screen.getByRole("button", { name: "应用观测 · 可用 · accessibility" })).toBeVisible();
   });
+
+  it("moves a dense lane onto one drawing surface and keeps a sparse lane on buttons", () => {
+    const many = (count: number) =>
+      Array.from({ length: count }, (_, index) => record(`bar-${index}`));
+    const view = renderViewport({ lanes: [lane(many(3))] });
+
+    expect(screen.getAllByRole("button", { name: "时间区间" })).toHaveLength(3);
+    expect(document.querySelector(".timeline-range-canvas")).toBeNull();
+
+    view.rerender(viewport({ lanes: [lane(many(401))] }));
+
+    expect(screen.queryAllByRole("button", { name: "时间区间" })).toHaveLength(0);
+    expect(document.querySelector<HTMLElement>(".timeline-range-canvas")?.dataset.segments).toBe(
+      "401",
+    );
+  });
 });
 
 describe("timeline wheel interaction", () => {
@@ -281,5 +324,66 @@ describe("timeline wheel interaction", () => {
     }
 
     expect(onRange).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("continuous range dragging", () => {
+  function frameQueue() {
+    const callbacks: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callbacks.push(callback);
+      return callbacks.length;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    Object.defineProperty(HTMLElement.prototype, "setPointerCapture", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      right: 1000,
+      top: 0,
+      bottom: 100,
+      width: 1000,
+      height: 100,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    return () => act(() => callbacks.splice(0).forEach((callback) => callback(0)));
+  }
+
+  it("uses the latest main-lane pointer position once per frame", () => {
+    const nextFrame = frameQueue();
+    const onRange = vi.fn();
+    const range = { start: day.start + 3_600_000, end: day.start + 13 * 3_600_000 };
+    renderViewport({ lanes: [lane([record("short")])], range, onRange });
+    const plot = document.querySelector<HTMLElement>("[data-time-plot]")!;
+    const timeline = document.querySelector<HTMLElement>(".swimlane-timeline")!;
+    fireEvent.pointerDown(plot, { button: 0, clientX: 500, pointerId: 1 });
+    fireEvent.pointerMove(timeline, { clientX: 480, pointerId: 1 });
+    fireEvent.pointerMove(timeline, { clientX: 450, pointerId: 1 });
+    expect(onRange).not.toHaveBeenCalled();
+    nextFrame();
+    expect(onRange).toHaveBeenCalledTimes(1);
+    expect(onRange).toHaveBeenCalledWith({
+      start: range.start + (range.end - range.start) * 0.05,
+      end: range.end + (range.end - range.start) * 0.05,
+    });
+  });
+
+  it("flushes the final overview position when the pointer is released", () => {
+    frameQueue();
+    const onRange = vi.fn();
+    const bounds = { start: Date.parse(from), end: Date.parse(to) };
+    const range = { start: bounds.start + 3_600_000, end: bounds.start + 13 * 3_600_000 };
+    render(<ActivityOverview lanes={[]} bounds={bounds} range={range} onRange={onRange} />);
+    const overview = screen.getByTestId("activity-overview");
+    fireEvent.pointerDown(overview, { button: 0, clientX: 500, pointerId: 1 });
+    fireEvent.pointerMove(overview, { clientX: 480, pointerId: 1 });
+    fireEvent.pointerMove(overview, { clientX: 450, pointerId: 1 });
+    expect(onRange).not.toHaveBeenCalled();
+    fireEvent.pointerUp(overview, { clientX: 450, pointerId: 1 });
+    expect(onRange).toHaveBeenCalledTimes(1);
   });
 });

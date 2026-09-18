@@ -1,12 +1,14 @@
 import { useMemo } from "react";
 import type { ReplayLane, TimelineRecord } from "@/api/types";
 import { trackLabel } from "@/components/filters/TrackPicker";
-import { TooltipReading, useTooltip } from "@/components/ui/Tooltip";
-import { protocolRecordSummary } from "./protocolSummary";
-import { layoutRanges } from "./rangeLayout";
+import { useTooltip } from "@/components/ui/Tooltip";
+import { describeRecord } from "@/components/records/renderers/registry";
+import { laneHeight, layoutRanges } from "./rangeLayout";
 import { DensityCurve } from "./DensityCurve";
+import { CanvasRanges } from "./CanvasRanges";
+import { RangeBars } from "./RangeBars";
 import type { DensityScale } from "./densityScale";
-import { formatTime, overlaps, percent, timeTicks, type TimeRange } from "./timeRange";
+import { overlaps, timeTicks, type TimeRange } from "./timeRange";
 
 export interface PointSelection {
   trackId: string;
@@ -32,50 +34,8 @@ interface Props {
   onExpandedChange: (expanded: boolean) => void;
 }
 
-type RangeItem = ReturnType<typeof layoutRanges>["items"][number];
-
-/** One observation drawn as a bar. Hovering reads out its window and protocol summary. */
-function RangeSegment({
-  lane,
-  item,
-  range,
-  selected,
-  onSelect,
-}: {
-  lane: ReplayLane;
-  item: RangeItem;
-  range: TimeRange;
-  selected: RecordSelection | null;
-  onSelect: (value: RecordSelection) => void;
-}) {
-  const tooltip = useTooltip();
-  const summary = protocolRecordSummary(lane.track, item.record);
-  const text = summary.title ?? summary.label;
-  return (
-    <button
-      type="button"
-      className={`timeline-range timeline-tone-${summary.tone ?? "default"}`}
-      style={{
-        left: `${percent(item.start, range)}%`,
-        width: `${((item.end - item.start) / (range.end - range.start)) * 100}%`,
-        top: `${8 + item.row * 28}px`,
-      }}
-      aria-label={text}
-      aria-pressed={selected?.trackId === lane.track.id && selected.recordId === item.record.id}
-      onPointerMove={(event) =>
-        tooltip.show(
-          <TooltipReading
-            caption={`${formatTime(item.start, true)} – ${formatTime(item.end, true)}`}
-            value={text}
-          />,
-          event,
-        )
-      }
-      onPointerLeave={tooltip.hide}
-      onClick={() => onSelect({ trackId: lane.track.id, recordId: item.record.id })}
-    />
-  );
-}
+/** Below this count, individual DOM buttons keep direct keyboard access. */
+const MAX_RANGE_BUTTONS = 400;
 
 /** A lane name that reads out in full on hover, but only while it is actually clipped. */
 function LaneName({ text }: { text: string }) {
@@ -94,6 +54,28 @@ function LaneName({ text }: { text: string }) {
   );
 }
 
+/**
+ * What an empty window says. Density buckets count as content even though they are
+ * not records, and only a point lane has a status worth explaining.
+ */
+function EmptyWindow({
+  lane,
+  range,
+  status,
+}: {
+  lane: ReplayLane;
+  range: TimeRange;
+  status: string | null;
+}) {
+  const inWindow = (buckets: { startedAt: string; endedAt: string }[]) =>
+    buckets.some((bucket) =>
+      overlaps(Date.parse(bucket.startedAt), Date.parse(bucket.endedAt), range),
+    );
+  if (lane.counts && inWindow(lane.counts.buckets)) return null;
+  if (lane.detailCounts?.some((detail) => inWindow(detail.buckets))) return null;
+  return <span className="timeline-empty">{lane.track.timeMode === "point" ? status : null}</span>;
+}
+
 function RecordPlot({
   lane,
   records,
@@ -109,21 +91,18 @@ function RecordPlot({
     () => layoutRanges(records, range.start, range.end),
     [records, range.start, range.end],
   );
-  const hasDensity = Boolean(
-    lane.counts?.buckets.some((bucket) =>
-      overlaps(Date.parse(bucket.startedAt), Date.parse(bucket.endedAt), range),
-    ) ||
-    lane.detailCounts?.some((detail) =>
-      detail.buckets.some((bucket) =>
-        overlaps(Date.parse(bucket.startedAt), Date.parse(bucket.endedAt), range),
-      ),
-    ),
-  );
+  const medium = {
+    track: lane.track,
+    items: layout.items,
+    range,
+    selectedId: selected?.trackId === lane.track.id ? selected.recordId : null,
+    onSelect: (recordId: string) => onSelect({ trackId: lane.track.id, recordId }),
+  };
   return (
     <div
       className="timeline-lane-plot"
       data-time-plot
-      style={{ minHeight: `${Math.max(40, layout.rows * 28 + 12)}px` }}
+      style={{ minHeight: `${laneHeight(layout.rows)}px` }}
     >
       {ticks.map((tick) => (
         <span
@@ -133,16 +112,12 @@ function RecordPlot({
           style={{ left: `${tick.left}%` }}
         />
       ))}
-      {layout.items.map((item) => (
-        <RangeSegment
-          key={item.record.id}
-          lane={lane}
-          item={item}
-          range={range}
-          selected={selected}
-          onSelect={onSelect}
-        />
-      ))}
+      {/* One surface costs a redraw per frame; one node per observation costs a layout pass. */}
+      {layout.items.length > MAX_RANGE_BUTTONS ? (
+        <CanvasRanges {...medium} />
+      ) : (
+        <RangeBars {...medium} />
+      )}
       {lane.track.timeMode === "point" ? (
         <DensityCurve
           track={lane.track}
@@ -153,11 +128,9 @@ function RecordPlot({
           onSelect={onSelectPoints}
         />
       ) : null}
-      {!layout.items.length && !hasDensity ? (
-        <span className="timeline-empty">
-          {densityStatus && lane.track.timeMode === "point" ? densityStatus : null}
-        </span>
-      ) : null}
+      {layout.items.length ? null : (
+        <EmptyWindow lane={lane} range={range} status={densityStatus} />
+      )}
     </div>
   );
 }
@@ -175,7 +148,7 @@ export function TimelineLane(props: Props) {
         )
       )
         continue;
-      const group = protocolRecordSummary(lane.track, record).group;
+      const group = describeRecord(lane.track, record).group;
       if (!group) continue;
       const current = result.get(group.id) ?? { ...group, records: [] };
       current.records.push(record);

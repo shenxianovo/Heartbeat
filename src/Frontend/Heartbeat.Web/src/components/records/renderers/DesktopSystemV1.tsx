@@ -41,7 +41,7 @@ export function summarizeDesktopStatus(value: unknown): RecordSummary {
   const label = `${capabilityLabels[capability] ?? capability} · ${stateLabels[state] ?? state}`;
   return {
     label,
-    title: typeof parsed.reason === "string" ? `${label} · ${parsed.reason}` : label,
+    hover: typeof parsed.reason === "string" ? `${label} · ${parsed.reason}` : label,
     tone: state === "available" ? "muted" : "attention",
   };
 }

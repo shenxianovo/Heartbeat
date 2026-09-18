@@ -11,6 +11,7 @@ import {
   type RangeDrag,
   type TimeRange,
 } from "./timeRange";
+import { useFrameRange } from "./useFrameRange";
 
 interface Props {
   lanes: ReplayLane[];
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export function ActivityOverview({ lanes, bounds, range, onRange }: Props) {
+  const frameRange = useFrameRange(onRange);
   const drag = useRef<{
     mode: RangeDrag;
     range: TimeRange;
@@ -87,6 +89,7 @@ export function ActivityOverview({ lanes, bounds, range, onRange }: Props) {
   }
   function down(event: PointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return;
+    frameRange.cancel();
     event.preventDefault();
     const target = (event.target as HTMLElement).closest<HTMLElement>("[data-drag]");
     let mode = (target?.dataset.drag ?? "select") as RangeDrag;
@@ -99,10 +102,14 @@ export function ActivityOverview({ lanes, bounds, range, onRange }: Props) {
     if (!active) return;
     if (Math.abs(event.clientX - active.x) > 3) active.moved = true;
     if (active.moved)
-      onRange(dragRange(active.mode, active.range, bounds, active.anchor, timeAt(event)));
+      frameRange.schedule(
+        dragRange(active.mode, active.range, bounds, active.anchor, timeAt(event)),
+      );
   }
   function up(event: PointerEvent<HTMLDivElement>) {
     const active = drag.current;
+    if (active?.moved) frameRange.flush();
+    else frameRange.cancel();
     if (active && !active.moved && active.mode === "select" && !full) {
       onRange(
         dragRange(
@@ -151,6 +158,7 @@ export function ActivityOverview({ lanes, bounds, range, onRange }: Props) {
         onPointerMove={move}
         onPointerUp={up}
         onPointerCancel={() => {
+          frameRange.cancel();
           drag.current = null;
         }}
         onDoubleClick={() => onRange(bounds)}
