@@ -56,4 +56,10 @@ internal static class WebVerificationWorkspace
         var workspace = await PrepareAsync(repository, run, cancellationToken);
         return arguments.Select(value => value == web ? workspace : value).ToArray();
     }
+
+    public static void DeleteAfterSuccess(ArtifactRun run)
+    {
+        var workspace = Path.Combine(run.Directory, "web-workspace");
+        if (Directory.Exists(workspace)) Directory.Delete(workspace, recursive: true);
+    }
 }

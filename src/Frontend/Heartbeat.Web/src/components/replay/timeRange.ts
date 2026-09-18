@@ -56,13 +56,24 @@ export function percent(at: number, range: TimeRange): number {
   return Math.max(0, Math.min(100, ((at - range.start) / (range.end - range.start)) * 100));
 }
 
-export function formatTime(at: number, seconds = false): string {
-  return new Date(at).toLocaleTimeString("zh-CN", {
+/** A drag reads thousands of times, and building a formatter per reading dominates it. */
+const timeFormats = new Map<boolean, Intl.DateTimeFormat>();
+
+function timeFormat(seconds: boolean): Intl.DateTimeFormat {
+  const cached = timeFormats.get(seconds);
+  if (cached) return cached;
+  const format = new Intl.DateTimeFormat("zh-CN", {
     hour12: false,
     hour: "2-digit",
     minute: "2-digit",
     ...(seconds ? { second: "2-digit" } : {}),
   });
+  timeFormats.set(seconds, format);
+  return format;
+}
+
+export function formatTime(at: number, seconds = false): string {
+  return timeFormat(seconds).format(at);
 }
 
 export function timeTicks(range: TimeRange, count = 6) {

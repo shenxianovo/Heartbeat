@@ -12,6 +12,8 @@ internal sealed class ScenarioCommand(
             await output.WriteLineAsync("""
                 Usage: heartbeat-dev scenario <replay-fixture|delivery|native-desktop> [options]
 
+                Use scenario --list to print the available names.
+
                 replay-fixture  Re-runs the replay browser test against mocked auth and API, keeping evidence
                 delivery        Re-runs the record upload/replay integration tests against PostgreSQL, keeping evidence
                 native-desktop  Guided macOS collector session against an isolated local Hub
@@ -23,6 +25,12 @@ internal sealed class ScenarioCommand(
                   --include-sensitive-evidence  Persist native logs that may contain user context
                   --keep-environment-on-failure Keep an isolated native Hub for diagnosis
                 """);
+            return 0;
+        }
+
+        if (args.Length == 1 && args[0] == "--list")
+        {
+            await output.WriteLineAsync("replay-fixture\ndelivery\nnative-desktop");
             return 0;
         }
 

@@ -74,6 +74,7 @@ Hub 和原生 Collector 另需运行 `./scripts/setup.sh`。
 ./scripts/heartbeat-dev scenario replay-fixture
 ./scripts/heartbeat-dev scenario delivery
 ./scripts/heartbeat-dev scenario native-desktop
+./scripts/heartbeat-dev scenario --list
 ```
 
 | 场景 | 证据 | 不证明 |
@@ -82,7 +83,7 @@ Hub 和原生 Collector 另需运行 `./scripts/setup.sh`。
 | `delivery` | API 与 PostgreSQL 的上传、重放集成测试 | 不覆盖 Web、Hub 或 Collector |
 | `native-desktop` | 临时 Hub、真实 macOS Collector、进程和队列元数据 | 不自动操作权限、锁屏、休眠或物理输入 |
 
-UI、用户流程、HTTP 展示或性能变更需要相应场景证据。原生场景默认不保存用户内容；只有显式使用 `--include-sensitive-evidence` 才保存 Collector 日志。`--keep-environment-on-failure` 会在失败时保留独立环境。
+UI、用户流程或 HTTP 展示变更需要相应场景证据。活动泳道性能变更运行[前端基准](../src/Frontend/Heartbeat.Web/README.md#活动泳道拖动基准)；若交互行为也变了，同时运行 `replay-fixture`。基准由前端脚本保存报告，退出码只说明测量是否完成，不证明性能达标。原生场景默认不保存用户内容；只有显式使用 `--include-sensitive-evidence` 才保存 Collector 日志。`--keep-environment-on-failure` 会在失败时保留独立环境。
 
 ## 现场探针
 
@@ -102,7 +103,7 @@ UI、用户流程、HTTP 展示或性能变更需要相应场景证据。原生�
 
 ## 证据管理
 
-每次 `verify`、`quality`、`scenario` 和 `probe` 都在 `.artifacts/verification/<run-id>/` 写 `manifest.json`，记录命令、时间、退出码、产物、敏感证据标志和限制。取消操作使用退出码 130；强制杀进程、断电和产物目录不可写不在保证范围内。
+每次 `verify`、`quality`、`scenario` 和 `probe` 都在 `.artifacts/verification/<run-id>/` 写 `manifest.json`，记录命令、时间、退出码、由退出码派生的 `status`（`succeeded`、`failed`、`cancelled`）、产物、敏感证据标志和限制。取消操作使用退出码 130；强制杀进程、断电和产物目录不可写不在保证范围内。前端性能基准的报告独立保存在前端 `.artifacts/perf/`，不写入 CLI manifest。
 
 ```bash
 ./scripts/heartbeat-dev artifacts list
@@ -113,7 +114,7 @@ UI、用户流程、HTTP 展示或性能变更需要相应场景证据。原生�
 
 `prune` 默认只预览，`--apply` 才删除验证运行；不删除 `.artifacts/quality-baselines/`。默认保留最近 10 次、最近 5 次失败和 2 天内的运行。没有 manifest 的运行按失败保留。
 
-`inventory-local` 只清点旧 `.local`，从不删除。Web 检查在每次运行的隔离工作区中执行，共享已安装依赖；运行期间不要修改共享依赖。
+`inventory-local` 只清点旧 `.local`，从不删除。Web 检查在每次运行的隔离工作区中执行，共享已安装依赖；运行期间不要修改共享依赖。成功运行会删除临时工作区，保留日志和浏览器报告；失败运行保留工作区供排查，随后仍受上述证据保留规则管理。
 
 ## 结论边界
 

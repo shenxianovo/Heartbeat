@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, type KeyboardEvent, type PointerEvent } from "react";
+import { useMemo, useRef, type KeyboardEvent, type PointerEvent } from "react";
 import type { ReplayLane } from "@/api/types";
 import {
   dragRange,
@@ -30,8 +30,53 @@ export function ActivityOverview({ lanes, bounds, range, onRange }: Props) {
   const full = range.start === bounds.start && range.end === bounds.end;
   const left = percent(range.start, bounds);
   const right = percent(range.end, bounds);
-  const rows = Array.from(new Set(lanes.map((lane) => lane.track.collectorId)));
-  const height = Math.max(24, rows.length * 8 + 8);
+  /**
+   * The whole-day picture only changes when the day or its Records change, so it is
+   * drawn once and left alone while the Owner pans; only the shade and the handles
+   * follow the range.
+   */
+  const { height, marks } = useMemo(() => {
+    const rows = Array.from(new Set(lanes.map((lane) => lane.track.collectorId)));
+    const svgHeight = Math.max(24, rows.length * 8 + 8);
+    return {
+      height: svgHeight,
+      marks: (
+        <svg viewBox={`0 0 1000 ${svgHeight}`} preserveAspectRatio="none" aria-hidden="true">
+          {lanes.flatMap((lane) => {
+            const y = 4 + rows.indexOf(lane.track.collectorId) * 8;
+            const laneMarks = lane.counts
+              ? lane.counts.buckets.map((bucket) => ({
+                  id: String(bucket.index),
+                  start: bucket.startedAt,
+                  end: bucket.endedAt,
+                }))
+              : lane.records.map((record) => ({
+                  id: record.id,
+                  start: record.startedAt,
+                  end: record.endedAt ?? record.startedAt,
+                }));
+            return laneMarks
+              .filter((mark) => overlaps(Date.parse(mark.start), Date.parse(mark.end), bounds))
+              .map((mark) => (
+                <rect
+                  key={`${lane.track.id}/${mark.id}`}
+                  x={percent(Date.parse(mark.start), bounds) * 10}
+                  y={y}
+                  width={Math.max(
+                    0.7,
+                    (percent(Date.parse(mark.end), bounds) -
+                      percent(Date.parse(mark.start), bounds)) *
+                      10,
+                  )}
+                  height="6"
+                  className={lane.counts ? "overview-point" : "overview-range"}
+                />
+              ));
+          })}
+        </svg>
+      ),
+    };
+  }, [lanes, bounds]);
   function timeAt(event: PointerEvent<HTMLDivElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
     return (
@@ -110,39 +155,7 @@ export function ActivityOverview({ lanes, bounds, range, onRange }: Props) {
         }}
         onDoubleClick={() => onRange(bounds)}
       >
-        <svg viewBox={`0 0 1000 ${height}`} preserveAspectRatio="none" aria-hidden="true">
-          {lanes.flatMap((lane) => {
-            const y = 4 + rows.indexOf(lane.track.collectorId) * 8;
-            const marks = lane.counts
-              ? lane.counts.buckets.map((bucket) => ({
-                  id: String(bucket.index),
-                  start: bucket.startedAt,
-                  end: bucket.endedAt,
-                }))
-              : lane.records.map((record) => ({
-                  id: record.id,
-                  start: record.startedAt,
-                  end: record.endedAt ?? record.startedAt,
-                }));
-            return marks
-              .filter((mark) => overlaps(Date.parse(mark.start), Date.parse(mark.end), bounds))
-              .map((mark) => (
-                <rect
-                  key={`${lane.track.id}/${mark.id}`}
-                  x={percent(Date.parse(mark.start), bounds) * 10}
-                  y={y}
-                  width={Math.max(
-                    0.7,
-                    (percent(Date.parse(mark.end), bounds) -
-                      percent(Date.parse(mark.start), bounds)) *
-                      10,
-                  )}
-                  height="6"
-                  className={lane.counts ? "overview-point" : "overview-range"}
-                />
-              ));
-          })}
-        </svg>
+        {marks}
         <div className="overview-shade" style={{ left: 0, width: `${left}%` }} />
         <div className="overview-shade" style={{ left: `${right}%`, right: 0 }} />
         <div

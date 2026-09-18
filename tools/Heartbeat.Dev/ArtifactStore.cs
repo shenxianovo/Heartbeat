@@ -15,7 +15,15 @@ internal sealed record EvidenceManifest(
     IReadOnlyList<string> Commands,
     IReadOnlyList<string> Artifacts,
     IReadOnlyList<string> Limitations,
-    string? Failure = null);
+    string? Failure = null)
+{
+    public string Status => ExitCode switch
+    {
+        0 => "succeeded",
+        130 => "cancelled",
+        _ => "failed",
+    };
+}
 
 /// <summary>
 /// 证据保留规则。默认值必须在本项目的实际节奏下真的会命中——「保留最近 20 次且 14 天以上才删」

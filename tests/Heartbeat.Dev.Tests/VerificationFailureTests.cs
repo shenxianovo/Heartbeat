@@ -34,6 +34,7 @@ public sealed class VerificationFailureTests : IDisposable
         var run = Assert.Single(new ArtifactStore(repository).List());
         using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(run.Directory, "manifest.json")));
         Assert.Equal(cancel ? 130 : 1, manifest.RootElement.GetProperty("exitCode").GetInt32());
+        Assert.Equal(cancel ? "cancelled" : "failed", manifest.RootElement.GetProperty("status").GetString());
         Assert.Equal(command == "native-desktop" ? "scenario" : command, manifest.RootElement.GetProperty("kind").GetString());
     }
 

@@ -11,8 +11,8 @@ description: Verify Heartbeat implementation changes with the repository Develop
 2. 从 [Feature Map](references/features/README.md) 找到相关能力，并读取它链接的权威文档。
 3. 先运行 `./scripts/heartbeat-dev verify changed --base <ref> --plan`，确认选择结果后去掉 `--plan` 执行。
 4. 运行 `./scripts/heartbeat-dev quality --base <ref>`；分析器不可用视为失败。
-5. UI、用户流程、HTTP 展示、性能或原生运行时变更，还要运行对应 `scenario`。基于 fixture 的浏览器场景不能称为真实端到端测试。
-6. 检查本次运行的 `manifest.json` 和相关机器可读报告。最终说明检查项、结果、证据路径与限制。
+5. UI、用户流程、HTTP 展示或原生运行时变更，运行对应 `scenario`。活动泳道性能变更运行前端 README 中的生产基准；若交互行为也变了，同时运行回放场景。基于 fixture 的浏览器场景不能称为真实端到端测试。
+6. 检查 CLI 运行的 `manifest.json` 和相关机器可读报告；性能基准报告由前端脚本独立保存。最终说明检查项、结果、证据路径与限制。
 7. 路由、用户入口、稳定选择器、renderer 或场景命令变化时，同步更新 Feature Map。
 
 命令契约、阈值、敏感证据规则和环境准备以 [工程验证](../../../docs/verification.md) 为准。

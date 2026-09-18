@@ -51,12 +51,6 @@ function RangeSegment({
   const tooltip = useTooltip();
   const summary = protocolRecordSummary(lane.track, item.record);
   const text = summary.title ?? summary.label;
-  const reading = (
-    <TooltipReading
-      caption={`${formatTime(item.start, true)} – ${formatTime(item.end, true)}`}
-      value={text}
-    />
-  );
   return (
     <button
       type="button"
@@ -68,7 +62,15 @@ function RangeSegment({
       }}
       aria-label={text}
       aria-pressed={selected?.trackId === lane.track.id && selected.recordId === item.record.id}
-      onPointerMove={(event) => tooltip.show(reading, event)}
+      onPointerMove={(event) =>
+        tooltip.show(
+          <TooltipReading
+            caption={`${formatTime(item.start, true)} – ${formatTime(item.end, true)}`}
+            value={text}
+          />,
+          event,
+        )
+      }
       onPointerLeave={tooltip.hide}
       onClick={() => onSelect({ trackId: lane.track.id, recordId: item.record.id })}
     />

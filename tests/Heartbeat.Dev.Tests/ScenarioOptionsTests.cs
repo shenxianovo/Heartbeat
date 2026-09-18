@@ -5,6 +5,18 @@ namespace Heartbeat.Dev.Tests;
 public sealed class ScenarioOptionsTests
 {
     [Fact]
+    public async Task ListsAvailableScenarios()
+    {
+        using var output = new StringWriter();
+        var command = new ScenarioCommand(new RepositoryContext(Path.GetTempPath()),
+            null!, output);
+
+        Assert.Equal(0, await command.RunAsync(["--list"], CancellationToken.None));
+        Assert.Equal(["replay-fixture", "delivery", "native-desktop"],
+            output.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    [Fact]
     public void SensitiveEvidenceAndFailureRetentionRequireExplicitFlags()
     {
         var defaults = ScenarioOptions.Parse(["native-desktop"]);

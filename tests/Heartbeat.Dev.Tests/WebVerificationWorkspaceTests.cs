@@ -29,6 +29,37 @@ public sealed class WebVerificationWorkspaceTests : IDisposable
         Assert.Equal("dependency", File.ReadAllText(Path.Combine(web, "node_modules", "sentinel")));
     }
 
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, true)]
+    public async Task EvidenceSessionKeepsOnlyFailedWebWorkspace(int exitCode, bool retained)
+    {
+        var repository = new RepositoryContext(_root);
+        var web = repository.Path("src", "Frontend", "Heartbeat.Web");
+        Directory.CreateDirectory(Path.Combine(web, "node_modules"));
+        File.WriteAllText(Path.Combine(web, "node_modules", "sentinel"), "dependency");
+        File.WriteAllText(Path.Combine(web, "tsconfig.json"), "{}");
+
+        var result = await EvidenceSession.ExecuteAsync(repository, "verify", "web", [], async evidence =>
+        {
+            var workspace = await WebVerificationWorkspace.PrepareAsync(repository, evidence.Run, CancellationToken.None);
+            Directory.CreateDirectory(Path.Combine(workspace, ".next"));
+            File.WriteAllText(Path.Combine(workspace, ".next", "generated"), "build output");
+            File.WriteAllText(Path.Combine(evidence.Run.Directory, "web.log"), "check output");
+            return exitCode;
+        });
+
+        Assert.Equal(exitCode, result);
+        var run = Assert.Single(new ArtifactStore(repository).List());
+        Assert.Equal(retained, Directory.Exists(Path.Combine(run.Directory, "web-workspace")));
+        Assert.True(File.Exists(Path.Combine(run.Directory, "web.log")));
+        Assert.Equal("dependency", File.ReadAllText(Path.Combine(web, "node_modules", "sentinel")));
+        using var manifest = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(run.Directory, "manifest.json")));
+        Assert.Equal(exitCode == 0 ? "succeeded" : "failed", manifest.RootElement.GetProperty("status").GetString());
+        Assert.Equal(retained, manifest.RootElement.GetProperty("artifacts").EnumerateArray()
+            .Any(item => item.GetString() == "web-workspace"));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root)) Directory.Delete(_root, true);

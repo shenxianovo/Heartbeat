@@ -127,7 +127,10 @@ export function ReplayWorkbench() {
   );
 
   function setRange(next: TimeRange) {
-    setViewport(next);
+    // Panning past the day's edge asks for the range it already shows; redrawing it
+    // would repeat every lane for nothing.
+    const clamped = bounds ? clampRange(next, bounds) : next;
+    if (!range || range.start !== clamped.start || range.end !== clamped.end) setViewport(clamped);
     setDetail(null);
   }
   function chooseDate(next: DateRange) {
