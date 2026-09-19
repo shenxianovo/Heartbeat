@@ -99,6 +99,7 @@ internal static class VerificationPlanner
             || path.StartsWith("tests/Heartbeat.", StringComparison.Ordinal)) return CheckSelection.Dotnet;
         if (IsContract(path)) return CheckSelection.Dotnet;
         if (path.StartsWith("docs/", StringComparison.Ordinal)
+            || path.StartsWith(".scratch/", StringComparison.Ordinal)
             || path is "README.md" or "AGENTS.md" or "CONTEXT.md") return CheckSelection.None;
         return CheckSelection.Unknown;
     }

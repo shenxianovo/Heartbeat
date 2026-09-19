@@ -32,25 +32,44 @@ internal sealed class VerificationCommand(
                 var run = evidence.Run;
                 var commands = evidence.Commands;
                 var exitCode = 0;
+                var results = new List<(string Name, int ExitCode, string Log)>();
                 await output.WriteLineAsync($"Verification evidence: {run.Directory}");
-                foreach (var step in plan.Steps)
+                try
                 {
-                    var environment = EvidenceEnvironment(step, run);
-                    var arguments = await WebVerificationWorkspace.ArgumentsAsync(repository, run, step.Arguments, cancellationToken);
-                    var command = $"{step.FileName} {string.Join(' ', arguments.Select(Quote))}";
-                    commands.Add(command);
-                    await output.WriteLineAsync($"Running {step.Name} ...");
-                    var result = await runner.CaptureAsync(step.FileName, arguments, environment, cancellationToken);
-                    var logName = $"{step.Name}.log";
-                    await File.WriteAllTextAsync(
-                        Path.Combine(run.Directory, logName), result.StdOut + result.StdErr, cancellationToken);
-                    if (result.ExitCode == 0) continue;
-                    exitCode = result.ExitCode;
-                    await output.WriteAsync(result.StdErr.Length > 0 ? result.StdErr : result.StdOut);
-                    break;
+                    foreach (var step in plan.Steps)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var environment = EvidenceEnvironment(step, run);
+                        var arguments = await WebVerificationWorkspace.ArgumentsAsync(repository, run, step.Arguments, cancellationToken);
+                        var command = $"{step.FileName} {string.Join(' ', arguments.Select(Quote))}";
+                        commands.Add(command);
+                        await output.WriteLineAsync($"Running {step.Name} ...");
+                        var result = await runner.CaptureAsync(step.FileName, arguments, environment, cancellationToken);
+                        var log = Path.Combine(run.Directory, $"{step.Name}.log");
+                        await File.WriteAllTextAsync(log, result.StdOut + result.StdErr, cancellationToken);
+                        results.Add((step.Name, result.ExitCode, log));
+                        if (result.ExitCode == 130) return 130;
+                        if (result.ExitCode == 0) continue;
+                        if (exitCode == 0) exitCode = result.ExitCode;
+                        await output.WriteAsync(result.StdErr.Length > 0 ? result.StdErr : result.StdOut);
+                    }
+                    return exitCode;
                 }
-                return exitCode;
+                finally
+                {
+                    await WriteSummaryAsync(results);
+                }
             }, notes: output);
+    }
+
+    private async Task WriteSummaryAsync(IEnumerable<(string Name, int ExitCode, string Log)> results)
+    {
+        await output.WriteLineAsync("Verification summary:");
+        foreach (var result in results)
+        {
+            var status = result.ExitCode switch { 0 => "succeeded", 130 => "cancelled", _ => "failed" };
+            await output.WriteLineAsync($"  {result.Name}: {status} (exit {result.ExitCode}); log: {result.Log}");
+        }
     }
 
     private IReadOnlyDictionary<string, string?>? EvidenceEnvironment(VerificationStep step, ArtifactRun run)

@@ -23,10 +23,28 @@ public sealed class VerificationPlanningTests
         Assert.Equal(["web", "browser"], plan.Steps.Select(step => step.Name));
     }
 
-    [Fact]
-    public async Task UnknownPathsFallBackToFullVerification()
+    [Theory]
+    [InlineData("")]
+    [InlineData("src/Frontend/Heartbeat.Web/src/app/page.tsx\0")]
+    public async Task UntrackedScratchMaterialsDoNotExpandVerification(string trackedPaths)
     {
-        var plan = await PlanAsync("compose.yaml\0");
+        const string scratchPaths = ".scratch/replay/spec.md\0.scratch/replay/issues/01-replay.md\0.scratch/replay/web-verify.log\0";
+        var plan = await PlanAsync(trackedPaths, scratchPaths);
+
+        Assert.Equal("changed", plan.Mode);
+        Assert.Equal(
+            trackedPaths.Length == 0 ? Array.Empty<string>() : ["web", "browser"],
+            plan.Steps.Select(step => step.Name));
+        Assert.Contains(".scratch/replay/spec.md", plan.ChangedPaths);
+        Assert.Contains(".scratch/replay/web-verify.log", plan.ChangedPaths);
+    }
+
+    [Theory]
+    [InlineData("compose.yaml")]
+    [InlineData(".scratch-tools/check.sh")]
+    public async Task UnknownPathsFallBackToFullVerification(string path)
+    {
+        var plan = await PlanAsync($"{path}\0");
 
         Assert.Equal("full-fallback", plan.Mode);
         Assert.Equal(["dotnet", "web", "browser"], plan.Steps.Select(step => step.Name));
@@ -71,11 +89,11 @@ public sealed class VerificationPlanningTests
         Assert.Empty(plan.Steps);
     }
 
-    private static Task<VerificationPlan> PlanAsync(string trackedPaths)
+    private static Task<VerificationPlan> PlanAsync(string trackedPaths, string untrackedPaths = "")
     {
         var runner = new StubRunner([
             new ProcessResult(0, trackedPaths, string.Empty),
-            new ProcessResult(0, string.Empty, string.Empty),
+            new ProcessResult(0, untrackedPaths, string.Empty),
         ]);
         return VerificationPlanner.CreateAsync(
             Repository, runner, new VerificationRequest("changed", "HEAD", false, false), CancellationToken.None);
