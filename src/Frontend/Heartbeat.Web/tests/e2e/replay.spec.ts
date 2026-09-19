@@ -92,6 +92,61 @@ test("请求失败后可重试恢复", async ({ page }) => {
   await expect(page.getByRole("button", { name: "com.apple.finder", exact: true })).toBeVisible();
 });
 
+test("一条 Track 失败时保留其余数据并可单独重试", async ({ page }) => {
+  await recordingRoutes(page);
+  let failDesktop = true;
+  await page.route(`**/api/v1/tracks/${desktopTrack.id}/records?**`, async (route) => {
+    if (failDesktop) {
+      await route.fulfill({ status: 503, json: { title: "Track 暂时不可用" } });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/");
+  const failureAlert = page.locator(".density-error");
+  await expect(failureAlert).toContainText("1 条 Track 读取失败");
+  await expect(page.getByText("观测状态", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "com.apple.finder", exact: true })).toHaveCount(0);
+
+  failDesktop = false;
+  await page.getByRole("button", { name: "重试失败 Track" }).click();
+  await expect(page.getByRole("button", { name: "com.apple.finder", exact: true })).toBeVisible();
+  await expect(failureAlert).toHaveCount(0);
+});
+
+test("部分 Track 失败而其余仍在加载时不误报全部失败", async ({ page }) => {
+  await recordingRoutes(page);
+  let failedRequests = 0;
+  let release!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/v1/tracks", (route) =>
+    route.fulfill({ json: { tracks: [desktopTrack, customTrack] } }),
+  );
+  await page.route(`**/api/v1/tracks/${desktopTrack.id}/records?**`, (route) => {
+    failedRequests++;
+    return route.fulfill({ status: 503, json: { title: "Track 暂时不可用" } });
+  });
+  await page.route(`**/api/v1/tracks/${customTrack.id}/point-counts?**`, async (route) => {
+    await waiting;
+    await route.fallback();
+  });
+  try {
+    await page.goto("/");
+    await expect.poll(() => failedRequests).toBe(3);
+    await expect(page.getByText("正在构建统一时间窗口")).toBeVisible();
+    await expect(page.getByText("所选 Track 均读取失败。")).toHaveCount(0);
+    release();
+    await expect(page.locator(".timeline-density-curve")).toBeVisible();
+    await expect(page.locator(".density-error")).toContainText("1 条 Track 读取失败");
+    await page.screenshot({ path: evidencePath("replay-partial-failure.png"), fullPage: true });
+  } finally {
+    release();
+  }
+});
+
 test("退出后清理会话，返回首页不能继续查看缓存记录", async ({ page }) => {
   await recordingRoutes(page);
   await page.goto("/");

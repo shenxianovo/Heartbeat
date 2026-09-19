@@ -39,6 +39,8 @@ API 数据结构以 [记录 HTTP 接口](../../../docs/recording-api.md) 为准�
 
 Track 的 `timeMode` 由通用时间轴映射为 Range 区间条或 Point 密度，协议展示代码不处理裁剪、布局、拖动或命中。页面和通用 Record 容器不需要修改。未知类型、未知版本或结构不匹配的值会回退到安全的 JSON 展示；每条记录的 renderer 有独立错误边界。设计决策见 [ADR-0011](../../../docs/adr/ADR-0011-web-timeline-presentation-ownership.md)。
 
+回放页面按 Owner、Track 和时间范围独立缓存查询结果。一条 Track 失败时其余 Track 继续展示，失败项可单独重试；Point 密度 tile 通过 QueryCache 订阅响应更新，刷新会使当前时间窗内各粒度缓存失效。页面选择状态与查询组合的责任见 [ADR-0012](../../../docs/adr/ADR-0012-web-replay-state-and-track-queries.md)。
+
 ## 验证
 
 ```bash

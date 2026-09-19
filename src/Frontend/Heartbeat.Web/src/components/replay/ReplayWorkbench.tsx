@@ -1,13 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useAuth } from "react-oidc-context";
-import {
-  usePointDensityTiles,
-  useRecordsQuery,
-  useReplayWindowQuery,
-  useTracksQuery,
-} from "@/api/queries";
 import { Button } from "@/components/ui/Button";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { MultiSelectPicker } from "@/components/ui/MultiSelectPicker";
@@ -18,139 +11,46 @@ import { trackLabel } from "@/components/filters/TrackPicker";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { RecordsPanel } from "./RecordsPanel";
 import { TimelineViewport } from "./TimelineViewport";
-import type { PointSelection } from "./TimelineLane";
-import { clampRange, densityBucketSeconds, type TimeRange } from "./timeRange";
-import { cachedDensityLayers } from "./densityTiles";
+import { todayRange } from "@/lib/dates";
 import { LoadingState } from "@/components/status/LoadingState";
 import { QueryState } from "@/components/status/QueryState";
-import { rangeToIso, todayRange, type DateRange } from "@/lib/dates";
+import { useReplaySelection } from "./useReplaySelection";
+import { useReplayData } from "./useReplayData";
 
 export function ReplayWorkbench() {
   const auth = useAuth();
   const accessToken = auth.user?.access_token ?? "";
   const ownerSubject = auth.user?.profile.sub ?? "";
-  const [selectedCollectorIds, setSelectedCollectorIds] = useState<string[] | null>(null);
-  const [chosenRange, setChosenRange] = useState<DateRange | null>(null);
-  const [viewport, setViewport] = useState<TimeRange | null>(null);
-  const [detail, setDetail] = useState<PointSelection | null>(null);
-  const hydrated = useSyncExternalStore(
-    () => () => undefined,
-    () => true,
-    () => false,
-  );
-  const initialRange = useMemo(() => (hydrated ? todayRange() : null), [hydrated]);
-  const chosen = chosenRange ?? initialRange;
-  const iso = chosen ? rangeToIso(chosen) : null;
-  const from = iso?.from ?? "";
-  const to = iso?.to ?? "";
-  const bounds = useMemo(
-    () => (from && to ? { start: Date.parse(from), end: Date.parse(to) } : null),
-    [from, to],
-  );
-  const range = useMemo(
-    () => (bounds ? (viewport ? clampRange(viewport, bounds) : bounds) : null),
-    [bounds, viewport],
-  );
-  const [settled, setSettled] = useState<TimeRange | null>(null);
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(range), 150);
-    return () => clearTimeout(timer);
-  }, [range]);
-  const zoomed = Boolean(
-    range && bounds && (range.start !== bounds.start || range.end !== bounds.end),
-  );
-  const settledMatches = settled?.start === range?.start && settled?.end === range?.end;
-  const tracksQuery = useTracksQuery(ownerSubject, accessToken);
-  const allTracks = useMemo(() => tracksQuery.data?.tracks ?? [], [tracksQuery.data?.tracks]);
-  const tracks = useMemo(
-    () =>
-      selectedCollectorIds === null
-        ? allTracks
-        : allTracks.filter((track) => selectedCollectorIds.includes(track.collectorId)),
-    [allTracks, selectedCollectorIds],
-  );
-  const pointTracks = useMemo(() => tracks.filter((track) => track.timeMode === "point"), [tracks]);
-  const collectors = useMemo(
-    () =>
-      Array.from(
-        new Map(
-          allTracks.map((track) => [
-            track.collectorId,
-            track.collectorDisplayName || track.collectorTarget,
-          ]),
-        ),
-      ),
-    [allTracks],
-  );
-  const replayQuery = useReplayWindowQuery(
-    ownerSubject,
-    accessToken,
-    tracks,
+  const selection = useReplaySelection();
+  const {
+    chosen,
     from,
     to,
-    bounds ? densityBucketSeconds(bounds) : 900,
-  );
-  const densityQuery = usePointDensityTiles(
-    ownerSubject,
-    accessToken,
-    pointTracks,
     bounds,
-    zoomed && settled ? settled : null,
-    settled ? densityBucketSeconds(settled) : 900,
-  );
-  const densityStatus =
-    zoomed && pointTracks.length
-      ? densityQuery.isError
-        ? "密度读取失败"
-        : !settledMatches || densityQuery.isPending
-          ? "正在读取密度…"
-          : null
-      : null;
-  const lanes = useMemo(
-    () =>
-      (replayQuery.data ?? []).map((lane) => ({
-        ...lane,
-        detailCounts:
-          lane.track.timeMode === "point" && range
-            ? cachedDensityLayers(densityQuery.layers, lane.track.id, range)
-            : [],
-      })),
-    [replayQuery.data, densityQuery.layers, range],
-  );
-  const detailTrack = tracks.find((track) => track.id === detail?.trackId) ?? null;
-  const detailQuery = useRecordsQuery(
-    ownerSubject,
-    accessToken,
-    detailTrack ? (detail?.trackId ?? null) : null,
-    detail?.from ?? "",
-    detail?.to ?? "",
-  );
-
-  function setRange(next: TimeRange) {
-    // Panning past the day's edge asks for the range it already shows; redrawing it
-    // would repeat every lane for nothing.
-    const clamped = bounds ? clampRange(next, bounds) : next;
-    if (!range || range.start !== clamped.start || range.end !== clamped.end) setViewport(clamped);
-    setDetail(null);
-  }
-  function chooseDate(next: DateRange) {
-    setChosenRange(next);
-    setViewport(null);
-    setDetail(null);
-  }
-  function stepDay(step: number) {
-    if (!chosen) return;
-    const date = new Date(chosen.from);
-    date.setDate(date.getDate() + step);
-    chooseDate(todayRange(date));
-  }
-  async function refresh() {
-    await tracksQuery.refetch();
-    if (tracks.length) await replayQuery.refetch();
-    if (pointTracks.length) await densityQuery.invalidate();
-    if (detailTrack) await detailQuery.refetch();
-  }
-  const fetching = tracksQuery.isFetching || replayQuery.isFetching;
+    range,
+    selectedCollectorIds,
+    detail,
+    chooseDate,
+    stepDay,
+    setRange,
+    selectCollectors,
+    setDetail,
+  } = selection;
+  const {
+    tracksQuery,
+    allTracks,
+    tracks,
+    collectors,
+    replayQuery,
+    densityQuery,
+    densityStatus,
+    lanes,
+    detailTrack,
+    detailQuery,
+    refresh,
+    fetching,
+    densityFailed,
+  } = useReplayData(ownerSubject, accessToken, selection);
   return (
     <div className="app-frame">
       <AppHeader />
@@ -205,10 +105,7 @@ export function ReplayWorkbench() {
                 allLabel="全部来源"
                 options={collectors.map(([value, label]) => ({ value, label }))}
                 value={selectedCollectorIds ?? collectors.map(([id]) => id)}
-                onChange={(ids) => {
-                  setSelectedCollectorIds(ids.length === collectors.length ? null : ids);
-                  setDetail(null);
-                }}
+                onChange={(ids) => selectCollectors(ids.length === collectors.length ? null : ids)}
               />
               <Popover
                 label="自定义时间范围"
@@ -239,13 +136,13 @@ export function ReplayWorkbench() {
                 title="尚未选择来源"
                 description="选择一个或多个来源，在同一时间轴中组合查看。"
               />
-            ) : replayQuery.isPending ? (
+            ) : replayQuery.pending.length > 0 && replayQuery.data.length === 0 ? (
               <LoadingState label="正在构建统一时间窗口" />
-            ) : replayQuery.isError ? (
+            ) : replayQuery.data.length === 0 && replayQuery.failures.length > 0 ? (
               <QueryState
                 eyebrow="读取失败"
                 title="暂时无法显示时间线"
-                description={replayQuery.error.message}
+                description="所选 Track 均读取失败。"
                 action={
                   <Button
                     variant="outline"
@@ -258,7 +155,21 @@ export function ReplayWorkbench() {
               />
             ) : (
               <>
-                {zoomed && settledMatches && densityQuery.isError ? (
+                {replayQuery.failures.length > 0 ? (
+                  <div className="density-error" role="alert">
+                    {replayQuery.failures.length} 条 Track 读取失败，其余数据仍可查看。
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() =>
+                        void Promise.all(replayQuery.failures.map((failure) => failure.retry()))
+                      }
+                    >
+                      重试失败 Track
+                    </Button>
+                  </div>
+                ) : null}
+                {densityFailed ? (
                   <div className="density-error" role="alert">
                     当前范围的细节读取失败，仍显示已有密度。
                     <Button
