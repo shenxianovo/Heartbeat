@@ -24,6 +24,7 @@
 ## 工作约定
 
 - 开始领域工作前读 `CONTEXT.md` 和相关 ADR，细则见 [领域文档](docs/agents/domain.md)。
+- 恢复跨平台 UI 时，先读[本轮交接](.scratch/cross-platform-ui/spec.md)，确认恢复范围并沿用已验证的用户主线；任务结束时移除这个临时入口。
 - 进行中的规格和 issue 放在 `.scratch/<feature-slug>/`，完成后删除；细则见 [本地 issue](docs/agents/issue-tracker.md)。
 - 使用固定的五类 triage 标签，见 [标签映射](docs/agents/triage-labels.md)。
 - 实现变更使用 [verify-heartbeat](.agents/skills/verify-heartbeat/SKILL.md) 选择并执行验证。

@@ -7,9 +7,10 @@ public sealed class NativeDesktopScenarioTests
     [Theory]
     [InlineData("{\"pending\":0,\"failed\":0}", "{\"pending\":1,\"failed\":0}", true)]
     [InlineData("{\"pending\":2,\"failed\":1}", "{\"pending\":2,\"failed\":1}", false)]
+    [InlineData("{\"pending\":0,\"failed\":0}", "{\"pending\":0,\"failed\":1}", false)]
     public void RequiresNewHubQueueEvidence(string before, string after, bool expected)
     {
-        Assert.Equal(expected, NativeDesktopScenario.HasNewQueueEvidence(before, after));
+        Assert.Equal(expected, NativeDesktopScenario.HasNewQueueEvidence(HubQueueStatus.Parse(before), HubQueueStatus.Parse(after)));
     }
 
     [Fact]

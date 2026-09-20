@@ -51,6 +51,8 @@ npm run test:e2e
 
 `verify` 执行类型生成、TypeScript、ESLint、Prettier、Vitest 和生产构建。浏览器测试使用模拟认证和 API，不能代替真实链路验收；证据边界见[工程验证](../../../docs/verification.md)。
 
+真实用户主线使用仓库根目录的 `./scripts/heartbeat-dev scenario collector-replay`：受控原生应用、持续 Collector、Hub、API、PostgreSQL 与生产 Web 直接连接，经过真实 OIDC 登录后在页面核对本次 Record。需要在弹出的临时 Chromium 中登录；具体前置条件与证据见[Collector 到真实 Web 回放](../../../docs/verification.md#collector-到真实-web-回放)。
+
 ## 活动泳道拖动基准
 
 拖动手感是渲染成本问题，靠肉眼判断不可靠，所以有一份独立的基准：

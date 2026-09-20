@@ -77,4 +77,4 @@ dotnet bin/Debug/net10.0/Heartbeat.Collector.Desktop.Mac.dll \
 
 启动常驻 Collector 后依次验证：切换两个应用；在同一应用切换窗口和标题；锁屏再解锁；允许 Accessibility 与 Input Monitoring 后按键、单击和双向滚动。Web 回放应在一个时间轴显示相应 Track。锁屏和休眠会改变系统状态，不应由自动测试擅自触发。
 
-自动验证入口见[工程验证](../../../docs/verification.md)，已完成与待完成的真机范围见[系统验收](../../../docs/validation/system-acceptance.md)。
+启动到落库的自动验收使用 `./scripts/heartbeat-dev scenario collector-delivery`，它运行真实 Collector 单次快照、Hub、API 和 PostgreSQL。环境要求、断言和证据边界见[工程验证](../../../docs/verification.md#collector-到落库)；平台交互的已完成与待完成范围见[系统验收](../../../docs/validation/system-acceptance.md)。

@@ -77,6 +77,8 @@ Hub 和原生 Collector 另需运行 `./scripts/setup.sh`。
 ```bash
 ./scripts/heartbeat-dev scenario replay-fixture
 ./scripts/heartbeat-dev scenario delivery
+./scripts/heartbeat-dev scenario collector-delivery
+./scripts/heartbeat-dev scenario collector-replay
 ./scripts/heartbeat-dev scenario native-desktop
 ./scripts/heartbeat-dev scenario --list
 ```
@@ -85,9 +87,56 @@ Hub 和原生 Collector 另需运行 `./scripts/setup.sh`。
 | --- | --- | --- |
 | `replay-fixture` | 登录后回放交互、响应式布局和 Chromium 截图 | 认证和 API 是 fixture，不是实际端到端链路 |
 | `delivery` | API 与 PostgreSQL 的上传、重放集成测试 | 不覆盖 Web、Hub 或 Collector |
+| `collector-delivery` | 真实 macOS Collector 启动、原生快照、Hub 持久接管、后端自动注册与 PostgreSQL 落库、队列清空 | 不覆盖通知、持续采样、物理输入、权限切换、锁屏、休眠或 Web；不独立核对前台应用的具体身份 |
+| `collector-replay` | 受控原生应用 → 持续 Collector → Hub 自动注册与上传 → PostgreSQL → 真实 OIDC 登录、Web 查询、泳道选中与 Record 详情 | 需要人工登录；客户端安装尚未实现；不覆盖权限切换、物理输入、锁屏、休眠或长期稳定性 |
 | `native-desktop` | 临时 Hub、真实 macOS Collector、进程和队列元数据 | 不自动操作权限、锁屏、休眠或物理输入 |
 
 UI、用户流程或 HTTP 展示变更需要相应场景证据。活动泳道性能变更运行[前端基准](../src/Frontend/Heartbeat.Web/README.md#活动泳道拖动基准)；若交互行为也变了，同时运行 `replay-fixture`。基准由前端脚本保存报告，退出码只说明测量是否完成，不证明性能达标。原生场景默认不保存用户内容；只有显式使用 `--include-sensitive-evidence` 才保存 Collector 日志。`--keep-environment-on-failure` 会在失败时保留独立环境。
+
+### 组合实现来验证行为
+
+测试范围由要验证的行为和实际接口决定，项目目录不定义测试层级。接管实现可以单独验证，也可以与注册、上传及存储实现连接后验证；组合测试直接连接生产实现，不把若干独立测试顺序执行当作组合验证。责任划分见 [ADR-0013](adr/ADR-0013-scenarios-compose-implementations.md)。
+
+例如，`RecordOutboxTests` 通过接管接口和真实 SQLite 验证持久性，`HubDeliveryTests` 将同一接管实现与上传实现、HTTP 后端和 PostgreSQL 连接起来验证交付。跨进程场景进一步使用实际宿主和原生读数。不同范围复用实现、依赖设施与契约，不要求每份断言在所有范围原样运行。
+
+Developer CLI 的场景使用以下小型设施，按需直接组合：
+
+| 设施 | 提供的能力 |
+| --- | --- |
+| `ScenarioEnvironment` | 独立 Compose 项目、端口与数据卷；按需启动依赖、迁移、查询数据库；统一清理和证据生命周期 |
+| `ScenarioProcess` | 真实子进程的启动、输出排空、等待退出、停止和作用域清理，可脱离 Docker 单独使用 |
+| `ScenarioCollector` | 构建并启动生产 Collector，将 Hub 地址和独立 Target 接入进程，支持单次与持续采集 |
+| `ScenarioWait`、`HubQueueStatus` | 有截止时间的状态等待和 Hub HTTP 状态读数 |
+
+`native-desktop` 组合 Hub、持续采集和接管断言；`collector-delivery` 在同样设施上组合数据库、迁移、API 和落库断言。前者等到首次接管才进入人工引导，结束输入关闭或进程提前退出均失败。场景采样间隔为 1 秒，使用独立 Target，不复用本地开发 Collector 的身份。
+
+新增行为时，优先扩展现有场景的动作与断言，复用已有运行设施；只有存在独立验收目的才增加场景入口。网络或认证等条件属于具体测试的输入，不为条件与依赖的每种排列增加命令。生产行为和协议断言留在对应测试或场景，运行设施不解释这些行为。这里不建立任意依赖图或通用场景 DSL。
+
+### Collector 到落库
+
+采集启动、Hub 接管、注册或上传链路变化时运行 `scenario collector-delivery`。需要已登录的 macOS 桌面、Docker、`.env.local` 中有效的 `HEARTBEAT_OWNER_ID` 与 `HEARTBEAT_API_KEY`，以及可访问的 Auth 服务；测试仍走真实令牌交换和 API 认证。
+
+场景先创建独立 Compose 项目、临时 PostgreSQL/SQLite 数据卷和 Hub 端口，不发布 API 或数据库端口。空库迁移完成后，API 暂不启动，真实 Collector 用独立 Target 执行 `--once`；场景确认 Collector 成功退出且 Hub 有待交付项，再启动 API。测试不手工提交 Record，也不预注册 Timeline、Collector 或 Track。
+
+完成条件是接管数量与落库数量一致、Owner/key/Target 绑定正确、Record 在本次采集时间窗内且载荷 Target 正确、存在符合前台应用协议的 Record、Hub pending/failed 均为零。只产生能力状态不能通过。等待实际状态有超时，不靠固定休眠宣告成功。
+
+`custody.json` 保存采集时间与 Hub 接管数量，`delivery.json` 保存最后一次数据库检查和队列状态，`database-check.sql` 保存实际检查语句；构建、环境启动和清理日志保存在同次证据目录。默认不导出原生载荷或服务运行日志，`--include-sensitive-evidence` 才保存 Collector 输出。完成或失败后清理独立环境；`--keep-environment-on-failure` 显式保留失败环境，项目名见 manifest。清理未确认也视为失败。开发环境及其数据卷不参与本场景。
+
+### Collector 到真实 Web 回放
+
+```bash
+./scripts/heartbeat-dev scenario collector-replay
+```
+
+该场景验收用户主线：从现有 Collector 可执行文件启动，到 Web 看到本次真实采集的应用观测。安装客户端尚未实现，不在通过结论内。依赖与 `collector-delivery` 相同，另需 Xcode 命令行工具、已安装的前端依赖与 Playwright Chromium，以及 Auth 允许的 `http://localhost:3000/auth/callback`。
+
+场景启动独立 PostgreSQL、Hub、API 和生产 Web，并确认数据库为空。随后编译、激活临时的 `Heartbeat Replay Probe` 原生应用；这是被观测的真实 macOS 应用，不提供 Collector 替身或 Record。请保持该窗口在前台，直到采集完成。生产 Collector 持续采样，场景等待数据库出现已知 bundle identity、正确 Owner/Target、且持续确认至少两秒的应用区间。这个时长来自 Record，不以固定休眠判断成功。停止采集后等待 Hub 排空，再读取最终 Record ID 与时间作为前端预期。
+
+接着打开独立 Chromium，点击真实登录入口。请在五分钟内使用 `.env.local` 中 Hub Owner 对应的账号完成登录。浏览器通过自身连接映射把 `localhost:3000` 指向本次随机 Web 端口，保留已注册的 OIDC origin；不会占用或停止开发环境的 3000 端口，不拦截或伪造 HTTP 响应，不注入登录 token。浏览器上下文为临时会话，结束后关闭。
+
+浏览器验收固定 UTC 时区，使用本次 Record 的实际时间范围查询，不依赖运行时仍处于采集当天。验收核对真实 Track 响应中的 Collector 绑定、真实 Record 响应中的 ID/时间/应用值，然后点击泳道并展开详情，核对同一 Record ID、应用身份、Target 和展示时间。只落库、只返回 API 响应或只出现一个应用名称都不足以通过。
+
+`stage.json` 定位当前阶段；`foreground.json` 记录受控窗口的前台状态变化；`collection.json` 保存最近一次队列与落库进度，帮助区分前台条件、交付阻塞与时间边界。`replay-expectation.json` 保存最终受控 Record 的数据库证据；`custody.json` 保存最终队列状态；`replay.json` 保存浏览器阶段与结果；`replay-record.png` 只截取已核对的受控应用详情。默认不保存其他原生载荷、登录截图、浏览器会话或网络 trace；`--include-sensitive-evidence` 仅额外保留 Collector 输出。失败和取消同样清理隔离环境；显式 `--keep-environment-on-failure` 可保留 Docker 环境，但不保留浏览器登录凭据。
 
 ## 现场探针
 
@@ -123,7 +172,7 @@ UI、用户流程或 HTTP 展示变更需要相应场景证据。活动泳道性
 ## 结论边界
 
 - 工具只报告测试、量化指标和场景证据，不判断架构是否合理。
-- 除 `native-desktop` 外，现有 scenario 都是带证据的测试子集。
+- `collector-delivery`、`collector-replay` 和 `native-desktop` 运行真实进程；其余 scenario 是带证据的测试子集。
 - 质量结论只对指定 Git 基点和仓库存量预算成立。
 - fixture、mock 或局部集成结果不能描述成真实端到端验证。
 - 最终报告必须列出检查项、结果、证据路径和未覆盖范围。

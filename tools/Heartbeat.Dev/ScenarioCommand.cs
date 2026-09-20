@@ -10,27 +10,29 @@ internal sealed class ScenarioCommand(
         if (args.Length == 0 || args[0] is "-h" or "--help")
         {
             await output.WriteLineAsync("""
-                Usage: heartbeat-dev scenario <replay-fixture|delivery|native-desktop> [options]
+                Usage: heartbeat-dev scenario <replay-fixture|delivery|collector-delivery|collector-replay|native-desktop> [options]
 
                 Use scenario --list to print the available names.
 
                 replay-fixture  Re-runs the replay browser test against mocked auth and API, keeping evidence
                 delivery        Re-runs the record upload/replay integration tests against PostgreSQL, keeping evidence
+                collector-delivery  Starts a real macOS Collector and verifies Hub custody through PostgreSQL delivery
+                collector-replay  Verifies a controlled native application through real Web replay; interactive OIDC login
                 native-desktop  Guided macOS collector session against an isolated local Hub
 
                 replay-fixture and delivery re-run a subset of the first verification layer;
-                only native-desktop runs processes and a database that no test harness stands in for.
+                collector-delivery, collector-replay and native-desktop run real native processes in isolated environments.
 
                 Options:
                   --include-sensitive-evidence  Persist native logs that may contain user context
-                  --keep-environment-on-failure Keep an isolated native Hub for diagnosis
+                  --keep-environment-on-failure Keep the isolated native scenario environment for diagnosis
                 """);
             return 0;
         }
 
         if (args.Length == 1 && args[0] == "--list")
         {
-            await output.WriteLineAsync("replay-fixture\ndelivery\nnative-desktop");
+            await output.WriteLineAsync("replay-fixture\ndelivery\ncollector-delivery\ncollector-replay\nnative-desktop");
             return 0;
         }
 
@@ -39,6 +41,10 @@ internal sealed class ScenarioCommand(
         {
             "replay-fixture" => await RunReplayFixtureAsync(options, cancellationToken),
             "delivery" => await RunDeliveryAsync(options, cancellationToken),
+            "collector-delivery" => await new CollectorDeliveryScenario(repository, runner, output)
+                .RunAsync(options, cancellationToken),
+            "collector-replay" => await new CollectorReplayScenario(repository, runner, output)
+                .RunAsync(options, cancellationToken),
             "native-desktop" => await new NativeDesktopScenario(repository, runner, output)
                 .RunAsync(options, cancellationToken),
             _ => throw new CommandUsageException($"Unknown scenario '{options.Name}'."),
@@ -117,10 +123,10 @@ internal sealed record ScenarioOptions(string Name, bool IncludeSensitiveEvidenc
                 default: throw new CommandUsageException($"Unknown scenario option '{argument}'.");
             }
         }
-        if (args[0] != "native-desktop" && (sensitive || keep))
+        if (args[0] is not ("native-desktop" or "collector-delivery" or "collector-replay") && (sensitive || keep))
         {
             throw new CommandUsageException(
-                "--include-sensitive-evidence and --keep-environment-on-failure apply only to native-desktop.");
+                "--include-sensitive-evidence and --keep-environment-on-failure apply only to native-desktop, collector-delivery and collector-replay.");
         }
         return new ScenarioOptions(args[0], sensitive, keep);
     }
