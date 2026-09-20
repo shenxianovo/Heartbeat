@@ -11,19 +11,19 @@ public sealed class ContinuousObservationClockTests
         var provider = new AdjustableTimeProvider(start);
         var clock = new ContinuousObservationClock(new MacContinuousTimeProvider(provider, provider.ReadNativeNanoseconds));
         var records = new List<(string Type, RecordSnapshot Record)>();
-        var projector = new DesktopRecordProjector("mac", "Mac", TimeSpan.FromSeconds(10), TimeSpan.Zero,
+        var projector = new DesktopRecordProjector("heartbeat.collector.desktop.macos", "mac", "Mac", TimeSpan.FromSeconds(10), TimeSpan.Zero,
             (route, record) => records.Add((route.Track.Type!, record)));
         var application = new DesktopActivitySample(
             new ForegroundApplication("macos", "bundle_id", "com.example.App", "Example"), "Document");
-        projector.Apply(new MacSystemObservation.Activity(application), clock.GetUtcNow());
-        projector.Apply(new MacSystemObservation.AwayEntered(MacAwayReason.SystemSleep), clock.GetUtcNow());
+        projector.Apply(new DesktopObservation.Activity(application), clock.GetUtcNow());
+        projector.Apply(new DesktopObservation.AwayEntered(DesktopAwayReason.SystemSleep), clock.GetUtcNow());
 
         // macOS uptime pauses during sleep while UTC and its continuous clock advance.
         provider.UtcNow = start.AddHours(1);
         provider.ContinuousSeconds += 3600;
         // The first resumed input can precede the wake notification; no wake rebase is required.
-        projector.Apply(new MacSystemObservation.Input(new DesktopInputObservation(DesktopInputKind.KeyDown, 12)), clock.GetUtcNow());
-        projector.Apply(new MacSystemObservation.AwayExited(MacAwayReason.SystemSleep, application), clock.GetUtcNow());
+        projector.Apply(new DesktopObservation.Input(new DesktopInputObservation(DesktopInputKind.KeyDown, 12)), clock.GetUtcNow());
+        projector.Apply(new DesktopObservation.AwayExited(DesktopAwayReason.SystemSleep, application), clock.GetUtcNow());
 
         Assert.Equal(start.AddHours(1), records.Last(item => item.Type == "desktop.application.foreground").Record.StartedAt);
         Assert.Equal(start.AddHours(1), records.Last(item => item.Type == "desktop.system.away").Record.EndedAt);

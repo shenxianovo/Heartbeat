@@ -43,7 +43,7 @@
 
 ## 实现
 
-- [`DesktopRecordProjector`](../../src/Collectors/Heartbeat.Collector.Desktop.Mac/DesktopRecordProjector.cs) — `ObserveWindowTitle` 与 `SettlePendingTitle`。
-- [`CollectorOptions`](../../src/Collectors/Heartbeat.Collector.Desktop.Mac/CollectorOptions.cs) — 静置时长的取值与校验。
+- [`DesktopRecordProjector`](../../src/Collectors/Heartbeat.Collector.Desktop/DesktopRecordProjector.cs) — `ObserveWindowTitle` 与 `SettlePendingTitle`。
+- [`CollectorOptions`](../../src/Collectors/Heartbeat.Collector.Desktop/CollectorOptions.cs) — 静置时长的取值与校验。
 - [`desktop.window.foreground` v1](../protocols/desktop-window-foreground-v1.md) — 区间规则。
 - [`heartbeat-dev probe window-title`](../verification.md#现场探针) — 量抖动、模拟候选参数。

@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace Heartbeat.Collector.Desktop.Mac;
+namespace Heartbeat.Collector.Desktop;
 
 public sealed record CollectorOptions(
     Uri HubBaseUrl,
@@ -12,6 +12,8 @@ public sealed record CollectorOptions(
     TimeSpan WindowTitleDwell,
     bool Once)
 {
+    public DesktopCollectionOptions Collection => new(Target, DisplayName, Interval, MaximumConfirmationGap, WindowTitleDwell, Once);
+
     public static CollectorOptions Parse(string[] args, IDictionary<string, string?> environment)
     {
         var values = ParseArgs(args);

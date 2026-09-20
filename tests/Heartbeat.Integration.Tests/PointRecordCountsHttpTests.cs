@@ -25,7 +25,7 @@ public sealed class PointRecordCountsHttpTests(PostgresFixture fixture) : Postgr
         using var response = await GetAsync(client, ownerId, track.Id, From, From.AddSeconds(180), 60);
 
         response.EnsureSuccessStatusCode();
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal(60, json.RootElement.GetProperty("bucketSeconds").GetInt32());
         var buckets = json.RootElement.GetProperty("buckets");
         Assert.Equal(3, buckets.GetArrayLength());

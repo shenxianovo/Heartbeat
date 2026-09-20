@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 namespace Heartbeat.Collector.Desktop.Mac;
 
 /// <summary>Monotonic elapsed time that includes system sleep.</summary>
-internal sealed class MacContinuousTimeProvider : TimeProvider
+public sealed class MacContinuousTimeProvider : TimeProvider
 {
     // Darwin clock_gettime(3): MONOTONIC_RAW includes sleep and ignores wall-clock
     // adjustments. .NET's CLOCK_UPTIME_RAW (8) excludes sleep on macOS.

@@ -1,18 +1,20 @@
 using System.Threading.Channels;
 using Heartbeat.Hub;
 
-namespace Heartbeat.Collector.Desktop.Mac;
+namespace Heartbeat.Collector.Desktop;
 
-internal sealed class DesktopCollectorSession(
-    IMacSystemObservationSource source,
-    HubSubmissionClient client,
+public sealed class DesktopCollectorSession(
+    string collectorKey,
+    IDesktopObservationSource source,
+    IHubSubmissionClient client,
     TimeProvider timeProvider)
 {
-    public async Task RunAsync(CollectorOptions options, CancellationToken cancellationToken)
+    public async Task RunAsync(DesktopCollectionOptions options, CancellationToken cancellationToken)
     {
         var pending = new PendingHubSubmissions();
         var clock = new ContinuousObservationClock(timeProvider);
         var projector = new DesktopRecordProjector(
+            collectorKey,
             options.Target,
             options.DisplayName,
             options.MaximumConfirmationGap,
@@ -24,17 +26,11 @@ internal sealed class DesktopCollectorSession(
         try
         {
             source.StartObserving();
-            queue.RequestSample();
-            while (queue.Reader.TryRead(out var initial))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (queue.Process(initial)) break;
-                if (initial is SessionInput.Sample) queue.RequestSample();
-            }
+            queue.Start(cancellationToken);
 
             if (options.Once)
             {
-                await SubmitPendingAsync(cancellationToken);
+                await SubmitPendingAsync(pending, options.Once, cancellationToken);
                 return;
             }
 
@@ -83,7 +79,7 @@ internal sealed class DesktopCollectorSession(
                 {
                     while (true)
                     {
-                        await SubmitPendingAsync(token);
+                        await SubmitPendingAsync(pending, options.Once, token);
                         await Task.Delay(options.Interval, timeProvider, token);
                     }
                 }
@@ -97,30 +93,37 @@ internal sealed class DesktopCollectorSession(
         {
             source.Observation -= queue.Receive;
             source.StopObserving();
+            if (!options.Once && cancellationToken.IsCancellationRequested)
+            {
+                queue.Drain();
+                using var finalSubmission = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await SubmitPendingAsync(pending, options.Once, finalSubmission.Token, retry: false);
+            }
         }
 
-        async Task SubmitPendingAsync(CancellationToken token)
+    }
+
+    private async Task SubmitPendingAsync(PendingHubSubmissions pending, bool once, CancellationToken token, bool retry = true)
+    {
+        foreach (var batch in pending.ReadBatches())
         {
-            foreach (var batch in pending.ReadBatches())
+            token.ThrowIfCancellationRequested();
+            try
             {
-                token.ThrowIfCancellationRequested();
-                try
-                {
-                    await client.SubmitAsync(batch.ToSubmission(), token);
-                    pending.Confirm(batch);
-                }
-                catch (Exception exception) when (!options.Once && !token.IsCancellationRequested &&
-                    exception is HttpRequestException or OperationCanceledException or InvalidDataException or System.Text.Json.JsonException)
-                {
-                    Console.Error.WriteLine($"Hub submission failed; keeping {batch.Records.Count} Record(s) for retry: {exception.Message}");
-                }
+                await client.SubmitAsync(batch.ToSubmission(), token);
+                pending.Confirm(batch);
+            }
+            catch (Exception exception) when (retry && !once && !token.IsCancellationRequested &&
+                exception is HttpRequestException or IOException or OperationCanceledException or InvalidDataException or System.Text.Json.JsonException)
+            {
+                Console.Error.WriteLine($"Hub submission failed; keeping {batch.Records.Count} Record(s) for retry: {exception.Message}");
             }
         }
     }
 
     private abstract record SessionInput
     {
-        public sealed record Observation(MacSystemObservation Value, DateTimeOffset At) : SessionInput;
+        public sealed record Observation(DesktopObservation Value, DateTimeOffset At) : SessionInput;
         public sealed record Sample : SessionInput;
     }
 
@@ -129,7 +132,7 @@ internal sealed class DesktopCollectorSession(
     /// 读取快照期间前台变过，就让排队的那个事件拥有这次转场，可能已经过时的快照不覆盖它。
     /// </summary>
     private sealed class ObservationQueue(
-        IMacSystemObservationSource source,
+        IDesktopObservationSource source,
         DesktopRecordProjector projector,
         ContinuousObservationClock clock)
     {
@@ -140,18 +143,29 @@ internal sealed class DesktopCollectorSession(
 
         public ChannelReader<SessionInput> Reader => _inputs.Reader;
 
+        public void Start(CancellationToken cancellationToken)
+        {
+            RequestSample();
+            while (Reader.TryRead(out var initial))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (Process(initial)) break;
+                if (initial is SessionInput.Sample) RequestSample();
+            }
+        }
+
         public void RequestSample() => _inputs.Writer.TryWrite(new SessionInput.Sample());
 
-        public void Receive(MacSystemObservation observation)
+        public void Receive(DesktopObservation observation)
         {
             lock (_gate)
             {
                 // Only a change of what is in the foreground can make a snapshot stale. Capability
                 // and input events cannot, and capability events are published by Capture itself,
                 // so counting them would let a snapshot invalidate its own confirmation.
-                if (observation is MacSystemObservation.Activity
-                    or MacSystemObservation.AwayEntered
-                    or MacSystemObservation.AwayExited)
+                if (observation is DesktopObservation.Activity
+                    or DesktopObservation.AwayEntered
+                    or DesktopObservation.AwayExited)
                 {
                     _activitySequence++;
                 }
@@ -192,6 +206,8 @@ internal sealed class DesktopCollectorSession(
         /// 应用所有已收到的事件，返回队列见底那一刻的活动序号。序号与「队列已空」必须在同一次加锁里
         /// 取得，否则读快照期间到达的事件会既算进序号、又留在队列里，让确认与事件的顺序颠倒。
         /// </summary>
+        public void Drain() => DrainReceived();
+
         private long DrainReceived()
         {
             while (true)

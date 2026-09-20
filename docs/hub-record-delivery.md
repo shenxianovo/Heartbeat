@@ -4,17 +4,19 @@
 
 **Collector 采集，Hub 交付，后端存储，前端展示。** 决策背景见 [ADR-0009](adr/ADR-0009-delivery-belongs-to-hub.md)。
 
+Hub 是各类 Collector 共用的交付能力，可部署在客户端或远端服务器，见 [ADR-0014](adr/ADR-0014-hub-desktop-and-server-hosting.md)。服务器侧 Collector 可以在所有桌面客户端离线时继续采集；SQLite 接管发生在运行 Hub 的主机上。当前实现由每个 Hub 直接向后端交付，没有 Hub 间转发实现。
+
 交付路径为 `Collector -> Hub SQLite -> 后端 PostgreSQL`。Collector 不持有后端 ID；Hub 持久接管后负责注册、Track 映射、上传和重试。
 
 ## 责任
 
 - Collector：平台观测、连续性判断、Record 内容和稳定 ID，以及交接前快照。
 - `Heartbeat.Hub.Client`：提交结构、HTTP 请求和回执核对。
-- `Heartbeat.Hub`：SQLite 接管、后端身份映射、上传、重试和逐条回执。
+- `Heartbeat.Hub`：SQLite 接管、后端身份映射、上传、重试和逐条回执；`LocalHubSubmissionClient` 供同进程 Collector 调用，HTTP 宿主调用同一接管实现。
 - `Heartbeat.Hub.Host`：HTTP、配置、认证和后台上传。
 - 后端：Owner 归属、公共 Record 不变量、PostgreSQL 存储和查询。
 
-Hub 不管理 Collector 的安装、启停或升级。
+Hub 不管理 Collector 的安装、启停或升级。桌面宿主组合 Hub 和平台 Collector，见[客户端 README](../src/Desktop/README.md)。`HubDeliveryLoop` 由桌面和 HTTP 宿主共用。
 
 ## 提交接口
 
@@ -95,7 +97,7 @@ SQLite 使用 WAL，并为每个连接设置 `synchronous=FULL`。默认最多�
 
 数据库放在本地持久磁盘的用户保护目录。凭据不写入数据库，Record 当前不加密；运行中备份必须同时处理 WAL。
 
-Collector 到 Hub 接管前的数据不受 SQLite 保护。当前 macOS Collector 使用内存缓冲，进程退出可能丢失未交接快照。后续设计见[未决问题](recording-open-questions.md)。
+Collector 到 Hub 接管前的数据不受 SQLite 保护。桌面采集使用内存缓冲；正常取消时停止观察、处理已收到的事件，并在五秒内尝试最终交接，失败会报告错误。崩溃或最终交接失败仍可能丢失未接管快照。后续设计见[未决问题](recording-open-questions.md)。
 
 ## 独立运行
 

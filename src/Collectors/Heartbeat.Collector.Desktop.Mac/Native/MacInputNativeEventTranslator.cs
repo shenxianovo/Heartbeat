@@ -74,8 +74,8 @@ public static class MacInputNativeEventTranslator
                     DeltaX: continuousScroll ? pointDeltaX : lineDeltaX,
                     DeltaY: continuousScroll ? pointDeltaY : lineDeltaY,
                     ScrollUnit: continuousScroll
-                        ? global::Heartbeat.Collector.Desktop.Mac.ScrollUnit.Point
-                        : global::Heartbeat.Collector.Desktop.Mac.ScrollUnit.Line);
+                        ? global::Heartbeat.Collector.Desktop.ScrollUnit.Point
+                        : global::Heartbeat.Collector.Desktop.ScrollUnit.Line);
                 return true;
             default:
                 observation = default;

@@ -1,15 +1,13 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Heartbeat.Hub;
-using Heartbeat.Collector.Desktop.Mac.Native;
 
-namespace Heartbeat.Collector.Desktop.Mac;
+namespace Heartbeat.Collector.Desktop;
 
 internal static class DesktopProtocols
 {
     // 各协议 value 里的 deviceId 由 Collector 配置的 Target 直接传入，不是 CONTEXT.md 定义的 Device Identity。
     // 跨系统重装保留设备身份是 ADR-0003 的决定，尚未实现，见 docs/recording-open-questions.md 的「设备关联」。
-    public const string CollectorKey = "heartbeat.collector.desktop.macos";
 
     public static readonly TrackDeclaration Application = new(
         "desktop.application.foreground", 1, "range", "explicit");
@@ -34,7 +32,7 @@ internal static class DesktopProtocols
     public static JsonElement WindowValue(string deviceId, string title) =>
         JsonSerializer.SerializeToElement(new WindowRecordValue(deviceId, new WindowValueReference(title)));
 
-    public static JsonElement AwayValue(string deviceId, MacAwayReason reason) =>
+    public static JsonElement AwayValue(string deviceId, DesktopAwayReason reason) =>
         JsonSerializer.SerializeToElement(new AwayValueRecord(deviceId, Snake(reason)));
 
     public static JsonElement InputValue(string deviceId, DesktopInputObservation input)
@@ -62,8 +60,8 @@ internal static class DesktopProtocols
                 delta_y = input.DeltaY,
                 unit = input.ScrollUnit switch
                 {
-                    global::Heartbeat.Collector.Desktop.Mac.ScrollUnit.Line => "line",
-                    global::Heartbeat.Collector.Desktop.Mac.ScrollUnit.Point => "point",
+                    global::Heartbeat.Collector.Desktop.ScrollUnit.Line => "line",
+                    global::Heartbeat.Collector.Desktop.ScrollUnit.Point => "point",
                     _ => throw new ArgumentException("A recorded scroll event requires a native unit.", nameof(input)),
                 },
             },

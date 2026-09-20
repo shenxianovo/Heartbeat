@@ -1,5 +1,7 @@
 # Heartbeat macOS Desktop Collector
 
+本模块提供 macOS 原生观察源、系统时钟和命令行入口。观测模型、Record 投影与 Hub 交接由[桌面采集共享实现](../Heartbeat.Collector.Desktop/README.md)提供；平台 Collector key 由本模块显式传入。
+
 Collector 通过 macOS 原生通知和周期确认产生五条 Track：
 
 | Track | 时间定义 | 内容 |
@@ -49,7 +51,7 @@ dotnet run --project src/Collectors/Heartbeat.Collector.Desktop.Mac -- \
 
 五条 Track 共用一个内存待交接缓冲区；按 Hub 的 500 条和 1 MiB 限制分批。同一 Record 的新快照覆盖未交接旧快照，但旧请求回执只确认它实际发送的快照。慢请求不阻塞采样，失败或不明回执保留原 ID 重试。
 
-Collector 不提供 Hub 之前的持久队列；进程退出会丢失尚未被 Hub 接管的内存数据。Hub 接管后的数据由其本地 SQLite outbox 保护。
+Collector 不提供 Hub 之前的持久队列；正常停止时尝试最终交接，进程崩溃或交接失败仍可能丢失尚未接管的内存数据。Hub 接管后的数据由其本地 SQLite outbox 保护。
 
 ## 标题探针
 

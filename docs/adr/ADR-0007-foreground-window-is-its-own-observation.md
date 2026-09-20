@@ -34,7 +34,7 @@
 
 - [`docs/protocols/desktop-application-foreground-v1.md`](../protocols/desktop-application-foreground-v1.md) — 前台应用协议。
 - [`docs/protocols/desktop-window-foreground-v1.md`](../protocols/desktop-window-foreground-v1.md) — 前台窗口协议。
-- [`src/Collectors/Heartbeat.Collector.Desktop.Mac/DesktopRecordProjector.cs`](../../src/Collectors/Heartbeat.Collector.Desktop.Mac/DesktopRecordProjector.cs) — 两个观测对象的区间投影。
+- [`src/Collectors/Heartbeat.Collector.Desktop/DesktopRecordProjector.cs`](../../src/Collectors/Heartbeat.Collector.Desktop/DesktopRecordProjector.cs) — 两个观测对象的区间投影。
 - [`src/Collectors/Heartbeat.Collector.Desktop.Mac/MacSystemObservationSource.cs`](../../src/Collectors/Heartbeat.Collector.Desktop.Mac/MacSystemObservationSource.cs) — 能力状态与标题读取。
 - [`ADR-0005`](ADR-0005-minimal-macos-desktop-collector.md) — 最小 macOS Collector 的起点范围。
 - [领域语言](../../CONTEXT.md) — Foreground Application Observation 与 Foreground Window Observation。

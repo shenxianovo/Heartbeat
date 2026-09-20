@@ -22,7 +22,7 @@ public sealed class ScenarioProcessTests : IDisposable
         Assert.Equal(0, result.ExitCode);
         Assert.True(result.Completed >= result.Started);
         Assert.Equal(retain, File.Exists(log));
-        if (retain) Assert.Equal(new string('A', 262144) + new string('B', 262144), await File.ReadAllTextAsync(log));
+        if (retain) Assert.Equal(new string('A', 262144) + new string('B', 262144), await File.ReadAllTextAsync(log, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Theory]

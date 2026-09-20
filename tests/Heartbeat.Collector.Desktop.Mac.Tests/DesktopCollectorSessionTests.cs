@@ -51,15 +51,14 @@ public sealed class DesktopCollectorSessionTests
         });
         using var httpClient = CreateClient(handler);
         using var stop = new CancellationTokenSource(TestTimeout);
-        var session = new DesktopCollectorSession(reader, new HubSubmissionClient(httpClient), TimeProvider.System);
-        var run = session.RunAsync(Options(), stop.Token);
+        var run = RunSession(reader, httpClient, stop.Token);
         try
         {
-            await uploadStarted.Task.WaitAsync(TestTimeout);
-            await sampledTransitions.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            await uploadStarted.Task.WaitAsync(TestTimeout, cancellationToken: TestContext.Current.CancellationToken);
+            await sampledTransitions.Task.WaitAsync(TimeSpan.FromSeconds(1), cancellationToken: TestContext.Current.CancellationToken);
             Assert.Single(handler.Records);
             releaseUpload.TrySetResult();
-            await uploadedTransitions.Task.WaitAsync(TestTimeout);
+            await uploadedTransitions.Task.WaitAsync(TestTimeout, cancellationToken: TestContext.Current.CancellationToken);
             var sent = handler.Records.ToArray();
             Assert.Equal(sent[0].Id, sent[1].Id);
             Assert.True(sent[1].EndedAt > sent[0].EndedAt);
@@ -106,11 +105,10 @@ public sealed class DesktopCollectorSessionTests
         });
         using var httpClient = CreateClient(handler);
         using var stop = new CancellationTokenSource(TestTimeout);
-        var session = new DesktopCollectorSession(reader, new HubSubmissionClient(httpClient), TimeProvider.System);
-        var run = session.RunAsync(Options(), stop.Token);
+        var run = RunSession(reader, httpClient, stop.Token);
         try
         {
-            await retried.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            await retried.Task.WaitAsync(TimeSpan.FromSeconds(1), cancellationToken: TestContext.Current.CancellationToken);
             var sent = handler.Records.ToArray();
             Assert.Equal(sent[0].Id, sent[1].Id);
             Assert.True(sent[1].EndedAt >= sent[0].EndedAt);
@@ -137,14 +135,14 @@ public sealed class DesktopCollectorSessionTests
         });
         using var httpClient = CreateClient(handler);
         using var stop = new CancellationTokenSource(TestTimeout);
-        var session = new DesktopCollectorSession(reader, new HubSubmissionClient(httpClient), TimeProvider.System);
+        var session = new DesktopCollectorSession("heartbeat.collector.desktop.macos", reader, new HubSubmissionClient(httpClient), TimeProvider.System);
         var run = session.RunAsync(Options() with { Once = true }, stop.Token);
         try
         {
-            await uploadStarted.Task.WaitAsync(TestTimeout);
+            await uploadStarted.Task.WaitAsync(TestTimeout, cancellationToken: TestContext.Current.CancellationToken);
             Assert.False(run.IsCompleted);
             releaseUpload.TrySetResult();
-            await run.WaitAsync(TestTimeout);
+            await run.WaitAsync(TestTimeout, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(1, reader.ReadCount);
             Assert.Single(handler.Records);
         }
@@ -162,7 +160,7 @@ public sealed class DesktopCollectorSessionTests
         using var handler = new UploadHandler((_, _) =>
             Task.FromException<HttpResponseMessage>(new HttpRequestException("Offline")));
         using var httpClient = CreateClient(handler);
-        var session = new DesktopCollectorSession(reader, new HubSubmissionClient(httpClient), TimeProvider.System);
+        var session = new DesktopCollectorSession("heartbeat.collector.desktop.macos", reader, new HubSubmissionClient(httpClient), TimeProvider.System);
 
         await Assert.ThrowsAsync<HttpRequestException>(() =>
             session.RunAsync(Options() with { Once = true }, CancellationToken.None));
@@ -194,10 +192,10 @@ public sealed class DesktopCollectorSessionTests
         });
         using var httpClient = CreateClient(handler);
         using var stop = new CancellationTokenSource(TestTimeout);
-        var session = new DesktopCollectorSession(reader, new HubSubmissionClient(httpClient), TimeProvider.System);
+        var session = new DesktopCollectorSession("heartbeat.collector.desktop.macos", reader, new HubSubmissionClient(httpClient), TimeProvider.System);
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            session.RunAsync(Options(), stop.Token).WaitAsync(TestTimeout));
+            session.RunAsync(Options(), stop.Token).WaitAsync(TestTimeout, TestContext.Current.CancellationToken));
 
         Assert.Equal("Sampling failed", error.Message);
         Assert.True(uploadStopped.Task.IsCompletedSuccessfully);
@@ -210,16 +208,16 @@ public sealed class DesktopCollectorSessionTests
         using var handler = new TrackCaptureHandler();
         using var httpClient = CreateClient(handler);
         using var stop = new CancellationTokenSource(TestTimeout);
-        var session = new DesktopCollectorSession(
+        var session = new DesktopCollectorSession("heartbeat.collector.desktop.macos",
             source, new HubSubmissionClient(httpClient), TimeProvider.System);
         var run = session.RunAsync(Options(), stop.Token);
         try
         {
-            source.Emit(new MacSystemObservation.AwayEntered(MacAwayReason.ScreenLocked));
-            source.Emit(new MacSystemObservation.Input(
+            source.Emit(new DesktopObservation.AwayEntered(DesktopAwayReason.ScreenLocked));
+            source.Emit(new DesktopObservation.Input(
                 new DesktopInputObservation(DesktopInputKind.MouseButtonDown, 1)));
 
-            await handler.DesktopTracksReceived.Task.WaitAsync(TestTimeout);
+            await handler.DesktopTracksReceived.Task.WaitAsync(TestTimeout, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Contains("desktop.application.foreground", handler.TrackTypes);
             Assert.Contains("desktop.window.foreground", handler.TrackTypes);
             Assert.Contains("desktop.system.away", handler.TrackTypes);
@@ -253,20 +251,20 @@ public sealed class DesktopCollectorSessionTests
         using var handler = new SnapshotCaptureHandler(clock.Baseline.AddSeconds(10));
         using var httpClient = CreateClient(handler);
         using var stop = new CancellationTokenSource(TestTimeout);
-        var session = new DesktopCollectorSession(source, new HubSubmissionClient(httpClient), clock);
-        var run = Task.Run(() => session.RunAsync(Options(), stop.Token));
+        var session = new DesktopCollectorSession("heartbeat.collector.desktop.macos", source, new HubSubmissionClient(httpClient), clock);
+        var run = Task.Run(() => session.RunAsync(Options(), stop.Token), cancellationToken: TestContext.Current.CancellationToken);
         try
         {
-            await started.Task.WaitAsync(TestTimeout);
+            await started.Task.WaitAsync(TestTimeout, cancellationToken: TestContext.Current.CancellationToken);
             clock.Seconds = 1;
-            source.Emit(new MacSystemObservation.Input(
+            source.Emit(new DesktopObservation.Input(
                 new DesktopInputObservation(DesktopInputKind.MouseButtonDown, 1)));
-            source.Emit(new MacSystemObservation.Activity(
+            source.Emit(new DesktopObservation.Activity(
                 new DesktopActivitySample(NextApp, null)));
             clock.Seconds = 10;
             release.Set();
-            await handler.ReceivedInput.Task.WaitAsync(TestTimeout);
-            await handler.NextApplicationConfirmed.Task.WaitAsync(TestTimeout);
+            await handler.ReceivedInput.Task.WaitAsync(TestTimeout, cancellationToken: TestContext.Current.CancellationToken);
+            await handler.NextApplicationConfirmed.Task.WaitAsync(TestTimeout, cancellationToken: TestContext.Current.CancellationToken);
 
             var records = handler.Records.ToArray();
             var input = Assert.Single(records, item => item.Type == "desktop.input.event");
@@ -328,7 +326,11 @@ public sealed class DesktopCollectorSessionTests
         }
     }
 
-    private static CollectorOptions Options() => new(new Uri("http://localhost:8080"), "test-token",
+    private static Task RunSession(IDesktopObservationSource source, HttpClient client, CancellationToken token) =>
+        new DesktopCollectorSession("heartbeat.collector.desktop.macos", source, new HubSubmissionClient(client), TimeProvider.System)
+            .RunAsync(Options(), token);
+
+    private static DesktopCollectionOptions Options() => new(
         "device-a", "Test Mac", TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(40),
         TimeSpan.Zero, false);
 
@@ -353,16 +355,16 @@ public sealed class DesktopCollectorSessionTests
     }
 
     private sealed class ScriptedSource(Func<int, ForegroundApplication?> read, string? windowTitle = null)
-        : IMacSystemObservationSource
+        : IDesktopObservationSource
     {
         public int ReadCount { get; private set; }
 
-        public event Action<MacSystemObservation>? Observation;
-        public void Emit(MacSystemObservation observation) => Observation?.Invoke(observation);
-        public MacSystemSnapshot Capture()
+        public event Action<DesktopObservation>? Observation;
+        public void Emit(DesktopObservation observation) => Observation?.Invoke(observation);
+        public DesktopSnapshot Capture()
         {
             var application = read(++ReadCount);
-            return new MacSystemSnapshot(
+            return new DesktopSnapshot(
                 application is null ? null : new DesktopActivitySample(application, windowTitle),
                 []);
         }

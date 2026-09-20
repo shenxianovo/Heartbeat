@@ -2,7 +2,7 @@ using Heartbeat.Collector.Desktop.Mac.Native;
 
 namespace Heartbeat.Collector.Desktop.Mac;
 
-internal sealed class MacSystemObservationSource : IMacSystemObservationSource
+public sealed class MacSystemObservationSource : IDesktopObservationSource
 {
     private readonly IMacWorkspaceNative _workspace;
     private readonly IMacAccessibilityNative _accessibility;
@@ -27,15 +27,15 @@ internal sealed class MacSystemObservationSource : IMacSystemObservationSource
         _input = input;
     }
 
-    public event Action<MacSystemObservation>? Observation;
+    public event Action<DesktopObservation>? Observation;
 
-    public MacSystemSnapshot Capture()
+    public DesktopSnapshot Capture()
     {
         var application = _workspace.FrontmostApplication;
         var activity = ToActivity(application);
         lock (_gate)
         {
-            return new MacSystemSnapshot(activity, _states.Values.ToArray());
+            return new DesktopSnapshot(activity, _states.Values.ToArray());
         }
     }
 
@@ -198,41 +198,41 @@ internal sealed class MacSystemObservationSource : IMacSystemObservationSource
         switch (name)
         {
             case MacWorkspaceNotification.ApplicationActivated:
-                Observation?.Invoke(new MacSystemObservation.Activity(
+                Observation?.Invoke(new DesktopObservation.Activity(
                     ToActivity(_workspace.FrontmostApplication)));
                 RefreshCapabilities();
                 break;
             case MacWorkspaceNotification.ScreenLocked:
-                Observation?.Invoke(new MacSystemObservation.AwayEntered(MacAwayReason.ScreenLocked));
+                Observation?.Invoke(new DesktopObservation.AwayEntered(DesktopAwayReason.ScreenLocked));
                 break;
             case MacWorkspaceNotification.ScreenUnlocked:
-                Resume(MacAwayReason.ScreenLocked);
+                Resume(DesktopAwayReason.ScreenLocked);
                 break;
             case MacWorkspaceNotification.SessionInactive:
-                Observation?.Invoke(new MacSystemObservation.AwayEntered(MacAwayReason.SessionInactive));
+                Observation?.Invoke(new DesktopObservation.AwayEntered(DesktopAwayReason.SessionInactive));
                 break;
             case MacWorkspaceNotification.SessionActive:
-                Resume(MacAwayReason.SessionInactive);
+                Resume(DesktopAwayReason.SessionInactive);
                 break;
             case MacWorkspaceNotification.DisplaySleep:
-                Observation?.Invoke(new MacSystemObservation.AwayEntered(MacAwayReason.DisplaySleep));
+                Observation?.Invoke(new DesktopObservation.AwayEntered(DesktopAwayReason.DisplaySleep));
                 break;
             case MacWorkspaceNotification.DisplayWake:
-                Resume(MacAwayReason.DisplaySleep);
+                Resume(DesktopAwayReason.DisplaySleep);
                 break;
             case MacWorkspaceNotification.SystemSleep:
-                Observation?.Invoke(new MacSystemObservation.AwayEntered(MacAwayReason.SystemSleep));
+                Observation?.Invoke(new DesktopObservation.AwayEntered(DesktopAwayReason.SystemSleep));
                 break;
             case MacWorkspaceNotification.SystemWake:
-                Resume(MacAwayReason.SystemSleep);
+                Resume(DesktopAwayReason.SystemSleep);
                 break;
         }
     }
 
-    private void Resume(MacAwayReason reason)
+    private void Resume(DesktopAwayReason reason)
     {
         RefreshCapabilities();
-        Observation?.Invoke(new MacSystemObservation.AwayExited(reason, ToActivity(_workspace.FrontmostApplication)));
+        Observation?.Invoke(new DesktopObservation.AwayExited(reason, ToActivity(_workspace.FrontmostApplication)));
     }
 
     private void OnAccessibilityObservation(MacAccessibilityObservation observation)
@@ -247,7 +247,7 @@ internal sealed class MacSystemObservationSource : IMacSystemObservationSource
         {
             activity = activity with { WindowTitle = string.IsNullOrWhiteSpace(observation.Title) ? null : observation.Title };
         }
-        Observation?.Invoke(new MacSystemObservation.Activity(activity));
+        Observation?.Invoke(new DesktopObservation.Activity(activity));
     }
 
     private void OnInputObservation(MacInputObservation observation)
@@ -268,7 +268,7 @@ internal sealed class MacSystemObservationSource : IMacSystemObservationSource
         };
         if (translated is not null)
         {
-            Observation?.Invoke(new MacSystemObservation.Input(translated));
+            Observation?.Invoke(new DesktopObservation.Input(translated));
         }
     }
 
@@ -365,7 +365,7 @@ internal sealed class MacSystemObservationSource : IMacSystemObservationSource
         {
             Console.Error.WriteLine($"macOS {state.Capability} observation is available.");
         }
-        Observation?.Invoke(new MacSystemObservation.Capability(state));
+        Observation?.Invoke(new DesktopObservation.Capability(state));
     }
 
     public void Dispose()

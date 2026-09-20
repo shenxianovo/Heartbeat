@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Heartbeat.Hub;
 
-namespace Heartbeat.Collector.Desktop.Mac;
+namespace Heartbeat.Collector.Desktop;
 
 internal sealed record SubmissionRoute(CollectorDeclaration Collector, TrackDeclaration Track);
 

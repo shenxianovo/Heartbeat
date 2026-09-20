@@ -29,7 +29,7 @@ public sealed class RecordStorageTests(PostgresFixture fixture) : PostgresTestBa
         Assert.Equal(Now.AddMinutes(1), result.EndedAt);
         Assert.Equal(record.ReceivedAt, result.ReceivedAt);
         await using var db = CreateDbContext();
-        var stored = await db.Records.SingleAsync();
+        var stored = await db.Records.SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(record.Id, stored.Id);
         Assert.Equal(record.TrackId, stored.TrackId);
         Assert.Equal(record.StartedAt, stored.StartedAt);
@@ -56,7 +56,7 @@ public sealed class RecordStorageTests(PostgresFixture fixture) : PostgresTestBa
         }
 
         await using var db = CreateDbContext();
-        Assert.Equal(Now.AddMinutes(5), (await db.Records.SingleAsync()).EndedAt);
+        Assert.Equal(Now.AddMinutes(5), (await db.Records.SingleAsync(cancellationToken: TestContext.Current.CancellationToken)).EndedAt);
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public sealed class RecordStorageTests(PostgresFixture fixture) : PostgresTestBa
 
         Assert.All(results, result => Assert.IsType<RecordWriteResult.Stored>(result));
         await using var db = CreateDbContext();
-        Assert.Equal(Now.AddMinutes(12), (await db.Records.SingleAsync()).EndedAt);
+        Assert.Equal(Now.AddMinutes(12), (await db.Records.SingleAsync(cancellationToken: TestContext.Current.CancellationToken)).EndedAt);
     }
 
     [Fact]
@@ -94,7 +94,7 @@ public sealed class RecordStorageTests(PostgresFixture fixture) : PostgresTestBa
         Assert.Single(results.OfType<RecordWriteResult.Conflict>());
         var winner = results[0] is RecordWriteResult.Stored ? first : second;
         await using var db = CreateDbContext();
-        var stored = await db.Records.SingleAsync();
+        var stored = await db.Records.SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(winner.EndedAt, stored.EndedAt);
         Assert.Equal(winner.ReceivedAt, stored.ReceivedAt);
         Assert.Equal(winner.Value.GetProperty("application").GetString(),
@@ -124,7 +124,7 @@ public sealed class RecordStorageTests(PostgresFixture fixture) : PostgresTestBa
         Assert.Null(retry.EndedAt);
         Assert.Equal(Now, retry.ReceivedAt);
         await using var db = CreateDbContext();
-        var stored = await db.Records.SingleAsync();
+        var stored = await db.Records.SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Null(stored.EndedAt);
         Assert.Equal(3, stored.Value.GetProperty("count").GetInt32());
     }
@@ -158,7 +158,7 @@ public sealed class RecordStorageTests(PostgresFixture fixture) : PostgresTestBa
         Assert.IsType<RecordWriteResult.Conflict>(
             await WriteAsync(services, ownerId, conflicting));
         await using var db = CreateDbContext();
-        var stored = await db.Records.SingleAsync();
+        var stored = await db.Records.SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(Now.AddMinutes(1), stored.EndedAt);
         Assert.Equal(track.Id, stored.TrackId);
         Assert.Equal(Now, stored.StartedAt);
@@ -201,7 +201,7 @@ public sealed class RecordStorageTests(PostgresFixture fixture) : PostgresTestBa
             await WriteAsync(services, otherOwnerId, CreateRecord(track, id, 5)));
 
         await using var db = CreateDbContext();
-        Assert.Equal(Now.AddMinutes(1), (await db.Records.SingleAsync()).EndedAt);
+        Assert.Equal(Now.AddMinutes(1), (await db.Records.SingleAsync(cancellationToken: TestContext.Current.CancellationToken)).EndedAt);
     }
 
     [Fact]
@@ -219,7 +219,7 @@ public sealed class RecordStorageTests(PostgresFixture fixture) : PostgresTestBa
             await WriteAsync(services, otherOwnerId, CreateRecord(otherTrack, id, 5)));
 
         await using var db = CreateDbContext();
-        var stored = await db.Records.SingleAsync();
+        var stored = await db.Records.SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(track.Id, stored.TrackId);
         Assert.Equal(Now.AddMinutes(1), stored.EndedAt);
     }
@@ -237,7 +237,7 @@ public sealed class RecordStorageTests(PostgresFixture fixture) : PostgresTestBa
         await WriteAsync(services, ownerId, CreateRecord(track, firstId, 5));
 
         await using var db = CreateDbContext();
-        var records = await db.Records.ToDictionaryAsync(record => record.Id);
+        var records = await db.Records.ToDictionaryAsync(record => record.Id, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(2, records.Count);
         Assert.Equal(Now.AddMinutes(5), records[firstId].EndedAt);
         Assert.Equal(Now.AddMinutes(2), records[secondId].EndedAt);
@@ -253,7 +253,7 @@ public sealed class RecordStorageTests(PostgresFixture fixture) : PostgresTestBa
         Assert.IsType<RecordWriteResult.TrackNotFound>(
             await WriteAsync(services, Guid.NewGuid(), CreateRecord(track, Guid.CreateVersion7(), 1)));
         await using var db = CreateDbContext();
-        Assert.Empty(await db.Records.ToListAsync());
+        Assert.Empty(await db.Records.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     private async Task<Track> CreateTrackAsync(

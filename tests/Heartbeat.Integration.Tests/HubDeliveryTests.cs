@@ -31,14 +31,14 @@ public sealed class HubDeliveryTests(PostgresFixture fixture) : PostgresTestBase
             queue.Accept(submission);
             using (var offline = new HttpClient(new OfflineHandler()))
             {
-                Assert.Single(await new RecordUploader(queue, offline, new FixedTokenProvider(owner)).UploadOnceAsync());
+                Assert.Single(await new RecordUploader(queue, offline, new FixedTokenProvider(owner)).UploadOnceAsync(cancellationToken: TestContext.Current.CancellationToken));
             }
 
             await using (var db = CreateDbContext())
             {
-                Assert.Empty(await db.Timelines.ToListAsync());
-                Assert.Empty(await db.Collectors.ToListAsync());
-                Assert.Empty(await db.Tracks.ToListAsync());
+                Assert.Empty(await db.Timelines.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
+                Assert.Empty(await db.Collectors.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
+                Assert.Empty(await db.Tracks.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
             }
 
             queue = new RecordOutbox(path, destination);
@@ -48,24 +48,24 @@ public sealed class HubDeliveryTests(PostgresFixture fixture) : PostgresTestBase
                 InnerHandler = factory.Server.CreateHandler(),
             };
             using var backend = new HttpClient(handler);
-            Assert.Single(await new RecordUploader(queue, backend, new FixedTokenProvider(owner)).UploadOnceAsync());
+            Assert.Single(await new RecordUploader(queue, backend, new FixedTokenProvider(owner)).UploadOnceAsync(cancellationToken: TestContext.Current.CancellationToken));
             Assert.Equal(new QueueStatus(1, 0), queue.Status());
             var mappedTrack = Assert.Single(queue.TakePending()).Route.BackendTrackId!.Value;
             await using (var db = CreateDbContext())
             {
-                Assert.Equal(record.Id, (await db.Records.SingleAsync()).Id);
+                Assert.Equal(record.Id, (await db.Records.SingleAsync(cancellationToken: TestContext.Current.CancellationToken)).Id);
             }
 
             queue = new RecordOutbox(path, destination);
             queue.Accept(submission with { Records = [record with { EndedAt = now }] });
-            Assert.Empty(await new RecordUploader(queue, backend, new FixedTokenProvider(owner)).UploadOnceAsync());
+            Assert.Empty(await new RecordUploader(queue, backend, new FixedTokenProvider(owner)).UploadOnceAsync(cancellationToken: TestContext.Current.CancellationToken));
             Assert.Equal(new QueueStatus(0, 0), queue.Status());
             Assert.Equal(1, handler.RegistrationRequests);
             Assert.Equal(1, handler.TrackRequests);
 
-            using var replay = await replayClient.GetAsync($"/api/v1/tracks/{mappedTrack}/records");
+            using var replay = await replayClient.GetAsync($"/api/v1/tracks/{mappedTrack}/records", cancellationToken: TestContext.Current.CancellationToken);
             replay.EnsureSuccessStatusCode();
-            var body = await replay.Content.ReadFromJsonAsync<JsonElement>();
+            var body = await replay.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
             var stored = Assert.Single(body.GetProperty("records").EnumerateArray());
             Assert.Equal(record.Id, stored.GetProperty("id").GetGuid());
             Assert.True(JsonElement.DeepEquals(record.Value, stored.GetProperty("value")));
@@ -76,7 +76,7 @@ public sealed class HubDeliveryTests(PostgresFixture fixture) : PostgresTestBase
             {
                 Records = [record with { Value = JsonSerializer.SerializeToElement("conflicting value") }],
             });
-            Assert.Empty(await new RecordUploader(queue, backend, new FixedTokenProvider(owner)).UploadOnceAsync());
+            Assert.Empty(await new RecordUploader(queue, backend, new FixedTokenProvider(owner)).UploadOnceAsync(cancellationToken: TestContext.Current.CancellationToken));
             Assert.Equal(new QueueStatus(0, 1), queue.Status());
             Assert.Equal("conflict", Assert.Single(queue.ReadFailures()).Failure);
         }
@@ -109,14 +109,14 @@ public sealed class HubDeliveryTests(PostgresFixture fixture) : PostgresTestBase
                 new TrackDeclaration("example.unregistered.data", 1, timeMode, endMode), [record]));
             using var handler = new BackendHandler(owner) { InnerHandler = factory.Server.CreateHandler() };
             using var backend = new HttpClient(handler);
-            Assert.Empty(await new RecordUploader(queue, backend, new FixedTokenProvider(owner)).UploadOnceAsync());
+            Assert.Empty(await new RecordUploader(queue, backend, new FixedTokenProvider(owner)).UploadOnceAsync(cancellationToken: TestContext.Current.CancellationToken));
             Assert.Equal(new QueueStatus(0, 0), queue.Status());
 
             await using var db = CreateDbContext();
-            var trackId = (await db.Tracks.SingleAsync()).Id;
-            using var replay = await replayClient.GetAsync($"/api/v1/tracks/{trackId}/records");
+            var trackId = (await db.Tracks.SingleAsync(cancellationToken: TestContext.Current.CancellationToken)).Id;
+            using var replay = await replayClient.GetAsync($"/api/v1/tracks/{trackId}/records", cancellationToken: TestContext.Current.CancellationToken);
             replay.EnsureSuccessStatusCode();
-            var body = await replay.Content.ReadFromJsonAsync<JsonElement>();
+            var body = await replay.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
             var stored = Assert.Single(body.GetProperty("records").EnumerateArray());
             Assert.Equal(record.Id, stored.GetProperty("id").GetGuid());
             Assert.Equal(JsonValueKind.Null, stored.GetProperty("endedAt").ValueKind);

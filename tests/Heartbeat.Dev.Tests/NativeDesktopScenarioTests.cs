@@ -21,7 +21,8 @@ public sealed class NativeDesktopScenarioTests
         var assembly = repository.Path(
             "tests", "Heartbeat.Dev.Tests", "Fixtures", "SignalAwareProcess", "bin", "Debug", "net10.0", "SignalAwareProcess.dll");
         using var process = ProcessRunner.StartManaged(repository.Root, assembly, [], null);
-        Assert.Equal("ready", await process.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(20)));
+        Assert.Equal("ready", await process.StandardOutput.ReadLineAsync(TestContext.Current.CancellationToken).AsTask()
+            .WaitAsync(TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken));
 
         await ProcessRunner.InterruptAsync(process, TimeSpan.FromSeconds(2), CancellationToken.None);
 

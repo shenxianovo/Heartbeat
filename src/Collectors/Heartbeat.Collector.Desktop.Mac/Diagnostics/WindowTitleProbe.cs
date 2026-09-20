@@ -7,7 +7,7 @@ namespace Heartbeat.Collector.Desktop.Mac.Diagnostics;
 /// 前台窗口标题探针。它不产生 Record，也不连接 Hub：只把原生通知与轮询读数按时间原样记录下来，
 /// 用于回答「标题在真实使用中变化得多快」，再由离线分析决定切分规则。
 /// 默认不保存标题原文，只保存指纹与形态度量；标题原文需要显式开启。
-internal sealed class WindowTitleProbe(IMacSystemObservationSource source, TimeProvider time)
+internal sealed class WindowTitleProbe(IDesktopObservationSource source, TimeProvider time)
 {
     private readonly object _gate = new();
     private readonly List<Reading> _readings = [];
@@ -57,14 +57,14 @@ internal sealed class WindowTitleProbe(IMacSystemObservationSource source, TimeP
         }
     }
 
-    private void OnObservation(MacSystemObservation observation)
+    private void OnObservation(DesktopObservation observation)
     {
         switch (observation)
         {
-            case MacSystemObservation.Activity activity:
+            case DesktopObservation.Activity activity:
                 Record("event", activity.Sample);
                 break;
-            case MacSystemObservation.Capability capability:
+            case DesktopObservation.Capability capability:
                 RecordCapability(capability.Value);
                 break;
             default:

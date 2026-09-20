@@ -1,11 +1,11 @@
-namespace Heartbeat.Collector.Desktop.Mac;
+namespace Heartbeat.Collector.Desktop;
 
 /// <summary>
 /// 一次前台读数：当前前台应用，以及它当前的前台窗口标题（读不到时为 null）。
 /// </summary>
 public sealed record DesktopActivitySample(ForegroundApplication Application, string? WindowTitle);
 
-public enum MacAwayReason
+public enum DesktopAwayReason
 {
     ScreenLocked,
     SessionInactive,
@@ -53,24 +53,24 @@ public sealed record CapabilityObservation(
     ObservationState State,
     string? Reason = null);
 
-public abstract record MacSystemObservation
+public abstract record DesktopObservation
 {
-    public sealed record Activity(DesktopActivitySample? Sample) : MacSystemObservation;
-    public sealed record AwayEntered(MacAwayReason Reason) : MacSystemObservation;
-    public sealed record AwayExited(MacAwayReason Reason, DesktopActivitySample? CurrentActivity) : MacSystemObservation;
-    public sealed record Input(DesktopInputObservation Value) : MacSystemObservation;
-    public sealed record Capability(CapabilityObservation Value) : MacSystemObservation;
+    public sealed record Activity(DesktopActivitySample? Sample) : DesktopObservation;
+    public sealed record AwayEntered(DesktopAwayReason Reason) : DesktopObservation;
+    public sealed record AwayExited(DesktopAwayReason Reason, DesktopActivitySample? CurrentActivity) : DesktopObservation;
+    public sealed record Input(DesktopInputObservation Value) : DesktopObservation;
+    public sealed record Capability(CapabilityObservation Value) : DesktopObservation;
 }
 
-public sealed record MacSystemSnapshot(
+public sealed record DesktopSnapshot(
     DesktopActivitySample? Activity,
     IReadOnlyList<CapabilityObservation> Capabilities);
 
-public interface IMacSystemObservationSource : IDisposable
+public interface IDesktopObservationSource : IDisposable
 {
-    event Action<MacSystemObservation>? Observation;
+    event Action<DesktopObservation>? Observation;
 
-    MacSystemSnapshot Capture();
+    DesktopSnapshot Capture();
     void RefreshCapabilities();
     void StartObserving();
     void StopObserving();

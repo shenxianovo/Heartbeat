@@ -97,6 +97,8 @@ internal static class VerificationPlanner
             return CheckSelection.Web | (NeedsBrowser(path) ? CheckSelection.Browser : CheckSelection.None);
         if (path.StartsWith("src/", StringComparison.Ordinal)
             || path.StartsWith("tests/Heartbeat.", StringComparison.Ordinal)) return CheckSelection.Dotnet;
+        if (path is "global.json" or "Directory.Build.props" or "Directory.Packages.props")
+            return CheckSelection.Dotnet;
         if (IsContract(path)) return CheckSelection.Dotnet;
         if (path.StartsWith("docs/", StringComparison.Ordinal)
             || path.StartsWith(".scratch/", StringComparison.Ordinal)

@@ -22,7 +22,7 @@
 
 旧代码可用 `git show 86911e75459b0038eeba8aec623d2f3d2890a1f3:<path>` 核对；本表不把旧代码存在解释为行为已验证。
 
-当前代码见 [Collector README](../../src/Collectors/Heartbeat.Collector.Desktop.Mac/README.md)、[系统观察源](../../src/Collectors/Heartbeat.Collector.Desktop.Mac/MacSystemObservationSource.cs)、[原生 adapter](../../src/Collectors/Heartbeat.Collector.Desktop.Mac/Native/)、[Record 投影](../../src/Collectors/Heartbeat.Collector.Desktop.Mac/DesktopRecordProjector.cs)。数据含义见 [application](../protocols/desktop-application-foreground-v1.md)、[window](../protocols/desktop-window-foreground-v1.md)、[away](../protocols/desktop-system-away-v1.md)、[input](../protocols/desktop-input-event-v1.md)、[status](../protocols/desktop-observation-status-v1.md) 协议。
+当前代码见 [Collector README](../../src/Collectors/Heartbeat.Collector.Desktop.Mac/README.md)、[系统观察源](../../src/Collectors/Heartbeat.Collector.Desktop.Mac/MacSystemObservationSource.cs)、[原生 adapter](../../src/Collectors/Heartbeat.Collector.Desktop.Mac/Native/)、[Record 投影](../../src/Collectors/Heartbeat.Collector.Desktop/DesktopRecordProjector.cs)。数据含义见 [application](../protocols/desktop-application-foreground-v1.md)、[window](../protocols/desktop-window-foreground-v1.md)、[away](../protocols/desktop-system-away-v1.md)、[input](../protocols/desktop-input-event-v1.md)、[status](../protocols/desktop-observation-status-v1.md) 协议。
 
 ## 验证边界
 

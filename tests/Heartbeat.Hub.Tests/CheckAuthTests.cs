@@ -30,7 +30,7 @@ public sealed class CheckAuthTests
                 expiresIn = 3600,
             });
         });
-        await auth.StartAsync();
+        await auth.StartAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         var result = await RunAsync(new Uri(Assert.Single(auth.Urls)), apiKey);
 
@@ -39,7 +39,7 @@ public sealed class CheckAuthTests
         Assert.Equal(ownerId, output.RootElement.GetProperty("ownerId").GetGuid());
         Assert.Single(result.StandardOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries));
         Assert.Equal(string.Empty, result.StandardError);
-        await auth.StopAsync();
+        await auth.StopAsync(cancellationToken: TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public sealed class CheckAuthTests
         builder.Logging.ClearProviders();
         await using var auth = builder.Build();
         auth.MapPost("/api/v1/apikeys/exchange", () => Results.Unauthorized());
-        await auth.StartAsync();
+        await auth.StartAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         var result = await RunAsync(new Uri(Assert.Single(auth.Urls)), apiKey);
 
@@ -59,7 +59,7 @@ public sealed class CheckAuthTests
         Assert.Equal(string.Empty, result.StandardOutput);
         Assert.DoesNotContain(apiKey, result.StandardError, StringComparison.Ordinal);
         Assert.DoesNotContain("Bearer", result.StandardError, StringComparison.OrdinalIgnoreCase);
-        await auth.StopAsync();
+        await auth.StopAsync(cancellationToken: TestContext.Current.CancellationToken);
     }
 
     private static async Task<ProcessResult> RunAsync(Uri authUrl, string apiKey)

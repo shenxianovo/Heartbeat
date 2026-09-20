@@ -6,7 +6,7 @@ namespace Heartbeat.Dev.Tests;
 
 /// <summary>
 /// 对账测试的探针一侧。<c>WindowTitleChurn.Simulate</c> 是生产静置规则
-/// （<c>src/Collectors/Heartbeat.Collector.Desktop.Mac/DesktopRecordProjector.cs</c>）的一份模拟，
+/// （<c>src/Collectors/Heartbeat.Collector.Desktop/DesktopRecordProjector.cs</c>）的一份模拟，
 /// 用来选参数；权威在生产那一侧。两侧读同一张场景表 <c>tests/window-title-dwell-scenarios.json</c>：
 /// 这里钉住模拟给出的 Record 条数，<c>tests/Heartbeat.Collector.Desktop.Mac.Tests</c> 里的同名测试
 /// 钉住生产规则给出的条数。任一侧漂移，对应那一侧就红；两个数字不一样的行必须在表里写清为什么。

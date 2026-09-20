@@ -34,7 +34,7 @@ public sealed class WindowTitleProbeTests
     {
         var source = new ProbeSource(new DesktopActivitySample(Player, "Track One"));
         var readings = await RunAsync(source, includeTitles: false, before: probeSource =>
-            probeSource.Emit(new MacSystemObservation.Activity(new DesktopActivitySample(Player, "Track Two"))));
+            probeSource.Emit(new DesktopObservation.Activity(new DesktopActivitySample(Player, "Track Two"))));
 
         Assert.Contains(readings, reading => reading.GetProperty("origin").GetString() == "event");
         Assert.Contains(readings, reading => reading.GetProperty("origin").GetString() == "poll");
@@ -59,7 +59,7 @@ public sealed class WindowTitleProbeTests
         var source = new ProbeSource(new DesktopActivitySample(Player, "Track One"));
 
         var document = await CaptureAsync(source, includeTitles: false, before: probeSource =>
-            probeSource.Emit(new MacSystemObservation.Capability(new CapabilityObservation(
+            probeSource.Emit(new DesktopObservation.Capability(new CapabilityObservation(
                 ObservationCapability.WindowTitle, ObservationState.Unavailable, "observer_starting"))));
 
         var capability = Assert.Single(document.RootElement.GetProperty("capabilities").EnumerateArray());
@@ -118,13 +118,13 @@ public sealed class WindowTitleProbeTests
         }
     }
 
-    private sealed class ProbeSource(DesktopActivitySample sample) : IMacSystemObservationSource
+    private sealed class ProbeSource(DesktopActivitySample sample) : IDesktopObservationSource
     {
-        public event Action<MacSystemObservation>? Observation;
+        public event Action<DesktopObservation>? Observation;
 
-        public void Emit(MacSystemObservation observation) => Observation?.Invoke(observation);
+        public void Emit(DesktopObservation observation) => Observation?.Invoke(observation);
 
-        public MacSystemSnapshot Capture() => new(sample, []);
+        public DesktopSnapshot Capture() => new(sample, []);
 
         public void RefreshCapabilities() { }
 

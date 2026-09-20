@@ -119,7 +119,7 @@ internal sealed record EnvironmentPlan(
     private static void ValidateDesktop(EnvironmentAction action, HashSet<string> services)
     {
         if (action != EnvironmentAction.Up && services.Contains("desktop"))
-            throw new CommandUsageException("desktop is a foreground process; stop it with Ctrl+C where it is running.");
+            throw new CommandUsageException("desktop is a macOS application; view its status and quit from Heartbeat Dev's window or menu bar.");
     }
 
     private static HashSet<string> DefaultSelection(EnvironmentAction action, HashSet<string> requested)
@@ -137,7 +137,6 @@ internal sealed record EnvironmentPlan(
         if (action != EnvironmentAction.Up) return selected;
         if (selected.Contains("web")) selected.Add("api");
         if (selected.Contains("api")) selected.Add("db");
-        if (selected.Contains("desktop")) selected.Add("hub");
         return selected;
     }
 

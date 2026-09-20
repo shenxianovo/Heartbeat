@@ -14,11 +14,11 @@ public sealed class EnvironmentPlanTests
     }
 
     [Fact]
-    public void DesktopStartsHubAndRemainsForeground()
+    public void DesktopUsesItsOwnHubWithoutStartingContainers()
     {
         var plan = EnvironmentPlan.Parse(["up", "desktop"]);
 
-        Assert.Equal(["hub"], plan.ComposeServices);
+        Assert.Empty(plan.ComposeServices);
         Assert.True(plan.RunDesktop);
     }
 

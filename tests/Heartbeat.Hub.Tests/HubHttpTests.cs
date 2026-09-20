@@ -24,9 +24,9 @@ public sealed class HubHttpTests : IDisposable
         await using var factory = Factory();
         using var client = Client(factory);
         var record = QueueFixture.Snapshot();
-        await new HubSubmissionClient(client).SubmitAsync(QueueFixture.Submission(record));
+        await new HubSubmissionClient(client).SubmitAsync(QueueFixture.Submission(record), cancellationToken: TestContext.Current.CancellationToken);
 
-        var status = await client.GetFromJsonAsync<QueueStatus>("/hub/v1/status");
+        var status = await client.GetFromJsonAsync<QueueStatus>("/hub/v1/status", cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(new QueueStatus(1, 0), status);
         var restored = Assert.Single(_fixture.Open().TakePending());
         Assert.Equal(record.Id, restored.Record.Id);
@@ -43,8 +43,8 @@ public sealed class HubHttpTests : IDisposable
         using var response = await Submit(client, QueueFixture.Snapshot());
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "wrong-secret");
-        using var status = await client.GetAsync("/hub/v1/status");
-        using var failures = await client.GetAsync("/hub/v1/failures");
+        using var status = await client.GetAsync("/hub/v1/status", cancellationToken: TestContext.Current.CancellationToken);
+        using var failures = await client.GetAsync("/hub/v1/failures", cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, status.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, failures.StatusCode);
         Assert.Equal(new QueueStatus(0, 0), _fixture.Open().Status());
@@ -74,7 +74,7 @@ public sealed class HubHttpTests : IDisposable
         await using var factory = Factory();
         using var client = Client(factory);
         using var unknown = await client.PostAsJsonAsync("/hub/v1/records",
-            new { collector = QueueFixture.Collector(), track = QueueFixture.Track(), records = new[] { QueueFixture.Snapshot() }, ownerId = Guid.NewGuid() });
+            new { collector = QueueFixture.Collector(), track = QueueFixture.Track(), records = new[] { QueueFixture.Snapshot() }, ownerId = Guid.NewGuid() }, cancellationToken: TestContext.Current.CancellationToken);
         using var invalid = await Submit(client, QueueFixture.Snapshot() with { EndedAt = null });
         Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
@@ -89,7 +89,7 @@ public sealed class HubHttpTests : IDisposable
         var invalid = QueueFixture.Submission(QueueFixture.Snapshot() with { EndedAt = null });
 
         var error = await Assert.ThrowsAsync<HttpRequestException>(() =>
-            new HubSubmissionClient(client).SubmitAsync(invalid));
+            new HubSubmissionClient(client).SubmitAsync(invalid, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("Record end time does not match its Track declaration", error.Message);
     }

@@ -40,7 +40,7 @@ public sealed class RealAuthenticationPipelineTests(PostgresFixture fixture) : P
         using var client = factory.CreateClient();
 
         using var response = await client.SendAsync(
-            RegistrationRequest(Mint(identityProvider, scheme, ownerId.ToString())));
+            RegistrationRequest(Mint(identityProvider, scheme, ownerId.ToString())), cancellationToken: TestContext.Current.CancellationToken);
 
         await AssertOwnerRegisteredAsync(response, ownerId);
     }
@@ -58,8 +58,8 @@ public sealed class RealAuthenticationPipelineTests(PostgresFixture fixture) : P
             Guid.CreateVersion7().ToString(),
             issuer: TestIdentityProvider.UnexpectedIssuer);
 
-        using var oidcResponse = await client.SendAsync(RegistrationRequest(oidcToken));
-        using var sessionResponse = await client.SendAsync(RegistrationRequest(sessionToken));
+        using var oidcResponse = await client.SendAsync(RegistrationRequest(oidcToken), cancellationToken: TestContext.Current.CancellationToken);
+        using var sessionResponse = await client.SendAsync(RegistrationRequest(sessionToken), cancellationToken: TestContext.Current.CancellationToken);
 
         AssertBearerChallenge(oidcResponse, "The issuer");
         AssertBearerChallenge(sessionResponse, "The issuer");
@@ -80,8 +80,8 @@ public sealed class RealAuthenticationPipelineTests(PostgresFixture fixture) : P
             Guid.CreateVersion7().ToString(),
             expires: expired);
 
-        using var oidcResponse = await client.SendAsync(RegistrationRequest(oidcToken));
-        using var sessionResponse = await client.SendAsync(RegistrationRequest(sessionToken));
+        using var oidcResponse = await client.SendAsync(RegistrationRequest(oidcToken), cancellationToken: TestContext.Current.CancellationToken);
+        using var sessionResponse = await client.SendAsync(RegistrationRequest(sessionToken), cancellationToken: TestContext.Current.CancellationToken);
 
         AssertBearerChallenge(oidcResponse, "expired");
         AssertBearerChallenge(sessionResponse, "expired");
@@ -101,8 +101,8 @@ public sealed class RealAuthenticationPipelineTests(PostgresFixture fixture) : P
             Guid.CreateVersion7().ToString(),
             credentials: identityProvider.UnpublishedCredentials);
 
-        using var oidcResponse = await client.SendAsync(RegistrationRequest(oidcToken));
-        using var sessionResponse = await client.SendAsync(RegistrationRequest(sessionToken));
+        using var oidcResponse = await client.SendAsync(RegistrationRequest(oidcToken), cancellationToken: TestContext.Current.CancellationToken);
+        using var sessionResponse = await client.SendAsync(RegistrationRequest(sessionToken), cancellationToken: TestContext.Current.CancellationToken);
 
         AssertBearerChallenge(oidcResponse, "signature");
         AssertBearerChallenge(sessionResponse, "signature");
@@ -119,9 +119,9 @@ public sealed class RealAuthenticationPipelineTests(PostgresFixture fixture) : P
 
         // Same session claims twice; only the header "typ" differs, so only the routing changes.
         using var routedToSession = await client.SendAsync(
-            RegistrationRequest(identityProvider.CreateSessionToken(ownerId)));
+            RegistrationRequest(identityProvider.CreateSessionToken(ownerId)), cancellationToken: TestContext.Current.CancellationToken);
         using var routedToOidc = await client.SendAsync(
-            RegistrationRequest(identityProvider.CreateSessionToken(ownerId, tokenType: "at+jwt")));
+            RegistrationRequest(identityProvider.CreateSessionToken(ownerId, tokenType: "at+jwt")), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, routedToSession.StatusCode);
         AssertBearerChallenge(routedToOidc, TestIdentityProvider.SessionIssuer);
@@ -139,9 +139,9 @@ public sealed class RealAuthenticationPipelineTests(PostgresFixture fixture) : P
         // rejects its audience. Only the session scheme validates audience at all (the OIDC scheme
         // has it switched off, see the audience tests below), so that failure identifies the scheme.
         using var routedToOidc = await client.SendAsync(
-            RegistrationRequest(identityProvider.CreateOidcAccessToken(ownerId)));
+            RegistrationRequest(identityProvider.CreateOidcAccessToken(ownerId)), cancellationToken: TestContext.Current.CancellationToken);
         using var routedToSession = await client.SendAsync(
-            RegistrationRequest(identityProvider.CreateOidcAccessToken(ownerId, tokenType: "JWT")));
+            RegistrationRequest(identityProvider.CreateOidcAccessToken(ownerId, tokenType: "JWT")), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, routedToOidc.StatusCode);
         AssertBearerChallenge(routedToSession, "The audience");
@@ -163,7 +163,7 @@ public sealed class RealAuthenticationPipelineTests(PostgresFixture fixture) : P
             Guid.CreateVersion7().ToString(),
             clientId: clientId);
 
-        using var response = await client.SendAsync(RegistrationRequest(token));
+        using var response = await client.SendAsync(RegistrationRequest(token), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         await AssertNoTimelineAsync();
@@ -179,9 +179,9 @@ public sealed class RealAuthenticationPipelineTests(PostgresFixture fixture) : P
         using var client = factory.CreateClient();
 
         using var oidcResponse = await client.SendAsync(
-            RegistrationRequest(identityProvider.CreateOidcAccessToken(subject)));
+            RegistrationRequest(identityProvider.CreateOidcAccessToken(subject)), cancellationToken: TestContext.Current.CancellationToken);
         using var sessionResponse = await client.SendAsync(
-            RegistrationRequest(identityProvider.CreateSessionToken(subject)));
+            RegistrationRequest(identityProvider.CreateSessionToken(subject)), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, oidcResponse.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, sessionResponse.StatusCode);
@@ -198,7 +198,7 @@ public sealed class RealAuthenticationPipelineTests(PostgresFixture fixture) : P
             Guid.CreateVersion7().ToString(),
             audience: "some-other-api");
 
-        using var response = await client.SendAsync(RegistrationRequest(token));
+        using var response = await client.SendAsync(RegistrationRequest(token), cancellationToken: TestContext.Current.CancellationToken);
 
         AssertBearerChallenge(response, "The audience");
         await AssertNoTimelineAsync();
@@ -224,7 +224,7 @@ public sealed class RealAuthenticationPipelineTests(PostgresFixture fixture) : P
         using var response = await client.SendAsync(RegistrationRequest(
             identityProvider.CreateOidcAccessToken(
                 ownerId.ToString(),
-                audience: "an-entirely-different-api")));
+                audience: "an-entirely-different-api")), cancellationToken: TestContext.Current.CancellationToken);
 
         await AssertOwnerRegisteredAsync(response, ownerId);
     }
@@ -239,11 +239,11 @@ public sealed class RealAuthenticationPipelineTests(PostgresFixture fixture) : P
         var ownerId = Guid.CreateVersion7();
 
         using var accepted = await client.SendAsync(RegistrationRequest(
-            identityProvider.CreateOidcAccessToken(ownerId.ToString(), audience: audience)));
+            identityProvider.CreateOidcAccessToken(ownerId.ToString(), audience: audience)), cancellationToken: TestContext.Current.CancellationToken);
         using var rejected = await client.SendAsync(RegistrationRequest(
             identityProvider.CreateOidcAccessToken(
                 Guid.CreateVersion7().ToString(),
-                audience: "an-entirely-different-api")));
+                audience: "an-entirely-different-api")), cancellationToken: TestContext.Current.CancellationToken);
 
         AssertBearerChallenge(rejected, "The audience");
         await AssertOwnerRegisteredAsync(accepted, ownerId);

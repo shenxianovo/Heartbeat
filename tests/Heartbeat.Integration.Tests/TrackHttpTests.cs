@@ -25,8 +25,8 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
 
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
-        using var json = JsonDocument.Parse(await first.Content.ReadAsStringAsync());
-        using var repeated = JsonDocument.Parse(await second.Content.ReadAsStringAsync());
+        using var json = JsonDocument.Parse(await first.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
+        using var repeated = JsonDocument.Parse(await second.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
         var track = json.RootElement;
         Assert.Equal(7, track.GetProperty("id").GetGuid().Version);
         Assert.Equal(track.GetProperty("id").GetGuid(), repeated.RootElement.GetProperty("id").GetGuid());
@@ -37,7 +37,7 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
         Assert.Equal("explicit", track.GetProperty("endMode").GetString());
         Assert.Equal(Now, track.GetProperty("createdAt").GetDateTimeOffset());
         await using var db = CreateDbContext();
-        Assert.Single(await db.Tracks.ToListAsync());
+        Assert.Single(await db.Tracks.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -57,14 +57,14 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
             using (response)
             {
                 Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-                using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
                 ids.Add(json.RootElement.GetProperty("id").GetGuid());
             }
         }
 
         Assert.Single(ids.Distinct());
         await using var db = CreateDbContext();
-        Assert.Single(await db.Tracks.ToListAsync());
+        Assert.Single(await db.Tracks.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -83,7 +83,7 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
         await using var db = CreateDbContext();
-        Assert.Equal(2, await db.Tracks.CountAsync());
+        Assert.Equal(2, await db.Tracks.CountAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
         await AssertProblemAsync(forbidden, HttpStatusCode.NotFound, "collector_not_found");
         await AssertProblemAsync(missing, HttpStatusCode.NotFound, "collector_not_found");
         await using var db = CreateDbContext();
-        Assert.Empty(await db.Tracks.ToListAsync());
+        Assert.Empty(await db.Tracks.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -125,7 +125,7 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
 
         await AssertProblemAsync(response, HttpStatusCode.BadRequest, "invalid_request");
         await using var db = CreateDbContext();
-        Assert.Empty(await db.Tracks.ToListAsync());
+        Assert.Empty(await db.Tracks.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -144,7 +144,7 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
         await using var db = CreateDbContext();
-        Assert.Empty(await db.Tracks.ToListAsync());
+        Assert.Empty(await db.Tracks.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -154,7 +154,7 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
         using var client = factory.CreateClient();
 
         using var response = await client.PostAsJsonAsync($"/api/v1/collectors/{Guid.NewGuid()}/tracks",
-            new { type = "desktop.application.foreground", version = 1, timeMode = "range", endMode = "explicit" });
+            new { type = "desktop.application.foreground", version = 1, timeMode = "range", endMode = "explicit" }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -172,14 +172,14 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
         await using (var db = CreateDbContext())
         {
             db.Tracks.Add(track);
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(cancellationToken: TestContext.Current.CancellationToken);
         }
 
         using var response = await ResolveAsync(client, ownerId, collectorId);
 
         await AssertProblemAsync(response, HttpStatusCode.Conflict, "track_definition_conflict");
         await using var verify = CreateDbContext();
-        var stored = await verify.Tracks.SingleAsync();
+        var stored = await verify.Tracks.SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(track.Id, stored.Id);
         Assert.Equal(TimeMode.Point, stored.TimeMode);
         Assert.Equal(Now.AddDays(-1), stored.CreatedAt);

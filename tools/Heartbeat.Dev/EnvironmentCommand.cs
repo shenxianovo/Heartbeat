@@ -25,6 +25,10 @@ internal sealed class EnvironmentCommand(
 
         Services: web api db hub desktop
         Options: --release, --env-file PATH, --json, --apply
+
+        desktop packages and opens Heartbeat Dev on macOS with its in-process Hub.
+        Use 'env up web desktop' for the local Web/API/database and desktop together.
+        Quit Heartbeat Dev before rerunning after code changes; the app runs outside this terminal.
         """;
 
     public async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
@@ -61,6 +65,8 @@ internal sealed class EnvironmentCommand(
         CancellationToken cancellationToken)
     {
         ValidateUp(plan, dotenv);
+        if (plan.ComposeServices.Count == 0)
+            return await RunDesktopAsync(cancellationToken);
         var configured = await runner.CaptureAsync(
             "docker", [.. compose, "config", "--quiet"], null, cancellationToken);
         if (configured.ExitCode != 0)
@@ -77,7 +83,7 @@ internal sealed class EnvironmentCommand(
 
         await WaitForServicesAsync(plan, compose, dotenv, cancellationToken);
         return plan.RunDesktop
-            ? await RunDesktopAsync(plan.Options.Release, GetHubPort(dotenv), dotenv, cancellationToken)
+            ? await RunDesktopAsync(cancellationToken)
             : 0;
     }
 
@@ -85,9 +91,6 @@ internal sealed class EnvironmentCommand(
     {
         if (plan.RunDesktop && !OperatingSystem.IsMacOS())
             throw new InvalidOperationException("desktop currently requires macOS.");
-        if (plan.RunDesktop && string.IsNullOrWhiteSpace(dotenv.Get("HEARTBEAT_COLLECTOR_TARGET")))
-            throw new InvalidOperationException(
-                "Desktop Collector configuration is incomplete (HEARTBEAT_COLLECTOR_TARGET). Run ./scripts/setup.sh first.");
         if (!plan.ComposeServices.Contains("hub")) return;
         var missing = RequiredHubVariables.Where(name => string.IsNullOrWhiteSpace(dotenv.Get(name))).ToArray();
         if (missing.Length > 0)
@@ -121,19 +124,14 @@ internal sealed class EnvironmentCommand(
         }
     }
 
-    private async Task<int> RunDesktopAsync(
-        bool release,
-        int hubPort,
-        DotenvFile dotenv,
-        CancellationToken cancellationToken)
+    private async Task<int> RunDesktopAsync(CancellationToken cancellationToken)
     {
-        await output.WriteLineAsync("Hub is running in Docker. Desktop Collector is attached; press Ctrl+C to stop it.");
-        var project = repository.Path("src", "Collectors", "Heartbeat.Collector.Desktop.Mac", "Heartbeat.Collector.Desktop.Mac.csproj");
-        var environment = CollectorEnvironment.Create(new Uri($"http://127.0.0.1:{hubPort}"), dotenv);
-        IReadOnlyList<string> arguments = release
-            ? ["run", "--configuration", "Release", "--project", project]
-            : ["watch", "--project", project, "run", "--no-launch-profile"];
-        return await runner.RunAsync("dotnet", arguments, environment, cancellationToken);
+        await output.WriteLineAsync("Building Heartbeat Dev. Quit any running development client first to load code changes.");
+        var built = await runner.RunAsync("/bin/bash", [repository.Path("scripts", "package-desktop-mac.sh")], null, cancellationToken);
+        if (built != 0) return built;
+        var application = repository.Path(".artifacts", "desktop", "Heartbeat Dev.app");
+        await output.WriteLineAsync($"Opening {application}. Configure the connection in the app; use its menu bar to quit.");
+        return await runner.RunAsync("/usr/bin/open", ["-a", application], null, cancellationToken);
     }
 
     private async Task<int> StatusAsync(

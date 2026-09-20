@@ -3,17 +3,17 @@ using Heartbeat.Dev;
 
 namespace Heartbeat.Dev.Tests;
 
-public sealed class CollectorReplayEvidenceTests
+public sealed class DesktopReplayEvidenceTests
 {
     [Fact]
     public void QueueDrainCannotReplaceOrRegressTheRecordAlreadyObserved()
     {
         var started = new DateTimeOffset(2026, 9, 20, 8, 0, 0, TimeSpan.Zero);
-        var before = new CollectorReplayEvidence(Guid.NewGuid(), Guid.NewGuid(), started, started.AddSeconds(2));
+        var before = new DesktopReplayEvidence(Guid.NewGuid(), Guid.NewGuid(), started, started.AddSeconds(2));
         before.RequireContinuationOf(before);
         (before with { EndedAt = started.AddSeconds(3) }).RequireContinuationOf(before);
 
-        CollectorReplayEvidence[] wrong =
+        DesktopReplayEvidence[] wrong =
         [
             before with { TrackId = Guid.NewGuid() },
             before with { RecordId = Guid.NewGuid() },
@@ -27,6 +27,6 @@ public sealed class CollectorReplayEvidenceTests
     [Fact]
     public void PartialDatabaseEvidenceCannotProduceAReplayExpectation()
     {
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<CollectorReplayEvidence>("{}"));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<DesktopReplayEvidence>("{}"));
     }
 }

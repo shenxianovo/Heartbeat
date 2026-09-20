@@ -5,6 +5,7 @@
     <RootNamespace>Heartbeat.Dev</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../../src/Desktop/Heartbeat.Desktop/Heartbeat.Desktop.csproj" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     <InternalsVisibleTo Include="Heartbeat.Dev.Tests" />
   </ItemGroup>

@@ -51,7 +51,7 @@ public sealed class HubCrashTests
                 results = new[] { new { index = 0, record.Id, status = "stored", record.EndedAt, receivedAt = DateTimeOffset.UtcNow } },
             });
         });
-        await backend.StartAsync();
+        await backend.StartAsync(cancellationToken: TestContext.Current.CancellationToken);
         using var fixture = new QueueFixture
         {
             Destination = new DeliveryDestination(new Uri(Assert.Single(backend.Urls)), ownerId),
@@ -62,7 +62,7 @@ public sealed class HubCrashTests
         var hub = await StartAsync(fixture, accessToken);
         try
         {
-            Assert.Equal(record.Id, await delivered.Task.WaitAsync(TimeSpan.FromSeconds(10)));
+            Assert.Equal(record.Id, await delivered.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken: TestContext.Current.CancellationToken));
             using var client = Client(hub.Url, accessToken);
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             while ((await client.GetFromJsonAsync<QueueStatus>("hub/v1/status", deadline.Token))!.Pending != 0)
@@ -75,7 +75,7 @@ public sealed class HubCrashTests
         finally
         {
             await KillAsync(hub.Process);
-            await backend.StopAsync();
+            await backend.StopAsync(cancellationToken: TestContext.Current.CancellationToken);
         }
     }
 
@@ -89,7 +89,7 @@ public sealed class HubCrashTests
         try
         {
             using var client = Client(first.Url, accessToken);
-            using var response = await client.PostAsJsonAsync("hub/v1/records", QueueFixture.Submission(record));
+            using var response = await client.PostAsJsonAsync("hub/v1/records", QueueFixture.Submission(record), cancellationToken: TestContext.Current.CancellationToken);
             response.EnsureSuccessStatusCode();
             // Kill after the complete custody response; never request a graceful shutdown or drain.
         }
@@ -102,10 +102,10 @@ public sealed class HubCrashTests
         try
         {
             using var client = Client(second.Url, accessToken);
-            Assert.Equal(new QueueStatus(1, 0), await client.GetFromJsonAsync<QueueStatus>("hub/v1/status"));
-            using var retry = await client.PostAsJsonAsync("hub/v1/records", QueueFixture.Submission(record));
+            Assert.Equal(new QueueStatus(1, 0), await client.GetFromJsonAsync<QueueStatus>("hub/v1/status", cancellationToken: TestContext.Current.CancellationToken));
+            using var retry = await client.PostAsJsonAsync("hub/v1/records", QueueFixture.Submission(record), cancellationToken: TestContext.Current.CancellationToken);
             retry.EnsureSuccessStatusCode();
-            Assert.Equal(new QueueStatus(1, 0), await client.GetFromJsonAsync<QueueStatus>("hub/v1/status"));
+            Assert.Equal(new QueueStatus(1, 0), await client.GetFromJsonAsync<QueueStatus>("hub/v1/status", cancellationToken: TestContext.Current.CancellationToken));
         }
         finally
         {

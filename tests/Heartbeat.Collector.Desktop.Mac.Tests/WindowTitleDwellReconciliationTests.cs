@@ -33,7 +33,7 @@ public sealed class WindowTitleDwellReconciliationTests
     {
         var scenario = Load().Single(item => string.Equals(item.Name, name, StringComparison.Ordinal));
         var staged = new List<(SubmissionRoute Route, RecordSnapshot Record)>();
-        var projector = new DesktopRecordProjector(
+        var projector = new DesktopRecordProjector("heartbeat.collector.desktop.macos",
             "device-a",
             "Mac",
             TimeSpan.FromSeconds(10),
@@ -43,7 +43,7 @@ public sealed class WindowTitleDwellReconciliationTests
         foreach (var reading in scenario.Readings)
         {
             projector.Apply(
-                new MacSystemObservation.Activity(new DesktopActivitySample(
+                new DesktopObservation.Activity(new DesktopActivitySample(
                     new ForegroundApplication("macos", "bundle_id", reading.Application, reading.Application),
                     reading.Title)),
                 Start.AddSeconds(reading.Second));

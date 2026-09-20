@@ -57,3 +57,19 @@ Collector 到 Hub 接管前的快照仍在内存，进程退出可能丢失；�
 4. 分别撤销和授予 Accessibility、Input Monitoring；其他能力应继续工作，状态历史应与实际行为一致。
 
 测试替身、`--once` 和上述冒烟不能代替这些步骤。
+
+## 2026-09-20 桌面 UI 恢复验收补充
+
+比较基点：`4533ee5c50a96ebb0962aa316444ef962fd65782`。跨平台运行逻辑和 Avalonia UI、Mac 原生宿主、本机 Hub 与系统凭据保存已实现；责任和操作入口见 [ADR-0016](../adr/ADR-0016-desktop-host-and-credentials.md) 与[客户端 README](../../src/Desktop/README.md)。
+
+| 命令 | 结果与本地证据 |
+| --- | --- |
+| `./scripts/heartbeat-dev env up desktop` | 成功打包并打开真实开发客户端，读取已有凭据并恢复采集；`.artifacts/desktop/dev-cli-launch-check.json` |
+| `./scripts/heartbeat-dev verify changed --base HEAD` | xUnit v3 / Microsoft.Testing.Platform v2、前端检查及 fixture 浏览器验证通过；`.artifacts/verification/20260920T072856Z-verify-full-fallback-27274b641e0148e5b0a28d7fc169a5af/manifest.json` |
+| `./scripts/heartbeat-dev quality --base HEAD` | 通过，无新增重复代码或复杂度热点；`.artifacts/verification/20260920T072942Z-quality-gate-01795c0419e74791ab92a7d3257dfd70/manifest.json` |
+| `./scripts/heartbeat-dev scenario delivery` | MTP 类过滤和 TRX 报告通过；`.artifacts/verification/20260920T070812Z-scenario-delivery-9bd902001bda4f09be12fde0a2107a50/manifest.json` |
+| `./scripts/heartbeat-dev scenario desktop-replay --keep-environment-on-failure` | 本地应用包、真实 Auth/钥匙串、原生采集、进程内 Hub、隔离后端与生产 Web 的同一 Record 核对通过；退出时队列为零，临时 profile、凭据及 Docker 环境清理成功。证据 `.artifacts/verification/20260920T072545Z-scenario-desktop-replay-af5d844ec8ee409dab93206736bfbaae/manifest.json` 与同目录 `replay-record.png` |
+
+正常开发入口使用固定数据目录和已保存凭据；只有 `desktop-replay` 创建一次性的验收 profile。白板 app 与 `collector-replay` 已删除，真实客户端自身的前台区间进入验收链路。操作工具能点击后台控件不等于系统前台已改变，验证必须以实际 Record 为准。
+
+这是带日期的本地验收快照，不覆盖上文完整平台交互矩阵、长期稳定性、Windows 原生宿主、发行签名或自动更新。更早的 Auth/浏览器超时并未因本次通过而被证明已修复，继续见[回放稳定性记录](../../.scratch/collector-replay-stability/issues/02-auth-and-browser-timeouts.md)。

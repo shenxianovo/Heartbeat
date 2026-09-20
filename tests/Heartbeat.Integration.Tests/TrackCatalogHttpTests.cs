@@ -30,10 +30,10 @@ public sealed class TrackCatalogHttpTests(PostgresFixture fixture) : PostgresTes
 
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/tracks");
         request.Headers.Add(RecordingApiFactory.OwnerHeader, ownerId.ToString());
-        using var response = await client.SendAsync(request);
+        using var response = await client.SendAsync(request, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
         var tracks = json.RootElement.GetProperty("tracks");
         Assert.Equal(2, tracks.GetArrayLength());
         Assert.Equal(firstTrack, tracks[0].GetProperty("id").GetGuid());
@@ -65,10 +65,10 @@ public sealed class TrackCatalogHttpTests(PostgresFixture fixture) : PostgresTes
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/tracks");
         request.Headers.Add(RecordingApiFactory.OwnerHeader, ownerId.ToString());
 
-        using var response = await client.SendAsync(request);
+        using var response = await client.SendAsync(request, cancellationToken: TestContext.Current.CancellationToken);
 
         response.EnsureSuccessStatusCode();
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
         Assert.Empty(json.RootElement.GetProperty("tracks").EnumerateArray());
     }
 
@@ -78,7 +78,7 @@ public sealed class TrackCatalogHttpTests(PostgresFixture fixture) : PostgresTes
         await using var factory = RecordingApiFactory.Create(ConnectionString, new FixedTimeProvider(Now));
         using var client = factory.CreateClient();
 
-        using var response = await client.GetAsync("/api/v1/tracks");
+        using var response = await client.GetAsync("/api/v1/tracks", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }

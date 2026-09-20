@@ -6,9 +6,9 @@ Status: needs-info
 
 ## 复现入口
 
-`./scripts/heartbeat-dev scenario collector-replay --keep-environment-on-failure`
+旧 `collector-replay` 场景和白板 app 已按用户要求移除。当前对应入口为 `./scripts/heartbeat-dev scenario desktop-replay --keep-environment-on-failure`；这次替换不代表历史超时根因已确认或修复。
 
-保持 `Heartbeat Replay Probe` 前台，浏览器出现后完成真实 OIDC 登录。测试要求数据库出现正确 Owner/Target、预期应用身份、采集时间范围内且至少两秒的 Record。
+保持真实 `Heartbeat Dev` 客户端前台，浏览器出现后完成真实 OIDC 登录。测试要求数据库出现正确 Owner/Target、预期应用身份、采集时间范围内且至少两秒的 Record。
 
 ## 已有证据
 
@@ -18,7 +18,7 @@ Status: needs-info
 
 ## 下一次发生时
 
-比较 `foreground.json` 的前台变化、`collection.json` 的 pending/failed 与 expected/confirmed counts，以及 `database-check.sql` 的时间窗；三个候选分别是前台条件变化、Hub/Auth 交付阻塞和时间窗不匹配。保留环境后仅查询受控应用的元数据，不导出其他原生载荷或认证信息。
+当前场景先查看客户端采集状态、队列和数据库时间窗；历史 `foreground.json`、`collection.json` 只适用于旧场景。三个候选分别是前台条件变化、Hub/Auth 交付阻塞和时间窗不匹配。保留环境后仅查询受控应用的元数据，不导出其他原生载荷或认证信息。
 
 ## Comments
 

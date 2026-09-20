@@ -18,11 +18,11 @@ public sealed class VerificationFailureTests : IDisposable
     [InlineData("native-desktop", true)]
     [InlineData("collector-delivery", false)]
     [InlineData("collector-delivery", true)]
-    [InlineData("collector-replay", false)]
-    [InlineData("collector-replay", true)]
+    [InlineData("desktop-replay", false)]
+    [InlineData("desktop-replay", true)]
     public async Task RetainsFailureManifestWhenExecutionThrows(string command, bool cancel)
     {
-        if (command is "native-desktop" or "collector-delivery" or "collector-replay" && !OperatingSystem.IsMacOS()) return;
+        if (command is "native-desktop" or "collector-delivery" or "desktop-replay" && !OperatingSystem.IsMacOS()) return;
         var repository = new RepositoryContext(_root);
         Directory.CreateDirectory(repository.Path("src", "Frontend", "Heartbeat.Web", "node_modules"));
         File.WriteAllText(repository.Path(".env.local"), "HEARTBEAT_API_KEY=test\nHEARTBEAT_OWNER_ID=01952378-7bba-7b23-b092-ce581eb8f3ac\nHEARTBEAT_HUB_TOKEN=test\nHEARTBEAT_COLLECTOR_TARGET=test\n");
@@ -33,7 +33,7 @@ public sealed class VerificationFailureTests : IDisposable
             "scenario" => new ScenarioCommand(repository, runner, TextWriter.Null).RunAsync(["replay-fixture"], CancellationToken.None),
             "native-desktop" => new ScenarioCommand(repository, runner, TextWriter.Null).RunAsync(["native-desktop"], CancellationToken.None),
             "collector-delivery" => new ScenarioCommand(repository, runner, TextWriter.Null).RunAsync(["collector-delivery"], CancellationToken.None),
-            "collector-replay" => new ScenarioCommand(repository, runner, TextWriter.Null).RunAsync(["collector-replay"], CancellationToken.None),
+            "desktop-replay" => new ScenarioCommand(repository, runner, TextWriter.Null).RunAsync(["desktop-replay"], CancellationToken.None),
             _ => new QualityCommand(repository, runner, TextWriter.Null).RunAsync(["--base", "HEAD"], CancellationToken.None),
         });
         Assert.NotNull(exception);
@@ -41,7 +41,7 @@ public sealed class VerificationFailureTests : IDisposable
         using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(run.Directory, "manifest.json")));
         Assert.Equal(cancel ? 130 : 1, manifest.RootElement.GetProperty("exitCode").GetInt32());
         Assert.Equal(cancel ? "cancelled" : "failed", manifest.RootElement.GetProperty("status").GetString());
-        Assert.Equal(command is "native-desktop" or "collector-delivery" or "collector-replay" ? "scenario" : command, manifest.RootElement.GetProperty("kind").GetString());
+        Assert.Equal(command is "native-desktop" or "collector-delivery" or "desktop-replay" ? "scenario" : command, manifest.RootElement.GetProperty("kind").GetString());
     }
 
     public void Dispose()

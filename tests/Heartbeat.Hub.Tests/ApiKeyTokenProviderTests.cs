@@ -33,11 +33,11 @@ public sealed class ApiKeyTokenProviderTests
         }));
         var provider = new ApiKeyTokenProvider(client, new Uri("https://auth.example/"), "test-api-key", time);
 
-        var first = await provider.GetTokenAsync();
+        var first = await provider.GetTokenAsync(cancellationToken: TestContext.Current.CancellationToken);
         time.Advance(TimeSpan.FromSeconds(59));
-        Assert.Same(first, await provider.GetTokenAsync());
+        Assert.Same(first, await provider.GetTokenAsync(cancellationToken: TestContext.Current.CancellationToken));
         time.Advance(TimeSpan.FromSeconds(2));
-        var refreshed = await provider.GetTokenAsync();
+        var refreshed = await provider.GetTokenAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(2, exchanges);
         Assert.NotSame(first, refreshed);
@@ -93,7 +93,22 @@ public sealed class ApiKeyTokenProviderTests
             })));
         var provider = new ApiKeyTokenProvider(client, new Uri("https://auth.example/"), "test-api-key");
 
-        Assert.Null(await provider.GetTokenAsync());
+        Assert.Null(await provider.GetTokenAsync(cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task RejectedExchangeReportsStatusWithoutEchoingResponseOrCredentials()
+    {
+        using var client = new HttpClient(new Handler((_, _) => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.Forbidden)
+            {
+                Content = new StringContent("secret-api-key must not reach diagnostics"),
+            })));
+        using var provider = new ApiKeyTokenProvider(client, new Uri("https://auth.example/"), "secret-api-key");
+
+        Assert.Null(await provider.GetTokenAsync(cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Contains("403", provider.LastError);
+        Assert.DoesNotContain("secret-api-key", provider.LastError);
     }
 
     [Fact]
@@ -103,7 +118,7 @@ public sealed class ApiKeyTokenProviderTests
             Task.FromException<HttpResponseMessage>(new TaskCanceledException("timeout"))));
         var provider = new ApiKeyTokenProvider(client, new Uri("https://auth.example/"), "test-api-key");
 
-        Assert.Null(await provider.GetTokenAsync());
+        Assert.Null(await provider.GetTokenAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     private sealed record ExchangeRequest(string ApiKey);

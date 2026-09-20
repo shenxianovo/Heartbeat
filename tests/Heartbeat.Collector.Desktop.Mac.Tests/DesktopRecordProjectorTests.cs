@@ -18,10 +18,10 @@ public sealed class DesktopRecordProjectorTests
     {
         var staged = new List<(SubmissionRoute Route, RecordSnapshot Record)>();
         var projector = Create(staged);
-        projector.Apply(new MacSystemObservation.Activity(App), Start);
-        projector.Apply(new MacSystemObservation.Activity(App with { WindowTitle = "Other" }), Start.AddSeconds(2));
-        projector.Apply(new MacSystemObservation.Activity(App), Start.AddSeconds(4));
-        projector.Apply(new MacSystemObservation.Activity(App), Start.AddSeconds(6));
+        projector.Apply(new DesktopObservation.Activity(App), Start);
+        projector.Apply(new DesktopObservation.Activity(App with { WindowTitle = "Other" }), Start.AddSeconds(2));
+        projector.Apply(new DesktopObservation.Activity(App), Start.AddSeconds(4));
+        projector.Apply(new DesktopObservation.Activity(App), Start.AddSeconds(6));
 
         var application = Assert.Single(Latest(staged, ApplicationTrack));
         Assert.Equal(Start, application.StartedAt);
@@ -45,7 +45,7 @@ public sealed class DesktopRecordProjectorTests
         for (var index = 0; index < 12; index++)
         {
             projector.Apply(
-                new MacSystemObservation.Activity(App with { WindowTitle = frames[index % frames.Length] }),
+                new DesktopObservation.Activity(App with { WindowTitle = frames[index % frames.Length] }),
                 Start.AddSeconds(0.96 * index));
         }
 
@@ -60,12 +60,12 @@ public sealed class DesktopRecordProjectorTests
     {
         var staged = new List<(SubmissionRoute Route, RecordSnapshot Record)>();
         var projector = Create(staged);
-        projector.Apply(new MacSystemObservation.Activity(App), Start);
+        projector.Apply(new DesktopObservation.Activity(App), Start);
         // 导航中间态：地址先出现，页面标题随后覆盖它。
-        projector.Apply(new MacSystemObservation.Activity(App with { WindowTitle = "https://example.test" }),
+        projector.Apply(new DesktopObservation.Activity(App with { WindowTitle = "https://example.test" }),
             Start.AddSeconds(0.3));
-        projector.Apply(new MacSystemObservation.Activity(App with { WindowTitle = "Report" }), Start.AddSeconds(0.6));
-        projector.Confirm(new MacSystemSnapshot(App with { WindowTitle = "Report" }, []), Start.AddSeconds(5));
+        projector.Apply(new DesktopObservation.Activity(App with { WindowTitle = "Report" }), Start.AddSeconds(0.6));
+        projector.Confirm(new DesktopSnapshot(App with { WindowTitle = "Report" }, []), Start.AddSeconds(5));
 
         var windows = Latest(staged, WindowTrack);
         Assert.Equal(2, windows.Length);
@@ -85,8 +85,8 @@ public sealed class DesktopRecordProjectorTests
     {
         var staged = new List<(SubmissionRoute Route, RecordSnapshot Record)>();
         var projector = Create(staged);
-        projector.Apply(new MacSystemObservation.Activity(App), Start);
-        projector.Apply(new MacSystemObservation.Activity(new DesktopActivitySample(
+        projector.Apply(new DesktopObservation.Activity(App), Start);
+        projector.Apply(new DesktopObservation.Activity(new DesktopActivitySample(
             new ForegroundApplication("macos", "bundle_id", "com.example.Other", "Other"), "Inbox")),
             Start.AddSeconds(0.2));
 
@@ -105,11 +105,11 @@ public sealed class DesktopRecordProjectorTests
         var other = new DesktopActivitySample(
             new ForegroundApplication("macos", "bundle_id", "com.example.Other", "Other"), "Inbox");
 
-        projector.Apply(new MacSystemObservation.Activity(App), Start);
-        projector.Apply(new MacSystemObservation.Activity(App with { WindowTitle = "Loading" }),
+        projector.Apply(new DesktopObservation.Activity(App), Start);
+        projector.Apply(new DesktopObservation.Activity(App with { WindowTitle = "Loading" }),
             Start.AddSeconds(0.5));
-        projector.Apply(new MacSystemObservation.Activity(other), Start.AddSeconds(1));
-        projector.Confirm(new MacSystemSnapshot(other, []), Start.AddSeconds(2));
+        projector.Apply(new DesktopObservation.Activity(other), Start.AddSeconds(1));
+        projector.Confirm(new DesktopSnapshot(other, []), Start.AddSeconds(2));
 
         var windows = Latest(staged, WindowTrack);
         Assert.Equal(2, windows.Length);
@@ -123,9 +123,9 @@ public sealed class DesktopRecordProjectorTests
     {
         var staged = new List<(SubmissionRoute Route, RecordSnapshot Record)>();
         var projector = Create(staged);
-        projector.Apply(new MacSystemObservation.Activity(App), Start);
-        projector.Apply(new MacSystemObservation.Activity(App with { WindowTitle = "Report" }), Start.AddSeconds(0.5));
-        projector.Apply(new MacSystemObservation.Capability(new CapabilityObservation(
+        projector.Apply(new DesktopObservation.Activity(App), Start);
+        projector.Apply(new DesktopObservation.Activity(App with { WindowTitle = "Report" }), Start.AddSeconds(0.5));
+        projector.Apply(new DesktopObservation.Capability(new CapabilityObservation(
             ObservationCapability.WindowTitle, ObservationState.Unavailable, "observer_failed")), Start.AddSeconds(2.5));
 
         var windows = Latest(staged, WindowTrack);
@@ -140,11 +140,11 @@ public sealed class DesktopRecordProjectorTests
     {
         var staged = new List<(SubmissionRoute Route, RecordSnapshot Record)>();
         var projector = Create(staged, TimeSpan.Zero);
-        projector.Apply(new MacSystemObservation.Activity(App), Start);
-        projector.Apply(new MacSystemObservation.Activity(App with { WindowTitle = "Other" }), Start.AddSeconds(0.1));
-        projector.Apply(new MacSystemObservation.Activity(App with { WindowTitle = "Third" }), Start.AddSeconds(0.2));
+        projector.Apply(new DesktopObservation.Activity(App), Start);
+        projector.Apply(new DesktopObservation.Activity(App with { WindowTitle = "Other" }), Start.AddSeconds(0.1));
+        projector.Apply(new DesktopObservation.Activity(App with { WindowTitle = "Third" }), Start.AddSeconds(0.2));
         // 静置为 0 也仍然是「下一条读数才结算」：最新的标题要等下一次读数才会写出来。
-        projector.Apply(new MacSystemObservation.Activity(App with { WindowTitle = "Third" }), Start.AddSeconds(0.3));
+        projector.Apply(new DesktopObservation.Activity(App with { WindowTitle = "Third" }), Start.AddSeconds(0.3));
 
         var windows = Latest(staged, WindowTrack);
         Assert.Equal(3, windows.Length);
@@ -157,8 +157,8 @@ public sealed class DesktopRecordProjectorTests
     {
         var staged = new List<(SubmissionRoute Route, RecordSnapshot Record)>();
         var projector = Create(staged);
-        projector.Apply(new MacSystemObservation.Activity(App), Start);
-        projector.Apply(new MacSystemObservation.Activity(new DesktopActivitySample(
+        projector.Apply(new DesktopObservation.Activity(App), Start);
+        projector.Apply(new DesktopObservation.Activity(new DesktopActivitySample(
             new ForegroundApplication("macos", "bundle_id", "com.example.Other", "Other"), "Document")),
             Start.AddSeconds(2));
 
@@ -178,12 +178,12 @@ public sealed class DesktopRecordProjectorTests
     {
         var staged = new List<(SubmissionRoute Route, RecordSnapshot Record)>();
         var projector = Create(staged);
-        projector.Confirm(new MacSystemSnapshot(
+        projector.Confirm(new DesktopSnapshot(
             App,
             [new CapabilityObservation(ObservationCapability.WindowTitle, ObservationState.Available)]), Start);
-        projector.Apply(new MacSystemObservation.Capability(new CapabilityObservation(
+        projector.Apply(new DesktopObservation.Capability(new CapabilityObservation(
             ObservationCapability.WindowTitle, ObservationState.Unavailable, "observer_failed")), Start.AddSeconds(5));
-        projector.Confirm(new MacSystemSnapshot(
+        projector.Confirm(new DesktopSnapshot(
             App with { WindowTitle = null },
             [new CapabilityObservation(
                 ObservationCapability.WindowTitle, ObservationState.Unavailable, "observer_failed")]),
@@ -202,11 +202,11 @@ public sealed class DesktopRecordProjectorTests
     {
         var staged = new List<(SubmissionRoute Route, RecordSnapshot Record)>();
         var projector = Create(staged);
-        projector.Apply(new MacSystemObservation.Activity(App), Start);
-        projector.Apply(new MacSystemObservation.Capability(new CapabilityObservation(
+        projector.Apply(new DesktopObservation.Activity(App), Start);
+        projector.Apply(new DesktopObservation.Capability(new CapabilityObservation(
             ObservationCapability.Application, ObservationState.Unavailable, "frontmost_application_unavailable")),
             Start.AddSeconds(5));
-        projector.Apply(new MacSystemObservation.Activity(App), Start.AddSeconds(7));
+        projector.Apply(new DesktopObservation.Activity(App), Start.AddSeconds(7));
 
         var applications = Latest(staged, ApplicationTrack);
         Assert.Equal(2, applications.Length);
@@ -220,7 +220,7 @@ public sealed class DesktopRecordProjectorTests
     {
         var staged = new List<(SubmissionRoute Route, RecordSnapshot Record)>();
         var projector = Create(staged);
-        projector.Apply(new MacSystemObservation.Activity(App), Start);
+        projector.Apply(new DesktopObservation.Activity(App), Start);
 
         var application = Assert.Single(Latest(staged, ApplicationTrack));
         Assert.False(application.Value.TryGetProperty("window", out _));
@@ -236,8 +236,8 @@ public sealed class DesktopRecordProjectorTests
     {
         var staged = new List<(SubmissionRoute Route, RecordSnapshot Record)>();
         var projector = Create(staged);
-        projector.Apply(new MacSystemObservation.Activity(App), Start);
-        projector.Apply(new MacSystemObservation.Activity(App), Start.AddSeconds(11));
+        projector.Apply(new DesktopObservation.Activity(App), Start);
+        projector.Apply(new DesktopObservation.Activity(App), Start.AddSeconds(11));
 
         var records = Latest(staged, ApplicationTrack);
         Assert.Equal(2, records.Length);
@@ -253,7 +253,7 @@ public sealed class DesktopRecordProjectorTests
     {
         var staged = new List<(SubmissionRoute Route, RecordSnapshot Record)>();
         var projector = Create(staged);
-        projector.Apply(new MacSystemObservation.Activity(App), Start);
+        projector.Apply(new DesktopObservation.Activity(App), Start);
         var delayed = Start.AddSeconds(11);
 
         Break(projector, cause, delayed);
@@ -270,7 +270,7 @@ public sealed class DesktopRecordProjectorTests
     {
         var staged = new List<(SubmissionRoute Route, RecordSnapshot Record)>();
         var projector = Create(staged);
-        projector.Apply(new MacSystemObservation.Activity(App), Start);
+        projector.Apply(new DesktopObservation.Activity(App), Start);
         var timely = Start.AddSeconds(5);
 
         Break(projector, cause, timely);
@@ -284,20 +284,17 @@ public sealed class DesktopRecordProjectorTests
     {
         var staged = new List<(SubmissionRoute Route, RecordSnapshot Record)>();
         var projector = Create(staged);
-        projector.Confirm(new MacSystemSnapshot(
+        projector.Confirm(new DesktopSnapshot(
             App,
             [new CapabilityObservation(ObservationCapability.WindowTitle, ObservationState.Available)]), Start);
-        projector.Confirm(new MacSystemSnapshot(
+        projector.Confirm(new DesktopSnapshot(
             null,
             [new CapabilityObservation(
                 ObservationCapability.WindowTitle, ObservationState.Unavailable, "observer_failed")]),
             Start.AddSeconds(11));
-        projector.Apply(new MacSystemObservation.Activity(App with { WindowTitle = null }), Start.AddSeconds(12));
+        projector.Apply(new DesktopObservation.Activity(App with { WindowTitle = null }), Start.AddSeconds(12));
 
-        var records = Latest(staged, ApplicationTrack);
-        Assert.Equal(2, records.Length);
-        Assert.Equal(Start, records[0].EndedAt);
-        Assert.Equal(Start.AddSeconds(12), records[1].StartedAt);
+        AssertApplicationGap(staged, Start.AddSeconds(12));
     }
 
     [Fact]
@@ -305,16 +302,13 @@ public sealed class DesktopRecordProjectorTests
     {
         var staged = new List<(SubmissionRoute Route, RecordSnapshot Record)>();
         var projector = Create(staged);
-        projector.Apply(new MacSystemObservation.Activity(App), Start);
-        projector.Apply(new MacSystemObservation.AwayEntered(
-            MacAwayReason.SystemSleep), Start.AddSeconds(11));
-        projector.Apply(new MacSystemObservation.AwayExited(
-            MacAwayReason.SystemSleep, App), Start.AddSeconds(12));
+        projector.Apply(new DesktopObservation.Activity(App), Start);
+        projector.Apply(new DesktopObservation.AwayEntered(
+            DesktopAwayReason.SystemSleep), Start.AddSeconds(11));
+        projector.Apply(new DesktopObservation.AwayExited(
+            DesktopAwayReason.SystemSleep, App), Start.AddSeconds(12));
 
-        var records = Latest(staged, ApplicationTrack);
-        Assert.Equal(2, records.Length);
-        Assert.Equal(Start, records[0].EndedAt);
-        Assert.Equal(Start.AddSeconds(12), records[1].StartedAt);
+        AssertApplicationGap(staged, Start.AddSeconds(12));
     }
 
     [Fact]
@@ -322,11 +316,11 @@ public sealed class DesktopRecordProjectorTests
     {
         var staged = new List<(SubmissionRoute Route, RecordSnapshot Record)>();
         var projector = Create(staged);
-        projector.Apply(new MacSystemObservation.Activity(App), Start);
-        projector.Apply(new MacSystemObservation.AwayEntered(MacAwayReason.ScreenLocked), Start.AddSeconds(1));
-        projector.Apply(new MacSystemObservation.AwayEntered(MacAwayReason.SystemSleep), Start.AddSeconds(2));
-        projector.Apply(new MacSystemObservation.AwayExited(MacAwayReason.ScreenLocked, App), Start.AddSeconds(3));
-        projector.Apply(new MacSystemObservation.AwayExited(MacAwayReason.SystemSleep, App), Start.AddSeconds(4));
+        projector.Apply(new DesktopObservation.Activity(App), Start);
+        projector.Apply(new DesktopObservation.AwayEntered(DesktopAwayReason.ScreenLocked), Start.AddSeconds(1));
+        projector.Apply(new DesktopObservation.AwayEntered(DesktopAwayReason.SystemSleep), Start.AddSeconds(2));
+        projector.Apply(new DesktopObservation.AwayExited(DesktopAwayReason.ScreenLocked, App), Start.AddSeconds(3));
+        projector.Apply(new DesktopObservation.AwayExited(DesktopAwayReason.SystemSleep, App), Start.AddSeconds(4));
 
         var away = Latest(staged, "desktop.system.away");
         Assert.Equal(2, away.Length);
@@ -340,11 +334,11 @@ public sealed class DesktopRecordProjectorTests
     {
         var staged = new List<(SubmissionRoute Route, RecordSnapshot Record)>();
         var projector = Create(staged);
-        projector.Apply(new MacSystemObservation.Input(new DesktopInputObservation(DesktopInputKind.KeyDown, 4)), Start);
-        projector.Apply(new MacSystemObservation.Input(new DesktopInputObservation(DesktopInputKind.KeyDown, 4)), Start.AddMilliseconds(1));
-        projector.Apply(new MacSystemObservation.Input(new DesktopInputObservation(DesktopInputKind.KeyUp, 4)), Start.AddMilliseconds(2));
-        projector.Apply(new MacSystemObservation.Input(new DesktopInputObservation(DesktopInputKind.KeyDown, 4)), Start.AddMilliseconds(3));
-        projector.Apply(new MacSystemObservation.Input(new DesktopInputObservation(
+        projector.Apply(new DesktopObservation.Input(new DesktopInputObservation(DesktopInputKind.KeyDown, 4)), Start);
+        projector.Apply(new DesktopObservation.Input(new DesktopInputObservation(DesktopInputKind.KeyDown, 4)), Start.AddMilliseconds(1));
+        projector.Apply(new DesktopObservation.Input(new DesktopInputObservation(DesktopInputKind.KeyUp, 4)), Start.AddMilliseconds(2));
+        projector.Apply(new DesktopObservation.Input(new DesktopInputObservation(DesktopInputKind.KeyDown, 4)), Start.AddMilliseconds(3));
+        projector.Apply(new DesktopObservation.Input(new DesktopInputObservation(
             DesktopInputKind.Scroll, DeltaY: -3.5, ScrollUnit: ScrollUnit.Point)), Start.AddMilliseconds(4));
 
         var input = Latest(staged, "desktop.input.event");
@@ -359,9 +353,9 @@ public sealed class DesktopRecordProjectorTests
     {
         var staged = new List<(SubmissionRoute Route, RecordSnapshot Record)>();
         var projector = Create(staged);
-        projector.Apply(new MacSystemObservation.Capability(new CapabilityObservation(
+        projector.Apply(new DesktopObservation.Capability(new CapabilityObservation(
             ObservationCapability.Input, ObservationState.PermissionRequired, "input_monitoring")), Start);
-        projector.Apply(new MacSystemObservation.Capability(new CapabilityObservation(
+        projector.Apply(new DesktopObservation.Capability(new CapabilityObservation(
             ObservationCapability.Input, ObservationState.Available)), Start.AddSeconds(3));
 
         var statuses = Latest(staged, "desktop.observation.status");
@@ -375,22 +369,30 @@ public sealed class DesktopRecordProjectorTests
         switch (cause)
         {
             case "empty_sample":
-                projector.Apply(new MacSystemObservation.Activity(null), at);
+                projector.Apply(new DesktopObservation.Activity(null), at);
                 break;
             case "capability_failure":
-                projector.Apply(new MacSystemObservation.Capability(new CapabilityObservation(
+                projector.Apply(new DesktopObservation.Capability(new CapabilityObservation(
                     ObservationCapability.Application, ObservationState.Unavailable, "application_identity_unavailable")), at);
                 break;
             case "away":
-                projector.Apply(new MacSystemObservation.AwayEntered(MacAwayReason.SystemSleep), at);
+                projector.Apply(new DesktopObservation.AwayEntered(DesktopAwayReason.SystemSleep), at);
                 break;
         }
+    }
+
+    private static void AssertApplicationGap(List<(SubmissionRoute Route, RecordSnapshot Record)> staged, DateTimeOffset resumedAt)
+    {
+        var records = Latest(staged, ApplicationTrack);
+        Assert.Equal(2, records.Length);
+        Assert.Equal(Start, records[0].EndedAt);
+        Assert.Equal(resumedAt, records[1].StartedAt);
     }
 
     private static DesktopRecordProjector Create(
         List<(SubmissionRoute Route, RecordSnapshot Record)> staged,
         TimeSpan? windowTitleDwell = null) =>
-        new("device-a", "Mac", TimeSpan.FromSeconds(10), windowTitleDwell ?? Dwell,
+        new("heartbeat.collector.desktop.macos", "device-a", "Mac", TimeSpan.FromSeconds(10), windowTitleDwell ?? Dwell,
             (route, record) => staged.Add((route, record)));
 
     private static RecordSnapshot[] Latest(

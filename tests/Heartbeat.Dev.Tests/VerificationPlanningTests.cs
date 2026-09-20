@@ -67,6 +67,17 @@ public sealed class VerificationPlanningTests
         Assert.Equal("dotnet", Assert.Single(plan.Steps).Name);
     }
 
+    [Theory]
+    [InlineData("global.json")]
+    [InlineData("Directory.Build.props")]
+    [InlineData("Directory.Packages.props")]
+    public async Task DotnetTestInfrastructureSelectsTheDotnetSuite(string path)
+    {
+        var plan = await PlanAsync($"{path}\0");
+
+        Assert.Equal("dotnet", Assert.Single(plan.Steps).Name);
+    }
+
     /// 验证口径的说明和实现要一起对：改了它就把 CLI 测试跑一遍。
     [Fact]
     public async Task TheVerificationDocumentSelectsTheCliSuite()

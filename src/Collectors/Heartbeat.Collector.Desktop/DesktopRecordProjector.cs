@@ -1,20 +1,21 @@
 using Heartbeat.Hub;
 
-namespace Heartbeat.Collector.Desktop.Mac;
+namespace Heartbeat.Collector.Desktop;
 
 /// <summary>
 /// 把桌面观测投影成 Record。前台应用与前台窗口是两个观测对象，各自成 Track；
 /// 一个观测对象在读数不变且确认没有中断的整段时间里只有一条 Record，原生通知本身不切分区间。
 /// </summary>
 internal sealed class DesktopRecordProjector(
+    string collectorKey,
     string target,
     string displayName,
     TimeSpan maximumConfirmationGap,
     TimeSpan windowTitleDwell,
     Action<SubmissionRoute, RecordSnapshot> stage)
 {
-    private readonly CollectorDeclaration _collector = new(DesktopProtocols.CollectorKey, target, displayName);
-    private readonly Dictionary<MacAwayReason, CurrentRange> _away = [];
+    private readonly CollectorDeclaration _collector = new(collectorKey, target, displayName);
+    private readonly Dictionary<DesktopAwayReason, CurrentRange> _away = [];
     private readonly Dictionary<ObservationCapability, (CapabilityObservation Value, CurrentRange Range)> _statuses = [];
     private readonly HashSet<int> _heldKeys = [];
     private CurrentRange? _application;
@@ -24,29 +25,29 @@ internal sealed class DesktopRecordProjector(
     private PendingTitle? _pendingTitle;
     private DateTimeOffset? _lastActivityConfirmation;
 
-    public void Apply(MacSystemObservation observation, DateTimeOffset at)
+    public void Apply(DesktopObservation observation, DateTimeOffset at)
     {
         switch (observation)
         {
-            case MacSystemObservation.Activity activity:
+            case DesktopObservation.Activity activity:
                 ObserveActivity(activity.Sample, at);
                 break;
-            case MacSystemObservation.AwayEntered away:
+            case DesktopObservation.AwayEntered away:
                 EnterAway(away.Reason, at);
                 break;
-            case MacSystemObservation.AwayExited away:
+            case DesktopObservation.AwayExited away:
                 ExitAway(away.Reason, away.CurrentActivity, at);
                 break;
-            case MacSystemObservation.Input input:
+            case DesktopObservation.Input input:
                 ObserveInput(input.Value, at);
                 break;
-            case MacSystemObservation.Capability capability:
+            case DesktopObservation.Capability capability:
                 ObserveCapability(capability.Value, at);
                 break;
         }
     }
 
-    public void Confirm(MacSystemSnapshot snapshot, DateTimeOffset at)
+    public void Confirm(DesktopSnapshot snapshot, DateTimeOffset at)
     {
         foreach (var capability in snapshot.Capabilities)
         {
@@ -160,7 +161,7 @@ internal sealed class DesktopRecordProjector(
         _windowValue = pending.Title;
     }
 
-    private void EnterAway(MacAwayReason reason, DateTimeOffset at)
+    private void EnterAway(DesktopAwayReason reason, DateTimeOffset at)
     {
         if (_away.ContainsKey(reason))
         {
@@ -173,7 +174,7 @@ internal sealed class DesktopRecordProjector(
         StageRange(DesktopProtocols.Away, range, at, DesktopProtocols.AwayValue(target, reason));
     }
 
-    private void ExitAway(MacAwayReason reason, DesktopActivitySample? current, DateTimeOffset at)
+    private void ExitAway(DesktopAwayReason reason, DesktopActivitySample? current, DateTimeOffset at)
     {
         if (!_away.Remove(reason, out var range))
         {

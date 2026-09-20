@@ -3,6 +3,19 @@
   <Project Path="src/Hub/Heartbeat.Hub/Heartbeat.Hub.csproj" />
   <Project Path="src/Hub/Heartbeat.Hub.Host/Heartbeat.Hub.Host.csproj" />
   <Project Path="tests/Heartbeat.Hub.Tests/Heartbeat.Hub.Tests.csproj" />
+  <Folder Name="/src/" />
+  <Folder Name="/src/Collectors/">
+    <Project Path="src/Collectors/Heartbeat.Collector.Desktop/Heartbeat.Collector.Desktop.csproj" />
+  </Folder>
+  <Folder Name="/src/Desktop/">
+    <Project Path="src/Desktop/Heartbeat.Desktop.Mac/Heartbeat.Desktop.Mac.csproj" />
+    <Project Path="src/Desktop/Heartbeat.Desktop.UI/Heartbeat.Desktop.UI.csproj" />
+    <Project Path="src/Desktop/Heartbeat.Desktop/Heartbeat.Desktop.csproj" />
+  </Folder>
+  <Folder Name="/src/Hub/" />
+  <Folder Name="/tests/">
+    <Project Path="tests/Heartbeat.Desktop.Tests/Heartbeat.Desktop.Tests.csproj" />
+  </Folder>
   <Project Path="src/Backend/Heartbeat.Api/Heartbeat.Api.csproj" />
   <Project Path="src/Backend/Heartbeat.Application/Heartbeat.Application.csproj" />
   <Project Path="src/Backend/Heartbeat.Domain/Heartbeat.Domain.csproj" />

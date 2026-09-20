@@ -22,10 +22,10 @@ public sealed class CollectorHttpTests(PostgresFixture fixture) : PostgresTestBa
         using var client = factory.CreateClient();
         using var request = RegistrationRequest(ownerId);
 
-        using var response = await client.SendAsync(request);
+        using var response = await client.SendAsync(request, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal(7, Guid.Parse(json.RootElement.GetProperty("id").GetString()!).Version);
         Assert.Equal("heartbeat.collector.desktop.macos", json.RootElement.GetProperty("key").GetString());
         Assert.Equal("device-1", json.RootElement.GetProperty("target").GetString());
@@ -41,14 +41,11 @@ public sealed class CollectorHttpTests(PostgresFixture fixture) : PostgresTestBa
         using var client = factory.CreateClient();
         using var request = RegistrationRequest(ownerId, target: "   ");
 
-        using var response = await client.SendAsync(request);
+        using var response = await client.SendAsync(request, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal(400, json.RootElement.GetProperty("status").GetInt32());
+        await AssertProblemDetailsAsync(response, HttpStatusCode.BadRequest);
         await using var db = CreateDbContext();
-        Assert.Equal(0, await db.Timelines.CountAsync());
+        Assert.Equal(0, await db.Timelines.CountAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -59,13 +56,10 @@ public sealed class CollectorHttpTests(PostgresFixture fixture) : PostgresTestBa
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/collectors",
-            new { key = "heartbeat.collector.desktop.macos", target = "device-1", displayName = "My Mac" });
+            new { key = "heartbeat.collector.desktop.macos", target = "device-1", displayName = "My Mac" }, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        await AssertProblemDetailsAsync(response, HttpStatusCode.Unauthorized);
         Assert.Equal("Test", response.Headers.WwwAuthenticate.Single().Scheme);
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal(401, json.RootElement.GetProperty("status").GetInt32());
     }
 
     [Fact]
@@ -78,12 +72,9 @@ public sealed class CollectorHttpTests(PostgresFixture fixture) : PostgresTestBa
         using var request = RegistrationRequest(ownerId);
         request.Content = new StringContent("{\"key\":", System.Text.Encoding.UTF8, "application/json");
 
-        using var response = await client.SendAsync(request);
+        using var response = await client.SendAsync(request, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal(400, json.RootElement.GetProperty("status").GetInt32());
+        await AssertProblemDetailsAsync(response, HttpStatusCode.BadRequest);
     }
 
     [Fact]
@@ -105,12 +96,12 @@ public sealed class CollectorHttpTests(PostgresFixture fixture) : PostgresTestBa
             Track = new { },
         });
 
-        using var response = await client.SendAsync(request);
+        using var response = await client.SendAsync(request, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
         await using var db = CreateDbContext();
-        Assert.Equal(0, await db.Collectors.CountAsync());
+        Assert.Equal(0, await db.Collectors.CountAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -121,11 +112,11 @@ public sealed class CollectorHttpTests(PostgresFixture fixture) : PostgresTestBa
         var ownerId = Guid.NewGuid();
         using var request = RegistrationRequest(ownerId);
 
-        using var response = await client.SendAsync(request);
+        using var response = await client.SendAsync(request, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         await using var db = CreateDbContext();
-        Assert.Equal(ownerId, (await db.Timelines.SingleAsync()).OwnerId);
+        Assert.Equal(ownerId, (await db.Timelines.SingleAsync(cancellationToken: TestContext.Current.CancellationToken)).OwnerId);
     }
 
     [Theory]
@@ -137,13 +128,22 @@ public sealed class CollectorHttpTests(PostgresFixture fixture) : PostgresTestBa
         using var client = factory.CreateClient();
         using var request = RegistrationRequest(subject);
 
-        using var response = await client.SendAsync(request);
+        using var response = await client.SendAsync(request, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     private WebApplicationFactory<Program> CreateFactory() =>
         RecordingApiFactory.Create(ConnectionString, new FixedTimeProvider(Now));
+
+    private static async Task AssertProblemDetailsAsync(HttpResponseMessage response, HttpStatusCode statusCode)
+    {
+        Assert.Equal(statusCode, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(
+            cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Equal((int)statusCode, json.RootElement.GetProperty("status").GetInt32());
+    }
 
     private static HttpRequestMessage RegistrationRequest(
         Guid ownerId,

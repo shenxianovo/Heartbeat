@@ -10,18 +10,18 @@ internal sealed class ScenarioCommand(
         if (args.Length == 0 || args[0] is "-h" or "--help")
         {
             await output.WriteLineAsync("""
-                Usage: heartbeat-dev scenario <replay-fixture|delivery|collector-delivery|collector-replay|native-desktop> [options]
+                Usage: heartbeat-dev scenario <replay-fixture|delivery|collector-delivery|desktop-replay|native-desktop> [options]
 
                 Use scenario --list to print the available names.
 
                 replay-fixture  Re-runs the replay browser test against mocked auth and API, keeping evidence
                 delivery        Re-runs the record upload/replay integration tests against PostgreSQL, keeping evidence
                 collector-delivery  Starts a real macOS Collector and verifies Hub custody through PostgreSQL delivery
-                collector-replay  Verifies a controlled native application through real Web replay; interactive OIDC login
+                desktop-replay  Interactive packaged desktop to real Web replay
                 native-desktop  Guided macOS collector session against an isolated local Hub
 
                 replay-fixture and delivery re-run a subset of the first verification layer;
-                collector-delivery, collector-replay and native-desktop run real native processes in isolated environments.
+                collector-delivery, desktop-replay and native-desktop run real native processes in isolated environments.
 
                 Options:
                   --include-sensitive-evidence  Persist native logs that may contain user context
@@ -32,7 +32,7 @@ internal sealed class ScenarioCommand(
 
         if (args.Length == 1 && args[0] == "--list")
         {
-            await output.WriteLineAsync("replay-fixture\ndelivery\ncollector-delivery\ncollector-replay\nnative-desktop");
+            await output.WriteLineAsync("replay-fixture\ndelivery\ncollector-delivery\ndesktop-replay\nnative-desktop");
             return 0;
         }
 
@@ -43,7 +43,7 @@ internal sealed class ScenarioCommand(
             "delivery" => await RunDeliveryAsync(options, cancellationToken),
             "collector-delivery" => await new CollectorDeliveryScenario(repository, runner, output)
                 .RunAsync(options, cancellationToken),
-            "collector-replay" => await new CollectorReplayScenario(repository, runner, output)
+            "desktop-replay" => await new DesktopReplayScenario(repository, runner, output)
                 .RunAsync(options, cancellationToken),
             "native-desktop" => await new NativeDesktopScenario(repository, runner, output)
                 .RunAsync(options, cancellationToken),
@@ -70,8 +70,9 @@ internal sealed class ScenarioCommand(
             options, "delivery", "dotnet",
             [
                 "test", repository.Path("tests", "Heartbeat.Integration.Tests", "Heartbeat.Integration.Tests.csproj"),
-                "--filter", "FullyQualifiedName~RecordUploadHttpTests|FullyQualifiedName~RecordReplayHttpTests",
-                "--logger", "trx;LogFileName=delivery.trx",
+                "--filter-class", "Heartbeat.Integration.Tests.RecordUploadHttpTests",
+                "Heartbeat.Integration.Tests.RecordReplayHttpTests",
+                "--report-xunit-trx", "--report-xunit-trx-filename", "delivery.trx",
                 "--results-directory", "{artifact}", "--verbosity", "minimal",
             ],
             _ => null,
@@ -123,10 +124,10 @@ internal sealed record ScenarioOptions(string Name, bool IncludeSensitiveEvidenc
                 default: throw new CommandUsageException($"Unknown scenario option '{argument}'.");
             }
         }
-        if (args[0] is not ("native-desktop" or "collector-delivery" or "collector-replay") && (sensitive || keep))
+        if (args[0] is not ("native-desktop" or "collector-delivery" or "desktop-replay") && (sensitive || keep))
         {
             throw new CommandUsageException(
-                "--include-sensitive-evidence and --keep-environment-on-failure apply only to native-desktop, collector-delivery and collector-replay.");
+                "--include-sensitive-evidence and --keep-environment-on-failure apply only to native-desktop, collector-delivery and desktop-replay.");
         }
         return new ScenarioOptions(args[0], sensitive, keep);
     }

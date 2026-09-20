@@ -22,6 +22,8 @@ public sealed class ApiKeyTokenProvider : IBackendTokenProvider, IDisposable
     private readonly SemaphoreSlim _exchangeLock = new(1, 1);
     private volatile BackendAccessToken? _cached;
 
+    public string? LastError { get; private set; }
+
     public ApiKeyTokenProvider(HttpClient httpClient, Uri authUrl, string apiKey, TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
@@ -74,18 +76,21 @@ public sealed class ApiKeyTokenProvider : IBackendTokenProvider, IDisposable
 
     private async Task<BackendAccessToken?> ExchangeAsync(CancellationToken cancellationToken)
     {
+        LastError = null;
         try
         {
             using var response = await _httpClient.PostAsJsonAsync(
                 _exchangeUrl, new ExchangeRequest(_apiKey), cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
+                LastError = $"Auth returned HTTP {(int)response.StatusCode}.";
                 return null;
             }
 
             var exchange = await response.Content.ReadFromJsonAsync<ExchangeResponse>(cancellationToken);
             if (exchange is null || string.IsNullOrWhiteSpace(exchange.AccessToken) || exchange.ExpiresIn <= 0)
             {
+                LastError = "Auth returned an incomplete token response.";
                 return null;
             }
 
@@ -95,6 +100,7 @@ public sealed class ApiKeyTokenProvider : IBackendTokenProvider, IDisposable
             var expiresAt = parsed.ExpiresAt < responseExpiry ? parsed.ExpiresAt : responseExpiry;
             if (expiresAt <= now)
             {
+                LastError = "Auth returned an expired token. Check the system clock.";
                 return null;
             }
 
@@ -105,6 +111,12 @@ public sealed class ApiKeyTokenProvider : IBackendTokenProvider, IDisposable
                                           exception is HttpRequestException or OperationCanceledException or JsonException or
                                               InvalidDataException or FormatException or InvalidOperationException or ArgumentOutOfRangeException)
         {
+            LastError = exception switch
+            {
+                HttpRequestException network => $"Auth connection failed ({network.HttpRequestError}).",
+                OperationCanceledException => "Auth request timed out.",
+                _ => $"Auth returned an invalid token response ({exception.GetType().Name}).",
+            };
             return null;
         }
     }

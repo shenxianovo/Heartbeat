@@ -12,7 +12,7 @@ public sealed class ScenarioOptionsTests
             null!, output);
 
         Assert.Equal(0, await command.RunAsync(["--list"], CancellationToken.None));
-        Assert.Equal(["replay-fixture", "delivery", "collector-delivery", "collector-replay", "native-desktop"],
+        Assert.Equal(["replay-fixture", "delivery", "collector-delivery", "desktop-replay", "native-desktop"],
             output.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries));
     }
 
@@ -41,7 +41,7 @@ public sealed class ScenarioOptionsTests
 
     [Theory]
     [InlineData("collector-delivery")]
-    [InlineData("collector-replay")]
+    [InlineData("desktop-replay")]
     public void CollectorScenariosCanRetainTheirFailedEnvironment(string scenario)
     {
         var options = ScenarioOptions.Parse([scenario, "--keep-environment-on-failure"]);

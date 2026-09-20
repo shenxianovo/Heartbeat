@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Heartbeat.Desktop.UI/Heartbeat.Desktop.UI.csproj" />
+    <ProjectReference Include="../../Collectors/Heartbeat.Collector.Desktop.Mac/Heartbeat.Collector.Desktop.Mac.csproj" />
+    <PackageReference Include="Avalonia.Desktop" />
+  </ItemGroup>
+</Project>

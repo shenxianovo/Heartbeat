@@ -12,7 +12,7 @@ interface Witness {
 const directory = process.argv[2]!;
 const port = Number(process.argv[3]);
 if (!directory || !Number.isInteger(port) || port < 1 || port > 65535) {
-  throw new Error("Usage: collector-replay.ts <evidence-directory> <isolated-web-port>");
+  throw new Error("Usage: desktop-replay.ts <evidence-directory> <isolated-web-port>");
 }
 const witness: Witness = JSON.parse(
   await readFile(path.join(directory, "replay-expectation.json"), "utf8"),
@@ -39,6 +39,14 @@ const context = await browser.newContext({
 });
 const page = await context.newPage();
 page.setDefaultTimeout(30_000);
+// Keep only API paths and status codes; never authentication URLs, headers or payloads.
+const apiResponses: { path: string; status: number }[] = [];
+page.on("response", (response) => {
+  const pathname = new URL(response.url()).pathname;
+  if (!pathname.startsWith("/api/v1/")) return;
+  apiResponses.push({ path: pathname, status: response.status() });
+  if (apiResponses.length > 30) apiResponses.shift();
+});
 
 try {
   await progress("oidc-login");
@@ -57,12 +65,12 @@ try {
   await writeFile(
     path.join(directory, "replay.json"),
     JSON.stringify(
-      { stage, passed: false, error: error instanceof Error ? error.name : "Error" },
+      { stage, passed: false, error: error instanceof Error ? error.name : "Error", apiResponses },
       null,
       2,
     ),
   );
-  console.error(`Collector replay failed at ${stage}; see replay.json.`);
+  console.error(`Desktop replay failed at ${stage}; see replay.json.`);
   process.exitCode = 1;
 } finally {
   await context.close();
@@ -70,6 +78,7 @@ try {
 }
 
 async function verifyReplay(page: Page, expected: Witness) {
+  await progress("track-query");
   const tracksResponse = page.waitForResponse(
     (response) => new URL(response.url()).pathname === "/api/v1/tracks" && response.ok(),
   );
@@ -87,12 +96,14 @@ async function verifyReplay(page: Page, expected: Witness) {
     ]),
   );
 
+  await progress("range-input");
   const from = new Date(Date.parse(expected.record.startedAt) - 60_000).toISOString().slice(0, 16);
   const to = new Date(Date.parse(expected.record.endedAt) + 120_000).toISOString().slice(0, 16);
   await page.getByRole("button", { name: "自定义时间范围" }).click();
   const range = page.getByRole("dialog", { name: "自定义时间范围" });
   await range.getByLabel("开始时间").fill(from);
   await range.getByLabel("结束时间").fill(to);
+  await progress("record-response");
   const recordsResponse = page.waitForResponse((response) => {
     const url = new URL(response.url());
     return (

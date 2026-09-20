@@ -13,9 +13,9 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     public string AdminConnectionString => _container.GetConnectionString();
 
-    public Task InitializeAsync() => _container.StartAsync();
+    public ValueTask InitializeAsync() => new(_container.StartAsync());
 
-    public Task DisposeAsync() => _container.DisposeAsync().AsTask();
+    public ValueTask DisposeAsync() => _container.DisposeAsync();
 }
 
 [CollectionDefinition(Name)]
@@ -30,7 +30,7 @@ public abstract class PostgresTestBase(PostgresFixture fixture) : IAsyncLifetime
 
     protected string ConnectionString { get; private set; } = string.Empty;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         var builder = new NpgsqlConnectionStringBuilder(fixture.AdminConnectionString)
         {
@@ -50,7 +50,7 @@ public abstract class PostgresTestBase(PostgresFixture fixture) : IAsyncLifetime
         await dbContext.Database.MigrateAsync();
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         NpgsqlConnection.ClearAllPools();
         await using var admin = new NpgsqlConnection(fixture.AdminConnectionString);
@@ -58,6 +58,7 @@ public abstract class PostgresTestBase(PostgresFixture fixture) : IAsyncLifetime
         await using var command = admin.CreateCommand();
         command.CommandText = $"DROP DATABASE IF EXISTS \"{_databaseName}\" WITH (FORCE)";
         await command.ExecuteNonQueryAsync();
+        GC.SuppressFinalize(this);
     }
 
     protected HeartbeatDbContext CreateDbContext()

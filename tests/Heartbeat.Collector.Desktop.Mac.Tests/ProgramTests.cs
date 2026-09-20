@@ -72,10 +72,10 @@ public sealed class ProgramTests
         }
     }
 
-    private sealed class FixedSource : IMacSystemObservationSource
+    private sealed class FixedSource : IDesktopObservationSource
     {
-        public event Action<MacSystemObservation>? Observation { add { } remove { } }
-        public MacSystemSnapshot Capture() => new(
+        public event Action<DesktopObservation>? Observation { add { } remove { } }
+        public DesktopSnapshot Capture() => new(
             new DesktopActivitySample(new("macos", "bundle_id", "com.apple.finder"), null), []);
         public void RefreshCapabilities() { }
         public void StartObserving() { }

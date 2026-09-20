@@ -4,7 +4,7 @@ using Heartbeat.Hub;
 
 namespace Heartbeat.Collector.Desktop.Mac.Tests;
 
-public sealed class PendingHubSubmissionsTests(Xunit.Abstractions.ITestOutputHelper output)
+public sealed class PendingHubSubmissionsTests(ITestOutputHelper output)
 {
     private static readonly SubmissionRoute Route = new(
         new CollectorDeclaration("heartbeat.collector.desktop.macos", "device-a", "Mac"),

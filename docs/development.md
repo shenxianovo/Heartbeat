@@ -1,18 +1,18 @@
 # 本地开发
 
-Heartbeat 使用 Compose 运行 Web、API、PostgreSQL 和 Hub。macOS Desktop Collector 在宿主机前台运行，以访问系统观察能力。
+Heartbeat 使用 Compose 运行 Web、API、PostgreSQL 和 Hub。桌面客户端 Heartbeat Dev 在 macOS 宿主机运行 Avalonia UI、原生 Collector 与进程内 Hub。
 
 ## 环境准备
 
 需要 Docker Desktop、Docker Compose 和 .NET SDK 10。Desktop Collector 还需要 macOS。
 
-首次运行 Hub 或 Desktop Collector：
+首次运行独立的服务端 Hub 或原生 Collector 验证场景：
 
 ```bash
 ./scripts/setup.sh
 ```
 
-脚本验证 Auth 身份，并把本地配置写入 Git 忽略的 `.env.local`。
+脚本验证 Auth 身份，并把本地配置写入 Git 忽略的 `.env.local`。桌面 UI 的 API key 在客户端连接设置中填写并保存到系统凭据库，不要求先运行此脚本。
 
 ## 启动
 
@@ -40,6 +40,7 @@ Heartbeat 使用 Compose 运行 Web、API、PostgreSQL 和 Hub。macOS Desktop C
 ./scripts/heartbeat-dev env up web hub
 ./scripts/heartbeat-dev env up hub
 ./scripts/heartbeat-dev env up desktop
+./scripts/heartbeat-dev env up web desktop
 ```
 
 | 选择 | 实际启动 |
@@ -48,18 +49,21 @@ Heartbeat 使用 Compose 运行 Web、API、PostgreSQL 和 Hub。macOS Desktop C
 | `api` | PostgreSQL、migration、API |
 | `web` | PostgreSQL、migration、API、Web |
 | `hub` | Hub |
-| `desktop` | Hub 和宿主前台 Collector |
+| `desktop` | 构建并打开 Heartbeat Dev（自带 Hub，不启动容器） |
+| `web desktop` | PostgreSQL、migration、API、Web，以及 Heartbeat Dev |
 
-Hub 不依赖 API 或 PostgreSQL。Desktop Collector 附着当前终端，按 Ctrl+C 停止。
+Hub 不依赖 API 或 PostgreSQL。桌面客户端通过 macOS 打开应用包，命令完成后终端即可退出；关闭窗口继续在菜单栏运行，选择“退出 Heartbeat Dev”才停止。首次配置使用上述本地地址；已保存连接时沿用原配置。
 
-开发模式使用 `next dev` 和 `dotnet watch`。Dockerfile 或依赖变化后，重新运行同一条 `up` 命令。生产镜像验收使用：
+`env up desktop` 每次构建本地应用包；已有客户端进程时 macOS 会打开现有实例。修改客户端代码后，先退出 Heartbeat Dev，再运行启动命令。该入口不使用 `dotnet watch`，以保留应用包的 macOS 身份和权限入口。
+
+容器开发模式使用 `next dev` 和 `dotnet watch`。Dockerfile 或依赖变化后，重新运行同一条 `up` 命令。生产镜像验收使用：
 
 ```bash
 ./scripts/heartbeat-dev env up --release
 ./scripts/heartbeat-dev env up --release hub
 ```
 
-`--release` 只用于本地验收，要求 Auth 使用 HTTPS。`NEXT_PUBLIC_*` 配置在 Web 镜像构建时写入。
+`--release` 切换容器构建模式，只用于本地验收，要求 Auth 使用 HTTPS；桌面客户端始终通过打包脚本生成本地 Release 应用包。`NEXT_PUBLIC_*` 配置在 Web 镜像构建时写入。
 
 ## 状态与清理
 
@@ -93,7 +97,7 @@ Initial migration 变化或需要清空本地状态时：
 | `HEARTBEAT_OWNER_ID` | Hub 所属 Owner UUID | Hub 必填，由 setup 写入 |
 | `HEARTBEAT_HUB_TOKEN` | Collector 到 Hub 的本地密钥 | Hub 必填 |
 | `HEARTBEAT_HUB_PORT` | Hub 回环端口 | `4318` |
-| `HEARTBEAT_COLLECTOR_TARGET` | Desktop Collector 的稳定 Target | Desktop 必填 |
+| `HEARTBEAT_COLLECTOR_TARGET` | 独立 Collector 验证场景的稳定 Target | UI 自动读取本机 Target |
 | `HEARTBEAT_COLLECTOR_DISPLAY_NAME` | Desktop Collector 展示名 | 可选 |
 
 隔离环境可以指定 Compose 项目名和已有环境文件：

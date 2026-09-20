@@ -30,7 +30,7 @@ public sealed class TrackStorageTests(PostgresFixture fixture) : PostgresTestBas
             timelineId = await timelineDb.Timelines
                 .Where(x => x.OwnerId == ownerId)
                 .Select(x => x.Id)
-                .SingleAsync();
+                .SingleAsync(TestContext.Current.CancellationToken);
         }
 
         var collector = Collector.Create(
@@ -42,11 +42,11 @@ public sealed class TrackStorageTests(PostgresFixture fixture) : PostgresTestBas
         await using (var db = CreateDbContext())
         {
             db.Collectors.Add(collector);
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(cancellationToken: TestContext.Current.CancellationToken);
         }
 
         await using var connection = new NpgsqlConnection(ConnectionString);
-        await connection.OpenAsync();
+        await connection.OpenAsync(cancellationToken: TestContext.Current.CancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
             INSERT INTO tracks (id, collector_id, type, version, time_mode, end_mode, created_at)
@@ -61,11 +61,11 @@ public sealed class TrackStorageTests(PostgresFixture fixture) : PostgresTestBas
 
         if (isValid)
         {
-            await command.ExecuteNonQueryAsync();
+            await command.ExecuteNonQueryAsync(cancellationToken: TestContext.Current.CancellationToken);
         }
         else
         {
-            var exception = await Assert.ThrowsAsync<PostgresException>(() => command.ExecuteNonQueryAsync());
+            var exception = await Assert.ThrowsAsync<PostgresException>(() => command.ExecuteNonQueryAsync(cancellationToken: TestContext.Current.CancellationToken));
             Assert.Equal(PostgresErrorCodes.CheckViolation, exception.SqlState);
             Assert.Equal("ck_tracks_time_mode", exception.ConstraintName);
         }

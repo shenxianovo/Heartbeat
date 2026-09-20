@@ -10,7 +10,7 @@ public sealed class MigrateCommandTests(PostgresFixture fixture) : PostgresTestB
     public async Task ExistingTablesWithoutCurrentMigrationFailPromptlyWithActionableError()
     {
         await using var db = CreateDbContext();
-        await db.Database.ExecuteSqlRawAsync("DELETE FROM \"__EFMigrationsHistory\";");
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM \"__EFMigrationsHistory\";", cancellationToken: TestContext.Current.CancellationToken);
 
         var result = await RunMigrationAsync();
 

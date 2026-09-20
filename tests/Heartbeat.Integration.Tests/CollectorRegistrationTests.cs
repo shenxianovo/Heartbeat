@@ -88,10 +88,10 @@ public sealed class CollectorRegistrationTests(PostgresFixture fixture) : Postgr
 
         var registered = result;
         await using var db = CreateDbContext();
-        var timeline = await db.Timelines.SingleAsync();
+        var timeline = await db.Timelines.SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(ownerId, timeline.OwnerId);
         Assert.Equal(Now, timeline.CreatedAt);
-        Assert.Equal(timeline.Id, (await db.Collectors.SingleAsync(x => x.Id == registered.Id)).TimelineId);
+        Assert.Equal(timeline.Id, (await db.Collectors.SingleAsync(x => x.Id == registered.Id, cancellationToken: TestContext.Current.CancellationToken)).TimelineId);
     }
 
     [Fact]
@@ -114,8 +114,8 @@ public sealed class CollectorRegistrationTests(PostgresFixture fixture) : Postgr
         var second = attempts[1];
         Assert.Equal(first.Id, second.Id);
         await using var db = CreateDbContext();
-        Assert.Equal(1, await db.Timelines.CountAsync(x => x.OwnerId == ownerId));
-        Assert.Equal(1, await db.Collectors.CountAsync());
+        Assert.Equal(1, await db.Timelines.CountAsync(x => x.OwnerId == ownerId, cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Equal(1, await db.Collectors.CountAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     private ServiceProvider CreateServices()

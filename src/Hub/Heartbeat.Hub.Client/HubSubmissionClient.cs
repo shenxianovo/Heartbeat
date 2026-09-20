@@ -4,7 +4,12 @@ using System.Text.Json.Serialization;
 
 namespace Heartbeat.Hub;
 
-public sealed class HubSubmissionClient(HttpClient httpClient)
+public interface IHubSubmissionClient
+{
+    Task SubmitAsync(HubSubmission submission, CancellationToken cancellationToken = default);
+}
+
+public sealed class HubSubmissionClient(HttpClient httpClient) : IHubSubmissionClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {

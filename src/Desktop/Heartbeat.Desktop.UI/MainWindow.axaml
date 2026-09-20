@@ -1,0 +1,89 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Heartbeat.Desktop.UI" x:DataType="ui:DesktopViewModel"
+        x:Class="Heartbeat.Desktop.UI.MainWindow" Title="Heartbeat Dev" Width="880" Height="800"
+        MinWidth="700" MinHeight="600" Background="#F4F6FA" WindowStartupLocation="CenterScreen">
+  <Window.Styles>
+    <Style Selector="TextBlock"><Setter Property="Foreground" Value="#202C42" /></Style>
+    <Style Selector="TextBlock.muted"><Setter Property="Foreground" Value="#64748B" /><Setter Property="FontSize" Value="13" /></Style>
+    <Style Selector="TextBlock.heading"><Setter Property="FontSize" Value="20" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
+    <Style Selector="Border.card"><Setter Property="Background" Value="White" /><Setter Property="CornerRadius" Value="16" /><Setter Property="Padding" Value="24" /><Setter Property="BorderBrush" Value="#E3E9F2" /><Setter Property="BorderThickness" Value="1" /></Style>
+    <Style Selector="Button"><Setter Property="CornerRadius" Value="9" /><Setter Property="Padding" Value="16,10" /></Style>
+    <Style Selector="Button.primary"><Setter Property="Background" Value="#376EE8" /><Setter Property="Foreground" Value="White" /></Style>
+    <Style Selector="TextBox"><Setter Property="CornerRadius" Value="8" /><Setter Property="MinHeight" Value="40" /></Style>
+  </Window.Styles>
+  <Grid RowDefinitions="Auto,*,Auto" Margin="28,24">
+    <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,20">
+      <Image x:Name="BrandIcon" Width="68" Height="68" />
+      <StackPanel Grid.Column="1" Margin="14,0" VerticalAlignment="Center" Spacing="3">
+        <TextBlock Text="Heartbeat Dev" FontSize="25" FontWeight="SemiBold" />
+        <TextBlock Text="桌面记录，持续连接。" Classes="muted" />
+      </StackPanel>
+      <Button Grid.Column="2" x:Name="OpenReplayButton" Content="打开时间线 ↗" Click="OpenReplay" VerticalAlignment="Center" IsEnabled="{Binding CanInteract}" />
+    </Grid>
+    <TabControl Grid.Row="1">
+      <TabItem Header="采集">
+        <ScrollViewer>
+          <StackPanel Spacing="16" Margin="0,18,0,8">
+            <Border Classes="card">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="{Binding Status}" Classes="heading" x:Name="CollectionStatus" />
+                  <TextBlock Text="{Binding CollectorName}" Classes="muted" />
+                  <TextBlock Text="关闭窗口后继续运行，可从菜单栏重新打开。" Classes="muted" />
+                </StackPanel>
+                <Button Grid.Column="1" x:Name="ToggleCollectionButton" Content="{Binding ToggleText}" Classes="primary" Click="ToggleCollection" VerticalAlignment="Center" IsEnabled="{Binding CanInteract}" />
+              </Grid>
+            </Border>
+            <Border Classes="card">
+              <StackPanel Spacing="14">
+                <TextBlock Text="系统观察能力" Classes="heading" />
+                <Grid ColumnDefinitions="*,Auto"><TextBlock Text="前台应用" /><TextBlock Grid.Column="1" Text="{Binding ApplicationPermission}" Classes="muted" /></Grid>
+                <Grid ColumnDefinitions="*,Auto,Auto">
+                  <TextBlock Text="窗口标题" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="1" Text="{Binding WindowPermission}" Classes="muted" VerticalAlignment="Center" Margin="0,0,16,0" />
+                  <Button Grid.Column="2" Content="辅助功能设置" Click="OpenAccessibility" IsEnabled="{Binding CanInteract}" />
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto,Auto">
+                  <TextBlock Text="键盘与鼠标" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="1" Text="{Binding InputPermission}" Classes="muted" VerticalAlignment="Center" Margin="0,0,16,0" />
+                  <Button Grid.Column="2" Content="输入监控设置" Click="OpenInput" IsEnabled="{Binding CanInteract}" />
+                </Grid>
+                <TextBlock Text="只记录非文本物理输入事件，不记录输入的文字。授权后会自动重新检查。" Classes="muted" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+            <Border Classes="card">
+              <StackPanel Spacing="8">
+                <TextBlock Text="交付到时间线" Classes="heading" />
+                <TextBlock Text="{Binding Delivery}" x:Name="DeliveryStatus" />
+                <TextBlock Text="Hub 在本地保存已接管的数据，连接恢复后继续上传。暂停采集不影响待交付数据。" Classes="muted" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+      <TabItem Header="连接设置" x:Name="ConnectionTab">
+        <ScrollViewer>
+          <Border Classes="card" Margin="0,18,0,8">
+            <StackPanel Spacing="10">
+              <TextBlock Text="连接你的 Heartbeat" Classes="heading" Margin="0,0,0,6" />
+              <TextBlock Text="后端地址" />
+              <TextBox x:Name="BackendInput" Text="{Binding Backend}" PlaceholderText="https://heartbeat.example.com" />
+              <TextBlock Text="Auth 地址" />
+              <TextBox x:Name="AuthInput" Text="{Binding Auth}" />
+              <TextBlock Text="Web 时间线地址" />
+              <TextBox x:Name="WebInput" Text="{Binding Web}" />
+              <TextBlock Text="API key" />
+              <TextBox x:Name="ApiKeyInput" Text="{Binding ApiKey}" PasswordChar="●" PlaceholderText="留空使用已保存的凭据" />
+              <TextBlock Text="API key 保存到系统凭据库。首次接入需要联网验证账号。" Classes="muted" TextWrapping="Wrap" />
+              <Grid ColumnDefinitions="*,Auto" Margin="0,12,0,0">
+                <StackPanel Spacing="4" VerticalAlignment="Center"><TextBlock Text="Owner" Classes="muted" /><TextBlock Text="{Binding Owner}" FontSize="12" /></StackPanel>
+                <Button Grid.Column="1" x:Name="SaveConnectionButton" Content="验证并保存" Classes="primary" Click="SaveConnection" IsEnabled="{Binding CanInteract}" />
+              </Grid>
+            </StackPanel>
+          </Border>
+        </ScrollViewer>
+      </TabItem>
+    </TabControl>
+    <TextBlock Grid.Row="2" Text="{Binding Message}" TextWrapping="Wrap" Foreground="#735226" Margin="0,14,0,0" FontSize="13" />
+  </Grid>
+</Window>

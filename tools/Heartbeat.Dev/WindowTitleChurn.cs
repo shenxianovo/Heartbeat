@@ -53,7 +53,7 @@ internal sealed record WindowTitleChurnReport(
 /// 这里只做算术，不决定规则：参数由数据决定，而不是先猜一个阈值再找证据。
 /// </summary>
 /// <remarks>
-/// 规则权威是 <c>src/Collectors/Heartbeat.Collector.Desktop.Mac/DesktopRecordProjector.cs</c>
+/// 规则权威是 <c>src/Collectors/Heartbeat.Collector.Desktop/DesktopRecordProjector.cs</c>
 /// （<c>ObserveWindowTitle</c> / <c>SettlePendingTitle</c>）。这里的 <c>Simulate</c> 是它的一份
 /// 模拟，供选参数用；两边都改才算改完。项目引用方向是 tools → src 不通，所以用一张共享场景表
 /// 对账：<c>tests/window-title-dwell-scenarios.json</c> 每行给出同一串读数在同一静置参数下

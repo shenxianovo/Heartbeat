@@ -1,4 +1,4 @@
-namespace Heartbeat.Collector.Desktop.Mac.Native;
+namespace Heartbeat.Collector.Desktop;
 
 /// <summary>InputEvent.Code 的版本化解释空间。</summary>
 public static class InputCodeSets

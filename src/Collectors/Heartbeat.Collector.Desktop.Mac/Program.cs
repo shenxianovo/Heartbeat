@@ -101,7 +101,7 @@ public static class Program
         CollectorOptions options,
         HubSubmissionClient client,
         CancellationToken cancellationToken,
-        IMacSystemObservationSource? source = null)
+        IDesktopObservationSource? source = null)
     {
         try
         {
@@ -109,8 +109,8 @@ public static class Program
             TimeProvider timeProvider = OperatingSystem.IsMacOS()
                 ? new MacContinuousTimeProvider()
                 : TimeProvider.System;
-            var session = new DesktopCollectorSession(source ?? ownedSource!, client, timeProvider);
-            await session.RunAsync(options, cancellationToken);
+            var session = new DesktopCollectorSession("heartbeat.collector.desktop.macos", source ?? ownedSource!, client, timeProvider);
+            await session.RunAsync(options.Collection, cancellationToken);
 
             return 0;
         }

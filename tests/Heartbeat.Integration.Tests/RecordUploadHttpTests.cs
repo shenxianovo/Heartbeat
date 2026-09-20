@@ -29,7 +29,7 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
         using var resolution = await ResolveAsync(client, ownerId, collectorId,
             new { type = "custom.sensor.sample", version = 37, timeMode = "point", endMode = (string?)null });
         resolution.EnsureSuccessStatusCode();
-        using var resolved = JsonDocument.Parse(await resolution.Content.ReadAsStringAsync());
+        using var resolved = JsonDocument.Parse(await resolution.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
         var trackId = resolved.RootElement.GetProperty("id").GetGuid();
         var recordId = Guid.CreateVersion7();
         var value = new object?[] { "sample", 42, true, null, new { nested = new[] { 1, 2, 3 } } };
@@ -42,7 +42,7 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
         using var replayed = await GetRecordsAsync(client, ownerId, trackId);
         replayed.EnsureSuccessStatusCode();
 
-        using var replay = JsonDocument.Parse(await replayed.Content.ReadAsStringAsync());
+        using var replay = JsonDocument.Parse(await replayed.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
         var track = replay.RootElement.GetProperty("track");
         Assert.Equal("custom.sensor.sample", track.GetProperty("type").GetString());
         Assert.Equal(37, track.GetProperty("version").GetInt32());
@@ -70,13 +70,13 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
             new { records = new[] { Entry(firstId, 1), Entry(secondId, 2, "com.apple.finder") } });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
         var results = json.RootElement.GetProperty("results");
         Assert.Equal(2, results.GetArrayLength());
         AssertReceipt(results[0], 0, firstId, StartedAt.AddMinutes(1));
         AssertReceipt(results[1], 1, secondId, StartedAt.AddMinutes(2));
         await using var db = CreateDbContext();
-        var records = await db.Records.OrderBy(record => record.EndedAt).ToListAsync();
+        var records = await db.Records.OrderBy(record => record.EndedAt).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, records.Count);
         Assert.All(records, record => Assert.Equal(trackId, record.TrackId));
         Assert.All(records, record => Assert.Equal(Now, record.ReceivedAt));
@@ -97,7 +97,7 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
 
         using var first = await UploadAsync(client, ownerId, trackId, body);
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
-        using var firstJson = JsonDocument.Parse(await first.Content.ReadAsStringAsync());
+        using var firstJson = JsonDocument.Parse(await first.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
         var firstResults = firstJson.RootElement.GetProperty("results");
         AssertReceipt(firstResults[0], 0, id, StartedAt.AddMinutes(3));
         AssertReceipt(firstResults[1], 1, id, StartedAt.AddMinutes(5));
@@ -107,7 +107,7 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
         using var retryClient = retryFactory.CreateClient();
         using var retry = await UploadAsync(retryClient, ownerId, trackId, body);
         Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
-        using var retryJson = JsonDocument.Parse(await retry.Content.ReadAsStringAsync());
+        using var retryJson = JsonDocument.Parse(await retry.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
         foreach (var result in retryJson.RootElement.GetProperty("results").EnumerateArray())
         {
             Assert.Equal("stored", result.GetProperty("status").GetString());
@@ -116,7 +116,7 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
         }
 
         await using var db = CreateDbContext();
-        Assert.Equal(StartedAt.AddMinutes(5), (await db.Records.SingleAsync()).EndedAt);
+        Assert.Equal(StartedAt.AddMinutes(5), (await db.Records.SingleAsync(cancellationToken: TestContext.Current.CancellationToken)).EndedAt);
     }
 
     [Fact]
@@ -143,14 +143,14 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
         });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
         var results = json.RootElement.GetProperty("results");
         Assert.Equal(MixedBatchStatuses,
             results.EnumerateArray().Select(result => result.GetProperty("status").GetString()));
         Assert.Equal(Enumerable.Range(0, 5), results.EnumerateArray().Select(result => result.GetProperty("index").GetInt32()));
         Assert.Equal(JsonValueKind.Null, results[3].GetProperty("id").ValueKind);
         await using var db = CreateDbContext();
-        var records = await db.Records.ToDictionaryAsync(record => record.Id);
+        var records = await db.Records.ToDictionaryAsync(record => record.Id, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(2, records.Count);
         Assert.Equal(StartedAt.AddMinutes(1), records[firstId].EndedAt);
         Assert.Equal(StartedAt.AddMinutes(2), records[secondId].EndedAt);
@@ -179,16 +179,16 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
         Assert.Equal(HttpStatusCode.InternalServerError, failed.StatusCode);
         await using (var db = CreateDbContext())
         {
-            Assert.Single(await db.Records.ToListAsync());
+            Assert.Single(await db.Records.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
         }
 
         using var retry = await UploadAsync(client, ownerId, trackId, body);
         Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
-        using var json = JsonDocument.Parse(await retry.Content.ReadAsStringAsync());
+        using var json = JsonDocument.Parse(await retry.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
         Assert.All(json.RootElement.GetProperty("results").EnumerateArray(), result =>
             Assert.Equal("stored", result.GetProperty("status").GetString()));
         await using var verify = CreateDbContext();
-        Assert.Equal(2, await verify.Records.CountAsync());
+        Assert.Equal(2, await verify.Records.CountAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -213,10 +213,10 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
         using var response = await UploadAsync(client, ownerId, trackId, new { records = new[] { entry } });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal("invalid_record", json.RootElement.GetProperty("results")[0].GetProperty("status").GetString());
         await using var db = CreateDbContext();
-        Assert.Empty(await db.Records.ToListAsync());
+        Assert.Empty(await db.Records.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -235,7 +235,7 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
         await AssertProblemAsync(foreign, HttpStatusCode.NotFound, "track_not_found");
         await AssertProblemAsync(missing, HttpStatusCode.NotFound, "track_not_found");
         await using var db = CreateDbContext();
-        Assert.Empty(await db.Records.ToListAsync());
+        Assert.Empty(await db.Records.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -266,7 +266,7 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
 
         await AssertProblemAsync(response, HttpStatusCode.BadRequest, "invalid_request");
         await using var db = CreateDbContext();
-        Assert.Empty(await db.Records.ToListAsync());
+        Assert.Empty(await db.Records.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -289,7 +289,7 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         await using var db = CreateDbContext();
-        Assert.Empty(await db.Records.ToListAsync());
+        Assert.Empty(await db.Records.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -299,7 +299,7 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
         using var client = factory.CreateClient();
 
         using var response = await client.PostAsJsonAsync($"/api/v1/tracks/{Guid.NewGuid()}/records",
-            new { records = new[] { Entry(Guid.CreateVersion7(), 1) } });
+            new { records = new[] { Entry(Guid.CreateVersion7(), 1) } }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }

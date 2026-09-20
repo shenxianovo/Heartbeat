@@ -28,7 +28,7 @@ public sealed class RecordReplayHttpTests(PostgresFixture fixture) : PostgresTes
             to: BaseTime.AddMinutes(18));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
         var track = json.RootElement.GetProperty("track");
         Assert.Equal(trackId, track.GetProperty("id").GetGuid());
         Assert.Equal("desktop.application.foreground", track.GetProperty("type").GetString());
@@ -60,7 +60,7 @@ public sealed class RecordReplayHttpTests(PostgresFixture fixture) : PostgresTes
         using var response = await ReplayAsync(client, ownerId, trackId, limit: 2);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
         var records = json.RootElement.GetProperty("records");
         Assert.Equal(2, records.GetArrayLength());
         Assert.Equal("com.one", ApplicationId(records[0]));
@@ -84,7 +84,7 @@ public sealed class RecordReplayHttpTests(PostgresFixture fixture) : PostgresTes
 
         using var completeResponse = await ReplayAsync(client, ownerId, trackId);
         completeResponse.EnsureSuccessStatusCode();
-        using var complete = JsonDocument.Parse(await completeResponse.Content.ReadAsStringAsync());
+        using var complete = JsonDocument.Parse(await completeResponse.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
         var expectedIds = complete.RootElement.GetProperty("records")
             .EnumerateArray()
             .Select(record => record.GetProperty("id").GetGuid())
@@ -96,7 +96,7 @@ public sealed class RecordReplayHttpTests(PostgresFixture fixture) : PostgresTes
         {
             using var pageResponse = await ReplayAsync(client, ownerId, trackId, limit: 2, cursor: cursor);
             pageResponse.EnsureSuccessStatusCode();
-            using var page = JsonDocument.Parse(await pageResponse.Content.ReadAsStringAsync());
+            using var page = JsonDocument.Parse(await pageResponse.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
             pagedIds.AddRange(page.RootElement.GetProperty("records")
                 .EnumerateArray()
                 .Select(record => record.GetProperty("id").GetGuid()));
@@ -150,7 +150,7 @@ public sealed class RecordReplayHttpTests(PostgresFixture fixture) : PostgresTes
 
         using var response = await ReplayAsync(client, ownerId, trackId);
         response.EnsureSuccessStatusCode();
-        using var replay = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var replay = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.True(JsonElement.DeepEquals(
             expected.RootElement,
@@ -173,7 +173,7 @@ public sealed class RecordReplayHttpTests(PostgresFixture fixture) : PostgresTes
 
         using var firstPageResponse = await ReplayAsync(client, ownerId, trackId, limit: 1);
         firstPageResponse.EnsureSuccessStatusCode();
-        using var firstPage = JsonDocument.Parse(await firstPageResponse.Content.ReadAsStringAsync());
+        using var firstPage = JsonDocument.Parse(await firstPageResponse.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
         var cursor = firstPage.RootElement.GetProperty("nextCursor").GetString();
 
         using var foreign = await ReplayAsync(client, otherOwnerId, trackId, limit: 1, cursor: cursor);
@@ -205,7 +205,7 @@ public sealed class RecordReplayHttpTests(PostgresFixture fixture) : PostgresTes
 
         using var request = new HttpRequestMessage(HttpMethod.Get, path);
         request.Headers.Add(RecordingApiFactory.OwnerHeader, ownerId.ToString());
-        using var response = await client.SendAsync(request);
+        using var response = await client.SendAsync(request, cancellationToken: TestContext.Current.CancellationToken);
 
         await AssertProblemAsync(response, HttpStatusCode.BadRequest, "invalid_request");
     }
@@ -216,7 +216,7 @@ public sealed class RecordReplayHttpTests(PostgresFixture fixture) : PostgresTes
         await using var factory = RecordingApiFactory.Create(ConnectionString, new FixedTimeProvider(Now));
         using var client = factory.CreateClient();
 
-        using var response = await client.GetAsync($"/api/v1/tracks/{Guid.NewGuid()}/records");
+        using var response = await client.GetAsync($"/api/v1/tracks/{Guid.NewGuid()}/records", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }

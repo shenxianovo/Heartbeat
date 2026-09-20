@@ -14,7 +14,7 @@ public sealed class MacSystemObservationSourceTests
         var accessibility = new FakeAccessibility { IsAvailable = true, IsProcessTrusted = false };
         var input = new FakeInput { IsAvailable = true, IsAuthorized = false };
         using var source = new MacSystemObservationSource(workspace, accessibility, input);
-        var observed = new List<MacSystemObservation>();
+        var observed = new List<DesktopObservation>();
         source.Observation += observed.Add;
 
         source.StartObserving();
@@ -33,7 +33,7 @@ public sealed class MacSystemObservationSourceTests
 
         Assert.Equal(42, accessibility.ObservedProcessIdentifier);
         Assert.Equal(1, input.StartCount);
-        Assert.Contains(observed, item => item is MacSystemObservation.Capability
+        Assert.Contains(observed, item => item is DesktopObservation.Capability
         {
             Value.Capability: ObservationCapability.WindowTitle,
             Value.State: ObservationState.Available,
@@ -56,7 +56,7 @@ public sealed class MacSystemObservationSourceTests
         };
         var input = new FakeInput { IsAvailable = true, IsAuthorized = true };
         using var source = new MacSystemObservationSource(workspace, accessibility, input);
-        var observed = new List<MacSystemObservation>();
+        var observed = new List<DesktopObservation>();
         source.Observation += observed.Add;
         source.StartObserving();
         observed.Clear();
@@ -66,13 +66,13 @@ public sealed class MacSystemObservationSourceTests
         workspace.Emit(MacWorkspaceNotification.ScreenUnlocked);
         accessibility.Emit(new("Renamed", 42));
 
-        Assert.Contains(observed, item => item is MacSystemObservation.AwayEntered
-            { Reason: MacAwayReason.ScreenLocked });
-        Assert.Contains(observed, item => item is MacSystemObservation.AwayEntered
-            { Reason: MacAwayReason.SystemSleep });
-        Assert.Contains(observed, item => item is MacSystemObservation.AwayExited
-            { Reason: MacAwayReason.ScreenLocked });
-        Assert.Contains(observed, item => item is MacSystemObservation.Activity
+        Assert.Contains(observed, item => item is DesktopObservation.AwayEntered
+            { Reason: DesktopAwayReason.ScreenLocked });
+        Assert.Contains(observed, item => item is DesktopObservation.AwayEntered
+            { Reason: DesktopAwayReason.SystemSleep });
+        Assert.Contains(observed, item => item is DesktopObservation.AwayExited
+            { Reason: DesktopAwayReason.ScreenLocked });
+        Assert.Contains(observed, item => item is DesktopObservation.Activity
             { Sample.WindowTitle: "Renamed" });
     }
 
@@ -86,7 +86,7 @@ public sealed class MacSystemObservationSourceTests
         var accessibility = new FakeAccessibility { IsAvailable = true, IsProcessTrusted = true };
         var input = new FakeInput { IsAvailable = true, IsAuthorized = true };
         using var source = new MacSystemObservationSource(workspace, accessibility, input);
-        var observed = new List<MacSystemObservation>();
+        var observed = new List<DesktopObservation>();
         source.Observation += observed.Add;
         source.StartObserving();
 
@@ -95,7 +95,7 @@ public sealed class MacSystemObservationSourceTests
 
         Assert.Equal(0, accessibility.StopCount);
         Assert.Equal(0, input.StopCount);
-        Assert.Contains(observed, item => item is MacSystemObservation.Capability
+        Assert.Contains(observed, item => item is DesktopObservation.Capability
             { Value.State: ObservationState.Unavailable });
     }
 
@@ -108,7 +108,7 @@ public sealed class MacSystemObservationSourceTests
         };
         var accessibility = new FakeAccessibility { IsAvailable = true, IsProcessTrusted = true };
         using var source = new MacSystemObservationSource(workspace, accessibility, new FakeInput());
-        var observed = new List<MacSystemObservation>();
+        var observed = new List<DesktopObservation>();
         source.Observation += observed.Add;
         source.StartObserving();
         accessibility.ReadFailure = new InvalidOperationException("AX CannotComplete: -25204");
@@ -118,7 +118,7 @@ public sealed class MacSystemObservationSourceTests
         source.RefreshCapabilities();
         var snapshot = source.Capture();
 
-        Assert.DoesNotContain(observed, item => item is MacSystemObservation.Capability
+        Assert.DoesNotContain(observed, item => item is DesktopObservation.Capability
             { Value.Capability: ObservationCapability.WindowTitle, Value.State: ObservationState.Available });
         Assert.Contains(snapshot.Capabilities, status => status is
             { Capability: ObservationCapability.WindowTitle, State: ObservationState.Unavailable });
@@ -127,7 +127,7 @@ public sealed class MacSystemObservationSourceTests
         accessibility.Title = "Recovered";
         source.RefreshCapabilities();
         Assert.Equal("Recovered", source.Capture().Activity?.WindowTitle);
-        Assert.Contains(observed, item => item is MacSystemObservation.Capability
+        Assert.Contains(observed, item => item is DesktopObservation.Capability
             { Value.Capability: ObservationCapability.WindowTitle, Value.State: ObservationState.Available });
     }
 
@@ -172,13 +172,13 @@ public sealed class MacSystemObservationSourceTests
         };
         using var source = new MacSystemObservationSource(workspace, accessibility, new FakeInput());
         source.StartObserving();
-        var observed = new List<MacSystemObservation>();
+        var observed = new List<DesktopObservation>();
         source.Observation += observed.Add;
 
         workspace.FrontmostApplication = new("com.example.Next", null, "Next", 77);
         workspace.Emit(MacWorkspaceNotification.ApplicationActivated);
 
-        Assert.DoesNotContain(observed, item => item is MacSystemObservation.Capability
+        Assert.DoesNotContain(observed, item => item is DesktopObservation.Capability
             { Value.Capability: ObservationCapability.WindowTitle, Value.State: not ObservationState.Available });
         Assert.Contains(source.Capture().Capabilities, state => state is
             { Capability: ObservationCapability.WindowTitle, State: ObservationState.Available });
