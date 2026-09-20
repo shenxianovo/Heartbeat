@@ -4,40 +4,8 @@ namespace Heartbeat.Dev;
 
 internal sealed record VerificationRequest(string Mode, string? Base, bool PlanOnly, bool Json)
 {
-    public static async Task<VerificationRequest> ParseAsync(
-        RepositoryContext repository,
-        IProcessRunner runner,
-        IReadOnlyList<string> args,
-        CancellationToken cancellationToken)
-    {
-        if (args[0] is not ("changed" or "full"))
-        {
-            throw new CommandUsageException($"Unknown verify mode '{args[0]}'.");
-        }
-        var parsed = ParseOptions(args);
-        var baseRef = await ResolveBaseAsync(args[0], parsed.Base, runner, cancellationToken);
-        _ = repository;
-        return new VerificationRequest(args[0], baseRef, parsed.Plan, parsed.Json);
-    }
-
-    private static ParsedVerificationOptions ParseOptions(IReadOnlyList<string> args)
-    {
-        string? baseRef = null;
-        var plan = false;
-        var json = false;
-        for (var index = 1; index < args.Count; index++)
-        {
-            if (args[index] == "--base")
-            {
-                if (++index >= args.Count) throw new CommandUsageException("Missing value for --base.");
-                baseRef = args[index];
-            }
-            else if (args[index] == "--plan") plan = true;
-            else if (args[index] == "--json") json = true;
-            else throw new CommandUsageException($"Unknown verify option '{args[index]}'.");
-        }
-        return new ParsedVerificationOptions(baseRef, plan, json);
-    }
+    public async Task<VerificationRequest> ResolveAsync(IProcessRunner runner, CancellationToken cancellationToken) =>
+        this with { Base = await ResolveBaseAsync(Mode, Base, runner, cancellationToken) };
 
     private static async Task<string?> ResolveBaseAsync(
         string mode,
@@ -53,7 +21,6 @@ internal sealed record VerificationRequest(string Mode, string? Base, bool PlanO
         return "HEAD";
     }
 
-    private sealed record ParsedVerificationOptions(string? Base, bool Plan, bool Json);
 }
 
 internal sealed record VerificationStep(

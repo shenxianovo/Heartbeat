@@ -18,7 +18,7 @@ public sealed class VerificationExecutionTests : IDisposable
         var runner = new StepRunner(index => new ProcessResult(codes[index], $"stdout-{index}", $"stderr-{index}"));
         var output = new StringWriter();
 
-        var exitCode = await Command(runner, output).RunAsync(["full"], CancellationToken.None);
+        var exitCode = await Command(runner, output).RunAsync(["verify", "full"], CancellationToken.None);
 
         Assert.Equal(3, runner.Calls);
         Assert.Equal(expectedExitCode, exitCode);
@@ -47,7 +47,7 @@ public sealed class VerificationExecutionTests : IDisposable
             ? new ProcessResult(7, "failed", "")
             : throw (cancel ? new OperationCanceledException() : new System.ComponentModel.Win32Exception("missing executable")));
 
-        var exception = await Record.ExceptionAsync(() => Command(runner, TextWriter.Null).RunAsync(["full"], CancellationToken.None));
+        var exception = await Record.ExceptionAsync(() => Command(runner, TextWriter.Null).RunAsync(["verify", "full"], CancellationToken.None));
 
         Assert.NotNull(exception);
         Assert.Equal(2, runner.Calls);
@@ -64,7 +64,7 @@ public sealed class VerificationExecutionTests : IDisposable
     {
         var runner = new StepRunner(index => new ProcessResult(index == 0 ? 7 : 130, "output", ""));
 
-        var exitCode = await Command(runner, TextWriter.Null).RunAsync(["full"], CancellationToken.None);
+        var exitCode = await Command(runner, TextWriter.Null).RunAsync(["verify", "full"], CancellationToken.None);
 
         Assert.Equal(130, exitCode);
         Assert.Equal(2, runner.Calls);
@@ -75,10 +75,10 @@ public sealed class VerificationExecutionTests : IDisposable
         Assert.False(File.Exists(Path.Combine(run.Directory, "browser.log")));
     }
 
-    private VerificationCommand Command(IProcessRunner runner, TextWriter output)
+    private DeveloperCli Command(IProcessRunner runner, TextWriter output)
     {
         Directory.CreateDirectory(_repository.Path("src", "Frontend", "Heartbeat.Web", "node_modules"));
-        return new VerificationCommand(_repository, runner, output);
+        return new DeveloperCli(_repository, runner, output, TextWriter.Null);
     }
 
     private static JsonDocument ReadManifest(ArtifactRun run) =>

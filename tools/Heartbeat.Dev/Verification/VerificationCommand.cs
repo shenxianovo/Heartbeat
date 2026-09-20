@@ -1,3 +1,6 @@
+using System.CommandLine;
+using System.CommandLine.Help;
+
 namespace Heartbeat.Dev;
 
 internal sealed class VerificationCommand(
@@ -5,20 +8,29 @@ internal sealed class VerificationCommand(
     IProcessRunner runner,
     TextWriter output)
 {
-    public async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
+    public Command CreateCommand()
     {
-        if (args.Length == 0 || args[0] is "-h" or "--help")
+        var command = new Command("verify", "Run checks selected from a Git change set");
+        command.SetAction(parse => new HelpAction().Invoke(parse));
+        foreach (var mode in new[] { "changed", "full" })
         {
-            await output.WriteLineAsync("""
-                Usage: heartbeat-dev verify <changed|full> [--base REF] [--plan] [--json]
-
-                changed requires --base for a clean worktree and otherwise defaults to HEAD.
-                Unknown changed paths expand to the full verification plan.
-                """);
-            return 0;
+            var child = new Command(mode, mode == "changed" ? "Check changed paths; a clean worktree requires --base" : "Run all checks");
+            var baseRef = new Option<string?>("--base") { Description = "Git comparison base" };
+            var plan = new Option<bool>("--plan") { Description = "Print the plan without executing it" };
+            var json = new Option<bool>("--json") { Description = "Print the plan as JSON" };
+            child.Options.Add(baseRef);
+            child.Options.Add(plan);
+            child.Options.Add(json);
+            child.SetAction((parse, token) => RunAsync(new VerificationRequest(
+                mode, parse.GetValue(baseRef), parse.GetValue(plan), parse.GetValue(json)), token));
+            command.Subcommands.Add(child);
         }
+        return command;
+    }
 
-        var request = await VerificationRequest.ParseAsync(repository, runner, args, cancellationToken);
+    public async Task<int> RunAsync(VerificationRequest request, CancellationToken cancellationToken)
+    {
+        request = await request.ResolveAsync(runner, cancellationToken);
         var plan = await VerificationPlanner.CreateAsync(repository, runner, request, cancellationToken);
         await VerificationReporter.WriteAsync(output, plan, request.Json);
         if (request.PlanOnly)

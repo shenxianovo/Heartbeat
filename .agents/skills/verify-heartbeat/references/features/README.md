@@ -4,7 +4,9 @@
 
 | 能力 | 用户入口 | 验证入口 | 权威文档 | 证据限制 |
 | --- | --- | --- | --- | --- |
-| 桌面客户端 | Mac `Heartbeat Dev.app`，连接设置、采集、菜单栏 | `scenario desktop-replay` | [客户端 README](../../../../../src/Desktop/README.md)、[宿主责任](../../../../../docs/adr/ADR-0016-desktop-host-and-credentials.md) | 真实应用包与服务；需界面操作及 OIDC 登录，不覆盖 Windows、发行签名或自动更新 |
+| 桌面客户端 | Mac `Heartbeat Dev.app`，连接设置、采集、菜单栏 | `scenario desktop-replay` | [客户端 README](../../../../../src/Desktop/README.md)、[宿主责任](../../../../../docs/adr/ADR-0017-native-desktop-interfaces.md) | 真实应用包与服务；需界面操作及 OIDC 登录，不覆盖 Windows、发行签名或自动更新 |
+| Windows 原生客户端 | WinUI 窗口、系统托盘、凭据管理器 | Windows 上 `package desktop` 及客户端 README 的人工步骤；共享运行/输入翻译测试 | [客户端 README](../../../../../src/Desktop/README.md)、[Windows Collector](../../../../../src/Collectors/Heartbeat.Collector.Desktop.Windows/README.md) | Mac 上的 C# 编译与纯逻辑测试不证明 Windows 原生行为；尚无 Windows 端到端场景 |
+| 本地桌面打包 | `package desktop [--runtime RID] [--output DIR]` | `verify changed` 中的 CLI 测试；在目标 OS 上执行 `package desktop` | [本地打包](../../../../../docs/development.md#本地打包)、[打包职责](../../../../../docs/adr/ADR-0018-developer-cli-packaging.md) | CLI 测试覆盖命令、失败与清理；真实打包须有平台 SDK，不替代 UI 验收 |
 | 本地环境 | `env up [web\|api\|db\|hub\|desktop]` | `env status --json`、定向 `env logs`、`env down` | [本地开发](../../../../../docs/development.md) | `desktop` 打包并打开 macOS UI，Hub 同进程运行；`env reset` 默认只预览 |
 | 回放体验 | Web `/`，OIDC `/auth/callback` | `scenario replay-fixture`；活动泳道性能用前端 `npm run test:perf` 的生产模式 | [前端 README](../../../../../src/Frontend/Heartbeat.Web/README.md)、[展示归属](../../../../../docs/adr/ADR-0011-web-timeline-presentation-ownership.md)、[记录接口](../../../../../docs/recording-api.md)、[体验验收](../../../../../docs/validation/experience-visualization.md) | 认证和 API 均为 mock；基准记录测量值，不设性能闸门 |
 | Record 交付与查询 | [HTTP 端点](../../../../../docs/recording-api.md) | `scenario delivery` | [记录接口](../../../../../docs/recording-api.md)、[存储模型](../../../../../docs/recording-storage-model.md) | 覆盖 API 与数据库，不覆盖 Hub 或浏览器 |

@@ -1,3 +1,6 @@
+using System.CommandLine;
+using System.CommandLine.Help;
+using System.CommandLine.Parsing;
 using System.Text.Json;
 
 namespace Heartbeat.Dev;
@@ -43,32 +46,37 @@ internal sealed class QualityCommand(
     private const string GateMode = "gate";
     private const string StockMode = "stock";
 
-    public async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
+    public Command CreateCommand()
     {
-        if (args.Length > 0 && args[0] == "loc")
+        var command = new Command("quality", "Compare structural quality with a Git base");
+        var baseRef = new Option<string?>("--base") { Description = $"Git comparison base; '{RewriteLineage.Alias}' resolves to {RewriteLineage.Describe()}" };
+        var stock = new Option<bool>("--stock") { Description = "Report accumulated deltas; only the committed stock budget is enforced" };
+        var json = new Option<bool>("--json") { Description = "Print the report as JSON" };
+        command.Options.Add(baseRef);
+        command.Options.Add(stock);
+        command.Options.Add(json);
+        var loc = new LocCommand(repository, runner, output).CreateCommand();
+        command.Subcommands.Add(loc);
+        loc.Validators.Add(result =>
         {
-            return await new LocCommand(repository, runner, output).RunAsync(args[1..], cancellationToken);
-        }
-        if (args.Length == 0 || args[0] is "-h" or "--help")
+            if (result.Parent is CommandResult parent
+                && parent.Children.OfType<OptionResult>().Any(option => !option.Implicit
+                    && (option.Option == baseRef || option.Option == stock || option.Option == json)))
+                result.AddError("Quality comparison options cannot be combined with loc; use 'quality loc --json' for JSON counts.");
+        });
+        command.SetAction((parse, token) =>
         {
-            await output.WriteLineAsync($"""
-                Usage: heartbeat-dev quality --base REF [--stock] [--json]
-                       heartbeat-dev quality loc [--json]
+            if (parse.GetValue(baseRef) is { } value)
+                return RunAsync(new QualityOptions(value, parse.GetValue(json), parse.GetValue(stock)), token);
+            if (parse.Tokens.Count == 1) return Task.FromResult(new HelpAction().Invoke(parse));
+            throw new CommandUsageException("quality requires an explicit --base REF.");
+        });
+        return command;
+    }
 
-                  --base REF  Git base to compare against; '{RewriteLineage.Alias}' resolves to the rewrite
-                              anchor {RewriteLineage.Describe()}
-                  --stock     Measure what accumulated since the base instead of gating this change.
-                              Clone and complexity deltas are reported, not enforced; the committed
-                              stock budget in tools/Heartbeat.Dev/{StockBudget.FileName} still applies.
-                  --json      Print the report instead of the summary
-
-                'quality loc' reports the current worktree by role, module and language. It does not
-                run tests, clone detection or complexity analysis.
-                """);
-            return 0;
-        }
-
-        var (baseRef, json, stock) = Parse(args);
+    public async Task<int> RunAsync(QualityOptions options, CancellationToken cancellationToken)
+    {
+        var (baseRef, json, stock) = options;
         var mode = stock ? StockMode : GateMode;
         var resolved = RewriteLineage.Resolve(baseRef);
         var limitations = new List<string>
@@ -258,32 +266,6 @@ internal sealed class QualityCommand(
 
     private static string Short(string revision) => revision.Length > 7 ? revision[..7] : revision;
 
-    private static (string Base, bool Json, bool Stock) Parse(string[] args)
-    {
-        string? baseRef = null;
-        var json = false;
-        var stock = false;
-        for (var index = 0; index < args.Length; index++)
-        {
-            switch (args[index])
-            {
-                case "--base":
-                    if (++index >= args.Length) throw new CommandUsageException("Missing value for --base.");
-                    baseRef = args[index];
-                    break;
-                case "--json":
-                    json = true;
-                    break;
-                case "--stock":
-                    stock = true;
-                    break;
-                default:
-                    throw new CommandUsageException($"Unknown quality option '{args[index]}'.");
-            }
-        }
-        return (baseRef ?? throw new CommandUsageException("quality requires an explicit --base REF."), json, stock);
-    }
-
     internal static LineQualityReport CompareLines(SourceSnapshot baseline, SourceSnapshot current)
     {
         var languages = baseline.ProductionByLanguage.Keys
@@ -309,3 +291,5 @@ internal sealed class QualityCommand(
             languages);
     }
 }
+
+internal sealed record QualityOptions(string Base, bool Json = false, bool Stock = false);

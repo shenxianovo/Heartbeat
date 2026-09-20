@@ -1,6 +1,6 @@
 # 本地开发
 
-Heartbeat 使用 Compose 运行 Web、API、PostgreSQL 和 Hub。桌面客户端 Heartbeat Dev 在 macOS 宿主机运行 Avalonia UI、原生 Collector 与进程内 Hub。
+Heartbeat 使用 Compose 运行 Web、API、PostgreSQL 和 Hub。桌面客户端 Heartbeat Dev 在 macOS 宿主机运行 AppKit UI、原生 Collector 与进程内 Hub。
 
 ## 环境准备
 
@@ -63,7 +63,30 @@ Hub 不依赖 API 或 PostgreSQL。桌面客户端通过 macOS 打开应用包�
 ./scripts/heartbeat-dev env up --release hub
 ```
 
-`--release` 切换容器构建模式，只用于本地验收，要求 Auth 使用 HTTPS；桌面客户端始终通过打包脚本生成本地 Release 应用包。`NEXT_PUBLIC_*` 配置在 Web 镜像构建时写入。
+`--release` 切换容器构建模式，只用于本地验收，要求 Auth 使用 HTTPS；桌面客户端始终通过 DevCLI 打包模块生成本地 Release 应用包。`NEXT_PUBLIC_*` 配置在 Web 镜像构建时写入。
+
+## 本地打包
+
+打包入口统一为 Developer CLI，构建后不启动应用：
+
+```bash
+./scripts/heartbeat-dev package desktop
+./scripts/heartbeat-dev package desktop --runtime osx-arm64 --output ./out
+```
+
+Windows 使用同一组命令：
+
+```powershell
+.\scripts\heartbeat-dev.cmd package desktop --runtime win-x64
+```
+
+`--runtime` 默认为宿主机 OS 和架构，可选 `osx-arm64`、`osx-x64`、`win-arm64`、`win-x64`。macOS 包必须在 macOS 上使用匹配的 Xcode 与 .NET macOS workload 构建；Windows 包必须在 Windows 上使用 .NET 与 Windows SDK 构建工具构建。该入口不承诺跨 OS 构建。
+
+`--output` 指定产物的父目录，相对路径基于调用命令时的当前目录。默认目录相对仓库根目录：macOS 为 `.artifacts/desktop/Heartbeat Dev.app`，Windows 为 `.artifacts/desktop-windows/Heartbeat Dev/`，后者必须保留完整目录。
+
+打包先在输出目录的独立临时目录中完成；发布、图标与签名步骤失败或取消时清理临时文件，保留已有产物。成功后只替换本命令的具名应用目录，其他文件保持不变。macOS 仍采用本地 ad-hoc 签名；Windows 仍产出 self-contained 应用目录，不提供安装器、发行签名或自动更新。
+
+`env up desktop`（macOS）与 `scenario desktop-replay` 直接复用同一个打包模块。按功能组织的代码入口与职责见 [DevCLI README](../tools/Heartbeat.Dev/README.md)。
 
 ## 状态与清理
 

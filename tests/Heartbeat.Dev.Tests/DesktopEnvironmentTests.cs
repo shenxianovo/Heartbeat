@@ -13,37 +13,20 @@ public sealed class DesktopEnvironmentTests
         var directory = Directory.CreateTempSubdirectory("heartbeat-dev-desktop-").FullName;
         try
         {
-            var runner = new DesktopRunner(packageExit);
-            var command = new EnvironmentCommand(new RepositoryContext(directory), runner, TextWriter.Null, TextWriter.Null);
-
-            var result = await command.RunAsync(["up", "desktop"], CancellationToken.None);
+            var runner = new PackageTestRunner(packageExit == 0 ? null : "dotnet");
+            var command = new DeveloperCli(new RepositoryContext(directory), runner, TextWriter.Null, TextWriter.Null);
+            var result = await command.RunAsync(["env", "up", "desktop"], CancellationToken.None);
 
             Assert.Equal(packageExit, result);
-            Assert.Equal("/bin/bash", runner.Calls[0].File);
-            Assert.Equal(Path.Combine(directory, "scripts", "package-desktop-mac.sh"), Assert.Single(runner.Calls[0].Args));
+            Assert.Equal("dotnet", runner.Calls[0].File);
+            Assert.DoesNotContain(runner.Calls, call => call.File == "docker");
             if (packageExit != 0) Assert.Single(runner.Calls);
             else
             {
-                Assert.Equal(2, runner.Calls.Count);
-                Assert.Equal("/usr/bin/open", runner.Calls[1].File);
-                Assert.Equal(["-a", Path.Combine(directory, ".artifacts", "desktop", "Heartbeat Dev.app")], runner.Calls[1].Args);
+                Assert.Equal("/usr/bin/open", runner.Calls[^1].File);
+                Assert.Equal(["-a", Path.Combine(directory, ".artifacts", "desktop", "Heartbeat Dev.app")], runner.Calls[^1].Args);
             }
         }
         finally { Directory.Delete(directory, recursive: true); }
-    }
-
-    private sealed class DesktopRunner(int packageExit) : IProcessRunner
-    {
-        public List<(string File, IReadOnlyList<string> Args)> Calls { get; } = [];
-        public Task<ProcessResult> CaptureAsync(string fileName, IReadOnlyList<string> arguments,
-            IReadOnlyDictionary<string, string?>? environment, CancellationToken cancellationToken) =>
-            throw new InvalidOperationException("A desktop-only launch must not invoke Docker or validate Hub environment variables.");
-
-        public Task<int> RunAsync(string fileName, IReadOnlyList<string> arguments,
-            IReadOnlyDictionary<string, string?>? environment, CancellationToken cancellationToken)
-        {
-            Calls.Add((fileName, arguments));
-            return Task.FromResult(fileName == "/bin/bash" ? packageExit : 0);
-        }
     }
 }

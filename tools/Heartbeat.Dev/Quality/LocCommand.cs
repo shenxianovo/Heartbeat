@@ -1,3 +1,4 @@
+using System.CommandLine;
 using System.Text.Json;
 
 namespace Heartbeat.Dev;
@@ -103,26 +104,20 @@ internal sealed class LocCommand(
     IProcessRunner runner,
     TextWriter output)
 {
-    public async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
+    public Command CreateCommand()
     {
-        if (args.Length > 0 && args[0] is "-h" or "--help")
-        {
-            await output.WriteLineAsync("""
-                Usage: heartbeat-dev quality loc [--json]
+        var command = new Command("loc", "Count current effective LOC without running tests or analyzers");
+        var json = new Option<bool>("--json") { Description = "Print the report as JSON" };
+        command.Options.Add(json);
+        command.SetAction((parse, token) => RunAsync(parse.GetValue(json), token));
+        return command;
+    }
 
-                Count current effective LOC without running tests or quality analyzers.
-                Blank and comment-only lines are excluded.
-                """);
-            return 0;
-        }
-        if (args.Length > 1 || args.Length == 1 && args[0] != "--json")
-        {
-            throw new CommandUsageException($"Unknown quality loc option '{args[0]}'.");
-        }
-
+    public async Task<int> RunAsync(bool json, CancellationToken cancellationToken)
+    {
         var snapshot = await new GitSourceReader(repository, runner).ReadWorktreeAsync(cancellationToken);
         var report = LocReport.Create(snapshot);
-        if (args.Length == 1)
+        if (json)
         {
             await output.WriteLineAsync(JsonSerializer.Serialize(report, JsonOptions.Indented));
             return 0;

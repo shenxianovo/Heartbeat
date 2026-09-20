@@ -2,8 +2,7 @@
   <PropertyGroup><OutputType>Exe</OutputType><UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner><TargetFramework>net10.0</TargetFramework><IsPackable>false</IsPackable><IsTestProject>true</IsTestProject></PropertyGroup>
   <ItemGroup>
     <PackageReference Include="xunit.v3.mtp-v2" />
-    <PackageReference Include="Avalonia.Headless.XUnit" />
-    <ProjectReference Include="../../src/Desktop/Heartbeat.Desktop.UI/Heartbeat.Desktop.UI.csproj" />
+    <ProjectReference Include="../../src/Desktop/Heartbeat.Desktop/Heartbeat.Desktop.csproj" />
   </ItemGroup>
   <ItemGroup><Using Include="Xunit" /></ItemGroup>
 </Project>

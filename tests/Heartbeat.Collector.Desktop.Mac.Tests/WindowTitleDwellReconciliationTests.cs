@@ -7,7 +7,7 @@ namespace Heartbeat.Collector.Desktop.Mac.Tests;
 /// <summary>
 /// 对账测试的生产一侧。窗口标题静置规则的权威实现是 <see cref="DesktopRecordProjector"/>
 /// （<c>ObserveWindowTitle</c> / <c>SettlePendingTitle</c>）；Developer CLI 的探针
-/// （<c>tools/Heartbeat.Dev/WindowTitleChurn.cs</c>）里有一份模拟，用来在真实读数上比不同静置参数。
+/// （<c>tools/Heartbeat.Dev/Probes/WindowTitleChurn.cs</c>）里有一份模拟，用来在真实读数上比不同静置参数。
 /// 两侧读同一张场景表 <c>tests/window-title-dwell-scenarios.json</c>，各自断言自己那一列：
 /// 这里钉住生产规则真的会写出几条窗口 Record。规则改了而表没改，这个测试就红。
 /// </summary>

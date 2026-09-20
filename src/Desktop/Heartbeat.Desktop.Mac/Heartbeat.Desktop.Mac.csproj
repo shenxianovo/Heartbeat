@@ -1,11 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-macos</TargetFramework>
+    <SupportedOSPlatformVersion>14.0</SupportedOSPlatformVersion>
+    <ApplicationTitle>Heartbeat Dev</ApplicationTitle>
+    <ApplicationId>com.shenxianovo.heartbeat.desktop</ApplicationId>
+    <!-- The Collector assembly also has a standalone CLI; this host uses only its library types. -->
+    <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
+    <LinkMode>None</LinkMode>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../Heartbeat.Desktop.UI/Heartbeat.Desktop.UI.csproj" />
+    <ProjectReference Include="../Heartbeat.Desktop/Heartbeat.Desktop.csproj" />
     <ProjectReference Include="../../Collectors/Heartbeat.Collector.Desktop.Mac/Heartbeat.Collector.Desktop.Mac.csproj" />
-    <PackageReference Include="Avalonia.Desktop" />
   </ItemGroup>
 </Project>

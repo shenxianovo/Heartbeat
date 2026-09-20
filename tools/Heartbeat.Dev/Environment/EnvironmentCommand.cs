@@ -1,3 +1,5 @@
+using System.CommandLine;
+using System.CommandLine.Help;
 using System.Text.Json;
 
 namespace Heartbeat.Dev;
@@ -13,33 +15,44 @@ internal sealed class EnvironmentCommand(
     private static readonly string[] ResetContents =
         ["containers", "networks", "postgres-volume", "hub-volume", "development-caches"];
 
-    public const string HelpText = """
-        Usage: heartbeat-dev env <action> [options] [services...]
-
-        Actions:
-          up       Build and start selected services
-          logs     Follow selected service logs
-          status   Show selected service status; supports --json
-          down     Stop selected services while preserving data
-          reset    Preview deletion of all local Docker data; use --apply to execute
-
-        Services: web api db hub desktop
-        Options: --release, --env-file PATH, --json, --apply
-
-        desktop packages and opens Heartbeat Dev on macOS with its in-process Hub.
-        Use 'env up web desktop' for the local Web/API/database and desktop together.
-        Quit Heartbeat Dev before rerunning after code changes; the app runs outside this terminal.
-        """;
-
-    public async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
+    public Command CreateCommand()
     {
-        if (args.Length == 0 || args[0] is "-h" or "--help")
-        {
-            await output.WriteLineAsync(HelpText);
-            return 0;
-        }
+        var command = new Command("env", "Start, inspect, stop, or reset the local environment");
+        command.SetAction(parse => new HelpAction().Invoke(parse));
+        foreach (var action in Enum.GetValues<EnvironmentAction>())
+            command.Subcommands.Add(CreateAction(action));
+        return command;
+    }
 
-        var plan = EnvironmentPlan.Parse(args);
+    private Command CreateAction(EnvironmentAction action)
+    {
+        var command = new Command(action.ToString().ToLowerInvariant(), action switch
+        {
+            EnvironmentAction.Up => "Build and start services; desktop packages and opens the macOS app",
+            EnvironmentAction.Logs => "Follow selected service logs",
+            EnvironmentAction.Status => "Show selected service status",
+            EnvironmentAction.Down => "Stop selected services while preserving data",
+            _ => "Preview deletion of all local Docker data; --apply executes",
+        });
+        var services = new Argument<string[]>("services") { Arity = ArgumentArity.ZeroOrMore, Description = "web api db hub desktop (default: web api db)" };
+        services.AcceptOnlyFromAmong(EnvironmentPlan.AllowedServices);
+        if (action != EnvironmentAction.Reset) command.Arguments.Add(services);
+        var envFile = new Option<string?>("--env-file") { Description = "Environment file path" };
+        var release = new Option<bool>("--release") { Description = "Use release images" };
+        var json = new Option<bool>("--json") { Description = "Print JSON" };
+        var apply = new Option<bool>("--apply") { Description = "Delete the local stack and its data" };
+        command.Options.Add(envFile);
+        if (action == EnvironmentAction.Up) command.Options.Add(release);
+        if (action == EnvironmentAction.Status) command.Options.Add(json);
+        if (action == EnvironmentAction.Reset) command.Options.Add(apply);
+        command.SetAction((parse, token) => RunAsync(EnvironmentPlan.Create(new EnvironmentOptions(
+            action, parse.GetValue(release), parse.GetValue(envFile), parse.GetValue(json), parse.GetValue(apply),
+            new HashSet<string>(parse.GetValue(services) ?? [], StringComparer.OrdinalIgnoreCase))), token));
+        return command;
+    }
+
+    public async Task<int> RunAsync(EnvironmentPlan plan, CancellationToken cancellationToken)
+    {
         var envFile = ResolveEnvironmentFile(plan.Options.EnvironmentFile);
         EnsureEnvironmentFile(envFile, plan.Options.EnvironmentFile is not null);
         var dotenv = DotenvFile.Read(envFile);
@@ -127,9 +140,10 @@ internal sealed class EnvironmentCommand(
     private async Task<int> RunDesktopAsync(CancellationToken cancellationToken)
     {
         await output.WriteLineAsync("Building Heartbeat Dev. Quit any running development client first to load code changes.");
-        var built = await runner.RunAsync("/bin/bash", [repository.Path("scripts", "package-desktop-mac.sh")], null, cancellationToken);
-        if (built != 0) return built;
-        var application = repository.Path(".artifacts", "desktop", "Heartbeat Dev.app");
+        var built = await new DesktopPackager(repository, runner, output)
+            .PackageAsync(DesktopPackageOptions.Create(repository), cancellationToken);
+        if (built.ExitCode != 0) return built.ExitCode;
+        var application = built.ApplicationPath;
         await output.WriteLineAsync($"Opening {application}. Configure the connection in the app; use its menu bar to quit.");
         return await runner.RunAsync("/usr/bin/open", ["-a", application], null, cancellationToken);
     }

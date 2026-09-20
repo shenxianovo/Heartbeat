@@ -5,6 +5,10 @@ namespace Heartbeat.Desktop;
 
 public sealed class DesktopRuntime : IAsyncDisposable
 {
+    private readonly SemaphoreSlim _operations = new(1, 1);
+    private int _pendingOperations;
+    private bool _initialized;
+    private bool _disposed;
     private readonly DesktopProfile _profile;
     private readonly IDesktopPlatform _platform;
     private readonly HttpClient _http;
@@ -28,6 +32,39 @@ public sealed class DesktopRuntime : IAsyncDisposable
         Settings = profile.ReadSettings();
     }
 
+    public bool IsBusy => Volatile.Read(ref _pendingOperations) != 0;
+
+    // Called by the application host once, independently of window visibility.
+    public Task InitializeAsync() => RunAsync(async () =>
+    {
+        if (_initialized) return;
+        _initialized = true;
+        if (Settings is not null) await StartCoreAsync();
+    });
+
+    public Task ConfigureAsync(Uri backend, Uri auth, Uri web, string? apiKey, CancellationToken cancellationToken = default) =>
+        RunAsync(() => ConfigureCoreAsync(backend, auth, web, apiKey, cancellationToken));
+
+    public Task StartAsync() => RunAsync(StartCoreAsync);
+    public Task StopCollectionAsync() => RunAsync(StopCollectionCoreAsync);
+
+    private async Task RunAsync(Func<Task> operation, bool disposing = false)
+    {
+        Interlocked.Increment(ref _pendingOperations);
+        await _operations.WaitAsync();
+        try
+        {
+            if (_disposed && disposing) return;
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            await operation();
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _pendingOperations);
+            _operations.Release();
+        }
+    }
+
     public DesktopSettings? Settings { get; private set; }
     public string CollectorName => _platform.DisplayName;
     public bool IsCollecting => _collectionTask is { IsCompleted: false };
@@ -38,7 +75,7 @@ public sealed class DesktopRuntime : IAsyncDisposable
         get { lock (_capabilities) return _capabilities.Values.ToArray(); }
     }
 
-    public async Task ConfigureAsync(Uri backend, Uri auth, Uri web, string? apiKey, CancellationToken cancellationToken = default)
+    private async Task ConfigureCoreAsync(Uri backend, Uri auth, Uri web, string? apiKey, CancellationToken cancellationToken = default)
     {
         DesktopSettings.RequireOrigin(backend);
         DesktopSettings.RequireOrigin(auth);
@@ -56,17 +93,17 @@ public sealed class DesktopRuntime : IAsyncDisposable
         }
         var collecting = IsCollecting;
         var delivering = _deliveryTask is not null;
-        await StopCollectionAsync();
+        await StopCollectionCoreAsync();
         await StopHubAsync();
         Settings = settings;
-        if (collecting) await StartAsync();
+        if (collecting) await StartCoreAsync();
         else if (delivering) EnsureHub(settings);
     }
 
-    public async Task StartAsync()
+    private async Task StartCoreAsync()
     {
         if (IsCollecting) return;
-        await StopCollectionAsync();
+        await StopCollectionCoreAsync();
         var settings = Settings ?? throw new InvalidOperationException("请先在连接设置中接入后端。");
         EnsureHub(settings);
         _collectionError = null;
@@ -106,7 +143,7 @@ public sealed class DesktopRuntime : IAsyncDisposable
         lock (_capabilities) _capabilities[capability.Value.Capability] = capability.Value;
     }
 
-    public async Task StopCollectionAsync()
+    private async Task StopCollectionCoreAsync()
     {
         if (_collectionStop is null) return;
         await _collectionStop.CancelAsync();
@@ -120,8 +157,6 @@ public sealed class DesktopRuntime : IAsyncDisposable
             _collectionStop = null;
         }
     }
-
-    public void OpenPermissionSettings(ObservationCapability capability) => _platform.OpenPermissionSettings(capability);
 
     private async Task StopHubAsync()
     {
@@ -139,9 +174,12 @@ public sealed class DesktopRuntime : IAsyncDisposable
         _tokens = null;
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync() => new(RunAsync(DisposeCoreAsync, disposing: true));
+
+    private async Task DisposeCoreAsync()
     {
-        try { await StopCollectionAsync(); }
+        _disposed = true;
+        try { await StopCollectionCoreAsync(); }
         finally
         {
             try { await StopHubAsync(); }

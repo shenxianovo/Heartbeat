@@ -2,20 +2,9 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
-using Avalonia;
-using Avalonia.Headless;
-using Avalonia.Headless.XUnit;
 using Heartbeat.Collector.Desktop;
-using Heartbeat.Desktop.UI;
 
-[assembly: AvaloniaTestApplication(typeof(Heartbeat.Desktop.Tests.TestAppBuilder))]
 namespace Heartbeat.Desktop.Tests;
-
-public static class TestAppBuilder
-{
-    public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<DesktopApplication>()
-        .UseHeadless(new AvaloniaHeadlessPlatformOptions());
-}
 
 internal sealed class MemoryCredentials : ICredentialStore
 {
@@ -32,7 +21,6 @@ internal sealed class TestPlatform : IDesktopPlatform
     public TimeProvider Clock => TimeProvider.System;
     public ICredentialStore Credentials { get; } = new MemoryCredentials();
     public IDesktopObservationSource CreateObservationSource() => new TestSource();
-    public void OpenPermissionSettings(ObservationCapability capability) { }
 }
 
 internal sealed class TestSource : IDesktopObservationSource

@@ -7,7 +7,7 @@
     "    DesktopRecordProjector.cs, ObserveWindowTitle / SettlePendingTitle) and asserts",
     "    productionWindowRecords.",
     "  tests/Heartbeat.Dev.Tests/WindowTitleDwellReconciliationTests.cs drives the developer-CLI",
-    "    probe simulation (tools/Heartbeat.Dev/WindowTitleChurn.cs, Simulate) and asserts",
+    "    probe simulation (tools/Heartbeat.Dev/Probes/WindowTitleChurn.cs, Simulate) and asserts",
     "    probeWindowRecords.",
     "Both suites also assert that the two counts differ only where 'divergence' explains why, so a",
     "difference has to be written down here instead of remembered. Readings default to origin",

@@ -77,11 +77,12 @@ internal sealed class DesktopReplayScenario(RepositoryContext repository, IProce
     private async Task<(string Executable, string Identifier, string DisplayName)> BuildPackageAsync(EvidenceSession evidence, CancellationToken cancellationToken)
     {
         var package = Path.Combine(evidence.Run.Directory, "desktop-package");
-        evidence.Commands.Add("scripts/package-desktop-mac.sh (isolated package output)");
-        var result = await runner.CaptureAsync("/bin/bash", [repository.Path("scripts", "package-desktop-mac.sh"), package], null, cancellationToken);
-        await File.WriteAllTextAsync(Path.Combine(evidence.Run.Directory, "desktop-build.log"), result.StdOut + result.StdErr, cancellationToken);
+        evidence.Commands.Add($"heartbeat-dev package desktop --output \"{package}\"");
+        await using var log = new StreamWriter(Path.Combine(evidence.Run.Directory, "desktop-build.log"));
+        var result = await new DesktopPackager(repository, runner, log)
+            .PackageAsync(DesktopPackageOptions.Create(repository, output: package), cancellationToken);
         if (result.ExitCode != 0) throw new InvalidOperationException("Desktop package failed; see desktop-build.log.");
-        var contents = Path.Combine(package, "Heartbeat Dev.app", "Contents");
+        var contents = Path.Combine(result.ApplicationPath, "Contents");
         var properties = XDocument.Load(Path.Combine(contents, "Info.plist")).Root!.Element("dict")!;
         string Read(string key) => properties.Elements("key").Single(item => item.Value == key).ElementsAfterSelf().First().Value;
         return (Path.Combine(contents, "MacOS", Read("CFBundleExecutable")), Read("CFBundleIdentifier"), Read("CFBundleDisplayName"));

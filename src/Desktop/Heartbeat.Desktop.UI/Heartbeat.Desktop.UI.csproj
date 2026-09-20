@@ -1,9 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="../Heartbeat.Desktop/Heartbeat.Desktop.csproj" />
-    <PackageReference Include="Avalonia" />
-    <PackageReference Include="Avalonia.Themes.Fluent" />
-    <AvaloniaResource Include="../../../assets/desktop-collector/*.png" Link="Assets/%(Filename)%(Extension)" />
-  </ItemGroup>
-</Project>

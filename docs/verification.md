@@ -1,5 +1,8 @@
 # 工程验证
 
+命令由 System.CommandLine 统一解析，运行 `./scripts/heartbeat-dev --help` 或任意子命令的 `--help` 查看当前参数。功能分组与执行职责见 [DevCLI README](../tools/Heartbeat.Dev/README.md)。
+
+
 Heartbeat 使用仓库 Developer CLI 验证三件事：
 
 - `verify`：代码和测试是否通过；
@@ -68,6 +71,8 @@ Hub 和原生 Collector 另需运行 `./scripts/setup.sh`。
 - C# CA1502 与 TypeScript ESLint 检出的函数圈复杂度；
 - 复杂度热点占维护负担的 Erosion；
 - C# CA1506 类型耦合热点。
+
+C# 指标先构建普通项目，再对 AppKit 与 WinUI 宿主执行托管编译及分析器，避免结构扫描依赖原生链接、签名或 Windows manifest 合并。仍需对应目标框架的 SDK、workload 和已恢复的引用；缺失引用、编译错误或宿主没有分析器输出均失败。此检查不证明原生应用可运行，打包与 UI 行为另行验收。实际命令与临时 solution 保存在证据目录。
 
 闸门规则：
 

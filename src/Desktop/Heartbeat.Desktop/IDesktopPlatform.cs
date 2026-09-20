@@ -10,7 +10,6 @@ public interface IDesktopPlatform
     TimeProvider Clock { get; }
     IDesktopObservationSource CreateObservationSource();
     ICredentialStore Credentials { get; }
-    void OpenPermissionSettings(ObservationCapability capability);
 }
 
 public interface ICredentialStore

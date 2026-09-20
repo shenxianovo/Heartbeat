@@ -29,12 +29,12 @@ public sealed class VerificationFailureTests : IDisposable
         var runner = new ThrowingRunner(cancel);
         var exception = await Record.ExceptionAsync(() => command switch
         {
-            "verify" => new VerificationCommand(repository, runner, TextWriter.Null).RunAsync(["full"], CancellationToken.None),
-            "scenario" => new ScenarioCommand(repository, runner, TextWriter.Null).RunAsync(["replay-fixture"], CancellationToken.None),
-            "native-desktop" => new ScenarioCommand(repository, runner, TextWriter.Null).RunAsync(["native-desktop"], CancellationToken.None),
-            "collector-delivery" => new ScenarioCommand(repository, runner, TextWriter.Null).RunAsync(["collector-delivery"], CancellationToken.None),
-            "desktop-replay" => new ScenarioCommand(repository, runner, TextWriter.Null).RunAsync(["desktop-replay"], CancellationToken.None),
-            _ => new QualityCommand(repository, runner, TextWriter.Null).RunAsync(["--base", "HEAD"], CancellationToken.None),
+            "verify" => new VerificationCommand(repository, runner, TextWriter.Null).RunAsync(new VerificationRequest("full", null, false, false), CancellationToken.None),
+            "scenario" => new ScenarioCommand(repository, runner, TextWriter.Null).RunAsync(new ScenarioOptions("replay-fixture"), CancellationToken.None),
+            "native-desktop" => new ScenarioCommand(repository, runner, TextWriter.Null).RunAsync(new ScenarioOptions("native-desktop"), CancellationToken.None),
+            "collector-delivery" => new ScenarioCommand(repository, runner, TextWriter.Null).RunAsync(new ScenarioOptions("collector-delivery"), CancellationToken.None),
+            "desktop-replay" => new ScenarioCommand(repository, runner, TextWriter.Null).RunAsync(new ScenarioOptions("desktop-replay"), CancellationToken.None),
+            _ => new QualityCommand(repository, runner, TextWriter.Null).RunAsync(new QualityOptions("HEAD"), CancellationToken.None),
         });
         Assert.NotNull(exception);
         var run = Assert.Single(new ArtifactStore(repository).List());

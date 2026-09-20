@@ -28,6 +28,6 @@
 ## 参考
 
 - [工程验证](../verification.md#组合实现来验证行为) — 组合方式与设施入口。
-- [ScenarioEnvironment](../../tools/Heartbeat.Dev/ScenarioEnvironment.cs) — 隔离资源与清理。
-- [ScenarioProcess](../../tools/Heartbeat.Dev/ScenarioProcess.cs) — 独立可测的进程生命周期与状态等待。
-- [CollectorDeliveryScenario](../../tools/Heartbeat.Dev/CollectorDeliveryScenario.cs) — 组合采集、接管、注册和落库验收。
+- [ScenarioEnvironment](../../tools/Heartbeat.Dev/Scenarios/ScenarioEnvironment.cs) — 隔离资源与清理。
+- [ScenarioProcess](../../tools/Heartbeat.Dev/Scenarios/ScenarioProcess.cs) — 独立可测的进程生命周期与状态等待。
+- [CollectorDeliveryScenario](../../tools/Heartbeat.Dev/Scenarios/CollectorDeliveryScenario.cs) — 组合采集、接管、注册和落库验收。

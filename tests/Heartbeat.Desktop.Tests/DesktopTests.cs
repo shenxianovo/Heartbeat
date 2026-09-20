@@ -1,9 +1,4 @@
-using Avalonia.Controls;
-using Avalonia.Headless;
-using Avalonia.Headless.XUnit;
-using Avalonia.Interactivity;
 using Heartbeat.Collector.Desktop;
-using Heartbeat.Desktop.UI;
 using Heartbeat.Hub;
 
 namespace Heartbeat.Desktop.Tests;
@@ -28,44 +23,86 @@ public sealed class DesktopTests
         finally { Directory.Delete(directory, recursive: true); }
     }
 
-    [AvaloniaFact]
-    public async Task SavedConnectionCanStartPauseAndHideWithoutLosingHubCustody()
+    [Fact]
+    public async Task SavedConnectionCanStartAndPauseWithoutLosingHubCustody()
     {
         var directory = TemporaryDirectory();
         try
         {
             var platform = new TestPlatform();
-            var profile = new DesktopProfile(directory, platform.Credentials);
             var settings = Settings();
-            await using var runtime = new DesktopRuntime(profile, platform, new HttpClient(new AuthHandler(settings.OwnerId)));
-            var model = new DesktopViewModel(runtime);
-            var window = new MainWindow(model, "macos");
-            window.Show();
-            try
-            {
-                Assert.True(window.FindControl<TabItem>("ConnectionTab")!.IsSelected);
-                window.FindControl<TextBox>("ApiKeyInput")!.Focus();
-                window.KeyTextInput(AuthHandler.ApiKey);
-                model.Refresh();
-                window.FindControl<Button>("SaveConnectionButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                await UntilAsync(() => model.IsConfigured && !model.IsBusy);
-                Assert.Empty(model.ApiKey);
-                Assert.Equal(string.Empty, window.FindControl<TextBox>("ApiKeyInput")!.Text);
-                await model.ToggleAsync();
-                Assert.True(runtime.IsCollecting);
-                Assert.True(runtime.Queue.Pending > 0);
-                window.Close();
-                Assert.False(window.IsVisible);
-                Assert.True(runtime.IsCollecting);
-                window.Show();
-                window.FindControl<Button>("ToggleCollectionButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                await UntilAsync(() => !runtime.IsCollecting && !model.IsBusy);
-                Assert.True(runtime.Queue.Pending > 0);
-                Assert.Equal("开始采集", window.FindControl<Button>("ToggleCollectionButton")!.Content);
-            }
-            finally { window.AllowClose = true; window.Close(); }
+            await using var runtime = new DesktopRuntime(new DesktopProfile(directory, platform.Credentials),
+                platform, new HttpClient(new AuthHandler(settings.OwnerId)));
+            await runtime.ConfigureAsync(settings.BackendUrl, settings.AuthUrl, settings.WebUrl, AuthHandler.ApiKey, TestContext.Current.CancellationToken);
+            await runtime.StartAsync();
+            Assert.True(runtime.IsCollecting);
+            Assert.True(runtime.Queue.Pending > 0);
+            await runtime.StopCollectionAsync();
+            Assert.False(runtime.IsCollecting);
+            Assert.True(runtime.Queue.Pending > 0);
         }
         finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
+    public async Task StartWaitsForInFlightConfiguration()
+    {
+        var directory = TemporaryDirectory();
+        try
+        {
+            var platform = new TestPlatform();
+            var settings = Settings();
+            using var handler = new HeldAuthHandler(settings.OwnerId);
+            await using var runtime = new DesktopRuntime(new DesktopProfile(directory, platform.Credentials),
+                platform, new HttpClient(handler));
+            var configure = runtime.ConfigureAsync(settings.BackendUrl, settings.AuthUrl, settings.WebUrl, AuthHandler.ApiKey, TestContext.Current.CancellationToken);
+            await handler.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            var start = runtime.StartAsync();
+            try { Assert.False(start.IsCompleted); }
+            finally { handler.Release.TrySetResult(); await configure; }
+            await start;
+            Assert.True(runtime.IsCollecting);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
+    public async Task InitializationResumesOnceAndCannotUndoAnExplicitPause()
+    {
+        var directory = TemporaryDirectory();
+        try
+        {
+            var platform = new TestPlatform();
+            var settings = Settings();
+            using (var profile = new DesktopProfile(directory, platform.Credentials))
+                profile.Save(settings, AuthHandler.ApiKey);
+            await using var runtime = new DesktopRuntime(new DesktopProfile(directory, platform.Credentials),
+                platform, new HttpClient(new AuthHandler(settings.OwnerId)));
+            await runtime.InitializeAsync();
+            Assert.True(runtime.IsCollecting);
+            await runtime.StopCollectionAsync();
+            await runtime.InitializeAsync();
+            Assert.False(runtime.IsCollecting);
+            Assert.True(runtime.Queue.Pending > 0);
+            await runtime.DisposeAsync();
+            await runtime.DisposeAsync();
+            await Assert.ThrowsAsync<ObjectDisposedException>(runtime.StartAsync);
+            using var reopened = new DesktopProfile(directory, platform.Credentials);
+            Assert.Equal(settings, reopened.ReadSettings());
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    private sealed class HeldAuthHandler(Guid owner) : DelegatingHandler(new AuthHandler(owner))
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Entered.TrySetResult();
+            await Release.Task.WaitAsync(cancellationToken);
+            return await base.SendAsync(request, cancellationToken);
+        }
     }
 
     [Fact]
@@ -108,11 +145,6 @@ public sealed class DesktopTests
         }
     }
 
-    private static async Task UntilAsync(Func<bool> condition)
-    {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        while (!condition()) { timeout.Token.ThrowIfCancellationRequested(); await Task.Yield(); }
-    }
     private static string TemporaryDirectory() => Directory.CreateTempSubdirectory("heartbeat-desktop-test-").FullName;
     private static DesktopSettings Settings() => new(new Uri("https://backend.example"), new Uri("https://auth.example"),
         new Uri("https://web.example"), Guid.NewGuid(), "test-target");

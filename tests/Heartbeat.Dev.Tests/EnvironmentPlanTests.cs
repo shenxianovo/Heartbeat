@@ -7,7 +7,7 @@ public sealed class EnvironmentPlanTests
     [Fact]
     public void WebExpandsOnlyItsRequiredDependencies()
     {
-        var plan = EnvironmentPlan.Parse(["up", "web"]);
+        var plan = Plan(EnvironmentAction.Up, "web");
 
         Assert.Equal(["db", "migrate", "api", "web"], plan.ComposeServices);
         Assert.False(plan.RunDesktop);
@@ -16,7 +16,7 @@ public sealed class EnvironmentPlanTests
     [Fact]
     public void DesktopUsesItsOwnHubWithoutStartingContainers()
     {
-        var plan = EnvironmentPlan.Parse(["up", "desktop"]);
+        var plan = Plan(EnvironmentAction.Up, "desktop");
 
         Assert.Empty(plan.ComposeServices);
         Assert.True(plan.RunDesktop);
@@ -25,7 +25,7 @@ public sealed class EnvironmentPlanTests
     [Fact]
     public void DefaultSelectionIsWebApiAndDatabase()
     {
-        var plan = EnvironmentPlan.Parse(["status"]);
+        var plan = Plan(EnvironmentAction.Status);
 
         Assert.Equal(["web", "api", "db"], plan.ComposeServices);
     }
@@ -33,8 +33,8 @@ public sealed class EnvironmentPlanTests
     [Fact]
     public void ResetRequiresExplicitApplyToBeDestructive()
     {
-        var preview = EnvironmentPlan.Parse(["reset"]);
-        var apply = EnvironmentPlan.Parse(["reset", "--apply"]);
+        var preview = Plan(EnvironmentAction.Reset);
+        var apply = EnvironmentPlan.Create(new EnvironmentOptions(EnvironmentAction.Reset, false, null, false, true, new HashSet<string>()));
 
         Assert.False(preview.Options.Apply);
         Assert.True(apply.Options.Apply);
@@ -46,17 +46,9 @@ public sealed class EnvironmentPlanTests
     [InlineData("down")]
     public void DesktopCannotBeManagedAsAContainer(string action)
     {
-        Assert.Throws<CommandUsageException>(() => EnvironmentPlan.Parse([action, "desktop"]));
+        Assert.Throws<CommandUsageException>(() => Plan(Enum.Parse<EnvironmentAction>(action, ignoreCase: true), "desktop"));
     }
 
-    [Theory]
-    [InlineData("status", "--release")]
-    [InlineData("up", "--json")]
-    [InlineData("up", "--apply")]
-    [InlineData("reset", "web")]
-    [InlineData("up", "unknown")]
-    public void RejectsOptionsThatDoNotBelongToTheAction(string action, string option)
-    {
-        Assert.Throws<CommandUsageException>(() => EnvironmentPlan.Parse([action, option]));
-    }
+    private static EnvironmentPlan Plan(EnvironmentAction action, params string[] services) =>
+        EnvironmentPlan.Create(new EnvironmentOptions(action, false, null, false, false, new HashSet<string>(services)));
 }

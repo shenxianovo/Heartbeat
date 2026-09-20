@@ -1,34 +1,27 @@
-using Avalonia;
-using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Threading;
-using Heartbeat.Desktop.UI;
+using AppKit;
 
 namespace Heartbeat.Desktop.Mac;
 
 public static class Program
 {
-    [STAThread]
-    public static int Main(string[] args)
+    public static void Main(string[] args)
     {
-        if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("Use the macOS desktop host on macOS.");
         var directory = args.Length switch
         {
             0 => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Heartbeat", "Desktop"),
             2 when args[0] == "--data-directory" => Path.GetFullPath(args[1]),
             _ => throw new ArgumentException("Usage: Heartbeat.Desktop.Mac [--data-directory <path>]"),
         };
-        DesktopApplication.IconName = "macos";
-        DesktopApplication.CreateRuntime = () =>
-        {
-            var platform = new MacDesktopPlatform();
-            return new DesktopRuntime(new DesktopProfile(directory, platform.Credentials), platform);
-        };
+        NSApplication.Init();
+        var platform = new MacDesktopPlatform();
+        var runtime = new DesktopRuntime(new DesktopProfile(directory, platform.Credentials), platform);
+        using var application = new MacApplication(runtime);
+        NSApplication.SharedApplication.Delegate = application;
         Console.CancelKeyPress += (_, e) =>
         {
             e.Cancel = true;
-            Dispatcher.UIThread.Post(() => (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.TryShutdown());
+            NSApplication.SharedApplication.BeginInvokeOnMainThread(() => NSApplication.SharedApplication.Terminate(null));
         };
-        return AppBuilder.Configure<DesktopApplication>().UsePlatformDetect()
-            .StartWithClassicDesktopLifetime(args);
+        NSApplication.Main([]);
     }
 }

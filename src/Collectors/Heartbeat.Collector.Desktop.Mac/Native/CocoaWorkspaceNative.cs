@@ -25,8 +25,7 @@ public sealed class CocoaWorkspaceNative : IMacWorkspaceNative, IDisposable
     public CocoaWorkspaceNative()
     {
         EnsureMacOS();
-        // Keep the framework load in the constructor as well: the host starts before Avalonia
-        // creates NSApplication, so AppKit cannot be assumed to have been loaded by the UI backend.
+        // The standalone Collector has no UI host; load AppKit before using NSWorkspace.
         var appKit = LoadAppKit();
         var workspaceClass = ObjC.Class("NSWorkspace");
         _workspace = ObjC.Send(workspaceClass, "sharedWorkspace");

@@ -1,3 +1,7 @@
+using System.CommandLine;
+using System.CommandLine.Help;
+using System.CommandLine.Parsing;
+
 namespace Heartbeat.Dev;
 
 internal sealed class ScenarioCommand(
@@ -5,38 +9,48 @@ internal sealed class ScenarioCommand(
     IProcessRunner runner,
     TextWriter output)
 {
-    public async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
+    public Command CreateCommand()
     {
-        if (args.Length == 0 || args[0] is "-h" or "--help")
+        var command = new Command("scenario", "Run a reproducible verification scenario");
+        var list = new Option<bool>("--list") { Description = "List available scenarios" };
+        command.Options.Add(list);
+        command.SetAction(async (parse, _) =>
         {
-            await output.WriteLineAsync("""
-                Usage: heartbeat-dev scenario <replay-fixture|delivery|collector-delivery|desktop-replay|native-desktop> [options]
-
-                Use scenario --list to print the available names.
-
-                replay-fixture  Re-runs the replay browser test against mocked auth and API, keeping evidence
-                delivery        Re-runs the record upload/replay integration tests against PostgreSQL, keeping evidence
-                collector-delivery  Starts a real macOS Collector and verifies Hub custody through PostgreSQL delivery
-                desktop-replay  Interactive packaged desktop to real Web replay
-                native-desktop  Guided macOS collector session against an isolated local Hub
-
-                replay-fixture and delivery re-run a subset of the first verification layer;
-                collector-delivery, desktop-replay and native-desktop run real native processes in isolated environments.
-
-                Options:
-                  --include-sensitive-evidence  Persist native logs that may contain user context
-                  --keep-environment-on-failure Keep the isolated native scenario environment for diagnosis
-                """);
+            if (!parse.GetValue(list)) return new HelpAction().Invoke(parse);
+            await output.WriteLineAsync(string.Join(Environment.NewLine, command.Subcommands.Select(child => child.Name)));
             return 0;
-        }
+        });
+        AddScenario(command, "replay-fixture", "Replay browser tests with mocked auth and API", native: false);
+        AddScenario(command, "delivery", "Upload/replay integration tests against PostgreSQL", native: false);
+        AddScenario(command, "collector-delivery", "Real macOS Collector through Hub custody to PostgreSQL", native: true);
+        AddScenario(command, "desktop-replay", "Interactive packaged desktop to real Web replay", native: true);
+        AddScenario(command, "native-desktop", "Guided macOS collector session against an isolated Hub", native: true);
+        foreach (var child in command.Subcommands)
+            child.Validators.Add(result =>
+            {
+                if (result.Parent is CommandResult parent
+                    && parent.Children.OfType<OptionResult>().Any(option => option.Option == list && !option.Implicit))
+                    result.AddError("--list cannot be combined with a scenario name.");
+            });
+        return command;
+    }
 
-        if (args.Length == 1 && args[0] == "--list")
+    private void AddScenario(Command parent, string name, string description, bool native)
+    {
+        var command = new Command(name, description);
+        var sensitive = new Option<bool>("--include-sensitive-evidence") { Description = "Persist native logs that may contain user context" };
+        var keep = new Option<bool>("--keep-environment-on-failure") { Description = "Keep the isolated environment on failure" };
+        if (native)
         {
-            await output.WriteLineAsync("replay-fixture\ndelivery\ncollector-delivery\ndesktop-replay\nnative-desktop");
-            return 0;
+            command.Options.Add(sensitive);
+            command.Options.Add(keep);
         }
+        command.SetAction((parse, token) => RunAsync(new ScenarioOptions(name, parse.GetValue(sensitive), parse.GetValue(keep)), token));
+        parent.Subcommands.Add(command);
+    }
 
-        var options = ScenarioOptions.Parse(args);
+    public async Task<int> RunAsync(ScenarioOptions options, CancellationToken cancellationToken)
+    {
         return options.Name switch
         {
             "replay-fixture" => await RunReplayFixtureAsync(options, cancellationToken),
@@ -109,26 +123,4 @@ internal sealed class ScenarioCommand(
     private static string Quote(string value) => value.Contains(' ', StringComparison.Ordinal) ? $"\"{value}\"" : value;
 }
 
-internal sealed record ScenarioOptions(string Name, bool IncludeSensitiveEvidence, bool KeepEnvironmentOnFailure)
-{
-    public static ScenarioOptions Parse(IReadOnlyList<string> args)
-    {
-        var sensitive = false;
-        var keep = false;
-        foreach (var argument in args.Skip(1))
-        {
-            switch (argument)
-            {
-                case "--include-sensitive-evidence": sensitive = true; break;
-                case "--keep-environment-on-failure": keep = true; break;
-                default: throw new CommandUsageException($"Unknown scenario option '{argument}'.");
-            }
-        }
-        if (args[0] is not ("native-desktop" or "collector-delivery" or "desktop-replay") && (sensitive || keep))
-        {
-            throw new CommandUsageException(
-                "--include-sensitive-evidence and --keep-environment-on-failure apply only to native-desktop, collector-delivery and desktop-replay.");
-        }
-        return new ScenarioOptions(args[0], sensitive, keep);
-    }
-}
+internal sealed record ScenarioOptions(string Name, bool IncludeSensitiveEvidence = false, bool KeepEnvironmentOnFailure = false);

@@ -60,6 +60,8 @@ Collector 到 Hub 接管前的快照仍在内存，进程退出可能丢失；�
 
 ## 2026-09-20 桌面 UI 恢复验收补充
 
+以下记录验证的是迁移前的 Avalonia 客户端，不能作为 [ADR-0017](../adr/ADR-0017-native-desktop-interfaces.md) 原生 UI 的验收证据。
+
 比较基点：`4533ee5c50a96ebb0962aa316444ef962fd65782`。跨平台运行逻辑和 Avalonia UI、Mac 原生宿主、本机 Hub 与系统凭据保存已实现；责任和操作入口见 [ADR-0016](../adr/ADR-0016-desktop-host-and-credentials.md) 与[客户端 README](../../src/Desktop/README.md)。
 
 | 命令 | 结果与本地证据 |
@@ -73,3 +75,16 @@ Collector 到 Hub 接管前的快照仍在内存，进程退出可能丢失；�
 正常开发入口使用固定数据目录和已保存凭据；只有 `desktop-replay` 创建一次性的验收 profile。白板 app 与 `collector-replay` 已删除，真实客户端自身的前台区间进入验收链路。操作工具能点击后台控件不等于系统前台已改变，验证必须以实际 Record 为准。
 
 这是带日期的本地验收快照，不覆盖上文完整平台交互矩阵、长期稳定性、Windows 原生宿主、发行签名或自动更新。更早的 Auth/浏览器超时并未因本次通过而被证明已修复，继续见[回放稳定性记录](../../.scratch/collector-replay-stability/issues/02-auth-and-browser-timeouts.md)。
+
+
+## 2026-09-20 原生桌面迁移验证
+
+比较基点：`a03edc5921cca2846d989a98729c78d8e7b77644`。AppKit 与 WinUI 宿主代码、共享运行模块和 Windows 观测适配已实现，原生运行尚未验收。以下命令使用已安装 macOS workload 的隔离 SDK（`PATH="$PWD/.artifacts/toolchains/dotnet:$PATH"`）。
+
+| 命令 | 结果与本地证据 |
+| --- | --- |
+| `./scripts/heartbeat-dev verify changed --base a03edc59` | .NET 测试、前端检查和 fixture 浏览器检查通过；`.artifacts/verification/20260920T082745Z-verify-full-fallback-1e2cb20e34844c32805e2e401ca21dbe/manifest.json` |
+| `./scripts/heartbeat-dev quality --base a03edc59` | 通过；包含两套原生宿主的托管编译和分析器，不链接原生应用；`.artifacts/verification/20260920T083217Z-quality-gate-bf4e8a46f258458ba4f9c3ad13470c57/manifest.json` 与 `quality.json` |
+| `./scripts/heartbeat-dev scenario desktop-replay` | 失败于 AppKit 打包，缺少完整 Xcode；隔离环境已清理；`.artifacts/verification/20260920T081939Z-scenario-desktop-replay-9d9a0798a4104fc6b14659cca5298f25/manifest.json` 与 `desktop-build.log` |
+
+Windows 的 WinUI 打包、系统凭据、托盘和 Win32 原生观测尚需 Windows 实机；Mac UI、应用生命周期、钥匙串与真实回放需要在 Xcode 配置完成后验收。后续步骤见[待验收记录](../../.scratch/native-desktop/issues/01-platform-acceptance.md)。本轮不以旧 Avalonia 场景或跨平台纯逻辑测试替代这些验收。

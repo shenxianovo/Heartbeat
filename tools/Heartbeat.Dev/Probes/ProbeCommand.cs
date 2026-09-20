@@ -1,3 +1,5 @@
+using System.CommandLine;
+using System.CommandLine.Help;
 using System.Globalization;
 using System.Text.Json;
 
@@ -11,35 +13,83 @@ internal sealed class ProbeCommand(RepositoryContext repository, IProcessRunner 
     private const string ReadingsName = "window-title-readings.json";
     private const string ReportName = "window-title-churn.json";
 
-    public async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
+    public Command CreateCommand()
     {
-        if (args.Length == 0 || args[0] is "-h" or "--help")
+        var group = new Command("probe", "Measure real host behaviour before choosing a rule parameter");
+        group.SetAction(parse => new HelpAction().Invoke(parse));
+        var command = new Command("window-title", "Observe foreground window title churn, or analyse saved readings");
+        var duration = new Option<double>("--duration-seconds") { DefaultValueFactory = _ => 120, Description = "Observation duration in seconds (at least 10)" };
+        var poll = new Option<double>("--poll-milliseconds") { DefaultValueFactory = _ => 250, Description = "Polling interval in milliseconds (at least 50)" };
+        var sensitive = new Option<bool>("--include-sensitive-evidence") { Description = "Persist raw window titles, which contain user context" };
+        var database = new Option<bool>("--from-database") { Description = "Export projected Records from the local database" };
+        var since = Timestamp("--since", "Start of the exported window; local time unless offset is given");
+        var until = Timestamp("--until", "End of the exported window (default: now)");
+        var readings = new Option<FileInfo>("--readings") { Description = "Analyse a previously captured readings file" };
+        readings.AcceptExistingOnly();
+        var dwells = new Option<double[]?>("--dwell-seconds")
         {
-            await output.WriteLineAsync("""
-                Usage: heartbeat-dev probe window-title [options]
-
-                window-title  Record foreground window title churn on this Mac and report what it would cost in records
-
-                Options:
-                  --duration-seconds N          How long to observe (default 120)
-                  --poll-milliseconds N         Polling cadence beside native notifications (default 250)
-                  --readings PATH               Analyse readings captured earlier instead of observing now
-                  --from-database               Export records from the local database instead of observing now
-                  --since TIMESTAMP             Start of the exported window (local time unless an offset is given)
-                  --until TIMESTAMP             End of the exported window (default now)
-                  --dwell-seconds A,B,C         Candidate dwell times to simulate (default 0.25,0.5,1,2,5)
-                  --include-sensitive-evidence  Persist raw window titles, which contain user context
-                """);
-            return 0;
-        }
-
-        var options = ProbeOptions.Parse(args);
-        return options.Name switch
-        {
-            "window-title" => await RunWindowTitleAsync(options, cancellationToken),
-            _ => throw new CommandUsageException($"Unknown probe '{options.Name}'."),
+            Description = "Comma-separated candidate dwell seconds (default: 0.25,0.5,1,2,5)",
+            Arity = ArgumentArity.ExactlyOne,
+            CustomParser = result =>
+            {
+                var values = result.Tokens.Single().Value.Split(',', StringSplitOptions.TrimEntries);
+                var parsed = new List<double>();
+                foreach (var value in values)
+                {
+                    if (!double.TryParse(value, CultureInfo.InvariantCulture, out var number) || !double.IsFinite(number) || number <= 0)
+                    {
+                        result.AddError("--dwell-seconds requires positive finite numbers separated by commas.");
+                        return null;
+                    }
+                    parsed.Add(number);
+                }
+                return parsed.ToArray();
+            },
         };
+        command.Options.Add(duration);
+        command.Options.Add(poll);
+        command.Options.Add(sensitive);
+        command.Options.Add(database);
+        command.Options.Add(since);
+        command.Options.Add(until);
+        command.Options.Add(readings);
+        command.Options.Add(dwells);
+        command.SetAction((parse, token) => RunAsync(ProbeOptions.Create(
+            Duration(parse.GetValue(duration), milliseconds: false), Duration(parse.GetValue(poll), milliseconds: true),
+            parse.GetValue(sensitive), parse.GetValue(readings)?.FullName, parse.GetValue(database),
+            parse.GetValue(since), parse.GetValue(until), parse.GetValue(dwells)), token));
+        group.Subcommands.Add(command);
+        return group;
     }
+
+    private static TimeSpan Duration(double value, bool milliseconds)
+    {
+        if (!double.IsFinite(value) || value <= 0)
+            throw new CommandUsageException("Probe durations must be positive finite numbers.");
+        try
+        {
+            return milliseconds ? TimeSpan.FromMilliseconds(value) : TimeSpan.FromSeconds(value);
+        }
+        catch (OverflowException)
+        {
+            throw new CommandUsageException("Probe durations must fit within TimeSpan range.");
+        }
+    }
+
+    private static Option<DateTimeOffset?> Timestamp(string name, string description) => new(name)
+    {
+        Description = description,
+        CustomParser = result =>
+        {
+            if (DateTimeOffset.TryParse(result.Tokens.Single().Value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var value))
+                return value;
+            result.AddError($"{name} needs a timestamp such as 2026-09-16T04:33Z.");
+            return null;
+        },
+    };
+
+    public Task<int> RunAsync(ProbeOptions options, CancellationToken cancellationToken) =>
+        RunWindowTitleAsync(options, cancellationToken);
 
     private async Task<int> RunWindowTitleAsync(ProbeOptions options, CancellationToken cancellationToken)
     {
@@ -231,35 +281,15 @@ internal sealed record ProbeOptions(
     DatabaseWindow? Database,
     IReadOnlyList<double>? Dwells)
 {
-    public static ProbeOptions Parse(IReadOnlyList<string> args)
+    public static ProbeOptions Create(
+        TimeSpan? duration = null, TimeSpan? poll = null, bool sensitive = false, string? readings = null,
+        bool database = false, DateTimeOffset? since = null, DateTimeOffset? until = null, IReadOnlyList<double>? dwells = null)
     {
-        var duration = TimeSpan.FromSeconds(120);
-        var poll = TimeSpan.FromMilliseconds(250);
-        var sensitive = false;
-        var database = false;
-        DateTimeOffset? since = null;
-        DateTimeOffset? until = null;
-        string? readings = null;
-        IReadOnlyList<double>? dwells = null;
-        for (var index = 1; index < args.Count; index++)
-        {
-            switch (args[index])
-            {
-                case "--include-sensitive-evidence": sensitive = true; break;
-                case "--from-database": database = true; break;
-                case "--since": since = Moment(args, ++index); break;
-                case "--until": until = Moment(args, ++index); break;
-                case "--readings": readings = Text(args, ++index); break;
-                case "--dwell-seconds": dwells = ParseDwells(args, ++index); break;
-                case "--duration-seconds": duration = TimeSpan.FromSeconds(Number(args, ++index)); break;
-                case "--poll-milliseconds": poll = TimeSpan.FromMilliseconds(Number(args, ++index)); break;
-                default: throw new CommandUsageException($"Unknown probe option '{args[index]}'.");
-            }
-        }
-
-        ValidateObservation(duration, poll);
-        return new ProbeOptions(
-            args[0], duration, poll, sensitive, readings, Window(database, since, until, readings), dwells);
+        var observationDuration = duration ?? TimeSpan.FromSeconds(120);
+        var pollInterval = poll ?? TimeSpan.FromMilliseconds(250);
+        ValidateObservation(observationDuration, pollInterval);
+        return new ProbeOptions("window-title", observationDuration, pollInterval, sensitive, readings,
+            Window(database, since, until, readings), dwells);
     }
 
     private static void ValidateObservation(TimeSpan duration, TimeSpan poll)
@@ -302,50 +332,4 @@ internal sealed record ProbeOptions(
             : throw new CommandUsageException("'--since' must come before '--until'.");
     }
 
-    private static DateTimeOffset Moment(IReadOnlyList<string> args, int index)
-    {
-        var text = Text(args, index, requireFile: false);
-        return DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var moment)
-            ? moment
-            : throw new CommandUsageException(
-                $"'{args[index - 1]}' needs a timestamp such as 2026-09-16T12:33 or 2026-09-16T04:33Z.");
-    }
-
-    private static double[] ParseDwells(IReadOnlyList<string> args, int index)
-    {
-        var dwells = Text(args, index, requireFile: false)
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(value => double.TryParse(value, CultureInfo.InvariantCulture, out var dwell) && dwell > 0
-                ? dwell
-                : throw new CommandUsageException($"'{value}' is not a positive number of seconds."))
-            .ToArray();
-        return dwells.Length > 0
-            ? dwells
-            : throw new CommandUsageException("'--dwell-seconds' needs at least one dwell time.");
-    }
-
-    private static string Text(IReadOnlyList<string> args, int index, bool requireFile = true)
-    {
-        if (index >= args.Count || string.IsNullOrWhiteSpace(args[index]))
-        {
-            throw new CommandUsageException($"'{args[index - 1]}' needs a value.");
-        }
-        if (!requireFile)
-        {
-            return args[index];
-        }
-        var path = Path.GetFullPath(args[index]);
-        return File.Exists(path) ? path : throw new CommandUsageException($"No readings file at {path}.");
-    }
-
-    private static double Number(IReadOnlyList<string> args, int index)
-    {
-        if (index >= args.Count
-            || !double.TryParse(args[index], CultureInfo.InvariantCulture, out var value)
-            || value <= 0)
-        {
-            throw new CommandUsageException($"'{args[index - 1]}' needs a positive number.");
-        }
-        return value;
-    }
 }

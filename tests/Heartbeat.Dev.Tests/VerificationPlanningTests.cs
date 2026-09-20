@@ -141,7 +141,7 @@ public sealed class VerificationCommandTests : IDisposable
         var output = new StringWriter();
         var command = new VerificationCommand(new RepositoryContext(_root), runner, output);
 
-        var exitCode = await command.RunAsync(["full"], CancellationToken.None);
+        var exitCode = await command.RunAsync(new VerificationRequest("full", null, false, false), CancellationToken.None);
 
         Assert.Equal(0, exitCode);
         var run = Assert.Single(new ArtifactStore(new RepositoryContext(_root)).List());

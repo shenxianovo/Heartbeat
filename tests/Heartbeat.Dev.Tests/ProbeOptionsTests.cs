@@ -4,36 +4,20 @@ namespace Heartbeat.Dev.Tests;
 
 public sealed class ProbeOptionsTests
 {
+    private static readonly DateTimeOffset Start = new(2026, 9, 16, 4, 33, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset End = new(2026, 9, 16, 4, 50, 0, TimeSpan.Zero);
     [Fact]
     public void FallsBackToDefaultDwellCandidatesWhenNoneAreRequested()
     {
-        var options = ProbeOptions.Parse(["window-title"]);
+        var options = ProbeOptions.Create();
 
         Assert.Null(options.Dwells);
     }
 
     [Fact]
-    public void ReadsDwellCandidatesAsASecondsList()
-    {
-        var options = ProbeOptions.Parse(["window-title", "--dwell-seconds", "1, 1.5,2"]);
-
-        Assert.Equal([1, 1.5, 2], options.Dwells);
-    }
-
-    [Fact]
-    public void RejectsDwellCandidatesThatCannotDelayARecord()
-    {
-        var error = Assert.Throws<CommandUsageException>(() =>
-            ProbeOptions.Parse(["window-title", "--dwell-seconds", "1,0"]));
-
-        Assert.Contains("positive", error.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void ReadsADatabaseWindowFromLocalTimestamps()
     {
-        var options = ProbeOptions.Parse(
-            ["window-title", "--from-database", "--since", "2026-09-16T04:33:00Z", "--until", "2026-09-16T04:50:00Z"]);
+        var options = ProbeOptions.Create(database: true, since: Start, until: End);
 
         Assert.Equal(new DateTimeOffset(2026, 9, 16, 4, 33, 0, TimeSpan.Zero), options.Database?.Since);
         Assert.Equal(new DateTimeOffset(2026, 9, 16, 4, 50, 0, TimeSpan.Zero), options.Database?.Until);
@@ -42,7 +26,7 @@ public sealed class ProbeOptionsTests
     [Fact]
     public void ExportsUpToNowWhenNoEndIsGiven()
     {
-        var options = ProbeOptions.Parse(["window-title", "--from-database", "--since", "2026-09-16T04:33:00Z"]);
+        var options = ProbeOptions.Create(database: true, since: Start);
 
         Assert.NotNull(options.Database);
         Assert.True(options.Database.Until > options.Database.Since);
@@ -52,7 +36,7 @@ public sealed class ProbeOptionsTests
     public void NeedsAStartBeforeItWillReadTheDatabase()
     {
         var error = Assert.Throws<CommandUsageException>(() =>
-            ProbeOptions.Parse(["window-title", "--from-database"]));
+            ProbeOptions.Create(database: true));
 
         Assert.Contains("--since", error.Message, StringComparison.Ordinal);
     }
@@ -60,8 +44,7 @@ public sealed class ProbeOptionsTests
     [Fact]
     public void RejectsAWindowThatEndsBeforeItStarts()
     {
-        var error = Assert.Throws<CommandUsageException>(() => ProbeOptions.Parse(
-            ["window-title", "--from-database", "--since", "2026-09-16T04:50:00Z", "--until", "2026-09-16T04:33:00Z"]));
+        var error = Assert.Throws<CommandUsageException>(() => ProbeOptions.Create(database: true, since: End, until: Start));
 
         Assert.Contains("before", error.Message, StringComparison.Ordinal);
     }
@@ -73,8 +56,7 @@ public sealed class ProbeOptionsTests
         File.WriteAllText(readings, "{}");
         try
         {
-            var error = Assert.Throws<CommandUsageException>(() => ProbeOptions.Parse(
-                ["window-title", "--from-database", "--since", "2026-09-16T04:33:00Z", "--readings", readings]));
+            var error = Assert.Throws<CommandUsageException>(() => ProbeOptions.Create(database: true, since: Start, readings: readings));
 
             Assert.Contains("Choose one source", error.Message, StringComparison.Ordinal);
         }
@@ -88,24 +70,15 @@ public sealed class ProbeOptionsTests
     public void RejectsAWindowWithoutADatabaseToReadItFrom()
     {
         var error = Assert.Throws<CommandUsageException>(() =>
-            ProbeOptions.Parse(["window-title", "--since", "2026-09-16T04:33:00Z"]));
+            ProbeOptions.Create(since: Start));
 
         Assert.Contains("--from-database", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void RejectsATimestampItCannotUnderstand()
-    {
-        var error = Assert.Throws<CommandUsageException>(() =>
-            ProbeOptions.Parse(["window-title", "--from-database", "--since", "yesterday"]));
-
-        Assert.Contains("timestamp", error.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void ObservesThisMacWhenNoOtherSourceIsNamed()
     {
-        var options = ProbeOptions.Parse(["window-title"]);
+        var options = ProbeOptions.Create();
 
         Assert.Null(options.Database);
         Assert.Null(options.Readings);

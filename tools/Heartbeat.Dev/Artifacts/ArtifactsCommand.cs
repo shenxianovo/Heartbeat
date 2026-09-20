@@ -1,3 +1,5 @@
+using System.CommandLine;
+using System.CommandLine.Help;
 using System.Text.Json;
 
 namespace Heartbeat.Dev;
@@ -6,35 +8,50 @@ internal sealed class ArtifactsCommand(RepositoryContext repository, TextWriter 
 {
     private readonly ArtifactStore _store = new(repository);
 
-    public async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
+    public Command CreateCommand()
     {
-        if (args.Length == 0 || args[0] is "-h" or "--help")
-        {
-            await output.WriteLineAsync("""
-                Usage: heartbeat-dev artifacts <list|prune|inventory-local> [options]
-
-                list options:  --json
-                prune options: --keep N --keep-failed N --older-than-days N --apply --json
-                Pruning is a dry run unless --apply is present. Defaults keep the newest 10 runs,
-                the newest 5 failed runs, and anything from the last 2 days; every verify/quality/
-                scenario run applies the same defaults automatically when it finishes.
-                inventory-local writes a read-only .local inventory; it never deletes files.
-                """);
-            return 0;
-        }
-
-        return args[0] switch
-        {
-            "list" => await ListAsync(args[1..]),
-            "prune" => await PruneAsync(args[1..], cancellationToken),
-            "inventory-local" => await InventoryLocalAsync(args[1..], cancellationToken),
-            _ => throw new CommandUsageException($"Unknown artifacts action '{args[0]}'."),
-        };
+        var command = new Command("artifacts", "List, prune, or inventory verification evidence");
+        command.SetAction(parse => new HelpAction().Invoke(parse));
+        var list = new Command("list", "List verification runs");
+        var listJson = new Option<bool>("--json") { Description = "Print JSON" };
+        list.Options.Add(listJson);
+        list.SetAction(parse => ListAsync(parse.GetValue(listJson)));
+        var inventory = new Command("inventory-local", "Write a read-only .local inventory; never delete files");
+        var inventoryJson = new Option<bool>("--json") { Description = "Print JSON" };
+        inventory.Options.Add(inventoryJson);
+        inventory.SetAction((parse, token) => InventoryLocalAsync(parse.GetValue(inventoryJson), token));
+        command.Subcommands.Add(list);
+        command.Subcommands.Add(CreatePruneCommand());
+        command.Subcommands.Add(inventory);
+        return command;
     }
 
-    private async Task<int> InventoryLocalAsync(string[] args, CancellationToken cancellationToken)
+    private Command CreatePruneCommand()
     {
-        var json = ParseJsonOnly(args);
+        var command = new Command("prune", "Preview evidence pruning; --apply deletes selected runs");
+        var keep = RetentionOption("--keep", RetentionPolicy.Default.Keep, "Number of newest runs to keep");
+        var failed = RetentionOption("--keep-failed", RetentionPolicy.Default.KeepFailed, "Number of newest failed runs to keep");
+        var days = RetentionOption("--older-than-days", (int)RetentionPolicy.Default.OlderThan.TotalDays, "Minimum age in days");
+        var apply = new Option<bool>("--apply") { Description = "Delete selected verification runs" };
+        var json = new Option<bool>("--json") { Description = "Print JSON" };
+        command.Options.Add(keep);
+        command.Options.Add(failed);
+        command.Options.Add(days);
+        command.Options.Add(apply);
+        command.Options.Add(json);
+        command.SetAction((parse, token) => PruneAsync(PruneOptions.Create(parse.GetValue(keep), parse.GetValue(failed), parse.GetValue(days),
+            parse.GetValue(apply), parse.GetValue(json)), token));
+        return command;
+    }
+
+    private static Option<int> RetentionOption(string name, int defaultValue, string description)
+    {
+        var option = new Option<int>(name) { DefaultValueFactory = _ => defaultValue, Description = description };
+        return option;
+    }
+
+    private async Task<int> InventoryLocalAsync(bool json, CancellationToken cancellationToken)
+    {
         var run = _store.Create("inventory", "local");
         var report = LocalInventory.Create(repository.Path(".local"));
         var reportPath = Path.Combine(run.Directory, "local-inventory.json");
@@ -56,9 +73,8 @@ internal sealed class ArtifactsCommand(RepositoryContext repository, TextWriter 
         return 0;
     }
 
-    private async Task<int> ListAsync(string[] args)
+    private async Task<int> ListAsync(bool json)
     {
-        var json = ParseJsonOnly(args);
         var runs = _store.List();
         if (json)
         {
@@ -82,9 +98,8 @@ internal sealed class ArtifactsCommand(RepositoryContext repository, TextWriter 
         return 0;
     }
 
-    private async Task<int> PruneAsync(string[] args, CancellationToken cancellationToken)
+    private async Task<int> PruneAsync(PruneOptions options, CancellationToken cancellationToken)
     {
-        var options = PruneOptions.Parse(args);
         var outcome = _store.SelectForPruning(options.Policy);
         if (options.Apply)
         {
@@ -116,50 +131,14 @@ internal sealed class ArtifactsCommand(RepositoryContext repository, TextWriter 
         return 0;
     }
 
-    private static bool ParseJsonOnly(string[] args)
-    {
-        if (args.Length == 0) return false;
-        if (args.Length == 1 && args[0] == "--json") return true;
-        throw new CommandUsageException($"Unknown artifacts list option '{args[0]}'.");
-    }
-
 }
 
 internal sealed record PruneOptions(RetentionPolicy Policy, bool Apply, bool Json)
 {
-    public static PruneOptions Parse(IReadOnlyList<string> args)
+    public static PruneOptions Create(int keep, int failed, int days, bool apply, bool json)
     {
-        var policy = RetentionPolicy.Default;
-        var apply = false;
-        var json = false;
-        for (var index = 0; index < args.Count; index++)
-        {
-            switch (args[index])
-            {
-                case "--keep":
-                    policy = policy with { Keep = ParseNonNegative(args, ref index, "--keep") };
-                    break;
-                case "--keep-failed":
-                    policy = policy with { KeepFailed = ParseNonNegative(args, ref index, "--keep-failed") };
-                    break;
-                case "--older-than-days":
-                    policy = policy with
-                    {
-                        OlderThan = TimeSpan.FromDays(ParseNonNegative(args, ref index, "--older-than-days")),
-                    };
-                    break;
-                case "--apply": apply = true; break;
-                case "--json": json = true; break;
-                default: throw new CommandUsageException($"Unknown artifacts prune option '{args[index]}'.");
-            }
-        }
-        return new PruneOptions(policy, apply, json);
-    }
-
-    private static int ParseNonNegative(IReadOnlyList<string> args, ref int index, string option)
-    {
-        if (++index >= args.Count || !int.TryParse(args[index], out var result) || result < 0)
-            throw new CommandUsageException($"{option} requires a non-negative integer.");
-        return result;
+        if (keep < 0 || failed < 0 || days < 0 || days > TimeSpan.MaxValue.TotalDays)
+            throw new CommandUsageException("Retention counts and days must be non-negative integers within TimeSpan range.");
+        return new PruneOptions(new RetentionPolicy(keep, failed, TimeSpan.FromDays(days)), apply, json);
     }
 }

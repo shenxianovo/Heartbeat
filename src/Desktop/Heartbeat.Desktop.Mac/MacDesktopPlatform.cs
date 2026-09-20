@@ -27,7 +27,7 @@ public sealed partial class MacDesktopPlatform : IDesktopPlatform
         return id.ToString("D");
     }
 
-    public void OpenPermissionSettings(ObservationCapability capability)
+    public static void OpenPermissionSettings(ObservationCapability capability)
     {
         if (capability == ObservationCapability.Input)
         {

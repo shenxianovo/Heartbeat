@@ -111,19 +111,11 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
         ICollection<string> commands,
         CancellationToken cancellationToken)
     {
-        var arguments = new List<string>
-        {
-            "build", Path.Combine(root, "Heartbeat.slnx"), "--no-incremental", "--disable-build-servers",
-            "--verbosity", "minimal", "--maxcpucount:1",
-            "-p:TreatWarningsAsErrors=false", "-p:WarningsAsErrors=",
-            $"-p:CustomBeforeMicrosoftCommonProps={repository.Path("tools", "Heartbeat.Dev", "CodeMetrics.props")}",
-        };
-        if (!restore) arguments.Insert(2, "--no-restore");
-        commands.Add($"dotnet build Heartbeat.slnx{(restore ? string.Empty : " --no-restore")} (CA1502, CA1506; DOTNET_CLI_UI_LANGUAGE=en-US)");
-        var result = await ProcessRunner.CaptureAsync(root, "dotnet", arguments, cancellationToken,
-            new Dictionary<string, string?> { ["DOTNET_CLI_UI_LANGUAGE"] = "en-US", ["VSLANG"] = "1033" });
+        var label = string.Equals(root, repository.Root, StringComparison.Ordinal) ? "current" : "baseline";
+        var result = await CSharpAnalysisBuild.RunAsync(root, restore, artifactDirectory, label,
+            repository.Path("tools", "Heartbeat.Dev", "CodeMetrics.props"), commands, cancellationToken);
         var buildOutput = result.StdOut + Environment.NewLine + result.StdErr;
-        await File.WriteAllTextAsync(Path.Combine(artifactDirectory, restore ? "baseline-csharp.log" : "current-csharp.log"),
+        await File.WriteAllTextAsync(Path.Combine(artifactDirectory, label + "-csharp.log"),
             buildOutput, cancellationToken);
         if (result.ExitCode != 0)
         {
