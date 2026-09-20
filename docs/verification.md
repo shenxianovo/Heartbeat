@@ -51,9 +51,13 @@ Hub 和原生 Collector 另需运行 `./scripts/setup.sh`。
 ## 结构质量
 
 ```bash
+./scripts/heartbeat-dev quality loc
+./scripts/heartbeat-dev quality loc --json
 ./scripts/heartbeat-dev quality --base HEAD
 ./scripts/heartbeat-dev quality --base anchor --stock
 ```
+
+`quality loc` 是当前工作树的只读规模视图，只统计 Git 已跟踪和未忽略文件中的有效行（排除空行与纯注释行），不运行测试、重复检测或复杂度分析，也不创建验证证据。总体按生产、测试、工具、构建、文档和生成代码角色显示；模块与语言按实现代码和测试代码显示，其中实现代码包含产品代码与工具代码。模块以 `src/` 下的产品域目录为准；独立测试项目按其被测产品域显式映射，Developer CLI 作为工具模块单列，未知测试项目显示为 `Unassigned tests`，不猜测归属。
 
 `--base HEAD` 阻止本次改动增加坏味道。`--base anchor --stock` 使用重写锚点 `4e15d57` 查看当前存量；存量模式只报告相对锚点的增量，但仍检查分析完整性和绝对预算。基点中没有 `src/` 生产代码时直接失败。
 

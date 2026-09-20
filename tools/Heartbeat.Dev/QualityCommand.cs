@@ -45,10 +45,15 @@ internal sealed class QualityCommand(
 
     public async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
     {
+        if (args.Length > 0 && args[0] == "loc")
+        {
+            return await new LocCommand(repository, runner, output).RunAsync(args[1..], cancellationToken);
+        }
         if (args.Length == 0 || args[0] is "-h" or "--help")
         {
             await output.WriteLineAsync($"""
                 Usage: heartbeat-dev quality --base REF [--stock] [--json]
+                       heartbeat-dev quality loc [--json]
 
                   --base REF  Git base to compare against; '{RewriteLineage.Alias}' resolves to the rewrite
                               anchor {RewriteLineage.Describe()}
@@ -56,6 +61,9 @@ internal sealed class QualityCommand(
                               Clone and complexity deltas are reported, not enforced; the committed
                               stock budget in tools/Heartbeat.Dev/{StockBudget.FileName} still applies.
                   --json      Print the report instead of the summary
+
+                'quality loc' reports the current worktree by role, module and language. It does not
+                run tests, clone detection or complexity analysis.
                 """);
             return 0;
         }
