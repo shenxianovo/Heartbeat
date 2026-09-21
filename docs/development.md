@@ -48,11 +48,11 @@ Heartbeat 使用 Compose 运行 Web、API、PostgreSQL 和 Hub。桌面客户端
 | `db` | PostgreSQL |
 | `api` | PostgreSQL、migration、API |
 | `web` | PostgreSQL、migration、API、Web |
-| `hub` | Hub |
+| `hub` | 服务器 Hub，内置 VRChat Collector |
 | `desktop` | 构建并打开 Heartbeat Dev（自带 Hub，不启动容器） |
 | `web desktop` | PostgreSQL、migration、API、Web，以及 Heartbeat Dev |
 
-Hub 不依赖 API 或 PostgreSQL。桌面客户端通过 macOS 打开应用包，命令完成后终端即可退出；关闭窗口继续在菜单栏运行，选择“退出 Heartbeat Dev”才停止。首次配置使用上述本地地址；已保存连接时沿用原配置。
+Hub 启动不依赖 API 或 PostgreSQL 可用；Web 管理和上传需要 API 恢复。服务器 Collector 的配置步骤见 [服务器 README](../src/Server/README.md)。桌面客户端通过 macOS 打开应用包，命令完成后终端即可退出；关闭窗口继续在菜单栏运行，选择“退出 Heartbeat Dev”才停止。首次配置使用上述本地地址；已保存连接时沿用原配置。
 
 `env up desktop` 每次构建本地应用包；已有客户端进程时 macOS 会打开现有实例。修改客户端代码后，先退出 Heartbeat Dev，再运行启动命令。该入口不使用 `dotnet watch`，以保留应用包的 macOS 身份和权限入口。
 

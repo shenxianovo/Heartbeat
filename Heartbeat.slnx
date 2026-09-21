@@ -1,5 +1,8 @@
 <Solution>
   <Folder Name="/src/" />
+  <Folder Name="/src/Server/">
+    <Project Path="src/Server/Heartbeat.Server/Heartbeat.Server.csproj" />
+  </Folder>
   <Folder Name="/src/Contracts/">
     <Project Path="src/Contracts/Heartbeat.Contracts/Heartbeat.Contracts.csproj" />
   </Folder>
@@ -10,6 +13,7 @@
     <Project Path="src/Backend/Heartbeat.Infrastructure/Heartbeat.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/src/Collectors/">
+    <Project Path="src/Collectors/Heartbeat.Collector.VRChat/Heartbeat.Collector.VRChat.csproj" />
     <Project Path="src/Collectors/Heartbeat.Collector.Desktop.Mac/Heartbeat.Collector.Desktop.Mac.csproj" />
     <Project Path="src/Collectors/Heartbeat.Collector.Desktop.Windows/Heartbeat.Collector.Desktop.Windows.csproj" />
     <Project Path="src/Collectors/Heartbeat.Collector.Desktop/Heartbeat.Collector.Desktop.csproj" />

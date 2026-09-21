@@ -12,6 +12,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Hub/Heartbeat.Hub.Client/Heartbeat.Hub.Client.csproj" />
+    <ProjectReference Include="../../src/Collectors/Heartbeat.Collector.VRChat/Heartbeat.Collector.VRChat.csproj" />
     <ProjectReference Include="../../src/Hub/Heartbeat.Hub.Host/Heartbeat.Hub.Host.csproj" />
     <ProjectReference Include="../../src/Collectors/Heartbeat.Collector.Desktop.Mac/Heartbeat.Collector.Desktop.Mac.csproj" />
     <Using Include="Xunit" />

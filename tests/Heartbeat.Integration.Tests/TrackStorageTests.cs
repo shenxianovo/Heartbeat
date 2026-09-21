@@ -33,7 +33,7 @@ public sealed class TrackStorageTests(PostgresFixture fixture) : PostgresTestBas
                 .SingleAsync(TestContext.Current.CancellationToken);
         }
 
-        var collector = Collector.Create(
+        var collector = Heartbeat.Recording.Collector.Create(
             timelineId,
             "heartbeat.collector.desktop.macos",
             $"device-{Guid.NewGuid():N}",

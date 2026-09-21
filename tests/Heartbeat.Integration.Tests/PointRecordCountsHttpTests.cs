@@ -70,7 +70,7 @@ public sealed class PointRecordCountsHttpTests(PostgresFixture fixture) : Postgr
         await ProvisionTimelineAsync(ownerId);
         await using var db = CreateDbContext();
         var timeline = db.Timelines.Single(item => item.OwnerId == ownerId);
-        var collector = Collector.Create(timeline.Id, "heartbeat.collector.desktop.macos",
+        var collector = Heartbeat.Recording.Collector.Create(timeline.Id, "heartbeat.collector.desktop.macos",
             $"device-{Guid.NewGuid():N}", "Mac", From);
         var track = Track.Create(collector.Id,
             timeMode == TimeMode.Point ? "desktop.input.event" : "desktop.system.away",

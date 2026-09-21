@@ -52,6 +52,10 @@ services:
       - /src/src/Hub/Heartbeat.Hub.Host/obj:exec
       - /src/src/Hub/Heartbeat.Hub.Runtime/bin:exec
       - /src/src/Hub/Heartbeat.Hub.Runtime/obj:exec
+      - /src/src/Collectors/Heartbeat.Collector.VRChat/bin:exec
+      - /src/src/Collectors/Heartbeat.Collector.VRChat/obj:exec
+      - /src/src/Server/Heartbeat.Server/bin:exec
+      - /src/src/Server/Heartbeat.Server/obj:exec
 
 volumes:
   heartbeat-web-node-modules:

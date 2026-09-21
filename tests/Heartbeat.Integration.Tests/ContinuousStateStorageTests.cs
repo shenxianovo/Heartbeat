@@ -267,7 +267,7 @@ public sealed class RecordStorageTests(PostgresFixture fixture) : PostgresTestBa
             db.Timelines.Add(timeline);
         }
 
-        var collector = Collector.Create(
+        var collector = Heartbeat.Recording.Collector.Create(
             timeline.Id, "heartbeat.collector.test", Guid.NewGuid().ToString(), "Test", Now);
         var track = Track.Create(collector.Id, "test.continuous-state", 1,
             timeMode, endMode, Now);

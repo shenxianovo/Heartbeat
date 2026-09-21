@@ -71,7 +71,7 @@ services:
   hub:
     build:
       context: .
-      dockerfile: src/Hub/Heartbeat.Hub.Host/Dockerfile
+      dockerfile: src/Server/Heartbeat.Server/Dockerfile
       target: final
     environment:
       urls: http://0.0.0.0:4318
