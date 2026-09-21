@@ -59,7 +59,7 @@ internal sealed class ArtifactsCommand(RepositoryContext repository, TextWriter 
             reportPath, JsonSerializer.Serialize(report, JsonOptions.Indented) + Environment.NewLine, cancellationToken);
         await ArtifactStore.WriteManifestAsync(run, new EvidenceManifest(
             run.Id, "inventory", "local", run.CreatedAt, DateTimeOffset.UtcNow, 0, true,
-            ["heartbeat-dev artifacts inventory-local"], ["local-inventory.json"],
+            ["dotnet run --project tools/Heartbeat.Dev -- artifacts inventory-local"], ["local-inventory.json"],
             ["This is a read-only inventory. No deletion candidates were applied."]), cancellationToken);
         if (json)
         {

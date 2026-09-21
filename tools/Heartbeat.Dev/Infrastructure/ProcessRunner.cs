@@ -6,6 +6,9 @@ internal sealed record ProcessResult(int ExitCode, string StdOut, string StdErr)
 
 internal interface IProcessRunner
 {
+    // Opens a user-owned GUI application without attaching its lifetime to the CLI.
+    void OpenApplication(string path) => throw new NotSupportedException();
+
     Task<ProcessResult> CaptureAsync(
         string fileName,
         IReadOnlyList<string> arguments,
@@ -21,6 +24,15 @@ internal interface IProcessRunner
 
 internal sealed class ProcessRunner(string workingDirectory) : IProcessRunner
 {
+    public void OpenApplication(string path)
+    {
+        using var process = Process.Start(new ProcessStartInfo(path)
+        {
+            WorkingDirectory = workingDirectory,
+            UseShellExecute = true,
+        });
+    }
+
     public Task<ProcessResult> CaptureAsync(
         string fileName,
         IReadOnlyList<string> arguments,

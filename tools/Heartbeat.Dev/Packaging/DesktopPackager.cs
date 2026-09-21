@@ -60,8 +60,10 @@ internal sealed class DesktopPackager(RepositoryContext repository, IProcessRunn
 
     private async Task<int> BuildMacAsync(string runtime, string bundle, string staging, CancellationToken token)
     {
+        var signing = new MacDevelopmentSigning(runner, output);
+        var identity = await signing.RequireIdentityAsync(token);
         var published = await RunAsync("dotnet", ["publish", repository.Path("src", "Desktop", "Heartbeat.Desktop.Mac"),
-            "-c", "Release", "-r", runtime, $"-p:AppBundleDir={bundle}", "-p:CreatePackage=false", "-p:EnableCodeSigning=false", "--nologo"], token);
+            "-c", "Release", "-r", runtime, "-p:HeartbeatDevelopmentBuild=true", $"-p:AppBundleDir={bundle}", "-p:CreatePackage=false", "-p:EnableCodeSigning=false", "--nologo"], token);
         if (published != 0) return published;
         if (!File.Exists(Path.Combine(bundle, "Contents", "Info.plist")))
             throw new InvalidOperationException("The macOS SDK did not produce an application bundle with Info.plist.");
@@ -73,20 +75,20 @@ internal sealed class DesktopPackager(RepositoryContext repository, IProcessRunn
         if (icons != 0) return icons;
         var converted = await RunAsync("iconutil", ["-c", "icns", iconset, "-o", Path.Combine(resources, "heartbeat.icns")], token);
         if (converted != 0) return converted;
-        return await SignMacBundleAsync(bundle, token);
+        return await SignMacBundleAsync(bundle, identity, signing.Keychain, token);
     }
 
-    private async Task<int> SignMacBundleAsync(string bundle, CancellationToken token)
+    private async Task<int> SignMacBundleAsync(string bundle, string identity, string keychain, CancellationToken token)
     {
         // MonoBundle is not a standard nested-code location: --deep alone skips its native libraries.
         foreach (var library in Directory.EnumerateFiles(bundle, "*.dylib", SearchOption.AllDirectories).Order())
         {
-            var signedLibrary = await RunAsync("codesign", ["--force", "--sign", "-", library], token);
+            var signedLibrary = await RunAsync("codesign", ["--force", "--keychain", keychain, "--sign", identity, library], token);
             if (signedLibrary != 0) return signedLibrary;
             var verifiedLibrary = await RunAsync("codesign", ["--verify", "--strict", library], token);
             if (verifiedLibrary != 0) return verifiedLibrary;
         }
-        var signed = await RunAsync("codesign", ["--force", "--deep", "--sign", "-", bundle], token);
+        var signed = await RunAsync("codesign", ["--force", "--deep", "--keychain", keychain, "--sign", identity, bundle], token);
         return signed != 0 ? signed : await RunAsync("codesign", ["--verify", "--deep", "--strict", bundle], token);
     }
 

@@ -1,10 +1,12 @@
 # Heartbeat Developer CLI
 
-从仓库内运行 `./scripts/heartbeat-dev`；Windows 使用 `scripts\heartbeat-dev.cmd`。两个脚本只启动 .NET 工具。命令树、参数类型、校验与帮助由 System.CommandLine 声明，各功能的 `CreateCommand()` 注册自己的子命令，`DeveloperCli` 只组合入口。
+从仓库根目录运行 `dotnet run --project tools/Heartbeat.Dev -- <子命令>`；macOS、Windows 和 Linux 共用此入口。命令树、参数类型、校验与帮助由 System.CommandLine 声明，各功能的 `CreateCommand()` 注册自己的子命令，`DeveloperCli` 只组合入口。
 
 | 目录 | 命令与职责 |
 | --- | --- |
-| `Environment/` | `env up/logs/status/down/reset`：Compose 与本地应用启动 |
+| `Environment/` | `env setup/up/logs/status/down/reset`：Compose 与本地应用启动 |
+| `Setup/` | `env setup`：隐藏输入、真实 Auth 校验、Owner 绑定与私密原子保存 |
+| `Signing/` | `signing setup/status`：Mac 创建或复用开发签名，Windows 报告无需签名 |
 | `Packaging/` | `package desktop`：平台发布、图标、签名、临时目录与产物替换 |
 | `Verification/` | `verify changed/full`：Git 变更选择、执行检查 |
 | `Quality/` | `quality --base REF`、`quality loc`：质量分析与代码规模 |

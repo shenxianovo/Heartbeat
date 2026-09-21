@@ -51,7 +51,7 @@ Base: `27cdf6f`（`cleanroom-rewrite`）
 | Heartbeat.Integration.Tests | 107 | 0 | 0 |
 | **合计** | **428** | **0** | **0** |
 
-### 2. `./scripts/heartbeat-dev verify changed --base HEAD`
+### 2. `dotnet run --project tools/Heartbeat.Dev -- verify changed --base HEAD`
 
 退出码 **0**，因改动面覆盖较广，选检结果是 `full-fallback` 计划，三阶段全绿：
 
@@ -62,7 +62,7 @@ Base: `27cdf6f`（`cleanroom-rewrite`）
 证据目录：`.artifacts/verification/20260917T093848Z-verify-full-fallback-7b29275a7ff74c5dbf0bebad7d47254d`
 （`manifest.json` 的 `exitCode: 0`、`failure: null`；已声明的限制仍是「浏览器侧的认证与 API 响应是 mock 的，通过不等于部署链路被证明」。）
 
-### 3. `./scripts/heartbeat-dev quality --base anchor --stock`（存量，累计口径，不闸门）
+### 3. `dotnet run --project tools/Heartbeat.Dev -- quality --base anchor --stock`（存量，累计口径，不闸门）
 
 退出码 **0**（存量测量本身不判定成败）。对 anchor `4e15d57` 的数字：
 

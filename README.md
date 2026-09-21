@@ -31,21 +31,21 @@ Heartbeat 把一个人在数字世界中的异构活动痕迹记录为时间有�
 ## 本地运行
 
 ```bash
-./scripts/heartbeat-dev env up
+dotnet run --project tools/Heartbeat.Dev -- env up
 ```
 
 默认启动 Web、API 和 PostgreSQL，访问 <http://localhost:3000>。也可以显式选择服务：
 
 ```bash
-./scripts/heartbeat-dev env up api
-./scripts/heartbeat-dev env up hub
-./scripts/heartbeat-dev env up desktop
+dotnet run --project tools/Heartbeat.Dev -- env up api
+dotnet run --project tools/Heartbeat.Dev -- env up hub
+dotnet run --project tools/Heartbeat.Dev -- env up desktop
 ```
 
 首次启动 Hub 或 Desktop Collector 前运行：
 
 ```bash
-./scripts/setup.sh
+dotnet run --project tools/Heartbeat.Dev -- env setup
 ```
 
 服务组合、release 模式、日志、重置和配置见[本地开发](docs/development.md)。

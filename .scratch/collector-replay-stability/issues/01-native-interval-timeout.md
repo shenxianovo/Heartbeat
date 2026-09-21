@@ -6,7 +6,7 @@ Status: needs-info
 
 ## 复现入口
 
-旧 `collector-replay` 场景和白板 app 已按用户要求移除。当前对应入口为 `./scripts/heartbeat-dev scenario desktop-replay --keep-environment-on-failure`；这次替换不代表历史超时根因已确认或修复。
+旧 `collector-replay` 场景和白板 app 已按用户要求移除。当前对应入口为 `dotnet run --project tools/Heartbeat.Dev -- scenario desktop-replay --keep-environment-on-failure`；这次替换不代表历史超时根因已确认或修复。
 
 保持真实 `Heartbeat Dev` 客户端前台，浏览器出现后完成真实 OIDC 登录。测试要求数据库出现正确 Owner/Target、预期应用身份、采集时间范围内且至少两秒的 Record。
 

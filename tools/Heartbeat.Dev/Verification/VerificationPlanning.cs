@@ -86,6 +86,8 @@ internal static class VerificationPlanner
         || path.StartsWith("tests/Heartbeat.Dev.Tests/", StringComparison.Ordinal)
         || path.StartsWith(".agents/skills/verify-heartbeat/", StringComparison.Ordinal)
         // 验证口径的说明与实现必须一起对：改了它就把 CLI 测试跑一遍。
+        // Deleted launchers can still appear when comparing against an older Git base.
+        || path.StartsWith("scripts/", StringComparison.Ordinal)
         || path is "docs/verification.md";
 
     private static bool NeedsBrowser(string path) =>

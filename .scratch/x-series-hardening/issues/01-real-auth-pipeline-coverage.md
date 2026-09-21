@@ -1,5 +1,8 @@
 # 01 真实认证管线端到端覆盖
 
+> 历史命令中的启动脚本已删除；当前从仓库根目录使用 `dotnet run --project tools/Heartbeat.Dev -- <子命令>`。
+
+
 Status: `ready-for-human`
 覆盖候选: `X-A2`（P1）、`S-04`（P2）；钉住 `S-02`、`S-03` 的当前行为
 

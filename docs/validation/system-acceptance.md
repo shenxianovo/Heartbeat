@@ -1,5 +1,8 @@
 # macOS System 恢复验收
 
+> 下文保留验收当时的命令。旧启动脚本现已删除；重跑时将其前缀替换为 `dotnet run --project tools/Heartbeat.Dev --`。
+
+
 日期：2026-09-14
 
 审查基线：`0bcd3b0a094b7478f7fa39b178f316b7f87b664c`

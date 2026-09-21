@@ -34,7 +34,7 @@ internal sealed record EnvironmentPlan(
         if (options.Action == EnvironmentAction.Reset && requested.Count > 0)
             throw new CommandUsageException("env reset always targets the whole local stack and does not accept services.");
         if (options.Action != EnvironmentAction.Up && requested.Contains("desktop"))
-            throw new CommandUsageException("desktop is a macOS application; view its status and quit from Heartbeat Dev's window or menu bar.");
+            throw new CommandUsageException("desktop is a native application; view its status and quit from Heartbeat Dev's window, menu bar or system tray.");
         requested = DefaultSelection(options.Action, requested);
         var selected = ExpandDependencies(options.Action, requested);
         return new EnvironmentPlan(options with { RequestedServices = requested },

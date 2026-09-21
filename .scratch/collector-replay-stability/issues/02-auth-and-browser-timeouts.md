@@ -10,7 +10,7 @@ Status: needs-info
 
 ## 再现入口
 
-`./scripts/heartbeat-dev scenario desktop-replay --keep-environment-on-failure`
+`dotnet run --project tools/Heartbeat.Dev -- scenario desktop-replay --keep-environment-on-failure`
 
 完成临时客户端配置、前台采集、暂停排空和退出，在临时浏览器完成真实 OIDC 登录。若再次超时，根据 `replay.json` 的具体阶段及 API 状态区分请求失败、时间范围操作、响应匹配或详情选择；保留环境仅检查受控 Record 元数据。不要为排查导出浏览器凭据或其他原生载荷。
 

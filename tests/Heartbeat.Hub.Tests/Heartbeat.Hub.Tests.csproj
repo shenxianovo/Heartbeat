@@ -11,6 +11,7 @@
     <PackageReference Include="xunit.v3.mtp-v2" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../../src/Server/Heartbeat.Server/Heartbeat.Server.csproj" />
     <ProjectReference Include="../../src/Hub/Heartbeat.Hub.Client/Heartbeat.Hub.Client.csproj" />
     <ProjectReference Include="../../src/Collectors/Heartbeat.Collector.VRChat/Heartbeat.Collector.VRChat.csproj" />
     <ProjectReference Include="../../src/Hub/Heartbeat.Hub.Host/Heartbeat.Hub.Host.csproj" />

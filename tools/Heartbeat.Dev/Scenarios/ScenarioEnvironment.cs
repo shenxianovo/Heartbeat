@@ -55,9 +55,9 @@ internal sealed class ScenarioEnvironment(
         EvidenceSession evidence, CancellationToken cancellationToken)
     {
         var dotenv = DotenvFile.Read(repository.Path(".env.local"));
-        var owner = Guid.Parse(dotenv.Get("HEARTBEAT_OWNER_ID") ?? throw new InvalidOperationException("Run ./scripts/setup.sh first."));
+        var owner = Guid.Parse(dotenv.Get("HEARTBEAT_OWNER_ID") ?? throw new InvalidOperationException("Run dotnet run --project tools/Heartbeat.Dev -- env setup first."));
         if (string.IsNullOrWhiteSpace(dotenv.Get("HEARTBEAT_API_KEY")))
-            throw new InvalidOperationException("Run ./scripts/setup.sh first to configure an Auth API key.");
+            throw new InvalidOperationException("Run dotnet run --project tools/Heartbeat.Dev -- env setup first to configure an Auth API key.");
         var project = $"heartbeat-scenario-{Guid.NewGuid():N}";
         var port = TcpPort.Reserve();
         var webPort = TcpPort.Reserve();

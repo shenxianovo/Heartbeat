@@ -1,6 +1,6 @@
 # 工程验证
 
-命令由 System.CommandLine 统一解析，运行 `./scripts/heartbeat-dev --help` 或任意子命令的 `--help` 查看当前参数。功能分组与执行职责见 [DevCLI README](../tools/Heartbeat.Dev/README.md)。
+命令由 System.CommandLine 统一解析，运行 `dotnet run --project tools/Heartbeat.Dev -- --help` 或任意子命令的 `--help` 查看当前参数。功能分组与执行职责见 [DevCLI README](../tools/Heartbeat.Dev/README.md)。
 
 
 Heartbeat 使用仓库 Developer CLI 验证三件事：
@@ -9,7 +9,7 @@ Heartbeat 使用仓库 Developer CLI 验证三件事：
 - `quality`：结构质量是否比 Git 基点退化；
 - `scenario`：用户场景是否留下可检查证据。
 
-macOS/Linux 使用 `./scripts/heartbeat-dev`，Windows 使用 `scripts/heartbeat-dev.cmd`。仓库目前没有 CI，命令需要人工或 Agent 主动执行。
+在仓库根目录使用 `dotnet run --project tools/Heartbeat.Dev -- <子命令>`，macOS、Windows 和 Linux 共用此入口。仓库目前没有 CI，命令需要人工或 Agent 主动执行。
 
 ## 首次准备
 
@@ -20,7 +20,7 @@ npm --prefix tools/Heartbeat.Dev/jscpd ci --ignore-scripts
 npm --prefix src/Frontend/Heartbeat.Web exec playwright install chromium
 ```
 
-Hub 和原生 Collector 另需运行 `./scripts/setup.sh`。
+Hub 和原生 Collector 另需运行 `dotnet run --project tools/Heartbeat.Dev -- env setup`。
 
 .NET 测试使用 xUnit v3 的 Microsoft.Testing.Platform v2 原生 runner。仓库根 `global.json` 让 .NET 10 的
 `dotnet test` 直接运行各测试可执行文件；测试项目不依赖 VSTest adapter 或 `Microsoft.NET.Test.Sdk`。
@@ -31,9 +31,9 @@ Hub 和原生 Collector 另需运行 `./scripts/setup.sh`。
 修改前确定比较基点。普通脏工作树使用 `HEAD`：
 
 ```bash
-./scripts/heartbeat-dev verify changed --base HEAD --plan
-./scripts/heartbeat-dev verify changed --base HEAD
-./scripts/heartbeat-dev verify full
+dotnet run --project tools/Heartbeat.Dev -- verify changed --base HEAD --plan
+dotnet run --project tools/Heartbeat.Dev -- verify changed --base HEAD
+dotnet run --project tools/Heartbeat.Dev -- verify full
 ```
 
 `changed` 按路径选择 .NET、Developer CLI、前端静态检查和 Playwright。无法识别的路径扩为 `full`；重命名同时检查新旧路径。干净工作树必须显式提供 `--base`。
@@ -54,10 +54,10 @@ Hub 和原生 Collector 另需运行 `./scripts/setup.sh`。
 ## 结构质量
 
 ```bash
-./scripts/heartbeat-dev quality loc
-./scripts/heartbeat-dev quality loc --json
-./scripts/heartbeat-dev quality --base HEAD
-./scripts/heartbeat-dev quality --base anchor --stock
+dotnet run --project tools/Heartbeat.Dev -- quality loc
+dotnet run --project tools/Heartbeat.Dev -- quality loc --json
+dotnet run --project tools/Heartbeat.Dev -- quality --base HEAD
+dotnet run --project tools/Heartbeat.Dev -- quality --base anchor --stock
 ```
 
 `quality loc` 是当前工作树的只读规模视图，只统计 Git 已跟踪和未忽略文件中的有效行（排除空行与纯注释行），不运行测试、重复检测或复杂度分析，也不创建验证证据。总体按生产、测试、工具、构建、文档和生成代码角色显示；模块与语言按实现代码和测试代码显示，其中实现代码包含产品代码与工具代码。模块以 `src/` 下的产品域目录为准；独立测试项目按其被测产品域显式映射，Developer CLI 作为工具模块单列，未知测试项目显示为 `Unassigned tests`，不猜测归属。
@@ -88,13 +88,13 @@ C# 指标先构建普通项目，再对 AppKit 与 WinUI 宿主执行托管编�
 ## 可复现场景
 
 ```bash
-./scripts/heartbeat-dev scenario replay-fixture
-./scripts/heartbeat-dev scenario hubs-fixture
-./scripts/heartbeat-dev scenario delivery
-./scripts/heartbeat-dev scenario collector-delivery
-./scripts/heartbeat-dev scenario desktop-replay
-./scripts/heartbeat-dev scenario native-desktop
-./scripts/heartbeat-dev scenario --list
+dotnet run --project tools/Heartbeat.Dev -- scenario replay-fixture
+dotnet run --project tools/Heartbeat.Dev -- scenario hubs-fixture
+dotnet run --project tools/Heartbeat.Dev -- scenario delivery
+dotnet run --project tools/Heartbeat.Dev -- scenario collector-delivery
+dotnet run --project tools/Heartbeat.Dev -- scenario desktop-replay
+dotnet run --project tools/Heartbeat.Dev -- scenario native-desktop
+dotnet run --project tools/Heartbeat.Dev -- scenario --list
 ```
 
 | 场景 | 证据 | 不证明 |
@@ -140,10 +140,10 @@ Developer CLI 的场景使用以下小型设施，按需直接组合：
 ### 桌面应用到真实 Web 回放
 
 ```bash
-./scripts/heartbeat-dev scenario desktop-replay
+dotnet run --project tools/Heartbeat.Dev -- scenario desktop-replay
 ```
 
-场景按[客户端 README](../src/Desktop/README.md)生成 ad-hoc 签名的 Mac 应用包，在临时 profile 中启动，并连接本轮隔离 PostgreSQL、API 和生产 Web。依赖有效 Auth、已安装的前端依赖与 Playwright Chromium，以及 Auth 允许的 `http://localhost:3000/auth/callback`。按命令输出填写连接和 API key、保存并开始采集；凭据只写临时 profile 对应的钥匙串条目。
+场景按[客户端 README](../src/Desktop/README.md)生成由本机固定 `Heartbeat Development` identity 签名的 Mac 应用包，在临时 profile 中启动，并连接本轮隔离 PostgreSQL、API 和生产 Web。依赖有效 Auth、已安装的前端依赖与 Playwright Chromium、已准备的开发签名 identity，以及 Auth 允许的 `http://localhost:3000/auth/callback`。按命令输出填写连接和 API key、保存并开始采集；凭据只写临时 profile 对应的钥匙串条目。
 
 保持真实 `Heartbeat Dev` 窗口在前台，直到下一步提示。场景从生成的应用包读取身份，等待其自身的应用 Record 落库，并核对 Owner、Target、采集时间窗和至少两秒的持续区间；不再编译额外的白板测试 app。随后按提示暂停采集，等队列排空，再从菜单栏退出；场景核对退出码、实际 SQLite 队列和同一 Record 的最终区间。它验收本地应用包启动，不替代拖入 Applications 的人工安装验收。
 
@@ -160,9 +160,9 @@ Developer CLI 的场景使用以下小型设施，按需直接组合：
 窗口标题静置参数必须根据真实读数判断：
 
 ```bash
-./scripts/heartbeat-dev probe window-title --duration-seconds 120
-./scripts/heartbeat-dev probe window-title --readings <path> --dwell-seconds 1,1.5,2
-./scripts/heartbeat-dev probe window-title --from-database --since <time> --until <time>
+dotnet run --project tools/Heartbeat.Dev -- probe window-title --duration-seconds 120
+dotnet run --project tools/Heartbeat.Dev -- probe window-title --readings <path> --dwell-seconds 1,1.5,2
+dotnet run --project tools/Heartbeat.Dev -- probe window-title --from-database --since <time> --until <time>
 ```
 
 探针默认只保存时间、应用身份、标题长度、指纹和相邻标题形态；显式启用敏感证据才保存标题原文。读不到 Accessibility 标题时以非零退出，不把无效读数解释为稳定。
@@ -176,10 +176,10 @@ Developer CLI 的场景使用以下小型设施，按需直接组合：
 每次 `verify`、`quality`、`scenario` 和 `probe` 都在 `.artifacts/verification/<run-id>/` 写 `manifest.json`，记录命令、时间、退出码、由退出码派生的 `status`（`succeeded`、`failed`、`cancelled`）、产物、敏感证据标志和限制。取消操作使用退出码 130；强制杀进程、断电和产物目录不可写不在保证范围内。前端性能基准的报告独立保存在前端 `.artifacts/perf/`，不写入 CLI manifest。
 
 ```bash
-./scripts/heartbeat-dev artifacts list
-./scripts/heartbeat-dev artifacts prune
-./scripts/heartbeat-dev artifacts prune --apply
-./scripts/heartbeat-dev artifacts inventory-local
+dotnet run --project tools/Heartbeat.Dev -- artifacts list
+dotnet run --project tools/Heartbeat.Dev -- artifacts prune
+dotnet run --project tools/Heartbeat.Dev -- artifacts prune --apply
+dotnet run --project tools/Heartbeat.Dev -- artifacts inventory-local
 ```
 
 `prune` 默认只预览，`--apply` 才删除验证运行；不删除 `.artifacts/quality-baselines/`。默认保留最近 10 次、最近 5 次失败和 2 天内的运行。没有 manifest 的运行按失败保留。

@@ -7,6 +7,15 @@ public sealed class DotenvFileTests : IDisposable
     private readonly string _directory = Path.Combine(Path.GetTempPath(), $"heartbeat-dotenv-{Guid.NewGuid():N}");
 
     [Fact]
+    public void DoubleQuotedLiteralDollarsFollowComposeEscaping()
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "literal.env");
+        File.WriteAllText(path, "VALUE=\"a$$b$$$$c\\\\\"\n");
+        Assert.Equal("a$b$$c\\", DotenvFile.Read(path).GetSaved("VALUE"));
+    }
+
+    [Fact]
     public void ReadsQuotedValuesCommentsAndEscapes()
     {
         Directory.CreateDirectory(_directory);

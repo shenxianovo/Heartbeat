@@ -11,8 +11,10 @@ namespace Heartbeat.Hub.Tests;
 
 public sealed class CheckAuthTests
 {
-    [Fact]
-    public async Task CheckAuthPrintsOnlyTheOwnerJsonWithoutStartingHubServices()
+    [Theory]
+    [InlineData("Heartbeat.Hub.Host.dll")]
+    [InlineData("Heartbeat.Server.dll")]
+    public async Task CheckAuthPrintsOnlyTheOwnerJsonWithoutStartingHubServices(string assembly)
     {
         var ownerId = Guid.NewGuid();
         const string apiKey = "check-auth-api-key";
@@ -32,7 +34,7 @@ public sealed class CheckAuthTests
         });
         await auth.StartAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        var result = await RunAsync(new Uri(Assert.Single(auth.Urls)), apiKey);
+        var result = await RunAsync(assembly, new Uri(Assert.Single(auth.Urls)), apiKey);
 
         Assert.Equal(0, result.ExitCode);
         using var output = JsonDocument.Parse(result.StandardOutput.Trim());
@@ -42,8 +44,10 @@ public sealed class CheckAuthTests
         await auth.StopAsync(cancellationToken: TestContext.Current.CancellationToken);
     }
 
-    [Fact]
-    public async Task CheckAuthFailureIsNonzeroAndDoesNotRevealCredentials()
+    [Theory]
+    [InlineData("Heartbeat.Hub.Host.dll")]
+    [InlineData("Heartbeat.Server.dll")]
+    public async Task CheckAuthFailureIsNonzeroAndDoesNotRevealCredentials(string assembly)
     {
         const string apiKey = "secret-api-key-that-must-not-appear";
         var builder = WebApplication.CreateBuilder();
@@ -53,7 +57,7 @@ public sealed class CheckAuthTests
         auth.MapPost("/api/v1/apikeys/exchange", () => Results.Unauthorized());
         await auth.StartAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        var result = await RunAsync(new Uri(Assert.Single(auth.Urls)), apiKey);
+        var result = await RunAsync(assembly, new Uri(Assert.Single(auth.Urls)), apiKey);
 
         Assert.NotEqual(0, result.ExitCode);
         Assert.Equal(string.Empty, result.StandardOutput);
@@ -62,15 +66,16 @@ public sealed class CheckAuthTests
         await auth.StopAsync(cancellationToken: TestContext.Current.CancellationToken);
     }
 
-    private static async Task<ProcessResult> RunAsync(Uri authUrl, string apiKey)
+    private static async Task<ProcessResult> RunAsync(string assembly, Uri authUrl, string apiKey)
     {
+        var dataDirectory = Path.Combine(Path.GetTempPath(), "heartbeat-auth-check-" + Guid.NewGuid().ToString("N"));
         var start = new ProcessStartInfo("dotnet")
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        start.ArgumentList.Add(typeof(HubProgram).Assembly.Location);
+        start.ArgumentList.Add(Path.Combine(Path.GetDirectoryName(typeof(HubProgram).Assembly.Location)!, assembly));
         start.ArgumentList.Add("--check-auth");
         foreach (var name in new[]
                  {
@@ -83,10 +88,25 @@ public sealed class CheckAuthTests
 
         start.Environment["Hub__AuthUrl"] = authUrl.AbsoluteUri;
         start.Environment["Hub__ApiKey"] = apiKey;
+        start.Environment["Hub__OwnerId"] = Guid.NewGuid().ToString();
+        start.Environment["Hub__BackendUrl"] = authUrl.AbsoluteUri;
+        start.Environment["Hub__DataDirectory"] = dataDirectory;
+        start.Environment["Hub__AccessToken"] = new string('a', 64);
+        start.Environment["urls"] = "http://127.0.0.1:0";
         using var process = Process.Start(start)!;
         var stdout = process.StandardOutput.ReadToEndAsync();
         var stderr = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(20));
+        try
+        {
+            await process.WaitForExitAsync(TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(Directory.Exists(dataDirectory), "Auth checks must not open Hub storage.");
+        }
+        finally
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync();
+            if (Directory.Exists(dataDirectory)) Directory.Delete(dataDirectory, recursive: true);
+        }
         return new ProcessResult(process.ExitCode, await stdout, await stderr);
     }
 

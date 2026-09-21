@@ -8,18 +8,18 @@ Mac 需要完整 Xcode、与 Xcode 匹配的 .NET macOS workload（`dotnet workl
 
 
 ```bash
-./scripts/heartbeat-dev env up desktop
+dotnet run --project tools/Heartbeat.Dev -- env up desktop
 # 一并启动本地 Web、API 与数据库：
-./scripts/heartbeat-dev env up web desktop
+dotnet run --project tools/Heartbeat.Dev -- env up web desktop
 ```
 
 CLI 复用打包模块生成并打开 `.artifacts/desktop/Heartbeat Dev.app`，不额外启动服务端 Hub。改动代码后先退出开发版再执行命令。
 
-只构建、不启动应用时运行 `./scripts/heartbeat-dev package desktop`。平台、输出目录与前置条件见[本地打包](../../docs/development.md#本地打包)。
+只构建、不启动应用时运行 `dotnet run --project tools/Heartbeat.Dev -- package desktop`。平台、输出目录与前置条件见[本地打包](../../docs/development.md#本地打包)。
 
-可以把 `Heartbeat Dev.app` 拖入本机 Applications 目录再打开。该产物为本地 ad-hoc 签名，未做发行签名、公证或自动更新，不用于上线分发。两个平台的原始应用图标位于 `assets/desktop-collector/`；Mac 打包时生成 ICNS，Windows 目前使用系统默认托盘图标。
+可以把 `Heartbeat Dev.app` 拖入本机 Applications 目录再打开。该产物使用本机固定的 `Heartbeat Development` 开发 identity，未做发行签名、公证或自动更新，不用于上线分发。两个平台的原始应用图标位于 `assets/desktop-collector/`；Mac 打包时生成 ICNS，Windows 目前使用系统默认托盘图标。
 
-本地开发包显示为 **Heartbeat Dev**，Bundle ID 为 `com.shenxianovo.heartbeat.desktop`，与旧版 `com.shenxianovo.heartbeat` 不同。开发包使用独立的 `Heartbeat/Desktop` 子目录，不替换 `~/Applications/Heartbeat.app`。
+本地开发包显示为 **Heartbeat Dev**，Bundle ID 为 `com.shenxianovo.heartbeat.desktop.dev`，与旧版 `com.shenxianovo.heartbeat` 不同。开发包使用独立的 `Heartbeat/Desktop` 子目录，不替换 `~/Applications/Heartbeat.app`。
 
 首次打开进入“连接设置”，填写后端、Auth、Web 时间线地址和 API key，点击“验证并保存”，然后开始采集。API key 通过现有 Auth 交换取得 Owner，保存到 macOS 钥匙串，配置 JSON 不包含密钥。后续启动自动恢复采集，离线时本机 Hub 可以接管，连接恢复后再上传。
 
@@ -43,9 +43,11 @@ Mac Target 来自 `IOPlatformUUID`；Windows Target 来自 SMBIOS 2.6+ 的系统
 在 Windows 10 2004 或更新系统上，安装 .NET 10 SDK 及 Windows SDK 构建工具后执行：
 
 ```powershell
-.\scripts\heartbeat-dev.cmd package desktop
-& '.\.artifacts\desktop-windows\Heartbeat Dev\Heartbeat.Desktop.Windows.exe'
+dotnet run --project tools/Heartbeat.Dev -- signing status
+dotnet run --project tools/Heartbeat.Dev -- env up desktop
 ```
+
+`signing setup/status` 明确提示 Windows 开发无需签名且不修改证书库；`env up desktop` 共用打包模块并独立启动应用，命令返回后可关闭终端。只构建使用 `package desktop`。
 
 默认采用宿主机架构；显式指定 ARM64 使用 `--runtime win-arm64`。产物包含 .NET 与 Windows App SDK 运行依赖，是本地未打包的应用目录，尚不提供安装器、发行签名或自动更新。需要保留整个输出目录；不将单个 exe 当作独立产物。
 
@@ -66,9 +68,11 @@ API key 保存到当前 Windows 账号的凭据管理器。窗口关闭后由系
 
 ## 验证
 
-`./scripts/heartbeat-dev scenario desktop-replay` 运行本地打包应用、原生采集、进程内 Hub、隔离后端和真实 Web 回放。首次配置、开始/暂停/退出以及 OIDC 登录需要操作真实界面；场景会输出当前步骤和连接地址。临时 profile 与钥匙串条目在结束时清理。
+`dotnet run --project tools/Heartbeat.Dev -- scenario desktop-replay` 运行本地打包应用、原生采集、进程内 Hub、隔离后端和真实 Web 回放。首次配置、开始/暂停/退出以及 OIDC 登录需要操作真实界面；场景会输出当前步骤和连接地址。临时 profile 与钥匙串条目在结束时清理。
 
 `Heartbeat.Desktop.Tests` 使用受控观察源与 Auth 响应，验证运行操作连接到真实 SQLite 接管、凭据不落配置文件，配置与开始的串行执行、一次性启动恢复、退出幂等，以及暂停时交接未确认快照；这些是组合测试，不是原生端到端证据。证据边界见[工程验证](../../docs/verification.md)。
+
+Windows 先验收 DevCLI：重复运行 `signing setup/status` 均报告无需签名；`env setup` 完成 Auth 校验后检查 `.env.local` 仅当前用户可访问，再取消一次确认原文件未变；`env up desktop` 返回后关闭终端，确认客户端仍运行；从托盘退出后重新打包启动。
 
 Windows 还需在真实 Windows 桌面验收：首次连接与凭据重读、开始/暂停、关闭窗口与托盘重开、离线接管与恢复交付、退出；原生观察需验证前台切换、标题站稳、左右修饰键、鼠标按钮与双向滚动、锁屏/解锁、会话断开及休眠/唤醒。当前 `desktop-replay` 只覆盖 Mac，Windows 不借用 Mac 场景的通过结论。
 

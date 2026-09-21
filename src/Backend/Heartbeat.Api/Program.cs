@@ -24,7 +24,7 @@ if (args.Contains("--migrate", StringComparer.OrdinalIgnoreCase))
     catch (Exception exception)
     {
         Console.Error.WriteLine($"Database initialization failed ({exception.GetType().Name}). See the database error above.");
-        Console.Error.WriteLine("If the Initial migration changed and local data can be discarded, run ./scripts/heartbeat-dev env reset --apply, then start again. Reset deletes all local stack data, including the Hub queue.");
+        Console.Error.WriteLine("If the Initial migration changed and local data can be discarded, run dotnet run --project tools/Heartbeat.Dev -- env reset --apply, then start again. Reset deletes all local stack data, including the Hub queue.");
         return 1;
     }
 }

@@ -86,6 +86,7 @@ internal static class SourceCorpus
     private static readonly string[] ProductionRoots = ["src/"];
 
     private static readonly string[] ToolingRoots =
+        // Historical baselines still contain script-based development tooling.
         ["tools/", "scripts/", ".agents/", ".config/", ".github/"];
 
     private static readonly string[] BuildLanguages = ["MSBuild", "XML", "Dockerfile", "YAML"];

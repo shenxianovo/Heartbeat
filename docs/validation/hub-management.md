@@ -1,5 +1,8 @@
 # Hub 管理与服务器 VRChat 验证
 
+> 下文保留验收当时的命令。旧启动脚本现已删除；重跑时将其前缀替换为 `dotnet run --project tools/Heartbeat.Dev --`。
+
+
 验收快照日期：2026-09-21。实现决策见 [ADR-0019](../adr/ADR-0019-single-owner-hub-management.md)，使用见 [服务器 README](../../src/Server/README.md)。以下结论只对应本次工作树验证，不代表已部署。
 
 | 检查 | 结果 | 证据 |

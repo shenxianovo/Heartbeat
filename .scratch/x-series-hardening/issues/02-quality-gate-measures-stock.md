@@ -1,5 +1,8 @@
 # 02 结构闸门要度量存量
 
+> 历史命令中的启动脚本已删除；当前从仓库根目录使用 `dotnet run --project tools/Heartbeat.Dev -- <子命令>`。
+
+
 Status: `implemented (self-verified, not committed)`
 覆盖候选: `X-A1`（P1）、`X-C3`（P2）、`X-C5`（P3）、`X-C2`（P2）
 

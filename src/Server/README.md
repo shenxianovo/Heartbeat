@@ -5,8 +5,8 @@
 开发环境：
 
 ```sh
-./scripts/setup.sh
-./scripts/heartbeat-dev env up web hub
+dotnet run --project tools/Heartbeat.Dev -- env setup
+dotnet run --project tools/Heartbeat.Dev -- env up web hub
 ```
 
 重写期直接更新 Initial migration，不提供旧库增量迁移。若开发库已应用旧 Initial，需要使用新的开发库或由用户确认后重建；本次验证使用隔离数据库，没有清空现有库。
@@ -14,6 +14,8 @@
 登录 Web 后从页头进入 `/hubs`。服务器联络成功后出现在线节点；选择“添加 VRChat”，填写稳定的 `usr_…` 用户 ID、用户名和密码并保存。需要两步验证时填写验证码，再次保存；认证完成后点击“开始”。密码和验证码输入在提交后清空。暂停仍允许 Hub 上传已有队列。
 
 `compose.yaml` 的 `hub` 服务使用本应用，指定 `Hub__DataDirectory=/data`。`HubLocalStorage` 统一管理该 Hub 的本地读写，`heartbeat-hub` 卷保存身份、SQLite、公开 Collector 配置与加密会话；重建容器不要删除数据卷。可以用 `VRChat__Contact` 配置 VRChat User-Agent 的联系方式。通用 `Heartbeat.Hub.Host` 仍可单独运行，仅提供无内置 Collector 的 Hub。
+
+`--check-auth` 只校验 API key 并输出 Owner JSON，复用 Hub 的 Auth 校验实现；不会打开 Hub 数据库或启动 Collector、HTTP 服务。DevCLI 的 `env setup` 使用此入口。
 
 直接运行本应用使用与 [Hub 交付](../../docs/hub-record-delivery.md) 相同的 `Hub__AuthUrl`、`Hub__ApiKey`、`Hub__OwnerId`、`Hub__BackendUrl`、`Hub__DataDirectory` 和 `Hub__AccessToken` 配置：
 

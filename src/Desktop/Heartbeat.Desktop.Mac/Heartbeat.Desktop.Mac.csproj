@@ -4,11 +4,15 @@
     <TargetFramework>net10.0-macos27.0</TargetFramework>
     <NoWarn>$(NoWarn);XCODE_27_0_PREVIEW</NoWarn>
     <SupportedOSPlatformVersion>14.0</SupportedOSPlatformVersion>
-    <ApplicationTitle>Heartbeat Dev</ApplicationTitle>
+    <ApplicationTitle>Heartbeat</ApplicationTitle>
     <ApplicationId>com.shenxianovo.heartbeat.desktop</ApplicationId>
     <!-- The Collector assembly also has a standalone CLI; this host uses only its library types. -->
     <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
     <LinkMode>None</LinkMode>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(HeartbeatDevelopmentBuild)' == 'true'">
+    <ApplicationTitle>Heartbeat Dev</ApplicationTitle>
+    <ApplicationId>com.shenxianovo.heartbeat.desktop.dev</ApplicationId>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Heartbeat.Desktop/Heartbeat.Desktop.csproj" />

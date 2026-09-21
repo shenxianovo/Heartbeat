@@ -21,7 +21,7 @@ public static class Program
         catch (CommandUsageException exception)
         {
             Console.Error.WriteLine(exception.Message);
-            Console.Error.WriteLine("Run heartbeat-dev --help for usage.");
+            Console.Error.WriteLine("Run dotnet run --project tools/Heartbeat.Dev -- --help for usage.");
             return 2;
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)

@@ -51,7 +51,7 @@ npm run test:e2e
 
 `verify` 执行类型生成、TypeScript、ESLint、Prettier、Vitest 和生产构建。浏览器测试使用模拟认证和 API，不能代替真实链路验收；证据边界见[工程验证](../../../docs/verification.md)。
 
-真实用户主线使用仓库根目录的 `./scripts/heartbeat-dev scenario desktop-replay`：真实 Heartbeat Dev 客户端及其同进程 Collector/Hub、API、PostgreSQL 与生产 Web 直接连接，经过真实 OIDC 登录后在页面核对本次 Record。需要在弹出的临时 Chromium 中登录；具体前置条件与证据见[桌面应用到真实 Web 回放](../../../docs/verification.md#桌面应用到真实-web-回放)。
+真实用户主线使用仓库根目录的 `dotnet run --project tools/Heartbeat.Dev -- scenario desktop-replay`：真实 Heartbeat Dev 客户端及其同进程 Collector/Hub、API、PostgreSQL 与生产 Web 直接连接，经过真实 OIDC 登录后在页面核对本次 Record。需要在弹出的临时 Chromium 中登录；具体前置条件与证据见[桌面应用到真实 Web 回放](../../../docs/verification.md#桌面应用到真实-web-回放)。
 
 ## 活动泳道拖动基准
 
@@ -87,4 +87,4 @@ npm run test:perf
 
 页头“Hub 管理”进入 `/hubs`，按当前 Owner 展示 Hub 联络、Collector 状态和 Record 交付。在线时可配置服务器已安装类型、启停及移除；Desktop 支持现有平台 Collector 的远程启停。离线节点可退役。行为权威见 [Hub 管理契约](../../../docs/hub-management.md)。
 
-运行 `./scripts/heartbeat-dev scenario hubs-fixture`（仓库根目录）验证通用表单、在线操作和离线禁用；该浏览器场景使用 mock 认证/API，不替代真实账号与原生客户端验收。
+运行 `dotnet run --project tools/Heartbeat.Dev -- scenario hubs-fixture`（仓库根目录）验证通用表单、在线操作和离线禁用；该浏览器场景使用 mock 认证/API，不替代真实账号与原生客户端验收。

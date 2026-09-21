@@ -62,14 +62,14 @@ dotnet bin/Debug/net10.0/Heartbeat.Collector.Desktop.Mac.dll \
   --probe-window-titles --duration-seconds 120 --output /tmp/readings.json
 ```
 
-探针不需要 Hub 地址与凭据，也不产生 Record：它把原生通知与轮询读数按时间原样写进一个 JSON 文件。默认只写标题长度、指纹与相邻标题的形态度量，`--include-titles` 才写标题原文。日常从 `./scripts/heartbeat-dev probe window-title` 使用它，统计与静置参数模拟由那条命令给出，见[工程验证](../../../docs/verification.md)。
+探针不需要 Hub 地址与凭据，也不产生 Record：它把原生通知与轮询读数按时间原样写进一个 JSON 文件。默认只写标题长度、指纹与相邻标题的形态度量，`--include-titles` 才写标题原文。日常从 `dotnet run --project tools/Heartbeat.Dev -- probe window-title` 使用它，统计与静置参数模拟由那条命令给出，见[工程验证](../../../docs/verification.md)。
 
 ## 静置阈值复核
 
 默认值的依据见 [ADR-0008](../../../docs/adr/ADR-0008-window-title-must-hold-still.md)。积累真实读数后运行：
 
 ```bash
-./scripts/heartbeat-dev probe window-title --from-database \
+dotnet run --project tools/Heartbeat.Dev -- probe window-title --from-database \
   --since '<起>' --until '<止>' --dwell-seconds 1,1.5,2
 ```
 
@@ -79,4 +79,4 @@ dotnet bin/Debug/net10.0/Heartbeat.Collector.Desktop.Mac.dll \
 
 启动常驻 Collector 后依次验证：切换两个应用；在同一应用切换窗口和标题；锁屏再解锁；允许 Accessibility 与 Input Monitoring 后按键、单击和双向滚动。Web 回放应在一个时间轴显示相应 Track。锁屏和休眠会改变系统状态，不应由自动测试擅自触发。
 
-启动到落库的自动验收使用 `./scripts/heartbeat-dev scenario collector-delivery`，它运行真实 Collector 单次快照、Hub、API 和 PostgreSQL。环境要求、断言和证据边界见[工程验证](../../../docs/verification.md#collector-到落库)；平台交互的已完成与待完成范围见[系统验收](../../../docs/validation/system-acceptance.md)。
+启动到落库的自动验收使用 `dotnet run --project tools/Heartbeat.Dev -- scenario collector-delivery`，它运行真实 Collector 单次快照、Hub、API 和 PostgreSQL。环境要求、断言和证据边界见[工程验证](../../../docs/verification.md#collector-到落库)；平台交互的已完成与待完成范围见[系统验收](../../../docs/validation/system-acceptance.md)。

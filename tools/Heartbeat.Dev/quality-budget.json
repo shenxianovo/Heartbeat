@@ -1,6 +1,6 @@
 {
   "maxProductionComplexityHotspots": 12,
   "recordedAt": "2026-09-17",
-  "measuredAgainstBase": "anchor 4e15d57 (./scripts/heartbeat-dev quality --base anchor --stock)",
+  "measuredAgainstBase": "anchor 4e15d57 (DevCLI quality --base anchor --stock)",
   "rule": "Absolute cap on production C# functions above cyclomatic complexity 10, checked on every quality run regardless of base. The number is meant to move down only: raising it changes this file, shows up in the diff, and needs a reason next to it."
 }

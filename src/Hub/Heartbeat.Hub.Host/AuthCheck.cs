@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace Heartbeat.Hub.Host;
 
-internal static class AuthCheck
+public static class AuthCheck
 {
     public static async Task<int> RunAsync()
     {

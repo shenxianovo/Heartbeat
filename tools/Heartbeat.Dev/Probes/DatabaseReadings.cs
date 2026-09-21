@@ -57,7 +57,7 @@ internal sealed class DatabaseReadings(RepositoryContext repository, IProcessRun
         if (!File.Exists(envFile))
         {
             throw new CommandUsageException(
-                $"No {envFile}, so the local database cannot be addressed. Run ./scripts/setup.sh first.");
+                $"No {envFile}, so the local database cannot be addressed. Run dotnet run --project tools/Heartbeat.Dev -- env setup first.");
         }
 
         var compose = ComposeInvocation.Create(repository, envFile, release: false);
@@ -74,7 +74,7 @@ internal sealed class DatabaseReadings(RepositoryContext repository, IProcessRun
         if (result.ExitCode != 0)
         {
             throw new CommandUsageException(
-                "Reading the local database failed. Start it with ./scripts/heartbeat-dev env up db, then export again."
+                "Reading the local database failed. Start it with dotnet run --project tools/Heartbeat.Dev -- env up db, then export again."
                 + Environment.NewLine + result.StdErr.Trim());
         }
 

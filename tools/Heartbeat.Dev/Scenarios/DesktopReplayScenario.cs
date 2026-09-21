@@ -77,7 +77,7 @@ internal sealed class DesktopReplayScenario(RepositoryContext repository, IProce
     private async Task<(string Executable, string Identifier, string DisplayName)> BuildPackageAsync(EvidenceSession evidence, CancellationToken cancellationToken)
     {
         var package = Path.Combine(evidence.Run.Directory, "desktop-package");
-        evidence.Commands.Add($"heartbeat-dev package desktop --output \"{package}\"");
+        evidence.Commands.Add($"dotnet run --project tools/Heartbeat.Dev -- package desktop --output \"{package}\"");
         await using var log = new StreamWriter(Path.Combine(evidence.Run.Directory, "desktop-build.log"));
         var result = await new DesktopPackager(repository, runner, log)
             .PackageAsync(DesktopPackageOptions.Create(repository, output: package), cancellationToken);

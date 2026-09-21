@@ -26,11 +26,12 @@ public sealed class DesktopPackagerTests : IDisposable
         Assert.False(File.Exists(Path.Combine(output, name, "old")));
         Assert.Equal("keep", File.ReadAllText(Path.Combine(output, "unrelated")));
         Assert.Equal([name], Directory.GetDirectories(output).Select(Path.GetFileName));
-        var publish = runner.Calls[0];
+        var publish = Assert.Single(runner.Calls, call => call.File == "dotnet");
         Assert.Equal("dotnet", publish.File);
         Assert.Contains(runtime, publish.Args);
         if (options.IsMac)
         {
+            Assert.Contains("-p:HeartbeatDevelopmentBuild=true", publish.Args);
             Assert.True(File.Exists(Path.Combine(result.ApplicationPath, "Contents", "Info.plist")));
             Assert.Equal(10, runner.Calls.Count(call => call.File == "sips"));
             var libraryCalls = runner.Calls.Where(call => call.File == "codesign" &&
@@ -47,6 +48,38 @@ public sealed class DesktopPackagerTests : IDisposable
             Assert.Contains("--self-contained", publish.Args);
             Assert.Single(runner.Calls);
         }
+    }
+
+    [Fact]
+    public async Task MacPackageUsesThePersistentDevelopmentSigningIdentityForAllNativeCode()
+    {
+        var repository = new RepositoryContext(_root);
+        var options = DesktopPackageOptions.Create(repository, "osx-arm64", _root, "osx-arm64");
+        var runner = new PackageTestRunner();
+
+        var result = await new DesktopPackager(repository, runner, TextWriter.Null)
+            .PackageAsync(options, CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        var signingCalls = runner.Calls.Where(call => call.File == "codesign" && call.Args.Contains("--sign")).ToArray();
+        Assert.NotEmpty(signingCalls);
+        Assert.All(signingCalls, call => Assert.Contains(new string('A', 40), call.Args));
+        Assert.DoesNotContain(signingCalls, call => call.Args.Contains("-"));
+    }
+
+    [Fact]
+    public async Task MissingDevelopmentSigningIdentityFailsBeforePublishing()
+    {
+        var repository = new RepositoryContext(_root);
+        var options = DesktopPackageOptions.Create(repository, "osx-arm64", _root, "osx-arm64");
+        var runner = new PackageTestRunner(hasSigningIdentity: false);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new DesktopPackager(repository, runner, TextWriter.Null).PackageAsync(options, CancellationToken.None));
+
+        Assert.Contains("Heartbeat Development", error.Message);
+        Assert.Equal(["security"], runner.Calls.Select(call => call.File));
+        Assert.Empty(Directory.GetDirectories(_root));
     }
 
     [Theory]
@@ -123,15 +156,28 @@ public sealed class DesktopPackagerTests : IDisposable
     public void Dispose() => Directory.Delete(_root, recursive: true);
 }
 
-internal sealed class PackageTestRunner(string? failedStep = null, Action? afterPublish = null, bool produceBundle = true) : IProcessRunner
+internal sealed class PackageTestRunner(
+    string? failedStep = null,
+    Action? afterPublish = null,
+    bool produceBundle = true,
+    bool hasSigningIdentity = true) : IProcessRunner
 {
     public List<(string File, IReadOnlyList<string> Args)> Calls { get; } = [];
     public string? LastStep { get; private set; }
+    public string? OpenedApplication { get; private set; }
+    public void OpenApplication(string path) => OpenedApplication = path;
 
     public Task<ProcessResult> CaptureAsync(string fileName, IReadOnlyList<string> arguments,
         IReadOnlyDictionary<string, string?>? environment, CancellationToken cancellationToken)
     {
         Calls.Add((fileName, arguments));
+        if (fileName == "security")
+        {
+            var standardOutput = hasSigningIdentity
+                ? $"  1) {new string('A', 40)} \"{MacDevelopmentSigning.IdentityName}\"\n     1 valid identities found\n"
+                : "     0 valid identities found\n";
+            return Task.FromResult(new ProcessResult(0, standardOutput, ""));
+        }
         LastStep = fileName == "codesign" && arguments.Contains("--verify") ? "verify-signature" : fileName;
         if (fileName == "codesign" && arguments[^1].EndsWith(".dylib", StringComparison.Ordinal))
             LastStep = arguments.Contains("--verify") ? "verify-library" : "sign-library";

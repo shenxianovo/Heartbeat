@@ -4,6 +4,8 @@ namespace Heartbeat.Dev;
 
 internal sealed class DotenvFile(IReadOnlyDictionary<string, string> values)
 {
+    public string? GetSaved(string name) => values.GetValueOrDefault(name);
+
     public string? Get(string name)
     {
         var environment = Environment.GetEnvironmentVariable(name);
@@ -58,7 +60,7 @@ internal sealed class DotenvFile(IReadOnlyDictionary<string, string> values)
             }
             decoded.Append(DecodeEscape(value[++index]));
         }
-        return decoded.ToString();
+        return decoded.ToString().Replace("$$", "$", StringComparison.Ordinal);
     }
 
     private static string DecodeEscape(char value) => value switch

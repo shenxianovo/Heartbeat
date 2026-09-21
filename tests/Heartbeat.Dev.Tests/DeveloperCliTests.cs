@@ -7,12 +7,15 @@ public sealed class DeveloperCliTests
 {
     [Theory]
     [InlineData("env", "up", "--help")]
+    [InlineData("env", "setup", "--help")]
     [InlineData("verify", "changed", "--help")]
     [InlineData("quality", "loc", "--help")]
     [InlineData("scenario", "desktop-replay", "--help")]
     [InlineData("probe", "window-title", "--help")]
     [InlineData("artifacts", "prune", "--help")]
     [InlineData("package", "desktop", "--help")]
+    [InlineData("signing", "setup", "--help")]
+    [InlineData("signing", "status", "--help")]
     public async Task LeafHelpDoesNotExecuteCommands(params string[] args)
     {
         using var output = new StringWriter();
@@ -26,6 +29,7 @@ public sealed class DeveloperCliTests
     [Theory]
     [InlineData("env")]
     [InlineData("package")]
+    [InlineData("signing")]
     [InlineData("verify")]
     [InlineData("quality")]
     [InlineData("scenario")]

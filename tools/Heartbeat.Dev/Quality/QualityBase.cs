@@ -18,7 +18,7 @@ internal static class RewriteLineage
     public static string Resolve(string baseRef) =>
         string.Equals(baseRef, Alias, StringComparison.Ordinal) ? AnchorCommit : baseRef;
 
-    public static string StockCommand() => $"./scripts/heartbeat-dev quality --base {Alias} --stock";
+    public static string StockCommand() => $"dotnet run --project tools/Heartbeat.Dev -- quality --base {Alias} --stock";
 }
 
 /// 基点能不能用，以及用不了时该怎么办。选错基点的代价是一整套 0，所以要先判断再花两分钟去扫。

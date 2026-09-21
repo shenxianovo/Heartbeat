@@ -8,7 +8,8 @@ internal sealed class EnvironmentCommand(
     RepositoryContext repository,
     IProcessRunner runner,
     TextWriter output,
-    TextWriter error)
+    TextWriter error,
+    string? hostRuntime = null)
 {
     private static readonly string[] RequiredHubVariables =
         ["HEARTBEAT_API_KEY", "HEARTBEAT_OWNER_ID", "HEARTBEAT_HUB_TOKEN"];
@@ -21,6 +22,7 @@ internal sealed class EnvironmentCommand(
         command.SetAction(parse => new HelpAction().Invoke(parse));
         foreach (var action in Enum.GetValues<EnvironmentAction>())
             command.Subcommands.Add(CreateAction(action));
+        command.Subcommands.Add(new SetupCommand(repository, runner, output).CreateCommand());
         return command;
     }
 
@@ -28,7 +30,7 @@ internal sealed class EnvironmentCommand(
     {
         var command = new Command(action.ToString().ToLowerInvariant(), action switch
         {
-            EnvironmentAction.Up => "Build and start services; desktop packages and opens the macOS app",
+            EnvironmentAction.Up => "Build and start services; desktop packages and opens the native app",
             EnvironmentAction.Logs => "Follow selected service logs",
             EnvironmentAction.Status => "Show selected service status",
             EnvironmentAction.Down => "Stop selected services while preserving data",
@@ -100,15 +102,14 @@ internal sealed class EnvironmentCommand(
             : 0;
     }
 
-    private static void ValidateUp(EnvironmentPlan plan, DotenvFile dotenv)
+    private void ValidateUp(EnvironmentPlan plan, DotenvFile dotenv)
     {
-        if (plan.RunDesktop && !OperatingSystem.IsMacOS())
-            throw new InvalidOperationException("desktop currently requires macOS.");
+        if (plan.RunDesktop) DesktopPackageOptions.Create(repository, hostRuntime: hostRuntime);
         if (!plan.ComposeServices.Contains("hub")) return;
         var missing = RequiredHubVariables.Where(name => string.IsNullOrWhiteSpace(dotenv.Get(name))).ToArray();
         if (missing.Length > 0)
             throw new InvalidOperationException(
-                $"Hub configuration is incomplete ({string.Join(',', missing)}). Run ./scripts/setup.sh first.");
+                $"Hub configuration is incomplete ({string.Join(',', missing)}). Run dotnet run --project tools/Heartbeat.Dev -- env setup first.");
     }
 
     private async Task WaitForServicesAsync(
@@ -140,12 +141,17 @@ internal sealed class EnvironmentCommand(
     private async Task<int> RunDesktopAsync(CancellationToken cancellationToken)
     {
         await output.WriteLineAsync("Building Heartbeat Dev. Quit any running development client first to load code changes.");
+        var options = DesktopPackageOptions.Create(repository, hostRuntime: hostRuntime);
         var built = await new DesktopPackager(repository, runner, output)
-            .PackageAsync(DesktopPackageOptions.Create(repository), cancellationToken);
+            .PackageAsync(options, cancellationToken);
         if (built.ExitCode != 0) return built.ExitCode;
         var application = built.ApplicationPath;
-        await output.WriteLineAsync($"Opening {application}. Configure the connection in the app; use its menu bar to quit.");
-        return await runner.RunAsync("/usr/bin/open", ["-a", application], null, cancellationToken);
+        await output.WriteLineAsync($"Opening {application}. Configure the connection in the app; quit from its menu bar or system tray.");
+        cancellationToken.ThrowIfCancellationRequested();
+        if (options.IsMac)
+            return await runner.RunAsync("/usr/bin/open", ["-a", application], null, cancellationToken);
+        runner.OpenApplication(application);
+        return 0;
     }
 
     private async Task<int> StatusAsync(
@@ -176,7 +182,7 @@ internal sealed class EnvironmentCommand(
                 project = "heartbeat",
                 includes = ResetContents,
                 applied = false,
-                next = "Run heartbeat-dev env reset --apply to execute.",
+                next = "Run dotnet run --project tools/Heartbeat.Dev -- env reset --apply to execute.",
             }, JsonOptions.Indented));
             return 0;
         }
