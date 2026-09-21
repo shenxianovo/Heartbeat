@@ -103,7 +103,7 @@ Collector 到 Hub 接管前的数据不受 SQLite 保护。桌面采集使用内
 
 | 变量 | 含义 |
 | --- | --- |
-| `Hub__DatabasePath` | SQLite 路径 |
+| `Hub__DataDirectory` | 本 Hub 的持久数据目录；SQLite、身份、配置和会话均由本地存储入口管理 |
 | `Hub__BackendUrl` | 后端 origin |
 | `Hub__OwnerId` | Owner UUID |
 | `Hub__AuthUrl` | Auth origin |

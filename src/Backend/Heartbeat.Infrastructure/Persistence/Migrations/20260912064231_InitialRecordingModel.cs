@@ -13,6 +13,22 @@ namespace Heartbeat.Persistence.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.CreateTable(
+                name: "hubs",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    owner_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    session_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    last_seen_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    retired_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    status = table.Column<string>(type: "jsonb", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_hubs", x => x.id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "timelines",
                 columns: table => new
                 {
@@ -109,6 +125,11 @@ namespace Heartbeat.Persistence.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_hubs_owner_id",
+                table: "hubs",
+                column: "owner_id");
+
+            migrationBuilder.CreateIndex(
                 name: "ix_records_track_time",
                 table: "records",
                 columns: new[] { "track_id", "started_at", "id" });
@@ -131,6 +152,9 @@ namespace Heartbeat.Persistence.Migrations
         {
             migrationBuilder.DropTable(
                 name: "records");
+
+            migrationBuilder.DropTable(
+                name: "hubs");
 
             migrationBuilder.DropTable(
                 name: "tracks");

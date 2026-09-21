@@ -8,7 +8,7 @@ public sealed class QueueFixture : IDisposable
 {
     public string DirectoryPath { get; } = Path.Combine(Path.GetTempPath(), $"heartbeat-hub-{Guid.NewGuid():N}");
 
-    public string DatabasePath => Path.Combine(DirectoryPath, "queue.sqlite");
+    public string DatabasePath => Path.Combine(DirectoryPath, "hub.sqlite");
 
     public DeliveryDestination Destination { get; init; } = new(new Uri("http://127.0.0.1:1"), Guid.NewGuid());
 

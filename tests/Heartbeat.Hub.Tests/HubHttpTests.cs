@@ -115,7 +115,7 @@ public sealed class HubHttpTests : IDisposable
         {
             builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Hub:DatabasePath"] = _fixture.DatabasePath,
+                ["Hub:DataDirectory"] = _fixture.DirectoryPath,
                 ["Hub:BackendUrl"] = _fixture.Destination.BackendUrl.AbsoluteUri,
                 ["Hub:OwnerId"] = _fixture.Destination.OwnerId.ToString(),
                 ["Hub:AuthUrl"] = "https://auth.example/",

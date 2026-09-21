@@ -126,7 +126,7 @@ public sealed class HubCrashTests
         start.ArgumentList.Add(typeof(HubProgram).Assembly.Location);
         start.ArgumentList.Add("--urls");
         start.ArgumentList.Add("http://127.0.0.1:0");
-        start.Environment["Hub__DatabasePath"] = fixture.DatabasePath;
+        start.Environment["Hub__DataDirectory"] = fixture.DirectoryPath;
         start.Environment["Hub__BackendUrl"] = fixture.Destination.BackendUrl.AbsoluteUri;
         start.Environment["Hub__OwnerId"] = fixture.Destination.OwnerId.ToString();
         start.Environment["Hub__AuthUrl"] = fixture.Destination.BackendUrl.AbsoluteUri;

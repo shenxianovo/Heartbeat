@@ -5,6 +5,8 @@ namespace Heartbeat.Persistence;
 
 public sealed class HeartbeatDbContext(DbContextOptions<HeartbeatDbContext> options) : DbContext(options)
 {
+    public DbSet<Heartbeat.Management.HubNode> Hubs => Set<Heartbeat.Management.HubNode>();
+
     public DbSet<Timeline> Timelines => Set<Timeline>();
 
     public DbSet<Collector> Collectors => Set<Collector>();

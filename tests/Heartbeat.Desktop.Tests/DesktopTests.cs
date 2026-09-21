@@ -37,9 +37,15 @@ public sealed class DesktopTests
             await runtime.StartAsync();
             Assert.True(runtime.IsCollecting);
             Assert.True(runtime.Queue.Pending > 0);
-            await runtime.StopCollectionAsync();
+            await runtime.ExecuteAsync(new("pause", platform.CollectorKey, settings.Target), TestContext.Current.CancellationToken);
             Assert.False(runtime.IsCollecting);
             Assert.True(runtime.Queue.Pending > 0);
+            await runtime.ExecuteAsync(new("start", platform.CollectorKey, settings.Target), TestContext.Current.CancellationToken);
+            Assert.True(runtime.IsCollecting);
+            await Assert.ThrowsAsync<ArgumentException>(() => runtime.ExecuteAsync(
+                new("pause", platform.CollectorKey, "other-target"), TestContext.Current.CancellationToken));
+            await runtime.StopCollectionAsync();
+            Assert.False(runtime.IsCollecting);
         }
         finally { Directory.Delete(directory, recursive: true); }
     }

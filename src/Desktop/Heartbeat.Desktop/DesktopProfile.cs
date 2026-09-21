@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
+using Heartbeat.Hub.Runtime;
 
 namespace Heartbeat.Desktop;
 
@@ -10,33 +10,24 @@ public sealed class DesktopProfile : IDisposable
     public static string CredentialAccount(string directory) => Convert.ToHexStringLower(
         SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(directory))));
 
-    private readonly FileStream _ownership;
     private readonly ICredentialStore _credentials;
-    private readonly string _settingsPath;
     private readonly string _account;
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     public DesktopProfile(string directory, ICredentialStore credentials)
     {
-        DirectoryPath = Path.GetFullPath(directory);
-        Directory.CreateDirectory(DirectoryPath);
-        if (!OperatingSystem.IsWindows())
-            File.SetUnixFileMode(DirectoryPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        _ownership = new FileStream(Path.Combine(DirectoryPath, ".lock"), FileMode.OpenOrCreate,
-            FileAccess.ReadWrite, FileShare.None);
+        Storage = new HubLocalStorage(directory);
         _credentials = credentials;
-        _settingsPath = Path.Combine(DirectoryPath, "settings.json");
         _account = CredentialAccount(DirectoryPath);
     }
 
-    public string DirectoryPath { get; }
-    public string DatabasePath => Path.Combine(DirectoryPath, "hub.sqlite");
+    public HubLocalStorage Storage { get; }
+    public string DirectoryPath => Storage.DirectoryPath;
+    public string DatabasePath => Storage.DatabasePath;
 
     public DesktopSettings? ReadSettings()
     {
-        if (!File.Exists(_settingsPath)) return null;
-        var settings = JsonSerializer.Deserialize<DesktopSettings>(File.ReadAllText(_settingsPath))
-            ?? throw new InvalidDataException("客户端配置无法读取。");
+        var settings = Storage.ReadDocument<DesktopSettings>("settings");
+        if (settings is null) return null;
         settings.Validate();
         return settings;
     }
@@ -50,10 +41,8 @@ public sealed class DesktopProfile : IDisposable
         if (previous is not null && (previous.Destination != settings.Destination || previous.Target != settings.Target))
             throw new InvalidOperationException("此数据目录已绑定原有 Owner、后端和 Target。更换绑定请使用独立数据目录。");
         _credentials.Write(_account, apiKey);
-        var temporary = _settingsPath + ".tmp";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(settings, JsonOptions));
-        File.Move(temporary, _settingsPath, overwrite: true);
+        Storage.WriteDocument("settings", settings);
     }
 
-    public void Dispose() => _ownership.Dispose();
+    public void Dispose() => Storage.Dispose();
 }

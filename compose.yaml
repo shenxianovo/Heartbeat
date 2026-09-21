@@ -79,7 +79,7 @@ services:
       Hub__ApiKey: ${HEARTBEAT_API_KEY:-}
       Hub__OwnerId: ${HEARTBEAT_OWNER_ID:-}
       Hub__BackendUrl: http://api:8080
-      Hub__DatabasePath: /data/hub.sqlite
+      Hub__DataDirectory: /data
       Hub__AccessToken: ${HEARTBEAT_HUB_TOKEN:-}
     ports:
       - "127.0.0.1:${HEARTBEAT_HUB_PORT:-4318}:4318"

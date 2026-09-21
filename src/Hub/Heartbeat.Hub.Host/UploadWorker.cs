@@ -1,11 +1,10 @@
 namespace Heartbeat.Hub.Host;
 
-internal sealed partial class UploadWorker(RecordUploader uploader, HubSettings settings, ILogger<UploadWorker> logger)
+internal sealed partial class UploadWorker(HubDeliveryLoop delivery, ILogger<UploadWorker> logger)
     : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var delivery = new HubDeliveryLoop(uploader, settings.UploadInterval);
         delivery.Failed += error => LogUnconfirmed(logger, error);
         await delivery.RunAsync(stoppingToken);
     }

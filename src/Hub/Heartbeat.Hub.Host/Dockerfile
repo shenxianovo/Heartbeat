@@ -1,10 +1,12 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0.401 AS restore
 WORKDIR /src
 
+COPY src/Contracts/Heartbeat.Contracts/Heartbeat.Contracts.csproj src/Contracts/Heartbeat.Contracts/
 COPY global.json Directory.Build.props Directory.Packages.props Heartbeat.slnx ./
 COPY src/Hub/Heartbeat.Hub.Client/Heartbeat.Hub.Client.csproj src/Hub/Heartbeat.Hub.Client/
 COPY src/Hub/Heartbeat.Hub/Heartbeat.Hub.csproj src/Hub/Heartbeat.Hub/
 COPY src/Hub/Heartbeat.Hub.Host/Heartbeat.Hub.Host.csproj src/Hub/Heartbeat.Hub.Host/
+COPY src/Hub/Heartbeat.Hub.Runtime/Heartbeat.Hub.Runtime.csproj src/Hub/Heartbeat.Hub.Runtime/
 RUN dotnet restore src/Hub/Heartbeat.Hub.Host/Heartbeat.Hub.Host.csproj
 
 FROM restore AS development

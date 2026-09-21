@@ -18,6 +18,7 @@ public static class DependencyInjection
         services.AddDbContext<HeartbeatDbContext>(options =>
             options.UseNpgsql(connectionString));
         services.AddSingleton(TimeProvider.System);
+        services.AddScoped<Heartbeat.Management.IHubRegistry, PostgresHubRegistry>();
         services.AddScoped<ICollectorRegistrationStore, PostgresCollectorRegistrationStore>();
         services.AddScoped<IRegisterCollector, RegisterCollector>();
         services.AddScoped<IRecordStore, PostgresRecordStore>();

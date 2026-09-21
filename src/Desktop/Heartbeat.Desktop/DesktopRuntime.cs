@@ -1,9 +1,11 @@
 using Heartbeat.Collector.Desktop;
 using Heartbeat.Hub;
+using Heartbeat.Hub.Runtime;
+using Heartbeat.Management;
 
 namespace Heartbeat.Desktop;
 
-public sealed class DesktopRuntime : IAsyncDisposable
+public sealed class DesktopRuntime : IAsyncDisposable, ICollectorManager
 {
     private readonly SemaphoreSlim _operations = new(1, 1);
     private int _pendingOperations;
@@ -18,6 +20,8 @@ public sealed class DesktopRuntime : IAsyncDisposable
     private HubDeliveryLoop? _delivery;
     private CancellationTokenSource? _deliveryStop;
     private Task? _deliveryTask;
+    private Task? _managementTask;
+    private HubManagementLoop? _management;
     private IDesktopObservationSource? _source;
     private CancellationTokenSource? _collectionStop;
     private Task? _collectionTask;
@@ -43,25 +47,28 @@ public sealed class DesktopRuntime : IAsyncDisposable
     });
 
     public Task ConfigureAsync(Uri backend, Uri auth, Uri web, string? apiKey, CancellationToken cancellationToken = default) =>
-        RunAsync(() => ConfigureCoreAsync(backend, auth, web, apiKey, cancellationToken));
+        RunAsync(() => ConfigureCoreAsync(backend, auth, web, apiKey, cancellationToken), cancellationToken: cancellationToken);
 
     public Task StartAsync() => RunAsync(StartCoreAsync);
     public Task StopCollectionAsync() => RunAsync(StopCollectionCoreAsync);
 
-    private async Task RunAsync(Func<Task> operation, bool disposing = false)
+    private async Task RunAsync(Func<Task> operation, bool disposing = false, CancellationToken cancellationToken = default)
     {
         Interlocked.Increment(ref _pendingOperations);
-        await _operations.WaitAsync();
         try
         {
-            if (_disposed && disposing) return;
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            await operation();
+            await _operations.WaitAsync(cancellationToken);
+            try
+            {
+                if (_disposed && disposing) return;
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                await operation();
+            }
+            finally { _operations.Release(); }
         }
         finally
         {
             Interlocked.Decrement(ref _pendingOperations);
-            _operations.Release();
         }
     }
 
@@ -70,6 +77,25 @@ public sealed class DesktopRuntime : IAsyncDisposable
     public bool IsCollecting => _collectionTask is { IsCompleted: false };
     public string? Error => _collectionError ?? _delivery?.LastError;
     public QueueStatus Queue => _queue?.Status() ?? new QueueStatus(0, 0);
+    public Guid HubId => _profile.Storage.Id;
+    public string? ManagementError => _management?.LastError;
+    public IReadOnlyList<CollectorType> Types => [new(_platform.CollectorKey, _platform.DisplayName, [], CanAdd: false)];
+    public IReadOnlyList<CollectorState> Collectors => Settings is null ? [] :
+        [new(_platform.CollectorKey, Settings.Target, _platform.DisplayName,
+            _collectionError is not null ? "error" : IsCollecting ? "running" : "paused", _collectionError)];
+
+    public Task ExecuteAsync(CollectorOperation operation, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (operation.Key != _platform.CollectorKey || operation.Target != Settings?.Target)
+            throw new ArgumentException("Collector does not belong to this Desktop.");
+        return operation.Action switch
+        {
+            "start" => RunAsync(StartCoreAsync, cancellationToken: cancellationToken),
+            "pause" => RunAsync(StopCollectionCoreAsync, cancellationToken: cancellationToken),
+            _ => throw new ArgumentException("This Desktop Collector supports start and pause."),
+        };
+    }
     public IReadOnlyList<CapabilityObservation> Capabilities
     {
         get { lock (_capabilities) return _capabilities.Values.ToArray(); }
@@ -128,6 +154,10 @@ public sealed class DesktopRuntime : IAsyncDisposable
         _delivery = new HubDeliveryLoop(new RecordUploader(_queue, _http, _tokens), TimeSpan.FromSeconds(5));
         _deliveryStop = new CancellationTokenSource();
         _deliveryTask = _delivery.RunAsync(_deliveryStop.Token);
+        _management = new HubManagementLoop(_http, _tokens, settings.Destination, HubId,
+            () => new HubReport(Environment.MachineName, "desktop", Types, Collectors,
+                new DeliveryState(Queue.Pending, Queue.Failed, _delivery?.LastError)), this);
+        _managementTask = _management.RunAsync(_deliveryStop.Token);
     }
 
     private async Task CollectAsync(DesktopCollectorSession session, DesktopCollectionOptions options, CancellationToken token)
@@ -163,12 +193,18 @@ public sealed class DesktopRuntime : IAsyncDisposable
         if (_deliveryStop is not null)
         {
             await _deliveryStop.CancelAsync();
+            // A remote operation may be waiting for _operations, held by this shutdown.
+            // Cancellation stops its wait; shutdown must not await itself.
             try { if (_deliveryTask is not null) await _deliveryTask; }
+            catch (OperationCanceledException) { }
+            try { if (_managementTask is not null) await _managementTask; }
             catch (OperationCanceledException) { }
             _deliveryStop.Dispose();
         }
         _deliveryStop = null;
         _deliveryTask = null;
+        _managementTask = null;
+        _management = null;
         _delivery = null;
         _tokens?.Dispose();
         _tokens = null;

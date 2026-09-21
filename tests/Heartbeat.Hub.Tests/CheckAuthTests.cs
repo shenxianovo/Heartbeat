@@ -74,7 +74,7 @@ public sealed class CheckAuthTests
         start.ArgumentList.Add("--check-auth");
         foreach (var name in new[]
                  {
-                     "Hub__DatabasePath", "Hub__BackendUrl", "Hub__OwnerId", "Hub__AccessToken",
+                     "Hub__DataDirectory", "Hub__BackendUrl", "Hub__OwnerId", "Hub__AccessToken",
                      "Hub__MaximumRecords", "Hub__UploadIntervalSeconds",
                  })
         {

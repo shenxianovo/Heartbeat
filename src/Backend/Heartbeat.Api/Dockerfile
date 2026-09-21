@@ -1,6 +1,7 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0.401 AS restore
 WORKDIR /src
 
+COPY src/Contracts/Heartbeat.Contracts/Heartbeat.Contracts.csproj src/Contracts/Heartbeat.Contracts/
 COPY global.json Directory.Build.props Directory.Packages.props Heartbeat.slnx ./
 COPY src/Backend/Heartbeat.Api/Heartbeat.Api.csproj src/Backend/Heartbeat.Api/
 COPY src/Backend/Heartbeat.Application/Heartbeat.Application.csproj src/Backend/Heartbeat.Application/

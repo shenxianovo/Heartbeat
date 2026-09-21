@@ -1,7 +1,7 @@
 namespace Heartbeat.Hub.Host;
 
 public sealed record HubSettings(
-    string DatabasePath,
+    string DataDirectory,
     DeliveryDestination Destination,
     Uri AuthUrl,
     string ApiKey,
@@ -30,7 +30,7 @@ public sealed record HubSettings(
             throw new ArgumentOutOfRangeException(nameof(configuration), "Upload interval must be 1 to 3600 seconds.");
         }
 
-        return new HubSettings(Required("DatabasePath"), destination, authUrl, apiKey, accessToken,
+        return new HubSettings(Required("DataDirectory"), destination, authUrl, apiKey, accessToken,
             capacity, TimeSpan.FromSeconds(seconds));
 
         string Required(string name) => !string.IsNullOrWhiteSpace(section[name])

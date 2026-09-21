@@ -10,6 +10,7 @@ builder.Services.AddHeartbeatAuthentication(
     builder.Configuration,
     builder.Environment);
 builder.Services.AddProblemDetails();
+builder.Services.AddSingleton<Heartbeat.Api.Management.HubConnections>();
 
 await using var app = builder.Build();
 
@@ -45,6 +46,7 @@ app.UseAuthorization();
 app.MapCollectorEndpoints();
 app.MapTrackEndpoints();
 app.MapRecordEndpoints();
+app.MapHubEndpoints();
 
 await app.RunAsync();
 return 0;

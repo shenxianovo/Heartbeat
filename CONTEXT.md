@@ -12,6 +12,14 @@ _避免使用_: User、用户名、账号
 一个 Owner 的完整记录空间，其中的记录可以一起重放。设备、会话、项目或时间范围的变化不会产生新的 Timeline。
 _避免使用_: User、人员关系图、会话时间线
 
+**Hub**:
+属于一个 Owner、接管 Collector 提交并负责将 Record 交付给后端的节点，可以运行在桌面客户端或服务器上；其身份不随进程重启改变。
+_避免使用_: Collector、中央存储、设备
+
+**Hub 在线状态**:
+后端根据最近是否收到某个 Hub 的有效联络而判断的可达状态；它不证明 Collector 正常采集，也不证明 Record 已成功交付。
+_避免使用_: Collector 运行状态、采集完整性、最近 Record 时间
+
 **Collector**:
 Timeline 中一个 Collector 实现与一个 Target 的稳定绑定。只要 Collector 实现和 Target 不变，进程重启、重新安装或凭据变化都不会产生新的 Collector。
 _避免使用_: Recording Source、Observer、设备、安装实例

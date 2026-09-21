@@ -8,6 +8,8 @@ services:
     volumes:
       - .:/src
     tmpfs:
+      - /src/src/Contracts/Heartbeat.Contracts/bin:exec
+      - /src/src/Contracts/Heartbeat.Contracts/obj:exec
       - /src/src/Backend/Heartbeat.Api/bin:exec
       - /src/src/Backend/Heartbeat.Api/obj:exec
       - /src/src/Backend/Heartbeat.Application/bin:exec
@@ -40,12 +42,16 @@ services:
     volumes:
       - .:/src
     tmpfs:
+      - /src/src/Contracts/Heartbeat.Contracts/bin:exec
+      - /src/src/Contracts/Heartbeat.Contracts/obj:exec
       - /src/src/Hub/Heartbeat.Hub.Client/bin:exec
       - /src/src/Hub/Heartbeat.Hub.Client/obj:exec
       - /src/src/Hub/Heartbeat.Hub/bin:exec
       - /src/src/Hub/Heartbeat.Hub/obj:exec
       - /src/src/Hub/Heartbeat.Hub.Host/bin:exec
       - /src/src/Hub/Heartbeat.Hub.Host/obj:exec
+      - /src/src/Hub/Heartbeat.Hub.Runtime/bin:exec
+      - /src/src/Hub/Heartbeat.Hub.Runtime/obj:exec
 
 volumes:
   heartbeat-web-node-modules:

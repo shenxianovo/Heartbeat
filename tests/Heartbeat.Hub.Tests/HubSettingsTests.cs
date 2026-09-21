@@ -26,7 +26,7 @@ public sealed class HubSettingsTests
 
     private static Dictionary<string, string?> Values(QueueFixture fixture) => new()
     {
-        ["Hub:DatabasePath"] = fixture.DatabasePath,
+        ["Hub:DataDirectory"] = fixture.DirectoryPath,
         ["Hub:BackendUrl"] = fixture.Destination.BackendUrl.AbsoluteUri,
         ["Hub:OwnerId"] = fixture.Destination.OwnerId.ToString(),
         ["Hub:ApiKey"] = "test-api-key",

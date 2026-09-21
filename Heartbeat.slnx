@@ -1,5 +1,8 @@
 <Solution>
   <Folder Name="/src/" />
+  <Folder Name="/src/Contracts/">
+    <Project Path="src/Contracts/Heartbeat.Contracts/Heartbeat.Contracts.csproj" />
+  </Folder>
   <Folder Name="/src/Backend/">
     <Project Path="src/Backend/Heartbeat.Api/Heartbeat.Api.csproj" />
     <Project Path="src/Backend/Heartbeat.Application/Heartbeat.Application.csproj" />
@@ -17,6 +20,7 @@
     <Project Path="src/Desktop/Heartbeat.Desktop/Heartbeat.Desktop.csproj" />
   </Folder>
   <Folder Name="/src/Hub/">
+    <Project Path="src/Hub/Heartbeat.Hub.Runtime/Heartbeat.Hub.Runtime.csproj" />
     <Project Path="src/Hub/Heartbeat.Hub.Client/Heartbeat.Hub.Client.csproj" />
     <Project Path="src/Hub/Heartbeat.Hub.Host/Heartbeat.Hub.Host.csproj" />
     <Project Path="src/Hub/Heartbeat.Hub/Heartbeat.Hub.csproj" />

@@ -5,6 +5,7 @@
 !.env.example
 .local
 .scratch
+.artifacts
 **/bin
 **/obj
 TestResults
