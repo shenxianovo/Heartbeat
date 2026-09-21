@@ -4,7 +4,7 @@
 
 ## 使用
 
-Mac 需要完整 Xcode、与 Xcode 匹配的 .NET macOS workload（`dotnet workload install macos`），以及 macOS 14 或更新版本。首次启动 Xcode 完成许可与组件安装，`xcode-select -p` 应指向 Xcode 的 Developer 目录。SDK 和 Xcode 版本配对以 [.NET macOS 发布说明](https://github.com/dotnet/macios/releases)为准。
+Mac 需要完整 Xcode、与 Xcode 匹配的 .NET macOS workload（`dotnet workload install macos`），以及 macOS 14 或更新版本。当前宿主以 `net10.0-macos27.0` 使用 .NET 10 对 Xcode 27 的预览支持；首次启动 Xcode 完成许可与组件安装，`xcode-select -p` 应指向 Xcode 的 Developer 目录。SDK 和 Xcode 版本配对以 [.NET macOS 发布说明](https://github.com/dotnet/macios/releases)为准。
 
 
 ```bash

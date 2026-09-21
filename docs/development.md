@@ -4,7 +4,7 @@ Heartbeat 使用 Compose 运行 Web、API、PostgreSQL 和 Hub。桌面客户端
 
 ## 环境准备
 
-需要 Docker Desktop、Docker Compose 和 .NET SDK 10。Desktop Collector 还需要 macOS。
+需要 Docker Desktop、Docker Compose 和 `global.json` 指定的 .NET SDK（当前为 10.0.401）。Desktop Collector 还需要 macOS。
 
 首次运行独立的服务端 Hub 或原生 Collector 验证场景：
 

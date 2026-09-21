@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0-macos</TargetFramework>
+    <TargetFramework>net10.0-macos27.0</TargetFramework>
+    <NoWarn>$(NoWarn);XCODE_27_0_PREVIEW</NoWarn>
     <SupportedOSPlatformVersion>14.0</SupportedOSPlatformVersion>
     <ApplicationTitle>Heartbeat Dev</ApplicationTitle>
     <ApplicationId>com.shenxianovo.heartbeat.desktop</ApplicationId>

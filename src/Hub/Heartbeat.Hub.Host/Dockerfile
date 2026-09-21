@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:10.0.302 AS restore
+FROM mcr.microsoft.com/dotnet/sdk:10.0.401 AS restore
 WORKDIR /src
 
 COPY global.json Directory.Build.props Directory.Packages.props Heartbeat.slnx ./
