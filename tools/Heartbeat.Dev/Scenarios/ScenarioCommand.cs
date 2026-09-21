@@ -21,6 +21,7 @@ internal sealed class ScenarioCommand(
             return 0;
         });
         AddScenario(command, "replay-fixture", "Replay browser tests with mocked auth and API", native: false);
+        AddScenario(command, "hubs-fixture", "Hub management browser tests with mocked auth and API", native: false);
         AddScenario(command, "delivery", "Upload/replay integration tests against PostgreSQL", native: false);
         AddScenario(command, "collector-delivery", "Real macOS Collector through Hub custody to PostgreSQL", native: true);
         AddScenario(command, "desktop-replay", "Interactive packaged desktop to real Web replay", native: true);
@@ -53,7 +54,8 @@ internal sealed class ScenarioCommand(
     {
         return options.Name switch
         {
-            "replay-fixture" => await RunReplayFixtureAsync(options, cancellationToken),
+            "replay-fixture" => await RunBrowserFixtureAsync(options, "replay.spec.ts", cancellationToken),
+            "hubs-fixture" => await RunBrowserFixtureAsync(options, "hubs.spec.ts", cancellationToken),
             "delivery" => await RunDeliveryAsync(options, cancellationToken),
             "collector-delivery" => await new CollectorDeliveryScenario(repository, runner, output)
                 .RunAsync(options, cancellationToken),
@@ -65,12 +67,12 @@ internal sealed class ScenarioCommand(
         };
     }
 
-    private Task<int> RunReplayFixtureAsync(ScenarioOptions options, CancellationToken cancellationToken)
+    private Task<int> RunBrowserFixtureAsync(ScenarioOptions options, string spec, CancellationToken cancellationToken)
     {
         var web = repository.Path("src", "Frontend", "Heartbeat.Web");
         return RunAutomatedAsync(
-            options, "replay-fixture", "npm",
-            ["--prefix", web, "run", "test:e2e", "--", "replay.spec.ts"],
+            options, options.Name, "npm",
+            ["--prefix", web, "run", "test:e2e", "--", spec],
             run => PlaywrightEvidenceEnvironment.Create(run, WebVerificationWorkspace.Environment(repository)),
             [
                 "This re-runs a subset of the existing browser tests and keeps their evidence; it is not an independent scenario.",

@@ -82,3 +82,9 @@ npm run test:perf
 - 当前不计算 `range + next_record` 的派生结束时间。
 
 已验收的交互与剩余边界见[回放体验验收](../../../docs/validation/experience-visualization.md)。
+
+## Hub 管理
+
+页头“Hub 管理”进入 `/hubs`，按当前 Owner 展示 Hub 联络、Collector 状态和 Record 交付。在线时可配置服务器已安装类型、启停及移除；Desktop 支持现有平台 Collector 的远程启停。离线节点可退役。行为权威见 [Hub 管理契约](../../../docs/hub-management.md)。
+
+运行 `./scripts/heartbeat-dev scenario hubs-fixture`（仓库根目录）验证通用表单、在线操作和离线禁用；该浏览器场景使用 mock 认证/API，不替代真实账号与原生客户端验收。

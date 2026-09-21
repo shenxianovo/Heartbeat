@@ -89,6 +89,7 @@ C# 指标先构建普通项目，再对 AppKit 与 WinUI 宿主执行托管编�
 
 ```bash
 ./scripts/heartbeat-dev scenario replay-fixture
+./scripts/heartbeat-dev scenario hubs-fixture
 ./scripts/heartbeat-dev scenario delivery
 ./scripts/heartbeat-dev scenario collector-delivery
 ./scripts/heartbeat-dev scenario desktop-replay
@@ -98,6 +99,7 @@ C# 指标先构建普通项目，再对 AppKit 与 WinUI 宿主执行托管编�
 
 | 场景 | 证据 | 不证明 |
 | --- | --- | --- |
+| `hubs-fixture` | Hub 状态分离、在线启停、离线禁用和通用配置表单 | 认证与 API 是 fixture，不证明真实账号或原生启停 |
 | `replay-fixture` | 登录后回放交互、响应式布局和 Chromium 截图 | 认证和 API 是 fixture，不是实际端到端链路 |
 | `delivery` | API 与 PostgreSQL 的上传、重放集成测试 | 不覆盖 Web、Hub 或 Collector |
 | `collector-delivery` | 真实 macOS Collector 启动、原生快照、Hub 持久接管、后端自动注册与 PostgreSQL 落库、队列清空 | 不覆盖通知、持续采样、物理输入、权限切换、锁屏、休眠或 Web；不独立核对前台应用的具体身份 |

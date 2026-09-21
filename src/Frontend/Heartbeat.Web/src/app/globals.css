@@ -1495,3 +1495,81 @@ a {
   background: var(--border);
   pointer-events: none;
 }
+/* Hub management uses the same application surfaces and control tokens as replay. */
+.hubs-page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem;
+}
+.hub-card {
+  margin-top: 1.25rem;
+  padding: 1.5rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 1rem;
+  background: var(--glass-bg);
+}
+.hub-heading,
+.hub-delivery,
+.hub-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.hub-heading {
+  justify-content: space-between;
+}
+.hub-heading h1,
+.hub-heading h2 {
+  margin: 0;
+}
+.hub-card p {
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+  opacity: 0.8;
+}
+.hub-presence {
+  padding: 0.35rem 0.8rem;
+  border-radius: 2rem;
+  background: var(--muted);
+  white-space: nowrap;
+}
+.hub-presence.is-online {
+  color: #166534;
+  background: #dcfce7;
+}
+.hub-delivery {
+  padding: 1rem 0;
+}
+.collector-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0;
+  border-top: 1px solid var(--glass-border);
+}
+.collector-form {
+  margin-top: 1.25rem;
+  display: grid;
+  gap: 0.8rem;
+  max-width: 36rem;
+}
+.collector-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+}
+.collector-form input {
+  padding: 0.6rem;
+  border: 1px solid var(--input);
+  border-radius: 0.4rem;
+  background: var(--background);
+  color: var(--foreground);
+}
+@media (max-width: 640px) {
+  .collector-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
