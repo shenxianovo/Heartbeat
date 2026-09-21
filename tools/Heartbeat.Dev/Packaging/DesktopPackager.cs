@@ -73,6 +73,19 @@ internal sealed class DesktopPackager(RepositoryContext repository, IProcessRunn
         if (icons != 0) return icons;
         var converted = await RunAsync("iconutil", ["-c", "icns", iconset, "-o", Path.Combine(resources, "heartbeat.icns")], token);
         if (converted != 0) return converted;
+        return await SignMacBundleAsync(bundle, token);
+    }
+
+    private async Task<int> SignMacBundleAsync(string bundle, CancellationToken token)
+    {
+        // MonoBundle is not a standard nested-code location: --deep alone skips its native libraries.
+        foreach (var library in Directory.EnumerateFiles(bundle, "*.dylib", SearchOption.AllDirectories).Order())
+        {
+            var signedLibrary = await RunAsync("codesign", ["--force", "--sign", "-", library], token);
+            if (signedLibrary != 0) return signedLibrary;
+            var verifiedLibrary = await RunAsync("codesign", ["--verify", "--strict", library], token);
+            if (verifiedLibrary != 0) return verifiedLibrary;
+        }
         var signed = await RunAsync("codesign", ["--force", "--deep", "--sign", "-", bundle], token);
         return signed != 0 ? signed : await RunAsync("codesign", ["--verify", "--deep", "--strict", bundle], token);
     }

@@ -33,6 +33,11 @@ public sealed class DesktopPackagerTests : IDisposable
         {
             Assert.True(File.Exists(Path.Combine(result.ApplicationPath, "Contents", "Info.plist")));
             Assert.Equal(10, runner.Calls.Count(call => call.File == "sips"));
+            var libraryCalls = runner.Calls.Where(call => call.File == "codesign" &&
+                call.Args[^1].EndsWith("libcoreclr.dylib", StringComparison.Ordinal)).ToArray();
+            Assert.Equal(2, libraryCalls.Length);
+            Assert.Contains("--sign", libraryCalls[0].Args);
+            Assert.Contains("--verify", libraryCalls[1].Args);
             Assert.Equal("codesign", runner.Calls[^1].File);
             Assert.Contains("--verify", runner.Calls[^1].Args);
         }
@@ -50,6 +55,8 @@ public sealed class DesktopPackagerTests : IDisposable
     [InlineData("iconutil")]
     [InlineData("codesign")]
     [InlineData("verify-signature")]
+    [InlineData("sign-library")]
+    [InlineData("verify-library")]
     public async Task AnyBuildFailureKeepsThePreviousArtifactAndCleansStaging(string failedStep)
     {
         var options = DesktopPackageOptions.Create(new RepositoryContext(_root), "osx-arm64", _root, "osx-arm64");
@@ -126,6 +133,8 @@ internal sealed class PackageTestRunner(string? failedStep = null, Action? after
     {
         Calls.Add((fileName, arguments));
         LastStep = fileName == "codesign" && arguments.Contains("--verify") ? "verify-signature" : fileName;
+        if (fileName == "codesign" && arguments[^1].EndsWith(".dylib", StringComparison.Ordinal))
+            LastStep = arguments.Contains("--verify") ? "verify-library" : "sign-library";
         if (LastStep == failedStep) return Task.FromResult(new ProcessResult(7, "", "build failed"));
         if (fileName == "dotnet" && produceBundle)
         {
@@ -135,6 +144,8 @@ internal sealed class PackageTestRunner(string? failedStep = null, Action? after
                 var contents = Path.Combine(appBundle["-p:AppBundleDir=".Length..], "Contents");
                 Directory.CreateDirectory(contents);
                 File.WriteAllText(Path.Combine(contents, "Info.plist"), "<plist/>");
+                var libraries = Directory.CreateDirectory(Path.Combine(contents, "MonoBundle"));
+                File.WriteAllText(Path.Combine(libraries.FullName, "libcoreclr.dylib"), "unsigned library");
             }
             else
             {

@@ -17,3 +17,9 @@
 `./scripts/heartbeat-dev package desktop` 在 2026-09-21 通过：Mac 宿主显式目标为 `net10.0-macos27.0`，使用 .NET 10 workload 内置的 Xcode 27 预览 SDK pack 完成发布、ad-hoc 签名和签名校验。真实 UI 与权限流程仍待人工验收，见 `.scratch/native-desktop/issues/01-platform-acceptance.md`。
 
 现有数据卷未重建，未部署。按照重写规则只修改 Initial migration；已应用旧 Initial 的开发库需要单独处理。SDK 10.0.401 升级保留，Docker 构建 SDK 已同步。
+
+## 2026-09-21 本地重新启动补验
+
+清空开发数据库和 Hub 队列后，Web/API/服务器 Hub 正常启动并创建当前 Initial 模型；Desktop 和服务器 Hub 均已登记并持续联络。首次 Desktop 启动暴露 `MonoBundle` 原生动态库漏签：外层 `codesign --deep` 校验通过，但进程被 macOS 以 `CODESIGNING Invalid Page` 终止。逐库签名后确认原生窗口打开，随后将逐库签名与校验纳入统一打包入口。
+
+回归测试先失败后通过，并覆盖库签名或校验失败时保留旧产物。验证命令为 `./scripts/heartbeat-dev verify changed --base 488081ad` 和 `./scripts/heartbeat-dev quality --base 488081ad`，均通过，证据分别为 `.artifacts/verification/20260921T015253Z-verify-changed-a05c47e4c9b14fddbb980b860834da26/manifest.json`、`.artifacts/verification/20260921T015306Z-quality-gate-61518a0188be4ae8b8b830f02d5a9da5/manifest.json`。修复后的 Developer CLI `package desktop --output .artifacts/desktop-signing-verification` 通过逐库及整包签名校验，日志为 `.artifacts/desktop-signing-20260921/package.log`；原生完整交互和真实 VRChat 仍待人工验收。

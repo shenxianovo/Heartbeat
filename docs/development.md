@@ -84,7 +84,7 @@ Windows 使用同一组命令：
 
 `--output` 指定产物的父目录，相对路径基于调用命令时的当前目录。默认目录相对仓库根目录：macOS 为 `.artifacts/desktop/Heartbeat Dev.app`，Windows 为 `.artifacts/desktop-windows/Heartbeat Dev/`，后者必须保留完整目录。
 
-打包先在输出目录的独立临时目录中完成；发布、图标与签名步骤失败或取消时清理临时文件，保留已有产物。成功后只替换本命令的具名应用目录，其他文件保持不变。macOS 仍采用本地 ad-hoc 签名；Windows 仍产出 self-contained 应用目录，不提供安装器、发行签名或自动更新。
+打包先在输出目录的独立临时目录中完成；发布、图标与签名步骤失败或取消时清理临时文件，保留已有产物。成功后只替换本命令的具名应用目录，其他文件保持不变。macOS 对包内原生动态库逐一签名并校验，再签名和校验外层应用包，避免 `MonoBundle` 内的库被 `codesign --deep` 遗漏。仍采用本地 ad-hoc 签名；Windows 仍产出 self-contained 应用目录，不提供安装器、发行签名或自动更新。
 
 `env up desktop`（macOS）与 `scenario desktop-replay` 直接复用同一个打包模块。按功能组织的代码入口与职责见 [DevCLI README](../tools/Heartbeat.Dev/README.md)。
 
