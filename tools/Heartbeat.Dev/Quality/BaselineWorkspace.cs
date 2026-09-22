@@ -2,7 +2,7 @@ namespace Heartbeat.Dev;
 
 internal sealed record BaselineWorkspace(string Path, bool Reused)
 {
-    /// 基线树里恢复过依赖、成功扫过一次的标记。有它才敢 `--no-restore`。
+    /// 标记依赖恢复和首次扫描成功，供后续扫描使用 `--no-restore`。
     private string RestoreMarker => System.IO.Path.Combine(Path, ".baseline-restored");
 
     public bool NeedsRestore => !File.Exists(RestoreMarker);
@@ -11,15 +11,14 @@ internal sealed record BaselineWorkspace(string Path, bool Reused)
 }
 
 /// <summary>
-/// 基线必须在一棵干净的树上量，但每次 `git worktree add` + `restore` + `npm ci` 是跨基点度量最脆的一段。
-/// 这里按 commit 缓存基线工作树：命中就复用，连带复用它的 `obj/`、`bin/` 与 `node_modules`。
-/// 缓存放在 `.artifacts/quality-baselines/<commit>`（已 gitignore），删掉只会让下一次慢一点。
+/// 按 commit 缓存独立基线工作树，复用 `obj/`、`bin/` 和 `node_modules`，减少重复准备。
+/// 缓存位于 Git 忽略的 `.artifacts/quality-baselines/<commit>`，删除后可重建。
 /// </summary>
 internal sealed class BaselineWorkspaceCache(RepositoryContext repository, IProcessRunner runner)
 {
     public string Root { get; } = repository.Path(".artifacts", "quality-baselines");
 
-    /// 就绪标志：worktree 加出来之后一定有解决方案文件。半途失败的目录不会有它，会被重建。
+    /// 以解决方案文件判断工作树是否就绪；缺失时重建。
     private const string ReadyMarker = "Heartbeat.slnx";
 
     public async Task<(BaselineWorkspace? Workspace, string? Error)> PrepareAsync(
@@ -28,8 +27,7 @@ internal sealed class BaselineWorkspaceCache(RepositoryContext repository, IProc
         CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(Root);
-        // 缓存键必须是提交号。`HEAD`、分支名这类会移动的引用一旦当成键，HEAD 前进之后还会命中
-        // 同一个目录，量出来的基线就是旧的——一个安静地说假话的闸门。
+        // 用解析后的提交号作缓存键，避免 HEAD 或分支移动后复用旧基线。
         var resolved = await ResolveAsync(commit, cancellationToken);
         if (resolved is null)
         {
@@ -45,7 +43,7 @@ internal sealed class BaselineWorkspaceCache(RepositoryContext repository, IProc
         var added = await AddAsync(path, resolved, cancellationToken);
         if (added.ExitCode != 0)
         {
-            // 上一次跑到一半留下的目录会挡住 add。清掉登记与目录再试一次，还不行才报错。
+            // 清理上次失败的工作树登记和残留目录，再重试一次。
             await runner.CaptureAsync("git", ["worktree", "prune"], null, cancellationToken);
             if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
             added = await AddAsync(path, resolved, cancellationToken);

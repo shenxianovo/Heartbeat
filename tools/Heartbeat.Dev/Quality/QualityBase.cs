@@ -1,10 +1,8 @@
 namespace Heartbeat.Dev;
 
 /// <summary>
-/// 重写谱系的锚点。存量度量要可重复，就必须有一个固定的、能真的量出生产代码的基点：
-/// `4e15d57` 是净室重写里第一个有完整结构的提交（`Heartbeat.slnx` + `src/` + `tests/` + `docs/`，
-/// 在它之前只有空提交和 agent skills）。重写前的 `main` 不算基点：那棵树把源码放在
-/// `collection/`、`server/`、`shared/`、`frontend/` 下，本仓的生产语料是 `src/`，量出来必然是 0。
+/// 存量度量固定使用重写后首个包含完整项目结构的提交。
+/// 重写前的 `main` 没有 `src/` 生产目录，无法作为基点。
 /// </summary>
 internal static class RewriteLineage
 {
@@ -21,7 +19,7 @@ internal static class RewriteLineage
     public static string StockCommand() => $"dotnet run --project tools/Heartbeat.Dev -- quality --base {Alias} --stock";
 }
 
-/// 基点能不能用，以及用不了时该怎么办。选错基点的代价是一整套 0，所以要先判断再花两分钟去扫。
+/// 扫描前检查基点是否包含生产代码，并为无效基点提供建议。
 internal sealed record BaseUsability(bool Usable, string? Reason, IReadOnlyList<string> Suggestions)
 {
     public static BaseUsability Evaluate(string requested, SourceSnapshot baseline)

@@ -8,13 +8,12 @@ internal enum SourceRole
     Test,
     Tooling,
 
-    /// 构建与环境描述：MSBuild、解决方案、Dockerfile、compose YAML、前端 *.config.*。
-    /// 它们是代码，但不是被度量的产品语料，所以不计入生产 LOC。
+    /// 构建与环境描述，单列统计，不计入生产 LOC。
     Build,
     Documentation,
     Generated,
 
-    /// 认得出语言，但不落在任何一个已声明的根下。宁可单列出来让人看见，也不塞进 tooling。
+    /// 语言可识别，但未匹配任何角色的文件，单列报告。
     Unclassified,
 }
 
@@ -35,14 +34,13 @@ internal sealed record SourceSnapshot(string Revision, IReadOnlyList<SourceFileM
     public int BuildLines => Lines(SourceRole.Build);
     public int UnclassifiedLines => Lines(SourceRole.Unclassified);
 
-    /// 未归类文件的路径，按目录归并，让「兜底去哪了」在报告里看得见。
+    /// 按路径排序的未归类文件。
     public IReadOnlyList<string> UnclassifiedPaths => [.. Files
         .Where(file => file.Role == SourceRole.Unclassified)
         .Select(file => file.Path)
         .Order(StringComparer.Ordinal)];
 
-    /// 基点树里代码实际住在哪些顶层目录。选错基点时用它说明「你的源码在这儿，但这里不是生产根」。
-    /// 只报目录：仓库根下的单个文件不是「代码住的地方」，把它们也写成 `x/` 只会让诊断显得像在猜。
+    /// 代码所在的顶层目录，用于诊断无效基点；排除仓库根目录下的单个文件。
     public IReadOnlyList<string> CodeRoots => [.. Files
         .Where(file => file.Role is not (SourceRole.Documentation or SourceRole.Generated))
         .Select(file => file.Path.Split('/'))
@@ -81,8 +79,6 @@ internal static class SourceCorpus
             [".md"] = "Markdown",
         };
 
-    /// 归类规则是显式的、有顺序的：生成物 → 测试 → 文档 → 构建描述 → 生产根 → 工具根 → 未归类。
-    /// 没有兜底：不在任何一个已声明的根下的文件归 Unclassified，由报告单列，而不是悄悄记进 tooling。
     private static readonly string[] ProductionRoots = ["src/"];
 
     private static readonly string[] ToolingRoots =
@@ -120,7 +116,6 @@ internal static class SourceCorpus
     private static bool StartsWithAny(string path, IReadOnlyList<string> roots) =>
         roots.Any(root => path.StartsWith(root, StringComparison.Ordinal));
 
-    /// 构建与环境描述不是产品语料：项目文件、解决方案、镜像与 compose、前端工具链配置。
     private static bool IsBuild(string name, string language) =>
         BuildLanguages.Contains(language, StringComparer.Ordinal)
         || name.Contains(".config.", StringComparison.Ordinal);

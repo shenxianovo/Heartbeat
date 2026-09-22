@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Xml.Linq;
 using Heartbeat.Desktop;
 using Heartbeat.Hub;
 
@@ -10,16 +9,15 @@ internal sealed class DesktopReplayScenario(RepositoryContext repository, IProce
     public Task<int> RunAsync(ScenarioOptions options, CancellationToken cancellationToken) =>
         ScenarioEnvironment.RunAsync(repository, runner, output, options,
         [
-            "Packaged macOS application, real settings/Keychain, native Collector, in-process Hub, isolated backend and production Web.",
+            "Packaged macOS development application, private file credentials, real Auth, native Collector, in-process Hub, isolated backend and production Web.",
             "Interactive: configure the desktop, start collection, then pause and quit when prompted; sign in to real OIDC in Chromium.",
-            "Does not verify Windows, automatic updates, distribution signing, permissions, lock/sleep or long-running stability.",
+            "Does not verify production Keychain access, Windows, automatic updates, distribution signing, permissions, lock/sleep or long-running stability.",
         ], environment => RunAsync(environment, cancellationToken), cancellationToken);
 
     private async Task<int> RunAsync(ScenarioEnvironment environment, CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("desktop-replay requires macOS.");
         var profile = Directory.CreateTempSubdirectory("heartbeat-desktop-scenario-").FullName;
-        var cleaned = false;
         try
         {
             await environment.StartAsync(cancellationToken, "web");
@@ -34,7 +32,8 @@ internal sealed class DesktopReplayScenario(RepositoryContext repository, IProce
                 if (desktop.Completion.IsCompleted) throw new InvalidOperationException("Desktop exited before collection started.");
                 return Task.FromResult(File.Exists(Path.Combine(profile, "hub.sqlite")));
             }, cancellationToken, TimeSpan.FromMinutes(10));
-            var settings = JsonSerializer.Deserialize<DesktopSettings>(await File.ReadAllTextAsync(Path.Combine(profile, "settings.json"), cancellationToken))!;
+            var settings = JsonSerializer.Deserialize<DesktopSettings>(
+                await File.ReadAllTextAsync(Path.Combine(profile, "settings.json"), cancellationToken), JsonSerializerOptions.Web)!;
             if (settings.OwnerId != environment.Owner) throw new InvalidOperationException("Desktop Owner does not match the scenario Owner.");
             var queue = new RecordOutbox(Path.Combine(profile, "hub.sqlite"), settings.Destination);
             DesktopReplayEvidence? witness = null;
@@ -64,14 +63,10 @@ internal sealed class DesktopReplayScenario(RepositoryContext repository, IProce
         }
         finally
         {
-            // This credential belongs only to the temporary scenario profile.
-            var cleanup = await runner.CaptureAsync("/usr/bin/security", ["delete-generic-password", "-s",
-                DesktopProfile.CredentialService, "-a", DesktopProfile.CredentialAccount(profile)], null, CancellationToken.None);
+            // The development credential belongs only to this temporary profile.
             Directory.Delete(profile, recursive: true);
-            cleaned = cleanup.ExitCode is 0 or 44;
-            if (!cleaned) await output.WriteLineAsync("Temporary desktop Keychain cleanup was not confirmed.");
         }
-        return cleaned ? 0 : 1;
+        return 0;
     }
 
     private async Task<(string Executable, string Identifier, string DisplayName)> BuildPackageAsync(EvidenceSession evidence, CancellationToken cancellationToken)
@@ -83,8 +78,12 @@ internal sealed class DesktopReplayScenario(RepositoryContext repository, IProce
             .PackageAsync(DesktopPackageOptions.Create(repository, output: package), cancellationToken);
         if (result.ExitCode != 0) throw new InvalidOperationException("Desktop package failed; see desktop-build.log.");
         var contents = Path.Combine(result.ApplicationPath, "Contents");
-        var properties = XDocument.Load(Path.Combine(contents, "Info.plist")).Root!.Element("dict")!;
-        string Read(string key) => properties.Elements("key").Single(item => item.Value == key).ElementsAfterSelf().First().Value;
+        // The SDK can produce binary plists. Convert on stdout to preserve the signed bundle.
+        var identity = await runner.CaptureAsync("/usr/bin/plutil",
+            ["-convert", "json", "-o", "-", Path.Combine(contents, "Info.plist")], null, cancellationToken);
+        if (identity.ExitCode != 0) throw new InvalidDataException($"Cannot read application identity: {identity.StdErr.Trim()}");
+        using var properties = JsonDocument.Parse(identity.StdOut);
+        string Read(string key) => properties.RootElement.GetProperty(key).GetString()!;
         return (Path.Combine(contents, "MacOS", Read("CFBundleExecutable")), Read("CFBundleIdentifier"), Read("CFBundleDisplayName"));
     }
 }

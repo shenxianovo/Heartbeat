@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace Heartbeat.Dev;
 
-/// 一处重复：两段代码、各自的行区间、多少行/多少 token，以及相对基点是新增还是存量。
+/// 重复代码的位置、规模及其相对基点的新增或存量状态。
 internal sealed record CloneFinding(
     string FirstFile,
     int FirstStart,
@@ -41,9 +41,8 @@ internal sealed record CloneQualityReport(CloneScan Production, CloneScan Tests)
 }
 
 /// <summary>
-/// jscpd 是闸门，不是观察项：生产代码和测试代码各扫一遍精确重复（8 行 / 70 token，strict），
-/// 相对基点比较，只有「新增的重复簇」才会挂。挂的时候要说得清是哪两段、多少行、新增还是存量——
-/// 以前它只把最后一行输出（往往是 `time: 437ms`）当失败原因，等于没有诊断。
+/// 分别扫描生产和测试代码的精确重复，报告位置、规模及相对基点的变化。
+/// 闸门只阻止新增重复簇。
 /// </summary>
 internal sealed class CloneDetector(RepositoryContext repository, IProcessRunner runner)
 {
@@ -124,7 +123,7 @@ internal sealed class CloneDetector(RepositoryContext repository, IProcessRunner
         return Parse(scope, prefix, reportDirectory, File.ReadAllText(reportPath));
     }
 
-    /// jscpd 报告里的路径相对被扫的目录，补回仓库前缀，诊断才能直接拿去打开文件。
+    /// 将扫描目录下的相对路径转换为仓库相对路径。
     internal static CloneScan Parse(string scope, string prefix, string? reportDirectory, string json)
     {
         using var document = JsonDocument.Parse(json);
@@ -172,7 +171,7 @@ internal sealed class CloneDetector(RepositoryContext repository, IProcessRunner
     private static CloneScan Missing(string scope, string reason) =>
         new(scope, false, reason, null, 0, 0, 0, 0, [], []);
 
-    /// 真正有用的那一行是错误，不是最后一行输出：stdout 的末尾往往是 `time: …ms`。
+    /// 优先提取错误信息，避免把末尾耗时行当作失败原因。
     private static string FailureLine(ProcessResult result)
     {
         var lines = (result.StdErr + Environment.NewLine + result.StdOut)

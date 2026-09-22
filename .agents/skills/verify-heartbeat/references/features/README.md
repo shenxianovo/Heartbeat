@@ -4,7 +4,7 @@
 
 | 能力 | 用户入口 | 验证入口 | 权威文档 | 证据限制 |
 | --- | --- | --- | --- | --- |
-| 桌面客户端 | Mac `Heartbeat Dev.app` / Windows `env up desktop`，连接设置、采集、菜单栏或托盘 | `scenario desktop-replay` | [客户端 README](../../../../../src/Desktop/README.md)、[宿主责任](../../../../../docs/adr/ADR-0017-native-desktop-interfaces.md) | 真实应用包与服务；需界面操作及 OIDC 登录，不覆盖 Windows、发行签名或自动更新 |
+| 桌面客户端 | Mac `Heartbeat Dev.app` 的可折叠侧栏（采集状态、连接设置、打开时间线）/ Windows `env up desktop`，菜单栏或托盘 | `scenario desktop-replay`；开发凭据跨构建恢复及 Mac 布局/动画按客户端 README 实机检查 | [客户端 README](../../../../../src/Desktop/README.md)、[宿主责任](../../../../../docs/adr/ADR-0017-native-desktop-interfaces.md) | 真实应用包与服务；需界面操作及 OIDC 登录；静态截图不证明动画和 VoiceOver，使用开发凭据文件，不覆盖普通构建 Keychain、Windows、发行签名或自动更新 |
 | Windows 原生客户端 | WinUI 窗口、系统托盘、凭据管理器 | Windows 上 `package desktop` 及客户端 README 的人工步骤；共享运行/输入翻译测试 | [客户端 README](../../../../../src/Desktop/README.md)、[Windows Collector](../../../../../src/Collectors/Heartbeat.Collector.Desktop.Windows/README.md) | Mac 上的 C# 编译与纯逻辑测试不证明 Windows 原生行为；尚无 Windows 端到端场景 |
 | 本地桌面打包 | `package desktop [--runtime RID] [--output DIR]` | `verify changed` 中的 CLI 测试；在目标 OS 上执行 `package desktop` | [本地打包](../../../../../docs/development.md#本地打包)、[打包职责](../../../../../docs/adr/ADR-0018-developer-cli-packaging.md) | CLI 测试覆盖命令、失败与清理；真实打包须有平台 SDK，不替代 UI 验收 |
 | 开发签名 | `signing setup/status` | CLI 平台分派、Mac 身份复用与错误边界测试；Mac 真实打包及 DR 比较；Windows 实机确认无需签名 | [开发签名](../../../../../docs/development.md#macos-开发签名)、[身份权威](../../../../../docs/adr/ADR-0020-stable-macos-development-signing.md) | 签名一致不证明 TCC 权限保留；首次授权和系统信任可能需要人工 |

@@ -19,7 +19,7 @@ internal sealed record LineQualityReport(
     IReadOnlyList<string> UnclassifiedPaths,
     IReadOnlyList<LanguageDelta> ProductionLanguages);
 
-/// 基点本身也是一条要报告的事实：请求的是什么、解析成哪个提交、能不能量。
+/// 记录请求的基点、解析后的提交及其可用性。
 internal sealed record QualityBaseReport(
     string Requested,
     string Resolved,
@@ -109,8 +109,7 @@ internal sealed class QualityCommand(
 
             var current = await source.ReadWorktreeAsync(cancellationToken);
             var lines = CompareLines(baseline, current);
-            // 三次扫描都用同一个已解析的提交号，不用 `--base` 给的那个名字：`HEAD` 这类可移动的
-            // 引用会让缓存的基线工作树在 HEAD 前进后继续被复用，量出来的「增量」就不是相对当前基点的。
+            // 所有扫描使用同一提交号，避免可移动引用导致基线不一致。
             var baseCommit = baseline.Revision;
             var clones = await new CloneDetector(repository, runner)
                 .CompareAsync(baseCommit, run.Directory, commands, cancellationToken);
@@ -131,8 +130,7 @@ internal sealed class QualityCommand(
     }
 
     /// <summary>
-    /// 谁挂谁不挂集中在这里：clone 与复杂度检测只负责度量，闸门决定在这一层。
-    /// gate 模式拦「相对基点新增的」；stock 模式只拦「量不出来」和「存量上限被突破」。
+    /// 统一判定闸门：两种模式都要求度量可用且存量未超预算，gate 额外阻止相对基点的退化。
     /// </summary>
     internal static IReadOnlyList<string> Failures(
         bool stock,

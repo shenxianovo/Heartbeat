@@ -3,10 +3,8 @@ using System.Text.Json;
 namespace Heartbeat.Dev;
 
 /// <summary>
-/// 存量热点的绝对上限。相对基点的 ratchet 只拦增量：已提交的热点可以无限期驻留，
-/// 换个基点甚至看不见它们。这里提交一个数字——生产代码里复杂度大于 10 的函数最多几个——
-/// 每次 quality 都对着当前值校验，与基点无关。规则是这个数字只准往下改：
-/// 往上改要改文件，改动会出现在 diff 里，得给出理由。
+/// 生产函数复杂度大于 10 的数量上限，每次 quality 都检查，与 Git 基点无关。
+/// 预算只应下调；上调须修改预算文件并说明理由。
 /// </summary>
 internal sealed record StockBudgetLimits(
     int MaxProductionComplexityHotspots,

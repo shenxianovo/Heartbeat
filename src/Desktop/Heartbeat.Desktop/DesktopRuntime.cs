@@ -148,7 +148,7 @@ public sealed class DesktopRuntime : IAsyncDisposable, ICollectorManager
     {
         if (_deliveryTask is not null) return;
         var key = _profile.ReadApiKey();
-        if (string.IsNullOrWhiteSpace(key)) throw new InvalidOperationException("系统凭据库中没有 API key，请重新保存连接。");
+        if (string.IsNullOrWhiteSpace(key)) throw new InvalidOperationException("没有已保存的 API key，请重新保存连接。");
         _queue = new RecordOutbox(_profile.DatabasePath, settings.Destination);
         _tokens = new ApiKeyTokenProvider(_http, settings.AuthUrl, key);
         _delivery = new HubDeliveryLoop(new RecordUploader(_queue, _http, _tokens), TimeSpan.FromSeconds(5));

@@ -6,12 +6,12 @@ using Heartbeat.Collector.Desktop.Mac.Native;
 
 namespace Heartbeat.Desktop.Mac;
 
-public sealed partial class MacDesktopPlatform : IDesktopPlatform
+public sealed partial class MacDesktopPlatform(ICredentialStore credentials) : IDesktopPlatform
 {
     public string CollectorKey => "heartbeat.collector.desktop.macos";
     public string DisplayName => "macOS 桌面";
     public TimeProvider Clock { get; } = new MacContinuousTimeProvider();
-    public ICredentialStore Credentials { get; } = new MacKeychain();
+    public ICredentialStore Credentials { get; } = credentials;
     public IDesktopObservationSource CreateObservationSource() => new MacSystemObservationSource();
 
     public string GetTarget()

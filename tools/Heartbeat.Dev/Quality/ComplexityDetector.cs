@@ -141,8 +141,8 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
     }
 
     /// <summary>
-    /// 一棵树里 CA1502 一条生产函数都没量到，最常见的原因不是分析器坏了，而是基点选错了：
-    /// 那棵树的源码不在 `src/` 下。诊断要把「量到了多少个函数、它们住在哪儿」说出来，并给出锚点。
+    /// 未测到生产函数时，报告 CA1502 的函数数和源码位置，并建议使用重写锚点。
+    /// 常见原因是基点早于 `src/` 目录布局。
     /// </summary>
     internal static string NoProductionMetrics(string root, IReadOnlyList<ComplexityHotspot> all)
     {
@@ -174,7 +174,7 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
             : Path.Combine(web, "node_modules", ".bin", "eslint");
         if (!File.Exists(executable) && !string.Equals(root, repository.Root, StringComparison.Ordinal))
         {
-            // 基线树的依赖按 commit 缓存：命中就不再装一遍，这一步以前是跨基点度量最慢也最容易断的地方。
+            // 复用已恢复的基线依赖，避免重复安装。
             commands.Add("npm ci --ignore-scripts (cached Git base)");
             var installed = await ProcessRunner.CaptureAsync(
                 web, "npm", ["ci", "--ignore-scripts"], cancellationToken);
@@ -225,7 +225,7 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
     internal static IReadOnlyList<ComplexityHotspot> ParseCSharp(string root, string output) =>
         [.. ParseAllCSharp(root, output).Where(IsProduction)];
 
-    /// 所有 CA1502 诊断，不按角色过滤：过滤前的数量与路径是判断「基点是不是选错了」的依据。
+    /// 保留所有角色的 CA1502 诊断，用数量与路径判断基点是否有效。
     internal static IReadOnlyList<ComplexityHotspot> ParseAllCSharp(string root, string output) =>
         output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
             .Select(line => CSharpDiagnostic().Match(line))

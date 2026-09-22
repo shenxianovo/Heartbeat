@@ -10,7 +10,7 @@ Avalonia 的 UI 选择已由 [ADR-0017](ADR-0017-native-desktop-interfaces.md) �
 
 桌面运行模块负责组合和启停，UI 只发起操作、展示状态。平台实现提供原生采集、Target 读取、系统权限入口及凭据库适配；Hub 保持对具名 Collector 和桌面 UI 无依赖。客户端通过进程内调用获得 SQLite 接管，服务器同进程 Collector 也通过进程内接管，独立 Collector 仍可通过 HTTP 接管（见 ADR-0019）；两处 Hub 使用相同交付实现，各自直连后端，见 [ADR-0014](ADR-0014-hub-desktop-and-server-hosting.md)。
 
-客户端配置和队列由其用户数据目录保存，API key 的持久权威为系统凭据库；Mac 使用钥匙串。Owner 从现有 Auth 令牌交换取得，SQLite 继续约束后端与 Owner 绑定，UI 不预注册 Collector 或 Track。
+客户端配置和队列由其用户数据目录保存，API key 的持久权威为系统凭据库；Mac 使用钥匙串。显式 macOS 开发身份的存储由 [ADR-0022](ADR-0022-macos-development-credentials.md) 细化为独立 profile 中的受限文件，普通构建与 Windows 继续使用系统凭据库。Owner 从现有 Auth 令牌交换取得，SQLite 继续约束后端与 Owner 绑定，UI 不预注册 Collector 或 Track。
 
 暂停后 Hub 可以继续交付，退出不等待网络队列排空；已接管数据在下次启动后继续交付。会话取消时对已产生的快照做一次有期限的最终交接；这不保证进程崩溃前未接管数据的持久性，也不阻止用户退出。
 

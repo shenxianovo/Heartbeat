@@ -51,25 +51,29 @@ npm run test:e2e
 
 `verify` 执行类型生成、TypeScript、ESLint、Prettier、Vitest 和生产构建。浏览器测试使用模拟认证和 API，不能代替真实链路验收；证据边界见[工程验证](../../../docs/verification.md)。
 
-真实用户主线使用仓库根目录的 `dotnet run --project tools/Heartbeat.Dev -- scenario desktop-replay`：真实 Heartbeat Dev 客户端及其同进程 Collector/Hub、API、PostgreSQL 与生产 Web 直接连接，经过真实 OIDC 登录后在页面核对本次 Record。需要在弹出的临时 Chromium 中登录；具体前置条件与证据见[桌面应用到真实 Web 回放](../../../docs/verification.md#桌面应用到真实-web-回放)。
+真实链路在仓库根目录运行 `dotnet run --project tools/Heartbeat.Dev -- scenario desktop-replay`，连接桌面采集、Hub、后端与生产 Web，并在临时 Chromium 中经 OIDC 登录核对本次 Record。前置条件与证据见[桌面应用到真实 Web 回放](../../../docs/verification.md#桌面应用到真实-web-回放)。
 
 ## 活动泳道拖动基准
 
-拖动手感是渲染成本问题，靠肉眼判断不可靠，所以有一份独立的基准：
+用独立基准测量拖动时的渲染成本：
 
 ```bash
-# 生产构建，看 Owner 实际拿到的手感
+# 生产构建：评估实际交互性能
 HEARTBEAT_PERF_MODE=production npm run test:perf
 # 开发服务，用于阶段归因
 npm run test:perf
 ```
 
-基准用匿名的确定性数据模拟一天的量（安静一天约 100 条前台应用，忙碌一天 1,376 条前台应用、1,738 条前台窗口、175,492 个输入事件），分别测三种拖动：整天视图下拖不动的 `clamped-pan`、放大一次的 `wide-pan`、放大两次的 `zoomed-pan`，并额外测量展开应用子泳道的情况。生产模式启动与 Docker 镜像相同的 standalone server。每次报告以时间命名，保存在当前前端目录的 `.artifacts/perf/`，命令会打印完整路径；需要指定文件名时可设置 `HEARTBEAT_PERF_REPORT`。报告含每步耗时分位、浏览器长任务和按阶段归因的采样；生产模式还记录连续拖动时的范围更新次数与帧间隔。报告里的 `segments` 是屏幕上的区间条数，稠密泳道画在画布上没有节点可数，改由画布自报。逐步测量每次都会等浏览器空闲，不能直接换算为帧率。退出码只说明基准是否完成，不表示速度合格。
+基准用匿名、确定性数据模拟安静和忙碌的一天，测量整天视图的 `clamped-pan`、放大一次的 `wide-pan`、放大两次的 `zoomed-pan`，以及展开应用子泳道的情况。生产模式使用与 Docker 镜像相同的 standalone server。
 
-两条读数纪律：
+报告按时间命名，保存在前端 `.artifacts/perf/`，命令会打印路径；可用 `HEARTBEAT_PERF_REPORT` 指定文件名。报告包含逐步耗时分位、浏览器长任务和阶段采样；生产模式另记录连续拖动的范围更新次数与帧间隔。`segments` 表示屏幕区间条数，稠密泳道由画布自报。
 
-- 判断手感看生产构建。开发构建里 React 会把每次提交喂给自己的性能轨道，忙碌一天的单步成本被放大到秒级；开发模式只运行未展开的两组数据，展开子泳道只在生产模式测量，以免把开发标签页撑到内存耗尽。报告里的 `instability` 字段记录其他失稳事件，之后的读数不能采信。
-- 阶段归因看开发构建。生产构建的函数名已压缩，采样只能落到运行时桶里。
+逐步测量会等待浏览器空闲，不能换算为帧率。退出码只表示测量是否完成，不判断性能是否达标。
+
+读数方式：
+
+- 生产构建用于评估交互性能。开发构建的 React 性能记录会放大成本，因此开发模式只测两组未展开数据；展开子泳道仅在生产模式测量，避免内存耗尽。`instability` 记录失稳事件，其后读数不可采信。
+- 开发构建用于阶段归因。生产构建函数名已压缩，采样只能归入运行时分类。
 
 ## 回放约束
 

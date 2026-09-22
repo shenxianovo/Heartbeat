@@ -128,8 +128,7 @@ public sealed class DesktopCollectorSession(
     }
 
     /// <summary>
-    /// 把原生事件与周期采样收敛成一条串行的观测流。它只回答一件事：这次读数能不能算作确认。
-    /// 读取快照期间前台变过，就让排队的那个事件拥有这次转场，可能已经过时的快照不覆盖它。
+    /// 串行处理原生事件与周期采样。读取期间前台变化时，丢弃过时快照，由事件处理转场。
     /// </summary>
     private sealed class ObservationQueue(
         IDesktopObservationSource source,
@@ -203,11 +202,11 @@ public sealed class DesktopCollectorSession(
         }
 
         /// <summary>
-        /// 应用所有已收到的事件，返回队列见底那一刻的活动序号。序号与「队列已空」必须在同一次加锁里
-        /// 取得，否则读快照期间到达的事件会既算进序号、又留在队列里，让确认与事件的顺序颠倒。
+        /// 应用所有已收到的事件。
         /// </summary>
         public void Drain() => DrainReceived();
 
+        // 在同一次加锁中确认队列为空并读取活动序号，避免漏判快照读取期间到达的事件。
         private long DrainReceived()
         {
             while (true)

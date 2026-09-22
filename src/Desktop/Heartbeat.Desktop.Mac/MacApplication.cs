@@ -16,18 +16,29 @@ public sealed class MacApplication(DesktopRuntime runtime) : NSApplicationDelega
         app.ActivationPolicy = NSApplicationActivationPolicy.Regular;
         _window = new MacWindow(runtime);
         app.MainMenu = CreateMainMenu();
-        _status = NSStatusBar.SystemStatusBar.CreateStatusItem(NSStatusItemLength.Variable);
-        _status.Button!.Title = "♡";
+        _status = NSStatusBar.SystemStatusBar.CreateStatusItem(NSStatusItemLength.Square);
+        // The HIG asks menu-bar extras to use a monochrome template image so the
+        // system can tint it for light/dark/inverted menu bars.
+        var statusIcon = NSImage.GetSystemSymbol("waveform.path.ecg", "Heartbeat");
+        if (statusIcon is not null)
+        {
+            statusIcon.Template = true;
+            _status.Button!.Image = statusIcon;
+        }
+        else
+        {
+            _status.Button!.Title = "♡";
+        }
         _status.Button.ToolTip = "Heartbeat Dev";
         _status.Menu = new NSMenu();
-        _status.Menu.AddItem(new NSMenuItem("打开 Heartbeat Dev", (_, _) => ShowWindow()));
+        _status.Menu.AddItem(new NSMenuItem("打开 Heartbeat Dev", "o", (_, _) => ShowWindow()));
         _status.Menu.AddItem(NSMenuItem.SeparatorItem);
-        _status.Menu.AddItem(new NSMenuItem("退出 Heartbeat Dev", (_, _) => app.Terminate(null)));
+        _status.Menu.AddItem(new NSMenuItem("退出 Heartbeat Dev", "q", (_, _) => app.Terminate(null)));
         ShowWindow();
         _ = _window.PerformAsync(runtime.InitializeAsync);
     }
 
-    private static NSMenu CreateMainMenu()
+    private NSMenu CreateMainMenu()
     {
         var menu = new NSMenu();
         var applicationMenu = new NSMenu();
@@ -40,6 +51,18 @@ public sealed class MacApplication(DesktopRuntime runtime) : NSApplicationDelega
         edit.AddItem(new NSMenuItem("粘贴", new ObjCRuntime.Selector("paste:"), "v"));
         edit.AddItem(new NSMenuItem("全选", new ObjCRuntime.Selector("selectAll:"), "a"));
         menu.AddItem(new NSMenuItem("编辑") { Submenu = edit });
+
+        // "View" carries the standard macOS "Toggle Sidebar" affordance
+        // (⌘⌥S). Owning the shortcut here keeps it discoverable even when
+        // the sidebar has been collapsed to icons only.
+        var view = new NSMenu("显示");
+        var toggleSidebar = new NSMenuItem("收起 / 展开侧边栏", "s", (_, _) => _window?.ToggleSidebar())
+        {
+            KeyEquivalentModifierMask = NSEventModifierMask.CommandKeyMask | NSEventModifierMask.AlternateKeyMask,
+        };
+        view.AddItem(toggleSidebar);
+        menu.AddItem(new NSMenuItem("显示") { Submenu = view });
+
         return menu;
     }
 
