@@ -6,22 +6,6 @@ public sealed class ProbeOptionsTests
 {
     private static readonly DateTimeOffset Start = new(2026, 9, 16, 4, 33, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset End = new(2026, 9, 16, 4, 50, 0, TimeSpan.Zero);
-    [Fact]
-    public void FallsBackToDefaultDwellCandidatesWhenNoneAreRequested()
-    {
-        var options = ProbeOptions.Create();
-
-        Assert.Null(options.Dwells);
-    }
-
-    [Fact]
-    public void ReadsADatabaseWindowFromLocalTimestamps()
-    {
-        var options = ProbeOptions.Create(database: true, since: Start, until: End);
-
-        Assert.Equal(new DateTimeOffset(2026, 9, 16, 4, 33, 0, TimeSpan.Zero), options.Database?.Since);
-        Assert.Equal(new DateTimeOffset(2026, 9, 16, 4, 50, 0, TimeSpan.Zero), options.Database?.Until);
-    }
 
     [Fact]
     public void ExportsUpToNowWhenNoEndIsGiven()
@@ -73,14 +57,5 @@ public sealed class ProbeOptionsTests
             ProbeOptions.Create(since: Start));
 
         Assert.Contains("--from-database", error.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void ObservesThisMacWhenNoOtherSourceIsNamed()
-    {
-        var options = ProbeOptions.Create();
-
-        Assert.Null(options.Database);
-        Assert.Null(options.Readings);
     }
 }

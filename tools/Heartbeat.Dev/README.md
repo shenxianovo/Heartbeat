@@ -8,7 +8,7 @@
 | `Setup/` | `env setup`：隐藏输入、真实 Auth 校验、Owner 绑定与私密原子保存 |
 | `Signing/` | `signing setup/status`：Mac 创建或复用开发签名，Windows 报告无需签名 |
 | `Packaging/` | `package desktop`：平台发布、图标、签名、临时目录与产物替换 |
-| `Verification/` | `verify changed/full`：Git 变更选择、执行检查 |
+| `Verification/` | `verify changed/full`：代码与测试；`verify closeout --base REF`：组合变更验证与结构质量 |
 | `Quality/` | `quality --base REF`、`quality loc`：质量分析与代码规模 |
 | `Scenarios/` | `scenario <name>`：组合真实实现的验收、运行环境与生命周期 |
 | `Probes/` | `probe window-title`：真实读数与规则参数评估 |

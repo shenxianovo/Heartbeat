@@ -49,11 +49,10 @@ internal sealed class CloneDetector(RepositoryContext repository, IProcessRunner
     private const int MinimumLines = 8;
     private const int MinimumTokens = 70;
 
-    private const string Ignored =
-        "**/*.Designer.cs,**/*ModelSnapshot.cs,**/package-lock.json,**/*-lock.json,**/next-env.d.ts";
-
     public async Task<CloneQualityReport> CompareAsync(
         string baseRef,
+        SourceSnapshot baseline,
+        SourceSnapshot current,
         string artifactDirectory,
         ICollection<string> commands,
         CancellationToken cancellationToken)
@@ -68,17 +67,26 @@ internal sealed class CloneDetector(RepositoryContext repository, IProcessRunner
             return new CloneQualityReport(Missing("production", missing), Missing("tests", missing));
         }
 
+        var files = baseline.Files.Concat(current.Files).ToArray();
         var production = await ScanAsync(
-            executable, "production", repository.Path("src"), baseRef, artifactDirectory, commands, cancellationToken);
+            executable, "production", Pattern(files, SourceRole.Production), baseRef, artifactDirectory, commands, cancellationToken);
         var tests = await ScanAsync(
-            executable, "tests", repository.Path("tests"), baseRef, artifactDirectory, commands, cancellationToken);
+            executable, "tests", Pattern(files, SourceRole.Test), baseRef, artifactDirectory, commands, cancellationToken);
         return new CloneQualityReport(production, tests);
     }
+
+    // jscpd applies this pattern to both trees. Keep deleted baseline files and
+    // escape literal paths; directory globs would reintroduce a second classifier.
+    private static string Pattern(IEnumerable<SourceFileMetric> files, SourceRole role) =>
+        "{" + string.Join(',', files.Where(file => file.Role == role).Select(file => file.Path)
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)
+            .Select(path => string.Concat(path.Select(character => "\\[]{}*,?".Contains(character, StringComparison.Ordinal)
+                ? "\\" + character : character.ToString())))) + "}";
 
     private async Task<CloneScan> ScanAsync(
         string executable,
         string scope,
-        string target,
+        string pattern,
         string baseRef,
         string artifactDirectory,
         ICollection<string> commands,
@@ -86,29 +94,30 @@ internal sealed class CloneDetector(RepositoryContext repository, IProcessRunner
     {
         var reportDirectory = Path.Combine(artifactDirectory, $"jscpd-{scope}");
         Directory.CreateDirectory(reportDirectory);
+        var configPath = Path.Combine(reportDirectory, "scan-config.json");
+        await File.WriteAllTextAsync(configPath, JsonSerializer.Serialize(new { pattern }, JsonOptions.Indented), cancellationToken);
         var arguments = new[]
         {
-            target,
+            repository.Root,
+            "--config", configPath,
             "--min-lines", MinimumLines.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "--min-tokens", MinimumTokens.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "--mode", "strict",
             "--reporters", "console,json",
             "--output", reportDirectory,
-            "--ignore", Ignored,
             "--baseline-from-ref", baseRef,
             "--fail-on-new-clones",
             "--no-colors",
             "--no-tips",
         };
-        var relative = Path.GetRelativePath(repository.Root, target).Replace('\\', '/');
-        commands.Add($"jscpd {relative} --mode strict --min-lines {MinimumLines} --min-tokens {MinimumTokens} "
+        commands.Add($"jscpd . --config {configPath} --mode strict --min-lines {MinimumLines} --min-tokens {MinimumTokens} "
             + $"--baseline-from-ref {baseRef} --fail-on-new-clones");
         var result = await runner.CaptureAsync(executable, arguments, null, cancellationToken);
         await File.WriteAllTextAsync(
             Path.Combine(artifactDirectory, $"jscpd-{scope}.log"),
             result.StdOut + result.StdErr,
             cancellationToken);
-        return Read(scope, relative, reportDirectory, result);
+        return Read(scope, string.Empty, reportDirectory, result);
     }
 
     /// jscpd 用退出码 1 表示「有新增重复」，这不是工具故障。只有报告都没写出来才算扫不了。

@@ -39,7 +39,7 @@ export function AppHeader() {
       <div className="account-menu">
         <Link href="/hubs">Hub 管理</Link>
         <span className="account-name">{displayName}</span>
-        <Button variant="glass" type="button" onClick={leave} disabled={leaving}>
+        <Button variant="glass" type="button" onClick={() => void leave()} disabled={leaving}>
           {leaving ? "正在退出…" : "退出登录"}
         </Button>
       </div>

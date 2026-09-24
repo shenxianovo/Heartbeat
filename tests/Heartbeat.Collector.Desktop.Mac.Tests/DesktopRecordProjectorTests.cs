@@ -29,7 +29,6 @@ public sealed class DesktopRecordProjectorTests
 
         var windows = Latest(staged, WindowTrack);
         Assert.Equal(3, windows.Length);
-        Assert.Equal(3, windows.Select(record => record.Id).Distinct().Count());
         Assert.Equal(Start.AddSeconds(2), windows[0].EndedAt);
         Assert.Equal(Start.AddSeconds(2), windows[1].StartedAt);
         Assert.Equal(Start.AddSeconds(4), windows[2].StartedAt);

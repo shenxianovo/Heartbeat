@@ -42,7 +42,11 @@ export function CollectorForm({
   }
 
   return (
-    <form className="collector-form" onSubmit={save} aria-label={`${type.displayName} 配置`}>
+    <form
+      className="collector-form"
+      onSubmit={(event) => void save(event)}
+      aria-label={`${type.displayName} 配置`}
+    >
       <h3>
         {collector ? "配置" : "添加"} {type.displayName}
       </h3>

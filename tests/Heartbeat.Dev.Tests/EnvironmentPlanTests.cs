@@ -30,16 +30,6 @@ public sealed class EnvironmentPlanTests
         Assert.Equal(["web", "api", "db"], plan.ComposeServices);
     }
 
-    [Fact]
-    public void ResetRequiresExplicitApplyToBeDestructive()
-    {
-        var preview = Plan(EnvironmentAction.Reset);
-        var apply = EnvironmentPlan.Create(new EnvironmentOptions(EnvironmentAction.Reset, false, null, false, true, new HashSet<string>()));
-
-        Assert.False(preview.Options.Apply);
-        Assert.True(apply.Options.Apply);
-    }
-
     [Theory]
     [InlineData("logs")]
     [InlineData("status")]

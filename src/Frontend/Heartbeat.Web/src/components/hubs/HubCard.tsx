@@ -159,7 +159,7 @@ function HubActions({
           </Button>
         ))}
       {!hub.retired && (
-        <Button disabled={busy || stale || hub.online} onClick={retire}>
+        <Button disabled={busy || stale || hub.online} onClick={() => void retire()}>
           退役 Hub
         </Button>
       )}

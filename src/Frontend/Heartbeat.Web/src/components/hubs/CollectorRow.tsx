@@ -40,12 +40,12 @@ export function CollectorRow({
         {collector.error && <p role="status">{collector.error}</p>}
       </div>
       <div className="hub-actions">
-        <Button disabled={disabled || cannotStart} onClick={() => execute("start")}>
+        <Button disabled={disabled || cannotStart} onClick={() => void execute("start")}>
           开始
         </Button>
         <Button
           disabled={disabled || collector.state === "paused"}
-          onClick={() => execute("pause")}
+          onClick={() => void execute("pause")}
         >
           暂停
         </Button>

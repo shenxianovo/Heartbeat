@@ -51,6 +51,8 @@ npm run test:e2e
 
 `verify` 执行类型生成、TypeScript、ESLint、Prettier、Vitest 和生产构建。浏览器测试使用模拟认证和 API，不能代替真实链路验收；证据边界见[工程验证](../../../docs/verification.md)。
 
+TypeScript lint 使用项目类型信息检查悬空 Promise 和 Promise 的错误使用。异步结果应等待或处理；明确交由库内部处理的调用及不等待返回值的事件入口用 `void` 表达意图。`void` 不会捕获拒绝，调用方仍需保证失败有对应处理。测试中的 React `act()` 也应等待。
+
 真实链路在仓库根目录运行 `dotnet run --project tools/Heartbeat.Dev -- scenario desktop-replay`，连接桌面采集、Hub、后端与生产 Web，并在临时 Chromium 中经 OIDC 登录核对本次 Record。前置条件与证据见[桌面应用到真实 Web 回放](../../../docs/verification.md#桌面应用到真实-web-回放)。
 
 ## 活动泳道拖动基准

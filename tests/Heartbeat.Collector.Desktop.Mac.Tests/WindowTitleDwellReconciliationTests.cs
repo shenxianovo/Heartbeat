@@ -81,9 +81,7 @@ public sealed class WindowTitleDwellReconciliationTests
         string Name,
         double DwellSeconds,
         TableReading[] Readings,
-        int ProbeWindowRecords,
-        int ProductionWindowRecords,
-        string? Divergence);
+        int ProductionWindowRecords);
 
     private sealed record TableReading(double Second, string Application, string? Title);
 }

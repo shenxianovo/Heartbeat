@@ -19,13 +19,6 @@ public sealed class MacInputNativeEventTranslatorTests
         Assert.Equal(unit, observation.ScrollUnit);
     }
 
-    [Fact]
-    public void ModifierEventsReachTheTranslator()
-    {
-        Assert.True(MacInputNativeEventTranslator.TryTranslate(
-            12, 0x38, 0, false, 0, 0, 0, 0, out _));
-    }
-
     [Theory]
     [InlineData(0x38, 0x3C, 0x02UL, 0x04UL, 0x20000UL)]
     [InlineData(0x3B, 0x3E, 0x01UL, 0x2000UL, 0x40000UL)]

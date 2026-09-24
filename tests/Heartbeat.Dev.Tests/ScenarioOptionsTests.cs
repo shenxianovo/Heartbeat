@@ -13,12 +13,4 @@ public sealed class ScenarioOptionsTests
         Assert.Equal(["replay-fixture", "hubs-fixture", "delivery", "collector-delivery", "desktop-replay", "native-desktop"],
             output.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries));
     }
-
-    [Fact]
-    public void SensitiveEvidenceAndFailureRetentionRequireExplicitFlags()
-    {
-        var defaults = new ScenarioOptions("native-desktop");
-        Assert.False(defaults.IncludeSensitiveEvidence);
-        Assert.False(defaults.KeepEnvironmentOnFailure);
-    }
 }

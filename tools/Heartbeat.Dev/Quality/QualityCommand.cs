@@ -50,7 +50,7 @@ internal sealed class QualityCommand(
     {
         var command = new Command("quality", "Compare structural quality with a Git base");
         var baseRef = new Option<string?>("--base") { Description = $"Git comparison base; '{RewriteLineage.Alias}' resolves to {RewriteLineage.Describe()}" };
-        var stock = new Option<bool>("--stock") { Description = "Report accumulated deltas; only the committed stock budget is enforced" };
+        var stock = new Option<bool>("--stock") { Description = "Report accumulated deltas; require complete scans and the committed stock budget" };
         var json = new Option<bool>("--json") { Description = "Print the report as JSON" };
         command.Options.Add(baseRef);
         command.Options.Add(stock);
@@ -76,9 +76,8 @@ internal sealed class QualityCommand(
 
     public async Task<int> RunAsync(QualityOptions options, CancellationToken cancellationToken)
     {
-        var (baseRef, json, stock) = options;
+        var stock = options.Stock;
         var mode = stock ? StockMode : GateMode;
-        var resolved = RewriteLineage.Resolve(baseRef);
         var limitations = new List<string>
         {
             "LOC is a change signal, not a correctness or maintainability verdict.",
@@ -89,44 +88,50 @@ internal sealed class QualityCommand(
                 "Stock mode reports everything accumulated since the base; it does not gate the current change.");
         }
 
-        return await EvidenceSession.ExecuteAsync(repository, "quality", mode, limitations, async evidence =>
-        {
-            var run = evidence.Run;
-            var commands = evidence.Commands;
-            var source = new GitSourceReader(repository, runner);
-            var baseline = await source.ReadRevisionAsync(resolved, cancellationToken);
-            var usability = BaseUsability.Evaluate(baseRef, baseline);
-            if (!usability.Usable)
-            {
-                var unusable = new QualityReport(
-                    new QualityBaseReport(baseRef, baseline.Revision, false, usability.Reason, usability.Suggestions),
-                    mode, run.Directory, null, null, null, null, false, [usability.Reason!]);
-                await WriteReportAsync(run.Directory, unusable, cancellationToken);
-                if (json) await output.WriteLineAsync(JsonSerializer.Serialize(unusable, JsonOptions.Indented));
-                else await WriteUnusableBaseAsync(unusable);
-                return 1;
-            }
+        return await EvidenceSession.ExecuteAsync(repository, "quality", mode, limitations,
+            evidence => RunChecksAsync(options, evidence, cancellationToken), notes: output);
+    }
 
-            var current = await source.ReadWorktreeAsync(cancellationToken);
-            var lines = CompareLines(baseline, current);
-            // 所有扫描使用同一提交号，避免可移动引用导致基线不一致。
-            var baseCommit = baseline.Revision;
-            var clones = await new CloneDetector(repository, runner)
-                .CompareAsync(baseCommit, run.Directory, commands, cancellationToken);
-            var complexity = await new ComplexityDetector(repository, runner)
-                .CompareAsync(baseCommit, run.Directory, commands, cancellationToken);
-            var budget = complexity.Available
-                ? StockBudget.Evaluate(repository, complexity.CurrentHotspots)
-                : null;
-            var failures = Failures(stock, clones, complexity, budget);
-            var report = new QualityReport(
-                new QualityBaseReport(baseRef, baseline.Revision, true, null, []),
-                mode, run.Directory, lines, clones, complexity, budget, failures.Count == 0, failures);
-            await WriteReportAsync(run.Directory, report, cancellationToken);
-            if (json) await output.WriteLineAsync(JsonSerializer.Serialize(report, JsonOptions.Indented));
-            else await WriteHumanAsync(report);
-            return report.Passed ? 0 : 1;
-        }, notes: output);
+    internal async Task<int> RunChecksAsync(QualityOptions options, EvidenceSession evidence, CancellationToken cancellationToken)
+    {
+        var (baseRef, json, stock) = options;
+        var mode = stock ? StockMode : GateMode;
+        var resolved = RewriteLineage.Resolve(baseRef);
+        var run = evidence.Run;
+        var commands = evidence.Commands;
+        var source = new GitSourceReader(repository, runner);
+        var baseline = await source.ReadRevisionAsync(resolved, cancellationToken);
+        var usability = BaseUsability.Evaluate(baseRef, baseline);
+        if (!usability.Usable)
+        {
+            var unusable = new QualityReport(
+                new QualityBaseReport(baseRef, baseline.Revision, false, usability.Reason, usability.Suggestions),
+                mode, run.Directory, null, null, null, null, false, [usability.Reason!]);
+            await WriteReportAsync(run.Directory, unusable, cancellationToken);
+            if (json) await output.WriteLineAsync(JsonSerializer.Serialize(unusable, JsonOptions.Indented));
+            else await WriteUnusableBaseAsync(unusable);
+            return 1;
+        }
+
+        var current = await source.ReadWorktreeAsync(cancellationToken);
+        var lines = CompareLines(baseline, current);
+        // 所有扫描使用同一提交号，避免可移动引用导致基线不一致。
+        var baseCommit = baseline.Revision;
+        var clones = await new CloneDetector(repository, runner)
+            .CompareAsync(baseCommit, baseline, current, run.Directory, commands, cancellationToken);
+        var complexity = await new ComplexityDetector(repository, runner)
+            .CompareAsync(baseCommit, run.Directory, commands, cancellationToken);
+        var budget = complexity.Available
+            ? StockBudget.Evaluate(repository, complexity.CurrentHotspots)
+            : null;
+        var failures = Failures(stock, clones, complexity, budget);
+        var report = new QualityReport(
+            new QualityBaseReport(baseRef, baseline.Revision, true, null, []),
+            mode, run.Directory, lines, clones, complexity, budget, failures.Count == 0, failures);
+        await WriteReportAsync(run.Directory, report, cancellationToken);
+        if (json) await output.WriteLineAsync(JsonSerializer.Serialize(report, JsonOptions.Indented));
+        else await WriteHumanAsync(report);
+        return report.Passed ? 0 : 1;
     }
 
     /// <summary>
@@ -197,7 +202,7 @@ internal sealed class QualityCommand(
     {
         var lines = report.Lines!;
         await output.WriteLineAsync(report.Mode == StockMode
-            ? $"Stock measurement against {report.Base.Requested} ({Short(report.Base.Resolved)}) — accumulated, not gated"
+            ? $"Stock measurement against {report.Base.Requested} ({Short(report.Base.Resolved)}) — complete scans and stock budget required"
             : $"Quality gate against {report.Base.Requested} ({Short(report.Base.Resolved)})");
         await output.WriteLineAsync(
             $"  production LOC: {lines.CurrentProductionLines:N0} ({lines.ProductionDelta:+#;-#;0} vs base {lines.BaseProductionLines:N0})");

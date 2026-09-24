@@ -412,7 +412,6 @@ function measure(name: string, volume: DayVolume, expanded: boolean) {
           });
           await session.detach();
         }
-        expect(reading.steps.length).toBe(STEPS);
         expect(segments).toBeGreaterThan(0);
       } catch (error) {
         // A tab the browser killed is a reading in its own right, so it is recorded

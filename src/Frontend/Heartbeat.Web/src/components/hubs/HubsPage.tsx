@@ -25,7 +25,7 @@ export function HubsPage() {
             <h1>我的 Hub</h1>
             <p>查看各处采集与交付状态，管理在线 Hub 的 Collector。</p>
           </div>
-          <Button onClick={() => query.refetch()} disabled={query.isFetching}>
+          <Button onClick={() => void query.refetch()} disabled={query.isFetching}>
             刷新
           </Button>
         </div>

@@ -27,7 +27,6 @@ public sealed class DesktopPackagerTests : IDisposable
         Assert.Equal("keep", File.ReadAllText(Path.Combine(output, "unrelated")));
         Assert.Equal([name], Directory.GetDirectories(output).Select(Path.GetFileName));
         var publish = Assert.Single(runner.Calls, call => call.File == "dotnet");
-        Assert.Equal("dotnet", publish.File);
         Assert.Contains(runtime, publish.Args);
         if (options.IsMac)
         {

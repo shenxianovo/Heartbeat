@@ -116,7 +116,7 @@ describe("replay orchestration", () => {
     const { from, to, bounds: selectedBounds } = result.current.selection;
     const prefix = queryKeys.densityWindow("owner", from, to);
     const oldKey = [...prefix, pointTrack.id, 1, selectedBounds!.start, selectedBounds!.end];
-    act(() => client.setQueryData(oldKey, observedCounts(pointTrack, from, to, 1, 1)));
+    await act(() => client.setQueryData(oldKey, observedCounts(pointTrack, from, to, 1, 1)));
     await waitFor(() => expect(result.current.data.lanes[0]?.detailCounts).toHaveLength(1));
 
     count = 9;
@@ -252,7 +252,7 @@ describe("density cache subscription", () => {
     );
     const fineKey = [...prefix, pointTrack.id, 60, bounds.start, bounds.end];
 
-    act(() => client.setQueryData(fineKey, counts(60)));
+    await act(() => client.setQueryData(fineKey, counts(60)));
     await waitFor(() =>
       expect(result.current.layers.map((layer) => layer.bucketSeconds)).toEqual([60]),
     );

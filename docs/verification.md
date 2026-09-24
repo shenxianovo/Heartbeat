@@ -21,7 +21,16 @@ Hub 和原生 Collector 场景还需要运行 `dotnet run --project tools/Heartb
 
 ## 变更验证
 
-普通脏工作树以 `HEAD` 为比较基点：
+任务收口使用一个显式基点组合变更验证和结构质量检查。普通脏工作树用 `HEAD`，分支任务用任务开始的提交或 merge base：
+
+```bash
+dotnet run --project tools/Heartbeat.Dev -- verify closeout --base HEAD --plan
+dotnet run --project tools/Heartbeat.Dev -- verify closeout --base HEAD
+```
+
+`closeout` 先将基点固定为一个提交，再顺序执行 `verify changed` 的检查计划与 `quality` 的结构闸门，共享同一证据目录。`closeout.json` 保存基点、计划和两部分退出码；普通验证失败仍继续质量检查，取消或执行异常停止。计划会明确提示场景、原生验收和性能基准仍需按改动另行选择。职责见 [ADR-0023](adr/ADR-0023-quality-classification-and-closeout.md)。
+
+开发过程中仍可单独运行：
 
 ```bash
 dotnet run --project tools/Heartbeat.Dev -- verify changed --base HEAD --plan
@@ -30,6 +39,8 @@ dotnet run --project tools/Heartbeat.Dev -- verify full
 ```
 
 `changed` 按路径选择 .NET、Developer CLI、前端静态检查和 Playwright；无法识别的路径扩为 `full`。干净工作树必须显式提供比较基点。契约文档会选择相应测试，其他纯文档改动可能没有可执行检查；`--plan` 的输出是本次选择的权威说明。
+
+`verify full` 包含全部常规代码与测试检查，不包含 `quality` 或场景验收。.NET 架构测试约束 Domain 不依赖其他 Heartbeat 层，以及 Backend、Hub 和 Contracts 不直接引用可选 Collector。
 
 各检查日志和汇总写入同一次验证目录。普通失败后继续其他检查；取消立即停止并返回 `130`；进程无法启动或证据无法写入时立即失败。
 
@@ -43,6 +54,8 @@ dotnet run --project tools/Heartbeat.Dev -- quality --base anchor --stock
 
 `quality loc` 只统计工作树有效行，不生成验证证据。`quality --base` 检查重复、函数复杂度、分析完整性和绝对预算，并把报告写入 `.artifacts/verification/<run-id>/quality.json`。
 
+源码角色由 `SourceCorpus` 统一定义，重复扫描按生产/测试角色分别进行；前端 `.test.*`、`.spec.*` 和测试目录中的代码属于测试。jscpd 固定使用 strict 模式、最小 8 行和 70 tokens，使用基线与工作树的路径并集进行同口径比较。生成代码及其他角色不进入这两类扫描，扫描配置保存在证据目录，便于核对文件范围。
+
 闸门规则：
 
 - 新增重复簇失败；
@@ -51,7 +64,7 @@ dotnet run --project tools/Heartbeat.Dev -- quality --base anchor --stock
 - 工具缺失、扫描不完整、基点无生产函数或函数定位失败，失败；
 - LOC、Erosion 和类型耦合只观察，不单独阻断。
 
-存量预算只能下调；确需上调时修改预算文件并说明理由。C# 分析会编译普通项目以及 AppKit / WinUI 宿主的托管部分，但不证明原生应用能够打包或运行。
+存量预算统计 C# 与 TypeScript 生产函数的热点总数。预算只能下调；确需上调时修改预算文件并说明理由。`--stock` 跳过相对基点的新增重复与复杂度退化闸门，仍要求扫描完整且存量预算通过。C# 分析会编译普通项目以及 AppKit / WinUI 宿主的托管部分，但不证明原生应用能够打包或运行。
 
 ## 可复现场景
 

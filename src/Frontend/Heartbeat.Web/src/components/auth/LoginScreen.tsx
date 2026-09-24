@@ -58,7 +58,7 @@ export function LoginScreen() {
           className="primary-button login-button"
           type="button"
           disabled={starting || auth.isLoading || Boolean(authConfiguration.error)}
-          onClick={startLogin}
+          onClick={() => void startLogin()}
         >
           {starting ? "正在前往登录…" : "使用 Heartbeat 账号登录"}
           <span aria-hidden="true">→</span>
