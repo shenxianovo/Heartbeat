@@ -3,7 +3,11 @@ namespace Heartbeat.Dev;
 // Use the same accessibility controls a user operates; never seed Desktop settings or credentials.
 internal sealed class MacDesktopDriver(RepositoryContext repository, ScenarioConfiguration configuration, int processId)
 {
-    public Task StartCollectionAsync(CancellationToken token) => PressAsync("开始采集", token);
+    public async Task StartCollectionAsync(CancellationToken token)
+    {
+        await PressAsync("开始采集", token);
+        await WaitForCollectionAsync(token);
+    }
     public Task WaitForCollectionAsync(CancellationToken token) => WaitAsync("暂停采集", token);
     public async Task PauseCollectionAsync(CancellationToken token)
     {
@@ -14,6 +18,18 @@ internal sealed class MacDesktopDriver(RepositoryContext repository, ScenarioCon
     private Task PressAsync(string label, CancellationToken token) => RunAsync("press", label, null, token);
     private Task WaitAsync(string label, CancellationToken token) => RunAsync("wait", label, null, token);
     public Task QuitAsync(CancellationToken token) => RunAsync("quit", "", null, token);
+
+    public async Task<bool> IsForegroundAsync(CancellationToken token)
+    {
+        // Inspect only the controlled PID. Do not activate it or export the foreground app's identity.
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeout.CancelAfter(TimeSpan.FromSeconds(5));
+        var result = await ProcessRunner.CaptureAsync(repository.Root, "/usr/bin/osascript",
+            ["-e", $"tell application \"System Events\" to get frontmost of (first application process whose unix id is {processId})"],
+            timeout.Token);
+        if (result.ExitCode != 0) throw new InvalidOperationException("Cannot inspect the controlled desktop process.");
+        return bool.Parse(result.StdOut.Trim());
+    }
 
     public async Task ConfigureAsync(Uri web, CancellationToken token)
     {

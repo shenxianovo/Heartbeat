@@ -1,5 +1,15 @@
 import { expect, type Page } from "@playwright/test";
 
+export type ReplayStage =
+  | "browser-start"
+  | "oidc-login"
+  | "api-reconciliation"
+  | "track-query"
+  | "range-input"
+  | "record-response"
+  | "timeline-selection"
+  | "completed";
+
 export interface ReplayWitness {
   record: { trackId: string; recordId: string; startedAt: string; endedAt: string };
   target: string;
@@ -11,7 +21,7 @@ export interface ReplayWitness {
 export async function verifyReplay(
   page: Page,
   expected: ReplayWitness,
-  progress: (stage: string) => Promise<void>,
+  progress: (stage: ReplayStage) => Promise<void>,
 ) {
   await progress("track-query");
   const tracksResponse = page.waitForResponse(

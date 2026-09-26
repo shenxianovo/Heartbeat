@@ -1,13 +1,15 @@
 using System.Text.Json;
 namespace Heartbeat.Dev;
 
+internal sealed record PackagedDesktop(string Executable, string Identifier, string DisplayName);
+
 internal sealed class DesktopPackageStep(RepositoryContext repository, IProcessRunner runner)
 {
-    public async Task<(string Executable, string Identifier, string DisplayName)> BuildAsync(EvidenceSession evidence, CancellationToken cancellationToken)
+    public async Task<PackagedDesktop> BuildAsync(EvidenceSession evidence, StageArtifacts artifacts, CancellationToken cancellationToken)
     {
-        var package = Path.Combine(evidence.Run.Directory, "desktop-package");
+        var package = artifacts.File("desktop-package");
         evidence.Commands.Add($"dotnet run --project tools/Heartbeat.Dev -- package desktop --output \"{package}\"");
-        await using var log = new StreamWriter(Path.Combine(evidence.Run.Directory, "desktop-build.log"));
+        await using var log = new StreamWriter(artifacts.File("desktop-build.log"));
         var result = await new DesktopPackager(repository, runner, log)
             .PackageAsync(DesktopPackageOptions.Create(repository, output: package), cancellationToken);
         if (result.ExitCode != 0) throw new InvalidOperationException("Desktop package failed; see desktop-build.log.");
@@ -18,6 +20,6 @@ internal sealed class DesktopPackageStep(RepositoryContext repository, IProcessR
         if (identity.ExitCode != 0) throw new InvalidDataException($"Cannot read application identity: {identity.StdErr.Trim()}");
         using var properties = JsonDocument.Parse(identity.StdOut);
         string Read(string key) => properties.RootElement.GetProperty(key).GetString()!;
-        return (Path.Combine(contents, "MacOS", Read("CFBundleExecutable")), Read("CFBundleIdentifier"), Read("CFBundleDisplayName"));
+        return new(Path.Combine(contents, "MacOS", Read("CFBundleExecutable")), Read("CFBundleIdentifier"), Read("CFBundleDisplayName"));
     }
 }

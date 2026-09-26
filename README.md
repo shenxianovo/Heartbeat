@@ -22,6 +22,7 @@ Heartbeat 把一个人在数字世界中的异构活动痕迹记录为时间有�
 - [Hub 记录交付](docs/hub-record-delivery.md)：SQLite 持久接管、后台上传、恢复及桌面接入。
 - [Web 前端](src/Frontend/Heartbeat.Web/README.md)：本地运行、登录和 Record renderer 扩展。
 - [本地开发](docs/development.md)：统一 Docker 启动、热更新、生产镜像验收与首次配置。
+- [业务流程与验证覆盖](docs/validation/business-coverage.md)：从开始使用到回放的流程图、业务承诺、失败方式及证据缺口。
 - [工程验证](docs/verification.md)：Git 变更选择、结构质量闸门、可复现场景与证据目录。
 - [未决设计](docs/recording-open-questions.md)：未交接数据、断采规则、设备关联等尚未确认的问题。
 - [验收记录](docs/validation)：带日期的系统、平台能力和回放体验验收事实。

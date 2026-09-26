@@ -1,16 +1,19 @@
 using System.Text.Json;
 using Heartbeat.Desktop;
+using Heartbeat.Hub;
 
 namespace Heartbeat.Dev;
 
-internal sealed class DesktopJourney(RepositoryContext repository, ScenarioConfiguration configuration, string executable) : IAsyncDisposable
+internal sealed class DesktopSession(RepositoryContext repository, ScenarioConfiguration configuration, string executable) : IAsyncDisposable
 {
     private readonly string _profile = Directory.CreateTempSubdirectory("heartbeat-desktop-scenario-").FullName;
     private ScenarioProcess? _process;
     public MacDesktopDriver Ui { get; private set; } = null!;
     public DesktopSettings Settings => JsonSerializer.Deserialize<DesktopSettings>(
         File.ReadAllText(Path.Combine(_profile, "settings.json")), JsonSerializerOptions.Web)!;
-    public RecoveryCustody Custody => RecoveryCustody.Read(_profile, Settings.Destination);
+    public HubCustodySnapshot Custody => HubCustodySnapshot.Read(_profile, Settings.Destination);
+    public QueueStatus Queue => HubCustodySnapshot.Status(_profile, Settings.Destination);
+    public bool HasExited => _process?.Completion.IsCompleted ?? true;
 
     public void Launch()
     {
@@ -31,7 +34,7 @@ internal sealed class DesktopJourney(RepositoryContext repository, ScenarioConfi
 
     public Task WaitForDrainAsync(CancellationToken token) => ScenarioWait.UntilAsync("Hub delivery drain", _ =>
     {
-        var status = RecoveryCustody.Status(_profile, Settings.Destination);
+        var status = Queue;
         if (status.Failed > 0) throw new InvalidOperationException("Hub has rejected Records.");
         return Task.FromResult(status.Pending == 0);
     }, token);

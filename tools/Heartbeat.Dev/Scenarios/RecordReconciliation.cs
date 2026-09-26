@@ -5,7 +5,7 @@ using Microsoft.Data.Sqlite;
 
 namespace Heartbeat.Dev;
 
-internal sealed record RecoveryRecord(
+internal sealed record ScenarioRecord(
     [property: JsonRequired] Guid OwnerId,
     [property: JsonRequired] string CollectorKey,
     [property: JsonRequired] string Target,
@@ -13,13 +13,13 @@ internal sealed record RecoveryRecord(
     [property: JsonRequired] Guid TrackId,
     [property: JsonRequired] RecordSnapshot Record);
 
-internal sealed record RecoveryCustody(Guid HubId, RecoveryRecord[] Records)
+internal sealed record HubCustodySnapshot(Guid HubId, ScenarioRecord[] Records)
 {
     private const string DatabaseFileName = "hub.sqlite";
     public static QueueStatus Status(string directory, DeliveryDestination destination) =>
         new RecordOutbox(Path.Combine(directory, DatabaseFileName), destination).Status();
 
-    public static RecoveryCustody Read(string directory, DeliveryDestination destination)
+    public static HubCustodySnapshot Read(string directory, DeliveryDestination destination)
     {
         var path = Path.Combine(directory, DatabaseFileName);
         if (!File.Exists(path)) throw new InvalidDataException("The Hub custody database is missing.");
@@ -31,7 +31,7 @@ internal sealed record RecoveryCustody(Guid HubId, RecoveryRecord[] Records)
         finally { Directory.Delete(temporary, recursive: true); }
     }
 
-    private static RecoveryCustody ReadCopy(string path, string temporary, Guid hubId, DeliveryDestination destination)
+    private static HubCustodySnapshot ReadCopy(string path, string temporary, Guid hubId, DeliveryDestination destination)
     {
         // SQLite's online backup includes committed WAL data without changing the running queue.
         var copyPath = Path.Combine(temporary, DatabaseFileName);
@@ -45,7 +45,7 @@ internal sealed record RecoveryCustody(Guid HubId, RecoveryRecord[] Records)
         }
         var queue = new RecordOutbox(copyPath, destination);
         var status = queue.Status();
-        var records = queue.TakePending().Select(item => new RecoveryRecord(destination.OwnerId,
+        var records = queue.TakePending().Select(item => new ScenarioRecord(destination.OwnerId,
             item.Route.Collector.Key!, item.Route.Collector.Target!, item.Route.Track,
             item.Route.BackendTrackId ?? Guid.Empty, item.Record)).ToArray();
         if (hubId == Guid.Empty || status.Failed != 0 || records.Length != status.Pending)
@@ -54,9 +54,12 @@ internal sealed record RecoveryCustody(Guid HubId, RecoveryRecord[] Records)
     }
 }
 
-internal static class RecoveryEvidence
+internal static class RecordReconciliation
 {
-    public static void RequireSameRecords(RecoveryRecord[] expected, RecoveryRecord[] actual)
+    public static async Task<ScenarioRecord[]> ReadDatabaseAsync(ScenarioEnvironment environment, CancellationToken token) =>
+        JsonSerializer.Deserialize<ScenarioRecord[]>(await environment.QueryDatabaseAsync(DatabaseQuery, token), JsonSerializerOptions.Web)!;
+
+    public static void RequireSameRecords(ScenarioRecord[] expected, ScenarioRecord[] actual)
     {
         if (expected.Length == 0 || actual.Length != expected.Length
             || actual.Select(item => item.Record.Id).Distinct().Count() != actual.Length)
@@ -84,7 +87,7 @@ internal static class RecoveryEvidence
             throw new InvalidOperationException($"Recovery changed accepted Record content or time: {before.Id}.");
     }
 
-    public static object Summary(RecoveryRecord[] records) => records.Select(item => new
+    public static object Summary(ScenarioRecord[] records) => records.Select(item => new
     {
         item.Record.Id, item.TrackId, item.Record.StartedAt, item.Record.EndedAt, item.Track,
     }).ToArray();

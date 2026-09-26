@@ -109,7 +109,11 @@ UI、用户流程或 HTTP 展示变更运行相应场景。活动泳道性能变
 
 步骤在具体代码中组合，打包、UI 操作、接管快照、数据对账和浏览器回放各自维护对应边界。Compose 继续维护服务启动依赖。
 
-证据包含当前阶段 `journey.json`、正常/恢复回放报告、接管记录元数据、`reconciliation.json` 和仅含时间的详情截图；不导出 API key、短期令牌、原始原生 payload 或 profile。临时凭据、浏览器会话和隔离环境结束时清理，`--keep-environment-on-failure` 只保留失败的 Docker 环境。下载分发、安装器、普通 Keychain、Windows、权限授权、锁屏休眠与升级仍需独立验收。
+`journey.json` 保存阶段标识、状态、已完成步骤和各阶段产物目录。`first-collection/collection.json` 与 `offline-custody/collection.json` 持续记录采样时间、受控进程是否退出/位于前台、队列 pending/failed，以及 Record 对 Owner、Collector、Target、Track、payload 结构、应用身份、时间窗和时长的逐级匹配计数。探针失败记录异常类型，该项值不可视为有效读数；这些数据在超时清理前保存。前台状态是离散采样，不能证明两次采样之间未发生切换；跨进程探针也不是同一事务快照，只用于定位，不替代暂停后的接管对账。
+
+正常和恢复回放各自保存 `normal-web-replay/` 与 `recovered-web-replay/` 下的报告、浏览器日志及仅含时间的截图，失败时也不覆盖前一阶段。接管快照元数据在 `offline-custody/`、`forced-exit-and-restart/`，对账结果在 `delivery-recovery/reconciliation.json`。场景用 `DesktopStage` 标识阶段，用 `DesktopReplayBatch` 传递记录集合和见证，浏览器接收显式产物路径；正常及交互 OIDC 共用回放验证脚本。原始记录仅在进程内或临时环境变量中传递，不写入证据文件。
+
+不导出 API key、短期令牌、其他应用身份、原始原生 payload 或 profile。临时凭据、浏览器会话和隔离环境结束时清理，`--keep-environment-on-failure` 只保留失败的 Docker 环境。下载分发、安装器、普通 Keychain、Windows、权限授权、锁屏休眠与升级仍需独立验收。
 
 ## 现场探针
 

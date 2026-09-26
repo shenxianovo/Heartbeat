@@ -1,6 +1,6 @@
 Status: needs-info
 
-# 单次 Collector 回放场景未等到受控应用区间
+# 桌面主链等待受控应用区间超时
 
 2026-09-20，主线纵切真实运行共三轮：首轮通过；收紧数据库时间上界和前端同名区间选择后，第二轮在采集阶段超时；只补充诊断后第三轮通过。用户不确定第二轮是否切走前台。不能据此确认 flaky、认定产品故障或宣称问题已修复。
 
@@ -8,7 +8,7 @@ Status: needs-info
 
 旧 `collector-replay` 场景和白板 app 已按用户要求移除。当前对应入口为 `dotnet run --project tools/Heartbeat.Dev -- scenario desktop-replay --keep-environment-on-failure`；这次替换不代表历史超时根因已确认或修复。
 
-保持真实 `Heartbeat Dev` 客户端前台，浏览器出现后完成真实 OIDC 登录。测试要求数据库出现正确 Owner/Target、预期应用身份、采集时间范围内且至少两秒的 Record。
+保持真实 `Heartbeat Dev` 客户端前台。当前默认自动配置客户端，并使用真实 Auth 签发的短期令牌建立临时浏览器会话；交互 OIDC 通过 `--interactive-login` 独立选择。测试要求数据库出现正确 Owner/Target、预期应用身份、采集时间范围内且至少两秒的 Record。
 
 ## 已有证据
 
@@ -18,8 +18,11 @@ Status: needs-info
 
 ## 下一次发生时
 
-当前场景先查看客户端采集状态、队列和数据库时间窗；历史 `foreground.json`、`collection.json` 只适用于旧场景。三个候选分别是前台条件变化、Hub/Auth 交付阻塞和时间窗不匹配。保留环境后仅查询受控应用的元数据，不导出其他原生载荷或认证信息。
+当前场景查看 `journey.json` 指向阶段的 `collection.json`，其中保存受控进程/前台采样、队列状态与数据库逐级匹配计数。历史根目录 `foreground.json`、`collection.json` 只适用于旧场景。三个候选分别是前台条件变化、Hub/Auth 交付阻塞和时间窗不匹配。保留环境后仅查询受控应用的元数据，不导出其他原生载荷或认证信息。
 
 ## Comments
 
 - 2026-09-20：用户答复“不确定”是否在约 10:22 切换前台，原因保持未定。第三轮成功不覆盖第二轮失败；没有加自动重试或延长超时来掩盖它。
+- 2026-09-26：运行 `scenario desktop-replay --recovery` 再次在 `first-collection` 超时，证据 `.artifacts/verification/20260926T104651Z-scenario-desktop-replay-1e9c5641da824e83990530ffcb48492a/manifest.json`。首次配置成功，但未保存当轮前台变化、接管状态及落库摘要，环境已清理，无法确定是否与历史失败同源。
+- 2026-09-26：未改代码，增加 `--keep-environment-on-failure` 重跑通过，证据 `.artifacts/verification/20260926T104938Z-scenario-desktop-replay-f7cceee8540d4304a5017cd320ace8e2/manifest.json`。正常回放、恢复对账、恢复回放均通过，成功环境已清理。重跑期间查询确认受控应用已落库，不反推失败轮次的原因，也不宣称稳定性问题已修复。
+- 2026-09-26：已补采集等待阶段的脱敏分段诊断。受控反例在首个尚无见证的采样后执行 `osascript -e 'tell application "Finder" to activate'`，主链按预期在 `first-collection` 超时。证据 `.artifacts/verification/20260926T110725Z-scenario-desktop-replay-8426f6421dd749e18b947c4e5af54269/foreground-interruption-result.json` 与阶段 `collection.json`：进程存在、失去前台，目标记录匹配到时间窗但持续时长不足；失败报告与清理均保留。这证明诊断能解释本次受控失败，不证明历史超时同源或已修复。下一次自然失败根据同类证据归因。

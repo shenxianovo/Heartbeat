@@ -9,7 +9,7 @@
 | macOS 前台应用、窗口标题、Away Signal、输入与能力状态 | 投影、时钟、权限退化和交接的自动测试；2026-09-14 真实 Collector 到临时 Hub 冒烟 | 常驻使用中的通知完整性、物理输入、锁屏、休眠及权限切换 |
 | Hub 接管与恢复 | SQLite 接管、重启恢复和批量回执测试 | Collector 在 Hub 接管前的内存快照不会因崩溃丢失 |
 | Collector 到后端 | `scenario collector-delivery` 提供真实 macOS 单次快照、Hub、API 与 PostgreSQL 证据 | 持续采样、平台交互和 Web 展示 |
-| AppKit 客户端到 Web | 当前入口为 `scenario desktop-replay` | 本文没有记录原生迁移后完整成功的真机验收；迁移前 Avalonia 的通过记录不能替代它 |
+| AppKit 客户端到 Web | 2026-09-26 `desktop-replay --recovery` 两次真实 UI、Auth、采集、交付与回放通过，见[证据索引](business-coverage.md#运行证据) | 使用 Dev 凭据文件和浏览器短期令牌会话；不证明普通 Keychain、交互 OIDC、任意崩溃时刻或全部原生能力 |
 | Windows 原生客户端 | 共享运行逻辑及托管代码检查 | WinUI、系统凭据、托盘、Win32 通知和真实输入均需 Windows 实机验收 |
 | 发行 | 无 | 安装器、发行签名、公证、自动更新和长期稳定性均不在当前证据范围内 |
 
