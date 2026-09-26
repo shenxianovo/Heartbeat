@@ -18,14 +18,14 @@ internal static class DesktopReplayBrowser
     }
 
     public static async Task<string> RunAsync(RepositoryContext repository, ScenarioEnvironment environment,
-        DesktopReplayBatch batch, PackagedDesktop package, Guid hubId, StageArtifacts artifacts, bool interactiveLogin, CancellationToken token)
+        DesktopReplayBatch batch, ReplayApplication application, Guid hubId, StageArtifacts artifacts, bool interactiveLogin, CancellationToken token)
     {
         // Builds can outlive a token. Exchange immediately before the automated browser starts.
         var session = interactiveLogin ? null : await AuthenticateAsync(environment.Configuration, token);
         var workspace = await WebVerificationWorkspace.PrepareAsync(repository, environment.Evidence.Run, token);
         var item = batch.Records.Single(item => item.Record.Id == batch.Witness.RecordId);
-        var witness = new { record = batch.Witness, target = item.Target, applicationId = package.Identifier,
-            applicationName = package.DisplayName, applicationKind = "bundle_id" };
+        var witness = new { record = batch.Witness, target = item.Target, collectorKey = application.CollectorKey, applicationId = application.Identifier,
+            applicationName = application.DisplayName, applicationKind = "bundle_id" };
         var report = artifacts.File("replay.json");
         var input = JsonSerializer.Serialize(new { web = environment.Web, session, witness, hubId, records = batch.Records,
             files = new { report, screenshot = artifacts.File("record-time.png"), activityScreenshot = artifacts.File("hub-activity.png") } }, JsonOptions.Indented);

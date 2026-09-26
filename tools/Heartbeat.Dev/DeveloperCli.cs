@@ -21,6 +21,7 @@ internal sealed class DeveloperCli(
             new ScenarioCommand(repository, runner, output).CreateCommand(),
             new ProbeCommand(repository, runner, output).CreateCommand(),
             new ArtifactsCommand(repository, output).CreateCommand(),
+            RuntimeScenarioHost.CreateCommand(),
         };
         root.SetAction(parse => new HelpAction().Invoke(parse));
         return root;

@@ -86,13 +86,14 @@ internal sealed class ProcessRunner(string workingDirectory) : IProcessRunner
         string fileName,
         IReadOnlyList<string> arguments,
         IReadOnlyDictionary<string, string?>? environment,
-        bool redirectOutput)
+        bool redirectOutput, bool redirectInput = false)
     {
         var start = new ProcessStartInfo
         {
             FileName = fileName,
             WorkingDirectory = workingDirectory,
             UseShellExecute = false,
+            RedirectStandardInput = redirectInput,
             RedirectStandardOutput = redirectOutput,
             RedirectStandardError = redirectOutput,
         };

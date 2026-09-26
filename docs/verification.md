@@ -74,7 +74,8 @@ dotnet run --project tools/Heartbeat.Dev -- scenario replay-fixture
 dotnet run --project tools/Heartbeat.Dev -- scenario hubs-fixture
 dotnet run --project tools/Heartbeat.Dev -- scenario delivery
 dotnet run --project tools/Heartbeat.Dev -- scenario collector-delivery
-dotnet run --project tools/Heartbeat.Dev -- scenario desktop-replay
+dotnet run --project tools/Heartbeat.Dev -- scenario runtime-replay
+dotnet run --project tools/Heartbeat.Dev -- scenario desktop-replay --foreground
 dotnet run --project tools/Heartbeat.Dev -- scenario native-desktop
 ```
 
@@ -84,10 +85,11 @@ dotnet run --project tools/Heartbeat.Dev -- scenario native-desktop
 | `replay-fixture` | 回放交互、响应式布局和 Chromium 截图 | 真实认证与端到端链路 |
 | `delivery` | API 与 PostgreSQL 的上传、重放集成 | Web、Hub 或 Collector |
 | `collector-delivery` | 真实 macOS 单次采集、Hub 接管、后端注册、落库和队列清空 | 持续采样、物理输入、权限、锁屏、休眠或 Web |
-| `desktop-replay` | 本地开发应用、真实 Auth、原生采集、进程内 Hub、隔离后端与同一 Record 的 Web 回放 | 普通构建 Keychain、Windows、发行或系统权限交互 |
+| `runtime-replay` | 后台真实 DesktopRuntime、Collector 投影、Hub、Auth、后端和无头 Web，默认离线接管、强杀与恢复回放 | 系统观测受控；不证明原生 UI、OS 采集、权限或系统凭据 |
+| `desktop-replay --foreground` | 本地开发应用、真实 Auth、原生采集、进程内 Hub、隔离后端与同一 Record 的 Web 回放 | 普通构建 Keychain、Windows、发行或系统权限交互 |
 | `native-desktop` | 临时 Hub、真实 macOS Collector、进程和队列元数据 | 权限、锁屏、休眠或物理输入 |
 
-UI、用户流程或 HTTP 展示变更运行相应场景。活动泳道性能变更运行[前端生产基准](../src/Frontend/Heartbeat.Web/README.md#活动泳道拖动基准)；若交互行为也变化，同时运行 `replay-fixture`。原生场景默认不保存用户内容，只有显式使用 `--include-sensitive-evidence` 才保存 Collector 日志。
+UI、用户流程或 HTTP 展示变更运行相应场景。日常业务链路优先 `runtime-replay`；原生 UI 场景会占用桌面，必须显式安排后使用 `--foreground`，不因一般收发或图表变化默认运行。活动泳道性能变更运行[前端生产基准](../src/Frontend/Heartbeat.Web/README.md#活动泳道拖动基准)；若交互行为也变化，同时运行 `replay-fixture`。原生场景默认不保存用户内容，只有显式使用 `--include-sensitive-evidence` 才保存 Collector 日志。
 
 ### 组合实现来验证行为
 
@@ -99,9 +101,17 @@ UI、用户流程或 HTTP 展示变更运行相应场景。活动泳道性能变
 
 场景使用独立 Compose 项目、临时 PostgreSQL/SQLite 和独立 Target。真实 Collector 在 API 尚未启动时执行一次采集，Hub 持久接管后再启动 API；随后核对 Owner、Target、采集时间窗、前台应用 Record、落库数量和空队列。场景不手工提交 Record，也不预注册资源。
 
+### 日常后台回归
+
+`scenario runtime-replay` 是桌面业务链路、Hub 收发及恢复的日常入口。它不启动 AppKit/WinUI、不请求系统观测权限、不调用 UI 自动化；运行时通过生产 `ConfigureAsync/StartAsync` 接口配置和启动，浏览器始终无头，使用真实 Auth 签发的短期会话。
+
+后台只替换 OS 观测与临时凭据适配，后续 Collector 投影、SQLite 接管、HTTP 交付、PostgreSQL 和 Web 都是真实实现。与原生入口共用阶段与 Record 对账，默认包含正常回放、停止 API、离线接管、强杀运行时进程、从保存的配置及凭据重启、恢复交付和 Web 回放。`services-and-runtime`、`configure-runtime` 阶段明确区别于原生打包和首次 UI 配置，采集诊断中的 foreground 为 null，不声称读过系统前台。
+
+`--keep-environment-on-failure` 可保留失败的 Compose 环境；运行时子进程和临时 profile 始终清理。后台入口不接受 `--foreground`、`--interactive-login` 或原生日志开关。首次设置、原生界面和系统能力另行验收，见 [ADR-0025](adr/ADR-0025-background-and-native-acceptance.md)。
+
 ### 桌面应用到真实 Web 回放
 
-`scenario desktop-replay` 从本地打包的 Heartbeat Dev 开始，使用空的临时 profile，通过真实原生 UI 配置连接、保存凭据并开始采集；暂停后等待交付完成，在真实 Web 时间线选择同一 Record 并核对详情。Collector、进程内 Hub、Auth、隔离 PostgreSQL/API 和生产 Web 均为真实实现。
+`scenario desktop-replay --foreground` 从本地打包的 Heartbeat Dev 开始，使用空的临时 profile，通过真实原生 UI 配置连接、保存凭据并开始采集；暂停后等待交付完成，在真实 Web 时间线选择同一 Record 并核对详情。Collector、进程内 Hub、Auth、隔离 PostgreSQL/API 和生产 Web 均为真实实现。
 
 需要已解锁的 macOS 桌面、Docker、有效 `.env.local`，以及运行终端/代理的辅助功能与 System Events 自动化权限。默认用真实 Auth 签发的短期令牌建立临时浏览器会话；`--interactive-login` 改为真实 OIDC 人工登录。前者不证明 OIDC 跳转流程。
 

@@ -4,7 +4,7 @@ namespace Heartbeat.Dev;
 
 internal enum DesktopStage
 {
-    Authentication, PackageAndServices, FirstLaunchAndConfigure, FirstCollection, NormalWebReplay,
+    Authentication, PackageAndServices, ServicesAndRuntime, FirstLaunchAndConfigure, ConfigureRuntime, FirstCollection, NormalWebReplay,
     OfflineCustody, ForcedExitAndRestart, DeliveryRecovery, RecoveredWebReplay, CleanQuit,
 }
 

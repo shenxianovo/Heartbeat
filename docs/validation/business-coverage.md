@@ -119,18 +119,28 @@ sequenceDiagram
 - **正常恢复主链**：不注入故障条件之外的前台切换，执行 `scenario desktop-replay --recovery`，首次使用、正常回放、离线重启、恢复对账与回放全部通过：[manifest](../../.artifacts/verification/20260926T111002Z-scenario-desktop-replay-f1bf73f475b2427a808f389b54e979d1/manifest.json)、[阶段索引](../../.artifacts/verification/20260926T111002Z-scenario-desktop-replay-f1bf73f475b2427a808f389b54e979d1/journey.json)、[恢复对账](../../.artifacts/verification/20260926T111002Z-scenario-desktop-replay-f1bf73f475b2427a808f389b54e979d1/delivery-recovery/reconciliation.json)。
 - **变更收口**：`verify closeout --base 36ed028ea58f53ff6c8b82c4108353f3ef533f9e` 的 CLI、前端检查与结构质量均通过：[closeout](../../.artifacts/verification/20260926T111248Z-verify-closeout-5612c5ad76964ae68d6cf4b4cf38346f/closeout.json)、[quality](../../.artifacts/verification/20260926T111248Z-verify-closeout-5612c5ad76964ae68d6cf4b4cf38346f/quality.json)。本轮没有交互 OIDC 人工登录或 Windows 实机验收。
 
+### 2026-09-26 后台与原生入口分离
+
+基点 `7785fd9a` 上的后台入口运行 `dotnet run --project tools/Heartbeat.Dev -- scenario runtime-replay`：[manifest](../../.artifacts/verification/20260926T135317Z-scenario-runtime-replay-cdcbee04e9324a8b84043abc34c48280/manifest.json)、[阶段索引](../../.artifacts/verification/20260926T135317Z-scenario-runtime-replay-cdcbee04e9324a8b84043abc34c48280/journey.json)、[恢复对账](../../.artifacts/verification/20260926T135317Z-scenario-runtime-replay-cdcbee04e9324a8b84043abc34c48280/delivery-recovery/reconciliation.json)。正常与恢复后的真实 API/Web 回放、Hub 活动曲线检查均通过，恢复后队列清空、接管记录逐项一致；重启没有再次注入 API key。
+
+取消复验使用同一命令的已构建 CLI，在 `first-collection/collection.json` 首次出现后向父进程发送 SIGINT：[取消 manifest](../../.artifacts/verification/20260926T135521Z-scenario-runtime-replay-cd1c8484802c460086f7084b5664229b/manifest.json)、[清理检查](../../.artifacts/verification/20260926T135521Z-scenario-runtime-replay-cd1c8484802c460086f7084b5664229b/cancellation-check.json)。退出码为 130，已观察到的运行时子进程、临时 profile 和隔离容器均已删除。CLI 参数测试覆盖缺少 `--foreground` 时拒绝原生 UI，以及后台入口拒绝前台/交互登录选项。本轮未运行原生 UI。
+
+`dotnet run --project tools/Heartbeat.Dev -- verify closeout --base 7785fd9a4a5d47606ef1c07f1b91d739963666af` 的 .NET、CLI、前端检查和结构质量均通过：[closeout](../../.artifacts/verification/20260926T135434Z-verify-closeout-1100e40fe4a245f09f183ea47106f85a/closeout.json)、[quality](../../.artifacts/verification/20260926T135434Z-verify-closeout-1100e40fe4a245f09f183ea47106f85a/quality.json)。
+
 ## 沿主链组合验证
+
+日常使用 `scenario runtime-replay` 在后台运行配置、采集投影、正常回放与离线崩溃恢复；系统观测输入与临时凭据适配受控。原生首次使用另用 `scenario desktop-replay --foreground`，恢复可加 `--recovery`。两者共用业务步骤及对账，后台结果不替代原生 UI、系统采集或系统凭据证据，见 [ADR-0025](../adr/ADR-0025-background-and-native-acceptance.md)。
 
 组合单位是有明确前置条件、动作、可观察结果和资源归属的业务步骤。下一段消费上一段的真实产物；分别运行两个独立测试不能证明两段之间的交接成立。按 [ADR-0013](../adr/ADR-0013-scenarios-compose-implementations.md) 用普通代码连接，当前不引入图执行器。
 
 | 步骤 | 输入与前置条件 | 输出与交接断言 | 当前实现或缺口 |
 | --- | --- | --- | --- |
 | 打包与首次接入 | 本轮隔离服务、有效 Auth、空 profile | 可启动的应用；UI 保存的 Owner 和目的地址与输入一致 | `DesktopPackageStep`、`MacDesktopDriver.ConfigureAsync` |
-| 产生观测 | 已配置桌面、明确的用户操作序列 | 对应来源、值及允许时间范围内的 Record | 当前主链等待 Heartbeat 前台应用见证；受控应用/窗口序列待补 |
-| 暂停与冻结接管 | 正在采集的同一桌面实例 | 暂停后稳定的 Hub 接管快照，包含 Hub ID 和 Record 身份、路由、内容、时间 | `DesktopSession.PauseAsync`、`HubCustodySnapshot`；不是 Collector 内存快照 |
+| 产生观测 | 已配置桌面、明确的用户操作序列或受控观测输入 | 对应来源、值及允许时间范围内的 Record | 原生等待 Heartbeat 前台应用见证；后台由 `RuntimeScenarioPlatform` 提供观测，经过真实投影；真实应用/窗口切换序列待补 |
+| 暂停与冻结接管 | 正在采集的同一桌面实例 | 暂停后稳定的 Hub 接管快照，包含 Hub ID 和 Record 身份、路由、内容、时间 | `DesktopScenarioSession.PauseAsync`、`HubCustodySnapshot`；不是 Collector 内存快照 |
 | 故障与恢复 | 故障前接管快照、同一 profile、隔离 API | 强制退出后 Hub ID 不变，已接管记录仍存在；恢复交付后逐条落库 | `DesktopReplayScenario.RecoverAsync`、`RecordReconciliation.RequireSameRecords` |
 | 查询与展示 | 实际交付的记录集合与选定见证 ID | API 集合对账；真实 UI 能找到该记录并核对详情 | `DesktopReplayBrowser`、`verifyReplay`；UI 见证不代表逐条展示全部记录 |
-| 清理与留证 | 本轮拥有的进程、profile、Compose 项目与浏览器 | 无论通过、失败、取消均清理；保留脱敏报告与失败阶段 | `ScenarioEnvironment`、`DesktopSession`、浏览器 `finally` |
+| 清理与留证 | 本轮拥有的进程、profile、Compose 项目与浏览器 | 无论通过、失败、取消均清理；保留脱敏报告与失败阶段 | `ScenarioEnvironment`、`DesktopScenarioSession`、浏览器 `finally` |
 
 这些步骤的代码形状不必统一。只有出现第二个实际调用者且语义相同时才抽取共享步骤；独立运行某段时用专属准备过程建立前置条件，不能依赖另一条测试先跑过。主链模式必须消费真实上游结果，不能重新造一份看起来相同的数据绕过交接。
 

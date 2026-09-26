@@ -5,51 +5,59 @@ internal sealed class DesktopReplayScenario(RepositoryContext repository, IProce
     public Task<int> RunAsync(ScenarioOptions options, CancellationToken token) =>
         ScenarioEnvironment.RunAsync(repository, runner, output, options,
         [
-            "Packaged macOS Dev first use through real native UI, Auth, Collector, in-process Hub, isolated PostgreSQL/API and production Web.",
+            options.Foreground
+                ? "Packaged macOS Dev first use through real native UI, Auth, Collector, in-process Hub, isolated PostgreSQL/API and production Web."
+                : "Background DesktopRuntime, real Collector projection, Hub, Auth, PostgreSQL/API and headless Web; controlled OS observations and temporary file credentials.",
             options.InteractiveLogin ? "Interactive real OIDC login." : "Real Auth-issued token in a temporary browser session; interactive OIDC is separate.",
-            "Requires an unlocked macOS desktop and Accessibility/Automation permission for osascript. Does not cover distribution, installer, production Keychain, Windows, permission grants, lock/sleep or upgrades.",
+            options.Foreground
+                ? "Occupies the unlocked macOS desktop; requires Accessibility/Automation permission. Does not cover Windows, installer, production Keychain, permission grants, lock/sleep or upgrades."
+                : "No native UI, OS collection, system credential store, permissions, packaging or interactive OIDC evidence; no foreground activation.",
             "Recovery covers Hub-accepted Records, not observations still in Collector memory before custody.",
         ], environment => RunAsync(environment, options, token), token);
 
     private async Task<int> RunAsync(ScenarioEnvironment environment, ScenarioOptions options, CancellationToken token)
     {
-        if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("desktop-replay requires macOS.");
         var journey = new DesktopJourneyReport(environment, output);
         await journey.RunAsync(DesktopStage.Authentication, _ => DesktopReplayBrowser.AuthenticateAsync(environment.Configuration, token));
-        var package = await journey.RunAsync(DesktopStage.PackageAndServices, async artifacts =>
+        await using var desktop = await journey.RunAsync(options.Foreground ? DesktopStage.PackageAndServices : DesktopStage.ServicesAndRuntime,
+            artifacts => PrepareAsync(environment, options, artifacts, token));
+        await journey.RunAsync(options.Foreground ? DesktopStage.FirstLaunchAndConfigure : DesktopStage.ConfigureRuntime, async _ =>
         {
-            await environment.StartAsync(token, ComposeService.Web);
-            return await new DesktopPackageStep(repository, runner).BuildAsync(environment.Evidence, artifacts, token);
-        });
-        await using var desktop = new DesktopSession(repository, environment.Configuration, package.Executable);
-        await journey.RunAsync(DesktopStage.FirstLaunchAndConfigure, async _ =>
-        {
-            desktop.Launch();
-            await desktop.Ui.ConfigureAsync(environment.Web, token);
+            await desktop.ConfigureAsync(environment.Web, token);
             var settings = desktop.Settings;
             if (settings.OwnerId != environment.Owner || settings.BackendUrl != environment.Web || settings.WebUrl != environment.Web)
-                throw new InvalidOperationException("Native configuration did not preserve the verified Owner and destination.");
+                throw new InvalidOperationException("Desktop configuration did not preserve the verified Owner and destination.");
         });
         var baseline = await journey.RunAsync(DesktopStage.FirstCollection,
-            artifacts => CollectAsync(environment, desktop, package, artifacts, token));
+            artifacts => CollectAsync(environment, desktop, artifacts, token));
         await ReplayAsync(DesktopStage.NormalWebReplay, baseline);
         if (options.Recovery)
         {
-            var recovered = await RecoverAsync(environment, desktop, journey, baseline, package, token);
+            var recovered = await RecoverAsync(environment, desktop, journey, baseline, token);
             await ReplayAsync(DesktopStage.RecoveredWebReplay, recovered);
         }
         await journey.RunAsync(DesktopStage.CleanQuit, _ => desktop.QuitAsync(token));
         return 0;
 
         Task ReplayAsync(DesktopStage stage, DesktopReplayBatch batch) => journey.RunAsync(stage,
-            artifacts => DesktopReplayBrowser.RunAsync(repository, environment, batch, package, desktop.Custody.HubId, artifacts, options.InteractiveLogin, token));
+            artifacts => DesktopReplayBrowser.RunAsync(repository, environment, batch, desktop.Application, desktop.Custody.HubId, artifacts, options.InteractiveLogin, token));
     }
 
-    private static async Task<DesktopReplayBatch> CollectAsync(ScenarioEnvironment environment, DesktopSession desktop,
-        PackagedDesktop package, StageArtifacts artifacts, CancellationToken token)
+    private async Task<DesktopScenarioSession> PrepareAsync(ScenarioEnvironment environment, ScenarioOptions options,
+        StageArtifacts artifacts, CancellationToken token)
     {
-        var expectation = new DesktopObservationExpectation(environment.Owner, desktop.Settings.Target, package.Identifier, DateTimeOffset.UtcNow);
-        await desktop.Ui.StartCollectionAsync(token);
+        if (options.Foreground && !OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("desktop-replay requires macOS.");
+        await environment.StartAsync(token, ComposeService.Web);
+        if (!options.Foreground) return new RuntimeScenarioSession(repository, environment.Configuration);
+        var package = await new DesktopPackageStep(repository, runner).BuildAsync(environment.Evidence, artifacts, token);
+        return new DesktopSession(repository, environment.Configuration, package);
+    }
+
+    private static async Task<DesktopReplayBatch> CollectAsync(ScenarioEnvironment environment, DesktopScenarioSession desktop,
+        StageArtifacts artifacts, CancellationToken token)
+    {
+        var expectation = new DesktopObservationExpectation(environment.Owner, desktop.Settings.Target, desktop.Application.Identifier, DateTimeOffset.UtcNow, desktop.Application.CollectorKey);
+        await desktop.StartCollectionAsync(token);
         var witness = await new DesktopCollectionStep(desktop, artifacts).WaitAsync(expectation,
             cancellation => RecordReconciliation.ReadDatabaseAsync(environment, cancellation), token);
         await desktop.PauseAsync(token);
@@ -59,14 +67,14 @@ internal sealed class DesktopReplayScenario(RepositoryContext repository, IProce
         return batch;
     }
 
-    private static async Task<DesktopReplayBatch> RecoverAsync(ScenarioEnvironment environment, DesktopSession desktop,
-        DesktopJourneyReport journey, DesktopReplayBatch baseline, PackagedDesktop package, CancellationToken token)
+    private static async Task<DesktopReplayBatch> RecoverAsync(ScenarioEnvironment environment, DesktopScenarioSession desktop,
+        DesktopJourneyReport journey, DesktopReplayBatch baseline, CancellationToken token)
     {
         var accepted = await journey.RunAsync(DesktopStage.OfflineCustody, async artifacts =>
         {
             await environment.StopAsync(ComposeService.Api, token);
-            var expectation = new DesktopObservationExpectation(environment.Owner, desktop.Settings.Target, package.Identifier, DateTimeOffset.UtcNow);
-            await desktop.Ui.StartCollectionAsync(token);
+            var expectation = new DesktopObservationExpectation(environment.Owner, desktop.Settings.Target, desktop.Application.Identifier, DateTimeOffset.UtcNow, desktop.Application.CollectorKey);
+            await desktop.StartCollectionAsync(token);
             var witness = await new DesktopCollectionStep(desktop, artifacts).WaitAsync(expectation,
                 _ => Task.FromResult(desktop.Custody.Records), token);
             await desktop.PauseAsync(token);

@@ -22,3 +22,5 @@
 命令输入错误返回 2，执行失败为非零；取消返回 130。`Program` 管理取消信号，命令库不施加默认的两秒强制终止时限，使已有证据保存及场景清理得以完成。帮助和解析错误不启动任务子进程；入口仍先定位仓库。
 
 运行方式见[本地开发](../../docs/development.md)；验证证据、敏感数据与保留策略见[工程验证](../../docs/verification.md)。修改命令时覆盖参数路由及有风险的执行边界，修改打包时至少验证失败保留旧产物、取消清理和目标平台的真实 SDK 构建。
+
+日常业务主链使用 `scenario runtime-replay`，默认后台正常回放及离线崩溃恢复。原生首次使用使用 `scenario desktop-replay --foreground`，可加 `--recovery`；它会占用桌面。两个入口共用业务步骤和对账，差异是原生 UI/系统观测与受控后台运行时宿主，见 [ADR-0025](../../docs/adr/ADR-0025-background-and-native-acceptance.md)。

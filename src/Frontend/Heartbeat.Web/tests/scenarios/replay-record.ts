@@ -14,6 +14,7 @@ export type ReplayStage =
 export interface ReplayWitness {
   record: { trackId: string; recordId: string; startedAt: string; endedAt: string };
   target: string;
+  collectorKey: string;
   applicationId: string;
   applicationName: string;
   applicationKind: string;
@@ -35,7 +36,7 @@ export async function verifyReplay(
     expect.arrayContaining([
       expect.objectContaining({
         id: expected.record.trackId,
-        collectorKey: "heartbeat.collector.desktop.macos",
+        collectorKey: expected.collectorKey,
         collectorTarget: expected.target,
         type: "desktop.application.foreground",
       }),

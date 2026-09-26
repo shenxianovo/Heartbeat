@@ -6,7 +6,8 @@ internal sealed record CollectionMatches(int Total, int Owner, int Collector, in
     int Payload, int Application, int TimeWindow, int Duration, DesktopReplayEvidence? Witness);
 
 // These are acceptance conditions from the desktop recording contract, not production constants.
-internal sealed record DesktopObservationExpectation(Guid Owner, string Target, string ApplicationId, DateTimeOffset Since)
+internal sealed record DesktopObservationExpectation(Guid Owner, string Target, string ApplicationId, DateTimeOffset Since,
+    string CollectorKey = "heartbeat.collector.desktop.macos")
 {
     public CollectionMatches Inspect(ScenarioRecord[] records, DateTimeOffset until)
     {
@@ -17,7 +18,7 @@ internal sealed record DesktopObservationExpectation(Guid Owner, string Target, 
             return remaining.Length;
         }
         var owner = Match(item => item.OwnerId == Owner);
-        var collector = Match(item => item.CollectorKey == "heartbeat.collector.desktop.macos");
+        var collector = Match(item => item.CollectorKey == CollectorKey);
         var target = Match(item => item.Target == Target);
         var track = Match(item => item.Track is { Type: "desktop.application.foreground", Version: 1, TimeMode: "range", EndMode: "explicit" });
         var payload = Match(item => HasDesktopPayload(item.Record.Value));

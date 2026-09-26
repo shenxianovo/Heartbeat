@@ -2,7 +2,7 @@ namespace Heartbeat.Dev;
 
 internal sealed record DiagnosticProbe<T>(T? Value, string? Error);
 
-internal sealed class DesktopCollectionStep(DesktopSession desktop, StageArtifacts artifacts)
+internal sealed class DesktopCollectionStep(DesktopScenarioSession desktop, StageArtifacts artifacts)
 {
     public async Task<DesktopReplayEvidence> WaitAsync(DesktopObservationExpectation expectation,
         Func<CancellationToken, Task<ScenarioRecord[]>> readRecords, CancellationToken token)
@@ -11,7 +11,8 @@ internal sealed class DesktopCollectionStep(DesktopSession desktop, StageArtifac
         DesktopReplayEvidence? witness = null;
         await ScenarioWait.UntilAsync("the controlled desktop application's Record", async cancellation =>
         {
-            var foreground = await ProbeAsync(() => desktop.Ui.IsForegroundAsync(cancellation));
+            if (desktop.HasExited) throw new InvalidOperationException("Controlled desktop process exited during collection.");
+            var foreground = await ProbeAsync(() => desktop.IsForegroundAsync(cancellation));
             var queue = await ProbeAsync(() => Task.FromResult(desktop.Queue));
             var records = await ProbeAsync(async () => expectation.Inspect(await readRecords(cancellation), DateTimeOffset.UtcNow));
             samples.Add(new { sampledAt = DateTimeOffset.UtcNow, processExited = desktop.HasExited, foreground, queue, matches = records });
