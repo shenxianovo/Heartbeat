@@ -363,6 +363,7 @@ async function openDay(page: Page, volume: DayVolume, expanded: boolean) {
   await perfRecordingRoutes(page, volume);
   await seedSession(page);
   await page.goto("/");
+  await page.getByRole("button", { name: "全天", exact: true }).click();
   await expect(page.getByRole("region", { name: /活动泳道/ })).toBeVisible();
   await expect(page.locator(".timeline-range, .timeline-range-canvas").first()).toBeVisible();
   if (expanded) {

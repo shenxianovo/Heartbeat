@@ -68,6 +68,20 @@ function addDensityLayers(
   }));
 }
 
+function firstActivityTime(lanes: ReplayLane[]): number | null {
+  let first: number | null = null;
+  for (const lane of lanes) {
+    const starts = lane.counts
+      ? lane.counts.buckets.filter((bucket) => bucket.count > 0).map((bucket) => bucket.startedAt)
+      : lane.records.map((record) => record.startedAt);
+    for (const start of starts) {
+      const at = Date.parse(start);
+      if (Number.isFinite(at) && (first === null || at < first)) first = at;
+    }
+  }
+  return first;
+}
+
 function sameRange(left: TimeRange | null, right: TimeRange | null) {
   return left?.start === right?.start && left?.end === right?.end;
 }
@@ -169,6 +183,17 @@ export function useReplayData(
     to,
     bounds ? densityBucketSeconds(bounds) : 900,
   );
+  // Undefined means incomplete; null means the complete window has no activity.
+  const windowReady =
+    selection.needsInitialRange &&
+    !catalog.query.isPending &&
+    !catalog.query.isError &&
+    replayQuery.pending.length === 0 &&
+    replayQuery.failures.length === 0;
+  const firstActivityAt = useMemo(
+    () => (windowReady ? firstActivityTime(replayQuery.data) : undefined),
+    [windowReady, replayQuery.data],
+  );
   const density = useReplayDensity(
     ownerSubject,
     accessToken,
@@ -190,6 +215,7 @@ export function useReplayData(
     detailData.track !== null,
   );
   return {
+    firstActivityAt,
     tracksQuery: catalog.query,
     allTracks: catalog.all,
     tracks: catalog.selected,

@@ -29,6 +29,8 @@ interface Props {
   range: TimeRange;
   densityStatus: string | null;
   onRange: (range: TimeRange) => void;
+  onInteract?: () => void;
+  onNow?: () => void;
   onSelectPoints: (selection: PointSelection | null) => void;
 }
 
@@ -40,6 +42,8 @@ export function TimelineViewport({
   densityStatus,
   onRange,
   onSelectPoints,
+  onInteract,
+  onNow,
 }: Props) {
   const frameRange = useFrameRange(onRange);
   const [selection, setSelection] = useState<RecordSelection | null>(null);
@@ -47,7 +51,10 @@ export function TimelineViewport({
   const [paging, setPaging] = useState({ key: "", page: 0 });
   const pageKey = `${range.start}/${range.end}/${lanes.map((lane) => lane.track.id).join(",")}`;
   const page = paging.key === pageKey ? paging.page : 0;
-  const setPage = (page: number) => setPaging({ key: pageKey, page });
+  const setPage = (page: number) => {
+    onInteract?.();
+    setPaging({ key: pageKey, page });
+  };
   const ruler = useRef<HTMLDivElement>(null);
   const [tickCount, setTickCount] = useState(6);
   const timeline = useRef<HTMLDivElement>(null);
@@ -90,6 +97,7 @@ export function TimelineViewport({
     return () => observer.disconnect();
   }, []);
   function select(value: RecordSelection) {
+    onInteract?.();
     setSelection(value);
     onSelectPoints(null);
     const index = visibleRecords.findIndex(
@@ -170,7 +178,13 @@ export function TimelineViewport({
 
   return (
     <TooltipLayer>
-      <section className="timeline-card" aria-label="统一回放时间线">
+      <section
+        className="timeline-card"
+        aria-label="统一回放时间线"
+        onPointerDownCapture={onInteract}
+        onKeyDownCapture={onInteract}
+        onWheelCapture={onInteract}
+      >
         <div className="swimlane-toolbar">
           <div>
             <h2>活动泳道</h2>
@@ -213,6 +227,18 @@ export function TimelineViewport({
             >
               <Icon name="chevronRight" />
             </Button>
+            {onNow ? (
+              <Button
+                type="button"
+                variant="glass"
+                onClick={() => {
+                  setSelection(null);
+                  onNow();
+                }}
+              >
+                回到现在
+              </Button>
+            ) : null}
             <Button type="button" variant="glass" onClick={() => onRange(bounds)}>
               全天
             </Button>

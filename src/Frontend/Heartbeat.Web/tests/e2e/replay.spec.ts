@@ -196,6 +196,7 @@ test("重叠区间分别可见且可以直接展开", async ({ page }) => {
     await route.fulfill({ json: { track: desktopTrack, records, nextCursor: null } });
   });
   await page.goto("/");
+  await page.getByRole("button", { name: "全天", exact: true }).click();
   const first = page.getByRole("button", { name: "Overlap A", exact: true });
   const second = page.getByRole("button", { name: "Overlap B", exact: true });
   await expect(first).toBeVisible();
@@ -223,6 +224,7 @@ test("来源可以组合选择，空选择不会一直加载", async ({ page }) 
 test("概览拖选和手柄调整同步泳道，并按固定时间片查询更细的输入密度", async ({ page }) => {
   const requests = await recordingRoutes(page);
   await page.goto("/");
+  await page.getByRole("button", { name: "全天", exact: true }).click();
   const move = page.getByRole("slider", { name: "移动时间范围" });
   await expect(move).toBeVisible();
   const dayStart = Number(await move.getAttribute("aria-valuemin"));
@@ -290,6 +292,7 @@ test("密度曲线在细节读取时保持可见，复用同一时间片并可�
     await route.fallback();
   });
   await page.goto("/");
+  await page.getByRole("button", { name: "全天", exact: true }).click();
   const curve = page.locator(".timeline-density-curve").first();
   await expect(curve.locator("path.density-wave").first()).toHaveAttribute("d", /M /);
   await expect(curve.locator("path.density-wave")).toHaveCount(1);
@@ -387,6 +390,7 @@ test("观测状态与其他 Track 分开展示", async ({ page }) => {
 test("泳道滚动、平移缩放与键盘范围控制始终保持在日期边界内", async ({ page }) => {
   await recordingRoutes(page);
   await page.goto("/");
+  await page.getByRole("button", { name: "全天", exact: true }).click();
   const start = page.getByRole("slider", { name: "范围起点" });
   const end = page.getByRole("slider", { name: "范围终点" });
   await expect(start).toBeVisible();
@@ -503,6 +507,7 @@ test("Picker 浮层窄屏可用，点击外部关闭且多选保持", async ({ p
 test("泳道悬停提示是跟随指针的浮层，离开即收起", async ({ page }) => {
   await recordingRoutes(page);
   await page.goto("/");
+  await page.getByRole("button", { name: "全天", exact: true }).click();
   const tip = page.locator(".ui-tooltip");
   const curve = page.locator(".timeline-density-curve").first();
   await expect(curve).toBeVisible();
@@ -562,4 +567,83 @@ test("泳道悬停提示是跟随指针的浮层，离开即收起", async ({ pa
       pointer.y > box.y + box.height,
   ).toBe(true);
   await page.screenshot({ path: evidencePath("replay-hover-tip-edge.png") });
+});
+
+test("现在自动跟随；用户操作和刷新保留视窗，回到现在才恢复", async ({ page }) => {
+  await page.clock.install();
+  await recordingRoutes(page);
+  await page.goto("/");
+  const start = page.getByRole("slider", { name: "范围起点" });
+  const end = page.getByRole("slider", { name: "范围终点" });
+  await expect(start).toBeVisible();
+  const readStart = async () => Number(await start.getAttribute("aria-valuenow"));
+  const initial = await readStart();
+  expect(Number(await end.getAttribute("aria-valuenow")) - initial).toBe(2 * 60 * 60_000);
+  await page.clock.fastForward(30_000);
+  await expect.poll(readStart).toBeGreaterThan(initial);
+
+  // Pointer-down alone must freeze the view before a drag has moved any pixels.
+  const plot = (await page.locator(".timeline-lane-plot").first().boundingBox())!;
+  await page.mouse.move(plot.x + plot.width / 2, plot.y + 3);
+  await page.mouse.down();
+  const held = await readStart();
+  await page.clock.fastForward(30_000);
+  expect(await readStart()).toBe(held);
+  await page.mouse.move(plot.x + plot.width * 0.7, plot.y + 3, { steps: 5 });
+  await page.mouse.up();
+  const manual = await readStart();
+  expect(manual).toBeLessThan(held);
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await page.clock.fastForward(30_000);
+  expect(await readStart()).toBe(manual);
+
+  await page.getByRole("button", { name: "回到现在", exact: true }).click();
+  await expect.poll(readStart).toBeGreaterThan(held);
+  const resumed = await readStart();
+  await page.clock.fastForward(30_000);
+  await expect.poll(readStart).toBeGreaterThan(resumed);
+  await page.getByRole("button", { name: "com.apple.finder", exact: true }).click();
+  const inspecting = await readStart();
+  await page.clock.fastForward(30_000);
+  expect(await readStart()).toBe(inspecting);
+  await expect(page.getByRole("region", { name: "所选记录详情" })).toBeVisible();
+  await page.screenshot({ path: evidencePath("replay-follow-paused.png"), fullPage: true });
+});
+
+test("历史日期在完整读取后聚焦首条活动，刷新不会重新定位", async ({ page }) => {
+  await recordingRoutes(page);
+  await page.route("**/api/v1/tracks", (route) =>
+    route.fulfill({ json: { tracks: [desktopTrack] } }),
+  );
+  await page.route(`**/api/v1/tracks/${desktopTrack.id}/records?**`, async (route) => {
+    const from = Date.parse(new URL(route.request().url()).searchParams.get("from")!);
+    const at = new Date(from + 4 * 3_600_000).toISOString();
+    await route.fulfill({
+      json: {
+        track: desktopTrack,
+        records: [
+          {
+            id: "early-activity",
+            startedAt: at,
+            endedAt: new Date(from + 5 * 3_600_000).toISOString(),
+            observedAt: null,
+            receivedAt: at,
+            value: {},
+          },
+        ],
+        nextCursor: null,
+      },
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "前一天", exact: true }).click();
+  const start = page.getByRole("slider", { name: "范围起点" });
+  const dayStart = Number(await start.getAttribute("aria-valuemin"));
+  await expect(start).toHaveAttribute("aria-valuenow", String(dayStart + 3 * 3_600_000));
+  await page.getByRole("button", { name: "向后平移", exact: true }).click();
+  const manual = await start.getAttribute("aria-valuenow");
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(page.getByRole("button", { name: "刷新", exact: true })).toBeEnabled();
+  await expect(start).toHaveAttribute("aria-valuenow", manual!);
+  await page.screenshot({ path: evidencePath("replay-history-focus.png"), fullPage: true });
 });

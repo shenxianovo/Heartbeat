@@ -16,6 +16,7 @@ import { LoadingState } from "@/components/status/LoadingState";
 import { QueryState } from "@/components/status/QueryState";
 import { useReplaySelection } from "./useReplaySelection";
 import { useReplayData } from "./useReplayData";
+import { useLiveReplay } from "./useLiveReplay";
 
 function RefreshButton({
   fetching,
@@ -52,6 +53,9 @@ export function ReplayWorkbench() {
     setRange,
     selectCollectors,
     setDetail,
+    pauseFollowing,
+    returnToNow,
+    establishInitialRange,
   } = selection;
   const {
     tracksQuery,
@@ -67,7 +71,10 @@ export function ReplayWorkbench() {
     refresh,
     fetching,
     densityFailed,
+    firstActivityAt,
   } = useReplayData(ownerSubject, accessToken, selection);
+  useLiveReplay(selection.following, selection.advanceClock, refresh, fetching);
+  establishInitialRange(firstActivityAt);
   return (
     <div className="app-frame">
       <AppHeader />
@@ -130,7 +137,7 @@ export function ReplayWorkbench() {
                     key={`${chosen.from}/${chosen.to}`}
                     value={chosen}
                     onApply={(next) => {
-                      chooseDate(next);
+                      chooseDate(next, true);
                       close();
                     }}
                   />
@@ -202,6 +209,8 @@ export function ReplayWorkbench() {
                   densityStatus={densityStatus}
                   onRange={setRange}
                   onSelectPoints={setDetail}
+                  onInteract={pauseFollowing}
+                  onNow={returnToNow}
                 />
               </>
             )}
