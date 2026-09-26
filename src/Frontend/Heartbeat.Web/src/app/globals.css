@@ -1501,8 +1501,7 @@ a:where(:not([data-slot="button"])) {
 .delivery-chart-title {
   justify-content: space-between;
 }
-.delivery-chart-title span,
-.delivery-caption {
+.delivery-chart-title span {
   color: var(--muted-foreground);
 }
 .delivery-legend {
@@ -1528,8 +1527,4 @@ a:where(:not([data-slot="button"])) {
   min-width: 0;
   height: 180px;
   overflow: hidden;
-}
-.hub-card .delivery-caption {
-  margin-top: 6px;
-  font-size: 11px;
 }

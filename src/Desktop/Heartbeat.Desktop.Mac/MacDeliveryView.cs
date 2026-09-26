@@ -17,7 +17,7 @@ internal sealed class MacDeliveryView : NSView
     {
         TranslatesAutoresizingMaskIntoConstraints = false;
         HeightAnchor.ConstraintEqualTo(155).Active = true;
-        AccessibilityLabel = "最近 60 秒收发曲线，纵轴每秒 Record 快照数，含重试和续期";
+        AccessibilityLabel = "最近 60 秒收发曲线，纵轴每秒 Record 快照数";
     }
 
     public void Refresh(DeliveryActivitySnapshot? activity, bool visible)
@@ -68,13 +68,18 @@ internal sealed class MacDeliveryView : NSView
         for (var stage = 0; stage < 3; stage++)
         {
             using var line = new NSBezierPath { LineWidth = 1.8f };
-            var first = true;
+            CGPoint? previous = null;
             foreach (var bucket in activity.Buckets)
             {
                 var value = stage == 0 ? bucket.Received : stage == 1 ? bucket.Sent : bucket.Confirmed;
                 var point = new CGPoint(32 + (bucket.Second - end + 60) / 60 * width, bottom + value / maximum * height);
-                if (first) line.MoveTo(point); else line.LineTo(point);
-                first = false;
+                if (previous is { } before)
+                {
+                    var middle = (before.X + point.X) / 2;
+                    line.CurveTo(point, new CGPoint(middle, before.Y), new CGPoint(middle, point.Y));
+                }
+                else line.MoveTo(point);
+                previous = point;
             }
             Colors[stage].SetStroke(); line.Stroke();
         }

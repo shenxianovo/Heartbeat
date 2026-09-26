@@ -51,7 +51,8 @@ export function mountDeliveryPlot(host: HTMLDivElement) {
         ...stages.map((_stage, index) => ({
           stroke: colors[index],
           width: 1.8,
-          points: { show: true, size: 3 },
+          paths: uPlot.paths.spline!(),
+          points: { show: false },
           spanGaps: false,
           dash: index === 1 ? [5, 3] : undefined,
         })),

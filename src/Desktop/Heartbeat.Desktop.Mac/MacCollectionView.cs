@@ -199,11 +199,12 @@ internal sealed class MacCollectionView : NSView
             _deliveryStatus.Update("无待交付记录", NSColor.SystemGreen, "checkmark.circle.fill");
         SetDeliveryDetail(queue.Failed > 0
             ? "永久失败记录已暂停，需处理。其余记录仍会继续交付。"
-            : "最近 60 秒的每秒快照数，含重试和续期。发送不等于确认。");
+            : string.Empty);
     }
 
     private void SetDeliveryDetail(string text)
     {
+        _deliveryDetail.Hidden = string.IsNullOrEmpty(text);
         if (_deliveryDetail.StringValue == text) return;
         MacAnimation.FadeContentChange(_deliveryDetail, () => _deliveryDetail.StringValue = text);
     }

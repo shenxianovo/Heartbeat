@@ -41,7 +41,6 @@ export function DeliveryChart({ activity }: { activity?: DeliveryActivity }) {
       <output className="sr-only" aria-label="收发窗口合计">
         {counts ? `接收 ${counts[0]}，发送 ${counts[1]}，确认 ${counts[2]}` : "暂无数据"}
       </output>
-      <p className="delivery-caption">每秒快照数，含重试与续期；当前秒持续更新，发送不代表成功。</p>
     </section>
   );
 }

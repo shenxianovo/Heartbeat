@@ -20,7 +20,7 @@ internal sealed class DeliveryView : StackPanel
     private DeliveryActivitySnapshot? _activity;
     private long _observedAt;
     private long _drawnAt;
-    private readonly List<Polyline> _lines = [];
+    private readonly List<Microsoft.UI.Xaml.Shapes.Path> _lines = [];
 
     public DeliveryView()
     {
@@ -29,7 +29,6 @@ internal sealed class DeliveryView : StackPanel
         var titles = new[] { "接收", "发送", "确认" };
         for (var i = 0; i < 3; i++) legend.Children.Add(new TextBlock { Text = titles[i], Foreground = new SolidColorBrush(Colors[i]) });
         Children.Add(_caption); Children.Add(legend); Children.Add(_canvas);
-        Children.Add(new TextBlock { Text = "最近 60 秒 · 每秒快照数，含重试与续期；发送不代表成功。", FontSize = 11, TextWrapping = TextWrapping.Wrap });
         _canvas.SizeChanged += (_, _) => Draw();
         _animation.Tick += (_, _) => Scroll();
         Unloaded += (_, _) => _animation.Stop();
@@ -39,7 +38,7 @@ internal sealed class DeliveryView : StackPanel
     {
         _activity = activity;
         _observedAt = Stopwatch.GetTimestamp();
-        _caption.Text = activity is null ? "活动状态暂不可用" : "Records / 秒";
+        _caption.Text = activity is null ? "活动状态暂不可用" : "最近 60 秒 · Records / 秒";
         if (visible && _settings.AnimationsEnabled) _animation.Start(); else _animation.Stop();
         if (visible) Draw();
     }
@@ -64,12 +63,23 @@ internal sealed class DeliveryView : StackPanel
         var end = _activity.CapturedAt / 1000d + Stopwatch.GetElapsedTime(_observedAt).TotalSeconds;
         for (var stage = 0; stage < 3; stage++)
         {
-            var line = new Polyline { RenderTransform = new TranslateTransform(), Stroke = new SolidColorBrush(Colors[stage]), StrokeThickness = 1.8,
+            var figure = new PathFigure { IsClosed = false, IsFilled = false };
+            var geometry = new PathGeometry();
+            geometry.Figures.Add(figure);
+            var line = new Microsoft.UI.Xaml.Shapes.Path { Data = geometry, RenderTransform = new TranslateTransform(), Stroke = new SolidColorBrush(Colors[stage]), StrokeThickness = 1.8,
                 Clip = new RectangleGeometry { Rect = new Rect(32, -1, width, height + 2) } };
+            Point? previous = null;
             foreach (var bucket in buckets)
             {
                 var value = stage == 0 ? bucket.Received : stage == 1 ? bucket.Sent : bucket.Confirmed;
-                line.Points.Add(new Point(32 + (bucket.Second - end + 60) / 60 * width, height - value / maximum * height));
+                var point = new Point(32 + (bucket.Second - end + 60) / 60 * width, height - value / maximum * height);
+                if (previous is { } before)
+                {
+                    var middle = (before.X + point.X) / 2;
+                    figure.Segments.Add(new BezierSegment { Point1 = new Point(middle, before.Y), Point2 = new Point(middle, point.Y), Point3 = point });
+                }
+                else figure.StartPoint = point;
+                previous = point;
             }
             _canvas.Children.Add(line);
             _lines.Add(line);
