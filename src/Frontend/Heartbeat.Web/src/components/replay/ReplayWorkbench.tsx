@@ -1,5 +1,7 @@
 "use client";
 
+import { trackLabel } from "@/components/records/renderers/registry";
+
 import { useAuth } from "react-oidc-context";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/DatePicker";
@@ -7,7 +9,6 @@ import { MultiSelectPicker } from "@/components/ui/MultiSelectPicker";
 import { Popover } from "@/components/ui/Popover";
 import { Icon } from "@/components/ui/Icon";
 import { DateRangeControls } from "@/components/filters/DateRangeControls";
-import { trackLabel } from "@/components/filters/TrackPicker";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { RecordsPanel } from "./RecordsPanel";
 import { TimelineViewport } from "./TimelineViewport";

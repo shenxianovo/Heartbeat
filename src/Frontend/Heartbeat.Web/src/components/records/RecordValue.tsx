@@ -26,13 +26,9 @@ class RendererBoundary extends Component<BoundaryProps, BoundaryState> {
     return { failed: true };
   }
 
-  componentDidCatch() {
-    // A single malformed value must not stop the rest of the replay list.
-  }
-
   render() {
     if (this.state.failed) {
-      return <FallbackJsonRenderer value={this.props.value} />;
+      return <FallbackJsonRenderer value={this.props.value} error="记录解析失败" />;
     }
     return this.props.children;
   }

@@ -1,3 +1,4 @@
+import { trackLabel } from "@/components/records/renderers/registry";
 import {
   useMemo,
   useState,
@@ -7,7 +8,6 @@ import {
   type ReactNode,
 } from "react";
 import type { PointCountsResponse, TrackSummary } from "@/api/types";
-import { trackLabel } from "@/components/filters/TrackPicker";
 import { TooltipReading, useTooltip, type TooltipHandle } from "@/components/ui/Tooltip";
 import { densityBuckets, densityHeight, type DensityBucket } from "./densitySeries";
 import uPlot from "uplot";

@@ -1,0 +1,5 @@
+{
+  "$schema": "https://unpkg.com/knip/schema.json",
+  "entry": ["tests/scenarios/desktop-replay.ts", "tests/perf/*.perf.ts"],
+  "ignoreExportsUsedInFile": true
+}

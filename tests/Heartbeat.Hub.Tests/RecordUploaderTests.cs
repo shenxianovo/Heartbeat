@@ -171,8 +171,7 @@ public sealed class RecordUploaderTests : IDisposable
         using var client = new HttpClient(handler);
         Assert.Single(await new RecordUploader(queue, client, Provider(_fixture)).UploadOnceAsync(cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal(new QueueStatus(1, 0), queue.Status());
-        Assert.Equal(1, queue.Activity.Snapshot.Buckets.Sum(bucket => bucket.Sent));
-        Assert.Equal(0, queue.Activity.Snapshot.Buckets.Sum(bucket => bucket.Confirmed));
+        Assert.Equal(0, queue.Activity.Snapshot.Delivered);
     }
 
     [Fact]

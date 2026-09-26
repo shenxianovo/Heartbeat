@@ -39,14 +39,16 @@ API 当前按单实例运行管理中继；多副本负载均衡需要另行设�
 
 服务器只指定 `Hub__DataDirectory`；Desktop 沿用客户端数据目录。每个目录包含 `hub-id`、`hub.sqlite`、需要的配置文档与 `secrets/`。指定目录用于该 Hub 独占的数据存储；Unix 上收紧为仅运行账号可读写。进程锁避免并发占用，不同 Hub 目录互不共享状态。Desktop API key 仍交给系统凭据库。这里没有远端配置中心，API 的状态快照不能恢复或覆盖本地配置。
 
-## 最近收发活动
+## 最近收发数量
 
-收发曲线以 [ADR-0024](adr/ADR-0024-delivery-activity-is-ephemeral.md) 为准。五秒管理报告不变，活动独立一秒上报与一秒读取，通常有约一至两秒加网络的延迟。
+收发图以 [ADR-0024](adr/ADR-0024-delivery-activity-is-ephemeral.md) 为准。五秒管理报告不变，计数独立每秒上报与读取。
 
-- `POST /{id}/activity`：`{ sessionId, activity: { epoch, capturedAt, buckets: [{ second, received, sent, confirmed }] } }`。Bearer Owner 和当前活跃管理会话必须匹配；请求上限 16 KiB。
-- `capturedAt` 是 Hub 的 Unix 毫秒；`second` 是 Unix 秒。桶按时间连续、升序，最多 60 个，最后一桶对应当前秒。计数为非负 JavaScript 安全整数；确认可能属于此前秒发送的快照，不能要求单桶 confirmed ≤ sent。API 拒绝同会话不同 epoch 或倒序 capturedAt。
-- `GET /activity`：返回 `{ activities: { "<hub-id>": { epoch, capturedAt, buckets } } }`，仅包含当前 Owner 的活动；四秒未更新或管理失联即不返回，响应不缓存。
-- 活动只留在 Hub/API 内存，不携带 Record 内容、不写 PostgreSQL、不刷新在线时间；API 重启后等待正常管理接入，下一份活动窗口恢复显示。
-- UI 显示最近 60 秒、每秒 Record 快照数，重试和续期重复计入。当前秒持续更新，窗口外及未观测时间不填零。Web 断连保留已有曲线并留下新时间缺口；恢复后可用源时间桶补齐窗口内已知数据。重启 epoch 更换则替换窗口。减少动态时停止平滑滚动，保留每秒数据更新。
+- `POST /{id}/activity`：`{ sessionId, activity: { epoch, capturedAt, accepted, delivered } }`。Bearer Owner 与当前活跃管理会话必须匹配；请求上限 1 KiB。
+- `epoch` 标识本次 Hub 进程运行；`capturedAt` 为 Hub 的 Unix 毫秒。`accepted` 是成功接管的快照累计数，`delivered` 是核对成功回执的快照累计数。同一 Record 后续更新或再次提交也计数，失败上传不计入 delivered。
+- 两个计数是非负 JavaScript 安全整数；同 epoch 的采样时间与计数不得倒退。恢复旧队列后 delivered 可以大于本次运行的 accepted，不能据两者差值计算待上传数量。
+- `GET /activity` 返回 `{ activities: { "<hub-id>": { epoch, capturedAt, accepted, delivered } } }`，只含当前 Owner 的最新快照；四秒未更新或管理失联即不返回，响应不缓存。
+- Hub/API 不保留秒桶、Record 内容或图形历史。API 重启后等待正常管理接入和新快照；计数不写 PostgreSQL、不刷新在线状态。
 
-曲线使用保持相邻采样值范围的平滑插值，不改变每秒计数，不生成负值或越过峰值；数据缺口仍留空。计数语义保留在契约文档中，界面只显示图例、单位和时间范围。
+Web 与原生界面分别计算相邻快照的 accepted/delivered 差值，显示「已接受 / 已上传」。横轴为时间，纵轴为本次更新间隔内的 Record 快照数量；不换算每秒速率，不做滑动平均。当前视图只在内存中保留最近 60 秒的显示点，初次读取只建立基线。相同或倒序快照不重复绘制；断连后以新快照重新建立基线并留空，Hub 重启或页面刷新重新开始。
+
+Web 悬停显示这个更新间隔的起止时间与两项数量。队列积压、失败仍由已有管理报告单独展示。平滑曲线不超出相邻显示点范围，减少动态时停止连续滚动；这些显示行为不改变 Hub 接管、上传或重试语义。

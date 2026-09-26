@@ -94,7 +94,13 @@ test("统一时间线自动读取完整区间并可查看原始记录", async ({
     "com.microsoft.VSCode",
   );
   await ranges.press("ArrowRight");
-  await page.getByRole("button", { name: /当前 时间区间/ }).press("Enter");
+  await page.getByRole("button", { name: /当前 记录解析失败/ }).press("Enter");
+  const failure = page.getByRole("region", { name: "所选记录详情" }).getByRole("alert");
+  await expect(failure).toContainText("记录解析失败");
+  await expect(failure).toContainText("malformed-observation");
+  await expect(page.getByRole("region", { name: "区间记录列表" })).toContainText(
+    "com.microsoft.VSCode",
+  );
   await page.getByRole("button", { name: "查看详情" }).click();
   await expect(page.getByText(/malformed-observation/).first()).toBeVisible();
   await expect(page.getByText("原始 JSON", { exact: true }).first()).toBeVisible();

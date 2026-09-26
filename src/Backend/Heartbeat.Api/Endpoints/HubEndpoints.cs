@@ -38,10 +38,7 @@ public static class HubEndpoints
 
     private static bool ValidActivity(DeliveryActivitySnapshot? activity) => activity is not null &&
         activity.Epoch != Guid.Empty && activity.CapturedAt is > 0 and <= 253_402_300_799_999 &&
-        activity.Buckets is { Count: > 0 and <= DeliveryActivitySnapshot.WindowSeconds } &&
-        activity.Buckets.Select((bucket, index) => bucket is not null &&
-            bucket.Second == activity.CapturedAt / 1000 - activity.Buckets.Count + 1 + index &&
-            ValidCount(bucket.Received) && ValidCount(bucket.Sent) && ValidCount(bucket.Confirmed)).All(valid => valid);
+        ValidCount(activity.Accepted) && ValidCount(activity.Delivered);
 
     private static bool ValidCount(long value) => value is >= 0 and <= 9_007_199_254_740_991;
 

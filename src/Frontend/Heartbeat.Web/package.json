@@ -44,6 +44,7 @@
     "eslint": "9.39.5",
     "eslint-config-next": "16.3.5",
     "jsdom": "30.0.1",
+    "knip": "6.38.0",
     "prettier": "3.9.6",
     "shadcn": "4.21.0",
     "typescript": "5.9.3",

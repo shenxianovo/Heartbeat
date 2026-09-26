@@ -46,12 +46,15 @@ describe("application timeline summary", () => {
   });
 
   it("keeps the window title out of the application lane", () => {
-    expect(describeRecord(windowTrack, record).label).toBe("时间区间");
+    expect(describeRecord(windowTrack, record).label).toBe("记录解析失败");
     expect(describeRecord(windowTrack, windowRecord).group).toBeUndefined();
   });
 
-  it("uses safe generic summaries for malformed values and unknown protocols", () => {
-    expect(describeRecord(track, { ...record, value: { application: 3 } }).label).toBe("时间区间");
+  it("distinguishes malformed known values from unknown protocols", () => {
+    expect(describeRecord(track, { ...record, value: { application: 3 } })).toEqual({
+      label: "记录解析失败",
+      tone: "attention",
+    });
     expect(describeRecord({ ...track, type: "example.custom" }, record).label).toBe("时间区间");
     expect(
       describeRecord({ ...track, timeMode: "point", type: "example.custom" }, record).label,

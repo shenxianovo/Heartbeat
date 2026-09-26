@@ -1,8 +1,7 @@
 import { useMemo } from "react";
 import type { ReplayLane, TimelineRecord } from "@/api/types";
-import { trackLabel } from "@/components/filters/TrackPicker";
 import { useTooltip } from "@/components/ui/Tooltip";
-import { describeRecord } from "@/components/records/renderers/registry";
+import { describeRecord, trackLabel } from "@/components/records/renderers/registry";
 import { laneHeight, layoutRanges } from "./rangeLayout";
 import { DensityCurve } from "./DensityCurve";
 import { RangePlot } from "./RangePlot";

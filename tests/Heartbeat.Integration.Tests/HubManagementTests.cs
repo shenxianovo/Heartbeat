@@ -150,10 +150,12 @@ public sealed class HubManagementTests(PostgresFixture fixture) : PostgresTestBa
         client.DefaultRequestHeaders.Add(RecordingApiFactory.OwnerHeader, Guid.NewGuid().ToString());
         using var registered = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/check-in", checkIn, Token);
         registered.EnsureSuccessStatusCode();
-        var activity = new HubActivityReport(checkIn.SessionId, new(Guid.NewGuid(), 60_000, [new(59, 10, 8, 0), new(60, 0, 0, 3)]));
+        const long maximumCount = 9_007_199_254_740_991;
+        var activity = new HubActivityReport(checkIn.SessionId, new(Guid.NewGuid(), 60_000, maximumCount, maximumCount));
+        Assert.True(JsonSerializer.SerializeToUtf8Bytes(activity, JsonSerializerOptions.Web).Length <= DeliveryActivitySnapshot.MaximumBodyBytes);
         using var accepted = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/activity", activity, Token);
         Assert.Equal(HttpStatusCode.NoContent, accepted.StatusCode);
-        Assert.Equal(activity.Activity.Buckets, Assert.Single((await client.GetFromJsonAsync<ActivityList>("/api/v1/hubs/activity", Token))!.Activities).Value.Buckets);
+        Assert.Equal(activity.Activity, Assert.Single((await client.GetFromJsonAsync<ActivityList>("/api/v1/hubs/activity", Token))!.Activities).Value);
         using var other = factory.CreateClient();
         other.DefaultRequestHeaders.Add(RecordingApiFactory.OwnerHeader, Guid.NewGuid().ToString());
         Assert.Empty((await other.GetFromJsonAsync<ActivityList>("/api/v1/hubs/activity", Token))!.Activities);
@@ -162,8 +164,11 @@ public sealed class HubManagementTests(PostgresFixture fixture) : PostgresTestBa
         using var clone = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/activity", activity with { SessionId = Guid.NewGuid() }, Token);
         Assert.Equal(HttpStatusCode.NotFound, clone.StatusCode);
         using var late = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/activity",
-            activity with { Activity = activity.Activity with { CapturedAt = 59_000, Buckets = [new(59, 1, 1, 0)] } }, Token);
+            activity with { Activity = activity.Activity with { CapturedAt = 59_000 } }, Token);
         Assert.Equal(HttpStatusCode.NotFound, late.StatusCode);
+        using var decreased = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/activity",
+            activity with { Activity = activity.Activity with { CapturedAt = 61_000, Accepted = 1 } }, Token);
+        Assert.Equal(HttpStatusCode.NotFound, decreased.StatusCode);
         await using var db = CreateDbContext();
         Assert.DoesNotContain(activity.Activity.Epoch.ToString(), (await db.Hubs.SingleAsync(Token)).StatusJson);
         clock.Now += HubManagement.ActivityTimeout;

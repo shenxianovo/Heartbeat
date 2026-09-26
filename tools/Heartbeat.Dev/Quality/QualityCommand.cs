@@ -34,6 +34,7 @@ internal sealed record QualityReport(
     LineQualityReport? Lines,
     CloneQualityReport? Clones,
     ComplexityQualityReport? Complexity,
+    DeadCodeReport? DeadCode,
     StockBudgetReport? Budget,
     bool Passed,
     IReadOnlyList<string> Failures);
@@ -106,7 +107,7 @@ internal sealed class QualityCommand(
         {
             var unusable = new QualityReport(
                 new QualityBaseReport(baseRef, baseline.Revision, false, usability.Reason, usability.Suggestions),
-                mode, run.Directory, null, null, null, null, false, [usability.Reason!]);
+                mode, run.Directory, null, null, null, null, null, false, [usability.Reason!]);
             await WriteReportAsync(run.Directory, unusable, cancellationToken);
             if (json) await output.WriteLineAsync(JsonSerializer.Serialize(unusable, JsonOptions.Indented));
             else await WriteUnusableBaseAsync(unusable);
@@ -121,13 +122,17 @@ internal sealed class QualityCommand(
             .CompareAsync(baseCommit, baseline, current, run.Directory, commands, cancellationToken);
         var complexity = await new ComplexityDetector(repository, runner)
             .CompareAsync(baseCommit, run.Directory, commands, cancellationToken);
+        var deadCode = complexity.Available
+            ? await new DeadCodeDetector(repository, runner).CompareAsync(baseCommit, run.Directory, commands, cancellationToken)
+            : new DeadCodeReport(false, "Dead-code analysis requires a successful C# analysis build.", [], []);
         var budget = complexity.Available
             ? StockBudget.Evaluate(repository, complexity.CurrentHotspots)
             : null;
-        var failures = Failures(stock, clones, complexity, budget);
+        var failures = Failures(stock, clones, complexity, budget).ToList();
+        failures.AddRange(deadCode.Failures(stock));
         var report = new QualityReport(
             new QualityBaseReport(baseRef, baseline.Revision, true, null, []),
-            mode, run.Directory, lines, clones, complexity, budget, failures.Count == 0, failures);
+            mode, run.Directory, lines, clones, complexity, deadCode, budget, failures.Count == 0, failures);
         await WriteReportAsync(run.Directory, report, cancellationToken);
         if (json) await output.WriteLineAsync(JsonSerializer.Serialize(report, JsonOptions.Indented));
         else await WriteHumanAsync(report);
@@ -231,6 +236,9 @@ internal sealed class QualityCommand(
             }
         }
         await WriteComplexityAsync(report);
+        await output.WriteLineAsync(report.DeadCode!.Available
+            ? $"  dead code: {report.DeadCode.Current.Count} current, {report.DeadCode.NewFindings.Count} new since base (Knip + IDE0051)"
+            : $"  dead-code scan unavailable: {report.DeadCode.Reason}");
         await output.WriteLineAsync($"  evidence: {report.ArtifactDirectory}");
         foreach (var failure in report.Failures)
         {

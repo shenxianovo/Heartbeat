@@ -72,12 +72,16 @@ export function describeRecord(track: TrackSummary, record: TimelineRecord): Rec
       label: fallback,
     };
   } catch {
-    summary = { label: fallback };
+    summary = { label: "记录解析失败", tone: "attention" };
   }
   summaries.set(record, { key, summary });
   return summary;
 }
 
-export function recordTypeLabel(type: string, version: number): string {
+function recordTypeLabel(type: string, version: number): string {
   return renderers.get(rendererKey(type, version))?.label ?? `${type} · v${version}`;
+}
+
+export function trackLabel(track: TrackSummary): string {
+  return recordTypeLabel(track.type, track.version);
 }

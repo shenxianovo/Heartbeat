@@ -55,8 +55,4 @@ public sealed class Collector
         };
     }
 
-    public void UpdateDisplayName(string displayName)
-    {
-        DisplayName = TextValue.NormalizeRequired(displayName, nameof(displayName), MaximumTextLength);
-    }
 }

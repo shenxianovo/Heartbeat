@@ -29,7 +29,7 @@ public sealed class HubDeliveryTests(PostgresFixture fixture) : PostgresTestBase
                 new TrackDeclaration("example.unregistered.range", 1, "range", "explicit"), [record]);
             var queue = new RecordOutbox(path, destination);
             queue.Accept(submission);
-            Assert.Equal(1, queue.Activity.Snapshot.Buckets.Sum(bucket => bucket.Received));
+            Assert.Equal(1, queue.Activity.Snapshot.Accepted);
             var originalEpoch = queue.Activity.Snapshot.Epoch;
             using (var offline = new HttpClient(new OfflineHandler()))
             {
@@ -45,7 +45,7 @@ public sealed class HubDeliveryTests(PostgresFixture fixture) : PostgresTestBase
 
             queue = new RecordOutbox(path, destination);
             Assert.NotEqual(originalEpoch, queue.Activity.Snapshot.Epoch);
-            Assert.Equal(0, queue.Activity.Snapshot.Buckets.Sum(bucket => bucket.Received));
+            Assert.Equal(0, queue.Activity.Snapshot.Accepted);
             Assert.Null(Assert.Single(queue.TakePending()).Route.BackendTrackId);
             using var handler = new BackendHandler(owner, loseFirstRecordReply: true)
             {
@@ -54,8 +54,7 @@ public sealed class HubDeliveryTests(PostgresFixture fixture) : PostgresTestBase
             using var backend = new HttpClient(handler);
             Assert.Single(await new RecordUploader(queue, backend, new FixedTokenProvider(owner)).UploadOnceAsync(cancellationToken: TestContext.Current.CancellationToken));
             Assert.Equal(new QueueStatus(1, 0), queue.Status());
-            Assert.Equal(1, queue.Activity.Snapshot.Buckets.Sum(bucket => bucket.Sent));
-            Assert.Equal(0, queue.Activity.Snapshot.Buckets.Sum(bucket => bucket.Confirmed));
+            Assert.Equal(0, queue.Activity.Snapshot.Delivered);
             var mappedTrack = Assert.Single(queue.TakePending()).Route.BackendTrackId!.Value;
             await using (var db = CreateDbContext())
             {
@@ -66,7 +65,7 @@ public sealed class HubDeliveryTests(PostgresFixture fixture) : PostgresTestBase
             queue.Accept(submission with { Records = [record with { EndedAt = now }] });
             Assert.Empty(await new RecordUploader(queue, backend, new FixedTokenProvider(owner)).UploadOnceAsync(cancellationToken: TestContext.Current.CancellationToken));
             Assert.Equal(new QueueStatus(0, 0), queue.Status());
-            Assert.Equal(1, queue.Activity.Snapshot.Buckets.Sum(bucket => bucket.Confirmed));
+            Assert.Equal(1, queue.Activity.Snapshot.Delivered);
             Assert.Equal(1, handler.RegistrationRequests);
             Assert.Equal(1, handler.TrackRequests);
 
@@ -86,8 +85,7 @@ public sealed class HubDeliveryTests(PostgresFixture fixture) : PostgresTestBase
             Assert.Empty(await new RecordUploader(queue, backend, new FixedTokenProvider(owner)).UploadOnceAsync(cancellationToken: TestContext.Current.CancellationToken));
             Assert.Equal(new QueueStatus(0, 1), queue.Status());
             Assert.Equal("conflict", Assert.Single(queue.ReadFailures()).Failure);
-            Assert.Equal(2, queue.Activity.Snapshot.Buckets.Sum(bucket => bucket.Sent));
-            Assert.Equal(1, queue.Activity.Snapshot.Buckets.Sum(bucket => bucket.Confirmed));
+            Assert.Equal(1, queue.Activity.Snapshot.Delivered);
         }
         finally
         {

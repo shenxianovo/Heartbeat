@@ -40,7 +40,7 @@ describe("RecordValue", () => {
     expect(screen.getByText("mac-studio")).toBeVisible();
   });
 
-  it("isolates a malformed known value and falls back to escaped JSON", () => {
+  it("marks a malformed known value as failed and preserves escaped JSON", () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { container } = render(
       <RecordValue
@@ -50,7 +50,7 @@ describe("RecordValue", () => {
       />,
     );
 
-    expect(screen.getByText("未提供专用展示")).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent("记录解析失败");
     expect(container.querySelector("pre")).toHaveTextContent('"malformed": "observation"');
   });
 

@@ -19,12 +19,12 @@ HEARTBEAT_API_URL=http://127.0.0.1:8080 npm run dev
 
 支持以下配置，示例值见 [`.env.example`](.env.example)：
 
-| 环境变量                             | 用途                   | 默认值                          |
-| ------------------------------------ | ---------------------- | ------------------------------- |
-| `HEARTBEAT_API_URL` 或 `BACKEND_URL` | Next.js 服务端转发目标 | `http://127.0.0.1:8080`         |
-| `NEXT_PUBLIC_OIDC_AUTHORITY`         | OIDC authority         | `https://auth.shenxianovo.com`  |
-| `NEXT_PUBLIC_OIDC_CLIENT_ID`         | 浏览器客户端 ID        | `heartbeat-web`                 |
-| `NEXT_PUBLIC_OIDC_SCOPE`             | 登录 scope             | `openid profile offline_access` |
+| 环境变量                     | 用途                   | 默认值                          |
+| ---------------------------- | ---------------------- | ------------------------------- |
+| `HEARTBEAT_API_URL`          | Next.js 服务端转发目标 | `http://127.0.0.1:8080`         |
+| `NEXT_PUBLIC_OIDC_AUTHORITY` | OIDC authority         | `https://auth.shenxianovo.com`  |
+| `NEXT_PUBLIC_OIDC_CLIENT_ID` | 浏览器客户端 ID        | `heartbeat-web`                 |
+| `NEXT_PUBLIC_OIDC_SCOPE`     | 登录 scope             | `openid profile offline_access` |
 
 浏览器使用 OIDC Authorization Code + PKCE。OIDC 库的事务状态、access token 和 refresh token 都保存在 `sessionStorage`，退出登录会清除会话与查询缓存。回调地址是 `/auth/callback`，登录页是 `/login`，回放工作台是 `/`。
 
@@ -36,14 +36,14 @@ API 数据结构以 [记录 HTTP 接口](../../../docs/recording-api.md) 为准�
 
 前端使用 Tailwind CSS v4 和 shadcn/ui。`components.json` 指定 Radix Nova 组件及 `@/components/ui` 路径；新增组件在本目录运行 `npx shadcn add <组件名>`。生成的组件源码归本项目维护。
 
-按钮统一使用 `src/components/ui/button.tsx` 的 `Button` 或 `buttonVariants`（用于保留链接语义）。默认按钮沿用现有玻璃样式；`glassPrimary`、`outline`、`ghost` 等变体都在同一处定义。颜色取自 `src/styles/tokens.css`，Tailwind 与旧页面共用这些变量。
+按钮统一使用 `src/components/ui/button.tsx` 的 `Button` 或 `buttonVariants`（用于保留链接语义）。默认按钮沿用现有玻璃样式；`glassPrimary`、`outline`、`ghost` 等变体都在同一处定义。颜色取自 `src/styles/tokens.css`。界面图标统一通过 `Icon` 使用 Lucide 的具名导入，保留尺寸和无障碍约定。
 
 ## 添加 Record 展示
 
 1. 在 `registry.ts` 按 `(type, version)` 注册 `label` 和 `summarize`。摘要声明 Record 标签、可选子泳道 `group`、颜色语气 `tone` 和 `hover` 文案；需要专用详情时才提供 `Renderer`，否则使用安全 JSON。
 2. 在 `src/components/records/renderers/` 实现协议值的检查与摘要。专用详情组件复用同一解析规则。
 
-Track 的 `timeMode` 由通用时间轴映射为 Range 区间条或 Point 密度，协议展示代码不处理裁剪、布局、拖动或命中。页面和通用 Record 容器不需要修改。未知类型、未知版本或结构不匹配的值会回退到安全的 JSON 展示；每条记录的 renderer 有独立错误边界。设计决策见 [ADR-0011](../../../docs/adr/ADR-0011-web-timeline-presentation-ownership.md)。
+Track 的 `timeMode` 由通用时间轴映射为 Range 区间条或 Point 密度，协议展示代码不处理裁剪、布局、拖动或命中。页面和通用 Record 容器不需要修改。未知类型或版本使用安全的 JSON 展示；已知协议结构不匹配或 renderer 抛错时，明确标示单条记录解析失败并保留 JSON，其余记录继续显示。设计决策见 [ADR-0011](../../../docs/adr/ADR-0011-web-timeline-presentation-ownership.md)。
 
 回放页面按 Owner、Track 和时间范围独立缓存查询结果。一条 Track 失败时其余 Track 继续展示，失败项可单独重试；Point 密度 tile 通过 QueryCache 订阅响应更新，刷新会使当前时间窗内各粒度缓存失效。页面选择状态与查询组合的责任见 [ADR-0012](../../../docs/adr/ADR-0012-web-replay-state-and-track-queries.md)。
 

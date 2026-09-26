@@ -49,11 +49,10 @@ public sealed class ManagedVRChatTests(PostgresFixture fixture) : PostgresTestBa
                 await OperateAsync(new("pause", VRChatCollectorFactory.Key, Account));
                 Assert.Equal("paused", Assert.Single(manager.Collectors).State);
                 while ((await http.GetFromJsonAsync<ActivityList>("/api/v1/hubs/activity", stop.Token))!
-                    .Activities.GetValueOrDefault(id)?.Buckets.Sum(bucket => bucket.Confirmed) != 1)
+                    .Activities.GetValueOrDefault(id)?.Delivered != 1)
                     await Task.Delay(50, stop.Token);
                 var activity = (await http.GetFromJsonAsync<ActivityList>("/api/v1/hubs/activity", stop.Token))!.Activities[id];
-                Assert.Equal(1, activity.Buckets.Sum(bucket => bucket.Received));
-                Assert.Equal(1, activity.Buckets.Sum(bucket => bucket.Sent));
+                Assert.Equal(1, activity.Accepted);
                 await using var db = CreateDbContext();
                 var stored = await db.Records.SingleAsync(stop.Token);
                 using var replay = await http.GetAsync($"/api/v1/tracks/{stored.TrackId}/records", stop.Token);

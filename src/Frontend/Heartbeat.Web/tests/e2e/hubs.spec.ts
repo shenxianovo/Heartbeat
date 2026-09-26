@@ -111,24 +111,14 @@ test("Installed Collector fields drive configuration without persisting secret v
   expect(operations[0]?.configuration.password).toBe("private-password");
 });
 
-test("Hub curves preserve source-time buckets, outages and reduced-motion updates", async ({
+test("Hub curves show counter deltas without replaying startup, outages or restarts", async ({
   page,
 }, testInfo) => {
   await identityRoutes(page);
   await seedSession(page);
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  const second = Math.floor(Date.now() / 1000);
-  const activity = {
-    epoch: "run-a",
-    capturedAt: second * 1000,
-    buckets: Array.from({ length: 60 }, (_, index) => ({
-      second: second - 59 + index,
-      received: index % 10 < 2 ? 12 : 0,
-      sent: index % 10 === 4 ? 24 : 0,
-      confirmed: index % 10 === 5 ? 24 : 0,
-    })),
-  };
+  const activity = { epoch: "run-a", capturedAt: Date.now(), accepted: 1000, delivered: 800 };
   let available = true;
   await page.route("**/api/v1/hubs**", async (route) => {
     if (route.request().url().endsWith("/activity")) {
@@ -148,7 +138,7 @@ test("Hub curves preserve source-time buckets, outages and reduced-motion update
               kind: "desktop",
               types: [],
               collectors: [],
-              delivery: { pending: 1, failed: 0, error: null },
+              delivery: { pending: 20, failed: 0, error: null },
             },
           },
         ],
@@ -158,38 +148,62 @@ test("Hub curves preserve source-time buckets, outages and reduced-motion update
   await page.goto("/hubs");
   const flow = page.getByLabel("Hub 最近收发活动");
   const plot = flow.getByRole("img");
-  await expect(flow.getByText("最近 60 秒 · Records / 秒")).toBeVisible();
+  const summary = flow.getByLabel("本次收发数量");
+  const tooltip = flow.getByRole("tooltip");
+  await expect(flow.getByText("最近 60 秒 · Records")).toBeVisible();
   await expect(plot.locator("canvas")).toBeVisible();
-  const summary = flow.getByLabel("收发窗口合计");
-  await expect(summary).toHaveText("接收 144，发送 144，确认 144");
+  await expect(summary).toHaveText("等待下一次更新");
+  await expect(plot).toHaveAttribute("data-samples", "1");
   const start = await plot.getAttribute("data-range");
   await expect.poll(() => plot.getAttribute("data-range")).not.toBe(start);
-  activity.buckets[59]!.sent += 10; // Lost receipt: no confirmation wave.
-  await expect(summary).toHaveText("接收 144，发送 154，确认 144");
-  await page.screenshot({ path: testInfo.outputPath("hub-delivery-active.png"), fullPage: true });
+
+  async function advance(accepted: number, delivered: number) {
+    activity.capturedAt += 1000;
+    activity.accepted += accepted;
+    activity.delivered += delivered;
+    await expect(summary).toHaveText(`已接受 ${accepted}，已上传 ${delivered}`);
+  }
+  await advance(100, 0);
+  await advance(50, 80);
+  const bounds = (await plot.locator(".u-over").boundingBox())!;
+  const [from, to] = (await plot.getAttribute("data-range"))!.split("/").map(Number);
+  const x = Math.min(
+    bounds.width - 1,
+    ((activity.capturedAt / 1000 - from!) / (to! - from!)) * bounds.width,
+  );
+  await page.mouse.move(bounds.x + x, bounds.y + 80);
+  await expect(tooltip.getByRole("row", { name: "已接受 50" })).toBeVisible();
+  await expect(tooltip.getByRole("row", { name: "已上传 80" })).toBeVisible();
+  await flow.screenshot({ path: testInfo.outputPath("hub-delivery-deltas.png") });
+  await page.mouse.move(0, 0);
+  await expect(tooltip).toBeHidden();
+
+  // A duplicate API snapshot must not create another zero-valued sample.
+  await page.waitForResponse((response) => response.url().endsWith("/api/v1/hubs/activity"));
+  await expect(plot).toHaveAttribute("data-samples", "3");
+  await advance(0, 0); // No successful receipt, no delivery count.
   available = false;
   await expect(flow.getByText("活动状态暂不可用")).toBeVisible();
   await expect(summary).toHaveText("暂无数据");
-  activity.capturedAt += 3000;
-  activity.buckets.splice(0, 3);
-  activity.buckets.push(
-    ...[1, 2, 3].map((offset) => ({
-      second: second + offset,
-      received: 0,
-      sent: 0,
-      confirmed: offset === 3 ? 10 : 0,
-    })),
-  );
+  activity.capturedAt += 6000;
+  activity.accepted += 10000;
+  activity.delivered += 10000;
   available = true;
-  await expect(flow.getByText("最近 60 秒 · Records / 秒")).toBeVisible();
-  await expect(summary).toHaveText("接收 120，发送 154，确认 154");
+  await expect(summary).toHaveText("等待下一次更新"); // Do not turn outage traffic into a spike.
+  await advance(7, 3);
   await page.emulateMedia({ reducedMotion: "reduce" });
   activity.epoch = "run-b";
-  activity.buckets = [{ second: second + 3, received: 1, sent: 0, confirmed: 0 }];
-  await expect(summary).toHaveText("接收 1，发送 0，确认 0");
+  activity.capturedAt += 1000;
+  activity.accepted = 1;
+  activity.delivered = 0;
+  await expect(summary).toHaveText("等待下一次更新");
   await expect(plot).toHaveAttribute("data-samples", "1");
+  await advance(2, 1);
   await page.setViewportSize({ width: 320, height: 800 });
   await page.screenshot({ path: testInfo.outputPath("hub-delivery-mobile.png"), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  await page.reload();
+  await expect(summary).toHaveText("等待下一次更新");
+  await expect(plot).toHaveAttribute("data-samples", "1");
   expect(errors).toEqual([]);
 });

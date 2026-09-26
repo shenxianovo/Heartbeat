@@ -85,7 +85,7 @@ public sealed class RecordOutbox
         }
 
         transaction.Commit();
-        Activity.Receive(normalized.Records!.Count);
+        Activity.Accept(normalized.Records!.Count);
         return normalized.Records!.Select(record => record!).ToArray();
     }
 

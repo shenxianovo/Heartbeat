@@ -45,7 +45,6 @@ public sealed class RecordUploader
                     using var request = await RequestAsync(HttpMethod.Post, $"api/v1/tracks/{trackId}/records", cancellationToken);
                     request.Content = JsonContent.Create(new { records = sent.Select(item => item.Record).ToArray() },
                         options: JsonOptions);
-                    _queue.Activity.Send(sent.Length);
                     using var response = await SendAsync(request, cancellationToken);
                     if (!response.IsSuccessStatusCode)
                     {
@@ -62,7 +61,7 @@ public sealed class RecordUploader
                     var body = await response.Content.ReadFromJsonAsync<UploadResponse>(JsonOptions, cancellationToken);
                     var outcomes = ValidateReceipts(body, sent);
                     _queue.Apply(outcomes);
-                    _queue.Activity.Confirm(outcomes.Count(outcome => outcome.Stored));
+                    _queue.Activity.Deliver(outcomes.Count(outcome => outcome.Stored));
                 }
                 catch (Exception exception) when (!cancellationToken.IsCancellationRequested && IsUnconfirmed(exception))
                 {

@@ -8,7 +8,8 @@ namespace Heartbeat.Desktop.Mac;
 
 internal sealed class MacDeliveryView : NSView
 {
-    private static readonly NSColor[] Colors = [NSColor.SystemBlue, NSColor.SystemOrange, NSColor.SystemGreen];
+    private static readonly NSColor[] Colors = [NSColor.SystemBlue, NSColor.SystemGreen];
+    private readonly DeliveryChartSamples _samples = new();
     private DeliveryActivitySnapshot? _activity;
     private long _observedAt;
     private NSTimer? _animation;
@@ -17,11 +18,12 @@ internal sealed class MacDeliveryView : NSView
     {
         TranslatesAutoresizingMaskIntoConstraints = false;
         HeightAnchor.ConstraintEqualTo(155).Active = true;
-        AccessibilityLabel = "最近 60 秒收发曲线，纵轴每秒 Record 快照数";
+        AccessibilityLabel = "最近 60 秒收发曲线，纵轴相邻更新之间的 Record 快照数量";
     }
 
     public void Refresh(DeliveryActivitySnapshot? activity, bool visible)
     {
+        _samples.Observe(activity);
         _activity = activity;
         _observedAt = Stopwatch.GetTimestamp();
         if (!visible || MacAnimation.ReduceMotion)
@@ -39,14 +41,14 @@ internal sealed class MacDeliveryView : NSView
         base.DrawRect(dirtyRect);
         var width = Math.Max(1, (double)Bounds.Width - 40);
         const double bottom = 24, height = 94;
-        Text(_activity is null ? "活动状态暂不可用" : "Records / 秒", 0, 132, NSColor.SecondaryLabel);
-        var labels = new[] { "接收", "发送", "确认" };
+        Text(_activity is null ? "活动状态暂不可用" : "Records", 0, 132, NSColor.SecondaryLabel);
+        var labels = new[] { "已接受", "已上传" };
         for (var i = 0; i < labels.Length; i++) Text(labels[i], 128 + i * 60, 132, Colors[i]);
         Text("−60 秒", 32, 4, NSColor.SecondaryLabel);
         Text("−30 秒", 32 + width / 2 - 18, 4, NSColor.SecondaryLabel);
         Text("现在", 32 + width - 24, 4, NSColor.SecondaryLabel);
-        var buckets = _activity?.Buckets ?? [];
-        var maximum = Math.Max(4, Math.Ceiling(buckets.SelectMany(bucket => new[] { bucket.Received, bucket.Sent, bucket.Confirmed }).DefaultIfEmpty().Max() * 1.15 / 2) * 2);
+        var points = _samples.Points;
+        var maximum = Math.Max(4, Math.Ceiling(points.SelectMany(point => new[] { point.Accepted ?? 0, point.Delivered ?? 0 }).DefaultIfEmpty().Max() * 1.15 / 2) * 2);
         for (var step = 0; step <= 2; step++)
         {
             var y = bottom + height * step / 2;
@@ -65,14 +67,15 @@ internal sealed class MacDeliveryView : NSView
         NSGraphicsContext.CurrentContext!.SaveGraphicsState();
         using var clip = NSBezierPath.FromRect(new CGRect(32, bottom - 1, width, height + 2));
         clip.AddClip();
-        for (var stage = 0; stage < 3; stage++)
+        for (var stage = 0; stage < 2; stage++)
         {
             using var line = new NSBezierPath { LineWidth = 1.8f };
             CGPoint? previous = null;
-            foreach (var bucket in activity.Buckets)
+            foreach (var sample in _samples.Points)
             {
-                var value = stage == 0 ? bucket.Received : stage == 1 ? bucket.Sent : bucket.Confirmed;
-                var point = new CGPoint(32 + (bucket.Second - end + 60) / 60 * width, bottom + value / maximum * height);
+                var value = stage == 0 ? sample.Accepted : sample.Delivered;
+                if (value is null) { previous = null; continue; }
+                var point = new CGPoint(32 + (sample.At - end + 60) / 60 * width, bottom + value.Value / maximum * height);
                 if (previous is { } before)
                 {
                     var middle = (before.X + point.X) / 2;

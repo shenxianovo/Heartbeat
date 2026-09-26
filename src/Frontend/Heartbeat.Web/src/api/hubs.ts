@@ -74,7 +74,8 @@ export async function retireHub(token: string, hub: string) {
 export interface DeliveryActivity {
   epoch: string;
   capturedAt: number;
-  buckets: { second: number; received: number; sent: number; confirmed: number }[];
+  accepted: number;
+  delivered: number;
 }
 
 export async function fetchHubActivity(

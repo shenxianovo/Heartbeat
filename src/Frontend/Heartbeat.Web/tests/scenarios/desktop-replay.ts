@@ -138,13 +138,22 @@ try {
   const activity = hub.getByLabel("Hub 最近收发活动");
   // A restarted Hub can wait for the previous session's 30-second online window,
   // then its five-second management check-in, before activity reports are accepted.
-  await expect(activity.getByText("最近 60 秒 · Records / 秒")).toBeVisible({
+  await expect(activity.getByText("最近 60 秒 · Records")).toBeVisible({
     timeout: 45_000,
   });
-  const counts = (await activity.getByLabel("收发窗口合计").textContent())!.match(/\d+/g)!;
-  hubActivityCounts = counts.map(Number);
-  expect(hubActivityCounts[1]).toBeGreaterThan(0);
-  expect(hubActivityCounts[2]).toBeGreaterThan(0);
+  await expect
+    .poll(async () => {
+      const response = await page.waitForResponse(
+        (item) => new URL(item.url()).pathname === "/api/v1/hubs/activity" && item.ok(),
+      );
+      const counters = (await response.json()).activities[input.hubId];
+      if (!counters) return false;
+      hubActivityCounts = [counters.accepted, counters.delivered];
+      return counters.accepted > 0 && counters.delivered > 0;
+    })
+    .toBe(true);
+  // The browser starts observing after collection; the initial lifetime total is only a baseline.
+  await expect(activity.getByLabel("本次收发数量")).toHaveText("已接受 0，已上传 0");
   await expect(activity.locator("canvas")).toBeVisible();
   // Capture aggregate activity only, excluding host names, identities and Collector payloads.
   await activity.screenshot({ path: input.files.activityScreenshot });

@@ -75,7 +75,8 @@ public sealed class HubConnections(TimeProvider clock)
     }
 
     private static bool Advances(DeliveryActivitySnapshot previous, DeliveryActivitySnapshot next) =>
-        next.Epoch == previous.Epoch && next.CapturedAt >= previous.CapturedAt;
+        next.Epoch == previous.Epoch && next.CapturedAt >= previous.CapturedAt &&
+        next.Accepted >= previous.Accepted && next.Delivered >= previous.Delivered;
 
     public IReadOnlyDictionary<Guid, DeliveryActivitySnapshot> GetActivities(Guid owner)
     {

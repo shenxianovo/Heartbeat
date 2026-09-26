@@ -52,19 +52,24 @@ dotnet run --project tools/Heartbeat.Dev -- quality --base HEAD
 dotnet run --project tools/Heartbeat.Dev -- quality --base anchor --stock
 ```
 
-`quality loc` 只统计工作树有效行，不生成验证证据。`quality --base` 检查重复、函数复杂度、分析完整性和绝对预算，并把报告写入 `.artifacts/verification/<run-id>/quality.json`。
+`quality loc` 只统计工作树有效行，不生成验证证据。`quality --base` 检查重复、函数复杂度、死码、分析完整性和绝对预算，并把报告写入 `.artifacts/verification/<run-id>/quality.json`。
 
 源码角色由 `SourceCorpus` 统一定义，重复扫描按生产/测试角色分别进行；前端 `.test.*`、`.spec.*` 和测试目录中的代码属于测试。jscpd 固定使用 strict 模式、最小 8 行和 70 tokens，使用基线与工作树的路径并集进行同口径比较。生成代码及其他角色不进入这两类扫描，扫描配置保存在证据目录，便于核对文件范围。
 
 闸门规则：
 
 - 新增重复簇失败；
+- 新增未使用文件、导出、依赖或 C# 私有成员诊断失败；
 - 函数新跨过复杂度 10，或超过 10 后继续增长，失败；
 - 复杂度热点超过 `tools/Heartbeat.Dev/quality-budget.json` 的预算，失败；
 - 工具缺失、扫描不完整、基点无生产函数或函数定位失败，失败；
 - LOC、Erosion 和类型耦合只观察，不单独阻断。
 
-存量预算统计 C# 与 TypeScript 生产函数的热点总数。预算只能下调；确需上调时修改预算文件并说明理由。`--stock` 跳过相对基点的新增重复与复杂度退化闸门，仍要求扫描完整且存量预算通过。C# 分析会编译普通项目以及 AppKit / WinUI 宿主的托管部分，但不证明原生应用能够打包或运行。
+存量预算统计 C# 与 TypeScript 生产函数的热点总数。预算只能下调；确需上调时修改预算文件并说明理由。`--stock` 跳过相对基点的新增重复、死码与复杂度退化闸门，仍要求扫描完整且存量预算通过。C# 分析会编译普通项目以及 AppKit / WinUI 宿主的托管部分，但不证明原生应用能够打包或运行。
+
+死码扫描在 `quality.json.deadCode` 列出当前和新增诊断；行号移动不算新增。Knip 使用同一版本与当前 `knip.json` 比较两份源码，识别 Next.js 路由、测试和显式配置的后台浏览器/性能入口；原始报告为 `baseline-knip.json` 和 `current-knip.json`。仅在文件内部使用的导出不算死码，测试入口也算调用者，因此结果不等同于“没有业务调用”。未解析导入同样报告，工具缺失、退出异常或报告格式错误均失败，不自动修复或删除。
+
+C# 在现有分析构建启用 Roslyn `IDE0051`，从 `baseline-csharp.log` 与 `current-csharp.log` 提取生产源码中的未使用私有成员，不另建反射调用图；它不能判断公开方法是否仅供测试，也不证明 DI、EF、原生回调或业务功能可删除。清理诊断前仍需核对用途。当前固定的 jscpd 5.2.0 只用于重复检测，不承担这项检查。
 
 ## 可复现场景
 
@@ -121,7 +126,7 @@ UI、用户流程或 HTTP 展示变更运行相应场景。日常业务链路优
 
 `journey.json` 保存阶段标识、状态、已完成步骤和各阶段产物目录。`first-collection/collection.json` 与 `offline-custody/collection.json` 持续记录采样时间、受控进程是否退出/位于前台、队列 pending/failed，以及 Record 对 Owner、Collector、Target、Track、payload 结构、应用身份、时间窗和时长的逐级匹配计数。探针失败记录异常类型，该项值不可视为有效读数；这些数据在超时清理前保存。前台状态是离散采样，不能证明两次采样之间未发生切换；跨进程探针也不是同一事务快照，只用于定位，不替代暂停后的接管对账。
 
-正常和恢复回放通过泳道键盘入口选择同一 Record，并检查该 Desktop 的真实 Hub 活动上报、Web 曲线、窗口汇总及 `hub-activity.png`（仅聚合活动，不含机器身份或 Record 内容）；静态截图不证明动效时序，动效另由 `hubs-fixture` 检查。原生驱动按已核对 PID 的稳定进程 ID 和应用窗口标题定位，允许其他同名构建同时运行。点击开始后，验收驱动主动将受控窗口保持前台三秒，以产生至少两秒的前台观测见证；仍按真实记录对账，不放宽验收时长。
+正常和恢复回放通过泳道键盘入口选择同一 Record，并检查该 Desktop 的真实 Hub 累计计数、Web 增量曲线及 `hub-activity.png`（仅聚合活动，不含机器身份或 Record 内容）。浏览器在暂停采集后打开，验证首次基线不回放累计量、后续空闲增量为零；动效、非零增量及断连行为由 `hubs-fixture` 检查，静态截图不证明动效时序。原生驱动按已核对 PID 的稳定进程 ID 和应用窗口标题定位，允许其他同名构建同时运行。点击开始后，验收驱动主动将受控窗口保持前台三秒，以产生至少两秒的前台观测见证；仍按真实记录对账，不放宽验收时长。
 
 正常和恢复回放各自保存 `normal-web-replay/` 与 `recovered-web-replay/` 下的报告、浏览器日志及仅含时间的截图，失败时也不覆盖前一阶段。接管快照元数据在 `offline-custody/`、`forced-exit-and-restart/`，对账结果在 `delivery-recovery/reconciliation.json`。场景用 `DesktopStage` 标识阶段，用 `DesktopReplayBatch` 传递记录集合和见证，浏览器接收显式产物路径；正常及交互 OIDC 共用回放验证脚本。原始记录仅在进程内或临时环境变量中传递，不写入证据文件。
 

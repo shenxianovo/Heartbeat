@@ -1,11 +1,12 @@
 "use client";
 
+import { trackLabel } from "@/components/records/renderers/registry";
+
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/Icon";
 import { TooltipLayer } from "@/components/ui/Tooltip";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import type { ReplayLane } from "@/api/types";
-import { trackLabel } from "@/components/filters/TrackPicker";
 import { RecordCard } from "@/components/records/RecordCard";
 import { describeRecord } from "@/components/records/renderers/registry";
 import { ActivityOverview } from "./ActivityOverview";

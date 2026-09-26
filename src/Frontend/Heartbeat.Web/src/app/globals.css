@@ -879,8 +879,7 @@ a:where(:not([data-slot="button"])) {
   letter-spacing: 0.04em;
 }
 
-.field input,
-.field select {
+.field input {
   width: 100%;
   min-height: 2.55rem;
   padding: 0.55rem 0.7rem;
@@ -890,13 +889,8 @@ a:where(:not([data-slot="button"])) {
   font-size: 0.8rem;
 }
 
-.field input:hover,
-.field select:hover {
+.field input:hover {
   border-color: var(--ring);
-}
-
-.track-field select {
-  font-family: var(--font-mono);
 }
 
 .range-form {
@@ -1252,6 +1246,11 @@ a:where(:not([data-slot="button"])) {
   font-size: 0.7rem;
 }
 
+.fallback-renderer[role="alert"] > span {
+  color: var(--destructive);
+  font-weight: 600;
+}
+
 .load-more {
   display: flex;
   justify-content: center;
@@ -1485,6 +1484,7 @@ a:where(:not([data-slot="button"])) {
 }
 
 .delivery-chart {
+  position: relative;
   min-width: 0;
   margin-top: 16px;
   padding-top: 14px;
@@ -1516,15 +1516,40 @@ a:where(:not([data-slot="button"])) {
   vertical-align: middle;
 }
 .delivery-legend span:nth-child(2)::before {
-  border-color: #ed9a38;
+  border-color: #2fbc95;
   border-top-style: dashed;
 }
-.delivery-legend span:nth-child(3)::before {
-  border-color: #2fbc95;
-}
 .delivery-plot {
+  position: relative;
   width: 100%;
   min-width: 0;
   height: 180px;
   overflow: hidden;
+}
+.delivery-tooltip {
+  position: absolute;
+  top: 8px;
+  z-index: 1;
+  pointer-events: none;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 3px 12px #0002;
+}
+.delivery-tooltip time {
+  color: var(--muted-foreground);
+}
+.delivery-tooltip th,
+.delivery-tooltip td {
+  padding: 3px 0 0 10px;
+  text-align: right;
+  font-weight: normal;
+}
+.delivery-tooltip th:first-child {
+  padding-left: 0;
+  text-align: left;
 }
