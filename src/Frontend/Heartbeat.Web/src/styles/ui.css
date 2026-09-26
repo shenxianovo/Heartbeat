@@ -1,93 +1,4 @@
-/* Button and picker treatments from main's shared glass-control / ui components. */
-.ui-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  gap: 0.4rem;
-  border: 1px solid transparent;
-  border-radius: 0.4rem;
-  font-size: 0.8rem;
-  font-weight: 500;
-  line-height: 1.25;
-  white-space: nowrap;
-  text-decoration: none;
-  cursor: pointer;
-  transition:
-    background 0.2s,
-    box-shadow 0.2s,
-    transform 0.2s,
-    border-color 0.2s;
-}
-.ui-button svg {
-  flex-shrink: 0;
-  pointer-events: none;
-}
-.ui-button-sm {
-  min-height: 32px;
-  padding: 0.4rem 0.75rem;
-}
-.ui-button-default {
-  min-height: 36px;
-  padding: 0.5rem 1rem;
-}
-.ui-button-icon {
-  width: 32px;
-  height: 32px;
-  padding: 0;
-}
-.ui-button-glass,
-.ui-button-glassPrimary {
-  border-radius: 9999px;
-  border-color: var(--glass-border);
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  color: var(--foreground);
-  box-shadow: var(--shadow-sm);
-}
-.ui-button-glassPrimary {
-  border-color: color-mix(in srgb, var(--primary) 35%, var(--glass-border));
-  background: color-mix(in srgb, var(--primary) 12%, var(--glass-bg));
-  color: var(--primary);
-}
-.ui-button-glass:hover:not(:disabled),
-.ui-button-glassPrimary:hover:not(:disabled) {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
-}
-.ui-button-primary {
-  background: var(--primary);
-  color: var(--primary-foreground);
-}
-.ui-button-primary:hover:not(:disabled) {
-  opacity: 0.9;
-}
-.ui-button-outline {
-  border-color: var(--input);
-  background: var(--background);
-  color: var(--foreground);
-  box-shadow: 0 1px 2px #00000005;
-}
-.ui-button-ghost {
-  background: transparent;
-  color: var(--muted-foreground);
-}
-.ui-button-ghost:hover:not(:disabled),
-.ui-button-outline:hover:not(:disabled) {
-  background: var(--accent);
-  color: var(--foreground);
-}
-.ui-button:focus-visible {
-  border-color: var(--ring);
-  outline: 3px solid color-mix(in srgb, var(--ring) 50%, transparent);
-  outline-offset: 1px;
-}
-.ui-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-  pointer-events: none;
-  transform: none;
-}
+/* Picker treatments shared by the replay controls. */
 .ui-popover {
   position: relative;
   display: inline-flex;
@@ -207,7 +118,7 @@
   font-size: 0.8rem;
   font-weight: 500;
 }
-.calendar-heading .ui-button-icon {
+.calendar-heading [data-slot="button"][data-size="icon"] {
   width: 28px;
   height: 28px;
 }
@@ -301,4 +212,87 @@
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
+}
+
+/* ============================================================
+   Atmosphere — mascot, floating theme toggle, ambient glow.
+   Ported from main's MascotBackground / ThemeToggle / hero-glow;
+   these carry the airy, glassy character of the reference design.
+   ============================================================ */
+
+/* Floating glass theme toggle, pinned top-right above all content. */
+.theme-toggle {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 1px solid var(--glass-border);
+  border-radius: 9999px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  color: var(--foreground);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition:
+    box-shadow 0.2s,
+    transform 0.2s,
+    border-color 0.2s;
+}
+.theme-toggle:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+.theme-toggle:focus-visible {
+  border-color: var(--ring);
+}
+
+/* Mirrored mascot in the bottom-left corner — decorative background art.
+   Single continuous clamp: large share on narrow screens, capped on wide. */
+.mascot {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  z-index: 0;
+  width: clamp(220px, 40vw, 460px);
+  height: auto;
+  opacity: 0.5;
+  transform: scaleX(-1);
+  pointer-events: none;
+  user-select: none;
+  transition: opacity 0.3s;
+}
+.mascot--dark {
+  opacity: 0.3;
+}
+
+/* Ambient radial glow drifting behind the workspace content. */
+.app-frame,
+.login-page {
+  position: relative;
+}
+.app-frame::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-image: var(--hero-glow);
+  pointer-events: none;
+}
+.app-frame > *,
+.login-page > * {
+  position: relative;
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-toggle,
+  .mascot {
+    transition: none;
+  }
 }

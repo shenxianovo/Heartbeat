@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Button } from "./Button";
+import { Button } from "./button";
 
 interface Props {
   label: string;

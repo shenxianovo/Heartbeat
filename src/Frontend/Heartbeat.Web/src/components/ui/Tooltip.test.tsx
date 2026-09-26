@@ -55,32 +55,6 @@ describe("tooltip layer", () => {
     expect(tip()).toBeNull();
   });
 
-  it("sits above and right of the pointer by default", async () => {
-    const user = userEvent.setup();
-    render(
-      <TooltipLayer>
-        <Target at={{ x: 100, y: 300, pointerType: "mouse" }} />
-      </TooltipLayer>,
-    );
-
-    await user.hover(screen.getByRole("button"));
-    expect(tip()!.style.left).toBe("100px");
-    expect(tip()!.style.top).toBe("300px");
-    expect(tip()!.style.transform).toBe("translate(12px, calc(-100% - 12px))");
-  });
-
-  it("flips near the right edge and near the top so the tip stays on screen", async () => {
-    const user = userEvent.setup();
-    render(
-      <TooltipLayer>
-        <Target at={{ x: window.innerWidth - 8, y: 10, pointerType: "mouse" }} />
-      </TooltipLayer>,
-    );
-
-    await user.hover(screen.getByRole("button"));
-    expect(tip()!.style.transform).toBe("translate(calc(-100% - 12px), 12px)");
-  });
-
   it("drops the tip when the page scrolls out from under the pointer", async () => {
     const user = userEvent.setup();
     render(

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useAuth } from "react-oidc-context";
 
 import { LoadingState } from "@/components/status/LoadingState";
+import { buttonVariants } from "@/components/ui/button";
 
 export default function AuthenticationCallbackPage() {
   const auth = useAuth();
@@ -15,7 +16,11 @@ export default function AuthenticationCallbackPage() {
           <span className="eyebrow">登录未完成</span>
           <h1>无法确认这次登录</h1>
           <p>{auth.error.message}</p>
-          <Link className="primary-button" href="/login">
+          <Link
+            className={buttonVariants({ variant: "default", size: "lg" })}
+            data-slot="button"
+            href="/login"
+          >
             返回登录
           </Link>
         </section>

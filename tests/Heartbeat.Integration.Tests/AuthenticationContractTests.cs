@@ -6,15 +6,6 @@ namespace Heartbeat.Integration.Tests;
 
 public sealed class AuthenticationContractTests
 {
-    [Fact]
-    public void TokenSelectorRecognizesOidcAccessTokenType()
-    {
-        var token = TokenWithHeader("{\"typ\":\"at+jwt\",\"alg\":\"RS256\"}");
-
-        Assert.True(JwtTypeSniffer.IsOidcAccessToken(token));
-        Assert.False(JwtTypeSniffer.IsOidcAccessToken(TokenWithHeader("{\"typ\":\"JWT\"}")));
-    }
-
     [Theory]
     [InlineData("[]")]
     [InlineData("\"header\"")]

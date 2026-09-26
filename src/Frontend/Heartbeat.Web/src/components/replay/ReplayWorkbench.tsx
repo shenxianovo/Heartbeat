@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "react-oidc-context";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { MultiSelectPicker } from "@/components/ui/MultiSelectPicker";
 import { Popover } from "@/components/ui/Popover";
@@ -16,6 +16,23 @@ import { LoadingState } from "@/components/status/LoadingState";
 import { QueryState } from "@/components/status/QueryState";
 import { useReplaySelection } from "./useReplaySelection";
 import { useReplayData } from "./useReplayData";
+
+function RefreshButton({
+  fetching,
+  onRefresh,
+  className = "",
+}: {
+  fetching: boolean;
+  onRefresh: () => void;
+  className?: string;
+}) {
+  return (
+    <Button className={className} variant="glass" disabled={fetching} onClick={onRefresh}>
+      <Icon name="refresh" />
+      {fetching ? "正在刷新" : "刷新"}
+    </Button>
+  );
+}
 
 export function ReplayWorkbench() {
   const auth = useAuth();
@@ -55,17 +72,6 @@ export function ReplayWorkbench() {
     <div className="app-frame">
       <AppHeader />
       <main className="workspace experience-workspace">
-        <section className="workspace-heading">
-          <div>
-            <span className="eyebrow">DAY BY DAY</span>
-            <h1>当天经历</h1>
-            <p>沿着时间，回看一天的应用与交互。</p>
-          </div>
-          <Button variant="glass" type="button" disabled={fetching} onClick={() => void refresh()}>
-            <Icon name="refresh" />
-            {fetching ? "正在刷新" : "刷新"}
-          </Button>
-        </section>
         {tracksQuery.isPending ? (
           <LoadingState label="正在读取采集来源" />
         ) : tracksQuery.isError ? (
@@ -84,6 +90,7 @@ export function ReplayWorkbench() {
             eyebrow="暂无来源"
             title="还没有可以回放的记录"
             description="采集端开始记录并完成上传后，对应来源会出现在这里。"
+            action={<RefreshButton fetching={fetching} onRefresh={() => void refresh()} />}
           />
         ) : chosen && bounds && range ? (
           <>
@@ -129,6 +136,11 @@ export function ReplayWorkbench() {
                   />
                 )}
               </Popover>
+              <RefreshButton
+                className="experience-refresh"
+                fetching={fetching}
+                onRefresh={() => void refresh()}
+              />
             </section>
             {!tracks.length ? (
               <QueryState

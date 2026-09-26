@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import type { CollectorOperation, CollectorState, CollectorType } from "@/api/hubs";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 
 export function CollectorForm({
   type,

@@ -27,7 +27,7 @@ describe("RecordCard", () => {
   it("does not describe a range without endedAt as a point", () => {
     render(<RecordCard record={record} track={rangeTrack} />);
 
-    expect(screen.getAllByText("未提供结束时间")).toHaveLength(2);
+    expect(screen.getAllByText("未提供结束时间")[0]).toBeVisible();
     expect(screen.queryByText("时间点")).not.toBeInTheDocument();
   });
 

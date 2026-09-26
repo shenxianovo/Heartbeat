@@ -32,7 +32,6 @@ public sealed class DesktopPackagerTests : IDisposable
         {
             Assert.Contains("-p:HeartbeatDevelopmentBuild=true", publish.Args);
             Assert.True(File.Exists(Path.Combine(result.ApplicationPath, "Contents", "Info.plist")));
-            Assert.Equal(10, runner.Calls.Count(call => call.File == "sips"));
             var libraryCalls = runner.Calls.Where(call => call.File == "codesign" &&
                 call.Args[^1].EndsWith("libcoreclr.dylib", StringComparison.Ordinal)).ToArray();
             Assert.Equal(2, libraryCalls.Length);

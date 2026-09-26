@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Button } from "./Button";
+import { Button } from "./button";
 import { Icon } from "./Icon";
 import { Popover } from "./Popover";
 

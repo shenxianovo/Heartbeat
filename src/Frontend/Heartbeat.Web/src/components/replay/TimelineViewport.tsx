@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/Icon";
 import { TooltipLayer } from "@/components/ui/Tooltip";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";

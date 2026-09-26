@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 import { useState, type FormEvent } from "react";
 
 import { last24HoursRange, rangeToIso, todayRange, type DateRange } from "@/lib/dates";

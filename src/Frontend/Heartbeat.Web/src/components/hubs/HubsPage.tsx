@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "react-oidc-context";
 import { fetchHubs } from "@/api/hubs";
 import { AppHeader } from "@/components/layout/AppHeader";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 import { HubCard } from "./HubCard";
 
 export function HubsPage() {

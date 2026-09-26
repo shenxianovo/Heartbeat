@@ -32,6 +32,12 @@ HEARTBEAT_API_URL=http://127.0.0.1:8080 npm run dev
 
 API 数据结构以 [记录 HTTP 接口](../../../docs/recording-api.md) 为准。`value` 在公共类型中保持 `unknown`，前端不会把它作为 HTML 执行。
 
+## 界面组件
+
+前端使用 Tailwind CSS v4 和 shadcn/ui。`components.json` 指定 Radix Nova 组件及 `@/components/ui` 路径；新增组件在本目录运行 `npx shadcn add <组件名>`。生成的组件源码归本项目维护。
+
+按钮统一使用 `src/components/ui/button.tsx` 的 `Button` 或 `buttonVariants`（用于保留链接语义）。默认按钮沿用现有玻璃样式；`glassPrimary`、`outline`、`ghost` 等变体都在同一处定义。颜色取自 `src/styles/tokens.css`，Tailwind 与旧页面共用这些变量。
+
 ## 添加 Record 展示
 
 1. 在 `registry.ts` 按 `(type, version)` 注册 `label` 和 `summarize`。摘要声明 Record 标签、可选子泳道 `group`、颜色语气 `tone` 和 `hover` 文案；需要专用详情时才提供 `Renderer`，否则使用安全 JSON。

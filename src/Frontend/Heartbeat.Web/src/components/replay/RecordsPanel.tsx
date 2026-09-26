@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 import type { InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
 
 import { ApiError } from "@/api/client";

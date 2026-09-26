@@ -9,7 +9,7 @@ import {
   type CollectorType,
   type HubSummary,
 } from "@/api/hubs";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 import { CollectorForm } from "./CollectorForm";
 import { CollectorRow } from "./CollectorRow";
 

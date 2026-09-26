@@ -74,13 +74,13 @@ public sealed class RecordTests
     }
 
     [Theory]
-    [InlineData(TimeMode.Point, null, true)]
-    [InlineData(TimeMode.Point, null, false)]
-    [InlineData(TimeMode.Range, EndMode.Explicit, true)]
-    [InlineData(TimeMode.Range, EndMode.Explicit, false)]
-    [InlineData(TimeMode.Range, EndMode.NextRecord, true)]
-    [InlineData(TimeMode.Range, EndMode.NextRecord, false)]
-    public void CreateEnforcesTrackEndMode(TimeMode timeMode, EndMode? endMode, bool hasEnd)
+    [InlineData(TimeMode.Point, null, true, false)]
+    [InlineData(TimeMode.Point, null, false, true)]
+    [InlineData(TimeMode.Range, EndMode.Explicit, true, true)]
+    [InlineData(TimeMode.Range, EndMode.Explicit, false, false)]
+    [InlineData(TimeMode.Range, EndMode.NextRecord, true, false)]
+    [InlineData(TimeMode.Range, EndMode.NextRecord, false, true)]
+    public void CreateEnforcesTrackEndMode(TimeMode timeMode, EndMode? endMode, bool hasEnd, bool isValid)
     {
         var startedAt = DateTimeOffset.UtcNow;
         var track = CreateTrack(timeMode, endMode);
@@ -93,11 +93,6 @@ public sealed class RecordTests
             null,
             startedAt,
             JsonSerializer.SerializeToElement(new { }));
-
-        var isValid = timeMode is TimeMode.Range
-            && endMode is EndMode.Explicit
-                ? hasEnd
-                : !hasEnd;
 
         if (isValid)
         {

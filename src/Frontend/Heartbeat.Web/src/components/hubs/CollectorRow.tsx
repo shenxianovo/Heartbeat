@@ -1,7 +1,7 @@
 "use client";
 
 import type { CollectorOperation, CollectorState, CollectorType } from "@/api/hubs";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 
 const stateNames: Record<string, string> = {
   running: "采集中",

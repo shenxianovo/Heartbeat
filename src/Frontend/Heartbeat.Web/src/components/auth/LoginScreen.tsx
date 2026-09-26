@@ -7,6 +7,7 @@ import { useAuth } from "react-oidc-context";
 import { authConfiguration } from "@/auth/config";
 import { safeReturnPath } from "@/auth/return-path";
 import { useSessionActions } from "@/auth/session";
+import { Button } from "@/components/ui/button";
 
 export function LoginScreen() {
   const auth = useAuth();
@@ -54,15 +55,16 @@ export function LoginScreen() {
           </div>
         ) : null}
 
-        <button
-          className="primary-button login-button"
-          type="button"
+        <Button
+          className="login-button"
+          variant="default"
+          size="lg"
           disabled={starting || auth.isLoading || Boolean(authConfiguration.error)}
           onClick={() => void startLogin()}
         >
           {starting ? "正在前往登录…" : "使用 Heartbeat 账号登录"}
           <span aria-hidden="true">→</span>
-        </button>
+        </Button>
         <p className="login-note">登录后只会显示属于你的记录。</p>
       </section>
     </main>

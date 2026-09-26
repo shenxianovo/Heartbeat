@@ -33,9 +33,28 @@ test.beforeEach(async ({ page }) => {
   await identityRoutes(page);
 });
 
+test("深色主题首页水合时不报告 html 属性不一致", async ({ page }) => {
+  const hydrationErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" && message.text().includes("hydrated but some attributes")) {
+      hydrationErrors.push(message.text());
+    }
+  });
+  await page.addInitScript(() => localStorage.setItem("heartbeat-theme", "dark"));
+  await recordingRoutes(page);
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await expect(page.getByRole("button", { name: "刷新", exact: true })).toBeVisible();
+  expect(hydrationErrors).toEqual([]);
+});
+
 test("统一时间线自动读取完整区间并可查看原始记录", async ({ page }) => {
   const requests = await recordingRoutes(page);
   await page.goto("/");
+  await expect(
+    page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "Hub 管理" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("当前登录：tester")).toContainText("T");
   await expect(page.getByRole("button", { name: "com.apple.finder", exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "com.microsoft.VSCode", exact: true }),
@@ -471,7 +490,7 @@ test("Picker 浮层窄屏可用，点击外部关闭且多选保持", async ({ p
   expect(box.x).toBeGreaterThanOrEqual(0);
   expect(box.x + box.width).toBeLessThanOrEqual(390);
   await page.screenshot({ path: "test-results/main-picker-mobile.png", fullPage: true });
-  await page.getByRole("heading", { name: "当天经历" }).click();
+  await page.locator("main").click({ position: { x: 5, y: 5 } });
   await expect(picker).toHaveCount(0);
   await expect(trigger).toContainText("测试 Mac");
   await page.getByRole("button", { name: "自定义时间范围" }).click();
@@ -520,6 +539,27 @@ test("泳道悬停提示是跟随指针的浮层，离开即收起", async ({ pa
   await expect(tip).toContainText("com.apple.finder");
   await page.screenshot({ path: evidencePath("replay-hover-tip.png") });
 
-  await page.getByRole("heading", { name: "当天经历" }).hover();
+  await page.getByRole("button", { name: "刷新", exact: true }).hover();
   await expect(tip).toHaveCount(0);
+
+  // 在窄屏顶部和右侧触发真实布局，定位方式改变也不影响这些行为断言。
+  await page.setViewportSize({ width: 390, height: 300 });
+  await curve.evaluate((element) => element.scrollIntoView({ block: "start" }));
+  const edge = (await curve.boundingBox())!;
+  const pointer = { x: edge.x + edge.width - 2, y: Math.max(2, edge.y + 2) };
+  await page.mouse.move(pointer.x, pointer.y);
+  await expect(tip).toBeVisible();
+  const box = (await tip.boundingBox())!;
+  expect(pointer.y).toBeLessThan(box.height);
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(390);
+  expect(box.y + box.height).toBeLessThanOrEqual(300);
+  expect(
+    pointer.x < box.x ||
+      pointer.x > box.x + box.width ||
+      pointer.y < box.y ||
+      pointer.y > box.y + box.height,
+  ).toBe(true);
+  await page.screenshot({ path: evidencePath("replay-hover-tip-edge.png") });
 });

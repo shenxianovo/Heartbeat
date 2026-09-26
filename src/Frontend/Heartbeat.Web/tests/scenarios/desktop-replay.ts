@@ -53,7 +53,7 @@ try {
   await page.goto("/login");
   await page.getByRole("button", { name: "使用 Heartbeat 账号登录" }).click();
   // The human signs in to the real provider. No tokens/sessionStorage are injected or exported.
-  await page.getByRole("heading", { name: "当天经历", exact: true }).waitFor({ timeout: 300_000 });
+  await page.getByRole("button", { name: "刷新", exact: true }).waitFor({ timeout: 300_000 });
   await progress("record-query");
   await verifyReplay(page, witness);
   await progress("completed", true);
