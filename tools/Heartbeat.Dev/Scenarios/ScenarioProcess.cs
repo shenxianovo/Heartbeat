@@ -8,6 +8,7 @@ internal sealed record ScenarioProcessResult(DateTimeOffset Started, DateTimeOff
 internal sealed class ScenarioProcess : IAsyncDisposable
 {
     private readonly Process _process;
+    public int Id => _process.Id;
     public Task<ScenarioProcessResult> Completion { get; }
 
     public ScenarioProcess(string directory, string fileName, IReadOnlyList<string> arguments,
@@ -50,7 +51,7 @@ internal sealed class ScenarioProcess : IAsyncDisposable
         return result;
     }
 
-    private async Task KillAsync()
+    public async Task KillAsync()
     {
         if (!_process.HasExited) _process.Kill(entireProcessTree: true);
         await Completion;

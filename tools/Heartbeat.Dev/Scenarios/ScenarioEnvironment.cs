@@ -8,13 +8,14 @@ namespace Heartbeat.Dev;
 // and connects implementations through their existing interfaces.
 internal sealed class ScenarioEnvironment(
     IProcessRunner runner, EvidenceSession evidence, IReadOnlyList<string> compose,
-    IReadOnlyDictionary<string, string?> variables, string projectName, Uri hub, Uri web, string token, Guid owner)
+    IReadOnlyDictionary<string, string?> variables, string projectName, Uri hub, Uri web, string token, ScenarioConfiguration configuration)
 {
     public EvidenceSession Evidence { get; } = evidence;
     public string ProjectName { get; } = projectName;
     public Uri Hub { get; } = hub;
     public string Token { get; } = token;
-    public Guid Owner { get; } = owner;
+    public ScenarioConfiguration Configuration { get; } = configuration;
+    public Guid Owner => Configuration.Owner;
     public Uri Web { get; } = web;
 
     public static Task<int> RunAsync(RepositoryContext repository, IProcessRunner runner, TextWriter output,
@@ -55,9 +56,7 @@ internal sealed class ScenarioEnvironment(
         EvidenceSession evidence, CancellationToken cancellationToken)
     {
         var dotenv = DotenvFile.Read(repository.Path(".env.local"));
-        var owner = Guid.Parse(dotenv.Get("HEARTBEAT_OWNER_ID") ?? throw new InvalidOperationException("Run dotnet run --project tools/Heartbeat.Dev -- env setup first."));
-        if (string.IsNullOrWhiteSpace(dotenv.Get("HEARTBEAT_API_KEY")))
-            throw new InvalidOperationException("Run dotnet run --project tools/Heartbeat.Dev -- env setup first to configure an Auth API key.");
+        var configuration = new ScenarioConfiguration(dotenv);
         var project = $"heartbeat-scenario-{Guid.NewGuid():N}";
         var port = TcpPort.Reserve();
         var webPort = TcpPort.Reserve();
@@ -81,19 +80,22 @@ internal sealed class ScenarioEnvironment(
             ["HEARTBEAT_HUB_PORT"] = port.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ["HEARTBEAT_SCENARIO_WEB_PORT"] = webPort.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ["HEARTBEAT_HUB_TOKEN"] = token,
-            ["HEARTBEAT_OWNER_ID"] = owner.ToString(),
-            ["HEARTBEAT_API_KEY"] = dotenv.Get("HEARTBEAT_API_KEY"),
+            ["HEARTBEAT_OWNER_ID"] = configuration.Owner.ToString(),
+            ["HEARTBEAT_API_KEY"] = configuration.ApiKey,
         };
         return new ScenarioEnvironment(runner, evidence,
             [.. ComposeInvocation.Create(repository, repository.Path(".env.local"), release: true, project), "--file", overridePath],
-            variables, project, new Uri($"http://127.0.0.1:{port}/"), new Uri($"http://127.0.0.1:{webPort}/"), token, owner);
+            variables, project, new Uri($"http://127.0.0.1:{port}/"), new Uri($"http://127.0.0.1:{webPort}/"), token, configuration);
     }
 
-    public Task StartAsync(CancellationToken cancellationToken, params string[] services) =>
-        ComposeAsync($"start-{string.Join('-', services)}", ["up", "--build", "--detach", .. services], cancellationToken);
+    public Task StartAsync(CancellationToken cancellationToken, params ComposeService[] services) =>
+        ComposeAsync($"start-{string.Join('-', services.Select(service => service.Name))}", ["up", "--build", "--detach", .. services.Select(service => service.Name)], cancellationToken);
 
     public Task InitializeDatabaseAsync(CancellationToken cancellationToken) =>
         ComposeAsync("migrate", ["run", "--rm", "--build", "migrate"], cancellationToken);
+
+    public Task StopAsync(ComposeService service, CancellationToken cancellationToken) =>
+        ComposeAsync($"stop-{service.Name}", ["stop", service.Name], cancellationToken);
 
     public HttpClient ConnectHub()
     {

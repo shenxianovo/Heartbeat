@@ -24,7 +24,7 @@ internal sealed class ScenarioCommand(
         AddScenario(command, "hubs-fixture", "Hub management browser tests with mocked auth and API", native: false);
         AddScenario(command, "delivery", "Upload/replay integration tests against PostgreSQL", native: false);
         AddScenario(command, "collector-delivery", "Real macOS Collector through Hub custody to PostgreSQL", native: true);
-        AddScenario(command, "desktop-replay", "Interactive packaged desktop to real Web replay", native: true);
+        AddScenario(command, "desktop-replay", "Packaged desktop first use to real Web replay", native: true);
         AddScenario(command, "native-desktop", "Guided macOS collector session against an isolated Hub", native: true);
         foreach (var child in command.Subcommands)
             child.Validators.Add(result =>
@@ -46,7 +46,15 @@ internal sealed class ScenarioCommand(
             command.Options.Add(sensitive);
             command.Options.Add(keep);
         }
-        command.SetAction((parse, token) => RunAsync(new ScenarioOptions(name, parse.GetValue(sensitive), parse.GetValue(keep)), token));
+        var recovery = new Option<bool>("--recovery") { Description = "Add offline custody, forced exit and restart to the desktop journey" };
+        var interactive = new Option<bool>("--interactive-login") { Description = "Sign in to real OIDC manually instead of a temporary Auth token session" };
+        if (name == "desktop-replay")
+        {
+            command.Options.Add(recovery);
+            command.Options.Add(interactive);
+        }
+        command.SetAction((parse, token) => RunAsync(new ScenarioOptions(name, parse.GetValue(sensitive), parse.GetValue(keep),
+            parse.GetValue(recovery), parse.GetValue(interactive)), token));
         parent.Subcommands.Add(command);
     }
 
@@ -125,4 +133,5 @@ internal sealed class ScenarioCommand(
     private static string Quote(string value) => value.Contains(' ', StringComparison.Ordinal) ? $"\"{value}\"" : value;
 }
 
-internal sealed record ScenarioOptions(string Name, bool IncludeSensitiveEvidence = false, bool KeepEnvironmentOnFailure = false);
+internal sealed record ScenarioOptions(string Name, bool IncludeSensitiveEvidence = false, bool KeepEnvironmentOnFailure = false,
+    bool Recovery = false, bool InteractiveLogin = false);

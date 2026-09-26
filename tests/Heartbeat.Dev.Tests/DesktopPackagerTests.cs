@@ -130,6 +130,20 @@ public sealed class DesktopPackagerTests : IDisposable
         Assert.Empty(Directory.GetDirectories(_root));
     }
 
+    [Fact]
+    public async Task MetadataOnlyBundleCannotReplaceThePreviousApplication()
+    {
+        var repository = new RepositoryContext(_root);
+        var options = DesktopPackageOptions.Create(repository, "osx-arm64", _root, "osx-arm64");
+        var previous = Directory.CreateDirectory(Path.Combine(_root, "Heartbeat Dev.app")).FullName;
+        File.WriteAllText(Path.Combine(previous, "old"), "working application");
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new DesktopPackager(repository, new PackageTestRunner(produceExecutable: false), TextWriter.Null)
+                .PackageAsync(options, CancellationToken.None));
+        Assert.Equal("working application", File.ReadAllText(Path.Combine(previous, "old")));
+        Assert.Equal([previous], Directory.GetDirectories(_root));
+    }
+
     [Theory]
     [InlineData("osx-arm64", "win-x64")]
     [InlineData("win-x64", "osx-arm64")]
@@ -158,7 +172,8 @@ internal sealed class PackageTestRunner(
     string? failedStep = null,
     Action? afterPublish = null,
     bool produceBundle = true,
-    bool hasSigningIdentity = true) : IProcessRunner
+    bool hasSigningIdentity = true,
+    bool produceExecutable = true) : IProcessRunner
 {
     public List<(string File, IReadOnlyList<string> Args)> Calls { get; } = [];
     public string? LastStep { get; private set; }
@@ -176,6 +191,8 @@ internal sealed class PackageTestRunner(
                 : "     0 valid identities found\n";
             return Task.FromResult(new ProcessResult(0, standardOutput, ""));
         }
+        if (fileName == "/usr/bin/plutil")
+            return Task.FromResult(new ProcessResult(0, "Heartbeat.Desktop.Mac", ""));
         LastStep = fileName == "codesign" && arguments.Contains("--verify") ? "verify-signature" : fileName;
         if (fileName == "codesign" && arguments[^1].EndsWith(".dylib", StringComparison.Ordinal))
             LastStep = arguments.Contains("--verify") ? "verify-library" : "sign-library";
@@ -185,8 +202,13 @@ internal sealed class PackageTestRunner(
             var appBundle = arguments.SingleOrDefault(arg => arg.StartsWith("-p:AppBundleDir=", StringComparison.Ordinal));
             if (appBundle is not null)
             {
-                var contents = Path.Combine(appBundle["-p:AppBundleDir=".Length..], "Contents");
+                var contents = Path.Combine(Path.GetFullPath(appBundle["-p:AppBundleDir=".Length..], arguments[1]), "Contents");
                 Directory.CreateDirectory(contents);
+                if (produceExecutable)
+                {
+                    Directory.CreateDirectory(Path.Combine(contents, "MacOS"));
+                    File.WriteAllText(Path.Combine(contents, "MacOS", "Heartbeat.Desktop.Mac"), "executable");
+                }
                 File.WriteAllText(Path.Combine(contents, "Info.plist"), "<plist/>");
                 var libraries = Directory.CreateDirectory(Path.Combine(contents, "MonoBundle"));
                 File.WriteAllText(Path.Combine(libraries.FullName, "libcoreclr.dylib"), "unsigned library");

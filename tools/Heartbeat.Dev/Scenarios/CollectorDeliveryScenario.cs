@@ -19,7 +19,7 @@ internal sealed class CollectorDeliveryScenario(RepositoryContext repository, IP
         if (!OperatingSystem.IsMacOS()) throw new InvalidOperationException("collector-delivery requires a logged-in macOS desktop.");
         // Given an empty database and a real Hub, with API delivery deliberately unavailable.
         await output.WriteLineAsync("Starting isolated PostgreSQL and Hub; initializing the database.");
-        await environment.StartAsync(cancellationToken, "db", "hub");
+        await environment.StartAsync(cancellationToken, ComposeService.Database, ComposeService.Hub);
         await environment.InitializeDatabaseAsync(cancellationToken);
         using var hub = environment.ConnectHub();
         await HubQueueStatus.WaitReadyAsync(hub, cancellationToken);
@@ -39,7 +39,7 @@ internal sealed class CollectorDeliveryScenario(RepositoryContext repository, IP
 
         // Then the Hub registers identities, uploads every accepted Record and clears its queue.
         await output.WriteLineAsync($"Hub accepted {accepted.Pending} Records. Starting API and waiting for database delivery.");
-        await environment.StartAsync(cancellationToken, "api");
+        await environment.StartAsync(cancellationToken, ComposeService.Api);
         await ScenarioWait.UntilAsync("Record delivery and an empty Hub queue", async token =>
         {
             var queue = await HubQueueStatus.ReadAsync(hub, token);

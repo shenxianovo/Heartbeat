@@ -14,7 +14,7 @@ internal sealed class NativeDesktopScenario(RepositoryContext repository, IProce
     private async Task<int> ObserveAsync(ScenarioEnvironment environment, ScenarioOptions options, CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsMacOS()) throw new InvalidOperationException("native-desktop requires a logged-in macOS desktop.");
-        await environment.StartAsync(cancellationToken, "hub");
+        await environment.StartAsync(cancellationToken, ComposeService.Hub);
         using var hub = environment.ConnectHub();
         await HubQueueStatus.WaitReadyAsync(hub, cancellationToken);
         var before = await HubQueueStatus.ReadAsync(hub, cancellationToken);

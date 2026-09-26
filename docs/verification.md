@@ -101,9 +101,15 @@ UI、用户流程或 HTTP 展示变更运行相应场景。活动泳道性能变
 
 ### 桌面应用到真实 Web 回放
 
-`scenario desktop-replay` 打包并启动 Heartbeat Dev，使用临时 profile、真实 Auth、Mac 原生采集、进程内 Hub、隔离后端和生产 Web。按终端提示完成客户端连接、开始/暂停/退出及 OIDC 登录。
+`scenario desktop-replay` 从本地打包的 Heartbeat Dev 开始，使用空的临时 profile，通过真实原生 UI 配置连接、保存凭据并开始采集；暂停后等待交付完成，在真实 Web 时间线选择同一 Record 并核对详情。Collector、进程内 Hub、Auth、隔离 PostgreSQL/API 和生产 Web 均为真实实现。
 
-场景核对客户端自身的前台 Record、退出后的 SQLite 队列、后端数据和浏览器详情中的同一 Record ID。临时 profile、开发凭据、浏览器会话和隔离环境在结束时清理；显式使用 `--keep-environment-on-failure` 只保留失败的 Docker 环境。该场景不替代普通构建 Keychain、Windows 或发行验收。
+需要已解锁的 macOS 桌面、Docker、有效 `.env.local`，以及运行终端/代理的辅助功能与 System Events 自动化权限。默认用真实 Auth 签发的短期令牌建立临时浏览器会话；`--interactive-login` 改为真实 OIDC 人工登录。前者不证明 OIDC 跳转流程。
+
+`--recovery` 在正常回放后停止隔离 API，再次采集并暂停，使用 SQLite 在线备份读取 Hub 已接管快照；强制退出应用，重启并确认保存的凭据及 Hub 身份恢复，恢复 API 后逐条核对接管记录的 ID、Owner、路由、内容与时间。允许重启后新产生的记录，但必须一同完整落库；队列清空不能替代对账。最后验证恢复记录的真实 API 和 Web 回放。接管前仍在 Collector 内存中的观测不在此恢复承诺内。
+
+步骤在具体代码中组合，打包、UI 操作、接管快照、数据对账和浏览器回放各自维护对应边界。Compose 继续维护服务启动依赖。
+
+证据包含当前阶段 `journey.json`、正常/恢复回放报告、接管记录元数据、`reconciliation.json` 和仅含时间的详情截图；不导出 API key、短期令牌、原始原生 payload 或 profile。临时凭据、浏览器会话和隔离环境结束时清理，`--keep-environment-on-failure` 只保留失败的 Docker 环境。下载分发、安装器、普通 Keychain、Windows、权限授权、锁屏休眠与升级仍需独立验收。
 
 ## 现场探针
 

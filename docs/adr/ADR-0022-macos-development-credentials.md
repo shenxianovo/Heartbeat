@@ -10,4 +10,4 @@ macOS 宿主运行时按 Bundle ID 选择凭据存储：`com.shenxianovo.heartbe
 
 凭据实现的选择属于 macOS 宿主；共享 Desktop 运行模块、Auth、Hub 与 Collector 不感知开发存储。Windows 保留 Credential Manager。ADR-0016 的系统凭据库存储约束继续适用于普通 macOS 构建与 Windows；本决策为显式 macOS 开发身份细化其范围。ADR-0020 的本地固定签名保留，用于稳定 TCC 身份；ADR-0021 的服务器 `.env.local` 与桌面凭据仍各自独立。
 
-`env up desktop` 与 `desktop-replay` 使用相同开发存储。烟测保留真实 Auth、采集、交付与 Web 回放；临时 profile 删除即清理开发凭据。重启和跨内容变化构建的恢复作为原生验收步骤，不扩展日常烟测或新增专用测试设施。普通 Keychain 的授权、锁定和升级行为留给独立的平台验收，开发文件路径通过不代表该路径通过，也不新增发行或部署流程。
+`env up desktop` 与 `desktop-replay` 使用相同开发存储。烟测保留真实 Auth、采集、交付与 Web 回放；临时 profile 删除即清理开发凭据。2026-09-26 用户确认将同一构建的重启恢复纳入 `desktop-replay --recovery` 主链验收，通过真实原生 UI 配置并读取已保存凭据；跨内容变化构建的恢复继续作为原生验收步骤。普通 Keychain 的授权、锁定和升级行为留给独立的平台验收，开发文件路径通过不代表该路径通过，也不新增发行或部署流程。

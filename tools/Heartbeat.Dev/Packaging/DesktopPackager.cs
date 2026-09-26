@@ -62,11 +62,15 @@ internal sealed class DesktopPackager(RepositoryContext repository, IProcessRunn
     {
         var signing = new MacDevelopmentSigning(runner, output);
         var identity = await signing.RequireIdentityAsync(token);
-        var published = await RunAsync("dotnet", ["publish", repository.Path("src", "Desktop", "Heartbeat.Desktop.Mac"),
-            "-c", "Release", "-r", runtime, "-p:HeartbeatDevelopmentBuild=true", $"-p:AppBundleDir={bundle}", "-p:CreatePackage=false", "-p:EnableCodeSigning=false", "--nologo"], token);
+        var project = repository.Path("src", "Desktop", "Heartbeat.Desktop.Mac");
+        // The macOS publish targets resolve bundle-relative files against the project directory.
+        var relativeBundle = Path.GetRelativePath(project, bundle);
+        var published = await RunAsync("dotnet", ["publish", project,
+            "-c", "Release", "-r", runtime, "-p:HeartbeatDevelopmentBuild=true", $"-p:AppBundleDir={relativeBundle}", "-p:CreatePackage=false", "-p:EnableCodeSigning=false", "--nologo"], token);
         if (published != 0) return published;
         if (!File.Exists(Path.Combine(bundle, "Contents", "Info.plist")))
             throw new InvalidOperationException("The macOS SDK did not produce an application bundle with Info.plist.");
+        await RequireMacExecutableAsync(bundle, token);
         var resources = Path.Combine(bundle, "Contents", "Resources");
         Directory.CreateDirectory(resources);
         var iconset = Path.Combine(staging, "heartbeat.iconset");
@@ -76,6 +80,16 @@ internal sealed class DesktopPackager(RepositoryContext repository, IProcessRunn
         var converted = await RunAsync("iconutil", ["-c", "icns", iconset, "-o", Path.Combine(resources, "heartbeat.icns")], token);
         if (converted != 0) return converted;
         return await SignMacBundleAsync(bundle, identity, signing.Keychain, token);
+    }
+
+    private async Task RequireMacExecutableAsync(string bundle, CancellationToken token)
+    {
+        var identity = await runner.CaptureAsync("/usr/bin/plutil",
+            ["-extract", "CFBundleExecutable", "raw", Path.Combine(bundle, "Contents", "Info.plist")], null, token);
+        var name = identity.StdOut.Trim();
+        if (identity.ExitCode != 0 || string.IsNullOrEmpty(name) || Path.GetFileName(name) != name
+            || !File.Exists(Path.Combine(bundle, "Contents", "MacOS", name)))
+            throw new InvalidOperationException("The macOS SDK did not produce the executable declared by Info.plist.");
     }
 
     private async Task<int> SignMacBundleAsync(string bundle, string identity, string keychain, CancellationToken token)

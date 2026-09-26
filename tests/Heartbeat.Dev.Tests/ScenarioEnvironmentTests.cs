@@ -18,8 +18,8 @@ public sealed class ScenarioEnvironmentTests : IDisposable
         var exit = await RunAsync(compose, keepOnFailure, async environment =>
         {
             // One lifetime can contain independently requested dependencies.
-            await environment.StartAsync(CancellationToken.None, "hub");
-            await environment.StartAsync(CancellationToken.None, "db");
+            await environment.StartAsync(CancellationToken.None, ComposeService.Hub);
+            await environment.StartAsync(CancellationToken.None, ComposeService.Database);
             await environment.WriteAsync("assertions.json", new { passed = true }, CancellationToken.None);
             return 0;
         });
@@ -42,7 +42,7 @@ public sealed class ScenarioEnvironmentTests : IDisposable
         var compose = new ComposeSimulator(cleanupFails: false);
         var error = await Record.ExceptionAsync(() => RunAsync(compose, keep, async environment =>
         {
-            await environment.StartAsync(CancellationToken.None, "hub");
+            await environment.StartAsync(CancellationToken.None, ComposeService.Hub);
             throw cancel ? new OperationCanceledException() : new InvalidOperationException("scenario assertion failed");
         }));
 

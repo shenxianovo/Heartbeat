@@ -64,7 +64,7 @@ macOS 开发 Bundle ID 为 `com.shenxianovo.heartbeat.desktop.dev`，使用独�
 dotnet run --project tools/Heartbeat.Dev -- scenario desktop-replay
 ```
 
-该场景覆盖 macOS 开发应用、真实 Auth、原生采集、进程内 Hub、隔离后端和同一 Record 的 Web 回放；不覆盖普通构建 Keychain、Windows、发行或系统权限交互。证据边界见[工程验证](../../docs/verification.md#桌面应用到真实-web-回放)。
+该场景自动操作真实 UI 完成首次配置与采集，再验证同一 Record 的 Web 回放。增加 `--recovery` 验证离线接管、强制退出、保存凭据重启和恢复交付；增加 `--interactive-login` 单独验收真实 OIDC 登录。默认浏览器使用真实 Auth 签发的短期令牌。场景不覆盖普通构建 Keychain、Windows、发行或系统权限交互。证据边界见[工程验证](../../docs/verification.md#桌面应用到真实-web-回放)。
 
 原生人工验收按风险选择：
 
