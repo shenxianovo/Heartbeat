@@ -26,6 +26,10 @@ test("Hub management separates presence, collection and delivery and applies onl
   let online = true;
   const operations: unknown[] = [];
   await page.route("**/api/v1/hubs**", async (route) => {
+    if (route.request().url().endsWith("/activity")) {
+      await route.fulfill({ json: { activities: {} } });
+      return;
+    }
     if (route.request().method() === "GET") {
       await route.fulfill({
         json: {
@@ -61,6 +65,10 @@ test("Installed Collector fields drive configuration without persisting secret v
   await seedSession(page);
   const operations: { configuration: Record<string, unknown> }[] = [];
   await page.route("**/api/v1/hubs**", async (route) => {
+    if (route.request().url().endsWith("/activity")) {
+      await route.fulfill({ json: { activities: {} } });
+      return;
+    }
     if (route.request().method() === "POST") {
       operations.push(route.request().postDataJSON());
       await route.fulfill({ json: { id: "operation", succeeded: true } });
@@ -101,4 +109,87 @@ test("Installed Collector fields drive configuration without persisting secret v
   await page.getByRole("button", { name: "保存配置" }).click();
   await expect(page.getByLabel("密码", { exact: true })).toHaveValue("");
   expect(operations[0]?.configuration.password).toBe("private-password");
+});
+
+test("Hub curves preserve source-time buckets, outages and reduced-motion updates", async ({
+  page,
+}, testInfo) => {
+  await identityRoutes(page);
+  await seedSession(page);
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  const second = Math.floor(Date.now() / 1000);
+  const activity = {
+    epoch: "run-a",
+    capturedAt: second * 1000,
+    buckets: Array.from({ length: 60 }, (_, index) => ({
+      second: second - 59 + index,
+      received: index % 10 < 2 ? 12 : 0,
+      sent: index % 10 === 4 ? 24 : 0,
+      confirmed: index % 10 === 5 ? 24 : 0,
+    })),
+  };
+  let available = true;
+  await page.route("**/api/v1/hubs**", async (route) => {
+    if (route.request().url().endsWith("/activity")) {
+      await route.fulfill({ json: { activities: available ? { hub: activity } : {} } });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        hubs: [
+          {
+            id: "hub",
+            online: true,
+            retired: false,
+            lastSeenAt: new Date().toISOString(),
+            report: {
+              displayName: "收发验收",
+              kind: "desktop",
+              types: [],
+              collectors: [],
+              delivery: { pending: 1, failed: 0, error: null },
+            },
+          },
+        ],
+      },
+    });
+  });
+  await page.goto("/hubs");
+  const flow = page.getByLabel("Hub 最近收发活动");
+  const plot = flow.getByRole("img");
+  await expect(flow.getByText("最近 60 秒 · Records / 秒")).toBeVisible();
+  await expect(plot.locator("canvas")).toBeVisible();
+  const summary = flow.getByLabel("收发窗口合计");
+  await expect(summary).toHaveText("接收 144，发送 144，确认 144");
+  const start = await plot.getAttribute("data-range");
+  await expect.poll(() => plot.getAttribute("data-range")).not.toBe(start);
+  activity.buckets[59]!.sent += 10; // Lost receipt: no confirmation wave.
+  await expect(summary).toHaveText("接收 144，发送 154，确认 144");
+  await page.screenshot({ path: testInfo.outputPath("hub-delivery-active.png"), fullPage: true });
+  available = false;
+  await expect(flow.getByText("活动状态暂不可用")).toBeVisible();
+  await expect(summary).toHaveText("暂无数据");
+  activity.capturedAt += 3000;
+  activity.buckets.splice(0, 3);
+  activity.buckets.push(
+    ...[1, 2, 3].map((offset) => ({
+      second: second + offset,
+      received: 0,
+      sent: 0,
+      confirmed: offset === 3 ? 10 : 0,
+    })),
+  );
+  available = true;
+  await expect(flow.getByText("最近 60 秒 · Records / 秒")).toBeVisible();
+  await expect(summary).toHaveText("接收 120，发送 154，确认 154");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  activity.epoch = "run-b";
+  activity.buckets = [{ second: second + 3, received: 1, sent: 0, confirmed: 0 }];
+  await expect(summary).toHaveText("接收 1，发送 0，确认 0");
+  await expect(plot).toHaveAttribute("data-samples", "1");
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.screenshot({ path: testInfo.outputPath("hub-delivery-mobile.png"), fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  expect(errors).toEqual([]);
 });

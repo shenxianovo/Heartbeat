@@ -70,3 +70,16 @@ export async function operateCollector(token: string, hub: string, operation: Co
 export async function retireHub(token: string, hub: string) {
   await request(`/${encodeURIComponent(hub)}/retire`, token, {});
 }
+
+export interface DeliveryActivity {
+  epoch: string;
+  capturedAt: number;
+  buckets: { second: number; received: number; sent: number; confirmed: number }[];
+}
+
+export async function fetchHubActivity(
+  token: string,
+  signal?: AbortSignal,
+): Promise<{ activities: Record<string, DeliveryActivity> }> {
+  return request("/activity", token, undefined, signal);
+}

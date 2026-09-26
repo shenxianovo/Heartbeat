@@ -139,6 +139,43 @@ public sealed class HubManagementTests(PostgresFixture fixture) : PostgresTestBa
         Assert.Empty(hub.Report.Types);
     }
 
+    [Fact]
+    public async Task ActivityRequiresLiveOwnerSessionAndNeverRefreshesPresenceOrEntersStorage()
+    {
+        var id = Guid.NewGuid();
+        var checkIn = new HubCheckIn(Guid.NewGuid(), Report);
+        var clock = new MutableClock();
+        await using var factory = RecordingApiFactory.Create(ConnectionString, clock);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(RecordingApiFactory.OwnerHeader, Guid.NewGuid().ToString());
+        using var registered = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/check-in", checkIn, Token);
+        registered.EnsureSuccessStatusCode();
+        var activity = new HubActivityReport(checkIn.SessionId, new(Guid.NewGuid(), 60_000, [new(59, 10, 8, 0), new(60, 0, 0, 3)]));
+        using var accepted = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/activity", activity, Token);
+        Assert.Equal(HttpStatusCode.NoContent, accepted.StatusCode);
+        Assert.Equal(activity.Activity.Buckets, Assert.Single((await client.GetFromJsonAsync<ActivityList>("/api/v1/hubs/activity", Token))!.Activities).Value.Buckets);
+        using var other = factory.CreateClient();
+        other.DefaultRequestHeaders.Add(RecordingApiFactory.OwnerHeader, Guid.NewGuid().ToString());
+        Assert.Empty((await other.GetFromJsonAsync<ActivityList>("/api/v1/hubs/activity", Token))!.Activities);
+        using var foreign = await other.PostAsJsonAsync($"/api/v1/hubs/{id}/activity", activity, Token);
+        Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
+        using var clone = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/activity", activity with { SessionId = Guid.NewGuid() }, Token);
+        Assert.Equal(HttpStatusCode.NotFound, clone.StatusCode);
+        using var late = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/activity",
+            activity with { Activity = activity.Activity with { CapturedAt = 59_000, Buckets = [new(59, 1, 1, 0)] } }, Token);
+        Assert.Equal(HttpStatusCode.NotFound, late.StatusCode);
+        await using var db = CreateDbContext();
+        Assert.DoesNotContain(activity.Activity.Epoch.ToString(), (await db.Hubs.SingleAsync(Token)).StatusJson);
+        clock.Now += HubManagement.ActivityTimeout;
+        Assert.Empty((await client.GetFromJsonAsync<ActivityList>("/api/v1/hubs/activity", Token))!.Activities);
+        clock.Now += HubManagement.OnlineTimeout;
+        using var expired = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/activity", activity, Token);
+        Assert.Equal(HttpStatusCode.NotFound, expired.StatusCode);
+        Assert.False(Assert.Single((await client.GetFromJsonAsync<HubList>("/api/v1/hubs", Token))!.Hubs).Online);
+    }
+
+    private sealed record ActivityList(Dictionary<Guid, DeliveryActivitySnapshot> Activities);
+
     private sealed record HubList(HubSummary[] Hubs);
     private sealed class MutableClock : TimeProvider
     {

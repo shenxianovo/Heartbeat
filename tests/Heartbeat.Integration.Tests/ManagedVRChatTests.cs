@@ -35,7 +35,7 @@ public sealed class ManagedVRChatTests(PostgresFixture fixture) : PostgresTestBa
             var tokens = new Tokens(owner);
             var loop = new HubManagementLoop(http, tokens, destination, id,
                 () => new("Test server", "server", manager.Types, manager.Collectors,
-                    new(queue.Status().Pending, queue.Status().Failed, null)), manager);
+                    new(queue.Status().Pending, queue.Status().Failed, null)), manager, queue.Activity);
             var running = loop.RunAsync(stop.Token);
             try
             {
@@ -48,6 +48,12 @@ public sealed class ManagedVRChatTests(PostgresFixture fixture) : PostgresTestBa
                 Assert.Empty(await new RecordUploader(queue, http, tokens).UploadOnceAsync(cancellationToken: stop.Token));
                 await OperateAsync(new("pause", VRChatCollectorFactory.Key, Account));
                 Assert.Equal("paused", Assert.Single(manager.Collectors).State);
+                while ((await http.GetFromJsonAsync<ActivityList>("/api/v1/hubs/activity", stop.Token))!
+                    .Activities.GetValueOrDefault(id)?.Buckets.Sum(bucket => bucket.Confirmed) != 1)
+                    await Task.Delay(50, stop.Token);
+                var activity = (await http.GetFromJsonAsync<ActivityList>("/api/v1/hubs/activity", stop.Token))!.Activities[id];
+                Assert.Equal(1, activity.Buckets.Sum(bucket => bucket.Received));
+                Assert.Equal(1, activity.Buckets.Sum(bucket => bucket.Sent));
                 await using var db = CreateDbContext();
                 var stored = await db.Records.SingleAsync(stop.Token);
                 using var replay = await http.GetAsync($"/api/v1/tracks/{stored.TrackId}/records", stop.Token);
@@ -75,6 +81,7 @@ public sealed class ManagedVRChatTests(PostgresFixture fixture) : PostgresTestBa
         finally { directory.Delete(true); }
     }
 
+    private sealed record ActivityList(Dictionary<Guid, DeliveryActivitySnapshot> Activities);
     private sealed record HubList(HubSummary[] Hubs);
     private sealed class Tokens(Guid owner) : IBackendTokenProvider
     {

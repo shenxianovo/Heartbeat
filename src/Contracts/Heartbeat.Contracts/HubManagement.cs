@@ -20,6 +20,8 @@ public sealed record HubCheckInResponse(HubCommand? Command);
 
 public static class HubManagement
 {
+    public static readonly TimeSpan ActivityInterval = TimeSpan.FromSeconds(1);
+    public static readonly TimeSpan ActivityTimeout = TimeSpan.FromSeconds(4);
     public static readonly TimeSpan CheckInInterval = TimeSpan.FromSeconds(5);
     public static readonly TimeSpan OnlineTimeout = TimeSpan.FromSeconds(30);
     public static readonly TimeSpan OperationTimeout = TimeSpan.FromSeconds(20);

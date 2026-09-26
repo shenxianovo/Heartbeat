@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "react-oidc-context";
-import { fetchHubs } from "@/api/hubs";
+import { fetchHubs, fetchHubActivity } from "@/api/hubs";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { Button } from "@/components/ui/button";
 import { HubCard } from "./HubCard";
@@ -15,6 +15,15 @@ export function HubsPage() {
     queryFn: ({ signal }) => fetchHubs(token, signal),
     enabled: !!token,
     refetchInterval: 5000,
+  });
+  const activity = useQuery({
+    queryKey: ["hub-activity", auth.user?.profile.sub],
+    queryFn: ({ signal }) => fetchHubActivity(token, signal),
+    enabled: !!token,
+    refetchInterval: 1000,
+    retry: false,
+    gcTime: 0,
+    structuralSharing: false,
   });
   return (
     <div className="app-shell">
@@ -44,6 +53,7 @@ export function HubsPage() {
             key={hub.id}
             hub={hub}
             token={token}
+            activity={activity.isError ? undefined : activity.data?.activities[hub.id]}
             stale={query.isError}
             refresh={query.refetch}
           />

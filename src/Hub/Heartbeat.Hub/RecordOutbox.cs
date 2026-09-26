@@ -11,12 +11,13 @@ public sealed class RecordOutbox
     private readonly string _connectionString;
     private readonly int _maximumRecords;
 
-    public RecordOutbox(string path, DeliveryDestination destination, int maximumRecords = 10000)
+    public RecordOutbox(string path, DeliveryDestination destination, int maximumRecords = 10000, TimeProvider? clock = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(destination);
         ArgumentOutOfRangeException.ThrowIfLessThan(maximumRecords, 1);
         Destination = destination;
+        Activity = new(clock);
         _maximumRecords = maximumRecords;
         var fullPath = Path.GetFullPath(path);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
@@ -40,6 +41,7 @@ public sealed class RecordOutbox
     }
 
     public DeliveryDestination Destination { get; }
+    public DeliveryActivity Activity { get; }
 
     public IReadOnlyList<RecordSnapshot> Accept(HubSubmission submission)
     {
@@ -83,6 +85,7 @@ public sealed class RecordOutbox
         }
 
         transaction.Commit();
+        Activity.Receive(normalized.Records!.Count);
         return normalized.Records!.Select(record => record!).ToArray();
     }
 

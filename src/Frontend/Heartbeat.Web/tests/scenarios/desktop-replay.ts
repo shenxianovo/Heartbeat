@@ -21,12 +21,15 @@ const input = JSON.parse(process.env.HEARTBEAT_REPLAY_INPUT!) as {
     token: { value: string; ownerId: string; expiresAt: string };
   } | null;
   witness: ReplayWitness;
-  files: { report: string; screenshot: string };
+  hubId: string;
+  files: { report: string; screenshot: string; activityScreenshot: string };
   records: DeliveredRecord[];
 };
 delete process.env.HEARTBEAT_REPLAY_INPUT;
 const witness = input.witness;
 let stage: ReplayStage = "browser-start";
+let hubActivityVerified = false;
+let hubActivityCounts: number[] | null = null;
 const apiResponses: { path: string; status: number }[] = [];
 async function progress(next: ReplayStage, passed = false) {
   stage = next;
@@ -38,6 +41,8 @@ async function progress(next: ReplayStage, passed = false) {
         passed,
         recordId: witness.record.recordId,
         verifiedRecords: interactive ? null : input.records.length,
+        hubActivityVerified,
+        hubActivityCounts,
       },
       null,
       2,
@@ -127,6 +132,23 @@ try {
   const details = await verifyReplay(page, witness, progress);
   // Retain timestamps only: the surrounding details can contain native user context.
   await details.locator(".record-time").screenshot({ path: input.files.screenshot });
+  await progress("hub-activity");
+  await page.goto("/hubs");
+  const hub = page.locator(".hub-card").filter({ hasText: input.hubId });
+  const activity = hub.getByLabel("Hub 最近收发活动");
+  // A restarted Hub can wait for the previous session's 30-second online window,
+  // then its five-second management check-in, before activity reports are accepted.
+  await expect(activity.getByText("最近 60 秒 · Records / 秒")).toBeVisible({
+    timeout: 45_000,
+  });
+  const counts = (await activity.getByLabel("收发窗口合计").textContent())!.match(/\d+/g)!;
+  hubActivityCounts = counts.map(Number);
+  expect(hubActivityCounts[1]).toBeGreaterThan(0);
+  expect(hubActivityCounts[2]).toBeGreaterThan(0);
+  await expect(activity.locator("canvas")).toBeVisible();
+  // Capture aggregate activity only, excluding host names, identities and Collector payloads.
+  await activity.screenshot({ path: input.files.activityScreenshot });
+  hubActivityVerified = true;
   await progress("completed", true);
 } catch (error) {
   // Assertion messages and page text can contain tokens or native values. Never export them.
@@ -138,6 +160,7 @@ try {
         passed: false,
         error: error instanceof Error ? error.name : "Error",
         apiResponses,
+        hubActivityCounts,
       },
       null,
       2,

@@ -1483,3 +1483,53 @@ a:where(:not([data-slot="button"])) {
     flex-direction: column;
   }
 }
+
+.delivery-chart {
+  min-width: 0;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.delivery-chart-title,
+.delivery-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  font-size: 12px;
+}
+.delivery-chart-title {
+  justify-content: space-between;
+}
+.delivery-chart-title span,
+.delivery-caption {
+  color: var(--muted-foreground);
+}
+.delivery-legend {
+  margin-top: 12px;
+}
+.delivery-legend span::before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  margin-right: 6px;
+  border-top: 2px solid #38a9e8;
+  vertical-align: middle;
+}
+.delivery-legend span:nth-child(2)::before {
+  border-color: #ed9a38;
+  border-top-style: dashed;
+}
+.delivery-legend span:nth-child(3)::before {
+  border-color: #2fbc95;
+}
+.delivery-plot {
+  width: 100%;
+  min-width: 0;
+  height: 180px;
+  overflow: hidden;
+}
+.hub-card .delivery-caption {
+  margin-top: 6px;
+  font-size: 11px;
+}

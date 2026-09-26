@@ -23,7 +23,7 @@ public sealed class MacWindow : NSWindow
     private string _currentSection = string.Empty;
 
     public MacWindow(DesktopRuntime runtime)
-        : base(new CGRect(0, 0, 740, 540),
+        : base(new CGRect(0, 0, 740, 740),
             NSWindowStyle.Titled | NSWindowStyle.Closable | NSWindowStyle.Miniaturizable | NSWindowStyle.Resizable,
             NSBackingStore.Buffered, false)
     {
@@ -31,7 +31,7 @@ public sealed class MacWindow : NSWindow
         Title = "Heartbeat Dev";
         TitleVisibility = NSWindowTitleVisibility.Hidden;
         TitlebarAppearsTransparent = true;
-        MinSize = new CGSize(720, 560);
+        MinSize = new CGSize(720, 740);
         Center();
 
         _sidebar = new MacSidebar();

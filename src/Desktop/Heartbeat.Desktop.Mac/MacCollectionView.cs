@@ -14,6 +14,7 @@ internal sealed class MacCollectionView : NSView
     private readonly Dictionary<ObservationCapability, CapabilityRow> _rows = [];
     private readonly NSTextField _deliveryDetail;
     private readonly StatusPill _deliveryStatus = new();
+    private readonly MacDeliveryView _flow = new();
     private bool _toggling;
     private string? _toggleCaption;
     private string? _heroState;
@@ -59,13 +60,13 @@ internal sealed class MacCollectionView : NSView
             MacControls.Label("采集项目", MacControls.HeadlineFont), capabilities, privacy);
         MacControls.FillWidth(capabilitiesGroup, capabilities, privacy);
 
-        var deliveryTitle = MacControls.Label("同步状态", MacControls.HeadlineFont);
+        var deliveryTitle = MacControls.Label("交付状态", MacControls.HeadlineFont);
         var spacer = new NSView { TranslatesAutoresizingMaskIntoConstraints = false };
         var deliveryRow = MacControls.HorizontalStack(12, deliveryTitle, spacer, _deliveryStatus);
         _deliveryDetail = MacControls.Secondary("");
         _deliveryDetail.MaximumNumberOfLines = 2;
-        var delivery = MacControls.VerticalStack(8, deliveryRow, _deliveryDetail);
-        MacControls.FillWidth(delivery, deliveryRow, _deliveryDetail);
+        var delivery = MacControls.VerticalStack(8, deliveryRow, _flow, _deliveryDetail);
+        MacControls.FillWidth(delivery, deliveryRow, _flow, _deliveryDetail);
 
         var root = MacControls.VerticalStack(20, _heroCard, capabilitiesGroup, delivery);
         MacControls.FillWidth(root, _heroCard, capabilitiesGroup, delivery);
@@ -123,6 +124,7 @@ internal sealed class MacCollectionView : NSView
         UpdateBreathing(runtime.IsCollecting && animateDecorations);
         UpdateCapabilities(runtime, enabled);
         UpdateDelivery(runtime);
+        _flow.Refresh(runtime.Activity, animateDecorations);
     }
 
     private void UpdateAction(DesktopRuntime runtime, bool enabled)
@@ -194,10 +196,10 @@ internal sealed class MacCollectionView : NSView
         else if (queue.Pending > 0)
             _deliveryStatus.Update($"{queue.Pending} 条待上传", NSColor.SecondaryLabel, "arrow.triangle.2.circlepath");
         else
-            _deliveryStatus.Update("已同步", NSColor.SystemGreen, "checkmark.circle.fill");
+            _deliveryStatus.Update("无待交付记录", NSColor.SystemGreen, "checkmark.circle.fill");
         SetDeliveryDetail(queue.Failed > 0
-            ? "上传遇到问题，会自动重试。暂停采集不影响上传。"
-            : "数据已保存在本机，连接恢复后会继续上传。");
+            ? "永久失败记录已暂停，需处理。其余记录仍会继续交付。"
+            : "最近 60 秒的每秒快照数，含重试和续期。发送不等于确认。");
     }
 
     private void SetDeliveryDetail(string text)

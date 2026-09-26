@@ -11,7 +11,7 @@ internal sealed class ManagementWorker(CollectorManager collectors, HubLocalStor
         await collectors.RestoreAsync(stoppingToken);
         var loop = new HubManagementLoop(http, tokens, settings.Destination, storage.Id,
             () => new HubReport(Environment.MachineName, "server", collectors.Types, collectors.Collectors,
-                new DeliveryState(queue.Status().Pending, queue.Status().Failed, delivery.LastError)), collectors);
+                new DeliveryState(queue.Status().Pending, queue.Status().Failed, delivery.LastError)), collectors, queue.Activity);
         await loop.RunAsync(stoppingToken);
     }
 }

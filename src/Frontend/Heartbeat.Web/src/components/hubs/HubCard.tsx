@@ -8,20 +8,24 @@ import {
   type CollectorState,
   type CollectorType,
   type HubSummary,
+  type DeliveryActivity,
 } from "@/api/hubs";
 import { Button } from "@/components/ui/button";
 import { CollectorForm } from "./CollectorForm";
 import { CollectorRow } from "./CollectorRow";
+import { DeliveryChart } from "./DeliveryChart";
 
 export function HubCard({
   hub,
   token,
   stale,
+  activity,
   refresh,
 }: {
   hub: HubSummary;
   token: string;
   stale: boolean;
+  activity?: DeliveryActivity;
   refresh: () => Promise<unknown>;
 }) {
   const [busy, setBusy] = useState(false);
@@ -65,6 +69,7 @@ export function HubCard({
   return (
     <section className="hub-card" aria-label={hub.report.displayName}>
       <HubDetails hub={hub} available={available} stale={stale} />
+      <DeliveryChart activity={available ? activity : undefined} />
       <h3>Collector</h3>
       {hub.report.collectors.length === 0 && <p>尚未配置 Collector。</p>}
       {hub.report.collectors.map((collector) => (

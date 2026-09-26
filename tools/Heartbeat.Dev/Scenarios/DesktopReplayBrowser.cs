@@ -18,7 +18,7 @@ internal static class DesktopReplayBrowser
     }
 
     public static async Task<string> RunAsync(RepositoryContext repository, ScenarioEnvironment environment,
-        DesktopReplayBatch batch, PackagedDesktop package, StageArtifacts artifacts, bool interactiveLogin, CancellationToken token)
+        DesktopReplayBatch batch, PackagedDesktop package, Guid hubId, StageArtifacts artifacts, bool interactiveLogin, CancellationToken token)
     {
         // Builds can outlive a token. Exchange immediately before the automated browser starts.
         var session = interactiveLogin ? null : await AuthenticateAsync(environment.Configuration, token);
@@ -27,8 +27,8 @@ internal static class DesktopReplayBrowser
         var witness = new { record = batch.Witness, target = item.Target, applicationId = package.Identifier,
             applicationName = package.DisplayName, applicationKind = "bundle_id" };
         var report = artifacts.File("replay.json");
-        var input = JsonSerializer.Serialize(new { web = environment.Web, session, witness, records = batch.Records,
-            files = new { report, screenshot = artifacts.File("record-time.png") } }, JsonOptions.Indented);
+        var input = JsonSerializer.Serialize(new { web = environment.Web, session, witness, hubId, records = batch.Records,
+            files = new { report, screenshot = artifacts.File("record-time.png"), activityScreenshot = artifacts.File("hub-activity.png") } }, JsonOptions.Indented);
         var script = Path.Combine(workspace, "tests", "scenarios", "desktop-replay.ts");
         environment.Evidence.Commands.Add($"node tests/scenarios/desktop-replay.ts ({(interactiveLogin ? "interactive OIDC" : "temporary Auth session")})");
         await using var browser = new ScenarioProcess(workspace, "node", [script],

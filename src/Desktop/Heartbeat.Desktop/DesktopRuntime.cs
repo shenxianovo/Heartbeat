@@ -77,6 +77,7 @@ public sealed class DesktopRuntime : IAsyncDisposable, ICollectorManager
     public bool IsCollecting => _collectionTask is { IsCompleted: false };
     public string? Error => _collectionError ?? _delivery?.LastError;
     public QueueStatus Queue => _queue?.Status() ?? new QueueStatus(0, 0);
+    public DeliveryActivitySnapshot? Activity => _deliveryTask is { IsCompleted: false } ? _queue?.Activity.Snapshot : null;
     public Guid HubId => _profile.Storage.Id;
     public string? ManagementError => _management?.LastError;
     public IReadOnlyList<CollectorType> Types => [new(_platform.CollectorKey, _platform.DisplayName, [], CanAdd: false)];
@@ -156,7 +157,7 @@ public sealed class DesktopRuntime : IAsyncDisposable, ICollectorManager
         _deliveryTask = _delivery.RunAsync(_deliveryStop.Token);
         _management = new HubManagementLoop(_http, _tokens, settings.Destination, HubId,
             () => new HubReport(Environment.MachineName, "desktop", Types, Collectors,
-                new DeliveryState(Queue.Pending, Queue.Failed, _delivery?.LastError)), this);
+                new DeliveryState(Queue.Pending, Queue.Failed, _delivery?.LastError)), this, _queue.Activity);
         _managementTask = _management.RunAsync(_deliveryStop.Token);
     }
 

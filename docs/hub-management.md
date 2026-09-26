@@ -38,3 +38,13 @@ API 当前按单实例运行管理中继；多副本负载均衡需要另行设�
 每个 Hub 通过 `HubLocalStorage` 使用自己指定的数据目录，身份、JSON 文档的原子替换、队列路径和加密会话入口集中在该模块。CollectorManager 按逻辑名称 `collectors` 读写，DesktopProfile 按 `settings` 读写，不自行决定文件布局。
 
 服务器只指定 `Hub__DataDirectory`；Desktop 沿用客户端数据目录。每个目录包含 `hub-id`、`hub.sqlite`、需要的配置文档与 `secrets/`。指定目录用于该 Hub 独占的数据存储；Unix 上收紧为仅运行账号可读写。进程锁避免并发占用，不同 Hub 目录互不共享状态。Desktop API key 仍交给系统凭据库。这里没有远端配置中心，API 的状态快照不能恢复或覆盖本地配置。
+
+## 最近收发活动
+
+收发曲线以 [ADR-0024](adr/ADR-0024-delivery-activity-is-ephemeral.md) 为准。五秒管理报告不变，活动独立一秒上报与一秒读取，通常有约一至两秒加网络的延迟。
+
+- `POST /{id}/activity`：`{ sessionId, activity: { epoch, capturedAt, buckets: [{ second, received, sent, confirmed }] } }`。Bearer Owner 和当前活跃管理会话必须匹配；请求上限 16 KiB。
+- `capturedAt` 是 Hub 的 Unix 毫秒；`second` 是 Unix 秒。桶按时间连续、升序，最多 60 个，最后一桶对应当前秒。计数为非负 JavaScript 安全整数；确认可能属于此前秒发送的快照，不能要求单桶 confirmed ≤ sent。API 拒绝同会话不同 epoch 或倒序 capturedAt。
+- `GET /activity`：返回 `{ activities: { "<hub-id>": { epoch, capturedAt, buckets } } }`，仅包含当前 Owner 的活动；四秒未更新或管理失联即不返回，响应不缓存。
+- 活动只留在 Hub/API 内存，不携带 Record 内容、不写 PostgreSQL、不刷新在线时间；API 重启后等待正常管理接入，下一份活动窗口恢复显示。
+- UI 显示最近 60 秒、每秒 Record 快照数，重试和续期重复计入。当前秒持续更新，窗口外及未观测时间不填零。Web 断连保留已有曲线并留下新时间缺口；恢复后可用源时间桶补齐窗口内已知数据。重启 epoch 更换则替换窗口。减少动态时停止平滑滚动，保留每秒数据更新。

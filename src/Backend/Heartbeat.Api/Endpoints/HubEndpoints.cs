@@ -12,12 +12,38 @@ public static class HubEndpoints
     {
         var group = endpoints.MapGroup("/api/v1/hubs").RequireAuthorization();
         group.MapGet("", ListAsync);
+        group.MapGet("/activity", Activity);
+        group.MapPost("/{id:guid}/activity", ReportActivity)
+            .WithMetadata(new RequestSizeLimitAttribute(DeliveryActivitySnapshot.MaximumBodyBytes));
         group.MapPost("/{id:guid}/check-in", CheckInAsync)
             .WithMetadata(new RequestSizeLimitAttribute(HubManagement.MaximumBodyBytes));
         group.MapPost("/{id:guid}/operations", OperateAsync)
             .WithMetadata(new RequestSizeLimitAttribute(HubManagement.MaximumBodyBytes));
         group.MapPost("/{id:guid}/retire", RetireAsync);
     }
+
+    private static IResult Activity(ClaimsPrincipal principal, HubConnections connections, HttpResponse response)
+    {
+        response.Headers.CacheControl = "no-store";
+        return OwnerClaims.TryGetOwnerId(principal, out var owner)
+            ? Results.Ok(new { activities = connections.GetActivities(owner) }) : Results.Unauthorized();
+    }
+
+    private static IResult ReportActivity(Guid id, HubActivityReport request, ClaimsPrincipal principal, HubConnections connections)
+    {
+        if (!OwnerClaims.TryGetOwnerId(principal, out var owner)) return Results.Unauthorized();
+        if (!ValidActivity(request.Activity)) return Results.BadRequest();
+        return connections.ReportActivity(owner, id, request) ? Results.NoContent() : Results.NotFound();
+    }
+
+    private static bool ValidActivity(DeliveryActivitySnapshot? activity) => activity is not null &&
+        activity.Epoch != Guid.Empty && activity.CapturedAt is > 0 and <= 253_402_300_799_999 &&
+        activity.Buckets is { Count: > 0 and <= DeliveryActivitySnapshot.WindowSeconds } &&
+        activity.Buckets.Select((bucket, index) => bucket is not null &&
+            bucket.Second == activity.CapturedAt / 1000 - activity.Buckets.Count + 1 + index &&
+            ValidCount(bucket.Received) && ValidCount(bucket.Sent) && ValidCount(bucket.Confirmed)).All(valid => valid);
+
+    private static bool ValidCount(long value) => value is >= 0 and <= 9_007_199_254_740_991;
 
     private static async Task<IResult> ListAsync(ClaimsPrincipal principal, IHubRegistry registry, HubConnections connections, CancellationToken token)
     {

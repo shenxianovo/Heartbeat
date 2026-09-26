@@ -76,3 +76,9 @@ dotnet run --project tools/Heartbeat.Dev -- scenario desktop-replay
 ## Web 远程启停
 
 客户端连接后会在同一 Owner 的 Web `/hubs` 中显示为 Desktop 节点。远程开始/暂停与本地按钮使用同一串行入口；暂停只停止采集，Hub 继续联络和交付。进程退出后不再接受远程操作。行为契约见 [Hub 管理](../../docs/hub-management.md)。
+
+## 收发反馈
+
+交付区显示最近 60 秒的接收、发送、确认曲线，纵轴为每秒 Record 快照数，重试和续期会重复计入。AppKit 和 WinUI 直接读取进程内 Hub 的时间桶，不依赖 Web 或 API。窗口不可见时停止连续绘制；系统减少动态时只做每秒更新。发送不表示交付完成。
+
+原生检查：保持采集页可见，观察接收、发送与稍后的确认波峰；断开后端不应产生新增成功确认，恢复后才能确认。暂停采集时积压上传仍可出现波峰；重开窗口显示当前窗口，重启 Hub 清空旧运行的曲线。永久失败标为需处理。规则见 [收发活动](../../docs/adr/ADR-0024-delivery-activity-is-ephemeral.md)。

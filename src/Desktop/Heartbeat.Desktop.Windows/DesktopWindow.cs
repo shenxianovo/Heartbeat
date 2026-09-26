@@ -12,6 +12,8 @@ internal sealed class DesktopWindow : Window
     private readonly DesktopRuntime _runtime;
     private readonly TextBlock _status = new() { FontSize = 22 };
     private readonly TextBlock _delivery = new();
+    private readonly DeliveryView _flow = new();
+    private bool _collectionVisible = true;
     private readonly TextBlock _capabilities = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock _message = new() { TextWrapping = TextWrapping.Wrap };
     private readonly Button _toggle = new();
@@ -40,6 +42,8 @@ internal sealed class DesktopWindow : Window
         tabs.Items.Add(new PivotItem { Header = "采集", Content = Collection() });
         tabs.Items.Add(new PivotItem { Header = "连接设置", Content = Connection() });
         tabs.SelectedIndex = runtime.Settings is null ? 1 : 0;
+        tabs.SelectionChanged += (_, _) => { _collectionVisible = tabs.SelectedIndex == 0; Refresh(); };
+        _collectionVisible = tabs.SelectedIndex == 0;
         content.Children.Add(tabs);
         content.Children.Add(_message);
         Content = new ScrollViewer { Content = content };
@@ -72,6 +76,7 @@ internal sealed class DesktopWindow : Window
         panel.Children.Add(_capabilities);
         panel.Children.Add(new TextBlock { Text = "只记录非文本物理输入事件，不记录输入的文字。", TextWrapping = TextWrapping.Wrap });
         panel.Children.Add(_delivery);
+        panel.Children.Add(_flow);
         panel.Children.Add(new TextBlock { Text = "已接管的数据保存在本地，连接恢复后继续上传。暂停采集不影响交付。", TextWrapping = TextWrapping.Wrap });
         return panel;
     }
@@ -118,11 +123,21 @@ internal sealed class DesktopWindow : Window
         _replay.IsEnabled = enabled && _runtime.Settings is not null;
         _status.Text = _runtime.IsCollecting ? "正在采集" : "采集已暂停";
         _toggle.Content = _runtime.IsCollecting ? "暂停采集" : "开始采集";
-        var queue = _runtime.Queue;
-        _delivery.Text = $"{queue.Pending} 条待交付 · {queue.Failed} 条需处理";
+        RefreshDelivery();
         RefreshConnection();
         _capabilities.Text = string.Join("\n", Enum.GetValues<ObservationCapability>().Select(CapabilityText));
         _message.Text = _actionError ?? _runtime.Error ?? (_performing ? "正在处理…" : string.Empty);
+    }
+
+    private bool CollectionVisible => AppWindow.IsVisible && _collectionVisible &&
+        AppWindow.Presenter is not Microsoft.UI.Windowing.OverlappedPresenter
+            { State: Microsoft.UI.Windowing.OverlappedPresenterState.Minimized };
+
+    private void RefreshDelivery()
+    {
+        var queue = _runtime.Queue;
+        _delivery.Text = $"{queue.Pending} 条待交付 · {queue.Failed} 条需处理";
+        _flow.Refresh(_runtime.Activity, !_quitting && CollectionVisible);
     }
 
     private void RefreshConnection() =>

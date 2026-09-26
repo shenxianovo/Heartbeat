@@ -8,6 +8,34 @@ public sealed class RecordOutboxTests : IDisposable
     private readonly QueueFixture _fixture = new();
 
     [Fact]
+    public void ActivityKeepsEventSecondsAcrossDelayedReadsAndExpiresOldBuckets()
+    {
+        var clock = new ActivityClock();
+        var queue = new RecordOutbox(_fixture.DatabasePath, _fixture.Destination, clock: clock);
+        queue.Accept(QueueFixture.Submission(QueueFixture.Snapshot()));
+        var first = queue.Activity.Snapshot;
+        clock.Now += TimeSpan.FromSeconds(5);
+        queue.Accept(QueueFixture.Submission(QueueFixture.Snapshot()));
+        var delayed = queue.Activity.Snapshot;
+        Assert.Equal(first.Buckets[0], delayed.Buckets[0]);
+        Assert.All(delayed.Buckets.Skip(1).Take(4), bucket => Assert.Equal(0, bucket.Received));
+        Assert.Equal(1, delayed.Buckets[^1].Received);
+        clock.Now += TimeSpan.FromSeconds(55);
+        var rolled = queue.Activity.Snapshot;
+        Assert.Equal(60, rolled.Buckets.Count);
+        Assert.Equal(1, rolled.Buckets.Sum(bucket => bucket.Received));
+        clock.Now += TimeSpan.FromMinutes(3);
+        Assert.All(queue.Activity.Snapshot.Buckets, bucket => Assert.Equal(0, bucket.Received));
+        Assert.Equal(2, queue.Status().Pending); // Telemetry expiration never removes custody.
+    }
+
+    private sealed class ActivityClock : TimeProvider
+    {
+        public DateTimeOffset Now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    [Fact]
     public void OversizedNormalizedBatchIsNotAcknowledged()
     {
         var queue = _fixture.Open();
@@ -119,6 +147,7 @@ public sealed class RecordOutboxTests : IDisposable
         command.ExecuteNonQuery();
         Assert.Throws<SqliteException>(() => queue.Accept(QueueFixture.Submission(QueueFixture.Snapshot(), QueueFixture.Snapshot())));
         Assert.Equal(new QueueStatus(0, 0), queue.Status());
+        Assert.Equal(0, queue.Activity.Snapshot.Buckets.Sum(bucket => bucket.Received));
     }
 
     [Fact]

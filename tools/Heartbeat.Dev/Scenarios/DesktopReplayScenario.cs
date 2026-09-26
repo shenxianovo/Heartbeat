@@ -42,7 +42,7 @@ internal sealed class DesktopReplayScenario(RepositoryContext repository, IProce
         return 0;
 
         Task ReplayAsync(DesktopStage stage, DesktopReplayBatch batch) => journey.RunAsync(stage,
-            artifacts => DesktopReplayBrowser.RunAsync(repository, environment, batch, package, artifacts, options.InteractiveLogin, token));
+            artifacts => DesktopReplayBrowser.RunAsync(repository, environment, batch, package, desktop.Custody.HubId, artifacts, options.InteractiveLogin, token));
     }
 
     private static async Task<DesktopReplayBatch> CollectAsync(ScenarioEnvironment environment, DesktopSession desktop,

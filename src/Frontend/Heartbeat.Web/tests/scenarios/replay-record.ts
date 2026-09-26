@@ -8,6 +8,7 @@ export type ReplayStage =
   | "range-input"
   | "record-response"
   | "timeline-selection"
+  | "hub-activity"
   | "completed";
 
 export interface ReplayWitness {
