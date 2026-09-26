@@ -18,5 +18,5 @@ export default defineConfig([
       "@typescript-eslint/no-misused-promises": "error",
     },
   },
-  globalIgnores([".next/**", "coverage/**"]),
+  globalIgnores([".next/**", ".artifacts/**", "test-results/**", "coverage/**"]),
 ]);

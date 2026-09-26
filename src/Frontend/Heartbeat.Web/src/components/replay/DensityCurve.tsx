@@ -1,5 +1,4 @@
 import {
-  useId,
   useMemo,
   useState,
   type KeyboardEvent,
@@ -10,13 +9,11 @@ import {
 import type { PointCountsResponse, TrackSummary } from "@/api/types";
 import { trackLabel } from "@/components/filters/TrackPicker";
 import { TooltipReading, useTooltip, type TooltipHandle } from "@/components/ui/Tooltip";
-import { densityBuckets, type DensityBucket } from "./densitySeries";
-import {
-  CURVE_HEIGHT,
-  CURVE_WIDTH,
-  densityGeometry,
-  type DensityGeometry,
-} from "./densityGeometry";
+import { densityBuckets, densityHeight, type DensityBucket } from "./densitySeries";
+import uPlot from "uplot";
+import { densityPlotData } from "./densityPlot";
+import { plotColor, useTimePlot } from "./useTimePlot";
+import type { DensitySeries } from "./densitySeries";
 import type { DensityScale } from "./densityScale";
 import { formatTime, type TimeRange } from "./timeRange";
 import type { PointSelection } from "./TimelineLane";
@@ -36,10 +33,10 @@ interface Selection {
   active: DensityBucket | null;
   /** The bucket being read right now, whether by keyboard or pointer. */
   marked: DensityBucket | null;
-  click: (event: MouseEvent<SVGSVGElement>) => void;
-  hover: (event: PointerEvent<SVGSVGElement>) => void;
+  click: (event: MouseEvent<HTMLDivElement>) => void;
+  hover: (event: PointerEvent<HTMLDivElement>) => void;
   leave: () => void;
-  keyDown: (event: KeyboardEvent<SVGSVGElement>) => void;
+  keyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
 }
 
 /**
@@ -49,13 +46,13 @@ interface Selection {
 function useBucketSelection({
   choices,
   range,
-  geometry,
+  series,
   tooltip,
   onChoose,
 }: {
   choices: DensityBucket[];
   range: TimeRange;
-  geometry: DensityGeometry;
+  series: DensitySeries | null;
   tooltip: TooltipHandle;
   onChoose: (bucket: DensityBucket) => void;
 }): Selection {
@@ -69,13 +66,13 @@ function useBucketSelection({
     setKeyboardAt(bucket.start);
     onChoose(bucket);
   }
-  function timeFrom(event: { clientX: number }, element: SVGSVGElement) {
+  function timeFrom(event: { clientX: number }, element: HTMLDivElement) {
     const rect = element.getBoundingClientRect();
     if (!rect.width) return null;
     return range.start + ((event.clientX - rect.left) / rect.width) * (range.end - range.start);
   }
   /** Arrow keys walk the bucket list; entering from no selection lands at the near end of the travel. */
-  function step(event: KeyboardEvent<SVGSVGElement>) {
+  function step(event: KeyboardEvent<HTMLDivElement>) {
     event.preventDefault();
     const index = choices.findIndex((bucket) => bucket.start === keyboardAt);
     const last = choices.length - 1;
@@ -87,7 +84,7 @@ function useBucketSelection({
           : Math.max(0, index - 1);
     setKeyboardAt(choices[next]!.start);
   }
-  function keyDown(event: KeyboardEvent<SVGSVGElement>) {
+  function keyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (!choices.length) return;
     if (event.key === "ArrowLeft" || event.key === "ArrowRight") step(event);
     else if (event.key === "Enter" || event.key === " ") {
@@ -102,11 +99,14 @@ function useBucketSelection({
   function reading(at: number | null): ReactNode {
     const bucket = bucketAt(at);
     if (bucket) return <Reading from={bucket.start} to={bucket.end} value={`${bucket.count} 条`} />;
-    const sample = at === null ? null : geometry.readingAt(at);
+    const sample =
+      at === null
+        ? null
+        : series?.samples.find((sample) => sample.covered && at >= sample.start && at < sample.end);
     if (!sample) return null;
     return <Reading from={sample.start} to={sample.end} value="没有记录" />;
   }
-  function hover(event: PointerEvent<SVGSVGElement>) {
+  function hover(event: PointerEvent<HTMLDivElement>) {
     const at = timeFrom(event, event.currentTarget);
     setHoverAt(at);
     const content = reading(at);
@@ -135,73 +135,17 @@ function Reading({ from, to, value }: { from: number; to: number; value: string 
   );
 }
 
-/** Invisible per-bucket targets, so the whole lane height is clickable rather than just the curve. */
-function HitTargets({
-  choices,
-  geometry,
-}: {
-  choices: DensityBucket[];
-  geometry: DensityGeometry;
-}) {
-  return (
-    <>
-      {choices.map((bucket) => (
-        <rect
-          key={bucket.start}
-          className="density-hit"
-          x={geometry.at(bucket.start)}
-          y="0"
-          width={Math.max(0.5, geometry.at(bucket.end) - geometry.at(bucket.start))}
-          height={CURVE_HEIGHT}
-        />
-      ))}
-    </>
-  );
-}
-
-function HoverDot({ bucket, geometry }: { bucket: DensityBucket; geometry: DensityGeometry }) {
-  const middle = (bucket.start + bucket.end) / 2;
-  return (
-    <circle
-      className="density-hover-dot"
-      cx={geometry.at(middle)}
-      cy={geometry.heightAt(middle)}
-      r="2.5"
-    />
-  );
-}
-
-function KeyboardRule({ bucket, geometry }: { bucket: DensityBucket; geometry: DensityGeometry }) {
-  const x = geometry.at(bucket.start);
-  return <line className="density-keyboard-marker" x1={x} x2={x} y1="0" y2={CURVE_HEIGHT} />;
-}
-
-function Markers({ selection, geometry }: { selection: Selection; geometry: DensityGeometry }) {
-  const { marked, active } = selection;
-  return (
-    <>
-      {marked ? <HoverDot bucket={marked} geometry={geometry} /> : null}
-      {active ? <KeyboardRule bucket={active} geometry={geometry} /> : null}
-    </>
-  );
-}
-
 export function DensityCurve({ track, counts, detailCounts, range, scale, onSelect }: Props) {
-  const gradient = useId();
   const tooltip = useTooltip();
   const series = scale.seriesFor(track.id);
-  const geometry = useMemo(
-    () => densityGeometry(series, range, scale.peak),
-    [series, range, scale.peak],
-  );
   const choices = useMemo(
-    () => densityBuckets(counts, detailCounts, range, geometry.step / 1000),
-    [counts, detailCounts, range, geometry],
+    () => densityBuckets(counts, detailCounts, range, (series?.step ?? 0) / 1000),
+    [counts, detailCounts, range, series],
   );
   const selection = useBucketSelection({
     choices,
     range,
-    geometry,
+    series,
     tooltip,
     onChoose: (bucket) =>
       onSelect({
@@ -211,46 +155,77 @@ export function DensityCurve({ track, counts, detailCounts, range, scale, onSele
         count: bucket.count,
       }),
   });
-  if (!counts && !detailCounts.length) return null;
-
+  const { active, marked } = selection;
+  const model = useMemo(
+    () => ({
+      data: densityPlotData(series, scale.peak),
+      range,
+      paths: uPlot.paths.spline!(),
+      stroke: (plot: uPlot) => plotColor(plot, "--chart-2"),
+      draw: (plot: uPlot) => drawDensityMarker(plot, series, scale.peak, active, marked),
+      fill: (plot: uPlot) => {
+        const color = plotColor(plot, "--chart-2");
+        const gradient = plot.ctx.createLinearGradient(0, 0, 0, plot.bbox.height);
+        gradient.addColorStop(0, `color-mix(in srgb, ${color} 55%, transparent)`);
+        gradient.addColorStop(1, `color-mix(in srgb, ${color} 4%, transparent)`);
+        return gradient;
+      },
+    }),
+    [series, scale.peak, range, active, marked],
+  );
+  const { host } = useTimePlot(model);
   const readout = selection.marked
     ? `；${formatTime(selection.marked.start, true)}，${selection.marked.count} 条`
     : "";
   return (
-    <svg
+    <div
       className="timeline-density-curve"
-      viewBox={`0 0 ${CURVE_WIDTH} ${CURVE_HEIGHT}`}
-      preserveAspectRatio="none"
+      ref={host}
       role="button"
       tabIndex={0}
-      data-source-seconds={geometry.sourceSeconds}
-      data-peak={Math.round(geometry.peak)}
-      data-scale-peak={Math.round(geometry.scalePeak)}
-      aria-label={`${trackLabel(track)}输入密度曲线，峰值 ${Math.round(geometry.scalePeak)} 条，方向键选择时间桶，回车查看记录${readout}`}
+      data-buckets={choices.length}
+      data-keyboard-at={selection.active?.start}
+      data-source-seconds={series?.sourceSeconds ?? 0}
+      data-peak={Math.round(series?.peak ?? 0)}
+      data-scale-peak={Math.round(scale.peak)}
+      aria-label={`${trackLabel(track)}输入密度曲线，峰值 ${Math.round(scale.peak)} 条，方向键选择时间桶，回车查看记录${readout}`}
       onClick={selection.click}
       onPointerMove={selection.hover}
       onPointerLeave={selection.leave}
       onKeyDown={selection.keyDown}
-    >
-      <defs>
-        <linearGradient id={gradient} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="var(--chart-2)" stopOpacity="0.55" />
-          <stop offset="100%" stopColor="var(--chart-2)" stopOpacity="0.04" />
-        </linearGradient>
-      </defs>
-      {geometry.segments.map((segment) => (
-        <path
-          key={segment.key}
-          className="density-wave"
-          d={segment.area}
-          fill={`url(#${gradient})`}
-        />
-      ))}
-      {geometry.segments.map((segment) => (
-        <path key={`line-${segment.key}`} className="density-line" d={segment.line} />
-      ))}
-      <HitTargets choices={choices} geometry={geometry} />
-      <Markers selection={selection} geometry={geometry} />
-    </svg>
+    />
   );
+}
+
+function drawDensityMarker(
+  plot: uPlot,
+  series: DensitySeries | null,
+  peak: number,
+  active: DensityBucket | null,
+  marked: DensityBucket | null,
+) {
+  const context = plot.ctx;
+  context.save();
+  context.scale(uPlot.pxRatio, uPlot.pxRatio);
+  context.lineWidth = 1;
+  if (active) {
+    const x = plot.valToPos(active.start, "x");
+    context.strokeStyle = plotColor(plot, "--foreground");
+    context.beginPath();
+    context.moveTo(x, 0);
+    context.lineTo(x, plot.height);
+    context.stroke();
+  }
+  if (marked) {
+    const at = (marked.start + marked.end) / 2;
+    const sample = series?.samples.find((sample) => at >= sample.start && at < sample.end);
+    const y = densityHeight(sample?.count ?? 0, peak);
+    context.beginPath();
+    context.arc(plot.valToPos(at, "x"), plot.valToPos(y, "y"), 2.5, 0, 2 * Math.PI);
+    context.fillStyle = plotColor(plot, "--background");
+    context.strokeStyle = plotColor(plot, "--chart-2");
+    context.fill();
+    context.stroke();
+  }
+  context.restore();
 }

@@ -106,24 +106,20 @@ async function settle(page: Page) {
  */
 async function placement(page: Page): Promise<string> {
   return page.evaluate(() => {
-    const segments = [...document.querySelectorAll<HTMLElement>(".timeline-range")];
-    const edges = [segments.at(0), segments.at(-1)].map((segment) =>
-      segment ? `${segment.style.left}|${segment.style.width}` : "-",
-    );
-    const surfaces = [...document.querySelectorAll<HTMLElement>(".timeline-range-canvas")].map(
+    const surfaces = [...document.querySelectorAll<HTMLElement>(".timeline-range-plot")].map(
       (surface) => surface.dataset.range ?? "-",
     );
     const ruler = document.querySelector(".timeline-ruler")?.textContent ?? "";
-    return `${segments.length}/${edges.join("/")}/${surfaces.join(",")}/${ruler}`;
+    return `${surfaces.join(",")}/${ruler}`;
   });
 }
 
-/** Bars on screen, whether they are DOM nodes or drawn on a dense lane's surface. */
+/** Visible records represented by the range plots. */
 async function segmentCount(page: Page): Promise<number> {
   return page.evaluate(() =>
-    [...document.querySelectorAll<HTMLElement>(".timeline-range-canvas")].reduce(
+    [...document.querySelectorAll<HTMLElement>(".timeline-range-plot")].reduce(
       (total, surface) => total + Number(surface.dataset.segments ?? 0),
-      document.querySelectorAll(".timeline-range").length,
+      0,
     ),
   );
 }
@@ -280,7 +276,7 @@ function stageOf(frame: ProfileNode["callFrame"]): string | null {
   if (/^\((program|idle|root|garbage collector)\)$/.test(name)) return `运行时 ${name}`;
   if (/^(projectTimeline|visibleLane|recordOverlaps|showsDensity)$/.test(name)) return "投影";
   if (name === "layoutRanges") return "区间布局";
-  if (/^(drawRanges|CanvasRanges)$/.test(name)) return "区间绘制";
+  if (/^(rangePaths|RangePlot)$/.test(name)) return "区间绘制";
   if (name === "ActivityOverview") return "概览绘制";
   if (/^(describeRecord|summarize[A-Z]|parseForeground)/.test(name)) return "记录摘要";
   if (/^(DensityCurve|density|smoothCurve|curvePath)/.test(name)) return "密度曲线";
@@ -294,7 +290,7 @@ function stageOf(frame: ProfileNode["callFrame"]): string | null {
     return "泳道组件";
   if (/timelineProjection/.test(source)) return "投影";
   if (/rangeLayout/.test(source)) return "区间布局";
-  if (/CanvasRanges/.test(source)) return "区间绘制";
+  if (/RangePlot/.test(source)) return "区间绘制";
   if (/ActivityOverview/.test(source)) return "概览绘制";
   if (/react-dom|react-jsx|\/react\/|scheduler/.test(source)) return "React 渲染";
   return null;
@@ -365,7 +361,7 @@ async function openDay(page: Page, volume: DayVolume, expanded: boolean) {
   await page.goto("/");
   await page.getByRole("button", { name: "全天", exact: true }).click();
   await expect(page.getByRole("region", { name: /活动泳道/ })).toBeVisible();
-  await expect(page.locator(".timeline-range, .timeline-range-canvas").first()).toBeVisible();
+  await expect(page.locator(".timeline-range-plot").first()).toBeVisible();
   if (expanded) {
     await page.getByRole("button", { name: /^展开 .* 的应用$/ }).click();
     await expect(page.locator(".application-sublane").first()).toBeVisible();

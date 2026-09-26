@@ -713,84 +713,20 @@ a:where(:not([data-slot="button"])) {
 .timeline-lane-plot:active {
   cursor: grabbing;
 }
-.timeline-range-bars,
-.timeline-range-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-}
-.timeline-range-canvas:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: -2px;
-}
-.timeline-range {
-  position: absolute;
-  padding: 0;
-  overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--primary) 60%, transparent);
-  border-radius: 2px;
-  background: var(--primary);
-  opacity: 0.8;
-  color: var(--primary-foreground);
-}
-.timeline-range:hover {
-  z-index: 2;
-  opacity: 1;
-  box-shadow: var(--shadow-sm);
-}
-.timeline-range[aria-pressed="true"] {
-  opacity: 1;
-  outline: 1px solid var(--primary-dark);
-  outline-offset: 1px;
-}
-.timeline-tone-muted {
-  background: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
-  color: var(--muted-foreground);
-  border-color: transparent;
-}
-.timeline-tone-attention {
-  background: repeating-linear-gradient(
-    135deg,
-    var(--primary-soft),
-    var(--primary-soft) 4px,
-    var(--card) 4px,
-    var(--card) 8px
-  );
-  color: var(--foreground);
-  border-style: dashed;
-}
+.timeline-range-plot,
 .timeline-density-curve {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  cursor: pointer;
 }
-.density-wave {
-  stroke: none;
+.timeline-range-plot:focus-visible,
+.timeline-density-curve:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
 }
-.density-line {
-  fill: none;
-  stroke: var(--chart-2);
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
-}
-.density-hit {
-  fill: transparent;
-}
-.density-hover-dot {
-  fill: var(--background);
-  stroke: var(--chart-2);
-  stroke-width: 1.5;
-  vector-effect: non-scaling-stroke;
-  pointer-events: none;
-}
-.density-keyboard-marker {
-  stroke: var(--foreground);
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
+.timeline-range-plot .uplot,
+.timeline-density-curve .uplot {
   pointer-events: none;
 }
 .timeline-empty {

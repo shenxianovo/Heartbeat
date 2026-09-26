@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Locator } from "@playwright/test";
 import path from "node:path";
 
 import {
@@ -23,12 +23,45 @@ async function chooseSources(page: Page, names: string[]) {
 
 async function clickCurrentInputDensity(page: Page) {
   const curve = page.locator(".timeline-density-curve").first();
-  await expect(curve.locator(".density-hit").first()).toBeAttached();
+  await expect
+    .poll(async () => Number(await curve.getAttribute("data-buckets")))
+    .toBeGreaterThan(0);
+  await expect.poll(() => hasInk(curve)).toBe(true);
   await curve.focus();
   await curve.press("Enter");
 }
 
+const pageErrors = new WeakMap<Page, string[]>();
+test.afterEach(({ page }) => {
+  expect(pageErrors.get(page) ?? []).toEqual([]);
+});
+
+/** Read actual pixels, not the React wrapper's declared data. Coordinates are fractions of the surface. */
+async function pixel(surface: Locator, x: number, y: number) {
+  return surface.locator("canvas").evaluate(
+    (canvas: HTMLCanvasElement, at) => {
+      return Array.from(
+        canvas
+          .getContext("2d")!
+          .getImageData(Math.floor(at.x * canvas.width), Math.floor(at.y * canvas.height), 1, 1)
+          .data,
+      );
+    },
+    { x, y },
+  );
+}
+
+async function hasInk(surface: Locator) {
+  return surface.locator("canvas").evaluate((canvas: HTMLCanvasElement) => {
+    const pixels = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height).data;
+    return pixels.some((value, index) => index % 4 === 3 && value > 0);
+  });
+}
+
 test.beforeEach(async ({ page }) => {
+  const errors: string[] = [];
+  pageErrors.set(page, errors);
+  page.on("pageerror", (error) => errors.push(error.message));
   await seedSession(page);
   await identityRoutes(page);
 });
@@ -55,11 +88,13 @@ test("统一时间线自动读取完整区间并可查看原始记录", async ({
     page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "Hub 管理" }),
   ).toBeVisible();
   await expect(page.getByLabel("当前登录：tester")).toContainText("T");
-  await expect(page.getByRole("button", { name: "com.apple.finder", exact: true })).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "com.microsoft.VSCode", exact: true }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "时间区间", exact: true }).click();
+  await expect(page.getByRole("button", { name: /当前 com\.apple\.finder/ })).toBeVisible();
+  const ranges = page.getByRole("button", { name: /当前 com\.apple\.finder/ });
+  await expect(page.getByRole("region", { name: "区间记录列表" })).toContainText(
+    "com.microsoft.VSCode",
+  );
+  await ranges.press("ArrowRight");
+  await page.getByRole("button", { name: /当前 时间区间/ }).press("Enter");
   await page.getByRole("button", { name: "查看详情" }).click();
   await expect(page.getByText(/malformed-observation/).first()).toBeVisible();
   await expect(page.getByText("原始 JSON", { exact: true }).first()).toBeVisible();
@@ -108,7 +143,7 @@ test("请求失败后可重试恢复", async ({ page }) => {
   });
   await recordingRoutes(page);
   await page.getByRole("button", { name: "重试" }).click();
-  await expect(page.getByRole("button", { name: "com.apple.finder", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /当前 com\.apple\.finder/ })).toBeVisible();
 });
 
 test("一条 Track 失败时保留其余数据并可单独重试", async ({ page }) => {
@@ -126,11 +161,11 @@ test("一条 Track 失败时保留其余数据并可单独重试", async ({ page
   const failureAlert = page.locator(".density-error");
   await expect(failureAlert).toContainText("1 条 Track 读取失败");
   await expect(page.getByText("观测状态", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "com.apple.finder", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /当前 com\.apple\.finder/ })).toHaveCount(0);
 
   failDesktop = false;
   await page.getByRole("button", { name: "重试失败 Track" }).click();
-  await expect(page.getByRole("button", { name: "com.apple.finder", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /当前 com\.apple\.finder/ })).toBeVisible();
   await expect(failureAlert).toHaveCount(0);
 });
 
@@ -169,13 +204,13 @@ test("部分 Track 失败而其余仍在加载时不误报全部失败", async (
 test("退出后清理会话，返回首页不能继续查看缓存记录", async ({ page }) => {
   await recordingRoutes(page);
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "com.apple.finder", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /当前 com\.apple\.finder/ })).toBeVisible();
   await page.getByRole("button", { name: "退出登录" }).click();
   await expect(page).toHaveURL(/\/login/);
   expect(await page.evaluate((key) => sessionStorage.getItem(key), userStorageKey)).toBeNull();
   await page.goto("/");
   await expect(page).toHaveURL(/\/login/);
-  await expect(page.getByRole("button", { name: "com.apple.finder", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /当前 com\.apple\.finder/ })).toHaveCount(0);
 });
 
 test("重叠区间分别可见且可以直接展开", async ({ page }) => {
@@ -197,15 +232,30 @@ test("重叠区间分别可见且可以直接展开", async ({ page }) => {
   });
   await page.goto("/");
   await page.getByRole("button", { name: "全天", exact: true }).click();
-  const first = page.getByRole("button", { name: "Overlap A", exact: true });
-  const second = page.getByRole("button", { name: "Overlap B", exact: true });
-  await expect(first).toBeVisible();
-  await expect(second).toBeVisible();
-  const a = (await first.boundingBox())!;
-  const b = (await second.boundingBox())!;
-  expect(a.y + a.height <= b.y || b.y + b.height <= a.y).toBe(true);
-  await first.click();
-  await expect(page.getByText("所选区间")).toBeVisible();
+  const lane = page.locator(".timeline-range-plot").first();
+  const box = (await lane.boundingBox())!;
+  const x = box.x + box.width / 4;
+  await expect.poll(async () => (await pixel(lane, 0.25, 18 / box.height))[3]).toBeGreaterThan(0);
+  await expect.poll(async () => (await pixel(lane, 0.25, 46 / box.height))[3]).toBeGreaterThan(0);
+  expect((await pixel(lane, 0.5, 18 / box.height))[3]).toBe(0);
+  const light = await pixel(lane, 0.25, 18 / box.height);
+  await page.getByRole("button", { name: "切换到深色" }).click();
+  await expect.poll(() => pixel(lane, 0.25, 18 / box.height)).not.toEqual(light);
+  // Empty time is neither painted nor selectable.
+  await page.mouse.click(box.x + box.width / 2, box.y + 18);
+  await expect(page.getByRole("region", { name: "所选记录详情" })).toHaveCount(0);
+  // Known fixture spans 04:00–08:00; its overlapping records must occupy separate rows.
+  await page.mouse.click(x, box.y + 18);
+  await expect(page.getByRole("region", { name: "所选记录详情" })).toContainText("Overlap A");
+  await page.mouse.click(x, box.y + 46);
+  await expect(page.getByRole("region", { name: "所选记录详情" })).toContainText("Overlap B");
+  await lane.focus();
+  await lane.press("ArrowRight");
+  await expect(lane).toHaveAttribute("aria-label", /当前 Overlap B/);
+  await lane.press("Enter");
+  await expect(page.getByRole("region", { name: "所选记录详情" })).toContainText("Overlap B");
+  await page.setViewportSize({ width: 900, height: 800 });
+  await expect.poll(async () => (await pixel(lane, 0.25, 18 / box.height))[3]).toBeGreaterThan(0);
   await page.screenshot({ path: evidencePath("replay-overlapping.png"), fullPage: true });
 });
 
@@ -215,7 +265,7 @@ test("来源可以组合选择，空选择不会一直加载", async ({ page }) 
   await chooseSources(page, []);
   await expect(page.getByRole("heading", { name: "尚未选择来源" })).toBeVisible();
   await chooseSources(page, ["测试 Mac", "自定义来源"]);
-  await expect(page.getByRole("button", { name: "com.apple.finder", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /当前 com\.apple\.finder/ })).toBeVisible();
   await expect(
     page.getByRole("button", { name: /example\.observation.*输入密度曲线/ }),
   ).toBeVisible();
@@ -294,8 +344,7 @@ test("密度曲线在细节读取时保持可见，复用同一时间片并可�
   await page.goto("/");
   await page.getByRole("button", { name: "全天", exact: true }).click();
   const curve = page.locator(".timeline-density-curve").first();
-  await expect(curve.locator("path.density-wave").first()).toHaveAttribute("d", /M /);
-  await expect(curve.locator("path.density-wave")).toHaveCount(1);
+  await expect(curve.locator("canvas")).toBeVisible();
   const height = await curve.evaluate((element) => element.getBoundingClientRect().height);
   const start = Number(
     await page.getByRole("slider", { name: "范围起点" }).getAttribute("aria-valuenow"),
@@ -313,7 +362,7 @@ test("密度曲线在细节读取时保持可见，复用同一时间片并可�
   await page.mouse.wheel(0, -500);
   await page.keyboard.up("Control");
   await expect.poll(() => waiting).toBeGreaterThan(0);
-  await expect(curve.locator("path.density-wave").first()).toHaveAttribute("d", /M /);
+  await expect(curve.locator("canvas")).toBeVisible();
   expect(await curve.evaluate((element) => element.getBoundingClientRect().height)).toBe(height);
   const coarseSeconds = Number(await curve.getAttribute("data-source-seconds"));
   releaseFine();
@@ -341,7 +390,7 @@ test("密度曲线在细节读取时保持可见，复用同一时间片并可�
   await page.getByRole("button", { name: "关闭详情" }).click();
   await curve.focus();
   await page.keyboard.press("ArrowRight");
-  await expect(curve.locator(".density-keyboard-marker")).toHaveCount(1);
+  await expect(curve).toHaveAttribute("data-keyboard-at", /\d+/);
   await page.keyboard.press("Enter");
   await expect(page.locator(".point-details")).toBeVisible();
 });
@@ -354,7 +403,7 @@ test("应用子泳道与记录详情联动，日期切换清理选中记录", as
     .locator(".application-sublane")
     .filter({ has: page.getByText("com.apple.finder", { exact: true }) });
   await expect(app).toBeVisible();
-  await app.getByRole("button", { name: "com.apple.finder", exact: true }).click();
+  await app.getByRole("button", { name: /当前 com\.apple\.finder/ }).press("Enter");
   await expect(page.getByRole("region", { name: "所选记录详情" })).toBeVisible();
   await page.getByRole("button", { name: "聚焦此记录" }).click();
   const span =
@@ -377,10 +426,10 @@ test("观测状态与其他 Track 分开展示", async ({ page }) => {
   await expect(page.getByRole("region", { name: "区间记录列表" })).toContainText("观测状态");
 
   const warning = page.getByRole("button", {
-    name: "应用观测 · 缺少权限 · screen-recording",
+    name: /当前 应用观测 · 缺少权限 · screen-recording/,
   });
   await expect(warning).toBeVisible();
-  await warning.click();
+  await warning.press("Enter");
   await expect(page.getByRole("region", { name: "所选记录详情" })).toContainText(
     "应用观测 · 缺少权限",
   );
@@ -538,8 +587,13 @@ test("泳道悬停提示是跟随指针的浮层，离开即收起", async ({ pa
   expect(moved.x).toBeGreaterThan(first.x);
 
   // 区间段：同一个浮层复用，同时只会有一个。
-  const range = page.getByRole("button", { name: "com.apple.finder", exact: true }).first();
-  await range.hover();
+  const range = page.getByRole("button", { name: /当前 com\.apple\.finder/ }).first();
+  const rangeBox = (await range.boundingBox())!;
+  const finderAt = Date.now() - 29 * 60_000;
+  await page.mouse.move(
+    rangeBox.x + ((finderAt - start) / (end - start)) * rangeBox.width,
+    rangeBox.y + 18,
+  );
   await expect(tip).toHaveCount(1);
   await expect(tip).toContainText("com.apple.finder");
   await page.screenshot({ path: evidencePath("replay-hover-tip.png") });
@@ -602,7 +656,7 @@ test("现在自动跟随；用户操作和刷新保留视窗，回到现在才�
   const resumed = await readStart();
   await page.clock.fastForward(30_000);
   await expect.poll(readStart).toBeGreaterThan(resumed);
-  await page.getByRole("button", { name: "com.apple.finder", exact: true }).click();
+  await page.getByRole("button", { name: /当前 com\.apple\.finder/ }).press("Enter");
   const inspecting = await readStart();
   await page.clock.fastForward(30_000);
   expect(await readStart()).toBe(inspecting);

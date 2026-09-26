@@ -94,46 +94,12 @@ function statusRecord(
 }
 
 describe("timeline record geometry and selection", () => {
-  it("does not turn a one-second interval into minutes of observed coverage", () => {
-    render(
-      <TimelineViewport
-        lanes={[lane([record("short")])]}
-        bounds={{ start: Date.parse(from), end: Date.parse(to) }}
-        range={{ start: Date.parse(from), end: Date.parse(to) }}
-        overviewLanes={[]}
-        densityStatus={null}
-        onRange={() => {}}
-        onSelectPoints={() => {}}
-      />,
-    );
-    const width = parseFloat(screen.getByRole("button", { name: "时间区间" }).style.width);
-    expect(width).toBeCloseTo(100 / 86_400, 8);
-  });
-
   it("does not keep details from a source excluded by the current selection", () => {
-    const view = render(
-      <TimelineViewport
-        lanes={[lane([record("first")])]}
-        bounds={{ start: Date.parse(from), end: Date.parse(to) }}
-        range={{ start: Date.parse(from), end: Date.parse(to) }}
-        overviewLanes={[]}
-        densityStatus={null}
-        onRange={() => {}}
-        onSelectPoints={() => {}}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "时间区间" }));
+    const view = renderViewport({ lanes: [lane([record("first")])] });
+    fireEvent.keyDown(screen.getByRole("button", { name: /当前 时间区间/ }), { key: "Enter" });
     expect(screen.getByText("所选区间")).toBeInTheDocument();
     view.rerender(
-      <TimelineViewport
-        lanes={[lane([record("second")], { ...track, id: "second-track" })]}
-        bounds={{ start: Date.parse(from), end: Date.parse(to) }}
-        range={{ start: Date.parse(from), end: Date.parse(to) }}
-        overviewLanes={[]}
-        densityStatus={null}
-        onRange={() => {}}
-        onSelectPoints={() => {}}
-      />,
+      viewport({ lanes: [lane([record("second")], { ...track, id: "second-track" })] }),
     );
     expect(screen.queryByText("所选区间")).not.toBeInTheDocument();
   });
@@ -173,69 +139,40 @@ describe("timeline presentation projection", () => {
   });
 
   it("keeps observation status as its own lane and range record", () => {
-    render(
-      <TimelineViewport
-        lanes={[
-          lane([], foregroundTrack),
-          lane([statusRecord("permission", "application", "permission_required")], statusTrack),
-        ]}
-        bounds={{ start: Date.parse(from), end: Date.parse(to) }}
-        range={{ start: Date.parse(from), end: Date.parse(to) }}
-        overviewLanes={[]}
-        densityStatus={null}
-        onRange={() => {}}
-        onSelectPoints={() => {}}
-      />,
-    );
+    renderViewport({
+      lanes: [
+        lane([], foregroundTrack),
+        lane([statusRecord("permission", "application", "permission_required")], statusTrack),
+      ],
+    });
 
     expect(screen.queryByText("前台应用", { selector: ".timeline-lane-label strong" })).toBeNull();
     expect(screen.getByText("观测状态", { selector: ".timeline-lane-label strong" })).toBeVisible();
-    const warning = screen.getByRole("button", { name: "应用观测 · 缺少权限 · accessibility" });
-    expect(warning).toHaveClass("timeline-tone-attention");
+    const warning = screen.getByRole("button", {
+      name: /当前 应用观测 · 缺少权限 · accessibility/,
+    });
     expect(screen.getByRole("heading", { name: /\u8bb0录/ })).toHaveTextContent("1");
 
-    fireEvent.click(warning);
+    fireEvent.keyDown(warning, { key: "Enter" });
     expect(screen.getByRole("region", { name: "所选记录详情" })).toHaveTextContent(
       "应用观测 · 缺少权限",
     );
   });
 
   it("shows an available status only on its own lane", () => {
-    render(
-      <TimelineViewport
-        lanes={[
-          lane([], foregroundTrack),
-          lane([statusRecord("available", "application", "available")], statusTrack),
-        ]}
-        bounds={{ start: Date.parse(from), end: Date.parse(to) }}
-        range={{ start: Date.parse(from), end: Date.parse(to) }}
-        overviewLanes={[]}
-        densityStatus={null}
-        onRange={() => {}}
-        onSelectPoints={() => {}}
-      />,
-    );
+    renderViewport({
+      lanes: [
+        lane([], foregroundTrack),
+        lane([statusRecord("available", "application", "available")], statusTrack),
+      ],
+    });
 
     expect(screen.getByLabelText("Example")).toBeVisible();
     expect(screen.queryByText("前台应用", { selector: ".timeline-lane-label strong" })).toBeNull();
     expect(screen.getByText("观测状态", { selector: ".timeline-lane-label strong" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "应用观测 · 可用 · accessibility" })).toBeVisible();
-  });
-
-  it("moves a dense lane onto one drawing surface and keeps a sparse lane on buttons", () => {
-    const many = (count: number) =>
-      Array.from({ length: count }, (_, index) => record(`bar-${index}`));
-    const view = renderViewport({ lanes: [lane(many(3))] });
-
-    expect(screen.getAllByRole("button", { name: "时间区间" })).toHaveLength(3);
-    expect(document.querySelector(".timeline-range-canvas")).toBeNull();
-
-    view.rerender(viewport({ lanes: [lane(many(401))] }));
-
-    expect(screen.queryAllByRole("button", { name: "时间区间" })).toHaveLength(0);
-    expect(document.querySelector<HTMLElement>(".timeline-range-canvas")?.dataset.segments).toBe(
-      "401",
-    );
+    expect(
+      screen.getByRole("button", { name: /当前 应用观测 · 可用 · accessibility/ }),
+    ).toBeVisible();
   });
 });
 

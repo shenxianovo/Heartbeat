@@ -5,8 +5,7 @@ import { useTooltip } from "@/components/ui/Tooltip";
 import { describeRecord } from "@/components/records/renderers/registry";
 import { laneHeight, layoutRanges } from "./rangeLayout";
 import { DensityCurve } from "./DensityCurve";
-import { CanvasRanges } from "./CanvasRanges";
-import { RangeBars } from "./RangeBars";
+import { RangePlot } from "./RangePlot";
 import type { DensityScale } from "./densityScale";
 import { overlaps, timeTicks, type TimeRange } from "./timeRange";
 
@@ -33,9 +32,6 @@ interface Props {
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
 }
-
-/** Below this count, individual DOM buttons keep direct keyboard access. */
-const MAX_RANGE_BUTTONS = 400;
 
 /** A lane name that reads out in full on hover, but only while it is actually clipped. */
 function LaneName({ text }: { text: string }) {
@@ -112,12 +108,7 @@ function RecordPlot({
           style={{ left: `${tick.left}%` }}
         />
       ))}
-      {/* One surface costs a redraw per frame; one node per observation costs a layout pass. */}
-      {layout.items.length > MAX_RANGE_BUTTONS ? (
-        <CanvasRanges {...medium} />
-      ) : (
-        <RangeBars {...medium} />
-      )}
+      {lane.track.timeMode === "range" ? <RangePlot {...medium} /> : null}
       {lane.track.timeMode === "point" ? (
         <DensityCurve
           track={lane.track}

@@ -47,6 +47,12 @@ Track 的 `timeMode` 由通用时间轴映射为 Range 区间条或 Point 密度
 
 回放页面按 Owner、Track 和时间范围独立缓存查询结果。一条 Track 失败时其余 Track 继续展示，失败项可单独重试；Point 密度 tile 通过 QueryCache 订阅响应更新，刷新会使当前时间窗内各粒度缓存失效。页面选择状态与查询组合的责任见 [ADR-0012](../../../docs/adr/ADR-0012-web-replay-state-and-track-queries.md)。
 
+## 绘图库边界
+
+uPlot 专门用于高密度时序图；其他可视化按类型选择工具，不建立统一绘图库抽象。全天概览目前保留按数据变化计算的 SVG，拖动时只更新范围遮罩与手柄。
+
+`useTimePlot` 只连接 React 与 uPlot 的生命周期、尺寸和主题：挂载创建、数据或视窗变化时批量同步、卸载销毁。它关闭库内的范围选择，沿用 Heartbeat 唯一的视窗与交互状态；两处 layout effect 分别同步外部图表数据和管理实例订阅，不推导页面状态。`RangePlot` 提供显式区间路径，`DensityCurve` 使用库内曲线路径；协议展示注册表继续只解释内容。绘制替换遵循 ADR-0011，不改变 API、Track 或 Record 语义。
+
 ## 验证
 
 ```bash
@@ -91,7 +97,8 @@ npm run test:perf
 
 - 顶层按 Collector 来源分组，每条 Track 独立展示；来源分组不表示 Device Identity。
 - Range Track 完整读取后在浏览器裁剪，重叠区间分行，空白不补齐。
-- 可见区间超过 400 条时，整条泳道画在一张画布上，不再为每条记录建一个 DOM 节点；hover、选择和方向键浏览都落在这张画布上，颜色语气和文案仍来自同一个 renderer registry。密集绘制不画斜纹与边框，行高、行距与命中范围由 `rangeLayout.ts` 一处给出，两种介质共用。
+- 活动泳道的 Range 区间和 Point 密度统一用 uPlot / Canvas 2D 绘制；每条泳道（含展开的应用子泳道）只有一个图表，不再按记录数切换 DOM 分支。区间按颜色批量构建路径，重叠行高、行距与最小可点击宽度仍由 `rangeLayout.ts` 定义；最小像素宽度不改变 Record 的真实时间。
+- 每条区间泳道是一个键盘入口，方向键浏览、回车打开当前记录；hover、点击和焦点标记使用同一时间几何。Point 密度保留真实桶的选择范围、跨泳道共享尺度，以及已读取的零计数与未观测空白的区别。
 - Point Track 用服务端计数绘制密度，用户选择局部时间桶后才读取原始详情。
 - 公共时间线只处理时间几何；协议摘要和详情由同一个 renderer registry 提供。
 - 未知协议仍显示时间位置和安全的原始 JSON。

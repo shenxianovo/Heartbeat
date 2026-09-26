@@ -52,7 +52,7 @@ test("登录使用 PKCE，并通过回调恢复会话和回放", async ({ page, 
   });
   await page.goto(`/auth/callback?code=test-code&state=${encodeURIComponent(state!)}`);
   await expect(page).toHaveURL(`${baseURL}/`);
-  await expect(page.getByRole("button", { name: "com.apple.finder", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /当前 com\.apple\.finder/ })).toBeVisible();
 });
 
 test("异常登录回调提供可恢复的错误界面", async ({ page }) => {
