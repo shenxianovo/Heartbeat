@@ -99,16 +99,20 @@ export async function verifyReplay(
 
 async function selectRecord(page: Page, expected: ReplayWitness) {
   const timeline = page.getByRole("region", { name: "活动泳道，方向键平移，加减键缩放" });
-  const candidates = timeline.getByRole("button", { name: expected.applicationName, exact: true });
-  await expect(candidates.first()).toBeVisible();
-  // A real observation gap may leave several intervals for the same application.
-  // Open the actual witness rather than assuming the first similarly named bar is it.
-  for (const candidate of await candidates.all()) {
-    await candidate.click();
-    await expect(candidate).toHaveAttribute("aria-pressed", "true");
-    const details = page.getByRole("region", { name: "所选记录详情" });
-    await details.getByRole("button", { name: "查看详情", exact: true }).click();
-    if (await details.getByText(expected.record.recordId, { exact: true }).isVisible()) return;
+  const lanes = timeline.getByRole("button", { name: /条区间；方向键浏览，回车查看/ });
+  await expect(lanes.first()).toBeVisible();
+  // Each Canvas lane is one keyboard target. Traverse records as a keyboard user does;
+  // application names can repeat across gaps, so the selected Record ID is the witness.
+  for (const lane of await lanes.all()) {
+    const count = Number(await lane.getAttribute("data-segments"));
+    for (let index = 0; index < count; index++) {
+      await lane.press("Enter");
+      const details = page.getByRole("region", { name: "所选记录详情" });
+      const expand = details.getByRole("button", { name: "查看详情", exact: true });
+      if (await expand.isVisible()) await expand.click();
+      if (await details.getByText(expected.record.recordId, { exact: true }).isVisible()) return;
+      await lane.press("ArrowRight");
+    }
   }
   throw new Error("The database Record could not be selected in the timeline.");
 }
