@@ -14,7 +14,7 @@ public sealed class EnvironmentSetupTests : IDisposable
         var original = $"# preserve me\nCUSTOM='untouched'\nHEARTBEAT_OWNER_ID='{Owner.ToUpperInvariant()}'\n";
         File.WriteAllText(EnvPath, original);
         const string apiKey = "a$secret'with\\quotes";
-        var input = new SetupInput(["y", apiKey, "my-target", "My PC"]);
+        var input = new SetupInput(["y", apiKey]);
         var runner = new SetupRunner(EnvPath, original);
         using var output = new StringWriter();
         await new EnvironmentSetup(new RepositoryContext(_root), runner, input, output).RunAsync(CancellationToken.None);
@@ -22,14 +22,14 @@ public sealed class EnvironmentSetupTests : IDisposable
         var saved = DotenvFile.Read(EnvPath);
         Assert.Equal(apiKey, saved.GetSaved("HEARTBEAT_API_KEY"));
         Assert.Equal(Owner, saved.GetSaved("HEARTBEAT_OWNER_ID"));
-        Assert.Equal("my-target", saved.GetSaved("HEARTBEAT_COLLECTOR_TARGET"));
-        Assert.Equal("My PC", saved.GetSaved("HEARTBEAT_COLLECTOR_DISPLAY_NAME"));
+        Assert.Null(saved.GetSaved("HEARTBEAT_COLLECTOR_TARGET"));
+        Assert.Null(saved.GetSaved("HEARTBEAT_COLLECTOR_DISPLAY_NAME"));
         Assert.Equal("untouched", saved.GetSaved("CUSTOM"));
         Assert.StartsWith("# preserve me", File.ReadAllText(EnvPath));
         Assert.Equal(64, saved.GetSaved("HEARTBEAT_HUB_TOKEN")!.Length);
         Assert.DoesNotContain(apiKey, output.ToString());
         Assert.DoesNotContain(saved.GetSaved("HEARTBEAT_HUB_TOKEN")!, output.ToString());
-        Assert.Equal([false, true, false, false], input.SecretPrompts);
+        Assert.Equal([false, true], input.SecretPrompts);
         Assert.Equal(2, runner.Calls);
         Assert.Equal([EnvPath], Directory.GetFiles(_root));
         if (!OperatingSystem.IsWindows())
@@ -46,11 +46,12 @@ public sealed class EnvironmentSetupTests : IDisposable
     {
         var original = $"HEARTBEAT_OWNER_ID='{Owner}'\nHEARTBEAT_API_KEY='saved-key'\n";
         File.WriteAllText(EnvPath, original);
-        var input = new SetupInput(["y", "replacement-key"], cancelAfterInputs: failure == "cancel");
-        var runner = new SetupRunner(EnvPath, original, failure);
+        var input = new SetupInput(["y", "replacement-key"]);
+        using var cancellation = new CancellationTokenSource();
+        var runner = new SetupRunner(EnvPath, original, failure, cancellation);
         var setup = new EnvironmentSetup(new RepositoryContext(_root), runner, input, TextWriter.Null);
-        if (failure == "cancel") await Assert.ThrowsAnyAsync<OperationCanceledException>(() => setup.RunAsync(CancellationToken.None));
-        else await Assert.ThrowsAsync<InvalidOperationException>(() => setup.RunAsync(CancellationToken.None));
+        if (failure == "cancel") await Assert.ThrowsAnyAsync<OperationCanceledException>(() => setup.RunAsync(cancellation.Token));
+        else await Assert.ThrowsAsync<InvalidOperationException>(() => setup.RunAsync(cancellation.Token));
         Assert.Equal(original, File.ReadAllText(EnvPath));
         Assert.Equal([EnvPath], Directory.GetFiles(_root));
     }
@@ -59,12 +60,12 @@ public sealed class EnvironmentSetupTests : IDisposable
     public async Task RerunKeepsSavedValuesAndTheSeparateHubToken()
     {
         var hubToken = new string('A', 64);
-        var original = $"HEARTBEAT_API_KEY='keep-key'\nHEARTBEAT_HUB_TOKEN='{hubToken}'\nHEARTBEAT_COLLECTOR_TARGET='keep-target'\nHEARTBEAT_COLLECTOR_DISPLAY_NAME='Keep name'\n";
+        var original = $"HEARTBEAT_API_KEY='keep-key'\nHEARTBEAT_HUB_TOKEN='{hubToken}'\n";
         File.WriteAllText(EnvPath, original);
         using var output = new StringWriter();
         var runner = new SetupRunner(EnvPath, original);
         await new EnvironmentSetup(new RepositoryContext(_root), runner,
-            new SetupInput(["y", "", "", ""]), output).RunAsync(CancellationToken.None);
+            new SetupInput(["y", ""]), output).RunAsync(CancellationToken.None);
         Assert.Contains("Existing .env.local found", output.ToString());
         Assert.Contains("Building Hub authentication checker", output.ToString());
         Assert.Contains("Validating API key with Auth", output.ToString());
@@ -72,8 +73,6 @@ public sealed class EnvironmentSetupTests : IDisposable
         var saved = DotenvFile.Read(EnvPath);
         Assert.Equal("keep-key", saved.GetSaved("HEARTBEAT_API_KEY"));
         Assert.Equal(hubToken, saved.GetSaved("HEARTBEAT_HUB_TOKEN"));
-        Assert.Equal("keep-target", saved.GetSaved("HEARTBEAT_COLLECTOR_TARGET"));
-        Assert.Equal("Keep name", saved.GetSaved("HEARTBEAT_COLLECTOR_DISPLAY_NAME"));
     }
 
     [Fact]
@@ -121,19 +120,19 @@ public sealed class EnvironmentSetupTests : IDisposable
 
     public void Dispose() => Directory.Delete(_root, true);
 
-    private sealed class SetupInput(string[] values, bool cancelAfterInputs = false) : ISetupInput
+    private sealed class SetupInput(string[] values) : ISetupInput
     {
         private int _next;
         public List<bool> SecretPrompts { get; } = [];
         public Task<string> ReadAsync(string prompt, bool secret, CancellationToken token)
         {
-            if (cancelAfterInputs && _next == values.Length) throw new OperationCanceledException();
             SecretPrompts.Add(secret);
             return Task.FromResult(values[_next++]);
         }
     }
 
-    private sealed class SetupRunner(string finalPath, string original, string? failure = null) : IProcessRunner
+    private sealed class SetupRunner(string finalPath, string original, string? failure = null,
+        CancellationTokenSource? cancellation = null) : IProcessRunner
     {
         public int Calls { get; private set; }
         public int BrowserOpens { get; private set; }
@@ -155,6 +154,11 @@ public sealed class EnvironmentSetupTests : IDisposable
             Assert.NotNull(environment);
             Assert.Null(environment["HEARTBEAT_API_KEY"]);
             Assert.Null(environment["HEARTBEAT_OWNER_ID"]);
+            if (failure == "cancel" && Calls == 2)
+            {
+                cancellation!.Cancel();
+                cancellationToken.ThrowIfCancellationRequested();
+            }
             if (failure == "build" || failure == "auth" && Calls == 2)
                 return Task.FromResult(new ProcessResult(7, "", "must not leak secret output"));
             var result = failure switch

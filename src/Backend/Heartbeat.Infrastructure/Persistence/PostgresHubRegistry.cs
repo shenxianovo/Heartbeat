@@ -41,8 +41,8 @@ public sealed class PostgresHubRegistry(HeartbeatDbContext db, TimeProvider cloc
         return updated;
     }
 
-    // Persist only the status needed to display an offline node. Configuration and
-    // installed-type forms remain live data from the executing Hub.
+    // Persist only the status needed to display an offline node.
+    // Login forms remain live data from the executing Hub.
     private sealed record SavedStatus(string DisplayName, string Kind, StatusCollector[] Collectors, DeliveryState Delivery)
     {
         public static SavedStatus From(HubReport report) => new(report.DisplayName, report.Kind,

@@ -7,8 +7,7 @@ internal sealed class SetupAuthCheck(
     RepositoryContext repository, IProcessRunner runner, TextWriter output, TimeSpan? stepTimeout = null)
 {
     private static readonly string[] ConfigurationKeys =
-        ["AUTH_AUTHORITY", "HEARTBEAT_API_KEY", "HEARTBEAT_OWNER_ID", "HEARTBEAT_HUB_TOKEN",
-         "HEARTBEAT_COLLECTOR_TARGET", "HEARTBEAT_COLLECTOR_DISPLAY_NAME"];
+        ["AUTH_AUTHORITY", "HEARTBEAT_API_KEY", "HEARTBEAT_OWNER_ID", "HEARTBEAT_HUB_TOKEN"];
 
     public async Task<string> RunAsync(string envFile, CancellationToken token)
     {

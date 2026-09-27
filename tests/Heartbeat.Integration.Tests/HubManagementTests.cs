@@ -31,8 +31,13 @@ public sealed class HubManagementTests(PostgresFixture fixture) : PostgresTestBa
         Assert.Empty((await other.GetFromJsonAsync<HubList>("/api/v1/hubs", Token))!.Hubs);
         using var rejected = await other.PostAsJsonAsync($"/api/v1/hubs/{id}/check-in", checkIn, Token);
         Assert.Equal(HttpStatusCode.NotFound, rejected.StatusCode);
+        var login = new CollectorLoginRequest("example", JsonSerializer.SerializeToElement(new { username = "user" }));
+        using var foreignLogin = await other.PostAsJsonAsync($"/api/v1/hubs/{id}/login", login, Token);
+        Assert.Equal(HttpStatusCode.NotFound, foreignLogin.StatusCode);
         clock.Now += HubManagement.OnlineTimeout;
         Assert.False(Assert.Single((await client.GetFromJsonAsync<HubList>("/api/v1/hubs", Token))!.Hubs).Online);
+        using var offlineLogin = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/login", login, Token);
+        Assert.Equal(HttpStatusCode.Conflict, offlineLogin.StatusCode);
         using var retired = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/retire", new { }, Token);
         Assert.Equal(HttpStatusCode.NoContent, retired.StatusCode);
         using var reconnect = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/check-in", checkIn, Token);
@@ -40,7 +45,7 @@ public sealed class HubManagementTests(PostgresFixture fixture) : PostgresTestBa
     }
 
     [Fact]
-    public async Task OnlineOperationIsDeliveredOnceAndOnlySucceedsAfterHubAcknowledgement()
+    public async Task OnlineLoginIsDeliveredOnceAndOnlySucceedsAfterHubAcknowledgement()
     {
         await using var factory = RecordingApiFactory.Create(ConnectionString, TimeProvider.System);
         using var client = factory.CreateClient();
@@ -49,7 +54,7 @@ public sealed class HubManagementTests(PostgresFixture fixture) : PostgresTestBa
         var checkIn = new HubCheckIn(Guid.NewGuid(), Report);
         using var first = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/check-in", checkIn, Token);
         first.EnsureSuccessStatusCode();
-        var operation = client.PostAsJsonAsync($"/api/v1/hubs/{id}/operations", new CollectorOperation("start", "example", "target"), Token);
+        var operation = client.PostAsJsonAsync($"/api/v1/hubs/{id}/login", new CollectorLoginRequest("example", JsonSerializer.SerializeToElement(new { username = "user", password = "private-password" })), Token);
         HubCommand? command = null;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(Token);
         deadline.CancelAfter(TimeSpan.FromSeconds(10));
@@ -61,8 +66,8 @@ public sealed class HubManagementTests(PostgresFixture fixture) : PostgresTestBa
             if (command is null) await Task.Delay(10, deadline.Token);
         }
         Assert.False(operation.IsCompleted);
-        using var busy = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/operations",
-            new CollectorOperation("configure", "example", "unclaimed"), Token);
+        using var busy = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/login",
+            new CollectorLoginRequest("example", JsonSerializer.SerializeToElement(new { })), Token);
         Assert.Equal(HttpStatusCode.Conflict, busy.StatusCode);
         using var unclaimed = await client.PostAsJsonAsync($"/api/v1/hubs/{Guid.NewGuid()}/check-in",
             new HubCheckIn(Guid.NewGuid(), Report with { Collectors = [new("example", "unclaimed", "Example", "paused", null)] }), Token);
@@ -106,13 +111,13 @@ public sealed class HubManagementTests(PostgresFixture fixture) : PostgresTestBa
     }
 
     [Fact]
-    public async Task OfflineStatusSurvivesApiRestartButPublicConfigurationDoesNotEnterDatabase()
+    public async Task OfflineStatusSurvivesApiRestartButLoginFormsRemainLiveOnly()
     {
         var clock = new MutableClock();
         var owner = Guid.NewGuid();
         var id = Guid.NewGuid();
-        var report = Report with { Collectors = [new("example", "target", "Example", "paused", null,
-            JsonSerializer.SerializeToElement(new { localSetting = "only-on-executing-hub" }))] };
+        var report = Report with { Types = [new("example", "Example", [new("username", "Live login field", "text")])],
+            Collectors = [new("example", "target", "Example", "running", null)] };
         await using (var factory = RecordingApiFactory.Create(ConnectionString, clock))
         {
             using var client = factory.CreateClient();
@@ -120,11 +125,11 @@ public sealed class HubManagementTests(PostgresFixture fixture) : PostgresTestBa
             using var response = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/check-in", new HubCheckIn(Guid.NewGuid(), report), Token);
             response.EnsureSuccessStatusCode();
             var live = Assert.Single((await client.GetFromJsonAsync<HubList>("/api/v1/hubs", Token))!.Hubs);
-            Assert.Equal("only-on-executing-hub", live.Report.Collectors[0].Configuration!.Value.GetProperty("localSetting").GetString());
+            Assert.Equal("Live login field", live.Report.Types[0].Fields[0].Label);
             await using var db = CreateDbContext();
             var saved = await db.Hubs.SingleAsync(Token);
             Assert.DoesNotContain("configuration", saved.StatusJson);
-            Assert.DoesNotContain("only-on-executing-hub", saved.StatusJson);
+            Assert.DoesNotContain("Live login field", saved.StatusJson);
             Assert.DoesNotContain("types", saved.StatusJson);
         }
         clock.Now += HubManagement.OnlineTimeout;
@@ -133,9 +138,8 @@ public sealed class HubManagementTests(PostgresFixture fixture) : PostgresTestBa
         offline.DefaultRequestHeaders.Add(RecordingApiFactory.OwnerHeader, owner.ToString());
         var hub = Assert.Single((await offline.GetFromJsonAsync<HubList>("/api/v1/hubs", Token))!.Hubs);
         Assert.False(hub.Online);
-        Assert.Equal("paused", Assert.Single(hub.Report.Collectors).State);
+        Assert.Equal("running", Assert.Single(hub.Report.Collectors).State);
         Assert.Equal(7, hub.Report.Delivery.Pending);
-        Assert.Null(hub.Report.Collectors[0].Configuration);
         Assert.Empty(hub.Report.Types);
     }
 

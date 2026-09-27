@@ -1,36 +1,26 @@
 "use client";
 
-import type { CollectorOperation, CollectorState, CollectorType } from "@/api/hubs";
+import type { CollectorState, CollectorType } from "@/api/hubs";
 import { Button } from "@/components/ui/button";
 
 const stateNames: Record<string, string> = {
   running: "采集中",
   paused: "已暂停",
   error: "发生错误",
-  authentication_required: "需要认证",
+  authentication_required: "需要登录",
 };
 
 export function CollectorRow({
   collector,
   type,
   disabled,
-  operate,
-  edit,
+  login,
 }: {
   collector: CollectorState;
   type?: CollectorType;
   disabled: boolean;
-  operate: (operation: CollectorOperation) => Promise<void>;
-  edit: (form: { type: CollectorType; collector: CollectorState }) => void;
+  login: (form: { type: CollectorType; target: string }) => void;
 }) {
-  const cannotStart = ["running", "authentication_required"].includes(collector.state);
-  function execute(action: CollectorOperation["action"]) {
-    return operate({ action, key: collector.key, target: collector.target });
-  }
-  function remove() {
-    if (window.confirm(`移除 ${collector.displayName} 的采集配置？已保存的 Record 会保留。`))
-      void execute("remove");
-  }
   return (
     <div className="collector-row">
       <div>
@@ -39,27 +29,11 @@ export function CollectorRow({
         <span>{stateNames[collector.state] ?? collector.state}</span>
         {collector.error && <p role="status">{collector.error}</p>}
       </div>
-      <div className="hub-actions">
-        <Button disabled={disabled || cannotStart} onClick={() => void execute("start")}>
-          开始
+      {type && collector.state === "authentication_required" && (
+        <Button disabled={disabled} onClick={() => login({ type, target: collector.target })}>
+          重新登录
         </Button>
-        <Button
-          disabled={disabled || collector.state === "paused"}
-          onClick={() => void execute("pause")}
-        >
-          暂停
-        </Button>
-        {type?.canAdd && (
-          <>
-            <Button disabled={disabled} onClick={() => edit({ type, collector })}>
-              配置
-            </Button>
-            <Button disabled={disabled} onClick={remove}>
-              移除
-            </Button>
-          </>
-        )}
-      </div>
+      )}
     </div>
   );
 }

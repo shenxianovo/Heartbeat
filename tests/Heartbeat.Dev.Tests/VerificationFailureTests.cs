@@ -23,7 +23,7 @@ public sealed class VerificationFailureTests : IDisposable
         if (command is "native-desktop" or "collector-delivery" && !OperatingSystem.IsMacOS()) return;
         var repository = new RepositoryContext(_root);
         Directory.CreateDirectory(repository.Path("src", "Frontend", "Heartbeat.Web", "node_modules"));
-        File.WriteAllText(repository.Path(".env.local"), "HEARTBEAT_API_KEY=test\nHEARTBEAT_OWNER_ID=01952378-7bba-7b23-b092-ce581eb8f3ac\nHEARTBEAT_HUB_TOKEN=test\nHEARTBEAT_COLLECTOR_TARGET=test\n");
+        File.WriteAllText(repository.Path(".env.local"), "HEARTBEAT_API_KEY=test\nHEARTBEAT_OWNER_ID=01952378-7bba-7b23-b092-ce581eb8f3ac\nHEARTBEAT_HUB_TOKEN=test\n");
         var runner = new ThrowingRunner(cancel);
         var exception = await Record.ExceptionAsync(() => command switch
         {

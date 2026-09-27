@@ -26,7 +26,7 @@ public sealed class HubConnections(TimeProvider clock)
         }
     }
 
-    public async Task<HubCommandResult> ExecuteAsync(Guid owner, Guid hub, CollectorOperation operation,
+    public async Task<HubCommandResult> ExecuteAsync(Guid owner, Guid hub, CollectorLoginRequest login,
         CancellationToken cancellationToken)
     {
         if (!_connections.TryGetValue((owner, hub), out var connection))
@@ -41,7 +41,7 @@ public sealed class HubConnections(TimeProvider clock)
             completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
             connection.Completion = completion;
             connection.Delivered = false;
-            connection.Command = new(Guid.NewGuid(), clock.GetUtcNow() + HubManagement.OperationTimeout, operation);
+            connection.Command = new(Guid.NewGuid(), clock.GetUtcNow() + HubManagement.OperationTimeout, login);
         }
         try { return await completion.Task.WaitAsync(HubManagement.OperationTimeout, cancellationToken); }
         finally

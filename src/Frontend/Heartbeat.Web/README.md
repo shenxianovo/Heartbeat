@@ -108,6 +108,6 @@ npm run test:perf
 
 ## Hub 管理
 
-页头“Hub 管理”进入 `/hubs`，按当前 Owner 展示 Hub 联络、Collector 状态和 Record 交付。在线时可配置服务器已安装类型、启停及移除；Desktop 支持现有平台 Collector 的远程启停。离线节点可退役。行为权威见 [Hub 管理契约](../../../docs/hub-management.md)。
+页头“Hub 管理”进入 `/hubs`，按当前 Owner 展示 Hub 联络、Collector 状态和 Record 交付。在线时可登录服务器已安装的 Collector：输入账号凭据、按需完成验证码，成功后自动开始采集；失效后重新登录自动恢复。账号身份由第三方认证结果确定。Desktop 仅展示状态，本地原生 UI 负责启停。行为权威见 [Hub 管理契约](../../../docs/hub-management.md)。
 
-运行 `dotnet run --project tools/Heartbeat.Dev -- scenario hubs-fixture`（仓库根目录）验证通用表单、在线操作和离线禁用；该浏览器场景使用 mock 认证/API，不替代真实账号与原生客户端验收。
+运行 `dotnet run --project tools/Heartbeat.Dev -- scenario hubs-fixture`（仓库根目录）验证首次登录、验证码错误重试、重新登录恢复、收发增量和离线禁用；该浏览器场景使用 mock 认证/API，不替代真实账号与原生客户端验收。

@@ -86,7 +86,7 @@ dotnet run --project tools/Heartbeat.Dev -- scenario native-desktop
 
 | 场景 | 证明 | 不证明 |
 | --- | --- | --- |
-| `hubs-fixture` | Hub 状态分离、在线启停、离线禁用和配置表单 | 真实认证、API 或原生启停 |
+| `hubs-fixture` | Hub 状态分离、离线禁用、登录及验证码表单、收发增量曲线 | 真实认证或 API |
 | `replay-fixture` | 回放交互、响应式布局和 Chromium 截图 | 真实认证与端到端链路 |
 | `delivery` | API 与 PostgreSQL 的上传、重放集成 | Web、Hub 或 Collector |
 | `collector-delivery` | 真实 macOS 单次采集、Hub 接管、后端注册、落库和队列清空 | 持续采样、物理输入、权限、锁屏、休眠或 Web |

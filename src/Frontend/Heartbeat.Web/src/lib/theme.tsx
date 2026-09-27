@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore, type PropsWithChildren } from "react";
+import { useSyncExternalStore } from "react";
 
 export type ThemeMode = "light" | "dark" | "system";
 
@@ -8,7 +8,7 @@ const STORAGE_KEY = "heartbeat-theme";
 
 /**
  * Blocking snippet injected in <head> so the resolved theme is applied before
- * first paint. Mirrors the resolution in main's useTheme (system → matchMedia),
+ * first paint. Matches the store's system → matchMedia resolution,
  * keeping SSR markup and the client's first frame in sync to avoid a flash.
  */
 export const themeBootScript = `(()=>{try{var m=localStorage.getItem("${STORAGE_KEY}");if(m!=="light"&&m!=="dark"&&m!=="system")m="system";var d=m==="system"?matchMedia("(prefers-color-scheme: dark)").matches:m==="dark";document.documentElement.classList.toggle("dark",d);}catch(e){}})();`;
@@ -93,12 +93,6 @@ export function setMode(mode: ThemeMode): void {
 
 export function toggleTheme(): void {
   setMode(snapshot.isDark ? "light" : "dark");
-}
-
-// ThemeProvider is kept for shell structure/parity with main's App; the store
-// itself is module-level, so the provider only renders its children.
-export function ThemeProvider({ children }: PropsWithChildren) {
-  return <>{children}</>;
 }
 
 interface ThemeValue extends Snapshot {

@@ -33,18 +33,6 @@ internal static class ComposeInvocation
     }
 }
 
-internal static class CollectorEnvironment
-{
-    public static IReadOnlyDictionary<string, string?> Create(Uri hub, DotenvFile dotenv) =>
-        new Dictionary<string, string?>
-        {
-            ["HEARTBEAT_HUB_URL"] = hub.GetLeftPart(UriPartial.Authority),
-            ["HEARTBEAT_HUB_TOKEN"] = dotenv.Get("HEARTBEAT_HUB_TOKEN"),
-            ["HEARTBEAT_COLLECTOR_TARGET"] = dotenv.Get("HEARTBEAT_COLLECTOR_TARGET"),
-            ["HEARTBEAT_COLLECTOR_DISPLAY_NAME"] = dotenv.Get("HEARTBEAT_COLLECTOR_DISPLAY_NAME"),
-        };
-}
-
 internal static class TcpPort
 {
     public static int Reserve()

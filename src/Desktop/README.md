@@ -77,9 +77,9 @@ dotnet run --project tools/Heartbeat.Dev -- scenario desktop-replay --foreground
 
 共享测试或跨平台托管编译不代表原生 UI 已验收；静态截图也不证明动画和辅助技术行为。
 
-## Web 远程启停
+## Web 状态展示
 
-客户端连接后会在同一 Owner 的 Web `/hubs` 中显示为 Desktop 节点。远程开始/暂停与本地按钮使用同一串行入口；暂停只停止采集，Hub 继续联络和交付。进程退出后不再接受远程操作。行为契约见 [Hub 管理](../../docs/hub-management.md)。
+客户端连接后会在同一 Owner 的 Web `/hubs` 中显示为 Desktop 节点。Web 展示联络、采集和交付状态，不提供远程启停。本地暂停只停止采集，Hub 继续联络和交付。行为契约见 [Hub 管理](../../docs/hub-management.md)。
 
 ## 收发反馈
 

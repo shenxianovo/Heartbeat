@@ -22,40 +22,38 @@ public sealed class ManagementRuntimeTests
     }
 
     [Fact]
-    public async Task MultipleCollectorsRestoreWithoutLosingConfigurationAndPausePersists()
+    public async Task AuthenticatedAccountsRestoreAndUnfinishedLoginsNeverBecomeCollectors()
     {
         using var fixture = new ConfigurationDirectory();
         await using (var manager = fixture.CreateManager())
         {
-            foreach (var target in new[] { "a", "b" })
-            {
-                await manager.ExecuteAsync(new("configure", "example", target, JsonSerializer.SerializeToElement(new { })), TestContext.Current.CancellationToken);
-                await manager.ExecuteAsync(new("start", "example", target), TestContext.Current.CancellationToken);
-            }
-            await manager.ExecuteAsync(new("pause", "example", "a"), TestContext.Current.CancellationToken);
+            foreach (var account in new[] { "a", "b" })
+                await manager.LoginAsync(new("example", JsonSerializer.SerializeToElement(new { account })), TestContext.Current.CancellationToken);
+            var pending = await manager.LoginAsync(new("example", JsonSerializer.SerializeToElement(new { pending = true })), TestContext.Current.CancellationToken);
+            Assert.NotNull(pending.SessionId);
+            Assert.Equal(2, manager.Collectors.Count);
         }
         await using var restored = fixture.CreateManager();
         await restored.RestoreAsync(TestContext.Current.CancellationToken);
-        Assert.Equal("paused", restored.Collectors.Single(x => x.Target == "a").State);
-        Assert.Equal("running", restored.Collectors.Single(x => x.Target == "b").State);
+        Assert.Equal(["a", "b"], restored.Collectors.Select(x => x.Target).Order().ToArray());
+        Assert.All(restored.Collectors, x => Assert.Equal("running", x.State));
         using var document = JsonDocument.Parse(File.ReadAllText(fixture.Path));
         Assert.Equal(2, document.RootElement.GetArrayLength());
     }
 
     [Fact]
-    public async Task FailedReconfigurationDoesNotResumeAnOldEnabledSettingAfterRestart()
+    public async Task SupersededLoginCannotSubmitCodeIntoAnotherSession()
     {
         using var fixture = new ConfigurationDirectory();
-        await using (var manager = fixture.CreateManager())
-        {
-            await manager.ExecuteAsync(new("configure", "example", "a", JsonSerializer.SerializeToElement(new { })), TestContext.Current.CancellationToken);
-            await manager.ExecuteAsync(new("start", "example", "a"), TestContext.Current.CancellationToken);
-            await Assert.ThrowsAsync<ArgumentException>(() => manager.ExecuteAsync(new("configure", "example", "a",
-                JsonSerializer.SerializeToElement(new { invalid = true })), TestContext.Current.CancellationToken));
-        }
-        await using var restored = fixture.CreateManager();
-        await restored.RestoreAsync(TestContext.Current.CancellationToken);
-        Assert.Equal("paused", Assert.Single(restored.Collectors).State);
+        await using var manager = fixture.CreateManager();
+        var request = new CollectorLoginRequest("example", JsonSerializer.SerializeToElement(new { pending = true }));
+        var previous = await manager.LoginAsync(request, TestContext.Current.CancellationToken);
+        var next = await manager.LoginAsync(request, TestContext.Current.CancellationToken);
+        Assert.NotEqual(previous.SessionId, next.SessionId);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => manager.LoginAsync(request with {
+            SessionId = previous.SessionId, Input = JsonSerializer.SerializeToElement(new { account = "wrong" })
+        }, TestContext.Current.CancellationToken));
+        Assert.Empty(manager.Collectors);
     }
 
     [Fact]
@@ -114,17 +112,20 @@ public sealed class ManagementRuntimeTests
     private sealed class TestFactory : ICollectorFactory
     {
         public CollectorType Type => new("example", "Example", []);
-        public IManagedCollector Create(string target) => new TestCollector(target);
+        public ICollectorSession Create(string? target) => new TestCollector(target);
     }
-    private sealed class TestCollector(string target) : IManagedCollector
+    private sealed class TestCollector(string? target) : ICollectorSession
     {
+        private string? _target = target;
         private bool _running;
-        public CollectorState State => new("example", target, "Example", _running ? "running" : "paused", null);
-        public Task<JsonElement> ConfigureAsync(JsonElement configuration, CancellationToken cancellationToken) =>
-            configuration.TryGetProperty("invalid", out _) ? throw new ArgumentException("Invalid configuration.") : Task.FromResult(configuration);
+        public CollectorState? State => _target is null ? null : new("example", _target, "Example", _running ? "running" : "paused", null);
+        public Task<CollectorLoginResult> LoginAsync(JsonElement input, CancellationToken token)
+        {
+            if (input.TryGetProperty("account", out var account)) _target = account.GetString();
+            return Task.FromResult(new CollectorLoginResult(_target, []));
+        }
+        public Task RestoreAsync(CancellationToken token) => StartAsync(token);
         public Task StartAsync(CancellationToken cancellationToken) { _running = true; return Task.CompletedTask; }
-        public Task PauseAsync(CancellationToken cancellationToken) { _running = false; return Task.CompletedTask; }
-        public Task RemoveAsync(CancellationToken cancellationToken) => PauseAsync(cancellationToken);
         public ValueTask DisposeAsync() { _running = false; return ValueTask.CompletedTask; }
     }
 }

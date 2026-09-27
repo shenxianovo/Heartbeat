@@ -6,5 +6,5 @@ public interface ICollectorManager
 {
     IReadOnlyList<CollectorType> Types { get; }
     IReadOnlyList<CollectorState> Collectors { get; }
-    Task ExecuteAsync(CollectorOperation operation, CancellationToken cancellationToken);
+    Task<CollectorLoginResult> LoginAsync(CollectorLoginRequest request, CancellationToken token);
 }

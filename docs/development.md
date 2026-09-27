@@ -12,7 +12,7 @@ Heartbeat 使用 Compose 运行 Web、API、PostgreSQL 和服务器 Hub。桌面
 dotnet run --project tools/Heartbeat.Dev -- env setup
 ```
 
-向导验证 API key 与 Owner，并把服务器 Hub 和 Collector 配置写入 Git 忽略的 `.env.local`。桌面客户端在自身连接设置中保存凭据，不依赖 `env setup`。
+向导验证 API key 与 Owner，并把服务器 Hub 配置写入 Git 忽略的 `.env.local`。桌面客户端在自身连接设置中保存凭据并取得本机 Target，不依赖 `env setup`；采集验证场景自行生成临时 Target 和显示名。
 
 ## 启动
 
@@ -50,7 +50,7 @@ dotnet run --project tools/Heartbeat.Dev -- env up web desktop
 | `desktop` | 构建并打开 Heartbeat Dev，不启动容器 |
 | `web desktop` | Web 默认组合及 Heartbeat Dev |
 
-容器开发模式使用 `next dev` 和 `dotnet watch`。`env up desktop` 每次重新打包；修改客户端代码后先退出已运行的 Heartbeat Dev。关闭客户端窗口只隐藏界面，从菜单栏或系统托盘选择退出才停止进程。
+容器开发模式使用 `next dev` 和 `dotnet watch`。`env up desktop` 每次重新打包；修改客户端代码后先退出已运行的 Heartbeat Dev。关闭客户端窗口只隐藏界面，从菜单栏或系统托盘选择退出才停止进程。 重新打包不会替换已运行进程；跨 Web/API/Desktop 的契约修改必须退出并重新打开实际客户端，再核对在线报告。否则热更新的 Web/API 会与内存中的旧 Desktop 协议混跑。
 
 本地验收生产镜像：
 
@@ -113,8 +113,6 @@ dotnet run --project tools/Heartbeat.Dev -- env reset --apply
 | `HEARTBEAT_OWNER_ID` | Hub 所属 Owner UUID | Hub 必填，由 setup 写入 |
 | `HEARTBEAT_HUB_TOKEN` | Collector 到 Hub 的本地密钥 | Hub 必填 |
 | `HEARTBEAT_HUB_PORT` | Hub 回环端口 | `4318` |
-| `HEARTBEAT_COLLECTOR_TARGET` | 独立 Collector 场景的稳定 Target | 场景必填 |
-| `HEARTBEAT_COLLECTOR_DISPLAY_NAME` | Collector 展示名 | 可选 |
 
 隔离环境可以指定 Compose 项目名和已有环境文件：
 

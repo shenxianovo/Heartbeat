@@ -14,6 +14,12 @@ Heartbeat 需要记录来自桌面采集器、浏览器扩展和账号集成等�
 
 使用 `Timeline → Collector → Track → Record` 作为记录模型。Collector 是采集器实现与其 Target 的稳定绑定，不等同于运行进程或安装实例。Track 固定记录类型、协议版本和时间模式；时间模式先区分 Point 与 Range，Range 再区分明确结束与由下一条 Record 推导结束。Record 保存符合 Track 协议的规范化观测值，不保存对人的活动解释。语义分析结果如有需要，也作为派生 Track 写入，不进入记录内核。
 
+## 复核：2026-09-27
+
+在业务用途清理中讨论过移除 `next_record`、只保留 Point 和显式 Range。用户决定保留已有的隐式区间能力，本轮不删除 `EndMode` 或对应存储、协议与校验支持，不因尚无当前 Collector 使用而将其视为死码。
+
+`next_record` 表示本条 Record 的结束位置由同一 Track 的下一条 Record 的开始时间推导。当前已支持声明与存储，回放查询尚不推导结束位置；保留模型不代表完整回放已经实现，也不将现有显式观测区间改为隐式。后继选择、末条记录和迟到记录等边界仍见[未决设计](../recording-open-questions.md#range--next_record)。
+
 ## 后果
 
 - ✅ 不同设备、应用和账号来源可以进入同一条时间线，无需共享设备—应用层级。

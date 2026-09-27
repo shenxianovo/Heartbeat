@@ -80,23 +80,14 @@ public sealed class DesktopRuntime : IAsyncDisposable, ICollectorManager
     public DeliveryActivitySnapshot? Activity => _deliveryTask is { IsCompleted: false } ? _queue?.Activity.Snapshot : null;
     public Guid HubId => _profile.Storage.Id;
     public string? ManagementError => _management?.LastError;
-    public IReadOnlyList<CollectorType> Types => [new(_platform.CollectorKey, _platform.DisplayName, [], CanAdd: false)];
+    public IReadOnlyList<CollectorType> Types => [];
     public IReadOnlyList<CollectorState> Collectors => Settings is null ? [] :
         [new(_platform.CollectorKey, Settings.Target, _platform.DisplayName,
             _collectionError is not null ? "error" : IsCollecting ? "running" : "paused", _collectionError)];
 
-    public Task ExecuteAsync(CollectorOperation operation, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (operation.Key != _platform.CollectorKey || operation.Target != Settings?.Target)
-            throw new ArgumentException("Collector does not belong to this Desktop.");
-        return operation.Action switch
-        {
-            "start" => RunAsync(StartCoreAsync, cancellationToken: cancellationToken),
-            "pause" => RunAsync(StopCollectionCoreAsync, cancellationToken: cancellationToken),
-            _ => throw new ArgumentException("This Desktop Collector supports start and pause."),
-        };
-    }
+    public Task<CollectorLoginResult> LoginAsync(CollectorLoginRequest request, CancellationToken token) =>
+        throw new ArgumentException("This Desktop has no Collector requiring remote login.");
+
     public IReadOnlyList<CapabilityObservation> Capabilities
     {
         get { lock (_capabilities) return _capabilities.Values.ToArray(); }
@@ -194,8 +185,6 @@ public sealed class DesktopRuntime : IAsyncDisposable, ICollectorManager
         if (_deliveryStop is not null)
         {
             await _deliveryStop.CancelAsync();
-            // A remote operation may be waiting for _operations, held by this shutdown.
-            // Cancellation stops its wait; shutdown must not await itself.
             try { if (_deliveryTask is not null) await _deliveryTask; }
             catch (OperationCanceledException) { }
             try { if (_managementTask is not null) await _managementTask; }

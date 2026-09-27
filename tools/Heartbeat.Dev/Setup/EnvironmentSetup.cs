@@ -21,19 +21,13 @@ internal sealed class EnvironmentSetup(
         await PrepareCredentialsAsync(configuration, token);
         configuration.SaveStaging();
 
-        await output.WriteLineAsync("2/3 Owner verification: build Hub and validate the API key without opening its database.");
+        await output.WriteLineAsync("2/2 Owner verification: build Hub and validate the API key without opening its database.");
         var owner = ReadOwner(await new SetupAuthCheck(repository, runner, output).RunAsync(configuration.StagingPath, token));
         var savedOwner = configuration.Get("HEARTBEAT_OWNER_ID");
         if (!string.IsNullOrEmpty(savedOwner) && (!Guid.TryParse(savedOwner, out var prior) || prior != owner))
             throw new InvalidOperationException("The saved Owner binding is invalid or belongs to another Owner. Stop Hub and explicitly reset its data and Owner binding before changing accounts; .env.local was preserved.");
         configuration.Set("HEARTBEAT_OWNER_ID", owner.ToString());
 
-        await output.WriteLineAsync("3/3 Collector identity");
-        foreach (var key in new[] { "HEARTBEAT_COLLECTOR_TARGET", "HEARTBEAT_COLLECTOR_DISPLAY_NAME" })
-        {
-            var value = await AskAsync(key, configuration.Get(key) ?? Environment.MachineName, secret: false, token);
-            configuration.Set(key, value);
-        }
         token.ThrowIfCancellationRequested();
         configuration.Commit();
         await output.WriteLineAsync("Setup complete: saved .env.local. API key and Hub token were not printed.");
@@ -41,7 +35,7 @@ internal sealed class EnvironmentSetup(
 
     private async Task PrepareCredentialsAsync(SetupConfiguration configuration, CancellationToken token)
     {
-        await output.WriteLineAsync($"1/3 Auth API key: visit {AuthDashboard} and create or reuse a key.");
+        await output.WriteLineAsync($"1/2 Auth API key: visit {AuthDashboard} and create or reuse a key.");
         if (configuration.Get("HEARTBEAT_API_KEY") is null)
         {
             try { runner.OpenApplication(AuthDashboard); }

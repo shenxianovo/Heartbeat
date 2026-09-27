@@ -2,16 +2,14 @@
 
 import { useState } from "react";
 import {
-  operateCollector,
-  retireHub,
-  type CollectorOperation,
-  type CollectorState,
+  loginCollector,
+  type CollectorLoginRequest,
   type CollectorType,
   type HubSummary,
   type DeliveryActivity,
 } from "@/api/hubs";
 import { Button } from "@/components/ui/button";
-import { CollectorForm } from "./CollectorForm";
+import { CollectorLogin } from "./CollectorLogin";
 import { CollectorRow } from "./CollectorRow";
 import { DeliveryChart } from "./DeliveryChart";
 
@@ -28,41 +26,14 @@ export function HubCard({
   activity?: DeliveryActivity;
   refresh: () => Promise<unknown>;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [form, setForm] = useState<{ type: CollectorType; collector?: CollectorState } | null>(
-    null,
-  );
+  const [form, setForm] = useState<{ type: CollectorType; target?: string } | null>(null);
   const available = hub.online && !hub.retired && !stale;
 
-  async function operate(operation: CollectorOperation) {
-    setBusy(true);
-    setMessage(null);
+  async function login(request: CollectorLoginRequest) {
     try {
-      await operateCollector(token, hub.id, operation);
-      setMessage("操作已执行，请查看最新采集状态。");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "操作失败。");
+      return await loginCollector(token, hub.id, request);
     } finally {
-      setBusy(false);
       await refresh();
-    }
-  }
-  async function retire() {
-    if (
-      !window.confirm(
-        `退役 ${hub.report.displayName}？它将无法再接入管理，需要使用新的 Hub 身份重新接入。`,
-      )
-    )
-      return;
-    setBusy(true);
-    try {
-      await retireHub(token, hub.id);
-      await refresh();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "退役失败。");
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -71,33 +42,34 @@ export function HubCard({
       <HubDetails hub={hub} available={available} stale={stale} />
       <DeliveryChart activity={available ? activity : undefined} />
       <h3>Collector</h3>
-      {hub.report.collectors.length === 0 && <p>尚未配置 Collector。</p>}
+      {hub.report.collectors.length === 0 && <p>尚无 Collector 接入。</p>}
       {hub.report.collectors.map((collector) => (
         <CollectorRow
           key={`${collector.key}:${collector.target}`}
           collector={collector}
           type={hub.report.types.find((item) => item.key === collector.key)}
-          disabled={busy || !available}
-          operate={operate}
-          edit={setForm}
+          disabled={!available || form !== null}
+          login={setForm}
         />
       ))}
-      <HubActions
-        hub={hub}
-        busy={busy}
-        available={available}
-        stale={stale}
-        add={(type) => setForm({ type })}
-        retire={retire}
-      />
-      {message && <p role="status">{message}</p>}
+      <div className="hub-actions">
+        {hub.report.types.map((type) => (
+          <Button
+            key={type.key}
+            disabled={!available || form !== null}
+            onClick={() => setForm({ type })}
+          >
+            登录 {type.displayName}
+          </Button>
+        ))}
+      </div>
       {form && (
-        <CollectorForm
-          key={`${form.type.key}:${form.collector?.target ?? "new"}`}
+        <CollectorLogin
+          key={`${form.type.key}:${form.target ?? "new"}`}
           type={form.type}
-          collector={form.collector}
-          busy={busy || !available}
-          submit={operate}
+          target={form.target}
+          disabled={!available}
+          submit={login}
           close={() => setForm(null)}
         />
       )}
@@ -128,7 +100,7 @@ function HubDetails({
         </span>
       </div>
       <p>最近联络：{new Date(hub.lastSeenAt).toLocaleString()}</p>
-      {!available && <p>下方为最近上报的信息，当前无法执行采集操作。</p>}
+      {!available && <p>下方为最近上报的信息，当前无法登录 Collector。</p>}
       <div className="hub-delivery">
         <strong>Record 交付</strong>
         <span>待上传 {hub.report.delivery.pending}</span>
@@ -136,38 +108,5 @@ function HubDetails({
       </div>
       {hub.report.delivery.error && <p role="status">{hub.report.delivery.error}</p>}
     </>
-  );
-}
-
-function HubActions({
-  hub,
-  busy,
-  available,
-  stale,
-  add,
-  retire,
-}: {
-  hub: HubSummary;
-  busy: boolean;
-  available: boolean;
-  stale: boolean;
-  add: (type: CollectorType) => void;
-  retire: () => Promise<void>;
-}) {
-  return (
-    <div className="hub-actions">
-      {hub.report.types
-        .filter((type) => type.canAdd)
-        .map((type) => (
-          <Button key={type.key} disabled={!available || busy} onClick={() => add(type)}>
-            添加 {type.displayName}
-          </Button>
-        ))}
-      {!hub.retired && (
-        <Button disabled={busy || stale || hub.online} onClick={() => void retire()}>
-          退役 Hub
-        </Button>
-      )}
-    </div>
   );
 }

@@ -10,8 +10,6 @@ export interface CollectorType {
   key: string;
   displayName: string;
   fields: CollectorField[];
-  targetLabel: string;
-  canAdd: boolean;
 }
 export interface CollectorState {
   key: string;
@@ -19,7 +17,6 @@ export interface CollectorState {
   displayName: string;
   state: string;
   error: string | null;
-  configuration: Record<string, string | number> | null;
 }
 export interface HubSummary {
   id: string;
@@ -34,11 +31,17 @@ export interface HubSummary {
     delivery: { pending: number; failed: number; error: string | null };
   };
 }
-export interface CollectorOperation {
-  action: "configure" | "start" | "pause" | "remove";
+export interface CollectorLoginRequest {
   key: string;
-  target: string;
-  configuration?: Record<string, string | number>;
+  input: Record<string, string>;
+  target?: string;
+  sessionId?: string;
+}
+export interface CollectorLoginResult {
+  target: string | null;
+  fields: CollectorField[];
+  error: string | null;
+  sessionId: string | null;
 }
 
 async function request(path: string, token: string, body?: unknown, signal?: AbortSignal) {
@@ -63,12 +66,15 @@ export async function fetchHubs(
 ): Promise<{ hubs: HubSummary[] }> {
   return request("", token, undefined, signal);
 }
-export async function operateCollector(token: string, hub: string, operation: CollectorOperation) {
-  const result = await request(`/${encodeURIComponent(hub)}/operations`, token, operation);
-  if (!result.succeeded) throw new Error(result.error ?? "操作未完成，请刷新状态后重试。");
-}
-export async function retireHub(token: string, hub: string) {
-  await request(`/${encodeURIComponent(hub)}/retire`, token, {});
+export async function loginCollector(
+  token: string,
+  hub: string,
+  login: CollectorLoginRequest,
+): Promise<CollectorLoginResult> {
+  const result = await request(`/${encodeURIComponent(hub)}/login`, token, login);
+  if (!result.succeeded || !result.login)
+    throw new Error(result.error ?? "登录未完成，请刷新状态后重试。");
+  return result.login;
 }
 
 export interface DeliveryActivity {

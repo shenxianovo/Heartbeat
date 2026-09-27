@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Heartbeat.Management;
 
 namespace Heartbeat.Hub.Runtime;
@@ -6,130 +5,123 @@ namespace Heartbeat.Hub.Runtime;
 public interface ICollectorFactory
 {
     CollectorType Type { get; }
-    IManagedCollector Create(string target);
+    ICollectorSession Create(string? target);
 }
 
-public interface IManagedCollector : IAsyncDisposable
+// An unbound session exists only during login. Record identity is established by authentication.
+public interface ICollectorSession : IAsyncDisposable
 {
-    CollectorState State { get; }
-    // Return only public, persistable settings. Credentials belong to the implementation's secret store.
-    Task<JsonElement> ConfigureAsync(JsonElement configuration, CancellationToken cancellationToken);
+    CollectorState? State { get; }
+    Task<CollectorLoginResult> LoginAsync(System.Text.Json.JsonElement input, CancellationToken token);
+    Task RestoreAsync(CancellationToken token);
     Task StartAsync(CancellationToken cancellationToken);
-    Task PauseAsync(CancellationToken cancellationToken);
-    Task RemoveAsync(CancellationToken cancellationToken);
 }
 
 public sealed class CollectorManager(HubLocalStorage storage, IEnumerable<ICollectorFactory> factories) : ICollectorManager, IAsyncDisposable
 {
     private readonly Dictionary<string, ICollectorFactory> _factories = factories.ToDictionary(x => x.Type.Key, StringComparer.Ordinal);
-    private readonly Dictionary<(string Key, string Target), Entry> _entries = new();
+    private readonly Dictionary<(string Key, string Target), ICollectorSession> _collectors = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _snapshotLock = new();
+    private PendingLogin? _pending;
+    private CancellationTokenSource? _loginTimeout;
+    private Task? _expiration;
     public IReadOnlyList<CollectorType> Types => _factories.Values.Select(x => x.Type).ToArray();
     public IReadOnlyList<CollectorState> Collectors
     {
-        get { lock (_snapshotLock) return _entries.Values.Select(x => x.Collector.State with {
-            Configuration = x.Configuration, Error = x.RestoreError ?? x.Collector.State.Error }).ToArray(); }
+        get { lock (_snapshotLock) return _collectors.Values.Select(x => x.State!).ToArray(); }
     }
 
     public async Task RestoreAsync(CancellationToken token)
     {
-        var saved = storage.ReadDocument<SavedCollector[]>("collectors");
-        if (saved is null) return;
+        var saved = storage.ReadDocument<SavedCollector[]>("collectors") ?? [];
         await _gate.WaitAsync(token);
         try
         {
             foreach (var item in saved)
             {
-                try
-                {
-                    await ExecuteCoreAsync(new("configure", item.Key, item.Target, item.Configuration), token, save: false);
-                    if (item.Enabled) await ExecuteCoreAsync(new("start", item.Key, item.Target), token, save: false);
-                }
-                catch (Exception) when (!token.IsCancellationRequested)
-                {
-                    if (_entries.TryGetValue((item.Key, item.Target), out var entry))
-                        entry.RestoreError = "无法恢复采集，请检查配置或重新认证。";
-                }
+                var collector = _factories[item.Key].Create(item.Target);
+                lock (_snapshotLock) _collectors.Add((item.Key, item.Target), collector);
+                await collector.RestoreAsync(token);
             }
         }
         finally { _gate.Release(); }
     }
 
-    public async Task ExecuteAsync(CollectorOperation operation, CancellationToken cancellationToken)
+    public async Task<CollectorLoginResult> LoginAsync(CollectorLoginRequest request, CancellationToken token)
     {
-        if (string.IsNullOrWhiteSpace(operation.Target) || operation.Target.Length > 255)
-            throw new ArgumentException("A stable observation target is required.");
-        await _gate.WaitAsync(cancellationToken);
-        try { await ExecuteCoreAsync(operation, cancellationToken); }
+        await _gate.WaitAsync(token);
+        try
+        {
+            var pending = await GetLoginAsync(request, token);
+            var result = await pending.Collector.LoginAsync(request.Input, token);
+            if (result.Target is null) return result with { SessionId = pending.Id };
+            if (request.Target is not null && result.Target != request.Target)
+                throw new InvalidOperationException("登录账号与原 Collector 不一致。");
+            var key = (request.Key, result.Target);
+            if (_collectors.TryGetValue(key, out var previous)) await previous.DisposeAsync();
+            lock (_snapshotLock) _collectors[key] = pending.Collector;
+            _pending = null;
+            _loginTimeout?.Cancel();
+            storage.WriteDocument("collectors", _collectors.Keys.Select(x => new SavedCollector(x.Key, x.Target)).ToArray());
+            await pending.Collector.StartAsync(token);
+            return result;
+        }
         finally { _gate.Release(); }
     }
 
-    private async Task ExecuteCoreAsync(CollectorOperation operation, CancellationToken token, bool save = true)
+    private async Task<PendingLogin> GetLoginAsync(CollectorLoginRequest request, CancellationToken token)
     {
-        var key = (operation.Key, operation.Target!);
-        var entry = GetEntry(operation, key);
-        switch (operation.Action)
+        if (request.SessionId is { } id)
         {
-            case "configure":
-                if (operation.Configuration is not { ValueKind: JsonValueKind.Object } config)
-                    throw new ArgumentException("Collector configuration must be an object.");
-                await entry.Collector.PauseAsync(token);
-                entry.Enabled = false;
-                if (save) Save(token);
-                entry.Configuration = await entry.Collector.ConfigureAsync(config, token);
-                break;
-            case "start":
-                await entry.Collector.StartAsync(token);
-                entry.Enabled = true;
-                break;
-            case "pause":
-                await entry.Collector.PauseAsync(token);
-                entry.Enabled = false;
-                break;
-            case "remove":
-                await entry.Collector.RemoveAsync(token);
-                await entry.Collector.DisposeAsync();
-                lock (_snapshotLock) _entries.Remove(key);
-                break;
-            default: throw new ArgumentException("Unknown Collector operation.");
+            if (_pending is not { } pending || pending.Id != id || pending.Key != request.Key || pending.Target != request.Target)
+                throw new InvalidOperationException("登录会话已失效，请重新登录。");
+            return pending;
         }
-        entry.RestoreError = null;
-        if (save) Save(token);
-    }
-
-    private void Save(CancellationToken token)
-    {
-        var saved = _entries.Select(x => new SavedCollector(x.Key.Key, x.Key.Target, x.Value.Configuration, x.Value.Enabled)).ToArray();
+        if (!_factories.TryGetValue(request.Key, out var factory)) throw new ArgumentException("Collector is not installed on this Hub.");
+        if (request.Target is not null && !_collectors.ContainsKey((request.Key, request.Target)))
+            throw new ArgumentException("Collector does not belong to this Hub.");
+        await ClearLoginAsync();
+        var created = new PendingLogin(Guid.NewGuid(), request.Key, request.Target, factory.Create(request.Target));
+        _pending = created;
+        _loginTimeout = new CancellationTokenSource();
+        _expiration = ExpireLoginAsync(created.Id, _loginTimeout.Token);
         token.ThrowIfCancellationRequested();
-        storage.WriteDocument("collectors", saved);
+        return created;
     }
 
-    private Entry GetEntry(CollectorOperation operation, (string Key, string Target) key)
+    private async Task ExpireLoginAsync(Guid id, CancellationToken token)
     {
-        if (!_entries.TryGetValue(key, out var entry))
+        try
         {
-            if (operation.Action != "configure" || !_factories.TryGetValue(operation.Key, out var factory))
-                throw new ArgumentException("Collector is not installed or configured on this Hub.");
-            entry = new(factory.Create(operation.Target!));
-            lock (_snapshotLock) _entries.Add(key, entry);
+            await Task.Delay(TimeSpan.FromMinutes(5), token);
+            await _gate.WaitAsync(token);
+            try { if (_pending?.Id == id) await ClearLoginAsync(); }
+            finally { _gate.Release(); }
         }
-        return entry;
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+    }
+
+    private async Task ClearLoginAsync()
+    {
+        _loginTimeout?.Cancel();
+        _loginTimeout?.Dispose();
+        _loginTimeout = null;
+        if (_pending is { } pending) { _pending = null; await pending.Collector.DisposeAsync(); }
     }
 
     public async ValueTask DisposeAsync()
     {
         await _gate.WaitAsync();
-        try { foreach (var entry in _entries.Values) await entry.Collector.DisposeAsync(); }
+        try
+        {
+            await ClearLoginAsync();
+            foreach (var collector in _collectors.Values) await collector.DisposeAsync();
+        }
         finally { _gate.Release(); }
+        if (_expiration is not null) await _expiration;
     }
 
-    private sealed class Entry(IManagedCollector collector)
-    {
-        public IManagedCollector Collector { get; } = collector;
-        public JsonElement Configuration = JsonSerializer.SerializeToElement(new { });
-        public bool Enabled;
-        public string? RestoreError;
-    }
-    private sealed record SavedCollector(string Key, string Target, JsonElement Configuration, bool Enabled);
+    private sealed record PendingLogin(Guid Id, string Key, string? Target, ICollectorSession Collector);
+    private sealed record SavedCollector(string Key, string Target);
 }

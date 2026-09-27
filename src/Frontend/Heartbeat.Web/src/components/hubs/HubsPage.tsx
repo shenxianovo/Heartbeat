@@ -32,7 +32,7 @@ export function HubsPage() {
         <div className="hub-heading">
           <div>
             <h1>我的 Hub</h1>
-            <p>查看各处采集与交付状态，管理在线 Hub 的 Collector。</p>
+            <p>查看各处采集与交付状态，完成 Collector 登录。</p>
           </div>
           <Button onClick={() => void query.refetch()} disabled={query.isFetching}>
             刷新
@@ -40,7 +40,7 @@ export function HubsPage() {
         </div>
         {query.isPending && <p role="status">正在读取 Hub…</p>}
         {query.isError && (
-          <p role="alert">无法刷新 Hub 状态：{query.error.message}。连接恢复前管理操作暂不可用。</p>
+          <p role="alert">无法刷新 Hub 状态：{query.error.message}。连接恢复前登录暂不可用。</p>
         )}
         {query.data?.hubs.length === 0 && (
           <section className="hub-card">

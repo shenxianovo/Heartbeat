@@ -86,8 +86,8 @@ public sealed class HubManagementLoop(HttpClient http, IBackendTokenProvider tok
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
             var remaining = command.ExpiresAt - DateTimeOffset.UtcNow;
             deadline.CancelAfter(remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero);
-            await collectors.ExecuteAsync(command.Operation, deadline.Token).ConfigureAwait(false);
-            return new(command.Id, true);
+            var result = await collectors.LoginAsync(command.Login, deadline.Token).ConfigureAwait(false);
+            return new(command.Id, true, Login: result);
         }
         catch (ArgumentException exception) { return new(command.Id, false, exception.Message); }
         catch (InvalidOperationException exception) { return new(command.Id, false, exception.Message); }

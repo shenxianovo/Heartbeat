@@ -3,7 +3,7 @@ using System.Text;
 
 namespace Heartbeat.Hub.Runtime;
 
-// Like the previous collector store, encryption is backed by a protected local key.
+// Encryption is backed by a protected local key.
 // It prevents secrets entering config/record files, not access by the same OS account.
 public sealed class LocalSecretStore
 {
@@ -46,7 +46,6 @@ public sealed class LocalSecretStore
         File.Move(temporary, path, overwrite: true);
     }
 
-    public void Delete(string name) => File.Delete(SecretPath(name));
     private string SecretPath(string name) => Path.Combine(_directory, Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(name))));
     private static void WriteProtected(string path, byte[] value)
     {

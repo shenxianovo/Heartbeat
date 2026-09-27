@@ -14,7 +14,7 @@ public sealed class ManagedVRChatTests(PostgresFixture fixture) : PostgresTestBa
     private const string Account = "usr_11111111-1111-4111-8111-111111111111";
 
     [Fact]
-    public async Task OnlineConfigurationAndStartProduceReplayableRecordsWithoutPersistingCredentialsInApi()
+    public async Task WebLoginDiscoversAccountAndAutomaticallyProducesReplayableRecords()
     {
         var owner = Guid.NewGuid();
         await using var api = RecordingApiFactory.Create(ConnectionString, TimeProvider.System);
@@ -41,13 +41,18 @@ public sealed class ManagedVRChatTests(PostgresFixture fixture) : PostgresTestBa
             {
                 while (!(await http.GetFromJsonAsync<HubList>("/api/v1/hubs", stop.Token))!.Hubs.Any(x => x.Id == id))
                     await Task.Delay(10, stop.Token);
-                await OperateAsync(new("configure", VRChatCollectorFactory.Key, Account,
+                var challenge = await LoginAsync(new(VRChatCollectorFactory.Key,
                     JsonSerializer.SerializeToElement(new { username = "user", password = "private-password" })));
-                await OperateAsync(new("start", VRChatCollectorFactory.Key, Account));
+                Assert.Null(challenge.Target);
+                Assert.NotNull(challenge.SessionId);
+                Assert.Empty(manager.Collectors);
+                Assert.Empty(queue.TakePending());
+                var signedIn = await LoginAsync(new(VRChatCollectorFactory.Key,
+                    JsonSerializer.SerializeToElement(new { code = "123456" }), SessionId: challenge.SessionId));
+                Assert.Equal(Account, signedIn.Target);
+                Assert.Equal("running", Assert.Single(manager.Collectors).State);
                 Assert.Single(queue.TakePending());
                 Assert.Empty(await new RecordUploader(queue, http, tokens).UploadOnceAsync(cancellationToken: stop.Token));
-                await OperateAsync(new("pause", VRChatCollectorFactory.Key, Account));
-                Assert.Equal("paused", Assert.Single(manager.Collectors).State);
                 while ((await http.GetFromJsonAsync<ActivityList>("/api/v1/hubs/activity", stop.Token))!
                     .Activities.GetValueOrDefault(id)?.Delivered != 1)
                     await Task.Delay(50, stop.Token);
@@ -69,12 +74,13 @@ public sealed class ManagedVRChatTests(PostgresFixture fixture) : PostgresTestBa
                 try { await running; } catch (OperationCanceledException) { }
             }
 
-            async Task OperateAsync(CollectorOperation operation)
+            async Task<CollectorLoginResult> LoginAsync(CollectorLoginRequest login)
             {
-                using var response = await http.PostAsJsonAsync($"/api/v1/hubs/{id}/operations", operation, stop.Token);
+                using var response = await http.PostAsJsonAsync($"/api/v1/hubs/{id}/login", login, stop.Token);
                 response.EnsureSuccessStatusCode();
                 var result = await response.Content.ReadFromJsonAsync<HubCommandResult>(stop.Token);
                 Assert.True(result!.Succeeded, result.Error);
+                return Assert.IsType<CollectorLoginResult>(result.Login);
             }
         }
         finally { directory.Delete(true); }
@@ -91,15 +97,17 @@ public sealed class ManagedVRChatTests(PostgresFixture fixture) : PostgresTestBa
     private sealed class TestFactory(IHubSubmissionClient hub, LocalSecretStore secrets) : ICollectorFactory
     {
         public CollectorType Type => new VRChatCollectorFactory(hub, secrets, "test").Type;
-        public IManagedCollector Create(string target) => new VRChatCollector(target, new FakeApi(), hub, secrets);
+        public ICollectorSession Create(string? target) => new VRChatCollector(target, new FakeApi(), hub, secrets);
     }
     private sealed class FakeApi : IVRChatApiFactory, IVRChatApiSession
     {
+        private bool _verified;
         public IVRChatApiSession FromCredentials(string username, string password) => this;
         public IVRChatApiSession FromSession(string serializedSession) => this;
         public Task<VRChatAuthenticationState> AuthenticateAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new VRChatAuthenticationState("Example", [], Account));
-        public Task VerifyTwoFactorAsync(string method, string code, CancellationToken cancellationToken) => Task.CompletedTask;
+            Task.FromResult(new VRChatAuthenticationState("Example", _verified ? [] : ["emailOtp"], _verified ? Account : null));
+        public Task VerifyTwoFactorAsync(string method, string code, CancellationToken cancellationToken)
+        { Assert.Equal("123456", code); _verified = true; return Task.CompletedTask; }
         public Task<VRChatPresence?> GetPresenceAsync(CancellationToken cancellationToken) =>
             Task.FromResult<VRChatPresence?>(new("world", "World", "instance", Account));
         public Task<string?> GetWorldNameAsync(string worldId, CancellationToken cancellationToken) => Task.FromResult<string?>("World");

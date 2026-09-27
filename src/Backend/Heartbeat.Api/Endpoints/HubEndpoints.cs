@@ -17,7 +17,7 @@ public static class HubEndpoints
             .WithMetadata(new RequestSizeLimitAttribute(DeliveryActivitySnapshot.MaximumBodyBytes));
         group.MapPost("/{id:guid}/check-in", CheckInAsync)
             .WithMetadata(new RequestSizeLimitAttribute(HubManagement.MaximumBodyBytes));
-        group.MapPost("/{id:guid}/operations", OperateAsync)
+        group.MapPost("/{id:guid}/login", LoginAsync)
             .WithMetadata(new RequestSizeLimitAttribute(HubManagement.MaximumBodyBytes));
         group.MapPost("/{id:guid}/retire", RetireAsync);
     }
@@ -75,34 +75,35 @@ public static class HubEndpoints
 
     private static bool ValidType(CollectorType? type) => type is not null && ValidIdentity(type.Key) && type.Fields is not null;
     private static bool ValidCollector(CollectorState? collector) => collector is not null && ValidIdentity(collector.Key) && ValidIdentity(collector.Target);
-    private static bool ValidOperation(CollectorOperation operation) =>
-        operation.Action is "configure" or "start" or "pause" or "remove" && ValidIdentity(operation.Key) && ValidIdentity(operation.Target);
+    private static bool ValidLogin(CollectorLoginRequest request) => ValidIdentity(request.Key) &&
+        (request.Target is null || ValidIdentity(request.Target)) && request.SessionId != Guid.Empty &&
+        request.Input.ValueKind == System.Text.Json.JsonValueKind.Object;
 
     private static bool ValidIdentity(string? value) => !string.IsNullOrWhiteSpace(value) && value.Length <= 255 && value == value.Trim();
 
-    private static async Task<IResult> OperateAsync(Guid id, CollectorOperation operation, ClaimsPrincipal principal,
+    private static async Task<IResult> LoginAsync(Guid id, CollectorLoginRequest request, ClaimsPrincipal principal,
         IHubRegistry registry, HubConnections connections, CancellationToken token)
     {
         if (!OwnerClaims.TryGetOwnerId(principal, out var owner)) return Results.Unauthorized();
-        if (!ValidOperation(operation))
-            return Results.Problem(statusCode: 400, title: "Invalid Collector operation.");
+        if (!ValidLogin(request))
+            return Results.Problem(statusCode: 400, title: "Invalid Collector login.");
         var hub = (await registry.ListAsync(owner, token)).FirstOrDefault(x => x.Id == id && !x.Retired);
         if (hub is null) return Results.NotFound();
         if (!hub.Online) return Results.Problem(statusCode: 409, title: "Hub is offline. No operation was queued.");
-        if (operation.Action == "configure" && !CanConfigure(connections.GetReport(owner, id), operation.Key))
-            return Results.Problem(statusCode: 400, title: "Collector type is not configurable on this Hub.");
-        return await DispatchAsync(owner, id, operation, connections, token);
+        if (!CanLogin(connections.GetReport(owner, id), request.Key))
+            return Results.Problem(statusCode: 400, title: "Collector login is not available on this Hub.");
+        return await DispatchAsync(owner, id, request, connections, token);
     }
 
-    private static bool CanConfigure(HubReport? report, string key) =>
-        report?.Types.Any(type => type.Key == key && type.CanAdd) ?? false;
+    private static bool CanLogin(HubReport? report, string key) =>
+        report?.Types.Any(type => type.Key == key) ?? false;
 
-    private static async Task<IResult> DispatchAsync(Guid owner, Guid id, CollectorOperation operation,
+    private static async Task<IResult> DispatchAsync(Guid owner, Guid id, CollectorLoginRequest request,
         HubConnections connections, CancellationToken token)
     {
         try
         {
-            var result = await connections.ExecuteAsync(owner, id, operation, token);
+            var result = await connections.ExecuteAsync(owner, id, request, token);
             return Results.Ok(result);
         }
         catch (InvalidOperationException exception)

@@ -8,7 +8,6 @@ import { authConfiguration, createUserManagerSettings } from "@/auth/config";
 import { handleSigninCallback, SessionCacheGuard } from "@/auth/session";
 import { MascotBackground } from "@/components/layout/MascotBackground";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
-import { ThemeProvider } from "@/lib/theme";
 
 export function Providers({ children }: PropsWithChildren) {
   const [queryClient] = useState(
@@ -27,17 +26,15 @@ export function Providers({ children }: PropsWithChildren) {
   );
 
   return (
-    <ThemeProvider>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider
-          {...createUserManagerSettings(authConfiguration)}
-          onSigninCallback={handleSigninCallback}
-        >
-          <MascotBackground />
-          <ThemeToggle />
-          <SessionCacheGuard>{children}</SessionCacheGuard>
-        </AuthProvider>
-      </QueryClientProvider>
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider
+        {...createUserManagerSettings(authConfiguration)}
+        onSigninCallback={handleSigninCallback}
+      >
+        <MascotBackground />
+        <ThemeToggle />
+        <SessionCacheGuard>{children}</SessionCacheGuard>
+      </AuthProvider>
+    </QueryClientProvider>
   );
 }
