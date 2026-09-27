@@ -10,6 +10,7 @@ import {
   Moon,
   Plus,
   RefreshCw,
+  Server,
   Sun,
   type LucideProps,
 } from "lucide-react";
@@ -26,6 +27,7 @@ const icons = {
   moon: Moon,
   plus: Plus,
   refresh: RefreshCw,
+  server: Server,
   sun: Sun,
 } as const;
 

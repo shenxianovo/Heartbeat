@@ -1,8 +1,8 @@
 import type { DeliveryActivity } from "@/api/hubs";
 
 export const deliveryStages = [
-  { key: "accepted", label: "已接受", color: "#38a9e8" },
-  { key: "delivered", label: "已上传", color: "#2fbc95" },
+  { key: "accepted", label: "已接受", color: "--chart-1" },
+  { key: "delivered", label: "已上传", color: "--chart-2" },
 ] as const;
 export const displaySeconds = 60;
 export interface DeliveryPoint {

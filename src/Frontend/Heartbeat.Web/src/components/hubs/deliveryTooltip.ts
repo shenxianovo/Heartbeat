@@ -3,7 +3,7 @@ import { deliveryStages, type DeliveryPoint } from "./deliverySamples";
 
 export function createDeliveryTooltip(host: HTMLElement) {
   const element = document.createElement("div");
-  element.className = "delivery-tooltip";
+  element.className = "tooltip-surface delivery-tooltip";
   element.setAttribute("role", "tooltip");
   element.hidden = true;
   element.innerHTML = `<time></time><table><tbody>${deliveryStages

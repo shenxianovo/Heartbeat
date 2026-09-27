@@ -185,23 +185,46 @@
   display: none;
 }
 
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+.status-indicator::before {
+  content: "";
+  width: calc(var(--spacing) * 1.5);
+  height: calc(var(--spacing) * 1.5);
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: currentColor;
+}
+.status-indicator[data-tone="success"] {
+  color: var(--alive);
+}
+.status-indicator[data-tone="danger"] {
+  color: var(--destructive);
+}
+
+.tooltip-surface {
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 2.5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
+  pointer-events: none;
+}
 /* Hover tip. One instance lives at the end of the body, so no clipped or blurred
    container can cut it off, and it never intercepts the pointer it follows. */
 .ui-tooltip {
   position: fixed;
   z-index: 60;
   display: grid;
-  gap: 0.05rem;
   max-width: min(18rem, calc(100vw - 24px));
-  padding: 0.3rem 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 0.4rem;
-  background: var(--popover);
-  color: var(--popover-foreground);
-  box-shadow: var(--shadow-md);
-  font-size: 0.7rem;
-  line-height: 1.45;
-  pointer-events: none;
 }
 .ui-tooltip-caption {
   color: var(--muted-foreground);

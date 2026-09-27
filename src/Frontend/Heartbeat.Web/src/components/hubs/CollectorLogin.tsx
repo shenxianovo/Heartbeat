@@ -49,14 +49,14 @@ export function CollectorLogin({
 
   return (
     <form
-      className="collector-form"
+      className="grid max-w-xl gap-3"
       onSubmit={(event) => void login(event)}
       aria-label={`${type.displayName} 登录`}
     >
       <h3>登录 {type.displayName}</h3>
       {fields.map((field) => (
-        <label key={field.name}>
-          {field.label}
+        <label className="field" key={field.name}>
+          <span>{field.label}</span>
           <input
             type={field.kind === "secret" ? "password" : "text"}
             autoComplete="off"
@@ -68,7 +68,7 @@ export function CollectorLogin({
         </label>
       ))}
       {error && <p role="alert">{error}</p>}
-      <div className="hub-actions">
+      <div className="flex flex-wrap items-center gap-2">
         <Button type="submit" disabled={disabled || busy}>
           {busy ? "正在登录…" : sessionId ? "继续登录" : "登录"}
         </Button>

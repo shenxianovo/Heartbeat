@@ -38,6 +38,8 @@ API 数据结构以 [记录 HTTP 接口](../../../docs/recording-api.md) 为准�
 
 按钮统一使用 `src/components/ui/button.tsx` 的 `Button` 或 `buttonVariants`（用于保留链接语义）。默认按钮沿用现有玻璃样式；`glassPrimary`、`outline`、`ghost` 等变体都在同一处定义。颜色取自 `src/styles/tokens.css`。界面图标统一通过 `Icon` 使用 Lucide 的具名导入，保留尺寸和无障碍约定。
 
+间距、字号和字重使用 Tailwind 默认刻度，主题颜色、圆角和阴影复用现有 token。简单布局使用 utility class；页面 CSS 保留专用网格和响应式规则。表单输入复用 `.field`，状态圆点复用 `.status-indicator`（`data-tone` 控制色彩），浮层外观复用 `.tooltip-surface`，各 Tooltip 自行处理定位与内容。
+
 ## 添加 Record 展示
 
 1. 在 `registry.ts` 按 `(type, version)` 注册 `label` 和 `summarize`。摘要声明 Record 标签、可选子泳道 `group`、颜色语气 `tone` 和 `hover` 文案；需要专用详情时才提供 `Renderer`，否则使用安全 JSON。

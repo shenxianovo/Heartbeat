@@ -2,9 +2,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "react-oidc-context";
-import { fetchHubs, fetchHubActivity } from "@/api/hubs";
+import { fetchHubs, fetchHubActivity, type HubSummary } from "@/api/hubs";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/Icon";
 import { HubCard } from "./HubCard";
 
 export function HubsPage() {
@@ -29,21 +30,17 @@ export function HubsPage() {
     <div className="app-shell">
       <AppHeader />
       <main className="hubs-page">
-        <div className="hub-heading">
-          <div>
-            <h1>我的 Hub</h1>
-            <p>查看各处采集与交付状态，完成 Collector 登录。</p>
-          </div>
-          <Button onClick={() => void query.refetch()} disabled={query.isFetching}>
-            刷新
-          </Button>
-        </div>
+        <HubsHeading
+          data={query.data}
+          refreshing={query.isFetching}
+          refresh={() => void query.refetch()}
+        />
         {query.isPending && <p role="status">正在读取 Hub…</p>}
         {query.isError && (
           <p role="alert">无法刷新 Hub 状态：{query.error.message}。连接恢复前登录暂不可用。</p>
         )}
         {query.data?.hubs.length === 0 && (
-          <section className="hub-card">
+          <section className="hubs-empty">
             <h2>还没有 Hub 接入</h2>
             <p>启动并配置 Desktop 或服务器上的 Hub，完成连接后会出现在这里。</p>
           </section>
@@ -58,7 +55,35 @@ export function HubsPage() {
             refresh={query.refetch}
           />
         ))}
+        <p className="mt-5 text-xs leading-relaxed text-muted-foreground">
+          Hub 在线仅表示最近可联络，Collector 与 Record 交付状态分别展示。
+        </p>
       </main>
+    </div>
+  );
+}
+
+function HubsHeading({
+  data,
+  refreshing,
+  refresh,
+}: {
+  data?: { hubs: HubSummary[] };
+  refreshing: boolean;
+  refresh: () => void;
+}) {
+  return (
+    <div className="mb-5 flex items-center justify-between gap-4">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">我的 Hub</h1>
+        <p className="mt-1.5 text-sm text-muted-foreground">
+          采集与交付状态{data && <span> · {data.hubs.length} 个 Hub</span>}
+        </p>
+      </div>
+      <Button onClick={refresh} disabled={refreshing}>
+        <Icon name="refresh" />
+        刷新
+      </Button>
     </div>
   );
 }

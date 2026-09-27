@@ -81,7 +81,12 @@ export function TooltipLayer({ children }: { children: ReactNode }) {
       {/* No tip exists until a pointer asks for one, so the server renders nothing here. */}
       {tip
         ? createPortal(
-            <div className="ui-tooltip" role="presentation" aria-hidden="true" style={place(tip)}>
+            <div
+              className="tooltip-surface ui-tooltip"
+              role="presentation"
+              aria-hidden="true"
+              style={place(tip)}
+            >
               {tip.content}
             </div>,
             document.body,

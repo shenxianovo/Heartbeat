@@ -2,11 +2,17 @@ import uPlot from "uplot";
 import type { DeliveryActivity } from "@/api/hubs";
 import { DeliverySamples, deliveryStages, displaySeconds } from "./deliverySamples";
 import { createDeliveryTooltip } from "./deliveryTooltip";
+import { plotColor } from "../replay/useTimePlot";
 import "uplot/dist/uPlot.min.css";
 
 /** uPlot owns the canvas and animation clock; React only supplies the latest counters. */
 export function mountDeliveryPlot(host: HTMLDivElement, summary: HTMLOutputElement) {
   const samples = new DeliverySamples();
+  const countLabel = new Intl.NumberFormat("zh-CN", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  });
+  const axisColor = (chart: uPlot) => plotColor(chart, "--muted-foreground");
   let observedAt = performance.now();
   let end = Date.now() / 1000;
   let frame = 0;
@@ -16,7 +22,7 @@ export function mountDeliveryPlot(host: HTMLDivElement, summary: HTMLOutputEleme
   const plot = new uPlot(
     {
       width: Math.max(1, host.clientWidth),
-      height: 180,
+      height: Math.max(1, host.clientHeight),
       legend: { show: false },
       cursor: { y: false, points: { show: false }, drag: { setScale: false } },
       select: { show: false, left: 0, top: 0, width: 0, height: 0 },
@@ -26,7 +32,7 @@ export function mountDeliveryPlot(host: HTMLDivElement, summary: HTMLOutputEleme
       },
       axes: [
         {
-          stroke: "#89949f",
+          stroke: axisColor,
           grid: { show: false },
           size: 28,
           splits: (chart) => [
@@ -37,17 +43,21 @@ export function mountDeliveryPlot(host: HTMLDivElement, summary: HTMLOutputEleme
           values: () => ["−60 秒", "−30 秒", "现在"],
         },
         {
-          stroke: "#89949f",
-          size: 38,
-          grid: { stroke: "#89949f20", width: 1 },
+          stroke: axisColor,
+          size: 48,
+          grid: {
+            stroke: (chart: uPlot) =>
+              `color-mix(in srgb, ${plotColor(chart, "--muted-foreground")} 14%, transparent)`,
+            width: 1,
+          },
           values: (_plot, ticks) =>
-            ticks.map((value) => (Number.isInteger(value) ? String(value) : "")),
+            ticks.map((value) => (Number.isInteger(value) ? countLabel.format(value) : "")),
         },
       ],
       series: [
         {},
         ...deliveryStages.map(({ color }, index) => ({
-          stroke: color,
+          stroke: (chart: uPlot) => plotColor(chart, color),
           width: 1.8,
           paths: uPlot.paths.spline!(),
           points: { show: false },
@@ -77,7 +87,7 @@ export function mountDeliveryPlot(host: HTMLDivElement, summary: HTMLOutputEleme
     frame = requestAnimationFrame(animate);
   }
   const resize = new ResizeObserver(() =>
-    plot.setSize({ width: Math.max(1, host.clientWidth), height: 180 }),
+    plot.setSize({ width: Math.max(1, host.clientWidth), height: Math.max(1, host.clientHeight) }),
   );
   resize.observe(host);
   frame = requestAnimationFrame(animate);

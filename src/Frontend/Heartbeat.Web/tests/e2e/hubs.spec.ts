@@ -3,7 +3,9 @@ import { identityRoutes, seedSession } from "./fixtures";
 
 test("Hub status separates presence, collection and delivery without remote lifecycle controls", async ({
   page,
-}) => {
+}, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark" });
   await identityRoutes(page);
   await seedSession(page);
   let online = true;
@@ -41,15 +43,31 @@ test("Hub status separates presence, collection and delivery without remote life
     });
   });
   await page.goto("/hubs");
+  const hub = page.getByRole("region", { name: "测试服务器", exact: true });
+  await expect(hub.getByText("hub-a", { exact: true })).toBeHidden();
+  await hub.getByText("查看标识", { exact: true }).click();
+  await expect(hub.getByText("hub-a", { exact: true })).toBeVisible();
+  await hub.getByText("查看标识", { exact: true }).click();
+  await page.screenshot({ path: testInfo.outputPath("hubs-desktop-dark.png"), fullPage: true });
   await expect(page.getByText("待上传 7")).toBeVisible();
   await expect(page.getByText("失败 1", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "登录 示例采集", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "重新登录", exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "添加其他 示例采集 账号", exact: true }),
+  ).toBeEnabled();
   await expect(page.getByRole("button", { name: /^(开始|暂停|配置|移除|退役 Hub)$/ })).toHaveCount(
     0,
   );
   online = false;
   await page.getByRole("button", { name: "刷新", exact: true }).click();
   await expect(page.getByText("离线", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "登录 示例采集", exact: true })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "添加其他 示例采集 账号", exact: true }),
+  ).toBeDisabled();
+  await expect(hub.getByText("最近上报：采集中", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "切换到浅色" }).click();
+  await page.screenshot({ path: testInfo.outputPath("hubs-desktop-light.png"), fullPage: true });
 });
 
 test("Collector login discovers identity and completes two-factor authentication without manual start", async ({
@@ -148,6 +166,10 @@ test("Collector login discovers identity and completes two-factor authentication
     { key: "custom", sessionId: "pending-login", input: { code: "wrong-code" } },
     { key: "custom", sessionId: "pending-login", input: { code: "123456" } },
   ]);
+  await expect(page.getByRole("button", { name: "登录 自定义采集", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "添加其他 自定义采集 账号", exact: true }).click();
+  await expect(page.getByLabel("用户名", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "关闭", exact: true }).click();
   expired = true;
   await page.getByRole("button", { name: "刷新", exact: true }).click();
   await page.getByRole("button", { name: "重新登录", exact: true }).click();
@@ -220,13 +242,37 @@ test("Hub curves show counter deltas without replaying startup, outages or resta
   }
   await advance(100, 0);
   await advance(50, 80);
+  // Counter/tooltip assertions alone miss a curve rendered with an invalid CSS color.
+  await expect
+    .poll(() =>
+      plot.locator("canvas").evaluate((canvas: HTMLCanvasElement) => {
+        const context = canvas.getContext("2d")!;
+        const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+        const swatch = document.createElement("canvas").getContext("2d")!;
+        return ["--chart-1", "--chart-2"].map((token) => {
+          swatch.clearRect(0, 0, 1, 1);
+          swatch.fillStyle = getComputedStyle(canvas).getPropertyValue(token).trim();
+          swatch.fillRect(0, 0, 1, 1);
+          const color = swatch.getImageData(0, 0, 1, 1).data;
+          for (let index = 0; index < pixels.length; index += 4) {
+            if (
+              pixels[index + 3]! > 200 &&
+              [0, 1, 2].every((channel) => Math.abs(pixels[index + channel]! - color[channel]!) < 8)
+            )
+              return true;
+          }
+          return false;
+        });
+      }),
+    )
+    .toEqual([true, true]);
   const bounds = (await plot.locator(".u-over").boundingBox())!;
   const [from, to] = (await plot.getAttribute("data-range"))!.split("/").map(Number);
   const x = Math.min(
     bounds.width - 1,
     ((activity.capturedAt / 1000 - from!) / (to! - from!)) * bounds.width,
   );
-  await page.mouse.move(bounds.x + x, bounds.y + 80);
+  await page.mouse.move(bounds.x + x, bounds.y + bounds.height / 2);
   await expect(tooltip.getByRole("row", { name: "已接受 50" })).toBeVisible();
   await expect(tooltip.getByRole("row", { name: "已上传 80" })).toBeVisible();
   await flow.screenshot({ path: testInfo.outputPath("hub-delivery-deltas.png") });
