@@ -28,4 +28,5 @@
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
+  <ItemGroup><Compile Include="../Shared/IdleVRChatConnection.cs" Link="IdleVRChatConnection.cs" /></ItemGroup>
 </Project>

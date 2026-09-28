@@ -108,8 +108,11 @@ public sealed class ManagedVRChatTests(PostgresFixture fixture) : PostgresTestBa
             Task.FromResult(new VRChatAuthenticationState("Example", _verified ? [] : ["emailOtp"], _verified ? Account : null));
         public Task VerifyTwoFactorAsync(string method, string code, CancellationToken cancellationToken)
         { Assert.Equal("123456", code); _verified = true; return Task.CompletedTask; }
-        public Task<VRChatPresence?> GetPresenceAsync(CancellationToken cancellationToken) =>
-            Task.FromResult<VRChatPresence?>(new("world", "World", "instance", Account));
+        public Task<VRChatPresenceSnapshot> GetSnapshotAsync(CancellationToken token) =>
+            Task.FromResult(new VRChatPresenceSnapshot(DateTimeOffset.UtcNow,
+                [new(Account, "Example", new("wrld_test", "instance"), DateTimeOffset.UtcNow, "snapshot")]));
+        public Task<IVRChatEventConnection> ConnectAsync(CancellationToken token) =>
+            Task.FromResult<IVRChatEventConnection>(new Heartbeat.Testing.IdleVRChatConnection());
         public Task<string?> GetWorldNameAsync(string worldId, CancellationToken cancellationToken) => Task.FromResult<string?>("World");
         public string ExportSession() => "session-cookie";
     }

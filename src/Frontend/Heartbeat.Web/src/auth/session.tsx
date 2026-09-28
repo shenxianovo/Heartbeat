@@ -64,7 +64,7 @@ export function RequireSession({ children }: PropsWithChildren) {
 
   useEffect(() => {
     if (!auth.isLoading && !auth.isAuthenticated && !authConfiguration.error) {
-      router.replace(`/login?returnTo=${encodeURIComponent(pathname)}`);
+      router.replace(`/login?returnTo=${encodeURIComponent(pathname + window.location.search)}`);
     }
   }, [auth.isAuthenticated, auth.isLoading, pathname, router]);
 

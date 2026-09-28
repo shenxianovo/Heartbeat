@@ -30,3 +30,14 @@ npm run test:e2e
 Chromium 场景覆盖范围选择、来源组合、记录聚焦、重叠区间、Point 密度、未知 JSON、失败重试、键盘操作和窄屏布局。
 
 浏览器测试模拟认证和记录 API，只证明前端读取契约与交互，不证明真实 Collector 到 Web 链路。实际命令、运行结果和截图以对应 `.artifacts/verification/` 运行目录为准。
+
+## 2026-09-27：全局概览与领域下钻
+
+首页 `/` 改为按来源展示的时长气泡；VRChat 气泡进入 `/vrchat`，桌面来源及「详细时间线」进入 `/timeline`。下钻传递时间范围与来源，领域详情和时间线提供返回概览入口；页头不再放置 VRChat 按钮。具体口径见[前端契约](../../src/Frontend/Heartbeat.Web/README.md#全局概览与下钻)。
+
+本次通过：
+
+- `dotnet run --project tools/Heartbeat.Dev -- verify closeout --base ce0a1e79a8832311366a94f8ac1ad9a7ebdf52ac`：构建、现有回归、前端检查、浏览器回归和结构质量闸门均通过。证据：`.artifacts/verification/20260927T055553Z-verify-closeout-df7841ae6a5b41f9ba512d8ecbd0d55c/`。
+- `dotnet run --project tools/Heartbeat.Dev -- scenario replay-fixture`：概览到领域/泳道、来源与时间范围传递、空目录、失败恢复、未知来源入口及窄屏场景通过。已查看桌面和手机截图。证据：`.artifacts/verification/20260927T055232Z-scenario-replay-fixture-69c49d14fafb4136a5aaa0d1d616e34f/`。
+
+认证回归另覆盖需要登录时保留详情筛选。上述浏览器数据为 fixture，未部署，未重新运行原生桌面场景，也不证明真实 VRChat 事件覆盖。

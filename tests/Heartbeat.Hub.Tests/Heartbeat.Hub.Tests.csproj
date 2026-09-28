@@ -18,4 +18,5 @@
     <ProjectReference Include="../../src/Collectors/Heartbeat.Collector.Desktop.Mac/Heartbeat.Collector.Desktop.Mac.csproj" />
     <Using Include="Xunit" />
   </ItemGroup>
+  <ItemGroup><Compile Include="../Shared/IdleVRChatConnection.cs" Link="IdleVRChatConnection.cs" /></ItemGroup>
 </Project>

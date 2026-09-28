@@ -1,0 +1,120 @@
+.overview-workspace {
+  display: grid;
+  gap: 1.5rem;
+  max-width: 1200px;
+}
+.overview-heading,
+.overview-controls,
+.period-presets {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.overview-heading {
+  justify-content: space-between;
+}
+.overview-heading h1 {
+  margin: 0.5rem 0;
+  font-size: clamp(1.8rem, 4vw, 2.5rem);
+}
+.overview-heading p,
+.overview-note,
+.overview-other p,
+.overview-timeline p {
+  color: var(--muted-foreground);
+}
+.overview-map {
+  padding: 1.5rem;
+  min-width: 0;
+}
+.overview-map h2,
+.overview-timeline h2 {
+  margin: 0.4rem 0;
+  font-size: 1.25rem;
+}
+.overview-note {
+  font-size: 0.85rem;
+  line-height: 1.7;
+  margin: 0.8rem 0;
+}
+.overview-sources {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin: 1rem 0;
+}
+.overview-source {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  padding: 1rem;
+  border-radius: 0.8rem;
+  background: var(--muted);
+  text-decoration: none;
+}
+.overview-source > div {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.overview-source span {
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+}
+.overview-source p {
+  color: var(--destructive);
+  font-size: 0.85rem;
+  margin: 0;
+}
+.overview-source:hover,
+.overview-timeline:hover {
+  outline: 1px solid var(--primary);
+}
+.overview-timeline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  text-decoration: none;
+}
+.overview-timeline > span {
+  font-size: 1.5rem;
+  color: var(--primary);
+}
+.overview-other {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+.overview-other h2,
+.overview-other p {
+  width: 100%;
+  margin: 0;
+}
+.overview-other a {
+  padding: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+}
+.page-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.7rem;
+  color: var(--muted-foreground);
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+@media (max-width: 640px) {
+  .overview-map,
+  .overview-timeline {
+    padding: 1rem;
+  }
+  .overview-sources {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

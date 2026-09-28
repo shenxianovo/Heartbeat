@@ -26,7 +26,7 @@ export function AppHeader() {
   return (
     <header className="app-header">
       <nav className="header-navigation" aria-label="主导航">
-        <Link className="brand" href="/" aria-label="Heartbeat 回放首页">
+        <Link className="brand" href="/" aria-label="Heartbeat 概览首页">
           <span className="brand-pulse" aria-hidden="true">
             <i />
             <i />
@@ -34,7 +34,7 @@ export function AppHeader() {
           </span>
           <span>
             <strong>Heartbeat</strong>
-            <small>REPLAY</small>
+            <small>OVERVIEW</small>
           </span>
         </Link>
         <Link

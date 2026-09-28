@@ -4,9 +4,14 @@ import { fetchAllRecords, fetchPointCounts, fetchRecords, fetchTracks } from "@/
 import type { ReplayLane, TrackSummary } from "@/api/types";
 import { queryKeys } from "./queryKeys";
 
-export function useTracksQuery(ownerSubject: string, accessToken: string) {
+export function useTracksQuery(
+  ownerSubject: string,
+  accessToken: string,
+  refetchInterval?: number,
+) {
   return useQuery({
     queryKey: queryKeys.tracks(ownerSubject),
+    refetchInterval,
     queryFn: ({ signal }) => fetchTracks(accessToken, signal),
     enabled: Boolean(accessToken),
   });

@@ -10,24 +10,6 @@ public sealed class VRChatCollectorTests
     private const string Account = "usr_11111111-1111-4111-8111-111111111111";
 
     [Fact]
-    public void PresenceExtendsSameRecordWithoutChangingValueAndNeverBridgesMissingObservations()
-    {
-        var projector = new PresenceRecords(Account, TimeSpan.FromMinutes(2));
-        var at = DateTimeOffset.UtcNow;
-        var presence = new VRChatPresence("world", "Name", "instance", Account);
-        var first = projector.Observe(presence, at)!;
-        var continued = projector.Observe(presence with { WorldName = "Changed" }, at.AddMinutes(1))!;
-        Assert.Equal(first.Id, continued.Id);
-        Assert.Equal(first.Value.GetRawText(), continued.Value.GetRawText());
-        Assert.Equal(at.AddMinutes(1), continued.EndedAt);
-        Assert.Null(projector.Observe(null, at.AddMinutes(2)));
-        var resumed = projector.Observe(presence, at.AddMinutes(3))!;
-        Assert.NotEqual(first.Id, resumed.Id);
-        Assert.NotEqual(resumed.Id, projector.Observe(presence, at.AddMinutes(8))!.Id);
-        Assert.Throws<InvalidDataException>(() => projector.Observe(presence with { ObservedAccountId = "other" }, at.AddMinutes(9)));
-    }
-
-    [Fact]
     public async Task LoginRequiresValidTwoFactorThenAutomaticallyCollectsAndRestoresWithoutCredentials()
     {
         using var host = new TestHub();
@@ -52,7 +34,7 @@ public sealed class VRChatCollectorTests
             Assert.Equal("running", Assert.Single(manager.Collectors).State);
             var record = Assert.Single(queue.TakePending());
             Assert.Equal(Account, record.Route.Collector.Target);
-            Assert.Equal("world", record.Record.Value.GetProperty("world_id").GetString());
+            Assert.Equal("wrld_test", record.Record.Value.GetProperty("world_id").GetString());
             Assert.Equal("session", storage.Secrets.Read($"vrchat:{Account}:session"));
             var saved = File.ReadAllText(Path.Combine(host.Directory.FullName, "collectors.json"));
             Assert.DoesNotContain("private-password", saved);
@@ -127,8 +109,11 @@ public sealed class VRChatCollectorTests
             Verified = true;
             return Task.CompletedTask;
         }
-        public Task<VRChatPresence?> GetPresenceAsync(CancellationToken cancellationToken) =>
-            Task.FromResult<VRChatPresence?>(new("world", null, "instance", AccountId));
+        public Task<VRChatPresenceSnapshot> GetSnapshotAsync(CancellationToken token) =>
+            Task.FromResult(new VRChatPresenceSnapshot(DateTimeOffset.UtcNow,
+                [new(AccountId, "Example", new("wrld_test", "instance"), DateTimeOffset.UtcNow, "snapshot")]));
+        public Task<IVRChatEventConnection> ConnectAsync(CancellationToken token) =>
+            Task.FromResult<IVRChatEventConnection>(new Heartbeat.Testing.IdleVRChatConnection());
         public Task<string?> GetWorldNameAsync(string worldId, CancellationToken cancellationToken) => Task.FromResult<string?>("World");
         public string ExportSession() => "session";
     }

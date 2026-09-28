@@ -70,18 +70,21 @@ function focusRange(at: number, bounds: TimeRange): TimeRange {
   return clampRange({ start: at - FOCUS_RADIUS_MS, end: at + FOCUS_RADIUS_MS }, bounds);
 }
 
-export function useReplaySelection() {
+export function useReplaySelection(initial?: {
+  range: DateRange | null;
+  collectorId: string | null;
+}) {
   const hydrated = useSyncExternalStore(
     subscribeHydration,
     () => true,
     () => false,
   );
   const [state, dispatch] = useReducer(reduceSelection, null, (): Selection => ({
-    chosen: null,
-    collectorIds: null,
+    chosen: initial?.range ?? null,
+    collectorIds: initial?.collectorId ? [initial.collectorId] : null,
     viewport: null,
     detail: null,
-    mode: "follow",
+    mode: initial?.range ? "manual" : "follow",
     now: Date.now(),
   }));
   const initialRange = useMemo(

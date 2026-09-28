@@ -83,7 +83,7 @@ test("深色主题首页水合时不报告 html 属性不一致", async ({ page 
 
 test("统一时间线自动读取完整区间并可查看原始记录", async ({ page }) => {
   const requests = await recordingRoutes(page);
-  await page.goto("/");
+  await page.goto("/timeline");
   await expect(
     page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "Hub 管理" }),
   ).toBeVisible();
@@ -115,7 +115,7 @@ test("统一时间线自动读取完整区间并可查看原始记录", async ({
 test("未知类型安全展示 JSON，窄屏也可查看", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await recordingRoutes(page);
-  await page.goto("/");
+  await page.goto("/timeline");
   await chooseSources(page, ["自定义来源"]);
   await clickCurrentInputDensity(page);
   await expect(page.getByText(/<script>window.untrustedExecuted=true<\/script>/)).toBeVisible();
@@ -137,13 +137,13 @@ test("未知类型安全展示 JSON，窄屏也可查看", async ({ page }) => {
 
 test("空目录有明确状态", async ({ page }) => {
   await recordingRoutes(page, { empty: true });
-  await page.goto("/");
+  await page.goto("/timeline");
   await expect(page.getByRole("heading", { name: "还没有可以回放的记录" })).toBeVisible();
 });
 
 test("请求失败后可重试恢复", async ({ page }) => {
   await recordingRoutes(page, { fail: true });
-  await page.goto("/");
+  await page.goto("/timeline");
   await expect(page.getByRole("heading", { name: "暂时无法读取采集来源" })).toBeVisible({
     timeout: 15000,
   });
@@ -163,7 +163,7 @@ test("一条 Track 失败时保留其余数据并可单独重试", async ({ page
     await route.fallback();
   });
 
-  await page.goto("/");
+  await page.goto("/timeline");
   const failureAlert = page.locator(".density-error");
   await expect(failureAlert).toContainText("1 条 Track 读取失败");
   await expect(page.getByText("观测状态", { exact: true })).toBeVisible();
@@ -194,7 +194,7 @@ test("部分 Track 失败而其余仍在加载时不误报全部失败", async (
     await route.fallback();
   });
   try {
-    await page.goto("/");
+    await page.goto("/timeline");
     await expect.poll(() => failedRequests).toBe(3);
     await expect(page.getByText("正在构建统一时间窗口")).toBeVisible();
     await expect(page.getByText("所选 Track 均读取失败。")).toHaveCount(0);
@@ -209,12 +209,12 @@ test("部分 Track 失败而其余仍在加载时不误报全部失败", async (
 
 test("退出后清理会话，返回首页不能继续查看缓存记录", async ({ page }) => {
   await recordingRoutes(page);
-  await page.goto("/");
+  await page.goto("/timeline");
   await expect(page.getByRole("button", { name: /当前 com\.apple\.finder/ })).toBeVisible();
   await page.getByRole("button", { name: "退出登录" }).click();
   await expect(page).toHaveURL(/\/login/);
   expect(await page.evaluate((key) => sessionStorage.getItem(key), userStorageKey)).toBeNull();
-  await page.goto("/");
+  await page.goto("/timeline");
   await expect(page).toHaveURL(/\/login/);
   await expect(page.getByRole("button", { name: /当前 com\.apple\.finder/ })).toHaveCount(0);
 });
@@ -236,7 +236,7 @@ test("重叠区间分别可见且可以直接展开", async ({ page }) => {
     }));
     await route.fulfill({ json: { track: desktopTrack, records, nextCursor: null } });
   });
-  await page.goto("/");
+  await page.goto("/timeline");
   await page.getByRole("button", { name: "全天", exact: true }).click();
   const lane = page.locator(".timeline-range-plot").first();
   const box = (await lane.boundingBox())!;
@@ -267,7 +267,7 @@ test("重叠区间分别可见且可以直接展开", async ({ page }) => {
 
 test("来源可以组合选择，空选择不会一直加载", async ({ page }) => {
   await recordingRoutes(page);
-  await page.goto("/");
+  await page.goto("/timeline");
   await chooseSources(page, []);
   await expect(page.getByRole("heading", { name: "尚未选择来源" })).toBeVisible();
   await chooseSources(page, ["测试 Mac", "自定义来源"]);
@@ -279,7 +279,7 @@ test("来源可以组合选择，空选择不会一直加载", async ({ page }) 
 
 test("概览拖选和手柄调整同步泳道，并按固定时间片查询更细的输入密度", async ({ page }) => {
   const requests = await recordingRoutes(page);
-  await page.goto("/");
+  await page.goto("/timeline");
   await page.getByRole("button", { name: "全天", exact: true }).click();
   const move = page.getByRole("slider", { name: "移动时间范围" });
   await expect(move).toBeVisible();
@@ -347,7 +347,7 @@ test("密度曲线在细节读取时保持可见，复用同一时间片并可�
     }
     await route.fallback();
   });
-  await page.goto("/");
+  await page.goto("/timeline");
   await page.getByRole("button", { name: "全天", exact: true }).click();
   const curve = page.locator(".timeline-density-curve").first();
   await expect(curve.locator("canvas")).toBeVisible();
@@ -403,7 +403,7 @@ test("密度曲线在细节读取时保持可见，复用同一时间片并可�
 
 test("应用子泳道与记录详情联动，日期切换清理选中记录", async ({ page }) => {
   await recordingRoutes(page);
-  await page.goto("/");
+  await page.goto("/timeline");
   await page.getByRole("button", { name: "展开 测试 Mac 的应用" }).click();
   const app = page
     .locator(".application-sublane")
@@ -424,7 +424,7 @@ test("应用子泳道与记录详情联动，日期切换清理选中记录", as
 
 test("观测状态与其他 Track 分开展示", async ({ page }) => {
   await recordingRoutes(page);
-  await page.goto("/");
+  await page.goto("/timeline");
 
   const timeline = page.getByRole("region", { name: "活动泳道，方向键平移，加减键缩放" });
   await expect(timeline.getByText("前台应用", { exact: true })).toBeVisible();
@@ -444,7 +444,7 @@ test("观测状态与其他 Track 分开展示", async ({ page }) => {
 
 test("泳道滚动、平移缩放与键盘范围控制始终保持在日期边界内", async ({ page }) => {
   await recordingRoutes(page);
-  await page.goto("/");
+  await page.goto("/timeline");
   await page.getByRole("button", { name: "全天", exact: true }).click();
   const start = page.getByRole("slider", { name: "范围起点" });
   const end = page.getByRole("slider", { name: "范围终点" });
@@ -508,7 +508,7 @@ test("泳道滚动、平移缩放与键盘范围控制始终保持在日期边�
 
 test("共享日期选择器支持月切换、键盘选择、今天和 Escape 关闭", async ({ page }) => {
   await recordingRoutes(page);
-  await page.goto("/");
+  await page.goto("/timeline");
   const trigger = page.getByRole("button", { name: "选择日期", exact: true });
   await trigger.click();
   const calendar = page.getByRole("dialog", { name: "选择日期", exact: true });
@@ -537,7 +537,7 @@ test("共享日期选择器支持月切换、键盘选择、今天和 Escape 关
 test("Picker 浮层窄屏可用，点击外部关闭且多选保持", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await recordingRoutes(page);
-  await page.goto("/");
+  await page.goto("/timeline");
   await chooseSources(page, ["测试 Mac"]);
   const trigger = page.getByRole("button", { name: "采集来源", exact: true });
   await expect(trigger).toContainText("测试 Mac");
@@ -561,7 +561,7 @@ test("Picker 浮层窄屏可用，点击外部关闭且多选保持", async ({ p
 
 test("泳道悬停提示是跟随指针的浮层，离开即收起", async ({ page }) => {
   await recordingRoutes(page);
-  await page.goto("/");
+  await page.goto("/timeline");
   await page.getByRole("button", { name: "全天", exact: true }).click();
   const tip = page.locator(".ui-tooltip");
   const curve = page.locator(".timeline-density-curve").first();
@@ -632,7 +632,7 @@ test("泳道悬停提示是跟随指针的浮层，离开即收起", async ({ pa
 test("现在自动跟随；用户操作和刷新保留视窗，回到现在才恢复", async ({ page }) => {
   await page.clock.install();
   await recordingRoutes(page);
-  await page.goto("/");
+  await page.goto("/timeline");
   const start = page.getByRole("slider", { name: "范围起点" });
   const end = page.getByRole("slider", { name: "范围终点" });
   await expect(start).toBeVisible();
@@ -695,7 +695,7 @@ test("历史日期在完整读取后聚焦首条活动，刷新不会重新定�
       },
     });
   });
-  await page.goto("/");
+  await page.goto("/timeline");
   await page.getByRole("button", { name: "前一天", exact: true }).click();
   const start = page.getByRole("slider", { name: "范围起点" });
   const dayStart = Number(await start.getAttribute("aria-valuemin"));
@@ -706,4 +706,178 @@ test("历史日期在完整读取后聚焦首条活动，刷新不会重新定�
   await expect(page.getByRole("button", { name: "刷新", exact: true })).toBeEnabled();
   await expect(start).toHaveAttribute("aria-valuenow", manual!);
   await page.screenshot({ path: evidencePath("replay-history-focus.png"), fullPage: true });
+});
+
+test("概览气泡进入 VRChat、保留筛选并下钻泳道（fixture，不验证真实事件）", async ({ page }) => {
+  const locationTrack = {
+    ...desktopTrack,
+    id: "vrc-location",
+    collectorId: "vrc-owner",
+    collectorKey: "heartbeat.collector.vrchat",
+    collectorTarget: "usr_fixture",
+    collectorDisplayName: "VRChat 示例账号",
+    type: "vrchat.location",
+  };
+  const encounterTrack = { ...locationTrack, id: "vrc-encounter", type: "vrchat.encounter" };
+  const names = [
+    "Midnight Rooftop",
+    "月明かりの温泉",
+    "Quiet Aquarium",
+    "Afterglow Station",
+    "星屑キャンプ場",
+    "Coffee by the Sea",
+    "Cloud Archive",
+    "雨音図書館",
+  ];
+  const lengths = [327, 215, 157, 119, 96, 71, 48, 44];
+  const instances = [
+    "100~friends(usr_fixture)",
+    "101~private(usr_fixture)",
+    "102~hidden(usr_fixture)",
+    "103",
+    "104~group(grp_fixture)~groupAccessType(public)",
+  ];
+  let until = Date.now() - 3600000;
+  const records = names.map((name, index) => {
+    const endedAt = new Date(until).toISOString();
+    until -= lengths[index]! * 60000;
+    return {
+      id: `visit-${index}`,
+      startedAt: new Date(until).toISOString(),
+      endedAt,
+      receivedAt: endedAt,
+      observedAt: null,
+      value: {
+        account_id: "usr_fixture",
+        world_id: `wrld_fixture_${index}`,
+        world_name: name,
+        instance_id: instances[index % instances.length],
+        basis: "api_visible",
+      },
+    };
+  });
+  const people = records.slice(0, 3).map((record, index) => ({
+    ...record,
+    id: `encounter-${index}`,
+    value: {
+      ...record.value,
+      friend_id: `usr_friend_${index}`,
+      friend_name: ["Haru", "小雨", "Neko"][index],
+    },
+  }));
+  const desktopRecords = records.slice(0, 2).map((record) => ({
+    ...record,
+    value: {
+      device_id: "test-mac",
+      application: {
+        platform: "macos",
+        id_kind: "bundle_id",
+        id: "com.microsoft.VSCode",
+        display_name: "Visual Studio Code",
+      },
+    },
+  }));
+  await page.route("**/api/v1/tracks**", (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/v1/tracks")
+      return route.fulfill({ json: { tracks: [locationTrack, encounterTrack, desktopTrack] } });
+    if (url.pathname.includes(desktopTrack.id))
+      return route.fulfill({
+        json: { track: desktopTrack, records: desktopRecords, nextCursor: null },
+      });
+    const own = url.pathname.includes("vrc-location");
+    return route.fulfill({
+      json: {
+        track: own ? locationTrack : encounterTrack,
+        records: own ? records : people,
+        nextCursor: null,
+      },
+    });
+  });
+  await page.addInitScript(() => localStorage.setItem("heartbeat-theme", "dark"));
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "最近的足迹" })).toBeVisible();
+  await expect(
+    page
+      .getByRole("navigation", { name: "主导航" })
+      .getByRole("link", { name: "VRChat", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.locator(".timeline-range-plot")).toHaveCount(0);
+  await page.getByRole("button", { name: "30 天", exact: true }).click();
+  const bubble = page.getByLabel("活动概览气泡图").getByRole("link", { name: /^VRChat ·/ });
+  await expect(page.getByLabel("来源摘要")).toContainText("17 小时 57 分");
+  await expect(page.getByLabel("来源摘要")).toContainText("9 小时 2 分");
+  const destination = new URL((await bubble.getAttribute("href"))!, "http://localhost");
+  await page.screenshot({ path: evidencePath("overview-desktop.png"), fullPage: true });
+  await bubble.click();
+  await expect(page).toHaveURL(/\/vrchat\?/);
+  expect(new URL(page.url()).searchParams.get("collector")).toBe("vrc-owner");
+  expect(new URL(page.url()).searchParams.get("from")).toBe(destination.searchParams.get("from"));
+  const timelineHref = await page
+    .getByRole("link", { name: "查看详细时间线" })
+    .getAttribute("href");
+  expect(new URL(timelineHref!, "http://localhost").searchParams.get("from")).toBe(
+    destination.searchParams.get("from"),
+  );
+  await expect(page.getByRole("heading", { name: "常去的世界" })).toBeVisible();
+  await page.getByRole("button", { name: /^Quiet Aquarium，/ }).click();
+  await expect(page.getByRole("heading", { name: "Quiet Aquarium", exact: true })).toBeVisible();
+  await page.getByText("查看访问明细", { exact: true }).click();
+  await expect(
+    page
+      .getByRole("region", { name: "常去的世界" })
+      .getByText("实例 102~hidden(usr_fixture)", { exact: true }),
+  ).toBeVisible();
+  await page.getByText("查看访问明细", { exact: true }).click();
+  await page.screenshot({ path: evidencePath("vrchat-habitat-desktop.png"), fullPage: true });
+  await page.getByText("Haru", { exact: true }).click();
+  await expect(
+    page
+      .getByRole("region", { name: "可见的同场相遇" })
+      .getByText("实例 100~friends(usr_fixture)", { exact: true }),
+  ).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true);
+  await page.getByRole("button", { name: "列表视图", exact: true }).click();
+  await expect(page.getByRole("button", { name: /Coffee by the Sea/ })).toBeVisible();
+  await page.screenshot({ path: evidencePath("vrchat-habitat-mobile.png"), fullPage: true });
+  await page.getByRole("link", { name: "概览", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "最近的足迹" })).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true);
+  await page.screenshot({ path: evidencePath("overview-mobile.png"), fullPage: true });
+  await page
+    .getByLabel("活动概览气泡图")
+    .getByRole("link", { name: /^测试 Mac/ })
+    .click();
+  await expect(page).toHaveURL(/\/timeline\?/);
+  expect(new URL(page.url()).searchParams.get("collector")).toBe(desktopTrack.collectorId);
+  await expect(page.getByRole("button", { name: "采集来源", exact: true })).toContainText(
+    "测试 Mac",
+  );
+  await expect(page.getByRole("region", { name: "区间记录列表" })).toContainText(
+    "Visual Studio Code",
+  );
+  await page.getByRole("link", { name: "概览", exact: true }).click();
+  await page.getByRole("link", { name: /详细时间线 展开泳道/ }).click();
+  expect(new URL(page.url()).searchParams.has("collector")).toBe(false);
+});
+
+test("概览保留未知来源入口，空目录与失败可以恢复", async ({ page }) => {
+  await recordingRoutes(page, { empty: true });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "还没有可以展示的足迹" })).toBeVisible();
+  await recordingRoutes(page, { fail: true });
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "暂时无法读取概览" })).toBeVisible({
+    timeout: 15000,
+  });
+  await recordingRoutes(page);
+  await page.getByRole("button", { name: "重试", exact: true }).click();
+  await expect(
+    page.getByRole("region", { name: "其他来源" }).getByRole("link", { name: "自定义来源 ↗" }),
+  ).toBeVisible();
 });

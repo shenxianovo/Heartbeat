@@ -9,7 +9,7 @@ import {
   recordingRoutes,
 } from "./fixtures";
 
-test("登录使用 PKCE，并通过回调恢复会话和回放", async ({ page, baseURL }) => {
+test("登录使用 PKCE，并通过回调恢复会话和概览", async ({ page, baseURL }) => {
   await identityRoutes(page);
   await recordingRoutes(page);
   await page.goto("/");
@@ -52,7 +52,7 @@ test("登录使用 PKCE，并通过回调恢复会话和回放", async ({ page, 
   });
   await page.goto(`/auth/callback?code=test-code&state=${encodeURIComponent(state!)}`);
   await expect(page).toHaveURL(`${baseURL}/`);
-  await expect(page.getByRole("button", { name: /当前 com\.apple\.finder/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "最近的足迹" })).toBeVisible();
 });
 
 test("异常登录回调提供可恢复的错误界面", async ({ page }) => {
@@ -61,4 +61,13 @@ test("异常登录回调提供可恢复的错误界面", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "无法确认这次登录" })).toBeVisible();
   await page.getByRole("link", { name: "返回登录" }).click();
   await expect(page).toHaveURL(/\/login/);
+});
+
+test("详情要求登录时保留时间范围和来源", async ({ page }) => {
+  await identityRoutes(page);
+  const destination =
+    "/vrchat?from=2026-09-01T00%3A00%3A00Z&to=2026-09-02T00%3A00%3A00Z&collector=vrc-owner";
+  await page.goto(destination);
+  await expect(page).toHaveURL(/\/login\?/);
+  expect(new URL(page.url()).searchParams.get("returnTo")).toBe(destination);
 });

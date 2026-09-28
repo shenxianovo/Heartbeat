@@ -1,6 +1,6 @@
 # Heartbeat Web
 
-Heartbeat 的回放前端，使用 Next.js App Router、React 和 TypeScript。登录后的数据请求在浏览器中通过 TanStack Query 完成，Next.js 提供页面壳和到现有 .NET API 的同源转发。
+Heartbeat 的概览与回放前端，使用 Next.js App Router、React 和 TypeScript。登录后的数据请求在浏览器中通过 TanStack Query 完成，Next.js 提供页面壳和到现有 .NET API 的同源转发。
 
 ## 本地运行
 
@@ -26,7 +26,7 @@ HEARTBEAT_API_URL=http://127.0.0.1:8080 npm run dev
 | `NEXT_PUBLIC_OIDC_CLIENT_ID` | 浏览器客户端 ID        | `heartbeat-web`                 |
 | `NEXT_PUBLIC_OIDC_SCOPE`     | 登录 scope             | `openid profile offline_access` |
 
-浏览器使用 OIDC Authorization Code + PKCE。OIDC 库的事务状态、access token 和 refresh token 都保存在 `sessionStorage`，退出登录会清除会话与查询缓存。回调地址是 `/auth/callback`，登录页是 `/login`，回放工作台是 `/`。
+浏览器使用 OIDC Authorization Code + PKCE。OIDC 库的事务状态、access token 和 refresh token 都保存在 `sessionStorage`，退出登录会清除会话与查询缓存。回调地址是 `/auth/callback`，登录页是 `/login`，概览首页是 `/`，详细时间线是 `/timeline`。
 
 本地登录需要认证服务允许回调 `http://localhost:3000/auth/callback` 和来源 `http://localhost:3000`。退出操作清除当前应用会话，不退出认证服务的单点登录会话。`NEXT_PUBLIC_*` 配置在构建时写入浏览器资源，修改后应重新构建。
 
@@ -113,3 +113,15 @@ npm run test:perf
 页头“Hub 管理”进入 `/hubs`，按当前 Owner 展示 Hub 联络、Collector 状态和 Record 交付。在线时可登录服务器已安装的 Collector：输入账号凭据、按需完成验证码，成功后自动开始采集；失效后重新登录自动恢复。账号身份由第三方认证结果确定。Desktop 仅展示状态，本地原生 UI 负责启停。行为权威见 [Hub 管理契约](../../../docs/hub-management.md)。
 
 运行 `dotnet run --project tools/Heartbeat.Dev -- scenario hubs-fixture`（仓库根目录）验证首次登录、验证码错误重试、重新登录恢复、收发增量和离线禁用；该浏览器场景使用 mock 认证/API，不替代真实账号与原生客户端验收。
+
+## 全局概览与下钻
+
+首页 `/` 展示按 Collector 分开的时长气泡，提供 7/30/90 天和自定义范围。VRChat 气泡进入 `/vrchat`，桌面来源气泡进入筛选了该来源的 `/timeline`；底部「详细时间线」打开全部来源。页头只提供品牌首页与 Hub 管理，领域入口放在概览中；详情页有返回概览的路径。
+
+时长来自已支持协议的显式 Range：桌面使用前台应用观测，VRChat 使用可见世界停留。同一 Collector 的区间裁剪到所选范围并取并集，避免重叠段重复计时；不同 Collector 独立展示，不累加成总时长，不做跨来源日志融合。点事件、未知协议和未知版本保留详细时间线入口，读取失败和解析失败明确展示，不能当成零活动。
+
+`from`、`to`（ISO 时间）和 `collector` 查询参数把首页选择传给详情；不带参数的时间线保留今天自动跟随。概览和 VRChat 复用气泡布局，布局模块只处理尺寸与交互，协议解释仍在各视图投影内；展示与缓存责任沿用 ADR-0011/0012。浏览器场景同时检查首页空态/失败、概览到 VRChat、概览到泳道、来源/时间范围传递及窄屏布局。
+
+## VRChat 世界与相遇
+
+从首页的 VRChat 气泡进入 `/vrchat`，按单个 Collector 和时间范围展示世界气泡、访问明细、实例类型组成、星期/小时热力图及 API 可见好友同场。日期按浏览器本地时区；记录只算到已确认结束，不推到现在。不同来源不相加；断线可能将一次访问拆成多个观测段。数据语义和手动验收见 [VRChat 契约](../../Collectors/Heartbeat.Collector.VRChat/README.md) 与 [人工步骤](../../../docs/validation/vrchat-server-events.md)。

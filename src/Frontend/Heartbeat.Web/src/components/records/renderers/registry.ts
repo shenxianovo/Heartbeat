@@ -1,3 +1,4 @@
+import { readLocation, readEncounter } from "@/components/vrchat/model";
 import {
   DesktopApplicationForegroundV1,
   summarizeDesktopApplication,
@@ -22,6 +23,32 @@ import type {
 import type { TimelineRecord, TrackSummary } from "@/api/types";
 
 const renderers = new Map<string, RecordPresentation>([
+  [
+    rendererKey("vrchat.location", 1),
+    {
+      label: "VRChat 世界",
+      summarize: (value) => {
+        const location = readLocation(value);
+        return {
+          label: location.world_name || location.world_id,
+          hover: `实例 ${location.instance_id}`,
+        };
+      },
+    },
+  ],
+  [
+    rendererKey("vrchat.encounter", 1),
+    {
+      label: "VRChat 可见同场",
+      summarize: (value) => {
+        const encounter = readEncounter(value);
+        return {
+          label: encounter.friend_name || encounter.friend_id,
+          hover: `API 可见同场 · ${encounter.world_id}`,
+        };
+      },
+    },
+  ],
   [
     rendererKey("desktop.application.foreground", 1),
     {

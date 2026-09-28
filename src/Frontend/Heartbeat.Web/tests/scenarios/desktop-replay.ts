@@ -127,8 +127,9 @@ try {
   } else {
     await progress("api-reconciliation");
     await verifyApi(context.request);
-    await page.goto("/");
+    await page.goto("/timeline");
   }
+  if (interactive) await page.goto("/timeline");
   const details = await verifyReplay(page, witness, progress);
   // Retain timestamps only: the surrounding details can contain native user context.
   await details.locator(".record-time").screenshot({ path: input.files.screenshot });

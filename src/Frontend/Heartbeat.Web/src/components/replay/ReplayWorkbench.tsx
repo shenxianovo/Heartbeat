@@ -15,7 +15,8 @@ import { TimelineViewport } from "./TimelineViewport";
 import { todayRange } from "@/lib/dates";
 import { LoadingState } from "@/components/status/LoadingState";
 import { QueryState } from "@/components/status/QueryState";
-import { useReplaySelection } from "./useReplaySelection";
+import { useLinkedReplaySelection } from "./useLinkedReplaySelection";
+import Link from "next/link";
 import { useReplayData } from "./useReplayData";
 import { useLiveReplay } from "./useLiveReplay";
 
@@ -40,7 +41,7 @@ export function ReplayWorkbench() {
   const auth = useAuth();
   const accessToken = auth.user?.access_token ?? "";
   const ownerSubject = auth.user?.profile.sub ?? "";
-  const selection = useReplaySelection();
+  const selection = useLinkedReplaySelection();
   const {
     chosen,
     from,
@@ -80,6 +81,11 @@ export function ReplayWorkbench() {
     <div className="app-frame">
       <AppHeader />
       <main className="workspace experience-workspace">
+        <nav className="page-breadcrumb" aria-label="当前位置">
+          <Link href="/">概览</Link>
+          <span>/</span>
+          <span>详细时间线</span>
+        </nav>
         {tracksQuery.isPending ? (
           <LoadingState label="正在读取采集来源" />
         ) : tracksQuery.isError ? (

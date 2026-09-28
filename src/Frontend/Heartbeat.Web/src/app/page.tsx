@@ -1,15 +1,10 @@
-import { Suspense } from "react";
-
 import { RequireSession } from "@/auth/session";
-import { ReplayWorkbench } from "@/components/replay/ReplayWorkbench";
-import { LoadingState } from "@/components/status/LoadingState";
+import { OverviewDashboard } from "@/components/overview/OverviewDashboard";
 
-export default function ReplayPage() {
+export default function OverviewPage() {
   return (
-    <Suspense fallback={<LoadingState label="正在打开回放" fullPage />}>
-      <RequireSession>
-        <ReplayWorkbench />
-      </RequireSession>
-    </Suspense>
+    <RequireSession>
+      <OverviewDashboard />
+    </RequireSession>
   );
 }

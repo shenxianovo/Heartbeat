@@ -16,7 +16,7 @@ internal sealed class VRChatCollector(string? expectedTarget, IVRChatApiFactory 
     private string _displayName = "VRChat";
     private string? _error;
     private bool _needsAuthentication = true;
-    private readonly TimeSpan _interval = TimeSpan.FromMinutes(1);
+
     public CollectorState? State => _target is null ? null : new(VRChatCollectorFactory.Key, _target, _displayName,
         _needsAuthentication ? "authentication_required" : _error is not null ? "error" : _run is { IsCompleted: false } ? "running" : "paused", _error);
 
@@ -82,6 +82,13 @@ internal sealed class VRChatCollector(string? expectedTarget, IVRChatApiFactory 
             await StartAsync(token);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch (VRChatTransientException)
+        {
+            // A saved session is not invalidated by a temporary network/429 failure.
+            // The stream bootstrap verifies its account before producing any Record.
+            _needsAuthentication = false;
+            await StartAsync(token);
+        }
         catch (Exception)
         { _needsAuthentication = true; _error = "无法恢复 VRChat 会话，请重新登录。"; }
     }
@@ -102,54 +109,91 @@ internal sealed class VRChatCollector(string? expectedTarget, IVRChatApiFactory 
 
     private async Task PollAsync(CancellationToken token)
     {
-        var records = new PresenceRecords(_target!, _interval * 2.5);
-        var worldNames = new Dictionary<string, string?>(StringComparer.Ordinal);
-        RecordSnapshot? pending = null;
-        var backoff = _interval;
+        var pending = new Dictionary<Guid, VRChatRecord>();
+        var names = new Dictionary<string, string?>(StringComparer.Ordinal);
+        var backoff = 30d;
         while (!token.IsCancellationRequested)
         {
+            var started = DateTimeOffset.UtcNow;
             try
             {
-                if (pending is not null) { await SubmitAsync(pending, token); pending = null; }
-                var presence = await _session!.GetPresenceAsync(token);
-                var observedAt = DateTimeOffset.UtcNow;
-                if (presence is not null)
+                await FlushAsync(pending, token);
+                var records = new PresenceRecords(_target!);
+                await VRChatFeed.RunAsync(_session!, async item =>
                 {
-                    if (!worldNames.TryGetValue(presence.WorldId, out var name))
-                    {
-                        name = await _session.GetWorldNameAsync(presence.WorldId, token);
-                        if (worldNames.Count >= 256) worldNames.Clear();
-                        worldNames[presence.WorldId] = name;
-                    }
-                    presence = presence with { WorldName = name };
-                }
-                pending = records.Observe(presence, observedAt);
-                if (pending is not null) { await SubmitAsync(pending, token); pending = null; }
-                _error = null;
-                backoff = _interval;
+                    ValidateAccount(item);
+                    var name = await ResolveWorldAsync(records.WorldToResolve(item), names, token);
+                    foreach (var record in records.Observe(item, name)) pending[record.Record.Id] = record;
+                    await FlushAsync(pending, token);
+                    _error = null;
+                }, token);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
             catch (VRChatUnauthorizedException)
             { _needsAuthentication = true; _error = "VRChat 会话已失效，请重新登录。"; break; }
-            catch (Exception) when (!token.IsCancellationRequested)
+            catch (Exception exception) when (!token.IsCancellationRequested)
             {
-                records.Break();
-                _error = "VRChat 采样或交接失败，正在重试；缺失时间不会补成连续观测。";
-                backoff = TimeSpan.FromSeconds(Math.Min(600, backoff.TotalSeconds * 2));
+                if (DateTimeOffset.UtcNow - started > TimeSpan.FromMinutes(5)) backoff = 30;
+                var delay = RetryDelay(exception, backoff);
+                backoff = Math.Min(600, backoff * 2);
+                try { await Task.Delay(delay, token); }
+                catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
             }
-            try { await Task.Delay(backoff, token); }
-            catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
         }
-        if (pending is not null)
-        {
-            using var final = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            try { await SubmitAsync(pending, final.Token); }
-            catch (Exception) { _error = "采集已停止，最后一份快照未能交给 Hub。"; }
-        }
+        using var final = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try { await FlushAsync(pending, final.Token); }
+        catch (Exception) { _error = "采集已停止，最后一份观测未能交给 Hub。"; }
     }
 
-    private Task SubmitAsync(RecordSnapshot record, CancellationToken token) => hub.SubmitAsync(new(
-        new(VRChatCollectorFactory.Key, _target!, _displayName), new("vrchat.location", 1, "range", "explicit"), [record]), token);
+    private void ValidateAccount(VRChatFeedItem item)
+    {
+        if (item.Snapshot is { } snapshot && snapshot.Users[0].AccountId != _target)
+            throw new VRChatUnauthorizedException("VRChat 账号不匹配。");
+        if (item.Event is { Cause: "user-location" } update && update.AccountId != _target)
+            throw new VRChatUnauthorizedException("VRChat 账号不匹配。");
+    }
+
+    private async Task<string?> ResolveWorldAsync(string? world, Dictionary<string, string?> names, CancellationToken token)
+    {
+        if (world is null) return null;
+        if (names.TryGetValue(world, out var cached)) return cached;
+        var name = await _session!.GetWorldNameAsync(world, token);
+        if (names.Count >= 256) names.Clear();
+        if (name is not null) names[world] = name;
+        return name;
+    }
+
+    private TimeSpan RetryDelay(Exception exception, double backoff)
+    {
+        var retry = exception is VRChatTransientException transient ? transient.RetryAfter : null;
+        var delay = TimeSpan.FromSeconds(backoff + Random.Shared.NextDouble() * backoff * 0.2);
+        if (retry > delay) delay = retry.Value;
+        var reason = exception switch
+        {
+            VRChatTransientException known => known.Message,
+            VRChatHandoffException => "交给 Hub 失败",
+            _ => "VRChat 事件接收或解析失败",
+        };
+        _error = $"{reason}；将在 {Math.Ceiling(delay.TotalSeconds)} 秒后重连，缺失时间保留为空白。";
+        return delay;
+    }
+
+    private async Task FlushAsync(Dictionary<Guid, VRChatRecord> pending, CancellationToken token)
+    {
+        foreach (var group in pending.Values.GroupBy(value => value.Type).ToArray())
+        {
+            foreach (var batch in group.Chunk(500))
+            {
+                try
+                {
+                    await hub.SubmitAsync(new(new(VRChatCollectorFactory.Key, _target!, _displayName),
+                        new(group.Key, 1, "range", "explicit"), batch.Select(value => value.Record).ToArray()), token);
+                }
+                catch (Exception) when (!token.IsCancellationRequested) { throw new VRChatHandoffException(); }
+                foreach (var record in batch) pending.Remove(record.Record.Id);
+            }
+        }
+    }
 
     private async Task PauseAsync(CancellationToken cancellationToken)
     {
@@ -164,3 +208,5 @@ internal sealed class VRChatCollector(string? expectedTarget, IVRChatApiFactory 
     private static string? Text(JsonElement input, string key) => input.TryGetProperty(key, out var value) &&
         value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString()) ? value.GetString() : null;
 }
+
+internal sealed class VRChatHandoffException : Exception;
