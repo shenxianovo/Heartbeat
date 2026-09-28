@@ -11,7 +11,7 @@ Hub 是各类 Collector 共用的交付能力，可部署在客户端或远端�
 ## 责任
 
 - Collector：平台观测、连续性判断、Record 内容和稳定 ID，以及交接前快照。
-- `Heartbeat.Hub.Client`：提交结构、HTTP 请求和回执核对。
+- `Heartbeat.Hub.Client`：提交结构、HTTP 请求和回执核对，以及 Collector 进程内共用的待交接缓冲、分批与快照确认。接入示例见 [Hub Client](../src/Hub/Heartbeat.Hub.Client/README.md)，责任见 [ADR-0027](adr/ADR-0027-shared-collector-handoff-buffer.md)。
 - `Heartbeat.Hub`：SQLite 接管、后端身份映射、上传、重试和逐条回执；`LocalHubSubmissionClient` 供同进程 Collector 调用，HTTP 宿主调用同一接管实现。
 - `Heartbeat.Hub.Host`：HTTP、配置、认证和后台上传。
 - 后端：Owner 归属、公共 Record 不变量、PostgreSQL 存储和查询。

@@ -1,6 +1,6 @@
 # 桌面采集共享实现
 
-桌面平台共用观测模型、物理键位置协议、连续时间投影、标题站稳和 Hub 待交接缓冲。平台实现通过 `IDesktopObservationSource` 提供读数，通过 `TimeProvider` 提供包含休眠的单调经过时间；宿主将平台的 Collector key 显式传入 `DesktopCollectorSession`。
+桌面平台共用观测模型、物理键位置协议、连续时间投影和标题站稳，Hub 待交接缓冲使用 [Hub Client](../../Hub/Heartbeat.Hub.Client/README.md) 的共享实现。平台实现通过 `IDesktopObservationSource` 提供读数，通过 `TimeProvider` 提供包含休眠的单调经过时间；宿主将平台的 Collector key 显式传入 `DesktopCollectorSession`。
 
 共享实现不选择操作系统、不调用原生 API，也不默认绑定某个平台的 Collector 身份。macOS adapter 和命令行入口位于 [Mac 模块](../Heartbeat.Collector.Desktop.Mac/README.md)。采集语义仍以 [协议文档](../../../docs/protocols/) 为准，交接语义以 [Hub 契约](../../../docs/hub-record-delivery.md) 为准。
 

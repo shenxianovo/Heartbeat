@@ -1,11 +1,10 @@
 using System.Text.Json;
-using Heartbeat.Hub;
 
-namespace Heartbeat.Collector.Desktop;
+namespace Heartbeat.Hub;
 
-internal sealed record SubmissionRoute(CollectorDeclaration Collector, TrackDeclaration Track);
+public sealed record SubmissionRoute(CollectorDeclaration Collector, TrackDeclaration Track);
 
-internal sealed record PendingSubmissionBatch(
+public sealed record PendingSubmissionBatch(
     SubmissionRoute Route,
     IReadOnlyList<RecordSnapshot> Records)
 {
@@ -17,10 +16,8 @@ internal sealed record PendingSubmissionBatch(
 /// Collector 侧如何保护未交接数据、积压到多少之后怎么办，都还是未决问题，见
 /// docs/recording-open-questions.md 的「Collector 到 Hub 的未交接数据」。要在这里加落盘或丢弃策略，先过那一节。
 /// </summary>
-internal sealed class PendingHubSubmissions
+public sealed class PendingHubSubmissions
 {
-    private const int MaximumBatchSize = 500;
-    private const int MaximumBatchBytes = 1_048_576;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly Lock _gate = new();
     private readonly Dictionary<Guid, (SubmissionRoute Route, RecordSnapshot Record)> _records = [];
@@ -29,9 +26,12 @@ internal sealed class PendingHubSubmissions
     {
         lock (_gate)
         {
-            if (_records.TryGetValue(record.Id, out var existing) && existing.Route != route)
+            // Display names may change; ownership and the Track time definition may not.
+            if (_records.TryGetValue(record.Id, out var existing) &&
+                (existing.Route.Collector.Key != route.Collector.Key ||
+                 existing.Route.Collector.Target != route.Collector.Target || existing.Route.Track != route.Track))
             {
-                throw new InvalidOperationException("A pending Record cannot move to another Track.");
+                throw new InvalidOperationException("A pending Record cannot change its Collector, Track or time definition.");
             }
 
             _records[record.Id] = (route, record);
@@ -57,12 +57,12 @@ internal sealed class PendingHubSubmissions
             foreach (var item in group)
             {
                 var recordBytes = JsonSerializer.SerializeToUtf8Bytes(item.Record, JsonOptions).Length;
-                if ((long)envelopeBytes + recordBytes > MaximumBatchBytes)
+                if ((long)envelopeBytes + recordBytes > HubSubmissionLimits.MaximumBatchBytes)
                     throw new InvalidOperationException($"Record {item.Record.Id} exceeds the Hub submission limit.");
 
                 var separatorBytes = current.Count == 0 ? 0 : 1;
-                if (current.Count == MaximumBatchSize ||
-                    currentBytes + recordBytes + separatorBytes > MaximumBatchBytes)
+                if (current.Count == HubSubmissionLimits.MaximumBatchSize ||
+                    currentBytes + recordBytes + separatorBytes > HubSubmissionLimits.MaximumBatchBytes)
                 {
                     result.Add(new PendingSubmissionBatch(group.Key, current.ToArray()));
                     current.Clear();
@@ -89,17 +89,6 @@ internal sealed class PendingHubSubmissions
                 {
                     _records.Remove(sent.Id);
                 }
-            }
-        }
-    }
-
-    internal int Count
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _records.Count;
             }
         }
     }

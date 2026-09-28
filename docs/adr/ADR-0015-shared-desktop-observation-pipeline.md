@@ -11,3 +11,5 @@
 本次职责整理不改变现有 Record 协议、Collector key 或 Target，也不新增平台兼容层。Windows 原生采集不在本轮实现范围。独立测试和组合验证继续连接同一份生产实现，遵循 [ADR-0013](ADR-0013-scenarios-compose-implementations.md)。
 
 实现接口与入口见[桌面采集共享实现](../../src/Collectors/Heartbeat.Collector.Desktop/README.md)。
+
+2026-09-28：[ADR-0027](ADR-0027-shared-collector-handoff-buffer.md) 将待交接缓冲移入 `Heartbeat.Hub.Client`，供不同 Collector 共用；其余桌面观测管线责任不变。

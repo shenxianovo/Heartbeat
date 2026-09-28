@@ -43,7 +43,7 @@ public sealed class RecordUploaderTests : IDisposable
         using var handler = new MappedHandler(async (request, token) =>
         {
             var bytes = await request.Content!.ReadAsByteArrayAsync(token);
-            Assert.True(bytes.Length <= RecordOutbox.MaximumBatchBytes, $"Upload body contained {bytes.Length} bytes.");
+            Assert.True(bytes.Length <= HubSubmissionLimits.MaximumBatchBytes, $"Upload body contained {bytes.Length} bytes.");
             var body = JsonSerializer.Deserialize<UploadBatch>(bytes, JsonSerializerOptions.Web)!;
             return new HttpResponseMessage(HttpStatusCode.OK)
             {

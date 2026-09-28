@@ -5,8 +5,6 @@ namespace Heartbeat.Hub;
 
 public sealed class RecordOutbox
 {
-    public const int MaximumBatchSize = 500;
-    public const int MaximumBatchBytes = 1_048_576;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly string _connectionString;
     private readonly int _maximumRecords;
@@ -46,7 +44,7 @@ public sealed class RecordOutbox
     public IReadOnlyList<RecordSnapshot> Accept(HubSubmission submission)
     {
         var normalized = Normalize(submission);
-        if (JsonSerializer.SerializeToUtf8Bytes(normalized, JsonOptions).Length > MaximumBatchBytes)
+        if (JsonSerializer.SerializeToUtf8Bytes(normalized, JsonOptions).Length > HubSubmissionLimits.MaximumBatchBytes)
         {
             throw new ArgumentException("The normalized submission exceeds 1 MiB.");
         }
@@ -97,7 +95,7 @@ public sealed class RecordOutbox
 
             WHERE r.failure IS NULL
             ORDER BY r.attempted_at, r.id LIMIT $limit;
-            """, ("$limit", MaximumBatchSize));
+            """, ("$limit", HubSubmissionLimits.MaximumBatchSize));
         var records = Read(select);
         foreach (var record in records)
         {
@@ -181,7 +179,7 @@ public sealed class RecordOutbox
 
             WHERE r.failure IS NOT NULL
             ORDER BY r.id LIMIT $limit;
-            """, ("$limit", MaximumBatchSize));
+            """, ("$limit", HubSubmissionLimits.MaximumBatchSize));
         return Read(command);
     }
 
@@ -224,7 +222,7 @@ public sealed class RecordOutbox
             throw new ArgumentException("A Track must be point, range + explicit, or range + next_record.");
         }
 
-        if (submission.Records is null || submission.Records.Count is < 1 or > MaximumBatchSize)
+        if (submission.Records is null || submission.Records.Count is < 1 or > HubSubmissionLimits.MaximumBatchSize)
         {
             throw new ArgumentException("A submission must contain 1 to 500 Records.");
         }

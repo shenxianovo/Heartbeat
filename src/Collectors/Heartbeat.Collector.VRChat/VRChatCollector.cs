@@ -109,7 +109,8 @@ internal sealed class VRChatCollector(string? expectedTarget, IVRChatApiFactory 
 
     private async Task PollAsync(CancellationToken token)
     {
-        var pending = new Dictionary<Guid, VRChatRecord>();
+        var pending = new PendingHubSubmissions();
+        var collector = new CollectorDeclaration(VRChatCollectorFactory.Key, _target!, _displayName);
         var names = new Dictionary<string, string?>(StringComparer.Ordinal);
         var backoff = 30d;
         while (!token.IsCancellationRequested)
@@ -123,7 +124,8 @@ internal sealed class VRChatCollector(string? expectedTarget, IVRChatApiFactory 
                 {
                     ValidateAccount(item);
                     var name = await ResolveWorldAsync(records.WorldToResolve(item), names, token);
-                    foreach (var record in records.Observe(item, name)) pending[record.Record.Id] = record;
+                    foreach (var record in records.Observe(item, name))
+                        pending.Stage(new(collector, new(record.Type, 1, "range", "explicit")), record.Record);
                     await FlushAsync(pending, token);
                     _error = null;
                 }, token);
@@ -178,21 +180,17 @@ internal sealed class VRChatCollector(string? expectedTarget, IVRChatApiFactory 
         return delay;
     }
 
-    private async Task FlushAsync(Dictionary<Guid, VRChatRecord> pending, CancellationToken token)
+    private async Task FlushAsync(PendingHubSubmissions pending, CancellationToken token)
     {
-        foreach (var group in pending.Values.GroupBy(value => value.Type).ToArray())
+        try
         {
-            foreach (var batch in group.Chunk(500))
+            foreach (var batch in pending.ReadBatches())
             {
-                try
-                {
-                    await hub.SubmitAsync(new(new(VRChatCollectorFactory.Key, _target!, _displayName),
-                        new(group.Key, 1, "range", "explicit"), batch.Select(value => value.Record).ToArray()), token);
-                }
-                catch (Exception) when (!token.IsCancellationRequested) { throw new VRChatHandoffException(); }
-                foreach (var record in batch) pending.Remove(record.Record.Id);
+                await hub.SubmitAsync(batch.ToSubmission(), token);
+                pending.Confirm(batch);
             }
         }
+        catch (Exception) when (!token.IsCancellationRequested) { throw new VRChatHandoffException(); }
     }
 
     private async Task PauseAsync(CancellationToken cancellationToken)

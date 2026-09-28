@@ -36,7 +36,7 @@ public sealed class RecordOutboxTests : IDisposable
         var queue = _fixture.Open();
         var record = QueueFixture.Snapshot() with
         {
-            Value = JsonSerializer.SerializeToElement(new { text = new string('a', RecordOutbox.MaximumBatchBytes) }),
+            Value = JsonSerializer.SerializeToElement(new { text = new string('a', HubSubmissionLimits.MaximumBatchBytes) }),
         };
         Assert.Throws<ArgumentException>(() => queue.Accept(QueueFixture.Submission(record)));
         Assert.Equal(new QueueStatus(0, 0), queue.Status());

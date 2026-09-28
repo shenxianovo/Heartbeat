@@ -15,7 +15,7 @@ public static class HubApplication
         var builder = WebApplication.CreateBuilder(args);
         configureServices?.Invoke(builder.Services);
         builder.WebHost.UseUrls(builder.Configuration["urls"] ?? "http://127.0.0.1:4318");
-        builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = RecordOutbox.MaximumBatchBytes);
+        builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = HubSubmissionLimits.MaximumBatchBytes);
         builder.Services.AddSingleton(services => HubSettings.Read(services.GetRequiredService<IConfiguration>()));
         builder.Services.AddSingleton(services =>
         {

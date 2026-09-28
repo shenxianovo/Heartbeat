@@ -154,7 +154,7 @@ public sealed class RecordUploader
         foreach (var record in records)
         {
             var size = RecordOutbox.EncodedSize(record.Record);
-            if (batch.Count > 0 && bytes + size + 1 > RecordOutbox.MaximumBatchBytes)
+            if (batch.Count > 0 && bytes + size + 1 > HubSubmissionLimits.MaximumBatchBytes)
             {
                 yield return [.. batch];
                 batch.Clear();
