@@ -6,6 +6,8 @@ https://heartbeat.shenxianovo.com
 记录桌面设备上的数字活动(前台应用、浏览器页面、输入事件),回答"x年前的今天我在做什么"。
 单用户自部署系统,定位与边界见 [CONTEXT-MAP.md](./CONTEXT-MAP.md)。
 
+> 重构ing... 请看[这里](https://github.com/shenxianovo/Heartbeat/tree/feat/rewrite)
+
 ## Architecture
 
 三个领域上下文 + 一个共享内核。完整模块、Transport Binding 与协议关系见 [系统架构与协议图](./docs/architecture/system-overview.md)，领域边界见 [CONTEXT-MAP.md](./CONTEXT-MAP.md)。
