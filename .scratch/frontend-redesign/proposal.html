@@ -1,0 +1,939 @@
+<title>Heartbeat 记录仪</title>
+<meta name="description" content="Heartbeat Web 重设计方案：把前端做成一台长期记录、事后回放的动态记录仪。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@500;700;900&display=swap">
+<style>
+/* Layout: 一卷记录纸。页首是记录器栏，正文按“报告 → 条图 → 通道细节”纵向展开；时间网格只出现在真正承载时间的地方。 */
+:root,
+.medium-paper {
+  /* 记录纸：带一点玫瑰偏色的纸白，墨色正文，网格是心电图纸的淡红 */
+  --paper: #faf8f7;
+  --sheet: #ffffff;
+  --ink: #1b2027;
+  --ink-muted: #5d6570;
+  --rule: #e7dfdd;
+  --grid-minor: rgb(201 58 84 / 0.09);
+  --grid-major: rgb(201 58 84 / 0.22);
+  --signal: #c4344f;
+  --signal-soft: rgb(196 52 79 / 0.1);
+  /* 通道色：借监护仪“每个参数一种颜色”的惯例，每个 Collector 一条通道 */
+  --ch1: #2862a8;
+  --ch2: #0d806c;
+  --ch3: #a26a12;
+  --ch4: #7a4cad;
+  --hatch: rgb(27 32 39 / 0.18);
+  --ok: #1b7a45;
+  --warn: #9a5b00;
+  --fault: #b42318;
+
+  --font-display: "Noto Serif SC", "Songti SC", "STSong", serif;
+  --font-body: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, ui-monospace, monospace;
+
+  --t-xs: 0.72rem;
+  --t-sm: 0.8125rem;
+  --t-md: 0.9375rem;
+  --t-lg: 1.125rem;
+  --t-xl: 1.5rem;
+  --t-2xl: 2.25rem;
+  --t-3xl: clamp(2.25rem, 5.5vw, 3.6rem);
+
+  --radius: 6px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    /* 监护仪屏：偏蓝的深墨底，磷光青网格，通道色提亮 */
+    --paper: #0d1115;
+    --sheet: #141a20;
+    --ink: #e5eaee;
+    --ink-muted: #8f9aa5;
+    --rule: #252e37;
+    --grid-minor: rgb(92 214 190 / 0.06);
+    --grid-major: rgb(92 214 190 / 0.14);
+    --signal: #ff6f86;
+    --signal-soft: rgb(255 111 134 / 0.13);
+    --ch1: #6ea9ff;
+    --ch2: #3ccfb0;
+    --ch3: #eeb24a;
+    --ch4: #c29dff;
+    --hatch: rgb(229 234 238 / 0.17);
+    --ok: #4fd18b;
+    --warn: #f0b44a;
+    --fault: #ff7a6b;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"],
+.medium-monitor {
+  --paper: #0d1115;
+  --sheet: #141a20;
+  --ink: #e5eaee;
+  --ink-muted: #8f9aa5;
+  --rule: #252e37;
+  --grid-minor: rgb(92 214 190 / 0.06);
+  --grid-major: rgb(92 214 190 / 0.14);
+  --signal: #ff6f86;
+  --signal-soft: rgb(255 111 134 / 0.13);
+  --ch1: #6ea9ff;
+  --ch2: #3ccfb0;
+  --ch3: #eeb24a;
+  --ch4: #c29dff;
+  --hatch: rgb(229 234 238 / 0.17);
+  --ok: #4fd18b;
+  --warn: #f0b44a;
+  --fault: #ff7a6b;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--t-md);
+  line-height: 1.65;
+}
+.page {
+  max-width: 76rem;
+  margin: 0 auto;
+  padding-inline: clamp(16px, 4vw, 40px);
+  padding-block: 0 5rem;
+}
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-wrap: balance;
+  margin: 0;
+  line-height: 1.2;
+}
+p { margin: 0; }
+.data, time, .num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.label {
+  font-family: var(--font-data);
+  font-size: var(--t-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.muted { color: var(--ink-muted); }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+/* ---------- Proposal header & hero ---------- */
+.doc-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  align-items: center;
+  justify-content: space-between;
+  padding-block: 1.25rem;
+  border-bottom: 1px solid var(--rule);
+}
+.mark { display: inline-flex; align-items: center; gap: 0.6rem; font-weight: 700; }
+.mark svg { width: 34px; height: 20px; }
+.mark svg path { fill: none; stroke: var(--signal); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
+.doc-head .label { display: flex; gap: 1.25rem; flex-wrap: wrap; }
+
+.hero { padding-block: clamp(2.5rem, 6vw, 4.5rem) 2rem; display: grid; gap: 1.5rem; }
+.hero h1 { font-size: var(--t-3xl); font-weight: 900; letter-spacing: -0.01em; max-width: 14em; }
+.hero h1 em { font-style: normal; color: var(--signal); }
+.hero .lede { max-width: 38em; font-size: var(--t-lg); color: var(--ink-muted); line-height: 1.75; }
+
+.hero-strip {
+  position: relative;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--sheet);
+  overflow: hidden;
+}
+.hero-strip .strip-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--rule);
+}
+.hero-strip svg { display: block; width: 100%; height: 180px; }
+.sweep {
+  position: absolute;
+  top: 2.6rem;
+  bottom: 0;
+  width: 56px;
+  left: 0;
+  background: linear-gradient(90deg, transparent, var(--sheet) 70%);
+  animation: sweep 9s linear infinite;
+  pointer-events: none;
+}
+@keyframes sweep { from { transform: translateX(-60px); } to { transform: translateX(calc(76rem)); } }
+@media (prefers-reduced-motion: reduce) { .sweep { display: none; } }
+
+/* ---------- Shared chart marks ---------- */
+.g-minor { stroke: var(--grid-minor); stroke-width: 1; }
+.g-major { stroke: var(--grid-major); stroke-width: 1; }
+.tick { fill: var(--ink-muted); font-family: var(--font-data); font-size: 11px; }
+.row-label { fill: var(--ink); font-family: var(--font-body); font-size: 12.5px; font-weight: 500; }
+.row-sub { fill: var(--ink-muted); font-family: var(--font-data); font-size: 10.5px; letter-spacing: 0.04em; }
+.trace { fill: none; stroke-width: 1.6; stroke-linejoin: round; }
+.trace-fill { stroke: none; opacity: 0.12; }
+.bar-label { fill: var(--sheet); font-family: var(--font-body); font-size: 11px; font-weight: 500; }
+.hatch-line { stroke: var(--hatch); stroke-width: 1.2; }
+.gap-label { fill: var(--ink-muted); font-family: var(--font-data); font-size: 10.5px; }
+.away { stroke: var(--ink-muted); stroke-width: 2; stroke-dasharray: 1 4; stroke-linecap: round; }
+.sel { fill: none; stroke: var(--signal); stroke-width: 2; }
+.row-rule { stroke: var(--rule); stroke-width: 1; }
+
+/* ---------- Sections ---------- */
+section.block { padding-block: 3.5rem 0; display: grid; gap: 1.5rem; }
+.block-head { display: grid; gap: 0.5rem; max-width: 44rem; }
+.block-head h2 { font-size: var(--t-2xl); }
+.block-head p { color: var(--ink-muted); }
+
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; }
+.rule-card {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 0.6rem;
+  padding: 1.1rem 1.2rem 1.25rem;
+  border-top: 2px solid var(--ink);
+  background: var(--sheet);
+}
+.rule-card h3 { font-size: var(--t-lg); }
+.rule-card p { font-size: var(--t-sm); color: var(--ink-muted); }
+.rule-card svg { width: 100%; height: 64px; display: block; }
+
+/* ---------- App mockup frame ---------- */
+.app {
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--paper);
+  overflow: hidden;
+  box-shadow: 0 18px 50px -30px rgb(0 0 0 / 0.35);
+}
+.app-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+  padding: 0.65rem 1.1rem;
+  border-bottom: 1px solid var(--rule);
+  background: var(--sheet);
+  font-size: var(--t-sm);
+}
+.app-bar nav { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+.app-bar nav span { padding: 0.25rem 0.6rem; border-radius: 4px; color: var(--ink-muted); }
+.app-bar nav span[aria-current] { color: var(--ink); background: var(--signal-soft); box-shadow: inset 0 -2px 0 var(--signal); }
+.presence { margin-left: auto; display: inline-flex; align-items: center; gap: 0.45rem; color: var(--ink-muted); font-family: var(--font-data); font-size: var(--t-xs); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 20%, transparent); }
+.dot.warn { background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 20%, transparent); }
+.avatar { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: var(--sheet); font-size: 11px; font-weight: 700; }
+.app-body { padding: clamp(1rem, 3vw, 1.75rem); display: grid; gap: 1.25rem; }
+.mock-note { font-family: var(--font-data); font-size: var(--t-xs); color: var(--ink-muted); }
+
+/* Report header */
+.report-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 1rem 2rem; }
+.report-head h3 { font-size: var(--t-xl); }
+.meta-grid { display: flex; flex-wrap: wrap; gap: 0.25rem 1.75rem; margin-top: 0.4rem; }
+.meta-grid div { display: grid; }
+.meta-grid dt { font-family: var(--font-data); font-size: 10.5px; letter-spacing: 0.08em; color: var(--ink-muted); text-transform: uppercase; }
+.meta-grid dd { margin: 0; font-family: var(--font-data); font-size: var(--t-sm); }
+dl { margin: 0; }
+.segmented { display: inline-flex; border: 1px solid var(--rule); border-radius: 5px; overflow: hidden; background: var(--sheet); font-size: var(--t-sm); }
+.segmented span { padding: 0.32rem 0.75rem; border-right: 1px solid var(--rule); }
+.segmented span:last-child { border-right: 0; }
+.segmented span[aria-pressed="true"] { background: var(--ink); color: var(--sheet); }
+
+/* Channel rows */
+.channels { display: grid; border-top: 1px solid var(--rule); }
+.channel {
+  display: grid;
+  grid-template-columns: minmax(10rem, 13rem) minmax(0, 1fr) minmax(9rem, 11rem);
+  gap: 1.25rem;
+  align-items: center;
+  padding-block: 1rem;
+  border-bottom: 1px solid var(--rule);
+}
+.ch-name { display: grid; gap: 0.15rem; }
+.ch-tag { display: inline-flex; align-items: center; gap: 0.4rem; font-family: var(--font-data); font-size: 10.5px; letter-spacing: 0.08em; color: var(--ink-muted); }
+.ch-tag i { width: 10px; height: 10px; border-radius: 2px; background: var(--c); }
+.ch-name strong { font-size: var(--t-md); }
+.ch-name small { color: var(--ink-muted); font-size: var(--t-xs); }
+.ch-days svg { width: 100%; height: 54px; display: block; }
+.ch-total { display: grid; justify-items: end; text-align: right; gap: 0.1rem; }
+.ch-total .num { font-size: var(--t-lg); font-weight: 600; }
+.ch-total small { color: var(--ink-muted); font-size: var(--t-xs); }
+.ch-total a { font-size: var(--t-xs); color: var(--c); text-decoration: none; font-weight: 600; }
+.footnote { font-size: var(--t-xs); color: var(--ink-muted); display: flex; flex-wrap: wrap; gap: 0.4rem 1.25rem; align-items: center; }
+.key { display: inline-flex; align-items: center; gap: 0.4rem; }
+.key svg { width: 22px; height: 12px; }
+
+/* Timeline mock */
+.toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; font-size: var(--t-sm); }
+.ctl { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.32rem 0.7rem; border: 1px solid var(--rule); border-radius: 5px; background: var(--sheet); }
+.ctl.primary { background: var(--ink); color: var(--sheet); border-color: var(--ink); }
+.toolbar .spacer { flex: 1; }
+.scroll-x { overflow-x: auto; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--sheet); }
+.scroll-x svg { display: block; }
+.readout {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.75rem 1.5rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--signal);
+  border-radius: var(--radius);
+  background: var(--sheet);
+}
+.readout dt { font-family: var(--font-data); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-muted); }
+.readout dd { margin: 0; font-size: var(--t-sm); }
+
+/* VRChat mock */
+.vr-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
+.worlds { display: grid; gap: 0.2rem; }
+.world { display: grid; grid-template-columns: 1.6rem minmax(0, 1fr) auto; gap: 0.75rem; align-items: center; padding-block: 0.45rem; border-bottom: 1px solid var(--rule); }
+.world .rank { font-family: var(--font-data); font-size: var(--t-xs); color: var(--ink-muted); }
+.world .wn { display: grid; gap: 0.3rem; min-width: 0; }
+.world .wn strong { font-size: var(--t-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.world .bar { display: flex; height: 6px; border-radius: 1px; overflow: hidden; background: var(--rule); }
+.world .bar i { display: block; height: 100%; }
+.world .wt { text-align: right; font-family: var(--font-data); font-size: var(--t-xs); display: grid; }
+.world .wt small { color: var(--ink-muted); }
+.access-key { display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; font-size: var(--t-xs); color: var(--ink-muted); }
+.access-key span { display: inline-flex; align-items: center; gap: 0.35rem; }
+.access-key i { width: 9px; height: 9px; border-radius: 2px; }
+.panel-title { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: 0.6rem; }
+.panel-title h4 { margin: 0; font-family: var(--font-display); font-size: var(--t-md); }
+.heat svg { width: 100%; height: auto; display: block; }
+.people { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+.person { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0.65rem 0.3rem 0.3rem; border: 1px solid var(--rule); border-radius: 999px; background: var(--sheet); font-size: var(--t-xs); }
+.person b { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--signal-soft); color: var(--signal); font-weight: 700; }
+.person .num { color: var(--ink-muted); }
+
+/* Hub mock */
+.hubs { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 1rem; }
+.hub { border: 1px solid var(--rule); border-radius: var(--radius); background: var(--sheet); display: grid; }
+.hub header { display: flex; justify-content: space-between; align-items: start; gap: 1rem; padding: 0.9rem 1rem; border-bottom: 1px solid var(--rule); }
+.hub header strong { display: block; }
+.hub header small { color: var(--ink-muted); font-size: var(--t-xs); }
+.pill { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: var(--t-xs); font-weight: 600; white-space: nowrap; border: 1px solid currentColor; }
+.pill.ok { color: var(--ok); }
+.pill.warn { color: var(--warn); }
+.hub ul { list-style: none; margin: 0; padding: 0.25rem 1rem; }
+.hub li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.75rem; align-items: center; padding-block: 0.6rem; border-bottom: 1px dashed var(--rule); font-size: var(--t-sm); }
+.hub li:last-child { border-bottom: 0; }
+.hub li small { display: block; color: var(--ink-muted); font-size: var(--t-xs); }
+.hub footer { display: flex; justify-content: space-between; gap: 1rem; padding: 0.7rem 1rem; border-top: 1px solid var(--rule); font-family: var(--font-data); font-size: var(--t-xs); color: var(--ink-muted); }
+.hub footer b { color: var(--ink); font-weight: 600; }
+.btn-sm { font: inherit; font-size: var(--t-xs); padding: 0.2rem 0.6rem; border-radius: 4px; border: 1px solid var(--ink); background: var(--ink); color: var(--sheet); }
+
+/* Language: palette & type */
+.media-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 1rem; }
+.medium { border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); padding: 1rem; display: grid; gap: 0.8rem; }
+.medium h3 { font-size: var(--t-lg); }
+.medium .mini svg { width: 100%; height: 70px; display: block; background: var(--sheet); border: 1px solid var(--rule); border-radius: 4px; }
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr)); gap: 0.5rem; }
+.sw { display: grid; gap: 0.25rem; font-family: var(--font-data); font-size: 10.5px; color: var(--ink-muted); }
+.sw i { height: 30px; border-radius: 4px; border: 1px solid var(--rule); background: var(--c); }
+.type-spec { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
+.type-spec > div { display: grid; gap: 0.35rem; padding: 1rem 1.1rem; background: var(--sheet); border-top: 2px solid var(--ink); }
+.ts-display { font-family: var(--font-display); font-size: var(--t-2xl); font-weight: 900; line-height: 1.15; }
+.ts-body { font-size: var(--t-md); }
+.ts-data { font-family: var(--font-data); font-size: var(--t-xl); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* Change list */
+.changes { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; }
+.changes > div { padding: 1rem 1.1rem; background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--radius); }
+.changes h3 { font-size: var(--t-md); display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+.changes h3 i { width: 10px; height: 10px; border-radius: 2px; background: var(--c); }
+.changes ul { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.4rem; font-size: var(--t-sm); }
+.decide { display: grid; gap: 0.75rem; counter-reset: q; }
+.decide li { list-style: none; display: grid; grid-template-columns: 2rem minmax(0, 1fr); gap: 0.75rem; padding: 0.9rem 1rem; background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--radius); counter-increment: q; }
+.decide li::before { content: counter(q); font-family: var(--font-data); font-weight: 600; color: var(--signal); font-size: var(--t-lg); line-height: 1.3; }
+.decide strong { display: block; }
+.decide p { font-size: var(--t-sm); color: var(--ink-muted); }
+.decide ol { margin: 0; padding: 0; }
+
+@media (max-width: 760px) {
+  .channel { grid-template-columns: minmax(0, 1fr) auto; }
+  .ch-days { grid-column: 1 / -1; grid-row: 2; }
+  .vr-grid { grid-template-columns: 1fr; }
+  .presence { margin-left: 0; }
+}
+</style>
+
+<div class="page">
+  <header class="doc-head">
+    <span class="mark">
+      <svg viewBox="0 0 34 20" aria-hidden="true"><path d="M1 12 H9 L12 4 L16 17 L19 9 L21 12 H33"/></svg>
+      Heartbeat
+    </span>
+    <span class="label"><span>Web 重设计方案</span><span>草案 · 2026-10-01</span><span>所有数值为示例数据</span></span>
+  </header>
+
+  <section class="hero">
+    <span class="label">设计主张</span>
+    <h1>把 Heartbeat 做成一台<em>动态记录仪</em></h1>
+    <p class="lede">动态心电记录仪连续记录 24 小时，医生事后逐段回放；每条导联各自成立，信号脱落就标成脱落。Heartbeat 做的事情一模一样：长期采集、事后回放、来源分立、空白即未知。界面直接借用这台仪器的语言：记录纸网格、通道、刻度和走纸。</p>
+    <div class="hero-strip" aria-label="示例：一天的输入事件密度条图">
+      <div class="strip-meta">
+        <span class="label">CH2 · 测试 Mac · 输入事件密度</span>
+        <span class="label">2026-09-30 · 08:00–24:00 · 大格 1 小时 · 小格 10 分钟</span>
+      </div>
+      <svg id="hero"></svg>
+      <div class="sweep" aria-hidden="true"></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="block-head">
+      <span class="label">三条规矩</span>
+      <h2>领域约束直接画进界面</h2>
+      <p>CONTEXT.md 里最容易被界面说错的三件事，各自对应一个固定的视觉记号。全站只用这一套记号。</p>
+    </div>
+    <div class="rules">
+      <div class="rule-card">
+        <h3>通道分立</h3>
+        <svg id="rule-ch" aria-hidden="true"></svg>
+        <p>每个 Collector 是一条带颜色的通道，时长只在通道内取并集。不同通道永远并排，不出现跨来源总时长。</p>
+      </div>
+      <div class="rule-card">
+        <h3>空白就是未知</h3>
+        <svg id="rule-gap" aria-hidden="true"></svg>
+        <p>没有观测画成斜线格“无观测”；锁屏、休眠这类离开信号画成虚点线。两者都不画成零，也不和前后区间连起来。</p>
+      </div>
+      <div class="rule-card">
+        <h3>时间有刻度</h3>
+        <svg id="rule-grid" aria-hidden="true"></svg>
+        <p>记录纸网格就是时间轴本身：大格、小格随缩放切换到 1 时 / 10 分、10 分 / 1 分。时间和数字一律等宽字。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="block-head">
+      <span class="label">首页 /</span>
+      <h2>概览：一份记录报告</h2>
+      <p>气泡图只能比大小，读不出哪天有、哪天没有。改成每个来源一条通道，按天出柱，右侧给出这条通道自己的合计。没有记录的日子画斜线格。</p>
+    </div>
+    <div class="app">
+      <div class="app-bar">
+        <span class="mark"><svg viewBox="0 0 34 20" aria-hidden="true"><path d="M1 12 H9 L12 4 L16 17 L19 9 L21 12 H33"/></svg>Heartbeat</span>
+        <nav aria-label="示例导航"><span aria-current="page">概览</span><span>时间线</span><span>VRChat</span><span>Hub</span></nav>
+        <span class="presence"><i class="dot"></i>2 个 Hub 在线 · 最近联络 12 秒前</span>
+        <span class="avatar" aria-hidden="true">T</span>
+      </div>
+      <div class="app-body">
+        <div class="report-head">
+          <div>
+            <h3>九月的记录</h3>
+            <dl class="meta-grid">
+              <div><dt>记录期</dt><dd>2026-09-01 → 09-30</dd></div>
+              <div><dt>通道</dt><dd>3</dd></div>
+              <div><dt>时区</dt><dd>Asia/Taipei</dd></div>
+            </dl>
+          </div>
+          <div class="segmented" aria-label="示例时间范围"><span>7 天</span><span aria-pressed="true">30 天</span><span>90 天</span><span>自定义…</span></div>
+        </div>
+        <div class="channels" id="channels"></div>
+        <div class="footnote">
+          <span class="key"><svg id="key-hatch"></svg>当天没有记录，不等于没有活动</span>
+          <span>各通道独立计时，不相加</span>
+          <span>点击通道进入对应详情</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="block-head">
+      <span class="label">/timeline</span>
+      <h2>时间线：条图回放</h2>
+      <p>泳道改成记录纸上的通道。区间画成实条，瞬时记录画成密度曲线，离开信号和无观测各用自己的记号。选中一段，下方读数框给出起止和时长。</p>
+    </div>
+    <div class="app">
+      <div class="app-bar">
+        <span class="mark"><svg viewBox="0 0 34 20" aria-hidden="true"><path d="M1 12 H9 L12 4 L16 17 L19 9 L21 12 H33"/></svg>Heartbeat</span>
+        <nav aria-label="示例导航"><span>概览</span><span aria-current="page">时间线</span><span>VRChat</span><span>Hub</span></nav>
+        <span class="presence"><i class="dot"></i>2 个 Hub 在线 · 最近联络 12 秒前</span>
+        <span class="avatar" aria-hidden="true">T</span>
+      </div>
+      <div class="app-body">
+        <div class="toolbar">
+          <span class="ctl">‹</span><span class="ctl data">2026-09-30</span><span class="ctl">›</span>
+          <span class="ctl">来源：全部 3</span>
+          <span class="ctl data">08:00 – 24:00</span>
+          <span class="spacer"></span>
+          <span class="ctl">全天</span><span class="ctl primary">回到现在</span>
+        </div>
+        <div class="scroll-x"><svg id="strip"></svg></div>
+        <dl class="readout">
+          <div><dt>所选区间</dt><dd><strong>Xcode</strong> · CH1 前台应用</dd></div>
+          <div><dt>起止</dt><dd class="data">10:38:12 → 12:06:40</dd></div>
+          <div><dt>时长</dt><dd class="data">1 时 28 分</dd></div>
+          <div><dt>之后</dt><dd>离开信号 · 锁屏 <span class="data">12:06 → 13:24</span></dd></div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="block-head">
+      <span class="label">/vrchat</span>
+      <h2>VRChat：世界与相遇</h2>
+      <p>世界按停留时长排成刻度条，条内按实例类型分色。星期 × 小时热力图沿用通道色的深浅。同场好友只列 API 可见的部分。</p>
+    </div>
+    <div class="app">
+      <div class="app-bar">
+        <span class="mark"><svg viewBox="0 0 34 20" aria-hidden="true"><path d="M1 12 H9 L12 4 L16 17 L19 9 L21 12 H33"/></svg>Heartbeat</span>
+        <nav aria-label="示例导航"><span>概览</span><span>时间线</span><span aria-current="page">VRChat</span><span>Hub</span></nav>
+        <span class="presence"><i class="dot"></i>2 个 Hub 在线 · 最近联络 12 秒前</span>
+        <span class="avatar" aria-hidden="true">T</span>
+      </div>
+      <div class="app-body">
+        <div class="report-head">
+          <div>
+            <h3>世界与相遇</h3>
+            <dl class="meta-grid">
+              <div><dt>通道</dt><dd>CH3 · VRChat 示例账号</dd></div>
+              <div><dt>世界停留</dt><dd id="vr-total">—</dd></div>
+              <div><dt>世界</dt><dd>8</dd></div>
+              <div><dt>可见同场好友</dt><dd>5</dd></div>
+            </dl>
+          </div>
+          <div class="segmented" aria-label="示例时间范围"><span>7 天</span><span aria-pressed="true">30 天</span><span>90 天</span><span>自定义…</span></div>
+        </div>
+        <div class="vr-grid">
+          <div>
+            <div class="panel-title"><h4>常去的世界</h4><div class="access-key" id="access-key"></div></div>
+            <div class="worlds" id="worlds"></div>
+          </div>
+          <div>
+            <div class="panel-title"><h4>活动节奏</h4><span class="label">星期 × 小时</span></div>
+            <div class="heat"><svg id="heat"></svg></div>
+            <div class="people" id="people"></div>
+          </div>
+        </div>
+        <p class="mock-note">观测段数可能因断线拆分，不等于真实访问次数。末段只统计到最近一次确认。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="block-head">
+      <span class="label">/hubs</span>
+      <h2>Hub：记录器状态</h2>
+      <p>三件事分三处说：Hub 能不能联络、Collector 在不在采集、Record 交付到哪了。在线不代表采集正常。</p>
+    </div>
+    <div class="hubs">
+      <div class="hub">
+        <header><div><strong>工作室 Mac</strong><small>Desktop Hub · 本机原生界面负责启停</small></div><span class="pill ok"><i class="dot"></i>在线</span></header>
+        <ul>
+          <li><span>macOS 桌面<small>前台应用 · 窗口 · 输入 · 观测状态</small></span><span class="pill ok">采集中</span></li>
+        </ul>
+        <footer><span>待交付 <b>0</b></span><span>今日已交付 <b>4,812</b></span><span>12 秒前联络</span></footer>
+      </div>
+      <div class="hub">
+        <header><div><strong>家里服务器</strong><small>Server Hub</small></div><span class="pill ok"><i class="dot"></i>在线</span></header>
+        <ul>
+          <li><span>VRChat 示例账号<small>会话已过期，需重新登录后自动恢复采集</small></span><span><button class="btn-sm" type="button">登录</button></span></li>
+        </ul>
+        <footer><span>待交付 <b>36</b></span><span>今日已交付 <b>212</b></span><span>40 秒前联络</span></footer>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="block-head">
+      <span class="label">设计语言</span>
+      <h2>两种介质，一套记号</h2>
+      <p>浅色是记录纸，深色是监护仪屏。两套主题共用同一组 token，通道色在两种底色上都保持可读。</p>
+    </div>
+    <div class="media-pair">
+      <div class="medium medium-paper">
+        <h3>记录纸 · 浅色</h3>
+        <div class="mini"><svg class="mini-strip"></svg></div>
+        <div class="swatches">
+          <span class="sw"><i style="--c: var(--paper)"></i>纸</span>
+          <span class="sw"><i style="--c: var(--ink)"></i>墨</span>
+          <span class="sw"><i style="--c: var(--signal)"></i>信号</span>
+          <span class="sw"><i style="--c: var(--ch1)"></i>CH1</span>
+          <span class="sw"><i style="--c: var(--ch2)"></i>CH2</span>
+          <span class="sw"><i style="--c: var(--ch3)"></i>CH3</span>
+        </div>
+      </div>
+      <div class="medium medium-monitor">
+        <h3>监护仪 · 深色</h3>
+        <div class="mini"><svg class="mini-strip"></svg></div>
+        <div class="swatches">
+          <span class="sw"><i style="--c: var(--paper)"></i>底</span>
+          <span class="sw"><i style="--c: var(--ink)"></i>字</span>
+          <span class="sw"><i style="--c: var(--signal)"></i>信号</span>
+          <span class="sw"><i style="--c: var(--ch1)"></i>CH1</span>
+          <span class="sw"><i style="--c: var(--ch2)"></i>CH2</span>
+          <span class="sw"><i style="--c: var(--ch3)"></i>CH3</span>
+        </div>
+      </div>
+    </div>
+    <div class="type-spec">
+      <div><span class="label">标题 · 思源宋体</span><span class="ts-display">九月的记录</span><span class="muted" style="font-size: var(--t-xs)">只用于页面与区块标题，像报告的抬头</span></div>
+      <div><span class="label">正文 · 思源黑体</span><span class="ts-body">没有观测的时间段画成斜线格，表示无法确认当时的状态。</span><span class="muted" style="font-size: var(--t-xs)">说明、按钮、表单</span></div>
+      <div><span class="label">数据 · IBM Plex Mono</span><span class="ts-data">10:38 → 12:06 · 1:28</span><span class="muted" style="font-size: var(--t-xs)">时间、时长、计数、ID、通道编号</span></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="block-head">
+      <span class="label">范围</span>
+      <h2>改什么，留什么</h2>
+    </div>
+    <div class="changes">
+      <div style="--c: var(--ok)">
+        <h3><i></i>保留</h3>
+        <ul>
+          <li>路由、数据流、查询缓存与 ADR-0011/0012 的责任划分</li>
+          <li>uPlot 画布泳道与拖动性能基准，只换配色和网格</li>
+          <li>Record renderer 注册表、安全 JSON、键盘操作</li>
+          <li>shadcn 组件骨架，换成新 token</li>
+        </ul>
+      </div>
+      <div style="--c: var(--warn)">
+        <h3><i></i>替换</h3>
+        <ul>
+          <li>tokens.css：冷蓝玻璃 → 记录纸 / 监护仪两套</li>
+          <li>概览气泡 → 通道日柱报告</li>
+          <li>VRChat 世界气泡 → 刻度条排行</li>
+          <li>页头：独立导航（概览 · 时间线 · VRChat · Hub）＋ Hub 在线摘要</li>
+          <li>字体：系统字 → 思源宋体 / 思源黑体 / Plex Mono（next/font 自托管）</li>
+        </ul>
+      </div>
+      <div style="--c: var(--fault)">
+        <h3><i></i>移除</h3>
+        <ul>
+          <li>毛玻璃、背景光晕、大圆角卡片</li>
+          <li>数据页背后的看板娘（见下方第 1 问）</li>
+          <li>气泡圆形展开转场，改成通道条展开</li>
+          <li>globals.css 里各页私有的重复样式</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="block-head">
+      <span class="label">需要你拍板</span>
+      <h2>开工前的四个问题</h2>
+    </div>
+    <ol class="decide">
+      <li><div><strong>看板娘放哪里</strong><p>建议只留在登录页和空状态，数据页不再垫在图表后面。也可以完全保留现状或彻底去掉。</p></div></li>
+      <li><div><strong>气泡要不要彻底退役</strong><p>建议概览和 VRChat 都换成通道条；圆形展开转场随之改成通道条展开。如果你喜欢气泡的感觉，可以保留 VRChat 世界气泡作为“地图视图”。</p></div></li>
+      <li><div><strong>字体加载</strong><p>中文网字体会增加首屏体积。next/font 按 unicode-range 分片自托管，只在用到的字上下载；不接受的话回退到系统宋体 / 苹方。</p></div></li>
+      <li><div><strong>实施顺序</strong><p>建议先换 token 和页头（全站立刻统一），再依次做概览、时间线、VRChat、Hub，每步都跑 replay-fixture 和截图。</p></div></li>
+    </ol>
+  </section>
+</div>
+
+<script>
+(function () {
+  const NS = "http://www.w3.org/2000/svg";
+  function el(name, attrs, parent) {
+    const node = document.createElementNS(NS, name);
+    for (const key in attrs) node.setAttribute(key, attrs[key]);
+    if (parent) parent.appendChild(node);
+    return node;
+  }
+  function rng(seed) {
+    return function () {
+      seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const m = (hhmm) => { const [h, mm] = hhmm.split(":").map(Number); return h * 60 + mm; };
+  const hhmm = (v) => String(Math.floor(v / 60) % 24).padStart(2, "0") + ":" + String(v % 60).padStart(2, "0");
+  function hatch(svg, id) {
+    const defs = el("defs", {}, svg);
+    const p = el("pattern", { id, width: 6, height: 6, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" }, defs);
+    el("line", { x1: 0, y1: 0, x2: 0, y2: 6, class: "hatch-line" }, p);
+  }
+  function grid(svg, x0, x1, y0, y1, from, to, minor, major) {
+    const sx = (v) => x0 + ((v - from) / (to - from)) * (x1 - x0);
+    for (let v = Math.ceil(from / minor) * minor; v <= to; v += minor) {
+      const x = Math.round(sx(v)) + 0.5;
+      el("line", { x1: x, x2: x, y1: y0, y2: y1, class: v % major === 0 ? "g-major" : "g-minor" }, svg);
+    }
+    return sx;
+  }
+
+  // ---- Example day 2026-09-30 (示例数据) ----
+  const FROM = m("08:00"), TO = 24 * 60;
+  const apps = [
+    ["08:42", "10:15", "Xcode"], ["10:15", "10:38", "Safari"], ["10:38", "12:06", "Xcode"],
+    ["13:24", "14:10", "飞书"], ["14:10", "15:52", "Visual Studio Code"], ["15:52", "16:05", "Safari"],
+    ["16:05", "18:20", "Visual Studio Code"], ["19:40", "20:55", "Safari"],
+  ].map(([a, b, n]) => ({ a: m(a), b: m(b), n }));
+  const away = [{ a: m("12:06"), b: m("13:24"), n: "离开信号 · 锁屏" }, { a: m("20:58"), b: TO, n: "离开信号 · 休眠" }];
+  const gaps = [{ a: FROM, b: m("08:40") }, { a: m("18:20"), b: m("19:40"), n: "无观测" }];
+  const status = [{ a: m("08:40"), b: m("18:20") }, { a: m("19:40"), b: m("20:58") }];
+  const worlds = [{ a: m("21:06"), b: m("22:31"), n: "Midnight Rooftop" }, { a: m("22:33"), b: m("23:48"), n: "月明かりの温泉" }];
+  const vrGaps = [{ a: m("22:31"), b: m("22:33") }];
+
+  // Input density: 5-minute buckets, zero while away, null in gaps.
+  const r = rng(7);
+  const density = [];
+  for (let t = FROM; t < TO; t += 5) {
+    const active = apps.some((x) => t >= x.a && t < x.b);
+    const unknown = gaps.some((x) => t >= x.a && t < x.b);
+    let v = null;
+    if (!unknown) v = active ? Math.max(0, 40 + 90 * Math.pow(r(), 1.6) + (r() < 0.12 ? 160 * r() : 0)) : 0;
+    density.push({ t, v });
+  }
+
+  function drawTrace(svg, x0, x1, yBase, h, color, sx) {
+    const peak = Math.max(...density.map((d) => d.v || 0));
+    let path = "", fill = "", open = false, startX = 0;
+    const flush = (x) => { if (open) { fill += ` L${x},${yBase} L${startX},${yBase} Z`; } open = false; };
+    density.forEach((d, i) => {
+      const x = sx(d.t + 2.5);
+      if (d.v === null) { flush(sx(d.t)); return; }
+      const y = yBase - (d.v / peak) * h;
+      if (!open) { path += ` M${x},${y}`; fill += ` M${x},${yBase} L${x},${y}`; startX = x; open = true; }
+      else { path += ` L${x},${y}`; fill += ` L${x},${y}`; }
+      if (i === density.length - 1) flush(x);
+    });
+    el("path", { d: fill, class: "trace-fill", style: `fill:${color}` }, svg);
+    el("path", { d: path, class: "trace", style: `stroke:${color}` }, svg);
+  }
+
+  function hero() {
+    const svg = document.getElementById("hero");
+    const w = svg.clientWidth || 900, h = 180;
+    svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    svg.textContent = "";
+    hatch(svg, "hz");
+    const sx = grid(svg, 0, w, 0, h - 22, FROM, TO, 10, 60);
+    gaps.forEach((g) => el("rect", { x: sx(g.a), y: 0, width: sx(g.b) - sx(g.a), height: h - 22, fill: "url(#hz)" }, svg));
+    drawTrace(svg, 0, w, h - 34, h - 60, "var(--signal)", sx);
+    for (let v = FROM; v <= TO; v += 120) {
+      const t = el("text", { x: sx(v) + 3, y: h - 7, class: "tick" }, svg);
+      t.textContent = hhmm(v);
+    }
+  }
+
+  function strip() {
+    const svg = document.getElementById("strip");
+    const host = svg.parentElement;
+    const W = Math.max(760, host.clientWidth), gutter = 168, right = 16;
+    const rows = [
+      { key: "app", label: "前台应用", sub: "CH1 · 测试 Mac", h: 40, c: "var(--ch1)" },
+      { key: "status", label: "观测状态", sub: "CH1 · 测试 Mac", h: 24, c: "var(--ch1)" },
+      { key: "input", label: "输入事件", sub: "CH2 · 测试 Mac", h: 60, c: "var(--ch2)" },
+      { key: "vr", label: "世界停留", sub: "CH3 · VRChat", h: 40, c: "var(--ch3)" },
+    ];
+    const top = 26, pad = 10;
+    const H = top + rows.reduce((s, x) => s + x.h + pad * 2, 0) + 4;
+    svg.setAttribute("width", W); svg.setAttribute("height", H);
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.textContent = "";
+    hatch(svg, "hs");
+    const sx = grid(svg, gutter, W - right, top - 6, H, FROM, TO, 10, 60);
+    for (let v = FROM; v <= TO; v += 60) {
+      const t = el("text", { x: sx(v) + 3, y: 14, class: "tick" }, svg);
+      t.textContent = v % 120 === 0 ? hhmm(v) : "";
+    }
+    let y = top;
+    rows.forEach((row) => {
+      el("line", { x1: 0, x2: W, y1: y + 0.5, y2: y + 0.5, class: "row-rule" }, svg);
+      const lab = el("text", { x: 14, y: y + pad + 14, class: "row-label" }, svg); lab.textContent = row.label;
+      const sub = el("text", { x: 14, y: y + pad + 29, class: "row-sub" }, svg); sub.textContent = row.sub;
+      el("rect", { x: 4, y: y + pad + 3, width: 3, height: 26, rx: 1, style: `fill:${row.c}` }, svg);
+      const y0 = y + pad, h = row.h;
+      if (row.key === "app") {
+        gaps.forEach((g) => {
+          el("rect", { x: sx(g.a), y: y0, width: sx(g.b) - sx(g.a), height: h, fill: "url(#hs)" }, svg);
+          if (g.n) { const t = el("text", { x: sx(g.a) + 6, y: y0 + h / 2 + 4, class: "gap-label" }, svg); t.textContent = g.n; }
+        });
+        away.forEach((a) => {
+          el("line", { x1: sx(a.a) + 2, x2: sx(a.b) - 2, y1: y0 + h / 2, y2: y0 + h / 2, class: "away" }, svg);
+          const t = el("text", { x: sx(a.a) + 6, y: y0 + h / 2 - 7, class: "gap-label" }, svg); t.textContent = a.n;
+        });
+        apps.forEach((x) => {
+          const bx = sx(x.a) + 0.5, bw = Math.max(2, sx(x.b) - sx(x.a) - 1);
+          el("rect", { x: bx, y: y0 + 4, width: bw, height: h - 8, rx: 2, style: `fill:${row.c}`, opacity: x.n === "Safari" ? 0.62 : x.n === "飞书" ? 0.8 : 1 }, svg);
+          if (bw > 48) { const t = el("text", { x: bx + 6, y: y0 + h / 2 + 4, class: "bar-label" }, svg); t.textContent = x.n; }
+        });
+        const s = apps[2];
+        el("rect", { x: sx(s.a) - 1.5, y: y0 + 1.5, width: sx(s.b) - sx(s.a) + 3, height: h - 3, rx: 3, class: "sel" }, svg);
+      } else if (row.key === "status") {
+        gaps.forEach((g) => el("rect", { x: sx(g.a), y: y0, width: sx(g.b) - sx(g.a), height: h, fill: "url(#hs)" }, svg));
+        status.forEach((x) => {
+          el("rect", { x: sx(x.a), y: y0 + h / 2 - 3, width: sx(x.b) - sx(x.a), height: 6, rx: 3, style: `fill:${row.c}`, opacity: 0.35 }, svg);
+        });
+        const t = el("text", { x: sx(status[0].a) + 6, y: y0 + h / 2 - 6, class: "gap-label" }, svg); t.textContent = "应用观测 · 可用";
+      } else if (row.key === "input") {
+        gaps.forEach((g) => el("rect", { x: sx(g.a), y: y0, width: sx(g.b) - sx(g.a), height: h, fill: "url(#hs)" }, svg));
+        drawTrace(svg, gutter, W - right, y0 + h, h - 6, row.c, sx);
+      } else {
+        el("rect", { x: sx(FROM), y: y0, width: sx(m("21:06")) - sx(FROM), height: h, fill: "url(#hs)" }, svg);
+        const t = el("text", { x: sx(FROM) + 6, y: y0 + h / 2 + 4, class: "gap-label" }, svg); t.textContent = "没有记录";
+        vrGaps.forEach((g) => el("rect", { x: sx(g.a), y: y0, width: Math.max(2, sx(g.b) - sx(g.a)), height: h, fill: "url(#hs)" }, svg));
+        worlds.forEach((x) => {
+          const bx = sx(x.a) + 0.5, bw = sx(x.b) - sx(x.a) - 1;
+          el("rect", { x: bx, y: y0 + 4, width: bw, height: h - 8, rx: 2, style: `fill:${row.c}` }, svg);
+          const tt = el("text", { x: bx + 6, y: y0 + h / 2 + 4, class: "bar-label" }, svg); tt.textContent = x.n;
+        });
+      }
+      y += h + pad * 2;
+    });
+  }
+
+  // ---- 30 days of channel data (示例数据) ----
+  const days = Array.from({ length: 30 }, (_, i) => i + 1);
+  const rd = rng(42);
+  const desk = days.map((d) => {
+    const wd = new Date(2026, 8, d).getDay();
+    if (d === 13 || d === 14) return null;
+    return wd === 0 || wd === 6 ? 0.8 + rd() * 2.4 : 5.5 + rd() * 4.5;
+  });
+  const vr = days.map(() => (rd() < 0.45 ? null : 0.5 + rd() * 3.2));
+  const pts = days.map((d, i) => (desk[i] === null ? null : Math.round((desk[i] || 0) * (90 + rd() * 60))));
+  const fmt = (h) => `${Math.floor(h)} 小时 ${String(Math.round((h % 1) * 60)).padStart(2, "0")} 分`;
+  const sum = (a) => a.reduce((s, v) => s + (v || 0), 0);
+
+  function dayBars(svg, values, color, max, id) {
+    const w = svg.clientWidth || 600, h = 54, n = values.length, gapW = 2, bw = (w - gapW * (n - 1)) / n;
+    svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    svg.textContent = "";
+    hatch(svg, id);
+    values.forEach((v, i) => {
+      const x = i * (bw + gapW);
+      if (v === null) { el("rect", { x, y: 0, width: bw, height: h - 12, fill: `url(#${id})` }, svg); }
+      else {
+        const bh = Math.max(1.5, (v / max) * (h - 14));
+        el("rect", { x, y: h - 12 - bh, width: bw, height: bh, rx: 1, style: `fill:${color}` }, svg);
+      }
+      if (i % 7 === 0) { const t = el("text", { x, y: h - 1, class: "tick" }, svg); t.textContent = `09-${String(i + 1).padStart(2, "0")}`; }
+    });
+  }
+
+  function channels() {
+    const host = document.getElementById("channels");
+    const list = [
+      { tag: "CH1", c: "var(--ch1)", name: "测试 Mac", kind: "前台应用观测", vals: desk, max: 11, total: fmt(sum(desk)), sub: "23 个应用", link: "打开时间线 →" },
+      { tag: "CH3", c: "var(--ch3)", name: "VRChat 示例账号", kind: "可见世界停留", vals: vr, max: 11, total: fmt(sum(vr)), sub: "8 个世界", link: "打开 VRChat →" },
+      { tag: "CH4", c: "var(--ch4)", name: "自定义来源", kind: "瞬时记录 · 不计时长", vals: pts, max: Math.max(...pts.filter(Boolean)), total: sum(pts).toLocaleString("zh-CN") + " 条", sub: "example.observation", link: "打开时间线 →" },
+    ];
+    host.textContent = "";
+    list.forEach((ch, i) => {
+      const row = document.createElement("div");
+      row.className = "channel";
+      row.style.setProperty("--c", ch.c);
+      row.innerHTML = `<div class="ch-name"><span class="ch-tag"><i></i>${ch.tag}</span><strong>${ch.name}</strong><small>${ch.kind}</small></div>
+        <div class="ch-days"><svg aria-label="${ch.name} 每日记录"></svg></div>
+        <div class="ch-total"><span class="num">${ch.total}</span><small>${ch.sub}</small><a href="#" onclick="return false">${ch.link}</a></div>`;
+      host.appendChild(row);
+      dayBars(row.querySelector("svg"), ch.vals, ch.c, ch.max, "hd" + i);
+    });
+    const k = document.getElementById("key-hatch");
+    k.setAttribute("viewBox", "0 0 22 12"); k.textContent = ""; hatch(k, "hk");
+    el("rect", { x: 0, y: 0, width: 22, height: 12, fill: "url(#hk)" }, k);
+  }
+
+  function vrchat() {
+    const access = [["Public", "var(--ch1)"], ["Friends+", "var(--ch2)"], ["Invite", "var(--ch4)"], ["Group", "var(--ch3)"]];
+    document.getElementById("access-key").innerHTML = access.map(([n, c]) => `<span><i style="background:${c}"></i>${n}</span>`).join("");
+    const list = [
+      ["Midnight Rooftop", 327, 9, [0.2, 0.7, 0.1, 0]], ["月明かりの温泉", 215, 6, [0, 0.5, 0.5, 0]],
+      ["Quiet Aquarium", 157, 4, [0, 1, 0, 0]], ["Afterglow Station", 119, 5, [0.6, 0, 0, 0.4]],
+      ["星屑キャンプ場", 96, 3, [1, 0, 0, 0]], ["Coffee by the Sea", 71, 2, [0, 0.3, 0.7, 0]],
+      ["Cloud Archive", 48, 2, [0.5, 0.5, 0, 0]], ["雨音図書館", 44, 1, [0, 0, 1, 0]],
+    ];
+    const max = list[0][1];
+    const total = list.reduce((s, w) => s + w[1], 0);
+    document.getElementById("vr-total").textContent = `${Math.floor(total / 60)} 小时 ${String(total % 60).padStart(2, "0")} 分`;
+    document.getElementById("worlds").innerHTML = list.map(([n, mins, seg, mix], i) => `
+      <div class="world"><span class="rank">${String(i + 1).padStart(2, "0")}</span>
+        <div class="wn"><strong>${n}</strong><div class="bar" style="width:${(mins / max) * 100}%">${mix.map((p, j) => p ? `<i style="width:${p * 100}%;background:${access[j][1]}"></i>` : "").join("")}</div></div>
+        <div class="wt"><span>${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, "0")}</span><small>${seg} 段</small></div></div>`).join("");
+
+    const svg = document.getElementById("heat");
+    const cell = 13, g = 2, left = 20, topH = 14, w = left + 24 * (cell + g), h = topH + 7 * (cell + g);
+    svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    svg.textContent = "";
+    const rh = rng(9);
+    ["一", "二", "三", "四", "五", "六", "日"].forEach((d, row) => {
+      const t = el("text", { x: 0, y: topH + row * (cell + g) + 10, class: "tick" }, svg); t.textContent = d;
+      for (let hr = 0; hr < 24; hr++) {
+        const evening = hr >= 20 || hr <= 1;
+        const weekend = row >= 4;
+        const v = evening ? (weekend ? 0.5 + rh() * 0.5 : rh() * 0.7) : (weekend && hr >= 14 ? rh() * 0.4 : rh() < 0.06 ? rh() * 0.3 : 0);
+        el("rect", { x: left + hr * (cell + g), y: topH + row * (cell + g), width: cell, height: cell, rx: 2,
+          style: v ? `fill:color-mix(in srgb, var(--ch3) ${Math.round(15 + v * 85)}%, var(--sheet))` : "fill:var(--rule)" }, svg);
+      }
+    });
+    [0, 6, 12, 18].forEach((hr) => { const t = el("text", { x: left + hr * (cell + g), y: 10, class: "tick" }, svg); t.textContent = String(hr).padStart(2, "0"); });
+    document.getElementById("people").innerHTML = [["H", "Haru", "5:27"], ["小", "小雨", "3:35"], ["N", "Neko", "2:37"], ["K", "Kuro", "1:12"], ["M", "Mint", "0:41"]]
+      .map(([i, n, t]) => `<span class="person"><b>${i}</b>${n}<span class="num">${t}</span></span>`).join("");
+  }
+
+  function rules() {
+    // 通道分立
+    let s = document.getElementById("rule-ch"); let w = s.clientWidth || 260;
+    s.setAttribute("viewBox", `0 0 ${w} 64`); s.textContent = "";
+    [["var(--ch1)", 0.78, "CH1 142:18"], ["var(--ch3)", 0.32, "CH3 38:05"]].forEach(([c, f, l], i) => {
+      el("rect", { x: 0, y: 8 + i * 28, width: (w - 4) * f, height: 14, rx: 2, style: `fill:${c}` }, s);
+      const t = el("text", { x: (w - 4) * f + 6, y: 19 + i * 28, class: "tick" }, s); t.textContent = l;
+    });
+    // 空白就是未知
+    s = document.getElementById("rule-gap"); w = s.clientWidth || 260;
+    s.setAttribute("viewBox", `0 0 ${w} 64`); s.textContent = ""; hatch(s, "hr");
+    const q = w / 4;
+    el("rect", { x: 0, y: 12, width: q - 4, height: 20, rx: 2, style: "fill:var(--ch1)" }, s);
+    el("line", { x1: q + 2, x2: 2 * q - 4, y1: 22, y2: 22, class: "away" }, s);
+    el("rect", { x: 2 * q, y: 12, width: q - 4, height: 20, fill: "url(#hr)" }, s);
+    el("rect", { x: 3 * q, y: 12, width: q - 4, height: 20, rx: 2, style: "fill:var(--ch1)" }, s);
+    [["区间", 0], ["离开", q], ["无观测", 2 * q], ["区间", 3 * q]].forEach(([l, x]) => { const t = el("text", { x, y: 50, class: "tick" }, s); t.textContent = l; });
+    // 时间有刻度
+    s = document.getElementById("rule-grid"); w = s.clientWidth || 260;
+    s.setAttribute("viewBox", `0 0 ${w} 64`); s.textContent = "";
+    const sx = grid(s, 0, w, 0, 44, 0, 180, 10, 60);
+    [0, 60, 120].forEach((v) => { const t = el("text", { x: sx(v) + 3, y: 58, class: "tick" }, s); t.textContent = hhmm(m("09:00") + v); });
+  }
+
+  function minis() {
+    document.querySelectorAll(".mini-strip").forEach((svg, i) => {
+      const w = svg.clientWidth || 300, h = 70;
+      svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.textContent = "";
+      hatch(svg, "hm" + i);
+      const from = m("13:00"), to = m("21:00");
+      const sx = grid(svg, 0, w, 0, h, from, to, 10, 60);
+      el("rect", { x: sx(m("18:20")), y: 0, width: sx(m("19:40")) - sx(m("18:20")), height: h, fill: `url(#hm${i})` }, svg);
+      [["13:24", "14:10"], ["14:10", "15:52"], ["16:05", "18:20"], ["19:40", "20:55"]].forEach(([a, b], j) => {
+        el("rect", { x: sx(m(a)) + 0.5, y: 8, width: sx(m(b)) - sx(m(a)) - 1, height: 16, rx: 2, style: `fill:var(--ch1)`, opacity: j % 2 ? 1 : 0.7 }, svg);
+      });
+      const d = density.filter((x) => x.t >= from && x.t < to);
+      const peak = Math.max(...d.map((x) => x.v || 0));
+      let path = "";
+      let open = false;
+      d.forEach((x) => {
+        if (x.v === null) { open = false; return; }
+        const px = sx(x.t + 2.5), py = h - 6 - (x.v / peak) * 34;
+        path += (open ? " L" : " M") + px + "," + py; open = true;
+      });
+      el("path", { d: path, class: "trace", style: "stroke:var(--ch2)" }, svg);
+    });
+  }
+
+  function render() { hero(); rules(); channels(); strip(); vrchat(); minis(); }
+  render();
+  let raf = 0;
+  window.addEventListener("resize", () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(render);
+})();
+</script>

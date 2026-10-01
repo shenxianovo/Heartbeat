@@ -335,7 +335,7 @@ export function TimelineViewport({
           </div>
         </div>
         <p className="timeline-note">
-          空白表示没有可用记录，不代表没有活动。输入密度表示已存事件数量。
+          空白表示没有可用记录，不代表没有活动。密度曲线表示已存瞬时记录的数量。
         </p>
       </section>
       {selected ? (
@@ -367,7 +367,7 @@ export function TimelineViewport({
           />
         </section>
       ) : null}
-      <section className="range-records" aria-label="区间记录列表">
+      <section className="range-records glass-panel" aria-label="区间记录列表">
         <div className="section-heading">
           <div>
             <h2>

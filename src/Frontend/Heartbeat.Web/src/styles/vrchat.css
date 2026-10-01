@@ -10,8 +10,7 @@
   max-width: 1260px;
 }
 .vrc-heading,
-.vrc-controls,
-.vrc-presets {
+.vrc-controls {
   display: flex;
   align-items: center;
   gap: 0.6rem;

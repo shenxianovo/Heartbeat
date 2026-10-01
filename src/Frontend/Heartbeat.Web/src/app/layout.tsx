@@ -7,7 +7,7 @@ import { themeBootScript } from "@/lib/theme";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Heartbeat · 回放",
+  title: { default: "Heartbeat", template: "%s · Heartbeat" },
   description: "查看 Timeline 中由 Collector 采集的 Record。",
 };
 

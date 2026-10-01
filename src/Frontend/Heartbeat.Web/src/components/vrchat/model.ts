@@ -1,5 +1,6 @@
 import type { TimelineRecord } from "@/api/types";
 import { isObject, nonEmptyString } from "@/components/records/renderers/values";
+import { clipExplicitRange } from "@/lib/recording/intervals";
 
 export interface LocationValue {
   account_id: string;
@@ -57,11 +58,6 @@ export const accessColors: Record<string, string> = {
   "Group+": "var(--vrc-group)",
   Group: "var(--vrc-group)",
 };
-export function duration(milliseconds: number): string {
-  const minutes = Math.floor(milliseconds / 60000);
-  if (minutes < 1) return "不足 1 分钟";
-  return minutes < 60 ? `${minutes} 分钟` : `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分`;
-}
 export interface Visit {
   id: string;
   from: number;
@@ -81,18 +77,6 @@ export interface Encounter {
   milliseconds: number;
   visits: Visit[];
 }
-function interval(
-  record: TimelineRecord,
-  from: number,
-  to: number,
-): { from: number; to: number } | null {
-  if (!record.endedAt) return null;
-  const start = Math.max(from, Date.parse(record.startedAt));
-  const end = Math.min(to, Date.parse(record.endedAt));
-  return Number.isFinite(start) && Number.isFinite(end) && end >= start
-    ? { from: start, to: end }
-    : null;
-}
 function visits<T extends LocationValue>(
   records: TimelineRecord[],
   read: (value: unknown) => T,
@@ -104,7 +88,7 @@ function visits<T extends LocationValue>(
   for (const record of records) {
     try {
       const value = read(record.value);
-      const time = interval(record, from, to);
+      const time = clipExplicitRange(record, from, to);
       if (time) items.push({ id: record.id, ...time, value });
     } catch {
       invalid++;

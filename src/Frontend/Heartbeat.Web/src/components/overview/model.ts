@@ -1,6 +1,11 @@
 import type { TimelineRecord, TrackSummary } from "@/api/types";
 import { summarizeDesktopApplication } from "@/components/records/renderers/DesktopApplicationForegroundV1";
 import { readLocation } from "@/components/vrchat/model";
+import {
+  clipExplicitRange,
+  coveredMilliseconds,
+  type ObservationInterval,
+} from "@/lib/recording/intervals";
 
 export interface OverviewSource {
   id: string;
@@ -48,7 +53,7 @@ export function summarizeSource(
   from: number,
   to: number,
 ) {
-  const intervals: { start: number; end: number }[] = [];
+  const intervals: ObservationInterval[] = [];
   const subjects = new Set<string>();
   let invalid = 0;
   for (const record of records) {
@@ -57,21 +62,14 @@ export function summarizeSource(
         source.kind === "vrchat"
           ? readLocation(record.value).world_id
           : summarizeDesktopApplication(record.value).group!.id;
-      const start = Math.max(from, Date.parse(record.startedAt));
-      const end = Math.min(to, Date.parse(record.endedAt ?? ""));
-      if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) continue;
-      intervals.push({ start, end });
+      const interval = clipExplicitRange(record, from, to);
+      if (!interval) continue;
+      intervals.push(interval);
       subjects.add(subject);
     } catch {
       invalid++;
     }
   }
   // Only union overlapping observations within this Collector. Sources remain separate.
-  let end = -Infinity;
-  let milliseconds = 0;
-  for (const interval of intervals.sort((a, b) => a.start - b.start)) {
-    milliseconds += Math.max(0, interval.end - Math.max(interval.start, end));
-    end = Math.max(end, interval.end);
-  }
-  return { milliseconds, subjects: subjects.size, invalid };
+  return { milliseconds: coveredMilliseconds(intervals), subjects: subjects.size, invalid };
 }

@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { accessColors, duration, heatmap, type World, type Encounter } from "./model";
+import { formatDurationMinutes } from "@/lib/dates";
+import { accessColors, heatmap, type World, type Encounter } from "./model";
 import { WorldBubbles } from "./WorldBubbles";
 import { VisitDetails } from "./VisitDetails";
 
@@ -35,7 +36,7 @@ export function WorldPanel({ worlds }: { worlds: World[] }) {
                 onClick={() => setSelectedId(world.id)}
               >
                 <strong>{world.name}</strong>
-                <span>{duration(world.milliseconds)}</span>
+                <span>{formatDurationMinutes(world.milliseconds)}</span>
                 <small>{world.visits.length} 段</small>
               </button>
             ))}
@@ -46,7 +47,7 @@ export function WorldPanel({ worlds }: { worlds: World[] }) {
         {selected ? (
           <aside className="vrc-world-detail" aria-live="polite">
             <h3>{selected.name}</h3>
-            <div className="vrc-duration">{duration(selected.milliseconds)}</div>
+            <div className="vrc-duration">{formatDurationMinutes(selected.milliseconds)}</div>
             <p>{selected.visits.length} 个观测段</p>
             <div className="vrc-legend">
               {[...selected.access].map(([access, time]) => (
@@ -95,7 +96,7 @@ export function EncounterPanel({ people }: { people: Encounter[] }) {
                   {Array.from(person.name)[0]}
                 </span>
                 <strong>{person.name}</strong>
-                <span>{duration(person.milliseconds)}</span>
+                <span>{formatDurationMinutes(person.milliseconds)}</span>
                 <small>{person.visits.length} 段</small>
               </summary>
               <VisitDetails visits={person.visits} />
@@ -135,7 +136,7 @@ export function RhythmPanel({ worlds }: { worlds: World[] }) {
             {cells.slice(index * 24, (index + 1) * 24).map((value, hour) => (
               <span
                 key={hour}
-                title={`星期${day} ${hour}:00 · ${value ? duration(value) : "无记录"}`}
+                title={`星期${day} ${hour}:00 · ${value ? formatDurationMinutes(value) : "无记录"}`}
                 style={{
                   background: `color-mix(in oklch, var(--primary) ${value ? 15 + (value / maximum) * 75 : 0}%, var(--muted))`,
                 }}

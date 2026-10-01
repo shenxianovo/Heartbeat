@@ -1,5 +1,5 @@
-import { formatDateTime } from "@/lib/dates";
-import { accessType, duration, type Visit } from "./model";
+import { formatDateTime, formatDurationMinutes } from "@/lib/dates";
+import { accessType, type Visit } from "./model";
 
 export function VisitDetails({ visits }: { visits: Visit[] }) {
   return (
@@ -13,7 +13,7 @@ export function VisitDetails({ visits }: { visits: Visit[] }) {
               <span> → {formatDateTime(new Date(visit.to).toISOString())}</span>
             </div>
             <strong>
-              {duration(visit.to - visit.from)} · {accessType(visit.value.instance_id)}
+              {formatDurationMinutes(visit.to - visit.from)} · {accessType(visit.value.instance_id)}
             </strong>
             <small>{visit.value.world_name || visit.value.world_id}</small>
             <small>实例 {visit.value.instance_id}</small>

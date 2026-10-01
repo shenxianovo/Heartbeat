@@ -81,12 +81,51 @@ test("深色主题首页水合时不报告 html 属性不一致", async ({ page 
   expect(hydrationErrors).toEqual([]);
 });
 
+test("首页时间范围输入完整可见，不挤压或横向滚动", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("heartbeat-theme", "dark"));
+  await recordingRoutes(page);
+  await page.goto("/");
+  for (const width of [1280, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.getByRole("button", { name: "时间范围", exact: true }).click();
+    const panel = page.getByRole("dialog", { name: "时间范围", exact: true });
+    await expect(panel).toBeVisible();
+    expect(await panel.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true,
+    );
+    const start = (await panel.getByLabel("开始时间").boundingBox())!;
+    const end = (await panel.getByLabel("结束时间").boundingBox())!;
+    expect(start.y + start.height).toBeLessThanOrEqual(end.y);
+    expect(start.width).toBeGreaterThan(240);
+    await page.screenshot({ path: evidencePath(`overview-range-${width}.png`) });
+    await page.keyboard.press("Escape");
+  }
+  const trigger = page.getByRole("button", { name: "时间范围", exact: true });
+  const panel = page.getByRole("dialog", { name: "时间范围", exact: true });
+  await trigger.click();
+  const original = await panel.getByLabel("开始时间").inputValue();
+  await panel.getByLabel("开始时间").fill("2026-09-20T12:30");
+  await panel.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(trigger).toBeFocused();
+  await trigger.click();
+  await expect(panel.getByLabel("开始时间")).toHaveValue(original);
+  await panel.getByLabel("开始时间").fill("2026-09-20T12:30");
+  await panel.getByLabel("结束时间").fill("2026-09-28T19:45");
+  await panel.getByRole("button", { name: "应用范围" }).click();
+  await expect(panel).toHaveCount(0);
+  await expect(trigger).toContainText("2026/09/20 — 2026/09/28");
+  await trigger.click();
+  await expect(panel.getByLabel("开始时间")).toHaveValue("2026-09-20T12:30");
+  await expect(panel.getByLabel("结束时间")).toHaveValue("2026-09-28T19:45");
+});
+
 test("统一时间线自动读取完整区间并可查看原始记录", async ({ page }) => {
   const requests = await recordingRoutes(page);
   await page.goto("/timeline");
   await expect(
     page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "Hub 管理" }),
   ).toBeVisible();
+  await expect(page).toHaveTitle("详细时间线 · Heartbeat");
   await expect(page.getByLabel("当前登录：tester")).toContainText("T");
   await expect(page.getByRole("button", { name: /当前 com\.apple\.finder/ })).toBeVisible();
   const ranges = page.getByRole("button", { name: /当前 com\.apple\.finder/ });
@@ -273,7 +312,7 @@ test("来源可以组合选择，空选择不会一直加载", async ({ page }) 
   await chooseSources(page, ["测试 Mac", "自定义来源"]);
   await expect(page.getByRole("button", { name: /当前 com\.apple\.finder/ })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: /example\.observation.*输入密度曲线/ }),
+    page.getByRole("button", { name: /example\.observation.* · 密度曲线/ }),
   ).toBeVisible();
 });
 

@@ -7,7 +7,6 @@ import { AuthProvider } from "react-oidc-context";
 import { authConfiguration, createUserManagerSettings } from "@/auth/config";
 import { handleSigninCallback, SessionCacheGuard } from "@/auth/session";
 import { MascotBackground } from "@/components/layout/MascotBackground";
-import { ThemeToggle } from "@/components/layout/ThemeToggle";
 
 export function Providers({ children }: PropsWithChildren) {
   const [queryClient] = useState(
@@ -32,7 +31,6 @@ export function Providers({ children }: PropsWithChildren) {
         onSigninCallback={handleSigninCallback}
       >
         <MascotBackground />
-        <ThemeToggle />
         <SessionCacheGuard>{children}</SessionCacheGuard>
       </AuthProvider>
     </QueryClientProvider>

@@ -14,8 +14,8 @@ import { useSearchParams } from "next/navigation";
 import { detailHref, readViewRange, recentRange } from "@/lib/viewRange";
 import { LoadingState } from "@/components/status/LoadingState";
 import { QueryState } from "@/components/status/QueryState";
-import { rangeToIso, type DateRange } from "@/lib/dates";
-import { aggregate, duration } from "./model";
+import { formatDurationMinutes, rangeToIso, type DateRange } from "@/lib/dates";
+import { aggregate } from "./model";
 import { EncounterPanel, RhythmPanel, WorldPanel } from "./HabitatPanels";
 
 function selectSources(allTracks: TrackSummary[], collectorId: string) {
@@ -165,7 +165,9 @@ function HabitatContent({ data }: { data: ReturnType<typeof useHabitatData> }) {
         <div>
           <span>世界停留</span>
           <strong>
-            {duration(result.worlds.reduce((sum, world) => sum + world.milliseconds, 0))}
+            {formatDurationMinutes(
+              result.worlds.reduce((sum, world) => sum + world.milliseconds, 0),
+            )}
           </strong>
         </div>
         <div>

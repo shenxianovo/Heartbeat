@@ -1,6 +1,7 @@
 "use client";
 import { BubbleMap } from "@/components/visualizations/BubbleMap";
-import { accessColors, duration, type World } from "./model";
+import { formatDurationMinutes } from "@/lib/dates";
+import { accessColors, type World } from "./model";
 
 function fill(world: World) {
   const total = Math.max(1, world.milliseconds);
@@ -29,8 +30,8 @@ export function WorldBubbles({
       items={worlds.slice(0, 24).map((world) => ({
         id: world.id,
         label: world.name,
-        detail: duration(world.milliseconds),
-        accessibleLabel: `${world.name}，${duration(world.milliseconds)}，${world.visits.length} 个观测段`,
+        detail: formatDurationMinutes(world.milliseconds),
+        accessibleLabel: `${world.name}，${formatDurationMinutes(world.milliseconds)}，${world.visits.length} 个观测段`,
         weight: world.milliseconds,
         color: fill(world),
         borderWidth: Math.min(5, 1 + Math.log2(world.visits.length + 1)),

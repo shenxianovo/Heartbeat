@@ -46,8 +46,8 @@ export function RecordsPanel({ query, selectedTrack }: RecordsPanelProps) {
     return (
       <QueryState
         eyebrow="没有记录"
-        title="这段时间很安静"
-        description="当前 Track 在所选时间范围内没有可回放的记录，可以调整时间后再查看。"
+        title="没有可用记录"
+        description="当前 Track 在所选时间范围内没有已存记录；这不代表没有活动，可以调整时间后再查看。"
       />
     );
   }

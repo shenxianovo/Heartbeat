@@ -7,6 +7,7 @@ import Link from "next/link";
 
 import { useSessionActions } from "@/auth/session";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function AppHeader() {
   const auth = useAuth();
@@ -54,9 +55,16 @@ export function AppHeader() {
           </Avatar>
           <span className="account-name">{displayName}</span>
         </div>
-        <Button variant="glass" type="button" onClick={() => void leave()} disabled={leaving}>
+        <Button
+          variant="glass"
+          size="sm"
+          type="button"
+          onClick={() => void leave()}
+          disabled={leaving}
+        >
           {leaving ? "正在退出…" : "退出登录"}
         </Button>
+        <ThemeToggle />
       </div>
     </header>
   );

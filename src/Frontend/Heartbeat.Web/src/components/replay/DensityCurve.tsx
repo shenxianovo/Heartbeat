@@ -188,7 +188,7 @@ export function DensityCurve({ track, counts, detailCounts, range, scale, onSele
       data-source-seconds={series?.sourceSeconds ?? 0}
       data-peak={Math.round(series?.peak ?? 0)}
       data-scale-peak={Math.round(scale.peak)}
-      aria-label={`${trackLabel(track)}输入密度曲线，峰值 ${Math.round(scale.peak)} 条，方向键选择时间桶，回车查看记录${readout}`}
+      aria-label={`${trackLabel(track)} · 密度曲线，峰值 ${Math.round(scale.peak)} 条，方向键选择时间桶，回车查看记录${readout}`}
       onClick={selection.click}
       onPointerMove={selection.hover}
       onPointerLeave={selection.leave}

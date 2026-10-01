@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useReducer, useSyncExternalStore } from "react";
-import { rangeToIso, todayRange, type DateRange } from "@/lib/dates";
+import { isWholeDay, rangeToIso, stepRange, todayRange, type DateRange } from "@/lib/dates";
 import { clampRange, type TimeRange } from "./timeRange";
 import type { PointSelection } from "./TimelineLane";
 
@@ -135,14 +135,13 @@ export function useReplaySelection(initial?: {
     },
     [bounds, from, state.mode],
   );
+  const custom = Boolean(chosen && !isWholeDay(chosen));
   function stepDay(step: number) {
-    if (!chosen) return;
-    const date = new Date(chosen.from);
-    date.setDate(date.getDate() + step);
-    chooseDate(todayRange(date));
+    if (chosen) chooseDate(stepRange(chosen, step), custom);
   }
   return {
     chosen,
+    custom,
     from,
     to,
     bounds,

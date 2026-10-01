@@ -8,9 +8,8 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { LoadingState } from "@/components/status/LoadingState";
 import { QueryState } from "@/components/status/QueryState";
 import { BubbleMap } from "@/components/visualizations/BubbleMap";
-import { duration } from "@/components/vrchat/model";
 import { detailHref, recentRange } from "@/lib/viewRange";
-import type { DateRange } from "@/lib/dates";
+import { formatDurationMinutes, type DateRange } from "@/lib/dates";
 import { useOverviewData } from "./useOverviewData";
 
 type Data = ReturnType<typeof useOverviewData>;
@@ -98,7 +97,7 @@ function SourceMap({ data, range }: { data: Data; range: DateRange }) {
   const items = data.summaries
     .map((source, index) => ({
       ...source,
-      detail: source.pending ? "正在读取" : duration(source.milliseconds),
+      detail: source.pending ? "正在读取" : formatDurationMinutes(source.milliseconds),
       weight: source.milliseconds,
       color:
         source.kind === "vrchat" ? "oklch(0.79 0.1 205)" : `oklch(0.79 0.1 ${265 + index * 45})`,
@@ -146,7 +145,11 @@ function SourceSummary({ source }: { source: Data["summaries"][number] & { href:
         <span>{source.name}</span>
       </div>
       <div>
-        {source.pending ? <span>正在读取</span> : <strong>{duration(source.milliseconds)}</strong>}
+        {source.pending ? (
+          <span>正在读取</span>
+        ) : (
+          <strong>{formatDurationMinutes(source.milliseconds)}</strong>
+        )}
         <span>
           {source.subjects} 个{source.kind === "vrchat" ? "世界" : "应用"} · 查看详情 ↗
         </span>

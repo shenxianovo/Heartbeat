@@ -12,13 +12,72 @@ import { DateRangeControls } from "@/components/filters/DateRangeControls";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { RecordsPanel } from "./RecordsPanel";
 import { TimelineViewport } from "./TimelineViewport";
-import { todayRange } from "@/lib/dates";
+import { todayRange, type DateRange } from "@/lib/dates";
 import { LoadingState } from "@/components/status/LoadingState";
 import { QueryState } from "@/components/status/QueryState";
 import { useLinkedReplaySelection } from "./useLinkedReplaySelection";
 import Link from "next/link";
 import { useReplayData } from "./useReplayData";
 import { useLiveReplay } from "./useLiveReplay";
+
+/** `2026-09-12T08:30` → `09/12 08:30`, matching the overview's range trigger. */
+function shortTime(value: string) {
+  return value.slice(5, 16).replace("-", "/").replace("T", " ");
+}
+
+function ReplayDateControls({
+  chosen,
+  custom,
+  chooseDate,
+  stepDay,
+}: {
+  chosen: DateRange;
+  custom: boolean;
+  chooseDate: (range: DateRange, custom?: boolean) => void;
+  stepDay: (step: number) => void;
+}) {
+  return (
+    <>
+      <div className="experience-date">
+        <Button size="icon" aria-label={custom ? "前一段" : "前一天"} onClick={() => stepDay(-1)}>
+          <Icon name="chevronLeft" />
+        </Button>
+        <DatePicker
+          value={chosen.from.slice(0, 10)}
+          onChange={(value) => chooseDate(todayRange(new Date(`${value}T00:00:00`)))}
+        />
+        <Button size="icon" aria-label={custom ? "后一段" : "后一天"} onClick={() => stepDay(1)}>
+          <Icon name="chevronRight" />
+        </Button>
+      </div>
+      <Popover
+        label="自定义时间范围"
+        className="range-picker"
+        trigger={
+          <>
+            <Icon name="filter" />
+            <span className="picker-value">
+              {custom ? `${shortTime(chosen.from)} — ${shortTime(chosen.to)}` : "时间范围"}
+            </span>
+            <Icon name="chevronDown" />
+          </>
+        }
+      >
+        {(close) => (
+          <DateRangeControls
+            key={`${chosen.from}/${chosen.to}`}
+            value={chosen}
+            onCancel={close}
+            onApply={(next) => {
+              chooseDate(next, true);
+              close();
+            }}
+          />
+        )}
+      </Popover>
+    </>
+  );
+}
 
 function RefreshButton({
   fetching,
@@ -44,6 +103,7 @@ export function ReplayWorkbench() {
   const selection = useLinkedReplaySelection();
   const {
     chosen,
+    custom,
     from,
     to,
     bounds,
@@ -109,18 +169,12 @@ export function ReplayWorkbench() {
         ) : chosen && bounds && range ? (
           <>
             <section className="experience-filters" aria-label="回放筛选">
-              <div className="experience-date">
-                <Button size="icon" aria-label="前一天" onClick={() => stepDay(-1)}>
-                  <Icon name="chevronLeft" />
-                </Button>
-                <DatePicker
-                  value={chosen.from.slice(0, 10)}
-                  onChange={(value) => chooseDate(todayRange(new Date(`${value}T00:00:00`)))}
-                />
-                <Button size="icon" aria-label="后一天" onClick={() => stepDay(1)}>
-                  <Icon name="chevronRight" />
-                </Button>
-              </div>
+              <ReplayDateControls
+                chosen={chosen}
+                custom={custom}
+                chooseDate={chooseDate}
+                stepDay={stepDay}
+              />
               <MultiSelectPicker
                 label="采集来源"
                 allLabel="全部来源"
@@ -128,28 +182,6 @@ export function ReplayWorkbench() {
                 value={selectedCollectorIds ?? collectors.map(([id]) => id)}
                 onChange={(ids) => selectCollectors(ids.length === collectors.length ? null : ids)}
               />
-              <Popover
-                label="自定义时间范围"
-                className="range-picker"
-                trigger={
-                  <>
-                    <Icon name="filter" />
-                    <span>时间范围</span>
-                    <Icon name="chevronDown" />
-                  </>
-                }
-              >
-                {(close) => (
-                  <DateRangeControls
-                    key={`${chosen.from}/${chosen.to}`}
-                    value={chosen}
-                    onApply={(next) => {
-                      chooseDate(next, true);
-                      close();
-                    }}
-                  />
-                )}
-              </Popover>
               <RefreshButton
                 className="experience-refresh"
                 fetching={fetching}

@@ -61,4 +61,24 @@ describe("useReplaySelection", () => {
     expect(result.current.range!.end - result.current.range!.start).toBe(2 * 60 * 60_000);
     vi.useRealTimers();
   });
+
+  it("steps whole days by one day and custom windows by their own span", () => {
+    const { result } = renderHook(() => useReplaySelection({ range: day, collectorId: null }));
+    act(() => result.current.stepDay(1));
+    expect(result.current.chosen).toEqual(otherDay);
+    expect(result.current.custom).toBe(false);
+
+    act(() =>
+      result.current.chooseDate({ from: "2026-09-12T08:30", to: "2026-09-19T08:30" }, true),
+    );
+    expect(result.current.custom).toBe(true);
+    act(() => result.current.stepDay(-1));
+    expect(result.current.chosen).toEqual({ from: "2026-09-05T08:30", to: "2026-09-12T08:30" });
+
+    act(() =>
+      result.current.chooseDate({ from: "2026-09-18T20:00", to: "2026-09-19T02:00" }, true),
+    );
+    act(() => result.current.stepDay(1));
+    expect(result.current.chosen).toEqual({ from: "2026-09-19T20:00", to: "2026-09-20T02:00" });
+  });
 });
