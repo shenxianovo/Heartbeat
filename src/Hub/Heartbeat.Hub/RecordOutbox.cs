@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Threading.Channels;
 using Microsoft.Data.Sqlite;
 
 namespace Heartbeat.Hub;
@@ -8,6 +9,10 @@ public sealed class RecordOutbox
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly string _connectionString;
     private readonly int _maximumRecords;
+    private readonly Channel<bool> _accepted = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
+    {
+        FullMode = BoundedChannelFullMode.DropWrite,
+    });
 
     public RecordOutbox(string path, DeliveryDestination destination, int maximumRecords = 10000, TimeProvider? clock = null)
     {
@@ -84,7 +89,14 @@ public sealed class RecordOutbox
 
         transaction.Commit();
         Activity.Accept(normalized.Records!.Count);
+        _accepted.Writer.TryWrite(true);
         return normalized.Records!.Select(record => record!).ToArray();
+    }
+
+    internal async ValueTask WaitForPendingAsync(CancellationToken cancellationToken)
+    {
+        // The queue is authoritative; the coalesced notification only wakes the single delivery loop.
+        if (Status().Pending == 0) await _accepted.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public IReadOnlyList<PendingRecord> TakePending()

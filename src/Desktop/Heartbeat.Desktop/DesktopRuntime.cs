@@ -143,7 +143,7 @@ public sealed class DesktopRuntime : IAsyncDisposable, ICollectorManager
         if (string.IsNullOrWhiteSpace(key)) throw new InvalidOperationException("没有已保存的 API key，请重新保存连接。");
         _queue = new RecordOutbox(_profile.DatabasePath, settings.Destination);
         _tokens = new ApiKeyTokenProvider(_http, settings.AuthUrl, key);
-        _delivery = new HubDeliveryLoop(new RecordUploader(_queue, _http, _tokens), TimeSpan.FromSeconds(5));
+        _delivery = new HubDeliveryLoop(_queue, new RecordUploader(_queue, _http, _tokens));
         _deliveryStop = new CancellationTokenSource();
         _deliveryTask = _delivery.RunAsync(_deliveryStop.Token);
         _management = new HubManagementLoop(_http, _tokens, settings.Destination, HubId,

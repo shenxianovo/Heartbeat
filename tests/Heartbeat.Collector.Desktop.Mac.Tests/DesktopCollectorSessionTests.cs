@@ -108,11 +108,47 @@ public sealed class DesktopCollectorSessionTests
         var run = RunSession(reader, httpClient, stop.Token);
         try
         {
-            await retried.Task.WaitAsync(TimeSpan.FromSeconds(1), cancellationToken: TestContext.Current.CancellationToken);
+            await retried.Task.WaitAsync(TimeSpan.FromSeconds(3), cancellationToken: TestContext.Current.CancellationToken);
             var sent = handler.Records.ToArray();
             Assert.Equal(sent[0].Id, sent[1].Id);
             Assert.True(sent[1].EndedAt >= sent[0].EndedAt);
             Assert.False(run.IsCompleted);
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            await IgnoreCancellationAsync(run);
+        }
+    }
+
+    [Fact]
+    public async Task FailedHandoffBacksOffDespiteNewEventsAndRetriesWithoutASamplingTick()
+    {
+        var failed = NewSignal();
+        var recovered = NewSignal();
+        var source = new ScriptedSource(_ => FirstApp);
+        using var handler = new UploadHandler((count, _) =>
+        {
+            if (count == 1)
+            {
+                failed.TrySetResult();
+                throw new HttpRequestException("Offline");
+            }
+            recovered.TrySetResult();
+            return Task.FromResult(Stored());
+        });
+        using var http = CreateClient(handler);
+        using var stop = new CancellationTokenSource(TestTimeout);
+        var session = new DesktopCollectorSession("heartbeat.collector.desktop.macos", source, new HubSubmissionClient(http), TimeProvider.System);
+        var run = session.RunAsync(Options() with { Interval = TimeSpan.FromHours(1) }, stop.Token);
+        try
+        {
+            await failed.Task.WaitAsync(TestTimeout, TestContext.Current.CancellationToken);
+            source.Emit(new DesktopObservation.Activity(new(FirstApp, null)));
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+            Assert.Single(handler.Records);
+            await recovered.Task.WaitAsync(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
+            Assert.Equal(1, source.ReadCount);
         }
         finally
         {
@@ -202,7 +238,7 @@ public sealed class DesktopCollectorSessionTests
     }
 
     [Fact]
-    public async Task NativeEventsFlowThroughSharedSessionToTheirDeclaredTracks()
+    public async Task NativeEventsAreSubmittedWithoutWaitingForTheNextObservation()
     {
         var source = new ScriptedSource(_ => FirstApp, "Document");
         using var handler = new TrackCaptureHandler();
@@ -210,14 +246,14 @@ public sealed class DesktopCollectorSessionTests
         using var stop = new CancellationTokenSource(TestTimeout);
         var session = new DesktopCollectorSession("heartbeat.collector.desktop.macos",
             source, new HubSubmissionClient(httpClient), TimeProvider.System);
-        var run = session.RunAsync(Options(), stop.Token);
+        var run = session.RunAsync(Options() with { Interval = TimeSpan.FromHours(1) }, stop.Token);
         try
         {
             source.Emit(new DesktopObservation.AwayEntered(DesktopAwayReason.ScreenLocked));
             source.Emit(new DesktopObservation.Input(
                 new DesktopInputObservation(DesktopInputKind.MouseButtonDown, 1)));
 
-            await handler.DesktopTracksReceived.Task.WaitAsync(TestTimeout, cancellationToken: TestContext.Current.CancellationToken);
+            await handler.DesktopTracksReceived.Task.WaitAsync(TimeSpan.FromSeconds(1), cancellationToken: TestContext.Current.CancellationToken);
             Assert.Contains("desktop.application.foreground", handler.TrackTypes);
             Assert.Contains("desktop.window.foreground", handler.TrackTypes);
             Assert.Contains("desktop.system.away", handler.TrackTypes);

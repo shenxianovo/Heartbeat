@@ -80,7 +80,7 @@ public sealed class CheckAuthTests
         foreach (var name in new[]
                  {
                      "Hub__DataDirectory", "Hub__BackendUrl", "Hub__OwnerId", "Hub__AccessToken",
-                     "Hub__MaximumRecords", "Hub__UploadIntervalSeconds",
+                     "Hub__MaximumRecords",
                  })
         {
             start.Environment.Remove(name);

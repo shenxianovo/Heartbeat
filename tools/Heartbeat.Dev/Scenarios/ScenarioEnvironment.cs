@@ -71,9 +71,6 @@ internal sealed class ScenarioEnvironment(
               web:
                 ports: !override
                   - "127.0.0.1:${HEARTBEAT_SCENARIO_WEB_PORT}:3000"
-              hub:
-                environment:
-                  Hub__UploadIntervalSeconds: 1
             """ + Environment.NewLine, cancellationToken);
         var variables = new Dictionary<string, string?>
         {

@@ -12,6 +12,10 @@ public sealed class DesktopCollectorSession(
     public async Task RunAsync(DesktopCollectionOptions options, CancellationToken cancellationToken)
     {
         var pending = new PendingHubSubmissions();
+        var submissions = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
+        {
+            FullMode = BoundedChannelFullMode.DropWrite,
+        });
         var clock = new ContinuousObservationClock(timeProvider);
         var projector = new DesktopRecordProjector(
             collectorKey,
@@ -19,7 +23,11 @@ public sealed class DesktopCollectorSession(
             options.DisplayName,
             options.MaximumConfirmationGap,
             options.WindowTitleDwell,
-            pending.Stage);
+            (route, record) =>
+            {
+                pending.Stage(route, record);
+                submissions.Writer.TryWrite(true);
+            });
         var queue = new ObservationQueue(source, projector, clock);
 
         source.Observation += queue.Receive;
@@ -30,7 +38,7 @@ public sealed class DesktopCollectorSession(
 
             if (options.Once)
             {
-                await SubmitPendingAsync(pending, options.Once, cancellationToken);
+                await SubmitPendingAsync(pending, cancellationToken);
                 return;
             }
 
@@ -77,10 +85,18 @@ public sealed class DesktopCollectorSession(
             {
                 try
                 {
+                    var retrySeconds = 1;
                     while (true)
                     {
-                        await SubmitPendingAsync(pending, options.Once, token);
-                        await Task.Delay(options.Interval, timeProvider, token);
+                        await submissions.Reader.ReadAsync(token);
+                        if (await SubmitPendingAsync(pending, token, retry: true))
+                        {
+                            retrySeconds = 1;
+                            continue;
+                        }
+                        await Task.Delay(TimeSpan.FromSeconds(retrySeconds), timeProvider, token);
+                        retrySeconds = Math.Min(30, retrySeconds * 2);
+                        submissions.Writer.TryWrite(true);
                     }
                 }
                 finally
@@ -97,14 +113,15 @@ public sealed class DesktopCollectorSession(
             {
                 queue.Drain();
                 using var finalSubmission = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                await SubmitPendingAsync(pending, options.Once, finalSubmission.Token, retry: false);
+                await SubmitPendingAsync(pending, finalSubmission.Token);
             }
         }
 
     }
 
-    private async Task SubmitPendingAsync(PendingHubSubmissions pending, bool once, CancellationToken token, bool retry = true)
+    private async Task<bool> SubmitPendingAsync(PendingHubSubmissions pending, CancellationToken token, bool retry = false)
     {
+        var succeeded = true;
         foreach (var batch in pending.ReadBatches())
         {
             token.ThrowIfCancellationRequested();
@@ -113,12 +130,14 @@ public sealed class DesktopCollectorSession(
                 await client.SubmitAsync(batch.ToSubmission(), token);
                 pending.Confirm(batch);
             }
-            catch (Exception exception) when (retry && !once && !token.IsCancellationRequested &&
+            catch (Exception exception) when (retry && !token.IsCancellationRequested &&
                 exception is HttpRequestException or IOException or OperationCanceledException or InvalidDataException or System.Text.Json.JsonException)
             {
-                Console.Error.WriteLine($"Hub submission failed; keeping {batch.Records.Count} Record(s) for retry: {exception.Message}");
+                succeeded = false;
+                Console.Error.WriteLine($"Hub submission failed; retaining snapshots for retry: {exception.Message}");
             }
         }
+        return succeeded;
     }
 
     private abstract record SessionInput

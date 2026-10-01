@@ -132,7 +132,6 @@ public sealed class HubCrashTests
         start.Environment["Hub__AuthUrl"] = fixture.Destination.BackendUrl.AbsoluteUri;
         start.Environment["Hub__ApiKey"] = "test-api-key";
         start.Environment["Hub__AccessToken"] = accessToken;
-        start.Environment["Hub__UploadIntervalSeconds"] = "1";
         var process = new Process { StartInfo = start, EnableRaisingEvents = true };
         var ready = new TaskCompletionSource<Uri>(TaskCreationOptions.RunContinuationsAsynchronously);
         process.OutputDataReceived += (_, args) =>

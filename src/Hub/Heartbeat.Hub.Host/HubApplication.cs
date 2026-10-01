@@ -42,8 +42,8 @@ public static class HubApplication
         builder.Services.AddSingleton<IHubSubmissionClient>(services => new LocalHubSubmissionClient(services.GetRequiredService<RecordOutbox>()));
         builder.Services.AddSingleton(services => new CollectorManager(
             services.GetRequiredService<HubLocalStorage>(), services.GetServices<ICollectorFactory>()));
-        builder.Services.AddSingleton(services => new HubDeliveryLoop(services.GetRequiredService<RecordUploader>(),
-            services.GetRequiredService<HubSettings>().UploadInterval));
+        builder.Services.AddSingleton(services => new HubDeliveryLoop(services.GetRequiredService<RecordOutbox>(),
+            services.GetRequiredService<RecordUploader>()));
         builder.Services.AddHostedService<ManagementWorker>();
         builder.Services.AddProblemDetails();
         builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
