@@ -18,6 +18,7 @@
 | Hub 在线管理 | Web `/hubs`、悬浮导航“Hub 管理”入口、最近 60 秒数量曲线（已接受/已上传；相邻计数增量） | `scenario hubs-fixture`；真实收发接入用 `scenario runtime-replay`；`verify changed` 的 Hub/API/Desktop 测试 | [Hub 管理](../../../../../docs/hub-management.md)、[服务器运行](../../../../../src/Server/README.md) | 浏览器为 fixture，检查增量、首次基线、重复快照、断连、重启和减少动态；Hub/API 集成检查活动来源与 Owner/会话隔离；VRChat 使用模拟外部 API，表单覆盖首次登录、添加其他账号、验证码及失效后重新登录，真实 VRChat 登录需人工验收 |
 | Record 交付与查询 | [HTTP 端点](../../../../../docs/recording-api.md) | `scenario delivery` | [记录接口](../../../../../docs/recording-api.md)、[存储模型](../../../../../docs/recording-storage-model.md) | 覆盖 API 与数据库，不覆盖 Hub 或浏览器 |
 | Hub 接管与原生采集 | `env up hub`、独立 Collector CLI | `scenario native-desktop` | [Hub 交付](../../../../../docs/hub-record-delivery.md)、[macOS Collector](../../../../../src/Collectors/Heartbeat.Collector.Desktop.Mac/README.md)、[系统验收](../../../../../docs/validation/system-acceptance.md) | 默认不保存原始 Collector 日志；权限、物理输入、锁屏和休眠需要人工 |
+| Collector 接入示例 | `dotnet run --project tools/Heartbeat.Collector.Sample` | `verify closeout` 的 SampleCollectorTests 和 HubHttpTests；交付共用链路用 `scenario runtime-replay` | [接入指南](../../../../../src/Hub/Heartbeat.Hub.Client/README.md) | 示例测试使用手动输入、受控时间和真实 SQLite/HTTP 宿主；不证明真实来源观测或示例在 Web 的人工验收 |
 | Collector 启动到落库 | macOS Collector 启动、Hub 接管、注册与上传 | `scenario collector-delivery` | [工程验证](../../../../../docs/verification.md#collector-到落库)、[Hub 交付](../../../../../docs/hub-record-delivery.md) | 真实原生快照与存储链路，需要有效 Auth；不覆盖持续采样、平台交互或 Web |
 
-所有命令前加 `dotnet run --project tools/Heartbeat.Dev --`。场景证据位置和敏感数据规则见[工程验证](../../../../../docs/verification.md)。
+除已写出完整命令的示例外，Developer CLI 命令前加 `dotnet run --project tools/Heartbeat.Dev --`。场景证据位置和敏感数据规则见[工程验证](../../../../../docs/verification.md)。

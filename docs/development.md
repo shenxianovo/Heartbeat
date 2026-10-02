@@ -61,6 +61,10 @@ dotnet run --project tools/Heartbeat.Dev -- env up --release hub
 
 `--release` 只切换容器构建模式并要求 Auth 使用 HTTPS；桌面开发包始终由 Developer CLI 生成。
 
+## 开发 Collector
+
+从[可运行的 Collector 接入示例](../src/Hub/Heartbeat.Hub.Client/README.md)开始：手动产生 Point/Range、声明对象引用、离线重试及停止时最终交接。
+
 ## 本地打包
 
 只构建、不启动客户端：

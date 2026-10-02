@@ -19,6 +19,23 @@ public sealed class HubHttpTests : IDisposable
     private readonly QueueFixture _fixture = new();
 
     [Fact]
+    public async Task SampleCollectorTransfersBothTrackTypesWithObjectReferencesOverHttp()
+    {
+        await using var factory = Factory();
+        using var client = Client(factory);
+        using var input = new StringReader("observe\nquit");
+
+        var exit = await Heartbeat.Collector.Sample.SampleCollector.RunAsync("sample-http",
+            new HubSubmissionClient(client), input, TextWriter.Null, TimeProvider.System,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, exit);
+        var records = _fixture.Open().TakePending();
+        Assert.Equal(["point", "range"], records.Select(item => item.Route.Track.TimeMode).Order());
+        Assert.All(records, item => Assert.Equal("sample-http", Assert.Single(item.Record.Objects).Key));
+    }
+
+    [Fact]
     public async Task DesktopCanTransferCustodyWithoutContactingTheBackend()
     {
         await using var factory = Factory();
