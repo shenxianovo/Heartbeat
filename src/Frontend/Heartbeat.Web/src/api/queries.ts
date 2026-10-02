@@ -1,3 +1,5 @@
+import { useObjectScope } from "@/components/objects/ObjectScope";
+import type { ObjectScope } from "./types";
 import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
 
 import { fetchAllRecords, fetchPointCounts, fetchRecords, fetchTracks } from "@/api/client";
@@ -9,10 +11,11 @@ export function useTracksQuery(
   accessToken: string,
   refetchInterval?: number,
 ) {
+  const scope = useObjectScope();
   return useQuery({
-    queryKey: queryKeys.tracks(ownerSubject),
+    queryKey: queryKeys.tracks(ownerSubject, scope),
     refetchInterval,
-    queryFn: ({ signal }) => fetchTracks(accessToken, signal),
+    queryFn: ({ signal }) => fetchTracks(accessToken, signal, scope),
     enabled: Boolean(accessToken),
   });
 }
@@ -24,12 +27,25 @@ async function fetchReplayLane(
   to: string,
   bucketSeconds: number,
   signal: AbortSignal,
+  scope: ObjectScope,
 ): Promise<ReplayLane> {
   if (track.timeMode === "point") {
-    const counts = await fetchPointCounts(accessToken, track.id, from, to, bucketSeconds, signal);
+    const counts = await fetchPointCounts(
+      accessToken,
+      track.id,
+      from,
+      to,
+      bucketSeconds,
+      signal,
+      scope,
+    );
     return { track, records: [], counts };
   }
-  const { records } = await fetchAllRecords(accessToken, { trackId: track.id, from, to }, signal);
+  const { records } = await fetchAllRecords(
+    accessToken,
+    { trackId: track.id, from, to, ...scope },
+    signal,
+  );
   return { track, records, counts: null };
 }
 
@@ -41,6 +57,7 @@ export function useReplayWindowQuery(
   to: string,
   bucketSeconds: number,
 ) {
+  const scope = useObjectScope();
   return useQueries({
     queries: tracks.map((track) => ({
       queryKey: queryKeys.replayTrack(
@@ -49,9 +66,10 @@ export function useReplayWindowQuery(
         from,
         to,
         track.timeMode === "point" ? bucketSeconds : 0,
+        scope,
       ),
       queryFn: ({ signal }: { signal: AbortSignal }) =>
-        fetchReplayLane(accessToken, track, from, to, bucketSeconds, signal),
+        fetchReplayLane(accessToken, track, from, to, bucketSeconds, signal, scope),
       enabled: Boolean(accessToken && from && to),
     })),
     combine: (queries) => ({
@@ -75,12 +93,13 @@ export function useRecordsQuery(
   from: string,
   to: string,
 ) {
+  const scope = useObjectScope();
   return useInfiniteQuery({
-    queryKey: queryKeys.records(ownerSubject, trackId ?? "", from, to),
+    queryKey: queryKeys.records(ownerSubject, trackId ?? "", from, to, scope),
     queryFn: ({ pageParam, signal }) =>
       fetchRecords(
         accessToken,
-        { trackId: trackId ?? "", from, to, cursor: pageParam, limit: 100 },
+        { trackId: trackId ?? "", from, to, cursor: pageParam, limit: 100, ...scope },
         signal,
       ),
     initialPageParam: null as string | null,

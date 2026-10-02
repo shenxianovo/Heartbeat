@@ -32,14 +32,14 @@ Hub 不管理 Collector 的安装、启停或升级。桌面宿主组合 Hub 和
   "track": {
     "type": "desktop.application.foreground",
     "version": 1,
-    "timeMode": "range",
-    "endMode": "explicit"
+    "timeMode": "range"
   },
   "records": [{
     "id": "019e0000-0000-7000-8000-000000000003",
     "startedAt": "2026-09-12T10:00:00Z",
     "endedAt": "2026-09-12T10:03:00Z",
-    "value": {"device_id": "device-a"}
+    "objects": [{"role": "device", "namespace": "device", "key": "device-a"}],
+    "value": {}
   }]
 }
 ```
@@ -48,7 +48,7 @@ Hub 不管理 Collector 的安装、启停或升级。桌面宿主组合 Hub 和
 
 - 稳定地址为 `key + target + type + version`；`displayName` 不参与身份。
 - Hub 去除声明字符串首尾空格，已有地址的时间定义不能改变。
-- Point 和 `range + next_record` 的 `endedAt` 为空；`range + explicit` 必须提供。
+- Point 的 `endedAt` 为空；Range 必须提供。
 - `value` 可以是任意 JSON 值，但不能缺失。
 - 每批 1 到 500 条 Record，请求体和规范化提交均不超过 1 MiB。
 - 声明与 Record 在一个 SQLite 事务内提交。校验、冲突、容量或写入失败时不确认接管。
@@ -134,3 +134,5 @@ dotnet run --project src/Hub/Heartbeat.Hub.Host
 `GET /hub/v1/status` 返回 pending/failed 数量，`GET /hub/v1/failures` 返回最多 500 个暂停项和错误代码。两者都需要本地密钥。
 
 统一配置和启动方式见[本地开发](development.md)，验证入口见[工程验证](verification.md)，真机边界见[系统验收](validation/system-acceptance.md)。
+
+Record 的 `objects` 是必需数组，按[公共对象契约](record-objects.md)规范化、入队并交付。对象身份与名称同 value 一起属于固定字段；Hub 不注册对象 UUID，也不解释具名 Collector 的身份。

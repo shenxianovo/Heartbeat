@@ -16,7 +16,6 @@ function track(id: string, timeMode: "point" | "range"): TrackSummary {
     type: "desktop.input.event",
     version: 1,
     timeMode,
-    endMode: null,
     createdAt: iso(hourStart),
   };
 }

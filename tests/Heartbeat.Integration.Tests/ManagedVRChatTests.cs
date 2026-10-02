@@ -62,7 +62,7 @@ public sealed class ManagedVRChatTests(PostgresFixture fixture) : PostgresTestBa
                 var stored = await db.Records.SingleAsync(stop.Token);
                 using var replay = await http.GetAsync($"/api/v1/tracks/{stored.TrackId}/records", stop.Token);
                 replay.EnsureSuccessStatusCode();
-                Assert.Contains("world_id", await replay.Content.ReadAsStringAsync(stop.Token));
+                Assert.Contains("vrchat.world", await replay.Content.ReadAsStringAsync(stop.Token));
                 var report = await db.Hubs.SingleAsync(stop.Token);
                 Assert.DoesNotContain("private-password", report.StatusJson);
                 Assert.DoesNotContain("session-cookie", report.StatusJson);

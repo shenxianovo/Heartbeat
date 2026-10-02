@@ -11,15 +11,11 @@ public sealed class TrackStorageTests(PostgresFixture fixture) : PostgresTestBas
         new(2026, 9, 12, 9, 30, 0, TimeSpan.Zero);
 
     [Theory]
-    [InlineData("point", null, true)]
-    [InlineData("range", "explicit", true)]
-    [InlineData("range", "next_record", true)]
-    [InlineData("point", "explicit", false)]
-    [InlineData("point", "next_record", false)]
-    [InlineData("range", null, false)]
+    [InlineData("point", true)]
+    [InlineData("range", true)]
+    [InlineData("unknown", false)]
     public async Task MigratedTracksTableEnforcesTimeModeConstraint(
         string timeMode,
-        string? endMode,
         bool isValid)
     {
         var ownerId = Guid.NewGuid();
@@ -49,14 +45,13 @@ public sealed class TrackStorageTests(PostgresFixture fixture) : PostgresTestBas
         await connection.OpenAsync(cancellationToken: TestContext.Current.CancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO tracks (id, collector_id, type, version, time_mode, end_mode, created_at)
-            VALUES (@id, @collector_id, 'heartbeat.test', @version, @time_mode, @end_mode, @created_at)
+            INSERT INTO tracks (id, collector_id, type, version, time_mode, created_at)
+            VALUES (@id, @collector_id, 'heartbeat.test', @version, @time_mode, @created_at)
             """;
         command.Parameters.AddWithValue("id", Guid.NewGuid());
         command.Parameters.AddWithValue("collector_id", collector.Id);
         command.Parameters.AddWithValue("version", 1);
         command.Parameters.AddWithValue("time_mode", timeMode);
-        command.Parameters.AddWithValue("end_mode", (object?)endMode ?? DBNull.Value);
         command.Parameters.AddWithValue("created_at", Now);
 
         if (isValid)

@@ -9,11 +9,12 @@
 - Collector 的 `key`、`target` 和 `display_name` 使用 `varchar(255)`；其余不限定长度的字符串使用 PostgreSQL `text`。
 - 所有时间使用 `timestamptz`；领域对象在创建时规范化为 UTC。
 - `time_mode` 保存 `point` 或 `range`。
-- Point 的 `end_mode` 必须为空；Range 的 `end_mode` 保存 `explicit` 或 `next_record`。
+- Track 的 `time_mode` 只接受 `point` 和 `range`；Point 不带结束时间，Range 必须提供结束时间。
 - `ended_at` 不得早于 `started_at`。它与 Track 时间模式的一致性由领域写入入口验证，数据库不使用跨表触发器。
 - `observed_at` 为空表示 Collector 观察时间等于 `started_at`。
 - Record 的 `value` 保存任意已定义的 JSON 值；后端不按 Track `(type, version)` 校验具体结构。
-- `range + explicit` 通过单条 SQL 原子执行 `max(ended_at)`；冲突不改动固定字段，`received_at` 保留首次成功写入值。
+- 对象、Record 和关联由同一 SQL 原子写入；对象 namespace/key 的唯一约束在 Timeline 内生效。`records.objects` 保存原生声明，`objects` 最新名称和 `record_objects` 为其投影。
+- `range` 通过单条 SQL 原子执行 `max(ended_at)`；冲突不改动固定字段，`received_at` 保留首次成功写入值。
 - Track 获取与 Record 写入都在 SQL 中限制 Owner 归属。
 - 批量上传逐条提交，可能部分成功；重试复用 Record ID。
 

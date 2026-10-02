@@ -6,7 +6,9 @@ public sealed record CountPointRecordsQuery(
     Guid TrackId,
     DateTimeOffset From,
     DateTimeOffset To,
-    int BucketSeconds);
+    int BucketSeconds,
+    Guid? ObjectId = null,
+    IReadOnlyList<Guid>? ContextObjectIds = null);
 
 public sealed record PointRecordCountBucket(
     int Index,

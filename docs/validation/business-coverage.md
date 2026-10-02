@@ -62,7 +62,7 @@ flowchart TD
 | 重复与乱序交付 | 同一 Record 幂等写入；当前合法 Explicit Range 续期只增大结束位置 | 提交已落库但回执丢失、乱序重试、部分提交、新续期被旧回执清除 | [真实存储组合测试](../../tests/Heartbeat.Integration.Tests/HubDeliveryTests.cs)已覆盖丢响应；[上传 API](../../tests/Heartbeat.Integration.Tests/RecordUploadHttpTests.cs)、[上传期间续期](../../tests/Heartbeat.Hub.Tests/RecordUploaderTests.cs) | 不是“请求只执行一次”；任意历史内容/时间更正与删除尚未实现 |
 | 离线与崩溃恢复 | Hub 已接管数据在重启后继续交付；核对身份、内容、时间和归属 | 重启丢队列、换 Hub 身份、误投路由、队列清空但未落库 | [HubCrashTests](../../tests/Heartbeat.Hub.Tests/HubCrashTests.cs)；`desktop-replay --recovery` 两次真实主链实测 | 主链在暂停采集、冻结已接管快照后强制退出；不证明任意指令时刻崩溃、机器断电或接管前无丢失 |
 | 交付失败可处理 | 暂时失败保留重试；识别出的永久错误暂停，其他来源仍可推进 | 一个来源阻塞全队列、永久错误无限重试、错回执误清除 | [RecordUploaderTests](../../tests/Heartbeat.Hub.Tests/RecordUploaderTests.cs)、[队列公平性](../../tests/Heartbeat.Hub.Tests/RecordOutboxTests.cs) | 暂停项的人工重试/纠错/删除入口尚未实现；不承诺所有记录最终都能成功交付 |
-| 查询与回放 | 正确 Owner、范围、顺序和分页；已存 Record 可追溯到 UI 详情 | 分页漏重、单 Track 失败拖垮全部、未知协议崩溃、区间空白被补齐 | [查询](../../tests/Heartbeat.Integration.Tests/RecordReplayHttpTests.cs)、[Point 计数](../../tests/Heartbeat.Integration.Tests/PointRecordCountsHttpTests.cs)、[回放 fixture](../../src/Frontend/Heartbeat.Web/tests/e2e/replay.spec.ts)；主链真实同一 Record API/UI 对账 | 真实多设备、多协议长时间窗组合；`range + next_record` 派生结束位置尚未实现 |
+| 查询与回放 | 正确 Owner、范围、顺序和分页；已存 Record 可追溯到 UI 详情 | 分页漏重、单 Track 失败拖垮全部、未知协议崩溃、区间空白被补齐 | [查询](../../tests/Heartbeat.Integration.Tests/RecordReplayHttpTests.cs)、[Point 计数](../../tests/Heartbeat.Integration.Tests/PointRecordCountsHttpTests.cs)、[回放 fixture](../../src/Frontend/Heartbeat.Web/tests/e2e/replay.spec.ts)；主链真实同一 Record API/UI 对账 | 真实多设备、多协议长时间窗组合 |
 | Hub 在线管理 | 在线、采集、交付分别呈现；操作执行后确认，超时显示未知 | 离线仍可操作、跨 Owner 控制、旧会话覆盖、API 重启误重放命令 | [HubManagementTests](../../tests/Heartbeat.Integration.Tests/HubManagementTests.cs)、[管理运行](../../tests/Heartbeat.Hub.Tests/ManagementRuntimeTests.cs)、[Web fixture](../../src/Frontend/Heartbeat.Web/tests/e2e/hubs.spec.ts) | Web 仅提供 Collector 登录，Desktop 本地启停；多 API 副本与网络分区下严格单实例不在当前设计内 |
 | 服务器独立采集 | Desktop 离线不妨碍服务器 Collector；认证确定账号并自动开始采集，重新登录自动恢复，结果可回放 | 第三方凭据失效、验证码、重启丢会话、认证完成却未恢复采集、凭据进入公开状态 | [ManagedVRChatTests](../../tests/Heartbeat.Integration.Tests/ManagedVRChatTests.cs)：真实管理/存储链路，VRChat 替身；[VRChat 行为](../../tests/Heartbeat.Hub.Tests/VRChatCollectorTests.cs) | 真实 VRChat 账号与线上 API 的完整业务链；当前只有已安装的具体 Collector，不包含任意来源 |
 | 持续使用与维护 | 资源、性能、权限和恢复在约定运行条件内可接受 | 队列长期积压、磁盘耗尽、句柄/内存增长、休眠恢复、备份不可恢复 | [前端生产性能基准入口](../../src/Frontend/Heartbeat.Web/README.md#活动泳道拖动基准)；局部容量和崩溃测试 | 本次没有新的长期运行/性能实测，也尚未确定完整稳定性预算、备份恢复及发行验收标准 |
@@ -161,3 +161,11 @@ sequenceDiagram
 3. **服务器业务与发布验收**：真实 VRChat 账号链路按独立边界选择；下载安装、系统凭据、升级、长时间运行在对应环境就绪后验收。
 
 这是风险排序建议，不代表上述新增测试已经实现。测试是否保留，取决于它能否抓住表中具体失败；是否使用图执行器，取决于之后是否出现实际的编排复杂度。
+
+## 对象改造验证（2026-10-01）
+
+2026-10-01 验证：`scenario runtime-replay` 已通过真实 Auth、后台 DesktopRuntime/Collector 投影、Hub、PostgreSQL/API、生产 Web 的正常回放与离线崩溃恢复。恢复后逐项对账一致且待上传队列为空：[manifest](../../.artifacts/verification/20261001T041733Z-scenario-runtime-replay-068d2d8f275b4b55bc9329a6fbd01911/manifest.json)、[恢复对账](../../.artifacts/verification/20261001T041733Z-scenario-runtime-replay-068d2d8f275b4b55bc9329a6fbd01911/delivery-recovery/reconciliation.json)。系统观测为受控输入，不代表原生 UI、真实系统采集或 VRChat 外部事件验收。
+
+`scenario replay-fixture` 的对象下钻、回放和窄屏检查通过：[manifest](../../.artifacts/verification/20261001T040946Z-scenario-replay-fixture-181691e36fc5464ca12f0a8c67038469/manifest.json)。生产回放还复现并修复登录恢复时清空缓存误取消当前 Owner 首次查询的问题，最小回归用例见[会话缓存测试](../../src/Frontend/Heartbeat.Web/src/auth/session.test.tsx)。
+
+`dotnet run --project tools/Heartbeat.Dev -- verify closeout --base HEAD`（解析基点 `31216e68cf06f83bd6c792509cf4540a606d1ca2`）的 .NET、Developer CLI、前端类型/静态检查/单测/生产构建、浏览器检查及结构质量全部通过：[closeout](../../.artifacts/verification/20261001T041656Z-verify-closeout-5fea68a96582410fb52d3acdc5395ff7/closeout.json)、[quality](../../.artifacts/verification/20261001T041656Z-verify-closeout-5fea68a96582410fb52d3acdc5395ff7/quality.json)。

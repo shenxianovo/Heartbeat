@@ -6,11 +6,11 @@ Collector 通过 macOS 原生通知和周期确认产生五条 Track：
 
 | Track | 时间定义 | 内容 |
 | --- | --- | --- |
-| [`desktop.application.foreground` v1](../../../docs/protocols/desktop-application-foreground-v1.md) | `range + explicit` | 前台应用 |
-| [`desktop.window.foreground` v1](../../../docs/protocols/desktop-window-foreground-v1.md) | `range + explicit` | 前台窗口标题 |
-| [`desktop.system.away` v1](../../../docs/protocols/desktop-system-away-v1.md) | `range + explicit` | 明确系统离开信号 |
+| [`desktop.application.foreground` v1](../../../docs/protocols/desktop-application-foreground-v1.md) | `range` | 前台应用 |
+| [`desktop.window.foreground` v1](../../../docs/protocols/desktop-window-foreground-v1.md) | `range` | 前台窗口标题 |
+| [`desktop.system.away` v1](../../../docs/protocols/desktop-system-away-v1.md) | `range` | 明确系统离开信号 |
 | [`desktop.input.event` v1](../../../docs/protocols/desktop-input-event-v1.md) | `point` | 非文本物理输入 |
-| [`desktop.observation.status` v1](../../../docs/protocols/desktop-observation-status-v1.md) | `range + explicit` | 观察能力状态 |
+| [`desktop.observation.status` v1](../../../docs/protocols/desktop-observation-status-v1.md) | `range` | 观察能力状态 |
 
 协议语义以上述文档为准。实现使用单消费者串行投影原生事件与周期快照；连续时间按启动时 UTC 加上包含休眠的单调经过时间计算。默认最大确认间隔为采样间隔三倍，窗口标题静置时间为 1.5 秒。
 

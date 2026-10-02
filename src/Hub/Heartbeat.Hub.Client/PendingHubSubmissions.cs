@@ -101,5 +101,5 @@ public sealed class PendingHubSubmissions
         left.StartedAt == right.StartedAt &&
         left.EndedAt == right.EndedAt &&
         left.ObservedAt == right.ObservedAt &&
-        JsonElement.DeepEquals(left.Value, right.Value);
+        JsonElement.DeepEquals(left.Value, right.Value) && left.Objects.SequenceEqual(right.Objects);
 }

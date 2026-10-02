@@ -101,13 +101,11 @@ public sealed class RecordStorageTests(PostgresFixture fixture) : PostgresTestBa
             stored.Value.GetProperty("application").GetString());
     }
 
-    [Theory]
-    [InlineData(TimeMode.Point, null)]
-    [InlineData(TimeMode.Range, EndMode.NextRecord)]
-    public async Task PointAndNextRecordWritesAreIdempotent(TimeMode timeMode, EndMode? endMode)
+    [Fact]
+    public async Task PointWritesAreIdempotent()
     {
         var ownerId = Guid.NewGuid();
-        var track = await CreateTrackAsync(ownerId, timeMode, endMode);
+        var track = await CreateTrackAsync(ownerId, TimeMode.Point);
         var id = Guid.CreateVersion7();
         var record = RecordingRecord.Create(id, track, Now, null, null,
             Now, JsonSerializer.SerializeToElement(new { kind = "arbitrary", count = 3 }));
@@ -247,7 +245,7 @@ public sealed class RecordStorageTests(PostgresFixture fixture) : PostgresTestBa
     public async Task MissingTrackDoesNotCreateRecord()
     {
         var track = Track.Create(Guid.NewGuid(), "test.continuous-state", 1,
-            TimeMode.Range, EndMode.Explicit, Now);
+            TimeMode.Range, Now);
         await using var services = CreateServices();
 
         Assert.IsType<RecordWriteResult.TrackNotFound>(
@@ -257,7 +255,7 @@ public sealed class RecordStorageTests(PostgresFixture fixture) : PostgresTestBa
     }
 
     private async Task<Track> CreateTrackAsync(
-        Guid ownerId, TimeMode timeMode = TimeMode.Range, EndMode? endMode = EndMode.Explicit)
+        Guid ownerId, TimeMode timeMode = TimeMode.Range)
     {
         await using var db = CreateDbContext();
         var timeline = await db.Timelines.SingleOrDefaultAsync(item => item.OwnerId == ownerId);
@@ -270,7 +268,7 @@ public sealed class RecordStorageTests(PostgresFixture fixture) : PostgresTestBa
         var collector = Heartbeat.Recording.Collector.Create(
             timeline.Id, "heartbeat.collector.test", Guid.NewGuid().ToString(), "Test", Now);
         var track = Track.Create(collector.Id, "test.continuous-state", 1,
-            timeMode, endMode, Now);
+            timeMode, Now);
         db.Collectors.Add(collector);
         db.Tracks.Add(track);
         await db.SaveChangesAsync();

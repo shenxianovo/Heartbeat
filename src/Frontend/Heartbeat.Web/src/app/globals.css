@@ -6,6 +6,7 @@
 @import "../styles/vrchat.css";
 @import "../styles/bubbles.css";
 @import "../styles/overview.css";
+@import "../styles/navigation.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -293,107 +294,15 @@ a:where(:not([data-slot="button"])) {
   min-height: 100vh;
 }
 
-.app-header {
-  display: flex;
-  width: min(100% - 3rem, 76rem);
-  min-height: 5rem;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin: 0 auto;
-  border-bottom: 1px solid var(--border);
-}
-
-.header-navigation {
-  display: flex;
-  align-items: center;
-  gap: 2rem;
-}
-
-.brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.8rem;
-  text-decoration: none;
-}
-
-.brand-pulse {
-  display: flex;
-  height: 1.7rem;
-  align-items: center;
-  gap: 0.15rem;
-}
-
-.brand-pulse i {
-  display: block;
-  width: 0.16rem;
-  border-radius: var(--radius);
-  background: var(--primary);
-}
-
-.brand-pulse i:nth-child(1) {
-  height: 0.55rem;
-}
-
-.brand-pulse i:nth-child(2) {
-  height: 1.45rem;
-}
-
-.brand-pulse i:nth-child(3) {
-  height: 0.85rem;
-}
-
-.brand > span:last-child {
-  display: grid;
-  gap: 0.06rem;
-}
-
-.brand strong {
-  font-family: var(--font-display);
-  font-size: 1.12rem;
-  font-weight: 600;
-}
-
-.brand small {
-  color: var(--muted-foreground);
-  font-size: 0.56rem;
-  font-weight: 750;
-  letter-spacing: 0.18em;
-}
-
-.account-menu {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.account-identity {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.account-name {
-  max-width: 12rem;
-  overflow: hidden;
-  color: var(--foreground);
-  font-size: 0.78rem;
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .workspace {
   width: min(100% - 3rem, 69rem);
   margin: 0 auto;
-  padding: clamp(3rem, 7vw, 5.5rem) 0 6rem;
+  padding: 1.5rem 0 6rem;
 }
 
 /* Shared time geometry; labels and plots use the same column at every zoom. */
 .experience-workspace {
   width: min(100% - 3rem, 76rem);
-  padding-top: 2.6rem;
 }
 .experience-filters {
   display: flex;
@@ -418,7 +327,7 @@ a:where(:not([data-slot="button"])) {
   backdrop-filter: blur(4px);
 }
 .timeline-card {
-  --lane-label-width: 120px;
+  --lane-label-width: 152px;
   --lane-gap: 0px;
   margin-top: 1.5rem;
   padding: 1.25rem;
@@ -450,17 +359,6 @@ a:where(:not([data-slot="button"])) {
   display: flex;
   gap: 0.2rem;
   align-items: center;
-}
-.overview-heading {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
-  font-size: 0.7rem;
-  color: var(--muted-foreground);
-  margin-bottom: 0.7rem;
-}
-.overview-heading output {
-  font-variant-numeric: tabular-nums;
 }
 .overview-track {
   position: relative;
@@ -564,7 +462,7 @@ a:where(:not([data-slot="button"])) {
   border: 1px solid var(--border);
   border-radius: 0.4rem;
   overflow: hidden;
-  background: var(--secondary);
+  background: var(--card);
 }
 .swimlane-scroll {
   max-height: 440px;
@@ -574,7 +472,7 @@ a:where(:not([data-slot="button"])) {
 .timeline-ruler-row {
   display: grid;
   grid-template-columns: var(--lane-label-width) minmax(0, 1fr);
-  height: 24px;
+  height: 30px;
   position: sticky;
   top: 0;
   z-index: 4;
@@ -583,15 +481,15 @@ a:where(:not([data-slot="button"])) {
 }
 .timeline-ruler-label {
   border-right: 1px solid var(--border);
-  padding: 4px 8px;
-  font-size: 0.6rem;
+  padding: 7px 10px;
+  font-size: 0.65rem;
   color: var(--muted-foreground);
 }
 .timeline-ruler {
   position: relative;
   font-size: 0.65rem;
   color: var(--muted-foreground);
-  padding-top: 4px;
+  padding-top: 7px;
   font-family: var(--font-mono);
 }
 .collector-swimlanes {
@@ -603,12 +501,12 @@ a:where(:not([data-slot="button"])) {
   align-items: center;
   gap: 0.5rem;
   position: sticky;
-  top: 24px;
+  top: 30px;
   z-index: 3;
   background: var(--muted);
   border-bottom: 1px solid var(--border);
   margin: 0;
-  padding: 0.35rem 0.5rem;
+  padding: 0.25rem 0.6rem;
   font-size: 0.7rem;
   font-weight: 600;
 }
@@ -633,9 +531,9 @@ a:where(:not([data-slot="button"])) {
   gap: 0.4rem;
   min-width: 0;
   font-size: 0.74rem;
-  padding: 0.25rem 0.5rem;
+  padding: 0.25rem 0.6rem;
   border-right: 1px solid var(--border);
-  background: var(--muted);
+  background: color-mix(in srgb, var(--muted) 50%, var(--card));
 }
 .timeline-lane-label strong {
   font-weight: 500;
@@ -726,6 +624,57 @@ a:where(:not([data-slot="button"])) {
 .timeline-selection .section-heading,
 .point-details .section-heading {
   margin-bottom: 0.8rem;
+}
+.timeline-readout {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1.4fr) repeat(2, minmax(9rem, 1fr)) minmax(5rem, 0.6fr);
+  margin: 0;
+  border-block: 1px solid var(--border);
+}
+.timeline-readout > div {
+  min-width: 0;
+  padding: 0.85rem;
+  border-left: 1px solid var(--border);
+}
+.timeline-readout > div:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+.timeline-readout dt {
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+  margin-bottom: 0.35rem;
+}
+.timeline-readout dd {
+  margin: 0;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.timeline-readout time {
+  font-family: var(--font-mono);
+}
+.timeline-readout .readout-source {
+  margin-top: 0.3rem;
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+}
+.timeline-record-detail {
+  margin-top: 0.75rem;
+}
+.timeline-record-detail summary {
+  cursor: pointer;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+@media (max-width: 900px) {
+  .timeline-readout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .timeline-readout > div:nth-child(odd) {
+    border-left: 0;
+    padding-left: 0;
+  }
 }
 .section-heading h2 small {
   margin-left: 0.3rem;
@@ -824,9 +773,6 @@ a:where(:not([data-slot="button"])) {
   .point-details,
   .range-records {
     padding: 0.75rem;
-  }
-  .overview-heading {
-    font-size: 0.62rem;
   }
   .timeline-ruler {
     font-size: 0.56rem;
@@ -1204,10 +1150,6 @@ a:where(:not([data-slot="button"])) {
   .workspace {
     width: min(100% - 2rem, 69rem);
   }
-
-  .app-header {
-    width: calc(100% - 2rem);
-  }
 }
 
 @media (max-width: 600px) {
@@ -1219,39 +1161,9 @@ a:where(:not([data-slot="button"])) {
   .login-panel {
     padding: 2rem 1.35rem;
   }
-
-  .app-header {
-    min-height: 4.4rem;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    padding-top: 0.65rem;
-    padding-bottom: 0.65rem;
-  }
-
-  .header-navigation {
-    gap: 0.75rem;
-  }
-
-  .account-menu {
-    margin-left: auto;
-    gap: 0.5rem;
-  }
-
-  .account-name {
-    display: none;
-  }
 }
 
 @media (max-width: 480px) {
-  /* Keep brand, Hub, sign-out and theme on one row; the avatar only repeats the session. */
-  .account-identity {
-    display: none;
-  }
-
-  .workspace {
-    padding-top: 2.7rem;
-  }
-
   .range-fields {
     grid-template-columns: 1fr;
   }
@@ -1297,6 +1209,7 @@ a:where(:not([data-slot="button"])) {
   *::after {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
   }
@@ -1306,14 +1219,14 @@ a:where(:not([data-slot="button"])) {
   position: absolute;
   inset-block: 0;
   width: 1px;
-  background: var(--border);
+  background: color-mix(in srgb, var(--primary) 18%, var(--border));
   pointer-events: none;
 }
 /* Hub management uses the same application surfaces and control tokens as replay. */
 .hubs-page {
   width: min(100% - 3rem, 76rem);
   margin: 0 auto;
-  padding: 1.5rem 0;
+  padding: 1.5rem 0 6rem;
 }
 .hub-card,
 .hubs-empty {
@@ -1524,4 +1437,11 @@ a:where(:not([data-slot="button"])) {
 .delivery-tooltip th:first-child {
   padding-left: 0;
   text-align: left;
+}
+
+@media (max-width: 640px) {
+  .workspace,
+  .hubs-page {
+    padding-top: 1rem;
+  }
 }

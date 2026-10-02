@@ -9,22 +9,20 @@ describe("RecordValue", () => {
       <RecordValue
         type="desktop.application.foreground"
         version={1}
-        value={{
-          device_id: "mac-studio",
-          application: {
-            platform: "macos",
-            id_kind: "bundle_id",
-            id: "com.apple.finder",
-            display_name: "Finder",
+        value={{}}
+        objects={[
+          {
+            id: "finder",
+            role: "application",
+            namespace: "app.macos.bundle_id",
+            key: "com.apple.finder",
+            name: "Finder",
           },
-        }}
+        ]}
       />,
     );
 
-    expect(screen.getByText(/^com\.apple\.finder/)).toBeVisible();
     expect(screen.getByText("Finder")).toBeVisible();
-    expect(screen.getByText("mac-studio")).toBeVisible();
-    expect(screen.getByText(/MACOS · Bundle ID/)).toBeVisible();
   });
 
   it("renders the foreground window title as its own record", () => {
@@ -32,12 +30,12 @@ describe("RecordValue", () => {
       <RecordValue
         type="desktop.window.foreground"
         version={1}
-        value={{ device_id: "mac-studio", window: { title: "Downloads" } }}
+        objects={[]}
+        value={{ window: { title: "Downloads" } }}
       />,
     );
 
     expect(screen.getByText("Downloads")).toBeVisible();
-    expect(screen.getByText("mac-studio")).toBeVisible();
   });
 
   it("marks a malformed known value as failed and preserves escaped JSON", () => {
@@ -46,6 +44,7 @@ describe("RecordValue", () => {
       <RecordValue
         type="desktop.application.foreground"
         version={1}
+        objects={[]}
         value={{ malformed: "observation" }}
       />,
     );
@@ -56,7 +55,7 @@ describe("RecordValue", () => {
 
   it("never executes unknown values as HTML", () => {
     const value = "<script>window.untrustedExecuted = true</script>";
-    render(<RecordValue type="future.record" version={7} value={value} />);
+    render(<RecordValue type="future.record" version={7} value={value} objects={[]} />);
 
     expect(screen.getByText(/window\.untrustedExecuted/)).toBeVisible();
     expect(document.querySelector("script")).toBeNull();

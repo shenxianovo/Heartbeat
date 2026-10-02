@@ -27,8 +27,8 @@ const renderers = new Map<string, RecordPresentation>([
     rendererKey("vrchat.location", 1),
     {
       label: "VRChat 世界",
-      summarize: (value) => {
-        const location = readLocation(value);
+      summarize: (value, objects) => {
+        const location = readLocation(value, objects);
         return {
           label: location.world_name || location.world_id,
           hover: `实例 ${location.instance_id}`,
@@ -40,11 +40,11 @@ const renderers = new Map<string, RecordPresentation>([
     rendererKey("vrchat.encounter", 1),
     {
       label: "VRChat 可见同场",
-      summarize: (value) => {
-        const encounter = readEncounter(value);
+      summarize: (value, objects) => {
+        const encounter = readEncounter(value, objects);
         return {
           label: encounter.friend_name || encounter.friend_id,
-          hover: `API 可见同场 · ${encounter.world_id}`,
+          hover: `API 可见同场 · ${encounter.world_name}`,
         };
       },
     },
@@ -95,7 +95,9 @@ export function describeRecord(track: TrackSummary, record: TimelineRecord): Rec
   const fallback = track.timeMode === "point" ? "瞬时记录" : "时间区间";
   let summary: RecordSummary;
   try {
-    summary = renderers.get(rendererKey(track.type, track.version))?.summarize(record.value) ?? {
+    summary = renderers
+      .get(rendererKey(track.type, track.version))
+      ?.summarize(record.value, record.objects) ?? {
       label: fallback,
     };
   } catch {

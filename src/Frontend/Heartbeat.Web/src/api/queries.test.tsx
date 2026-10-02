@@ -31,7 +31,6 @@ const rangeTrack: TrackSummary = {
   type: "example.range",
   version: 1,
   timeMode: "range",
-  endMode: "explicit",
   createdAt: "2026-09-18T00:00:00Z",
 };
 const failedTrack = { ...rangeTrack, id: "failed-track", type: "example.failed" };
@@ -40,7 +39,6 @@ const pointTrack = {
   id: "point-track",
   type: "example.point",
   timeMode: "point" as const,
-  endMode: null,
 };
 const bounds = {
   start: Date.parse("2026-09-18T00:00:00Z"),
@@ -136,7 +134,7 @@ describe("replay orchestration", () => {
     );
   });
 
-  it("date and source changes cannot expose a previous point detail", async () => {
+  it("date changes cannot expose a previous point detail", async () => {
     vi.mocked(fetchPointCounts).mockImplementation(async (_token, _id, from, to, seconds) =>
       observedCounts(pointTrack, from, to, seconds, 1),
     );
@@ -146,12 +144,6 @@ describe("replay orchestration", () => {
     const { from, to } = result.current.selection;
     act(() => result.current.selection.setDetail({ trackId: pointTrack.id, from, to, count: 1 }));
     await waitFor(() => expect(result.current.data.detailQuery.isSuccess).toBe(true));
-    act(() => result.current.selection.selectCollectors([]));
-    expect(result.current.data.detailTrack).toBeNull();
-    expect(result.current.data.lanes).toEqual([]);
-    act(() => result.current.selection.selectCollectors(null));
-    expect(result.current.data.detailTrack).toBeNull();
-    act(() => result.current.selection.setDetail({ trackId: pointTrack.id, from, to, count: 1 }));
     act(() =>
       result.current.selection.chooseDate({ from: "2026-09-10T00:00", to: "2026-09-11T00:00" }),
     );

@@ -1,3 +1,4 @@
+using Heartbeat.Contracts;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Data.Sqlite;
@@ -134,11 +135,11 @@ public sealed class RecordOutbox
             SET backend_collector_id = $collector_id, backend_track_id = $track_id
             WHERE id = $id AND collector_key = $key AND target = $target
               AND track_type = $type AND track_version = $version
-              AND time_mode = $time_mode AND end_mode IS $end_mode;
+              AND time_mode = $time_mode;
             """, ("$collector_id", backendCollectorId.ToString()), ("$track_id", backendTrackId.ToString()),
             ("$id", sent.Id), ("$key", sent.Collector.Key), ("$target", sent.Collector.Target),
             ("$type", sent.Track.Type), ("$version", sent.Track.Version),
-            ("$time_mode", sent.Track.TimeMode), ("$end_mode", sent.Track.EndMode));
+            ("$time_mode", sent.Track.TimeMode));
         if (command.ExecuteNonQuery() != 1)
         {
             throw new InvalidOperationException("The local delivery route changed before its mapping was saved.");
@@ -201,7 +202,7 @@ public sealed class RecordOutbox
     private const string PendingSelect = """
         SELECT r.snapshot, r.failure,
                s.id, s.collector_key, s.target, s.display_name,
-               s.track_type, s.track_version, s.time_mode, s.end_mode,
+               s.track_type, s.track_version, s.time_mode,
                s.backend_collector_id, s.backend_track_id
         FROM records r
         JOIN routes s ON s.id = r.route_id
@@ -226,12 +227,9 @@ public sealed class RecordOutbox
         var type = Required(track.Type, "Track type");
         ArgumentOutOfRangeException.ThrowIfLessThan(track.Version, 1);
         var timeMode = track.TimeMode?.Trim();
-        var endMode = track.EndMode?.Trim();
-        if ((timeMode == "point" && endMode is not null) ||
-            (timeMode == "range" && endMode is not ("explicit" or "next_record")) ||
-            timeMode is not ("point" or "range"))
+        if (timeMode is not ("point" or "range"))
         {
-            throw new ArgumentException("A Track must be point, range + explicit, or range + next_record.");
+            throw new ArgumentException("A Track must be point or range.");
         }
 
         if (submission.Records is null || submission.Records.Count is < 1 or > HubSubmissionLimits.MaximumBatchSize)
@@ -239,19 +237,19 @@ public sealed class RecordOutbox
             throw new ArgumentException("A submission must contain 1 to 500 Records.");
         }
 
-        var records = submission.Records.Select(record => NormalizeRecord(record, timeMode, endMode)).ToArray();
+        var records = submission.Records.Select(record => NormalizeRecord(record, timeMode)).ToArray();
         return new HubSubmission(new CollectorDeclaration(key, target, displayName),
-            new TrackDeclaration(type, track.Version, timeMode, endMode), records);
+            new TrackDeclaration(type, track.Version, timeMode), records);
     }
 
-    private static RecordSnapshot NormalizeRecord(RecordSnapshot? record, string timeMode, string? endMode)
+    private static RecordSnapshot NormalizeRecord(RecordSnapshot? record, string timeMode)
     {
         if (record is null || record.Id == Guid.Empty || record.Id.Version != 7 || record.StartedAt is null)
         {
             throw new ArgumentException("A Record requires a UUID v7 and start time.");
         }
 
-        var expectsEnd = timeMode == "range" && endMode == "explicit";
+        var expectsEnd = timeMode == "range";
         if ((record.EndedAt is not null) != expectsEnd || record.EndedAt < record.StartedAt)
         {
             throw new ArgumentException("Record end time does not match its Track declaration.");
@@ -262,7 +260,12 @@ public sealed class RecordOutbox
             throw new ArgumentException("A Record value is required.");
         }
 
-        var startedAt = record.StartedAt.Value.ToUniversalTime();
+        return NormalizeTimes(record) with { Objects = ObjectReference.Normalize(record.Objects) };
+    }
+
+    private static RecordSnapshot NormalizeTimes(RecordSnapshot record)
+    {
+        var startedAt = record.StartedAt!.Value.ToUniversalTime();
         var observedAt = record.ObservedAt?.ToUniversalTime();
         return record with
         {
@@ -290,30 +293,30 @@ public sealed class RecordOutbox
         CollectorDeclaration collector, TrackDeclaration track)
     {
         using (var insert = Command(connection, transaction, """
-            INSERT INTO routes(collector_key, target, display_name, track_type, track_version, time_mode, end_mode)
-            VALUES ($key, $target, $display_name, $type, $version, $time_mode, $end_mode)
+            INSERT INTO routes(collector_key, target, display_name, track_type, track_version, time_mode)
+            VALUES ($key, $target, $display_name, $type, $version, $time_mode)
             ON CONFLICT(collector_key, target, track_type, track_version)
             DO UPDATE SET display_name = excluded.display_name;
             """, ("$key", collector.Key), ("$target", collector.Target), ("$display_name", collector.DisplayName),
-            ("$type", track.Type), ("$version", track.Version), ("$time_mode", track.TimeMode), ("$end_mode", track.EndMode)))
+            ("$type", track.Type), ("$version", track.Version), ("$time_mode", track.TimeMode)))
         {
             insert.ExecuteNonQuery();
         }
 
         using var select = Command(connection, transaction, """
-            SELECT id, display_name, time_mode, end_mode, backend_collector_id, backend_track_id
+            SELECT id, display_name, time_mode, backend_collector_id, backend_track_id
             FROM routes WHERE collector_key = $key AND target = $target
               AND track_type = $type AND track_version = $version;
             """, ("$key", collector.Key), ("$target", collector.Target),
             ("$type", track.Type), ("$version", track.Version));
         using var reader = select.ExecuteReader();
-        if (!reader.Read() || reader.GetString(2) != track.TimeMode || GetNullableString(reader, 3) != track.EndMode)
+        if (!reader.Read() || reader.GetString(2) != track.TimeMode)
         {
             throw new RecordConflictException("The Track declaration conflicts with its existing local route.");
         }
 
         return new DeliveryRoute(reader.GetInt64(0), collector with { DisplayName = reader.GetString(1) }, track,
-            GetNullableGuid(reader, 4), GetNullableGuid(reader, 5));
+            GetNullableGuid(reader, 3), GetNullableGuid(reader, 4));
     }
 
     private static PendingRecord? Find(SqliteConnection connection, SqliteTransaction transaction, Guid id)
@@ -331,8 +334,8 @@ public sealed class RecordOutbox
         {
             var route = new DeliveryRoute(reader.GetInt64(2),
                 new CollectorDeclaration(reader.GetString(3), reader.GetString(4), reader.GetString(5)),
-                new TrackDeclaration(reader.GetString(6), reader.GetInt32(7), reader.GetString(8), GetNullableString(reader, 9)),
-                GetNullableGuid(reader, 10), GetNullableGuid(reader, 11));
+                new TrackDeclaration(reader.GetString(6), reader.GetInt32(7), reader.GetString(8)),
+                GetNullableGuid(reader, 9), GetNullableGuid(reader, 10));
             results.Add(new PendingRecord(route,
                 JsonSerializer.Deserialize<RecordSnapshot>(reader.GetString(0), JsonOptions)!,
                 reader.IsDBNull(1) ? null : reader.GetString(1)));
@@ -343,16 +346,13 @@ public sealed class RecordOutbox
 
     private static bool HasSameFixedFields(RecordSnapshot left, RecordSnapshot right) =>
         left.Id == right.Id && left.StartedAt == right.StartedAt && left.ObservedAt == right.ObservedAt &&
-        JsonElement.DeepEquals(left.Value, right.Value);
+        JsonElement.DeepEquals(left.Value, right.Value) && left.Objects.SequenceEqual(right.Objects);
 
     private static bool Confirms(DateTimeOffset? current, DateTimeOffset? offered) =>
         current is null ? offered is null : offered is not null && current >= offered;
 
     private static Guid? GetNullableGuid(SqliteDataReader reader, int ordinal) =>
         reader.IsDBNull(ordinal) ? null : Guid.Parse(reader.GetString(ordinal));
-
-    private static string? GetNullableString(SqliteDataReader reader, int ordinal) =>
-        reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
 
     private static void InitializeSchema(SqliteConnection connection, DeliveryDestination destination)
     {
@@ -365,11 +365,10 @@ public sealed class RecordOutbox
                 id INTEGER PRIMARY KEY,
                 collector_key TEXT NOT NULL, target TEXT NOT NULL, display_name TEXT NOT NULL,
                 track_type TEXT NOT NULL, track_version INTEGER NOT NULL,
-                time_mode TEXT NOT NULL, end_mode TEXT,
+                time_mode TEXT NOT NULL,
                 backend_collector_id TEXT, backend_track_id TEXT,
                 UNIQUE(collector_key, target, track_type, track_version),
-                CHECK ((time_mode = 'point' AND end_mode IS NULL) OR
-                       (time_mode = 'range' AND end_mode IN ('explicit', 'next_record'))));
+                CHECK (time_mode IN ('point', 'range')));
             CREATE TABLE IF NOT EXISTS records (
                 id TEXT PRIMARY KEY,
                 route_id INTEGER NOT NULL REFERENCES routes(id) ON DELETE RESTRICT,

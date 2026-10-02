@@ -15,6 +15,10 @@ public sealed class HeartbeatDbContext(DbContextOptions<HeartbeatDbContext> opti
 
     public DbSet<Record> Records => Set<Record>();
 
+    public DbSet<ObservedObject> Objects => Set<ObservedObject>();
+
+    public DbSet<RecordObject> RecordObjects => Set<RecordObject>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(HeartbeatDbContext).Assembly);

@@ -1,3 +1,4 @@
+using Heartbeat.Contracts;
 using System.Text.Json;
 using Heartbeat.Hub;
 
@@ -59,14 +60,17 @@ internal sealed class PresenceRecords(string target)
 
     private void ApplyOwner(VRChatPresenceUpdate update, string? worldName, List<VRChatRecord> result)
     {
-        if (_location != update.Location)
+        var renamed = _visit is not null && (
+            NameChanged(_visit, "account", update.DisplayName) || NameChanged(_visit, "world", worldName));
+        if (_location != update.Location || renamed)
         {
             EndVisit(update.At, update.Cause != "snapshot", result);
             _location = update.Location;
         }
         if (_location is null) return;
-        _visit ??= NewRecord(update.At, new { account_id = target, world_id = _location.WorldId,
-            world_name = worldName, instance_id = _location.InstanceId, basis = "api_visible" });
+        _visit ??= NewRecord(update.At, new { instance_id = _location.InstanceId, basis = "api_visible" },
+            new("account", "vrchat.account", target, update.DisplayName),
+            new("world", "vrchat.world", _location.WorldId, worldName));
         _visit = _visit with { EndedAt = update.At };
         result.Add(new("vrchat.location", _visit));
         foreach (var friend in _users.Values.Where(user => user.AccountId != target))
@@ -88,13 +92,26 @@ internal sealed class PresenceRecords(string target)
                 result.Add(new("vrchat.encounter", ended with { EndedAt = at }));
             return;
         }
+        EndRenamedEncounter(friend, at, result);
         if (!_encounters.TryGetValue(friend.AccountId, out var current))
-            current = NewRecord(at, new { account_id = target, friend_id = friend.AccountId,
-                friend_name = friend.DisplayName, world_id = _location!.WorldId,
-                instance_id = _location.InstanceId, basis = "api_visible" });
+            current = NewRecord(at, new { instance_id = _location!.InstanceId, basis = "api_visible" },
+                new("account", "vrchat.account", target, _users[target].DisplayName),
+                new("friend", "vrchat.account", friend.AccountId, friend.DisplayName),
+                new("world", "vrchat.world", _location.WorldId,
+                    _visit?.Objects.FirstOrDefault(item => item.Role == "world")?.Name));
         current = current with { EndedAt = at };
         _encounters[friend.AccountId] = current;
         result.Add(new("vrchat.encounter", current));
+    }
+
+    private void EndRenamedEncounter(VRChatPresenceUpdate friend, DateTimeOffset at, List<VRChatRecord> result)
+    {
+        if (_encounters.TryGetValue(friend.AccountId, out var existing) &&
+            NameChanged(existing, "friend", friend.DisplayName))
+        {
+            result.Add(new("vrchat.encounter", existing with { EndedAt = at }));
+            _encounters.Remove(friend.AccountId);
+        }
     }
 
     private void EndVisit(DateTimeOffset at, bool eventBoundary, List<VRChatRecord> result)
@@ -108,7 +125,10 @@ internal sealed class PresenceRecords(string target)
         _encounters.Clear();
     }
 
+    private static bool NameChanged(RecordSnapshot record, string role, string? name) =>
+        !string.IsNullOrWhiteSpace(name) && record.Objects.First(item => item.Role == role).Name != name;
+
     private void Break() { _visit = null; _location = null; _users.Clear(); _encounters.Clear(); }
-    private static RecordSnapshot NewRecord(DateTimeOffset at, object value) =>
-        new(Guid.CreateVersion7(at), at, at, null, JsonSerializer.SerializeToElement(value));
+    private static RecordSnapshot NewRecord(DateTimeOffset at, object value, params ObjectReference[] objects) =>
+        new(Guid.CreateVersion7(at), at, at, null, JsonSerializer.SerializeToElement(value)) { Objects = objects };
 }

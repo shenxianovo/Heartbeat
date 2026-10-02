@@ -1,3 +1,4 @@
+import { desktopPath } from "../e2e/fixtures";
 import { expect, test, type CDPSession, type Page } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -193,7 +194,7 @@ async function continuousPan(page: Page) {
   const result = await page.evaluate(
     async ({ x, y }) => {
       const target = document.querySelector(".swimlane-timeline");
-      const rangeLabel = document.querySelector('[aria-label="可见时间范围"]');
+      const rangeLabel = document.querySelector('[aria-label="移动时间范围"]');
       if (!target || !rangeLabel) throw new Error("找不到可见范围");
       const times: number[] = [];
       let watching = true;
@@ -201,7 +202,7 @@ async function continuousPan(page: Page) {
       const observer = new MutationObserver(() => {
         updates += 1;
       });
-      observer.observe(rangeLabel, { childList: true, characterData: true, subtree: true });
+      observer.observe(rangeLabel, { attributes: true, attributeFilter: ["aria-valuetext"] });
       const frame = (at: number) => {
         times.push(at);
         if (watching) requestAnimationFrame(frame);
@@ -358,7 +359,7 @@ async function openDay(page: Page, volume: DayVolume, expanded: boolean) {
   await identityRoutes(page);
   await perfRecordingRoutes(page, volume);
   await seedSession(page);
-  await page.goto("/timeline");
+  await page.goto(desktopPath);
   await page.getByRole("button", { name: "全天", exact: true }).click();
   await expect(page.getByRole("region", { name: /活动泳道/ })).toBeVisible();
   await expect(page.locator(".timeline-range-plot").first()).toBeVisible();

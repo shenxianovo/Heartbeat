@@ -1,3 +1,4 @@
+using Heartbeat.Contracts;
 using System.Text.Json;
 
 namespace Heartbeat.Recording;
@@ -25,6 +26,8 @@ public sealed class Record
 
     public DateTimeOffset ReceivedAt { get; private set; }
 
+    public ObjectReference[] Objects { get; private set; } = [];
+
     public JsonElement Value { get; private set; }
 
     public static Record Create(
@@ -34,7 +37,8 @@ public sealed class Record
         DateTimeOffset? endedAt,
         DateTimeOffset? observedAt,
         DateTimeOffset receivedAt,
-        JsonElement value)
+        JsonElement value,
+        IEnumerable<ObjectReference>? objects = null)
     {
         if (id == Guid.Empty)
         {
@@ -67,6 +71,7 @@ public sealed class Record
             ObservedAt = normalizedObservedAt == normalizedStartedAt ? null : normalizedObservedAt,
             ReceivedAt = receivedAt.ToUniversalTime(),
             Value = JsonValue.Clone(value, nameof(value)),
+            Objects = ObjectReference.Normalize(objects ?? []),
         };
     }
 }

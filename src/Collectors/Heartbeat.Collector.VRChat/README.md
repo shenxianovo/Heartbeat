@@ -14,23 +14,25 @@
 
 ## Record 协议
 
-两个 Track 都为 version `1`、`range`、`explicit`：
+两个 Track 都为 version `1`、`range`：
 
-| Track | value 字段 | 含义 |
+| Track | objects 角色 | value 字段 |
 | --- | --- | --- |
-| `vrchat.location` | `account_id`, `world_id`, `world_name`（可 null）, `instance_id`, `basis: "api_visible"` | 自己的可见世界/实例区间 |
-| `vrchat.encounter` | `account_id`, `friend_id`, `friend_name`（可 null）, `world_id`, `instance_id`, `basis: "api_visible"` | API 所见双方完整位置相同的区间 |
+| `vrchat.location` | account、world | `instance_id`, `basis: "api_visible"` |
+| `vrchat.encounter` | account、friend、world | `instance_id`, `basis: "api_visible"` |
+
+account 和 friend 使用 `vrchat.account` 原生身份空间，world 使用 `vrchat.world`；key 是原生 ID，name 保存当时显示名。对象 UUID 由后端接收时解析，Collector 不预注册。见[对象契约](../../../docs/record-objects.md)。
 
 同一世界的不同实例不合并为同场。private、traveling、offline、active 或缺少位置时停止同场依据，不从传送目的地推测已到达。事件按服务器接收时间建立边界；REST 按读取响应时间确认。会话内以单调时钟推进绝对时间基准，避免系统校时倒退造成倒序。它们不是 VRChat 保证的真实发生时刻，也不是对实际交谈的判断。
 
-同账号/世界/实例延续同一 Record，仅增长 endedAt；显示名和世界名在建立时冻结，不修改已有 value。自己的位置和好友读数最多相隔六分钟才能形成同场依据。核对断开/超过窗口后新建，最后观测之后不外推，首次读数为零长度 Range。进程崩溃可能丢失 Hub 接管前的内存数据；已接管数据由 Hub 持久交付。交接失败保留待交付的同 ID 快照，重新连接前先重试交接，暂停最后尝试五秒。
+同账号/世界/实例延续同一 Record，仅增长 endedAt；名称在 objects 中随区间建立时冻结；后续观测到名称变化会开始新 Record，不改写历史快照。自己的位置和好友读数最多相隔六分钟才能形成同场依据。核对断开/超过窗口后新建，最后观测之后不外推，首次读数为零长度 Range。进程崩溃可能丢失 Hub 接管前的内存数据；已接管数据由 Hub 持久交付。交接失败保留待交付的同 ID 快照，重新连接前先重试交接，暂停最后尝试五秒。
 
 待交接快照使用 [Hub Client](../../Hub/Heartbeat.Hub.Client/README.md) 的共享缓冲，按 Collector 与 Track 声明、条数及字节上限分批；成功接管后只释放对应发送快照。连续性和重连策略仍由本 Collector 决定。
 
 ## 展示与验收
 
-Web `/vrchat` 按一个 Collector 读取两个 Track，显示世界气泡、实例类型组成、访问明细、活动热力图与可见同场。世界停留按日期范围裁剪；段数是观测段数，重连可能拆段，不能称为精确的访问次数。未知名字退回稳定 ID。UI 明示缺失及 API 可见性限制，不把多个 Collector 来源的时长相加。
+Web 从首页的 VRChat 分组进入账号对象 `/objects/{id}`；世界与相遇是账号对象页的摘要视图。位置和明确的同场记录均可提供世界关联，同场汇总显示焦点账号的另一方。按对象条件跨 Collector 读取，世界停留按时间窗裁剪并取区间并集；原始 Record 和来源保留。世界和好友也有自己的对象页。未知名称回退原生 key，观测段数不代表精确访问次数。
 
 [人工 E2E](../../../docs/validation/vrchat-server-events.md) 是真实事件正确性的验收入口。本轮没有新增模拟事件单元测试；已有认证和 Hub 交付测试仅随接口更新，不能证明 VRChat 线上字段或实时性。协议来源与不确定性见[调研](../../../docs/research/vrchat-event-stream.md)。
 
-本地 PC/Quest 日志尚未接入。跨来源去重、互补、权威选择和冲突处理仍待设计，不承诺自动补齐服务器观测。
+本地 PC/Quest 日志尚未接入。跨来源事实融合、互补、权威选择和冲突处理仍待设计，不承诺自动补齐服务器观测。

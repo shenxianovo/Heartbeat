@@ -76,12 +76,29 @@ export function formatTime(at: number, seconds = false): string {
   return timeFormat(seconds).format(at);
 }
 
+const dayMilliseconds = 86400000;
+const dateFormat = new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" });
+
+function tickLabel(at: number, range: TimeRange, step: number): string {
+  const date = new Date(at);
+  const sameDay = new Date(range.start).toDateString() === new Date(range.end - 1).toDateString();
+  if (step >= dayMilliseconds || (!sameDay && date.getHours() === 0 && date.getMinutes() === 0))
+    return dateFormat.format(at);
+  const time = formatTime(at, step < 60000);
+  return sameDay && date.toDateString() !== new Date(range.start).toDateString()
+    ? `次日 ${time}`
+    : time;
+}
+
 export function timeTicks(range: TimeRange, count = 6) {
   const steps = [
     1000, 2000, 5000, 10000, 15000, 30000, 60000, 120000, 300000, 600000, 900000, 1800000, 3600000,
     7200000, 14400000, 21600000, 43200000, 86400000,
   ];
-  const step = steps.find((value) => (range.end - range.start) / value <= count) ?? 86400000;
+  const span = range.end - range.start;
+  const step =
+    steps.find((value) => span / value <= count) ??
+    Math.ceil(span / count / dayMilliseconds) * dayMilliseconds;
   const offset = new Date(range.start).getTimezoneOffset() * 60000;
   const ticks = [];
   for (
@@ -89,7 +106,7 @@ export function timeTicks(range: TimeRange, count = 6) {
     at <= range.end;
     at += step
   ) {
-    ticks.push({ at, left: percent(at, range), label: formatTime(at, step < 60000) });
+    ticks.push({ at, left: percent(at, range), label: tickLabel(at, range, step) });
   }
   return ticks;
 }

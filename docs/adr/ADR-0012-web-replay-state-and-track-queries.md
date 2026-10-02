@@ -32,3 +32,7 @@ ADR-0011 已确定通用时间轴拥有时间几何，协议注册表拥有展�
 - [`densityQueries.ts`](../../src/Frontend/Heartbeat.Web/src/api/densityQueries.ts) — 密度缓存订阅与失效
 - [`useReplaySelection.ts`](../../src/Frontend/Heartbeat.Web/src/components/replay/useReplaySelection.ts) — 页面选择状态
 - [`useReplayData.ts`](../../src/Frontend/Heartbeat.Web/src/components/replay/useReplayData.ts) — 查询结果与视图组合
+
+## 2026-10-01 对象视图扩展
+
+[ADR-0029](ADR-0029-record-object-references.md) 将对象及上下文条件加入 Track、Record 和密度查询缓存 key。页面只读取对象明确关联的记录；原 Collector 多选入口及其页面状态已移除。日期与对象条件通过 URL 保留，来源身份仍随 Track 显示。

@@ -13,18 +13,15 @@ public sealed class DesktopReplayEvidenceTests
         var owner = Guid.NewGuid();
         var expected = new DesktopObservationExpectation(owner, "private-device", "controlled-app", start);
         var correct = new ScenarioRecord(owner, "heartbeat.collector.desktop.macos", "private-device",
-            new TrackDeclaration("desktop.application.foreground", 1, "range", "explicit"), Guid.NewGuid(),
-            new RecordSnapshot(Guid.NewGuid(), start, start.AddSeconds(3), null, JsonSerializer.SerializeToElement(new
-            {
-                device_id = "private-device", application = new { platform = "macos", id_kind = "bundle_id", id = "controlled-app" },
-                privateContext = "must-not-enter-diagnostics",
-            })));
+            new TrackDeclaration("desktop.application.foreground", 1, "range"), Guid.NewGuid(),
+            new RecordSnapshot(Guid.NewGuid(), start, start.AddSeconds(3), null, JsonSerializer.SerializeToElement(new { privateContext = "must-not-enter-diagnostics" }))
+            { Objects = [new("device", "device", "private-device"), new("application", "app.macos.bundle_id", "controlled-app")] });
         ScenarioRecord[] records =
         [
             correct,
             correct with { OwnerId = Guid.NewGuid() },
             correct with { Target = "other-device" },
-            correct with { Record = correct.Record with { Value = JsonSerializer.SerializeToElement("invalid-payload") } },
+            correct with { Record = correct.Record with { Objects = [] } },
             correct with { Record = correct.Record with { StartedAt = start.AddSeconds(-1) } },
             correct with { Record = correct.Record with { EndedAt = start.AddSeconds(1) } },
         ];

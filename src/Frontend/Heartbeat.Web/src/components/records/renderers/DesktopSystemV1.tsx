@@ -56,34 +56,23 @@ export function summarizeDesktopInput(value: unknown): RecordSummary {
   return { label: labels[kind] ?? kind };
 }
 
-function DesktopFact({ title, detail }: { title: string; detail: string }) {
+function DesktopFact({ title, detail }: { title: string; detail: string | null }) {
   return (
     <div className="desktop-fact">
       <strong>{title}</strong>
-      <span>{detail}</span>
+      {detail ? <span>{detail}</span> : null}
     </div>
   );
 }
 
 export function DesktopAwayV1({ value }: RecordRendererProps) {
-  const parsed = object(value);
-  return (
-    <DesktopFact
-      title={summarizeDesktopAway(value).label}
-      detail={required(parsed.device_id, "device_id")}
-    />
-  );
+  return <DesktopFact title={summarizeDesktopAway(value).label} detail={null} />;
 }
 
 export function DesktopObservationStatusV1({ value }: RecordRendererProps) {
   const parsed = object(value);
   const reason = typeof parsed.reason === "string" && parsed.reason.trim() ? parsed.reason : null;
-  return (
-    <DesktopFact
-      title={summarizeDesktopStatus(value).label}
-      detail={reason ?? "能力可用不代表记录完整"}
-    />
-  );
+  return <DesktopFact title={summarizeDesktopStatus(value).label} detail={reason} />;
 }
 
 export function DesktopInputEventV1({ value }: RecordRendererProps) {

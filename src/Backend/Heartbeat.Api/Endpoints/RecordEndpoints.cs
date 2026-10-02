@@ -1,3 +1,4 @@
+using Heartbeat.Contracts;
 using System.Globalization;
 using System.Security.Claims;
 using System.Text;
@@ -31,6 +32,8 @@ public static class RecordEndpoints
         [FromQuery(Name = "from")] DateTimeOffset? from,
         [FromQuery(Name = "to")] DateTimeOffset? to,
         [FromQuery] int? bucketSeconds,
+        [FromQuery] Guid? objectId,
+        [FromQuery] Guid[]? contextObjectIds,
         ClaimsPrincipal principal,
         ICountPointRecords countPointRecords,
         CancellationToken cancellationToken)
@@ -49,7 +52,7 @@ public static class RecordEndpoints
         try
         {
             result = await countPointRecords.ExecuteAsync(ownerId,
-                new CountPointRecordsQuery(trackId, from.Value, to.Value, bucketSeconds.Value),
+                new CountPointRecordsQuery(trackId, from.Value, to.Value, bucketSeconds.Value, objectId, contextObjectIds),
                 cancellationToken);
         }
         catch (ArgumentException exception)
@@ -69,7 +72,6 @@ public static class RecordEndpoints
                     found.Counts.Track.Type,
                     found.Counts.Track.Version,
                     timeMode = ToResponse(found.Counts.Track.TimeMode),
-                    endMode = ToResponse(found.Counts.Track.EndMode),
                 },
                 found.Counts.From,
                 found.Counts.To,
@@ -96,6 +98,8 @@ public static class RecordEndpoints
         [FromQuery(Name = "to")] DateTimeOffset? to,
         [FromQuery] int? limit,
         [FromQuery] string? cursor,
+        [FromQuery] Guid? objectId,
+        [FromQuery] Guid[]? contextObjectIds,
         ClaimsPrincipal principal,
         IReplayRecords replayRecords,
         CancellationToken cancellationToken)
@@ -110,7 +114,7 @@ public static class RecordEndpoints
         {
             var parsedCursor = cursor is null ? null : ParseCursor(cursor);
             result = await replayRecords.ExecuteAsync(ownerId,
-                new ReplayRecordsQuery(trackId, from, to, limit, parsedCursor), cancellationToken);
+                new ReplayRecordsQuery(trackId, from, to, limit, parsedCursor, objectId, contextObjectIds), cancellationToken);
         }
         catch (ArgumentException exception)
         {
@@ -129,7 +133,6 @@ public static class RecordEndpoints
                     found.Replay.Track.Type,
                     found.Replay.Track.Version,
                     timeMode = ToResponse(found.Replay.Track.TimeMode),
-                    endMode = ToResponse(found.Replay.Track.EndMode),
                 },
                 records = found.Replay.Records.Select(record => new
                 {
@@ -139,6 +142,7 @@ public static class RecordEndpoints
                     record.ObservedAt,
                     record.ReceivedAt,
                     record.Value,
+                    record.Objects,
                 }),
                 nextCursor = found.Replay.NextCursor is null
                     ? null
@@ -166,7 +170,7 @@ public static class RecordEndpoints
         try
         {
             var records = request.Records?.Select(record => record is null ? null : new RecordUpload(
-                record.Id, record.StartedAt, record.EndedAt, record.ObservedAt, record.Value)).ToArray();
+                record.Id, record.StartedAt, record.EndedAt, record.ObservedAt, record.Value) { Objects = record.Objects }).ToArray();
             result = await uploadRecords.ExecuteAsync(ownerId,
                 new UploadRecordsCommand(trackId, records), cancellationToken);
         }
@@ -214,15 +218,7 @@ public static class RecordEndpoints
         _ => throw new InvalidOperationException("Unknown track time mode."),
     };
 
-    private static string? ToResponse(EndMode? endMode) => endMode switch
-    {
-        null => null,
-        EndMode.Explicit => "explicit",
-        EndMode.NextRecord => "next_record",
-        _ => throw new InvalidOperationException("Unknown track end mode."),
-    };
-
-    private static ReplayRecordsCursor ParseCursor(string value)
+    internal static ReplayRecordsCursor ParseCursor(string value)
     {
         if (value.Length is < 1 or > 160 || value.Any(character =>
                 !(character is >= 'A' and <= 'Z'
@@ -278,7 +274,7 @@ public static class RecordEndpoints
         return cursor;
     }
 
-    private static string EncodeCursor(ReplayRecordsCursor cursor)
+    internal static string EncodeCursor(ReplayRecordsCursor cursor)
     {
         var payload = $"{cursor.StartedAt.ToUniversalTime():O}\n{cursor.Id:D}";
         return Convert.ToBase64String(Encoding.UTF8.GetBytes(payload))
@@ -296,5 +292,9 @@ public static class RecordEndpoints
         DateTimeOffset? StartedAt,
         DateTimeOffset? EndedAt,
         DateTimeOffset? ObservedAt,
-        JsonElement Value);
+        JsonElement Value)
+    {
+        [JsonRequired]
+        public IReadOnlyList<ObjectReference> Objects { get; init; } = [];
+    }
 }

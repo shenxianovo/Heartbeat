@@ -1,5 +1,7 @@
 "use client";
 
+import type { RecordObject } from "@/api/types";
+
 import { Component, createElement, type PropsWithChildren } from "react";
 
 import { FallbackJsonRenderer } from "@/components/records/renderers/FallbackJsonRenderer";
@@ -8,6 +10,7 @@ import { findRecordRenderer } from "@/components/records/renderers/registry";
 interface RecordValueProps {
   type: string;
   version: number;
+  objects: RecordObject[];
   value: unknown;
 }
 
@@ -34,9 +37,11 @@ class RendererBoundary extends Component<BoundaryProps, BoundaryState> {
   }
 }
 
-export function RecordValue({ type, version, value }: RecordValueProps) {
+export function RecordValue({ type, version, value, objects }: RecordValueProps) {
   const Renderer = findRecordRenderer(type, version);
   if (!Renderer) return <FallbackJsonRenderer value={value} />;
 
-  return <RendererBoundary value={value}>{createElement(Renderer, { value })}</RendererBoundary>;
+  return (
+    <RendererBoundary value={value}>{createElement(Renderer, { value, objects })}</RendererBoundary>
+  );
 }

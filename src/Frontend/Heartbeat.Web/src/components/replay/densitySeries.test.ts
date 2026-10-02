@@ -24,7 +24,6 @@ function counts(
       type: "example.point",
       version: 1,
       timeMode: "point",
-      endMode: null,
     },
     from: iso(from),
     to: iso(to),

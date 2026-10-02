@@ -12,7 +12,6 @@ function counts(start: number, end: number, bucketSeconds: number): PointCountsR
       type: "example.point",
       version: 1,
       timeMode: "point",
-      endMode: null,
     },
     from: iso(start),
     to: iso(end),

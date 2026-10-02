@@ -10,14 +10,7 @@ internal sealed class PostgresRecordReplayStore(HeartbeatDbContext dbContext) : 
         ReplayRecordsQuery query,
         CancellationToken cancellationToken = default)
     {
-        var track = await (
-            from candidate in dbContext.Tracks.AsNoTracking()
-            join collector in dbContext.Collectors.AsNoTracking() on candidate.CollectorId equals collector.Id
-            join timeline in dbContext.Timelines.AsNoTracking() on collector.TimelineId equals timeline.Id
-            where candidate.Id == query.TrackId && timeline.OwnerId == ownerId
-            select new ReplayedTrack(candidate.Id, candidate.CollectorId, candidate.Type,
-                candidate.Version, candidate.TimeMode, candidate.EndMode))
-            .SingleOrDefaultAsync(cancellationToken);
+        var track = await ObjectQueries.FindTrackAsync(dbContext, ownerId, query.TrackId, cancellationToken);
 
         if (track is null)
         {
@@ -25,31 +18,10 @@ internal sealed class PostgresRecordReplayStore(HeartbeatDbContext dbContext) : 
         }
 
         var records = dbContext.Records.AsNoTracking()
-            .Where(record => record.TrackId == query.TrackId);
+            .Where(record => record.TrackId == query.TrackId)
+            .ForObjects(dbContext, query.ObjectId, query.ContextObjectIds);
 
-        if (query.From is not null)
-        {
-            var from = query.From.Value;
-            records = records.Where(record =>
-                record.EndedAt == null
-                    ? record.StartedAt >= from
-                    : record.EndedAt > from);
-        }
-
-        if (query.To is not null)
-        {
-            var to = query.To.Value;
-            records = records.Where(record => record.StartedAt < to);
-        }
-
-        if (query.Cursor is not null)
-        {
-            var cursorStartedAt = query.Cursor.StartedAt;
-            var cursorId = query.Cursor.Id;
-            records = records.Where(record =>
-                record.StartedAt > cursorStartedAt
-                || (record.StartedAt == cursorStartedAt && record.Id.CompareTo(cursorId) > 0));
-        }
+        records = records.InWindow(query.From, query.To, query.Cursor);
 
         var stored = await records
             .OrderBy(record => record.StartedAt)
@@ -62,6 +34,7 @@ internal sealed class PostgresRecordReplayStore(HeartbeatDbContext dbContext) : 
             stored.RemoveAt(stored.Count - 1);
         }
 
+        var objects = await ObjectQueries.ReferencesAsync(dbContext, stored, cancellationToken);
         var replayed = stored
             .Select(record => new ReplayedRecord(
                 record.Id,
@@ -69,7 +42,7 @@ internal sealed class PostgresRecordReplayStore(HeartbeatDbContext dbContext) : 
                 record.EndedAt,
                 record.ObservedAt,
                 record.ReceivedAt,
-                record.Value.Clone()))
+                record.Value.Clone()) { Objects = objects[record.Id] })
             .ToList();
         var nextCursor = hasNextPage
             ? new ReplayRecordsCursor(stored[^1].StartedAt, stored[^1].Id)

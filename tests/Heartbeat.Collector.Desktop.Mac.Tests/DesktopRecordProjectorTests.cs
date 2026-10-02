@@ -223,10 +223,10 @@ public sealed class DesktopRecordProjectorTests
 
         var application = Assert.Single(Latest(staged, ApplicationTrack));
         Assert.False(application.Value.TryGetProperty("window", out _));
-        Assert.Equal("com.example.App", application.Value.GetProperty("application").GetProperty("id").GetString());
+        Assert.Equal("com.example.App", application.Objects.Single(item => item.Role == "application").Key);
 
         var window = Assert.Single(Latest(staged, WindowTrack));
-        Assert.Equal("device-a", window.Value.GetProperty("device_id").GetString());
+        Assert.Equal("device-a", window.Objects.Single(item => item.Role == "device").Key);
         Assert.Equal("Document", window.Value.GetProperty("window").GetProperty("title").GetString());
     }
 

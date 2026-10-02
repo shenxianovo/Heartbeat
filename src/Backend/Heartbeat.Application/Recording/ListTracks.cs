@@ -11,27 +11,26 @@ public sealed record ListedTrack(
     string Type,
     int Version,
     TimeMode TimeMode,
-    EndMode? EndMode,
     DateTimeOffset CreatedAt);
 
 public interface IListTracks
 {
     Task<IReadOnlyList<ListedTrack>> ExecuteAsync(
         Guid ownerId,
-        CancellationToken cancellationToken = default);
+        Guid? objectId = null, IReadOnlyList<Guid>? contextObjectIds = null, CancellationToken cancellationToken = default);
 }
 
 public sealed class ListTracks(ITrackStore store) : IListTracks
 {
     public Task<IReadOnlyList<ListedTrack>> ExecuteAsync(
         Guid ownerId,
-        CancellationToken cancellationToken = default)
+        Guid? objectId = null, IReadOnlyList<Guid>? contextObjectIds = null, CancellationToken cancellationToken = default)
     {
         if (ownerId == Guid.Empty)
         {
             throw new ArgumentException("An owner is required.", nameof(ownerId));
         }
 
-        return store.ListAsync(ownerId, cancellationToken);
+        return store.ListAsync(ownerId, objectId, contextObjectIds, cancellationToken);
     }
 }

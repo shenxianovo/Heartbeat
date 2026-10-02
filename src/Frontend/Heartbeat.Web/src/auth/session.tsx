@@ -49,7 +49,7 @@ export function SessionCacheGuard({ children }: PropsWithChildren) {
 
   useEffect(() => {
     if (previousSubject.current !== undefined && previousSubject.current !== subject) {
-      queryClient.clear();
+      queryClient.removeQueries({ predicate: (query) => query.queryKey[1] !== subject });
     }
     previousSubject.current = subject;
   }, [queryClient, subject]);

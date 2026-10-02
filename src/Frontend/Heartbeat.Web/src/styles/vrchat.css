@@ -23,20 +23,13 @@
   margin: 0.4rem 0;
   font-size: 2rem;
 }
-.vrc-heading p,
 .vrc-caption {
   color: var(--muted-foreground);
 }
-.vrc-caption,
-.vrc-observation-note {
+.vrc-caption {
   font-size: 0.85rem;
   line-height: 1.7;
   margin: 0.3rem 0;
-}
-.vrc-observation-note {
-  border-left: 3px solid var(--primary);
-  padding-left: 0.8rem;
-  color: var(--muted-foreground);
 }
 .vrc-source {
   display: flex;

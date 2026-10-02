@@ -8,9 +8,10 @@ import { RecordCard } from "@/components/records/RecordCard";
 const record: TimelineRecord = {
   id: "019e0000-0000-7000-8000-000000000003",
   startedAt: "2026-09-12T10:00:00Z",
-  endedAt: null,
+  endedAt: "2026-09-12T10:01:00Z",
   observedAt: null,
   receivedAt: "2026-09-12T10:00:05Z",
+  objects: [],
   value: { sample: true },
 };
 
@@ -20,12 +21,11 @@ const rangeTrack: TrackReference = {
   type: "custom.sample",
   version: 1,
   timeMode: "range",
-  endMode: "next_record",
 };
 
 describe("RecordCard", () => {
-  it("does not describe a range without endedAt as a point", () => {
-    render(<RecordCard record={record} track={rangeTrack} />);
+  it("does not describe a malformed range without endedAt as a point", () => {
+    render(<RecordCard record={{ ...record, endedAt: null }} track={rangeTrack} />);
 
     expect(screen.getAllByText("未提供结束时间")[0]).toBeVisible();
     expect(screen.queryByText("时间点")).not.toBeInTheDocument();

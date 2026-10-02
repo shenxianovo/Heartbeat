@@ -1,3 +1,4 @@
+using Heartbeat.Contracts;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -10,8 +11,7 @@ public sealed record CollectorDeclaration(string? Key, string? Target, string? D
 public sealed record TrackDeclaration(
     string? Type,
     int Version,
-    string? TimeMode,
-    string? EndMode);
+    string? TimeMode);
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record RecordSnapshot(
@@ -19,7 +19,11 @@ public sealed record RecordSnapshot(
     DateTimeOffset? StartedAt,
     DateTimeOffset? EndedAt,
     DateTimeOffset? ObservedAt,
-    JsonElement Value);
+    JsonElement Value)
+{
+    [JsonRequired]
+    public IReadOnlyList<ObjectReference> Objects { get; init; } = [];
+}
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record HubSubmission(

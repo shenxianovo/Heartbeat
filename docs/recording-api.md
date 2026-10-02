@@ -49,14 +49,13 @@ Owner 来自验签令牌的 UUID `sub`。OIDC access token 与 agent session tok
 {
   "type": "desktop.application.foreground",
   "version": 1,
-  "timeMode": "range",
-  "endMode": "explicit"
+  "timeMode": "range"
 }
 ```
 
 - `version` 必须为正整数。
 - `timeMode` 为 `point` 或 `range`。
-- Point 的 `endMode` 为空；Range 的 `endMode` 为 `explicit` 或 `next_record`。
+- Point 的 Record 不带结束时间；Range 的 Record 必须提供结束时间。
 - `(collector_id, type, version)` 是唯一地址，重复和并发请求复用原 Track。
 - 后端允许未知 `(type, version)`，不登记或解释 Payload。
 - 已有 Track 的时间定义不同时返回 `409 track_definition_conflict`。
@@ -71,7 +70,6 @@ Owner 来自验签令牌的 UUID `sub`。OIDC access token 与 agent session tok
   "type": "desktop.application.foreground",
   "version": 1,
   "timeMode": "range",
-  "endMode": "explicit",
   "createdAt": "2026-09-12T10:00:00Z"
 }
 ```
@@ -93,7 +91,6 @@ Owner 来自验签令牌的 UUID `sub`。OIDC access token 与 agent session tok
     "type": "desktop.application.foreground",
     "version": 1,
     "timeMode": "range",
-    "endMode": "explicit",
     "createdAt": "2026-09-12T10:00:00Z"
   }]
 }
@@ -112,18 +109,20 @@ Owner 来自验签令牌的 UUID `sub`。OIDC access token 与 agent session tok
     "startedAt": "2026-09-12T10:00:00Z",
     "endedAt": "2026-09-12T10:01:00Z",
     "observedAt": null,
-    "value": {"device_id": "device-a"}
+    "objects": [{"role": "device", "namespace": "device", "key": "device-a", "name": "My Mac"}],
+    "value": {}
   }]
 }
 ```
 
 - 一批含 1 到 500 条 Record，全部属于路径中的 Track。
-- 每项只接受 `id`、`startedAt`、`endedAt`、`observedAt` 和 `value`。
+- 每项只接受 `id`、`startedAt`、`endedAt`、`observedAt`、`objects` 和 `value`。
 - `id` 是 Collector 生成的 UUID v7，续期和重试必须复用。
 - `observedAt` 为空表示等于 `startedAt`。
 - `value` 可以是任意 JSON 值；缺失无效。
-- Point 与 `range + next_record` 的 `endedAt` 为空。
-- `range + explicit` 必须提供 `endedAt`，同一 Record 只允许单调延长。
+- `objects` 必须存在，可为空数组；结构和规范化见[对象引用](record-objects.md)。读取时每项额外含对象 UUID `id`。
+- Point 的 `endedAt` 为空。
+- `range` 必须提供 `endedAt`，同一 Record 只允许单调延长。
 - Track 不存在或不属于 Owner 时返回 `404 track_not_found`。
 - JSON、字段、批次大小或未知字段无效时，在写入前以 `400` 拒绝整批。
 
@@ -145,7 +144,7 @@ Owner 来自验签令牌的 UUID `sub`。OIDC access token 与 agent session tok
 | 状态 | 含义 |
 | --- | --- |
 | `stored` | 首次写入、重复上传或合法续期成功 |
-| `invalid_record` | ID、时间、Track 时间定义或 value 无效 |
+| `invalid_record` | ID、时间、Track 时间定义、objects 或 value 无效 |
 | `conflict` | 同一 ID 的固定字段或结束时间形状与已有记录不同 |
 | `track_not_found` | 写入时 Track 已无法按当前 Owner 找到 |
 
@@ -168,10 +167,9 @@ Hub 只能用 `stored` 确认上传进度。旧请求回执只确认发送时的
 - 有 `endedAt` 的 Record 按区间交叠进入 `[from, to)`；其他 Record 按 `startedAt`。
 - 结果按 `(startedAt, id)` 排序并做 keyset 分页。
 - 每页重新验证 Owner；cursor 不提供授权。续读时保持同一时间窗。
-- 查询不解释 Payload、解析 Application Identity、跨 Track 聚合或按业务字段分组。
-- 当前不计算 `range + next_record` 的派生结束时间。
+- 此接口仍限制为单 Track；不解释 Payload 或推断统一身份。跨 Track 使用对象记录接口。
 
-响应包含 `track`、`records` 和可空的 `nextCursor`。Record 字段为 `id`、`startedAt`、`endedAt`、`observedAt`、`receivedAt` 和 `value`。`nextCursor` 是不透明字符串，客户端不得解析或构造。
+响应包含 `track`、`records` 和可空的 `nextCursor`。Record 字段为 `id`、`startedAt`、`endedAt`、`observedAt`、`receivedAt`、`objects` 和 `value`。`nextCursor` 是不透明字符串，客户端不得解析或构造。
 
 ## Point 计数
 
@@ -185,3 +183,13 @@ Hub 只能用 `stored` 确认上传进度。旧请求回执只确认发送时的
 最多 10,000 个桶，只支持 Point Track。Range Track 返回 `400 track_is_not_point`；Track 不存在或不属于 Owner 时返回 `404 track_not_found`。
 
 响应包含 Track、窗口、桶宽和非空桶。每个桶返回 `index`、`startedAt`、`endedAt`、`count`。未返回的桶计为零。聚合只按 `startedAt` 计数，不读取 value；原始详情仍通过 Record 分页接口读取。
+
+## 对象目录与跨 Track 读取
+
+- `GET /api/v1/objects`：返回 `{ objects: [{ id, namespace, key, name, roles }] }`。`roles` 是该对象在记录中出现过的角色，去重并按角色排序，不表示全局展示等级，名称是最新有效观测的非空名称。可选 `objectId`、`contextObjectIds` 限制为与条件对象在同一 Record 中共同出现的对象，全部条件取交集；`contextObjectIds` 可重复提供多个 UUID。
+- `GET /api/v1/objects/{objectId}`：返回单个对象；不存在或不属于 Owner 返回 404。
+- `GET /api/v1/objects/{objectId}/records`：跨 Track 的直接关联 Record，返回 `{ records, nextCursor }`；每条包含 `trackId` 和通常的 Record 字段。支持 from、to、cursor、limit（默认 100，1–500）及可选 contextObjectIds。按 `(startedAt, id)` 分页。上下文必须在同一 Record 中出现，不扩展间接关系。
+
+Track 目录、Track Record 分页、Point 计数都支持 `objectId` 和 `contextObjectIds`；所有条件取交集，`contextObjectIds` 通过重复查询参数提供多个 UUID。目录只返回有符合条件记录的 Track。分页续读必须保持时间窗及对象条件。零长度 Range 按开始时间进入半开窗口。未知或无权限的筛选对象不会命中记录。
+
+Record、对象及关联原子写入；无效记录和冲突不会发现对象或更新名称。读取不创建对象。

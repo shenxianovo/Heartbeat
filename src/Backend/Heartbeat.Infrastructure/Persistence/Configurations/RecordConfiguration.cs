@@ -21,6 +21,9 @@ internal sealed class RecordConfiguration : IEntityTypeConfiguration<Record>
         builder.Property(x => x.EndedAt).HasColumnName("ended_at");
         builder.Property(x => x.ObservedAt).HasColumnName("observed_at");
         builder.Property(x => x.ReceivedAt).HasColumnName("received_at").IsRequired();
+        builder.Property(x => x.Objects).HasColumnName("objects").HasColumnType("jsonb")
+            .HasConversion<ObjectReferencesConverter>().IsRequired()
+            .Metadata.SetValueComparer(new ObjectReferencesComparer());
         builder.Property(x => x.Value).HasColumnName("value").HasColumnType("jsonb").IsRequired();
 
         builder

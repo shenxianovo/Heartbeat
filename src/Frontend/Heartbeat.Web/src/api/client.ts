@@ -1,3 +1,4 @@
+import type { ObjectScope, ObservedObject } from "./types";
 import type {
   PointCountsResponse,
   RecordsQuery,
@@ -48,8 +49,12 @@ async function getJson<T>(url: string, accessToken: string, signal?: AbortSignal
   return (await response.json()) as T;
 }
 
-export function fetchTracks(accessToken: string, signal?: AbortSignal): Promise<TracksResponse> {
-  return getJson<TracksResponse>("/api/v1/tracks", accessToken, signal);
+export function fetchTracks(
+  accessToken: string,
+  signal?: AbortSignal,
+  scope: ObjectScope = {},
+): Promise<TracksResponse> {
+  return getJson<TracksResponse>(`/api/v1/tracks?${scopeParams(scope)}`, accessToken, signal);
 }
 
 export function fetchRecords(
@@ -62,6 +67,7 @@ export function fetchRecords(
     to: query.to,
     limit: String(query.limit ?? 100),
   });
+  scopeParams(query).forEach((value, key) => params.append(key, value));
   if (query.cursor) params.set("cursor", query.cursor);
 
   return getJson<RecordsResponse>(
@@ -96,11 +102,32 @@ export function fetchPointCounts(
   to: string,
   bucketSeconds: number,
   signal?: AbortSignal,
+  scope: ObjectScope = {},
 ): Promise<PointCountsResponse> {
   const params = new URLSearchParams({ from, to, bucketSeconds: String(bucketSeconds) });
+  scopeParams(scope).forEach((value, key) => params.append(key, value));
   return getJson<PointCountsResponse>(
     `/api/v1/tracks/${encodeURIComponent(trackId)}/point-counts?${params}`,
     accessToken,
     signal,
   );
+}
+
+function scopeParams(scope: ObjectScope) {
+  const params = new URLSearchParams();
+  if (scope.objectId) params.set("objectId", scope.objectId);
+  for (const id of scope.contextObjectIds ?? []) params.append("contextObjectIds", id);
+  return params;
+}
+export function fetchObjects(
+  token: string,
+  signal?: AbortSignal,
+  contextObjectIds?: string[],
+  objectId?: string,
+) {
+  const params = scopeParams({ contextObjectIds, objectId });
+  return getJson<{ objects: ObservedObject[] }>(`/api/v1/objects?${params}`, token, signal);
+}
+export function fetchObject(token: string, id: string, signal?: AbortSignal) {
+  return getJson<ObservedObject>(`/api/v1/objects/${encodeURIComponent(id)}`, token, signal);
 }

@@ -40,7 +40,6 @@ public sealed class HubCrashTests
             declaration.Type,
             declaration.Version,
             declaration.TimeMode,
-            declaration.EndMode,
         }));
         backend.MapPost("/api/v1/tracks/{id:guid}/records", (UploadBatch batch) =>
         {

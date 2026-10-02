@@ -11,7 +11,7 @@ using Heartbeat.Hub;
 var pending = new PendingHubSubmissions();
 var route = new SubmissionRoute(
     new CollectorDeclaration("example.collector", "device-a", "Example"),
-    new TrackDeclaration("example.range", 1, "range", "explicit"));
+    new TrackDeclaration("example.range", 1, "range"));
 var startedAt = DateTimeOffset.UtcNow;
 var record = new RecordSnapshot(Guid.CreateVersion7(startedAt), startedAt, startedAt,
     null, JsonSerializer.SerializeToElement(new { status = "observed" }));

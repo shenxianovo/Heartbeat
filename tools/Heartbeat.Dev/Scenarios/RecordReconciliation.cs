@@ -97,10 +97,10 @@ internal static class RecordReconciliation
         select coalesce(json_agg(json_build_object(
             'ownerId', l.owner_id, 'collectorKey', c.key, 'target', c.target,
             'track', json_build_object('type', t.type, 'version', t.version,
-                'timeMode', t.time_mode, 'endMode', t.end_mode),
+                'timeMode', t.time_mode),
             'trackId', t.id,
             'record', json_build_object('id', r.id, 'startedAt', r.started_at,
-                'endedAt', r.ended_at, 'observedAt', r.observed_at, 'value', r.value)
+                'endedAt', r.ended_at, 'observedAt', r.observed_at, 'value', r.value, 'objects', r.objects)
         ) order by r.id), '[]'::json)
         from records r join tracks t on t.id = r.track_id
         join collectors c on c.id = t.collector_id join timelines l on l.id = c.timeline_id;

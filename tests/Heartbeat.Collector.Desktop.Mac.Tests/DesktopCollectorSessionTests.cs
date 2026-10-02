@@ -306,7 +306,7 @@ public sealed class DesktopCollectorSessionTests
             var input = Assert.Single(records, item => item.Type == "desktop.input.event");
             Assert.Equal(clock.Baseline.AddSeconds(1), input.Record.StartedAt);
             Assert.DoesNotContain(records, item => item.Type == "desktop.application.foreground"
-                && item.Record.Value.GetProperty("application").GetProperty("id").GetString() == FirstApp.Id
+                && item.Record.Objects.Single(reference => reference.Role == "application").Key == FirstApp.Id
                 && (captureNumber == 1 || item.Record.StartedAt > clock.Baseline));
         }
         finally
@@ -344,7 +344,7 @@ public sealed class DesktopCollectorSessionTests
             if (type == "desktop.input.event") ReceivedInput.TrySetResult();
             if (type == "desktop.application.foreground" && records.Any(record =>
                 record.EndedAt >= confirmedAt
-                && record.Value.GetProperty("application").GetProperty("id").GetString() == NextApp.Id))
+                && record.Objects.Single(reference => reference.Role == "application").Key == NextApp.Id))
                 NextApplicationConfirmed.TrySetResult();
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
@@ -461,7 +461,7 @@ public sealed class DesktopCollectorSessionTests
                 .Select(record => new SentRecord(
                     record.GetProperty("id").GetGuid(),
                     record.GetProperty("endedAt").GetDateTimeOffset(),
-                    record.GetProperty("value").GetProperty("application").GetProperty("id").GetString()!))
+                    record.GetProperty("objects").EnumerateArray().Single(reference => reference.GetProperty("role").GetString() == "application").GetProperty("key").GetString()!))
                 .ToArray();
             foreach (var record in sent)
             {

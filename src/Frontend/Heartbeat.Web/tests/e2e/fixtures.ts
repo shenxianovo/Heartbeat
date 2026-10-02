@@ -15,7 +15,6 @@ export const desktopTrack = {
   type: "desktop.application.foreground",
   version: 1,
   timeMode: "range",
-  endMode: "explicit",
   createdAt: "2026-09-12T00:00:00Z",
 };
 
@@ -27,7 +26,6 @@ export const customTrack = {
   collectorDisplayName: "自定义来源",
   type: "example.observation",
   timeMode: "point",
-  endMode: null,
 };
 
 export const statusTrack = {
@@ -36,15 +34,43 @@ export const statusTrack = {
   type: "desktop.observation.status",
 };
 
-function record(id: string, value: unknown, point = false, minutesAgo = 30) {
-  const startedAt = new Date(Date.now() - minutesAgo * 60_000).toISOString();
+export const desktopObject = {
+  id: "019e0000-0000-7000-8000-000000000090",
+  namespace: "device",
+  key: "test-mac",
+  name: "测试 Mac",
+  roles: ["device"],
+};
+export const desktopPath = `/objects/${desktopObject.id}`;
+export const deviceReference = { ...desktopObject, role: "device" };
+export function appReference(key: string) {
+  return {
+    id:
+      key === "com.apple.finder"
+        ? "019e0000-0000-7000-8000-000000000091"
+        : "019e0000-0000-7000-8000-000000000092",
+    namespace: "app.macos.bundle_id",
+    key,
+    name: key,
+    role: "application",
+    roles: ["application"],
+  };
+}
+function record(
+  id: string,
+  value: unknown,
+  point = false,
+  minutesAgo = 30,
+  objects = [deviceReference],
+) {
   return {
     id,
-    startedAt,
-    endedAt: point ? null : new Date(Date.now() - (minutesAgo - 5) * 60_000).toISOString(),
+    startedAt: new Date(Date.now() - minutesAgo * 60000).toISOString(),
+    endedAt: point ? null : new Date(Date.now() - (minutesAgo - 5) * 60000).toISOString(),
     observedAt: null,
     receivedAt: new Date().toISOString(),
     value,
+    objects,
   };
 }
 
@@ -95,34 +121,47 @@ export async function recordingRoutes(
   options: { empty?: boolean; fail?: boolean } = {},
 ) {
   const requests: URL[] = [];
+  const catalog = [
+    desktopObject,
+    appReference("com.apple.finder"),
+    appReference("com.microsoft.VSCode"),
+  ];
+  await page.route("**/api/v1/objects**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const item = catalog.find((item) => path === `/api/v1/objects/${item.id}`);
+    return route.fulfill({ json: item ?? { objects: options.empty ? [] : catalog } });
+  });
   await page.route("**/api/v1/tracks**", async (route) => {
     const url = new URL(route.request().url());
     requests.push(url);
     expect(route.request().headers().authorization).toBe(`Bearer ${accessToken}`);
-    if (options.fail) {
-      await route.fulfill({ status: 503, json: { title: "暂时不可用" } });
-      return;
-    }
-    if (url.pathname === "/api/v1/tracks") {
-      await route.fulfill({
-        json: { tracks: options.empty ? [] : [desktopTrack, statusTrack, customTrack] },
+    if (options.fail) return route.fulfill({ status: 503, json: { title: "暂时不可用" } });
+    const focus = url.searchParams.get("objectId");
+    const device = !focus || focus === desktopObject.id;
+    if (url.pathname === "/api/v1/tracks")
+      return route.fulfill({
+        json: {
+          tracks: options.empty
+            ? []
+            : device
+              ? [desktopTrack, statusTrack, customTrack]
+              : [desktopTrack],
+        },
       });
-      return;
-    }
-    if (url.pathname === `/api/v1/tracks/${customTrack.id}/point-counts`) {
+    if (url.pathname.endsWith("/point-counts")) {
       const from = Date.parse(url.searchParams.get("from")!);
       const to = Date.parse(url.searchParams.get("to")!);
       const bucketSeconds = Number(url.searchParams.get("bucketSeconds"));
-      const at = Date.now() - 30 * 60_000;
+      const at = Date.now() - 30 * 60000;
       const index = Math.floor((at - from) / (bucketSeconds * 1000));
-      await route.fulfill({
+      return route.fulfill({
         json: {
           track: customTrack,
           from: new Date(from).toISOString(),
           to: new Date(to).toISOString(),
           bucketSeconds,
           buckets:
-            at >= from && at < to
+            at >= from && at < to && device
               ? [
                   {
                     index,
@@ -136,79 +175,61 @@ export async function recordingRoutes(
               : [],
         },
       });
-      return;
     }
-    if (url.pathname === `/api/v1/tracks/${customTrack.id}/records`) {
-      await route.fulfill({
-        json: {
-          track: customTrack,
-          records: [
+    const later = url.searchParams.has("cursor");
+    const track = url.pathname.includes(customTrack.id)
+      ? customTrack
+      : url.pathname.includes(statusTrack.id)
+        ? statusTrack
+        : desktopTrack;
+    const records =
+      track === customTrack
+        ? [
             record(
               "019e0000-0000-7000-8000-000000000023",
               { note: "<script>window.untrustedExecuted=true</script>", count: 42 },
               true,
             ),
-          ],
-          nextCursor: null,
-        },
-      });
-      return;
-    }
-    if (url.pathname === `/api/v1/tracks/${statusTrack.id}/records`) {
-      await route.fulfill({
-        json: {
-          track: statusTrack,
-          records: [
-            record(
-              "019e0000-0000-7000-8000-000000000024",
-              {
-                device_id: "test-mac",
-                capability: "application",
-                state: "permission_required",
-                reason: "screen-recording",
-              },
-              false,
-              25,
-            ),
-          ],
-          nextCursor: null,
-        },
-      });
-      return;
-    }
-    const later = url.searchParams.has("cursor");
-    await route.fulfill({
-      json: {
-        track: desktopTrack,
-        records: later
+          ]
+        : track === statusTrack
           ? [
               record(
-                "019e0000-0000-7000-8000-000000000022",
+                "019e0000-0000-7000-8000-000000000024",
                 {
-                  device_id: "test-mac",
-                  application: {
-                    platform: "macos",
-                    id_kind: "bundle_id",
-                    id: "com.microsoft.VSCode",
-                  },
+                  capability: "application",
+                  state: "permission_required",
+                  reason: "screen-recording",
                 },
                 false,
-                10,
+                25,
               ),
             ]
-          : [
-              record("019e0000-0000-7000-8000-000000000020", {
-                device_id: "test-mac",
-                application: { platform: "macos", id_kind: "bundle_id", id: "com.apple.finder" },
-              }),
-              record(
-                "019e0000-0000-7000-8000-000000000021",
-                { unexpected: "malformed-observation" },
-                false,
-                20,
-              ),
-            ],
-        nextCursor: later ? null : "next-page-test-cursor",
+          : later
+            ? [
+                record("019e0000-0000-7000-8000-000000000022", {}, false, 10, [
+                  deviceReference,
+                  appReference("com.microsoft.VSCode"),
+                ]),
+              ]
+            : [
+                record("019e0000-0000-7000-8000-000000000020", {}, false, 30, [
+                  deviceReference,
+                  appReference("com.apple.finder"),
+                ]),
+                record(
+                  "019e0000-0000-7000-8000-000000000021",
+                  { unexpected: "malformed-observation" },
+                  false,
+                  20,
+                ),
+              ];
+    return route.fulfill({
+      json: {
+        track,
+        records: records.filter(
+          (record) => !focus || record.objects.some((item) => item.id === focus),
+        ),
+        nextCursor: track === desktopTrack && !later ? "next-page-test-cursor" : null,
       },
     });
   });

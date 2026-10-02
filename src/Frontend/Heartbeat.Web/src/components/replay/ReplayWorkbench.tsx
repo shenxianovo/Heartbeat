@@ -5,18 +5,15 @@ import { trackLabel } from "@/components/records/renderers/registry";
 import { useAuth } from "react-oidc-context";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/DatePicker";
-import { MultiSelectPicker } from "@/components/ui/MultiSelectPicker";
 import { Popover } from "@/components/ui/Popover";
 import { Icon } from "@/components/ui/Icon";
 import { DateRangeControls } from "@/components/filters/DateRangeControls";
-import { AppHeader } from "@/components/layout/AppHeader";
 import { RecordsPanel } from "./RecordsPanel";
 import { TimelineViewport } from "./TimelineViewport";
 import { todayRange, type DateRange } from "@/lib/dates";
 import { LoadingState } from "@/components/status/LoadingState";
 import { QueryState } from "@/components/status/QueryState";
 import { useLinkedReplaySelection } from "./useLinkedReplaySelection";
-import Link from "next/link";
 import { useReplayData } from "./useReplayData";
 import { useLiveReplay } from "./useLiveReplay";
 
@@ -108,12 +105,10 @@ export function ReplayWorkbench() {
     to,
     bounds,
     range,
-    selectedCollectorIds,
     detail,
     chooseDate,
     stepDay,
     setRange,
-    selectCollectors,
     setDetail,
     pauseFollowing,
     returnToNow,
@@ -121,9 +116,7 @@ export function ReplayWorkbench() {
   } = selection;
   const {
     tracksQuery,
-    allTracks,
     tracks,
-    collectors,
     replayQuery,
     densityQuery,
     densityStatus,
@@ -138,14 +131,8 @@ export function ReplayWorkbench() {
   useLiveReplay(selection.following, selection.advanceClock, refresh, fetching);
   establishInitialRange(firstActivityAt);
   return (
-    <div className="app-frame">
-      <AppHeader />
+    <div>
       <main className="workspace experience-workspace">
-        <nav className="page-breadcrumb" aria-label="当前位置">
-          <Link href="/">概览</Link>
-          <span>/</span>
-          <span>详细时间线</span>
-        </nav>
         {tracksQuery.isPending ? (
           <LoadingState label="正在读取采集来源" />
         ) : tracksQuery.isError ? (
@@ -159,7 +146,7 @@ export function ReplayWorkbench() {
               </Button>
             }
           />
-        ) : allTracks.length === 0 ? (
+        ) : tracks.length === 0 ? (
           <QueryState
             eyebrow="暂无来源"
             title="还没有可以回放的记录"
@@ -175,26 +162,13 @@ export function ReplayWorkbench() {
                 chooseDate={chooseDate}
                 stepDay={stepDay}
               />
-              <MultiSelectPicker
-                label="采集来源"
-                allLabel="全部来源"
-                options={collectors.map(([value, label]) => ({ value, label }))}
-                value={selectedCollectorIds ?? collectors.map(([id]) => id)}
-                onChange={(ids) => selectCollectors(ids.length === collectors.length ? null : ids)}
-              />
               <RefreshButton
                 className="experience-refresh"
                 fetching={fetching}
                 onRefresh={() => void refresh()}
               />
             </section>
-            {!tracks.length ? (
-              <QueryState
-                eyebrow="暂无选择"
-                title="尚未选择来源"
-                description="选择一个或多个来源，在同一时间轴中组合查看。"
-              />
-            ) : replayQuery.pending.length > 0 && replayQuery.data.length === 0 ? (
+            {replayQuery.pending.length > 0 && replayQuery.data.length === 0 ? (
               <LoadingState label="正在构建统一时间窗口" />
             ) : replayQuery.data.length === 0 && replayQuery.failures.length > 0 ? (
               <QueryState

@@ -9,6 +9,7 @@ it("excludes a completed interval at the window start without dropping a point a
     value: null,
     observedAt: null,
     receivedAt: "2026-09-15T08:00:00Z",
+    objects: [],
   };
   const result = layoutRanges(
     [base, { ...base, id: "point", startedAt: base.endedAt, endedAt: null }],

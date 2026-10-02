@@ -40,7 +40,7 @@ dotnet run --project tools/Heartbeat.Dev -- verify full
 
 `changed` 按路径选择 .NET、Developer CLI、前端静态检查和 Playwright；无法识别的路径扩为 `full`。干净工作树必须显式提供比较基点。契约文档会选择相应测试，其他纯文档改动可能没有可执行检查；`--plan` 的输出是本次选择的权威说明。
 
-`verify full` 包含全部常规代码与测试检查，不包含 `quality` 或场景验收。.NET 架构测试约束 Domain 不依赖其他 Heartbeat 层，以及 Backend、Hub 和 Contracts 不直接引用可选 Collector。
+`verify full` 包含全部常规代码与测试检查，不包含 `quality` 或场景验收。.NET 架构测试约束 Domain 只依赖独立的共享 Contracts、不依赖其他 Heartbeat 实现层，以及 Backend、Hub 和 Contracts 不直接引用可选 Collector。
 
 各检查日志和汇总写入同一次验证目录。普通失败后继续其他检查；取消立即停止并返回 `130`；进程无法启动或证据无法写入时立即失败。
 

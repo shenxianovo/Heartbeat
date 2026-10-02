@@ -22,6 +22,7 @@ public static class DependencyInjection
         services.AddScoped<ICollectorRegistrationStore, PostgresCollectorRegistrationStore>();
         services.AddScoped<IRegisterCollector, RegisterCollector>();
         services.AddScoped<IRecordStore, PostgresRecordStore>();
+        services.AddScoped<IObjectStore, PostgresObjectStore>();
         services.AddScoped<ITrackStore, PostgresTrackStore>();
         services.AddScoped<IResolveTrack, ResolveTrack>();
         services.AddScoped<IListTracks, ListTracks>();

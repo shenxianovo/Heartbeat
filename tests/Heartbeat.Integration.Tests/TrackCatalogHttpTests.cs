@@ -44,7 +44,6 @@ public sealed class TrackCatalogHttpTests(PostgresFixture fixture) : PostgresTes
         Assert.Equal("sample.alpha", tracks[0].GetProperty("type").GetString());
         Assert.Equal(1, tracks[0].GetProperty("version").GetInt32());
         Assert.Equal("range", tracks[0].GetProperty("timeMode").GetString());
-        Assert.Equal("explicit", tracks[0].GetProperty("endMode").GetString());
         Assert.Equal(Now, tracks[0].GetProperty("createdAt").GetDateTimeOffset());
         Assert.Equal(secondTrack, tracks[1].GetProperty("id").GetGuid());
     }
@@ -110,7 +109,7 @@ public sealed class TrackCatalogHttpTests(PostgresFixture fixture) : PostgresTes
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/collectors/{collectorId}/tracks")
         {
-            Content = JsonContent.Create(new { type, version, timeMode = "range", endMode = "explicit" }),
+            Content = JsonContent.Create(new { type, version, timeMode = "range" }),
         };
         request.Headers.Add(RecordingApiFactory.OwnerHeader, ownerId.ToString());
         using var response = await client.SendAsync(request);

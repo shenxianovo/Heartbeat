@@ -26,7 +26,7 @@ public sealed class HubDeliveryTests(PostgresFixture fixture) : PostgresTestBase
                 JsonSerializer.SerializeToElement(new { customObservation = "any collector value" }));
             var submission = new HubSubmission(
                 new CollectorDeclaration("example.collector", "test-target", "Test collector"),
-                new TrackDeclaration("example.unregistered.range", 1, "range", "explicit"), [record]);
+                new TrackDeclaration("example.unregistered.range", 1, "range"), [record]);
             var queue = new RecordOutbox(path, destination);
             queue.Accept(submission);
             Assert.Equal(1, queue.Activity.Snapshot.Accepted);
@@ -93,11 +93,8 @@ public sealed class HubDeliveryTests(PostgresFixture fixture) : PostgresTestBase
         }
     }
 
-    [Theory]
-    [InlineData("point", null)]
-    [InlineData("range", "next_record")]
-    public async Task UnknownDataTypeWithNoExplicitEndTravelsThroughHubAndReplays(
-        string timeMode, string? endMode)
+    [Fact]
+    public async Task UnknownPointDataTypeTravelsThroughHubAndReplays()
     {
         var owner = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
@@ -113,7 +110,7 @@ public sealed class HubDeliveryTests(PostgresFixture fixture) : PostgresTestBase
                 new DeliveryDestination(replayClient.BaseAddress!, owner));
             queue.Accept(new HubSubmission(
                 new CollectorDeclaration("example.custom", "test-target", "Custom collector"),
-                new TrackDeclaration("example.unregistered.data", 1, timeMode, endMode), [record]));
+                new TrackDeclaration("example.unregistered.data", 1, "point"), [record]));
             using var handler = new BackendHandler(owner) { InnerHandler = factory.Server.CreateHandler() };
             using var backend = new HttpClient(handler);
             Assert.Empty(await new RecordUploader(queue, backend, new FixedTokenProvider(owner)).UploadOnceAsync(cancellationToken: TestContext.Current.CancellationToken));

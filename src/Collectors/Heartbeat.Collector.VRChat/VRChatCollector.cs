@@ -125,7 +125,7 @@ internal sealed class VRChatCollector(string? expectedTarget, IVRChatApiFactory 
                     ValidateAccount(item);
                     var name = await ResolveWorldAsync(records.WorldToResolve(item), names, token);
                     foreach (var record in records.Observe(item, name))
-                        pending.Stage(new(collector, new(record.Type, 1, "range", "explicit")), record.Record);
+                        pending.Stage(new(collector, new(record.Type, 1, "range")), record.Record);
                     await FlushAsync(pending, token);
                     _error = null;
                 }, token);

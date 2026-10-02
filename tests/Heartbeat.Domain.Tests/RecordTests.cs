@@ -52,7 +52,7 @@ public sealed class RecordTests
 
         Assert.Throws<ArgumentException>(() => RecordingRecord.Create(
             Guid.CreateVersion7(),
-            CreateTrack(TimeMode.Range, EndMode.Explicit),
+            CreateTrack(TimeMode.Range),
             startedAt,
             startedAt.AddTicks(-1),
             null,
@@ -74,16 +74,14 @@ public sealed class RecordTests
     }
 
     [Theory]
-    [InlineData(TimeMode.Point, null, true, false)]
-    [InlineData(TimeMode.Point, null, false, true)]
-    [InlineData(TimeMode.Range, EndMode.Explicit, true, true)]
-    [InlineData(TimeMode.Range, EndMode.Explicit, false, false)]
-    [InlineData(TimeMode.Range, EndMode.NextRecord, true, false)]
-    [InlineData(TimeMode.Range, EndMode.NextRecord, false, true)]
-    public void CreateEnforcesTrackEndMode(TimeMode timeMode, EndMode? endMode, bool hasEnd, bool isValid)
+    [InlineData(TimeMode.Point, true, false)]
+    [InlineData(TimeMode.Point, false, true)]
+    [InlineData(TimeMode.Range, true, true)]
+    [InlineData(TimeMode.Range, false, false)]
+    public void CreateEnforcesTrackTimeMode(TimeMode timeMode, bool hasEnd, bool isValid)
     {
         var startedAt = DateTimeOffset.UtcNow;
-        var track = CreateTrack(timeMode, endMode);
+        var track = CreateTrack(timeMode);
 
         void Act() => RecordingRecord.Create(
             Guid.CreateVersion7(),
@@ -104,11 +102,10 @@ public sealed class RecordTests
         }
     }
 
-    private static Track CreateTrack(TimeMode timeMode, EndMode? endMode = null) => Track.Create(
+    private static Track CreateTrack(TimeMode timeMode) => Track.Create(
         Guid.NewGuid(),
         "activity.application.focus",
         1,
         timeMode,
-        endMode,
         DateTimeOffset.UtcNow);
 }

@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "react-oidc-context";
 import { fetchHubs, fetchHubActivity, type HubSummary } from "@/api/hubs";
-import { AppHeader } from "@/components/layout/AppHeader";
+import { FloatingNavigation } from "@/components/layout/FloatingNavigation";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/Icon";
 import { HubCard } from "./HubCard";
@@ -28,7 +28,7 @@ export function HubsPage() {
   });
   return (
     <div className="app-shell">
-      <AppHeader />
+      <FloatingNavigation />
       <main className="hubs-page">
         <HubsHeading
           data={query.data}
@@ -55,9 +55,6 @@ export function HubsPage() {
             refresh={query.refetch}
           />
         ))}
-        <p className="mt-5 text-xs leading-relaxed text-muted-foreground">
-          Hub 在线仅表示最近可联络，Collector 与 Record 交付状态分别展示。
-        </p>
       </main>
     </div>
   );

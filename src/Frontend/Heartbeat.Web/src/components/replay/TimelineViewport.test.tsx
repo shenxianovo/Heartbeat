@@ -17,7 +17,6 @@ const track: TrackSummary = {
   type: "example.range",
   version: 1,
   timeMode: "range",
-  endMode: "explicit",
   createdAt: from,
 };
 function record(id: string): TimelineRecord {
@@ -27,6 +26,7 @@ function record(id: string): TimelineRecord {
     endedAt: "2026-09-14T12:00:01Z",
     observedAt: null,
     receivedAt: to,
+    objects: [],
     value: { note: id },
   };
 }
@@ -75,10 +75,16 @@ function applicationRecord(id: string, applicationId: string, startedAt: string)
     ...record(id),
     startedAt,
     endedAt: new Date(Date.parse(startedAt) + 60_000).toISOString(),
-    value: {
-      device_id: "device",
-      application: { platform: "macos", id_kind: "bundle_id", id: applicationId },
-    },
+    value: {},
+    objects: [
+      {
+        id: applicationId,
+        role: "application",
+        namespace: "app.macos.bundle_id",
+        key: applicationId,
+        name: null,
+      },
+    ],
   };
 }
 
@@ -89,7 +95,7 @@ function statusRecord(
 ): TimelineRecord {
   return {
     ...record(id),
-    value: { device_id: "device", capability, state, reason: "accessibility" },
+    value: { capability, state, reason: "accessibility" },
   };
 }
 
@@ -323,4 +329,16 @@ describe("continuous range dragging", () => {
     fireEvent.pointerUp(overview, { clientX: 450, pointerId: 1 });
     expect(onRange).toHaveBeenCalledTimes(1);
   });
+});
+
+it("does not call the end of a week the next day", () => {
+  const bounds = { start: new Date(2026, 8, 25).getTime(), end: new Date(2026, 9, 2).getTime() };
+  const { container } = render(
+    <ActivityOverview lanes={[]} bounds={bounds} range={bounds} onRange={() => {}} />,
+  );
+  const labels = [...container.querySelectorAll(".overview-ticks span")].map(
+    (item) => item.textContent,
+  );
+  expect(labels.every((label) => label?.includes("/"))).toBe(true);
+  expect(labels.join(" ")).not.toContain("次日");
 });

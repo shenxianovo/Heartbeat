@@ -143,13 +143,6 @@ export function ActivityOverview({ lanes, bounds, range, onRange }: Props) {
   }
   return (
     <div className="activity-overview">
-      <div className="overview-heading">
-        <span>全天概览</span>
-        <output aria-label="可见时间范围">
-          {formatTime(range.start, true)} — {formatTime(range.end, true)}
-          {range.end === bounds.end ? " · 结束" : ""}
-        </output>
-      </div>
       <div
         className="overview-track"
         data-testid="activity-overview"
@@ -202,7 +195,6 @@ export function ActivityOverview({ lanes, bounds, range, onRange }: Props) {
       <div className="overview-ticks">
         {timeTicks(bounds, 5).map((tick) => (
           <span key={tick.at} style={{ left: `${tick.left}%` }}>
-            {tick.at === bounds.end ? "次日 " : ""}
             {tick.label}
           </span>
         ))}

@@ -6,8 +6,7 @@ public sealed record ResolveTrackCommand(
     Guid CollectorId,
     string? Type,
     int Version,
-    TimeMode TimeMode,
-    EndMode? EndMode);
+    TimeMode TimeMode);
 
 public sealed record ResolvedTrack(
     Guid Id,
@@ -15,7 +14,6 @@ public sealed record ResolvedTrack(
     string Type,
     int Version,
     TimeMode TimeMode,
-    EndMode? EndMode,
     DateTimeOffset CreatedAt);
 
 public abstract record ResolveTrackResult
@@ -45,7 +43,7 @@ public interface ITrackStore
 
     Task<IReadOnlyList<ListedTrack>> ListAsync(
         Guid ownerId,
-        CancellationToken cancellationToken = default);
+        Guid? objectId = null, IReadOnlyList<Guid>? contextObjectIds = null, CancellationToken cancellationToken = default);
 
     Task<ResolvedTrack?> ResolveAsync(
         Guid ownerId,
@@ -74,14 +72,14 @@ public sealed class ResolveTrack(ITrackStore store, TimeProvider timeProvider) :
         ArgumentException.ThrowIfNullOrWhiteSpace(command.Type);
         ArgumentOutOfRangeException.ThrowIfLessThan(command.Version, 1);
         var candidate = Track.Create(command.CollectorId, command.Type, command.Version,
-            command.TimeMode, command.EndMode, timeProvider.GetUtcNow());
+            command.TimeMode, timeProvider.GetUtcNow());
         var track = await store.ResolveAsync(ownerId, candidate, cancellationToken);
         if (track is null)
         {
             return new ResolveTrackResult.CollectorNotFound();
         }
 
-        if (track.TimeMode != candidate.TimeMode || track.EndMode != candidate.EndMode)
+        if (track.TimeMode != candidate.TimeMode)
         {
             return new ResolveTrackResult.DefinitionConflict();
         }

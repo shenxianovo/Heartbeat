@@ -33,15 +33,20 @@ Timeline 上的一条同类数据轨道，汇集一个 Collector 产生、由同
 _避免使用_: Observation Track、消息流、展示分组
 
 **Time Mode**:
-Record 占据一个时间点还是一段时间区间。取值为 Point 或 Range。
+Record 占据一个时间点还是一段时间区间。取值为 Point 或 Range；Range 的起止时间由本条 Record 明确给出。
 _避免使用_: Temporal Shape、State、Interval
 
-**End Mode**:
-Range 的结束位置如何得到：由本条 Record 明确给出，或由下一条 Record 的开始位置推导。
-
 **Record**:
-Track 中具有稳定逻辑身份、符合其数据协议的一份观测结果，可以表达时间点或已确认持续的区间，内容与时间可被后续信息更正而仍是同一份结果。Record 表达 Collector 规范化后的观测，不表达对人的活动解释。
+Track 中具有稳定逻辑身份、符合其数据协议的一份观测结果，可以涉及多个对象，表达时间点或已确认持续的区间，内容与时间可被后续信息更正而仍是同一份结果。Record 表达 Collector 规范化后的观测，不表达对人的活动解释。
 _避免使用_: Observation Record、Fact、Activity、原始传输消息
+
+**观测对象（Observed Object）**:
+观测中具有可辨识身份的事物，例如设备、应用、账号或世界；同一对象可以出现在不同 Collector 的多条 Record 中，不因查看入口变化而改变身份。当前一行对象代表 Timeline 内一个 namespace/key 原生身份，UUID 用于内部关联和路由。
+_避免使用_: Collector、Track、页面、任意字段值
+
+**对象引用（Object Reference）**:
+Record 对其涉及的观测对象的明确指认，表达生产者在观测中已知的身份，不等同于对不同原生标识的统一身份解析。见 [公共契约](docs/record-objects.md) 与 [ADR-0029](docs/adr/ADR-0029-record-object-references.md)。
+_避免使用_: 唯一展示归属、Target、全局身份推断
 
 **Application Identity**:
 把不同平台的应用标识解析为同一个应用的跨平台身份。它是可修正的解析结果，不是 Record 保存的平台原生标识。

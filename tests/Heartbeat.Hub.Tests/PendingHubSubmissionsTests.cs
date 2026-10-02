@@ -7,7 +7,7 @@ public sealed class PendingHubSubmissionsTests(ITestOutputHelper output)
 {
     private static readonly SubmissionRoute Route = new(
         new CollectorDeclaration("example.collector", "device-a", "Example"),
-        new TrackDeclaration("example.point", 1, "point", null));
+        new TrackDeclaration("example.point", 1, "point"));
 
     [Fact]
     public void BatchesFiveHundredAtATime()
@@ -33,7 +33,7 @@ public sealed class PendingHubSubmissionsTests(ITestOutputHelper output)
         var start = new DateTimeOffset(2026, 9, 14, 8, 0, 0, TimeSpan.Zero);
         var record = new RecordSnapshot(Guid.CreateVersion7(start), start, start, null,
             JsonSerializer.SerializeToElement(new { value = 1 }));
-        var route = Route with { Track = new TrackDeclaration("example.range", 1, "range", "explicit") };
+        var route = Route with { Track = new TrackDeclaration("example.range", 1, "range") };
         pending.Stage(route, record);
         var sent = Assert.Single(pending.ReadBatches());
         pending.Stage(route, record with { EndedAt = start.AddSeconds(5) });
@@ -74,7 +74,7 @@ public sealed class PendingHubSubmissionsTests(ITestOutputHelper output)
         var queue = fixture.Open();
         var hub = new LocalHubSubmissionClient(queue);
         var pending = new PendingHubSubmissions();
-        var route = Route with { Track = new("example.range", 1, "range", "explicit") };
+        var route = Route with { Track = new("example.range", 1, "range") };
         var point = Point(0);
         var original = point with { EndedAt = point.StartedAt };
         pending.Stage(route, original);
@@ -104,7 +104,6 @@ public sealed class PendingHubSubmissionsTests(ITestOutputHelper output)
     [InlineData("type")]
     [InlineData("version")]
     [InlineData("time")]
-    [InlineData("end")]
     public void RejectsChangesToPendingIdentityOrTimeDefinition(string change)
     {
         var pending = new PendingHubSubmissions();
@@ -116,8 +115,7 @@ public sealed class PendingHubSubmissionsTests(ITestOutputHelper output)
             "target" => Route with { Collector = Route.Collector with { Target = "device-b" } },
             "type" => Route with { Track = Route.Track with { Type = "example.other" } },
             "version" => Route with { Track = Route.Track with { Version = 2 } },
-            "time" => Route with { Track = Route.Track with { TimeMode = "range" } },
-            _ => Route with { Track = Route.Track with { EndMode = "explicit" } },
+            _ => Route with { Track = Route.Track with { TimeMode = "range" } },
         };
 
         Assert.Throws<InvalidOperationException>(() => pending.Stage(changed, record));

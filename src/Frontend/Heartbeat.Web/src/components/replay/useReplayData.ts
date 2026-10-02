@@ -1,3 +1,4 @@
+import { useObjectScope } from "@/components/objects/ObjectScope";
 import { useEffect, useMemo, useState } from "react";
 import { useRecordsQuery, useReplayWindowQuery, useTracksQuery } from "@/api/queries";
 import { usePointDensityTiles } from "@/api/densityQueries";
@@ -15,33 +16,10 @@ function useSettledRange(scope: string, range: TimeRange | null) {
   return settled?.scope === scope ? settled.range : null;
 }
 
-function useTrackCatalog(
-  ownerSubject: string,
-  accessToken: string,
-  selectedCollectorIds: string[] | null,
-) {
+function useTrackCatalog(ownerSubject: string, accessToken: string) {
   const query = useTracksQuery(ownerSubject, accessToken);
-  const all = useMemo(() => query.data?.tracks ?? [], [query.data?.tracks]);
-  const selected = useMemo(
-    () =>
-      selectedCollectorIds === null
-        ? all
-        : all.filter((track) => selectedCollectorIds.includes(track.collectorId)),
-    [all, selectedCollectorIds],
-  );
-  const collectors = useMemo(
-    () =>
-      Array.from(
-        new Map(
-          all.map((track) => [
-            track.collectorId,
-            track.collectorDisplayName || track.collectorTarget,
-          ]),
-        ),
-      ),
-    [all],
-  );
-  return { query, all, selected, collectors };
+  const tracks = useMemo(() => query.data?.tracks ?? [], [query.data?.tracks]);
+  return { query, tracks };
 }
 
 function isZoomed(bounds: TimeRange | null, range: TimeRange | null) {
@@ -173,12 +151,13 @@ export function useReplayData(
   accessToken: string,
   selection: ReturnType<typeof useReplaySelection>,
 ) {
-  const { from, to, bounds, range, selectedCollectorIds, detail } = selection;
-  const catalog = useTrackCatalog(ownerSubject, accessToken, selectedCollectorIds);
+  const objectScope = useObjectScope();
+  const { from, to, bounds, range, detail } = selection;
+  const catalog = useTrackCatalog(ownerSubject, accessToken);
   const replayQuery = useReplayWindowQuery(
     ownerSubject,
     accessToken,
-    catalog.selected,
+    catalog.tracks,
     from,
     to,
     bounds ? densityBucketSeconds(bounds) : 900,
@@ -197,16 +176,16 @@ export function useReplayData(
   const density = useReplayDensity(
     ownerSubject,
     accessToken,
-    catalog.selected,
+    catalog.tracks,
     bounds,
     range,
-    `${ownerSubject}/${from}/${to}`,
+    `${ownerSubject}/${objectScope.objectId ?? ""}/${objectScope.contextObjectIds ?? ""}/${from}/${to}`,
   );
   const lanes = useMemo(
     () => addDensityLayers(replayQuery.data, density.query.layers, range),
     [replayQuery.data, density.query.layers, range],
   );
-  const detailData = useReplayDetail(ownerSubject, accessToken, catalog.selected, detail);
+  const detailData = useReplayDetail(ownerSubject, accessToken, catalog.tracks, detail);
   const refresh = useReplayRefresh(
     catalog.query,
     replayQuery,
@@ -217,9 +196,7 @@ export function useReplayData(
   return {
     firstActivityAt,
     tracksQuery: catalog.query,
-    allTracks: catalog.all,
-    tracks: catalog.selected,
-    collectors: catalog.collectors,
+    tracks: catalog.tracks,
     replayQuery,
     densityQuery: density.query,
     densityStatus: density.status,

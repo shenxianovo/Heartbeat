@@ -8,7 +8,6 @@ namespace Heartbeat.Persistence;
 internal sealed class PostgresTrackStore(HeartbeatDbContext dbContext) : ITrackStore
 {
     private static readonly TimeModeConverter TimeModeConverter = new();
-    private static readonly EndModeConverter EndModeConverter = new();
 
     public Task<Track?> FindAsync(Guid ownerId, Guid trackId, CancellationToken cancellationToken = default) =>
         (from track in dbContext.Tracks.AsNoTracking()
@@ -19,12 +18,15 @@ internal sealed class PostgresTrackStore(HeartbeatDbContext dbContext) : ITrackS
 
     public async Task<IReadOnlyList<ListedTrack>> ListAsync(
         Guid ownerId,
-        CancellationToken cancellationToken = default) =>
-        await (
+        Guid? objectId = null, IReadOnlyList<Guid>? contextObjectIds = null, CancellationToken cancellationToken = default)
+    {
+        var records = dbContext.Records.ForObjects(dbContext, objectId, contextObjectIds);
+        return await (
             from track in dbContext.Tracks.AsNoTracking()
             join collector in dbContext.Collectors.AsNoTracking() on track.CollectorId equals collector.Id
             join timeline in dbContext.Timelines.AsNoTracking() on collector.TimelineId equals timeline.Id
             where timeline.OwnerId == ownerId
+            where (objectId == null && (contextObjectIds == null || contextObjectIds.Count == 0)) || records.Any(record => record.TrackId == track.Id)
             orderby collector.Key, collector.Target, track.Type, track.Version, track.Id
             select new ListedTrack(
                 track.Id,
@@ -35,9 +37,9 @@ internal sealed class PostgresTrackStore(HeartbeatDbContext dbContext) : ITrackS
                 track.Type,
                 track.Version,
                 track.TimeMode,
-                track.EndMode,
                 track.CreatedAt))
         .ToListAsync(cancellationToken);
+    }
 
     public async Task<ResolvedTrack?> ResolveAsync(
         Guid ownerId,
@@ -45,12 +47,11 @@ internal sealed class PostgresTrackStore(HeartbeatDbContext dbContext) : ITrackS
         CancellationToken cancellationToken = default)
     {
         var timeMode = (string)TimeModeConverter.ConvertToProvider(candidate.TimeMode)!;
-        var endMode = (string?)EndModeConverter.ConvertToProvider(candidate.EndMode);
 
         await dbContext.Database.ExecuteSqlInterpolatedAsync($"""
-            INSERT INTO tracks (id, collector_id, type, version, time_mode, end_mode, created_at)
+            INSERT INTO tracks (id, collector_id, type, version, time_mode, created_at)
             SELECT {candidate.Id}, collectors.id, {candidate.Type}, {candidate.Version},
-                   {timeMode}, {endMode}, {candidate.CreatedAt}
+                   {timeMode}, {candidate.CreatedAt}
             FROM collectors
             JOIN timelines ON timelines.id = collectors.timeline_id
             WHERE collectors.id = {candidate.CollectorId} AND timelines.owner_id = {ownerId}
@@ -67,7 +68,7 @@ internal sealed class PostgresTrackStore(HeartbeatDbContext dbContext) : ITrackS
                 && track.Type == candidate.Type
                 && track.Version == candidate.Version
             select new ResolvedTrack(track.Id, track.CollectorId, track.Type, track.Version,
-                track.TimeMode, track.EndMode, track.CreatedAt))
+                track.TimeMode, track.CreatedAt))
             .SingleOrDefaultAsync(cancellationToken);
     }
 }

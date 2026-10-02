@@ -23,7 +23,6 @@ public sealed class ProgramTests
         Assert.Equal("heartbeat.collector.desktop.macos", handler.Submission!.Collector!.Key);
         Assert.Equal("desktop.application.foreground", handler.Submission.Track!.Type);
         Assert.Equal("range", handler.Submission.Track.TimeMode);
-        Assert.Equal("explicit", handler.Submission.Track.EndMode);
     }
 
     [Fact]

@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-import { accessToken } from "../e2e/fixtures";
+import { accessToken, desktopObject, deviceReference, appReference } from "../e2e/fixtures";
 
 /** One Collector, so a benchmark day looks like a single Mac reporting three Tracks. */
 const collector = {
@@ -20,7 +20,6 @@ function track(suffix: string, type: string, timeMode: "range" | "point") {
     type,
     version: 1,
     timeMode,
-    endMode: timeMode === "range" ? "explicit" : null,
     createdAt: "2026-09-01T00:00:00Z",
   };
 }
@@ -71,14 +70,12 @@ function recordId(lane: number, index: number): string {
     .padStart(10, "0")}`;
 }
 
-/** Anonymous application identities, so no real bundle id or window title reaches evidence. */
 function application(index: number) {
   const ordinal = (index + 1).toString().padStart(2, "0");
   return {
-    platform: "macos",
-    id_kind: "bundle_id",
-    id: `test.heartbeat.app${ordinal}`,
-    display_name: `应用 ${ordinal}`,
+    ...appReference(`test.heartbeat.app${ordinal}`),
+    id: recordId(3, index),
+    name: `应用 ${ordinal}`,
   };
 }
 
@@ -99,10 +96,8 @@ function applicationRecords(from: number, to: number, volume: DayVolume) {
     endedAt: new Date(segment.end).toISOString(),
     observedAt: null,
     receivedAt: new Date(segment.end).toISOString(),
-    value: {
-      device_id: collector.target,
-      application: application(Math.floor(segment.pick * volume.distinctApplications)),
-    },
+    value: {},
+    objects: [deviceReference, application(Math.floor(segment.pick * volume.distinctApplications))],
   }));
 }
 
@@ -113,8 +108,8 @@ function windowRecords(from: number, to: number, volume: DayVolume) {
     endedAt: new Date(segment.end).toISOString(),
     observedAt: null,
     receivedAt: new Date(segment.end).toISOString(),
+    objects: [deviceReference],
     value: {
-      device_id: collector.target,
       window: { title: `窗口 ${(index % 97) + 1}` },
     },
   }));
@@ -142,6 +137,14 @@ function inputBuckets(from: number, to: number, bucketSeconds: number, total: nu
  * browser clock instead of pinning a date the app would never ask for.
  */
 export async function perfRecordingRoutes(page: Page, volume: DayVolume) {
+  await page.route("**/api/v1/objects**", (route) =>
+    route.fulfill({
+      json:
+        new URL(route.request().url()).pathname === `/api/v1/objects/${desktopObject.id}`
+          ? desktopObject
+          : { objects: [desktopObject] },
+    }),
+  );
   await page.route("**/api/v1/tracks**", async (route) => {
     const url = new URL(route.request().url());
     if (route.request().headers().authorization !== `Bearer ${accessToken}`) {

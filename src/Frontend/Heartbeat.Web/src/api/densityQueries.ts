@@ -1,3 +1,4 @@
+import { useObjectScope } from "@/components/objects/ObjectScope";
 import { useMemo, useSyncExternalStore } from "react";
 import { matchQuery, useQueries, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { fetchPointCounts } from "./client";
@@ -43,11 +44,12 @@ export function usePointDensityTiles(
   bucketSeconds: number,
 ) {
   const client = useQueryClient();
+  const scope = useObjectScope();
   const from = bounds ? new Date(bounds.start).toISOString() : "";
   const to = bounds ? new Date(bounds.end).toISOString() : "";
   const prefix = useMemo(
-    () => queryKeys.densityWindow(ownerSubject, from, to),
-    [ownerSubject, from, to],
+    () => queryKeys.densityWindow(ownerSubject, from, to, scope),
+    [ownerSubject, from, to, scope],
   );
   const tiles = bounds && range ? densityTiles(range, bounds, bucketSeconds) : [];
   const queries = useQueries({
@@ -62,6 +64,7 @@ export function usePointDensityTiles(
             new Date(tile.end).toISOString(),
             bucketSeconds,
             signal,
+            scope,
           ),
         enabled: Boolean(accessToken),
         staleTime: Infinity,

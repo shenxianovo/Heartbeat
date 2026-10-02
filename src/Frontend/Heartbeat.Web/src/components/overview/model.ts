@@ -1,52 +1,36 @@
-import type { TimelineRecord, TrackSummary } from "@/api/types";
-import { summarizeDesktopApplication } from "@/components/records/renderers/DesktopApplicationForegroundV1";
-import { readLocation } from "@/components/vrchat/model";
+import type { TimelineRecord, ObservedObject } from "@/api/types";
 import {
   clipExplicitRange,
   coveredMilliseconds,
   type ObservationInterval,
 } from "@/lib/recording/intervals";
+import { objectKind, objectName } from "@/components/objects/model";
 
 export interface OverviewSource {
   id: string;
   name: string;
   label: string;
   kind: "vrchat" | "desktop" | "other";
-  track?: TrackSummary;
 }
-
-function source(tracks: TrackSummary[]): OverviewSource {
-  const first = tracks[0]!;
-  const supported = tracks.filter((track) => track.version === 1 && track.endMode === "explicit");
-  const location = supported.find((track) => track.type === "vrchat.location");
-  const application = supported.find((track) => track.type === "desktop.application.foreground");
-  if (location)
-    return {
-      id: first.collectorId,
-      name: first.collectorDisplayName,
-      label: "VRChat",
-      kind: "vrchat",
-      track: location,
-    };
-  return {
-    id: first.collectorId,
-    name: first.collectorDisplayName,
-    label: first.collectorDisplayName,
-    kind: application ? "desktop" : "other",
-    track: application,
-  };
+export function overviewSources(objects: ObservedObject[]): OverviewSource[] {
+  return objects
+    .filter(
+      (object) =>
+        object.roles.some((role) => role === "device" || role === "account") ||
+        !(object.namespace.startsWith("app.") || object.namespace.startsWith("vrchat.")),
+    )
+    .map((object) => ({
+      id: object.id,
+      name: objectName(object),
+      label: objectKind(object.namespace),
+      kind:
+        object.namespace === "device"
+          ? "desktop"
+          : object.namespace === "vrchat.account"
+            ? "vrchat"
+            : "other",
+    }));
 }
-
-export function overviewSources(tracks: TrackSummary[]): OverviewSource[] {
-  const grouped = new Map<string, TrackSummary[]>();
-  for (const track of tracks) {
-    const group = grouped.get(track.collectorId) ?? [];
-    group.push(track);
-    grouped.set(track.collectorId, group);
-  }
-  return [...grouped.values()].map(source);
-}
-
 export function summarizeSource(
   source: OverviewSource,
   records: TimelineRecord[],
@@ -55,21 +39,38 @@ export function summarizeSource(
 ) {
   const intervals: ObservationInterval[] = [];
   const subjects = new Set<string>();
-  let invalid = 0;
   for (const record of records) {
-    try {
-      const subject =
-        source.kind === "vrchat"
-          ? readLocation(record.value).world_id
-          : summarizeDesktopApplication(record.value).group!.id;
-      const interval = clipExplicitRange(record, from, to);
-      if (!interval) continue;
-      intervals.push(interval);
-      subjects.add(subject);
-    } catch {
-      invalid++;
-    }
+    const interval = clipExplicitRange(record, from, to);
+    if (!interval) continue;
+    intervals.push(interval);
+    for (const object of record.objects)
+      if (object.role === (source.kind === "vrchat" ? "world" : "application"))
+        subjects.add(object.id);
   }
-  // Only union overlapping observations within this Collector. Sources remain separate.
-  return { milliseconds: coveredMilliseconds(intervals), subjects: subjects.size, invalid };
+  return {
+    milliseconds: coveredMilliseconds(intervals),
+    subjects: subjects.size,
+    invalid: 0,
+    days: dailyDurations(intervals, from, to),
+  };
+}
+
+/** Calendar boundaries are local midnights, including short and long DST days. */
+function dailyDurations(intervals: ObservationInterval[], from: number, to: number) {
+  const days: { from: number; to: number; milliseconds: number }[] = [];
+  for (let start = from; start < to;) {
+    const midnight = new Date(start);
+    midnight.setHours(0, 0, 0, 0);
+    midnight.setDate(midnight.getDate() + 1);
+    const end = Math.min(midnight.getTime(), to);
+    const clipped = intervals
+      .filter((interval) => interval.from < end && interval.to > start)
+      .map((interval) => ({
+        from: Math.max(start, interval.from),
+        to: Math.min(end, interval.to),
+      }));
+    days.push({ from: start, to: end, milliseconds: coveredMilliseconds(clipped) });
+    start = end;
+  }
+  return days;
 }

@@ -65,19 +65,24 @@ export async function verifyReplay(
   expect(record).toBeDefined();
   expect(Date.parse(record.startedAt)).toBe(Date.parse(expected.record.startedAt));
   expect(Date.parse(record.endedAt)).toBe(Date.parse(expected.record.endedAt));
-  expect(record.value).toMatchObject({
-    device_id: expected.target,
-    application: {
-      platform: "macos",
-      id_kind: expected.applicationKind,
-      id: expected.applicationId,
-    },
-  });
+  expect(record.objects).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ role: "device", namespace: "device", key: expected.target }),
+      expect.objectContaining({
+        role: "application",
+        namespace: `app.macos.${expected.applicationKind}`,
+        key:
+          expected.applicationKind === "executable_path"
+            ? JSON.stringify([expected.target, expected.applicationId])
+            : expected.applicationId,
+      }),
+    ]),
+  );
 
   await progress("timeline-selection");
   await selectRecord(page, expected);
   const details = page.getByRole("region", { name: "所选记录详情" });
-  await expect(details).toContainText(expected.applicationId);
+  await expect(details).toContainText(expected.applicationName);
   await expect(details).toContainText(expected.target);
   await expect(details.getByText(expected.record.recordId, { exact: true })).toBeVisible();
   const formatter = new Intl.DateTimeFormat("zh-CN", {
@@ -110,6 +115,9 @@ async function selectRecord(page: Page, expected: ReplayWitness) {
     for (let index = 0; index < count; index++) {
       await lane.press("Enter");
       const details = page.getByRole("region", { name: "所选记录详情" });
+      const content = details.locator(".timeline-record-detail");
+      if ((await content.getAttribute("open")) === null)
+        await content.getByText("记录内容与原始详情", { exact: true }).click();
       const expand = details.getByRole("button", { name: "查看详情", exact: true });
       if (await expand.isVisible()) await expand.click();
       if (await details.getByText(expected.record.recordId, { exact: true }).isVisible()) return;

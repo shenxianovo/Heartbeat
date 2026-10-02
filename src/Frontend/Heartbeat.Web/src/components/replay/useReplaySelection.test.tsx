@@ -36,16 +36,12 @@ describe("useReplaySelection", () => {
     expect(result.current.following).toBe(true);
   });
 
-  it("clears detail when date, collector selection, or viewport changes", () => {
+  it("clears detail when date or viewport changes", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-18T12:00:00Z"));
     const { result } = renderHook(() => useReplaySelection());
 
     act(() => result.current.chooseDate(day));
-    act(() => result.current.setDetail(detail));
-    act(() => result.current.selectCollectors(["collector"]));
-    expect(result.current.detail).toBeNull();
-
     act(() => result.current.setDetail(detail));
     act(() =>
       result.current.setRange({
@@ -63,7 +59,7 @@ describe("useReplaySelection", () => {
   });
 
   it("steps whole days by one day and custom windows by their own span", () => {
-    const { result } = renderHook(() => useReplaySelection({ range: day, collectorId: null }));
+    const { result } = renderHook(() => useReplaySelection({ range: day }));
     act(() => result.current.stepDay(1));
     expect(result.current.chosen).toEqual(otherDay);
     expect(result.current.custom).toBe(false);

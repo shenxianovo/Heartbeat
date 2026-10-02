@@ -4,11 +4,16 @@
 
 本文档是 `Timeline -> Collector -> Track -> Record` 持久模型及其不变量的权威来源。HTTP 契约见[记录接口](recording-api.md)。
 
+公共对象引用见 [对象契约](record-objects.md) 和 [ADR-0029](adr/ADR-0029-record-object-references.md)。
+
 ```mermaid
 erDiagram
     TIMELINE ||--o{ COLLECTOR : contains
     COLLECTOR ||--o{ TRACK : contains
     TRACK ||--o{ RECORD : contains
+    TIMELINE ||--o{ OBJECT : identifies
+    RECORD ||--o{ RECORD_OBJECT : references
+    OBJECT ||--o{ RECORD_OBJECT : appears_in
 ```
 
 所有 ID 均为应用生成的 UUID v7。外键使用限制删除，不级联清除下层数据。
@@ -58,16 +63,14 @@ Heartbeat 不解释 Target 的格式。Collector 不表示安装、进程、凭�
 | `type` | `text` | 全局数据协议名 |
 | `version` | `integer` | 正整数 Payload 版本 |
 | `time_mode` | `text` | `point` 或 `range` |
-| `end_mode` | `text` | Point 为空；Range 为 `explicit` 或 `next_record` |
 | `created_at` | `timestamptz` | 应用创建时间，不可修改 |
 
 唯一约束为 `(collector_id, type, version)`。已有 Track 的时间定义不能修改。
 
 Payload 解码只依赖 `(type, version)`，不依赖 Collector。后端不维护协议注册表，也不解释或校验具体 Payload。
 
-- `range + explicit` 的结束时间由本条 Record 给出。
-- `range + next_record` 的结束时间由下一条 Record 的开始时间动态推导，不回写前一条 Record。
-- 同一 Track 可以包含多个观测对象和重叠的 Explicit Range。
+- `range` 的结束时间由本条 Record 给出。
+- 同一 Track 可以包含多个观测对象和重叠的 Range。
 - Track 不保存展示名、metadata 或 `updated_at`。
 
 ## Record
@@ -79,25 +82,32 @@ Payload 解码只依赖 `(type, version)`，不依赖 Collector。后端不维�
 | `id` | `uuid` | Collector 生成；续期和重试复用 |
 | `track_id` | `uuid` | 指向 Track，不可修改 |
 | `started_at` | `timestamptz` | 时间点或区间开始 |
-| `ended_at` | `timestamptz` | 仅 `range + explicit` 使用，且不早于开始时间 |
+| `ended_at` | `timestamptz` | 仅 `range` 使用，且不早于开始时间 |
 | `observed_at` | `timestamptz` | Collector 获得信息的时间；空表示等于 `started_at` |
 | `received_at` | `timestamptz` | 后端首次成功接收时间 |
 | `value` | `jsonb` | 协议定义的任意 JSON 值 |
+| `objects` | `jsonb` | 规范化后的原生对象引用与历史名称快照，非空数组 |
 
 后端按所属 Track 验证 `ended_at` 的形状。Record 不冗余时间模式，也不保存通用 `sequence`、`source_key`、原始 Payload 或 metadata。需要来源信息或上游序号时，由具体协议写入 `value`。
 
-默认稳定顺序为 `(track_id, started_at, id)`，初始索引也只覆盖这三列。其他索引在出现实际查询需求后增加。
+默认稳定顺序为 `(track_id, started_at, id)`，Record 时间索引覆盖这三列；对象查询通过下述关联索引定位。
 
-平台原生应用标识保存在协议 value 中，跨平台 Application Identity 由读取或分析阶段解析，不改写历史 Record。
+## 对象与关联
+
+`objects` 保存 `id`（UUID）、`timeline_id`、`identity_namespace`（128）、`identity_key`（512）、可空 `name`（512）、`name_observed_at`、`name_record_id`。唯一索引为 `(timeline_id, identity_namespace, identity_key)`。一行先代表一个原生身份。
+
+`record_objects` 保存 `record_id`、`object_id`、`role`（64），三列联合主键；反向索引 `(object_id, record_id)` 支持直接对象查询。同一 Record 可以在不同对象视图出现，无须复制。
+
+Record 写入、对象发现、最新名称及关联在同一 SQL 原子完成；冲突或无权写入时不产生对象副作用。`records.objects` 是观测声明权威，关联表和最新名称只是其查询投影。名称比较和规范化规则见对象契约。
 
 ## 持续区间续期
 
-[ADR-0002](adr/ADR-0002-monotonic-record-extension.md) 规定 `range + explicit` 的持续状态按以下规则续期：
+[ADR-0002](adr/ADR-0002-monotonic-record-extension.md) 规定 `range` 的持续状态按以下规则续期：
 
 - 首次确认创建 Record；状态不变且持续确认时复用 ID，只延长 `ended_at`。
 - 状态变化、断采、重启或能力丢失后创建新 Record；值相同不能跨 Observation Gap 连接。
 - 数据库原子执行 `ended_at = max(已有值, 收到值)`。
-- 同一 ID 的 `track_id`、`started_at`、规范化后的 `observed_at`、`value` 和时间形状必须一致。
+- 同一 ID 的 `track_id`、`started_at`、规范化后的 `observed_at`、`value`、`objects` 和时间形状必须一致。
 - JSON 对象属性顺序和空白差异不构成 value 冲突。
 - 重试和续期保留首次 `received_at`。
 
@@ -109,10 +119,10 @@ Collector 保存尚未交给 Hub 的快照；Hub 在 SQLite 事务提交后接�
 
 ## Device Identity
 
-[ADR-0003](adr/ADR-0003-device-identity-across-reinstallation.md) 规定 Device Identity 跨系统重装保留，并允许用户手动重新关联。该决定尚未实现，也不改变当前四张表。
+[ADR-0003](adr/ADR-0003-device-identity-across-reinstallation.md) 规定 Device Identity 跨系统重装保留，并允许用户手动重新关联。跨重装及手动关联机制尚未实现。
 
-当前由具体协议在 `value` 中携带设备标识。macOS Collector 暂以 Target 作为 `device_id`，不表示 Device Identity 注册表已经实现。
+当前 macOS Collector 通过公共 objects 的 device 引用携带配置 Target。多个 Collector 共用该原生身份即可进入同一设备页；对象表不等于设备重装身份恢复机制。
 
 ## 未决事项
 
-TTL、`range + next_record`、结果更正、时钟异常、交接前数据保护和设备关联见[未决设计](recording-open-questions.md)。
+TTL、结果更正、时钟异常、交接前数据保护和设备关联见[未决设计](recording-open-questions.md)。

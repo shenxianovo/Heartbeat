@@ -11,14 +11,8 @@ internal sealed class PostgresPointRecordCountStore(HeartbeatDbContext dbContext
         CountPointRecordsQuery query,
         CancellationToken cancellationToken = default)
     {
-        var track = await (
-            from candidate in dbContext.Tracks.AsNoTracking()
-            join collector in dbContext.Collectors.AsNoTracking() on candidate.CollectorId equals collector.Id
-            join timeline in dbContext.Timelines.AsNoTracking() on collector.TimelineId equals timeline.Id
-            where candidate.Id == query.TrackId && timeline.OwnerId == ownerId
-            select new ReplayedTrack(candidate.Id, candidate.CollectorId, candidate.Type,
-                candidate.Version, candidate.TimeMode, candidate.EndMode))
-            .SingleOrDefaultAsync(cancellationToken);
+        var track = await ObjectQueries.FindTrackAsync(dbContext, ownerId, query.TrackId, cancellationToken);
+
         if (track is null)
         {
             return null;
@@ -42,8 +36,11 @@ internal sealed class PostgresPointRecordCountStore(HeartbeatDbContext dbContext
                 """
                 SELECT floor(extract(epoch FROM (started_at - @from)) / @bucket_seconds)::integer,
                        count(*)::bigint
-                FROM records
+                FROM records r
                 WHERE track_id = @track_id AND started_at >= @from AND started_at < @to
+                  AND (@object_id IS NULL OR EXISTS (SELECT 1 FROM record_objects o WHERE o.record_id = r.id AND o.object_id = @object_id))
+                  AND NOT EXISTS (SELECT 1 FROM unnest(@context_ids::uuid[]) AS context(id)
+                      WHERE NOT EXISTS (SELECT 1 FROM record_objects o WHERE o.record_id = r.id AND o.object_id = context.id))
                 GROUP BY 1
                 ORDER BY 1
                 """;
@@ -51,6 +48,8 @@ internal sealed class PostgresPointRecordCountStore(HeartbeatDbContext dbContext
             AddParameter(command, "from", query.From);
             AddParameter(command, "to", query.To);
             AddParameter(command, "bucket_seconds", query.BucketSeconds);
+            AddParameter(command, "object_id", query.ObjectId);
+            AddParameter(command, "context_ids", query.ContextObjectIds?.ToArray() ?? Array.Empty<Guid>());
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
@@ -75,11 +74,12 @@ internal sealed class PostgresPointRecordCountStore(HeartbeatDbContext dbContext
         return new PointRecordCounts(track, query.From, query.To, query.BucketSeconds, buckets);
     }
 
-    private static void AddParameter(System.Data.Common.DbCommand command, string name, object value)
+    private static void AddParameter(System.Data.Common.DbCommand command, string name, object? value)
     {
         var parameter = command.CreateParameter();
         parameter.ParameterName = name;
-        parameter.Value = value;
+        parameter.Value = value ?? DBNull.Value;
+        if (name == "object_id") parameter.DbType = DbType.Guid;
         command.Parameters.Add(parameter);
     }
 }

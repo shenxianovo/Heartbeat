@@ -1,5 +1,8 @@
 "use client";
 
+import Link from "next/link";
+import { relatedObjectHref } from "@/components/objects/model";
+import { useObjectScope, useObjectRange } from "@/components/objects/ObjectScope";
 import { useState } from "react";
 
 import type { TimelineRecord, TrackReference } from "@/api/types";
@@ -13,6 +16,8 @@ interface RecordCardProps {
 }
 
 export function RecordCard({ record, track }: RecordCardProps) {
+  const scope = useObjectScope();
+  const range = useObjectRange();
   const [expanded, setExpanded] = useState(false);
   const duration = formatDuration(record.startedAt, record.endedAt);
 
@@ -39,8 +44,23 @@ export function RecordCard({ record, track }: RecordCardProps) {
           </span>
         </div>
 
-        <RecordValue type={track.type} version={track.version} value={record.value} />
+        <RecordValue
+          type={track.type}
+          version={track.version}
+          value={record.value}
+          objects={record.objects}
+        />
 
+        <div className="record-objects">
+          {record.objects.map((object) => (
+            <Link
+              key={`${object.role}/${object.id}`}
+              href={relatedObjectHref(object.id, range, scope)}
+            >
+              {object.name || object.key}
+            </Link>
+          ))}
+        </div>
         <button
           className="detail-toggle"
           type="button"
@@ -69,7 +89,7 @@ export function RecordCard({ record, track }: RecordCardProps) {
             </dl>
             <div className="raw-json">
               <span>原始 JSON</span>
-              <pre>{stringifyJson(record.value)}</pre>
+              <pre>{stringifyJson({ objects: record.objects, value: record.value })}</pre>
             </div>
           </div>
         ) : null}

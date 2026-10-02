@@ -22,6 +22,8 @@ public static class TrackEndpoints
     private static async Task<IResult> ListAsync(
         ClaimsPrincipal principal,
         IListTracks listTracks,
+        Guid? objectId,
+        [Microsoft.AspNetCore.Mvc.FromQuery] Guid[]? contextObjectIds,
         CancellationToken cancellationToken)
     {
         if (!OwnerClaims.TryGetOwnerId(principal, out var ownerId))
@@ -29,7 +31,7 @@ public static class TrackEndpoints
             return Results.Unauthorized();
         }
 
-        var tracks = await listTracks.ExecuteAsync(ownerId, cancellationToken);
+        var tracks = await listTracks.ExecuteAsync(ownerId, objectId, contextObjectIds, cancellationToken);
         return Results.Ok(new { tracks = tracks.Select(ToResponse) });
     }
 
@@ -53,8 +55,7 @@ public static class TrackEndpoints
                     collectorId,
                     request.Type,
                     request.Version,
-                    ParseTimeMode(request.TimeMode),
-                    ParseEndMode(request.EndMode)),
+                    ParseTimeMode(request.TimeMode)),
                 cancellationToken);
         }
         catch (ArgumentException exception)
@@ -89,13 +90,6 @@ public static class TrackEndpoints
             TimeMode.Range => "range",
             _ => throw new InvalidOperationException("Unknown track time mode."),
         },
-        track.EndMode switch
-        {
-            null => null,
-            EndMode.Explicit => "explicit",
-            EndMode.NextRecord => "next_record",
-            _ => throw new InvalidOperationException("Unknown track end mode."),
-        },
         track.CreatedAt);
 
     private static TrackCatalogResponse ToResponse(ListedTrack track) => new(
@@ -107,7 +101,6 @@ public static class TrackEndpoints
         track.Type,
         track.Version,
         ToResponse(track.TimeMode),
-        ToResponse(track.EndMode),
         track.CreatedAt);
 
     private static string ToResponse(TimeMode timeMode) => timeMode switch
@@ -117,14 +110,6 @@ public static class TrackEndpoints
         _ => throw new InvalidOperationException("Unknown track time mode."),
     };
 
-    private static string? ToResponse(EndMode? endMode) => endMode switch
-    {
-        null => null,
-        EndMode.Explicit => "explicit",
-        EndMode.NextRecord => "next_record",
-        _ => throw new InvalidOperationException("Unknown track end mode."),
-    };
-
     private static TimeMode ParseTimeMode(string? value) => value switch
     {
         "point" => TimeMode.Point,
@@ -132,20 +117,11 @@ public static class TrackEndpoints
         _ => throw new ArgumentException("Time mode must be 'point' or 'range'.", nameof(value)),
     };
 
-    private static EndMode? ParseEndMode(string? value) => value switch
-    {
-        null => null,
-        "explicit" => EndMode.Explicit,
-        "next_record" => EndMode.NextRecord,
-        _ => throw new ArgumentException("End mode must be 'explicit' or 'next_record'.", nameof(value)),
-    };
-
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
     private sealed record ResolveTrackRequest(
         string? Type,
         int Version,
-        string? TimeMode,
-        string? EndMode);
+        string? TimeMode);
 
     private sealed record ResolveTrackResponse(
         Guid Id,
@@ -153,7 +129,6 @@ public static class TrackEndpoints
         string Type,
         int Version,
         string TimeMode,
-        string? EndMode,
         DateTimeOffset CreatedAt);
 
     private sealed record TrackCatalogResponse(
@@ -165,6 +140,5 @@ public static class TrackEndpoints
         string Type,
         int Version,
         string TimeMode,
-        string? EndMode,
         DateTimeOffset CreatedAt);
 }

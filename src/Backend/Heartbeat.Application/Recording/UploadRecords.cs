@@ -1,3 +1,4 @@
+using Heartbeat.Contracts;
 using System.Text.Json;
 using RecordingRecord = Heartbeat.Recording.Record;
 
@@ -8,7 +9,10 @@ public sealed record RecordUpload(
     DateTimeOffset? StartedAt,
     DateTimeOffset? EndedAt,
     DateTimeOffset? ObservedAt,
-    JsonElement Value);
+    JsonElement Value)
+{
+    public IReadOnlyList<ObjectReference> Objects { get; init; } = [];
+}
 
 public sealed record UploadRecordsCommand(Guid TrackId, IReadOnlyList<RecordUpload?>? Records);
 
@@ -92,8 +96,9 @@ public sealed class UploadRecords(
                     throw new ArgumentException("A record with a start time is required.", nameof(command));
                 }
 
+                ArgumentNullException.ThrowIfNull(upload.Objects);
                 record = RecordingRecord.Create(upload.Id, track, upload.StartedAt.Value,
-                    upload.EndedAt, upload.ObservedAt, receivedAt, upload.Value);
+                    upload.EndedAt, upload.ObservedAt, receivedAt, upload.Value, upload.Objects);
             }
             catch (ArgumentException exception)
             {

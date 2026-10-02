@@ -12,7 +12,7 @@ export interface RangeItem {
  * Bar geometry in CSS pixels, shared by the plot, hit testing and the lane height.
  * `minWidth` keeps a one-second observation visible at any zoom.
  */
-export const rowGeometry = { top: 8, pitch: 28, bar: 20, bottom: 12, minWidth: 2 };
+export const rowGeometry = { top: 6, pitch: 26, bar: 18, bottom: 10, minWidth: 2 };
 
 export function rowTop(row: number): number {
   return rowGeometry.top + row * rowGeometry.pitch;

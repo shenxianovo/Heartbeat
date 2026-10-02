@@ -34,7 +34,7 @@ public sealed class VRChatCollectorTests
             Assert.Equal("running", Assert.Single(manager.Collectors).State);
             var record = Assert.Single(queue.TakePending());
             Assert.Equal(Account, record.Route.Collector.Target);
-            Assert.Equal("wrld_test", record.Record.Value.GetProperty("world_id").GetString());
+            Assert.Equal("wrld_test", record.Record.Objects.Single(reference => reference.Role == "world").Key);
             Assert.Equal("session", storage.Secrets.Read($"vrchat:{Account}:session"));
             var saved = File.ReadAllText(Path.Combine(host.Directory.FullName, "collectors.json"));
             Assert.DoesNotContain("private-password", saved);

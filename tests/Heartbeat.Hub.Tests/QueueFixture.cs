@@ -19,17 +19,14 @@ public sealed class QueueFixture : IDisposable
     public static RecordSnapshot Snapshot(Guid? id = null, int minutes = 1) => new(
         id ?? Guid.CreateVersion7(), DateTimeOffset.Parse("2026-09-12T10:00:00Z", System.Globalization.CultureInfo.InvariantCulture),
         DateTimeOffset.Parse("2026-09-12T10:00:00Z", System.Globalization.CultureInfo.InvariantCulture).AddMinutes(minutes), null,
-        JsonSerializer.SerializeToElement(new
-        {
-            device_id = "device-a",
-            application = new { platform = "macos", id_kind = "bundle_id", id = "com.apple.finder" },
-        }));
+        JsonSerializer.SerializeToElement(new { }))
+        { Objects = [new("application", "app.macos.bundle_id", "com.apple.finder"), new("device", "device", "device-a")] };
 
     public static CollectorDeclaration Collector(string displayName = "Test Mac") =>
         new("heartbeat.collector.desktop.macos", "device-a", displayName);
 
     public static TrackDeclaration Track() =>
-        new("desktop.application.foreground", 1, "range", "explicit");
+        new("desktop.application.foreground", 1, "range");
 
     public static HubSubmission Submission(params RecordSnapshot[] records) =>
         new(Collector(), Track(), records);

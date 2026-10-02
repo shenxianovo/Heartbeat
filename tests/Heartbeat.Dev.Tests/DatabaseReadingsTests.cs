@@ -7,12 +7,12 @@ public sealed class DatabaseReadingsTests
     private static readonly DateTimeOffset Noon = new(2026, 9, 16, 4, 33, 0, TimeSpan.Zero);
 
     [Fact]
-    public void AsksForBothTheCurrentAndTheLegacyShapeOfTheTitle()
+    public void ReadsWindowIdentityFromItsExplicitObjectReference()
     {
         var query = DatabaseReadings.Query(new DatabaseWindow(Noon, Noon.AddMinutes(17)));
 
         Assert.Contains("'desktop.window.foreground'", query, StringComparison.Ordinal);
-        Assert.Contains("r.value ? 'window'", query, StringComparison.Ordinal);
+        Assert.Contains("jsonb_array_elements(w.objects)", query, StringComparison.Ordinal);
         Assert.Contains("timestamptz '2026-09-16 04:33:00.000000+00'", query, StringComparison.Ordinal);
         Assert.Contains("timestamptz '2026-09-16 04:50:00.000000+00'", query, StringComparison.Ordinal);
     }

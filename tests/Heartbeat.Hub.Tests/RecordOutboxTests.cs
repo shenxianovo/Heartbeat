@@ -83,7 +83,7 @@ public sealed class RecordOutboxTests : IDisposable
         Assert.Throws<RecordConflictException>(() => queue.Accept(QueueFixture.Submission(QueueFixture.Snapshot(), conflict)));
         Assert.Equal(new QueueStatus(1, 0), _fixture.Open().Status());
         Assert.Throws<RecordConflictException>(() => queue.Accept(new HubSubmission(
-            QueueFixture.Collector(), new TrackDeclaration("other.data", 1, "range", "explicit"), [existing])));
+            QueueFixture.Collector(), new TrackDeclaration("other.data", 1, "range"), [existing])));
     }
 
     [Fact]
@@ -163,7 +163,7 @@ public sealed class RecordOutboxTests : IDisposable
         queue.Accept(QueueFixture.Submission(Enumerable.Range(0, 500).Select(_ => QueueFixture.Snapshot()).ToArray()));
         var later = QueueFixture.Snapshot();
         queue.Accept(new HubSubmission(QueueFixture.Collector(),
-            new TrackDeclaration("other.data", 1, "range", "explicit"), [later]));
+            new TrackDeclaration("other.data", 1, "range"), [later]));
         var first = queue.TakePending();
         var second = queue.TakePending();
         Assert.Equal(500, first.Count);
@@ -181,7 +181,7 @@ public sealed class RecordOutboxTests : IDisposable
         };
 
         queue.Accept(new HubSubmission(QueueFixture.Collector(),
-            new TrackDeclaration("example.unknown", 7, "point", null), [point]));
+            new TrackDeclaration("example.unknown", 7, "point"), [point]));
 
         var pending = Assert.Single(_fixture.Open().TakePending());
         Assert.Equal("example.unknown", pending.Route.Track.Type);

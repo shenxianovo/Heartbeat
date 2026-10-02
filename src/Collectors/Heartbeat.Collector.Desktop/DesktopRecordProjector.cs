@@ -1,3 +1,5 @@
+using Heartbeat.Contracts;
+using System.Text.Json;
 using Heartbeat.Hub;
 
 namespace Heartbeat.Collector.Desktop;
@@ -24,6 +26,14 @@ internal sealed class DesktopRecordProjector(
     private string? _windowValue;
     private PendingTitle? _pendingTitle;
     private DateTimeOffset? _lastActivityConfirmation;
+
+    private ForegroundApplication? _windowApplication;
+    private ObjectReference DeviceObject() => new("device", "device", target, displayName);
+    private ObjectReference ApplicationObject(ForegroundApplication application) => new("application",
+        $"app.{application.Platform}.{application.IdKind}",
+        application.IdKind == "executable_path"
+            ? JsonSerializer.Serialize(new[] { target, application.Id }) : application.Id,
+        application.DisplayName);
 
     public void Apply(DesktopObservation observation, DateTimeOffset at)
     {
@@ -116,6 +126,7 @@ internal sealed class DesktopRecordProjector(
             ExtendWindow(at);
             _pendingTitle = null;
             _window = CurrentRange.Start(at);
+            _windowApplication = _applicationValue;
             _windowValue = title;
             ExtendWindow(at);
             return;
@@ -168,7 +179,7 @@ internal sealed class DesktopRecordProjector(
         BreakActivityAt(at);
         var range = CurrentRange.Start(at);
         _away.Add(reason, range);
-        StageRange(DesktopProtocols.Away, range, at, DesktopProtocols.AwayValue(target, reason));
+        StageRange(DesktopProtocols.Away, range, at, DesktopProtocols.AwayValue(reason));
     }
 
     private void ExitAway(DesktopAwayReason reason, DesktopActivitySample? current, DateTimeOffset at)
@@ -178,7 +189,7 @@ internal sealed class DesktopRecordProjector(
             return;
         }
 
-        StageRange(DesktopProtocols.Away, range, at, DesktopProtocols.AwayValue(target, reason));
+        StageRange(DesktopProtocols.Away, range, at, DesktopProtocols.AwayValue(reason));
         if (_away.Count == 0)
         {
             ObserveActivity(current, at);
@@ -202,26 +213,26 @@ internal sealed class DesktopRecordProjector(
 
         var id = Guid.CreateVersion7(at);
         stage(Route(DesktopProtocols.Input), new RecordSnapshot(
-            id, at, null, null, DesktopProtocols.InputValue(target, input)));
+            id, at, null, null, DesktopProtocols.InputValue(input)) { Objects = [DeviceObject()] });
     }
 
     private void ObserveCapability(CapabilityObservation value, DateTimeOffset at)
     {
         if (_statuses.TryGetValue(value.Capability, out var current) && current.Value == value)
         {
-            StageRange(DesktopProtocols.ObservationStatus, current.Range, at, DesktopProtocols.StatusValue(target, value));
+            StageRange(DesktopProtocols.ObservationStatus, current.Range, at, DesktopProtocols.StatusValue(value));
             return;
         }
 
         if (current.Value is not null)
         {
             StageRange(DesktopProtocols.ObservationStatus, current.Range, at,
-                DesktopProtocols.StatusValue(target, current.Value));
+                DesktopProtocols.StatusValue(current.Value));
         }
 
         var next = CurrentRange.Start(at);
         _statuses[value.Capability] = (value, next);
-        StageRange(DesktopProtocols.ObservationStatus, next, at, DesktopProtocols.StatusValue(target, value));
+        StageRange(DesktopProtocols.ObservationStatus, next, at, DesktopProtocols.StatusValue(value));
 
         if (value.State == ObservationState.Available)
         {
@@ -251,7 +262,7 @@ internal sealed class DesktopRecordProjector(
             return;
         }
 
-        StageRange(DesktopProtocols.Application, range, at, DesktopProtocols.ApplicationValue(target, value));
+        StageRange(DesktopProtocols.Application, range, at, DesktopProtocols.ApplicationValue(), [DeviceObject(), ApplicationObject(value)]);
     }
 
     private void ExtendWindow(DateTimeOffset at)
@@ -261,7 +272,8 @@ internal sealed class DesktopRecordProjector(
             return;
         }
 
-        StageRange(DesktopProtocols.Window, range, at, DesktopProtocols.WindowValue(target, title));
+        StageRange(DesktopProtocols.Window, range, at, DesktopProtocols.WindowValue(title), _windowApplication is { } application
+            ? [DeviceObject(), ApplicationObject(application)] : [DeviceObject()]);
     }
 
     private void BreakActivityAt(DateTimeOffset at)
@@ -302,8 +314,9 @@ internal sealed class DesktopRecordProjector(
         return elapsed >= TimeSpan.Zero && elapsed <= maximumConfirmationGap;
     }
 
-    private void StageRange(TrackDeclaration track, CurrentRange range, DateTimeOffset endedAt, System.Text.Json.JsonElement value) =>
-        stage(Route(track), new RecordSnapshot(range.Id, range.StartedAt, endedAt, null, value));
+    private void StageRange(TrackDeclaration track, CurrentRange range, DateTimeOffset endedAt, JsonElement value, ObjectReference[]? objects = null) =>
+        stage(Route(track), new RecordSnapshot(range.Id, range.StartedAt, endedAt, null, value)
+        { Objects = objects ?? [DeviceObject()] });
 
     private SubmissionRoute Route(TrackDeclaration track) => new(_collector, track);
 

@@ -43,13 +43,7 @@ export function RecordsPanel({ query, selectedTrack }: RecordsPanelProps) {
   const track = pages[0]?.track ?? selectedTrack;
 
   if (records.length === 0) {
-    return (
-      <QueryState
-        eyebrow="没有记录"
-        title="没有可用记录"
-        description="当前 Track 在所选时间范围内没有已存记录；这不代表没有活动，可以调整时间后再查看。"
-      />
-    );
+    return <QueryState eyebrow="没有记录" title="没有可用记录" description="试试其他时间范围。" />;
   }
 
   return (

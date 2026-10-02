@@ -74,7 +74,7 @@ public sealed class PointRecordCountsHttpTests(PostgresFixture fixture) : Postgr
             $"device-{Guid.NewGuid():N}", "Mac", From);
         var track = Track.Create(collector.Id,
             timeMode == TimeMode.Point ? "desktop.input.event" : "desktop.system.away",
-            1, timeMode, timeMode == TimeMode.Point ? null : EndMode.Explicit, From);
+            1, timeMode, From);
         db.Collectors.Add(collector);
         db.Tracks.Add(track);
         using var value = JsonDocument.Parse("""{"device_id":"device-a"}""");

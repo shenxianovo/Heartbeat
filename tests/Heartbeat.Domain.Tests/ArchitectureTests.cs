@@ -15,13 +15,16 @@ public sealed class ArchitectureTests
     }
 
     [Fact]
-    public void DomainDoesNotDependOnOtherHeartbeatLayers()
+    public void DomainOnlyDependsOnSharedContracts()
     {
         var references = typeof(Heartbeat.Recording.Record).Assembly.GetReferencedAssemblies();
         Assert.DoesNotContain(references, reference =>
-            reference.Name?.StartsWith("Heartbeat.", StringComparison.Ordinal) == true);
+            reference.Name?.StartsWith("Heartbeat.", StringComparison.Ordinal) == true && reference.Name != "Heartbeat.Contracts");
         var project = XDocument.Load(Path.Combine(RepositoryRoot(), "src", "Backend", "Heartbeat.Domain", "Heartbeat.Domain.csproj"));
-        Assert.Empty(project.Descendants("ProjectReference"));
+        Assert.All(project.Descendants("ProjectReference"), reference =>
+            Assert.Equal("../../Contracts/Heartbeat.Contracts/Heartbeat.Contracts.csproj", reference.Attribute("Include")!.Value));
+        var contracts = XDocument.Load(Path.Combine(RepositoryRoot(), "src", "Contracts", "Heartbeat.Contracts", "Heartbeat.Contracts.csproj"));
+        Assert.Empty(contracts.Descendants("ProjectReference"));
     }
 
     [Fact]

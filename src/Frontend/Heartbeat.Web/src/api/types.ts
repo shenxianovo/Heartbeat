@@ -1,5 +1,23 @@
+export interface ObjectScope {
+  objectId?: string;
+  contextObjectIds?: string[];
+}
+export interface ObservedObject {
+  id: string;
+  namespace: string;
+  key: string;
+  name: string | null;
+  roles: string[];
+}
+export interface RecordObject {
+  id: string;
+  role: string;
+  namespace: string;
+  key: string;
+  name: string | null;
+}
+
 export type TimeMode = "point" | "range";
-export type EndMode = "explicit" | "next_record" | null;
 
 export interface TrackSummary {
   id: string;
@@ -10,7 +28,6 @@ export interface TrackSummary {
   type: string;
   version: number;
   timeMode: TimeMode;
-  endMode: EndMode;
   createdAt: string;
 }
 
@@ -20,7 +37,6 @@ export interface TrackReference {
   type: string;
   version: number;
   timeMode: TimeMode;
-  endMode: EndMode;
 }
 
 export interface TimelineRecord {
@@ -30,6 +46,7 @@ export interface TimelineRecord {
   observedAt: string | null;
   receivedAt: string;
   value: unknown;
+  objects: RecordObject[];
 }
 
 export interface TracksResponse {
@@ -42,7 +59,7 @@ export interface RecordsResponse {
   nextCursor: string | null;
 }
 
-export interface RecordsQuery {
+export interface RecordsQuery extends ObjectScope {
   trackId: string;
   from: string;
   to: string;

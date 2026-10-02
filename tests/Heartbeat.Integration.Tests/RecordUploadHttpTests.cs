@@ -1,3 +1,4 @@
+using Heartbeat.Contracts;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -27,7 +28,7 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
         using var client = factory.CreateClient();
         var collectorId = await RegisterAsync(client, ownerId);
         using var resolution = await ResolveAsync(client, ownerId, collectorId,
-            new { type = "custom.sensor.sample", version = 37, timeMode = "point", endMode = (string?)null });
+            new { type = "custom.sensor.sample", version = 37, timeMode = "point" });
         resolution.EnsureSuccessStatusCode();
         using var resolved = JsonDocument.Parse(await resolution.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken));
         var trackId = resolved.RootElement.GetProperty("id").GetGuid();
@@ -36,7 +37,7 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
 
         using var uploaded = await UploadAsync(client, ownerId, trackId, new
         {
-            records = new[] { new { id = recordId, startedAt = StartedAt, value } },
+            records = new[] { new { id = recordId, startedAt = StartedAt, objects = Array.Empty<object>(), value } },
         });
         uploaded.EnsureSuccessStatusCode();
         using var replayed = await GetRecordsAsync(client, ownerId, trackId);
@@ -47,7 +48,6 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
         Assert.Equal("custom.sensor.sample", track.GetProperty("type").GetString());
         Assert.Equal(37, track.GetProperty("version").GetInt32());
         Assert.Equal("point", track.GetProperty("timeMode").GetString());
-        Assert.Equal(JsonValueKind.Null, track.GetProperty("endMode").ValueKind);
         var record = Assert.Single(replay.RootElement.GetProperty("records").EnumerateArray());
         Assert.Equal(recordId, record.GetProperty("id").GetGuid());
         Assert.Equal(JsonValueKind.Null, record.GetProperty("endedAt").ValueKind);
@@ -81,7 +81,7 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
         Assert.All(records, record => Assert.Equal(trackId, record.TrackId));
         Assert.All(records, record => Assert.Equal(Now, record.ReceivedAt));
         Assert.All(records, record => Assert.Null(record.ObservedAt));
-        Assert.Equal("com.apple.finder", records[1].Value.GetProperty("application").GetProperty("id").GetString());
+        Assert.Equal("com.apple.finder", records[1].Objects.Single(item => item.Role == "application").Key);
     }
 
     [Fact]
@@ -136,7 +136,7 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
             {
                 Entry(firstId, 1),
                 Entry(firstId, 5, "different.application"),
-                new { id = Guid.CreateVersion7(), endedAt = Now, value = Value() },
+                new { id = Guid.CreateVersion7(), endedAt = Now, objects = Array.Empty<object>(), value = Value() },
                 null,
                 Entry(secondId, 2),
             },
@@ -208,6 +208,7 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
             ["startedAt"] = StartedAt,
             ["endedAt"] = invalidField == "end" ? null : invalidField == "backwards" ? StartedAt.AddSeconds(-1) : Now,
             ["value"] = Value(),
+            ["objects"] = Array.Empty<object>(),
         };
 
         using var response = await UploadAsync(client, ownerId, trackId, new { records = new[] { entry } });
@@ -283,7 +284,7 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
             records = new object[]
             {
                 Entry(Guid.CreateVersion7(), 1),
-                new { id = Guid.CreateVersion7(), startedAt = StartedAt, endedAt = Now, value = Value(), receivedAt = Now.AddDays(-1) },
+                new { id = Guid.CreateVersion7(), startedAt = StartedAt, endedAt = Now, objects = Array.Empty<object>(), value = Value(), receivedAt = Now.AddDays(-1) },
             },
         });
 
@@ -310,20 +311,17 @@ public sealed class RecordUploadHttpTests(PostgresFixture fixture) : PostgresTes
         startedAt = StartedAt,
         endedAt = StartedAt.AddMinutes(minutes),
         observedAt = StartedAt,
-        value = Value(application),
+        objects = new ObjectReference[] { new("device", "device", "device-a"), new("application", "app.macos.bundle_id", application) },
+        value = Value(),
     };
 
-    private static object Value(string application = "com.google.Chrome") => new
-    {
-        device_id = "device-a",
-        application = new { platform = "macos", id_kind = "bundle_id", id = application },
-    };
+    private static object Value() => new { };
 
     private static async Task<Guid> RegisterAndResolveAsync(HttpClient client, Guid ownerId)
     {
         var collectorId = await RegisterAsync(client, ownerId);
         using var resolved = await ResolveAsync(client, ownerId, collectorId,
-            new { type = "desktop.application.foreground", version = 1, timeMode = "range", endMode = "explicit" });
+            new { type = "desktop.application.foreground", version = 1, timeMode = "range" });
         resolved.EnsureSuccessStatusCode();
         using var track = JsonDocument.Parse(await resolved.Content.ReadAsStringAsync());
         return track.RootElement.GetProperty("id").GetGuid();

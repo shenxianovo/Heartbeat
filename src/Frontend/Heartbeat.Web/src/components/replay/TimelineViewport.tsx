@@ -7,7 +7,7 @@ import { Icon } from "@/components/ui/Icon";
 import { TooltipLayer } from "@/components/ui/Tooltip";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import type { ReplayLane } from "@/api/types";
-import { RecordCard } from "@/components/records/RecordCard";
+import { SelectedRecord } from "./SelectedRecord";
 import { describeRecord } from "@/components/records/renderers/registry";
 import { ActivityOverview } from "./ActivityOverview";
 import { TimelineLane, type PointSelection, type RecordSelection } from "./TimelineLane";
@@ -334,9 +334,6 @@ export function TimelineViewport({
             {!groups.length ? <p className="timeline-global-empty">这个范围内没有记录。</p> : null}
           </div>
         </div>
-        <p className="timeline-note">
-          空白表示没有可用记录，不代表没有活动。密度曲线表示已存瞬时记录的数量。
-        </p>
       </section>
       {selected ? (
         <section className="timeline-selection glass-panel" aria-label="所选记录详情">
@@ -360,7 +357,7 @@ export function TimelineViewport({
               </Button>
             </div>
           </div>
-          <RecordCard
+          <SelectedRecord
             key={`${selected.track.id}/${selected.record.id}`}
             record={selected.record}
             track={selected.track}
@@ -373,7 +370,6 @@ export function TimelineViewport({
             <h2>
               记录 <small>{visibleRecords.length}</small>
             </h2>
-            <p>当前范围内的区间记录；输入等瞬时记录可点击密度查看。</p>
           </div>
         </div>
         <div className="experience-record-grid">

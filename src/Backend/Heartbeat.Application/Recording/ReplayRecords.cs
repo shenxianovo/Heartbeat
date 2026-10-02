@@ -8,7 +8,9 @@ public sealed record ReplayRecordsQuery(
     DateTimeOffset? From,
     DateTimeOffset? To,
     int? Limit,
-    ReplayRecordsCursor? Cursor);
+    ReplayRecordsCursor? Cursor,
+    Guid? ObjectId = null,
+    IReadOnlyList<Guid>? ContextObjectIds = null);
 
 public sealed record ReplayRecordsCursor(DateTimeOffset StartedAt, Guid Id);
 
@@ -17,8 +19,7 @@ public sealed record ReplayedTrack(
     Guid CollectorId,
     string Type,
     int Version,
-    TimeMode TimeMode,
-    EndMode? EndMode);
+    TimeMode TimeMode);
 
 public sealed record ReplayedRecord(
     Guid Id,
@@ -26,7 +27,12 @@ public sealed record ReplayedRecord(
     DateTimeOffset? EndedAt,
     DateTimeOffset? ObservedAt,
     DateTimeOffset ReceivedAt,
-    JsonElement Value);
+    JsonElement Value)
+{
+    public IReadOnlyList<ReplayedObject> Objects { get; init; } = [];
+}
+
+public sealed record ReplayedObject(Guid Id, string Role, string Namespace, string Key, string? Name);
 
 public sealed record RecordReplay(
     ReplayedTrack Track,

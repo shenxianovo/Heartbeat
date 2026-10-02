@@ -13,7 +13,6 @@
 | `type` | `desktop.window.foreground` |
 | `version` | `1` |
 | `time_mode` | `range` |
-| `end_mode` | `explicit` |
 | 允许持续状态续期 | 是 |
 
 同一个 Collector 的此协议只有一条 Track。不同 Collector 可以使用相同协议，解码不依赖 Collector key。
@@ -22,15 +21,13 @@
 
 ```json
 {
-  "device_id": "device-a",
   "window": {
     "title": "Heartbeat — Google Chrome"
   }
 }
 ```
 
-- `value` 是包含 `device_id` 与 `window` 的对象。
-- `device_id` 与前台应用协议同义，是 Collector 提供的稳定设备标识，为非空字符串。
+- `value` 只包含 `window`。公共 `objects` 引用 device 和 application，身份规则与前台应用协议一致；应用关联来自实际读数，不靠时间交叠推断。标题自身没有稳定身份，不创建标题对象。
 - `window.title` 是非空字符串，取平台报告的前台窗口标题原文，Collector 不改写、不截断、不脱敏。
 - 没有 Record 表示该段时间没有可靠标题，不表示没有窗口，也不表示标题为空。协议不提供 `title: null`。
 - 本版本不包含窗口标识、窗口几何、页面 URL、文档路径或进程 ID。

@@ -4,7 +4,11 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChartNoAxesGantt,
+  HeartPulse,
+  House,
   ListFilter,
+  LogOut,
   Minus,
   Monitor,
   Moon,
@@ -12,6 +16,7 @@ import {
   RefreshCw,
   Server,
   Sun,
+  X,
   type LucideProps,
 } from "lucide-react";
 
@@ -21,14 +26,19 @@ const icons = {
   chevronDown: ChevronDown,
   chevronLeft: ChevronLeft,
   chevronRight: ChevronRight,
+  close: X,
   filter: ListFilter,
+  home: House,
+  logout: LogOut,
   minus: Minus,
   monitor: Monitor,
   moon: Moon,
   plus: Plus,
+  pulse: HeartPulse,
   refresh: RefreshCw,
   server: Server,
   sun: Sun,
+  timeline: ChartNoAxesGantt,
 } as const;
 
 export function Icon({ name, ...props }: LucideProps & { name: keyof typeof icons }) {

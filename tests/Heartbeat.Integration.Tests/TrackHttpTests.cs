@@ -34,7 +34,6 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
         Assert.Equal("desktop.application.foreground", track.GetProperty("type").GetString());
         Assert.Equal(1, track.GetProperty("version").GetInt32());
         Assert.Equal("range", track.GetProperty("timeMode").GetString());
-        Assert.Equal("explicit", track.GetProperty("endMode").GetString());
         Assert.Equal(Now, track.GetProperty("createdAt").GetDateTimeOffset());
         await using var db = CreateDbContext();
         Assert.Single(await db.Tracks.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
@@ -110,8 +109,6 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
     [InlineData("{\"type\":\" \",\"version\":1,\"timeMode\":\"point\"}")]
     [InlineData("{\"type\":\"desktop.application.foreground\",\"version\":0,\"timeMode\":\"point\"}")]
     [InlineData("{\"type\":\"sample\",\"version\":1,\"timeMode\":\"unknown\"}")]
-    [InlineData("{\"type\":\"sample\",\"version\":1,\"timeMode\":\"point\",\"endMode\":\"explicit\"}")]
-    [InlineData("{\"type\":\"sample\",\"version\":1,\"timeMode\":\"range\"}")]
     [InlineData("{}")]
     public async Task InvalidTrackDefinitionDoesNotCreateTrack(string body)
     {
@@ -154,7 +151,7 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
         using var client = factory.CreateClient();
 
         using var response = await client.PostAsJsonAsync($"/api/v1/collectors/{Guid.NewGuid()}/tracks",
-            new { type = "desktop.application.foreground", version = 1, timeMode = "range", endMode = "explicit" }, cancellationToken: TestContext.Current.CancellationToken);
+            new { type = "desktop.application.foreground", version = 1, timeMode = "range" }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -168,7 +165,7 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
         using var client = factory.CreateClient();
         var collectorId = await RegisterAsync(client, ownerId);
         var track = Track.Create(collectorId, "desktop.application.foreground", 1,
-            TimeMode.Point, null, Now.AddDays(-1));
+            TimeMode.Point, Now.AddDays(-1));
         await using (var db = CreateDbContext())
         {
             db.Tracks.Add(track);
@@ -201,7 +198,7 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
 
     private static async Task<HttpResponseMessage> ResolveAsync(
         HttpClient client, Guid ownerId, Guid collectorId,
-        string body = "{\"type\":\"desktop.application.foreground\",\"version\":1,\"timeMode\":\"range\",\"endMode\":\"explicit\"}")
+        string body = "{\"type\":\"desktop.application.foreground\",\"version\":1,\"timeMode\":\"range\"}")
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/collectors/{collectorId}/tracks")
         {

@@ -3,13 +3,13 @@
 import { Icon } from "@/components/ui/Icon";
 import { useTheme } from "@/lib/theme";
 
-/** Sits in the page header; pages without one (login) pin it to the corner instead. */
-export function ThemeToggle({ floating = false }: { floating?: boolean }) {
+/** Login keeps its theme control available before the session navigation exists. */
+export function ThemeToggle() {
   const { isDark, toggle } = useTheme();
   return (
     <button
       type="button"
-      className={`theme-toggle${floating ? " theme-toggle--floating" : ""}`}
+      className="theme-toggle theme-toggle--floating"
       title={isDark ? "切换到浅色" : "切换到深色"}
       aria-label={isDark ? "切换到浅色" : "切换到深色"}
       onClick={toggle}

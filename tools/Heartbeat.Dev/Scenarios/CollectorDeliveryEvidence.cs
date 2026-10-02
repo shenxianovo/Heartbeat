@@ -36,12 +36,14 @@ internal sealed record CollectorDeliveryEvidence(
               and c.key = 'heartbeat.collector.desktop.macos'
               and c.target = 'verification-{target:N}'
         ), matching_records as (
-            select r.*, t.type, t.version, t.time_mode, t.end_mode
+            select r.*, t.type, t.version, t.time_mode
             from records r join tracks t on t.id = r.track_id
             join matching_collectors c on c.id = t.collector_id
             where r.started_at between {Timestamp(started)} and {Timestamp(completed)}
               and (r.ended_at is null or r.ended_at between r.started_at and {Timestamp(completed)})
-              and r.value->>'device_id' = 'verification-{target:N}'
+              and exists (select 1 from jsonb_array_elements(r.objects) ref
+                  where ref->>'role' = 'device' and ref->>'namespace' = 'device'
+                    and ref->>'key' = 'verification-{target:N}')
         )
         select json_build_object(
             'Timelines', (select count(*) from timelines),
@@ -52,11 +54,11 @@ internal sealed record CollectorDeliveryEvidence(
             'ApplicationRecords', (select count(*) from matching_records where type = 'desktop.application.foreground'),
             'ValidApplicationRecords', (select count(*) from matching_records
                 where type = 'desktop.application.foreground' and version = 1
-                  and time_mode = 'range' and end_mode = 'explicit' and ended_at is not null
-                  and value->'application'->>'platform' = 'macos'
-                  and value->'application'->>'id_kind' in ('bundle_id', 'executable_path')
-                  and jsonb_typeof(value->'application'->'id') = 'string'
-                  and btrim(value->'application'->>'id') <> '')
+                  and time_mode = 'range' and ended_at is not null
+                  and exists (select 1 from jsonb_array_elements(objects) ref
+                    where ref->>'role' = 'application'
+                      and ref->>'namespace' in ('app.macos.bundle_id', 'app.macos.executable_path')
+                      and btrim(ref->>'key') <> ''))
         );
         """;
 

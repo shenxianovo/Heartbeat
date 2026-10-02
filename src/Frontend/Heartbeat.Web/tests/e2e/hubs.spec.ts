@@ -66,7 +66,9 @@ test("Hub status separates presence, collection and delivery without remote life
     page.getByRole("button", { name: "添加其他 示例采集 账号", exact: true }),
   ).toBeDisabled();
   await expect(hub.getByText("最近上报：采集中", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "展开导航" }).click();
   await page.getByRole("button", { name: "切换到浅色" }).click();
+  await expect(page.getByRole("button", { name: "展开导航" })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("hubs-desktop-light.png"), fullPage: true });
 });
 

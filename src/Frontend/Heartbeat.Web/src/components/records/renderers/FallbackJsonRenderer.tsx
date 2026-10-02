@@ -9,7 +9,10 @@ export function stringifyJson(value: unknown): string {
   }
 }
 
-export function FallbackJsonRenderer({ value, error }: RecordRendererProps & { error?: string }) {
+export function FallbackJsonRenderer({
+  value,
+  error,
+}: Pick<RecordRendererProps, "value"> & { error?: string }) {
   return (
     <div className="fallback-renderer" role={error ? "alert" : undefined}>
       <span>{error ?? "未提供专用展示"}</span>

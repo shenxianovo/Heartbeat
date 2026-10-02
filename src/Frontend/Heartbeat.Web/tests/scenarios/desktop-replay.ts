@@ -8,6 +8,7 @@ interface RecordSnapshot {
   endedAt: string | null;
   observedAt: string | null;
   value: unknown;
+  objects: { id?: string; role: string; namespace: string; key: string; name: string | null }[];
 }
 interface DeliveredRecord {
   trackId: string;
@@ -73,6 +74,9 @@ async function verifyApi(request: APIRequestContext) {
       const found = actual.find((item) => item.id === record.id);
       expect(found).toBeDefined();
       expect(found!.value).toEqual(record.value);
+      expect(
+        found!.objects.map(({ role, namespace, key, name }) => ({ role, namespace, key, name })),
+      ).toEqual(record.objects);
       for (const field of ["startedAt", "endedAt", "observedAt"] as const) {
         expect(found![field] === null ? null : Date.parse(found![field]!)).toBe(
           record[field] === null ? null : Date.parse(record[field]!),
@@ -127,9 +131,18 @@ try {
   } else {
     await progress("api-reconciliation");
     await verifyApi(context.request);
-    await page.goto("/timeline");
   }
-  if (interactive) await page.goto("/timeline");
+  const catalogResponse = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/v1/objects" && response.ok(),
+  );
+  await page.goto("/objects");
+  const catalog = await (await catalogResponse).json();
+  const device = catalog.objects.find(
+    (item: { namespace: string; key: string }) =>
+      item.namespace === "device" && item.key === witness.target,
+  );
+  expect(device).toBeDefined();
+  await page.goto(`/objects/${device.id}`);
   const details = await verifyReplay(page, witness, progress);
   // Retain timestamps only: the surrounding details can contain native user context.
   await details.locator(".record-time").screenshot({ path: input.files.screenshot });

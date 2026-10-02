@@ -18,7 +18,7 @@
 
 时间窗采用 `[from, to)`。有 `ended_at` 的 Record 以区间交叠纳入窗口；没有 `ended_at` 的 Record 以 `started_at` 纳入窗口。查询不跨 Track 聚合，不解析 Application Identity，不按设备分组，不增加分轨字段、设备表或通用 metadata。
 
-当前查询返回已存 `ended_at`，不计算 `range + next_record` 的派生结束时间。该模式的重放语义等出现实际协议后再单独设计。
+查询返回已存 `ended_at`。隐式区间已由 [ADR-0028](ADR-0028-explicit-record-ranges.md) 删除。
 
 ## 演进：2026-09-14
 
@@ -34,7 +34,6 @@ Track 级查询增加不透明 cursor，并继续按 `(started_at, id)` 在 Post
 - ✅ 接口很小，读取归属校验、窗口过滤和排序集中在一个 Application 用例和一个 PostgreSQL adapter 中。
 - ✅ 不改变四层记录模型，不新增设备表、分轨字段或提前优化用的索引。
 - ⚠️ Timeline 级重放和跨 Track 合并仍未实现。
-- ⚠️ `range + next_record` 的派生结束时间尚未通过该查询表达。
 
 ## 演进：2026-09-14（统一窗口与 Point 密度）
 
@@ -43,6 +42,10 @@ Track 级查询增加不透明 cursor，并继续按 `(started_at, id)` 在 Post
 聚合层不解析 value，不知道输入、应用或任何具体协议。协议含义留在前端独立 renderer；未知但合法的 Track 仍能用时间位置、计数和原始 JSON 回放。点击 Point 密度桶后，原始详情继续使用既有 Track 级分页接口读取该局部时间窗。
 
 该演进提供了 Timeline 级的用户体验，但没有新增一个负责协议解释或跨 Track 排序的后端 Timeline endpoint。这样既避免大 Point Track 的无界下载，也保持记录内核与具体协议解耦。
+
+## 演进：2026-10-01
+
+[ADR-0029](ADR-0029-record-object-references.md) 接受通用对象引用及跨 Track 的对象查询方向，扩展本 ADR 的 Track-only 读取边界。现有 Track 查询继续服务泳道和 Point 密度，并接受一致的对象条件；新增对象目录及跨 Track 对象记录接口，见[HTTP 契约](../recording-api.md)。验证结果见[业务覆盖记录](../validation/business-coverage.md)。
 
 ## 参考
 

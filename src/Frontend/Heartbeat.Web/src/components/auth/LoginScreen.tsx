@@ -33,7 +33,7 @@ export function LoginScreen() {
 
   return (
     <>
-      <ThemeToggle floating />
+      <ThemeToggle />
       <main className="login-page">
         <div className="login-atmosphere" aria-hidden="true" />
         <section className="login-panel" aria-labelledby="login-title">

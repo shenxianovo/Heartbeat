@@ -99,7 +99,9 @@ dotnet run --project tools/Heartbeat.Dev -- env reset
 dotnet run --project tools/Heartbeat.Dev -- env reset --apply
 ```
 
-`down` 移除容器但保留数据卷。`env reset` 默认只预览，`--apply` 才删除本项目的本地数据和缓存卷。
+`down` 移除容器但保留数据卷。`env reset` 默认只预览，`--apply` 才删除本项目的容器数据和缓存卷，不处理宿主机的桌面 profile。
+
+重写期间重建后端数据库或修改本地队列结构后，先退出 Heartbeat Dev，再删除其 profile 下的 `hub.sqlite`、`hub.sqlite-wal` 和 `hub.sqlite-shm`，然后重新启动。此操作丢弃本机待上传记录和旧后端映射，保留 `settings.json`、凭据和 Hub 身份。macOS Dev profile 位于 `~/Library/Application Support/Heartbeat/DesktopDev/`；只重启或重新打包不会重置队列。
 
 ## 配置
 

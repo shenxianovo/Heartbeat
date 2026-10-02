@@ -1,3 +1,4 @@
+using Heartbeat.Contracts;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -34,7 +35,6 @@ public sealed class RecordReplayHttpTests(PostgresFixture fixture) : PostgresTes
         Assert.Equal("desktop.application.foreground", track.GetProperty("type").GetString());
         Assert.Equal(1, track.GetProperty("version").GetInt32());
         Assert.Equal("range", track.GetProperty("timeMode").GetString());
-        Assert.Equal("explicit", track.GetProperty("endMode").GetString());
 
         var records = json.RootElement.GetProperty("records");
         Assert.Equal(2, records.GetArrayLength());
@@ -142,6 +142,7 @@ public sealed class RecordReplayHttpTests(PostgresFixture fixture) : PostgresTes
                     id = Guid.CreateVersion7(),
                     startedAt = BaseTime,
                     endedAt = BaseTime.AddMinutes(1),
+                    objects = Array.Empty<object>(),
                     value = expected.RootElement,
                 },
             },
@@ -237,11 +238,8 @@ public sealed class RecordReplayHttpTests(PostgresFixture fixture) : PostgresTes
         id,
         startedAt = BaseTime.AddMinutes(startMinutes),
         endedAt = BaseTime.AddMinutes(endMinutes),
-        value = new
-        {
-            device_id = "device-a",
-            application = new { platform = "macos", id_kind = "bundle_id", id = application },
-        },
+        objects = new ObjectReference[] { new("device", "device", "device-a"), new("application", "app.macos.bundle_id", application) },
+        value = new { },
     };
 
     private static async Task<Guid> RegisterAndResolveAsync(HttpClient client, Guid ownerId)
@@ -262,7 +260,6 @@ public sealed class RecordReplayHttpTests(PostgresFixture fixture) : PostgresTes
                 type = "desktop.application.foreground",
                 version = 1,
                 timeMode = "range",
-                endMode = "explicit",
             }),
         };
         resolution.Headers.Add(RecordingApiFactory.OwnerHeader, ownerId.ToString());
@@ -330,7 +327,7 @@ public sealed class RecordReplayHttpTests(PostgresFixture fixture) : PostgresTes
     }
 
     private static string? ApplicationId(JsonElement record) =>
-        record.GetProperty("value").GetProperty("application").GetProperty("id").GetString();
+        record.GetProperty("objects").EnumerateArray().Single(item => item.GetProperty("role").GetString() == "application").GetProperty("key").GetString();
 
     private static async Task AssertProblemAsync(HttpResponseMessage response, HttpStatusCode status, string code)
     {

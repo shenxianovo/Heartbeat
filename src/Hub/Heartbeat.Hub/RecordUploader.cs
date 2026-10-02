@@ -98,7 +98,7 @@ public sealed class RecordUploader
         var track = await trackResponse.Content.ReadFromJsonAsync<TrackResponse>(JsonOptions, cancellationToken);
         if (track is null || track.Id == Guid.Empty || track.CollectorId != collector.Id ||
             track.Type != route.Track.Type || track.Version != route.Track.Version ||
-            track.TimeMode != route.Track.TimeMode || track.EndMode != route.Track.EndMode)
+            track.TimeMode != route.Track.TimeMode)
         {
             throw new InvalidDataException("Track resolution returned a mismatched identity or time definition.");
         }
@@ -235,7 +235,7 @@ public sealed class RecordUploader
     private sealed record CollectorResponse(Guid Id, string? Key, string? Target);
 
     private sealed record TrackResponse(Guid Id, Guid CollectorId, string? Type, int Version,
-        string? TimeMode, string? EndMode);
+        string? TimeMode);
 
     private sealed record UploadResponse(IReadOnlyList<UploadReceipt?>? Results);
 

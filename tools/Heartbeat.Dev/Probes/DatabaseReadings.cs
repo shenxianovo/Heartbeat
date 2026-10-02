@@ -81,34 +81,19 @@ internal sealed class DatabaseReadings(RepositoryContext repository, IProcessRun
         return ToDocument(Parse(result.StdOut), includeTitles);
     }
 
-    /// 两种数据形态都认：新形态标题在 desktop.window.foreground，应用身份从同一时刻的应用 Record 反查；
-    /// 旧形态标题在 desktop.application.foreground 的 value.window.title 里（拆 Track 之前的构建）。
     internal static string Query(DatabaseWindow window)
     {
         var since = Timestamp(window.Since);
         var until = Timestamp(window.Until);
         var windows = $"""
             select w.started_at,
-                   least(coalesce(w.ended_at, now()), {until}) as ended_at,
-                   (select a.value->'application'->>'id'
-                    from records a join tracks ta on ta.id = a.track_id
-                    where ta.type = 'desktop.application.foreground'
-                      and a.started_at <= w.started_at
-                      and coalesce(a.ended_at, now()) >= w.started_at
-                    order by a.started_at desc limit 1) as application,
+                   least(w.ended_at, {until}) as ended_at,
+                   (select ref->>'key' from jsonb_array_elements(w.objects) ref
+                    where ref->>'role' = 'application' limit 1) as application,
                    w.value->'window'->>'title' as title
             from records w join tracks tw on tw.id = w.track_id
             where tw.type = 'desktop.window.foreground'
               and w.started_at >= {since} and w.started_at < {until}
-            """;
-        var legacy = $"""
-            select r.started_at,
-                   least(coalesce(r.ended_at, now()), {until}) as ended_at,
-                   r.value->'application'->>'id' as application,
-                   r.value->'window'->>'title' as title
-            from records r join tracks t on t.id = r.track_id
-            where t.type = 'desktop.application.foreground' and r.value ? 'window'
-              and r.started_at >= {since} and r.started_at < {until}
             """;
         return $"""
             select coalesce(json_agg(json_build_object(
@@ -117,7 +102,7 @@ internal sealed class DatabaseReadings(RepositoryContext repository, IProcessRun
                        'application', s.application,
                        'title', s.title)
                        order by s.started_at, s.ended_at), '[]'::json)
-            from ({windows} union all {legacy}) s;
+            from ({windows}) s;
             """;
     }
 

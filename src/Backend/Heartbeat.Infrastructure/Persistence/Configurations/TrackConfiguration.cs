@@ -16,8 +16,7 @@ internal sealed class TrackConfiguration : IEntityTypeConfiguration<Track>
                 table.HasCheckConstraint("ck_tracks_version", "version > 0");
                 table.HasCheckConstraint(
                     "ck_tracks_time_mode",
-                    "(time_mode = 'point' AND end_mode IS NULL) OR "
-                    + "(time_mode = 'range' AND end_mode IS NOT NULL AND end_mode IN ('explicit', 'next_record'))");
+                    "time_mode IN ('point', 'range')");
             });
 
         builder.HasKey(x => x.Id);
@@ -30,10 +29,6 @@ internal sealed class TrackConfiguration : IEntityTypeConfiguration<Track>
             .HasColumnType("text")
             .HasConversion<TimeModeConverter>()
             .IsRequired();
-        builder.Property(x => x.EndMode)
-            .HasColumnName("end_mode")
-            .HasColumnType("text")
-            .HasConversion<EndModeConverter>();
         builder.Property(x => x.CreatedAt).HasColumnName("created_at").IsRequired();
 
         builder.HasIndex(x => new { x.CollectorId, x.Type, x.Version }).IsUnique();

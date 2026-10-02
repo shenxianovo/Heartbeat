@@ -7,7 +7,6 @@ const FOCUS_RADIUS_MS = 60 * 60_000;
 
 interface Selection {
   chosen: DateRange | null;
-  collectorIds: string[] | null;
   viewport: TimeRange | null;
   detail: PointSelection | null;
   mode: "follow" | "initial" | "manual";
@@ -16,7 +15,6 @@ interface Selection {
 
 type Action =
   | { type: "date"; value: DateRange; mode: Selection["mode"]; now: number }
-  | { type: "collectors"; value: string[] | null }
   | { type: "viewport"; value: TimeRange }
   | { type: "initial"; from: string; value: TimeRange }
   | { type: "tick"; now: number }
@@ -34,8 +32,6 @@ function reduceSelection(state: Selection, action: Action): Selection {
         viewport: null,
         detail: null,
       };
-    case "collectors":
-      return { ...state, collectorIds: action.value, detail: null };
     case "viewport":
       return { ...state, viewport: action.value, mode: "manual", detail: null };
     case "initial":
@@ -70,10 +66,7 @@ function focusRange(at: number, bounds: TimeRange): TimeRange {
   return clampRange({ start: at - FOCUS_RADIUS_MS, end: at + FOCUS_RADIUS_MS }, bounds);
 }
 
-export function useReplaySelection(initial?: {
-  range: DateRange | null;
-  collectorId: string | null;
-}) {
+export function useReplaySelection(initial?: { range: DateRange | null }) {
   const hydrated = useSyncExternalStore(
     subscribeHydration,
     () => true,
@@ -81,7 +74,6 @@ export function useReplaySelection(initial?: {
   );
   const [state, dispatch] = useReducer(reduceSelection, null, (): Selection => ({
     chosen: initial?.range ?? null,
-    collectorIds: initial?.collectorId ? [initial.collectorId] : null,
     viewport: null,
     detail: null,
     mode: initial?.range ? "manual" : "follow",
@@ -149,7 +141,6 @@ export function useReplaySelection(initial?: {
     following,
     needsInitialRange: state.mode === "initial",
     advanceClock: (now: number) => dispatch({ type: "tick", now }),
-    selectedCollectorIds: state.collectorIds,
     detail: state.detail,
     chooseDate,
     stepDay,
@@ -157,7 +148,6 @@ export function useReplaySelection(initial?: {
     pauseFollowing,
     establishInitialRange,
     returnToNow: () => dispatch({ type: "now", now: Date.now() }),
-    selectCollectors: (value: string[] | null) => dispatch({ type: "collectors", value }),
     setDetail: (value: PointSelection | null) => {
       if (value) pauseFollowing();
       dispatch({ type: "detail", value });

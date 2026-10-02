@@ -1,70 +1,22 @@
-import type { RecordRendererProps, RecordSummary } from "@/components/records/renderers/types";
-import { isObject, nonEmptyString } from "@/components/records/renderers/values";
+import type { RecordObject } from "@/api/types";
+import type { RecordRendererProps, RecordSummary } from "./types";
+import { referencedObject } from "@/components/objects/model";
 
-interface ForegroundApplicationValue {
-  deviceId: string;
-  platform: string;
-  idKind: string;
-  applicationId: string;
-  displayName: string | null;
+export function summarizeDesktopApplication(
+  _value: unknown,
+  objects: RecordObject[],
+): RecordSummary {
+  const application = referencedObject(objects, "application");
+  const label = application.name || application.key;
+  return { label, group: { id: application.id, label } };
 }
-
-function parseForegroundApplication(value: unknown): ForegroundApplicationValue {
-  if (!isObject(value) || !nonEmptyString(value.device_id) || !isObject(value.application)) {
-    throw new Error("前台应用记录的值结构不匹配");
-  }
-
-  const application = value.application;
-  if (
-    !nonEmptyString(application.platform) ||
-    !nonEmptyString(application.id_kind) ||
-    !nonEmptyString(application.id)
-  ) {
-    throw new Error("前台应用记录缺少应用标识");
-  }
-
-  return {
-    deviceId: value.device_id,
-    platform: application.platform,
-    idKind: application.id_kind,
-    applicationId: application.id,
-    displayName: nonEmptyString(application.display_name) ? application.display_name : null,
-  };
-}
-
-function labelIdKind(idKind: string): string {
-  if (idKind === "bundle_id") return "Bundle ID";
-  if (idKind === "package_name") return "Package";
-  return idKind.replaceAll("_", " ");
-}
-
-export function summarizeDesktopApplication(value: unknown): RecordSummary {
-  const parsed = parseForegroundApplication(value);
-  const label = parsed.displayName ?? parsed.applicationId;
-  return {
-    label,
-    group: { id: JSON.stringify([parsed.platform, parsed.idKind, parsed.applicationId]), label },
-  };
-}
-
-export function DesktopApplicationForegroundV1({ value }: RecordRendererProps) {
-  const parsed = parseForegroundApplication(value);
-
+export function DesktopApplicationForegroundV1({ objects }: RecordRendererProps) {
+  const application = referencedObject(objects, "application");
   return (
     <div className="application-record">
-      <div className="application-glyph" aria-hidden="true">
-        {parsed.applicationId.slice(0, 1).toLocaleUpperCase()}
-      </div>
       <div className="application-identity">
-        <strong>{parsed.displayName ?? parsed.applicationId}</strong>
-        <span>
-          {parsed.applicationId} · {parsed.platform.toLocaleUpperCase()} ·{" "}
-          {labelIdKind(parsed.idKind)}
-        </span>
+        <strong>{application.name || application.key}</strong>
       </div>
-      <span className="device-chip" title={parsed.deviceId}>
-        {parsed.deviceId}
-      </span>
     </div>
   );
 }

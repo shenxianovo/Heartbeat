@@ -57,6 +57,28 @@ namespace Heartbeat.Persistence.Migrations
                     b.ToTable("hubs", (string)null);
                 });
 
+            modelBuilder.Entity("Heartbeat.Recording.ObservedObject", b =>
+                {
+                    b.Property<Guid>("Id").HasColumnType("uuid").HasColumnName("id");
+                    b.Property<Guid>("TimelineId").HasColumnType("uuid").HasColumnName("timeline_id");
+                    b.Property<string>("Namespace").IsRequired().HasMaxLength(128).HasColumnType("character varying(128)").HasColumnName("identity_namespace");
+                    b.Property<string>("Key").IsRequired().HasMaxLength(512).HasColumnType("character varying(512)").HasColumnName("identity_key");
+                    b.Property<string>("Name").HasMaxLength(512).HasColumnType("character varying(512)").HasColumnName("name");
+                    b.Property<DateTimeOffset?>("NameObservedAt").HasColumnType("timestamp with time zone").HasColumnName("name_observed_at");
+                    b.Property<Guid?>("NameRecordId").HasColumnType("uuid").HasColumnName("name_record_id");
+                    b.HasKey("Id");
+                    b.HasIndex("TimelineId", "Namespace", "Key").IsUnique();
+                    b.ToTable("objects");
+                });
+            modelBuilder.Entity("Heartbeat.Recording.RecordObject", b =>
+                {
+                    b.Property<Guid>("RecordId").HasColumnType("uuid").HasColumnName("record_id");
+                    b.Property<Guid>("ObjectId").HasColumnType("uuid").HasColumnName("object_id");
+                    b.Property<string>("Role").HasMaxLength(64).HasColumnType("character varying(64)").HasColumnName("role");
+                    b.HasKey("RecordId", "ObjectId", "Role");
+                    b.HasIndex("ObjectId", "RecordId");
+                    b.ToTable("record_objects");
+                });
             modelBuilder.Entity("Heartbeat.Recording.Collector", b =>
                 {
                     b.Property<Guid>("Id")
@@ -130,6 +152,8 @@ namespace Heartbeat.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("track_id");
 
+                    b.Property<string>("Objects").IsRequired().HasColumnType("jsonb").HasColumnName("objects");
+
                     b.Property<JsonElement>("Value")
                         .HasColumnType("jsonb")
                         .HasColumnName("value");
@@ -189,10 +213,6 @@ namespace Heartbeat.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
-                    b.Property<string>("EndMode")
-                        .HasColumnType("text")
-                        .HasColumnName("end_mode");
-
                     b.Property<string>("TimeMode")
                         .IsRequired()
                         .HasColumnType("text")
@@ -214,7 +234,7 @@ namespace Heartbeat.Persistence.Migrations
 
                     b.ToTable("tracks", null, t =>
                         {
-                            t.HasCheckConstraint("ck_tracks_time_mode", "(time_mode = 'point' AND end_mode IS NULL) OR (time_mode = 'range' AND end_mode IS NOT NULL AND end_mode IN ('explicit', 'next_record'))");
+                            t.HasCheckConstraint("ck_tracks_time_mode", "time_mode IN ('point', 'range')");
 
                             t.HasCheckConstraint("ck_tracks_type", "btrim(type) <> ''");
 
@@ -247,6 +267,16 @@ namespace Heartbeat.Persistence.Migrations
                         .HasForeignKey("CollectorId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+            modelBuilder.Entity("Heartbeat.Recording.ObservedObject", b =>
+                {
+                    b.HasOne("Heartbeat.Recording.Timeline", null).WithMany().HasForeignKey("TimelineId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                });
+            modelBuilder.Entity("Heartbeat.Recording.RecordObject", b =>
+                {
+                    b.HasOne("Heartbeat.Recording.Record", null).WithMany().HasForeignKey("RecordId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                    b.HasOne("Heartbeat.Recording.ObservedObject", "Subject").WithMany().HasForeignKey("ObjectId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                    b.Navigation("Subject");
                 });
 #pragma warning restore 612, 618
         }

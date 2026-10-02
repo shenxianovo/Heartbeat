@@ -85,7 +85,7 @@ public sealed class RecordUploaderTests : IDisposable
         var queue = _fixture.Open();
         var record = QueueFixture.Snapshot() with { EndedAt = null, Value = JsonSerializer.SerializeToElement(42) };
         queue.Accept(new HubSubmission(QueueFixture.Collector(),
-            new TrackDeclaration("example.point", 1, "point", null), [record]));
+            new TrackDeclaration("example.point", 1, "point"), [record]));
         using var handler = new MappedHandler((_, _) => Task.FromResult(Receipt(record)));
         using var client = new HttpClient(handler);
 
@@ -180,7 +180,7 @@ public sealed class RecordUploaderTests : IDisposable
         var queue = _fixture.Open();
         queue.Accept(QueueFixture.Submission(QueueFixture.Snapshot(), QueueFixture.Snapshot()));
         queue.Accept(new HubSubmission(QueueFixture.Collector(),
-            new TrackDeclaration("other.data", 1, "range", "explicit"), [QueueFixture.Snapshot()]));
+            new TrackDeclaration("other.data", 1, "range"), [QueueFixture.Snapshot()]));
         using var handler = new MappedHandler(async (request, token) =>
         {
             var body = await request.Content!.ReadFromJsonAsync<UploadBatch>(token);
@@ -344,7 +344,6 @@ public sealed class RecordUploaderTests : IDisposable
                     declaration!.Type,
                     declaration.Version,
                     declaration.TimeMode,
-                    declaration.EndMode,
                 }),
             };
         }

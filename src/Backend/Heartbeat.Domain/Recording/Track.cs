@@ -16,8 +16,6 @@ public sealed class Track
 
     public TimeMode TimeMode { get; private set; }
 
-    public EndMode? EndMode { get; private set; }
-
     public DateTimeOffset CreatedAt { get; private set; }
 
     public static Track Create(
@@ -25,7 +23,6 @@ public sealed class Track
         string type,
         int version,
         TimeMode timeMode,
-        EndMode? endMode,
         DateTimeOffset createdAt)
     {
         if (collectorId == Guid.Empty)
@@ -34,7 +31,10 @@ public sealed class Track
         }
 
         ArgumentOutOfRangeException.ThrowIfLessThan(version, 1);
-        ValidateTimeMode(timeMode, endMode);
+        if (!Enum.IsDefined(timeMode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(timeMode));
+        }
 
         var normalizedCreatedAt = createdAt.ToUniversalTime();
 
@@ -45,7 +45,6 @@ public sealed class Track
             Type = TextValue.NormalizeRequired(type, nameof(type)),
             Version = version,
             TimeMode = timeMode,
-            EndMode = endMode,
             CreatedAt = normalizedCreatedAt,
         };
     }
@@ -53,35 +52,13 @@ public sealed class Track
     internal void EnsureAccepts(DateTimeOffset? endedAt)
     {
         var hasExplicitEnd = endedAt is not null;
-        var acceptsEnd = TimeMode is TimeMode.Range
-            && EndMode is global::Heartbeat.Recording.EndMode.Explicit;
+        var acceptsEnd = TimeMode is TimeMode.Range;
 
         if (hasExplicitEnd != acceptsEnd)
         {
             throw new ArgumentException(
-                "An end time is required only for range tracks with an explicit end mode.",
+                "Range tracks require an end time; point tracks must not have one.",
                 nameof(endedAt));
-        }
-    }
-
-    private static void ValidateTimeMode(TimeMode timeMode, EndMode? endMode)
-    {
-        if (!Enum.IsDefined(timeMode))
-        {
-            throw new ArgumentOutOfRangeException(nameof(timeMode));
-        }
-
-        if (endMode is not null && !Enum.IsDefined(endMode.Value))
-        {
-            throw new ArgumentOutOfRangeException(nameof(endMode));
-        }
-
-        if ((timeMode is TimeMode.Point && endMode is not null)
-            || (timeMode is TimeMode.Range && endMode is null))
-        {
-            throw new ArgumentException(
-                "Point tracks cannot have an end mode, and range tracks require one.",
-                nameof(endMode));
         }
     }
 }

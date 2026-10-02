@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { clampRange, densityBucketSeconds, dragRange, overlaps, zoomRange } from "./timeRange";
+import {
+  clampRange,
+  densityBucketSeconds,
+  dragRange,
+  overlaps,
+  timeTicks,
+  zoomRange,
+} from "./timeRange";
 
 const bounds = { start: 0, end: 86400000 };
 describe("shared timeline window", () => {
@@ -43,4 +50,25 @@ describe("shared timeline window", () => {
     expect(densityBucketSeconds({ start: 0, end: 3600000 })).toBe(30);
     expect(densityBucketSeconds({ start: 0, end: 60000 })).toBe(1);
   });
+});
+
+it("labels a week with dates and keeps long ranges within the tick budget", () => {
+  const start = new Date(2026, 8, 25).getTime();
+  const end = new Date(2026, 9, 2).getTime();
+  const ticks = timeTicks({ start, end }, 5);
+  expect(ticks.length).toBeLessThanOrEqual(6);
+  expect(new Set(ticks.map((tick) => tick.label)).size).toBe(ticks.length);
+  expect(ticks.every((tick) => tick.label.includes("/"))).toBe(true);
+});
+
+it("keeps clock labels for one day, including its next-midnight boundary", () => {
+  const start = new Date(2026, 9, 1).getTime();
+  const end = new Date(2026, 9, 2).getTime();
+  expect(timeTicks({ start, end }, 5).map((tick) => tick.label)).toEqual([
+    "00:00",
+    "06:00",
+    "12:00",
+    "18:00",
+    "次日 00:00",
+  ]);
 });

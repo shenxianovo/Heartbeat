@@ -33,7 +33,7 @@ Chromium 场景覆盖范围选择、来源组合、记录聚焦、重叠区间�
 
 ## 2026-09-27：全局概览与领域下钻
 
-首页 `/` 改为按来源展示的时长气泡；VRChat 气泡进入 `/vrchat`，桌面来源及「详细时间线」进入 `/timeline`。下钻传递时间范围与来源，领域详情和时间线提供返回概览入口；页头不再放置 VRChat 按钮。具体口径见[前端契约](../../src/Frontend/Heartbeat.Web/README.md#全局概览与下钻)。
+首页 `/` 改为按来源展示的时长气泡；VRChat 气泡进入 `/objects/{id}?view=summary`，桌面来源及「详细时间线」进入 `/objects/{id}`。下钻传递时间范围与来源，领域详情和时间线提供返回概览入口；页头不再放置 VRChat 按钮。具体口径见[前端契约](../../src/Frontend/Heartbeat.Web/README.md#全局概览与下钻)。
 
 本次通过：
 

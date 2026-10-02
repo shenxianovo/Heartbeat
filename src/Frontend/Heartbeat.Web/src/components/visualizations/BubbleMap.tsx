@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { pack } from "./packBubbles";
 
 export interface BubbleItem {
@@ -12,7 +11,6 @@ export interface BubbleItem {
   weight: number;
   color: string;
   borderWidth?: number;
-  href?: string;
 }
 
 export function BubbleMap({
@@ -57,9 +55,7 @@ export function BubbleMap({
               </>
             ) : null,
         };
-        return item.href ? (
-          <Link key={item.id} href={item.href} {...props} />
-        ) : (
+        return (
           <button
             key={item.id}
             type="button"

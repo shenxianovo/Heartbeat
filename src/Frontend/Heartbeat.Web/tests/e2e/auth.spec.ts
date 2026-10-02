@@ -52,7 +52,7 @@ test("登录使用 PKCE，并通过回调恢复会话和概览", async ({ page, 
   });
   await page.goto(`/auth/callback?code=test-code&state=${encodeURIComponent(state!)}`);
   await expect(page).toHaveURL(`${baseURL}/`);
-  await expect(page.getByRole("heading", { name: "最近的足迹" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "概览时间范围" })).toBeVisible();
 });
 
 test("异常登录回调提供可恢复的错误界面", async ({ page }) => {
@@ -63,10 +63,10 @@ test("异常登录回调提供可恢复的错误界面", async ({ page }) => {
   await expect(page).toHaveURL(/\/login/);
 });
 
-test("详情要求登录时保留时间范围和来源", async ({ page }) => {
+test("详情要求登录时保留时间范围和对象上下文", async ({ page }) => {
   await identityRoutes(page);
   const destination =
-    "/vrchat?from=2026-09-01T00%3A00%3A00Z&to=2026-09-02T00%3A00%3A00Z&collector=vrc-owner";
+    "/objects/019e0000-0000-7000-8000-000000000091?from=2026-09-01T00%3A00%3A00Z&to=2026-09-02T00%3A00%3A00Z&context=019e0000-0000-7000-8000-000000000090";
   await page.goto(destination);
   await expect(page).toHaveURL(/\/login\?/);
   expect(new URL(page.url()).searchParams.get("returnTo")).toBe(destination);

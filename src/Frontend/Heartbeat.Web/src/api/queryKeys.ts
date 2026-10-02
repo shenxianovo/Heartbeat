@@ -1,14 +1,21 @@
+import type { ObjectScope } from "./types";
+const scopeKey = (scope: ObjectScope) => [
+  scope.objectId ?? "",
+  JSON.stringify([...new Set(scope.contextObjectIds)].sort()),
+];
 export const queryKeys = {
-  tracks: (ownerSubject: string) => ["owner", ownerSubject, "tracks"] as const,
-  records: (ownerSubject: string, trackId: string, from: string, to: string) =>
-    ["owner", ownerSubject, "records", trackId, from, to] as const,
+  tracks: (owner: string, scope: ObjectScope = {}) =>
+    ["owner", owner, "tracks", ...scopeKey(scope)] as const,
+  records: (owner: string, track: string, from: string, to: string, scope: ObjectScope = {}) =>
+    ["owner", owner, "records", track, from, to, ...scopeKey(scope)] as const,
   replayTrack: (
-    ownerSubject: string,
-    trackId: string,
+    owner: string,
+    track: string,
     from: string,
     to: string,
-    bucketSeconds: number,
-  ) => ["owner", ownerSubject, "replay-track", trackId, from, to, bucketSeconds] as const,
-  densityWindow: (ownerSubject: string, from: string, to: string) =>
-    ["owner", ownerSubject, "density-tiles", from, to] as const,
+    bucket: number,
+    scope: ObjectScope = {},
+  ) => ["owner", owner, "replay-track", track, from, to, bucket, ...scopeKey(scope)] as const,
+  densityWindow: (owner: string, from: string, to: string, scope: ObjectScope = {}) =>
+    ["owner", owner, "density-tiles", from, to, ...scopeKey(scope)] as const,
 };

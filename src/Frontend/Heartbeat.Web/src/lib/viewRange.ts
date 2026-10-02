@@ -14,8 +14,12 @@ export function readViewRange(params: { get: (key: string) => string | null }): 
   return { from: toLocalInputValue(new Date(from)), to: toLocalInputValue(new Date(to)) };
 }
 
-export function detailHref(path: string, range: DateRange, collectorId?: string): string {
-  const params = new URLSearchParams({ ...rangeToIso(range)! });
-  if (collectorId) params.set("collector", collectorId);
-  return `${path}?${params}`;
+export function writeViewRange(range: DateRange) {
+  const iso = rangeToIso(range);
+  if (!iso) return;
+  const url = new URL(window.location.href);
+  if (url.searchParams.get("from") === iso.from && url.searchParams.get("to") === iso.to) return;
+  url.searchParams.set("from", iso.from);
+  url.searchParams.set("to", iso.to);
+  window.history.replaceState(null, "", `${url.pathname}?${url.searchParams}`);
 }

@@ -12,7 +12,6 @@ const track: TrackSummary = {
   type: "desktop.application.foreground",
   version: 1,
   timeMode: "range",
-  endMode: "explicit",
   createdAt: "2026-09-14T00:00:00Z",
 };
 
@@ -22,21 +21,22 @@ const record: TimelineRecord = {
   endedAt: "2026-09-14T08:05:00Z",
   observedAt: null,
   receivedAt: "2026-09-14T08:05:01Z",
-  value: {
-    device_id: "device",
-    application: {
-      platform: "macos",
-      id_kind: "bundle_id",
-      id: "com.example.Editor",
-      display_name: "Example Editor",
+  value: {},
+  objects: [
+    {
+      id: "app-id",
+      role: "application",
+      namespace: "app.macos.bundle_id",
+      key: "com.example.Editor",
+      name: "Example Editor",
     },
-  },
+  ],
 };
 
 const windowTrack: TrackSummary = { ...track, type: "desktop.window.foreground" };
 const windowRecord: TimelineRecord = {
   ...record,
-  value: { device_id: "device", window: { title: "Private draft.md" } },
+  value: { window: { title: "Private draft.md" } },
 };
 
 describe("application timeline summary", () => {
@@ -51,7 +51,7 @@ describe("application timeline summary", () => {
   });
 
   it("distinguishes malformed known values from unknown protocols", () => {
-    expect(describeRecord(track, { ...record, value: { application: 3 } })).toEqual({
+    expect(describeRecord(track, { ...record, objects: [] })).toEqual({
       label: "记录解析失败",
       tone: "attention",
     });
@@ -66,18 +66,9 @@ it("groups applications by platform identity rather than their display name", ()
   const first = describeRecord(track, record).group;
   const second = describeRecord(track, {
     ...record,
-    value: {
-      ...(record.value as object),
-      device_id: "device",
-      application: {
-        platform: "macos",
-        id_kind: "bundle_id",
-        id: "com.example.Other",
-        display_name: "Example Editor",
-      },
-    },
+    objects: record.objects.map((item) => ({ ...item, id: "other-id", key: "com.example.Other" })),
   }).group;
   expect(first?.label).toBe(second?.label);
   expect(first?.id).not.toBe(second?.id);
-  expect(describeRecord(track, { ...record, value: null }).group).toBeUndefined();
+  expect(describeRecord(track, { ...record, objects: [] }).group).toBeUndefined();
 });

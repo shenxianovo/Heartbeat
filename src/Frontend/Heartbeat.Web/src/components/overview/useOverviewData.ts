@@ -1,7 +1,6 @@
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useAuth } from "react-oidc-context";
-import { fetchAllRecords } from "@/api/client";
-import { useTracksQuery } from "@/api/queries";
+import { fetchAllRecords, fetchObjects, fetchTracks } from "@/api/client";
 import { rangeToIso, type DateRange } from "@/lib/dates";
 import { overviewSources, summarizeSource } from "./model";
 
@@ -9,20 +8,39 @@ export function useOverviewData(range: DateRange) {
   const auth = useAuth();
   const token = auth.user?.access_token ?? "";
   const owner = auth.user?.profile.sub ?? "";
-  const catalog = useTracksQuery(owner, token, 60000);
-  const sources = overviewSources(catalog.data?.tracks ?? []);
-  const supported = sources.filter((source) => source.track);
+  const catalog = useQuery({
+    queryKey: ["owner", owner, "objects"],
+    queryFn: ({ signal }) => fetchObjects(token, signal),
+    enabled: Boolean(token),
+    refetchInterval: 60000,
+  });
+  const sources = overviewSources(catalog.data?.objects ?? []);
   const iso = rangeToIso(range)!;
+  const summarySources = sources.filter((source) => source.kind !== "vrchat");
   const queries = useQueries({
-    queries: supported.map((source) => ({
-      queryKey: ["overview", owner, source.track!.id, iso.from, iso.to],
-      queryFn: ({ signal }: { signal: AbortSignal }) =>
-        fetchAllRecords(token, { trackId: source.track!.id, ...iso }, signal),
+    queries: summarySources.map((source) => ({
+      queryKey: ["overview", owner, source.id, iso.from, iso.to],
+      queryFn: async ({ signal }: { signal: AbortSignal }) => {
+        if (source.kind !== "desktop") return { records: [], summaryAvailable: false };
+        const scope = { objectId: source.id };
+        const { tracks } = await fetchTracks(token, signal, scope);
+        const type = "desktop.application.foreground";
+        const applicable = tracks.filter((track) => track.type === type && track.version === 1);
+        const pages = await Promise.all(
+          applicable.map((track) =>
+            fetchAllRecords(token, { trackId: track.id, ...iso, ...scope }, signal),
+          ),
+        );
+        return {
+          records: pages.flatMap((page) => page.records),
+          summaryAvailable: applicable.length > 0,
+        };
+      },
       enabled: Boolean(token),
       refetchInterval: 60000,
     })),
   });
-  const summaries = supported.map((source, index) => ({
+  const summaries = summarySources.map((source, index) => ({
     ...source,
     ...summarizeSource(
       source,
@@ -30,6 +48,7 @@ export function useOverviewData(range: DateRange) {
       Date.parse(iso.from),
       Date.parse(iso.to),
     ),
+    summaryAvailable: queries[index]!.data?.summaryAvailable ?? false,
     pending: queries[index]!.isPending,
     failed: queries[index]!.isError,
   }));

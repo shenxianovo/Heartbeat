@@ -46,6 +46,7 @@ app.UseAuthorization();
 app.MapCollectorEndpoints();
 app.MapTrackEndpoints();
 app.MapRecordEndpoints();
+app.MapObjectEndpoints();
 app.MapHubEndpoints();
 
 await app.RunAsync();
