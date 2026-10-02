@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using System.Text.Json;
 using VRChat.API.Client;
 
@@ -24,6 +25,7 @@ internal interface IVRChatApiFactory
 }
 
 internal sealed class VRChatUnauthorizedException(string message) : Exception(message);
+internal sealed class VRChatSessionInvalidException(string message) : Exception(message);
 internal sealed class VRChatTransientException(string message, TimeSpan? retryAfter = null) : Exception(message)
 {
     public TimeSpan? RetryAfter { get; } = retryAfter;
@@ -47,8 +49,12 @@ internal sealed class VRChatApiFactory(string applicationName, string applicatio
             ?? throw new JsonException("VRChat session is empty.");
         var auth = cookies.FirstOrDefault(cookie => cookie.Name == "auth")?.Value;
         if (string.IsNullOrWhiteSpace(auth)) throw new JsonException("VRChat session has no auth cookie.");
-        return Session(Builder().WithAuthCookie(auth,
-            cookies.FirstOrDefault(cookie => cookie.Name == "twoFactorAuth")?.Value ?? string.Empty).Build());
+        // Restore the actual cookie container: SDK 2.20.8's WithAuthCookie leaves it
+        // empty and later prefixes auth with whitespace and copies it into twoFactorAuth.
+        var client = Builder().Build();
+        foreach (var cookie in cookies.Where(cookie => cookie.Name is "auth" or "twoFactorAuth"))
+            client.HttpClientHandler.CookieContainer.Add(new Cookie(cookie.Name, cookie.Value, "/", "api.vrchat.cloud"));
+        return Session(client);
     }
 }
 
@@ -60,7 +66,7 @@ internal sealed class VRChatApiSession(IVRChat client, VRChatRequestGate request
 
     public async Task<VRChatAuthenticationState> AuthenticateAsync(CancellationToken token)
     {
-        var user = await requests.RunAsync(() => client.Authentication.GetCurrentUserAsync(token), token);
+        var user = await requests.RunAsync(() => client.Authentication.GetCurrentUserAsync(token), token, "会话认证");
         return new(user.DisplayName, user.RequiresTwoFactorAuth?.ToArray() ?? [], user.Id);
     }
 
@@ -83,13 +89,13 @@ internal sealed class VRChatApiSession(IVRChat client, VRChatRequestGate request
     public async Task<VRChatPresenceSnapshot> GetSnapshotAsync(CancellationToken token)
     {
         var requested = Now();
-        var current = await requests.RunAsync(() => client.Authentication.GetCurrentUserAsync(token), token);
-        if (current.RequiresTwoFactorAuth?.Count > 0) throw new VRChatUnauthorizedException("VRChat 需要重新认证。");
+        var current = await requests.RunAsync(() => client.Authentication.GetCurrentUserAsync(token), token, "自己状态");
+        if (current.RequiresTwoFactorAuth?.Count > 0) throw new VRChatSessionInvalidException("VRChat 需要两步验证，请重新登录。");
         var own = VRChatLocation.Parse($"{current.Presence?.World}:{current.Presence?.Instance}");
         List<VRChatPresenceUpdate> users = [new(current.Id, current.DisplayName, own, Now(), "snapshot")];
         for (var offset = 0; ; offset += 100)
         {
-            var friends = await requests.RunAsync(() => client.Friends.GetFriendsAsync(100, offset, false, token), token);
+            var friends = await requests.RunAsync(() => client.Friends.GetFriendsAsync(100, offset, false, token), token, "好友快照");
             users.AddRange(friends.Select(friend => new VRChatPresenceUpdate(friend.Id, friend.DisplayName,
                 VRChatLocation.Parse(friend.Location), Now(), "snapshot")));
             if (friends.Count < 100) break;
@@ -100,7 +106,7 @@ internal sealed class VRChatApiSession(IVRChat client, VRChatRequestGate request
     public Task<IVRChatEventConnection> ConnectAsync(CancellationToken token)
     {
         var auth = client.GetCookies().FirstOrDefault(cookie => cookie.Name == "auth")?.Value;
-        if (string.IsNullOrEmpty(auth)) throw new VRChatUnauthorizedException("VRChat 会话缺失。");
+        if (string.IsNullOrEmpty(auth)) throw new VRChatSessionInvalidException("VRChat 会话缺失，请重新登录。");
         return VRChatPipeline.ConnectAsync(auth, userAgent, Now, token);
     }
 

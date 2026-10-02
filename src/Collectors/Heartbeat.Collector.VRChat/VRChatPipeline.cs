@@ -27,7 +27,7 @@ internal sealed class VRChatPipeline(ClientWebSocket socket, Func<DateTimeOffset
                 pair.Key.Equals("Retry-After", StringComparison.OrdinalIgnoreCase)).Value?.FirstOrDefault());
             socket.Dispose();
             if (status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-                throw new VRChatUnauthorizedException("VRChat 事件连接认证失效。");
+                throw new VRChatUnauthorizedException($"VRChat 事件连接 HTTP {(int)status}");
             throw new VRChatTransientException(status == HttpStatusCode.TooManyRequests
                 ? "VRChat 事件连接 HTTP 429" : "VRChat 事件连接失败", retryAfter: retry);
         }

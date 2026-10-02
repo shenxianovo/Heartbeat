@@ -15,6 +15,7 @@ internal sealed class VRChatCollector(string? expectedTarget, IVRChatApiFactory 
     private Task? _run;
     private string _displayName = "VRChat";
     private string? _error;
+    private string? _authenticationRejection;
     private bool _needsAuthentication = true;
 
     public CollectorState? State => _target is null ? null : new(VRChatCollectorFactory.Key, _target, _displayName,
@@ -119,20 +120,11 @@ internal sealed class VRChatCollector(string? expectedTarget, IVRChatApiFactory 
             try
             {
                 await FlushAsync(pending, token);
-                var records = new PresenceRecords(_target!);
-                await VRChatFeed.RunAsync(_session!, async item =>
-                {
-                    ValidateAccount(item);
-                    var name = await ResolveWorldAsync(records.WorldToResolve(item), names, token);
-                    foreach (var record in records.Observe(item, name))
-                        pending.Stage(new(collector, new(record.Type, 1, "range")), record.Record);
-                    await FlushAsync(pending, token);
-                    _error = null;
-                }, token);
+                await CollectAsync(pending, collector, names, token);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
-            catch (VRChatUnauthorizedException)
-            { _needsAuthentication = true; _error = "VRChat 会话已失效，请重新登录。"; break; }
+            catch (VRChatSessionInvalidException exception)
+            { _needsAuthentication = true; _error = exception.Message; break; }
             catch (Exception exception) when (!token.IsCancellationRequested)
             {
                 if (DateTimeOffset.UtcNow - started > TimeSpan.FromMinutes(5)) backoff = 30;
@@ -147,12 +139,53 @@ internal sealed class VRChatCollector(string? expectedTarget, IVRChatApiFactory 
         catch (Exception) { _error = "采集已停止，最后一份观测未能交给 Hub。"; }
     }
 
+    private async Task CollectAsync(PendingHubSubmissions pending, CollectorDeclaration collector,
+        Dictionary<string, string?> names, CancellationToken token)
+    {
+        await VerifySessionIfRequiredAsync(token);
+        try
+        {
+            var records = new PresenceRecords(_target!);
+            await VRChatFeed.RunAsync(_session!, async item =>
+            {
+                ValidateAccount(item);
+                var name = await ResolveWorldAsync(records.WorldToResolve(item), names, token);
+                foreach (var record in records.Observe(item, name))
+                    pending.Stage(new(collector, new(record.Type, 1, "range")), record.Record);
+                await FlushAsync(pending, token);
+                _error = null;
+            }, token);
+        }
+        catch (VRChatUnauthorizedException exception)
+        {
+            _authenticationRejection = exception.Message;
+            await VerifySessionIfRequiredAsync(token);
+            throw new VRChatTransientException($"{exception.Message}；会话核验有效");
+        }
+    }
+
+    private async Task VerifySessionIfRequiredAsync(CancellationToken token)
+    {
+        if (_authenticationRejection is not { } failure) return;
+        VRChatAuthenticationState state;
+        try { state = await _session!.AuthenticateAsync(token); }
+        catch (VRChatUnauthorizedException exception)
+        { throw new VRChatSessionInvalidException($"VRChat 会话已失效，请重新登录。{failure}；{exception.Message}"); }
+        catch (VRChatTransientException exception)
+        { throw new VRChatTransientException($"{failure}；会话核验暂时失败：{exception.Message}", exception.RetryAfter); }
+        if (state.RequiredTwoFactorMethods.Count > 0)
+            throw new VRChatSessionInvalidException("VRChat 需要两步验证，请重新登录。");
+        if (state.AccountId != _target)
+            throw new VRChatSessionInvalidException("VRChat 账号不匹配，请重新登录。");
+        _authenticationRejection = null;
+    }
+
     private void ValidateAccount(VRChatFeedItem item)
     {
         if (item.Snapshot is { } snapshot && snapshot.Users[0].AccountId != _target)
-            throw new VRChatUnauthorizedException("VRChat 账号不匹配。");
+            throw new VRChatSessionInvalidException("VRChat 账号不匹配，请重新登录。");
         if (item.Event is { Cause: "user-location" } update && update.AccountId != _target)
-            throw new VRChatUnauthorizedException("VRChat 账号不匹配。");
+            throw new VRChatSessionInvalidException("VRChat 账号不匹配，请重新登录。");
     }
 
     private async Task<string?> ResolveWorldAsync(string? world, Dictionary<string, string?> names, CancellationToken token)

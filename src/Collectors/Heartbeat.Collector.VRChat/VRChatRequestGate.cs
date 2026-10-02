@@ -9,7 +9,7 @@ internal sealed class VRChatRequestGate : IDisposable
     private readonly SemaphoreSlim _mutex = new(1);
     private DateTimeOffset _next;
 
-    public async Task<T> RunAsync<T>(Func<Task<T>> request, CancellationToken token)
+    public async Task<T> RunAsync<T>(Func<Task<T>> request, CancellationToken token, string operation = "REST 请求")
     {
         await _mutex.WaitAsync(token);
         try
@@ -18,13 +18,13 @@ internal sealed class VRChatRequestGate : IDisposable
             if (delay > TimeSpan.Zero) await Task.Delay(delay, token);
             try { return await request(); }
             catch (ApiException exception) when (exception.ErrorCode is 401 or 403)
-            { throw new VRChatUnauthorizedException("VRChat 拒绝了当前会话，请重新登录。"); }
+            { throw new VRChatUnauthorizedException($"VRChat {operation} HTTP {exception.ErrorCode}"); }
             catch (ApiException exception)
             {
                 var retry = RetryDelay(exception.Headers?.FirstOrDefault(pair =>
                     pair.Key.Equals("Retry-After", StringComparison.OrdinalIgnoreCase)).Value?.FirstOrDefault());
                 if (exception.ErrorCode == 429) _next = DateTimeOffset.UtcNow + (retry ?? TimeSpan.FromMinutes(2));
-                throw new VRChatTransientException($"VRChat HTTP {exception.ErrorCode}", retryAfter: retry);
+                throw new VRChatTransientException($"VRChat {operation} HTTP {exception.ErrorCode}", retryAfter: retry);
             }
             catch (HttpRequestException) { throw new VRChatTransientException("VRChat 网络请求失败"); }
             catch (TaskCanceledException) when (!token.IsCancellationRequested)
