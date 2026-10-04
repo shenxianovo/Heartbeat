@@ -30,7 +30,7 @@ public sealed class TrackStorageTests(PostgresFixture fixture) : PostgresTestBas
         }
 
         var collector = Heartbeat.Recording.Collector.Create(
-            timelineId,
+            timelineId, Heartbeat.Recording.RecordingObject.Create(ownerId),
             "heartbeat.collector.desktop.macos",
             $"device-{Guid.NewGuid():N}",
             "My Mac",
@@ -41,6 +41,12 @@ public sealed class TrackStorageTests(PostgresFixture fixture) : PostgresTestBas
             await db.SaveChangesAsync(cancellationToken: TestContext.Current.CancellationToken);
         }
 
+        var identity = RecordingObject.Create(ownerId);
+        await using (var identityDb = CreateDbContext())
+        {
+            identityDb.Objects.Add(identity);
+            await identityDb.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
         await using var connection = new NpgsqlConnection(ConnectionString);
         await connection.OpenAsync(cancellationToken: TestContext.Current.CancellationToken);
         await using var command = connection.CreateCommand();
@@ -48,7 +54,7 @@ public sealed class TrackStorageTests(PostgresFixture fixture) : PostgresTestBas
             INSERT INTO tracks (id, collector_id, type, version, time_mode, created_at)
             VALUES (@id, @collector_id, 'heartbeat.test', @version, @time_mode, @created_at)
             """;
-        command.Parameters.AddWithValue("id", Guid.NewGuid());
+        command.Parameters.AddWithValue("id", identity.Id);
         command.Parameters.AddWithValue("collector_id", collector.Id);
         command.Parameters.AddWithValue("version", 1);
         command.Parameters.AddWithValue("time_mode", timeMode);

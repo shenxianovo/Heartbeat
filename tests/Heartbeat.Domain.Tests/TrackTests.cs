@@ -11,6 +11,7 @@ public sealed class TrackTests
     {
         var track = Track.Create(
             Guid.NewGuid(),
+            RecordingObject.Create(Guid.NewGuid()),
             "activity.application.focus",
             1,
             timeMode,
@@ -24,6 +25,7 @@ public sealed class TrackTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => Track.Create(
             Guid.NewGuid(),
+            RecordingObject.Create(Guid.NewGuid()),
             "activity.application.focus",
             1,
             (TimeMode)42,

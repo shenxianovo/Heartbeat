@@ -2,18 +2,19 @@ export interface ObjectScope {
   objectId?: string;
   contextObjectIds?: string[];
 }
-export interface ObservedObject {
+export interface ListedObject {
   id: string;
-  namespace: string;
-  key: string;
+  namespace: string | null;
+  key: string | null;
   name: string | null;
   roles: string[];
 }
 export interface RecordObject {
+  scope?: { namespace: string; key: string } | null;
   id: string;
   role: string;
-  namespace: string;
-  key: string;
+  namespace: string | null;
+  key: string | null;
   name: string | null;
 }
 

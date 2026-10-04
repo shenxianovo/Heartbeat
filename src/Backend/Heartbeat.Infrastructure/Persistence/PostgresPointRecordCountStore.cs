@@ -38,9 +38,15 @@ internal sealed class PostgresPointRecordCountStore(HeartbeatDbContext dbContext
                        count(*)::bigint
                 FROM records r
                 WHERE track_id = @track_id AND started_at >= @from AND started_at < @to
-                  AND (@object_id IS NULL OR EXISTS (SELECT 1 FROM record_objects o WHERE o.record_id = r.id AND o.object_id = @object_id))
+                  AND (@object_id IS NULL OR r.id = @object_id OR r.track_id = @object_id
+                    OR EXISTS (SELECT 1 FROM tracks t JOIN collectors c ON c.id = t.collector_id
+                        WHERE t.id = r.track_id AND (@object_id = t.collector_id OR @object_id = c.timeline_id))
+                    OR EXISTS (SELECT 1 FROM record_objects o WHERE o.record_id = r.id AND o.object_id = @object_id))
                   AND NOT EXISTS (SELECT 1 FROM unnest(@context_ids::uuid[]) AS context(id)
-                      WHERE NOT EXISTS (SELECT 1 FROM record_objects o WHERE o.record_id = r.id AND o.object_id = context.id))
+                      WHERE context.id <> r.id AND context.id <> r.track_id
+                        AND NOT EXISTS (SELECT 1 FROM tracks t JOIN collectors c ON c.id = t.collector_id
+                            WHERE t.id = r.track_id AND (context.id = t.collector_id OR context.id = c.timeline_id))
+                        AND NOT EXISTS (SELECT 1 FROM record_objects o WHERE o.record_id = r.id AND o.object_id = context.id))
                 GROUP BY 1
                 ORDER BY 1
                 """;

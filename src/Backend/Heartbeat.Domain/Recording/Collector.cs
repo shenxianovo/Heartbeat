@@ -10,6 +10,8 @@ public sealed class Collector
 
     public Guid Id { get; private set; }
 
+    public RecordingObject Identity { get; private set; } = null!;
+
     public Guid TimelineId { get; private set; }
 
     public string Key { get; private set; } = string.Empty;
@@ -22,17 +24,20 @@ public sealed class Collector
 
     public static Collector Create(
         Guid timelineId,
+        RecordingObject identity,
         string key,
         string target,
         string displayName,
         DateTimeOffset createdAt)
         => Create(
             timelineId,
+            identity,
             CollectorRegistration.Create(key, target, displayName),
             createdAt);
 
     public static Collector Create(
         Guid timelineId,
+        RecordingObject identity,
         CollectorRegistration registration,
         DateTimeOffset createdAt)
     {
@@ -41,12 +46,14 @@ public sealed class Collector
             throw new ArgumentException("A timeline is required.", nameof(timelineId));
         }
 
+        ArgumentNullException.ThrowIfNull(identity);
         ArgumentNullException.ThrowIfNull(registration);
         var normalizedCreatedAt = createdAt.ToUniversalTime();
 
         return new Collector
         {
-            Id = Guid.CreateVersion7(normalizedCreatedAt),
+            Id = identity.Id,
+            Identity = identity,
             TimelineId = timelineId,
             Key = registration.Key,
             Target = registration.Target,

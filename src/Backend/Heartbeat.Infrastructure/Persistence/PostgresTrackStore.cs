@@ -10,7 +10,7 @@ internal sealed class PostgresTrackStore(HeartbeatDbContext dbContext) : ITrackS
     private static readonly TimeModeConverter TimeModeConverter = new();
 
     public Task<Track?> FindAsync(Guid ownerId, Guid trackId, CancellationToken cancellationToken = default) =>
-        (from track in dbContext.Tracks.AsNoTracking()
+        (from track in dbContext.Tracks.AsNoTracking().Include(track => track.Identity)
          join collector in dbContext.Collectors on track.CollectorId equals collector.Id
          join timeline in dbContext.Timelines on collector.TimelineId equals timeline.Id
          where track.Id == trackId && timeline.OwnerId == ownerId
@@ -49,13 +49,19 @@ internal sealed class PostgresTrackStore(HeartbeatDbContext dbContext) : ITrackS
         var timeMode = (string)TimeModeConverter.ConvertToProvider(candidate.TimeMode)!;
 
         await dbContext.Database.ExecuteSqlInterpolatedAsync($"""
+            WITH resolved AS (
             INSERT INTO tracks (id, collector_id, type, version, time_mode, created_at)
             SELECT {candidate.Id}, collectors.id, {candidate.Type}, {candidate.Version},
                    {timeMode}, {candidate.CreatedAt}
             FROM collectors
             JOIN timelines ON timelines.id = collectors.timeline_id
             WHERE collectors.id = {candidate.CollectorId} AND timelines.owner_id = {ownerId}
-            ON CONFLICT (collector_id, type, version) DO NOTHING;
+            ON CONFLICT (collector_id, type, version) DO UPDATE SET id = tracks.id
+            RETURNING id
+            )
+            INSERT INTO objects(id, owner_id)
+            SELECT id, {ownerId} FROM resolved
+            ON CONFLICT (id) DO NOTHING;
             """, cancellationToken);
 
         // A separate read also sees a concurrent insertion after ON CONFLICT has waited for it.

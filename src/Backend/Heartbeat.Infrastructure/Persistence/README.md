@@ -13,7 +13,11 @@
 - `ended_at` 不得早于 `started_at`。它与 Track 时间模式的一致性由领域写入入口验证，数据库不使用跨表触发器。
 - `observed_at` 为空表示 Collector 观察时间等于 `started_at`。
 - Record 的 `value` 保存任意已定义的 JSON 值；后端不按 Track `(type, version)` 校验具体结构。
-- 对象、Record 和关联由同一 SQL 原子写入；对象 namespace/key 的唯一约束在 Timeline 内生效。`records.objects` 保存原生声明，`objects` 最新名称和 `record_objects` 为其投影。
+- `objects` 保存全应用 UUIDv7 与 Owner；Timeline、Collector、Track、Record、Hub 的主键均是对象外键。来源仍沿 Record → Track → Collector → Timeline 确定。
+- `object_bindings` 保存识别地址，唯一约束为 `(owner_id, scope_id, namespace, key)`，空 scope 也参与唯一约束。一个对象可以有多个地址；scope 是另一个对象的 ID。
+- `records.objects` 保存原始声明；`record_objects` 按引用序号保存解析结果，`object_descriptions` 保存当前名称。名称与识别映射分别维护。
+- `PostgresObjectDiscovery` 负责公共引用解析，不认识具名 Collector。Record 存储负责事务，记录写入、发现、关联与描述整条提交或回滚。
+- Timeline、Collector、Track 注册先确定最终采用的 ID，再保存其身份。重复与并发请求不会保存未使用的候选身份。
 - `range` 通过单条 SQL 原子执行 `max(ended_at)`；冲突不改动固定字段，`received_at` 保留首次成功写入值。
 - Track 获取与 Record 写入都在 SQL 中限制 Owner 归属。
 - 批量上传逐条提交，可能部分成功；重试复用 Record ID。

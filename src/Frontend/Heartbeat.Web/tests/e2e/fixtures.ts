@@ -129,7 +129,9 @@ export async function recordingRoutes(
   await page.route("**/api/v1/objects**", (route) => {
     const path = new URL(route.request().url()).pathname;
     const item = catalog.find((item) => path === `/api/v1/objects/${item.id}`);
-    return route.fulfill({ json: item ?? { objects: options.empty ? [] : catalog } });
+    return route.fulfill({
+      json: item ?? { objects: options.empty ? [] : catalog, nextCursor: null },
+    });
   });
   await page.route("**/api/v1/tracks**", async (route) => {
     const url = new URL(route.request().url());

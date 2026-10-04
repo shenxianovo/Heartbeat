@@ -15,7 +15,11 @@ public sealed class HeartbeatDbContext(DbContextOptions<HeartbeatDbContext> opti
 
     public DbSet<Record> Records => Set<Record>();
 
-    public DbSet<ObservedObject> Objects => Set<ObservedObject>();
+    public DbSet<RecordingObject> Objects => Set<RecordingObject>();
+
+    public DbSet<ObjectBinding> ObjectBindings => Set<ObjectBinding>();
+
+    public DbSet<ObjectDescription> ObjectDescriptions => Set<ObjectDescription>();
 
     public DbSet<RecordObject> RecordObjects => Set<RecordObject>();
 

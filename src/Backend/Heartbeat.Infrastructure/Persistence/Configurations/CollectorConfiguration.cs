@@ -36,6 +36,9 @@ internal sealed class CollectorConfiguration : IEntityTypeConfiguration<Collecto
 
         builder.HasIndex(x => new { x.TimelineId, x.Key, x.Target }).IsUnique();
 
+        builder.HasOne(x => x.Identity).WithOne().HasForeignKey<Collector>(x => x.Id)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder
             .HasOne<Timeline>()
             .WithMany()

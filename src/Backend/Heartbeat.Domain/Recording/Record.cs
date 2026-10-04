@@ -16,6 +16,8 @@ public sealed class Record
 
     public Guid Id { get; private set; }
 
+    public RecordingObject Identity { get; private set; } = null!;
+
     public Guid TrackId { get; private set; }
 
     public DateTimeOffset StartedAt { get; private set; }
@@ -65,6 +67,7 @@ public sealed class Record
         return new Record
         {
             Id = id,
+            Identity = RecordingObject.Register(id, track.Identity.OwnerId),
             TrackId = track.Id,
             StartedAt = normalizedStartedAt,
             EndedAt = normalizedEndedAt,

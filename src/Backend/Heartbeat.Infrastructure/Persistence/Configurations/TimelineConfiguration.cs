@@ -16,6 +16,8 @@ internal sealed class TimelineConfiguration : IEntityTypeConfiguration<Timeline>
 
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+        builder.HasOne(x => x.Identity).WithOne().HasForeignKey<Timeline>(x => x.Id)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.Property(x => x.OwnerId).HasColumnName("owner_id").IsRequired();
         builder.Property(x => x.DisplayName).HasColumnName("display_name").HasColumnType("text").IsRequired();
         builder.Property(x => x.CreatedAt).HasColumnName("created_at").IsRequired();

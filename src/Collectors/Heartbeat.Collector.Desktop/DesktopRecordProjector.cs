@@ -31,9 +31,7 @@ internal sealed class DesktopRecordProjector(
     private ObjectReference DeviceObject() => new("device", "device", target, displayName);
     private ObjectReference ApplicationObject(ForegroundApplication application) => new("application",
         $"app.{application.Platform}.{application.IdKind}",
-        application.IdKind == "executable_path"
-            ? JsonSerializer.Serialize(new[] { target, application.Id }) : application.Id,
-        application.DisplayName);
+        application.Id, application.DisplayName, Scope: new ObjectScope("device", target));
 
     public void Apply(DesktopObservation observation, DateTimeOffset at)
     {

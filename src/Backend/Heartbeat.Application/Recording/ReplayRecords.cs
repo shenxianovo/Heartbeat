@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Heartbeat.Recording;
+using Heartbeat.Contracts;
 
 namespace Heartbeat.Application.Recording;
 
@@ -32,7 +33,10 @@ public sealed record ReplayedRecord(
     public IReadOnlyList<ReplayedObject> Objects { get; init; } = [];
 }
 
-public sealed record ReplayedObject(Guid Id, string Role, string Namespace, string Key, string? Name);
+public sealed record ReplayedObject(Guid Id, string Role, string? Namespace, string? Key, string? Name)
+{
+    public ObjectScope? Scope { get; init; }
+}
 
 public sealed record RecordReplay(
     ReplayedTrack Track,

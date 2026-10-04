@@ -16,6 +16,8 @@ internal sealed class RecordConfiguration : IEntityTypeConfiguration<Record>
 
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+        builder.HasOne(x => x.Identity).WithOne().HasForeignKey<Record>(x => x.Id)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.Property(x => x.TrackId).HasColumnName("track_id").IsRequired();
         builder.Property(x => x.StartedAt).HasColumnName("started_at").IsRequired();
         builder.Property(x => x.EndedAt).HasColumnName("ended_at");

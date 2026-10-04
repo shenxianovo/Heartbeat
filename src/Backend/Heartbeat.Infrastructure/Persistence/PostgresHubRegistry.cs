@@ -10,14 +10,21 @@ public sealed class PostgresHubRegistry(HeartbeatDbContext db, TimeProvider cloc
 
     public async Task<bool> ReportAsync(Guid owner, Guid id, Guid sessionId, HubReport report, CancellationToken cancellationToken)
     {
+        _ = Heartbeat.Recording.RecordingObject.Register(id, owner);
         var json = JsonSerializer.Serialize(SavedStatus.From(report), JsonOptions);
         var now = clock.GetUtcNow();
         var cutoff = now - HubManagement.OnlineTimeout;
         var rows = await db.Database.ExecuteSqlInterpolatedAsync($"""
-            INSERT INTO hubs (id, owner_id, session_id, last_seen_at, status)
-            VALUES ({id}, {owner}, {sessionId}, {now}, {json}::jsonb)
+            WITH identity AS (
+                INSERT INTO objects(id, owner_id) VALUES ({id}, {owner})
+                ON CONFLICT (id) DO UPDATE SET owner_id = objects.owner_id
+                WHERE objects.owner_id = EXCLUDED.owner_id
+                RETURNING id
+            )
+            INSERT INTO hubs (id, session_id, last_seen_at, status)
+            SELECT id, {sessionId}, {now}, {json}::jsonb FROM identity
             ON CONFLICT (id) DO UPDATE SET session_id = EXCLUDED.session_id, last_seen_at = EXCLUDED.last_seen_at, status = EXCLUDED.status
-            WHERE hubs.owner_id = EXCLUDED.owner_id AND hubs.retired_at IS NULL
+            WHERE hubs.retired_at IS NULL
                 AND (hubs.session_id = EXCLUDED.session_id OR hubs.last_seen_at <= {cutoff})
             """, cancellationToken);
         return rows == 1;
@@ -25,7 +32,7 @@ public sealed class PostgresHubRegistry(HeartbeatDbContext db, TimeProvider cloc
 
     public async Task<IReadOnlyList<HubSummary>> ListAsync(Guid owner, CancellationToken cancellationToken)
     {
-        var nodes = await db.Hubs.AsNoTracking().Where(x => x.OwnerId == owner)
+        var nodes = await db.Hubs.AsNoTracking().Where(x => x.Identity.OwnerId == owner)
             .OrderByDescending(x => x.LastSeenAt).ToListAsync(cancellationToken);
         var cutoff = clock.GetUtcNow() - HubManagement.OnlineTimeout;
         return nodes.Select(x => new HubSummary(x.Id, x.LastSeenAt,
@@ -36,7 +43,7 @@ public sealed class PostgresHubRegistry(HeartbeatDbContext db, TimeProvider cloc
     public async Task<bool> RetireAsync(Guid owner, Guid id, CancellationToken cancellationToken)
     {
         var now = clock.GetUtcNow();
-        var updated = await db.Hubs.Where(x => x.OwnerId == owner && x.Id == id)
+        var updated = await db.Hubs.Where(x => x.Identity.OwnerId == owner && x.Id == id)
             .ExecuteUpdateAsync(set => set.SetProperty(x => x.RetiredAt, now), cancellationToken) == 1;
         return updated;
     }

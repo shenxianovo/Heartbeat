@@ -54,7 +54,7 @@ public static class HubEndpoints
         IHubRegistry registry, HubConnections connections, CancellationToken token)
     {
         if (!OwnerClaims.TryGetOwnerId(principal, out var owner)) return Results.Unauthorized();
-        if (id == Guid.Empty || request.SessionId == Guid.Empty || !ValidReport(request.Report))
+        if (id.Version != 7 || request.SessionId == Guid.Empty || !ValidReport(request.Report))
             return Results.Problem(statusCode: 400, title: "Invalid Hub report.");
         if (!await registry.ReportAsync(owner, id, request.SessionId, request.Report, token))
         {

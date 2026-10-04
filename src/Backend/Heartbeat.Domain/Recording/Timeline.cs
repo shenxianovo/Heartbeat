@@ -8,6 +8,8 @@ public sealed class Timeline
 
     public Guid Id { get; private set; }
 
+    public RecordingObject Identity { get; private set; } = null!;
+
     public Guid OwnerId { get; private set; }
 
     public string DisplayName { get; private set; } = string.Empty;
@@ -26,9 +28,11 @@ public sealed class Timeline
 
         var normalizedCreatedAt = createdAt.ToUniversalTime();
 
+        var identity = RecordingObject.Create(ownerId);
         return new Timeline
         {
-            Id = Guid.CreateVersion7(normalizedCreatedAt),
+            Id = identity.Id,
+            Identity = identity,
             OwnerId = ownerId,
             DisplayName = TextValue.NormalizeRequired(displayName, nameof(displayName)),
             CreatedAt = normalizedCreatedAt,

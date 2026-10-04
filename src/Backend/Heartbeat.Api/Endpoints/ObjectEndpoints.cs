@@ -16,10 +16,14 @@ public static class ObjectEndpoints
     }
 
     private static async Task<IResult> ListAsync(ClaimsPrincipal principal, IObjectStore store,
-        [FromQuery] Guid[]? contextObjectIds, [FromQuery] Guid? objectId, CancellationToken cancellationToken)
+        [FromQuery] Guid[]? contextObjectIds, [FromQuery] Guid? objectId, [FromQuery] int? limit,
+        [FromQuery] Guid? after, CancellationToken cancellationToken)
     {
         if (!OwnerClaims.TryGetOwnerId(principal, out var owner)) return Results.Unauthorized();
-        return Results.Ok(new { objects = await store.ListAsync(owner, contextObjectIds, objectId, cancellationToken) });
+        var count = limit ?? 200;
+        if (count is < 1 or > 500) return Results.BadRequest();
+        var items = await store.ListAsync(owner, contextObjectIds, objectId, count + 1, after, cancellationToken);
+        return Results.Ok(new { objects = items.Take(count), nextCursor = items.Count > count ? items[count - 1].Id : (Guid?)null });
     }
 
     private static async Task<IResult> FindAsync(Guid objectId, ClaimsPrincipal principal,

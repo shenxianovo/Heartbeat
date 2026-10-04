@@ -19,7 +19,7 @@ public sealed class HubManagementTests(PostgresFixture fixture) : PostgresTestBa
         await using var factory = RecordingApiFactory.Create(ConnectionString, clock);
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add(RecordingApiFactory.OwnerHeader, Guid.NewGuid().ToString());
-        var id = Guid.NewGuid();
+        var id = Guid.CreateVersion7();
         var checkIn = new HubCheckIn(Guid.NewGuid(), Report);
         using var first = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/check-in", checkIn, Token);
         first.EnsureSuccessStatusCode();
@@ -50,7 +50,7 @@ public sealed class HubManagementTests(PostgresFixture fixture) : PostgresTestBa
         await using var factory = RecordingApiFactory.Create(ConnectionString, TimeProvider.System);
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add(RecordingApiFactory.OwnerHeader, Guid.NewGuid().ToString());
-        var id = Guid.NewGuid();
+        var id = Guid.CreateVersion7();
         var checkIn = new HubCheckIn(Guid.NewGuid(), Report);
         using var first = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/check-in", checkIn, Token);
         first.EnsureSuccessStatusCode();
@@ -69,7 +69,7 @@ public sealed class HubManagementTests(PostgresFixture fixture) : PostgresTestBa
         using var busy = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/login",
             new CollectorLoginRequest("example", JsonSerializer.SerializeToElement(new { })), Token);
         Assert.Equal(HttpStatusCode.Conflict, busy.StatusCode);
-        using var unclaimed = await client.PostAsJsonAsync($"/api/v1/hubs/{Guid.NewGuid()}/check-in",
+        using var unclaimed = await client.PostAsJsonAsync($"/api/v1/hubs/{Guid.CreateVersion7()}/check-in",
             new HubCheckIn(Guid.NewGuid(), Report with { Collectors = [new("example", "unclaimed", "Example", "paused", null)] }), Token);
         Assert.Equal(HttpStatusCode.OK, unclaimed.StatusCode);
         using var repeated = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/check-in", checkIn, Token);
@@ -87,7 +87,7 @@ public sealed class HubManagementTests(PostgresFixture fixture) : PostgresTestBa
         await using var factory = RecordingApiFactory.Create(ConnectionString, TimeProvider.System);
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add(RecordingApiFactory.OwnerHeader, Guid.NewGuid().ToString());
-        var id = Guid.NewGuid();
+        var id = Guid.CreateVersion7();
         using var first = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/check-in", new HubCheckIn(Guid.NewGuid(), Report), Token);
         first.EnsureSuccessStatusCode();
         using var duplicate = await client.PostAsJsonAsync($"/api/v1/hubs/{id}/check-in",
@@ -103,9 +103,9 @@ public sealed class HubManagementTests(PostgresFixture fixture) : PostgresTestBa
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add(RecordingApiFactory.OwnerHeader, Guid.NewGuid().ToString());
         var report = Report with { Collectors = [new("example", "target", "Example", "paused", null)] };
-        using var first = await client.PostAsJsonAsync($"/api/v1/hubs/{Guid.NewGuid()}/check-in", new HubCheckIn(Guid.NewGuid(), report), Token);
+        using var first = await client.PostAsJsonAsync($"/api/v1/hubs/{Guid.CreateVersion7()}/check-in", new HubCheckIn(Guid.NewGuid(), report), Token);
         first.EnsureSuccessStatusCode();
-        using var second = await client.PostAsJsonAsync($"/api/v1/hubs/{Guid.NewGuid()}/check-in", new HubCheckIn(Guid.NewGuid(), report), Token);
+        using var second = await client.PostAsJsonAsync($"/api/v1/hubs/{Guid.CreateVersion7()}/check-in", new HubCheckIn(Guid.NewGuid(), report), Token);
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
         Assert.Equal(2, (await client.GetFromJsonAsync<HubList>("/api/v1/hubs", Token))!.Hubs.Length);
     }
@@ -115,7 +115,7 @@ public sealed class HubManagementTests(PostgresFixture fixture) : PostgresTestBa
     {
         var clock = new MutableClock();
         var owner = Guid.NewGuid();
-        var id = Guid.NewGuid();
+        var id = Guid.CreateVersion7();
         var report = Report with { Types = [new("example", "Example", [new("username", "Live login field", "text")])],
             Collectors = [new("example", "target", "Example", "running", null)] };
         await using (var factory = RecordingApiFactory.Create(ConnectionString, clock))
@@ -128,6 +128,12 @@ public sealed class HubManagementTests(PostgresFixture fixture) : PostgresTestBa
             Assert.Equal("Live login field", live.Report.Types[0].Fields[0].Label);
             await using var db = CreateDbContext();
             var saved = await db.Hubs.SingleAsync(Token);
+            var identity = await db.Objects.SingleAsync(Token);
+            Assert.Equal(id, identity.Id);
+            Assert.Equal(owner, identity.OwnerId);
+            Assert.Equal(saved.Id, identity.Id);
+            using var generic = await client.GetAsync($"/api/v1/objects/{id}", Token);
+            generic.EnsureSuccessStatusCode();
             Assert.DoesNotContain("configuration", saved.StatusJson);
             Assert.DoesNotContain("Live login field", saved.StatusJson);
             Assert.DoesNotContain("types", saved.StatusJson);
@@ -141,12 +147,16 @@ public sealed class HubManagementTests(PostgresFixture fixture) : PostgresTestBa
         Assert.Equal("running", Assert.Single(hub.Report.Collectors).State);
         Assert.Equal(7, hub.Report.Delivery.Pending);
         Assert.Empty(hub.Report.Types);
+        using var reconnected = await offline.PostAsJsonAsync($"/api/v1/hubs/{id}/check-in", new HubCheckIn(Guid.NewGuid(), report), Token);
+        reconnected.EnsureSuccessStatusCode();
+        await using var persisted = CreateDbContext();
+        Assert.Single(await persisted.Objects.ToListAsync(Token));
     }
 
     [Fact]
     public async Task ActivityRequiresLiveOwnerSessionAndNeverRefreshesPresenceOrEntersStorage()
     {
-        var id = Guid.NewGuid();
+        var id = Guid.CreateVersion7();
         var checkIn = new HubCheckIn(Guid.NewGuid(), Report);
         var clock = new MutableClock();
         await using var factory = RecordingApiFactory.Create(ConnectionString, clock);

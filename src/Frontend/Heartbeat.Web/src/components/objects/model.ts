@@ -1,10 +1,11 @@
-import type { RecordObject, ObservedObject, ObjectScope } from "@/api/types";
+import type { RecordObject, ListedObject, ObjectScope } from "@/api/types";
 import { rangeToIso, type DateRange } from "@/lib/dates";
 
-export function objectName(object: Pick<ObservedObject, "name" | "key">) {
-  return object.name || object.key;
+export function objectName(object: Pick<ListedObject, "id" | "name" | "key">) {
+  return object.name || object.key || object.id;
 }
-export function objectKind(space: string) {
+export function objectKind(space: string | null) {
+  if (space === null) return "对象";
   if (space === "device") return "设备";
   if (space.startsWith("app.")) return "应用";
   if (space === "vrchat.account") return "VRChat 账号";
@@ -29,6 +30,6 @@ export function relatedObjectHref(id: string, range: DateRange | undefined, scop
 
 export function referencedObject(objects: RecordObject[], role: string) {
   const object = objects.find((item) => item.role === role);
-  if (!object) throw new Error(`记录缺少 ${role} 对象`);
-  return object;
+  if (!object?.key) throw new Error(`记录缺少 ${role} 对象的原生标识`);
+  return { ...object, key: object.key };
 }

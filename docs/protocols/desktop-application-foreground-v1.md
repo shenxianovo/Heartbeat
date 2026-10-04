@@ -24,11 +24,11 @@
 ```json
 [
   {"role": "device", "namespace": "device", "key": "device-a", "name": "My Mac"},
-  {"role": "application", "namespace": "app.macos.bundle_id", "key": "com.google.Chrome", "name": "Google Chrome"}
+  {"role": "application", "namespace": "app.macos.bundle_id", "key": "com.google.Chrome", "name": "Google Chrome", "scope": {"namespace": "device", "key": "device-a"}}
 ]
 ```
 
-设备和应用均须明确引用。原生应用 key 按平台规则提供，不把显示名或进程 ID 用作身份。macOS bundle ID 跨设备共用对象；只有 executable path 时按 `[deviceKey, path]` 的 JSON 字符串限定设备作用域。当前 device key 是配置 Target，跨重装恢复仍待实现。
+设备和应用均须明确引用。原生应用 key 按平台规则提供，不把显示名或进程 ID 用作身份。bundle ID 与 executable path 均以设备对象为 scope，不同设备上的同款应用分别指认。当前 device key 是配置 Target，跨重装恢复仍待实现。
 
 后端只验证[公共对象契约](../record-objects.md)，不识别应用协议，不统一不同平台的身份。此协议没有窗口标题、页面 URL、进程 ID 或通用 metadata。
 

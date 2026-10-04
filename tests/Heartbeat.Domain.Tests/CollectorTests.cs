@@ -9,6 +9,7 @@ public sealed class CollectorTests
     {
         var collector = Collector.Create(
             Guid.NewGuid(),
+            RecordingObject.Create(Guid.NewGuid()),
             "heartbeat.collector.desktop.macos",
             "  device-1  ",
             "  My Mac  ",
@@ -27,6 +28,7 @@ public sealed class CollectorTests
     {
         Assert.Throws<ArgumentException>(() => Collector.Create(
             Guid.NewGuid(),
+            RecordingObject.Create(Guid.NewGuid()),
             key,
             "device-1",
             "My Mac",
@@ -38,6 +40,7 @@ public sealed class CollectorTests
     {
         var collector = Collector.Create(
             Guid.NewGuid(),
+            RecordingObject.Create(Guid.NewGuid()),
             $"heartbeat.{new string('a', 245)}",
             new string('t', Collector.MaximumTextLength),
             new string('n', Collector.MaximumTextLength),
@@ -58,6 +61,7 @@ public sealed class CollectorTests
 
         var error = Assert.Throws<ArgumentException>(() => Collector.Create(
             Guid.NewGuid(),
+            RecordingObject.Create(Guid.NewGuid()),
             parameterName == "key" ? $"heartbeat.{new string('a', 246)}" : "heartbeat.collector.desktop.macos",
             parameterName == "target" ? longValue : "device-1",
             parameterName == "displayName" ? longValue : "My Mac",

@@ -31,22 +31,27 @@ internal static class ObjectQueries
         Guid? objectId, IReadOnlyList<Guid>? contextObjectIds)
     {
         if (objectId is { } id)
-            records = records.Where(record => db.RecordObjects.Any(link => link.RecordId == record.Id && link.ObjectId == id));
+            records = RelatedTo(records, db, id);
         foreach (var context in contextObjectIds ?? [])
-            records = records.Where(record => db.RecordObjects.Any(link => link.RecordId == record.Id && link.ObjectId == context));
+            records = RelatedTo(records, db, context);
         return records;
     }
+
+    private static IQueryable<Record> RelatedTo(IQueryable<Record> records, HeartbeatDbContext db, Guid id) =>
+        records.Where(record => record.Id == id || record.TrackId == id ||
+            db.Tracks.Any(track => track.Id == record.TrackId &&
+                (track.CollectorId == id || db.Collectors.Any(collector => collector.Id == track.CollectorId && collector.TimelineId == id))) ||
+            db.RecordObjects.Any(link => link.RecordId == record.Id && link.ObjectId == id));
 
     internal static async Task<Dictionary<Guid, IReadOnlyList<ReplayedObject>>> ReferencesAsync(
         HeartbeatDbContext db, IReadOnlyList<Record> records, CancellationToken cancellationToken)
     {
         var ids = records.Select(record => record.Id).ToArray();
         var links = await db.RecordObjects.AsNoTracking().Where(link => ids.Contains(link.RecordId))
-            .Select(link => new { link.RecordId, link.ObjectId, link.Role, link.Subject.Namespace, link.Subject.Key })
-            .ToListAsync(cancellationToken);
-        var resolved = links.ToDictionary(link => (link.RecordId, link.Role, link.Namespace, link.Key), link => link.ObjectId);
+            .Select(link => new { link.RecordId, link.ReferenceIndex, link.ObjectId }).ToListAsync(cancellationToken);
+        var resolved = links.ToDictionary(link => (link.RecordId, link.ReferenceIndex), link => link.ObjectId);
         return records.ToDictionary(record => record.Id, record => (IReadOnlyList<ReplayedObject>)record.Objects
-            .Select(item => new ReplayedObject(resolved[(record.Id, item.Role, item.Namespace, item.Key)],
-                item.Role, item.Namespace, item.Key, item.Name)).ToArray());
+            .Select((item, index) => new ReplayedObject(resolved[(record.Id, index)],
+                item.Role, item.Namespace, item.Key, item.Name) { Scope = item.Scope }).ToArray());
     }
 }

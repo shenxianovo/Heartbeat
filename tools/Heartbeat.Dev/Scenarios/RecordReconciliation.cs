@@ -83,7 +83,8 @@ internal static class RecordReconciliation
         if (Micros(before.StartedAt) != Micros(after.StartedAt)
             || Micros(before.EndedAt) != Micros(after.EndedAt)
             || Micros(before.ObservedAt) != Micros(after.ObservedAt)
-            || !JsonElement.DeepEquals(before.Value, after.Value))
+            || !JsonElement.DeepEquals(before.Value, after.Value)
+            || !before.Objects.SequenceEqual(after.Objects))
             throw new InvalidOperationException($"Recovery changed accepted Record content or time: {before.Id}.");
     }
 

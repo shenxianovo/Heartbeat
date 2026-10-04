@@ -57,7 +57,7 @@ export function RecordCard({ record, track }: RecordCardProps) {
               key={`${object.role}/${object.id}`}
               href={relatedObjectHref(object.id, range, scope)}
             >
-              {object.name || object.key}
+              {object.name || object.key || object.id}
             </Link>
           ))}
         </div>

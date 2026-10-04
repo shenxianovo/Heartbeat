@@ -59,6 +59,26 @@ test.beforeEach(async ({ page }) => {
   await identityRoutes(page);
 });
 
+test("对象目录读取后续分页并能搜索没有原生标识的对象", async ({ page }) => {
+  const identity = "019e0000-0000-7000-8000-000000000099";
+  await page.route("**/api/v1/objects?**", (route) => {
+    const after = new URL(route.request().url()).searchParams.get("after");
+    return route.fulfill({
+      json: after
+        ? {
+            objects: [{ id: identity, namespace: null, key: null, name: null, roles: [] }],
+            nextCursor: null,
+          }
+        : { objects: [desktopObject], nextCursor: desktopObject.id },
+    });
+  });
+  await page.goto("/objects");
+  await expect(page.getByRole("link", { name: `对象 ${identity}`, exact: true })).toBeVisible();
+  await page.getByRole("textbox", { name: "搜索对象" }).fill(identity);
+  await expect(page.locator(".object-card")).toHaveCount(1);
+  await expect(page.locator(".object-card")).toHaveAttribute("href", `/objects/${identity}`);
+});
+
 test("深色主题首页水合时不报告 html 属性不一致", async ({ page }) => {
   const hydrationErrors: string[] = [];
   page.on("console", (message) => {

@@ -1,4 +1,4 @@
-import type { ObjectScope, ObservedObject } from "./types";
+import type { ObjectScope, ListedObject } from "./types";
 import type {
   PointCountsResponse,
   RecordsQuery,
@@ -119,15 +119,28 @@ function scopeParams(scope: ObjectScope) {
   for (const id of scope.contextObjectIds ?? []) params.append("contextObjectIds", id);
   return params;
 }
-export function fetchObjects(
+export async function fetchObjects(
   token: string,
   signal?: AbortSignal,
   contextObjectIds?: string[],
   objectId?: string,
 ) {
-  const params = scopeParams({ contextObjectIds, objectId });
-  return getJson<{ objects: ObservedObject[] }>(`/api/v1/objects?${params}`, token, signal);
+  const objects: ListedObject[] = [];
+  let cursor: string | null = null;
+  do {
+    const params = scopeParams({ contextObjectIds, objectId });
+    if (cursor) params.set("after", cursor);
+    const page: { objects: ListedObject[]; nextCursor: string | null } = await getJson(
+      `/api/v1/objects?${params}`,
+      token,
+      signal,
+    );
+    objects.push(...page.objects);
+    cursor = page.nextCursor;
+  } while (cursor);
+  return { objects };
 }
+
 export function fetchObject(token: string, id: string, signal?: AbortSignal) {
-  return getJson<ObservedObject>(`/api/v1/objects/${encodeURIComponent(id)}`, token, signal);
+  return getJson<ListedObject>(`/api/v1/objects/${encodeURIComponent(id)}`, token, signal);
 }

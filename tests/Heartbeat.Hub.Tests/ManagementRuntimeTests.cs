@@ -14,6 +14,7 @@ public sealed class ManagementRuntimeTests
         {
             Guid first;
             using (var storage = new HubLocalStorage(directory.FullName)) first = storage.Id;
+            Assert.Equal(7, first.Version);
             using (var reopened = new HubLocalStorage(directory.FullName)) Assert.Equal(first, reopened.Id);
             File.WriteAllText(Path.Combine(directory.FullName, "hub-id"), "broken");
             Assert.Throws<InvalidDataException>(() => new HubLocalStorage(directory.FullName));

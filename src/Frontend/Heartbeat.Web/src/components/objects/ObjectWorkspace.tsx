@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "react-oidc-context";
-import type { ObservedObject } from "@/api/types";
+import type { ListedObject } from "@/api/types";
 import type { DateRange } from "@/lib/dates";
 import { fetchObject, fetchObjects } from "@/api/client";
 import { FloatingNavigation } from "@/components/layout/FloatingNavigation";
@@ -49,7 +49,7 @@ function ObjectContents({
   token,
   owner,
 }: {
-  object: ObservedObject;
+  object: ListedObject;
   token: string;
   owner: string;
 }) {

@@ -104,6 +104,7 @@ public sealed class RecordTests
 
     private static Track CreateTrack(TimeMode timeMode) => Track.Create(
         Guid.NewGuid(),
+        RecordingObject.Create(Guid.NewGuid()),
         "activity.application.focus",
         1,
         timeMode,

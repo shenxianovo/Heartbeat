@@ -24,6 +24,7 @@ public sealed class RecordReconciliationTests
             [before with { Track = before.Track with { Type = "another-track" } }],
             [before with { Record = before.Record with { EndedAt = start } }],
             [before with { Record = before.Record with { Value = JsonSerializer.SerializeToElement(new { count = 2 }) } }],
+            [before with { Record = before.Record with { Objects = [new("device", "device", "changed")] } }],
         ];
         foreach (var after in corrupt)
             Assert.Throws<InvalidOperationException>(() => RecordReconciliation.RequireSameRecords([before], after));

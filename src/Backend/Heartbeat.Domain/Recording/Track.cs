@@ -8,6 +8,8 @@ public sealed class Track
 
     public Guid Id { get; private set; }
 
+    public RecordingObject Identity { get; private set; } = null!;
+
     public Guid CollectorId { get; private set; }
 
     public string Type { get; private set; } = string.Empty;
@@ -20,6 +22,7 @@ public sealed class Track
 
     public static Track Create(
         Guid collectorId,
+        RecordingObject identity,
         string type,
         int version,
         TimeMode timeMode,
@@ -30,6 +33,7 @@ public sealed class Track
             throw new ArgumentException("A collector is required.", nameof(collectorId));
         }
 
+        ArgumentNullException.ThrowIfNull(identity);
         ArgumentOutOfRangeException.ThrowIfLessThan(version, 1);
         if (!Enum.IsDefined(timeMode))
         {
@@ -40,7 +44,8 @@ public sealed class Track
 
         return new Track
         {
-            Id = Guid.CreateVersion7(normalizedCreatedAt),
+            Id = identity.Id,
+            Identity = identity,
             CollectorId = collectorId,
             Type = TextValue.NormalizeRequired(type, nameof(type)),
             Version = version,

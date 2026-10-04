@@ -1,4 +1,4 @@
-import type { TimelineRecord, ObservedObject } from "@/api/types";
+import type { TimelineRecord, ListedObject } from "@/api/types";
 import {
   clipExplicitRange,
   coveredMilliseconds,
@@ -12,24 +12,24 @@ export interface OverviewSource {
   label: string;
   kind: "vrchat" | "desktop" | "other";
 }
-export function overviewSources(objects: ObservedObject[]): OverviewSource[] {
-  return objects
-    .filter(
-      (object) =>
-        object.roles.some((role) => role === "device" || role === "account") ||
-        !(object.namespace.startsWith("app.") || object.namespace.startsWith("vrchat.")),
-    )
-    .map((object) => ({
-      id: object.id,
-      name: objectName(object),
-      label: objectKind(object.namespace),
-      kind:
-        object.namespace === "device"
-          ? "desktop"
-          : object.namespace === "vrchat.account"
-            ? "vrchat"
-            : "other",
-    }));
+export function overviewSources(objects: ListedObject[]): OverviewSource[] {
+  return objects.filter(isOverviewSource).map((object) => ({
+    id: object.id,
+    name: objectName(object),
+    label: objectKind(object.namespace),
+    kind:
+      object.namespace === "device"
+        ? "desktop"
+        : object.namespace === "vrchat.account"
+          ? "vrchat"
+          : "other",
+  }));
+}
+
+function isOverviewSource(object: ListedObject) {
+  if (object.roles.some((role) => role === "device" || role === "account")) return true;
+  if (object.namespace === null) return object.roles.length > 0;
+  return !(object.namespace.startsWith("app.") || object.namespace.startsWith("vrchat."));
 }
 export function summarizeSource(
   source: OverviewSource,

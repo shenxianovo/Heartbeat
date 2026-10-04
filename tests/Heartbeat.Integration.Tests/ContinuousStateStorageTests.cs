@@ -244,7 +244,7 @@ public sealed class RecordStorageTests(PostgresFixture fixture) : PostgresTestBa
     [Fact]
     public async Task MissingTrackDoesNotCreateRecord()
     {
-        var track = Track.Create(Guid.NewGuid(), "test.continuous-state", 1,
+        var track = Track.Create(Guid.NewGuid(), RecordingObject.Create(Guid.NewGuid()), "test.continuous-state", 1,
             TimeMode.Range, Now);
         await using var services = CreateServices();
 
@@ -266,8 +266,8 @@ public sealed class RecordStorageTests(PostgresFixture fixture) : PostgresTestBa
         }
 
         var collector = Heartbeat.Recording.Collector.Create(
-            timeline.Id, "heartbeat.collector.test", Guid.NewGuid().ToString(), "Test", Now);
-        var track = Track.Create(collector.Id, "test.continuous-state", 1,
+            timeline.Id, Heartbeat.Recording.RecordingObject.Create(ownerId), "heartbeat.collector.test", Guid.NewGuid().ToString(), "Test", Now);
+        var track = Track.Create(collector.Id, RecordingObject.Create(ownerId), "test.continuous-state", 1,
             timeMode, Now);
         db.Collectors.Add(collector);
         db.Tracks.Add(track);

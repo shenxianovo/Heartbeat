@@ -54,6 +54,10 @@ public sealed class CollectorRegistrationTests(PostgresFixture fixture) : Postgr
         Assert.Equal(first.Id, second.Id);
         Assert.Equal(first.CreatedAt, second.CreatedAt);
         Assert.Equal("New name", second.DisplayName);
+        await using var db = CreateDbContext();
+        var identity = await db.Objects.SingleAsync(item => item.Id == first.Id, TestContext.Current.CancellationToken);
+        Assert.Equal(first.Id, identity.Id);
+        Assert.Equal(ownerId, identity.OwnerId);
     }
 
     [Fact]
@@ -73,6 +77,9 @@ public sealed class CollectorRegistrationTests(PostgresFixture fixture) : Postgr
         var second = await RegisterAsync(services, secondOwnerId, command);
 
         Assert.NotEqual(first.Id, second.Id);
+        await using var db = CreateDbContext();
+        Assert.Equal(firstOwnerId, (await db.Objects.SingleAsync(x => x.Id == first.Id, TestContext.Current.CancellationToken)).OwnerId);
+        Assert.Equal(secondOwnerId, (await db.Objects.SingleAsync(x => x.Id == second.Id, TestContext.Current.CancellationToken)).OwnerId);
     }
 
     [Fact]
@@ -116,6 +123,8 @@ public sealed class CollectorRegistrationTests(PostgresFixture fixture) : Postgr
         await using var db = CreateDbContext();
         Assert.Equal(1, await db.Timelines.CountAsync(x => x.OwnerId == ownerId, cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal(1, await db.Collectors.CountAsync(cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Equal(2, await db.Objects.CountAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(first.Id, (await db.Objects.SingleAsync(item => item.Id == first.Id, TestContext.Current.CancellationToken)).Id);
     }
 
     private ServiceProvider CreateServices()

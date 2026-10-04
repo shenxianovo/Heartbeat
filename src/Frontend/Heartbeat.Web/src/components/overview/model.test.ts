@@ -9,6 +9,18 @@ const source: OverviewSource = {
   kind: "desktop",
 };
 
+it("keeps explicitly observed UUID-only objects and omits unobserved structure identities", () => {
+  const objects = [
+    { id: "timeline", roles: [] },
+    { id: "known-device", roles: ["device"] },
+    { id: "known-project", roles: ["project"] },
+  ].map((item) => ({ ...item, namespace: null, key: null, name: null }));
+  expect(overviewSources(objects).map((item) => item.id)).toEqual([
+    "known-device",
+    "known-project",
+  ]);
+});
+
 function application(id: string, start: number, end: number): TimelineRecord {
   return {
     id,

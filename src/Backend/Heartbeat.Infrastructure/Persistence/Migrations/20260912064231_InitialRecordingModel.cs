@@ -1,10 +1,11 @@
 ﻿using System;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace Heartbeat.Persistence.Migrations
+namespace Heartbeat.Migrations
 {
     /// <inheritdoc />
     public partial class InitialRecordingModel : Migration
@@ -13,11 +14,22 @@ namespace Heartbeat.Persistence.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.CreateTable(
+                name: "objects",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    owner_id = table.Column<Guid>(type: "uuid", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_objects", x => x.id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "hubs",
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
-                    owner_id = table.Column<Guid>(type: "uuid", nullable: false),
                     session_id = table.Column<Guid>(type: "uuid", nullable: false),
                     last_seen_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     retired_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
@@ -26,6 +38,41 @@ namespace Heartbeat.Persistence.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_hubs", x => x.id);
+                    table.ForeignKey(
+                        name: "FK_hubs_objects_id",
+                        column: x => x.id,
+                        principalTable: "objects",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "object_bindings",
+                columns: table => new
+                {
+                    id = table.Column<long>(type: "bigint", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    owner_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    scope_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    object_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    identity_namespace = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
+                    identity_key = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_object_bindings", x => x.id);
+                    table.ForeignKey(
+                        name: "FK_object_bindings_objects_object_id",
+                        column: x => x.object_id,
+                        principalTable: "objects",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_object_bindings_objects_scope_id",
+                        column: x => x.scope_id,
+                        principalTable: "objects",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -41,6 +88,12 @@ namespace Heartbeat.Persistence.Migrations
                 {
                     table.PrimaryKey("PK_timelines", x => x.id);
                     table.CheckConstraint("ck_timelines_display_name", "btrim(display_name) <> ''");
+                    table.ForeignKey(
+                        name: "FK_timelines_objects_id",
+                        column: x => x.id,
+                        principalTable: "objects",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -60,6 +113,12 @@ namespace Heartbeat.Persistence.Migrations
                     table.CheckConstraint("ck_collectors_display_name", "btrim(display_name) <> ''");
                     table.CheckConstraint("ck_collectors_key", "btrim(key) <> ''");
                     table.CheckConstraint("ck_collectors_target", "btrim(target) <> ''");
+                    table.ForeignKey(
+                        name: "FK_collectors_objects_id",
+                        column: x => x.id,
+                        principalTable: "objects",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_collectors_timelines_timeline_id",
                         column: x => x.timeline_id,
@@ -91,6 +150,12 @@ namespace Heartbeat.Persistence.Migrations
                         principalTable: "collectors",
                         principalColumn: "id",
                         onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_tracks_objects_id",
+                        column: x => x.id,
+                        principalTable: "objects",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -111,6 +176,12 @@ namespace Heartbeat.Persistence.Migrations
                     table.PrimaryKey("PK_records", x => x.id);
                     table.CheckConstraint("ck_records_time_range", "ended_at IS NULL OR ended_at >= started_at");
                     table.ForeignKey(
+                        name: "FK_records_objects_id",
+                        column: x => x.id,
+                        principalTable: "objects",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
                         name: "FK_records_tracks_track_id",
                         column: x => x.track_id,
                         principalTable: "tracks",
@@ -119,39 +190,56 @@ namespace Heartbeat.Persistence.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "objects",
+                name: "object_descriptions",
                 columns: table => new
                 {
-                    id = table.Column<Guid>(type: "uuid", nullable: false),
-                    timeline_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    identity_namespace = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
-                    identity_key = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: false),
+                    object_id = table.Column<Guid>(type: "uuid", nullable: false),
                     name = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: true),
-                    name_observed_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                    name_record_id = table.Column<Guid>(type: "uuid", nullable: true)
+                    observed_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    record_id = table.Column<Guid>(type: "uuid", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_objects", x => x.id);
-                    table.ForeignKey("FK_objects_timelines_timeline_id", x => x.timeline_id, "timelines", "id", onDelete: ReferentialAction.Restrict);
+                    table.PrimaryKey("PK_object_descriptions", x => x.object_id);
+                    table.ForeignKey(
+                        name: "FK_object_descriptions_objects_object_id",
+                        column: x => x.object_id,
+                        principalTable: "objects",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_object_descriptions_records_record_id",
+                        column: x => x.record_id,
+                        principalTable: "records",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
                 });
+
             migrationBuilder.CreateTable(
                 name: "record_objects",
                 columns: table => new
                 {
                     record_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    reference_index = table.Column<int>(type: "integer", nullable: false),
                     object_id = table.Column<Guid>(type: "uuid", nullable: false),
                     role = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_record_objects", x => new { x.record_id, x.object_id, x.role });
-                    table.ForeignKey("FK_record_objects_records_record_id", x => x.record_id, "records", "id", onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey("FK_record_objects_objects_object_id", x => x.object_id, "objects", "id", onDelete: ReferentialAction.Restrict);
+                    table.PrimaryKey("PK_record_objects", x => new { x.record_id, x.reference_index });
+                    table.ForeignKey(
+                        name: "FK_record_objects_objects_object_id",
+                        column: x => x.object_id,
+                        principalTable: "objects",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_record_objects_records_record_id",
+                        column: x => x.record_id,
+                        principalTable: "records",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
                 });
-            migrationBuilder.CreateIndex("IX_objects_timeline_id_identity_namespace_identity_key", "objects",
-                new[] { "timeline_id", "identity_namespace", "identity_key" }, unique: true);
-            migrationBuilder.CreateIndex("IX_record_objects_object_id_record_id", "record_objects", new[] { "object_id", "record_id" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_collectors_timeline_id_key_target",
@@ -160,9 +248,36 @@ namespace Heartbeat.Persistence.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_hubs_owner_id",
-                table: "hubs",
+                name: "IX_object_bindings_object_id",
+                table: "object_bindings",
+                column: "object_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_object_bindings_owner_id_scope_id_identity_namespace_identi~",
+                table: "object_bindings",
+                columns: new[] { "owner_id", "scope_id", "identity_namespace", "identity_key" },
+                unique: true)
+                .Annotation("Npgsql:NullsDistinct", false);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_object_bindings_scope_id",
+                table: "object_bindings",
+                column: "scope_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_object_descriptions_record_id",
+                table: "object_descriptions",
+                column: "record_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_objects_owner_id",
+                table: "objects",
                 column: "owner_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_record_objects_object_id_record_id",
+                table: "record_objects",
+                columns: new[] { "object_id", "record_id" });
 
             migrationBuilder.CreateIndex(
                 name: "ix_records_track_time",
@@ -185,13 +300,20 @@ namespace Heartbeat.Persistence.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(name: "record_objects");
-            migrationBuilder.DropTable(name: "objects");
-            migrationBuilder.DropTable(
-                name: "records");
-
             migrationBuilder.DropTable(
                 name: "hubs");
+
+            migrationBuilder.DropTable(
+                name: "object_bindings");
+
+            migrationBuilder.DropTable(
+                name: "object_descriptions");
+
+            migrationBuilder.DropTable(
+                name: "record_objects");
+
+            migrationBuilder.DropTable(
+                name: "records");
 
             migrationBuilder.DropTable(
                 name: "tracks");
@@ -201,6 +323,9 @@ namespace Heartbeat.Persistence.Migrations
 
             migrationBuilder.DropTable(
                 name: "timelines");
+
+            migrationBuilder.DropTable(
+                name: "objects");
         }
     }
 }

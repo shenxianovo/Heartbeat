@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useAuth } from "react-oidc-context";
 import { useQuery } from "@tanstack/react-query";
 import type { DateRange } from "@/lib/dates";
-import type { ObservedObject } from "@/api/types";
+import type { ListedObject } from "@/api/types";
 import { fetchObjects } from "@/api/client";
 import { FloatingNavigation } from "@/components/layout/FloatingNavigation";
 import { LoadingState } from "@/components/status/LoadingState";
@@ -55,7 +55,7 @@ export function ObjectDirectory() {
 }
 
 function filterObjects(
-  objects: ObservedObject[],
+  objects: ListedObject[],
   space: string | null,
   role: string | null,
   search: string,
@@ -64,7 +64,7 @@ function filterObjects(
   return objects.filter((item) => {
     if (space && item.namespace !== space) return false;
     if (role && !item.roles.includes(role)) return false;
-    return `${item.name ?? ""} ${item.key}`.toLocaleLowerCase().includes(term);
+    return `${item.name ?? ""} ${item.key ?? ""} ${item.id}`.toLocaleLowerCase().includes(term);
   });
 }
 
@@ -76,7 +76,7 @@ function ObjectResults({
 }: {
   pending: boolean;
   failed: boolean;
-  objects: ObservedObject[];
+  objects: ListedObject[];
   range?: DateRange;
 }) {
   if (pending) return <LoadingState label="正在读取对象" />;

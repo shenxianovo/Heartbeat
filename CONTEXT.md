@@ -24,6 +24,10 @@ _避免使用_: Collector 运行状态、采集完整性、最近 Record 时间
 Timeline 中一个 Collector 实现与一个 Target 的稳定绑定。只要 Collector 实现和 Target 不变，进程重启、重新安装或凭据变化都不会产生新的 Collector。
 _避免使用_: Recording Source、Observer、设备、安装实例
 
+**对象（Object）**:
+系统明确指认的事物，包括观测目标、采集工具、记录空间和记录本身。Timeline、Collector、Track、Record、Hub 共用统一对象身份，业务字段仍由各自结构表达。对象身份与用于识别它的名称、原生标识及其在观测中的角色分开；识别依据变化不必意味着对象身份变化。
+_避免使用_: 原生标识、属性集合、对象角色
+
 **Target**:
 由 Collector 定义并规范化的、其主要观测对象的稳定身份。Heartbeat 不解释 Target 的内部格式，只按 Collector 提供的规范形式标识 Collector 绑定；Target 不是通用实体，也不是 Collector 安装实例。
 _避免使用_: Instance、安装标识、实体
@@ -41,15 +45,15 @@ Track 中具有稳定逻辑身份、符合其数据协议的一份观测结果�
 _避免使用_: Observation Record、Fact、Activity、原始传输消息
 
 **观测对象（Observed Object）**:
-观测中具有可辨识身份的事物，例如设备、应用、账号或世界；同一对象可以出现在不同 Collector 的多条 Record 中，不因查看入口变化而改变身份。当前一行对象代表 Timeline 内一个 namespace/key 原生身份，UUID 用于内部关联和路由。
-_避免使用_: Collector、Track、页面、任意字段值
+对象在观测中作为目标或涉及事物时的称呼，例如设备、应用、账号或世界；同一对象可以出现在不同 Collector 的多条 Record 中，不因查看入口变化而改变身份。
+_避免使用_: 独立身份种类、页面、任意字段值
 
 **对象引用（Object Reference）**:
-Record 对其涉及的观测对象的明确指认，表达生产者在观测中已知的身份，不等同于对不同原生标识的统一身份解析。见 [公共契约](docs/record-objects.md) 与 [ADR-0029](docs/adr/ADR-0029-record-object-references.md)。
+Record 对其涉及的观测对象的明确指认，表达生产者已知的对象 UUID 或带作用域的原生识别依据。一个对象可以有多个识别地址；产品标识相同不证明不同设备上的应用是同一对象。见 [公共契约](docs/record-objects.md) 与 [ADR-0029](docs/adr/ADR-0029-record-object-references.md)。
 _避免使用_: 唯一展示归属、Target、全局身份推断
 
 **Application Identity**:
-把不同平台的应用标识解析为同一个应用的跨平台身份。它是可修正的解析结果，不是 Record 保存的平台原生标识。
+应用产品的身份，可以把不同平台的产品标识对应到同一产品。不同设备上的具体应用仍是不同对象；产品解析是可修正的结果，不替代 Record 保存的原生标识与作用域。
 _避免使用_: 可执行文件名、Bundle ID、Package Name
 
 **Foreground Application Observation**:

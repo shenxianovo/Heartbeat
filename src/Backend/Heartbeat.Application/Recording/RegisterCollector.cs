@@ -26,7 +26,7 @@ public interface ICollectorRegistrationStore
 {
     Task<RegisteredCollector> RegisterAsync(
         Timeline candidateTimeline,
-        Guid candidateCollectorId,
+        RecordingObject candidateObject,
         CollectorRegistration registration,
         CancellationToken cancellationToken = default);
 }
@@ -52,10 +52,10 @@ public sealed class RegisterCollector(
             command.Target,
             command.DisplayName);
         var createdAt = timeProvider.GetUtcNow().ToUniversalTime();
-        var candidateCollectorId = Guid.CreateVersion7(createdAt);
+        var candidateObject = RecordingObject.Create(ownerId);
         return await store.RegisterAsync(
             Timeline.Create(ownerId, "My Timeline", createdAt),
-            candidateCollectorId,
+            candidateObject,
             registration,
             cancellationToken);
     }

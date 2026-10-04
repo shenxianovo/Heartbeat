@@ -21,6 +21,7 @@ public static class DependencyInjection
         services.AddScoped<Heartbeat.Management.IHubRegistry, PostgresHubRegistry>();
         services.AddScoped<ICollectorRegistrationStore, PostgresCollectorRegistrationStore>();
         services.AddScoped<IRegisterCollector, RegisterCollector>();
+        services.AddScoped<PostgresObjectDiscovery>();
         services.AddScoped<IRecordStore, PostgresRecordStore>();
         services.AddScoped<IObjectStore, PostgresObjectStore>();
         services.AddScoped<ITrackStore, PostgresTrackStore>();

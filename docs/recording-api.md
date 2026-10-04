@@ -24,6 +24,7 @@ Owner 来自验签令牌的 UUID `sub`。OIDC access token 与 agent session tok
 
 - 首次成功注册时，后端在同一事务中自动创建 Timeline。
 - `(timeline_id, key, target)` 是稳定地址；重复和并发请求复用原 Collector。
+- 响应的 `id` 同时是 Collector 的对象 ID；对象身份与 Collector 注册原子提交，不为重复或并发请求留下候选对象。
 - 重复注册可以更新 `displayName`，最后成功提交者生效。
 - 三个字符串去除首尾空格后非空，最长 255 个字符。
 - `key` 使用小写点号分段且不含版本。
@@ -186,10 +187,15 @@ Hub 只能用 `stored` 确认上传进度。旧请求回执只确认发送时的
 
 ## 对象目录与跨 Track 读取
 
-- `GET /api/v1/objects`：返回 `{ objects: [{ id, namespace, key, name, roles }] }`。`roles` 是该对象在记录中出现过的角色，去重并按角色排序，不表示全局展示等级，名称是最新有效观测的非空名称。可选 `objectId`、`contextObjectIds` 限制为与条件对象在同一 Record 中共同出现的对象，全部条件取交集；`contextObjectIds` 可重复提供多个 UUID。
-- `GET /api/v1/objects/{objectId}`：返回单个对象；不存在或不属于 Owner 返回 404。
-- `GET /api/v1/objects/{objectId}/records`：跨 Track 的直接关联 Record，返回 `{ records, nextCursor }`；每条包含 `trackId` 和通常的 Record 字段。支持 from、to、cursor、limit（默认 100，1–500）及可选 contextObjectIds。按 `(startedAt, id)` 分页。上下文必须在同一 Record 中出现，不扩展间接关系。
+目录列出核心结构对象和被观测明确引用的对象。默认不枚举每条 Record；任意 Record 的对象身份仍可直接按 ID 查找和引用。
 
-Track 目录、Track Record 分页、Point 计数都支持 `objectId` 和 `contextObjectIds`；所有条件取交集，`contextObjectIds` 通过重复查询参数提供多个 UUID。目录只返回有符合条件记录的 Track。分页续读必须保持时间窗及对象条件。零长度 Range 按开始时间进入半开窗口。未知或无权限的筛选对象不会命中记录。
+- `GET /api/v1/objects`：返回 `{ objects, nextCursor }`。每项包含 `id`、可空的 `namespace`、`key`、`name`，以及 `roles`、`identifiers`。identifier 包含 `namespace`、`key` 和可空的作用域对象 `scopeId`；顶层 namespace/key 是排序最前的识别地址，不能用于推断对象类型。roles 是观测中出现过的角色，去重并排序。
+- 目录使用 UUID 顺序分页：`limit` 默认 200，范围 1–500；`after` 原样使用上一页 nextCursor，末页为 null。可选 `objectId`、重复提供的 `contextObjectIds` 取同一条 Record 上的条件交集。
+- `GET /api/v1/objects/{objectId}`：按统一对象身份返回单个对象。没有原生标识时 namespace/key 为 null；没有可用名称时 name 为 null。不存在或不属于 Owner 返回 404。
+- `GET /api/v1/objects/{objectId}/records`：跨 Track 查询该对象的 Record，返回 `{ records, nextCursor }`。每条包含 trackId 和通常的 Record 字段。支持 from、to、cursor、limit（默认 100，1–500）及 contextObjectIds，按 `(startedAt, id)` 分页。
 
-Record、对象及关联原子写入；无效记录和冲突不会发现对象或更新名称。读取不创建对象。
+对象条件包括显式引用，以及该 Record 本身、所属 Track、Collector、Timeline。全部条件必须在同一条 Record 上成立；不扩展间接关联，也不从 Hub 交付建立观测关系。Track 目录、Track Record 分页和 Point 计数使用相同的条件。目录只返回有符合条件记录的 Track。分页续读保持同一时间窗和对象条件。未知或无权限的条件不会命中记录。
+
+读取的 Record 对象引用包含已解析的 UUID、生产者当时的 role、可空 namespace/key/name，以及可空 scope。多个别名各自保留。目录名称来自最新有效观测或该业务结构的展示信息，不覆盖历史快照。
+
+Record、对象身份、发现、描述与关联按条原子提交。未知或无权限的引用 UUID、冲突的识别地址返回该条 `invalid_record`，不会留下部分对象或更新已有记录。读取不创建对象。

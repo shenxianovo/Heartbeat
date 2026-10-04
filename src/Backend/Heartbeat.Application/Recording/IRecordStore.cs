@@ -21,5 +21,7 @@ public abstract record RecordWriteResult
 
     public sealed record TrackNotFound : RecordWriteResult;
 
+    public sealed record InvalidObject(string Detail) : RecordWriteResult;
+
     public sealed record Conflict : RecordWriteResult;
 }

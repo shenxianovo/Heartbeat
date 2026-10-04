@@ -71,7 +71,7 @@ public sealed class ResolveTrack(ITrackStore store, TimeProvider timeProvider) :
 
         ArgumentException.ThrowIfNullOrWhiteSpace(command.Type);
         ArgumentOutOfRangeException.ThrowIfLessThan(command.Version, 1);
-        var candidate = Track.Create(command.CollectorId, command.Type, command.Version,
+        var candidate = Track.Create(command.CollectorId, RecordingObject.Create(ownerId), command.Type, command.Version,
             command.TimeMode, timeProvider.GetUtcNow());
         var track = await store.ResolveAsync(ownerId, candidate, cancellationToken);
         if (track is null)

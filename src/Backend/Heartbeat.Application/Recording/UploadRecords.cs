@@ -113,6 +113,8 @@ public sealed class UploadRecords(
             {
                 RecordWriteResult.Stored stored => new RecordUploadResult(index, record.Id,
                     RecordUploadStatus.Stored, stored.EndedAt, stored.ReceivedAt),
+                RecordWriteResult.InvalidObject invalid => new RecordUploadResult(index, record.Id,
+                    RecordUploadStatus.InvalidRecord, Detail: invalid.Detail),
                 RecordWriteResult.Conflict => new RecordUploadResult(index, record.Id, RecordUploadStatus.Conflict),
                 RecordWriteResult.TrackNotFound => new RecordUploadResult(index, record.Id, RecordUploadStatus.TrackNotFound),
                 _ => throw new InvalidOperationException("Unknown record write result."),

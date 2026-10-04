@@ -1,6 +1,7 @@
 import { chromium, expect, type APIRequestContext } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
 import { verifyReplay, type ReplayWitness, type ReplayStage } from "./replay-record.ts";
+import type { RecordObject } from "../../src/api/types.ts";
 
 interface RecordSnapshot {
   id: string;
@@ -8,7 +9,7 @@ interface RecordSnapshot {
   endedAt: string | null;
   observedAt: string | null;
   value: unknown;
-  objects: { id?: string; role: string; namespace: string; key: string; name: string | null }[];
+  objects: (Omit<RecordObject, "id"> & { id?: string | null })[];
 }
 interface DeliveredRecord {
   trackId: string;
@@ -51,6 +52,12 @@ async function progress(next: ReplayStage, passed = false) {
   );
 }
 
+function referenceSnapshot(reference: RecordSnapshot["objects"][number]) {
+  const snapshot = { ...reference };
+  delete snapshot.id;
+  return snapshot;
+}
+
 async function verifyApi(request: APIRequestContext) {
   if (!input.session) return;
   const times = input.records
@@ -74,9 +81,14 @@ async function verifyApi(request: APIRequestContext) {
       const found = actual.find((item) => item.id === record.id);
       expect(found).toBeDefined();
       expect(found!.value).toEqual(record.value);
-      expect(
-        found!.objects.map(({ role, namespace, key, name }) => ({ role, namespace, key, name })),
-      ).toEqual(record.objects);
+      expect(found!.objects.map(referenceSnapshot)).toEqual(record.objects.map(referenceSnapshot));
+      for (const [index, reference] of found!.objects.entries()) {
+        expect(reference.id).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+        );
+        const known = record.objects[index]!.id;
+        if (known) expect(reference.id).toBe(known);
+      }
       for (const field of ["startedAt", "endedAt", "observedAt"] as const) {
         expect(found![field] === null ? null : Date.parse(found![field]!)).toBe(
           record[field] === null ? null : Date.parse(record[field]!),

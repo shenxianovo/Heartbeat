@@ -21,6 +21,8 @@ internal sealed class TrackConfiguration : IEntityTypeConfiguration<Track>
 
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+        builder.HasOne(x => x.Identity).WithOne().HasForeignKey<Track>(x => x.Id)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.Property(x => x.CollectorId).HasColumnName("collector_id").IsRequired();
         builder.Property(x => x.Type).HasColumnName("type").HasColumnType("text").IsRequired();
         builder.Property(x => x.Version).HasColumnName("version").IsRequired();

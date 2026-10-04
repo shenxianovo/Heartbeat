@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Heartbeat.Persistence;
 
-internal sealed class PostgresRecordStore(HeartbeatDbContext dbContext) : IRecordStore
+internal sealed class PostgresRecordStore(HeartbeatDbContext dbContext, PostgresObjectDiscovery discovery) : IRecordStore
 {
     private const string WriteSql = """
         WITH owned_track AS (
@@ -23,11 +23,17 @@ internal sealed class PostgresRecordStore(HeartbeatDbContext dbContext) : IRecor
             FROM owned_track
             WHERE (@ended_at IS NULL AND time_mode = 'point')
                OR (@ended_at IS NOT NULL AND time_mode = 'range')
+        ), record_identity AS (
+            INSERT INTO objects(id, owner_id)
+            SELECT @id, @owner_id FROM accepted_track
+            ON CONFLICT (id) DO UPDATE SET owner_id = objects.owner_id
+            WHERE objects.owner_id = EXCLUDED.owner_id
+            RETURNING id
         ), written AS (
             INSERT INTO records (id, track_id, started_at, ended_at, observed_at, received_at, value, objects)
             SELECT @id, accepted_track.id, @started_at, @ended_at, @observed_at, @received_at,
                    CAST(@value AS jsonb), CAST(@objects AS jsonb)
-            FROM accepted_track
+            FROM accepted_track CROSS JOIN record_identity
             ON CONFLICT (id) DO UPDATE
             SET ended_at = CASE
                     WHEN records.ended_at IS NULL THEN NULL
@@ -41,36 +47,6 @@ internal sealed class PostgresRecordStore(HeartbeatDbContext dbContext) : IRecor
               AND ((records.ended_at IS NULL AND EXCLUDED.ended_at IS NULL)
                    OR (records.ended_at IS NOT NULL AND EXCLUDED.ended_at IS NOT NULL))
             RETURNING ended_at, received_at
-        ), resolved_objects AS (
-            INSERT INTO objects(id, timeline_id, identity_namespace, identity_key, name, name_observed_at, name_record_id)
-            SELECT candidate.id, accepted_track.timeline_id, candidate.namespace, candidate.key, candidate.name,
-                   CASE WHEN candidate.name IS NOT NULL THEN @name_at END,
-                   CASE WHEN candidate.name IS NOT NULL THEN @id END
-            FROM jsonb_to_recordset(CAST(@object_candidates AS jsonb))
-                 AS candidate(id uuid, namespace text, key text, name text)
-            CROSS JOIN accepted_track CROSS JOIN written
-            ORDER BY candidate.namespace COLLATE "C", candidate.key COLLATE "C"
-            ON CONFLICT (timeline_id, identity_namespace, identity_key) DO UPDATE
-            SET name = CASE WHEN EXCLUDED.name IS NOT NULL AND
-                    (objects.name_observed_at IS NULL OR
-                     (EXCLUDED.name_observed_at, EXCLUDED.name_record_id) > (objects.name_observed_at, objects.name_record_id))
-                    THEN EXCLUDED.name ELSE objects.name END,
-                name_observed_at = CASE WHEN EXCLUDED.name IS NOT NULL AND
-                    (objects.name_observed_at IS NULL OR
-                     (EXCLUDED.name_observed_at, EXCLUDED.name_record_id) > (objects.name_observed_at, objects.name_record_id))
-                    THEN EXCLUDED.name_observed_at ELSE objects.name_observed_at END,
-                name_record_id = CASE WHEN EXCLUDED.name IS NOT NULL AND
-                    (objects.name_observed_at IS NULL OR
-                     (EXCLUDED.name_observed_at, EXCLUDED.name_record_id) > (objects.name_observed_at, objects.name_record_id))
-                    THEN EXCLUDED.name_record_id ELSE objects.name_record_id END
-            RETURNING id, identity_namespace, identity_key
-        ), linked_objects AS (
-            INSERT INTO record_objects(record_id, object_id, role)
-            SELECT @id, resolved.id, reference.role
-            FROM jsonb_to_recordset(CAST(@objects AS jsonb)) AS reference(role text, namespace text, key text)
-            JOIN resolved_objects resolved ON resolved.identity_namespace = reference.namespace
-                AND resolved.identity_key = reference.key
-            ON CONFLICT DO NOTHING
         )
         SELECT EXISTS (SELECT 1 FROM owned_track),
                EXISTS (SELECT 1 FROM accepted_track),
@@ -91,52 +67,41 @@ internal sealed class PostgresRecordStore(HeartbeatDbContext dbContext) : IRecor
 
         ArgumentNullException.ThrowIfNull(record);
 
-        var connection = dbContext.Database.GetDbConnection();
-        var shouldClose = connection.State is not ConnectionState.Open;
-        if (shouldClose)
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await using var command = dbContext.Database.GetDbConnection().CreateCommand();
+        command.CommandText = WriteSql;
+        command.Transaction = transaction.GetDbTransaction();
+        AddRecordParameters(command, ownerId, record);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
         {
-            await dbContext.Database.OpenConnectionAsync(cancellationToken);
+            throw new InvalidOperationException("The record write did not return a result.");
         }
 
-        try
+        if (!reader.GetBoolean(0))
         {
-            await using var command = connection.CreateCommand();
-            command.CommandText = WriteSql;
-            command.Transaction = dbContext.Database.CurrentTransaction?.GetDbTransaction();
-            AddRecordParameters(command, ownerId, record);
-
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            if (!await reader.ReadAsync(cancellationToken))
-            {
-                throw new InvalidOperationException("The record write did not return a result.");
-            }
-
-            if (!reader.GetBoolean(0))
-            {
-                return new RecordWriteResult.TrackNotFound();
-            }
-
-            if (!reader.GetBoolean(1))
-            {
-                throw new ArgumentException("The record end time does not match the Track definition.", nameof(record));
-            }
-
-            if (!reader.GetBoolean(4))
-            {
-                return new RecordWriteResult.Conflict();
-            }
-
-            return new RecordWriteResult.Stored(
-                reader.IsDBNull(2) ? null : reader.GetFieldValue<DateTimeOffset>(2),
-                reader.GetFieldValue<DateTimeOffset>(3));
+            return new RecordWriteResult.TrackNotFound();
         }
-        finally
+
+        if (!reader.GetBoolean(1))
         {
-            if (shouldClose)
-            {
-                await dbContext.Database.CloseConnectionAsync();
-            }
+            throw new ArgumentException("The record end time does not match the Track definition.", nameof(record));
         }
+
+        if (!reader.GetBoolean(4))
+        {
+            return new RecordWriteResult.Conflict();
+        }
+
+        var result = new RecordWriteResult.Stored(
+            reader.IsDBNull(2) ? null : reader.GetFieldValue<DateTimeOffset>(2),
+            reader.GetFieldValue<DateTimeOffset>(3));
+        await reader.DisposeAsync();
+        try { await discovery.AssociateAsync(ownerId, record, cancellationToken); }
+        catch (ArgumentException exception) { return new RecordWriteResult.InvalidObject(exception.Message); }
+        await transaction.CommitAsync(cancellationToken);
+        return result;
     }
 
     private static void AddRecordParameters(DbCommand command, Guid ownerId, Record record)
@@ -150,11 +115,6 @@ internal sealed class PostgresRecordStore(HeartbeatDbContext dbContext) : IRecor
         AddParameter(command, "received_at", record.ReceivedAt);
         AddParameter(command, "value", record.Value.GetRawText());
         AddParameter(command, "objects", JsonSerializer.Serialize(record.Objects, ObjectReferencesConverter.Options));
-        AddParameter(command, "name_at", record.ObservedAt ?? record.StartedAt);
-        AddParameter(command, "object_candidates", JsonSerializer.Serialize(record.Objects
-            .DistinctBy(item => (item.Namespace, item.Key))
-            .Select(item => new { id = Guid.CreateVersion7(), item.Namespace, item.Key, item.Name }),
-            ObjectReferencesConverter.Options));
     }
 
     private static void AddParameter(DbCommand command, string name, object? value, DbType? type = null)

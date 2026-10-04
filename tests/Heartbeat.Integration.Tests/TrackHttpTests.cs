@@ -64,6 +64,8 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
         Assert.Single(ids.Distinct());
         await using var db = CreateDbContext();
         Assert.Single(await db.Tracks.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Equal(3, await db.Objects.CountAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(ownerId, (await db.Objects.SingleAsync(item => item.Id == ids[0], TestContext.Current.CancellationToken)).OwnerId);
     }
 
     [Fact]
@@ -164,7 +166,7 @@ public sealed class TrackHttpTests(PostgresFixture fixture) : PostgresTestBase(f
         await using var factory = RecordingApiFactory.Create(ConnectionString, new FixedTimeProvider(Now));
         using var client = factory.CreateClient();
         var collectorId = await RegisterAsync(client, ownerId);
-        var track = Track.Create(collectorId, "desktop.application.foreground", 1,
+        var track = Track.Create(collectorId, RecordingObject.Create(ownerId), "desktop.application.foreground", 1,
             TimeMode.Point, Now.AddDays(-1));
         await using (var db = CreateDbContext())
         {
