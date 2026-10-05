@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="xunit.v3.mtp-v2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../tools/Heartbeat.Collector.Sample/Heartbeat.Collector.Sample.csproj" />
+    <ProjectReference Include="../../src/Server/Heartbeat.Server/Heartbeat.Server.csproj" />
+    <ProjectReference Include="../../src/Hub/Heartbeat.Hub.Client/Heartbeat.Hub.Client.csproj" />
+    <ProjectReference Include="../../src/Collectors/Heartbeat.Collector.VRChat/Heartbeat.Collector.VRChat.csproj" />
+    <ProjectReference Include="../../src/Hub/Heartbeat.Hub.Host/Heartbeat.Hub.Host.csproj" />
+    <ProjectReference Include="../../src/Collectors/Heartbeat.Collector.Desktop.Mac/Heartbeat.Collector.Desktop.Mac.csproj" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup><Compile Include="../Shared/IdleVRChatConnection.cs" Link="IdleVRChatConnection.cs" /></ItemGroup>
+</Project>

@@ -1,0 +1,30 @@
+using Heartbeat.Recording;
+using Microsoft.EntityFrameworkCore;
+
+namespace Heartbeat.Persistence;
+
+public sealed class HeartbeatDbContext(DbContextOptions<HeartbeatDbContext> options) : DbContext(options)
+{
+    public DbSet<Heartbeat.Management.HubNode> Hubs => Set<Heartbeat.Management.HubNode>();
+
+    public DbSet<Timeline> Timelines => Set<Timeline>();
+
+    public DbSet<Collector> Collectors => Set<Collector>();
+
+    public DbSet<Track> Tracks => Set<Track>();
+
+    public DbSet<Record> Records => Set<Record>();
+
+    public DbSet<RecordingObject> Objects => Set<RecordingObject>();
+
+    public DbSet<ObjectBinding> ObjectBindings => Set<ObjectBinding>();
+
+    public DbSet<ObjectDescription> ObjectDescriptions => Set<ObjectDescription>();
+
+    public DbSet<RecordObject> RecordObjects => Set<RecordObject>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(HeartbeatDbContext).Assembly);
+    }
+}

@@ -1,0 +1,300 @@
+using Heartbeat.Contracts;
+using System.Globalization;
+using System.Security.Claims;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Heartbeat.Api.Authentication;
+using Heartbeat.Application.Recording;
+using Heartbeat.Recording;
+using Microsoft.AspNetCore.Mvc;
+
+namespace Heartbeat.Api.Endpoints;
+
+public static class RecordEndpoints
+{
+    public static IEndpointRouteBuilder MapRecordEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        endpoints.MapGet("/api/v1/tracks/{trackId:guid}/records", ReplayAsync)
+            .RequireAuthorization()
+            .WithName("ReplayRecords");
+        endpoints.MapGet("/api/v1/tracks/{trackId:guid}/point-counts", CountPointsAsync)
+            .RequireAuthorization()
+            .WithName("CountPointRecords");
+        endpoints.MapPost("/api/v1/tracks/{trackId:guid}/records", UploadAsync)
+            .RequireAuthorization()
+            .WithName("UploadRecords");
+        return endpoints;
+    }
+
+    private static async Task<IResult> CountPointsAsync(
+        Guid trackId,
+        [FromQuery(Name = "from")] DateTimeOffset? from,
+        [FromQuery(Name = "to")] DateTimeOffset? to,
+        [FromQuery] int? bucketSeconds,
+        [FromQuery] Guid? objectId,
+        [FromQuery] Guid[]? contextObjectIds,
+        ClaimsPrincipal principal,
+        ICountPointRecords countPointRecords,
+        CancellationToken cancellationToken)
+    {
+        if (!OwnerClaims.TryGetOwnerId(principal, out var ownerId))
+        {
+            return Results.Unauthorized();
+        }
+        if (from is null || to is null || bucketSeconds is null)
+        {
+            return Problem(StatusCodes.Status400BadRequest, "invalid_request",
+                "The point count request is invalid.", "from, to, and bucketSeconds are required.");
+        }
+
+        CountPointRecordsResult result;
+        try
+        {
+            result = await countPointRecords.ExecuteAsync(ownerId,
+                new CountPointRecordsQuery(trackId, from.Value, to.Value, bucketSeconds.Value, objectId, contextObjectIds),
+                cancellationToken);
+        }
+        catch (ArgumentException exception)
+        {
+            return Problem(StatusCodes.Status400BadRequest, "invalid_request",
+                "The point count request is invalid.", exception.Message);
+        }
+
+        return result switch
+        {
+            CountPointRecordsResult.Found found => Results.Ok(new
+            {
+                track = new
+                {
+                    found.Counts.Track.Id,
+                    found.Counts.Track.CollectorId,
+                    found.Counts.Track.Type,
+                    found.Counts.Track.Version,
+                    timeMode = ToResponse(found.Counts.Track.TimeMode),
+                },
+                found.Counts.From,
+                found.Counts.To,
+                found.Counts.BucketSeconds,
+                buckets = found.Counts.Buckets.Select(bucket => new
+                {
+                    bucket.Index,
+                    bucket.StartedAt,
+                    bucket.EndedAt,
+                    bucket.Count,
+                }),
+            }),
+            CountPointRecordsResult.TrackNotFound => Problem(StatusCodes.Status404NotFound,
+                "track_not_found", "The track was not found."),
+            CountPointRecordsResult.TrackIsNotPoint => Problem(StatusCodes.Status400BadRequest,
+                "track_is_not_point", "Point counts are only available for point Tracks."),
+            _ => throw new InvalidOperationException("Unknown point count result."),
+        };
+    }
+
+    private static async Task<IResult> ReplayAsync(
+        Guid trackId,
+        [FromQuery(Name = "from")] DateTimeOffset? from,
+        [FromQuery(Name = "to")] DateTimeOffset? to,
+        [FromQuery] int? limit,
+        [FromQuery] string? cursor,
+        [FromQuery] Guid? objectId,
+        [FromQuery] Guid[]? contextObjectIds,
+        ClaimsPrincipal principal,
+        IReplayRecords replayRecords,
+        CancellationToken cancellationToken)
+    {
+        if (!OwnerClaims.TryGetOwnerId(principal, out var ownerId))
+        {
+            return Results.Unauthorized();
+        }
+
+        ReplayRecordsResult result;
+        try
+        {
+            var parsedCursor = cursor is null ? null : ParseCursor(cursor);
+            result = await replayRecords.ExecuteAsync(ownerId,
+                new ReplayRecordsQuery(trackId, from, to, limit, parsedCursor, objectId, contextObjectIds), cancellationToken);
+        }
+        catch (ArgumentException exception)
+        {
+            return Problem(StatusCodes.Status400BadRequest, "invalid_request",
+                "The replay request is invalid.", exception.Message);
+        }
+
+        return result switch
+        {
+            ReplayRecordsResult.Found found => Results.Ok(new
+            {
+                track = new
+                {
+                    found.Replay.Track.Id,
+                    found.Replay.Track.CollectorId,
+                    found.Replay.Track.Type,
+                    found.Replay.Track.Version,
+                    timeMode = ToResponse(found.Replay.Track.TimeMode),
+                },
+                records = found.Replay.Records.Select(record => new
+                {
+                    record.Id,
+                    record.StartedAt,
+                    record.EndedAt,
+                    record.ObservedAt,
+                    record.ReceivedAt,
+                    record.Value,
+                    record.Objects,
+                }),
+                nextCursor = found.Replay.NextCursor is null
+                    ? null
+                    : EncodeCursor(found.Replay.NextCursor),
+            }),
+            ReplayRecordsResult.TrackNotFound => Problem(StatusCodes.Status404NotFound,
+                "track_not_found", "The track was not found."),
+            _ => throw new InvalidOperationException("Unknown record replay result."),
+        };
+    }
+
+    private static async Task<IResult> UploadAsync(
+        Guid trackId,
+        UploadRecordsRequest request,
+        ClaimsPrincipal principal,
+        IUploadRecords uploadRecords,
+        CancellationToken cancellationToken)
+    {
+        if (!OwnerClaims.TryGetOwnerId(principal, out var ownerId))
+        {
+            return Results.Unauthorized();
+        }
+
+        UploadRecordsResult result;
+        try
+        {
+            var records = request.Records?.Select(record => record is null ? null : new RecordUpload(
+                record.Id, record.StartedAt, record.EndedAt, record.ObservedAt, record.Value) { Objects = record.Objects }).ToArray();
+            result = await uploadRecords.ExecuteAsync(ownerId,
+                new UploadRecordsCommand(trackId, records), cancellationToken);
+        }
+        catch (ArgumentException exception)
+        {
+            return Problem(StatusCodes.Status400BadRequest, "invalid_request",
+                "The record batch is invalid.", exception.Message);
+        }
+
+        return result switch
+        {
+            UploadRecordsResult.Completed completed => Results.Ok(new
+            {
+                results = completed.Results.Select(item => new
+                {
+                    item.Index,
+                    item.Id,
+                    status = item.Status switch
+                    {
+                        RecordUploadStatus.Stored => "stored",
+                        RecordUploadStatus.InvalidRecord => "invalid_record",
+                        RecordUploadStatus.Conflict => "conflict",
+                        RecordUploadStatus.TrackNotFound => "track_not_found",
+                        _ => throw new InvalidOperationException("Unknown record upload status."),
+                    },
+                    item.EndedAt,
+                    item.ReceivedAt,
+                    item.Detail,
+                }),
+            }),
+            UploadRecordsResult.TrackNotFound => Problem(StatusCodes.Status404NotFound,
+                "track_not_found", "The track was not found."),
+            _ => throw new InvalidOperationException("Unknown record upload result."),
+        };
+    }
+
+    private static IResult Problem(int status, string code, string title, string? detail = null) =>
+        Results.Problem(statusCode: status, title: title, detail: detail,
+            extensions: new Dictionary<string, object?> { ["code"] = code });
+
+    private static string ToResponse(TimeMode timeMode) => timeMode switch
+    {
+        TimeMode.Point => "point",
+        TimeMode.Range => "range",
+        _ => throw new InvalidOperationException("Unknown track time mode."),
+    };
+
+    internal static ReplayRecordsCursor ParseCursor(string value)
+    {
+        if (value.Length is < 1 or > 160 || value.Any(character =>
+                !(character is >= 'A' and <= 'Z'
+                    or >= 'a' and <= 'z'
+                    or >= '0' and <= '9'
+                    or '-' or '_')))
+        {
+            throw new ArgumentException("The replay cursor is invalid.", nameof(value));
+        }
+
+        var remainder = value.Length % 4;
+        if (remainder == 1)
+        {
+            throw new ArgumentException("The replay cursor is invalid.", nameof(value));
+        }
+
+        var encoded = value.Replace('-', '+').Replace('_', '/')
+            + remainder switch
+            {
+                0 => string.Empty,
+                2 => "==",
+                3 => "=",
+                _ => throw new InvalidOperationException("Unknown base64url remainder."),
+            };
+
+        string decoded;
+        try
+        {
+            decoded = new UTF8Encoding(false, true).GetString(Convert.FromBase64String(encoded));
+        }
+        catch (Exception exception) when (exception is FormatException or DecoderFallbackException)
+        {
+            throw new ArgumentException("The replay cursor is invalid.", nameof(value));
+        }
+
+        var parts = decoded.Split('\n');
+        if (parts.Length != 2
+            || !DateTimeOffset.TryParseExact(parts[0], "O", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var startedAt)
+            || startedAt.Offset != TimeSpan.Zero
+            || !Guid.TryParseExact(parts[1], "D", out var id)
+            || id == Guid.Empty)
+        {
+            throw new ArgumentException("The replay cursor is invalid.", nameof(value));
+        }
+
+        var cursor = new ReplayRecordsCursor(startedAt, id);
+        if (!string.Equals(value, EncodeCursor(cursor), StringComparison.Ordinal))
+        {
+            throw new ArgumentException("The replay cursor is invalid.", nameof(value));
+        }
+
+        return cursor;
+    }
+
+    internal static string EncodeCursor(ReplayRecordsCursor cursor)
+    {
+        var payload = $"{cursor.StartedAt.ToUniversalTime():O}\n{cursor.Id:D}";
+        return Convert.ToBase64String(Encoding.UTF8.GetBytes(payload))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+    }
+
+    [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+    private sealed record UploadRecordsRequest(RecordRequest?[]? Records);
+
+    [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+    private sealed record RecordRequest(
+        Guid Id,
+        DateTimeOffset? StartedAt,
+        DateTimeOffset? EndedAt,
+        DateTimeOffset? ObservedAt,
+        JsonElement Value)
+    {
+        [JsonRequired]
+        public IReadOnlyList<ObjectReference> Objects { get; init; } = [];
+    }
+}

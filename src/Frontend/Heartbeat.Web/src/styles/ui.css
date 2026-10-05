@@ -1,0 +1,394 @@
+/* Picker treatments shared by the replay controls. */
+.ui-popover {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+}
+.popover-trigger {
+  max-width: 100%;
+  min-width: 0;
+}
+.picker-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.date-picker .picker-value {
+  font-family: var(--font-mono);
+}
+.ui-popover-content {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 0.5rem);
+  z-index: 30;
+  width: 17.5rem;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--shadow-md);
+  outline: none;
+}
+.picker-heading {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.7rem 0.8rem 0.4rem;
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+}
+.picker-options {
+  padding: 0.3rem;
+  max-height: 16rem;
+  overflow-y: auto;
+}
+.picker-option {
+  display: flex;
+  align-items: center;
+  position: relative;
+  gap: 0.6rem;
+  padding: 0.55rem 0.6rem;
+  border-radius: 0.3rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.picker-option:hover,
+.picker-option:focus-within {
+  background: var(--accent);
+}
+.picker-option > input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+.picker-option:focus-within {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.picker-check {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 1px solid var(--input);
+  border-radius: 3px;
+}
+.picker-check svg {
+  visibility: hidden;
+  width: 13px;
+  height: 13px;
+}
+.picker-option input:checked + .picker-check {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+}
+.picker-option input:checked + .picker-check svg {
+  visibility: visible;
+}
+.picker-footer {
+  padding: 0.45rem;
+  border-top: 1px solid var(--border);
+}
+.picker-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+.picker-actions > :last-child {
+  margin-left: auto;
+}
+.calendar-panel {
+  padding: 0.75rem;
+}
+.calendar-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  margin-bottom: 0.8rem;
+}
+.calendar-heading strong {
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+.calendar-heading [data-slot="button"][data-size="icon"] {
+  width: 28px;
+  height: 28px;
+}
+.calendar-weekdays,
+.calendar-grid [role="row"] {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+}
+.calendar-weekdays {
+  margin-bottom: 0.35rem;
+  color: var(--muted-foreground);
+  text-align: center;
+  font-size: 0.7rem;
+}
+.calendar-grid [role="row"] {
+  margin-top: 0.15rem;
+}
+.calendar-day {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+.calendar-day:hover:not(:disabled) {
+  background: var(--accent);
+}
+.calendar-day[aria-current="date"] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+  font-weight: 600;
+}
+.calendar-day[aria-pressed="true"] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.calendar-day.outside-month {
+  color: var(--muted-foreground);
+  opacity: 0.5;
+}
+.calendar-day:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.calendar-today {
+  width: 100%;
+  justify-content: start;
+  color: var(--primary);
+}
+.range-picker .ui-popover-content {
+  width: 22rem;
+  padding: 1.25rem;
+  border-radius: var(--radius);
+}
+.range-picker .range-fields {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+.range-form {
+  gap: 1rem;
+}
+.range-heading strong {
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-semibold);
+}
+.range-heading p {
+  margin: 0.25rem 0 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+.range-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.range-fields .field > span {
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: normal;
+}
+.range-fields .field input {
+  min-width: 0;
+  min-height: 2.75rem;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  color-scheme: light;
+}
+.dark .range-fields input {
+  color-scheme: dark;
+}
+.range-form .range-actions {
+  justify-content: flex-end;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+.range-form .field-error {
+  text-align: left;
+}
+.period-range-picker .popover-trigger {
+  min-height: 2.5rem;
+  gap: 0.75rem;
+  padding-inline: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+.period-range-picker .popover-trigger[aria-expanded="true"] {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.range-chevron {
+  color: var(--muted-foreground);
+  transition: transform 180ms ease;
+}
+[aria-expanded="true"] .range-chevron {
+  transform: rotate(180deg);
+}
+.period-presets [aria-pressed="true"] {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+@media (max-width: 380px) {
+  .range-picker .ui-popover-content {
+    padding: 1rem;
+  }
+  .period-range-picker .popover-trigger {
+    padding-inline: 0.75rem;
+    gap: 0.5rem;
+  }
+}
+
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+.status-indicator::before {
+  content: "";
+  width: calc(var(--spacing) * 1.5);
+  height: calc(var(--spacing) * 1.5);
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: currentColor;
+}
+.status-indicator[data-tone="success"] {
+  color: var(--alive);
+}
+.status-indicator[data-tone="danger"] {
+  color: var(--destructive);
+}
+
+.tooltip-surface {
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 2.5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
+  pointer-events: none;
+}
+/* Hover tip. One instance lives at the end of the body, so no clipped or blurred
+   container can cut it off, and it never intercepts the pointer it follows. */
+.ui-tooltip {
+  position: fixed;
+  z-index: 60;
+  display: grid;
+  max-width: min(18rem, calc(100vw - 24px));
+}
+.ui-tooltip-caption {
+  color: var(--muted-foreground);
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+}
+.ui-tooltip strong {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* ============================================================
+   Atmosphere — mascot, floating theme toggle, ambient glow.
+   Ported from main's MascotBackground / ThemeToggle / hero-glow;
+   these carry the airy, glassy character of the reference design.
+   ============================================================ */
+
+/* Glass theme toggle; lives in the header, or pinned top-right where there is none. */
+.theme-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 1px solid var(--glass-border);
+  border-radius: 9999px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  color: var(--foreground);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition:
+    box-shadow 0.2s,
+    transform 0.2s,
+    border-color 0.2s;
+}
+.theme-toggle:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+.theme-toggle:focus-visible {
+  border-color: var(--ring);
+}
+.theme-toggle--floating {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 50;
+}
+
+/* Mirrored mascot in the bottom-left corner — decorative background art.
+   Single continuous clamp: large share on narrow screens, capped on wide. */
+.mascot {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  z-index: 0;
+  width: clamp(220px, 40vw, 460px);
+  height: auto;
+  opacity: 0.5;
+  transform: scaleX(-1);
+  pointer-events: none;
+  user-select: none;
+  transition: opacity 0.3s;
+}
+.mascot--dark {
+  opacity: 0.3;
+}
+
+/* Ambient radial glow drifting behind the workspace content. */
+.app-frame,
+.login-page {
+  position: relative;
+}
+.app-frame::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-image: var(--hero-glow);
+  pointer-events: none;
+}
+.app-frame > *,
+.login-page > * {
+  position: relative;
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-toggle,
+  .mascot {
+    transition: none;
+  }
+}

@@ -1,21 +1,30 @@
-## Agent skills
+# Agent 规则
 
-### Issue tracker
+## 重写约束
 
-创建、查询或更新 issue/PRD 时使用本地 markdown tracker（`.scratch/`），并执行 lifecycle closeout。详见 `docs/agents/issue-tracker.md`。
+重写完成前不部署，也不兼容旧数据、旧客户端或旧接口。
 
-### Triage labels
+- 数据库结构直接修改 Initial migration 和 model snapshot，不加增量迁移。
+- 协议字段及其生产者、消费者直接一起修改，不为重写期行为升级版本。
+- 只保留当前实现；同步更新代码、测试和文档，不加兼容层、迁移路径或版本协商。
+- 用户明确要求前不建设 CI；在本地运行适当检查。
 
-设置 issue/PRD 状态或判断下一承接者时使用默认状态词汇表。详见 `docs/agents/triage-labels.md`。
+## 设计决策
 
-### Domain docs
+任务暴露设计或架构问题时，先说明影响并请用户确认，再实施该决策；已确认范围内的独立修改可以继续。
 
-探索代码、命名领域概念或修改架构决策前，按多上下文地图读取相关 glossary/ADR。详见 `docs/agents/domain.md`。
+以下决策必须在 `docs/adr/` 留 ADR：
 
-### Engineering friction
+- 责任归哪个组件；
+- 协议的语义；
+- 某类数据的权威位置。
 
-开发中发现文档/issue 漂移、不可判定的验证入口、无退出条件的兼容债务或遗留人工门禁时，执行 friction closeout。详见 `docs/agents/engineering-friction.md`。
+较小决定写入对应契约文档或模块 README。
 
-### .NET refactoring
+## 工作约定
 
-修改 C# 命名或执行跨文件语义重构前，遵循 `docs/agents/dotnet-refactoring.md` 的基线、dry-run 与兼容边界流程。
+- 开始领域工作前读 `CONTEXT.md` 和相关 ADR，细则见 [领域文档](docs/agents/domain.md)。
+- 进行中的规格和 issue 放在 `.scratch/<feature-slug>/`，完成后删除；细则见 [本地 issue](docs/agents/issue-tracker.md)。
+- 使用固定的五类 triage 标签，见 [标签映射](docs/agents/triage-labels.md)。
+- 实现变更使用 [verify-heartbeat](.agents/skills/verify-heartbeat/SKILL.md) 选择并执行验证。
+- 结束任务前执行 [收口检查](docs/agents/closeout.md)。

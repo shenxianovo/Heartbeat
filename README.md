@@ -1,108 +1,53 @@
 # Heartbeat
 
-A personal digital activity archive and replay system, centered on desktop activity.
-https://heartbeat.shenxianovo.com
+Heartbeat 把一个人在数字世界中的异构活动痕迹记录为时间有序的观测轨道。
 
-记录桌面设备上的数字活动(前台应用、浏览器页面、输入事件),回答"x年前的今天我在做什么"。
-单用户自部署系统,定位与边界见 [CONTEXT-MAP.md](./CONTEXT-MAP.md)。
+**Collector 采集，Hub 交付，后端存储，前端展示。** Collector 只向 Hub 提交逻辑声明与 Record；Hub 持久接管后完成后端注册、Track 映射和上传。
 
-> 重构ing... 请看[这里](https://github.com/shenxianovo/Heartbeat/tree/feat/rewrite)
+当前重写完成前不部署，不保留旧接口、旧数据格式或旧客户端的兼容实现。
 
-## Architecture
+## 文档
 
-三个领域上下文 + 一个共享内核。完整模块、Transport Binding 与协议关系见 [系统架构与协议图](./docs/architecture/system-overview.md)，领域边界见 [CONTEXT-MAP.md](./CONTEXT-MAP.md)。
+- [系统与业务总览](docs/system-overview.md)：面向非技术读者的架构图、完整业务路径、异常处理和当前能力边界。
+- [领域语言](CONTEXT.md)：Heartbeat 记录领域的核心术语。
+- [架构决策](docs/adr)：已经接受的关键设计决策，新增 ADR 使用 [仓库模板](docs/adr/ADR-TEMPLATE.md)。
+- [记录模型与存储](docs/recording-storage-model.md)：关系图、操作与实现边界、核心不变量、续期合并规则和持久字段。
+- [记录 HTTP 接口](docs/recording-api.md)：Collector 注册、Track 获取、Record 上传和 Track 级重放查询。
+- [桌面前台应用协议 v1](docs/protocols/desktop-application-foreground-v1.md)：前台应用读数的 value 结构与区间断开规则。
+- [桌面前台窗口协议 v1](docs/protocols/desktop-window-foreground-v1.md)：与前台应用分开的窗口标题观测。
+- [桌面离开信号协议 v1](docs/protocols/desktop-system-away-v1.md)：锁屏、会话失活与休眠的独立原因区间。
+- [桌面输入事件协议 v1](docs/protocols/desktop-input-event-v1.md)：非文本物理键鼠事件。
+- [桌面观察状态协议 v1](docs/protocols/desktop-observation-status-v1.md)：各项采集能力的历史可用状态。
+- [持久化实现](src/Backend/Heartbeat.Infrastructure/Persistence/README.md)：EF Core / PostgreSQL 映射约定。
+- [macOS Collector](src/Collectors/Heartbeat.Collector.Desktop.Mac/README.md)：最小桌面 Collector 的运行方式。
+- [Hub 记录交付](docs/hub-record-delivery.md)：SQLite 持久接管、后台上传、恢复及桌面接入。
+- [Web 前端](src/Frontend/Heartbeat.Web/README.md)：本地运行、登录和 Record renderer 扩展。
+- [本地开发](docs/development.md)：统一 Docker 启动、热更新、生产镜像验收与首次配置。
+- [业务流程与验证覆盖](docs/validation/business-coverage.md)：从开始使用到回放的流程图、业务承诺、失败方式及证据缺口。
+- [工程验证](docs/verification.md)：Git 变更选择、结构质量闸门、可复现场景与证据目录。
+- [未决设计](docs/recording-open-questions.md)：未交接数据、断采规则、设备关联等尚未确认的问题。
+- [验收记录](docs/validation)：带日期的系统、平台能力和回放体验验收事实。
+- [Agent 规则](AGENTS.md)：协作约束和本仓库的工程规则。
+- [Agent 协作细则](docs/agents)：[issue 追踪](docs/agents/issue-tracker.md)、[triage 标签](docs/agents/triage-labels.md)、[领域文档布局](docs/agents/domain.md)、[收口检查](docs/agents/closeout.md)。
 
-```mermaid
-graph LR
-    subgraph Collection["Collection"]
-        Collectors["Collectors<br/><i>browser / system / VRChat</i>"]
-        Agent["Collector Runtime<br/><i>in-process / ExternalHost / ManagedProcess</i>"]
-        Collectors -- "Collector Protocol v1<br/>typed / HTTP JSON / NDJSON stdio" --> Agent
-    end
+## 本地运行
 
-    subgraph Analytics["Analytics (Linux)"]
-        API["ASP.NET Core API<br/><i>ingest + snapshot upsert + reports</i>"]
-        DB[("PostgreSQL")]
-        API --> DB
-    end
-
-    subgraph Dashboard["Dashboard"]
-        Web["Vue 3 SPA<br/><i>timeline / replay / recap</i>"]
-    end
-
-    Agent -- "HTTPS<br/>Bearer JWT (ADR-024)" --> API
-    Web -- "OpenAPI client<br/>OIDC login (ADR-024)" --> API
+```bash
+dotnet run --project tools/Heartbeat.Dev -- env up
 ```
 
-Dashboard 是回顾与管理入口，以展示为主；它把用户确认的叙事知识写回 Analytics，并为
-交互授权直连对应 Hub。Analytics 不代理第三方账号凭据、授权应答或 Hub 管理命令。
+默认启动 Web、API 和 PostgreSQL，访问 <http://localhost:3000>。也可以显式选择服务：
 
-鉴权:外部自建 Auth 平台签发 JWT——前端走 OIDC 授权码 + PKCE,Agent 用 ApiKey
-换取 session JWT,服务端双 scheme 接受(见 [ADR-024](./docs/adr/024-oidc-jwt-authentication.md))。
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Backend | ASP.NET Core (.NET 10), EF Core, PostgreSQL |
-| Desktop Agent | .NET 10 (Windows/macOS), Generic Host, platform observers |
-| Desktop GUI | Avalonia 12 (.NET 10) |
-| Collectors | System (.NET); Browser extension (TypeScript + Vite); VRChat Account (.NET) |
-| Frontend | Vue 3, TypeScript, Vite |
-| API Client | Auto-generated via OpenAPI / NSwag |
-| Shared | Heartbeat.Core (.NET Class Library) |
-| CI/CD | GitHub Actions |
-| Deployment | Docker Compose(`compose.yml` + `.env`,前端 nginx 反代后端) |
-
-## Project Structure
-
-```
-Heartbeat
-├─ collection
-│  ├─ hub
-│  │  ├─ Heartbeat.Collection.Hub/          # Reusable runtime, projection and upload
-│  │  └─ Heartbeat.Collection.Headless/     # Headless host + management API
-│  ├─ protocol
-│  │  └─ Heartbeat.Collection.CollectorProtocol/ # Collector-side protocol client
-│  ├─ desktop
-│  │  ├─ Heartbeat.Collector.System/        # Platform-neutral system Collector
-│  │  ├─ Heartbeat.Desktop.UI/              # Shared Avalonia presentation
-│  │  ├─ Heartbeat.Desktop.Updater.Velopack/# Update adapter
-│  │  ├─ Heartbeat.Desktop.Windows/         # Windows tray app + adapters
-│  │  └─ Heartbeat.Desktop.Mac/             # macOS menu-bar app + adapters
-│  └─ collectors
-│     ├─ Heartbeat.Collector.Browser/        # Browser extension (TypeScript)
-│     ├─ Heartbeat.Collector.Reference.ManagedProcess/ # Deterministic protocol fixture
-│     └─ Heartbeat.Collector.VRChat/         # Account Collector (.NET)
-├─ server
-│  └─ Heartbeat.Server/         # REST API server                ASP.NET Core
-├─ frontend/                    # Dashboard web app              Vue 3 + Vite
-├─ shared
-│  └─ Heartbeat.Core/           # Shared DTOs & utilities        .NET Class Library
-└─ docs/                        # Documentation
-   ├─ adr/                      # Architecture Decision Records
-   ├─ development.md            # 日常本地开发路径
-   ├─ api.md                    # API 调用方约定
-   ├─ db.md                     # 数据库设计导读
-   └─ runbooks/                 # 低频、高风险操作
+```bash
+dotnet run --project tools/Heartbeat.Dev -- env up api
+dotnet run --project tools/Heartbeat.Dev -- env up hub
+dotnet run --project tools/Heartbeat.Dev -- env up desktop
 ```
 
-精确 .NET 项目与相邻测试项目以 [`Heartbeat.slnx`](./Heartbeat.slnx) 为准，npm 项目以各自
-`package.json` 为准；上图只维护生产目录责任。CI 的 Collection 测试集合由
-[`Heartbeat.Collection.Tests.slnf`](./Heartbeat.Collection.Tests.slnf) 从主 solution 筛选；新增 Collection
-或 Shared Kernel 测试项目时需要同时加入主 solution 和该 filter。Browser Package 不进入 Desktop
-release；VRChat Package 已从 Headless image 中移出，并通过独立 Collector tag 构建、发布。
+首次启动 Hub 或 Desktop Collector 前运行：
 
-## Documentation
+```bash
+dotnet run --project tools/Heartbeat.Dev -- env setup
+```
 
-- [文档导航与状态](./docs/README.md) — 当前契约、待定设计、操作入口和历史证据
-- [Development Guide](./docs/development.md) — 启动本地栈、运行 Agent、验证与测试
-- [系统架构与协议图](./docs/architecture/system-overview.md) — 当前模块、身份层级、Transport Binding 与 schema 校验链
-- [兼容债务账本](./docs/architecture/compatibility-debt.md) — 当前仍服务的旧数据/客户端、退出门槛与验证
-- [Collector Fact Contracts](./collection/contracts/README.md) — 5 个 schema 的单一来源与演进检查
-- [Collector Protocol Conformance](./collection/protocol/conformance/README.md) — 跨语言生命周期、ACK、重试、Gap 与 drain 行为语料
-- [API 导读](./docs/api.md) — 鉴权、调用方与客户端生成约定；端点真相源是 OpenAPI
-- [数据库导读](./docs/db.md) — 数据设计意图；schema 真相源是实体类与迁移
-- [Runbooks](./docs/runbooks/README.md) — 本地数据 smoke、生产数据刷新与 App Catalog 运维
-- [CONTEXT-MAP](./CONTEXT-MAP.md) + 各上下文 `CONTEXT.md` — 领域术语表
-- [ADRs](./docs/adr/) — 架构决策记录([template](./docs/adr/adr-template.md))
+服务组合、release 模式、日志、重置和配置见[本地开发](docs/development.md)。

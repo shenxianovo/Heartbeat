@@ -1,0 +1,125 @@
+using System.Security.Claims;
+using Heartbeat.Api.Authentication;
+using Heartbeat.Api.Management;
+using Heartbeat.Management;
+using Microsoft.AspNetCore.Mvc;
+
+namespace Heartbeat.Api.Endpoints;
+
+public static class HubEndpoints
+{
+    public static void MapHubEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        var group = endpoints.MapGroup("/api/v1/hubs").RequireAuthorization();
+        group.MapGet("", ListAsync);
+        group.MapGet("/activity", Activity);
+        group.MapPost("/{id:guid}/activity", ReportActivity)
+            .WithMetadata(new RequestSizeLimitAttribute(DeliveryActivitySnapshot.MaximumBodyBytes));
+        group.MapPost("/{id:guid}/check-in", CheckInAsync)
+            .WithMetadata(new RequestSizeLimitAttribute(HubManagement.MaximumBodyBytes));
+        group.MapPost("/{id:guid}/login", LoginAsync)
+            .WithMetadata(new RequestSizeLimitAttribute(HubManagement.MaximumBodyBytes));
+        group.MapPost("/{id:guid}/retire", RetireAsync);
+    }
+
+    private static IResult Activity(ClaimsPrincipal principal, HubConnections connections, HttpResponse response)
+    {
+        response.Headers.CacheControl = "no-store";
+        return OwnerClaims.TryGetOwnerId(principal, out var owner)
+            ? Results.Ok(new { activities = connections.GetActivities(owner) }) : Results.Unauthorized();
+    }
+
+    private static IResult ReportActivity(Guid id, HubActivityReport request, ClaimsPrincipal principal, HubConnections connections)
+    {
+        if (!OwnerClaims.TryGetOwnerId(principal, out var owner)) return Results.Unauthorized();
+        if (!ValidActivity(request.Activity)) return Results.BadRequest();
+        return connections.ReportActivity(owner, id, request) ? Results.NoContent() : Results.NotFound();
+    }
+
+    private static bool ValidActivity(DeliveryActivitySnapshot? activity) => activity is not null &&
+        activity.Epoch != Guid.Empty && activity.CapturedAt is > 0 and <= 253_402_300_799_999 &&
+        ValidCount(activity.Accepted) && ValidCount(activity.Delivered);
+
+    private static bool ValidCount(long value) => value is >= 0 and <= 9_007_199_254_740_991;
+
+    private static async Task<IResult> ListAsync(ClaimsPrincipal principal, IHubRegistry registry, HubConnections connections, CancellationToken token)
+    {
+        if (!OwnerClaims.TryGetOwnerId(principal, out var owner)) return Results.Unauthorized();
+        var hubs = await registry.ListAsync(owner, token);
+        return Results.Ok(new { hubs = hubs.Select(hub => hub.Online && connections.GetReport(owner, hub.Id) is { } live
+            ? hub with { Report = live } : hub) });
+    }
+
+    private static async Task<IResult> CheckInAsync(Guid id, HubCheckIn request, ClaimsPrincipal principal,
+        IHubRegistry registry, HubConnections connections, CancellationToken token)
+    {
+        if (!OwnerClaims.TryGetOwnerId(principal, out var owner)) return Results.Unauthorized();
+        if (id.Version != 7 || request.SessionId == Guid.Empty || !ValidReport(request.Report))
+            return Results.Problem(statusCode: 400, title: "Invalid Hub report.");
+        if (!await registry.ReportAsync(owner, id, request.SessionId, request.Report, token))
+        {
+            var existing = (await registry.ListAsync(owner, token)).FirstOrDefault(x => x.Id == id && !x.Retired);
+            return existing is null ? Results.NotFound() : Results.Problem(statusCode: 409,
+                title: "Hub identity is already in use.");
+        }
+        try { return Results.Ok(new HubCheckInResponse(connections.CheckIn(owner, id, request))); }
+        catch (InvalidOperationException exception)
+        { return Results.Problem(statusCode: 409, title: exception.Message); }
+    }
+
+    private static bool ValidReport(HubReport? report) => report is not null &&
+        !string.IsNullOrWhiteSpace(report.DisplayName) && report.DisplayName.Length <= 255 &&
+        report.Kind is "desktop" or "server" && report.Delivery is { Pending: >= 0, Failed: >= 0 } &&
+        report.Types is { Count: <= 100 } && report.Collectors is { Count: <= 1000 } &&
+        report.Types.All(ValidType) && report.Collectors.All(ValidCollector);
+
+    private static bool ValidType(CollectorType? type) => type is not null && ValidIdentity(type.Key) && type.Fields is not null;
+    private static bool ValidCollector(CollectorState? collector) => collector is not null && ValidIdentity(collector.Key) && ValidIdentity(collector.Target);
+    private static bool ValidLogin(CollectorLoginRequest request) => ValidIdentity(request.Key) &&
+        (request.Target is null || ValidIdentity(request.Target)) && request.SessionId != Guid.Empty &&
+        request.Input.ValueKind == System.Text.Json.JsonValueKind.Object;
+
+    private static bool ValidIdentity(string? value) => !string.IsNullOrWhiteSpace(value) && value.Length <= 255 && value == value.Trim();
+
+    private static async Task<IResult> LoginAsync(Guid id, CollectorLoginRequest request, ClaimsPrincipal principal,
+        IHubRegistry registry, HubConnections connections, CancellationToken token)
+    {
+        if (!OwnerClaims.TryGetOwnerId(principal, out var owner)) return Results.Unauthorized();
+        if (!ValidLogin(request))
+            return Results.Problem(statusCode: 400, title: "Invalid Collector login.");
+        var hub = (await registry.ListAsync(owner, token)).FirstOrDefault(x => x.Id == id && !x.Retired);
+        if (hub is null) return Results.NotFound();
+        if (!hub.Online) return Results.Problem(statusCode: 409, title: "Hub is offline. No operation was queued.");
+        if (!CanLogin(connections.GetReport(owner, id), request.Key))
+            return Results.Problem(statusCode: 400, title: "Collector login is not available on this Hub.");
+        return await DispatchAsync(owner, id, request, connections, token);
+    }
+
+    private static bool CanLogin(HubReport? report, string key) =>
+        report?.Types.Any(type => type.Key == key) ?? false;
+
+    private static async Task<IResult> DispatchAsync(Guid owner, Guid id, CollectorLoginRequest request,
+        HubConnections connections, CancellationToken token)
+    {
+        try
+        {
+            var result = await connections.ExecuteAsync(owner, id, request, token);
+            return Results.Ok(result);
+        }
+        catch (InvalidOperationException exception)
+        { return Results.Problem(statusCode: 409, title: exception.Message); }
+        catch (TimeoutException)
+        { return Results.Problem(statusCode: 504, title: "Operation result is unknown. Refresh the Hub state before retrying."); }
+    }
+
+    private static async Task<IResult> RetireAsync(Guid id, ClaimsPrincipal principal, IHubRegistry registry,
+        HubConnections connections, CancellationToken token)
+    {
+        if (!OwnerClaims.TryGetOwnerId(principal, out var owner)) return Results.Unauthorized();
+        var hub = (await registry.ListAsync(owner, token)).FirstOrDefault(x => x.Id == id);
+        if (hub is { Online: true }) return Results.Problem(statusCode: 409, title: "Stop this Hub before retiring it.");
+        if (!await registry.RetireAsync(owner, id, token)) return Results.NotFound();
+        connections.Retire(owner, id);
+        return Results.NoContent();
+    }
+}

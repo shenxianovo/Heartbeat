@@ -1,0 +1,57 @@
+# ADR-0004：按 Track 提供最小重放查询
+
+## 状态：已接受
+
+## 日期：2026-09-12
+
+[`3ca4aed`](https://github.com/shenxianovo/heartbeat/commit/3ca4aed9d149318f679aa9891f8ff0ff03a9fdb2) — feat(recording): add replay queries and independent macOS collection
+
+## 背景
+
+注册 Collector、获取 Track、前台应用协议和批量上传已经形成写入链路，但还缺少读取入口来确认 Record 可以按时间重放。首次决策时，Timeline 级聚合、分页游标、设备维度筛选和应用身份解析都还没有实际调用方需求；若同时设计，会把尚未确认的展示和分析需求提前固化到记录内核。
+
+现有存储规范只承诺 `(track_id, started_at, id)` 的稳定顺序索引，不为 `received_at`、`observed_at` 或 `ended_at` 提前建索引。最小重放查询应先贴合这一约束，让桌面 Collector 能完成后端闭环。
+
+## 决策
+
+先提供 Track 级重放查询：调用方指定一个已存在且属于当前 Owner 的 Track，可选提供 `from`、`to` 和 `limit`。查询返回 Track 元信息和按 `(started_at, id)` 排序的 Record 列表，Record 保留存储中的时间字段和协议 `value`。
+
+时间窗采用 `[from, to)`。有 `ended_at` 的 Record 以区间交叠纳入窗口；没有 `ended_at` 的 Record 以 `started_at` 纳入窗口。查询不跨 Track 聚合，不解析 Application Identity，不按设备分组，不增加分轨字段、设备表或通用 metadata。
+
+查询返回已存 `ended_at`。隐式区间已由 [ADR-0028](ADR-0028-explicit-record-ranges.md) 删除。
+
+## 演进：2026-09-14
+
+前端回放界面确认了两个读取需求：发现当前 Owner 已有的 Track，以及分批读取较长的 Track。读取接口因此增加 Owner Track 目录；目录返回 Track 及其 Collector 来源展示信息，按 Collector 地址和 Track 协议稳定排序。Owner 尚无 Timeline 或 Track 时返回空目录，读取不触发自动初始化或写入。
+
+Track 级查询增加不透明 cursor，并继续按 `(started_at, id)` 在 PostgreSQL 中做 keyset 分页。服务端多取一条判断是否还有后页；每一页仍独立验证 Track 归属当前 Owner，cursor 本身不携带授权。这个扩展没有改变四层记录模型、时间窗和区间交叠语义，也没有引入 Timeline 级聚合、跨 Track 合并或新的索引。
+
+## 后果
+
+- ✅ 写入后的 Record 可以通过受 Owner 保护的 HTTP 入口按 Track 稳定取回。
+- ✅ 调用方可以先读取当前 Owner 的 Track 目录，无需预先知道 Track ID。
+- ✅ cursor 分页在相同 `started_at` 的 Record 之间仍保持稳定顺序，不重复或遗漏已有结果。
+- ✅ 接口很小，读取归属校验、窗口过滤和排序集中在一个 Application 用例和一个 PostgreSQL adapter 中。
+- ✅ 不改变四层记录模型，不新增设备表、分轨字段或提前优化用的索引。
+- ⚠️ Timeline 级重放和跨 Track 合并仍未实现。
+
+## 演进：2026-09-14（统一窗口与 Point 密度）
+
+桌面回放需要在同一窗口对齐多个 Track，Point 输入量又不能通过下载全天所有原始事件来绘制。公共读取边界仍保持 Track scoped：Range Track 由客户端在同一 [from, to) 窗口完整翻页并按时间对齐；Point Track 新增通用计数查询，由服务端按调用方指定的窗口和粒度聚合。计数查询只接受 Point Track，桶从 from 对齐，返回非空桶，且限制最多 10,000 个桶。
+
+聚合层不解析 value，不知道输入、应用或任何具体协议。协议含义留在前端独立 renderer；未知但合法的 Track 仍能用时间位置、计数和原始 JSON 回放。点击 Point 密度桶后，原始详情继续使用既有 Track 级分页接口读取该局部时间窗。
+
+该演进提供了 Timeline 级的用户体验，但没有新增一个负责协议解释或跨 Track 排序的后端 Timeline endpoint。这样既避免大 Point Track 的无界下载，也保持记录内核与具体协议解耦。
+
+## 演进：2026-10-01
+
+[ADR-0029](ADR-0029-record-object-references.md) 接受通用对象引用及跨 Track 的对象查询方向，扩展本 ADR 的 Track-only 读取边界。现有 Track 查询继续服务泳道和 Point 密度，并接受一致的对象条件；新增对象目录及跨 Track 对象记录接口，见[HTTP 契约](../recording-api.md)。验证结果见[业务覆盖记录](../validation/business-coverage.md)。
+
+## 参考
+
+- [`CONTEXT.md`](../../CONTEXT.md) — 领域术语。
+- [`docs/recording-storage-model.md`](../recording-storage-model.md) — 存储结构、索引和重放约束。
+- [`docs/recording-api.md`](../recording-api.md) — HTTP 契约。
+- [`src/Backend/Heartbeat.Application/Recording/ReplayRecords.cs`](../../src/Backend/Heartbeat.Application/Recording/ReplayRecords.cs) — 重放用例与端口。
+- [`src/Backend/Heartbeat.Infrastructure/Persistence/PostgresRecordReplayStore.cs`](../../src/Backend/Heartbeat.Infrastructure/Persistence/PostgresRecordReplayStore.cs) — PostgreSQL 查询 adapter。
+- [`src/Backend/Heartbeat.Application/Recording/CountPointRecords.cs`](../../src/Backend/Heartbeat.Application/Recording/CountPointRecords.cs) — 通用 Point 计数用例。

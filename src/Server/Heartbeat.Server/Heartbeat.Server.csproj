@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Hub/Heartbeat.Hub.Host/Heartbeat.Hub.Host.csproj" />
+    <ProjectReference Include="../../Collectors/Heartbeat.Collector.VRChat/Heartbeat.Collector.VRChat.csproj" />
+  </ItemGroup>
+</Project>

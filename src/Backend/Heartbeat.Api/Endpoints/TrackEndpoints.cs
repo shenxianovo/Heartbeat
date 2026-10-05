@@ -1,0 +1,144 @@
+using System.Security.Claims;
+using System.Text.Json.Serialization;
+using Heartbeat.Api.Authentication;
+using Heartbeat.Application.Recording;
+using Heartbeat.Recording;
+
+namespace Heartbeat.Api.Endpoints;
+
+public static class TrackEndpoints
+{
+    public static IEndpointRouteBuilder MapTrackEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        endpoints.MapGet("/api/v1/tracks", ListAsync)
+            .RequireAuthorization()
+            .WithName("ListTracks");
+        endpoints.MapPost("/api/v1/collectors/{collectorId:guid}/tracks", ResolveAsync)
+            .RequireAuthorization()
+            .WithName("ResolveTrack");
+        return endpoints;
+    }
+
+    private static async Task<IResult> ListAsync(
+        ClaimsPrincipal principal,
+        IListTracks listTracks,
+        Guid? objectId,
+        [Microsoft.AspNetCore.Mvc.FromQuery] Guid[]? contextObjectIds,
+        CancellationToken cancellationToken)
+    {
+        if (!OwnerClaims.TryGetOwnerId(principal, out var ownerId))
+        {
+            return Results.Unauthorized();
+        }
+
+        var tracks = await listTracks.ExecuteAsync(ownerId, objectId, contextObjectIds, cancellationToken);
+        return Results.Ok(new { tracks = tracks.Select(ToResponse) });
+    }
+
+    private static async Task<IResult> ResolveAsync(
+        Guid collectorId,
+        ResolveTrackRequest request,
+        ClaimsPrincipal principal,
+        IResolveTrack resolveTrack,
+        CancellationToken cancellationToken)
+    {
+        if (!OwnerClaims.TryGetOwnerId(principal, out var ownerId))
+        {
+            return Results.Unauthorized();
+        }
+
+        ResolveTrackResult result;
+        try
+        {
+            result = await resolveTrack.ExecuteAsync(ownerId,
+                new ResolveTrackCommand(
+                    collectorId,
+                    request.Type,
+                    request.Version,
+                    ParseTimeMode(request.TimeMode)),
+                cancellationToken);
+        }
+        catch (ArgumentException exception)
+        {
+            return Problem(StatusCodes.Status400BadRequest, "invalid_request",
+                "The track request is invalid.", exception.Message);
+        }
+
+        return result switch
+        {
+            ResolveTrackResult.Resolved resolved => Results.Ok(ToResponse(resolved.Track)),
+            ResolveTrackResult.CollectorNotFound => Problem(StatusCodes.Status404NotFound,
+                "collector_not_found", "The collector was not found."),
+            ResolveTrackResult.DefinitionConflict => Problem(StatusCodes.Status409Conflict,
+                "track_definition_conflict", "The existing track has a different time definition."),
+            _ => throw new InvalidOperationException("Unknown track resolution result."),
+        };
+    }
+
+    private static IResult Problem(int status, string code, string title, string? detail = null) =>
+        Results.Problem(statusCode: status, title: title, detail: detail,
+            extensions: new Dictionary<string, object?> { ["code"] = code });
+
+    private static ResolveTrackResponse ToResponse(ResolvedTrack track) => new(
+        track.Id,
+        track.CollectorId,
+        track.Type,
+        track.Version,
+        track.TimeMode switch
+        {
+            TimeMode.Point => "point",
+            TimeMode.Range => "range",
+            _ => throw new InvalidOperationException("Unknown track time mode."),
+        },
+        track.CreatedAt);
+
+    private static TrackCatalogResponse ToResponse(ListedTrack track) => new(
+        track.Id,
+        track.CollectorId,
+        track.CollectorKey,
+        track.CollectorTarget,
+        track.CollectorDisplayName,
+        track.Type,
+        track.Version,
+        ToResponse(track.TimeMode),
+        track.CreatedAt);
+
+    private static string ToResponse(TimeMode timeMode) => timeMode switch
+    {
+        TimeMode.Point => "point",
+        TimeMode.Range => "range",
+        _ => throw new InvalidOperationException("Unknown track time mode."),
+    };
+
+    private static TimeMode ParseTimeMode(string? value) => value switch
+    {
+        "point" => TimeMode.Point,
+        "range" => TimeMode.Range,
+        _ => throw new ArgumentException("Time mode must be 'point' or 'range'.", nameof(value)),
+    };
+
+    [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+    private sealed record ResolveTrackRequest(
+        string? Type,
+        int Version,
+        string? TimeMode);
+
+    private sealed record ResolveTrackResponse(
+        Guid Id,
+        Guid CollectorId,
+        string Type,
+        int Version,
+        string TimeMode,
+        DateTimeOffset CreatedAt);
+
+    private sealed record TrackCatalogResponse(
+        Guid Id,
+        Guid CollectorId,
+        string CollectorKey,
+        string CollectorTarget,
+        string CollectorDisplayName,
+        string Type,
+        int Version,
+        string TimeMode,
+        DateTimeOffset CreatedAt);
+}

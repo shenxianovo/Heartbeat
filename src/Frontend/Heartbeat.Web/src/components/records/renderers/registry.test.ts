@@ -1,0 +1,74 @@
+import { describe, expect, it } from "vitest";
+
+import type { TimelineRecord, TrackSummary } from "@/api/types";
+import { describeRecord } from "@/components/records/renderers/registry";
+
+const track: TrackSummary = {
+  id: "track",
+  collectorId: "collector",
+  collectorKey: "heartbeat.collector.desktop.macos",
+  collectorTarget: "device",
+  collectorDisplayName: "Mac",
+  type: "desktop.application.foreground",
+  version: 1,
+  timeMode: "range",
+  createdAt: "2026-09-14T00:00:00Z",
+};
+
+const record: TimelineRecord = {
+  id: "record",
+  startedAt: "2026-09-14T08:00:00Z",
+  endedAt: "2026-09-14T08:05:00Z",
+  observedAt: null,
+  receivedAt: "2026-09-14T08:05:01Z",
+  value: {},
+  objects: [
+    {
+      id: "app-id",
+      role: "application",
+      namespace: "app.macos.bundle_id",
+      key: "com.example.Editor",
+      name: "Example Editor",
+    },
+  ],
+};
+
+const windowTrack: TrackSummary = { ...track, type: "desktop.window.foreground" };
+const windowRecord: TimelineRecord = {
+  ...record,
+  value: { window: { title: "Private draft.md" } },
+};
+
+describe("application timeline summary", () => {
+  it("names the application by its identity and the window by its title", () => {
+    expect(describeRecord(track, record).label).toBe("Example Editor");
+    expect(describeRecord(windowTrack, windowRecord).label).toBe("Private draft.md");
+  });
+
+  it("keeps the window title out of the application lane", () => {
+    expect(describeRecord(windowTrack, record).label).toBe("记录解析失败");
+    expect(describeRecord(windowTrack, windowRecord).group).toBeUndefined();
+  });
+
+  it("distinguishes malformed known values from unknown protocols", () => {
+    expect(describeRecord(track, { ...record, objects: [] })).toEqual({
+      label: "记录解析失败",
+      tone: "attention",
+    });
+    expect(describeRecord({ ...track, type: "example.custom" }, record).label).toBe("时间区间");
+    expect(
+      describeRecord({ ...track, timeMode: "point", type: "example.custom" }, record).label,
+    ).toBe("瞬时记录");
+  });
+});
+
+it("groups applications by platform identity rather than their display name", () => {
+  const first = describeRecord(track, record).group;
+  const second = describeRecord(track, {
+    ...record,
+    objects: record.objects.map((item) => ({ ...item, id: "other-id", key: "com.example.Other" })),
+  }).group;
+  expect(first?.label).toBe(second?.label);
+  expect(first?.id).not.toBe(second?.id);
+  expect(describeRecord(track, { ...record, objects: [] }).group).toBeUndefined();
+});

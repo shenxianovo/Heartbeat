@@ -1,0 +1,254 @@
+"use client";
+
+import { trackLabel } from "@/components/records/renderers/registry";
+
+import { useAuth } from "react-oidc-context";
+import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/DatePicker";
+import { Popover } from "@/components/ui/Popover";
+import { Icon } from "@/components/ui/Icon";
+import { DateRangeControls } from "@/components/filters/DateRangeControls";
+import { RecordsPanel } from "./RecordsPanel";
+import { TimelineViewport } from "./TimelineViewport";
+import { todayRange, type DateRange } from "@/lib/dates";
+import { LoadingState } from "@/components/status/LoadingState";
+import { QueryState } from "@/components/status/QueryState";
+import { useLinkedReplaySelection } from "./useLinkedReplaySelection";
+import { useReplayData } from "./useReplayData";
+import { useLiveReplay } from "./useLiveReplay";
+
+/** `2026-09-12T08:30` → `09/12 08:30`, matching the overview's range trigger. */
+function shortTime(value: string) {
+  return value.slice(5, 16).replace("-", "/").replace("T", " ");
+}
+
+function ReplayDateControls({
+  chosen,
+  custom,
+  chooseDate,
+  stepDay,
+}: {
+  chosen: DateRange;
+  custom: boolean;
+  chooseDate: (range: DateRange, custom?: boolean) => void;
+  stepDay: (step: number) => void;
+}) {
+  return (
+    <>
+      <div className="experience-date">
+        <Button size="icon" aria-label={custom ? "前一段" : "前一天"} onClick={() => stepDay(-1)}>
+          <Icon name="chevronLeft" />
+        </Button>
+        <DatePicker
+          value={chosen.from.slice(0, 10)}
+          onChange={(value) => chooseDate(todayRange(new Date(`${value}T00:00:00`)))}
+        />
+        <Button size="icon" aria-label={custom ? "后一段" : "后一天"} onClick={() => stepDay(1)}>
+          <Icon name="chevronRight" />
+        </Button>
+      </div>
+      <Popover
+        label="自定义时间范围"
+        className="range-picker"
+        trigger={
+          <>
+            <Icon name="filter" />
+            <span className="picker-value">
+              {custom ? `${shortTime(chosen.from)} — ${shortTime(chosen.to)}` : "时间范围"}
+            </span>
+            <Icon name="chevronDown" />
+          </>
+        }
+      >
+        {(close) => (
+          <DateRangeControls
+            key={`${chosen.from}/${chosen.to}`}
+            value={chosen}
+            onCancel={close}
+            onApply={(next) => {
+              chooseDate(next, true);
+              close();
+            }}
+          />
+        )}
+      </Popover>
+    </>
+  );
+}
+
+function RefreshButton({
+  fetching,
+  onRefresh,
+  className = "",
+}: {
+  fetching: boolean;
+  onRefresh: () => void;
+  className?: string;
+}) {
+  return (
+    <Button className={className} variant="glass" disabled={fetching} onClick={onRefresh}>
+      <Icon name="refresh" />
+      {fetching ? "正在刷新" : "刷新"}
+    </Button>
+  );
+}
+
+export function ReplayWorkbench() {
+  const auth = useAuth();
+  const accessToken = auth.user?.access_token ?? "";
+  const ownerSubject = auth.user?.profile.sub ?? "";
+  const selection = useLinkedReplaySelection();
+  const {
+    chosen,
+    custom,
+    from,
+    to,
+    bounds,
+    range,
+    detail,
+    chooseDate,
+    stepDay,
+    setRange,
+    setDetail,
+    pauseFollowing,
+    returnToNow,
+    establishInitialRange,
+  } = selection;
+  const {
+    tracksQuery,
+    tracks,
+    replayQuery,
+    densityQuery,
+    densityStatus,
+    lanes,
+    detailTrack,
+    detailQuery,
+    refresh,
+    fetching,
+    densityFailed,
+    firstActivityAt,
+  } = useReplayData(ownerSubject, accessToken, selection);
+  useLiveReplay(selection.following, selection.advanceClock, refresh, fetching);
+  establishInitialRange(firstActivityAt);
+  return (
+    <div>
+      <main className="workspace experience-workspace">
+        {tracksQuery.isPending ? (
+          <LoadingState label="正在读取采集来源" />
+        ) : tracksQuery.isError ? (
+          <QueryState
+            eyebrow="读取失败"
+            title="暂时无法读取采集来源"
+            description={tracksQuery.error.message}
+            action={
+              <Button variant="outline" type="button" onClick={() => void tracksQuery.refetch()}>
+                重试
+              </Button>
+            }
+          />
+        ) : tracks.length === 0 ? (
+          <QueryState
+            eyebrow="暂无来源"
+            title="还没有可以回放的记录"
+            description="采集端开始记录并完成上传后，对应来源会出现在这里。"
+            action={<RefreshButton fetching={fetching} onRefresh={() => void refresh()} />}
+          />
+        ) : chosen && bounds && range ? (
+          <>
+            <section className="experience-filters" aria-label="回放筛选">
+              <ReplayDateControls
+                chosen={chosen}
+                custom={custom}
+                chooseDate={chooseDate}
+                stepDay={stepDay}
+              />
+              <RefreshButton
+                className="experience-refresh"
+                fetching={fetching}
+                onRefresh={() => void refresh()}
+              />
+            </section>
+            {replayQuery.pending.length > 0 && replayQuery.data.length === 0 ? (
+              <LoadingState label="正在构建统一时间窗口" />
+            ) : replayQuery.data.length === 0 && replayQuery.failures.length > 0 ? (
+              <QueryState
+                eyebrow="读取失败"
+                title="暂时无法显示时间线"
+                description="所选 Track 均读取失败。"
+                action={
+                  <Button
+                    variant="outline"
+                    type="button"
+                    onClick={() => void replayQuery.refetch()}
+                  >
+                    重试
+                  </Button>
+                }
+              />
+            ) : (
+              <>
+                {replayQuery.failures.length > 0 ? (
+                  <div className="density-error" role="alert">
+                    {replayQuery.failures.length} 条 Track 读取失败，其余数据仍可查看。
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() =>
+                        void Promise.all(replayQuery.failures.map((failure) => failure.retry()))
+                      }
+                    >
+                      重试失败 Track
+                    </Button>
+                  </div>
+                ) : null}
+                {densityFailed ? (
+                  <div className="density-error" role="alert">
+                    当前范围的细节读取失败，仍显示已有密度。
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => void densityQuery.refetch()}
+                    >
+                      重试密度
+                    </Button>
+                  </div>
+                ) : null}
+                <TimelineViewport
+                  key={`${ownerSubject}/${from}/${to}`}
+                  lanes={lanes}
+                  overviewLanes={replayQuery.data}
+                  bounds={bounds}
+                  range={range}
+                  densityStatus={densityStatus}
+                  onRange={setRange}
+                  onSelectPoints={setDetail}
+                  onInteract={pauseFollowing}
+                  onNow={returnToNow}
+                />
+              </>
+            )}
+            {detail && detailTrack ? (
+              <section className="point-details glass-panel">
+                <div className="section-heading">
+                  <div>
+                    <span className="track-source">所选密度区间 · {detail.count} 条</span>
+                    <h2>{trackLabel(detailTrack)}</h2>
+                  </div>
+                  <Button variant="ghost" type="button" onClick={() => setDetail(null)}>
+                    关闭详情
+                  </Button>
+                </div>
+                <RecordsPanel query={detailQuery} selectedTrack={detailTrack} />
+              </section>
+            ) : null}
+            <footer className="experience-footer">
+              {Intl.DateTimeFormat().resolvedOptions().timeZone}
+            </footer>
+          </>
+        ) : (
+          <LoadingState label="正在准备时间范围" />
+        )}
+      </main>
+    </div>
+  );
+}

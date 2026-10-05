@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+  <ItemGroup>
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)CodeMetricsConfig.txt" />
+    <GlobalAnalyzerConfigFiles Include="$(MSBuildThisFileDirectory)CodeMetrics.globalconfig" />
+  </ItemGroup>
+</Project>

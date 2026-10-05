@@ -1,0 +1,210 @@
+.overview-workspace {
+  display: grid;
+  gap: 1.5rem;
+  max-width: 1200px;
+}
+.overview-controls,
+.period-presets {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.overview-map {
+  padding: 1.5rem;
+  min-width: 0;
+}
+.overview-map h2 {
+  margin: 0.4rem 0;
+  font-size: 1.25rem;
+}
+.overview-sources {
+  display: grid;
+  margin: 1rem 0;
+  border-top: 1px solid var(--border);
+}
+.overview-source {
+  display: grid;
+  grid-template-columns: minmax(8rem, 12rem) minmax(0, 1fr) minmax(8rem, 10rem);
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.source-identity,
+.source-total {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.source-identity a {
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.source-identity a:hover {
+  color: var(--primary);
+}
+.source-identity small,
+.source-total small {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+.source-total {
+  text-align: right;
+}
+.source-total strong {
+  font-size: 1rem;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.source-chart {
+  min-width: 0;
+}
+.source-days {
+  display: grid;
+  gap: 2px;
+  height: 76px;
+  padding-top: 4px;
+}
+.source-day {
+  position: relative;
+  display: flex;
+  align-items: end;
+  height: 48px;
+  min-width: 0;
+}
+.source-day-bar {
+  display: block;
+  width: 100%;
+  border-radius: 2px 2px 0 0;
+  background: var(--chart-1);
+}
+.source-day-label {
+  position: absolute;
+  top: 54px;
+  left: 0;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  white-space: nowrap;
+}
+.source-chart-status {
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+}
+.source-warning {
+  grid-column: 1 / -1;
+  color: var(--destructive);
+  font-size: 0.8rem;
+  margin: 0;
+}
+.overview-other {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+.overview-other h2 {
+  width: 100%;
+  margin: 0;
+}
+.overview-other a {
+  padding: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+}
+.page-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.7rem;
+  color: var(--muted-foreground);
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+@media (max-width: 640px) {
+  .overview-map {
+    padding: 1rem;
+  }
+  .overview-source {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.75rem;
+  }
+  .source-chart {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .source-total strong {
+    font-size: 0.85rem;
+  }
+}
+
+.object-heading {
+  padding-bottom: 0;
+}
+.object-title {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.object-title h1 {
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+}
+.object-title > span,
+.object-card > span {
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+}
+.object-actions,
+.object-tabs,
+.object-related,
+.record-objects {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.object-related {
+  max-height: 120px;
+  overflow: auto;
+  margin-top: 16px;
+}
+.object-related a,
+.record-objects a {
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--glass-bg);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+.record-objects {
+  margin: 12px 0;
+}
+.object-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+.object-card {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-wrap: anywhere;
+}
+.object-directory input {
+  width: min(100%, 400px);
+  padding: 10px 14px;
+  margin: 16px 12px 0 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--glass-bg);
+  color: inherit;
+}
+.object-heading + div .workspace {
+  padding-top: 20px;
+}
