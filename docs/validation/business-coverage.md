@@ -2,6 +2,8 @@
 
 核对日期：2026-09-26。实现基点：`36ed028e`。本文是业务承诺与验证证据的索引，具体语义以链接的契约为准；不增加新承诺，也不定义测试调度框架。
 
+面向非技术读者的当前架构与功能说明见[系统与业务总览](../system-overview.md)。本页侧重验证覆盖；运行证据按各自标注的日期和范围理解。
+
 ## 从开始使用到回放
 
 实线表示当前已有使用路径，虚线表示发行阶段尚未验收的入口。桌面与服务器是两种采集入口，可以独立运行。
@@ -16,9 +18,9 @@ flowchart TD
 
     Login[登录 Web] --> Manage[查看 Hub 与 Collector 状态]
     Server[运行服务器 Hub] --> Manage
-    Manage --> Remote[在线配置及启停服务器 Collector]
+    Manage --> Remote[登录服务器账号，成功后自动采集]
     Remote --> External[第三方认证与观测：当前为 VRChat]
-    Manage --> DesktopControl[远程开始或暂停桌面采集]
+    First --> DesktopControl[本地开始或暂停桌面采集]
     DesktopControl -->|开始| Start
     DesktopControl -->|暂停| Pause
 
@@ -26,7 +28,7 @@ flowchart TD
     External --> Custody
     Custody --> Deliver[注册 Collector 与 Track 并交付]
     Deliver --> Stored[后端按 Owner 存储]
-    Stored --> Replay[选择来源与时间范围，查看回放和详情]
+    Stored --> Replay[选择对象与时间范围，查看回放和详情]
     Login --> Replay
 
     Custody --> Offline[后端不可达时保留待交付记录]
@@ -37,7 +39,7 @@ flowchart TD
     ContinueDelivery --> Deliver
 ```
 
-图中的“各自 Hub”不是一个中央 Hub：Desktop 和服务器各用自己的本地 SQLite，分别直接向 API 交付，没有 Hub 间转发。桌面首次保存连接后由使用者开始采集；保存连接的 Desktop 在进程重启后自动开始，服务器则恢复保存的启停选择。依据：[宿主责任](../adr/ADR-0014-hub-desktop-and-server-hosting.md)、[桌面客户端](../../src/Desktop/README.md)、[服务器](../../src/Server/README.md)。
+图中的“各自 Hub”不是一个中央 Hub：Desktop 和服务器各用自己的本地 SQLite，分别直接向 API 交付，没有 Hub 间转发。桌面首次保存连接后由使用者开始采集；保存连接的 Desktop 在进程重启后自动开始，服务器则恢复已保存账号的会话并自动采集。依据：[宿主责任](../adr/ADR-0014-hub-desktop-and-server-hosting.md)、[桌面客户端](../../src/Desktop/README.md)、[服务器](../../src/Server/README.md)。
 
 两条链路应分开理解：
 
@@ -57,7 +59,7 @@ flowchart TD
 | Web 登录与隔离 | 登录后只访问本 Owner 数据，退出清理会话和缓存 | 错签名/发行者/过期令牌、跨 Owner 查询、退出后看到旧缓存 | [认证管线](../../tests/Heartbeat.Integration.Tests/RealAuthenticationPipelineTests.cs)：真实验证器、受控签发者；[查询隔离](../../tests/Heartbeat.Integration.Tests/RecordReplayHttpTests.cs)；[登录](../../src/Frontend/Heartbeat.Web/tests/e2e/auth.spec.ts)及[退出](../../src/Frontend/Heartbeat.Web/tests/e2e/replay.spec.ts)为 fixture | 本次真实主链使用短期令牌建立浏览器会话，没有验收交互 OIDC；可用 `--interactive-login` 单独运行 |
 | 开始、暂停、退出 | 暂停不停止 Hub 交付；正常停止尝试最终交接；进程启动按宿主规则恢复 | 重复初始化撤销暂停、配置与启停竞争、退出遗漏最终交接 | [DesktopTests](../../tests/Heartbeat.Desktop.Tests/DesktopTests.cs)；桌面主链真实 UI 启停、退出和重启 | 隐藏/重开、菜单栏/托盘、辅助技术与 Windows UI 的完整实机验收 |
 | 观测变成 Record | 遵守各协议；应用与窗口分开，Observation Gap 表达未知，输入不保存文本 | 标题抖动、权限丢失、通知迟到、锁屏休眠被补成连续活动 | [投影行为](../../tests/Heartbeat.Collector.Desktop.Mac.Tests/DesktopRecordProjectorTests.cs)、[采集会话](../../tests/Heartbeat.Collector.Desktop.Mac.Tests/DesktopCollectorSessionTests.cs)、[Windows 翻译](../../tests/Heartbeat.Collector.Desktop.Windows.Tests/WindowsObservationTests.cs)；主链证明真实前台应用记录可回放 | 受控真实应用/窗口切换、物理键鼠、权限切换、锁屏休眠的组合证据；单条前台应用见证不能证明所有采集能力 |
-| Hub 接管 | `accepted` 只在 SQLite 事务提交后返回；容量不足或写入失败不确认接管 | 半批写入、磁盘错误、容量满仍确认成功、错误回执释放快照 | [RecordOutboxTests](../../tests/Heartbeat.Hub.Tests/RecordOutboxTests.cs)：事务、容量、写入失败；[交接快照](../../tests/Heartbeat.Collector.Desktop.Mac.Tests/PendingHubSubmissionsTests.cs) | Collector 接管前仍为内存缓冲，崩溃可能丢失；真实断电/文件系统损坏未验收 |
+| Hub 接管 | `accepted` 只在 SQLite 事务提交后返回；容量不足或写入失败不确认接管 | 半批写入、磁盘错误、容量满仍确认成功、错误回执释放快照 | [RecordOutboxTests](../../tests/Heartbeat.Hub.Tests/RecordOutboxTests.cs)：事务、容量、写入失败；[交接快照](../../tests/Heartbeat.Hub.Tests/PendingHubSubmissionsTests.cs) | Collector 接管前仍为内存缓冲，崩溃可能丢失；真实断电/文件系统损坏未验收 |
 | 注册与身份映射 | 同一逻辑 Collector/Track 重试后身份稳定；不用显示名称决定身份 | 离线首次提交、重启丢映射、错误 Owner 或时间定义 | [HubDeliveryTests](../../tests/Heartbeat.Integration.Tests/HubDeliveryTests.cs)、[注册](../../tests/Heartbeat.Integration.Tests/CollectorRegistrationTests.cs)、[Track](../../tests/Heartbeat.Integration.Tests/TrackHttpTests.cs)；主链真实首次接入 | 通用 Device Identity 跨重装关联尚未实现，不等同于当前 Target |
 | 重复与乱序交付 | 同一 Record 幂等写入；当前合法 Explicit Range 续期只增大结束位置 | 提交已落库但回执丢失、乱序重试、部分提交、新续期被旧回执清除 | [真实存储组合测试](../../tests/Heartbeat.Integration.Tests/HubDeliveryTests.cs)已覆盖丢响应；[上传 API](../../tests/Heartbeat.Integration.Tests/RecordUploadHttpTests.cs)、[上传期间续期](../../tests/Heartbeat.Hub.Tests/RecordUploaderTests.cs) | 不是“请求只执行一次”；任意历史内容/时间更正与删除尚未实现 |
 | 离线与崩溃恢复 | Hub 已接管数据在重启后继续交付；核对身份、内容、时间和归属 | 重启丢队列、换 Hub 身份、误投路由、队列清空但未落库 | [HubCrashTests](../../tests/Heartbeat.Hub.Tests/HubCrashTests.cs)；`desktop-replay --recovery` 两次真实主链实测 | 主链在暂停采集、冻结已接管快照后强制退出；不证明任意指令时刻崩溃、机器断电或接管前无丢失 |
@@ -157,7 +159,7 @@ sequenceDiagram
 ## 下一步按业务缺口选择
 
 1. **真实桌面观测序列**：应用/窗口切换 → 暂停/恢复 → 锁屏休眠及权限变化 → Web 回放。按[系统验收步骤](system-acceptance.md#仍需人工验收)保存受控操作与预期区间，先明确哪些操作可自动化。
-2. **真实管理闭环**：Web 开始/暂停 Desktop → 看到实际状态变化 → 观察采集与交付各自结果；复用已有启动、身份和回放步骤。
+2. **真实管理闭环**：桌面本地开始/暂停 → Web 看到实际状态变化 → 分别观察采集与交付结果；服务器账号另按 Web 登录/重新登录 → 自动采集验收。复用已有启动、身份和回放步骤。
 3. **服务器业务与发布验收**：真实 VRChat 账号链路按独立边界选择；下载安装、系统凭据、升级、长时间运行在对应环境就绪后验收。
 
 这是风险排序建议，不代表上述新增测试已经实现。测试是否保留，取决于它能否抓住表中具体失败；是否使用图执行器，取决于之后是否出现实际的编排复杂度。

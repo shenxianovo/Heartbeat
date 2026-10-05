@@ -16,6 +16,6 @@
 
 ## 关联节点
 
-- [对象发现](object-discovery.md)：形成对象指认。
-- [对象](../objects/README.md)：明确被描述的事物及对象身份。
+- [实体发现](entity-discovery.md)：形成实体指认。
+- [实体](../entities/README.md)：明确被描述的事物及实体身份。
 - [观测](../observations/README.md)：提供推导依据。

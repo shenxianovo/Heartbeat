@@ -8,9 +8,10 @@ Heartbeat 把一个人在数字世界中的异构活动痕迹记录为时间有�
 
 ## 文档
 
+- [系统与业务总览](docs/system-overview.md)：面向非技术读者的架构图、完整业务路径、异常处理和当前能力边界。
 - [领域语言](CONTEXT.md)：Heartbeat 记录领域的核心术语。
 - [架构决策](docs/adr)：已经接受的关键设计决策，新增 ADR 使用 [仓库模板](docs/adr/ADR-TEMPLATE.md)。
-- [记录存储模型](docs/recording-storage-model.md)：`Timeline -> Collector -> Track -> Record` 四层模型、字段和约束。
+- [记录模型与存储](docs/recording-storage-model.md)：关系图、操作与实现边界、核心不变量、续期合并规则和持久字段。
 - [记录 HTTP 接口](docs/recording-api.md)：Collector 注册、Track 获取、Record 上传和 Track 级重放查询。
 - [桌面前台应用协议 v1](docs/protocols/desktop-application-foreground-v1.md)：前台应用读数的 value 结构与区间断开规则。
 - [桌面前台窗口协议 v1](docs/protocols/desktop-window-foreground-v1.md)：与前台应用分开的窗口标题观测。

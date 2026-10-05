@@ -18,13 +18,13 @@
 
 ## 基础概念
 
-本模型采用两个基础概念：[对象（Object）](human/objects/README.md)与[观测（Observation）](human/observations/README.md)。
+本模型采用两个基础概念：[实体（Entity）](human/entities/README.md)与[观测（Observation）](human/observations/README.md)。
 
 ## 基本约定
 
-1. **参与约定**：观测涉及对象。一份观测可以涉及多个对象，同一个对象可以参与多份观测。
-2. **身份约定**：对象身份用于区分对象。观测身份用于区分观测。名称相同不足以证明是同一个对象。内容相同不足以证明是同一份观测。
-3. **证据约定**：对象指认和关系依据已有观测建立。如果依据不足，保留未知。同一性判断可以随新证据修正。
+1. **参与约定**：观测涉及实体。一份观测可以涉及多个实体，同一个实体可以参与多份观测。
+2. **身份约定**：实体身份用于区分实体。观测身份用于区分观测。名称相同不足以证明是同一个实体。内容相同不足以证明是同一份观测。
+3. **证据约定**：实体指认和关系依据已有观测建立。如果依据不足，保留未知。同一性判断可以随新证据修正。
 4. **保留约定**：保留观测中的信息及理解这些信息所需的已知说明。推导结果应能追溯到所用观测及每一步推导方式。推导结果可以重新推导。原观测中的信息保持不变。
 
 ## 阅读树（显示主要属性）
@@ -38,7 +38,7 @@
 ```mermaid
 flowchart LR
     H(["系统目标与基本约定"]):::goal
-    E["对象<br/>Object"]:::basis
+    E["实体<br/>Entity"]:::basis
     O["观测<br/>Observation"]:::basis
     S("记录空间<br/>RecordingSpace"):::derived
     D{{"推导<br/>Derivation"}}:::process
@@ -46,7 +46,7 @@ flowchart LR
     I(("身份<br/>Identity")):::attribute
     R{"角色<br/>Role"}:::relation
     OI(("观测身份<br/>ObservationIdentity")):::attribute
-    P{"参与对象及其角色"}:::relation
+    P{"参与实体及其角色"}:::relation
     ACQ(("获取方式<br/>AcquisitionMethod")):::attribute
     DT(("描述时间<br/>DescribedTime")):::attribute
     AT(("获取时间<br/>AcquisitionTime")):::attribute
@@ -60,9 +60,9 @@ flowchart LR
     H --> S
     H --> D
     E --> I
-    E --> R
     O --> OI
     O --> P
+    P --> R
     O --> ACQ
     O --> DT
     O --> AT
@@ -71,14 +71,14 @@ flowchart LR
     D --> M
     D --> Q
 
-    click E "human/objects/README.md" "阅读对象"
+    click E "human/entities/README.md" "阅读实体"
     click O "human/observations/README.md" "阅读观测"
     click S "human/recording-space.md" "阅读记录空间"
     click D "human/derivation/README.md" "阅读推导"
-    click I "human/objects/identity.md" "阅读身份"
-    click R "human/objects/roles.md" "阅读角色"
+    click I "human/entities/identity.md" "阅读身份"
+    click R "human/observations/roles.md" "阅读角色"
     click OI "human/observations/README.md#观测身份observationidentity" "阅读观测身份"
-    click P "human/observations/README.md#参与对象及其角色" "阅读参与对象及其角色"
+    click P "human/observations/README.md#参与实体及其角色" "阅读参与实体及其角色"
     click ACQ "human/observations/README.md#获取方式acquisitionmethod" "阅读获取方式"
     click DT "human/observations/README.md#描述时间与获取时间" "阅读描述时间"
     click AT "human/observations/README.md#描述时间与获取时间" "阅读获取时间"
@@ -97,11 +97,12 @@ flowchart LR
 
 | 节点 | 属性或说明 |
 | --- | --- |
-| [对象](human/objects/README.md) | 身份与角色 |
-| [观测](human/observations/README.md) | 观测身份、参与对象及其角色、获取方式与时间 |
+| [实体](human/entities/README.md) | 身份 |
+| [观测](human/observations/README.md) | 观测身份、参与实体及其角色、获取方式与时间 |
 | [记录空间](human/recording-space.md) | 保留哪些观测，以及怎样选择其中一部分 |
 | [推导](human/derivation/README.md) | 推导依据、推导方式与推导结果 |
-| [对象发现](human/derivation/object-discovery.md) | 根据观测建立对象指认 |
+| [实体发现](human/derivation/entity-discovery.md) | 根据观测建立实体指认 |
+| [程序模型](human/program/README.md) | `IEntity`、`EntityId`、`ITimed` 与当前观测程序草案 |
 
 ## 上层英文命名
 
@@ -110,13 +111,13 @@ flowchart LR
 | 中文 | 英文 | 含义 |
 | --- | --- | --- |
 | 系统目标 | SystemGoal | 整体目标 |
-| 对象 | Object | 可以被指认的事物 |
+| 实体 | Entity | 可以被指认的事物 |
 | 观测 | Observation | 取得的一份信息 |
 | 身份 | Identity | 区分并认出同一事物 |
-| 对象身份 | ObjectIdentity | 对象的身份 |
+| 实体身份 | EntityIdentity | 实体的身份 |
 | 观测身份 | ObservationIdentity | 一份观测的身份 |
-| 角色 | Role | 对象在观测或观测所描述关系中的作用 |
-| 对象间关系 | ObjectRelationship | 观测表达的对象之间的关系 |
+| 角色 | Role | 实体在观测或观测所描述关系中的作用 |
+| 实体间关系 | EntityRelationship | 观测表达的实体之间的关系 |
 | 获取方式 | AcquisitionMethod | 信息怎样得到 |
 | 描述时间 | DescribedTime | 信息描述的时刻或区间 |
 | 获取时间 | AcquisitionTime | 来源取得信息的时间 |
@@ -125,14 +126,14 @@ flowchart LR
 | 推导依据 | DerivationInput | 某次推导实际采用的信息 |
 | 推导方式 | DerivationMethod | 从依据形成结果所采用的规则或步骤 |
 | 推导结果 | DerivedResult | 推导形成的结果 |
-| 对象发现 | ObjectDiscovery | 建立对象指认的过程 |
-| 对象指认 | ObjectIdentification | 对象发现形成的判断结果 |
-| 对象汇总描述 | ObjectDescription | 根据观测形成的对象描述 |
+| 实体发现 | EntityDiscovery | 建立实体指认的过程 |
+| 实体指认 | EntityIdentification | 实体发现形成的判断结果 |
+| 实体汇总描述 | EntityDescription | 根据观测形成的实体描述 |
 | 观测更正 | ObservationCorrection | 保留原观测并关联新的更正信息 |
 
 身份（Identity）用于区分事物并判断同一性。标识（Identifier）是用于识别的符号或编号。
 
-观测保留来源提供的原始信息。对象发现形成对象指认（ObjectIdentification）。观测通过对象身份关联已识别的参与对象。
+观测保留来源提供的原始信息。实体发现形成实体指认（EntityIdentification）。观测通过实体身份关联已识别的参与实体。
 
 ## 当前层级与下一步
 
@@ -140,14 +141,14 @@ flowchart LR
 
 | 节点 | 已展开内容 |
 | --- | --- |
-| 身份与观测身份 | [标识及其含义与适用范围](human/objects/identity.md#标识identifier)、[同一性判断](human/objects/identity.md#同一性判断identityjudgment) |
-| 角色 | [角色的含义与示例](human/objects/roles.md) |
-| 观测 | [参与对象及其角色](human/observations/README.md#参与对象及其角色)、[获取方式](human/observations/README.md#获取方式acquisitionmethod)、[两种时间](human/observations/README.md#描述时间与获取时间)及[对象间关系](human/observations/README.md#对象间关系objectrelationship) |
+| 身份与观测身份 | [标识及其含义与适用范围](human/entities/identity.md#标识identifier)、[同一性判断](human/entities/identity.md#同一性判断identityjudgment) |
+| 角色 | [角色的含义与示例](human/observations/roles.md) |
+| 观测 | [参与实体及其角色](human/observations/README.md#参与实体及其角色)、[获取方式](human/observations/README.md#获取方式acquisitionmethod)、[两种时间](human/observations/README.md#描述时间与获取时间)及[实体间关系](human/observations/README.md#实体间关系entityrelationship) |
 | 记录空间 | [保留的观测及选择范围](human/recording-space.md#保留的观测) |
 | 推导依据 | [观测与已有推导结果](human/derivation/input.md) |
 | 推导方式 | [实际采用的规则或步骤](human/derivation/method.md) |
 | 推导结果 | [追溯关系与结果示例](human/derivation/result.md) |
 
-已完成本轮领域模型的检验，开始推导程序模型。[对象身份使用 UUIDv7](human/objects/identity.md#对象身份的程序表示与创建)。
+已完成本轮领域模型的检验，继续推导[程序模型](human/program/README.md)。当前确认 `IEntity` 与 `ITimed` 两个核心接口。`EntityId` 包装 UUIDv7；观测也是实体，并使用同一个标识。
 
-[对象发现的程序流程](human/derivation/object-discovery.md#程序流程)已明确复用、创建与保留未知三种行为。接着推导观测的程序表示与创建。
+[实体发现的程序流程](human/derivation/entity-discovery.md#程序流程)已明确复用、创建与保留未知三种行为。观测的时间边界分别保留已知值，未知边界为 `null`。角色属于参与关联；具体状态由业务信息表达。当前程序草案采用 Observation、ObservationSchema、Observer 与 Relation，不设 Data 基类。下一步结合[场景检验](human/program/model-check/README.md)确认历史内容的指向与关系表达。

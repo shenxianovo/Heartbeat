@@ -2,12 +2,17 @@
 
 状态：已确认
 
-本文档是对象身份、记录归属、普通写入与持久结构的权威来源。HTTP 契约见[记录接口](recording-api.md)。
+了解系统整体用途和各项业务，可先读[系统与业务总览](system-overview.md)。
 
-对象身份、识别与描述分开保存，Timeline、Collector、Track、Record、Hub 共用对象主键。公共引用与同一 Record 上的对象条件见[对象契约](record-objects.md)，设计决策见 [ADR-0030](adr/ADR-0030-unified-object-identity.md)。
+本文档是记录归属、普通写入规则与持久结构的权威来源。先读关系、操作与不变量，再查后面的字段。术语见[领域语言](../CONTEXT.md)，HTTP 表达见[记录接口](recording-api.md)，对象引用格式与查询语义见[对象契约](record-objects.md)，交付责任与回执见[Hub 交付](hub-record-delivery.md)。
+
+这是对已有决策和实现的轻量形式化描述。下文“已实现”指当前支持的操作；“已接受、未实现”表示领域需求已确认，尚无可用机制。普通写入的限制不能用来否定未来的结果更正语义。
+
+## 关系与身份
 
 ```mermaid
 erDiagram
+    OWNER ||--o| TIMELINE : owns
     TIMELINE ||--o{ COLLECTOR : contains
     COLLECTOR ||--o{ TRACK : contains
     TRACK ||--o{ RECORD : contains
@@ -24,7 +29,49 @@ erDiagram
     OBJECT ||--o{ RECORD_OBJECT : appears_in
 ```
 
-所有 ID 均为应用生成的 UUID v7。外键使用限制删除，不级联清除下层数据。
+一个 Owner 使用一个 Timeline；首次注册 Collector 时才创建，所以尚未注册时数据库中可以没有 Timeline。每个 Collector 只属于一个 Timeline，每个 Track 只属于一个 Collector，每条 Record 只属于一个 Track。沿这条归属链能唯一确定 Record 的 Owner；写入和读取都必须按这个 Owner 隔离。
+
+对象身份由 `objects` 统一保存。Timeline、Collector、Track、Record、Hub 共用对象主键，业务字段保留在各自表中；识别映射与当前描述分别保存。对象提供另一条关联路径：一条 Record 可以引用零到多个对象，一个对象可以被不同 Collector 的多条 Record 引用。`RECORD_OBJECT` 是引用的查询投影，不是新的领域层级。从设备、应用或账号入口查看同一 Record，身份与来源保持不变。
+
+身份的判定依据见下方 [Collector](#collector)、[Track](#track) 和[对象与关联](#对象与关联)的唯一约束。展示名称、Hub、运行进程和页面路径均不参与这些身份。Record 使用生产者分配的 ID，同值、同时或同对象均不足以断言两条 Record 是同一份结果。
+
+Hub 属于一个 Owner，承担交付责任，不是 Record 的归属层级。交接前 Collector 使用逻辑声明标识来源，Hub 接管后负责解析后端身份；身份归属和交付进度是两个独立问题。
+
+图中的 Owner 由外部认证标识，不是本地表。本地资源 ID 使用应用生成的 UUID v7，其中 Record ID 由 Collector 生成。外键限制删除，不级联清除下层数据。
+
+## 操作与实现边界
+
+| 操作 | 对记录与责任的影响 | 当前支持 |
+| --- | --- | --- |
+| 新建观测 | 新 ID 表示一份新的独立结果；声明来源、时间、内容及对象引用 | 已实现 |
+| 持续确认 | 有新的连续观测依据时，以原 ID 提交更大的结束时间；详见[续期规则](#持续区间续期) | 已实现，仅 Range |
+| 断采或状态变化后再观测 | 创建新 Record；旧段停在已确认的位置，两个 ID 不会仅因值相同而合并 | 已实现，由 Collector 判断连续性 |
+| 重传 | 重交同一 ID 的快照；可以晚到或重复，不增加独立结果数量，也不倒退已保存的结束位置 | 已实现 |
+| Hub 接管 | 事务持久保存提交快照后确认；Collector 核对确认后才可释放对应快照，后续交付由 Hub 负责 | 已实现，接管前数据保护仍待设计 |
+| 后端接收 | 按 Owner 校验并原子写入 Record 与对象投影，返回首次接收时间；Hub 核对回执后清理已确认的待上传快照 | 已实现；不等同于 Hub 接管确认 |
+| 按对象查看 | 从同一 Owner 的记录中选择符合对象、时间等条件的结果；保留原 ID 与来源 | 已实现，不产生新的 Record |
+| 更正历史结果 | 保持同一份结果的逻辑身份，允许内容替换、时间移动或区间缩短 | [已接受、未实现](adr/ADR-0006-result-correction-semantics.md)；当前普通写入不能表达 |
+| 删除结果 | 删除后的可见性及旧重传如何处理必须一致定义 | [未设计、未实现](recording-open-questions.md#历史纠错与删除) |
+
+“停止采集”不会给已有 Record 增加永久结束标记。断采后的新观测使用新 ID，断采前已确认但尚未交付的旧快照仍能补传。重试旧快照与跨空白续期是不同的操作。
+
+## 核心不变量与检查依据
+
+以下是不应因新增 Collector 或页面而改变的约束。测试链接是已有的检查入口；实现状态不代表真实平台、第三方服务或所有故障方式均已验收。
+
+| 不变量 | 约束及适用范围 | 检查依据 |
+| --- | --- | --- |
+| 归属唯一且隔离 | 关系图中的每级只有一个上级；同一 Record ID 不能换 Track 或 Owner。来源重命名不改变身份 | [注册与重命名](../tests/Heartbeat.Integration.Tests/CollectorRegistrationTests.cs)、[跨 Owner 与固定字段冲突](../tests/Heartbeat.Integration.Tests/ContinuousStateStorageTests.cs) |
+| 时间形状明确 | Point 没有结束时间；Range 的结束不早于开始，允许零长度。时间位置、获知时间和首次接收时间各有含义，不能相互替代 | [时间字段与形状](../tests/Heartbeat.Domain.Tests/RecordTests.cs) |
+| 普通写入不会改变已有结果的固定部分 | 在本节所述已实现操作中，重传与续期遵循下文的规范化比较和合并规则；这不是对未来结果更正的限制 | [乱序、并发、幂等与首次回执](../tests/Heartbeat.Integration.Tests/ContinuousStateStorageTests.cs) |
+| 连续性需要观测依据 | 相同值、Hub 在线或相邻 Record 都不构成连续性证据；只有 Collector 的有效观测才能续期 | [延迟确认、能力丢失与恢复空白](../tests/Heartbeat.Collector.Desktop.Mac.Tests/DesktopRecordProjectorTests.cs)；后端无法证明来源观测是否真实 |
+| 关联由被接受的观测声明 | Record 内的对象引用是权威；拒绝写入不能发现对象或修改名称。同一对象多入口查看不复制 Record，迟到观测不覆盖较新的目录名称 | [对象与历史名称、拒绝写入无副作用](../tests/Heartbeat.Integration.Tests/ObjectStorageTests.cs) |
+| 对象条件作用于同一条 Record | 设 `O(r)` 为记录显式引用及其 Record、Track、Collector、Timeline 结构身份的集合，`C` 为本次全部对象条件；在 Owner 与时间等限制之外，必须满足 `C ⊆ O(r)`。不能用另一条记录的关联补足条件 | [各读取入口的上下文交集](../tests/Heartbeat.Integration.Tests/ObjectStorageTests.cs) |
+| 确认只覆盖被确认的快照 | 持久提交前不能确认接管；回执丢失允许重试；旧回执不能清除交接期间出现的新续期。规则与原子批次边界以 [Hub 契约](hub-record-delivery.md)为准 | [接管失败与并发续期](../tests/Heartbeat.Hub.Tests/RecordOutboxTests.cs)、[发送快照确认](../tests/Heartbeat.Hub.Tests/PendingHubSubmissionsTests.cs)、[丢回执与重启交付](../tests/Heartbeat.Integration.Tests/HubDeliveryTests.cs) |
+
+例如：设备 A 上某应用的记录已确认到 10:05，旧快照随后补传到 10:03，保存的结束位置仍是 10:05；10:05–10:08 断采后重新看到相同应用，应从 10:08 新建记录。从设备页和应用页分别查看前一段，应得到同一个 Record ID。把前一段改成 10:01–10:04 则属于尚未实现的结果更正，不能用普通续期完成。
+
+下面给出上述模型的持久字段与普通写入定义。
 
 ## Timeline
 
@@ -120,16 +167,36 @@ Hub 的对象身份与首次有效联络原子登记。Owner 从对象表读取�
 
 ## 持续区间续期
 
-[ADR-0002](adr/ADR-0002-monotonic-record-extension.md) 规定 `range` 的持续状态按以下规则续期：
+[ADR-0002](adr/ADR-0002-monotonic-record-extension.md) 规定持续状态的续期。对同一 ID 的已存 Record `r` 和传入快照 `x`，定义固定部分：
 
-- 首次确认创建 Record；状态不变且持续确认时复用 ID，只延长 `ended_at`。
-- 状态变化、断采、重启或能力丢失后创建新 Record；值相同不能跨 Observation Gap 连接。
-- 数据库原子执行 `ended_at = max(已有值, 收到值)`。
-- 同一 ID 的 `track_id`、`started_at`、规范化后的 `observed_at`、`value`、`objects` 和时间形状必须一致。
-- JSON 对象属性顺序和空白差异不构成 value 冲突。
-- 重试和续期保留首次 `received_at`。
+```text
+F(r) = (track_id, started_at, normalized(observed_at), value, objects, time_mode)
+```
 
-当前普通写入不支持区间缩短、value 替换或通用更正链。[ADR-0006](adr/ADR-0006-result-correction-semantics.md) 已确认未来模型需要支持结果更正，机制仍待设计。
+这里 `time_mode` 从 Track 取得，不在 Record 中重复存储。比较前时间转换为 UTC，等于 `started_at` 的 `observed_at` 规范化为空；JSON 对象的属性顺序与空白差异不构成 value 冲突，objects 按[对象契约](record-objects.md)规范化。对象引用中的历史名称也属于固定部分。
+
+已通过身份、Owner、字段和时间形状校验的输入按以下规则处理：
+
+```text
+ID 不存在：创建记录，设置首次 received_at
+ID 已存在且 F(r) != F(x)：冲突，不修改已有记录或对象投影
+ID 已存在且 F(r) == F(x)：
+    Point：保留已有记录
+    Range：ended_at := max(r.ended_at, x.ended_at)
+    两者均保留首次 received_at
+```
+
+数据库原子执行上述比较与合并。对于同一 ID、固定部分一致的合法 Range，结束位置的合并满足：
+
+```text
+max(e, e) = e                                      重复无额外影响
+max(e1, e2) = max(e2, e1)                          乱序不改变最终结束位置
+max(max(e1, e2), e3) = max(e1, max(e2, e3))        分批不改变最终结束位置
+```
+
+这些性质只适用于同一记录的结束位置；首次 `received_at` 取决于首次成功接收，固定内容互相冲突的首次写入也不能用取最大值解决。一次业务事件若被生产者分配了两个 ID，系统不会自动判断其重复。
+
+连续确认时 Collector 复用 ID。状态变化、断采、重启或能力丢失后新建 Record；值相同不能跨 Observation Gap 连接。当前普通写入不能缩短区间、替换 value 或 objects，也没有通用更正链；这些能力的领域含义由 [ADR-0006](adr/ADR-0006-result-correction-semantics.md) 定义，机制仍待设计。
 
 TTL 只用于判断是否缺少及时确认，不修改 `ended_at`，也不阻止补传。Collector 使用系统时间建立基准，以单调时钟推进连续区间；只有实际观测才能续期。该规则不校正错误的初始绝对时间。
 
