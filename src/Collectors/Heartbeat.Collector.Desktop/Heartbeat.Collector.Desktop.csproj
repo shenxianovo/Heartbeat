@@ -1,8 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="../../Hub/Heartbeat.Hub.Client/Heartbeat.Hub.Client.csproj" />
-    <InternalsVisibleTo Include="Heartbeat.Collector.Desktop.Mac" />
-    <InternalsVisibleTo Include="Heartbeat.Collector.Desktop.Mac.Tests" />
-  </ItemGroup>
-</Project>
