@@ -1,0 +1,40 @@
+---
+title: "Observer"
+---
+
+<ModelRelations node="R" />
+
+## 含义
+
+`Observer` 是观测主体实体，标识实际形成观测的主体。
+
+## 定义
+
+`+` 表示接口契约之外的属性。
+
+```csharp
+public sealed class Observer : IEntity
+{
+    public required EntityId Id { get; init; }
+    public required string Name { get; init; } // [!code ++]
+}
+```
+
+| 属性 | 含义 |
+| --- | --- |
+| `Id` | 观测主体的实体标识 |
+| `Name` | 观测主体的名称 |
+
+## 约定
+
+如果只传输或搬运已有观测，则保留原有 `ObserverId`。
+
+如果另一观测主体重新解释证据并形成新观测，则 `ObserverId` 引用新的观测主体。
+
+读取、解析或匹配失败属于采集诊断。
+
+## 示例：读取本地会话记录
+
+本地扫描器读取 Claude 会话记录并形成观测。`ObserverId` 引用本地扫描器。
+
+如果观测表达历史对话，事实时间取自对话记录。缺失的时间保持未知。

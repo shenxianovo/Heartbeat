@@ -1,0 +1,26 @@
+---
+title: "模型概览"
+---
+
+## 目标
+
+用最少的实体记录以下信息：
+
+- 形成观测的观测主体。
+- 观测引用的具体数据。
+- 解释观测的观测定义。
+- 被观测事实的时间。
+
+具体领域定义自己的数据结构、记录粒度与历史保留方式。
+
+## 模型关系
+
+<ModelRelations />
+
+## 阅读顺序
+
+| 层级 | 节点 | 说明 |
+| --- | --- | --- |
+| 基础契约 | [IEntity](./model/contracts/entity.mdx)（含 EntityId）、[ITimed](./model/contracts/timed.mdx) | 先理解标识与时间能力 |
+| 观测模型 | [Observation](./model/observations/observation.mdx)、[Observer](./model/observations/observer.mdx)、[ObservationSchema](./model/observations/schema.mdx)、[具体数据](./model/observations/data.mdx) | 理解观测怎样连接观测主体、具体数据与观测定义 |
+| 关系模型 | [Relation](./model/relations/relation.mdx) | 理解什么时候需要独立的关系实体 |

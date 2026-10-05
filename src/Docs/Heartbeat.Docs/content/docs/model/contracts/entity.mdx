@@ -1,0 +1,43 @@
+---
+title: "IEntity"
+---
+
+<ModelRelations node="E" />
+
+## 含义
+
+需要独立识别的事物实现 `IEntity`，通过 `Id` 提供稳定标识。
+
+## 定义
+
+```csharp
+public interface IEntity
+{
+    EntityId Id { get; }
+}
+```
+
+| 属性 | 类型 | 含义 |
+| --- | --- | --- |
+| `Id` | [EntityId](#entityid) | 当前实体的标识 |
+
+## 约定
+
+观测、观测主体、观测定义、具体数据和独立关系都实现 `IEntity`。
+
+需要表达时间边界的类型实现 [ITimed](./timed.mdx)。
+
+## EntityId
+
+`EntityId` 封装一个 `Guid`，用作实体标识。`New()` 创建 UUIDv7 格式的标识。
+
+```csharp
+public readonly record struct EntityId(Guid Value)
+{
+    public static EntityId New() => new(Guid.CreateVersion7());
+}
+```
+
+引用其他实体时，使用 `EntityId`。
+
+UUIDv7 中的时间表示标识的生成时间。事实时间由 [Observation](../observations/observation.mdx) 表达。
