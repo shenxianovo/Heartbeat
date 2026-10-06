@@ -9,22 +9,33 @@
 - 只保留当前实现；同步更新代码、测试和文档，不加兼容层、迁移路径或版本协商。
 - 用户明确要求前不建设 CI；在本地运行适当检查。
 
+## 文档权威位置
+
+长期文档的唯一权威位置是 `src/Docs/Heartbeat.Docs/content/docs/`。领域工作开始前，读[模型概览](src/Docs/Heartbeat.Docs/content/docs/core/index.mdx)、[术语表](src/Docs/Heartbeat.Docs/content/docs/core/glossary.mdx)和相关模型节点及 ADR。
+
+使用 `grill-with-docs` 或 `domain-modeling` 时，将技能的文档路径映射如下，直接读写站内源文件：
+
+- `GLOSSARY.md` 对应 `src/Docs/Heartbeat.Docs/content/docs/core/glossary.mdx`。
+- `docs/adr/` 对应 `src/Docs/Heartbeat.Docs/content/docs/adr/`。
+- 模型正文位于 `src/Docs/Heartbeat.Docs/content/docs/core/model/`。
+
+模型正文只记录用户已确认的结构与语义。Agent 按已确认内容起草和整理文档；改变模型语义前，逐项得到用户确认。
+
 ## 设计决策
 
-任务暴露设计或架构问题时，先说明影响并请用户确认，再实施该决策；已确认范围内的独立修改可以继续。
+实施中的每项决定先在对话中说明并得到用户确认；已确认范围内的工作可以继续。
 
-以下决策必须在 `docs/adr/` 留 ADR：
+以下决策必须在文档站的 `adr/` 留 ADR：
 
 - 责任归哪个组件；
 - 协议的语义；
 - 某类数据的权威位置。
 
-较小决定写入对应契约文档或模块 README。
+较小决定写入对应模型或契约文档；模块自身的操作说明写入模块 README。
 
 ## 工作约定
 
-- 开始领域工作前读 `CONTEXT.md` 和相关 ADR，细则见 [领域文档](docs/agents/domain.md)。
-- 进行中的规格和 issue 放在 `.scratch/<feature-slug>/`，完成后删除；细则见 [本地 issue](docs/agents/issue-tracker.md)。
-- 使用固定的五类 triage 标签，见 [标签映射](docs/agents/triage-labels.md)。
-- 实现变更使用 [verify-heartbeat](.agents/skills/verify-heartbeat/SKILL.md) 选择并执行验证。
-- 结束任务前执行 [收口检查](docs/agents/closeout.md)。
+- 进行中的规格和 issue 放在 `.scratch/<feature-slug>/`，完成后删除。
+- 应用实现变更使用 [verify-heartbeat](.agents/skills/verify-heartbeat/SKILL.md) 选择验证。
+- 文档站变更在 `src/Docs/Heartbeat.Docs` 运行 `pnpm types:check` 和 `pnpm build`；页面或交互变更还需检查实际页面。
+- 结束任务前检查改动范围内的代码、文档与链接是否一致，并报告验证结果和未验证范围。

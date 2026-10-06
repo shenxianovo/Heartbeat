@@ -1,0 +1,43 @@
+---
+title: "entity_data"
+description: "领域实体的通用 JSON 存储"
+---
+
+`entity_data` 保存领域具体数据和具体关系实体的 JSON 内容。后端将本表映射为模型类别 `entity`。
+
+C# 存储类型为 `Heartbeat.Infrastructure.Database.EntityDataRow`。`Id` 使用 `EntityId`，`Data` 使用 `JsonElement`。
+
+## 保存内容
+
+| 列名 | 数据库类型 | 允许 SQL `NULL` | 保存的信息 |
+| --- | --- | --- | --- |
+| `id` | `uuid` | 否 | 实体标识，对应 C# 的 `IEntity.Id` |
+| `data` | `jsonb` | 否 | 实体除根级 `id` 外的 JSON 属性 |
+
+如果后端尚未识别领域实体的类型，则将实体自身的属性序列化为 JSON，保存到 `data`，读取时返回保存的 JSON 属性。实体标识保存在 `id` 列，`data` 不重复保存根级 `id`。
+
+`data` 遵循 [jsonb 存储语义](./index.mdx#内容存储)。
+
+采集程序可以使用领域定义的强类型实体。后端无需具有对应的领域类，也能保存和读取这些属性。
+
+具体数据的身份、记录粒度和历史保留方式见[具体数据](../core/model/observations/data.mdx)。具体关系的模型见 [Relation](../core/model/relations/relation.mdx)。
+
+## 约束
+
+`id` 为主键，并通过外键引用 `entities.id`。实体内容必须有对应的统一索引。
+
+主键约束名为 `pk_entity_data`，外键约束名为 `fk_entity_data_entities_id`。
+
+外键使用 `ON DELETE CASCADE`。统一索引行被删除时，本表中同 ID 的内容行自动删除。
+
+## 读写
+
+保存路径为 `PUT /entities/{id}`。读取路径为 `GET /entities/{id}`。
+
+统一索引中的 `table_name` 为 `entity_data`。后端在同一事务中写入索引和本表内容，遵循[写入一致性](./index.mdx#写入一致性)。
+
+## 转入专用表
+
+结构稳定且有明确查询需求的类型可以转入领域专用表。后端保留原实体标识，并更新统一索引中的 `table_name`。专用表成为该实体的权威存储。
+
+领域专用表仍映射为 `entity`。保存和读取路径保持不变。规则见[存储转换](./index.mdx#存储转换)。

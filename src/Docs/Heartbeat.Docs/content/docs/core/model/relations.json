@@ -1,0 +1,30 @@
+{
+  "groups": {
+    "contracts": "基础契约",
+    "observations": "观测模型",
+    "relations": "关系模型"
+  },
+  "nodes": {
+    "E": { "label": "IEntity", "shape": "hexagon", "style": "capability", "group": "contracts", "path": "/core/model/contracts/entity" },
+    "T": { "label": "ITimed", "shape": "hexagon", "style": "capability", "group": "contracts", "path": "/core/model/contracts/timed" },
+    "O": { "label": "Observation", "shape": "rectangle", "style": "entity", "group": "observations", "path": "/core/model/observations/observation" },
+    "R": { "label": "Observer", "shape": "rectangle", "style": "entity", "group": "observations", "path": "/core/model/observations/observer" },
+    "S": { "label": "ObservationSchema", "shape": "rectangle", "style": "entity", "group": "observations", "path": "/core/model/observations/schema" },
+    "DATA": { "label": "具体领域数据", "shape": "parallelogram", "style": "domain", "group": "observations", "path": "/core/model/observations/data" },
+    "REL": { "label": "Relation · 抽象类", "shape": "rectangle", "style": "relation", "group": "relations", "path": "/core/model/relations/relation" }
+  },
+  "edges": [
+    { "from": "O", "to": "R", "kind": "reference", "label": "ObserverId 引用" },
+    { "from": "O", "to": "S", "kind": "reference", "label": "SchemaId 引用" },
+    { "from": "O", "to": "DATA", "kind": "reference", "label": "DataId 引用" },
+    { "from": "O", "to": "E", "kind": "implementation", "label": "实现" },
+    { "from": "O", "to": "T", "kind": "implementation", "label": "实现" },
+    { "from": "R", "to": "E", "kind": "implementation", "label": "实现" },
+    { "from": "S", "to": "E", "kind": "implementation", "label": "实现" },
+    { "from": "S", "to": "T", "kind": "implementation", "label": "实现" },
+    { "from": "DATA", "to": "E", "kind": "implementation", "label": "实现" },
+    { "from": "REL", "to": "E", "kind": "implementation", "label": "实现" },
+    { "from": "REL", "to": "T", "kind": "implementation", "label": "实现" },
+    { "from": "REL", "to": "E", "kind": "reference", "label": "FromId / ToId 引用两端实体" }
+  ]
+}

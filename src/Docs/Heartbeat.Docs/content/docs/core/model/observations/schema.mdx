@@ -1,0 +1,51 @@
+---
+title: "ObservationSchema"
+---
+
+<ModelRelations node="S" />
+
+## 含义
+
+`ObservationSchema` 是观测定义实体。观测定义包含具体数据的结构、约束、观测表达的事实和事实时间的含义。
+
+## 定义
+
+`+` 表示接口契约之外的属性。
+
+```csharp
+using System.Text.Json;
+
+public sealed class ObservationSchema : IEntity, ITimed
+{
+    public required EntityId Id { get; init; }
+    public required string Name { get; init; } // [!code ++]
+    public required JsonElement Schema { get; init; } // [!code ++]
+    public DateTimeOffset? StartAt { get; init; }
+    public DateTimeOffset? EndAt { get; init; }
+}
+```
+
+| 属性 | 含义 |
+| --- | --- |
+| `Id` | 观测定义的实体标识 |
+| `Name` | 观测定义的名称 |
+| `Schema` | 具体数据的结构、约束和观测含义，以 JSON 保存 |
+| `StartAt`、`EndAt` | 观测定义的有效期，遵循 [ITimed](../contracts/timed.mdx) |
+
+## 定义更新
+
+如果观测定义的语义或约束变化，则创建新的 `ObservationSchema`，并使用新的 `EntityId`。旧观测继续引用旧观测定义。
+
+如果仅修改观测定义的名称或说明，且语义与约束不变，可以保留原 `EntityId`。
+
+提交方判断是否需要新的 `EntityId`。后端检查请求格式、时间顺序和模型类别；同 ID 的合法请求按保存协议替换内容，后端不自动判断任意 JSON 定义的语义变化。
+
+## 有效期
+
+有效期表示观测定义的适用时间。观测定义的创建时间、修改时间和具体数据的事实时间各自解释。
+
+## 校验范围
+
+JSON 结构校验检查字段、类型和其他表示约束。
+
+引用有效性和多个记录之间的一致性，需要结合被引用实体和领域规则校验。

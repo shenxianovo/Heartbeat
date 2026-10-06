@@ -1,0 +1,9 @@
+---
+title: "0002 创建方生成实体标识"
+---
+
+如果创建新实体，Observer 对应的采集程序必须在本地生成 UUIDv7。如果采集程序识别出已有实体，必须沿用原标识。后端保留提交的标识，并保证存储中的标识唯一。生成新标识不依赖后端响应。
+
+API 使用 UUIDv7 字符串表示实体标识和实体引用。C# 使用 `EntityId` 封装 `Guid`，区分实体标识与其他值。
+
+程序定义见 [IEntity](../core/model/contracts/entity.mdx)。传输表示见 [Heartbeat API](../api/index.mdx#字段表示)。

@@ -1,55 +1,60 @@
-using Heartbeat.Api.Authentication;
-using Heartbeat.Api.Endpoints;
+using System.Text.Json;
+using System.Reflection;
+using Heartbeat.Api;
+using Heartbeat.Api.Entities;
+using Heartbeat.Api.Serialization;
+using Heartbeat.Api.OpenApi;
 using Heartbeat.Infrastructure;
-using Heartbeat.Persistence;
+using Microsoft.AspNetCore.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 10 * 1024 * 1024);
 
-builder.Services.AddInfrastructure(builder.Configuration);
-builder.Services.AddHeartbeatAuthentication(
-    builder.Configuration,
-    builder.Environment);
-builder.Services.AddProblemDetails();
-builder.Services.AddSingleton<Heartbeat.Api.Management.HubConnections>();
-
-await using var app = builder.Build();
-
-if (args.Contains("--migrate", StringComparer.OrdinalIgnoreCase))
+if (Assembly.GetEntryAssembly()?.GetName().Name != "GetDocument.Insider")
 {
-    try
+    var connectionString = builder.Configuration.GetConnectionString("Heartbeat");
+    if (string.IsNullOrWhiteSpace(connectionString))
     {
-        await app.Services.MigrateDatabaseAsync();
-        return 0;
+        throw new InvalidOperationException("ConnectionStrings:Heartbeat must be configured.");
     }
-    catch (Exception exception)
-    {
-        Console.Error.WriteLine($"Database initialization failed ({exception.GetType().Name}). See the database error above.");
-        Console.Error.WriteLine("If the Initial migration changed and local data can be discarded, run dotnet run --project tools/Heartbeat.Dev -- env reset --apply, then start again. Reset deletes all local stack data, including the Hub queue.");
-        return 1;
-    }
+
+    builder.Services.AddHeartbeatInfrastructure(connectionString);
 }
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+builder.Services.AddHeartbeatOpenApi();
+builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
 
-app.MapGet("/health/ready", async (HeartbeatDbContext dbContext, CancellationToken cancellationToken) =>
+builder.Services.ConfigureHttpJsonOptions(options =>
 {
-    var canConnect = await dbContext.Database.CanConnectAsync(cancellationToken);
-    return canConnect
-        ? Results.Ok(new { status = "ready" })
-        : Results.Json(new { status = "unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
+    options.SerializerOptions.RespectNullableAnnotations = true;
+    options.SerializerOptions.PropertyNameCaseInsensitive = false;
+    options.SerializerOptions.Converters.Add(new EntityIdJsonConverter());
+    options.SerializerOptions.Converters.Add(new UtcDateTimeOffsetJsonConverter());
 });
 
-app.UseExceptionHandler();
-app.UseStatusCodePages();
-app.UseAuthentication();
-app.UseAuthorization();
-app.MapCollectorEndpoints();
-app.MapTrackEndpoints();
-app.MapRecordEndpoints();
-app.MapObjectEndpoints();
-app.MapHubEndpoints();
+var app = builder.Build();
 
-await app.RunAsync();
-return 0;
+app.UseExceptionHandler(handler => handler.Run(async context =>
+{
+    var exception = context.Features.Get<IExceptionHandlerFeature>()!.Error;
+    var problem = exception switch
+    {
+        BadHttpRequestException { StatusCode: StatusCodes.Status413PayloadTooLarge } =>
+            ApiProblem.Create(413, "The request body must not exceed 10 MiB."),
+        BadHttpRequestException or JsonException =>
+            ApiProblem.Create(400, "The request body is missing, malformed or does not match the contract."),
+        _ => ApiProblem.Create(500, "The server could not complete the entity operation."),
+    };
+    await problem.ExecuteAsync(context);
+}));
+app.UseStatusCodePages(async context =>
+{
+    if (context.HttpContext.Response.StatusCode == StatusCodes.Status413PayloadTooLarge)
+    {
+        await ApiProblem.Create(413, "The request body must not exceed 10 MiB.")
+            .ExecuteAsync(context.HttpContext);
+    }
+});
+app.MapEntityEndpoints();
 
-public partial class Program;
+app.Run();

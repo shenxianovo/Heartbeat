@@ -1,0 +1,14 @@
+{
+  "title": "Heartbeat Storage",
+  "description": "实体索引、内容存储与数据库",
+  "icon": "Database",
+  "root": true,
+  "pages": [
+    "index",
+    "entities",
+    "observations",
+    "observers",
+    "observation-schemas",
+    "entity-data"
+  ]
+}

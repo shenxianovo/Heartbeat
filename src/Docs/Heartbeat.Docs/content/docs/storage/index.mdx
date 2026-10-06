@@ -1,0 +1,227 @@
+---
+title: "Heartbeat Storage"
+description: "实体索引、内容存储与数据库约定"
+---
+
+Heartbeat Storage 定义实体的索引、内容存储和数据库约定。实体结构见 [Heartbeat Core](../core/index.mdx)，读写协议见 [Heartbeat API](../api/index.mdx)。
+
+## 数据库
+
+实体索引和内容使用 PostgreSQL 存储，版本选用最新稳定发布。截至 2026-10-06，最新稳定版本为 18.6。版本信息见 [PostgreSQL 发布列表](https://www.postgresql.org/support/versioning/)。
+
+整个服务使用 Docker 打包运行。Compose 在数据库健康后运行 EF migration bundle，迁移成功后启动 API。PostgreSQL 初始化时创建统计扩展，具体启动职责见 [ADR 0005](../adr/0005-backend-project-organization.mdx#docker-启动)。
+
+### 后端数据访问
+
+后端使用 .NET 10 的最新稳定维护版本。EF Core 管理表映射、Initial migration 和常规读写，Npgsql PostgreSQL Provider 负责访问 PostgreSQL。
+
+截至 2026-10-06，.NET 10 最新 SDK 为 `10.0.401`，运行时和 EF Core 为 `10.0.12`。仓库通过 `global.json` 和 `Directory.Packages.props` 管理版本。发布信息见 [.NET 10 下载页](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)和 [EF Core 包](https://www.nuget.org/packages/Microsoft.EntityFrameworkCore/10.0.12)。
+
+重写期间直接修改 Initial migration 和模型快照。
+
+迁移和模型快照位于 Infrastructure 的 `Database/Migrations/`，由仓库的 EF 工具生成。生成时以 Api 为启动项目；Api 引用 `Microsoft.EntityFrameworkCore.Design`，使用集中管理的版本，并设置 `PrivateAssets="all"`。
+
+Api 从 `ConnectionStrings:Heartbeat` 读取连接字符串，配置缺失或为空时启动失败。环境变量对应 `ConnectionStrings__Heartbeat`。
+
+Infrastructure 通过 `AddHeartbeatInfrastructure(connectionString)` 注册 Npgsql 和 `HeartbeatDbContext`。数据库上下文使用 `Scoped` 生命周期。
+
+`NpgsqlDataSource` 使用单例生命周期，由应用服务容器创建和释放。各请求的数据库上下文共用连接池，宿主释放时关闭连接池。
+
+### 测试数据库
+
+测试数据库使用与服务相同的 PostgreSQL 版本和 EF Core 迁移。实例生命周期、用例隔离和公共工具见 [Heartbeat Testing](../testing/database.mdx)。
+
+### 程序映射
+
+`observations`、`observers`、`observation_schemas` 直接映射 `Heartbeat.Core` 中的 `Observation`、`Observer`、`ObservationSchema`。
+
+统一索引 `entities` 和通用 JSON 存储 `entity_data` 使用 `Heartbeat.Infrastructure` 中独立定义的存储类型。表名、列名、数据库类型和约束统一在 Infrastructure 中配置，Core 保持独立。
+
+| 表 | C# 类型 |
+| --- | --- |
+| `entities` | `EntityIndexRow` |
+| `entity_data` | `EntityDataRow` |
+
+两个存储类型位于 `Heartbeat.Infrastructure` 的 `Database/` 目录，每个类型一个文件。类型使用 `sealed class`，属性使用 `required` 和 `init`。标识使用 `EntityId`，通用 JSON 内容使用 `JsonElement`。EF Core 数据库上下文命名为 `HeartbeatDbContext`，位于同一目录。
+
+`HeartbeatDbContext` 通过构造参数接收 `DbContextOptions<HeartbeatDbContext>`，数据库配置由外部提供。
+
+| DbSet 属性 | C# 类型 | 表 |
+| --- | --- | --- |
+| `Entities` | `EntityIndexRow` | `entities` |
+| `EntityData` | `EntityDataRow` | `entity_data` |
+| `Observations` | `Observation` | `observations` |
+| `Observers` | `Observer` | `observers` |
+| `ObservationSchemas` | `ObservationSchema` | `observation_schemas` |
+
+每张表使用独立的 `IEntityTypeConfiguration<T>` 配置类，位于 `Database/Configurations/`。`HeartbeatDbContext` 在 `OnModelCreating` 中显式注册这些配置。
+
+| 表 | 配置类 |
+| --- | --- |
+| `entities` | `EntityIndexRowConfiguration` |
+| `entity_data` | `EntityDataRowConfiguration` |
+| `observations` | `ObservationConfiguration` |
+| `observers` | `ObserverConfiguration` |
+| `observation_schemas` | `ObservationSchemaConfiguration` |
+
+`Database/Converters/EntityIdValueConverter.cs` 将 `EntityId` 解包为 `Guid`，读取时将 `Guid` 包装为 `EntityId`，保留原标识。`HeartbeatDbContext` 在 `ConfigureConventions` 中统一注册转换器，应用于所有 `EntityId` 属性，包括观测中的三个引用。数据库列类型为 `uuid`。
+
+### 统计与诊断
+
+第一版使用以下配置：
+
+| 项目 | 配置 | 用途 |
+| --- | --- | --- |
+| `pg_stat_statements` | 启用扩展，`pg_stat_statements.track=top` | 按查询结构汇总客户端 SQL 的调用次数、执行耗时和块读写 |
+| `track_io_timing` | `on` | 记录数据文件 I/O 等待耗时 |
+| `track_wal_io_timing` | `on` | 记录 WAL I/O 等待耗时，包括同步落盘 |
+| `track_activities` | 保留默认 `on` | 记录当前会话活动 |
+| `track_counts` | 保留默认 `on` | 采集数据库、表和索引的累计统计 |
+| `log_min_duration_statement` | `500ms` | 记录耗时达到阈值的 SQL |
+| `log_lock_waits` | `on` | 记录超过 `deadlock_timeout` 的锁等待 |
+| `deadlock_timeout` | 保留默认 `1s` | 控制死锁检查和锁等待日志的触发时间 |
+| `pg_stat_statements.track_planning` | 保留默认 `off` | 规划统计按需启用 |
+| `auto_explain` | 暂不开启 | 需要执行计划解释慢查询时启用 |
+
+启用 `pg_stat_statements` 时，将扩展加入 `shared_preload_libraries` 的加载列表，重启 PostgreSQL，再在目标数据库执行：
+
+```sql
+CREATE EXTENSION pg_stat_statements;
+```
+
+扩展配置见 [pg_stat_statements](https://www.postgresql.org/docs/current/pgstatstatements.html)。慢 SQL 和锁等待日志见[日志配置](https://www.postgresql.org/docs/current/runtime-config-logging.html)，锁等待阈值见[锁配置](https://www.postgresql.org/docs/current/runtime-config-locks.html)。
+
+以下内置视图直接使用：
+
+| 视图 | 用途 |
+| --- | --- |
+| `pg_stat_activity` | 当前 SQL、会话状态和等待事件 |
+| `pg_stat_io` | 实例的 I/O 行为 |
+| `pg_stat_user_tables` | 表扫描、行更新、死元组和 vacuum 统计 |
+| `pg_stat_user_indexes` | 索引使用情况 |
+| `pg_stat_database` | 数据库级事务、缓存命中和临时文件统计 |
+
+I/O 计时提供 I/O 等待的证据。判断 CPU 瓶颈时，还需结合锁等待和执行计划；总耗时减去 I/O 耗时不能直接作为 CPU 时间。两种 I/O 计时都会增加读取系统时钟的开销，实际成本取决于运行平台。见[统计配置](https://www.postgresql.org/docs/current/runtime-config-statistics.html)和[统计视图](https://www.postgresql.org/docs/current/monitoring-stats.html)。
+
+需要执行计划才能解释慢查询时，按需启用 `auto_explain`。开启 `log_analyze` 后，采集开销可能影响未达到慢查询阈值的语句。见 [auto_explain](https://www.postgresql.org/docs/current/auto-explain.html)。
+
+## 命名
+
+| 位置 | 命名格式 | 示例 |
+| --- | --- | --- |
+| API 字段 | `camelCase` | `observerId`、`startAt` |
+| C# 属性 | `PascalCase` | `ObserverId`、`StartAt` |
+| 数据库表名和列名 | `snake_case` | `observation_schemas`、`observer_id`、`start_at` |
+
+数据库约束名也使用 `snake_case`：
+
+| 约束 | 命名规则 | 示例 |
+| --- | --- | --- |
+| 主键 | `pk_<表名>` | `pk_entities` |
+| 内容表到统一索引的外键 | `fk_<内容表>_entities_id` | `fk_observations_entities_id` |
+| 时间顺序检查 | `ck_<表名>_time_order` | `ck_observations_time_order` |
+
+各表文档使用数据库列名，并列出对应的 C# 属性。
+
+## 列类型
+
+| 内容 | 数据库类型 |
+| --- | --- |
+| 实体标识和实体引用 | `uuid` |
+| 表名、名称和 IANA 时区 ID | `text` |
+| 通用实体的 `data` 和观测定义的 `schema` | `jsonb` |
+| 已知时间边界 | `timestamptz` |
+
+## 存储结构
+
+后端必须保留提交的实体标识。存储中的实体标识必须唯一。每个实体必须只有一份权威内容。
+
+第一版使用以下五张表：
+
+| 表名 | 内容 |
+| --- | --- |
+| [entities](./entities.mdx) | 统一实体索引，保存 `id` 和 `table_name` |
+| [observations](./observations.mdx) | 观测的内容 |
+| [observers](./observers.mdx) | 观测主体的内容 |
+| [observation_schemas](./observation-schemas.mdx) | 观测定义的内容 |
+| [entity_data](./entity-data.mdx) | 领域具体数据和具体关系实体的 JSON 内容 |
+
+## 统一索引
+
+后端使用 [entities](./entities.mdx) 维护实体标识与存储位置的对应关系。读取实体时，后端先根据标识查询索引，再从索引指向的表读取内容。
+
+## 表约束
+
+五张表都以 `id` 为主键。四张内容表的 `id` 通过外键引用 `entities.id`。各列的 SQL `NOT NULL` 约束见对应表文档。JSON 内容中的 `null` 与 SQL `NULL` 分别解释。
+
+四条外键使用 `ON DELETE CASCADE`。删除统一索引行时，自动删除同 ID 的内容行。
+
+`observations` 的 `observer_id`、`data_id`、`schema_id` 保留实体标识引用，不建立数据库外键，以允许被引用实体稍后入库。
+
+`observations` 和 `observation_schemas` 使用 `CHECK (start_at <= end_at)`。两个边界均已知时，开始时间必须早于或等于结束时间。任一边界未知时允许保存。
+
+表名匹配和跨表只有一份权威内容，由后端事务逻辑保证。内容表到统一索引的外键保证内容具有对应的索引。
+
+## 查询索引
+
+第一版仅保留主键自动生成的索引。实际业务出现查询需求后，再结合 `pg_stat_statements`、慢 SQL 日志和执行计划确认是否新增查询索引。
+
+## 写入一致性
+
+后端保存一个实体时，必须在同一事务中写入统一索引和实体内容。两者必须同时成功或同时失败。
+
+如果写入失败，事务回滚，已保存的索引和内容保持不变。
+
+当前四类实体共用保存事务：先用 `INSERT ... ON CONFLICT DO NOTHING` 登记索引，再用 `SELECT ... FOR UPDATE` 锁定该 ID 的索引行。类别一致时写入或替换对应表的内容并提交事务；类别冲突时回滚。同一 ID 的并发保存通过索引行锁依次完成。
+
+## 模型类别
+
+后端根据索引中的 `table_name` 映射模型类别。统一索引保存 `id` 和 `table_name`。
+
+| 存储表 | 模型类别 |
+| --- | --- |
+| [observations](./observations.mdx) | `observation` |
+| [observers](./observers.mdx) | `observer` |
+| [observation_schemas](./observation-schemas.mdx) | `observation_schema` |
+| [entity_data](./entity-data.mdx) | `entity` |
+| 领域专用表 | `entity` |
+
+读取时，后端使用映射得到的类别填充响应中的 `category`。
+
+保存已有实体时，后端比较保存路径声明的类别与映射得到的类别。如果两者不一致，后端必须返回 `409 Conflict`，并保留已保存的内容。
+
+## 内容存储
+
+后端未识别的领域数据使用 [entity_data](./entity-data.mdx) 保存。结构稳定且有明确查询需求的类型可以直接使用专用表，也可以从通用存储转入专用表。
+
+`entity_data.data` 和 `observation_schemas.schema` 使用 `jsonb`。对象键名遵循领域定义。存储不保留 JSON 的空白和对象键顺序；同一对象中的重复键只保留最后一个值。
+
+`jsonb` 不接受超出 PostgreSQL `numeric` 范围的数值、`\u0000` 和无效的 Unicode 代理对。类型约束见 [PostgreSQL JSON 类型](https://www.postgresql.org/docs/current/datatype-json.html)。
+
+文本也不能包含空字符。当前保存实现将这些表示错误识别为无效内容，由 API 返回 `400`。事务回滚，不保留部分写入。
+
+具体数据的身份、记录粒度和历史保留方式见[具体数据](../core/model/observations/data.mdx)。
+
+## 时间存储
+
+后端将模型中的已知时间边界转换为 UTC，使用 `timestamptz` 保存。存储和读取的时间精度为 1 微秒。未知边界保存为 SQL `NULL`。
+
+EF 实体读写使用 `Database/Converters/UtcDateTimeOffsetValueConverter.cs`，写入前转换为 UTC，读取时保持 UTC。`HeartbeatDbContext` 在 `ConfigureConventions` 中统一注册该转换器，应用于 `DateTimeOffset` 属性及其可空形式，`null` 保持不变。
+
+Observation 和 ObservationSchema 保存使用参数化 SQL，提交时间参数前调用 `ToUniversalTime()`；读取通过 EF Core 转换器返回 UTC。可空边界保持 `null`。
+
+带偏移的时间转换后表示同一时刻。例如，`2026-10-06T09:00:00+08:00` 转换为 `2026-10-06T01:00:00+00:00`；带 `Z` 的输入已经是 UTC。
+
+`timestamptz` 保存时刻，事实所属的 IANA 时区 ID 由 Observation 的 `time_zone` 列单独保存。
+
+时间的程序表示与精度见 [ITimed](../core/model/contracts/timed.mdx)。传输和展示约定见 [Heartbeat API](../api/index.mdx#时间表示与职责)。
+
+## 存储转换
+
+如果领域实体从通用存储转入专用表，后端必须保留原实体标识，并更新索引中的 `table_name`。专用表成为该实体的权威存储，已有引用继续有效。
+
+领域专用表仍映射为 `entity`，保存路径仍为 `PUT /entities/{id}`。
+
+如果重命名存储表，后端必须同步更新统一索引中的 `table_name` 和表名到模型类别的映射。
+
+存储决策见 [ADR 0003](../adr/0003-entity-storage-authority.mdx)。

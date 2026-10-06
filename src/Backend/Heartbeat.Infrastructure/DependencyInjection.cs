@@ -1,47 +1,23 @@
-using Heartbeat.Application.Recording;
-using Heartbeat.Persistence;
+using Heartbeat.Application.Entities;
+using Heartbeat.Infrastructure.Database;
+using Heartbeat.Infrastructure.Entities;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 
 namespace Heartbeat.Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddInfrastructure(
+    public static IServiceCollection AddHeartbeatInfrastructure(
         this IServiceCollection services,
-        IConfiguration configuration)
+        string connectionString)
     {
-        var connectionString = configuration.GetConnectionString("Heartbeat")
-            ?? throw new InvalidOperationException("Connection string 'Heartbeat' is not configured.");
-
-        services.AddDbContext<HeartbeatDbContext>(options =>
-            options.UseNpgsql(connectionString));
-        services.AddSingleton(TimeProvider.System);
-        services.AddScoped<Heartbeat.Management.IHubRegistry, PostgresHubRegistry>();
-        services.AddScoped<ICollectorRegistrationStore, PostgresCollectorRegistrationStore>();
-        services.AddScoped<IRegisterCollector, RegisterCollector>();
-        services.AddScoped<PostgresObjectDiscovery>();
-        services.AddScoped<IRecordStore, PostgresRecordStore>();
-        services.AddScoped<IObjectStore, PostgresObjectStore>();
-        services.AddScoped<ITrackStore, PostgresTrackStore>();
-        services.AddScoped<IResolveTrack, ResolveTrack>();
-        services.AddScoped<IListTracks, ListTracks>();
-        services.AddScoped<IUploadRecords, UploadRecords>();
-        services.AddScoped<IRecordReplayStore, PostgresRecordReplayStore>();
-        services.AddScoped<IReplayRecords, ReplayRecords>();
-        services.AddScoped<IPointRecordCountStore, PostgresPointRecordCountStore>();
-        services.AddScoped<ICountPointRecords, CountPointRecords>();
+        services.AddSingleton(_ => NpgsqlDataSource.Create(connectionString));
+        services.AddDbContext<HeartbeatDbContext>((provider, options) =>
+            options.UseNpgsql(provider.GetRequiredService<NpgsqlDataSource>()));
+        services.AddScoped<IEntityStore, EntityStore>();
 
         return services;
-    }
-
-    public static async Task MigrateDatabaseAsync(
-        this IServiceProvider services,
-        CancellationToken cancellationToken = default)
-    {
-        await using var scope = services.CreateAsyncScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<HeartbeatDbContext>();
-        await dbContext.Database.MigrateAsync(cancellationToken);
     }
 }

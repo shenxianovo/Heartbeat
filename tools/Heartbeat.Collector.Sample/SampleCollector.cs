@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Heartbeat.Contracts;
+using Heartbeat.Core;
 using Heartbeat.Hub;
 
 namespace Heartbeat.Collector.Sample;

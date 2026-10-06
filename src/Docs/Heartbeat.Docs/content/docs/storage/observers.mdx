@@ -1,0 +1,27 @@
+---
+title: "observers"
+description: "观测主体的专用存储"
+---
+
+`observers` 保存 [Observer](../core/model/observations/observer.mdx) 的内容。后端将本表映射为模型类别 `observer`。
+
+## 保存内容
+
+| 列名 | 数据库类型 | 允许 SQL `NULL` | C# 属性 | 保存的信息 |
+| --- | --- | --- | --- | --- |
+| `id` | `uuid` | 否 | `Id` | 观测主体的实体标识 |
+| `name` | `text` | 否 | `Name` | 观测主体的名称 |
+
+## 约束
+
+`id` 为主键，并通过外键引用 `entities.id`。实体内容必须有对应的统一索引。
+
+主键约束名为 `pk_observers`，外键约束名为 `fk_observers_entities_id`。
+
+外键使用 `ON DELETE CASCADE`。统一索引行被删除时，本表中同 ID 的内容行自动删除。
+
+## 读写
+
+保存路径为 `PUT /entities/observers/{id}`。读取路径为 `GET /entities/{id}`。
+
+统一索引中的 `table_name` 为 `observers`。后端在同一事务中写入索引和本表内容，遵循[写入一致性](./index.mdx#写入一致性)。

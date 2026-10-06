@@ -1,0 +1,705 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Heartbeat API",
+    "description": "由 Heartbeat.Api 的端点、请求类型和契约声明生成。",
+    "version": "draft"
+  },
+  "servers": [
+    {
+      "url": "/api"
+    }
+  ],
+  "paths": {
+    "/entities/{id}": {
+      "put": {
+        "summary": "保存通用实体",
+        "description": "路径中的 UUIDv7 提供实体标识，请求体包含其余全部属性。首次保存创建实体；同 ID 且类别一致的合法请求替换内容。类别不一致返回 409 并保留原内容，重复提交不新增实体。",
+        "operationId": "saveEntity",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "实体的 UUIDv7。",
+            "required": true,
+            "schema": {
+              "examples": [
+                "0192b056-7300-7000-8000-000000000001"
+              ],
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Entity"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "读取实体",
+        "description": "按 UUIDv7 查询统一索引，读取任意实体。响应包含 category 和实体除 id 外的全部属性；已知时间统一返回 UTC。",
+        "operationId": "getEntity",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "实体的 UUIDv7。",
+            "required": true,
+            "schema": {
+              "examples": [
+                "0192b056-7300-7000-8000-000000000001"
+              ],
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/entities/observers/{id}": {
+      "put": {
+        "summary": "保存观测主体",
+        "description": "路径中的 UUIDv7 提供实体标识，请求体包含其余全部属性。首次保存创建实体；同 ID 且类别一致的合法请求替换内容。类别不一致返回 409 并保留原内容，重复提交不新增实体。",
+        "operationId": "saveObserver",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "实体的 UUIDv7。",
+            "required": true,
+            "schema": {
+              "examples": [
+                "0192b056-7300-7000-8000-000000000001"
+              ],
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Observer"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/entities/observations/{id}": {
+      "put": {
+        "summary": "保存观测",
+        "description": "路径中的 UUIDv7 提供实体标识，请求体包含其余全部属性。首次保存创建实体；同 ID 且类别一致的合法请求替换内容。类别不一致返回 409 并保留原内容，重复提交不新增实体。",
+        "operationId": "saveObservation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "实体的 UUIDv7。",
+            "required": true,
+            "schema": {
+              "examples": [
+                "0192b056-7300-7000-8000-000000000001"
+              ],
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Observation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/entities/observation-schemas/{id}": {
+      "put": {
+        "summary": "保存观测定义",
+        "description": "提交方判断语义或约束是否变化，并决定是否使用新 ID。后端检查格式、时间和类别，不自动判断语义变化。首次保存创建实体；同 ID 且类别一致的合法请求替换内容。重复提交不新增实体。",
+        "operationId": "saveObservationSchema",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "实体的 UUIDv7。",
+            "required": true,
+            "schema": {
+              "examples": [
+                "0192b056-7300-7000-8000-000000000001"
+              ],
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObservationSchema"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Entity": {
+        "type": "object",
+        "not": {
+          "required": [
+            "id"
+          ]
+        },
+        "description": "通用领域实体除 id 外的全部属性，按 jsonb 语义保存和返回。"
+      },
+      "EntityResponse": {
+        "oneOf": [
+          {
+            "title": "entity",
+            "required": [
+              "category",
+              "entity"
+            ],
+            "type": "object",
+            "properties": {
+              "category": {
+                "const": "entity",
+                "type": "string"
+              },
+              "entity": {
+                "type": "object",
+                "not": {
+                  "required": [
+                    "id"
+                  ]
+                },
+                "description": "通用领域实体除 id 外的全部属性，按 jsonb 语义保存和返回。"
+              }
+            }
+          },
+          {
+            "title": "observer",
+            "required": [
+              "category",
+              "entity"
+            ],
+            "type": "object",
+            "properties": {
+              "category": {
+                "const": "observer",
+                "type": "string"
+              },
+              "entity": {
+                "$ref": "#/components/schemas/Observer"
+              }
+            }
+          },
+          {
+            "title": "observation",
+            "required": [
+              "category",
+              "entity"
+            ],
+            "type": "object",
+            "properties": {
+              "category": {
+                "const": "observation",
+                "type": "string"
+              },
+              "entity": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Observation"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "startAt": {
+                        "pattern": "Z$",
+                        "type": [
+                          "null",
+                          "string"
+                        ],
+                        "description": "UTC 时间，以 Z 结尾，精度为微秒；未知时为 null。",
+                        "format": "date-time"
+                      },
+                      "endAt": {
+                        "pattern": "Z$",
+                        "type": [
+                          "null",
+                          "string"
+                        ],
+                        "description": "UTC 时间，以 Z 结尾，精度为微秒；未知时为 null。",
+                        "format": "date-time"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "title": "observation_schema",
+            "required": [
+              "category",
+              "entity"
+            ],
+            "type": "object",
+            "properties": {
+              "category": {
+                "const": "observation_schema",
+                "type": "string"
+              },
+              "entity": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ObservationSchema"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "startAt": {
+                        "pattern": "Z$",
+                        "type": [
+                          "null",
+                          "string"
+                        ],
+                        "description": "UTC 时间，以 Z 结尾，精度为微秒；未知时为 null。",
+                        "format": "date-time"
+                      },
+                      "endAt": {
+                        "pattern": "Z$",
+                        "type": [
+                          "null",
+                          "string"
+                        ],
+                        "description": "UTC 时间，以 Z 结尾，精度为微秒；未知时为 null。",
+                        "format": "date-time"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "JsonElement": { },
+      "Observation": {
+        "required": [
+          "observerId",
+          "dataId",
+          "schemaId",
+          "startAt",
+          "endAt",
+          "timeZone"
+        ],
+        "type": "object",
+        "not": {
+          "required": [
+            "id"
+          ]
+        },
+        "properties": {
+          "observerId": {
+            "examples": [
+              "0192b056-7300-7000-8000-000000000001"
+            ],
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+            "type": "string",
+            "description": "形成本次观测的 Observer 的 UUIDv7。",
+            "format": "uuid"
+          },
+          "dataId": {
+            "examples": [
+              "0192b056-7300-7000-8000-000000000001"
+            ],
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+            "type": "string",
+            "description": "本次观测引用的具体数据实体的 UUIDv7。",
+            "format": "uuid"
+          },
+          "schemaId": {
+            "examples": [
+              "0192b056-7300-7000-8000-000000000001"
+            ],
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+            "type": "string",
+            "description": "解释本次观测的 ObservationSchema 的 UUIDv7。",
+            "format": "uuid"
+          },
+          "startAt": {
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "事实开始时间。已知值必须包含 Z 或明确 UTC 偏移；未知时必须为 null。",
+            "format": "date-time"
+          },
+          "endAt": {
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "事实结束时间。未知时必须为 null。边界相等表示时间点，开始早于结束表示左闭右开区间。",
+            "format": "date-time"
+          },
+          "timeZone": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "事实所属的 IANA 时区 ID，例如 Asia/Shanghai；未知时必须为 null。前端按浏览器或系统时区显示。"
+          }
+        },
+        "description": "观测除 id 外的全部属性。引用可以指向尚未入库的实体。已知开始时间必须早于或等于结束时间，比较使用所表示的时刻。"
+      },
+      "ObservationSchema": {
+        "required": [
+          "name",
+          "schema",
+          "startAt",
+          "endAt"
+        ],
+        "type": "object",
+        "not": {
+          "required": [
+            "id"
+          ]
+        },
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "观测定义的名称。"
+          },
+          "schema": {
+            "description": "具体数据的结构、约束和观测含义，使用任意可存储的 JSON 值；按 jsonb 语义保存和返回。",
+            "$ref": "#/components/schemas/JsonElement"
+          },
+          "startAt": {
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "有效期开始时间。已知值必须包含 Z 或明确 UTC 偏移；未知时必须为 null。",
+            "format": "date-time"
+          },
+          "endAt": {
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "有效期结束时间。未知时必须为 null。",
+            "format": "date-time"
+          }
+        },
+        "description": "观测定义除 id 外的全部属性。已知开始时间必须早于或等于结束时间。提交方判断是否需要新 ID，后端不自动判断语义变化。"
+      },
+      "Observer": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "not": {
+          "required": [
+            "id"
+          ]
+        },
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "观测主体的名称。"
+          }
+        },
+        "description": "观测主体除 id 外的全部属性。"
+      },
+      "ProblemDetails": {
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "const": "about:blank",
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

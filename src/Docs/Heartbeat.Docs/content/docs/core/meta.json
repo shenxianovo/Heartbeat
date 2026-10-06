@@ -1,0 +1,12 @@
+{
+  "title": "Heartbeat Core",
+  "description": "基础契约、观测与关系",
+  "icon": "Network",
+  "root": true,
+  "pages": [
+    "---指南---",
+    "index",
+    "glossary",
+    "...model"
+  ]
+}
