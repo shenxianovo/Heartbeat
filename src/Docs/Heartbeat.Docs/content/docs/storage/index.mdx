@@ -9,7 +9,7 @@ Heartbeat Storage 定义实体的索引、内容存储和数据库约定。实�
 
 实体索引和内容使用 PostgreSQL 存储，版本选用最新稳定发布。截至 2026-10-06，最新稳定版本为 18.6。版本信息见 [PostgreSQL 发布列表](https://www.postgresql.org/support/versioning/)。
 
-整个服务使用 Docker 打包运行。
+整个服务使用 Docker 打包运行。Compose 在数据库健康后运行 EF migration bundle，迁移成功后启动 API。PostgreSQL 初始化时创建统计扩展，具体启动职责见 [ADR 0005](../adr/0005-backend-project-organization.mdx#docker-启动)。
 
 ### 后端数据访问
 
@@ -24,6 +24,8 @@ Heartbeat Storage 定义实体的索引、内容存储和数据库约定。实�
 Api 从 `ConnectionStrings:Heartbeat` 读取连接字符串，配置缺失或为空时启动失败。环境变量对应 `ConnectionStrings__Heartbeat`。
 
 Infrastructure 通过 `AddHeartbeatInfrastructure(connectionString)` 注册 Npgsql 和 `HeartbeatDbContext`。数据库上下文使用 `Scoped` 生命周期。
+
+`NpgsqlDataSource` 使用单例生命周期，由应用服务容器创建和释放。各请求的数据库上下文共用连接池，宿主释放时关闭连接池。
 
 ### 测试数据库
 
@@ -170,6 +172,8 @@ I/O 计时提供 I/O 等待的证据。判断 CPU 瓶颈时，还需结合锁等
 
 如果写入失败，事务回滚，已保存的索引和内容保持不变。
 
+当前四类实体共用保存事务：先用 `INSERT ... ON CONFLICT DO NOTHING` 登记索引，再用 `SELECT ... FOR UPDATE` 锁定该 ID 的索引行。类别一致时写入或替换对应表的内容并提交事务；类别冲突时回滚。同一 ID 的并发保存通过索引行锁依次完成。
+
 ## 模型类别
 
 后端根据索引中的 `table_name` 映射模型类别。统一索引保存 `id` 和 `table_name`。
@@ -194,13 +198,17 @@ I/O 计时提供 I/O 等待的证据。判断 CPU 瓶颈时，还需结合锁等
 
 `jsonb` 不接受超出 PostgreSQL `numeric` 范围的数值、`\u0000` 和无效的 Unicode 代理对。类型约束见 [PostgreSQL JSON 类型](https://www.postgresql.org/docs/current/datatype-json.html)。
 
+文本也不能包含空字符。当前保存实现将这些表示错误识别为无效内容，由 API 返回 `400`。事务回滚，不保留部分写入。
+
 具体数据的身份、记录粒度和历史保留方式见[具体数据](../core/model/observations/data.mdx)。
 
 ## 时间存储
 
 后端将模型中的已知时间边界转换为 UTC，使用 `timestamptz` 保存。存储和读取的时间精度为 1 微秒。未知边界保存为 SQL `NULL`。
 
-`Database/Converters/UtcDateTimeOffsetValueConverter.cs` 负责写入前的 UTC 转换，读取时保持 UTC。`HeartbeatDbContext` 在 `ConfigureConventions` 中统一注册该转换器，应用于 `DateTimeOffset` 属性及其可空形式，`null` 保持不变。
+EF 实体读写使用 `Database/Converters/UtcDateTimeOffsetValueConverter.cs`，写入前转换为 UTC，读取时保持 UTC。`HeartbeatDbContext` 在 `ConfigureConventions` 中统一注册该转换器，应用于 `DateTimeOffset` 属性及其可空形式，`null` 保持不变。
+
+Observation 和 ObservationSchema 保存使用参数化 SQL，提交时间参数前调用 `ToUniversalTime()`；读取通过 EF Core 转换器返回 UTC。可空边界保持 `null`。
 
 带偏移的时间转换后表示同一时刻。例如，`2026-10-06T09:00:00+08:00` 转换为 `2026-10-06T01:00:00+00:00`；带 `Z` 的输入已经是 UTC。
 

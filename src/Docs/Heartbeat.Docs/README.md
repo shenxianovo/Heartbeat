@@ -22,32 +22,15 @@ Core 侧栏按“指南、基础契约、观测模型、关系模型”分组，
 
 ## OpenAPI
 
-接口契约维护在 [content/docs/api/openapi.json](content/docs/api/openapi.json)。`lib/openapi.ts` 读取规范，`lib/source.ts` 通过 `staticSource({ baseDir: 'api' })` 生成虚拟接口页，并与 MDX 正文合并。API 导航保留概览，自动列出生成的页面。
+接口结构以 `Heartbeat.Api` 的端点、请求类型和契约声明为准。后端构建将 OpenAPI 生成到 [content/docs/api/openapi.json](content/docs/api/openapi.json)，该文件作为生成产物提交，不直接编辑。`lib/openapi.ts` 读取规范，`lib/source.ts` 通过 `staticSource({ baseDir: 'api' })` 生成虚拟接口页，并与 MDX 正文合并。API 导航保留概览，自动列出生成的页面。
 
 接口页使用 `components/api-page.tsx` 中的官方默认 `OpenAPIPage` 组件，样式在 `app/global.css` 中引入。页面地址为 `/api/<接口名>`；官方默认命名使用 `operationId`，未提供时使用接口路径与 HTTP 方法。
 
-接口页的复制与导出提供原始 OpenAPI 规范 JSON，编辑链接指向 `content/docs/api/openapi.json`。搜索、页内目录和分享图片使用同一页面源中的标题与内容结构。
-
-当前规范按模型提供四个保存接口：
-
-| 路径 | 接口标识与文档页 |
-| --- | --- |
-| `PUT /entities/{id}` | `saveEntity`，`/api/saveEntity` |
-| `PUT /entities/observations/{id}` | `saveObservation`，`/api/saveObservation` |
-| `PUT /entities/observers/{id}` | `saveObserver`，`/api/saveObserver` |
-| `PUT /entities/observation-schemas/{id}` | `saveObservationSchema`，`/api/saveObservationSchema` |
-
-实体 ID 由路径提供，模型类别由路径声明，请求体直接放实体除 `id` 外的全部属性。首次创建成功返回 `201`，替换或重复提交已有实体成功返回 `204`，均无响应体。
-
-四个保存接口分别引用 `Entity`、`Observation`、`Observer` 和 `ObservationSchema` 字段 Schema。内置模型完整定义属性类型和必填项，通用领域数据保留自由 JSON 属性结构；实体标识共用 UUIDv7 Schema。
-
-按标识读取使用 `GET /entities/{id}`，接口标识为 `getEntity`，文档页为 `/api/getEntity`。读取成功返回 `200`，JSON 响应包含模型类别 `category` 和实体除 `id` 外的全部属性 `entity`。`entity` 中的属性结构与对应保存接口的请求体一致，实体 ID 由请求路径提供。
-
-读取响应引用 `EntityResponse`，使用 `oneOf` 和各分支的 `category` 常量对应模型结构。观测和观测定义的已知时间边界在读取时统一使用以 `Z` 结尾的 UTC 字符串，未知值为 `null`。
-
-读取时，标识不是有效的 UUIDv7 返回 `400`，实体不存在返回 `404`，后端遇到未预期错误返回 `500`。错误响应共用 `application/problem+json` 格式。
+接口页的复制与导出提供原始 OpenAPI 规范 JSON，编辑链接指向后端的 `Entities/EntityEndpoints.cs`。搜索、页内目录和分享图片使用同一页面源中的标题与内容结构。
 
 ## 本地运行
+
+需要 Node.js 24 LTS 和 pnpm 12.3.4。从本目录运行以下命令。`pnpm dev` 与 `pnpm build` 直接读取仓库中的 OpenAPI 文件。
 
 ```bash
 pnpm install --frozen-lockfile
@@ -56,16 +39,44 @@ pnpm dev
 
 访问 <http://localhost:3000/core>。生产构建与启动使用 `pnpm build`、`pnpm start`；类型检查使用 `pnpm types:check`。
 
+修改接口后，从仓库根目录构建后端以更新规范：
+
+```sh
+dotnet build src/Backend/Heartbeat.Api/Heartbeat.Api.csproj
+```
+
+生成过程不连接数据库。提交接口改动时一并提交生成的 `openapi.json`，审查契约 diff。文档站展示最近一次生成的规范。
+
 ## 路径
 
-文档站使用 Next.js 默认的根路径，不配置 `basePath`。页面、静态资源、搜索 API、Markdown 导出和分享图片都直接使用根路径地址，不额外拼接站点前缀。对外访问路径交给外部代理；当前不配置代理。
+文档站按根路径运行，不配置 Next.js `basePath`。页面、静态资源、搜索、Markdown 导出、分享图片和 Mermaid 链接直接使用根路径地址。
 
-访问 `/` 时自动跳转到 Core 概览 `/core`。API 概览为 `/api`，Storage 概览为 `/storage`，Testing 概览为 `/testing`。ADR 分区没有独立概览页，从 `/adr/0001-documentation-source-of-truth` 开始阅读。
+NGINX 分别监听业务/API 端口 8080 和文档端口 3000。文档端口的 `/api/entities/…` 转给后端，其余请求原样转给文档站。接口文档 `/api/…` 和搜索 `/api/search` 由文档站处理。Playground 使用 OpenAPI 声明的相对服务地址 `/api`，通过文档端口同源访问后端。
 
-Markdown 响应显式声明 `text/markdown; charset=utf-8`，避免浏览器错误猜测中文编码。回归检查：分别在 Core 与 API 页面打开“查看 Markdown”，确认链接为 `/llms.mdx/<页面路径>/content.md` 且内容可读取；Core 返回 UTF-8 Markdown，API 返回 OpenAPI JSON。搜索使用默认 `/api/search`，图标与模型图节点链接使用根路径。
+访问文档入口 `/` 时跳转到 `/core`。8080 的根路径暂时返回 `404`，供后续业务前端使用。两种 Compose 模式共用 [NGINX 配置](../../../docker/nginx/default.conf)。单独运行 `pnpm dev` 时仍按根路径访问；实体 API 转发由 Compose 中的 NGINX 提供。
+
+Markdown 响应声明 `text/markdown; charset=utf-8`。Core 的“查看 Markdown”地址为 `/llms.mdx/<页面路径>/content.md`，API 的同类入口返回 OpenAPI JSON。搜索入口为 `/api/search`。
 
 模型正文只记录已确认的结构与语义，维护规则见仓库根目录的 [AGENTS.md](../../../AGENTS.md)。
 
 Mermaid 图通过 `components/mermaid.tsx` 统一使用手绘风格。
 
 模型关系统一维护在 `content/docs/core/model/relations.json`。图中节点对应独立模型页面。概览使用 `<ModelRelations />` 展示全部关系；模型节点使用 `<ModelRelations node="节点 ID" />` 展示与当前节点直接相连的关系。组件位于 `components/model-relations.tsx`。
+
+## 测试报告
+
+报告页为 `/testing/reports/integration`，使用 `fumadocs-test-reports@0.1.0` 的中文 TUnit 报告组件。
+
+服务器从 `HEARTBEAT_TEST_REPORTS_DIR` 指定的目录读取报告。普通本地运行默认读取仓库根目录的 `TestResults`；Docker 默认从只读挂载的 `/reports` 读取。每次请求按文件修改时间选择最新的 `Heartbeat.Integration.Tests-*.tunit-report.json`，再交给包的解析器校验。没有文件时显示尚未生成，格式错误直接报告错误。
+
+页面不运行测试。先在仓库根目录执行集成测试，再刷新页面。报告在运行时读取，既不提交到文档正文，也不打包进镜像。
+
+## Docker
+
+容器启动和开发模式见[根 README](../../../README.md#启动)，状态、日志和停止命令见[容器操作](../../Backend/Heartbeat.Api/README.md#容器操作)。
+
+开发容器的 pnpm 缓存位于 `node_modules/.pnpm-store`，随 `docs-node-modules` 命名卷保留。重建镜像或删除容器后仍可复用；删除该卷后，下次安装会重新下载依赖。
+
+Dockerfile 缓存 pnpm 依赖安装，构建时读取仓库中的 OpenAPI 文件。pnpm 构建缓存由 BuildKit 管理，与开发容器的命名卷分开。
+
+开发与构建阶段使用 Node 24 LTS 和 pnpm 12.3.4。运行阶段采用 Next.js standalone，只保留 Node 与运行产物，并以非 root 用户运行。

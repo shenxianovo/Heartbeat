@@ -16,16 +16,12 @@ public sealed class EntityIdJsonConverter : JsonConverter<EntityId>
             throw new JsonException("EntityId must be a UUIDv7 string.");
         }
 
-        var text = reader.GetString();
-        if (text is not { Length: 36 }
-            || !Guid.TryParseExact(text, "D", out var id)
-            || id.Version != 7
-            || text[19] is not ('8' or '9' or 'a' or 'A' or 'b' or 'B'))
+        if (!EntityIdParser.TryParse(reader.GetString(), out var id))
         {
             throw new JsonException("EntityId must be a UUIDv7 string.");
         }
 
-        return new EntityId(id);
+        return id;
     }
 
     public override void Write(

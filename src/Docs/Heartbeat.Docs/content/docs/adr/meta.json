@@ -4,7 +4,9 @@
     "0002-entity-creation-storage-and-reading",
     "0003-entity-storage-authority",
     "0004-entity-submission-entry-points",
-    "0005-backend-project-organization"
+    "0005-backend-project-organization",
+    "0006-test-report-presentation",
+    "0007-unified-http-entry"
   ],
   "title": "Heartbeat ADR",
   "description": "设计决策记录",

@@ -26,7 +26,9 @@ export default async function Page(props: PageProps<'/[[...slug]]'>) {
   if (!page) notFound();
 
   const markdownUrl = getPageMarkdownUrl(page).url;
-  const contentPath = page.type === 'openapi' ? 'api/openapi.json' : page.path;
+  const contentPath = page.type === 'openapi'
+    ? 'src/Backend/Heartbeat.Api/Entities/EntityEndpoints.cs'
+    : `${gitConfig.contentPath}/${page.path}`;
   let content: ReactNode;
 
   if (page.type === 'openapi') {
@@ -56,7 +58,7 @@ export default async function Page(props: PageProps<'/[[...slug]]'>) {
         <MarkdownCopyButton markdownUrl={markdownUrl} />
         <ViewOptionsPopover
           markdownUrl={markdownUrl}
-          githubUrl={`https://github.com/${gitConfig.user}/${gitConfig.repo}/blob/${gitConfig.branch}/${gitConfig.contentPath}/${contentPath}`}
+          githubUrl={`https://github.com/${gitConfig.user}/${gitConfig.repo}/blob/${gitConfig.branch}/${contentPath}`}
         />
       </div>
       <DocsBody>{content}</DocsBody>

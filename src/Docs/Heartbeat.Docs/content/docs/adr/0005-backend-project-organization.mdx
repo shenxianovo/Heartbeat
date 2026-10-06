@@ -34,6 +34,22 @@ Api 从配置键 `ConnectionStrings:Heartbeat` 读取数据库连接字符串。
 
 Api 负责提供配置，Infrastructure 负责数据库注册。
 
+Infrastructure 注册由应用服务容器管理的单例 `NpgsqlDataSource`。数据库上下文共用该数据源，宿主释放时关闭连接池。测试先释放 API 宿主，再删除用例数据库。
+
+## 实体保存
+
+通用实体、Observer、Observation 和 ObservationSchema 的保存操作按以下职责划分：
+
+| 项目 | 职责 |
+| --- | --- |
+| `Application` | 定义保存接口，返回首次创建、保存已有实体、类别冲突或内容无法表示 |
+| `Infrastructure` | 在同一事务内完成类别检查、统一索引写入和实体内容写入 |
+| `Api` | 校验请求并组合路径 ID 与请求体，调用保存操作，将结果映射为 `201`、`204`、`409` 或 `400` |
+
+调用方通过一次保存操作得到结果。事务和存储细节由 Infrastructure 处理。
+
+`Application/Entities/IEntityStore.cs` 定义 `SaveEntityAsync`、`SaveObserverAsync`、`SaveObservationAsync`、`SaveObservationSchemaAsync` 和 `ReadAsync`。保存返回 `EntitySaveResult`，读取返回 `StoredEntity` 或 `null`。Infrastructure 的 `EntityStore` 实现这些操作。
+
 ## 测试数据库
 
 测试负责数据库实例的创建与销毁。数据库辅助代码集中在 `tests/Heartbeat.Testing` 类库，负责容器生命周期、用例数据库的创建与迁移、连接字符串和数据库清理。集成测试和端到端测试各自创建独立实例。
@@ -55,3 +71,19 @@ API 请求类型与 Core 实体分开定义，放在 `Api` 的对应业务目录
 `EntityId` 的 HTTP JSON 转换由 `Api` 的 `Serialization/EntityIdJsonConverter.cs` 负责，统一注册到 HTTP JSON 处理。读取时接受 UUIDv7 字符串，输出时写成 UUID 字符串。
 
 时间的 HTTP JSON 转换由 `Api` 的 `Serialization/UtcDateTimeOffsetJsonConverter.cs` 负责，统一注册到 HTTP JSON 处理。输入接受带 `Z` 或明确 UTC 偏移的时间，输出转换为 UTC 并以 `Z` 结尾。可空时间的 `null` 保持不变。
+
+## OpenAPI 生成
+
+Api 负责声明 HTTP 请求、响应和契约约束，并在构建时生成 OpenAPI。请求类型提供字段、必填项和可空性；端点声明路径、状态码与操作标识；`OpenApi/` 补充 UUIDv7、通用 JSON、UTC 读取时间和多类别响应的结构。
+
+构建工具启动 API 入口收集元数据时，跳过数据库配置与注册。正常服务启动仍要求数据库连接配置。文档站读取生成文件，接口页与后端共用同一份结构声明。
+
+## Docker 启动
+
+Compose 组织五个服务：`db` 运行 PostgreSQL，`migrate` 应用 EF Core 迁移，`api` 提供实体接口，`docs` 提供文档站，`nginx` 提供业务/API 和文档两个 HTTP 入口。入口分流见 [ADR 0007](./0007-unified-http-entry.mdx)。
+
+后端镜像同时包含 API 与构建生成的 EF migration bundle。数据库健康后，独立的 `migrate` 服务运行迁移；迁移成功后才启动 API。API 进程保持原有职责，不在启动时建表。
+
+PostgreSQL 的初始化 SQL 创建 `pg_stat_statements` 扩展。统计和诊断参数由 Compose 配置，沿用 Storage 中已确认的设置。
+
+文档站独立运行。构建阶段生成 OpenAPI 并构建 Next.js standalone，运行镜像只需要 Node。开发配置沿用同一数据库初始化流程，API 使用 `dotnet watch`，文档站使用 `pnpm dev`。

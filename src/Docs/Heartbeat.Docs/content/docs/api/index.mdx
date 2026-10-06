@@ -5,6 +5,14 @@ description: "实体的输入、保存行为、响应和错误"
 
 Heartbeat API 定义实体的保存与读取协议。实体模型见 [Heartbeat Core](../core/index.mdx)。
 
+## 服务入口
+
+NGINX 入口中的 `/api` 是 API 服务前缀。OpenAPI 的 `servers` 声明相对地址 `/api`，与规范中的路径组合成完整请求路径。例如，`GET /entities/{id}` 对外为 `GET /api/entities/{id}`。8080 提供业务/API 入口；3000 提供文档入口，并转发 `/api/entities/…` 请求。接口页的 Playground 使用当前文档站点的同源入口。
+
+## 实现进度
+
+已实现通用实体、Observer、Observation 和 ObservationSchema 的保存入口，以及 `GET /entities/{id}`。读取按统一索引分派到当前四张内容表，返回类别及实体除 `id` 外的属性。
+
 ## 实体提交
 
 | 路径 | 提交模型 | 接口参考 |
@@ -20,6 +28,8 @@ Heartbeat API 定义实体的保存与读取协议。实体模型见 [Heartbeat 
 
 请求体必须是 JSON 对象，直接包含实体除 `id` 外的全部属性。实体标识只通过路径提供。属性类型和必填项见各接口的 OpenAPI Schema。
 
+请求体上限为 10 MiB（10,485,760 字节），按完整请求体的字节数计算。超过上限时，NGINX 或后端返回 `413`。JSON 字段名与字符串值必须包含有效的 Unicode；未配对的代理码点等非法内容返回 `400`。
+
 ### 保存行为
 
 后端组合路径中的 `id` 与请求体属性，得到完整实体。
@@ -34,7 +44,7 @@ API 请求类型在 `Heartbeat.Api` 中独立定义，只包含请求体属性�
 
 三个请求类型位于 `Heartbeat.Api` 的 `Entities/` 目录，每个类型一个文件。类型使用 `sealed class`，已定义属性使用 `required` 和 `init`。时间边界和事实时区使用可空类型，未知时提交 `null`，字段仍须出现。
 
-HTTP JSON 配置启用 `RespectNullableAnnotations = true`。`required` 检查字段是否出现，可空类型声明决定字段能否接收 `null`。例如，`name` 不接受 `null`，`startAt` 接受 `null`。
+HTTP JSON 配置启用 `RespectNullableAnnotations = true`，字段名区分大小写。`required` 检查字段是否出现，可空类型声明决定字段能否接收 `null`。例如，`name` 不接受 `null`，`startAt` 接受 `null`，但必须出现。
 
 - 如果实体不存在，后端在校验通过后创建实体并登记统一索引。
 - 如果实体已存在且模型类别与保存路径一致，后端在校验通过后替换已保存的内容。
@@ -54,13 +64,16 @@ HTTP JSON 配置启用 `RespectNullableAnnotations = true`。`required` 检查�
 | --- | --- |
 | 请求不符合契约，例如标识无效、JSON 无效或缺少必填字段 | `400 Bad Request` |
 | 保存路径声明的模型类别与已有实体不一致，或请求与已保存实体的约束冲突 | `409 Conflict` |
+| 请求体超过 10 MiB | `413 Content Too Large` |
 | 后端因未预期错误而保存失败 | `500 Internal Server Error` |
 
 错误响应使用[错误格式](#错误格式)。
 
+超出 PostgreSQL JSON 或文本表示范围的内容返回 `400`。事务回滚，已有内容保持不变；首次保存失败时不留下索引。
+
 例如，某个 ID 已保存为 Observer。通过 `PUT /entities/observations/{id}` 提交该 ID 时，后端必须返回 `409 Conflict`。
 
-如果已有 ObservationSchema 的语义或约束变化，但请求仍使用原 ID，后端也必须返回 `409 Conflict`。
+ObservationSchema 的提交方判断语义或约束是否变化，并决定是否使用新的 ID。仅修改名称或说明且语义与约束不变时，可以沿用原 ID。后端检查格式、时间和类别，不自动判断语义变化；同 ID 且类别一致的合法请求替换已有内容。
 
 ## 按标识读取
 
@@ -140,11 +153,13 @@ API 字段使用 `camelCase`，对应的 C# 属性使用 `PascalCase`，数据�
 
 例如，提交 `2026-10-06T09:00:00+08:00`，读取时返回 `2026-10-06T01:00:00Z`。两者表示同一时刻。
 
-`TimeBoundary` 描述提交的时间边界。`UtcTimeBoundary` 描述读取的时间边界。后端使用微秒精度存储和读取时间。
+提交的时间边界接受 `Z` 或明确 UTC 偏移，读取的时间边界限定为 `Z`。后端使用微秒精度存储和读取时间。
 
 `Heartbeat.Api` 的 `Serialization/UtcDateTimeOffsetJsonConverter.cs` 负责时间的 HTTP JSON 转换，并统一注册到 HTTP JSON 处理。输入必须带 `Z` 或明确的 UTC 偏移；输出转换为 UTC，以 `Z` 结尾。可空时间的 `null` 保持不变。
 
 Observation 的 `timeZone` 保存事实所属的 IANA 时区 ID，例如 `Asia/Shanghai`。后端使用时间字符串中的偏移转换时间。
+
+当前 Observation 保存入口检查非空 `timeZone` 能被运行环境解析为 IANA 时区 ID。两个已知时间边界按所表示的时刻比较，逆序返回 `400`。
 
 ## 错误格式
 
@@ -169,11 +184,6 @@ Observation 的 `timeZone` 保存事实所属的 IANA 时区 ID，例如 `Asia/S
 
 ## 契约来源
 
-| 开发阶段 | 请求与响应结构的权威来源 |
-| --- | --- |
-| 当前重写阶段 | `content/docs/api/openapi.json`，后端按契约实现 |
-| 后端基础工程建成后 | 后端代码，由代码生成 OpenAPI |
+请求与响应结构以 `Heartbeat.Api` 的端点、请求类型和契约声明为准。后端构建生成 `content/docs/api/openapi.json`，该文件不直接编辑。
 
-Fumadocs 根据 OpenAPI 生成接口文档。接口页位于 `/api/<operationId>`。接口页的复制和导出提供 OpenAPI JSON。
-
-来源决策见 [ADR 0001](../adr/0001-documentation-source-of-truth.mdx)。
+Fumadocs 根据生成文件提供接口页，地址为 `/api/<operationId>`。接口页的复制和导出提供 OpenAPI JSON，编辑链接指向后端端点代码。

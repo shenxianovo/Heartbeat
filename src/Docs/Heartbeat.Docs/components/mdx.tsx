@@ -2,12 +2,14 @@ import defaultMdxComponents from 'fumadocs-ui/mdx';
 import type { MDXComponents } from 'mdx/types';
 import { Mermaid } from './mermaid';
 import { ModelRelations } from './model-relations';
+import { IntegrationTestReport } from './integration-test-report';
 
 export function getMDXComponents(components?: MDXComponents) {
   return {
     ...defaultMdxComponents,
     Mermaid,
     ModelRelations,
+    IntegrationTestReport,
     ...components,
   } satisfies MDXComponents;
 }

@@ -5,6 +5,7 @@
   "root": true,
   "pages": [
     "index",
-    "database"
+    "database",
+    "reports/integration"
   ]
 }

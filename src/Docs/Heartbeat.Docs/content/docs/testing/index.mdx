@@ -40,4 +40,20 @@ Heartbeat Testing 记录测试分工、框架和公共工具。模型定义见 [
 
 第一条用例通过 `HeartbeatDbContext` 验证创建数据库、应用迁移、保存并读回实体的链路。用例保存一个 `Observer` 及其 `EntityIndexRow`，再创建新的读取上下文，核对实体标识、名称和索引中的 `table_name`。
 
-TUnit 的程序集 `Before`、`After` 钩子管理共享容器；每个用例的 `Before`、`After` 钩子管理独立数据库。
+HTTP 集成测试使用 `WebApplicationFactory` 启动真实 API 宿主，通过 `ConnectionStrings:Heartbeat` 接入每条用例的独立数据库。应用逻辑和数据库访问均使用正常实现。
+
+当前 HTTP 用例覆盖四类实体的创建与读取、重复提交、内容替换、类别冲突、无效请求和写入失败回滚，并检查同 ID 的并发保存。通用实体检查嵌套 JSON、重复键和表示限制；Observation 检查尚未入库的引用、UTC、微秒精度、未知时间边界与时区。
+
+ObservationSchema 用例检查同 ID 更新名称与 JSON 内容、任意可存储的 JSON 值、UTC、未知边界、非法替换和类别冲突。后端不比较定义的语义。
+
+专门的读取用例通过数据库准备已保存内容，结果通过 HTTP 断言。
+
+OpenAPI 用例读取后端构建生成的规范，检查请求字段、必填可空时间、成功状态码、多类别读取和错误格式。该组用例不创建数据库。
+
+TUnit 的程序集 `Before`、`After` 钩子管理共享容器；需要数据库的用例通过 `Before`、`After` 钩子管理独立数据库。
+
+## 报告
+
+[集成测试报告](./reports/integration.mdx)展示 `TestResults` 中最近更新的真实 TUnit JSON。刷新页面可读取新的结果，报告不存在时显示尚未生成。
+
+文档站使用 `fumadocs-test-reports` 的原生 TUnit 报告组件，提供搜索、状态筛选、用例详情、输出和追踪时间线。报告来源与职责见 [ADR 0006](../adr/0006-test-report-presentation.mdx)。
