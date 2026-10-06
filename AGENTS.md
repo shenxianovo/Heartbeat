@@ -11,13 +11,13 @@
 
 ## 文档权威位置
 
-长期文档的唯一权威位置是 `src/Docs/Heartbeat.Docs/content/docs/`。领域工作开始前，读[模型概览](src/Docs/Heartbeat.Docs/content/docs/index.mdx)、[术语表](src/Docs/Heartbeat.Docs/content/docs/glossary.mdx)和相关模型节点及 ADR。
+长期文档的唯一权威位置是 `src/Docs/Heartbeat.Docs/content/docs/`。领域工作开始前，读[模型概览](src/Docs/Heartbeat.Docs/content/docs/core/index.mdx)、[术语表](src/Docs/Heartbeat.Docs/content/docs/core/glossary.mdx)和相关模型节点及 ADR。
 
 使用 `grill-with-docs` 或 `domain-modeling` 时，将技能的文档路径映射如下，直接读写站内源文件：
 
-- `GLOSSARY.md` 对应 `src/Docs/Heartbeat.Docs/content/docs/glossary.mdx`。
+- `GLOSSARY.md` 对应 `src/Docs/Heartbeat.Docs/content/docs/core/glossary.mdx`。
 - `docs/adr/` 对应 `src/Docs/Heartbeat.Docs/content/docs/adr/`。
-- 模型正文位于 `src/Docs/Heartbeat.Docs/content/docs/model/`。
+- 模型正文位于 `src/Docs/Heartbeat.Docs/content/docs/core/model/`。
 
 模型正文只记录用户已确认的结构与语义。Agent 按已确认内容起草和整理文档；改变模型语义前，逐项得到用户确认。
 

@@ -45,11 +45,11 @@ public sealed class Observation : IEntity, ITimed
 
 `TimeZone` 使用 IANA 时区 ID，例如 `Asia/Shanghai`。
 
-`TimeZone` 记录事实时区。采集器所在时区和查看者时区各自解释。事实时区未知时，`TimeZone` 为 `null`。
+`TimeZone` 保存事实所属时区的信息。事实时区未知时，`TimeZone` 为 `null`。
 
-显示事实时间时，使用查看者选择的时区。
+后端根据提交时间中的 UTC 偏移转换并保存 UTC 时间。前端按浏览器或系统时区显示事实时间。
 
-按本地日期查询时，先按查看者选择的时区确定日期边界，再将边界转换为 UTC 比较。
+按本地日期查询时，先按浏览器或系统时区确定日期边界，再将边界转换为 UTC 比较。
 
 ## 观测身份
 

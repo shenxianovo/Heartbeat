@@ -11,7 +11,7 @@ export async function GET(_req: Request, { params }: RouteContext<'/llms.mdx/[[.
 
   return new Response(await docsLlms.page(page), {
     headers: {
-      'Content-Type': 'text/markdown',
+      'Content-Type': page.type === 'openapi' ? 'application/json' : 'text/markdown; charset=utf-8',
     },
   });
 }

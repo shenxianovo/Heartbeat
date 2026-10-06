@@ -1,0 +1,617 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Heartbeat API",
+    "version": "draft"
+  },
+  "paths": {
+    "/entities/{id}": {
+      "get": {
+        "operationId": "getEntity",
+        "summary": "读取实体",
+        "description": "按路径中的 id 读取任意实体。后端通过统一索引定位存储内容。响应包含模型类别和实体属性。",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "要读取实体的 UUIDv7。",
+            "schema": {
+              "$ref": "#/components/schemas/EntityId"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "读取成功。响应包含 category 和实体除 id 外的属性 entity。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "路径中的 id 不是有效的 UUIDv7。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "实体不存在。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "后端因未预期错误而读取失败。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "saveEntity",
+        "summary": "保存通用实体",
+        "description": "保存通用领域实体。路径中的 id 提供实体标识。请求体提供实体的其余全部属性。如果实体不存在，后端在校验通过后创建实体。如果实体已存在且模型类别与路径一致，后端在校验通过后替换内容。如果模型类别与已有实体不一致，后端返回 409 并保留已保存的内容。相同请求重复提交后，保存结果不变。",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "采集程序生成的 UUIDv7。",
+            "schema": {
+              "$ref": "#/components/schemas/EntityId"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Entity"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "后端已创建实体。无响应体。"
+          },
+          "204": {
+            "description": "后端已保存已有实体。无响应体。"
+          },
+          "400": {
+            "description": "请求不符合契约，例如标识无效、JSON 无效或缺少必填字段。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "路径声明的模型类别与已有实体不一致，或请求与已保存实体的约束冲突。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "后端因未预期错误而保存失败。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/entities/observations/{id}": {
+      "put": {
+        "operationId": "saveObservation",
+        "summary": "保存观测",
+        "description": "保存 Observation。路径中的 id 提供实体标识。请求体提供实体的其余全部属性。如果实体不存在，后端在校验通过后创建实体。如果实体已存在且模型类别与路径一致，后端在校验通过后替换内容。如果模型类别与已有实体不一致，后端返回 409 并保留已保存的内容。相同请求重复提交后，保存结果不变。",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "采集程序生成的 UUIDv7。",
+            "schema": {
+              "$ref": "#/components/schemas/EntityId"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Observation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "后端已创建实体。无响应体。"
+          },
+          "204": {
+            "description": "后端已保存已有实体。无响应体。"
+          },
+          "400": {
+            "description": "请求不符合契约，例如标识无效、JSON 无效或缺少必填字段。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "路径声明的模型类别与已有实体不一致，或请求与已保存实体的约束冲突。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "后端因未预期错误而保存失败。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/entities/observers/{id}": {
+      "put": {
+        "operationId": "saveObserver",
+        "summary": "保存观测主体",
+        "description": "保存 Observer。路径中的 id 提供实体标识。请求体提供实体的其余全部属性。如果实体不存在，后端在校验通过后创建实体。如果实体已存在且模型类别与路径一致，后端在校验通过后替换内容。如果模型类别与已有实体不一致，后端返回 409 并保留已保存的内容。相同请求重复提交后，保存结果不变。",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "采集程序生成的 UUIDv7。",
+            "schema": {
+              "$ref": "#/components/schemas/EntityId"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Observer"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "后端已创建实体。无响应体。"
+          },
+          "204": {
+            "description": "后端已保存已有实体。无响应体。"
+          },
+          "400": {
+            "description": "请求不符合契约，例如标识无效、JSON 无效或缺少必填字段。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "路径声明的模型类别与已有实体不一致，或请求与已保存实体的约束冲突。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "后端因未预期错误而保存失败。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/entities/observation-schemas/{id}": {
+      "put": {
+        "operationId": "saveObservationSchema",
+        "summary": "保存观测定义",
+        "description": "保存 ObservationSchema。路径中的 id 提供实体标识。请求体提供实体的其余全部属性。如果实体不存在，后端在校验通过后创建实体。如果实体已存在且模型类别与路径一致，后端在校验通过后替换内容。如果模型类别与已有实体不一致，后端返回 409 并保留已保存的内容。相同请求重复提交后，保存结果不变。",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "采集程序生成的 UUIDv7。",
+            "schema": {
+              "$ref": "#/components/schemas/EntityId"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObservationSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "后端已创建实体。无响应体。"
+          },
+          "204": {
+            "description": "后端已保存已有实体。无响应体。"
+          },
+          "400": {
+            "description": "请求不符合契约，例如标识无效、JSON 无效或缺少必填字段。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "路径声明的模型类别与已有实体不一致，或已有观测定义的语义或约束变化但仍使用原 ID。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "后端因未预期错误而保存失败。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "EntityId": {
+        "type": "string",
+        "format": "uuid",
+        "description": "实体标识。必须使用 UUIDv7 字符串。",
+        "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "description": "错误响应使用 application/problem+json。响应结构遵循 RFC 9457。",
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri-reference",
+            "const": "about:blank",
+            "description": "错误类型。固定为 about:blank。"
+          },
+          "title": {
+            "type": "string",
+            "description": "HTTP 状态的简短名称。"
+          },
+          "status": {
+            "type": "integer",
+            "description": "实际 HTTP 响应的状态码。"
+          },
+          "detail": {
+            "type": "string",
+            "description": "本次错误的具体说明，供人阅读。"
+          }
+        }
+      },
+      "TimeBoundary": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time",
+        "description": "已知时间必须包含 Z 或明确的 UTC 偏移。后端转换为 UTC，以微秒精度保存和读取时间。未知边界必须为 null。",
+        "examples": [
+          "2026-10-06T09:00:00+08:00",
+          "2026-10-06T01:00:00Z",
+          null
+        ]
+      },
+      "UtcTimeBoundary": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time",
+        "pattern": "Z$",
+        "description": "已知时间为以 Z 结尾的 UTC 时间字符串，精度为微秒。未知边界必须为 null。",
+        "examples": [
+          "2026-10-06T01:00:00Z",
+          null
+        ]
+      },
+      "Entity": {
+        "type": "object",
+        "description": "通用领域实体除 id 外的全部属性。字段名遵循领域定义，内容按 jsonb 语义保存和返回：空白和对象键顺序不保留，重复键只保留最后一个值。",
+        "not": {
+          "required": [
+            "id"
+          ]
+        },
+        "additionalProperties": true
+      },
+      "Observation": {
+        "type": "object",
+        "description": "观测实体除 id 外的全部属性。引用可以指向尚未入库的实体。如果两个时间边界均已知，startAt 必须早于或等于 endAt。比较使用边界表示的时刻。",
+        "required": [
+          "observerId",
+          "dataId",
+          "schemaId",
+          "startAt",
+          "endAt",
+          "timeZone"
+        ],
+        "properties": {
+          "observerId": {
+            "$ref": "#/components/schemas/EntityId",
+            "description": "形成本次观测的 Observer 的实体标识。"
+          },
+          "dataId": {
+            "$ref": "#/components/schemas/EntityId",
+            "description": "本次观测引用的具体数据实体的标识。"
+          },
+          "schemaId": {
+            "$ref": "#/components/schemas/EntityId",
+            "description": "解释本次观测的 ObservationSchema 的实体标识。"
+          },
+          "startAt": {
+            "$ref": "#/components/schemas/TimeBoundary",
+            "description": "被观测事实的开始时间。未知时必须为 null。"
+          },
+          "endAt": {
+            "$ref": "#/components/schemas/TimeBoundary",
+            "description": "被观测事实的结束时间。未知时必须为 null。如果与 startAt 表示同一时刻，两个边界表示时间点。如果晚于 startAt，两个边界表示左闭右开区间 [startAt, endAt)。"
+          },
+          "timeZone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "事实所属的 IANA 时区 ID，例如 Asia/Shanghai。未知时必须为 null。前端按浏览器或系统时区显示时间。",
+            "examples": [
+              "Asia/Shanghai",
+              null
+            ]
+          }
+        },
+        "not": {
+          "required": [
+            "id"
+          ]
+        },
+        "additionalProperties": true
+      },
+      "Observer": {
+        "type": "object",
+        "description": "观测主体除 id 外的全部属性。",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "观测主体的名称。"
+          }
+        },
+        "not": {
+          "required": [
+            "id"
+          ]
+        },
+        "additionalProperties": true
+      },
+      "ObservationSchema": {
+        "type": "object",
+        "description": "观测定义除 id 外的全部属性。如果两个有效期边界均已知，startAt 必须早于或等于 endAt。如果语义或约束变化，必须使用新标识。如果只改名称或说明且语义与约束不变，可以保留原标识。",
+        "required": [
+          "name",
+          "schema",
+          "startAt",
+          "endAt"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "观测定义的名称。"
+          },
+          "schema": {
+            "description": "具体数据的结构、约束和观测含义。内容使用 JSON，按 jsonb 语义保存和返回：空白和对象键顺序不保留，重复键只保留最后一个值。"
+          },
+          "startAt": {
+            "$ref": "#/components/schemas/TimeBoundary",
+            "description": "观测定义有效期的开始时间。未知时必须为 null。"
+          },
+          "endAt": {
+            "$ref": "#/components/schemas/TimeBoundary",
+            "description": "观测定义有效期的结束时间。未知时必须为 null。"
+          }
+        },
+        "not": {
+          "required": [
+            "id"
+          ]
+        },
+        "additionalProperties": true
+      },
+      "EntityResponse": {
+        "description": "category 指定模型类别。entity 包含该模型除 id 外的全部属性。",
+        "oneOf": [
+          {
+            "title": "通用实体",
+            "type": "object",
+            "required": [
+              "category",
+              "entity"
+            ],
+            "properties": {
+              "category": {
+                "type": "string",
+                "const": "entity",
+                "description": "通用领域实体，包含具体数据和具体关系实体。"
+              },
+              "entity": {
+                "$ref": "#/components/schemas/Entity"
+              }
+            }
+          },
+          {
+            "title": "观测",
+            "type": "object",
+            "required": [
+              "category",
+              "entity"
+            ],
+            "properties": {
+              "category": {
+                "type": "string",
+                "const": "observation",
+                "description": "Observation 观测实体。"
+              },
+              "entity": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Observation"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "startAt": {
+                        "$ref": "#/components/schemas/UtcTimeBoundary"
+                      },
+                      "endAt": {
+                        "$ref": "#/components/schemas/UtcTimeBoundary"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "title": "观测主体",
+            "type": "object",
+            "required": [
+              "category",
+              "entity"
+            ],
+            "properties": {
+              "category": {
+                "type": "string",
+                "const": "observer",
+                "description": "Observer 观测主体实体。"
+              },
+              "entity": {
+                "$ref": "#/components/schemas/Observer"
+              }
+            }
+          },
+          {
+            "title": "观测定义",
+            "type": "object",
+            "required": [
+              "category",
+              "entity"
+            ],
+            "properties": {
+              "category": {
+                "type": "string",
+                "const": "observation_schema",
+                "description": "ObservationSchema 观测定义实体。"
+              },
+              "entity": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ObservationSchema"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "startAt": {
+                        "$ref": "#/components/schemas/UtcTimeBoundary"
+                      },
+                      "endAt": {
+                        "$ref": "#/components/schemas/UtcTimeBoundary"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

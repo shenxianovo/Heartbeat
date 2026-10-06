@@ -1,9 +1,9 @@
 {
   "title": "Heartbeat 文档",
   "pages": [
-    "index",
-    "model",
-    "glossary",
+    "core",
+    "api",
+    "storage",
     "adr"
   ]
 }

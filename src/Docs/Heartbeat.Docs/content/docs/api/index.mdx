@@ -1,0 +1,163 @@
+---
+title: "Heartbeat API"
+description: "实体的输入、保存行为、响应和错误"
+---
+
+Heartbeat API 定义实体的保存与读取协议。实体模型见 [Heartbeat Core](../core/index.mdx)。
+
+## 实体提交
+
+| 路径 | 提交模型 | 接口参考 |
+| --- | --- | --- |
+| `PUT /entities/{id}` | 通用领域实体，包含[具体数据](../core/model/observations/data.mdx)和[具体关系实体](../core/model/relations/relation.mdx) | [保存通用实体](/api/saveEntity) |
+| `PUT /entities/observations/{id}` | [Observation](../core/model/observations/observation.mdx) | [保存观测](/api/saveObservation) |
+| `PUT /entities/observers/{id}` | [Observer](../core/model/observations/observer.mdx) | [保存观测主体](/api/saveObserver) |
+| `PUT /entities/observation-schemas/{id}` | [ObservationSchema](../core/model/observations/schema.mdx) | [保存观测定义](/api/saveObservationSchema) |
+
+### 输入
+
+路径声明模型类别。路径中的 `id` 必须是采集程序生成的 UUIDv7。
+
+请求体必须是 JSON 对象，直接包含实体除 `id` 外的全部属性。实体标识只通过路径提供。属性类型和必填项见各接口的 OpenAPI Schema。
+
+### 保存行为
+
+后端组合路径中的 `id` 与请求体属性，得到完整实体。
+
+- 如果实体不存在，后端在校验通过后创建实体并登记统一索引。
+- 如果实体已存在且模型类别与保存路径一致，后端在校验通过后替换已保存的内容。
+- 如果实体已存在且模型类别与保存路径不一致，后端必须返回 `409 Conflict`。后端必须保留已保存的内容。
+- 如果重复提交相同请求，保存结果不变，后端不新增实体。
+
+### 成功响应
+
+| 条件 | 状态码 | 响应体 |
+| --- | --- | --- |
+| 后端首次创建实体 | `201 Created` | 无 |
+| 后端替换已有实体，或收到已有实体的重复提交 | `204 No Content` | 无 |
+
+### 错误响应
+
+| 条件 | 状态码 |
+| --- | --- |
+| 请求不符合契约，例如标识无效、JSON 无效或缺少必填字段 | `400 Bad Request` |
+| 保存路径声明的模型类别与已有实体不一致，或请求与已保存实体的约束冲突 | `409 Conflict` |
+| 后端因未预期错误而保存失败 | `500 Internal Server Error` |
+
+错误响应使用[错误格式](#错误格式)。
+
+例如，某个 ID 已保存为 Observer。通过 `PUT /entities/observations/{id}` 提交该 ID 时，后端必须返回 `409 Conflict`。
+
+如果已有 ObservationSchema 的语义或约束变化，但请求仍使用原 ID，后端也必须返回 `409 Conflict`。
+
+## 按标识读取
+
+[读取实体](/api/getEntity)使用 `GET /entities/{id}`。
+
+### 输入
+
+路径中的 `id` 必须是要读取实体的 UUIDv7。后端通过统一索引定位实体的存储位置。
+
+### 成功响应
+
+读取成功时，后端返回 `200 OK` 和 JSON 响应体。
+
+| 字段 | 内容 |
+| --- | --- |
+| `category` | 返回实体的模型类别 |
+| `entity` | 实体除 `id` 外的全部属性 |
+
+`category` 使用以下取值：
+
+| 取值 | 模型 |
+| --- | --- |
+| `entity` | 通用领域实体，包含具体数据和具体关系实体 |
+| `observation` | Observation |
+| `observer` | Observer |
+| `observation_schema` | ObservationSchema |
+
+`entity` 的属性结构与对应保存接口的请求体一致。Observation 和 ObservationSchema 的已知时间边界统一返回 UTC 时间。实体标识由请求路径提供。
+
+### 错误响应
+
+| 条件 | 状态码 |
+| --- | --- |
+| 路径中的 `id` 不是有效的 UUIDv7 | `400 Bad Request` |
+| 实体不存在 | `404 Not Found` |
+| 后端因未预期错误而读取失败 | `500 Internal Server Error` |
+
+错误响应使用[错误格式](#错误格式)。
+
+## 字段表示
+
+OpenAPI 的 `components/schemas` 定义属性类型和必填项。
+
+| OpenAPI Schema | 内容 |
+| --- | --- |
+| `Entity` | 通用领域实体的 JSON 属性 |
+| `Observation` | 观测主体、具体数据和观测定义的标识，以及事实时间和事实时区 |
+| `Observer` | 观测主体名称 |
+| `ObservationSchema` | 名称、JSON 观测定义和有效期 |
+| `EntityResponse` | 模型类别及该模型的属性结构 |
+
+内置模型的已定义属性必须在提交和读取时完整保留。未知时间或时区必须写为 `null`。
+
+API 字段使用 `camelCase`，对应的 C# 属性使用 `PascalCase`，数据库列名使用 `snake_case`。例如 `observerId`、`ObserverId` 和 `observer_id` 表示同一属性。
+
+通用领域数据的字段名遵循领域定义。`ObservationSchema.schema` 保存 JSON 格式的观测定义。通用实体内容和观测定义按 [jsonb 存储语义](../storage/index.mdx#内容存储)保存和返回。
+
+实体标识和实体引用使用 UUIDv7 字符串。C# 的 `EntityId` 定义见 [IEntity](../core/model/contracts/entity.mdx#entityid)。
+
+## Observation 引用约束
+
+后端必须检查 `observerId`、`dataId`、`schemaId` 是有效的 UUIDv7。
+
+后端必须允许保存引用尚未入库实体的 Observation。被引用实体入库后，原引用即可读取，Observation 无须修改。
+
+## 时间表示与职责
+
+`startAt` 和 `endAt` 的含义见 [ITimed](../core/model/contracts/timed.mdx)。
+
+| 组件 | 职责 |
+| --- | --- |
+| Observer 对应的采集程序 | 提供准确的事实时间，可以提交以 `Z` 结尾或带明确 UTC 偏移的时间字符串 |
+| 后端 | 将已知时间转换为 UTC 后保存，读取时返回以 `Z` 结尾的时间字符串 |
+| 前端 | 按浏览器或系统时区显示时间 |
+
+例如，提交 `2026-10-06T09:00:00+08:00`，读取时返回 `2026-10-06T01:00:00Z`。两者表示同一时刻。
+
+`TimeBoundary` 描述提交的时间边界。`UtcTimeBoundary` 描述读取的时间边界。后端使用微秒精度存储和读取时间。
+
+Observation 的 `timeZone` 保存事实所属的 IANA 时区 ID，例如 `Asia/Shanghai`。后端使用时间字符串中的偏移转换时间。
+
+## 错误格式
+
+错误响应必须使用 `Content-Type: application/problem+json`。响应结构遵循 [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457.html)。
+
+| 必填字段 | 内容 |
+| --- | --- |
+| `type` | 固定为 `about:blank` |
+| `title` | HTTP 状态的简短名称 |
+| `status` | 实际 HTTP 响应的状态码 |
+| `detail` | 本次错误的具体说明 |
+
+调用方根据状态码处理错误。`detail` 供人阅读。
+
+## 后端路由
+
+如果保存新实体，后端根据路径中的模型类别选择存储表。如果保存已有实体，后端根据统一索引中的 `table_name` 定位存储。
+
+后端根据存储表映射模型类别。领域实体转入专用表后，保存路径仍为 `PUT /entities/{id}`。存储表、索引字段和类别映射见 [Heartbeat Storage](../storage/index.mdx)。
+
+实体读写协议的决策见 [ADR 0004](../adr/0004-entity-submission-entry-points.mdx)。
+
+## 契约来源
+
+| 开发阶段 | 请求与响应结构的权威来源 |
+| --- | --- |
+| 当前重写阶段 | `content/docs/api/openapi.json`，后端按契约实现 |
+| 后端基础工程建成后 | 后端代码，由代码生成 OpenAPI |
+
+Fumadocs 根据 OpenAPI 生成接口文档。接口页位于 `/api/<operationId>`。接口页的复制和导出提供 OpenAPI JSON。
+
+来源决策见 [ADR 0001](../adr/0001-documentation-source-of-truth.mdx)。

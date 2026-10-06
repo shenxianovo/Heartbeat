@@ -5,13 +5,13 @@
     "relations": "关系模型"
   },
   "nodes": {
-    "E": { "label": "IEntity", "shape": "hexagon", "style": "capability", "group": "contracts", "path": "/model/contracts/entity" },
-    "T": { "label": "ITimed", "shape": "hexagon", "style": "capability", "group": "contracts", "path": "/model/contracts/timed" },
-    "O": { "label": "Observation", "shape": "rectangle", "style": "entity", "group": "observations", "path": "/model/observations/observation" },
-    "R": { "label": "Observer", "shape": "rectangle", "style": "entity", "group": "observations", "path": "/model/observations/observer" },
-    "S": { "label": "ObservationSchema", "shape": "rectangle", "style": "entity", "group": "observations", "path": "/model/observations/schema" },
-    "DATA": { "label": "具体领域数据", "shape": "parallelogram", "style": "domain", "group": "observations", "path": "/model/observations/data" },
-    "REL": { "label": "Relation · 抽象类", "shape": "rectangle", "style": "relation", "group": "relations", "path": "/model/relations/relation" }
+    "E": { "label": "IEntity", "shape": "hexagon", "style": "capability", "group": "contracts", "path": "/core/model/contracts/entity" },
+    "T": { "label": "ITimed", "shape": "hexagon", "style": "capability", "group": "contracts", "path": "/core/model/contracts/timed" },
+    "O": { "label": "Observation", "shape": "rectangle", "style": "entity", "group": "observations", "path": "/core/model/observations/observation" },
+    "R": { "label": "Observer", "shape": "rectangle", "style": "entity", "group": "observations", "path": "/core/model/observations/observer" },
+    "S": { "label": "ObservationSchema", "shape": "rectangle", "style": "entity", "group": "observations", "path": "/core/model/observations/schema" },
+    "DATA": { "label": "具体领域数据", "shape": "parallelogram", "style": "domain", "group": "observations", "path": "/core/model/observations/data" },
+    "REL": { "label": "Relation · 抽象类", "shape": "rectangle", "style": "relation", "group": "relations", "path": "/core/model/relations/relation" }
   },
   "edges": [
     { "from": "O", "to": "R", "kind": "reference", "label": "ObserverId 引用" },

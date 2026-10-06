@@ -4,6 +4,7 @@
 
 | 能力 | 用户入口 | 验证入口 | 权威文档 | 证据限制 |
 | --- | --- | --- | --- | --- |
+| 文档站 | `/` 跳转 `/core`，API 概览 `/api`，ADR 首篇 `/adr/0001-documentation-source-of-truth` | 文档站目录运行 `pnpm types:check`、`pnpm build`；检查实际页面、搜索、导出与资源链接 | [文档站 README](../../../../../src/Docs/Heartbeat.Docs/README.md)、[文档入口责任](../../../../../src/Docs/Heartbeat.Docs/content/docs/adr/0001-documentation-source-of-truth.mdx) | 本地验证覆盖根路径页面与 UTF-8 响应；外部代理按实际接入另行验证 |
 | 本地质量收口 | `verify closeout --base REF` | `--plan` 核对范围后执行；CLI 分类、基线、失败与取消测试 | [工程验证](../../../../../docs/verification.md)、[分类与收口职责](../../../../../docs/adr/ADR-0023-quality-classification-and-closeout.md) | 包含变更验证、重复/复杂度/死码检查；场景、原生验收与性能基准按改动另行选择 |
 | 桌面业务后台回归 | `scenario runtime-replay` | 默认正常回放、离线接管、强杀重启、恢复对账和无头 Web 回放 | [后台回归](../../../../../docs/verification.md#日常后台回归)、[职责分离](../../../../../docs/adr/ADR-0025-background-and-native-acceptance.md) | 真实 DesktopRuntime/Collector 投影/Hub/Auth/API/数据库/Web；受控 OS 观测和临时凭据，不证明原生 UI 或系统采集 |
 | 桌面原生 UI | Mac `Heartbeat Dev.app` 的可折叠侧栏（采集状态、连接设置、打开时间线）/ Windows `env up desktop`，菜单栏或托盘 | `scenario desktop-replay --foreground --recovery`；交互 OIDC 加 `--interactive-login`；跨构建凭据恢复及布局/动画按客户端 README 实机检查 | [客户端 README](../../../../../src/Desktop/README.md)、[宿主责任](../../../../../docs/adr/ADR-0017-native-desktop-interfaces.md) | 真实应用包、自动原生 UI 与服务；`journey.json` 索引各阶段产物，采集等待保存脱敏分段诊断；默认真实 Auth 令牌临时会话，交互 OIDC 独立选择；静态截图不证明动画和 VoiceOver，使用开发凭据文件，不覆盖普通构建 Keychain、Windows、发行签名或自动更新 |

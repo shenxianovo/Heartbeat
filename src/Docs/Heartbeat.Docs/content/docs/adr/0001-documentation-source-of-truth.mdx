@@ -1,15 +1,13 @@
 ---
-title: "0001 文档站源文件作为唯一权威位置"
+title: "0001 文档与 API 契约的权威来源"
 ---
 
-Heartbeat 的长期文档保存在 `src/Docs/Heartbeat.Docs/content/docs/`。Fumadocs 根据这些源文件生成文档站。
+长期文档的唯一权威位置是 `src/Docs/Heartbeat.Docs/content/docs/`。模型、术语和设计决策直接在站内源文件中维护。人和 Agent 使用同一份正文。模型正文只记录用户已确认的结构与语义。
 
-模型、术语和设计决策都在源文件中修改。人和 Agent 使用同一份正文。
+当前重写阶段，API 请求与响应结构以 `content/docs/api/openapi.json` 为准，后端按契约实现。后端基础工程建成后，改为由后端代码生成 OpenAPI，接口结构以代码为准。两个阶段都由 Fumadocs 从 OpenAPI 生成虚拟接口页。
 
-模型正文只记录用户已确认的结构与语义。Agent 根据已确认内容起草和整理文档。
+文档站保留 Heartbeat Core、Heartbeat API、Heartbeat Storage 和 Heartbeat ADR 四个分区。Core 记录模型定义，API 记录读写协议，Storage 记录存储与数据库约定，ADR 记录设计决策。
 
-改变模型语义前，Agent 必须逐项得到用户确认。
+文档前端使用根路径 `/`。外部代理负责对外访问路径和前端分流，当前不配置代理。
 
-根目录 `README.md` 与 `AGENTS.md` 提供入口和维护规则。`grill-with-docs` 使用仓库规定的术语页与设计决策记录（ADR）路径。
-
-文档站的页面、资源和搜索接口统一使用 `/docs` 路径前缀。应用前端使用根路径 `/`。
+文档站的路径和操作说明见模块 README。Agent 的维护规则见仓库根目录的 `AGENTS.md`。

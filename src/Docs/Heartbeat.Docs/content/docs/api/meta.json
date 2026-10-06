@@ -1,0 +1,10 @@
+{
+  "title": "Heartbeat API",
+  "description": "实体提交与读取",
+  "root": true,
+  "pages": [
+    "index",
+    "..."
+  ],
+  "icon": "Plug"
+}

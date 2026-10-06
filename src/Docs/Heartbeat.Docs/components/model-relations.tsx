@@ -1,5 +1,4 @@
-import model from '@/content/docs/model/relations.json';
-import { getPublicUrl } from '@/lib/shared';
+import model from '@/content/docs/core/model/relations.json';
 import { Mermaid } from './mermaid';
 
 type NodeId = keyof typeof model.nodes;
@@ -49,7 +48,7 @@ export function ModelRelations({ node }: { node?: NodeId }) {
       : `${edge.from} -->|${edge.label}| ${edge.to}`);
   }
   for (const [id, info] of nodes) {
-    chart.push(`click ${id} "${getPublicUrl(info.path)}" "阅读 ${info.label}"`);
+    chart.push(`click ${id} "${info.path}" "阅读 ${info.label}"`);
   }
   chart.push(...styles);
   if (node) chart.push(`style ${node} stroke-width:4px`);

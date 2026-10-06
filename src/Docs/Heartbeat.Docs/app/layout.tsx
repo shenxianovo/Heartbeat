@@ -3,7 +3,7 @@ import './global.css';
 import { Inter } from 'next/font/google';
 import { i18nProvider } from 'fumadocs-ui/i18n';
 import { translations } from '@/lib/translations';
-import { appName, getPublicUrl } from '@/lib/shared';
+import { appName } from '@/lib/shared';
 import type { Metadata } from 'next';
 
 const inter = Inter({
@@ -20,7 +20,6 @@ export default function Layout({ children }: LayoutProps<'/'>) {
       <body className="flex flex-col min-h-screen">
         <RootProvider
           i18n={i18nProvider(translations)}
-          search={{ options: { api: getPublicUrl('/api/search') } }}
         >
           {children}
         </RootProvider>

@@ -1,0 +1,27 @@
+---
+title: "entities"
+description: "统一实体索引"
+---
+
+`entities` 保存所有实体的标识和权威内容所在的表名。
+
+## 索引字段
+
+| 列名 | 数据库类型 | 允许 SQL `NULL` | C# 属性 | 程序类型 | 含义 |
+| --- | --- | --- | --- | --- | --- |
+| `id` | `uuid` | 否 | `Id` | [EntityId](../core/model/contracts/entity.mdx#entityid) | 实体标识 |
+| `table_name` | `text` | 否 | `TableName` | `string` | 权威内容所在的实际表名 |
+
+`id` 为主键。后端必须保留创建方提交的标识。
+
+## 读取
+
+后端根据 `id` 查询本表，再从 `table_name` 指向的表读取实体内容。
+
+后端根据表名映射模型类别，用于填充读取响应中的 `category`，并校验已有实体的保存路径。映射见[模型类别](./index.mdx#模型类别)。
+
+## 写入
+
+后端在同一事务中写入本表和实体内容。写入规则见[写入一致性](./index.mdx#写入一致性)。
+
+实体转入专用表时，后端保留 `id`，并更新 `table_name`。如果重命名存储表，后端必须同步更新 `table_name` 和类别映射。规则见[存储转换](./index.mdx#存储转换)。
