@@ -4,6 +4,7 @@
     "core",
     "api",
     "storage",
+    "testing",
     "adr"
   ]
 }

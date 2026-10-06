@@ -1,0 +1,10 @@
+{
+  "title": "Heartbeat Testing",
+  "description": "测试框架、数据库隔离与公共工具",
+  "icon": "FlaskConical",
+  "root": true,
+  "pages": [
+    "index",
+    "database"
+  ]
+}

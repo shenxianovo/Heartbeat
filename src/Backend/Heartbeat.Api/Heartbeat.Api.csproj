@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Heartbeat.Application/Heartbeat.Application.csproj" />
+    <ProjectReference Include="../Heartbeat.Infrastructure/Heartbeat.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

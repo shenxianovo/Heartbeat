@@ -1,0 +1,38 @@
+---
+title: "测试数据库"
+description: "PostgreSQL 实例、用例隔离、迁移与清理"
+---
+
+集成测试和端到端测试使用 Testcontainers 管理 PostgreSQL 容器。测试数据库与服务使用相同版本的 PostgreSQL。数据库版本与结构见 [Heartbeat Storage](../storage/index.mdx)。
+
+## 实例与用例隔离
+
+两类测试各自启动独立实例，每次运行重新创建，结束后销毁。同一次运行中，每类测试共用自己的容器。
+
+每个需要数据库的测试用例创建独立的空数据库，名称为 `test_<随机 UUIDv7>`。UUID 使用无连字符的 `N` 格式。用例结束后删除数据库。
+
+测试通过 `ConnectionStrings:Heartbeat` 将该用例的连接字符串提供给被测后端，后端沿用正常的数据库注册方式。
+
+## 建表
+
+测试与正常服务共用 Infrastructure 中的 EF Core 迁移。测试准备阶段调用 `Database.MigrateAsync()`，将迁移应用到各用例的空数据库。
+
+数据库创建完成、迁移成功后，工具才返回 `TestDatabase`。
+
+## 公开方法
+
+`PostgresTestInstance` 和 `TestDatabase` 都实现 `IAsyncDisposable`。
+
+| 方法或属性 | 结果或行为 |
+| --- | --- |
+| `PostgresTestInstance.StartAsync(CancellationToken cancellationToken = default)` | 静态方法，返回 `Task<PostgresTestInstance>`；实例的容器已经启动 |
+| `instance.CreateDatabaseAsync(CancellationToken cancellationToken = default)` | 返回 `Task<TestDatabase>`；数据库已经创建并成功应用迁移 |
+| `database.ConnectionString` | 只读属性，提供该用例的数据库连接字符串 |
+| `database.DisposeAsync()` | 返回 `ValueTask`；删除该用例数据库 |
+| `instance.DisposeAsync()` | 返回 `ValueTask`；销毁 PostgreSQL 容器 |
+
+## 结束与失败处理
+
+用例结束时，调用方先释放被测后端与数据库连接，再释放 `TestDatabase`。整次测试运行结束时，释放 `PostgresTestInstance`。
+
+创建或迁移失败时，工具先清理已创建的资源，再报告错误。清理失败也会使测试失败。

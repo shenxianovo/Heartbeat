@@ -25,7 +25,11 @@ description: "观测定义的专用存储"
 
 `id` 为主键，并通过外键引用 `entities.id`。实体内容必须有对应的统一索引。
 
-时间边界使用以下检查约束：
+主键约束名为 `pk_observation_schemas`，外键约束名为 `fk_observation_schemas_entities_id`。
+
+外键使用 `ON DELETE CASCADE`。统一索引行被删除时，本表中同 ID 的内容行自动删除。
+
+时间边界使用 `ck_observation_schemas_time_order` 检查约束：
 
 ```sql
 CHECK (start_at <= end_at)

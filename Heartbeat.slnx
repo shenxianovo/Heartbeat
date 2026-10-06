@@ -1,42 +1,16 @@
 <Solution>
   <Folder Name="/src/" />
-  <Folder Name="/src/Server/">
-    <Project Path="src/Server/Heartbeat.Server/Heartbeat.Server.csproj" />
-  </Folder>
-  <Folder Name="/src/Contracts/">
-    <Project Path="src/Contracts/Heartbeat.Contracts/Heartbeat.Contracts.csproj" />
+  <Folder Name="/src/Core/">
+    <Project Path="src/Core/Heartbeat.Core/Heartbeat.Core.csproj" />
   </Folder>
   <Folder Name="/src/Backend/">
     <Project Path="src/Backend/Heartbeat.Api/Heartbeat.Api.csproj" />
     <Project Path="src/Backend/Heartbeat.Application/Heartbeat.Application.csproj" />
-    <Project Path="src/Backend/Heartbeat.Domain/Heartbeat.Domain.csproj" />
     <Project Path="src/Backend/Heartbeat.Infrastructure/Heartbeat.Infrastructure.csproj" />
   </Folder>
-  <Folder Name="/src/Collectors/">
-    <Project Path="src/Collectors/Heartbeat.Collector.VRChat/Heartbeat.Collector.VRChat.csproj" />
-    <Project Path="src/Collectors/Heartbeat.Collector.Desktop.Mac/Heartbeat.Collector.Desktop.Mac.csproj" />
-    <Project Path="src/Collectors/Heartbeat.Collector.Desktop.Windows/Heartbeat.Collector.Desktop.Windows.csproj" />
-    <Project Path="src/Collectors/Heartbeat.Collector.Desktop/Heartbeat.Collector.Desktop.csproj" />
-  </Folder>
-  <Folder Name="/src/Desktop/">
-    <Project Path="src/Desktop/Heartbeat.Desktop.Mac/Heartbeat.Desktop.Mac.csproj" />
-    <Project Path="src/Desktop/Heartbeat.Desktop.Windows/Heartbeat.Desktop.Windows.csproj" />
-    <Project Path="src/Desktop/Heartbeat.Desktop/Heartbeat.Desktop.csproj" />
-  </Folder>
-  <Folder Name="/src/Hub/">
-    <Project Path="src/Hub/Heartbeat.Hub.Runtime/Heartbeat.Hub.Runtime.csproj" />
-    <Project Path="src/Hub/Heartbeat.Hub.Client/Heartbeat.Hub.Client.csproj" />
-    <Project Path="src/Hub/Heartbeat.Hub.Host/Heartbeat.Hub.Host.csproj" />
-    <Project Path="src/Hub/Heartbeat.Hub/Heartbeat.Hub.csproj" />
-  </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/Heartbeat.Collector.Desktop.Mac.Tests/Heartbeat.Collector.Desktop.Mac.Tests.csproj" />
-    <Project Path="tests/Heartbeat.Collector.Desktop.Windows.Tests/Heartbeat.Collector.Desktop.Windows.Tests.csproj" />
-    <Project Path="tests/Heartbeat.Desktop.Tests/Heartbeat.Desktop.Tests.csproj" />
-    <Project Path="tests/Heartbeat.Dev.Tests/Heartbeat.Dev.Tests.csproj" />
-    <Project Path="tests/Heartbeat.Domain.Tests/Heartbeat.Domain.Tests.csproj" />
-    <Project Path="tests/Heartbeat.Hub.Tests/Heartbeat.Hub.Tests.csproj" />
     <Project Path="tests/Heartbeat.Integration.Tests/Heartbeat.Integration.Tests.csproj" />
+    <Project Path="tests/Heartbeat.Testing/Heartbeat.Testing.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/Heartbeat.Collector.Sample/Heartbeat.Collector.Sample.csproj" />

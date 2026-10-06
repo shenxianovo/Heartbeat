@@ -19,6 +19,51 @@ Heartbeat Storage 定义实体的索引、内容存储和数据库约定。实�
 
 重写期间直接修改 Initial migration 和模型快照。
 
+迁移和模型快照位于 Infrastructure 的 `Database/Migrations/`，由仓库的 EF 工具生成。生成时以 Api 为启动项目；Api 引用 `Microsoft.EntityFrameworkCore.Design`，使用集中管理的版本，并设置 `PrivateAssets="all"`。
+
+Api 从 `ConnectionStrings:Heartbeat` 读取连接字符串，配置缺失或为空时启动失败。环境变量对应 `ConnectionStrings__Heartbeat`。
+
+Infrastructure 通过 `AddHeartbeatInfrastructure(connectionString)` 注册 Npgsql 和 `HeartbeatDbContext`。数据库上下文使用 `Scoped` 生命周期。
+
+### 测试数据库
+
+测试数据库使用与服务相同的 PostgreSQL 版本和 EF Core 迁移。实例生命周期、用例隔离和公共工具见 [Heartbeat Testing](../testing/database.mdx)。
+
+### 程序映射
+
+`observations`、`observers`、`observation_schemas` 直接映射 `Heartbeat.Core` 中的 `Observation`、`Observer`、`ObservationSchema`。
+
+统一索引 `entities` 和通用 JSON 存储 `entity_data` 使用 `Heartbeat.Infrastructure` 中独立定义的存储类型。表名、列名、数据库类型和约束统一在 Infrastructure 中配置，Core 保持独立。
+
+| 表 | C# 类型 |
+| --- | --- |
+| `entities` | `EntityIndexRow` |
+| `entity_data` | `EntityDataRow` |
+
+两个存储类型位于 `Heartbeat.Infrastructure` 的 `Database/` 目录，每个类型一个文件。类型使用 `sealed class`，属性使用 `required` 和 `init`。标识使用 `EntityId`，通用 JSON 内容使用 `JsonElement`。EF Core 数据库上下文命名为 `HeartbeatDbContext`，位于同一目录。
+
+`HeartbeatDbContext` 通过构造参数接收 `DbContextOptions<HeartbeatDbContext>`，数据库配置由外部提供。
+
+| DbSet 属性 | C# 类型 | 表 |
+| --- | --- | --- |
+| `Entities` | `EntityIndexRow` | `entities` |
+| `EntityData` | `EntityDataRow` | `entity_data` |
+| `Observations` | `Observation` | `observations` |
+| `Observers` | `Observer` | `observers` |
+| `ObservationSchemas` | `ObservationSchema` | `observation_schemas` |
+
+每张表使用独立的 `IEntityTypeConfiguration<T>` 配置类，位于 `Database/Configurations/`。`HeartbeatDbContext` 在 `OnModelCreating` 中显式注册这些配置。
+
+| 表 | 配置类 |
+| --- | --- |
+| `entities` | `EntityIndexRowConfiguration` |
+| `entity_data` | `EntityDataRowConfiguration` |
+| `observations` | `ObservationConfiguration` |
+| `observers` | `ObserverConfiguration` |
+| `observation_schemas` | `ObservationSchemaConfiguration` |
+
+`Database/Converters/EntityIdValueConverter.cs` 将 `EntityId` 解包为 `Guid`，读取时将 `Guid` 包装为 `EntityId`，保留原标识。`HeartbeatDbContext` 在 `ConfigureConventions` 中统一注册转换器，应用于所有 `EntityId` 属性，包括观测中的三个引用。数据库列类型为 `uuid`。
+
 ### 统计与诊断
 
 第一版使用以下配置：
@@ -66,6 +111,14 @@ I/O 计时提供 I/O 等待的证据。判断 CPU 瓶颈时，还需结合锁等
 | C# 属性 | `PascalCase` | `ObserverId`、`StartAt` |
 | 数据库表名和列名 | `snake_case` | `observation_schemas`、`observer_id`、`start_at` |
 
+数据库约束名也使用 `snake_case`：
+
+| 约束 | 命名规则 | 示例 |
+| --- | --- | --- |
+| 主键 | `pk_<表名>` | `pk_entities` |
+| 内容表到统一索引的外键 | `fk_<内容表>_entities_id` | `fk_observations_entities_id` |
+| 时间顺序检查 | `ck_<表名>_time_order` | `ck_observations_time_order` |
+
 各表文档使用数据库列名，并列出对应的 C# 属性。
 
 ## 列类型
@@ -98,6 +151,8 @@ I/O 计时提供 I/O 等待的证据。判断 CPU 瓶颈时，还需结合锁等
 ## 表约束
 
 五张表都以 `id` 为主键。四张内容表的 `id` 通过外键引用 `entities.id`。各列的 SQL `NOT NULL` 约束见对应表文档。JSON 内容中的 `null` 与 SQL `NULL` 分别解释。
+
+四条外键使用 `ON DELETE CASCADE`。删除统一索引行时，自动删除同 ID 的内容行。
 
 `observations` 的 `observer_id`、`data_id`、`schema_id` 保留实体标识引用，不建立数据库外键，以允许被引用实体稍后入库。
 
@@ -144,6 +199,10 @@ I/O 计时提供 I/O 等待的证据。判断 CPU 瓶颈时，还需结合锁等
 ## 时间存储
 
 后端将模型中的已知时间边界转换为 UTC，使用 `timestamptz` 保存。存储和读取的时间精度为 1 微秒。未知边界保存为 SQL `NULL`。
+
+`Database/Converters/UtcDateTimeOffsetValueConverter.cs` 负责写入前的 UTC 转换，读取时保持 UTC。`HeartbeatDbContext` 在 `ConfigureConventions` 中统一注册该转换器，应用于 `DateTimeOffset` 属性及其可空形式，`null` 保持不变。
+
+带偏移的时间转换后表示同一时刻。例如，`2026-10-06T09:00:00+08:00` 转换为 `2026-10-06T01:00:00+00:00`；带 `Z` 的输入已经是 UTC。
 
 `timestamptz` 保存时刻，事实所属的 IANA 时区 ID 由 Observation 的 `time_zone` 列单独保存。
 

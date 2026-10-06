@@ -1,0 +1,43 @@
+---
+title: "Heartbeat Testing"
+description: "测试分工、框架与公共工具"
+---
+
+Heartbeat Testing 记录测试分工、框架和公共工具。模型定义见 [Heartbeat Core](../core/index.mdx)，读写协议见 [Heartbeat API](../api/index.mdx)，数据库结构见 [Heartbeat Storage](../storage/index.mdx)。
+
+## 测试分工
+
+| 类型 | 验证内容 | 数据库 |
+| --- | --- | --- |
+| 单元测试 | 独立规则、转换等逻辑 | 不启动数据库 |
+| 集成测试 | 后端组件与 PostgreSQL 的协作 | 使用独立测试数据库 |
+| 端到端测试 | 完整用户操作链路 | 需要数据库的用例使用独立测试数据库 |
+
+测试数量根据需要保障的行为确定。端到端测试覆盖关键链路。
+
+## 测试框架
+
+测试使用 TUnit，通过 Microsoft.Testing.Platform 运行。当前采用稳定版 `1.72.16`，版本由仓库的 `Directory.Packages.props` 管理。版本信息见 [TUnit 包](https://www.nuget.org/packages/TUnit/1.72.16)。
+
+## 公共工具
+
+公共数据库辅助代码位于 `tests/Heartbeat.Testing` 类库，供集成测试和端到端测试共用。命名空间为 `Heartbeat.Testing`，每个类型一个文件。
+
+该类库引用 Infrastructure，以及 EF Core、Npgsql 和 Testcontainers.PostgreSql，版本由 `Directory.Packages.props` 管理。
+
+| 类型 | 职责 |
+| --- | --- |
+| `PostgresTestInstance` | 启动、销毁 PostgreSQL 容器，创建用例数据库 |
+| `TestDatabase` | 提供连接字符串，释放时删除用例数据库 |
+
+测试框架负责调用工具的生命周期方法。工具与测试执行项目分开，集成测试和端到端测试各自创建独立实例。
+
+容器生命周期、用例隔离和公开方法见[测试数据库](./database.mdx)。组件责任见 [ADR 0005](../adr/0005-backend-project-organization.mdx#测试数据库)。
+
+## 当前验证边界
+
+集成测试项目位于 `tests/Heartbeat.Integration.Tests`，使用 TUnit 和 `Heartbeat.Testing`。
+
+第一条用例通过 `HeartbeatDbContext` 验证创建数据库、应用迁移、保存并读回实体的链路。用例保存一个 `Observer` 及其 `EntityIndexRow`，再创建新的读取上下文，核对实体标识、名称和索引中的 `table_name`。
+
+TUnit 的程序集 `Before`、`After` 钩子管理共享容器；每个用例的 `Before`、`After` 钩子管理独立数据库。

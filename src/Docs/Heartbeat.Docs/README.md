@@ -4,16 +4,17 @@
 
 文档页采用 Fumadocs Base UI 的 [Spacious 布局](https://www.fumadocs.dev/docs/ui/layouts/spacious)。布局与页面组件分别从 `fumadocs-ui/layouts/spacious`、`fumadocs-ui/layouts/spacious/page` 导入，样式在 `app/global.css` 中引入 `fumadocs-ui/css/generated/spacious.css`。桌面端正文在独立面板内滚动。
 
-标题下方使用 Fumadocs 的文档分区切换器，包含四个同级分区：
+标题下方使用 Fumadocs 的文档分区切换器，包含五个同级分区：
 
 | 分区 | 源文件 | 阅读入口 | 图标 |
 | --- | --- | --- | --- |
 | Heartbeat Core | [content/docs/core](content/docs/core) | `/core` | `Network` |
 | Heartbeat API | [content/docs/api](content/docs/api) | `/api` | `Plug` |
 | Heartbeat Storage | [content/docs/storage](content/docs/storage) | `/storage` | `Database` |
+| Heartbeat Testing | [content/docs/testing](content/docs/testing) | `/testing` | `FlaskConical` |
 | Heartbeat ADR | [content/docs/adr](content/docs/adr) | `/adr/0001-documentation-source-of-truth` | `ScrollText` |
 
-各分区在自己的 `meta.json` 中设置 `root: true` 和图标，Fumadocs 根据页面树生成切换器。Core 包含概览、术语表和模型正文。Storage 包含实体索引、存储表和数据库约定。ADR 独立显示设计决策，标题保留编号。
+各分区在自己的 `meta.json` 中设置 `root: true` 和图标，Fumadocs 根据页面树生成切换器。Core 包含概览、术语表和模型正文。Storage 包含实体索引、存储表和数据库约定。Testing 包含测试分工、框架、数据库隔离和公共工具。ADR 独立显示设计决策，标题保留编号。
 
 Core 侧栏按“指南、基础契约、观测模型、关系模型”分组，页面直接显示在对应标题下。分组和顺序由 `content/docs/core/meta.json` 与 `content/docs/core/model/meta.json` 中的 `pages` 控制：`---标题---` 添加分组标题，`...目录` 展开该目录的导航项。
 
@@ -59,7 +60,7 @@ pnpm dev
 
 文档站使用 Next.js 默认的根路径，不配置 `basePath`。页面、静态资源、搜索 API、Markdown 导出和分享图片都直接使用根路径地址，不额外拼接站点前缀。对外访问路径交给外部代理；当前不配置代理。
 
-访问 `/` 时自动跳转到 Core 概览 `/core`。API 概览为 `/api`，Storage 概览为 `/storage`。ADR 分区没有独立概览页，从 `/adr/0001-documentation-source-of-truth` 开始阅读。
+访问 `/` 时自动跳转到 Core 概览 `/core`。API 概览为 `/api`，Storage 概览为 `/storage`，Testing 概览为 `/testing`。ADR 分区没有独立概览页，从 `/adr/0001-documentation-source-of-truth` 开始阅读。
 
 Markdown 响应显式声明 `text/markdown; charset=utf-8`，避免浏览器错误猜测中文编码。回归检查：分别在 Core 与 API 页面打开“查看 Markdown”，确认链接为 `/llms.mdx/<页面路径>/content.md` 且内容可读取；Core 返回 UTF-8 Markdown，API 返回 OpenAPI JSON。搜索使用默认 `/api/search`，图标与模型图节点链接使用根路径。
 
