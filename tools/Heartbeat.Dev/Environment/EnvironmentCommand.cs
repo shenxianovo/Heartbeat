@@ -5,24 +5,13 @@ using System.Text.Json;
 namespace Heartbeat.Dev;
 
 internal sealed class EnvironmentCommand(
-    RepositoryContext repository,
-    IProcessRunner runner,
-    TextWriter output,
-    TextWriter error,
-    string? hostRuntime = null)
+    RepositoryContext repository, IProcessRunner runner, TextWriter output, TextWriter error)
 {
-    private static readonly string[] RequiredHubVariables =
-        ["HEARTBEAT_API_KEY", "HEARTBEAT_OWNER_ID", "HEARTBEAT_HUB_TOKEN"];
-    private static readonly string[] ResetContents =
-        ["containers", "networks", "postgres-volume", "hub-volume", "development-caches"];
-
     public Command CreateCommand()
     {
-        var command = new Command("env", "Start, inspect, stop, or reset the local environment");
+        var command = new Command("env", "Start, inspect, stop, or reset the local Compose environment");
         command.SetAction(parse => new HelpAction().Invoke(parse));
-        foreach (var action in Enum.GetValues<EnvironmentAction>())
-            command.Subcommands.Add(CreateAction(action));
-        command.Subcommands.Add(new SetupCommand(repository, runner, output).CreateCommand());
+        foreach (var action in Enum.GetValues<EnvironmentAction>()) command.Subcommands.Add(CreateAction(action));
         return command;
     }
 
@@ -30,295 +19,179 @@ internal sealed class EnvironmentCommand(
     {
         var command = new Command(action.ToString().ToLowerInvariant(), action switch
         {
-            EnvironmentAction.Up => "Build and start services; desktop packages and opens the native app",
-            EnvironmentAction.Logs => "Follow selected service logs",
-            EnvironmentAction.Status => "Show selected service status",
-            EnvironmentAction.Down => "Stop selected services while preserving data",
-            _ => "Preview deletion of all local Docker data; --apply executes",
+            EnvironmentAction.Up => "Build selected stacks and wait for their public entry points",
+            EnvironmentAction.Down => "Stop selected applications, preserving data and unselected shared services",
+            EnvironmentAction.Status => "Show service status",
+            EnvironmentAction.Logs => "Follow service logs",
+            _ => "Preview removal of this Compose environment and its named volumes; --apply executes",
         });
-        var services = new Argument<string[]>("services") { Arity = ArgumentArity.ZeroOrMore, Description = "web api db hub desktop (default: web api db)" };
-        services.AcceptOnlyFromAmong(EnvironmentPlan.AllowedServices);
-        if (action != EnvironmentAction.Reset) command.Arguments.Add(services);
-        var envFile = new Option<string?>("--env-file") { Description = "Environment file path" };
-        var release = new Option<bool>("--release") { Description = "Use release images" };
-        var json = new Option<bool>("--json") { Description = "Print JSON" };
-        var apply = new Option<bool>("--apply") { Description = "Delete the local stack and its data" };
+        var targets = new Argument<string[]>("targets")
+        {
+            Arity = ArgumentArity.ZeroOrMore,
+            Description = "all api docs db (default: all)",
+        };
+        targets.AcceptOnlyFromAmong(EnvironmentPlan.AllowedServices);
+        if (action != EnvironmentAction.Reset) command.Arguments.Add(targets);
+        var envFile = new Option<string?>("--env-file") { Description = "Optional Compose environment file" };
+        var release = new Option<bool>("--release") { Description = "Use the local production Compose configuration" };
+        var json = new Option<bool>("--json") { Description = "Print JSON status" };
+        var apply = new Option<bool>("--apply") { Description = "Delete this environment and its named volumes" };
         command.Options.Add(envFile);
-        if (action == EnvironmentAction.Up) command.Options.Add(release);
+        command.Options.Add(release);
         if (action == EnvironmentAction.Status) command.Options.Add(json);
         if (action == EnvironmentAction.Reset) command.Options.Add(apply);
         command.SetAction((parse, token) => RunAsync(EnvironmentPlan.Create(new EnvironmentOptions(
             action, parse.GetValue(release), parse.GetValue(envFile), parse.GetValue(json), parse.GetValue(apply),
-            new HashSet<string>(parse.GetValue(services) ?? [], StringComparer.OrdinalIgnoreCase))), token));
+            new HashSet<string>(parse.GetValue(targets) ?? [], StringComparer.OrdinalIgnoreCase))), token));
         return command;
     }
 
     public async Task<int> RunAsync(EnvironmentPlan plan, CancellationToken cancellationToken)
     {
-        var envFile = ResolveEnvironmentFile(plan.Options.EnvironmentFile);
-        EnsureEnvironmentFile(envFile, plan.Options.EnvironmentFile is not null);
-        var dotenv = DotenvFile.Read(envFile);
+        var envFile = plan.Options.EnvironmentFile is { } value ? Path.GetFullPath(value) : null;
+        if (envFile is not null && !File.Exists(envFile))
+            throw new CommandUsageException($"Environment file not found: {envFile}");
         var compose = ComposeInvocation.Create(repository, envFile, plan.Options.Release);
-
-        return plan.Options.Action switch
+        switch (plan.Options.Action)
         {
-            EnvironmentAction.Up => await UpAsync(plan, compose, dotenv, cancellationToken),
-            EnvironmentAction.Logs => await runner.RunAsync(
-                "docker", [.. compose, "logs", "--follow", .. plan.ComposeServices], null, cancellationToken),
-            EnvironmentAction.Status => await StatusAsync(plan, compose, cancellationToken),
-            EnvironmentAction.Down => await runner.RunAsync(
-                "docker", [.. compose, "rm", "--stop", "--force", .. plan.ComposeServices], null, cancellationToken),
-            EnvironmentAction.Reset => await ResetAsync(plan, compose, cancellationToken),
-            _ => throw new InvalidOperationException("Unknown environment action."),
-        };
+            case EnvironmentAction.Up:
+                return await UpAsync(plan, compose, cancellationToken);
+            case EnvironmentAction.Logs:
+                return await runner.RunAsync("docker", [.. compose, "logs", "--follow", .. plan.ComposeServices], null, cancellationToken);
+            case EnvironmentAction.Status:
+                var status = new List<string>(compose) { "ps", "--all" };
+                if (plan.Options.Json) { status.Add("--format"); status.Add("json"); }
+                status.AddRange(plan.ComposeServices);
+                return await runner.RunAsync("docker", status, null, cancellationToken);
+            case EnvironmentAction.Down:
+                return plan.WholeStack
+                    ? await runner.RunAsync("docker", [.. compose, "down"], null, cancellationToken)
+                    : await runner.RunAsync("docker", [.. compose, "rm", "--stop", "--force", .. plan.ComposeServices], null, cancellationToken);
+            case EnvironmentAction.Reset:
+                if (!plan.Options.Apply)
+                {
+                    await output.WriteLineAsync(JsonSerializer.Serialize(new
+                    {
+                        action = "delete-compose-environment-and-named-volumes", applied = false,
+                        command = string.Join(' ', (string[])["docker", .. compose, "down", "--volumes", "--remove-orphans"]),
+                    }, JsonOptions.Indented));
+                    return 0;
+                }
+                return await runner.RunAsync("docker", [.. compose, "down", "--volumes", "--remove-orphans"], null, cancellationToken);
+            default:
+                throw new InvalidOperationException("Unknown environment action.");
+        }
     }
 
-    private async Task<int> UpAsync(
-        EnvironmentPlan plan,
-        IReadOnlyList<string> compose,
-        DotenvFile dotenv,
-        CancellationToken cancellationToken)
+    private async Task<int> UpAsync(EnvironmentPlan plan, IReadOnlyList<string> compose, CancellationToken token)
     {
-        ValidateUp(plan, dotenv);
-        if (plan.ComposeServices.Count == 0)
-            return await RunDesktopAsync(cancellationToken);
-        var configured = await runner.CaptureAsync(
-            "docker", [.. compose, "config", "--quiet"], null, cancellationToken);
+        var timeout = StartupTimeout();
+        var configured = await runner.CaptureAsync("docker", [.. compose, "config", "--quiet"], null, token);
         if (configured.ExitCode != 0)
         {
             await error.WriteAsync(configured.StdErr);
             return configured.ExitCode;
         }
-        var started = await runner.RunAsync(
-            "docker", [.. compose, "up", "--build", "--detach", .. plan.ComposeServices], null, cancellationToken);
-        if (started != 0)
+        var started = await runner.RunAsync("docker", [.. compose, "up", "--build", "--detach", .. plan.ComposeServices], null, token);
+        if (started != 0) return started;
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(timeout);
+        try
         {
-            return started;
-        }
-
-        await WaitForServicesAsync(plan, compose, dotenv, cancellationToken);
-        return plan.RunDesktop
-            ? await RunDesktopAsync(cancellationToken)
-            : 0;
-    }
-
-    private void ValidateUp(EnvironmentPlan plan, DotenvFile dotenv)
-    {
-        if (plan.RunDesktop) DesktopPackageOptions.Create(repository, hostRuntime: hostRuntime);
-        if (!plan.ComposeServices.Contains("hub")) return;
-        var missing = RequiredHubVariables.Where(name => string.IsNullOrWhiteSpace(dotenv.Get(name))).ToArray();
-        if (missing.Length > 0)
-            throw new InvalidOperationException(
-                $"Hub configuration is incomplete ({string.Join(',', missing)}). Run dotnet run --project tools/Heartbeat.Dev -- env setup first.");
-    }
-
-    private async Task WaitForServicesAsync(
-        EnvironmentPlan plan,
-        IReadOnlyList<string> compose,
-        DotenvFile dotenv,
-        CancellationToken cancellationToken)
-    {
-        var timeout = ParseTimeout();
-        if (plan.ComposeServices.Contains("db"))
-        {
-            await WaitForDatabaseAsync(compose, timeout, cancellationToken);
-        }
-        if (plan.ComposeServices.Contains("api"))
-        {
-            await WaitForHttpAsync(compose, "api", new Uri("http://127.0.0.1:8080/health/ready"), 200, timeout, cancellationToken);
-        }
-        if (plan.ComposeServices.Contains("web"))
-        {
-            await WaitForHttpAsync(compose, "web", new Uri("http://127.0.0.1:3000/"), 200, timeout, cancellationToken);
-        }
-        if (plan.ComposeServices.Contains("hub"))
-        {
-            var hub = new Uri($"http://127.0.0.1:{GetHubPort(dotenv)}/hub/v1/status");
-            await WaitForHttpAsync(compose, "hub", hub, 401, timeout, cancellationToken);
-        }
-    }
-
-    private async Task<int> RunDesktopAsync(CancellationToken cancellationToken)
-    {
-        await output.WriteLineAsync("Building Heartbeat Dev. Quit any running development client first to load code changes.");
-        var options = DesktopPackageOptions.Create(repository, hostRuntime: hostRuntime);
-        var built = await new DesktopPackager(repository, runner, output)
-            .PackageAsync(options, cancellationToken);
-        if (built.ExitCode != 0) return built.ExitCode;
-        var application = built.ApplicationPath;
-        await output.WriteLineAsync($"Opening {application}. Configure the connection in the app; quit from its menu bar or system tray.");
-        cancellationToken.ThrowIfCancellationRequested();
-        if (options.IsMac)
-            return await runner.RunAsync("/usr/bin/open", ["-a", application], null, cancellationToken);
-        runner.OpenApplication(application);
-        return 0;
-    }
-
-    private async Task<int> StatusAsync(
-        EnvironmentPlan plan,
-        IReadOnlyList<string> compose,
-        CancellationToken cancellationToken)
-    {
-        var arguments = new List<string>(compose) { "ps", "--all" };
-        if (plan.Options.Json)
-        {
-            arguments.Add("--format");
-            arguments.Add("json");
-        }
-        arguments.AddRange(plan.ComposeServices);
-        return await runner.RunAsync("docker", arguments, null, cancellationToken);
-    }
-
-    private async Task<int> ResetAsync(
-        EnvironmentPlan plan,
-        IReadOnlyList<string> compose,
-        CancellationToken cancellationToken)
-    {
-        if (!plan.Options.Apply)
-        {
-            await output.WriteLineAsync(JsonSerializer.Serialize(new
+            var targets = plan.WholeStack ? new HashSet<string>(["api", "docs", "db"]) : plan.Options.RequestedServices;
+            var config = await runner.CaptureAsync("docker", [.. compose, "config", "--format", "json"], null, deadline.Token);
+            if (config.ExitCode != 0) throw new InvalidOperationException(config.StdErr.Trim());
+            using var document = JsonDocument.Parse(config.StdOut);
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+            var services = document.RootElement.GetProperty("services");
+            if (targets.Contains("api") || targets.Contains("db"))
+                await WaitForAsync("database", () => DatabaseReadyAsync(compose, deadline.Token), deadline.Token);
+            if (targets.Contains("api"))
             {
-                action = "delete-local-docker-data",
-                project = "heartbeat",
-                includes = ResetContents,
-                applied = false,
-                next = "Run dotnet run --project tools/Heartbeat.Dev -- env reset --apply to execute.",
-            }, JsonOptions.Indented));
+                var port = PublishedPort(services, "nginx", 80);
+                var id = Guid.CreateVersion7();
+                await WaitForAsync("API", () => ApiReadyAsync(http, port, id, deadline.Token), deadline.Token);
+            }
+            if (targets.Contains("docs"))
+            {
+                var port = PublishedPort(services, "nginx", 3000);
+                await WaitForAsync("documentation", async () =>
+                {
+                    using var response = await http.GetAsync($"http://127.0.0.1:{port}/core", deadline.Token);
+                    return response.IsSuccessStatusCode;
+                }, deadline.Token);
+            }
             return 0;
         }
-        return await runner.RunAsync(
-            "docker", [.. compose, "down", "--volumes", "--remove-orphans"], null, cancellationToken);
-    }
-
-    private async Task WaitForDatabaseAsync(
-        IReadOnlyList<string> compose,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        await output.WriteLineAsync("Waiting for db at 127.0.0.1:54329 ...");
-        var deadline = DateTimeOffset.UtcNow + timeout;
-        while (DateTimeOffset.UtcNow < deadline)
+        catch (Exception exception) when (exception is not OperationCanceledException || !token.IsCancellationRequested)
         {
-            await ThrowIfExitedAsync(compose, "db", cancellationToken);
-            var ready = await runner.CaptureAsync(
-                "docker", [.. compose, "exec", "--no-TTY", "db", "pg_isready", "-U", "heartbeat", "-d", "heartbeat"], null, cancellationToken);
-            if (ready.ExitCode == 0)
-            {
-                await output.WriteLineAsync("Ready: 127.0.0.1:54329");
-                return;
-            }
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            var timedOut = exception is OperationCanceledException;
+            await error.WriteLineAsync(timedOut ? $"Startup timed out after {timeout.TotalSeconds:0} seconds." : exception.Message);
+            var logs = await runner.CaptureAsync("docker", [.. compose, "logs", "--tail", "40"], null, token);
+            await error.WriteAsync(logs.StdOut + logs.StdErr);
+            return 1;
         }
-        throw new TimeoutException("db did not become ready before the startup timeout.");
     }
 
-    private async Task WaitForHttpAsync(
-        IReadOnlyList<string> compose,
-        string service,
-        Uri uri,
-        int expectedStatus,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
+    private async Task<bool> DatabaseReadyAsync(IReadOnlyList<string> compose, CancellationToken token)
     {
-        await output.WriteLineAsync($"Waiting for {service} at {uri} ...");
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
-        var deadline = DateTimeOffset.UtcNow + timeout;
-        while (DateTimeOffset.UtcNow < deadline)
+        var result = await runner.CaptureAsync("docker",
+            [.. compose, "exec", "--no-TTY", "db", "pg_isready", "-U", "heartbeat", "-d", "heartbeat"], null, token);
+        return result.ExitCode == 0;
+    }
+
+    private static async Task<bool> ApiReadyAsync(HttpClient http, int port, Guid id, CancellationToken token)
+    {
+        using var response = await http.GetAsync($"http://127.0.0.1:{port}/api/entities/{id}", token);
+        if (response.IsSuccessStatusCode) return true;
+        if (response.StatusCode != System.Net.HttpStatusCode.NotFound) return false;
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
+        return body.RootElement.TryGetProperty("detail", out var detail)
+            && detail.GetString() == "The entity does not exist.";
+    }
+
+    private async Task WaitForAsync(string name, Func<Task<bool>> check, CancellationToken token)
+    {
+        await output.WriteLineAsync($"Waiting for {name} ...");
+        while (true)
         {
-            await ThrowIfExitedAsync(compose, service, cancellationToken);
+            token.ThrowIfCancellationRequested();
             try
             {
-                using var response = await client.GetAsync(uri, cancellationToken);
-                if ((int)response.StatusCode == expectedStatus)
+                if (await check())
                 {
-                    await output.WriteLineAsync($"Ready: {uri}");
+                    await output.WriteLineAsync($"Ready: {name}");
                     return;
                 }
             }
-            catch (HttpRequestException)
+            catch (Exception exception) when (exception is HttpRequestException or JsonException
+                || exception is OperationCanceledException && !token.IsCancellationRequested)
             {
+                // A restarting upstream can briefly be unreachable or return an incomplete response.
             }
-            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-            }
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(1), token);
         }
-        throw new TimeoutException($"{service} did not become ready before the startup timeout.");
     }
 
-    private async Task ThrowIfExitedAsync(
-        IReadOnlyList<string> compose,
-        string service,
-        CancellationToken cancellationToken)
+    private static int PublishedPort(JsonElement services, string service, int target)
     {
-        var id = await runner.CaptureAsync(
-            "docker", [.. compose, "ps", "--all", "--quiet", service], null, cancellationToken);
-        if (id.ExitCode != 0 || string.IsNullOrWhiteSpace(id.StdOut))
-        {
-            return;
-        }
-        var state = await runner.CaptureAsync(
-            "docker", ["inspect", "--format", "{{.State.Status}}", id.StdOut.Trim()], null, cancellationToken);
-        if (state.StdOut.Trim() is not ("exited" or "dead"))
-        {
-            return;
-        }
-        var logs = await runner.CaptureAsync(
-            "docker", [.. compose, "logs", "--tail", "40", service], null, cancellationToken);
-        throw new InvalidOperationException($"{service} exited during startup. Recent logs:{Environment.NewLine}{logs.StdOut}{logs.StdErr}");
+        foreach (var port in services.GetProperty(service).GetProperty("ports").EnumerateArray())
+            if (port.GetProperty("target").GetInt32() == target
+                && int.TryParse(port.GetProperty("published").ToString(), out var published)) return published;
+        throw new InvalidOperationException($"No published port for {service}:{target}.");
     }
 
-    private string ResolveEnvironmentFile(string? value) => value is null
-        ? repository.Path(".env.local")
-        : Path.GetFullPath(value, Environment.CurrentDirectory);
-
-    private static void EnsureEnvironmentFile(string path, bool explicitPath)
-    {
-        if (File.Exists(path))
-        {
-            return;
-        }
-        if (explicitPath)
-        {
-            throw new FileNotFoundException($"Environment file not found: {path}", path);
-        }
-        using (File.Create(path))
-        {
-        }
-        if (!OperatingSystem.IsWindows())
-        {
-            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-        }
-    }
-
-    private static TimeSpan ParseTimeout()
+    private static TimeSpan StartupTimeout()
     {
         var value = Environment.GetEnvironmentVariable("HEARTBEAT_START_TIMEOUT_SECONDS");
-        if (value is null)
-        {
-            return TimeSpan.FromSeconds(180);
-        }
+        if (value is null) return TimeSpan.FromSeconds(180);
         if (!int.TryParse(value, out var seconds) || seconds <= 0)
-        {
             throw new CommandUsageException("HEARTBEAT_START_TIMEOUT_SECONDS must be a positive integer.");
-        }
         return TimeSpan.FromSeconds(seconds);
-    }
-
-    private static int GetHubPort(DotenvFile dotenv)
-    {
-        var value = dotenv.Get("HEARTBEAT_HUB_PORT");
-        if (string.IsNullOrWhiteSpace(value)) return 4318;
-        if (!int.TryParse(value, out var port) || port is < 1 or > 65535)
-            throw new CommandUsageException("HEARTBEAT_HUB_PORT must be an integer from 1 through 65535.");
-        return port;
     }
 }
 
 internal static class JsonOptions
 {
-    public static readonly JsonSerializerOptions Indented = new(JsonSerializerDefaults.Web)
-    {
-        WriteIndented = true,
-    };
+    public static readonly JsonSerializerOptions Indented = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 }

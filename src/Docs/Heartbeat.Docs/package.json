@@ -13,7 +13,7 @@
     "fumadocs-core": "16.16.2",
     "fumadocs-mdx": "15.4.6",
     "fumadocs-openapi": "12.3.0",
-    "fumadocs-test-reports": "0.1.0",
+    "fumadocs-test-reports": "0.1.1",
     "fumadocs-ui": "npm:@fumadocs/base-ui@16.16.2",
     "lucide-react": "^1.50.0",
     "mermaid": "^12.1.0",

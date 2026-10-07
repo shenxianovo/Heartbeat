@@ -77,6 +77,8 @@ internal static class SourceCorpus
             [".targets"] = "MSBuild",
             [".slnx"] = "XML",
             [".md"] = "Markdown",
+            [".mdx"] = "Markdown",
+            [".json"] = "JSON",
         };
 
     private static readonly string[] ProductionRoots = ["src/"];
@@ -85,7 +87,7 @@ internal static class SourceCorpus
         // Historical baselines still contain script-based development tooling.
         ["tools/", "scripts/", ".agents/", ".config/", ".github/"];
 
-    private static readonly string[] BuildLanguages = ["MSBuild", "XML", "Dockerfile", "YAML"];
+    private static readonly string[] BuildLanguages = ["MSBuild", "XML", "Dockerfile", "YAML", "JSON"];
 
     public static bool TryClassify(string path, out string language, out SourceRole role)
     {
@@ -107,7 +109,7 @@ internal static class SourceCorpus
     private static SourceRole Classify(string path, string name, string language) =>
         IsGenerated(name) ? SourceRole.Generated
         : IsTest(path, name) ? SourceRole.Test
-        : language == "Markdown" ? SourceRole.Documentation
+        : language == "Markdown" || path.StartsWith("src/Docs/Heartbeat.Docs/content/", StringComparison.Ordinal) ? SourceRole.Documentation
         : IsBuild(name, language) ? SourceRole.Build
         : StartsWithAny(path, ProductionRoots) ? SourceRole.Production
         : StartsWithAny(path, ToolingRoots) ? SourceRole.Tooling
@@ -124,6 +126,7 @@ internal static class SourceCorpus
         name.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase)
         || name.EndsWith("ModelSnapshot.cs", StringComparison.OrdinalIgnoreCase)
         || name is "next-env.d.ts"
+        || name is "pnpm-lock.yaml" or "openapi.json"
         || name.EndsWith("-lock.json", StringComparison.OrdinalIgnoreCase)
         || name is "package-lock.json";
 

@@ -4,20 +4,9 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const root = path.resolve(process.argv[2]);
-const web = path.join(root, "src", "Frontend", "Heartbeat.Web");
-const require = createRequire(pathToFileURL(path.join(process.argv[3] ?? web, "package.json")));
+const require = createRequire(pathToFileURL(path.join(import.meta.dirname, "jscpd", "package.json")));
 const ts = require("typescript");
-
-function files(directory) {
-  if (!fs.existsSync(directory)) return [];
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const target = path.join(directory, entry.name);
-    if (entry.isDirectory()) return ["test", "tests", "__tests__"].includes(entry.name) ? [] : files(target);
-    if (!/\.(?:ts|tsx|js|jsx)$/.test(entry.name)) return [];
-    if (/\.(?:test|spec)\.[^.]+$/.test(entry.name) || entry.name === "next-env.d.ts") return [];
-    return [target];
-  });
-}
+const files = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
 
 function isFunction(node) {
   return ts.isFunctionLike(node) && node.body;
@@ -47,16 +36,17 @@ function symbol(node, source) {
 }
 
 const metrics = [];
-for (const file of files(path.join(web, "src"))) {
+for (const relative of files) {
+  const file = path.join(root, relative);
   const text = fs.readFileSync(file, "utf8");
-  const kind = /\.[jt]sx$/.test(file) ? ts.ScriptKind.TSX : file.endsWith(".js") ? ts.ScriptKind.JS : ts.ScriptKind.TS;
+  const kind = /\.[jt]sx$/.test(file) ? ts.ScriptKind.TSX : /\.(?:c|m)?js$/.test(file) ? ts.ScriptKind.JS : ts.ScriptKind.TS;
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, kind);
   function addMetric(node, head, identity, kind = "function") {
     const start = source.getLineAndCharacterOfPosition(head.getStart(source));
     const end = source.getLineAndCharacterOfPosition(node.end);
     const lines = node.getText(source).split(/\r?\n/).filter((line) => line.trim() && !/^\s*(?:\/\/|\/\*|\*)/.test(line)).length;
     metrics.push({
-      language: file.endsWith(".js") || file.endsWith(".jsx") ? "JavaScript" : "TypeScript",
+      language: /\.(?:[cm]?js|jsx)$/.test(file) ? "JavaScript" : "TypeScript",
       path: path.relative(root, file).split(path.sep).join("/"),
       line: start.line + 1,
       column: start.character + 1,

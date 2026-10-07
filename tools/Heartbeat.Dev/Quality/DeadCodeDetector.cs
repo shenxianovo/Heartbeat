@@ -13,12 +13,9 @@ internal sealed record DeadCodeReport(
     bool Available, string? Reason,
     IReadOnlyList<DeadCodeFinding> Current, IReadOnlyList<DeadCodeFinding> NewFindings)
 {
-    public IEnumerable<string> Failures(bool stock)
+    public IEnumerable<string> Failures()
     {
         if (!Available) yield return Reason!;
-        else if (!stock && NewFindings.Count > 0)
-            yield return "New unused code or dependency findings:" + Environment.NewLine
-                + string.Join(Environment.NewLine, NewFindings.Select(item => "    " + item.Describe()));
     }
 }
 
@@ -27,16 +24,18 @@ internal sealed record DeadCodeReport(
 internal sealed partial class DeadCodeDetector(RepositoryContext repository, IProcessRunner runner)
 {
     public async Task<DeadCodeReport> CompareAsync(string baseCommit, string directory,
-        ICollection<string> commands, CancellationToken cancellationToken)
+        ICollection<string> commands, bool baselineCSharpComplete, bool currentCSharpComplete, CancellationToken cancellationToken)
     {
         var (baseline, error) = await new BaselineWorkspaceCache(repository, runner)
             .PrepareAsync(baseCommit, commands, cancellationToken);
         if (baseline is null) return new(false, error, [], []);
         try
         {
-            var before = await ScanAsync(baseline.Path, "baseline", directory, commands, cancellationToken);
-            var current = await ScanAsync(repository.Root, "current", directory, commands, cancellationToken);
-            return new(true, null, current, FindNew(before, current));
+            var before = await ScanAsync(baseline.Path, "baseline", directory, commands, baselineCSharpComplete, cancellationToken);
+            var current = await ScanAsync(repository.Root, "current", directory, commands, currentCSharpComplete, cancellationToken);
+            var complete = baselineCSharpComplete && currentCSharpComplete;
+            var newFindings = FindNew(before, current).Where(item => complete || item.Rule != "IDE0051").ToArray();
+            return new(complete, complete ? null : "C# unused-member comparison requires successful baseline and current builds.", current, newFindings);
         }
         catch (Exception exception) when (exception is IOException or JsonException or InvalidDataException)
         {
@@ -45,27 +44,46 @@ internal sealed partial class DeadCodeDetector(RepositoryContext repository, IPr
     }
 
     private async Task<IReadOnlyList<DeadCodeFinding>> ScanAsync(string root, string label, string directory,
-        ICollection<string> commands, CancellationToken cancellationToken)
+        ICollection<string> commands, bool csharpComplete, CancellationToken cancellationToken)
     {
-        var web = Path.Combine(root, "src", "Frontend", "Heartbeat.Web");
-        var currentWeb = repository.Path("src", "Frontend", "Heartbeat.Web");
-        var executable = Path.Combine(currentWeb, "node_modules", ".bin", OperatingSystem.IsWindows() ? "knip.cmd" : "knip");
-        if (!File.Exists(executable)) throw new InvalidDataException($"Knip is missing; run npm --prefix {currentWeb} ci.");
-        // Use the same scanner and entry-point configuration for both revisions.
-        string[] arguments = ["--directory", web, "--config", Path.Combine(currentWeb, "knip.json"), "--reporter", "json", "--no-progress"];
-        commands.Add("knip " + string.Join(' ', arguments));
-        var result = await ProcessRunner.CaptureAsync(web, executable, arguments, cancellationToken);
-        await File.WriteAllTextAsync(Path.Combine(directory, label + "-knip.json"), result.StdOut, cancellationToken);
-        await File.WriteAllTextAsync(Path.Combine(directory, label + "-knip.log"), result.StdErr, cancellationToken);
-        if (result.ExitCode is not (0 or 1)) throw new InvalidDataException($"Knip failed ({label}): {result.StdErr}");
-        var findings = ParseKnip(result.StdOut);
-        if (result.ExitCode == 1 && findings.Count == 0)
-            throw new InvalidDataException($"Knip failed without findings ({label}): {result.StdErr}");
-        var csharp = await File.ReadAllTextAsync(Path.Combine(directory, label + "-csharp.log"), cancellationToken);
-        return [.. findings, .. ParseCSharp(root, csharp)];
+        var findings = new List<DeadCodeFinding>();
+        await ScanKnipAsync("src/Docs/Heartbeat.Docs", "knip-docs.json", "docs");
+        await ScanKnipAsync("tools/Heartbeat.Dev/jscpd", "knip-tools.json", "tools");
+        if (csharpComplete)
+        {
+            var csharp = await File.ReadAllTextAsync(Path.Combine(directory, label + "-csharp.log"), cancellationToken);
+            findings.AddRange(ParseCSharp(root, csharp));
+        }
+        return findings;
+
+        async Task ScanKnipAsync(string relative, string config, string scope)
+        {
+            var project = Path.Combine(root, relative);
+            if (!Directory.Exists(project)) return;
+            var tools = repository.Path("tools", "Heartbeat.Dev", "jscpd");
+            var executable = Path.Combine(tools, "node_modules", ".bin", OperatingSystem.IsWindows() ? "knip.cmd" : "knip");
+            if (!File.Exists(executable)) throw new InvalidDataException($"Knip is missing; run npm --prefix {tools} ci --ignore-scripts.");
+            if (scope == "docs" && !Directory.Exists(Path.Combine(project, "node_modules")))
+            {
+                commands.Add($"pnpm install --frozen-lockfile --ignore-scripts ({label} Docs)");
+                var restored = await ProcessRunner.CaptureAsync(project, "pnpm",
+                    ["install", "--frozen-lockfile", "--ignore-scripts"], cancellationToken);
+                if (restored.ExitCode != 0) throw new InvalidDataException($"Could not prepare {label} Docs dependencies: {restored.StdErr}");
+            }
+            string[] arguments = ["--directory", project, "--config", Path.Combine(tools, config), "--reporter", "json", "--no-progress"];
+            commands.Add("knip " + string.Join(' ', arguments));
+            var result = await ProcessRunner.CaptureAsync(project, executable, arguments, cancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(directory, $"{label}-{scope}-knip.json"), result.StdOut, cancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(directory, $"{label}-{scope}-knip.log"), result.StdErr, cancellationToken);
+            if (result.ExitCode is not (0 or 1)) throw new InvalidDataException($"Knip failed ({label} {scope}): {result.StdErr}");
+            var scanned = ParseKnip(result.StdOut, relative);
+            if (result.ExitCode == 1 && scanned.Count == 0)
+                throw new InvalidDataException($"Knip failed without findings ({label} {scope}): {result.StdErr}");
+            findings.AddRange(scanned);
+        }
     }
 
-    internal static IReadOnlyList<DeadCodeFinding> ParseKnip(string json)
+    internal static IReadOnlyList<DeadCodeFinding> ParseKnip(string json, string prefix = "src/Docs/Heartbeat.Docs")
     {
         using var document = JsonDocument.Parse(json);
         if (!document.RootElement.TryGetProperty("issues", out var issues) || issues.ValueKind != JsonValueKind.Array)
@@ -73,12 +91,16 @@ internal sealed partial class DeadCodeDetector(RepositoryContext repository, IPr
         var findings = new List<DeadCodeFinding>();
         foreach (var issue in issues.EnumerateArray())
         {
-            var path = "src/Frontend/Heartbeat.Web/" + issue.GetProperty("file").GetString();
+            var path = prefix + "/" + issue.GetProperty("file").GetString();
             foreach (var category in issue.EnumerateObject().Where(item => item.Value.ValueKind == JsonValueKind.Array))
                 foreach (var item in category.Value.EnumerateArray())
-                    findings.Add(new("knip/" + category.Name, path,
-                        item.TryGetProperty("line", out var line) ? line.GetInt32() : 1,
-                        item.GetProperty("name").GetString()!));
+                {
+                    var entries = item.ValueKind == JsonValueKind.Array ? item.EnumerateArray().ToArray() : [item];
+                    foreach (var entry in entries)
+                        findings.Add(new("knip/" + category.Name, path,
+                            entry.TryGetProperty("line", out var line) ? line.GetInt32() : 1,
+                            entry.TryGetProperty("name", out var name) ? name.GetString()! : path));
+                }
         }
         return findings;
     }
@@ -90,7 +112,7 @@ internal sealed partial class DeadCodeDetector(RepositoryContext repository, IPr
                 Path.GetRelativePath(root, match.Groups["path"].Value).Replace('\\', '/'),
                 int.Parse(match.Groups["line"].Value, System.Globalization.CultureInfo.InvariantCulture),
                 match.Groups["symbol"].Value))
-            .Where(item => SourceCorpus.TryClassify(item.Path, out _, out var role) && role == SourceRole.Production)
+            .Where(item => SourceCorpus.TryClassify(item.Path, out _, out var role) && role is SourceRole.Production or SourceRole.Tooling)
             .DistinctBy(item => item.Identity).ToArray();
 
     internal static IReadOnlyList<DeadCodeFinding> FindNew(

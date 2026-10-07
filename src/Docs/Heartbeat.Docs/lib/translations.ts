@@ -1,7 +1,8 @@
 import { defineTranslations } from 'fumadocs-core/i18n';
 import { uiTranslations } from 'fumadocs-ui/i18n';
+import { testReportTranslations, zhCN } from 'fumadocs-test-reports/i18n';
 
-export const translations = defineTranslations().extend(uiTranslations()).add({
+export const translations = defineTranslations().extend(uiTranslations()).extend(testReportTranslations()).preset(zhCN()).add({
   displayName: '简体中文',
   'Ask AI(AI chat button)': '询问 AI',
   'Back to Home(404 not found page)': '返回首页',

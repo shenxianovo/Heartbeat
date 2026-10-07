@@ -6,7 +6,8 @@
     "0004-entity-submission-entry-points",
     "0005-backend-project-organization",
     "0006-test-report-presentation",
-    "0007-unified-http-entry"
+    "0007-unified-http-entry",
+    "0008-developer-cli-and-verification"
   ],
   "title": "Heartbeat ADR",
   "description": "设计决策记录",

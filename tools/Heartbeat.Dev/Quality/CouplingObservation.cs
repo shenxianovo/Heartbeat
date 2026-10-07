@@ -20,7 +20,7 @@ internal static partial class CouplingParser
                 int.Parse(match.Groups["line"].Value, CultureInfo.InvariantCulture),
                 match.Groups["symbol"].Value,
                 int.Parse(match.Groups["types"].Value, CultureInfo.InvariantCulture)))
-            .Where(item => SourceCorpus.TryClassify(item.Path, out _, out var role) && role == SourceRole.Production)
+            .Where(item => SourceCorpus.TryClassify(item.Path, out _, out var role) && role is SourceRole.Production or SourceRole.Tooling)
             .Distinct().OrderBy(item => item.Path, StringComparer.Ordinal).ThenBy(item => item.Line).ToArray();
 
     [GeneratedRegex("^(?<path>.+)\\((?<line>\\d+),\\d+\\): warning CA1506: '(?<symbol>[^']+)' is coupled with '(?<types>\\d+)' different types", RegexOptions.CultureInvariant)]

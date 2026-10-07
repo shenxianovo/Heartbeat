@@ -38,18 +38,6 @@ internal sealed class EvidenceSession(ArtifactRun run)
         finally
         {
             var finalLimitations = limitations.ToList();
-            if (exitCode == 0)
-            {
-                try
-                {
-                    WebVerificationWorkspace.DeleteAfterSuccess(session.Run);
-                }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-                {
-                    finalLimitations.Add("The temporary Web workspace could not be removed after this run.");
-                    if (notes is not null) await notes.WriteLineAsync($"Could not remove temporary Web workspace: {exception.Message}");
-                }
-            }
             var artifacts = Directory.EnumerateFileSystemEntries(session.Run.Directory)
                 .Select(Path.GetFileName)
                 .Where(item => item is not null and not "manifest.json")

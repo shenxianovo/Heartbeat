@@ -65,7 +65,7 @@ Mermaid 图通过 `components/mermaid.tsx` 统一使用手绘风格。
 
 ## 测试报告
 
-报告页为 `/testing/reports/integration`，使用 `fumadocs-test-reports@0.1.0` 的中文 TUnit 报告组件。
+报告页为 `/testing/reports/integration`，使用 `fumadocs-test-reports@0.1.1` 的中文 TUnit 报告组件。
 
 服务器从 `HEARTBEAT_TEST_REPORTS_DIR` 指定的目录读取报告。普通本地运行默认读取仓库根目录的 `TestResults`；Docker 默认从只读挂载的 `/reports` 读取。每次请求按文件修改时间选择最新的 `Heartbeat.Integration.Tests-*.tunit-report.json`，再交给包的解析器校验。没有文件时显示尚未生成，格式错误直接报告错误。
 

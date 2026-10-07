@@ -34,118 +34,79 @@ internal sealed record VerificationPlan(string Mode, string? Base, IReadOnlyList
 internal static class VerificationPlanner
 {
     public static async Task<VerificationPlan> CreateAsync(
-        RepositoryContext repository,
-        IProcessRunner runner,
-        VerificationRequest request,
-        CancellationToken cancellationToken)
+        RepositoryContext repository, IProcessRunner runner, VerificationRequest request, CancellationToken cancellationToken)
     {
-        if (request.Mode == "full")
-        {
-            return new VerificationPlan("full", request.Base, [], Full(repository));
-        }
-
+        if (request.Mode == "full") return new("full", request.Base, [], Full(repository));
         var paths = await ChangedPathsAsync(runner, request.Base!, cancellationToken);
         var selection = paths.Aggregate(CheckSelection.None, (current, path) => current | Select(path));
-        if (selection.HasFlag(CheckSelection.Unknown))
-            return new VerificationPlan("full-fallback", request.Base, paths, Full(repository));
-
+        if (selection.HasFlag(CheckSelection.Unknown)) return new("full-fallback", request.Base, paths, Full(repository));
         var steps = new List<VerificationStep>();
-        AddIf(steps, selection, CheckSelection.Dotnet, DotnetSolution(repository));
-        AddIf(steps, selection, CheckSelection.Cli, DotnetCli(repository));
-        AddIf(steps, selection, CheckSelection.Web, WebVerify(repository));
-        AddIf(steps, selection, CheckSelection.Browser, WebBrowser(repository));
-        return new VerificationPlan("changed", request.Base, paths, steps);
+        if (selection.HasFlag(CheckSelection.Build)) steps.Add(Build(repository));
+        if (selection.HasFlag(CheckSelection.Backend)) steps.Add(IntegrationTests(repository));
+        if (selection.HasFlag(CheckSelection.Cli)) steps.Add(CliTests(repository));
+        if (selection.HasFlag(CheckSelection.Docs)) steps.AddRange(Docs(repository));
+        return new("changed", request.Base, paths, steps);
     }
 
     private static CheckSelection Select(string path)
     {
-        if (IsCli(path)) return CheckSelection.Cli;
-        if (path.StartsWith("src/Frontend/Heartbeat.Web/", StringComparison.Ordinal))
-            return CheckSelection.Web | (NeedsBrowser(path) ? CheckSelection.Browser : CheckSelection.None);
-        if (path.StartsWith("src/", StringComparison.Ordinal)
-            || path.StartsWith("tests/Heartbeat.", StringComparison.Ordinal)) return CheckSelection.Dotnet;
-        if (path is "global.json" or "Directory.Build.props" or "Directory.Packages.props")
-            return CheckSelection.Dotnet;
-        if (IsContract(path)) return CheckSelection.Dotnet;
-        if (path.StartsWith("docs/", StringComparison.Ordinal)
-            || path.StartsWith(".scratch/", StringComparison.Ordinal)
-            || path is "README.md" or "AGENTS.md" or "CONTEXT.md") return CheckSelection.None;
+        if (path == "src/Docs/Heartbeat.Docs/content/docs/api/openapi.json")
+            return CheckSelection.Build | CheckSelection.Backend | CheckSelection.Docs;
+        if (path.StartsWith("src/Docs/Heartbeat.Docs/", StringComparison.Ordinal)) return CheckSelection.Docs;
+        if (path.StartsWith("tools/Heartbeat.Dev/", StringComparison.Ordinal)
+            || path.StartsWith("tests/Heartbeat.Dev.Tests/", StringComparison.Ordinal)
+            || path.StartsWith(".agents/skills/verify-heartbeat/", StringComparison.Ordinal))
+            return CheckSelection.Build | CheckSelection.Cli;
+        if (path.StartsWith("src/Core/", StringComparison.Ordinal)
+            || path.StartsWith("src/Backend/", StringComparison.Ordinal)
+            || path.StartsWith("tests/Heartbeat.Integration.Tests/", StringComparison.Ordinal)
+            || path.StartsWith("tests/Heartbeat.Testing/", StringComparison.Ordinal))
+            return CheckSelection.Build | CheckSelection.Backend;
+        if (path.StartsWith(".scratch/", StringComparison.Ordinal)
+            || path.StartsWith(".agents/skills/disslopify/", StringComparison.Ordinal)
+            || path is "README.md" or "AGENTS.md") return CheckSelection.None;
         return CheckSelection.Unknown;
     }
 
-    /// <summary>
-    /// 契约文档不是散文：协议、录制 API 与存储模型写的是后端与采集端都要遵守的语义。
-    /// 改了它至少要把 .NET 测试跑一遍，否则「文档改了、实现没改」这类偏差没有任何检查会发现。
-    /// </summary>
-    private static bool IsContract(string path) =>
-        path.StartsWith("docs/protocols/", StringComparison.Ordinal)
-        || path is "docs/recording-api.md" or "docs/recording-storage-model.md" or "docs/hub-record-delivery.md";
+    private static VerificationStep Build(RepositoryContext repository) =>
+        new("dotnet-build", "dotnet", ["build", repository.Path("Heartbeat.slnx"), "--verbosity", "minimal"]);
 
-    private static bool IsCli(string path) =>
-        path.StartsWith("tools/Heartbeat.Dev/", StringComparison.Ordinal)
-        || path.StartsWith("tests/Heartbeat.Dev.Tests/", StringComparison.Ordinal)
-        || path.StartsWith(".agents/skills/verify-heartbeat/", StringComparison.Ordinal)
-        // 验证口径的说明与实现必须一起对：改了它就把 CLI 测试跑一遍。
-        // Deleted launchers can still appear when comparing against an older Git base.
-        || path.StartsWith("scripts/", StringComparison.Ordinal)
-        || path is "docs/verification.md";
+    private static VerificationStep IntegrationTests(RepositoryContext repository) =>
+        new("integration-tests", "dotnet", ["test", "--project",
+            repository.Path("tests", "Heartbeat.Integration.Tests", "Heartbeat.Integration.Tests.csproj")]);
 
-    private static bool NeedsBrowser(string path) =>
-        path.Contains("/src/app/", StringComparison.Ordinal)
-        || path.Contains("/src/components/", StringComparison.Ordinal)
-        || path.Contains("/src/api/", StringComparison.Ordinal)
-        || path.Contains("/tests/e2e/", StringComparison.Ordinal);
+    private static VerificationStep CliTests(RepositoryContext repository) =>
+        new("developer-cli-tests", "dotnet", ["test", "--project",
+            repository.Path("tests", "Heartbeat.Dev.Tests", "Heartbeat.Dev.Tests.csproj")]);
 
-    private static void AddIf(
-        List<VerificationStep> steps,
-        CheckSelection selection,
-        CheckSelection required,
-        VerificationStep step)
+    private static IReadOnlyList<VerificationStep> Docs(RepositoryContext repository)
     {
-        if (selection.HasFlag(required)) steps.Add(step);
+        var root = repository.Path("src", "Docs", "Heartbeat.Docs");
+        return [
+            new("docs-types", "pnpm", ["--dir", root, "types:check"]),
+            new("docs-build", "pnpm", ["--dir", root, "build"]),
+        ];
     }
 
     private static IReadOnlyList<VerificationStep> Full(RepositoryContext repository) =>
-        [DotnetSolution(repository), WebVerify(repository), WebBrowser(repository)];
-
-    private static VerificationStep DotnetSolution(RepositoryContext repository) =>
-        new("dotnet", "dotnet", ["test", repository.Path("Heartbeat.slnx"), "--no-restore", "--verbosity", "minimal"]);
-
-    private static VerificationStep DotnetCli(RepositoryContext repository) =>
-        new("developer-cli", "dotnet", ["test", repository.Path("tests", "Heartbeat.Dev.Tests", "Heartbeat.Dev.Tests.csproj"), "--no-restore", "--verbosity", "minimal"]);
-
-    private static VerificationStep WebVerify(RepositoryContext repository) =>
-        new("web", "npm", ["--prefix", repository.Path("src", "Frontend", "Heartbeat.Web"), "run", "verify"]);
-
-    private static VerificationStep WebBrowser(RepositoryContext repository) =>
-        new("browser", "npm", ["--prefix", repository.Path("src", "Frontend", "Heartbeat.Web"), "run", "test:e2e"]);
+        [Build(repository), IntegrationTests(repository), CliTests(repository), .. Docs(repository)];
 
     private static async Task<IReadOnlyList<string>> ChangedPathsAsync(
-        IProcessRunner runner,
-        string baseRef,
-        CancellationToken cancellationToken)
+        IProcessRunner runner, string baseRef, CancellationToken cancellationToken)
     {
-        var tracked = await runner.CaptureAsync("git", ["diff", "--no-renames", "--name-only", "-z", baseRef, "--"], null, cancellationToken);
+        var tracked = await runner.CaptureAsync("git",
+            ["diff", "--no-renames", "--name-only", "-z", baseRef, "--"], null, cancellationToken);
         if (tracked.ExitCode != 0) throw new CommandUsageException($"Invalid Git base '{baseRef}': {tracked.StdErr.Trim()}");
-        var untracked = await runner.CaptureAsync("git", ["ls-files", "--others", "--exclude-standard", "-z"], null, cancellationToken);
+        var untracked = await runner.CaptureAsync("git",
+            ["ls-files", "--others", "--exclude-standard", "-z"], null, cancellationToken);
         if (untracked.ExitCode != 0) throw new InvalidOperationException(untracked.StdErr.Trim());
         return tracked.StdOut.Split('\0', StringSplitOptions.RemoveEmptyEntries)
             .Concat(untracked.StdOut.Split('\0', StringSplitOptions.RemoveEmptyEntries))
-            .Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal)
-            .ToArray();
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
     }
 
     [Flags]
-    private enum CheckSelection
-    {
-        None = 0,
-        Dotnet = 1,
-        Cli = 2,
-        Web = 4,
-        Browser = 8,
-        Unknown = 16,
-    }
+    private enum CheckSelection { None = 0, Build = 1, Backend = 2, Cli = 4, Docs = 8, Unknown = 16 }
 }
 
 internal static class VerificationReporter

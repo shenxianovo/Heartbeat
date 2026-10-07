@@ -6,19 +6,21 @@
 
 ## 启动
 
-需要 Docker 和 Docker Compose。从仓库根目录运行：
+需要 Docker Compose 和仓库指定的 .NET SDK。从仓库根目录启动开发环境：
 
 ```sh
-docker compose up --build -d
+dotnet run --project tools/Heartbeat.Dev -- env up
 ```
 
-开发模式：
+单独启动 API、文档站或数据库，将目标加在 `env up` 后，例如：
 
 ```sh
-docker compose -f compose.yaml -f compose.dev.yaml up --build -d
+dotnet run --project tools/Heartbeat.Dev -- env up api
 ```
 
 文档站：<http://localhost:3000/core>。API：<http://localhost:8080/api>。容器操作见[后端 README](src/Backend/Heartbeat.Api/README.md#容器操作)。
+
+`--release` 在本地运行生产构建。也可直接使用 `docker compose -f compose.yaml -f compose.dev.yaml up --build -d` 启动开发环境，或 `docker compose up --build -d` 运行生产构建。停止、测试与质量扫描见[开发工具 README](tools/Heartbeat.Dev/README.md)。
 
 ## 文档
 

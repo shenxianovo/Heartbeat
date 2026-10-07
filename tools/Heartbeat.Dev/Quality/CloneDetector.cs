@@ -31,18 +31,18 @@ internal sealed record CloneScan(
     IReadOnlyList<CloneFinding> NewFindings,
     IReadOnlyList<CloneFinding> StockFindings);
 
-internal sealed record CloneQualityReport(CloneScan Production, CloneScan Tests)
+internal sealed record CloneQualityReport(CloneScan Production, CloneScan Tests, CloneScan? Tooling = null)
 {
-    public bool Available => Production.Available && Tests.Available;
-    public int NewClones => Production.NewClones + Tests.NewClones;
-    public IReadOnlyList<CloneScan> Scans => [Production, Tests];
+    public bool Available => Scans.All(scan => scan.Available);
+    public int NewClones => Scans.Sum(scan => scan.NewClones);
+    public IReadOnlyList<CloneScan> Scans => Tooling is null ? [Production, Tests] : [Production, Tests, Tooling];
 
-    public string? Unavailable => Production.Unavailable ?? Tests.Unavailable;
+    public string? Unavailable => Scans.FirstOrDefault(scan => !scan.Available)?.Unavailable;
 }
 
 /// <summary>
 /// 分别扫描生产和测试代码的精确重复，报告位置、规模及相对基点的变化。
-/// 闸门只阻止新增重复簇。
+/// 发现仅供审查，工具故障表示扫描未完成。
 /// </summary>
 internal sealed class CloneDetector(RepositoryContext repository, IProcessRunner runner)
 {
@@ -64,7 +64,7 @@ internal sealed class CloneDetector(RepositoryContext repository, IProcessRunner
         if (!File.Exists(executable))
         {
             var missing = $"Run npm --prefix {toolDirectory} ci --ignore-scripts";
-            return new CloneQualityReport(Missing("production", missing), Missing("tests", missing));
+            return new CloneQualityReport(Missing("production", missing), Missing("tests", missing), Missing("tooling", missing));
         }
 
         var files = baseline.Files.Concat(current.Files).ToArray();
@@ -72,7 +72,9 @@ internal sealed class CloneDetector(RepositoryContext repository, IProcessRunner
             executable, "production", Pattern(files, SourceRole.Production), baseRef, artifactDirectory, commands, cancellationToken);
         var tests = await ScanAsync(
             executable, "tests", Pattern(files, SourceRole.Test), baseRef, artifactDirectory, commands, cancellationToken);
-        return new CloneQualityReport(production, tests);
+        var tooling = await ScanAsync(
+            executable, "tooling", Pattern(files, SourceRole.Tooling), baseRef, artifactDirectory, commands, cancellationToken);
+        return new CloneQualityReport(production, tests, tooling);
     }
 
     // jscpd applies this pattern to both trees. Keep deleted baseline files and
@@ -106,12 +108,11 @@ internal sealed class CloneDetector(RepositoryContext repository, IProcessRunner
             "--reporters", "console,json",
             "--output", reportDirectory,
             "--baseline-from-ref", baseRef,
-            "--fail-on-new-clones",
             "--no-colors",
             "--no-tips",
         };
         commands.Add($"jscpd . --config {configPath} --mode strict --min-lines {MinimumLines} --min-tokens {MinimumTokens} "
-            + $"--baseline-from-ref {baseRef} --fail-on-new-clones");
+            + $"--baseline-from-ref {baseRef}");
         var result = await runner.CaptureAsync(executable, arguments, null, cancellationToken);
         await File.WriteAllTextAsync(
             Path.Combine(artifactDirectory, $"jscpd-{scope}.log"),
@@ -124,7 +125,7 @@ internal sealed class CloneDetector(RepositoryContext repository, IProcessRunner
     internal static CloneScan Read(string scope, string prefix, string reportDirectory, ProcessResult result)
     {
         var reportPath = Path.Combine(reportDirectory, "jscpd-report.json");
-        if (!File.Exists(reportPath))
+        if (result.ExitCode is not (0 or 1) || !File.Exists(reportPath))
         {
             return new CloneScan(scope, false, $"jscpd could not scan {scope}: {FailureLine(result)}",
                 reportDirectory, 0, 0, 0, 0, [], []);

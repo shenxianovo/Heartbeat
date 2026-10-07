@@ -2,6 +2,10 @@
   "name": "heartbeat-quality-tools",
   "private": true,
   "devDependencies": {
-    "jscpd": "5.2.0"
+    "@typescript-eslint/parser": "8.71.1",
+    "eslint": "10.12.0",
+    "jscpd": "5.2.0",
+    "knip": "6.40.0",
+    "typescript": "6.0.3"
   }
 }

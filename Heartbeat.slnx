@@ -9,11 +9,11 @@
     <Project Path="src/Backend/Heartbeat.Infrastructure/Heartbeat.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Heartbeat.Dev.Tests/Heartbeat.Dev.Tests.csproj" />
     <Project Path="tests/Heartbeat.Integration.Tests/Heartbeat.Integration.Tests.csproj" />
     <Project Path="tests/Heartbeat.Testing/Heartbeat.Testing.csproj" />
   </Folder>
   <Folder Name="/tools/">
-    <Project Path="tools/Heartbeat.Collector.Sample/Heartbeat.Collector.Sample.csproj" />
     <Project Path="tools/Heartbeat.Dev/Heartbeat.Dev.csproj" />
   </Folder>
 </Solution>

@@ -4,11 +4,15 @@ namespace Heartbeat.Dev;
 
 internal sealed record ProcessResult(int ExitCode, string StdOut, string StdErr);
 
+internal sealed class CapturedProcessCancelledException(string stdout, string stderr, CancellationToken token)
+    : OperationCanceledException("Captured process was cancelled.", token)
+{
+    public string StdOut { get; } = stdout;
+    public string StdErr { get; } = stderr;
+}
+
 internal interface IProcessRunner
 {
-    // Opens a user-owned GUI application without attaching its lifetime to the CLI.
-    void OpenApplication(string path) => throw new NotSupportedException();
-
     Task<ProcessResult> CaptureAsync(
         string fileName,
         IReadOnlyList<string> arguments,
@@ -24,15 +28,6 @@ internal interface IProcessRunner
 
 internal sealed class ProcessRunner(string workingDirectory) : IProcessRunner
 {
-    public void OpenApplication(string path)
-    {
-        using var process = Process.Start(new ProcessStartInfo(path)
-        {
-            WorkingDirectory = workingDirectory,
-            UseShellExecute = true,
-        });
-    }
-
     public Task<ProcessResult> CaptureAsync(
         string fileName,
         IReadOnlyList<string> arguments,
@@ -67,8 +62,8 @@ internal sealed class ProcessRunner(string workingDirectory) : IProcessRunner
         IReadOnlyDictionary<string, string?>? environment = null)
     {
         using var process = Start(workingDirectory, fileName, arguments, environment, redirectOutput: true);
-        var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
+        var stdout = process.StandardOutput.ReadToEndAsync();
+        var stderr = process.StandardError.ReadToEndAsync();
         try
         {
             await process.WaitForExitAsync(cancellationToken);
@@ -76,7 +71,8 @@ internal sealed class ProcessRunner(string workingDirectory) : IProcessRunner
         catch (OperationCanceledException)
         {
             Kill(process);
-            throw;
+            await process.WaitForExitAsync(CancellationToken.None);
+            throw new CapturedProcessCancelledException(await stdout, await stderr, cancellationToken);
         }
         return new ProcessResult(process.ExitCode, await stdout, await stderr);
     }
@@ -111,38 +107,6 @@ internal sealed class ProcessRunner(string workingDirectory) : IProcessRunner
         var process = new Process { StartInfo = start };
         process.Start();
         return process;
-    }
-
-    /// 启动一个由 CLI 管理的 .NET 子进程，输出被重定向以便留证。
-    internal static Process StartManaged(
-        string workingDirectory,
-        string assembly,
-        IReadOnlyList<string> arguments,
-        IReadOnlyDictionary<string, string?>? environment) =>
-        Start(workingDirectory, "dotnet", [assembly, .. arguments], environment, redirectOutput: true);
-
-    /// 先发 SIGINT 让子进程自己收尾（写完产物、停掉观测），超时才强杀。
-    internal static async Task InterruptAsync(
-        Process process,
-        TimeSpan timeoutAfter,
-        CancellationToken cancellationToken)
-    {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(timeoutAfter);
-        var signalStart = new ProcessStartInfo("kill");
-        signalStart.ArgumentList.Add("-INT");
-        signalStart.ArgumentList.Add(process.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        using var signal = Process.Start(signalStart);
-        if (signal is not null) await signal.WaitForExitAsync(cancellationToken);
-        try
-        {
-            await process.WaitForExitAsync(timeout.Token);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            process.Kill(entireProcessTree: true);
-            await process.WaitForExitAsync(cancellationToken);
-        }
     }
 
     private static void Kill(Process process)

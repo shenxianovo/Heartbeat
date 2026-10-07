@@ -39,7 +39,7 @@ internal sealed class VerificationCommand(
             return 0;
         }
         return await EvidenceSession.ExecuteAsync(repository, "verify", plan.Mode,
-            ["Browser auth and API responses are mocked; passing checks do not prove the deployed end-to-end chain."],
+            ["Container startup and browser interaction are verified separately."],
             evidence => RunPlanAsync(plan, evidence, cancellationToken), notes: output);
     }
 
@@ -55,24 +55,50 @@ internal sealed class VerificationCommand(
             foreach (var step in plan.Steps)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var environment = EvidenceEnvironment(step, run);
-                var arguments = await WebVerificationWorkspace.ArgumentsAsync(repository, run, step.Arguments, cancellationToken);
+                var environment = step.Environment;
+                var arguments = step.Arguments;
                 var command = $"{step.FileName} {string.Join(' ', arguments.Select(Quote))}";
                 commands.Add(command);
                 await output.WriteLineAsync($"Running {step.Name} ...");
-                var result = await runner.CaptureAsync(step.FileName, arguments, environment, cancellationToken);
                 var log = Path.Combine(run.Directory, $"{step.Name}.log");
+                ProcessResult result;
+                try
+                {
+                    result = await runner.CaptureAsync(step.FileName, arguments, environment, cancellationToken);
+                }
+                catch (CapturedProcessCancelledException cancelled)
+                {
+                    await File.WriteAllTextAsync(log, cancelled.StdOut + cancelled.StdErr, CancellationToken.None);
+                    results.Add((step.Name, 130, log));
+                    throw;
+                }
                 await File.WriteAllTextAsync(log, result.StdOut + result.StdErr, cancellationToken);
                 results.Add((step.Name, result.ExitCode, log));
-                if (result.ExitCode == 130) return 130;
+                if (result.ExitCode == 130) { exitCode = 130; return 130; }
                 if (result.ExitCode == 0) continue;
                 if (exitCode == 0) exitCode = result.ExitCode;
                 await output.WriteAsync(result.StdErr.Length > 0 ? result.StdErr : result.StdOut);
             }
             return exitCode;
         }
+        catch (OperationCanceledException)
+        {
+            exitCode = 130;
+            throw;
+        }
+        catch (Exception)
+        {
+            exitCode = 1;
+            throw;
+        }
         finally
         {
+            await File.WriteAllTextAsync(Path.Combine(run.Directory, "verification.json"),
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    plan.Mode, plan.Base, plan.ChangedPaths, exitCode,
+                    results = results.Select(result => new { result.Name, result.ExitCode, result.Log }),
+                }, JsonOptions.Indented), CancellationToken.None);
             await WriteSummaryAsync(results);
         }
     }
@@ -85,13 +111,6 @@ internal sealed class VerificationCommand(
             var status = result.ExitCode switch { 0 => "succeeded", 130 => "cancelled", _ => "failed" };
             await output.WriteLineAsync($"  {result.Name}: {status} (exit {result.ExitCode}); log: {result.Log}");
         }
-    }
-
-    private IReadOnlyDictionary<string, string?>? EvidenceEnvironment(VerificationStep step, ArtifactRun run)
-    {
-        if (step.Name == "browser") return PlaywrightEvidenceEnvironment.Create(run,
-            WebVerificationWorkspace.Environment(repository, step.Environment));
-        return step.Name == "web" ? WebVerificationWorkspace.Environment(repository, step.Environment) : step.Environment;
     }
 
     private static string Quote(string value) => value.Contains(' ', StringComparison.Ordinal) ? $"\"{value}\"" : value;

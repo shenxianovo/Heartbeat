@@ -1,91 +1,35 @@
 namespace Heartbeat.Dev;
 
-internal enum EnvironmentAction
-{
-    Up,
-    Logs,
-    Status,
-    Down,
-    Reset,
-}
+internal enum EnvironmentAction { Up, Logs, Status, Down, Reset }
 
 internal sealed record EnvironmentOptions(
-    EnvironmentAction Action,
-    bool Release,
-    string? EnvironmentFile,
-    bool Json,
-    bool Apply,
+    EnvironmentAction Action, bool Release, string? EnvironmentFile, bool Json, bool Apply,
     IReadOnlySet<string> RequestedServices);
 
 internal sealed record EnvironmentPlan(
-    EnvironmentOptions Options,
-    IReadOnlyList<string> ComposeServices,
-    bool RunDesktop)
+    EnvironmentOptions Options, IReadOnlyList<string> ComposeServices, bool WholeStack)
 {
-    internal static readonly string[] AllowedServices =
-        ["web", "api", "db", "hub", "desktop"];
+    internal static readonly string[] AllowedServices = ["all", "api", "docs", "db"];
 
     public static EnvironmentPlan Create(EnvironmentOptions options)
     {
         var requested = new HashSet<string>(options.RequestedServices, StringComparer.OrdinalIgnoreCase);
         foreach (var service in requested)
-            if (!AllowedServices.Contains(service))
-                throw new CommandUsageException($"Unknown env service '{service}'.");
-        if (options.Action == EnvironmentAction.Reset && requested.Count > 0)
-            throw new CommandUsageException("env reset always targets the whole local stack and does not accept services.");
-        if (options.Action != EnvironmentAction.Up && requested.Contains("desktop"))
-            throw new CommandUsageException("desktop is a native application; view its status and quit from Heartbeat Dev's window, menu bar or system tray.");
-        requested = DefaultSelection(options.Action, requested);
-        var selected = ExpandDependencies(options.Action, requested);
-        return new EnvironmentPlan(options with { RequestedServices = requested },
-            SelectComposeServices(options.Action, selected), selected.Contains("desktop"));
-    }
-
-    private static HashSet<string> DefaultSelection(EnvironmentAction action, HashSet<string> requested)
-    {
-        if (requested.Count == 0 && action != EnvironmentAction.Reset)
+            if (!AllowedServices.Contains(service, StringComparer.OrdinalIgnoreCase))
+                throw new CommandUsageException($"Unknown env target '{service}'.");
+        if (requested.Contains("all") && requested.Count > 1)
+            throw new CommandUsageException("'all' cannot be combined with individual targets.");
+        var whole = requested.Count == 0 || requested.Contains("all");
+        var services = new List<string>();
+        if (!whole)
         {
-            requested.UnionWith(["web", "api", "db"]);
+            foreach (var service in AllowedServices.Skip(1))
+                if (requested.Contains(service)) services.Add(service);
+            if (options.Action == EnvironmentAction.Up && requested.Overlaps(["api", "docs"]))
+                services.Add("nginx");
+            if (options.Action is EnvironmentAction.Down or EnvironmentAction.Logs or EnvironmentAction.Status
+                && requested.Contains("api")) services.Add("migrate");
         }
-        return requested;
+        return new EnvironmentPlan(options with { RequestedServices = requested }, services, whole);
     }
-
-    private static HashSet<string> ExpandDependencies(EnvironmentAction action, HashSet<string> requested)
-    {
-        var selected = new HashSet<string>(requested, StringComparer.OrdinalIgnoreCase);
-        if (action != EnvironmentAction.Up) return selected;
-        if (selected.Contains("web")) selected.Add("api");
-        if (selected.Contains("api")) selected.Add("db");
-        return selected;
-    }
-
-    private static List<string> SelectComposeServices(
-        EnvironmentAction action,
-        HashSet<string> selected)
-    {
-        if (action == EnvironmentAction.Up) return SelectForUp(selected);
-        var services = new List<string>();
-        AddIfSelected(services, selected, "web");
-        AddIfSelected(services, selected, "api");
-        if (action == EnvironmentAction.Down && selected.Contains("api")) services.Add("migrate");
-        AddIfSelected(services, selected, "db");
-        AddIfSelected(services, selected, "hub");
-        return services;
-    }
-
-    private static List<string> SelectForUp(HashSet<string> selected)
-    {
-        var services = new List<string>();
-        AddIfSelected(services, selected, "db");
-        if (selected.Contains("api")) services.AddRange(["migrate", "api"]);
-        AddIfSelected(services, selected, "web");
-        AddIfSelected(services, selected, "hub");
-        return services;
-    }
-
-    private static void AddIfSelected(List<string> result, HashSet<string> selected, string service)
-    {
-        if (selected.Contains(service)) result.Add(service);
-    }
-
 }
