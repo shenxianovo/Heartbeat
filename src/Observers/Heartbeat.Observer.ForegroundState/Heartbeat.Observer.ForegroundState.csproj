@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Heartbeat.Observers.ForegroundState</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+    <ProjectReference Include="../../Core/Heartbeat.Core/Heartbeat.Core.csproj" />
+    <InternalsVisibleTo Include="Heartbeat.Integration.Tests" />
+  </ItemGroup>
+</Project>

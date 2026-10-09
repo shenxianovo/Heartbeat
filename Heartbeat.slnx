@@ -8,6 +8,9 @@
     <Project Path="src/Backend/Heartbeat.Application/Heartbeat.Application.csproj" />
     <Project Path="src/Backend/Heartbeat.Infrastructure/Heartbeat.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Observers/">
+    <Project Path="src/Observers/Heartbeat.Observer.ForegroundState/Heartbeat.Observer.ForegroundState.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Heartbeat.Dev.Tests/Heartbeat.Dev.Tests.csproj" />
     <Project Path="tests/Heartbeat.Integration.Tests/Heartbeat.Integration.Tests.csproj" />

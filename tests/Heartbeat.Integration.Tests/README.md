@@ -26,6 +26,16 @@ dotnet test --project tests/Heartbeat.Integration.Tests/Heartbeat.Integration.Te
 
 Unicode 用例覆盖四类保存入口的非法字段名与字符串值，确认返回 `400` 且不留下实体。请求体边界用例通过真实 Kestrel 监听随机本地端口，验证恰好 10 MiB 可以保存、超限请求返回 JSON `413`，并覆盖分块传输。
 
-`ObservationSchemaApiTests` 验证观测定义的创建、重复提交、同 ID 内容更新、JSON 值类型、时间边界、非法替换和类别冲突。是否需要新 ID 由提交方判断，后端不比较 JSON 定义的语义。
+`ObservationSchemaApiTests` 验证观测定义的创建、重复提交、同 ID 内容更新、JSON 值类型、仅含名称和定义的读回内容、非法替换和类别冲突。是否需要新 ID 由提交方判断，后端不比较 JSON 定义的语义。
 
 `OpenApiContractTests` 检查后端构建生成的规范：专用请求类型、必填可空时间、路径身份、无正文的成功响应、多类别读取和统一错误格式。该组用例不创建数据库。
+
+### 前台状态 Observer（macOS）
+
+| 测试类 | 检查内容 | 输入或依赖 |
+| --- | --- | --- |
+| `MacObserverIdentityTests` | 首次创建、重复启动、独立实例、并发首次启动、损坏文件保留 | 临时身份文件 |
+| `MacObserverSubmissionTests` | 快照、引用、微秒时间、重复提交、观测写入失败时保留已保存实体 | 采集程序的提交实现、真实 API、独立 PostgreSQL |
+| `MacObserverReadBackTests` | 类别或内容不一致时报告核对失败 | 模拟读取响应 |
+
+这些用例不调用 macOS 原生接口。原生读取需在 macOS 上实际运行 [前台状态程序](../../src/Observers/Heartbeat.Observer.ForegroundState/README.md)验证。

@@ -22,6 +22,14 @@ dotnet run --project tools/Heartbeat.Dev -- env up api
 
 `--release` 在本地运行生产构建。也可直接使用 `docker compose -f compose.yaml -f compose.dev.yaml up --build -d` 启动开发环境，或 `docker compose up --build -d` 运行生产构建。停止、测试与质量扫描见[开发工具 README](tools/Heartbeat.Dev/README.md)。
 
+macOS 上读取一次前台应用并提交到本地 API：
+
+```sh
+dotnet run --project src/Observers/Heartbeat.Observer.ForegroundState
+```
+
+前台状态 Observer 的实例身份、API 地址和运行结果见 [前台状态程序 README](src/Observers/Heartbeat.Observer.ForegroundState/README.md)。能力与平台客户端的分工见 [Observers 概览](src/Docs/Heartbeat.Docs/content/docs/observers/index.mdx)。
+
 ## 文档
 
 - [模型与长期文档](src/Docs/Heartbeat.Docs/content/docs/core/index.mdx)
