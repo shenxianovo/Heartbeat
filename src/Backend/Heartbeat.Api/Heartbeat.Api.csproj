@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
     <OpenApiDocumentsDirectory>../../Docs/Heartbeat.Docs/content/docs/api</OpenApiDocumentsDirectory>
     <OpenApiGenerateDocumentsOptions>--document-name v1 --file-name openapi --openapi-version OpenApi3_1</OpenApiGenerateDocumentsOptions>
   </PropertyGroup>
