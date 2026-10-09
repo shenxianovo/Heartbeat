@@ -86,4 +86,4 @@ dotnet run --project tools/Heartbeat.Dev -- artifacts prune --apply
 
 `Environment` 负责 Compose 操作与就绪检查，`Verification` 选择并执行检查，`Quality` 分类和扫描源码，`Artifacts` 保存和管理证据，`Infrastructure` 执行进程并定位仓库。各命令通过 System.CommandLine 注册，解析后直接传递类型化选项，不递归调用 CLI。
 
-输入错误返回 2，执行失败返回非零，取消返回 130。职责决定见 [ADR 0008](../../src/Docs/Heartbeat.Docs/content/docs/adr/0008-developer-cli-and-verification.mdx)。
+输入错误返回 2，执行失败返回非零，取消返回 130。职责决定见 [ADR 0007](../../src/Docs/Heartbeat.Docs/content/docs/adr/0007-developer-cli-and-verification.mdx)。

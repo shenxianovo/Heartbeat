@@ -21,7 +21,6 @@
     { "from": "O", "to": "T", "kind": "implementation", "label": "实现" },
     { "from": "R", "to": "E", "kind": "implementation", "label": "实现" },
     { "from": "S", "to": "E", "kind": "implementation", "label": "实现" },
-    { "from": "S", "to": "T", "kind": "implementation", "label": "实现" },
     { "from": "DATA", "to": "E", "kind": "implementation", "label": "实现" },
     { "from": "REL", "to": "E", "kind": "implementation", "label": "实现" },
     { "from": "REL", "to": "T", "kind": "implementation", "label": "实现" },

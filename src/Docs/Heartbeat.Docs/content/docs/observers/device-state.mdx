@@ -1,0 +1,28 @@
+---
+title: "设备状态"
+description: "设备状态实例的身份、观测定义与状态时间"
+---
+
+设备状态 Observer 负责形成设备休眠和清醒状态的观测。它与前台状态、输入事件 Observer 分别拥有自己的实例身份，可以运行在同一程序中。职责已确认，具体数据与采集规则仍为草案，尚未实现。
+
+## ObserverId
+
+`ObserverId` 标识一个独立的设备状态采集器实例。实例多次采集、重启或升级时沿用原身份；另一台设备或另一个独立实例使用自己的身份。
+
+该 ID 标识采集器实例，不直接充当设备实体 ID。具体身份生成、本地保存与设备关联方式尚未确定。
+
+## ObservationSchema
+
+使用[设备休眠与清醒](./schemas/device-state.mdx)表达设备状态。草案用 `state` 区分 `awake` 与 `asleep`。
+
+设备清醒、会话未锁定和近期存在输入是不同事实。锁屏的责任归属和“用户活跃”的推断规则尚未确定，不合并到当前设备状态定义中。
+
+各平台遵循相同事实含义、字段和时间规则时，共用一份 Schema。
+
+## ITimed
+
+设备状态使用时间段 Observation。起止时间表示已知的状态边界，不表示采集程序启动或提交的时间。
+
+系统休眠／唤醒证据如何确定边界、程序停止或崩溃后的空白如何处理，尚需确认。未取得某段时间的状态证据时，不能仅凭没有输入或没有读数断言设备休眠。
+
+Observer、ObservationSchema 和具体数据只实现 `IEntity`。模型时间规则见 [ITimed](../core/model/contracts/timed.mdx)，组件职责见 [ADR 0002](../adr/0002-observer-capabilities-and-platform-clients.mdx#桌面观测职责)。

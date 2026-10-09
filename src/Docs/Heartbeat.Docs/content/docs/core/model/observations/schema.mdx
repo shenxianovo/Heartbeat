@@ -6,7 +6,9 @@ title: "ObservationSchema"
 
 ## 含义
 
-`ObservationSchema` 是观测定义实体。观测定义包含具体数据的结构、约束、观测表达的事实和事实时间的含义。
+`ObservationSchema` 定义具体数据的结构与约束，以及观测表达的事实和事实时间的含义。
+
+一个 Observer 可以使用多份观测定义，多个 Observer 也可以共用同一份定义。Observation 通过 `SchemaId` 明确引用解释自身的定义。
 
 ## 定义
 
@@ -15,13 +17,11 @@ title: "ObservationSchema"
 ```csharp
 using System.Text.Json;
 
-public sealed class ObservationSchema : IEntity, ITimed
+public sealed class ObservationSchema : IEntity
 {
     public required EntityId Id { get; init; }
     public required string Name { get; init; } // [!code ++]
     public required JsonElement Schema { get; init; } // [!code ++]
-    public DateTimeOffset? StartAt { get; init; }
-    public DateTimeOffset? EndAt { get; init; }
 }
 ```
 
@@ -30,7 +30,6 @@ public sealed class ObservationSchema : IEntity, ITimed
 | `Id` | 观测定义的实体标识 |
 | `Name` | 观测定义的名称 |
 | `Schema` | 具体数据的结构、约束和观测含义，以 JSON 保存 |
-| `StartAt`、`EndAt` | 观测定义的有效期，遵循 [ITimed](../contracts/timed.mdx) |
 
 ## 定义更新
 
@@ -38,14 +37,18 @@ public sealed class ObservationSchema : IEntity, ITimed
 
 如果仅修改观测定义的名称或说明，且语义与约束不变，可以保留原 `EntityId`。
 
-提交方判断是否需要新的 `EntityId`。后端检查请求格式、时间顺序和模型类别；同 ID 的合法请求按保存协议替换内容，后端不自动判断任意 JSON 定义的语义变化。
+提交方判断是否需要新 ID。后端只校验请求格式和模型类别，不比较 JSON 定义的语义。同 ID 的合法请求按[保存协议](../../../api/index.mdx#保存行为)替换内容。
 
-## 有效期
-
-有效期表示观测定义的适用时间。观测定义的创建时间、修改时间和具体数据的事实时间各自解释。
+观测定义不包含有效期。事实时间由 Observation 保存，决定见 [ADR 0003](../../../adr/0003-entity-submission-entry-points.mdx#定义更新)。
 
 ## 校验范围
 
 JSON 结构校验检查字段、类型和其他表示约束。
 
 引用有效性和多个记录之间的一致性，需要结合被引用实体和领域规则校验。
+
+## 具体定义
+
+每份具体观测定义在 Observers 栏目的 ObservationSchemas 分区单独成页。当前目标定义为[前台应用时段](../../../observers/schemas/foreground-application-interval.mdx)、[前台窗口标题时段](../../../observers/schemas/foreground-window-title.mdx)、[键鼠输入事件](../../../observers/schemas/input-event.mdx)和[设备休眠与清醒](../../../observers/schemas/device-state.mdx)，均包含待确认草案。
+
+当前代码仍使用应用时间点读数，契约见[当前单次读数](../../../observers/foreground-state.mdx#当前单次读数)。

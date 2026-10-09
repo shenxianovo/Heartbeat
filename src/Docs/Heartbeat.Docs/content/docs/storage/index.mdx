@@ -7,19 +7,19 @@ Heartbeat Storage 定义实体的索引、内容存储和数据库约定。实�
 
 ## 数据库
 
-实体索引和内容使用 PostgreSQL 存储，版本选用最新稳定发布。截至 2026-10-06，最新稳定版本为 18.6。版本信息见 [PostgreSQL 发布列表](https://www.postgresql.org/support/versioning/)。
+实体索引和内容使用 PostgreSQL。仓库的 `compose.yaml` 固定镜像为 `postgres:18.6-alpine`。服务和测试使用同一版本。
 
-整个服务使用 Docker 打包运行。Compose 在数据库健康后运行 EF migration bundle，迁移成功后启动 API。PostgreSQL 初始化时创建统计扩展，具体启动职责见 [ADR 0005](../adr/0005-backend-project-organization.mdx#docker-启动)。
+服务通过 Docker 运行。数据库健康后，Compose 运行 EF Core 迁移程序。迁移成功后，Compose 启动 API。PostgreSQL 初始化时创建统计扩展，职责见 [ADR 0005](../adr/0005-backend-project-organization.mdx#docker-启动)。
 
 ### 后端数据访问
 
-后端使用 .NET 10 的最新稳定维护版本。EF Core 管理表映射、Initial migration 和常规读写，Npgsql PostgreSQL Provider 负责访问 PostgreSQL。
+EF Core 管理表映射、Initial migration 和实体读写，Npgsql PostgreSQL Provider 访问 PostgreSQL。
 
-截至 2026-10-06，.NET 10 最新 SDK 为 `10.0.401`，运行时和 EF Core 为 `10.0.12`。仓库通过 `global.json` 和 `Directory.Packages.props` 管理版本。发布信息见 [.NET 10 下载页](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)和 [EF Core 包](https://www.nuget.org/packages/Microsoft.EntityFrameworkCore/10.0.12)。
+`global.json` 固定 .NET SDK 为 `10.0.401`，允许同功能版本的维护更新。运行时镜像和 EF Core 使用 `10.0.12`，配置见后端 Dockerfile 和 `Directory.Packages.props`。
 
 重写期间直接修改 Initial migration 和模型快照。
 
-迁移和模型快照位于 Infrastructure 的 `Database/Migrations/`，由仓库的 EF 工具生成。生成时以 Api 为启动项目；Api 引用 `Microsoft.EntityFrameworkCore.Design`，使用集中管理的版本，并设置 `PrivateAssets="all"`。
+迁移和模型快照位于 Infrastructure 的 `Database/Migrations/`。仓库的 EF 工具以 Api 为启动项目生成文件。Api 引用 `Microsoft.EntityFrameworkCore.Design`，版本集中管理，且设置 `PrivateAssets="all"`。
 
 Api 从 `ConnectionStrings:Heartbeat` 读取连接字符串，配置缺失或为空时启动失败。环境变量对应 `ConnectionStrings__Heartbeat`。
 
@@ -42,7 +42,7 @@ Infrastructure 通过 `AddHeartbeatInfrastructure(connectionString)` 注册 Npgs
 | `entities` | `EntityIndexRow` |
 | `entity_data` | `EntityDataRow` |
 
-两个存储类型位于 `Heartbeat.Infrastructure` 的 `Database/` 目录，每个类型一个文件。类型使用 `sealed class`，属性使用 `required` 和 `init`。标识使用 `EntityId`，通用 JSON 内容使用 `JsonElement`。EF Core 数据库上下文命名为 `HeartbeatDbContext`，位于同一目录。
+两个存储类型位于 `Heartbeat.Infrastructure/Database/`，每个类型一个文件。类型使用 `sealed class`，属性使用 `required` 和 `init`。标识使用 `EntityId`，JSON 内容使用 `JsonElement`。数据库上下文 `HeartbeatDbContext` 位于同一目录。
 
 `HeartbeatDbContext` 通过构造参数接收 `DbContextOptions<HeartbeatDbContext>`，数据库配置由外部提供。
 
@@ -64,11 +64,11 @@ Infrastructure 通过 `AddHeartbeatInfrastructure(connectionString)` 注册 Npgs
 | `observers` | `ObserverConfiguration` |
 | `observation_schemas` | `ObservationSchemaConfiguration` |
 
-`Database/Converters/EntityIdValueConverter.cs` 将 `EntityId` 解包为 `Guid`，读取时将 `Guid` 包装为 `EntityId`，保留原标识。`HeartbeatDbContext` 在 `ConfigureConventions` 中统一注册转换器，应用于所有 `EntityId` 属性，包括观测中的三个引用。数据库列类型为 `uuid`。
+`Database/Converters/EntityIdValueConverter.cs` 在写入时将 `EntityId` 解包为 `Guid`，读取时包装回 `EntityId`。标识保持不变。`HeartbeatDbContext.ConfigureConventions` 将转换器应用于所有 `EntityId` 属性，包括观测的三个引用。
 
 ### 统计与诊断
 
-第一版使用以下配置：
+数据库使用以下统计与诊断配置：
 
 | 项目 | 配置 | 用途 |
 | --- | --- | --- |
@@ -80,14 +80,22 @@ Infrastructure 通过 `AddHeartbeatInfrastructure(connectionString)` 注册 Npgs
 | `log_min_duration_statement` | `500ms` | 记录耗时达到阈值的 SQL |
 | `log_lock_waits` | `on` | 记录超过 `deadlock_timeout` 的锁等待 |
 | `deadlock_timeout` | 保留默认 `1s` | 控制死锁检查和锁等待日志的触发时间 |
-| `pg_stat_statements.track_planning` | 保留默认 `off` | 规划统计按需启用 |
+| `pg_stat_statements.track_planning` | 保留默认 `off` | 默认不采集规划统计 |
 | `auto_explain` | 暂不开启 | 需要执行计划解释慢查询时启用 |
 
-启用 `pg_stat_statements` 时，将扩展加入 `shared_preload_libraries` 的加载列表，重启 PostgreSQL，再在目标数据库执行：
+`pg_stat_statements` 必须由 `shared_preload_libraries` 预加载。仓库已在 Compose 中配置预加载，并在初始化 SQL 中创建扩展。
 
-```sql
-CREATE EXTENSION pg_stat_statements;
-```
+在其他数据库启用扩展时，需要重启数据库，现有连接会中断。
+
+1. 将 `pg_stat_statements` 加入 `shared_preload_libraries`。
+2. 重启 PostgreSQL。
+3. 在目标数据库执行：
+
+   ```sql
+   CREATE EXTENSION pg_stat_statements;
+   ```
+
+4. 验证：`pg_extension` 中存在 `extname = 'pg_stat_statements'` 的记录。
 
 扩展配置见 [pg_stat_statements](https://www.postgresql.org/docs/current/pgstatstatements.html)。慢 SQL 和锁等待日志见[日志配置](https://www.postgresql.org/docs/current/runtime-config-logging.html)，锁等待阈值见[锁配置](https://www.postgresql.org/docs/current/runtime-config-locks.html)。
 
@@ -103,7 +111,7 @@ CREATE EXTENSION pg_stat_statements;
 
 I/O 计时提供 I/O 等待的证据。判断 CPU 瓶颈时，还需结合锁等待和执行计划；总耗时减去 I/O 耗时不能直接作为 CPU 时间。两种 I/O 计时都会增加读取系统时钟的开销，实际成本取决于运行平台。见[统计配置](https://www.postgresql.org/docs/current/runtime-config-statistics.html)和[统计视图](https://www.postgresql.org/docs/current/monitoring-stats.html)。
 
-需要执行计划才能解释慢查询时，按需启用 `auto_explain`。开启 `log_analyze` 后，采集开销可能影响未达到慢查询阈值的语句。见 [auto_explain](https://www.postgresql.org/docs/current/auto-explain.html)。
+如果慢查询诊断需要执行计划，可以启用 `auto_explain`。开启 `log_analyze` 后，采集开销可能影响未达到慢查询阈值的语句。见 [auto_explain](https://www.postgresql.org/docs/current/auto-explain.html)。
 
 ## 命名
 
@@ -136,7 +144,7 @@ I/O 计时提供 I/O 等待的证据。判断 CPU 瓶颈时，还需结合锁等
 
 后端必须保留提交的实体标识。存储中的实体标识必须唯一。每个实体必须只有一份权威内容。
 
-第一版使用以下五张表：
+后端使用以下五张表：
 
 | 表名 | 内容 |
 | --- | --- |
@@ -152,19 +160,19 @@ I/O 计时提供 I/O 等待的证据。判断 CPU 瓶颈时，还需结合锁等
 
 ## 表约束
 
-五张表都以 `id` 为主键。四张内容表的 `id` 通过外键引用 `entities.id`。各列的 SQL `NOT NULL` 约束见对应表文档。JSON 内容中的 `null` 与 SQL `NULL` 分别解释。
+五张表都以 `id` 为主键。四张内容表的 `id` 通过外键引用 `entities.id`。各列的 SQL `NOT NULL` 约束见各表文档。JSON 的 `null` 是内容值，SQL `NULL` 表示列值缺失。
 
 四条外键使用 `ON DELETE CASCADE`。删除统一索引行时，自动删除同 ID 的内容行。
 
-`observations` 的 `observer_id`、`data_id`、`schema_id` 保留实体标识引用，不建立数据库外键，以允许被引用实体稍后入库。
+`observations` 的 `observer_id`、`data_id` 和 `schema_id` 不建立外键。后端允许先保存观测、再保存被引用实体。
 
-`observations` 和 `observation_schemas` 使用 `CHECK (start_at <= end_at)`。两个边界均已知时，开始时间必须早于或等于结束时间。任一边界未知时允许保存。
+`observations` 使用 `CHECK (start_at <= end_at)`。两个边界均已知时，开始时间必须早于或等于结束时间。任一边界未知时允许保存。
 
 表名匹配和跨表只有一份权威内容，由后端事务逻辑保证。内容表到统一索引的外键保证内容具有对应的索引。
 
 ## 查询索引
 
-第一版仅保留主键自动生成的索引。实际业务出现查询需求后，再结合 `pg_stat_statements`、慢 SQL 日志和执行计划确认是否新增查询索引。
+当前仅保留主键索引。出现新的查询需求时，结合 `pg_stat_statements`、慢 SQL 日志和执行计划判断是否新增索引。
 
 ## 写入一致性
 
@@ -172,11 +180,19 @@ I/O 计时提供 I/O 等待的证据。判断 CPU 瓶颈时，还需结合锁等
 
 如果写入失败，事务回滚，已保存的索引和内容保持不变。
 
-当前四类实体共用保存事务：先用 `INSERT ... ON CONFLICT DO NOTHING` 登记索引，再用 `SELECT ... FOR UPDATE` 锁定该 ID 的索引行。类别一致时写入或替换对应表的内容并提交事务；类别冲突时回滚。同一 ID 的并发保存通过索引行锁依次完成。
+四类实体共用以下保存事务：
+
+1. 用 `INSERT ... ON CONFLICT DO NOTHING` 登记索引。
+2. 用 `SELECT ... FOR UPDATE` 锁定该 ID 的索引行。
+3. 校验模型类别。类别冲突时回滚；类别一致时继续。
+4. 写入或替换内容。
+5. 提交事务。
+
+同一 ID 的并发保存通过索引行锁依次执行。
 
 ## 模型类别
 
-后端根据索引中的 `table_name` 映射模型类别。统一索引保存 `id` 和 `table_name`。
+后端根据索引中的 `table_name` 映射模型类别：
 
 | 存储表 | 模型类别 |
 | --- | --- |
@@ -206,9 +222,9 @@ I/O 计时提供 I/O 等待的证据。判断 CPU 瓶颈时，还需结合锁等
 
 后端将模型中的已知时间边界转换为 UTC，使用 `timestamptz` 保存。存储和读取的时间精度为 1 微秒。未知边界保存为 SQL `NULL`。
 
-EF 实体读写使用 `Database/Converters/UtcDateTimeOffsetValueConverter.cs`，写入前转换为 UTC，读取时保持 UTC。`HeartbeatDbContext` 在 `ConfigureConventions` 中统一注册该转换器，应用于 `DateTimeOffset` 属性及其可空形式，`null` 保持不变。
+EF 实体读写使用 `Database/Converters/UtcDateTimeOffsetValueConverter.cs`。转换器在写入前转换为 UTC，读取时返回 UTC，保留 `null`。`HeartbeatDbContext.ConfigureConventions` 将转换器应用于 `DateTimeOffset` 属性及其可空形式。
 
-Observation 和 ObservationSchema 保存使用参数化 SQL，提交时间参数前调用 `ToUniversalTime()`；读取通过 EF Core 转换器返回 UTC。可空边界保持 `null`。
+Observation 保存使用参数化 SQL，提交时间参数前调用 `ToUniversalTime()`；读取通过 EF Core 转换器返回 UTC。可空边界保持 `null`。
 
 带偏移的时间转换后表示同一时刻。例如，`2026-10-06T09:00:00+08:00` 转换为 `2026-10-06T01:00:00+00:00`；带 `Z` 的输入已经是 UTC。
 
@@ -224,4 +240,4 @@ Observation 和 ObservationSchema 保存使用参数化 SQL，提交时间参数
 
 如果重命名存储表，后端必须同步更新统一索引中的 `table_name` 和表名到模型类别的映射。
 
-存储决策见 [ADR 0003](../adr/0003-entity-storage-authority.mdx)。
+存储决策见 [ADR 0004](../adr/0004-entity-storage-authority.mdx)。

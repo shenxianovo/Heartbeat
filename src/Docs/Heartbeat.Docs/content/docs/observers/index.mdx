@@ -1,0 +1,41 @@
+---
+title: "概览"
+description: "观测主体 平台客户端与观测定义"
+---
+
+Observer 是实际形成观测的主体。每个主体实例拥有稳定的 `ObserverId`。API、数据源、输出类型和进程不同，不直接要求拆分主体。通用定义见 [Observer](../core/model/observations/observer.mdx)。
+
+平台客户端组合并运行所在平台的 Observer。多个 Observer 可以共处同一进程。客户端只传输已有观测时，保留原身份；主体形成新的聚合观测时，使用自己的身份。
+
+聚合数据保存具体 Observer 实例的引用，观测定义说明引用字段。跨平台实现的数据结构、约束、事实含义和时间规则一致时，可以共用同一份定义。分工决定见 [ADR 0002](../adr/0002-observer-capabilities-and-platform-clients.mdx)。
+
+## 文档结构
+
+Observer 页面记录实例身份、使用的观测定义和事实时间。每份观测定义单独成页，记录事实含义、数据字段与约束。
+
+## 目标与职责
+
+桌面观测按以下职责推进。下表记录已确认的目标；各类数据字段和采集规则逐项确定。
+
+| Observer | 目标观测 | 时间形式 |
+| --- | --- | --- |
+| [前台状态](./foreground-state.mdx) | [前台应用时段](./schemas/foreground-application-interval.mdx) | 时间段 |
+| [前台状态](./foreground-state.mdx) | [前台窗口标题时段](./schemas/foreground-window-title.mdx) | 时间段，独立于应用时间线 |
+| [输入事件](./input-events.mdx) | [键鼠输入事件](./schemas/input-event.mdx) | 事件发生的时间点 |
+| [设备状态](./device-state.mdx) | [设备休眠与清醒](./schemas/device-state.mdx) | 时间段 |
+
+三个 Observer 分别拥有自己的实例身份，可以运行在同一程序中。前台状态实例使用两份 ObservationSchema，分别定义应用和标题事实。
+
+“应用使用”先表示应用的前台时长。设备清醒、会话未锁定和近期存在输入是不同事实；无输入时仍可能在阅读或观看视频。“用户活跃”的判断规则、锁屏归属，以及是否从应用时长排除这些时段，尚未确定。
+
+当前应用和标题可保留在采集器内存中，无需持久化每次采样。历史 Observation 引用的数据保留当时内容；不能通过反复覆盖同一份“当前数据”来改变历史。结束时间未知也不能证明应用此刻仍在前台。
+
+## 当前实现
+
+| Observer | 已实现范围 | 文档 |
+| --- | --- | --- |
+| 前台状态 | macOS 前台应用单次读取、提交和读回核对 | [前台状态](./foreground-state.mdx) |
+
+当前程序位于 `src/Observers/Heartbeat.Observer.ForegroundState/`。现有应用读数契约见[当前单次读数](./foreground-state.mdx#当前单次读数)。
+
+窗口标题、Windows、连续采集、输入事件、锁屏和休眠采集尚未实现。四份目标 Schema 已分别成页，记录跨平台数据结构草案、已确认的时间形式与待确认规则。草案字段、固定 ID 和剩余采集规则需确认后实施。

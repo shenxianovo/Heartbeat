@@ -2,88 +2,35 @@
 title: "0005 核心模型与后端项目分工"
 ---
 
-核心模型和后端按职责划分为以下项目：
+核心模型与后端按职责分为四个项目，使模型和应用操作独立于 HTTP 与数据库实现。
 
-| 项目 | 位置 | 职责 |
+| 项目 | 职责 | 依赖 |
 | --- | --- | --- |
-| `Heartbeat.Core` | `src/Core/Heartbeat.Core/` | 实体、基础能力接口和模型自身的规则 |
-| `Heartbeat.Application` | `src/Backend/Heartbeat.Application/` | 保存、读取等应用操作与规则 |
-| `Heartbeat.Infrastructure` | `src/Backend/Heartbeat.Infrastructure/` | 数据库等具体实现，包括 EF Core、事务、表映射和迁移 |
-| `Heartbeat.Api` | `src/Backend/Heartbeat.Api/` | HTTP 请求、响应与启动组装 |
+| `Heartbeat.Core` | 实体、基础能力接口和模型规则 | 不依赖其他后端项目、ASP.NET Core 或 EF Core |
+| `Heartbeat.Application` | 保存与读取接口、应用操作和规则 | Core |
+| `Heartbeat.Infrastructure` | 数据库注册、映射、事务和迁移 | Application、Core |
+| `Heartbeat.Api` | HTTP 校验、请求与响应、启动组装 | Application；启动时引用 Infrastructure 注册实现 |
 
-原 `Heartbeat.Contracts` 改名为 `Heartbeat.Core`，目录、项目名、命名空间和引用统一更新。
-
-## 依赖方向
-
-- `Core` 不依赖另外三个项目，也不依赖 ASP.NET Core 或 EF Core。
-- `Application` 依赖 `Core`。
-- `Infrastructure` 依赖 `Application` 和 `Core`。
-- `Api` 依赖 `Application`，启动组装时引用 `Infrastructure` 注册具体实现。
-
-项目引用约束依赖方向。应用规则独立于 HTTP 和数据库实现。项目内部按业务能力组织代码，数据库映射与迁移集中管理。
-
-后端各项目共同组成一个运行进程，打包为一个后端容器。各层承担实际职责，避免增加仅转发调用的层。
-
-## 数据库映射
-
-Infrastructure 直接将 Core 的 `Observation`、`Observer`、`ObservationSchema` 映射到对应专用表。统一索引 `entities` 和通用 JSON 存储 `entity_data` 使用 Infrastructure 中独立定义的存储类型。
-
-表名、列名、数据库类型和约束统一在 Infrastructure 中配置，Core 保持独立。
-
-Api 从配置键 `ConnectionStrings:Heartbeat` 读取数据库连接字符串。配置缺失或为空时，启动失败。Infrastructure 的 `DependencyInjection.cs` 提供 `AddHeartbeatInfrastructure(connectionString)`，通过 `AddDbContext` 注册 `HeartbeatDbContext`，使用 Npgsql，生命周期为 `Scoped`。
-
-Api 负责提供配置，Infrastructure 负责数据库注册。
-
-Infrastructure 注册由应用服务容器管理的单例 `NpgsqlDataSource`。数据库上下文共用该数据源，宿主释放时关闭连接池。测试先释放 API 宿主，再删除用例数据库。
+项目引用约束依赖方向。项目内部按业务能力组织代码，数据库映射与迁移集中在 Infrastructure。后端项目共同组成一个进程和容器，不增加仅转发调用的层。
 
 ## 实体保存
 
-通用实体、Observer、Observation 和 ObservationSchema 的保存操作按以下职责划分：
+Application 定义保存接口和结果。Infrastructure 在同一事务中检查类别、登记索引并写入内容。Api 校验请求，组合路径 ID 与请求体，再将保存结果映射为 HTTP 响应。
 
-| 项目 | 职责 |
-| --- | --- |
-| `Application` | 定义保存接口，返回首次创建、保存已有实体、类别冲突或内容无法表示 |
-| `Infrastructure` | 在同一事务内完成类别检查、统一索引写入和实体内容写入 |
-| `Api` | 校验请求并组合路径 ID 与请求体，调用保存操作，将结果映射为 `201`、`204`、`409` 或 `400` |
+Infrastructure 直接将 Core 的 Observation、Observer 和 ObservationSchema 映射到专用表。统一索引和通用 JSON 内容使用独立的存储类型。数据库类型和约束由 Infrastructure 配置，Core 不依赖数据库。
 
-调用方通过一次保存操作得到结果。事务和存储细节由 Infrastructure 处理。
-
-`Application/Entities/IEntityStore.cs` 定义 `SaveEntityAsync`、`SaveObserverAsync`、`SaveObservationAsync`、`SaveObservationSchemaAsync` 和 `ReadAsync`。保存返回 `EntitySaveResult`，读取返回 `StoredEntity` 或 `null`。Infrastructure 的 `EntityStore` 实现这些操作。
+Api 提供连接配置，Infrastructure 注册数据库服务。HTTP 请求类型与 Core 实体分开定义，由 Api 组合为完整实体。
 
 ## 测试数据库
 
-测试负责数据库实例的创建与销毁。数据库辅助代码集中在 `tests/Heartbeat.Testing` 类库，负责容器生命周期、用例数据库的创建与迁移、连接字符串和数据库清理。集成测试和端到端测试各自创建独立实例。
+测试框架管理测试生命周期。`Heartbeat.Testing` 公共类库创建和销毁容器、准备和清理用例数据库。测试使用 Infrastructure 的同一套迁移，避免测试与服务采用不同表结构。
 
-测试框架使用 TUnit，通过仓库已配置的 Microsoft.Testing.Platform 运行，负责调用公共工具的生命周期方法。调用方负责先释放被测后端与连接，再由公共工具删除用例数据库。
-
-测试通过 `ConnectionStrings:Heartbeat` 向被测后端提供连接字符串，后端沿用正常数据库注册方式。测试建表与正常服务共用 Infrastructure 中的 EF Core 迁移。
-
-测试分工、实例隔离与工具接口见 [Heartbeat Testing](../testing/index.mdx)。
-
-## HTTP 入口
-
-`Heartbeat.Api` 使用 ASP.NET Core Minimal APIs。当前 HTTP 层负责接收实体、调用应用操作和返回结果，使用直接的路由定义组织入口。
-
-`Program.cs` 负责启动、依赖注册和路由组装。路由处理代码放在对应业务目录中，使用 `MapGroup` 表达 `/entities` 及其下级路由。应用操作与规则由 `Application` 承担。
-
-API 请求类型与 Core 实体分开定义，放在 `Api` 的对应业务目录中。保存实体的请求类型只包含请求体属性，实体自身的 `Id` 由路径提供。后端组合路径中的标识与请求体属性，得到完整实体。
-
-`EntityId` 的 HTTP JSON 转换由 `Api` 的 `Serialization/EntityIdJsonConverter.cs` 负责，统一注册到 HTTP JSON 处理。读取时接受 UUIDv7 字符串，输出时写成 UUID 字符串。
-
-时间的 HTTP JSON 转换由 `Api` 的 `Serialization/UtcDateTimeOffsetJsonConverter.cs` 负责，统一注册到 HTTP JSON 处理。输入接受带 `Z` 或明确 UTC 偏移的时间，输出转换为 UTC 并以 `Z` 结尾。可空时间的 `null` 保持不变。
-
-## OpenAPI 生成
-
-Api 负责声明 HTTP 请求、响应和契约约束，并在构建时生成 OpenAPI。请求类型提供字段、必填项和可空性；端点声明路径、状态码与操作标识；`OpenApi/` 补充 UUIDv7、通用 JSON、UTC 读取时间和多类别响应的结构。
-
-构建工具启动 API 入口收集元数据时，跳过数据库配置与注册。正常服务启动仍要求数据库连接配置。文档站读取生成文件，接口页与后端共用同一份结构声明。
+测试先释放被测后端与数据库连接，再删除用例数据库。工具接口和隔离规则见 [测试数据库](../testing/database.mdx)。
 
 ## Docker 启动
 
-Compose 组织五个服务：`db` 运行 PostgreSQL，`migrate` 应用 EF Core 迁移，`api` 提供实体接口，`docs` 提供文档站，`nginx` 提供业务/API 和文档两个 HTTP 入口。入口分流见 [ADR 0007](./0007-unified-http-entry.mdx)。
+Compose 管理 `db`、`migrate`、`api`、`docs` 和 `nginx` 五个服务。数据库健康后，`migrate` 运行后端镜像中的 EF Core 迁移程序；迁移成功后才启动 API。API 进程不在启动时建表。
 
-后端镜像同时包含 API 与构建生成的 EF migration bundle。数据库健康后，独立的 `migrate` 服务运行迁移；迁移成功后才启动 API。API 进程保持原有职责，不在启动时建表。
+PostgreSQL 初始化 SQL 创建统计扩展，Compose 提供统计与诊断配置。文档站独立运行；运行镜像使用 Next.js standalone 产物。开发模式沿用同一数据库初始化流程，API 使用 `dotnet watch`，文档站使用 `pnpm dev`。
 
-PostgreSQL 的初始化 SQL 创建 `pg_stat_statements` 扩展。统计和诊断参数由 Compose 配置，沿用 Storage 中已确认的设置。
-
-文档站独立运行。构建阶段生成 OpenAPI 并构建 Next.js standalone，运行镜像只需要 Node。开发配置沿用同一数据库初始化流程，API 使用 `dotnet watch`，文档站使用 `pnpm dev`。
+数据库配置见 [Heartbeat Storage](../storage/index.mdx)。HTTP 入口见 [ADR 0006](./0006-unified-http-entry.mdx)，OpenAPI 的权威来源见 [ADR 0001](./0001-documentation-source-of-truth.mdx)。后端操作说明见模块 README。

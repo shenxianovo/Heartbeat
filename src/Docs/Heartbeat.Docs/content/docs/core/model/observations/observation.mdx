@@ -6,7 +6,7 @@ title: "Observation"
 
 ## 含义
 
-`Observation` 是观测实体。`Observation` 引用观测主体、具体数据和观测定义，并记录被观测事实的时间。
+`Observation` 引用观测主体、具体数据和观测定义，并记录被观测事实的时间。
 
 ## 定义
 
@@ -43,11 +43,9 @@ public sealed class Observation : IEntity, ITimed
 
 ## 时区
 
-`TimeZone` 使用 IANA 时区 ID，例如 `Asia/Shanghai`。
+`TimeZone` 保存事实所属的 IANA 时区 ID，例如 `Asia/Shanghai`。IANA 是互联网号码分配机构（Internet Assigned Numbers Authority）。事实时区未知时，`TimeZone` 为 `null`。
 
-`TimeZone` 保存事实所属时区的信息。事实时区未知时，`TimeZone` 为 `null`。
-
-后端根据提交时间中的 UTC 偏移转换并保存 UTC 时间。前端按浏览器或系统时区显示事实时间。
+后端根据提交时间中的偏移转换为协调世界时（UTC）。前端按浏览器或系统时区显示事实时间。
 
 按本地日期查询时，先按浏览器或系统时区确定日期边界，再将边界转换为 UTC 比较。
 

@@ -1,0 +1,25 @@
+---
+title: "0003 创建方生成标识 按模型保存 按标识读取"
+---
+
+## 实体标识
+
+创建方在本地生成 UUIDv7 标识，无需等待后端响应。创建方识别出已有实体时，必须沿用原标识。后端保留提交的标识并保证唯一性。C# 使用 `EntityId` 封装 `Guid`，API 使用 UUIDv7 字符串。
+
+## 保存与读取
+
+保存路径区分通用领域实体、Observation、Observer 和 ObservationSchema。路径提供 `id`，请求体包含其余属性。读取入口 `GET /entities/{id}` 返回 `category` 和 `entity`，调用方只需实体标识即可读取内容。
+
+首次保存创建实体；同 ID 且类别一致的合法请求替换内容。重复提交相同请求后，保存结果不变。实体首次保存后，模型类别固定。类别冲突时，后端返回 `409 Conflict` 并保留原内容。
+
+## 定义更新
+
+ObservationSchema 的提交方判断定义的语义或约束是否变化。语义或约束变化时，必须创建新 ID。仅修改名称或说明且语义与约束不变时，可以沿用原 ID。后端校验格式和模型类别，不比较任意 JSON 定义的语义。
+
+Observation 通过 `SchemaId` 明确引用定义，因此 Schema 不包含有效期。语义变化由新 ID 区分，已有观测继续引用原定义。事实时间由 Observation 保存。
+
+## 时间表示
+
+采集程序提交以 `Z` 结尾或带明确 UTC 偏移的时间。后端转换为 UTC，以微秒精度保存和读取。前端按浏览器或系统时区显示时间。Observation 的 `timeZone` 单独保存事实所属时区；未知时间或时区必须提交 `null`。
+
+标识定义见 [IEntity](../core/model/contracts/entity.mdx)，路径、字段和响应见 [Heartbeat API](../api/index.mdx)。

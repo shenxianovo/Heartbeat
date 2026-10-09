@@ -1,0 +1,9 @@
+{
+  "title": "ObservationSchemas",
+  "pages": [
+    "foreground-application-interval",
+    "foreground-window-title",
+    "input-event",
+    "device-state"
+  ]
+}

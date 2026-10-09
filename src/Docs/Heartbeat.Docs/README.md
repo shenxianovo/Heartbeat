@@ -4,17 +4,18 @@
 
 文档页采用 Fumadocs Base UI 的 [Spacious 布局](https://www.fumadocs.dev/docs/ui/layouts/spacious)。布局与页面组件分别从 `fumadocs-ui/layouts/spacious`、`fumadocs-ui/layouts/spacious/page` 导入，样式在 `app/global.css` 中引入 `fumadocs-ui/css/generated/spacious.css`。桌面端正文在独立面板内滚动。
 
-标题下方使用 Fumadocs 的文档分区切换器，包含五个同级分区：
+标题下方使用 Fumadocs 的文档分区切换器，包含六个同级分区：
 
 | 分区 | 源文件 | 阅读入口 | 图标 |
 | --- | --- | --- | --- |
 | Heartbeat Core | [content/docs/core](content/docs/core) | `/core` | `Network` |
+| Observers | [content/docs/observers](content/docs/observers) | `/observers` | `ScanEye` |
 | Heartbeat API | [content/docs/api](content/docs/api) | `/api` | `Plug` |
 | Heartbeat Storage | [content/docs/storage](content/docs/storage) | `/storage` | `Database` |
 | Heartbeat Testing | [content/docs/testing](content/docs/testing) | `/testing` | `FlaskConical` |
 | Heartbeat ADR | [content/docs/adr](content/docs/adr) | `/adr/0001-documentation-source-of-truth` | `ScrollText` |
 
-各分区在自己的 `meta.json` 中设置 `root: true` 和图标，Fumadocs 根据页面树生成切换器。Core 包含概览、术语表和模型正文。Storage 包含实体索引、存储表和数据库约定。Testing 包含测试分工、框架、数据库隔离和公共工具。ADR 独立显示设计决策，标题保留编号。
+各分区在自己的 `meta.json` 中设置 `root: true` 和图标，Fumadocs 根据页面树生成切换器。Core 包含概览、术语表和模型正文。Observers 包含主体与观测定义。Storage 包含实体索引、存储表和数据库约定。Testing 包含测试分工、框架和数据库工具。ADR 展示架构决策记录（Architecture Decision Record），标题保留编号。
 
 Core 侧栏按“指南、基础契约、观测模型、关系模型”分组，页面直接显示在对应标题下。分组和顺序由 `content/docs/core/meta.json` 与 `content/docs/core/model/meta.json` 中的 `pages` 控制：`---标题---` 添加分组标题，`...目录` 展开该目录的导航项。
 
@@ -67,7 +68,9 @@ Mermaid 图通过 `components/mermaid.tsx` 统一使用手绘风格。
 
 报告页为 `/testing/reports/integration`，使用 `fumadocs-test-reports@0.1.1` 的中文 TUnit 报告组件。
 
-服务器从 `HEARTBEAT_TEST_REPORTS_DIR` 指定的目录读取报告。普通本地运行默认读取仓库根目录的 `TestResults`；Docker 默认从只读挂载的 `/reports` 读取。每次请求按文件修改时间选择最新的 `Heartbeat.Integration.Tests-*.tunit-report.json`，再交给包的解析器校验。没有文件时显示尚未生成，格式错误直接报告错误。
+服务器从 `HEARTBEAT_TEST_REPORTS_DIR` 指定的目录读取报告。未设置时，本地默认读取仓库根目录的 `TestResults`；Docker 默认读取只读挂载的 `/reports`。
+
+每次请求选择文件修改时间最大的 `Heartbeat.Integration.Tests-*.tunit-report.json`，由包的解析器校验。文件不存在时显示尚未生成，格式错误时报告错误。
 
 页面不运行测试。先在仓库根目录执行集成测试，再刷新页面。报告在运行时读取，既不提交到文档正文，也不打包进镜像。
 

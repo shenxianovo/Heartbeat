@@ -1,59 +1,61 @@
 ---
 title: "Heartbeat Testing"
-description: "测试分工、框架与公共工具"
+description: "测试分工 框架与验证范围"
 ---
 
-Heartbeat Testing 记录测试分工、框架和公共工具。模型定义见 [Heartbeat Core](../core/index.mdx)，读写协议见 [Heartbeat API](../api/index.mdx)，数据库结构见 [Heartbeat Storage](../storage/index.mdx)。
+Heartbeat 使用 TUnit 执行测试。模型定义见 [Heartbeat Core](../core/index.mdx)，读写协议见 [Heartbeat API](../api/index.mdx)，数据库结构见 [Heartbeat Storage](../storage/index.mdx)。
 
 ## 测试分工
 
 | 类型 | 验证内容 | 数据库 |
 | --- | --- | --- |
-| 单元测试 | 独立规则、转换等逻辑 | 不启动数据库 |
-| 集成测试 | 后端组件与 PostgreSQL 的协作 | 使用独立测试数据库 |
-| 端到端测试 | 完整用户操作链路 | 需要数据库的用例使用独立测试数据库 |
+| 单元测试 | 独立规则与转换逻辑 | 不启动数据库 |
+| 集成测试 | 采集程序、后端组件与 PostgreSQL 的协作 | 使用独立测试数据库 |
+| 端到端测试 | 完整用户操作流程 | 需要数据库的用例使用独立测试数据库 |
 
-测试数量根据需要保障的行为确定。端到端测试覆盖关键链路。
+## 测试框架与公共工具
 
-## 测试框架
+TUnit 通过 Microsoft.Testing.Platform 运行，版本 `1.72.16` 由 `Directory.Packages.props` 管理。
 
-测试使用 TUnit，通过 Microsoft.Testing.Platform 运行。当前采用稳定版 `1.72.16`，版本由仓库的 `Directory.Packages.props` 管理。版本信息见 [TUnit 包](https://www.nuget.org/packages/TUnit/1.72.16)。
-
-## 公共工具
-
-公共数据库辅助代码位于 `tests/Heartbeat.Testing` 类库，供集成测试和端到端测试共用。命名空间为 `Heartbeat.Testing`，每个类型一个文件。
-
-该类库引用 Infrastructure，以及 EF Core、Npgsql 和 Testcontainers.PostgreSql，版本由 `Directory.Packages.props` 管理。
+`tests/Heartbeat.Testing` 为集成测试和端到端测试提供数据库工具。类库使用 `Heartbeat.Testing` 命名空间，每个类型一个文件。依赖包含 Infrastructure、EF Core、Npgsql 和 Testcontainers.PostgreSql，版本由 `Directory.Packages.props` 管理。
 
 | 类型 | 职责 |
 | --- | --- |
-| `PostgresTestInstance` | 启动、销毁 PostgreSQL 容器，创建用例数据库 |
+| `PostgresTestInstance` | 启动和销毁 PostgreSQL 容器，创建用例数据库 |
 | `TestDatabase` | 提供连接字符串，释放时删除用例数据库 |
 
-测试框架负责调用工具的生命周期方法。工具与测试执行项目分开，集成测试和端到端测试各自创建独立实例。
-
-容器生命周期、用例隔离和公开方法见[测试数据库](./database.mdx)。组件责任见 [ADR 0005](../adr/0005-backend-project-organization.mdx#测试数据库)。
+测试框架调用工具的生命周期方法。集成测试和端到端测试各自创建独立实例，规则见[测试数据库](./database.mdx)。组件职责见 [ADR 0005](../adr/0005-backend-project-organization.mdx#测试数据库)。
 
 ## 当前验证边界
 
-集成测试项目位于 `tests/Heartbeat.Integration.Tests`，使用 TUnit 和 `Heartbeat.Testing`。
+集成测试项目位于 `tests/Heartbeat.Integration.Tests`。数据库用例使用真实 PostgreSQL 和 Infrastructure 迁移。
 
-第一条用例通过 `HeartbeatDbContext` 验证创建数据库、应用迁移、保存并读回实体的链路。用例保存一个 `Observer` 及其 `EntityIndexRow`，再创建新的读取上下文，核对实体标识、名称和索引中的 `table_name`。
+HTTP 用例通过 `WebApplicationFactory` 启动 API 宿主，使用与服务相同的应用和数据库实现。每个用例通过 `ConnectionStrings:Heartbeat` 提供独立数据库连接。
 
-HTTP 集成测试使用 `WebApplicationFactory` 启动真实 API 宿主，通过 `ConnectionStrings:Heartbeat` 接入每条用例的独立数据库。应用逻辑和数据库访问均使用正常实现。
+| 用例范围 | 验证内容 |
+| --- | --- |
+| 实体持久化 | 保存 Observer 和索引，再从新的上下文读取 |
+| 四类实体 HTTP 保存与读取 | 创建、重复提交、替换、类别冲突、无效请求、写入失败回滚和同 ID 并发保存 |
+| 通用实体 | 嵌套 JSON、重复键、Unicode 和表示范围 |
+| Observation | 未入库的引用、UTC、微秒精度、未知边界与时区 |
+| ObservationSchema | 名称与 JSON 更新、任意可存储的 JSON 值、仅含名称和定义的读回内容 |
+| 请求体上限 | 真实 Kestrel 接收 10 MiB 请求，超限返回 JSON `413`，支持分块传输 |
+| OpenAPI | 请求字段、必填可空时间、成功响应、多类别读取和错误格式 |
 
-当前 HTTP 用例覆盖四类实体的创建与读取、重复提交、内容替换、类别冲突、无效请求和写入失败回滚，并检查同 ID 的并发保存。通用实体检查嵌套 JSON、重复键和表示限制；Observation 检查尚未入库的引用、UTC、微秒精度、未知时间边界与时区。
+专门的读取用例先在数据库中准备内容，再通过 HTTP 断言。OpenAPI 用例读取构建生成的规范，不创建数据库。后端不比较观测定义的语义。
 
-ObservationSchema 用例检查同 ID 更新名称与 JSON 内容、任意可存储的 JSON 值、UTC、未知边界、非法替换和类别冲突。后端不比较定义的语义。
+前台状态 Observer 的用例分别检查：
 
-专门的读取用例通过数据库准备已保存内容，结果通过 HTTP 断言。
+- 身份文件：复用、独立实例、并发创建和损坏文件保留。
+- 提交：通过真实 API 和 PostgreSQL 检查快照、引用、微秒时间、重复提交和失败后的实体保留。
+- 读回：使用模拟响应，检查类别或内容不一致时报告失败。
 
-OpenAPI 用例读取后端构建生成的规范，检查请求字段、必填可空时间、成功状态码、多类别读取和错误格式。该组用例不创建数据库。
+自动测试不调用 macOS 原生接口。原生读取需在 macOS 上使用独立 API 和测试数据库运行采集程序。步骤见 `src/Observers/Heartbeat.Observer.ForegroundState/README.md` 的“验证”节。
 
-TUnit 的程序集 `Before`、`After` 钩子管理共享容器；需要数据库的用例通过 `Before`、`After` 钩子管理独立数据库。
+TUnit 的程序集 `Before`、`After` 钩子管理共享容器。数据库用例的 `Before`、`After` 钩子创建和删除独立数据库。
 
 ## 报告
 
-[集成测试报告](./reports/integration.mdx)展示 `TestResults` 中最近更新的真实 TUnit JSON。刷新页面可读取新的结果，报告不存在时显示尚未生成。
+[集成测试报告](./reports/integration.mdx)读取 `TestResults` 中文件修改时间最大的 TUnit 集成测试 JSON。每次刷新重新读取文件；文件不存在时显示尚未生成。
 
-文档站使用 `fumadocs-test-reports` 的原生 TUnit 报告组件，提供搜索、状态筛选、用例详情、输出和追踪时间线。报告来源与职责见 [ADR 0006](../adr/0006-test-report-presentation.mdx)。
+测试 JSON 是结果的权威来源，查看报告不运行测试。文档站使用 `fumadocs-test-reports` 展示报告，提供搜索、状态筛选、详情、输出和追踪时间线。职责见 [ADR 0007](../adr/0007-developer-cli-and-verification.mdx#测试报告)。

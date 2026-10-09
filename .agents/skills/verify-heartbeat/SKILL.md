@@ -14,4 +14,4 @@ description: Verify Heartbeat changes with the repository Developer CLI and sele
 5. 检查同次运行的 `manifest.json`、`verification.json`、`closeout.json`、`quality.json` 和相关报告，报告结果、证据位置与未验证范围。基线无法编译时，报告比较未完成；同时核对已保存的当前扫描，使用可编译的隔离用例验证扫描流程，不能将它称为原基线比较通过。
 6. 用户入口、路由或验证命令变化时，同步更新 Feature Map。
 
-操作与保留规则见 [Developer CLI README](../../../tools/Heartbeat.Dev/README.md)，职责见 [ADR 0008](../../../src/Docs/Heartbeat.Docs/content/docs/adr/0008-developer-cli-and-verification.mdx)。
+操作与保留规则见 [Developer CLI README](../../../tools/Heartbeat.Dev/README.md)，职责见 [ADR 0007](../../../src/Docs/Heartbeat.Docs/content/docs/adr/0007-developer-cli-and-verification.mdx)。

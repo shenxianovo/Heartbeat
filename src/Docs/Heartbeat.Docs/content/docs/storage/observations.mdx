@@ -29,7 +29,7 @@ description: "观测实体的专用存储"
 
 外键使用 `ON DELETE CASCADE`。统一索引行被删除时，本表中同 ID 的内容行自动删除。
 
-`observer_id`、`data_id`、`schema_id` 是实体标识引用，不建立数据库外键。被引用实体可以稍后入库。
+`observer_id`、`data_id`、`schema_id` 是实体标识引用，不建立数据库外键。后端允许先保存观测、再保存被引用实体。
 
 时间边界使用 `ck_observations_time_order` 检查约束：
 

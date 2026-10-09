@@ -1,16 +1,15 @@
 {
   "pages": [
     "0001-documentation-source-of-truth",
-    "0002-entity-creation-storage-and-reading",
-    "0003-entity-storage-authority",
-    "0004-entity-submission-entry-points",
+    "0002-observer-capabilities-and-platform-clients",
+    "0003-entity-submission-entry-points",
+    "0004-entity-storage-authority",
     "0005-backend-project-organization",
-    "0006-test-report-presentation",
-    "0007-unified-http-entry",
-    "0008-developer-cli-and-verification"
+    "0006-unified-http-entry",
+    "0007-developer-cli-and-verification"
   ],
   "title": "Heartbeat ADR",
-  "description": "设计决策记录",
+  "description": "架构决策记录",
   "icon": "ScrollText",
   "root": true
 }

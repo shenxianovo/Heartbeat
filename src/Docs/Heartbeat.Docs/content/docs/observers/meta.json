@@ -1,0 +1,16 @@
+{
+  "title": "Observers",
+  "description": "采集能力、平台实现与观测规则",
+  "icon": "ScanEye",
+  "root": true,
+  "pages": [
+    "---指南---",
+    "index",
+    "---Observers---",
+    "foreground-state",
+    "input-events",
+    "device-state",
+    "---ObservationSchemas---",
+    "...schemas"
+  ]
+}
