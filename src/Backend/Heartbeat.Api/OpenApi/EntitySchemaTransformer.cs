@@ -78,8 +78,8 @@ internal sealed class EntitySchemaTransformer : IOpenApiSchemaTransformer
                     await context.GetOrCreateSchemaAsync(typeof(SaveObserverRequest), null, cancellationToken)),
                 Response(EntityCategories.Observation, UtcBody(
                     await context.GetOrCreateSchemaAsync(typeof(SaveObservationRequest), null, cancellationToken))),
-                Response(EntityCategories.ObservationSchema, UtcBody(
-                    await context.GetOrCreateSchemaAsync(typeof(SaveObservationSchemaRequest), null, cancellationToken))),
+                Response(EntityCategories.ObservationSchema,
+                    await context.GetOrCreateSchemaAsync(typeof(SaveObservationSchemaRequest), null, cancellationToken)),
             ];
         }
     }

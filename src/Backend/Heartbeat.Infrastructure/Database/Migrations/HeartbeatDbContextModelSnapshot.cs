@@ -68,10 +68,6 @@ namespace Heartbeat.Infrastructure.Database.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<DateTimeOffset?>("EndAt")
-                        .HasColumnType("timestamptz")
-                        .HasColumnName("end_at");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text")
@@ -81,17 +77,10 @@ namespace Heartbeat.Infrastructure.Database.Migrations
                         .HasColumnType("jsonb")
                         .HasColumnName("schema");
 
-                    b.Property<DateTimeOffset?>("StartAt")
-                        .HasColumnType("timestamptz")
-                        .HasColumnName("start_at");
-
                     b.HasKey("Id")
                         .HasName("pk_observation_schemas");
 
-                    b.ToTable("observation_schemas", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_observation_schemas_time_order", "start_at <= end_at");
-                        });
+                    b.ToTable("observation_schemas", (string)null);
                 });
 
             modelBuilder.Entity("Heartbeat.Core.Observer", b =>

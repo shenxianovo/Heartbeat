@@ -38,8 +38,6 @@ public sealed class ObservationSchemaApiTests
         {
             name = "Window title",
             schema = new { description = "Title observed on a window" },
-            startAt = "2026-10-06T09:00:00.123456+08:00",
-            endAt = (string?)null,
         };
         using var created = await client.PutAsJsonAsync(
             $"/entities/observation-schemas/{id}", original, cancellationToken);
@@ -52,8 +50,6 @@ public sealed class ObservationSchemaApiTests
         {
             name = "Window caption",
             schema = new { description = "The observed window title" },
-            original.startAt,
-            original.endAt,
         }, cancellationToken);
         await Assert.That(updated.StatusCode).IsEqualTo(HttpStatusCode.NoContent);
         await Assert.That(await updated.Content.ReadAsStringAsync(cancellationToken)).IsEqualTo("");
@@ -66,9 +62,7 @@ public sealed class ObservationSchemaApiTests
         await Assert.That(entity.GetProperty("name").GetString()).IsEqualTo("Window caption");
         await Assert.That(entity.GetProperty("schema").GetProperty("description").GetString())
             .IsEqualTo("The observed window title");
-        await Assert.That(entity.GetProperty("startAt").GetString()).IsEqualTo("2026-10-06T01:00:00.123456Z");
-        await Assert.That(entity.GetProperty("endAt").ValueKind).IsEqualTo(JsonValueKind.Null);
-        await Assert.That(entity.TryGetProperty("id", out _)).IsFalse();
+        await Assert.That(entity.EnumerateObject().Count()).IsEqualTo(2);
     }
 
     [Test]
@@ -88,8 +82,6 @@ public sealed class ObservationSchemaApiTests
         {
             name = "Definition",
             schema,
-            startAt = (string?)null,
-            endAt = (string?)null,
         }, cancellationToken);
         await Assert.That(created.StatusCode).IsEqualTo(HttpStatusCode.Created);
         using var read = await client.GetAsync($"/entities/{id}", cancellationToken);
@@ -97,8 +89,6 @@ public sealed class ObservationSchemaApiTests
         var body = await read.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
         var entity = body.GetProperty("entity");
         await Assert.That(JsonElement.DeepEquals(entity.GetProperty("schema"), schema)).IsTrue();
-        await Assert.That(entity.GetProperty("startAt").ValueKind).IsEqualTo(JsonValueKind.Null);
-        await Assert.That(entity.GetProperty("endAt").ValueKind).IsEqualTo(JsonValueKind.Null);
     }
 
     [Test]
@@ -125,9 +115,6 @@ public sealed class ObservationSchemaApiTests
     [Test]
     [Arguments("missingSchema")]
     [Arguments("nullName")]
-    [Arguments("missingEndAt")]
-    [Arguments("reversedTime")]
-    [Arguments("timeWithoutOffset")]
     [Arguments("unrepresentableSchema")]
     [Arguments("bodyIdentity")]
     public async Task InvalidSchemaReplacementPreservesTheSavedContent(string invalidField)
@@ -150,16 +137,6 @@ public sealed class ObservationSchemaApiTests
             case "nullName":
                 invalid["name"] = null;
                 break;
-            case "missingEndAt":
-                invalid.Remove("endAt");
-                break;
-            case "reversedTime":
-                invalid["startAt"] = "2026-10-06T03:00:00Z";
-                invalid["endAt"] = "2026-10-06T10:00:00+08:00";
-                break;
-            case "timeWithoutOffset":
-                invalid["startAt"] = "2026-10-06T01:00:00";
-                break;
             case "unrepresentableSchema":
                 invalid["schema"] = "\0";
                 break;
@@ -177,16 +154,12 @@ public sealed class ObservationSchemaApiTests
         var entity = body.GetProperty("entity");
         await Assert.That(entity.GetProperty("name").GetString()).IsEqualTo("Original definition");
         await Assert.That(entity.GetProperty("schema").ValueKind).IsEqualTo(JsonValueKind.Null);
-        await Assert.That(entity.GetProperty("startAt").ValueKind).IsEqualTo(JsonValueKind.Null);
-        await Assert.That(entity.GetProperty("endAt").ValueKind).IsEqualTo(JsonValueKind.Null);
     }
 
     private static JsonObject NewSchema() => new()
     {
         ["name"] = "Original definition",
         ["schema"] = null,
-        ["startAt"] = null,
-        ["endAt"] = null,
     };
 
     private static async Task AssertProblemAsync(

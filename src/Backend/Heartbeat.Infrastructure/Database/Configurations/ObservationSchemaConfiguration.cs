@@ -8,8 +8,7 @@ public sealed class ObservationSchemaConfiguration : IEntityTypeConfiguration<Ob
 {
     public void Configure(EntityTypeBuilder<ObservationSchema> builder)
     {
-        builder.ToTable("observation_schemas", table =>
-            table.HasCheckConstraint("ck_observation_schemas_time_order", "start_at <= end_at"));
+        builder.ToTable("observation_schemas");
         builder.HasKey(schema => schema.Id)
             .HasName("pk_observation_schemas");
 
@@ -34,15 +33,5 @@ public sealed class ObservationSchemaConfiguration : IEntityTypeConfiguration<Ob
             .HasColumnName("schema")
             .HasColumnType("jsonb")
             .IsRequired();
-
-        builder.Property(schema => schema.StartAt)
-            .HasColumnName("start_at")
-            .HasColumnType("timestamptz")
-            .IsRequired(false);
-
-        builder.Property(schema => schema.EndAt)
-            .HasColumnName("end_at")
-            .HasColumnType("timestamptz")
-            .IsRequired(false);
     }
 }

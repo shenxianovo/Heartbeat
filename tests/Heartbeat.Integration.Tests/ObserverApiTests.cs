@@ -187,9 +187,7 @@ public sealed class ObserverApiTests
     }
 
     [Test]
-    [Arguments(true)]
-    [Arguments(false)]
-    public async Task TimedEntityReadsReturnUtcAndPreserveUnknownBoundaries(bool observation)
+    public async Task ObservationReadsReturnUtcAndPreserveUnknownBoundaries()
     {
         var cancellationToken = TestContext.Current!.Execution.CancellationToken;
         var id = EntityId.New();
@@ -198,38 +196,18 @@ public sealed class ObserverApiTests
         var schemaId = EntityId.New();
         await ArrangeDatabaseAsync(async dbContext =>
         {
-            dbContext.Entities.Add(new EntityIndexRow
+            dbContext.Entities.Add(new EntityIndexRow { Id = id, TableName = "observations" });
+            dbContext.Observations.Add(new Observation
             {
                 Id = id,
-                TableName = observation ? "observations" : "observation_schemas",
+                ObserverId = observerId,
+                DataId = dataId,
+                SchemaId = schemaId,
+                StartAt = DateTimeOffset.Parse("2026-10-06T09:00:00.123456+08:00",
+                    CultureInfo.InvariantCulture),
+                EndAt = null,
+                TimeZone = "Asia/Shanghai",
             });
-            var startAt = DateTimeOffset.Parse("2026-10-06T09:00:00.123456+08:00",
-                CultureInfo.InvariantCulture);
-            if (observation)
-            {
-                dbContext.Observations.Add(new Observation
-                {
-                    Id = id,
-                    ObserverId = observerId,
-                    DataId = dataId,
-                    SchemaId = schemaId,
-                    StartAt = startAt,
-                    EndAt = null,
-                    TimeZone = "Asia/Shanghai",
-                });
-            }
-            else
-            {
-                dbContext.ObservationSchemas.Add(new ObservationSchema
-                {
-                    Id = id,
-                    Name = "Window title",
-                    Schema = JsonSerializer.Deserialize<JsonElement>("{\"description\":\"Window title\"}"),
-                    StartAt = startAt,
-                    EndAt = null,
-                });
-            }
-
             await dbContext.SaveChangesAsync(cancellationToken);
         });
 
@@ -238,26 +216,16 @@ public sealed class ObserverApiTests
         using var read = await client.GetAsync($"/entities/{id.Value}", cancellationToken);
         await Assert.That(read.StatusCode).IsEqualTo(HttpStatusCode.OK);
         var body = await read.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
-        await Assert.That(body.GetProperty("category").GetString())
-            .IsEqualTo(observation ? "observation" : "observation_schema");
+        await Assert.That(body.GetProperty("category").GetString()).IsEqualTo("observation");
         var entity = body.GetProperty("entity");
         await Assert.That(entity.GetProperty("startAt").GetString())
             .IsEqualTo("2026-10-06T01:00:00.123456Z");
         await Assert.That(entity.GetProperty("endAt").ValueKind).IsEqualTo(JsonValueKind.Null);
         await Assert.That(entity.TryGetProperty("id", out _)).IsFalse();
-        if (observation)
-        {
-            await Assert.That(entity.GetProperty("observerId").GetString()).IsEqualTo(observerId.Value.ToString());
-            await Assert.That(entity.GetProperty("dataId").GetString()).IsEqualTo(dataId.Value.ToString());
-            await Assert.That(entity.GetProperty("schemaId").GetString()).IsEqualTo(schemaId.Value.ToString());
-            await Assert.That(entity.GetProperty("timeZone").GetString()).IsEqualTo("Asia/Shanghai");
-        }
-        else
-        {
-            await Assert.That(entity.GetProperty("name").GetString()).IsEqualTo("Window title");
-            await Assert.That(entity.GetProperty("schema").GetProperty("description").GetString())
-                .IsEqualTo("Window title");
-        }
+        await Assert.That(entity.GetProperty("observerId").GetString()).IsEqualTo(observerId.Value.ToString());
+        await Assert.That(entity.GetProperty("dataId").GetString()).IsEqualTo(dataId.Value.ToString());
+        await Assert.That(entity.GetProperty("schemaId").GetString()).IsEqualTo(schemaId.Value.ToString());
+        await Assert.That(entity.GetProperty("timeZone").GetString()).IsEqualTo("Asia/Shanghai");
     }
 
     private async Task ArrangeDatabaseAsync(Func<HeartbeatDbContext, Task> arrange)

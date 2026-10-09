@@ -25,7 +25,7 @@ internal static class EntityEndpoints
         DescribeSave(entities.MapPut("/observation-schemas/{id}", SaveObservationSchemaAsync)
             .Accepts<SaveObservationSchemaRequest>("application/json").WithName("saveObservationSchema")
             .WithSummary("保存观测定义"))
-            .WithDescription("提交方判断语义或约束是否变化，并决定是否使用新 ID。后端检查格式、时间和类别，不自动判断语义变化。首次保存创建实体；同 ID 且类别一致的合法请求替换内容。重复提交不新增实体。");
+            .WithDescription("提交方判断语义或约束是否变化，并决定是否使用新 ID。后端检查格式和类别，不自动判断语义变化。首次保存创建实体；同 ID 且类别一致的合法请求替换内容。重复提交不新增实体。");
         entities.MapGet("/{id}", ReadAsync).WithName("getEntity").WithSummary("读取实体")
             .WithDescription("按 UUIDv7 查询统一索引，读取任意实体。响应包含 category 和实体除 id 外的全部属性；已知时间统一返回 UTC。")
             .Produces<EntityResponse>(200)
@@ -93,18 +93,11 @@ internal static class EntityEndpoints
         }
 
         var request = body.Deserialize<SaveObservationSchemaRequest>(jsonOptions.Value.SerializerOptions)!;
-        if (request.StartAt > request.EndAt)
-        {
-            return ApiProblem.Create(400, "startAt must be earlier than or equal to endAt.");
-        }
-
         return SaveResponse(await store.SaveObservationSchemaAsync(new ObservationSchema
         {
             Id = entityId,
             Name = request.Name,
             Schema = request.Schema,
-            StartAt = request.StartAt,
-            EndAt = request.EndAt,
         }, cancellationToken));
     }
 
@@ -241,8 +234,6 @@ internal static class EntityEndpoints
             {
                 Name = schema.Name,
                 Schema = schema.Schema,
-                StartAt = schema.StartAt,
-                EndAt = schema.EndAt,
             },
             JsonElement data => data,
             _ => throw new InvalidOperationException("The entity has an unsupported content type."),

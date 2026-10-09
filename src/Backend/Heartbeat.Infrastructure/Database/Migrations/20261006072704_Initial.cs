@@ -48,14 +48,11 @@ namespace Heartbeat.Infrastructure.Database.Migrations
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
                     name = table.Column<string>(type: "text", nullable: false),
-                    schema = table.Column<JsonElement>(type: "jsonb", nullable: false),
-                    start_at = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
-                    end_at = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true)
+                    schema = table.Column<JsonElement>(type: "jsonb", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("pk_observation_schemas", x => x.id);
-                    table.CheckConstraint("ck_observation_schemas_time_order", "start_at <= end_at");
                     table.ForeignKey(
                         name: "fk_observation_schemas_entities_id",
                         column: x => x.id,

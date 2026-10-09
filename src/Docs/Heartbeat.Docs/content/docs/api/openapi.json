@@ -320,7 +320,7 @@
     "/entities/observation-schemas/{id}": {
       "put": {
         "summary": "保存观测定义",
-        "description": "提交方判断语义或约束是否变化，并决定是否使用新 ID。后端检查格式、时间和类别，不自动判断语义变化。首次保存创建实体；同 ID 且类别一致的合法请求替换内容。重复提交不新增实体。",
+        "description": "提交方判断语义或约束是否变化，并决定是否使用新 ID。后端检查格式和类别，不自动判断语义变化。首次保存创建实体；同 ID 且类别一致的合法请求替换内容。重复提交不新增实体。",
         "operationId": "saveObservationSchema",
         "parameters": [
           {
@@ -509,34 +509,7 @@
                 "type": "string"
               },
               "entity": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/ObservationSchema"
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "startAt": {
-                        "pattern": "Z$",
-                        "type": [
-                          "null",
-                          "string"
-                        ],
-                        "description": "UTC 时间，以 Z 结尾，精度为微秒；未知时为 null。",
-                        "format": "date-time"
-                      },
-                      "endAt": {
-                        "pattern": "Z$",
-                        "type": [
-                          "null",
-                          "string"
-                        ],
-                        "description": "UTC 时间，以 Z 结尾，精度为微秒；未知时为 null。",
-                        "format": "date-time"
-                      }
-                    }
-                  }
-                ]
+                "$ref": "#/components/schemas/ObservationSchema"
               }
             }
           }
@@ -617,9 +590,7 @@
       "ObservationSchema": {
         "required": [
           "name",
-          "schema",
-          "startAt",
-          "endAt"
+          "schema"
         ],
         "type": "object",
         "not": {
@@ -635,27 +606,9 @@
           "schema": {
             "description": "具体数据的结构、约束和观测含义，使用任意可存储的 JSON 值；按 jsonb 语义保存和返回。",
             "$ref": "#/components/schemas/JsonElement"
-          },
-          "startAt": {
-            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
-            "type": [
-              "null",
-              "string"
-            ],
-            "description": "有效期开始时间。已知值必须包含 Z 或明确 UTC 偏移；未知时必须为 null。",
-            "format": "date-time"
-          },
-          "endAt": {
-            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
-            "type": [
-              "null",
-              "string"
-            ],
-            "description": "有效期结束时间。未知时必须为 null。",
-            "format": "date-time"
           }
         },
-        "description": "观测定义除 id 外的全部属性。已知开始时间必须早于或等于结束时间。提交方判断是否需要新 ID，后端不自动判断语义变化。"
+        "description": "观测定义除 id 外的全部属性。提交方判断是否需要新 ID，后端不自动判断语义变化。"
       },
       "Observer": {
         "required": [

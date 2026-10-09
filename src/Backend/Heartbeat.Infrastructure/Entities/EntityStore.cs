@@ -42,12 +42,9 @@ public sealed class EntityStore(HeartbeatDbContext dbContext) : IEntityStore
     public Task<EntitySaveResult> SaveObservationSchemaAsync(
         ObservationSchema schema,
         CancellationToken cancellationToken = default) => SaveAsync(schema.Id, "observation_schemas", $"""
-            INSERT INTO observation_schemas (id, name, schema, start_at, end_at)
-            VALUES ({schema.Id.Value}, {schema.Name}, CAST({schema.Schema.GetRawText()} AS jsonb),
-                {schema.StartAt?.ToUniversalTime()}, {schema.EndAt?.ToUniversalTime()})
-            ON CONFLICT (id) DO UPDATE SET
-                name = EXCLUDED.name, schema = EXCLUDED.schema,
-                start_at = EXCLUDED.start_at, end_at = EXCLUDED.end_at
+            INSERT INTO observation_schemas (id, name, schema)
+            VALUES ({schema.Id.Value}, {schema.Name}, CAST({schema.Schema.GetRawText()} AS jsonb))
+            ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, schema = EXCLUDED.schema
             """, cancellationToken);
 
     private async Task<EntitySaveResult> SaveAsync(

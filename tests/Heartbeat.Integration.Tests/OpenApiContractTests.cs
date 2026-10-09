@@ -35,7 +35,7 @@ public sealed class OpenApiContractTests
         await Assert.That(operation.GetProperty("responses").GetProperty("413")
             .GetProperty("content").TryGetProperty("application/problem+json", out _)).IsTrue();
 
-        if (schemaName != "Observer")
+        if (schemaName == "Observation")
         {
             foreach (var boundary in new[] { "startAt", "endAt" })
             {
@@ -44,6 +44,11 @@ public sealed class OpenApiContractTests
                 await Assert.That(schema.GetProperty("required").EnumerateArray()
                     .Any(item => item.GetString() == boundary)).IsTrue();
             }
+        }
+        else
+        {
+            await Assert.That(schema.GetProperty("properties").TryGetProperty("startAt", out _)).IsFalse();
+            await Assert.That(schema.GetProperty("properties").TryGetProperty("endAt", out _)).IsFalse();
         }
     }
 
@@ -60,12 +65,15 @@ public sealed class OpenApiContractTests
         await Assert.That(branches.EnumerateArray().Select(branch => branch.GetProperty("properties")
             .GetProperty("category").GetProperty("const").GetString()).Order()
             .SequenceEqual(Categories)).IsTrue();
-        foreach (var branch in branches.EnumerateArray().Skip(2))
-        {
-            var utc = branch.GetProperty("properties").GetProperty("entity").GetProperty("allOf")[1];
-            await Assert.That(utc.GetProperty("properties").GetProperty("startAt")
-                .GetProperty("pattern").GetString()).IsEqualTo("Z$");
-        }
+        var observation = branches.EnumerateArray().Single(branch => branch.GetProperty("title")
+            .GetString() == "observation");
+        var utc = observation.GetProperty("properties").GetProperty("entity").GetProperty("allOf")[1];
+        await Assert.That(utc.GetProperty("properties").GetProperty("startAt")
+            .GetProperty("pattern").GetString()).IsEqualTo("Z$");
+        var observationSchema = branches.EnumerateArray().Single(branch => branch.GetProperty("title")
+            .GetString() == "observation_schema");
+        await Assert.That(observationSchema.GetProperty("properties").GetProperty("entity")
+            .GetProperty("$ref").GetString()).IsEqualTo("#/components/schemas/ObservationSchema");
 
         var problem = schemas.GetProperty("ProblemDetails");
         await Assert.That(problem.GetProperty("required").GetArrayLength()).IsEqualTo(4);
