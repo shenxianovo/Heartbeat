@@ -6,21 +6,23 @@
 
 ## 启动
 
-需要 Docker Compose 和仓库指定的 .NET SDK。从仓库根目录启动开发环境：
+需要 Docker、仓库指定的 .NET SDK、Node.js 和 pnpm。首次安装开发工具并还原 EF 工具：
 
 ```sh
-dotnet run --project tools/Heartbeat.Dev -- env up
+dotnet tool install --global Aspire.Cli --version 13.6.1
+dotnet tool restore
+aspire certs trust
 ```
 
-单独启动 API、文档站或数据库，将目标加在 `env up` 后，例如：
+从仓库根目录启动本地开发环境：
 
 ```sh
-dotnet run --project tools/Heartbeat.Dev -- env up api
+aspire run
 ```
 
-文档站：<http://localhost:3000/core>。API：<http://localhost:8080/api>。容器操作见[后端 README](src/Backend/Heartbeat.Api/README.md#容器操作)。
+Aspire 在本机运行 API 与文档站，用容器运行 PostgreSQL 和 NGINX，并自动完成数据库迁移。API：<http://localhost:8080/api>；文档站：<http://localhost:3000/core>；看板：<https://localhost:18888>，仅供本机开发使用，无需登录令牌。
 
-`--release` 在本地运行生产构建。也可直接使用 `docker compose -f compose.yaml -f compose.dev.yaml up --build -d` 启动开发环境，或 `docker compose up --build -d` 运行生产构建。停止、测试与质量扫描见[开发工具 README](tools/Heartbeat.Dev/README.md)。
+后台启动、日志、资源操作和停止见 [AppHost README](tools/Heartbeat.AppHost/README.md)。构建、测试与质量扫描继续使用 [开发工具](tools/Heartbeat.Dev/README.md)。Dockerfile 保留镜像构建能力；本地编排以 AppHost 为准，服务器发布流程尚未建设。
 
 macOS 上读取一次前台应用并提交到本地 API：
 

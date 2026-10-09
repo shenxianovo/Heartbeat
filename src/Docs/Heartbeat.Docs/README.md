@@ -54,7 +54,7 @@ dotnet build src/Backend/Heartbeat.Api/Heartbeat.Api.csproj
 
 NGINX 分别监听业务/API 端口 8080 和文档端口 3000。文档端口的 `/api/entities/…` 转给后端，其余请求原样转给文档站。接口文档 `/api/…` 和搜索 `/api/search` 由文档站处理。Playground 使用 OpenAPI 声明的相对服务地址 `/api`，通过文档端口同源访问后端。
 
-访问文档入口 `/` 时跳转到 `/core`。8080 的根路径暂时返回 `404`，供后续业务前端使用。两种 Compose 模式共用 [NGINX 配置](../../../docker/nginx/default.conf)。单独运行 `pnpm dev` 时仍按根路径访问；实体 API 转发由 Compose 中的 NGINX 提供。
+访问文档入口 `/` 时跳转到 `/core`。8080 的根路径暂时返回 `404`，供后续业务前端使用。Aspire 向 [NGINX 模板](../../../docker/nginx/default.conf) 注入本机服务地址。单独运行 `pnpm dev` 时仍按根路径访问；实体 API 转发由 Aspire 管理的 NGINX 提供。
 
 Markdown 响应声明 `text/markdown; charset=utf-8`。Core 的“查看 Markdown”地址为 `/llms.mdx/<页面路径>/content.md`，API 的同类入口返回 OpenAPI JSON。搜索入口为 `/api/search`。
 
@@ -74,12 +74,8 @@ Mermaid 图通过 `components/mermaid.tsx` 统一使用手绘风格。
 
 页面不运行测试。先在仓库根目录执行集成测试，再刷新页面。报告在运行时读取，既不提交到文档正文，也不打包进镜像。
 
-## Docker
+## Aspire 与 Docker
 
-容器启动和开发模式见[根 README](../../../README.md#启动)，状态、日志和停止命令见[容器操作](../../Backend/Heartbeat.Api/README.md#容器操作)。
+完整本地环境由 Aspire 管理，启动、日志和停止见 [AppHost README](../../../tools/Heartbeat.AppHost/README.md)。文档站使用本机 `pnpm dev`，依赖安装由 Aspire 的 pnpm 集成执行并遵守锁文件；`node_modules` 与 `.next` 缓存在本机目录。独立运行文档站时可以使用前面的本地命令，但不要同时占用 NGINX 的 3000 端口。
 
-开发容器的 pnpm 缓存位于 `node_modules/.pnpm-store`，随 `docs-node-modules` 命名卷保留。重建镜像或删除容器后仍可复用；删除该卷后，下次安装会重新下载依赖。
-
-Dockerfile 缓存 pnpm 依赖安装，构建时读取仓库中的 OpenAPI 文件。pnpm 构建缓存由 BuildKit 管理，与开发容器的命名卷分开。
-
-开发与构建阶段使用 Node 24 LTS 和 pnpm 12.3.4。运行阶段采用 Next.js standalone，只保留 Node 与运行产物，并以非 root 用户运行。
+Dockerfile 保留镜像构建能力，使用 BuildKit 缓存 pnpm 依赖安装，构建时读取仓库中的 OpenAPI 文件。构建阶段使用 Node 24 LTS 和 pnpm 12.3.4；运行阶段采用 Next.js standalone，只保留 Node 与运行产物，并以非 root 用户运行。报告在容器运行时通过只读挂载提供，不打包进镜像。

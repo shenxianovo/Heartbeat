@@ -1,0 +1,8 @@
+{
+  "appHost": {
+    "path": "tools/Heartbeat.AppHost/Heartbeat.AppHost.csproj"
+  },
+  "features": {
+    "defaultWatchEnabled": true
+  }
+}

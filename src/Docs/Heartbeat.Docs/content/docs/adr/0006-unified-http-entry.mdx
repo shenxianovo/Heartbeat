@@ -14,6 +14,6 @@ title: "0006 HTTP 入口与应用分流"
 
 8080 的其他路径目前返回 `404`。业务前端实现后，由业务前端接收根路径。
 
-两个 HTTP 入口仅绑定本机地址，API 与文档站仅在容器网络内监听。NGINX 和 API 都检查 10 MiB 的请求体上限，超限时返回 `413` 和 `application/problem+json`。这样直连 API 与经过代理的请求使用同一上限和错误格式。
+两个 HTTP 入口仅绑定本机地址。API 与文档站在本机运行，内部端口由 Aspire 分配；NGINX 通过 AppHost 注入的地址访问它们。NGINX 和 API 都检查 10 MiB 的请求体上限，超限时返回 `413` 和 `application/problem+json`。这样直连 API 与经过代理的请求使用同一上限和错误格式。
 
-代理配置见 `docker/nginx/default.conf`，版本、超时和运行说明见后端模块 README。
+代理模板见 `docker/nginx/default.conf`，版本、超时和运行说明见后端模块 README。本地编排职责见 [ADR 0008](./0008-aspire-local-development.mdx)。

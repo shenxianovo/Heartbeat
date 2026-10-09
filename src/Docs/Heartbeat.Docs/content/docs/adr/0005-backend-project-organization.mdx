@@ -27,10 +27,10 @@ Api 提供连接配置，Infrastructure 注册数据库服务。HTTP 请求类�
 
 测试先释放被测后端与数据库连接，再删除用例数据库。工具接口和隔离规则见 [测试数据库](../testing/database.mdx)。
 
-## Docker 启动
+## 本地启动
 
-Compose 管理 `db`、`migrate`、`api`、`docs` 和 `nginx` 五个服务。数据库健康后，`migrate` 运行后端镜像中的 EF Core 迁移程序；迁移成功后才启动 API。API 进程不在启动时建表。
+Aspire AppHost 管理 `db`、`migrate`、`api`、`docs` 和 `nginx`。数据库健康后，`migrate` 使用仓库固定的 EF Core 工具应用迁移；迁移成功后才启动 API。API 进程不在启动时建表。
 
-PostgreSQL 初始化 SQL 创建统计扩展，Compose 提供统计与诊断配置。文档站独立运行；运行镜像使用 Next.js standalone 产物。开发模式沿用同一数据库初始化流程，API 使用 `dotnet watch`，文档站使用 `pnpm dev`。
+PostgreSQL 初始化 SQL 创建统计扩展，AppHost 提供统计与诊断配置。API 与文档站在本机运行，Aspire 启用 .NET watch，文档站使用 `pnpm dev`。Dockerfile 保留生产构建；文档站镜像使用 Next.js standalone 产物。编排职责见 [ADR 0008](./0008-aspire-local-development.mdx)。
 
 数据库配置见 [Heartbeat Storage](../storage/index.mdx)。HTTP 入口见 [ADR 0006](./0006-unified-http-entry.mdx)，OpenAPI 的权威来源见 [ADR 0001](./0001-documentation-source-of-truth.mdx)。后端操作说明见模块 README。

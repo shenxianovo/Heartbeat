@@ -4,7 +4,7 @@ title: "0007 开发验证与测试报告的职责"
 
 ## 本地环境
 
-Compose 是本地服务配置、依赖关系和启动顺序的唯一来源。`Heartbeat.Dev` 为人和 Agent 提供统一入口，直接调用仓库的 Compose 文件并检查实际入口就绪。NGINX 独立启动，允许只运行 API、文档站或数据库栈。
+Aspire AppHost 是本地服务配置、依赖关系和启动顺序的唯一来源。环境生命周期由 Aspire CLI 与看板管理，`Heartbeat.Dev` 专注验证与证据。职责见 [ADR 0008](./0008-aspire-local-development.mdx)。
 
 ## 验证与证据
 

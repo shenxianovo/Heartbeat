@@ -3,14 +3,6 @@
 FROM node:24.21.0-bookworm-slim AS node-tools
 RUN npm install --global pnpm@12.3.4
 
-FROM node-tools AS development
-WORKDIR /src/src/Docs/Heartbeat.Docs
-COPY --exclude=*.md --exclude=Dockerfile src/Docs/Heartbeat.Docs/ ./
-ENV pnpm_config_store_dir=/src/src/Docs/Heartbeat.Docs/node_modules/.pnpm-store \
-    XDG_CACHE_HOME=/src/src/Docs/Heartbeat.Docs/node_modules/.pnpm-store/cache
-EXPOSE 3000
-CMD ["sh", "-c", "pnpm install --frozen-lockfile && exec pnpm dev --hostname 0.0.0.0"]
-
 FROM node-tools AS dependencies
 WORKDIR /app
 ENV pnpm_config_store_dir=/var/cache/pnpm/store \

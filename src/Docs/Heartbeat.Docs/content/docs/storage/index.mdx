@@ -7,9 +7,9 @@ Heartbeat Storage 定义实体的索引、内容存储和数据库约定。实�
 
 ## 数据库
 
-实体索引和内容使用 PostgreSQL。仓库的 `compose.yaml` 固定镜像为 `postgres:18.6-alpine`。服务和测试使用同一版本。
+实体索引和内容使用 PostgreSQL。AppHost 固定镜像为 `postgres:18.6-alpine`。服务和测试使用同一版本。
 
-服务通过 Docker 运行。数据库健康后，Compose 运行 EF Core 迁移程序。迁移成功后，Compose 启动 API。PostgreSQL 初始化时创建统计扩展，职责见 [ADR 0005](../adr/0005-backend-project-organization.mdx#docker-启动)。
+数据库通过 Docker 运行，API 使用本机进程。数据库健康后，Aspire 运行 EF Core 迁移程序，迁移成功后启动 API。PostgreSQL 初始化时创建统计扩展，职责见 [ADR 0005](../adr/0005-backend-project-organization.mdx#本地启动)。
 
 ### 后端数据访问
 
@@ -83,7 +83,7 @@ Infrastructure 通过 `AddHeartbeatInfrastructure(connectionString)` 注册 Npgs
 | `pg_stat_statements.track_planning` | 保留默认 `off` | 默认不采集规划统计 |
 | `auto_explain` | 暂不开启 | 需要执行计划解释慢查询时启用 |
 
-`pg_stat_statements` 必须由 `shared_preload_libraries` 预加载。仓库已在 Compose 中配置预加载，并在初始化 SQL 中创建扩展。
+`pg_stat_statements` 必须由 `shared_preload_libraries` 预加载。仓库已在 AppHost 中配置预加载，并在初始化 SQL 中创建扩展。
 
 在其他数据库启用扩展时，需要重启数据库，现有连接会中断。
 

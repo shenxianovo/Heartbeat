@@ -1,32 +1,10 @@
 # Heartbeat Developer CLI
 
-从仓库根目录运行 `dotnet run --project tools/Heartbeat.Dev -- <命令>`。人和 Agent 共用此入口；需要仓库 `global.json` 指定的 .NET SDK。环境启动还需要 Docker Compose，本机文档检查和质量扫描需要 Node、pnpm。
+从仓库根目录运行 `dotnet run --project tools/Heartbeat.Dev -- <命令>`。人和 Agent 共用此验证入口；需要仓库 `global.json` 指定的 .NET SDK。本机文档检查和质量扫描需要 Node、pnpm，集成测试需要 Docker。
 
 ## 开发环境
 
-```sh
-dotnet run --project tools/Heartbeat.Dev -- env up
-dotnet run --project tools/Heartbeat.Dev -- env up api
-dotnet run --project tools/Heartbeat.Dev -- env up docs
-dotnet run --project tools/Heartbeat.Dev -- env up db
-```
-
-目标可以组合，例如 `env up api docs`；省略目标或使用 `all` 表示全部。默认使用 `compose.yaml` 和 `compose.dev.yaml`，`--release` 只使用基础配置，在本地验证生产构建。服务配置、依赖和启动顺序由 Compose 管理，CLI 不另建一套运行环境。
-
-API 栈启动 API、迁移、数据库和 NGINX；文档站栈启动文档站和 NGINX；数据库目标仅启动 PostgreSQL。文档站的在线 API Playground 还需要 API 栈。
-
-CLI 等待数据库健康、API 通过 NGINX 完成只读实体查询、文档站通过 NGINX 响应 `/core`。默认就绪等待为 180 秒，可用 `HEARTBEAT_START_TIMEOUT_SECONDS` 调整。镜像构建时间不计入就绪等待。失败或超时返回非零并输出诊断。
-
-```sh
-dotnet run --project tools/Heartbeat.Dev -- env status --json
-dotnet run --project tools/Heartbeat.Dev -- env logs api
-dotnet run --project tools/Heartbeat.Dev -- env down api
-dotnet run --project tools/Heartbeat.Dev -- env down
-```
-
-单栈停止只移除所选应用的容器：API 包括迁移容器，Docs 只停止文档站，DB 只停止数据库。共享 NGINX 和未选中的数据库保留。全部停止使用 Compose `down`。这些停止操作都保留数据卷；再次启动复用数据。
-
-所有环境命令接受 `--env-file PATH` 和 `--release`。检查、日志和停止使用与启动相同的模式。`env reset` 预览删除整个环境及其命名数据卷的操作，`--apply` 执行。
+本地服务由 Aspire AppHost 编排，环境启动、停止、资源状态与日志使用 Aspire CLI 和看板。运行说明见 [AppHost README](../Heartbeat.AppHost/README.md)。本工具不提供环境生命周期命令。
 
 ## 构建、测试与收口
 
@@ -84,6 +62,6 @@ dotnet run --project tools/Heartbeat.Dev -- artifacts prune --apply
 
 ## 实现组织
 
-`Environment` 负责 Compose 操作与就绪检查，`Verification` 选择并执行检查，`Quality` 分类和扫描源码，`Artifacts` 保存和管理证据，`Infrastructure` 执行进程并定位仓库。各命令通过 System.CommandLine 注册，解析后直接传递类型化选项，不递归调用 CLI。
+`Verification` 选择并执行检查，`Quality` 分类和扫描源码，`Artifacts` 保存和管理证据，`Infrastructure` 执行进程并定位仓库。各命令通过 System.CommandLine 注册，解析后直接传递类型化选项，不递归调用 CLI。
 
 输入错误返回 2，执行失败返回非零，取消返回 130。职责决定见 [ADR 0007](../../src/Docs/Heartbeat.Docs/content/docs/adr/0007-developer-cli-and-verification.mdx)。

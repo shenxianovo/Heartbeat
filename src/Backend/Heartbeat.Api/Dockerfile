@@ -11,15 +11,10 @@ RUN dotnet restore src/Backend/Heartbeat.Api/Heartbeat.Api.csproj
 COPY .config/dotnet-tools.json .config/
 RUN dotnet tool restore
 
-FROM dependencies AS development
+FROM dependencies AS build
 COPY .editorconfig ./
 COPY --exclude=**/*.md --exclude=**/Dockerfile src/Core/ src/Core/
 COPY --exclude=**/*.md --exclude=**/Dockerfile src/Backend/ src/Backend/
-ENV DOTNET_USE_POLLING_FILE_WATCHER=1
-EXPOSE 8080
-CMD ["dotnet", "watch", "--project", "src/Backend/Heartbeat.Api/Heartbeat.Api.csproj", "run", "--no-launch-profile"]
-
-FROM development AS build
 RUN dotnet publish src/Backend/Heartbeat.Api/Heartbeat.Api.csproj -c Release -o /out/api --no-restore
 RUN ConnectionStrings__Heartbeat="Host=localhost;Database=heartbeat" dotnet ef migrations bundle \
     --project src/Backend/Heartbeat.Infrastructure/Heartbeat.Infrastructure.csproj \

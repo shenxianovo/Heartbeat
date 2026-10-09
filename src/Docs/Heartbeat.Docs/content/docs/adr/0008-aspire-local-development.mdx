@@ -1,0 +1,15 @@
+---
+title: "0008 Aspire 本地开发编排"
+---
+
+Aspire AppHost 是本地资源配置、依赖关系和启动顺序的唯一来源，替代手写 Compose。API 与文档站使用本机进程，数据库与 NGINX 使用容器，以便直接调试和热更新，同时保留 [ADR 0006](./0006-unified-http-entry.mdx) 的 HTTP 入口。
+
+AppHost 在数据库就绪后启动独立迁移资源，迁移成功后启动 API；API 本身不应用迁移。NGINX 的上游地址由 AppHost 注入，入口仍为 API 的 8080 和文档站的 3000。看板独立运行，显示资源状态与控制台日志；应用调用链和指标需要额外配置 OpenTelemetry。
+
+环境启动、停止、日志和资源操作由 Aspire CLI 与看板负责。Heartbeat.Dev 负责构建、测试、质量观察和验证证据，不再提供 env 命令及本地 --release 运行模式。数据库使用命名卷，停止开发环境保留数据。
+
+Dockerfile、代理模板和数据库初始化脚本继续保留。将来的 Compose 可以从 AppHost 生成，作为部署产物；本次仅完成本地开发编排，不建设服务器发布流程，不部署。
+
+本地看板允许匿名访问，免去开发时的令牌登录；保留 HTTPS，仅监听本机并接受 `localhost` 主机名。此配置用于本地开发。
+
+运行方式见仓库中的 `tools/Heartbeat.AppHost/README.md`。

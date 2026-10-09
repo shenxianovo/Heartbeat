@@ -6,7 +6,8 @@
     "0004-entity-storage-authority",
     "0005-backend-project-organization",
     "0006-unified-http-entry",
-    "0007-developer-cli-and-verification"
+    "0007-developer-cli-and-verification",
+    "0008-aspire-local-development"
   ],
   "title": "Heartbeat ADR",
   "description": "架构决策记录",
