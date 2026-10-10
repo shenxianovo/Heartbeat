@@ -1,134 +1,67 @@
 ---
 title: "前台应用时段"
-description: "跨平台应用信息的数据结构草案与已确认时间边界"
+description: "本机应用引用、观测名称与时段边界"
 ---
 
-本定义表达“应用 A 处于前台的时段”，由[前台状态 Observer](../foreground-state.mdx)形成观测。本页给出跨平台数据结构草案，并记录已确认的基本时间边界。连续采集尚未实现，固定 SchemaId 尚未分配。
+<ObserverStructure node="APPLICATION_CONTENT" />
+
+本定义表达“应用 A 处于前台的时段”。[前台状态 Observer](../foreground-state.mdx)负责形成观测。
+
+连续采集尚未实现，固定 SchemaId 尚未分配。
 
 ## 数据结构
 
-Data 只实现 `IEntity`，实体 ID 由 `IEntity.Id` 提供。以下字段属于具体数据内容，起止时间由 Observation 保存。
+观测内容实现 [IEntity](../../core/model/contracts/entity.mdx)。以下示例展示两个业务字段，不包含内容实体自身的 ID：
+
+```json
+{
+  "localApplicationId": "01a12e31-9050-7000-8000-000000000001",
+  "name": "Visual Studio Code"
+}
+```
 
 | 字段 | 类型 | 含义 |
 | --- | --- | --- |
-| `name` | 字符串或 `null` | 来源提供的应用名称；未取得时为 `null` |
-| `identifiers` | 数组 | 本次取得的 0～N 个应用标识线索；未取得时为 `[]` |
+| `localApplicationId` | EntityId | 引用观测发生的设备上的[本机应用实体](../entities/local-application.mdx) |
+| `name` | 字符串或 `null` | 保留当时实际读到的应用名称；未取得名称时为 `null` |
 
-每个标识线索包含两个字段：
-
-| 字段 | 类型 | 含义 |
-| --- | --- | --- |
-| `scheme` | 非空字符串 | 说明线索所属的标识体系或来源属性 |
-| `value` | 非空字符串 | 来源提供的原始值 |
-
-`name` 和 `identifiers` 必须出现。数组可以为空，但不能为 `null`。名称未知时保留 `null`，不填入虚构的应用名称。未取得某条标识线索时，不添加该条目。空数组只表示本次没有取得标识线索，不能证明应用没有标识。
-
-采集层不选择 `PrimaryIdentifier`，也不设置标识权重。线索不直接作为 Heartbeat 实体标识，不承诺跨设备唯一性或跨平台软件等价。把不同名称、路径或标识归为同一软件，由后续查询规则处理。
-
-### JSON 结构草案
-
-以下 JSON 定义具体数据内容，不包含 `IEntity.Id` 和 Observation 的身份、时间字段。字段名与约束供审阅，尚未加入程序内置定义。
+未取得名称时，观测内容仍引用本机应用实体：
 
 ```json
 {
-  "type": "object",
-  "description": "前台应用时段引用的应用原始信息；事实时间由 Observation 保存。",
-  "properties": {
-    "name": {
-      "type": ["string", "null"]
-    },
-    "identifiers": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "scheme": { "type": "string", "minLength": 1 },
-          "value": { "type": "string", "minLength": 1 }
-        },
-        "required": ["scheme", "value"],
-        "additionalProperties": false
-      }
-    }
-  },
-  "required": ["name", "identifiers"],
-  "additionalProperties": false
+  "localApplicationId": "01a12e31-9050-7000-8000-000000000001",
+  "name": null
 }
 ```
 
-### 标识线索示例
+`identifiers` 由本机应用实体保存，不放在本观测内容中。起止时间由 Observation 保存。
 
-各平台使用相同的数据结构，通过 `scheme` 保留线索的原义。以下命名属于草案；平台采集实现只填写实际取得的值。
-
-| `scheme` | 原始值的含义 |
-| --- | --- |
-| `macos.bundle-id` | macOS 应用 bundle identifier |
-| `macos.executable-path` | macOS 本机可执行文件路径 |
-| `windows.app-user-model-id` | Windows 应用的 AppUserModelID |
-| `windows.executable-path` | Windows 本机可执行文件路径 |
-| `windows.package-family-name` | Windows 包族名称，作为关联线索保留 |
-| `freedesktop.desktop-file-id` | freedesktop 桌面条目的 Desktop File ID |
-
-Windows 的显式 AppUserModelID 是可选的，不能要求每次读取都取得该值。Package Family Name 与具体应用标识的粒度不同；一个包可以包含多个应用，包族相同不能单独证明应用相同。[AppUserModelID 说明](https://learn.microsoft.com/en-us/windows/win32/shell/appids#application-defined-and-system-defined-appusermodelids)、[包与应用身份](https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/package-identity-overview#package-identity-vs-application-identity)。
-
-路径保留本机原始值。Desktop File ID 保留桌面条目标识的含义，不将窗口 class 等其他来源值填入该 Scheme。
-
-### 数据示例
-
-macOS 读到名称、bundle ID 和路径时：
-
-```json
-{
-  "name": "Safari",
-  "identifiers": [
-    { "scheme": "macos.bundle-id", "value": "com.apple.Safari" },
-    {
-      "scheme": "macos.executable-path",
-      "value": "/Applications/Safari.app/Contents/MacOS/Safari"
-    }
-  ]
-}
-```
-
-Windows 只取得名称和可执行文件路径时：
-
-```json
-{
-  "name": "foobar2000",
-  "identifiers": [
-    {
-      "scheme": "windows.executable-path",
-      "value": "C:\\Program Files\\foobar2000\\foobar2000.exe"
-    }
-  ]
-}
-```
-
-取得应用名称但没有标识线索时：
-
-```json
-{
-  "name": "Some App",
-  "identifiers": []
-}
-```
+本机应用的身份范围、标识线索与跨平台关联见[本机应用](../entities/local-application.mdx)。
 
 ## 事实时间
 
-应用使用先表示前台时长。Observation 按以下基本边界记录时间：
+“应用使用”表示前台时长。Observation 按以下边界记录时间：
 
-- 第一次确认应用在前台时开始。
-- 确认切换应用时，结束原应用时段。
-- 遇到休眠、停止采集或读取失败时，在最后一次确认的位置断开。
-- 恢复采集后新开一段，中间空白不计入前台时长。
+- 采集器第一次确认应用在前台时，开始时段。
+- 采集器确认切换应用时，结束原应用时段。
+- 如果设备休眠、采集停止或读取失败，采集器在最后一次确认的位置结束时段。
+- 采集恢复后，采集器新建时段。中间空白不计入前台时长。
 
-已知起止边界的时段使用左闭右开区间 `[StartAt, EndAt)`，见 [ITimed](../../core/model/contracts/timed.mdx#边界语义)。标题变化不切开应用时段；标题读取失败时，仍可形成应用观测。
+已知起止边界的时段使用左闭右开区间 `[StartAt, EndAt)`，见 [ITimed](../../core/model/contracts/timed.mdx#边界语义)。标题变化不切开应用时段。如果标题读取失败，仍可形成应用观测。
 
-连续采集未中断且完整应用数据相同时，延长同一段；数据变化则新开一段。每段引用的数据保持一致。
+如果采集连续且完整观测内容相同，采集器延长同一时段。如果 `localApplicationId` 或 `name` 变化，采集器新建时段。每段引用的内容必须保持一致。
 
-是否排除锁屏或无输入时段，留给后续分析规则。跨平台草案中列表顺序、重复项与线索变化的相等规则，采样间隔和长时间未取得读数的处理，尚需确认。
+是否排除锁屏或无输入时段，由后续分析规则确定。
+
+## 待确认规则
+
+- 采样间隔与采集停顿的判定、处理方式。
+- 固定 SchemaId。
+
+本机应用的识别和更新规则见[本机应用的待确认规则](../entities/local-application.mdx#待确认规则)。
 
 ## 定义与实现状态
 
-本定义与“在时刻 t 读到应用 A 位于前台”的单次读数含义不同，实施时使用自己的定义和固定 ID。规则见[定义更新](../../core/model/observations/schema.mdx#定义更新)。
+本定义表达时段，单次读数表达时间点。实施时，应用时段必须使用自己的定义和固定 ID。规则见[定义更新](../../core/model/observations/schema.mdx#定义更新)。
 
-当前程序仍只提交单次读数，使用 `bundleIdentifier`、`name`、`executablePath` 三个字段，现有契约见[当前单次读数](../foreground-state.mdx#当前单次读数)。本页的跨平台草案尚无对应的代码内置定义或数据库记录。
+当前程序只提交单次读数。数据仍包含 `bundleIdentifier`、`name`、`executablePath`，契约见[当前单次读数](../foreground-state.mdx#当前单次读数)。应用身份分层与新观测字段尚未加入代码，也没有对应的数据库记录。

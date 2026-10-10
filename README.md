@@ -6,7 +6,9 @@
 
 ## 启动
 
-需要 Docker、仓库指定的 .NET SDK、Node.js 和 pnpm。首次安装开发工具并还原 EF 工具：
+前置条件：安装 Docker、仓库指定的 .NET SDK、Node.js 和 pnpm。
+
+首次使用时，从仓库根目录依次安装 Aspire CLI、还原 EF 工具并信任开发证书：
 
 ```sh
 dotnet tool install --global Aspire.Cli --version 13.6.1
@@ -20,9 +22,17 @@ aspire certs trust
 aspire run
 ```
 
-Aspire 在本机运行 API 与文档站，用容器运行 PostgreSQL 和 NGINX，并自动完成数据库迁移。API：<http://localhost:8080/api>；文档站：<http://localhost:3000/core>；看板：<https://localhost:18888>，仅供本机开发使用，无需登录令牌。
+Aspire 在本机运行 API 与文档站，在容器中运行 PostgreSQL 和 NGINX。Aspire 自动应用数据库迁移。
 
-后台启动、日志、资源操作和停止见 [AppHost README](tools/Heartbeat.AppHost/README.md)。构建、测试与质量扫描继续使用 [开发工具](tools/Heartbeat.Dev/README.md)。Dockerfile 保留镜像构建能力；本地编排以 AppHost 为准，服务器发布流程尚未建设。
+| 服务 | 地址 |
+| --- | --- |
+| API | <http://localhost:8080/api> |
+| 文档站 | <http://localhost:3000/core> |
+| 看板 | <https://localhost:18888> |
+
+看板仅供本机开发使用，无需登录令牌。
+
+后台启动、日志、资源操作和停止见 [AppHost README](tools/Heartbeat.AppHost/README.md)。构建、测试与质量扫描继续使用 [开发工具](tools/Heartbeat.Dev/README.md)。Dockerfile 用于构建镜像。本地编排以 AppHost 为准。服务器发布流程尚未建设。
 
 macOS 上读取一次前台应用并提交到本地 API：
 

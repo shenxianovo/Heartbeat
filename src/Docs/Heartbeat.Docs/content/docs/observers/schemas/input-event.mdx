@@ -3,11 +3,15 @@ title: "键鼠输入事件"
 description: "跨平台键鼠事件的数据结构草案与事件时间"
 ---
 
-本定义表达“时刻 t 发生一次键盘或鼠标事件”，由[输入事件 Observer](../input-events.mdx)形成观测。时间点粒度已确认，以下字段与采集类别为草案。尚未实现，固定 SchemaId 尚未分配。
+<ObserverStructure node="INPUT_CONTENT" />
+
+本定义表达“时刻 t 发生一次键盘或鼠标事件”。[输入事件 Observer](../input-events.mdx)负责形成观测。
+
+字段与事件类别仍为草案。输入事件采集尚未实现，固定 SchemaId 尚未分配。
 
 ## 数据结构
 
-Data 只实现 `IEntity`，事件时间由 Observation 保存。最小草案用一个字段记录事件类别：
+观测内容只实现 `IEntity`。Observation 保存事件时间。草案用一个字段记录事件类别：
 
 | 字段 | 类型 | 含义 |
 | --- | --- | --- |
@@ -22,42 +26,37 @@ Data 只实现 `IEntity`，事件时间由 Observation 保存。最小草案用�
 | `mouseMove` | 鼠标移动 |
 | `mouseWheel` | 鼠标滚动 |
 
-这些类别描述跨平台事件含义，不直接保存系统 API 常量。实际采集哪些类别、是否保留具体按键、按钮、坐标或滚动量，尚需确认。
-
-### JSON 结构草案
-
-以下定义描述具体数据内容，不包含 `IEntity.Id` 或 Observation 的身份、时间字段。
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "kind": {
-      "type": "string",
-      "enum": ["keyDown", "keyUp", "mouseDown", "mouseUp", "mouseMove", "mouseWheel"]
-    }
-  },
-  "required": ["kind"],
-  "additionalProperties": false
-}
-```
+`kind` 表达跨平台事件类别，不保存系统 API 常量。采集哪些类别，是否保留按键、按钮、坐标或滚动量，尚需确认。
 
 ### 数据示例
 
+以下示例只展示观测内容。实体 ID 和 Observation 的引用、时间字段不在示例中。
+
+数组展示六种草案值。每条事件观测只引用其中一个对象作为观测内容。
+
 ```json
-{
-  "kind": "keyDown"
-}
+[
+  { "kind": "keyDown" },
+  { "kind": "keyUp" },
+  { "kind": "mouseDown" },
+  { "kind": "mouseUp" },
+  { "kind": "mouseMove" },
+  { "kind": "mouseWheel" }
+]
 ```
 
 ## 事实时间
 
-每次事件使用时间点 Observation：`StartAt = EndAt = t`。两次同类事件发生在不同时刻时，仍分别表示两次事件，不延长为一个持续状态。
+每次事件使用时间点 Observation：`StartAt = EndAt = t`。如果两次同类事件发生在不同时刻，分别形成两条观测。
 
-时间来自系统事件还是采集器接收时刻、时间精度如何转换，尚需确认。键盘自动重复、鼠标移动和滚动的记录粒度也需确认。
+以下规则尚需确认：
 
-时间段输入次数统计不能恢复每次事件的发生时刻，不代替本定义。时间契约见 [ITimed](../../core/model/contracts/timed.mdx#边界语义)。
+- 使用系统事件时间还是采集器接收时间。
+- 时间精度的转换方式。
+- 键盘自动重复、鼠标移动和滚动的记录粒度。
+
+输入次数的区间统计不能恢复每次事件的发生时刻。区间统计不代替本定义。时间契约见 [ITimed](../../core/model/contracts/timed.mdx#边界语义)。
 
 ## 定义与实现状态
 
-各平台遵循同一事件含义、字段和时间规则时，共用一份定义。当前没有输入事件采集实现；本页字段、约束和采集规则需确认后实施。
+各平台遵循同一事件含义、字段和时间规则时，共用一份定义。字段、约束和采集规则需确认后实施。

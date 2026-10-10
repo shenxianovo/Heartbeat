@@ -1,0 +1,78 @@
+---
+title: "本机应用"
+description: "LocalApplication 的身份范围、标识线索与观测引用"
+---
+
+<ObserverStructure node="LOCAL_APPLICATION" />
+
+`LocalApplication` 表示某台设备上的一个应用安装。“本机”指观测发生的设备。
+
+设备范围的表示、应用识别和实体更新规则尚需确认。本机应用实体尚未加入代码。
+
+## 实体身份
+
+本机应用实现 [IEntity](../../core/model/contracts/entity.mdx)，拥有独立的 EntityId。前台应用观测通过 `localApplicationId` 引用本机应用实体。
+
+本机应用身份独立于 Observer 实例身份。Observer 表示形成观测的主体，本机应用表示被观测的应用安装。Observer 维护本机应用身份。
+
+两台 Mac 上的 VS Code 分别拥有本机应用实体。即使平台相同，不同设备上的安装也分别保留身份。
+
+## 标识线索
+
+`identifiers` 保存本平台取得的标识线索。每个条目包含 `scheme` 与 `value`。`scheme` 区分标识体系或来源属性，`value` 保留来源值。
+
+如果未取得标识线索，列表可以为空。应用不一定具有稳定的平台标识。比较线索列表时，必须忽略条目顺序。
+
+以下示例只展示实体 ID 与标识线索。标识体系名称和支持范围尚未确定：
+
+```json
+{
+  "id": "01a12e31-9050-7000-8000-000000000001",
+  "identifiers": [
+    {
+      "scheme": "macos.bundle-id",
+      "value": "com.microsoft.VSCode"
+    },
+    {
+      "scheme": "macos.executable-path",
+      "value": "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
+    }
+  ]
+}
+```
+
+未取得标识线索时，`identifiers` 为 `[]`。空列表不证明应用没有平台标识。
+
+标识线索不作为 Heartbeat EntityId。同一线索值可能出现在不同设备上，也不能证明不同平台上的应用属于同一个软件。
+
+## 与观测的关系
+
+本机应用实体保存标识线索。[前台应用时段](../schemas/foreground-application-interval.mdx)的观测内容保存 `localApplicationId` 与当时读到的 `name`。事实时间由 Observation 保存。
+
+本机应用实体与观测内容分别保存。历史观测引用的内容必须保持为观测发生时的内容。
+
+普通实体引用通过 Core 的[实体引用枚举契约](../../core/model/contracts/entity.mdx#约定)参与关系图。业务定义关系含义，以及是否需要独立的业务实体。
+
+## 跨平台关联
+
+跨平台应用实体表示多台设备或多个平台上的同一个软件。本机应用实体可以关联到跨平台应用实体。
+
+下表用 A、B、S 表示三个实体。这些代号不是实际 EntityId：
+
+| 设备 | 应用安装 | 本机应用实体 | 跨平台应用实体 |
+| --- | --- | --- | --- |
+| Mac 甲 | VS Code | A | S |
+| Mac 乙 | VS Code | B | S |
+
+A 与 B 是两个实体。确认两个安装属于同一个软件后，可以将 A 与 B 关联到 S。关联可以在采集后建立。没有跨平台关联时，本机应用实体与观测仍可保存。
+
+Observer 不负责判断其他平台的软件身份。职责与身份边界见 [ADR 0002](../../adr/0002-observer-capabilities-and-platform-clients.mdx#应用身份)。
+
+## 待确认规则
+
+- 设备范围如何表示。
+- 本机应用身份如何识别、保存和复用。
+- 应用升级、移动或重新安装时如何处理实体身份。
+- 实体的其他字段、标识线索更新与历史保留规则。
+- 标识体系的命名、重复条目处理与支持范围。
+- 跨平台关联的维护方、依据与保存方式。

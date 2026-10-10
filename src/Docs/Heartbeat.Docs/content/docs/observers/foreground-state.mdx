@@ -1,11 +1,13 @@
 ---
 title: "前台状态"
-description: "前台状态实例的身份 观测定义与事实时间"
+description: "前台状态实例的身份、实体定义与事实时间"
 ---
 
-前台状态 Observer 形成前台应用和窗口标题两类观测。同一实例共用 `ObserverId`，两类观测分别使用自己的观测定义和时间线。标题变化不改变应用的前台状态；标题读取失败时，仍可形成应用观测。
+<ObserverStructure node="FOREGROUND_STATE" />
 
-当前 macOS 程序仅实现应用单次读数。程序通过 AppKit 的 `NSWorkspace.frontmostApplication` 读取应用，提交并读回核对后退出。Windows、连续采集、窗口标题、锁屏和休眠采集尚未实现。
+前台状态 Observer 形成前台应用和窗口标题两类观测。同一实例共用 `ObserverId`。两类观测分别使用自己的实体定义和时间线。标题变化不改变应用的前台状态。如果标题读取失败，仍可形成应用观测。
+
+当前 macOS 程序仅实现应用单次读数。程序通过 AppKit 的 `NSWorkspace.frontmostApplication` 读取应用。HTTP 不提供通用业务实体保存入口。因此，程序在观测内容提交步骤报告失败并退出。Windows、连续采集、窗口标题、锁屏和休眠采集尚未实现。
 
 ## ObserverId
 
@@ -17,24 +19,26 @@ description: "前台状态实例的身份 观测定义与事实时间"
 - 文件包含有效的 JSON 和 UUIDv7 `observerId` 时，读取原 ID。
 - JSON 或 `observerId` 无效时，报告错误并保留原文件。
 
-启动时可以通过 `--identity-file` 指定身份文件。创建独立实例时，使用另一份新建身份文件。默认路径见采集程序 README 的“参数”节，文件为 `src/Observers/Heartbeat.Observer.ForegroundState/README.md`。身份权威的决定见 [ADR 0002](../adr/0002-observer-capabilities-and-platform-clients.mdx#前台状态实例)。
+启动时可以通过 `--identity-file` 指定身份文件。创建独立实例时，使用另一份新建身份文件。默认路径见 `src/Observers/Heartbeat.Observer.ForegroundState/README.md` 的“参数”节。身份文件的职责见 [ADR 0002](../adr/0002-observer-capabilities-and-platform-clients.mdx#前台状态实例)。
 
-## ObservationSchema
+## EntitySchema
 
-应用与窗口标题分别使用自己的观测定义。遵循相同字段、约束和时间规则的平台实现共用定义。目标 Schema 的草案分别维护在以下页面：
+应用与窗口标题分别使用自己的实体定义。遵循相同字段、约束和时间规则的平台实现共用定义。两份实体定义分别记录在以下页面：
 
 | 定义 | 表达的事实 |
 | --- | --- |
 | [前台应用时段](./schemas/foreground-application-interval.mdx) | 应用处于前台的时段 |
 | [前台窗口标题时段](./schemas/foreground-window-title.mdx) | 前台窗口显示某标题的时段 |
 
-定义页面记录固定 ID、数据字段、读数粒度和保存位置。后续应用与标题分别表达时间段，用于查看 A 到 B 之间的前台状态。
+定义页面记录数据示例、字段规则、事实时间和实现状态。应用与标题分别表达时间段，用于查看 A 到 B 之间的前台状态。
 
-[前台应用时段](./schemas/foreground-application-interval.mdx)给出跨平台数据结构草案：`name` 保存来源名称，`identifiers` 保存 0～N 个带 `scheme` 和 `value` 的标识线索，路径也作为线索保存。起止时间只放在 Observation 中。时段表达不同事实，需要自己的定义和 ID，尚未实现。标题草案用 `title` 保存来源文字，具体约束与读取失败表达待确认。
+[前台应用时段](./schemas/foreground-application-interval.mdx)区分本机应用实体和跨平台应用实体。本机应用实体表示某台设备上的一个应用安装。跨平台应用实体表示同一个软件，采集后可以关联本机应用实体。
+
+`identifiers` 由本机应用实体保存。观测内容保存当时读到的内容与应用引用，Observation 保存起止时间。应用观测使用 `localApplicationId` 引用[本机应用](./entities/local-application.mdx)，`name` 保留当时读到的名称。实体更新规则尚需确认。标题保存来源文字，标题与应用的关联方式仍需确认。
 
 ### 当前单次读数
 
-当前程序仍使用单次应用读数定义，表达“在时刻 t 读到应用 A 位于前台”。它尚未改成上述时段草案。
+当前程序使用单次应用读数定义，表达“在时刻 t 读到应用 A 位于前台”。
 
 | 属性 | 当前实现 |
 | --- | --- |
@@ -43,35 +47,35 @@ description: "前台状态实例的身份 观测定义与事实时间"
 | 数据字段 | `bundleIdentifier`、`name`、`executablePath` |
 | 事实时间 | `StartAt = EndAt = t`，t 为读取时刻 |
 
-当前数据是 JSON 对象，三个字段必须出现，值为字符串或 `null`，不包含其他字段。`bundleIdentifier` 保留 bundle identifier 的原义；缺少属性时保存为 `null`。系统未返回应用或读取失败时，报告诊断，不创建 Data 或 Observation。
+当前数据是 JSON 对象。三个字段必须出现，值为字符串或 `null`。对象不得包含其他字段。`bundleIdentifier` 表示应用的包标识符（bundle identifier）。如果来源缺少属性值，程序保存 `null`。如果系统未返回应用或读取失败，程序报告诊断，不创建观测内容或 Observation。
 
-每次读取创建独立的数据快照与 Observation；重试已有读数沿用原 ID、内容和事实时间。定义位于 `src/Observers/Heartbeat.Observer.ForegroundState/ForegroundCapture.cs`，通过 API 保存到 `observation_schemas`。跨平台时段草案实施前，代码继续采用这份时间点定义。
+每次读取创建独立的数据快照与 Observation。重试已有读数时，必须沿用原 ID、内容和事实时间。定义位于 `src/Observers/Heartbeat.Observer.ForegroundState/ForegroundCapture.cs`，通过 API 保存到 `observation_schemas`。应用时段实施前，代码继续采用时间点定义。
 
 ## ITimed
 
 应用与标题观测分别保存事实时间。当前应用读数使用时间点 `Observation`：`StartAt = EndAt = t`，其中 t 是读取应用的时刻。边界含义见 [ITimed](../core/model/contracts/timed.mdx)。
 
-`Observer`、`ObservationSchema` 和具体数据只实现 `IEntity`。应用事实时间以 UTC 保存，精度为微秒。`TimeZone` 保存本机的 IANA 时区 ID，例如 `Asia/Shanghai`；未知时为 `null`。
-
-每次运行形成新读数，并创建新的具体数据实体和 Observation。重试同一份已有读数时，必须沿用原实体 ID、内容和事实时间。
+`Observer`、`EntitySchema` 和观测内容只实现 `IEntity`。应用事实时间以 UTC 保存，精度为微秒。`TimeZone` 保存本机的 IANA 时区 ID，例如 `Asia/Shanghai`；未知时为 `null`。
 
 ### 前台应用时段
 
-后续连续采集按以下基本边界形成应用时段，当前程序尚未实现：
+连续采集按以下边界形成应用时段：
 
 - 第一次确认应用在前台时开始。
 - 确认切换应用时，结束原应用时段。
 - 遇到休眠、停止采集或读取失败时，在最后一次确认的位置断开。
 - 恢复采集后新开一段，中间空白不计入前台时长。
 
-时段表示应用处于前台。是否排除锁屏或无输入时段，由后续分析规则确定。标题变化不切开应用时段；标题读取失败时，应用仍可继续形成观测。
+时段表示应用处于前台。是否排除锁屏或无输入时段，由后续分析规则确定。标题变化不切开应用时段。如果标题读取失败，采集器仍可形成应用观测。
 
-连续采集未中断且完整应用数据相同时，延长同一段；数据变化则新开一段，每段引用的数据保持一致。把不同名称或安装路径归为同一软件，由后续查询规则处理。跨平台草案中的列表相等规则尚需确认。
+如果采集连续且完整观测内容相同，采集器延长同一时段。如果观测内容变化，采集器新建时段。每段引用的内容必须保持一致。
 
-采样间隔和长时间未取得读数的处理尚未确定。窗口标题时段的具体边界另行确认。
+跨平台应用通过关联连接各设备的本机应用实体。本机应用识别、关联维护与标识线索更新是否影响分段，仍需确认。
+
+采样间隔、采集停顿的判定和处理规则尚未确定。窗口标题时段的具体边界另行确认。
 
 ### 当前状态与历史
 
-当前应用和标题可以由采集器内存提供，无需保存每次采样。历史时段引用的数据保留当时内容，不引用会被不断覆盖的“最新数据”。`EndAt = null` 只表示结束未知，不能据此推断当前状态。
+当前应用和标题可以由采集器内存提供，无需保存每次采样。历史时段引用的内容必须保持为观测发生时的内容，不得引用被反复覆盖的当前数据。`EndAt = null` 只表示结束未知，不能据此推断当前状态。
 
 测试范围见 [Heartbeat Testing](../testing/index.mdx#当前验证边界)。运行参数和完成条件见 `src/Observers/Heartbeat.Observer.ForegroundState/README.md`。

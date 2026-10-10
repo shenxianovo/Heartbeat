@@ -11,25 +11,25 @@ title: "0005 核心模型与后端项目分工"
 | `Heartbeat.Infrastructure` | 数据库注册、映射、事务和迁移 | Application、Core |
 | `Heartbeat.Api` | HTTP 校验、请求与响应、启动组装 | Application；启动时引用 Infrastructure 注册实现 |
 
-项目引用约束依赖方向。项目内部按业务能力组织代码，数据库映射与迁移集中在 Infrastructure。后端项目共同组成一个进程和容器，不增加仅转发调用的层。
+项目引用关系限制依赖方向。项目内部按业务能力组织代码，数据库映射与迁移集中在 Infrastructure。后端项目共同组成一个进程和容器，不增加仅转发调用的层。
 
 ## 实体保存
 
 Application 定义保存接口和结果。Infrastructure 在同一事务中检查类别、登记索引并写入内容。Api 校验请求，组合路径 ID 与请求体，再将保存结果映射为 HTTP 响应。
 
-Infrastructure 直接将 Core 的 Observation、Observer 和 ObservationSchema 映射到专用表。统一索引和通用 JSON 内容使用独立的存储类型。数据库类型和约束由 Infrastructure 配置，Core 不依赖数据库。
+Infrastructure 直接将 Core 的 Observation、Observer 和 EntitySchema 映射到固定表，使用独立存储类型维护统一索引。业务表由 EntitySchema 驱动创建和读写。Infrastructure 配置数据库类型和约束。Core 不依赖数据库。
 
 Api 提供连接配置，Infrastructure 注册数据库服务。HTTP 请求类型与 Core 实体分开定义，由 Api 组合为完整实体。
 
 ## 测试数据库
 
-测试框架管理测试生命周期。`Heartbeat.Testing` 公共类库创建和销毁容器、准备和清理用例数据库。测试使用 Infrastructure 的同一套迁移，避免测试与服务采用不同表结构。
+测试框架管理测试生命周期。`Heartbeat.Testing` 公共类库创建和销毁容器，并创建和删除用例数据库。测试使用 Infrastructure 的同一套迁移，避免测试与服务采用不同表结构。
 
 测试先释放被测后端与数据库连接，再删除用例数据库。工具接口和隔离规则见 [测试数据库](../testing/database.mdx)。
 
 ## 本地启动
 
-Aspire AppHost 管理 `db`、`migrate`、`api`、`docs` 和 `nginx`。数据库健康后，`migrate` 使用仓库固定的 EF Core 工具应用迁移；迁移成功后才启动 API。API 进程不在启动时建表。
+Aspire AppHost 管理 `db`、`migrate`、`api`、`docs` 和 `nginx`。数据库健康后，`migrate` 使用仓库固定的 EF Core 工具应用迁移。迁移成功后，AppHost 才启动 API。API 进程不在启动时建表。
 
 PostgreSQL 初始化 SQL 创建统计扩展，AppHost 提供统计与诊断配置。API 与文档站在本机运行，Aspire 启用 .NET watch，文档站使用 `pnpm dev`。Dockerfile 保留生产构建；文档站镜像使用 Next.js standalone 产物。编排职责见 [ADR 0008](./0008-aspire-local-development.mdx)。
 

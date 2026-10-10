@@ -2,7 +2,7 @@
 title: "0006 HTTP 入口与应用分流"
 ---
 
-业务前端与文档站分别运行。NGINX 提供业务/API 入口和文档入口，文档入口同时转发实体 API 请求，使 Playground 与 API 同源。
+业务前端与文档站分别运行。NGINX 提供业务/API 入口和文档入口。文档入口同时转发实体 API 请求，使接口调试面板（Playground）与 API 同源。
 
 | 本地端口与路径 | 接收组件 | 转发规则 |
 | --- | --- | --- |
@@ -14,6 +14,6 @@ title: "0006 HTTP 入口与应用分流"
 
 8080 的其他路径目前返回 `404`。业务前端实现后，由业务前端接收根路径。
 
-两个 HTTP 入口仅绑定本机地址。API 与文档站在本机运行，内部端口由 Aspire 分配；NGINX 通过 AppHost 注入的地址访问它们。NGINX 和 API 都检查 10 MiB 的请求体上限，超限时返回 `413` 和 `application/problem+json`。这样直连 API 与经过代理的请求使用同一上限和错误格式。
+两个 HTTP 入口仅绑定本机地址。API 与文档站在本机运行。Aspire 分配内部端口，AppHost 向 NGINX 注入服务地址。NGINX 和 API 的请求体上限均为 10 MiB。如果请求体超限，接收方返回 `413`，响应类型为 `application/problem+json`。
 
 代理模板见 `docker/nginx/default.conf`，版本、超时和运行说明见后端模块 README。本地编排职责见 [ADR 0008](./0008-aspire-local-development.mdx)。

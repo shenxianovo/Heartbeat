@@ -2,6 +2,7 @@ import defaultMdxComponents from 'fumadocs-ui/mdx';
 import type { MDXComponents } from 'mdx/types';
 import { Mermaid } from './mermaid';
 import { ModelRelations } from './model-relations';
+import { ObserverStructure } from './observer-structure';
 import { IntegrationTestReport } from './integration-test-report';
 
 export function getMDXComponents(components?: MDXComponents) {
@@ -9,6 +10,7 @@ export function getMDXComponents(components?: MDXComponents) {
     ...defaultMdxComponents,
     Mermaid,
     ModelRelations,
+    ObserverStructure,
     IntegrationTestReport,
     ...components,
   } satisfies MDXComponents;

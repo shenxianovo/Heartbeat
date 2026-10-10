@@ -10,7 +10,9 @@
     "foreground-state",
     "input-events",
     "device-state",
-    "---ObservationSchemas---",
+    "---Entities---",
+    "...entities",
+    "---EntitySchemas---",
     "...schemas"
   ]
 }

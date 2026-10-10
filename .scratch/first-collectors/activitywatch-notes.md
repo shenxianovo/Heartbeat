@@ -68,4 +68,4 @@ AFK watcher 根据输入闲置时间与锁屏检测输出 `afk` / `not-afk`；�
 
 - 未安装或运行 ActivityWatch，未验证实际系统权限、休眠、锁屏、标题变更。
 - 未核对每个 ActivityWatch 历史版本的行为；本文只对应列出的提交和调研时官方在线文档。
-- 本次调研未验证 Heartbeat 的标题实现、跨平台 Data 字段、区间规则或 Outbox 设计。主体决定以开头链接的 ADR 为准。
+- 本次调研未验证 Heartbeat 的标题实现、跨平台 观测内容 字段、区间规则或 Outbox 设计。主体决定以开头链接的 ADR 为准。
