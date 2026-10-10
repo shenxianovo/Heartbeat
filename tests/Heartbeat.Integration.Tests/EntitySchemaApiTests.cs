@@ -176,6 +176,7 @@ public sealed class EntitySchemaApiTests
     }
 
     [Test]
+    [Property("caseId", "entity-schema-registration-table-conflict")]
     public async Task ExistingPhysicalTableMakesRegistrationRollBack()
     {
         var ct = TestContext.Current!.Execution.CancellationToken;
@@ -188,7 +189,7 @@ public sealed class EntitySchemaApiTests
         using var client = factory.CreateClient();
         var id = EntityId.New().Value;
         using var rejected = await client.PutAsJsonAsync($"entities/schemas/{id}",
-            EntityTestRequests.Business(new { name = "Test", resourceName = "test-records", fields = EntityTestRequests.Fields }), ct);
+            EntityTestRequests.Business(new { name = "Test", resourceName = "test-records", fields = new { title = new { type = "string", required = false, nullable = true } } }), ct);
         await Assert.That(rejected.StatusCode).IsEqualTo(HttpStatusCode.Conflict);
         using var absent = await client.GetAsync($"entities/{id}", ct);
         await Assert.That(absent.StatusCode).IsEqualTo(HttpStatusCode.NotFound);

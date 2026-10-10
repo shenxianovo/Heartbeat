@@ -6,6 +6,9 @@
   "pages": [
     "index",
     "database",
+    "---实体定义登记---",
+    "entity-schemas/table-creation-failure",
+    "---执行证据---",
     "reports/integration"
   ]
 }

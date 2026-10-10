@@ -1,0 +1,55 @@
+---
+title: "建表失败时，不登记业务资源"
+description: "实体定义登记遇到同名物理表时，完整回滚登记"
+---
+
+export const caseId = 'entity-schema-registration-table-conflict';
+
+## 为什么验证
+
+[实体定义登记](../../storage/entity-schemas.mdx#读写)同时保存定义、统一索引和业务资源绑定，并创建业务表。建表失败时，这些步骤必须一起回滚，避免留下无法使用的业务资源。
+
+## 前置条件
+
+使用独立测试数据库。数据库中已有物理表 `entity_test_records`，尚未登记业务资源 `test-records`。
+
+## 操作
+
+1. 使用新实体标识提交实体定义，资源名为 `test-records`，字段 `title` 为可省略、可空的字符串。
+2. 通过该标识读取实体定义。
+3. 向业务资源 `test-records` 提交一条记录。
+
+第一步向 `PUT /api/entities/schemas/{新实体标识}` 提交：
+
+```json
+{
+  "references": {},
+  "properties": {
+    "name": "Test",
+    "resourceName": "test-records",
+    "fields": {
+      "title": { "type": "string", "required": false, "nullable": true }
+    }
+  }
+}
+```
+
+第二步请求 `GET /api/entities/{同一实体标识}`。第三步向 `PUT /api/entities/test-records/{另一新实体标识}` 提交：
+
+```json
+{ "references": {}, "properties": {} }
+```
+
+## 预期结果
+
+- 定义登记返回 `409 Conflict`：同名物理表使建表失败。
+- 读取定义返回 `404 Not Found`：失败的登记没有留下统一索引。
+- 向业务资源提交记录返回 `404 Not Found`：业务资源没有登记。
+
+## 测试实现
+
+`tests/Heartbeat.Integration.Tests/EntitySchemaApiTests.cs` 中的 `ExistingPhysicalTableMakesRegistrationRollBack` 通过 TUnit 自定义属性 `caseId` 引用此 Case。测试方法改名不改变 Case 身份；参数化测试的多个执行结果可以引用同一个 Case。
+
+## 执行结果
+
+<TestCaseResults caseId={caseId} />

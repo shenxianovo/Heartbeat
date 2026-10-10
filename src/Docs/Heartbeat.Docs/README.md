@@ -42,7 +42,7 @@ pnpm dev
 
 验证：访问 <http://localhost:3000/core>，确认模型概览页面可以打开。
 
-生产构建使用 `pnpm build`，启动使用 `pnpm start`。类型检查使用 `pnpm types:check`。开发和构建均读取仓库中的 OpenAPI 文件。
+生产构建使用 `pnpm build`，启动使用 `pnpm start`。类型检查使用 `pnpm types:check`。Case 关联逻辑检查使用 `pnpm test`。开发和构建均读取仓库中的 OpenAPI 文件。
 
 修改接口时，将用户在讨论中确认的结果直接写入 `content/docs/api/openapi.json`。接口页展示确定的契约，不记录实现进度。实现、测试和接口说明文档按契约同步。代码和其他文档不得反向修改契约。提交时审查契约差异。客户端按同一契约手写实现。
 
@@ -64,7 +64,10 @@ Core 模型关系统一维护在 `content/docs/core/model/relations.json`。接�
 
 Observers 的主图集中维护在 `content/docs/observers/relations.json`，不在概览中展示。具体页面通过 `<ObserverStructure node="节点 ID" />` 引用当前对象，左侧展示实现的接口，右侧展示实体自身增加的字段。接口已定义的成员不重复展示，例如 `IEntity.Id`。字段节点只显示名称，类型和取值在正文中说明。接口名称和链接复用 Core 主图；字段只在 Observers 主图中维护一次。组件位于 `components/observer-structure.tsx`。实体定义页的图展示观测内容。Observation 保存事实时间。草案字段必须在图中标明“草案”。
 
-## 测试报告
+## 测试 Case 与报告
+
+Testing 侧栏按能力组织独立 Case，首个样板地址为 `/testing/entity-schemas/table-creation-failure`。MDX 声明 `caseId` 并传给 `TestCaseResults`，测试使用 `[Property("caseId", "同一 ID")]` 引用。正文与执行证据分别维护；组件精确匹配最新原生报告的属性，保留所有参数化结果，重新计算此 Case 的展示统计。每条结果提供 `?test=<原生测试 ID>` 链接，在完整报告中打开该结果详情。无报告或没有匹配结果均显示没有执行证据。
+
 
 报告页为 `/testing/reports/integration`，使用 `fumadocs-test-reports@0.1.1` 的中文 TUnit 报告组件。
 

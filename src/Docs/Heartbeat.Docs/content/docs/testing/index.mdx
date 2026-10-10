@@ -54,6 +54,12 @@ HTTP 用例通过 `WebApplicationFactory` 启动 API 宿主，使用与服务相
 
 TUnit 的程序集 `Before`、`After` 钩子管理共享容器。数据库用例的 `Before`、`After` 钩子创建和删除独立数据库。
 
+## 测试 Case
+
+测试 Case 独立说明为什么验证、前置条件、操作和预期结果。按能力组织，稳定页面与 Case ID 不随测试方法名变化。[建表失败时，不登记业务资源](./entity-schemas/table-creation-failure.mdx)展示实体定义登记的回滚约定。
+
+Case 正文是验证行为的说明，运行报告是执行证据。一个 Case 可以关联多个参数化结果；没有报告或最新报告没有此 Case 时，页面明确显示缺少执行证据，正文仍可阅读。
+
 ## 报告
 
 [集成测试报告](./reports/integration.mdx)读取 `TestResults` 中文件修改时间最大的 TUnit 集成测试 JSON。每次刷新时，报告页重新读取文件。如果文件不存在，报告页显示尚未生成。
