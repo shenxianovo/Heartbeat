@@ -26,15 +26,45 @@ namespace Heartbeat.Infrastructure.Database.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Heartbeat.Core.EntitySchema", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<JsonElement>("Fields")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("fields");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<string>("ResourceName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("resource_name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_entity_schemas");
+
+                    b.HasIndex("ResourceName")
+                        .IsUnique()
+                        .HasDatabaseName("ux_entity_schemas_resource_name");
+
+                    b.ToTable("entity_schemas", (string)null);
+                });
+
             modelBuilder.Entity("Heartbeat.Core.Observation", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<Guid>("DataId")
+                    b.Property<Guid>("ContentId")
                         .HasColumnType("uuid")
-                        .HasColumnName("data_id");
+                        .HasColumnName("content_id");
 
                     b.Property<DateTimeOffset?>("EndAt")
                         .HasColumnType("timestamptz")
@@ -65,27 +95,6 @@ namespace Heartbeat.Infrastructure.Database.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Heartbeat.Core.ObservationSchema", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("name");
-
-                    b.Property<JsonElement>("Schema")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("schema");
-
-                    b.HasKey("Id")
-                        .HasName("pk_observation_schemas");
-
-                    b.ToTable("observation_schemas", (string)null);
-                });
-
             modelBuilder.Entity("Heartbeat.Core.Observer", b =>
                 {
                     b.Property<Guid>("Id")
@@ -101,22 +110,6 @@ namespace Heartbeat.Infrastructure.Database.Migrations
                         .HasName("pk_observers");
 
                     b.ToTable("observers", (string)null);
-                });
-
-            modelBuilder.Entity("Heartbeat.Infrastructure.Database.EntityDataRow", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<JsonElement>("Data")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("data");
-
-                    b.HasKey("Id")
-                        .HasName("pk_entity_data");
-
-                    b.ToTable("entity_data", (string)null);
                 });
 
             modelBuilder.Entity("Heartbeat.Infrastructure.Database.EntityIndexRow", b =>
@@ -136,6 +129,16 @@ namespace Heartbeat.Infrastructure.Database.Migrations
                     b.ToTable("entities", (string)null);
                 });
 
+            modelBuilder.Entity("Heartbeat.Core.EntitySchema", b =>
+                {
+                    b.HasOne("Heartbeat.Infrastructure.Database.EntityIndexRow", null)
+                        .WithOne()
+                        .HasForeignKey("Heartbeat.Core.EntitySchema", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_entity_schemas_entities_id");
+                });
+
             modelBuilder.Entity("Heartbeat.Core.Observation", b =>
                 {
                     b.HasOne("Heartbeat.Infrastructure.Database.EntityIndexRow", null)
@@ -146,16 +149,6 @@ namespace Heartbeat.Infrastructure.Database.Migrations
                         .HasConstraintName("fk_observations_entities_id");
                 });
 
-            modelBuilder.Entity("Heartbeat.Core.ObservationSchema", b =>
-                {
-                    b.HasOne("Heartbeat.Infrastructure.Database.EntityIndexRow", null)
-                        .WithOne()
-                        .HasForeignKey("Heartbeat.Core.ObservationSchema", "Id")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_observation_schemas_entities_id");
-                });
-
             modelBuilder.Entity("Heartbeat.Core.Observer", b =>
                 {
                     b.HasOne("Heartbeat.Infrastructure.Database.EntityIndexRow", null)
@@ -164,16 +157,6 @@ namespace Heartbeat.Infrastructure.Database.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_observers_entities_id");
-                });
-
-            modelBuilder.Entity("Heartbeat.Infrastructure.Database.EntityDataRow", b =>
-                {
-                    b.HasOne("Heartbeat.Infrastructure.Database.EntityIndexRow", null)
-                        .WithOne()
-                        .HasForeignKey("Heartbeat.Infrastructure.Database.EntityDataRow", "Id")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_entity_data_entities_id");
                 });
 #pragma warning restore 612, 618
         }

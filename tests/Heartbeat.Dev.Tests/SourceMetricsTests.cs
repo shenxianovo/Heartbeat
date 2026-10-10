@@ -9,7 +9,7 @@ public sealed class SourceMetricsTests
     [Arguments("src/Docs/Heartbeat.Docs/pnpm-lock.yaml", "YAML", "Generated")]
     [Arguments("src/Docs/Heartbeat.Docs/package.json", "JSON", "Build")]
     [Arguments("src/Docs/Heartbeat.Docs/content/docs/meta.json", "JSON", "Documentation")]
-    [Arguments("src/Docs/Heartbeat.Docs/content/docs/api/openapi.json", "JSON", "Generated")]
+    [Arguments("src/Docs/Heartbeat.Docs/content/docs/api/openapi.json", "JSON", "Documentation")]
     [Arguments("src/Docs/Heartbeat.Docs/lib/source.ts", "TypeScript", "Production")]
     public async Task CurrentDocsFilesKeepTheirIntendedRole(string path, string language, string expected)
     {

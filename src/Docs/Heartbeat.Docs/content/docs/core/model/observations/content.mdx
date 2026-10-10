@@ -1,0 +1,45 @@
+---
+title: "观测内容"
+---
+
+<ModelRelations node="CONTENT" />
+
+## 含义
+
+观测内容是 [Observation](./observation.mdx) 通过 `ContentId` 引用的业务实体。业务定义实体的类型、字段、引用和身份规则。实体实现 [IEntity](../contracts/entity.mdx)。
+
+“观测内容”表示实体在观测中的角色。Core 不提供统一的观测内容基类。
+
+观测链由 Observation、Observer 和 EntitySchema 组成。业务链由业务自行定义。两条链通过观测内容实体连接。沿实体引用可以继续读取目标业务实体。职责见 [ADR 0010](../../../adr/0010-observation-content-and-business-entities.mdx)。
+
+被观测事实的时间由 [Observation](./observation.mdx) 记录。
+
+## 存储表示
+
+业务通过 [EntitySchema](./schema.mdx) 声明观测内容的模型。后端根据声明创建对应业务表，并提供通用存取。采集程序可以使用符合该定义的强类型实体。
+
+## 记录粒度与更新
+
+业务定义观测内容实体的身份和记录粒度。采集程序按业务规则更新已有实体或创建新实体。
+
+观测身份规则见 [Observation 观测身份](./observation.mdx#观测身份)。
+
+如果来源缺少稳定标识或时间，采集程序按已有证据创建观测内容实体。缺失的信息保持未知。
+
+## 历史保留
+
+如果业务保留历史快照，旧 `Observation` 引用的内容必须保持为观测发生时的内容。
+
+业务可以保存内容版本记录来保留历史。
+
+## 具体实现
+
+[前台应用时段](../../../observers/schemas/foreground-application-interval.mdx)区分观测内容、本机应用实体和跨平台应用实体。本机应用实体表示某台设备上的一个应用安装。观测内容通过 `localApplicationId` 引用[本机应用](../../../observers/entities/local-application.mdx)，通过 `name` 保留当时读到的名称。Observation 引用观测内容并记录前台时间。内容实体不重复保存时间。各采集来源的内容与观测规则维护在 Observers 栏目。
+
+## 示例
+
+微信步数按“一个人一天”定义记录粒度。如果同一天的步数从 3000 增至 5000，采集程序更新同一条每日记录。
+
+如果消息内容从 A 编辑为 B，消息保留原标识。如果业务需要保留历史内容，业务保存 A 和 B 的内容版本记录。
+
+如果对话尚未结束，可以更新对话的汇总记录，并保留各条消息。

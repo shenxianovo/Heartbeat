@@ -6,16 +6,18 @@ title: "模型概览"
 
 用最少的实体记录以下信息：
 
-- 形成观测的观测主体。
-- 观测引用的具体数据。
-- 解释观测的观测定义。
+- 形成观测的主体。
+- 观测引用的内容。
+- 解释观测的实体定义。
 - 被观测事实的时间。
 
-具体领域定义自己的数据结构、记录粒度与历史保留方式。
+业务定义数据结构、记录粒度和历史保留方式。
+
+`IEntity` 提供统一的[实体引用枚举契约](./model/contracts/entity.mdx#约定)。普通引用参与实体关系图。业务定义关系含义，以及是否需要独立的业务实体。
 
 ## 代码位置
 
-核心模型位于 `src/Core/Heartbeat.Core/`，命名空间为 `Heartbeat.Core`。项目定义实体、基础能力接口和模型规则。项目不依赖 ASP.NET Core、EF Core 或后端项目。
+核心模型位于 `src/Core/Heartbeat.Core/`，命名空间为 `Heartbeat.Core`。Core 定义实体、基础能力接口和模型规则。Core 不依赖 ASP.NET Core、EF Core 或后端项目。
 
 后端项目的职责与依赖见 [ADR 0005](../adr/0005-backend-project-organization.mdx)。
 
@@ -27,6 +29,5 @@ title: "模型概览"
 
 | 层级 | 节点 | 说明 |
 | --- | --- | --- |
-| 基础契约 | [IEntity](./model/contracts/entity.mdx)、[ITimed](./model/contracts/timed.mdx) | 先理解标识与时间能力 |
-| 观测模型 | [Observation](./model/observations/observation.mdx)、[Observer](./model/observations/observer.mdx)、[ObservationSchema](./model/observations/schema.mdx)、[具体数据](./model/observations/data.mdx) | 理解观测怎样连接观测主体、具体数据与观测定义 |
-| 关系模型 | [Relation](./model/relations/relation.mdx) | 理解什么时候需要独立的关系实体 |
+| 基础契约 | [IEntity](./model/contracts/entity.mdx)、[ITimed](./model/contracts/timed.mdx) | 先理解标识、引用枚举与时间能力 |
+| 观测模型 | [Observation](./model/observations/observation.mdx)、[Observer](./model/observations/observer.mdx)、[EntitySchema](./model/observations/schema.mdx)、[观测内容](./model/observations/content.mdx) | 理解观测怎样连接观测主体、观测内容与实体定义 |

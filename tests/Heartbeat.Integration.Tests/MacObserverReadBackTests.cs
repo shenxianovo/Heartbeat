@@ -28,7 +28,7 @@ public sealed class MacObserverReadBackTests
                     ? new HttpResponseMessage(HttpStatusCode.Created)
                     : new HttpResponseMessage(HttpStatusCode.OK)
                     {
-                        Content = JsonContent.Create(new { category, entity = new { name = "Wrong content" } }),
+                        Content = JsonContent.Create(new { category, references = new { }, properties = new { name = "Wrong content" } }),
                     });
     }
 }

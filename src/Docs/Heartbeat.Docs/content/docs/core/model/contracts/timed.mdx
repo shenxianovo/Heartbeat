@@ -29,13 +29,13 @@ public interface ITimed
 | `t` | `null` | 开始已知，结束未知 |
 | `null` | `t` | 开始未知，结束已知 |
 
-`null` 只表示该边界未知。状态由具体领域数据表达。
+`null` 只表示时间边界未知。状态由业务数据表达。
 
 ## 时间精度
 
 `DateTimeOffset` 的时间粒度为 100 ns。系统使用微秒精度存储和读取时间。
 
-如果来源时间的粒度小于 100 ns，领域规定转换时的舍入方式。
+如果来源时间的粒度小于 100 ns，业务定义转换时的舍入方式。
 
 时间存储见 [Heartbeat Storage](../../../storage/index.mdx#时间存储)。传输与展示约定见 [Heartbeat API](../../../api/index.mdx#时间表示与职责)。
 
@@ -44,4 +44,4 @@ public interface ITimed
 | 实现类型 | 时间含义 |
 | --- | --- |
 | [Observation](../observations/observation.mdx) | 被观测事实的起止时间 |
-| [Relation](../relations/relation.mdx) | 关系自身的时间范围 |
+| 业务实体 | 由具体业务定义时间含义 |

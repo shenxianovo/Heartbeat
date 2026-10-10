@@ -6,8 +6,10 @@ namespace Heartbeat.Application.Entities;
 public interface IEntityStore
 {
     Task<EntitySaveResult> SaveEntityAsync(
+        string resourceName,
         EntityId id,
-        JsonElement data,
+        JsonElement references,
+        JsonElement properties,
         CancellationToken cancellationToken = default);
 
     Task<EntitySaveResult> SaveObserverAsync(
@@ -18,8 +20,8 @@ public interface IEntityStore
         Observation observation,
         CancellationToken cancellationToken = default);
 
-    Task<EntitySaveResult> SaveObservationSchemaAsync(
-        ObservationSchema schema,
+    Task<EntitySaveResult> SaveEntitySchemaAsync(
+        EntitySchema schema,
         CancellationToken cancellationToken = default);
 
     Task<StoredEntity?> ReadAsync(

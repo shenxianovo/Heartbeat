@@ -1,0 +1,77 @@
+---
+title: "0011 EntitySchema 驱动业务实体存储"
+---
+
+## 模型与职责
+
+插件定义业务实体。Core 与插件共享实体契约。EntitySchema 定义业务实体的字段、类型、引用、约束和业务含义。后端解释模型声明，创建业务表，并提供通用存取和展示。
+
+EntitySchema 定义业务实体的模型。本机应用等独立业务实体也可以具有自己的 EntitySchema。Observation 通过 SchemaId 引用观测内容的 EntitySchema。EntitySchema 说明事实与时间的含义。
+
+插件只维护一份模型声明。后端根据模型声明建表、校验和还原实体。后端不从第一条数据推测模型。
+
+## 模型声明的 HTTP 表示
+
+EntitySchema 直接声明模型属性。`properties.name` 保存显示名称，`properties.resourceName` 登记业务资源名，`properties.fields` 以业务字段名映射字段定义。请求体使用统一的 `references` 与 `properties` 结构。
+
+普通属性和实体引用都在 `fields` 中定义，通过 `type` 区分。`type: "reference"` 表示实体引用；业务实体提交和读取时，将该字段的目标实体标识放在 `references` 中，将普通属性值放在 `properties` 中。同一字段的值只出现一次。
+
+`reference` 只允许用于实体顶层字段。对象成员和数组元素不允许使用 `reference`，这一规则适用于任意嵌套层级。HTTP 的 `references` 保持引用名称到目标实体标识的映射，后端无需记录引用在对象或数组中的位置。
+
+每个字段定义必须明确提供 `type`、`required` 和 `nullable`，三项配置没有隐含默认值。字段定义使用 `required` 约束提交时是否必须包含字段，使用 `nullable` 约束字段值是否允许为 `null`。两项约束分别判断，适用于普通属性与实体引用。
+
+对象字段使用 `fields` 声明成员。每个成员沿用相同的字段定义格式，必须明确提供 `type`、`required` 和 `nullable`。对象成员定义描述业务结构，存储映射决定整体保存还是展平。
+
+数组字段使用 `items` 定义每个元素。元素定义必须明确提供 `type` 和 `nullable`，不使用 `required`。数组字段与数组元素分别声明是否允许为空。对象元素通过 `items.fields` 声明成员，成员继续使用完整字段定义。字段必填不表示数组至少包含一个元素。
+
+保存和读取使用相同的字段表示，协议见[保存实体定义](/api/saveEntitySchema)。
+
+## 业务入口登记
+
+上传 EntitySchema 时一起登记 `resourceName`。每个资源名绑定一个 SchemaId，并提供 `PUT /entities/{resourceName}/{id}` 保存入口。资源名只使用小写英文字母、数字和连字符，以字母开头，例如 `local-applications`、`foreground-application-periods`。资源名全局唯一，且不能使用 `schemas`、`observers`、`observations`。插件可以自行加前缀，例如 `acme-local-applications`；系统不另设命名空间。显示名称用于阅读，资源名用于 HTTP 路径，后端根据资源名生成默认物理表名。
+
+同一 SchemaId 的 `resourceName` 在首次登记后固定，后续提交必须保持原值。尝试修改已登记的资源名时，后端返回 `409 Conflict`，并保留原定义与资源绑定。显示名称 `name` 可以在模型含义不变时修改，资源名和接口地址保持不变。这样调用方可以继续使用原来的保存入口。
+
+首次保存时，定义保存、资源登记和首次建表作为一次完整操作。全部成功后才返回成功；任一步骤失败时一起回滚，不留下部分结果。资源名已被其他 SchemaId 占用时返回 `409`。相同请求重复提交不新增定义、资源绑定或业务表。
+
+后端按资源名找到 EntitySchema，校验业务实体，再根据存储映射保存内容和统一实体索引。所有已登记资源共用保存逻辑。业务实体仍通过 `GET /entities/{id}` 读取。
+
+## 实体定义的存储
+
+EntitySchema 本身保存在系统预先建立的固定表 `entity_schemas` 中。`id` 保存定义标识，`name` 保存显示名称，`resource_name` 保存唯一的业务资源名，`fields` 使用 `jsonb` 保存字段定义。保存 EntitySchema 不需要先提交另一份 EntitySchema。
+
+字段定义作为一份模型声明整体保存。后端根据声明将业务数据映射到对应业务表的列。定义与业务数据分别保存，统一实体索引负责按实体标识定位内容。
+
+存储结构见 [entity_schemas](../storage/entity-schemas.mdx)。
+
+## 一份定义对应一张业务表
+
+每个业务 SchemaId 对应一张业务表。后端负责数据库列映射、保存、查询和索引。后端通过统一实体索引按 ID 定位内容。
+
+业务字段支持 `string`、`boolean`、`integer`、`number`、`reference`、`object` 和 `array`。存储层将前五种类型分别映射到 `text`、`boolean`、`bigint`、`numeric` 和 `uuid`。对象字段使用 `jsonb`。本阶段使用默认映射，不提供自定义表名或对象展平配置。读取时，后端按映射还原对象结构，保留业务语义。数组字段整体保存为一个 `jsonb` 列，不自动拆表。对象成员和数组元素按模型声明校验。映射见[存储文档](../storage/index.mdx#业务字段映射)。
+
+默认业务表名由后端生成：将资源名中的连字符替换为下划线，再加上 `entity_` 前缀。例如，`local-applications` 对应 `entity_local_applications`。资源名全局唯一且登记后固定，因此默认表名也稳定，并保留可读的业务名称。登记时检查生成表名的长度与重名；失败时整体回滚。
+
+后端将顶层业务字段名转换为 `snake_case`，作为默认列名。普通属性和引用字段使用同一规则，并映射到同一张业务表。`id` 与 `__omitted_fields` 是存储系统列，业务字段及转换后的列名不能占用。不同字段转换后重名或列名超长时，后端拒绝登记，不自动改名。对象和数组各占一列。具体规则见[业务列命名](../storage/index.mdx#业务列命名)。
+
+表名映射属于存储层。Core 不依赖 PostgreSQL 的列类型或建表语句。命名规则见[业务表命名](../storage/index.mdx#业务表命名)。
+
+## 字段存在状态
+
+业务表通过 `text[] NOT NULL` 系统列 `__omitted_fields` 记录省略的顶层业务字段名。普通属性和引用字段使用同一规则。后端根据本次提交生成省略列表，将其与业务值、统一实体索引一起保存，读取时还原字段省略与显式 `null` 的区别。
+
+该信息由存储层负责，Observer 和其他提交方只提交业务字段。系统列不进入业务模型或 HTTP 响应。省略列表与业务值必须一致，不能将有值的字段同时标为省略。对象整体保存在 JSON 列中时，内部成员的存在状态由 JSON 内容保留。
+
+这种方式在保留业务字段独立列的同时，集中记录顶层字段的存在状态。读写和直接修改数据库都必须维护这份信息。规则与示例见[字段省略与空值](../storage/index.mdx#字段省略与空值)。
+
+## 定义身份
+
+同一个 SchemaId 的模型结构、约束和业务含义固定。模型变化使用新的 EntitySchema 标识，并对应新的业务表。
+
+名称或说明文字的修改不改变模型含义时，可以保留原标识。
+
+如果两个模型的 SchemaId 不同，两个模型分别对应业务表，即使字段结构相同。
+
+模型正文见 [EntitySchema](../core/model/observations/schema.mdx)。
+
+业务数据拒绝模型未声明的字段，包括嵌套对象成员，返回 `400`。业务引用的非空值只校验 UUIDv7 格式，允许目标尚未入库，不限制目标模型。修改已登记的字段定义返回 `409`；对象键顺序不影响比较。

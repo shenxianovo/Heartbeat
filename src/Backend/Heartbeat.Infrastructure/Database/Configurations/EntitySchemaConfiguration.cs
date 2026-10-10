@@ -4,18 +4,18 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Heartbeat.Infrastructure.Database.Configurations;
 
-public sealed class ObservationSchemaConfiguration : IEntityTypeConfiguration<ObservationSchema>
+public sealed class EntitySchemaConfiguration : IEntityTypeConfiguration<EntitySchema>
 {
-    public void Configure(EntityTypeBuilder<ObservationSchema> builder)
+    public void Configure(EntityTypeBuilder<EntitySchema> builder)
     {
-        builder.ToTable("observation_schemas");
+        builder.ToTable("entity_schemas");
         builder.HasKey(schema => schema.Id)
-            .HasName("pk_observation_schemas");
+            .HasName("pk_entity_schemas");
 
         builder.HasOne<EntityIndexRow>()
             .WithOne()
-            .HasForeignKey<ObservationSchema>(schema => schema.Id)
-            .HasConstraintName("fk_observation_schemas_entities_id")
+            .HasForeignKey<EntitySchema>(schema => schema.Id)
+            .HasConstraintName("fk_entity_schemas_entities_id")
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.Property(schema => schema.Id)
@@ -29,8 +29,12 @@ public sealed class ObservationSchemaConfiguration : IEntityTypeConfiguration<Ob
             .HasColumnType("text")
             .IsRequired();
 
-        builder.Property(schema => schema.Schema)
-            .HasColumnName("schema")
+        builder.HasIndex(schema => schema.ResourceName).IsUnique().HasDatabaseName("ux_entity_schemas_resource_name");
+        builder.Property(schema => schema.ResourceName)
+            .HasColumnName("resource_name").HasColumnType("text").IsRequired();
+
+        builder.Property(schema => schema.Fields)
+            .HasColumnName("fields")
             .HasColumnType("jsonb")
             .IsRequired();
     }

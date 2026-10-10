@@ -1,27 +1,20 @@
 using System.Text.Json;
-using System.Reflection;
 using Heartbeat.Api;
 using Heartbeat.Api.Entities;
 using Heartbeat.Api.Serialization;
-using Heartbeat.Api.OpenApi;
 using Heartbeat.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 10 * 1024 * 1024);
 
-if (Assembly.GetEntryAssembly()?.GetName().Name != "GetDocument.Insider")
+var connectionString = builder.Configuration.GetConnectionString("Heartbeat");
+if (string.IsNullOrWhiteSpace(connectionString))
 {
-    var connectionString = builder.Configuration.GetConnectionString("Heartbeat");
-    if (string.IsNullOrWhiteSpace(connectionString))
-    {
-        throw new InvalidOperationException("ConnectionStrings:Heartbeat must be configured.");
-    }
-
-    builder.Services.AddHeartbeatInfrastructure(connectionString);
+    throw new InvalidOperationException("ConnectionStrings:Heartbeat must be configured.");
 }
 
-builder.Services.AddHeartbeatOpenApi();
+builder.Services.AddHeartbeatInfrastructure(connectionString);
 builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
 
 builder.Services.ConfigureHttpJsonOptions(options =>

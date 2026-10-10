@@ -34,7 +34,7 @@ internal static class Program
             var observerId = ForegroundStateIdentity.LoadOrCreate(parsed.GetValue(identityFile)!);
             var capture = ForegroundCapture.Create(observerId, reading);
             Console.Error.WriteLine($"ObserverId={observerId.Value} SchemaId={ForegroundCapture.Schema.Id.Value} "
-                + $"DataId={capture.Data.Id.Value} ObservationId={capture.Observation.Id.Value}");
+                + $"ContentId={capture.Content.Id.Value} ObservationId={capture.Observation.Id.Value}");
             using var client = new HttpClient
             {
                 BaseAddress = new Uri(url.AbsoluteUri.TrimEnd('/') + "/"),
@@ -45,7 +45,7 @@ internal static class Program
             {
                 observerId = observerId.Value,
                 schemaId = ForegroundCapture.Schema.Id.Value,
-                dataId = capture.Data.Id.Value,
+                contentId = capture.Content.Id.Value,
                 observationId = capture.Observation.Id.Value,
                 observedAt = capture.Observation.StartAt?.UtcDateTime,
                 capture.Observation.TimeZone,

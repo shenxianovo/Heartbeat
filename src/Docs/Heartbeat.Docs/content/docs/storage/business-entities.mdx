@@ -1,0 +1,24 @@
+---
+title: "业务实体表"
+description: "EntitySchema 对应的业务表"
+---
+
+每个业务 SchemaId 对应一张业务表。登记 EntitySchema 时，后端根据资源名生成表名，并按字段定义创建列。例如，`example-records` 对应 `entity_example_records`。
+
+## 保存内容
+
+| 列 | 内容 |
+| --- | --- |
+| `id` | 实体自身的 UUIDv7，主键，引用 `entities.id` |
+| `__omitted_fields` | `text[] NOT NULL`，保存本次提交省略的顶层字段原名 |
+| 业务列 | 每个顶层字段对应一列，普通属性与引用使用相同命名规则 |
+
+类型映射见[业务字段映射](./index.mdx#业务字段映射)。对象和数组整体使用 `jsonb`。引用使用 `uuid`，允许指向尚未入库的实体，不建立目标外键。
+
+## 读写
+
+保存入口为 `PUT /entities/{resourceName}/{id}`。后端按资源名查找 EntitySchema，校验字段后完整替换实体。未声明字段、类型错误或缺少必填字段返回 `400`；资源名未登记返回 `404`；已有实体属于其他类别或 Schema 时返回 `409`。
+
+读取入口为 `GET /entities/{id}`。统一索引定位业务表，EntitySchema 决定字段名以及字段属于 `references` 还是 `properties`。读取保留[字段省略与空值](./index.mdx#字段省略与空值)的区别。
+
+实体索引与内容在同一事务中保存。内容的 `id` 外键使用 `ON DELETE CASCADE`，删除索引时删除同 ID 的内容。事务规则见[写入一致性](./index.mdx#写入一致性)。

@@ -8,27 +8,19 @@ namespace Heartbeat.Observers.ForegroundState;
 
 internal sealed record ForegroundCapture(
     ObserverEntity Observer,
-    ForegroundApplicationData Data,
+    ForegroundApplicationContent Content,
     Observation Observation)
 {
-    internal static ObservationSchema Schema { get; } = new()
+    internal static EntitySchema Schema { get; } = new()
     {
         Id = new EntityId(Guid.Parse("01a114c5-6282-7385-ab65-b93517e16b0f")),
         Name = "foreground application reading",
-        Schema = JsonSerializer.Deserialize<JsonElement>("""
+        ResourceName = "foreground-application-readings",
+        Fields = JsonSerializer.Deserialize<JsonElement>("""
             {
-              "type": "object",
-              "description": "A single foreground application reading. Observation startAt and endAt are equal to the reading time, at microsecond precision; timeZone is the local IANA time zone when known. Each reading has its own data identity. Missing application properties are null. Failure to obtain an application is a diagnostic, not a reading.",
-              "properties": {
-                "bundleIdentifier": {
-                  "type": ["string", "null"],
-                  "description": "The application's bundle identifier, or null when unavailable. Other kinds of application identifiers are not stored in this field."
-                },
-                "name": { "type": ["string", "null"] },
-                "executablePath": { "type": ["string", "null"] }
-              },
-              "required": ["bundleIdentifier", "name", "executablePath"],
-              "additionalProperties": false
+              "bundleIdentifier": { "type": "string", "required": true, "nullable": true },
+              "name": { "type": "string", "required": true, "nullable": true },
+              "executablePath": { "type": "string", "required": true, "nullable": true }
             }
             """),
     };
@@ -36,7 +28,7 @@ internal sealed record ForegroundCapture(
     internal static ForegroundCapture Create(EntityId observerId, ForegroundApplicationReading reading)
     {
         ArgumentNullException.ThrowIfNull(reading);
-        var data = new ForegroundApplicationData
+        var content = new ForegroundApplicationContent
         {
             Id = EntityId.New(),
             BundleIdentifier = reading.BundleIdentifier,
@@ -47,12 +39,12 @@ internal sealed record ForegroundCapture(
         var time = new DateTimeOffset(utc.AddTicks(-(utc.Ticks % 10)));
         return new ForegroundCapture(
             new ObserverEntity { Id = observerId, Name = "macOS foreground state observer" },
-            data,
+            content,
             new Observation
             {
                 Id = EntityId.New(),
                 ObserverId = observerId,
-                DataId = data.Id,
+                ContentId = content.Id,
                 SchemaId = Schema.Id,
                 StartAt = time,
                 EndAt = time,
@@ -65,19 +57,25 @@ internal sealed record ForegroundCapture(
     {
         var entities = new[]
         {
-            new Submission(Observer.Id, "observer", "entities/observers", Body(new { Observer.Name })),
-            new Submission(Schema.Id, "observation_schema", "entities/observation-schemas",
-                Body(new { Schema.Name, Schema.Schema })),
-            new Submission(Data.Id, "entity", "entities",
-                Body(new { Data.BundleIdentifier, Data.Name, Data.ExecutablePath })),
+            new Submission(Observer.Id, "observer", "entities/observers", Body(new { references = new { }, properties = new { Observer.Name } })),
+            new Submission(Schema.Id, "entity_schema", "entities/schemas",
+                Body(new { references = new { }, properties = new { Schema.Name, Schema.ResourceName, Schema.Fields } })),
+            new Submission(Content.Id, "entity", $"entities/{Schema.ResourceName}",
+                Body(new { references = new { }, properties = new { Content.BundleIdentifier, Content.Name, Content.ExecutablePath } })),
             new Submission(Observation.Id, "observation", "entities/observations", Body(new
             {
-                observerId = Observation.ObserverId.Value,
-                dataId = Observation.DataId.Value,
-                schemaId = Observation.SchemaId.Value,
-                startAt = Observation.StartAt?.UtcDateTime,
-                endAt = Observation.EndAt?.UtcDateTime,
-                Observation.TimeZone,
+                references = new
+                {
+                    observerId = Observation.ObserverId.Value,
+                    contentId = Observation.ContentId.Value,
+                    schemaId = Observation.SchemaId.Value,
+                },
+                properties = new
+                {
+                    startAt = Observation.StartAt?.UtcDateTime,
+                    endAt = Observation.EndAt?.UtcDateTime,
+                    Observation.TimeZone,
+                },
             })),
         };
         foreach (var entity in entities)
@@ -97,7 +95,8 @@ internal sealed record ForegroundCapture(
                 throw await RequestFailureAsync(response, path, cancellationToken);
             var actual = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
             if (actual.GetProperty("category").GetString() != entity.Category
-                || !JsonElement.DeepEquals(actual.GetProperty("entity"), entity.Body))
+                || (!JsonElement.DeepEquals(actual.GetProperty("references"), entity.Body.GetProperty("references"))
+                    || !JsonElement.DeepEquals(actual.GetProperty("properties"), entity.Body.GetProperty("properties"))))
                 throw new InvalidDataException($"Read-back verification failed for {path}.");
         }
     }

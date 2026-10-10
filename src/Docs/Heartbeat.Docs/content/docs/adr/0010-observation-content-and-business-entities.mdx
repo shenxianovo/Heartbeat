@@ -1,0 +1,25 @@
+---
+title: "0010 观测内容由业务定义"
+---
+
+## 两条链
+
+Core 定义观测链：Observation 引用 Observer、EntitySchema 和观测内容，并记录被观测事实的时间。
+
+业务定义业务链，包括实体类型、身份、属性和引用。两条链在 Observation 引用的业务实体处连接。
+
+## 观测内容
+
+Observation 使用 `ContentId` 引用观测内容。HTTP 中的引用名称为 `contentId`。
+
+“观测内容”是业务实体在观测中的角色。实体实现 `IEntity`。Core 不提供统一的内容基类。业务决定内容的记录粒度、更新规则和历史保留方式。
+
+## 前台应用时段
+
+本机应用实体表示设备上的一个应用安装，保存原生应用标识。前台应用观测内容通过 `localApplicationId` 引用本机应用，通过 `name` 保留当时读到的名称。
+
+Observation 引用这份内容，记录应用处于前台的起止时间。Observation 与观测内容共同表达前台应用时段。内容实体不重复保存事实时间。
+
+业务可以将本机应用关联到跨平台应用身份。该关联属于业务链，Observer 不负责判断其他平台的软件身份。
+
+模型规则见[观测内容](../core/model/observations/content.mdx)。

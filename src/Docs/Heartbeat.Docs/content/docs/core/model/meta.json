@@ -4,8 +4,6 @@
     "---基础契约---",
     "...contracts",
     "---观测模型---",
-    "...observations",
-    "---关系模型---",
-    "...relations"
+    "...observations"
   ]
 }

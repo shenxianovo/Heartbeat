@@ -126,7 +126,7 @@ internal static class SourceCorpus
         name.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase)
         || name.EndsWith("ModelSnapshot.cs", StringComparison.OrdinalIgnoreCase)
         || name is "next-env.d.ts"
-        || name is "pnpm-lock.yaml" or "openapi.json"
+        || name is "pnpm-lock.yaml"
         || name.EndsWith("-lock.json", StringComparison.OrdinalIgnoreCase)
         || name is "package-lock.json";
 

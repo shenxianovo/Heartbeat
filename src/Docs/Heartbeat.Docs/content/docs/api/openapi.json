@@ -2,7 +2,7 @@
   "openapi": "3.1.1",
   "info": {
     "title": "Heartbeat API",
-    "description": "由 Heartbeat.Api 的端点、请求类型和契约声明生成。",
+    "description": "Heartbeat HTTP 接口契约。维护者直接修改此文件。文档站读取此文件展示接口，后端按契约实现。",
     "version": "draft"
   },
   "servers": [
@@ -12,88 +12,9 @@
   ],
   "paths": {
     "/entities/{id}": {
-      "put": {
-        "summary": "保存通用实体",
-        "description": "路径中的 UUIDv7 提供实体标识，请求体包含其余全部属性。首次保存创建实体；同 ID 且类别一致的合法请求替换内容。类别不一致返回 409 并保留原内容，重复提交不新增实体。",
-        "operationId": "saveEntity",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "实体的 UUIDv7。",
-            "required": true,
-            "schema": {
-              "examples": [
-                "0192b056-7300-7000-8000-000000000001"
-              ],
-              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Entity"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Created"
-          },
-          "204": {
-            "description": "No Content"
-          },
-          "400": {
-            "description": "Bad Request",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Payload Too Large",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          }
-        }
-      },
       "get": {
         "summary": "读取实体",
-        "description": "按 UUIDv7 查询统一索引，读取任意实体。响应包含 category 和实体除 id 外的全部属性；已知时间统一返回 UTC。",
+        "description": "按 UUIDv7 查询统一索引，读取实体。后端通过统一索引定位业务实体所属 Schema 的业务表。\n\n所有类别使用同一响应结构：\n\n- `category`：模型类别。实体定义的类别为 `entity_schema`。\n- `references`：具名实体引用。键是业务定义的引用名称，非空值是目标 UUIDv7。字段定义允许空值时可以为 `null`。没有引用字段时为 `{}`。\n- `properties`：其他业务属性，不重复引用字段。\n\n实体 `id` 由请求路径提供。内容中的标识字符串不自动成为引用。后端将已知时间统一返回为 UTC。",
         "operationId": "getEntity",
         "parameters": [
           {
@@ -103,7 +24,7 @@
             "required": true,
             "schema": {
               "examples": [
-                "0192b056-7300-7000-8000-000000000001"
+                "0192b056-7300-7000-8000-000000000003"
               ],
               "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
               "type": "string",
@@ -118,6 +39,90 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EntityResponse"
+                },
+                "examples": {
+                  "entity": {
+                    "summary": "通用实体",
+                    "value": {
+                      "category": "entity",
+                      "references": {
+                        "relatedEntityId": "0192b056-7300-7000-8000-000000000001"
+                      },
+                      "properties": {
+                        "name": "示例实体"
+                      }
+                    }
+                  },
+                  "observer": {
+                    "summary": "观测主体",
+                    "value": {
+                      "category": "observer",
+                      "references": {},
+                      "properties": {
+                        "name": "示例观测主体"
+                      }
+                    }
+                  },
+                  "observation": {
+                    "summary": "观测",
+                    "value": {
+                      "category": "observation",
+                      "references": {
+                        "observerId": "0192b056-7300-7000-8000-000000000002",
+                        "contentId": "0192b056-7300-7000-8000-000000000003",
+                        "schemaId": "0192b056-7300-7000-8000-000000000004"
+                      },
+                      "properties": {
+                        "startAt": "2026-10-06T01:00:00Z",
+                        "endAt": "2026-10-06T01:30:00Z",
+                        "timeZone": "Asia/Shanghai"
+                      }
+                    }
+                  },
+                  "entitySchema": {
+                    "summary": "实体定义",
+                    "value": {
+                      "category": "entity_schema",
+                      "references": {},
+                      "properties": {
+                        "name": "示例记录",
+                        "resourceName": "example-records",
+                        "fields": {
+                          "title": {
+                            "type": "string",
+                            "required": true,
+                            "nullable": true
+                          },
+                          "relatedEntityId": {
+                            "type": "reference",
+                            "required": true,
+                            "nullable": false
+                          },
+                          "identifiers": {
+                            "type": "array",
+                            "required": true,
+                            "nullable": false,
+                            "items": {
+                              "type": "object",
+                              "nullable": false,
+                              "fields": {
+                                "scheme": {
+                                  "type": "string",
+                                  "required": true,
+                                  "nullable": false
+                                },
+                                "value": {
+                                  "type": "string",
+                                  "required": true,
+                                  "nullable": false
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -158,7 +163,7 @@
     "/entities/observers/{id}": {
       "put": {
         "summary": "保存观测主体",
-        "description": "路径中的 UUIDv7 提供实体标识，请求体包含其余全部属性。首次保存创建实体；同 ID 且类别一致的合法请求替换内容。类别不一致返回 409 并保留原内容，重复提交不新增实体。",
+        "description": "路径中的 UUIDv7 提供实体标识。保存路径声明模型类别。请求体外层只能包含 `references` 和 `properties`，且两者必须出现。\n\nObserver 没有实体引用，`references` 必须为 `{}`。`properties` 保存其他业务属性，不重复引用字段。\n\n保存行为：\n\n- 首次保存时，后端创建实体。\n- 如果已有实体的 ID 和类别与合法请求一致，后端替换内容。\n- 如果类别不一致，后端返回 `409` 并保留原内容。\n- 重复提交相同请求时，后端不新增实体。",
         "operationId": "saveObserver",
         "parameters": [
           {
@@ -168,7 +173,7 @@
             "required": true,
             "schema": {
               "examples": [
-                "0192b056-7300-7000-8000-000000000001"
+                "0192b056-7300-7000-8000-000000000002"
               ],
               "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
               "type": "string",
@@ -181,6 +186,17 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/Observer"
+              },
+              "examples": {
+                "example": {
+                  "summary": "没有引用的观测主体",
+                  "value": {
+                    "references": {},
+                    "properties": {
+                      "name": "前台状态 Observer"
+                    }
+                  }
+                }
               }
             }
           },
@@ -194,7 +210,7 @@
             "description": "No Content"
           },
           "400": {
-            "description": "Bad Request",
+            "description": "请求不符合契约。例如：标识或 JSON 无效、缺少必填字段、包含额外根字段，或 `references` 与 `properties` 包含同名字段。",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -239,7 +255,7 @@
     "/entities/observations/{id}": {
       "put": {
         "summary": "保存观测",
-        "description": "路径中的 UUIDv7 提供实体标识，请求体包含其余全部属性。首次保存创建实体；同 ID 且类别一致的合法请求替换内容。类别不一致返回 409 并保留原内容，重复提交不新增实体。",
+        "description": "路径中的 UUIDv7 提供实体标识。保存路径声明模型类别。请求体外层只能包含 `references` 和 `properties`，且两者必须出现。\n\n请求字段：\n\n- `references`：以引用名称映射目标 UUIDv7，包含 `observerId`、`contentId` 和 `schemaId`。\n- `properties`：保存时间边界和事实时区，不重复引用字段。未知值必须为 `null`。\n\n保存行为：\n\n- 首次保存时，后端创建实体。\n- 如果已有实体的 ID 和类别与合法请求一致，后端替换内容。\n- 如果类别不一致，后端返回 `409` 并保留原内容。\n- 重复提交相同请求时，后端不新增实体。",
         "operationId": "saveObservation",
         "parameters": [
           {
@@ -249,7 +265,7 @@
             "required": true,
             "schema": {
               "examples": [
-                "0192b056-7300-7000-8000-000000000001"
+                "0192b056-7300-7000-8000-000000000005"
               ],
               "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
               "type": "string",
@@ -262,6 +278,38 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/Observation"
+              },
+              "examples": {
+                "example": {
+                  "summary": "观测引用主体、内容和定义",
+                  "value": {
+                    "references": {
+                      "observerId": "0192b056-7300-7000-8000-000000000002",
+                      "contentId": "0192b056-7300-7000-8000-000000000003",
+                      "schemaId": "0192b056-7300-7000-8000-000000000004"
+                    },
+                    "properties": {
+                      "startAt": "2026-10-06T09:00:00+08:00",
+                      "endAt": "2026-10-06T09:30:00+08:00",
+                      "timeZone": "Asia/Shanghai"
+                    }
+                  }
+                },
+                "unknownTime": {
+                  "summary": "时间和事实时区未知",
+                  "value": {
+                    "references": {
+                      "observerId": "0192b056-7300-7000-8000-000000000002",
+                      "contentId": "0192b056-7300-7000-8000-000000000003",
+                      "schemaId": "0192b056-7300-7000-8000-000000000004"
+                    },
+                    "properties": {
+                      "startAt": null,
+                      "endAt": null,
+                      "timeZone": null
+                    }
+                  }
+                }
               }
             }
           },
@@ -275,7 +323,7 @@
             "description": "No Content"
           },
           "400": {
-            "description": "Bad Request",
+            "description": "请求不符合契约。例如：标识或 JSON 无效、缺少必填字段、包含额外根字段，或 `references` 与 `properties` 包含同名字段。",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -317,11 +365,11 @@
         }
       }
     },
-    "/entities/observation-schemas/{id}": {
+    "/entities/schemas/{id}": {
       "put": {
-        "summary": "保存观测定义",
-        "description": "提交方判断语义或约束是否变化，并决定是否使用新 ID。后端检查格式和类别，不自动判断语义变化。首次保存创建实体；同 ID 且类别一致的合法请求替换内容。重复提交不新增实体。",
-        "operationId": "saveObservationSchema",
+        "summary": "保存实体定义",
+        "description": "路径中的 UUIDv7 是 EntitySchema 的标识。保存路径声明实体定义类别。请求体由 `references` 和 `properties` 组成。\n\n模型声明：\n\n- `properties.name`：供人阅读的定义名称。\n- `properties.resourceName`：业务资源名，登记 `PUT /entities/{resourceName}/{id}` 入口。资源名只使用小写英文字母、数字和连字符，以字母开头，例如 `local-applications`。资源名全局唯一，不能使用 `schemas`、`observers`、`observations`。插件可以自行加前缀，例如 `acme-local-applications`；系统不另设命名空间。`name` 可以使用中文。后端根据资源名生成默认业务表名，规则见[业务表命名](/storage#业务表命名)。\n- `properties.fields`：业务实体的字段定义。键是字段名，值是字段定义。每个字段通过 `type` 声明类型。\n\n顶层业务字段不能使用 `id` 或 `__omitted_fields`；前者保存实体自身标识，后者由后端记录省略的字段。后端将普通属性和引用字段名转换为 `snake_case`，作为默认列名。登记时，如果不同字段转换后重名、占用系统列或数据库内置列，或列名超过数据库长度限制，后端拒绝登记，不自动改名。对象和数组各占一个 JSON 列。规则见[业务列命名](/storage#业务列命名)。\n\n普通属性和实体引用都在 `fields` 中定义。`type: \"reference\"` 声明实体引用：业务实体提交和读取时，这个字段的值放在 `references` 中。普通属性值放在 `properties` 中。同一字段的值只出现一次。\n\n引用位置：\n\n`reference` 只允许出现在 EntitySchema 的顶层字段。对象成员和数组元素不允许使用 `reference`，这一规则适用于任意嵌套层级。`references` 保持“引用名称 → 目标实体标识”的结构。对象和数组内部的普通标识字符串不自动成为实体引用。\n\n字段类型：\n\n| `type` | 值的含义 |\n| --- | --- |\n| `string` | 字符串，例如 `\"示例标题\"` |\n| `boolean` | 布尔值，例如 `true` |\n| `integer` | 整数，例如 `12` |\n| `number` | 数值，例如 `12.5` |\n| `reference` | 目标实体的 UUIDv7 |\n| `object` | JSON 对象 |\n| `array` | JSON 数组 |\n\n`type` 只能使用上述取值。是否允许 `null` 由 `nullable` 声明。对象成员和数组元素按模型声明校验。对象字段的存储方式不改变 HTTP 中的业务对象结构。对象和数组整体保存，读取时按原结构返回。数据库列映射见[存储文档](/storage#业务字段映射)。\n\n对象成员：\n\n`type: \"object\"` 通过 `fields` 声明成员。键是成员名，值是成员的字段定义。每个成员继续明确提供 `type`、`required` 和 `nullable`。`fields` 描述业务结构，对象整体保存在 JSON 列中。\n\n数组元素：\n\n`type: \"array\"` 通过 `items` 定义每个元素。`items` 必须明确提供 `type` 和 `nullable`，不使用 `required`。数组字段的 `required` 决定字段是否必须出现，字段的 `nullable` 决定数组本身能否为 `null`，`items.nullable` 决定元素能否为 `null`。字段必填不表示数组至少包含一个元素。对象元素通过 `items.fields` 声明成员，每个成员继续使用完整字段定义。\n\n每个字段必须明确提供 `type`、`required` 和 `nullable`。缺少任一配置时，请求不合法。三项配置没有隐含默认值。字段定义只接受已声明的配置，`fields` 仅用于 `object`，`items` 仅用于 `array`。\n\n字段约束：\n\n- `required`：是否必须提交这个字段。\n- `nullable`：字段出现时是否允许值为 `null`。\n\n两项约束分别判断。示例中的 `title` 使用 `required: true` 和 `nullable: true`，因此 `\"title\": null` 合法，省略 `title` 不合法。`relatedEntityId` 使用 `required: true` 和 `nullable: false`，因此必须提供目标实体的 UUIDv7。\n\nEntitySchema 请求外层的 `references` 表示定义实体自身的引用；`fields` 中的引用字段声明业务实体将具有哪些引用，两者用途不同。\n\n独立业务实体和观测内容都可以使用 EntitySchema。每个业务 SchemaId 对应一张业务表。后端根据模型声明建表、校验和还原实体。\n\n保存与更新：\n\n- 首次保存时，后端检查生成的业务表名长度与重名，保存实体定义、登记资源名与 SchemaId 的绑定，并创建对应业务表。三项操作全部成功后，业务保存入口可用。\n- 如果任一步骤失败，后端回滚本次操作，不留下部分定义、资源绑定或新业务表。已有内容保持不变。\n- 重复提交相同请求时，后端不新增定义。\n- 同一 ID 的模型结构、约束和业务含义必须保持不变。修改已登记的 `fields` 返回 `409`，保留原定义、资源绑定和业务表。对象键顺序不影响比较。如果模型变化，创建方必须使用新 ID。\n- 同一 SchemaId 的 `resourceName` 在首次登记后固定，后续提交必须保持原值。尝试修改已登记的资源名时，后端返回 `409 Conflict`，并保留原定义与资源绑定。\n- 如果仅修改显示名称 `name`，且模型含义不变，可以沿用原 ID。显示名称的修改不改变资源名或接口地址。\n- 如果类别冲突，或资源名已被其他 SchemaId 占用，后端返回 `409` 并保留原内容。",
+        "operationId": "saveEntitySchema",
         "parameters": [
           {
             "name": "id",
@@ -330,7 +378,7 @@
             "required": true,
             "schema": {
               "examples": [
-                "0192b056-7300-7000-8000-000000000001"
+                "0192b056-7300-7000-8000-000000000004"
               ],
               "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
               "type": "string",
@@ -342,7 +390,172 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ObservationSchema"
+                "$ref": "#/components/schemas/EntitySchema"
+              },
+              "examples": {
+                "example": {
+                  "summary": "定义带有标题、实体引用和对象数组的业务实体",
+                  "value": {
+                    "references": {},
+                    "properties": {
+                      "name": "示例记录",
+                      "resourceName": "example-records",
+                      "fields": {
+                        "title": {
+                          "type": "string",
+                          "required": true,
+                          "nullable": true
+                        },
+                        "relatedEntityId": {
+                          "type": "reference",
+                          "required": true,
+                          "nullable": false
+                        },
+                        "identifiers": {
+                          "type": "array",
+                          "required": true,
+                          "nullable": false,
+                          "items": {
+                            "type": "object",
+                            "nullable": false,
+                            "fields": {
+                              "scheme": {
+                                "type": "string",
+                                "required": true,
+                                "nullable": false
+                              },
+                              "value": {
+                                "type": "string",
+                                "required": true,
+                                "nullable": false
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "实体定义、资源绑定与业务表创建成功。无响应体。"
+          },
+          "204": {
+            "description": "合法更新或重复提交成功。重复提交不新增定义、资源绑定或业务表。无响应体。"
+          },
+          "400": {
+            "description": "请求不符合契约。例如：标识或 JSON 无效、缺少必填字段、包含额外根字段，或 `references` 与 `properties` 包含同名字段。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "实体类别冲突、资源名已被其他 SchemaId 占用，或尝试修改当前 SchemaId 已登记的资源名。保留原定义与资源绑定。 已登记的 fields 被修改。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "examples": {
+                  "resourceNameChange": {
+                    "summary": "修改已登记的资源名",
+                    "value": {
+                      "type": "about:blank",
+                      "title": "Conflict",
+                      "status": 409,
+                      "detail": "同一 SchemaId 的 resourceName 在首次登记后固定，不能修改。"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "后端因未预期错误而保存失败。本次定义保存、资源登记和首次建表一起回滚。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/entities/{resourceName}/{id}": {
+      "put": {
+        "summary": "保存业务实体",
+        "description": "按已登记的业务资源名保存实体。路径中的 `resourceName` 绑定一个 SchemaId，`id` 是业务实体的 UUIDv7。\n\n请求体只包含 `references` 与 `properties`，且两者必须出现。引用字段放入 `references`，普通属性放入 `properties`。实体自身标识由路径提供，字段值不重复。\n\n字段是否必须出现、是否允许为 `null`，由 EntitySchema 的 `required` 和 `nullable` 分别约束。后端保存并还原字段省略与显式 `null` 的区别。保存已有实体时按完整替换处理，省略字段不保留旧值。`__omitted_fields` 由后端维护，提交方不提供这个系统列，响应也不包含它。存储规则见[字段省略与空值](/storage#字段省略与空值)。\n\n保存流程：\n\n1. 根据资源名找到 EntitySchema。资源名未登记时，后端返回 `404 Not Found`，不创建实体内容、统一实体索引或业务表。\n2. 按定义校验字段、类型、引用和约束。未声明字段返回 `400`，包括嵌套对象成员。非空引用只校验 UUIDv7 格式，允许目标尚未入库，不限制目标模型。\n3. 根据存储映射找到业务表。\n4. 在同一事务中保存实体内容和统一实体索引。\n\n首次保存返回 `201`。保存已有实体时，实体必须属于路径绑定的 Schema；合法替换或重复提交返回 `204`。如果实体类别或所属 Schema 冲突，返回 `409` 并保留原内容。\n\n资源名在[保存实体定义](/api/saveEntitySchema)时登记。后端使用公共保存逻辑处理已登记资源。读取继续使用 `GET /entities/{id}`，响应类别为 `entity`。",
+        "operationId": "saveBusinessEntity",
+        "parameters": [
+          {
+            "name": "resourceName",
+            "in": "path",
+            "required": true,
+            "description": "已登记的业务资源名。后端据此找到 EntitySchema 和业务表。",
+            "schema": {
+              "$ref": "#/components/schemas/EntityResourceName"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "实体的 UUIDv7。",
+            "required": true,
+            "schema": {
+              "examples": [
+                "0192b056-7300-7000-8000-000000000005"
+              ],
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BusinessEntity"
+              },
+              "examples": {
+                "example": {
+                  "summary": "符合示例记录定义的业务实体",
+                  "value": {
+                    "references": {
+                      "relatedEntityId": "0192b056-7300-7000-8000-000000000001"
+                    },
+                    "properties": {
+                      "title": "示例标题",
+                      "identifiers": [
+                        {
+                          "scheme": "example.identifier",
+                          "value": "example-value"
+                        }
+                      ]
+                    }
+                  }
+                }
               }
             }
           },
@@ -356,7 +569,7 @@
             "description": "No Content"
           },
           "400": {
-            "description": "Bad Request",
+            "description": "请求不符合契约。例如：标识或 JSON 无效、缺少必填字段、包含额外根字段，或 `references` 与 `properties` 包含同名字段。",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -365,8 +578,29 @@
               }
             }
           },
+          "404": {
+            "description": "业务资源名未登记。不创建实体内容、统一实体索引或业务表。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "examples": {
+                  "unregisteredResource": {
+                    "summary": "业务资源名未登记",
+                    "value": {
+                      "type": "about:blank",
+                      "title": "Not Found",
+                      "status": 404,
+                      "detail": "业务资源名 example-records 未登记。请先保存对应的 EntitySchema。"
+                    }
+                  }
+                }
+              }
+            }
+          },
           "409": {
-            "description": "Conflict",
+            "description": "实体类别或所属 Schema 与路径绑定的模型冲突。保留原内容。",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -401,232 +635,251 @@
   },
   "components": {
     "schemas": {
-      "Entity": {
-        "type": "object",
-        "not": {
-          "required": [
-            "id"
-          ]
-        },
-        "description": "通用领域实体除 id 外的全部属性，按 jsonb 语义保存和返回。"
-      },
       "EntityResponse": {
-        "oneOf": [
-          {
-            "title": "entity",
-            "required": [
-              "category",
-              "entity"
+        "type": "object",
+        "required": [
+          "category",
+          "references",
+          "properties"
+        ],
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "entity",
+              "observation",
+              "observer",
+              "entity_schema"
             ],
+            "description": "实体的模型类别。所有类别使用同一响应结构。"
+          },
+          "references": {
             "type": "object",
-            "properties": {
-              "category": {
-                "const": "entity",
-                "type": "string"
-              },
-              "entity": {
-                "type": "object",
-                "not": {
-                  "required": [
-                    "id"
-                  ]
-                },
-                "description": "通用领域实体除 id 外的全部属性，按 jsonb 语义保存和返回。"
+            "description": "实体引用。键是业务定义的引用名称，非空值是目标实体的 UUIDv7。字段定义允许空值时可以为 null。没有引用字段时为 {}。引用字段只放在 references 中。",
+            "additionalProperties": {
+              "examples": [
+                "0192b056-7300-7000-8000-000000000001"
+              ],
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            },
+            "propertyNames": {
+              "not": {
+                "const": "__omitted_fields"
               }
             }
           },
-          {
-            "title": "observer",
-            "required": [
-              "category",
-              "entity"
-            ],
+          "properties": {
             "type": "object",
-            "properties": {
-              "category": {
-                "const": "observer",
-                "type": "string"
-              },
-              "entity": {
-                "$ref": "#/components/schemas/Observer"
-              }
-            }
-          },
-          {
-            "title": "observation",
-            "required": [
-              "category",
-              "entity"
-            ],
-            "type": "object",
-            "properties": {
-              "category": {
-                "const": "observation",
-                "type": "string"
-              },
-              "entity": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/Observation"
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "startAt": {
-                        "pattern": "Z$",
-                        "type": [
-                          "null",
-                          "string"
-                        ],
-                        "description": "UTC 时间，以 Z 结尾，精度为微秒；未知时为 null。",
-                        "format": "date-time"
-                      },
-                      "endAt": {
-                        "pattern": "Z$",
-                        "type": [
-                          "null",
-                          "string"
-                        ],
-                        "description": "UTC 时间，以 Z 结尾，精度为微秒；未知时为 null。",
-                        "format": "date-time"
-                      }
-                    }
-                  }
+            "description": "其他业务属性，不重复引用字段。保存契约与业务定义说明字段含义。已知时间以 UTC 表示。",
+            "propertyNames": {
+              "not": {
+                "enum": [
+                  "id",
+                  "__omitted_fields"
                 ]
               }
             }
-          },
-          {
-            "title": "observation_schema",
+          }
+        },
+        "description": "统一实体读取响应。category 声明模型类别，references 保存具名引用，properties 保存其他业务属性。实体 id 由请求路径提供。 读取保留字段省略与显式 null 的区别。省略的业务字段不出现在响应中；已提交的 null 按 null 返回。__omitted_fields 是后端维护的存储系统列，不出现在业务请求或响应中。",
+        "additionalProperties": false
+      },
+      "Observation": {
+        "type": "object",
+        "required": [
+          "references",
+          "properties"
+        ],
+        "properties": {
+          "references": {
+            "type": "object",
             "required": [
-              "category",
-              "entity"
+              "observerId",
+              "contentId",
+              "schemaId"
+            ],
+            "properties": {
+              "observerId": {
+                "examples": [
+                  "0192b056-7300-7000-8000-000000000001"
+                ],
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+                "type": "string",
+                "description": "形成本次观测的 Observer 的 UUIDv7。",
+                "format": "uuid"
+              },
+              "contentId": {
+                "examples": [
+                  "0192b056-7300-7000-8000-000000000001"
+                ],
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+                "type": "string",
+                "description": "本次观测引用的观测内容实体的 UUIDv7。",
+                "format": "uuid"
+              },
+              "schemaId": {
+                "examples": [
+                  "0192b056-7300-7000-8000-000000000001"
+                ],
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+                "type": "string",
+                "description": "观测内容所遵循的 EntitySchema 的 UUIDv7。EntitySchema 说明内容的结构、事实含义和时间含义。",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false,
+            "description": "观测引用的观测主体、观测内容和实体定义。目标可以尚未入库。"
+          },
+          "properties": {
+            "required": [
+              "startAt",
+              "endAt",
+              "timeZone"
             ],
             "type": "object",
             "properties": {
-              "category": {
-                "const": "observation_schema",
-                "type": "string"
+              "startAt": {
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+                "type": [
+                  "null",
+                  "string"
+                ],
+                "description": "事实开始时间。如果时间已知，值必须包含 Z 或明确 UTC 偏移。如果时间未知，值必须为 null。",
+                "format": "date-time"
               },
-              "entity": {
-                "$ref": "#/components/schemas/ObservationSchema"
+              "endAt": {
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+                "type": [
+                  "null",
+                  "string"
+                ],
+                "description": "事实结束时间。如果时间未知，值必须为 null。起止边界相等表示时间点。开始早于结束表示左闭右开区间。",
+                "format": "date-time"
+              },
+              "timeZone": {
+                "type": [
+                  "null",
+                  "string"
+                ],
+                "description": "事实所属的 IANA 时区 ID，例如 Asia/Shanghai。如果时区未知，值必须为 null。前端按浏览器或系统时区显示时间。"
               }
-            }
+            },
+            "description": "事实时间和事实时区。未知值必须为 null。如果起止时间均已知，开始时刻必须早于或等于结束时刻。",
+            "propertyNames": {
+              "not": {
+                "enum": [
+                  "id",
+                  "observerId",
+                  "contentId",
+                  "schemaId"
+                ]
+              }
+            },
+            "additionalProperties": false
           }
-        ]
+        },
+        "description": "观测的保存请求。references 保存三个实体引用，properties 保存时间边界和事实时区。引用字段不得在 properties 中重复。",
+        "additionalProperties": false
       },
-      "JsonElement": { },
-      "Observation": {
-        "required": [
-          "observerId",
-          "dataId",
-          "schemaId",
-          "startAt",
-          "endAt",
-          "timeZone"
-        ],
+      "EntitySchema": {
         "type": "object",
-        "not": {
-          "required": [
-            "id"
-          ]
-        },
+        "required": [
+          "references",
+          "properties"
+        ],
         "properties": {
-          "observerId": {
-            "examples": [
-              "0192b056-7300-7000-8000-000000000001"
-            ],
-            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
-            "type": "string",
-            "description": "形成本次观测的 Observer 的 UUIDv7。",
-            "format": "uuid"
+          "references": {
+            "type": "object",
+            "description": "此模型没有实体引用。references 必须为 {}。",
+            "additionalProperties": false
           },
-          "dataId": {
-            "examples": [
-              "0192b056-7300-7000-8000-000000000001"
+          "properties": {
+            "required": [
+              "name",
+              "resourceName",
+              "fields"
             ],
-            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
-            "type": "string",
-            "description": "本次观测引用的具体数据实体的 UUIDv7。",
-            "format": "uuid"
-          },
-          "schemaId": {
-            "examples": [
-              "0192b056-7300-7000-8000-000000000001"
-            ],
-            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
-            "type": "string",
-            "description": "解释本次观测的 ObservationSchema 的 UUIDv7。",
-            "format": "uuid"
-          },
-          "startAt": {
-            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
-            "type": [
-              "null",
-              "string"
-            ],
-            "description": "事实开始时间。已知值必须包含 Z 或明确 UTC 偏移；未知时必须为 null。",
-            "format": "date-time"
-          },
-          "endAt": {
-            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
-            "type": [
-              "null",
-              "string"
-            ],
-            "description": "事实结束时间。未知时必须为 null。边界相等表示时间点，开始早于结束表示左闭右开区间。",
-            "format": "date-time"
-          },
-          "timeZone": {
-            "type": [
-              "null",
-              "string"
-            ],
-            "description": "事实所属的 IANA 时区 ID，例如 Asia/Shanghai；未知时必须为 null。前端按浏览器或系统时区显示。"
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "实体定义的名称。"
+              },
+              "resourceName": {
+                "$ref": "#/components/schemas/EntityResourceName"
+              },
+              "fields": {
+                "type": "object",
+                "description": "业务实体的字段定义。键是业务字段名，值是字段定义。普通属性和实体引用统一在此声明，通过 type 区分。type 为 reference 的字段值放在业务实体的 references 中，普通属性值放在 properties 中。 reference 只允许用于此处的顶层字段，对象成员和数组元素不允许使用 reference。 顶层业务字段不能使用 id 或 __omitted_fields，这两个名称留给存储系统列。",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/EntityFieldDefinition"
+                },
+                "propertyNames": {
+                  "not": {
+                    "enum": [
+                      "id",
+                      "__omitted_fields"
+                    ]
+                  }
+                }
+              }
+            },
+            "description": "实体定义声明显示名称、业务资源名和字段。同一 ID 的模型结构、约束和业务含义固定。",
+            "propertyNames": {
+              "not": {
+                "enum": [
+                  "id",
+                  "schema"
+                ]
+              }
+            },
+            "additionalProperties": false
           }
         },
-        "description": "观测除 id 外的全部属性。引用可以指向尚未入库的实体。已知开始时间必须早于或等于结束时间，比较使用所表示的时刻。"
-      },
-      "ObservationSchema": {
-        "required": [
-          "name",
-          "schema"
-        ],
-        "type": "object",
-        "not": {
-          "required": [
-            "id"
-          ]
-        },
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "观测定义的名称。"
-          },
-          "schema": {
-            "description": "具体数据的结构、约束和观测含义，使用任意可存储的 JSON 值；按 jsonb 语义保存和返回。",
-            "$ref": "#/components/schemas/JsonElement"
-          }
-        },
-        "description": "观测定义除 id 外的全部属性。提交方判断是否需要新 ID，后端不自动判断语义变化。"
+        "description": "实体定义的保存请求。properties.name 保存显示名称，properties.resourceName 登记业务保存入口，properties.fields 保存字段定义。定义保存、资源登记和首次建表全部成功后才返回成功。 同一 SchemaId 的 resourceName 在首次登记后固定，后续提交必须保持原值。修改显示名称 name 不改变资源名或接口地址。 修改已登记的 fields 返回 409；对象键顺序不影响定义比较。字段定义只允许已声明的配置：fields 仅用于 object，items 仅用于 array。",
+        "additionalProperties": false
       },
       "Observer": {
-        "required": [
-          "name"
-        ],
         "type": "object",
-        "not": {
-          "required": [
-            "id"
-          ]
-        },
+        "required": [
+          "references",
+          "properties"
+        ],
         "properties": {
-          "name": {
-            "type": "string",
-            "description": "观测主体的名称。"
+          "references": {
+            "type": "object",
+            "description": "此模型没有实体引用。references 必须为 {}。",
+            "additionalProperties": false
+          },
+          "properties": {
+            "required": [
+              "name"
+            ],
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "观测主体的名称。"
+              }
+            },
+            "description": "观测主体的其他属性。",
+            "propertyNames": {
+              "not": {
+                "enum": [
+                  "id"
+                ]
+              }
+            },
+            "additionalProperties": false
           }
         },
-        "description": "观测主体除 id 外的全部属性。"
+        "description": "观测主体的保存请求。references 必须为 {}。properties 保存名称。",
+        "additionalProperties": false
       },
       "ProblemDetails": {
         "required": [
@@ -652,6 +905,215 @@
             "type": "string"
           }
         }
+      },
+      "EntityFieldDefinition": {
+        "description": "字段定义。必须明确提供 type、required 和 nullable。required 约束字段是否必须出现，nullable 约束字段值是否允许为空。",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EntityValueDefinition"
+          },
+          {
+            "type": "object",
+            "required": [
+              "required"
+            ],
+            "properties": {
+              "required": {
+                "type": "boolean",
+                "description": "是否必须提交这个业务字段。true 表示字段必须出现；false 表示允许省略。"
+              }
+            }
+          }
+        ],
+        "unevaluatedProperties": false
+      },
+      "EntityValueDefinition": {
+        "type": "object",
+        "required": [
+          "type",
+          "nullable"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "字段类型。string 为字符串，boolean 为布尔值，integer 为整数，number 为数值，reference 为实体引用，object 为对象，array 为数组。reference 的非空值是目标实体的 UUIDv7。空值由 nullable 声明。 reference 只允许用于实体顶层字段。",
+            "enum": [
+              "string",
+              "boolean",
+              "integer",
+              "number",
+              "reference",
+              "object",
+              "array"
+            ]
+          },
+          "nullable": {
+            "type": "boolean",
+            "description": "值是否允许为 null。true 表示允许 null；false 表示不允许 null。"
+          },
+          "fields": {
+            "type": "object",
+            "description": "对象成员定义。type 为 object 时必须提供 fields。键是成员名，值是成员的字段定义。每个成员必须明确提供 type、required 和 nullable。 成员不允许使用 reference。",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EntityNestedFieldDefinition"
+            }
+          },
+          "items": {
+            "$ref": "#/components/schemas/EntityArrayItemDefinition",
+            "description": "数组元素定义。type 为 array 时必须提供 items。每个元素按此定义校验。"
+          }
+        },
+        "description": "值的定义。必须明确提供 type 和 nullable。object 通过 fields 声明成员，array 通过 items 声明元素。",
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "object"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            "then": {
+              "required": [
+                "fields"
+              ]
+            },
+            "else": {
+              "not": {
+                "required": [
+                  "fields"
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "array"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            "then": {
+              "required": [
+                "items"
+              ]
+            },
+            "else": {
+              "not": {
+                "required": [
+                  "items"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "EntityArrayItemDefinition": {
+        "description": "数组元素定义。必须明确提供 type 和 nullable，不使用 required。元素为 object 时通过 fields 定义成员，成员仍使用完整字段定义。 数组元素不允许使用 reference。",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EntityValueDefinition"
+          },
+          {
+            "not": {
+              "required": [
+                "required"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "type": {
+                "not": {
+                  "const": "reference"
+                }
+              }
+            }
+          }
+        ],
+        "unevaluatedProperties": false
+      },
+      "EntityNestedFieldDefinition": {
+        "description": "对象成员定义。成员必须明确提供 type、required 和 nullable。对象成员不允许使用 reference；实体引用只能声明在实体顶层字段。",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EntityFieldDefinition"
+          },
+          {
+            "properties": {
+              "type": {
+                "not": {
+                  "const": "reference"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "EntityResourceName": {
+        "type": "string",
+        "minLength": 1,
+        "description": "业务保存入口的资源名，绑定一个 SchemaId。只使用小写英文字母、数字和连字符，以字母开头。资源名全局唯一，不能使用 schemas、observers 或 observations。插件可以自行加前缀，例如 acme-local-applications；系统不另设命名空间。name 是显示名称，可以使用中文；resourceName 用于接口路径，后端将资源名中的连字符替换为下划线，并加上 entity_ 前缀，生成默认业务表名。 同一 SchemaId 的 resourceName 在首次登记后固定，后续提交必须保持原值。修改显示名称 name 不改变资源名或接口地址。",
+        "examples": [
+          "example-records",
+          "local-applications",
+          "foreground-application-periods",
+          "acme-local-applications"
+        ],
+        "pattern": "^(?!(schemas|observers|observations)$)[a-z][a-z0-9-]*(?![\\s\\S])"
+      },
+      "BusinessEntity": {
+        "type": "object",
+        "required": [
+          "references",
+          "properties"
+        ],
+        "properties": {
+          "references": {
+            "type": "object",
+            "description": "实体引用。键是业务定义的引用名称，非空值是目标实体的 UUIDv7。字段定义允许空值时可以为 null。没有引用字段时为 {}。引用字段只放在 references 中。",
+            "additionalProperties": {
+              "examples": [
+                "0192b056-7300-7000-8000-000000000001"
+              ],
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            },
+            "propertyNames": {
+              "not": {
+                "enum": [
+                  "id",
+                  "__omitted_fields"
+                ]
+              }
+            }
+          },
+          "properties": {
+            "type": "object",
+            "description": "其他业务属性，不重复引用字段。保存契约与业务定义说明字段含义。已知时间以 UTC 表示。",
+            "propertyNames": {
+              "not": {
+                "enum": [
+                  "id",
+                  "__omitted_fields"
+                ]
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "description": "业务实体的保存请求。路径中的资源名确定 EntitySchema。后端根据该定义校验字段、类型、引用及约束。实体标识由路径提供。 读取保留字段省略与显式 null 的区别。省略的业务字段不出现在响应中；已提交的 null 按 null 返回。__omitted_fields 是后端维护的存储系统列，不出现在业务请求或响应中。 未声明的字段返回 400，包括嵌套对象的成员。非空引用只校验 UUIDv7 格式，允许目标尚未入库，不限制目标模型。"
       }
     }
   }

@@ -18,7 +18,7 @@ description: "观测主体的专用存储"
 
 主键约束名为 `pk_observers`，外键约束名为 `fk_observers_entities_id`。
 
-外键使用 `ON DELETE CASCADE`。统一索引行被删除时，本表中同 ID 的内容行自动删除。
+外键使用 `ON DELETE CASCADE`。如果统一索引行被删除，数据库自动删除本表中同 ID 的内容行。
 
 ## 读写
 

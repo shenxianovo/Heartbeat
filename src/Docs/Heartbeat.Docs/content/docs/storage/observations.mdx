@@ -11,7 +11,7 @@ description: "观测实体的专用存储"
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 否 | `Id` | 观测的实体标识 |
 | `observer_id` | `uuid` | 否 | `ObserverId` | 形成观测的观测主体标识 |
-| `data_id` | `uuid` | 否 | `DataId` | 具体数据的实体标识 |
+| `content_id` | `uuid` | 否 | `ContentId` | 观测内容的实体标识 |
 | `schema_id` | `uuid` | 否 | `SchemaId` | 解释观测的观测定义标识 |
 | `start_at` | `timestamptz` | 是 | `StartAt` | 被观测事实的开始时间 |
 | `end_at` | `timestamptz` | 是 | `EndAt` | 被观测事实的结束时间 |
@@ -19,7 +19,7 @@ description: "观测实体的专用存储"
 
 后端将已知时间边界转换为 UTC，以微秒精度保存。未知边界保存为 SQL `NULL`。`time_zone` 保留事实所属时区的信息。
 
-引用的实体可以晚于观测到达。引用约束见 [Heartbeat API](../api/index.mdx#observation-引用约束)。
+后端允许先保存观测，再保存被引用实体。引用约束见 [Heartbeat API](../api/index.mdx#observation-引用约束)。
 
 ## 约束
 
@@ -27,9 +27,9 @@ description: "观测实体的专用存储"
 
 主键约束名为 `pk_observations`，外键约束名为 `fk_observations_entities_id`。
 
-外键使用 `ON DELETE CASCADE`。统一索引行被删除时，本表中同 ID 的内容行自动删除。
+外键使用 `ON DELETE CASCADE`。如果统一索引行被删除，数据库自动删除本表中同 ID 的内容行。
 
-`observer_id`、`data_id`、`schema_id` 是实体标识引用，不建立数据库外键。后端允许先保存观测、再保存被引用实体。
+`observer_id`、`content_id`、`schema_id` 是实体标识引用，不建立数据库外键。后端允许先保存观测、再保存被引用实体。
 
 时间边界使用 `ck_observations_time_order` 检查约束：
 
@@ -37,7 +37,7 @@ description: "观测实体的专用存储"
 CHECK (start_at <= end_at)
 ```
 
-两个边界均已知时，开始时间必须早于或等于结束时间。任一边界未知时允许保存。
+如果两个时间边界均已知，开始时间必须早于或等于结束时间。如果任一时间边界未知，后端允许保存。
 
 ## 读写
 

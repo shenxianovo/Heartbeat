@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Heartbeat.Application.Entities;
 using Heartbeat.Core;
 using Heartbeat.Testing;
 
@@ -29,53 +30,24 @@ public sealed class EntityApiTests
     }
 
     [Test]
-    public async Task GenericEntityCanBeCreatedReplacedAndRead()
-    {
-        var cancellationToken = TestContext.Current!.Execution.CancellationToken;
-        var id = EntityId.New().Value;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
-        using var client = factory.CreateClient();
-        using var created = await client.PutAsJsonAsync($"/entities/{id}",
-            new { title = "Original", metadata = new { visible = true } },
-            cancellationToken);
-        await Assert.That(created.StatusCode).IsEqualTo(HttpStatusCode.Created);
-        await Assert.That(await created.Content.ReadAsStringAsync(cancellationToken)).IsEqualTo("");
-        using var replaced = await client.PutAsJsonAsync($"/entities/{id}",
-            new { title = "Updated", content = (string?)null }, cancellationToken);
-        await Assert.That(replaced.StatusCode).IsEqualTo(HttpStatusCode.NoContent);
-        using var repeated = await client.PutAsJsonAsync($"/entities/{id}",
-            new { title = "Updated", content = (string?)null }, cancellationToken);
-        await Assert.That(repeated.StatusCode).IsEqualTo(HttpStatusCode.NoContent);
-
-        using var read = await client.GetAsync($"/entities/{id}", cancellationToken);
-        await Assert.That(read.StatusCode).IsEqualTo(HttpStatusCode.OK);
-        var body = await read.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
-        await Assert.That(body.GetProperty("category").GetString()).IsEqualTo("entity");
-        var entity = body.GetProperty("entity");
-        await Assert.That(entity.GetProperty("title").GetString()).IsEqualTo("Updated");
-        await Assert.That(entity.GetProperty("content").ValueKind).IsEqualTo(JsonValueKind.Null);
-        await Assert.That(entity.TryGetProperty("metadata", out _)).IsFalse();
-        await Assert.That(entity.TryGetProperty("id", out _)).IsFalse();
-    }
-
-    [Test]
     public async Task ObservationCanReferenceMissingEntitiesAndNormalizeTime()
     {
         var cancellationToken = TestContext.Current!.Execution.CancellationToken;
         var id = EntityId.New().Value;
         var observerId = EntityId.New().Value;
-        var dataId = EntityId.New().Value;
+        var contentId = EntityId.New().Value;
         var schemaId = EntityId.New().Value;
         await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
         using var client = factory.CreateClient();
         var request = new
         {
-            observerId,
-            dataId,
-            schemaId,
-            startAt = "2026-10-06T09:00:00.123456+08:00",
-            endAt = "2026-10-06T02:00:00Z",
-            timeZone = "Asia/Shanghai",
+            references = new { observerId, contentId, schemaId },
+            properties = new
+            {
+                startAt = "2026-10-06T09:00:00.123456+08:00",
+                endAt = "2026-10-06T02:00:00Z",
+                timeZone = "Asia/Shanghai",
+            },
         };
         using var created = await client.PutAsJsonAsync(
             $"/entities/observations/{id}", request, cancellationToken);
@@ -88,10 +60,10 @@ public sealed class EntityApiTests
         await Assert.That(read.StatusCode).IsEqualTo(HttpStatusCode.OK);
         var body = await read.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
         await Assert.That(body.GetProperty("category").GetString()).IsEqualTo("observation");
-        var entity = body.GetProperty("entity");
-        await Assert.That(entity.GetProperty("observerId").GetString()).IsEqualTo(observerId.ToString());
-        await Assert.That(entity.GetProperty("dataId").GetString()).IsEqualTo(dataId.ToString());
-        await Assert.That(entity.GetProperty("schemaId").GetString()).IsEqualTo(schemaId.ToString());
+        var entity = body.GetProperty("properties");
+        await Assert.That(body.GetProperty("references").GetProperty("observerId").GetString()).IsEqualTo(observerId.ToString());
+        await Assert.That(body.GetProperty("references").GetProperty("contentId").GetString()).IsEqualTo(contentId.ToString());
+        await Assert.That(body.GetProperty("references").GetProperty("schemaId").GetString()).IsEqualTo(schemaId.ToString());
         await Assert.That(entity.GetProperty("startAt").GetString()).IsEqualTo("2026-10-06T01:00:00.123456Z");
         await Assert.That(entity.GetProperty("endAt").GetString()).IsEqualTo("2026-10-06T02:00:00Z");
         await Assert.That(entity.GetProperty("timeZone").GetString()).IsEqualTo("Asia/Shanghai");
@@ -103,34 +75,29 @@ public sealed class EntityApiTests
         using var reread = await client.GetAsync($"/entities/{id}", cancellationToken);
         await Assert.That(reread.StatusCode).IsEqualTo(HttpStatusCode.OK);
         var replacedBody = await reread.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
-        var replacedEntity = replacedBody.GetProperty("entity");
-        await Assert.That(replacedEntity.GetProperty("observerId").GetString())
-            .IsEqualTo(replacement["observerId"]!.GetValue<string>());
-        await Assert.That(replacedEntity.GetProperty("dataId").GetString())
-            .IsEqualTo(replacement["dataId"]!.GetValue<string>());
-        await Assert.That(replacedEntity.GetProperty("schemaId").GetString())
-            .IsEqualTo(replacement["schemaId"]!.GetValue<string>());
+        var replacedEntity = replacedBody.GetProperty("properties");
+        await Assert.That(replacedBody.GetProperty("references").GetProperty("observerId").GetString())
+            .IsEqualTo(replacement["references"]!["observerId"]!.GetValue<string>());
+        await Assert.That(replacedBody.GetProperty("references").GetProperty("contentId").GetString())
+            .IsEqualTo(replacement["references"]!["contentId"]!.GetValue<string>());
+        await Assert.That(replacedBody.GetProperty("references").GetProperty("schemaId").GetString())
+            .IsEqualTo(replacement["references"]!["schemaId"]!.GetValue<string>());
         await Assert.That(replacedEntity.GetProperty("startAt").ValueKind).IsEqualTo(JsonValueKind.Null);
         await Assert.That(replacedEntity.GetProperty("endAt").ValueKind).IsEqualTo(JsonValueKind.Null);
         await Assert.That(replacedEntity.GetProperty("timeZone").ValueKind).IsEqualTo(JsonValueKind.Null);
     }
 
     [Test]
-    [Arguments("null")]
-    [Arguments("[]")]
-    [Arguments("{\"id\":null}")]
-    [Arguments("{\"value\":\"\\u0000\"}")]
-    [Arguments("{\"value\":1e1000000}")]
-    [Arguments("{\"value\":\"\\ud800\"}")]
-    public async Task InvalidGenericEntityDoesNotCreateAnIdentity(string json)
+    public async Task GenericSaveEndpointIsUnavailableAndCannotCreateAnEntity()
     {
         var cancellationToken = TestContext.Current!.Execution.CancellationToken;
         var id = EntityId.New().Value;
         await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
         using var client = factory.CreateClient();
-        using var content = new StringContent(json, Encoding.UTF8, "application/json");
-        using var saved = await client.PutAsync($"/entities/{id}", content, cancellationToken);
-        await AssertProblemAsync(saved, HttpStatusCode.BadRequest, cancellationToken);
+        using var saved = await client.PutAsJsonAsync($"/entities/{id}", EntityTestRequests.Business(new { name = "Example" }),
+            cancellationToken);
+        await Assert.That(saved.StatusCode).IsEqualTo(HttpStatusCode.MethodNotAllowed);
+        await Assert.That(saved.Content.Headers.Allow.Contains("PUT")).IsFalse();
         using var read = await client.GetAsync($"/entities/{id}", cancellationToken);
         await AssertProblemAsync(read, HttpStatusCode.NotFound, cancellationToken);
     }
@@ -158,23 +125,23 @@ public sealed class EntityApiTests
         switch (invalidField)
         {
             case "missingStartAt":
-                invalid.Remove("startAt");
+                ((JsonObject)invalid["properties"]!).Remove("startAt");
                 break;
             case "nullReference":
-                invalid["observerId"] = null;
+                invalid["references"]!["observerId"] = null;
                 break;
             case "wrongReferenceVersion":
-                invalid["dataId"] = "8dcc4596-2650-4a1e-a998-53a5e7dc626a";
+                invalid["references"]!["contentId"] = "8dcc4596-2650-4a1e-a998-53a5e7dc626a";
                 break;
             case "timeWithoutOffset":
-                invalid["startAt"] = "2026-10-06T01:00:00";
+                invalid["properties"]!["startAt"] = "2026-10-06T01:00:00";
                 break;
             case "reversedTime":
-                invalid["startAt"] = "2026-10-06T03:00:00Z";
-                invalid["endAt"] = "2026-10-06T10:00:00+08:00";
+                invalid["properties"]!["startAt"] = "2026-10-06T03:00:00Z";
+                invalid["properties"]!["endAt"] = "2026-10-06T10:00:00+08:00";
                 break;
             case "invalidTimeZone":
-                invalid["timeZone"] = "Unknown/Place";
+                invalid["properties"]!["timeZone"] = "Unknown/Place";
                 break;
             case "bodyIdentity":
                 invalid["id"] = id;
@@ -187,11 +154,11 @@ public sealed class EntityApiTests
         using var read = await client.GetAsync($"/entities/{id}", cancellationToken);
         await Assert.That(read.StatusCode).IsEqualTo(HttpStatusCode.OK);
         var body = await read.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
-        var entity = body.GetProperty("entity");
-        await Assert.That(entity.GetProperty("observerId").GetString())
-            .IsEqualTo(request["observerId"]!.GetValue<string>());
-        await Assert.That(entity.GetProperty("dataId").GetString())
-            .IsEqualTo(request["dataId"]!.GetValue<string>());
+        var entity = body.GetProperty("properties");
+        await Assert.That(body.GetProperty("references").GetProperty("observerId").GetString())
+            .IsEqualTo(request["references"]!["observerId"]!.GetValue<string>());
+        await Assert.That(body.GetProperty("references").GetProperty("contentId").GetString())
+            .IsEqualTo(request["references"]!["contentId"]!.GetValue<string>());
         await Assert.That(entity.GetProperty("startAt").ValueKind).IsEqualTo(JsonValueKind.Null);
         await Assert.That(entity.GetProperty("endAt").ValueKind).IsEqualTo(JsonValueKind.Null);
         await Assert.That(entity.GetProperty("timeZone").ValueKind).IsEqualTo(JsonValueKind.Null);
@@ -206,7 +173,7 @@ public sealed class EntityApiTests
         using var client = factory.CreateClient();
         var observation = NewUnknownTimeObservation();
         var responses = await Task.WhenAll(Enumerable.Range(0, 8).Select(index => index % 2 == 0
-            ? client.PutAsJsonAsync($"/entities/{id}", new { title = "Window" }, cancellationToken)
+            ? client.PutAsJsonAsync($"/entities/observers/{id}", EntityTestRequests.Business(new { name = "Observer" }), cancellationToken)
             : client.PutAsJsonAsync($"/entities/observations/{id}", observation, cancellationToken)));
         try
         {
@@ -229,51 +196,27 @@ public sealed class EntityApiTests
         await Assert.That(read.StatusCode).IsEqualTo(HttpStatusCode.OK);
         var body = await read.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
         var category = body.GetProperty("category").GetString();
-        await Assert.That(category is "entity" or "observation").IsTrue();
-        var entity = body.GetProperty("entity");
-        if (category == "entity")
+        await Assert.That(category is "observer" or "observation").IsTrue();
+        var entity = body.GetProperty("properties");
+        if (category == "observer")
         {
-            await Assert.That(entity.GetProperty("title").GetString()).IsEqualTo("Window");
+            await Assert.That(entity.GetProperty("name").GetString()).IsEqualTo("Observer");
             await Assert.That(entity.TryGetProperty("observerId", out _)).IsFalse();
         }
         else
         {
-            await Assert.That(entity.GetProperty("observerId").GetString())
-                .IsEqualTo(observation["observerId"]!.GetValue<string>());
-            await Assert.That(entity.TryGetProperty("title", out _)).IsFalse();
+            await Assert.That(body.GetProperty("references").GetProperty("observerId").GetString())
+                .IsEqualTo(observation["references"]!["observerId"]!.GetValue<string>());
+            await Assert.That(entity.TryGetProperty("name", out _)).IsFalse();
         }
     }
 
     [Test]
-    public async Task GenericEntityPreservesNestedDataWithJsonbSemantics()
-    {
-        var cancellationToken = TestContext.Current!.Execution.CancellationToken;
-        var id = EntityId.New().Value;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
-        using var client = factory.CreateClient();
-        using var content = new StringContent(
-            "{\"nested\":{\"id\":\"Local key\"},\"values\":[true,null,1e3],\"duplicate\":1,\"duplicate\":2}",
-            Encoding.UTF8, "application/json");
-        using var saved = await client.PutAsync($"/entities/{id}", content, cancellationToken);
-        await Assert.That(saved.StatusCode).IsEqualTo(HttpStatusCode.Created);
-        using var read = await client.GetAsync($"/entities/{id}", cancellationToken);
-        await Assert.That(read.StatusCode).IsEqualTo(HttpStatusCode.OK);
-        var body = await read.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
-        var entity = body.GetProperty("entity");
-        await Assert.That(entity.GetProperty("nested").GetProperty("id").GetString()).IsEqualTo("Local key");
-        await Assert.That(entity.GetProperty("values")[0].GetBoolean()).IsTrue();
-        await Assert.That(entity.GetProperty("values")[1].ValueKind).IsEqualTo(JsonValueKind.Null);
-        await Assert.That(entity.GetProperty("values")[2].GetInt32()).IsEqualTo(1000);
-        await Assert.That(entity.GetProperty("duplicate").GetInt32()).IsEqualTo(2);
-    }
-
-    [Test]
-    [Arguments("", "{\"\\ud800\":1}")]
-    [Arguments("", "{\"nested\":[{\"\\ud800\":1}]}")]
+    [Arguments("schemas/", "{\"schema\":{\"nested\":[{\"\\ud800\":1}]}}")]
     [Arguments("observers/", "{\"\\ud800\":1}")]
     [Arguments("observers/", "{\"name\":\"\\ud800\"}")]
     [Arguments("observations/", "{\"\\ud800\":1}")]
-    [Arguments("observation-schemas/", "{\"\\ud800\":1}")]
+    [Arguments("schemas/", "{\"\\ud800\":1}")]
     public async Task InvalidUnicodeInAnySaveDoesNotCreateAnEntity(string route, string json)
     {
         var cancellationToken = TestContext.Current!.Execution.CancellationToken;
@@ -299,9 +242,11 @@ public sealed class EntityApiTests
         factory.UseKestrel(0);
         using var client = factory.CreateClient();
         const int limit = 10 * 1024 * 1024;
-        var json = "{\"value\":\"" + new string('x', limit + extraBytes - 12) + "\"}";
+        const string prefix = "{\"references\":{},\"properties\":{\"name\":\"";
+        const string suffix = "\"}}";
+        var json = prefix + new string('x', limit + extraBytes - prefix.Length - suffix.Length) + suffix;
         using var content = new StringContent(json, Encoding.UTF8, "application/json");
-        using var request = new HttpRequestMessage(HttpMethod.Put, $"/entities/{id}") { Content = content };
+        using var request = new HttpRequestMessage(HttpMethod.Put, $"/entities/observers/{id}") { Content = content };
         request.Headers.TransferEncodingChunked = chunked;
         request.Headers.ExpectContinue = true;
         using var saved = await client.SendAsync(request, cancellationToken);
@@ -319,12 +264,13 @@ public sealed class EntityApiTests
 
     private static JsonObject NewUnknownTimeObservation() => new()
     {
-        ["observerId"] = EntityId.New().Value.ToString(),
-        ["dataId"] = EntityId.New().Value.ToString(),
-        ["schemaId"] = EntityId.New().Value.ToString(),
-        ["startAt"] = null,
-        ["endAt"] = null,
-        ["timeZone"] = null,
+        ["references"] = new JsonObject
+        {
+            ["observerId"] = EntityId.New().Value.ToString(),
+            ["contentId"] = EntityId.New().Value.ToString(),
+            ["schemaId"] = EntityId.New().Value.ToString(),
+        },
+        ["properties"] = new JsonObject { ["startAt"] = null, ["endAt"] = null, ["timeZone"] = null },
     };
 
     private static async Task AssertProblemAsync(

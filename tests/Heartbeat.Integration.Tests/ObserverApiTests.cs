@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using Heartbeat.Application.Entities;
 using Heartbeat.Core;
 using Heartbeat.Infrastructure.Database;
 using Heartbeat.Testing;
@@ -40,7 +41,7 @@ public sealed class ObserverApiTests
         using var client = factory.CreateClient();
 
         using var saved = await client.PutAsJsonAsync(
-            $"/entities/observers/{id}", new { name = "Local observer" }, cancellationToken);
+            $"/entities/observers/{id}", new { references = new { }, properties = new { name = "Local observer" } }, cancellationToken);
         await Assert.That(saved.StatusCode).IsEqualTo(HttpStatusCode.Created);
         await Assert.That(await saved.Content.ReadAsStringAsync(cancellationToken)).IsEqualTo("");
 
@@ -48,7 +49,7 @@ public sealed class ObserverApiTests
         await Assert.That(read.StatusCode).IsEqualTo(HttpStatusCode.OK);
         var body = await read.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
         await Assert.That(body.GetProperty("category").GetString()).IsEqualTo("observer");
-        var entity = body.GetProperty("entity");
+        var entity = body.GetProperty("properties");
         await Assert.That(entity.GetProperty("name").GetString()).IsEqualTo("Local observer");
         await Assert.That(entity.TryGetProperty("id", out _)).IsFalse();
     }
@@ -62,20 +63,20 @@ public sealed class ObserverApiTests
         using var client = factory.CreateClient();
 
         using var created = await client.PutAsJsonAsync(
-            $"/entities/observers/{id}", new { name = "Original" }, cancellationToken);
+            $"/entities/observers/{id}", new { references = new { }, properties = new { name = "Original" } }, cancellationToken);
         await Assert.That(created.StatusCode).IsEqualTo(HttpStatusCode.Created);
         using var repeated = await client.PutAsJsonAsync(
-            $"/entities/observers/{id}", new { name = "Original" }, cancellationToken);
+            $"/entities/observers/{id}", new { references = new { }, properties = new { name = "Original" } }, cancellationToken);
         await Assert.That(repeated.StatusCode).IsEqualTo(HttpStatusCode.NoContent);
         await Assert.That(await repeated.Content.ReadAsStringAsync(cancellationToken)).IsEqualTo("");
         using var replaced = await client.PutAsJsonAsync(
-            $"/entities/observers/{id}", new { name = "Renamed", extra = true }, cancellationToken);
+            $"/entities/observers/{id}", new { references = new { }, properties = new { name = "Renamed" } }, cancellationToken);
         await Assert.That(replaced.StatusCode).IsEqualTo(HttpStatusCode.NoContent);
 
         using var read = await client.GetAsync($"/entities/{id}", cancellationToken);
         await Assert.That(read.StatusCode).IsEqualTo(HttpStatusCode.OK);
         var body = await read.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
-        await Assert.That(body.GetProperty("entity").GetProperty("name").GetString()).IsEqualTo("Renamed");
+        await Assert.That(body.GetProperty("properties").GetProperty("name").GetString()).IsEqualTo("Renamed");
     }
 
     [Test]
@@ -87,7 +88,7 @@ public sealed class ObserverApiTests
         using var client = factory.CreateClient();
 
         var responses = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ =>
-            client.PutAsJsonAsync($"/entities/observers/{id}", new { name = "Concurrent observer" },
+            client.PutAsJsonAsync($"/entities/observers/{id}", new { references = new { }, properties = new { name = "Concurrent observer" } },
                 cancellationToken)));
         try
         {
@@ -107,7 +108,7 @@ public sealed class ObserverApiTests
         using var read = await client.GetAsync($"/entities/{id}", cancellationToken);
         await Assert.That(read.StatusCode).IsEqualTo(HttpStatusCode.OK);
         var body = await read.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
-        await Assert.That(body.GetProperty("entity").GetProperty("name").GetString())
+        await Assert.That(body.GetProperty("properties").GetProperty("name").GetString())
             .IsEqualTo("Concurrent observer");
     }
 
@@ -118,18 +119,19 @@ public sealed class ObserverApiTests
         var id = EntityId.New();
         await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
         using var client = factory.CreateClient();
-        using var created = await client.PutAsJsonAsync(
-            $"/entities/{id.Value}", new { title = "Existing window" }, cancellationToken);
+        await EntityTestRequests.RegisterAsync(client, "test-records", cancellationToken);
+        using var created = await client.PutAsJsonAsync($"/entities/test-records/{id.Value}",
+            EntityTestRequests.Business(new { title = "Existing window" }), cancellationToken);
         await Assert.That(created.StatusCode).IsEqualTo(HttpStatusCode.Created);
         using var saved = await client.PutAsJsonAsync(
-            $"/entities/observers/{id.Value}", new { name = "Replacement" }, cancellationToken);
+            $"/entities/observers/{id.Value}", new { references = new { }, properties = new { name = "Replacement" } }, cancellationToken);
         await AssertProblemAsync(saved, HttpStatusCode.Conflict, cancellationToken);
 
         using var read = await client.GetAsync($"/entities/{id.Value}", cancellationToken);
         await Assert.That(read.StatusCode).IsEqualTo(HttpStatusCode.OK);
         var body = await read.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
         await Assert.That(body.GetProperty("category").GetString()).IsEqualTo("entity");
-        await Assert.That(body.GetProperty("entity").GetProperty("title").GetString())
+        await Assert.That(body.GetProperty("properties").GetProperty("title").GetString())
             .IsEqualTo("Existing window");
     }
 
@@ -162,7 +164,7 @@ public sealed class ObserverApiTests
         await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
         using var client = factory.CreateClient();
         using var saved = await client.PutAsJsonAsync(
-            $"/entities/observers/{id}", new { name = "Observer" }, cancellationToken);
+            $"/entities/observers/{id}", new { references = new { }, properties = new { name = "Observer" } }, cancellationToken);
         await AssertProblemAsync(saved, HttpStatusCode.BadRequest, cancellationToken);
         using var read = await client.GetAsync($"/entities/{id}", cancellationToken);
         await AssertProblemAsync(read, HttpStatusCode.BadRequest, cancellationToken);
@@ -180,7 +182,7 @@ public sealed class ObserverApiTests
         await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
         using var client = factory.CreateClient();
         using var saved = await client.PutAsJsonAsync(
-            $"/entities/observers/{id}", new { name = "Observer" }, cancellationToken);
+            $"/entities/observers/{id}", new { references = new { }, properties = new { name = "Observer" } }, cancellationToken);
         await AssertProblemAsync(saved, HttpStatusCode.InternalServerError, cancellationToken);
         using var read = await client.GetAsync($"/entities/{id}", cancellationToken);
         await AssertProblemAsync(read, HttpStatusCode.NotFound, cancellationToken);
@@ -192,7 +194,7 @@ public sealed class ObserverApiTests
         var cancellationToken = TestContext.Current!.Execution.CancellationToken;
         var id = EntityId.New();
         var observerId = EntityId.New();
-        var dataId = EntityId.New();
+        var contentId = EntityId.New();
         var schemaId = EntityId.New();
         await ArrangeDatabaseAsync(async dbContext =>
         {
@@ -201,7 +203,7 @@ public sealed class ObserverApiTests
             {
                 Id = id,
                 ObserverId = observerId,
-                DataId = dataId,
+                ContentId = contentId,
                 SchemaId = schemaId,
                 StartAt = DateTimeOffset.Parse("2026-10-06T09:00:00.123456+08:00",
                     CultureInfo.InvariantCulture),
@@ -217,14 +219,14 @@ public sealed class ObserverApiTests
         await Assert.That(read.StatusCode).IsEqualTo(HttpStatusCode.OK);
         var body = await read.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
         await Assert.That(body.GetProperty("category").GetString()).IsEqualTo("observation");
-        var entity = body.GetProperty("entity");
+        var entity = body.GetProperty("properties");
         await Assert.That(entity.GetProperty("startAt").GetString())
             .IsEqualTo("2026-10-06T01:00:00.123456Z");
         await Assert.That(entity.GetProperty("endAt").ValueKind).IsEqualTo(JsonValueKind.Null);
         await Assert.That(entity.TryGetProperty("id", out _)).IsFalse();
-        await Assert.That(entity.GetProperty("observerId").GetString()).IsEqualTo(observerId.Value.ToString());
-        await Assert.That(entity.GetProperty("dataId").GetString()).IsEqualTo(dataId.Value.ToString());
-        await Assert.That(entity.GetProperty("schemaId").GetString()).IsEqualTo(schemaId.Value.ToString());
+        await Assert.That(body.GetProperty("references").GetProperty("observerId").GetString()).IsEqualTo(observerId.Value.ToString());
+        await Assert.That(body.GetProperty("references").GetProperty("contentId").GetString()).IsEqualTo(contentId.Value.ToString());
+        await Assert.That(body.GetProperty("references").GetProperty("schemaId").GetString()).IsEqualTo(schemaId.Value.ToString());
         await Assert.That(entity.GetProperty("timeZone").GetString()).IsEqualTo("Asia/Shanghai");
     }
 

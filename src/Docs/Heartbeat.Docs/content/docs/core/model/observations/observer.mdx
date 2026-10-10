@@ -8,7 +8,7 @@ title: "Observer"
 
 `Observer` 是观测主体实体，标识实际形成观测的主体。
 
-主体依据证据，按观测定义形成观测，并对判断负责。主体边界由形成观测的责任决定。API、数据源、输出类型和进程划分不直接决定主体身份。
+主体依据证据，按实体定义形成观测，并对判断负责。主体边界由形成观测的责任决定。API、数据源、输出类型和进程划分不直接决定主体身份。
 
 ## 定义
 
@@ -19,6 +19,8 @@ public sealed class Observer : IEntity
 {
     public required EntityId Id { get; init; }
     public required string Name { get; init; } // [!code ++]
+
+    public IEnumerable<EntityId> GetReferences() => [];
 }
 ```
 
@@ -29,13 +31,13 @@ public sealed class Observer : IEntity
 
 ## 约定
 
-同一个 Observer 可以使用多个 ObservationSchema 形成不同类型的观测。各类观测分别记录自己的具体数据和事实时间。
+同一个 Observer 可以使用多个 EntitySchema 形成不同类型的观测。各类观测分别记录自己的观测内容和事实时间。
 
-如果内部读取或检测模块只提供证据，由所属主体负责形成观测，则模块不需要独立的 Observer 身份。
+如果内部读取或检测模块只提供证据，所属主体负责形成观测。该模块不需要独立的 Observer 身份。
 
 如果模块独立形成观测，则观测引用该模块对应的主体身份。
 
-如果程序仅传输或搬运已有观测，程序必须保留原 `ObserverId`。
+如果程序仅传输已有观测，程序必须保留原 `ObserverId`。
 
 如果另一观测主体重新解释证据并形成新观测，新观测的 `ObserverId` 引用该主体。
 
@@ -45,7 +47,7 @@ public sealed class Observer : IEntity
 
 ## 具体实现
 
-[前台状态](../../../observers/foreground-state.mdx)、[输入事件](../../../observers/input-events.mdx)与[设备状态](../../../observers/device-state.mdx)分别记录实例身份、观测定义和时间规则。当前只实现 macOS 前台应用单次读取，其余页面记录已确认职责与待确认草案。能力与平台客户端的分工见 [Observers 概览](../../../observers/index.mdx)。
+[前台状态](../../../observers/foreground-state.mdx)、[输入事件](../../../observers/input-events.mdx)与[设备状态](../../../observers/device-state.mdx)分别记录实例身份、实体定义和时间规则。当前只实现 macOS 前台应用单次读取，其余页面记录已确认职责与待确认草案。能力与平台客户端的分工见 [Observers 概览](../../../observers/index.mdx)。
 
 ## 示例：读取本地会话记录
 

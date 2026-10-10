@@ -1,0 +1,61 @@
+---
+title: "entity_schemas"
+description: "实体定义的固定存储表"
+---
+
+`entity_schemas` 保存 [EntitySchema](../core/model/observations/schema.mdx) 的模型声明。后端将本表映射为模型类别 `entity_schema`。
+
+## 保存内容
+
+| 列名 | 数据库类型 | 允许 SQL `NULL` | 保存的信息 |
+| --- | --- | --- | --- |
+| `id` | `uuid` | 否 | 实体定义的标识 |
+| `name` | `text` | 否 | 实体定义的显示名称 |
+| `resource_name` | `text` | 否 | 绑定本 SchemaId 的业务资源名，对应 HTTP 的 `resourceName` |
+| `fields` | `jsonb` | 否 | 业务字段的定义，以字段名映射字段定义 |
+
+例如，一行实体定义的 `name` 为“示例记录”，`fields` 保存以下内容：
+
+```json
+{
+  "title": {
+    "type": "string",
+    "required": true,
+    "nullable": true
+  }
+}
+```
+
+`fields` 遵循 [jsonb 存储语义](./index.mdx#内容存储)。同一个 SchemaId 的模型结构、约束和业务含义固定，更新规则见[定义更新](../core/model/observations/schema.mdx#定义更新)。
+
+## 与业务表的关系
+
+本表的一行保存一份模型定义。后端根据这份定义创建对应的业务表，将业务字段映射到数据库列。业务表的一行保存一个符合该定义的实体。
+
+例如，上述定义对应的业务表具有实体标识列和标题列。标题值保存在业务表中，标题字段的定义保存在本表的 `fields` 中。
+
+`entity_schemas` 是由系统预先建立的固定表，表结构由系统确定。保存 EntitySchema 不需要先提交另一份 EntitySchema。
+
+业务字段的列类型见[业务字段映射](./index.mdx#业务字段映射)。对象字段整体保存在 `jsonb` 列中。读取时，后端还原业务对象结构。数组字段整体保存在 `jsonb` 列中，不自动拆表。
+
+具体数据库列类型、物理表名和索引由存储层负责。职责见 [ADR 0011](../adr/0011-entity-schema-driven-storage.mdx)。
+
+## 约束
+
+`id` 为主键，并通过外键引用 `entities.id`。实体定义必须有对应的统一索引。
+
+`resource_name` 遵循[资源名规则](../api/index.mdx#资源登记)：只使用小写英文字母、数字和连字符，以字母开头，全局唯一，且不能使用 `schemas`、`observers`、`observations`。后端以它生成默认业务表名：将连字符替换为下划线，再加上 `entity_` 前缀。例如，`example-records` 对应 `entity_example_records`。命名和登记检查见[业务表命名](./index.mdx#业务表命名)。
+
+主键约束名为 `pk_entity_schemas`，外键约束名为 `fk_entity_schemas_entities_id`。
+
+外键使用 `ON DELETE CASCADE`。如果统一索引行被删除，数据库自动删除本表中同 ID 的内容行。
+
+## 读写
+
+保存路径为 `PUT /entities/schemas/{id}`。读取路径为 `GET /entities/{id}`。
+
+统一索引中的 `table_name` 为 `entity_schemas`。首次保存时，后端将定义及其统一索引、资源名绑定和业务表创建作为一次完整操作。全部成功后才返回成功；任一步骤失败时一起回滚，不留下部分结果。资源名已被其他 SchemaId 占用时，返回 `409`。
+
+同一 SchemaId 的 `resource_name` 在首次登记后固定。后续提交必须保持原值，修改显示名称 `name` 不改变资源绑定。尝试修改已登记的资源名或字段定义时，后端返回 `409 Conflict`，并保留原定义与资源绑定。
+
+重复提交相同请求不新增定义、资源绑定或业务表。登记后，业务实体通过 `PUT /entities/{resourceName}/{id}` 保存，后端根据资源名找到本表的定义，再通过存储映射选择业务表。业务实体的索引和内容遵循[写入一致性](./index.mdx#写入一致性)。

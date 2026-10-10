@@ -1,6 +1,6 @@
 ---
 title: "Heartbeat Testing"
-description: "测试分工 框架与验证范围"
+description: "测试分工、框架与验证范围"
 ---
 
 Heartbeat 使用 TUnit 执行测试。模型定义见 [Heartbeat Core](../core/index.mdx)，读写协议见 [Heartbeat API](../api/index.mdx)，数据库结构见 [Heartbeat Storage](../storage/index.mdx)。
@@ -34,15 +34,15 @@ HTTP 用例通过 `WebApplicationFactory` 启动 API 宿主，使用与服务相
 
 | 用例范围 | 验证内容 |
 | --- | --- |
+| 实体引用枚举 | Observation 的三个目标标识、无引用实体的空集合、内容中的标识不自动成为引用 |
 | 实体持久化 | 保存 Observer 和索引，再从新的上下文读取 |
-| 四类实体 HTTP 保存与读取 | 创建、重复提交、替换、类别冲突、无效请求、写入失败回滚和同 ID 并发保存 |
-| 通用实体 | 嵌套 JSON、重复键、Unicode 和表示范围 |
+| 三个观测模型 HTTP 保存与统一实体读取 | 创建、重复提交、替换、类别冲突、无效请求、写入失败回滚和同 ID 并发保存 |
+| 业务实体 | 动态列类型、具名引用、嵌套结构、缺失与空值、精确数值、Unicode、替换失败回滚与跨 Schema 冲突 |
 | Observation | 未入库的引用、UTC、微秒精度、未知边界与时区 |
-| ObservationSchema | 名称与 JSON 更新、任意可存储的 JSON 值、仅含名称和定义的读回内容 |
+| EntitySchema | 资源登记、字段校验、定义不可变、显示名称修改、重复与并发登记、建表失败回滚 |
 | 请求体上限 | 真实 Kestrel 接收 10 MiB 请求，超限返回 JSON `413`，支持分块传输 |
-| OpenAPI | 请求字段、必填可空时间、成功响应、多类别读取和错误格式 |
 
-专门的读取用例先在数据库中准备内容，再通过 HTTP 断言。OpenAPI 用例读取构建生成的规范，不创建数据库。后端不比较观测定义的语义。
+独立读取用例先在数据库中准备内容，再检查 HTTP 响应。实体引用枚举用例直接检查 `IEntity` 契约，不创建数据库。后端比较字段定义的结构，不推断业务含义是否变化。
 
 前台状态 Observer 的用例分别检查：
 
@@ -56,6 +56,6 @@ TUnit 的程序集 `Before`、`After` 钩子管理共享容器。数据库用例
 
 ## 报告
 
-[集成测试报告](./reports/integration.mdx)读取 `TestResults` 中文件修改时间最大的 TUnit 集成测试 JSON。每次刷新重新读取文件；文件不存在时显示尚未生成。
+[集成测试报告](./reports/integration.mdx)读取 `TestResults` 中文件修改时间最大的 TUnit 集成测试 JSON。每次刷新时，报告页重新读取文件。如果文件不存在，报告页显示尚未生成。
 
 测试 JSON 是结果的权威来源，查看报告不运行测试。文档站使用 `fumadocs-test-reports` 展示报告，提供搜索、状态筛选、详情、输出和追踪时间线。职责见 [ADR 0007](../adr/0007-developer-cli-and-verification.mdx#测试报告)。

@@ -12,13 +12,13 @@
 - 已安装仓库 `global.json` 指定的 .NET SDK。
 - Heartbeat API 已启动，且数据库已应用项目迁移。
 
-从仓库根目录执行：
+从仓库根目录运行：
 
 ```sh
 dotnet run --project src/Observers/Heartbeat.Observer.ForegroundState
 ```
 
-检查结果：程序退出码为 0，且标准输出 JSON 中的 `verified` 为 `true`。
+程序先登记 `EntitySchema` 资源 `foreground-application-readings`，再通过 `PUT /entities/foreground-application-readings/{id}` 保存单次读数。字段仍为 `bundleIdentifier`、`name` 和 `executablePath`，未知属性保持 `null`。
 
 ## 参数
 
@@ -54,7 +54,7 @@ dotnet run --project src/Observers/Heartbeat.Observer.ForegroundState -- \
 
 程序将进度、实体 ID 和错误写入标准错误。
 
-提交时，程序依次保存 `Observer`、`ObservationSchema`、具体数据实体和 `Observation`。随后，程序通过统一实体读取入口核对四个实体的 `category` 和 `entity`。
+提交时，程序依次保存 `Observer`、`EntitySchema`、观测内容实体和 `Observation`。随后，程序通过统一实体读取入口核对四个实体的 `category`、`references` 和 `properties`。
 
 如果四个实体均与提交内容一致，程序向标准输出写入一行 JSON：
 
@@ -62,7 +62,7 @@ dotnet run --project src/Observers/Heartbeat.Observer.ForegroundState -- \
 | --- | --- |
 | `observerId` | 前台状态 Observer 实例 ID |
 | `schemaId` | 观测定义 ID |
-| `dataId` | 本次具体数据实体 ID |
+| `contentId` | 本次观测内容实体 ID |
 | `observationId` | 本次观测 ID |
 | `observedAt` | 本次读取的 UTC 时间，精度为微秒 |
 | `timeZone` | 本机 IANA 时区 ID；未知时为 `null` |
@@ -89,9 +89,14 @@ dotnet run --project src/Observers/Heartbeat.Observer.ForegroundState -- \
 dotnet run --project tools/Heartbeat.Dev -- verify closeout --base HEAD
 ```
 
-集成测试覆盖身份复用、独立实例、并发首次创建和损坏文件保留。提交用例通过真实 API 和独立 PostgreSQL，检查读回内容、重复提交和历史快照。观测写入失败用例检查后端保留已保存的实体。
+集成测试覆盖以下范围：
+
+- 身份用例：检查身份复用、独立实例、并发首次创建和损坏文件保留。
+- 快照用例：通过真实 HTTP 保存并读取观测内容，检查独立身份、重复保存、历史内容与微秒时间。
+- 真实 HTTP 用例：检查 Schema 登记、动态业务提交和四实体统一读回核对。
 
 自动测试不调用 macOS 原生接口。验证原生读取前，准备独立 API 和测试数据库。
 
 1. 在 macOS 上运行本程序，使用 `--api` 指向测试 API，并使用 `--identity-file` 指定临时身份文件。
-2. 验证：退出码为 0，且标准输出的 `verified` 为 `true`。
+2. 核对原生读取结果和实例身份。
+3. 验证：程序读回四个实体一致，输出 `verified: true` 并以退出码 `0` 结束。

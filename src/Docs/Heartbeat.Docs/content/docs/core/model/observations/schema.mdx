@@ -1,54 +1,283 @@
 ---
-title: "ObservationSchema"
+title: "EntitySchema"
 ---
 
 <ModelRelations node="S" />
 
 ## 含义
 
-`ObservationSchema` 定义具体数据的结构与约束，以及观测表达的事实和事实时间的含义。
+`EntitySchema` 定义业务实体的字段、类型、引用、约束和业务含义。插件声明实体模型。后端根据声明创建业务表，并提供通用存取和展示。
 
-一个 Observer 可以使用多份观测定义，多个 Observer 也可以共用同一份定义。Observation 通过 `SchemaId` 明确引用解释自身的定义。
+本机应用和前台应用观测内容分别使用自己的实体定义。业务实体可以独立保存，不要求形成 Observation。
 
-## 定义
+当实体作为观测内容时，Observation 通过 `ContentId` 引用内容。Observation 通过 `SchemaId` 引用内容的 EntitySchema。EntitySchema 定义内容表达的事实和 Observation 的时间含义。
 
-`+` 表示接口契约之外的属性。
+一个 Observer 可以使用多份实体定义。多个 Observer 可以共用同一份定义。
 
-```csharp
-using System.Text.Json;
+## 模型声明
 
-public sealed class ObservationSchema : IEntity
+EntitySchema 是实现 [IEntity](../contracts/entity.mdx) 的实体，具有稳定的标识。
+
+EntitySchema 声明显示名称、业务资源名和字段。HTTP 中，`properties.name` 保存显示名称，`properties.resourceName` 登记业务保存入口，`properties.fields` 以业务字段名映射字段定义。
+
+顶层业务字段不能使用 `id`，该名称留给实体自身标识。默认数据库列名及登记检查见[业务列命名](../../../storage/index.mdx#业务列命名)。
+
+例如，以下实体定义声明一个字符串标题字段和一个实体引用字段：
+
+```json
 {
-    public required EntityId Id { get; init; }
-    public required string Name { get; init; } // [!code ++]
-    public required JsonElement Schema { get; init; } // [!code ++]
+  "references": {},
+  "properties": {
+    "name": "示例记录",
+    "resourceName": "example-records",
+    "fields": {
+      "title": {
+        "type": "string",
+        "required": true,
+        "nullable": true
+      },
+      "relatedEntityId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    }
+  }
 }
 ```
 
-| 属性 | 含义 |
+`name` 为“示例记录”这份定义命名。普通属性和实体引用都在 `fields` 中定义，通过 `type` 区分。
+
+- `fields.title` 的类型为 `string`，声明字符串属性。业务实体的标题值放在 `properties.title` 中。
+- `fields.relatedEntityId` 的类型为 `reference`，声明实体引用。目标实体的标识放在 `references.relatedEntityId` 中。
+
+业务实体提交和读取时，同一字段的值只出现一次。例如：
+
+```json
+{
+  "references": {
+    "relatedEntityId": "0192b056-7300-7000-8000-000000000001"
+  },
+  "properties": {
+    "title": "示例标题"
+  }
+}
+```
+
+EntitySchema 请求外层的 `references` 表示定义实体自身的引用。`fields` 中的引用字段声明业务实体将具有哪些引用。提交格式见[保存实体定义](/api/saveEntitySchema)。
+
+| 信息 | 含义 |
 | --- | --- |
-| `Id` | 观测定义的实体标识 |
-| `Name` | 观测定义的名称 |
-| `Schema` | 具体数据的结构、约束和观测含义，以 JSON 保存 |
+| 属性定义 | 字段名称、类型、是否必填、是否允许空值 |
+| 引用定义 | 引用名称、是否必填、是否允许空值 |
+| 业务含义 | 实体表达的事实；作为观测内容时，Observation 的时间含义 |
+
+业务引用允许指向尚未入库的实体，非空值必须是 UUIDv7，不限制目标模型。
+
+模型声明是建表、校验和还原实体的依据。后端不根据第一条业务数据推测模型。
+
+## 业务资源登记
+
+`resourceName` 是业务保存入口的资源名，每个资源名绑定一个 SchemaId。例如，`example-records` 对应 `PUT /entities/example-records/{id}`。显示名称用于阅读，资源名用于 HTTP 路径；后端按[业务表命名规则](../../../storage/index.mdx#业务表命名)生成默认数据库表名。
+
+资源名只使用小写英文字母、数字和连字符，以字母开头，例如 `local-applications`、`foreground-application-periods`。资源名全局唯一，且不能使用 `schemas`、`observers`、`observations`。插件可以自行加前缀，例如 `acme-local-applications`；系统不另设命名空间。上传 EntitySchema 时一起登记资源名。首次保存定义、登记资源名和创建业务表全部成功后，业务入口可用；失败时不留下部分结果。资源名已被其他 SchemaId 占用时，后端返回 `409`。
+
+提交格式见[保存实体定义](/api/saveEntitySchema)和[保存业务实体](/api/saveBusinessEntity)。
+
+## 字段类型
+
+`type` 使用以下取值。示例展示业务实体中实际保存的值。
+
+| `type` | 含义 | 值的例子 |
+| --- | --- | --- |
+| `string` | 字符串 | `"Visual Studio Code"` |
+| `boolean` | 布尔值 | `true` |
+| `integer` | 整数 | `12` |
+| `number` | 数值，可以包含小数 | `12.5` |
+| `reference` | 实体引用 | `"0192b056-7300-7000-8000-000000000001"` |
+| `object` | 对象 | `{"scheme":"macos.bundle-id","value":"com.microsoft.VSCode"}` |
+| `array` | 数组 | `[{"scheme":"macos.bundle-id","value":"com.microsoft.VSCode"}]` |
+
+`reference` 只允许用于实体顶层字段。对象成员和数组元素不允许使用 `reference`，这一规则适用于任意嵌套层级。对象和数组内部的普通标识字符串不自动成为实体引用。
+
+空值由 `nullable` 声明。对象成员和数组元素按模型声明校验。类型对应的数据库列见[业务字段映射](../../../storage/index.mdx#业务字段映射)。
+
+## 字段是否必填与允许空值
+
+每个字段定义必须明确提供 `type`、`required` 和 `nullable`。缺少任一配置时，请求不合法。三项配置没有隐含默认值。字段定义只接受已声明的配置，`fields` 仅用于 `object`，`items` 仅用于 `array`。业务数据只接受模型声明的字段，包括所有嵌套对象成员。
+
+`required` 和 `nullable` 分别约束业务字段是否出现和值是否为空。
+
+| 字段定义 | 含义 |
+| --- | --- |
+| `required: true` | 提交时必须包含字段 |
+| `required: false` | 提交时允许省略字段 |
+| `nullable: true` | 字段值允许为 `null` |
+| `nullable: false` | 字段值不允许为 `null` |
+
+上述示例中的 `title` 必须提交，但允许为空。因此，以下属性内容合法：
+
+```json
+{
+  "title": null
+}
+```
+
+以下属性内容不合法，因为缺少 `title`：
+
+```json
+{}
+```
+
+`relatedEntityId` 必须提交且不允许为空，需要在 `references` 中提供目标实体的标识。引用字段是否必填、是否允许空值，也由这两项约束决定。
+
+字段省略与显式 `null` 的区别在保存和读取后保持不变。具体存储方式见[字段省略与空值](../../../storage/index.mdx#字段省略与空值)。
+
+## 对象成员
+
+`type: "object"` 必须通过 `fields` 声明成员。键是成员名，值是成员的字段定义。每个成员继续明确提供 `type`、`required` 和 `nullable`。
+
+例如，以下 `identifier` 字段包含一条应用标识线索：
+
+```json
+{
+  "identifier": {
+    "type": "object",
+    "required": true,
+    "nullable": false,
+    "fields": {
+      "scheme": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "value": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    }
+  }
+}
+```
+
+对应的业务数据为：
+
+```json
+{
+  "identifier": {
+    "scheme": "macos.bundle-id",
+    "value": "com.microsoft.VSCode"
+  }
+}
+```
+
+`fields` 描述对象的业务结构。整体保存还是展平，由存储配置决定。
+
+## 数组元素
+
+`type: "array"` 必须通过 `items` 定义每个元素。元素定义必须明确提供 `type` 和 `nullable`，不使用 `required`。
+
+例如，以下字段保存字符串列表：
+
+```json
+{
+  "names": {
+    "type": "array",
+    "required": true,
+    "nullable": false,
+    "items": {
+      "type": "string",
+      "nullable": false
+    }
+  }
+}
+```
+
+对应的业务数据为：
+
+```json
+{
+  "names": ["Chrome", "Visual Studio Code"]
+}
+```
+
+数组字段的 `required` 决定字段是否必须出现。字段的 `nullable` 决定数组本身能否为 `null`。`items.nullable` 决定数组元素能否为 `null`。元素定义描述已有元素的值，因此不使用 `required`。
+
+上述定义允许 `"names": []`，不允许省略 `names`、使用 `"names": null` 或使用 `"names": [null]`。字段必填不表示数组至少包含一个元素。
+
+对象元素通过 `items.fields` 声明成员。每个成员继续明确提供 `type`、`required` 和 `nullable`。例如，标识线索列表的定义为：
+
+```json
+{
+  "identifiers": {
+    "type": "array",
+    "required": true,
+    "nullable": false,
+    "items": {
+      "type": "object",
+      "nullable": false,
+      "fields": {
+        "scheme": {
+          "type": "string",
+          "required": true,
+          "nullable": false
+        },
+        "value": {
+          "type": "string",
+          "required": true,
+          "nullable": false
+        }
+      }
+    }
+  }
+}
+```
+
+对应的业务数据为：
+
+```json
+{
+  "identifiers": [
+    {
+      "scheme": "macos.bundle-id",
+      "value": "com.microsoft.VSCode"
+    }
+  ]
+}
+```
+
+## 存储职责
+
+EntitySchema 本身保存在系统预先建立的固定表中。表结构与字段存储方式见 [entity_schemas](../../../storage/entity-schemas.mdx)。
+
+每个业务 SchemaId 对应一张业务表。后端根据模型声明映射数据库列，并负责保存、查询和索引。实体通过统一索引按 ID 定位。
+
+`object` 表达业务对象结构。存储层可以将对象整体保存，也可以通过存储配置展平到同一张业务表的多列。读取时，后端还原原来的对象结构。
+
+上述表映射由后端负责。Core 定义模型，不依赖 PostgreSQL 的列类型或建表语句。如果插件需要指定表名，插件通过存储配置声明表名。
+
+职责决定见 [ADR 0011](../../../adr/0011-entity-schema-driven-storage.mdx)。
 
 ## 定义更新
 
-如果观测定义的语义或约束变化，则创建新的 `ObservationSchema`，并使用新的 `EntityId`。旧观测继续引用旧观测定义。
+同一个 SchemaId 的模型结构、约束和业务含义固定。如果模型发生变化，创建方使用新的 EntityId 创建 EntitySchema。新 SchemaId 对应新业务表。
 
-如果仅修改观测定义的名称或说明，且语义与约束不变，可以保留原 `EntityId`。
+同一个 SchemaId 的 `resourceName` 在首次登记后固定，后续提交必须保持原值。
 
-提交方判断是否需要新 ID。后端只校验请求格式和模型类别，不比较 JSON 定义的语义。同 ID 的合法请求按[保存协议](../../../api/index.mdx#保存行为)替换内容。
+仅修改显示名称 `name` 或说明文字，且模型结构、约束和业务含义不变时，可以保留原 EntityId。修改显示名称不改变资源名或接口地址。
 
-观测定义不包含有效期。事实时间由 Observation 保存，决定见 [ADR 0003](../../../adr/0003-entity-submission-entry-points.mdx#定义更新)。
+EntitySchema 不包含有效期。被观测事实的时间由 Observation 保存。
 
-## 校验范围
+修改已登记的字段定义返回 `409`，原定义与业务表保持不变。对象键顺序不影响定义比较。
 
-JSON 结构校验检查字段、类型和其他表示约束。
+## 示例
 
-引用有效性和多个记录之间的一致性，需要结合被引用实体和领域规则校验。
+| EntitySchema | 对应业务表保存的内容 |
+| --- | --- |
+| 本机应用 | 设备上的应用安装及原生标识 |
+| 前台应用观测内容 | 本机应用引用和当时读到的名称 |
 
-## 具体定义
+前台应用观测内容通过 `localApplicationId` 引用本机应用。Observation 引用这份内容及其 EntitySchema，保存应用处于前台的起止时间。
 
-每份具体观测定义在 Observers 栏目的 ObservationSchemas 分区单独成页。当前目标定义为[前台应用时段](../../../observers/schemas/foreground-application-interval.mdx)、[前台窗口标题时段](../../../observers/schemas/foreground-window-title.mdx)、[键鼠输入事件](../../../observers/schemas/input-event.mdx)和[设备休眠与清醒](../../../observers/schemas/device-state.mdx)，均包含待确认草案。
-
-当前代码仍使用应用时间点读数，契约见[当前单次读数](../../../observers/foreground-state.mdx#当前单次读数)。
+具体内容示例见[前台应用时段](../../../observers/schemas/foreground-application-interval.mdx)，应用身份见[本机应用](../../../observers/entities/local-application.mdx)。

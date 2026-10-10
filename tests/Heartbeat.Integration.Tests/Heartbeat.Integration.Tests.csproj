@@ -19,8 +19,4 @@
     <ProjectReference Include="../../src/Backend/Heartbeat.Infrastructure/Heartbeat.Infrastructure.csproj" />
     <ProjectReference Include="../Heartbeat.Testing/Heartbeat.Testing.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <Content Include="../../src/Docs/Heartbeat.Docs/content/docs/api/openapi.json"
-             Link="openapi.json" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
 </Project>

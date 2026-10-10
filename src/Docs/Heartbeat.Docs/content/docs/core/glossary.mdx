@@ -5,10 +5,13 @@ title: "术语表"
 | 名称 | 含义 | 正文 |
 | --- | --- | --- |
 | EntityId | 实体标识的程序表示 | [EntityId](./model/contracts/entity.mdx#entityid) |
-| IEntity | 提供实体稳定标识的接口 | [IEntity](./model/contracts/entity.mdx) |
+| IEntity | 提供实体稳定标识与实体引用枚举的接口 | [IEntity](./model/contracts/entity.mdx) |
+| 实体引用 | 一个实体对另一个实体的引用，参与统一枚举与实体关系图 | [实体引用约定](./model/contracts/entity.mdx#约定) |
 | ITimed | 提供已知时间边界的接口 | [ITimed](./model/contracts/timed.mdx) |
-| Observation · 观测 | 引用观测主体、具体数据和观测定义，记录事实时间的实体 | [Observation](./model/observations/observation.mdx) |
+| Observation · 观测 | 引用观测主体、观测内容和实体定义，记录事实时间的实体 | [Observation](./model/observations/observation.mdx) |
 | Observer · 观测主体 | 实际形成观测的主体 | [Observer](./model/observations/observer.mdx) |
-| ObservationSchema · 观测定义 | 定义具体数据的结构、约束和观测含义的实体 | [ObservationSchema](./model/observations/schema.mdx) |
-| 具体数据 | 各领域自行定义、由观测引用的数据实体 | [具体数据](./model/observations/data.mdx) |
-| Relation · 关系 | 需要独立表示的实体间关系 | [Relation](./model/relations/relation.mdx) |
+| EntitySchema · 实体定义 | 定义业务实体的字段、引用、约束和业务含义的实体 | [EntitySchema](./model/observations/schema.mdx) |
+| 观测内容 | 由业务定义、通过 `ContentId` 被观测引用的普通实体 | [观测内容](./model/observations/content.mdx) |
+| LocalApplication · 本机应用 | 某台设备上的一个应用安装，具有独立实体身份 | [本机应用](../observers/entities/local-application.mdx) |
+| 跨平台应用 | 多台设备或多个平台上的同一个软件，本机应用实体可以关联到这一身份 | [应用身份](../adr/0002-observer-capabilities-and-platform-clients.mdx#应用身份) |
+| 业务关系 | 由具体业务定义含义的实体间联系 | [实体引用约定](./model/contracts/entity.mdx#约定) |

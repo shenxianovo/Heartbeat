@@ -13,7 +13,7 @@ const styles = [
   'classDef capability fill:#E8F1FF,stroke:#376BB0,color:#183A64',
   'classDef entity fill:#E6F5EC,stroke:#37805A,color:#204B35',
   'classDef domain fill:#F1EAFE,stroke:#7544A6,color:#35204D',
-  'classDef relation fill:#FCE8ED,stroke:#AD506A,color:#682A3B',
+  'classDef member fill:#F1EAFE,stroke:#7544A6,color:#35204D',
 ];
 
 export function ModelRelations({ node }: { node?: NodeId }) {

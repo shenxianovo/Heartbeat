@@ -25,36 +25,19 @@ namespace Heartbeat.Infrastructure.Database.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "entity_data",
-                columns: table => new
-                {
-                    id = table.Column<Guid>(type: "uuid", nullable: false),
-                    data = table.Column<JsonElement>(type: "jsonb", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("pk_entity_data", x => x.id);
-                    table.ForeignKey(
-                        name: "fk_entity_data_entities_id",
-                        column: x => x.id,
-                        principalTable: "entities",
-                        principalColumn: "id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "observation_schemas",
+                name: "entity_schemas",
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
                     name = table.Column<string>(type: "text", nullable: false),
-                    schema = table.Column<JsonElement>(type: "jsonb", nullable: false)
+                    resource_name = table.Column<string>(type: "text", nullable: false),
+                    fields = table.Column<JsonElement>(type: "jsonb", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("pk_observation_schemas", x => x.id);
+                    table.PrimaryKey("pk_entity_schemas", x => x.id);
                     table.ForeignKey(
-                        name: "fk_observation_schemas_entities_id",
+                        name: "fk_entity_schemas_entities_id",
                         column: x => x.id,
                         principalTable: "entities",
                         principalColumn: "id",
@@ -67,7 +50,7 @@ namespace Heartbeat.Infrastructure.Database.Migrations
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
                     observer_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    data_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    content_id = table.Column<Guid>(type: "uuid", nullable: false),
                     schema_id = table.Column<Guid>(type: "uuid", nullable: false),
                     start_at = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
                     end_at = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
@@ -102,16 +85,14 @@ namespace Heartbeat.Infrastructure.Database.Migrations
                         principalColumn: "id",
                         onDelete: ReferentialAction.Cascade);
                 });
+            migrationBuilder.CreateIndex(name: "ux_entity_schemas_resource_name", table: "entity_schemas", column: "resource_name", unique: true);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
-                name: "entity_data");
-
-            migrationBuilder.DropTable(
-                name: "observation_schemas");
+                name: "entity_schemas");
 
             migrationBuilder.DropTable(
                 name: "observations");

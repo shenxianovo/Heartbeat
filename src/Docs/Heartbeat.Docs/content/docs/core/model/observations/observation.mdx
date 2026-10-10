@@ -6,7 +6,7 @@ title: "Observation"
 
 ## 含义
 
-`Observation` 引用观测主体、具体数据和观测定义，并记录被观测事实的时间。
+`Observation` 引用观测主体、观测内容和实体定义，并记录被观测事实的时间。
 
 ## 定义
 
@@ -17,11 +17,13 @@ public sealed class Observation : IEntity, ITimed
 {
     public required EntityId Id { get; init; }
     public required EntityId ObserverId { get; init; } // [!code ++]
-    public required EntityId DataId { get; init; } // [!code ++]
+    public required EntityId ContentId { get; init; } // [!code ++]
     public required EntityId SchemaId { get; init; } // [!code ++]
     public DateTimeOffset? StartAt { get; init; }
     public DateTimeOffset? EndAt { get; init; }
     public string? TimeZone { get; init; } // [!code ++]
+
+    public IEnumerable<EntityId> GetReferences() => [ObserverId, ContentId, SchemaId];
 }
 ```
 
@@ -29,14 +31,16 @@ public sealed class Observation : IEntity, ITimed
 | --- | --- |
 | `Id` | 这份观测的实体标识 |
 | `ObserverId` | 引用形成观测的观测主体 [Observer](./observer.mdx) |
-| `DataId` | 引用这份观测的[具体数据](./data.mdx) |
-| `SchemaId` | 引用解释这份观测的观测定义 [ObservationSchema](./schema.mdx) |
+| `ContentId` | 引用这份观测的[观测内容](./content.mdx) |
+| `SchemaId` | 引用解释这份观测的实体定义 [EntitySchema](./schema.mdx) |
 | `StartAt`、`EndAt` | 被观测事实的时间边界，遵循 [ITimed](../contracts/timed.mdx) |
 | `TimeZone` | 事实所属的 IANA 时区 ID；未知时为 `null` |
 
+`GetReferences()` 枚举 `ObserverId`、`ContentId` 和 `SchemaId`，不读取目标实体。契约见[实体引用约定](../contracts/entity.mdx#约定)。
+
 ## 事实时间
 
-同一份材料可以支持多份观测。`ObservationSchema` 定义每份观测表达的事实。
+同一份材料可以支持多份观测。`EntitySchema` 定义每份观测表达的事实。
 
 - 如果观测表达某时刻看见的状态，事实时间可以使用看见状态的时刻。
 - 如果观测表达材料中的历史事件，事实时间使用历史事件的时间。
@@ -45,23 +49,23 @@ public sealed class Observation : IEntity, ITimed
 
 `TimeZone` 保存事实所属的 IANA 时区 ID，例如 `Asia/Shanghai`。IANA 是互联网号码分配机构（Internet Assigned Numbers Authority）。事实时区未知时，`TimeZone` 为 `null`。
 
-后端根据提交时间中的偏移转换为协调世界时（UTC）。前端按浏览器或系统时区显示事实时间。
+后端根据时间值中的偏移，将时刻转换为协调世界时（UTC）。前端按浏览器或系统时区显示事实时间。
 
 按本地日期查询时，先按浏览器或系统时区确定日期边界，再将边界转换为 UTC 比较。
 
 ## 观测身份
 
-如果重试或重放同一份已保存输入，则使用已有标识映射。
+如果采集程序重试或重放同一份已保存输入，采集程序沿用已有标识映射。
 
-如果形成新的独立观测，则创建新的 `Observation` 标识。
+如果采集程序形成新的独立观测，采集程序创建新的 `Observation` 标识。
 
-需要保留历史内容时，`DataId` 遵循[具体数据的历史保留约定](./data.mdx#历史保留)。
+需要保留历史内容时，`ContentId` 遵循[观测内容的历史保留约定](./content.mdx#历史保留)。
 
 ## 示例：VRChat 历史会话
 
 一次会话发生在 `2026-10-05 09:00` 至 `2026-10-05 12:00`，时区为 `Asia/Shanghai`。该会话在同日 `15:00` 导入。
 
-具体数据保存会话内容。`Observation` 保存事实时间：
+观测内容保存会话内容。`Observation` 保存事实时间：
 
 - UTC 区间：`[2026-10-05T01:00:00Z, 2026-10-05T04:00:00Z)`。
 - 事实时区：`Asia/Shanghai`。

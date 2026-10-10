@@ -6,7 +6,7 @@ title: "IEntity"
 
 ## 含义
 
-需要独立识别的事物实现 `IEntity`，通过 `Id` 提供稳定标识。
+需要独立识别的事物实现 `IEntity`。`Id` 提供稳定标识，`GetReferences()` 枚举实体引用。
 
 ## 定义
 
@@ -14,28 +14,44 @@ title: "IEntity"
 public interface IEntity
 {
     EntityId Id { get; }
+    IEnumerable<EntityId> GetReferences();
 }
 ```
 
-| 属性 | 类型 | 含义 |
+| 成员 | 类型 | 含义 |
 | --- | --- | --- |
 | `Id` | [EntityId](#entityid) | 当前实体的标识 |
+| `GetReferences()` | `IEnumerable<EntityId>` | 枚举当前实体引用的目标标识，不读取目标实体；没有引用时返回空集合 |
 
 ## 约定
 
-观测、观测主体、观测定义、具体数据和独立关系都实现 `IEntity`。
+观测、观测主体、实体定义和业务实体都实现 `IEntity`。
 
 需要表达时间边界的类型实现 [ITimed](./timed.mdx)。
+
+实体是关系图中的节点，实体引用连接节点。普通 `EntityId` 引用字段也参与关系图。
+
+业务定义引用名称与含义。实体自身的 `Id` 表示节点身份，不自动作为引用返回。字符串或 JSON 中的标识值不自动成为引用。
+
+业务在实体字段中定义引用，`GetReferences()` 从这些字段返回目标标识。例如，实体通过 `LocalApplicationId` 引用本机应用，枚举时返回该字段的值。业务不另行维护一份引用列表。
+
+枚举当前实体的引用，可以找到引用目标。要查找哪些实体引用当前实体，需要查询其他实体的引用。
+
+如果关系需要独立保存身份、时间或其他信息，业务定义普通实体。关系实体通过同一契约提供引用。需要时间边界的业务实体实现 `ITimed`。
+
+Core 不提供通用关系基类。职责决定见 [ADR 0009](../../../adr/0009-entity-reference-enumeration.mdx)。
 
 ## 创建、存储与读取
 
 采集程序创建实体。创建新实体时，采集程序调用 `EntityId.New()`。识别出已有实体时，采集程序沿用原 `EntityId`。
 
-实体读写协议见 [Heartbeat API](../../../api/index.mdx)。统一索引、存储表和存储转换规则见 [Heartbeat Storage](../../../storage/index.mdx)。
+实体读写协议见 [Heartbeat API](../../../api/index.mdx)。统一索引、存储表和存储职责见 [Heartbeat Storage](../../../storage/index.mdx)。
+
+HTTP 契约使用 `references` 保存具名引用，使用 `properties` 保存其他业务属性。引用字段只出现一次，结构见[读取实体](/api/getEntity)。
 
 ## EntityId
 
-`EntityId` 封装一个 `Guid`，用作实体标识。`New()` 创建 UUIDv7 标识。UUIDv7 是 UUID（通用唯一标识符）的第 7 版格式。
+`EntityId` 封装一个 `Guid`，用作实体标识。`New()` 创建 UUIDv7 标识。
 
 ```csharp
 public readonly record struct EntityId(Guid Value)

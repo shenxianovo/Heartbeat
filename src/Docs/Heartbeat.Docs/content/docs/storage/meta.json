@@ -8,7 +8,7 @@
     "entities",
     "observations",
     "observers",
-    "observation-schemas",
-    "entity-data"
+    "entity-schemas",
+    "business-entities"
   ]
 }

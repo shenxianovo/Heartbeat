@@ -9,11 +9,10 @@ public sealed class HeartbeatDbContext(
     DbContextOptions<HeartbeatDbContext> options) : DbContext(options)
 {
     public DbSet<EntityIndexRow> Entities => Set<EntityIndexRow>();
-    public DbSet<EntityDataRow> EntityData => Set<EntityDataRow>();
     public DbSet<Observation> Observations => Set<Observation>();
     public DbSet<Observer> Observers => Set<Observer>();
-    public DbSet<ObservationSchema> ObservationSchemas
-        => Set<ObservationSchema>();
+    public DbSet<EntitySchema> EntitySchemas
+        => Set<EntitySchema>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -31,9 +30,8 @@ public sealed class HeartbeatDbContext(
         base.OnModelCreating(modelBuilder);
 
         modelBuilder.ApplyConfiguration(new EntityIndexRowConfiguration());
-        modelBuilder.ApplyConfiguration(new EntityDataRowConfiguration());
         modelBuilder.ApplyConfiguration(new ObservationConfiguration());
         modelBuilder.ApplyConfiguration(new ObserverConfiguration());
-        modelBuilder.ApplyConfiguration(new ObservationSchemaConfiguration());
+        modelBuilder.ApplyConfiguration(new EntitySchemaConfiguration());
     }
 }

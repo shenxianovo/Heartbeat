@@ -27,7 +27,7 @@ export default async function Page(props: PageProps<'/[[...slug]]'>) {
 
   const markdownUrl = getPageMarkdownUrl(page).url;
   const contentPath = page.type === 'openapi'
-    ? 'src/Backend/Heartbeat.Api/Entities/EntityEndpoints.cs'
+    ? `${gitConfig.contentPath}/api/openapi.json`
     : `${gitConfig.contentPath}/${page.path}`;
   let content: ReactNode;
 

@@ -6,4 +6,6 @@ public enum EntitySaveResult
     SavedExisting,
     CategoryConflict,
     InvalidContent,
+    SchemaConflict,
+    ResourceNotFound,
 }

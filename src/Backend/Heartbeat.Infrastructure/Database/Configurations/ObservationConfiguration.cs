@@ -30,8 +30,8 @@ public sealed class ObservationConfiguration : IEntityTypeConfiguration<Observat
             .HasColumnType("uuid")
             .IsRequired();
 
-        builder.Property(observation => observation.DataId)
-            .HasColumnName("data_id")
+        builder.Property(observation => observation.ContentId)
+            .HasColumnName("content_id")
             .HasColumnType("uuid")
             .IsRequired();
 

@@ -8,13 +8,21 @@ title: "0003 创建方生成标识 按模型保存 按标识读取"
 
 ## 保存与读取
 
-保存路径区分通用领域实体、Observation、Observer 和 ObservationSchema。路径提供 `id`，请求体包含其余属性。读取入口 `GET /entities/{id}` 返回 `category` 和 `entity`，调用方只需实体标识即可读取内容。
+所有入口都操作实体。Observation、EntitySchema 和 Observer 都是实体。各保存入口采用相同的保存语义。保存路径声明模型类别，使调用方无需在 PUT 请求体中填写 `category`。后端按类别选择存储表，统一读取入口按实体标识定位内容。
 
-首次保存创建实体；同 ID 且类别一致的合法请求替换内容。重复提交相同请求后，保存结果不变。实体首次保存后，模型类别固定。类别冲突时，后端返回 `409 Conflict` 并保留原内容。
+HTTP 保存路径区分 Observation、Observer 和 EntitySchema。实体定义使用 `PUT /entities/schemas/{id}`。读取响应中的类别为 `entity_schema`。路径提供 `id` 和模型类别。所有保存入口的请求体外层只能包含 `references` 与 `properties`，且两者必须出现。`references` 以引用名称映射目标标识。`properties` 保存其他业务属性。引用字段只保存一次，没有引用时使用 `{}`。
+
+读取入口 `GET /entities/{id}` 对所有类别使用同一响应结构，返回 `category`、`references` 和 `properties`。引用与属性的划分与保存请求一致。调用方只需实体标识即可读取内容。字段与 JSON 示例见[读取实体](/api/getEntity)。
+
+首次保存时，后端创建实体。如果已有实体的 ID 和类别与合法请求一致，后端替换内容。重复提交相同请求后，保存结果不变。实体首次保存后，模型类别固定。类别冲突时，后端返回 `409 Conflict` 并保留原内容。
+
+业务实体通过 `PUT /entities/{resourceName}/{id}` 保存。上传 EntitySchema 时，提交方通过 `properties.resourceName` 登记资源名与 SchemaId 的绑定。后端按绑定找到定义、校验请求并选择业务表，各资源共用保存逻辑。资源名未登记时，后端返回 `404 Not Found`，不创建实体内容、统一实体索引或业务表。保存已有业务实体时，其所属 Schema 必须与资源绑定一致，否则返回 `409`。业务实体通过统一读取入口读取。
+
+首次保存 EntitySchema 时，后端将定义保存、资源登记和首次建表作为一次完整操作。全部成功后才返回成功；失败时不留下部分结果。资源名已被其他 SchemaId 占用时返回 `409`。
 
 ## 定义更新
 
-ObservationSchema 的提交方判断定义的语义或约束是否变化。语义或约束变化时，必须创建新 ID。仅修改名称或说明且语义与约束不变时，可以沿用原 ID。后端校验格式和模型类别，不比较任意 JSON 定义的语义。
+同一个 EntitySchema 标识的模型结构、约束和业务含义固定。模型变化时，提交方使用新 ID。仅修改名称或说明文字且不改变模型含义时，可以沿用原 ID。模型声明与业务表的职责见 [ADR 0011](./0011-entity-schema-driven-storage.mdx)。
 
 Observation 通过 `SchemaId` 明确引用定义，因此 Schema 不包含有效期。语义变化由新 ID 区分，已有观测继续引用原定义。事实时间由 Observation 保存。
 
