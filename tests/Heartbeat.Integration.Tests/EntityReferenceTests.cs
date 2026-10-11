@@ -41,13 +41,7 @@ public sealed class EntityReferenceTests
                 ResourceName = "reference-tests",
                 Fields = JsonSerializer.SerializeToElement(new { }),
             },
-            new ForegroundApplicationContent
-            {
-                Id = EntityId.New(),
-                BundleIdentifier = value,
-                Name = value,
-                ExecutablePath = value,
-            },
+            new LocalApplication(EntityId.New(), [new ApplicationIdentifier("test", value)]),
         ];
 
         foreach (var entity in entities)

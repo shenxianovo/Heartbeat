@@ -10,7 +10,8 @@
     "0008-aspire-local-development",
     "0009-entity-reference-enumeration",
     "0010-observation-content-and-business-entities",
-    "0011-entity-schema-driven-storage"
+    "0011-entity-schema-driven-storage",
+    "0012-foreground-application-periods"
   ],
   "title": "Heartbeat ADR",
   "description": "架构决策记录",

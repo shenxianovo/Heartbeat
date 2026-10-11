@@ -38,6 +38,9 @@ dotnet test --project tests/Heartbeat.Integration.Tests/Heartbeat.Integration.Te
 | --- | --- | --- |
 | `MacObserverIdentityTests` | 首次创建、重复启动、独立实例、并发首次启动、损坏文件保留 | 临时身份文件 |
 | `MacObserverSubmissionTests` | 独立快照、引用、微秒时间、Schema登记、动态提交与统一读回核对 | 采集程序的提交实现、真实 API、独立 PostgreSQL |
-| `MacObserverReadBackTests` | 类别或内容不一致时报告核对失败 | 模拟读取响应 |
+| `MacObserverReadBackTests` | 类别或内容不一致时保留 Outbox 记录 | 模拟读取响应 |
+| `ForegroundOutboxTests` | 当前时段隔离、重启恢复、事务回滚、事件与休眠边界、断网及响应丢失 | 独立 SQLite、模拟读数和 HTTP |
 
 这些用例不调用 macOS 原生接口。原生读取需在 macOS 上实际运行 [前台状态程序](../../src/Observers/Heartbeat.Observer.ForegroundState/README.md)验证。
+
+前台应用采集的行为 Case 见文档站 [本机身份](../../src/Docs/Heartbeat.Docs/content/docs/testing/observers/local-application-identity.mdx)、[时段边界](../../src/Docs/Heartbeat.Docs/content/docs/testing/observers/application-period-boundaries.mdx)、[时段保存](../../src/Docs/Heartbeat.Docs/content/docs/testing/observers/period-submission.mdx)和[Outbox 恢复](../../src/Docs/Heartbeat.Docs/content/docs/testing/observers/outbox-recovery.mdx)。

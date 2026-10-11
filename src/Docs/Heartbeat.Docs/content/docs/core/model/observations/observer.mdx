@@ -47,7 +47,7 @@ public sealed class Observer : IEntity
 
 ## 具体实现
 
-[前台状态](../../../observers/foreground-state.mdx)、[输入事件](../../../observers/input-events.mdx)与[设备状态](../../../observers/device-state.mdx)分别记录实例身份、实体定义和时间规则。当前只实现 macOS 前台应用单次读取，其余页面记录已确认职责与待确认草案。能力与平台客户端的分工见 [Observers 概览](../../../observers/index.mdx)。
+[前台状态](../../../observers/foreground-state.mdx)、[输入事件](../../../observers/input-events.mdx)与[设备状态](../../../observers/device-state.mdx)分别记录实例身份、实体定义和时间规则。macOS 前台状态采集已包含本机应用身份、连续时段、提交和读回。其余能力按各页面规则推进。能力与平台客户端的分工见 [Observers 概览](../../../observers/index.mdx)。
 
 ## 示例：读取本地会话记录
 

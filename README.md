@@ -34,7 +34,7 @@ Aspire 在本机运行 API 与文档站，在容器中运行 PostgreSQL 和 NGIN
 
 后台启动、日志、资源操作和停止见 [AppHost README](tools/Heartbeat.AppHost/README.md)。构建、测试与质量扫描继续使用 [开发工具](tools/Heartbeat.Dev/README.md)。Dockerfile 用于构建镜像。本地编排以 AppHost 为准。服务器发布流程尚未建设。
 
-macOS 上读取一次前台应用并提交到本地 API：
+macOS 上持续采集前台应用时段并保存到本地 API（Ctrl+C 停止）：
 
 ```sh
 dotnet run --project src/Observers/Heartbeat.Observer.ForegroundState

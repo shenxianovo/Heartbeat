@@ -1,5 +1,3 @@
-using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
 using Heartbeat.Core;
 using ObserverEntity = Heartbeat.Core.Observer;
@@ -8,37 +6,54 @@ namespace Heartbeat.Observers.ForegroundState;
 
 internal sealed record ForegroundCapture(
     ObserverEntity Observer,
+    LocalApplication Application,
     ForegroundApplicationContent Content,
     Observation Observation)
 {
     internal static EntitySchema Schema { get; } = new()
     {
-        Id = new EntityId(Guid.Parse("01a114c5-6282-7385-ab65-b93517e16b0f")),
-        Name = "foreground application reading",
-        ResourceName = "foreground-application-readings",
+        Id = new EntityId(Guid.Parse("019e1bbb-ec00-7000-8000-000000000001")),
+        Name = "foreground application period",
+        ResourceName = "foreground-application-periods",
         Fields = JsonSerializer.Deserialize<JsonElement>("""
             {
-              "bundleIdentifier": { "type": "string", "required": true, "nullable": true },
-              "name": { "type": "string", "required": true, "nullable": true },
-              "executablePath": { "type": "string", "required": true, "nullable": true }
+              "localApplicationId": { "type": "reference", "required": true, "nullable": false },
+              "name": { "type": "string", "required": true, "nullable": true }
             }
             """),
     };
 
-    internal static ForegroundCapture Create(EntityId observerId, ForegroundApplicationReading reading)
+    internal static EntitySchema ApplicationSchema { get; } = new()
+    {
+        Id = new EntityId(Guid.Parse("019e1bbb-ec00-7000-8000-000000000002")),
+        Name = "local application",
+        ResourceName = "local-applications",
+        Fields = JsonSerializer.Deserialize<JsonElement>("""
+            {
+              "identifiers": { "type": "array", "required": true, "nullable": false,
+                "items": { "type": "object", "nullable": false, "fields": {
+                  "scheme": { "type": "string", "required": true, "nullable": false },
+                  "value": { "type": "string", "required": true, "nullable": false }
+                }}
+              }
+            }
+            """),
+    };
+
+    internal static ForegroundCapture Create(
+        EntityId observerId, LocalApplication application, ForegroundApplicationReading reading)
     {
         ArgumentNullException.ThrowIfNull(reading);
         var content = new ForegroundApplicationContent
         {
             Id = EntityId.New(),
-            BundleIdentifier = reading.BundleIdentifier,
+            LocalApplicationId = application.Id,
             Name = reading.Name,
-            ExecutablePath = reading.ExecutablePath,
         };
-        var utc = reading.ObservedAt.UtcDateTime;
-        var time = new DateTimeOffset(utc.AddTicks(-(utc.Ticks % 10)));
+        var time = Microseconds(reading.ObservedAt);
         return new ForegroundCapture(
             new ObserverEntity { Id = observerId, Name = "macOS foreground state observer" },
+            application,
             content,
             new Observation
             {
@@ -52,17 +67,36 @@ internal sealed record ForegroundCapture(
             });
     }
 
-    internal async Task SubmitAndVerifyAsync(
-        HttpClient client, TextWriter progress, CancellationToken cancellationToken)
+    internal ForegroundCapture Through(DateTimeOffset time) => this with
     {
-        var entities = new[]
+        Observation = new Observation
         {
-            new Submission(Observer.Id, "observer", "entities/observers", Body(new { references = new { }, properties = new { Observer.Name } })),
-            new Submission(Schema.Id, "entity_schema", "entities/schemas",
+            Id = Observation.Id,
+            ObserverId = Observation.ObserverId,
+            ContentId = Observation.ContentId,
+            SchemaId = Observation.SchemaId,
+            StartAt = Observation.StartAt,
+            EndAt = Microseconds(time),
+            TimeZone = Observation.TimeZone,
+        },
+    };
+
+    private static DateTimeOffset Microseconds(DateTimeOffset time) =>
+        new(time.UtcTicks - time.UtcTicks % 10, TimeSpan.Zero);
+
+    internal EntitySubmission[] Submissions() =>
+        [
+            new EntitySubmission(Observer.Id.Value, "observer", "entities/observers", Body(new { references = new { }, properties = new { Observer.Name } })),
+            new EntitySubmission(Schema.Id.Value, "entity_schema", "entities/schemas",
                 Body(new { references = new { }, properties = new { Schema.Name, Schema.ResourceName, Schema.Fields } })),
-            new Submission(Content.Id, "entity", $"entities/{Schema.ResourceName}",
-                Body(new { references = new { }, properties = new { Content.BundleIdentifier, Content.Name, Content.ExecutablePath } })),
-            new Submission(Observation.Id, "observation", "entities/observations", Body(new
+            new EntitySubmission(ApplicationSchema.Id.Value, "entity_schema", "entities/schemas",
+                Body(new { references = new { }, properties = new
+                    { ApplicationSchema.Name, ApplicationSchema.ResourceName, ApplicationSchema.Fields } })),
+            new EntitySubmission(Application.Id.Value, "entity", $"entities/{ApplicationSchema.ResourceName}",
+                Body(new { references = new { }, properties = new { Application.Identifiers } })),
+            new EntitySubmission(Content.Id.Value, "entity", $"entities/{Schema.ResourceName}",
+                Body(new { references = new { localApplicationId = Content.LocalApplicationId.Value }, properties = new { Content.Name } })),
+            new EntitySubmission(Observation.Id.Value, "observation", "entities/observations", Body(new
             {
                 references = new
                 {
@@ -77,40 +111,8 @@ internal sealed record ForegroundCapture(
                     Observation.TimeZone,
                 },
             })),
-        };
-        foreach (var entity in entities)
-        {
-            var path = $"{entity.SavePath}/{entity.Id.Value}";
-            await progress.WriteLineAsync($"PUT {path}");
-            using var response = await client.PutAsJsonAsync(path, entity.Body, cancellationToken);
-            if (response.StatusCode is not (HttpStatusCode.Created or HttpStatusCode.NoContent))
-                throw await RequestFailureAsync(response, path, cancellationToken);
-        }
-        foreach (var entity in entities)
-        {
-            var path = $"entities/{entity.Id.Value}";
-            await progress.WriteLineAsync($"GET {path}");
-            using var response = await client.GetAsync(path, cancellationToken);
-            if (response.StatusCode != HttpStatusCode.OK)
-                throw await RequestFailureAsync(response, path, cancellationToken);
-            var actual = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
-            if (actual.GetProperty("category").GetString() != entity.Category
-                || (!JsonElement.DeepEquals(actual.GetProperty("references"), entity.Body.GetProperty("references"))
-                    || !JsonElement.DeepEquals(actual.GetProperty("properties"), entity.Body.GetProperty("properties"))))
-                throw new InvalidDataException($"Read-back verification failed for {path}.");
-        }
-    }
+        ];
 
     private static JsonElement Body<T>(T value) =>
         JsonSerializer.SerializeToElement(value, JsonSerializerOptions.Web);
-
-    private static async Task<HttpRequestException> RequestFailureAsync(
-        HttpResponseMessage response, string path, CancellationToken cancellationToken)
-    {
-        var detail = await response.Content.ReadAsStringAsync(cancellationToken);
-        return new HttpRequestException($"{path}: HTTP {(int)response.StatusCode}: {detail}",
-            null, response.StatusCode);
-    }
-
-    private sealed record Submission(EntityId Id, string Category, string SavePath, JsonElement Body);
 }

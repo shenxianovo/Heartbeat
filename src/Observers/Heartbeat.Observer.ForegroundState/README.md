@@ -1,16 +1,10 @@
 # Heartbeat.Observer.ForegroundState
 
-本项目运行前台状态 Observer。应用与窗口标题观测共用实例身份，分别使用自己的观测定义和时间线。当前仅实现 macOS 应用单次读取、提交和读回核对。窗口标题、连续采集和 Windows 读取尚未实现。
-
-观测规则见 [前台状态 Observer](../../Docs/Heartbeat.Docs/content/docs/observers/foreground-state.mdx)。主体、平台客户端和实例身份的职责见 [ADR 0002](../../Docs/Heartbeat.Docs/content/docs/adr/0002-observer-capabilities-and-platform-clients.mdx)。
+在 macOS 上持续采集前台应用，保存本机应用身份和应用时段。主线程运行 AppKit 事件循环，使持续读取能够取得更新后的应用状态。业务规则见[前台状态](../../Docs/Heartbeat.Docs/content/docs/observers/foreground-state.mdx)。
 
 ## 运行
 
-前置条件：
-
-- 运行环境为 macOS。
-- 已安装仓库 `global.json` 指定的 .NET SDK。
-- Heartbeat API 已启动，且数据库已应用项目迁移。
+前置条件：macOS、仓库指定的 .NET SDK。发送时需要已应用迁移的 Heartbeat API；离线时仍可采集。
 
 从仓库根目录运行：
 
@@ -18,70 +12,47 @@
 dotnet run --project src/Observers/Heartbeat.Observer.ForegroundState
 ```
 
-程序先登记 `EntitySchema` 资源 `foreground-application-readings`，再通过 `PUT /entities/foreground-application-readings/{id}` 保存单次读数。字段仍为 `bundleIdentifier`、`name` 和 `executablePath`，未知属性保持 `null`。
+按 Ctrl+C 停止。程序不延长最后一次已保存的确认时间。
+
+限定采样次数：
+
+```sh
+dotnet run --project src/Observers/Heartbeat.Observer.ForegroundState -- --samples 10
+```
 
 ## 参数
 
-默认 API 基地址为 `http://localhost:8080/api/`。默认身份文件为 `~/Library/Application Support/Heartbeat/observers/macos-system/identity.json`。
+| 参数 | 默认值 | 含义 |
+| --- | --- | --- |
+| `--api` | `http://localhost:8080/api/` | 包含路径前缀的 HTTP(S) 地址，不允许查询参数或片段 |
+| `--identity-file` | `~/Library/Application Support/Heartbeat/observers/macos-system/identity.json` | Observer 实例身份文件 |
+| `--applications-file` | `~/Library/Application Support/Heartbeat/local-applications.json` | 本机应用身份登记文件，同一设备上的实例共用 |
+| `--state-file` | 身份文件路径加 `.sqlite` | 当前时段与 Outbox |
+| `--interval-ms` | `1000` | 兜底确认间隔，允许 100–60000 毫秒 |
+| `--samples` | `0` | 采样尝试次数；0 表示持续运行，读取失败也计一次 |
 
-可以指定 API 基地址和身份文件：
+另一 Observer 实例使用新的身份文件，可以继续共享本机应用登记文件。同一身份文件或状态文件只允许一个采集进程运行。状态文件绑定 Observer 身份，不能交给另一个实例使用。`.lock` 文件由操作系统锁定；进程退出后自动释放，保留空锁文件不影响重启。
 
-```sh
-dotnet run --project src/Observers/Heartbeat.Observer.ForegroundState -- \
-  --api http://localhost:8080/api/ \
-  --identity-file /path/to/instance/identity.json
-```
+另一台设备使用自己的身份文件与应用登记文件，不复制已有文件。文件损坏时报错并保留原文件。删除文件会重新分配其中管理的身份。
 
-`--api` 必须为 HTTP 或 HTTPS 绝对地址，且不得包含查询参数或片段。地址必须包含 API 路径前缀，末尾的 `/` 可以省略。直接连接 API 服务时，使用服务地址，例如 `http://localhost:5000/`。
+## 保存与输出
 
-`--identity-file` 指定前台状态 Observer 的实例身份文件。创建独立实例时，指定另一份新建身份文件。
+程序通过 `local-applications` 保存应用标识线索，通过 `foreground-application-periods` 保存应用引用和名称，再保存 Observation 的起止时间。定义与数据字段见[本机应用](../../Docs/Heartbeat.Docs/content/docs/observers/entities/local-application.mdx)和[应用时段](../../Docs/Heartbeat.Docs/content/docs/observers/schemas/foreground-application-interval.mdx)。
 
-## 身份文件
+应用激活事件触发采集，每秒定时确认作为兜底。当前时段保存在 SQLite，结束后才进入 Outbox。停止或重启时，按最后一次本地确认结束时段。
 
-身份文件只保存前台状态实例的 `observerId`。
+后台查询已结束时段的六个实体，缺少时提交，后续轮次全部读回一致后删除本地记录。发送完成不删除记录。每轮结束后等待 5 秒，单次请求最多等待 30 秒。断网与 HTTP 错误不阻塞采集，原因写入 Outbox 的 `last_error` 和标准错误。状态数据库随实例保留，重启后继续处理。
 
-读到前台应用后，程序按文件状态选择动作：
+标准输出每次本地确认写入一行 JSON，包含 `observerId`、`localApplicationId`、`contentId`、`observationId`、`startAt`、`endAt`、`name` 和 `storedLocally: true`。它表示本地已保存，不表示服务器已保存。后台确认并移除记录时，标准错误输出对应 Observation ID。
 
-- 文件不存在时，生成 UUIDv7 实例 ID 并写入文件。
-- 文件包含有效的 JSON 和 UUIDv7 `observerId` 时，读取原 ID。
-- JSON 或 `observerId` 无效时，报告错误并保留原文件。
-
-独立主体实例使用各自的身份文件。新增输出类型不直接要求新建身份。
-
-删除身份文件后，下次运行会生成新的实例 ID。
-
-## 输出
-
-程序将进度、实体 ID 和错误写入标准错误。
-
-提交时，程序依次保存 `Observer`、`EntitySchema`、观测内容实体和 `Observation`。随后，程序通过统一实体读取入口核对四个实体的 `category`、`references` 和 `properties`。
-
-如果四个实体均与提交内容一致，程序向标准输出写入一行 JSON：
-
-| 字段 | 内容 |
-| --- | --- |
-| `observerId` | 前台状态 Observer 实例 ID |
-| `schemaId` | 观测定义 ID |
-| `contentId` | 本次观测内容实体 ID |
-| `observationId` | 本次观测 ID |
-| `observedAt` | 本次读取的 UTC 时间，精度为微秒 |
-| `timeZone` | 本机 IANA 时区 ID；未知时为 `null` |
-| `application` | 应用读数，字段见[当前单次读数](../../Docs/Heartbeat.Docs/content/docs/observers/foreground-state.mdx#当前单次读数) |
-| `verified` | 固定为 `true` |
-
-退出码：
+限定次数结束或 Ctrl+C 停止时，当前时段进入 Outbox；未发送的记录留到下次运行。需要服务器保存的时段必须先结束，因此后端不显示正在进行的时段。
 
 | 退出码 | 含义 |
 | --- | --- |
-| 0 | 提交和读回核对成功 |
-| 1 | 采集、提交或读回核对失败，或操作取消 |
+| 0 | 指定次数的确认尝试结束，本地状态已保存 |
+| 1 | 本地文件、运行环境或采集后台任务失败 |
 | 2 | 参数错误 |
-
-## 失败处理
-
-每个 HTTP 请求的超时时间为 30 秒。如果请求超时、提交失败或读回核对失败，程序报告失败并退出。后端保留已成功保存的实体。
-
-程序不自动重试，也不使用离线队列。重新运行程序会形成新的读数。
+| 130 | 收到停止请求，未确认的记录留在 Outbox |
 
 ## 验证
 
@@ -89,14 +60,16 @@ dotnet run --project src/Observers/Heartbeat.Observer.ForegroundState -- \
 dotnet run --project tools/Heartbeat.Dev -- verify closeout --base HEAD
 ```
 
-集成测试覆盖以下范围：
+自动测试覆盖应用身份、时段边界、采集事件、休眠边界、本地事务恢复、HTTP 保存与读回。Case 文档位于文档站的 Testing → 前台应用采集。
 
-- 身份用例：检查身份复用、独立实例、并发首次创建和损坏文件保留。
-- 快照用例：通过真实 HTTP 保存并读取观测内容，检查独立身份、重复保存、历史内容与微秒时间。
-- 真实 HTTP 用例：检查 Schema 登记、动态业务提交和四实体统一读回核对。
+原生读取使用独立 API、数据库和临时文件验证：
 
-自动测试不调用 macOS 原生接口。验证原生读取前，准备独立 API 和测试数据库。
+```sh
+dotnet run --project src/Observers/Heartbeat.Observer.ForegroundState -- \
+  --api http://localhost:5100/ \
+  --identity-file /tmp/heartbeat-observer-check/identity.json \
+  --applications-file /tmp/heartbeat-observer-check/applications.json \
+  --samples 10
+```
 
-1. 在 macOS 上运行本程序，使用 `--api` 指向测试 API，并使用 `--identity-file` 指定临时身份文件。
-2. 核对原生读取结果和实例身份。
-3. 验证：程序读回四个实体一致，输出 `verified: true` 并以退出码 `0` 结束。
+运行期间切换应用。检查：同一应用连续读数沿用观测 ID，切换后出现新观测，切换后等待后台核对，能够读回已结束时段。停止时新结束的时段可能留在 Outbox，下次运行后继续发送。重新运行并检查本机应用身份保持不变，观测 ID 更新。真实休眠验证需另行执行；自动测试只模拟计时差和采集空白。

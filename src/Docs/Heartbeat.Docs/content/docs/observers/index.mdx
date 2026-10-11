@@ -36,7 +36,7 @@ Observer 是实际形成观测的主体。每个主体实例拥有稳定的 `Obs
 
 “用户活跃”的判断规则和锁屏责任归属尚未确定。是否从前台时长排除锁屏或无输入时段，也需确认。
 
-采集器可以在内存中保留当前应用和标题。采集器无需保存每次采样。
+前台应用采集器在本地保存当前时段，连续确认时更新边界。时段结束后才进入 Outbox，不为每次确认创建独立观测。
 
 采集器必须保留历史 Observation 引用的内容，不得覆盖。结束时间未知不证明应用此刻仍在前台。
 
@@ -44,12 +44,12 @@ Observer 是实际形成观测的主体。每个主体实例拥有稳定的 `Obs
 
 | Observer | 已实现范围 | 文档 |
 | --- | --- | --- |
-| 前台状态 | macOS 前台应用单次读取、提交和读回核对 | [前台状态](./foreground-state.mdx) |
+| 前台状态 | macOS 本机应用身份、事件与定时确认、本地时段和 Outbox | [前台状态](./foreground-state.mdx) |
 
-当前程序位于 `src/Observers/Heartbeat.Observer.ForegroundState/`。现有应用读数契约见[当前单次读数](./foreground-state.mdx#当前单次读数)。
+当前程序位于 `src/Observers/Heartbeat.Observer.ForegroundState/`。身份规则见[本机应用](./entities/local-application.mdx)，时间规则见[前台应用时段](./schemas/foreground-application-interval.mdx)。
 
-窗口标题、Windows、连续采集、输入事件、锁屏和休眠采集尚未实现。
+窗口标题、Windows、输入事件、锁屏和独立设备状态时间线另行实现。休眠判断只用于断开应用时段。
 
 本机应用实体表示某台设备上的一个应用安装。不同设备上的安装分别保留实体身份，可以关联到同一个跨平台应用实体。规则见 [ADR 0002](../adr/0002-observer-capabilities-and-platform-clients.mdx#应用身份)。
 
-应用观测保存 `localApplicationId` 与当时读到的 `name`。本机应用识别与跨平台关联规则仍需确认。标题、输入事件和设备状态的字段仍为草案。四份实体定义尚未分配固定 SchemaId。
+应用观测保存 `localApplicationId` 与当时读到的 `name`。本机应用与应用时段分别使用固定 SchemaId。跨平台关联、标题、输入事件和独立设备状态的字段与规则单独确定。

@@ -5,4 +5,8 @@ internal sealed record ForegroundApplicationReading(
     string? Name,
     string? ExecutablePath,
     DateTimeOffset ObservedAt,
-    string? TimeZone);
+    string? TimeZone,
+    int? ProcessId = null,
+    DateTimeOffset? ProcessStartedAt = null,
+    TimeSpan? Elapsed = null,
+    TimeSpan? Awake = null);
