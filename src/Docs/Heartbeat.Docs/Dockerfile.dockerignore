@@ -1,0 +1,16 @@
+.github
+.env
+.env.*
+!.env.example
+.local
+.scratch
+.artifacts
+**/bin
+**/obj
+TestResults
+**/node_modules
+**/.next
+**/out
+**/coverage
+**/playwright-report
+**/test-results

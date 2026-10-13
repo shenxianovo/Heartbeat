@@ -21,6 +21,14 @@ Core 侧栏按“指南、基础契约、观测模型”分组，页面直接显
 
 右侧页内目录采用 `clerk` 样式。SVG 轨道显示标题层级，并高亮当前阅读位置。配置位于 `app/(docs)/[[...slug]]/page.tsx` 的 `tableOfContent`。
 
+## 页面历史
+
+MDX 页末尾使用 [`fumadocs-page-history@0.2.0`](https://github.com/shenxianovo/fumadocs-page-history) 显示贡献者和可折叠的提交历史。`source.config.ts` 注册 Remark 插件，仓库链接复用 `lib/shared.ts` 的 Git 配置；样式在 `app/global.css` 引入，中文翻译在 `lib/translations.ts` 注册，日期使用上海时区。贡献者注册表将 Git 作者 `shenxianovo` 手动关联到同名 GitHub 账号，提供头像和个人主页链接。OpenAPI 自动生成的接口页不经过 MDX 编译，因此没有这个页尾。
+
+历史在编译时从完整 Git checkout 读取，支持文件更名。未提交的新文件没有历史；已提交文件的未提交修改不产生历史条目。新增提交后重新构建；开发期间仅 Git 记录变化时需要重启文档站。浅克隆需先执行 `git fetch --unshallow`。默认不请求 GitHub API，也不需要 GitHub token。
+
+Docker 构建必须从仓库根目录使用包含 `.git` 的完整 checkout。`Dockerfile.dockerignore` 保留构建所需的 `.git`；构建阶段安装 Git，按仓库相对路径放置文档，并通过 BuildKit 只读挂载 Git 数据。运行镜像只包含 Node 与站点产物。
+
 ## OpenAPI
 
 接口使用 OpenAPI First：先确定契约，再编写实现。维护者直接修改 [content/docs/api/openapi.json](content/docs/api/openapi.json)。该文件是 HTTP 契约的权威来源。后端构建不生成或覆盖契约文件。`lib/openapi.ts` 读取规范，`lib/source.ts` 通过 `staticSource({ baseDir: 'api' })` 生成虚拟接口页，并与 MDX 正文合并。API 导航保留概览，自动列出生成的页面。
